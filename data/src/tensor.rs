@@ -2,6 +2,7 @@
 use crate::blob::Blob;
 use crate::datum::{round_ties_to_even, scale_by, ClampCast, Datum, DatumType, QParams};
 use crate::dim::TDim;
+use crate::payload::PayloadWrapper;
 use crate::TVec;
 use anyhow::{ensure, Context};
 use half::f16;
@@ -91,6 +92,7 @@ impl Hash for Tensor {
                 TDim => self.as_slice_unchecked::<crate::dim::TDim>().hash(state),
                 String => self.as_slice_unchecked::<std::string::String>().hash(state),
                 Blob => self.as_slice_unchecked::<crate::blob::Blob>().hash(state),
+                Payload => self.as_slice_unchecked::<crate::payload::PayloadWrapper>().hash(state),
                 QI8(_) => self.as_slice_unchecked::<i8>().hash(state),
                 QU8(_) => self.as_slice_unchecked::<u8>().hash(state),
                 QI32(_) => self.as_slice_unchecked::<i32>().hash(state),
@@ -125,30 +127,22 @@ impl Default for Tensor {
 
 impl Drop for Tensor {
     fn drop(&mut self) {
-        if self.dt == DatumType::Blob {
-            unsafe {
-                self.as_slice_mut::<Blob>()
-                    .unwrap()
-                    .iter_mut()
-                    .for_each(|s| std::ptr::drop_in_place(s as *mut Blob));
-            }
+        macro_rules! drop_in_place {
+            ($t: ty) => {
+                if self.dt == <$t>::datum_type() {
+                    unsafe {
+                        self.as_slice_mut::<$t>()
+                            .unwrap()
+                            .iter_mut()
+                            .for_each(|s| std::ptr::drop_in_place(s as *mut $t));
+                    }
+                }
+            };
         }
-        if self.dt == DatumType::String {
-            unsafe {
-                self.as_slice_mut::<String>()
-                    .unwrap()
-                    .iter_mut()
-                    .for_each(|s| std::ptr::drop_in_place(s as *mut String));
-            }
-        }
-        if self.dt == DatumType::TDim {
-            unsafe {
-                self.as_slice_mut::<TDim>()
-                    .unwrap()
-                    .iter_mut()
-                    .for_each(|s| std::ptr::drop_in_place(s as *mut TDim));
-            }
-        }
+        drop_in_place!(Blob);
+        drop_in_place!(String);
+        drop_in_place!(TDim);
+        drop_in_place!(PayloadWrapper);
         if !self.data.is_null() && self.layout.size() > 0 {
             unsafe { alloc::dealloc(self.data, self.layout) }
         }
@@ -209,12 +203,17 @@ impl Tensor {
         tensor.update_strides_and_len();
         if !data.is_null() {
             if dt == String::datum_type() || dt == Blob::datum_type() {
+                // assumes zero-initialized string and blob are valid
                 tensor.as_bytes_mut().iter_mut().for_each(|x| *x = 0);
             } else if dt == TDim::datum_type() {
                 tensor
                     .as_slice_mut_unchecked::<TDim>()
                     .iter_mut()
                     .for_each(|dim| std::ptr::write(dim, TDim::zero()))
+            } else if dt == PayloadWrapper::datum_type() {
+                tensor.as_slice_mut_unchecked::<PayloadWrapper>().iter_mut().for_each(|p| {
+                    std::ptr::write(p, PayloadWrapper::default());
+                });
             } else if cfg!(debug_assertions) {
                 assert!(dt.is_copy());
                 if dt == DatumType::F32 {

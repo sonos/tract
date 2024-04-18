@@ -16,6 +16,7 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 anyhow.workspace = true
+dyn-hash.workspace = true
 half.workspace = true
 itertools.workspace = true
 maplit.workspace = true
