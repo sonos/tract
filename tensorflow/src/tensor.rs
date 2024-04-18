@@ -105,8 +105,11 @@ impl<'a> TryFrom<&'a TensorProto> for Tensor {
                 DataType::DtFloat => tensor_from_repeated_field(&dims, t.float_val.to_vec())?,
                 DataType::DtDouble => tensor_from_repeated_field(&dims, t.double_val.to_vec())?,
                 DataType::DtString => {
-                    let strings =
-                        t.string_val.iter().map(|s| Blob(s.to_owned())).collect::<Vec<Blob>>();
+                    let strings = t
+                        .string_val
+                        .iter()
+                        .map(|s| Blob::try_from(&**s))
+                        .collect::<TractResult<Vec<Blob>>>()?;
                     tensor_from_repeated_field(&dims, strings)?
                 }
                 _ => unimplemented!("missing type (for _val()) {:?}", t.dtype),

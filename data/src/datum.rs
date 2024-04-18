@@ -3,22 +3,66 @@ use crate::dim::TDim;
 use crate::tensor::litteral::*;
 use crate::tensor::Tensor;
 use crate::TVec;
+use crate::TractResult;
 use half::f16;
 #[cfg(feature = "complex")]
 use num_complex::Complex;
 use scan_fmt::scan_fmt;
+use std::alloc::alloc;
+use std::alloc::dealloc;
+use std::alloc::Layout;
 use std::hash::Hash;
+use std::ptr::null_mut;
 use std::{fmt, ops};
 
 use num_traits::AsPrimitive;
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
-pub struct Blob(pub Vec<u8>);
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub struct Blob {
+    layout: std::alloc::Layout,
+    data: *mut u8,
+}
+
+impl Default for Blob {
+    fn default() -> Blob {
+        Blob::from_bytes(&[]).unwrap()
+    }
+}
+
+impl Clone for Blob {
+    fn clone(&self) -> Self {
+        Blob::from_bytes_alignment(self, self.layout.align()).unwrap()
+    }
+}
+
+impl Drop for Blob {
+    fn drop(&mut self) {
+        unsafe { dealloc(self.data, self.layout) }
+    }
+}
+
+impl Blob {
+    pub fn from_bytes(s: &[u8]) -> TractResult<Blob> {
+        Self::from_bytes_alignment(s, 128)
+    }
+
+    pub fn from_bytes_alignment(s: &[u8], alignment: usize) -> TractResult<Blob> {
+        unsafe {
+            let layout = Layout::from_size_align_unchecked(s.len(), alignment);
+            let mut data = null_mut();
+            if layout.size() > 0 {
+                data = alloc(layout);
+                std::ptr::copy_nonoverlapping(s.as_ptr(), data, s.len());
+            }
+            Ok(Blob { layout, data })
+        }
+    }
+}
 
 impl ops::Deref for Blob {
     type Target = [u8];
     fn deref(&self) -> &[u8] {
-        &self.0
+        unsafe { std::slice::from_raw_parts(self.data, self.layout.size()) }
     }
 }
 
@@ -28,12 +72,15 @@ impl fmt::Display for Blob {
     }
 }
 
-impl std::str::FromStr for Blob {
-    type Err = ();
-    fn from_str(s: &str) -> Result<Blob, ()> {
-        Ok(Blob(s.as_bytes().to_vec()))
+impl<'a> TryFrom<&'a [u8]> for Blob {
+    type Error = anyhow::Error;
+    fn try_from(s: &[u8]) -> Result<Blob, Self::Error> {
+        Blob::from_bytes(s)
     }
 }
+
+unsafe impl Send for Blob {}
+unsafe impl Sync for Blob {}
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum QParams {
