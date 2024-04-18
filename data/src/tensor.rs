@@ -1,5 +1,6 @@
 //! `Tensor`, tract main data object of interest.
-use crate::datum::{round_ties_to_even, scale_by, Blob, ClampCast, Datum, DatumType, QParams};
+use crate::blob::Blob;
+use crate::datum::{round_ties_to_even, scale_by, ClampCast, Datum, DatumType, QParams};
 use crate::dim::TDim;
 use crate::TVec;
 use anyhow::{ensure, Context};
@@ -89,7 +90,7 @@ impl Hash for Tensor {
                 F64 => self.as_slice_unchecked::<i64>().hash(state),
                 TDim => self.as_slice_unchecked::<crate::dim::TDim>().hash(state),
                 String => self.as_slice_unchecked::<std::string::String>().hash(state),
-                Blob => self.as_slice_unchecked::<crate::datum::Blob>().hash(state),
+                Blob => self.as_slice_unchecked::<crate::blob::Blob>().hash(state),
                 QI8(_) => self.as_slice_unchecked::<i8>().hash(state),
                 QU8(_) => self.as_slice_unchecked::<u8>().hash(state),
                 QI32(_) => self.as_slice_unchecked::<i32>().hash(state),
