@@ -7,7 +7,7 @@ use tract_data::internal::*;
 use tract_linalg::frame::mmm::FusedSpec;
 // use tract_linalg::frame::mmm::{VirtualInput, VirtualInputSpec};
 use tract_linalg::frame::{Packer, PackingWriter};
-use tract_linalg::mmm::{InputStore, InputStoreSpec};
+use tract_linalg::mmm::{MMMInput, MMMInputLayout};
 use DatumType::F32;
 
 proptest::proptest! {
@@ -156,7 +156,7 @@ impl ConvProblem {
         unsafe {
             mmm.a_pack().pack(packed_filter.view_mut(), reshaped_filters.view(), 0, 1);
             let a_store = mmm.a_packed(F32.size_of(), k).wrap(&packed_filter.view());
-            let im2col: Box<dyn InputStoreSpec> = if self.lazy_im2col {
+            let im2col: Box<dyn MMMInputLayout> = if self.lazy_im2col {
                 Box::new(LazyIm2colSpec {
                     full_kernel_shape: self.filters.shape().into(),
                     packer: mmm.b_pack(),
@@ -218,8 +218,8 @@ struct EagerIm2colSpec {
     full_kernel_shape: TVec<usize>,
 }
 
-impl InputStoreSpec for EagerIm2colSpec {
-    fn wrap(&self, input: &TensorView) -> Box<dyn InputStore> {
+impl MMMInputLayout for EagerIm2colSpec {
+    fn wrap(&self, input: &TensorView) -> Box<dyn MMMInput> {
         let (_, k, n, h, w) = mknhw(&self.full_kernel_shape, input.shape());
         // let input = input.to_array_view::<f32>().unwrap();
         let ci = input.shape()[0];
@@ -242,7 +242,7 @@ struct EagerIm2col {
     k: usize,
 }
 
-impl InputStore for EagerIm2col {
+impl MMMInput for EagerIm2col {
     fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
         Some(
             Layout::from_size_align(
@@ -277,8 +277,8 @@ struct LazyIm2colSpec {
     full_kernel_shape: TVec<usize>,
 }
 
-impl InputStoreSpec for LazyIm2colSpec {
-    fn wrap(&self, input: &TensorView) -> Box<dyn InputStore> {
+impl MMMInputLayout for LazyIm2colSpec {
+    fn wrap(&self, input: &TensorView) -> Box<dyn MMMInput> {
         let (_, _, _, h, w) = mknhw(&self.full_kernel_shape, input.shape());
         let kh = self.full_kernel_shape[0];
         let kw = self.full_kernel_shape[1];
@@ -319,7 +319,7 @@ struct LazyIm2col {
 unsafe impl Send for LazyIm2col {}
 unsafe impl Sync for LazyIm2col {}
 
-impl InputStore for LazyIm2col {
+impl MMMInput for LazyIm2col {
     fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
         Some(
             Layout::from_size_align(

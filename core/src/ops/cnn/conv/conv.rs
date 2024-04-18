@@ -1,5 +1,4 @@
 use tract_data::itertools::izip;
-use tract_linalg::mmm::InputStoreSpec;
 use tract_num_traits::Zero;
 
 use crate::internal::*;
@@ -22,7 +21,7 @@ use crate::ops::nn::Reduce;
 
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
-use super::lazy_im2col::LazyIm2colSpec;
+// use super::lazy_im2col::LazyIm2colSpec;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
 use crate::ops::matmul::lir_unary::{LirMatMulUnary, ProtoFusedSpec};
@@ -167,8 +166,11 @@ impl Conv {
         let sum_ker_a_g_c =
             model.wire_node(format!("{name}.rm_k"), AxisOp::Rm(2), &sum_ker_g_c_k)?;
         // align sum_A from G,C to "C" shape: N,HW,G,C (or N,G,C,HW)
-        let sum_ker_n_g_c =
-            model.wire_node(format!("{name}.sum_ker_n_g_c.axis_0"), AxisOp::Add(0), &sum_ker_a_g_c)?;
+        let sum_ker_n_g_c = model.wire_node(
+            format!("{name}.sum_ker_n_g_c.axis_0"),
+            AxisOp::Add(0),
+            &sum_ker_a_g_c,
+        )?;
         let hw_position = if self.pool_spec.data_format.c_is_last() { 1 } else { 3 };
         let sum_ker = model.wire_node(
             format!("{name}.sum_ker_n_g_c"),
@@ -190,7 +192,7 @@ impl Conv {
 
         let x_dt = model.outlet_fact(x)?.datum_type;
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
-        let b_storage = unsafe { mmm.b_packed(x_dt.size_of(), k) };
+//        let b_storage = unsafe { mmm.b_packed(x_dt.size_of(), k) };
         let bias =
             model.wire_node(format!("{name}.cast_bias"), cast(mmm.internal_type()), &[bias])?[0];
         let wire = self.wire_mm_weights_bias(
@@ -205,7 +207,7 @@ impl Conv {
             k,
             c_axis,
             h_axis,
-            b_storage,
+ //           b_storage,
         )?;
 
         let wire = qmm::compensate_zero_points(
@@ -271,7 +273,7 @@ impl Conv {
             &[wire[0], padding],
         )?[0];
 
-        let b_storage = unsafe { mmm.b_packed(b_dt.size_of(), k) };
+//        let b_storage = unsafe { mmm.b_packed(b_dt.size_of(), k) };
 
         let g_o_ihw = self.wire_kernel_as_g_o_ihw(model, name, wire[1])?;
 
@@ -288,7 +290,7 @@ impl Conv {
                 k.to_usize().unwrap(),
                 c_axis,
                 h_axis,
-                b_storage,
+//                b_storage,
             )
             .context("in wire_lir_matmatmul")?;
 
@@ -352,6 +354,7 @@ impl Conv {
             )
             .context("in wire_geo_reshape")
     }
+    /*
 
     pub unsafe fn wire_as_lazy_im2col(
         &self,
@@ -419,13 +422,14 @@ impl Conv {
             k,
             c_axis,
             h_axis,
-            b_storage,
+//            b_storage,
         )?;
 
         let wire = self.wire_remove_group(model, name, &wire, &mmm_output_shape, c_axis)?;
         let wire = self.wire_rm_n_if_needed(model, name, &wire)?;
         Self::wire_geo_reshape(model, name, &wire, &geo.output_shape)
     }
+*/
 
     #[allow(clippy::type_complexity)]
     fn compute_geo(
@@ -467,14 +471,12 @@ impl Conv {
         k: usize,
         c_m_axis: usize,
         c_n_axis: usize,
-        b_storage: Box<dyn InputStoreSpec>,
     ) -> TractResult<TVec<OutletId>> {
         ensure!(model.outlet_fact(bias)?.datum_type == mmm.internal_type());
         let packed_ker = self
             .wire_pack_g_o_ihw(model, name, mmm.a_pack(), g_o_ihw)
             .context("in kernel_as_packed_as")?;
         let a_dt = model.outlet_fact(packed_ker)?.datum_type;
-        let a_storage = unsafe { mmm.a_packed(a_dt.size_of(), k) };
         let (mut c_to_a_axis_mapping, mut c_to_b_axis_mapping) = (tvec!(), tvec!());
 
         c_to_a_axis_mapping.push((c_m_axis - 1, 0)); // Group
@@ -483,8 +485,6 @@ impl Conv {
 
         let geo = AddMatMulGeometry {
             k: k.to_dim(),
-            a_storage: Some(a_storage),
-            b_storage: Some(b_storage),
             mmm: mmm.clone(),
             c_to_a_axis_mapping: MapOutputAxisToInput(c_to_a_axis_mapping),
             c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
@@ -807,6 +807,7 @@ impl EvalOp for Conv {
             }
         };
         model.set_output_outlets(&wire)?;
+        eprintln!("{model}");
         model.into_runnable()?.run(inputs)
     }
 }
@@ -1067,6 +1068,7 @@ impl TypedOp for Conv {
                 patch.shunt_outside(model, node.id.into(), wire[0])?;
                 patch.obliterate(node.id)?;
                 Ok(Some(patch.with_context("quantized-codegen")))
+                    /*
             } else if input_fact
                 .shape
                 .as_concrete()
@@ -1087,6 +1089,7 @@ impl TypedOp for Conv {
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 patch.obliterate(node.id)?;
                 Ok(Some(patch))
+                */
             } else if self.group != 1
                 && self.group == self.output_channels()
                 && self.group == self.input_channels()

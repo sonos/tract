@@ -268,6 +268,7 @@ impl Test for ConvProblem {
         approx: Approximation,
     ) -> TestResult {
         let reference = self.reference().into_tensor();
+        dbg!(&reference);
         let mut model = self.tract()?;
         //       dbg!(&model);
         model.declutter()?;
@@ -1211,6 +1212,20 @@ pub fn suite() -> TractResult<TestSuite> {
             bias: None,
             pad: PaddingSpec::Valid,
             strides: tvec!(1, 1),
+        },
+    );
+
+    suite.add(
+        "pack_1",
+        ConvProblem {
+            shape_in: DataFormat::CHW.from_n_c_hw(1, 1, [5]).unwrap(),
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: arr2(&[[0.0f32, -2.0, 0.0, 0.0, 0.0]]).into_dyn(),
+            kernel: arr3(&[[[1f32]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1),
         },
     );
 
