@@ -9,14 +9,6 @@ use tract_linalg::mmm::{BinOp, FusedSpec, MMMInput, MatMatMul, OutputStoreSpec, 
 use tract_linalg::Scaler;
 use tract_smallvec::ToSmallVec;
 
-/*
-#[derive(Clone, Debug)]
-pub enum ProtoInputStoreSpec {
-Packed { item_size: usize },
-//    Virtual { func: Box<dyn MMMInputLayout> },
-}
-*/
-
 #[derive(Clone, Debug)]
 pub enum ProtoFusedSpec {
     AddMatMul(AddMatMulGeometry, usize, usize),
@@ -70,23 +62,7 @@ impl ProtoFusedSpec {
                 let b = b.as_slice::<PayloadWrapper>().unwrap()[0]
                     .downcast_ref::<Box<dyn MMMInput>>()
                     .unwrap();
-                unsafe {
-                    /*
-                    // careful here. this work because a_packed() return a packer from which
-                    // nothing is borrowed
-                    let a = if let Some(sto) = &geo.a_storage {
-                    sto.wrap(&a)
-                    } else {
-                    geo.mmm.a_packed(a.datum_type().size_of(), k).wrap(&a)
-                    };
-                    let b = if let Some(sto) = &geo.b_storage {
-                    sto.wrap(&b)
-                    } else {
-                    geo.mmm.b_packed(b.datum_type().size_of(), k).wrap(&b)
-                    };
-                    */
-                    FusedSpec::AddMatMul { k, a: &**a, b: &**b }
-                }
+                FusedSpec::AddMatMul { k, a: &**a, b: &**b }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
             ProtoFusedSpec::LeakyRelu(v) => FusedSpec::LeakyRelu(&inputs[*v]),
