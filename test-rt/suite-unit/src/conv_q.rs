@@ -516,7 +516,7 @@ pub fn suite() -> TractResult<TestSuite> {
     let mut qp = qp_noop_i8();
     qp[0] = tensor0(1i32);
     suite.add(
-        "b0",
+        "a0",
         QConvProblem {
             shape_in: HWC.from_n_c_hw(1, 1, [1]).unwrap(),
             kernel_format: OIHW,
@@ -529,6 +529,41 @@ pub fn suite() -> TractResult<TestSuite> {
             raw_output_dt: DatumType::I8,
         },
     );
+
+    let mut qp = qp_noop_i8();
+    qp[2] = tensor0(1i32);
+    suite.add(
+        "b0_0",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [3]).unwrap(),
+            kernel_format: OIHW,
+            co: 1,
+            group: 1,
+            data: tensor2(&[[0i8, 0, 0]]),
+            kernel: tensor3(&[[[0i8, 0]]]),
+            bias: None,
+            qp,
+            raw_output_dt: DatumType::I8,
+        },
+    );
+
+    let mut qp = qp_noop_i8();
+    qp[2] = tensor0(2i32);
+    suite.add(
+        "b0_1",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [6]).unwrap(),
+            kernel_format: OIHW,
+            co: 1,
+            group: 1,
+            data: tensor2(&[[0i8, 0, 0, 0, -20, 0]]),
+            kernel: tensor3(&[[[0i8, 0]]]),
+            bias: None,
+            qp,
+            raw_output_dt: DatumType::I8,
+        },
+    );
+
     suite.add(
         "shape_0",
         QConvProblem {

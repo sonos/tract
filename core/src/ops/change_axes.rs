@@ -272,11 +272,17 @@ impl AxisOp {
         broadcasting: bool,
     ) -> TractResult<()> {
         match self.canonical().as_ref() {
-            Add(ix) => shape.insert(*ix, D::one()),
+            Add(ix) => {
+                ensure!(*ix <= shape.len());
+                shape.insert(*ix, D::one());
+            }
             Rm(ix) => {
+                ensure!(*ix < shape.len());
                 shape.remove(*ix);
             }
             Move(from, to) => {
+                ensure!(*from < shape.len());
+                ensure!(*to < shape.len());
                 let axis = shape.remove(*from);
                 shape.insert(*to, axis);
             }
@@ -284,6 +290,7 @@ impl AxisOp {
                 let from_volume = from.iter().product::<TDim>();
                 let to_volume = to.iter().product::<TDim>();
                 ensure!(from_volume == to_volume, "{from_volume} should be equal to {to_volume}");
+                ensure!(*at + from.len() <= shape.len());
                 if shape.len() >= from.len() + *at
                     && tract_itertools::izip!(shape.iter().skip(*at), from)
                         .all(|(shape, spec)| shape.to_dim() == *spec)
