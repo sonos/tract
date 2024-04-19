@@ -21,10 +21,10 @@ pub fn packed_vec(c: &mut Criterion, name: &str, m: usize, k: usize, n: usize) {
     let mut group = c.benchmark_group(format!("{name}/packed_vec"));
     group.throughput(Throughput::Elements((m * k * n) as u64));
     let id = format!("{m}x{k}x{n}");
-    group.bench_with_input(BenchmarkId::new("f32/cold", &id), &(F32, m, k, n, true), mat_vec);
-    group.bench_with_input(BenchmarkId::new("f32/hot", &id), &(F32, m, k, n, false), mat_vec);
-    group.bench_with_input(BenchmarkId::new("i8/cold", &id), &(I8, m, k, n, true), mat_vec);
-    group.bench_with_input(BenchmarkId::new("i8/hot", &id), &(I8, m, k, n, false), mat_vec);
+    group.bench_with_input(BenchmarkId::new("f32/cold", &id), &(F32, m, k, n, true), mat_mat);
+    group.bench_with_input(BenchmarkId::new("f32/hot", &id), &(F32, m, k, n, false), mat_mat);
+    group.bench_with_input(BenchmarkId::new("i8/cold", &id), &(I8, m, k, n, true), mat_mat);
+    group.bench_with_input(BenchmarkId::new("i8/hot", &id), &(I8, m, k, n, false), mat_mat);
 }
 
 pub fn ruin_cache() {
@@ -38,8 +38,8 @@ unsafe fn run(
     n: usize,
     be: &mut Bencher,
     mm: &dyn MatMatMul,
-    pa: Box<dyn MMMInput>,
-    pb: Box<dyn MMMInput>,
+    a: &dyn MMMInput,
+    b: &dyn MMMInput,
     cold: bool,
 ) {
     let mut scratch = mm.allocate_scratch_space();
@@ -50,13 +50,8 @@ unsafe fn run(
                 ruin_cache();
             }
             let instant = std::time::Instant::now();
-            mm.run_with_scratch_space(
-                m,
-                n,
-                scratch.as_mut(),
-                &[FusedSpec::AddMatMul { a: pa.clone(), b: pb.clone(), k }],
-            )
-            .unwrap();
+            mm.run_with_scratch_space(m, n, scratch.as_mut(), &[FusedSpec::AddMatMul { a, b, k }])
+                .unwrap();
             let time = instant.elapsed();
             dur += time;
         }
@@ -75,40 +70,11 @@ pub fn mat_mat_with_mm(
     mm: &dyn MatMatMul,
     &(dt, m, k, n, cold): &(DatumType, usize, usize, usize, bool),
 ) {
-    let pa =
-        Tensor::zero_aligned_dt(dt, &[mm.a_pack().len(k, m)], mm.a_pack().alignment()).unwrap();
-    let pb =
-        Tensor::zero_aligned_dt(dt, &[mm.b_pack().len(k, n)], mm.b_pack().alignment()).unwrap();
+    let a = Tensor::zero_dt(dt, &[m, k]).unwrap();
+    let b = Tensor::zero_dt(dt, &[k, n]).unwrap();
+    let pa = mm.a_pack().pack_tensor(&a.view(), 1, 0).unwrap();
+    let pb = mm.b_pack().pack_tensor(&b.view(), 0, 1).unwrap();
     unsafe {
-        run(
-            m,
-            k,
-            n,
-            be,
-            mm,
-            mm.a_packed(dt.size_of(), k).wrap(&pa.view()),
-            mm.b_packed(dt.size_of(), k).wrap(&pb.view()),
-            cold,
-        );
-    }
-}
-
-fn mat_vec(be: &mut Bencher, &(dt, m, k, n, cold): &(DatumType, usize, usize, usize, bool)) {
-    assert_eq!(n, 1);
-    let mm = tract_linalg::ops().mmm(dt, dt, dt, Some(m), Some(k), Some(n)).unwrap();
-    let pa =
-        Tensor::zero_aligned_dt(dt, &[mm.a_pack().len(k, m)], mm.a_pack().alignment()).unwrap();
-    let pb = Tensor::zero_dt(dt, &[k, 1]).unwrap();
-    unsafe {
-        run(
-            m,
-            k,
-            n,
-            be,
-            &*mm,
-            mm.a_packed(dt.size_of(), k).wrap(&pa.view()),
-            mm.b_packed(dt.size_of(), k).wrap(&pb.view()),
-            cold,
-        );
+        run(m, k, n, be, &*mm, &*pa, &*pb, cold);
     }
 }
