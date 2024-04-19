@@ -100,7 +100,11 @@ impl TypedOp for Range {
                 let start = start.to_scalar::<TDim>()?;
                 let end = end.to_scalar::<TDim>()?;
                 let step = step.cast_to_scalar::<i64>()?;
-                (end.clone() - start).divceil(step as usize)
+                if step < 0 {
+                    (start.clone() - end).divceil(-step as usize)
+                } else {
+                    (end.clone() - start).divceil(step as usize)
+                }
             } else {
                 dispatch_numbers!(Self::len_for_numbers(start.datum_type())(
                     self, start, end, step
