@@ -2,7 +2,7 @@
 mod conv;
 mod depth_wise;
 mod im2col;
-// mod lazy_im2col;
+mod lazy_im2col;
 mod q_sum_b;
 
 use crate::internal::*;

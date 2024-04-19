@@ -8,6 +8,8 @@ use crate::ops::array::Pad;
 use crate::ops::array::PadMode;
 use crate::ops::binary::TypedBinOp;
 use crate::ops::cast::cast;
+use crate::ops::cnn::conv::lazy_im2col::LazyIm2Col;
+use crate::ops::cnn::conv::lazy_im2col::LazyIm2colParams;
 use crate::ops::cnn::wire_reshape_bias_for_bin;
 use crate::ops::cnn::PaddingSpec::*;
 use crate::ops::einsum::EinSum;
@@ -354,82 +356,83 @@ impl Conv {
             )
             .context("in wire_geo_reshape")
     }
-    /*
 
-        pub unsafe fn wire_as_lazy_im2col(
-            &self,
-            model: &mut TypedModel,
-            name: &str,
-            wire: &[OutletId],
-        ) -> TractResult<TVec<OutletId>> {
-            let &[mut x, kernel, bias] = wire else { bail!("Wrong number of inputs") };
-            let mut x_fact = model.outlet_fact(x)?.clone();
-            let k_fact = model.outlet_fact(kernel)?.clone();
-            let (geo, m, k, n, mmm) = self.compute_geo(&k_fact, &x_fact)?;
-            debug!("{name} as lazy_im2col: m={m} k={k} n={n} {mmm}");
-            let input_shape = x_fact.shape.as_concrete().unwrap().to_vec();
-            let mut geo = geo.to_concrete(&input_shape)?.into_owned();
-            let mut input_shape: DataShape = self.pool_spec.data_format.shape(input_shape.into())?;
-            let padding = self.pool_spec.computed_padding(input_shape.hw_dims());
-            if padding.iter().any(|axis| axis.pad_before != 0 || axis.pad_after != 0) {
-                let mut pads = vec![(0, 0); x_fact.rank()];
-                for (ix, ax) in padding.iter().enumerate() {
-                    pads[input_shape.h_axis() + ix] = (ax.pad_before, ax.pad_after);
-                }
-                let op = crate::ops::array::Pad {
-                    mode: crate::ops::array::PadMode::Constant(
-                        Tensor::zero_scalar_dt(x_fact.datum_type)?.into_arc_tensor(),
-                    ),
-                    pads,
-                };
-                x = model.wire_node(format!("{name}.pad"), op, &[x])?[0];
-                let valid_pool_spec = PoolSpec { padding: Valid, ..self.pool_spec.clone() };
-                x_fact = model.outlet_fact(x)?.clone();
-                let concrete_shape = x_fact.shape.as_concrete().unwrap();
-                input_shape = valid_pool_spec.data_format.shape(concrete_shape.into())?;
-                geo = valid_pool_spec
-                    .compute_geo(&x_fact.shape)?
-                    .to_concrete(concrete_shape)?
-                    .into_owned();
+    pub unsafe fn wire_as_lazy_im2col(
+        &self,
+        model: &mut TypedModel,
+        name: &str,
+        wire: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let &[mut x, kernel, bias] = wire else { bail!("Wrong number of inputs") };
+        let mut x_fact = model.outlet_fact(x)?.clone();
+        let k_fact = model.outlet_fact(kernel)?.clone();
+        let (geo, m, k, n, mmm) = self.compute_geo(&k_fact, &x_fact)?;
+        debug!("{name} as lazy_im2col: m={m} k={k} n={n} {mmm}");
+        let input_shape = x_fact.shape.as_concrete().unwrap().to_vec();
+        let mut geo = geo.to_concrete(&input_shape)?.into_owned();
+        let mut input_shape: DataShape = self.pool_spec.data_format.shape(input_shape.into())?;
+        let padding = self.pool_spec.computed_padding(input_shape.hw_dims());
+        if padding.iter().any(|axis| axis.pad_before != 0 || axis.pad_after != 0) {
+            let mut pads = vec![(0, 0); x_fact.rank()];
+            for (ix, ax) in padding.iter().enumerate() {
+                pads[input_shape.h_axis() + ix] = (ax.pad_before, ax.pad_after);
             }
-            let c_dt = crate::ops::matmul::output_type(x_fact.datum_type);
-            let c_stride = input_shape.c_stride();
-            let size_of_b = x_fact.datum_type.size_of() as isize;
-            let n_bytes_offsets: Vec<isize> =
-                geo.patch.centers_offsets().into_iter().map(|x| x * size_of_b).collect();
-            let k_bytes_offsets: Vec<isize> = (0..self.input_channels())
-                .flat_map(|ici| {
-                    geo.patch
-                        .standard_layout_data_field
-                        .iter()
-                        .map(move |x| (x + (ici * c_stride) as isize) * size_of_b)
-                })
-                .collect();
-            let b_storage =
-                Box::new(LazyIm2colSpec { packer: mmm.b_pack(), n_bytes_offsets, k_bytes_offsets });
-            let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
-
-            let kernel = self.wire_kernel_as_g_o_ihw(model, name, kernel)?[0];
-            let wire = self.wire_mm_weights_bias(
-                model,
-                name,
-                x,
-                kernel,
-                bias,
-                mmm,
-                c_dt,
-                mmm_output_shape.clone().into(),
-                k,
-                c_axis,
-                h_axis,
-    //            b_storage,
-            )?;
-
-            let wire = self.wire_remove_group(model, name, &wire, &mmm_output_shape, c_axis)?;
-            let wire = self.wire_rm_n_if_needed(model, name, &wire)?;
-            Self::wire_geo_reshape(model, name, &wire, &geo.output_shape)
+            let op = crate::ops::array::Pad {
+                mode: crate::ops::array::PadMode::Constant(
+                    Tensor::zero_scalar_dt(x_fact.datum_type)?.into_arc_tensor(),
+                ),
+                pads,
+            };
+            x = model.wire_node(format!("{name}.pad"), op, &[x])?[0];
+            let valid_pool_spec = PoolSpec { padding: Valid, ..self.pool_spec.clone() };
+            x_fact = model.outlet_fact(x)?.clone();
+            let concrete_shape = x_fact.shape.as_concrete().unwrap();
+            input_shape = valid_pool_spec.data_format.shape(concrete_shape.into())?;
+            geo = valid_pool_spec
+                .compute_geo(&x_fact.shape)?
+                .to_concrete(concrete_shape)?
+                .into_owned();
         }
-    */
+        let c_dt = crate::ops::matmul::output_type(x_fact.datum_type);
+        let c_stride = input_shape.c_stride();
+        let size_of_b = x_fact.datum_type.size_of() as isize;
+        let n_byte_offsets: Vec<isize> =
+            geo.patch.centers_offsets().into_iter().map(|x| x * size_of_b).collect();
+        let k_byte_offsets: Vec<isize> = (0..self.input_channels())
+            .flat_map(|ici| {
+                geo.patch
+                    .standard_layout_data_field
+                    .iter()
+                    .map(move |x| (x + (ici * c_stride) as isize) * size_of_b)
+            })
+            .collect();
+        let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
+        let params = LazyIm2colParams { packer: mmm.b_pack(), n_byte_offsets, k_byte_offsets };
+        let x = model.wire_node(
+            format!("{name}.lazyIm2col"),
+            LazyIm2Col { params: Arc::new(params) },
+            &[x],
+        )?[0];
+
+        let kernel = self.wire_kernel_as_g_o_ihw(model, name, kernel)?[0];
+        let wire = self.wire_mm_weights_bias(
+            model,
+            name,
+            x,
+            kernel,
+            bias,
+            mmm,
+            c_dt,
+            mmm_output_shape.clone().into(),
+            k,
+            c_axis,
+            h_axis,
+        )?;
+
+        let wire = self.wire_remove_group(model, name, &wire, &mmm_output_shape, c_axis)?;
+        let wire = self.wire_rm_n_if_needed(model, name, &wire)?;
+        Self::wire_geo_reshape(model, name, &wire, &geo.output_shape)
+    }
 
     #[allow(clippy::type_complexity)]
     fn compute_geo(
@@ -845,12 +848,12 @@ impl TypedOp for Conv {
         }
         ensure!(
             inputs[2].rank() == 0
-                || (inputs[2].rank() == 1
-                    && inputs[2].shape.volume() == self.output_channels().to_dim()),
-            "Bias should be scalar or a vector with one value per output channel. Output channels is {}, bias is {:?}",
-            self.output_channels(),
-            inputs[2]
-        );
+            || (inputs[2].rank() == 1
+                && inputs[2].shape.volume() == self.output_channels().to_dim()),
+                "Bias should be scalar or a vector with one value per output channel. Output channels is {}, bias is {:?}",
+                self.output_channels(),
+                inputs[2]
+               );
         let mut fact = self.pool_spec.output_facts(inputs)?.remove(0);
         if let Some(dt) = self.q_params {
             fact.datum_type = dt;
@@ -1068,28 +1071,26 @@ impl TypedOp for Conv {
                 patch.shunt_outside(model, node.id.into(), wire[0])?;
                 patch.obliterate(node.id)?;
                 Ok(Some(patch.with_context("quantized-codegen")))
-                /*
-                } else if input_fact
-                    .shape
-                    .as_concrete()
-                    .map(|s| {
-                        should_use_lazy(
-                            &self.pool_spec.data_format.shape(s.into()).unwrap(),
-                            &self.pool_spec,
-                            self.group,
-                        )
-                    })
-                    .unwrap_or(false)
-                {
-                    let mut patch = TypedModelPatch::new("wire_as_lazy_im2col");
-                    let inputs = patch.taps(model, &node.inputs)?;
-                    let wire = self
-                        .wire_as_lazy_im2col(&mut patch, &node.name, &inputs)
-                        .context("wire_as_lazy_im2col")?[0];
-                    patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
-                    patch.obliterate(node.id)?;
-                    Ok(Some(patch))
-                    */
+            } else if input_fact
+                .shape
+                .as_concrete()
+                .map(|s| {
+                    should_use_lazy(
+                        &self.pool_spec.data_format.shape(s.into()).unwrap(),
+                        &self.pool_spec,
+                        self.group,
+                    )
+                })
+                .unwrap_or(false)
+            {
+                let mut patch = TypedModelPatch::new("wire_as_lazy_im2col");
+                let inputs = patch.taps(model, &node.inputs)?;
+                let wire = self
+                    .wire_as_lazy_im2col(&mut patch, &node.name, &inputs)
+                    .context("wire_as_lazy_im2col")?[0];
+                patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+                patch.obliterate(node.id)?;
+                Ok(Some(patch))
             } else if self.group != 1
                 && self.group == self.output_channels()
                 && self.group == self.input_channels()
@@ -1119,8 +1120,10 @@ impl TypedOp for Conv {
     as_op!();
 }
 
-fn should_use_lazy(_input_shape: &DataShape, pool_spec: &PoolSpec, group: usize) -> bool {
-    group == 1 && pool_spec.kernel_shape.iter().product::<usize>() > 5
+fn should_use_lazy(input_shape: &DataShape, pool_spec: &PoolSpec, group: usize) -> bool {
+    input_shape.n().unwrap_or(&1) == &1
+        && group == 1
+        && pool_spec.kernel_shape.iter().product::<usize>() > 5
 }
 
 #[allow(non_snake_case)]
