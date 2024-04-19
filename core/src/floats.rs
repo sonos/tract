@@ -3,8 +3,10 @@ use tract_num_traits::Float;
 use crate::internal::translator::Translate;
 use crate::internal::*;
 use crate::ops::array::{Pad, PadMode};
-use crate::ops::einsum::EinSum;
+use crate::ops::binary::TypedBinOp;
 use crate::ops::cast::Cast;
+use crate::ops::einsum::EinSum;
+use crate::ops::element_wise::ElementWiseOp;
 use crate::ops::konst::Const;
 use crate::ops::scan::Scan;
 use crate::ops::source::TypedSource;
@@ -43,6 +45,18 @@ impl<T1: Datum + Float, T2: Datum + Float>
         } else if let Some(cast) = node.op_as::<Cast>() {
             if cast.to == T1::datum_type() {
                 Box::new(Cast { to: T2::datum_type() })
+            } else {
+                node.op.clone()
+            }
+        } else if let Some(ew) = node.op_as::<ElementWiseOp>() {
+            if ew.1 == Some(T1::datum_type()) {
+                Box::new(ElementWiseOp(ew.0.clone(), Some(T2::datum_type())))
+            } else {
+                node.op.clone()
+            }
+        } else if let Some(bin) = node.op_as::<TypedBinOp>() {
+            if bin.1 == Some(T1::datum_type()) {
+                Box::new(TypedBinOp(bin.0.clone(), Some(T2::datum_type())))
             } else {
                 node.op.clone()
             }
