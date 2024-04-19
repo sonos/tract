@@ -288,7 +288,20 @@ impl TDim {
                     (_, 0) => Val(coef_prod), // Case #1: If 0 variables, return product
                     (0, _) => Val(0),         // Case #2: Result is 0 if coef is 0
                     (1, 1) => vars.remove(0), // Case #3: Product is 1, so return the only term
-                    (1, _) => Mul(vars), // Case #4: Product is 1, so return the non-integer terms
+                    (1, _) => {
+                        if let Some(position) = vars.iter().position(|a| matches!(a, Add(_))) {
+                            let add = vars.remove(position);
+                            let Add(add) = add else { unreachable!() };
+                            vars.iter()
+                                .cartesian_product(add)
+                                .map(|(a, b)| a.clone() * b)
+                                .sum::<TDim>()
+                                .simplify()
+                        } else {
+                            Mul(vars.into_iter().sorted_by(tdim_compare).collect())
+                            // Case #4: Product is 1, so return the non-integer terms
+                        }
+                    }
                     (_, 1) => MulInt(coef_prod, Box::new(vars.remove(0))), // Case #5: Single variable, convert to 1 MulInt
                     _ => MulInt(coef_prod, Box::new(Mul(vars))), // Case #6: Multiple variables, convert to MulInt
                 }
@@ -723,6 +736,8 @@ impl<I: AsPrimitive<u64> + PrimInt> ops::Rem<I> for TDim {
 
 #[cfg(test)]
 mod tests {
+    use crate::prelude::ToDim;
+
     use super::*;
 
     macro_rules! b( ($e:expr) => { Box::new($e) } );
@@ -925,6 +940,32 @@ mod tests {
     fn reduce_rem_div() {
         let e: TDim = s() % 2 / 2;
         assert_eq!(e, TDim::from(0));
+    }
+
+    #[test]
+    fn reduce_distribute_simple() {
+        let a = S.0.sym("a").to_dim();
+        let c = S.0.sym("c").to_dim();
+        let d = S.0.sym("d").to_dim();
+
+        let e: TDim = a.clone() * (c.clone() + d.clone());
+        let f: TDim = a.clone() * c.clone() + a.clone() * d.clone();
+        assert_eq!(e, f);
+    }
+
+    #[test]
+    fn reduce_distribute() {
+        let a = S.0.sym("a").to_dim();
+        let b = S.0.sym("b").to_dim();
+        let c = S.0.sym("c").to_dim();
+        let d = S.0.sym("d").to_dim();
+
+        let e: TDim = (a.clone() + b.clone()) * (c.clone() + d.clone());
+        let f: TDim = (a.clone() * c.clone())
+            + a.clone() * d.clone()
+            + b.clone() * c.clone()
+            + b.clone() * d.clone();
+        assert_eq!(e, f);
     }
 
     #[test]
