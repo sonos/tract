@@ -237,24 +237,13 @@ where
     assert_eq!(a.datum_type(), TA::datum_type());
     let op = MatMatMulImpl::<K, TI>::default();
     unsafe {
-        let mut packed_a =
-            Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(k, m)], op.a_pack().alignment())
-                .unwrap();
-        op.a_pack().pack(packed_a.view_mut(), a.view(), 1, 0);
-
-        let mut packed_b =
-            Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len(k, n)], op.b_pack().alignment())
-                .unwrap();
-        op.b_pack().pack(packed_b.view_mut(), b.view(), 0, 1);
+        let packed_a = op.a_pack().pack_tensor(&a.view(), 1, 0).unwrap();
+        let packed_b = op.b_pack().pack_tensor(&b.view(), 0, 1).unwrap();
 
         fused_ops::<K, TA, TB, TC, TI, _>(
             m,
             n,
-            &[FusedSpec::AddMatMul {
-                a: op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view()),
-                b: op.b_packed(TB::datum_type().size_of(), k).wrap(&packed_b.view()),
-                k,
-            }],
+            &[FusedSpec::AddMatMul { a: &*packed_a, b: &*packed_b, k }],
             |r, c| {
                 let mut v: TI = TI::zero();
                 for i in 0..k {
@@ -285,23 +274,14 @@ where
     crate::setup_test_logger();
     unsafe {
         let op = MatMatMulImpl::<K, TI>::default();
-        let mut packed_a =
-            Tensor::uninitialized_aligned::<TA>(&[op.a_pack().len(k, m)], op.a_pack().alignment())
-                .unwrap();
-        let mut packed_b =
-            Tensor::uninitialized_aligned::<TB>(&[op.b_pack().len(k, 1)], op.b_pack().alignment())
-                .unwrap();
-        op.a_pack().pack(&mut packed_a.view_mut(), &a.view(), 1, 0);
         let b = b.clone().into_shape(&[k, 1]).unwrap();
-        op.b_pack().pack(&mut packed_b.view_mut(), &b.view(), 0, 1);
-
-        let pa = op.a_packed(TA::datum_type().size_of(), k).wrap(&packed_a.view());
-        let pb = op.b_packed(b.datum_type().size_of(), k).wrap(&packed_b.view());
+        let packed_a = op.a_pack().pack_tensor(&a.view(), 1, 0).unwrap();
+        let packed_b = op.b_pack().pack_tensor(&b.view(), 0, 1).unwrap();
 
         fused_ops::<K, TA, TB, TC, TI, _>(
             m,
             1,
-            &[FusedSpec::AddMatMul { k, a: pa, b: pb }],
+            &[FusedSpec::AddMatMul { k, a: &*packed_a, b: &*packed_b }],
             |r, _| {
                 let mut inter = TI::zero();
                 for i in 0..k {

@@ -4,6 +4,8 @@ use std::marker::PhantomData;
 use std::ops::Range;
 use tract_data::internal::*;
 
+use crate::mmm::{EagerPackedInput, MMMInput};
+
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Packer {
     pub r: usize,
@@ -40,6 +42,24 @@ impl Packer {
     pub fn single_panel_layout(&self, k: usize, item_size: usize) -> Layout {
         assert!(k > 0);
         Layout::from_size_align(self.single_panel_len(k) * item_size, self.alignment()).unwrap()
+    }
+
+    pub fn pack_tensor(
+        &self,
+        t: &TensorView,
+        k_axis: usize,
+        n_axis: usize,
+    ) -> TractResult<Box<dyn MMMInput>> {
+        let k = t.shape()[k_axis];
+        let n = t.shape()[n_axis];
+        let packed_len = self.len(k, n);
+        unsafe {
+            let mut packed =
+                Tensor::uninitialized_aligned_dt(t.datum_type(), &[packed_len], self.alignment())?;
+            let panel_bytes = self.single_panel_len(k) * t.datum_type().size_of();
+            self.pack(&mut packed.view_mut(), t, k_axis, n_axis);
+            Ok(Box::new(EagerPackedInput { packed, panel_bytes }))
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -147,7 +167,7 @@ impl Packer {
         k: usize,
         mn: usize,
     ) -> KOutWriter<'p, T> {
-        KOutWriter::new(pb, self.r, mn, k)
+        KOutWriter::new(pb, self.r, self.single_panel_len(k), mn, k)
     }
 
     pub fn write_single_panel_with_k_outer<'p, T: Copy + Debug>(
@@ -222,7 +242,13 @@ impl<'p, T> KOutWriter<'p, T>
 where
     T: Copy + std::fmt::Debug,
 {
-    pub fn new(ptr: *mut T, panel_width: usize, mn: usize, k: usize) -> KOutWriter<'p, T> {
+    pub fn new(
+        ptr: *mut T,
+        panel_width: usize,
+        panel_len: usize,
+        mn: usize,
+        _k: usize,
+    ) -> KOutWriter<'p, T> {
         let panels = (mn + panel_width - 1) / panel_width;
         let last_panel_width = mn - (panels - 1) * panel_width;
         KOutWriter {
@@ -232,9 +258,9 @@ where
             last_panel_width,
             remain: if panels > 1 { panel_width } else { last_panel_width },
             current_panel: 0,
-            next_panel: ((k - 1) * panel_width) as isize,
-            next_lane: panel_width as isize
-                - ((last_panel_width + (panels - 1) * panel_width * k) as isize),
+            next_panel: (panel_len - panel_width) as isize,
+            next_lane: (panel_width - last_panel_width) as isize
+                - (panel_len * (panels - 1)) as isize,
             _phantom: PhantomData,
         }
     }
@@ -485,6 +511,11 @@ mod test {
     #[test]
     fn simple_b_3() {
         PackProblem { k: 2, mn: 1, is_a: false, r: 4, k_range: 0..2, mn_range: 0..1 }.check();
+    }
+
+    #[test]
+    fn simple_b_4() {
+        PackProblem { k: 1, mn: 3, is_a: false, r: 2, k_range: 0..1, mn_range: 0..3 }.check();
     }
 
     #[test]
