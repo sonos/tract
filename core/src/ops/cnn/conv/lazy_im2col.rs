@@ -34,14 +34,14 @@ impl EvalOp for LazyIm2Col {
         let tensor = args_1!(inputs);
         let input: Box<dyn MMMInput> =
             Box::new(LazyIm2colInput { tensor, im2col: self.params.clone() });
-        let input = PayloadWrapper(Arc::new(input));
+        let input = Opaque(Arc::new(input));
         Ok(tvec!(tensor2(&[[input]]).into_tvalue()))
     }
 }
 
 impl TypedOp for LazyIm2Col {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(PayloadWrapper::fact([1, 1])))
+        Ok(tvec!(Opaque::fact([1, 1])))
     }
 
     as_op!();

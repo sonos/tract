@@ -146,11 +146,11 @@ impl EvalOp for Im2Col {
         unsafe {
             let mut input = inputs.remove(0).into_tensor();
             let pad_value: Option<&Tensor> = if inputs.len() > 0 { Some(&inputs[0]) } else { None };
-            let mut output = Tensor::uninitialized::<PayloadWrapper>(&geometry.packed_shape)?;
+            let mut output = Tensor::uninitialized::<Opaque>(&geometry.packed_shape)?;
             if !self.pool_spec.data_format.has_n() {
                 input.insert_axis(0)?;
             }
-            let mut output_view = output.to_array_view_mut::<PayloadWrapper>()?;
+            let mut output_view = output.to_array_view_mut::<Opaque>()?;
             let panel_bytes =
                 geometry.b_pack.single_panel_len(geometry.k) * input.datum_type().size_of();
 
@@ -175,7 +175,7 @@ impl EvalOp for Im2Col {
                         ))?;
                         let input: Box<dyn MMMInput> =
                             Box::new(EagerPackedInput { packed: data, panel_bytes });
-                        output_view[[i, g]] = PayloadWrapper(Arc::new(input));
+                        output_view[[i, g]] = Opaque(Arc::new(input));
                     }
                 }
             }
@@ -189,21 +189,7 @@ impl TypedOp for Im2Col {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let input_shape = self.pool_spec.data_format.shape(inputs[0].shape.to_tvec())?;
-        /*
-        let output_shape = self.pool_spec.output_shape(&inputs[0].shape)?;
-        let shape = Self::packed_shape(
-            &input_shape,
-            &output_shape,
-            self.group,
-            self.geometry.k(),
-            self.geometry.b_pack(),
-        )?;
-        Ok(tvec!(inputs[0].datum_type.fact(shape)))
-        */
-        Ok(tvec!(PayloadWrapper::fact(&[
-            input_shape.n().cloned().unwrap_or(1.into()),
-            self.group.into()
-        ])))
+        Ok(tvec!(Opaque::fact(&[input_shape.n().cloned().unwrap_or(1.into()), self.group.into()])))
     }
 
     fn declutter(

@@ -521,7 +521,7 @@ datum!(u64, U64);
 datum!(TDim, TDim);
 datum!(String, String);
 datum!(crate::blob::Blob, Blob);
-datum!(crate::payload::PayloadWrapper, Payload);
+datum!(crate::payload::Opaque, Payload);
 #[cfg(feature = "complex")]
 datum!(Complex<i16>, ComplexI16);
 #[cfg(feature = "complex")]

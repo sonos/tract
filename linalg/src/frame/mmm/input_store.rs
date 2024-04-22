@@ -11,7 +11,7 @@ pub trait MMMInput: dyn_clone::DynClone + Debug + DynHash + Send + Sync + Displa
 dyn_clone::clone_trait_object!(MMMInput);
 dyn_hash::hash_trait_object!(MMMInput);
 
-impl Payload for Box<dyn MMMInput> {}
+impl OpaquePayload for Box<dyn MMMInput> {}
 
 #[derive(Debug, Clone, Hash)]
 pub struct EagerPackedInput {
