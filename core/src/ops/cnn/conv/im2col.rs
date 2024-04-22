@@ -80,13 +80,7 @@ impl ResolveTo<ConcreteGeometry> for SymbolicGeometry {
             )?,
             _ => pool.input_shape.clone(),
         };
-        let packed_shape = Im2Col::packed_shape(
-            &pool.input_shape,
-            &pool.output_shape,
-            self.group,
-            self.k,
-            &self.b_pack,
-        )?;
+        let packed_shape = Im2Col::packed_shape(&pool.input_shape, self.group)?;
         Ok(ConcreteGeometry {
             pool,
             n,
@@ -120,10 +114,7 @@ impl Im2Col {
     // packed shape is Batch,Group
     fn packed_shape<D: DimLike>(
         input_shape: &BaseDataShape<D, TVec<D>>,
-        conv_output_shape: &BaseDataShape<D, TVec<D>>,
         group: usize,
-        k: usize,
-        b_pack: &Packer,
     ) -> TractResult<TVec<D>> {
         let mut output_shape: TVec<D> = tvec!();
         output_shape.push(input_shape.n().cloned().unwrap_or_else(|| 1.into()));
@@ -169,8 +160,6 @@ impl EvalOp for Im2Col {
                 for i in 0..*geometry.input_shape_with_n.n().unwrap_or(&1) {
                     let input = input.view_at_prefix(&[i])?;
                     for g in 0..self.group {
-                        let pad_value: Option<&Tensor> =
-                            if inputs.len() > 0 { Some(&inputs[0]) } else { None };
                         let mut data = Tensor::uninitialized_aligned_dt(
                             input.datum_type(),
                             &[geometry.b_pack.len(geometry.k, geometry.n)],

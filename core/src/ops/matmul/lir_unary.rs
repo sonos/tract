@@ -51,7 +51,7 @@ impl ProtoFusedSpec {
                 unsafe {
                     geo.c_to_a_axis_mapping.translate_view(output_coords, &mut a);
                 }
-                let a: &'t Box<dyn MMMInput> = a.as_slice::<PayloadWrapper>().unwrap()[0]
+                let a = a.as_slice::<PayloadWrapper>().unwrap()[0]
                     .downcast_ref::<Box<dyn MMMInput>>()
                     .unwrap();
                 let mut b = inputs[*b].view();
