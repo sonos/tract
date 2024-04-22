@@ -406,6 +406,7 @@ mod test {
         r: usize,
         k_range: Range<usize>,
         mn_range: Range<usize>,
+        align_panel: usize,
     }
 
     impl PackProblem {
@@ -415,9 +416,9 @@ mod test {
             Array2::from_shape_vec(shape, data).unwrap()
         }
 
-        fn packer(&self) -> Array3<u32> {
+        fn packer(&self) -> Array2<u32> {
             let panels = self.mn_range.len().divceil(self.r);
-            let packer = super::Packer::new(self.r, 1, 0);
+            let packer = super::Packer::new(self.r, self.align_panel, 0);
             let input = self.input().into_tensor();
             let mut output =
                 Tensor::zero::<u32>(&[packer.len(self.k_range.len(), self.mn_range.len())])
@@ -439,10 +440,13 @@ mod test {
                 .unwrap()
         }
 
-        fn reference(&self) -> Array3<u32> {
+        fn reference(&self) -> Array2<u32> {
             let input = self.input();
             let panels = self.mn_range.len().divceil(self.r);
-            Array3::from_shape_fn([panels, self.k_range.len(), self.r], |(panel, k, x)| {
+            let full_k = self.k_range.len().divceil(self.align_panel) * self.align_panel;
+            Array2::from_shape_fn([panels, full_k * self.r], |(panel, z)| {
+                let k = z / self.r;
+                let x = z % self.r;
                 if self.mn_range.start + panel * self.r + x >= self.mn_range.end {
                     0
                 } else {
@@ -474,6 +478,7 @@ mod test {
                     r,
                     k_range,
                     mn_range,
+                    align_panel: 1,
                 })
                 .boxed()
         }
@@ -500,61 +505,169 @@ mod test {
 
     #[test]
     fn simple_b_1() {
-        PackProblem { k: 2, mn: 1, is_a: false, r: 1, k_range: 0..2, mn_range: 0..1 }.check();
+        PackProblem {
+            k: 2,
+            mn: 1,
+            is_a: false,
+            r: 1,
+            k_range: 0..2,
+            mn_range: 0..1,
+            align_panel: 1,
+        }
+        .check();
     }
 
     #[test]
     fn simple_b_2() {
-        PackProblem { k: 2, mn: 2, is_a: false, r: 1, k_range: 0..2, mn_range: 0..2 }.check()
+        PackProblem {
+            k: 2,
+            mn: 2,
+            is_a: false,
+            r: 1,
+            k_range: 0..2,
+            mn_range: 0..2,
+            align_panel: 1,
+        }
+        .check()
     }
 
     #[test]
     fn simple_b_3() {
-        PackProblem { k: 2, mn: 1, is_a: false, r: 4, k_range: 0..2, mn_range: 0..1 }.check();
+        PackProblem {
+            k: 2,
+            mn: 1,
+            is_a: false,
+            r: 4,
+            k_range: 0..2,
+            mn_range: 0..1,
+            align_panel: 1,
+        }
+        .check();
     }
 
     #[test]
     fn simple_b_4() {
-        PackProblem { k: 1, mn: 3, is_a: false, r: 2, k_range: 0..1, mn_range: 0..3 }.check();
+        PackProblem {
+            k: 1,
+            mn: 3,
+            is_a: false,
+            r: 2,
+            k_range: 0..1,
+            mn_range: 0..3,
+            align_panel: 1,
+        }
+        .check();
     }
 
     #[test]
     fn simple_a_1() {
-        PackProblem { k: 2, mn: 2, is_a: true, r: 1, k_range: 0..2, mn_range: 0..2 }.check();
+        PackProblem {
+            k: 2,
+            mn: 2,
+            is_a: true,
+            r: 1,
+            k_range: 0..2,
+            mn_range: 0..2,
+            align_panel: 1,
+        }
+        .check();
     }
 
     #[test]
     fn simple_a_2() {
-        PackProblem { k: 2, mn: 3, is_a: true, r: 2, k_range: 0..2, mn_range: 0..3 }.check();
+        PackProblem {
+            k: 2,
+            mn: 3,
+            is_a: true,
+            r: 2,
+            k_range: 0..2,
+            mn_range: 0..3,
+            align_panel: 1,
+        }
+        .check();
     }
 
     #[test]
     fn range_k_0() {
-        PackProblem { k: 2, mn: 1, is_a: false, r: 1, k_range: 1..2, mn_range: 0..1 }.check();
+        PackProblem {
+            k: 2,
+            mn: 1,
+            is_a: false,
+            r: 1,
+            k_range: 1..2,
+            mn_range: 0..1,
+            align_panel: 1,
+        }
+        .check();
     }
 
     #[test]
     fn range_k_1() {
-        PackProblem { k: 2, mn: 2, is_a: false, r: 1, k_range: 0..2, mn_range: 0..1 }.check();
+        PackProblem {
+            k: 2,
+            mn: 2,
+            is_a: false,
+            r: 1,
+            k_range: 0..2,
+            mn_range: 0..1,
+            align_panel: 1,
+        }
+        .check();
     }
 
     #[test]
     fn range_k_2() {
-        PackProblem { k: 2, mn: 1, is_a: false, r: 6, k_range: 1..2, mn_range: 0..1 }.check();
+        PackProblem {
+            k: 2,
+            mn: 1,
+            is_a: false,
+            r: 6,
+            k_range: 1..2,
+            mn_range: 0..1,
+            align_panel: 1,
+        }
+        .check();
     }
 
     #[test]
     fn range_mn_0() {
-        PackProblem { k: 1, mn: 2, is_a: false, r: 2, k_range: 0..1, mn_range: 0..1 }.check();
+        PackProblem {
+            k: 1,
+            mn: 2,
+            is_a: false,
+            r: 2,
+            k_range: 0..1,
+            mn_range: 0..1,
+            align_panel: 1,
+        }
+        .check();
     }
 
     #[test]
     fn range_b_4() {
-        PackProblem { k: 1, mn: 2, is_a: false, r: 6, k_range: 0..1, mn_range: 1..2 }.check();
+        PackProblem {
+            k: 1,
+            mn: 2,
+            is_a: false,
+            r: 6,
+            k_range: 0..1,
+            mn_range: 1..2,
+            align_panel: 1,
+        }
+        .check();
     }
 
     #[test]
     fn range_b_5() {
-        PackProblem { k: 1, mn: 7, is_a: false, r: 6, k_range: 0..1, mn_range: 1..7 }.check();
+        PackProblem {
+            k: 1,
+            mn: 7,
+            is_a: false,
+            r: 6,
+            k_range: 0..1,
+            mn_range: 1..7,
+            align_panel: 1,
+        }
+        .check();
     }
 }

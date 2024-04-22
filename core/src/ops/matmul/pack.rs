@@ -3,7 +3,6 @@ use crate::internal::*;
 use ndarray::*;
 
 use tract_linalg::frame::Packer;
-use tract_linalg::mmm::{EagerPackedInput, MMMInput};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MatMatMulPack {
@@ -80,24 +79,17 @@ impl TypedOp for MatMatMulPack {
 
 impl MatMatMulPack {
     fn do_eval(&self, input: &Tensor, output_shape: &[usize]) -> TractResult<TVec<TValue>> {
-        let dt = input.datum_type();
         unsafe {
-            let k = input.shape()[self.k_axis];
-            let n = input.shape()[self.mn_axis];
-            let panel_bytes = self.packer.single_panel_len(k) * dt.size_of();
-            let packed_len = self.packer.len(k, n);
-
-            let pack_one = |view| -> TractResult<PayloadWrapper> {
-                let mut packed =
-                    Tensor::uninitialized_aligned_dt(dt, &[packed_len], self.packer.alignment())?;
-                self.packer.pack(&mut packed.view_mut(), view, self.k_axis, self.mn_axis);
-                let input: Box<dyn MMMInput> =
-                    Box::new(EagerPackedInput { packed: packed, panel_bytes });
-                Ok(PayloadWrapper(Arc::new(input)))
+            let pack_one = |view: &TensorView| -> TractResult<PayloadWrapper> {
+                Ok(PayloadWrapper(Arc::new(self.packer.pack_tensor(
+                    view,
+                    self.k_axis,
+                    self.mn_axis,
+                )?) as _))
             };
 
             let stores = if input.rank() == 2 {
-                tensor0(pack_one(input.view())?)
+                tensor0(pack_one(&input.view())?)
             } else {
                 let mut stores =
                     Tensor::uninitialized_dt(PayloadWrapper::datum_type(), output_shape)?;
@@ -117,7 +109,7 @@ impl MatMatMulPack {
                     let mut pack_coords: TVec<usize> = coord.slice().into();
                     pack_coords.remove(self.k_axis.max(self.mn_axis));
                     pack_coords.remove(self.k_axis.min(self.mn_axis));
-                    stores_view[&*pack_coords] = pack_one(TensorView::from_bytes(
+                    stores_view[&*pack_coords] = pack_one(&TensorView::from_bytes(
                         input,
                         offset,
                         input.shape(),
@@ -139,7 +131,6 @@ impl MatMatMulPack {
         let mut packed_shape: TVec<D> = input.into();
         packed_shape.remove(mn_axis.max(k_axis));
         packed_shape.remove(mn_axis.min(k_axis));
-        //        packed_shape.push(packer.len(input[k_axis].clone(), input[mn_axis].clone()));
         packed_shape.into()
     }
 }
