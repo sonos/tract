@@ -29,6 +29,8 @@ jobs:
           git config user.email ci-bot@tract.rs
           git fetch origin gh-pages --depth=1
           cd api/py
+          sudo apt-get install -y python3-pip
+          pip3 install virtualenv
           virtualenv pydocs
           source pydocs/bin/activate
           pip install --ignore-installed -r requirements-docs.txt
