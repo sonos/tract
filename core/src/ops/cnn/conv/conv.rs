@@ -192,9 +192,7 @@ impl Conv {
                 model.wire_node(format!("{name}.transpose_sum_b"), AxisOp::Move(3, 1), &sum_x)?;
         }
 
-        let x_dt = model.outlet_fact(x)?.datum_type;
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
-        //        let b_storage = unsafe { mmm.b_packed(x_dt.size_of(), k) };
         let bias =
             model.wire_node(format!("{name}.cast_bias"), cast(mmm.internal_type()), &[bias])?[0];
         let wire = self.wire_mm_weights_bias(
@@ -209,7 +207,6 @@ impl Conv {
             k,
             c_axis,
             h_axis,
-            //           b_storage,
         )?;
 
         let wire = qmm::compensate_zero_points(
@@ -479,7 +476,6 @@ impl Conv {
         let packed_ker = self
             .wire_pack_g_o_ihw(model, name, mmm.a_pack(), g_o_ihw)
             .context("in kernel_as_packed_as")?;
-        let a_dt = model.outlet_fact(packed_ker)?.datum_type;
         let (mut c_to_a_axis_mapping, mut c_to_b_axis_mapping) = (tvec!(), tvec!());
 
         c_to_a_axis_mapping.push((c_m_axis - 1, 0)); // Group

@@ -41,7 +41,7 @@ impl EvalOp for LazyIm2Col {
 
 impl TypedOp for LazyIm2Col {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(PayloadWrapper::fact(&[1, 1])))
+        Ok(tvec!(PayloadWrapper::fact([1, 1])))
     }
 
     as_op!();

@@ -59,13 +59,13 @@ impl QSumB {
             let mut output_view = output.index_axis_mut(Axis(0), b);
             for g in 0..shape[1] {
                 let mut output_view = output_view.index_axis_mut(Axis(0), g);
-                let mut output_slice = output_view.as_slice_mut().unwrap();
+                let output_slice = output_view.as_slice_mut().unwrap();
                 let payload = payloads[[b, g]]
                     .downcast_ref::<Box<dyn MMMInput>>()
                     .context("Expected MMMInputs")?;
                 match self.dt.unquantized() {
-                    DatumType::I8 => self.eval_t::<i8>(&**payload, &mut output_slice, n)?,
-                    DatumType::U8 => self.eval_t::<u8>(&**payload, &mut output_slice, n)?,
+                    DatumType::I8 => self.eval_t::<i8>(&**payload, output_slice, n)?,
+                    DatumType::U8 => self.eval_t::<u8>(&**payload, output_slice, n)?,
                     dt => bail!("Unsupported input type in quantized operation ({:?})", dt),
                 }
             }
