@@ -19,7 +19,7 @@ pub mod prelude {
     pub use crate::blob::Blob;
     pub use crate::datum::{round_ties_to_even, Datum, DatumType, QParams};
     pub use crate::dim::{Symbol, SymbolTable, SymbolValues, TDim, ToDim};
-    pub use crate::payload::PayloadWrapper;
+    pub use crate::opaque::Opaque;
     pub use crate::tensor::litteral::*;
     pub use crate::tensor::{natural_strides, IntoArcTensor, IntoTensor, Tensor};
     #[cfg(feature = "complex")]
@@ -40,7 +40,7 @@ pub mod prelude {
 pub mod internal {
     pub use crate::datum::ClampCast;
     pub use crate::dim::{parse_tdim, solve_for, DimLike};
-    pub use crate::payload::Payload;
+    pub use crate::opaque::OpaquePayload;
     pub use crate::prelude::*;
     pub use crate::tensor::view::TensorView;
     pub use crate::tensor::Approximation;
@@ -58,6 +58,6 @@ pub use half;
 mod blob;
 mod datum;
 mod dim;
-mod payload;
+mod opaque;
 mod scatter;
 mod tensor;

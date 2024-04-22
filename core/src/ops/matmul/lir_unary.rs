@@ -51,17 +51,15 @@ impl ProtoFusedSpec {
                 unsafe {
                     geo.c_to_a_axis_mapping.translate_view(output_coords, &mut a);
                 }
-                let a = a.as_slice::<PayloadWrapper>().unwrap()[0]
-                    .downcast_ref::<Box<dyn MMMInput>>()
-                    .unwrap();
+                let a =
+                    a.as_slice::<Opaque>().unwrap()[0].downcast_ref::<Box<dyn MMMInput>>().unwrap();
                 let mut b = inputs[*b].view();
                 unsafe {
                     geo.c_to_b_axis_mapping.translate_view(output_coords, &mut b);
                 }
                 let k = geo.k.eval(symbols).to_usize().unwrap();
-                let b = b.as_slice::<PayloadWrapper>().unwrap()[0]
-                    .downcast_ref::<Box<dyn MMMInput>>()
-                    .unwrap();
+                let b =
+                    b.as_slice::<Opaque>().unwrap()[0].downcast_ref::<Box<dyn MMMInput>>().unwrap();
                 FusedSpec::AddMatMul { k, a: &**a, b: &**b }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
@@ -95,9 +93,7 @@ impl ProtoFusedSpec {
 
     pub fn is_trivial(&self) -> bool {
         match self {
-            ProtoFusedSpec::AddMatMul(geo, _, _) => {
-                geo.k.as_i64().is_some() // && geo.a_storage.is_some() && geo.b_storage.is_some()
-            }
+            ProtoFusedSpec::AddMatMul(geo, _, _) => geo.k.as_i64().is_some(),
             _ => true,
         }
     }
@@ -113,17 +109,13 @@ impl ProtoFusedSpec {
                 let b = &inputs[*b];
                 unsafe {
                     let k = geo.k.as_i64().unwrap_unchecked() as usize;
-                    /*
-                    let a = geo.a_storage.as_ref().unwrap().wrap(&a);
-                    let b = geo.b_storage.as_ref().unwrap().wrap(&b);
-                    */
                     let a = a
-                        .to_scalar::<PayloadWrapper>()
+                        .to_scalar::<Opaque>()
                         .unwrap()
                         .downcast_ref::<Box<dyn MMMInput>>()
                         .unwrap();
                     let b = b
-                        .to_scalar::<PayloadWrapper>()
+                        .to_scalar::<Opaque>()
                         .unwrap()
                         .downcast_ref::<Box<dyn MMMInput>>()
                         .unwrap();
@@ -157,8 +149,8 @@ impl ProtoFusedSpec {
         use ProtoFusedSpec::*;
         match self {
             AddMatMul(_geo, a, b) => {
-                ensure!(inputs[*a].datum_type == PayloadWrapper::datum_type());
-                ensure!(inputs[*b].datum_type == PayloadWrapper::datum_type());
+                ensure!(inputs[*a].datum_type == Opaque::datum_type());
+                ensure!(inputs[*b].datum_type == Opaque::datum_type());
             }
             BinScalar(v, _)
             | LeakyRelu(v)
@@ -230,10 +222,6 @@ impl MapOutputAxisToInput {
 #[derive(Clone, Debug)]
 pub struct AddMatMulGeometry {
     pub k: TDim,
-    /*
-    pub a_storage: Option<Box<dyn MMMInputLayout>>,
-    pub b_storage: Option<Box<dyn MMMInputLayout>>,
-    */
     pub mmm: Box<dyn MatMatMul>,
     pub c_to_a_axis_mapping: MapOutputAxisToInput,
     pub c_to_b_axis_mapping: MapOutputAxisToInput,
@@ -263,7 +251,6 @@ impl ResolveTo<ConcreteMatrixGeometry> for SymbolicMatrixGeometry {
     fn resolve(&self, param: &Self::Param) -> TractResult<ConcreteMatrixGeometry> {
         let m = self.m.eval(param).to_usize()?;
         let n = self.n.eval(param).to_usize()?;
-        //        let b_storage = unsafe { self.mmm.b_packed(self.b_datum_type.size_of(), k) };
         Ok(ConcreteMatrixGeometry { m, n })
     }
 }

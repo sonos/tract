@@ -41,7 +41,7 @@ impl EvalOp for MatMatMulPack {
 
 impl TypedOp for MatMatMulPack {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(PayloadWrapper::datum_type().fact(self.output_shape_fact.iter())))
+        Ok(tvec!(Opaque::datum_type().fact(self.output_shape_fact.iter())))
     }
 
     fn axes_mapping(
@@ -80,8 +80,8 @@ impl TypedOp for MatMatMulPack {
 impl MatMatMulPack {
     fn do_eval(&self, input: &Tensor, output_shape: &[usize]) -> TractResult<TVec<TValue>> {
         unsafe {
-            let pack_one = |view: &TensorView| -> TractResult<PayloadWrapper> {
-                Ok(PayloadWrapper(Arc::new(self.packer.pack_tensor(
+            let pack_one = |view: &TensorView| -> TractResult<Opaque> {
+                Ok(Opaque(Arc::new(self.packer.pack_tensor(
                     view,
                     self.k_axis,
                     self.mn_axis,
@@ -92,8 +92,8 @@ impl MatMatMulPack {
                 tensor0(pack_one(&input.view())?)
             } else {
                 let mut stores =
-                    Tensor::uninitialized_dt(PayloadWrapper::datum_type(), output_shape)?;
-                let mut stores_view = stores.to_array_view_mut::<PayloadWrapper>()?;
+                    Tensor::uninitialized_dt(Opaque::datum_type(), output_shape)?;
+                let mut stores_view = stores.to_array_view_mut::<Opaque>()?;
                 let mut bc_shape: TVec<usize> = input.shape().into();
                 bc_shape[self.k_axis] = 1;
                 bc_shape[self.mn_axis] = 1;

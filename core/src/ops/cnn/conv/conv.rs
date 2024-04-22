@@ -272,8 +272,6 @@ impl Conv {
             &[wire[0], padding],
         )?[0];
 
-        //        let b_storage = unsafe { mmm.b_packed(b_dt.size_of(), k) };
-
         let g_o_ihw = self.wire_kernel_as_g_o_ihw(model, name, wire[1])?;
 
         let wire = self
@@ -289,7 +287,6 @@ impl Conv {
                 k.to_usize().unwrap(),
                 c_axis,
                 h_axis,
-                //                b_storage,
             )
             .context("in wire_lir_matmatmul")?;
 
