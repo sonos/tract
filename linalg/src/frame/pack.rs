@@ -63,6 +63,7 @@ impl Packer {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[rustfmt::skip] 
     pub unsafe fn pack_t<T: Datum + Copy>(
         &self,
         pb: *mut T,
@@ -83,12 +84,13 @@ impl Packer {
             let k_stride_bytes = k_stride * size_of as isize;
             let bb = b as *const u8;
             let pbb = pb as *mut u8;
+            let panel_len = self.single_panel_len(k_range.len()) * size_of;
             match rbytes {
-                16 => pack_mn_major::<[u8; 16]>(bb, pbb, k_stride_bytes, mn_range_bytes, k_range),
-                24 => pack_mn_major::<[u8; 24]>(bb, pbb, k_stride_bytes, mn_range_bytes, k_range),
-                32 => pack_mn_major::<[u8; 32]>(bb, pbb, k_stride_bytes, mn_range_bytes, k_range),
-                48 => pack_mn_major::<[u8; 48]>(bb, pbb, k_stride_bytes, mn_range_bytes, k_range),
-                64 => pack_mn_major::<[u8; 64]>(bb, pbb, k_stride_bytes, mn_range_bytes, k_range),
+                16 => pack_mn_major::<[u8; 16]>(bb, pbb, panel_len, k_stride_bytes, mn_range_bytes, k_range),
+                24 => pack_mn_major::<[u8; 24]>(bb, pbb, panel_len, k_stride_bytes, mn_range_bytes, k_range),
+                32 => pack_mn_major::<[u8; 32]>(bb, pbb, panel_len, k_stride_bytes, mn_range_bytes, k_range),
+                48 => pack_mn_major::<[u8; 48]>(bb, pbb, panel_len, k_stride_bytes, mn_range_bytes, k_range),
+                64 => pack_mn_major::<[u8; 64]>(bb, pbb, panel_len, k_stride_bytes, mn_range_bytes, k_range),
                 _ => {
                     let mut packer = self.write_with_k_outer(pb, k_range.len(), mn_range.len());
                     for k in k_range {
@@ -183,7 +185,8 @@ impl Packer {
         k: usize,
         mn: usize,
     ) -> KInWriter<'p, T> {
-        KInWriter::new(pb, self.r, mn, k)
+        let panel_len = self.single_panel_len(k);
+        KInWriter::new(pb, panel_len, self.r, mn, k)
     }
 }
 
@@ -316,7 +319,13 @@ impl<'p, T> KInWriter<'p, T>
 where
     T: Copy + Debug,
 {
-    pub fn new(ptr: *mut T, panel_width: usize, mn: usize, k: usize) -> KInWriter<'p, T> {
+    pub fn new(
+        ptr: *mut T,
+        panel_len: usize,
+        panel_width: usize,
+        mn: usize,
+        k: usize,
+    ) -> KInWriter<'p, T> {
         let panels = (mn + panel_width - 1) / panel_width;
         let last_panel_width = mn - (panels - 1) * panel_width;
         KInWriter {
@@ -329,7 +338,8 @@ where
             remain_on_mn: if panels == 1 { last_panel_width } else { panel_width },
             current_panel: 0,
             next_mn_offset: 1 - (k * panel_width) as isize,
-            next_panel_offset: 1 - panel_width as isize,
+            next_panel_offset: panel_len as isize - (k * panel_width + panel_width - 1) as isize,
+            //                 ^ next panel     ^    ^ rewind left ^   ^ rewind up   ^
             _phantom: PhantomData,
         }
     }
@@ -368,6 +378,7 @@ where
 unsafe fn pack_mn_major<Chunk: Copy>(
     b: *const u8,
     packed: *mut u8,
+    panel_len: usize,
     k_stride_bytes: isize,
     mn_range_bytes: Range<usize>,
     k_range: Range<usize>,
@@ -381,7 +392,7 @@ unsafe fn pack_mn_major<Chunk: Copy>(
             b.offset((k_range.start + k) as isize * k_stride_bytes + mn_range_bytes.start as isize);
         for _ in 0..full_panes {
             p_row.copy_from_nonoverlapping(b_row, mnr);
-            p_row = p_row.add(k_range.len() * mnr);
+            p_row = p_row.add(panel_len);
             b_row = b_row.add(mnr);
         }
         if partial_pane > 0 {
@@ -396,6 +407,7 @@ mod test {
 
     use proptest::prelude::*;
     use tract_data::internal::num_integer::Integer;
+    use tract_data::internal::tract_ndarray::Zip;
     use tract_data::internal::*;
     use tract_ndarray::prelude::*;
 
@@ -445,19 +457,34 @@ mod test {
             Array2::from_shape_fn([panels, len], |(panel, z)| {
                 let k = z / self.r;
                 let x = z % self.r;
-                if self.mn_range.start + panel * self.r + x >= self.mn_range.end {
-                    0
-                } else {
-                    let mn = panel * self.r + x + self.mn_range.start;
-                    let k = k + self.k_range.start;
-                    let coords = if self.is_a { (mn, k) } else { (k, mn) };
-                    *input.get(coords).unwrap_or(&0)
-                }
+                let mn = panel * self.r + x + self.mn_range.start;
+                let k = k + self.k_range.start;
+                let coords = if self.is_a { (mn, k) } else { (k, mn) };
+                *input.get(coords).unwrap_or(&0)
+            })
+        }
+
+        fn valid(&self) -> Array2<bool> {
+            let panels = self.mn_range.len().divceil(self.r);
+            let len = Integer::next_multiple_of(&(self.k_range.len() * self.r), &self.align_panel);
+            Array2::from_shape_fn([panels, len], |(panel, z)| {
+                let k = z / self.r;
+                let x = z % self.r;
+                let k = k + self.k_range.start;
+                let mn = panel * self.r + x + self.mn_range.start;
+                k < self.k_range.end.min(self.k) && mn < self.mn_range.end.min(self.mn)
             })
         }
 
         fn check(&self) {
-            assert_eq!(self.packer(), self.reference())
+            let mut packer = self.packer();
+            let mut reference = self.reference();
+            let valid = self.valid();
+            Zip::from(&mut packer).and(&valid).for_each(|p, v| *p = if *v { *p } else { -1 as _ });
+            Zip::from(&mut reference)
+                .and(&valid)
+                .for_each(|p, v| *p = if *v { *p } else { -1 as _ });
+            assert_eq!(packer, reference);
         }
     }
 
@@ -467,16 +494,21 @@ mod test {
         fn arbitrary_with(_args: ()) -> Self::Strategy {
             (any::<bool>(), 1usize..9, 1usize..20, 1usize..20)
                 .prop_flat_map(|(is_a, r, k, mn)| {
-                    (Just((is_a, r, k, mn)), sub_range_strat(0..k), sub_range_strat(0..mn))
+                    (
+                        Just((is_a, r, k, mn)),
+                        sub_range_strat(0..k),
+                        sub_range_strat(0..mn),
+                        1usize..5,
+                    )
                 })
-                .prop_map(|((is_a, r, k, mn), k_range, mn_range)| PackProblem {
+                .prop_map(|((is_a, r, k, mn), k_range, mn_range, align_panel)| PackProblem {
                     k,
                     mn,
                     is_a,
                     r,
                     k_range,
                     mn_range,
-                    align_panel: 1,
+                    align_panel,
                 })
                 .boxed()
         }
@@ -670,6 +702,20 @@ mod test {
     }
 
     #[test]
+    fn align_a_1() {
+        PackProblem {
+            k: 2,
+            mn: 2,
+            is_a: true,
+            r: 1,
+            k_range: 0..1,
+            mn_range: 0..2,
+            align_panel: 2,
+        }
+        .check();
+    }
+
+    #[test]
     fn align_b_1() {
         PackProblem {
             k: 1,
@@ -707,6 +753,34 @@ mod test {
             k_range: 0..1,
             mn_range: 0..1,
             align_panel: 2,
+        }
+        .check();
+    }
+
+    #[test]
+    fn align_b_4() {
+        PackProblem {
+            k: 2,
+            mn: 1,
+            is_a: false,
+            r: 1,
+            k_range: 0..1,
+            mn_range: 0..1,
+            align_panel: 2,
+        }
+        .check();
+    }
+
+    #[test]
+    fn align_b_5() {
+        PackProblem {
+            k: 1,
+            mn: 5,
+            is_a: false,
+            r: 4,
+            k_range: 0..1,
+            mn_range: 0..5,
+            align_panel: 3,
         }
         .check();
     }
