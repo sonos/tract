@@ -395,6 +395,7 @@ mod test {
     use std::ops::Range;
 
     use proptest::prelude::*;
+    use tract_data::internal::num_integer::Integer;
     use tract_data::internal::*;
     use tract_ndarray::prelude::*;
 
@@ -420,6 +421,7 @@ mod test {
             let panels = self.mn_range.len().divceil(self.r);
             let packer = super::Packer::new(self.r, self.align_panel, 0);
             let input = self.input().into_tensor();
+            let panel_len = packer.single_panel_len(self.k_range.len());
             let mut output =
                 Tensor::zero::<u32>(&[packer.len(self.k_range.len(), self.mn_range.len())])
                     .unwrap();
@@ -433,18 +435,14 @@ mod test {
                     self.mn_range.clone(),
                 )
             };
-            output
-                .into_array::<u32>()
-                .unwrap()
-                .into_shape((panels, self.k_range.len(), self.r))
-                .unwrap()
+            output.into_array::<u32>().unwrap().into_shape((panels, panel_len)).unwrap()
         }
 
         fn reference(&self) -> Array2<u32> {
             let input = self.input();
             let panels = self.mn_range.len().divceil(self.r);
-            let full_k = self.k_range.len().divceil(self.align_panel) * self.align_panel;
-            Array2::from_shape_fn([panels, full_k * self.r], |(panel, z)| {
+            let len = Integer::next_multiple_of(&(self.k_range.len() * self.r), &self.align_panel);
+            Array2::from_shape_fn([panels, len], |(panel, z)| {
                 let k = z / self.r;
                 let x = z % self.r;
                 if self.mn_range.start + panel * self.r + x >= self.mn_range.end {
@@ -667,6 +665,48 @@ mod test {
             k_range: 0..1,
             mn_range: 1..7,
             align_panel: 1,
+        }
+        .check();
+    }
+
+    #[test]
+    fn align_b_1() {
+        PackProblem {
+            k: 1,
+            mn: 1,
+            is_a: false,
+            r: 1,
+            k_range: 0..1,
+            mn_range: 0..1,
+            align_panel: 2,
+        }
+        .check();
+    }
+
+    #[test]
+    fn align_b_2() {
+        PackProblem {
+            k: 3,
+            mn: 1,
+            is_a: false,
+            r: 1,
+            k_range: 0..3,
+            mn_range: 0..1,
+            align_panel: 2,
+        }
+        .check();
+    }
+
+    #[test]
+    fn align_b_3() {
+        PackProblem {
+            k: 1,
+            mn: 1,
+            is_a: false,
+            r: 3,
+            k_range: 0..1,
+            mn_range: 0..1,
+            align_panel: 2,
         }
         .check();
     }
