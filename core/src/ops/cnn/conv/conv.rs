@@ -806,7 +806,6 @@ impl EvalOp for Conv {
             }
         };
         model.set_output_outlets(&wire)?;
-        eprintln!("{model}");
         model.into_runnable()?.run(inputs)
     }
 }
