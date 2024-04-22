@@ -24,10 +24,13 @@ jobs:
 
       - name: Build doc
         run: |
+          set -ex
           git config user.name "CI bot"
           git config user.email ci-bot@tract.rs
           git fetch origin gh-pages --depth=1
           cd api/py
+          virtualenv pydocs
+          source pydocs/bin/activate
           pip install --ignore-installed -r requirements-docs.txt
           version=${{steps.version.outputs.value}}
           if [ -n "$version" ]
