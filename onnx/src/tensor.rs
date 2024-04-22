@@ -1,7 +1,7 @@
+use crate::data_resolver::ModelDataResolver;
 use crate::model::ParsingContext;
 use crate::pb::tensor_proto::DataType;
 use crate::pb::*;
-use crate::data_resolver::ModelDataResolver;
 use prost::Message;
 use std::convert::{TryFrom, TryInto};
 use std::path::PathBuf;
@@ -46,10 +46,11 @@ pub fn translate_inference_fact(
                         Ok(DimFact::from(v.to_dim()))
                     }
                     Some(tensor_shape_proto::dimension::Value::DimParam(v)) => {
-                        if v.starts_with("unk__") && !include_unknown_symbols {
+                        if v == "?" || (v.starts_with("unk__") && !include_unknown_symbols) {
                             Ok(DimFact::default())
                         } else {
-                            let dim = parse_tdim(&ctx.symbol_table, v)?;
+                            let dim = parse_tdim(&ctx.symbol_table, v)
+                                .with_context(|| format!("Parsing as TDim: `{v}'"))?;
                             Ok(DimFact::from(dim))
                         }
                     }
