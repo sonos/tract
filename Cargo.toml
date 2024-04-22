@@ -125,7 +125,7 @@ tensorflow = "0.17.0"
 tflitec = { git = "https://github.com/kali/tflitec-rs.git", rev="b37d65a" }
 time = "0.3.23"
 time-macros = "0.2.10"
-tokenizers = "0.13"
+tokenizers = "0.19"
 unicode-normalization = "0.1.19"
 walkdir = "2.3.2"
 core_affinity = "0.8.0"
