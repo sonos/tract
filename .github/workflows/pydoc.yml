@@ -39,7 +39,7 @@ jobs:
           then
             mike deploy $version
           else
-            mike deploy 0.20.dev
+            mike deploy 0.21.dev
           fi
           git fetch
           git rebase --onto origin/gh-pages gh-pages
