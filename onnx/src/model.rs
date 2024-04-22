@@ -6,9 +6,9 @@ use std::collections::HashMap;
 use tract_hir::internal::*;
 use tract_hir::prelude::tract_itertools::Itertools;
 
+use crate::data_resolver::{self, ModelDataResolver};
 use crate::pb::type_proto::Value;
 use crate::pb::{self, TensorProto, TypeProto};
-use crate::data_resolver::{self, ModelDataResolver};
 use crate::tensor::{load_tensor, translate_inference_fact};
 use prost::Message;
 
@@ -88,7 +88,8 @@ impl<'a> ParsingContext<'a> {
                 let fact = input.r#type.as_ref().unwrap().value.as_ref().unwrap();
                 #[allow(irrefutable_let_patterns)]
                 let fact: InferenceFact = if let pb::type_proto::Value::TensorType(fact) = fact {
-                    translate_inference_fact(&ctx, fact, true)?
+                    translate_inference_fact(&ctx, fact, true)
+                        .with_context(|| format!("translating to fact: {:?}", fact))?
                 } else {
                     bail!("Can not parse tensor type");
                 };
