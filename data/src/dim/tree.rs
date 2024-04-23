@@ -62,7 +62,7 @@ impl fmt::Display for TDim {
             Sym(sym) => write!(fmt, "{sym}"),
             Val(it) => write!(fmt, "{it}"),
             Add(it) => write!(fmt, "{}", it.iter().map(|x| format!("{x}")).join("+")),
-            Mul(it) => write!(fmt, "{}", it.iter().map(|x| format!("{x}")).join("*")),
+            Mul(it) => write!(fmt, "{}", it.iter().map(|x| format!("({x})")).join("*")),
             MulInt(a, b) => write!(fmt, "{a}*{b}"),
             Div(a, b) => write!(fmt, "({a})/{b}"),
         }
@@ -274,23 +274,30 @@ impl TDim {
                 }
             }
             Mul(terms) => {
-                let (coef_prod, mut vars) =
-                    terms.into_iter().fold((1, vec![]), |acc, term| match term.simplify() {
-                        MulInt(coef, expr) => (
-                            acc.0 * coef,
-                            acc.1.into_iter().chain(Some(expr.as_ref().clone())).collect(),
-                        ),
-                        Val(v) => (acc.0 * v, acc.1),
-                        t => (acc.0, acc.1.into_iter().chain(Some(t)).collect()),
-                    });
-
-                match (coef_prod, vars.len()) {
-                    (_, 0) => Val(coef_prod), // Case #1: If 0 variables, return product
-                    (0, _) => Val(0),         // Case #2: Result is 0 if coef is 0
-                    (1, 1) => vars.remove(0), // Case #3: Product is 1, so return the only term
-                    (1, _) => Mul(vars), // Case #4: Product is 1, so return the non-integer terms
-                    (_, 1) => MulInt(coef_prod, Box::new(vars.remove(0))), // Case #5: Single variable, convert to 1 MulInt
-                    _ => MulInt(coef_prod, Box::new(Mul(vars))), // Case #6: Multiple variables, convert to MulInt
+                let mut gcd = Mul(terms.clone()).gcd() as i64;
+                let mut terms = if gcd != 1 {
+                    terms
+                        .into_iter()
+                        .map(|t| {
+                            let gcd = t.gcd();
+                            (t / gcd).simplify()
+                        })
+                        .collect()
+                } else {
+                    terms
+                };
+                if terms.iter().filter(|t| t == &&Val(-1)).count() % 2 == 1 {
+                    gcd = -gcd;
+                }
+                terms.retain(|t| !t.is_one() && t != &Val(-1));
+                terms.sort_by(tdim_compare);
+                match (gcd, terms.len()) {
+                    (_, 0) => Val(gcd),        // Case #1: If 0 variables, return product
+                    (0, _) => Val(0),          // Case #2: Result is 0 if coef is 0
+                    (1, 1) => terms.remove(0), // Case #3: Product is 1, so return the only term
+                    (1, _) => Mul(terms), // Case #4: Product is 1, so return the non-integer terms
+                    (_, 1) => MulInt(gcd, Box::new(terms.remove(0))), // Case #5: Single variable, convert to 1 MulInt
+                    _ => MulInt(gcd, Box::new(Mul(terms))), // Case #6: Multiple variables, convert to MulInt
                 }
             }
             MulInt(coef, expr) => {
@@ -393,7 +400,7 @@ impl TDim {
                 tail.iter().fold(head.gcd(), |a, b| a.gcd(&b.gcd()))
             }
             MulInt(p, a) => a.gcd() * p.unsigned_abs(),
-            Mul(_) => 1,
+            Mul(terms) => terms.iter().map(|t| t.gcd()).product(),
             Div(a, q) => {
                 if a.gcd() % *q == 0 {
                     a.gcd() / *q
@@ -937,5 +944,21 @@ mod tests {
     fn conv2d_ex_2() {
         let e = (s() - 3 + 1).div_ceil(1);
         assert_eq!(e, s() + -2);
+    }
+
+    #[test]
+    fn extract_int_gcd_from_muls() {
+        let term = (s() + 1) / 4;
+        let mul = (term.clone() * 24 - 24) * (term.clone() * 2 - 2);
+        let target = (term.clone() - 1) * (term.clone() - 1) * 48;
+        assert_eq!(mul, target);
+    }
+
+    #[test]
+    fn equality_of_muls() {
+        let term = (s() + 1) / 4;
+        let mul1 = (term.clone() * 2 - 3) * (term.clone() - 1);
+        let mul2 = (term.clone() - 1) * (term.clone() * 2 - 3);
+        assert_eq!(mul1, mul2);
     }
 }

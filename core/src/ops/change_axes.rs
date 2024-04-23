@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::fmt::Debug;
 
 use crate::internal::*;
 use crate::model::{TypedModel, TypedNode};
@@ -22,7 +23,7 @@ impl InOut {
     }
 }
 
-#[derive(Clone, Debug, Hash, Eq)]
+#[derive(Clone, Hash, Eq)]
 #[allow(clippy::large_enum_variant)] // FIXME ?
 #[allow(clippy::derived_hash_with_manual_eq)] // FIXME. this one may be pretty bad. how about a.canonical() == b.canonical() ? need proper canonicalizeation of Reshape
 pub enum AxisOp {
@@ -30,6 +31,19 @@ pub enum AxisOp {
     Rm(usize),
     Move(usize, usize),
     Reshape(usize, TVec<TDim>, TVec<TDim>),
+}
+
+impl Debug for AxisOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AxisOp::Add(a) => write!(f, "Add({a}"),
+            AxisOp::Rm(a) => write!(f, "Rm({a}"),
+            AxisOp::Move(from, to) => write!(f, "Move({from},{to})"),
+            AxisOp::Reshape(at, from, to) => {
+                write!(f, "Reshape({at}, [{}], [{}])", from.iter().join(","), to.iter().join(","))
+            }
+        }
+    }
 }
 
 impl PartialEq for AxisOp {
@@ -267,7 +281,9 @@ impl AxisOp {
                 shape.insert(*to, axis);
             }
             Reshape(at, from, to) => {
-                ensure!(from.iter().product::<TDim>() == to.iter().product::<TDim>());
+                let from_volume = from.iter().product::<TDim>();
+                let to_volume = to.iter().product::<TDim>();
+                ensure!(from_volume == to_volume, "{from_volume} should be equal to {to_volume}");
                 if shape.len() >= from.len() + *at
                     && tract_itertools::izip!(shape.iter().skip(*at), from)
                         .all(|(shape, spec)| shape.to_dim() == *spec)
@@ -546,7 +562,8 @@ impl TypedOp for AxisOp {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut shape = inputs[0].shape.clone();
-        self.change_shape(&mut shape, false)?;
+        self.change_shape(&mut shape, false)
+            .with_context(|| format!("Applying {self:?} to {:?}", inputs[0]))?;
         Ok(tvec!(inputs[0].datum_type.fact(shape)))
     }
 
