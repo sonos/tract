@@ -196,7 +196,7 @@ pub fn write_tensor<W: std::io::Write>(w: &mut W, tensor: &Tensor) -> TractResul
                 (TRACT_ITEM_TYPE_VENDOR, 4)
             }
             DatumType::Bool => (0, 5),
-            DatumType::TDim | DatumType::Blob | DatumType::Payload => {
+            DatumType::TDim | DatumType::Blob | DatumType::Opaque => {
                 bail!("Don't know how to serialize {:?}", tensor.datum_type())
             }
         };

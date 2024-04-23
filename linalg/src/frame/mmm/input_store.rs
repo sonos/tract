@@ -2,6 +2,7 @@ use dyn_hash::DynHash;
 use std::alloc::Layout;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
+use std::sync::Arc;
 use tract_data::internal::*;
 
 pub trait MMMInput: dyn_clone::DynClone + Debug + DynHash + Send + Sync + Display {
@@ -11,7 +12,14 @@ pub trait MMMInput: dyn_clone::DynClone + Debug + DynHash + Send + Sync + Displa
 dyn_clone::clone_trait_object!(MMMInput);
 dyn_hash::hash_trait_object!(MMMInput);
 
-impl OpaquePayload for Box<dyn MMMInput> {}
+impl From<Box<dyn MMMInput>> for Opaque {
+    fn from(value: Box<dyn MMMInput>) -> Self {
+        Opaque(Arc::new(value))
+    }
+}
+
+impl OpaquePayload for Box<dyn MMMInput> {
+}
 
 #[derive(Debug, Clone, Hash)]
 pub struct EagerPackedInput {

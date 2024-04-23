@@ -99,7 +99,7 @@ impl From<Tensor> for TensorHolder {
             }
             DatumType::String => TensorHolder::String(Self::to_tensor(m.into_array().unwrap())),
             DatumType::Blob => TensorHolder::String(Self::to_tensor(m.into_array().unwrap())),
-            DatumType::Payload => panic!("No support for Payload DT in tensorflow"),
+            DatumType::Opaque => panic!("No support for Opaque DT in tensorflow"),
         }
     }
 }

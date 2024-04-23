@@ -175,7 +175,7 @@ impl EvalOp for Im2Col {
                         ))?;
                         let input: Box<dyn MMMInput> =
                             Box::new(EagerPackedInput { packed: data, panel_bytes });
-                        output_view[[i, g]] = Opaque(Arc::new(input));
+                        output_view[[i, g]] = input.into();
                     }
                 }
             }

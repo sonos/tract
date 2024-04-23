@@ -80,19 +80,12 @@ impl TypedOp for MatMatMulPack {
 impl MatMatMulPack {
     fn do_eval(&self, input: &Tensor, output_shape: &[usize]) -> TractResult<TVec<TValue>> {
         unsafe {
-            let pack_one = |view: &TensorView| -> TractResult<Opaque> {
-                Ok(Opaque(Arc::new(self.packer.pack_tensor(
-                    view,
-                    self.k_axis,
-                    self.mn_axis,
-                )?) as _))
-            };
-
             let stores = if input.rank() == 2 {
-                tensor0(pack_one(&input.view())?)
+                tensor0::<Opaque>(
+                    self.packer.pack_tensor(&input.view(), self.k_axis, self.mn_axis)?.into(),
+                )
             } else {
-                let mut stores =
-                    Tensor::uninitialized_dt(Opaque::datum_type(), output_shape)?;
+                let mut stores = Tensor::uninitialized_dt(Opaque::datum_type(), output_shape)?;
                 let mut stores_view = stores.to_array_view_mut::<Opaque>()?;
                 let mut bc_shape: TVec<usize> = input.shape().into();
                 bc_shape[self.k_axis] = 1;
@@ -109,12 +102,11 @@ impl MatMatMulPack {
                     let mut pack_coords: TVec<usize> = coord.slice().into();
                     pack_coords.remove(self.k_axis.max(self.mn_axis));
                     pack_coords.remove(self.k_axis.min(self.mn_axis));
-                    stores_view[&*pack_coords] = pack_one(&TensorView::from_bytes(
-                        input,
-                        offset,
-                        input.shape(),
-                        input.strides(),
-                    ))?;
+                    stores_view[&*pack_coords] = self.packer.pack_tensor(
+                        &TensorView::from_bytes(input, offset, input.shape(), input.strides()),
+                        self.k_axis,
+                        self.mn_axis,
+                    )?.into();
                 }
                 stores
             };
