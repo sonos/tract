@@ -48,22 +48,22 @@ impl Packer {
         &self,
         t: &TensorView,
         k_axis: usize,
-        n_axis: usize,
+        mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInput>> {
         let k = t.shape()[k_axis];
-        let n = t.shape()[n_axis];
-        let packed_len = self.len(k, n);
+        let mn = t.shape()[mn_axis];
+        let packed_len = self.len(k, mn);
         unsafe {
             let mut packed =
                 Tensor::uninitialized_aligned_dt(t.datum_type(), &[packed_len], self.alignment())?;
             let panel_bytes = self.single_panel_len(k) * t.datum_type().size_of();
-            self.pack(&mut packed.view_mut(), t, k_axis, n_axis);
-            Ok(Box::new(EagerPackedInput { packed, panel_bytes }))
+            self.pack(&mut packed.view_mut(), t, k_axis, mn_axis);
+            Ok(Box::new(EagerPackedInput { packed, panel_bytes, mn, k, r: self.r }))
         }
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[rustfmt::skip] 
+    #[rustfmt::skip]
     pub unsafe fn pack_t<T: Datum + Copy>(
         &self,
         pb: *mut T,
