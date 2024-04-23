@@ -257,7 +257,7 @@ impl MMMInput for EagerIm2col {
         )
     }
 
-    fn panel(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
+    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
         let buffer = buffer.unwrap();
         let mn = self.im2col.shape()[1];
         unsafe {
@@ -340,7 +340,7 @@ impl MMMInput for LazyIm2col {
         )
     }
 
-    fn panel(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
+    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
         let buffer = buffer.unwrap() as *mut f32;
         let mn_end = ((i + 1) * self.packer.r).min(self.n_offsets.len());
         let n_range = (i * self.packer.r)..mn_end;

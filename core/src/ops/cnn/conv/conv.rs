@@ -23,7 +23,6 @@ use crate::ops::nn::Reduce;
 
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
-// use super::lazy_im2col::LazyIm2colSpec;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
 use crate::ops::matmul::lir_unary::{LirMatMulUnary, ProtoFusedSpec};

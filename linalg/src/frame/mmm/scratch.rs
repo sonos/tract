@@ -248,7 +248,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     let scratch = &mut *(*loc as *mut AddMatMulTemp);
                     if !scratch.is_b {
                         if scratch.panel_id != down {
-                            scratch.ptr = a.panel(down, *buffer);
+                            scratch.ptr = a.panel_bytes(down, *buffer);
                             scratch.panel_id = down;
                         }
                         adhoc_pa = scratch.ptr;
@@ -256,7 +256,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                                   // done.
                     } else {
                         if scratch.panel_id != right {
-                            scratch.ptr = b.panel(right, *buffer);
+                            scratch.ptr = b.panel_bytes(right, *buffer);
                             scratch.panel_id = right;
                         }
                         FKS::AddMatMul { k: *k, pa: adhoc_pa, pb: scratch.ptr, cpu_variant: 0 }
@@ -417,7 +417,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     let scratch = &mut *(*loc as *mut AddMatMulTemp);
                     if !scratch.is_b {
                         if scratch.panel_id != down {
-                            scratch.ptr = a.panel(down, *buffer);
+                            scratch.ptr = a.panel_bytes(down, *buffer);
                             scratch.panel_id = down;
                         }
                         adhoc_pa = scratch.ptr;
@@ -425,7 +425,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                                   // done.
                     } else {
                         if scratch.panel_id != right {
-                            scratch.ptr = b.panel(right, *buffer);
+                            scratch.ptr = b.panel_bytes(right, *buffer);
                             scratch.panel_id = right;
                         }
                         FKS::AddMatMul { k: *k, pa: adhoc_pa, pb: scratch.ptr, cpu_variant: 0 }

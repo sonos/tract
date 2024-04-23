@@ -64,8 +64,8 @@ impl QSumB {
                     .downcast_ref::<Box<dyn MMMInput>>()
                     .context("Expected MMMInputs")?;
                 match self.dt.unquantized() {
-                    DatumType::I8 => self.eval_t::<i8>(&**payload, output_slice, n)?,
-                    DatumType::U8 => self.eval_t::<u8>(&**payload, output_slice, n)?,
+                    DatumType::I8 => self.eval_t::<i8>(&**payload, output_slice)?,
+                    DatumType::U8 => self.eval_t::<u8>(&**payload, output_slice)?,
                     dt => bail!("Unsupported input type in quantized operation ({:?})", dt),
                 }
             }
@@ -77,12 +77,11 @@ impl QSumB {
         &self,
         input: &dyn MMMInput,
         output: &mut [i32],
-        n: usize,
     ) -> TractResult<()> {
-        for ipanel in 0..(n.div_ceil(self.r)) {
-            let panel = input.panel(ipanel, None);
+        for ipanel in 0..input.r() {
+            let panel = input.panel_bytes(ipanel, None);
             let panel: &[T] =
-                unsafe { std::slice::from_raw_parts(panel as *const T, self.r * self.k) };
+                unsafe { std::slice::from_raw_parts(panel as *const T, input.r() * input.k()) };
             let mut vec = vec![0i32; self.r];
             for k in 0..self.k {
                 for r in 0..self.r {

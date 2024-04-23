@@ -21,11 +21,6 @@ pub trait MatMatMul:
 
     fn internal_type(&self) -> DatumType;
 
-/*
-    unsafe fn a_packed(&self, item_size: usize, k: usize) -> Box<dyn MMMInputLayout>;
-    unsafe fn b_packed(&self, item_size: usize, k: usize) -> Box<dyn MMMInputLayout>;
-*/
-
     unsafe fn c_view(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec;
     unsafe fn c_from_data_and_strides(
         &self,
@@ -141,18 +136,6 @@ where
     fn can_fuse(&self, spec: &FusedSpec) -> bool {
         K::can_fuse(spec)
     }
-
-    /*
-    unsafe fn a_packed(&self, item_size: usize, k: usize) -> Box<dyn MMMInputLayout> {
-        let panel_bytes = k * K::mr() * item_size;
-        Box::new(SimplePackedInputLayout { panel_bytes })
-    }
-
-    unsafe fn b_packed(&self, item_size: usize, k: usize) -> Box<dyn MMMInputLayout> {
-        let panel_bytes = k * K::nr() * item_size;
-        Box::new(SimplePackedInputLayout { panel_bytes })
-    }
-    */
 
     unsafe fn c_view(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec {
         OutputStoreSpec::View { m_axis, n_axis, mr: K::mr(), nr: K::nr() }
