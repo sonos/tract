@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.21.4 - 2024-04-23
+* More memory/cache friendly execution order
+* Several fixes around symbolic dimensions computation (some should help with attention models)
+
 # 0.21.3 - 2024-04-03
 * [AMX] Put AMX for iOS behind a feature gate ("tract-linalg/apple-amx-ios").
 
