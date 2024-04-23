@@ -13,4 +13,4 @@ env_logger.workspace = true
 itertools.workspace = true
 lazy_static.workspace = true
 proptest.workspace = true
-tract-core = { path = "../../core", version = "=0.21.4-pre" }
+tract-core = { path = "../../core", version = "=0.21.4" }
