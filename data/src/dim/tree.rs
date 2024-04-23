@@ -275,6 +275,9 @@ impl TDim {
             }
             Mul(terms) => {
                 let mut gcd = Mul(terms.clone()).gcd() as i64;
+                if gcd == 0 {
+                    return Val(0)
+                }
                 let mut terms = if gcd != 1 {
                     terms
                         .into_iter()
@@ -293,7 +296,8 @@ impl TDim {
                 terms.sort_by(tdim_compare);
                 match (gcd, terms.len()) {
                     (_, 0) => Val(gcd),        // Case #1: If 0 variables, return product
-                    (0, _) => Val(0),          // Case #2: Result is 0 if coef is 0
+                    (0, _) => Val(0),          // Case #2: Result is 0 if coef is 0 (actually
+                                               // unreachable as we check at the beginning)
                     (1, 1) => terms.remove(0), // Case #3: Product is 1, so return the only term
                     (1, _) => Mul(terms), // Case #4: Product is 1, so return the non-integer terms
                     (_, 1) => MulInt(gcd, Box::new(terms.remove(0))), // Case #5: Single variable, convert to 1 MulInt
