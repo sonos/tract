@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 image.workspace = true
-tract-tflite = { path = "../../tflite", version = "=0.21.4" }
+tract-tflite = { path = "../../tflite", version = "=0.21.5-pre" }
 
 [dev-dependencies]
 dinghy-test.workspace = true

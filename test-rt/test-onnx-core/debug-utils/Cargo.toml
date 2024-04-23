@@ -9,4 +9,4 @@ members = []
 
 [dependencies]
 protobuf = "*"
-tract-onnx = { path = "../../../onnx" , version = "=0.21.4" }
+tract-onnx = { path = "../../../onnx" , version = "=0.21.5-pre" }

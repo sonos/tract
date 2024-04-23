@@ -7,5 +7,5 @@ edition = "2021"
 
 [dependencies]
 proptest.workspace = true
-tract-tensorflow = { path = "../../tensorflow", version = "=0.21.4" }
-tract-onnx = { path = "../../onnx", version = "=0.21.4" }
+tract-tensorflow = { path = "../../tensorflow", version = "=0.21.5-pre" }
+tract-onnx = { path = "../../onnx", version = "=0.21.5-pre" }

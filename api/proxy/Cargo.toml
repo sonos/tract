@@ -1,6 +1,6 @@
 [package]
 name = "tract-proxy"
-version = "0.21.4"
+version = "0.21.5-pre"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -17,8 +17,8 @@ anyhow.workspace = true
 boow.workspace = true
 home.workspace = true
 ndarray.workspace = true
-tract-api = { path = ".." , version = "=0.21.4" }
-tract-proxy-sys = { path = "sys", version = "=0.21.4" }
+tract-api = { path = ".." , version = "=0.21.5-pre" }
+tract-proxy-sys = { path = "sys", version = "=0.21.5-pre" }
 
 [dev-dependencies]
 reqwest.workspace = true
