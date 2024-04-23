@@ -2,7 +2,7 @@
 use crate::blob::Blob;
 use crate::datum::{round_ties_to_even, scale_by, ClampCast, Datum, DatumType, QParams};
 use crate::dim::TDim;
-use crate::payload::Opaque;
+use crate::opaque::Opaque;
 use crate::TVec;
 use anyhow::{ensure, Context};
 use half::f16;
@@ -92,7 +92,7 @@ impl Hash for Tensor {
                 TDim => self.as_slice_unchecked::<crate::dim::TDim>().hash(state),
                 String => self.as_slice_unchecked::<std::string::String>().hash(state),
                 Blob => self.as_slice_unchecked::<crate::blob::Blob>().hash(state),
-                Payload => self.as_slice_unchecked::<crate::payload::Opaque>().hash(state),
+                Opaque => self.as_slice_unchecked::<crate::opaque::Opaque>().hash(state),
                 QI8(_) => self.as_slice_unchecked::<i8>().hash(state),
                 QU8(_) => self.as_slice_unchecked::<u8>().hash(state),
                 QI32(_) => self.as_slice_unchecked::<i32>().hash(state),

@@ -128,7 +128,7 @@ pub enum DatumType {
     ComplexF32,
     #[cfg(feature = "complex")]
     ComplexF64,
-    Payload,
+    Opaque,
 }
 
 impl DatumType {
@@ -521,7 +521,7 @@ datum!(u64, U64);
 datum!(TDim, TDim);
 datum!(String, String);
 datum!(crate::blob::Blob, Blob);
-datum!(crate::payload::Opaque, Payload);
+datum!(crate::opaque::Opaque, Opaque);
 #[cfg(feature = "complex")]
 datum!(Complex<i16>, ComplexI16);
 #[cfg(feature = "complex")]
