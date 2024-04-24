@@ -34,7 +34,7 @@ pub fn ruin_cache() {
 #[allow(clippy::too_many_arguments)]
 unsafe fn run(
     m: usize,
-    k: usize,
+    _k: usize,
     n: usize,
     be: &mut Bencher,
     mm: &dyn MatMatMul,
@@ -50,7 +50,7 @@ unsafe fn run(
                 ruin_cache();
             }
             let instant = std::time::Instant::now();
-            mm.run_with_scratch_space(m, n, scratch.as_mut(), &[FusedSpec::AddMatMul { a, b, k }])
+            mm.run_with_scratch_space(m, n, scratch.as_mut(), &[FusedSpec::AddMatMul { a, b }])
                 .unwrap();
             let time = instant.elapsed();
             dur += time;

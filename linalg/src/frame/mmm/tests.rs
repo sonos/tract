@@ -243,7 +243,7 @@ where
         fused_ops::<K, TA, TB, TC, TI, _>(
             m,
             n,
-            &[FusedSpec::AddMatMul { a: &*packed_a, b: &*packed_b, k }],
+            &[FusedSpec::AddMatMul { a: &*packed_a, b: &*packed_b }],
             |r, c| {
                 let mut v: TI = TI::zero();
                 for i in 0..k {
@@ -281,7 +281,7 @@ where
         fused_ops::<K, TA, TB, TC, TI, _>(
             m,
             1,
-            &[FusedSpec::AddMatMul { k, a: &*packed_a, b: &*packed_b }],
+            &[FusedSpec::AddMatMul { a: &*packed_a, b: &*packed_b }],
             |r, _| {
                 let mut inter = TI::zero();
                 for i in 0..k {

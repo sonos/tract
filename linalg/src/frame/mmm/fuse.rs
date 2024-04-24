@@ -48,7 +48,7 @@ pub enum FusedSpec<'t> {
     RoundingShiftRight(usize, RoundingPolicy),
     ShiftLeft(usize),
     Store(OutputStore),
-    AddMatMul { k: usize, a: &'t dyn MMMInput, b: &'t dyn MMMInput },
+    AddMatMul { a: &'t dyn MMMInput, b: &'t dyn MMMInput },
 }
 
 impl<'t> FusedSpec<'t> {
