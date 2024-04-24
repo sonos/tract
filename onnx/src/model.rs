@@ -167,7 +167,7 @@ impl<'a> ParsingContext<'a> {
             let ix = model.nodes()[id].inputs.len();
             model.add_edge(outlet, InletId::new(id, ix))?;
         }
-        let mut outputs = vec![];
+        let mut outputs = Vec::with_capacity(graph.output.len());
         for output in graph.output.iter() {
             let mut fact = InferenceFact::default();
             if self.framework.use_output_shapes {
