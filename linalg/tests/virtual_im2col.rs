@@ -273,6 +273,18 @@ impl MMMInput for EagerIm2col {
         }
         buffer
     }
+
+    fn k(&self) -> usize {
+        self.k
+    }
+
+    fn mn(&self) -> usize {
+        self.im2col.shape()[1]
+    }
+
+    fn r(&self) -> usize {
+        self.packer.r
+    }
 }
 
 #[derive(Clone, Debug, Hash)]
@@ -358,5 +370,17 @@ impl MMMInput for LazyIm2col {
             }
         }
         buffer as _
+    }
+
+    fn k(&self) -> usize {
+        self.k_offsets.len()
+    }
+
+    fn mn(&self) -> usize {
+        self.n_offsets.len()
+    }
+
+    fn r(&self) -> usize {
+        self.packer.r
     }
 }
