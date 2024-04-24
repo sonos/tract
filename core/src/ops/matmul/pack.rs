@@ -82,7 +82,7 @@ impl MatMatMulPack {
         unsafe {
             let stores = if output_shape.iter().product::<usize>() == 1 {
                 tensor0::<Opaque>(
-                    self.packer.pack_tensor(&input.view(), self.k_axis, self.mn_axis)?.into(),
+                    self.packer.pack_tensor(&input, self.k_axis, self.mn_axis)?.into(),
                 )
                 .into_shape(output_shape)?
             } else {
@@ -105,7 +105,7 @@ impl MatMatMulPack {
                     pack_coords.remove(self.k_axis.min(self.mn_axis));
                     stores_view[&*pack_coords] = self
                         .packer
-                        .pack_tensor(
+                        .pack_tensor_view(
                             &TensorView::from_bytes(input, offset, input.shape(), input.strides()),
                             self.k_axis,
                             self.mn_axis,

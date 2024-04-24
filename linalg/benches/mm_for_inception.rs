@@ -10,8 +10,8 @@ fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize))
         let mm = tract_linalg::ops().mmm(F32, F32, F32, Some(m), Some(k), Some(n)).unwrap();
         let a = Tensor::zero::<f32>(&[m, k]).unwrap();
         let b = Tensor::zero::<f32>(&[k, n]).unwrap();
-        let pa = mm.a_pack().pack_tensor(&a.view(), 1, 0).unwrap();
-        let pb = mm.b_pack().pack_tensor(&b.view(), 0, 1).unwrap();
+        let pa = mm.a_pack().pack_tensor(&a, 1, 0).unwrap();
+        let pb = mm.b_pack().pack_tensor(&b, 0, 1).unwrap();
 
         let mut c = Tensor::zero::<f32>(&[m, n]).unwrap();
         be.iter(move || {

@@ -46,6 +46,34 @@ impl Packer {
 
     pub fn pack_tensor(
         &self,
+        t: &Tensor,
+        k_axis: usize,
+        mn_axis: usize,
+    ) -> TractResult<Box<dyn MMMInput>> {
+        let k = t.shape()[k_axis];
+        let mn = t.shape()[mn_axis];
+        let packed_len = self.len(k, mn);
+        let panel_bytes = packed_len * t.datum_type().size_of();
+        let strides = t.strides();
+        unsafe {
+            let mut packed =
+                Tensor::uninitialized_aligned_dt(t.datum_type(), &[packed_len], self.alignment())?;
+            dispatch_copy!(Self::pack_t(t.datum_type())(
+                self,
+                packed.as_ptr_mut_unchecked(),
+                t.as_ptr_unchecked(),
+                mn,
+                strides[k_axis],
+                strides[mn_axis],
+                0..k,
+                0..mn
+            ));
+            Ok(Box::new(EagerPackedInput { packed, panel_bytes, mn, k, r: self.r }))
+        }
+    }
+
+    pub fn pack_tensor_view(
+        &self,
         t: &TensorView,
         k_axis: usize,
         mn_axis: usize,
@@ -53,14 +81,37 @@ impl Packer {
         let k = t.shape()[k_axis];
         let mn = t.shape()[mn_axis];
         let packed_len = self.len(k, mn);
+        let panel_bytes = packed_len * t.datum_type().size_of();
+        let strides = t.strides();
         unsafe {
             let mut packed =
                 Tensor::uninitialized_aligned_dt(t.datum_type(), &[packed_len], self.alignment())?;
-            let panel_bytes = self.single_panel_len(k) * t.datum_type().size_of();
-            self.pack(&mut packed.view_mut(), t, k_axis, mn_axis);
+            dispatch_copy!(Self::pack_t(t.datum_type())(
+                self,
+                packed.as_ptr_mut_unchecked(),
+                t.as_ptr_unchecked(),
+                mn,
+                strides[k_axis],
+                strides[mn_axis],
+                0..k,
+                0..mn
+            ));
             Ok(Box::new(EagerPackedInput { packed, panel_bytes, mn, k, r: self.r }))
         }
     }
+
+    pub unsafe fn pack<'a, 'b>(
+        &self,
+        pb: impl std::borrow::BorrowMut<TensorView<'a>>,
+        b: impl std::borrow::Borrow<TensorView<'b>>,
+        k_axis: usize,
+        mn_axis: usize,
+    ) {
+        let k = b.borrow().shape()[k_axis];
+        let mn = b.borrow().shape()[mn_axis];
+        self.pack_segment(pb, b, k_axis, mn_axis, 0..k, 0..mn);
+    }
+
 
     #[allow(clippy::too_many_arguments)]
     #[rustfmt::skip]
@@ -126,6 +177,7 @@ impl Packer {
         }
     }
 
+    #[inline]
     pub unsafe fn pack_segment<'a, 'b>(
         &self,
         mut pb: impl std::borrow::BorrowMut<TensorView<'a>>,
@@ -149,18 +201,6 @@ impl Packer {
             k_range,
             mn_range
         ));
-    }
-
-    pub unsafe fn pack<'a, 'b>(
-        &self,
-        pb: impl std::borrow::BorrowMut<TensorView<'a>>,
-        b: impl std::borrow::Borrow<TensorView<'b>>,
-        k_axis: usize,
-        mn_axis: usize,
-    ) {
-        let k = b.borrow().shape()[k_axis];
-        let mn = b.borrow().shape()[mn_axis];
-        self.pack_segment(pb, b, k_axis, mn_axis, 0..k, 0..mn);
     }
 
     pub fn write_with_k_outer<'p, T: Copy + Debug>(
