@@ -173,8 +173,13 @@ impl EvalOp for Im2Col {
                             g,
                             pad_value
                         ))?;
-                        let input: Box<dyn MMMInput> =
-                            Box::new(EagerPackedInput { packed: data, panel_bytes });
+                        let input: Box<dyn MMMInput> = Box::new(EagerPackedInput {
+                            packed: data,
+                            panel_bytes,
+                            k: geometry.k,
+                            mn: geometry.n,
+                            r: geometry.b_pack.r,
+                        });
                         output_view[[i, g]] = input.into();
                     }
                 }

@@ -78,18 +78,19 @@ impl QSumB {
         input: &dyn MMMInput,
         output: &mut [i32],
     ) -> TractResult<()> {
-        for ipanel in 0..input.r() {
+        let (r, k, n) = (input.r(), input.k(), input.mn());
+        let panels = n.divceil(r);
+        for ipanel in 0..panels {
             let panel = input.panel_bytes(ipanel, None);
-            let panel: &[T] =
-                unsafe { std::slice::from_raw_parts(panel as *const T, input.r() * input.k()) };
-            let mut vec = vec![0i32; self.r];
-            for k in 0..self.k {
-                for r in 0..self.r {
-                    vec[r] += panel[k * self.r + r].as_();
+            let panel: &[T] = unsafe { std::slice::from_raw_parts(panel as *const T, r * k) };
+            let mut vec = vec![0i32; r];
+            for ik in 0..k {
+                for ir in 0..r {
+                    vec[ir] += panel[ik * r + ir].as_();
                 }
             }
-            let len = self.r.min(n - self.r * ipanel);
-            output[self.r * ipanel..][..len].copy_from_slice(&vec[..len]);
+            let len = r.min(n - r * ipanel);
+            output[r * ipanel..][..len].copy_from_slice(&vec[..len]);
         }
         Ok(())
     }
