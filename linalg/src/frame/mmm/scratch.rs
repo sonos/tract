@@ -244,7 +244,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                 }
                 FS::AddUnicast(store) => FKS::AddUnicast(store.tile_c(down, right)),
                 FS::Store(c_store) => FKS::Store(c_store.tile_c(down, right)),
-                FS::AddMatMul { k, a, b } => {
+                FS::AddMatMul { a, b } => {
                     let scratch = &mut *(*loc as *mut AddMatMulTemp);
                     if !scratch.is_b {
                         if scratch.panel_id != down {
@@ -259,7 +259,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                             scratch.ptr = b.panel_bytes(right, *buffer);
                             scratch.panel_id = right;
                         }
-                        FKS::AddMatMul { k: *k, pa: adhoc_pa, pb: scratch.ptr, cpu_variant: 0 }
+                        FKS::AddMatMul { k: b.k(), pa: adhoc_pa, pb: scratch.ptr, cpu_variant: 0 }
                     }
                 }
                 _ => std::hint::unreachable_unchecked(),
@@ -413,7 +413,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     };
                     FKS::Store(tmpc)
                 }
-                FS::AddMatMul { k, a, b } => {
+                FS::AddMatMul { a, b } => {
                     let scratch = &mut *(*loc as *mut AddMatMulTemp);
                     if !scratch.is_b {
                         if scratch.panel_id != down {
@@ -428,7 +428,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                             scratch.ptr = b.panel_bytes(right, *buffer);
                             scratch.panel_id = right;
                         }
-                        FKS::AddMatMul { k: *k, pa: adhoc_pa, pb: scratch.ptr, cpu_variant: 0 }
+                        FKS::AddMatMul { k: b.k(), pa: adhoc_pa, pb: scratch.ptr, cpu_variant: 0 }
                     }
                 }
                 _ => std::hint::unreachable_unchecked(),

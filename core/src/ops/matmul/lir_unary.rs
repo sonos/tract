@@ -42,7 +42,6 @@ impl ProtoFusedSpec {
         &'t self,
         inputs: &'t [TValue],
         output_coords: &[usize],
-        symbols: &SymbolValues,
         output: &Tensor,
     ) -> FusedSpec<'t> {
         let fs = match self {
@@ -57,10 +56,9 @@ impl ProtoFusedSpec {
                 unsafe {
                     geo.c_to_b_axis_mapping.translate_view(output_coords, &mut b);
                 }
-                let k = geo.k.eval(symbols).to_usize().unwrap();
                 let b =
                     b.as_slice::<Opaque>().unwrap()[0].downcast_ref::<Box<dyn MMMInput>>().unwrap();
-                FusedSpec::AddMatMul { k, a: &**a, b: &**b }
+                FusedSpec::AddMatMul { a: &**a, b: &**b }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
             ProtoFusedSpec::LeakyRelu(v) => FusedSpec::LeakyRelu(&inputs[*v]),
@@ -104,23 +102,14 @@ impl ProtoFusedSpec {
         output: &mut Tensor,
     ) -> FusedSpec<'t> {
         let fs = match self {
-            ProtoFusedSpec::AddMatMul(geo, a, b) => {
+            ProtoFusedSpec::AddMatMul(_, a, b) => {
                 let a = &inputs[*a];
                 let b = &inputs[*b];
-                unsafe {
-                    let k = geo.k.as_i64().unwrap_unchecked() as usize;
-                    let a = a
-                        .to_scalar::<Opaque>()
-                        .unwrap()
-                        .downcast_ref::<Box<dyn MMMInput>>()
-                        .unwrap();
-                    let b = b
-                        .to_scalar::<Opaque>()
-                        .unwrap()
-                        .downcast_ref::<Box<dyn MMMInput>>()
-                        .unwrap();
-                    FusedSpec::AddMatMul { k, a: &**a, b: &**b }
-                }
+                let a =
+                    a.to_scalar::<Opaque>().unwrap().downcast_ref::<Box<dyn MMMInput>>().unwrap();
+                let b =
+                    b.to_scalar::<Opaque>().unwrap().downcast_ref::<Box<dyn MMMInput>>().unwrap();
+                FusedSpec::AddMatMul { a: &**a, b: &**b }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
             ProtoFusedSpec::LeakyRelu(v) => FusedSpec::LeakyRelu(&inputs[*v]),
@@ -291,96 +280,62 @@ impl Op for LirMatMulUnary {
     op_as_typed_op!();
 }
 
-/*
-#[derive(Clone, Debug)]
-struct State;
-trivial_op_state_freeeze!(State);
-
-impl OpState for State {
-    fn eval(
-        &mut self,
-        session: &mut SessionState,
-        op: &dyn Op,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        let op = op.downcast_ref::<LirMatMulUnary>().unwrap();
-        unsafe { eval(op, &session.resolved_symbols, session, &inputs) }
-    }
-}
-*/
-
 impl EvalOp for LirMatMulUnary {
     fn is_stateless(&self) -> bool {
         true
     }
-
-    /*
-    fn state(
-        &self,
-        _session: &mut SessionState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(State)))
-    }
-    */
 
     fn eval_with_session(
         &self,
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        eval(self, &session.resolved_symbols, session, &inputs)
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn eval(
-    op: &LirMatMulUnary,
-    symbols: &SymbolValues,
-    session: &SessionState,
-    inputs: &[TValue],
-) -> TractResult<TVec<TValue>> {
-    unsafe {
-        if session
-            .cached_mmm_scratch_space
-            .borrow_mut()
-            .as_deref()
-            .map(|scratch| op.mmm.can_use_scratch_space(scratch))
-            == Some(false)
-        {
-            session.cached_mmm_scratch_space.replace(None);
-        }
-        let mut cell = session.cached_mmm_scratch_space.borrow_mut();
-        let scratch = cell.get_or_insert_with(|| op.mmm.allocate_scratch_space());
-
-        if op.trivial_path {
-            let c_shape = op.c_fact.shape.as_concrete().unwrap_unchecked();
-            let geometry = op.geometry.as_concrete().unwrap_unchecked();
-            let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, c_shape)?;
-            let uops: Vec<FusedSpec> =
-                op.micro_ops.iter().map(|o| o.resolve_trivial(inputs, &mut c)).collect();
-            op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch.as_mut(), &uops)?;
-            Ok(tvec!(c.into_tvalue()))
-        } else {
-            let geometry = op.geometry.to_concrete(symbols)?;
-            let c_shape = op.c_fact.shape.eval_to_usize(symbols)?;
-            let c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
-            let mut uops = vec![FusedSpec::ShiftLeft(0); op.micro_ops.len()];
-            let mut looping_shape: TVec<usize> = c_shape.to_smallvec();
-            looping_shape[op.c_m_axis] = 1;
-            looping_shape[op.c_n_axis] = 1;
-            for c_coords in indices(&*looping_shape) {
-                for ix in 0..op.micro_ops.len() {
-                    *uops.get_unchecked_mut(ix) = op.micro_ops.get_unchecked(ix).resolve(
-                        inputs,
-                        c_coords.slice(),
-                        symbols,
-                        &c,
-                    );
-                }
-                op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch.as_mut(), &uops)?;
+        unsafe {
+            let mut cell = session.cached_mmm_scratch_space.borrow_mut();
+            if !cell
+                .as_ref()
+                .map(|scratch| self.mmm.can_use_scratch_space(&**scratch))
+                .unwrap_or(false)
+            {
+                *cell = None
             }
-            Ok(tvec!(c.into_tvalue()))
+            let scratch = cell.get_or_insert_with(|| self.mmm.allocate_scratch_space());
+
+            if self.trivial_path {
+                let c_shape = self.c_fact.shape.as_concrete().unwrap_unchecked();
+                let geometry = self.geometry.as_concrete().unwrap_unchecked();
+                let mut c = Tensor::uninitialized_dt(self.c_fact.datum_type, c_shape)?;
+                let uselfs: Vec<FusedSpec> =
+                    self.micro_ops.iter().map(|o| o.resolve_trivial(&inputs, &mut c)).collect();
+                self.mmm.run_with_scratch_space(
+                    geometry.m,
+                    geometry.n,
+                    scratch.as_mut(),
+                    &uselfs,
+                )?;
+                Ok(tvec!(c.into_tvalue()))
+            } else {
+                let geometry = self.geometry.to_concrete(&session.resolved_symbols)?;
+                let c_shape = self.c_fact.shape.eval_to_usize(&session.resolved_symbols)?;
+                let c = Tensor::uninitialized_dt(self.c_fact.datum_type, &c_shape)?;
+                let mut uops = vec![FusedSpec::ShiftLeft(0); self.micro_ops.len()];
+                let mut looping_shape: TVec<usize> = c_shape.to_smallvec();
+                looping_shape[self.c_m_axis] = 1;
+                looping_shape[self.c_n_axis] = 1;
+                for c_coords in indices(&*looping_shape) {
+                    for ix in 0..self.micro_ops.len() {
+                        *uops.get_unchecked_mut(ix) =
+                            self.micro_ops.get_unchecked(ix).resolve(&inputs, c_coords.slice(), &c);
+                    }
+                    self.mmm.run_with_scratch_space(
+                        geometry.m,
+                        geometry.n,
+                        scratch.as_mut(),
+                        &uops,
+                    )?;
+                }
+                Ok(tvec!(c.into_tvalue()))
+            }
         }
     }
 }

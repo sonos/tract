@@ -170,7 +170,7 @@ impl ConvProblem {
             mmm.run(
                 m,
                 n,
-                &[FusedSpec::AddMatMul { k, a: &*a, b: &*im2col }, FusedSpec::Store(c_store)],
+                &[FusedSpec::AddMatMul { a: &*a, b: &*im2col }, FusedSpec::Store(c_store)],
             )
             .unwrap()
         }

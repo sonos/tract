@@ -26,7 +26,7 @@ fn mat_vec_mul(c: &mut Criterion) {
                             m,
                             1,
                             &[
-                                FusedSpec::AddMatMul { a: &*pa, b: &*pb, k },
+                                FusedSpec::AddMatMul { a: &*pa, b: &*pb },
                                 FusedSpec::Store(mm.c_view(0, 0).wrap(&c.view_mut())),
                             ],
                         )

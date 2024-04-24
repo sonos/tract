@@ -19,7 +19,7 @@ fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize))
                 m,
                 n,
                 &[
-                    FusedSpec::AddMatMul { a: &*pa, b: &*pb, k },
+                    FusedSpec::AddMatMul { a: &*pa, b: &*pb },
                     FusedSpec::Store(mm.c_view(0, 1).wrap(&c.view_mut())),
                 ],
             )
