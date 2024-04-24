@@ -298,6 +298,18 @@ impl MMMInput for LazyIm2colInput {
     fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
         dispatch_copy!(Self::do_panel(self.tensor.datum_type())(self, i, buffer))
     }
+
+    fn k(&self) -> usize {
+        self.im2col.k_byte_offsets.len()
+    }
+
+    fn mn(&self) -> usize {
+        self.im2col.n_byte_offsets.len()
+    }
+
+    fn r(&self) -> usize {
+        self.im2col.packer.r
+    }
 }
 
 impl LazyIm2colInput {

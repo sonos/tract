@@ -5,7 +5,7 @@ use crate::ops::nn::LeakyRelu;
 use ndarray::*;
 use tract_itertools::Itertools;
 
-use tract_linalg::mmm::{BinOp, FusedSpec, MMMInput, MatMatMul, OutputStoreSpec, ScratchSpace};
+use tract_linalg::mmm::{BinOp, FusedSpec, MMMInput, MatMatMul, OutputStoreSpec};
 use tract_linalg::Scaler;
 use tract_smallvec::ToSmallVec;
 
