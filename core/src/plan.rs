@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 
@@ -14,7 +15,7 @@ pub struct SessionState {
     pub inputs: HashMap<usize, TValue>,
     pub resolved_symbols: SymbolValues,
     pub tensors: HashMap<String, Tensor>,
-    pub cached_mmm_scratch_space: Option<Box<dyn tract_linalg::mmm::ScratchSpace>>,
+    pub cached_mmm_scratch_space: RefCell<Option<Box<dyn tract_linalg::mmm::ScratchSpace>>>,
 }
 
 impl Clone for SessionState {
@@ -23,7 +24,7 @@ impl Clone for SessionState {
             inputs: self.inputs.clone(),
             resolved_symbols: self.resolved_symbols.clone(),
             tensors: self.tensors.clone(),
-            cached_mmm_scratch_space: None,
+            cached_mmm_scratch_space: None.into()
         }
     }
 }
@@ -590,7 +591,7 @@ where
                 inputs: self.inputs.iter().map(|(ix, t)| (*ix, t.clone().into_tvalue())).collect(),
                 resolved_symbols: self.resolved_symbols.clone(),
                 tensors: self.tensors.clone(),
-                cached_mmm_scratch_space: None,
+                cached_mmm_scratch_space: None.into(),
             },
             states: self.states.iter().map(|s| s.as_ref().map(|s| s.unfreeze())).collect(),
             values: self
