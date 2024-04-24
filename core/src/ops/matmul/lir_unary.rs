@@ -6,7 +6,7 @@ use ndarray::*;
 use tract_itertools::Itertools;
 
 use tract_linalg::mmm::{
-    BinOp, FusedSpec, InputStoreSpec, MatMatMul, OutputStoreSpec, ScratchSpace,
+    BinOp, FusedSpec, InputStoreSpec, MatMatMul, OutputStoreSpec,
 };
 use tract_linalg::Scaler;
 use tract_smallvec::ToSmallVec;
@@ -283,6 +283,7 @@ impl Op for LirMatMulUnary {
     op_as_typed_op!();
 }
 
+/*
 #[derive(Clone, Debug)]
 struct State;
 trivial_op_state_freeeze!(State);
@@ -295,28 +296,17 @@ impl OpState for State {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let op = op.downcast_ref::<LirMatMulUnary>().unwrap();
-        unsafe {
-            if session
-                .cached_mmm_scratch_space
-                .as_deref()
-                .map(|scratch| op.mmm.can_use_scratch_space(scratch))
-                == Some(false)
-            {
-                session.cached_mmm_scratch_space = None
-            }
-            let scratch = session
-                .cached_mmm_scratch_space
-                .get_or_insert_with(|| op.mmm.allocate_scratch_space());
-            eval(op, &session.resolved_symbols, scratch.as_mut(), &inputs)
-        }
+        unsafe { eval(op, &session.resolved_symbols, session, &inputs) }
     }
 }
+*/
 
 impl EvalOp for LirMatMulUnary {
     fn is_stateless(&self) -> bool {
-        self.geometry.is_concrete()
+        true
     }
 
+    /*
     fn state(
         &self,
         _session: &mut SessionState,
@@ -324,14 +314,14 @@ impl EvalOp for LirMatMulUnary {
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(State)))
     }
+    */
 
     fn eval_with_session(
         &self,
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let mut scratch = unsafe { self.mmm.allocate_scratch_space() };
-        eval(self, &session.resolved_symbols, scratch.as_mut(), &inputs)
+        eval(self, &session.resolved_symbols, session, &inputs)
     }
 }
 
@@ -339,17 +329,29 @@ impl EvalOp for LirMatMulUnary {
 fn eval(
     op: &LirMatMulUnary,
     symbols: &SymbolValues,
-    scratch: &mut dyn ScratchSpace,
+    session: &SessionState,
     inputs: &[TValue],
 ) -> TractResult<TVec<TValue>> {
     unsafe {
+        if session
+            .cached_mmm_scratch_space
+            .borrow_mut()
+            .as_deref()
+            .map(|scratch| op.mmm.can_use_scratch_space(scratch))
+            == Some(false)
+        {
+            session.cached_mmm_scratch_space.replace(None);
+        }
+        let mut cell = session.cached_mmm_scratch_space.borrow_mut();
+        let scratch = cell.get_or_insert_with(|| op.mmm.allocate_scratch_space());
+
         if op.trivial_path {
             let c_shape = op.c_fact.shape.as_concrete().unwrap_unchecked();
             let geometry = op.geometry.as_concrete().unwrap_unchecked();
             let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, c_shape)?;
             let uops: Vec<FusedSpec> =
                 op.micro_ops.iter().map(|o| o.resolve_trivial(inputs, &mut c)).collect();
-            op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &uops)?;
+            op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch.as_mut(), &uops)?;
             Ok(tvec!(c.into_tvalue()))
         } else {
             let geometry = op.geometry.to_concrete(symbols)?;
@@ -368,7 +370,7 @@ fn eval(
                         &c,
                     );
                 }
-                op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &uops)?;
+                op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch.as_mut(), &uops)?;
             }
             Ok(tvec!(c.into_tvalue()))
         }
