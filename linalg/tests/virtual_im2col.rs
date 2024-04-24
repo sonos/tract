@@ -151,7 +151,7 @@ impl ConvProblem {
         let mmm = tract_linalg::ops().mmm(F32, F32, F32, Some(m), Some(k), Some(n)).unwrap();
         let output = Tensor::zero::<f32>(&internal_output_shape)?;
         let reshaped_filters = self.filters.clone().into_shape(&[k, m])?;
-        let a = mmm.a_pack().pack_tensor(&reshaped_filters.view(), 0, 1)?;
+        let a = mmm.a_pack().pack_tensor(&reshaped_filters, 0, 1)?;
         unsafe {
             let im2col: Box<dyn MMMInput> = if self.lazy_im2col {
                 LazyIm2colSpec {
