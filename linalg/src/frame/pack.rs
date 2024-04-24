@@ -53,7 +53,8 @@ impl Packer {
         let k = t.shape()[k_axis];
         let mn = t.shape()[mn_axis];
         let packed_len = self.len(k, mn);
-        let panel_bytes = packed_len * t.datum_type().size_of();
+        let panel_len = self.single_panel_len(k);
+        let panel_bytes = panel_len * t.datum_type().size_of();
         let strides = t.strides();
         unsafe {
             let mut packed =
@@ -81,7 +82,8 @@ impl Packer {
         let k = t.shape()[k_axis];
         let mn = t.shape()[mn_axis];
         let packed_len = self.len(k, mn);
-        let panel_bytes = packed_len * t.datum_type().size_of();
+        let panel_len = self.single_panel_len(k);
+        let panel_bytes = panel_len * t.datum_type().size_of();
         let strides = t.strides();
         unsafe {
             let mut packed =
