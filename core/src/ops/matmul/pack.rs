@@ -61,7 +61,7 @@ impl TypedOp for MatMatMulPack {
 impl MatMatMulPack {
     fn do_eval(&self, input: &Tensor) -> TractResult<TVec<TValue>> {
         unsafe {
-            let output_shape: TVec<usize> = self.output_shape(&input.shape());
+            let output_shape: TVec<usize> = self.output_shape(input.shape());
             let stores = if output_shape.iter().all(|d| *d == 1) {
                 tensor0::<Opaque>(self.packer.pack_tensor(input, self.k_axis, self.mn_axis)?.into())
                     .into_shape(&output_shape)?
@@ -102,6 +102,6 @@ impl MatMatMulPack {
         let mut packed_shape: TVec<D> = input.into();
         packed_shape.remove(self.mn_axis.max(self.k_axis));
         packed_shape.remove(self.mn_axis.min(self.k_axis));
-        packed_shape.into()
+        packed_shape
     }
 }
