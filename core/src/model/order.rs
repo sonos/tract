@@ -140,7 +140,7 @@ where
         done: BitSet,
         alive: BitSet,
         candidates: BitSet,
-        cache_upstream: Vec<Vec<usize>>,
+        cache_upstream: Vec<Option<(usize, BitSet)>>,
     }
 
     impl Path {
@@ -150,7 +150,7 @@ where
                 done: BitSet::with_capacity(nodes),
                 alive: BitSet::with_capacity(nodes),
                 candidates: BitSet::with_capacity(nodes),
-                cache_upstream: vec![vec!(); nodes],
+                cache_upstream: vec![None; nodes],
             }
         }
 
@@ -168,25 +168,25 @@ where
                     self.alive.remove(maybe_dead);
                 }
             }
-            self.cache_upstream[next] = vec![];
+            self.cache_upstream[next] = None;
             for c in &self.candidates {
-                if self.cache_upstream[c].len() > 0 {
-                    self.cache_upstream[c].retain(|n| *n != next);
+                if let Some(upstream) = self.cache_upstream[c].as_mut() {
+                    upstream.0 -= upstream.1.remove(next) as usize;
                 }
             }
         }
 
         fn best_upstream_starter(&mut self, dfs: &Dfs) -> Option<usize> {
             for from in self.candidates.iter() {
-                if self.cache_upstream[from].len() == 0 {
-                    let mut found = vec![];
+                if self.cache_upstream[from].is_none() {
+                    let mut found = BitSet::with_capacity(self.done.len());
                     let mut visited = self.done.clone();
                     let mut todo = VecDeque::<usize>::new();
                     todo.push_back(from);
                     visited.insert(from);
                     while let Some(next) = todo.pop_front() {
                         if dfs.ups[next].len() == 0 {
-                            found.push(next);
+                            found.insert(next);
                         }
                         for up in &dfs.ups[next] {
                             if visited.insert(*up) {
@@ -195,14 +195,14 @@ where
                         }
                     }
                     debug_assert!(found.len() > 0);
-                    self.cache_upstream[from] = found
+                    self.cache_upstream[from] = Some((found.len(), found));
                 }
             }
             self.candidates
                 .iter()
-                .map(|n| &self.cache_upstream[n])
-                .min_by_key(|s| s.len())
-                .map(|s| s[0])
+                .map(|n| self.cache_upstream[n].as_ref().unwrap())
+                .min_by_key(|s| s.0)
+                .map(|s| s.1.iter().next().unwrap())
         }
     }
 
