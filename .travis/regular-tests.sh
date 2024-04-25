@@ -25,6 +25,7 @@ if [ `uname` = "Darwin" ]
 then
     sysctl -n machdep.cpu.brand_string
     brew install coreutils
+    PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"
 else
     sudo apt-get install -y llvm 
 fi
