@@ -305,14 +305,9 @@ impl EvalOp for LirMatMulUnary {
                 let c_shape = self.c_fact.shape.as_concrete().unwrap_unchecked();
                 let geometry = self.geometry.as_concrete().unwrap_unchecked();
                 let mut c = Tensor::uninitialized_dt(self.c_fact.datum_type, c_shape)?;
-                let uselfs: Vec<FusedSpec> =
+                let uops: Vec<FusedSpec> =
                     self.micro_ops.iter().map(|o| o.resolve_trivial(&inputs, &mut c)).collect();
-                self.mmm.run_with_scratch_space(
-                    geometry.m,
-                    geometry.n,
-                    scratch.as_mut(),
-                    &uselfs,
-                )?;
+                self.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch.as_mut(), &uops)?;
                 Ok(tvec!(c.into_tvalue()))
             } else {
                 let geometry = self.geometry.to_concrete(&session.resolved_symbols)?;
