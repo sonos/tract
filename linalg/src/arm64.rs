@@ -64,38 +64,43 @@ lazy_static::lazy_static! {
     };
 }
 
-#[cfg(target_os = "ios")]
-lazy_static::lazy_static! {
-    static ref IPHONE_MODEL_MAJOR:Option<usize> = {
-        use std::ffi::{c_char, c_void, CStr, CString};
-        use std::ptr::null_mut;
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+unsafe fn apple_get_syscall(key: &str) {
+    use std::ffi::{c_char, c_void, CStr, CString};
+    use std::ptr::null_mut;
 
-        extern "C" {
-            fn sysctlbyname(
-                name: *const c_char,
-                oldp: *mut c_void,
-                oldlenp: *mut isize,
-                newp: *mut c_void,
-                newlen: isize,
-            );
-        }
+    extern "C" {
+        fn sysctlbyname(
+            name: *const c_char,
+            oldp: *mut c_void,
+            oldlenp: *mut isize,
+            newp: *mut c_void,
+            newlen: isize,
+        );
+    }
 
-        unsafe {
-            let mut len: isize = 0;
-            let name = CString::new("hw.machine").unwrap();
-            sysctlbyname(name.as_ptr(), null_mut(), &mut len, null_mut(), 0);
-            let mut buf = vec![0u8; len as _];
-            sysctlbyname(name.as_ptr(), buf.as_mut_ptr() as _, &mut len, null_mut(), 0);
-            let version = CStr::from_bytes_with_nul(&buf).unwrap().to_string_lossy().into_owned();
-            let Some((major, _)) = version.trim_start_matches("iPhone").split_once(",") else { return None };
-            major.parse::<usize>().ok()
-        }
-    };
+    let mut len: isize = 0;
+    let name = CString::new(key).unwrap();
+    sysctlbyname(name.as_ptr(), null_mut(), &mut len, null_mut(), 0);
+    let mut buf = vec![0u8; len as _];
+    sysctlbyname(name.as_ptr(), buf.as_mut_ptr() as _, &mut len, null_mut(), 0);
+    CStr::from_bytes_with_nul(&buf).unwrap().to_string_lossy().into_owned()
 }
 
 #[cfg(target_os = "macos")]
 pub fn has_amx() -> bool {
-    true
+    !apple_get_syscall("machdep.cpu.brand_string").contains("(Virtual)")
+}
+
+#[cfg(target_os = "ios")]
+lazy_static::lazy_static! {
+    static ref IPHONE_MODEL_MAJOR:Option<usize> = {
+        unsafe {
+            let version = apple_get_syscall("hw.machine");
+            let Some((major, _)) = version.trim_start_matches("iPhone").split_once(",") else { return None };
+            major.parse::<usize>().ok()
+        }
+    };
 }
 
 #[cfg(all(target_os = "ios", feature = "apple-amx-ios"))]
