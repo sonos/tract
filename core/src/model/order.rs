@@ -3,7 +3,6 @@ use crate::internal::*;
 use bit_set::BitSet;
 use std::collections::VecDeque;
 use std::fmt::{Debug, Display};
-use tract_data::itertools::Itertools;
 
 /// Find an evaluation order for a model, using its default inputs and outputs
 /// as boundaries.
@@ -134,44 +133,75 @@ where
 
     let dfs = Dfs { ups, downs };
 
-    #[derive(Debug, Default, Clone, PartialEq, Eq)]
+    #[derive(Debug, Clone, PartialEq, Eq)]
     struct Path {
         order: Vec<usize>,
         done: BitSet,
-        alive: Vec<usize>,
+        alive: BitSet,
+        candidates: BitSet,
+        cache_upstream: HashMap<usize, Vec<usize>>,
     }
 
     impl Path {
+        fn with_size(nodes: usize) -> Path {
+            Path {
+                order: Vec::with_capacity(nodes),
+                done: BitSet::with_capacity(nodes),
+                alive: BitSet::with_capacity(nodes),
+                candidates: BitSet::with_capacity(nodes),
+                cache_upstream: HashMap::default(),
+            }
+        }
+
         fn follow_one(&mut self, dfs: &Dfs, next: usize) {
             assert!(!self.done.contains(next));
             self.order.push(next);
             self.done.insert(next);
-            self.alive.push(next);
-            self.alive.retain(|n| dfs.downs[*n].iter().any(|down| !self.done.contains(*down)))
-        }
-
-        fn missing_upstream_starters(&self, dfs: &Dfs, from: usize) -> Vec<usize> {
-            let mut found = vec![];
-            let mut done = self.done.clone();
-            let mut todo = VecDeque::<usize>::new();
-            todo.push_back(from);
-            done.insert(from);
-            while let Some(next) = todo.pop_front() {
-                if dfs.ups[next].len() == 0 {
-                    found.push(next);
-                }
-                for up in &dfs.ups[next] {
-                    if done.insert(*up) {
-                        todo.push_back(*up);
-                    }
+            self.alive.insert(next);
+            self.candidates.remove(next);
+            for &succ in &dfs.downs[next] {
+                self.candidates.insert(succ);
+            }
+            for &maybe_dead in &dfs.ups[next] {
+                if dfs.downs[maybe_dead].iter().all(|n| self.done.contains(*n)) {
+                    self.alive.remove(maybe_dead);
                 }
             }
-            assert!(found.len() > 0);
-            found
+            self.cache_upstream.remove(&next);
+            self.cache_upstream.values_mut().for_each(|v| v.retain(|n| *n != next));
+        }
+
+        fn best_upstream_starter(&mut self, dfs: &Dfs) -> Option<usize> {
+            for from in self.candidates.iter() {
+                self.cache_upstream.entry(from).or_insert_with(|| {
+                    let mut found = vec![];
+                    let mut visited = self.done.clone();
+                    let mut todo = VecDeque::<usize>::new();
+                    todo.push_back(from);
+                    visited.insert(from);
+                    while let Some(next) = todo.pop_front() {
+                        if dfs.ups[next].len() == 0 {
+                            found.push(next);
+                        }
+                        for up in &dfs.ups[next] {
+                            if visited.insert(*up) {
+                                todo.push_back(*up);
+                            }
+                        }
+                    }
+                    assert!(found.len() > 0);
+                    found
+                });
+            }
+            self.candidates
+                .iter()
+                .map(|n| &self.cache_upstream[&n])
+                .min_by_key(|s| s.len())
+                .map(|s| s[0])
         }
     }
 
-    let mut done: Path = Path::default();
+    let mut done: Path = Path::with_size(nodes.len());
     for i in model_inputs {
         if tocompute.contains(*i) {
             done.follow_one(&dfs, *i);
@@ -179,26 +209,11 @@ where
     }
 
     while !model_outputs.iter().all(|o| done.done.contains(*o)) {
-        let candidates: Vec<usize> = done
-            .alive
-            .iter()
-            .copied()
-            .flat_map(|n| dfs.downs[n].iter())
-            .copied()
-            .filter(|n| !done.done.contains(*n))
-            .sorted()
-            .unique()
-            .collect_vec();
         let next = if let Some(next) =
-            candidates.iter().copied().find(|n| dfs.ups[*n].iter().all(|n| done.done.contains(*n)))
+            done.candidates.iter().find(|n| dfs.ups[*n].iter().all(|n| done.done.contains(*n)))
         {
             next
-        } else if let Some(next) = candidates
-            .iter()
-            .map(|c| done.missing_upstream_starters(&dfs, *c))
-            .min_by_key(|p| p.len())
-            .map(|s| s[0])
-        {
+        } else if let Some(next) = done.best_upstream_starter(&dfs) {
             next
         } else {
             tocompute
