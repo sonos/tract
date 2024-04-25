@@ -75,16 +75,13 @@ impl Conv {
         model: &mut TypedModel,
         name: &str,
         packer: Packer,
-        mut kernel: OutletId,
+        kernel: OutletId,
     ) -> TractResult<OutletId> {
-        let kernel_shape = &model.outlet_fact(kernel)?.shape;
-        let output_shape_fact = MatMatMulPack::output_shape(kernel_shape, &packer, 1, 2);
-        kernel = model.wire_node(
+        Ok(model.wire_node(
             format!("{name}.prep_kernel.pack"),
-            MatMatMulPack { packer, k_axis: 2, mn_axis: 1, output_shape_fact },
+            MatMatMulPack { packer, k_axis: 2, mn_axis: 1 },
             &[kernel],
-        )?[0];
-        Ok(kernel)
+        )?[0])
     }
 
     // group,bias
