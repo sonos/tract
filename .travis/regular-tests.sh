@@ -37,6 +37,8 @@ fi
 
 export CACHEDIR
 
+cargo test -p tract-linalg
+
 # useful as debug_asserts will come into play
 cargo -q test -q -p tract-core --features paranoid_assertions $CARGO_EXTRA
 cargo -q test -q -p test-onnx-core $CARGO_EXTRA
