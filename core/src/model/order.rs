@@ -126,6 +126,7 @@ where
         }
     }
 
+    #[derive(Debug)]
     struct Dfs {
         ups: Vec<TVec<usize>>,
         downs: Vec<TVec<usize>>,
@@ -139,7 +140,7 @@ where
         done: BitSet,
         alive: BitSet,
         candidates: BitSet,
-        cache_upstream: HashMap<usize, Vec<usize>>,
+        cache_upstream: Vec<Vec<usize>>,
     }
 
     impl Path {
@@ -149,7 +150,7 @@ where
                 done: BitSet::with_capacity(nodes),
                 alive: BitSet::with_capacity(nodes),
                 candidates: BitSet::with_capacity(nodes),
-                cache_upstream: HashMap::default(),
+                cache_upstream: vec![vec!(); nodes],
             }
         }
 
@@ -167,13 +168,17 @@ where
                     self.alive.remove(maybe_dead);
                 }
             }
-            self.cache_upstream.remove(&next);
-            self.cache_upstream.values_mut().for_each(|v| v.retain(|n| *n != next));
+            self.cache_upstream[next] = vec![];
+            for c in &self.candidates {
+                if self.cache_upstream[c].len() > 0 {
+                    self.cache_upstream[c].retain(|n| *n != next);
+                }
+            }
         }
 
         fn best_upstream_starter(&mut self, dfs: &Dfs) -> Option<usize> {
             for from in self.candidates.iter() {
-                self.cache_upstream.entry(from).or_insert_with(|| {
+                if self.cache_upstream[from].len() == 0 {
                     let mut found = vec![];
                     let mut visited = self.done.clone();
                     let mut todo = VecDeque::<usize>::new();
@@ -189,13 +194,13 @@ where
                             }
                         }
                     }
-                    assert!(found.len() > 0);
-                    found
-                });
+                    debug_assert!(found.len() > 0);
+                    self.cache_upstream[from] = found
+                }
             }
             self.candidates
                 .iter()
-                .map(|n| &self.cache_upstream[&n])
+                .map(|n| &self.cache_upstream[n])
                 .min_by_key(|s| s.len())
                 .map(|s| s[0])
         }
