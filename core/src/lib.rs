@@ -99,7 +99,7 @@ mod late_bind;
 pub mod prelude {
     pub use crate::framework::Framework;
     pub use crate::model::*;
-    pub use crate::plan::{SimplePlan, SimpleState};
+    pub use crate::plan::{SimplePlan, SimpleState, PlanOptions};
     pub use crate::value::{IntoTValue, TValue};
     pub use std::sync::Arc;
     pub use tract_data::prelude::*;
