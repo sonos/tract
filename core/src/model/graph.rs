@@ -1,6 +1,7 @@
 use super::*;
 use crate::internal::*;
 use crate::ops::Op;
+use crate::plan::PlanOptions;
 use crate::prelude::*;
 use std::fmt;
 use tract_data::internal::*;
@@ -494,6 +495,11 @@ where
     /// Converts the model into a `RunnableModel` which fixes the inputs and outputs and allows passing data through the model.
     pub fn into_runnable(self) -> TractResult<RunnableModel<F, O, Self>> {
         crate::plan::SimplePlan::new(self)
+    }
+
+    /// Converts the model into a `RunnableModel` which fixes the inputs and outputs and allows passing data through the model.
+    pub fn into_runnable_with_options(self, options: &PlanOptions) -> TractResult<RunnableModel<F, O, Self>> {
+        crate::plan::SimplePlan::new_with_options(self, options)
     }
 
     pub fn single_prec(&self, id: usize) -> TractResult<Option<&Node<F, O>>> {

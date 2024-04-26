@@ -8,7 +8,13 @@ use crate::model::{Fact, Graph, OutletId};
 use crate::ops::konst::Const;
 use crate::ops::FrozenOpState;
 
-use self::order::eval_order_opt_ram_for_nodes;
+use self::order::{eval_order_for_nodes, eval_order_opt_ram_for_nodes};
+
+#[derive(Default, Clone, Debug)]
+pub struct PlanOptions {
+    /// Use the simple ordering instead of the newer memory friendly one
+    pub skip_order_opt_ram: bool,
+}
 
 #[derive(Default)]
 pub struct SessionState {
@@ -24,7 +30,7 @@ impl Clone for SessionState {
             inputs: self.inputs.clone(),
             resolved_symbols: self.resolved_symbols.clone(),
             tensors: self.tensors.clone(),
-            cached_mmm_scratch_space: None.into()
+            cached_mmm_scratch_space: None.into(),
         }
     }
 }
@@ -62,6 +68,12 @@ where
         Self::new_for_outputs(model, &outputs)
     }
 
+    /// This contructor returns a plan that will compute all the model default outputs in one pass.
+    pub fn new_with_options(model: M, options: &PlanOptions) -> TractResult<SimplePlan<F, O, M>> {
+        let outputs = model.borrow().output_outlets()?.to_vec();
+        Self::build(model, &outputs, &[], options)
+    }
+
     /// This contructor returns a plan that will compute the specified output.
     pub fn new_for_output(model: M, output: OutletId) -> TractResult<SimplePlan<F, O, M>> {
         Self::new_for_outputs_and_deps(model, &[output], &[])
@@ -77,10 +89,22 @@ where
         outputs: &[OutletId],
         deps: &[(usize, usize)],
     ) -> TractResult<SimplePlan<F, O, M>> {
+        Self::build(model, outputs, deps, &PlanOptions::default())
+    }
+
+    pub fn build(
+        model: M,
+        outputs: &[OutletId],
+        deps: &[(usize, usize)],
+        options: &PlanOptions,
+    ) -> TractResult<SimplePlan<F, O, M>> {
         let inputs = model.borrow().input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
         let outputs_nodes = outputs.iter().map(|n| n.node).collect::<Vec<usize>>();
-        let mut order =
-            eval_order_opt_ram_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes, deps)?;
+        let mut order = if options.skip_order_opt_ram {
+            eval_order_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes, deps)?
+        } else {
+            eval_order_opt_ram_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes, deps)?
+        };
         order.retain(|node| !model.borrow().node(*node).op_is::<Const>());
         let mut values_needed_until_step = vec![0; model.borrow().nodes().len()];
         for (step, node) in order.iter().enumerate() {
