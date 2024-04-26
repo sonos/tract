@@ -92,7 +92,7 @@ macro_rules! mmm_frame_tests {
             #[test]
             fn mat_vec_2() {
                 if $cond {
-                    let a = tensor1(&[0, 0, 0, 0, 0, 0, -4, 1]).into_shape(&[8,1]).unwrap();
+                    let a = tensor1(&[0, 0, 0, 0, 0, 0, -4, 1]).into_shape(tvec![8,1]).unwrap();
                     let a = a.cast_to::<$ta>().unwrap();
                     let b = tensor1(&[-64]).cast_to::<$tb>().unwrap().into_owned();
                     test_mat_vec_mul_prep::<$ker, $ta, $tb, $tc, $ti>(8, 1, &a, &b).unwrap()
@@ -102,7 +102,7 @@ macro_rules! mmm_frame_tests {
             #[test]
             fn mat_vec_3() {
                 if $cond {
-                    let a = tensor1(&[0, 0]).into_shape(&[1, 2]).unwrap();
+                    let a = tensor1(&[0, 0]).into_shape(tvec![1, 2]).unwrap();
                     let a = a.cast_to::<$ta>().unwrap();
                     let b = tensor1(&[0, 0]).cast_to::<$tb>().unwrap().into_owned();
                     test_mat_vec_mul_prep::<$ker, $ta, $tb, $tc, $ti>(1, 2, &a, &b).unwrap()
@@ -275,8 +275,8 @@ where
     unsafe {
         let op = MatMatMulImpl::<K, TI>::default();
         let b = b.clone().into_shape(&[k, 1]).unwrap();
-        let packed_a = op.a_pack().pack_tensor(a, 1, 0).unwrap();
         let packed_b = op.b_pack().pack_tensor(&b, 0, 1).unwrap();
+        let packed_a = op.a_pack().pack_tensor(a, 1, 0).unwrap();
 
         fused_ops::<K, TA, TB, TC, TI, _>(
             m,
@@ -312,7 +312,7 @@ where
     crate::setup_test_logger();
     let op = MatMatMulImpl::<K, TI>::default();
 
-    let mut found = Tensor::zero::<TC>(&[m, n]).unwrap();
+    let mut found = Tensor::zero::<TC>(tvec![m, n]).unwrap();
     let c_store = op
         .c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
         .wrap(&found.view_mut());
@@ -447,7 +447,7 @@ where
     usize: AsPrimitive<TI>,
 {
     let d = (0..m * n).map(|i| i.as_()).collect::<Vec<TI>>();
-    let d = tensor1(&d).into_shape(&[m, n]).unwrap();
+    let d = tensor1(&d).into_shape(tvec![m, n]).unwrap();
     let store_spec = OutputStoreSpec::View { m_axis: 0, n_axis: 1, mr: K::mr(), nr: K::nr() };
     fused_ops::<K, TA, TB, TC, TI, _>(
         m,

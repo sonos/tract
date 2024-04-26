@@ -86,7 +86,7 @@ fn eval_slice(input: &Tensor, axis: usize, start: usize, end: usize) -> TractRes
     unsafe {
         let mut shape: TVec<_> = input.shape().into();
         shape[axis] = end - start;
-        let mut tensor = Tensor::uninitialized_dt(input.datum_type(), &shape)?;
+        let mut tensor = Tensor::uninitialized_dt(input.datum_type(), shape)?;
         tensor.assign_slice_unchecked(.., input, start..end, axis);
         Ok(tvec!(tensor.into_tvalue()))
     }

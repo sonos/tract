@@ -37,7 +37,7 @@ impl Range {
         len: usize,
     ) -> TractResult<Tensor> {
         unsafe {
-            let mut result = Tensor::uninitialized::<T>(&[len])?;
+            let mut result = Tensor::uninitialized::<T>(tvec!(len))?;
             let mut v = start.to_scalar::<T>()?.clone();
             let step = step.to_scalar::<T>()?;
             for i in 0..len {

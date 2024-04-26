@@ -102,24 +102,23 @@ fn get_external_resources(
     Ok(tensor_data)
 }
 
-fn create_tensor(shape: Vec<usize>, dt: DatumType, data: &[u8]) -> TractResult<Tensor> {
+fn create_tensor(shape: TVec<usize>, dt: DatumType, data: &[u8]) -> TractResult<Tensor> {
     unsafe {
         match dt {
-            DatumType::U8 => Tensor::from_raw::<u8>(&shape, data),
-            DatumType::U16 => Tensor::from_raw::<u16>(&shape, data),
-            DatumType::U32 => Tensor::from_raw::<u32>(&shape, data),
-            DatumType::U64 => Tensor::from_raw::<u64>(&shape, data),
-            DatumType::I8 => Tensor::from_raw::<i8>(&shape, data),
-            DatumType::I16 => Tensor::from_raw::<i16>(&shape, data),
-            DatumType::I32 => Tensor::from_raw::<i32>(&shape, data),
-            DatumType::I64 => Tensor::from_raw::<i64>(&shape, data),
-            DatumType::F16 => Tensor::from_raw::<f16>(&shape, data),
-            DatumType::F32 => Tensor::from_raw::<f32>(&shape, data),
-            DatumType::F64 => Tensor::from_raw::<f64>(&shape, data),
-            DatumType::Bool => Ok(Tensor::from_raw::<u8>(&shape, data)?
-                .into_array::<u8>()?
-                .mapv(|x| x != 0)
-                .into()),
+            DatumType::U8 => Tensor::from_raw::<u8>(shape, data),
+            DatumType::U16 => Tensor::from_raw::<u16>(shape, data),
+            DatumType::U32 => Tensor::from_raw::<u32>(shape, data),
+            DatumType::U64 => Tensor::from_raw::<u64>(shape, data),
+            DatumType::I8 => Tensor::from_raw::<i8>(shape, data),
+            DatumType::I16 => Tensor::from_raw::<i16>(shape, data),
+            DatumType::I32 => Tensor::from_raw::<i32>(shape, data),
+            DatumType::I64 => Tensor::from_raw::<i64>(shape, data),
+            DatumType::F16 => Tensor::from_raw::<f16>(shape, data),
+            DatumType::F32 => Tensor::from_raw::<f32>(shape, data),
+            DatumType::F64 => Tensor::from_raw::<f64>(shape, data),
+            DatumType::Bool => {
+                Ok(Tensor::from_raw::<u8>(shape, data)?.into_array::<u8>()?.mapv(|x| x != 0).into())
+            }
             _ => unimplemented!("FIXME, raw tensor loading"),
         }
     }
@@ -131,7 +130,7 @@ pub fn load_tensor(
     path: Option<&str>,
 ) -> TractResult<Tensor> {
     let dt = DataType::from_i32(t.data_type).unwrap().try_into()?;
-    let shape: Vec<usize> = t.dims.iter().map(|&i| i as usize).collect();
+    let shape: TVec<usize> = t.dims.iter().map(|&i| i as usize).collect();
     // detect if the tensor is rather in an external file than inside the onnx file directly
     let is_external = t.data_location.is_some()
         && t.data_location == Some(tensor_proto::DataLocation::External as i32);

@@ -167,18 +167,18 @@ impl Tensor {
     }
 
     /// Create an uninitialized tensor (dt as type paramater).
-    pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> anyhow::Result<Tensor> {
+    pub unsafe fn uninitialized<T: Datum>(shape: TVec<usize>) -> anyhow::Result<Tensor> {
         Self::uninitialized_dt(T::datum_type(), shape)
     }
 
     /// Create an uninitialized tensor (dt as regular parameter).
-    pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> anyhow::Result<Tensor> {
+    pub unsafe fn uninitialized_dt(dt: DatumType, shape: TVec<usize>) -> anyhow::Result<Tensor> {
         Self::uninitialized_aligned_dt(dt, shape, dt.alignment())
     }
 
     /// Create an uninitialized tensor with a given alignment (in bytes).
     pub unsafe fn uninitialized_aligned<T: Datum>(
-        shape: &[usize],
+        shape: TVec<usize>,
         alignment: usize,
     ) -> anyhow::Result<Tensor> {
         Self::uninitialized_aligned_dt(T::datum_type(), shape, alignment)
@@ -187,7 +187,7 @@ impl Tensor {
     /// Create an uninitialized tensor with a given alignment (in bytes).
     pub unsafe fn uninitialized_aligned_dt(
         dt: DatumType,
-        shape: &[usize],
+        shape: TVec<usize>,
         alignment: usize,
     ) -> anyhow::Result<Tensor> {
         let bytes = shape.iter().cloned().product::<usize>() * dt.size_of();
@@ -199,7 +199,7 @@ impl Tensor {
             assert!(!ptr.is_null());
             ptr
         } as *mut u8;
-        let mut tensor = Tensor { strides: tvec!(), layout, dt, shape: shape.into(), data, len: 0 };
+        let mut tensor = Tensor { strides: tvec!(), layout, dt, shape, data, len: 0 };
         tensor.update_strides_and_len();
         if !data.is_null() {
             if dt == String::datum_type() || dt == Blob::datum_type() {
@@ -245,7 +245,7 @@ impl Tensor {
         }
         shape[axis] = tensors.iter().map(|v| v.borrow().shape()[axis]).sum();
         unsafe {
-            let mut result = Tensor::uninitialized_dt(dt, &shape)?;
+            let mut result = Tensor::uninitialized_dt(dt, shape.clone())?;
             if dt.is_copy() && shape[..axis].iter().all(|d| *d == 1) {
                 let mut offset = 0isize;
                 for v in tensors {
@@ -272,7 +272,7 @@ impl Tensor {
         self.fill_t(T::zero())
     }
 
-    pub fn zero<T: Datum + num_traits::Zero>(shape: &[usize]) -> anyhow::Result<Tensor> {
+    pub fn zero<T: Datum + num_traits::Zero>(shape: TVec<usize>) -> anyhow::Result<Tensor> {
         unsafe {
             let mut t = Tensor::uninitialized::<T>(shape)?;
             t.clear::<T>()?;
@@ -281,14 +281,14 @@ impl Tensor {
     }
 
     pub fn zero_scalar<T: Datum + num_traits::Zero>() -> anyhow::Result<Tensor> {
-        Tensor::zero::<T>(&[])
+        Tensor::zero::<T>(tvec![])
     }
 
     pub fn zero_scalar_dt(dt: DatumType) -> anyhow::Result<Tensor> {
-        Tensor::zero_dt(dt, &[])
+        Tensor::zero_dt(dt, tvec![])
     }
 
-    pub fn zero_dt(dt: DatumType, shape: &[usize]) -> anyhow::Result<Tensor> {
+    pub fn zero_dt(dt: DatumType, shape: TVec<usize>) -> anyhow::Result<Tensor> {
         Tensor::zero_aligned_dt(dt, shape, 4)
     }
 
@@ -299,12 +299,12 @@ impl Tensor {
 
     pub fn zero_aligned_dt(
         dt: DatumType,
-        shape: &[usize],
+        shape: TVec<usize>,
         alignment: usize,
     ) -> anyhow::Result<Tensor> {
         if dt.is_quantized() {
             unsafe {
-                let mut t = Tensor::uninitialized_dt(dt, shape)?;
+                let mut t = Tensor::uninitialized_dt(dt, shape.into())?;
                 let zp = dt.zp_scale().0;
                 match dt.unquantized() {
                     DatumType::I8 => {
@@ -326,11 +326,11 @@ impl Tensor {
     }
 
     pub fn zero_aligned<T: Datum + num_traits::Zero>(
-        shape: &[usize],
+        shape: TVec<usize>,
         alignment: usize,
     ) -> anyhow::Result<Tensor> {
         unsafe {
-            let mut tensor = Self::uninitialized_aligned::<T>(shape, alignment)?;
+            let mut tensor = Self::uninitialized_aligned::<T>(shape.into(), alignment)?;
             tensor.clear::<T>()?;
             Ok(tensor)
         }
@@ -338,7 +338,7 @@ impl Tensor {
 
     /// Create a tensor with a given shape and a slice of elements.
     /// The data is copied and aligned to size of T.
-    pub fn from_shape<T: Datum + Copy>(shape: &[usize], data: &[T]) -> anyhow::Result<Tensor> {
+    pub fn from_shape<T: Datum + Copy>(shape: TVec<usize>, data: &[T]) -> anyhow::Result<Tensor> {
         let dt = T::datum_type();
         Self::from_shape_align(shape, data, dt.alignment())
     }
@@ -346,7 +346,7 @@ impl Tensor {
     /// Create a tensor with a given shape and a slice of elements.
     /// The data is copied and aligned to given alignment.
     pub fn from_shape_align<T: Datum + Copy>(
-        shape: &[usize],
+        shape: TVec<usize>,
         data: &[T],
         align: usize,
     ) -> anyhow::Result<Tensor> {
@@ -367,12 +367,12 @@ impl Tensor {
     /// Create a tensor from raw data.
     ///
     /// It copies the data, aligning it to the size of T.
-    pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> anyhow::Result<Tensor> {
+    pub unsafe fn from_raw<T: Datum>(shape: TVec<usize>, content: &[u8]) -> anyhow::Result<Tensor> {
         Tensor::from_raw_dt(T::datum_type(), shape, content)
     }
 
     pub unsafe fn from_raw_aligned<T: Datum>(
-        shape: &[usize],
+        shape: TVec<usize>,
         content: &[u8],
         align: usize,
     ) -> anyhow::Result<Tensor> {
@@ -381,7 +381,7 @@ impl Tensor {
 
     pub unsafe fn from_raw_dt(
         dt: DatumType,
-        shape: &[usize],
+        shape: TVec<usize>,
         content: &[u8],
     ) -> anyhow::Result<Tensor> {
         Self::from_raw_dt_align(dt, shape, content, dt.alignment())
@@ -389,7 +389,7 @@ impl Tensor {
 
     pub unsafe fn from_raw_dt_align(
         dt: DatumType,
-        shape: &[usize],
+        shape: TVec<usize>,
         content: &[u8],
         align: usize,
     ) -> anyhow::Result<Tensor> {
@@ -410,7 +410,7 @@ impl Tensor {
                 content.len() * T::datum_type().size_of(),
             )
         };
-        Self::from_raw_dt_align(T::datum_type(), &[content.len()], bytes, align)
+        Self::from_raw_dt_align(T::datum_type(), tvec![content.len()], bytes, align)
     }
 
     /// Get the number of dimensions (or axes) of the tensor.
@@ -449,16 +449,15 @@ impl Tensor {
     }
 
     /// Force the tensor shape, no consistency check.
-    pub unsafe fn set_shape_unchecked(&mut self, shape: &[usize]) {
-        if shape != &*self.shape {
-            self.shape.clear();
-            self.shape.extend_from_slice(shape);
+    pub unsafe fn set_shape_unchecked(&mut self, shape: TVec<usize>) {
+        if shape != self.shape {
+            self.shape = shape;
             self.update_strides_and_len();
         }
     }
 
     /// Force the tensor shape.
-    pub fn set_shape(&mut self, shape: &[usize]) -> anyhow::Result<()> {
+    pub fn set_shape(&mut self, shape: TVec<usize>) -> anyhow::Result<()> {
         if self.len() != shape.iter().product::<usize>() {
             anyhow::bail!("Invalid reshape {:?} to {:?}", self.shape, shape);
         }
@@ -509,7 +508,7 @@ impl Tensor {
     }
 
     /// Reshape the tensor to `shape`.
-    pub fn into_shape(mut self, shape: &[usize]) -> anyhow::Result<Tensor> {
+    pub fn into_shape(mut self, shape: TVec<usize>) -> anyhow::Result<Tensor> {
         self.set_shape(shape)?;
         Ok(self)
     }
@@ -544,7 +543,7 @@ impl Tensor {
         Ok(())
     }
 
-    pub fn broadcast_scalar_to_shape(&self, shape: &[usize]) -> anyhow::Result<Tensor> {
+    pub fn broadcast_scalar_to_shape(&self, shape: TVec<usize>) -> anyhow::Result<Tensor> {
         if self.rank() > 0 {
             anyhow::bail!("broadcast_scalar_to_shape called on {:?}, which is not a salar", self);
         }
@@ -559,11 +558,11 @@ impl Tensor {
         }
     }
 
-    fn broadcast_to_shape_t<T: Datum>(&self, shape: &[usize]) -> anyhow::Result<Tensor> {
+    fn broadcast_to_shape_t<T: Datum>(&self, shape: TVec<usize>) -> anyhow::Result<Tensor> {
         unsafe {
             let view = self.to_array_view_unchecked::<T>();
             let mut output = view
-                .broadcast(shape)
+                .broadcast(&*shape)
                 .with_context(|| format!("Broadcasting {view:?} to {shape:?}"))?
                 .into_owned()
                 .into_tensor();
@@ -572,24 +571,24 @@ impl Tensor {
         }
     }
 
-    pub fn broadcast_to_shape(&self, shape: &[usize]) -> anyhow::Result<Tensor> {
+    pub fn broadcast_to_shape(&self, shape: TVec<usize>) -> anyhow::Result<Tensor> {
         dispatch_datum!(Self::broadcast_to_shape_t(self.dt)(self, shape))
     }
 
     pub fn broadcast_vector_to_shape(
         &self,
-        shape: &[usize],
+        shape: TVec<usize>,
         axis: usize,
     ) -> anyhow::Result<Tensor> {
         ensure!(self.rank() == 1);
         ensure!(shape[axis] == self.len());
         if !self.datum_type().is_copy() {
-            let mut vec_shape = vec![1; shape.len()];
+            let mut vec_shape = tvec![1; shape.len()];
             vec_shape[axis] = self.len();
-            return self.clone().into_shape(&vec_shape)?.broadcast_to_shape(shape);
+            return self.clone().into_shape(vec_shape)?.broadcast_to_shape(shape);
         }
         unsafe {
-            let mut output = Tensor::uninitialized_dt(self.datum_type(), shape)?;
+            let mut output = Tensor::uninitialized_dt(self.datum_type(), shape.clone())?;
             if output.len() == 0 {
                 return Ok(output);
             }
@@ -1075,7 +1074,7 @@ impl Tensor {
             }
             if self.dt == TDim::datum_type() && (dst_dt.is_integer() || dst_dt.is_float()) {
                 let slice = self.as_slice_unchecked::<TDim>();
-                let mut ints = Self::uninitialized::<i64>(&self.shape)?;
+                let mut ints = Self::uninitialized::<i64>(self.shape.clone())?;
                 let ints_slice = ints.as_slice_mut_unchecked::<i64>();
                 for i in 0..self.len() {
                     ints_slice[i] = slice[i].to_i64()?;
@@ -1086,14 +1085,14 @@ impl Tensor {
                 && (dst_dt.is_integer() || dst_dt.is_float() || dst_dt == TDim::datum_type())
             {
                 let slice = self.as_slice_unchecked::<bool>();
-                let mut ints = Self::uninitialized::<i8>(&self.shape)?;
+                let mut ints = Self::uninitialized::<i8>(self.shape.clone())?;
                 let ints_slice = ints.as_slice_mut_unchecked::<i8>();
                 for i in 0..self.len() {
                     ints_slice[i] = slice[i] as usize as i8;
                 }
                 return Ok(Cow::Owned(ints.cast_to_dt(dst_dt)?.into_owned()));
             }
-            let mut result = Self::uninitialized_dt(dst_dt, &self.shape)?;
+            let mut result = Self::uninitialized_dt(dst_dt, self.shape.clone())?;
             if self.dt == DatumType::String {
                 dispatch_numbers!(Self::cast_from_string(dst_dt)(self, &mut result))?;
                 return Ok(Cow::Owned(result));
@@ -1301,7 +1300,7 @@ impl Tensor {
             output.as_slice_mut_unchecked::<T>()[0] = value;
         }
         unsafe {
-            let mut output = Tensor::uninitialized_dt(self.datum_type(), &[])?;
+            let mut output = Tensor::uninitialized_dt(self.datum_type(), tvec![])?;
             dispatch_datum_by_size!(nth_t(self.datum_type())(self, nth, &mut output));
             Ok(output)
         }
@@ -1333,7 +1332,7 @@ impl Tensor {
             return t;
         }
         unsafe {
-            let mut t = Self::uninitialized::<T>(it.shape()).unwrap();
+            let mut t = Self::uninitialized::<T>(it.shape().into()).unwrap();
             if it.strides().iter().all(|&s| s > 0) {
                 let mut len_and_strides: TVec<(usize, usize)> = tvec!();
                 for (len, stride) in itertools::izip!(it.shape(), it.strides(), t.strides())
@@ -1397,7 +1396,8 @@ impl Tensor {
         } else {
             assert!(self.dt.is_copy());
             unsafe {
-                let tensor = Tensor::uninitialized_dt(self.datum_type(), self.shape()).unwrap();
+                let tensor =
+                    Tensor::uninitialized_dt(self.datum_type(), self.shape.clone()).unwrap();
                 if self.len() > 0 {
                     self.data.copy_to_nonoverlapping(
                         tensor.data,
@@ -1504,7 +1504,7 @@ impl Tensor {
             unsafe {
                 let mut t = Self::uninitialized_aligned_dt(
                     self.dt,
-                    &self.shape,
+                    self.shape.clone(),
                     Self::default_alignment(self.dt, &self.shape),
                 )?;
                 t.as_bytes_mut().copy_from_slice(self.as_bytes());
@@ -1513,7 +1513,7 @@ impl Tensor {
         } else {
             let mut t = Self::zero_aligned_dt(
                 self.dt,
-                &self.shape,
+                self.shape.clone(),
                 Self::default_alignment(self.dt, &self.shape),
             )?;
             if self.dt == String::datum_type() {
@@ -1698,7 +1698,7 @@ mod tests {
         fn reference(&self) -> Tensor {
             let values: Vec<i32> = self.input().iter().copied().collect();
             let shape = self.permutation.iter().map(|ix| self.shape[*ix]).collect::<TVec<usize>>();
-            super::litteral::tensor1(&values).into_shape(&shape).unwrap()
+            super::litteral::tensor1(&values).into_shape(shape).unwrap()
         }
 
         fn tract(&self) -> Tensor {
@@ -1742,13 +1742,13 @@ mod tests {
             intermediate[self.axis] = self.vec.len();
             let reference = input
                 .clone()
-                .into_shape(&intermediate)
+                .into_shape(intermediate)
                 .unwrap()
-                .broadcast_to_shape(&self.shape)
+                .broadcast_to_shape(self.shape.clone())
                 .unwrap();
             prop_assert_eq!(
                 reference,
-                input.broadcast_vector_to_shape(&self.shape, self.axis).unwrap()
+                input.broadcast_vector_to_shape(self.shape.clone(), self.axis).unwrap()
             );
             Ok(())
         }

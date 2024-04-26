@@ -71,7 +71,7 @@ impl EvalOp for Compress {
             (tvec!(compressed_dim), None)
         };
         unsafe {
-            let mut output = Tensor::uninitialized_dt(input.datum_type(), &shape)?;
+            let mut output = Tensor::uninitialized_dt(input.datum_type(), shape)?;
             dispatch_datum_by_size!(Self::eval_t(input.datum_type())(
                 axis,
                 &input,

@@ -97,8 +97,8 @@ fn test_lazy_3() {
 fn test_eager_asan_0() {
     ConvProblem {
         lazy_im2col: false,
-        input: tensor(vec![3, 3, 5]),
-        filters: tensor(vec![3, 3, 3, 1]),
+        input: tensor(tvec![3, 3, 5]),
+        filters: tensor(tvec![3, 3, 3, 1]),
     }
     .check()
 }
@@ -123,8 +123,8 @@ fn mknhw(filters: &[usize], input: &[usize]) -> (usize, usize, usize, usize, usi
 impl ConvProblem {
     fn reference(&self) -> Tensor {
         let (m, _, _, h, w) = mknhw(self.filters.shape(), self.input.shape());
-        let output_shape = [m, h, w];
-        let mut output = Tensor::zero::<f32>(&output_shape).unwrap();
+        let output_shape = tvec![m, h, w];
+        let mut output = Tensor::zero::<f32>(output_shape.clone()).unwrap();
         let mut output_view = output.to_array_view_mut::<f32>().unwrap();
         let input_view = self.input.to_array_view::<f32>().unwrap();
         let filters_view = self.filters.to_array_view::<f32>().unwrap();
@@ -146,11 +146,11 @@ impl ConvProblem {
 
     pub fn tract(&self) -> TractResult<Tensor> {
         let (m, k, n, h, w) = mknhw(self.filters.shape(), self.input.shape());
-        let output_shape = [m, h, w];
-        let internal_output_shape = [m, h * w];
+        let output_shape = tvec![m, h, w];
+        let internal_output_shape = tvec![m, h * w];
         let mmm = tract_linalg::ops().mmm(F32, F32, F32, Some(m), Some(k), Some(n)).unwrap();
-        let output = Tensor::zero::<f32>(&internal_output_shape)?;
-        let reshaped_filters = self.filters.clone().into_shape(&[k, m])?;
+        let output = Tensor::zero::<f32>(internal_output_shape)?;
+        let reshaped_filters = self.filters.clone().into_shape(tvec![k, m])?;
         let a = mmm.a_pack().pack_tensor(&reshaped_filters, 0, 1)?;
         unsafe {
             let im2col: Box<dyn MMMInput> = if self.lazy_im2col {
@@ -174,7 +174,7 @@ impl ConvProblem {
             )
             .unwrap()
         }
-        output.into_shape(&output_shape)
+        output.into_shape(output_shape)
     }
 
     fn check(&self) {
@@ -196,16 +196,16 @@ impl Arbitrary for ConvProblem {
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
         (any::<bool>(), 1..4usize, 1..4usize, 1..4usize, 1..4usize, 0..3usize, 0..3usize)
             .prop_map(|(eager_im2col, h, w, i, o, extra_h, extra_w)| {
-                let filters = tensor(vec![h, w, i, o]);
-                let input = tensor(vec![i, h + extra_h, w + extra_w]);
+                let filters = tensor(tvec![h, w, i, o]);
+                let input = tensor(tvec![i, h + extra_h, w + extra_w]);
                 ConvProblem { lazy_im2col: eager_im2col, filters, input }
             })
             .boxed()
     }
 }
 
-fn tensor(shape: Vec<usize>) -> Tensor {
-    let mut tensor = Tensor::zero::<f32>(&shape).unwrap();
+fn tensor(shape: TVec<usize>) -> Tensor {
+    let mut tensor = Tensor::zero::<f32>(shape).unwrap();
     tensor.as_slice_mut::<f32>().unwrap().iter_mut().enumerate().for_each(|(ix, x)| *x = ix as f32);
     tensor
 }

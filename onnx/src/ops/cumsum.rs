@@ -41,10 +41,8 @@ impl Expansion for CumSum {
         let data = model.outlet_fact(inputs[0])?.clone();
         let mut var_shape = data.shape.clone();
         let axis = if axis < 0 { (axis + data.rank() as i64) as usize } else { axis as usize };
-        let zero = model.add_const(
-            format!("{prefix}.zero"),
-            Tensor::zero_dt(data.datum_type, &[])?.into_arc_tensor(),
-        )?;
+        let zero =
+            model.add_const(format!("{prefix}.zero"), Tensor::zero_scalar_dt(data.datum_type)?)?;
         var_shape.set(axis, 1.to_dim());
         let init = model.wire_node(
             format!("{prefix}.init"),

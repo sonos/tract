@@ -534,7 +534,7 @@ mod test {
     fn test_softmax_trivial_0() -> Result<()> {
         let input_dt = DatumType::QU8(ZpScale { zero_point: 0, scale: 0.03125 }); // Q3_5
         let output_dt = DatumType::QU8(ZpScale { zero_point: 0, scale: 0.00390625 }); // Q0_8;
-        let mut data = Tensor::from_shape(&[1, 1, 2, 2], &[0_u8, 0, 0, 4])?;
+        let mut data = Tensor::from_shape(tvec![1, 1, 2, 2], &[0_u8, 0, 0, 4])?;
         unsafe { data.set_datum_type(input_dt) };
 
         let prob = SoftmaxProblem { data, axes: tvec![3], output_dt };
@@ -547,7 +547,7 @@ mod test {
     fn test_softmax_trivial_1() -> Result<()> {
         let input_dt = DatumType::QI8(ZpScale { zero_point: 0, scale: 0.0625 }); // Q3_4
         let output_dt = DatumType::QU8(ZpScale { zero_point: 0, scale: 0.00390625 }); // Q0_8;
-        let mut data = Tensor::from_shape(&[1, 1, 2, 2], &[0_i8, 0, 0, 4])?;
+        let mut data = Tensor::from_shape(tvec![1, 1, 2, 2], &[0_i8, 0, 0, 4])?;
         unsafe { data.set_datum_type(input_dt) };
 
         let prob = SoftmaxProblem { data, axes: tvec![3], output_dt };
@@ -560,7 +560,7 @@ mod test {
     fn test_softmax_trivial_2() -> Result<()> {
         let input_dt = DatumType::QI8(ZpScale { zero_point: 0, scale: 0.0625 }); // Q3_4
         let output_dt = DatumType::QI8(ZpScale { zero_point: 0, scale: 0.0078125 }); // Q0_7;
-        let mut data = Tensor::from_shape(&[1, 1, 2, 2], &[0_i8, 0, 0, -4])?;
+        let mut data = Tensor::from_shape(tvec![1, 1, 2, 2], &[0_i8, 0, 0, -4])?;
         unsafe { data.set_datum_type(input_dt) };
 
         let prob = SoftmaxProblem { data, axes: tvec![3], output_dt };
@@ -573,7 +573,7 @@ mod test {
     fn test_softmax_trivial_3() -> Result<()> {
         let input_dt = DatumType::QU8(ZpScale { zero_point: 0, scale: 0.03125 }); // Q3_5
         let output_dt = DatumType::QI8(ZpScale { zero_point: 0, scale: 0.0078125 }); // Q0_7;
-        let mut data = Tensor::from_shape(&[1, 1, 2, 2], &[0_u8, 0, 0, 4])?;
+        let mut data = Tensor::from_shape(tvec![1, 1, 2, 2], &[0_u8, 0, 0, 4])?;
         unsafe { data.set_datum_type(input_dt) };
 
         let prob = SoftmaxProblem { data, axes: tvec![2], output_dt };
@@ -585,7 +585,7 @@ mod test {
     fn test_softmax_1() -> Result<()> {
         let input_dt = DatumType::QI8(ZpScale { zero_point: 0, scale: 0.5 }); // Q6_1
         let output_dt = DatumType::QU8(ZpScale { zero_point: 0, scale: 0.5 }); // Q7_1
-        let mut data = Tensor::from_shape(&[1, 1, 1, 2], &[115_i8, 115])?;
+        let mut data = Tensor::from_shape(tvec![1, 1, 1, 2], &[115_i8, 115])?;
         unsafe { data.set_datum_type(input_dt) };
 
         let prob = SoftmaxProblem { data, axes: tvec![3], output_dt };
@@ -597,7 +597,7 @@ mod test {
     fn test_softmax_2() -> Result<()> {
         let input_dt = DatumType::QI8(ZpScale { zero_point: 0, scale: 0.0001 });
         let output_dt = DatumType::QU8(ZpScale { zero_point: 0, scale: 0.008 });
-        let mut data = Tensor::from_shape(&[1, 1, 1, 2], &[115_i8, 115])?;
+        let mut data = Tensor::from_shape(tvec![1, 1, 1, 2], &[115_i8, 115])?;
         unsafe { data.set_datum_type(input_dt) };
 
         let prob = SoftmaxProblem { data, axes: tvec![3], output_dt };
@@ -609,7 +609,7 @@ mod test {
     fn test_softmax_3() -> Result<()> {
         let input_dt = DatumType::QU8(ZpScale { zero_point: 0, scale: 0.6220956 });
         let output_dt = DatumType::QU8(ZpScale { zero_point: 0, scale: 0.5187921 });
-        let mut data = Tensor::from_shape(&[1, 1, 1, 2], &[13_u8, 218])?;
+        let mut data = Tensor::from_shape(tvec![1, 1, 1, 2], &[13_u8, 218])?;
         unsafe { data.set_datum_type(input_dt) };
 
         let prob = SoftmaxProblem { data, axes: tvec![3], output_dt };

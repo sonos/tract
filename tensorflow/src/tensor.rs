@@ -91,10 +91,10 @@ impl<'a> TryFrom<&'a TensorProto> for Tensor {
         let mat: Tensor = if content.len() != 0 {
             unsafe {
                 match dtype {
-                    DataType::DtFloat => Self::from_raw::<f32>(&dims, content)?,
-                    DataType::DtDouble => Self::from_raw::<f64>(&dims, content)?,
-                    DataType::DtInt32 => Self::from_raw::<i32>(&dims, content)?,
-                    DataType::DtInt64 => Self::from_raw::<i64>(&dims, content)?,
+                    DataType::DtFloat => Self::from_raw::<f32>(dims, content)?,
+                    DataType::DtDouble => Self::from_raw::<f64>(dims, content)?,
+                    DataType::DtInt32 => Self::from_raw::<i32>(dims, content)?,
+                    DataType::DtInt64 => Self::from_raw::<i64>(dims, content)?,
                     _ => unimplemented!("missing type (for get_tensor_content) {:?}", dtype),
                 }
             }

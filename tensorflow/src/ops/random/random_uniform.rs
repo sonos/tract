@@ -155,7 +155,7 @@ impl TypedOp for TypedRandomUniform {
 pub fn make_f32(shape: &[usize], seed1: u64, seed2: u64) -> TractResult<TValue> {
     let mut rng = Philox4x32x10::weird_tf_constructor(seed1, seed2).u32_iter();
     unsafe {
-        let mut tensor = Tensor::uninitialized::<f32>(shape)?;
+        let mut tensor = Tensor::uninitialized::<f32>(shape.into())?;
         tensor.as_slice_mut::<f32>()?.iter_mut().for_each(|x| {
             let mantissa = rng.next().unwrap() & 0x7fffff;
             let exp = 127u32;
@@ -179,7 +179,7 @@ impl RandomUniformInt {
     pub fn make_i32(&self, shape: &[usize], lo: i32, hi: i32) -> TractResult<TValue> {
         let mut rng = Philox4x32x10::weird_tf_constructor(self.seed1, self.seed2).u32_iter();
         unsafe {
-            let mut tensor = Tensor::uninitialized::<i32>(shape)?;
+            let mut tensor = Tensor::uninitialized::<i32>(shape.into())?;
             tensor.as_slice_mut::<i32>()?.iter_mut().for_each(|x| {
                 // reproduce TF casts, with no conviction
                 let lo = lo as u32;

@@ -360,7 +360,7 @@ impl AxisOp {
             Reshape(at, from, to) => {
                 let mut shape: TVec<usize> = tensor.shape().into();
                 self.change_shape_array(&mut shape, false)?;
-                if tensor.set_shape(&shape).is_ok() {
+                if tensor.set_shape(shape).is_ok() {
                     Ok(())
                 } else if broadcasting
                     && tensor.shape().iter().skip(*at).take(from.len()).all(|d| *d == 1)
@@ -1116,7 +1116,7 @@ mod proptests {
 
         fn input(&self) -> TractResult<Tensor> {
             unsafe {
-                let mut t = Tensor::uninitialized::<i64>(&self.input)?;
+                let mut t = Tensor::uninitialized::<i64>(self.input.clone())?;
                 for i in 0..t.len() {
                     t.as_slice_mut().unwrap()[i] = i as i64;
                 }

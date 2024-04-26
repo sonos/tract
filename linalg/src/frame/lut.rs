@@ -21,7 +21,7 @@ impl<K: LutKer> LutImpl<K> {
         unsafe {
             LutImpl {
                 table: Tensor::from_raw_aligned::<u8>(
-                    &[table.len()],
+                    tvec!(table.len()),
                     table,
                     K::table_alignment_bytes(),
                 )

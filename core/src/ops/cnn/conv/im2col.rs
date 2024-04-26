@@ -146,7 +146,7 @@ impl EvalOp for Im2Col {
         unsafe {
             let mut input = inputs.remove(0).into_tensor();
             let pad_value: Option<&Tensor> = if inputs.len() > 0 { Some(&inputs[0]) } else { None };
-            let mut output = Tensor::uninitialized::<Opaque>(&geometry.packed_shape)?;
+            let mut output = Tensor::uninitialized::<Opaque>(geometry.packed_shape.clone())?;
             if !self.pool_spec.data_format.has_n() {
                 input.insert_axis(0)?;
             }
@@ -162,7 +162,7 @@ impl EvalOp for Im2Col {
                     for g in 0..self.group {
                         let mut data = Tensor::uninitialized_aligned_dt(
                             input.datum_type(),
-                            &[geometry.b_pack.len(geometry.k, geometry.n)],
+                            tvec![geometry.b_pack.len(geometry.k, geometry.n)],
                             geometry.b_pack.alignment(),
                         )?;
                         dispatch_copy_by_size!(Patcher::patch(input.datum_type())(
@@ -264,7 +264,7 @@ impl Patcher {
     ) -> TractResult<()> {
         unsafe {
             let pad_value = *pad_value.to_scalar_unchecked();
-            let mut mega_matrix = Tensor::uninitialized::<T>(&[geometry.k, geometry.n])?;
+            let mut mega_matrix = Tensor::uninitialized::<T>(tvec![geometry.k, geometry.n])?;
             let mut mega_matrix_view = mega_matrix.to_array_view_mut_unchecked::<T>();
             let ptr = input.as_ptr_unchecked::<T>();
             let ptr = ptr.add(geometry.input_shape_with_n.c_stride() * (g * geometry.ci_per_group));

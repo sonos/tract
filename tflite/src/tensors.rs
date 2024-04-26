@@ -57,6 +57,7 @@ impl TryFrom<DatumType> for BufferTensorType {
 
 #[allow(dead_code)]
 fn create_tensor(dt: DatumType, shape: &[usize], data: &[u8]) -> TractResult<Tensor> {
+    let shape = shape.into();
     unsafe {
         match dt {
             DatumType::U8 => Tensor::from_raw::<u8>(shape, data),

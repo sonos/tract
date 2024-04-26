@@ -30,37 +30,37 @@ fn space_to_batch<T: Copy + Datum + Zero>(
             continue;
         }
         let mut stack = tvec!();
-        let mut pad_shape = data.shape().to_vec();
+        let mut pad_shape:TVec<usize> = data.shape().into();
         if pad[0] != 0 {
             pad_shape[ix + 1] = pad[0] as usize;
-            stack.push(Tensor::zero::<T>(&pad_shape)?);
+            stack.push(Tensor::zero::<T>(pad_shape.clone())?);
         }
         stack.push(data);
         if pad[1] != 0 {
             pad_shape[ix + 1] = pad[1] as usize;
-            stack.push(Tensor::zero::<T>(&pad_shape)?);
+            stack.push(Tensor::zero::<T>(pad_shape)?);
         }
         data = Tensor::stack_tensors(ix + 1, &stack)?;
     }
 
-    let mut reshaped = vec![data.shape()[0]];
+    let mut reshaped = tvec![data.shape()[0]];
     let block_size = block_shape.iter().map(|a| *a as usize).product::<usize>();
-    let mut final_shape = vec![block_size * data.shape()[0]];
+    let mut final_shape = tvec![block_size * data.shape()[0]];
     for (m, &block_shape_dim) in block_shape.iter().enumerate() {
         reshaped.push(data.shape()[m + 1] / block_shape_dim as usize);
         reshaped.push(block_shape_dim as usize);
         final_shape.push(data.shape()[m + 1] / block_shape_dim as usize);
     }
-    reshaped.extend(&data.shape()[block_shape.len() + 1..]);
-    final_shape.extend(&data.shape()[block_shape.len() + 1..]);
-    let data = data.into_shape(&reshaped)?;
+    reshaped.extend(data.shape()[block_shape.len() + 1..].iter().copied());
+    final_shape.extend(data.shape()[block_shape.len() + 1..].iter().copied());
+    let data = data.into_shape(reshaped)?;
 
     let mut permuted_axes: Vec<_> = (0..block_shape.len()).map(|x| 2 * x + 2).collect();
     permuted_axes.push(0);
     permuted_axes.extend((0..block_shape.len()).map(|x| 2 * x + 1));
     permuted_axes.extend((block_shape.len() * 2 + 1)..data.rank());
     let data = data.permute_axes(&permuted_axes)?;
-    let data = data.into_shape(&final_shape)?;
+    let data = data.into_shape(final_shape)?;
 
     Ok(data.into_tvalue())
 }

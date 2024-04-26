@@ -74,8 +74,8 @@ impl Expansion for FusedBatchNorm {
                 izip!(variance, scale).map(|(v, s)| s / (v + self.epsilon).sqrt()).collect();
             let inter: Vec<f32> = izip!(offset, mean, &slope).map(|(o, m, s)| o - m * s).collect();
             let shape = tvec!(1, 1, 1, scale.len());
-            let slope = tensor1(&slope).into_shape(&shape)?;
-            let inter = tensor1(&inter).into_shape(&shape)?;
+            let slope = tensor1(&slope).into_shape(shape.clone())?;
+            let inter = tensor1(&inter).into_shape(shape)?;
             let slope = target.add_const(prefix.to_string() + ".slope", slope)?;
             let inter = target.add_const(prefix.to_string() + ".inter", inter)?;
             let wire = target.wire_node(

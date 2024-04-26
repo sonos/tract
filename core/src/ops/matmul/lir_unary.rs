@@ -7,7 +7,6 @@ use tract_itertools::Itertools;
 
 use tract_linalg::mmm::{BinOp, FusedSpec, MMMInput, MatMatMul, OutputStoreSpec};
 use tract_linalg::Scaler;
-use tract_smallvec::ToSmallVec;
 
 #[derive(Clone, Debug)]
 pub enum ProtoFusedSpec {
@@ -304,7 +303,7 @@ impl EvalOp for LirMatMulUnary {
             if self.trivial_path {
                 let c_shape = self.c_fact.shape.as_concrete().unwrap_unchecked();
                 let geometry = self.geometry.as_concrete().unwrap_unchecked();
-                let mut c = Tensor::uninitialized_dt(self.c_fact.datum_type, c_shape)?;
+                let mut c = Tensor::uninitialized_dt(self.c_fact.datum_type, c_shape.into())?;
                 let uops: Vec<FusedSpec> =
                     self.micro_ops.iter().map(|o| o.resolve_trivial(&inputs, &mut c)).collect();
                 self.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch.as_mut(), &uops)?;
@@ -312,9 +311,9 @@ impl EvalOp for LirMatMulUnary {
             } else {
                 let geometry = self.geometry.to_concrete(&session.resolved_symbols)?;
                 let c_shape = self.c_fact.shape.eval_to_usize(&session.resolved_symbols)?;
-                let c = Tensor::uninitialized_dt(self.c_fact.datum_type, &c_shape)?;
+                let c = Tensor::uninitialized_dt(self.c_fact.datum_type, c_shape.into_owned())?;
                 let mut uops = vec![FusedSpec::ShiftLeft(0); self.micro_ops.len()];
-                let mut looping_shape: TVec<usize> = c_shape.to_smallvec();
+                let mut looping_shape: TVec<usize> = c.shape().into();
                 looping_shape[self.c_m_axis] = 1;
                 looping_shape[self.c_n_axis] = 1;
                 for c_coords in indices(&*looping_shape) {

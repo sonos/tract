@@ -73,7 +73,7 @@ impl DeconvSum {
         let mut tensor = bias.into_tensor();
         let hw = *gemm.shape().last().unwrap();
         let n = *output_shape.n().unwrap_or(&1);
-        let n_o_hkwk_hw = gemm.into_tensor().into_shape(&[
+        let n_o_hkwk_hw = gemm.into_tensor().into_shape(tvec![
             n,
             *output_shape.c(),
             self.pool_spec.kernel_shape.iter().product(),

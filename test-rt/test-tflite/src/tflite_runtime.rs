@@ -86,7 +86,7 @@ impl State for TfliteState {
                 _ => bail!("unknown type in tract tflitec test Runtime"),
             };
             let tensor = unsafe {
-                Tensor::from_raw_dt(dt, output_tensor.shape().dimensions(), output_tensor.data())?
+                Tensor::from_raw_dt(dt, output_tensor.shape().dimensions().clone().into(), output_tensor.data())?
             };
             outputs.push(tensor.into_tvalue());
         }

@@ -90,11 +90,11 @@ impl OpState for DelayState {
         // build output
         unsafe {
             if self.buffer.is_none() {
-                let mut shape = input.shape().to_owned();
+                let mut shape: TVec<usize> = input.shape().into();
                 shape[op.axis] = buffered;
-                self.buffer = Some(Tensor::uninitialized_dt(input.datum_type(), &shape)?);
+                self.buffer = Some(Tensor::uninitialized_dt(input.datum_type(), shape)?);
             };
-            let mut output = Tensor::uninitialized_dt(input.datum_type(), &output_shape)?;
+            let mut output = Tensor::uninitialized_dt(input.datum_type(), output_shape)?;
             self.apply_delay_unchecked(op, &input, &mut output);
             Ok(tvec!(output.into()))
         }
@@ -199,7 +199,9 @@ struct FrozenDelayState {
 
 impl OpStateFreeze for DelayState {
     fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenDelayState { buffer: self.buffer.as_ref().map(|t| t.clone().into_arc_tensor()) })
+        Box::new(FrozenDelayState {
+            buffer: self.buffer.as_ref().map(|t| t.clone().into_arc_tensor()),
+        })
     }
 }
 

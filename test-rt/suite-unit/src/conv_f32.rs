@@ -1197,9 +1197,9 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
 
-    let mut data = Tensor::zero::<f32>(&[1, 5, 6]).unwrap();
+    let mut data = Tensor::zero::<f32>(tvec![1, 5, 6]).unwrap();
     *data.as_slice_mut::<f32>().unwrap().last_mut().unwrap() = 1.0;
-    let mut kernel = Tensor::zero::<f32>(&[1, 1, 3, 2]).unwrap();
+    let mut kernel = Tensor::zero::<f32>(tvec![1, 1, 3, 2]).unwrap();
     *kernel.as_slice_mut::<f32>().unwrap().last_mut().unwrap() = 1.0;
     suite.add(
         "pack_0",

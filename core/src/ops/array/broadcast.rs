@@ -24,7 +24,7 @@ impl EvalOp for MultiBroadcastTo {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let shape = self.shape.eval_to_usize(&session.resolved_symbols)?;
-        Ok(tvec!(inputs[0].broadcast_to_shape(&shape)?.into_tvalue()))
+        Ok(tvec!(inputs[0].broadcast_to_shape(shape.into_owned())?.into_tvalue()))
     }
 }
 

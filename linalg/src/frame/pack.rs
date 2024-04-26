@@ -57,8 +57,11 @@ impl Packer {
         let panel_bytes = panel_len * t.datum_type().size_of();
         let strides = t.strides();
         unsafe {
-            let mut packed =
-                Tensor::uninitialized_aligned_dt(t.datum_type(), &[packed_len], self.alignment())?;
+            let mut packed = Tensor::uninitialized_aligned_dt(
+                t.datum_type(),
+                tvec!(packed_len),
+                self.alignment(),
+            )?;
             dispatch_copy!(Self::pack_t(t.datum_type())(
                 self,
                 packed.as_ptr_mut_unchecked(),
@@ -86,8 +89,11 @@ impl Packer {
         let panel_bytes = panel_len * t.datum_type().size_of();
         let strides = t.strides();
         unsafe {
-            let mut packed =
-                Tensor::uninitialized_aligned_dt(t.datum_type(), &[packed_len], self.alignment())?;
+            let mut packed = Tensor::uninitialized_aligned_dt(
+                t.datum_type(),
+                tvec![packed_len],
+                self.alignment(),
+            )?;
             dispatch_copy!(Self::pack_t(t.datum_type())(
                 self,
                 packed.as_ptr_mut_unchecked(),
@@ -477,7 +483,7 @@ mod test {
             let input = self.input().into_tensor();
             let panel_len = packer.single_panel_len(self.k_range.len());
             let mut output =
-                Tensor::zero::<u32>(&[packer.len(self.k_range.len(), self.mn_range.len())])
+                Tensor::zero::<u32>(tvec![packer.len(self.k_range.len(), self.mn_range.len())])
                     .unwrap();
             unsafe {
                 packer.pack_segment(

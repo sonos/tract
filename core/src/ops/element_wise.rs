@@ -317,7 +317,7 @@ macro_rules! element_wise_oop {
             }
             fn eval_out_of_place(&self, t: &Tensor, _out_dt: Option<DatumType>) -> TractResult<Tensor> {
                 $(
-                    let mut dst = unsafe { Tensor::uninitialized_dt(<$typ_dst>::datum_type(), &t.shape())? };
+                    let mut dst = unsafe { Tensor::uninitialized_dt(<$typ_dst>::datum_type(), t.shape().into())? };
                     $(if t.datum_type() == $typ::datum_type() {
                         let f: fn(&Self, &[$typ], &mut[$typ_dst]) -> TractResult<()> = $f;
                         f(self, t.as_slice::<$typ>()?, dst.as_slice_mut::<$typ_dst>()?)?;

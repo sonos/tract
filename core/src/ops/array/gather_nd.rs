@@ -91,7 +91,7 @@ impl EvalOp for GatherNd {
         let indices = indices.cast_to::<i32>()?;
         let indices = indices.to_array_view::<i32>()?;
         unsafe {
-            let mut output = Tensor::uninitialized_dt(data.datum_type(), &shape)?;
+            let mut output = Tensor::uninitialized_dt(data.datum_type(), shape)?;
             dispatch_datum_by_size!(Self::eval_t(data.datum_type())(
                 self,
                 &mut output,

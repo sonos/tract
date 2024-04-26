@@ -132,7 +132,7 @@ impl OpState for RandomState {
         let mut tensor = unsafe {
             Tensor::uninitialized_dt(
                 op.fact.datum_type,
-                &op.fact.shape.eval_to_usize(&session.resolved_symbols)?,
+                op.fact.shape.eval_to_usize(&session.resolved_symbols)?.into_owned(),
             )?
         };
         match &op.dist {

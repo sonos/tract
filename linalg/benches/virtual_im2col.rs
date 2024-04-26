@@ -17,8 +17,8 @@ fn conv(
     kw: usize,
 ) {
     // CHW HWIO
-    let input = Tensor::zero::<f32>(&[ci, h, w]).unwrap();
-    let filters = Tensor::zero::<f32>(&[kh, kw, ci, co]).unwrap();
+    let input = Tensor::zero::<f32>(tvec![ci, h, w]).unwrap();
+    let filters = Tensor::zero::<f32>(tvec![kh, kw, ci, co]).unwrap();
     let mut cv = ConvProblem { input, filters, lazy_im2col: false };
     c.bench_function("eager", |b| {
         b.iter(|| {

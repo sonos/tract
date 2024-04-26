@@ -16,8 +16,6 @@ pub struct DeconvDelay {
     pub deconv_output_dim: TDim,
 }
 
-
-
 impl Op for DeconvDelay {
     fn name(&self) -> Cow<str> {
         "DeconvDelay".into()
@@ -72,7 +70,7 @@ impl OpState for DeconvDelayState {
         if self.buffer.is_none() {
             let mut buffer_size: TVec<usize> = inputs[0].shape().into();
             buffer_size[op.axis] = op.overlap; //+ (op.stride - 1) * (op.pulse - 1);
-            self.buffer = Some(Tensor::zero_dt(inputs[0].datum_type(), &buffer_size)?);
+            self.buffer = Some(Tensor::zero_dt(inputs[0].datum_type(), buffer_size)?);
         }
         let mut input = inputs[0].clone().into_tensor();
         dispatch_numbers!(Self::eval_t(input.datum_type())(self, session, op, &mut input))?;

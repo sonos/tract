@@ -22,7 +22,9 @@ impl EvalOp for ConstantLike {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
-        Ok(tvec!(tensor0(self.value).broadcast_scalar_to_shape(input.shape())?.into_tvalue()))
+        Ok(tvec!(tensor0(self.value)
+            .broadcast_scalar_to_shape(input.shape().into())?
+            .into_tvalue()))
     }
 }
 
@@ -40,10 +42,10 @@ impl InferenceRulesOp for ConstantLike {
         s.equals(&inputs[0].shape, &outputs[0].shape)?;
         s.given_2(&inputs[0].shape, &inputs[0].datum_type, move |s, shape, dt| {
             if shape.iter().all(|d| d.to_usize().is_ok()) {
-                let shape: Vec<usize> = shape.iter().map(|d| d.to_usize().unwrap()).collect();
+                let shape: TVec<usize> = shape.iter().map(|d| d.to_usize().unwrap()).collect();
                 let value = tensor0(self.value)
                     .cast_to_dt(dt)?
-                    .broadcast_scalar_to_shape(&shape)?
+                    .broadcast_scalar_to_shape(shape)?
                     .into_arc_tensor();
                 s.equals(&outputs[0].value, value)?;
             }

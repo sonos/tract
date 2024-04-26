@@ -81,7 +81,7 @@ pub struct DequantizeLinearF32 {
 
 impl DequantizeLinearF32 {
     fn eval_t<T: Datum + AsPrimitive<i32>>(&self, input: &Tensor) -> TractResult<Tensor> {
-        let mut output = unsafe { Tensor::uninitialized::<f32>(input.shape())? };
+        let mut output = unsafe { Tensor::uninitialized::<f32>(input.shape().into())? };
         input
             .as_slice::<T>()?
             .iter()
@@ -413,7 +413,7 @@ impl ElementWiseMiniOp for OffsetI8asU8 {
     }
     fn eval_out_of_place(&self, t: &Tensor, out_dt: Option<DatumType>) -> TractResult<Tensor> {
         let output_type = out_dt.unwrap_or(self.output_type(t.datum_type()).unwrap());
-        let mut dst = unsafe { Tensor::uninitialized_dt(output_type, t.shape())? };
+        let mut dst = unsafe { Tensor::uninitialized_dt(output_type, t.shape().into())? };
         if t.datum_type().unquantized() == i8::datum_type() {
             t.as_slice::<i8>()?
                 .iter()
@@ -453,7 +453,7 @@ impl ElementWiseMiniOp for OffsetU8asI8 {
     }
     fn eval_out_of_place(&self, t: &Tensor, out_dt: Option<DatumType>) -> TractResult<Tensor> {
         let output_type = out_dt.unwrap_or(self.output_type(t.datum_type()).unwrap());
-        let mut dst = unsafe { Tensor::uninitialized_dt(output_type, t.shape())? };
+        let mut dst = unsafe { Tensor::uninitialized_dt(output_type, t.shape().into())? };
         if t.datum_type().unquantized() == u8::datum_type() {
             t.as_slice::<u8>()?
                 .iter()
