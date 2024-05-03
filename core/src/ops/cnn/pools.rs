@@ -103,6 +103,23 @@ impl PoolSpec {
             ..self.clone()
         })
     }
+
+    pub fn declutter(&self, input: &[TDim]) -> TractResult<Option<PoolSpec>> {
+        if let PaddingSpec::ExplicitOnnxPool(before, after, _) = &self.padding {
+            for replacement in [
+                PaddingSpec::Valid,
+                PaddingSpec::SameUpper,
+                PaddingSpec::SameLower,
+                PaddingSpec::Explicit(before.clone(), after.clone()),
+            ] {
+                let new_pool_spec = PoolSpec { padding: replacement, ..self.clone() };
+                if new_pool_spec.compute_geo(&input)? == self.compute_geo(&input)? {
+                    return Ok(Some(new_pool_spec));
+                }
+            }
+        }
+        Ok(None)
+    }
 }
 
 pub type PoolGeometry = super::GeometryBound<SymbolicPoolGeometry, ConcretePoolGeometry>;
