@@ -153,7 +153,7 @@ impl Annotations {
                     while tags.outlet_axes[outlet.slot].len() <= axis {
                         tags.outlet_axes[outlet.slot].push(Default::default());
                     }
-                    tags.outlet_axes[outlet.slot][axis] = name.clone();
+                    tags.outlet_axes[outlet.slot][axis].clone_from(&name);
                 }
             }
             for node in &model.nodes {

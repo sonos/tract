@@ -237,8 +237,8 @@ where
     assert_eq!(a.datum_type(), TA::datum_type());
     let op = MatMatMulImpl::<K, TI>::default();
     unsafe {
-        let packed_a = op.a_pack().pack_tensor(&a, 1, 0).unwrap();
-        let packed_b = op.b_pack().pack_tensor(&b, 0, 1).unwrap();
+        let packed_a = op.a_pack().pack_tensor(a, 1, 0).unwrap();
+        let packed_b = op.b_pack().pack_tensor(b, 0, 1).unwrap();
 
         fused_ops::<K, TA, TB, TC, TI, _>(
             m,
@@ -275,7 +275,7 @@ where
     unsafe {
         let op = MatMatMulImpl::<K, TI>::default();
         let b = b.clone().into_shape(&[k, 1]).unwrap();
-        let packed_a = op.a_pack().pack_tensor(&a, 1, 0).unwrap();
+        let packed_a = op.a_pack().pack_tensor(a, 1, 0).unwrap();
         let packed_b = op.b_pack().pack_tensor(&b, 0, 1).unwrap();
 
         fused_ops::<K, TA, TB, TC, TI, _>(

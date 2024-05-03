@@ -31,7 +31,7 @@ impl EvalOp for MultiBroadcastTo {
 impl TypedOp for MultiBroadcastTo {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = inputs[0].datum_type.fact(self.shape.clone());
-        fact.uniform = inputs[0].uniform.clone();
+        fact.uniform.clone_from(&inputs[0].uniform);
         Ok(tvec!(fact))
     }
 

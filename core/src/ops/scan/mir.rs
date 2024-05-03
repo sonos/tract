@@ -742,7 +742,7 @@ impl TypedOp for Scan {
         let body_invs = self.body.axes_mapping().with_context(|| "Computing body axes mapping")?;
         for body_axis in body_invs.iter_all_axes() {
             let mut info = Axis::new(body_axis.repr, inputs.len(), outputs.len());
-            info.inputs = body_axis.inputs.clone();
+            info.inputs.clone_from(&body_axis.inputs);
             for (ix, output_mapping) in self.output_mapping.iter().enumerate() {
                 let mut slots = vec![];
                 if let Some((slot, _scan)) = output_mapping.scan {
@@ -752,7 +752,7 @@ impl TypedOp for Scan {
                     slots.push(slot);
                 }
                 for slot in slots {
-                    info.outputs[slot] = body_axis.outputs[ix].clone();
+                    info.outputs[slot].clone_from(&body_axis.outputs[ix]);
                 }
             }
             if info.inputs.iter().any(|i| i.len() > 0) || info.outputs.iter().any(|i| i.len() > 0) {

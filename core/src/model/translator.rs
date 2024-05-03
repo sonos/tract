@@ -56,7 +56,7 @@ where
         target.inputs = source.input_outlets()?.iter().map(|i| mapping[i]).collect();
         target.outputs = source.output_outlets()?.iter().map(|o| mapping[o]).collect();
         target.symbol_table = source.symbol_table.clone();
-        target.properties = source.properties.clone();
+        target.properties.clone_from(&source.properties);
         Ok((target, mapping))
     }
 }
