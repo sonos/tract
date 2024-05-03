@@ -278,7 +278,7 @@ pub mod test {
         let op = K::red();
         let expected = values.iter().fold(neutral, |acc, i| reference_reducer(acc, *i));
         let mut found = values;
-        let red = op.run_with_params(&mut found, params).unwrap();
+        let red = op.run_with_params(found, params).unwrap();
         tensor0(red)
             .close_enough(&tensor0(expected), true)
             .map_err(|e| TestCaseError::fail(e.root_cause().to_string()))?;

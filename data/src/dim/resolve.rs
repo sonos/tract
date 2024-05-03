@@ -58,7 +58,7 @@ mod tests {
 
     #[test]
     fn negative() {
-        assert_eq!(solve_for(&A, &p("a + 3"), &p("0")), Some(-3i32.to_dim()));
+        assert_eq!(solve_for(&A, &p("a + 3"), &p("0")), Some(-(3i32.to_dim())));
     }
 
     #[test]

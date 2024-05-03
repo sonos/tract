@@ -75,6 +75,6 @@ pub fn mat_mat_with_mm(
     let pa = mm.a_pack().pack_tensor(&a, 1, 0).unwrap();
     let pb = mm.b_pack().pack_tensor(&b, 0, 1).unwrap();
     unsafe {
-        run(m, k, n, be, &*mm, &*pa, &*pb, cold);
+        run(m, k, n, be, mm, &*pa, &*pb, cold);
     }
 }
