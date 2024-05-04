@@ -277,7 +277,7 @@ pub mod test {
         crate::setup_test_logger();
         let op = K::red();
         let expected = values.iter().fold(neutral, |acc, i| reference_reducer(acc, *i));
-        let mut found = values;
+        let found = values;
         let red = op.run_with_params(found, params).unwrap();
         tensor0(red)
             .close_enough(&tensor0(expected), true)
