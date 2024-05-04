@@ -113,7 +113,7 @@ impl PoolSpec {
                 PaddingSpec::Explicit(before.clone(), after.clone()),
             ] {
                 let new_pool_spec = PoolSpec { padding: replacement, ..self.clone() };
-                if new_pool_spec.compute_geo(&input)? == self.compute_geo(&input)? {
+                if new_pool_spec.compute_geo(input)? == self.compute_geo(input)? {
                     return Ok(Some(new_pool_spec));
                 }
             }
