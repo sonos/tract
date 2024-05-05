@@ -108,7 +108,7 @@ impl PoolSpec {
         if let PaddingSpec::ExplicitOnnxPool(before, after, _) = &self.padding {
             let input = self.data_format.shape(input)?;
             let input_hw = input.hw_dims();
-            let reference = self.computed_padding(&input_hw);
+            let reference = self.computed_padding(input_hw);
             for replacement in [
                 PaddingSpec::Valid,
                 PaddingSpec::SameUpper,
