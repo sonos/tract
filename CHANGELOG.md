@@ -1,5 +1,9 @@
 # Unreleased
 
+# 0.21.4 - 2024-05-11
+* [TFLite] fixes for fully connected and max pool layers
+* Allow opting out of new memory friendly execution order optimisation
+
 # 0.21.4 - 2024-04-23
 * More memory/cache friendly execution order
 * Several fixes around symbolic dimensions computation (some should help with attention models)
