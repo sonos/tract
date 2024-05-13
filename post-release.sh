@@ -33,3 +33,4 @@ do
 done
 
 git commit . -m "post-release $VERSION"
+git push
