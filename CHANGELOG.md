@@ -1,6 +1,6 @@
 # Unreleased
 
-# 0.21.4 - 2024-05-11
+# 0.21.5 - 2024-05-11
 * [TFLite] fixes for fully connected and max pool layers
 * Allow opting out of new memory friendly execution order optimisation
 

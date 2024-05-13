@@ -1,6 +1,6 @@
 [package]
 name = "tract"
-version = "0.21.5-pre"
+version = "0.21.5"
 authors = [ "Romain Liautaud <romain.liautaud@snips.ai>", "Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT OR Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -35,17 +35,17 @@ rustls.workspace = true
 scan_fmt.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tract-linalg = { version = "=0.21.5-pre", path = "../linalg" }
-tract-core = { version = "=0.21.5-pre", path = "../core" }
-tract-hir = { version = "=0.21.5-pre", path = "../hir" }
-tract-nnef = { version = "=0.21.5-pre", path = "../nnef" }
-tract-libcli = { version = "=0.21.5-pre", path = "../libcli" }
-tract-extra = { optional = true, version = "=0.21.5-pre", path = "../extra" }
-tract-pulse-opl = { optional = true, version = "=0.21.5-pre", path = "../pulse-opl" }
-tract-pulse = { optional = true, version = "=0.21.5-pre", path = "../pulse" }
-tract-onnx = { optional = true, version = "=0.21.5-pre", path = "../onnx" }
-tract-tensorflow = { optional = true, version = "=0.21.5-pre", path = "../tensorflow" }
-tract-tflite = { optional = true, version = "=0.21.5-pre", path = "../tflite" }
+tract-linalg = { version = "=0.21.5", path = "../linalg" }
+tract-core = { version = "=0.21.5", path = "../core" }
+tract-hir = { version = "=0.21.5", path = "../hir" }
+tract-nnef = { version = "=0.21.5", path = "../nnef" }
+tract-libcli = { version = "=0.21.5", path = "../libcli" }
+tract-extra = { optional = true, version = "=0.21.5", path = "../extra" }
+tract-pulse-opl = { optional = true, version = "=0.21.5", path = "../pulse-opl" }
+tract-pulse = { optional = true, version = "=0.21.5", path = "../pulse" }
+tract-onnx = { optional = true, version = "=0.21.5", path = "../onnx" }
+tract-tensorflow = { optional = true, version = "=0.21.5", path = "../tensorflow" }
+tract-tflite = { optional = true, version = "=0.21.5", path = "../tflite" }
 
 [features]
 default = ["onnx", "tf", "pulse", "pulse-opl", "tflite", "extra"]
