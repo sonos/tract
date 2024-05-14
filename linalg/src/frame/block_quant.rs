@@ -59,8 +59,7 @@ impl BlockQuant for Q4_0 {
     fn quant_block(&self, block: &[f32], quant: &mut [u8]) {
         assert!(quant.len() == self.block_bytes());
         assert!(block.len() == self.block_len());
-        let mut writer = Cursor::new(quant);
-        let mut writer = NibbleWriter::new(&mut writer);
+        let mut writer = NibbleWriter::for_slice(quant);
         let mut amax = 0f32;
         let mut max = 0f32;
         for v in block {
@@ -73,20 +72,19 @@ impl BlockQuant for Q4_0 {
         let id = if d == 0.0 { 0f32 } else { d.recip() };
         writer.write_f16(f16::from_f32(d));
 
-        for &x in block {
-            writer.write_i4(((x * id + 8.5f32) as i8).min(15));
+        for x in block {
+            writer.write_i4(((*x * id + 8.5f32) as i8).min(15));
         }
     }
 
     fn dequant_block_f32(&self, quant: &[u8], block: &mut [f32]) {
         assert!(quant.len() == self.block_bytes());
         assert!(block.len() == self.block_len());
-        let mut reader = Cursor::new(quant);
-        let mut nibbles = NibbleReader::new(&mut reader);
+        let mut nibbles = NibbleReader::for_slice(quant);
         let d = nibbles.read_f16().to_f32();
-        block.iter_mut().for_each(|x| {
+        for x in block {
             *x = (nibbles.read_i4() - 8) as f32 * d;
-        })
+        }
     }
 
     // s0_0 n0_0 n0_1 n0_2 n0_3 ... n0_30n0_31 s0_32 n0_32n0_33 ...
@@ -109,20 +107,16 @@ impl BlockQuant for Q4_0 {
         let panel_bytes = row_bytes * r;
         unsafe {
             let mut blob = Blob::for_layout(Layout::from_size_align(panel_bytes * panels, 128)?);
-            let mut writer = Cursor::new(&mut blob[..]);
-            let mut writer = NibbleWriter::new(&mut writer);
+            let mut writer = NibbleWriter::for_slice(&mut blob);
             for p in 0..panels {
                 let input = &input[r * p * row_bytes..];
-                let mut line_readers =
-                    (0..r).map(|r| Cursor::new(&input[r * row_bytes..])).collect_vec();
-                let mut readers = line_readers.iter_mut().map(NibbleReader::new).collect_vec();
+                let mut readers =
+                    (0..r).map(|r| NibbleReader::for_slice(&input[r * row_bytes..])).collect_vec();
                 for _ in 0..blocks_for_k {
                     readers.iter_mut().for_each(|r| writer.write_f16(r.read_f16()));
-                    for _ in 0..self.block_len() / 2 {
-                        for _ in [0, 1] {
-                            for r in &mut readers {
-                                writer.write_i4(r.read_i4());
-                            }
+                    for _ in 0..self.block_len() {
+                        for r in &mut readers {
+                            writer.write_i4(r.read_i4());
                         }
                     }
                 }
@@ -132,13 +126,19 @@ impl BlockQuant for Q4_0 {
     }
 }
 
-pub struct NibbleReader<'r, R> {
+pub struct NibbleReader<R> {
     second_half: Option<i8>,
-    reader: &'r mut R,
+    reader: R,
 }
 
-impl<'r, R: Read> NibbleReader<'r, R> {
-    pub fn new(reader: &'r mut R) -> NibbleReader<R> {
+impl<'s> NibbleReader<Cursor<&'s [u8]>> {
+    fn for_slice(slice: &'s [u8]) -> Self {
+        NibbleReader::new(Cursor::new(slice))
+    }
+}
+
+impl<R: Read> NibbleReader<R> {
+    fn new(reader: R) -> NibbleReader<R> {
         NibbleReader { reader, second_half: None }
     }
 
@@ -158,13 +158,19 @@ impl<'r, R: Read> NibbleReader<'r, R> {
     }
 }
 
-pub struct NibbleWriter<'r, W> {
+pub struct NibbleWriter<W> {
     first_half: Option<i8>,
-    writer: &'r mut W,
+    writer: W,
 }
 
-impl<'r, W: Write> NibbleWriter<'r, W> {
-    pub fn new(writer: &'r mut W) -> NibbleWriter<W> {
+impl<'s> NibbleWriter<Cursor<&'s mut [u8]>> {
+    fn for_slice(slice: &'s mut [u8]) -> Self {
+        NibbleWriter::new(Cursor::new(slice))
+    }
+}
+
+impl<W: Write> NibbleWriter<W> {
+    pub fn new(writer: W) -> NibbleWriter<W> {
         NibbleWriter { writer, first_half: None }
     }
 
