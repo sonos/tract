@@ -45,11 +45,14 @@ pub trait BlockQuant {
     fn pack(&self, input: &[u8], k: usize, r: usize) -> TractResult<Blob>;
 }
 
-pub struct Q4_0;
+#[derive(Copy, Clone)]
+pub struct BaseQ4_0<const QK: usize = 32>;
 
-impl BlockQuant for Q4_0 {
+pub static Q4_0: BaseQ4_0 = BaseQ4_0::<32>;
+
+impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
     fn block_len(&self) -> usize {
-        32
+        QK
     }
 
     fn block_bytes(&self) -> usize {
@@ -105,23 +108,43 @@ impl BlockQuant for Q4_0 {
         let blocks_for_k = k / self.block_len();
         let row_bytes = blocks_for_k * self.block_bytes();
         let panel_bytes = row_bytes * r;
-        unsafe {
-            let mut blob = Blob::for_layout(Layout::from_size_align(panel_bytes * panels, 128)?);
-            let mut writer = NibbleWriter::for_slice(&mut blob);
-            for p in 0..panels {
-                let input = &input[r * p * row_bytes..];
-                let mut readers =
-                    (0..r).map(|r| NibbleReader::for_slice(&input[r * row_bytes..])).collect_vec();
-                for _ in 0..blocks_for_k {
-                    readers.iter_mut().for_each(|r| writer.write_f16(r.read_f16()));
-                    for _ in 0..self.block_len() {
-                        for r in &mut readers {
-                            writer.write_i4(r.read_i4());
-                        }
+        let mut blob =
+            unsafe { Blob::for_layout(Layout::from_size_align(panel_bytes * panels, 128)?) };
+        let mut writer = NibbleWriter::for_slice(&mut blob);
+        for p in 0..panels {
+            let input = &input[r * p * row_bytes..];
+            let mut readers =
+                (0..r).map(|r| NibbleReader::for_slice(&input[r * row_bytes..])).collect_vec();
+            for _ in 0..blocks_for_k {
+                readers.iter_mut().for_each(|r| writer.write_f16(r.read_f16()));
+                for _ in 0..self.block_len() {
+                    for r in &mut readers {
+                        writer.write_i4(r.read_i4());
                     }
                 }
             }
-            Ok(blob)
+        }
+        Ok(blob)
+    }
+}
+
+impl<const QK: usize> BaseQ4_0<QK> {
+    fn panel_f32(&self, packed: &Blob, k: usize, r: usize, panel: usize, scratch: &mut [f32]) {
+        assert!(k % self.block_len() == 0);
+        let blocks_for_k = k / self.block_len();
+        let row_bytes = blocks_for_k * self.block_bytes();
+        let mut input = NibbleReader::for_slice(&packed[panel * r * row_bytes..]);
+        let mut scales = vec![0f32; r];
+        let mut scratch = scratch.iter_mut();
+        for _ in 0..blocks_for_k {
+            for s in &mut scales {
+                *s = input.read_f16().to_f32();
+            }
+            for _ in 0..self.block_len() {
+                for s in &scales {
+                    *scratch.next().unwrap() = s * (input.read_i4() - 8) as f32;
+                }
+            }
         }
     }
 }
@@ -190,6 +213,10 @@ impl<W: Write> NibbleWriter<W> {
 
 #[cfg(test)]
 mod tests {
+    use tract_data::internal::tract_ndarray::Array2;
+
+    use crate::frame::Packer;
+
     use super::*;
 
     fn cycle(b: impl BlockQuant, data: &[f32]) {
@@ -221,5 +248,35 @@ mod tests {
     #[test]
     fn loop_q4_big_neg() {
         cycle(Q4_0, &[-1234.0]);
+    }
+
+    #[test]
+    fn packing() -> TractResult<()> {
+        let (q, k, m, r) = (BaseQ4_0::<2>, 4, 4, 2);
+        let weights_orig =
+            Array2::from_shape_fn((m, k), |(m, k)| ((m * 31 + k * 17) % 20) as f32 - 10.)
+                .into_tensor();
+        let weights_f32 =
+            q.dequant_f32(&q.quant(weights_orig.as_slice::<f32>()?)?)?.into_shape(&[m, k])?;
+        eprintln!("{:?}", weights_f32.to_array_view::<f32>()?);
+        let packer = Packer::new(r, 128, 0);
+        let packed_f32 = packer.pack_tensor(&weights_f32, 1, 0)?;
+        assert_eq!(packed_f32.panels_count(), 2);
+
+        let q4 = q.quant(&weights_f32.as_slice::<f32>()?)?;
+        let packed_q4 = q.pack(&q4, k, r)?;
+
+        for panel in 0..2 {
+            unsafe {
+                let panel_f32 = packed_f32.panel_bytes(panel, None);
+                let panel_f32 = std::slice::from_raw_parts(panel_f32 as *const f32, k * r);
+                eprintln!("{panel_f32:?}");
+                let mut panel_q4 = Tensor::zero::<f32>(&[k * r])?;
+                q.panel_f32(&packed_q4, k, r, panel, panel_q4.as_slice_mut()?);
+                eprintln!("{panel_q4:?}");
+                assert_eq!(panel_q4.as_slice::<f32>()?, panel_f32);
+            }
+        }
+        Ok(())
     }
 }
