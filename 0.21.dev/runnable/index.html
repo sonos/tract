@@ -568,9 +568,9 @@
 
 
 <a id="tract.runnable"></a>
-  <div class="doc doc-contents first">
+    <div class="doc doc-contents first">
 
-  
+
 
   <div class="doc doc-children">
 
@@ -586,20 +586,20 @@
 
 
 <h2 id="tract.runnable.Runnable" class="doc doc-heading">
-          <code>Runnable</code>
+            <code>Runnable</code>
 
 
 </h2>
 
 
-  <div class="doc doc-contents ">
+    <div class="doc doc-contents ">
 
-  
+
       <p>A model in the Runnable state is ready to perform computation.</p>
 
-            <details class="quote">
-              <summary>Source code in <code>tract/runnable.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 8</span>
+              <details class="quote">
+                <summary>Source code in <code>tract/runnable.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 8</span>
 <span class="normal"> 9</span>
 <span class="normal">10</span>
 <span class="normal">11</span>
@@ -677,9 +677,9 @@
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runnable_spawn_state</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">state</span><span class="p">)))</span>
         <span class="k">return</span> <span class="n">State</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
-            </details>
+              </details>
 
-  
+
 
   <div class="doc doc-children">
 
@@ -691,24 +691,22 @@
 
 
 
-
 <div class="doc doc-object doc-function">
 
 
-
 <h3 id="tract.runnable.Runnable.input_count" class="doc doc-heading">
-          <code class="highlight language-python"><span class="n">input_count</span><span class="p">()</span></code>
+            <code class="highlight language-python"><span class="n">input_count</span><span class="p">()</span></code>
 
 </h3>
 
 
-  <div class="doc doc-contents ">
-  
+    <div class="doc doc-contents ">
+
       <p>Return the number of inputs of the underlying model</p>
 
-          <details class="quote">
-            <summary>Source code in <code>tract/runnable.py</code></summary>
-            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">22</span>
+            <details class="quote">
+              <summary>Source code in <code>tract/runnable.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">22</span>
 <span class="normal">23</span>
 <span class="normal">24</span>
 <span class="normal">25</span>
@@ -720,29 +718,27 @@
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runnable_input_count</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">i</span><span class="o">.</span><span class="n">value</span>
 </code></pre></div></td></tr></table></div>
-          </details>
-  </div>
+            </details>
+    </div>
 
 </div>
-
 
 <div class="doc doc-object doc-function">
 
 
-
 <h3 id="tract.runnable.Runnable.output_count" class="doc doc-heading">
-          <code class="highlight language-python"><span class="n">output_count</span><span class="p">()</span></code>
+            <code class="highlight language-python"><span class="n">output_count</span><span class="p">()</span></code>
 
 </h3>
 
 
-  <div class="doc doc-contents ">
-  
+    <div class="doc doc-contents ">
+
       <p>Return the number of outputs of the underlying model</p>
 
-          <details class="quote">
-            <summary>Source code in <code>tract/runnable.py</code></summary>
-            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">29</span>
+            <details class="quote">
+              <summary>Source code in <code>tract/runnable.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">29</span>
 <span class="normal">30</span>
 <span class="normal">31</span>
 <span class="normal">32</span>
@@ -754,29 +750,27 @@
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runnable_output_count</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">i</span><span class="o">.</span><span class="n">value</span>
 </code></pre></div></td></tr></table></div>
-          </details>
-  </div>
+            </details>
+    </div>
 
 </div>
-
 
 <div class="doc doc-object doc-function">
 
 
-
 <h3 id="tract.runnable.Runnable.run" class="doc doc-heading">
-          <code class="highlight language-python"><span class="n">run</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">run</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span></code>
 
 </h3>
 
 
-  <div class="doc doc-contents ">
-  
+    <div class="doc doc-contents ">
+
       <p>Runs the model over the provided input list, and returns the model outputs.</p>
 
-          <details class="quote">
-            <summary>Source code in <code>tract/runnable.py</code></summary>
-            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">36</span>
+            <details class="quote">
+              <summary>Source code in <code>tract/runnable.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">36</span>
 <span class="normal">37</span>
 <span class="normal">38</span>
 <span class="normal">39</span>
@@ -786,8 +780,8 @@
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">spawn_state</span><span class="p">()</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
-          </details>
-  </div>
+            </details>
+    </div>
 
 </div>
 
@@ -795,8 +789,7 @@
 
   </div>
 
-  </div>
-
+    </div>
 
 </div>
 
@@ -805,7 +798,7 @@
 
   </div>
 
-  </div>
+    </div>
 
 </div>
 

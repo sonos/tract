@@ -532,9 +532,9 @@
 
 
 <a id="tract.onnx"></a>
-  <div class="doc doc-contents first">
+    <div class="doc doc-contents first">
 
-  
+
 
   <div class="doc doc-children">
 
@@ -550,15 +550,15 @@
 
 
 <h2 id="tract.onnx.Onnx" class="doc doc-heading">
-          <code>Onnx</code>
+            <code>Onnx</code>
 
 
 </h2>
 
 
-  <div class="doc doc-contents ">
+    <div class="doc doc-contents ">
 
-  
+
       <p>Represent the ONNX context in tract.</p>
 <p>It essentially allows to load ONNX models. Note that an ONNX model is loaded as an
 <code>InferenceModel</code> and not as a <code>Model</code>: many ONNX models come with partial shape and
@@ -576,9 +576,9 @@ model.set_input_fact(0, &quot;1,3,224,224,f32&quot;)
 model = model.into_optimized().into_runnable()
 </code></pre>
 
-            <details class="quote">
-              <summary>Source code in <code>tract/onnx.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 7</span>
+              <details class="quote">
+                <summary>Source code in <code>tract/onnx.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 7</span>
 <span class="normal"> 8</span>
 <span class="normal"> 9</span>
 <span class="normal">10</span>
@@ -656,12 +656,11 @@ model = model.into_optimized().into_runnable()
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_onnx_model_for_path</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">model</span><span class="p">)))</span>
         <span class="k">return</span> <span class="n">InferenceModel</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
-            </details>
+              </details>
 
-  
+
 
   <div class="doc doc-children">
-
 
 
 
@@ -674,20 +673,19 @@ model = model.into_optimized().into_runnable()
 <div class="doc doc-object doc-function">
 
 
-
 <h3 id="tract.onnx.Onnx.model_for_path" class="doc doc-heading">
-          <code class="highlight language-python"><span class="n">model_for_path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">model_for_path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span></code>
 
 </h3>
 
 
-  <div class="doc doc-contents ">
-  
+    <div class="doc doc-contents ">
+
       <p>Load an ONNX file as an InferenceModel</p>
 
-          <details class="quote">
-            <summary>Source code in <code>tract/onnx.py</code></summary>
-            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">38</span>
+            <details class="quote">
+              <summary>Source code in <code>tract/onnx.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">38</span>
 <span class="normal">39</span>
 <span class="normal">40</span>
 <span class="normal">41</span>
@@ -703,8 +701,8 @@ model = model.into_optimized().into_runnable()
     <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_onnx_model_for_path</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">model</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">InferenceModel</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
-          </details>
-  </div>
+            </details>
+    </div>
 
 </div>
 
@@ -712,8 +710,7 @@ model = model.into_optimized().into_runnable()
 
   </div>
 
-  </div>
-
+    </div>
 
 </div>
 
@@ -722,7 +719,7 @@ model = model.into_optimized().into_runnable()
 
   </div>
 
-  </div>
+    </div>
 
 </div>
 
