@@ -3,9 +3,15 @@ use tract_data::internal::*;
 use tract_data::itertools::Itertools;
 
 use std::alloc::Layout;
+use std::fmt::{Debug, Display};
+use std::hash::Hash;
 use std::io::{Cursor, Read, Write};
 
-pub trait BlockQuant {
+use crate::mmm::MMMInput;
+
+use super::Packer;
+
+pub trait BlockQuant: Debug + Display + Clone + Send + Sync + Hash {
     fn block_len(&self) -> usize;
 
     fn block_bytes(&self) -> usize;
@@ -43,9 +49,10 @@ pub trait BlockQuant {
     }
 
     fn pack(&self, input: &[u8], k: usize, r: usize) -> TractResult<Blob>;
+    fn panel_f32(&self, packed: &Blob, k: usize, r: usize, panel: usize, scratch: &mut [f32]);
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, Hash)]
 pub struct BaseQ4_0<const QK: usize = 32>;
 
 pub static Q4_0: BaseQ4_0 = BaseQ4_0::<32>;
@@ -126,9 +133,7 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
         }
         Ok(blob)
     }
-}
 
-impl<const QK: usize> BaseQ4_0<QK> {
     fn panel_f32(&self, packed: &Blob, k: usize, r: usize, panel: usize, scratch: &mut [f32]) {
         assert!(k % self.block_len() == 0);
         let blocks_for_k = k / self.block_len();
@@ -146,6 +151,50 @@ impl<const QK: usize> BaseQ4_0<QK> {
                 }
             }
         }
+    }
+}
+
+impl<const QK: usize> Display for BaseQ4_0<QK> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Q4_0")
+    }
+}
+
+#[derive(Clone, Debug, Hash)]
+pub struct PackedBlockQuant<BQ: BlockQuant> {
+    format: BQ,
+    data: Blob,
+    pack: Packer,
+    mn: usize,
+    k: usize,
+}
+
+impl<BQ: BlockQuant> Display for PackedBlockQuant<BQ> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Packed{} (m={} k={} r={})", self.format, self.mn, self.k, self.pack.r)
+    }
+}
+
+impl<BQ: BlockQuant> MMMInput for PackedBlockQuant<BQ> {
+    fn scratch_panel_buffer_layout(&self) -> Option<Layout> {
+        Some(self.pack.single_panel_layout(self.k, 4))
+    }
+    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
+        let buffer = buffer.unwrap();
+        let mut scratch = unsafe {
+            std::slice::from_raw_parts_mut(buffer as *mut f32, self.pack.single_panel_len(self.k))
+        };
+        self.format.panel_f32(&self.data, self.k, self.pack.r, i, &mut scratch);
+        buffer
+    }
+    fn mn(&self) -> usize {
+        self.mn
+    }
+    fn r(&self) -> usize {
+        self.pack.r
+    }
+    fn k(&self) -> usize {
+        self.k
     }
 }
 
