@@ -138,11 +138,11 @@ proptest::proptest! {
 fn unicast_0() {
     BinEinsumProblem {
         expr: "ak,gk->ag".parse().unwrap(),
-        a: Tensor::zero::<f32>(&[1, 2]).unwrap(),
-        b: Tensor::zero::<f32>(&[1, 2]).unwrap(),
+        a: Tensor::zero::<f32>(tvec![1, 2]).unwrap(),
+        b: Tensor::zero::<f32>(tvec![1, 2]).unwrap(),
         a_constant: false,
         b_constant: false,
-        unicast_add_constant: Some(Tensor::zero::<f32>(&[1, 1]).unwrap()),
+        unicast_add_constant: Some(Tensor::zero::<f32>(tvec![1, 1]).unwrap()),
     }
     .check()
     .unwrap()
@@ -152,8 +152,8 @@ fn unicast_0() {
 fn unicast_1() {
     BinEinsumProblem {
         expr: "ak,gk->ag".parse().unwrap(),
-        a: Tensor::zero::<f32>(&[2, 1]).unwrap(),
-        b: Tensor::zero::<f32>(&[2, 1]).unwrap(),
+        a: Tensor::zero::<f32>(tvec![2, 1]).unwrap(),
+        b: Tensor::zero::<f32>(tvec![2, 1]).unwrap(),
         a_constant: false,
         b_constant: false,
         unicast_add_constant: Some(tensor2(&[[0f32, 0.], [0., 1.]])),
@@ -166,8 +166,8 @@ fn unicast_1() {
 fn unicast_2() {
     BinEinsumProblem {
         expr: "abk,gk->abg".parse().unwrap(),
-        a: Tensor::zero::<f32>(&[2, 2, 1]).unwrap(),
-        b: Tensor::zero::<f32>(&[1, 1]).unwrap(),
+        a: Tensor::zero::<f32>(tvec![2, 2, 1]).unwrap(),
+        b: Tensor::zero::<f32>(tvec![1, 1]).unwrap(),
         a_constant: false,
         b_constant: false,
         unicast_add_constant: Some(tensor3(&[[[0f32], [0.]], [[0.], [1.]]])),

@@ -62,8 +62,6 @@ pub struct VariableV2 {
     pub initializer: Option<Arc<Tensor>>,
 }
 
-
-
 impl Op for VariableV2 {
     fn name(&self) -> Cow<str> {
         "VariableV2".into()
@@ -93,7 +91,7 @@ impl EvalOp for VariableV2 {
         let tensor = if let Some(init) = &self.initializer {
             init.clone().into_tensor()
         } else {
-            unsafe { Tensor::uninitialized_dt(self.dt, &self.shape)? }
+            unsafe { Tensor::uninitialized_dt(self.dt, self.shape.clone())? }
         };
         state.tensors.insert(self.id.clone(), tensor);
         Ok(Some(Box::new(VariableV2State)))
@@ -136,8 +134,6 @@ trivial_op_state_freeeze!(AssignState);
 pub struct Assign {
     pub var_id: Option<String>,
 }
-
-
 
 impl Op for Assign {
     fn name(&self) -> Cow<str> {

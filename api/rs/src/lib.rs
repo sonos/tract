@@ -364,7 +364,7 @@ impl ValueInterface for Value {
         let dt = to_internal_dt(dt);
         let len = shape.iter().product::<usize>() * dt.size_of();
         anyhow::ensure!(len == data.len());
-        let tensor = unsafe { Tensor::from_raw_dt(dt, shape, data)? };
+        let tensor = unsafe { Tensor::from_raw_dt(dt, shape.into(), data)? };
         Ok(Value(tensor.into_tvalue()))
     }
 

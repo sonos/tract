@@ -39,8 +39,6 @@ pub struct QuantizeLinear {
     optional_zero_point_input: Option<usize>,
 }
 
-
-
 impl Expansion for QuantizeLinear {
     fn name(&self) -> Cow<str> {
         "QuantizeLinear".into()
@@ -104,8 +102,6 @@ pub struct DequantizeLinear {
     optional_zero_point_input: Option<usize>,
 }
 
-
-
 impl Expansion for DequantizeLinear {
     fn name(&self) -> Cow<str> {
         "DequantizeLinear".into()
@@ -165,8 +161,6 @@ impl Expansion for DequantizeLinear {
 
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct DynamicQuantizeLinear {}
-
-
 
 impl Expansion for DynamicQuantizeLinear {
     fn name(&self) -> Cow<str> {
@@ -267,8 +261,6 @@ impl Op for DynamicQuantizeLinearU8 {
     op_as_typed_op!();
 }
 
-
-
 impl EvalOp for DynamicQuantizeLinearU8 {
     fn is_stateless(&self) -> bool {
         true
@@ -279,7 +271,7 @@ impl EvalOp for DynamicQuantizeLinearU8 {
         let a_input = input.to_array_view::<f32>()?;
         let (scale, zero_point) = scale_and_zero_point(a_input);
 
-        let mut dst = unsafe { Tensor::uninitialized_dt(u8::datum_type(), input.shape())? };
+        let mut dst = unsafe { Tensor::uninitialized_dt(u8::datum_type(), input.shape().into())? };
         // We cannot use quantize_linear_u8 here because it does `x * scale.recip()`
         // instead of `x / scale`. This change some number enough to be rounded to another integer.
         dynamic_quantize_linear_u8(

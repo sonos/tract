@@ -97,8 +97,8 @@ impl Expansion for BatchNorm {
             let mut const_shape = tvec!(1; x_shape.len());
             const_shape[c_axis] = c_dim;
 
-            slope.set_shape(&const_shape)?;
-            inter.set_shape(&const_shape)?;
+            slope.set_shape(const_shape.clone())?;
+            inter.set_shape(const_shape)?;
 
             let slope = target.add_const(prefix.to_string() + ".slope", slope)?;
             let inter = target.add_const(prefix.to_string() + ".inter", inter)?;

@@ -132,7 +132,7 @@ proptest! {
 }
 
 fn t(n: usize) -> Tensor {
-    tensor1(&(0..n).map(|x| x as f32).collect_vec()).into_shape(&[1, 1, n]).unwrap()
+    tensor1(&(0..n).map(|x| x as f32).collect_vec()).into_shape(tvec![1, 1, n]).unwrap()
 }
 
 #[test]

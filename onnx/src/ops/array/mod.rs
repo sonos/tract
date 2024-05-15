@@ -70,9 +70,9 @@ pub fn constant_like(
     let value = node.get_attr_opt("value")?.unwrap_or(0.);
     if node.input.len() == 0 {
         let dt = node.get_attr_opt("dtype")?.unwrap_or(DatumType::F32);
-        let shape: Vec<usize> = node.get_attr_vec("shape")?;
+        let shape: TVec<usize> = node.get_attr_tvec("shape")?;
         let tensor =
-            tensor0(value).cast_to_dt(dt)?.broadcast_scalar_to_shape(&shape)?.into_arc_tensor();
+            tensor0(value).cast_to_dt(dt)?.broadcast_scalar_to_shape(shape)?.into_arc_tensor();
         Ok((Box::new(tract_hir::ops::konst::Const::new(tensor)), vec![]))
     } else {
         Ok((Box::new(array::ConstantLike::new(value)), vec![]))

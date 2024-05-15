@@ -57,7 +57,7 @@ impl EvalOp for OneHot {
         let mut shape: TVec<usize> = input.shape().into();
         shape.insert(self.axis, self.dim);
         unsafe {
-            let mut output = self.off.broadcast_scalar_to_shape(&shape)?;
+            let mut output = self.off.broadcast_scalar_to_shape(shape)?;
             dispatch_datum_by_size!(Self::eval_t(self.off.datum_type())(
                 self,
                 &input,

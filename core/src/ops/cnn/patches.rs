@@ -813,7 +813,7 @@ pub mod test {
         fn reference_sumpool(&self) -> Tensor {
             let input_shape = self.input_shape();
             let output_shape = self.output_shape();
-            let mut output = Tensor::zero::<f32>(&output_shape.shape).unwrap();
+            let mut output = Tensor::zero::<f32>(output_shape.shape.clone()).unwrap();
             for geo_out in tract_ndarray::indices(output_shape.hw_dims()) {
                 for geo_ker in tract_ndarray::indices(&*self.patch.spec.kernel_shape) {
                     let geo_in: TVec<isize> = izip!(
@@ -845,7 +845,7 @@ pub mod test {
         fn check_visitor(&self) {
             let input_shape = self.input_shape();
             let output_shape = self.output_shape();
-            let mut output = Tensor::zero::<f32>(&output_shape.shape).unwrap();
+            let mut output = Tensor::zero::<f32>(output_shape.shape.clone()).unwrap();
             self.patch.visit_output(|visitor| {
                 for (_k, offset_in) in visitor.valid_offsets_ker_in() {
                     for c in 0..*output_shape.c() {
@@ -862,7 +862,7 @@ pub mod test {
         fn check_zone_visitor(&self) {
             let input_shape = self.input_shape();
             let output_shape = self.output_shape();
-            let mut output = Tensor::zero::<f32>(&output_shape.shape).unwrap();
+            let mut output = Tensor::zero::<f32>(output_shape.shape.clone()).unwrap();
             for zone in &self.patch.zones {
                 zone.visit_output(&self.patch, |visitor| {
                     for (_k, offset_in) in visitor.valid_offsets_ker_in() {
@@ -945,7 +945,7 @@ pub mod test {
     #[test]
     fn test_visitor_1() {
         let input_shape = NCHW.from_n_c_hw(1, 1, [2, 2]).unwrap();
-        let input = Tensor::zero::<f32>(&input_shape.shape).unwrap();
+        let input = Tensor::zero::<f32>(input_shape.shape.clone()).unwrap();
         let patch = PatchSpec::for_data_shape(input_shape.clone())
             .with_kernel_shape(tvec![2, 1])
             .with_padding(PaddingSpec::SameLower)

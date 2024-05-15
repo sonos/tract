@@ -7,21 +7,19 @@ use crate::pb::NodeProto;
 #[derive(Debug, Clone, Hash)]
 pub struct NonZero(Symbol);
 
-
-
 pub fn non_zero(
     ctx: &ParsingContext,
     _node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let x = ctx.symbol_table.new_with_prefix("x");
-    Ok((Box::new(NonZero(x)) as _, vec!()))
+    Ok((Box::new(NonZero(x)) as _, vec![]))
 }
 
 impl NonZero {
     unsafe fn eval_t<T: Datum + tract_num_traits::Zero>(input: &Tensor) -> TractResult<Tensor> {
         let count = input.as_slice_unchecked::<T>().iter().filter(|d| !d.is_zero()).count();
         let view = input.to_array_view_unchecked::<T>();
-        let mut output = Tensor::uninitialized::<i64>(&[input.rank(), count])?;
+        let mut output = Tensor::uninitialized::<i64>(tvec![input.rank(), count])?;
         let mut view_mut: tract_ndarray::ArrayViewMut2<i64> =
             output.to_array_view_mut_unchecked::<i64>().into_dimensionality().unwrap();
         for (i, (coords, _)) in

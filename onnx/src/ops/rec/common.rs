@@ -169,7 +169,7 @@ impl CommonRec {
             target.add_const(
                 format!("{prefix}.h0"),
                 tensor0(0.0f32)
-                    .broadcast_scalar_to_shape(&[
+                    .broadcast_scalar_to_shape(tvec![
                         b_size.to_usize().unwrap(),
                         1,
                         h_size.to_usize().unwrap(),
@@ -202,7 +202,7 @@ impl CommonRec {
                 target.add_const(
                     format!("{prefix}.c0"),
                     tensor0(0.0f32)
-                        .broadcast_scalar_to_shape(&[
+                        .broadcast_scalar_to_shape(tvec![
                             b_size.to_usize().unwrap(),
                             1,
                             h_size.to_usize().unwrap(),

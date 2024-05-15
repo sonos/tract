@@ -74,8 +74,6 @@ struct Dft {
     has_length_input: bool,
 }
 
-
-
 impl Expansion for Dft {
     fn name(&self) -> Cow<str> {
         "DFT".into()
@@ -163,8 +161,6 @@ struct Stft {
     optional_window_input: Option<usize>,
     optional_frame_length_input: Option<usize>,
 }
-
-
 
 impl Expansion for Stft {
     fn name(&self) -> Cow<str> {
@@ -288,8 +284,6 @@ pub struct MelWeightMatrix {
     datum_type: DatumType,
 }
 
-
-
 impl Expansion for MelWeightMatrix {
     fn name(&self) -> Cow<str> {
         "MelWeightMatrix".into()
@@ -329,15 +323,16 @@ impl Expansion for MelWeightMatrix {
             Some(sample_rate),
             Some(lower_edge_hertz),
             Some(upper_edge_hertz),
-            ) = (
-                model.outlet_fact(inputs[0])?.konst.as_ref(),
-                model.outlet_fact(inputs[1])?.konst.as_ref(),
-                model.outlet_fact(inputs[2])?.konst.as_ref(),
-                model.outlet_fact(inputs[3])?.konst.as_ref(),
-                model.outlet_fact(inputs[4])?.konst.as_ref(),
-                ) else {
-                bail!("Expect all inputs to be constants")
-            };
+        ) = (
+            model.outlet_fact(inputs[0])?.konst.as_ref(),
+            model.outlet_fact(inputs[1])?.konst.as_ref(),
+            model.outlet_fact(inputs[2])?.konst.as_ref(),
+            model.outlet_fact(inputs[3])?.konst.as_ref(),
+            model.outlet_fact(inputs[4])?.konst.as_ref(),
+        )
+        else {
+            bail!("Expect all inputs to be constants")
+        };
         let num_mel_bins = num_mel_bins.cast_to_scalar::<i64>()? as usize;
         let dft_length = dft_length.cast_to_scalar::<i64>()? as usize;
         let sample_rate = sample_rate.cast_to_scalar::<i64>()? as usize;
@@ -358,7 +353,7 @@ impl Expansion for MelWeightMatrix {
             })
             .collect();
 
-        let mut output = Tensor::zero::<f32>(&[num_spectrogram_bins, num_mel_bins])?;
+        let mut output = Tensor::zero::<f32>(tvec![num_spectrogram_bins, num_mel_bins])?;
         let mut view = output.to_array_view_mut::<f32>()?.into_dimensionality()?;
         for i in 0..num_mel_bins {
             let lower = frequency_bins[i];
@@ -393,7 +388,7 @@ impl StftWindowType {
     fn generate(&self, size: usize, periodic: bool) -> TractResult<Tensor> {
         use std::f32::consts::PI;
         let divisor = ((size - 1 + periodic as usize) as f32).recip();
-        let mut output = Tensor::zero::<f32>(&[size])?;
+        let mut output = Tensor::zero::<f32>(tvec![size])?;
         match self {
             Self::Blackman => {
                 output.as_slice_mut::<f32>()?.iter_mut().enumerate().for_each(|(ix, y)| {
@@ -422,8 +417,6 @@ pub struct StftWindow {
     periodic: bool,
     window: StftWindowType,
 }
-
-
 
 impl Expansion for StftWindow {
     fn name(&self) -> Cow<str> {

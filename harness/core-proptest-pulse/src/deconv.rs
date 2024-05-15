@@ -260,7 +260,7 @@ fn deconv2d() {
     let mut model = TypedModel::default();
     let s = model.symbol_table.sym("S");
     let a = model.add_source("a", f32::fact(dims!(1, 2, s, 8))).unwrap();
-    let mut kernel = Tensor::zero::<f32>(&[2, 2, 1, 3]).unwrap();
+    let mut kernel = Tensor::zero::<f32>(tvec![2, 2, 1, 3]).unwrap();
     kernel.as_slice_mut::<f32>().unwrap().iter_mut().enumerate().for_each(|(ix, x)| *x = ix as f32);
     let deconv = tract_core::ops::cnn::Deconv {
         pool_spec: PoolSpec {
@@ -282,7 +282,7 @@ fn deconv2d() {
     model.set_output_outlets(&deconv).unwrap();
     model.declutter().unwrap();
 
-    let mut input = Tensor::zero::<f32>(&[1, 2, 5, 8]).unwrap();
+    let mut input = Tensor::zero::<f32>(tvec![1, 2, 5, 8]).unwrap();
     input.as_slice_mut::<f32>().unwrap().iter_mut().enumerate().for_each(|(ix, x)| *x = ix as f32);
     proptest_regular_against_pulse(model, 1, input.into_array().unwrap(), 2).unwrap()
 }

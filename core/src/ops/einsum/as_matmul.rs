@@ -198,7 +198,7 @@ impl EvalOp for BasicMatMul {
         let (a, b) = args_2!(inputs);
         let output_shape = self.output_shape(a.shape(), b.shape());
         if let Some(qp) = self.quantize_output {
-            let mut acc = Tensor::zero_dt(i32::datum_type(), &output_shape)?;
+            let mut acc = Tensor::zero_dt(i32::datum_type(), output_shape)?;
             let mut a_i32 = a.cast_to::<i32>()?.into_owned();
             a_i32.as_slice_mut::<i32>()?.iter_mut().for_each(|x| *x -= a.datum_type().zp_scale().0);
             let mut b_i32 = b.cast_to::<i32>()?.into_owned();
@@ -211,7 +211,7 @@ impl EvalOp for BasicMatMul {
             unsafe { c.set_datum_type(qp) };
             Ok(tvec!(c.into_tvalue()))
         } else {
-            let mut c = Tensor::zero_dt(a.datum_type(), &output_shape)?;
+            let mut c = Tensor::zero_dt(a.datum_type(), output_shape)?;
             dispatch_floatlike!(Self::mm(c.datum_type())(self, &mut c, &a, &b))?;
             Ok(tvec!(c.into_tvalue()))
         }
@@ -246,11 +246,10 @@ mod test {
     use proptest::test_runner::{TestCaseResult, TestRunner};
     use tract_data::itertools::Itertools;
 
-    pub fn tensor(shape: &[usize]) -> BoxedStrategy<Tensor> {
-        let shape = shape.to_vec();
+    pub fn tensor(shape: TVec<usize>) -> BoxedStrategy<Tensor> {
         let len = shape.iter().product::<usize>();
         vec((-10i8..=10i8).prop_map(|i| i as f32), len..=len)
-            .prop_map(move |vec| tensor1(&vec).into_shape(&shape).unwrap())
+            .prop_map(move |vec| tensor1(&vec).into_shape(shape.clone()).unwrap())
             .boxed()
     }
 
@@ -317,7 +316,7 @@ mod test {
                         .collect_vec(),
                 )
             })
-            .prop_flat_map(|(a_shape, b_shape)| (tensor(&a_shape), tensor(&b_shape)))
+            .prop_flat_map(|(a_shape, b_shape)| (tensor(a_shape.into()), tensor(b_shape.into())))
             .prop_map(|(a, b)| EinSumProblem { expr: expr.clone(), a, b });
         runner.run(&cases, |pb| pb.check().map_err(|e| TestCaseError::fail(e.to_string())))?;
         Ok(())
@@ -382,8 +381,8 @@ mod test {
     fn mk_k_mn_0() -> TractResult<()> {
         EinSumProblem {
             expr: "mk,k->mn".to_string(),
-            a: Tensor::zero::<f32>(&[2, 2]).unwrap(),
-            b: Tensor::zero::<f32>(&[2]).unwrap(),
+            a: Tensor::zero::<f32>(tvec![2, 2]).unwrap(),
+            b: Tensor::zero::<f32>(tvec![2]).unwrap(),
         }
         .check()
     }
@@ -392,8 +391,8 @@ mod test {
     fn mk_k_mn_1() -> TractResult<()> {
         EinSumProblem {
             expr: "mk,k->mn".to_string(),
-            a: Tensor::zero::<f32>(&[1, 2]).unwrap(),
-            b: Tensor::zero::<f32>(&[2]).unwrap(),
+            a: Tensor::zero::<f32>(tvec![1, 2]).unwrap(),
+            b: Tensor::zero::<f32>(tvec![2]).unwrap(),
         }
         .check()
     }
@@ -402,8 +401,8 @@ mod test {
     fn mk_kn_nm_0() -> TractResult<()> {
         EinSumProblem {
             expr: "mk,kn->mn".to_string(),
-            a: Tensor::zero::<f32>(&[3, 2]).unwrap(),
-            b: Tensor::zero::<f32>(&[2, 2]).unwrap(),
+            a: Tensor::zero::<f32>(tvec![3, 2]).unwrap(),
+            b: Tensor::zero::<f32>(tvec![2, 2]).unwrap(),
         }
         .check()
     }
@@ -412,8 +411,8 @@ mod test {
     fn amk_akn_amn_0() -> TractResult<()> {
         EinSumProblem {
             expr: "amk,akn->amn".to_string(),
-            a: Tensor::zero::<f32>(&[1, 1, 2]).unwrap(),
-            b: Tensor::zero::<f32>(&[1, 2, 1]).unwrap(),
+            a: Tensor::zero::<f32>(tvec![1, 1, 2]).unwrap(),
+            b: Tensor::zero::<f32>(tvec![1, 2, 1]).unwrap(),
         }
         .check()
     }
@@ -422,8 +421,8 @@ mod test {
     fn amk_akn_amn_1() -> TractResult<()> {
         EinSumProblem {
             expr: "amk,akn->amn".to_string(),
-            a: Tensor::zero::<f32>(&[2, 1, 2]).unwrap(),
-            b: Tensor::zero::<f32>(&[1, 2, 1]).unwrap(),
+            a: Tensor::zero::<f32>(tvec![2, 1, 2]).unwrap(),
+            b: Tensor::zero::<f32>(tvec![1, 2, 1]).unwrap(),
         }
         .check()
     }
@@ -432,8 +431,8 @@ mod test {
     fn amk_akn_amn_2() -> TractResult<()> {
         EinSumProblem {
             expr: "amk,akn->amn".to_string(),
-            a: Tensor::zero::<f32>(&[1, 1, 2]).unwrap(),
-            b: Tensor::zero::<f32>(&[2, 2, 2]).unwrap(),
+            a: Tensor::zero::<f32>(tvec![1, 1, 2]).unwrap(),
+            b: Tensor::zero::<f32>(tvec![2, 2, 2]).unwrap(),
         }
         .check()
     }
@@ -442,8 +441,8 @@ mod test {
     fn amk_akn_amn_3() -> TractResult<()> {
         EinSumProblem {
             expr: "amk,akn->amn".to_string(),
-            a: Tensor::zero::<f32>(&[1, 1, 2]).unwrap(),
-            b: Tensor::zero::<f32>(&[2, 2, 1]).unwrap(),
+            a: Tensor::zero::<f32>(tvec![1, 1, 2]).unwrap(),
+            b: Tensor::zero::<f32>(tvec![2, 2, 1]).unwrap(),
         }
         .check()
     }
@@ -452,8 +451,8 @@ mod test {
     fn km_anbck_bmn_0() -> TractResult<()> {
         EinSumProblem {
             expr: "km,anbck->bmn".to_string(),
-            a: Tensor::zero::<f32>(&[2, 1]).unwrap(),
-            b: Tensor::zero::<f32>(&[1, 1, 1, 1, 2]).unwrap(),
+            a: Tensor::zero::<f32>(tvec![2, 1]).unwrap(),
+            b: Tensor::zero::<f32>(tvec![1, 1, 1, 1, 2]).unwrap(),
         }
         .check()
     }

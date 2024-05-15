@@ -84,11 +84,11 @@ impl EvalOp for SGemm {
         let n = c_shape[rank - 1];
         let k = a.shape()[rank - 1];
         unsafe {
-            let mut c = Tensor::uninitialized::<f32>(&c_shape)?;
+            let mut c = Tensor::uninitialized::<f32>(c_shape)?;
             let c_ptr = c.as_ptr_mut::<f32>()?;
             let silent_a_axis = c.rank() - a.rank();
             let silent_b_axis = c.rank() - b.rank();
-            for prefix in ndarray::indices(&c_shape[0..rank - 2]) {
+            for prefix in ndarray::indices(&c.shape()[0..rank - 2]) {
                 let mut a_ptr = a_ptr;
                 let mut b_ptr = b_ptr;
                 let mut c_ptr = c_ptr;

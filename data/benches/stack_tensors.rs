@@ -10,10 +10,10 @@ fn inceptionv3_5b(c: &mut Criterion) {
         b.iter_with_setup(
             || unsafe {
                 vec![
-                    Tensor::uninitialized_dt(DatumType::F32, &[1, 35, 35, 64]).unwrap(),
-                    Tensor::uninitialized_dt(DatumType::F32, &[1, 35, 35, 64]).unwrap(),
-                    Tensor::uninitialized_dt(DatumType::F32, &[1, 35, 35, 96]).unwrap(),
-                    Tensor::uninitialized_dt(DatumType::F32, &[1, 35, 35, 32]).unwrap(),
+                    Tensor::uninitialized_dt(DatumType::F32, tvec![1, 35, 35, 64]).unwrap(),
+                    Tensor::uninitialized_dt(DatumType::F32, tvec![1, 35, 35, 64]).unwrap(),
+                    Tensor::uninitialized_dt(DatumType::F32, tvec![1, 35, 35, 96]).unwrap(),
+                    Tensor::uninitialized_dt(DatumType::F32, tvec![1, 35, 35, 32]).unwrap(),
                 ]
             },
             |input| Tensor::stack_tensors(3, &input),

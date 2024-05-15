@@ -356,7 +356,7 @@ impl DatumType {
             | DatumType::U8
             | DatumType::U16
             | DatumType::U32
-            | DatumType::U64 => Tensor::zero_dt(*self, &[1]).unwrap(),
+            | DatumType::U64 => Tensor::zero_scalar_dt(*self).unwrap(),
             DatumType::I8 | DatumType::QI8(_) => tensor0(i8::MIN),
             DatumType::QI32(_) => tensor0(i32::MIN),
             DatumType::I16 => tensor0(i16::MIN),

@@ -37,7 +37,7 @@ impl ElementWiseMiniOp for Cast {
     fn eval_out_of_place(&self, t: &Tensor, _out_dt: Option<DatumType>) -> TractResult<Tensor> {
         if t.datum_type() == String::datum_type() && self.to == f32::datum_type() {
             unsafe {
-                let mut output = Tensor::uninitialized::<f32>(t.shape())?;
+                let mut output = Tensor::uninitialized::<f32>(t.shape().into())?;
                 let output_slice = output.as_slice_mut_unchecked();
                 let input = t.as_slice_unchecked::<String>();
                 for i in 0..input.len() {

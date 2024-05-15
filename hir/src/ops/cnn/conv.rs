@@ -315,10 +315,10 @@ mod test {
         setup_test_logger();
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
         let res = op.eval(tvec!(
-            Tensor::zero::<f32>(&[1, 2, 2, 2]).unwrap().into_tvalue(),
-            Tensor::zero::<f32>(&[2, 2, 2, 1]).unwrap().into_tvalue(),
+            Tensor::zero::<f32>(tvec![1, 2, 2, 2]).unwrap().into_tvalue(),
+            Tensor::zero::<f32>(tvec![2, 2, 2, 1]).unwrap().into_tvalue(),
         ))?;
-        Tensor::zero::<f32>(&[1, 2, 2, 1]).unwrap().close_enough(&res[0], false)
+        Tensor::zero::<f32>(tvec![1, 2, 2, 1]).unwrap().close_enough(&res[0], false)
     }
 
     #[test]

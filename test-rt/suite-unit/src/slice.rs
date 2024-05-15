@@ -6,7 +6,7 @@ use tract_core::ops::array::Slice;
 
 #[derive(Debug, Clone, Default)]
 struct SliceProblem {
-    input_shape: Vec<usize>,
+    input_shape: TVec<usize>,
     op: Slice,
 }
 
@@ -28,7 +28,7 @@ impl Arbitrary for SliceProblem {
             .prop_map(|(input_shape, axis, b0, b1)| {
                 let start = b0.min(b1).to_dim();
                 let end = b0.max(b1).to_dim();
-                SliceProblem { input_shape, op: Slice { axis, start, end } }
+                SliceProblem { input_shape: input_shape.into(), op: Slice { axis, start, end } }
             })
             .boxed()
     }
@@ -42,7 +42,7 @@ impl Test for SliceProblem {
         runtime: &dyn Runtime,
         approx: Approximation,
     ) -> infra::TestResult {
-        let mut input = Tensor::zero::<f32>(&self.input_shape)?;
+        let mut input = Tensor::zero::<f32>(self.input_shape.clone())?;
         input.as_slice_mut::<f32>()?.iter_mut().enumerate().for_each(|(ix, x)| *x = ix as f32);
         let reference = input.slice(
             self.op.axis,

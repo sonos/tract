@@ -99,7 +99,7 @@ macro_rules! impl_eval {
                 mul: impl Fn(T, T) -> T + Copy + 'static,
             ) -> TractResult<TVec<TValue>> {
                 let (img, kernel, bias) = args_3!(inputs);
-                let mut output = unsafe { Tensor::uninitialized::<T>(&dw.output_shape.shape)? };
+                let mut output = unsafe { Tensor::uninitialized::<T>(dw.output_shape.shape.clone())? };
                 let iptr = img.as_ptr::<T>()?;
                 let optr = output.as_ptr_mut::<T>()?;
                 let k_stride_i = kernel.strides()[1];

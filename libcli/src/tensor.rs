@@ -254,7 +254,7 @@ pub fn for_string(
             .as_concrete_finite()?
             .context("Must specify concrete shape when giving tensor value")?;
         let tensor = if dt == TDim::datum_type() {
-            let mut tensor = Tensor::zero::<TDim>(&shape)?;
+            let mut tensor = Tensor::zero::<TDim>(shape)?;
             let values =
                 value.map(|v| parse_tdim(symbol_table, v)).collect::<TractResult<Vec<_>>>()?;
             tensor.as_slice_mut::<TDim>()?.iter_mut().zip(values).for_each(|(t, v)| *t = v);
@@ -346,7 +346,7 @@ pub fn retrieve_or_make_inputs(
                 let mut values = vec![];
                 for ix in 0..needed_pulses {
                     let mut t =
-                        Tensor::zero_dt(fact.datum_type, fact.shape.as_concrete().unwrap())?;
+                        Tensor::zero_dt(fact.datum_type, fact.shape.as_concrete().unwrap().into())?;
                     let start = ix * input_pulse;
                     let end = (start + input_pulse).min(input_len);
                     if end > start {
@@ -433,7 +433,7 @@ pub fn tensor_for_fact(
 pub fn random(sizes: &[usize], datum_type: DatumType, tv: Option<&TensorValues>) -> Tensor {
     use rand::{Rng, SeedableRng};
     let mut rng = rand::rngs::StdRng::seed_from_u64(21242);
-    let mut tensor = Tensor::zero::<f32>(sizes).unwrap();
+    let mut tensor = Tensor::zero::<f32>(sizes.into()).unwrap();
     let slice = tensor.as_slice_mut::<f32>().unwrap();
     if let Some(range) = tv.and_then(|tv| tv.random_range.as_ref()) {
         slice.iter_mut().for_each(|x| *x = rng.gen_range(range.clone()))

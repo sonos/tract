@@ -6,7 +6,7 @@ use tract_core::ops::Downsample;
 
 #[derive(Debug, Clone, Default)]
 struct DownsampleProblem {
-    input_shape: Vec<usize>,
+    input_shape: TVec<usize>,
     op: Downsample,
 }
 
@@ -24,7 +24,7 @@ impl Arbitrary for DownsampleProblem {
             .prop_map(|(input_shape, axis, (stride, modulo), backward)| {
                 let modulo = if backward { 0 } else { modulo.min(input_shape[axis] - 1) };
                 let stride = if backward { -stride } else { stride };
-                DownsampleProblem { input_shape, op: Downsample { axis, stride, modulo } }
+                DownsampleProblem { input_shape:input_shape.into() , op: Downsample { axis, stride, modulo } }
             })
             .boxed()
     }
@@ -55,7 +55,7 @@ impl Test for DownsampleProblem {
         runtime: &dyn Runtime,
         approx: Approximation,
     ) -> infra::TestResult {
-        let mut input = Tensor::zero::<f32>(&self.input_shape)?;
+        let mut input = Tensor::zero::<f32>(self.input_shape.clone())?;
         input.as_slice_mut::<f32>()?.iter_mut().enumerate().for_each(|(ix, x)| *x = ix as f32);
 
         let reference = self.reference(&input).context("Computing reference")?;
@@ -78,7 +78,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add_test(
         "neg_0",
         DownsampleProblem {
-            input_shape: vec![1],
+            input_shape: tvec![1],
             op: Downsample { axis: 0, stride: -1, modulo: 0 },
         },
     );
@@ -86,7 +86,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add_test(
         "neg_1",
         DownsampleProblem {
-            input_shape: vec![2],
+            input_shape: tvec![2],
             op: Downsample { axis: 0, stride: -2, modulo: 0 },
         },
     );

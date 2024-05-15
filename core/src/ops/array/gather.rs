@@ -29,10 +29,10 @@ impl Gather {
     unsafe fn eval_t<T: Datum>(&self, data: TValue, indices: &TValue) -> TractResult<TValue> {
         let data_view = data.to_array_view_unchecked::<T>();
         let indices = indices.to_array_view::<i64>()?;
-        let output_shape = &*self.compute_output_shape(data.shape(), indices.shape())?;
+        let output_shape = self.compute_output_shape(data.shape(), indices.shape())?;
         let mut output = Tensor::uninitialized::<T>(output_shape)?;
         let mut output_view = output.to_array_view_mut::<T>()?;
-        for coords in tract_ndarray::indices(output_shape) {
+        for coords in tract_ndarray::indices(output_view.shape()) {
             let ocoords = coords.as_array_view();
             let ocoords = ocoords.as_slice().unwrap();
             let mut icoords: TVec<usize> = ocoords[0..self.axis].into();

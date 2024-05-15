@@ -115,7 +115,7 @@ impl Stft {
         let frames = (input.shape()[self.axis] - self.frame) / self.stride + 1;
         output_shape.insert(self.axis, frames);
         output_shape[self.axis + 1] = self.frame;
-        let mut output = unsafe { Tensor::uninitialized::<T>(&output_shape)? };
+        let mut output = unsafe { Tensor::uninitialized::<T>(output_shape)? };
         let fft = rustfft::FftPlanner::new().plan_fft_forward(self.frame);
         let input = input.to_array_view::<T>()?;
         let mut oview = output.to_array_view_mut::<T>()?;

@@ -31,9 +31,9 @@ impl EvalOp for Topk {
         let k = k.cast_to_scalar::<i64>()? as usize;
         output_shape[self.axis] = k;
         let dt = input.datum_type();
-        let mut output_values = Tensor::zero_dt(dt, &output_shape)?;
-        let mut output_indices = Tensor::zero::<i64>(&output_shape)?;
-        let mut iterating_shape = output_shape.clone();
+        let mut output_values = Tensor::zero_dt(dt, output_shape.clone())?;
+        let mut output_indices = Tensor::zero::<i64>(output_shape.clone())?;
+        let mut iterating_shape = output_shape;
         iterating_shape[self.axis] = 1;
         let mut output_indices_view = output_indices.to_array_view_mut::<i64>()?;
         for coords in tract_ndarray::indices(&*iterating_shape) {

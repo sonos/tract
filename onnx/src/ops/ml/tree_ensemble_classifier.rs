@@ -229,8 +229,8 @@ fn parse_nodes_data(node: &NodeProto, is_classifier: bool) -> TractResult<TreeEn
         };
     }
     let trees = rctensor1(&trees);
-    let nodes = tensor1(&nodes).into_shape(&[nodes.len() / 5, 5])?.into_arc_tensor();
-    let leaves = tensor1(&leaves).into_shape(&[leaves.len() / 2, 2])?.into_arc_tensor();
+    let nodes = tensor1(&nodes).into_shape(tvec![nodes.len() / 5, 5])?.into_arc_tensor();
+    let leaves = tensor1(&leaves).into_shape(tvec![leaves.len() / 2, 2])?.into_arc_tensor();
     let data = TreeEnsembleData { trees, nodes, leaves };
     TreeEnsemble::build(data, max_used_features, n_classes, aggregate_fn)
 }
@@ -243,8 +243,6 @@ pub struct TreeEnsembleClassifier {
     pub post_transform: Option<PostTransform>,
     pub binary_result_layout: bool,
 }
-
-
 
 impl Expansion for TreeEnsembleClassifier {
     fn name(&self) -> Cow<str> {
@@ -359,7 +357,7 @@ impl Expansion for TreeEnsembleClassifier {
             format!("{prefix}.labels"),
             tract_onnx_opl::ml::DirectLookup::new(
                 self.class_labels.clone(),
-                Tensor::zero_dt(self.class_labels.datum_type(), &[])?.into_arc_tensor(),
+                Tensor::zero_dt(self.class_labels.datum_type(), tvec!())?.into_arc_tensor(),
             )?,
             &casted,
         )?[0];

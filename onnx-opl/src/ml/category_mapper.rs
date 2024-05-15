@@ -136,7 +136,7 @@ impl ReverseLookup {
 
     fn eval_t<T: Datum + Hash>(&self, input: &Tensor) -> TractResult<Tensor> {
         unsafe {
-            let mut output = Tensor::uninitialized_dt(i32::datum_type(), input.shape())?;
+            let mut output = Tensor::uninitialized_dt(i32::datum_type(), input.shape().into())?;
             for (i, o) in
                 input.as_slice::<T>()?.iter().zip(output.as_slice_mut_unchecked::<i32>().iter_mut())
             {

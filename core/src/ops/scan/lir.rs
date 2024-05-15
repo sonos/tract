@@ -126,7 +126,7 @@ impl State {
             let full_len = input.shape()[axis];
             let mut shape: TVec<usize> = input.shape().into();
             shape[axis] = chunk_dim.unsigned_abs();
-            let mut t = Tensor::uninitialized_dt(input.datum_type(), &shape)?;
+            let mut t = Tensor::uninitialized_dt(input.datum_type(), shape)?;
             if chunk_dim < 0 {
                 let chunk_dim = (-chunk_dim) as usize;
                 for i in 0..chunk_dim {
@@ -206,7 +206,7 @@ impl OpState for State {
                     .and_then(|d| d.to_usize().ok())
                     .unwrap_or(shape[info.axis] * iters);
                 shape[info.axis] = scanning_dim;
-                let t = unsafe { Tensor::uninitialized_dt(fact.datum_type, &shape)? };
+                let t = unsafe { Tensor::uninitialized_dt(fact.datum_type, shape)? };
                 outputs.push((slot, t));
             }
             if let Some(slot) = output.last_value_slot {

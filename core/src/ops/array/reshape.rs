@@ -18,8 +18,6 @@ impl Op for FiniteReshape {
     op_as_typed_op!();
 }
 
-
-
 impl EvalOp for FiniteReshape {
     fn is_stateless(&self) -> bool {
         true
@@ -29,7 +27,7 @@ impl EvalOp for FiniteReshape {
         let input = args_1!(inputs);
         let mut tensor = input.into_tensor();
         unsafe {
-            tensor.set_shape_unchecked(&self.shape);
+            tensor.set_shape_unchecked(self.shape.clone());
         }
         Ok(tvec!(tensor.into_tvalue()))
     }

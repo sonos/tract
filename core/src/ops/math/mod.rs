@@ -63,7 +63,7 @@ bin_to_super_type!(mul, Mul,
                            let a = a.to_array_view::<u8>()?;
                            let b = b.to_array_view::<u8>()?;
                            let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
-                           let mut c = Tensor::zero_dt(c_dt, &c_shape)?;
+                           let mut c = Tensor::zero_dt(c_dt, c_shape)?;
                            let view = c.to_array_view_mut::<u8>()?;
                            crate::ndarray::Zip::from(view)
                                .and_broadcast(a)
@@ -129,9 +129,9 @@ eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
             unsafe {
                 let a = a.broadcast(&*c_shape).unwrap();
                 let b = b.broadcast(&*c_shape).unwrap();
-                let mut c = Tensor::uninitialized_dt(DatumType::TDim, &c_shape)?;
+                let mut c = Tensor::uninitialized_dt(DatumType::TDim, c_shape)?;
                 let mut view = c.to_array_view_mut::<TDim>()?;
-                for coords in crate::ndarray::indices(&*c_shape) {
+                for coords in crate::ndarray::indices(view.shape()) {
                     let (p, q) = a[&coords].maybe_div(&b[&coords])?;
                     view[&coords] = p/q;
                 }
@@ -146,7 +146,7 @@ eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
                 let a = a.to_array_view::<u8>()?;
                 let b = b.to_array_view::<u8>()?;
                 let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
-                let mut c = Tensor::zero_dt(c_dt, &c_shape)?;
+                let mut c = Tensor::zero_dt(c_dt, c_shape)?;
                 let view = c.to_array_view_mut::<u8>()?;
                 crate::ndarray::Zip::from(view)
                     .and_broadcast(a)
@@ -196,7 +196,7 @@ bin_to_super_type!(rem, Rem,
                                                   let b = b.to_array_view::<i32>()?;
                                                   let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
                                                   unsafe {
-                                                      let mut c = Tensor::uninitialized_dt(DatumType::TDim, &c_shape)?;
+                                                      let mut c = Tensor::uninitialized_dt(DatumType::TDim, c_shape)?;
                                                       let view = c.to_array_view_mut::<TDim>()?;
                                                       crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() % *b);
                                                       Ok(c)
@@ -247,7 +247,7 @@ bin_to_super_type!(max, Max,
                                 let e_val_as_d_aligned: i32 = scale_by(e.cast_to_scalar::<u8>()? as i32 - e_zp, e_scale / d_scale);
                                 let multiplier = d_scale  * (1.0/ c_scale);
                                 let d = d.to_array_view::<u8>()?;
-                                let mut c = Tensor::zero_dt(c_dt, d.shape())?;
+                                let mut c = Tensor::zero_dt(c_dt, d.shape().into())?;
                                 let view = c.to_array_view_mut::<u8>()?;
                                 crate::ndarray::Zip::from(view)
                                     .and_broadcast(d)

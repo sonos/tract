@@ -70,8 +70,8 @@ pub fn mat_mat_with_mm(
     mm: &dyn MatMatMul,
     &(dt, m, k, n, cold): &(DatumType, usize, usize, usize, bool),
 ) {
-    let a = Tensor::zero_dt(dt, &[m, k]).unwrap();
-    let b = Tensor::zero_dt(dt, &[k, n]).unwrap();
+    let a = Tensor::zero_dt(dt, tvec![m, k]).unwrap();
+    let b = Tensor::zero_dt(dt, tvec![k, n]).unwrap();
     let pa = mm.a_pack().pack_tensor(&a, 1, 0).unwrap();
     let pb = mm.b_pack().pack_tensor(&b, 0, 1).unwrap();
     unsafe {

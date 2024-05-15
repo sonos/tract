@@ -120,7 +120,7 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
             ),
         };
         if dt.is_copy() {
-            let mut tensor = Tensor::uninitialized_dt(dt, &shape)?;
+            let mut tensor = Tensor::uninitialized_dt(dt, shape)?;
             if dt == DatumType::Bool && header.bits_per_item == 1 {
                 let buf = tensor.as_slice_mut::<bool>()?;
 
@@ -137,7 +137,7 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
             }
             Ok(tensor)
         } else if dt == DatumType::String {
-            let mut tensor = Tensor::zero_dt(dt, &shape)?;
+            let mut tensor = Tensor::zero_dt(dt, shape)?;
             for item in tensor.as_slice_mut_unchecked::<String>() {
                 let len: u32 = reader.read_u32::<LE>()?;
                 let mut bytes = Vec::with_capacity(len as usize);

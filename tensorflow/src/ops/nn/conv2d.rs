@@ -144,8 +144,7 @@ mod tests {
     fn test_conv_2() {
         let conv = make_conv(1, 1, PaddingSpec::SameUpper);
         let data = tensor4(&[[[[142.3088f32], [48.891083]], [[208.3187], [-11.274994]]]]);
-        let filter =
-            tensor4(&[[[[160.72833f32]], [[107.84076]]], [[[247.50552]], [[-38.738464]]]]);
+        let filter = tensor4(&[[[[160.72833f32]], [[107.84076]]], [[[247.50552]], [[-38.738464]]]]);
         let exp = tensor4(&[[[[80142.31f32], [5067.5586]], [[32266.81], [-1812.2109]]]]);
         let got = &conv.eval(tvec![data.into(), filter.into()]).unwrap()[0];
         //println!("{:?}", got);
@@ -156,8 +155,8 @@ mod tests {
     #[test]
     fn inference_1() {
         let mut op = make_conv(1, 3, PaddingSpec::Valid);
-        let img = InferenceFact::from(Tensor::zero::<f32>(&[1, 1, 7, 1]).unwrap());
-        let ker = InferenceFact::from(Tensor::zero::<f32>(&[1, 3, 1, 1]).unwrap());
+        let img = InferenceFact::from(Tensor::zero::<f32>(tvec![1, 1, 7, 1]).unwrap());
+        let ker = InferenceFact::from(Tensor::zero::<f32>(tvec![1, 3, 1, 1]).unwrap());
         let any = InferenceFact::default();
 
         let (_, output_facts, _) = op.infer_facts(tvec![&img, &ker], tvec![&any], tvec!()).unwrap();
@@ -168,8 +167,8 @@ mod tests {
     #[test]
     fn inference_2() {
         let mut op = make_conv(1, 1, PaddingSpec::SameUpper);
-        let img = InferenceFact::from(Tensor::zero::<f32>(&[1, 1, 1, 1]).unwrap());
-        let ker = InferenceFact::from(Tensor::zero::<f32>(&[1, 1, 1, 1]).unwrap());
+        let img = InferenceFact::from(Tensor::zero::<f32>(tvec![1, 1, 1, 1]).unwrap());
+        let ker = InferenceFact::from(Tensor::zero::<f32>(tvec![1, 1, 1, 1]).unwrap());
         let any = InferenceFact::default();
 
         let (_, output_facts, _) = op.infer_facts(tvec![&img, &ker], tvec![&any], tvec!()).unwrap();
