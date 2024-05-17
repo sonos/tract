@@ -81,6 +81,8 @@ pub trait DimLike:
     fn eval_to_i64(&self, values: &SymbolValues) -> TractResult<i64>;
 
     fn substitute(&self, from: &Symbol, to: &Self) -> Self;
+
+    fn broadcast(self, other: Self) -> TractResult<Self>;
 }
 
 impl DimLike for TDim {
@@ -154,6 +156,10 @@ impl DimLike for TDim {
     fn eval_to_i64(&self, values: &SymbolValues) -> TractResult<i64> {
         TDim::eval_to_i64(self, values)
     }
+
+    fn broadcast(self, other: Self) -> TractResult<Self> {
+        Ok(TDim::Broadcast(Box::new(self), Box::new(other)).simplify())
+    }
 }
 
 impl<'a> std::convert::TryFrom<&'a TDim> for TDim {
@@ -188,6 +194,16 @@ impl DimLike for usize {
 
     fn eval_to_i64(&self, _: &SymbolValues) -> TractResult<i64> {
         Ok(*self as i64)
+    }
+
+    fn broadcast(self, other: Self) -> TractResult<Self> {
+        if self == 1 || self == other {
+            Ok(other)
+        } else if other == 1 {
+            Ok(self)
+        } else {
+            anyhow::bail!("Can not broadcast {self} against {other}")
+        }
     }
 }
 

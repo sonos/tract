@@ -28,6 +28,7 @@ pub enum TDim {
     Mul(Vec<TDim>),
     MulInt(i64, Box<TDim>),
     Div(Box<TDim>, u64),
+    Broadcast(Box<TDim>, Box<TDim>),
 }
 
 use TDim::*;
@@ -43,6 +44,9 @@ fn tdim_compare(a: &TDim, b: &TDim) -> Ordering {
         ),
         (MulInt(p, d), MulInt(q, e)) => p.cmp(q).then_with(|| tdim_compare(d, e)),
         (Div(d, p), Div(e, q)) => p.cmp(q).then_with(|| tdim_compare(d, e)),
+        (Broadcast(a1, b1), Broadcast(a2, b2)) => {
+            tdim_compare(a1, b1).then_with(|| tdim_compare(a2, b2))
+        }
         (Sym(_), _) => Ordering::Less,
         (_, Sym(_)) => Ordering::Greater,
         (Val(_), _) => Ordering::Less,
@@ -53,6 +57,8 @@ fn tdim_compare(a: &TDim, b: &TDim) -> Ordering {
         (_, Mul(_)) => Ordering::Greater,
         (MulInt(_, _), _) => Ordering::Less,
         (_, MulInt(_, _)) => Ordering::Greater,
+        (Broadcast(_, _), _) => Ordering::Less,
+        (_, Broadcast(_, _)) => Ordering::Greater,
     }
 }
 
@@ -65,6 +71,7 @@ impl fmt::Display for TDim {
             Mul(it) => write!(fmt, "{}", it.iter().map(|x| format!("({x})")).join("*")),
             MulInt(a, b) => write!(fmt, "{a}*{b}"),
             Div(a, b) => write!(fmt, "({a})/{b}"),
+            Broadcast(a, b) => write!(fmt, "[broadcast {a} against {b}]"),
         }
     }
 }
@@ -108,6 +115,17 @@ impl TDim {
             }
             Div(a, q) => Ok(a.eval_to_i64(values)? / *q as i64),
             MulInt(p, a) => Ok(a.eval_to_i64(values)? * *p),
+            Broadcast(a, b) => {
+                let a = a.eval_to_i64(values)?;
+                let b = b.eval_to_i64(values)?;
+                if a == 1 || a == b {
+                    Ok(b)
+                } else if b == 1 {
+                    Ok(a)
+                } else {
+                    anyhow::bail!("No solution for {self}")
+                }
+            }
         }
     }
 
@@ -119,6 +137,7 @@ impl TDim {
             Mul(terms) => terms.iter().fold(Val(1), |acc, it| -> TDim { acc * it.eval(values) }),
             Div(a, q) => a.eval(values) / *q as i64,
             MulInt(p, a) => a.eval(values) * *p,
+            Broadcast(a, b) => Broadcast(Box::new(a.eval(values)), Box::new(b.eval(values))),
         }
     }
 
@@ -140,6 +159,9 @@ impl TDim {
             }
             Div(a, q) => a.substitute(from, to) / *q as i64,
             MulInt(p, a) => a.substitute(from, to) * *p,
+            Broadcast(a, b) => {
+                Broadcast(Box::new(a.substitute(from, to)), Box::new(b.substitute(from, to)))
+            }
         }
     }
 
@@ -162,6 +184,7 @@ impl TDim {
             Mul(terms) => 3 * terms.iter().map(TDim::cost).sum::<usize>(),
             Div(a, _) => 3 * a.cost(),
             MulInt(_, a) => 2 * a.cost(),
+            Broadcast(a, b) => a.cost() + b.cost(),
         }
     }
 
@@ -226,6 +249,12 @@ impl TDim {
                 }
                 forms
             }
+            Broadcast(a, b) => a
+                .wiggle()
+                .into_iter()
+                .cartesian_product(b.wiggle())
+                .map(|(a, b)| Broadcast(Box::new(a), Box::new(b)))
+                .collect_vec(),
         }
     }
 
@@ -276,7 +305,7 @@ impl TDim {
             Mul(terms) => {
                 let mut gcd = Mul(terms.clone()).gcd() as i64;
                 if gcd == 0 {
-                    return Val(0)
+                    return Val(0);
                 }
                 let mut terms = if gcd != 1 {
                     terms
@@ -295,9 +324,9 @@ impl TDim {
                 terms.retain(|t| !t.is_one() && t != &Val(-1));
                 terms.sort_by(tdim_compare);
                 match (gcd, terms.len()) {
-                    (_, 0) => Val(gcd),        // Case #1: If 0 variables, return product
-                    (0, _) => Val(0),          // Case #2: Result is 0 if coef is 0 (actually
-                                               // unreachable as we check at the beginning)
+                    (_, 0) => Val(gcd), // Case #1: If 0 variables, return product
+                    (0, _) => Val(0),   // Case #2: Result is 0 if coef is 0 (actually
+                    // unreachable as we check at the beginning)
                     (1, 1) => terms.remove(0), // Case #3: Product is 1, so return the only term
                     (1, _) => Mul(terms), // Case #4: Product is 1, so return the non-integer terms
                     (_, 1) => MulInt(gcd, Box::new(terms.remove(0))), // Case #5: Single variable, convert to 1 MulInt
@@ -389,7 +418,19 @@ impl TDim {
                     Div(b!(a), q)
                 }
             }
-            _ => self,
+            Broadcast(a, b) => {
+                let (a, b) = (a.simplify(), b.simplify());
+                if a.is_one() || a == b {
+                    b
+                } else if b.is_one() {
+                    a
+                } else if tdim_compare(&a, &b) == Ordering::Less {
+                    Broadcast(Box::new(a), Box::new(b))
+                } else {
+                    Broadcast(Box::new(b), Box::new(a))
+                }
+            }
+            Val(_) | Sym(_) => self,
         }
     }
 
@@ -412,6 +453,7 @@ impl TDim {
                     1
                 }
             }
+            Broadcast(a, b) => a.gcd().gcd(&b.gcd()),
         }
     }
 
@@ -435,6 +477,7 @@ impl TDim {
                 }
             }
             Div(a, q) => Div(a.clone(), q * d),
+            Broadcast(a, b) => Broadcast(Box::new(a.div(d)), Box::new(b.div(d))),
         }
     }
 
@@ -463,6 +506,7 @@ impl TDim {
                     let (n, d) = slope_rec(a, sym);
                     (n, d * *q as i64)
                 }
+                Broadcast(a, _) => slope_rec(a, sym),
             }
         }
         let (p, q) = slope_rec(self, sym);
@@ -479,6 +523,7 @@ impl TDim {
             }),
             MulInt(_, a) => a.symbols(),
             Div(a, _) => a.symbols(),
+            Broadcast(a, b) => a.symbols().union(&b.symbols()).cloned().collect(),
         }
     }
 

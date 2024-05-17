@@ -14,12 +14,11 @@ where
         for shape in shapes {
             let len = shape.as_ref().len();
             let dim = if i < len { &shape.as_ref()[len - i - 1] } else { &one };
-            if dim != &D::one() {
-                if wanted_size != D::one() && dim != &wanted_size {
-                    return None;
-                }
-                wanted_size = dim.clone();
-            }
+            if let Ok(x) = wanted_size.broadcast(dim.clone()) {
+                wanted_size = x
+            } else {
+                return None;
+            };
         }
         shape.push(wanted_size)
     }
