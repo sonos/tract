@@ -2,6 +2,7 @@ use crate::infer::*;
 use crate::internal::*;
 
 use tract_core::ops::einsum::EinSum;
+use tract_core::tract_data::itertools::Itertools;
 
 #[derive(Debug, Clone, Default, Hash)]
 pub struct MatMulInference {
@@ -114,11 +115,11 @@ pub fn compute_shapes<D: DimLike>(
     if b_trans {
         std::mem::swap(&mut kb, &mut n);
     }
-    if ka != kb {
+    if !ka.compatible_with(&kb) {
         bail!(
-            "Inconsistent matmul: a: {:?} b: {:?}, a_trans: {} b_trans: {} c_trans: {}",
-            ashape,
-            bshape,
+            "Inconsistent matmul: a: {} b: {}, a_trans: {} b_trans: {} c_trans: {}",
+            ashape.iter().join(","),
+            bshape.iter().join(","),
             a_trans,
             b_trans,
             c_trans
