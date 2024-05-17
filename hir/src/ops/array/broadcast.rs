@@ -15,8 +15,7 @@ impl MultiBroadcastTo {
         target_shape: &[TDim],
     ) -> TractResult<TVec<OutletId>> {
         let left_shape = model.outlet_fact(inputs[0])?.shape.to_tvec();
-        let dims = tract_core::broadcast::multi_broadcast(&[&*left_shape, target_shape])
-            .context("incompatible shapes")?;
+        let dims = tract_core::broadcast::multi_broadcast(&[&*left_shape, target_shape])?;
         let op = Typed::new(dims.into());
         model.wire_node(prefix, op, &[inputs[0]])
     }
@@ -41,8 +40,7 @@ impl Expansion for MultiBroadcastTo {
             s.given(&inputs[1].value, move |s, dims| {
                 let dims = dims.cast_to::<TDim>()?;
                 let dims =
-                    tract_core::broadcast::multi_broadcast(&[dims.as_slice::<TDim>()?, &shape])
-                        .with_context(|| format!("broadcasting {shape:?} to {dims:?}"))?;
+                    tract_core::broadcast::multi_broadcast(&[dims.as_slice::<TDim>()?, &shape])?;
                 s.equals(&outputs[0].shape, ShapeFactoid::from(dims))
             })
         })?;
