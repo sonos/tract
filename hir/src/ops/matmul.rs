@@ -57,7 +57,8 @@ impl Expansion for MatMulInference {
         let implicit_n = target.outlet_fact(inputs[1])?.rank() < 2;
         let inputs = crate::ops::binary::wire_rank_broadcast(prefix, target, inputs)?;
         let fact = target.outlet_fact(inputs[0])?;
-        let mut axes = AxesMapping::for_numpy_matmul(fact.rank(), self.a_trans, self.b_trans, self.c_trans)?;
+        let mut axes =
+            AxesMapping::for_numpy_matmul(fact.rank(), self.a_trans, self.b_trans, self.c_trans)?;
         if implicit_m {
             let a = InOut::In(0);
             let m_axis = axes.axis((a, axes.rank(a) - 2))?;
@@ -103,8 +104,7 @@ pub fn compute_shapes<D: DimLike>(
     let c_bc_shape_prefix = tract_core::broadcast::multi_broadcast(&[
         &ashape[..(ashape.len() - 2)],
         &bshape[..(bshape.len() - 2)],
-    ])
-    .ok_or_else(|| format_err!("Could not broadcast"))?;
+    ])?;
     let mut c_bc_shape: TVec<D> = c_bc_shape_prefix;
     let (mut m, mut ka) = (ashape[ashape.len() - 2].clone(), ashape[ashape.len() - 1].clone());
     let (mut kb, mut n) = (bshape[bshape.len() - 2].clone(), bshape[bshape.len() - 1].clone());

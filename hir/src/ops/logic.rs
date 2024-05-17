@@ -30,8 +30,7 @@ impl Expansion for Iff {
             s.equals(&outputs[0].datum_type, dt)
         })?;
         s.given_3(&inputs[0].shape, &inputs[1].shape, &inputs[2].shape, move |s, c, t, f| {
-            let shape = multi_broadcast(&[&c, &t, &f])
-                .with_context(|| format!("Incompatible shapes {c:?}, {t:?} and {f:?}"))?;
+            let shape = multi_broadcast(&[&c, &t, &f])?;
             s.equals(&outputs[0].shape, shape)
         })?;
         Ok(())
