@@ -80,9 +80,11 @@ pub trait DimLike:
     /// Full evaluation of the symbol, failing if a symbol is missing
     fn eval_to_i64(&self, values: &SymbolValues) -> TractResult<i64>;
 
-    fn substitute(&self, from: &Symbol, to: &Self) -> Self;
+    fn substitute(&self, from: &Symbol, to: &Self) -> TractResult<Self>;
 
     fn broadcast(self, other: Self) -> TractResult<Self>;
+
+    fn compatible_with(&self, other: &Self) -> bool;
 }
 
 impl DimLike for TDim {
@@ -149,7 +151,7 @@ impl DimLike for TDim {
         self.eval(values)
     }
 
-    fn substitute(&self, from: &Symbol, to: &Self) -> Self {
+    fn substitute(&self, from: &Symbol, to: &Self) -> TractResult<Self> {
         self.substitute(from, to)
     }
 
@@ -158,7 +160,11 @@ impl DimLike for TDim {
     }
 
     fn broadcast(self, other: Self) -> TractResult<Self> {
-        Ok(TDim::Broadcast(Box::new(self), Box::new(other)).simplify())
+        Ok(TDim::Broadcast(vec!(self, other)).simplify())
+    }
+
+    fn compatible_with(&self, other: &Self) -> bool {
+        self.compatible_with(other)
     }
 }
 
@@ -188,8 +194,8 @@ impl DimLike for usize {
         *self
     }
 
-    fn substitute(&self, _from: &Symbol, _to: &Self) -> Self {
-        *self
+    fn substitute(&self, _from: &Symbol, _to: &Self) -> TractResult<Self> {
+        Ok(*self)
     }
 
     fn eval_to_i64(&self, _: &SymbolValues) -> TractResult<i64> {
@@ -204,6 +210,10 @@ impl DimLike for usize {
         } else {
             anyhow::bail!("Can not broadcast {self} against {other}")
         }
+    }
+
+    fn compatible_with(&self, other: &Self) -> bool {
+        self == other
     }
 }
 

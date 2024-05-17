@@ -1,6 +1,7 @@
 use crate::infer::*;
 use crate::internal::*;
 
+use tract_core::broadcast::multi_broadcast;
 use tract_core::ops as mir;
 pub use tract_core::ops::binary::wire_cast;
 pub use tract_core::ops::binary::wire_rank_broadcast;
@@ -52,8 +53,10 @@ pub fn rules<'r, 'p: 'r, 's: 'r, DT: Fn(DatumType, DatumType) -> TractResult<Dat
     check_input_arity(inputs, 2)?;
     check_output_arity(outputs, 1)?;
 
+    /*
     s.with(&inputs[0].shape, move |s, a_shape| {
         s.with(&inputs[1].shape, move |s, b_shape| {
+            /*
             if let Some(c_shape) =
                 crate::infer::helpers::infer_shape_broadcasting(&[&a_shape, &b_shape])
                     .with_context(|| {
@@ -66,6 +69,11 @@ pub fn rules<'r, 'p: 'r, 's: 'r, DT: Fn(DatumType, DatumType) -> TractResult<Dat
             }
             Ok(())
         })
+        */
+    })?;
+    */
+    s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, a, b| {
+        s.equals(&outputs[0].shape, multi_broadcast(&[a, b])?)
     })?;
     s.given_2(&inputs[0].datum_type, &inputs[1].datum_type, move |s, typa, typb| {
         s.equals(&outputs[0].datum_type, dt(typa, typb)?)
