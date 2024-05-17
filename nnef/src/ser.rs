@@ -446,6 +446,7 @@ pub fn tdim(dim: &TDim) -> RValue {
             .unwrap(),
         TDim::MulInt(x, y) => RValue::Binary(numeric(x).boxed(), "*".to_string(), tdim(y).boxed()),
         TDim::Div(x, y) => RValue::Binary(tdim(x).boxed(), "/".to_string(), numeric(y).boxed()),
+        TDim::Broadcast(_, _) => todo!(),
     }
 }
 
