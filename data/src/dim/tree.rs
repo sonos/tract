@@ -125,7 +125,7 @@ impl TDim {
             Val(v) => Val(*v),
             Add(terms) => terms.iter().fold(Val(0), |acc, it| -> TDim { acc + it.eval(values) }),
             Mul(terms) => terms.iter().fold(Val(1), |acc, it| -> TDim { acc * it.eval(values) }),
-            Broadcast(terms) => terms.iter().fold(Val(1), |acc, it| -> TDim { acc * it.eval(values) }),
+            Broadcast(terms) => terms.iter().fold(Val(1), |acc, it| -> TDim { acc.broadcast(it.eval(values)).unwrap_or_else(|_| self.clone()) }),
             Div(a, q) => a.eval(values) / *q as i64,
             MulInt(p, a) => a.eval(values) * *p,
         }

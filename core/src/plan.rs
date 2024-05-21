@@ -368,7 +368,7 @@ where
         let expected = expression.eval(symbols);
         if let Ok(x) = expected.to_i64() {
             if x != provided {
-                bail!("Clashing resolution for expression. {expression}={x} != {provided}.")
+                bail!("Clashing resolution for expression. {expression}={x} != {provided}. ({symbols:?})")
             }
         }
         if expected.symbols().len() == 1 {
