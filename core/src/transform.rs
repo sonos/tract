@@ -1,6 +1,7 @@
 use crate::internal::*;
 #[cfg(feature = "blas")]
 use crate::ops::einsum::as_blas::AsBlas;
+use crate::ops::matmul::de_block_quant::BlockQuantTransform;
 use num_traits::Float;
 use std::borrow::Cow;
 use std::fmt::Debug;
@@ -21,6 +22,7 @@ pub fn get_transform(name: &str) -> Option<Box<dyn ModelTransform>> {
             build_float_translator::<f16, f32>(name.strip_prefix("f16-to-f32"))
         }
         "softmax-fast-compact" => Some(Box::new(SoftmaxFastCompact)),
+        "block-quant" => Some(Box::new(BlockQuantTransform)),
         _ => None,
     }
 }
