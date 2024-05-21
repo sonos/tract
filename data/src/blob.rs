@@ -44,6 +44,30 @@ impl Hash for Blob {
 }
 
 impl Blob {
+    pub unsafe fn new_for_size_and_align(size: usize, align: usize) -> Blob {
+        Self::for_layout(Layout::from_size_align_unchecked(size, align))
+    }
+
+    pub unsafe fn ensure_size_and_align(&mut self, size: usize, align: usize) {
+        if size > self.layout.size() || align > self.layout.align() {
+            if !self.data.is_null() {
+                std::alloc::dealloc(self.data as _, self.layout);
+            }
+            self.layout = Layout::from_size_align_unchecked(size, align);
+            self.data = std::alloc::alloc(self.layout);
+            assert!(!self.data.is_null());
+        }
+    }
+
+    pub unsafe fn for_layout(layout: Layout) -> Blob {
+        let mut data = null_mut();
+        if layout.size() > 0 {
+            data = unsafe { alloc(layout) };
+            assert!(!data.is_null());
+        }
+        Blob { layout, data }
+    }
+
     pub fn from_bytes(s: &[u8]) -> TractResult<Blob> {
         Self::from_bytes_alignment(s, 128)
     }
@@ -56,15 +80,20 @@ impl Blob {
         }
     }
 
+    fn as_bytes_mut(&mut self) -> &mut [u8] {
+        if self.data.is_null() {
+            &mut []
+        } else {
+            unsafe { std::slice::from_raw_parts_mut(self.data, self.layout.size()) }
+        }
+    }
+
     pub fn from_bytes_alignment(s: &[u8], alignment: usize) -> TractResult<Blob> {
         unsafe {
-            let layout = Layout::from_size_align_unchecked(s.len(), alignment);
-            let mut data = null_mut();
-            if layout.size() > 0 {
-                data = alloc(layout);
-                std::ptr::copy_nonoverlapping(s.as_ptr(), data, s.len());
-            }
-            Ok(Blob { layout, data })
+            let layout = Layout::from_size_align(s.len(), alignment)?;
+            let blob = Self::for_layout(layout);
+            std::ptr::copy_nonoverlapping(s.as_ptr(), blob.data, s.len());
+            Ok(blob)
         }
     }
 }
@@ -73,6 +102,12 @@ impl std::ops::Deref for Blob {
     type Target = [u8];
     fn deref(&self) -> &[u8] {
         self.as_bytes()
+    }
+}
+
+impl std::ops::DerefMut for Blob {
+    fn deref_mut(&mut self) -> &mut [u8] {
+        self.as_bytes_mut()
     }
 }
 
