@@ -1,4 +1,7 @@
 use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use downcast_rs::{impl_downcast, Downcast};
+use dyn_clone::DynClone;
+use dyn_hash::DynHash;
 use tract_data::internal::*;
 use tract_data::itertools::Itertools;
 
@@ -11,7 +14,9 @@ use crate::mmm::MMMInput;
 
 use super::Packer;
 
-pub trait BlockQuant: Debug + Display + Clone + Send + Sync + Hash {
+pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downcast {
+    fn same_as(&self, other: &dyn BlockQuant) -> bool;
+
     fn block_len(&self) -> usize;
 
     fn block_bytes(&self) -> usize;
@@ -52,12 +57,20 @@ pub trait BlockQuant: Debug + Display + Clone + Send + Sync + Hash {
     fn panel_f32(&self, packed: &Blob, k: usize, r: usize, panel: usize, scratch: &mut [f32]);
 }
 
-#[derive(Copy, Clone, Debug, Hash)]
+dyn_clone::clone_trait_object!(BlockQuant);
+dyn_hash::hash_trait_object!(BlockQuant);
+impl_downcast!(BlockQuant);
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct BaseQ4_0<const QK: usize = 32>;
 
 pub static Q4_0: BaseQ4_0 = BaseQ4_0::<32>;
 
 impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
+    fn same_as(&self, other: &dyn BlockQuant) -> bool {
+        other.downcast_ref::<Self>().map(|other| other == self).unwrap_or(false)
+    }
+
     fn block_len(&self) -> usize {
         QK
     }
@@ -161,21 +174,21 @@ impl<const QK: usize> Display for BaseQ4_0<QK> {
 }
 
 #[derive(Clone, Debug, Hash)]
-pub struct PackedBlockQuant<BQ: BlockQuant> {
-    format: BQ,
+pub struct PackedBlockQuant {
+    format: Box<dyn BlockQuant>,
     data: Blob,
     pack: Packer,
     mn: usize,
     k: usize,
 }
 
-impl<BQ: BlockQuant> Display for PackedBlockQuant<BQ> {
+impl Display for PackedBlockQuant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Packed{} (m={} k={} r={})", self.format, self.mn, self.k, self.pack.r)
     }
 }
 
-impl<BQ: BlockQuant> MMMInput for PackedBlockQuant<BQ> {
+impl MMMInput for PackedBlockQuant {
     fn scratch_panel_buffer_layout(&self) -> Option<Layout> {
         Some(self.pack.single_panel_layout(self.k, 4))
     }

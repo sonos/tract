@@ -41,7 +41,7 @@ pub(crate) fn codegen(
     }
 }
 
-pub(super) fn ensure_mkn_axes<'a>(
+pub(crate) fn ensure_mkn_axes<'a>(
     op: &'a EinSum,
     model: &TypedModel,
     node: &TypedNode,
