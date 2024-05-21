@@ -520,7 +520,7 @@ impl TDim {
         if let Ok(x) = (self.clone() - other).to_i64() {
             return x == 0;
         }
-        return true; // maybe ? :)
+        true // maybe ? :)
     }
 }
 
