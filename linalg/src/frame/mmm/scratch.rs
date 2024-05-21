@@ -1,7 +1,6 @@
 use super::{BinOp, FusedKerSpec, FusedSpec, MatMatMulKer, OutputStoreKer};
 use crate::LADatum;
 use downcast_rs::{impl_downcast, Downcast};
-use std::alloc::Layout;
 use std::fmt::Debug;
 use tract_data::internal::num_integer::Integer;
 use tract_data::internal::*;
@@ -9,31 +8,15 @@ use tract_data::internal::*;
 pub trait ScratchSpace: Downcast + Send {}
 impl_downcast!(ScratchSpace);
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ScratchSpaceImpl<TI: LADatum> {
     uspecs: Vec<FusedKerSpec<TI>>,
-    layout: Layout,
-    buffer: *mut u8,
+    blob: Blob,
     loc_dependant: TVec<LocDependant>,
     valid_down_tiles: usize,
     remnant_down: usize,
     valid_right_tiles: usize,
     remnant_right: usize,
-}
-
-impl<TI: LADatum> Default for ScratchSpaceImpl<TI> {
-    fn default() -> Self {
-        ScratchSpaceImpl {
-            uspecs: vec![],
-            layout: unsafe { Layout::from_size_align_unchecked(0, 1) },
-            buffer: std::ptr::null_mut(),
-            loc_dependant: tvec!(),
-            valid_down_tiles: 0,
-            remnant_down: 0,
-            valid_right_tiles: 0,
-            remnant_right: 0,
-        }
-    }
 }
 
 #[derive(Debug, new)]
@@ -46,16 +29,6 @@ struct LocDependant {
 
 impl<TI: LADatum> ScratchSpace for ScratchSpaceImpl<TI> {}
 unsafe impl<TI: LADatum> Send for ScratchSpaceImpl<TI> {}
-
-impl<TI: LADatum> Drop for ScratchSpaceImpl<TI> {
-    fn drop(&mut self) {
-        if !self.buffer.is_null() {
-            unsafe {
-                std::alloc::dealloc(self.buffer as _, self.layout);
-            }
-        }
-    }
-}
 
 #[derive(Debug)]
 struct AddMatMulTemp {
@@ -149,19 +122,12 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
             self.uspecs.push(uspec);
         }
         self.uspecs.push(FKS::Done);
-        if offset > self.layout.size() || align > self.layout.align() {
-            if !self.buffer.is_null() {
-                std::alloc::dealloc(self.buffer as _, self.layout);
-            }
-            self.layout = Layout::from_size_align_unchecked(offset, align);
-            self.buffer = std::alloc::alloc(self.layout);
-            assert!(!self.buffer.is_null());
-        }
+        self.blob.ensure_size_and_align(offset, align);
         let mut mat_mul_half_done = false;
         for LocDependant { loc, buffer, spec, .. } in &mut self.loc_dependant {
-            *loc = self.buffer.offset(*loc as _);
+            *loc = self.blob.as_ptr().offset(*loc as _);
             if let Some(b) = buffer {
-                *b = self.buffer.offset(*b as _);
+                *b = self.blob.as_mut_ptr().offset(*b as _);
             }
             let spec = specs.get_unchecked(*spec);
             #[allow(clippy::single_match)]
