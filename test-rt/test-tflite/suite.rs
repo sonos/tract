@@ -95,6 +95,8 @@ fn ignore_onnx(t: &[String]) -> bool {
         test_prelu
         test_relu
         test_selu
+        test_sigmoid
+        test_tanh
         test_thresholdrelu
         ",
     );
