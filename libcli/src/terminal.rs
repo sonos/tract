@@ -129,7 +129,7 @@ fn render_node_prefixed(
 
     // flops column
     let mut flops_column = if options.profile && options.cost {
-        let timing: f64 = tags.profile.as_ref().unwrap().as_secs_f64();
+        let timing: f64 = tags.profile.as_ref().map(Duration::as_secs_f64).unwrap_or(0.0);
         let flops_column_pad = flops_column_pad.clone();
         let it = tags.cost.iter().map(move |c| {
             if c.0.is_compute() {

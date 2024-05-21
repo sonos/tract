@@ -1,8 +1,9 @@
 use std::path::Path;
 
-use crate::ast::{Document, QuantFormat};
+use crate::ast::{Document, LazyReader, QuantFormat};
 use crate::internal::*;
 use tract_core::downcast_rs::{impl_downcast, DowncastSync};
+use tract_core::ops::konst::LazyConstProvider;
 
 pub const GRAPH_NNEF_FILENAME: &str = "graph.nnef";
 pub const GRAPH_QUANT_FILENAME: &str = "graph.quant";
@@ -32,6 +33,7 @@ pub trait ResourceLoader: Send + Sync {
     fn try_load(
         &self,
         path: &Path,
+        lazy_data_provider: Option<LazyReader>,
         reader: &mut dyn std::io::Read,
         framework: &Nnef,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>>;
@@ -57,6 +59,7 @@ impl ResourceLoader for GraphNnefLoader {
     fn try_load(
         &self,
         path: &Path,
+        _lazy_data_provider: Option<LazyReader>,
         reader: &mut dyn std::io::Read,
         _framework: &Nnef,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
@@ -84,6 +87,7 @@ impl ResourceLoader for DatLoader {
     fn try_load(
         &self,
         path: &Path,
+        _lazy_data_provider: Option<LazyReader>,
         reader: &mut dyn std::io::Read,
         _framework: &Nnef,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
@@ -94,6 +98,56 @@ impl ResourceLoader for DatLoader {
         } else {
             Ok(None)
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct LazyDat {
+    reader: LazyReader,
+    fact: TypedFact,
+}
+
+impl Resource for LazyDat {}
+
+#[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
+pub struct LazyDatLoader;
+
+impl ResourceLoader for LazyDatLoader {
+    fn name(&self) -> Cow<str> {
+        "LazyDatLoader".into()
+    }
+
+    fn try_load(
+        &self,
+        path: &Path,
+        lazy_data_provider: Option<LazyReader>,
+        reader: &mut dyn std::io::Read,
+        _framework: &Nnef,
+    ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
+        if let Some(lazy) = lazy_data_provider {
+            if path.extension().map(|e| e == "dat").unwrap_or(false) {
+                let tensor = crate::tensors::read_tensor(reader)
+                    .with_context(|| format!("Error while reading tensor {path:?}"))?;
+                let dat = LazyDat {
+                    fact: TypedFact::dt_shape(tensor.datum_type(), tensor.shape()),
+                    reader: lazy,
+                };
+                return Ok(Some((resource_path_to_id(path)?, Arc::new(dat))));
+            }
+        }
+        Ok(None)
+    }
+}
+
+impl LazyConstProvider for LazyDat {
+    fn eval(&self) -> TractResult<TValue> {
+        let tensor = crate::tensors::read_tensor(self.reader.read()?)
+            .with_context(|| format!("Error while reading tensor {:?}", self))?;
+        Ok(tensor.into_tvalue())
+    }
+
+    fn output_fact(&self) -> TractResult<TypedFact> {
+        Ok(self.fact.clone())
     }
 }
 
@@ -110,6 +164,7 @@ impl ResourceLoader for GraphQuantLoader {
     fn try_load(
         &self,
         path: &Path,
+        _lazy_data_provider: Option<LazyReader>,
         reader: &mut dyn std::io::Read,
         _framework: &Nnef,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
@@ -144,6 +199,7 @@ impl ResourceLoader for TypedModelLoader {
     fn try_load(
         &self,
         path: &Path,
+        _lazy_data_provider: Option<LazyReader>,
         reader: &mut dyn std::io::Read,
         framework: &Nnef,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
@@ -158,13 +214,11 @@ impl ResourceLoader for TypedModelLoader {
             };
 
             let label = if path_str.ends_with(NNEF_TGZ) {
-                path
-                    .to_str()
+                path.to_str()
                     .ok_or_else(|| anyhow!("invalid model resource path"))?
                     .trim_end_matches(NNEF_TGZ)
             } else {
-                path
-                    .to_str()
+                path.to_str()
                     .ok_or_else(|| anyhow!("invalid model resource path"))?
                     .trim_end_matches(NNEF_TAR)
             };
