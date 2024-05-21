@@ -38,11 +38,13 @@ fn tdim_compare(a: &TDim, b: &TDim) -> Ordering {
     match (a, b) {
         (Sym(a), Sym(b)) => a.cmp(b),
         (Val(a), Val(b)) => a.cmp(b),
-        (Add(a), Add(b)) | (Mul(a), Mul(b)) | (Broadcast(a), Broadcast(b)) => a.len().cmp(&b.len()).then(
-            a.iter()
-                .zip(b.iter())
-                .fold(Ordering::Equal, |acc, (a, b)| acc.then_with(|| tdim_compare(a, b))),
-        ),
+        (Add(a), Add(b)) | (Mul(a), Mul(b)) | (Broadcast(a), Broadcast(b)) => {
+            a.len().cmp(&b.len()).then(
+                a.iter()
+                    .zip(b.iter())
+                    .fold(Ordering::Equal, |acc, (a, b)| acc.then_with(|| tdim_compare(a, b))),
+            )
+        }
         (MulInt(p, d), MulInt(q, e)) => p.cmp(q).then_with(|| tdim_compare(d, e)),
         (Div(d, p), Div(e, q)) => p.cmp(q).then_with(|| tdim_compare(d, e)),
         (Sym(_), _) => Ordering::Less,
@@ -111,9 +113,10 @@ impl TDim {
             Mul(terms) => {
                 terms.iter().try_fold(1, |acc, it| it.eval_to_i64(values).map(|x| acc * x))
             }
-            Broadcast(terms) => {
-                terms.iter().try_fold(1i64, |acc, it| it.eval_to_i64(values).and_then(|x| ((acc as usize).broadcast(x as usize)).map(|x| x as i64)))
-            }
+            Broadcast(terms) => terms.iter().try_fold(1i64, |acc, it| {
+                it.eval_to_i64(values)
+                    .and_then(|x| ((acc as usize).broadcast(x as usize)).map(|x| x as i64))
+            }),
             Div(a, q) => Ok(a.eval_to_i64(values)? / *q as i64),
             MulInt(p, a) => Ok(a.eval_to_i64(values)? * *p),
         }
@@ -125,7 +128,9 @@ impl TDim {
             Val(v) => Val(*v),
             Add(terms) => terms.iter().fold(Val(0), |acc, it| -> TDim { acc + it.eval(values) }),
             Mul(terms) => terms.iter().fold(Val(1), |acc, it| -> TDim { acc * it.eval(values) }),
-            Broadcast(terms) => terms.iter().fold(Val(1), |acc, it| -> TDim { acc.broadcast(it.eval(values)).unwrap_or_else(|_| self.clone()) }),
+            Broadcast(terms) => terms.iter().fold(Val(1), |acc, it| -> TDim {
+                acc.broadcast(it.eval(values)).unwrap_or_else(|_| self.clone())
+            }),
             Div(a, q) => a.eval(values) / *q as i64,
             MulInt(p, a) => a.eval(values) * *p,
         }
@@ -133,23 +138,17 @@ impl TDim {
 
     pub fn substitute(&self, from: &Symbol, to: &Self) -> TractResult<Self> {
         match self {
-            Sym(sym) => {
-                Ok(if sym == from {
-                    to.clone()
-                } else {
-                    self.clone()
-                })
-            }
+            Sym(sym) => Ok(if sym == from { to.clone() } else { self.clone() }),
             Val(v) => Ok(Val(*v)),
-            Add(terms) => {
-                terms.iter().try_fold(Val(0), |acc, it| -> TractResult<TDim> { Ok(acc + it.substitute(from, to)?) })
-            }
-            Mul(terms) => {
-                terms.iter().try_fold(Val(1), |acc, it| -> TractResult<TDim> { Ok(acc * it.substitute(from, to)?) })
-            }
-            Broadcast(terms) => {
-                terms.iter().try_fold(Val(1), |acc, it| -> TractResult<TDim> { acc.broadcast(it.substitute(from, to)?) })
-            }
+            Add(terms) => terms.iter().try_fold(Val(0), |acc, it| -> TractResult<TDim> {
+                Ok(acc + it.substitute(from, to)?)
+            }),
+            Mul(terms) => terms.iter().try_fold(Val(1), |acc, it| -> TractResult<TDim> {
+                Ok(acc * it.substitute(from, to)?)
+            }),
+            Broadcast(terms) => terms.iter().try_fold(Val(1), |acc, it| -> TractResult<TDim> {
+                acc.broadcast(it.substitute(from, to)?)
+            }),
             Div(a, q) => Ok(a.substitute(from, to)? / *q as i64),
             MulInt(p, a) => Ok(a.substitute(from, to)? * *p),
         }
@@ -403,10 +402,14 @@ impl TDim {
                 }
             }
             Broadcast(terms) => {
-                let mut terms:Vec<TDim> = terms.iter().map(|s| s.clone().simplify()).flat_map(|t| if let Broadcast(t) = t { t } else { vec!(t) })
-                .filter(|t| !t.is_one())
-                .sorted_by(tdim_compare)
-                .dedup().collect_vec();
+                let mut terms: Vec<TDim> = terms
+                    .iter()
+                    .map(|s| s.clone().simplify())
+                    .flat_map(|t| if let Broadcast(t) = t { t } else { vec![t] })
+                    .filter(|t| !t.is_one())
+                    .sorted_by(tdim_compare)
+                    .dedup()
+                    .collect_vec();
                 if terms.len() == 0 {
                     Val(1)
                 } else if terms.len() == 1 {
@@ -502,10 +505,12 @@ impl TDim {
         match self {
             Val(_) => maplit::hashset!(),
             Sym(s) => maplit::hashset!(s.clone()),
-            Add(terms) | Mul(terms) | Broadcast(terms) => terms.iter().fold(maplit::hashset!(), |mut set, v| {
-                set.extend(v.symbols());
-                set
-            }),
+            Add(terms) | Mul(terms) | Broadcast(terms) => {
+                terms.iter().fold(maplit::hashset!(), |mut set, v| {
+                    set.extend(v.symbols());
+                    set
+                })
+            }
             MulInt(_, a) => a.symbols(),
             Div(a, _) => a.symbols(),
         }
@@ -515,7 +520,7 @@ impl TDim {
         if let Ok(x) = (self.clone() - other).to_i64() {
             return x == 0;
         }
-        return true // maybe ? :)
+        return true; // maybe ? :)
     }
 }
 
