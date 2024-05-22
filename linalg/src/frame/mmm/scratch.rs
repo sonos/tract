@@ -23,8 +23,10 @@ pub struct ScratchSpaceImpl<TI: LADatum> {
 struct LocDependant {
     spec: usize,
     uspec: usize,
-    loc: *const u8,
-    buffer: Option<*mut u8>,
+    // offset for the location dependant structure
+    loc: usize,
+    // offset of its dynamic-size buffer associated
+    buffer: Option<usize>,
 }
 
 impl<TI: LADatum> ScratchSpace for ScratchSpaceImpl<TI> {}
@@ -56,10 +58,9 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         self.remnant_right = n % K::nr();
         let mut offset = 0;
         let mut align = std::mem::size_of::<*const ()>();
-        fn ld(spec: usize, uspec: usize, loc: *mut u8) -> LocDependant {
+        fn ld(spec: usize, uspec: usize, loc: usize) -> LocDependant {
             LocDependant { spec, uspec, loc, buffer: None }
         }
-        // we're cheating here, storing offset as the buf pointer first
         for (ix, spec) in specs.iter().enumerate() {
             let uspec = match spec {
                 FS::BinScalar(t, op) => match op {
@@ -74,22 +75,22 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                 FS::RoundingShiftRight(s, rp) => FKS::RoundingShiftRight(*s, *rp),
                 FS::QScale(s, rp, m) => FKS::QScale(*s, *rp, *m),
                 FS::BinPerRow(_, _) => {
-                    self.loc_dependant.push(ld(ix, self.uspecs.len(), offset as _));
+                    self.loc_dependant.push(ld(ix, self.uspecs.len(), offset));
                     offset += TI::datum_type().size_of() * K::mr();
                     FusedKerSpec::Done
                 }
                 FS::BinPerCol(_, _) => {
-                    self.loc_dependant.push(ld(ix, self.uspecs.len(), offset as _));
+                    self.loc_dependant.push(ld(ix, self.uspecs.len(), offset));
                     offset += TI::datum_type().size_of() * K::nr();
                     FusedKerSpec::Done
                 }
                 FS::AddRowColProducts(_, _) => {
-                    self.loc_dependant.push(ld(ix, self.uspecs.len(), offset as _));
+                    self.loc_dependant.push(ld(ix, self.uspecs.len(), offset));
                     offset += TI::datum_type().size_of() * (K::mr() + K::nr());
                     FusedKerSpec::Done
                 }
                 FS::Store(_) | FS::AddUnicast(_) => {
-                    self.loc_dependant.push(ld(ix, self.uspecs.len(), offset as _));
+                    self.loc_dependant.push(ld(ix, self.uspecs.len(), offset));
                     offset += TI::datum_type().size_of() * K::mr() * K::nr();
                     FusedKerSpec::Done
                 }
@@ -106,12 +107,12 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                             }
                         }
                         */
-                        let mut ld = ld(ix, self.uspecs.len(), offset as _);
+                        let mut ld = ld(ix, self.uspecs.len(), offset);
                         offset += std::mem::size_of::<AddMatMulTemp>();
                         if let Some(tmp) = input.scratch_panel_buffer_layout() {
                             align = tmp.align().lcm(&align);
                             offset = Integer::next_multiple_of(&offset, &tmp.align());
-                            ld.buffer = Some(offset as _);
+                            ld.buffer = Some(offset);
                             offset += tmp.size();
                         }
                         self.loc_dependant.push(ld);
@@ -124,16 +125,12 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         self.uspecs.push(FKS::Done);
         self.blob.ensure_size_and_align(offset, align);
         let mut mat_mul_half_done = false;
-        for LocDependant { loc, buffer, spec, .. } in &mut self.loc_dependant {
-            *loc = self.blob.as_ptr().offset(*loc as _);
-            if let Some(b) = buffer {
-                *b = self.blob.as_mut_ptr().offset(*b as _);
-            }
+        for LocDependant { loc, spec, .. } in &mut self.loc_dependant {
             let spec = specs.get_unchecked(*spec);
             #[allow(clippy::single_match)]
             match spec {
                 FS::AddMatMul { .. } => {
-                    let scratch = &mut *(*loc as *mut AddMatMulTemp);
+                    let scratch = &mut *(self.blob.as_ptr().add(*loc) as *mut AddMatMulTemp);
                     scratch.is_b = mat_mul_half_done;
                     scratch.panel_id = usize::MAX;
                     mat_mul_half_done = !mat_mul_half_done;
@@ -178,7 +175,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         let ScratchSpaceImpl { uspecs, loc_dependant, .. } = self;
         debug_assert!(specs.len() + 2 == uspecs.len());
         let mut adhoc_pa: *const u8 = std::ptr::null();
-        for LocDependant { spec, uspec, loc, buffer } in loc_dependant.iter_mut() {
+        for LocDependant { spec, uspec, loc, buffer } in loc_dependant {
             let spec = specs.get_unchecked(*spec);
             *uspecs.get_unchecked_mut(*uspec) = match spec {
                 FS::BinPerRow(v, op) => {
@@ -211,10 +208,11 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                 FS::AddUnicast(store) => FKS::AddUnicast(store.tile_c(down, right)),
                 FS::Store(c_store) => FKS::Store(c_store.tile_c(down, right)),
                 FS::AddMatMul { a, b } => {
-                    let scratch = &mut *(*loc as *mut AddMatMulTemp);
+                    let scratch = (self.blob.as_mut_ptr().add(*loc) as *mut AddMatMulTemp).as_mut().unwrap();
                     if !scratch.is_b {
                         if scratch.panel_id != down {
-                            scratch.ptr = a.panel_bytes(down, *buffer);
+                            scratch.ptr =
+                                a.panel_bytes(down, buffer.map(|o| self.blob.as_mut_ptr().add(o)));
                             scratch.panel_id = down;
                         }
                         adhoc_pa = scratch.ptr;
@@ -222,7 +220,8 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                                   // done.
                     } else {
                         if scratch.panel_id != right {
-                            scratch.ptr = b.panel_bytes(right, *buffer);
+                            scratch.ptr =
+                                b.panel_bytes(right, buffer.map(|o| self.blob.as_mut_ptr().add(o)));
                             scratch.panel_id = right;
                         }
                         FKS::AddMatMul { k: b.k(), pa: adhoc_pa, pb: scratch.ptr, cpu_variant: 0 }
@@ -247,11 +246,12 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         let ScratchSpaceImpl { uspecs, loc_dependant, .. } = self;
         debug_assert!(specs.len() + 2 == uspecs.len());
         let mut adhoc_pa: *const u8 = std::ptr::null();
-        for LocDependant { spec, uspec, loc, buffer } in loc_dependant.iter_mut() {
+        for LocDependant { spec, uspec, loc, buffer } in loc_dependant {
+            let loc = self.blob.as_mut_ptr().add(*loc);
             let spec = specs.get_unchecked(*spec);
             *uspecs.get_unchecked_mut(*uspec) = match spec {
                 FS::BinPerRow(v, op) => {
-                    let buf = std::slice::from_raw_parts_mut(*loc as *mut TI, K::mr());
+                    let buf = std::slice::from_raw_parts_mut(loc as *mut TI, K::mr());
                     let ptr = if m_remnant < K::mr() {
                         if m_remnant > 0 {
                             buf.get_unchecked_mut(..m_remnant).copy_from_slice(
@@ -279,7 +279,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     }
                 }
                 FS::BinPerCol(v, op) => {
-                    let buf = std::slice::from_raw_parts_mut(*loc as *mut TI, K::nr());
+                    let buf = std::slice::from_raw_parts_mut(loc as *mut TI, K::nr());
                     let ptr = if n_remnant < K::nr() {
                         if n_remnant > 0 {
                             buf.get_unchecked_mut(..n_remnant).copy_from_slice(
@@ -307,7 +307,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     }
                 }
                 FS::AddRowColProducts(rows, cols) => {
-                    let r = std::slice::from_raw_parts_mut(*loc as *mut TI, K::mr());
+                    let r = std::slice::from_raw_parts_mut(loc as *mut TI, K::mr());
                     let row_ptr = if m_remnant < K::mr() {
                         r.get_unchecked_mut(..m_remnant).copy_from_slice(
                             rows.as_slice_unchecked()
@@ -323,7 +323,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     } else {
                         rows.as_ptr_unchecked::<TI>().add(down * K::mr())
                     };
-                    let c = std::slice::from_raw_parts_mut((*loc as *mut TI).add(K::mr()), K::nr());
+                    let c = std::slice::from_raw_parts_mut((loc as *mut TI).add(K::mr()), K::nr());
                     let col_ptr = if n_remnant < K::nr() {
                         c.get_unchecked_mut(..n_remnant).copy_from_slice(
                             cols.as_slice_unchecked()
@@ -348,7 +348,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                         + col_byte_stride * right as isize * K::nr() as isize;
                     let tile_ptr = store.ptr.offset(tile_offset);
                     let tmp_d_tile =
-                        std::slice::from_raw_parts_mut(*loc as *mut TI, K::mr() * K::nr());
+                        std::slice::from_raw_parts_mut(loc as *mut TI, K::mr() * K::nr());
                     if cfg!(debug_assertions) {
                         tmp_d_tile.iter_mut().for_each(|t| *t = TI::zero());
                     }
@@ -372,7 +372,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                 }
                 FS::Store(c_store) => {
                     let tmpc = OutputStoreKer {
-                        ptr: *loc as _,
+                        ptr: loc as _,
                         item_size: c_store.item_size,
                         row_byte_stride: c_store.item_size as isize,
                         col_byte_stride: (c_store.item_size * K::mr()) as isize,
@@ -380,10 +380,11 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     FKS::Store(tmpc)
                 }
                 FS::AddMatMul { a, b } => {
-                    let scratch = &mut *(*loc as *mut AddMatMulTemp);
+                    let scratch = (loc as *mut AddMatMulTemp).as_mut().unwrap();
                     if !scratch.is_b {
                         if scratch.panel_id != down {
-                            scratch.ptr = a.panel_bytes(down, *buffer);
+                            scratch.ptr =
+                                a.panel_bytes(down, buffer.map(|o| self.blob.as_mut_ptr().add(o)));
                             scratch.panel_id = down;
                         }
                         adhoc_pa = scratch.ptr;
@@ -391,7 +392,8 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                                   // done.
                     } else {
                         if scratch.panel_id != right {
-                            scratch.ptr = b.panel_bytes(right, *buffer);
+                            scratch.ptr =
+                                b.panel_bytes(right, buffer.map(|o| self.blob.as_mut_ptr().add(o)));
                             scratch.panel_id = right;
                         }
                         FKS::AddMatMul { k: b.k(), pa: adhoc_pa, pb: scratch.ptr, cpu_variant: 0 }
