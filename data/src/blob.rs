@@ -92,7 +92,9 @@ impl Blob {
         unsafe {
             let layout = Layout::from_size_align(s.len(), alignment)?;
             let blob = Self::for_layout(layout);
-            std::ptr::copy_nonoverlapping(s.as_ptr(), blob.data, s.len());
+            if s.len() > 0 {
+                std::ptr::copy_nonoverlapping(s.as_ptr(), blob.data, s.len());
+            }
             Ok(blob)
         }
     }
