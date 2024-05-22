@@ -117,3 +117,38 @@ fn tensor_float_precision_conversion<T1: Datum + Float, T2: Datum + Float>(
         Arc::clone(t)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::ops::math;
+    use tract_data::prelude::f16;
+    use super::*;
+
+    #[test]
+    fn test_f16_transform_with_selection() -> TractResult<()> {
+        // F32 model definition
+        let mut model = TypedModel::default();
+        let a = model.add_source("source", f32::fact([1])).unwrap();
+        let multiplier = model.add_const("multiplier", tensor1(&[1.0f32]))?;
+        let neg_infinity = model.add_const("negative", tensor1(&[f32::NEG_INFINITY]))?;
+        let pow_factor = model.add_const("pow_factor", tensor1(&[10.0f32]))?;
+        let add = model.wire_node("layer.0/add", math::add(), &[a, a]).unwrap()[0];
+        let mul = model.wire_node("layer.0/mul", math::mul(), &[add, multiplier]).unwrap()[0];
+        let pow = model.wire_node("layer.1/pow", math::pow(), &[mul, pow_factor]).unwrap()[0];
+        let _output = model.wire_node("layer.1/add_neg_infinity", math::add(), &[pow, neg_infinity]).unwrap()[0];
+        model.auto_outputs()?;
+
+        // Execution in F32
+        let runnable_model = model.clone().into_runnable()?;
+        assert_eq!(runnable_model.run(tvec![tensor1(&[5.0f32]).into()])?[0], tensor1(&[f32::NEG_INFINITY]).into());
+
+        // Execution in F16
+        model.transform(
+            &FloatPrecisionTranslator::<f32, f16>::default()
+        )?;
+        let runnable_model_f16 = model.clone().into_runnable()?;
+        assert!(runnable_model_f16.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0].to_scalar::<f16>()?.is_nan());
+
+        Ok(())
+    }
+}
