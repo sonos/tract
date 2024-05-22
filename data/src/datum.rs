@@ -558,7 +558,7 @@ mod tests {
 
     #[test]
     fn test_cast_i32_to_dim() {
-        let t_i32: Tensor = tensor1(&[0i32, 0]);
+        let t_i32: Tensor = tensor1(&[0i32, 12]);
         t_i32.cast_to::<TDim>().unwrap();
     }
 

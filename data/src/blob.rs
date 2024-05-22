@@ -1,3 +1,5 @@
+use num_traits::Zero;
+
 use crate::TractResult;
 use std::alloc::*;
 use std::fmt::Display;
@@ -72,7 +74,7 @@ impl Blob {
         Self::from_bytes_alignment(s, 128)
     }
 
-    fn as_bytes(&self) -> &[u8] {
+    pub fn as_bytes(&self) -> &[u8] {
         if self.data.is_null() {
             &[]
         } else {
@@ -80,7 +82,7 @@ impl Blob {
         }
     }
 
-    fn as_bytes_mut(&mut self) -> &mut [u8] {
+    pub fn as_bytes_mut(&mut self) -> &mut [u8] {
         if self.data.is_null() {
             &mut []
         } else {
@@ -97,6 +99,11 @@ impl Blob {
             }
             Ok(blob)
         }
+    }
+
+    #[inline]
+    pub fn layout(&self) -> &Layout {
+        &self.layout
     }
 }
 
@@ -115,6 +122,7 @@ impl std::ops::DerefMut for Blob {
 
 impl std::fmt::Display for Blob {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        assert!(self.data.is_null() == self.layout.size().is_zero());
         write!(
             fmt,
             "Blob of {} bytes (align @{}): {}",
