@@ -33,7 +33,7 @@ Windows ABI:
     mov     rax,    [rdi + 16]   // A
 
     mov     rbx,    [rdi + 8]    // k
-    test    rcx,    rcx
+    test    rbx,    rbx
     jz      {{L}}non_linear_loop
 
 {{L}}main_loop_packed_packed:
