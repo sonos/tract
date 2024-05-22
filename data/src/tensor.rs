@@ -1707,7 +1707,6 @@ mod tests {
     impl BroadcastVecToShape {
         fn check(&self) -> proptest::test_runner::TestCaseResult {
             let input = tensor1(&self.vec);
-            /*
             let mut intermediate = tvec![1usize; self.shape.len()];
             intermediate[self.axis] = self.vec.len();
             let reference = input
@@ -1720,7 +1719,6 @@ mod tests {
                 reference,
                 input.broadcast_vector_to_shape(&self.shape, self.axis).unwrap()
             );
-            */
             Ok(())
         }
     }
