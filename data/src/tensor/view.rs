@@ -119,7 +119,7 @@ impl<'a> TensorView<'a> {
     #[inline]
     #[allow(clippy::len_without_is_empty)]
     pub fn valid_bytes(&self) -> usize {
-        self.tensor.layout.size() - self.offset_bytes as usize
+        self.tensor.data.layout().size() - self.offset_bytes as usize
     }
 
     #[inline]
