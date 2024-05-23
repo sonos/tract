@@ -25,8 +25,9 @@ struct LocDependant {
     uspec: usize,
     // offset for the location dependant structure
     loc: usize,
-    // offset of its associated dynamic-size buffer
-    buffer: Option<usize>,
+    // offset of its associated dynamic-size buffers
+    buffer_a: Option<usize>,
+    buffer_b: Option<usize>,
 }
 
 impl<TI: LADatum> ScratchSpace for ScratchSpaceImpl<TI> {}
@@ -34,9 +35,10 @@ unsafe impl<TI: LADatum> Send for ScratchSpaceImpl<TI> {}
 
 #[derive(Debug)]
 struct AddMatMulTemp {
-    ptr: *const u8,
-    panel_id: usize,
-    is_b: bool,
+    ptr_a: *const u8,
+    panel_a_id: usize,
+    ptr_b: *const u8,
+    panel_b_id: usize,
 }
 
 impl<TI: LADatum> ScratchSpaceImpl<TI> {
@@ -59,7 +61,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         let mut offset = 0;
         let mut align = std::mem::size_of::<*const ()>();
         fn ld(spec: usize, uspec: usize, loc: usize) -> LocDependant {
-            LocDependant { spec, uspec, loc, buffer: None }
+            LocDependant { spec, uspec, loc, buffer_a: None, buffer_b: None }
         }
         for (ix, spec) in specs.iter().enumerate() {
             let uspec = match spec {
@@ -96,44 +98,37 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                 }
                 FS::LeakyRelu(t) => FKS::LeakyRelu(*t.to_scalar()?),
                 FS::AddMatMul { a, b, .. } => {
-                    for input in [a, b] {
-                        /*
-                        if cfg!(debug_assertions) {
-                            if let InputStore::Packed { ptr, .. } = a {
-                                ensure!(*ptr as usize % K::alignment_bytes_packed_a() == 0);
-                            }
-                            if let InputStore::Packed { ptr, .. } = b {
-                                ensure!(*ptr as usize % K::alignment_bytes_packed_b() == 0);
-                            }
-                        }
-                        */
-                        let mut ld = ld(ix, self.uspecs.len(), offset);
-                        offset += std::mem::size_of::<AddMatMulTemp>();
-                        if let Some(tmp) = input.scratch_panel_buffer_layout() {
-                            align = tmp.align().lcm(&align);
-                            offset = Integer::next_multiple_of(&offset, &tmp.align());
-                            ld.buffer = Some(offset);
-                            offset += tmp.size();
-                        }
-                        self.loc_dependant.push(ld);
+                    let mut ld = ld(ix, self.uspecs.len(), offset);
+                    offset += std::mem::size_of::<AddMatMulTemp>();
+                    if let Some(tmp) = a.scratch_panel_buffer_layout() {
+                        align = tmp.align().lcm(&align);
+                        offset = Integer::next_multiple_of(&offset, &tmp.align());
+                        ld.buffer_a = Some(offset);
+                        offset += tmp.size();
                     }
+                    if let Some(tmp) = b.scratch_panel_buffer_layout() {
+                        align = tmp.align().lcm(&align);
+                        offset = Integer::next_multiple_of(&offset, &tmp.align());
+                        ld.buffer_b = Some(offset);
+                        offset += tmp.size();
+                    }
+                    self.loc_dependant.push(ld);
                     FusedKerSpec::Done
                 }
             };
             self.uspecs.push(uspec);
         }
         self.uspecs.push(FKS::Done);
+
         self.blob.ensure_size_and_align(offset, align);
-        let mut mat_mul_half_done = false;
         for LocDependant { loc, spec, .. } in &mut self.loc_dependant {
             let spec = specs.get_unchecked(*spec);
             #[allow(clippy::single_match)]
             match spec {
                 FS::AddMatMul { .. } => {
                     let scratch = &mut *(self.blob.as_ptr().add(*loc) as *mut AddMatMulTemp);
-                    scratch.is_b = mat_mul_half_done;
-                    scratch.panel_id = usize::MAX;
-                    mat_mul_half_done = !mat_mul_half_done;
+                    scratch.panel_a_id = usize::MAX;
+                    scratch.panel_b_id = usize::MAX;
                 }
                 _ => (),
             };
@@ -174,8 +169,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         use FusedSpec as FS;
         let ScratchSpaceImpl { uspecs, loc_dependant, .. } = self;
         debug_assert!(specs.len() + 2 == uspecs.len());
-        let mut adhoc_pa: *const u8 = std::ptr::null();
-        for LocDependant { spec, uspec, loc, buffer } in loc_dependant {
+        for LocDependant { spec, uspec, loc, buffer_a, buffer_b } in loc_dependant {
             let spec = specs.get_unchecked(*spec);
             *uspecs.get_unchecked_mut(*uspec) = match spec {
                 FS::BinPerRow(v, op) => {
@@ -208,23 +202,23 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                 FS::AddUnicast(store) => FKS::AddUnicast(store.tile_c(down, right)),
                 FS::Store(c_store) => FKS::Store(c_store.tile_c(down, right)),
                 FS::AddMatMul { a, b } => {
-                    let scratch = (self.blob.as_mut_ptr().add(*loc) as *mut AddMatMulTemp).as_mut().unwrap();
-                    if !scratch.is_b {
-                        if scratch.panel_id != down {
-                            scratch.ptr =
-                                a.panel_bytes(down, buffer.map(|o| self.blob.as_mut_ptr().add(o)));
-                            scratch.panel_id = down;
-                        }
-                        adhoc_pa = scratch.ptr;
-                        FKS::Done // will be overriden by the second pass for B. absolutely not
-                                  // done.
-                    } else {
-                        if scratch.panel_id != right {
-                            scratch.ptr =
-                                b.panel_bytes(right, buffer.map(|o| self.blob.as_mut_ptr().add(o)));
-                            scratch.panel_id = right;
-                        }
-                        FKS::AddMatMul { k: b.k(), pa: adhoc_pa, pb: scratch.ptr, cpu_variant: 0 }
+                    let scratch =
+                        (self.blob.as_mut_ptr().add(*loc) as *mut AddMatMulTemp).as_mut().unwrap();
+                    if scratch.panel_a_id != down {
+                        scratch.ptr_a =
+                            a.panel_bytes(down, buffer_a.map(|o| self.blob.as_mut_ptr().add(o)));
+                        scratch.panel_a_id = down;
+                    }
+                    if scratch.panel_b_id != right {
+                        scratch.ptr_b =
+                            b.panel_bytes(right, buffer_b.map(|o| self.blob.as_mut_ptr().add(o)));
+                        scratch.panel_b_id = right;
+                    }
+                    FKS::AddMatMul {
+                        k: b.k(),
+                        pa: scratch.ptr_a,
+                        pb: scratch.ptr_b,
+                        cpu_variant: 0,
                     }
                 }
                 _ => std::hint::unreachable_unchecked(),
@@ -245,8 +239,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         use FusedSpec as FS;
         let ScratchSpaceImpl { uspecs, loc_dependant, .. } = self;
         debug_assert!(specs.len() + 2 == uspecs.len());
-        let mut adhoc_pa: *const u8 = std::ptr::null();
-        for LocDependant { spec, uspec, loc, buffer } in loc_dependant {
+        for LocDependant { spec, uspec, loc, buffer_a, buffer_b } in loc_dependant {
             let loc = self.blob.as_mut_ptr().add(*loc);
             let spec = specs.get_unchecked(*spec);
             *uspecs.get_unchecked_mut(*uspec) = match spec {
@@ -381,22 +374,21 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                 }
                 FS::AddMatMul { a, b } => {
                     let scratch = (loc as *mut AddMatMulTemp).as_mut().unwrap();
-                    if !scratch.is_b {
-                        if scratch.panel_id != down {
-                            scratch.ptr =
-                                a.panel_bytes(down, buffer.map(|o| self.blob.as_mut_ptr().add(o)));
-                            scratch.panel_id = down;
-                        }
-                        adhoc_pa = scratch.ptr;
-                        FKS::Done // will be overriden by the second pass for B. absolutely not
-                                  // done.
-                    } else {
-                        if scratch.panel_id != right {
-                            scratch.ptr =
-                                b.panel_bytes(right, buffer.map(|o| self.blob.as_mut_ptr().add(o)));
-                            scratch.panel_id = right;
-                        }
-                        FKS::AddMatMul { k: b.k(), pa: adhoc_pa, pb: scratch.ptr, cpu_variant: 0 }
+                    if scratch.panel_a_id != down {
+                        scratch.ptr_a =
+                            a.panel_bytes(down, buffer_a.map(|o| self.blob.as_mut_ptr().add(o)));
+                        scratch.panel_a_id = down;
+                    }
+                    if scratch.panel_b_id != right {
+                        scratch.ptr_b =
+                            b.panel_bytes(right, buffer_b.map(|o| self.blob.as_mut_ptr().add(o)));
+                        scratch.panel_b_id = right;
+                    }
+                    FKS::AddMatMul {
+                        k: b.k(),
+                        pa: scratch.ptr_a,
+                        pb: scratch.ptr_b,
+                        cpu_variant: 0,
                     }
                 }
                 _ => std::hint::unreachable_unchecked(),
