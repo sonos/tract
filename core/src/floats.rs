@@ -14,18 +14,18 @@ use crate::transform::ModelTransform;
 
 #[derive(Default)]
 pub struct FloatPrecisionTranslator<T1: Datum + Float, T2: Datum + Float> {
-    node_predicate: Option<Box<dyn Fn(&Node<TypedFact, Box<dyn TypedOp>>) -> bool>>,
+    node_predicate: Option<Box<dyn Fn(&TypedNode) -> bool>>,
     _phantom: PhantomData<(T1, T2)>,
 }
 
 impl<T1: Datum + Float, T2: Datum + Float> FloatPrecisionTranslator<T1, T2> {
     pub fn with_filter(
-        node_predicate: impl Fn(&Node<TypedFact, Box<dyn TypedOp>>) -> bool + 'static,
+        node_predicate: impl Fn(&TypedNode) -> bool + 'static,
     ) -> Self {
         Self { node_predicate: Some(Box::new(node_predicate)), _phantom: PhantomData }
     }
 
-    fn should_translate_node(&self, node: &Node<TypedFact, Box<dyn TypedOp>>) -> bool {
+    fn should_translate_node(&self, node: &TypedNode) -> bool {
         self.node_predicate.as_ref().map(|it| (it)(node)).unwrap_or(true)
     }
 
@@ -34,8 +34,8 @@ impl<T1: Datum + Float, T2: Datum + Float> FloatPrecisionTranslator<T1, T2> {
     /// in the model. The function return the new input outlet ids.
     fn cast_inputs_if_required(
         &self,
-        model: &mut Graph<TypedFact, Box<dyn TypedOp>>,
-        node: &Node<TypedFact, Box<dyn TypedOp>>,
+        model: &mut TypedModel,
+        node: &TypedNode,
         mapping: &HashMap<OutletId, OutletId>,
         op_float_dt: DatumType,
     ) -> TractResult<TVec<OutletId>> {
@@ -63,9 +63,9 @@ impl<T1: Datum + Float, T2: Datum + Float> FloatPrecisionTranslator<T1, T2> {
     /// precision.
     fn cast_model_outputs_if_required(
         &self,
-        source: &Graph<TypedFact, Box<dyn TypedOp>>,
-        node: &Node<TypedFact, Box<dyn TypedOp>>,
-        target: &mut Graph<TypedFact, Box<dyn TypedOp>>,
+        source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
         target_node_outlet_ids: TVec<OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let mut outputs = tvec![];
@@ -111,9 +111,9 @@ impl<T1: Datum + Float, T2: Datum + Float>
 {
     fn translate_node(
         &self,
-        source: &Graph<TypedFact, Box<dyn TypedOp>>,
-        node: &Node<TypedFact, Box<dyn TypedOp>>,
-        target: &mut Graph<TypedFact, Box<dyn TypedOp>>,
+        source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let is_source = node.op_as::<TypedSource>().is_some();
