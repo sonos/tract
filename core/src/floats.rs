@@ -14,14 +14,13 @@ use crate::transform::ModelTransform;
 
 #[derive(Default)]
 pub struct FloatPrecisionTranslator<T1: Datum + Float, T2: Datum + Float> {
+    #[allow(clippy::type_complexity)]
     node_predicate: Option<Box<dyn Fn(&TypedNode) -> bool>>,
     _phantom: PhantomData<(T1, T2)>,
 }
 
 impl<T1: Datum + Float, T2: Datum + Float> FloatPrecisionTranslator<T1, T2> {
-    pub fn with_filter(
-        node_predicate: impl Fn(&TypedNode) -> bool + 'static,
-    ) -> Self {
+    pub fn with_filter(node_predicate: impl Fn(&TypedNode) -> bool + 'static) -> Self {
         Self { node_predicate: Some(Box::new(node_predicate)), _phantom: PhantomData }
     }
 
@@ -213,8 +212,7 @@ mod test {
     use crate::ops::math;
     use tract_data::prelude::f16;
 
-    #[test]
-    fn test_f16_transform_with_selection() -> TractResult<()> {
+    fn build_f32_model() -> TractResult<TypedModel> {
         // F32 model definition
         let mut model = TypedModel::default();
         let a = model.add_source("source", f32::fact([1])).unwrap();
@@ -228,6 +226,56 @@ mod test {
             .wire_node("layer.1/add_neg_infinity", math::add(), &[pow, neg_infinity])
             .unwrap()[0];
         model.auto_outputs()?;
+        Ok(model)
+    }
+
+    #[test]
+    fn test_high_level_f16_transform_with_filter() -> TractResult<()> {
+        // F32 model definition
+        let model = build_f32_model()?;
+
+        // Execution in F32
+        let runnable_model = model.clone().into_runnable()?;
+        assert_eq!(
+            runnable_model.run(tvec![tensor1(&[5.0f32]).into()])?[0],
+            tensor1(&[f32::NEG_INFINITY]).into()
+        );
+
+        // Execution in F16 with returns NaN
+        let runnable_model = &crate::transform::get_transform("f32-to-f16")
+            .unwrap()
+            .transform_into(&model)?
+            .into_runnable()?;
+        assert!(runnable_model.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
+            .to_scalar::<f16>()?
+            .is_nan());
+
+        // Execution in F16 with filter that returns the good output.
+        let runnable_model = &crate::transform::get_transform("f32-to-f16!=layer.1")
+            .unwrap()
+            .transform_into(&model)?
+            .into_runnable()?;
+        assert_eq!(
+            runnable_model.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0],
+            tensor1(&[f16::NEG_INFINITY]).into()
+        );
+
+        // Execution in F16 with returns NaN despite the filter.
+        let runnable_model = &crate::transform::get_transform("f32-to-f16!=layer.0")
+            .unwrap()
+            .transform_into(&model)?
+            .into_runnable()?;
+        assert!(runnable_model.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
+            .to_scalar::<f16>()?
+            .is_nan());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_f16_transform_with_filter() -> TractResult<()> {
+        // F32 model definition
+        let model = build_f32_model()?;
 
         // Execution in F32
         let runnable_model = model.clone().into_runnable()?;
@@ -245,20 +293,20 @@ mod test {
             .is_nan());
 
         // Execution in F16 with filter that returns the good output.
-        let mut model_f16_with_selection = model.clone();
-        model_f16_with_selection.transform(&FloatPrecisionTranslator::<f32, f16>::with_filter(
+        let mut model_f16_with_filter = model.clone();
+        model_f16_with_filter.transform(&FloatPrecisionTranslator::<f32, f16>::with_filter(
             |node| !node.name.contains("layer.1"),
         ))?;
-        let runnable_model_f16 = model_f16_with_selection.clone().into_runnable()?;
+        let runnable_model_f16 = model_f16_with_filter.clone().into_runnable()?;
         assert_eq!(
             runnable_model_f16.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0],
             tensor1(&[f16::NEG_INFINITY]).into()
         );
-        let mut model_f16_with_selection = model.clone();
-        model_f16_with_selection.transform(&FloatPrecisionTranslator::<f32, f16>::with_filter(
+        let mut model_f16_with_filter = model.clone();
+        model_f16_with_filter.transform(&FloatPrecisionTranslator::<f32, f16>::with_filter(
             |node| !node.name.contains("layer.0"),
         ))?;
-        let runnable_model_f16 = model_f16_with_selection.clone().into_runnable()?;
+        let runnable_model_f16 = model_f16_with_filter.clone().into_runnable()?;
         assert!(runnable_model_f16.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
             .to_scalar::<f16>()?
             .is_nan());
