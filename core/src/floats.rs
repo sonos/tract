@@ -29,10 +29,10 @@ impl<T1: Datum + Float, T2: Datum + Float> FloatPrecisionTranslator<T1, T2> {
         self.node_predicate.as_ref().map(|it| (it)(node)).unwrap_or(true)
     }
 
-    /// Cast node input to the working float precision for the operator
+    /// Cast node inputs to the working float precision for the operator
     /// Only input using float datumtype are impacted. This will add cast operations
     /// in the model. The function return the new input outlet ids.
-    fn cast_input_if_required(
+    fn cast_inputs_if_required(
         &self,
         model: &mut Graph<TypedFact, Box<dyn TypedOp>>,
         node: &Node<TypedFact, Box<dyn TypedOp>>,
@@ -61,7 +61,7 @@ impl<T1: Datum + Float, T2: Datum + Float> FloatPrecisionTranslator<T1, T2> {
     /// Cast node output outlet ids to the destination float precision,
     /// after insertion in the target mode. This preserves the model output float
     /// precision.
-    fn cast_model_output_if_required(
+    fn cast_model_outputs_if_required(
         &self,
         source: &Graph<TypedFact, Box<dyn TypedOp>>,
         node: &Node<TypedFact, Box<dyn TypedOp>>,
@@ -121,13 +121,13 @@ impl<T1: Datum + Float, T2: Datum + Float>
             let new_op = node.op.clone();
 
             let casted_inputs =
-                self.cast_input_if_required(target, node, mapping, T1::datum_type())?;
+                self.cast_inputs_if_required(target, node, mapping, T1::datum_type())?;
             let target_node_outlet_ids = target.wire_node(&node.name, new_op, &casted_inputs)?;
 
-            self.cast_model_output_if_required(source, node, target, target_node_outlet_ids)
+            self.cast_model_outputs_if_required(source, node, target, target_node_outlet_ids)
         } else {
             let casted_inputs =
-                self.cast_input_if_required(target, node, mapping, T2::datum_type())?;
+                self.cast_inputs_if_required(target, node, mapping, T2::datum_type())?;
 
             let new_op = if let Some(source) = node.op_as::<TypedSource>() {
                 Box::new(TypedSource::new(fact_float_precision_conversion::<T1, T2>(&source.fact)))
