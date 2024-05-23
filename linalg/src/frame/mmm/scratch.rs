@@ -25,7 +25,7 @@ struct LocDependant {
     uspec: usize,
     // offset for the location dependant structure
     loc: usize,
-    // offset of its dynamic-size buffer associated
+    // offset of its associated dynamic-size buffer
     buffer: Option<usize>,
 }
 

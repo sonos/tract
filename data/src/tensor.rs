@@ -191,7 +191,7 @@ impl Tensor {
         if !tensor.data.is_empty() {
             if dt == String::datum_type() || dt == Blob::datum_type() {
                 // assumes zero-initialized string and blob are valid
-                tensor.as_bytes_mut().iter_mut().for_each(|x| *x = 0);
+                tensor.data.fill(0);
             } else if dt == TDim::datum_type() {
                 tensor
                     .as_slice_mut_unchecked::<TDim>()
@@ -1353,26 +1353,28 @@ impl Tensor {
         unsafe {
             let mut tensor = Tensor::uninitialized_dt(self.datum_type(), self.shape()).unwrap();
             if self.len() > 0 {
-                self.data.as_ptr().copy_to_nonoverlapping(
-                    tensor.as_bytes_mut().as_mut_ptr(),
-                    self.data.layout().size(),
-                );
-            }
-            if self.dt == DatumType::String {
-                tensor
-                    .as_slice_mut_unchecked::<String>()
-                    .clone_from_slice(self.as_slice_unchecked());
-            }
-            if self.dt == DatumType::Blob {
-                tensor.as_slice_mut_unchecked::<Blob>().clone_from_slice(self.as_slice_unchecked());
-            }
-            if self.dt == DatumType::Opaque {
-                tensor
-                    .as_slice_mut_unchecked::<Opaque>()
-                    .clone_from_slice(self.as_slice_unchecked());
-            }
-            if self.dt == DatumType::TDim {
-                tensor.as_slice_mut_unchecked::<TDim>().clone_from_slice(self.as_slice_unchecked());
+                if self.dt.is_copy() {
+                    self.data.as_ptr().copy_to_nonoverlapping(
+                        tensor.as_bytes_mut().as_mut_ptr(),
+                        self.data.layout().size(),
+                    )
+                } else if self.dt == DatumType::String {
+                    tensor
+                        .as_slice_mut_unchecked::<String>()
+                        .clone_from_slice(self.as_slice_unchecked());
+                } else if self.dt == DatumType::Blob {
+                    tensor
+                        .as_slice_mut_unchecked::<Blob>()
+                        .clone_from_slice(self.as_slice_unchecked());
+                } else if self.dt == DatumType::Opaque {
+                    tensor
+                        .as_slice_mut_unchecked::<Opaque>()
+                        .clone_from_slice(self.as_slice_unchecked());
+                } else if self.dt == DatumType::TDim {
+                    tensor
+                        .as_slice_mut_unchecked::<TDim>()
+                        .clone_from_slice(self.as_slice_unchecked());
+                }
             }
             tensor
         }
@@ -1627,9 +1629,11 @@ impl IntoArcTensor for Arc<Tensor> {
 
 #[cfg(test)]
 mod tests {
+    use crate::dim::SymbolTable;
     use crate::prelude::tensor1;
 
     use super::*;
+    use litteral::tensor0;
     use proptest::collection::vec;
     use proptest::prelude::*;
 
@@ -1774,5 +1778,13 @@ mod tests {
         ]);
         assert_eq!(expected, cplx_input);
         Ok(())
+    }
+
+    #[test]
+    fn clone_tdim_tensor() {
+        let symbols = SymbolTable::default();
+        let a = symbols.sym("a");
+        let t = tensor0(TDim::from(a));
+        let _ = t.clone();
     }
 }
