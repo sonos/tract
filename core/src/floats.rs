@@ -14,15 +14,76 @@ use crate::transform::ModelTransform;
 
 #[derive(Default)]
 pub struct FloatPrecisionTranslator<T1: Datum + Float, T2: Datum + Float> {
-    node_predicate: Option<Box<dyn Fn(&Node<TypedFact, Box<dyn TypedOp>>) -> TractResult<bool>>>,
+    node_predicate: Option<Box<dyn Fn(&Node<TypedFact, Box<dyn TypedOp>>) -> bool>>,
     _phantom: PhantomData<(T1, T2)>,
 }
 
 impl<T1: Datum + Float, T2: Datum + Float> FloatPrecisionTranslator<T1, T2> {
     pub fn with_filter(
-        node_predicate: impl Fn(&Node<TypedFact, Box<dyn TypedOp>>) -> TractResult<bool> + 'static,
+        node_predicate: impl Fn(&Node<TypedFact, Box<dyn TypedOp>>) -> bool + 'static,
     ) -> Self {
         Self { node_predicate: Some(Box::new(node_predicate)), _phantom: PhantomData }
+    }
+
+    fn should_translate_node(&self, node: &Node<TypedFact, Box<dyn TypedOp>>) -> bool {
+        self.node_predicate.as_ref().map(|it| (it)(node)).unwrap_or(true)
+    }
+
+    /// Cast node input to the working float precision for the operator
+    /// Only input using float datumtype are impacted. This will add cast operations
+    /// in the model. The function return the new input outlet ids.
+    fn cast_input_if_required(
+        &self,
+        model: &mut Graph<TypedFact, Box<dyn TypedOp>>,
+        node: &Node<TypedFact, Box<dyn TypedOp>>,
+        mapping: &HashMap<OutletId, OutletId>,
+        op_float_dt: DatumType,
+    ) -> TractResult<TVec<OutletId>> {
+        let original_op_float_dt =
+            if op_float_dt == T1::datum_type() { T2::datum_type() } else { T1::datum_type() };
+
+        let mut mapped_inputs = tvec![];
+        for (i_idx, i) in node.inputs.iter().enumerate() {
+            if model.outlet_fact(mapping[i])?.datum_type == original_op_float_dt {
+                let casted_mapped_input = model.wire_node(
+                    format!("{}.cast-{i_idx}", node.name),
+                    Cast { to: op_float_dt },
+                    &[mapping[i]],
+                )?[0];
+                mapped_inputs.push(casted_mapped_input);
+            } else {
+                mapped_inputs.push(mapping[i])
+            }
+        }
+        Ok(mapped_inputs)
+    }
+
+    /// Cast node output outlet ids to the destination float precision,
+    /// after insertion in the target mode. This preserves the model output float
+    /// precision.
+    fn cast_model_output_if_required(
+        &self,
+        source: &Graph<TypedFact, Box<dyn TypedOp>>,
+        node: &Node<TypedFact, Box<dyn TypedOp>>,
+        target: &mut Graph<TypedFact, Box<dyn TypedOp>>,
+        target_node_outlet_ids: TVec<OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let mut outputs = tvec![];
+        for (o_idx, o) in target_node_outlet_ids.into_iter().enumerate() {
+            // Add Cast op for model output
+            let is_source_output = source.outputs.contains(&OutletId::new(node.id, o_idx));
+            if target.outlet_fact(o)?.datum_type == T1::datum_type() && is_source_output {
+                let casted_output = target.wire_node(
+                    format!("{}.cast-out-{o_idx}", node.name),
+                    Cast { to: T2::datum_type() },
+                    &[o],
+                )?[0];
+                outputs.push(casted_output);
+            } else {
+                outputs.push(o)
+            }
+        }
+        Ok(outputs)
     }
 }
 
@@ -55,44 +116,19 @@ impl<T1: Datum + Float, T2: Datum + Float>
         target: &mut Graph<TypedFact, Box<dyn TypedOp>>,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        let node_not_transformed =
-            !self.node_predicate.as_ref().map(|it| (it)(node)).transpose()?.unwrap_or(true);
         let is_source = node.op_as::<TypedSource>().is_some();
-        if node_not_transformed && !is_source {
+        if !self.should_translate_node(node) && !is_source {
             let new_op = node.op.clone();
 
-            let mut mapped_inputs = tvec![];
-            for (i_idx, i) in node.inputs.iter().enumerate() {
-                if target.outlet_fact(mapping[i])?.datum_type == T2::datum_type() {
-                    let casted_mapped_input = target.wire_node(
-                        format!("{}.cast-in-{i_idx}", node.name),
-                        Cast { to: T1::datum_type() },
-                        &[mapping[i]],
-                    )?[0];
-                    mapped_inputs.push(casted_mapped_input);
-                } else {
-                    mapped_inputs.push(mapping[i])
-                }
-            }
-            let raw_outputs = target.wire_node(&node.name, new_op, &mapped_inputs)?;
+            let casted_inputs =
+                self.cast_input_if_required(target, node, mapping, T1::datum_type())?;
+            let target_node_outlet_ids = target.wire_node(&node.name, new_op, &casted_inputs)?;
 
-            let mut outputs = tvec![];
-            for (o_idx, o) in raw_outputs.into_iter().enumerate() {
-                let is_source_model_output =
-                    source.outputs.contains(&OutletId::new(node.id, o_idx));
-                if target.outlet_fact(o)?.datum_type == T1::datum_type() && is_source_model_output {
-                    let casted_output = target.wire_node(
-                        format!("{}.cast-out-{o_idx}", node.name),
-                        Cast { to: T2::datum_type() },
-                        &[o],
-                    )?[0];
-                    outputs.push(casted_output);
-                } else {
-                    outputs.push(o)
-                }
-            }
-            Ok(outputs)
+            self.cast_model_output_if_required(source, node, target, target_node_outlet_ids)
         } else {
+            let casted_inputs =
+                self.cast_input_if_required(target, node, mapping, T2::datum_type())?;
+
             let new_op = if let Some(source) = node.op_as::<TypedSource>() {
                 Box::new(TypedSource::new(fact_float_precision_conversion::<T1, T2>(&source.fact)))
             } else if let Some(konst) = node.op_as::<Const>() {
@@ -136,11 +172,7 @@ impl<T1: Datum + Float, T2: Datum + Float>
             } else {
                 node.op.clone()
             };
-            target.wire_node(
-                &node.name,
-                new_op,
-                &node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>(),
-            )
+            target.wire_node(&node.name, new_op, &casted_inputs)
         }
     }
 }
@@ -215,13 +247,21 @@ mod test {
         // Execution in F16 with filter that returns the good output.
         let mut model_f16_with_selection = model.clone();
         model_f16_with_selection.transform(&FloatPrecisionTranslator::<f32, f16>::with_filter(
-            |node| Ok(!node.name.contains("layer.1")),
+            |node| !node.name.contains("layer.1"),
         ))?;
         let runnable_model_f16 = model_f16_with_selection.clone().into_runnable()?;
         assert_eq!(
             runnable_model_f16.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0],
             tensor1(&[f16::NEG_INFINITY]).into()
         );
+        let mut model_f16_with_selection = model.clone();
+        model_f16_with_selection.transform(&FloatPrecisionTranslator::<f32, f16>::with_filter(
+            |node| !node.name.contains("layer.0"),
+        ))?;
+        let runnable_model_f16 = model_f16_with_selection.clone().into_runnable()?;
+        assert!(runnable_model_f16.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
+            .to_scalar::<f16>()?
+            .is_nan());
         Ok(())
     }
 }
