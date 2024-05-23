@@ -13,18 +13,21 @@ pub struct Blob {
 }
 
 impl Default for Blob {
+    #[inline]
     fn default() -> Blob {
         Blob::from_bytes(&[]).unwrap()
     }
 }
 
 impl Clone for Blob {
+    #[inline]
     fn clone(&self) -> Self {
         Blob::from_bytes_alignment(self, self.layout.align()).unwrap()
     }
 }
 
 impl Drop for Blob {
+    #[inline]
     fn drop(&mut self) {
         if !self.data.is_null() {
             unsafe { dealloc(self.data, self.layout) }
@@ -33,12 +36,14 @@ impl Drop for Blob {
 }
 
 impl PartialEq for Blob {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.layout == other.layout && self.as_bytes() == other.as_bytes()
     }
 }
 
 impl Hash for Blob {
+    #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.layout.align().hash(state);
         self.as_bytes().hash(state);
@@ -46,10 +51,12 @@ impl Hash for Blob {
 }
 
 impl Blob {
+    #[inline]
     pub unsafe fn new_for_size_and_align(size: usize, align: usize) -> Blob {
         Self::for_layout(Layout::from_size_align_unchecked(size, align))
     }
 
+    #[inline]
     pub unsafe fn ensure_size_and_align(&mut self, size: usize, align: usize) {
         if size > self.layout.size() || align > self.layout.align() {
             if !self.data.is_null() {
@@ -61,6 +68,7 @@ impl Blob {
         }
     }
 
+    #[inline]
     pub unsafe fn for_layout(layout: Layout) -> Blob {
         let mut data = null_mut();
         if layout.size() > 0 {
@@ -70,10 +78,12 @@ impl Blob {
         Blob { layout, data }
     }
 
+    #[inline]
     pub fn from_bytes(s: &[u8]) -> TractResult<Blob> {
         Self::from_bytes_alignment(s, 128)
     }
 
+    #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         if self.data.is_null() {
             &[]
@@ -82,6 +92,7 @@ impl Blob {
         }
     }
 
+    #[inline]
     pub fn as_bytes_mut(&mut self) -> &mut [u8] {
         if self.data.is_null() {
             &mut []
@@ -90,6 +101,7 @@ impl Blob {
         }
     }
 
+    #[inline]
     pub fn from_bytes_alignment(s: &[u8], alignment: usize) -> TractResult<Blob> {
         unsafe {
             let layout = Layout::from_size_align(s.len(), alignment)?;
@@ -109,12 +121,14 @@ impl Blob {
 
 impl std::ops::Deref for Blob {
     type Target = [u8];
+    #[inline]
     fn deref(&self) -> &[u8] {
         self.as_bytes()
     }
 }
 
 impl std::ops::DerefMut for Blob {
+    #[inline]
     fn deref_mut(&mut self) -> &mut [u8] {
         self.as_bytes_mut()
     }
@@ -141,6 +155,7 @@ impl std::fmt::Debug for Blob {
 
 impl<'a> TryFrom<&'a [u8]> for Blob {
     type Error = anyhow::Error;
+    #[inline]
     fn try_from(s: &[u8]) -> Result<Blob, Self::Error> {
         Blob::from_bytes(s)
     }
