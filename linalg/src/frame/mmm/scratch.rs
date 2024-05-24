@@ -9,11 +9,9 @@ use tract_data::internal::*;
 
 static GENERATION: AtomicUsize = AtomicUsize::new(1);
 
-/*
 thread_local! {
     static TLS: RefCell<TLSScratch> = Default::default();
 }
-*/
 
 #[derive(Default, Debug)]
 struct TLSScratch {
@@ -69,7 +67,6 @@ impl_downcast!(ScratchSpace);
 #[derive(Debug, Default)]
 pub struct ScratchSpaceImpl<TI: LADatum> {
     generation: usize,
-    tls: RefCell<TLSScratch>,
     blob_size: usize,
     blob_align: usize,
     ker_specs: Vec<FusedKerSpec<TI>>,
@@ -198,24 +195,23 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         down: usize,
         right: usize,
     ) {
-        //TLS.with_borrow_mut(|tls| {
-        let mut tls = self.tls.borrow_mut();
-        tls.sync(self);
-        if down < self.valid_down_tiles && right < self.valid_right_tiles {
-            self.for_valid_tile::<K>(specs, &mut tls, down, right);
-            let err = K::kernel(tls.ker_specs());
-            debug_assert_eq!(err, 0, "Kernel return error {err}");
-        } else {
-            let remnant_down =
-                if down < self.valid_down_tiles { K::mr() } else { self.remnant_down };
-            let remnant_right =
-                if right < self.valid_right_tiles { K::nr() } else { self.remnant_right };
-            self.for_border_tile::<K>(specs, &mut tls, down, right, remnant_down, remnant_right);
-            let err = K::kernel(tls.ker_specs());
-            debug_assert_eq!(err, 0, "Kernel return error {err}");
-            self.postprocess_tile(specs, &mut tls, down, right, remnant_down, remnant_right);
-        }
-        // })
+        TLS.with_borrow_mut(|tls| {
+            tls.sync(self);
+            if down < self.valid_down_tiles && right < self.valid_right_tiles {
+                self.for_valid_tile::<K>(specs, tls, down, right);
+                let err = K::kernel(tls.ker_specs());
+                debug_assert_eq!(err, 0, "Kernel return error {err}");
+            } else {
+                let remnant_down =
+                    if down < self.valid_down_tiles { K::mr() } else { self.remnant_down };
+                let remnant_right =
+                    if right < self.valid_right_tiles { K::nr() } else { self.remnant_right };
+                self.for_border_tile::<K>(specs, tls, down, right, remnant_down, remnant_right);
+                let err = K::kernel(tls.ker_specs());
+                debug_assert_eq!(err, 0, "Kernel return error {err}");
+                self.postprocess_tile(specs, tls, down, right, remnant_down, remnant_right);
+            }
+        })
     }
 
     #[inline(always)]
