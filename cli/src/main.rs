@@ -144,6 +144,8 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(arg!(--"nnef-tract-extra" "Allow usage of tract-extra extension in NNEF dump and load"))
         .arg(arg!(--"nnef-extended-identifier" "Allow usage of the i\"...\" syntax to escape identifier names"))
 
+        .arg(arg!(--"threads" [THREADS] "Setup a thread pool for computing. 0 will guess the number of physical cores"))
+
         .arg(arg!(-O --optimize "Optimize before running"))
         .arg(arg!(--pulse [PULSE] "Translate to pulse network"))
 
@@ -550,6 +552,15 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
     };
 
     let mut need_optimisations = false;
+
+    if let Some(threads) = matches.value_of("threads") {
+        let threads: usize = threads.parse()?;
+        if threads == 0 {
+            tract_linalg::set_compute_threads_guess();
+        } else {
+            tract_linalg::set_compute_threads(threads);
+        }
+    }
 
     match matches.subcommand() {
         Some(("bench", m)) => {
