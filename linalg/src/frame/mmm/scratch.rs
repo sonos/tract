@@ -190,7 +190,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
     }
 
     pub unsafe fn run<K: MatMatMulKer<TI>>(
-        &mut self,
+        &self,
         specs: &[FusedSpec],
         down: usize,
         right: usize,

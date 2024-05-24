@@ -3,6 +3,8 @@ use super::*;
 use crate::frame::Packer;
 use crate::LADatum;
 use anyhow::Context;
+use rayon::iter::IntoParallelIterator;
+use rayon::iter::ParallelIterator;
 use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -191,9 +193,9 @@ impl<TI: LADatum, K: MatMatMulKer<TI>> MatMatMulImpl<K, TI> {
         scratch: &mut ScratchSpaceImpl<TI>,
         non_linear: &[FusedSpec],
     ) {
-        for ia in 0..m.divceil(K::mr()) {
+        (0..m.divceil(K::mr())).into_par_iter().for_each(|ia| {
             scratch.run::<K>(non_linear, ia, 0);
-        }
+        })
     }
 
     unsafe fn run_with_scratch_space_col_outer(
@@ -203,11 +205,11 @@ impl<TI: LADatum, K: MatMatMulKer<TI>> MatMatMulImpl<K, TI> {
         scratch: &mut ScratchSpaceImpl<TI>,
         non_linear: &[FusedSpec],
     ) {
-        for ib in 0..n.divceil(K::nr()) {
+        (0..n.divceil(K::nr())).into_par_iter().for_each(|ib| {
             for ia in 0..m.divceil(K::mr()) {
                 scratch.run::<K>(non_linear, ia, ib);
             }
-        }
+        })
     }
 
     unsafe fn run_with_scratch_space_row_outer(
@@ -217,11 +219,11 @@ impl<TI: LADatum, K: MatMatMulKer<TI>> MatMatMulImpl<K, TI> {
         scratch: &mut ScratchSpaceImpl<TI>,
         non_linear: &[FusedSpec],
     ) {
-        for ia in 0..m.divceil(K::mr()) {
+        (0..m.divceil(K::mr())).into_par_iter().for_each(|ia| {
             for ib in 0..n.divceil(K::nr()) {
                 scratch.run::<K>(non_linear, ia, ib);
             }
-        }
+        })
     }
 }
 

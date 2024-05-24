@@ -29,6 +29,9 @@ pub struct OutputStore {
     pub(crate) mr: usize,
 }
 
+unsafe impl Send for OutputStore {}
+unsafe impl Sync for OutputStore {}
+
 impl OutputStoreSpec {
     #[inline]
     pub unsafe fn wrap(&self, tensor: &TensorView) -> OutputStore {
