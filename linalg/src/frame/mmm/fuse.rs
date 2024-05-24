@@ -109,6 +109,9 @@ pub enum FusedKerSpec<TI: Copy> {
     AddMatMul { k: usize, pa: *const u8, pb: *const u8, cpu_variant: usize },
 }
 
+unsafe impl<TI:Copy> Send for FusedKerSpec<TI> {}
+unsafe impl<TI:Copy> Sync for FusedKerSpec<TI> {}
+
 #[cfg(test)]
 #[macro_use]
 pub mod test {
