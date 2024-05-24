@@ -3,8 +3,6 @@ use super::*;
 use crate::frame::Packer;
 use crate::LADatum;
 use anyhow::Context;
-use rayon::iter::IntoParallelIterator;
-use rayon::iter::ParallelIterator;
 use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -225,11 +223,33 @@ impl<TI: LADatum, K: MatMatMulKer<TI>> MatMatMulImpl<K, TI> {
         scratch: &mut ScratchSpaceImpl<TI>,
         non_linear: &[FusedSpec],
     ) {
-        (0..n.divceil(K::nr())).into_par_iter().for_each(|ib| {
-            for ia in 0..m.divceil(K::mr()) {
-                scratch.run::<K>(non_linear, ia, ib);
+        if let Some(pool) = crate::executor() {
+            let threads = pool.current_num_threads();
+            let tasks = n.div_ceil(K::nr());
+            let big_task_len = tasks.div_ceil(threads);
+            pool.scope(|s| {
+                let scratch = &scratch;
+                for big_task in 0..threads {
+                    let start = big_task * big_task_len;
+                    let end = ((big_task + 1) * big_task_len).min(tasks);
+                    if end > start {
+                        s.spawn(move |_| {
+                            for ib in start..(start + big_task_len).min(tasks) {
+                                for ia in 0..m.divceil(K::mr()) {
+                                    scratch.run::<K>(non_linear, ia, ib);
+                                }
+                            }
+                        });
+                    }
+                }
+            });
+        } else {
+            for ib in 0..n.divceil(K::nr()) {
+                for ia in 0..m.divceil(K::mr()) {
+                    scratch.run::<K>(non_linear, ia, ib);
+                }
             }
-        })
+        }
     }
 
     unsafe fn run_with_scratch_space_row_outer(
@@ -239,11 +259,33 @@ impl<TI: LADatum, K: MatMatMulKer<TI>> MatMatMulImpl<K, TI> {
         scratch: &mut ScratchSpaceImpl<TI>,
         non_linear: &[FusedSpec],
     ) {
-        (0..m.divceil(K::mr())).into_par_iter().for_each(|ia| {
-            for ib in 0..n.divceil(K::nr()) {
-                scratch.run::<K>(non_linear, ia, ib);
+        if let Some(pool) = crate::executor() {
+            let threads = pool.current_num_threads();
+            let tasks = m.div_ceil(K::mr());
+            let big_task_len = tasks.div_ceil(threads);
+            pool.scope(|s| {
+                let scratch = &scratch;
+                for big_task in 0..threads {
+                    let start = big_task * big_task_len;
+                    let end = ((big_task + 1) * big_task_len).min(tasks);
+                    if end > start {
+                        s.spawn(move |_| {
+                            for ia in start..(start + big_task_len).min(tasks) {
+                                for ib in 0..n.divceil(K::nr()) {
+                                    scratch.run::<K>(non_linear, ia, ib);
+                                }
+                            }
+                        });
+                    }
+                }
+            });
+        } else {
+            for ia in 0..m.divceil(K::mr()) {
+                for ib in 0..n.divceil(K::nr()) {
+                    scratch.run::<K>(non_linear, ia, ib);
+                }
             }
-        })
+        }
     }
 }
 
