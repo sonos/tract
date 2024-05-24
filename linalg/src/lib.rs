@@ -22,6 +22,7 @@ use frame::element_wise::ElementWiseKer;
 use frame::reduce::{MapReduceKer, ReduceKer};
 use frame::{reduce, MatMatMul};
 pub use generic::{ScaleShiftAndRound, Scaler};
+use rayon::{ThreadPool, ThreadPoolBuilder};
 #[cfg(target_arch = "x86_64")]
 pub mod x86_64_fma;
 
@@ -36,7 +37,30 @@ pub use self::frame::{element_wise, lut, mmm};
 use crate::frame::mmm::kernel::MatMatMulKer;
 use tract_data::prelude::*;
 
-type MMMImpl = Box<
+static TRACT_EXECUTOR: Mutex<Option<Arc<ThreadPool>>> = Mutex::new(None);
+
+pub fn set_compute_threads(n: usize) {
+    let pool = ThreadPoolBuilder::new()
+        .thread_name(|n| format!("tract-compute-{n}"))
+        .num_threads(n)
+        .build()
+        .unwrap();
+    *TRACT_EXECUTOR.lock().unwrap() = Some(Arc::new(pool));
+}
+
+fn executor() -> Option<Arc<ThreadPool>> {
+    TRACT_EXECUTOR.lock().unwrap().clone()
+}
+
+pub fn set_compute_threads_guess() {
+    set_compute_threads(num_cpus::get_physical())
+}
+
+pub fn compute_threads() -> usize {
+    TRACT_EXECUTOR.lock().unwrap().as_ref().map(|pool| pool.current_num_threads()).unwrap_or(0)
+}
+
+pub type MMMImpl = Box<
     dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync,
 >;
 
@@ -74,8 +98,10 @@ pub struct Ops {
     pub max_f16: Box<dyn Fn() -> Box<dyn reduce::Reduce<f16>> + Send + Sync>,
     pub max_f32: Box<dyn Fn() -> Box<dyn reduce::Reduce<f32>> + Send + Sync>,
 
-    pub softmax2_fastcompact_f16: Box<dyn Fn() -> Box<dyn reduce::MapReduce<f16, f16>> + Send + Sync>,
-    pub softmax2_fastcompact_f32: Box<dyn Fn() -> Box<dyn reduce::MapReduce<f32, f32>> + Send + Sync>,
+    pub softmax2_fastcompact_f16:
+        Box<dyn Fn() -> Box<dyn reduce::MapReduce<f16, f16>> + Send + Sync>,
+    pub softmax2_fastcompact_f32:
+        Box<dyn Fn() -> Box<dyn reduce::MapReduce<f32, f32>> + Send + Sync>,
 }
 
 impl Ops {
@@ -170,6 +196,7 @@ pub fn ops() -> &'static Ops {
 use num_traits::*;
 use std::fmt::Debug;
 use std::ops::*;
+use std::sync::{Arc, Mutex};
 
 pub trait LADatum:
     Sized

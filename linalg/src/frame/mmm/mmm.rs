@@ -193,9 +193,29 @@ impl<TI: LADatum, K: MatMatMulKer<TI>> MatMatMulImpl<K, TI> {
         scratch: &mut ScratchSpaceImpl<TI>,
         non_linear: &[FusedSpec],
     ) {
-        (0..m.divceil(K::mr())).into_par_iter().for_each(|ia| {
-            scratch.run::<K>(non_linear, ia, 0);
-        })
+        if let Some(pool) = crate::executor() {
+            let threads = pool.current_num_threads();
+            let tasks = m.div_ceil(K::mr());
+            let big_task_len = tasks.div_ceil(threads);
+            pool.scope(|s| {
+                let scratch = &scratch;
+                for big_task in 0..threads {
+                    let start = big_task * big_task_len;
+                    let end = ((big_task + 1) * big_task_len).min(tasks);
+                    if end > start {
+                        s.spawn(move |_| {
+                            for ia in start..(start + big_task_len).min(tasks) {
+                                scratch.run::<K>(non_linear, ia, 0);
+                            }
+                        });
+                    }
+                }
+            });
+        } else {
+            for ia in 0..m.divceil(K::mr()) {
+                scratch.run::<K>(non_linear, ia, 0);
+            }
+        }
     }
 
     unsafe fn run_with_scratch_space_col_outer(
