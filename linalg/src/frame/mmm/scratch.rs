@@ -26,9 +26,7 @@ struct TLSScratch {
 impl TLSScratch {
     fn ker_specs<TI: LADatum>(&mut self) -> &mut Vec<FusedKerSpec<TI>> {
         unsafe {
-            if TI::datum_type() == f32::datum_type() {
-                std::mem::transmute(&mut self.ker_specs_32)
-            } else if TI::datum_type() == i32::datum_type() {
+            if TI::datum_type() == f32::datum_type() || TI::datum_type() == i32::datum_type(){
                 std::mem::transmute(&mut self.ker_specs_32)
             } else if TI::datum_type() == f16::datum_type() {
                 std::mem::transmute(&mut self.ker_specs_16)
@@ -194,7 +192,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
     ) {
         //TLS.with_borrow_mut(|tls| {
         let mut tls = self.tls.borrow_mut();
-        tls.sync(&self);
+        tls.sync(self);
         if down < self.valid_down_tiles && right < self.valid_right_tiles {
             self.for_valid_tile::<K>(specs, &mut tls, down, right);
             let err = K::kernel(tls.ker_specs());
@@ -207,7 +205,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
             self.for_border_tile::<K>(specs, &mut tls, down, right, remnant_down, remnant_right);
             let err = K::kernel(tls.ker_specs());
             debug_assert_eq!(err, 0, "Kernel return error {err}");
-            self.postprocess_tile::<K>(specs, &mut tls, down, right, remnant_down, remnant_right);
+            self.postprocess_tile(specs, &mut tls, down, right, remnant_down, remnant_right);
         }
         // })
     }
@@ -457,7 +455,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         &self.ker_specs
     }
 
-    unsafe fn postprocess_tile<K: MatMatMulKer<TI>>(
+    unsafe fn postprocess_tile(
         &self,
         specs: &[FusedSpec],
         tls: &mut TLSScratch,
