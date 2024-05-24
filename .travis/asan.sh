@@ -2,6 +2,8 @@
 
 set -ex
 
+# RUSTFLAGS=-Zsanitizer=address cargo +nightly test -Zbuild-std --target $(rustc -vV | sed -n 's|host: ||p')
+
 TARGET=$(rustc -vV | sed -n 's|host: ||p')
 
 rustup toolchain add nightly
