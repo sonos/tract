@@ -18,7 +18,7 @@ macro_rules! mmm_frame_tests {
                 #[test]
                 fn mat_mul_prepacked_prop((m, k, n, ref a, ref b) in strat_mat_mat_mul::<$ta, $tb>()) {
                     if $cond {
-                        test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(m, k, n, &a, &b)?
+                        test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(m, k, n, &a, &b)?;
                     }
                 }
 
@@ -63,6 +63,20 @@ macro_rules! mmm_frame_tests {
                     let a = tensor2(&[[122, 82]]).cast_to::<$ta>().unwrap().into_owned();
                     let b = tensor2(&[[0, 0, 37],[ 0, 0, 57]]).cast_to::<$tb>().unwrap().into_owned();
                     test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(1, 2, 3, &a, &b).unwrap()
+                }
+            }
+
+            #[test]
+            fn mat_mul_1_1_1() {
+                if $cond {
+                    test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(
+                        1,
+                        1,
+                        1,
+                        &tensor2(&[[26]]).cast_to::<$ta>().unwrap(),
+                        &tensor2(&[[48]]).cast_to::<$tb>().unwrap(),
+                        )
+                        .unwrap()
                 }
             }
 
