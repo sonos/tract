@@ -10,7 +10,7 @@ fn main() -> TractResult<()> {
         .into_runnable()?;
 
     // open image, resize it and make a Tensor out of it
-    let image = image::open("grace_hopper.jpg").unwrap().to_rgb8();
+    let image = image::open("grace_hopper.png").unwrap().to_rgb8();
     let resized =
         image::imageops::resize(&image, 224, 224, ::image::imageops::FilterType::Triangle);
     let image: Tensor = tract_ndarray::Array4::from_shape_fn((1, 3, 224, 224), |(_, c, y, x)| {
@@ -20,8 +20,12 @@ fn main() -> TractResult<()> {
     })
     .into();
 
+    let start = std::time::Instant::now();
+
     // run the model on the input
     let result = model.run(tvec!(image.into()))?;
+
+    println!("Inference duration: {}ms", start.elapsed().as_millis());
 
     // find and display the max value with its index
     let best = result[0]

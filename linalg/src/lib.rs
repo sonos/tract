@@ -31,6 +31,9 @@ pub mod arm64;
 #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
 pub mod arm32;
 
+#[cfg(all(target_family = "wasm", target_feature = "simd128"))]
+pub mod wasm;
+
 pub use self::frame::{element_wise, lut, mmm};
 
 use crate::frame::mmm::kernel::MatMatMulKer;
@@ -74,8 +77,10 @@ pub struct Ops {
     pub max_f16: Box<dyn Fn() -> Box<dyn reduce::Reduce<f16>> + Send + Sync>,
     pub max_f32: Box<dyn Fn() -> Box<dyn reduce::Reduce<f32>> + Send + Sync>,
 
-    pub softmax2_fastcompact_f16: Box<dyn Fn() -> Box<dyn reduce::MapReduce<f16, f16>> + Send + Sync>,
-    pub softmax2_fastcompact_f32: Box<dyn Fn() -> Box<dyn reduce::MapReduce<f32, f32>> + Send + Sync>,
+    pub softmax2_fastcompact_f16:
+        Box<dyn Fn() -> Box<dyn reduce::MapReduce<f16, f16>> + Send + Sync>,
+    pub softmax2_fastcompact_f32:
+        Box<dyn Fn() -> Box<dyn reduce::MapReduce<f32, f32>> + Send + Sync>,
 }
 
 impl Ops {
@@ -154,6 +159,9 @@ pub fn best() -> Ops {
     arm32::plug(&mut ops);
     #[cfg(target_arch = "aarch64")]
     arm64::plug(&mut ops);
+    #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
+    wasm::plug(&mut ops);
+
     ops
 }
 
