@@ -21,15 +21,18 @@ struct TLSScratch {
     blob: Blob,
     ker_specs_16: Vec<FusedKerSpec<f16>>,
     ker_specs_32: Vec<FusedKerSpec<f32>>,
+    ker_specs_64: Vec<FusedKerSpec<f64>>,
 }
 
 impl TLSScratch {
     fn ker_specs<TI: LADatum>(&mut self) -> &mut Vec<FusedKerSpec<TI>> {
         unsafe {
-            if TI::datum_type() == f32::datum_type() || TI::datum_type() == i32::datum_type(){
+            if TI::datum_type() == f32::datum_type() || TI::datum_type() == i32::datum_type() {
                 std::mem::transmute(&mut self.ker_specs_32)
             } else if TI::datum_type() == f16::datum_type() {
                 std::mem::transmute(&mut self.ker_specs_16)
+            } else if TI::datum_type() == f64::datum_type() {
+                std::mem::transmute(&mut self.ker_specs_64)
             } else {
                 todo!();
             }
@@ -47,9 +50,9 @@ impl TLSScratch {
         unsafe {
             self.blob.ensure_size_and_align(scratch.blob_size, scratch.blob_align);
 
-            for LocDependant { loc, ker_spec: uspec, .. } in &scratch.loc_dependant {
+            for LocDependant { loc, ker_spec, .. } in &scratch.loc_dependant {
                 #[allow(clippy::single_match)]
-                if matches!(scratch.ker_specs[*uspec], FusedKerSpec::AddMatMul { .. }) {
+                if matches!(scratch.ker_specs[*ker_spec], FusedKerSpec::AddMatMul { .. }) {
                     let scratch = &mut *(self.blob.as_ptr().add(*loc) as *mut AddMatMulTemp);
                     scratch.panel_a_id = usize::MAX;
                     scratch.panel_b_id = usize::MAX;
@@ -171,7 +174,12 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                         offset += tmp.size();
                     }
                     self.loc_dependant.push(ld);
-                    FusedKerSpec::Done
+                    FusedKerSpec::AddMatMul {
+                        k: 0,
+                        pa: std::ptr::null(),
+                        pb: std::ptr::null(),
+                        cpu_variant: 0,
+                    }
                 }
             };
             self.ker_specs.push(ker_spec);
