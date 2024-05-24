@@ -269,12 +269,12 @@ pub fn for_string(
 }
 
 lazy_static::lazy_static! {
-    static ref WARNING_ONCE: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
+    static ref MESSAGE_ONCE: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
 }
 
-fn warn_once(msg: String) {
-    if WARNING_ONCE.lock().unwrap().insert(msg.clone()) {
-        warn!("{}", msg);
+fn info_once(msg: String) {
+    if MESSAGE_ONCE.lock().unwrap().insert(msg.clone()) {
+        info!("{}", msg);
     }
 }
 
@@ -364,7 +364,7 @@ pub fn retrieve_or_make_inputs(
             };
         } else if params.allow_random_input {
             let fact = tract.outlet_typedfact(*input)?;
-            warn_once(format!("Using random input for input called {name:?}: {fact:?}"));
+            info_once(format!("Using random input for input called {name:?}: {fact:?}"));
             let tv = params
                 .tensors_values
                 .by_name(name)
