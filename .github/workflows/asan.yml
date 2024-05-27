@@ -23,3 +23,5 @@ jobs:
       run: rustup update
     - name: Run sanitized tests
       run: .travis/asan.sh
+      env:
+        CARGO_NET_GIT_FETCH_WITH_CLI: true

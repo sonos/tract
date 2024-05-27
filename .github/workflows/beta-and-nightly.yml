@@ -43,6 +43,7 @@ jobs:
     - name: Native script
       env:
         RUST_VERSION: ${{matrix.rust}}
+        CARGO_NET_GIT_FETCH_WITH_CLI: true
       run: .travis/regular-tests.sh
 
         #     - name: Stop sccache server
