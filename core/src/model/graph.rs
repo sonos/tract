@@ -492,12 +492,13 @@ where
         Ok(())
     }
 
-    /// Converts the model into a `RunnableModel` which fixes the inputs and outputs and allows passing data through the model.
+    /// Converts the model into a `RunnableModel` to actually process user data.
     pub fn into_runnable(self) -> TractResult<RunnableModel<F, O, Self>> {
-        crate::plan::SimplePlan::new(self)
+        crate::plan::SimplePlan::new_with_options(self, &PlanOptions::default())
     }
 
-    /// Converts the model into a `RunnableModel` which fixes the inputs and outputs and allows passing data through the model.
+    /// Converts the model into a `RunnableModel` to actually process user data. This variant
+    /// accepts options.
     pub fn into_runnable_with_options(self, options: &PlanOptions) -> TractResult<RunnableModel<F, O, Self>> {
         crate::plan::SimplePlan::new_with_options(self, options)
     }
