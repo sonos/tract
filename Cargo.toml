@@ -71,7 +71,7 @@ cblas = "0.4"
 cc = "1.0.69"
 clap = { version = "~3.1", features = [ "cargo" ] }
 colorous = "1.0.5"
-criterion = { version = "0.4", default-features = false }
+criterion = { version = "0.4", default-features = false, features = ["plotters", "cargo_bench_support"] }
 derive-new = "0.5.9"
 dinghy-test = "0.6"
 downcast-rs = "1.2.0"
@@ -103,7 +103,7 @@ num-integer = "0.1.44"
 num-traits = "0.2.14"
 openblas-src = { version = "0.10", features = ["static"] }
 paste = "1.0.5"
-proptest = { version = "1.0.0", default-features = false, features = ["std"] }
+proptest = { version = "1.0.0", default-features = false, features = ["std", "bit-set"] }
 prost = "0.11.0"
 prost-types = "0.11.0"
 py_literal = "0.4.0"
