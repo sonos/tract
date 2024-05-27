@@ -193,7 +193,7 @@ impl<TI: LADatum, K: MatMatMulKer<TI>> MatMatMulImpl<K, TI> {
         scratch: &mut ScratchSpaceImpl<TI>,
         non_linear: &[FusedSpec],
     ) {
-        if let Some(pool) = crate::executor() {
+        if let Some(pool) = crate::multithread::tract_thread_pool() {
             pool.install(|| {
                 (0..m.div_ceil(K::mr())).into_par_iter().for_each(|ia| {
                     scratch.run::<K>(non_linear, ia, 0);
@@ -213,7 +213,7 @@ impl<TI: LADatum, K: MatMatMulKer<TI>> MatMatMulImpl<K, TI> {
         scratch: &mut ScratchSpaceImpl<TI>,
         non_linear: &[FusedSpec],
     ) {
-        if let Some(pool) = crate::executor() {
+        if let Some(pool) = crate::multithread::tract_thread_pool() {
             pool.install(|| {
                 (0..n.div_ceil(K::nr())).into_par_iter().for_each(|ib| {
                     for ia in 0..m.divceil(K::mr()) {
@@ -237,7 +237,7 @@ impl<TI: LADatum, K: MatMatMulKer<TI>> MatMatMulImpl<K, TI> {
         scratch: &mut ScratchSpaceImpl<TI>,
         non_linear: &[FusedSpec],
     ) {
-        if let Some(pool) = crate::executor() {
+        if let Some(pool) = crate::multithread::tract_thread_pool() {
             pool.install(|| {
                 (0..m.div_ceil(K::mr())).into_par_iter().for_each(|ia| {
                     for ib in 0..n.divceil(K::nr()) {

@@ -556,9 +556,9 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
     if let Some(threads) = matches.value_of("threads") {
         let threads: usize = threads.parse()?;
         if threads == 0 {
-            tract_linalg::set_compute_threads_guess();
+            multithread::set_tract_global_threads_default();
         } else {
-            tract_linalg::set_compute_threads(threads);
+            multithread::set_tract_global_threads(threads);
         }
     }
 
