@@ -1,4 +1,4 @@
-use tract_linalg::frame::block_quant::BlockQuant;
+use tract_linalg::frame::block_quant::{BlockQuant, Q4_0};
 
 use crate::internal::*;
 use crate::ops::einsum::codegen::{ensure_mkn_axes, AxesOrPatch};
@@ -44,7 +44,7 @@ fn block_quant_einsum_weights(
     if a.konst.is_none() || a.rank() != 2 {
         return Ok(None);
     }
-    let AxesOrPatch::Axes(m, k, n) = ensure_mkn_axes(op, model, node)? else { return Ok(None) };
+    let AxesOrPatch::Axes(m, k, _n) = ensure_mkn_axes(op, model, node)? else { return Ok(None) };
     if m.inputs[0][0] == 1 && k.inputs[0][0] == 0 {
         let a: &Tensor = a.konst.as_ref().unwrap();
         let mut patch = TypedModelPatch::default();
@@ -60,7 +60,18 @@ fn block_quant_einsum_weights(
         patch.shunt_outside(model, node.id.into(), output[0])?;
         return Ok(Some(patch));
     }
-    return Ok(None);
+    let mut patch = TypedModelPatch::default();
+    let weights = Q4_0.quant(&a.konst.as_ref().unwrap().cast_to::<f32>()?.as_slice::<f32>()?)?;
+    let name = &model.node(node.inputs[0].node).name;
+    let weights = patch.add_const(name, tensor0(weights))?;
+    let weights = patch.wire_node(
+        format!("{name}.deq"),
+        DeBlockQuant { bq: Box::new(Q4_0), fact: a.without_value() },
+        &[weights],
+    )?;
+    patch.shunt_outside(model, node.inputs[0], weights[0])?;
+    patch.obliterate(node.inputs[0].node)?;
+    return Ok(Some(patch));
 }
 
 #[derive(Debug, Clone, Hash)]
