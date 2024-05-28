@@ -73,7 +73,7 @@ impl Blob {
         let mut data = null_mut();
         if layout.size() > 0 {
             data = unsafe { alloc(layout) };
-            assert!(!data.is_null());
+            assert!(!data.is_null(), "failed to allocate {layout:?}");
         }
         Blob { layout, data }
     }
