@@ -216,6 +216,7 @@ case "$PLATFORM" in
     wasm32-*)
         rustup target add $PLATFORM
         cargo check --target $PLATFORM --features getrandom-js -p tract-onnx -p tract-tensorflow
+        ;;
     *)
         echo "Don't know what to do for platform: $PLATFORM"
         exit 2
