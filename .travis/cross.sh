@@ -206,10 +206,16 @@ case "$PLATFORM" in
         cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
         ;;
 
+    wasm32-wasi)
+        rustup target add $PLATFORM
+        cargo check --target $PLATFORM --features getrandom-js -p tract-onnx -p tract-tensorflow
+        curl https://wasmtime.dev/install.sh -sSf | bash
+        RUSTFLAGS='-C target-feature=+simd128' CARGO_TARGET_WASM32_WASI_RUNNER=wasmtime \
+            cargo test --target=wasm32-wasi -p tract-linalg -p tract-core -p test-unit-core
+        ;;
     wasm32-*)
         rustup target add $PLATFORM
         cargo check --target $PLATFORM --features getrandom-js -p tract-onnx -p tract-tensorflow
-        ;;
     *)
         echo "Don't know what to do for platform: $PLATFORM"
         exit 2
