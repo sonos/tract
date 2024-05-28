@@ -27,6 +27,7 @@ lazy_static.workspace = true
 log.workspace = true
 ndarray-npy.workspace = true
 nu-ansi-term.workspace = true
+num_cpus.workspace = true
 py_literal.workspace = true
 readings-probe.workspace = true
 regex.workspace = true

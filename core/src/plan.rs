@@ -3,6 +3,8 @@ use std::cell::RefCell;
 use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 
+use multithread::Executor;
+
 use crate::internal::*;
 use crate::model::{Fact, Graph, OutletId};
 use crate::ops::konst::Const;
@@ -14,6 +16,9 @@ use self::order::{eval_order_for_nodes, eval_order_opt_ram_for_nodes};
 pub struct PlanOptions {
     /// Use the simple ordering instead of the newer memory friendly one
     pub skip_order_opt_ram: bool,
+
+    /// Override default global executor
+    pub executor: Option<Executor>,
 }
 
 #[derive(Default)]
@@ -53,6 +58,7 @@ where
     order: Vec<usize>,
     flush_lists: Vec<TVec<usize>>,
     has_unresolved_symbols: bool,
+    executor: Option<Executor>,
     _casper: PhantomData<(F, O)>,
 }
 
@@ -65,7 +71,7 @@ where
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
     pub fn new(model: M) -> TractResult<SimplePlan<F, O, M>> {
         let outputs = model.borrow().output_outlets()?.to_vec();
-        Self::new_for_outputs(model, &outputs)
+        Self::build(model, &outputs, &[], &PlanOptions::default())
     }
 
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
@@ -75,15 +81,18 @@ where
     }
 
     /// This contructor returns a plan that will compute the specified output.
+    #[deprecated]
     pub fn new_for_output(model: M, output: OutletId) -> TractResult<SimplePlan<F, O, M>> {
-        Self::new_for_outputs_and_deps(model, &[output], &[])
+        Self::build(model, &[output], &[], &PlanOptions::default())
     }
 
     /// This contructor returns a plan that will compute all specified outputs in one pass.
+    #[deprecated]
     pub fn new_for_outputs(model: M, outputs: &[OutletId]) -> TractResult<SimplePlan<F, O, M>> {
-        Self::new_for_outputs_and_deps(model, outputs, &[])
+        Self::build(model, outputs, &[], &PlanOptions::default())
     }
 
+    #[deprecated]
     pub fn new_for_outputs_and_deps(
         model: M,
         outputs: &[OutletId],
@@ -136,6 +145,7 @@ where
             outputs: outputs.to_vec(),
             has_unresolved_symbols: !symbols.is_empty(),
             _casper: PhantomData,
+            executor: options.executor.clone(),
         })
     }
 
@@ -242,7 +252,26 @@ where
         Ok(outputs)
     }
 
-    pub fn exec_plan_with_eval<Eval, E>(&mut self, mut eval: Eval) -> TractResult<()>
+    pub fn exec_plan_with_eval<Eval, E>(&mut self, eval: Eval) -> TractResult<()>
+    where
+        Eval: for<'a, 'b, 'c> FnMut(
+            &'a mut SessionState,
+            Option<&'b mut (dyn OpState + 'static)>,
+            &'c Node<F, O>,
+            TVec<TValue>,
+        ) -> Result<TVec<TValue>, E>,
+        E: Into<anyhow::Error> + Send + Sync + 'static,
+    {
+        if let Some(executor) = self.plan().executor.as_ref() {
+            tract_linalg::multithread::multithread_tract_scope(executor.clone(), || {
+                self.do_exec_plan_with_eval(eval)
+            })
+        } else {
+            self.do_exec_plan_with_eval(eval)
+        }
+    }
+
+    fn do_exec_plan_with_eval<Eval, E>(&mut self, mut eval: Eval) -> TractResult<()>
     where
         Eval: for<'a, 'b, 'c> FnMut(
             &'a mut SessionState,

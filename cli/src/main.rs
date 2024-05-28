@@ -88,9 +88,9 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(arg!(-f --format [format]
                   "Hint the model format ('onnx', 'nnef', 'tflite' or 'tf') instead of guess from extension."))
         .arg(Arg::new("input").long("input").short('i').multiple_occurrences(true).takes_value(true).long_help(
-                  "Set input shape and type (@file.pb or @file.npz:thing.npy or 3,4,i32)."))
+                "Set input shape and type (@file.pb or @file.npz:thing.npy or 3,4,i32)."))
         .arg(Arg::new("constantize").long("constantize").multiple_occurrences(true).takes_value(true).long_help(
-                  "Transorm an input into a Constant"))
+                "Transorm an input into a Constant"))
 
         // deprecated
         .arg(arg!(--"input-bundle" [input_bundle] "Path to an input container (.npz). This sets input facts and tensor values.").hide(true))
@@ -108,7 +108,7 @@ fn main() -> tract_core::anyhow::Result<()> {
 
         .arg(arg!(--"input-node" [node] ... "Override input nodes names (auto-detects otherwise)."))
         .arg(Arg::new("output-node").long("output-node").multiple_occurrences(true).takes_value(true).long_help(
-                  "Override output nodes by name."))
+                "Override output nodes by name."))
         .arg(arg!(--"label-wires" "Propagate node labels to wires"))
 
         .arg(arg!(--"tf-initializer-output-node" [node] "Set an initializer node"))
@@ -130,7 +130,7 @@ fn main() -> tract_core::anyhow::Result<()> {
         .arg(arg!(--"f16-to-f32" "Convert the decluttered network from f16 to f32"))
         .arg(Arg::new("transform").short('t').long("transform").multiple_occurrences(true).takes_value(true).help("Apply a built-in transformation to the model"))
         .arg(Arg::new("set").long("set").multiple_occurrences(true).takes_value(true)
-         .long_help("Set a symbol to a concrete value after decluttering"))
+             .long_help("Set a symbol to a concrete value after decluttering"))
 
         // deprecated
         .arg(arg!(--"allow-float-casts" "Allow casting between f16, f32 and f64 around model").hide(true))
@@ -382,18 +382,18 @@ fn assertions_options(command: clap::Command) -> clap::Command {
     command
         .arg(
             Arg::new("assert-output")
-                .takes_value(true)
-                .multiple_occurrences(true)
-                .number_of_values(1)
-                .long("assert-output")
-                .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)"),
-        )
+            .takes_value(true)
+            .multiple_occurrences(true)
+            .number_of_values(1)
+            .long("assert-output")
+            .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)"),
+            )
         .arg(
             Arg::new("assert-output-bundle")
-                .takes_value(true)
-                .long("assert-output-bundle")
-                .help("Checks values against these tensor (.npz)"),
-        )
+            .takes_value(true)
+            .long("assert-output-bundle")
+            .help("Checks values against these tensor (.npz)"),
+            )
         .arg(
             Arg::new("assert-output-fact")
             .takes_value(true)
@@ -421,10 +421,10 @@ fn assertions_options(command: clap::Command) -> clap::Command {
 fn bench_options(command: clap::Command) -> clap::Command {
     use clap::*;
     command.args(&[
-                     arg!(--"warmup-time" [warmup_time] "Time to run (approx.) before starting the clock."),
-                     arg!(--"warmup-loops" [warmup_loops] "Number of loops to run before starting the clock."),
-                     arg!(--"max-loops" [max_iters] "Sets the maximum number of iterations for each node [default: 100_000].").alias("max-iters"),
-                     arg!(--"max-time" [max_time] "Sets the maximum execution time for each node (in ms) [default: 5000].") ])
+                 arg!(--"warmup-time" [warmup_time] "Time to run (approx.) before starting the clock."),
+                 arg!(--"warmup-loops" [warmup_loops] "Number of loops to run before starting the clock."),
+                 arg!(--"max-loops" [max_iters] "Sets the maximum number of iterations for each node [default: 100_000].").alias("max-iters"),
+                 arg!(--"max-time" [max_time] "Sets the maximum execution time for each node (in ms) [default: 5000].") ])
 }
 
 fn run_options(command: clap::Command) -> clap::Command {
@@ -432,33 +432,33 @@ fn run_options(command: clap::Command) -> clap::Command {
     command
         .arg(
             Arg::new("input-from-npz")
-                .long("input-from-npz")
-                .alias("input-from-bundle")
-                .takes_value(true)
-                .help("Path to an input container (.npz). This sets tensor values."),
-        )
+            .long("input-from-npz")
+            .alias("input-from-bundle")
+            .takes_value(true)
+            .help("Path to an input container (.npz). This sets tensor values."),
+            )
         .arg(
             Arg::new("input-from-nnef").long("input-from-nnef").takes_value(true).help(
                 "Path to a directory containing input tensors in NNEF format (.dat files). This sets tensor values.",
-            ),
-        )
+                ),
+                )
         .arg(
             Arg::new("allow-random-input")
-                .long("allow-random-input")
-                .help("Will use random generated input"),
-        )
+            .long("allow-random-input")
+            .help("Will use random generated input"),
+            )
         .arg(
             Arg::new("random-range")
-                .long("random-range")
-                .multiple_occurrences(true)
-                .takes_value(true)
-                .help("Constraint random values to a given range (example: input=1.0..10.0)"),
-        )
+            .long("random-range")
+            .multiple_occurrences(true)
+            .takes_value(true)
+            .help("Constraint random values to a given range (example: input=1.0..10.0)"),
+            )
         .arg(
             Arg::new("allow-float-casts")
-                .long("allow-float-casts")
-                .help("Allow casting between f16, f32 and f64 around model"),
-        )
+            .long("allow-float-casts")
+            .help("Allow casting between f16, f32 and f64 around model"),
+            )
 }
 
 fn output_options(command: clap::Command) -> clap::Command {
@@ -555,11 +555,8 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
 
     if let Some(threads) = matches.value_of("threads") {
         let threads: usize = threads.parse()?;
-        if threads == 0 {
-            multithread::set_tract_global_threads_default();
-        } else {
-            multithread::set_tract_global_threads(threads);
-        }
+        let threads = if threads == 0 { num_cpus::get_physical() } else { threads };
+        multithread::set_default_executor(multithread::Executor::multithread(threads));
     }
 
     match matches.subcommand() {

@@ -3,58 +3,50 @@ use std::sync::{Arc, Mutex};
 
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
-static TRACT_THREAD_POOL: Mutex<Option<Arc<ThreadPool>>> = Mutex::new(None);
-
-thread_local! {
-    static TRACT_TLS_THREAD_POOL_OVERRIDE: RefCell<Option<Option<Arc<ThreadPool>>>> = Default::default();
+#[derive(Debug, Clone, Default)]
+pub enum Executor {
+    #[default]
+    SingleThread,
+    MultiThread(Arc<ThreadPool>),
 }
 
-pub fn tract_thread_pool() -> Option<Arc<ThreadPool>> {
-    if let Some(over_ride) = TRACT_TLS_THREAD_POOL_OVERRIDE.with_borrow(|tls| tls.clone()) {
-        over_ride
-    } else {
-        TRACT_THREAD_POOL.lock().unwrap().clone()
+impl Executor {
+    pub fn multithread(n: usize) -> Executor {
+        Executor::multithread_with_name(n, "tract-default")
+    }
+
+    pub fn multithread_with_name(n: usize, name: &str) -> Executor {
+        let name = name.to_string();
+        let pool = ThreadPoolBuilder::new()
+            .thread_name(move |n| format!("{name}-{n}"))
+            .num_threads(n)
+            .build()
+            .unwrap();
+        Executor::MultiThread(Arc::new(pool))
     }
 }
 
-pub fn set_tract_global_threads(n: usize) {
-    let pool = ThreadPoolBuilder::new()
-        .thread_name(|n| format!("tract-compute-{n}"))
-        .num_threads(n)
-        .build()
-        .unwrap();
-    *TRACT_THREAD_POOL.lock().unwrap() = Some(Arc::new(pool));
+static DEFAULT_EXECUTOR: Mutex<Executor> = Mutex::new(Executor::SingleThread);
+
+thread_local! {
+    static TLS_EXECUTOR_OVERRIDE: RefCell<Option<Executor>> = Default::default();
 }
 
-pub fn set_tract_global_threads_default() {
-    set_tract_global_threads(num_cpus::get_physical())
+pub fn current_tract_executor() -> Executor {
+    if let Some(over_ride) = TLS_EXECUTOR_OVERRIDE.with_borrow(|tls| tls.clone()) {
+        over_ride
+    } else {
+        DEFAULT_EXECUTOR.lock().unwrap().clone()
+    }
 }
 
-pub fn tract_threads() -> usize {
-    TRACT_THREAD_POOL.lock().unwrap().as_ref().map(|pool| pool.current_num_threads()).unwrap_or(0)
+pub fn set_default_executor(executor: Executor) {
+    *DEFAULT_EXECUTOR.lock().unwrap() = executor;
 }
 
-pub fn multithread_tract_scope<R, F: FnOnce() -> R>(n: usize, f: F) -> R {
-    let pool = ThreadPoolBuilder::new()
-        .thread_name(|n| format!("tract-compute-local-{n}"))
-        .num_threads(n)
-        .build()
-        .unwrap();
-    let previous = TRACT_TLS_THREAD_POOL_OVERRIDE.take();
-    TRACT_TLS_THREAD_POOL_OVERRIDE.set(Some(Some(Arc::new(pool))));
+pub fn multithread_tract_scope<R, F: FnOnce() -> R>(pool: Executor, f: F) -> R {
+    let previous = TLS_EXECUTOR_OVERRIDE.replace(Some(pool));
     let result = f();
-    TRACT_TLS_THREAD_POOL_OVERRIDE.set(previous);
-    result
-}
-
-pub fn multithread_tract_scope_default<R, F: FnOnce() -> R>(f: F) -> R {
-    multithread_tract_scope(num_cpus::get_physical(), f)
-}
-
-pub fn monothread_tract_scope<R, F: FnOnce() -> R>(f: F) -> R {
-    let previous = TRACT_TLS_THREAD_POOL_OVERRIDE.take();
-    TRACT_TLS_THREAD_POOL_OVERRIDE.set(Some(None));
-    let result = f();
-    TRACT_TLS_THREAD_POOL_OVERRIDE.set(previous);
+    TLS_EXECUTOR_OVERRIDE.set(previous);
     result
 }
