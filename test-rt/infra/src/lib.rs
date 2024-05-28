@@ -285,7 +285,7 @@ where
         lazy_static! {
             static ref TEST_NAMES: Mutex<Vec<String>> = Mutex::new(vec!());
         }
-        let crate_name = std::env::var("CARGO_PKG_NAME").unwrap();
+        let crate_name = std::env::var("CARGO_PKG_NAME").unwrap_or("".to_string());
         let name = format!("{crate_name}::{suite}::{id}");
         let test_name: &'static str = unsafe { std::mem::transmute(name.as_str()) };
         TEST_NAMES.lock().unwrap().push(name);

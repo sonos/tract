@@ -259,6 +259,8 @@ mod tests {
         assert_eq!(model.eval_order_opt_ram().unwrap(), vec!(a.node, add.node));
     }
 
+    // The test is disabled on Wasm because it uses threads.
+    #[cfg(not(target_family = "wasm"))]
     #[test]
     fn dodge_loop() {
         let mut model = TypedModel::default();
