@@ -33,8 +33,12 @@ impl TfModelExtensions {
         if self.initializing_nodes.len() > 0 {
             let as_outlets =
                 self.initializing_nodes.iter().map(|n| OutletId::new(*n, 0)).collect::<Vec<_>>();
-            let plan =
-                SimplePlan::new_for_outputs_and_deps(&original, &as_outlets, &self.control_inputs)?;
+            let plan = SimplePlan::build(
+                &original,
+                &as_outlets,
+                &self.control_inputs,
+                &PlanOptions::default(),
+            )?;
             let mut state = SimpleState::new(plan)?;
             state.exec()?;
             let tensors = state.session_state.tensors;
@@ -81,7 +85,7 @@ impl Tensorflow {
         Ok(())
     }
 
-    #[cfg(target_family="wasm")]
+    #[cfg(target_family = "wasm")]
     pub fn read_frozen_from_path(&self, p: impl AsRef<path::Path>) -> TractResult<GraphDef> {
         use std::io::Read;
         let mut file = fs::File::open(p)?;

@@ -21,7 +21,6 @@ dyn-hash.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 num-traits.workspace = true
-num_cpus.workspace = true
 paste.workspace = true
 rayon.workspace = true
 scan_fmt.workspace = true

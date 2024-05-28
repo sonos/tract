@@ -1,6 +1,7 @@
 use super::ScratchSpaceImpl;
 use super::*;
 use crate::frame::Packer;
+use crate::multithread::Executor;
 use crate::LADatum;
 use anyhow::Context;
 use rayon::iter::IntoParallelIterator;
@@ -193,15 +194,18 @@ impl<TI: LADatum, K: MatMatMulKer<TI>> MatMatMulImpl<K, TI> {
         scratch: &mut ScratchSpaceImpl<TI>,
         non_linear: &[FusedSpec],
     ) {
-        if let Some(pool) = crate::multithread::tract_thread_pool() {
-            pool.install(|| {
-                (0..m.div_ceil(K::mr())).into_par_iter().for_each(|ia| {
+        match crate::multithread::current_tract_executor() {
+            Executor::SingleThread => {
+                for ia in 0..m.divceil(K::mr()) {
                     scratch.run::<K>(non_linear, ia, 0);
+                }
+            }
+            Executor::MultiThread(pool) => {
+                pool.install(|| {
+                    (0..m.div_ceil(K::mr())).into_par_iter().for_each(|ia| {
+                        scratch.run::<K>(non_linear, ia, 0);
+                    });
                 });
-            });
-        } else {
-            for ia in 0..m.divceil(K::mr()) {
-                scratch.run::<K>(non_linear, ia, 0);
             }
         }
     }
@@ -213,20 +217,21 @@ impl<TI: LADatum, K: MatMatMulKer<TI>> MatMatMulImpl<K, TI> {
         scratch: &mut ScratchSpaceImpl<TI>,
         non_linear: &[FusedSpec],
     ) {
-        if let Some(pool) = crate::multithread::tract_thread_pool() {
-            pool.install(|| {
+        match crate::multithread::current_tract_executor() {
+            Executor::SingleThread => {
+                for ib in 0..n.divceil(K::nr()) {
+                    for ia in 0..m.divceil(K::mr()) {
+                        scratch.run::<K>(non_linear, ia, ib);
+                    }
+                }
+            }
+            Executor::MultiThread(pool) => pool.install(|| {
                 (0..n.div_ceil(K::nr())).into_par_iter().for_each(|ib| {
                     for ia in 0..m.divceil(K::mr()) {
                         scratch.run::<K>(non_linear, ia, ib);
                     }
                 });
-            })
-        } else {
-            for ib in 0..n.divceil(K::nr()) {
-                for ia in 0..m.divceil(K::mr()) {
-                    scratch.run::<K>(non_linear, ia, ib);
-                }
-            }
+            }),
         }
     }
 
@@ -237,20 +242,23 @@ impl<TI: LADatum, K: MatMatMulKer<TI>> MatMatMulImpl<K, TI> {
         scratch: &mut ScratchSpaceImpl<TI>,
         non_linear: &[FusedSpec],
     ) {
-        if let Some(pool) = crate::multithread::tract_thread_pool() {
-            pool.install(|| {
-                (0..m.div_ceil(K::mr())).into_par_iter().for_each(|ia| {
+        match crate::multithread::current_tract_executor() {
+            Executor::SingleThread => {
+                for ia in 0..m.divceil(K::mr()) {
                     for ib in 0..n.divceil(K::nr()) {
                         scratch.run::<K>(non_linear, ia, ib);
                     }
-                });
-            })
-        } else {
-            for ia in 0..m.divceil(K::mr()) {
-                for ib in 0..n.divceil(K::nr()) {
-                    scratch.run::<K>(non_linear, ia, ib);
                 }
             }
+            Executor::MultiThread(pool) => pool.install(|| {
+                pool.install(|| {
+                    (0..m.div_ceil(K::mr())).into_par_iter().for_each(|ia| {
+                        for ib in 0..n.divceil(K::nr()) {
+                            scratch.run::<K>(non_linear, ia, ib);
+                        }
+                    });
+                })
+            }),
         }
     }
 }
