@@ -210,7 +210,7 @@ case "$PLATFORM" in
         rustup target add $PLATFORM
         cargo check --target $PLATFORM --features getrandom-js -p tract-onnx -p tract-tensorflow
         curl https://wasmtime.dev/install.sh -sSf | bash
-        WASMTIME=$HOME/.wasmtime/wasmtime
+        WASMTIME=$HOME/.wasmtime/bin/wasmtime
         $WASMTIME --version
         RUSTFLAGS='-C target-feature=+simd128' CARGO_TARGET_WASM32_WASI_RUNNER=$WASMTIME \
             cargo test --target=wasm32-wasi -p tract-linalg -p tract-core -p test-unit-core
