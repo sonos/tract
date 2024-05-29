@@ -76,7 +76,7 @@ pub const STAGES: &[&str] = &[
 ];
 
 /// Entrypoint for the command-line interface.
-fn main() -> tract_core::anyhow::Result<()> {
+fn main() -> TractResult<()> {
     use clap::*;
     let mut app = command!()
         .setting(AppSettings::DeriveDisplayOrder)

@@ -194,11 +194,11 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         specs: &[FusedSpec],
         down: usize,
         right: usize,
-    ) {
+    ) -> TractResult<()> {
         TLS.with_borrow_mut(|tls| {
             tls.sync(self);
             if down < self.valid_down_tiles && right < self.valid_right_tiles {
-                self.for_valid_tile::<K>(specs, tls, down, right);
+                self.for_valid_tile::<K>(specs, tls, down, right)?;
                 let err = K::kernel(tls.ker_specs());
                 debug_assert_eq!(err, 0, "Kernel return error {err}");
             } else {
@@ -206,11 +206,12 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     if down < self.valid_down_tiles { K::mr() } else { self.remnant_down };
                 let remnant_right =
                     if right < self.valid_right_tiles { K::nr() } else { self.remnant_right };
-                self.for_border_tile::<K>(specs, tls, down, right, remnant_down, remnant_right);
+                self.for_border_tile::<K>(specs, tls, down, right, remnant_down, remnant_right)?;
                 let err = K::kernel(tls.ker_specs());
                 debug_assert_eq!(err, 0, "Kernel return error {err}");
-                self.postprocess_tile(specs, tls, down, right, remnant_down, remnant_right);
+                self.postprocess_tile(specs, tls, down, right, remnant_down, remnant_right)?;
             }
+            Ok(())
         })
     }
 
@@ -221,7 +222,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         tls: &mut TLSScratch,
         down: usize,
         right: usize,
-    ) {
+    ) -> TractResult<()> {
         use FusedKerSpec as FKS;
         use FusedSpec as FS;
         let ScratchSpaceImpl { ker_specs, loc_dependant, .. } = self;
@@ -282,6 +283,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
             };
             *tls.ker_specs().get_unchecked_mut(*ker_spec) = it;
         }
+        Ok(())
     }
 
     #[inline(never)]
@@ -293,7 +295,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         right: usize,
         m_remnant: usize,
         n_remnant: usize,
-    ) {
+    ) -> TractResult<()> {
         use FusedKerSpec as FKS;
         use FusedSpec as FS;
         for LocDependant { spec, ker_spec: uspec, loc, buffer_a, buffer_b } in &self.loc_dependant {
@@ -452,6 +454,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
             };
             *tls.ker_specs().get_unchecked_mut(*uspec) = it;
         }
+        Ok(())
     }
 
     #[inline]
@@ -467,7 +470,8 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         right: usize,
         m_remnant: usize,
         n_remnant: usize,
-    ) where
+    ) -> TractResult<()>
+    where
         TI: LADatum,
     {
         for LocDependant { spec, ker_spec: uspec, .. } in self.loc_dependant.iter() {
@@ -477,5 +481,6 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                 c_store.set_from_tile(down, right, m_remnant, n_remnant, tmp)
             }
         }
+        Ok(())
     }
 }

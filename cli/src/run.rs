@@ -64,8 +64,7 @@ pub fn handle(
     }
 
     if let Some(file_path) = sub_matches.value_of("save-outputs-nnef") {
-        fs::create_dir_all(file_path)
-            .with_context(|| format!("Creating {file_path} directory"))?;
+        fs::create_dir_all(file_path).with_context(|| format!("Creating {file_path} directory"))?;
         for (ix, outputs) in outputs.iter().enumerate() {
             let name = params
                 .tract_model
@@ -87,8 +86,7 @@ pub fn handle(
     }
 
     if let Some(file_path) = sub_matches.value_of("save-outputs-npz") {
-        let file =
-            fs::File::create(file_path).with_context(|| format!("Creating {file_path}"))?;
+        let file = fs::File::create(file_path).with_context(|| format!("Creating {file_path}"))?;
         let mut npz = ndarray_npy::NpzWriter::new_compressed(file);
 
         for (ix, outputs) in outputs.iter().enumerate() {
@@ -229,22 +227,12 @@ fn run_regular(
                             if let Ok(floats) = o.as_slice::<f32>() {
                                 if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
                                     eprintln!("{floats:?}");
-                                    tract_core::anyhow::bail!(
-                                        "Found {} in output {} of {}",
-                                        floats[pos],
-                                        ix,
-                                        node
-                                    );
+                                    bail!("Found {} in output {} of {}", floats[pos], ix, node);
                                 }
                             } else if let Ok(floats) = o.as_slice::<f16>() {
                                 if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
                                     eprintln!("{floats:?}");
-                                    tract_core::anyhow::bail!(
-                                        "Found {} in output {} of {}",
-                                        floats[pos],
-                                        ix,
-                                        node
-                                    );
+                                    bail!("Found {} in output {} of {}", floats[pos], ix, node);
                                 }
                             }
                         }
