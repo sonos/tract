@@ -1,6 +1,5 @@
-use crate::tensor::*;
-use anyhow::*;
-use std::marker::PhantomData;
+use super::*;
+use crate::internal::*;
 
 #[derive(Clone, Debug)]
 enum Indexing<'a> {
@@ -13,7 +12,6 @@ pub struct TensorView<'a> {
     pub tensor: &'a Tensor,
     offset_bytes: isize,
     indexing: Indexing<'a>,
-    phantom: PhantomData<&'a ()>,
 }
 
 impl<'a> TensorView<'a> {
@@ -23,15 +21,10 @@ impl<'a> TensorView<'a> {
         shape: &'a [usize],
         strides: &'a [isize],
     ) -> TensorView<'a> {
-        TensorView {
-            tensor,
-            offset_bytes,
-            indexing: Indexing::Custom { shape, strides },
-            phantom: PhantomData,
-        }
+        TensorView { tensor, offset_bytes, indexing: Indexing::Custom { shape, strides } }
     }
 
-    pub fn offsetting(tensor: &'a Tensor, coords: &[usize]) -> anyhow::Result<TensorView<'a>> {
+    pub fn offsetting(tensor: &'a Tensor, coords: &[usize]) -> TractResult<TensorView<'a>> {
         ensure!(
             coords.len() == tensor.rank() && coords.iter().zip(tensor.shape()).all(|(p, d)| p < d),
             "Invalid coords {:?} for shape {:?}",
@@ -49,11 +42,10 @@ impl<'a> TensorView<'a> {
             tensor,
             offset_bytes,
             indexing: Indexing::Custom { shape: &tensor.shape, strides: &tensor.strides },
-            phantom: PhantomData,
         }
     }
 
-    pub fn at_prefix(tensor: &'a Tensor, prefix: &[usize]) -> anyhow::Result<TensorView<'a>> {
+    pub fn at_prefix(tensor: &'a Tensor, prefix: &[usize]) -> TractResult<TensorView<'a>> {
         ensure!(
             prefix.len() <= tensor.rank() && prefix.iter().zip(tensor.shape()).all(|(p, d)| p < d),
             "Invalid prefix {:?} for shape {:?}",
@@ -67,17 +59,12 @@ impl<'a> TensorView<'a> {
         let offset_bytes =
             prefix.iter().zip(tensor.strides()).map(|(a, b)| *a as isize * b).sum::<isize>()
                 * tensor.datum_type().size_of() as isize;
-        TensorView {
-            tensor,
-            offset_bytes,
-            indexing: Indexing::Prefix(prefix.len()),
-            phantom: PhantomData,
-        }
+        TensorView { tensor, offset_bytes, indexing: Indexing::Prefix(prefix.len()) }
     }
 
     #[inline]
     pub unsafe fn view(tensor: &'a Tensor) -> TensorView<'a> {
-        TensorView { tensor, offset_bytes: 0, indexing: Indexing::Prefix(0), phantom: PhantomData }
+        TensorView { tensor, offset_bytes: 0, indexing: Indexing::Prefix(0) }
     }
 
     #[inline]
@@ -130,18 +117,11 @@ impl<'a> TensorView<'a> {
         }
     }
 
-    fn check_dt<D: Datum>(&self) -> anyhow::Result<()> {
-        if self.datum_type() != D::datum_type() {
-            anyhow::bail!(
-                "TensorView datum type error: tensor is {:?}, accessed as {:?}",
-                self.datum_type(),
-                D::datum_type(),
-            );
-        }
-        Ok(())
+    fn check_dt<D: Datum>(&self) -> TractResult<()> {
+        self.tensor.check_for_access::<D>()
     }
 
-    fn check_coords(&self, coords: &[usize]) -> anyhow::Result<()> {
+    fn check_coords(&self, coords: &[usize]) -> TractResult<()> {
         ensure!(
             coords.len() == self.rank()
                 && coords.iter().zip(self.shape()).all(|(&x, &dim)| x < dim),
@@ -154,7 +134,7 @@ impl<'a> TensorView<'a> {
 
     /// Access the data as a pointer.
     #[inline]
-    pub fn as_ptr<D: Datum>(&self) -> anyhow::Result<*const D> {
+    pub fn as_ptr<D: Datum>(&self) -> TractResult<*const D> {
         self.check_dt::<D>()?;
         Ok(unsafe { self.as_ptr_unchecked() })
     }
@@ -173,7 +153,7 @@ impl<'a> TensorView<'a> {
 
     /// Access the data as a mutable pointer.
     #[inline]
-    pub fn as_ptr_mut<D: Datum>(&mut self) -> anyhow::Result<*mut D> {
+    pub fn as_ptr_mut<D: Datum>(&mut self) -> TractResult<*mut D> {
         Ok(self.as_ptr::<D>()? as *mut D)
     }
 
@@ -185,7 +165,7 @@ impl<'a> TensorView<'a> {
 
     /// Access the data as a slice.
     #[inline]
-    pub fn as_slice<D: Datum>(&self) -> anyhow::Result<&'a [D]> {
+    pub fn as_slice<D: Datum>(&self) -> TractResult<&'a [D]> {
         self.check_dt::<D>()?;
         unsafe { Ok(self.as_slice_unchecked()) }
     }
@@ -198,7 +178,7 @@ impl<'a> TensorView<'a> {
 
     /// Access the data as a mutable slice.
     #[inline]
-    pub fn as_slice_mut<D: Datum>(&mut self) -> anyhow::Result<&mut [D]> {
+    pub fn as_slice_mut<D: Datum>(&mut self) -> TractResult<&mut [D]> {
         self.check_dt::<D>()?;
         unsafe { Ok(self.as_slice_mut_unchecked()) }
     }
@@ -242,7 +222,7 @@ impl<'a> TensorView<'a> {
     }
 
     #[inline]
-    pub fn at<T: Datum>(&self, coords: impl AsRef<[usize]>) -> anyhow::Result<&T> {
+    pub fn at<T: Datum>(&self, coords: impl AsRef<[usize]>) -> TractResult<&T> {
         self.check_dt::<T>()?;
         let coords = coords.as_ref();
         self.check_coords(coords)?;
@@ -250,7 +230,7 @@ impl<'a> TensorView<'a> {
     }
 
     #[inline]
-    pub fn at_mut<T: Datum>(&mut self, coords: impl AsRef<[usize]>) -> anyhow::Result<&mut T> {
+    pub fn at_mut<T: Datum>(&mut self, coords: impl AsRef<[usize]>) -> TractResult<&mut T> {
         self.check_dt::<T>()?;
         let coords = coords.as_ref();
         self.check_coords(coords)?;

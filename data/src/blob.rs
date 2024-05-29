@@ -1,6 +1,6 @@
 use num_traits::Zero;
 
-use crate::TractResult;
+use crate::{TractError, TractResult};
 use std::alloc::*;
 use std::fmt::Display;
 use std::hash::Hash;
@@ -154,7 +154,7 @@ impl std::fmt::Debug for Blob {
 }
 
 impl<'a> TryFrom<&'a [u8]> for Blob {
-    type Error = anyhow::Error;
+    type Error = TractError;
     #[inline]
     fn try_from(s: &[u8]) -> Result<Blob, Self::Error> {
         Blob::from_bytes(s)

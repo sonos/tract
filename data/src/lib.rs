@@ -44,14 +44,13 @@ pub mod internal {
     pub use crate::prelude::*;
     pub use crate::tensor::view::TensorView;
     pub use crate::tensor::Approximation;
-    pub use anyhow::{bail, ensure};
+    pub use anyhow::{anyhow, bail, ensure, format_err, Context as TractErrorContext};
     pub use ndarray as tract_ndarray;
     pub use num_integer;
     pub use num_traits as tract_num_traits;
     pub use smallvec as tract_smallvec;
 }
 
-pub use anyhow;
 pub use dim::UndeterminedSymbol;
 pub use half;
 

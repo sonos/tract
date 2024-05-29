@@ -10,7 +10,7 @@ use nom::IResult;
 pub fn parse_tdim(symbol_table: &SymbolTable, input: &str) -> TractResult<TDim> {
     match all_consuming(|i| expr(symbol_table, i))(input) {
         Ok(pair) => Ok(pair.1),
-        Err(e) => anyhow::bail!("Failed to parse {:?}, {:?}", input, e),
+        Err(e) => bail!("Failed to parse {:?}, {:?}", input, e),
     }
 }
 

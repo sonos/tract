@@ -3,13 +3,11 @@ use super::*;
 use crate::frame::Packer;
 use crate::multithread::Executor;
 use crate::LADatum;
-use anyhow::Context;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use tract_data::anyhow;
 use tract_data::internal::*;
 
 pub trait MatMatMul:
@@ -34,7 +32,7 @@ pub trait MatMatMul:
 
     fn can_fuse(&self, spec: &FusedSpec) -> bool;
 
-    unsafe fn run(&self, m: usize, n: usize, non_linear: &[FusedSpec]) -> anyhow::Result<()> {
+    unsafe fn run(&self, m: usize, n: usize, non_linear: &[FusedSpec]) -> TractResult<()> {
         let mut scratch = self.allocate_scratch_space();
         self.run_with_scratch_space(m, n, &mut *scratch, non_linear)
     }
@@ -47,7 +45,7 @@ pub trait MatMatMul:
         n: usize,
         scratch: &mut dyn ScratchSpace,
         non_linear: &[FusedSpec],
-    ) -> anyhow::Result<()>;
+    ) -> TractResult<()>;
 }
 
 dyn_clone::clone_trait_object!(MatMatMul);
@@ -172,7 +170,7 @@ where
         n: usize,
         scratch: &mut dyn ScratchSpace,
         non_linear: &[FusedSpec],
-    ) -> anyhow::Result<()> {
+    ) -> TractResult<()> {
         let scratch =
             scratch.downcast_mut::<ScratchSpaceImpl<TI>>().context("Wrong scratch space type")?;
         scratch.prepare::<K>(m, n, non_linear)?;

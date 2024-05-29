@@ -1,4 +1,5 @@
 //! Extended dimension support
+use crate::internal::*;
 use num_traits::Zero;
 use std::fmt;
 use std::ops;
@@ -92,7 +93,7 @@ impl DimLike for TDim {
         if self.is_zero() {
             return Ok((TDim::zero(), 1));
         } else if other.is_zero() {
-            anyhow::bail!("Division by zero")
+            bail!("Division by zero")
         }
         fn expand(dim: &TDim) -> (i64, Vec<TDim>) {
             match dim {
@@ -125,7 +126,7 @@ impl DimLike for TDim {
             if let Some(pos) = num.iter().position(|n| n == &it) {
                 num.remove(pos);
             } else {
-                anyhow::bail!("Can't divide {} by {}", self, other)
+                bail!("Can't divide {} by {}", self, other)
             }
         }
         use num_integer::Integer;
@@ -160,7 +161,7 @@ impl DimLike for TDim {
     }
 
     fn broadcast(self, other: Self) -> TractResult<Self> {
-        Ok(TDim::Broadcast(vec!(self, other)).simplify())
+        Ok(TDim::Broadcast(vec![self, other]).simplify())
     }
 
     fn compatible_with(&self, other: &Self) -> bool {
@@ -169,7 +170,7 @@ impl DimLike for TDim {
 }
 
 impl<'a> std::convert::TryFrom<&'a TDim> for TDim {
-    type Error = anyhow::Error;
+    type Error = TractError;
     fn try_from(d: &'a TDim) -> TractResult<TDim> {
         Ok(d.clone())
     }
@@ -208,7 +209,7 @@ impl DimLike for usize {
         } else if other == 1 {
             Ok(self)
         } else {
-            anyhow::bail!("Can not broadcast {self} against {other}")
+            bail!("Can not broadcast {self} against {other}")
         }
     }
 
@@ -218,8 +219,8 @@ impl DimLike for usize {
 }
 
 impl<'a> std::convert::TryFrom<&'a TDim> for usize {
-    type Error = anyhow::Error;
-    fn try_from(d: &'a TDim) -> anyhow::Result<usize> {
+    type Error = TractError;
+    fn try_from(d: &'a TDim) -> TractResult<usize> {
         d.to_usize()
     }
 }
