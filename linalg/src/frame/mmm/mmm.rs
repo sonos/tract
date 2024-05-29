@@ -175,13 +175,12 @@ where
             scratch.downcast_mut::<ScratchSpaceImpl<TI>>().context("Wrong scratch space type")?;
         scratch.prepare::<K>(m, n, non_linear)?;
         if n == 1 && K::nr() == 1 {
-            self.run_with_scratch_space_vec(m, scratch, non_linear);
+            self.run_with_scratch_space_vec(m, scratch, non_linear)
         } else if non_linear.iter().any(|f| f.prefer_col_outer()) {
-            self.run_with_scratch_space_col_outer(m, n, scratch, non_linear);
+            self.run_with_scratch_space_col_outer(m, n, scratch, non_linear)
         } else {
-            self.run_with_scratch_space_row_outer(m, n, scratch, non_linear);
+            self.run_with_scratch_space_row_outer(m, n, scratch, non_linear)
         }
-        Ok(())
     }
 }
 
@@ -191,20 +190,19 @@ impl<TI: LADatum, K: MatMatMulKer<TI>> MatMatMulImpl<K, TI> {
         m: usize,
         scratch: &mut ScratchSpaceImpl<TI>,
         non_linear: &[FusedSpec],
-    ) {
+    ) -> TractResult<()> {
         match crate::multithread::current_tract_executor() {
             Executor::SingleThread => {
                 for ia in 0..m.divceil(K::mr()) {
-                    scratch.run::<K>(non_linear, ia, 0);
+                    scratch.run::<K>(non_linear, ia, 0)?;
                 }
+                Ok(())
             }
-            Executor::MultiThread(pool) => {
-                pool.install(|| {
-                    (0..m.div_ceil(K::mr())).into_par_iter().for_each(|ia| {
-                        scratch.run::<K>(non_linear, ia, 0);
-                    });
-                });
-            }
+            Executor::MultiThread(pool) => pool.install(|| {
+                (0..m.div_ceil(K::mr()))
+                    .into_par_iter()
+                    .try_for_each(|ia| scratch.run::<K>(non_linear, ia, 0))
+            }),
         }
     }
 
@@ -214,21 +212,23 @@ impl<TI: LADatum, K: MatMatMulKer<TI>> MatMatMulImpl<K, TI> {
         n: usize,
         scratch: &mut ScratchSpaceImpl<TI>,
         non_linear: &[FusedSpec],
-    ) {
+    ) -> TractResult<()> {
         match crate::multithread::current_tract_executor() {
             Executor::SingleThread => {
                 for ib in 0..n.divceil(K::nr()) {
                     for ia in 0..m.divceil(K::mr()) {
-                        scratch.run::<K>(non_linear, ia, ib);
+                        scratch.run::<K>(non_linear, ia, ib)?;
                     }
                 }
+                Ok(())
             }
             Executor::MultiThread(pool) => pool.install(|| {
-                (0..n.div_ceil(K::nr())).into_par_iter().for_each(|ib| {
+                (0..n.div_ceil(K::nr())).into_par_iter().try_for_each(|ib| {
                     for ia in 0..m.divceil(K::mr()) {
-                        scratch.run::<K>(non_linear, ia, ib);
+                        scratch.run::<K>(non_linear, ia, ib)?;
                     }
-                });
+                    Ok(())
+                })
             }),
         }
     }
@@ -239,22 +239,24 @@ impl<TI: LADatum, K: MatMatMulKer<TI>> MatMatMulImpl<K, TI> {
         n: usize,
         scratch: &mut ScratchSpaceImpl<TI>,
         non_linear: &[FusedSpec],
-    ) {
+    ) -> TractResult<()> {
         match crate::multithread::current_tract_executor() {
             Executor::SingleThread => {
                 for ia in 0..m.divceil(K::mr()) {
                     for ib in 0..n.divceil(K::nr()) {
-                        scratch.run::<K>(non_linear, ia, ib);
+                        scratch.run::<K>(non_linear, ia, ib)?;
                     }
                 }
+                Ok(())
             }
             Executor::MultiThread(pool) => pool.install(|| {
                 pool.install(|| {
-                    (0..m.div_ceil(K::mr())).into_par_iter().for_each(|ia| {
+                    (0..m.div_ceil(K::mr())).into_par_iter().try_for_each(|ia| {
                         for ib in 0..n.divceil(K::nr()) {
-                            scratch.run::<K>(non_linear, ia, ib);
+                            scratch.run::<K>(non_linear, ia, ib)?;
                         }
-                    });
+                        Ok(())
+                    })
                 })
             }),
         }
