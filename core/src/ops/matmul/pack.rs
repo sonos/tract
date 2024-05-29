@@ -1,8 +1,11 @@
 use crate::axes::Axis;
 use crate::internal::*;
 use ndarray::*;
-
+use tract_linalg::frame::block_quant::PackedBlockQuant;
 use tract_linalg::frame::Packer;
+use tract_linalg::mmm::MMMInput;
+
+use super::de_block_quant::DeBlockQuant;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MatMatMulPack {
@@ -56,6 +59,14 @@ impl TypedOp for MatMatMulPack {
         AxesMapping::new(1, 1, axes)
     }
 
+    fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(p) = self.fuse_dequant_block(model, node)? {
+            return Ok(Some(p));
+        } else {
+            return Ok(None);
+        }
+    }
+
     as_op!();
 }
 
@@ -97,6 +108,33 @@ impl MatMatMulPack {
             };
             Ok(tvec!(stores.into_tvalue()))
         }
+    }
+
+    fn fuse_dequant_block(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let Some(prec) = model.single_prec(node.id)? else { return Ok(None) };
+        let Some(deq) = prec.op_as::<DeBlockQuant>() else { return Ok(None) };
+        let Some(weights) = model.outlet_fact(prec.inputs[0])?.konst.as_ref() else {
+            return Ok(None);
+        };
+        let k = deq.fact.shape[self.k_axis].to_usize().unwrap();
+        let mn = deq.fact.shape[self.mn_axis].to_usize().unwrap();
+        let data = deq.bq.pack(weights.to_scalar::<Blob>()?, k, self.packer.r)?;
+        let mmm_input: Box<dyn MMMInput> = Box::new(PackedBlockQuant {
+            format: deq.bq.clone(),
+            data,
+            pack: self.packer.clone(),
+            mn,
+            k,
+        });
+        let packed = tensor0(Opaque::from(mmm_input)).into_arc_tensor();
+        let mut patch = TypedModelPatch::default();
+        let wire = patch.add_const(&node.name, packed)?;
+        patch.shunt_outside(model, node.id.into(), wire)?;
+        Ok(Some(patch))
     }
 
     pub fn output_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {

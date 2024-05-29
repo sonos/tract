@@ -76,8 +76,8 @@ fn block_quant_einsum_weights(
 
 #[derive(Debug, Clone, Hash)]
 pub struct DeBlockQuant {
-    bq: Box<dyn BlockQuant>,
-    fact: TypedFact,
+    pub(crate) bq: Box<dyn BlockQuant>,
+    pub(crate) fact: TypedFact,
 }
 
 impl Op for DeBlockQuant {

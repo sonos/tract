@@ -175,11 +175,11 @@ impl<const QK: usize> Display for BaseQ4_0<QK> {
 
 #[derive(Clone, Debug, Hash)]
 pub struct PackedBlockQuant {
-    format: Box<dyn BlockQuant>,
-    data: Blob,
-    pack: Packer,
-    mn: usize,
-    k: usize,
+    pub format: Box<dyn BlockQuant>,
+    pub data: Blob,
+    pub pack: Packer,
+    pub mn: usize,
+    pub k: usize,
 }
 
 impl Display for PackedBlockQuant {

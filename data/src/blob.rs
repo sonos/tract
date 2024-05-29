@@ -139,10 +139,11 @@ impl std::fmt::Display for Blob {
         assert!(self.data.is_null() == self.layout.size().is_zero());
         write!(
             fmt,
-            "Blob of {} bytes (align @{}): {}",
+            "Blob of {} bytes (align @{}): {} {}",
             self.len(),
             self.layout.align(),
-            String::from_utf8_lossy(self)
+            String::from_utf8_lossy(&self.as_bytes()[..100]),
+            if self.len() >= 100 { "[...]"  } else { "" }
         )
     }
 }
