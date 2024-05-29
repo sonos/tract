@@ -2,6 +2,7 @@ use byteorder::{ReadBytesExt, WriteBytesExt, LE};
 use downcast_rs::{impl_downcast, Downcast};
 use dyn_clone::DynClone;
 use dyn_hash::DynHash;
+use num_traits::{AsPrimitive, Float};
 use tract_data::internal::*;
 use tract_data::itertools::Itertools;
 
@@ -22,9 +23,11 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
     fn block_bytes(&self) -> usize;
 
     fn dequant_block_f32(&self, quant: &[u8], block: &mut [f32]);
-    fn quant_block(&self, block: &[f32], quant: &mut [u8]);
+    fn dequant_block_f16(&self, quant: &[u8], block: &mut [f16]);
+    fn quant_block_f16(&self, block: &[f16], quant: &mut [u8]);
+    fn quant_block_f32(&self, block: &[f32], quant: &mut [u8]);
 
-    fn quant(&self, input: &[f32]) -> TractResult<Blob> {
+    fn quant_f16(&self, input: &[f16]) -> TractResult<Blob> {
         unsafe {
             let blocks = input.len() / self.block_len();
             let mut quant = Blob::for_layout(
@@ -33,7 +36,22 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
             for b in 0..blocks {
                 let block = &input[b * self.block_len()..][..self.block_len()];
                 let qblock = &mut quant[b * self.block_bytes()..][..self.block_bytes()];
-                self.quant_block(block, qblock);
+                self.quant_block_f16(block, qblock);
+            }
+            Ok(quant)
+        }
+    }
+
+    fn quant_f32(&self, input: &[f32]) -> TractResult<Blob> {
+        unsafe {
+            let blocks = input.len() / self.block_len();
+            let mut quant = Blob::for_layout(
+                Layout::from_size_align(blocks * self.block_bytes(), 128).unwrap(),
+            );
+            for b in 0..blocks {
+                let block = &input[b * self.block_len()..][..self.block_len()];
+                let qblock = &mut quant[b * self.block_bytes()..][..self.block_bytes()];
+                self.quant_block_f32(block, qblock);
             }
             Ok(quant)
         }
@@ -53,8 +71,23 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
         }
     }
 
+    fn dequant_f16(&self, input: &[u8]) -> TractResult<Tensor> {
+        unsafe {
+            let blocks = input.len() / self.block_bytes();
+            let mut tensor = Tensor::uninitialized::<f16>(&[blocks * self.block_len()])?;
+            let slice = tensor.as_slice_mut::<f16>()?;
+            for b in 0..blocks {
+                let block = &mut slice[b * self.block_len()..][..self.block_len()];
+                let qblock = &input[b * self.block_bytes()..][..self.block_bytes()];
+                self.dequant_block_f16(qblock, block);
+            }
+            Ok(tensor)
+        }
+    }
+
     fn pack(&self, input: &[u8], k: usize, r: usize) -> TractResult<Blob>;
     fn panel_f32(&self, packed: &Blob, k: usize, r: usize, panel: usize, scratch: &mut [f32]);
+    fn panel_f16(&self, packed: &Blob, k: usize, r: usize, panel: usize, scratch: &mut [f16]);
 }
 
 dyn_clone::clone_trait_object!(BlockQuant);
@@ -65,6 +98,77 @@ impl_downcast!(BlockQuant);
 pub struct BaseQ4_0<const QK: usize = 32>;
 
 pub static Q4_0: BaseQ4_0 = BaseQ4_0::<32>;
+
+impl<const QK: usize> BaseQ4_0<QK> {
+    fn quant_block<T: Float + 'static>(&self, block: &[T], quant: &mut [u8])
+    where
+        f32: AsPrimitive<T>,
+        T: AsPrimitive<f16> + AsPrimitive<i8>,
+    {
+        assert!(quant.len() == self.block_bytes());
+        assert!(block.len() == self.block_len());
+        let mut writer = NibbleWriter::for_slice(quant);
+        let mut amax = T::zero();
+        let mut max = T::zero();
+        for v in block {
+            if amax < v.abs() {
+                amax = v.abs();
+                max = *v;
+            }
+        }
+        let d: T = max / (-8f32).as_();
+        let id = if d.is_zero() { T::zero() } else { d.recip() };
+        writer.write_f16(d.as_());
+
+        for x in block {
+            let i: i8 = (*x * id + (8.5f32).as_()).as_();
+            writer.write_i4(i.min(15));
+        }
+    }
+
+    fn dequant_block<T: Float + 'static>(&self, quant: &[u8], block: &mut [T])
+    where
+        f16: AsPrimitive<T>,
+        i8: AsPrimitive<T>,
+    {
+        assert!(quant.len() == self.block_bytes());
+        assert!(block.len() == self.block_len());
+        let mut nibbles = NibbleReader::for_slice(quant);
+        let d: T = nibbles.read_f16().as_();
+        for x in block {
+            *x = (nibbles.read_i4() - 8).as_() * d;
+        }
+    }
+
+    fn panel_f<T: Float + 'static>(
+        &self,
+        packed: &Blob,
+        k: usize,
+        r: usize,
+        panel: usize,
+        scratch: &mut [T],
+    ) where
+        f16: AsPrimitive<T>,
+        i8: AsPrimitive<T>,
+    {
+        assert!(k % self.block_len() == 0);
+        let blocks_for_k = k / self.block_len();
+        let row_bytes = blocks_for_k * self.block_bytes();
+        let mut input = NibbleReader::for_slice(&packed[panel * r * row_bytes..]);
+        let mut scales = vec![T::zero(); r];
+        let mut scratch = scratch.iter_mut();
+        for _ in 0..blocks_for_k {
+            for s in &mut scales {
+                *s = input.read_f16().as_();
+            }
+            for _ in 0..self.block_len() {
+                for &s in &scales {
+                    *scratch.next().unwrap() = s * (input.read_i4() - 8).as_();
+                }
+            }
+        }
+    }
+}
 
 impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
     fn same_as(&self, other: &dyn BlockQuant) -> bool {
@@ -79,35 +183,20 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
         2 + self.block_len() / 2
     }
 
-    fn quant_block(&self, block: &[f32], quant: &mut [u8]) {
-        assert!(quant.len() == self.block_bytes());
-        assert!(block.len() == self.block_len());
-        let mut writer = NibbleWriter::for_slice(quant);
-        let mut amax = 0f32;
-        let mut max = 0f32;
-        for v in block {
-            if amax < v.abs() {
-                amax = v.abs();
-                max = *v;
-            }
-        }
-        let d = max / -8f32;
-        let id = if d == 0.0 { 0f32 } else { d.recip() };
-        writer.write_f16(f16::from_f32(d));
+    fn quant_block_f32(&self, block: &[f32], quant: &mut [u8]) {
+        self.quant_block(block, quant)
+    }
 
-        for x in block {
-            writer.write_i4(((*x * id + 8.5f32) as i8).min(15));
-        }
+    fn quant_block_f16(&self, block: &[f16], quant: &mut [u8]) {
+        self.quant_block(block, quant)
     }
 
     fn dequant_block_f32(&self, quant: &[u8], block: &mut [f32]) {
-        assert!(quant.len() == self.block_bytes());
-        assert!(block.len() == self.block_len());
-        let mut nibbles = NibbleReader::for_slice(quant);
-        let d = nibbles.read_f16().to_f32();
-        for x in block {
-            *x = (nibbles.read_i4() - 8) as f32 * d;
-        }
+        self.dequant_block(quant, block)
+    }
+
+    fn dequant_block_f16(&self, quant: &[u8], block: &mut [f16]) {
+        self.dequant_block(quant, block)
     }
 
     // s0_0 n0_0 n0_1 n0_2 n0_3 ... n0_30n0_31 s0_32 n0_32n0_33 ...
@@ -148,22 +237,11 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
     }
 
     fn panel_f32(&self, packed: &Blob, k: usize, r: usize, panel: usize, scratch: &mut [f32]) {
-        assert!(k % self.block_len() == 0);
-        let blocks_for_k = k / self.block_len();
-        let row_bytes = blocks_for_k * self.block_bytes();
-        let mut input = NibbleReader::for_slice(&packed[panel * r * row_bytes..]);
-        let mut scales = vec![0f32; r];
-        let mut scratch = scratch.iter_mut();
-        for _ in 0..blocks_for_k {
-            for s in &mut scales {
-                *s = input.read_f16().to_f32();
-            }
-            for _ in 0..self.block_len() {
-                for s in &scales {
-                    *scratch.next().unwrap() = s * (input.read_i4() - 8) as f32;
-                }
-            }
-        }
+        self.panel_f(packed, k, r, panel, scratch)
+    }
+
+    fn panel_f16(&self, packed: &Blob, k: usize, r: usize, panel: usize, scratch: &mut [f16]) {
+        self.panel_f(packed, k, r, panel, scratch)
     }
 }
 
@@ -275,41 +353,57 @@ impl<W: Write> NibbleWriter<W> {
 
 #[cfg(test)]
 mod tests {
+    use num_traits::Zero;
     use tract_data::internal::tract_ndarray::Array2;
 
     use crate::frame::Packer;
 
     use super::*;
 
-    fn cycle(b: impl BlockQuant, data: &[f32]) {
+    fn cycle_f32(b: impl BlockQuant, data: &[f32]) {
         let mut input = data.to_vec();
         while input.len() % b.block_len() != 0 {
             input.push(0f32);
         }
-        let quant = b.quant(&input).unwrap();
+        let quant = b.quant_f32(&input).unwrap();
         let result = b.dequant_f32(&quant).unwrap();
         let view = &result.as_slice::<f32>().unwrap()[..data.len()];
         assert_eq!(data, view);
     }
 
+    fn cycle_f16(b: impl BlockQuant, data: &[f32]) {
+        let mut input = data.iter().map(|f| f16::from_f32(*f)).collect_vec();
+        while input.len() % b.block_len() != 0 {
+            input.push(f16::zero());
+        }
+        let quant = b.quant_f16(&input).unwrap();
+        let result = b.dequant_f16(&quant).unwrap();
+        let view = &result.as_slice::<f16>().unwrap();
+        assert_eq!(&input, view);
+    }
+
     #[test]
     fn loop_q4_pos() {
-        cycle(Q4_0, &[1.0, 2.0, 3.0, 4.0]);
+        cycle_f32(Q4_0, &[1.0, 2.0, 3.0, 4.0]);
+        cycle_f16(Q4_0, &[1.0, 2.0, 3.0, 4.0]);
     }
 
     #[test]
     fn loop_q4_neg() {
-        cycle(Q4_0, &[-1.0, -2.0, -3.0, -4.0]);
+        cycle_f32(Q4_0, &[-1.0, -2.0, -3.0, -4.0]);
+        cycle_f16(Q4_0, &[-1.0, -2.0, -3.0, -4.0]);
     }
 
     #[test]
     fn loop_q4_big_pos() {
-        cycle(Q4_0, &[1234.0]);
+        cycle_f32(Q4_0, &[1234.0]);
+        cycle_f16(Q4_0, &[-1.0, -2.0, -3.0, -4.0]);
     }
 
     #[test]
     fn loop_q4_big_neg() {
-        cycle(Q4_0, &[-1234.0]);
+        cycle_f32(Q4_0, &[-1234.0]);
+        cycle_f16(Q4_0, &[-1234.0]);
     }
 
     #[test]
@@ -319,13 +413,13 @@ mod tests {
             Array2::from_shape_fn((m, k), |(m, k)| ((m * 31 + k * 17) % 20) as f32 - 10.)
                 .into_tensor();
         let weights_f32 =
-            q.dequant_f32(&q.quant(weights_orig.as_slice::<f32>()?)?)?.into_shape(&[m, k])?;
+            q.dequant_f32(&q.quant_f32(weights_orig.as_slice::<f32>()?)?)?.into_shape(&[m, k])?;
         eprintln!("{:?}", weights_f32.to_array_view::<f32>()?);
         let packer = Packer::new(r, 128, 0);
         let packed_f32 = packer.pack_tensor(&weights_f32, 1, 0)?;
         assert_eq!(packed_f32.panels_count(), 2);
 
-        let q4 = q.quant(&weights_f32.as_slice::<f32>()?)?;
+        let q4 = q.quant_f32(&weights_f32.as_slice::<f32>()?)?;
         let packed_q4 = q.pack(&q4, k, r)?;
 
         for panel in 0..2 {
