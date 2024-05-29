@@ -189,7 +189,7 @@ macro_rules! dispatch_numbers {
             DatumType::QI8(_)  => $($path)::*::<i8>($($args),*),
             DatumType::QU8(_)  => $($path)::*::<u8>($($args),*),
             DatumType::QI32(_)  => $($path)::*::<i32>($($args),*),
-            _ => $crate::anyhow::bail!("{:?} is not a number", $dt)
+            _ => $crate::internal::bail!("{:?} is not a number", $dt)
         }
     } }
 }
@@ -224,7 +224,7 @@ macro_rules! dispatch_zerolike {
             DatumType::ComplexF32 => $($path)::*::<Complex<f32>>($($args),*),
             #[cfg(feature = "complex")]
             DatumType::ComplexF64 => $($path)::*::<Complex<f64>>($($args),*),
-            _ => $crate::anyhow::bail!("{:?} is doesn't implement num_traits::Zero", $dt)
+            _ => $crate::internal::bail!("{:?} is doesn't implement num_traits::Zero", $dt)
         }
     } }
 }
@@ -237,7 +237,7 @@ macro_rules! dispatch_floatlike {
             DatumType::F16  => $($path)::*::<f16>($($args),*),
             DatumType::F32  => $($path)::*::<f32>($($args),*),
             DatumType::F64  => $($path)::*::<f64>($($args),*),
-            _ => $crate::anyhow::bail!("{:?} is not float-like", $dt)
+            _ => $crate::internal::bail!("{:?} is not float-like", $dt)
         }
     } }
 }
@@ -255,7 +255,7 @@ macro_rules! dispatch_signed {
             DatumType::I32  => $($path)::*::<i32>($($args),*),
             DatumType::I64  => $($path)::*::<i64>($($args),*),
             DatumType::TDim => $($path)::*::<TDim>($($args),*),
-            _ => $crate::anyhow::bail!("{:?} is not signed", $dt)
+            _ => $crate::internal::bail!("{:?} is not signed", $dt)
         }
     } }
 }
@@ -284,7 +284,7 @@ macro_rules! dispatch_hash {
             DatumType::ComplexI32 => $($path)::*::<Complex<i32>>($($args),*),
             #[cfg(feature="complex")]
             DatumType::ComplexI64 => $($path)::*::<Complex<i64>>($($args),*),
-            _ => $crate::anyhow::bail!("{:?} is not Hash", $dt)
+            _ => $crate::internal::bail!("{:?} is not Hash", $dt)
         }
     } }
 }

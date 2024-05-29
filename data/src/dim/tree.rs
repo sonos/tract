@@ -1,4 +1,4 @@
-use crate::TractResult;
+use crate::internal::*;
 
 use super::{sym::*, DimLike};
 use itertools::Itertools;
@@ -83,7 +83,7 @@ impl TDim {
     }
 
     #[inline]
-    pub fn to_i64(&self) -> anyhow::Result<i64> {
+    pub fn to_i64(&self) -> TractResult<i64> {
         if let Val(v) = self {
             Ok(*v)
         } else {
@@ -100,10 +100,10 @@ impl TDim {
         }
     }
 
-    pub fn eval_to_i64(&self, values: &SymbolValues) -> anyhow::Result<i64> {
+    pub fn eval_to_i64(&self, values: &SymbolValues) -> TractResult<i64> {
         match self {
             Sym(sym) => {
-                let Some(v) = values[sym] else { anyhow::bail!(UndeterminedSymbol(self.clone())) };
+                let Some(v) = values[sym] else { bail!(UndeterminedSymbol(self.clone())) };
                 Ok(v)
             }
             Val(v) => Ok(*v),

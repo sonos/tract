@@ -1,6 +1,6 @@
 //! `Tensor` is the main data container for tract
+use crate::internal::*;
 use crate::dim::TDim;
-use crate::tensor::litteral::*;
 use crate::tensor::Tensor;
 use crate::TVec;
 use half::f16;
@@ -231,7 +231,7 @@ impl DatumType {
     }
 
     #[cfg(feature = "complex")]
-    pub fn complexify(&self) -> anyhow::Result<DatumType> {
+    pub fn complexify(&self) -> TractResult<DatumType> {
         match *self {
             DatumType::I16 => Ok(DatumType::ComplexI16),
             DatumType::I32 => Ok(DatumType::ComplexI32),
@@ -239,12 +239,12 @@ impl DatumType {
             DatumType::F16 => Ok(DatumType::ComplexF16),
             DatumType::F32 => Ok(DatumType::ComplexF32),
             DatumType::F64 => Ok(DatumType::ComplexF64),
-            _ => anyhow::bail!("No complex datum type formed on {:?}", self),
+            _ => bail!("No complex datum type formed on {:?}", self),
         }
     }
 
     #[cfg(feature = "complex")]
-    pub fn decomplexify(&self) -> anyhow::Result<DatumType> {
+    pub fn decomplexify(&self) -> TractResult<DatumType> {
         match *self {
             DatumType::ComplexI16 => Ok(DatumType::I16),
             DatumType::ComplexI32 => Ok(DatumType::I32),
@@ -252,7 +252,7 @@ impl DatumType {
             DatumType::ComplexF16 => Ok(DatumType::F16),
             DatumType::ComplexF32 => Ok(DatumType::F32),
             DatumType::ComplexF64 => Ok(DatumType::F64),
-            _ => anyhow::bail!("{:?} is not a complex type", self),
+            _ => bail!("{:?} is not a complex type", self),
         }
     }
 
@@ -388,7 +388,7 @@ impl DatumType {
 }
 
 impl std::str::FromStr for DatumType {
-    type Err = anyhow::Error;
+    type Err = TractError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Ok((z, s)) = scan_fmt!(s, "QU8(Z:{d} S:{f})", i32, f32) {
@@ -426,7 +426,7 @@ impl std::str::FromStr for DatumType {
                 "ComplexF32" | "complexf32" => Ok(DatumType::ComplexF32),
                 #[cfg(feature = "complex")]
                 "ComplexF64" | "complexf64" => Ok(DatumType::ComplexF64),
-                _ => anyhow::bail!("Unknown type {}", s),
+                _ => bail!("Unknown type {}", s),
             }
         }
     }
