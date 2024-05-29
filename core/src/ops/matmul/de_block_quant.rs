@@ -61,7 +61,7 @@ fn block_quant_einsum_weights(
         return Ok(Some(patch));
     }
     let mut patch = TypedModelPatch::default();
-    let weights = Q4_0.quant(&a.konst.as_ref().unwrap().cast_to::<f32>()?.as_slice::<f32>()?)?;
+    let weights = Q4_0.quant_f32(&a.konst.as_ref().unwrap().cast_to::<f32>()?.as_slice::<f32>()?)?;
     let name = &model.node(node.inputs[0].node).name;
     let weights = patch.add_const(name, tensor0(weights))?;
     let weights = patch.wire_node(
