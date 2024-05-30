@@ -1,5 +1,6 @@
 pub mod max;
 pub mod softmax;
+pub mod sum;
 
 use std::fmt::Debug;
 use std::marker::PhantomData;

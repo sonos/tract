@@ -63,13 +63,20 @@ where
             let mut compute_via_temp_buffer = |slice: &[T], red: &mut T| {
                 tmp[..slice.len()].copy_from_slice(slice);
                 tmp[slice.len()..].fill(neutral);
+                dbg!(&tmp);
+                dbg!(&red);
+                dbg!(&neutral);
+                dbg!(f(tmp));
                 *red = reduce(*red, f(tmp));
             };
             let prefix_len = vec.as_ptr().align_offset(alignment_bytes).min(vec.len());
+            dbg!(&vec);
+            dbg!(prefix_len);
             if prefix_len > 0 {
                 compute_via_temp_buffer(&vec[..prefix_len], &mut red);
             }
             let aligned_len = (vec.len() - prefix_len) / nr * nr;
+            dbg!(aligned_len);
             if aligned_len > 0 {
                 let t = f(&vec[prefix_len..][..aligned_len]);
                 red = reduce(red, t);
