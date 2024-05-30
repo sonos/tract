@@ -11,7 +11,9 @@ pub mod test {
         ($cond:expr, $t: ty, $ker:ty) => {
             proptest::proptest! {
                 #[test]
-                fn prop(xs in proptest::collection::vec(-25f32..25.0, 0..100)) {
+                // When numbers are two large, precision decrease leading to potentially huge
+                // errors in reduce operations.
+                fn prop(xs in proptest::collection::vec(-4.0f32..4.0, 0..100)) {
                     if $cond {
                         $crate::frame::reduce::sum::test::test_sum::<$ker, $t>(&*xs).unwrap()
                     }
@@ -26,9 +28,15 @@ pub mod test {
             }
             
             #[test]
-            fn one_element() {
+            fn simple() {
                 if $cond {
-                    $crate::frame::reduce::sum::test::test_sum::<$ker, $t>(&[3.0]).unwrap()
+                    $crate::frame::reduce::sum::test::test_sum::<$ker, $t>(&[1.0, 2.0]).unwrap()
+                }
+            } 
+            #[test]
+            fn multiple_tile() {
+                if $cond {
+                    $crate::frame::reduce::sum::test::test_sum::<$ker, $t>(&[1.0; 32]).unwrap()
                 }
             }
         };
