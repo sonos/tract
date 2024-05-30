@@ -113,6 +113,11 @@ jobs:
 
           #     - name: "Setup sccache"
           #       run: .travis/setup-sccache.sh
+          #
+    - name: Cross script
+      env:
+        PLATFORM: ${{matrix.platform}}
+      run: .travis/comp.sh
 
     - name: Cross script
       env:
