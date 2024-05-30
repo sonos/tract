@@ -249,7 +249,7 @@ pub mod test {
         let found = values;
         let red = op.run_with_params(found, params).unwrap();
         tensor0(red)
-            .close_enough(&tensor0(expected), true)
+            .close_enough(&tensor0(expected), Approximation::SuperApproximate)
             .map_err(|e| TestCaseError::fail(e.root_cause().to_string()))?;
         Ok(())
     }

@@ -106,5 +106,5 @@ map_reduce_impl_wrap!(
 #[cfg(test)]
 mod test_arm64simd_softmax2_fastcompact_f32_16n {
     use super::*;
-    softmax_l2_frame_tests!(true, f32, arm64simd_softmax2_fastcompact_f32_16n);
+    crate::softmax_l2_frame_tests!(true, f32, arm64simd_softmax2_fastcompact_f32_16n);
 }

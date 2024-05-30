@@ -48,5 +48,5 @@ reduce_impl_wrap!(
 #[cfg(test)]
 mod test_arm64simd_max_f32_16n {
     use super::*;
-    max_frame_tests!(true, f32, arm64simd_max_f32_16n);
+    crate::max_frame_tests!(true, f32, arm64simd_max_f32_16n);
 }

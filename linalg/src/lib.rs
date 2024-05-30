@@ -78,6 +78,8 @@ pub struct Ops {
     pub max_f16: Box<dyn Fn() -> Box<dyn reduce::Reduce<f16>> + Send + Sync>,
     pub max_f32: Box<dyn Fn() -> Box<dyn reduce::Reduce<f32>> + Send + Sync>,
 
+    pub sum_f16: Box<dyn Fn() -> Box<dyn reduce::Reduce<f16>> + Send + Sync>,
+
     pub softmax2_fastcompact_f16:
         Box<dyn Fn() -> Box<dyn reduce::MapReduce<f16, f16>> + Send + Sync>,
     pub softmax2_fastcompact_f32:
@@ -143,6 +145,7 @@ pub fn generic() -> Ops {
         lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
         max_f16: Box::new(|| generic::reduce::max::HMax8::red()),
         max_f32: Box::new(|| generic::reduce::max::SMax4::red()),
+        sum_f16: Box::new(|| generic::reduce::sum::HSum8::red()),
         /*
         activation_f32: Box::new(|microcode| generic::SActivation::new(microcode))
         */
