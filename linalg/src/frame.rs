@@ -6,8 +6,6 @@ pub mod by_scalar;
 #[macro_use]
 pub mod lut;
 #[macro_use]
-pub mod max;
-#[macro_use]
 pub mod mmm;
 pub mod pack;
 #[macro_use]
@@ -16,8 +14,6 @@ pub mod leaky_relu;
 pub mod reduce;
 #[macro_use]
 pub mod sigmoid;
-#[macro_use]
-pub mod softmax;
 #[macro_use]
 pub mod tanh;
 pub mod element_wise_helper;

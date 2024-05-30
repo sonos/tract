@@ -61,5 +61,5 @@ unsafe fn x86_64_fma_max_f32_32n_run(buf: &[f32]) -> f32 {
 #[cfg(test)]
 mod test_x86_64_fma_max_f32_32n {
     use super::*;
-    max_frame_tests!(is_x86_feature_detected!("avx2"), f32, x86_64_fma_max_f32_32n);
+    crate::max_frame_tests!(is_x86_feature_detected!("avx2"), f32, x86_64_fma_max_f32_32n);
 }

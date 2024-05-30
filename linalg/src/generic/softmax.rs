@@ -104,12 +104,12 @@ pub fn fast_compact_exp_f32(v: f32) -> f32 {
 #[cfg(test)]
 #[macro_use]
 pub mod s {
-    softmax_l2_frame_tests!(true, f32, crate::generic::softmax::SSoftMaxL2);
+    crate::softmax_l2_frame_tests!(true, f32, crate::generic::softmax::SSoftMaxL2);
 }
 
 #[cfg(test)]
 #[macro_use]
 pub mod h {
     use super::*;
-    softmax_l2_frame_tests!(true, f16, crate::generic::softmax::HSoftMaxL2);
+    crate::softmax_l2_frame_tests!(true, f16, crate::generic::softmax::HSoftMaxL2);
 }
