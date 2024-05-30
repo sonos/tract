@@ -80,7 +80,7 @@ jobs:
           - aarch64-apple-ios
           - aarch64-apple-darwin
 
-    runs-on: macOS-latest
+    runs-on: macOS-13
     permissions:
       id-token: write
       contents: read
@@ -114,11 +114,6 @@ jobs:
           #     - name: "Setup sccache"
           #       run: .travis/setup-sccache.sh
           #
-    - name: Cross script
-      env:
-        PLATFORM: ${{matrix.platform}}
-      run: .travis/comp.sh
-
     - name: Cross script
       env:
         PLATFORM: ${{matrix.platform}}
