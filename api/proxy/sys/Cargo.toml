@@ -15,7 +15,3 @@ include = [ "Cargo.toml", "src/**/*.rs", "LICENSE*", "build.rs", "tract.h" ]
 
 [dependencies]
 tract-ffi = { path =  "../../ffi" , version = "=0.21.6-pre" }
-
-[build-dependencies]
-bindgen.workspace = true
-home.workspace = true
