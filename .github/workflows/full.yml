@@ -177,15 +177,62 @@ jobs:
           target
           .cached
         key: ${{ runner.os }}-full-onnx-with-asserts-${{steps.date.outputs.date}}-e
-          #     - name: "Setup sccache"
-          #       run: .travis/setup-sccache.sh
+
     - name: With assertions
       run: |
         rustup update
         cargo -q test -q -p test-onnx-core
 
-        #    - name: Stop sccache server
-        #      run: sccache --stop-server || true
+  without-default-features:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Get current date
+      id: date
+      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+    - uses: actions/cache@v3
+      with:
+        path: |
+          ~/.rustup
+          ~/.cargo/registry
+          ~/.cargo/git
+          #~/.cache/sccache
+          target
+          .cached
+        key: ${{ runner.os }}-full-onnx-with-asserts-${{steps.date.outputs.date}}-e
+
+    - name: Without default features
+      run: |
+        rustup update
+        cargo check -p tract --no-default-features $CARGO_EXTRA
+
+
+  complexes:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Get current date
+      id: date
+      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+    - uses: actions/cache@v3
+      with:
+        path: |
+          ~/.rustup
+          ~/.cargo/registry
+          ~/.cargo/git
+          #~/.cache/sccache
+          target
+          .cached
+        key: ${{ runner.os }}-full-onnx-with-asserts-${{steps.date.outputs.date}}-e
+
+    - name: With complexes
+      run: |
+        rustup update
+        cargo check -p tract-nnef --features complex $CARGO_EXTRA
 
   core-paranoid:
     runs-on: ubuntu-latest

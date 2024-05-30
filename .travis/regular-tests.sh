@@ -43,9 +43,6 @@ cargo -q test -q -p test-onnx-core $CARGO_EXTRA
 cargo -q test -q -p test-nnef-cycle $CARGO_EXTRA
 cargo -q test -q -p test-blas $CARGO_EXTRA
 
-cargo check -p tract-nnef --features complex $CARGO_EXTRA
-cargo check -p tract --no-default-features $CARGO_EXTRA
-
 if [ `arch` = "x86_64" -a "$RUST_VERSION" = "stable" ]
 then
     ALL_FEATURES=--all-features
@@ -55,7 +52,6 @@ cargo clean
 
 for c in data linalg core nnef hir onnx pulse onnx-opl pulse-opl rs proxy
 do
-    df -h
     cargo -q test $CARGO_EXTRA -q -p tract-$c
 done
 
