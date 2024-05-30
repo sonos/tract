@@ -84,7 +84,7 @@ flate2 = "1.0.20"
 fs-err = "2"
 fs2 = "0.4.3"
 getrandom = "0.2"
-half = { version="2.2.1", features = [ "std", "num-traits" ] }
+half = { version="2.4", features = [ "std", "num-traits" ] }
 image = "0.24.1"
 itertools = "0.12.1"
 home = "0.5.5"
