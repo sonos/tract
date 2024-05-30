@@ -94,6 +94,7 @@ case "$PLATFORM" in
         ;;
 
     "aarch64-apple-ios")
+        find / -name stdlib.h
         rustup target add aarch64-apple-ios
         cargo dinghy --platform auto-ios-aarch64 build -p tract-linalg
         ;;
