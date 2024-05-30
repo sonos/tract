@@ -37,22 +37,19 @@ fi
 
 export CACHEDIR
 
-# useful as debug_asserts will come into play
-cargo -q test -q -p tract-core --features paranoid_assertions $CARGO_EXTRA
-cargo -q test -q -p test-onnx-core $CARGO_EXTRA
-cargo -q test -q -p test-nnef-cycle $CARGO_EXTRA
-cargo -q test -q -p test-blas $CARGO_EXTRA
-
 if [ `arch` = "x86_64" -a "$RUST_VERSION" = "stable" ]
 then
     ALL_FEATURES=--all-features
 fi
 
-cargo clean
-
 for c in data linalg core nnef hir onnx pulse onnx-opl pulse-opl rs proxy
 do
     cargo -q test $CARGO_EXTRA -q -p tract-$c
+done
+
+for c in test-rt/test*
+do
+    (cd $c; cargo test -q $CARGO_EXTRA)
 done
 
 # doc test are not finding libtensorflow.so
