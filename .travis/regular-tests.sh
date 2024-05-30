@@ -8,8 +8,20 @@ fi
 
 set -ex
 
-which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
-rustup update
+if [ -n $CI ]
+then
+    which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
+    rustup update
+    if [ `uname` = "Darwin" ]
+    then
+        sysctl -n machdep.cpu.brand_string
+        brew install coreutils python3 numpy
+        PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"
+        PYTHON_BIN_PATH=python3
+    else
+        sudo apt-get install -y llvm python3 python3-numpy
+    fi
+fi
 
 PATH=$PATH:$HOME/.cargo/bin
 
@@ -20,15 +32,6 @@ fi
 export RUSTUP_TOOLCHAIN=$RUST_VERSION
 
 rustc --version
-
-if [ `uname` = "Darwin" ]
-then
-    sysctl -n machdep.cpu.brand_string
-    brew install coreutils
-    PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"
-else
-    sudo apt-get install -y llvm 
-fi
 
 if [ -z "$CACHEDIR" ]
 then
