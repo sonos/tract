@@ -100,7 +100,7 @@ case "$PLATFORM" in
 
     "aarch64-apple-darwin")
         rustup target add aarch64-apple-darwin
-        cargo build --target aarch64-apple-darwin
+        cargo build --target aarch64-apple-darwin -p tract
         ;;
 
     "aarch64-unknown-linux-gnu-stretch" | "armv7-unknown-linux-gnueabihf-stretch" )
