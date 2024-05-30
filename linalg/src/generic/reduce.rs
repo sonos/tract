@@ -52,6 +52,63 @@ pub mod max {
     }
 }
 
+// Reduce<sum> generic implementation
+pub mod sum {
+    use crate::num_traits::Zero;
+    pub use tract_data::internal::f16;
+    use crate::num_traits::AsPrimitive;
+
+    reduce_impl_wrap!(
+        f32,
+        SSum4,
+        4,
+        4,
+        (),
+        0.0,
+        fn run(x: &[f32], _: ()) -> f32 {
+            debug_assert!(x.len() % Self::nr() == 0);
+            debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
+            x.iter().sum::<f32>()
+        },
+        fn reduce_two(a: f32, b: f32) -> f32 {
+            a + b
+        }
+    );
+
+    reduce_impl_wrap!(
+        f16,
+        HSum8,
+        8,
+        8,
+        (),
+        f16::zero(),
+        fn run(x: &[f16], _: ()) -> f16 {
+            debug_assert!(x.len() % Self::nr() == 0);
+            debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
+            dbg!(&x);
+            dbg!(x.iter().take(2).inspect(|x|{dbg!(x);}).sum::<f16>());
+            //x.iter().sum::<f16>()
+            x.iter().map(|it| it.to_f32()).sum::<f32>().as_()
+        },
+        fn reduce_two(a: f16, b: f16) -> f16 {
+            a + b
+        }
+    );
+
+    #[cfg(test)]
+    #[macro_use]
+    pub mod s {
+       crate::sum_frame_tests!(true, f32, crate::generic::reduce::sum::SSum4);
+    }
+
+    #[cfg(test)]
+    #[macro_use]
+    pub mod h {
+        use super::*;
+        crate::sum_frame_tests!(true, f16, crate::generic::reduce::sum::HSum8);
+    }
+}
+
 // Softmax generic implementation
 pub mod softmax {
     use crate::num_traits::Zero;
