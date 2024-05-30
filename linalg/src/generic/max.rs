@@ -67,12 +67,12 @@ impl ReduceKer<f16> for HMax8 {
 #[cfg(test)]
 #[macro_use]
 pub mod s {
-    max_frame_tests!(true, f32, crate::generic::max::SMax4);
+    crate::max_frame_tests!(true, f32, crate::generic::max::SMax4);
 }
 
 #[cfg(test)]
 #[macro_use]
 pub mod h {
-    use super::*;
-    max_frame_tests!(true, f16, crate::generic::max::HMax8);
+    use crate::*;
+    crate::max_frame_tests!(true, f16, crate::generic::max::HMax8);
 }

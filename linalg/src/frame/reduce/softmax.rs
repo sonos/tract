@@ -13,7 +13,7 @@ pub mod test {
                 #[test]
                 fn prop(xs in proptest::collection::vec(-25f32..25.0, 1..100)) {
                     if $cond {
-                        $crate::frame::softmax::test::test_softmax_l2::<$ker, $t>(&*xs).unwrap()
+                        $crate::frame::reduce::softmax::test::test_softmax_l2::<$ker, $t>(&*xs).unwrap()
                     }
                 }
             }
@@ -21,21 +21,21 @@ pub mod test {
             #[test]
             fn single() {
                 if $cond {
-                    $crate::frame::softmax::test::test_softmax_l2::<$ker, $t>(&[0.0]).unwrap()
+                    $crate::frame::reduce::softmax::test::test_softmax_l2::<$ker, $t>(&[0.0]).unwrap()
                 }
             }
 
             #[test]
             fn two_zeros() {
                 if $cond {
-                    $crate::frame::softmax::test::test_softmax_l2::<$ker, $t>(&[0.0, 0.0]).unwrap()
+                    $crate::frame::reduce::softmax::test::test_softmax_l2::<$ker, $t>(&[0.0, 0.0]).unwrap()
                 }
             }
 
             #[test]
             fn two_0() {
                 if $cond {
-                    $crate::frame::softmax::test::test_softmax_l2::<$ker, $t>(&[
+                    $crate::frame::reduce::softmax::test::test_softmax_l2::<$ker, $t>(&[
                         16.62555, 21.950674,
                     ])
                     .unwrap()
@@ -45,7 +45,7 @@ pub mod test {
             #[test]
             fn two_1() {
                 if $cond {
-                    $crate::frame::softmax::test::test_softmax_l2::<$ker, $t>(&[0.0f32, 0.38132212])
+                    $crate::frame::reduce::softmax::test::test_softmax_l2::<$ker, $t>(&[0.0f32, 0.38132212])
                         .unwrap()
                 }
             }
@@ -53,7 +53,7 @@ pub mod test {
             #[test]
             fn two_missing_max() {
                 if $cond {
-                    $crate::frame::softmax::test::test_softmax_l2::<$ker, $t>(&[
+                    $crate::frame::reduce::softmax::test::test_softmax_l2::<$ker, $t>(&[
                         -46.15512, 42.875168,
                     ])
                     .unwrap()
