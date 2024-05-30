@@ -56,7 +56,6 @@ pub mod max {
 pub mod sum {
     use crate::num_traits::Zero;
     pub use tract_data::internal::f16;
-    use crate::num_traits::AsPrimitive;
 
     reduce_impl_wrap!(
         f32,
@@ -85,10 +84,7 @@ pub mod sum {
         fn run(x: &[f16], _: ()) -> f16 {
             debug_assert!(x.len() % Self::nr() == 0);
             debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
-            dbg!(&x);
-            dbg!(x.iter().take(2).inspect(|x|{dbg!(x);}).sum::<f16>());
-            //x.iter().sum::<f16>()
-            x.iter().map(|it| it.to_f32()).sum::<f32>().as_()
+            x.iter().sum::<f16>()
         },
         fn reduce_two(a: f16, b: f16) -> f16 {
             a + b

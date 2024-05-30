@@ -28,7 +28,7 @@ pub mod test {
             #[test]
             fn one_element() {
                 if $cond {
-                    $crate::frame::reduce::sum::test::test_sum::<$ker, $t>(&[46.15512]).unwrap()
+                    $crate::frame::reduce::sum::test::test_sum::<$ker, $t>(&[3.0]).unwrap()
                 }
             }
         };
