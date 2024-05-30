@@ -64,7 +64,7 @@ do
     if [ "$c" != "test-rt/test-tflite" ]
     then
         echo
-        echo "$WHITE ### $t ### $NC"
+        echo "$WHITE ### $c ### $NC"
         echo
         (cd $c; cargo test -q $CARGO_EXTRA)
     fi
