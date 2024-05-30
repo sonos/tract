@@ -253,14 +253,11 @@ jobs:
           target
           .cached
         key: ${{ runner.os }}-full-core-paranoid-${{steps.date.outputs.date}}-e
-          #    - name: "Setup sccache"
-          #      run: .travis/setup-sccache.sh
+
     - name: Core test with paranoid assertions
       run: |
         rustup update
         cargo test -p tract-core --features paranoid_assertions
-        #    - name: Stop sccache server
-        #      run: sccache --stop-server || true
 
   C:
     runs-on: ubuntu-latest

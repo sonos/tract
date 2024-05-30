@@ -15,6 +15,8 @@ export RUSTUP_TOOLCHAIN=nightly
 export RUST_VERSION=nightly
 export CARGO_EXTRA="-Zbuild-std --target $TARGET"
 
+cargo -q test -q -p tract-core --features paranoid_assertions $CARGO_EXTRA
+
 ./.travis/regular-tests.sh
 if [ -n "$CI" ]
 then
