@@ -9,68 +9,68 @@ env:
   CARGO_INCREMENTAL: false
 
 jobs:
-  linux:
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          - raspbian
-          - aarch64-unknown-linux-gnu
-          - aarch64-unknown-linux-gnu-stretch
-          - armv6vfp-unknown-linux-gnueabihf
-          - armv7-unknown-linux-gnueabihf
-          - armv7-unknown-linux-gnueabihf-stretch
-          - aarch64-unknown-linux-musl
-          - armv7-unknown-linux-musl
-          - aarch64-linux-android
-          - armv7-linux-androideabi
-          - i686-linux-android
-          - x86_64-linux-android
-          - wasm32-unknown-unknown
-          - wasm32-wasi
-
-    runs-on: ubuntu-20.04
-    permissions:
-      id-token: write
-      contents: read
-
-    steps:
-    - uses: actions/checkout@v3
-
-    - name: Get current date
-      id: date
-      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
-    - name: Configure AWS Credentials
-      # if: github.repository == 'sonos/tract'
-      continue-on-error: true
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
-        aws-region: us-east-2
-
-    - uses: actions/cache@v3
-      with:
-        path: |
-          ~/.rustup
-          ~/.cargo/registry
-          ~/.cargo/git
-          #          ~/.cache/sccache
-          .cached
-          target
-        key: ${{ runner.os }}-${{matrix.platform}}-${{steps.date.outputs.date}}
-
-          #     - name: "Setup sccache"
-          #       run: .travis/setup-sccache.sh
-
-    - name: Cross script
-      env:
-        PLATFORM: ${{matrix.platform}}
-        AWS_EC2_METADATA_DISABLED: true
-      run: .travis/cross.sh
-
-        #     - name: Stop sccache server
-        #       run: sccache --stop-server || true
+  #   linux:
+  #     strategy:
+  #       fail-fast: false
+  #       matrix:
+  #         platform:
+  #           - raspbian
+  #           - aarch64-unknown-linux-gnu
+  #           - aarch64-unknown-linux-gnu-stretch
+  #           - armv6vfp-unknown-linux-gnueabihf
+  #           - armv7-unknown-linux-gnueabihf
+  #           - armv7-unknown-linux-gnueabihf-stretch
+  #           - aarch64-unknown-linux-musl
+  #           - armv7-unknown-linux-musl
+  #           - aarch64-linux-android
+  #           - armv7-linux-androideabi
+  #           - i686-linux-android
+  #           - x86_64-linux-android
+  #           - wasm32-unknown-unknown
+  #           - wasm32-wasi
+  # 
+  #     runs-on: ubuntu-20.04
+  #     permissions:
+  #       id-token: write
+  #       contents: read
+  # 
+  #     steps:
+  #     - uses: actions/checkout@v3
+  # 
+  #     - name: Get current date
+  #       id: date
+  #       run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+  # 
+  #     - name: Configure AWS Credentials
+  #       # if: github.repository == 'sonos/tract'
+  #       continue-on-error: true
+  #       uses: aws-actions/configure-aws-credentials@v4
+  #       with:
+  #         role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
+  #         aws-region: us-east-2
+  # 
+  #     - uses: actions/cache@v3
+  #       with:
+  #         path: |
+  #           ~/.rustup
+  #           ~/.cargo/registry
+  #           ~/.cargo/git
+  #           #          ~/.cache/sccache
+  #           .cached
+  #           target
+  #         key: ${{ runner.os }}-${{matrix.platform}}-${{steps.date.outputs.date}}
+  # 
+  #           #     - name: "Setup sccache"
+  #           #       run: .travis/setup-sccache.sh
+  # 
+  #     - name: Cross script
+  #       env:
+  #         PLATFORM: ${{matrix.platform}}
+  #         AWS_EC2_METADATA_DISABLED: true
+  #       run: .travis/cross.sh
+  # 
+  #         #     - name: Stop sccache server
+  #         #       run: sccache --stop-server || true
 
   apple:
     strategy:

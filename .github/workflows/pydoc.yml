@@ -1,7 +1,6 @@
 name: Python gh-pages doc
 
 on:
-  pull_request:
   release:
   workflow_dispatch:
 

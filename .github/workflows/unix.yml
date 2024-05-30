@@ -1,7 +1,6 @@
 name: Unix build and tests
 
 on:
-  pull_request:
   schedule:
     - cron:  '0 3 * * *'
 
