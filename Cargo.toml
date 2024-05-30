@@ -61,7 +61,6 @@ anstyle = "1.0.2"
 anyhow = "1.0.43"
 approx = "0.5"
 atty = "0.2.14"
-bindgen= "0.66"
 bit-set= "0.5.2"
 blis-src = { version = "0.2", features = ["static", "pthreads"] }
 boow = "0.1.3"
