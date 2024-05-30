@@ -141,13 +141,13 @@ pub fn generic() -> Ops {
         tanh_f32: Box::new(|| generic::STanh4::ew()),
         erf_f32: Box::new(|| generic::SErf4::ew()),
         lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
-        max_f16: Box::new(|| generic::max::HMax8::red()),
-        max_f32: Box::new(|| generic::max::SMax4::red()),
+        max_f16: Box::new(|| generic::reduce::max::HMax8::red()),
+        max_f32: Box::new(|| generic::reduce::max::SMax4::red()),
         /*
         activation_f32: Box::new(|microcode| generic::SActivation::new(microcode))
         */
-        softmax2_fastcompact_f16: Box::new(|| generic::softmax::HSoftMaxL2::red()),
-        softmax2_fastcompact_f32: Box::new(|| generic::softmax::SSoftMaxL2::red()),
+        softmax2_fastcompact_f16: Box::new(|| generic::reduce::softmax::HSoftMaxL2::red()),
+        softmax2_fastcompact_f32: Box::new(|| generic::reduce::softmax::SSoftMaxL2::red()),
     }
 }
 
