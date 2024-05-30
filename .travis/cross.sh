@@ -94,14 +94,13 @@ case "$PLATFORM" in
         ;;
 
     "aarch64-apple-ios")
-        find / -name stdlib.h
         rustup target add aarch64-apple-ios
         cargo dinghy --platform auto-ios-aarch64 build -p tract-linalg
         ;;
 
     "aarch64-apple-darwin")
         rustup target add aarch64-apple-darwin
-        cargo build --target aarch64-apple-darwin
+        cargo build -vvv --target aarch64-apple-darwin
         ;;
 
     "aarch64-unknown-linux-gnu-stretch" | "armv7-unknown-linux-gnueabihf-stretch" )
