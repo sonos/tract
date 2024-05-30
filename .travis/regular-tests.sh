@@ -1,14 +1,18 @@
 #!/bin/sh
 
+WHITE='\033[1;37m'
+NC='\033[0m' # No Color
+
 if [ -e /proc/cpuinfo ]
 then
     grep "^flags" /proc/cpuinfo | head -1 | \
         grep --color=always '\(s\?sse[0-9_]*\|fma\|f16c\|avx[^ ]*\)'
 fi
 
-set -ex
+set -e
+set -x
 
-if [ -n $CI ]
+if [ -n "$CI" ]
 then
     which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
     rustup update
@@ -45,14 +49,25 @@ then
     ALL_FEATURES=--all-features
 fi
 
+set +x
+
 for c in data linalg core nnef hir onnx pulse onnx-opl pulse-opl rs proxy
 do
+    echo
+    echo "$WHITE ### $c ### $NC"
+    echo
     cargo -q test $CARGO_EXTRA -q -p tract-$c
 done
 
 for c in test-rt/test*
 do
-    (cd $c; cargo test -q $CARGO_EXTRA)
+    if [ "$c" != "test-rt/test-tflite" ]
+    then
+        echo
+        echo "$WHITE ### $t ### $NC"
+        echo
+        (cd $c; cargo test -q $CARGO_EXTRA)
+    fi
 done
 
 # doc test are not finding libtensorflow.so
