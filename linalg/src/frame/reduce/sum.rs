@@ -11,11 +11,13 @@ pub mod test {
         ($cond:expr, $t: ty, $ker:ty) => {
             proptest::proptest! {
                 #[test]
-                // When numbers are two large, precision decrease leading to potentially huge
-                // errors in reduce operations.
-                fn prop(xs in proptest::collection::vec(-4.0f32..4.0, 0..100)) {
+                // Addition is not associative in f16 a + b + c != (a + b) + c because of precision
+                // issues. To avoid that, test vector should be aligned with kernel size (to avoid
+                // having to sum partial sums together).
+                fn prop(xs in proptest::collection::vec(-25_isize..25, 0..100)) {
                     if $cond {
-                        $crate::frame::reduce::sum::test::test_sum::<$ker, $t>(&*xs).unwrap()
+                        let xs_float = xs.into_iter().map(|it| it as f32).collect::<Vec<_>>();
+                        $crate::frame::reduce::sum::test::test_sum::<$ker, $t>(&*xs_float).unwrap()
                     }
                 }
             }
@@ -36,7 +38,7 @@ pub mod test {
             #[test]
             fn multiple_tile() {
                 if $cond {
-                    $crate::frame::reduce::sum::test::test_sum::<$ker, $t>(&[1.0; 32]).unwrap()
+                    $crate::frame::reduce::sum::test::test_sum::<$ker, $t>(&[1.0; 35]).unwrap()
                 }
             }
         };
