@@ -29,6 +29,8 @@ where
     fn can_fuse(spec: &FusedSpec) -> bool {
         true
     }
+
+
 }
 
 #[macro_export]
