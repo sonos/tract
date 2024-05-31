@@ -28,6 +28,7 @@ macro_rules! MMMKernel {
         paste! {
             mod [<sys_ $func>] {
                 use crate::frame::mmm::*;
+                #[allow(unused_imports)]
                 use super::*;
                 #[allow(unused_imports)]
                 use tract_data::prelude::f16;
