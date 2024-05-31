@@ -32,6 +32,7 @@ macro_rules! test_mmm_kernel_f16 {
             #[cfg(test)]
             #[allow(non_snake_case)]
             mod [<test_ $k>] {
+                use super::$k;
                 mmm_kernel_tests!($cond, $k, f16, f16, f16, f16);
                 mmm_frame_tests!($cond, $k, f16, f16, f16, f16);
                 mmm_kernel_fuse_tests!($cond, $k, f16, f16);
@@ -47,10 +48,10 @@ macro_rules! test_mmm_kernel_f32 {
             #[cfg(test)]
             #[allow(non_snake_case)]
             mod [<test_ $k>] {
+                use super::$k;
                 mmm_kernel_tests!($cond, $k, f32, f32, f32, f32);
                 mmm_frame_tests!($cond, $k, f32, f32, f32, f32);
                 mmm_kernel_fuse_tests!($cond, $k, f32, f32);
-                //qmmm_kernel_fuse_tests!($cond, $k, f32, f32, f32, f32);
             }
         }
     };
@@ -63,10 +64,10 @@ macro_rules! test_mmm_kernel_f64 {
             #[cfg(test)]
             #[allow(non_snake_case)]
             mod [<test_ $k>] {
+                use super::$k;
                 mmm_kernel_tests!($cond, $k, f64, f64, f64, f64);
                 mmm_frame_tests!($cond, $k, f64, f64, f64, f64);
                 mmm_kernel_fuse_tests!($cond, $k, f64, f64);
-                //qmmm_kernel_fuse_tests!($cond, $k, f64, f64, f64, f64);
             }
         }
     };
@@ -79,16 +80,19 @@ macro_rules! test_mmm_kernel_i32 {
             #[cfg(test)]
             #[allow(non_snake_case)]
             mod [<test_ $k>] {
+                use super::$k;
                 mmm_kernel_tests!($cond, $k, i8, i8, i8, i32);
                 mmm_kernel_fuse_tests!($cond, $k, i8, i32);
                 mmm_frame_tests!($cond, $k, i8, i8, i8, i32);
             }
             #[cfg(test)]
             mod [<test_qi8_ $k>] {
+                use super::$k;
                 qmmm_kernel_fuse_tests!($cond, $k, i8, i8, i8, i32);
             }
             #[cfg(test)]
             mod [<test_qi32_ $k>] {
+                use super::$k;
                 qmmm_kernel_fuse_tests!($cond, $k, i8, i8, i32, i32);
             }
         }
@@ -123,7 +127,7 @@ pub mod test {
 
                 proptest::proptest! {
                     #[test]
-                    fn packed_packed_prop(pb in any::<PackedPackedProblem<$ker, $ta, $tb, $tc, $ti>>()) {
+                    fn packed_packed_prop(pb in any_with::<PackedPackedProblem<_, $ta, $tb, $tc, $ti>>($ker)) {
                         if $cond {
                             prop_assert_eq!(pb.run(), pb.reference())
                         }
@@ -133,33 +137,35 @@ pub mod test {
                 #[test]
                 fn packed_packed_1() {
                     if $cond {
-                        test::packed_packed::<$ker, $ta, $tb, $tc, $ti>(1)
+                        test::packed_packed::<_, $ta, $tb, $tc, $ti>($ker, 1)
                     }
                 }
 
                 #[test]
                 fn packed_packed_2() {
                     if $cond {
-                        test::packed_packed::<$ker, $ta, $tb, $tc, $ti>(2)
+                        test::packed_packed::<_, $ta, $tb, $tc, $ti>($ker, 2)
                     }
                 }
 
                 #[test]
                 fn packed_packed_13() {
                     if $cond {
-                        test::packed_packed::<$ker, $ta, $tb, $tc, $ti>(13)
+                        test::packed_packed::<_, $ta, $tb, $tc, $ti>($ker, 13)
                     }
                 }
 
                 #[test]
                 fn packed_packed_empty() {
                     if $cond {
-                        let pb = PackedPackedProblem::<$ker, $ta, $tb, $tc, $ti>::new(
+                        let pb = PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new(
+                            $ker,
                             0,
-                            vec!(<$ta>::zero(); 0),
-                            vec!(<$tb>::zero(); 0),
+                            vec![<$ta>::zero(); 0],
+                            vec![<$tb>::zero(); 0],
                             false,
-                            false);
+                            false,
+                        );
                         assert_eq!(pb.run(), pb.reference())
                     }
                 }
@@ -167,12 +173,14 @@ pub mod test {
                 #[test]
                 fn packed_packed_bug_1() {
                     if $cond {
-                        let pb = PackedPackedProblem::<$ker, $ta, $tb, $tc, $ti>::new(
+                        let pb = PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new(
+                            $ker,
                             1,
-                            vec!(<$ta>::zero(); <$ker>::default().mr()),
-                            vec!(<$tb>::zero(); <$ker>::default().nr()),
+                            vec![<$ta>::zero(); $ker.mr()],
+                            vec![<$tb>::zero(); $ker.nr()],
                             true,
-                            true);
+                            true,
+                        );
                         assert_eq!(pb.run(), pb.reference())
                     }
                 }
@@ -180,28 +188,28 @@ pub mod test {
                 #[test]
                 fn packed_vec_k1() {
                     if $cond {
-                        test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(1)
+                        test::packed_vec::<_, $ta, $tb, $tc, $ti>($ker, 1)
                     }
                 }
 
                 #[test]
                 fn packed_vec_k2() {
                     if $cond {
-                        test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(2)
+                        test::packed_vec::<_, $ta, $tb, $tc, $ti>($ker, 2)
                     }
                 }
 
                 #[test]
                 fn packed_vec_k4() {
                     if $cond {
-                        test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(4)
+                        test::packed_vec::<_, $ta, $tb, $tc, $ti>($ker, 4)
                     }
                 }
 
                 #[test]
                 fn packed_vec_k13() {
                     if $cond {
-                        test::packed_vec::<$ker, $ta, $tb, $tc, $ti>(13)
+                        test::packed_vec::<_, $ta, $tb, $tc, $ti>($ker, 13)
                     }
                 }
             }
@@ -218,6 +226,7 @@ pub mod test {
         TI: LADatum + fmt::Display + AsPrimitive<TC>,
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
+        pub ker: K,
         pub k: usize,
         pub a: Vec<TA>,
         pub b: Vec<TB>,
@@ -228,17 +237,17 @@ pub mod test {
 
     impl<K, TA, TB, TC, TI> Arbitrary for PackedPackedProblem<K, TA, TB, TC, TI>
     where
-        K: MatMatMulKer<Acc = TI>,
+        K: MatMatMulKer<Acc = TI> + Default,
         TA: 'static + Debug + AsPrimitive<TI>,
         TB: 'static + Debug + AsPrimitive<TI>,
         TC: Copy + PartialEq + 'static + Debug,
         TI: LADatum + fmt::Display + AsPrimitive<TC>,
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
-        type Parameters = ();
+        type Parameters = K;
         type Strategy = BoxedStrategy<Self>;
 
-        fn arbitrary_with(_: ()) -> Self::Strategy {
+        fn arbitrary_with(_: K) -> Self::Strategy {
             (0usize..20, any::<bool>(), any::<bool>())
                 .prop_flat_map(|(k, trans_c, add_one)| {
                     let ker = K::default();
@@ -249,6 +258,7 @@ pub mod test {
                     (Just(k), Just(trans_c), Just(add_one), vec(a, m..=m), vec(b, n..=n))
                 })
                 .prop_map(|(k, trans_c, add_one, a, b)| Self {
+                    ker: K::default(),
                     k,
                     a,
                     b,
@@ -332,7 +342,7 @@ pub mod test {
         }
     }
 
-    pub fn packed_packed<K, TA, TB, TC, TI>(k: usize)
+    pub fn packed_packed<K, TA, TB, TC, TI>(ker: K, k: usize)
     where
         K: MatMatMulKer<Acc = TI>,
         TA: Copy + One + Datum + AsPrimitive<TI>,
@@ -341,10 +351,9 @@ pub mod test {
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TA> + AsPrimitive<TB>,
     {
-        let ker = K::default();
         let a = vec![TA::one(); ker.mr() * k];
         let b = vec![TB::one(); ker.nr() * k];
-        let pb = PackedPackedProblem::<K, TA, TB, TC, TI>::new(k, a, b, false, false);
+        let pb = PackedPackedProblem::<K, TA, TB, TC, TI>::new(ker, k, a, b, false, false);
         assert_eq!(pb.run(), pb.reference())
     }
 
@@ -357,7 +366,7 @@ pub mod test {
         }
     }
 
-    pub fn packed_vec<K, TA, TB, TC, TI>(k: usize)
+    pub fn packed_vec<K, TA, TB, TC, TI>(ker: K, k: usize)
     where
         K: MatMatMulKer<Acc = TI>,
         TA: Copy + One + AsPrimitive<TI> + Debug + Datum,
@@ -366,7 +375,6 @@ pub mod test {
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC>,
     {
-        let ker = K::default();
         let pa = unsafe {
             Tensor::from_slice_align(
                 &vec![TA::one(); ker.mr() * (k + ker.end_padding_packed_a())],

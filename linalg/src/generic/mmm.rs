@@ -70,7 +70,7 @@ where
     usize: AsPrimitive<TI>,
 {
     pub fn mmm() -> Box<dyn MatMatMul> {
-        Box::<MatMatMulImpl::<Self>>::default()
+        Box::new(MatMatMulImpl(Self::default()))
     }
 }
 
@@ -241,7 +241,7 @@ where
     usize: AsPrimitive<TI>,
 {
     pub fn mmm() -> Box<dyn MatMatMul> {
-        Box::<MatMatMulImpl::<Self>>::default()
+        Box::new(MatMatMulImpl(Self::default()))
     }
 }
 
@@ -412,7 +412,7 @@ where
     usize: AsPrimitive<TI>,
 {
     pub fn mmm() -> Box<dyn MatMatMul> {
-        Box::new(MatMatMulImpl::<Self>::default())
+        Box::new(MatMatMulImpl(Self::default()))
     }
 }
 
@@ -605,40 +605,40 @@ where
     }
 }
 
-#[allow(non_camel_case_types)]
-pub type generic_f16_4x4 = GenericMmm4x4<f16, f16, f16>;
+#[allow(non_upper_case_globals)]
+pub const generic_f16_4x4: GenericMmm4x4<f16, f16, f16> = GenericMmm4x4(PhantomData);
 test_mmm_kernel_f16!(generic_f16_4x4, true);
 
-#[allow(non_camel_case_types)]
-pub type generic_f32_4x4 = GenericMmm4x4<f32, f32, f32>;
+#[allow(non_upper_case_globals)]
+pub const generic_f32_4x4: GenericMmm4x4<f32, f32, f32> = GenericMmm4x4(PhantomData);
 test_mmm_kernel_f32!(generic_f32_4x4, true);
 
-#[allow(non_camel_case_types)]
-pub type generic_f64_4x4 = GenericMmm4x4<f64, f64, f64>;
+#[allow(non_upper_case_globals)]
+pub const generic_f64_4x4: GenericMmm4x4<f64, f64, f64> = GenericMmm4x4(PhantomData);
 test_mmm_kernel_f64!(generic_f64_4x4, true);
 
-#[allow(non_camel_case_types)]
-pub type generic_i32_4x4 = GenericMmm4x4<i8, i8, i32>;
+#[allow(non_upper_case_globals)]
+pub const generic_i32_4x4: GenericMmm4x4<i8, i8, i32> = GenericMmm4x4(PhantomData);
 test_mmm_kernel_i32!(generic_i32_4x4, true);
 
-#[allow(non_camel_case_types)]
-pub type generic_f32_4x1 = GenericMmm4x1<f32, f32, f32>;
+#[allow(non_upper_case_globals)]
+pub const generic_f32_4x1: GenericMmm4x1<f32, f32, f32> = GenericMmm4x1(PhantomData);
 test_mmm_kernel_f32!(generic_f32_4x1, true);
 
-#[allow(non_camel_case_types)]
-pub type generic_f64_4x1 = GenericMmm4x1<f64, f64, f64>;
+#[allow(non_upper_case_globals)]
+pub const generic_f64_4x1: GenericMmm4x1<f64, f64, f64> = GenericMmm4x1(PhantomData);
 test_mmm_kernel_f64!(generic_f64_4x1, true);
 
-#[allow(non_camel_case_types)]
-pub type generic_i32_4x1 = GenericMmm4x1<i8, i8, i32>;
+#[allow(non_upper_case_globals)]
+pub const generic_i32_4x1: GenericMmm4x1<i8, i8, i32> = GenericMmm4x1(PhantomData);
 test_mmm_kernel_i32!(generic_i32_4x1, true);
 
 #[cfg(test)]
-#[allow(non_camel_case_types)]
-type generic_f32_3x2 = GenericMmmTest3x2<f32, f32, f32>;
+#[allow(non_upper_case_globals)]
+const generic_f32_3x2: GenericMmmTest3x2<f32, f32, f32> = GenericMmmTest3x2(PhantomData);
 test_mmm_kernel_f32!(generic_f32_3x2, true);
 
 #[cfg(test)]
-#[allow(non_camel_case_types)]
-type generic_i32_3x2 = GenericMmmTest3x2<i8, i8, i32>;
+#[allow(non_upper_case_globals)]
+const generic_i32_3x2: GenericMmmTest3x2<i8, i8, i32> = GenericMmmTest3x2(PhantomData);
 test_mmm_kernel_i32!(generic_i32_3x2, true);

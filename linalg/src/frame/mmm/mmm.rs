@@ -59,8 +59,8 @@ impl std::hash::Hash for Box<dyn MatMatMul> {
     }
 }
 
-#[derive(Clone, Default)]
-pub struct MatMatMulImpl<K: MatMatMulKer>(K);
+#[derive(Clone)]
+pub struct MatMatMulImpl<K: MatMatMulKer>(pub K);
 
 unsafe impl<K: MatMatMulKer> Send for MatMatMulImpl<K> {}
 unsafe impl<K: MatMatMulKer> Sync for MatMatMulImpl<K> {}

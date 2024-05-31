@@ -139,7 +139,7 @@ pub mod test {
     macro_rules! mmm_kernel_fuse_tests {
         ($cond:expr, $ker:ident, $tc:ty, $ti: ty) => {
             mod fuse {
-                use super::super::$ker;
+                use super::$ker;
                 use num_traits::Zero;
                 #[allow(unused_imports)]
                 use tract_data::prelude::f16;
@@ -153,24 +153,23 @@ pub mod test {
                 #[test]
                 fn return_zeros() {
                     if $cond {
-                        test::return_zeros::<$ker, $tc, $ti>()
+                        test::return_zeros::<_, $tc, $ti>($ker)
                     }
                 }
 
                 #[test]
                 fn store_non_contiguous() {
                     if $cond {
-                        test::store_non_contiguous::<$ker, $tc, $ti>()
+                        test::store_non_contiguous::<_, $tc, $ti>($ker)
                     }
                 }
-
                 proptest::proptest! {
-                    #[test]
-                    fn return_c_prop(c in tile::<$ker, $tc, $ti>()) {
-                        if $cond {
-                            test::return_c::<$ker, $tc, $ti>(&c)
-                        }
-                    }
+                #[test]
+                fn return_c_prop(c in tile::<_, $tc, $ti>($ker)) {
+                if $cond {
+                test::return_c::<_, $tc, $ti>($ker, &c)
+                }
+                }
                 }
 
                 fn fmin<T: PartialOrd>(a: T, b: T) -> T {
@@ -195,7 +194,7 @@ pub mod test {
                             #[test]
                             fn [<$FKS:snake>]() {
                                 if $cond && $extra_cond {
-                                    test::$geo::<$ker, $tc, $ti>(FusedKerSpec::$FKS, $f);
+                                    test::$geo::<_, $tc, $ti>($ker, FusedKerSpec::$FKS, $f);
                                 }
                             }
                         }
@@ -227,27 +226,27 @@ pub mod test {
                     LeakyRelu,
                     scalar,
                     |a, b| if b > <$ti>::zero() { b } else { a * b },
-                    $ker::default().can_fuse(&FusedSpec::LeakyRelu(&tensor0(<$ti>::from(1_u8))))
+                    $ker.can_fuse(&FusedSpec::LeakyRelu(&tensor0(<$ti>::from(1_u8))))
                 );
 
                 #[test]
                 fn return_c_add_row_col_product() {
                     if $cond {
-                        test::return_c_add_row_col_product::<$ker, $tc, $ti>()
+                        test::return_c_add_row_col_product::<_, $tc, $ti>($ker)
                     }
                 }
 
                 #[test]
                 fn return_c_plus_d() {
                     if $cond {
-                        test::return_c_plus_d::<$ker, $tc, $ti>()
+                        test::return_c_plus_d::<_, $tc, $ti>($ker)
                     }
                 }
 
                 #[test]
                 fn return_c_clear() {
                     if $cond {
-                        test::return_c_clear::<$ker, $tc, $ti>()
+                        test::return_c_clear::<_, $tc, $ti>($ker)
                     }
                 }
             }
@@ -265,7 +264,7 @@ pub mod test {
                 use $crate::frame::mmm::kernel::MatMatMulKer;
                 use $crate::generic::Scaler;
                 use proptest::prelude::*;
-                use super::super::$ker;
+                use super::$ker;
 
                 // FIXME: Scaler should be arbitrary
                 macro_rules! test_q_scale {
@@ -274,60 +273,54 @@ pub mod test {
                             #[test]
                             fn [<return_q_scale_halfpos_ $policy:lower>]() {
                                 if $cond {
-                                    let ker = $ker::default();
-                                    let len = (ker.mr() * ker.nr()) as i64;
+                                    let len = ($ker.mr() * $ker.nr()) as i64;
                                     let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
-                                    QScaleProblem::<$ker, $tc, $ti>::new(v, Scaler::new(0.5f32, RoundingPolicy::$policy)).run()
+                                    QScaleProblem::<_, $tc, $ti>::new($ker, v, Scaler::new(0.5f32, RoundingPolicy::$policy)).run()
                                 }
                             }
 
                             #[test]
                             fn [<return_q_scale_halfneg_ $policy:lower>]() {
                                 if $cond {
-                                    let ker = $ker::default();
-                                    let len = (ker.mr() * ker.nr()) as i64;
+                                    let len = ($ker.mr() * $ker.nr()) as i64;
                                     let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
-                                    QScaleProblem::<$ker, $tc, $ti>::new(v, Scaler::new(-0.5f32, RoundingPolicy::$policy)).run()
+                                    QScaleProblem::<_, $tc, $ti>::new($ker, v, Scaler::new(-0.5f32, RoundingPolicy::$policy)).run()
                                 }
                             }
 
                             #[test]
                             fn [<return_q_scale_pot_ $policy:lower>]() {
                                 if $cond {
-                                    let ker = $ker::default();
-                                    let len = (ker.mr() * ker.nr()) as i64;
+                                    let len = ($ker.mr() * $ker.nr()) as i64;
                                     let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
-                                    QScaleProblem::<$ker, $tc, $ti>::new(v, Scaler::new(0.25f32, RoundingPolicy::$policy)).run()
+                                    QScaleProblem::<_, $tc, $ti>::new($ker, v, Scaler::new(0.25f32, RoundingPolicy::$policy)).run()
                                 }
                             }
 
                             #[test]
                             fn [<return_q_scale_nonpot_ $policy:lower>]() {
                                 if $cond {
-                                    let ker = $ker::default();
-                                    let len = (ker.mr() * ker.nr()) as i64;
+                                    let len = ($ker.mr() * $ker.nr()) as i64;
                                     let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
-                                    QScaleProblem::<$ker, $tc, $ti>::new(v, Scaler::new(1f32 / 5., RoundingPolicy::$policy)).run()
+                                    QScaleProblem::<_, $tc, $ti>::new($ker, v, Scaler::new(1f32 / 5., RoundingPolicy::$policy)).run()
                                 }
                             }
 
                             #[test]
                             fn [<return_q_scale_bigpot_ $policy:lower>]() {
                                 if $cond {
-                                    let ker = $ker::default();
-                                    let len = (ker.mr() * ker.nr()) as i64;
+                                    let len = ($ker.mr() * $ker.nr()) as i64;
                                     let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
-                                    QScaleProblem::<$ker, $tc, $ti>::new(v, Scaler::new(4f32, RoundingPolicy::$policy)).run()
+                                    QScaleProblem::<_, $tc, $ti>::new($ker, v, Scaler::new(4f32, RoundingPolicy::$policy)).run()
                                 }
                             }
 
                             #[test]
                             fn [<return_q_scale_bignonpot_ $policy:lower>]() {
                                 if $cond {
-                                    let ker = $ker::default();
-                                    let len = (ker.mr() * ker.nr()) as i64;
+                                    let len = ($ker.mr() * $ker.nr()) as i64;
                                     let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
-                                    QScaleProblem::<$ker, $tc, $ti>::new(v, Scaler::new(14., RoundingPolicy::$policy)).run()
+                                    QScaleProblem::<_, $tc, $ti>::new($ker, v, Scaler::new(14., RoundingPolicy::$policy)).run()
                                 }
                             }
                         }
@@ -343,7 +336,7 @@ pub mod test {
 
                 proptest::proptest! {
                     #[test]
-                    fn return_q_scale_prop(pb in any::<QScaleProblem<$ker, $tc, $ti>>()) {
+                    fn return_q_scale_prop(pb in any_with::<QScaleProblem<_, $tc, $ti>>($ker)) {
                         if $cond {
                             pb.run()
                         }
@@ -353,7 +346,7 @@ pub mod test {
                 #[test]
                 fn return_c_scale_bigpot() {
                     if $cond {
-                        test::return_c_scale_bigpot::<$ker, $tc, $ti>()
+                        test::return_c_scale_bigpot::<_, $tc, $ti>($ker)
                     }
                 }
             }
@@ -370,13 +363,12 @@ pub mod test {
     }
 
     use crate::LADatum;
-    pub fn return_zeros<K, TC, TI>()
+    pub fn return_zeros<K, TC, TI>(ker: K)
     where
         K: MatMatMulKer<Acc = TI>,
         TC: LADatum,
         TI: LADatum + Bounded + PartialEq,
     {
-        let ker = K::default();
         let v = vec![TC::max_value(); ker.mr() * ker.nr()];
         let c = mmm_stride_storage(&v, ker.nr());
         let non_linear = tvec![FusedKerSpec::Clear, FusedKerSpec::Store(c), FusedKerSpec::Done];
@@ -386,13 +378,12 @@ pub mod test {
         assert_eq!(v, expected);
     }
 
-    pub fn store_non_contiguous<K, TC, TI>()
+    pub fn store_non_contiguous<K, TC, TI>(ker: K)
     where
         K: MatMatMulKer<Acc = TI>,
         TC: LADatum,
         TI: LADatum + Bounded + PartialEq,
     {
-        let ker = K::default();
         let v = vec![TC::max_value(); ker.mr() * 5 * ker.nr() * 3];
         let c = OutputStoreKer {
             ptr: v.as_ptr() as _,
@@ -412,14 +403,13 @@ pub mod test {
         assert_eq!(v, expected);
     }
 
-    pub fn fused_ops<K, TC, TI, E>(c: &[TC], ops: &[FusedKerSpec<TI>], expect: E)
+    pub fn fused_ops<K, TC, TI, E>(ker: K, c: &[TC], ops: &[FusedKerSpec<TI>], expect: E)
     where
         K: MatMatMulKer<Acc = TI>,
         TC: Datum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC>,
         E: Fn(usize, usize, TI) -> TI,
     {
-        let ker = K::default();
         assert!(c.len() == ker.mr() * ker.nr());
         let v = c.to_vec();
         let c = mmm_stride_storage(&v, ker.nr());
@@ -453,119 +443,120 @@ pub mod test {
         assert_eq!(v, expected);
     }
 
-    pub fn return_c<K, TC, TI>(v: &[TC])
+    pub fn return_c<K, TC, TI>(ker: K, v: &[TC])
     where
         K: MatMatMulKer<Acc = TI>,
         TC: LADatum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
-        fused_ops::<K, TC, TI, _>(v, &[], |_, _, c| c + 1.as_() - 1.as_())
+        fused_ops::<K, TC, TI, _>(ker, v, &[], |_, _, c| c + 1.as_() - 1.as_())
     }
 
-    pub fn return_c_plus_d<K, TC, TI>()
+    pub fn return_c_plus_d<K, TC, TI>(ker: K)
     where
         K: MatMatMulKer<Acc = TI>,
         TC: LADatum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
-        let ker = K::default();
         let len = ker.mr() * ker.nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let d: Vec<TI> = (0..len).map(|f| ((3 * f) % 7).as_()).collect();
         fused_ops::<K, TC, TI, _>(
+            ker,
             &v,
             &[FusedKerSpec::AddUnicast(mmm_stride_storage(&d, ker.nr()))],
             |row, col, c| c + d[row * ker.nr() + col],
         );
     }
 
-    pub fn per_col<K, TC, TI>(op: impl Fn(*const TI) -> FusedKerSpec<TI>, f: impl Fn(TI, TI) -> TI)
-    where
+    pub fn per_col<K, TC, TI>(
+        ker: K,
+        op: impl Fn(*const TI) -> FusedKerSpec<TI>,
+        f: impl Fn(TI, TI) -> TI,
+    ) where
         K: MatMatMulKer<Acc = TI>,
         TC: LADatum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
-        let ker = K::default();
         let len = ker.mr() * ker.nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let bias: Vec<TI> = (0..ker.nr()).map(|f| (f + 1).as_()).collect();
-        fused_ops::<K, TC, TI, _>(&v, &[op(bias.as_ptr())], |_, col, c| f(bias[col], c))
+        fused_ops::<K, TC, TI, _>(ker, &v, &[op(bias.as_ptr())], |_, col, c| f(bias[col], c))
     }
 
-    pub fn per_row<K, TC, TI>(op: impl Fn(*const TI) -> FusedKerSpec<TI>, f: impl Fn(TI, TI) -> TI)
-    where
+    pub fn per_row<K, TC, TI>(
+        ker: K,
+        op: impl Fn(*const TI) -> FusedKerSpec<TI>,
+        f: impl Fn(TI, TI) -> TI,
+    ) where
         K: MatMatMulKer<Acc = TI>,
         TC: LADatum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
-        let ker = K::default();
         let len = ker.mr() * ker.nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let bias: Vec<TI> = (0..ker.mr()).map(|f| (f + 1).as_()).collect();
-        fused_ops::<K, TC, TI, _>(&v, &[op(bias.as_ptr())], |row, _, c| f(bias[row], c))
+        fused_ops::<K, TC, TI, _>(ker, &v, &[op(bias.as_ptr())], |row, _, c| f(bias[row], c))
     }
 
-    pub fn scalar<K, TC, TI>(op: impl Fn(TI) -> FusedKerSpec<TI>, f: impl Fn(TI, TI) -> TI)
+    pub fn scalar<K, TC, TI>(ker: K, op: impl Fn(TI) -> FusedKerSpec<TI>, f: impl Fn(TI, TI) -> TI)
     where
         K: MatMatMulKer<Acc = TI>,
         TC: LADatum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC>,
         isize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
-        let ker = K::default();
         let len = ker.mr() * ker.nr();
         let v: Vec<TC> = (0..len as isize).map(|f| (f - len as isize / 2).as_()).collect();
         let five: TI = 5.as_();
-        fused_ops::<K, TC, TI, _>(&v, &[op(five)], |_, _, c| f(five, c))
+        fused_ops::<K, TC, TI, _>(ker, &v, &[op(five)], |_, _, c| f(five, c))
     }
 
-    pub fn return_c_add_row_col_product<K, TC, TI>()
+    pub fn return_c_add_row_col_product<K, TC, TI>(ker: K)
     where
         K: MatMatMulKer<Acc = TI>,
         TC: LADatum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
-        let ker = K::default();
         let len = ker.mr() * ker.nr();
         let v: Vec<TC> = (0..len).map(|f| (f + 1).as_()).collect();
         let rows: Vec<TI> = (0..ker.mr()).map(|f| (f + 3).as_()).collect();
         let cols: Vec<TI> = (0..ker.nr()).map(|f| (f + 2).as_()).collect();
         fused_ops::<K, TC, TI, _>(
+            ker,
             &v,
             &[FusedKerSpec::AddRowColProducts(rows.as_ptr(), cols.as_ptr())],
             |row, col, c| c + cols[col] * rows[row],
         )
     }
 
-    pub fn return_c_clear<K, TC, TI>()
+    pub fn return_c_clear<K, TC, TI>(ker: K)
     where
         K: MatMatMulKer<Acc = TI>,
         TC: LADatum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
-        let ker = K::default();
         let len = ker.mr() * ker.nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::Clear], |_, _, _| 0.as_())
+        fused_ops::<K, TC, TI, _>(ker, &v, &[FusedKerSpec::Clear], |_, _, _| 0.as_())
     }
 
-    pub fn return_c_scale_bigpot<K, TC, TI>()
+    pub fn return_c_scale_bigpot<K, TC, TI>(ker: K)
     where
         K: MatMatMulKer<Acc = TI>,
         TC: LADatum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC> + ScaleShiftAndRound,
         isize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
-        let ker = K::default();
         let len = ker.mr() * ker.nr();
         let v: Vec<TC> = (-(len as isize) / 2..).take(len).map(|f| f.as_()).collect();
-        fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::ShiftLeft(1)], |_, _, c| c.q_shl(1))
+        fused_ops::<K, TC, TI, _>(ker, &v, &[FusedKerSpec::ShiftLeft(1)], |_, _, c| c.q_shl(1))
     }
 
     #[derive(Debug, new)]
@@ -576,6 +567,7 @@ pub mod test {
         TI: LADatum + AsPrimitive<TC>,
         i64: AsPrimitive<TC>,
     {
+        pub ker: K,
         pub c: Vec<TC>,
         pub scaler: Scaler,
         pub boo: std::marker::PhantomData<(K, TC, TI)>,
@@ -583,15 +575,14 @@ pub mod test {
 
     impl<K, TC, TI> Arbitrary for QScaleProblem<K, TC, TI>
     where
-        K: MatMatMulKer<Acc = TI>,
+        K: MatMatMulKer<Acc = TI> + 'static + Copy + Default,
         TC: LADatum + Arbitrary,
         TI: LADatum + AsPrimitive<TC>,
         i64: AsPrimitive<TC>,
     {
-        type Parameters = ();
+        type Parameters = K;
         type Strategy = BoxedStrategy<Self>;
-        fn arbitrary_with(_p: ()) -> Self::Strategy {
-            let ker = K::default();
+        fn arbitrary_with(ker: K) -> Self::Strategy {
             use RoundingPolicy::*;
             let len = ker.mr() * ker.nr();
             (
@@ -608,6 +599,7 @@ pub mod test {
                 ],
             )
                 .prop_map(|(c, scale_pot, scale_mult, policy)| QScaleProblem {
+                    ker: K::default(),
                     c,
                     scaler: Scaler::new(scale_mult * 2f32.powi(scale_pot), policy),
                     boo: std::marker::PhantomData,
@@ -627,6 +619,7 @@ pub mod test {
         pub fn run(&self) {
             if let FusedSpec::QScale(shift, policy, mult) = self.scaler.as_fused_spec() {
                 fused_ops::<K, TC, TI, _>(
+                    K::default(),
                     &self.c,
                     &[FusedKerSpec::QScale(shift, policy, mult)],
                     |_, _, c| c.q_scale(self.scaler),
@@ -634,28 +627,31 @@ pub mod test {
             } else if let FusedSpec::RoundingShiftRight(shift, policy) = self.scaler.as_fused_spec()
             {
                 fused_ops::<K, TC, TI, _>(
+                    K::default(),
                     &self.c,
                     &[FusedKerSpec::RoundingShiftRight(shift, policy)],
                     |_, _, c| c.q_shr(shift, policy),
                 )
             } else if let FusedSpec::ShiftLeft(shift) = self.scaler.as_fused_spec() {
-                fused_ops::<K, TC, TI, _>(&self.c, &[FusedKerSpec::ShiftLeft(shift)], |_, _, c| {
-                    c.q_shl(shift)
-                })
+                fused_ops::<K, TC, TI, _>(
+                    K::default(),
+                    &self.c,
+                    &[FusedKerSpec::ShiftLeft(shift)],
+                    |_, _, c| c.q_shl(shift),
+                )
             } else {
                 unreachable!()
             }
         }
     }
 
-    pub fn tile<K, TC, TI>() -> BoxedStrategy<Vec<TC>>
+    pub fn tile<K, TC, TI>(ker: K) -> BoxedStrategy<Vec<TC>>
     where
         K: MatMatMulKer<Acc = TI>,
         TC: LADatum,
         TI: LADatum + AsPrimitive<TC>,
         i8: AsPrimitive<TC>,
     {
-        let ker = K::default();
         let len = ker.mr() * ker.nr();
         proptest::collection::vec(any::<i8>().prop_map(|c| c.as_()), len..=len).boxed()
     }
