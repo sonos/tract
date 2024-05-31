@@ -469,7 +469,12 @@ where
 {
     let d = (0..m * n).map(|i| i.as_()).collect::<Vec<TI>>();
     let d = tensor1(&d).into_shape(&[m, n]).unwrap();
-    let store_spec = OutputStoreSpec::View { m_axis: 0, n_axis: 1, mr: K::mr(), nr: K::nr() };
+    let store_spec = OutputStoreSpec::View {
+        m_axis: 0,
+        n_axis: 1,
+        mr: K::default().mr(),
+        nr: K::default().nr(),
+    };
     fused_ops::<K, TA, TB, TC, TI, _>(
         m,
         n,

@@ -227,9 +227,7 @@ pub mod test {
                     LeakyRelu,
                     scalar,
                     |a, b| if b > <$ti>::zero() { b } else { a * b },
-                    <$ker as MatMatMulKer>::can_fuse(&FusedSpec::LeakyRelu(&tensor0(<$ti>::from(
-                        1_u8
-                    ))))
+                    $ker::default().can_fuse(&FusedSpec::LeakyRelu(&tensor0(<$ti>::from(1_u8))))
                 );
 
                 #[test]
@@ -276,7 +274,8 @@ pub mod test {
                             #[test]
                             fn [<return_q_scale_halfpos_ $policy:lower>]() {
                                 if $cond {
-                                    let len = (<$ker>::mr() * <$ker>::nr()) as i64;
+                                    let ker = $ker::default();
+                                    let len = (ker.mr() * ker.nr()) as i64;
                                     let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
                                     QScaleProblem::<$ker, $tc, $ti>::new(v, Scaler::new(0.5f32, RoundingPolicy::$policy)).run()
                                 }
@@ -285,7 +284,8 @@ pub mod test {
                             #[test]
                             fn [<return_q_scale_halfneg_ $policy:lower>]() {
                                 if $cond {
-                                    let len = (<$ker>::mr() * <$ker>::nr()) as i64;
+                                    let ker = $ker::default();
+                                    let len = (ker.mr() * ker.nr()) as i64;
                                     let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
                                     QScaleProblem::<$ker, $tc, $ti>::new(v, Scaler::new(-0.5f32, RoundingPolicy::$policy)).run()
                                 }
@@ -294,7 +294,8 @@ pub mod test {
                             #[test]
                             fn [<return_q_scale_pot_ $policy:lower>]() {
                                 if $cond {
-                                    let len = (<$ker>::mr() * <$ker>::nr()) as i64;
+                                    let ker = $ker::default();
+                                    let len = (ker.mr() * ker.nr()) as i64;
                                     let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
                                     QScaleProblem::<$ker, $tc, $ti>::new(v, Scaler::new(0.25f32, RoundingPolicy::$policy)).run()
                                 }
@@ -303,7 +304,8 @@ pub mod test {
                             #[test]
                             fn [<return_q_scale_nonpot_ $policy:lower>]() {
                                 if $cond {
-                                    let len = (<$ker>::mr() * <$ker>::nr()) as i64;
+                                    let ker = $ker::default();
+                                    let len = (ker.mr() * ker.nr()) as i64;
                                     let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
                                     QScaleProblem::<$ker, $tc, $ti>::new(v, Scaler::new(1f32 / 5., RoundingPolicy::$policy)).run()
                                 }
@@ -312,7 +314,8 @@ pub mod test {
                             #[test]
                             fn [<return_q_scale_bigpot_ $policy:lower>]() {
                                 if $cond {
-                                    let len = (<$ker>::mr() * <$ker>::nr()) as i64;
+                                    let ker = $ker::default();
+                                    let len = (ker.mr() * ker.nr()) as i64;
                                     let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
                                     QScaleProblem::<$ker, $tc, $ti>::new(v, Scaler::new(4f32, RoundingPolicy::$policy)).run()
                                 }
@@ -321,7 +324,8 @@ pub mod test {
                             #[test]
                             fn [<return_q_scale_bignonpot_ $policy:lower>]() {
                                 if $cond {
-                                    let len = (<$ker>::mr() * <$ker>::nr()) as i64;
+                                    let ker = $ker::default();
+                                    let len = (ker.mr() * ker.nr()) as i64;
                                     let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
                                     QScaleProblem::<$ker, $tc, $ti>::new(v, Scaler::new(14., RoundingPolicy::$policy)).run()
                                 }
@@ -372,10 +376,11 @@ pub mod test {
         TC: LADatum,
         TI: LADatum + Bounded + PartialEq,
     {
-        let v = vec![TC::max_value(); K::mr() * K::nr()];
-        let c = mmm_stride_storage(&v, K::nr());
+        let ker = K::default();
+        let v = vec![TC::max_value(); ker.mr() * ker.nr()];
+        let c = mmm_stride_storage(&v, ker.nr());
         let non_linear = tvec![FusedKerSpec::Clear, FusedKerSpec::Store(c), FusedKerSpec::Done];
-        let err = K::kernel(&non_linear);
+        let err = ker.kernel(&non_linear);
         assert_eq!(err, 0);
         let expected = vec![TC::zero(); v.len()];
         assert_eq!(v, expected);
@@ -387,20 +392,21 @@ pub mod test {
         TC: LADatum,
         TI: LADatum + Bounded + PartialEq,
     {
-        let v = vec![TC::max_value(); K::mr() * 5 * K::nr() * 3];
+        let ker = K::default();
+        let v = vec![TC::max_value(); ker.mr() * 5 * ker.nr() * 3];
         let c = OutputStoreKer {
             ptr: v.as_ptr() as _,
-            row_byte_stride: (std::mem::size_of::<TC>() * 3 * K::nr() * 5) as isize,
+            row_byte_stride: (std::mem::size_of::<TC>() * 3 * ker.nr() * 5) as isize,
             col_byte_stride: std::mem::size_of::<TC>() as isize * 3,
             item_size: std::mem::size_of::<TC>(),
         };
         let non_linear = tvec![FusedKerSpec::Clear, FusedKerSpec::Store(c), FusedKerSpec::Done];
-        let err = K::kernel(&non_linear);
+        let err = ker.kernel(&non_linear);
         assert_eq!(err, 0);
         let mut expected = vec![TC::max_value(); v.len()];
-        for c in 0..K::nr() {
-            for r in 0..K::mr() {
-                expected[c * 3 + r * 3 * 5 * K::nr()] = TC::zero();
+        for c in 0..ker.nr() {
+            for r in 0..ker.mr() {
+                expected[c * 3 + r * 3 * 5 * ker.nr()] = TC::zero();
             }
         }
         assert_eq!(v, expected);
@@ -413,32 +419,33 @@ pub mod test {
         TI: LADatum + AsPrimitive<TC>,
         E: Fn(usize, usize, TI) -> TI,
     {
-        assert!(c.len() == K::mr() * K::nr());
+        let ker = K::default();
+        assert!(c.len() == ker.mr() * ker.nr());
         let v = c.to_vec();
-        let c = mmm_stride_storage(&v, K::nr());
+        let c = mmm_stride_storage(&v, ker.nr());
         let mut ops = ops.to_vec();
         ops.insert(0, FusedKerSpec::AddUnicast(c));
         ops.insert(0, FusedKerSpec::Clear);
         ops.push(FusedKerSpec::Store(c));
         ops.push(FusedKerSpec::Done);
         let expected = (0..v.len())
-            .map(|ix| expect(ix / K::nr(), ix % K::nr(), v[ix].as_()).as_())
+            .map(|ix| expect(ix / ker.nr(), ix % ker.nr(), v[ix].as_()).as_())
             .collect::<Vec<TC>>();
-        let err = K::kernel(&ops);
+        let err = ker.kernel(&ops);
         assert_eq!(err, 0);
         if v != expected {
             println!("found, expected:");
-            for m in 0..K::mr() {
-                for n in 0..K::nr() {
+            for m in 0..ker.mr() {
+                for n in 0..ker.nr() {
                     use nu_ansi_term::Color::*;
-                    let f = v[m * K::nr() + n];
-                    let e = expected[m * K::nr() + n];
+                    let f = v[m * ker.nr() + n];
+                    let e = expected[m * ker.nr() + n];
                     let color = if f != e { Red } else { Green };
                     print!("{} ", color.paint(format!("{:4}", f)));
                 }
                 print!("      ");
-                for n in 0..K::nr() {
-                    print!("{:4} ", expected[m * K::nr() + n]);
+                for n in 0..ker.nr() {
+                    print!("{:4} ", expected[m * ker.nr() + n]);
                 }
                 println!();
             }
@@ -463,13 +470,14 @@ pub mod test {
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
-        let len = K::mr() * K::nr();
+        let ker = K::default();
+        let len = ker.mr() * ker.nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         let d: Vec<TI> = (0..len).map(|f| ((3 * f) % 7).as_()).collect();
         fused_ops::<K, TC, TI, _>(
             &v,
-            &[FusedKerSpec::AddUnicast(mmm_stride_storage(&d, K::nr()))],
-            |row, col, c| c + d[row * K::nr() + col],
+            &[FusedKerSpec::AddUnicast(mmm_stride_storage(&d, ker.nr()))],
+            |row, col, c| c + d[row * ker.nr() + col],
         );
     }
 
@@ -480,9 +488,10 @@ pub mod test {
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
-        let len = K::mr() * K::nr();
+        let ker = K::default();
+        let len = ker.mr() * ker.nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        let bias: Vec<TI> = (0..K::nr()).map(|f| (f + 1).as_()).collect();
+        let bias: Vec<TI> = (0..ker.nr()).map(|f| (f + 1).as_()).collect();
         fused_ops::<K, TC, TI, _>(&v, &[op(bias.as_ptr())], |_, col, c| f(bias[col], c))
     }
 
@@ -493,9 +502,10 @@ pub mod test {
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
-        let len = K::mr() * K::nr();
+        let ker = K::default();
+        let len = ker.mr() * ker.nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
-        let bias: Vec<TI> = (0..K::mr()).map(|f| (f + 1).as_()).collect();
+        let bias: Vec<TI> = (0..ker.mr()).map(|f| (f + 1).as_()).collect();
         fused_ops::<K, TC, TI, _>(&v, &[op(bias.as_ptr())], |row, _, c| f(bias[row], c))
     }
 
@@ -506,7 +516,8 @@ pub mod test {
         TI: LADatum + AsPrimitive<TC>,
         isize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
-        let len = K::mr() * K::nr();
+        let ker = K::default();
+        let len = ker.mr() * ker.nr();
         let v: Vec<TC> = (0..len as isize).map(|f| (f - len as isize / 2).as_()).collect();
         let five: TI = 5.as_();
         fused_ops::<K, TC, TI, _>(&v, &[op(five)], |_, _, c| f(five, c))
@@ -519,10 +530,11 @@ pub mod test {
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
-        let len = K::mr() * K::nr();
+        let ker = K::default();
+        let len = ker.mr() * ker.nr();
         let v: Vec<TC> = (0..len).map(|f| (f + 1).as_()).collect();
-        let rows: Vec<TI> = (0..K::mr()).map(|f| (f + 3).as_()).collect();
-        let cols: Vec<TI> = (0..K::nr()).map(|f| (f + 2).as_()).collect();
+        let rows: Vec<TI> = (0..ker.mr()).map(|f| (f + 3).as_()).collect();
+        let cols: Vec<TI> = (0..ker.nr()).map(|f| (f + 2).as_()).collect();
         fused_ops::<K, TC, TI, _>(
             &v,
             &[FusedKerSpec::AddRowColProducts(rows.as_ptr(), cols.as_ptr())],
@@ -537,7 +549,8 @@ pub mod test {
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
-        let len = K::mr() * K::nr();
+        let ker = K::default();
+        let len = ker.mr() * ker.nr();
         let v: Vec<TC> = (0..len).map(|f| f.as_()).collect();
         fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::Clear], |_, _, _| 0.as_())
     }
@@ -549,7 +562,8 @@ pub mod test {
         TI: LADatum + AsPrimitive<TC> + ScaleShiftAndRound,
         isize: AsPrimitive<TC> + AsPrimitive<TI>,
     {
-        let len = K::mr() * K::nr();
+        let ker = K::default();
+        let len = ker.mr() * ker.nr();
         let v: Vec<TC> = (-(len as isize) / 2..).take(len).map(|f| f.as_()).collect();
         fused_ops::<K, TC, TI, _>(&v, &[FusedKerSpec::ShiftLeft(1)], |_, _, c| c.q_shl(1))
     }
@@ -577,8 +591,9 @@ pub mod test {
         type Parameters = ();
         type Strategy = BoxedStrategy<Self>;
         fn arbitrary_with(_p: ()) -> Self::Strategy {
+            let ker = K::default();
             use RoundingPolicy::*;
-            let len = K::mr() * K::nr();
+            let len = ker.mr() * ker.nr();
             (
                 proptest::collection::vec((-20i64..20).prop_map(|i| i.as_()), len..=len),
                 -5i32..5,
@@ -640,7 +655,8 @@ pub mod test {
         TI: LADatum + AsPrimitive<TC>,
         i8: AsPrimitive<TC>,
     {
-        let len = K::mr() * K::nr();
+        let ker = K::default();
+        let len = ker.mr() * ker.nr();
         proptest::collection::vec(any::<i8>().prop_map(|c| c.as_()), len..=len).boxed()
     }
 }

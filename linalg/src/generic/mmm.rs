@@ -9,29 +9,6 @@ use super::*;
 use crate::frame::mmm::*;
 use crate::LADatum;
 
-#[derive(Copy, Clone, Debug)]
-pub struct GenericMmm4x4<TA, TB, TI>(PhantomData<(TA, TB, TI)>)
-where
-    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound;
-
-unsafe impl<TA, TB, TI> Send for GenericMmm4x4<TA, TB, TI>
-where
-    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound,
-{
-}
-
-unsafe impl<TA, TB, TI> Sync for GenericMmm4x4<TA, TB, TI>
-where
-    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound,
-{
-}
-
 macro_rules! scalar {
     ($ab: expr, $m: expr, $f: expr) => {
         for i in 0..$ab.len() {
@@ -62,6 +39,41 @@ macro_rules! per_col {
     };
 }
 
+#[derive(Copy, Clone, Debug, Default)]
+pub struct GenericMmm4x4<TA, TB, TI>(PhantomData<(TA, TB, TI)>)
+where
+    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
+    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
+    TI: LADatum + ScaleShiftAndRound;
+
+unsafe impl<TA, TB, TI> Send for GenericMmm4x4<TA, TB, TI>
+where
+    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
+    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
+    TI: LADatum + ScaleShiftAndRound,
+{
+}
+
+unsafe impl<TA, TB, TI> Sync for GenericMmm4x4<TA, TB, TI>
+where
+    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
+    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
+    TI: LADatum + ScaleShiftAndRound,
+{
+}
+
+impl<TA, TB, TI> GenericMmm4x4<TA, TB, TI>
+where
+    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
+    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
+    TI: LADatum + ScaleShiftAndRound,
+    usize: AsPrimitive<TI>,
+{
+    pub fn mmm() -> Box<dyn MatMatMul> {
+        Box::<MatMatMulImpl::<Self>>::default()
+    }
+}
+
 impl<TA, TB, TI> MatMatMulKer for GenericMmm4x4<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
@@ -71,7 +83,7 @@ where
 {
     type Acc = TI;
     #[inline(always)]
-    fn name() -> &'static str {
+    fn name(&self) -> &'static str {
         match TI::datum_type() {
             DatumType::F16 => "generic_f16_4x4",
             DatumType::F32 => "generic_f32_4x4",
@@ -81,29 +93,29 @@ where
         }
     }
     #[inline(always)]
-    fn mr() -> usize {
+    fn mr(&self) -> usize {
         4
     }
     #[inline(always)]
-    fn nr() -> usize {
+    fn nr(&self) -> usize {
         4
     }
-    fn end_padding_packed_a() -> usize {
+    fn end_padding_packed_a(&self) -> usize {
         0
     }
-    fn end_padding_packed_b() -> usize {
+    fn end_padding_packed_b(&self) -> usize {
         0
     }
     #[inline(always)]
-    fn alignment_bytes_packed_a() -> usize {
+    fn alignment_bytes_packed_a(&self) -> usize {
         std::mem::size_of::<TA>()
     }
     #[inline(always)]
-    fn alignment_bytes_packed_b() -> usize {
+    fn alignment_bytes_packed_b(&self) -> usize {
         std::mem::size_of::<TB>()
     }
     #[inline(never)]
-    fn kernel(spec: &[FusedKerSpec<TI>]) -> isize {
+    fn kernel(&self, spec: &[FusedKerSpec<TI>]) -> isize {
         unsafe {
             let mut ab = [[TI::zero(); 4]; 4];
             let mut pnl = spec.as_ptr();
@@ -198,7 +210,7 @@ where
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct GenericMmm4x1<TA, TB, TI>(PhantomData<(TA, TB, TI)>)
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
@@ -221,6 +233,18 @@ where
 {
 }
 
+impl<TA, TB, TI> GenericMmm4x1<TA, TB, TI>
+where
+    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
+    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
+    TI: LADatum + ScaleShiftAndRound,
+    usize: AsPrimitive<TI>,
+{
+    pub fn mmm() -> Box<dyn MatMatMul> {
+        Box::<MatMatMulImpl::<Self>>::default()
+    }
+}
+
 impl<TA, TB, TI> MatMatMulKer for GenericMmm4x1<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
@@ -230,7 +254,7 @@ where
 {
     type Acc = TI;
     #[inline(always)]
-    fn name() -> &'static str {
+    fn name(&self) -> &'static str {
         match TI::datum_type() {
             DatumType::F16 => "generic_f16_4x1",
             DatumType::F32 => "generic_f32_4x1",
@@ -240,29 +264,29 @@ where
         }
     }
     #[inline(always)]
-    fn mr() -> usize {
+    fn mr(&self) -> usize {
         4
     }
     #[inline(always)]
-    fn nr() -> usize {
+    fn nr(&self) -> usize {
         1
     }
-    fn end_padding_packed_a() -> usize {
+    fn end_padding_packed_a(&self) -> usize {
         0
     }
-    fn end_padding_packed_b() -> usize {
+    fn end_padding_packed_b(&self) -> usize {
         0
     }
     #[inline(always)]
-    fn alignment_bytes_packed_a() -> usize {
+    fn alignment_bytes_packed_a(&self) -> usize {
         std::mem::size_of::<TA>()
     }
     #[inline(always)]
-    fn alignment_bytes_packed_b() -> usize {
+    fn alignment_bytes_packed_b(&self) -> usize {
         std::mem::size_of::<TB>()
     }
     #[inline(never)]
-    fn kernel(spec: &[FusedKerSpec<TI>]) -> isize {
+    fn kernel(&self, spec: &[FusedKerSpec<TI>]) -> isize {
         unsafe {
             let mut ab = [[TI::zero(); 1]; 4];
             let mut pnl = spec.as_ptr();
@@ -354,7 +378,7 @@ where
 }
 
 #[cfg(test)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct GenericMmmTest3x2<TA, TB, TI>(PhantomData<(TA, TB, TI)>)
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
@@ -380,6 +404,19 @@ where
 }
 
 #[cfg(test)]
+impl<TA, TB, TI> GenericMmmTest3x2<TA, TB, TI>
+where
+    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
+    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
+    TI: LADatum + ScaleShiftAndRound,
+    usize: AsPrimitive<TI>,
+{
+    pub fn mmm() -> Box<dyn MatMatMul> {
+        Box::new(MatMatMulImpl::<Self>::default())
+    }
+}
+
+#[cfg(test)]
 impl<TA, TB, TI> MatMatMulKer for GenericMmmTest3x2<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
@@ -390,7 +427,7 @@ where
     type Acc = TI;
 
     #[inline(always)]
-    fn name() -> &'static str {
+    fn name(&self) -> &'static str {
         match TI::datum_type() {
             DatumType::F16 => "generic_f16_3x2",
             DatumType::F32 => "generic_f32_3x2",
@@ -400,29 +437,29 @@ where
         }
     }
     #[inline(always)]
-    fn mr() -> usize {
+    fn mr(&self) -> usize {
         3
     }
     #[inline(always)]
-    fn nr() -> usize {
+    fn nr(&self) -> usize {
         2
     }
-    fn end_padding_packed_a() -> usize {
+    fn end_padding_packed_a(&self) -> usize {
         0
     }
-    fn end_padding_packed_b() -> usize {
+    fn end_padding_packed_b(&self) -> usize {
         0
     }
     #[inline(always)]
-    fn alignment_bytes_packed_a() -> usize {
+    fn alignment_bytes_packed_a(&self) -> usize {
         std::mem::size_of::<TA>()
     }
     #[inline(always)]
-    fn alignment_bytes_packed_b() -> usize {
+    fn alignment_bytes_packed_b(&self) -> usize {
         std::mem::size_of::<TB>()
     }
     #[inline(never)]
-    fn kernel(spec: &[FusedKerSpec<TI>]) -> isize {
+    fn kernel(&self, spec: &[FusedKerSpec<TI>]) -> isize {
         unsafe {
             let mut ab = [[TI::zero(); 2]; 3];
             let mut pnl = spec.as_ptr();

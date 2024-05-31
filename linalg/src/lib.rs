@@ -37,7 +37,6 @@ pub mod wasm;
 
 pub use self::frame::{element_wise, lut, mmm};
 
-use crate::frame::mmm::kernel::MatMatMulKer;
 use tract_data::prelude::*;
 
 pub type MMMImpl = Box<
