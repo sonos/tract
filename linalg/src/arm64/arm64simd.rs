@@ -2,12 +2,14 @@ mod by_scalar;
 mod leaky_relu;
 mod max;
 mod softmax;
+mod sum;
 
 use crate::frame::mmm::*;
 
 pub use by_scalar::arm64simd_mul_by_scalar_f32_16n;
 pub use leaky_relu::arm64simd_leaky_relu_f32_8n;
 pub use max::arm64simd_max_f32_16n;
+pub use sum::arm64simd_sum_f32_16n;
 pub use softmax::arm64simd_softmax2_fastcompact_f32_16n;
 
 MMMKernel!(f32, arm64simd_mmm_f32_8x8_a55; 8, 8; 16, 16; 1, 1; no_prefetch, true);
