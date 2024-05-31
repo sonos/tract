@@ -250,10 +250,9 @@ where
 {
     crate::setup_test_logger();
     assert_eq!(a.datum_type(), TA::datum_type());
-    let op = MatMatMulImpl(ker);
     unsafe {
-        let packed_a = op.a_pack().pack_tensor(a, 1, 0).unwrap();
-        let packed_b = op.b_pack().pack_tensor(b, 0, 1).unwrap();
+        let packed_a = ker.a_pack().pack_tensor(a, 1, 0).unwrap();
+        let packed_b = ker.b_pack().pack_tensor(b, 0, 1).unwrap();
 
         fused_ops::<K, TA, TB, TC, TI, _>(
             ker,
@@ -289,11 +288,10 @@ where
     usize: AsPrimitive<TI>,
 {
     crate::setup_test_logger();
-    let op = MatMatMulImpl(ker);
     unsafe {
         let b = b.clone().into_shape(&[k, 1]).unwrap();
-        let packed_a = op.a_pack().pack_tensor(a, 1, 0).unwrap();
-        let packed_b = op.b_pack().pack_tensor(&b, 0, 1).unwrap();
+        let packed_a = ker.a_pack().pack_tensor(a, 1, 0).unwrap();
+        let packed_b = ker.b_pack().pack_tensor(&b, 0, 1).unwrap();
 
         fused_ops::<K, TA, TB, TC, TI, _>(
             ker,
@@ -336,16 +334,15 @@ where
     usize: AsPrimitive<TI>,
 {
     crate::setup_test_logger();
-    let op = MatMatMulImpl(ker);
 
     let mut found = Tensor::zero::<TC>(&[m, n]).unwrap();
-    let c_store = op
+    let c_store = ker
         .c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
         .wrap(&found.view_mut());
     let mut spec: TVec<FusedSpec> = spec.into();
     spec.push(FusedSpec::Store(c_store));
 
-    op.run(m, n, &spec).unwrap();
+    ker.run(m, n, &spec).unwrap();
     let expected =
         tract_ndarray::prelude::Array2::from_shape_fn((m, n), |(r, c)| expect(r, c)).into_tensor();
     if found.close_enough(&expected, true).is_err() {

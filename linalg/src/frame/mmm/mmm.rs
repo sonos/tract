@@ -7,9 +7,7 @@ use rayon::iter::ParallelIterator;
 use std::fmt;
 use tract_data::internal::*;
 
-pub trait MatMatMul:
-    fmt::Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + std::any::Any
-{
+pub trait MatMatMul: fmt::Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
     fn kernel_name(&self) -> &'static str;
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;
@@ -59,51 +57,21 @@ impl std::hash::Hash for Box<dyn MatMatMul> {
     }
 }
 
-#[derive(Clone)]
-pub struct MatMatMulImpl<K: MatMatMulKer>(pub K);
-
-unsafe impl<K: MatMatMulKer> Send for MatMatMulImpl<K> {}
-unsafe impl<K: MatMatMulKer> Sync for MatMatMulImpl<K> {}
-
-impl<K: MatMatMulKer> fmt::Display for MatMatMulImpl<K> {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "{:?}", self)
-    }
-}
-
-impl<K: MatMatMulKer> fmt::Debug for MatMatMulImpl<K> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "MMM ({} {}x{})", self.0.name(), self.0.mr(), self.0.nr())
-    }
-}
-
-impl<K: MatMatMulKer> MatMatMul for MatMatMulImpl<K> {
+impl<K: MatMatMulKer> MatMatMul for K {
     fn kernel_name(&self) -> &'static str {
-        self.0.name()
+        self.name()
     }
-
     fn mr(&self) -> usize {
-        self.0.mr()
+        self.mr()
     }
-
     fn nr(&self) -> usize {
-        self.0.nr()
+        self.nr()
     }
-
     fn a_pack(&self) -> Packer {
-        Packer::new(
-            self.0.mr(),
-            self.0.alignment_bytes_packed_a(),
-            self.0.end_padding_packed_a(),
-        )
+        Packer::new(self.mr(), self.alignment_bytes_packed_a(), self.end_padding_packed_a())
     }
-
     fn b_pack(&self) -> Packer {
-        Packer::new(
-            self.0.nr(),
-            self.0.alignment_bytes_packed_b(),
-            self.0.end_padding_packed_b(),
-        )
+        Packer::new(self.nr(), self.alignment_bytes_packed_b(), self.end_padding_packed_b())
     }
 
     fn internal_type(&self) -> DatumType {
@@ -111,11 +79,11 @@ impl<K: MatMatMulKer> MatMatMul for MatMatMulImpl<K> {
     }
 
     fn can_fuse(&self, spec: &FusedSpec) -> bool {
-        self.0.can_fuse(spec)
+        self.can_fuse(spec)
     }
 
     unsafe fn c_view(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec {
-        OutputStoreSpec::View { m_axis, n_axis, mr: self.0.mr(), nr: self.0.nr() }
+        OutputStoreSpec::View { m_axis, n_axis, mr: self.mr(), nr: self.nr() }
     }
 
     unsafe fn c_from_data_and_strides(
@@ -127,8 +95,8 @@ impl<K: MatMatMulKer> MatMatMul for MatMatMulImpl<K> {
         OutputStoreSpec::Strides {
             row_byte_stride: row_stride * item_size as isize,
             col_byte_stride: col_stride * item_size as isize,
-            mr: self.0.mr(),
-            nr: self.0.nr(),
+            mr: self.mr(),
+            nr: self.nr(),
         }
     }
 
@@ -150,17 +118,19 @@ impl<K: MatMatMulKer> MatMatMul for MatMatMulImpl<K> {
         let scratch = scratch
             .downcast_mut::<ScratchSpaceImpl<K::Acc>>()
             .context("Wrong scratch space type")?;
-        let ker = self.0;
-        scratch.prepare(&ker, m, n, non_linear)?;
-        if n == 1 && self.0.nr() == 1 {
-            run_with_scratch_space_vec(&ker, m, scratch, non_linear)
+        scratch.prepare(self, m, n, non_linear)?;
+        if n == 1 && self.nr() == 1 {
+            run_with_scratch_space_vec(self, m, scratch, non_linear)
         } else if non_linear.iter().any(|f| f.prefer_col_outer()) {
-            run_with_scratch_space_col_outer(&ker, m, n, scratch, non_linear)
+            run_with_scratch_space_col_outer(self, m, n, scratch, non_linear)
         } else {
-            run_with_scratch_space_row_outer(&ker, m, n, scratch, non_linear)
+            run_with_scratch_space_row_outer(self, m, n, scratch, non_linear)
         }
     }
 }
+
+#[derive(Clone)]
+pub struct MatMatMulImpl<K: MatMatMulKer>(pub K);
 
 unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
     ker: &K,

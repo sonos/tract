@@ -70,7 +70,7 @@ where
     usize: AsPrimitive<TI>,
 {
     pub fn mmm() -> Box<dyn MatMatMul> {
-        Box::new(MatMatMulImpl(Self::default()))
+        Box::<Self>::default()
     }
 }
 
@@ -241,7 +241,7 @@ where
     usize: AsPrimitive<TI>,
 {
     pub fn mmm() -> Box<dyn MatMatMul> {
-        Box::new(MatMatMulImpl(Self::default()))
+        Box::<Self>::default()
     }
 }
 
@@ -412,7 +412,7 @@ where
     usize: AsPrimitive<TI>,
 {
     pub fn mmm() -> Box<dyn MatMatMul> {
-        Box::new(MatMatMulImpl(Self::default()))
+        Box::<Self>::default()
     }
 }
 

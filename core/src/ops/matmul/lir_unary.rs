@@ -269,9 +269,9 @@ impl Op for LirMatMulUnary {
         )];
         let (m, n) = self.m_n();
         if let Some(k) = self.guess_k() {
-            infos.push(format!("Mult: m:{} k:{} n:{} with {}", m, k, n, self.mmm));
+            infos.push(format!("Mult: m:{} k:{} n:{} with {:?}", m, k, n, self.mmm));
         } else {
-            infos.push(format!("Mult: {}", self.mmm));
+            infos.push(format!("Mult: {:?}", self.mmm));
         }
         infos.push(format!("Ops: {}", self.micro_ops.iter().map(|o| o.name()).join(" >>> ")));
         Ok(infos)
