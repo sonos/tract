@@ -19,17 +19,22 @@ reduce_impl_wrap!(
             let mut out: u16;
             std::arch::asm!("
                 movi v0.8h, #0
+                movi v1.8h, #0
+                movi v2.8h, #0
+                movi v3.8h, #0
                 1:
-                    ld1 {{v1.8h, v2.8h, v3.8h, v4.8h}}, [{ptr}], 64
-                    fadd v1.8h, v1.8h, v2.8h
-                    fadd v3.8h, v3.8h, v4.8h
-                    fadd v1.8h, v1.8h, v3.8h
-                    
-                    fadd v0.8h, v0.8h, v1.8h
+                    ld1 {{v4.8h, v5.8h, v6.8h, v7.8h}}, [{ptr}], 64
+                    fadd v0.8h, v0.8h, v4.8h
+                    fadd v1.8h, v1.8h, v5.8h
+                    fadd v2.8h, v2.8h, v6.8h
+                    fadd v3.8h, v3.8h, v7.8h
 
                     subs {len}, {len}, 32
                     bne 1b
 
+                fadd v0.8h, v0.8h, v1.8h
+                fadd v2.8h, v2.8h, v3.8h
+                fadd v0.8h, v0.8h, v2.8h
                 faddp v0.8h, v0.8h, v0.8h
                 faddp v0.8h, v0.8h, v0.8h
                 faddp v0.8h, v0.8h, v0.8h
