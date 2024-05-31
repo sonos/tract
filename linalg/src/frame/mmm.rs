@@ -34,51 +34,57 @@ macro_rules! MMMKernel {
             }
 
             #[allow(non_camel_case_types)]
-            #[derive(Copy, Clone, Debug, new)]
+            #[derive(Copy, Clone, Debug, new, Default)]
             pub struct $func;
+
+            impl $func {
+                pub fn mmm() -> Box<dyn MatMatMul> {
+                    Box::<MatMatMulImpl::<$func>>::default()
+                }
+            }
 
             impl $crate::frame::mmm::MatMatMulKer for $func {
                 type Acc = $ti;
                 #[inline(always)]
-                fn name() -> &'static str {
+                fn name(&self) -> &'static str {
                     stringify!($func)
                 }
                 #[inline(always)]
-                fn mr() -> usize {
+                fn mr(&self) -> usize {
                     $mr
                 }
                 #[inline(always)]
-                fn nr() -> usize {
+                fn nr(&self) -> usize {
                     $nr
                 }
                 #[inline(always)]
-                fn alignment_bytes_packed_a() -> usize {
+                fn alignment_bytes_packed_a(&self) -> usize {
                     $alignment_bytes_packed_a
                 }
                 #[inline(always)]
-                fn alignment_bytes_packed_b() -> usize {
+                fn alignment_bytes_packed_b(&self) -> usize {
                     $alignment_bytes_packed_b
                 }
                 #[inline(always)]
-                fn end_padding_packed_a() -> usize {
+                fn end_padding_packed_a(&self) -> usize {
                     $end_padding_packed_a
                 }
                 #[inline(always)]
-                fn end_padding_packed_b() -> usize {
+                fn end_padding_packed_b(&self) -> usize {
                     $end_padding_packed_b
                 }
                 #[inline(always)]
-                fn kernel(spec: &[$crate::frame::mmm::FusedKerSpec<$ti>]) -> isize {
+                fn kernel(&self, spec: &[$crate::frame::mmm::FusedKerSpec<$ti>]) -> isize {
                     debug_assert!(spec.len() > 0);
                     debug_assert!(matches!(spec[spec.len() - 1], $crate::frame::mmm::FusedKerSpec::Done));
                     unsafe { [<sys_ $func>]::$func(spec.as_ptr()) }
                 }
                 #[inline(always)]
-                fn prefetch(ptr: *const u8, len: usize) {
+                fn prefetch(&self, ptr: *const u8, len: usize) {
                     ($prefetch)(ptr, len)
                 }
                 $(
-                    fn can_fuse(spec: &FusedSpec) -> bool {
+                    fn can_fuse(&self, spec: &FusedSpec) -> bool {
                         ($can_fuse)(spec)
                     }
                 )?

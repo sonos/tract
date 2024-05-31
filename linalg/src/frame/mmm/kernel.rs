@@ -3,28 +3,24 @@ use std::fmt::Debug;
 use crate::frame::mmm::FusedKerSpec;
 use crate::LADatum;
 
-use super::{FusedSpec, MatMatMul, MatMatMulImpl};
+use super::FusedSpec;
 
-pub trait MatMatMulKer: Copy + Clone + Debug + Send + Sync + 'static {
+pub trait MatMatMulKer: Copy + Clone + Debug + Send + Sync + 'static + Default {
     type Acc: LADatum;
-    fn name() -> &'static str;
-    fn kernel(op: &[FusedKerSpec<Self::Acc>]) -> isize;
-    fn mr() -> usize;
-    fn nr() -> usize;
-    fn alignment_bytes_packed_a() -> usize;
-    fn end_padding_packed_a() -> usize;
-    fn alignment_bytes_packed_b() -> usize;
-    fn end_padding_packed_b() -> usize;
+    fn name(&self) -> &'static str;
+    fn kernel(&self, op: &[FusedKerSpec<Self::Acc>]) -> isize;
+    fn mr(&self) -> usize;
+    fn nr(&self) -> usize;
+    fn alignment_bytes_packed_a(&self) -> usize;
+    fn end_padding_packed_a(&self) -> usize;
+    fn alignment_bytes_packed_b(&self) -> usize;
+    fn end_padding_packed_b(&self) -> usize;
 
     #[allow(unused_variables)]
-    fn prefetch(ptr: *const u8, len: usize) {}
-
-    fn mmm() -> Box<dyn MatMatMul> {
-        Box::<MatMatMulImpl<Self>>::default()
-    }
+    fn prefetch(&self, ptr: *const u8, len: usize) {}
 
     #[allow(unused_variables)]
-    fn can_fuse(spec: &FusedSpec) -> bool {
+    fn can_fuse(&self, spec: &FusedSpec) -> bool {
         true
     }
 }
@@ -123,7 +119,7 @@ pub mod test {
                 #[allow(unused_imports)]
                 use $crate::frame::mmm::kernel::test;
                 use $crate::frame::mmm::kernel::test::PackedPackedProblem;
-                use $crate::frame::mmm::MatMatMulKer;
+                use $crate::frame::mmm::kernel::MatMatMulKer;
 
                 proptest::proptest! {
                     #[test]
@@ -173,8 +169,8 @@ pub mod test {
                     if $cond {
                         let pb = PackedPackedProblem::<$ker, $ta, $tb, $tc, $ti>::new(
                             1,
-                            vec!(<$ta>::zero(); <$ker>::mr()),
-                            vec!(<$tb>::zero(); <$ker>::nr()),
+                            vec!(<$ta>::zero(); <$ker>::default().mr()),
+                            vec!(<$tb>::zero(); <$ker>::default().nr()),
                             true,
                             true);
                         assert_eq!(pb.run(), pb.reference())
@@ -245,8 +241,9 @@ pub mod test {
         fn arbitrary_with(_: ()) -> Self::Strategy {
             (0usize..20, any::<bool>(), any::<bool>())
                 .prop_flat_map(|(k, trans_c, add_one)| {
-                    let m = k * K::mr();
-                    let n = k * K::nr();
+                    let ker = K::default();
+                    let m = k * ker.mr();
+                    let n = k * ker.nr();
                     let a = (0usize..10).prop_map(|x| x.as_());
                     let b = (0usize..10).prop_map(|x| x.as_());
                     (Just(k), Just(trans_c), Just(add_one), vec(a, m..=m), vec(b, n..=n))
@@ -274,9 +271,10 @@ pub mod test {
     {
         pub fn reference(&self) -> Vec<TC> {
             let init = if self.add_one { TI::one() } else { TI::zero() };
-            let mut vi = vec![init; K::mr() * K::nr()];
-            let mr = K::mr();
-            let nr = K::nr();
+            let ker = K::default();
+            let mr = ker.mr();
+            let nr = ker.nr();
+            let mut vi = vec![init; mr * nr];
             for m in 0..mr {
                 for n in 0..nr {
                     for k in 0..self.k {
@@ -292,25 +290,26 @@ pub mod test {
 
         pub fn run(&self) -> Vec<TC> {
             unsafe {
+                let ker = K::default();
                 let a = self
                     .a
                     .iter()
                     .cloned()
-                    .chain(vec![0.as_(); K::end_padding_packed_a() * K::mr()])
+                    .chain(vec![0.as_(); ker.end_padding_packed_a() * ker.mr()])
                     .collect::<Vec<_>>();
-                let pa = Tensor::from_slice_align(&a, K::alignment_bytes_packed_a()).unwrap();
+                let pa = Tensor::from_slice_align(&a, ker.alignment_bytes_packed_a()).unwrap();
                 let b = self
                     .b
                     .iter()
                     .cloned()
-                    .chain(vec![0.as_(); K::end_padding_packed_b() * K::nr()])
+                    .chain(vec![0.as_(); ker.end_padding_packed_b() * ker.nr()])
                     .collect::<Vec<_>>();
-                let pb = Tensor::from_slice_align(&b, K::alignment_bytes_packed_b()).unwrap();
-                let mut v = vec![TC::zero(); K::mr() * K::nr()];
+                let pb = Tensor::from_slice_align(&b, ker.alignment_bytes_packed_b()).unwrap();
+                let mut v = vec![TC::zero(); ker.mr() * ker.nr()];
                 let c = if self.trans_c {
-                    mmm_stride_storage(&mut v, 1, K::mr())
+                    mmm_stride_storage(&mut v, 1, ker.mr())
                 } else {
-                    mmm_stride_storage(&mut v, K::nr(), 1)
+                    mmm_stride_storage(&mut v, ker.nr(), 1)
                 };
                 let b_store = pb.as_ptr_unchecked::<TB>() as _;
 
@@ -326,7 +325,7 @@ pub mod test {
                 non_linear_ops.push(FusedKerSpec::Store(c));
                 non_linear_ops.push(FusedKerSpec::Done);
                 non_linear_ops.insert(0, FusedKerSpec::Clear);
-                let err = K::kernel(&non_linear_ops);
+                let err = ker.kernel(&non_linear_ops);
                 assert_eq!(err, 0);
                 v
             }
@@ -342,8 +341,9 @@ pub mod test {
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TA> + AsPrimitive<TB>,
     {
-        let a = vec![TA::one(); K::mr() * k];
-        let b = vec![TB::one(); K::nr() * k];
+        let ker = K::default();
+        let a = vec![TA::one(); ker.mr() * k];
+        let b = vec![TB::one(); ker.nr() * k];
         let pb = PackedPackedProblem::<K, TA, TB, TC, TI>::new(k, a, b, false, false);
         assert_eq!(pb.run(), pb.reference())
     }
@@ -366,17 +366,18 @@ pub mod test {
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC>,
     {
+        let ker = K::default();
         let pa = unsafe {
             Tensor::from_slice_align(
-                &vec![TA::one(); K::mr() * (k + K::end_padding_packed_a())],
-                K::alignment_bytes_packed_a(),
+                &vec![TA::one(); ker.mr() * (k + ker.end_padding_packed_a())],
+                ker.alignment_bytes_packed_a(),
             )
             .unwrap()
         };
-        let b = vec![TB::one(); (k + 1) * K::nr()];
-        let mut c: Vec<TC> = vec![TC::zero(); K::mr() * K::nr()];
+        let b = vec![TB::one(); (k + 1) * ker.nr()];
+        let mut c: Vec<TC> = vec![TC::zero(); ker.mr() * ker.nr()];
         let tile = mmm_stride_storage(&mut c, 1, 0);
-        let pb = unsafe { Tensor::from_slice_align(&b, K::alignment_bytes_packed_b()).unwrap() };
+        let pb = unsafe { Tensor::from_slice_align(&b, ker.alignment_bytes_packed_b()).unwrap() };
         let non_linear_ops = tvec!(
             FusedKerSpec::Clear,
             FusedKerSpec::AddMatMul {
@@ -388,9 +389,9 @@ pub mod test {
             FusedKerSpec::Store(tile),
             FusedKerSpec::Done
         );
-        let err = K::kernel(&non_linear_ops);
+        let err = ker.kernel(&non_linear_ops);
         assert_eq!(err, 0);
-        let expected = vec![k.as_(); K::mr()];
-        assert_eq!(c[..K::mr()], expected);
+        let expected = vec![k.as_(); ker.mr()];
+        assert_eq!(c[..ker.mr()], expected);
     }
 }

@@ -1,5 +1,4 @@
 use crate::frame::element_wise::ElementWiseKer;
-use crate::frame::mmm::kernel::MatMatMulKer;
 use crate::frame::reduce::{MapReduceKer, ReduceKer};
 use crate::x86_64_fma::softmax::x86_64_fma_softmax2_fastcompact_f32_32n;
 use crate::Ops;
