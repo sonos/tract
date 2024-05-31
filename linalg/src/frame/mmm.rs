@@ -28,6 +28,7 @@ macro_rules! MMMKernel {
         paste! {
             mod [<sys_ $func>] {
                 use crate::frame::mmm::*;
+                use super::*;
                 #[allow(unused_imports)]
                 use tract_data::prelude::f16;
                 extern_kernel!(fn $func(op: *const FusedKerSpec<$ti>) -> isize);
