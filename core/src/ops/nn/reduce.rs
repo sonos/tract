@@ -180,9 +180,11 @@ impl Reducer {
                     if T::datum_type() == f16::datum_type() {
                         let slice: &[f16] = unsafe { std::mem::transmute(slice) };
                         (tract_linalg::ops().sum_f16)().run_with_params(slice, ()).unwrap().as_()
-                    } else {
+                    } else if T::datum_type() == f32::datum_type() {
                         let slice: &[f32] = unsafe { std::mem::transmute(slice) };
                         (tract_linalg::ops().sum_f32)().run_with_params(slice, ()).unwrap().as_()
+                    } else {
+                        slice.iter().cloned().sum::<T>()
                     }
                 } else {
                     let first: *const T = &input_view[coords];
