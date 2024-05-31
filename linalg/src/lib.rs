@@ -122,7 +122,7 @@ impl Ops {
 pub fn generic() -> Ops {
     use crate::generic::mmm::*;
     Ops {
-        mmm_f64: Box::new(|_, _, _| generic_f16_4x4.mmm()),
+        mmm_f64: Box::new(|_, _, _| generic_f64_4x4.mmm()),
         mmv_f64: Box::new(|_, _| generic_f64_4x1.mmm()),
         mmm_f32_impls: vec![generic_f32_4x4.mmm()],
         mmm_f32: Box::new(|_, _, _| generic_f32_4x4.mmm()),
