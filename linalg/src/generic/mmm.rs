@@ -69,7 +69,7 @@ where
     TI: LADatum + ScaleShiftAndRound,
     usize: AsPrimitive<TI>,
 {
-    pub fn mmm() -> Box<dyn MatMatMul> {
+    pub fn mmm(&self) -> Box<dyn MatMatMul> {
         Box::<Self>::default()
     }
 }
@@ -240,7 +240,7 @@ where
     TI: LADatum + ScaleShiftAndRound,
     usize: AsPrimitive<TI>,
 {
-    pub fn mmm() -> Box<dyn MatMatMul> {
+    pub fn mmm(&self) -> Box<dyn MatMatMul> {
         Box::<Self>::default()
     }
 }
@@ -411,7 +411,7 @@ where
     TI: LADatum + ScaleShiftAndRound,
     usize: AsPrimitive<TI>,
 {
-    pub fn mmm() -> Box<dyn MatMatMul> {
+    pub fn mmm(&self) -> Box<dyn MatMatMul> {
         Box::<Self>::default()
     }
 }
@@ -608,6 +608,10 @@ where
 #[allow(non_upper_case_globals)]
 pub const generic_f16_4x4: GenericMmm4x4<f16, f16, f16> = GenericMmm4x4(PhantomData);
 test_mmm_kernel_f16!(generic_f16_4x4, true);
+
+#[allow(non_upper_case_globals)]
+pub const generic_f16_4x1: GenericMmm4x1<f16, f16, f16> = GenericMmm4x1(PhantomData);
+test_mmm_kernel_f16!(generic_f16_4x1, true);
 
 #[allow(non_upper_case_globals)]
 pub const generic_f32_4x4: GenericMmm4x4<f32, f32, f32> = GenericMmm4x4(PhantomData);

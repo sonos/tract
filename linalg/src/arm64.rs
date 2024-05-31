@@ -17,7 +17,6 @@ use crate::f16;
 use crate::Ops;
 
 use crate::frame::element_wise::ElementWiseKer;
-use crate::frame::mmm::kernel::MatMatMulKer;
 use crate::frame::reduce::{MapReduceKer, ReduceKer};
 
 // https://en.wikipedia.org/wiki/Comparison_of_ARMv8-A_cores
@@ -51,11 +50,11 @@ lazy_static::lazy_static! {
         };
         if let Some(line) = cpu_info
             .lines()
-            .find(|line| line.starts_with("Features")) {
-            line.split_once(':').unwrap().1.split_whitespace().map(|s| s.to_string()).collect()
-        } else {
-            log::warn!("Could not find \"Features  :\" lines in /proc/cpuinfo. CPU Features detection may be impaired.");
-            vec!()
+                .find(|line| line.starts_with("Features")) {
+                    line.split_once(':').unwrap().1.split_whitespace().map(|s| s.to_string()).collect()
+                } else {
+                    log::warn!("Could not find \"Features  :\" lines in /proc/cpuinfo. CPU Features detection may be impaired.");
+                    vec!()
         }
     };
 
@@ -217,27 +216,27 @@ impl Kind {
 
 pub fn plug(ops: &mut Ops) {
     let impls = vec![
-        arm64simd_mmm_f32_12x8_gen::mmm(),
-        arm64simd_mmm_f32_12x8_a53::mmm(),
-        arm64simd_mmm_f32_12x8_a55::mmm(),
-        arm64simd_mmm_f32_8x8_gen::mmm(),
-        arm64simd_mmm_f32_8x8_a53::mmm(),
-        arm64simd_mmm_f32_8x8_a55::mmm(),
-        arm64simd_mmm_f32_16x4_gen::mmm(),
-        arm64simd_mmm_f32_16x4_a53::mmm(),
-        arm64simd_mmm_f32_16x4_a55::mmm(),
-        arm64simd_mmm_f32_24x4_gen::mmm(),
-        arm64simd_mmm_f32_24x4_a53::mmm(),
-        arm64simd_mmm_f32_24x4_a55::mmm(),
-        crate::generic::mmm::generic_f32_4x4::mmm(),
+        arm64simd_mmm_f32_12x8_gen.mmm(),
+        arm64simd_mmm_f32_12x8_a53.mmm(),
+        arm64simd_mmm_f32_12x8_a55.mmm(),
+        arm64simd_mmm_f32_8x8_gen.mmm(),
+        arm64simd_mmm_f32_8x8_a53.mmm(),
+        arm64simd_mmm_f32_8x8_a55.mmm(),
+        arm64simd_mmm_f32_16x4_gen.mmm(),
+        arm64simd_mmm_f32_16x4_a53.mmm(),
+        arm64simd_mmm_f32_16x4_a55.mmm(),
+        arm64simd_mmm_f32_24x4_gen.mmm(),
+        arm64simd_mmm_f32_24x4_a53.mmm(),
+        arm64simd_mmm_f32_24x4_a55.mmm(),
+        crate::generic::mmm::generic_f32_4x4.mmm(),
     ];
     ops.mmm_f32_impls = impls.clone();
-    ops.qmmm_i32 = Box::new(|_, _, _| arm64simd_mmm_i32_8x8::mmm());
-    ops.qmmv_i32 = Box::new(|_, _| arm64simd_mmm_i32_64x1::mmm());
+    ops.qmmm_i32 = Box::new(|_, _, _| arm64simd_mmm_i32_8x8.mmm());
+    ops.qmmv_i32 = Box::new(|_, _| arm64simd_mmm_i32_64x1.mmm());
     ops.mmv_f32 = match *KIND {
-        Kind::CortexA53 => Box::new(|_, _| arm64simd_mmm_f32_64x1_a53::mmm()),
-        Kind::CortexA55 => Box::new(|_, _| arm64simd_mmm_f32_64x1_a55::mmm()),
-        _ => Box::new(|_, _| arm64simd_mmm_f32_64x1_gen::mmm()),
+        Kind::CortexA53 => Box::new(|_, _| arm64simd_mmm_f32_64x1_a53.mmm()),
+        Kind::CortexA55 => Box::new(|_, _| arm64simd_mmm_f32_64x1_a55.mmm()),
+        _ => Box::new(|_, _| arm64simd_mmm_f32_64x1_gen.mmm()),
     };
     let model = match *KIND {
         Kind::CortexA53 => Some(cortex_a53::model()),
@@ -249,9 +248,9 @@ pub fn plug(ops: &mut Ops) {
     } else {
         Box::new(move |_, _, n| {
             if n.unwrap_or(8) < 8 {
-                arm64simd_mmm_f32_16x4_gen::mmm()
+                arm64simd_mmm_f32_16x4_gen.mmm()
             } else {
-                arm64simd_mmm_f32_8x8_gen::mmm()
+                arm64simd_mmm_f32_8x8_gen.mmm()
             }
         })
     };
@@ -268,23 +267,23 @@ pub fn plug(ops: &mut Ops) {
             ops.mmm_f16 = Box::new(|_, _, n| {
                 use tract_data::internal::DimLike;
                 if n.unwrap_or(1024).divceil(4) * 4 < n.unwrap_or(1024).divceil(8) * 8 {
-                    arm64fp16_mmm_f16_32x4_a55::mmm()
+                    arm64fp16_mmm_f16_32x4_a55.mmm()
                 } else {
-                    arm64fp16_mmm_f16_16x8_a55::mmm()
+                    arm64fp16_mmm_f16_16x8_a55.mmm()
                 }
             });
-            ops.mmv_f16 = Box::new(|_, _| arm64fp16_mmm_f16_128x1_a55::mmm());
+            ops.mmv_f16 = Box::new(|_, _| arm64fp16_mmm_f16_128x1_a55.mmm());
         } else {
             log::info!("ARMv8.2 mmm_f16 and mmv_f16 activated");
             ops.mmm_f16 = Box::new(|_, _, n| {
                 use tract_data::internal::DimLike;
                 if n.unwrap_or(1024).divceil(4) * 4 < n.unwrap_or(1024).divceil(8) * 8 {
-                    arm64fp16_mmm_f16_32x4_gen::mmm()
+                    arm64fp16_mmm_f16_32x4_gen.mmm()
                 } else {
-                    arm64fp16_mmm_f16_16x8_gen::mmm()
+                    arm64fp16_mmm_f16_16x8_gen.mmm()
                 }
             });
-            ops.mmv_f16 = Box::new(|_, _| arm64fp16_mmm_f16_128x1_gen::mmm());
+            ops.mmv_f16 = Box::new(|_, _| arm64fp16_mmm_f16_128x1_gen.mmm());
         }
     }
     ops.leaky_relu_f32 = Box::new(|| arm64simd_leaky_relu_f32_8n::ew());
@@ -308,8 +307,8 @@ pub fn plug(ops: &mut Ops) {
     {
         if has_amx() {
             log::info!("AMX optimisation activated");
-            ops.mmm_f32 = Box::new(|_, _, _| apple_amx::apple_amx_mmm_f32_32x32::mmm());
-            ops.mmv_f32 = Box::new(|_, _| apple_amx::apple_amx_mmm_f32_32x1::mmm());
+            ops.mmm_f32 = Box::new(|_, _, _| apple_amx::apple_amx_mmm_f32_32x32.mmm());
+            ops.mmv_f32 = Box::new(|_, _| apple_amx::apple_amx_mmm_f32_32x1.mmm());
         } else {
             log::info!("No AMX optimisation");
         }

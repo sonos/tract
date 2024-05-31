@@ -25,5 +25,5 @@ pub mod element_wise_helper;
 pub use pack::Packer;
 pub use pack::PackingWriter;
 
-pub use self::element_wise::{ ElementWise, ElementWiseImpl};
-pub use self::mmm::{MatMatMul, MatMatMulImpl};
+pub use self::element_wise::{ElementWise, ElementWiseImpl};
+pub use self::mmm::MatMatMul;

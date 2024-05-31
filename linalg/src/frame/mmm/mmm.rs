@@ -129,9 +129,6 @@ impl<K: MatMatMulKer> MatMatMul for K {
     }
 }
 
-#[derive(Clone)]
-pub struct MatMatMulImpl<K: MatMatMulKer>(pub K);
-
 unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
     ker: &K,
     m: usize,
