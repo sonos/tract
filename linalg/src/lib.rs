@@ -123,16 +123,17 @@ impl Ops {
 }
 
 pub fn generic() -> Ops {
+    use crate::generic::mmm::*;
     Ops {
-        mmm_f64: Box::new(|_, _, _| generic::GenericMmm4x4::<f64, f64, f64>::mmm()),
-        mmv_f64: Box::new(|_, _| generic::GenericMmm4x1::<f64, f64, f64>::mmm()),
-        mmm_f32_impls: vec![generic::GenericMmm4x4::<f32, f32, f32>::mmm()],
-        mmm_f32: Box::new(|_, _, _| generic::GenericMmm4x4::<f32, f32, f32>::mmm()),
-        mmv_f32: Box::new(|_, _| generic::GenericMmm4x1::<f32, f32, f32>::mmm()),
-        mmm_f16: Box::new(|_, _, _| generic::GenericMmm4x4::<f16, f16, f16>::mmm()),
-        mmv_f16: Box::new(|_, _| generic::GenericMmm4x1::<f16, f16, f16>::mmm()),
-        qmmm_i32: Box::new(|_, _, _| generic::GenericMmm4x4::<i8, i8, i32>::mmm()),
-        qmmv_i32: Box::new(|_, _| generic::GenericMmm4x1::<i8, i8, i32>::mmm()),
+        mmm_f64: Box::new(|_, _, _| generic_f16_4x4.mmm()),
+        mmv_f64: Box::new(|_, _| generic_f64_4x1.mmm()),
+        mmm_f32_impls: vec![generic_f32_4x4.mmm()],
+        mmm_f32: Box::new(|_, _, _| generic_f32_4x4.mmm()),
+        mmv_f32: Box::new(|_, _| generic_f32_4x1.mmm()),
+        mmm_f16: Box::new(|_, _, _| generic_f16_4x4.mmm()),
+        mmv_f16: Box::new(|_, _| generic_f16_4x1.mmm()),
+        qmmm_i32: Box::new(|_, _, _| generic_i32_4x4.mmm()),
+        qmmv_i32: Box::new(|_, _| generic_i32_4x4.mmm()),
         leaky_relu_f16: Box::new(|| generic::HLeakyRelu8::ew()),
         leaky_relu_f32: Box::new(|| generic::SLeakyRelu4::ew()),
         mul_by_scalar_f16: Box::new(|| generic::HMulByScalar8::ew()),
