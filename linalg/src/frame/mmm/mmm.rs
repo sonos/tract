@@ -5,12 +5,11 @@ use crate::multithread::Executor;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 use std::fmt;
-use std::fmt::Debug;
 use std::marker::PhantomData;
 use tract_data::internal::*;
 
 pub trait MatMatMul:
-    Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + std::any::Any
+    fmt::Debug + fmt::Display + dyn_clone::DynClone + Send + Sync + std::any::Any
 {
     fn kernel_name(&self) -> &'static str;
     fn mr(&self) -> usize;
@@ -62,39 +61,32 @@ impl std::hash::Hash for Box<dyn MatMatMul> {
 }
 
 #[derive(Clone)]
-pub struct MatMatMulImpl<K>
-where
-    K: MatMatMulKer + 'static,
-{
+pub struct MatMatMulImpl<K: MatMatMulKer> {
     phantom: PhantomData<K>,
 }
 
-unsafe impl<K> Send for MatMatMulImpl<K> where K: MatMatMulKer + 'static {}
+unsafe impl<K: MatMatMulKer> Send for MatMatMulImpl<K> {}
+unsafe impl<K: MatMatMulKer> Sync for MatMatMulImpl<K> {}
 
-unsafe impl<K> Sync for MatMatMulImpl<K> where K: MatMatMulKer + 'static {}
-
-impl<K> Default for MatMatMulImpl<K>
-where
-    K: MatMatMulKer + 'static,
-{
+impl<K: MatMatMulKer> Default for MatMatMulImpl<K> {
     fn default() -> Self {
         MatMatMulImpl { phantom: PhantomData }
     }
 }
 
-impl<K> fmt::Debug for MatMatMulImpl<K>
-where
-    K: MatMatMulKer + 'static,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<K: MatMatMulKer> fmt::Display for MatMatMulImpl<K> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{:?}", self)
+    }
+}
+
+impl<K: MatMatMulKer> fmt::Debug for MatMatMulImpl<K> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "MMM ({} {}x{})", K::name(), K::mr(), K::nr())
     }
 }
 
-impl<K> MatMatMul for MatMatMulImpl<K>
-where
-    K: MatMatMulKer + 'static,
-{
+impl<K: MatMatMulKer> MatMatMul for MatMatMulImpl<K> {
     fn kernel_name(&self) -> &'static str {
         K::name()
     }
@@ -241,11 +233,5 @@ unsafe fn run_with_scratch_space_row_outer<K: MatMatMulKer>(
                 })
             })
         }),
-    }
-}
-
-impl<K: MatMatMulKer> fmt::Display for MatMatMulImpl<K> {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "({} {}x{})", K::name(), K::mr(), K::nr())
     }
 }
