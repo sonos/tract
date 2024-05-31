@@ -5,7 +5,6 @@ use crate::multithread::Executor;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 use std::fmt;
-use std::marker::PhantomData;
 use tract_data::internal::*;
 
 pub trait MatMatMul:
@@ -60,19 +59,11 @@ impl std::hash::Hash for Box<dyn MatMatMul> {
     }
 }
 
-#[derive(Clone)]
-pub struct MatMatMulImpl<K: MatMatMulKer> {
-    phantom: PhantomData<K>,
-}
+#[derive(Clone, Default)]
+pub struct MatMatMulImpl<K: MatMatMulKer>(K);
 
 unsafe impl<K: MatMatMulKer> Send for MatMatMulImpl<K> {}
 unsafe impl<K: MatMatMulKer> Sync for MatMatMulImpl<K> {}
-
-impl<K: MatMatMulKer> Default for MatMatMulImpl<K> {
-    fn default() -> Self {
-        MatMatMulImpl { phantom: PhantomData }
-    }
-}
 
 impl<K: MatMatMulKer> fmt::Display for MatMatMulImpl<K> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
@@ -82,36 +73,36 @@ impl<K: MatMatMulKer> fmt::Display for MatMatMulImpl<K> {
 
 impl<K: MatMatMulKer> fmt::Debug for MatMatMulImpl<K> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "MMM ({} {}x{})", K::default().name(), K::default().mr(), K::default().nr())
+        write!(f, "MMM ({} {}x{})", self.0.name(), self.0.mr(), self.0.nr())
     }
 }
 
 impl<K: MatMatMulKer> MatMatMul for MatMatMulImpl<K> {
     fn kernel_name(&self) -> &'static str {
-        K::default().name()
+        self.0.name()
     }
 
     fn mr(&self) -> usize {
-        K::default().mr()
+        self.0.mr()
     }
 
     fn nr(&self) -> usize {
-        K::default().nr()
+        self.0.nr()
     }
 
     fn a_pack(&self) -> Packer {
         Packer::new(
-            K::default().mr(),
-            K::default().alignment_bytes_packed_a(),
-            K::default().end_padding_packed_a(),
+            self.0.mr(),
+            self.0.alignment_bytes_packed_a(),
+            self.0.end_padding_packed_a(),
         )
     }
 
     fn b_pack(&self) -> Packer {
         Packer::new(
-            K::default().nr(),
-            K::default().alignment_bytes_packed_b(),
-            K::default().end_padding_packed_b(),
+            self.0.nr(),
+            self.0.alignment_bytes_packed_b(),
+            self.0.end_padding_packed_b(),
         )
     }
 
@@ -120,11 +111,11 @@ impl<K: MatMatMulKer> MatMatMul for MatMatMulImpl<K> {
     }
 
     fn can_fuse(&self, spec: &FusedSpec) -> bool {
-        K::default().can_fuse(spec)
+        self.0.can_fuse(spec)
     }
 
     unsafe fn c_view(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec {
-        OutputStoreSpec::View { m_axis, n_axis, mr: K::default().mr(), nr: K::default().nr() }
+        OutputStoreSpec::View { m_axis, n_axis, mr: self.0.mr(), nr: self.0.nr() }
     }
 
     unsafe fn c_from_data_and_strides(
@@ -136,8 +127,8 @@ impl<K: MatMatMulKer> MatMatMul for MatMatMulImpl<K> {
         OutputStoreSpec::Strides {
             row_byte_stride: row_stride * item_size as isize,
             col_byte_stride: col_stride * item_size as isize,
-            mr: K::default().mr(),
-            nr: K::default().nr(),
+            mr: self.0.mr(),
+            nr: self.0.nr(),
         }
     }
 
@@ -159,9 +150,9 @@ impl<K: MatMatMulKer> MatMatMul for MatMatMulImpl<K> {
         let scratch = scratch
             .downcast_mut::<ScratchSpaceImpl<K::Acc>>()
             .context("Wrong scratch space type")?;
-        let ker = K::default();
+        let ker = self.0;
         scratch.prepare(&ker, m, n, non_linear)?;
-        if n == 1 && K::default().nr() == 1 {
+        if n == 1 && self.0.nr() == 1 {
             run_with_scratch_space_vec(&ker, m, scratch, non_linear)
         } else if non_linear.iter().any(|f| f.prefer_col_outer()) {
             run_with_scratch_space_col_outer(&ker, m, n, scratch, non_linear)
@@ -185,7 +176,7 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
             Ok(())
         }
         Executor::MultiThread(pool) => pool.install(|| {
-            (0..m.div_ceil(K::default().mr()))
+            (0..m.div_ceil(ker.mr()))
                 .into_par_iter()
                 .try_for_each(|ia| scratch.run(ker, non_linear, ia, 0))
         }),
@@ -201,16 +192,16 @@ unsafe fn run_with_scratch_space_col_outer<K: MatMatMulKer>(
 ) -> TractResult<()> {
     match crate::multithread::current_tract_executor() {
         Executor::SingleThread => {
-            for ib in 0..n.divceil(K::default().nr()) {
-                for ia in 0..m.divceil(K::default().mr()) {
+            for ib in 0..n.divceil(ker.nr()) {
+                for ia in 0..m.divceil(ker.mr()) {
                     scratch.run(ker, non_linear, ia, ib)?;
                 }
             }
             Ok(())
         }
         Executor::MultiThread(pool) => pool.install(|| {
-            (0..n.div_ceil(K::default().nr())).into_par_iter().try_for_each(|ib| {
-                for ia in 0..m.divceil(K::default().mr()) {
+            (0..n.div_ceil(ker.nr())).into_par_iter().try_for_each(|ib| {
+                for ia in 0..m.divceil(ker.mr()) {
                     scratch.run(ker, non_linear, ia, ib)?;
                 }
                 Ok(())
