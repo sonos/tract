@@ -62,13 +62,14 @@ macro_rules! per_col {
     };
 }
 
-impl<TA, TB, TI> MatMatMulKer<TI> for GenericMmm4x4<TA, TB, TI>
+impl<TA, TB, TI> MatMatMulKer for GenericMmm4x4<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TI: LADatum + ScaleShiftAndRound,
     usize: AsPrimitive<TI>,
 {
+    type Acc = TI;
     #[inline(always)]
     fn name() -> &'static str {
         match TI::datum_type() {
@@ -220,13 +221,14 @@ where
 {
 }
 
-impl<TA, TB, TI> MatMatMulKer<TI> for GenericMmm4x1<TA, TB, TI>
+impl<TA, TB, TI> MatMatMulKer for GenericMmm4x1<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TI: LADatum + ScaleShiftAndRound,
     usize: AsPrimitive<TI>,
 {
+    type Acc = TI;
     #[inline(always)]
     fn name() -> &'static str {
         match TI::datum_type() {
@@ -378,13 +380,15 @@ where
 }
 
 #[cfg(test)]
-impl<TA, TB, TI> MatMatMulKer<TI> for GenericMmmTest3x2<TA, TB, TI>
+impl<TA, TB, TI> MatMatMulKer for GenericMmmTest3x2<TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TI: LADatum + ScaleShiftAndRound,
     usize: AsPrimitive<TI>,
 {
+    type Acc = TI;
+
     #[inline(always)]
     fn name() -> &'static str {
         match TI::datum_type() {

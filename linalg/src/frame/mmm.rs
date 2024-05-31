@@ -37,7 +37,8 @@ macro_rules! MMMKernel {
             #[derive(Copy, Clone, Debug, new)]
             pub struct $func;
 
-            impl $crate::frame::mmm::MatMatMulKer<$ti> for $func {
+            impl $crate::frame::mmm::MatMatMulKer for $func {
+                type Acc = $ti;
                 #[inline(always)]
                 fn name() -> &'static str {
                     stringify!($func)

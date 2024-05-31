@@ -232,7 +232,7 @@ pub fn strat_mat_vec_mul<TA: LADatum, TB: LADatum>() -> BoxedStrategy<(usize, us
         .boxed()
 }
 
-pub fn test_mat_mat_mul_prep<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
+pub fn test_mat_mat_mul_prep<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
     m: usize,
     k: usize,
     n: usize,
@@ -249,7 +249,7 @@ where
 {
     crate::setup_test_logger();
     assert_eq!(a.datum_type(), TA::datum_type());
-    let op = MatMatMulImpl::<K, TI>::default();
+    let op = MatMatMulImpl::<K>::default();
     unsafe {
         let packed_a = op.a_pack().pack_tensor(a, 1, 0).unwrap();
         let packed_b = op.b_pack().pack_tensor(b, 0, 1).unwrap();
@@ -271,7 +271,7 @@ where
     }
 }
 
-pub fn test_mat_vec_mul_prep<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
+pub fn test_mat_vec_mul_prep<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
     m: usize,
     k: usize,
     a: &Tensor,
@@ -287,7 +287,7 @@ where
 {
     crate::setup_test_logger();
     unsafe {
-        let op = MatMatMulImpl::<K, TI>::default();
+        let op = MatMatMulImpl::<K>::default();
         let b = b.clone().into_shape(&[k, 1]).unwrap();
         let packed_a = op.a_pack().pack_tensor(a, 1, 0).unwrap();
         let packed_b = op.b_pack().pack_tensor(&b, 0, 1).unwrap();
@@ -309,7 +309,14 @@ where
     }
 }
 
-pub unsafe fn fused_ops<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI, F: Fn(usize, usize) -> TC>(
+pub unsafe fn fused_ops<
+    K: MatMatMulKer<Acc = TI> + 'static,
+    TA,
+    TB,
+    TC,
+    TI,
+    F: Fn(usize, usize) -> TC,
+>(
     m: usize,
     n: usize,
     spec: &[FusedSpec],
@@ -324,7 +331,7 @@ where
     usize: AsPrimitive<TI>,
 {
     crate::setup_test_logger();
-    let op = MatMatMulImpl::<K, TI>::default();
+    let op = MatMatMulImpl::<K>::default();
 
     let mut found = Tensor::zero::<TC>(&[m, n]).unwrap();
     let c_store = op
@@ -358,7 +365,7 @@ where
     found.close_enough(&expected, true).map_err(|e| TestCaseError::Fail(e.to_string().into()))
 }
 
-pub unsafe fn row_add<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
+pub unsafe fn row_add<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
     m: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
@@ -379,7 +386,7 @@ where
     )
 }
 
-pub unsafe fn row_mul<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
+pub unsafe fn row_mul<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
     m: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
@@ -403,7 +410,7 @@ where
     )
 }
 
-pub unsafe fn col_add<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
+pub unsafe fn col_add<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
     m: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
@@ -424,7 +431,7 @@ where
     )
 }
 
-pub unsafe fn col_mul<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
+pub unsafe fn col_mul<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
     m: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
@@ -448,7 +455,7 @@ where
     )
 }
 
-pub unsafe fn add_d<K: MatMatMulKer<TI> + 'static, TA, TB, TC, TI>(
+pub unsafe fn add_d<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
     m: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
@@ -471,7 +478,7 @@ where
     )
 }
 
-pub unsafe fn max<K: MatMatMulKer<TI>, TA, TB, TC, TI>(
+pub unsafe fn max<K: MatMatMulKer<Acc = TI>, TA, TB, TC, TI>(
     m: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
@@ -492,7 +499,7 @@ where
     )
 }
 
-pub unsafe fn min<K: MatMatMulKer<TI>, TA, TB, TC, TI>(
+pub unsafe fn min<K: MatMatMulKer<Acc = TI>, TA, TB, TC, TI>(
     m: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
