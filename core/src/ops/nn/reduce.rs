@@ -145,7 +145,7 @@ impl Reducer {
     where
         T: Copy + Datum + num_traits::Zero + Sum,
         f16: AsPrimitive<T>,
-        T: AsPrimitive<f16>,
+        f32: AsPrimitive<T>,
     {
         if axes.len() == 0 {
             return input.to_owned();
@@ -181,7 +181,8 @@ impl Reducer {
                         let slice: &[f16] = unsafe { std::mem::transmute(slice) };
                         (tract_linalg::ops().sum_f16)().run_with_params(slice, ()).unwrap().as_()
                     } else {
-                        slice.iter().cloned().sum::<T>()
+                        let slice: &[f32] = unsafe { std::mem::transmute(slice) };
+                        (tract_linalg::ops().sum_f32)().run_with_params(slice, ()).unwrap().as_()
                     }
                 } else {
                     let first: *const T = &input_view[coords];
