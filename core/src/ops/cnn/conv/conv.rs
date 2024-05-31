@@ -357,7 +357,7 @@ impl Conv {
         let mut x_fact = model.outlet_fact(x)?.clone();
         let k_fact = model.outlet_fact(kernel)?.clone();
         let (geo, m, k, n, mmm) = self.compute_geo(&k_fact, &x_fact)?;
-        debug!("{name} as lazy_im2col: m={m} k={k} n={n} {mmm}");
+        debug!("{name} as lazy_im2col: m={m} k={k} n={n} {mmm:?}");
         let input_shape = x_fact.shape.as_concrete().unwrap().to_vec();
         let mut geo = geo.to_concrete(&input_shape)?.into_owned();
         let mut input_shape: DataShape = self.pool_spec.data_format.shape(input_shape.into())?;

@@ -38,7 +38,7 @@ macro_rules! MMMKernel {
 
                 impl Type {
                     pub fn mmm(&self) -> Box<dyn MatMatMul> {
-                        Box::new(MatMatMulImpl(Type))
+                        Box::new(Type)
                     }
                 }
 
