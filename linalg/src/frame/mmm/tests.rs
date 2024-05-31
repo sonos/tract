@@ -9,23 +9,23 @@ use tract_data::internal::*;
 macro_rules! mmm_frame_tests {
     ($cond:expr, $ker:ident, $ta:ty, $tb:ty, $tc:ty, $ti:ty) => {
         mod frame {
+            use super::*;
             #[allow(unused_imports)]
             use $crate::frame::mmm::tests::*;
             use tract_data::internal::*;
-            use super::super::$ker;
 
             proptest::proptest! {
                 #[test]
                 fn mat_mul_prepacked_prop((m, k, n, ref a, ref b) in strat_mat_mat_mul::<$ta, $tb>()) {
                     if $cond {
-                        test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(m, k, n, &a, &b)?;
+                        test_mat_mat_mul_prep::<_, $ta, $tb, $tc, $ti>($ker, m, k, n, &a, &b)?;
                     }
                 }
 
                 #[test]
                 fn mat_vec_prepacked_prop((m, k, ref a, ref b) in strat_mat_vec_mul::<$ta, $tb>()) {
                     if $cond {
-                        test_mat_vec_mul_prep::<$ker, $ta, $tb, $tc, $ti>(m, k, &*a, b)?
+                        test_mat_vec_mul_prep::<_, $ta, $tb, $tc, $ti>($ker, m, k, &*a, b)?
                     }
                 }
             }
@@ -35,7 +35,7 @@ macro_rules! mmm_frame_tests {
                 if $cond {
                     let a = tensor2(&[[-3i32, 3, 5, -5], [6, 0, -6, -5], [0, 0, 9, 7]]).cast_to::<$ta>().unwrap().into_owned();
                     let b = tensor2(&[[-8i32, 5],[ 5, -3], [5, 7],[ -8, -1]]).cast_to::<$tb>().unwrap().into_owned();
-                    test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(3, 4, 2, &a, &b).unwrap()
+                    test_mat_mat_mul_prep::<_, $ta, $tb, $tc, $ti>($ker, 3, 4, 2, &a, &b).unwrap()
                 }
             }
 
@@ -44,7 +44,7 @@ macro_rules! mmm_frame_tests {
                 if $cond {
                     let a = tensor2(&[[1i32]]).cast_to::<$ta>().unwrap().into_owned();
                     let b = tensor2(&[[0i32, 0, 1]]).cast_to::<$tb>().unwrap().into_owned();
-                    test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(1, 1, 3, &a, &b).unwrap()
+                    test_mat_mat_mul_prep::<_, $ta, $tb, $tc, $ti>($ker, 1, 1, 3, &a, &b).unwrap()
                 }
             }
 
@@ -53,7 +53,7 @@ macro_rules! mmm_frame_tests {
                 if $cond {
                     let a = tensor2(&[[-3i32, 3, 5, -5], [6, 0, -6, -5], [0, 0, 9, 7]]).cast_to::<$ta>().unwrap().into_owned();
                     let b = tensor2(&[[-8i32, 5],[ 5, -3], [5, 7],[ -8, -1]]).cast_to::<$tb>().unwrap().into_owned();
-                    test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(3, 4, 2, &a, &b).unwrap()
+                    test_mat_mat_mul_prep::<_, $ta, $tb, $tc, $ti>($ker, 3, 4, 2, &a, &b).unwrap()
                 }
             }
 
@@ -62,14 +62,14 @@ macro_rules! mmm_frame_tests {
                 if $cond {
                     let a = tensor2(&[[122, 82]]).cast_to::<$ta>().unwrap().into_owned();
                     let b = tensor2(&[[0, 0, 37],[ 0, 0, 57]]).cast_to::<$tb>().unwrap().into_owned();
-                    test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(1, 2, 3, &a, &b).unwrap()
+                    test_mat_mat_mul_prep::<_, $ta, $tb, $tc, $ti>($ker, 1, 2, 3, &a, &b).unwrap()
                 }
             }
 
             #[test]
             fn mat_mul_1_1_1() {
                 if $cond {
-                    test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(
+                    test_mat_mat_mul_prep::<_, $ta, $tb, $tc, $ti>($ker,
                         1,
                         1,
                         1,
@@ -83,7 +83,7 @@ macro_rules! mmm_frame_tests {
             #[test]
             fn mat_mul_1_2_1() {
                 if $cond {
-                    test_mat_mat_mul_prep::<$ker, $ta, $tb, $tc, $ti>(
+                    test_mat_mat_mul_prep::<_, $ta, $tb, $tc, $ti>($ker,
                         1,
                         2,
                         1,
@@ -99,7 +99,7 @@ macro_rules! mmm_frame_tests {
                 if $cond {
                     let a = tensor2(&[[0], [1]]).cast_to::<$ta>().unwrap().into_owned();
                     let b = tensor1(&[1]).cast_to::<$tb>().unwrap().into_owned();
-                    test_mat_vec_mul_prep::<$ker, $ta, $tb, $tc, $ti>(2, 1, &a, &b).unwrap()
+                    test_mat_vec_mul_prep::<_, $ta, $tb, $tc, $ti>($ker, 2, 1, &a, &b).unwrap()
                 }
             }
 
@@ -109,7 +109,7 @@ macro_rules! mmm_frame_tests {
                     let a = tensor1(&[0, 0, 0, 0, 0, 0, -4, 1]).into_shape(&[8,1]).unwrap();
                     let a = a.cast_to::<$ta>().unwrap();
                     let b = tensor1(&[-64]).cast_to::<$tb>().unwrap().into_owned();
-                    test_mat_vec_mul_prep::<$ker, $ta, $tb, $tc, $ti>(8, 1, &a, &b).unwrap()
+                    test_mat_vec_mul_prep::<_, $ta, $tb, $tc, $ti>($ker, 8, 1, &a, &b).unwrap()
                 }
             }
 
@@ -119,63 +119,63 @@ macro_rules! mmm_frame_tests {
                     let a = tensor1(&[0, 0]).into_shape(&[1, 2]).unwrap();
                     let a = a.cast_to::<$ta>().unwrap();
                     let b = tensor1(&[0, 0]).cast_to::<$tb>().unwrap().into_owned();
-                    test_mat_vec_mul_prep::<$ker, $ta, $tb, $tc, $ti>(1, 2, &a, &b).unwrap()
+                    test_mat_vec_mul_prep::<_, $ta, $tb, $tc, $ti>($ker, 1, 2, &a, &b).unwrap()
                 }
             }
 
             #[test]
             fn row_mul_2_1_3() {
                 if $cond {
-                    unsafe { row_mul::<$ker, $ta, $tb, $tc, $ti>(2, 3).unwrap() }
+                    unsafe { row_mul::<_, $ta, $tb, $tc, $ti>($ker, 2, 3).unwrap() }
                 }
             }
 
             #[test]
             fn row_add_2_1_3() {
                 if $cond {
-                    unsafe { row_add::<$ker, $ta, $tb, $tc, $ti>(2, 3).unwrap() }
+                    unsafe { row_add::<_, $ta, $tb, $tc, $ti>($ker, 2, 3).unwrap() }
                 }
             }
 
             #[test]
             fn col_mul_2_1_3() {
                 if $cond {
-                    unsafe { col_mul::<$ker, $ta, $tb, $tc, $ti>(2, 3).unwrap() }
+                    unsafe { col_mul::<_, $ta, $tb, $tc, $ti>($ker, 2, 3).unwrap() }
                 }
             }
 
             #[test]
             fn col_add_2_1_3() {
                 if $cond {
-                    unsafe { col_add::<$ker, $ta, $tb, $tc, $ti>(2, 3).unwrap() }
+                    unsafe { col_add::<_, $ta, $tb, $tc, $ti>($ker, 2, 3).unwrap() }
                 }
             }
 
             #[test]
             fn max_2_1_3() {
                 if $cond {
-                    unsafe { max::<$ker, $ta, $tb, $tc, $ti>(2, 3).unwrap() }
+                    unsafe { max::<_, $ta, $tb, $tc, $ti>($ker, 2, 3).unwrap() }
                 }
             }
 
             #[test]
             fn min_2_1_3() {
                 if $cond {
-                    unsafe { min::<$ker, $ta, $tb, $tc, $ti>(2, 3).unwrap() }
+                    unsafe { min::<_, $ta, $tb, $tc, $ti>($ker, 2, 3).unwrap() }
                 }
             }
 
             #[test]
             fn add_d_2_1_3() {
                 if $cond {
-                    unsafe { add_d::<$ker, $ta, $tb, $tc, $ti>(2, 3).unwrap() }
+                    unsafe { add_d::<_, $ta, $tb, $tc, $ti>($ker, 2, 3).unwrap() }
                 }
             }
 
             #[test]
             fn add_d_big() {
                 if $cond {
-                    unsafe { add_d::<$ker, $ta, $tb, $tc, $ti>(197, 1).unwrap() }
+                    unsafe { add_d::<_, $ta, $tb, $tc, $ti>($ker, 197, 1).unwrap() }
                 }
             }
         }
@@ -233,6 +233,7 @@ pub fn strat_mat_vec_mul<TA: LADatum, TB: LADatum>() -> BoxedStrategy<(usize, us
 }
 
 pub fn test_mat_mat_mul_prep<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
+    ker: K,
     m: usize,
     k: usize,
     n: usize,
@@ -249,12 +250,13 @@ where
 {
     crate::setup_test_logger();
     assert_eq!(a.datum_type(), TA::datum_type());
-    let op = MatMatMulImpl::<K>::default();
+    let op = MatMatMulImpl(ker);
     unsafe {
         let packed_a = op.a_pack().pack_tensor(a, 1, 0).unwrap();
         let packed_b = op.b_pack().pack_tensor(b, 0, 1).unwrap();
 
         fused_ops::<K, TA, TB, TC, TI, _>(
+            ker,
             m,
             n,
             &[FusedSpec::AddMatMul { a: &*packed_a, b: &*packed_b }],
@@ -272,6 +274,7 @@ where
 }
 
 pub fn test_mat_vec_mul_prep<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
+    ker: K,
     m: usize,
     k: usize,
     a: &Tensor,
@@ -286,13 +289,14 @@ where
     usize: AsPrimitive<TI>,
 {
     crate::setup_test_logger();
+    let op = MatMatMulImpl(ker);
     unsafe {
-        let op = MatMatMulImpl::<K>::default();
         let b = b.clone().into_shape(&[k, 1]).unwrap();
         let packed_a = op.a_pack().pack_tensor(a, 1, 0).unwrap();
         let packed_b = op.b_pack().pack_tensor(&b, 0, 1).unwrap();
 
         fused_ops::<K, TA, TB, TC, TI, _>(
+            ker,
             m,
             1,
             &[FusedSpec::AddMatMul { a: &*packed_a, b: &*packed_b }],
@@ -317,6 +321,7 @@ pub unsafe fn fused_ops<
     TI,
     F: Fn(usize, usize) -> TC,
 >(
+    ker: K,
     m: usize,
     n: usize,
     spec: &[FusedSpec],
@@ -331,7 +336,7 @@ where
     usize: AsPrimitive<TI>,
 {
     crate::setup_test_logger();
-    let op = MatMatMulImpl::<K>::default();
+    let op = MatMatMulImpl(ker);
 
     let mut found = Tensor::zero::<TC>(&[m, n]).unwrap();
     let c_store = op
@@ -366,6 +371,7 @@ where
 }
 
 pub unsafe fn row_add<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
+    ker: K,
     m: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
@@ -379,6 +385,7 @@ where
 {
     let bias = (0..m).map(|i| i.as_()).collect::<Vec<TI>>();
     fused_ops::<K, TA, TB, TC, TI, _>(
+        ker,
         m,
         n,
         &[FusedSpec::BinPerRow(tensor1(&bias).view(), BinOp::Add)],
@@ -387,6 +394,7 @@ where
 }
 
 pub unsafe fn row_mul<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
+    ker: K,
     m: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
@@ -400,6 +408,7 @@ where
 {
     let bias = (0..m).map(|i| i.as_()).collect::<Vec<TI>>();
     fused_ops::<K, TA, TB, TC, TI, _>(
+        ker,
         m,
         n,
         &[
@@ -411,6 +420,7 @@ where
 }
 
 pub unsafe fn col_add<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
+    ker: K,
     m: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
@@ -424,6 +434,7 @@ where
 {
     let bias = (0..n).map(|i| i.as_()).collect::<Vec<TI>>();
     fused_ops::<K, TA, TB, TC, TI, _>(
+        ker,
         m,
         n,
         &[FusedSpec::BinPerCol(tensor1(&bias).view(), BinOp::Add)],
@@ -432,6 +443,7 @@ where
 }
 
 pub unsafe fn col_mul<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
+    ker: K,
     m: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
@@ -445,6 +457,7 @@ where
 {
     let bias = (0..n).map(|i| i.as_()).collect::<Vec<TI>>();
     fused_ops::<K, TA, TB, TC, TI, _>(
+        ker,
         m,
         n,
         &[
@@ -456,6 +469,7 @@ where
 }
 
 pub unsafe fn add_d<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
+    ker: K,
     m: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
@@ -476,6 +490,7 @@ where
         nr: K::default().nr(),
     };
     fused_ops::<K, TA, TB, TC, TI, _>(
+        ker,
         m,
         n,
         &[FusedSpec::AddUnicast(store_spec.wrap(&d.view()))],
@@ -484,6 +499,7 @@ where
 }
 
 pub unsafe fn max<K: MatMatMulKer<Acc = TI>, TA, TB, TC, TI>(
+    ker: K,
     m: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
@@ -497,6 +513,7 @@ where
 {
     let five: TI = 5.as_();
     fused_ops::<K, TA, TB, TC, TI, _>(
+        ker,
         m,
         n,
         &[FusedSpec::BinScalar(&tensor0(five), BinOp::Max)],
@@ -505,6 +522,7 @@ where
 }
 
 pub unsafe fn min<K: MatMatMulKer<Acc = TI>, TA, TB, TC, TI>(
+    ker: K,
     m: usize,
     n: usize,
 ) -> proptest::test_runner::TestCaseResult
@@ -518,6 +536,7 @@ where
 {
     let five: TI = 5.as_();
     fused_ops::<K, TA, TB, TC, TI, _>(
+        ker,
         m,
         n,
         &[FusedSpec::BinScalar(&tensor0(five), BinOp::Min)],
