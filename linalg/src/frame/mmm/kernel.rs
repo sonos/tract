@@ -3,14 +3,12 @@ use std::fmt::Debug;
 use crate::frame::mmm::FusedKerSpec;
 use crate::LADatum;
 
-use super::{MatMatMul, MatMatMulImpl, FusedSpec};
+use super::{FusedSpec, MatMatMul, MatMatMulImpl};
 
-pub trait MatMatMulKer<TI>: Copy + Clone + Debug + Send + Sync + 'static
-where
-    TI: LADatum,
-{
+pub trait MatMatMulKer: Copy + Clone + Debug + Send + Sync + 'static {
+    type Acc: LADatum;
     fn name() -> &'static str;
-    fn kernel(op: &[FusedKerSpec<TI>]) -> isize;
+    fn kernel(op: &[FusedKerSpec<Self::Acc>]) -> isize;
     fn mr() -> usize;
     fn nr() -> usize;
     fn alignment_bytes_packed_a() -> usize;
@@ -22,15 +20,13 @@ where
     fn prefetch(ptr: *const u8, len: usize) {}
 
     fn mmm() -> Box<dyn MatMatMul> {
-        Box::<MatMatMulImpl<Self, TI>>::default()
+        Box::<MatMatMulImpl<Self>>::default()
     }
 
     #[allow(unused_variables)]
     fn can_fuse(spec: &FusedSpec) -> bool {
         true
     }
-
-
 }
 
 #[macro_export]
@@ -219,7 +215,7 @@ pub mod test {
     #[derive(Debug, new)]
     pub struct PackedPackedProblem<K, TA, TB, TC, TI>
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TA: 'static + Debug + AsPrimitive<TI>,
         TB: 'static + Debug + AsPrimitive<TI>,
         TC: Copy + PartialEq + 'static + Debug,
@@ -236,7 +232,7 @@ pub mod test {
 
     impl<K, TA, TB, TC, TI> Arbitrary for PackedPackedProblem<K, TA, TB, TC, TI>
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TA: 'static + Debug + AsPrimitive<TI>,
         TB: 'static + Debug + AsPrimitive<TI>,
         TC: Copy + PartialEq + 'static + Debug,
@@ -269,7 +265,7 @@ pub mod test {
 
     impl<K, TA, TB, TC, TI> PackedPackedProblem<K, TA, TB, TC, TI>
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TA: 'static + Debug + AsPrimitive<TI> + Datum,
         TB: 'static + Debug + AsPrimitive<TI> + Datum,
         TC: Copy + Zero + PartialEq + 'static + Debug,
@@ -339,7 +335,7 @@ pub mod test {
 
     pub fn packed_packed<K, TA, TB, TC, TI>(k: usize)
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TA: Copy + One + Datum + AsPrimitive<TI>,
         TB: Copy + One + Datum + AsPrimitive<TI>,
         TC: Copy + PartialEq + Zero + 'static + Debug,
@@ -363,7 +359,7 @@ pub mod test {
 
     pub fn packed_vec<K, TA, TB, TC, TI>(k: usize)
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TA: Copy + One + AsPrimitive<TI> + Debug + Datum,
         TB: Copy + One + AsPrimitive<TI> + Debug + Datum,
         TC: Copy + PartialEq + Zero + 'static + Debug,

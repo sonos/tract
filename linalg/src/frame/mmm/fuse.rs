@@ -109,8 +109,8 @@ pub enum FusedKerSpec<TI: Copy> {
     AddMatMul { k: usize, pa: *const u8, pb: *const u8, cpu_variant: usize },
 }
 
-unsafe impl<TI:Copy> Send for FusedKerSpec<TI> {}
-unsafe impl<TI:Copy> Sync for FusedKerSpec<TI> {}
+unsafe impl<TI: Copy> Send for FusedKerSpec<TI> {}
+unsafe impl<TI: Copy> Sync for FusedKerSpec<TI> {}
 
 #[cfg(test)]
 #[macro_use]
@@ -227,9 +227,9 @@ pub mod test {
                     LeakyRelu,
                     scalar,
                     |a, b| if b > <$ti>::zero() { b } else { a * b },
-                    <$ker as MatMatMulKer<$ti>>::can_fuse(&FusedSpec::LeakyRelu(&tensor0(
-                        <$ti>::from(1_u8)
-                    )))
+                    <$ker as MatMatMulKer>::can_fuse(&FusedSpec::LeakyRelu(&tensor0(<$ti>::from(
+                        1_u8
+                    ))))
                 );
 
                 #[test]
@@ -368,7 +368,7 @@ pub mod test {
     use crate::LADatum;
     pub fn return_zeros<K, TC, TI>()
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TC: LADatum,
         TI: LADatum + Bounded + PartialEq,
     {
@@ -383,7 +383,7 @@ pub mod test {
 
     pub fn store_non_contiguous<K, TC, TI>()
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TC: LADatum,
         TI: LADatum + Bounded + PartialEq,
     {
@@ -408,7 +408,7 @@ pub mod test {
 
     pub fn fused_ops<K, TC, TI, E>(c: &[TC], ops: &[FusedKerSpec<TI>], expect: E)
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TC: Datum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC>,
         E: Fn(usize, usize, TI) -> TI,
@@ -448,7 +448,7 @@ pub mod test {
 
     pub fn return_c<K, TC, TI>(v: &[TC])
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TC: LADatum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
@@ -458,7 +458,7 @@ pub mod test {
 
     pub fn return_c_plus_d<K, TC, TI>()
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TC: LADatum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
@@ -475,7 +475,7 @@ pub mod test {
 
     pub fn per_col<K, TC, TI>(op: impl Fn(*const TI) -> FusedKerSpec<TI>, f: impl Fn(TI, TI) -> TI)
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TC: LADatum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
@@ -488,7 +488,7 @@ pub mod test {
 
     pub fn per_row<K, TC, TI>(op: impl Fn(*const TI) -> FusedKerSpec<TI>, f: impl Fn(TI, TI) -> TI)
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TC: LADatum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
@@ -501,7 +501,7 @@ pub mod test {
 
     pub fn scalar<K, TC, TI>(op: impl Fn(TI) -> FusedKerSpec<TI>, f: impl Fn(TI, TI) -> TI)
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TC: LADatum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC>,
         isize: AsPrimitive<TC> + AsPrimitive<TI>,
@@ -514,7 +514,7 @@ pub mod test {
 
     pub fn return_c_add_row_col_product<K, TC, TI>()
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TC: LADatum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
@@ -532,7 +532,7 @@ pub mod test {
 
     pub fn return_c_clear<K, TC, TI>()
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TC: LADatum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
@@ -544,7 +544,7 @@ pub mod test {
 
     pub fn return_c_scale_bigpot<K, TC, TI>()
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TC: LADatum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC> + ScaleShiftAndRound,
         isize: AsPrimitive<TC> + AsPrimitive<TI>,
@@ -557,7 +557,7 @@ pub mod test {
     #[derive(Debug, new)]
     pub struct QScaleProblem<K, TC, TI>
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TC: LADatum,
         TI: LADatum + AsPrimitive<TC>,
         i64: AsPrimitive<TC>,
@@ -569,7 +569,7 @@ pub mod test {
 
     impl<K, TC, TI> Arbitrary for QScaleProblem<K, TC, TI>
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TC: LADatum + Arbitrary,
         TI: LADatum + AsPrimitive<TC>,
         i64: AsPrimitive<TC>,
@@ -603,7 +603,7 @@ pub mod test {
 
     impl<K, TC, TI> QScaleProblem<K, TC, TI>
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TC: LADatum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC> + ScaleShiftAndRound + AsPrimitive<i64>,
         usize: AsPrimitive<TC> + AsPrimitive<TI>,
@@ -635,7 +635,7 @@ pub mod test {
 
     pub fn tile<K, TC, TI>() -> BoxedStrategy<Vec<TC>>
     where
-        K: MatMatMulKer<TI>,
+        K: MatMatMulKer<Acc = TI>,
         TC: LADatum,
         TI: LADatum + AsPrimitive<TC>,
         i8: AsPrimitive<TC>,

@@ -100,7 +100,7 @@ struct AddMatMulTemp {
 }
 
 impl<TI: LADatum> ScratchSpaceImpl<TI> {
-    pub unsafe fn prepare<K: MatMatMulKer<TI>>(
+    pub unsafe fn prepare<K: MatMatMulKer<Acc = TI>>(
         &mut self,
         m: usize,
         n: usize,
@@ -189,7 +189,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         Ok(())
     }
 
-    pub unsafe fn run<K: MatMatMulKer<TI>>(
+    pub unsafe fn run<K: MatMatMulKer<Acc = TI>>(
         &self,
         specs: &[FusedSpec],
         down: usize,
@@ -216,7 +216,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
     }
 
     #[inline(always)]
-    unsafe fn for_valid_tile<K: MatMatMulKer<TI>>(
+    unsafe fn for_valid_tile<K: MatMatMulKer<Acc = TI>>(
         &self,
         specs: &[FusedSpec],
         tls: &mut TLSScratch,
@@ -287,7 +287,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
     }
 
     #[inline(never)]
-    unsafe fn for_border_tile<K: MatMatMulKer<TI>>(
+    unsafe fn for_border_tile<K: MatMatMulKer<Acc = TI>>(
         &self,
         specs: &[FusedSpec],
         tls: &mut TLSScratch,

@@ -2,7 +2,6 @@ use super::ScratchSpaceImpl;
 use super::*;
 use crate::frame::Packer;
 use crate::multithread::Executor;
-use crate::LADatum;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 use std::fmt;
@@ -63,52 +62,38 @@ impl std::hash::Hash for Box<dyn MatMatMul> {
 }
 
 #[derive(Clone)]
-pub struct MatMatMulImpl<K, TI>
+pub struct MatMatMulImpl<K>
 where
-    TI: LADatum,
-    K: MatMatMulKer<TI> + 'static,
+    K: MatMatMulKer + 'static,
 {
-    phantom: PhantomData<(K, TI)>,
+    phantom: PhantomData<K>,
 }
 
-unsafe impl<K, TI> Send for MatMatMulImpl<K, TI>
-where
-    TI: LADatum,
-    K: MatMatMulKer<TI> + 'static,
-{
-}
+unsafe impl<K> Send for MatMatMulImpl<K> where K: MatMatMulKer + 'static {}
 
-unsafe impl<K, TI> Sync for MatMatMulImpl<K, TI>
-where
-    TI: LADatum,
-    K: MatMatMulKer<TI> + 'static,
-{
-}
+unsafe impl<K> Sync for MatMatMulImpl<K> where K: MatMatMulKer + 'static {}
 
-impl<K, TI> Default for MatMatMulImpl<K, TI>
+impl<K> Default for MatMatMulImpl<K>
 where
-    TI: LADatum,
-    K: MatMatMulKer<TI> + 'static,
+    K: MatMatMulKer + 'static,
 {
     fn default() -> Self {
         MatMatMulImpl { phantom: PhantomData }
     }
 }
 
-impl<K, TI> fmt::Debug for MatMatMulImpl<K, TI>
+impl<K> fmt::Debug for MatMatMulImpl<K>
 where
-    TI: LADatum,
-    K: MatMatMulKer<TI> + 'static,
+    K: MatMatMulKer + 'static,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "MMM ({} {}x{})", K::name(), K::mr(), K::nr())
     }
 }
 
-impl<K, TI> MatMatMul for MatMatMulImpl<K, TI>
+impl<K> MatMatMul for MatMatMulImpl<K>
 where
-    TI: LADatum,
-    K: MatMatMulKer<TI> + 'static,
+    K: MatMatMulKer + 'static,
 {
     fn kernel_name(&self) -> &'static str {
         K::name()
@@ -131,7 +116,7 @@ where
     }
 
     fn internal_type(&self) -> DatumType {
-        TI::datum_type()
+        K::Acc::datum_type()
     }
 
     fn can_fuse(&self, spec: &FusedSpec) -> bool {
@@ -157,11 +142,11 @@ where
     }
 
     unsafe fn allocate_scratch_space(&self) -> Box<dyn ScratchSpace> {
-        Box::<ScratchSpaceImpl<TI>>::default()
+        Box::<ScratchSpaceImpl<K::Acc>>::default()
     }
 
     unsafe fn can_use_scratch_space(&self, scratch: &dyn ScratchSpace) -> bool {
-        scratch.downcast_ref::<ScratchSpaceImpl<TI>>().is_some()
+        scratch.downcast_ref::<ScratchSpaceImpl<K::Acc>>().is_some()
     }
 
     unsafe fn run_with_scratch_space(
@@ -171,28 +156,25 @@ where
         scratch: &mut dyn ScratchSpace,
         non_linear: &[FusedSpec],
     ) -> TractResult<()> {
-        let scratch =
-            scratch.downcast_mut::<ScratchSpaceImpl<TI>>().context("Wrong scratch space type")?;
+        let scratch = scratch
+            .downcast_mut::<ScratchSpaceImpl<K::Acc>>()
+            .context("Wrong scratch space type")?;
         scratch.prepare::<K>(m, n, non_linear)?;
         if n == 1 && K::nr() == 1 {
-            run_with_scratch_space_vec::<K, TI>(m, scratch, non_linear)
+            run_with_scratch_space_vec::<K>(m, scratch, non_linear)
         } else if non_linear.iter().any(|f| f.prefer_col_outer()) {
-            run_with_scratch_space_col_outer::<K, TI>(m, n, scratch, non_linear)
+            run_with_scratch_space_col_outer::<K>(m, n, scratch, non_linear)
         } else {
-            run_with_scratch_space_row_outer::<K, TI>(m, n, scratch, non_linear)
+            run_with_scratch_space_row_outer::<K>(m, n, scratch, non_linear)
         }
     }
 }
 
-unsafe fn run_with_scratch_space_vec<K, TI>(
+unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
     m: usize,
-    scratch: &mut ScratchSpaceImpl<TI>,
+    scratch: &mut ScratchSpaceImpl<K::Acc>,
     non_linear: &[FusedSpec],
-) -> TractResult<()>
-where
-    TI: LADatum,
-    K: MatMatMulKer<TI>,
-{
+) -> TractResult<()> {
     match crate::multithread::current_tract_executor() {
         Executor::SingleThread => {
             for ia in 0..m.divceil(K::mr()) {
@@ -208,16 +190,12 @@ where
     }
 }
 
-unsafe fn run_with_scratch_space_col_outer<K, TI>(
+unsafe fn run_with_scratch_space_col_outer<K: MatMatMulKer>(
     m: usize,
     n: usize,
-    scratch: &mut ScratchSpaceImpl<TI>,
+    scratch: &mut ScratchSpaceImpl<K::Acc>,
     non_linear: &[FusedSpec],
-) -> TractResult<()>
-where
-    TI: LADatum,
-    K: MatMatMulKer<TI>,
-{
+) -> TractResult<()> {
     match crate::multithread::current_tract_executor() {
         Executor::SingleThread => {
             for ib in 0..n.divceil(K::nr()) {
@@ -238,16 +216,12 @@ where
     }
 }
 
-unsafe fn run_with_scratch_space_row_outer<K, TI>(
+unsafe fn run_with_scratch_space_row_outer<K: MatMatMulKer>(
     m: usize,
     n: usize,
-    scratch: &mut ScratchSpaceImpl<TI>,
+    scratch: &mut ScratchSpaceImpl<K::Acc>,
     non_linear: &[FusedSpec],
-) -> TractResult<()>
-where
-    TI: LADatum,
-    K: MatMatMulKer<TI>,
-{
+) -> TractResult<()> {
     match crate::multithread::current_tract_executor() {
         Executor::SingleThread => {
             for ia in 0..m.divceil(K::mr()) {
@@ -270,11 +244,7 @@ where
     }
 }
 
-impl<K, TI> fmt::Display for MatMatMulImpl<K, TI>
-where
-    TI: LADatum,
-    K: MatMatMulKer<TI>,
-{
+impl<K: MatMatMulKer> fmt::Display for MatMatMulImpl<K> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "({} {}x{})", K::name(), K::mr(), K::nr())
     }
