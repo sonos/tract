@@ -619,7 +619,7 @@ pub mod test {
         pub fn run(&self) {
             if let FusedSpec::QScale(shift, policy, mult) = self.scaler.as_fused_spec() {
                 fused_ops::<K, TC, TI, _>(
-                    K::default(),
+                    self.ker,
                     &self.c,
                     &[FusedKerSpec::QScale(shift, policy, mult)],
                     |_, _, c| c.q_scale(self.scaler),
@@ -627,14 +627,14 @@ pub mod test {
             } else if let FusedSpec::RoundingShiftRight(shift, policy) = self.scaler.as_fused_spec()
             {
                 fused_ops::<K, TC, TI, _>(
-                    K::default(),
+                    self.ker,
                     &self.c,
                     &[FusedKerSpec::RoundingShiftRight(shift, policy)],
                     |_, _, c| c.q_shr(shift, policy),
                 )
             } else if let FusedSpec::ShiftLeft(shift) = self.scaler.as_fused_spec() {
                 fused_ops::<K, TC, TI, _>(
-                    K::default(),
+                    self.ker,
                     &self.c,
                     &[FusedKerSpec::ShiftLeft(shift)],
                     |_, _, c| c.q_shl(shift),

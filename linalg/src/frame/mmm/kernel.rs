@@ -5,7 +5,7 @@ use crate::LADatum;
 
 use super::FusedSpec;
 
-pub trait MatMatMulKer: Copy + Clone + Debug + Send + Sync + 'static + Default {
+pub trait MatMatMulKer: Copy + Clone + Debug + Send + Sync + 'static {
     type Acc: LADatum;
     fn name(&self) -> &'static str;
     fn kernel(&self, op: &[FusedKerSpec<Self::Acc>]) -> isize;
@@ -281,9 +281,8 @@ pub mod test {
     {
         pub fn reference(&self) -> Vec<TC> {
             let init = if self.add_one { TI::one() } else { TI::zero() };
-            let ker = K::default();
-            let mr = ker.mr();
-            let nr = ker.nr();
+            let mr = self.ker.mr();
+            let nr = self.ker.nr();
             let mut vi = vec![init; mr * nr];
             for m in 0..mr {
                 for n in 0..nr {
@@ -300,26 +299,25 @@ pub mod test {
 
         pub fn run(&self) -> Vec<TC> {
             unsafe {
-                let ker = K::default();
                 let a = self
                     .a
                     .iter()
                     .cloned()
-                    .chain(vec![0.as_(); ker.end_padding_packed_a() * ker.mr()])
+                    .chain(vec![0.as_(); self.ker.end_padding_packed_a() * self.ker.mr()])
                     .collect::<Vec<_>>();
-                let pa = Tensor::from_slice_align(&a, ker.alignment_bytes_packed_a()).unwrap();
+                let pa = Tensor::from_slice_align(&a, self.ker.alignment_bytes_packed_a()).unwrap();
                 let b = self
                     .b
                     .iter()
                     .cloned()
-                    .chain(vec![0.as_(); ker.end_padding_packed_b() * ker.nr()])
+                    .chain(vec![0.as_(); self.ker.end_padding_packed_b() * self.ker.nr()])
                     .collect::<Vec<_>>();
-                let pb = Tensor::from_slice_align(&b, ker.alignment_bytes_packed_b()).unwrap();
-                let mut v = vec![TC::zero(); ker.mr() * ker.nr()];
+                let pb = Tensor::from_slice_align(&b, self.ker.alignment_bytes_packed_b()).unwrap();
+                let mut v = vec![TC::zero(); self.ker.mr() * self.ker.nr()];
                 let c = if self.trans_c {
-                    mmm_stride_storage(&mut v, 1, ker.mr())
+                    mmm_stride_storage(&mut v, 1, self.ker.mr())
                 } else {
-                    mmm_stride_storage(&mut v, ker.nr(), 1)
+                    mmm_stride_storage(&mut v, self.ker.nr(), 1)
                 };
                 let b_store = pb.as_ptr_unchecked::<TB>() as _;
 
@@ -335,7 +333,7 @@ pub mod test {
                 non_linear_ops.push(FusedKerSpec::Store(c));
                 non_linear_ops.push(FusedKerSpec::Done);
                 non_linear_ops.insert(0, FusedKerSpec::Clear);
-                let err = ker.kernel(&non_linear_ops);
+                let err = self.ker.kernel(&non_linear_ops);
                 assert_eq!(err, 0);
                 v
             }
