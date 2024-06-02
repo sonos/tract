@@ -225,7 +225,7 @@ pub mod test {
                     scalar,
                     |a, b| if b > <$ti>::zero() { b } else { a * b },
                     <$ker as MatMatMulKer<$ti>>::can_fuse(&FusedSpec::LeakyRelu(&tensor0(
-                        <$ti>::zero()
+                        <$ti>::from(1_u8)
                     )))
                 );
 
