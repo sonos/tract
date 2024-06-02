@@ -47,8 +47,16 @@ openblas = [ "blas", "openblas-src" ]
 paranoid_assertions = []
 
 [dev-dependencies]
-criterion.workspace = true
 env_logger.workspace = true
 lazy_static.workspace = true
-proptest.workspace = true
 approx.workspace = true
+
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
+criterion.workspace = true
+proptest.workspace = true
+
+[target.'cfg(target_family = "wasm")'.dev-dependencies]
+# Wasm doesn't support the `rayon` feature of criterion
+criterion = { version = "0.4", default-features = false, features = ["plotters", "cargo_bench_support"] }
+# Wasm doesn't support the `fork` feature of proptest.
+proptest = { version = "1.0.0", default-features = false, features = ["std", "bit-set"] }
