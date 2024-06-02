@@ -333,6 +333,3 @@ unsafe fn kernel_f32_4x4(spec: &[FusedKerSpec<f32>]) -> isize {
 #[allow(non_camel_case_types)]
 pub type wasm_f32_4x4 = WasmMmm4x4;
 test_mmm_kernel_f32!(wasm_f32_4x4, true);
-
-#[cfg(test)]
-mod tests;
