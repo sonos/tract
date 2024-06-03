@@ -71,7 +71,25 @@ bin_to_super_type!(mul, Mul,
                                .for_each(|c,a,b| *c = (scale_by((*a as i32 - a_zp as i32) * (*b as i32 - b_zp as i32), multiplier) + c_zp as i32).clamp_cast());
                            Ok(c)
                        } else {
-                           Mul.generic_eval(a, b, c_dt)
+                           if (c_dt == b.datum_type()) && (c_dt == a.datum_type()) && a.len() == 1 {
+                               let mut b = b.into_tensor();
+                                if c_dt == f32::datum_type() {
+                                    let a = a.to_scalar::<f32>()?;
+                                    let slice = b.as_slice_mut::<f32>()?;
+                                    (tract_linalg::ops().mul_by_scalar_f32)().run_with_params(slice, *a)?;
+                                    Ok(b)
+                                } else if c_dt == f16::datum_type() {
+                                    let a = a.to_scalar::<f16>()?;
+                                    let slice = b.as_slice_mut::<f16>()?;
+                                    (tract_linalg::ops().mul_by_scalar_f16)().run_with_params(slice, *a)?;
+                                    Ok(b)
+                                } else {
+                                    Mul.eval_uniform_in_place(&a, &mut b)?;
+                                    Ok(b)
+                                }
+                           } else {
+                               Mul.generic_eval(a, b, c_dt)
+                           }
                        }
                    },
                    linalg: Mul,
@@ -403,6 +421,13 @@ fn declutter_mul(
                     },
                 )?));
             }
+
+            if !uniform.left_is_uniform {
+                let mut swap_input = node.inputs.clone();
+                swap_input.swap(0, 1);
+                return Ok(Some(TypedModelPatch::replace_single_op(model, node, &swap_input, mul())?));
+            }
+
         }
     }
     Ok(None)
