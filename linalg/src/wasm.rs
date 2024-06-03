@@ -7,60 +7,66 @@
 /// > export CARGO_TARGET_WASM32_WASI_RUNNER=wasmtime
 /// > cargo test --target=wasm32-wasi
 /// ```
-use crate::{
-    mmm::{FusedKerSpec, MatMatMulKer},
-    Ops, Scaler,
-};
+use crate::mmm::{FusedKerSpec, MatMatMul, MatMatMulKer};
+use crate::{Ops, Scaler};
 
-#[derive(Copy, Clone, Debug)]
-pub struct WasmMmm4x4();
+#[derive(Copy, Clone, Debug, Default)]
+pub struct WasmMmm4x4;
 
 unsafe impl Send for WasmMmm4x4 {}
 unsafe impl Sync for WasmMmm4x4 {}
 
-impl MatMatMulKer<f32> for WasmMmm4x4 {
+impl WasmMmm4x4 {
+    pub fn mmm(&self) -> Box<dyn MatMatMul> {
+        Box::<Self>::default()
+    }
+}
+
+impl MatMatMulKer for WasmMmm4x4 {
+    type Acc = f32;
+
     #[inline(always)]
-    fn name() -> &'static str {
+    fn name(&self) -> &'static str {
         "wasm_f32_4x4"
     }
 
     #[inline(always)]
-    fn mr() -> usize {
+    fn mr(&self) -> usize {
         4
     }
 
     #[inline(always)]
-    fn nr() -> usize {
+    fn nr(&self) -> usize {
         4
     }
 
-    fn end_padding_packed_a() -> usize {
+    fn end_padding_packed_a(&self) -> usize {
         0
     }
 
-    fn end_padding_packed_b() -> usize {
+    fn end_padding_packed_b(&self) -> usize {
         0
     }
 
     #[inline(always)]
-    fn alignment_bytes_packed_a() -> usize {
+    fn alignment_bytes_packed_a(&self) -> usize {
         std::mem::size_of::<f32>()
     }
     #[inline(always)]
-    fn alignment_bytes_packed_b() -> usize {
+    fn alignment_bytes_packed_b(&self) -> usize {
         std::mem::size_of::<f32>()
     }
 
     #[inline(never)]
-    fn kernel(spec: &[FusedKerSpec<f32>]) -> isize {
+    fn kernel(&self, spec: &[FusedKerSpec<f32>]) -> isize {
         unsafe { kernel_f32_4x4(spec) }
     }
 }
 
 pub fn plug(ops: &mut Ops) {
-    let impls = vec![WasmMmm4x4::mmm()];
+    let impls = vec![WasmMmm4x4.mmm()];
     ops.mmm_f32_impls = impls.clone();
-    ops.mmm_f32 = Box::new(|_m, _k, _n| WasmMmm4x4::mmm());
+    ops.mmm_f32 = Box::new(|_m, _k, _n| wasm_f32_4x4.mmm());
 }
 
 unsafe fn kernel_f32_4x4(spec: &[FusedKerSpec<f32>]) -> isize {
@@ -330,6 +336,6 @@ unsafe fn kernel_f32_4x4(spec: &[FusedKerSpec<f32>]) -> isize {
     0
 }
 
-#[allow(non_camel_case_types)]
-pub type wasm_f32_4x4 = WasmMmm4x4;
+#[allow(non_upper_case_globals)]
+pub const wasm_f32_4x4: WasmMmm4x4 = WasmMmm4x4;
 test_mmm_kernel_f32!(wasm_f32_4x4, true);
