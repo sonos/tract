@@ -215,22 +215,38 @@ impl Kind {
 }
 
 pub fn plug(ops: &mut Ops) {
-    let impls = vec![
-        arm64simd_mmm_f32_12x8_gen.mmm(),
-        arm64simd_mmm_f32_12x8_a53.mmm(),
-        arm64simd_mmm_f32_12x8_a55.mmm(),
-        arm64simd_mmm_f32_8x8_gen.mmm(),
-        arm64simd_mmm_f32_8x8_a53.mmm(),
-        arm64simd_mmm_f32_8x8_a55.mmm(),
-        arm64simd_mmm_f32_16x4_gen.mmm(),
-        arm64simd_mmm_f32_16x4_a53.mmm(),
-        arm64simd_mmm_f32_16x4_a55.mmm(),
-        arm64simd_mmm_f32_24x4_gen.mmm(),
-        arm64simd_mmm_f32_24x4_a53.mmm(),
-        arm64simd_mmm_f32_24x4_a55.mmm(),
-        crate::generic::mmm::generic_f32_4x4.mmm(),
-    ];
-    ops.mmm_f32_impls = impls.clone();
+    ops.mmm_impls.extend(
+        [
+            arm64simd_mmm_f32_12x8_gen.mmm(),
+            arm64simd_mmm_f32_12x8_a53.mmm(),
+            arm64simd_mmm_f32_12x8_a55.mmm(),
+            arm64simd_mmm_f32_8x8_gen.mmm(),
+            arm64simd_mmm_f32_8x8_a53.mmm(),
+            arm64simd_mmm_f32_8x8_a55.mmm(),
+            arm64simd_mmm_f32_16x4_gen.mmm(),
+            arm64simd_mmm_f32_16x4_a53.mmm(),
+            arm64simd_mmm_f32_16x4_a55.mmm(),
+            arm64simd_mmm_f32_24x4_gen.mmm(),
+            arm64simd_mmm_f32_24x4_a53.mmm(),
+            arm64simd_mmm_f32_24x4_a55.mmm(),
+            arm64simd_mmm_f32_64x1_gen.mmm(),
+            arm64simd_mmm_f32_64x1_a53.mmm(),
+            arm64simd_mmm_i32_8x8.mmm(),
+            arm64simd_mmm_i32_64x1.mmm(),
+        ]
+        .into_iter(),
+    );
+
+    #[cfg(not(feature = "no_fp16"))]
+    if has_fp16() {
+        ops.mmm_impls.push(arm64fp16_mmm_f16_16x8_a55.mmm());
+        ops.mmm_impls.push(arm64fp16_mmm_f16_16x8_gen.mmm());
+        ops.mmm_impls.push(arm64fp16_mmm_f16_32x4_a55.mmm());
+        ops.mmm_impls.push(arm64fp16_mmm_f16_32x4_gen.mmm());
+        ops.mmm_impls.push(arm64fp16_mmm_f16_128x1_a55.mmm());
+        ops.mmm_impls.push(arm64fp16_mmm_f16_128x1_gen.mmm());
+    }
+
     ops.qmmm_i32 = Box::new(|_, _, _| arm64simd_mmm_i32_8x8.mmm());
     ops.qmmv_i32 = Box::new(|_, _| arm64simd_mmm_i32_64x1.mmm());
     ops.mmv_f32 = match *KIND {
@@ -243,6 +259,7 @@ pub fn plug(ops: &mut Ops) {
         Kind::CortexA55 => Some(cortex_a55::model()),
         _ => None,
     };
+    let impls = ops.mmm_impls.clone();
     ops.mmm_f32 = if let Some(model) = model {
         Box::new(move |m, k, n| model.pick(&impls, m, k, n))
     } else {

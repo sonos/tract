@@ -46,7 +46,7 @@ pub fn plug(ops: &mut Ops) {
         armv7neon_mmm_f32_8x6_generic.mmm(),
         crate::generic::mmm::generic_f32_4x4.mmm(),
     ];
-    ops.mmm_f32_impls = impls.clone();
+    ops.mmm_impls = impls.clone();
     if has_neon() {
         log::info!("armv7neon activated (smmm, ssigmoid), stanh)");
         let cpu = cpu_part().unwrap_or(0);

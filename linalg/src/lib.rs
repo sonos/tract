@@ -47,10 +47,11 @@ type MMVImpl = Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMu
 
 #[allow(clippy::type_complexity)]
 pub struct Ops {
+    mmm_impls: Vec<Box<dyn MatMatMul>>,
+
     mmm_f64: MMMImpl,
     mmv_f64: MMVImpl,
 
-    mmm_f32_impls: Vec<Box<dyn MatMatMul>>,
     mmm_f32: MMMImpl,
     mmv_f32: MMVImpl,
 
@@ -84,8 +85,8 @@ pub struct Ops {
 }
 
 impl Ops {
-    pub fn mmm_f32_impls(&self) -> &[Box<dyn MatMatMul>] {
-        &self.mmm_f32_impls
+    pub fn mmm_impls(&self) -> &[Box<dyn MatMatMul>] {
+        &self.mmm_impls
     }
 
     pub fn mmm(
@@ -122,9 +123,9 @@ impl Ops {
 pub fn generic() -> Ops {
     use crate::generic::mmm::*;
     Ops {
+        mmm_impls: vec![generic_f32_4x4.mmm(), generic_f32_4x1.mmm()],
         mmm_f64: Box::new(|_, _, _| generic_f64_4x4.mmm()),
         mmv_f64: Box::new(|_, _| generic_f64_4x1.mmm()),
-        mmm_f32_impls: vec![generic_f32_4x4.mmm()],
         mmm_f32: Box::new(|_, _, _| generic_f32_4x4.mmm()),
         mmv_f32: Box::new(|_, _| generic_f32_4x1.mmm()),
         mmm_f16: Box::new(|_, _, _| generic_f16_4x4.mmm()),
