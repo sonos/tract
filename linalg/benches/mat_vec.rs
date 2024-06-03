@@ -17,9 +17,9 @@ fn mat_vec_mul(c: &mut Criterion) {
                     let mm =
                         tract_linalg::ops().mmm(F32, F32, F32, Some(m), Some(k), Some(1)).unwrap();
                     let a = Tensor::zero::<f32>(&[m, k]).unwrap();
-                    let pa = mm.a_pack().pack_tensor(&a, 1, 0).unwrap();
+                    let pa = mm.a_pack().prepare_tensor(&a, 1, 0).unwrap();
                     let b = Tensor::zero::<f32>(&[k, 1]).unwrap();
-                    let pb = mm.b_pack().pack_tensor(&b, 0, 1).unwrap();
+                    let pb = mm.b_pack().prepare_tensor(&b, 0, 1).unwrap();
                     let mut c = Tensor::zero::<f32>(&[m]).unwrap();
                     be.iter(move || {
                         mm.run(
