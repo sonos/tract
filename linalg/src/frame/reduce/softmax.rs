@@ -69,7 +69,7 @@ pub mod test {
         f32: AsPrimitive<T>,
         T: AsPrimitive<f32>,
     {
-        use crate::generic::reduce::softmax::fast_compact_exp_f32;
+        use crate::generic::reduce::softmax_l2::fast_compact_exp_f32;
         crate::setup_test_logger();
         let max = values.iter().max_by(|a, b| a.total_cmp(b)).unwrap();
         let values: Vec<T> = values.iter().copied().map(|x| x.as_()).collect();
