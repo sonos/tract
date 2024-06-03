@@ -47,7 +47,7 @@ fn softmax_f32(c: &mut Criterion) {
     group.bench_function("rust", |b| b.iter(|| rust_f32(input)));
     group.bench_function("loop1/naive", |b| b.iter(|| loop1_f32_naive(input)));
     group.bench_function("loop1/generic", |b| {
-        b.iter(|| tract_linalg::generic::max::SMax4::red().run(input))
+        b.iter(|| tract_linalg::generic::reduce::max::SMax4::red().run(input))
     });
     #[cfg(target_arch = "x86_64")]
     group.bench_function("loop1/iasm", |b| {
@@ -63,7 +63,7 @@ fn softmax_f32(c: &mut Criterion) {
     });
     group.bench_function("loop2/naive", |b| b.iter(|| loop2_f32(input, 1.0)));
     group.bench_function("loop2/generic", |b| {
-        b.iter(|| tract_linalg::generic::softmax::SSoftMaxL2::red().run_with_params(input, 10.))
+        b.iter(|| tract_linalg::generic::SSoftMaxL2::red().run_with_params(input, 10.))
     });
     #[cfg(target_arch = "x86_64")]
     group.bench_function("loop2/iasm", |b| {
