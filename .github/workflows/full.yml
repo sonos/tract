@@ -64,7 +64,9 @@ jobs:
           .cached
         key: ${{ runner.os }}-all-targets-${{steps.date.outputs.date}}-e
     - name: Check all targets
-      run: cargo check --all-targets
+      run: |
+        ./.travis/ci-system-setup.sh
+        cargo check --all-targets
 
   cli-tests:
     runs-on: ubuntu-latest

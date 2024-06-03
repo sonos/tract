@@ -9,40 +9,11 @@ then
         grep --color=always '\(s\?sse[0-9_]*\|fma\|f16c\|avx[^ ]*\)'
 fi
 
-set -e
 set -x
 
-if [ -n "$CI" ]
-then
-    which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
-    rustup update
-    if [ `uname` = "Darwin" ]
-    then
-        sysctl -n machdep.cpu.brand_string
-        brew install coreutils python3 numpy python-setuptools
-        PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"
-        PYTHON_BIN_PATH=python3
-    else
-        sudo apt-get install -y llvm python3 python3-numpy
-    fi
-fi
+. $(dirname $0)/ci-system-setup.sh
 
-PATH=$PATH:$HOME/.cargo/bin
-
-if [ ${RUST_VERSION:=stable} != "stable" ]
-then
-    rustup toolchain add $RUST_VERSION
-fi
-export RUSTUP_TOOLCHAIN=$RUST_VERSION
-
-rustc --version
-
-if [ -z "$CACHEDIR" ]
-then
-    CACHEDIR=$(realpath `dirname $0`/../.cached)
-fi
-
-export CACHEDIR
+set -e
 
 if [ `arch` = "x86_64" -a "$RUST_VERSION" = "stable" ]
 then
