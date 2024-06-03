@@ -31,7 +31,6 @@ fn plug_fma(ops: &mut Ops) {
             mmm::fma_mmm_f32_40x2.mmm(),
             mmm::fma_mmm_f32_64x1.mmm(),
         ]
-        .into_iter(),
     );
     ops.mmv_f32 = Box::new(|_, _| mmm::fma_mmm_f32_64x1.mmm());
 
