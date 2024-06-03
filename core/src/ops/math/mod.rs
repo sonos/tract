@@ -11,6 +11,7 @@ use tract_data::internal::ClampCast;
 use tract_data::itertools::Itertools;
 pub use tract_data::prelude::round_ties_to_even;
 use tract_linalg::{ScaleShiftAndRound, Scaler};
+use tract_ndarray::Axis;
 use tract_num_traits::AsPrimitive;
 
 #[cfg(feature = "complex")]
@@ -52,6 +53,57 @@ where
 bin_to_super_type!(mul, Mul,
                    cost: |dt| tvec!((Cost::FMA(dt), 1)),
                    declutter: declutter_mul,
+                   eval_in_a: |a: &mut Tensor, b: &Tensor| -> TractResult<bool>{
+                        let b_shape = b.shape();
+                        let trailing_unary_dims: Vec<usize> = b_shape.iter()
+                            .enumerate()
+                            .rev()
+                            .take_while(|&(_, &dim)| dim == 1)
+                            .map(|(i, _)| i)
+                            .collect();
+
+                        let uniform_in_place_should_be_efficient = trailing_unary_dims.iter().fold(1, |num_elements, it| num_elements * a.shape()[*it]) > 32;
+
+                        if uniform_in_place_should_be_efficient {
+                            if b.datum_type() == f32::datum_type() {
+                                let mut view = a.to_array_view_mut::<f32>()?;
+                                for it_coords in tract_ndarray::indices(b_shape) {
+                                    let mut view = view.view_mut();
+                                    for idx in 0..trailing_unary_dims[0] {
+                                        view.collapse_axis(Axis(idx), it_coords[idx]);
+                                    }
+
+                                    if let Some(slice) = view.as_slice_mut() {
+                                        let b = b.to_scalar::<f32>()?;
+                                        (tract_linalg::ops().mul_by_scalar_f32)().run_with_params(slice, *b)?;
+                                    } else {
+                                        return Ok(false)
+                                    }
+                                }
+                                Ok(true)
+                            } else if b.datum_type() == f16::datum_type() {
+                                let mut view = a.to_array_view_mut::<f16>()?;
+                                for it_coords in tract_ndarray::indices(b_shape) {
+                                    let mut view = view.view_mut();
+                                    for idx in 0..trailing_unary_dims[0] {
+                                        view.collapse_axis(Axis(idx), it_coords[idx]);
+                                    }
+
+                                    if let Some(slice) = view.as_slice_mut() {
+                                        let b = b.to_scalar::<f16>()?;
+                                        (tract_linalg::ops().mul_by_scalar_f16)().run_with_params(slice, *b)?;
+                                    } else {
+                                        return Ok(false)
+                                    }
+                                }
+                                Ok(true)
+                            } else {
+                                return Ok(false)
+                            }
+                        } else {
+                            Ok(false)
+                        }
+                   },
                    eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
                     // we apply only if type is QU8 zp_scale datum type
                     if let (DatumType::QU8(QParams::ZpScale {zero_point: a_zp, scale: a_scale}),
@@ -70,29 +122,26 @@ bin_to_super_type!(mul, Mul,
                                .and_broadcast(b)
                                .for_each(|c,a,b| *c = (scale_by((*a as i32 - a_zp as i32) * (*b as i32 - b_zp as i32), multiplier) + c_zp as i32).clamp_cast());
                            Ok(c)
-                       } else {
-                           if (c_dt == b.datum_type()) && (c_dt == a.datum_type()) && a.len() == 1 {
-                               let mut b = b.into_tensor();
-                                if c_dt == f32::datum_type() {
-                                    let a = a.to_scalar::<f32>()?;
-                                    let slice = b.as_slice_mut::<f32>()?;
-                                    (tract_linalg::ops().mul_by_scalar_f32)().run_with_params(slice, *a)?;
-                                    Ok(b)
-                                } else if c_dt == f16::datum_type() {
-                                    let a = a.to_scalar::<f16>()?;
-                                    let slice = b.as_slice_mut::<f16>()?;
-                                    (tract_linalg::ops().mul_by_scalar_f16)().run_with_params(slice, *a)?;
-                                    Ok(b)
-                                } else {
-                                    Mul.eval_uniform_in_place(&a, &mut b)?;
-                                    Ok(b)
-                                }
-                           } else {
-                               Mul.generic_eval(a, b, c_dt)
-                           }
-                       }
-                   },
+                        } else {
+                            Mul.generic_eval(a, b, c_dt)
+                        }
+                    },
                    linalg: Mul,
+                   uniform_in_place: |a: &Tensor, b: &mut Tensor| -> TractResult<bool> {
+                        if b.datum_type() == f32::datum_type() {
+                            let a = a.to_scalar::<f32>()?;
+                            let slice = b.as_slice_mut::<f32>()?;
+                            (tract_linalg::ops().mul_by_scalar_f32)().run_with_params(slice, *a)?;
+                            return Ok(true)
+                        } else if b.datum_type() == f16::datum_type() {
+                            let a = a.to_scalar::<f16>()?;
+                            let slice = b.as_slice_mut::<f16>()?;
+                            (tract_linalg::ops().mul_by_scalar_f16)().run_with_params(slice, *a)?;
+                            return Ok(true)
+                        } else {
+                            return Ok(false)
+                        }
+                   },
                    out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
                        if c.datum_type() == TDim::datum_type() &&
                            a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {

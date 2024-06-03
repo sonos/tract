@@ -334,9 +334,12 @@ macro_rules! bin_to_super_type {
      $(codegen: $codegen:expr,)?
      $(cost: $cost:expr,)?
      $(declutter: $declutter:expr,)?
+     $(eval_in_a: $eval_in_a:expr,)?
      $(eval_override: $eval_override: expr,)?
      $(linalg: $linalg:ident,)?
      $(operating_datum_type: $operating_datum_type:expr,)?
+     $(uniform_in_place: $uniform_in_place:expr,)?
+     $(unicast_in_place: $unicast_in_place:expr,)?
      $(out_of_place: $out_of_place:expr,)?
      $(validation: $validation:expr,)?
      $(q: $([$($typ_dt:ident),*] => $cab_dt:expr),* ;)?
@@ -355,6 +358,7 @@ macro_rules! bin_to_super_type {
             }
 
             fn eval_uniform_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
+                $(if $uniform_in_place(a, b)? { return Ok(()) } )?
                 $(
                     $(if a.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
@@ -395,6 +399,7 @@ macro_rules! bin_to_super_type {
             }
 
             fn eval_unicast_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
+                $(if $unicast_in_place(c, a, b)? { return Ok(()) } )?
                 $(
                     $(if a.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
@@ -463,6 +468,7 @@ macro_rules! bin_to_super_type {
 
             fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
                 // c and a are same type
+                $(if $eval_in_a(a, b)? { return Ok(()) } )?
                 $(
                     $(if b.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
