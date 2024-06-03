@@ -11,9 +11,6 @@ pub mod test {
         ($cond:expr, $t: ty, $ker:ty) => {
             proptest::proptest! {
                 #[test]
-                // Addition is not associative in f16 a + b + c != (a + b) + c because of precision
-                // issues. To avoid that, test vector should be aligned with kernel size (to avoid
-                // having to sum partial sums together).
                 fn prop(xs in proptest::collection::vec(-25_isize..25, 0..100)) {
                     if $cond {
                         let xs_float = xs.into_iter().map(|it| it as f32).collect::<Vec<_>>();

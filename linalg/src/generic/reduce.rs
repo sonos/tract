@@ -106,7 +106,7 @@ pub mod sum {
 }
 
 // Softmax generic implementation
-pub mod softmax {
+pub mod softmax_l2 {
     use crate::num_traits::Zero;
     use tract_data::internal::f16;
 
@@ -177,13 +177,13 @@ pub mod softmax {
     #[cfg(test)]
     #[macro_use]
     pub mod s {
-        crate::softmax_l2_frame_tests!(true, f32, crate::generic::reduce::softmax::SSoftMaxL2);
+        crate::softmax_l2_frame_tests!(true, f32, super::SSoftMaxL2);
     }
 
     #[cfg(test)]
     #[macro_use]
     pub mod h {
         use super::*;
-        crate::softmax_l2_frame_tests!(true, f16, crate::generic::reduce::softmax::HSoftMaxL2);
+        crate::softmax_l2_frame_tests!(true, f16, HSoftMaxL2);
     }
 }
