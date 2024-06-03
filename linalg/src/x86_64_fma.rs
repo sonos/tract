@@ -14,11 +14,25 @@ tanh_impl!(f32, fma_tanh_f32, 8, 8, is_x86_feature_detected!("fma"));
 sigmoid_impl!(f32, fma_sigmoid_f32, 8, 8, is_x86_feature_detected!("fma"));
 
 fn plug_avx2(ops: &mut Ops) {
+    ops.mmm_impls.push(mmm::avx2_mmm_i32_8x8.mmm());
     ops.qmmm_i32 = Box::new(|_, _, _| mmm::avx2_mmm_i32_8x8.mmm());
     log::info!("qmmm_i32: x86_64/avx2 activated");
 }
 
 fn plug_fma(ops: &mut Ops) {
+    ops.mmm_impls.extend(
+        [
+            mmm::fma_mmm_f16_8x8.mmm(),
+            mmm::fma_mmm_f32_8x8.mmm(),
+            mmm::fma_mmm_f32_16x5.mmm(),
+            mmm::fma_mmm_f32_16x6.mmm(),
+            mmm::fma_mmm_f32_24x4.mmm(),
+            mmm::fma_mmm_f32_32x3.mmm(),
+            mmm::fma_mmm_f32_40x2.mmm(),
+            mmm::fma_mmm_f32_64x1.mmm(),
+        ]
+        .into_iter(),
+    );
     ops.mmv_f32 = Box::new(|_, _| mmm::fma_mmm_f32_64x1.mmm());
 
     ops.mmm_f32 = Box::new(|_, _, n| {
@@ -85,12 +99,13 @@ fn plug_fma(ops: &mut Ops) {
             _ => unreachable!("not a valid index"),
         }
     });
-    ops.mmm_f32_impls.push(mmm::fma_mmm_f32_16x6.mmm());
-    ops.mmm_f32_impls.push(mmm::fma_mmm_f32_16x5.mmm());
-    ops.mmm_f32_impls.push(mmm::fma_mmm_f32_24x4.mmm());
-    ops.mmm_f32_impls.push(mmm::fma_mmm_f32_32x3.mmm());
-    ops.mmm_f32_impls.push(mmm::fma_mmm_f32_40x2.mmm());
-    ops.mmm_f32_impls.push(mmm::fma_mmm_f32_8x8.mmm());
+    ops.mmm_impls.push(mmm::fma_mmm_f32_16x6.mmm());
+    ops.mmm_impls.push(mmm::fma_mmm_f32_16x5.mmm());
+    ops.mmm_impls.push(mmm::fma_mmm_f32_24x4.mmm());
+    ops.mmm_impls.push(mmm::fma_mmm_f32_32x3.mmm());
+    ops.mmm_impls.push(mmm::fma_mmm_f32_40x2.mmm());
+    ops.mmm_impls.push(mmm::fma_mmm_f32_8x8.mmm());
+    ops.mmm_impls.push(mmm::fma_mmm_f16_8x8.mmm());
 
     ops.sigmoid_f32 = Box::new(|| fma_sigmoid_f32::ew());
     ops.tanh_f32 = Box::new(|| fma_tanh_f32::ew());

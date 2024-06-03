@@ -65,7 +65,7 @@ impl MatMatMulKer for WasmMmm4x4 {
 
 pub fn plug(ops: &mut Ops) {
     let impls = vec![WasmMmm4x4.mmm()];
-    ops.mmm_f32_impls = impls.clone();
+    ops.mmm_impls = impls.clone();
     ops.mmm_f32 = Box::new(|_m, _k, _n| wasm_f32_4x4.mmm());
 }
 
