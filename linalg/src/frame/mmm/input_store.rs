@@ -1,9 +1,20 @@
+use downcast_rs::{impl_downcast, Downcast};
 use dyn_hash::DynHash;
 use std::alloc::Layout;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::sync::Arc;
 use tract_data::internal::*;
+
+pub trait MMMInputFormat: Downcast + Debug {
+    fn prepare_tensor(
+        &self,
+        t: &Tensor,
+        k_axis: usize,
+        mn_axis: usize,
+    ) -> TractResult<Box<dyn MMMInput>>;
+}
+impl_downcast!(MMMInputFormat);
 
 pub trait MMMInput: dyn_clone::DynClone + Debug + DynHash + Send + Sync + Display {
     fn scratch_panel_buffer_layout(&self) -> Option<Layout>;

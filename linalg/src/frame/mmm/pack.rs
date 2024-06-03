@@ -6,11 +6,24 @@ use tract_data::internal::*;
 
 use crate::mmm::{EagerPackedInput, MMMInput};
 
+use super::MMMInputFormat;
+
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Packer {
     pub r: usize,
     alignment: usize,
     end_padding_record: usize,
+}
+
+impl MMMInputFormat for Packer {
+    fn prepare_tensor(
+        &self,
+        t: &Tensor,
+        k_axis: usize,
+        mn_axis: usize,
+    ) -> TractResult<Box<dyn MMMInput>> {
+        Packer::pack_tensor(&self, t, k_axis, mn_axis)
+    }
 }
 
 impl Packer {
@@ -126,7 +139,7 @@ impl Packer {
         mn_stride: isize,
         k_range: Range<usize>,
         mn_range: Range<usize>,
-    ) {
+        ) {
         if self.r == 1 && k_stride == 1 && mn == 1 {
             pb.copy_from_nonoverlapping(b.add(k_range.start), k_range.len())
         } else if mn_stride == 1 {

@@ -176,9 +176,16 @@ impl Conv {
             &sum_ker_n_g_c,
         )?;
 
+        let r = mmm
+            .b_pack()
+            .downcast_ref::<Packer>()
+            .with_context(|| {
+                format!("Quand Im2Col expects regular packed format, got {:?}", mmm.b_pack())
+            })?
+            .panel_width();
         let mut sum_x = model.wire_node(
             format!("{name}.sum_x"),
-            super::QSumB { dt: b_fact.datum_type, n, r: mmm.b_pack().panel_width(), k },
+            super::QSumB { dt: b_fact.datum_type, n, r, k },
             &[im2col],
         )?;
         // sum_b is N,G,HW. make it N,HW,G,C or N,G,C,HW
@@ -397,7 +404,11 @@ impl Conv {
             })
             .collect();
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
-        let params = LazyIm2colParams { packer: mmm.b_pack(), n_byte_offsets, k_byte_offsets };
+        let b_pack = mmm
+            .b_pack()
+            .downcast::<Packer>()
+            .map_err(|e| format_err!("Quand Im2Col expects regular packed format, got {:?}", e))?;
+        let params = LazyIm2colParams { packer: *b_pack, n_byte_offsets, k_byte_offsets };
         let x = model.wire_node(
             format!("{name}.lazyIm2col"),
             LazyIm2Col { params: Arc::new(params) },
@@ -466,8 +477,11 @@ impl Conv {
         c_n_axis: usize,
     ) -> TractResult<TVec<OutletId>> {
         ensure!(model.outlet_fact(bias)?.datum_type == mmm.internal_type());
+        let a_pack = mmm.a_pack().downcast::<Packer>().map_err(|e| {
+            format_err!("Conv expects wights in regular packed format, got {:?}", e)
+        })?;
         let packed_ker = self
-            .wire_pack_g_o_ihw(model, name, mmm.a_pack(), g_o_ihw)
+            .wire_pack_g_o_ihw(model, name, *a_pack, g_o_ihw)
             .context("in kernel_as_packed_as")?;
         let (mut c_to_a_axis_mapping, mut c_to_b_axis_mapping) = (tvec!(), tvec!());
 

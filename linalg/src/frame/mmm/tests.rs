@@ -251,8 +251,8 @@ where
     crate::setup_test_logger();
     assert_eq!(a.datum_type(), TA::datum_type());
     unsafe {
-        let packed_a = ker.a_pack().pack_tensor(a, 1, 0).unwrap();
-        let packed_b = ker.b_pack().pack_tensor(b, 0, 1).unwrap();
+        let packed_a = ker.a_pack().prepare_tensor(a, 1, 0).unwrap();
+        let packed_b = ker.b_pack().prepare_tensor(b, 0, 1).unwrap();
 
         fused_ops::<K, TA, TB, TC, TI, _>(
             ker,
@@ -290,8 +290,8 @@ where
     crate::setup_test_logger();
     unsafe {
         let b = b.clone().into_shape(&[k, 1]).unwrap();
-        let packed_a = ker.a_pack().pack_tensor(a, 1, 0).unwrap();
-        let packed_b = ker.b_pack().pack_tensor(&b, 0, 1).unwrap();
+        let packed_a = ker.a_pack().prepare_tensor(a, 1, 0).unwrap();
+        let packed_b = ker.b_pack().prepare_tensor(&b, 0, 1).unwrap();
 
         fused_ops::<K, TA, TB, TC, TI, _>(
             ker,

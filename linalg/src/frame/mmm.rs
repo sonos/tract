@@ -7,6 +7,7 @@ pub(crate) mod input_store;
 #[macro_use]
 #[allow(clippy::module_inception)]
 pub(crate) mod mmm;
+pub mod pack;
 mod scratch;
 mod storage;
 #[cfg(test)]

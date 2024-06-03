@@ -102,7 +102,10 @@ impl Im2Col {
         input_full_shape: &ShapeFact,
         mmm: Box<dyn MatMatMul>,
     ) -> TractResult<Im2Col> {
-        let b_pack = mmm.b_pack();
+        let b_pack = *mmm
+            .b_pack()
+            .downcast()
+            .map_err(|e| format_err!("Im2Col expects regular packed format, got {:?}", e))?;
         let pool_geometry = pool_spec.compute_geo(input_full_shape)?;
         let geometry: GeometryBound<_, _> =
             SymbolicGeometry { group, pool_spec: pool_spec.clone(), pool_geometry, b_pack, k }
@@ -389,7 +392,7 @@ impl Patcher {
     unsafe fn padded_2d_invalid_x_loop<T: Copy + Datum>(
         count: usize,
         pad_value: T,
-        writer: &mut tract_linalg::frame::pack::KOutWriter<T>,
+        writer: &mut tract_linalg::frame::mmm::pack::KOutWriter<T>,
     ) {
         for _ in 0..count {
             writer.write(pad_value);
@@ -402,7 +405,7 @@ impl Patcher {
         x_max: isize,
         x_stride_ptr: isize,
         iptr: *const T,
-        writer: &mut tract_linalg::frame::pack::KOutWriter<T>,
+        writer: &mut tract_linalg::frame::mmm::pack::KOutWriter<T>,
     ) {
         for x in x_min..x_max {
             writer.write(*iptr.offset(x * x_stride_ptr));
