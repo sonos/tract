@@ -152,7 +152,7 @@ impl Reducer {
         }
 
         let mut output: Option<ArrayD<T>> = None;
-        for axis in axes.iter().cloned() {
+        for axis in axes.iter().copied() {
             let input_view = output
                 .as_ref()
                 .map(|o| o.view())

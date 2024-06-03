@@ -151,8 +151,8 @@ pub fn generic() -> Ops {
         /*
         activation_f32: Box::new(|microcode| generic::SActivation::new(microcode))
         */
-        softmax2_fastcompact_f16: Box::new(|| generic::reduce::softmax::HSoftMaxL2::red()),
-        softmax2_fastcompact_f32: Box::new(|| generic::reduce::softmax::SSoftMaxL2::red()),
+        softmax2_fastcompact_f16: Box::new(|| generic::reduce::softmax_l2::HSoftMaxL2::red()),
+        softmax2_fastcompact_f32: Box::new(|| generic::reduce::softmax_l2::SSoftMaxL2::red()),
     }
 }
 
