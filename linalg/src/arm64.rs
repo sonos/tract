@@ -234,7 +234,6 @@ pub fn plug(ops: &mut Ops) {
             arm64simd_mmm_i32_8x8.mmm(),
             arm64simd_mmm_i32_64x1.mmm(),
         ]
-        .into_iter(),
     );
 
     #[cfg(not(feature = "no_fp16"))]
