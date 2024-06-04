@@ -251,14 +251,15 @@ where
     crate::setup_test_logger();
     assert_eq!(a.datum_type(), TA::datum_type());
     unsafe {
-        let packed_a = ker.a_pack().prepare_tensor(a, 1, 0).unwrap();
-        let packed_b = ker.b_pack().prepare_tensor(b, 0, 1).unwrap();
+        let pack = &ker.native_pack();
+        let packed_a = pack.0.prepare_tensor(a, 1, 0).unwrap();
+        let packed_b = pack.1.prepare_tensor(b, 0, 1).unwrap();
 
         fused_ops::<K, TA, TB, TC, TI, _>(
             ker,
             m,
             n,
-            &[FusedSpec::AddMatMul { a: &*packed_a, b: &*packed_b }],
+            &[FusedSpec::AddMatMul { a: &*packed_a, b: &*packed_b, packing: ker.native_mode() }],
             |r, c| {
                 let mut v: TI = TI::zero();
                 for i in 0..k {
@@ -290,14 +291,15 @@ where
     crate::setup_test_logger();
     unsafe {
         let b = b.clone().into_shape(&[k, 1]).unwrap();
-        let packed_a = ker.a_pack().prepare_tensor(a, 1, 0).unwrap();
-        let packed_b = ker.b_pack().prepare_tensor(&b, 0, 1).unwrap();
+        let pack = &ker.native_pack();
+        let packed_a = pack.0.prepare_tensor(a, 1, 0).unwrap();
+        let packed_b = pack.1.prepare_tensor(&b, 0, 1).unwrap();
 
         fused_ops::<K, TA, TB, TC, TI, _>(
             ker,
             m,
             1,
-            &[FusedSpec::AddMatMul { a: &*packed_a, b: &*packed_b }],
+            &[FusedSpec::AddMatMul { a: &*packed_a, b: &*packed_b, packing: ker.native_mode() }],
             |r, _| {
                 let mut inter = TI::zero();
                 for i in 0..k {
