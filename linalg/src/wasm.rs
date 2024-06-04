@@ -9,6 +9,7 @@
 /// ```
 use crate::mmm::{FusedKerSpec, MatMatMul, MatMatMulKer};
 use crate::{Ops, Scaler};
+use std::borrow::Cow;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct WasmMmm4x4;
@@ -26,8 +27,8 @@ impl MatMatMulKer for WasmMmm4x4 {
     type Acc = f32;
 
     #[inline(always)]
-    fn name(&self) -> &'static str {
-        "wasm_f32_4x4"
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("wasm_f32_4x4")
     }
 
     #[inline(always)]
