@@ -3,18 +3,8 @@ use tract_data::internal::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum OutputStoreSpec {
-    View {
-        m_axis: usize,
-        n_axis: usize,
-        mr: usize,
-        nr: usize,
-    },
-    Strides {
-        row_byte_stride: isize,
-        col_byte_stride: isize,
-        mr: usize,
-        nr: usize,
-    },
+    View { m_axis: usize, n_axis: usize, mr: usize, nr: usize },
+    Strides { row_byte_stride: isize, col_byte_stride: isize, mr: usize, nr: usize },
 }
 
 #[derive(Clone, Copy, Debug)]

@@ -1,3 +1,4 @@
+pub mod binary;
 pub mod by_scalar;
 pub mod erf;
 pub mod leaky_relu;

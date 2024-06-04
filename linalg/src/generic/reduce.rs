@@ -1,5 +1,3 @@
-
-
 // Reduce<max> generic implementation
 pub mod max {
     pub use tract_data::internal::f16;
@@ -41,7 +39,7 @@ pub mod max {
     #[cfg(test)]
     #[macro_use]
     pub mod s {
-       crate::max_frame_tests!(true, f32, crate::generic::reduce::max::SMax4);
+        crate::max_frame_tests!(true, f32, crate::generic::reduce::max::SMax4);
     }
 
     #[cfg(test)]
@@ -94,7 +92,7 @@ pub mod sum {
     #[cfg(test)]
     #[macro_use]
     pub mod s {
-       crate::sum_frame_tests!(true, f32, crate::generic::reduce::sum::SSum4);
+        crate::sum_frame_tests!(true, f32, crate::generic::reduce::sum::SSum4);
     }
 
     #[cfg(test)]
@@ -134,7 +132,7 @@ pub mod softmax_l2 {
             a + b
         }
     );
-    
+
     map_reduce_impl_wrap!(
         f16,
         HSoftMaxL2,
