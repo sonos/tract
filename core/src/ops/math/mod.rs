@@ -73,36 +73,50 @@ bin_to_super_type!(mul, Mul,
                         if uniform_in_place_should_be_efficient {
                             if b.datum_type() == f32::datum_type() {
                                 let mut view = a.to_array_view_mut::<f32>()?;
+                                let b = b.to_array_view::<f32>()?;
                                 for it_coords in tract_ndarray::indices(b_shape) {
+                                    // Prepare array view to perform computation
+                                    // - view should be a slice
+                                    // - b should be a scalar 
                                     let mut view = view.view_mut();
+                                    let mut b = b.view();
                                     for idx in 0..trailing_unary_dims[0] {
                                         view.collapse_axis(Axis(idx), it_coords[idx]);
+                                        b.collapse_axis(Axis(idx), it_coords[idx]);
                                     }
 
+                                    // Perform computation on a slice on the view
+                                    let b = b.as_slice().unwrap()[0];
                                     if let Some(slice) = view.as_slice_mut() {
-                                        let b = b.to_scalar::<f32>()?;
-                                        (tract_linalg::ops().mul_by_scalar_f32)().run_with_params(slice, *b)?;
+                                        (tract_linalg::ops().mul_by_scalar_f32)().run_with_params(slice, b)?;
                                     } else {
-                                        return Ok(false)
+                                        view.iter_mut().for_each(|it| *it = *it * b)
                                     }
                                 }
-                                Ok(true)
+                                return Ok(true)
                             } else if b.datum_type() == f16::datum_type() {
                                 let mut view = a.to_array_view_mut::<f16>()?;
+                                let b = b.to_array_view::<f16>()?;
                                 for it_coords in tract_ndarray::indices(b_shape) {
+                                    // Prepare array view to perform computation
+                                    // - view should be a slice
+                                    // - b should be a scalar 
                                     let mut view = view.view_mut();
+                                    let mut b = b.view();
                                     for idx in 0..trailing_unary_dims[0] {
                                         view.collapse_axis(Axis(idx), it_coords[idx]);
+                                        b.collapse_axis(Axis(idx), it_coords[idx]);
                                     }
 
+                                    // Perform computation on a slice on the view
+                                    let b = b.as_slice().unwrap()[0];
                                     if let Some(slice) = view.as_slice_mut() {
-                                        let b = b.to_scalar::<f16>()?;
-                                        (tract_linalg::ops().mul_by_scalar_f16)().run_with_params(slice, *b)?;
+                                        (tract_linalg::ops().mul_by_scalar_f16)().run_with_params(slice, b)?;
                                     } else {
-                                        return Ok(false)
+                                        view.iter_mut().for_each(|it| *it = *it * b)
                                     }
                                 }
-                                Ok(true)
+                                return Ok(true)
                             } else {
                                 return Ok(false)
                             }
