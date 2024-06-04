@@ -1,8 +1,8 @@
 #![allow(clippy::needless_range_loop)]
 use num_traits::AsPrimitive;
 use std::borrow::Cow;
+use std::fmt;
 use std::marker::PhantomData;
-use std::{fmt, ops};
 
 use tract_data::prelude::*;
 
@@ -67,11 +67,11 @@ impl<const MR: usize, const NR: usize, TA, TB, TI> GenericMmm<MR, NR, TA, TB, TI
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound,
+    TI: LADatum + ScaleShiftAndRound + AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
     pub fn mmm(&self) -> Box<dyn MatMatMul> {
-        Box::<Self>::default()
+        Box::new(self.clone())
     }
 }
 
@@ -79,7 +79,7 @@ impl<const MR: usize, const NR: usize, TA, TB, TI> MatMatMulKer for GenericMmm<M
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound,
+    TI: LADatum + ScaleShiftAndRound + AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
     type Acc = TI;
@@ -149,7 +149,35 @@ where
                             }
                         }
                     }
-                    FusedKerSpec::AddUnicast(tile) => add_unicast::<TI, _>(&tile, &mut ab),
+                    FusedKerSpec::AddUnicast(tile) => {
+                        if tile.item_size == TI::datum_type().size_of() {
+                            for i in 0usize..MR {
+                                for j in 0usize..NR {
+                                    let value: *const TI = tile.ptr.offset(
+                                        tile.row_byte_stride * i as isize
+                                            + tile.col_byte_stride * j as isize,
+                                    )
+                                        as _;
+                                    ab[i].as_mut()[j] += *value;
+                                }
+                            }
+                        } else if TI::datum_type() == i32::datum_type() && tile.item_size == 1 {
+                            for i in 0usize..MR {
+                                for j in 0usize..NR {
+                                    let value: i8 = *(tile.ptr.offset(
+                                        tile.row_byte_stride * i as isize
+                                            + tile.col_byte_stride * j as isize,
+                                    )
+                                        as *const i8);
+                                    let acc: *mut i32 =
+                                        ab[i].as_mut().as_mut_ptr().add(j) as *mut i32;
+                                    *acc += value as i32;
+                                }
+                            }
+                        } else {
+                            unimplemented!("Missing AddUnicast type");
+                        }
+                    }
                     FusedKerSpec::ShiftLeft(shift) => {
                         for i in 0..MR {
                             for j in 0..NR {
@@ -173,19 +201,28 @@ where
                         }
                     }
                     FusedKerSpec::AddMatMul { k, pa, pb, .. } => {
-                        let a = pa as *const TA;
-                        let b = pb as *const TB;
-                        for ik in 0..k {
-                            let a = std::slice::from_raw_parts(a.add(MR * ik), MR);
-                            let b = std::slice::from_raw_parts(b.add(NR * ik), NR);
-                            for i in 0..MR {
-                                for j in 0..NR {
-                                    ab[i][j] += a[i].as_() * b[j].as_();
-                                }
-                            }
+                        let packing = 0;
+                        if packing == 0 {
+                            add_mat_mul::<MR, NR, TI, TI, TI>(pa, pb, k, &mut ab);
+                        } else if TI::datum_type() == i32::datum_type() && packing == 1 {
+                            add_mat_mul::<MR, NR, i32, i8, i8>(pa, pb, k, std::mem::transmute(&mut ab))
+                        } else {
+                            panic!(
+                                "Unsupported combination packing={} TI={:?}",
+                                packing,
+                                TI::datum_type()
+                            );
                         }
+                        /*
+                         */
                     }
-                    FusedKerSpec::Store(tile) => store(&tile, &ab),
+                    FusedKerSpec::Store(tile) => match tile.item_size {
+                        1 => store_t::<MR, NR, u8, _>(&tile, &ab),
+                        2 => store_t::<MR, NR, u16, _>(&tile, &ab),
+                        4 => store_t::<MR, NR, u32, _>(&tile, &ab),
+                        8 => store_t::<MR, NR, f64, _>(&tile, &ab),
+                        _ => unimplemented!(),
+                    },
                 };
                 pnl = pnl.add(1);
             }
@@ -194,13 +231,37 @@ where
     }
 }
 
-unsafe fn store_t<TC, TI, AB>(tile: &OutputStoreKer, ab: &[AB])
-where
-    TC: Copy,
-    AB: AsRef<[TI]> + fmt::Debug,
+unsafe fn add_mat_mul<const MR: usize, const NR: usize, TI, TA, TB>(
+    pa: *const u8,
+    pb: *const u8,
+    k: usize,
+    ab: &mut [[TI; NR]; MR],
+) where
+    TA: AsPrimitive<TI>,
+    TB: AsPrimitive<TI>,
+    TI: LADatum,
 {
-    for i in 0usize..ab.len() {
-        for j in 0usize..ab[0].as_ref().len() {
+    let a = pa as *const TA;
+    let b = pb as *const TB;
+    for ik in 0..k {
+        let a = std::slice::from_raw_parts(a.add(MR * ik), MR);
+        let b = std::slice::from_raw_parts(b.add(NR * ik), NR);
+        for i in 0..MR {
+            for j in 0..NR {
+                ab[i][j] += a[i].as_() * b[j].as_();
+            }
+        }
+    }
+}
+
+unsafe fn store_t<const MR: usize, const NR: usize, TC, TI>(
+    tile: &OutputStoreKer,
+    ab: &[[TI; NR]; MR],
+) where
+    TC: Copy,
+{
+    for i in 0usize..MR {
+        for j in 0usize..NR {
             let loc: *mut TC = tile
                 .ptr
                 .offset(tile.row_byte_stride * i as isize + tile.col_byte_stride * j as isize)
@@ -208,50 +269,6 @@ where
             let val: *const TC = (&ab[i].as_ref()[j]) as *const TI as _;
             *loc = *val
         }
-    }
-}
-
-unsafe fn store<TI, AB>(tile: &OutputStoreKer, ab: &[AB])
-where
-    AB: AsRef<[TI]> + fmt::Debug,
-{
-    match tile.item_size {
-        1 => store_t::<u8, _, _>(tile, ab),
-        2 => store_t::<u16, _, _>(tile, ab),
-        4 => store_t::<u32, _, _>(tile, ab),
-        8 => store_t::<f64, _, _>(tile, ab),
-        _ => unimplemented!(),
-    }
-}
-
-unsafe fn add_unicast<TI, AB>(tile: &OutputStoreKer, ab: &mut [AB])
-where
-    TI: LADatum + ops::AddAssign<TI>,
-    AB: AsMut<[TI]> + fmt::Debug,
-{
-    if tile.item_size == TI::datum_type().size_of() {
-        for i in 0usize..ab.len() {
-            for j in 0usize..ab[0].as_mut().len() {
-                let value: *const TI = tile
-                    .ptr
-                    .offset(tile.row_byte_stride * i as isize + tile.col_byte_stride * j as isize)
-                    as _;
-                ab[i].as_mut()[j] += *value;
-            }
-        }
-    } else if TI::datum_type() == i32::datum_type() && tile.item_size == 1 {
-        for i in 0usize..ab.len() {
-            for j in 0usize..ab[0].as_mut().len() {
-                let value: i8 = *(tile
-                    .ptr
-                    .offset(tile.row_byte_stride * i as isize + tile.col_byte_stride * j as isize)
-                    as *const i8);
-                let acc: *mut i32 = ab[i].as_mut().as_mut_ptr().add(j) as *mut i32;
-                *acc += value as i32;
-            }
-        }
-    } else {
-        unimplemented!("Missing AddUnicast type");
     }
 }
 
