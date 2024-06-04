@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fmt::Debug;
 
 use crate::frame::mmm::FusedKerSpec;
@@ -7,7 +8,7 @@ use super::FusedSpec;
 
 pub trait MatMatMulKer: Copy + Clone + Debug + Send + Sync + 'static {
     type Acc: LADatum;
-    fn name(&self) -> &'static str;
+    fn name(&self) -> Cow<'static, str>;
     fn kernel(&self, op: &[FusedKerSpec<Self::Acc>]) -> isize;
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;

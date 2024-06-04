@@ -4,11 +4,12 @@ use crate::frame::Packer;
 use crate::multithread::Executor;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
+use std::borrow::Cow;
 use std::fmt;
 use tract_data::internal::*;
 
 pub trait MatMatMul: fmt::Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
-    fn kernel_name(&self) -> &'static str;
+    fn kernel_name(&self) -> Cow<'static, str>;
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;
 
@@ -58,7 +59,7 @@ impl std::hash::Hash for Box<dyn MatMatMul> {
 }
 
 impl<K: MatMatMulKer> MatMatMul for K {
-    fn kernel_name(&self) -> &'static str {
+    fn kernel_name(&self) -> Cow<'static, str> {
         self.name()
     }
     fn mr(&self) -> usize {
