@@ -7,20 +7,21 @@ use DatumType::F32;
 
 fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)) {
     unsafe {
-        let mm = tract_linalg::ops().mmm(F32, F32, F32, Some(m), Some(k), Some(n)).unwrap();
+        let mmm = tract_linalg::ops().mmm(F32, F32, F32, Some(m), Some(k), Some(n)).unwrap();
         let a = Tensor::zero::<f32>(&[m, k]).unwrap();
         let b = Tensor::zero::<f32>(&[k, n]).unwrap();
-        let pa = mm.a_pack().prepare_tensor(&a, 1, 0).unwrap();
-        let pb = mm.b_pack().prepare_tensor(&b, 0, 1).unwrap();
+        let packing = &mmm.native_pack();
+        let pa = packing.0.prepare_tensor(&a, 1, 0).unwrap();
+        let pb = packing.1.prepare_tensor(&b, 0, 1).unwrap();
 
         let mut c = Tensor::zero::<f32>(&[m, n]).unwrap();
         be.iter(move || {
-            mm.run(
+            mmm.run(
                 m,
                 n,
                 &[
-                    FusedSpec::AddMatMul { a: &*pa, b: &*pb },
-                    FusedSpec::Store(mm.c_view(0, 1).wrap(&c.view_mut())),
+                    FusedSpec::AddMatMul { a: &*pa, b: &*pb, packing: mmm.native_mode() },
+                    FusedSpec::Store(mmm.c_view(0, 1).wrap(&c.view_mut())),
                 ],
             )
         });

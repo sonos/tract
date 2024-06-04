@@ -14,20 +14,25 @@ fn mat_vec_mul(c: &mut Criterion) {
                 BenchmarkId::from_parameter(format!("{m}x{k}")),
                 &(m, k),
                 |be, (&m, &k)| {
-                    let mm =
+                    let mmm =
                         tract_linalg::ops().mmm(F32, F32, F32, Some(m), Some(k), Some(1)).unwrap();
+                    let packing = &mmm.native_pack();
                     let a = Tensor::zero::<f32>(&[m, k]).unwrap();
-                    let pa = mm.a_pack().prepare_tensor(&a, 1, 0).unwrap();
+                    let pa = packing.0.prepare_tensor(&a, 1, 0).unwrap();
                     let b = Tensor::zero::<f32>(&[k, 1]).unwrap();
-                    let pb = mm.b_pack().prepare_tensor(&b, 0, 1).unwrap();
+                    let pb = packing.1.prepare_tensor(&b, 0, 1).unwrap();
                     let mut c = Tensor::zero::<f32>(&[m]).unwrap();
                     be.iter(move || {
-                        mm.run(
+                        mmm.run(
                             m,
                             1,
                             &[
-                                FusedSpec::AddMatMul { a: &*pa, b: &*pb },
-                                FusedSpec::Store(mm.c_view(0, 0).wrap(&c.view_mut())),
+                                FusedSpec::AddMatMul {
+                                    a: &*pa,
+                                    b: &*pb,
+                                    packing: mmm.native_mode(),
+                                },
+                                FusedSpec::Store(mmm.c_view(0, 0).wrap(&c.view_mut())),
                             ],
                         )
                     });

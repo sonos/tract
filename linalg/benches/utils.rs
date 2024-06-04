@@ -37,12 +37,12 @@ unsafe fn run(
     _k: usize,
     n: usize,
     be: &mut Bencher,
-    mm: &dyn MatMatMul,
+    mmm: &dyn MatMatMul,
     a: &dyn MMMInput,
     b: &dyn MMMInput,
     cold: bool,
 ) {
-    let mut scratch = mm.allocate_scratch_space();
+    let mut scratch = mmm.allocate_scratch_space();
     be.iter_custom(move |iters| {
         let mut dur = std::time::Duration::default();
         for _ in 0..iters {
@@ -50,8 +50,13 @@ unsafe fn run(
                 ruin_cache();
             }
             let instant = std::time::Instant::now();
-            mm.run_with_scratch_space(m, n, scratch.as_mut(), &[FusedSpec::AddMatMul { a, b }])
-                .unwrap();
+            mmm.run_with_scratch_space(
+                m,
+                n,
+                scratch.as_mut(),
+                &[FusedSpec::AddMatMul { a, b, packing: mmm.native_mode() }],
+            )
+            .unwrap();
             let time = instant.elapsed();
             dur += time;
         }
@@ -67,14 +72,15 @@ fn mat_mat(be: &mut Bencher, params: &(DatumType, usize, usize, usize, bool)) {
 
 pub fn mat_mat_with_mm(
     be: &mut Bencher,
-    mm: &dyn MatMatMul,
+    mmm: &dyn MatMatMul,
     &(dt, m, k, n, cold): &(DatumType, usize, usize, usize, bool),
 ) {
     let a = Tensor::zero_dt(dt, &[m, k]).unwrap();
     let b = Tensor::zero_dt(dt, &[k, n]).unwrap();
-    let pa = mm.a_pack().prepare_tensor(&a, 1, 0).unwrap();
-    let pb = mm.b_pack().prepare_tensor(&b, 0, 1).unwrap();
+    let packing = &mmm.native_pack();
+    let pa = packing.0.prepare_tensor(&a, 1, 0).unwrap();
+    let pb = packing.1.prepare_tensor(&b, 0, 1).unwrap();
     unsafe {
-        run(m, k, n, be, mm, &*pa, &*pb, cold);
+        run(m, k, n, be, mmm, &*pa, &*pb, cold);
     }
 }

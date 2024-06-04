@@ -326,7 +326,7 @@ pub mod test {
                     k: self.k,
                     pa: pa.as_ptr_unchecked::<u8>() as _,
                     pb: b_store,
-                    cpu_variant: 0,
+                    packing: 0,
                 });
                 if self.add_one {
                     non_linear_ops.push(FusedKerSpec::ScalarAdd(TI::one()));
@@ -391,7 +391,7 @@ pub mod test {
                 pa: unsafe { pa.as_ptr_unchecked::<u8>() as _ },
                 pb: unsafe { pb.as_ptr_unchecked::<u8>() as _ },
                 k,
-                cpu_variant: 0,
+                packing: 0,
             },
             FusedKerSpec::Store(tile),
             FusedKerSpec::Done

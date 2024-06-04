@@ -48,7 +48,7 @@ pub enum FusedSpec<'t> {
     RoundingShiftRight(usize, RoundingPolicy),
     ShiftLeft(usize),
     Store(OutputStore),
-    AddMatMul { a: &'t dyn MMMInput, b: &'t dyn MMMInput },
+    AddMatMul { a: &'t dyn MMMInput, b: &'t dyn MMMInput, packing: usize },
 }
 
 impl<'t> FusedSpec<'t> {
@@ -106,7 +106,7 @@ pub enum FusedKerSpec<TI: Copy> {
     Store(OutputStoreKer),                      // jump_to:store
 
     // jump_to:add_mat_mul
-    AddMatMul { k: usize, pa: *const u8, pb: *const u8, cpu_variant: usize },
+    AddMatMul { k: usize, pa: *const u8, pb: *const u8, packing: usize },
 }
 
 unsafe impl<TI: Copy> Send for FusedKerSpec<TI> {}

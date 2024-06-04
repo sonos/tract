@@ -157,7 +157,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     FusedKerSpec::Done
                 }
                 FS::LeakyRelu(t) => FKS::LeakyRelu(*t.to_scalar()?),
-                FS::AddMatMul { a, b, .. } => {
+                FS::AddMatMul { a, b, packing } => {
                     let mut ld = ld(ix, self.ker_specs.len(), offset);
                     offset += std::mem::size_of::<AddMatMulTemp>();
                     if let Some(tmp) = a.scratch_panel_buffer_layout() {
@@ -177,7 +177,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                         k: 0,
                         pa: std::ptr::null(),
                         pb: std::ptr::null(),
-                        cpu_variant: 0,
+                        packing: *packing,
                     }
                 }
             };
@@ -263,7 +263,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                 }
                 FS::AddUnicast(store) => FKS::AddUnicast(store.tile_c(down, right)),
                 FS::Store(c_store) => FKS::Store(c_store.tile_c(down, right)),
-                FS::AddMatMul { a, b } => {
+                FS::AddMatMul { a, b, packing } => {
                     let scratch =
                         (tls.blob.as_mut_ptr().add(*loc) as *mut AddMatMulTemp).as_mut().unwrap();
                     if scratch.panel_a_id != down {
@@ -280,7 +280,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                         k: b.k(),
                         pa: scratch.ptr_a,
                         pb: scratch.ptr_b,
-                        cpu_variant: 0,
+                        packing: *packing,
                     }
                 }
                 _ => std::hint::unreachable_unchecked(),
@@ -438,7 +438,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     };
                     FKS::Store(tmpc)
                 }
-                FS::AddMatMul { a, b } => {
+                FS::AddMatMul { a, b, packing } => {
                     let scratch = (loc as *mut AddMatMulTemp).as_mut().unwrap();
                     if scratch.panel_a_id != down {
                         scratch.ptr_a =
@@ -454,7 +454,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                         k: b.k(),
                         pa: scratch.ptr_a,
                         pb: scratch.ptr_b,
-                        cpu_variant: 0,
+                        packing: *packing,
                     }
                 }
                 _ => std::hint::unreachable_unchecked(),
