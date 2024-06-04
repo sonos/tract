@@ -341,16 +341,13 @@ fn lir_mat_mul_unary(
     let mut patch = TypedModelPatch::new("Einsum to LirMatMulUnary");
     let a = patch.tap_model(model, node.inputs[0])?;
     let b = patch.tap_model(model, node.inputs[1])?;
-    let a_pack = mmm
-        .a_pack()
-        .downcast::<Packer>()
-        .map_err(|e| format_err!("Expects regular packed format, got {e:?}"))?;
-    let b_pack = mmm
-        .b_pack()
-        .downcast::<Packer>()
-        .map_err(|e| format_err!("Expects regular packed format, got {e:?}"))?;
-    let pack_a = MatMatMulPack { packer: *a_pack, k_axis: a_k, mn_axis: a_m };
-    let pack_b = MatMatMulPack { packer: *b_pack, k_axis: b_k, mn_axis: b_n };
+    let packing = &mmm.mmm_packs()[0];
+    let a_pack =
+        packing.0.downcast_ref::<Packer>().context("Expects regular packed format for A")?.clone();
+    let b_pack =
+        packing.1.downcast_ref::<Packer>().context("Expects regular packed format for B")?.clone();
+    let pack_a = MatMatMulPack { packer: a_pack, k_axis: a_k, mn_axis: a_m };
+    let pack_b = MatMatMulPack { packer: b_pack, k_axis: b_k, mn_axis: b_n };
     let pa = patch.wire_node(format!("{name}.pack_a"), pack_a, &[a])?[0];
     let pb = patch.wire_node(format!("{name}.pack_b"), pack_b, &[b])?[0];
 

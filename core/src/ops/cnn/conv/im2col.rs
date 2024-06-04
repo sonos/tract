@@ -102,10 +102,12 @@ impl Im2Col {
         input_full_shape: &ShapeFact,
         mmm: Box<dyn MatMatMul>,
     ) -> TractResult<Im2Col> {
-        let b_pack = *mmm
-            .b_pack()
-            .downcast()
-            .map_err(|e| format_err!("Im2Col expects regular packed format, got {:?}", e))?;
+        let b_pack = mmm.mmm_packs()[0]
+            .1
+            .downcast_ref::<Packer>()
+            .context("Im2Col expects regular packed format")?
+            .clone();
+
         let pool_geometry = pool_spec.compute_geo(input_full_shape)?;
         let geometry: GeometryBound<_, _> =
             SymbolicGeometry { group, pool_spec: pool_spec.clone(), pool_geometry, b_pack, k }
