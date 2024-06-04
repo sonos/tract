@@ -16,6 +16,7 @@ pub use arm64fp16::*;
 use crate::f16;
 use crate::Ops;
 
+use crate::frame::binary::BinaryKer;
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::reduce::{MapReduceKer, ReduceKer};
 
@@ -308,6 +309,7 @@ pub fn plug(ops: &mut Ops) {
     ops.tanh_f32 = Box::new(|| arm64simd_tanh_f32_4n::ew());
     ops.max_f32 = Box::new(|| arm64simd_max_f32_16n::red());
     ops.sum_f32 = Box::new(|| arm64simd_sum_f32_16n::red());
+    ops.binary_mul_f32 = Box::new(|| arm64simd_binary_mul_f32_16n::bin());
     ops.mul_by_scalar_f32 = Box::new(|| arm64simd_mul_by_scalar_f32_16n::ew());
     ops.softmax2_fastcompact_f32 = Box::new(|| arm64simd_softmax2_fastcompact_f32_16n::red());
     #[cfg(not(feature = "no_fp16"))]
@@ -318,6 +320,7 @@ pub fn plug(ops: &mut Ops) {
         ops.sigmoid_f16 = Box::new(|| arm64fp16_sigmoid_f16_8n::ew());
         ops.max_f16 = Box::new(|| arm64fp16_max_f16_32n::red());
         ops.sum_f16 = Box::new(|| arm64fp16_sum_f16_32n::red());
+        ops.binary_mul_f16 = Box::new(|| arm64fp16_binary_mul_f16_32n::bin());
         ops.mul_by_scalar_f16 = Box::new(|| arm64fp16_mul_by_scalar_f16_32n::ew());
     } else {
         log::info!("No native fp16 support");
