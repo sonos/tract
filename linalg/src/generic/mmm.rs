@@ -1,5 +1,6 @@
 #![allow(clippy::needless_range_loop)]
 use num_traits::AsPrimitive;
+use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::{fmt, ops};
 
@@ -40,13 +41,13 @@ macro_rules! per_col {
 }
 
 #[derive(Copy, Clone, Debug, Default)]
-pub struct GenericMmm4x4<TA, TB, TI>(PhantomData<(TA, TB, TI)>)
+pub struct GenericMmm<const MR: usize, const NR: usize, TA, TB, TI>(PhantomData<(TA, TB, TI)>)
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TI: LADatum + ScaleShiftAndRound;
 
-unsafe impl<TA, TB, TI> Send for GenericMmm4x4<TA, TB, TI>
+unsafe impl<const MR: usize, const NR: usize, TA, TB, TI> Send for GenericMmm<MR, NR, TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
@@ -54,7 +55,7 @@ where
 {
 }
 
-unsafe impl<TA, TB, TI> Sync for GenericMmm4x4<TA, TB, TI>
+unsafe impl<const MR: usize, const NR: usize, TA, TB, TI> Sync for GenericMmm<MR, NR, TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
@@ -62,7 +63,7 @@ where
 {
 }
 
-impl<TA, TB, TI> GenericMmm4x4<TA, TB, TI>
+impl<const MR: usize, const NR: usize, TA, TB, TI> GenericMmm<MR, NR, TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
@@ -74,7 +75,7 @@ where
     }
 }
 
-impl<TA, TB, TI> MatMatMulKer for GenericMmm4x4<TA, TB, TI>
+impl<const MR: usize, const NR: usize, TA, TB, TI> MatMatMulKer for GenericMmm<MR, NR, TA, TB, TI>
 where
     TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
@@ -83,22 +84,16 @@ where
 {
     type Acc = TI;
     #[inline(always)]
-    fn name(&self) -> &'static str {
-        match TI::datum_type() {
-            DatumType::F16 => "generic_f16_4x4",
-            DatumType::F32 => "generic_f32_4x4",
-            DatumType::I32 => "generic_i32_4x4",
-            DatumType::F64 => "generic_f64_4x4",
-            _ => panic!(),
-        }
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Owned(format!("generic_{:?}_{}x{}", TI::datum_type(), MR, NR).to_lowercase())
     }
     #[inline(always)]
     fn mr(&self) -> usize {
-        4
+        MR
     }
     #[inline(always)]
     fn nr(&self) -> usize {
-        4
+        NR
     }
     fn end_padding_packed_a(&self) -> usize {
         0
@@ -117,7 +112,7 @@ where
     #[inline(never)]
     fn kernel(&self, spec: &[FusedKerSpec<TI>]) -> isize {
         unsafe {
-            let mut ab = [[TI::zero(); 4]; 4];
+            let mut ab = [[TI::zero(); NR]; MR];
             let mut pnl = spec.as_ptr();
             loop {
                 if pnl.is_null() {
@@ -148,30 +143,30 @@ where
                     FusedKerSpec::PerColSub(m) => per_col!(ab, m, |a, b| a - b),
                     FusedKerSpec::PerColSubF(m) => per_col!(ab, m, |a, b| b - a),
                     FusedKerSpec::AddRowColProducts(rows, cols) => {
-                        for i in 0..4 {
-                            for j in 0..4 {
+                        for i in 0..MR {
+                            for j in 0..NR {
                                 ab[i][j] += *rows.add(i) * *cols.add(j);
                             }
                         }
                     }
                     FusedKerSpec::AddUnicast(tile) => add_unicast::<TI, _>(&tile, &mut ab),
                     FusedKerSpec::ShiftLeft(shift) => {
-                        for i in 0..4 {
-                            for j in 0..4 {
+                        for i in 0..MR {
+                            for j in 0..NR {
                                 ab[i][j] = ab[i][j].q_shl(shift);
                             }
                         }
                     }
                     FusedKerSpec::RoundingShiftRight(shift, rp) => {
-                        for i in 0..4 {
-                            for j in 0..4 {
+                        for i in 0..MR {
+                            for j in 0..NR {
                                 ab[i][j] = ab[i][j].q_shr(shift, rp);
                             }
                         }
                     }
                     FusedKerSpec::QScale(shift, rp, mult) => {
-                        for i in 0..4 {
-                            for j in 0..4 {
+                        for i in 0..MR {
+                            for j in 0..NR {
                                 ab[i][j] =
                                     ab[i][j].q_scale(Scaler::from_fuse_params(shift, rp, mult));
                             }
@@ -180,363 +175,18 @@ where
                     FusedKerSpec::AddMatMul { k, pa, pb, .. } => {
                         let a = pa as *const TA;
                         let b = pb as *const TB;
-                        for i in 0..k {
-                            let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
-                            let b = std::slice::from_raw_parts(b.offset(4 * i as isize), 4);
-                            ab[0][0] += a[0].as_() * b[0].as_();
-                            ab[0][1] += a[0].as_() * b[1].as_();
-                            ab[0][2] += a[0].as_() * b[2].as_();
-                            ab[0][3] += a[0].as_() * b[3].as_();
-                            ab[1][0] += a[1].as_() * b[0].as_();
-                            ab[1][1] += a[1].as_() * b[1].as_();
-                            ab[1][2] += a[1].as_() * b[2].as_();
-                            ab[1][3] += a[1].as_() * b[3].as_();
-                            ab[2][0] += a[2].as_() * b[0].as_();
-                            ab[2][1] += a[2].as_() * b[1].as_();
-                            ab[2][2] += a[2].as_() * b[2].as_();
-                            ab[2][3] += a[2].as_() * b[3].as_();
-                            ab[3][0] += a[3].as_() * b[0].as_();
-                            ab[3][1] += a[3].as_() * b[1].as_();
-                            ab[3][2] += a[3].as_() * b[2].as_();
-                            ab[3][3] += a[3].as_() * b[3].as_();
+                        for ik in 0..k {
+                            let a = std::slice::from_raw_parts(a.add(MR * ik), MR);
+                            let b = std::slice::from_raw_parts(b.add(NR * ik), NR);
+                            for i in 0..MR {
+                                for j in 0..NR {
+                                    ab[i][j] += a[i].as_() * b[j].as_();
+                                }
+                            }
                         }
                     }
                     FusedKerSpec::Store(tile) => store(&tile, &ab),
                 };
-                pnl = pnl.add(1);
-            }
-        }
-        0
-    }
-}
-
-#[derive(Copy, Clone, Debug, Default)]
-pub struct GenericMmm4x1<TA, TB, TI>(PhantomData<(TA, TB, TI)>)
-where
-    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound;
-
-unsafe impl<TA, TB, TI> Send for GenericMmm4x1<TA, TB, TI>
-where
-    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound,
-{
-}
-
-unsafe impl<TA, TB, TI> Sync for GenericMmm4x1<TA, TB, TI>
-where
-    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound,
-{
-}
-
-impl<TA, TB, TI> GenericMmm4x1<TA, TB, TI>
-where
-    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound,
-    usize: AsPrimitive<TI>,
-{
-    pub fn mmm(&self) -> Box<dyn MatMatMul> {
-        Box::<Self>::default()
-    }
-}
-
-impl<TA, TB, TI> MatMatMulKer for GenericMmm4x1<TA, TB, TI>
-where
-    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound,
-    usize: AsPrimitive<TI>,
-{
-    type Acc = TI;
-    #[inline(always)]
-    fn name(&self) -> &'static str {
-        match TI::datum_type() {
-            DatumType::F16 => "generic_f16_4x1",
-            DatumType::F32 => "generic_f32_4x1",
-            DatumType::I32 => "generic_i32_4x1",
-            DatumType::F64 => "generic_f64_4x1",
-            _ => panic!(),
-        }
-    }
-    #[inline(always)]
-    fn mr(&self) -> usize {
-        4
-    }
-    #[inline(always)]
-    fn nr(&self) -> usize {
-        1
-    }
-    fn end_padding_packed_a(&self) -> usize {
-        0
-    }
-    fn end_padding_packed_b(&self) -> usize {
-        0
-    }
-    #[inline(always)]
-    fn alignment_bytes_packed_a(&self) -> usize {
-        std::mem::size_of::<TA>()
-    }
-    #[inline(always)]
-    fn alignment_bytes_packed_b(&self) -> usize {
-        std::mem::size_of::<TB>()
-    }
-    #[inline(never)]
-    fn kernel(&self, spec: &[FusedKerSpec<TI>]) -> isize {
-        unsafe {
-            let mut ab = [[TI::zero(); 1]; 4];
-            let mut pnl = spec.as_ptr();
-            loop {
-                if pnl.is_null() {
-                    break;
-                }
-                match *pnl {
-                    FusedKerSpec::Done => break,
-                    FusedKerSpec::Clear => ab = std::mem::zeroed(),
-                    FusedKerSpec::ScalarAdd(a) => scalar!(ab, a, |a, b| a + b),
-                    FusedKerSpec::ScalarMul(a) => scalar!(ab, a, |a, b| a * b),
-                    FusedKerSpec::ScalarMin(m) => scalar!(ab, m, |a, b| if a < b { a } else { b }),
-                    FusedKerSpec::ScalarMax(m) => scalar!(ab, m, |a, b| if a > b { a } else { b }),
-                    FusedKerSpec::ScalarSub(m) => scalar!(ab, m, |a, b| a - b),
-                    FusedKerSpec::ScalarSubF(m) => scalar!(ab, m, |a, b| b - a),
-                    FusedKerSpec::LeakyRelu(m) => {
-                        scalar!(ab, m, |a, b| if b > TI::zero() { b } else { a * b })
-                    }
-                    FusedKerSpec::PerRowMul(m) => per_row!(ab, m, |a, b| a * b),
-                    FusedKerSpec::PerRowMin(m) => per_row!(ab, m, |a, b| if a < b { a } else { b }),
-                    FusedKerSpec::PerRowMax(m) => per_row!(ab, m, |a, b| if a > b { a } else { b }),
-                    FusedKerSpec::PerRowAdd(m) => per_row!(ab, m, |a, b| a + b),
-                    FusedKerSpec::PerRowSub(m) => per_row!(ab, m, |a, b| a - b),
-                    FusedKerSpec::PerRowSubF(m) => per_row!(ab, m, |a, b| b - a),
-                    FusedKerSpec::PerColMin(m) => per_col!(ab, m, |a, b| if a < b { a } else { b }),
-                    FusedKerSpec::PerColMax(m) => per_col!(ab, m, |a, b| if a > b { a } else { b }),
-                    FusedKerSpec::PerColAdd(m) => per_col!(ab, m, |a, b| a + b),
-                    FusedKerSpec::PerColMul(m) => per_col!(ab, m, |a, b| a * b),
-                    FusedKerSpec::PerColSub(m) => per_col!(ab, m, |a, b| a - b),
-                    FusedKerSpec::PerColSubF(m) => per_col!(ab, m, |a, b| b - a),
-                    FusedKerSpec::AddRowColProducts(rows, cols) => {
-                        let col = *cols;
-                        for i in 0..4 {
-                            ab[i][0] += *rows.add(i) * col;
-                        }
-                    }
-                    FusedKerSpec::AddUnicast(tile) => add_unicast::<TI, _>(
-                        &tile,
-                        &mut [
-                            std::slice::from_raw_parts_mut(ab.as_ptr().offset(0) as _, 1),
-                            std::slice::from_raw_parts_mut(ab.as_ptr().offset(1) as _, 1),
-                            std::slice::from_raw_parts_mut(ab.as_ptr().offset(2) as _, 1),
-                            std::slice::from_raw_parts_mut(ab.as_ptr().offset(3) as _, 1),
-                        ],
-                    ),
-                    FusedKerSpec::ShiftLeft(shift) => {
-                        for i in 0..4 {
-                            ab[i][0] = ab[i][0].q_shl(shift);
-                        }
-                    }
-                    FusedKerSpec::RoundingShiftRight(shift, rp) => {
-                        for i in 0..4 {
-                            ab[i][0] = ab[i][0].q_shr(shift, rp);
-                        }
-                    }
-                    FusedKerSpec::QScale(shift, rp, mult) => {
-                        for i in 0..4 {
-                            ab[i][0] = ab[i][0].q_scale(Scaler::from_fuse_params(shift, rp, mult));
-                        }
-                    }
-                    FusedKerSpec::AddMatMul { k, pa, pb, .. } => {
-                        let a = pa as *const TA;
-                        let b = pb as *const TB;
-                        for i in 0..k {
-                            let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
-                            let b = *b.add(i);
-                            ab[0][0] += a[0].as_() * b.as_();
-                            ab[1][0] += a[1].as_() * b.as_();
-                            ab[2][0] += a[2].as_() * b.as_();
-                            ab[3][0] += a[3].as_() * b.as_();
-                        }
-                    }
-                    FusedKerSpec::Store(tile) => store(
-                        &tile,
-                        &[
-                            std::slice::from_raw_parts(ab.as_ptr().offset(0) as _, 1),
-                            std::slice::from_raw_parts(ab.as_ptr().offset(1) as _, 1),
-                            std::slice::from_raw_parts(ab.as_ptr().offset(2) as _, 1),
-                            std::slice::from_raw_parts(ab.as_ptr().offset(3) as _, 1),
-                        ],
-                    ),
-                }
-                pnl = pnl.add(1);
-            }
-        }
-        0
-    }
-}
-
-#[cfg(test)]
-#[derive(Copy, Clone, Debug, Default)]
-pub struct GenericMmmTest3x2<TA, TB, TI>(PhantomData<(TA, TB, TI)>)
-where
-    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound;
-
-#[cfg(test)]
-unsafe impl<TA, TB, TI> Send for GenericMmmTest3x2<TA, TB, TI>
-where
-    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound,
-{
-}
-
-#[cfg(test)]
-unsafe impl<TA, TB, TI> Sync for GenericMmmTest3x2<TA, TB, TI>
-where
-    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound,
-{
-}
-
-#[cfg(test)]
-impl<TA, TB, TI> GenericMmmTest3x2<TA, TB, TI>
-where
-    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound,
-    usize: AsPrimitive<TI>,
-{
-    pub fn mmm(&self) -> Box<dyn MatMatMul> {
-        Box::<Self>::default()
-    }
-}
-
-#[cfg(test)]
-impl<TA, TB, TI> MatMatMulKer for GenericMmmTest3x2<TA, TB, TI>
-where
-    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound,
-    usize: AsPrimitive<TI>,
-{
-    type Acc = TI;
-
-    #[inline(always)]
-    fn name(&self) -> &'static str {
-        match TI::datum_type() {
-            DatumType::F16 => "generic_f16_3x2",
-            DatumType::F32 => "generic_f32_3x2",
-            DatumType::I32 => "generic_i32_3x2",
-            DatumType::F64 => "generic_f64_3x2",
-            _ => panic!(),
-        }
-    }
-    #[inline(always)]
-    fn mr(&self) -> usize {
-        3
-    }
-    #[inline(always)]
-    fn nr(&self) -> usize {
-        2
-    }
-    fn end_padding_packed_a(&self) -> usize {
-        0
-    }
-    fn end_padding_packed_b(&self) -> usize {
-        0
-    }
-    #[inline(always)]
-    fn alignment_bytes_packed_a(&self) -> usize {
-        std::mem::size_of::<TA>()
-    }
-    #[inline(always)]
-    fn alignment_bytes_packed_b(&self) -> usize {
-        std::mem::size_of::<TB>()
-    }
-    #[inline(never)]
-    fn kernel(&self, spec: &[FusedKerSpec<TI>]) -> isize {
-        unsafe {
-            let mut ab = [[TI::zero(); 2]; 3];
-            let mut pnl = spec.as_ptr();
-            loop {
-                if pnl.is_null() {
-                    break;
-                }
-                match *pnl {
-                    FusedKerSpec::Done => break,
-                    FusedKerSpec::Clear => ab = std::mem::zeroed(),
-                    FusedKerSpec::ScalarAdd(a) => scalar!(ab, a, |a, b| a + b),
-                    FusedKerSpec::ScalarMul(a) => scalar!(ab, a, |a, b| a * b),
-                    FusedKerSpec::ScalarMin(m) => scalar!(ab, m, |a, b| if a < b { a } else { b }),
-                    FusedKerSpec::ScalarMax(m) => scalar!(ab, m, |a, b| if a > b { a } else { b }),
-                    FusedKerSpec::ScalarSub(m) => scalar!(ab, m, |a, b| a - b),
-                    FusedKerSpec::ScalarSubF(m) => scalar!(ab, m, |a, b| b - a),
-                    FusedKerSpec::LeakyRelu(m) => {
-                        scalar!(ab, m, |a, b| if b > TI::zero() { b } else { a * b })
-                    }
-                    FusedKerSpec::PerRowMin(m) => per_row!(ab, m, |a, b| if a < b { a } else { b }),
-                    FusedKerSpec::PerRowMax(m) => per_row!(ab, m, |a, b| if a > b { a } else { b }),
-                    FusedKerSpec::PerRowAdd(m) => per_row!(ab, m, |a, b| a + b),
-                    FusedKerSpec::PerRowMul(m) => per_row!(ab, m, |a, b| a * b),
-                    FusedKerSpec::PerRowSub(m) => per_row!(ab, m, |a, b| a - b),
-                    FusedKerSpec::PerRowSubF(m) => per_row!(ab, m, |a, b| b - a),
-                    FusedKerSpec::PerColMin(m) => per_col!(ab, m, |a, b| if a < b { a } else { b }),
-                    FusedKerSpec::PerColMax(m) => per_col!(ab, m, |a, b| if a > b { a } else { b }),
-                    FusedKerSpec::PerColAdd(m) => per_col!(ab, m, |a, b| a + b),
-                    FusedKerSpec::PerColMul(m) => per_col!(ab, m, |a, b| a * b),
-                    FusedKerSpec::PerColSub(m) => per_col!(ab, m, |a, b| a - b),
-                    FusedKerSpec::PerColSubF(m) => per_col!(ab, m, |a, b| b - a),
-                    FusedKerSpec::AddRowColProducts(rows, cols) => {
-                        for i in 0..3 {
-                            for j in 0..2 {
-                                ab[i][j] += *rows.add(i) * *cols.add(j);
-                            }
-                        }
-                    }
-                    FusedKerSpec::AddUnicast(tile) => add_unicast::<TI, _>(&tile, &mut ab),
-                    FusedKerSpec::ShiftLeft(shift) => {
-                        for i in 0..3 {
-                            for j in 0..2 {
-                                ab[i][j] = ab[i][j].q_shl(shift);
-                            }
-                        }
-                    }
-                    FusedKerSpec::RoundingShiftRight(shift, rp) => {
-                        for i in 0..3 {
-                            for j in 0..2 {
-                                ab[i][j] = ab[i][j].q_shr(shift, rp)
-                            }
-                        }
-                    }
-                    FusedKerSpec::QScale(shift, rp, mult) => {
-                        for i in 0..3 {
-                            for j in 0..2 {
-                                ab[i][j] =
-                                    ab[i][j].q_scale(Scaler::from_fuse_params(shift, rp, mult));
-                            }
-                        }
-                    }
-                    FusedKerSpec::AddMatMul { k, pa, pb, .. } => {
-                        let a = pa as *const TA;
-                        let b = pb as *const TB;
-                        for i in 0..k {
-                            let a = std::slice::from_raw_parts(a.offset(3 * i as isize), 3);
-                            let b = std::slice::from_raw_parts(b.offset(2 * i as isize), 2);
-                            ab[0][0] += a[0].as_() * b[0].as_();
-                            ab[0][1] += a[0].as_() * b[1].as_();
-                            ab[1][0] += a[1].as_() * b[0].as_();
-                            ab[1][1] += a[1].as_() * b[1].as_();
-                            ab[2][0] += a[2].as_() * b[0].as_();
-                            ab[2][1] += a[2].as_() * b[1].as_();
-                        }
-                    }
-                    FusedKerSpec::Store(tile) => store(&tile, &ab),
-                }
                 pnl = pnl.add(1);
             }
         }
@@ -606,43 +256,43 @@ where
 }
 
 #[allow(non_upper_case_globals)]
-pub const generic_f16_4x4: GenericMmm4x4<f16, f16, f16> = GenericMmm4x4(PhantomData);
+pub const generic_f16_4x4: GenericMmm<4, 4, f16, f16, f16> = GenericMmm(PhantomData);
 test_mmm_kernel_f16!(generic_f16_4x4, true);
 
 #[allow(non_upper_case_globals)]
-pub const generic_f16_4x1: GenericMmm4x1<f16, f16, f16> = GenericMmm4x1(PhantomData);
+pub const generic_f16_4x1: GenericMmm<4, 1, f16, f16, f16> = GenericMmm(PhantomData);
 test_mmm_kernel_f16!(generic_f16_4x1, true);
 
 #[allow(non_upper_case_globals)]
-pub const generic_f32_4x4: GenericMmm4x4<f32, f32, f32> = GenericMmm4x4(PhantomData);
+pub const generic_f32_4x4: GenericMmm<4, 4, f32, f32, f32> = GenericMmm(PhantomData);
 test_mmm_kernel_f32!(generic_f32_4x4, true);
 
 #[allow(non_upper_case_globals)]
-pub const generic_f64_4x4: GenericMmm4x4<f64, f64, f64> = GenericMmm4x4(PhantomData);
+pub const generic_f64_4x4: GenericMmm<4, 4, f64, f64, f64> = GenericMmm(PhantomData);
 test_mmm_kernel_f64!(generic_f64_4x4, true);
 
 #[allow(non_upper_case_globals)]
-pub const generic_i32_4x4: GenericMmm4x4<i8, i8, i32> = GenericMmm4x4(PhantomData);
+pub const generic_i32_4x4: GenericMmm<4, 4, i8, i8, i32> = GenericMmm(PhantomData);
 test_mmm_kernel_i32!(generic_i32_4x4, true);
 
 #[allow(non_upper_case_globals)]
-pub const generic_f32_4x1: GenericMmm4x1<f32, f32, f32> = GenericMmm4x1(PhantomData);
+pub const generic_f32_4x1: GenericMmm<4, 1, f32, f32, f32> = GenericMmm(PhantomData);
 test_mmm_kernel_f32!(generic_f32_4x1, true);
 
 #[allow(non_upper_case_globals)]
-pub const generic_f64_4x1: GenericMmm4x1<f64, f64, f64> = GenericMmm4x1(PhantomData);
+pub const generic_f64_4x1: GenericMmm<4, 1, f64, f64, f64> = GenericMmm(PhantomData);
 test_mmm_kernel_f64!(generic_f64_4x1, true);
 
 #[allow(non_upper_case_globals)]
-pub const generic_i32_4x1: GenericMmm4x1<i8, i8, i32> = GenericMmm4x1(PhantomData);
+pub const generic_i32_4x1: GenericMmm<4, 1, i8, i8, i32> = GenericMmm(PhantomData);
 test_mmm_kernel_i32!(generic_i32_4x1, true);
 
 #[cfg(test)]
 #[allow(non_upper_case_globals)]
-const generic_f32_3x2: GenericMmmTest3x2<f32, f32, f32> = GenericMmmTest3x2(PhantomData);
+const generic_f32_3x2: GenericMmm<3, 2, f32, f32, f32> = GenericMmm(PhantomData);
 test_mmm_kernel_f32!(generic_f32_3x2, true);
 
 #[cfg(test)]
 #[allow(non_upper_case_globals)]
-const generic_i32_3x2: GenericMmmTest3x2<i8, i8, i32> = GenericMmmTest3x2(PhantomData);
+const generic_i32_3x2: GenericMmm<3, 2, i8, i8, i32> = GenericMmm(PhantomData);
 test_mmm_kernel_i32!(generic_i32_3x2, true);

@@ -47,8 +47,8 @@ macro_rules! MMMKernel {
                 impl $crate::frame::mmm::MatMatMulKer for Type {
                     type Acc = $ti;
                     #[inline(always)]
-                    fn name(&self) -> &'static str {
-                        stringify!($func)
+                    fn name(&self) -> std::borrow::Cow<'static, str> {
+                        std::borrow::Cow::Borrowed(stringify!($func))
                     }
                     #[inline(always)]
                     fn mr(&self) -> usize {
