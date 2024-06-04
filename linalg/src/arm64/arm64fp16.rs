@@ -3,10 +3,12 @@ use tract_data::half::f16;
 mod by_scalar;
 mod leaky_relu;
 mod max;
+mod mul;
 mod sum;
 pub use by_scalar::*;
 pub use leaky_relu::*;
 pub use max::*;
+pub use mul::*;
 pub use sum::*;
 
 use crate::mmm::no_prefetch;
