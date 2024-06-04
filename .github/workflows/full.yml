@@ -38,19 +38,35 @@ jobs:
           ~/.rustup
           ~/.cargo/registry
           ~/.cargo/git
-          #~/.cache/sccache
           target
           .cached
         key: ${{ runner.os }}-full-regular-${{steps.date.outputs.date}}-e
 
-          #    - name: "Setup sccache"
-          #      run: .travis/setup-sccache.sh
-
     - name: Full test
       run: .travis/regular-tests.sh
 
-        # - name: Stop sccache server
-        #   run: sccache --stop-server || true
+  check-all-targets:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Get current date
+      id: date
+      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+    - uses: actions/cache@v3
+      with:
+        path: |
+          ~/.rustup
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+          .cached
+        key: ${{ runner.os }}-all-targets-${{steps.date.outputs.date}}-e
+    - name: Check all targets
+      run: |
+        ./.travis/ci-system-setup.sh
+        cargo check --all-targets
 
   cli-tests:
     runs-on: ubuntu-latest
@@ -67,20 +83,13 @@ jobs:
           ~/.rustup
           ~/.cargo/registry
           ~/.cargo/git
-          #      ~/.cache/sccache
           target
           .cached
         key: ${{ runner.os }}-full-regular-${{steps.date.outputs.date}}-e
-
-          #    - name: "Setup sccache"
-          #      run: .travis/setup-sccache.sh
     - name: Full test 
       env:
         AWS_EC2_METADATA_DISABLED: true
       run: .travis/cli-tests.sh
-
-        #    - name: Stop sccache server
-        #      run: sccache --stop-server || true
 
   examples:
     runs-on: ubuntu-latest
@@ -139,7 +148,6 @@ jobs:
           ~/.rustup
           ~/.cargo/registry
           ~/.cargo/git
-          #      ~/.cache/sccache
           target
           .cached
         key: ${{ runner.os }}-full-onnx-${{matrix.opset}}-${{steps.date.outputs.date}}-e
@@ -147,9 +155,6 @@ jobs:
           #      run: .travis/setup-sccache.sh
     - name: Full test
       run: .travis/onnx-tests.sh ${{ matrix.opset }}
-
-        #     - name: Stop sccache server
-        #       run: sccache --stop-server || true
 
   tflite:
     runs-on: ubuntu-latest
