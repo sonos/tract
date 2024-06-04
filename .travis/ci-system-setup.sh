@@ -15,7 +15,7 @@ then
         sysctl -n machdep.cpu.brand_string
         brew install coreutils python3 numpy python-setuptools
         PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"
-        PYTHON_BIN_PATH=python3
+        export PYTHON_BIN_PATH=python3
     else
         sudo apt-get install -y llvm python3 python3-numpy
     fi
