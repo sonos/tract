@@ -3,6 +3,8 @@ pub mod block_quant;
 #[macro_use]
 pub mod element_wise;
 #[macro_use]
+pub mod binary;
+#[macro_use]
 pub mod by_scalar;
 #[macro_use]
 pub mod lut;

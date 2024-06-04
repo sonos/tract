@@ -25,13 +25,13 @@ pub mod test {
                     $crate::frame::reduce::sum::test::test_sum::<$ker, $t>(&[]).unwrap()
                 }
             }
-            
+
             #[test]
             fn simple() {
                 if $cond {
                     $crate::frame::reduce::sum::test::test_sum::<$ker, $t>(&[1.0, 2.0]).unwrap()
                 }
-            } 
+            }
             #[test]
             fn multiple_tile() {
                 if $cond {
@@ -48,10 +48,6 @@ pub mod test {
     {
         crate::setup_test_logger();
         let values: Vec<T> = values.iter().copied().map(|x| x.as_()).collect();
-        crate::frame::reduce::test::test_reduce::<K, _>(
-            &values,
-            <T as Zero>::zero(),
-            |a, b| a + b,
-        )
+        crate::frame::reduce::test::test_reduce::<K, _>(&values, <T as Zero>::zero(), |a, b| a + b)
     }
 }
