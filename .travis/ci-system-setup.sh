@@ -1,6 +1,8 @@
 #!/bin/sh
 
-if [ -n "$CI" -a -e ".setup-done" ]
+set -ex
+
+if [ -n "$CI" -a ! -e ".setup-done" ]
 then
     which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
     PATH=$PATH:$HOME/.cargo/bin
