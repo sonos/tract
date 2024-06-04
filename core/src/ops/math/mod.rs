@@ -55,6 +55,11 @@ bin_to_super_type!(mul, Mul,
                    declutter: declutter_mul,
                    eval_in_a: |a: &mut Tensor, b: &Tensor| -> TractResult<bool>{
                         let b_shape = b.shape();
+                        let leading_unary_dims: Vec<usize> = b_shape.iter()
+                            .enumerate()
+                            .take_while(|&(_, &dim)| dim == 1)
+                            .map(|(i, _)| i)
+                            .collect();
                         let trailing_unary_dims: Vec<usize> = b_shape.iter()
                             .enumerate()
                             .rev()
@@ -63,7 +68,8 @@ bin_to_super_type!(mul, Mul,
                             .collect();
 
                         let uniform_in_place_should_be_efficient = trailing_unary_dims.iter().fold(1, |num_elements, it| num_elements * a.shape()[*it]) > 32;
-
+                        let unicast_in_place_should_be_efficient = leading_unary_dims.iter().fold(1, |num_elements, it| num_elements * a.shape()[*it]) > 32;
+                        // Better to try uniform in place first (should be more efficient)
                         if uniform_in_place_should_be_efficient {
                             if b.datum_type() == f32::datum_type() {
                                 let mut view = a.to_array_view_mut::<f32>()?;
@@ -100,6 +106,51 @@ bin_to_super_type!(mul, Mul,
                             } else {
                                 return Ok(false)
                             }
+                        } else if unicast_in_place_should_be_efficient {
+                            if b.datum_type() == f32::datum_type() {
+                                let mut a_view = a.to_array_view_mut::<f32>()?;
+                                let b_view = b.to_array_view::<f32>()?;
+                                let mut iterating_shape = a_view.shape().to_vec();
+                                iterating_shape.iter_mut().enumerate().for_each(|(idx, dim)| if !leading_unary_dims.contains(&idx) {*dim =1} );
+                                for it_coords in tract_ndarray::indices(iterating_shape) {
+                                    let mut a_view = a_view.view_mut();
+                                    for idx in 0..a_view.shape().len() {
+                                        if leading_unary_dims.contains(&idx) {
+                                            a_view.collapse_axis(Axis(idx), it_coords[idx]);
+                                        }
+                                    }
+
+                                    if let Some((a_slice, b_slice)) = a_view.as_slice_mut().zip(b_view.as_slice()) {
+                                        (tract_linalg::ops().binary_mul_f32)().run(a_slice, b_slice)?;
+                                    } else {
+                                        return Ok(false)
+                                    }
+                                }
+                                Ok(true)
+                            } else if b.datum_type() == f16::datum_type() {
+                                let mut a_view = a.to_array_view_mut::<f16>()?;
+                                let b_view = b.to_array_view::<f16>()?;
+                                let mut iterating_shape = a_view.shape().to_vec();
+                                iterating_shape.iter_mut().enumerate().for_each(|(idx, dim)| if !leading_unary_dims.contains(&idx) {*dim =1} );
+                                for it_coords in tract_ndarray::indices(iterating_shape) {
+                                    let mut a_view = a_view.view_mut();
+                                    for idx in 0..a_view.shape().len() {
+                                        if leading_unary_dims.contains(&idx) {
+                                            a_view.collapse_axis(Axis(idx), it_coords[idx]);
+                                        }
+                                    }
+
+                                    if let Some((a_slice, b_slice)) = a_view.as_slice_mut().zip(b_view.as_slice()) {
+                                        (tract_linalg::ops().binary_mul_f16)().run(a_slice, b_slice)?;
+                                    } else {
+                                        return Ok(false)
+                                    }
+                                }
+                                Ok(true)
+                            } else {
+                                return Ok(false)
+                            }
+
                         } else {
                             Ok(false)
                         }
@@ -137,6 +188,21 @@ bin_to_super_type!(mul, Mul,
                             let a = a.to_scalar::<f16>()?;
                             let slice = b.as_slice_mut::<f16>()?;
                             (tract_linalg::ops().mul_by_scalar_f16)().run_with_params(slice, *a)?;
+                            return Ok(true)
+                        } else {
+                            return Ok(false)
+                        }
+                   },
+                   unicast_in_place: |a: &Tensor, b: &mut Tensor| -> TractResult<bool> {
+                        if b.datum_type() == f32::datum_type() {
+                            let a = a.as_slice::<f32>()?;
+                            let slice = b.as_slice_mut::<f32>()?;
+                            (tract_linalg::ops().binary_mul_f32)().run(slice, a)?;
+                            return Ok(true)
+                        } else if b.datum_type() == f16::datum_type() {
+                            let a = a.as_slice::<f16>()?;
+                            let slice = b.as_slice_mut::<f16>()?;
+                            (tract_linalg::ops().binary_mul_f16)().run(slice, a)?;
                             return Ok(true)
                         } else {
                             return Ok(false)
