@@ -399,7 +399,7 @@ macro_rules! bin_to_super_type {
             }
 
             fn eval_unicast_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
-                $(if $unicast_in_place(c, a, b)? { return Ok(()) } )?
+                $(if $unicast_in_place(a, b)? { return Ok(()) } )?
                 $(
                     $(if a.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;

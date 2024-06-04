@@ -77,6 +77,9 @@ where
     fn alignment_items() -> usize;
     fn nr() -> usize;
     fn run(a: &mut [T], b: &[T]);
+    fn bin() -> Box<dyn Binary<T>> {
+        Box::new(BinaryImpl::<Self, T>::new())
+    }
 }
 
 std::thread_local! {
