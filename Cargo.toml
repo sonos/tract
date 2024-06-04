@@ -70,7 +70,6 @@ bytes = "1.0.1"
 cblas = "0.4"
 cc = "1.0.69"
 clap = { version = "~3.1", features = [ "cargo" ] }
-const_format = "0.2"
 colorous = "1.0.5"
 criterion = "0.4"
 derive-new = "0.5.9"
