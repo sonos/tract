@@ -201,17 +201,11 @@ where
                         }
                     }
                     FusedKerSpec::AddMatMul { k, pa, pb, .. } => {
-                        let packing = 0;
-                        if packing == 0 {
+                        // FIXME type
+                        if TI::datum_type().is_float() {
                             add_mat_mul::<MR, NR, TI, TI, TI>(pa, pb, k, &mut ab);
-                        } else if TI::datum_type() == i32::datum_type() && packing == 1 {
-                            add_mat_mul::<MR, NR, i32, i8, i8>(pa, pb, k, std::mem::transmute(&mut ab))
                         } else {
-                            panic!(
-                                "Unsupported combination packing={} TI={:?}",
-                                packing,
-                                TI::datum_type()
-                            );
+                            add_mat_mul::<MR, NR, i32, i8, i8>(pa, pb, k, std::mem::transmute(&mut ab))
                         }
                         /*
                          */
