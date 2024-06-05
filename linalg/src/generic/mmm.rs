@@ -71,7 +71,7 @@ where
     usize: AsPrimitive<TI>,
 {
     pub fn mmm(&self) -> Box<dyn MatMatMul> {
-        Box::new(self.clone())
+        Box::new(*self)
     }
 }
 
