@@ -740,7 +740,7 @@ impl TypedOp for AxisOp {
                 )?));
             }
         }
-        return Ok(None);
+        Ok(None)
     }
 }
 
