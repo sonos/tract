@@ -56,31 +56,6 @@ impl TypedOp for MatMatMulPack {
         AxesMapping::new(1, 1, axes)
     }
 
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        if let Some(prec) = model.single_prec(node.id)? {
-            if let Some(into_shape) = prec.op_as::<IntoShape>() {
-                let (inputs, outputs) = model.node_facts(prec.id)?;
-                let axes_mapping = into_shape.axes_mapping(&inputs, &outputs)?;
-                eprintln!("{into_shape:?} -> {axes_mapping}");
-                if let (Some(k_axis), Some(mn_axis)) = (
-                    axes_mapping.track_axis((InOut::Out(0), self.k_axis), InOut::In(0))?,
-                    axes_mapping.track_axis((InOut::Out(0), self.mn_axis), InOut::In(0))?,
-                ) {
-                    return dbg!(TypedModelPatch::fuse_with_next(
-                        model,
-                        prec,
-                        Self { k_axis, mn_axis, ..self.clone() },
-                    ).map(Some));
-                }
-            }
-        }
-        return Ok(None);
-    }
-
     as_op!();
 }
 
