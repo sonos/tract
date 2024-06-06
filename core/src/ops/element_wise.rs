@@ -137,6 +137,16 @@ impl TypedOp for ElementWiseOp {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(prec) = model.single_prec(node.id)? {
+            if prec.op_is::<AxisOp>() || prec.op_is::<IntoShape>()  {
+                let mut patch = TypedModelPatch::default();
+                let mut wire = tvec!(patch.tap_model(model, prec.inputs[0])?);
+                wire = patch.wire_node(&node.name, &node.op, &wire)?;
+                wire = patch.wire_node(&prec.name, &prec.op, &wire)?;
+                patch.shunt_outside(model, node.id.into(), wire[0])?;
+                return Ok(Some(patch))
+            }
+        }
         self.0.declutter(model, node)
     }
 
