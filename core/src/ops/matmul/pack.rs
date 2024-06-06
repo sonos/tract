@@ -64,7 +64,8 @@ impl TypedOp for MatMatMulPack {
         if let Some(prec) = model.single_prec(node.id)? {
             if let Some(into_shape) = prec.op_as::<IntoShape>() {
                 let (inputs, outputs) = model.node_facts(prec.id)?;
-                let axes_mapping = into_shape.origin.simplify().axes_mapping(&inputs, &outputs)?;
+                let axes_mapping = into_shape.axes_mapping(&inputs, &outputs)?;
+                eprintln!("{into_shape:?} -> {axes_mapping}");
                 if let (Some(k_axis), Some(mn_axis)) = (
                     axes_mapping.track_axis((InOut::Out(0), self.k_axis), InOut::In(0))?,
                     axes_mapping.track_axis((InOut::Out(0), self.mn_axis), InOut::In(0))?,

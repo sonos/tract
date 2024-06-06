@@ -36,8 +36,8 @@ pub enum AxisOp {
 impl Debug for AxisOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AxisOp::Add(a) => write!(f, "Add({a}"),
-            AxisOp::Rm(a) => write!(f, "Rm({a}"),
+            AxisOp::Add(a) => write!(f, "Add({a})"),
+            AxisOp::Rm(a) => write!(f, "Rm({a})"),
             AxisOp::Move(from, to) => write!(f, "Move({from},{to})"),
             AxisOp::Reshape(at, from, to) => {
                 write!(f, "Reshape({at}, [{}], [{}])", from.iter().join(","), to.iter().join(","))
@@ -70,6 +70,18 @@ impl AxisOp {
     pub fn canonical(&self) -> Cow<AxisOp> {
         match self {
             Move(from, to) if *from == to + 1 => Cow::Owned(Move(*to, *from)),
+            Reshape(at, from, to) if from.len() == 1 && to.len() == 2 && from[0] == to[0] => {
+                Cow::Owned(Add(*at + 1))
+            }
+            Reshape(at, from, to) if from.len() == 1 && to.len() == 2 && from[0] == to[1] => {
+                Cow::Owned(Add(*at))
+            }
+            Reshape(at, from, to) if from.len() == 2 && to.len() == 1 && from[0] == to[0] => {
+                Cow::Owned(Rm(*at + 1))
+            }
+            Reshape(at, from, to) if from.len() == 2 && to.len() == 1 && from[1] == to[0] => {
+                Cow::Owned(Rm(*at))
+            }
             other => Cow::Borrowed(other),
         }
     }
@@ -900,6 +912,10 @@ impl Op for IntoShape {
         "IntoShape".into()
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec!(format!("{:?}", self.origin)))
+    }
+
     op_as_typed_op!();
     impl_op_same_as!();
 }
@@ -927,9 +943,14 @@ impl TypedOp for IntoShape {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        let canon = self.origin.canonical();
+        if *canon != self.origin {
+            let op = Self { origin: canon.into_owned(), ..self.clone() };
+            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, op)?));
+        }
         if let Some(succ) = model.single_succ(node.id)? {
             if succ.op_is::<IntoShape>() {
-                return Ok(Some(TypedModelPatch::fuse_with_next(model, node, succ.op.clone())?))
+                return Ok(Some(TypedModelPatch::fuse_with_next(model, node, succ.op.clone())?));
             }
         }
         Ok(None)
