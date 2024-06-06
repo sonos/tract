@@ -724,8 +724,10 @@ impl TypedOp for AxisOp {
     ) -> TractResult<Option<TypedModelPatch>> {
         if let Some(shape) = node.outputs[0].fact.shape.as_concrete() {
             if !matches!(self, AxisOp::Move(_, _)) {
+                let (inputs, outputs) = model.node_facts(node.id)?;
+                let mapping = self.axes_mapping(&inputs, &outputs)?;
                 let op = IntoShape {
-                    origin: self.clone(),
+                    mapping,
                     len: shape.iter().product(),
                     strides: Tensor::natural_strides(shape),
                     dims: shape.into(),
@@ -901,7 +903,7 @@ pub fn to_axis_ops_with_tf_rules(
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct IntoShape {
-    pub(crate) origin: AxisOp,
+    pub(crate) mapping: AxesMapping,
     pub(crate) len: usize,
     pub(crate) dims: TVec<usize>,
     pub(crate) strides: TVec<isize>,
@@ -913,7 +915,7 @@ impl Op for IntoShape {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(format!("{:?}", self.origin)))
+        Ok(vec![format!("{}", self.mapping)])
     }
 
     op_as_typed_op!();
@@ -943,14 +945,13 @@ impl TypedOp for IntoShape {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let canon = self.origin.canonical();
-        if *canon != self.origin {
-            let op = Self { origin: canon.into_owned(), ..self.clone() };
-            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, op)?));
-        }
         if let Some(succ) = model.single_succ(node.id)? {
-            if succ.op_is::<IntoShape>() {
-                return Ok(Some(TypedModelPatch::fuse_with_next(model, node, succ.op.clone())?));
+            if let Some(into_shape) = succ.op_as::<IntoShape>() {
+                let op = Self {
+                    mapping: self.mapping.compose(&into_shape.mapping)?,
+                    ..into_shape.clone()
+                };
+                return Ok(Some(TypedModelPatch::fuse_with_next(model, node, op)?));
             }
         }
         Ok(None)

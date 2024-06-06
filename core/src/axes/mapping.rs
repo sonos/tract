@@ -379,7 +379,7 @@ impl AxesMapping {
         }
         AxesMapping::new(self.input_count, self.output_count, axes)
     }
-    
+
     pub fn remove_slot(&self, slot: InOut) -> TractResult<AxesMapping> {
         let mut axes = self.clone();
         while axes.rank(slot) > 0 {
@@ -622,6 +622,23 @@ impl AxesMapping {
             op.change_view_mut(view)?;
         }
         Ok(())
+    }
+
+    pub fn compose(&self, other: &AxesMapping) -> TractResult<AxesMapping> {
+        ensure!(self.input_count() == 1 && self.output_count() == 1);
+        ensure!(other.input_count() == 1 && other.output_count() == 1);
+        let mut result = AxesMapping::disconnected_for_ranks(
+            &[self.rank(InOut::In(0))],
+            &[self.rank(InOut::Out(0))],
+        )?;
+        for ix in 0..result.rank(InOut::In(0)) {
+            let Some(inter) = self.track_axis((InOut::In(0), ix), InOut::Out(0))? else { continue };
+            let Some(out) = other.track_axis((InOut::In(0), inter), InOut::Out(0))? else {
+                continue;
+            };
+            result = result.linking((InOut::Out(0), out), (InOut::In(0), ix))?;
+        }
+        Ok(result)
     }
 }
 
