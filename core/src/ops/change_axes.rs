@@ -704,6 +704,30 @@ impl TypedOp for AxisOp {
         };
         target.wire_node(&node.name, op, &[mapping[&node.inputs[0]]])
     }
+
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(shape) = node.outputs[0].fact.shape.as_concrete() {
+            if !matches!(self, AxisOp::Move(_, _)) {
+                let op = IntoShape {
+                    origin: self.clone(),
+                    len: shape.iter().product(),
+                    strides: Tensor::natural_strides(shape),
+                    dims: shape.into(),
+                };
+                return Ok(Some(TypedModelPatch::replace_single_op(
+                    model,
+                    node,
+                    &node.inputs,
+                    op,
+                )?));
+            }
+        }
+        return Ok(None);
+    }
 }
 
 // a, b, c is a <- b, b <- c, c <- a
@@ -861,6 +885,56 @@ pub fn to_axis_ops_with_tf_rules(
             stack.push(AxisOp::Rm(current_input.len() - 1));
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct IntoShape {
+    origin: AxisOp,
+    len: usize,
+    dims: TVec<usize>,
+    strides: TVec<isize>,
+}
+
+impl Op for IntoShape {
+    fn name(&self) -> Cow<str> {
+        "IntoShape".into()
+    }
+
+    op_as_typed_op!();
+}
+
+impl EvalOp for IntoShape {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let mut input = args_1!(inputs).into_tensor();
+        ensure!(input.len() == self.len);
+        unsafe { input.set_geometry_unchecked(&self.dims, &self.strides) };
+        Ok(tvec!(input.into_tvalue()))
+    }
+}
+
+impl TypedOp for IntoShape {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(inputs[0].datum_type.fact(&self.dims)))
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(succ) = model.single_succ(node.id)? {
+            if succ.op_is::<IntoShape>() {
+                return Ok(Some(TypedModelPatch::fuse_with_next(model, node, succ.op.clone())?))
+            }
+        }
+        Ok(None)
+    }
+
+    as_op!();
 }
 
 #[cfg(test)]
