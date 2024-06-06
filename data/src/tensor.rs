@@ -445,6 +445,14 @@ impl Tensor {
         }
     }
 
+    /// Force the tensor shape and strides, no consistency check.
+    pub unsafe fn set_geometry_unchecked(&mut self, shape: &[usize], strides: &[isize]) {
+        self.shape.clear();
+        self.shape.extend_from_slice(shape);
+        self.strides.clear();
+        self.strides.extend_from_slice(strides);
+    }
+
     /// Force the tensor shape.
     pub fn set_shape(&mut self, shape: &[usize]) -> TractResult<()> {
         if self.len() != shape.iter().product::<usize>() {
@@ -1488,6 +1496,12 @@ impl Tensor {
             }
             Ok(t)
         }
+    }
+
+    pub fn natural_strides(shape: &[usize]) -> TVec<isize> {
+        let mut strides = tvec!();
+        compute_natural_stride_to(&mut strides, shape);
+        strides
     }
 }
 
