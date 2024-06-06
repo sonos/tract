@@ -629,7 +629,7 @@ impl AxesMapping {
         ensure!(other.input_count() == 1 && other.output_count() == 1);
         let mut result = AxesMapping::disconnected_for_ranks(
             &[self.rank(InOut::In(0))],
-            &[self.rank(InOut::Out(0))],
+            &[other.rank(InOut::Out(0))],
         )?;
         for ix in 0..result.rank(InOut::In(0)) {
             let Some(inter) = self.track_axis((InOut::In(0), ix), InOut::Out(0))? else { continue };
