@@ -16,11 +16,12 @@ impl Op for MatMatMulPack {
         "MatMatMulPack".into()
     }
 
-    fn same_as(&self, other: &dyn Op) -> bool {
-        other.downcast_ref::<Self>().map(|other| other == self).unwrap_or(false)
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("{:?}. k axis: {}, mn axis: {}", self.packer, self.k_axis, self.mn_axis)])
     }
 
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for MatMatMulPack {
@@ -53,6 +54,30 @@ impl TypedOp for MatMatMulPack {
         axes.push(Axis::new('M', 1, 1).input(0, self.mn_axis));
         axes.push(Axis::new('P', 1, 1).output(0, outputs[0].rank()));
         AxesMapping::new(1, 1, axes)
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(prec) = model.single_prec(node.id)? {
+            if let Some(into_shape) = prec.op_as::<IntoShape>() {
+                let (inputs, outputs) = model.node_facts(prec.id)?;
+                let axes_mapping = into_shape.origin.simplify().axes_mapping(&inputs, &outputs)?;
+                if let (Some(k_axis), Some(mn_axis)) = (
+                    axes_mapping.track_axis((InOut::Out(0), self.k_axis), InOut::In(0))?,
+                    axes_mapping.track_axis((InOut::Out(0), self.mn_axis), InOut::In(0))?,
+                ) {
+                    return dbg!(TypedModelPatch::fuse_with_next(
+                        model,
+                        prec,
+                        Self { k_axis, mn_axis, ..self.clone() },
+                    ).map(Some));
+                }
+            }
+        }
+        return Ok(None);
     }
 
     as_op!();

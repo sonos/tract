@@ -889,10 +889,10 @@ pub fn to_axis_ops_with_tf_rules(
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct IntoShape {
-    origin: AxisOp,
-    len: usize,
-    dims: TVec<usize>,
-    strides: TVec<isize>,
+    pub(crate) origin: AxisOp,
+    pub(crate) len: usize,
+    pub(crate) dims: TVec<usize>,
+    pub(crate) strides: TVec<isize>,
 }
 
 impl Op for IntoShape {
