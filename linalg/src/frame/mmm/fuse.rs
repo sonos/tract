@@ -164,12 +164,12 @@ pub mod test {
                     }
                 }
                 proptest::proptest! {
-                #[test]
-                fn return_c_prop(c in tile::<_, $tc, $ti>($ker)) {
-                if $cond {
-                test::return_c::<_, $tc, $ti>($ker, &c)
-                }
-                }
+                    #[test]
+                    fn return_c_prop(c in tile::<_, $tc, $ti>($ker)) {
+                        if $cond {
+                            test::return_c::<_, $tc, $ti>($ker, &c)
+                        }
+                    }
                 }
 
                 fn fmin<T: PartialOrd>(a: T, b: T) -> T {
@@ -375,6 +375,7 @@ pub mod test {
         let err = ker.kernel(&non_linear);
         assert_eq!(err, 0);
         let expected = vec![TC::zero(); v.len()];
+        display_error(&v, &expected, ker.mr(), ker.nr());
         assert_eq!(v, expected);
     }
 
@@ -406,7 +407,7 @@ pub mod test {
     pub fn fused_ops<K, TC, TI, E>(ker: K, c: &[TC], ops: &[FusedKerSpec<TI>], expect: E)
     where
         K: MatMatMulKer<Acc = TI>,
-        TC: Datum + AsPrimitive<TI>,
+        TC: LADatum + AsPrimitive<TI>,
         TI: LADatum + AsPrimitive<TC>,
         E: Fn(usize, usize, TI) -> TI,
     {
@@ -423,23 +424,7 @@ pub mod test {
             .collect::<Vec<TC>>();
         let err = ker.kernel(&ops);
         assert_eq!(err, 0);
-        if v != expected {
-            println!("found, expected:");
-            for m in 0..ker.mr() {
-                for n in 0..ker.nr() {
-                    use nu_ansi_term::Color::*;
-                    let f = v[m * ker.nr() + n];
-                    let e = expected[m * ker.nr() + n];
-                    let color = if f != e { Red } else { Green };
-                    print!("{} ", color.paint(format!("{:4}", f)));
-                }
-                print!("      ");
-                for n in 0..ker.nr() {
-                    print!("{:4} ", expected[m * ker.nr() + n]);
-                }
-                println!();
-            }
-        }
+        display_error(&v, &expected, ker.mr(), ker.nr());
         assert_eq!(v, expected);
     }
 
@@ -654,5 +639,25 @@ pub mod test {
     {
         let len = ker.mr() * ker.nr();
         proptest::collection::vec(any::<i8>().prop_map(|c| c.as_()), len..=len).boxed()
+    }
+
+    fn display_error<TC: LADatum>(v: &[TC], expected: &[TC], mr: usize, nr: usize) {
+        if v != expected {
+            println!("found, expected:");
+            for m in 0..mr {
+                for n in 0..nr {
+                    use nu_ansi_term::Color::*;
+                    let f = v[m * nr + n];
+                    let e = expected[m * nr + n];
+                    let color = if f != e { Red } else { Green };
+                    print!("{} ", color.paint(format!("{:4}", f)));
+                }
+                print!("      ");
+                for n in 0..nr {
+                    print!("{:4} ", expected[m * nr + n]);
+                }
+                println!();
+            }
+        }
     }
 }
