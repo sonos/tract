@@ -327,6 +327,7 @@ pub fn plug(ops: &mut Ops) {
             log::info!("AMX optimisation activated");
             ops.mmm_f16 = Box::new(|_, _, _| apple_amx::apple_amx_mmm_f16_64x32.mmm());
             ops.mmm_f32 = Box::new(|_, _, _| apple_amx::apple_amx_mmm_f32_32x32.mmm());
+            ops.mmv_f16 = Box::new(|_, _| apple_amx::apple_amx_mmm_f16_64x1.mmm());
             ops.mmv_f32 = Box::new(|_, _| apple_amx::apple_amx_mmm_f32_32x1.mmm());
         } else {
             log::info!("No AMX optimisation");
