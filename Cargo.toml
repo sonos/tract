@@ -50,7 +50,8 @@ members = [
     "test-rt/test-unit-core",
     "test-rt/test-onnx-core",
     "test-rt/test-nnef-cycle",
-    "test-rt/test-tflite", 
+    "test-rt/test-tflite",
+    "metal"
 ]
 
 [workspace.dependencies]
@@ -93,6 +94,7 @@ liquid-core = "0.26"
 log = "0.4.14"
 maplit = "1.0.2"
 memmap2 = "0.9"
+metal = { version = "0.27.0", features = ["mps"] }
 ndarray = "0.15.3"
 ndarray-npy = { version = "0.8.0", features = [ "compressed_npz" ] }
 nom = "7.0.0"

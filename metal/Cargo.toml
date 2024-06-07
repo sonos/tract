@@ -1,0 +1,38 @@
+[package]
+name = "tract-metal"
+version = "0.21.6-pre"
+license = "MIT OR Apache-2.0"
+authors = [
+	"Hubert de La Jonquière <hubert.delajonquiere@sonos.com>",
+	"Mathieu Poumeyrol <kali@zoy.org>",
+]
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
+repository = "https://github.com/snipsco/tract"
+keywords = [ "TensorFlow", "NeuralNetworks", "Metal" ]
+categories = [ "science" ]
+autobenches = false
+edition = "2021"
+rust-version = "1.75"
+
+[badges]
+maintenance = { status = "actively-developed" }
+
+[dependencies]
+anyhow.workspace = true
+metal.workspace = true
+objc = { version = "0.2.7" }
+num-traits.workspace = true
+tract-core = { version = "=0.21.6-pre", path = "../core" }
+
+[features]
+default = [ ]
+
+[dev-dependencies]
+criterion = "*"
+proptest.workspace = true
+derive-new.workspace = true
+
+[[bench]]
+name = "metal_gemm"
+harness = false
+
