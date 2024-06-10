@@ -341,7 +341,7 @@ fn lir_mat_mul_unary(
     let mut patch = TypedModelPatch::new("Einsum to LirMatMulUnary");
     let a = patch.tap_model(model, node.inputs[0])?;
     let b = patch.tap_model(model, node.inputs[1])?;
-    let packing = &mmm.mmm_packs()[0];
+    let packing = mmm.packings()[0];
     let a_pack =
         packing.0.downcast_ref::<Packer>().context("Expects regular packed format for A")?.clone();
     let b_pack =

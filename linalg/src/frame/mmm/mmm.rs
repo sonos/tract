@@ -1,6 +1,5 @@
 use super::ScratchSpaceImpl;
 use super::*;
-use crate::frame::Packer;
 use crate::multithread::Executor;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
@@ -13,9 +12,7 @@ pub trait MatMatMul: fmt::Debug + dyn_clone::DynClone + Send + Sync + std::any::
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;
 
-    fn native_mode(&self) -> usize;
-    fn native_pack(&self) -> (Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>);
-    fn mmm_packs(&self) -> Vec<(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)>;
+    fn packings(&self) -> &[(&dyn MMMInputFormat, &dyn MMMInputFormat)];
 
     fn internal_type(&self) -> DatumType;
 
@@ -70,27 +67,8 @@ impl<K: MatMatMulKer> MatMatMul for K {
         self.nr()
     }
 
-    fn native_mode(&self) -> usize {
-        0
-    }
-
-    fn native_pack(&self) -> (Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>) {
-        (
-            Box::new(Packer::new(
-                self.mr(),
-                self.alignment_bytes_packed_a(),
-                self.end_padding_packed_a(),
-            )),
-            Box::new(Packer::new(
-                self.nr(),
-                self.alignment_bytes_packed_b(),
-                self.end_padding_packed_b(),
-            )),
-        )
-    }
-
-    fn mmm_packs(&self) -> Vec<(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)> {
-        vec![self.native_pack()]
+    fn packings(&self) -> &[(&dyn MMMInputFormat, &dyn MMMInputFormat)] {
+        self.packings()
     }
 
     fn internal_type(&self) -> DatumType {

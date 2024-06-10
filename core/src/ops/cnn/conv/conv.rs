@@ -176,7 +176,7 @@ impl Conv {
             &sum_ker_n_g_c,
         )?;
 
-        ensure!(mmm.mmm_packs()[0].1.downcast_ref::<Packer>().is_some());
+        ensure!(mmm.packings()[0].1.downcast_ref::<Packer>().is_some());
         let mut sum_x = model.wire_node(
             format!("{name}.sum_x"),
             super::QSumB { dt: b_fact.datum_type, n, r: mmm.nr(), k },
@@ -398,13 +398,13 @@ impl Conv {
             })
             .collect();
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
-        let packer = mmm.mmm_packs()[0]
+        let packer = mmm.packings()[0]
             .1
             .downcast_ref::<Packer>()
             .with_context(|| {
                 format_err!(
                     "Quand Im2Col expects regular packed format, got {:?}",
-                    mmm.mmm_packs()[0].1
+                    mmm.packings()[0].1
                 )
             })?
             .clone();
@@ -477,7 +477,7 @@ impl Conv {
         c_n_axis: usize,
     ) -> TractResult<TVec<OutletId>> {
         ensure!(model.outlet_fact(bias)?.datum_type == mmm.internal_type());
-        let a_pack = mmm.mmm_packs()[0]
+        let a_pack = mmm.packings()[0]
             .0
             .downcast_ref::<Packer>()
             .context("Conv expects wights in regular packed format")?

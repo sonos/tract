@@ -11,8 +11,8 @@ use super::MMMInputFormat;
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Packer {
     pub r: usize,
-    alignment: usize,
-    end_padding_record: usize,
+    pub alignment: usize,
+    pub end_padding_record: usize,
 }
 
 impl MMMInputFormat for Packer {
@@ -22,12 +22,12 @@ impl MMMInputFormat for Packer {
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInput>> {
-        Packer::pack_tensor(&self, t, k_axis, mn_axis)
+        Packer::pack_tensor(self, t, k_axis, mn_axis)
     }
 }
 
 impl Packer {
-    pub fn new(nr: usize, alignment: usize, end_padding_record: usize) -> Packer {
+    pub const fn new(nr: usize, alignment: usize, end_padding_record: usize) -> Packer {
         Packer { r: nr, alignment, end_padding_record }
     }
 

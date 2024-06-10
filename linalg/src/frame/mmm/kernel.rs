@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use crate::frame::mmm::FusedKerSpec;
 use crate::LADatum;
 
-use super::FusedSpec;
+use super::{FusedSpec, MMMInputFormat};
 
 pub trait MatMatMulKer: Copy + Clone + Debug + Send + Sync + 'static {
     type Acc: LADatum;
@@ -12,10 +12,8 @@ pub trait MatMatMulKer: Copy + Clone + Debug + Send + Sync + 'static {
     fn kernel(&self, op: &[FusedKerSpec<Self::Acc>]) -> isize;
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;
-    fn alignment_bytes_packed_a(&self) -> usize;
-    fn end_padding_packed_a(&self) -> usize;
-    fn alignment_bytes_packed_b(&self) -> usize;
-    fn end_padding_packed_b(&self) -> usize;
+
+    fn packings(&self) -> &[(&dyn MMMInputFormat, &dyn MMMInputFormat)];
 
     #[allow(unused_variables)]
     fn prefetch(&self, ptr: *const u8, len: usize) {}
@@ -105,6 +103,7 @@ macro_rules! test_mmm_kernel_i32 {
 pub mod test {
     use super::*;
     use crate::frame::mmm::OutputStoreKer;
+    use crate::frame::Packer;
     use num_traits::{AsPrimitive, One, Zero};
     use proptest::collection::vec;
     use proptest::prelude::*;
@@ -300,20 +299,23 @@ pub mod test {
 
         pub fn run(&self) -> Vec<TC> {
             unsafe {
+                let packing = 0;
+                let pack_a = self.ker.packings()[packing].0.downcast_ref::<Packer>().unwrap();
+                let pack_b = self.ker.packings()[packing].1.downcast_ref::<Packer>().unwrap();
                 let a = self
                     .a
                     .iter()
                     .cloned()
-                    .chain(vec![0.as_(); self.ker.end_padding_packed_a() * self.ker.mr()])
+                    .chain(vec![0.as_(); pack_a.end_padding_record * self.ker.mr()])
                     .collect::<Vec<_>>();
-                let pa = Tensor::from_slice_align(&a, self.ker.alignment_bytes_packed_a()).unwrap();
+                let pa = Tensor::from_slice_align(&a, pack_a.alignment).unwrap();
                 let b = self
                     .b
                     .iter()
                     .cloned()
-                    .chain(vec![0.as_(); self.ker.end_padding_packed_b() * self.ker.nr()])
+                    .chain(vec![0.as_(); pack_b.end_padding_record * self.ker.nr()])
                     .collect::<Vec<_>>();
-                let pb = Tensor::from_slice_align(&b, self.ker.alignment_bytes_packed_b()).unwrap();
+                let pb = Tensor::from_slice_align(&b, pack_b.alignment).unwrap();
                 let mut v = vec![TC::zero(); self.ker.mr() * self.ker.nr()];
                 let c = if self.trans_c {
                     mmm_stride_storage(&mut v, 1, self.ker.mr())
@@ -374,17 +376,19 @@ pub mod test {
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC>,
     {
+        let packed_a = ker.packings()[0].0.downcast_ref::<Packer>().unwrap();
+        let packed_b = ker.packings()[0].1.downcast_ref::<Packer>().unwrap();
         let pa = unsafe {
             Tensor::from_slice_align(
-                &vec![TA::one(); ker.mr() * (k + ker.end_padding_packed_a())],
-                ker.alignment_bytes_packed_a(),
+                &vec![TA::one(); ker.mr() * (k + packed_a.end_padding_record)],
+                packed_a.alignment,
             )
             .unwrap()
         };
         let b = vec![TB::one(); (k + 1) * ker.nr()];
         let mut c: Vec<TC> = vec![TC::zero(); ker.mr() * ker.nr()];
         let tile = mmm_stride_storage(&mut c, 1, 0);
-        let pb = unsafe { Tensor::from_slice_align(&b, ker.alignment_bytes_packed_b()).unwrap() };
+        let pb = unsafe { Tensor::from_slice_align(&b, packed_b.alignment).unwrap() };
         let non_linear_ops = tvec!(
             FusedKerSpec::Clear,
             FusedKerSpec::AddMatMul {
