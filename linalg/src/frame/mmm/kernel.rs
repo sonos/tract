@@ -82,11 +82,8 @@ macro_rules! test_mmm_kernel_i32 {
                 #[allow(unused_imports)]
                 use super::$k;
                 mmm_kernel_tests!($cond, $k, i32, i32, i32, i32);
-                /*
-                mmm_kernel_tests!($cond, $k, i8, i8, i8, i32);
-                mmm_kernel_fuse_tests!($cond, $k, i8, i32);
-                mmm_frame_tests!($cond, $k, i8, i8, i8, i32);
-                */
+                mmm_kernel_fuse_tests!($cond, $k, i32, i32);
+                mmm_frame_tests!($cond, $k, i32, i32, i32, i32);
             }
             #[cfg(test)]
             mod [<test_qi8_ $k>] {
@@ -100,9 +97,7 @@ macro_rules! test_mmm_kernel_i32 {
             mod [<test_qi32_ $k>] {
                 #[allow(unused_imports)]
                 use super::$k;
-                /*
-                qmmm_kernel_fuse_tests!($cond, $k, i8, i8, i32, i32);
-                */
+                qmmm_kernel_fuse_tests!($cond, $k, i32, i32, i32, i32);
             }
         }
     };
