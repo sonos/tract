@@ -1,3 +1,6 @@
+use crate::mmm::no_prefetch;
+use tract_data::prelude::f16;
+
 MMMExternKernel!(f16, fma_mmm_f16_8x8; 8, 8; 32, 2; 0, 0; no_prefetch, is_x86_feature_detected!("fma") && is_x86_feature_detected!("f16c"));
 
 MMMExternKernel!(f32, fma_mmm_f32_8x8; 8, 8; 32, 4; 0, 0; no_prefetch, is_x86_feature_detected!("fma"));
