@@ -52,6 +52,15 @@ macro_rules! MMMKernelWrapper {
                 }
             }
 
+            mod [<packing_ $id>] {
+                use $crate::frame::mmm::pack::Packer;
+                use $crate::frame::mmm::MMMInputFormat;
+                const NATIVE_A: Packer = Packer::new($mr, $alignment_bytes_packed_a, $end_padding_packed_a);
+                const NATIVE_B: Packer = Packer::new($nr, $alignment_bytes_packed_b, $end_padding_packed_b);
+                const NATIVE: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&NATIVE_A, &NATIVE_B);
+                pub const PACKINGS: &[(&dyn MMMInputFormat, &dyn MMMInputFormat)] = &[NATIVE];
+            }
+
             impl $crate::frame::mmm::MatMatMulKer for  [<$id:camel>] {
                 type Acc = $ti;
                 #[inline(always)]
@@ -67,20 +76,8 @@ macro_rules! MMMKernelWrapper {
                     $nr
                 }
                 #[inline(always)]
-                fn alignment_bytes_packed_a(&self) -> usize {
-                    $alignment_bytes_packed_a
-                }
-                #[inline(always)]
-                fn alignment_bytes_packed_b(&self) -> usize {
-                    $alignment_bytes_packed_b
-                }
-                #[inline(always)]
-                fn end_padding_packed_a(&self) -> usize {
-                    $end_padding_packed_a
-                }
-                #[inline(always)]
-                fn end_padding_packed_b(&self) -> usize {
-                    $end_padding_packed_b
+                fn packings(&self) -> &[(&dyn crate::frame::mmm::MMMInputFormat, &dyn crate::frame::mmm::MMMInputFormat)] {
+                    &[<packing_ $id>]::PACKINGS
                 }
                 #[inline(always)]
                 fn kernel(&self, spec: &[$crate::frame::mmm::FusedKerSpec<$ti>]) -> isize {

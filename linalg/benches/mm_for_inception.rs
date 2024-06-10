@@ -10,7 +10,7 @@ fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize))
         let mmm = tract_linalg::ops().mmm(F32, F32, F32, Some(m), Some(k), Some(n)).unwrap();
         let a = Tensor::zero::<f32>(&[m, k]).unwrap();
         let b = Tensor::zero::<f32>(&[k, n]).unwrap();
-        let packing = &mmm.native_pack();
+        let packing = mmm.packings()[0];
         let pa = packing.0.prepare_tensor(&a, 1, 0).unwrap();
         let pb = packing.1.prepare_tensor(&b, 0, 1).unwrap();
 
@@ -20,7 +20,7 @@ fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize))
                 m,
                 n,
                 &[
-                    FusedSpec::AddMatMul { a: &*pa, b: &*pb, packing: mmm.native_mode() },
+                    FusedSpec::AddMatMul { a: &*pa, b: &*pb, packing: 0 },
                     FusedSpec::Store(mmm.c_view(0, 1).wrap(&c.view_mut())),
                 ],
             )
