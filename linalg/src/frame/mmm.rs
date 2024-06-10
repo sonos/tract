@@ -113,6 +113,9 @@ macro_rules! test_mmm_kernel {
     (f32, $func:ident, $cond: expr) => {
         test_mmm_kernel_f32!($func, $cond);
     };
+    (f64, $func:ident, $cond: expr) => {
+        test_mmm_kernel_f64!($func, $cond);
+    };
     (i32, $func:ident, $cond: expr) => {
         test_mmm_kernel_i32!($func, $cond);
     };
