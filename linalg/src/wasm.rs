@@ -7,70 +7,16 @@
 /// > export CARGO_TARGET_WASM32_WASI_RUNNER=wasmtime
 /// > cargo test --target=wasm32-wasi
 /// ```
-use crate::mmm::{FusedKerSpec, MatMatMul, MatMatMulKer};
+use crate::mmm::{FusedKerSpec, no_prefetch};
 use crate::{Ops, Scaler};
-use std::borrow::Cow;
-
-#[derive(Copy, Clone, Debug, Default)]
-pub struct WasmMmm4x4;
-
-unsafe impl Send for WasmMmm4x4 {}
-unsafe impl Sync for WasmMmm4x4 {}
-
-impl WasmMmm4x4 {
-    pub fn mmm(&self) -> Box<dyn MatMatMul> {
-        Box::<Self>::default()
-    }
-}
-
-impl MatMatMulKer for WasmMmm4x4 {
-    type Acc = f32;
-
-    #[inline(always)]
-    fn name(&self) -> Cow<'static, str> {
-        Cow::Borrowed("wasm_f32_4x4")
-    }
-
-    #[inline(always)]
-    fn mr(&self) -> usize {
-        4
-    }
-
-    #[inline(always)]
-    fn nr(&self) -> usize {
-        4
-    }
-
-    fn end_padding_packed_a(&self) -> usize {
-        0
-    }
-
-    fn end_padding_packed_b(&self) -> usize {
-        0
-    }
-
-    #[inline(always)]
-    fn alignment_bytes_packed_a(&self) -> usize {
-        std::mem::size_of::<f32>()
-    }
-    #[inline(always)]
-    fn alignment_bytes_packed_b(&self) -> usize {
-        std::mem::size_of::<f32>()
-    }
-
-    #[inline(never)]
-    fn kernel(&self, spec: &[FusedKerSpec<f32>]) -> isize {
-        unsafe { kernel_f32_4x4(spec) }
-    }
-}
 
 pub fn plug(ops: &mut Ops) {
-    let impls = vec![WasmMmm4x4.mmm()];
+    let impls = vec![wasm_f32_4x4.mmm()];
     ops.mmm_impls = impls.clone();
     ops.mmm_f32 = Box::new(|_m, _k, _n| wasm_f32_4x4.mmm());
 }
 
-unsafe fn kernel_f32_4x4(spec: &[FusedKerSpec<f32>]) -> isize {
+unsafe fn kernel_f32_4x4(mut pnl: *const FusedKerSpec<f32>) -> isize {
     use std::arch::wasm32::*;
 
     // Each of these variables stores a row of the matrix,
@@ -79,8 +25,6 @@ unsafe fn kernel_f32_4x4(spec: &[FusedKerSpec<f32>]) -> isize {
     let mut ab1 = f32x4_splat(0.0);
     let mut ab2 = f32x4_splat(0.0);
     let mut ab3 = f32x4_splat(0.0);
-
-    let mut pnl = spec.as_ptr();
 
     while !pnl.is_null() {
         match *pnl {
@@ -319,7 +263,7 @@ unsafe fn kernel_f32_4x4(spec: &[FusedKerSpec<f32>]) -> isize {
                 *(ptr.offset(tile.col_byte_stride * 2) as *mut f32) = f32x4_extract_lane::<2>(ab3);
                 *(ptr.offset(tile.col_byte_stride * 3) as *mut f32) = f32x4_extract_lane::<3>(ab3);
             }
-            FusedKerSpec::AddMatMul { k, pa, pb, cpu_variant: _ } => {
+            FusedKerSpec::AddMatMul { k, pa, pb, packing: _ } => {
                 let a = pa as *const f32;
                 let b = pb as *const v128;
                 for i in 0..k {
@@ -337,6 +281,4 @@ unsafe fn kernel_f32_4x4(spec: &[FusedKerSpec<f32>]) -> isize {
     0
 }
 
-#[allow(non_upper_case_globals)]
-pub const wasm_f32_4x4: WasmMmm4x4 = WasmMmm4x4;
-test_mmm_kernel_f32!(wasm_f32_4x4, true);
+MMMKernelWrapper!(f32, wasm_f32_4x4; kernel_f32_4x4; 4, 4; 4, 4; 0, 0; no_prefetch, true);
