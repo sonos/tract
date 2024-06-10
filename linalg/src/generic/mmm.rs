@@ -1,7 +1,6 @@
 #![allow(clippy::needless_range_loop)]
 use num_traits::AsPrimitive;
 use std::borrow::Cow;
-use std::fmt;
 use std::marker::PhantomData;
 
 use tract_data::prelude::*;
@@ -41,32 +40,22 @@ macro_rules! per_col {
 }
 
 #[derive(Copy, Clone, Debug, Default)]
-pub struct GenericMmm<const MR: usize, const NR: usize, TA, TB, TI>(PhantomData<(TA, TB, TI)>)
+pub struct GenericMmm<const MR: usize, const NR: usize, TI>(PhantomData<TI>)
 where
-    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TI: LADatum + ScaleShiftAndRound;
 
-unsafe impl<const MR: usize, const NR: usize, TA, TB, TI> Send for GenericMmm<MR, NR, TA, TB, TI>
-where
-    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound,
+unsafe impl<const MR: usize, const NR: usize, TI> Send for GenericMmm<MR, NR, TI> where
+    TI: LADatum + ScaleShiftAndRound
 {
 }
 
-unsafe impl<const MR: usize, const NR: usize, TA, TB, TI> Sync for GenericMmm<MR, NR, TA, TB, TI>
-where
-    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TI: LADatum + ScaleShiftAndRound,
+unsafe impl<const MR: usize, const NR: usize, TI> Sync for GenericMmm<MR, NR, TI> where
+    TI: LADatum + ScaleShiftAndRound
 {
 }
 
-impl<const MR: usize, const NR: usize, TA, TB, TI> GenericMmm<MR, NR, TA, TB, TI>
+impl<const MR: usize, const NR: usize, TI> GenericMmm<MR, NR, TI>
 where
-    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TI: LADatum + ScaleShiftAndRound + AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
@@ -75,10 +64,8 @@ where
     }
 }
 
-impl<const MR: usize, const NR: usize, TA, TB, TI> MatMatMulKer for GenericMmm<MR, NR, TA, TB, TI>
+impl<const MR: usize, const NR: usize, TI> MatMatMulKer for GenericMmm<MR, NR, TI>
 where
-    TA: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
-    TB: Datum + Copy + fmt::Debug + AsPrimitive<TI>,
     TI: LADatum + ScaleShiftAndRound + AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
@@ -103,11 +90,11 @@ where
     }
     #[inline(always)]
     fn alignment_bytes_packed_a(&self) -> usize {
-        std::mem::size_of::<TA>()
+        std::mem::size_of::<TI>()
     }
     #[inline(always)]
     fn alignment_bytes_packed_b(&self) -> usize {
-        std::mem::size_of::<TB>()
+        std::mem::size_of::<TI>()
     }
     #[inline(never)]
     fn kernel(&self, spec: &[FusedKerSpec<TI>]) -> isize {
@@ -205,8 +192,12 @@ where
                         if TI::datum_type().is_float() {
                             add_mat_mul::<MR, NR, TI, TI, TI>(pa, pb, k, &mut ab);
                         } else {
-                            #[allow(unknown_lints, clippy::missing_transmute_annotations)]
-                            add_mat_mul::<MR, NR, i32, i8, i8>(pa, pb, k, std::mem::transmute(&mut ab))
+                            add_mat_mul::<MR, NR, i32, i8, i8>(
+                                pa,
+                                pb,
+                                k,
+                                std::mem::transmute(&mut ab),
+                            )
                         }
                         /*
                          */
@@ -268,43 +259,43 @@ unsafe fn store_t<const MR: usize, const NR: usize, TC, TI>(
 }
 
 #[allow(non_upper_case_globals)]
-pub const generic_f16_4x4: GenericMmm<4, 4, f16, f16, f16> = GenericMmm(PhantomData);
+pub const generic_f16_4x4: GenericMmm<4, 4, f16> = GenericMmm(PhantomData);
 test_mmm_kernel_f16!(generic_f16_4x4, true);
 
 #[allow(non_upper_case_globals)]
-pub const generic_f16_4x1: GenericMmm<4, 1, f16, f16, f16> = GenericMmm(PhantomData);
+pub const generic_f16_4x1: GenericMmm<4, 1, f16> = GenericMmm(PhantomData);
 test_mmm_kernel_f16!(generic_f16_4x1, true);
 
 #[allow(non_upper_case_globals)]
-pub const generic_f32_4x4: GenericMmm<4, 4, f32, f32, f32> = GenericMmm(PhantomData);
+pub const generic_f32_4x4: GenericMmm<4, 4, f32> = GenericMmm(PhantomData);
 test_mmm_kernel_f32!(generic_f32_4x4, true);
 
 #[allow(non_upper_case_globals)]
-pub const generic_f64_4x4: GenericMmm<4, 4, f64, f64, f64> = GenericMmm(PhantomData);
+pub const generic_f64_4x4: GenericMmm<4, 4, f64> = GenericMmm(PhantomData);
 test_mmm_kernel_f64!(generic_f64_4x4, true);
 
 #[allow(non_upper_case_globals)]
-pub const generic_i32_4x4: GenericMmm<4, 4, i8, i8, i32> = GenericMmm(PhantomData);
+pub const generic_i32_4x4: GenericMmm<4, 4, i32> = GenericMmm(PhantomData);
 test_mmm_kernel_i32!(generic_i32_4x4, true);
 
 #[allow(non_upper_case_globals)]
-pub const generic_f32_4x1: GenericMmm<4, 1, f32, f32, f32> = GenericMmm(PhantomData);
+pub const generic_f32_4x1: GenericMmm<4, 1, f32> = GenericMmm(PhantomData);
 test_mmm_kernel_f32!(generic_f32_4x1, true);
 
 #[allow(non_upper_case_globals)]
-pub const generic_f64_4x1: GenericMmm<4, 1, f64, f64, f64> = GenericMmm(PhantomData);
+pub const generic_f64_4x1: GenericMmm<4, 1, f64> = GenericMmm(PhantomData);
 test_mmm_kernel_f64!(generic_f64_4x1, true);
 
 #[allow(non_upper_case_globals)]
-pub const generic_i32_4x1: GenericMmm<4, 1, i8, i8, i32> = GenericMmm(PhantomData);
+pub const generic_i32_4x1: GenericMmm<4, 1, i32> = GenericMmm(PhantomData);
 test_mmm_kernel_i32!(generic_i32_4x1, true);
 
 #[cfg(test)]
 #[allow(non_upper_case_globals)]
-const generic_f32_3x2: GenericMmm<3, 2, f32, f32, f32> = GenericMmm(PhantomData);
+const generic_f32_3x2: GenericMmm<3, 2, f32> = GenericMmm(PhantomData);
 test_mmm_kernel_f32!(generic_f32_3x2, true);
 
 #[cfg(test)]
 #[allow(non_upper_case_globals)]
-const generic_i32_3x2: GenericMmm<3, 2, i8, i8, i32> = GenericMmm(PhantomData);
+const generic_i32_3x2: GenericMmm<3, 2, i32> = GenericMmm(PhantomData);
 test_mmm_kernel_i32!(generic_i32_3x2, true);
