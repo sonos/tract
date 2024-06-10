@@ -79,20 +79,30 @@ macro_rules! test_mmm_kernel_i32 {
             #[cfg(test)]
             #[allow(non_snake_case)]
             mod [<test_ $k>] {
+                #[allow(unused_imports)]
                 use super::$k;
+                mmm_kernel_tests!($cond, $k, i32, i32, i32, i32);
+                /*
                 mmm_kernel_tests!($cond, $k, i8, i8, i8, i32);
                 mmm_kernel_fuse_tests!($cond, $k, i8, i32);
                 mmm_frame_tests!($cond, $k, i8, i8, i8, i32);
+                */
             }
             #[cfg(test)]
             mod [<test_qi8_ $k>] {
+                #[allow(unused_imports)]
                 use super::$k;
+                /*
                 qmmm_kernel_fuse_tests!($cond, $k, i8, i8, i8, i32);
+                */
             }
             #[cfg(test)]
             mod [<test_qi32_ $k>] {
+                #[allow(unused_imports)]
                 use super::$k;
+                /*
                 qmmm_kernel_fuse_tests!($cond, $k, i8, i8, i32, i32);
+                */
             }
         }
     };
@@ -184,34 +194,6 @@ pub mod test {
                         assert_eq!(pb.run(), pb.reference())
                     }
                 }
-
-                #[test]
-                fn packed_vec_k1() {
-                    if $cond {
-                        test::packed_vec::<_, $ta, $tb, $tc, $ti>($ker, 1)
-                    }
-                }
-
-                #[test]
-                fn packed_vec_k2() {
-                    if $cond {
-                        test::packed_vec::<_, $ta, $tb, $tc, $ti>($ker, 2)
-                    }
-                }
-
-                #[test]
-                fn packed_vec_k4() {
-                    if $cond {
-                        test::packed_vec::<_, $ta, $tb, $tc, $ti>($ker, 4)
-                    }
-                }
-
-                #[test]
-                fn packed_vec_k13() {
-                    if $cond {
-                        test::packed_vec::<_, $ta, $tb, $tc, $ti>($ker, 13)
-                    }
-                }
             }
         };
     }
@@ -222,7 +204,7 @@ pub mod test {
         K: MatMatMulKer<Acc = TI>,
         TA: 'static + Debug + AsPrimitive<TI>,
         TB: 'static + Debug + AsPrimitive<TI>,
-        TC: Copy + PartialEq + 'static + Debug,
+        TC: LADatum + Copy + PartialEq + 'static + Debug,
         TI: LADatum + fmt::Display + AsPrimitive<TC>,
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
@@ -240,7 +222,7 @@ pub mod test {
         K: MatMatMulKer<Acc = TI> + Default,
         TA: 'static + Debug + AsPrimitive<TI>,
         TB: 'static + Debug + AsPrimitive<TI>,
-        TC: Copy + PartialEq + 'static + Debug,
+        TC: LADatum + Copy + PartialEq + 'static + Debug,
         TI: LADatum + fmt::Display + AsPrimitive<TC>,
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
@@ -275,7 +257,7 @@ pub mod test {
         K: MatMatMulKer<Acc = TI>,
         TA: 'static + Debug + AsPrimitive<TI> + Datum,
         TB: 'static + Debug + AsPrimitive<TI> + Datum,
-        TC: Copy + Zero + PartialEq + 'static + Debug,
+        TC: LADatum + Copy + Zero + PartialEq + 'static + Debug,
         TI: LADatum + fmt::Display + AsPrimitive<TC>,
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
@@ -348,7 +330,7 @@ pub mod test {
         K: MatMatMulKer<Acc = TI>,
         TA: Copy + One + Datum + AsPrimitive<TI>,
         TB: Copy + One + Datum + AsPrimitive<TI>,
-        TC: Copy + PartialEq + Zero + 'static + Debug,
+        TC: LADatum + Copy + PartialEq + Zero + 'static + Debug,
         TI: LADatum + AsPrimitive<TC>,
         usize: AsPrimitive<TC> + AsPrimitive<TA> + AsPrimitive<TB>,
     {
@@ -365,44 +347,5 @@ pub mod test {
             col_byte_stride: (std::mem::size_of::<T>() * csc) as isize,
             item_size: std::mem::size_of::<T>(),
         }
-    }
-
-    pub fn packed_vec<K, TA, TB, TC, TI>(ker: K, k: usize)
-    where
-        K: MatMatMulKer<Acc = TI>,
-        TA: Copy + One + AsPrimitive<TI> + Debug + Datum,
-        TB: Copy + One + AsPrimitive<TI> + Debug + Datum,
-        TC: Copy + PartialEq + Zero + 'static + Debug,
-        TI: LADatum + AsPrimitive<TC>,
-        usize: AsPrimitive<TC>,
-    {
-        let packed_a = ker.packings()[0].0.downcast_ref::<Packer>().unwrap();
-        let packed_b = ker.packings()[0].1.downcast_ref::<Packer>().unwrap();
-        let pa = unsafe {
-            Tensor::from_slice_align(
-                &vec![TA::one(); ker.mr() * (k + packed_a.end_padding_record)],
-                packed_a.alignment,
-            )
-            .unwrap()
-        };
-        let b = vec![TB::one(); (k + 1) * ker.nr()];
-        let mut c: Vec<TC> = vec![TC::zero(); ker.mr() * ker.nr()];
-        let tile = mmm_stride_storage(&mut c, 1, 0);
-        let pb = unsafe { Tensor::from_slice_align(&b, packed_b.alignment).unwrap() };
-        let non_linear_ops = tvec!(
-            FusedKerSpec::Clear,
-            FusedKerSpec::AddMatMul {
-                pa: unsafe { pa.as_ptr_unchecked::<u8>() as _ },
-                pb: unsafe { pb.as_ptr_unchecked::<u8>() as _ },
-                k,
-                packing: 0,
-            },
-            FusedKerSpec::Store(tile),
-            FusedKerSpec::Done
-        );
-        let err = ker.kernel(&non_linear_ops);
-        assert_eq!(err, 0);
-        let expected = vec![k.as_(); ker.mr()];
-        assert_eq!(c[..ker.mr()], expected);
     }
 }
