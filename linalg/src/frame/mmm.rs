@@ -30,6 +30,7 @@ macro_rules! MMMExternKernel {
             mod [<sys_ $func>] {
                 #[allow(unused_imports)]
                 use super::*;
+                #[allow(unused_imports)]
                 use crate::frame::mmm::*;
                 extern_kernel!(fn $func(op: *const FusedKerSpec<$ti>) -> isize);
             }
