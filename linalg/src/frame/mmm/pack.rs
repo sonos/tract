@@ -10,6 +10,7 @@ use super::MMMInputFormat;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Packer {
+    pub dt: DatumType,
     pub r: usize,
     pub alignment: usize,
     pub end_padding_record: usize,
@@ -27,8 +28,8 @@ impl MMMInputFormat for Packer {
 }
 
 impl Packer {
-    pub const fn new(nr: usize, alignment: usize, end_padding_record: usize) -> Packer {
-        Packer { r: nr, alignment, end_padding_record }
+    pub const fn new(dt: DatumType, nr: usize, alignment: usize, end_padding_record: usize) -> Packer {
+        Packer { dt, r: nr, alignment, end_padding_record }
     }
 
     #[inline]
@@ -63,6 +64,7 @@ impl Packer {
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInput>> {
+        ensure!(t.datum_type() == self.dt);
         let k = t.shape()[k_axis];
         let mn = t.shape()[mn_axis];
         let packed_len = self.len(k, mn);
@@ -92,6 +94,7 @@ impl Packer {
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInput>> {
+        ensure!(t.datum_type() == self.dt);
         let k = t.shape()[k_axis];
         let mn = t.shape()[mn_axis];
         let packed_len = self.len(k, mn);
@@ -486,7 +489,7 @@ mod test {
 
         fn packer(&self) -> Array2<u32> {
             let panels = self.mn_range.len().divceil(self.r);
-            let packer = super::Packer::new(self.r, self.align_panel, 0);
+            let packer = super::Packer::new(u32::datum_type(), self.r, self.align_panel, 0);
             let input = self.input().into_tensor();
             let panel_len = packer.single_panel_len(self.k_range.len());
             let mut output =
