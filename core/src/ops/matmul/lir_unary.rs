@@ -58,7 +58,7 @@ impl ProtoFusedSpec {
                 }
                 let b =
                     b.as_slice::<Opaque>().unwrap()[0].downcast_ref::<Box<dyn MMMInput>>().unwrap();
-                FusedSpec::AddMatMul { a: &**a, b: &**b }
+                FusedSpec::AddMatMul { a: &**a, b: &**b, packing: 0 }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
             ProtoFusedSpec::LeakyRelu(v) => FusedSpec::LeakyRelu(&inputs[*v]),
@@ -109,7 +109,7 @@ impl ProtoFusedSpec {
                     a.to_scalar::<Opaque>().unwrap().downcast_ref::<Box<dyn MMMInput>>().unwrap();
                 let b =
                     b.to_scalar::<Opaque>().unwrap().downcast_ref::<Box<dyn MMMInput>>().unwrap();
-                FusedSpec::AddMatMul { a: &**a, b: &**b }
+                FusedSpec::AddMatMul { a: &**a, b: &**b, packing: 0 }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
             ProtoFusedSpec::LeakyRelu(v) => FusedSpec::LeakyRelu(&inputs[*v]),
