@@ -25,7 +25,11 @@ pub use storage::*;
 pub fn no_prefetch(_ptr: *const u8, _len: usize) {}
 
 macro_rules! MMMExternKernel {
-    ($ti:ident, $func:ident; $mr: expr, $nr: expr; $alignment_bytes_packed_a: expr, $alignment_bytes_packed_b: expr; $end_padding_packed_a: expr, $end_padding_packed_b: expr ; $prefetch: path, $cond: expr $(, can_fuse: $can_fuse:expr)?) => {
+    ($ti:ident, $func:ident; $mr: expr, $nr: expr; $alignment_bytes_packed_a: expr, $alignment_bytes_packed_b: expr; $end_padding_packed_a: expr, $end_padding_packed_b: expr ; $prefetch: path, $cond: expr $(, can_fuse: $can_fuse:expr)?
+        $(, packing_defs: { $($packing_def: item)* })?
+        $(, packings: $($packing: ident)*)?
+        $(, test: $test: item)*
+     ) => {
         paste! {
             mod [<sys_ $func>] {
                 #[allow(unused_imports)]
@@ -34,7 +38,12 @@ macro_rules! MMMExternKernel {
                 use crate::frame::mmm::*;
                 extern_kernel!(fn $func(op: *const FusedKerSpec<$ti>) -> isize);
             }
-            MMMKernelWrapper!($ti, $func; [<sys_ $func>]::$func; $mr, $nr; $alignment_bytes_packed_a, $alignment_bytes_packed_b; $end_padding_packed_a, $end_padding_packed_b; $prefetch, $cond $(, can_fuse: $can_fuse)?);
+            MMMKernelWrapper!($ti, $func; [<sys_ $func>]::$func; $mr, $nr; $alignment_bytes_packed_a, $alignment_bytes_packed_b; $end_padding_packed_a, $end_padding_packed_b; $prefetch, $cond 
+                $(, can_fuse: $can_fuse )?
+                $(, packing_defs: { $($packing_def)* } )?
+                $(, packings: $($packing)* )?
+                $(, test: $test )*
+            );
         }
     }
 }
@@ -49,6 +58,7 @@ macro_rules! MMMKernelWrapper {
         $(, can_fuse: $can_fuse:expr)?
         $(, packing_defs: { $($packing_def: item)* })?
         $(, packings: $($packing: ident)*)?
+        $(, test: $test: item)*
         ) => {
 
         paste! {
@@ -111,11 +121,18 @@ macro_rules! MMMKernelWrapper {
 
             #[allow(non_upper_case_globals)]
             pub const $id: [<$id:camel>] = [<$id:camel>];
+
+            #[cfg(test)]
+            mod [<test_$id>] {
+                use super::$id;
+                test_mmm_kernel!($ti, $id, $cond);
+                $(#[cfg(test)] $test)*
+            }
         }
-        test_mmm_kernel!($ti, $id, $cond);
     }
 }
 
+#[cfg(test)]
 macro_rules! test_mmm_kernel {
     (f16, $func:ident, $cond: expr) => {
         test_mmm_kernel_f16!($func, $cond);
