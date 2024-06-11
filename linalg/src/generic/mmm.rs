@@ -43,8 +43,8 @@ unsafe fn add_mat_mul<const MR: usize, const NR: usize, TI, TA, TB>(
     k: usize,
     ab: &mut [[TI; NR]; MR],
 ) where
-    TA: AsPrimitive<TI>,
-    TB: AsPrimitive<TI>,
+    TA: LADatum + AsPrimitive<TI>,
+    TB: LADatum + AsPrimitive<TI>,
     TI: LADatum,
 {
     let a = pa as *const TA;
@@ -52,6 +52,9 @@ unsafe fn add_mat_mul<const MR: usize, const NR: usize, TI, TA, TB>(
     for ik in 0..k {
         let a = std::slice::from_raw_parts(a.add(MR * ik), MR);
         let b = std::slice::from_raw_parts(b.add(NR * ik), NR);
+        dbg!(a, b);
+        dbg!(TA::datum_type());
+        dbg!(TB::datum_type());
         for i in 0..MR {
             for j in 0..NR {
                 ab[i][j] += a[i].as_() * b[j].as_();
@@ -168,15 +171,21 @@ where
                         }
                     }
                 }
-                FusedKerSpec::AddMatMul { k, pa, pb, .. } => {
-                    // FIXME type
+                FusedKerSpec::AddMatMul { k, pa, pb, packing } => {
+                    use std::mem::transmute;
                     if TI::datum_type().is_float() {
                         add_mat_mul::<MR, NR, TI, TI, TI>(pa, pb, k, &mut ab);
+                    } else if TI::datum_type() == i32::datum_type() {
+                        if packing == 0 {
+                            add_mat_mul::<MR, NR, i32, i32, i32>(pa, pb, k, transmute(&mut ab))
+                        } else if packing == 1 {
+                            add_mat_mul::<MR, NR, i32, i8, i8>(pa, pb, k, transmute(&mut ab))
+                        } else {
+                            return 1;
+                        }
                     } else {
-                        add_mat_mul::<MR, NR, i32, i32, i32>(pa, pb, k, std::mem::transmute(&mut ab))
+                        return 1;
                     }
-                    /*
-                     */
                 }
                 FusedKerSpec::Store(tile) => match tile.item_size {
                     1 => store_t::<MR, NR, u8, _>(&tile, &ab),
@@ -198,11 +207,33 @@ MMMKernelWrapper!(f32, generic_f32_4x4; kernel::<f32, 4, 4>; 4, 4; 4, 4; 0, 0; n
 MMMKernelWrapper!(f32, generic_f32_4x1; kernel::<f32, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true);
 MMMKernelWrapper!(f64, generic_f64_4x4; kernel::<f64, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true);
 MMMKernelWrapper!(f64, generic_f64_4x1; kernel::<f64, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true);
-MMMKernelWrapper!(i32, generic_i32_4x4; kernel::<i32, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true);
-MMMKernelWrapper!(i32, generic_i32_4x1; kernel::<i32, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true);
+MMMKernelWrapper!(i32, generic_i32_4x4; kernel::<i32, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true,
+ packing_defs: {
+     const I8_A: Packer = Packer::new(DatumType::I8, 4, 4, 0);
+     const I8_B: Packer = Packer::new(DatumType::I8, 4, 4, 0);
+     const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
+ },
+ packings: I8_I8
+);
+
+MMMKernelWrapper!(i32, generic_i32_4x1; kernel::<i32, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true,
+ packing_defs: {
+     const I8_A: Packer = Packer::new(DatumType::I8, 4, 4, 0);
+     const I8_B: Packer = Packer::new(DatumType::I8, 1, 4, 0);
+     const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
+ },
+ packings: I8_I8
+);
 
 #[cfg(test)]
 MMMKernelWrapper!(f32, generic_f32_3x2; kernel::<f32, 3, 2>; 3, 2; 4, 4; 0, 0; no_prefetch, true);
 
 #[cfg(test)]
-MMMKernelWrapper!(i32, generic_i32_3x2; kernel::<i32, 3, 2>; 3, 2; 4, 4; 0, 0; no_prefetch, true);
+MMMKernelWrapper!(i32, generic_i32_3x2; kernel::<i32, 3, 2>; 3, 2; 4, 4; 0, 0; no_prefetch, true,
+ packing_defs: {
+     const I8_A: Packer = Packer::new(DatumType::I8, 3, 4, 0);
+     const I8_B: Packer = Packer::new(DatumType::I8, 2, 4, 0);
+     const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
+ },
+ packings: I8_I8
+);

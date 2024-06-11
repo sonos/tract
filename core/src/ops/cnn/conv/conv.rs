@@ -477,7 +477,17 @@ impl Conv {
         c_n_axis: usize,
     ) -> TractResult<TVec<OutletId>> {
         ensure!(model.outlet_fact(bias)?.datum_type == mmm.internal_type());
-        let a_pack = mmm.packings()[0]
+        let kernel_dt = model.outlet_fact(g_o_ihw)?.datum_type;
+        let input_dt = model.outlet_fact(input)?.datum_type;
+        let packing = mmm
+            .packings()
+            .iter()
+            .position(|p| {
+                p.0.can_prepare_types().contains(&input_dt)
+                    && p.1.can_prepare_types().contains(&kernel_dt)
+            })
+            .unwrap();
+        let a_pack = mmm.packings()[packing]
             .0
             .downcast_ref::<Packer>()
             .context("Conv expects wights in regular packed format")?
@@ -497,8 +507,9 @@ impl Conv {
             c_to_a_axis_mapping: MapOutputAxisToInput(c_to_a_axis_mapping),
             c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
         };
+        let mut ops: Vec<ProtoFusedSpec> =
+            vec![ProtoFusedSpec::AddMatMul { geo, a: 1, b: 0, packing }];
         let mut wires: TVec<OutletId> = tvec!(input, packed_ker);
-        let mut ops: Vec<ProtoFusedSpec> = vec![ProtoFusedSpec::AddMatMul(geo, 1, 0)];
         let bias_fact = model.outlet_fact(bias)?;
         if bias_fact.konst.is_none() || !bias_fact.konst.as_ref().unwrap().is_zero()? {
             let (fused, bias) = self.wire_bias_as_non_linear(model, name, bias, c_m_axis - 1)?;

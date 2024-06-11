@@ -40,7 +40,16 @@ macro_rules! MMMExternKernel {
 }
 
 macro_rules! MMMKernelWrapper {
-    ($ti:ident, $id:ident; $func: path; $mr: expr, $nr: expr; $alignment_bytes_packed_a: expr, $alignment_bytes_packed_b: expr; $end_padding_packed_a: expr, $end_padding_packed_b: expr ; $prefetch: path, $cond: expr $(, can_fuse: $can_fuse:expr)?) => {
+    (   $ti:ident, $id:ident;
+        $func: path;
+        $mr: expr, $nr: expr;
+        $alignment_bytes_packed_a: expr, $alignment_bytes_packed_b: expr;
+        $end_padding_packed_a: expr, $end_padding_packed_b: expr ;
+        $prefetch: path, $cond: expr
+        $(, can_fuse: $can_fuse:expr)?
+        $(, packing_defs: { $($packing_def: item)* })?
+        $(, packings: $($packing: ident)*)?
+        ) => {
 
         paste! {
             #[allow(non_camel_case_types)]
@@ -61,7 +70,8 @@ macro_rules! MMMKernelWrapper {
                 const NATIVE_A: Packer = Packer::new(DatumType::[<$ti:upper>], $mr, $alignment_bytes_packed_a, $end_padding_packed_a);
                 const NATIVE_B: Packer = Packer::new(DatumType::[<$ti:upper>], $nr, $alignment_bytes_packed_b, $end_padding_packed_b);
                 const NATIVE: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&NATIVE_A, &NATIVE_B);
-                pub const PACKINGS: &[(&dyn MMMInputFormat, &dyn MMMInputFormat)] = &[NATIVE];
+                $($($packing_def)*)?
+                pub const PACKINGS: &[(&dyn MMMInputFormat, &dyn MMMInputFormat)] = &[NATIVE $( $(, $packing)* )?];
             }
 
             impl $crate::frame::mmm::MatMatMulKer for  [<$id:camel>] {
