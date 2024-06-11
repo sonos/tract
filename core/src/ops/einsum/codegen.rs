@@ -345,7 +345,7 @@ fn lir_mat_mul_unary(
         .packings()
         .iter()
         .position(|p| {
-            p.0.can_prepare_types().contains(&a_dt) && p.1.can_prepare_types().contains(&b_dt)
+            p.0.can_prepare_types().contains(&a_dt.unquantized()) && p.1.can_prepare_types().contains(&b_dt.unquantized())
         })
         .with_context(|| format!("No packing for {mmm:?} with inputs {a_dt:?} and {b_dt:?}"))?;
     let packers = mmm.packings()[packing];

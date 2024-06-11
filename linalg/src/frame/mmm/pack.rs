@@ -68,7 +68,7 @@ impl Packer {
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInput>> {
-        ensure!(t.datum_type() == self.dt);
+        ensure!(t.datum_type().unquantized() == self.dt.unquantized());
         let k = t.shape()[k_axis];
         let mn = t.shape()[mn_axis];
         let packed_len = self.len(k, mn);
@@ -98,7 +98,7 @@ impl Packer {
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInput>> {
-        ensure!(t.datum_type() == self.dt);
+        ensure!(t.datum_type().unquantized() == self.dt.unquantized());
         let k = t.shape()[k_axis];
         let mn = t.shape()[mn_axis];
         let packed_len = self.len(k, mn);

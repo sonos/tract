@@ -131,6 +131,7 @@ impl Conv {
         let b_fact = model.outlet_fact(x)?.clone();
 
         let (_, _, k, n, mmm) = self.compute_geo(&a_fact, &b_fact)?;
+        let packing = 1; // FIXME
         let output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
 
         if !model.outlet_fact(k_scale)?.shape.volume().is_one() {
@@ -176,7 +177,7 @@ impl Conv {
             &sum_ker_n_g_c,
         )?;
 
-        ensure!(mmm.packings()[0].1.downcast_ref::<Packer>().is_some());
+        ensure!(mmm.packings()[packing].1.downcast_ref::<Packer>().is_some());
         let mut sum_x = model.wire_node(
             format!("{name}.sum_x"),
             super::QSumB { dt: b_fact.datum_type, n, r: mmm.nr(), k },
@@ -199,6 +200,7 @@ impl Conv {
             g_o_ihw[0],
             bias,
             mmm,
+            packing,
             i32::datum_type(),
             mmm_output_shape.clone().into(),
             k,
@@ -279,6 +281,7 @@ impl Conv {
                 g_o_ihw[0],
                 bias,
                 mmm,
+                0,
                 c_dt,
                 mmm_output_shape.clone().into(),
                 k.to_usize().unwrap(),
@@ -358,6 +361,7 @@ impl Conv {
         let mut x_fact = model.outlet_fact(x)?.clone();
         let k_fact = model.outlet_fact(kernel)?.clone();
         let (geo, m, k, n, mmm) = self.compute_geo(&k_fact, &x_fact)?;
+        let packing = 0;
         debug!("{name} as lazy_im2col: m={m} k={k} n={n} {mmm:?}");
         let input_shape = x_fact.shape.as_concrete().unwrap().to_vec();
         let mut geo = geo.to_concrete(&input_shape)?.into_owned();
@@ -398,13 +402,13 @@ impl Conv {
             })
             .collect();
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
-        let packer = mmm.packings()[0]
+        let packer = mmm.packings()[packing]
             .1
             .downcast_ref::<Packer>()
             .with_context(|| {
                 format_err!(
                     "Quand Im2Col expects regular packed format, got {:?}",
-                    mmm.packings()[0].1
+                    mmm.packings()[packing].1
                 )
             })?
             .clone();
@@ -423,6 +427,7 @@ impl Conv {
             kernel,
             bias,
             mmm,
+            packing,
             c_dt,
             mmm_output_shape.clone().into(),
             k,
@@ -470,6 +475,7 @@ impl Conv {
         g_o_ihw: OutletId,
         bias: OutletId,
         mmm: Box<dyn MatMatMul>,
+        packing: usize,
         c_datum_type: DatumType,
         mmm_output_shape: ShapeFact,
         k: usize,
@@ -477,6 +483,7 @@ impl Conv {
         c_n_axis: usize,
     ) -> TractResult<TVec<OutletId>> {
         ensure!(model.outlet_fact(bias)?.datum_type == mmm.internal_type());
+        /*
         let kernel_dt = model.outlet_fact(g_o_ihw)?.datum_type;
         let input_dt = model.outlet_fact(input)?.datum_type;
         let packing = mmm
@@ -487,6 +494,7 @@ impl Conv {
                     && p.1.can_prepare_types().contains(&kernel_dt)
             })
             .unwrap();
+            */
         let a_pack = mmm.packings()[packing]
             .0
             .downcast_ref::<Packer>()
