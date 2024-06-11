@@ -43,11 +43,14 @@
 {% include "dispatcher.tmpliq" %}
 
 .add_mat_mul:
-    ldr         x2, [x0, #24]       // b
+    ldp         x2, x4, [x0, #24]   // b, packing
     ldp         x3, x1, [x0, #8]    // k, a
 
     cmp         x3, #0
     beq         .non_linear_loop
+
+    cmp         x4, #1
+    beq         .packed_packed_loop_1_i8i8
 
 .packed_packed_loop_1:
 
@@ -77,8 +80,9 @@
     subs        x3, x3, #1
     bne .packed_packed_loop_1
 
-/*
-.packed_packed_loop_1:
+    b .non_linear_loop
+
+.packed_packed_loop_1_i8i8:
 
     ld1	        { v0.8b }, [ x1 ], #8
     sshll       v0.8h, v0.8b, 0
@@ -104,8 +108,7 @@
     smlal2       v31.4s, v0.8h, v4.h[7]
 
     subs        x3, x3, #1
-    bne .packed_packed_loop_1
-*/
+    bne .packed_packed_loop_1_i8i8
 
     b .non_linear_loop
 

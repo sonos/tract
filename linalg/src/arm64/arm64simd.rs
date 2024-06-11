@@ -30,8 +30,25 @@ MMMExternKernel!(f32, arm64simd_mmm_f32_8x8_gen; 8, 8; 16, 16; 1, 1; no_prefetch
 MMMExternKernel!(f32, arm64simd_mmm_f32_12x8_gen; 12, 8; 16, 16; 1, 1; no_prefetch, true);
 MMMExternKernel!(f32, arm64simd_mmm_f32_64x1_gen; 64, 1; 16, 16; 1, 1; no_prefetch, true);
 
-MMMExternKernel!(i32, arm64simd_mmm_i32_8x8; 8, 8; 16, 16; 0,0; no_prefetch, true);
-MMMExternKernel!(i32, arm64simd_mmm_i32_64x1; 64, 1; 16, 1; 0,0; no_prefetch, true);
+MMMExternKernel!(i32, arm64simd_mmm_i32_8x8; 8, 8; 16, 16; 0,0; no_prefetch, true,
+ packing_defs: {
+     const I8_A: Packer = Packer::new(DatumType::I8, 8, 16, 0);
+     const I8_B: Packer = Packer::new(DatumType::I8, 8, 16, 0);
+     const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
+ },
+ packings: I8_I8,
+ test: mmm_kernel_tests!{ true, arm64simd_mmm_i32_8x8, i8i8:1, i8, i8, i32, i32 }
+);
+
+MMMExternKernel!(i32, arm64simd_mmm_i32_64x1; 64, 1; 16, 1; 0,0; no_prefetch, true,
+ packing_defs: {
+     const I8_A: Packer = Packer::new(DatumType::I8, 64, 1, 0);
+     const I8_B: Packer = Packer::new(DatumType::I8, 16, 1, 0);
+     const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
+ },
+ packings: I8_I8,
+ test: mmm_kernel_tests!{ true, arm64simd_mmm_i32_64x1, i8i8:1, i8, i8, i32, i32 }
+);
 
 tanh_impl!(f32, arm64simd_tanh_f32_4n, 4, 4, true);
 sigmoid_impl!(f32, arm64simd_sigmoid_f32_4n, 4, 4, true);
