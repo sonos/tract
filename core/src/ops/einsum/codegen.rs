@@ -341,11 +341,18 @@ fn lir_mat_mul_unary(
     let mut patch = TypedModelPatch::new("Einsum to LirMatMulUnary");
     let a = patch.tap_model(model, node.inputs[0])?;
     let b = patch.tap_model(model, node.inputs[1])?;
-    let packing = mmm.packings()[0];
+    let packing = mmm
+        .packings()
+        .iter()
+        .position(|p| {
+            p.0.can_prepare_types().contains(&a_dt) && p.1.can_prepare_types().contains(&b_dt)
+        })
+        .with_context(|| format!("No packing for {mmm:?} with inputs {a_dt:?} and {b_dt:?}"))?;
+    let packers = mmm.packings()[packing];
     let a_pack =
-        packing.0.downcast_ref::<Packer>().context("Expects regular packed format for A")?.clone();
+        packers.0.downcast_ref::<Packer>().context("Expects regular packed format for A")?.clone();
     let b_pack =
-        packing.1.downcast_ref::<Packer>().context("Expects regular packed format for B")?.clone();
+        packers.1.downcast_ref::<Packer>().context("Expects regular packed format for B")?.clone();
     let pack_a = MatMatMulPack { packer: a_pack, k_axis: a_k, mn_axis: a_m };
     let pack_b = MatMatMulPack { packer: b_pack, k_axis: b_k, mn_axis: b_n };
     let pa = patch.wire_node(format!("{name}.pack_a"), pack_a, &[a])?[0];
@@ -372,10 +379,6 @@ fn lir_mat_mul_unary(
     let name = &node.name;
     let geo = AddMatMulGeometry {
         k: k.clone(),
-        /*
-        a_storage: k.as_i64().map(|k| unsafe { mmm.a_packed(a_dt.size_of(), k as usize) }),
-        b_storage: k.as_i64().map(|k| unsafe { mmm.b_packed(b_dt.size_of(), k as usize) }),
-        */
         mmm: mmm.clone(),
         c_to_a_axis_mapping: MapOutputAxisToInput(c_to_a_axis_mapping),
         c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
@@ -386,7 +389,7 @@ fn lir_mat_mul_unary(
         c_fact,
         c_m,
         c_n,
-        vec![ProtoFusedSpec::AddMatMul(geo, 0, 1), ProtoFusedSpec::Store(output)],
+        vec![ProtoFusedSpec::AddMatMul { geo, a: 0, b: 1, packing }, ProtoFusedSpec::Store(output)],
     )
     .context("Creating LirMatMulUnary")?;
     let output = patch.wire_node(name, lir, &[pa, pb])?[0];

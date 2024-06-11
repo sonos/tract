@@ -11,7 +11,7 @@ use tract_smallvec::ToSmallVec;
 
 #[derive(Clone, Debug)]
 pub enum ProtoFusedSpec {
-    AddMatMul(AddMatMulGeometry, usize, usize),
+    AddMatMul { geo: AddMatMulGeometry, a: usize, b: usize, packing: usize },
     BinScalar(usize, BinOp),
     LeakyRelu(usize),
     BinPerRow(usize, BinOp, MapOutputAxisToInput),
@@ -26,7 +26,7 @@ impl ProtoFusedSpec {
     pub fn name(&self) -> String {
         use ProtoFusedSpec::*;
         match self {
-            AddMatMul(geo, _, _) => format!("matmul(k={})", geo.k),
+            AddMatMul { geo, .. } => format!("matmul(k={})", geo.k),
             BinScalar(_, op) => format!("scalar{op:?}"),
             LeakyRelu(alpha) => format!("leaky_relu({alpha:?})"),
             BinPerRow(_, op, _) => format!("row{op:?}"),
@@ -45,7 +45,7 @@ impl ProtoFusedSpec {
         output: &Tensor,
     ) -> FusedSpec<'t> {
         let fs = match self {
-            ProtoFusedSpec::AddMatMul(geo, a, b) => {
+            ProtoFusedSpec::AddMatMul { geo, a, b, packing } => {
                 let mut a = inputs[*a].view();
                 unsafe {
                     geo.c_to_a_axis_mapping.translate_view(output_coords, &mut a);
@@ -58,7 +58,7 @@ impl ProtoFusedSpec {
                 }
                 let b =
                     b.as_slice::<Opaque>().unwrap()[0].downcast_ref::<Box<dyn MMMInput>>().unwrap();
-                FusedSpec::AddMatMul { a: &**a, b: &**b, packing: 0 }
+                FusedSpec::AddMatMul { a: &**a, b: &**b, packing: *packing }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
             ProtoFusedSpec::LeakyRelu(v) => FusedSpec::LeakyRelu(&inputs[*v]),
@@ -91,7 +91,7 @@ impl ProtoFusedSpec {
 
     pub fn is_trivial(&self) -> bool {
         match self {
-            ProtoFusedSpec::AddMatMul(geo, _, _) => geo.k.as_i64().is_some(),
+            ProtoFusedSpec::AddMatMul { geo, .. } => geo.k.as_i64().is_some(),
             _ => true,
         }
     }
@@ -102,14 +102,14 @@ impl ProtoFusedSpec {
         output: &mut Tensor,
     ) -> FusedSpec<'t> {
         let fs = match self {
-            ProtoFusedSpec::AddMatMul(_, a, b) => {
+            ProtoFusedSpec::AddMatMul { a, b, packing, .. } => {
                 let a = &inputs[*a];
                 let b = &inputs[*b];
                 let a =
                     a.to_scalar::<Opaque>().unwrap().downcast_ref::<Box<dyn MMMInput>>().unwrap();
                 let b =
                     b.to_scalar::<Opaque>().unwrap().downcast_ref::<Box<dyn MMMInput>>().unwrap();
-                FusedSpec::AddMatMul { a: &**a, b: &**b, packing: 0 }
+                FusedSpec::AddMatMul { a: &**a, b: &**b, packing: *packing }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
             ProtoFusedSpec::LeakyRelu(v) => FusedSpec::LeakyRelu(&inputs[*v]),
@@ -137,7 +137,7 @@ impl ProtoFusedSpec {
     fn check_inputs(&self, inputs: &[&TypedFact]) -> TractResult<()> {
         use ProtoFusedSpec::*;
         match self {
-            AddMatMul(_geo, a, b) => {
+            AddMatMul { a, b, .. } => {
                 ensure!(inputs[*a].datum_type == Opaque::datum_type());
                 ensure!(inputs[*b].datum_type == Opaque::datum_type());
             }
@@ -159,7 +159,7 @@ impl ProtoFusedSpec {
 
     fn cost(&self, m: &TDim, n: &TDim, idt: DatumType) -> TVec<(Cost, TDim)> {
         match self {
-            ProtoFusedSpec::AddMatMul(geo, _, _) => {
+            ProtoFusedSpec::AddMatMul { geo, .. } => {
                 tvec!((Cost::FMA(idt), m.clone() * n * &geo.k))
             }
             _ => tvec!(), /* FIXME maybe */
@@ -169,7 +169,7 @@ impl ProtoFusedSpec {
     fn rm_c_axis(&mut self, axis: usize) {
         use ProtoFusedSpec::*;
         match self {
-            AddMatMul(geo, _a, _b) => {
+            AddMatMul { geo, .. } => {
                 geo.c_to_a_axis_mapping.rm_c_axis(axis);
                 geo.c_to_b_axis_mapping.rm_c_axis(axis);
             }
@@ -543,7 +543,7 @@ impl LirMatMulUnary {
             .iter()
             .find_map(
                 |o| {
-                    if let ProtoFusedSpec::AddMatMul(geo, _, _) = o {
+                    if let ProtoFusedSpec::AddMatMul { geo, .. } = o {
                         Some(geo)
                     } else {
                         None

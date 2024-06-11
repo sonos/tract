@@ -17,6 +17,10 @@ pub struct Packer {
 }
 
 impl MMMInputFormat for Packer {
+    fn can_prepare_types(&self) -> Vec<DatumType> {
+        vec!(self.dt)
+    }
+
     fn prepare_tensor(
         &self,
         t: &Tensor,
