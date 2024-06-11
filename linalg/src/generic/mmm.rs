@@ -52,9 +52,6 @@ unsafe fn add_mat_mul<const MR: usize, const NR: usize, TI, TA, TB>(
     for ik in 0..k {
         let a = std::slice::from_raw_parts(a.add(MR * ik), MR);
         let b = std::slice::from_raw_parts(b.add(NR * ik), NR);
-        dbg!(a, b);
-        dbg!(TA::datum_type());
-        dbg!(TB::datum_type());
         for i in 0..MR {
             for j in 0..NR {
                 ab[i][j] += a[i].as_() * b[j].as_();
