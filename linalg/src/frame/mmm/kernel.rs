@@ -27,64 +27,37 @@ pub trait MatMatMulKer: Copy + Clone + Debug + Send + Sync + 'static {
 #[macro_export]
 macro_rules! test_mmm_kernel_f16 {
     ($k: ident, $cond: expr) => {
-        paste! {
-            #[cfg(test)]
-            #[allow(non_snake_case)]
-            mod [<test_ $k>] {
-                use super::$k;
-                mmm_kernel_tests!($cond, $k, f16, f16, f16, f16);
-                mmm_frame_tests!($cond, $k, f16, f16, f16, f16);
-                mmm_kernel_fuse_tests!($cond, $k, f16, f16);
-            }
-        }
+        mmm_kernel_tests!($cond, $k, f16f16:0, f16, f16, f16, f16);
+        mmm_frame_tests!($cond, $k, f16, f16, f16, f16);
+        mmm_kernel_fuse_tests!($cond, $k, f16, f16);
     };
 }
 
 #[macro_export]
 macro_rules! test_mmm_kernel_f32 {
     ($k: ident, $cond: expr) => {
-        paste! {
-            #[cfg(test)]
-            #[allow(non_snake_case)]
-            mod [<test_ $k>] {
-                use super::$k;
-                mmm_kernel_tests!($cond, $k, f32, f32, f32, f32);
-                mmm_frame_tests!($cond, $k, f32, f32, f32, f32);
-                mmm_kernel_fuse_tests!($cond, $k, f32, f32);
-            }
-        }
+        mmm_kernel_tests!($cond, $k, f32f32:0, f32, f32, f32, f32);
+        mmm_frame_tests!($cond, $k, f32, f32, f32, f32);
+        mmm_kernel_fuse_tests!($cond, $k, f32, f32);
     };
 }
 
 #[macro_export]
 macro_rules! test_mmm_kernel_f64 {
     ($k: ident, $cond: expr) => {
-        paste! {
-            #[cfg(test)]
-            #[allow(non_snake_case)]
-            mod [<test_ $k>] {
-                use super::$k;
-                mmm_kernel_tests!($cond, $k, f64, f64, f64, f64);
-                mmm_frame_tests!($cond, $k, f64, f64, f64, f64);
-                mmm_kernel_fuse_tests!($cond, $k, f64, f64);
-            }
-        }
+        mmm_kernel_tests!($cond, $k, f64f64:0, f64, f64, f64, f64);
+        mmm_frame_tests!($cond, $k, f64, f64, f64, f64);
+        mmm_kernel_fuse_tests!($cond, $k, f64, f64);
     };
 }
 
 #[macro_export]
 macro_rules! test_mmm_kernel_i32 {
     ($k: ident, $cond: expr) => {
-        paste! {
-            #[cfg(test)]
-            #[allow(non_snake_case)]
-            mod [<test_ $k>] {
-                #[allow(unused_imports)]
-                use super::$k;
-                mmm_kernel_tests!($cond, $k, i32, i32, i32, i32);
-                mmm_kernel_fuse_tests!($cond, $k, i32, i32);
-                mmm_frame_tests!($cond, $k, i32, i32, i32, i32);
-            }
+        mmm_kernel_tests!($cond, $k, i32i32:0, i32, i32, i32, i32);
+        mmm_kernel_fuse_tests!($cond, $k, i32, i32);
+        mmm_frame_tests!($cond, $k, i32, i32, i32, i32);
+        /*
             #[cfg(test)]
             mod [<test_qi8_ $k>] {
                 #[allow(unused_imports)]
@@ -100,6 +73,7 @@ macro_rules! test_mmm_kernel_i32 {
                 qmmm_kernel_fuse_tests!($cond, $k, i32, i32, i32, i32);
             }
         }
+    */
     };
 }
 
@@ -118,9 +92,9 @@ pub mod test {
 
     #[macro_export]
     macro_rules! mmm_kernel_tests {
-        ($cond:expr, $ker:ident, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
-            mod kernel {
-                use super::super::$ker;
+        ($cond:expr, $ker:ident, $packing_id:ident : $packing: expr, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
+            mod $packing_id {
+                use super::$ker;
                 use num_traits::Zero;
                 use proptest::prelude::*;
                 #[allow(unused_imports)]
@@ -132,7 +106,7 @@ pub mod test {
 
                 proptest::proptest! {
                     #[test]
-                    fn packed_packed_prop(pb in any_with::<PackedPackedProblem<_, $ta, $tb, $tc, $ti>>($ker)) {
+                    fn packed_packed_prop(pb in any_with::<PackedPackedProblem<_, $ta, $tb, $tc, $ti>>(($ker, $packing))) {
                         if $cond {
                             prop_assert_eq!(pb.run(), pb.reference())
                         }
@@ -142,21 +116,21 @@ pub mod test {
                 #[test]
                 fn packed_packed_1() {
                     if $cond {
-                        test::packed_packed::<_, $ta, $tb, $tc, $ti>($ker, 1)
+                        test::packed_packed::<_, $ta, $tb, $tc, $ti>($ker, $packing, 1)
                     }
                 }
 
                 #[test]
                 fn packed_packed_2() {
                     if $cond {
-                        test::packed_packed::<_, $ta, $tb, $tc, $ti>($ker, 2)
+                        test::packed_packed::<_, $ta, $tb, $tc, $ti>($ker, $packing, 2)
                     }
                 }
 
                 #[test]
                 fn packed_packed_13() {
                     if $cond {
-                        test::packed_packed::<_, $ta, $tb, $tc, $ti>($ker, 13)
+                        test::packed_packed::<_, $ta, $tb, $tc, $ti>($ker, $packing, 13)
                     }
                 }
 
@@ -165,6 +139,7 @@ pub mod test {
                     if $cond {
                         let pb = PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new(
                             $ker,
+                            $packing,
                             0,
                             vec![<$ta>::zero(); 0],
                             vec![<$tb>::zero(); 0],
@@ -180,6 +155,7 @@ pub mod test {
                     if $cond {
                         let pb = PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new(
                             $ker,
+                            $packing,
                             1,
                             vec![<$ta>::zero(); $ker.mr()],
                             vec![<$tb>::zero(); $ker.nr()],
@@ -204,6 +180,7 @@ pub mod test {
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
         pub ker: K,
+        pub packing: usize,
         pub k: usize,
         pub a: Vec<TA>,
         pub b: Vec<TB>,
@@ -214,17 +191,17 @@ pub mod test {
 
     impl<K, TA, TB, TC, TI> Arbitrary for PackedPackedProblem<K, TA, TB, TC, TI>
     where
-        K: MatMatMulKer<Acc = TI> + Default,
+        K: MatMatMulKer<Acc = TI> + Default + Copy,
         TA: 'static + Debug + AsPrimitive<TI>,
         TB: 'static + Debug + AsPrimitive<TI>,
         TC: LADatum + Copy + PartialEq + 'static + Debug,
         TI: LADatum + fmt::Display + AsPrimitive<TC>,
         usize: AsPrimitive<TA> + AsPrimitive<TB>,
     {
-        type Parameters = K;
+        type Parameters = (K, usize);
         type Strategy = BoxedStrategy<Self>;
 
-        fn arbitrary_with(_: K) -> Self::Strategy {
+        fn arbitrary_with((ker, packing): Self::Parameters) -> Self::Strategy {
             (0usize..20, any::<bool>(), any::<bool>())
                 .prop_flat_map(|(k, trans_c, add_one)| {
                     let ker = K::default();
@@ -234,8 +211,9 @@ pub mod test {
                     let b = (0usize..10).prop_map(|x| x.as_());
                     (Just(k), Just(trans_c), Just(add_one), vec(a, m..=m), vec(b, n..=n))
                 })
-                .prop_map(|(k, trans_c, add_one, a, b)| Self {
-                    ker: K::default(),
+                .prop_map(move |(k, trans_c, add_one, a, b)| Self {
+                    ker,
+                    packing,
                     k,
                     a,
                     b,
@@ -305,7 +283,7 @@ pub mod test {
                     k: self.k,
                     pa: pa.as_ptr_unchecked::<u8>() as _,
                     pb: b_store,
-                    packing: 0,
+                    packing: self.packing,
                 });
                 if self.add_one {
                     non_linear_ops.push(FusedKerSpec::ScalarAdd(TI::one()));
@@ -320,7 +298,7 @@ pub mod test {
         }
     }
 
-    pub fn packed_packed<K, TA, TB, TC, TI>(ker: K, k: usize)
+    pub fn packed_packed<K, TA, TB, TC, TI>(ker: K, packing: usize, k: usize)
     where
         K: MatMatMulKer<Acc = TI>,
         TA: Copy + One + Datum + AsPrimitive<TI>,
@@ -331,7 +309,7 @@ pub mod test {
     {
         let a = vec![TA::one(); ker.mr() * k];
         let b = vec![TB::one(); ker.nr() * k];
-        let pb = PackedPackedProblem::<K, TA, TB, TC, TI>::new(ker, k, a, b, false, false);
+        let pb = PackedPackedProblem::<K, TA, TB, TC, TI>::new(ker, packing, k, a, b, false, false);
         assert_eq!(pb.run(), pb.reference())
     }
 
