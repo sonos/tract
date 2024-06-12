@@ -22,7 +22,7 @@ MMMExternKernel!(i32, armv7neon_mmm_i32_8x4; 8, 4; 32, 4; 0, 0; prefetch, crate:
          const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
      },
      packings: I8_I8,
-     test: mmm_kernel_tests!{ true, armv7neon_mmm_i32_8x4, i8i8:1, i8, i8, i32, i32 }
+     test: mmm_packed_packed_tests!{ true, armv7neon_mmm_i32_8x4, i8i8:1, i8, i8, i32, i32 }
 );
 
 MMMExternKernel!(i32, armv7neon_mmm_i32_32x1; 32,1 ; 32, 4; 0, 0; prefetch, crate::arm32::has_neon(),
@@ -32,7 +32,7 @@ MMMExternKernel!(i32, armv7neon_mmm_i32_32x1; 32,1 ; 32, 4; 0, 0; prefetch, crat
          const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
      },
      packings: I8_I8,
-     test: mmm_kernel_tests!{ true, armv7neon_mmm_i32_32x1, i8i8:1, i8, i8, i32, i32 }
+     test: mmm_packed_packed_tests!{ true, armv7neon_mmm_i32_32x1, i8i8:1, i8, i8, i32, i32 }
 );
 
 sigmoid_impl!(f32, armv7neon_sigmoid_f32_4n, 4, 4, crate::arm32::has_neon());
