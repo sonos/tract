@@ -221,7 +221,7 @@ impl TypedOp for DequantizeLinearF32 {
                     let output =
                         SimplePlan::new(adhoc_model)?.run(tvec!(input.into_tvalue()))?.remove(0);
                     let table: &[u8] = match dt {
-                        DatumType::I8 => unsafe { std::mem::transmute(output.as_slice::<i8>()?) },
+                        DatumType::I8 => unsafe { std::mem::transmute::<&[i8], &[u8]>(output.as_slice::<i8>()?) },
                         DatumType::U8 => output.as_slice::<u8>()?,
                         _ => unreachable!(),
                     };

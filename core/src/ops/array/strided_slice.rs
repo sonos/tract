@@ -79,6 +79,7 @@ impl StridedSlice {
             let neg = if let Ok(b) = bound.to_isize() {
                 b < 0
             } else {
+                #[allow(clippy::mutable_key_type)]
                 let symbols = bound.symbols();
                 if symbols.len() == 1 {
                     let sym = symbols.into_iter().next().unwrap();

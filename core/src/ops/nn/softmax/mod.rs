@@ -316,7 +316,7 @@ fn softmax_quant_inner<D: Dimension>(
         // and casting it to u8 in any case.
         if out_is_signed {
             *it = unsafe {
-                std::mem::transmute(i32::max(
+                std::mem::transmute::<i8, u8>(i32::max(
                     i32::min(unsat_scaled_output, i8::MAX as i32),
                     i8::MIN as i32,
                 ) as i8)

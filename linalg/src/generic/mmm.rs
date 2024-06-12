@@ -205,6 +205,7 @@ where
                         if TI::datum_type().is_float() {
                             add_mat_mul::<MR, NR, TI, TI, TI>(pa, pb, k, &mut ab);
                         } else {
+                            #[allow(clippy::missing_transmute_annotations)]
                             add_mat_mul::<MR, NR, i32, i8, i8>(pa, pb, k, std::mem::transmute(&mut ab))
                         }
                         /*
