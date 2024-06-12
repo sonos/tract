@@ -7,8 +7,6 @@ use tract_core::internal::*;
 use tract_core::ops::scan::Scan;
 use tract_itertools::izip;
 use tract_itertools::Itertools;
-#[cfg(feature = "tf")]
-use tract_tensorflow::tfpb::tensorflow::GraphDef;
 
 use crate::model::Model;
 

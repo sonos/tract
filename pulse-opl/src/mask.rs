@@ -69,7 +69,7 @@ impl PulseMaskOpState {
         let pulse_begin = self.current_pos;
         let pulse_end = self.current_pos + pulse;
         self.current_pos += pulse;
-        let end = op.end.eval(&session.resolved_symbols).to_usize().unwrap_or(std::usize::MAX);
+        let end = op.end.eval(&session.resolved_symbols).to_usize().unwrap_or(usize::MAX);
 
         // pulse is entirely in valid input, just forward
         if pulse_begin >= op.begin && pulse_end <= end {
