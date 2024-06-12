@@ -27,5 +27,5 @@ MMMExternKernel!(i32, avx2_mmm_i32_8x8; 8, 8; 32, 4; 0, 0; no_prefetch, is_x86_f
      const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
  },
  packings: I8_I8,
- test: mmm_kernel_tests!{ true, avx2_mmm_i32_8x8, i8i8:1, i8, i8, i32, i32 }
+ test: mmm_packed_packed_tests!{ true, avx2_mmm_i32_8x8, i8i8:1, i8, i8, i32, i32 }
 );
