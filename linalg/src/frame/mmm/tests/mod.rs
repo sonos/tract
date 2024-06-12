@@ -1,3 +1,5 @@
+use crate::LADatum;
+
 #[macro_use]
 pub mod fuse;
 #[macro_use]
@@ -58,6 +60,26 @@ macro_rules! test_mmm_kernel_i32 {
         mmm_frame_tests!($cond, $k, i32, i32, i32, i32);
         mmm_q_scale_tests!($cond, $k);
     };
+}
+
+fn display_error<TC: LADatum>(v: &[TC], expected: &[TC], m: usize, n: usize) {
+    if v != expected {
+        println!("found, expected:");
+        for m in 0..m {
+            for n in 0..n {
+                use nu_ansi_term::Color::*;
+                let f = v[m * n + n];
+                let e = expected[m * n + n];
+                let color = if f != e { Red } else { Green };
+                print!("{} ", color.paint(format!("{:4}", f)));
+            }
+            print!("      ");
+            for n in 0..n {
+                print!("{:4} ", expected[m * n + n]);
+            }
+            println!();
+        }
+    }
 }
 
 
