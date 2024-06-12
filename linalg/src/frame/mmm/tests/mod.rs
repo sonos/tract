@@ -1,7 +1,11 @@
 #[macro_use]
+pub mod fuse;
+#[macro_use]
 pub mod frame;
 #[macro_use]
 pub mod packed_packed;
+#[macro_use]
+pub mod q_scale;
 
 #[cfg(test)]
 macro_rules! test_mmm_kernel {
