@@ -19,6 +19,9 @@ flate2.workspace = true
 half.workspace = true
 ndarray.workspace = true
 
+[features]
+complex = []
+
 [dev-dependencies]
 lazy_static = "1.4.0"
 reqwest.workspace = true

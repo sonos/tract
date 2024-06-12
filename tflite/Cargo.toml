@@ -11,3 +11,6 @@ edition = "2021"
 derive-new.workspace = true
 flatbuffers.workspace = true
 tract-core = { version = "=0.21.6-pre", path = "../core" }
+
+[features]
+complex = []

@@ -98,7 +98,7 @@ impl Location {
 }
 
 #[derive(Debug, Clone)]
-#[allow(clippy::large_enum_variant)]
+#[allow(clippy::large_enum_variant, dead_code)]
 pub enum SomeGraphDef {
     NoGraphDef,
     Nnef(tract_nnef::ProtoModel),
