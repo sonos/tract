@@ -1,13 +1,53 @@
-use super::ScratchSpaceImpl;
-use super::*;
-use crate::multithread::Executor;
-use rayon::iter::IntoParallelIterator;
-use rayon::iter::ParallelIterator;
-use std::borrow::Cow;
-use std::fmt;
-use tract_data::internal::*;
+#[macro_use]
+mod macros;
 
-pub trait MatMatMul: fmt::Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
+pub mod cost_model;
+#[macro_use]
+pub(crate) mod fuse;
+pub(crate) mod input_store;
+pub mod pack;
+mod scratch;
+mod storage;
+
+#[cfg(test)]
+#[macro_use]
+pub mod tests;
+
+use std::borrow::Cow;
+use std::fmt::Debug;
+use crate::LADatum;
+use tract_data::internal::*;
+use crate::multithread::Executor;
+use rayon::prelude::*;
+
+pub use cost_model::*;
+pub use fuse::*;
+pub use input_store::*;
+pub use scratch::*;
+pub use storage::*;
+
+
+pub fn no_prefetch(_ptr: *const u8, _len: usize) {}
+
+pub trait MatMatMulKer: Copy + Clone + Debug + Send + Sync + 'static {
+    type Acc: LADatum;
+    fn name(&self) -> Cow<'static, str>;
+    fn kernel(&self, op: &[FusedKerSpec<Self::Acc>]) -> isize;
+    fn mr(&self) -> usize;
+    fn nr(&self) -> usize;
+
+    fn packings(&self) -> &[(&dyn MMMInputFormat, &dyn MMMInputFormat)];
+
+    #[allow(unused_variables)]
+    fn prefetch(&self, ptr: *const u8, len: usize) {}
+
+    #[allow(unused_variables)]
+    fn can_fuse(&self, spec: &FusedSpec) -> bool {
+        true
+    }
+}
+
+pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
     fn kernel_name(&self) -> Cow<'static, str>;
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;

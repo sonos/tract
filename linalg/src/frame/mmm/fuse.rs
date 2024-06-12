@@ -260,7 +260,7 @@ pub mod test {
                 #[allow(unused_imports)]
                 use $crate::frame::mmm::fuse::test;
                 use $crate::frame::mmm::fuse::test::QScaleProblem;
-                use $crate::frame::mmm::kernel::MatMatMulKer;
+                use $crate::frame::mmm::MatMatMulKer;
                 use $crate::generic::Scaler;
                 use proptest::prelude::*;
 
