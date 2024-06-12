@@ -1,7 +1,7 @@
-use super::*;
 use crate::LADatum;
 use num_traits::AsPrimitive;
-use pack::Packer;
+use crate::frame::mmm::*;
+use crate::frame::mmm::pack::Packer;
 use proptest::prelude::*;
 use std::ops::Neg;
 use tract_data::internal::*;
@@ -13,7 +13,7 @@ macro_rules! mmm_frame_tests {
             use super::*;
             use tract_data::internal::*;
             #[allow(unused_imports)]
-            use $crate::frame::mmm::tests::*;
+            use $crate::frame::mmm::tests::frame::*;
 
             proptest::proptest! {
                 #[test]

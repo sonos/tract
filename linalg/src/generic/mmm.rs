@@ -211,7 +211,7 @@ MMMKernelWrapper!(i32, generic_i32_4x4; kernel::<i32, 4, 4>; 4, 4; 4, 4; 0, 0; n
      const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
  },
  packings: I8_I8,
- test: mmm_kernel_tests!{ true, generic_i32_4x4, i8i8:1, i8, i8, i32, i32 }
+ test: mmm_packed_packed_tests!{ true, generic_i32_4x4, i8i8:1, i8, i8, i32, i32 }
 );
 
 MMMKernelWrapper!(i32, generic_i32_4x1; kernel::<i32, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true,
@@ -221,7 +221,7 @@ MMMKernelWrapper!(i32, generic_i32_4x1; kernel::<i32, 4, 1>; 4, 1; 4, 4; 0, 0; n
      const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
  },
  packings: I8_I8,
- test: mmm_kernel_tests!{ true, generic_i32_4x1, i8i8:1, i8, i8, i32, i32 }
+ test: mmm_packed_packed_tests!{ true, generic_i32_4x1, i8i8:1, i8, i8, i32, i32 }
 );
 
 #[cfg(test)]
@@ -235,5 +235,5 @@ MMMKernelWrapper!(i32, generic_i32_3x2; kernel::<i32, 3, 2>; 3, 2; 4, 4; 0, 0; n
      const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
  },
  packings: I8_I8,
- test: mmm_kernel_tests!{ true, generic_i32_3x2, i8i8:1, i8, i8, i32, i32 }
+ test: mmm_packed_packed_tests!{ true, generic_i32_3x2, i8i8:1, i8, i8, i32, i32 }
 );
