@@ -144,12 +144,12 @@ impl Drop for Tensor {
 }
 
 impl Tensor {
-    #[allow(unreachable_code)]
+    #[allow(unreachable_code, unexpected_cfgs)]
     fn default_alignment(dt: DatumType, shape: &[usize]) -> usize {
         if shape.len() == 0 {
             return dt.alignment();
         }
-        #[cfg(any(target_arch = "aarch64", target_arch = "armv7"))]
+        #[cfg(any(target_arch = "aarch64", target_arch = "armv7", target_arch = "arm"))]
         {
             return 128;
         }
@@ -204,7 +204,7 @@ impl Tensor {
             } else if cfg!(debug_assertions) {
                 assert!(dt.is_copy());
                 if dt == DatumType::F32 {
-                    tensor.fill_t(std::f32::NAN).unwrap();
+                    tensor.fill_t(f32::NAN).unwrap();
                 } else {
                     // safe, non copy types have been dealt with
                     tensor.as_bytes_mut().iter_mut().for_each(|x| *x = (-1i8) as u8);

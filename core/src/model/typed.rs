@@ -183,22 +183,6 @@ impl TypedModel {
     }
 
     pub fn concretize_dims(&self, values: &SymbolValues) -> TractResult<TypedModel> {
-        use crate::model::translator::Translate;
-        impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for SymbolValues {
-            fn translate_node(
-                &self,
-                source: &TypedModel,
-                node: &TypedNode,
-                target: &mut TypedModel,
-                mapping: &HashMap<OutletId, OutletId>,
-            ) -> TractResult<TVec<OutletId>> {
-                let outlets = node.op.concretize_dims(source, node, target, mapping, self)?;
-                for outlet in &outlets {
-                    target.outlet_fact(*outlet)?.consistent()?;
-                }
-                Ok(outlets)
-            }
-        }
         values.translate_model(self)
     }
 
@@ -214,6 +198,23 @@ impl TypedModel {
 
     pub fn axes_mapping(&self) -> TractResult<AxesMapping> {
         crate::axes::for_model(self)
+    }
+}
+
+use crate::model::translator::Translate;
+impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for SymbolValues {
+    fn translate_node(
+        &self,
+        source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let outlets = node.op.concretize_dims(source, node, target, mapping, self)?;
+        for outlet in &outlets {
+            target.outlet_fact(*outlet)?.consistent()?;
+        }
+        Ok(outlets)
     }
 }
 

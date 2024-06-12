@@ -130,6 +130,7 @@ where
                 flush_lists[flush_at].push(node)
             }
         }
+        #[allow(clippy::mutable_key_type)]
         let mut symbols: std::collections::HashSet<Symbol> = Default::default();
         for node in &model.borrow().nodes {
             for output in &node.outputs {

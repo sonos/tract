@@ -6,7 +6,6 @@ mod cortex_a9;
 use armv7neon::*;
 
 use crate::frame::element_wise::ElementWiseKer;
-use crate::frame::mmm::kernel::MatMatMulKer;
 
 use crate::Ops;
 
