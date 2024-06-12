@@ -23,6 +23,7 @@ struct TLSScratch {
 }
 
 impl TLSScratch {
+    #[allow(clippy::missing_transmute_annotations)]
     fn ker_specs<TI: LADatum>(&mut self) -> &mut Vec<FusedKerSpec<TI>> {
         unsafe {
             if TI::datum_type() == f32::datum_type() || TI::datum_type() == i32::datum_type() {

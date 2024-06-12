@@ -70,6 +70,7 @@ impl ShapeFact {
     #[inline]
     pub fn eval_to_isize(&self, values: &SymbolValues) -> TractResult<Cow<TVec<isize>>> {
         if let Some(c) = &self.concrete {
+            #[allow(clippy::missing_transmute_annotations)] // TVec<usize> -> TVec<isize>
             Ok(unsafe { std::mem::transmute(Cow::Borrowed(c)) })
         } else {
             Ok(Cow::Owned(
