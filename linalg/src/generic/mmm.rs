@@ -173,10 +173,11 @@ where
                     if TI::datum_type().is_float() {
                         add_mat_mul::<MR, NR, TI, TI, TI>(pa, pb, k, &mut ab);
                     } else if TI::datum_type() == i32::datum_type() {
+                        let ab = transmute::<&mut [[TI; NR]; MR], &mut [[i32; NR]; MR]>(&mut ab);
                         if packing == 0 {
-                            add_mat_mul::<MR, NR, i32, i32, i32>(pa, pb, k, transmute(&mut ab))
+                            add_mat_mul::<MR, NR, i32, i32, i32>(pa, pb, k, ab)
                         } else if packing == 1 {
-                            add_mat_mul::<MR, NR, i32, i8, i8>(pa, pb, k, transmute(&mut ab))
+                            add_mat_mul::<MR, NR, i32, i8, i8>(pa, pb, k, ab)
                         } else {
                             return 1;
                         }
