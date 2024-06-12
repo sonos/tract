@@ -1,5 +1,6 @@
 use crate::frame::mmm::fuse::FusedKerSpec;
 use crate::frame::mmm::storage::*;
+use crate::frame::mmm::tests::display_error;
 use crate::frame::mmm::*;
 use num_traits::{AsPrimitive, Bounded};
 use proptest::prelude::*;
@@ -10,6 +11,7 @@ macro_rules! mmm_kernel_fuse_tests {
     ($cond:expr, $ker:ident, $tc:ty, $ti: ty) => {
         mod fuse {
             use super::$ker;
+            use crate::frame::mmm::MatMatMulKer;
             use num_traits::Zero;
             #[allow(unused_imports)]
             use tract_data::prelude::f16;
@@ -17,7 +19,6 @@ macro_rules! mmm_kernel_fuse_tests {
             use $crate::frame::mmm::tests::fuse as test;
             #[allow(unused_imports)]
             use $crate::frame::mmm::tests::fuse::*;
-            use crate::frame::mmm::MatMatMulKer;
 
             #[test]
             fn return_zeros() {
@@ -295,24 +296,4 @@ where
 {
     let len = ker.mr() * ker.nr();
     proptest::collection::vec(any::<i8>().prop_map(|c| c.as_()), len..=len).boxed()
-}
-
-fn display_error<TC: LADatum>(v: &[TC], expected: &[TC], mr: usize, nr: usize) {
-    if v != expected {
-        println!("found, expected:");
-        for m in 0..mr {
-            for n in 0..nr {
-                use nu_ansi_term::Color::*;
-                let f = v[m * nr + n];
-                let e = expected[m * nr + n];
-                let color = if f != e { Red } else { Green };
-                print!("{} ", color.paint(format!("{:4}", f)));
-            }
-            print!("      ");
-            for n in 0..nr {
-                print!("{:4} ", expected[m * nr + n]);
-            }
-            println!();
-        }
-    }
 }
