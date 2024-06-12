@@ -4,7 +4,13 @@ set -ex
 
 rustup update
 
-cargo check --all-targets
+if [ `uname` = "Linux" ]
+then
+    cargo check --all-targets
+else
+    cargo check --all-targets --workspace --exclude test-tflite
+fi
+
 ./.travis/onnx-tests.sh
 ./.travis/tflite.sh
 
