@@ -144,12 +144,12 @@ impl Drop for Tensor {
 }
 
 impl Tensor {
-    #[allow(unreachable_code)]
+    #[allow(unreachable_code, unexpected_cfgs)]
     fn default_alignment(dt: DatumType, shape: &[usize]) -> usize {
         if shape.len() == 0 {
             return dt.alignment();
         }
-        #[cfg(any(target_arch = "aarch64", target_arch = "armv7"))]
+        #[cfg(any(target_arch = "aarch64", target_arch = "armv7", target_arch = "arm"))]
         {
             return 128;
         }
