@@ -24,7 +24,6 @@ pub struct Node<F: Fact , O> {
     /// them.
     pub inputs: Vec<OutletId>,
     /// The actual operation the node performs.
-    #[cfg_attr(feature = "serialize", serde(skip))]
     pub op: O,
     /// List of ouputs, with their descendant and tensor type information.
     pub outputs: TVec<Outlet<F>>,
