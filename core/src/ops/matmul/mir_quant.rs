@@ -577,7 +577,7 @@ mod test {
     impl_qmmp! { QMatMulProblemU8U8U8, u8, u8, u8 }
 
     #[test]
-    fn test_qmmp_i8_i8_i8() {
+    fn test_qmmp_i8_i8_i8_0() {
         QMatMulProblemI8I8I8 {
             a: arr2(&[[76, 76, 76], [127, -127, 102]]),
             b: arr2(&[[25, 51, 76, 102, 127], [-51, -25, 0, 25, 51], [-25, -51, -76, -102, -127]]),
@@ -588,6 +588,22 @@ mod test {
             a_scale: 0.039215688,
             b_scale: 0.039215688,
             c_scale: 0.09411765,
+        }
+        .check(); // c: [[-52, -41, -31, -21, -10], [127, 64, 0, -62, -126]]
+    }
+
+    #[test]
+    fn test_qmmp_i8_i8_i8_1() {
+        QMatMulProblemI8I8I8 {
+            a: arr2(&[[-34, -2]]),
+            b: arr2(&[[-79], [21]]),
+            bias: tensor0(0i32),
+            a0: -87,
+            b0: -17,
+            c0: 0,
+            a_scale: 1.0,
+            b_scale: 1.0,
+            c_scale: 1.0,
         }
         .check(); // c: [[-52, -41, -31, -21, -10], [127, 64, 0, -62, -126]]
     }
