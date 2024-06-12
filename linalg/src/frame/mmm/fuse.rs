@@ -239,7 +239,7 @@ pub mod test {
                 #[test]
                 fn return_c_plus_d() {
                     if $cond {
-                        test::return_c_plus_d::<_, $ti>($ker)
+                        test::return_c_plus_d::<_, $ti, $ti>($ker)
                     }
                 }
 
@@ -254,9 +254,8 @@ pub mod test {
     }
 
     #[macro_export]
-    macro_rules! qmmm_kernel_fuse_tests {
-        ($cond:expr, $ker:ident, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
-            mod fuseq {
+    macro_rules! mmm_q_scale_tests {
+        ($cond:expr, $ker:ident) => {
                 use $crate::frame::mmm::fuse::RoundingPolicy;
                 #[allow(unused_imports)]
                 use $crate::frame::mmm::fuse::test;
@@ -264,7 +263,6 @@ pub mod test {
                 use $crate::frame::mmm::kernel::MatMatMulKer;
                 use $crate::generic::Scaler;
                 use proptest::prelude::*;
-                use super::$ker;
 
                 // FIXME: Scaler should be arbitrary
                 macro_rules! test_q_scale {
@@ -274,8 +272,8 @@ pub mod test {
                             fn [<return_q_scale_halfpos_ $policy:lower>]() {
                                 if $cond {
                                     let len = ($ker.mr() * $ker.nr()) as i64;
-                                    let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
-                                    QScaleProblem::<_, $ti>::new($ker, v, Scaler::new(0.5f32, RoundingPolicy::$policy)).run()
+                                    let v = (0..len).map(|i| (i - len / 2) as i32).collect();
+                                    QScaleProblem::new($ker, v, Scaler::new(0.5f32, RoundingPolicy::$policy)).run()
                                 }
                             }
 
@@ -283,8 +281,8 @@ pub mod test {
                             fn [<return_q_scale_halfneg_ $policy:lower>]() {
                                 if $cond {
                                     let len = ($ker.mr() * $ker.nr()) as i64;
-                                    let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
-                                    QScaleProblem::<_, $ti>::new($ker, v, Scaler::new(-0.5f32, RoundingPolicy::$policy)).run()
+                                    let v = (0..len).map(|i| (i - len / 2) as i32).collect();
+                                    QScaleProblem::new($ker, v, Scaler::new(-0.5f32, RoundingPolicy::$policy)).run()
                                 }
                             }
 
@@ -292,8 +290,8 @@ pub mod test {
                             fn [<return_q_scale_pot_ $policy:lower>]() {
                                 if $cond {
                                     let len = ($ker.mr() * $ker.nr()) as i64;
-                                    let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
-                                    QScaleProblem::<_, $ti>::new($ker, v, Scaler::new(0.25f32, RoundingPolicy::$policy)).run()
+                                    let v = (0..len).map(|i| (i - len / 2) as i32).collect();
+                                    QScaleProblem::new($ker, v, Scaler::new(0.25f32, RoundingPolicy::$policy)).run()
                                 }
                             }
 
@@ -301,8 +299,8 @@ pub mod test {
                             fn [<return_q_scale_nonpot_ $policy:lower>]() {
                                 if $cond {
                                     let len = ($ker.mr() * $ker.nr()) as i64;
-                                    let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
-                                    QScaleProblem::<_, $ti>::new($ker, v, Scaler::new(1f32 / 5., RoundingPolicy::$policy)).run()
+                                    let v = (0..len).map(|i| (i - len / 2) as i32).collect();
+                                    QScaleProblem::new($ker, v, Scaler::new(1f32 / 5., RoundingPolicy::$policy)).run()
                                 }
                             }
 
@@ -310,8 +308,8 @@ pub mod test {
                             fn [<return_q_scale_bigpot_ $policy:lower>]() {
                                 if $cond {
                                     let len = ($ker.mr() * $ker.nr()) as i64;
-                                    let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
-                                    QScaleProblem::<_, $ti>::new($ker, v, Scaler::new(4f32, RoundingPolicy::$policy)).run()
+                                    let v = (0..len).map(|i| (i - len / 2) as i32).collect();
+                                    QScaleProblem::new($ker, v, Scaler::new(4f32, RoundingPolicy::$policy)).run()
                                 }
                             }
 
@@ -319,8 +317,8 @@ pub mod test {
                             fn [<return_q_scale_bignonpot_ $policy:lower>]() {
                                 if $cond {
                                     let len = ($ker.mr() * $ker.nr()) as i64;
-                                    let v = (0..len).map(|i| (i - len / 2) as $tc).collect();
-                                    QScaleProblem::<_, $ti>::new($ker, v, Scaler::new(14., RoundingPolicy::$policy)).run()
+                                    let v = (0..len).map(|i| (i - len / 2) as i32).collect();
+                                    QScaleProblem::new($ker, v, Scaler::new(14., RoundingPolicy::$policy)).run()
                                 }
                             }
                         }
@@ -336,7 +334,7 @@ pub mod test {
 
                 proptest::proptest! {
                     #[test]
-                    fn return_q_scale_prop(pb in any_with::<QScaleProblem<_, $ti>>($ker)) {
+                    fn return_q_scale_prop(pb in any_with::<QScaleProblem::<_>>($ker)) {
                         if $cond {
                             pb.run()
                         }
@@ -346,10 +344,9 @@ pub mod test {
                 #[test]
                 fn return_c_scale_bigpot() {
                     if $cond {
-                        test::return_c_scale_bigpot::<_, $ti>($ker)
+                        test::return_c_scale_bigpot::<_>($ker)
                     }
                 }
-            }
         };
     }
 
@@ -435,20 +432,21 @@ pub mod test {
         fused_ops::<K, TI, _>(ker, v, &[], |_, _, c| c + 1.as_() - 1.as_())
     }
 
-    pub fn return_c_plus_d<K, TI>(ker: K)
+    pub fn return_c_plus_d<K, TI, TD>(ker: K)
     where
         K: MatMatMulKer<Acc = TI>,
         TI: LADatum,
-        usize: AsPrimitive<TI>,
+        TD: LADatum + AsPrimitive<TI>,
+        usize: AsPrimitive<TI> + AsPrimitive<TD>,
     {
         let len = ker.mr() * ker.nr();
         let v: Vec<TI> = (0..len).map(|f| f.as_()).collect();
-        let d: Vec<TI> = (0..len).map(|f| ((3 * f) % 7).as_()).collect();
+        let d: Vec<TD> = (0..len).map(|f| ((3 * f) % 7).as_()).collect();
         fused_ops::<K, TI, _>(
             ker,
             &v,
             &[FusedKerSpec::AddUnicast(mmm_stride_storage(&d, ker.nr()))],
-            |row, col, c| c + d[row * ker.nr() + col],
+            |row, col, c| c + d[row * ker.nr() + col].as_(),
         );
     }
 
@@ -523,35 +521,29 @@ pub mod test {
         fused_ops::<K, TI, _>(ker, &v, &[FusedKerSpec::Clear], |_, _, _| 0.as_())
     }
 
-    pub fn return_c_scale_bigpot<K, TI>(ker: K)
+    pub fn return_c_scale_bigpot<K>(ker: K)
     where
-        K: MatMatMulKer<Acc = TI>,
-        TI: LADatum + ScaleShiftAndRound,
-        isize: AsPrimitive<TI>,
+        K: MatMatMulKer<Acc = i32>,
     {
         let len = ker.mr() * ker.nr();
-        let v: Vec<TI> = (-(len as isize) / 2..).take(len).map(|f| f.as_()).collect();
-        fused_ops::<K, TI, _>(ker, &v, &[FusedKerSpec::ShiftLeft(1)], |_, _, c| c.q_shl(1))
+        let v: Vec<i32> = (-(len as isize) / 2..).take(len).map(|f| f.as_()).collect();
+        fused_ops::<K, i32, _>(ker, &v, &[FusedKerSpec::ShiftLeft(1)], |_, _, c| c.q_shl(1))
     }
 
     #[derive(Debug, new)]
-    pub struct QScaleProblem<K, TI>
+    pub struct QScaleProblem<K>
     where
-        K: MatMatMulKer<Acc = TI>,
-        TI: LADatum,
-        i64: AsPrimitive<TI>,
+        K: MatMatMulKer<Acc = i32>,
     {
         pub ker: K,
-        pub c: Vec<TI>,
+        pub c: Vec<i32>,
         pub scaler: Scaler,
-        pub boo: std::marker::PhantomData<(K, TI)>,
+        pub boo: std::marker::PhantomData<K>,
     }
 
-    impl<K, TI> Arbitrary for QScaleProblem<K, TI>
+    impl<K> Arbitrary for QScaleProblem<K>
     where
-        K: MatMatMulKer<Acc = TI> + 'static + Copy + Default,
-        TI: LADatum,
-        i64: AsPrimitive<TI>,
+        K: MatMatMulKer<Acc = i32> + 'static + Copy + Default,
     {
         type Parameters = K;
         type Strategy = BoxedStrategy<Self>;
@@ -581,16 +573,13 @@ pub mod test {
         }
     }
 
-    impl<K, TI> QScaleProblem<K, TI>
+    impl<K> QScaleProblem<K>
     where
-        K: MatMatMulKer<Acc = TI>,
-        TI: LADatum + ScaleShiftAndRound + AsPrimitive<i64>,
-        usize: AsPrimitive<TI>,
-        i64: AsPrimitive<TI>,
+        K: MatMatMulKer<Acc = i32>,
     {
         pub fn run(&self) {
             if let FusedSpec::QScale(shift, policy, mult) = self.scaler.as_fused_spec() {
-                fused_ops::<K, TI, _>(
+                fused_ops::<K, i32, _>(
                     self.ker,
                     &self.c,
                     &[FusedKerSpec::QScale(shift, policy, mult)],
@@ -598,14 +587,14 @@ pub mod test {
                 )
             } else if let FusedSpec::RoundingShiftRight(shift, policy) = self.scaler.as_fused_spec()
             {
-                fused_ops::<K, TI, _>(
+                fused_ops::<K, i32, _>(
                     self.ker,
                     &self.c,
                     &[FusedKerSpec::RoundingShiftRight(shift, policy)],
                     |_, _, c| c.q_shr(shift, policy),
                 )
             } else if let FusedSpec::ShiftLeft(shift) = self.scaler.as_fused_spec() {
-                fused_ops::<K, TI, _>(
+                fused_ops::<K, i32, _>(
                     self.ker,
                     &self.c,
                     &[FusedKerSpec::ShiftLeft(shift)],
