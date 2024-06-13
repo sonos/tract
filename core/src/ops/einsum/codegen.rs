@@ -1,4 +1,4 @@
-use tract_linalg::frame::Packer;
+use tract_linalg::frame::PackedFormat;
 
 use super::*;
 use crate::ops::cast::cast;
@@ -350,9 +350,9 @@ fn lir_mat_mul_unary(
         .with_context(|| format!("No packing for {mmm:?} with inputs {a_dt:?} and {b_dt:?}"))?;
     let packers = mmm.packings()[packing];
     let a_pack =
-        packers.0.downcast_ref::<Packer>().context("Expects regular packed format for A")?.clone();
+        packers.0.downcast_ref::<PackedFormat>().context("Expects regular packed format for A")?.clone();
     let b_pack =
-        packers.1.downcast_ref::<Packer>().context("Expects regular packed format for B")?.clone();
+        packers.1.downcast_ref::<PackedFormat>().context("Expects regular packed format for B")?.clone();
     let pack_a = MatMatMulPack { packer: a_pack, k_axis: a_k, mn_axis: a_m };
     let pack_b = MatMatMulPack { packer: b_pack, k_axis: b_k, mn_axis: b_n };
     let pa = patch.wire_node(format!("{name}.pack_a"), pack_a, &[a])?[0];

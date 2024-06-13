@@ -16,7 +16,7 @@ pub use helpers::{NibbleReader, NibbleWriter};
 pub use q4_0::Q4_0;
 pub use repack::RepackingPackedBlockQuantValue;
 
-use super::Packer;
+use super::PackedFormat;
 
 pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downcast {
     fn same_as(&self, other: &dyn BlockQuant) -> bool;
@@ -92,7 +92,7 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
     unsafe fn repack_panel(
         &self,
         value: &PackedBlockQuantValue,
-        target: &Packer,
+        target: &PackedFormat,
         panel: usize,
         scratch: *mut u8,
     ) -> TractResult<()>;

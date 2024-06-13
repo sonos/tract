@@ -7,7 +7,7 @@ use proptest::strategy::{BoxedStrategy, Strategy};
 use tract_data::internal::*;
 use tract_linalg::frame::mmm::FusedSpec;
 // use tract_linalg::frame::mmm::{VirtualInput, VirtualInputSpec};
-use tract_linalg::frame::{Packer, PackingWriter};
+use tract_linalg::frame::{PackedFormat, PackingWriter};
 use tract_linalg::mmm::MMMInputValue;
 use DatumType::F32;
 
@@ -157,13 +157,13 @@ impl ConvProblem {
             let im2col: Box<dyn MMMInputValue> = if self.lazy_im2col {
                 LazyIm2colSpec {
                     full_kernel_shape: self.filters.shape().into(),
-                    packer: b_pack.downcast_ref::<Packer>().unwrap().clone(),
+                    packer: b_pack.downcast_ref::<PackedFormat>().unwrap().clone(),
                 }
                 .wrap(&self.input.view())
             } else {
                 EagerIm2colSpec {
                     full_kernel_shape: self.filters.shape().into(),
-                    packer: b_pack.downcast_ref::<Packer>().unwrap().clone(),
+                    packer: b_pack.downcast_ref::<PackedFormat>().unwrap().clone(),
                 }
                 .wrap(&self.input.view())
             };
@@ -216,7 +216,7 @@ fn tensor(shape: Vec<usize>) -> Tensor {
 
 #[derive(Clone, Debug, Hash)]
 struct EagerIm2colSpec {
-    packer: Packer,
+    packer: PackedFormat,
     full_kernel_shape: TVec<usize>,
 }
 
@@ -239,7 +239,7 @@ impl EagerIm2colSpec {
 
 #[derive(Clone, Debug, Hash)]
 struct EagerIm2col {
-    packer: Packer,
+    packer: PackedFormat,
     im2col: Tensor,
     k: usize,
 }
@@ -293,7 +293,7 @@ impl MMMInputValue for EagerIm2col {
 
 #[derive(Clone, Debug, Hash)]
 struct LazyIm2colSpec {
-    packer: Packer,
+    packer: PackedFormat,
     full_kernel_shape: TVec<usize>,
 }
 
@@ -331,7 +331,7 @@ impl LazyIm2colSpec {
 
 #[derive(Clone, Debug, Hash)]
 struct LazyIm2col {
-    packer: Packer,
+    packer: PackedFormat,
     image: *const f32,
     n_offsets: Vec<isize>,
     k_offsets: Vec<isize>,

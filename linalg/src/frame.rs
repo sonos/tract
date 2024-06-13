@@ -18,7 +18,7 @@ pub mod sigmoid;
 pub mod tanh;
 pub mod element_wise_helper;
 
-pub use mmm::pack::Packer;
+pub use mmm::pack::PackedFormat;
 pub use mmm::pack::PackingWriter;
 
 pub use self::element_wise::{ElementWise, ElementWiseImpl};

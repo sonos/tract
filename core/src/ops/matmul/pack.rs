@@ -2,14 +2,14 @@ use crate::axes::Axis;
 use crate::internal::*;
 use ndarray::*;
 use tract_linalg::frame::block_quant::RepackingPackedBlockQuantValue;
-use tract_linalg::frame::Packer;
+use tract_linalg::frame::PackedFormat;
 use tract_linalg::mmm::MMMInputValue;
 
 use super::de_block_quant::DeBlockQuant;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MatMatMulPack {
-    pub(crate) packer: Packer,
+    pub(crate) packer: PackedFormat,
     pub(crate) k_axis: usize,
     pub(crate) mn_axis: usize,
 }
