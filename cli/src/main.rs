@@ -445,6 +445,7 @@ fn run_options(command: clap::Command) -> clap::Command {
                 )
         .arg(
             Arg::new("allow-random-input")
+            .short('R')
             .long("allow-random-input")
             .help("Will use random generated input"),
             )
