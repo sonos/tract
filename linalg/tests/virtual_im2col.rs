@@ -8,7 +8,7 @@ use tract_data::internal::*;
 use tract_linalg::frame::mmm::FusedSpec;
 // use tract_linalg::frame::mmm::{VirtualInput, VirtualInputSpec};
 use tract_linalg::frame::{Packer, PackingWriter};
-use tract_linalg::mmm::MMMInput;
+use tract_linalg::mmm::MMMInputValue;
 use DatumType::F32;
 
 proptest::proptest! {
@@ -154,7 +154,7 @@ impl ConvProblem {
         let (a_pack, b_pack) = mmm.packings()[0];
         let a = a_pack.prepare_tensor(&reshaped_filters, 0, 1)?;
         unsafe {
-            let im2col: Box<dyn MMMInput> = if self.lazy_im2col {
+            let im2col: Box<dyn MMMInputValue> = if self.lazy_im2col {
                 LazyIm2colSpec {
                     full_kernel_shape: self.filters.shape().into(),
                     packer: b_pack.downcast_ref::<Packer>().unwrap().clone(),
@@ -221,7 +221,7 @@ struct EagerIm2colSpec {
 }
 
 impl EagerIm2colSpec {
-    fn wrap(&self, input: &TensorView) -> Box<dyn MMMInput> {
+    fn wrap(&self, input: &TensorView) -> Box<dyn MMMInputValue> {
         let (_, k, n, h, w) = mknhw(&self.full_kernel_shape, input.shape());
         // let input = input.to_array_view::<f32>().unwrap();
         let ci = input.shape()[0];
@@ -250,7 +250,7 @@ impl Display for EagerIm2col {
     }
 }
 
-impl MMMInput for EagerIm2col {
+impl MMMInputValue for EagerIm2col {
     fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
         Some(
             Layout::from_size_align(
@@ -298,7 +298,7 @@ struct LazyIm2colSpec {
 }
 
 impl LazyIm2colSpec {
-    fn wrap(&self, input: &TensorView) -> Box<dyn MMMInput> {
+    fn wrap(&self, input: &TensorView) -> Box<dyn MMMInputValue> {
         let (_, _, _, h, w) = mknhw(&self.full_kernel_shape, input.shape());
         let kh = self.full_kernel_shape[0];
         let kw = self.full_kernel_shape[1];
@@ -345,7 +345,7 @@ impl Display for LazyIm2col {
     }
 }
 
-impl MMMInput for LazyIm2col {
+impl MMMInputValue for LazyIm2col {
     fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
         Some(
             Layout::from_size_align(
