@@ -21,7 +21,7 @@ impl MMMInputValue for RepackingPackedBlockQuantValue {
     }
     fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> TractResult<*const u8> {
         let buffer = buffer.context("Scratch panel expected")?;
-        unsafe { self.value.format.repack_panel(&self.value, &self.pack, i, buffer)? };
+        unsafe { self.value.format.bq.repack_panel(&self.value, &self.pack, i, buffer)? };
         Ok(buffer)
     }
     fn mn(&self) -> usize {
