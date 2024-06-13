@@ -60,11 +60,7 @@ impl TypedOp for MatMatMulPack {
     }
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
-        if let Some(p) = self.fuse_dequant_block(model, node)? {
-            return Ok(Some(p));
-        } else {
-            return Ok(None);
-        }
+        self.fuse_dequant_block(model, node)
     }
 
     as_op!();
