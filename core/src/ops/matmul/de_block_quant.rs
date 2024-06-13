@@ -61,7 +61,7 @@ fn block_quant_einsum_weights(
         return Ok(Some(patch));
     }
     let mut patch = TypedModelPatch::default();
-    let weights = Q4_0.quant_f32(&a.konst.as_ref().unwrap().cast_to::<f32>()?.as_slice::<f32>()?)?;
+    let weights = Q4_0.quant_f32(a.konst.as_ref().unwrap().cast_to::<f32>()?.as_slice::<f32>()?)?;
     let name = &model.node(node.inputs[0].node).name;
     let weights = patch.add_const(name, tensor0(weights))?;
     let weights = patch.wire_node(
@@ -71,7 +71,7 @@ fn block_quant_einsum_weights(
     )?;
     patch.shunt_outside(model, node.inputs[0], weights[0])?;
     patch.obliterate(node.inputs[0].node)?;
-    return Ok(Some(patch));
+    Ok(Some(patch))
 }
 
 #[derive(Debug, Clone, Hash)]
@@ -122,7 +122,7 @@ impl OpState for DeBlockQuant {
     ) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let blob = input.to_scalar::<Blob>()?;
-        Ok(tvec!(self.bq.dequant_f32(&blob)?.into_tvalue()))
+        Ok(tvec!(self.bq.dequant_f32(blob)?.into_tvalue()))
     }
 }
 

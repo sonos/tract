@@ -65,7 +65,7 @@ impl<const QK: usize> BaseQ4_0<QK> {
         let blocks_for_k = value.k / self.block_len();
         let row_bytes = blocks_for_k * self.block_bytes();
         let mut input =
-            NibbleReader::for_slice(&&value.packed_block_quant_data[panel * value.r * row_bytes..]);
+            NibbleReader::for_slice(&value.packed_block_quant_data[panel * value.r * row_bytes..]);
         let mut scales = vec![T::zero(); packer.r];
         let mut scratch = scratch.iter_mut();
         for _ in 0..blocks_for_k {
