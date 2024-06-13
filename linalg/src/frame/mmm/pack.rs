@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 use std::ops::Range;
 use tract_data::internal::*;
 
-use crate::mmm::{EagerPackedInput, MMMInput};
+use crate::mmm::{EagerPackedInput, MMMInputValue};
 
 use super::MMMInputFormat;
 
@@ -26,7 +26,7 @@ impl MMMInputFormat for Packer {
         t: &Tensor,
         k_axis: usize,
         mn_axis: usize,
-    ) -> TractResult<Box<dyn MMMInput>> {
+    ) -> TractResult<Box<dyn MMMInputValue>> {
         Packer::pack_tensor(self, t, k_axis, mn_axis)
     }
 }
@@ -67,7 +67,7 @@ impl Packer {
         t: &Tensor,
         k_axis: usize,
         mn_axis: usize,
-    ) -> TractResult<Box<dyn MMMInput>> {
+    ) -> TractResult<Box<dyn MMMInputValue>> {
         ensure!(t.datum_type().unquantized() == self.dt.unquantized());
         let k = t.shape()[k_axis];
         let mn = t.shape()[mn_axis];
@@ -97,7 +97,7 @@ impl Packer {
         t: &TensorView,
         k_axis: usize,
         mn_axis: usize,
-    ) -> TractResult<Box<dyn MMMInput>> {
+    ) -> TractResult<Box<dyn MMMInputValue>> {
         ensure!(t.datum_type().unquantized() == self.dt.unquantized());
         let k = t.shape()[k_axis];
         let mn = t.shape()[mn_axis];
