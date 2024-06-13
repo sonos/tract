@@ -1,4 +1,4 @@
-use tract_linalg::frame::{MatMatMul, Packer, PackingWriter};
+use tract_linalg::frame::{MatMatMul, PackedFormat, PackingWriter};
 use tract_linalg::mmm::{EagerPackedInput, MMMInputValue};
 
 use crate::internal::*;
@@ -21,7 +21,7 @@ struct SymbolicGeometry {
     group: usize,
     pool_spec: PoolSpec,
     pool_geometry: PoolGeometry,
-    b_pack: Packer,
+    b_pack: PackedFormat,
     k: usize,
 }
 
@@ -30,7 +30,7 @@ struct ConcreteGeometry {
     pool: ConcretePoolGeometry,
     pub n: usize,
     k: usize,
-    pub b_pack: Packer,
+    pub b_pack: PackedFormat,
     pub ci_per_group: usize,
     patcher: Patcher,
     input_shape_with_n: DataShape,
@@ -38,7 +38,7 @@ struct ConcreteGeometry {
 }
 
 impl GeometryBound<SymbolicGeometry, ConcreteGeometry> {
-    pub fn b_pack(&self) -> &Packer {
+    pub fn b_pack(&self) -> &PackedFormat {
         match self {
             GeometryBound::Symbolic(s) => &s.b_pack,
             GeometryBound::Concrete(s) => &s.b_pack,
@@ -104,7 +104,7 @@ impl Im2Col {
     ) -> TractResult<Im2Col> {
         let b_pack = mmm.packings()[0]
             .1
-            .downcast_ref::<Packer>()
+            .downcast_ref::<PackedFormat>()
             .context("Im2Col expects regular packed format")?
             .clone();
 

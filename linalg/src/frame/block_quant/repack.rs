@@ -1,12 +1,12 @@
 use crate::mmm::MMMInputValue;
 
 use super::*;
-use crate::frame::Packer;
+use crate::frame::PackedFormat;
 
 #[derive(Clone, Debug, Hash)]
 pub struct RepackingPackedBlockQuantValue {
     pub value: PackedBlockQuantValue,
-    pub pack: Packer,
+    pub pack: PackedFormat,
 }
 
 impl Display for RepackingPackedBlockQuantValue {

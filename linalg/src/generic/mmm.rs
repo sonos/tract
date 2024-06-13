@@ -207,8 +207,8 @@ MMMKernelWrapper!(f64, generic_f64_4x4; kernel::<f64, 4, 4>; 4, 4; 4, 4; 0, 0; n
 MMMKernelWrapper!(f64, generic_f64_4x1; kernel::<f64, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true);
 MMMKernelWrapper!(i32, generic_i32_4x4; kernel::<i32, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true,
  packing_defs: {
-     const I8_A: Packer = Packer::new(DatumType::I8, 4, 4, 0);
-     const I8_B: Packer = Packer::new(DatumType::I8, 4, 4, 0);
+     const I8_A: PackedFormat = PackedFormat::new(DatumType::I8, 4, 4, 0);
+     const I8_B: PackedFormat = PackedFormat::new(DatumType::I8, 4, 4, 0);
      const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
  },
  packings: I8_I8,
@@ -217,8 +217,8 @@ MMMKernelWrapper!(i32, generic_i32_4x4; kernel::<i32, 4, 4>; 4, 4; 4, 4; 0, 0; n
 
 MMMKernelWrapper!(i32, generic_i32_4x1; kernel::<i32, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true,
  packing_defs: {
-     const I8_A: Packer = Packer::new(DatumType::I8, 4, 4, 0);
-     const I8_B: Packer = Packer::new(DatumType::I8, 1, 4, 0);
+     const I8_A: PackedFormat = PackedFormat::new(DatumType::I8, 4, 4, 0);
+     const I8_B: PackedFormat = PackedFormat::new(DatumType::I8, 1, 4, 0);
      const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
  },
  packings: I8_I8,
@@ -231,8 +231,8 @@ MMMKernelWrapper!(f32, generic_f32_3x2; kernel::<f32, 3, 2>; 3, 2; 4, 4; 0, 0; n
 #[cfg(test)]
 MMMKernelWrapper!(i32, generic_i32_3x2; kernel::<i32, 3, 2>; 3, 2; 4, 4; 0, 0; no_prefetch, true,
  packing_defs: {
-     const I8_A: Packer = Packer::new(DatumType::I8, 3, 4, 0);
-     const I8_B: Packer = Packer::new(DatumType::I8, 2, 4, 0);
+     const I8_A: PackedFormat = PackedFormat::new(DatumType::I8, 3, 4, 0);
+     const I8_B: PackedFormat = PackedFormat::new(DatumType::I8, 2, 4, 0);
      const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
  },
  packings: I8_I8,

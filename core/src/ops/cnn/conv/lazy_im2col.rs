@@ -1,12 +1,12 @@
 use crate::internal::*;
 use std::fmt::{Debug, Display};
 use std::ops::Range;
-use tract_linalg::frame::{Packer, PackingWriter};
+use tract_linalg::frame::{PackedFormat, PackingWriter};
 use tract_linalg::mmm::MMMInputValue;
 
 #[derive(Clone, Debug, Hash, PartialEq)]
 pub struct LazyIm2colParams {
-    pub packer: Packer,
+    pub packer: PackedFormat,
     pub n_byte_offsets: Vec<isize>,
     pub k_byte_offsets: Vec<isize>,
 }

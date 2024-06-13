@@ -9,14 +9,14 @@ use crate::mmm::{EagerPackedInput, MMMInputValue};
 use super::MMMInputFormat;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Packer {
+pub struct PackedFormat {
     pub dt: DatumType,
     pub r: usize,
     pub alignment: usize,
     pub end_padding_record: usize,
 }
 
-impl MMMInputFormat for Packer {
+impl MMMInputFormat for PackedFormat {
     fn can_prepare_types(&self) -> Vec<DatumType> {
         vec!(self.dt)
     }
@@ -27,13 +27,13 @@ impl MMMInputFormat for Packer {
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>> {
-        Packer::pack_tensor(self, t, k_axis, mn_axis)
+        PackedFormat::pack_tensor(self, t, k_axis, mn_axis)
     }
 }
 
-impl Packer {
-    pub const fn new(dt: DatumType, nr: usize, alignment: usize, end_padding_record: usize) -> Packer {
-        Packer { dt, r: nr, alignment, end_padding_record }
+impl PackedFormat {
+    pub const fn new(dt: DatumType, nr: usize, alignment: usize, end_padding_record: usize) -> PackedFormat {
+        PackedFormat { dt, r: nr, alignment, end_padding_record }
     }
 
     #[inline]
@@ -493,7 +493,7 @@ mod test {
 
         fn packer(&self) -> Array2<u32> {
             let panels = self.mn_range.len().divceil(self.r);
-            let packer = super::Packer::new(u32::datum_type(), self.r, self.align_panel, 0);
+            let packer = super::PackedFormat::new(u32::datum_type(), self.r, self.align_panel, 0);
             let input = self.input().into_tensor();
             let panel_len = packer.single_panel_len(self.k_range.len());
             let mut output =
