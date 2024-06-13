@@ -103,16 +103,27 @@ dyn_hash::hash_trait_object!(BlockQuant);
 impl_downcast!(BlockQuant);
 
 #[derive(Clone, Debug, Hash)]
-pub struct PackedBlockQuantValue {
-    pub format: Box<dyn BlockQuant>,
-    pub packed_block_quant_data: Blob,
+pub struct PackedBlockQuantFormat {
+    pub bq: Box<dyn BlockQuant>,
     pub r: usize,
+}
+
+impl Display for PackedBlockQuantFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Packed{} (r={})", self.bq, self.r)
+    }
+}
+
+#[derive(Clone, Debug, Hash)]
+pub struct PackedBlockQuantValue {
+    pub format: PackedBlockQuantFormat,
+    pub packed_block_quant_data: Blob,
     pub mn: usize,
     pub k: usize,
 }
 
 impl Display for PackedBlockQuantValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Packed{} (m={} k={} r={})", self.format, self.mn, self.k, self.r)
+        write!(f, "{} (m={} k={})", self.format, self.mn, self.k)
     }
 }

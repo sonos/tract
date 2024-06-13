@@ -51,7 +51,7 @@ impl<const QK: usize> BaseQ4_0<QK> {
     unsafe fn repack_panel_t<T: Float + 'static>(
         &self,
         value: &PackedBlockQuantValue,
-        packer: &PackedFormat,
+        target: &PackedFormat,
         panel: usize,
         scratch: *mut u8,
     ) -> TractResult<()>
@@ -59,14 +59,14 @@ impl<const QK: usize> BaseQ4_0<QK> {
         f16: AsPrimitive<T>,
         i8: AsPrimitive<T>,
     {
-        ensure!(value.r == packer.r);
+        ensure!(value.format.r == target.r);
         ensure!(value.k % self.block_len() == 0);
-        let scratch = std::slice::from_raw_parts_mut(scratch as *mut T, value.k * value.r);
+        let scratch = std::slice::from_raw_parts_mut(scratch as *mut T, value.k * target.r);
         let blocks_for_k = value.k / self.block_len();
         let row_bytes = blocks_for_k * self.block_bytes();
         let mut input =
-            NibbleReader::for_slice(&value.packed_block_quant_data[panel * value.r * row_bytes..]);
-        let mut scales = vec![T::zero(); packer.r];
+            NibbleReader::for_slice(&value.packed_block_quant_data[panel * target.r * row_bytes..]);
+        let mut scales = vec![T::zero(); target.r];
         let mut scratch = scratch.iter_mut();
         for _ in 0..blocks_for_k {
             for s in &mut scales {
@@ -146,9 +146,8 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
             }
         }
         Ok(PackedBlockQuantValue {
-            format: Box::new(*self),
+            format: PackedBlockQuantFormat { bq: Box::new(*self), r },
             packed_block_quant_data: blob,
-            r,
             mn: m,
             k,
         })
