@@ -1,5 +1,5 @@
 use std::alloc::Layout;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 use std::ops::Range;
 use tract_data::internal::*;
@@ -18,7 +18,7 @@ pub struct PackedFormat {
 
 impl MMMInputFormat for PackedFormat {
     fn can_prepare_types(&self) -> Vec<DatumType> {
-        vec!(self.dt)
+        vec![self.dt]
     }
 
     fn prepare_tensor(
@@ -29,10 +29,25 @@ impl MMMInputFormat for PackedFormat {
     ) -> TractResult<Box<dyn MMMInputValue>> {
         PackedFormat::pack_tensor(self, t, k_axis, mn_axis)
     }
+
+    fn r(&self) -> usize {
+        self.r
+    }
+}
+
+impl Display for PackedFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Packed(dt={:?} r={})", self.dt, self.r)
+    }
 }
 
 impl PackedFormat {
-    pub const fn new(dt: DatumType, nr: usize, alignment: usize, end_padding_record: usize) -> PackedFormat {
+    pub const fn new(
+        dt: DatumType,
+        nr: usize,
+        alignment: usize,
+        end_padding_record: usize,
+    ) -> PackedFormat {
         PackedFormat { dt, r: nr, alignment, end_padding_record }
     }
 
@@ -77,10 +92,10 @@ impl PackedFormat {
         let strides = t.strides();
         unsafe {
             let mut packed =
-                Tensor::uninitialized_aligned_dt(t.datum_type(), &[packed_len], self.alignment())?;
+                Blob::new_for_size_and_align(t.datum_type().size_of() * packed_len, self.alignment);
             dispatch_copy!(Self::pack_t(t.datum_type())(
                 self,
-                packed.as_ptr_mut_unchecked(),
+                packed.as_mut_ptr() as _,
                 t.as_ptr_unchecked(),
                 mn,
                 strides[k_axis],
@@ -88,7 +103,13 @@ impl PackedFormat {
                 0..k,
                 0..mn
             ));
-            Ok(Box::new(EagerPackedInput { packed, panel_bytes, mn, k, r: self.r }))
+            Ok(Box::new(EagerPackedInput {
+                format: Box::new(self.clone()),
+                packed,
+                panel_bytes,
+                mn,
+                k,
+            }))
         }
     }
 
@@ -107,10 +128,10 @@ impl PackedFormat {
         let strides = t.strides();
         unsafe {
             let mut packed =
-                Tensor::uninitialized_aligned_dt(t.datum_type(), &[packed_len], self.alignment())?;
+                Blob::new_for_size_and_align(t.datum_type().size_of() * packed_len, self.alignment);
             dispatch_copy!(Self::pack_t(t.datum_type())(
                 self,
-                packed.as_ptr_mut_unchecked(),
+                packed.as_mut_ptr() as _,
                 t.as_ptr_unchecked(),
                 mn,
                 strides[k_axis],
@@ -118,7 +139,13 @@ impl PackedFormat {
                 0..k,
                 0..mn
             ));
-            Ok(Box::new(EagerPackedInput { packed, panel_bytes, mn, k, r: self.r }))
+            Ok(Box::new(EagerPackedInput {
+                format: Box::new(self.clone()),
+                packed,
+                panel_bytes,
+                mn,
+                k,
+            }))
         }
     }
 

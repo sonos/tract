@@ -5,7 +5,7 @@ use crate::frame::PackedFormat;
 
 #[derive(Clone, Debug, Hash)]
 pub struct RepackingPackedBlockQuantValue {
-    pub value: PackedBlockQuantValue,
+    pub value: EagerPackedInput,
     pub pack: PackedFormat,
 }
 
@@ -19,10 +19,13 @@ impl MMMInputValue for RepackingPackedBlockQuantValue {
     fn scratch_panel_buffer_layout(&self) -> Option<Layout> {
         Some(self.pack.single_panel_layout(self.value.k, 4))
     }
-    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> TractResult<*const u8> {
+    fn panel_bytes(&self, _i: usize, _buffer: Option<*mut u8>) -> TractResult<*const u8> {
+        todo!()
+        /*
         let buffer = buffer.context("Scratch panel expected")?;
-        unsafe { self.value.format.bq.repack_panel(&self.value, &self.pack, i, buffer)? };
+        unsafe { self.value.format.repack_panel(&self.value, &self.pack, i, buffer)? };
         Ok(buffer)
+        */
     }
     fn mn(&self) -> usize {
         self.value.mn
