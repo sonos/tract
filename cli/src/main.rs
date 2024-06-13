@@ -123,6 +123,7 @@ fn main() -> TractResult<()> {
 
         .arg(arg!(--pass [STAGE] "Pass to stop preprocessing after.").possible_values(STAGES))
         .arg(arg!(--"declutter-step" [STEP] "Stop decluttering process after application of patch number N"))
+        .arg(arg!(--"declutter-set-step" [STEP] "Stop decluttering process (the one after --set application) at patch number N"))
         .arg(arg!(--"optimize-step" [STEP] "Stop optimizing process after application of patch number N"))
         .arg(arg!(--"extract-decluttered-sub" [SUB] "Zoom on a subgraph after decluttering by parent node name"))
 
