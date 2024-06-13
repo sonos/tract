@@ -100,10 +100,10 @@ pub struct BaseQ4_0<const QK: usize = 32>;
 pub static Q4_0: BaseQ4_0 = BaseQ4_0::<32>;
 
 impl<const QK: usize> BaseQ4_0<QK> {
-    fn quant_block<T: Float + 'static>(&self, block: &[T], quant: &mut [u8])
+    fn quant_block<T>(&self, block: &[T], quant: &mut [u8])
     where
         f32: AsPrimitive<T>,
-        T: AsPrimitive<f16> + AsPrimitive<i8>,
+        T: Float + AsPrimitive<f16> + AsPrimitive<i8> + 'static,
     {
         assert!(quant.len() == self.block_bytes());
         assert!(block.len() == self.block_len());
@@ -272,10 +272,10 @@ impl MMMInput for PackedBlockQuant {
     }
     fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
         let buffer = buffer.unwrap();
-        let mut scratch = unsafe {
+        let scratch = unsafe {
             std::slice::from_raw_parts_mut(buffer as *mut f32, self.pack.single_panel_len(self.k))
         };
-        self.format.panel_f32(&self.data, self.k, self.pack.r, i, &mut scratch);
+        self.format.panel_f32(&self.data, self.k, self.pack.r, i, scratch);
         buffer
     }
     fn mn(&self) -> usize {
