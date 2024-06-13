@@ -97,9 +97,14 @@ impl TypedOp for TypedConcat {
         if let Some(pos) = inputs.iter().position(|f| f.shape.volume().is_zero()) {
             let mut inputs = node.inputs.clone();
             inputs.remove(pos);
-            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &inputs, self.clone())?));
+            return Ok(Some(TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &inputs,
+                self.clone(),
+            )?));
         }
-        return Ok(None);
+        Ok(None)
     }
 
     fn slice(
