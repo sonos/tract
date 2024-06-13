@@ -777,7 +777,14 @@ impl Parameters {
                 }
                 m.concretize_dims(&values)
             });
-            stage!("set-declutter", typed_model -> typed_model, TypedModel::into_decluttered);
+            stage!("set-declutter", typed_model -> typed_model, |mut m| {
+                let mut dec = tract_core::optim::Optimizer::declutter();
+                if let Some(steps) = matches.value_of("declutter-set-step") {
+                    dec = dec.stopping_at(steps.parse()?);
+                }
+                dec.optimize(&mut m)?;
+                Ok(m)
+            })
         }
         if matches.is_present("nnef-cycle") {
             stage!("nnef-cycle", typed_model -> typed_model, |m:TypedModel| {
