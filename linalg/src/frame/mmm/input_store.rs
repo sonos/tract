@@ -19,7 +19,7 @@ impl_downcast!(MMMInputFormat);
 
 pub trait MMMInputValue: dyn_clone::DynClone + Debug + DynHash + Send + Sync + Display {
     fn scratch_panel_buffer_layout(&self) -> Option<Layout>;
-    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> *const u8;
+    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> TractResult<*const u8>;
     fn panels_count(&self) -> usize {
         self.mn().divceil(self.r())
     }
@@ -51,8 +51,8 @@ impl MMMInputValue for EagerPackedInput {
     fn scratch_panel_buffer_layout(&self) -> Option<Layout> {
         None
     }
-    fn panel_bytes(&self, i: usize, _buffer: Option<*mut u8>) -> *const u8 {
-        unsafe { self.packed.as_ptr_unchecked::<u8>().add(i * self.panel_bytes) }
+    fn panel_bytes(&self, i: usize, _buffer: Option<*mut u8>) -> TractResult<*const u8> {
+        unsafe { Ok(self.packed.as_ptr_unchecked::<u8>().add(i * self.panel_bytes)) }
     }
     fn k(&self) -> usize {
         self.k

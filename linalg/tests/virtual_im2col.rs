@@ -261,7 +261,7 @@ impl MMMInputValue for EagerIm2col {
         )
     }
 
-    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
+    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> TractResult<*const u8> {
         let buffer = buffer.unwrap();
         let mn = self.im2col.shape()[1];
         unsafe {
@@ -275,7 +275,7 @@ impl MMMInputValue for EagerIm2col {
                 (i * self.packer.r)..((i + 1) * self.packer.r),
             );
         }
-        buffer
+        Ok(buffer)
     }
 
     fn k(&self) -> usize {
@@ -356,7 +356,7 @@ impl MMMInputValue for LazyIm2col {
         )
     }
 
-    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
+    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> TractResult<*const u8> {
         let buffer = buffer.unwrap() as *mut f32;
         let mn_end = ((i + 1) * self.packer.r).min(self.n_offsets.len());
         let n_range = (i * self.packer.r)..mn_end;
@@ -373,7 +373,7 @@ impl MMMInputValue for LazyIm2col {
                 }
             }
         }
-        buffer as _
+        Ok(buffer as _)
     }
 
     fn k(&self) -> usize {

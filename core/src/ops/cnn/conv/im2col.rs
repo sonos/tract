@@ -1,5 +1,5 @@
 use tract_linalg::frame::{MatMatMul, Packer, PackingWriter};
-use tract_linalg::mmm::{EagerPackedInput, MMMInput};
+use tract_linalg::mmm::{EagerPackedInput, MMMInputValue};
 
 use crate::internal::*;
 use ndarray::prelude::*;
@@ -178,7 +178,7 @@ impl EvalOp for Im2Col {
                             g,
                             pad_value
                         ))?;
-                        let input: Box<dyn MMMInput> = Box::new(EagerPackedInput {
+                        let input: Box<dyn MMMInputValue> = Box::new(EagerPackedInput {
                             packed: data,
                             panel_bytes,
                             k: geometry.k,

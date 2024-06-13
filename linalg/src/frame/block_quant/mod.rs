@@ -9,11 +9,14 @@ use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
 mod helpers;
-mod repack;
 mod q4_0;
+mod repack;
 
 pub use helpers::{NibbleReader, NibbleWriter};
 pub use q4_0::Q4_0;
+pub use repack::RepackingPackedBlockQuantValue;
+
+use super::Packer;
 
 pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downcast {
     fn same_as(&self, other: &dyn BlockQuant) -> bool;
@@ -86,8 +89,13 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
     }
 
     fn pack(&self, input: &[u8], k: usize, r: usize) -> TractResult<PackedBlockQuantValue>;
-    fn panel_f32(&self, packed: &Blob, k: usize, r: usize, panel: usize, scratch: &mut [f32]);
-    fn panel_f16(&self, packed: &Blob, k: usize, r: usize, panel: usize, scratch: &mut [f16]);
+    unsafe fn repack_panel(
+        &self,
+        value: &PackedBlockQuantValue,
+        target: &Packer,
+        panel: usize,
+        scratch: *mut u8,
+    ) -> TractResult<()>;
 }
 
 dyn_clone::clone_trait_object!(BlockQuant);
@@ -108,4 +116,3 @@ impl Display for PackedBlockQuantValue {
         write!(f, "Packed{} (m={} k={} r={})", self.format, self.mn, self.k, self.r)
     }
 }
-
