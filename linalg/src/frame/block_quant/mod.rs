@@ -85,7 +85,7 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
         }
     }
 
-    fn pack(&self, input: &[u8], k: usize, r: usize) -> TractResult<Blob>;
+    fn pack(&self, input: &[u8], k: usize, r: usize) -> TractResult<PackedBlockQuantValue>;
     fn panel_f32(&self, packed: &Blob, k: usize, r: usize, panel: usize, scratch: &mut [f32]);
     fn panel_f16(&self, packed: &Blob, k: usize, r: usize, panel: usize, scratch: &mut [f16]);
 }
@@ -93,4 +93,19 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
 dyn_clone::clone_trait_object!(BlockQuant);
 dyn_hash::hash_trait_object!(BlockQuant);
 impl_downcast!(BlockQuant);
+
+#[derive(Clone, Debug, Hash)]
+pub struct PackedBlockQuantValue {
+    pub format: Box<dyn BlockQuant>,
+    pub packed_block_quant_data: Blob,
+    pub r: usize,
+    pub mn: usize,
+    pub k: usize,
+}
+
+impl Display for PackedBlockQuantValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Packed{} (m={} k={} r={})", self.format, self.mn, self.k, self.r)
+    }
+}
 

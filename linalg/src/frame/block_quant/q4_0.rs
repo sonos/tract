@@ -1,7 +1,6 @@
-use tract_data::internal::*;
+use super::*;
 use num_traits::{AsPrimitive, Float};
 use std::alloc::Layout;
-use super::*;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct BaseQ4_0<const QK: usize = 32>;
@@ -116,7 +115,7 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
     //  s0_0 S1_0 S2_0 s3_0  n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
     //  s0_32 S1_32 S2_32 s3_32  n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
     //  ...
-    fn pack(&self, input: &[u8], k: usize, r: usize) -> TractResult<Blob> {
+    fn pack(&self, input: &[u8], k: usize, r: usize) -> TractResult<PackedBlockQuantValue> {
         assert!(input.len() % self.block_bytes() == 0);
         assert!(k % self.block_len() == 0);
         let m = input.len() / self.block_bytes() * self.block_len() / k;
@@ -142,7 +141,13 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
                 }
             }
         }
-        Ok(blob)
+        Ok(PackedBlockQuantValue {
+            format: Box::new(*self),
+            packed_block_quant_data: blob,
+            r,
+            mn: m,
+            k,
+        })
     }
 
     fn panel_f32(&self, packed: &Blob, k: usize, r: usize, panel: usize, scratch: &mut [f32]) {
