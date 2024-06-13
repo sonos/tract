@@ -2,7 +2,7 @@ use crate::internal::*;
 use std::fmt::{Debug, Display};
 use std::ops::Range;
 use tract_linalg::frame::{Packer, PackingWriter};
-use tract_linalg::mmm::MMMInput;
+use tract_linalg::mmm::MMMInputValue;
 
 #[derive(Clone, Debug, Hash, PartialEq)]
 pub struct LazyIm2colParams {
@@ -32,7 +32,7 @@ impl EvalOp for LazyIm2Col {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let tensor = args_1!(inputs);
-        let input: Box<dyn MMMInput> =
+        let input: Box<dyn MMMInputValue> =
             Box::new(LazyIm2colInput { tensor, im2col: self.params.clone() });
         let input = Opaque(Arc::new(input));
         Ok(tvec!(tensor2(&[[input]]).into_tvalue()))
@@ -289,14 +289,14 @@ impl LazyIm2colInput {
     }
 }
 
-impl MMMInput for LazyIm2colInput {
+impl MMMInputValue for LazyIm2colInput {
     fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
         let k = self.im2col.k_byte_offsets.len();
         Some(self.im2col.packer.single_panel_layout(k, self.tensor.datum_type().size_of()))
     }
 
-    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
-        dispatch_copy!(Self::do_panel(self.tensor.datum_type())(self, i, buffer))
+    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> TractResult<*const u8> {
+        Ok(dispatch_copy!(Self::do_panel(self.tensor.datum_type())(self, i, buffer)))
     }
 
     fn k(&self) -> usize {

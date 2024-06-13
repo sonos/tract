@@ -1,9 +1,9 @@
 use crate::axes::Axis;
 use crate::internal::*;
 use ndarray::*;
-use tract_linalg::frame::block_quant::PackedBlockQuant;
+use tract_linalg::frame::block_quant::RepackingPackedBlockQuantValue;
 use tract_linalg::frame::Packer;
-use tract_linalg::mmm::MMMInput;
+use tract_linalg::mmm::MMMInputValue;
 
 use super::de_block_quant::DeBlockQuant;
 
@@ -121,15 +121,9 @@ impl MatMatMulPack {
             return Ok(None);
         };
         let k = deq.fact.shape[self.k_axis].to_usize().unwrap();
-        let mn = deq.fact.shape[self.mn_axis].to_usize().unwrap();
-        let data = deq.bq.pack(weights.to_scalar::<Blob>()?, k, self.packer.r)?;
-        let mmm_input: Box<dyn MMMInput> = Box::new(PackedBlockQuant {
-            format: deq.bq.clone(),
-            data,
-            pack: self.packer.clone(),
-            mn,
-            k,
-        });
+        let value = deq.bq.pack(weights.to_scalar::<Blob>()?, k, self.packer.r)?;
+        let mmm_input: Box<dyn MMMInputValue> =
+            Box::new(RepackingPackedBlockQuantValue { value, pack: self.packer.clone() });
         let packed = tensor0(Opaque::from(mmm_input)).into_arc_tensor();
         let mut patch = TypedModelPatch::default();
         let wire = patch.add_const(&node.name, packed)?;

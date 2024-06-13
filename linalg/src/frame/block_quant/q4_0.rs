@@ -48,22 +48,25 @@ impl<const QK: usize> BaseQ4_0<QK> {
         }
     }
 
-    fn panel_f<T: Float + 'static>(
+    unsafe fn repack_panel_t<T: Float + 'static>(
         &self,
-        packed: &Blob,
-        k: usize,
-        r: usize,
+        value: &PackedBlockQuantValue,
+        packer: &Packer,
         panel: usize,
-        scratch: &mut [T],
-    ) where
+        scratch: *mut u8,
+    ) -> TractResult<()>
+    where
         f16: AsPrimitive<T>,
         i8: AsPrimitive<T>,
     {
-        assert!(k % self.block_len() == 0);
-        let blocks_for_k = k / self.block_len();
+        ensure!(value.r == packer.r);
+        ensure!(value.k % self.block_len() == 0);
+        let scratch = std::slice::from_raw_parts_mut(scratch as *mut T, value.k * value.r);
+        let blocks_for_k = value.k / self.block_len();
         let row_bytes = blocks_for_k * self.block_bytes();
-        let mut input = NibbleReader::for_slice(&packed[panel * r * row_bytes..]);
-        let mut scales = vec![T::zero(); r];
+        let mut input =
+            NibbleReader::for_slice(&&value.packed_block_quant_data[panel * value.r * row_bytes..]);
+        let mut scales = vec![T::zero(); packer.r];
         let mut scratch = scratch.iter_mut();
         for _ in 0..blocks_for_k {
             for s in &mut scales {
@@ -75,6 +78,7 @@ impl<const QK: usize> BaseQ4_0<QK> {
                 }
             }
         }
+        Ok(())
     }
 }
 
@@ -150,12 +154,14 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
         })
     }
 
-    fn panel_f32(&self, packed: &Blob, k: usize, r: usize, panel: usize, scratch: &mut [f32]) {
-        self.panel_f(packed, k, r, panel, scratch)
-    }
-
-    fn panel_f16(&self, packed: &Blob, k: usize, r: usize, panel: usize, scratch: &mut [f16]) {
-        self.panel_f(packed, k, r, panel, scratch)
+    unsafe fn repack_panel(
+        &self,
+        value: &PackedBlockQuantValue,
+        target: &Packer,
+        panel: usize,
+        scratch: *mut u8,
+    ) -> TractResult<()> {
+        dispatch_floatlike!(Self::repack_panel_t(target.dt)(self, value, target, panel, scratch))
     }
 }
 
@@ -238,11 +244,11 @@ mod tests {
 
         for panel in 0..2 {
             unsafe {
-                let panel_f32 = packed_f32.panel_bytes(panel, None);
+                let panel_f32 = packed_f32.panel_bytes(panel, None)?;
                 let panel_f32 = std::slice::from_raw_parts(panel_f32 as *const f32, k * r);
                 eprintln!("{panel_f32:?}");
                 let mut panel_q4 = Tensor::zero::<f32>(&[k * r])?;
-                q.panel_f32(&packed_q4, k, r, panel, panel_q4.as_slice_mut()?);
+                q.repack_panel(&packed_q4, &packer, panel, panel_q4.as_bytes_mut().as_mut_ptr())?;
                 eprintln!("{panel_q4:?}");
                 assert_eq!(panel_q4.as_slice::<f32>()?, panel_f32);
             }

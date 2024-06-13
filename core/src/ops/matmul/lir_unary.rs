@@ -5,7 +5,7 @@ use crate::ops::nn::LeakyRelu;
 use ndarray::*;
 use tract_itertools::Itertools;
 
-use tract_linalg::mmm::{BinOp, FusedSpec, MMMInput, MatMatMul, OutputStoreSpec};
+use tract_linalg::mmm::{BinOp, FusedSpec, MMMInputValue, MatMatMul, OutputStoreSpec};
 use tract_linalg::Scaler;
 use tract_smallvec::ToSmallVec;
 
@@ -51,13 +51,13 @@ impl ProtoFusedSpec {
                     geo.c_to_a_axis_mapping.translate_view(output_coords, &mut a);
                 }
                 let a =
-                    a.as_slice::<Opaque>().unwrap()[0].downcast_ref::<Box<dyn MMMInput>>().unwrap();
+                    a.as_slice::<Opaque>().unwrap()[0].downcast_ref::<Box<dyn MMMInputValue>>().unwrap();
                 let mut b = inputs[*b].view();
                 unsafe {
                     geo.c_to_b_axis_mapping.translate_view(output_coords, &mut b);
                 }
                 let b =
-                    b.as_slice::<Opaque>().unwrap()[0].downcast_ref::<Box<dyn MMMInput>>().unwrap();
+                    b.as_slice::<Opaque>().unwrap()[0].downcast_ref::<Box<dyn MMMInputValue>>().unwrap();
                 FusedSpec::AddMatMul { a: &**a, b: &**b, packing: *packing }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
@@ -106,9 +106,9 @@ impl ProtoFusedSpec {
                 let a = &inputs[*a];
                 let b = &inputs[*b];
                 let a =
-                    a.to_scalar::<Opaque>().unwrap().downcast_ref::<Box<dyn MMMInput>>().unwrap();
+                    a.to_scalar::<Opaque>().unwrap().downcast_ref::<Box<dyn MMMInputValue>>().unwrap();
                 let b =
-                    b.to_scalar::<Opaque>().unwrap().downcast_ref::<Box<dyn MMMInput>>().unwrap();
+                    b.to_scalar::<Opaque>().unwrap().downcast_ref::<Box<dyn MMMInputValue>>().unwrap();
                 FusedSpec::AddMatMul { a: &**a, b: &**b, packing: *packing }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
