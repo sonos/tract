@@ -1,4 +1,5 @@
 use tract_data::itertools::Itertools;
+use tract_num_traits::Zero;
 
 use crate::internal::*;
 
@@ -82,6 +83,23 @@ impl TypedOp for TypedConcat {
             if let Some(axis) = change.transform_axis(self.axis) { axis } else { return Ok(None) };
         let op = TypedConcat { axis };
         Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if node.inputs.len() == 1 {
+            return TypedModelPatch::shunt_one_op(model, node);
+        }
+        let inputs = model.node_input_facts(node.id)?;
+        if let Some(pos) = inputs.iter().position(|f| f.shape.volume().is_zero()) {
+            let mut inputs = node.inputs.clone();
+            inputs.remove(pos);
+            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &inputs, self.clone())?));
+        }
+        return Ok(None);
     }
 
     fn slice(
