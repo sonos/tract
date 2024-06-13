@@ -16,6 +16,8 @@ pub use helpers::{NibbleReader, NibbleWriter};
 pub use q4_0::Q4_0;
 pub use repack::RepackingPackedBlockQuantValue;
 
+use crate::mmm::{EagerPackedInput, MMMInputFormat};
+
 use super::PackedFormat;
 
 pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downcast {
@@ -88,10 +90,10 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
         }
     }
 
-    fn pack(&self, input: &[u8], k: usize, r: usize) -> TractResult<PackedBlockQuantValue>;
+    fn pack(&self, input: &[u8], k: usize, r: usize) -> TractResult<EagerPackedInput>;
     unsafe fn repack_panel(
         &self,
-        value: &PackedBlockQuantValue,
+        value: &EagerPackedInput,
         target: &PackedFormat,
         panel: usize,
         scratch: *mut u8,
@@ -114,16 +116,21 @@ impl Display for PackedBlockQuantFormat {
     }
 }
 
-#[derive(Clone, Debug, Hash)]
-pub struct PackedBlockQuantValue {
-    pub format: PackedBlockQuantFormat,
-    pub packed_block_quant_data: Blob,
-    pub mn: usize,
-    pub k: usize,
-}
+impl MMMInputFormat for PackedBlockQuantFormat {
+    fn can_prepare_types(&self) -> Vec<DatumType> {
+        vec![]
+    }
 
-impl Display for PackedBlockQuantValue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} (m={} k={})", self.format, self.mn, self.k)
+    fn prepare_tensor(
+        &self,
+        _t: &Tensor,
+        _k_axis: usize,
+        _mn_axis: usize,
+    ) -> TractResult<Box<dyn crate::mmm::MMMInputValue>> {
+        todo!()
+    }
+
+    fn r(&self) -> usize {
+        self.r
     }
 }

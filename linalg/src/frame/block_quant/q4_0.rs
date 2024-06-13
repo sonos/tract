@@ -50,7 +50,7 @@ impl<const QK: usize> BaseQ4_0<QK> {
 
     unsafe fn repack_panel_t<T: Float + 'static>(
         &self,
-        value: &PackedBlockQuantValue,
+        value: &EagerPackedInput,
         target: &PackedFormat,
         panel: usize,
         scratch: *mut u8,
@@ -59,13 +59,13 @@ impl<const QK: usize> BaseQ4_0<QK> {
         f16: AsPrimitive<T>,
         i8: AsPrimitive<T>,
     {
-        ensure!(value.format.r == target.r);
+        ensure!(value.format.r() == target.r);
         ensure!(value.k % self.block_len() == 0);
         let scratch = std::slice::from_raw_parts_mut(scratch as *mut T, value.k * target.r);
         let blocks_for_k = value.k / self.block_len();
         let row_bytes = blocks_for_k * self.block_bytes();
         let mut input =
-            NibbleReader::for_slice(&value.packed_block_quant_data[panel * target.r * row_bytes..]);
+            NibbleReader::for_slice(&value.packed[panel * target.r * row_bytes..]);
         let mut scales = vec![T::zero(); target.r];
         let mut scratch = scratch.iter_mut();
         for _ in 0..blocks_for_k {
@@ -119,7 +119,7 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
     //  s0_0 S1_0 S2_0 s3_0  n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
     //  s0_32 S1_32 S2_32 s3_32  n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
     //  ...
-    fn pack(&self, input: &[u8], k: usize, r: usize) -> TractResult<PackedBlockQuantValue> {
+    fn pack(&self, input: &[u8], k: usize, r: usize) -> TractResult<EagerPackedInput> {
         assert!(input.len() % self.block_bytes() == 0);
         assert!(k % self.block_len() == 0);
         let m = input.len() / self.block_bytes() * self.block_len() / k;
@@ -145,17 +145,18 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
                 }
             }
         }
-        Ok(PackedBlockQuantValue {
-            format: PackedBlockQuantFormat { bq: Box::new(*self), r },
-            packed_block_quant_data: blob,
+        Ok(EagerPackedInput {
+            format: Box::new(PackedBlockQuantFormat { bq: Box::new(*self), r }),
+            packed: blob,
             mn: m,
             k,
+            panel_bytes,
         })
     }
 
     unsafe fn repack_panel(
         &self,
-        value: &PackedBlockQuantValue,
+        value: &EagerPackedInput,
         target: &PackedFormat,
         panel: usize,
         scratch: *mut u8,
