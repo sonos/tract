@@ -89,6 +89,7 @@ impl PackedFormat {
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>> {
+        ensure!(t.datum_type().is_copy());
         ensure!(t.datum_type().unquantized() == self.dt.unquantized());
         let k = t.shape()[k_axis];
         let mn = t.shape()[mn_axis];
@@ -99,6 +100,9 @@ impl PackedFormat {
         unsafe {
             let mut packed =
                 Blob::new_for_size_and_align(t.datum_type().size_of() * packed_len, self.alignment);
+            if cfg!(debug_assertions) {
+                packed.as_bytes_mut().fill(0u8);
+            }
             dispatch_copy!(Self::pack_t(t.datum_type())(
                 self,
                 packed.as_mut_ptr() as _,
@@ -135,6 +139,9 @@ impl PackedFormat {
         unsafe {
             let mut packed =
                 Blob::new_for_size_and_align(t.datum_type().size_of() * packed_len, self.alignment);
+            if cfg!(debug_assertions) {
+                packed.as_bytes_mut().fill(0u8);
+            }
             dispatch_copy!(Self::pack_t(t.datum_type())(
                 self,
                 packed.as_mut_ptr() as _,
