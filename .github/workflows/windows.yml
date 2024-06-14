@@ -52,7 +52,7 @@ jobs:
     - name: debug bin
       run: dir "C:\\Program Files\\LLVM\\bin"
     - name: top level cargo check
-      run: cargo check --workspace --exclude test-blas
+      run: cargo check --workspace --exclude test-blas --exclude tract-metal
       env:
         LIBCLANG_PATH: "C:\\Program Files\\LLVM\\bin"
     - name: data / linalg / core / nnef / onnx / onnx-opl
