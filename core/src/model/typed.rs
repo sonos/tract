@@ -5,6 +5,7 @@ use crate::ops::konst::Const;
 use crate::optim::OptimizerSession;
 use crate::plan::{FrozenSimpleState, SimplePlan, SimpleState};
 use crate::transform::ModelTransform;
+use tract_num_traits::Zero;
 
 /// A model with completely determined types and shapes.
 pub type TypedModel = Graph<TypedFact, Box<dyn TypedOp>>;
@@ -211,8 +212,15 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Sym
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let outlets = node.op.concretize_dims(source, node, target, mapping, self)?;
-        for outlet in &outlets {
-            target.outlet_fact(*outlet)?.consistent()?;
+        for &outlet in &outlets {
+            let fact = &mut target.nodes[outlet.node].outputs[outlet.slot].fact;
+            if fact.shape.volume().is_zero() {
+                if let Some(shape) = fact.shape.as_concrete() {
+                    let tensor = Tensor::zero_dt(fact.datum_type, shape)?;
+                    fact.konst = Some(tensor.into_arc_tensor());
+                }
+            }
+            fact.consistent()?;
         }
         Ok(outlets)
     }
