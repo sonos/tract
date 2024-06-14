@@ -301,6 +301,11 @@ impl TypedFact {
     pub fn without_value(&self) -> Self {
         Self::dt_shape(self.datum_type, self.shape.clone())
     }
+
+    pub fn with_opaque_metadata<O: Into<Box<OpaqueMetadata>>>(mut self, opaque_metadata: O) -> Self {
+        self.opaque_metadata = Some(opaque_metadata.into());
+        self
+    }
 }
 
 impl Fact for TypedFact {
