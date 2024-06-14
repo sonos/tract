@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use downcast_rs::{impl_downcast, Downcast};
 use dyn_hash::DynHash;
-use dyn_clone;
 
 pub trait OpaquePayload: DynHash + Send + Sync + Debug + Display + Downcast {
 
