@@ -570,8 +570,13 @@ where
             let input_1 =
                 self.nodes[i].inputs.first().map(|o| format!("{o:?}")).unwrap_or_default();
             let input_2 = self.nodes[i].inputs.get(1).map(|o| format!("{o:?}")).unwrap_or_default();
-            let successors = self.nodes[i].outputs.get(0).iter().flat_map(|o| o.successors.iter()).collect_vec();
-            let output_1 = successors.get(0).map(|o| format!("{o:?}")).unwrap_or_default();
+            let successors = self.nodes[i]
+                .outputs
+                .first()
+                .iter()
+                .flat_map(|o| o.successors.iter())
+                .collect_vec();
+            let output_1 = successors.first().map(|o| format!("{o:?}")).unwrap_or_default();
             let output_2 = successors.get(1).map(|o| format!("{o:?}")).unwrap_or_default();
             writeln!(
                 fmt,
