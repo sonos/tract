@@ -74,6 +74,7 @@ impl MetalTensor {
 
     /// Get the number of values in the tensor.
     #[inline]
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.inner.len()
     }
@@ -81,21 +82,21 @@ impl MetalTensor {
     /// Get the strides of the tensor.
     #[inline]
     pub fn strides(&self) -> &[isize] {
-        &self.inner.strides()
+        self.inner.strides()
     }
 
     /// Get underlying inner metal buffer.
-    pub fn metal<'a>(&'a self) -> &'a Buffer {
+    pub fn metal(&self) -> &Buffer {
         &self.metal
     }
 
     /// Get underlying inner tensor.
-    pub fn tensor<'a>(&'a self) -> &'a Tensor {
+    pub fn tensor(&self) -> &Tensor {
         &self.inner
     }
 
     /// Get mutable underlying inner metal buffer.
-    pub fn metal_mut<'a>(&'a mut self) -> &'a mut Buffer {
+    pub fn metal_mut(&mut self) -> &mut Buffer {
         &mut self.metal
     }
 

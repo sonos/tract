@@ -174,14 +174,14 @@ impl BinOps {
                 let rhs_buffer = rhs.metal();
                 let lhs_strides = lhs
                     .strides()
-                    .into_iter()
+                    .iter()
                     .zip(lhs.shape())
                     .map(|(s, dim)| if *dim == 1 { 0 } else { *s as u32 })
                     .collect::<Vec<_>>();
 
                 let rhs_strides = rhs
                     .strides()
-                    .into_iter()
+                    .iter()
                     .zip(rhs.shape())
                     .map(|(s, dim)| if *dim == 1 { 0 } else { *s as u32 })
                     .collect::<Vec<_>>();
