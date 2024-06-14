@@ -302,7 +302,11 @@ impl TypedFact {
         Self::dt_shape(self.datum_type, self.shape.clone())
     }
 
-    pub fn with_opaque_metadata<O: Into<Box<OpaqueMetadata>>>(mut self, opaque_metadata: O) -> Self {
+    pub fn opaque_metadata<T: OpaqueMetadata>(&self) -> Option<&T> {
+        self.opaque_metadata.as_ref().and_then(|it| it.downcast_ref::<T>())
+    }
+
+    pub fn with_opaque_metadata<O: Into<Box<dyn OpaqueMetadata>>>(mut self, opaque_metadata: O) -> Self {
         self.opaque_metadata = Some(opaque_metadata.into());
         self
     }
@@ -397,10 +401,12 @@ impl<'a> From<&'a Arc<Tensor>> for TypedFact {
 
 impl fmt::Debug for TypedFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self.konst {
-            Some(ref k) => write!(fmt, "{k:?}"),
-            None if self.rank() > 0 => write!(fmt, "{:?},{:?}", self.shape, self.datum_type),
-            None => write!(fmt, "{:?}", self.datum_type),
+        match (self.konst.as_ref(), self.opaque_metadata.as_ref()) {
+            (Some(ref k), _) => write!(fmt, "{k:?}"),
+            (None, None) if self.rank() > 0 => write!(fmt, "{:?},{:?}", self.shape, self.datum_type),
+            (None, Some(ref meta)) if self.rank() > 0 => write!(fmt, "{:?},{:?},{:?}", self.shape, self.datum_type, meta),
+            (None, Some(ref meta)) => write!(fmt, "{:?}, {:?}", self.datum_type, meta),
+            (None, None) => write!(fmt, "{:?}", self.datum_type),
         }
     }
 }
