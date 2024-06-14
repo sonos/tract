@@ -499,7 +499,10 @@ where
 
     /// Converts the model into a `RunnableModel` to actually process user data. This variant
     /// accepts options.
-    pub fn into_runnable_with_options(self, options: &PlanOptions) -> TractResult<RunnableModel<F, O, Self>> {
+    pub fn into_runnable_with_options(
+        self,
+        options: &PlanOptions,
+    ) -> TractResult<RunnableModel<F, O, Self>> {
         crate::plan::SimplePlan::new_with_options(self, options)
     }
 
@@ -567,16 +570,9 @@ where
             let input_1 =
                 self.nodes[i].inputs.first().map(|o| format!("{o:?}")).unwrap_or_default();
             let input_2 = self.nodes[i].inputs.get(1).map(|o| format!("{o:?}")).unwrap_or_default();
-            let output_1 = self
-                .outlet_successors(OutletId::new(i, 0))
-                .first()
-                .map(|o| format!("{o:?}"))
-                .unwrap_or_default();
-            let output_2 = self
-                .outlet_successors(OutletId::new(i, 0))
-                .get(1)
-                .map(|o| format!("{o:?}"))
-                .unwrap_or_default();
+            let successors = self.nodes[i].outputs.get(0).iter().flat_map(|o| o.successors.iter()).collect_vec();
+            let output_1 = successors.get(0).map(|o| format!("{o:?}")).unwrap_or_default();
+            let output_2 = successors.get(1).map(|o| format!("{o:?}")).unwrap_or_default();
             writeln!(
                 fmt,
                 "{:5} | {:8} {:8} -> {:8} {:8} | {:25} {:50} {:?} => {:?}",
@@ -598,7 +594,7 @@ where
                 )?;
             }
             if self.nodes[i].outputs.len() > 1
-                || self.outlet_successors((i, 0).into()).len() > 2
+                || successors.len() > 2
                 || (self.outlet_label(i.into()).is_some()
                     && self.outlet_label(i.into()).unwrap() != self.nodes[i].name)
             {

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fmt::{Debug, Display};
 use std::ops::{Deref, DerefMut};
 
@@ -341,6 +342,23 @@ where
         debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
         debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
         target.set_input_outlets(&model_input_outlets)?;
+        let mut maybe_garbage: HashSet<usize> = shunt_outlet_by.iter().map(|o| o.0.node).collect();
+        while let Some(&maybe) = maybe_garbage.iter().next() {
+            maybe_garbage.remove(&maybe);
+            if !target.outputs.iter().any(|output| output.node == maybe)
+                && !target.inputs.iter().any(|input| input.node == maybe)
+                && target.node(maybe).outputs.iter().all(|of| of.successors.is_empty())
+            {
+                target.node_mut(maybe).op = target.create_dummy();
+                target.node_mut(maybe).outputs.clear(); // necessary to drop facts and consts
+                let inputs = std::mem::take(&mut target.node_mut(maybe).inputs);
+                for &i in &inputs {
+                    target.node_mut(i.node).outputs[i.slot].successors.retain(|s| s.node != maybe);
+                    maybe_garbage.insert(i.node);
+                }
+                target.check_edges()?;
+            }
+        }
         Ok(())
     }
 }
