@@ -3,7 +3,7 @@ use crate::mmm::MMMInputValue;
 use super::*;
 use crate::frame::PackedFormat;
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Hash)]
 pub struct RepackingPackedBlockQuantValue {
     pub value: EagerPackedInput,
     pub pack: PackedFormat,
@@ -12,6 +12,12 @@ pub struct RepackingPackedBlockQuantValue {
 impl Display for RepackingPackedBlockQuantValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?} repacked to {:?}", self.value, self.pack)
+    }
+}
+
+impl Debug for RepackingPackedBlockQuantValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        <Self as Display>::fmt(self, f)
     }
 }
 

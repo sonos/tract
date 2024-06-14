@@ -8,7 +8,7 @@ use crate::mmm::{EagerPackedInput, MMMInputValue};
 
 use super::MMMInputFormat;
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, PartialEq, Hash)]
 pub struct PackedFormat {
     pub dt: DatumType,
     pub r: usize,
@@ -38,6 +38,12 @@ impl MMMInputFormat for PackedFormat {
 impl Display for PackedFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Packed(dt={:?} r={})", self.dt, self.r)
+    }
+}
+
+impl Debug for PackedFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        <Self as Display>::fmt(self, f)
     }
 }
 

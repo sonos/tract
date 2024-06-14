@@ -104,7 +104,7 @@ dyn_clone::clone_trait_object!(BlockQuant);
 dyn_hash::hash_trait_object!(BlockQuant);
 impl_downcast!(BlockQuant);
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Hash)]
 pub struct PackedBlockQuantFormat {
     pub bq: Box<dyn BlockQuant>,
     pub r: usize,
@@ -113,6 +113,12 @@ pub struct PackedBlockQuantFormat {
 impl Display for PackedBlockQuantFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Packed{} (r={})", self.bq, self.r)
+    }
+}
+
+impl Debug for PackedBlockQuantFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        <Self as Display>::fmt(self, f)
     }
 }
 
