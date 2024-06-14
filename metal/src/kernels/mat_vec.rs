@@ -53,9 +53,9 @@ pub fn mat_vec(
     let output = MetalTensor::zero_dt(o_dt, o_shape)?;
 
     if n == 1 {
-        metal_mat_vec(context, m, k, &lhs.metal(), &rhs.metal(), output.metal())?;
+        metal_mat_vec(context, m, k, lhs.metal(), rhs.metal(), output.metal())?;
     } else if m == 1 {
-        metal_mat_vec(context, n, k, &rhs.metal(), &lhs.metal(), output.metal())?;
+        metal_mat_vec(context, n, k, rhs.metal(), lhs.metal(), output.metal())?;
     } else {
         bail!("Incompatible shape for MatVec {:?}, {:?}", lhs.shape(), rhs.shape());
     }
@@ -87,7 +87,7 @@ pub fn metal_mat_vec(
 
     let grid_size = MTLSize {
         width: 1,
-        height: crate::utils::div_ceil(nrows as usize, 4),
+        height: crate::utils::div_ceil(nrows, 4),
         depth: 1 as NSUInteger,
     };
     let group_size = MTLSize { width: 32, height: 1, depth: 1 };

@@ -25,7 +25,7 @@ pub fn mmm_tile_8x8(
 
     let output = MetalTensor::zero_dt(o_dt, o_shape)?;
 
-    crate::kernels::metal_mmm_tile_8x8(context, m, &lhs.metal(), &rhs.metal(), output.metal())?;
+    crate::kernels::metal_mmm_tile_8x8(context, m, lhs.metal(), rhs.metal(), output.metal())?;
     context.wait_until_completed()?;
 
     Ok(output)
