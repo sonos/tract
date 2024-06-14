@@ -73,9 +73,15 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
             }
 
             let input_facts: TVec<_> = input_facts.iter().collect();
-            let output_facts = op
+            let mut output_facts = op
                 .output_facts(&input_facts)
                 .with_context(|| format!("in output_facts invocation for {name}: {}", op.name()))?;
+            for fact in &mut output_facts {
+                if fact.konst.is_none() && fact.shape.is_concrete() {
+                    let tensor = Tensor::zero_dt(fact.datum_type, fact.shape.as_concrete().unwrap())?;
+                    fact.konst = Some(tensor.into_arc_tensor());
+                }
+            }
             let id = self.add_node(&name, &op, output_facts)?;
             inputs
                 .iter()
