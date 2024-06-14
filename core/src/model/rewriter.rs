@@ -21,8 +21,11 @@ impl<Ctx> Rewriter<Ctx> {
         self.rules.entry(TypeId::of::<O>()).or_default().push((
             name.into(),
             Box::new(move |c: &Ctx, m: &TypedModel, n: &TypedNode| {
-                let o = n.op_as::<O>().unwrap();
-                rule(c, m, n, &n.name, o)
+                if let Some(o) = n.op_as::<O>() {
+                    rule(c, m, n, &n.name, o)
+                } else {
+                    Ok(None)
+                }
             }),
         ));
         self
