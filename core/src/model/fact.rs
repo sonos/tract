@@ -199,6 +199,8 @@ pub struct TypedFact {
     pub konst: Option<Arc<Tensor>>,
     /// optional uniform value
     pub uniform: Option<Arc<Tensor>>,
+    /// optional opaque metadata
+    pub opaque_metadata: Option<Vec<Option<Box<dyn OpaqueMetadata>>>>
 }
 
 impl TypedFact {
@@ -223,18 +225,31 @@ impl TypedFact {
             shape: ShapeFact::from_dims(t.shape().iter().map(TDim::from)),
             uniform: None,
             konst: None,
+            opaque_metadata: None,
         }
     }
 
     pub fn dt_scalar(datum_type: DatumType) -> TypedFact {
-        TypedFact { datum_type, shape: ShapeFact::scalar(), konst: None, uniform: None }
+        TypedFact { 
+            datum_type, 
+            shape: ShapeFact::scalar(), 
+            konst: None, 
+            uniform: None, 
+            opaque_metadata: None, 
+        }
     }
 
     pub fn dt_shape<S>(datum_type: DatumType, shape: S) -> TypedFact
     where
         S: Into<ShapeFact>,
     {
-        TypedFact { datum_type, shape: shape.into(), konst: None, uniform: None }
+        TypedFact { 
+            datum_type, 
+            shape: shape.into(), 
+            konst: None, 
+            uniform: None,
+            opaque_metadata: None,
+        }
     }
 
     pub fn rank(&self) -> usize {
@@ -357,6 +372,9 @@ impl From<Arc<Tensor>> for TypedFact {
             datum_type: t.datum_type(),
             shape: ShapeFact::from_dims(t.shape().iter().map(TDim::from)),
             uniform: t.as_uniform().map(Arc::new),
+            opaque_metadata: t.as_slice::<Opaque>()
+                .ok()
+                .map(|it| it.iter().map(|it| it.metadata()).collect::<Vec<_>>()),
             konst: Some(t),
         }
     }

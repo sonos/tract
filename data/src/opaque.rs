@@ -1,4 +1,5 @@
 #![allow(clippy::derived_hash_with_manual_eq)]
+use crate::TVec;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::ops::Deref;
@@ -6,10 +7,39 @@ use std::sync::Arc;
 
 use downcast_rs::{impl_downcast, Downcast};
 use dyn_hash::DynHash;
+use dyn_clone;
 
-pub trait OpaquePayload: DynHash + Send + Sync + Debug + Display + Downcast {}
+pub trait OpaquePayload: DynHash + Send + Sync + Debug + Display + Downcast {
+
+    fn metadata(&self) -> Option<Box<dyn OpaqueMetadata>> {
+        None
+    }
+}
 impl_downcast!(OpaquePayload);
 dyn_hash::hash_trait_object!(OpaquePayload);
+
+
+pub trait OpaqueMetadata: DynHash + Send + Sync + Debug + dyn_clone::DynClone + Downcast {
+    fn same_as(&self, _other: &dyn OpaqueMetadata) -> bool {
+        false
+    }
+}
+impl_downcast!(OpaqueMetadata);
+dyn_hash::hash_trait_object!(OpaqueMetadata);
+dyn_clone::clone_trait_object!(OpaqueMetadata);
+
+
+impl PartialEq for Box<dyn OpaqueMetadata> {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_ref().same_as(other.as_ref())
+    }
+}
+
+impl Eq for Box<dyn OpaqueMetadata> { }
+
+
+impl OpaqueMetadata for TVec<Box<dyn OpaqueMetadata>> { }
+
 
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub struct DummyPayload;
@@ -28,6 +58,10 @@ pub struct Opaque(pub Arc<dyn OpaquePayload>);
 impl Opaque {
     pub fn downcast_ref<T: OpaquePayload>(&self) -> Option<&T> {
         (*self.0).downcast_ref::<T>()
+    }
+
+    pub fn metadata(&self) -> Option<Box<dyn OpaqueMetadata>> {
+        self.0.metadata()
     }
 }
 

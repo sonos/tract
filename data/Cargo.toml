@@ -17,6 +17,7 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 anyhow.workspace = true
 downcast-rs.workspace = true
+dyn-clone.workspace = true
 dyn-hash.workspace = true
 half.workspace = true
 itertools.workspace = true
