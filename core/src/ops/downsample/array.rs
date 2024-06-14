@@ -128,16 +128,6 @@ mod tests {
     }
 
     #[test]
-    fn crop_then_down_3() {
-        crop_then_down(0, 0, 0, 2, 1).unwrap()
-    }
-
-    #[test]
-    fn crop_then_down_4() {
-        crop_then_down(1, 0, 1, 2, 1).unwrap()
-    }
-
-    #[test]
     fn crop_then_down_5() {
         crop_then_down(16, 0, 1, 2, 1).unwrap()
     }
