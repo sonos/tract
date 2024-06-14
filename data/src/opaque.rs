@@ -39,6 +39,8 @@ impl Eq for Box<dyn OpaqueMetadata> { }
 
 
 impl OpaqueMetadata for TVec<Box<dyn OpaqueMetadata>> { }
+impl OpaqueMetadata for TVec<Option<Box<dyn OpaqueMetadata>>> { }
+
 
 
 #[derive(Debug, Hash, PartialEq, Eq)]

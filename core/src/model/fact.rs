@@ -200,7 +200,7 @@ pub struct TypedFact {
     /// optional uniform value
     pub uniform: Option<Arc<Tensor>>,
     /// optional opaque metadata
-    pub opaque_metadata: Option<Vec<Option<Box<dyn OpaqueMetadata>>>>
+    pub opaque_metadata: Option<Box<dyn OpaqueMetadata>>
 }
 
 impl TypedFact {
@@ -372,9 +372,7 @@ impl From<Arc<Tensor>> for TypedFact {
             datum_type: t.datum_type(),
             shape: ShapeFact::from_dims(t.shape().iter().map(TDim::from)),
             uniform: t.as_uniform().map(Arc::new),
-            opaque_metadata: t.as_slice::<Opaque>()
-                .ok()
-                .map(|it| it.iter().map(|it| it.metadata()).collect::<Vec<_>>()),
+            opaque_metadata: None,
             konst: Some(t),
         }
     }
