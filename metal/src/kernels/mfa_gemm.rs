@@ -91,10 +91,10 @@ pub fn mfa_gemm(
         (b, m, n, k),
         &lhs_strides,
         0,
-        &lhs.metal(),
+        lhs.metal(),
         &rhs_strides,
         0,
-        &rhs.metal(),
+        rhs.metal(),
         output.metal(),
     )?;
     context.wait_until_completed()?;

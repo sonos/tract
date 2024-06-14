@@ -31,6 +31,7 @@ fn shared_metal_context() -> SharedMetalContext {
 pub struct SharedMetalContext {
     device: Device,
     cache_libraries: Arc<RwLock<HashMap<LibraryName, Library>>>,
+    #[allow(clippy::type_complexity)]
     cache_pipelines:
         Arc<RwLock<HashMap<(LibraryName, String, Option<ConstantValues>), ComputePipelineState>>>,
 }
@@ -145,6 +146,12 @@ pub struct MetalContext {
     command_buffer_capacity: usize,
 }
 
+impl Default for MetalContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MetalContext {
     pub fn new() -> Self {
         let shared = shared_metal_context();
@@ -240,7 +247,7 @@ impl MetalContext {
 
         capture.start_capture(&descriptor).map_err(|e| anyhow!("{:?}", e))?;
 
-        (compute)(&self)?;
+        (compute)(self)?;
 
         self.wait_until_completed()?;
         capture.stop_capture();
