@@ -23,7 +23,7 @@ pub fn mmm_tile_8x8(
     let o_dt = lhs.datum_type();
     let o_shape = &[m, m];
 
-    let output = MetalTensor::zero_dt(context, o_dt, o_shape)?;
+    let output = MetalTensor::zero_dt(o_dt, o_shape)?;
 
     crate::kernels::metal_mmm_tile_8x8(context, m, &lhs.metal(), &rhs.metal(), output.metal())?;
     context.wait_until_completed()?;

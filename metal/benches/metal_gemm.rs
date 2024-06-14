@@ -1,6 +1,7 @@
 use criterion::measurement::WallTime;
 use criterion::*;
-use ggml;
+use ggml::Context;
+// use ggml;
 use tract_core::internal::*;
 use tract_metal::*;
 
@@ -17,19 +18,24 @@ pub fn ggml_matmul(
         _ => unimplemented!(),
     };
 
-    let ctxt = ggml::Context::new(ggml::ContextStorage::Allocate { mem_size: 10_000_000 });
+    let ctxt = Context::new_with_allocate(500_000_000);
+
+    let mut t = ctxt.new_tensor_3d(ggml_dt, 1, 2, 3);
+    t.zero_data();
 
     let mut a = ctxt.new_tensor_2d(ggml_dt, k, m);
     a.zero_data();
-    println!("{:?}", a.get_ne());
     let mut b = ctxt.new_tensor_2d(ggml_dt, k, n); // intern transposition
     b.zero_data();
-    println!("{:?}", b.get_ne());
-
-    let c = ctxt.op_mul_mat(&a, &b);
 
     crit.bench_function(&format!("ggml_{:?}", dt), |be| {
         be.iter(|| {
+            let ctxt = Context::new_with_allocate(500_000_000);
+            let mut a = ctxt.new_tensor_2d(ggml_dt, k, m);
+            a.zero_data();
+            let mut b = ctxt.new_tensor_2d(ggml_dt, k, n); // intern transposition
+            b.zero_data();
+            let c = ctxt.op_mul_mat(&a, &b);
             let mut graph = ctxt.create_compute_graph();
             graph.build_forward_expand(&c);
 
@@ -79,6 +85,31 @@ pub fn tract_with_packing(
     }
 }
 
+pub fn metal_mat_vec(
+    crit: &mut BenchmarkGroup<WallTime>,
+    m: usize,
+    k: usize,
+    n: usize,
+    dt: DatumType,
+) {
+    let mut context = MetalContext::new();
+    context.shared_context().load_library(LibraryName::MfaLib).unwrap();
+
+    let a = Tensor::zero_dt(dt, &[m, k]).unwrap();
+    let b = Tensor::zero_dt(dt, &[k, n]).unwrap();
+    let metal_a = a.into_metal().unwrap();
+    let metal_b = b.into_metal().unwrap();
+    // Warmup
+    let _ = tract_metal::kernels::mat_vec(&mut context, &metal_a, &metal_b).unwrap();
+
+    crit.bench_function(&format!("tract_metal_mat_vec_{:?}", dt), |be| {
+        be.iter(|| {
+            let _ = tract_metal::kernels::mat_vec(&mut context, &metal_a, &metal_b).unwrap();
+        });
+    });
+    // metal_mat_vec
+}
+
 pub fn metal_gemm(
     crit: &mut BenchmarkGroup<WallTime>,
     m: usize,
@@ -94,11 +125,36 @@ pub fn metal_gemm(
     let metal_a = a.into_metal().unwrap();
     let metal_b = b.into_metal().unwrap();
     // Warmup
-    let _ = tract_metal::gemm::gemm(&mut context, &metal_a, &metal_b).unwrap();
+    let _ = tract_metal::kernels::mfa_gemm(&mut context, &metal_a, &metal_b).unwrap();
 
     crit.bench_function(&format!("tract_metal_gemm_{:?}", dt), |be| {
         be.iter(|| {
-            let _ = tract_metal::gemm::gemm(&mut context, &metal_a, &metal_b).unwrap();
+            let _ = tract_metal::kernels::mfa_gemm(&mut context, &metal_a, &metal_b).unwrap();
+        });
+    });
+}
+
+pub fn metal_gemm_without_cache(
+    crit: &mut BenchmarkGroup<WallTime>,
+    m: usize,
+    k: usize,
+    n: usize,
+    dt: DatumType,
+) {
+    let mut context = MetalContext::new();
+    context.shared_context().load_library(LibraryName::MfaLib).unwrap();
+
+    let a = Tensor::zero_dt(dt, &[1, m, k]).unwrap();
+    let b = Tensor::zero_dt(dt, &[1, k, n]).unwrap();
+    let metal_a = a.into_metal().unwrap();
+    let metal_b = b.into_metal().unwrap();
+    // Warmup
+    let _ = tract_metal::kernels::mfa_gemm(&mut context, &metal_a, &metal_b).unwrap();
+
+    crit.bench_function(&format!("tract_metal_gemm_without_cache_{:?}", dt), |be| {
+        be.iter(|| {
+            context.shared_context().flush_pipeline_cache().unwrap();
+            let _ = tract_metal::kernels::mfa_gemm(&mut context, &metal_a, &metal_b).unwrap();
         });
     });
 }
@@ -120,9 +176,13 @@ pub fn metal_tile_8x8(crit: &mut BenchmarkGroup<WallTime>, dim: usize, dt: Datum
 fn matmul(c: &mut Criterion, m: usize, k: usize, n: usize) {
     let mut c = c.benchmark_group(format!("{}x{}x{}", m, k, n));
     c.throughput(Throughput::Elements((m * k * n) as _));
-    // ggml_matmul(&mut c, m, k, n, f32::datum_type());
+    ggml_matmul(&mut c, m, k, n, f32::datum_type());
+    if m == 1 || n == 1 {
+        metal_mat_vec(&mut c, m, k, n, f32::datum_type());
+    }
     tract_with_packing(&mut c, m, k, n, f32::datum_type());
     metal_gemm(&mut c, m, k, n, f32::datum_type());
+    metal_gemm_without_cache(&mut c, m, k, n, f32::datum_type());
     // ggml_matmul(&mut c, m, k, n, f16::datum_type());
     tract_with_packing(&mut c, m, k, n, f16::datum_type());
     metal_gemm(&mut c, m, k, n, f16::datum_type());
@@ -131,16 +191,23 @@ fn matmul(c: &mut Criterion, m: usize, k: usize, n: usize) {
 
 fn tinyllama(c: &mut Criterion) {
     let shapes = vec![
-        (1, 64, 3),
-        (1, 64, 1),
-        (1, 5632, 2048),
-        (1, 3, 64),
-        (1, 64, 13),
-        (1, 12, 64),
-        (1, 2048, 5632),
-        (1, 2048, 32003),
+        (32003, 2048, 6),
+        (1, 32, 32),
+        (1, 4, 4),
+        (1, 4096, 4096),
         (1, 2048, 2048),
-        (1, 2048, 256),
+        (1, 1024, 1024),
+        (1, 128, 128),
+        // (1, 64, 3),
+        // (1, 64, 1),
+        // (1, 5632, 2048),
+        // (1, 3, 64),
+        // (1, 64, 13),
+        // (1, 12, 64),
+        // (1, 2048, 5632),
+        // (1, 2048, 32003),
+        // (1, 2048, 2048),
+        // (1, 2048, 256),
     ];
     for (m, k, n) in shapes {
         matmul(c, m, k, n);
