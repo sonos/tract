@@ -293,6 +293,9 @@ impl Tensor {
         shape: &[usize],
         alignment: usize,
     ) -> TractResult<Tensor> {
+        if shape.iter().product::<usize>() == 0 {
+            unsafe { return Tensor::uninitialized_dt(dt, shape) };
+        }
         if dt.is_quantized() {
             unsafe {
                 let mut t = Tensor::uninitialized_dt(dt, shape)?;
