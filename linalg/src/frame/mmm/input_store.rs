@@ -42,7 +42,7 @@ impl From<Box<dyn MMMInputValue>> for Opaque {
 
 impl OpaquePayload for Box<dyn MMMInputValue> {}
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Clone, Hash)]
 pub struct EagerPackedInput {
     pub format: Box<dyn MMMInputFormat>,
     pub packed: Blob,
@@ -71,6 +71,12 @@ impl MMMInputValue for EagerPackedInput {
 
 impl Display for EagerPackedInput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Eagerly {} tensor (mn={} k={})", self.format, self.mn(), self.k())
+        write!(f, "Eager {} tensor (mn={} k={})", self.format, self.mn(), self.k())
+    }
+}
+
+impl Debug for EagerPackedInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        <Self as Display>::fmt(self, f)
     }
 }
