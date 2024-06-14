@@ -31,9 +31,8 @@ fn shared_metal_context() -> SharedMetalContext {
 pub struct SharedMetalContext {
     device: Device,
     cache_libraries: Arc<RwLock<HashMap<LibraryName, Library>>>,
-    cache_pipelines: Arc<
-        RwLock<HashMap<(LibraryName, &'static str, Option<ConstantValues>), ComputePipelineState>>,
-    >,
+    cache_pipelines:
+        Arc<RwLock<HashMap<(LibraryName, String, Option<ConstantValues>), ComputePipelineState>>>,
 }
 
 impl SharedMetalContext {
@@ -45,6 +44,11 @@ impl SharedMetalContext {
             cache_libraries: Arc::new(RwLock::new(HashMap::new())),
             cache_pipelines: Arc::new(RwLock::new(HashMap::new())),
         })
+    }
+
+    pub fn flush_pipeline_cache(&self) -> Result<()> {
+        self.cache_pipelines.write().map_err(|e| anyhow!("{:?}", e))?.clear();
+        Ok(())
     }
 
     pub fn load_library(&self, name: LibraryName) -> Result<Library> {
@@ -78,7 +82,7 @@ impl SharedMetalContext {
     pub fn load_function(
         &self,
         library_name: LibraryName,
-        func_name: &'static str,
+        func_name: &str,
         constants: Option<FunctionConstantValues>,
     ) -> Result<Function> {
         let func = self
@@ -97,10 +101,10 @@ impl SharedMetalContext {
     pub(crate) fn load_pipeline_with_constants(
         &self,
         library_name: LibraryName,
-        func_name: &'static str,
+        func_name: &str,
         constants: Option<ConstantValues>,
     ) -> Result<ComputePipelineState> {
-        let key = (library_name, func_name, constants);
+        let key = (library_name, func_name.to_string(), constants);
         {
             let cache_pipelines = self.cache_pipelines.read().map_err(|e| anyhow!("{:?}", e))?;
             if let Some(pipeline) = cache_pipelines.get(&key) {
@@ -112,21 +116,21 @@ impl SharedMetalContext {
         let (library_name, func_name, constants) = key;
         let func = self.load_function(
             library_name,
-            func_name,
+            &func_name,
             constants.as_ref().map(|c| c.function_constant_values()),
         )?;
         let pipeline = self.device
             .new_compute_pipeline_state_with_function(&func)
             .map_err(|e| anyhow!("{}", e))
             .with_context(|| format!("Error while creating compute pipeline for function {func_name} from source: {:?}", library_name))?;
-        cache_pipelines.insert((library_name, func_name, constants), pipeline.clone());
+        cache_pipelines.insert((library_name, func_name.to_string(), constants), pipeline.clone());
         Ok(pipeline)
     }
 
     pub fn load_pipeline(
-        &mut self,
+        &self,
         library_name: LibraryName,
-        func_name: &'static str,
+        func_name: &str,
     ) -> Result<ComputePipelineState> {
         self.load_pipeline_with_constants(library_name, func_name, None)
     }
@@ -164,7 +168,7 @@ impl MetalContext {
         &self.shared
     }
 
-    pub fn buffer_from_slice_with_copy<T>(&self, data: &[T]) -> Buffer {
+    pub fn buffer_from_slice<T>(&self, data: &[T]) -> Buffer {
         let size = core::mem::size_of_val(data) as NSUInteger;
         self.device().new_buffer_with_bytes_no_copy(
             data.as_ptr() as *const core::ffi::c_void,
@@ -174,7 +178,7 @@ impl MetalContext {
         )
     }
 
-    pub fn buffer_from_slice_with_copy_mut<T>(&self, data: &mut [T]) -> Buffer {
+    pub fn buffer_from_slice_mut<T>(&self, data: &mut [T]) -> Buffer {
         let size = core::mem::size_of_val(data) as NSUInteger;
         self.device().new_buffer_with_bytes_no_copy(
             data.as_ptr() as *const core::ffi::c_void,
