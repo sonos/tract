@@ -29,6 +29,13 @@ dyn_hash::hash_trait_object!(OpaqueMetadata);
 dyn_clone::clone_trait_object!(OpaqueMetadata);
 
 
+impl<T: OpaqueMetadata> From<T> for Box<dyn OpaqueMetadata> {
+    fn from(v: T) -> Self {
+        Box::new(v)
+    }
+}
+
+
 impl PartialEq for Box<dyn OpaqueMetadata> {
     fn eq(&self, other: &Self) -> bool {
         self.as_ref().same_as(other.as_ref())
