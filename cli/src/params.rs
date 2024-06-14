@@ -746,7 +746,7 @@ impl Parameters {
                 #[cfg(any(target_os = "macos", target_os = "ios"))]
                 {
                     stage!("metal", typed_model -> typed_model, |m:TypedModel| {
-                        tract_metal::transform::MetalGemmTransform
+                        tract_metal::transform::MetalTransform
                             .transform_into(&m)
                     });
                 }
