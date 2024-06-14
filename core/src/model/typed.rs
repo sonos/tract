@@ -77,7 +77,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                 .output_facts(&input_facts)
                 .with_context(|| format!("in output_facts invocation for {name}: {}", op.name()))?;
             for fact in &mut output_facts {
-                if fact.konst.is_none() && fact.shape.is_concrete() {
+                if fact.konst.is_none() && fact.shape.is_concrete() && fact.shape.volume().is_zero() {
                     let tensor = Tensor::zero_dt(fact.datum_type, fact.shape.as_concrete().unwrap())?;
                     fact.konst = Some(tensor.into_arc_tensor());
                 }
