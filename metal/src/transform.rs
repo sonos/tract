@@ -64,7 +64,7 @@ macro_rules! map_element_wise_ops {
     ([$(($tract_bin_op:path, $metal_bin_op:ident)),* $(,)?]) => {
         |op: &tract_core::ops::element_wise::ElementWiseOp| {
             $(if let Some(_op) = op.0.downcast_ref::<$tract_bin_op>() {
-                return Some($crate::ops::element_wise::MetalElementWiseOp($crate::ops::element_wise::ElementWiseOps::Rsqrt));
+                return Some($crate::ops::element_wise::MetalElementWiseOp($crate::ops::element_wise::ElementWiseOps::$metal_bin_op));
             })*
             return None;
         }
@@ -79,6 +79,16 @@ fn bin_ops_to_metal(
     op: &TypedBinOp,
 ) -> Result<Option<TypedModelPatch>> {
     if op.1.is_some() {
+        return Ok(None);
+    }
+
+    let input_facts = model.node_input_facts(node.id)?;
+    let dt = input_facts[0].datum_type;
+
+    // All input must have the same datum type and it has to be supported.
+    if model.node_input_facts(node.id)?.iter().any(|f| f.datum_type != dt) {
+        return Ok(None);
+    } else if !crate::kernels::BinOps::is_supported_dt(dt) {
         return Ok(None);
     }
 
@@ -109,6 +119,16 @@ fn element_wise_ops_to_metal(
     op: &ElementWiseOp,
 ) -> Result<Option<TypedModelPatch>> {
     if op.1.is_some() {
+        return Ok(None);
+    }
+
+    let input_facts = model.node_input_facts(node.id)?;
+    let dt = input_facts[0].datum_type;
+
+    // All input must have the same datum type and it has to be supported.
+    if model.node_input_facts(node.id)?.iter().any(|f| f.datum_type != dt) {
+        return Ok(None);
+    } else if !crate::kernels::ElementWiseOps::is_supported_dt(dt) {
         return Ok(None);
     }
 

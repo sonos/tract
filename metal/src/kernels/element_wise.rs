@@ -64,10 +64,11 @@ impl ElementWiseOps {
         )
     }
 
-    pub fn kernel_name(&self, dt: DatumType, in_place: bool) -> Result<String> {
-        if self.float_only() && !matches!(dt, DatumType::F32 | DatumType::F16) {
-            bail!("Unsupport dt for metal binary ops: {:?}", self);
-        }
+    pub fn is_supported_dt(dt: DatumType) -> bool {
+        Self::tname(dt).is_ok()
+    }
+
+    pub fn tname(dt: DatumType) -> Result<&'static str> {
         let tname = match dt {
             DatumType::F32 => "f32",
             DatumType::F16 => "f16",
@@ -80,8 +81,16 @@ impl ElementWiseOps {
             DatumType::I32 => "i32",
             DatumType::I64 => "i64",
             DatumType::Bool => "bool",
-            _ => bail!("Unsupport dt for metal binary ops: {:?}", self),
+            _ => bail!("Unsupport dt {:?} for metal element wise ops", dt),
         };
+        Ok(tname)
+    }
+
+    pub fn kernel_name(&self, dt: DatumType, in_place: bool) -> Result<String> {
+        if self.float_only() && !matches!(dt, DatumType::F32 | DatumType::F16) {
+            bail!("Unsupport dt for metal binary ops: {:?}", self);
+        }
+        let tname = Self::tname(dt)?;
 
         let kname = match self {
             Self::Abs => "abs",
@@ -120,7 +129,7 @@ impl ElementWiseOps {
     }
 
     pub fn eval(&self, context: &MetalContext, a: &MetalTensor) -> Result<MetalTensor> {
-        let output = unsafe { MetalTensor::uninitialized_dt(a.datum_type(), a.shape())? };
+        let output = MetalTensor::zero_dt(a.datum_type(), a.shape())?;
         let kernel_name = self.kernel_name(a.datum_type(), false)?;
 
         let a_buffer = a.metal();
@@ -139,8 +148,62 @@ impl ElementWiseOps {
         encoder.use_resource(output_buffer, metal::MTLResourceUsage::Write);
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
-
         context.wait_until_completed()?;
         Ok(output)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::IntoMetal;
+    use num_traits::Zero;
+    use rand::Rng;
+
+    fn reference<F: Datum>(a: &Tensor, ca: impl Fn(&mut F, &F) -> ()) -> Result<Tensor> {
+        let mut out = unsafe { Tensor::uninitialized_dt(a.datum_type(), a.shape())? };
+        let a_view = a.to_array_view::<F>()?;
+        let mut c = out.to_array_view_mut::<F>()?;
+        tract_core::ndarray::Zip::from(&mut c).and_broadcast(a_view).for_each(|c, a| (ca)(c, a));
+        Ok(out)
+    }
+
+    fn run_test_case<F: Datum + Zero>(
+        op: ElementWiseOps,
+        a_shape: &[usize],
+        neg: bool,
+        ca: impl Fn(&mut F, &F) -> (),
+    ) -> Result<()> {
+        objc::rc::autoreleasepool(|| {
+            crate::METAL_CONTEXT.with_borrow(|context| {
+                let a_len = a_shape.iter().product::<usize>();
+                let mut rng = rand::thread_rng();
+                let a = Tensor::from_shape(
+                    a_shape,
+                    &(0..a_len)
+                        .map(|_f| {
+                            if neg {
+                                rng.gen_range(-10.0f32..10.0)
+                            } else {
+                                rng.gen_range(0.0f32..10.0)
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                )?
+                .into_metal()?;
+                let output = op.eval(context, &a)?;
+                let ref_output = reference::<F>(a.tensor(), ca)?;
+                assert!(ref_output.close_enough(output.tensor(), Approximation::Close).is_ok());
+                Ok(())
+            })
+        })
+    }
+
+    #[test]
+    fn test_element_wise() -> Result<()> {
+        run_test_case::<f32>(ElementWiseOps::Abs, &[4, 4], true, |c, a| *c = a.abs())?;
+        run_test_case::<f32>(ElementWiseOps::Ln, &[4, 4], false, |c, a| *c = a.ln())?;
+
+        Ok(())
     }
 }
