@@ -302,10 +302,6 @@ impl TypedFact {
         Self::dt_shape(self.datum_type, self.shape.clone())
     }
 
-    pub fn opaque_metadata<T: OpaqueMetadata>(&self) -> Option<&T> {
-        self.opaque_metadata.as_ref().and_then(|it| it.downcast_ref::<T>())
-    }
-
     pub fn with_opaque_metadata<O: Into<Box<dyn OpaqueMetadata>>>(mut self, opaque_metadata: O) -> Self {
         self.opaque_metadata = Some(opaque_metadata.into());
         self

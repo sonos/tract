@@ -8,12 +8,7 @@ use std::sync::Arc;
 use downcast_rs::{impl_downcast, Downcast};
 use dyn_hash::DynHash;
 
-pub trait OpaquePayload: DynHash + Send + Sync + Debug + Display + Downcast {
-
-    fn metadata(&self) -> Option<Box<dyn OpaqueMetadata>> {
-        None
-    }
-}
+pub trait OpaquePayload: DynHash + Send + Sync + Debug + Display + Downcast { }
 impl_downcast!(OpaquePayload);
 dyn_hash::hash_trait_object!(OpaquePayload);
 
@@ -66,10 +61,6 @@ pub struct Opaque(pub Arc<dyn OpaquePayload>);
 impl Opaque {
     pub fn downcast_ref<T: OpaquePayload>(&self) -> Option<&T> {
         (*self.0).downcast_ref::<T>()
-    }
-
-    pub fn metadata(&self) -> Option<Box<dyn OpaqueMetadata>> {
-        self.0.metadata()
     }
 }
 
