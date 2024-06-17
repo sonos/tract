@@ -75,8 +75,6 @@ impl Expansion for MatMulInference {
             let c_prefix: String = ('a'..).take(c_rank - 2).collect();
             format!("{a_prefix}{mk},{b_prefix}{kn}->{c_prefix}{mn}").parse()?
         };
-        dbg!(a_rank, b_rank, self);
-        dbg!(&axes);
         let dt = target.outlet_fact(inputs[0])?.datum_type;
         target.wire_node(prefix, EinSum { axes, operating_dt: dt, q_params: None }, inputs)
     }
