@@ -269,7 +269,7 @@ mod tests {
     fn reference<FI: Datum, FO: Datum>(
         a: &Tensor,
         b: &Tensor,
-        cab: impl Fn(&mut FO, &FI, &FI) -> (),
+        cab: impl Fn(&mut FO, &FI, &FI),
     ) -> Result<Tensor> {
         let out_shape = tract_core::broadcast::multi_broadcast(&[a.shape(), b.shape()])?;
         let mut out = unsafe { Tensor::uninitialized_dt(FO::datum_type(), &out_shape)? };
@@ -279,7 +279,7 @@ mod tests {
         tract_core::ndarray::Zip::from(&mut c)
             .and_broadcast(a_view)
             .and_broadcast(b_view)
-            .for_each(|c, a, b| (cab)(c, a, b));
+            .for_each(cab);
         Ok(out)
     }
 
@@ -287,7 +287,7 @@ mod tests {
         op: BinOps,
         a_shape: &[usize],
         b_shape: &[usize],
-        cab: impl Fn(&mut bool, &F, &F) -> (),
+        cab: impl Fn(&mut bool, &F, &F),
     ) -> Result<()> {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
@@ -314,7 +314,7 @@ mod tests {
         op: BinOps,
         a_shape: &[usize],
         b_shape: &[usize],
-        cab: impl Fn(&mut F, &F, &F) -> (),
+        cab: impl Fn(&mut F, &F, &F),
     ) -> Result<()> {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {

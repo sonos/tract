@@ -160,11 +160,11 @@ mod tests {
     use num_traits::Zero;
     use rand::Rng;
 
-    fn reference<F: Datum>(a: &Tensor, ca: impl Fn(&mut F, &F) -> ()) -> Result<Tensor> {
+    fn reference<F: Datum>(a: &Tensor, ca: impl Fn(&mut F, &F)) -> Result<Tensor> {
         let mut out = unsafe { Tensor::uninitialized_dt(a.datum_type(), a.shape())? };
         let a_view = a.to_array_view::<F>()?;
         let mut c = out.to_array_view_mut::<F>()?;
-        tract_core::ndarray::Zip::from(&mut c).and_broadcast(a_view).for_each(|c, a| (ca)(c, a));
+        tract_core::ndarray::Zip::from(&mut c).and_broadcast(a_view).for_each(ca);
         Ok(out)
     }
 
@@ -172,7 +172,7 @@ mod tests {
         op: ElementWiseOps,
         a_shape: &[usize],
         neg: bool,
-        ca: impl Fn(&mut F, &F) -> (),
+        ca: impl Fn(&mut F, &F),
     ) -> Result<()> {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {

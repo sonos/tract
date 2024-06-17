@@ -1,3 +1,5 @@
+#![allow(clippy::missing_safety_doc)]
+
 pub mod context;
 pub mod func_constants;
 pub mod kernels;
