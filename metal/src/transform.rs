@@ -86,9 +86,9 @@ fn bin_ops_to_metal(
     let dt = input_facts[0].datum_type;
 
     // All input must have the same datum type and it has to be supported.
-    if model.node_input_facts(node.id)?.iter().any(|f| f.datum_type != dt) {
-        return Ok(None);
-    } else if !crate::kernels::BinOps::is_supported_dt(dt) {
+    if model.node_input_facts(node.id)?.iter().any(|f| f.datum_type != dt)
+        || !crate::kernels::BinOps::is_supported_dt(dt)
+    {
         return Ok(None);
     }
 
@@ -126,9 +126,9 @@ fn element_wise_ops_to_metal(
     let dt = input_facts[0].datum_type;
 
     // All input must have the same datum type and it has to be supported.
-    if model.node_input_facts(node.id)?.iter().any(|f| f.datum_type != dt) {
-        return Ok(None);
-    } else if !crate::kernels::ElementWiseOps::is_supported_dt(dt) {
+    if model.node_input_facts(node.id)?.iter().any(|f| f.datum_type != dt)
+        || !crate::kernels::ElementWiseOps::is_supported_dt(dt)
+    {
         return Ok(None);
     }
 
