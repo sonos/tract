@@ -54,27 +54,31 @@ impl Expansion for MatMulInference {
         target: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let implicit_m = target.outlet_fact(inputs[0])?.rank() < 2;
-        let implicit_n = target.outlet_fact(inputs[1])?.rank() < 2;
-        let inputs = crate::ops::binary::wire_rank_broadcast(prefix, target, inputs)?;
-        let fact = target.outlet_fact(inputs[0])?;
-        let mut axes =
-            AxesMapping::for_numpy_matmul(fact.rank(), self.a_trans, self.b_trans, self.c_trans)?;
-        if implicit_m {
-            let a = InOut::In(0);
-            let m_axis = axes.axis((a, axes.rank(a) - 2))?;
-            axes = axes.remove_axis_occurency(InOut::Out(0), m_axis.outputs[0][0])?;
-        }
-        if implicit_n {
-            let b = InOut::In(1);
-            let n_axis = axes.axis((b, axes.rank(b) - 1))?;
-            axes = axes.remove_axis_occurency(InOut::Out(0), n_axis.outputs[0][0])?;
-        }
-        target.wire_node(
-            prefix,
-            EinSum { axes, operating_dt: fact.datum_type, q_params: None },
-            &inputs,
-        )
+        let a_rank = target.outlet_fact(inputs[0])?.rank();
+        let b_rank = target.outlet_fact(inputs[1])?.rank();
+        ensure!(a_rank > 1 || b_rank > 1);
+        let mk = if self.a_trans { "km" } else { "mk" };
+        let kn = if self.b_trans { "nk" } else { "kn" };
+        let mn = if self.c_trans { "nm" } else { "mn" };
+        let axes: AxesMapping = if a_rank == 1 {
+            let prefix: String = ('a'..).take(b_rank - 2).collect();
+            format!("k,{prefix}{kn}->{prefix}{mn}").parse()?
+        } else if b_rank == 1 {
+            let prefix: String = ('a'..).take(a_rank - 2).collect();
+            format!("{prefix}{mk},k->{prefix}{mn}").parse()?
+        } else {
+            let c_rank = b_rank.max(a_rank);
+            let a_prefix: String =
+                ('a'..).take(c_rank - 2).skip(b_rank.saturating_sub(a_rank)).collect();
+            let b_prefix: String =
+                ('a'..).take(c_rank - 2).skip(a_rank.saturating_sub(b_rank)).collect();
+            let c_prefix: String = ('a'..).take(c_rank - 2).collect();
+            format!("{a_prefix}{mk},{b_prefix}{kn}->{c_prefix}{mn}").parse()?
+        };
+        dbg!(a_rank, b_rank, self);
+        dbg!(&axes);
+        let dt = target.outlet_fact(inputs[0])?.datum_type;
+        target.wire_node(prefix, EinSum { axes, operating_dt: dt, q_params: None }, &inputs)
     }
 }
 
