@@ -78,7 +78,7 @@ impl Expansion for MatMulInference {
         dbg!(a_rank, b_rank, self);
         dbg!(&axes);
         let dt = target.outlet_fact(inputs[0])?.datum_type;
-        target.wire_node(prefix, EinSum { axes, operating_dt: dt, q_params: None }, &inputs)
+        target.wire_node(prefix, EinSum { axes, operating_dt: dt, q_params: None }, inputs)
     }
 }
 
