@@ -402,7 +402,7 @@ mod tests {
         pub fn run(&self) -> Result<Vec<F>> {
             objc::rc::autoreleasepool(|| {
                 crate::METAL_CONTEXT.with_borrow(|context| {
-                    let (b, m, n, k) = dbg!((self.b, self.m, self.n, self.k));
+                    let (b, m, n, k) = (self.b, self.m, self.n, self.k);
                     let lhs = Tensor::from_shape(&[b, m, k], &self.lhs)?.into_metal()?;
                     let rhs = Tensor::from_shape(&[b, k, n], &self.rhs)?.into_metal()?;
                     let c = mfa_gemm(context, &lhs, &rhs)?;

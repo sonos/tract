@@ -14,6 +14,7 @@ members = [
     "onnx",
     "libcli",
     "cli",
+    "metal",
     "extra",
 
     "tflite",
@@ -46,11 +47,12 @@ members = [
     "test-rt/suite-onnx",
     "test-rt/test-f16",
     "test-rt/test-blas",
+    "test-rt/test-metal",
     "test-rt/test-unit-core",
     "test-rt/test-onnx-core",
     "test-rt/test-nnef-cycle",
-    "test-rt/test-tflite"
-, "metal"]
+    "test-rt/test-tflite", 
+]
 
 [workspace.dependencies]
 accelerate-src = "0.3"

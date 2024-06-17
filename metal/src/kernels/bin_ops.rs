@@ -31,6 +31,7 @@ pub enum BinOpBroadcastKind {
     Nd2,
     Nd3,
     Nd4,
+    Nd5,
 }
 
 impl fmt::Display for BinOps {
@@ -71,7 +72,11 @@ impl BinOps {
         )
     }
 
-    pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BinOpBroadcastKind) -> Result<String> {
+    pub fn is_supported_dt(dt: DatumType) -> bool {
+        Self::tname(dt).is_ok()
+    }
+
+    pub fn tname(dt: DatumType) -> Result<&'static str> {
         let tname = match dt {
             DatumType::F32 => "f32",
             DatumType::F16 => "f16",
@@ -84,8 +89,13 @@ impl BinOps {
             DatumType::I32 => "i32",
             DatumType::I64 => "i64",
             DatumType::Bool => "bool",
-            _ => bail!("Unsupport dt for metal binary ops: {:?}", self),
+            _ => bail!("Unsupport dt {:?} for metal binary ops", dt),
         };
+        Ok(tname)
+    }
+
+    pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BinOpBroadcastKind) -> Result<String> {
+        let tname = Self::tname(dt)?;
 
         let kname = match self {
             Self::Mul => "mul",
@@ -110,6 +120,7 @@ impl BinOps {
             BinOpBroadcastKind::Nd2 => "nd2",
             BinOpBroadcastKind::Nd3 => "nd3",
             BinOpBroadcastKind::Nd4 => "nd4",
+            BinOpBroadcastKind::Nd5 => "nd5",
         };
 
         Ok(format!("bin_ops::{kname}_{kbroadcast_name}_{tname}"))
@@ -138,8 +149,16 @@ impl BinOps {
             BinOpBroadcastKind::Nd3
         } else if output.rank() == 4 {
             BinOpBroadcastKind::Nd4
+        } else if output.rank() == 5 {
+            BinOpBroadcastKind::Nd5
         } else {
-            bail!("Unsupport broadcast for bin op: {:?}", self);
+            bail!(
+                "Unsupport broadcast for bin op: {:?}: (a: {:?}, b: {:?}, c: {:?})",
+                self,
+                lhs.shape(),
+                rhs.shape(),
+                out_shape
+            );
         };
 
         let kernel_name = self.kernel_name(lhs.datum_type(), broadcast)?;
@@ -168,7 +187,10 @@ impl BinOps {
                 encoder.dispatch_thread_groups(grid_size, group_size);
                 encoder.end_encoding();
             }
-            BinOpBroadcastKind::Nd2 | BinOpBroadcastKind::Nd3 | BinOpBroadcastKind::Nd4 => {
+            BinOpBroadcastKind::Nd2
+            | BinOpBroadcastKind::Nd3
+            | BinOpBroadcastKind::Nd4
+            | BinOpBroadcastKind::Nd5 => {
                 ensure!(lhs.rank() == rhs.rank());
                 let lhs_buffer = lhs.metal();
                 let rhs_buffer = rhs.metal();
