@@ -110,16 +110,11 @@ mod tests {
                 let m = 4;
                 let k = 4;
 
-                let a = Tensor::from_shape(
-                    &[m, k],
-                    &(0..m * k).map(|_f| 1 as f32).collect::<Vec<_>>(),
-                )?
-                .into_metal()?;
-                let b = Tensor::from_shape(
-                    &[k, 1],
-                    &(0..k * 1).map(|_f| 1 as f32).collect::<Vec<_>>(),
-                )?
-                .into_metal()?;
+                let a =
+                    Tensor::from_shape(&[m, k], &(0..m * k).map(|_f| 1_f32).collect::<Vec<_>>())?
+                        .into_metal()?;
+                let b = Tensor::from_shape(&[k, 1], &(0..k).map(|_f| 1_f32).collect::<Vec<_>>())?
+                    .into_metal()?;
                 dbg!(mat_vec(context, &a, &b)?);
                 Ok(())
             })
@@ -133,16 +128,11 @@ mod tests {
                 let m = 4;
                 let k = 100;
 
-                let a = Tensor::from_shape(
-                    &[m, k],
-                    &(0..m * k).map(|_f| 2 as f32).collect::<Vec<_>>(),
-                )?
-                .into_metal()?;
-                let b = Tensor::from_shape(
-                    &[k, 1],
-                    &(0..k * 1).map(|_f| 1 as f32).collect::<Vec<_>>(),
-                )?
-                .into_metal()?;
+                let a =
+                    Tensor::from_shape(&[m, k], &(0..m * k).map(|_f| 2_f32).collect::<Vec<_>>())?
+                        .into_metal()?;
+                let b = Tensor::from_shape(&[k, 1], &(0..k).map(|_f| 1_f32).collect::<Vec<_>>())?
+                    .into_metal()?;
                 dbg!(mat_vec(context, &a, &b)?);
                 Ok(())
             })

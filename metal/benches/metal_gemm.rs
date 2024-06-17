@@ -92,7 +92,7 @@ pub fn metal_mat_vec(
     n: usize,
     dt: DatumType,
 ) {
-    let mut context = MetalContext::new();
+    let context = MetalContext::new();
     context.shared_context().load_library(LibraryName::MfaLib).unwrap();
 
     let a = Tensor::zero_dt(dt, &[m, k]).unwrap();
@@ -100,11 +100,11 @@ pub fn metal_mat_vec(
     let metal_a = a.into_metal().unwrap();
     let metal_b = b.into_metal().unwrap();
     // Warmup
-    let _ = tract_metal::kernels::mat_vec(&mut context, &metal_a, &metal_b).unwrap();
+    let _ = tract_metal::kernels::mat_vec(&context, &metal_a, &metal_b).unwrap();
 
     crit.bench_function(&format!("tract_metal_mat_vec_{:?}", dt), |be| {
         be.iter(|| {
-            let _ = tract_metal::kernels::mat_vec(&mut context, &metal_a, &metal_b).unwrap();
+            let _ = tract_metal::kernels::mat_vec(&context, &metal_a, &metal_b).unwrap();
         });
     });
     // metal_mat_vec
@@ -117,7 +117,7 @@ pub fn metal_gemm(
     n: usize,
     dt: DatumType,
 ) {
-    let mut context = MetalContext::new();
+    let context = MetalContext::new();
     context.shared_context().load_library(LibraryName::MfaLib).unwrap();
 
     let a = Tensor::zero_dt(dt, &[1, m, k]).unwrap();
@@ -125,11 +125,11 @@ pub fn metal_gemm(
     let metal_a = a.into_metal().unwrap();
     let metal_b = b.into_metal().unwrap();
     // Warmup
-    let _ = tract_metal::kernels::mfa_gemm(&mut context, &metal_a, &metal_b).unwrap();
+    let _ = tract_metal::kernels::mfa_gemm(&context, &metal_a, &metal_b).unwrap();
 
     crit.bench_function(&format!("tract_metal_gemm_{:?}", dt), |be| {
         be.iter(|| {
-            let _ = tract_metal::kernels::mfa_gemm(&mut context, &metal_a, &metal_b).unwrap();
+            let _ = tract_metal::kernels::mfa_gemm(&context, &metal_a, &metal_b).unwrap();
         });
     });
 }
@@ -141,7 +141,7 @@ pub fn metal_gemm_without_cache(
     n: usize,
     dt: DatumType,
 ) {
-    let mut context = MetalContext::new();
+    let context = MetalContext::new();
     context.shared_context().load_library(LibraryName::MfaLib).unwrap();
 
     let a = Tensor::zero_dt(dt, &[1, m, k]).unwrap();
@@ -149,18 +149,18 @@ pub fn metal_gemm_without_cache(
     let metal_a = a.into_metal().unwrap();
     let metal_b = b.into_metal().unwrap();
     // Warmup
-    let _ = tract_metal::kernels::mfa_gemm(&mut context, &metal_a, &metal_b).unwrap();
+    let _ = tract_metal::kernels::mfa_gemm(&context, &metal_a, &metal_b).unwrap();
 
     crit.bench_function(&format!("tract_metal_gemm_without_cache_{:?}", dt), |be| {
         be.iter(|| {
             context.shared_context().flush_pipeline_cache().unwrap();
-            let _ = tract_metal::kernels::mfa_gemm(&mut context, &metal_a, &metal_b).unwrap();
+            let _ = tract_metal::kernels::mfa_gemm(&context, &metal_a, &metal_b).unwrap();
         });
     });
 }
 
 pub fn metal_tile_8x8(crit: &mut BenchmarkGroup<WallTime>, dim: usize, dt: DatumType) {
-    let mut context = MetalContext::new();
+    let context = MetalContext::new();
     crit.bench_function(&format!("tract_metal_mmm_tile_8x8_{:?}", dt), |be| {
         let a = Tensor::zero_dt(dt, &[dim, dim]).unwrap();
         let b = Tensor::zero_dt(dt, &[dim, dim]).unwrap();
@@ -168,7 +168,7 @@ pub fn metal_tile_8x8(crit: &mut BenchmarkGroup<WallTime>, dim: usize, dt: Datum
         let metal_b = b.into_metal().unwrap();
 
         be.iter(|| {
-            let _ = tract_metal::kernels::mmm_tile_8x8(&mut context, &metal_a, &metal_b).unwrap();
+            let _ = tract_metal::kernels::mmm_tile_8x8(&context, &metal_a, &metal_b).unwrap();
         });
     });
 }

@@ -287,7 +287,7 @@ mod tests {
                 )?
                 .into_metal()?;
 
-                let c = mfa_gemm(&context, &a, &b)?;
+                let c = mfa_gemm(context, &a, &b)?;
 
                 let expected_c = Tensor::from_shape(
                     &[1, 2, 4],
@@ -307,7 +307,7 @@ mod tests {
                     &(0..b * n * k).map(|f| f as f32).collect::<Vec<_>>(),
                 )?;
 
-                let c = mfa_gemm(&context, &a, &b)?;
+                let c = mfa_gemm(context, &a, &b)?;
 
                 let expected_c = Tensor::from_shape(
                     &[2, 2, 4],

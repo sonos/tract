@@ -96,20 +96,16 @@ mod tests {
                 let mut gpu_start = 0;
                 context.device().sample_timestamps(&mut cpu_start, &mut gpu_start);
 
-                let a = Tensor::from_shape(
-                    &[n, n],
-                    &(0..n * n).map(|_f| 1 as f32).collect::<Vec<_>>(),
-                )?
-                .into_metal()?;
-                let b = Tensor::from_shape(
-                    &[n, n],
-                    &(0..n * n).map(|_f| 1 as f32).collect::<Vec<_>>(),
-                )?
-                .into_metal()?;
+                let a =
+                    Tensor::from_shape(&[n, n], &(0..n * n).map(|_f| 1_f32).collect::<Vec<_>>())?
+                        .into_metal()?;
+                let b =
+                    Tensor::from_shape(&[n, n], &(0..n * n).map(|_f| 1_f32).collect::<Vec<_>>())?
+                        .into_metal()?;
                 let start = std::time::Instant::now();
                 let num_iter = 100;
                 for _ in 0..num_iter {
-                    let _c = mmm_tile_8x8(&context, &a, &b)?;
+                    let _c = mmm_tile_8x8(context, &a, &b)?;
                 }
 
                 let mut cpu_end = 0;
