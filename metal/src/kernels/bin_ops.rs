@@ -1,3 +1,4 @@
+use super::BroadcastKind;
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::bail;
@@ -21,17 +22,6 @@ pub enum BinOps {
     NotEquals,
     And,
     Or,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum BinOpBroadcastKind {
-    Unicast,
-    ByScalarLeft,
-    ByScalarRight,
-    Nd2,
-    Nd3,
-    Nd4,
-    Nd5,
 }
 
 impl fmt::Display for BinOps {
@@ -94,7 +84,7 @@ impl BinOps {
         Ok(tname)
     }
 
-    pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BinOpBroadcastKind) -> Result<String> {
+    pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> Result<String> {
         let tname = Self::tname(dt)?;
 
         let kname = match self {
@@ -114,13 +104,16 @@ impl BinOps {
         };
 
         let kbroadcast_name = match broadcast_kind {
-            BinOpBroadcastKind::Unicast => "unicast",
-            BinOpBroadcastKind::ByScalarLeft => "by_scalar_lhs",
-            BinOpBroadcastKind::ByScalarRight => "by_scalar_rhs",
-            BinOpBroadcastKind::Nd2 => "nd2",
-            BinOpBroadcastKind::Nd3 => "nd3",
-            BinOpBroadcastKind::Nd4 => "nd4",
-            BinOpBroadcastKind::Nd5 => "nd5",
+            BroadcastKind::Unicast => "unicast",
+            BroadcastKind::ByScalarLeft => "by_scalar_lhs",
+            BroadcastKind::ByScalarRight => "by_scalar_rhs",
+            BroadcastKind::Nd2 => "nd2",
+            BroadcastKind::Nd3 => "nd3",
+            BroadcastKind::Nd4 => "nd4",
+            BroadcastKind::Nd5 => "nd5",
+            BroadcastKind::Nd1 => {
+                bail!("Unsupported broadcast kind {:?} for bin ops: {:?}", broadcast_kind, self)
+            }
         };
 
         Ok(format!("bin_ops::{kname}_{kbroadcast_name}_{tname}"))
@@ -137,23 +130,23 @@ impl BinOps {
 
         let output = unsafe { MetalTensor::uninitialized_dt(out_dt, &out_shape)? };
 
-        let broadcast = if lhs.len() == 1 {
-            BinOpBroadcastKind::ByScalarLeft
+        let broadcast_kind = if lhs.len() == 1 {
+            BroadcastKind::ByScalarLeft
         } else if rhs.len() == 1 {
-            BinOpBroadcastKind::ByScalarRight
+            BroadcastKind::ByScalarRight
         } else if lhs.shape() == rhs.shape() {
-            BinOpBroadcastKind::Unicast
+            BroadcastKind::Unicast
         } else if output.rank() == 2 {
-            BinOpBroadcastKind::Nd2
+            BroadcastKind::Nd2
         } else if output.rank() == 3 {
-            BinOpBroadcastKind::Nd3
+            BroadcastKind::Nd3
         } else if output.rank() == 4 {
-            BinOpBroadcastKind::Nd4
+            BroadcastKind::Nd4
         } else if output.rank() == 5 {
-            BinOpBroadcastKind::Nd5
+            BroadcastKind::Nd5
         } else {
             bail!(
-                "Unsupport broadcast for bin op: {:?}: (a: {:?}, b: {:?}, c: {:?})",
+                "Unsupported broadcast for bin op: {:?}: (a: {:?}, b: {:?}, c: {:?})",
                 self,
                 lhs.shape(),
                 rhs.shape(),
@@ -161,12 +154,10 @@ impl BinOps {
             );
         };
 
-        let kernel_name = self.kernel_name(lhs.datum_type(), broadcast)?;
+        let kernel_name = self.kernel_name(lhs.datum_type(), broadcast_kind)?;
 
-        match broadcast {
-            BinOpBroadcastKind::ByScalarLeft
-            | BinOpBroadcastKind::ByScalarRight
-            | BinOpBroadcastKind::Unicast => {
+        match broadcast_kind {
+            BroadcastKind::ByScalarLeft | BroadcastKind::ByScalarRight | BroadcastKind::Unicast => {
                 let lhs_buffer = lhs.metal();
                 let rhs_buffer = rhs.metal();
                 let output_buffer = output.metal();
@@ -187,10 +178,10 @@ impl BinOps {
                 encoder.dispatch_thread_groups(grid_size, group_size);
                 encoder.end_encoding();
             }
-            BinOpBroadcastKind::Nd2
-            | BinOpBroadcastKind::Nd3
-            | BinOpBroadcastKind::Nd4
-            | BinOpBroadcastKind::Nd5 => {
+            BroadcastKind::Nd1 => {
+                bail!("Unsupported broadcast kind {:?} for bin ops: {:?}", broadcast_kind, self)
+            }
+            BroadcastKind::Nd2 | BroadcastKind::Nd3 | BroadcastKind::Nd4 | BroadcastKind::Nd5 => {
                 ensure!(lhs.rank() == rhs.rank());
                 let lhs_buffer = lhs.metal();
                 let rhs_buffer = rhs.metal();
