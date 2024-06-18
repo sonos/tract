@@ -7,6 +7,7 @@ use tract_data::itertools::Itertools;
 use std::alloc::Layout;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
+use std::ops::Deref;
 
 mod helpers;
 mod q4_0;
@@ -105,14 +106,30 @@ dyn_hash::hash_trait_object!(BlockQuant);
 impl_downcast!(BlockQuant);
 
 #[derive(Clone, Hash)]
+pub enum StaticBlockQuant {
+    Owned(Box<dyn BlockQuant>),
+    Borrow(&'static dyn BlockQuant),
+}
+
+impl Deref for StaticBlockQuant {
+    type Target = dyn BlockQuant;
+    fn deref(&self) -> &dyn BlockQuant {
+        match self {
+            StaticBlockQuant::Owned(o) => &**o,
+            StaticBlockQuant::Borrow(o) => *o,
+        }
+    }
+}
+
+#[derive(Clone, Hash)]
 pub struct PackedBlockQuantFormat {
-    pub bq: Box<dyn BlockQuant>,
+    pub bq: StaticBlockQuant,
     pub r: usize,
 }
 
 impl Display for PackedBlockQuantFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Packed{} (r={})", self.bq, self.r)
+        write!(f, "Packed{} (r={})", &*self.bq, self.r)
     }
 }
 
