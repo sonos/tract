@@ -1,0 +1,17 @@
+[package]
+name = "Aes_algorithm"
+version = "0.1.0"
+authors = ["papafrkon"]
+edition = "2021"
+
+[dependencies]
+rand="0.8.3"
+aes = "0.8.4"
+hmac = "0.10.1"
+sha2 = "0.9.2"
+
+[[bin]]
+name = "aes"
+path = "files/aes.rs"
+
+[workspace]
