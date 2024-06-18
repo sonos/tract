@@ -82,7 +82,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
                     .iter()
                     .map(|d| d.to_usize())
                     .collect::<TractResult<TVec<_>>>()?;
-                let mut pulsed_input = ArrayD::from_elem(&*input_shape, std::f32::NAN);
+                let mut pulsed_input = ArrayD::from_elem(&*input_shape, f32::NAN);
                 let offset = i * input_pulse;
                 if offset < stream_dim {
                     let count = input_pulse.min(stream_dim - offset);

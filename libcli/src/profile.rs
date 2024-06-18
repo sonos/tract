@@ -36,7 +36,7 @@ impl BenchLimits {
         let mut state = TypedSimpleState::new(Arc::new(plan))?;
         let mut iters = 0;
         let max_loops =
-            if self.warmup_loops.is_zero() { usize::max_value() } else { self.warmup_loops };
+            if self.warmup_loops.is_zero() { usize::MAX } else { self.warmup_loops };
         let max_time = if self.warmup_time.is_zero() { Duration::MAX } else { self.warmup_time };
 
         let start_warmup = crate::time::now();

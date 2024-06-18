@@ -432,7 +432,7 @@ impl std::str::FromStr for DatumType {
     }
 }
 
-const TOINT: f32 = 1.0f32 / std::f32::EPSILON;
+const TOINT: f32 = 1.0f32 / f32::EPSILON;
 
 pub fn round_ties_to_even(x: f32) -> f32 {
     let u = x.to_bits();

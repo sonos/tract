@@ -209,7 +209,7 @@ impl Expansion for DynamicQuantizeLinear {
 
 fn dynamic_quantize_linear_f32_u8(x: f32, scale: f32, zero_point: u8) -> u8 {
     (((x / scale).round() as i32) + zero_point as i32)
-        .clamp(u8::min_value() as i32, u8::max_value() as i32) as u8
+        .clamp(u8::MIN as i32, u8::MAX as i32) as u8
 }
 
 fn dynamic_quantize_linear_u8(scale: f32, zero_point: u8, xs: &[f32], ys: &mut [u8]) {
@@ -232,8 +232,8 @@ fn scale_and_zero_point(v: ArrayViewD<f32>) -> (f32, u8) {
     });
 
     // quantize range
-    let min_t = u8::min_value() as f32;
-    let max_t = u8::max_value() as f32;
+    let min_t = u8::MIN as f32;
+    let max_t = u8::MAX as f32;
 
     let scale = (max - min) / max_t;
 

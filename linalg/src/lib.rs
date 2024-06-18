@@ -3,6 +3,7 @@
 #![allow(clippy::len_zero)]
 #![allow(clippy::excessive_precision)]
 #![allow(clippy::approx_constant)]
+#![allow(unexpected_cfgs)]
 #[macro_use]
 extern crate derive_new;
 extern crate lazy_static;
@@ -29,7 +30,7 @@ pub mod x86_64_fma;
 #[cfg(target_arch = "aarch64")]
 pub mod arm64;
 
-#[cfg(any(target_arch = "arm", target_arch = "armv7"))]
+#[cfg(any(target_arch = "arm", target_arch = "armv7", target_arch = "arm"))]
 pub mod arm32;
 
 #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
@@ -157,7 +158,7 @@ pub fn generic() -> Ops {
     }
 }
 
-#[allow(unreachable_code, unused_mut)]
+#[allow(unreachable_code, unused_mut, unexpected_cfgs)]
 pub fn best() -> Ops {
     let mut ops = generic();
     #[cfg(target_arch = "x86_64")]

@@ -224,7 +224,7 @@ macro_rules! dispatch_zerolike {
             DatumType::ComplexF32 => $($path)::*::<Complex<f32>>($($args),*),
             #[cfg(feature = "complex")]
             DatumType::ComplexF64 => $($path)::*::<Complex<f64>>($($args),*),
-            _ => $crate::internal::bail!("{:?} is doesn't implement num_traits::Zero", $dt)
+            _ => $crate::internal::bail!("{:?} doesn't implement num_traits::Zero", $dt)
         }
     } }
 }

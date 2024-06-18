@@ -274,7 +274,7 @@ impl Expansion for TreeEnsembleClassifier {
         if self.binary_result_layout {
             s.equals(&outputs[1].shape[1], 2.to_dim())?;
         } else {
-            s.equals(&outputs[1].shape[1], &self.class_labels.len().to_dim())?;
+            s.equals(&outputs[1].shape[1], self.class_labels.len().to_dim())?;
         }
 
         Ok(())

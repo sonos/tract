@@ -244,7 +244,7 @@ where
 {
     if T::datum_type() == f32::datum_type() {
         if let Some(slice) = v.as_slice() {
-            let slice = unsafe { transmute(slice) };
+            let slice = unsafe { transmute::<&[T], &[f32]>(slice) };
             (tract_linalg::ops().max_f32)().run(slice).unwrap();
         }
     }

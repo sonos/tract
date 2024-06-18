@@ -400,26 +400,6 @@ pub fn tensor_for_fact(
     if let Some(value) = &fact.konst {
         return Ok(value.clone().into_tensor());
     }
-    #[cfg(pulse)]
-    {
-        if fact.shape.stream_info().is_some() {
-            use tract_pulse::fact::StreamFact;
-            use tract_pulse::internal::stream_symbol;
-            let s = stream_symbol();
-            if let Some(dim) = streaming_dim {
-                let shape = fact
-                    .shape
-                    .iter()
-                    .map(|d| {
-                        d.eval(&SymbolValues::default().with(s, dim as i64)).to_usize().unwrap()
-                    })
-                    .collect::<TVec<_>>();
-                return Ok(random(&shape, fact.datum_type));
-            } else {
-                bail!("random tensor requires a streaming dim")
-            }
-        }
-    }
     Ok(random(
         fact.shape
             .as_concrete()

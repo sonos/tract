@@ -246,6 +246,7 @@ impl TDim {
         use num_integer::Integer;
         match self {
             Add(mut terms) => {
+                #[allow(clippy::mutable_key_type)]
                 let mut simplified_terms: HashMap<TDim, i64> = HashMap::new();
                 // factorize common sub-expr
                 while let Some(term) = terms.pop() {
@@ -501,6 +502,7 @@ impl TDim {
         reduce_ratio(p, q)
     }
 
+    #[allow(clippy::mutable_key_type)]
     pub fn symbols(&self) -> std::collections::HashSet<Symbol> {
         match self {
             Val(_) => maplit::hashset!(),
@@ -555,11 +557,11 @@ impl Default for TDim {
 
 impl num_traits::Bounded for TDim {
     fn min_value() -> Self {
-        TDim::Val(i64::min_value())
+        TDim::Val(i64::MIN)
     }
 
     fn max_value() -> Self {
-        TDim::Val(i64::max_value())
+        TDim::Val(i64::MAX)
     }
 }
 

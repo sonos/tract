@@ -6,16 +6,34 @@ use tract_data::internal::*;
 
 use crate::mmm::{EagerPackedInput, MMMInput};
 
+use super::MMMInputFormat;
+
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Packer {
+    pub dt: DatumType,
     pub r: usize,
-    alignment: usize,
-    end_padding_record: usize,
+    pub alignment: usize,
+    pub end_padding_record: usize,
+}
+
+impl MMMInputFormat for Packer {
+    fn can_prepare_types(&self) -> Vec<DatumType> {
+        vec!(self.dt)
+    }
+
+    fn prepare_tensor(
+        &self,
+        t: &Tensor,
+        k_axis: usize,
+        mn_axis: usize,
+    ) -> TractResult<Box<dyn MMMInput>> {
+        Packer::pack_tensor(self, t, k_axis, mn_axis)
+    }
 }
 
 impl Packer {
-    pub fn new(nr: usize, alignment: usize, end_padding_record: usize) -> Packer {
-        Packer { r: nr, alignment, end_padding_record }
+    pub const fn new(dt: DatumType, nr: usize, alignment: usize, end_padding_record: usize) -> Packer {
+        Packer { dt, r: nr, alignment, end_padding_record }
     }
 
     #[inline]
@@ -50,6 +68,7 @@ impl Packer {
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInput>> {
+        ensure!(t.datum_type().unquantized() == self.dt.unquantized());
         let k = t.shape()[k_axis];
         let mn = t.shape()[mn_axis];
         let packed_len = self.len(k, mn);
@@ -79,6 +98,7 @@ impl Packer {
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInput>> {
+        ensure!(t.datum_type().unquantized() == self.dt.unquantized());
         let k = t.shape()[k_axis];
         let mn = t.shape()[mn_axis];
         let packed_len = self.len(k, mn);
@@ -126,7 +146,7 @@ impl Packer {
         mn_stride: isize,
         k_range: Range<usize>,
         mn_range: Range<usize>,
-    ) {
+        ) {
         if self.r == 1 && k_stride == 1 && mn == 1 {
             pb.copy_from_nonoverlapping(b.add(k_range.start), k_range.len())
         } else if mn_stride == 1 {
@@ -473,7 +493,7 @@ mod test {
 
         fn packer(&self) -> Array2<u32> {
             let panels = self.mn_range.len().divceil(self.r);
-            let packer = super::Packer::new(self.r, self.align_panel, 0);
+            let packer = super::Packer::new(u32::datum_type(), self.r, self.align_panel, 0);
             let input = self.input().into_tensor();
             let panel_len = packer.single_panel_len(self.k_range.len());
             let mut output =

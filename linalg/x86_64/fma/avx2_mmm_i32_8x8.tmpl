@@ -89,6 +89,7 @@ avx2_mmm_i32_8x8_{{suffix}} proc
     jmp     {{L}}non_linear_loop
 
 {{L}}add_mat_mul:
+    mov     r12,    [rdi + 32]   // packing
     mov     rbx,    [rdi + 24]   // B
     mov     rax,    [rdi + 16]   // A
 
@@ -96,7 +97,26 @@ avx2_mmm_i32_8x8_{{suffix}} proc
     test    rcx,    rcx
     jz      {{L}}non_linear_loop
 
+    cmp     r12, 1
+    je      {{L}}main_loop_packed_packed_i8i8
+
 {{L}}main_loop_packed_packed:
+    vmovaps         ymm12,  [rax]
+
+    {% for i in (0..7) %}
+        vbroadcastss    ymm14, dword ptr [rbx + {{i}} * 4]
+        vpmulld         ymm13, ymm12, ymm14
+        vpaddd          ymm{{i}}, ymm{{i}}, ymm13
+    {% endfor %}
+
+    add             rax,    32
+    add             rbx,    32
+    dec             rcx
+    jnz             {{L}}main_loop_packed_packed
+
+    jmp             {{L}}non_linear_loop
+
+{{L}}main_loop_packed_packed_i8i8:
     movq            xmm8, qword ptr [rax]          // read 8 bytes
     vpmovsxbw       ymm8, xmm8                     // promote byte to i32x8
 
@@ -147,7 +167,7 @@ avx2_mmm_i32_8x8_{{suffix}} proc
     add             rbx,    8
     add             rax,    8
     dec             rcx
-    jnz             {{L}}main_loop_packed_packed
+    jnz             {{L}}main_loop_packed_packed_i8i8
 
     jmp             {{L}}non_linear_loop
 

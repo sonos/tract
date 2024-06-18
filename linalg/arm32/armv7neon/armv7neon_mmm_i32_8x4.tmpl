@@ -26,6 +26,8 @@ armv7neon_mmm_i32_8x4_{{suffix}}:
 {% include "dispatcher.tmpliq" %}
 
 .add_mat_mul:
+    // r3 r4 r5 r6
+    // k  a  b  packing
     cmp     r3, #0
     beq     .non_linear_loop
 
@@ -33,13 +35,38 @@ armv7neon_mmm_i32_8x4_{{suffix}}:
     pld     [r3]
     pld     [r5]
 
-    .packed_packed:
+    cmp     r6, #1
+    beq     .packed_packed_i8i8
+
+    .packed_packed_loop_1:
+
+    vldmia          r1!, { q0, q1 }
+    vldmia          r5!, { q2 }
+
+    vmla.s32       q8, q0, d4[0]
+    vmla.s32       q9, q1, d4[0]
+
+    vmla.s32       q10, q0, d4[1]
+    vmla.s32       q11, q1, d4[1]
+
+    vmla.s32       q12, q0, d5[0]
+    vmla.s32       q13, q1, d5[0]
+
+    vmla.s32       q14, q0, d5[1]
+    vmla.s32       q15, q1, d5[1]
+
+    subs r3, r3, #1
+    bne .packed_packed_loop_1
+
+    b   .non_linear_loop
+
+    .packed_packed_i8i8:
     pld     [r5]                           // packed B ptr       
 
     cmp r3, #4
-    blt .packed_packed_loop_1
+    blt .packed_packed_loop_i8i8_1
 
-    .packed_packed_loop_4:
+    .packed_packed_loop_i8i8_4:
     pld             [r1, #64]
     pld             [r5, #64]
 
@@ -127,12 +154,12 @@ armv7neon_mmm_i32_8x4_{{suffix}}:
 
     sub r3, r3, #4
     cmp r3, #4
-    bge .packed_packed_loop_4
+    bge .packed_packed_loop_i8i8_4
 
     cmp r3, #0
     beq .non_linear_loop
 
-    .packed_packed_loop_1:
+    .packed_packed_loop_i8i8_1:
 
     vldmia          r1!, { s0, s1 }
     vmovl.s8        q0, d0
@@ -152,7 +179,7 @@ armv7neon_mmm_i32_8x4_{{suffix}}:
     vmlal.s16       q15, d1, d2[3]
 
     subs r3, r3, #1
-    bne .packed_packed_loop_1
+    bne .packed_packed_loop_i8i8_1
     b   .non_linear_loop
 
 {% include "armv7neon_mmm_i32_scalars.tmpliq" from:8, to:15 %}

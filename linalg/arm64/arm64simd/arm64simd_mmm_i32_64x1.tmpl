@@ -33,13 +33,38 @@
 {% include "dispatcher.tmpliq" %}
 
 .add_mat_mul:
-    ldr         x2, [x0, #24]       // b
+    ldp         x2, x4, [x0, #24]   // b, packing
     ldp         x3, x1, [x0, #8]    // k, a
 
     cmp         x3, #0
     beq         .non_linear_loop
 
+    cmp         x4, #1
+    beq         .packed_packed_loop_1_i8i8
+
 .packed_packed_loop_1:
+    ld1         {v9.s}[0], [ x2 ], 4
+
+    ld1	        { v0.4s-v3.4s }, [ x1 ], #64
+    ld1	        { v4.4s-v7.4s }, [ x1 ], #64
+    {% for reg in (0..3) %}
+        mla      v{{reg | times: 2 | plus: 16 }}.4s, v{{reg | times:2}}.4s, v9.s[0]
+        mla      v{{reg | times: 2 | plus: 17 }}.4s, v{{reg | times:2 | plus:1}}.4s, v9.s[0]
+    {% endfor %}
+
+    ld1	        { v0.4s-v3.4s }, [ x1 ], #64
+    ld1	        { v4.4s-v7.4s }, [ x1 ], #64
+    {% for reg in (0..3) %}
+        mla      v{{reg | times: 2 | plus: 24 }}.4s, v{{reg | times:2}}.4s, v9.s[0]
+        mla      v{{reg | times: 2 | plus: 25 }}.4s, v{{reg | times:2 | plus:1}}.4s, v9.s[0]
+    {% endfor %}
+
+    subs        x3, x3, #1
+    bne .packed_packed_loop_1
+    
+    b .non_linear_loop
+
+.packed_packed_loop_1_i8i8:
     ld1         {v9.b}[0], [ x2 ], 1
     sshll       v9.8h, v9.8b, 0
 
@@ -53,7 +78,7 @@
     {% endfor %}
 
     subs        x3, x3, #1
-    bne .packed_packed_loop_1
+    bne .packed_packed_loop_1_i8i8
 
     b .non_linear_loop
 

@@ -17,7 +17,7 @@ impl InferenceRulesOp for Slice {
         s.given(&inputs[0].rank, move |s, rank| {
             (0..(rank as usize)).try_for_each(move |axis| {
                 if self.axis == axis {
-                    s.equals(&outputs[0].shape[axis], &(self.end.clone() - &self.start).to_dim())
+                    s.equals(&outputs[0].shape[axis], (self.end.clone() - &self.start).to_dim())
                 } else {
                     s.equals(&outputs[0].shape[axis], &inputs[0].shape[axis])
                 }

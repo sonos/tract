@@ -43,13 +43,46 @@
 {% include "dispatcher.tmpliq" %}
 
 .add_mat_mul:
-    ldr         x2, [x0, #24]       // b
+    ldp         x2, x4, [x0, #24]   // b, packing
     ldp         x3, x1, [x0, #8]    // k, a
 
     cmp         x3, #0
     beq         .non_linear_loop
 
+    cmp         x4, #1
+    beq         .packed_packed_loop_1_i8i8
+
 .packed_packed_loop_1:
+
+    ld1	        { v0.4s, v1.4s }, [ x1 ], #32
+    ld1	        { v4.4s, v5.4s }, [ x2 ], #32
+
+    mla         v16.4s, v0.4s, v4.s[0]
+    mla         v17.4s, v1.4s, v4.s[0]
+    mla         v18.4s, v0.4s, v4.s[1]
+    mla         v19.4s, v1.4s, v4.s[1]
+
+    mla         v20.4s, v0.4s, v4.s[2]
+    mla         v21.4s, v1.4s, v4.s[2]
+    mla         v22.4s, v0.4s, v4.s[3]
+    mla         v23.4s, v1.4s, v4.s[3]
+
+    mla         v24.4s, v0.4s, v5.s[0]
+    mla         v25.4s, v1.4s, v5.s[0]
+    mla         v26.4s, v0.4s, v5.s[1]
+    mla         v27.4s, v1.4s, v5.s[1]
+
+    mla         v28.4s, v0.4s, v5.s[2]
+    mla         v29.4s, v1.4s, v5.s[2]
+    mla         v30.4s, v0.4s, v5.s[3]
+    mla         v31.4s, v1.4s, v5.s[3]
+
+    subs        x3, x3, #1
+    bne .packed_packed_loop_1
+
+    b .non_linear_loop
+
+.packed_packed_loop_1_i8i8:
 
     ld1	        { v0.8b }, [ x1 ], #8
     sshll       v0.8h, v0.8b, 0
@@ -75,7 +108,7 @@
     smlal2       v31.4s, v0.8h, v4.h[7]
 
     subs        x3, x3, #1
-    bne .packed_packed_loop_1
+    bne .packed_packed_loop_1_i8i8
 
     b .non_linear_loop
 

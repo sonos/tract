@@ -5,6 +5,7 @@ use crate::ops::konst::Const;
 use crate::optim::OptimizerSession;
 use crate::plan::{FrozenSimpleState, SimplePlan, SimpleState};
 use crate::transform::ModelTransform;
+use tract_num_traits::Zero;
 
 /// A model with completely determined types and shapes.
 pub type TypedModel = Graph<TypedFact, Box<dyn TypedOp>>;
@@ -72,9 +73,15 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
             }
 
             let input_facts: TVec<_> = input_facts.iter().collect();
-            let output_facts = op
+            let mut output_facts = op
                 .output_facts(&input_facts)
                 .with_context(|| format!("in output_facts invocation for {name}: {}", op.name()))?;
+            for fact in &mut output_facts {
+                if fact.konst.is_none() && fact.shape.is_concrete() && fact.shape.volume().is_zero() {
+                    let tensor = Tensor::zero_dt(fact.datum_type, fact.shape.as_concrete().unwrap())?;
+                    fact.konst = Some(tensor.into_arc_tensor());
+                }
+            }
             let id = self.add_node(&name, &op, output_facts)?;
             inputs
                 .iter()
@@ -183,22 +190,6 @@ impl TypedModel {
     }
 
     pub fn concretize_dims(&self, values: &SymbolValues) -> TractResult<TypedModel> {
-        use crate::model::translator::Translate;
-        impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for SymbolValues {
-            fn translate_node(
-                &self,
-                source: &TypedModel,
-                node: &TypedNode,
-                target: &mut TypedModel,
-                mapping: &HashMap<OutletId, OutletId>,
-            ) -> TractResult<TVec<OutletId>> {
-                let outlets = node.op.concretize_dims(source, node, target, mapping, self)?;
-                for outlet in &outlets {
-                    target.outlet_fact(*outlet)?.consistent()?;
-                }
-                Ok(outlets)
-            }
-        }
         values.translate_model(self)
     }
 
@@ -214,6 +205,30 @@ impl TypedModel {
 
     pub fn axes_mapping(&self) -> TractResult<AxesMapping> {
         crate::axes::for_model(self)
+    }
+}
+
+use crate::model::translator::Translate;
+impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for SymbolValues {
+    fn translate_node(
+        &self,
+        source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let outlets = node.op.concretize_dims(source, node, target, mapping, self)?;
+        for &outlet in &outlets {
+            let fact = &mut target.nodes[outlet.node].outputs[outlet.slot].fact;
+            if fact.shape.volume().is_zero() {
+                if let Some(shape) = fact.shape.as_concrete() {
+                    let tensor = Tensor::zero_dt(fact.datum_type, shape)?;
+                    fact.konst = Some(tensor.into_arc_tensor());
+                }
+            }
+            fact.consistent()?;
+        }
+        Ok(outlets)
     }
 }
 
