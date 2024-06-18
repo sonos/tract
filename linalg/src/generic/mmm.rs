@@ -4,6 +4,7 @@ use num_traits::AsPrimitive;
 use tract_data::prelude::*;
 
 use super::*;
+use crate::frame::block_quant::{BlockQuant, NibbleReader, Q4_0};
 use crate::frame::mmm::*;
 use crate::LADatum;
 
@@ -60,6 +61,35 @@ unsafe fn add_mat_mul<const MR: usize, const NR: usize, TI, TA, TB>(
     }
 }
 
+unsafe fn add_mat_mul_pq40<const MR: usize, const NR: usize, TI>(
+    pa: *const u8,
+    pb: *const u8,
+    k: usize,
+    ab: &mut [[TI; NR]; MR],
+) where
+    TI: LADatum,
+    f16: AsPrimitive<TI>,
+    i8: AsPrimitive<TI>,
+{
+    let len = (k * MR) / Q4_0.block_len() * Q4_0.block_bytes();
+    let mut pa = NibbleReader::for_slice(std::slice::from_raw_parts(pa, len));
+    let b = pb as *const TI;
+    for _ in 0..k / 32 {
+        let mut scales: [TI; MR] = [TI::zero(); MR];
+        scales.iter_mut().for_each(|x| *x = pa.read_f16().as_());
+        for ik in 0..32 {
+            let mut a: [TI; MR] = [TI::zero(); MR];
+            a.iter_mut().zip(&scales).for_each(|(x, s)| *x = *s * (pa.read_i4() - 8).as_());
+            let b = std::slice::from_raw_parts(b.add(NR * ik), NR);
+            for i in 0..MR {
+                for j in 0..NR {
+                    ab[i][j] += a[i] * b[j];
+                }
+            }
+        }
+    }
+}
+
 unsafe fn store_t<const MR: usize, const NR: usize, TC, TI>(
     tile: &OutputStoreKer,
     ab: &[[TI; NR]; MR],
@@ -83,6 +113,8 @@ unsafe fn kernel<TI, const MR: usize, const NR: usize>(mut pnl: *const FusedKerS
 where
     TI: LADatum + ScaleShiftAndRound + AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
+    i8: AsPrimitive<TI>,
+    f16: AsPrimitive<TI>,
 {
     unsafe {
         let mut ab = [[TI::zero(); NR]; MR];
@@ -171,8 +203,13 @@ where
                 FusedKerSpec::AddMatMul { k, pa, pb, packing } => {
                     use std::mem::transmute;
                     if TI::datum_type().is_float() {
-                        add_mat_mul::<MR, NR, TI, TI, TI>(pa, pb, k, &mut ab);
+                        if packing == 0 {
+                            add_mat_mul::<MR, NR, TI, TI, TI>(pa, pb, k, &mut ab);
+                        } else if packing == 1 {
+                            add_mat_mul_pq40(pa, pb, k, &mut ab);
+                        }
                     } else if TI::datum_type() == i32::datum_type() {
+                        // transmute to allow using explicitly i3 in add_mat_mul generic params
                         let ab = transmute::<&mut [[TI; NR]; MR], &mut [[i32; NR]; MR]>(&mut ab);
                         if packing == 0 {
                             add_mat_mul::<MR, NR, i32, i32, i32>(pa, pb, k, ab)
@@ -201,7 +238,17 @@ where
 
 MMMKernelWrapper!(f16, generic_f16_4x4; kernel::<f16, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true);
 MMMKernelWrapper!(f16, generic_f16_4x1; kernel::<f16, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true);
-MMMKernelWrapper!(f32, generic_f32_4x4; kernel::<f32, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true);
+MMMKernelWrapper!(f32, generic_f32_4x4; kernel::<f32, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true,
+     packing_defs: {
+         use crate::frame::block_quant::*;
+         const Q40: &'static dyn BlockQuant = &crate::generic::mmm::Q4_0;
+         const PQ40_A: PackedBlockQuantFormat = PackedBlockQuantFormat { bq: StaticBlockQuant::Borrow(Q40), r: 4};
+         const F32_B: PackedFormat = PackedFormat::new(DatumType::F32, 4, 4, 0);
+         const PQ40_F32: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&PQ40_A, &F32_B);
+     },
+ packings: PQ40_F32,
+ test: mmm_packed_packed_tests!{ true, generic_f32_4x4, q40f32:1, i8, i8, f32, f32 }
+);
 MMMKernelWrapper!(f32, generic_f32_4x1; kernel::<f32, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true);
 MMMKernelWrapper!(f64, generic_f64_4x4; kernel::<f64, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true);
 MMMKernelWrapper!(f64, generic_f64_4x1; kernel::<f64, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true);

@@ -5,7 +5,7 @@ use std::alloc::Layout;
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct BaseQ4_0<const QK: usize = 32>;
 
-pub static Q4_0: BaseQ4_0 = BaseQ4_0::<32>;
+pub const Q4_0: BaseQ4_0 = BaseQ4_0::<32>;
 
 impl<const QK: usize> BaseQ4_0<QK> {
     fn quant_block<T>(&self, block: &[T], quant: &mut [u8])
@@ -64,8 +64,7 @@ impl<const QK: usize> BaseQ4_0<QK> {
         let scratch = std::slice::from_raw_parts_mut(scratch as *mut T, value.k * target.r);
         let blocks_for_k = value.k / self.block_len();
         let row_bytes = blocks_for_k * self.block_bytes();
-        let mut input =
-            NibbleReader::for_slice(&value.packed[panel * target.r * row_bytes..]);
+        let mut input = NibbleReader::for_slice(&value.packed[panel * target.r * row_bytes..]);
         let mut scales = vec![T::zero(); target.r];
         let mut scratch = scratch.iter_mut();
         for _ in 0..blocks_for_k {
@@ -146,7 +145,10 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
             }
         }
         Ok(EagerPackedInput {
-            format: Box::new(PackedBlockQuantFormat { bq: Box::new(*self), r }),
+            format: Box::new(PackedBlockQuantFormat {
+                bq: StaticBlockQuant::Owned(Box::new(*self)),
+                r,
+            }),
             packed: blob,
             mn: m,
             k,
