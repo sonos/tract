@@ -8,13 +8,13 @@ all: cbc_final gcm
 cbc_final: cbc/cbc.c
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-gcm: gcm_first gcm_second
+gcm: gcm_final gcm_first
 
-gcm_first: gcm/gcm.c
+gcm_final: gcm/gcm.c
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-gcm_second: gcm/gcm_test.c
+gcm_first: gcm/gcm_first.c
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 clean:
-	rm -f cbc_final gcm_first gcm_second
+	rm -f cbc_final gcm_final gcm_first
