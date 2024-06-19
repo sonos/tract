@@ -1,0 +1,16 @@
+[package]
+name = "Aes_gcm"
+version = "0.1.0"
+editor = "papafrkon"
+edition = "2021"
+
+[dependencies]
+aes-gcm = "0.10.3"
+crypto = "0.5.1"
+hex = "0.4.3"
+
+[[bin]]
+name = "Aes_gcm"
+path = "gcm.rs"
+
+[workspace]
