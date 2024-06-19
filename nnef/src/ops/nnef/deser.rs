@@ -85,8 +85,9 @@ pub fn reshape(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
     let start: usize = invocation.named_arg_as(builder, "axis_start")?;
     let count: i64 = invocation.named_arg_as(builder, "axis_count")?;
     let count = if count == -1 { input_shape.len() - start } else { count as usize };
-    let shape: TVec<TDim> =
+    let shape: Arc<Tensor> =
         builder.allowing_new_symbols(|builder| invocation.named_arg_as(builder, "shape"))?;
+    let shape: TVec<TDim> = shape.cast_to::<TDim>()?.as_slice::<TDim>()?.into();
 
     let mut replacement = shape;
     for i in 0..replacement.len() {
