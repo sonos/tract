@@ -12,6 +12,6 @@ rand = "0.8.4"
 
 [[bin]]
 name = "Aes_gcm"
-path = "gcm.rs"
+path = "gcm_decr.rs"
 
 [workspace]

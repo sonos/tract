@@ -59,22 +59,19 @@ fn main() {
     println!("IV: {:?}", iv);
     println!("Additional Data: {:?}", additional_data);
 
-    //println!("Plaintext: {:?}", plain_text);
     match encrypt(&key, &iv, &mut plain_text, &additional_data) {
-        Ok(tag) => {
-            //println!("Ciphertext: {:?}", plain_text);
+       Ok(tag) => {
 
             match decrypt(&key, &iv, &mut plain_text, &additional_data, &tag) {
                 Ok(_) => {
-                    //println!("Plaintext: {:?}", plain_text);
                     println!("Decryption is correct!");
                 },
                 Err(_) => {
                     println!("Error in decryption process!");
                 }
             }
-        },
-        Err(_) => {
+       },
+      Err(_) => {
             eprintln!("Error in encryption process!");
         }
     }
