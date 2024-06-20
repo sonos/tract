@@ -68,7 +68,8 @@ int main(int argc, char* argv[])
     unsigned char add_data[ADD_DATA_BYTES];
     unsigned char *output = malloc(plain_len);
     unsigned char *decrypted = malloc(plain_len);
-    unsigned char tag[TAG_BYTES];
+    unsigned char tag_encr[TAG_BYTES];
+    unsigned char tag_decr[TAG_BYTES];
     size_t olen;
     int ret;
     
@@ -96,7 +97,8 @@ int main(int argc, char* argv[])
     memset(key, 0, KEY_BYTES);
     memset(iv, 0, IV_BYTES);
     memset(add_data, 0, ADD_DATA_BYTES);
-    memset(tag, 0, TAG_BYTES);
+    memset(tag_encr, 0, TAG_BYTES);
+    memset(tag_decr, 0, TAG_BYTES);
 
     // Generate random bytes for the key (32 Bytes)
     ret = mbedtls_ctr_drbg_random(&ctr_drbg, key, KEY_BYTES);
@@ -211,12 +213,12 @@ int main(int argc, char* argv[])
         }
     }
 
-    // Finish the GCM encryption process and generate the tag
+    // Finish the GCM encryption process and generate the tag in encryption process
     ret = mbedtls_gcm_finish(&gcm,           // GCM context
                             NULL,            // input data, here NULL
                             0,               // length of input data, here 0
                             &olen,           // length of output data, here olen
-                            tag,             // buffer for holding the tag
+                            tag_encr,        // buffer for holding the tag
                             TAG_BYTES);      // length of the tag
     if (ret != 0) {
         fprintf(stderr, "mbedtls_gcm_finish failed to finish the encryption process and generate the tag - returned -0x%04x\n", -ret);
@@ -252,18 +254,6 @@ int main(int argc, char* argv[])
         fprintf(stderr, "mbedtls_gcm_starts failed to start the decryption process - returned -0x%04x\n", -ret);
         goto exit;
     }
-
-    memset(add_data, 0, ADD_DATA_BYTES);
-    ret = mbedtls_ctr_drbg_random(&ctr_drbg, add_data, ADD_DATA_BYTES);
-    if (ret != 0) {
-        fprintf(stderr, "mbedtls_ctr_drbg_random failed to extract add_data - returned -0x%04x\n", -ret);
-        goto exit;
-    }
-    mbedtls_printf("aad after: ");
-    for (int i = 0; i < ADD_DATA_BYTES; i++) {
-        mbedtls_printf("%02x", add_data[i]);
-    }
-    mbedtls_printf("\n");
 
     // Set additional authenticated data (AAD)
     ret = mbedtls_gcm_update_ad(&gcm,              // GCM context
@@ -326,12 +316,12 @@ int main(int argc, char* argv[])
         }
     }
 
-    // Finish the GCM decryption process and generate the tag
+    // Finish the GCM decryption process and generate the tag in decryption process
     ret = mbedtls_gcm_finish(&gcm,           // GCM context
                             NULL,            // input data, here NULL
                             0,               // length of input data, here 0
                             &olen,           // length of output data, here olen
-                            tag,             // buffer for holding the tag
+                            tag_decr,        // buffer for holding the tag
                             TAG_BYTES);      // length of the tag
     if (ret != 0) {
         fprintf(stderr, "mbedtls_gcm_finish failed to finish the decryption process and generate the tag - returned -0x%04x\n", -ret);
@@ -344,7 +334,13 @@ int main(int argc, char* argv[])
     }
     mbedtls_printf("\n");
 
-    if (memcmp(decrypted, model, plain_len) != 0) {
+    // Uncomment this line to corrupt buffers so that GCM will fail to authenticate on decryption
+    // memset(add_data, 0, ADD_DATA_BYTES);
+    // memset(tag, 0, TAG_BYTES);
+    // memset(iv, 0, IV_BYTES);
+    // memset(key, 0, KEY_BYTES); // key must be changes before calling mbedtls_gcm_setkey
+
+    if (memcmp(decrypted, model, plain_len) != 0 || memcmp(tag_encr, tag_decr, TAG_BYTES) != 0) {
         ret = 1;
         goto exit;
     } else {

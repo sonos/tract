@@ -156,7 +156,6 @@ int main(int argc, char* argv[])
     }
     mbedtls_printf("\n");
 
-    // my addition
     mbedtls_gcm_free(&gcm);
 
     mbedtls_gcm_init(&gcm);
@@ -170,13 +169,12 @@ int main(int argc, char* argv[])
         fprintf(stderr, "mbedtls_gcm_setkey failed to set the key for AES cipher - returned -0x%04x\n", -ret);
         goto exit;
     }
-    // end of my additiion
 
-
-    // Uncomment this line to corrupt the add_data or tag so that GCM will fail to authenticate on decryption
+    // Uncomment this line to corrupt buffers so that GCM will fail to authenticate on decryption
     // memset(add_data, 0, ADD_DATA_BYTES);
     // memset(tag, 0, TAG_BYTES);
     // memset(iv, 0, IV_BYTES);
+    // memset(key, 0, KEY_BYTES); // key must be changes before calling mbedtls_gcm_setkey
 
     // GCM buffer authenticated decryption using a block cipher
     ret = mbedtls_gcm_auth_decrypt(&gcm,                // GCM context
