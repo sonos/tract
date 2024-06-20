@@ -231,6 +231,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Sym
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
+        target.check_consistency()?;
         let outlets = node.op.concretize_dims(source, node, target, mapping, self)?;
         for &outlet in &outlets {
             let fact = &mut target.nodes[outlet.node].outputs[outlet.slot].fact;
