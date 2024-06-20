@@ -4,6 +4,9 @@ use aes_gcm::{
     AeadInPlace,
 };
 use rand::RngCore;
+use std::env;
+use std::fs::File;
+use std::io::Read;
 
 fn generate_random_bytes(size: usize) -> Vec<u8> {
     let mut rng = rand::thread_rng();
@@ -36,19 +39,34 @@ fn decrypt(key: &[u8], iv: &[u8], cipher_text: &mut [u8], additional_data: &[u8]
 }
 
 fn main() {
-    let mut plain_text = b"backendengineer.io".to_vec();
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() != 2 {
+        println!("Usage: {} <model>", args[0]);
+        return;
+    }
+
+    let filename = &args[1];
+    let mut file = File::open(filename).expect("File not found!");
+    let mut plain_text = Vec::new();
+    file.read_to_end(&mut plain_text).expect("Error in reading file!");
+
     let key = generate_random_bytes(32);
     let iv = generate_random_bytes(12);
-    let additional_data = b"Additional data for authentication";
+    let additional_data = generate_random_bytes(64);
 
-    println!("Plaintext: {:?}", plain_text);
-    match encrypt(&key, &iv, &mut plain_text, additional_data) {
+    println!("Key: {:?}", key);
+    println!("IV: {:?}", iv);
+    println!("Additional Data: {:?}", additional_data);
+
+    //println!("Plaintext: {:?}", plain_text);
+    match encrypt(&key, &iv, &mut plain_text, &additional_data) {
         Ok(tag) => {
-            println!("Ciphertext: {:?}", plain_text);
+            //println!("Ciphertext: {:?}", plain_text);
 
-            match decrypt(&key, &iv, &mut plain_text, additional_data, &tag) {
+            match decrypt(&key, &iv, &mut plain_text, &additional_data, &tag) {
                 Ok(_) => {
-                    println!("Plaintext: {:?}", plain_text);
+                    //println!("Plaintext: {:?}", plain_text);
                     println!("Decryption is correct!");
                 },
                 Err(_) => {
@@ -57,7 +75,7 @@ fn main() {
             }
         },
         Err(_) => {
-            println!("Error in encryption process!");
+            eprintln!("Error in encryption process!");
         }
     }
 
