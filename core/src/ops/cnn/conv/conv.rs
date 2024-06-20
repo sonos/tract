@@ -730,10 +730,11 @@ impl Conv {
 
         let operand = patch.tap_model(model, other_input)?;
 
-        let renamed = format!("{name}.{succ_name}");
+        let renamed_bias = format!("{name}.{succ_name}.bias");
+        let renamed_kernel = format!("{name}.{succ_name}.kernel");
         bias = wire_reshape_bias_for_bin(
             &mut patch,
-            format!("{renamed}.reshape_bias"),
+            format!("{renamed_bias}.reshape"),
             bias,
             1,
             0,
@@ -742,7 +743,7 @@ impl Conv {
 
         let operand = wire_reshape_bias_for_bin(
             &mut patch,
-            format!("{renamed}.reshape_operand"),
+            format!("{renamed_bias}.reshape_operand"),
             operand,
             1,
             0,
@@ -755,26 +756,26 @@ impl Conv {
         operand_shape_for_kernel[self.kernel_fmt.o_axis(&kernel_fact.shape)] =
             self.output_channels().to_dim();
         let operand_for_kernel = patch.wire_node(
-            format!("{renamed}.reshape_operand_for_kernel"),
+            format!("{renamed_kernel}.reshape_operand"),
             AxisOp::Reshape(0, operand_fact, operand_shape_for_kernel),
             &[operand],
         )?[0];
 
         if bin.0.is::<Sub>() && succ_outlet.slot == 0 {
-            bias = patch.wire_node(&renamed, sub(), &[bias, operand])?[0];
+            bias = patch.wire_node(&renamed_bias, sub(), &[bias, operand])?[0];
         } else if bin.0.is::<Sub>() {
-            bias = patch.wire_node(&renamed, sub(), &[operand, bias])?[0];
+            bias = patch.wire_node(&renamed_bias, sub(), &[operand, bias])?[0];
         } else if bin.0.is::<Div>() && succ_outlet.slot == 0 {
-            bias = patch.wire_node(&renamed, div(), &[bias, operand])?[0];
-            kernel = patch.wire_node(&renamed, div(), &[kernel, operand_for_kernel])?[0];
+            bias = patch.wire_node(&renamed_bias, div(), &[bias, operand])?[0];
+            kernel = patch.wire_node(&renamed_kernel, div(), &[kernel, operand_for_kernel])?[0];
         } else if bin.0.is::<Div>() {
-            bias = patch.wire_node(&renamed, div(), &[operand, bias])?[0];
-            kernel = patch.wire_node(&renamed, div(), &[operand_for_kernel, kernel])?[0];
+            bias = patch.wire_node(&renamed_bias, div(), &[operand, bias])?[0];
+            kernel = patch.wire_node(&renamed_kernel, div(), &[operand_for_kernel, kernel])?[0];
         } else if bin.0.is::<Add>() {
-            bias = patch.wire_node(&renamed, add(), &[bias, operand])?[0];
+            bias = patch.wire_node(&renamed_bias, add(), &[bias, operand])?[0];
         } else if bin.0.is::<Mul>() {
-            bias = patch.wire_node(&renamed, mul(), &[bias, operand])?[0];
-            kernel = patch.wire_node(&renamed, mul(), &[kernel, operand_for_kernel])?[0];
+            bias = patch.wire_node(&renamed_bias, mul(), &[bias, operand])?[0];
+            kernel = patch.wire_node(&renamed_kernel, mul(), &[kernel, operand_for_kernel])?[0];
         } else {
             return Ok(None);
         };
