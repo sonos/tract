@@ -47,6 +47,9 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
     ) -> TractResult<TVec<OutletId>> {
         let op = op.into();
         let name = name.into();
+        if self.nodes.iter().any(|n| n.name == name) {
+            bail!("Duplicate node name: {name}");
+        }
         {
             let input_facts = inputs
                 .iter()
