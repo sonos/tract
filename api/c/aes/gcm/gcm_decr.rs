@@ -28,7 +28,7 @@ fn main() {
 
     let mut file = File::open(&args[1]).expect("File not found!");
     let mut cipher_text = Vec::new();
-    file.read_to_end(&mut plain_text).expect("Error in reading file!");
+    file.read_to_end(&mut cipher_text).expect("Error in reading file!");
 
     let mut file2 = File::open(&args[2]).expect("File not found!");
     let mut key = Vec::new();
@@ -43,15 +43,17 @@ fn main() {
     file4.read_to_end(&mut additional_data).expect("Error in reading file!");
 
     let mut file5 = File::open(&args[5]).expect("File not found!");
-    let mut tag = Vec::new();
-    file5.read_to_end(&mut tag).expect("Error in reading file!");
+    let mut tag_vec = Vec::new();
+    file5.read_to_end(&mut tag_vec).expect("Error in reading file!");
     
     println!("Key: {:?}", key);
     println!("IV: {:?}", iv);
     println!("Additional Data: {:?}", additional_data);
-    println!("Tag: {:?}", tag);
+    println!("Tag: {:?}", tag_vec);
 
-    match decrypt(&key, &iv, &mut plain_text, &additional_data, &tag) {
+    let tag = GenericArray::clone_from_slice(&tag_vec);
+
+    match decrypt(&key, &iv, &mut cipher_text, &additional_data, &tag) {
         Ok(_) => {
             println!("Decryption is correct!");
         },
