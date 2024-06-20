@@ -25,7 +25,8 @@ pub fn rewrite_for_tflite(model: &mut TypedModel) -> TractResult<()> {
         .with_rule_for("manual_recip", manual_recip)
         .with_rule_for("softmax_on_last_axis", softmax_on_last_axis)
         .with_rule_for("expand-means-of-square", expand_mean_of_squares)
-        .rewrite(&(), model)
+        .rewrite(&(), model)?;
+    tract_core::optim::Optimizer::prop_consts().optimize(model)
 }
 
 fn trivial_axes_around_matmul(

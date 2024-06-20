@@ -51,6 +51,10 @@ impl Optimizer {
         Optimizer { steps: Some(steps), ..self }
     }
 
+    pub fn prop_consts() -> Optimizer {
+        Optimizer::passes(vec![Box::new(PropConst)])
+    }
+
     pub fn declutter() -> Optimizer {
         Optimizer::passes(vec![
             Box::new(PropConst),
