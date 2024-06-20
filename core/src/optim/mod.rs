@@ -170,8 +170,9 @@ impl<'o> OptimizerSession<'o> {
                     self.seen.insert(watchdog);
                 }
             }
-            debug!("applying patch #{}: {}", self.counter, patch.context.iter().rev().join(" >> "),);
-            patch.apply(model)?;
+            let patch_name = patch.context.iter().rev().join(" >> ");
+            debug!("applying patch #{}: {patch_name}", self.counter);
+            patch.apply(model).with_context(|| format!("Applying patch {patch_name}"))?;
             model
                 .check_consistency()
                 .context("Checking target model consistency after patching")?;

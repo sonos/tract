@@ -191,8 +191,9 @@ impl Conv {
         }
 
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&output_shape)?;
+        let bias_name = &model.node(bias.node).name;
         let bias =
-            model.wire_node(format!("{name}.cast_bias"), cast(mmm.internal_type()), &[bias])?[0];
+            model.wire_node(format!("{bias_name}.cast"), cast(mmm.internal_type()), &[bias])?[0];
         let wire = self.wire_mm_weights_bias(
             model,
             name,

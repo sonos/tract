@@ -6,6 +6,7 @@ use tract_data::itertools::{izip, Itertools};
 
 use crate::internal::*;
 use crate::model::*;
+use crate::ops::dummy::Dummy;
 use crate::ops::konst::Const;
 
 /// A change to apply to a model.
@@ -265,6 +266,7 @@ where
         } = self;
         let mut all_inputs = HashMap::new(); // new_node_id_in_model -> [ patch_outlet_id ]
         let mut model_input_outlets = target.input_outlets()?.to_vec();
+        let mut new_nodes = HashSet::new();
         for node in patch.nodes {
             if <Graph<F, O>>::is_source(&node.op)
                 && mapping.contains_key(&OutletId::new(node.id, 0))
@@ -294,6 +296,7 @@ where
             }
             let facts = outputs.into_iter().map(|of| of.fact).collect();
             let added_node_id = target.add_node(name, op, facts)?;
+            new_nodes.insert(added_node_id);
             for ix in 0..n_outputs {
                 mapping.insert(OutletId::new(patch_node_id, ix), OutletId::new(added_node_id, ix));
             }
@@ -357,6 +360,14 @@ where
                     maybe_garbage.insert(i.node);
                 }
                 target.check_edges()?;
+            }
+        }
+        for n in new_nodes.iter() {
+            let node = &target.nodes[*n];
+            if target.nodes.iter().filter(|n| n.name == node.name && !n.op_is::<Dummy>()).count()
+                > 1
+            {
+                bail!("Patch created duplicate name with {node}");
             }
         }
         Ok(())
