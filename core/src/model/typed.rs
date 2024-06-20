@@ -5,6 +5,7 @@ use crate::ops::konst::Const;
 use crate::optim::OptimizerSession;
 use crate::plan::{FrozenSimpleState, SimplePlan, SimpleState};
 use crate::transform::ModelTransform;
+use tract_data::UndeterminedSymbol;
 use tract_num_traits::Zero;
 
 /// A model with completely determined types and shapes.
@@ -187,6 +188,37 @@ impl TypedModel {
 
     pub fn axes_mapping(&self) -> TractResult<AxesMapping> {
         crate::axes::for_model(self)
+    }
+
+    pub fn compute_const_facts(&mut self) -> TractResult<()> {
+        for n in self.eval_order()? {
+            let node = self.node(n);
+            let (inputs, outputs) = self.node_facts(n)?;
+            if node.op.is_stateless()
+                && inputs.iter().all(|i| i.konst.is_some())
+                && outputs.iter().any(|o| o.konst.is_none())
+            {
+                let inputs_ref =
+                    inputs.iter().map(|f| f.konst.clone().unwrap().into_tvalue()).collect();
+                match node.op.eval_with_session(&SessionState::default(), inputs_ref) {
+                    Ok(res) => {
+                        drop(inputs);
+                        drop(outputs);
+                        for (ix, output) in res.into_iter().enumerate() {
+                            self.nodes[n].outputs[ix].fact.konst = Some(output.into_arc_tensor());
+                        }
+                    }
+                    Err(e) => {
+                        if !e.root_cause().is::<UndeterminedSymbol>() {
+                            Err(e).with_context(|| {
+                                format!("Eager eval {} during const fact computation", self.node(n))
+                            })?;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
 
