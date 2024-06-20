@@ -197,7 +197,7 @@ impl Expansion for Conv {
         let bias_dt =
             if input.datum_type.is_float() { input.datum_type } else { i32::datum_type() };
         let mut bias = if let Some(slot) = self.bias_input {
-            model.wire_node("{prefix}.bias", cast(bias_dt), &[inputs[slot]])?[0]
+            model.wire_node(format!("{prefix}.bias"), cast(bias_dt), &[inputs[slot]])?[0]
         } else {
             model.add_const(format!("{prefix}.bias"), Tensor::zero_scalar_dt(bias_dt)?)?
         };
