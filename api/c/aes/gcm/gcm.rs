@@ -1,62 +1,64 @@
 use aes_gcm::{
-    aead::{Aead, KeyInit, generic_array::GenericArray},
+    aead::{KeyInit, generic_array::GenericArray, generic_array::typenum::U16, Error as AeadError},
     Aes256Gcm,
+    AeadInPlace,
 };
+use rand::RngCore;
 
-fn encrypt(key: &[u8], iv: &[u8], plaintext: &[u8], additional_data: &[u8]) -> Vec<u8> {
-    let key = GenericArray::from_slice(key);
-    let cipher = Aes256Gcm::new(key);
-
-    let nonce = GenericArray::from_slice(iv);
-    
-    let ciphertext = cipher.encrypt(nonce, plaintext, additional_data)
-        .expect("encryption failure");
-
-    let mut encrypted_data = ciphertext.to_vec();
-
-    // Append the authentication tag to the encrypted data
-    encrypted_data.extend_from_slice(cipher.tag().as_slice());
-
-    encrypted_data
+fn generate_random_bytes(size: usize) -> Vec<u8> {
+    let mut rng = rand::thread_rng();
+    let mut result = vec![0u8; size];
+    rng.fill_bytes(&mut result);
+    result
 }
 
-fn decrypt(key: &[u8], iv: &[u8], ciphertext: &[u8], additional_data: &[u8]) -> Option<Vec<u8>> {
+fn encrypt(key: &[u8], iv: &[u8], plain_text: &mut [u8], additional_data: &[u8]) -> Result<GenericArray<u8, U16>, AeadError> {
     let key = GenericArray::from_slice(key);
     let cipher = Aes256Gcm::new(key);
 
     let nonce = GenericArray::from_slice(iv);
     
-    // Extract the ciphertext and authentication tag
-    let ciphertext_len = ciphertext.len();
-    let tag_len = 12;
-    let tag_start = ciphertext_len - tag_len;
-    let encrypted_data = &ciphertext[..tag_start];
-    let tag = &ciphertext[tag_start..];
+    // Encrypt the plain_text and return the authentication tag
+    let tag = cipher.encrypt_in_place_detached(nonce, additional_data, plain_text)
+        .expect("encryption failure");
 
-    // Decrypt the ciphertext and verify the authentication tag
-    cipher.decrypt(nonce, encrypted_data, tag, additional_data)
-        .ok()
+    Ok(tag)
+}
+
+fn decrypt(key: &[u8], iv: &[u8], cipher_text: &mut [u8], additional_data: &[u8], tag: &GenericArray<u8, U16>) -> Result<(), AeadError> {
+    let key = GenericArray::from_slice(key);
+    let cipher = Aes256Gcm::new(key);
+
+    let nonce = GenericArray::from_slice(iv);
+
+    // Decrypt the cipher_text and verify the authentication tag
+    Ok(cipher.decrypt_in_place_detached(nonce, additional_data, cipher_text, tag)?)
 }
 
 fn main() {
-    let plaintext = b"backendengineer.io";
-    let key = b"thiskeystrmustbe32charlongtowork";
-    let iv = [0u8; 12]; // Initialize IV with 12 bytes (96 bits)
+    let mut plain_text = b"backendengineer.io".to_vec();
+    let key = generate_random_bytes(32);
+    let iv = generate_random_bytes(12);
     let additional_data = b"Additional data for authentication";
 
-    let ciphertext = encrypt(key, &iv, plaintext, additional_data);
-    println!("Encrypted: {:?}", ciphertext);
+    println!("Plaintext: {:?}", plain_text);
+    match encrypt(&key, &iv, &mut plain_text, additional_data) {
+        Ok(tag) => {
+            println!("Ciphertext: {:?}", plain_text);
 
-    let decrypted_plaintext = decrypt(key, &iv, &ciphertext, additional_data)
-        .expect("decryption failure");
-    
-    match String::from_utf8(decrypted_plaintext) {
-        Ok(s) => {
-            assert_eq!(s, "backendengineer.io");
-            println!("Decryption successful!");
+            match decrypt(&key, &iv, &mut plain_text, additional_data, &tag) {
+                Ok(_) => {
+                    println!("Plaintext: {:?}", plain_text);
+                    println!("Decryption is correct!");
+                },
+                Err(_) => {
+                    println!("Error in decryption process!");
+                }
+            }
         },
         Err(_) => {
-            println!("Decryption failed!");
+            println!("Error in encryption process!");
         }
     }
+
 }

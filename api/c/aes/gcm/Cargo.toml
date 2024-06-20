@@ -8,6 +8,7 @@ edition = "2021"
 aes-gcm = "0.10.3"
 crypto = "0.5.1"
 hex = "0.4.3"
+rand = "0.8.4"
 
 [[bin]]
 name = "Aes_gcm"
