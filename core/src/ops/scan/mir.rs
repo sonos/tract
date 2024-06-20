@@ -306,6 +306,7 @@ impl Scan {
                             .context("building axis propagating patch")?
                         {
                             patch.apply(&mut new_body)?;
+                            new_body.compute_const_facts()?;
                             // propagate axis injects new nodes at the end. last successor of input
                             // in new net will be the new succ
                             let new_body_scan_input = new_body.input_outlets()?[slot];
