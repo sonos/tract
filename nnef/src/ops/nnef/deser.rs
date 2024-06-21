@@ -87,12 +87,17 @@ pub fn reshape(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
     let count = if count == -1 { input_shape.len() - start } else { count as usize };
     let shape: TVec<Arc<Tensor>> =
         builder.allowing_new_symbols(|builder| invocation.named_arg_as(builder, "shape"))?;
-    let shape: TVec<TDim> = shape
-        .iter()
-        .map(|it| Ok(it.cast_to::<TDim>()?.to_scalar::<TDim>()?.clone()))
-        .collect::<TractResult<TVec<_>>>()?;
-
-    let mut replacement = shape;
+    if shape.iter().any(|t| t.rank() > 0) {
+        warn!("Reshape called with invalid shape for node {:?}: {}. Flattening the shape will be deprecated.",
+              &builder.naming_scopes.iter().map(|i| &i.0).join("/"), shape.iter().map(|t| format!("{t:?}")).join(" ; "));
+    }
+    let mut replacement = tvec!();
+    for dims in shape {
+        let dims = dims.cast_to::<TDim>()?;
+        for dim in dims.as_slice::<TDim>()? {
+            replacement.push(dim.clone())
+        }
+    }
     for i in 0..replacement.len() {
         if replacement[i] == 0.to_dim() {
             replacement[i] = input_shape[i + start].clone();
