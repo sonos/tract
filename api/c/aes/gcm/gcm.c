@@ -356,6 +356,8 @@ exit:
     free(output);
     free(decrypted);
     mbedtls_gcm_free(&gcm);
+    mbedtls_ctr_drbg_free(&ctr_drbg);
+    mbedtls_entropy_free(&entropy);
 
     return ret;
 }
