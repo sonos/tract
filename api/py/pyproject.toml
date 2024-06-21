@@ -12,7 +12,7 @@ test-requires = "pytest"
 test-command = """pytest {project}"""
 
 [tool.cibuildwheel.linux]
-skip = "*-musllinux_i686"
+skip = "*-manylinux_i686"
 before-build = """
 set -ex
 python -m ensurepip --upgrade
