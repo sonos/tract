@@ -49,6 +49,7 @@ impl<Ctx> Rewriter<Ctx> {
                 }
             }
             if done_anything {
+                model.prop_consts()?;
                 model.compact()?;
             } else {
                 return Ok(());
