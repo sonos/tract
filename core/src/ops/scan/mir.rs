@@ -462,6 +462,7 @@ impl Scan {
                         .context("building axis propagating patch")?
                     {
                         patch.apply(&mut new_body)?;
+                        new_body.prop_consts()?;
                     }
                 }
                 let emitter_outlet = new_body.output_outlets()?[mapping_ix];
