@@ -5,6 +5,7 @@ use tract_core::ndarray::Axis;
 use tract_itertools::Itertools;
 
 pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
+    model.prop_consts()?;
     tract_core::ops::einsum::rewrite_einsums_as_matmul(model)?;
     Rewriter::default()
         .with_rule_for("rewrite_conv_with_n_axis", tract_core::ops::cnn::rewrite_conv_with_n_axis)

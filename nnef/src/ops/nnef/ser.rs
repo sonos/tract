@@ -473,7 +473,8 @@ pub fn rewrite_consistent_quantized_conv(
     op: &Conv,
 ) -> TractResult<Option<TypedModelPatch>> {
     let facts = model.node_input_facts(node.id)?;
-    if facts.len() > 3 && facts[3..9].iter().all(|fact| fact.konst.is_some()) {
+    if facts.len() > 3 {
+        ensure!(facts[3..9].iter().all(|fact| fact.konst.is_some()));
         for ix in [0, 1] {
             let fact = model.outlet_fact(node.inputs[ix])?;
             if !fact.datum_type.is_quantized() {
