@@ -327,9 +327,6 @@ where
                 target.set_outlet_label(replace_by, label)?;
             }
         }
-        if target.outputs.len() > target.outputs.iter().sorted().dedup().count() {
-            bail!("Duplicate usage of node as output");
-        }
         debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
         debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
         for (&node, inputs) in all_inputs.iter().sorted() {

@@ -179,6 +179,10 @@ impl TypedModel {
         values.translate_model(self)
     }
 
+    pub fn prop_consts(&mut self) -> TractResult<()> {
+        crate::optim::Optimizer::prop_consts().optimize(self)
+    }
+
     /// Translate the graph to locally optimized operators (LIR or MIR ops).
     pub fn optimize(&mut self) -> TractResult<()> {
         crate::optim::Optimizer::codegen().optimize(self)
