@@ -3,7 +3,6 @@ use aes_gcm::{
     Aes256Gcm,
     AeadInPlace,
 };
-use rand::RngCore;
 use std::env;
 use std::fs::File;
 use std::io::Read;
@@ -50,6 +49,12 @@ fn main() {
     println!("IV: {:?}", iv);
     println!("Additional Data: {:?}", additional_data);
     println!("Tag: {:?}", tag_vec);
+
+    // testing with different buffers to corrupt GCM
+    // key = Vec::from(&additional_data[0..32]);
+    // iv = Vec::from(&additional_data[0..12]);
+    // additional_data = Vec::from([key.clone(), key.clone()].concat());
+    // let tag = GenericArray::default(); to test different tag
 
     let tag = GenericArray::clone_from_slice(&tag_vec);
 
