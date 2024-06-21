@@ -94,7 +94,7 @@ impl Conv {
     ) -> TractResult<(ProtoFusedSpec, OutletId)> {
         use tract_linalg::mmm::BinOp::Add;
         let fact = model.outlet_fact(bias)?;
-        if fact.shape.volume().is_one() || fact.uniform.is_some() {
+        if fact.shape.volume().is_one() {
             Ok((ProtoFusedSpec::BinScalar(2, Add), bias))
         } else {
             let bias = AxisOp::wire_split_axis(
@@ -483,18 +483,6 @@ impl Conv {
         c_n_axis: usize,
     ) -> TractResult<TVec<OutletId>> {
         ensure!(model.outlet_fact(bias)?.datum_type == mmm.internal_type());
-        /*
-        let kernel_dt = model.outlet_fact(g_o_ihw)?.datum_type;
-        let input_dt = model.outlet_fact(input)?.datum_type;
-        let packing = mmm
-            .packings()
-            .iter()
-            .position(|p| {
-                p.0.can_prepare_types().contains(&input_dt)
-                    && p.1.can_prepare_types().contains(&kernel_dt)
-            })
-            .unwrap();
-            */
         let a_pack = mmm.packings()[packing]
             .0
             .downcast_ref::<Packer>()
@@ -519,7 +507,7 @@ impl Conv {
             vec![ProtoFusedSpec::AddMatMul { geo, a: 1, b: 0, packing }];
         let mut wires: TVec<OutletId> = tvec!(input, packed_ker);
         let bias_fact = model.outlet_fact(bias)?;
-        if bias_fact.konst.is_none() || !bias_fact.konst.as_ref().unwrap().is_zero()? {
+        if bias_fact.konst.is_none() || !dbg!(bias_fact.konst.as_ref().unwrap().is_all_zero()?) {
             let (fused, bias) = self.wire_bias_as_non_linear(model, name, bias, c_m_axis - 1)?;
             wires.push(bias);
             ops.push(fused);

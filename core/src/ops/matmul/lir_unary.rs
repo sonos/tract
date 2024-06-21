@@ -327,7 +327,7 @@ impl EvalOp for LirMatMulUnary {
                         geometry.n,
                         scratch.as_mut(),
                         &uops,
-                    )?;
+                    ).context("In mmm.run_with_scratch_space")?;
                 }
                 Ok(tvec!(c.into_tvalue()))
             }
