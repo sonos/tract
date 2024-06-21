@@ -580,7 +580,7 @@ where
             let output_2 = successors.get(1).map(|o| format!("{o:?}")).unwrap_or_default();
             writeln!(
                 fmt,
-                "{:5} | {:8} {:8} -> {:8} {:8} | {:25} {:50} {:?} => {:?}",
+                "{:5} | {:8} {:8} -> {:8} {:8} | {:25} {:50} {} => {}",
                 i,
                 input_1,
                 input_2,
@@ -588,8 +588,8 @@ where
                 output_2,
                 self.nodes[i].op().name(),
                 self.nodes[i].name,
-                self.node_input_facts(i).unwrap(),
-                self.node_output_facts(i).unwrap(),
+                self.node_input_facts(i).unwrap().iter().map(|f| format!("{f:?}")).join(" ; "),
+                self.node_output_facts(i).unwrap().iter().map(|f| format!("{f:?}")).join(" ; "),
             )?;
             if self.nodes[i].inputs.len() > 2 {
                 writeln!(
