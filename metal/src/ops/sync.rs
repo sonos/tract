@@ -1,6 +1,9 @@
+use crate::fact::MetalTypedFactExt;
 pub use crate::kernels::BinOps;
+use crate::tensor::MetalTensorExt;
 use crate::IntoMetal;
-use crate::MetalTensor;
+use crate::MetalFact;
+use derive_new::new;
 use std::fmt;
 use tract_core::internal::*;
 
@@ -16,7 +19,7 @@ impl fmt::Display for MetalSyncKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, new, Copy, PartialEq, Eq, Hash)]
 pub struct MetalSync {
     kind: MetalSyncKind,
 }
@@ -42,27 +45,41 @@ impl EvalOp for MetalSync {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         match self.kind {
-            MetalSyncKind::ToCpu => {
-                crate::METAL_CONTEXT.with_borrow(|context| context.wait_until_completed())?;
-                let input = input.into_tensor();
-                let opaque = input.to_scalar::<Opaque>()?;
-                let metal_tensor = opaque.downcast_ref::<MetalTensor>().ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "Could not sync to cpu because opaque tensor is not a metal tensor"
-                    )
-                })?;
-                Ok(tvec![metal_tensor.tensor().clone().into()])
-            }
+            MetalSyncKind::ToCpu => crate::METAL_CONTEXT.with_borrow(|context| {
+                context.wait_until_completed()?;
+                let metal_tensor = input
+                    .to_opaque_metal_tensor()
+                    .with_context(|| anyhow!("Error while syncing metal tensor to cpu"))?;
+                let tvalue = metal_tensor.tensor().clone().into();
+                // log::info!("Sync to CPU: from {:?} to {:?} -> Sane float: {:?}", input, tvalue, metal_tensor.assert_sane_floats()?);
+                Ok(tvec![tvalue])
+            }),
             MetalSyncKind::ToGpu => {
-                Ok(tvec![input.into_tensor().into_metal()?.into_opaque_tensor().into()])
+                let metal_input = input.into_tensor().into_metal()?;
+                // log::info!("Sync to GPU: {:?} -> Sane float: {:?}", metal_input, metal_input.assert_sane_floats()?);
+                Ok(tvec![metal_input.into_opaque_tensor().into()])
             }
         }
     }
 }
 
 impl TypedOp for MetalSync {
-    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        todo!();
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        let input = inputs[0];
+        match self.kind {
+            MetalSyncKind::ToCpu => Ok(tvec![input
+                .to_metal_fact()
+                .with_context(|| anyhow!(
+                    "Cannot sync to CPU a tensor without metal fact as metadata in its TypedFact"
+                ))?
+                .clone()
+                .into_typed_fact()]),
+            MetalSyncKind::ToGpu => {
+                ensure!(input.datum_type != DatumType::Opaque, "Cannot sync Opaque Tensor to GPU");
+                Ok(tvec![TypedFact::dt_scalar(DatumType::Opaque)
+                    .with_opaque_metadata(MetalFact::new(input.clone())?)])
+            }
+        }
     }
 
     as_op!();

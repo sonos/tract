@@ -19,6 +19,8 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 anyhow.workspace = true
+derive-new.workspace = true
+log.workspace = true
 metal.workspace = true
 objc = { version = "0.2.7" }
 num-traits.workspace = true
@@ -30,7 +32,6 @@ default = [ ]
 [dev-dependencies]
 criterion = "*"
 proptest.workspace = true
-derive-new.workspace = true
 rand.workspace = true
 ggml = { git = "https://github.com/rustformers/llm.git", rev="9376078", features = ["metal"] }
 

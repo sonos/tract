@@ -7,7 +7,7 @@ use metal::{MTLSize, NSUInteger};
 use std::fmt;
 use tract_core::internal::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum BinOps {
     Mul,
     Add,
@@ -31,6 +31,22 @@ impl fmt::Display for BinOps {
 }
 
 impl BinOps {
+    pub const ALL: [BinOps; 13] = [
+        Self::Mul,
+        Self::Add,
+        Self::Div,
+        Self::Sub,
+        Self::Pow,
+        Self::Less,
+        Self::LessEqual,
+        Self::Greater,
+        Self::GreaterEqual,
+        Self::Equals,
+        Self::NotEquals,
+        Self::And,
+        Self::Or,
+    ];
+
     pub fn name(&self) -> Cow<str> {
         format!("{}", self).into()
     }
@@ -46,6 +62,15 @@ impl BinOps {
         } else {
             Ok(a)
         }
+    }
+
+    pub fn all_functions() -> Vec<String> {
+        Self::ALL
+            .into_iter()
+            .flat_map(|op| MetalTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt)))
+            .flat_map(|(op, dt)| BroadcastKind::ALL.into_iter().map(move |b| (op, dt, b)))
+            .flat_map(|(op, dt, b)| op.kernel_name(dt, b).into_iter())
+            .collect()
     }
 
     pub fn is_logic(&self) -> bool {
@@ -120,6 +145,17 @@ impl BinOps {
     }
 
     pub fn eval(
+        &self,
+        context: &MetalContext,
+        lhs: &MetalTensor,
+        rhs: &MetalTensor,
+    ) -> TractResult<MetalTensor> {
+        let output = self.dispatch_eval(context, lhs, rhs)?;
+        context.wait_until_completed()?;
+        Ok(output)
+    }
+
+    pub fn dispatch_eval(
         &self,
         context: &MetalContext,
         lhs: &MetalTensor,
@@ -240,7 +276,6 @@ impl BinOps {
                 encoder.end_encoding();
             }
         }
-
         context.wait_until_completed()?;
         Ok(output)
     }
@@ -466,7 +501,7 @@ mod tests {
                     let lhs = self.lhs.clone().into_metal()?;
                     let rhs = self.rhs.clone().into_metal()?;
                     let c = BinOps::Mul.eval(context, &lhs, &rhs)?;
-                    Ok(c.into_tensor())
+                    Ok(c.to_cpu().clone())
                 })
             })
         }
