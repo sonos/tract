@@ -276,7 +276,6 @@ impl BinOps {
                 encoder.end_encoding();
             }
         }
-        context.wait_until_completed()?;
         Ok(output)
     }
 }

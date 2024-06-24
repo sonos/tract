@@ -81,6 +81,7 @@ impl MetalTransform {
                         "Only copy DatumType can be sync to GPU: {:?}",
                         in_fact.datum_type
                     );
+
                     mapped_inputs.push(
                         model.wire_node(
                             format!("{}.to-gpu-{i_idx}", node.name),
@@ -167,6 +168,8 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             //None
         } else if let Some(op) = node.op_as::<Const>() {
             ops::MetalConst::new(op.0.clone())?.map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+        } else if let Some(op) = node.op_as::<AxisOp>() {
+            None //ops::MetalAxisOp::new(op.clone()).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else {
             None
         };
