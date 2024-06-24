@@ -26,16 +26,16 @@ impl super::TypedPass for PropConst {
                     inputs.iter().map(|f| f.konst.clone().unwrap().into_tvalue()).collect();
                 match node.op.eval_with_session(&SessionState::default(), inputs) {
                     Ok(res) => {
+                        let mut patch = TypedModelPatch::default();
                         for (ix, output) in res.into_iter().enumerate() {
                             let mut name = node.name.clone();
                             if ix > 0 {
                                 name = format!("{name}.{ix}");
                             }
-                            let mut patch = TypedModelPatch::default();
                             let wire = patch.add_const(name, output.into_arc_tensor())?;
                             patch.shunt_outside(model, (n, ix).into(), wire)?;
-                            return Ok(Some(patch))
                         }
+                        return Ok(Some(patch))
                     }
                     Err(e) => {
                         if !e.root_cause().is::<UndeterminedSymbol>() {
