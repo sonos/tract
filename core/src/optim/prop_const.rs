@@ -15,7 +15,6 @@ impl super::TypedPass for PropConst {
         _session: &mut OptimizerSession,
         model: &TypedModel,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let mut patch = TypedModelPatch::default();
         for n in model.eval_order()? {
             let node = model.node(n);
             let (inputs, outputs) = model.node_facts(n)?;
@@ -32,8 +31,10 @@ impl super::TypedPass for PropConst {
                             if ix > 0 {
                                 name = format!("{name}.{ix}");
                             }
+                            let mut patch = TypedModelPatch::default();
                             let wire = patch.add_const(name, output.into_arc_tensor())?;
                             patch.shunt_outside(model, (n, ix).into(), wire)?;
+                            return Ok(Some(patch))
                         }
                     }
                     Err(e) => {
@@ -46,6 +47,6 @@ impl super::TypedPass for PropConst {
                 }
             }
         }
-        Ok(Some(patch).filter(|p| p.nodes.len() > 0))
+        Ok(None)
     }
 }
