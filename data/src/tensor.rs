@@ -423,6 +423,13 @@ impl Tensor {
         self.len
     }
 
+    /// Get the number of valeus in the tensor.
+    #[inline]
+    #[allow(clippy::len_without_is_empty)]
+    pub fn volume(&self) -> usize {
+        self.data.len()
+    }
+
     /// Get the shape of the tensor.
     #[inline]
     pub fn strides(&self) -> &[isize] {
