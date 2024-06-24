@@ -1,4 +1,5 @@
 pub use crate::kernels::ElementWiseOps;
+use crate::tensor::MetalTensorExt;
 use crate::IntoMetal;
 use tract_core::internal::*;
 
@@ -31,8 +32,18 @@ impl EvalOp for MetalElementWiseOp {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
                 let a = args_1!(inputs);
-                let a = a.into_tensor().into_metal()?;
-                Ok(tvec!(self.0.eval(context, &a)?.into_tensor().into_tvalue()))
+
+                match a.as_opaque_metal_tensor() {
+                    Some(a_metal) => Ok(tvec!(self
+                        .0
+                        .dispatch_eval(context, &a_metal)?
+                        .into_opaque_tensor()
+                        .into_tvalue())),
+                    None => {
+                        let a = a.into_tensor().into_metal()?;
+                        Ok(tvec!(self.0.eval(context, &a)?.to_cpu().into_tvalue()))
+                    }
+                }
             })
         })
     }

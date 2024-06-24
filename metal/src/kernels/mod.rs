@@ -5,7 +5,7 @@ mod mat_vec;
 pub mod mfa_gemm;
 mod mmm_tile_8x8;
 
-pub use array_ops::MultiBroadcastCast;
+pub use array_ops::{Cast, MultiBroadcast};
 pub use bin_ops::BinOps;
 pub use element_wise::ElementWiseOps;
 pub use mat_vec::{mat_vec, mat_vec_with_slice, metal_mat_vec};
@@ -63,4 +63,17 @@ pub enum BroadcastKind {
     Nd3,
     Nd4,
     Nd5,
+}
+
+impl BroadcastKind {
+    const ALL: [BroadcastKind; 8] = [
+        Self::Unicast,
+        Self::ByScalarLeft,
+        Self::ByScalarRight,
+        Self::Nd1,
+        Self::Nd2,
+        Self::Nd3,
+        Self::Nd4,
+        Self::Nd5,
+    ];
 }

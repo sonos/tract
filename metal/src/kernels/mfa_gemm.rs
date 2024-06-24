@@ -33,6 +33,28 @@ pub fn mfa_gemm_with_slice<T: Datum + Float>(
     rhs_strides: &[isize],
     output: &mut [T],
 ) -> Result<()> {
+    mfa_dispatch_gemm_with_slice(
+        context,
+        (b, m, n, k),
+        lhs,
+        lhs_strides,
+        rhs,
+        rhs_strides,
+        output,
+    )?;
+    context.wait_until_completed()?;
+    Ok(())
+}
+
+pub fn mfa_dispatch_gemm_with_slice<T: Datum + Float>(
+    context: &MetalContext,
+    (b, m, n, k): (usize, usize, usize, usize),
+    lhs: &[T],
+    lhs_strides: &[isize],
+    rhs: &[T],
+    rhs_strides: &[isize],
+    output: &mut [T],
+) -> Result<()> {
     ensure!(
         lhs_strides.len() == rhs_strides.len() && lhs_strides.len() == 3,
         "Only 3D tensors are supported in Metal GEMM"
@@ -58,7 +80,6 @@ pub fn mfa_gemm_with_slice<T: Datum + Float>(
         &rhs_buff,
         &out_buff,
     )?;
-    context.wait_until_completed()?;
     Ok(())
 }
 
@@ -294,7 +315,7 @@ mod tests {
                     &[20.0, 23.0, 26.0, 29.0, 56.0, 68.0, 80.0, 92.0],
                 )?;
 
-                let c = c.into_tensor();
+                let c = c.to_cpu();
                 assert!(c.close_enough(&expected_c, Approximation::Close).is_ok());
 
                 let (b, m, n, k) = (2, 2, 4, 3);
@@ -317,7 +338,7 @@ mod tests {
                     ],
                 )?;
 
-                assert!(c.into_tensor().close_enough(&expected_c, Approximation::Close).is_ok());
+                assert!(c.to_cpu().close_enough(&expected_c, Approximation::Close).is_ok());
                 Ok(())
             })
         })
@@ -406,7 +427,7 @@ mod tests {
                     let lhs = Tensor::from_shape(&[b, m, k], &self.lhs)?.into_metal()?;
                     let rhs = Tensor::from_shape(&[b, k, n], &self.rhs)?.into_metal()?;
                     let c = mfa_gemm(context, &lhs, &rhs)?;
-                    Ok(c.into_tensor().as_slice::<F>()?.to_vec())
+                    Ok(c.to_cpu().as_slice::<F>()?.to_vec())
                 })
             })
         }
