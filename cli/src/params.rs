@@ -743,7 +743,8 @@ impl Parameters {
                     let transform = tract_core::transform::get_transform(transform).with_context(|| format!("Could not find transform named {}", transform))?;
                     transform.transform_into(&m)
                 });
-            }
+                stage!(&format!("{}-declutter", transform), typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
+           }
         }
         if let Some(set) = matches.values_of("set") {
             let mut values = SymbolValues::default();
