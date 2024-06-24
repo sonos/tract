@@ -12,13 +12,22 @@ use crate::ops::FrozenOpState;
 
 use self::order::{eval_order_for_nodes, eval_order_opt_ram_for_nodes};
 
-#[derive(Default, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct PlanOptions {
     /// Use the simple ordering instead of the newer memory friendly one
     pub skip_order_opt_ram: bool,
 
+    /// Disable flushing input/output values
+    pub disable_io_value_flush: bool,
+
     /// Override default global executor
     pub executor: Option<Executor>,
+}
+
+impl Default for PlanOptions {
+    fn default() -> Self {
+        Self { disable_io_value_flush: true, skip_order_opt_ram: false, executor: None }
+    }
 }
 
 #[derive(Default)]
@@ -125,9 +134,11 @@ where
             values_needed_until_step[o.node] = order.len();
         }
         let mut flush_lists: Vec<TVec<usize>> = vec![tvec!(); order.len() + 1];
-        for (node, &flush_at) in values_needed_until_step.iter().enumerate() {
-            if flush_at != 0 && !model.borrow().node(node).op_is::<Const>() {
-                flush_lists[flush_at].push(node)
+        if !options.disable_io_value_flush {
+            for (node, &flush_at) in values_needed_until_step.iter().enumerate() {
+                if flush_at != 0 && !model.borrow().node(node).op_is::<Const>() {
+                    flush_lists[flush_at].push(node)
+                }
             }
         }
         #[allow(clippy::mutable_key_type)]
@@ -294,7 +305,7 @@ where
             let model = plan.model();
             for (step, n) in plan.order.iter().enumerate() {
                 let node = model.node(*n);
-                trace!("Running step {}, node {}", step, node);
+                debug!("Running step {}, node {}", step, node);
                 let mut inputs: TVec<TValue> = tvec![];
                 for i in &node.inputs {
                     trace!("  use input {:?}", i);

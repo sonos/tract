@@ -1,9 +1,24 @@
 pub use crate::kernels::BinOps;
+use crate::tensor::MetalTensorExt;
 use crate::IntoMetal;
 use tract_core::internal::*;
 
 #[derive(Debug, Clone)]
 pub struct MetalBinOp(pub BinOps);
+
+impl MetalBinOp {
+    fn resolve_output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        let (a, b) = (inputs[0], inputs[1]);
+        if a.rank() != b.rank() {
+            bail!("Typed ops require rank match. Invalid inputs for {}: {:?}", self.name(), inputs);
+        }
+        let out_dt = self.0.output_datum_type(a.datum_type, b.datum_type)?;
+        Ok(tvec!(out_dt.fact(&*tract_core::broadcast::multi_broadcast(&[
+            &a.shape.to_tvec(),
+            &b.shape.to_tvec()
+        ])?)))
+    }
+}
 
 impl Op for MetalBinOp {
     fn name(&self) -> Cow<str> {
@@ -31,11 +46,24 @@ impl EvalOp for MetalBinOp {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
                 let (a, b) = args_2!(inputs);
-                let a = a.into_tensor().into_metal()?;
-                let b = b.into_tensor().into_metal()?;
+                let a_metal_ref = a.as_opaque_metal_tensor();
+                let b_metal_ref = b.as_opaque_metal_tensor();
 
-                ensure!(a.rank() == b.rank());
-                Ok(tvec!(self.0.eval(context, &a, &b)?.into_tensor().into_tvalue()))
+                match (a_metal_ref, b_metal_ref) {
+                    (Some(a_metal), Some(b_metal)) => {
+                        ensure!(a.rank() == b.rank());
+                        Ok(tvec!(self.0.dispatch_eval(context, a_metal, b_metal)?.into_opaque_tensor().into_tvalue()))
+                    },
+                    (None, None) => {
+                        let a_metal = a.into_tensor().into_metal()?;
+                        let b_metal = b.into_tensor().into_metal()?;
+                        ensure!(a_metal.rank() == b_metal.rank());
+                        Ok(tvec!(self.0.eval(context, &a_metal, &b_metal)?.to_cpu().into_tvalue()))
+                    },
+                    _ => {
+                        panic!("Inconsistent inputs for {:?}: (a: {:?}, b: {:?}). Either no metal tensor as input or both", self, a.datum_type(), b.datum_type());
+                    },
+                }
             })
         })
     }
@@ -43,14 +71,8 @@ impl EvalOp for MetalBinOp {
 
 impl TypedOp for MetalBinOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        if inputs[0].rank() != inputs[1].rank() {
-            bail!("Typed ops require rank match. Invalid inputs for {}: {:?}", self.name(), inputs);
-        }
-        let out_dt = self.0.output_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
-        Ok(tvec!(out_dt.fact(&*tract_core::broadcast::multi_broadcast(&[
-            &inputs[0].shape.to_tvec(),
-            &inputs[1].shape.to_tvec()
-        ])?)))
+        crate::utils::metal_output_facts(inputs, |facts| self.resolve_output_facts(facts))
+            .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
     }
 
     as_op!();
