@@ -358,7 +358,7 @@ macro_rules! bin_to_super_type {
                 $(
                     $(if a.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
-                        let a = a.to_scalar::<$typ>()?;
+                        let a = &a.as_slice::<$typ>()?[0];
                         let b = b.as_slice_mut::<$typ>()?;
                         unsafe {
                             for i in 0..b.len() {
@@ -377,7 +377,7 @@ macro_rules! bin_to_super_type {
                             $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
                                 let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
                                 let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
-                                let a = a.to_scalar::<$typ_dt>()?;
+                                let a = &a.as_slice::<$typ_dt>()?[0];
                                 let b = b.as_slice_mut::<$typ_dt>()?;
                                 unsafe {
                                     for i in 0..b.len() {
@@ -652,7 +652,7 @@ macro_rules! bin_to_bool {
                 $(
                     $(if a.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut bool, &bool, &bool) -> () = $cab;
-                        let a = a.to_scalar::<bool>()?;
+                        let a = &a.as_slice::<bool>()?[0];
                         let b = b.as_slice_mut::<bool>()?;
                         unsafe {
                             for i in 0..b.len() {
