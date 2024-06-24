@@ -427,7 +427,7 @@ impl Tensor {
     #[inline]
     #[allow(clippy::len_without_is_empty)]
     pub fn volume(&self) -> usize {
-        self.data.len()
+        self.len
     }
 
     /// Get the shape of the tensor.
