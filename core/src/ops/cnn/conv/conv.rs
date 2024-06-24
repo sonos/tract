@@ -507,7 +507,7 @@ impl Conv {
             vec![ProtoFusedSpec::AddMatMul { geo, a: 1, b: 0, packing }];
         let mut wires: TVec<OutletId> = tvec!(input, packed_ker);
         let bias_fact = model.outlet_fact(bias)?;
-        if bias_fact.konst.is_none() || !dbg!(bias_fact.konst.as_ref().unwrap().is_all_zero()?) {
+        if bias_fact.konst.is_none() || !bias_fact.konst.as_ref().unwrap().is_all_zero()? {
             let (fused, bias) = self.wire_bias_as_non_linear(model, name, bias, c_m_axis - 1)?;
             wires.push(bias);
             ops.push(fused);
