@@ -1,13 +1,17 @@
 use tract_data::UndeterminedSymbol;
 
 use crate::internal::*;
+use crate::ops::dummy::Dummy;
+use crate::ops::konst::Const;
+use crate::ops::source::TypedSource;
 use crate::optim::OptimizerSession;
 
-#[derive(Clone, Debug)]
-pub struct PropConst;
+#[derive(Clone, Debug, Default)]
+pub struct PropConst(usize);
 
 impl super::TypedPass for PropConst {
     fn reset(&mut self) -> TractResult<()> {
+        self.0 = 0;
         Ok(())
     }
     fn next(
@@ -15,12 +19,13 @@ impl super::TypedPass for PropConst {
         _session: &mut OptimizerSession,
         model: &TypedModel,
     ) -> TractResult<Option<TypedModelPatch>> {
-        for n in model.eval_order()? {
-            let node = model.node(n);
-            let (inputs, outputs) = model.node_facts(n)?;
-            if node.op.is_stateless()
+        for node in &model.nodes[self.0..] {
+            let inputs = model.node_input_facts(node.id)?;
+            if !node.op_is::<Const>()
+                && !node.op_is::<Dummy>()
+                && !node.op_is::<TypedSource>()
+                && node.op.is_stateless()
                 && inputs.iter().all(|i| i.konst.is_some())
-                && outputs.iter().any(|o| o.konst.is_none())
             {
                 let inputs =
                     inputs.iter().map(|f| f.konst.clone().unwrap().into_tvalue()).collect();
@@ -33,14 +38,15 @@ impl super::TypedPass for PropConst {
                                 name = format!("{name}.{ix}");
                             }
                             let wire = patch.add_const(name, output.into_arc_tensor())?;
-                            patch.shunt_outside(model, (n, ix).into(), wire)?;
+                            patch.shunt_outside(model, (node.id, ix).into(), wire)?;
                         }
-                        return Ok(Some(patch))
+                        self.0 = node.id;
+                        return Ok(Some(patch));
                     }
                     Err(e) => {
                         if !e.root_cause().is::<UndeterminedSymbol>() {
                             Err(e).with_context(|| {
-                                format!("Eager eval {} during optimisation", model.node(n))
+                                format!("Eager eval {} during optimisation", node)
                             })?;
                         }
                     }

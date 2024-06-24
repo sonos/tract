@@ -52,12 +52,12 @@ impl Optimizer {
     }
 
     pub fn prop_consts() -> Optimizer {
-        Optimizer::passes(vec![Box::new(PropConst)])
+        Optimizer::passes(vec![Box::<PropConst>::default()])
     }
 
     pub fn declutter() -> Optimizer {
         Optimizer::passes(vec![
-            Box::new(PropConst),
+            Box::<PropConst>::default(),
             Box::new(OpOptim("declutter", TypedOp::declutter_with_session, 0)),
             Box::new(PushSliceUp),
             Box::new(PushSplitDown),
@@ -67,7 +67,7 @@ impl Optimizer {
 
     pub fn codegen() -> Optimizer {
         Optimizer::passes(vec![
-            Box::new(PropConst),
+            Box::<PropConst>::default(),
             Box::new(OpOptim(
                 "codegen",
                 |op, _session, model, node| TypedOp::codegen(op, model, node),
