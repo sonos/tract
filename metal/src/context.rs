@@ -40,11 +40,24 @@ impl SharedMetalContext {
     pub fn new() -> Result<Self> {
         let device = Device::system_default()
             .with_context(|| "Could not find system default Metal device")?;
-        Ok(Self {
+
+        let ctxt = Self {
             device,
             cache_libraries: Arc::new(RwLock::new(HashMap::new())),
             cache_pipelines: Arc::new(RwLock::new(HashMap::new())),
-        })
+        };
+        ctxt.preload_pipelines()?;
+        Ok(ctxt)
+    }
+
+    pub fn preload_pipelines(&self) -> Result<()> {
+        for ew_func in crate::kernels::ElementWiseOps::all_functions() {
+            let _ = self.load_pipeline(LibraryName::ElementWiseOps, &ew_func);
+        }
+        for bin_func in crate::kernels::BinOps::all_functions() {
+            let _ = self.load_pipeline(LibraryName::BinOps, &bin_func);
+        }
+        Ok(())
     }
 
     pub fn flush_pipeline_cache(&self) -> Result<()> {
@@ -141,8 +154,9 @@ impl SharedMetalContext {
 pub struct MetalContext {
     shared: SharedMetalContext,
     command_queue: CommandQueue,
+    // TODO replace RwLock by RefCell,
     command_buffer: RwLock<CommandBuffer>,
-    command_buffer_idx: RwLock<usize>,
+    command_buffer_used: RwLock<usize>,
     command_buffer_capacity: usize,
 }
 
@@ -162,7 +176,7 @@ impl MetalContext {
             shared,
             command_queue,
             command_buffer: RwLock::new(command_buffer),
-            command_buffer_idx: RwLock::new(0),
+            command_buffer_used: RwLock::new(0),
             command_buffer_capacity: 10,
         }
     }
@@ -200,24 +214,29 @@ impl MetalContext {
             self.command_buffer.try_write().map_err(|e| anyhow!("{:?}", e))?;
         let mut command_buffer = self_command_buffer.to_owned();
 
-        let mut command_buffer_idx =
-            self.command_buffer_idx.try_write().map_err(|e| anyhow!("{:?}", e))?;
+        let mut command_buffer_used =
+            self.command_buffer_used.try_write().map_err(|e| anyhow!("{:?}", e))?;
 
-        if *command_buffer_idx > self.command_buffer_capacity {
-            *command_buffer_idx = 0;
+        if *command_buffer_used > self.command_buffer_capacity {
+            *command_buffer_used = 1;
             command_buffer.commit();
             command_buffer = self.command_queue.new_command_buffer().to_owned();
             *self_command_buffer = command_buffer.clone();
             Ok(command_buffer.to_owned())
         } else {
-            *command_buffer_idx += 1;
+            *command_buffer_used += 1;
             Ok(command_buffer)
         }
     }
 
     pub fn wait_until_completed(&self) -> Result<()> {
         let mut command_buffer = self.command_buffer.try_write().map_err(|e| anyhow!("{:?}", e))?;
+        let mut command_buffer_used =
+            self.command_buffer_used.try_write().map_err(|e| anyhow!("{:?}", e))?;
 
+        if *command_buffer_used == 0 {
+            return Ok(());
+        }
         match command_buffer.status() {
             metal::MTLCommandBufferStatus::Committed
             | metal::MTLCommandBufferStatus::Scheduled
@@ -229,6 +248,7 @@ impl MetalContext {
         command_buffer.commit();
         command_buffer.wait_until_completed();
         *command_buffer = self.command_queue.new_command_buffer().to_owned();
+        *command_buffer_used = 0;
         Ok(())
     }
 

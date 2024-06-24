@@ -6,7 +6,7 @@ use metal::{MTLSize, NSUInteger};
 use std::fmt;
 use tract_core::internal::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum ElementWiseOps {
     Abs,
     Exp,
@@ -43,8 +43,45 @@ impl fmt::Display for ElementWiseOps {
 }
 
 impl ElementWiseOps {
+    pub const ALL: [ElementWiseOps; 26] = [
+        Self::Abs,
+        Self::Exp,
+        Self::Ln,
+        Self::Sigmoid,
+        Self::Square,
+        Self::Sqrt,
+        Self::Rsqrt,
+        Self::Recip,
+        Self::Ceil,
+        Self::Floor,
+        Self::Round,
+        Self::RoundHalfToEven,
+        Self::Cos,
+        Self::Acos,
+        Self::Acosh,
+        Self::Cosh,
+        Self::Sin,
+        Self::Asin,
+        Self::Asinh,
+        Self::Sinh,
+        Self::Tan,
+        Self::Atan,
+        Self::Atanh,
+        Self::Tanh,
+        Self::Erf,
+        Self::Neg,
+    ];
+
     pub fn name(&self) -> Cow<str> {
         format!("{}", self).into()
+    }
+
+    pub fn all_functions() -> Vec<String> {
+        Self::ALL
+            .into_iter()
+            .flat_map(|op| MetalTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt)))
+            .flat_map(|(op, dt)| op.kernel_name(dt, false).into_iter())
+            .collect()
     }
 
     pub fn validation(&self) -> Validation {
@@ -61,6 +98,20 @@ impl ElementWiseOps {
                 | Self::Rsqrt
                 | Self::Sqrt
                 | Self::Recip
+                | Self::Cos
+                | Self::Acos
+                | Self::Acosh
+                | Self::Cosh
+                | Self::Sin
+                | Self::Asin
+                | Self::Asinh
+                | Self::Sinh
+                | Self::Tan
+                | Self::Atan
+                | Self::Atanh
+                | Self::Tanh
+                | Self::Erf
+                | Self::Neg
         )
     }
 
@@ -80,7 +131,6 @@ impl ElementWiseOps {
             DatumType::I16 => "i16",
             DatumType::I32 => "i32",
             DatumType::I64 => "i64",
-            DatumType::Bool => "bool",
             _ => bail!("Unsupport dt {:?} for metal element wise ops", dt),
         };
         Ok(tname)
@@ -88,7 +138,7 @@ impl ElementWiseOps {
 
     pub fn kernel_name(&self, dt: DatumType, in_place: bool) -> Result<String> {
         if self.float_only() && !matches!(dt, DatumType::F32 | DatumType::F16) {
-            bail!("Unsupport dt for metal binary ops: {:?}", self);
+            bail!("Unsupport dt for metal element wise ops: {:?}", self);
         }
         let tname = Self::tname(dt)?;
 
@@ -128,7 +178,7 @@ impl ElementWiseOps {
         }
     }
 
-    pub fn eval(&self, context: &MetalContext, a: &MetalTensor) -> Result<MetalTensor> {
+    pub fn dispatch_eval(&self, context: &MetalContext, a: &MetalTensor) -> Result<MetalTensor> {
         let output = MetalTensor::zero_dt(a.datum_type(), a.shape())?;
         let kernel_name = self.kernel_name(a.datum_type(), false)?;
 
@@ -148,6 +198,11 @@ impl ElementWiseOps {
         encoder.use_resource(output_buffer, metal::MTLResourceUsage::Write);
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
+        Ok(output)
+    }
+
+    pub fn eval(&self, context: &MetalContext, a: &MetalTensor) -> Result<MetalTensor> {
+        let output = self.dispatch_eval(context, a)?;
         context.wait_until_completed()?;
         Ok(output)
     }
