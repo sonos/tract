@@ -244,7 +244,8 @@ bin_to_super_type!(max, Max,
                                 (&a, &a_zp, &a_scale, &b, &b_zp, &b_scale)
                             };
                             if e.is_uniform() { // may be relu or any scalar
-                                let e_val_as_d_aligned: i32 = scale_by(e.cast_to_scalar::<u8>()? as i32 - e_zp, e_scale / d_scale);
+                                let e = e.cast_to::<u8>()?.as_slice::<u8>()?[0];
+                                let e_val_as_d_aligned: i32 = scale_by(e as i32 - e_zp, e_scale / d_scale);
                                 let multiplier = d_scale  * (1.0/ c_scale);
                                 let d = d.to_array_view::<u8>()?;
                                 let mut c = Tensor::zero_dt(c_dt, d.shape())?;
