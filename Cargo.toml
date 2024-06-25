@@ -66,6 +66,7 @@ anyhow = "1.0.43"
 approx = "0.5"
 bit-set= "0.5.2"
 blis-src = { version = "0.2", features = ["static", "pthreads"] }
+block = "0.1.6"
 boow = "0.1.3"
 box_drawing = "0.1.2"
 byteorder = "1.4.3"
