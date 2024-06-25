@@ -168,7 +168,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             //None
         } else if let Some(op) = node.op_as::<Const>() {
             ops::MetalConst::new(op.0.clone())?.map(|o| -> Box<dyn TypedOp> { Box::new(o) })
-        } else if let Some(op) = node.op_as::<AxisOp>() {
+        } else if let Some(_op) = node.op_as::<AxisOp>() {
             None //ops::MetalAxisOp::new(op.clone()).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else {
             None
