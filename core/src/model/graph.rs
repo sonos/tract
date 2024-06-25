@@ -665,7 +665,6 @@ where
                 bail!("Invalid node id: position is {}, node is {}", ix, n);
             }
             if seen.contains(&n.name) {
-                eprintln!("{self}");
                 bail!("duplicate name {}", n.name);
             }
             seen.insert(&n.name);
@@ -724,6 +723,7 @@ where
         self.outlet_labels = std::mem::take(&mut self.outlet_labels)
             .into_iter()
             .map(|(k, v)| (OutletId::new(old_to_new[k.node], k.slot), v))
+            .filter(|(k, _)| k.node < order.len())
             .collect();
         ensure!(self.nodes.iter().enumerate().all(|(ix, n)| n.id == ix));
         #[cfg(debug_assertions)]
