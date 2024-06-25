@@ -220,24 +220,20 @@ impl Registry {
 
             // mitigation of nnef "scalar" type mismatch with tract-core more
             // strict types
-            if !a_dt.is_quantized() || !b_dt.is_quantized() {
-                if a_dt != b_dt {
-                    let operating_dt = if a_dt == TDim::datum_type() || b_dt == TDim::datum_type() {
-                        TDim::datum_type()
-                    } else if builder.model.node(a.node).op_is::<tract_core::ops::konst::Const>() {
-                        b_dt
-                    } else if builder.model.node(b.node).op_is::<tract_core::ops::konst::Const>() {
-                        a_dt
-                    } else {
-                        bin.1.operating_datum_type(a_dt, b_dt)?
-                    };
-                    // avoid cast unified dtype to happen when all inputs quantized
-                    // that can be unaligned at process time
-                    a = builder.wire_as_outlets(tract_core::ops::cast::cast(operating_dt), &[a])?
-                        [0];
-                    b = builder.wire_as_outlets(tract_core::ops::cast::cast(operating_dt), &[b])?
-                        [0];
+            if (!a_dt.is_quantized() || !b_dt.is_quantized()) && a_dt != b_dt {
+                let operating_dt = if a_dt == TDim::datum_type() || b_dt == TDim::datum_type() {
+                    TDim::datum_type()
+                } else if builder.model.node(a.node).op_is::<tract_core::ops::konst::Const>() {
+                    b_dt
+                } else if builder.model.node(b.node).op_is::<tract_core::ops::konst::Const>() {
+                    a_dt
+                } else {
+                    bin.1.operating_datum_type(a_dt, b_dt)?
                 };
+                // avoid cast unified dtype to happen when all inputs quantized
+                // that can be unaligned at process time
+                a = builder.wire_as_outlets(tract_core::ops::cast::cast(operating_dt), &[a])?[0];
+                b = builder.wire_as_outlets(tract_core::ops::cast::cast(operating_dt), &[b])?[0];
             }
             let inputs = multi_rank_broadcast(builder, &[a, b])?;
 
