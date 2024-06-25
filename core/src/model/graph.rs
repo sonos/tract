@@ -674,12 +674,50 @@ where
     }
 
     pub fn compact(&mut self) -> TractResult<()> {
-        use crate::model::translator::Translate;
-        *self = crate::model::translator::IntoTranslator.translate_model(self)?;
-        #[cfg(debug_assertions)]
-        {
-            self.check_compact().context("after graph compaction")?;
+        let mut order = self.eval_order()?;
+        if order.iter().enumerate().all(|(a, b)| a == *b) {
+            return Ok(());
         }
+        let dummy = Node {
+            id: self.nodes.len(),
+            name: "".to_string(),
+            inputs: vec![],
+            op: self.create_dummy(),
+            outputs: tvec!(),
+        };
+        for i in &self.inputs {
+            if !order.contains(&i.node) {
+                order.push(i.node);
+            }
+        }
+        let mut old_to_new = vec![0usize; self.nodes.len()];
+        let mut new_nodes = vec![dummy; order.len()];
+        for (ix, id) in order.iter().enumerate() {
+            old_to_new[*id] = ix;
+            std::mem::swap(&mut new_nodes[ix], &mut self.nodes[*id]);
+        }
+        for node in &mut new_nodes {
+            node.id = old_to_new[node.id];
+            for input in &mut node.inputs {
+                input.node = old_to_new[input.node];
+            }
+            for output in &mut node.outputs {
+                for succ in &mut output.successors {
+                    succ.node = old_to_new[succ.node];
+                }
+            }
+        }
+        self.nodes = new_nodes;
+        for input in &mut self.inputs {
+            input.node = old_to_new[input.node];
+        }
+        for output in &mut self.outputs {
+            output.node = old_to_new[output.node];
+        }
+        self.outlet_labels = std::mem::take(&mut self.outlet_labels)
+            .into_iter()
+            .map(|(k, v)| (OutletId::new(old_to_new[k.node], k.slot), v))
+            .collect();
         Ok(())
     }
 
