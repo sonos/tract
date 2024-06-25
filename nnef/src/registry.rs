@@ -215,26 +215,29 @@ impl Registry {
                 invocation.arguments[1].rvalue.resolve(builder, &[])?.to::<OutletId>(builder)?;
             let a_fact = builder.model.outlet_fact(a)?;
             let b_fact = builder.model.outlet_fact(b)?;
-            let mut a_dt = a_fact.datum_type;
-            let mut b_dt = b_fact.datum_type;
+            let a_dt = a_fact.datum_type;
+            let b_dt = b_fact.datum_type;
 
             // mitigation of nnef "scalar" type mismatch with tract-core more
             // strict types
             if !a_dt.is_quantized() || !b_dt.is_quantized() {
                 if a_dt != b_dt {
-                    if builder.model.node(a.node).op_is::<tract_core::ops::konst::Const>() {
-                        a = builder.wire_as_outlets(tract_core::ops::cast::cast(b_dt), &[a])?[0];
-                        a_dt = b_dt;
+                    let operating_dt = if a_dt == TDim::datum_type() || b_dt == TDim::datum_type() {
+                        TDim::datum_type()
+                    } else if builder.model.node(a.node).op_is::<tract_core::ops::konst::Const>() {
+                        b_dt
+                    } else if builder.model.node(b.node).op_is::<tract_core::ops::konst::Const>() {
+                        a_dt
                     } else {
-                        b = builder.wire_as_outlets(tract_core::ops::cast::cast(a_dt), &[b])?[0];
-                        b_dt = a_dt;
-                    }
-                }
-                let operating_dt = bin.1.operating_datum_type(a_dt, b_dt)?;
-                // avoid cast unified dtype to happen when all inputs quantized
-                // that can be unaligned at process time
-                a = builder.wire_as_outlets(tract_core::ops::cast::cast(operating_dt), &[a])?[0];
-                b = builder.wire_as_outlets(tract_core::ops::cast::cast(operating_dt), &[b])?[0];
+                        bin.1.operating_datum_type(a_dt, b_dt)?
+                    };
+                    // avoid cast unified dtype to happen when all inputs quantized
+                    // that can be unaligned at process time
+                    a = builder.wire_as_outlets(tract_core::ops::cast::cast(operating_dt), &[a])?
+                        [0];
+                    b = builder.wire_as_outlets(tract_core::ops::cast::cast(operating_dt), &[b])?
+                        [0];
+                };
             }
             let inputs = multi_rank_broadcast(builder, &[a, b])?;
 
