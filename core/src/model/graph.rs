@@ -683,7 +683,7 @@ where
                 order.push(i.node);
             }
         }
-        let mut old_to_new = vec![0usize; self.nodes.len()];
+        let mut old_to_new = vec![usize::MAX; self.nodes.len()];
         let mut new_nodes = vec![
             Node {
                 id: self.nodes.len(),
@@ -699,27 +699,33 @@ where
             std::mem::swap(&mut new_nodes[ix], &mut self.nodes[*id]);
         }
         for node in &mut new_nodes {
+            assert!(old_to_new[node.id] < order.len());
             node.id = old_to_new[node.id];
             for input in &mut node.inputs {
+                assert!(old_to_new[input.node] < order.len());
                 input.node = old_to_new[input.node];
             }
             for output in &mut node.outputs {
                 for succ in &mut output.successors {
                     succ.node = old_to_new[succ.node];
                 }
+                output.successors.retain(|s| s.node < order.len());
             }
         }
         self.nodes = new_nodes;
         for input in &mut self.inputs {
+            assert!(old_to_new[input.node] < order.len());
             input.node = old_to_new[input.node];
         }
         for output in &mut self.outputs {
+            assert!(old_to_new[output.node] < order.len());
             output.node = old_to_new[output.node];
         }
         self.outlet_labels = std::mem::take(&mut self.outlet_labels)
             .into_iter()
             .map(|(k, v)| (OutletId::new(old_to_new[k.node], k.slot), v))
             .collect();
+        ensure!(self.nodes.iter().enumerate().all(|(ix, n)| n.id == ix));
         #[cfg(debug_assertions)]
         {
             self.check_compact().context("after graph compaction")?;
