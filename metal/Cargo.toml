@@ -19,6 +19,7 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 anyhow.workspace = true
+block.workspace = true
 derive-new.workspace = true
 log.workspace = true
 metal.workspace = true
