@@ -678,20 +678,22 @@ where
         if order.iter().enumerate().all(|(a, b)| a == *b) {
             return Ok(());
         }
-        let dummy = Node {
-            id: self.nodes.len(),
-            name: "".to_string(),
-            inputs: vec![],
-            op: self.create_dummy(),
-            outputs: tvec!(),
-        };
         for i in &self.inputs {
             if !order.contains(&i.node) {
                 order.push(i.node);
             }
         }
         let mut old_to_new = vec![0usize; self.nodes.len()];
-        let mut new_nodes = vec![dummy; order.len()];
+        let mut new_nodes = vec![
+            Node {
+                id: self.nodes.len(),
+                name: "".to_string(),
+                inputs: vec![],
+                op: self.create_dummy(),
+                outputs: tvec!(),
+            };
+            order.len()
+        ];
         for (ix, id) in order.iter().enumerate() {
             old_to_new[*id] = ix;
             std::mem::swap(&mut new_nodes[ix], &mut self.nodes[*id]);
@@ -718,6 +720,10 @@ where
             .into_iter()
             .map(|(k, v)| (OutletId::new(old_to_new[k.node], k.slot), v))
             .collect();
+        #[cfg(debug_assertions)]
+        {
+            self.check_compact().context("after graph compaction")?;
+        }
         Ok(())
     }
 
