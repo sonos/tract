@@ -6,6 +6,7 @@ use metal::MTLResourceOptions;
 use metal::NSUInteger;
 use std::cell::RefCell;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::{OnceLock, RwLock};
 
@@ -157,6 +158,7 @@ pub struct MetalContext {
     // TODO replace RwLock by RefCell,
     command_buffer: RwLock<CommandBuffer>,
     command_buffer_used: RwLock<usize>,
+    command_buffer_id: AtomicUsize,
     command_buffer_capacity: usize,
 }
 
@@ -177,7 +179,8 @@ impl MetalContext {
             command_queue,
             command_buffer: RwLock::new(command_buffer),
             command_buffer_used: RwLock::new(0),
-            command_buffer_capacity: 10,
+            command_buffer_capacity: 100,
+            command_buffer_id: AtomicUsize::new(0),
         }
     }
 
@@ -219,9 +222,18 @@ impl MetalContext {
 
         if *command_buffer_used > self.command_buffer_capacity {
             *command_buffer_used = 1;
+            let command_buffer_id = self.command_buffer_id.load(Ordering::Relaxed);
+
+            let block = block::ConcreteBlock::new(move |_| {
+                log::trace!("Command buffer {:?} has completed", command_buffer_id);
+            })
+            .copy();
+            command_buffer.add_completed_handler(&block);
             command_buffer.commit();
+            log::trace!("Command buffer {:?} commit", command_buffer_id);
             command_buffer = self.command_queue.new_command_buffer().to_owned();
             *self_command_buffer = command_buffer.clone();
+            self.command_buffer_id.fetch_add(1, Ordering::Relaxed);
             Ok(command_buffer.to_owned())
         } else {
             *command_buffer_used += 1;
@@ -245,10 +257,14 @@ impl MetalContext {
             }
             _ => {}
         }
+        let command_buffer_id = self.command_buffer_id.load(Ordering::Relaxed);
         command_buffer.commit();
+        log::trace!("Command buffer {:?} commit", command_buffer_id);
         command_buffer.wait_until_completed();
+        log::trace!("Command buffer {:?} has completed (Blocking call)", command_buffer_id);
         *command_buffer = self.command_queue.new_command_buffer().to_owned();
         *command_buffer_used = 0;
+        self.command_buffer_id.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
