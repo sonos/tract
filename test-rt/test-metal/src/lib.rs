@@ -3,6 +3,7 @@
 #[path = "../suite.rs"]
 mod suite;
 
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 mod run_with_metal {
     use super::*;
     use tract_core::internal::*;
