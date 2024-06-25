@@ -250,12 +250,22 @@ pub fn suite() -> TractResult<TestSuite> {
     );
 
     suite.add(
-        "bug_invalid_to_scalar",
+        "bug_invalid_to_scalar_0",
         QBinaryOpProblem {
             operator: tract_core::ops::math::max(),
             tensor_a: qu8_tensor1(&[0u8, 0u8], 0, 0.5)?,
             tensor_b: qu8_tensor1(&[0u8, 0u8], 0, 0.5)?,
             c_dt: qu8_dt(0, 0.5),
+        },
+    );
+
+    suite.add(
+        "bug_invalid_to_scalar_1",
+        QBinaryOpProblem {
+            operator: tract_core::ops::math::max(),
+            tensor_a: qu8_tensor1(&[0u8, 0u8], 0, 0.5)?,
+            tensor_b: qu8_tensor1(&[0u8, 0u8], 0, 0.5)?,
+            c_dt: qu8_dt(1, 0.5),
         },
     );
 
