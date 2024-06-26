@@ -164,8 +164,8 @@ impl EvalOp for MetalGemm {
                     context.wait_until_completed()?;
                     Ok(tvec![out])
                 } else if a.datum_type() == DatumType::Opaque {
-                    let a_metal_ref = a.to_opaque_metal_tensor()?;
-                    let b_metal_ref = b.to_opaque_metal_tensor()?;
+                    let a_metal_ref = a.to_metal_tensor()?;
+                    let b_metal_ref = b.to_metal_tensor()?;
                     let out = if a_metal_ref.datum_type() == DatumType::F16 {
                         self.dispatch_eval::<f16>(
                             context,
