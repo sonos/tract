@@ -21,6 +21,13 @@ impl super::TypedPass for PropConst {
     ) -> TractResult<Option<TypedModelPatch>> {
         for node in &model.nodes[self.0..] {
             let inputs = model.node_input_facts(node.id)?;
+            if node.op_is::<Const>() && node.outputs[0].fact.konst.is_none() {
+                self.0 = node.id;
+                let mut patch = TypedModelPatch::default();
+                let wire = patch.add_const(&node.name, node.op_as::<Const>().unwrap().0.clone())?;
+                patch.shunt_outside(model, node.id.into(), wire)?;
+                return Ok(Some(patch))
+            }
             if !node.op_is::<Const>()
                 && !node.op_is::<Dummy>()
                 && !node.op_is::<TypedSource>()
