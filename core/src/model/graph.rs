@@ -698,7 +698,10 @@ where
             std::mem::swap(&mut new_nodes[ix], &mut self.nodes[*id]);
         }
         for node in &mut new_nodes {
-            assert!(old_to_new[node.id] < order.len());
+            if self.inputs.iter().any(|n| n.node == node.id) && !Self::is_source(&node.op) {
+                node.inputs.clear();
+                node.op = self.create_source(node.outputs[0].fact.clone());
+            }
             node.id = old_to_new[node.id];
             for input in &mut node.inputs {
                 assert!(old_to_new[input.node] < order.len());
