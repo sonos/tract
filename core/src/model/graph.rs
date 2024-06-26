@@ -674,7 +674,7 @@ where
 
     pub fn compact(&mut self) -> TractResult<()> {
         let mut order = self.eval_order()?;
-        if order.iter().enumerate().all(|(a, b)| a == *b) {
+        if order.len() == self.nodes.len() && order.iter().enumerate().all(|(a, b)| a == *b) {
             return Ok(());
         }
         for i in &self.inputs {
