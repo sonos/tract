@@ -62,6 +62,10 @@ impl Opaque {
     pub fn downcast_ref<T: OpaquePayload>(&self) -> Option<&T> {
         (*self.0).downcast_ref::<T>()
     }
+
+    pub fn downcast_mut<T: OpaquePayload>(&mut self) -> Option<&mut T> {
+        Arc::get_mut(&mut self.0).and_then(|it| it.downcast_mut::<T>())
+    }
 }
 
 impl Deref for Opaque {

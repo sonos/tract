@@ -48,7 +48,7 @@ impl EvalOp for MetalSync {
             MetalSyncKind::ToCpu => crate::METAL_CONTEXT.with_borrow(|context| {
                 context.wait_until_completed()?;
                 let metal_tensor = input
-                    .to_opaque_metal_tensor()
+                    .to_metal_tensor()
                     .with_context(|| anyhow!("Error while syncing metal tensor to cpu"))?;
                 let tvalue = metal_tensor.tensor().clone().into();
                 // log::info!("Sync to CPU: from {:?} to {:?} -> Sane float: {:?}", input, tvalue, metal_tensor.assert_sane_floats()?);
