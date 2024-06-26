@@ -217,12 +217,12 @@ impl QConvProblem {
         assert!(self.data.shape() == &*self.shape_in.shape);
         let mut model = TypedModel::default();
         let idt = self.data.datum_type().quantize(QParams::ZpScale {
-            zero_point: self.qp[0].cast_to_scalar()?,
-            scale: *self.qp[1].to_scalar()?,
+            zero_point: self.qp[0].cast_to::<i32>()?.as_slice::<i32>()?[0],
+            scale: self.qp[1].cast_to::<f32>()?.as_slice::<f32>()?[0],
         });
         let kdt = self.kernel.datum_type().quantize(QParams::ZpScale {
-            zero_point: self.qp[2].cast_to_scalar()?,
-            scale: *self.qp[3].to_scalar()?,
+            zero_point: self.qp[2].cast_to::<i32>()?.as_slice::<i32>()?[0],
+            scale: self.qp[3].cast_to::<f32>()?.as_slice::<f32>()?[0],
         });
         let wire = model.add_source("input", idt.fact(&self.shape_in.shape))?;
         let mut inputs = tvec!(wire);
@@ -267,9 +267,9 @@ impl Test for QConvProblem {
         approx: Approximation,
     ) -> infra::TestResult {
         let reference = self.reference();
-        let mut model = self.tract()?;
+        let mut model = self.tract().context("Building model")?;
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
-        let model = runtime.prepare(model)?;
+        let model = runtime.prepare(model).context("Preparing model")?;
         let idt = self.data.datum_type().quantize(QParams::ZpScale {
             zero_point: self.qp[0].cast_to_scalar()?,
             scale: *self.qp[1].to_scalar()?,

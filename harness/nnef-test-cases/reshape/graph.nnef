@@ -1,0 +1,11 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_pulse_streaming_symbol;
+
+graph net_2024_06_18T12_07_11(input_0) -> (output_0)
+{
+    input_0 = external<integer>(shape = [3, 1, 2]);
+    foo = [1, 2];
+    output_0 = reshape(input_0, shape = [1, foo, 3]);
+}

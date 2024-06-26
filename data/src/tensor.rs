@@ -934,6 +934,9 @@ impl Tensor {
         if self.len() == 0 {
             bail!("to_scalar called on empty tensor ({:?})", self)
         }
+        if self.len() > 1 {
+            bail!("to_scalar called on a tensor with multiple values ({:?})", self)
+        }
         unsafe { Ok(self.to_scalar_unchecked()) }
     }
 
@@ -955,6 +958,9 @@ impl Tensor {
         self.check_for_access::<D>()?;
         if self.len() == 0 {
             bail!("to_scalar_mut called on empty tensor ({:?})", self)
+        }
+        if self.len() > 1 {
+            bail!("to_scalar called on a tensor with multiple values ({:?})", self)
         }
         unsafe { Ok(self.to_scalar_mut_unchecked()) }
     }
@@ -999,6 +1005,10 @@ impl Tensor {
         } else {
             None
         }
+    }
+
+    pub fn is_all_zero(&self) -> TractResult<bool> {
+        Ok(self.len() == 0 || self.as_uniform().map(|t| t.is_zero().unwrap()).unwrap_or(false))
     }
 
     pub fn is_zero(&self) -> TractResult<bool> {
