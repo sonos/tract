@@ -10,7 +10,7 @@ env:
   CARGO_INCREMENTAL: false
 
 jobs:
-  regular-tests:
+  test-published-crates:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -43,7 +43,78 @@ jobs:
         key: ${{ runner.os }}-full-regular-${{steps.date.outputs.date}}-e
 
     - name: Full test
-      run: .travis/regular-tests.sh
+      run: .travis/test-published-crates.sh
+
+  runtime-bass-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Configure AWS Credentials
+      # if: github.repository == 'sonos/tract'
+      continue-on-error: true
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
+        aws-region: us-east-2
+
+    - name: Get current date
+      id: date
+      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+    - uses: actions/cache@v3
+      with:
+        path: |
+          ~/.rustup
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+          .cached
+        key: ${{ runner.os }}-full-regular-${{steps.date.outputs.date}}-e
+
+    - name: Full test
+      run: .travis/test-rt.sh
+
+
+  old-harness:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Configure AWS Credentials
+      # if: github.repository == 'sonos/tract'
+      continue-on-error: true
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
+        aws-region: us-east-2
+
+    - name: Get current date
+      id: date
+      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+    - uses: actions/cache@v3
+      with:
+        path: |
+          ~/.rustup
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+          .cached
+        key: ${{ runner.os }}-full-regular-${{steps.date.outputs.date}}-e
+
+    - name: Full test
+      run: .travis/test-harness.sh
 
   check-all-targets:
     runs-on: ubuntu-latest
