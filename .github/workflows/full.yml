@@ -45,7 +45,7 @@ jobs:
     - name: Full test
       run: .travis/test-published-crates.sh
 
-  runtime-bass-tests:
+  runtime-based-tests:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
