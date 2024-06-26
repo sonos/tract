@@ -5,7 +5,7 @@ mod mat_vec;
 pub mod mfa_gemm;
 mod mmm_tile_8x8;
 
-pub use array_ops::{Cast, MultiBroadcast};
+pub use array_ops::{Cast, Memcpy, MultiBroadcast};
 pub use bin_ops::BinOps;
 pub use element_wise::ElementWiseOps;
 pub use mat_vec::{mat_vec, mat_vec_with_slice, metal_mat_vec};
