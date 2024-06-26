@@ -63,7 +63,7 @@ impl MetalTransform {
                 }
                 MetalSyncKind::ToGpu if in_fact.as_metal_fact().is_none() => {
                     if let Some(ref konst) = in_fact.konst {
-                        if konst.as_opaque_metal_tensor().is_none() {
+                        if konst.as_metal_tensor().is_none() {
                             let konst_metal =
                                 konst.as_ref().clone().into_metal()?.into_opaque_tensor();
                             let metal_fact = MetalFact::new(in_fact.clone())?;
@@ -168,8 +168,8 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             //None
         } else if let Some(op) = node.op_as::<Const>() {
             ops::MetalConst::new(op.0.clone())?.map(|o| -> Box<dyn TypedOp> { Box::new(o) })
-        } else if let Some(_op) = node.op_as::<AxisOp>() {
-            None //ops::MetalAxisOp::new(op.clone()).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+        } else if let Some(op) = node.op_as::<AxisOp>() {
+            ops::MetalAxisOp::new(op.clone()).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else {
             None
         };

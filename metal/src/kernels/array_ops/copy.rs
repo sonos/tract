@@ -8,15 +8,15 @@ use std::fmt;
 use tract_core::internal::*;
 
 #[derive(Debug, Clone, new, PartialEq, Eq, Hash)]
-pub struct Cast;
+pub struct Memcpy;
 
-impl fmt::Display for Cast {
+impl fmt::Display for Memcpy {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
-impl Cast {
+impl Memcpy {
     pub fn is_supported_dt(dt: DatumType) -> bool {
         Self::tname(dt).is_ok()
     }
@@ -33,25 +33,24 @@ impl Cast {
             DatumType::I16 => "i16",
             DatumType::I32 => "i32",
             DatumType::I64 => "i64",
-            _ => bail!("Unsupport dt {:?} for metal memory ops", dt),
+            DatumType::Bool => "bool",
+            _ => bail!("Unsupport dt {:?} for metal array ops", dt),
         };
         Ok(tname)
     }
 
-    pub fn kernel_name(&self, from_dt: DatumType, to_dt: DatumType) -> Result<String> {
-        let from_tname = Self::tname(from_dt)?;
-        let to_tname = Self::tname(to_dt)?;
-        Ok(format!("array_ops::broadcast_cast_{from_tname}_{to_tname}"))
+    pub fn kernel_name(&self, from_dt: DatumType) -> Result<String> {
+        let tname = Self::tname(from_dt)?;
+        Ok(format!("array_ops::copy_{tname}"))
     }
 
-    pub fn eval(
+    pub fn dispatch_eval(
         &self,
         context: &MetalContext,
         input: &MetalTensor,
-        to_dt: DatumType,
     ) -> Result<MetalTensor> {
-        let output = unsafe { MetalTensor::uninitialized_dt(to_dt, input.shape())? };
-        let kernel_name = self.kernel_name(input.datum_type(), to_dt)?;
+        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), input.shape())? };
+        let kernel_name = self.kernel_name(input.datum_type())?;
 
         let input_buffer = input.metal();
         let output_buffer = output.metal();
@@ -69,6 +68,11 @@ impl Cast {
         encoder.use_resource(output_buffer, metal::MTLResourceUsage::Write);
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
+        Ok(output)
+    }
+
+    pub fn eval(&self, context: &MetalContext, input: &MetalTensor) -> Result<MetalTensor> {
+        let output = self.dispatch_eval(context, input)?;
         context.wait_until_completed()?;
         Ok(output)
     }

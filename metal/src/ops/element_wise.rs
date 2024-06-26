@@ -33,7 +33,7 @@ impl EvalOp for MetalElementWiseOp {
             crate::METAL_CONTEXT.with_borrow(|context| {
                 let a = args_1!(inputs);
 
-                match a.as_opaque_metal_tensor() {
+                match a.as_metal_tensor() {
                     Some(a_metal) => Ok(tvec!(self
                         .0
                         .dispatch_eval(context, &a_metal)?

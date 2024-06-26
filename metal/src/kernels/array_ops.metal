@@ -44,12 +44,11 @@ namespace utils {
 
 namespace array_ops {
 
-  
     #define INSTANTIATE_MEM_OP(name, tname, itype, otype)     \
-    template [[host_name("array_ops::" #name "_vec_" #tname)]] [[kernel]] void mem_op_unicast<itype, otype>(                                                          \
+    template [[host_name("array_ops::" #name "_vec_" #tname)]] [[kernel]] void mem_op_unicast<itype, otype>(                               \
         device const itype *input [[buffer(0)]],                     \
         device otype *output [[buffer(1)]],                          \
-        uint tpig[[thread_position_in_grid]],                        \
+        uint tpig[[thread_position_in_grid]]                         \
     );                                                               \
     template [[host_name("array_ops::" #name "_nd1_" #tname)]] [[kernel]] void mem_op_nd1<itype, otype>(                                                          \
         device const itype *input [[buffer(0)]],                     \
@@ -67,7 +66,7 @@ namespace array_ops {
         uint2 tpig[[thread_position_in_grid]],                     \
         uint2 grid_dim [[threads_per_grid]]                        \
     );                                                             \
-    template [[host_name("array_ops::" #name "_nd3_" #tname)]] [[kernel]] void mem_op_nd3<itype, otype>(                                                        \
+    template [[host_name("array_ops::" #name "_nd3_" #tname)]] [[kernel]] void mem_op_nd3<itype, otype>(                                 \
           device const itype *input [[buffer(0)]],                 \
         constant const uint * input_strides [[buffer(1)]],         \
         device otype *output [[buffer(2)]],                        \
@@ -75,7 +74,7 @@ namespace array_ops {
         uint3 tpig[[thread_position_in_grid]],                     \
         uint3 grid_dim [[threads_per_grid]]                        \
     );                                                             \
-    template [[host_name("array_ops::" #name "_nd4_" #tname)]] [[kernel]] void mem_op_nd4<itype, otype>(                                                        \
+    template [[host_name("array_ops::" #name "_nd4_" #tname)]] [[kernel]] void mem_op_nd4<itype, otype>(                                 \
           device const itype *input [[buffer(0)]],                 \
         constant const uint * input_strides [[buffer(1)]],         \
         device otype *output [[buffer(2)]],                        \
@@ -83,7 +82,7 @@ namespace array_ops {
         uint3 tpig[[thread_position_in_grid]],                     \
         uint3 grid_dim [[threads_per_grid]]                        \
     );                                                             \
-    template [[host_name("array_ops::" #name "_nd5_" #tname)]] [[kernel]] void mem_op_nd5<itype, otype>(                                                        \
+    template [[host_name("array_ops::" #name "_nd5_" #tname)]] [[kernel]] void mem_op_nd5<itype, otype>(                                 \
           device const itype *input [[buffer(0)]],                 \
         constant const uint * input_strides [[buffer(1)]],         \
         device otype *output [[buffer(2)]],                        \
@@ -92,86 +91,108 @@ namespace array_ops {
         uint3 grid_dim [[threads_per_grid]]                        \
     );
 
-    #define INSTANTIATE_ALL(tname, type)                              \
-    INSTANTIATE_MEM_OP("broadcast_cast", #tname "_f32", type, float)            \
-    INSTANTIATE_BIN_OP("broadcast_cast", #tname "_f16", type, half)             \
-    INSTANTIATE_BIN_OP("broadcast_cast", #tname "_u8", type, uint8_t)           \
-    INSTANTIATE_BIN_OP("broadcast_cast", #tname "_u16", type, uint16_t)         \
-    INSTANTIATE_BIN_OP("broadcast_cast", #tname "_u32", type, uint32_t)         \
-    INSTANTIATE_BIN_OP("broadcast_cast", #tname "_u64", type, uint64_t)         \
-    INSTANTIATE_BIN_OP("broadcast_cast", #tname "_i8", type, int8_t)            \
-    INSTANTIATE_BIN_OP("broadcast_cast", #tname "_i16", type, int16_t)          \
-    INSTANTIATE_BIN_OP("broadcast_cast", #tname "_i32", type, int32_t)          \
-    INSTANTIATE_BIN_OP("broadcast_cast", #tname "_i64", type, int64_t)       
-
-    template [[kernel]] void mem_op_unicast<itype, otype>(             
-          device const itype *input [[buffer(0)]],                 
-        device otype *output [[buffer(1)]],                        
+    #define INSTANTIATE_COPY_OP(tname, type)     \
+    template [[host_name("array_ops::copy_" #tname)]] [[kernel]] void mem_copy<type>(                                                 \
+        device const type *input [[buffer(0)]],                     \
+        device type *output [[buffer(1)]],                          \
+        uint tpig[[thread_position_in_grid]]                        \
+    );  
+    
+    template<typename T> [[kernel]] void mem_copy(             
+        device const T *input [[buffer(0)]],                 
+        device T *output [[buffer(1)]],                        
         uint tpig[[thread_position_in_grid]]                    
     ) {
-      output[tpig] = static_cast<otype>(input[tpig]);
+      output[tpig] = input[tpig];
     }
 
-    template [[kernel]] void mem_op_nd1<itype, otype>(             
-          device const itype *input [[buffer(0)]],                 
+    template<typename In, typename Out> [[kernel]] void mem_op_unicast(             
+          device const In *input [[buffer(0)]],                 
+        device Out *output [[buffer(1)]],                        
+        uint tpig[[thread_position_in_grid]]                    
+    ) {
+      output[tpig] = static_cast<Out>(input[tpig]);
+    }
+
+    template<typename In, typename Out>  [[kernel]] void mem_op_nd1(             
+          device const In *input [[buffer(0)]],                 
         constant const uint * input_strides [[buffer(1)]],         
-        device otype *output [[buffer(2)]],                        
+        device Out *output [[buffer(2)]],                        
         constant const uint * out_shape [[buffer(3)]],             
         uint tpig[[thread_position_in_grid]],                     
         uint grid_dim [[threads_per_grid]]                        
     ) {
       auto idx = utils::indices_to_idx_1(tpig, input_strides);
-      output[idx] = static_cast<otype>(input[idx]);
+      output[idx] = static_cast<Out>(input[idx]);
     }
 
-    template [[kernel]] void mem_op_nd2<itype, otype>(             
-          device const itype *input [[buffer(0)]],                 
+    template<typename In, typename Out>  
+    [[kernel]] void mem_op_nd2(             
+          device const In *input [[buffer(0)]],                 
         constant const uint * input_strides [[buffer(1)]],         
-        device otype *output [[buffer(2)]],                        
+        device Out *output [[buffer(2)]],                        
         constant const uint * out_shape [[buffer(3)]],             
         uint2 tpig[[thread_position_in_grid]],                     
-        uint grid_dim [[threads_per_grid]]                        
+        uint2 grid_dim [[threads_per_grid]]                        
     ) {
       auto idx = utils::indices_to_idx_2(tpig, input_strides);
-      output[idx] = static_cast<otype>(input[idx]);
+      output[idx] = static_cast<Out>(input[idx]);
     }
 
-    template [[kernel]] void mem_op_nd3<itype, otype>(             
-          device const itype *input [[buffer(0)]],                 
+    template<typename In, typename Out>  
+    [[kernel]] void mem_op_nd3(             
+          device const In *input [[buffer(0)]],                 
         constant const uint * input_strides [[buffer(1)]],         
-        device otype *output [[buffer(2)]],                        
+        device Out *output [[buffer(2)]],                        
         constant const uint * out_shape [[buffer(3)]],             
         uint3 tpig[[thread_position_in_grid]],                     
         uint3 grid_dim [[threads_per_grid]]                        
     ) {
       auto idx = utils::indices_to_idx_3(tpig, input_strides);
-      output[idx] = static_cast<otype>(input[idx]);
+      output[idx] = static_cast<Out>(input[idx]);
     }
 
-    template [[kernel]] void mem_op_nd4<itype, otype>(             
-          device const itype *input [[buffer(0)]],                 
+    template<typename In, typename Out>  
+    [[kernel]] void mem_op_nd4(             
+          device const In *input [[buffer(0)]],                 
         constant const uint * input_strides [[buffer(1)]],         
-        device otype *output [[buffer(2)]],                        
+        device Out *output [[buffer(2)]],                        
         constant const uint * out_shape [[buffer(3)]],             
         uint3 tpig[[thread_position_in_grid]],                     
         uint3 grid_dim [[threads_per_grid]]                        
     ) {
       auto idx = utils::indices_to_idx_4(tpig, out_shape, input_strides);
-      output[idx] = static_cast<otype>(input[idx]);
+      output[idx] = static_cast<Out>(input[idx]);
     }
 
-    template [[kernel]] void mem_op_nd5<itype, otype>(             
-          device const itype *input [[buffer(0)]],                 
+    template<typename In, typename Out>  
+    [[kernel]] void mem_op_nd5(             
+          device const In *input [[buffer(0)]],                 
         constant const uint * input_strides [[buffer(1)]],         
-        device otype *output [[buffer(2)]],                        
+        device Out *output [[buffer(2)]],                        
         constant const uint * out_shape [[buffer(3)]],             
         uint3 tpig[[thread_position_in_grid]],                     
         uint3 grid_dim [[threads_per_grid]]                        
     ) {
       auto idx = utils::indices_to_idx_5(tpig, out_shape, input_strides);
-      output[idx] = static_cast<otype>(input[idx]);
+      output[idx] = static_cast<Out>(input[idx]);
     }
 
+    #define INSTANTIATE_ALL(tname, type)                             \
+    INSTANTIATE_COPY_OP(tname, type)                                 \
+    INSTANTIATE_MEM_OP(broadcast_cast, tname ##_bool, type, bool)    \
+    INSTANTIATE_MEM_OP(broadcast_cast, tname ##_f32, type, float)    \
+    INSTANTIATE_MEM_OP(broadcast_cast, tname ##_f16, type, half)     \
+    INSTANTIATE_MEM_OP(broadcast_cast, tname ##_u8, type, uint8_t)   \
+    INSTANTIATE_MEM_OP(broadcast_cast, tname ##_u16, type, uint16_t) \
+    INSTANTIATE_MEM_OP(broadcast_cast, tname ##_u32, type, uint32_t) \
+    INSTANTIATE_MEM_OP(broadcast_cast, tname ##_u64, type, uint64_t) \
+    INSTANTIATE_MEM_OP(broadcast_cast, tname ##_i8, type, int8_t)    \
+    INSTANTIATE_MEM_OP(broadcast_cast, tname ##_i16, type, int16_t)  \
+    INSTANTIATE_MEM_OP(broadcast_cast, tname ##_i32, type, int32_t)  \
+    INSTANTIATE_MEM_OP(broadcast_cast, tname ##_i64, type, int64_t)  
+
+    INSTANTIATE_ALL(bool, bool)
     INSTANTIATE_ALL(f32, float)
     INSTANTIATE_ALL(f16, half)
     INSTANTIATE_ALL(i8, int8_t)

@@ -46,8 +46,8 @@ impl EvalOp for MetalBinOp {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
                 let (a, b) = args_2!(inputs);
-                let a_metal_ref = a.as_opaque_metal_tensor();
-                let b_metal_ref = b.as_opaque_metal_tensor();
+                let a_metal_ref = a.as_metal_tensor();
+                let b_metal_ref = b.as_metal_tensor();
 
                 match (a_metal_ref, b_metal_ref) {
                     (Some(a_metal), Some(b_metal)) => {
