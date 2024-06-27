@@ -945,6 +945,10 @@ impl TypedOp for IntoShape {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        let input = model.outlet_fact(node.inputs[0])?;
+        if input.shape.as_concrete().is_some_and(|shape| shape == &*self.dims) {
+            return TypedModelPatch::shunt_one_op(model, node)
+        }
         if let Some(succ) = model.single_succ(node.id)? {
             if let Some(into_shape) = succ.op_as::<IntoShape>() {
                 let op = Self {
