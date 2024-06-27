@@ -8,8 +8,8 @@ use tract_core::ops::cast::cast;
 use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PoolSpec;
+use tract_core::ops::konst::Const;
 use tract_core::ops::nn::{DataFormat, Softmax, SoftmaxExp};
-use tract_itertools::izip;
 use tract_itertools::Itertools;
 
 use tract_core::ops;
@@ -146,49 +146,58 @@ pub fn concat(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
 
 // fragment slice<?>( input: tensor<?>, axes: integer[], begin: integer[], end: integer[] ) -> ( output: tensor<?> );
 pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
-    let wire = tvec!(invocation.named_arg_as(builder, "input")?);
+    let mut wire = tvec!(invocation.named_arg_as(builder, "input")?);
     let input_fact = builder.model.outlet_fact(wire[0])?.clone();
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
-    let (mut begins, mut ends): (TVec<TDim>, TVec<TDim>) =
+    let (begins, ends): (OutletId, OutletId) =
         builder.allowing_new_symbols(|builder| -> TractResult<_> {
             Ok((
                 invocation.named_arg_as(builder, "begin")?,
                 invocation.named_arg_as(builder, "end")?,
             ))
         })?;
-    for (ix, d) in begins.iter_mut().enumerate() {
-        if let Ok(i) = d.to_i64() {
-            if i < 0 {
-                *d += input_fact.shape[axes[ix]].to_dim();
+    let strides: TVec<isize> =
+        invocation.named_arg_as(builder, "stride").unwrap_or_else(|_| tvec!(1; axes.len()));
+    for (ix, axis) in axes.into_iter().enumerate() {
+        let b = builder.wire_as_outlets(
+            tract_core::ops::array::Slice { axis: 0, start: ix.into(), end: ix.to_dim() + 1 },
+            &[begins],
+        )?;
+        let mut b = builder.wire_as_outlets(tract_core::ops::change_axes::AxisOp::Rm(0), &b)?;
+        if let Some(k) = &builder.model.outlet_fact(b[0])?.konst {
+            if let Ok(i) = k.cast_to_scalar::<i64>() {
+                if i < 0 {
+                    b = builder.wire_as_outlets(Const::new(rctensor0(input_fact.shape[ix].clone() + i)), &[])?;
+                }
             }
         }
-    }
-
-    // use "<=", no "<" end[axis] = 0 means "up to the end"
-    // CAUTION: this notation is 1/ deprecated 2/ invalid with non trivial slicing
-    for (ix, d) in ends.iter_mut().enumerate() {
-        if let Ok(i) = d.to_i64() {
-            if i <= 0 {
-                *d += input_fact.shape[axes[ix]].to_dim();
+        let e = builder.wire_as_outlets(
+            tract_core::ops::array::Slice { axis: 0, start: ix.into(), end: ix.to_dim() + 1 },
+            &[ends],
+        )?;
+        let mut e = builder.wire_as_outlets(tract_core::ops::change_axes::AxisOp::Rm(0), &e)?;
+        // use "<=", no "<" end[axis] = 0 means "up to the end"
+        // CAUTION: this notation is 1/ deprecated 2/ invalid with non trivial slicing
+        if let Some(k) = &builder.model.outlet_fact(e[0])?.konst {
+            if let Ok(i) = k.cast_to_scalar::<i64>() {
+                if i <= 0 {
+                    e = builder.wire_as_outlets(Const::new(rctensor0(input_fact.shape[ix].clone() + i)), &[])?;
+                }
             }
         }
+        let len = builder.model.symbol_table.new_with_prefix("slice").into();
+        wire = builder.wire_as_outlets(
+            tract_core::ops::array::DynSlice { axis, len },
+            &[wire[0], b[0], e[0]],
+        )?;
+        if strides[ix] != 1 {
+            wire = builder.wire_as_outlets(
+                tract_core::ops::downsample::Downsample::new(axis, strides[ix], 0),
+                &wire,
+            )?;
+        }
     }
-    let strides: TVec<isize> = invocation
-        .named_arg_as(builder, "stride")
-        .unwrap_or_else(|_| ends.iter().map(|_| 1).collect());
-    izip!(axes, begins, ends, strides)
-        .try_fold(wire, |wire, (axis, start, end, stride)| {
-            let mut w =
-                builder.wire_as_outlets(tract_core::ops::array::Slice { axis, start, end }, &wire);
-            if stride != 1 {
-                w = builder.wire_as_outlets(
-                    tract_core::ops::downsample::Downsample::new(axis, stride, 0),
-                    &w?,
-                );
-            }
-            w
-        })
-        .map(Value::from)
+    Ok(wire.into())
 }
 
 // fragment squeeze<?>( input: tensor<?>, axes: integer[] ) -> ( output: tensor<?> );
