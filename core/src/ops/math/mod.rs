@@ -571,19 +571,19 @@ validation: Validation::Rounding
 element_wise!(ceil, Ceil, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.ceil());
     Ok(())
-};
+}, [i8, i16,i32, i64, u8, u16, u32, u64, TDim] => |_, _| Ok(());
 q: [i8, u8, i32] => f32::recip);
 
 element_wise!(floor, Floor, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.floor());
     Ok(())
-};
+}, [i8, i16,i32, i64, u8, u16, u32, u64, TDim] => |_, _| Ok(());
 q: [i8, u8, i32] => f32::floor);
 
 element_wise!(round, Round, [f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.round());
     Ok(())
-};
+}, [i8, i16,i32, i64, u8, u16, u32, u64, TDim] => |_, _| Ok(());
 q: [i8, u8, i32] => f32::round);
 
 element_wise!(q_scale, QScale{scaler: Scaler},[i32] => |op, xs| {
