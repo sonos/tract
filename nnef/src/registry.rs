@@ -227,6 +227,11 @@ impl Registry {
                     a_dt
                 } else if a_dt == TDim::datum_type() || b_dt == TDim::datum_type() {
                     bin.1.operating_datum_type(a_dt, b_dt)?
+                // assume scalar are inline and we should not trust their DT
+                } else if a_fact.konst.is_some() && a_fact.shape.volume().is_one() {
+                    b_dt
+                } else if b_fact.konst.is_some() && b_fact.shape.volume().is_one() {
+                    a_dt
                 } else if builder.model.node(a.node).op_is::<tract_core::ops::konst::Const>() {
                     b_dt
                 } else if builder.model.node(b.node).op_is::<tract_core::ops::konst::Const>() {
