@@ -290,8 +290,8 @@ impl EvalOp for LirMatMulUnary {
 
     fn state(
         &self,
-        session: &mut SessionState,
-        node_id: usize,
+        _session: &mut SessionState,
+        _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(LirMatMulUnaryState::default())))
     }
@@ -318,6 +318,7 @@ impl OpState for LirMatMulUnaryState {
                 *cell = None
             }
             self.0.reserve(op.micro_ops.len().saturating_sub(self.0.capacity()));
+            #[allow(clippy::uninit_vec)]
             self.0.set_len(op.micro_ops.len());
             // kill static lifefime!
             let fused_spec: &mut Vec<FusedSpec> = std::mem::transmute(&mut self.0);
@@ -329,13 +330,13 @@ impl OpState for LirMatMulUnaryState {
                 let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, c_shape)?;
                 for i in 0..op.micro_ops.len() {
                     *fused_spec.get_unchecked_mut(i) =
-                        op.micro_ops.get_unchecked(i).resolve_trivial(&*inputs, &mut c);
+                        op.micro_ops.get_unchecked(i).resolve_trivial(&inputs, &mut c);
                 }
                 op.mmm.run_with_scratch_space(
                     geometry.m,
                     geometry.n,
                     scratch.as_mut(),
-                    &fused_spec,
+                    fused_spec,
                 )?;
                 c
             } else {
@@ -355,7 +356,7 @@ impl OpState for LirMatMulUnaryState {
                             geometry.m,
                             geometry.n,
                             scratch.as_mut(),
-                            &fused_spec,
+                            fused_spec,
                         )
                         .context("In mmm.run_with_scratch_space")?;
                 }
