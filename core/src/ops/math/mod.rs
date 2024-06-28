@@ -336,7 +336,7 @@ fn declutter_mul(
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if node.inputs[0] == node.inputs[1] {
+    if node.inputs[0] == node.inputs[1] && !node.outputs[0].fact.datum_type.is_quantized() {
         return Ok(Some(TypedModelPatch::replace_single_op(
             model,
             node,
