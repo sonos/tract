@@ -1404,6 +1404,9 @@ impl Tensor {
         if axis >= self.rank() {
             bail!("Can not slice at axis {} tensor {:?}", axis, self);
         }
+        if start > self.shape[axis] || end > self.shape[axis] || start >= end {
+            bail!("Invalid slicing range {start}..{end} on axis {axis} for {self:?}");
+        }
         fn slice_t<T: Datum>(
             t: &Tensor,
             axis: usize,
