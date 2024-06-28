@@ -104,6 +104,7 @@ impl<'o> OptimizerSession<'o> {
         model.check_consistency().context("during optimizer preflight check")?;
         model.compact().context("during optimizer preflight compaction")?;
         model.check_names().context("after optimizer preflight compaction")?;
+        println!("{model}");
         for i in 0.. {
             let old = self.counter;
             self.run_all_passes(i, model)?;
