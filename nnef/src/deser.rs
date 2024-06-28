@@ -183,8 +183,21 @@ impl<'mb> ModelBuilder<'mb> {
                     if qparam != self.model.outlet_fact(*value)?.datum_type {
                         self.model.node_mut(value.node).name =
                             format!("{}_raw", self.naming_scopes.iter().map(|i| &i.0).join("_"));
+                        if self.model.outlet_fact(*value)?.datum_type == TDim::datum_type() {
+                            *value = self.model.wire_node(
+                                format!(
+                                    "{}_cast_to_f32",
+                                    self.naming_scopes.iter().map(|i| &i.0).join("_")
+                                ),
+                                tract_core::ops::cast::cast(f32::datum_type()),
+                                &[*value],
+                            )?[0];
+                        }
                         *value = self.model.wire_node(
-                            "foo",
+                            format!(
+                                "{}_cast_to_q",
+                                self.naming_scopes.iter().map(|i| &i.0).join("_")
+                            ),
                             tract_core::ops::cast::cast(qparam),
                             &[*value],
                         )?[0];
