@@ -84,6 +84,8 @@ pub trait DimLike:
     fn substitute(&self, from: &Symbol, to: &Self) -> TractResult<Self>;
 
     fn broadcast(self, other: Self) -> TractResult<Self>;
+    fn mini(self, other: Self) -> Self;
+    fn maxi(self, other: Self) -> Self;
 
     fn compatible_with(&self, other: &Self) -> bool;
 }
@@ -167,6 +169,14 @@ impl DimLike for TDim {
     fn compatible_with(&self, other: &Self) -> bool {
         self.compatible_with(other)
     }
+
+    fn mini(self, other: Self) -> Self {
+        TDim::Min(vec![self, other]).simplify()
+    }
+
+    fn maxi(self, other: Self) -> Self {
+        TDim::Min(vec![self, other]).simplify()
+    }
 }
 
 impl<'a> std::convert::TryFrom<&'a TDim> for TDim {
@@ -215,6 +225,22 @@ impl DimLike for usize {
 
     fn compatible_with(&self, other: &Self) -> bool {
         self == other
+    }
+
+    fn mini(self, other: Self) -> Self {
+        if self < other {
+            self
+        } else {
+            other
+        }
+    }
+
+    fn maxi(self, other: Self) -> Self {
+        if self > other {
+            self
+        } else {
+            other
+        }
     }
 }
 

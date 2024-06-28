@@ -30,6 +30,8 @@ pub enum TDim {
     MulInt(i64, Box<TDim>),
     Div(Box<TDim>, u64),
     Broadcast(Vec<TDim>),
+    Min(Vec<TDim>),
+    Max(Vec<TDim>),
 }
 
 use TDim::*;
@@ -38,13 +40,15 @@ fn tdim_compare(a: &TDim, b: &TDim) -> Ordering {
     match (a, b) {
         (Sym(a), Sym(b)) => a.cmp(b),
         (Val(a), Val(b)) => a.cmp(b),
-        (Add(a), Add(b)) | (Mul(a), Mul(b)) | (Broadcast(a), Broadcast(b)) => {
-            a.len().cmp(&b.len()).then(
-                a.iter()
-                    .zip(b.iter())
-                    .fold(Ordering::Equal, |acc, (a, b)| acc.then_with(|| tdim_compare(a, b))),
-            )
-        }
+        (Add(a), Add(b))
+        | (Mul(a), Mul(b))
+        | (Broadcast(a), Broadcast(b))
+        | (Min(a), Min(b))
+        | (Max(a), Max(b)) => a.len().cmp(&b.len()).then(
+            a.iter()
+                .zip(b.iter())
+                .fold(Ordering::Equal, |acc, (a, b)| acc.then_with(|| tdim_compare(a, b))),
+        ),
         (MulInt(p, d), MulInt(q, e)) => p.cmp(q).then_with(|| tdim_compare(d, e)),
         (Div(d, p), Div(e, q)) => p.cmp(q).then_with(|| tdim_compare(d, e)),
         (Sym(_), _) => Ordering::Less,
@@ -59,6 +63,10 @@ fn tdim_compare(a: &TDim, b: &TDim) -> Ordering {
         (_, MulInt(_, _)) => Ordering::Greater,
         (Broadcast(_), _) => Ordering::Less,
         (_, Broadcast(_)) => Ordering::Greater,
+        (Min(_), _) => Ordering::Less,
+        (_, Min(_)) => Ordering::Greater,
+        (Max(_), _) => Ordering::Less,
+        (_, Max(_)) => Ordering::Greater,
     }
 }
 
@@ -70,6 +78,8 @@ impl fmt::Display for TDim {
             Add(it) => write!(fmt, "{}", it.iter().map(|x| format!("{x}")).join("+")),
             Mul(it) => write!(fmt, "{}", it.iter().map(|x| format!("({x})")).join("*")),
             Broadcast(it) => write!(fmt, "{}", it.iter().map(|x| format!("({x})")).join("#")),
+            Min(it) => write!(fmt, "min({})", it.iter().map(|x| format!("{x}")).join(",")),
+            Max(it) => write!(fmt, "max({})", it.iter().map(|x| format!("{x}")).join(",")),
             MulInt(a, b) => write!(fmt, "{a}*{b}"),
             Div(a, b) => write!(fmt, "({a})/{b}"),
         }
@@ -113,6 +123,12 @@ impl TDim {
             Mul(terms) => {
                 terms.iter().try_fold(1, |acc, it| it.eval_to_i64(values).map(|x| acc * x))
             }
+            Min(terms) => terms
+                .iter()
+                .try_fold(i64::MAX, |acc, it| it.eval_to_i64(values).map(|x| acc.min(x))),
+            Max(terms) => terms
+                .iter()
+                .try_fold(i64::MIN, |acc, it| it.eval_to_i64(values).map(|x| acc.max(x))),
             Broadcast(terms) => terms.iter().try_fold(1i64, |acc, it| {
                 it.eval_to_i64(values)
                     .and_then(|x| ((acc as usize).broadcast(x as usize)).map(|x| x as i64))
@@ -128,6 +144,12 @@ impl TDim {
             Val(v) => Val(*v),
             Add(terms) => terms.iter().fold(Val(0), |acc, it| -> TDim { acc + it.eval(values) }),
             Mul(terms) => terms.iter().fold(Val(1), |acc, it| -> TDim { acc * it.eval(values) }),
+            Min(terms) => {
+                terms.iter().fold(Val(i64::MAX), |acc, it| -> TDim { acc.mini(it.eval(values)) })
+            }
+            Max(terms) => {
+                terms.iter().fold(Val(i64::MIN), |acc, it| -> TDim { acc.maxi(it.eval(values)) })
+            }
             Broadcast(terms) => terms.iter().fold(Val(1), |acc, it| -> TDim {
                 acc.broadcast(it.eval(values)).unwrap_or_else(|_| self.clone())
             }),
@@ -148,6 +170,12 @@ impl TDim {
             }),
             Broadcast(terms) => terms.iter().try_fold(Val(1), |acc, it| -> TractResult<TDim> {
                 acc.broadcast(it.substitute(from, to)?)
+            }),
+            Min(terms) => terms.iter().try_fold(Val(i64::MAX), |acc, it| -> TractResult<TDim> {
+                Ok(acc.mini(it.substitute(from, to)?))
+            }),
+            Max(terms) => terms.iter().try_fold(Val(i64::MIN), |acc, it| -> TractResult<TDim> {
+                Ok(acc.maxi(it.substitute(from, to)?))
             }),
             Div(a, q) => Ok(a.substitute(from, to)? / *q as i64),
             MulInt(p, a) => Ok(a.substitute(from, to)? * *p),
@@ -172,6 +200,7 @@ impl TDim {
             Add(terms) => 2 * terms.iter().map(TDim::cost).sum::<usize>(),
             Mul(terms) => 3 * terms.iter().map(TDim::cost).sum::<usize>(),
             Broadcast(terms) => 4 * terms.iter().map(TDim::cost).sum::<usize>(),
+            Min(terms) | Max(terms) => 5 * terms.iter().map(TDim::cost).sum::<usize>(),
             Div(a, _) => 3 * a.cost(),
             MulInt(_, a) => 2 * a.cost(),
         }
@@ -180,7 +209,7 @@ impl TDim {
     fn wiggle(&self) -> Vec<TDim> {
         use self::TDim::*;
         match self {
-            Sym(_) | Val(_) | Mul(_) | Broadcast(_) => vec![self.clone()],
+            Sym(_) | Val(_) | Mul(_) | Broadcast(_) | Min(_) | Max(_) => vec![self.clone()],
             Add(terms) => {
                 let mut forms = vec![];
                 let sub_exprs = terms.iter().map(|e| e.wiggle()).multi_cartesian_product();
@@ -419,6 +448,58 @@ impl TDim {
                     Broadcast(terms)
                 }
             }
+            Min(terms) => {
+                let flatten: Vec<TDim> = terms
+                    .into_iter()
+                    .map(TDim::simplify)
+                    .flat_map(|t| if let Min(t) = t { t } else { vec![t] })
+                    .sorted_by(tdim_compare)
+                    .dedup()
+                    .collect();
+                let mut new_terms: Vec<TDim> = flatten
+                    .iter()
+                    .filter(|&t| {
+                        t != &i64::MAX.to_dim()
+                            && !flatten
+                                .iter()
+                                .any(|other| (t.clone() - other).to_i64().is_ok_and(|i| i > 0))
+                    })
+                    .cloned()
+                    .collect();
+                if new_terms.len() == 0 {
+                    i64::MAX.to_dim()
+                } else if new_terms.len() == 1 {
+                    new_terms.remove(0)
+                } else {
+                    Min(new_terms)
+                }
+            }
+            Max(terms) => {
+                let flatten: Vec<TDim> = terms
+                    .into_iter()
+                    .map(TDim::simplify)
+                    .flat_map(|t| if let Max(t) = t { t } else { vec![t] })
+                    .sorted_by(tdim_compare)
+                    .dedup()
+                    .collect();
+                let mut new_terms: Vec<TDim> = flatten
+                    .iter()
+                    .filter(|&t| {
+                        t != &i64::MIN.to_dim()
+                            && !flatten
+                                .iter()
+                                .any(|other| (t.clone() - other).to_i64().is_ok_and(|i| i < 0))
+                    })
+                    .cloned()
+                    .collect();
+                if new_terms.len() == 0 {
+                    i64::MIN.to_dim()
+                } else if new_terms.len() == 1 {
+                    new_terms.remove(0)
+                } else {
+                    Max(new_terms)
+                }
+            }
             Val(_) | Sym(_) => self,
         }
     }
@@ -435,6 +516,8 @@ impl TDim {
             }
             MulInt(p, a) => a.gcd() * p.unsigned_abs(),
             Mul(terms) => terms.iter().map(|t| t.gcd()).product(),
+            Min(terms) => terms.iter().map(|t| t.gcd()).reduce(|a, b| a.gcd(&b)).unwrap(),
+            Max(terms) => terms.iter().map(|t| t.gcd()).reduce(|a, b| a.gcd(&b)).unwrap(),
             Div(a, q) => {
                 if a.gcd() % *q == 0 {
                     a.gcd() / *q
@@ -456,6 +539,8 @@ impl TDim {
             Val(v) => Val(v / d as i64),
             Sym(_) => panic!(),
             Add(terms) => Add(terms.iter().map(|t| t.div(d)).collect()),
+            Min(terms) => Min(terms.iter().map(|t| t.div(d)).collect()),
+            Max(terms) => Max(terms.iter().map(|t| t.div(d)).collect()),
             Broadcast(terms) => Broadcast(terms.iter().map(|t| t.div(d)).collect()),
             Mul(_) => Div(Box::new(self.clone()), d),
             MulInt(p, a) => {
@@ -496,6 +581,8 @@ impl TDim {
                     (n, d * *q as i64)
                 }
                 Broadcast(terms) => slope_rec(&terms[0], sym),
+                Min(terms) => slope_rec(&terms[0], sym),
+                Max(terms) => slope_rec(&terms[0], sym),
             }
         }
         let (p, q) = slope_rec(self, sym);
@@ -507,7 +594,7 @@ impl TDim {
         match self {
             Val(_) => maplit::hashset!(),
             Sym(s) => maplit::hashset!(s.clone()),
-            Add(terms) | Mul(terms) | Broadcast(terms) => {
+            Add(terms) | Mul(terms) | Broadcast(terms) | Min(terms) | Max(terms) => {
                 terms.iter().fold(maplit::hashset!(), |mut set, v| {
                     set.extend(v.symbols());
                     set
@@ -994,5 +1081,30 @@ mod tests {
         let mul1 = (term.clone() * 2 - 3) * (term.clone() - 1);
         let mul2 = (term.clone() - 1) * (term.clone() * 2 - 3);
         assert_eq!(mul1, mul2);
+    }
+
+    #[test]
+    fn min_ints_1() {
+        assert_eq!(2.to_dim().mini(1.to_dim()), 1.to_dim());
+    }
+
+    #[test]
+    fn min_ints_2() {
+        assert_eq!(1.to_dim().mini(2.to_dim()), 1.to_dim());
+    }
+
+    #[test]
+    fn min_same() {
+        assert_eq!(s().mini(s()), s());
+    }
+
+    #[test]
+    fn min_noop() {
+        assert_eq!(s().mini(1.to_dim()), s().mini(1.to_dim()));
+    }
+
+    #[test]
+    fn min_diff_1() {
+        assert_eq!((s() + 1).mini(s() + 2), s() + 1);
     }
 }
