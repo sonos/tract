@@ -167,7 +167,10 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
         if let Some(k) = &builder.model.outlet_fact(b[0])?.konst {
             if let Ok(i) = k.cast_to_scalar::<i64>() {
                 if i < 0 {
-                    b = builder.wire_as_outlets(Const::new(rctensor0(input_fact.shape[ix].clone() + i)), &[])?;
+                    b = builder.wire_as_outlets(
+                        Const::new(rctensor0(input_fact.shape[axis].clone() + i)),
+                        &[],
+                    )?;
                 }
             }
         }
@@ -181,11 +184,21 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
         if let Some(k) = &builder.model.outlet_fact(e[0])?.konst {
             if let Ok(i) = k.cast_to_scalar::<i64>() {
                 if i <= 0 {
-                    e = builder.wire_as_outlets(Const::new(rctensor0(input_fact.shape[ix].clone() + i)), &[])?;
+                    e = builder.wire_as_outlets(
+                        Const::new(rctensor0(input_fact.shape[axis].clone() + i)),
+                        &[],
+                    )?;
                 }
             }
         }
-        let len = builder.model.symbol_table.new_with_prefix("slice").into();
+        let len = if let (Some(ev), Some(bv)) =
+            (&builder.model.outlet_fact(e[0])?.konst, &builder.model.outlet_fact(b[0])?.konst)
+        {
+            ev.cast_to::<TDim>()?.to_scalar::<TDim>()?.clone()
+                - bv.cast_to::<TDim>()?.to_scalar::<TDim>()?
+        } else {
+            builder.model.symbol_table.new_with_prefix("slice").into()
+        };
         wire = builder.wire_as_outlets(
             tract_core::ops::array::DynSlice { axis, len },
             &[wire[0], b[0], e[0]],
