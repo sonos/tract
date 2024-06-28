@@ -8,8 +8,8 @@ fragment tract_core_properties(
 
 graph network(input) -> (output) {
   input = external(shape = [1, 1, 3]);
-  kernel1 = [[[0.0, 0.0, 0.0]], [[0.0, 0.0, 0.0]]];
-  output_bias_rm_0 = [1.0, 1.0];
-  output_conv = conv(input, kernel1, output_bias_rm_0, dilation = [1], stride = [1], border = "constant", groups = 1, padding = [(0, 0)]);
+  kernel1_9 = [[[0.0, 0.0, 0.0]], [[0.0, 0.0, 0.0]]];
+  bias1_2 = [1.0, 1.0];
+  output_conv = conv(input, kernel1_9, bias1_2, dilation = [1], stride = [1], border = "constant", groups = 1, padding = [(0, 0)]);
   output = output_conv;
 }
