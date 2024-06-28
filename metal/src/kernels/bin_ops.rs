@@ -136,7 +136,7 @@ impl BinOps {
             BroadcastKind::Nd3 => "nd3",
             BroadcastKind::Nd4 => "nd4",
             BroadcastKind::Nd5 => "nd5",
-            BroadcastKind::Nd1 => {
+            BroadcastKind::Nd1 | BroadcastKind::Nd6 => {
                 bail!("Unsupported broadcast kind {:?} for bin ops: {:?}", broadcast_kind, self)
             }
         };
@@ -214,7 +214,7 @@ impl BinOps {
                 encoder.dispatch_thread_groups(grid_size, group_size);
                 encoder.end_encoding();
             }
-            BroadcastKind::Nd1 => {
+            BroadcastKind::Nd1 | BroadcastKind::Nd6 => {
                 bail!("Unsupported broadcast kind {:?} for bin ops: {:?}", broadcast_kind, self)
             }
             BroadcastKind::Nd2 | BroadcastKind::Nd3 | BroadcastKind::Nd4 | BroadcastKind::Nd5 => {

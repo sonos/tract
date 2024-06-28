@@ -1,4 +1,4 @@
-use crate::kernels::Memcpy;
+use crate::kernels::{Memcpy, PermuteAxes};
 use crate::tensor::MetalTensorExt;
 use std::fmt::Debug;
 use tract_core::internal::*;
@@ -11,11 +11,7 @@ pub struct MetalAxisOp(pub AxisOp);
 
 impl MetalAxisOp {
     pub fn new(op: AxisOp) -> Option<Self> {
-        if !matches!(op, AxisOp::Move(_, _)) {
-            Some(Self(op))
-        } else {
-            None
-        }
+        Some(Self(op))
     }
 }
 
@@ -24,8 +20,8 @@ impl Debug for MetalAxisOp {
         match &self.0 {
             AxisOp::Add(a) => write!(f, "MetalAdd({a})"),
             AxisOp::Rm(a) => write!(f, "MetalRm({a})"),
-            AxisOp::Move(_, _) => {
-                unimplemented!("Unsupported Metal AxisOp {:?}", self)
+            AxisOp::Move(from, to) => {
+                write!(f, "MetalMove({from}, {to})")
             }
             AxisOp::Reshape(at, from, to) => {
                 write!(
@@ -62,6 +58,24 @@ impl EvalOp for MetalAxisOp {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let mut input = args_1!(inputs).into_tensor();
+
+        if let AxisOp::Move(from, to) = &self.0 {
+            if let Some(t) = input.as_metal_tensor() {
+                let output = objc::rc::autoreleasepool(|| {
+                    crate::METAL_CONTEXT.with_borrow(|context| -> TractResult<_> {
+                        let mut permutation: Vec<usize> = (0..t.rank()).collect();
+                        permutation.remove(*from);
+                        permutation.insert(*to, *from);
+                        PermuteAxes.dispatch_eval(context, t, &permutation)
+                    })
+                })?;
+                return Ok(tvec!(output.into_opaque_tensor().into_tvalue()));
+            } else {
+                self.0.change_tensor(&mut input, false)?;
+                return Ok(tvec!(input.into_tvalue()));
+            }
+        }
+
         fn _eval(op: &MetalAxisOp, session: &SessionState, t: &mut Tensor) -> TractResult<()> {
             match &op.0 {
                 AxisOp::Reshape(skip, from, to) => {

@@ -5,12 +5,14 @@ mod mat_vec;
 pub mod mfa_gemm;
 mod mmm_tile_8x8;
 
-pub use array_ops::{Cast, Memcpy, MultiBroadcast};
+pub use array_ops::{Cast, Memcpy, MultiBroadcast, PermuteAxes};
 pub use bin_ops::BinOps;
 pub use element_wise::ElementWiseOps;
 pub use mat_vec::{mat_vec, mat_vec_with_slice, metal_mat_vec};
 pub use mfa_gemm::{mfa_gemm, GemmPrecision};
 pub use mmm_tile_8x8::{metal_mmm_tile_8x8, mmm_tile_8x8};
+
+use tract_core::internal::*;
 
 #[cfg(target_os = "ios")]
 pub const METAL_FLASH_ATTENTION_LIB: &[u8] = include_bytes!("libMetalFlashAttention-ios.metallib");
@@ -63,6 +65,21 @@ pub enum BroadcastKind {
     Nd3,
     Nd4,
     Nd5,
+    Nd6,
+}
+
+impl BroadcastKind {
+    pub fn from_rank(rank: usize) -> TractResult<Self> {
+        match rank {
+            1 => Ok(Self::Nd1),
+            2 => Ok(Self::Nd2),
+            3 => Ok(Self::Nd3),
+            4 => Ok(Self::Nd4),
+            5 => Ok(Self::Nd5),
+            6 => Ok(Self::Nd6),
+            _ => bail!("Unsupported rank {rank} for broadcasting"),
+        }
+    }
 }
 
 impl BroadcastKind {
