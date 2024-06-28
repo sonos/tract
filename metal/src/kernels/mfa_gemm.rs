@@ -29,8 +29,10 @@ pub fn mfa_gemm_with_slice<T: Datum + Float>(
     (b, m, n, k): (usize, usize, usize, usize),
     lhs: &[T],
     lhs_strides: &[isize],
+    lhs_transpose: bool,
     rhs: &[T],
     rhs_strides: &[isize],
+    rhs_transpose: bool,
     output: &mut [T],
 ) -> Result<()> {
     mfa_dispatch_gemm_with_slice(
@@ -38,8 +40,10 @@ pub fn mfa_gemm_with_slice<T: Datum + Float>(
         (b, m, n, k),
         lhs,
         lhs_strides,
+        lhs_transpose,
         rhs,
         rhs_strides,
+        rhs_transpose,
         output,
     )?;
     context.wait_until_completed()?;
@@ -51,8 +55,10 @@ pub fn mfa_dispatch_gemm_with_slice<T: Datum + Float>(
     (b, m, n, k): (usize, usize, usize, usize),
     lhs: &[T],
     lhs_strides: &[isize],
+    lhs_transpose: bool,
     rhs: &[T],
     rhs_strides: &[isize],
+    rhs_transpose: bool,
     output: &mut [T],
 ) -> Result<()> {
     ensure!(
@@ -75,9 +81,11 @@ pub fn mfa_dispatch_gemm_with_slice<T: Datum + Float>(
         &lhs_strides,
         0,
         &lhs_buff,
+        lhs_transpose,
         &rhs_strides,
         0,
         &rhs_buff,
+        rhs_transpose,
         &out_buff,
     )?;
     Ok(())
@@ -86,17 +94,44 @@ pub fn mfa_dispatch_gemm_with_slice<T: Datum + Float>(
 pub fn mfa_gemm(
     context: &MetalContext,
     lhs: &MetalTensor,
+    lhs_transpose: bool,
     rhs: &MetalTensor,
+    rhs_transpose: bool,
 ) -> Result<MetalTensor> {
     ensure!(lhs.rank() == 3 && rhs.rank() == 3);
     ensure!(lhs.datum_type() == rhs.datum_type());
 
     let precision = GemmPrecision::from_dt(lhs.datum_type())?;
-
-    let b = lhs.shape()[0];
-    let m = lhs.shape()[1];
-    let n = rhs.shape()[2];
-    let k = lhs.shape()[2];
+    let (b, m, n, k) = match (lhs_transpose, rhs_transpose) {
+        (false, false) => {
+            let b = lhs.shape()[0];
+            let m = lhs.shape()[1];
+            let n = rhs.shape()[2];
+            let k = lhs.shape()[2];
+            (b, m, n, k)
+        }
+        (true, false) => {
+            let b = lhs.shape()[0];
+            let m = lhs.shape()[2];
+            let n = rhs.shape()[2];
+            let k = lhs.shape()[1];
+            (b, m, n, k)
+        }
+        (false, true) => {
+            let b = lhs.shape()[0];
+            let m = lhs.shape()[1];
+            let n = rhs.shape()[1];
+            let k = lhs.shape()[2];
+            (b, m, n, k)
+        }
+        (true, true) => {
+            let b = lhs.shape()[0];
+            let m = lhs.shape()[2];
+            let n = rhs.shape()[1];
+            let k = lhs.shape()[1];
+            (b, m, n, k)
+        }
+    };
 
     let lhs_strides = lhs.strides().iter().map(|it| *it as usize).collect::<Vec<_>>();
     let rhs_strides = rhs.strides().iter().map(|it| *it as usize).collect::<Vec<_>>();
@@ -113,9 +148,11 @@ pub fn mfa_gemm(
         &lhs_strides,
         0,
         lhs.metal(),
+        lhs_transpose,
         &rhs_strides,
         0,
         rhs.metal(),
+        rhs_transpose,
         output.metal(),
     )?;
     context.wait_until_completed()?;
@@ -130,9 +167,11 @@ pub fn metal_mfa_gemm(
     lhs_stride: &[usize],
     lhs_offset: usize,
     lhs_buffer: &Buffer,
+    lhs_transpose: bool,
     rhs_stride: &[usize],
     rhs_offset: usize,
     rhs_buffer: &Buffer,
+    rhs_transpose: bool,
     output: &Buffer,
 ) -> Result<()> {
     assert!(rhs_stride.len() >= 2);
@@ -141,26 +180,29 @@ pub fn metal_mfa_gemm(
     let rhs_m2 = rhs_stride[rhs_stride.len() - 2];
     let lhs_m1 = lhs_stride[lhs_stride.len() - 1];
     let lhs_m2 = lhs_stride[lhs_stride.len() - 2];
-    let a_trans = if lhs_m1 == 1 && lhs_m2 == k {
-        false
-    } else if lhs_m1 == m && lhs_m2 == 1 {
-        true
+    let a_trans = lhs_transpose;
+    let b_trans = rhs_transpose;
+
+    if a_trans {
+        // (k, m)
+        ensure!(lhs_m1 == 1 && lhs_m2 == m, "Invalid left matmul argument [{lhs_m2}, {lhs_m1}] != [{m}, 1], strides: {:?} {:?} dims: (m: {m}, n: {n}, k: {k})",
+            lhs_stride, rhs_stride);
     } else {
-        bail!(format!(
-            "Invalid left matmul argument {:?} {:?} ({m}, {n}, {k})",
-            lhs_stride, rhs_stride
-        ))
-    };
-    let b_trans = if rhs_m1 == 1 && rhs_m2 == n {
-        false
-    } else if rhs_m1 == k && rhs_m2 == 1 {
-        true
+        // (m, k)
+        ensure!(lhs_m1 == 1 && lhs_m2 == k, "Invalid left matmul argument [{lhs_m2}, {lhs_m1}] != [{k}, 1], strides: {:?} {:?} dims: (m: {m}, n: {n}, k: {k})",
+            lhs_stride, rhs_stride);
+    }
+
+    if b_trans {
+        // (n, k)
+        ensure!(rhs_m1 == 1 && rhs_m2 == k, "Invalid right matmul argument [{rhs_m2}, {rhs_m1}] != [{k}, 1], strides: {:?} {:?} dims: (m: {m}, n: {n}, k: {k})",
+            lhs_stride, rhs_stride);
     } else {
-        bail!(format!(
-            "Invalid right matmul arguments {:?} {:?} ({m}, {n}, {k})",
-            lhs_stride, rhs_stride
-        ))
-    };
+        // (k, n)
+        ensure!(rhs_m1 == 1 && rhs_m2 == n, "Invalid right matmul argument [{rhs_m2}, {rhs_m1}] != [{n}, 1] {:?} {:?} dims: (m: {m}, n: {n}, k: {k})",
+            lhs_stride, rhs_stride);
+    }
+
     let d_trans = false;
     let alpha = 1.0f32;
     let beta = 0.0f32;
@@ -291,6 +333,7 @@ mod tests {
     use num_traits::AsPrimitive;
     use proptest::collection::vec;
     use proptest::prelude::*;
+    use tract_core::ops::einsum::BasicMatMul;
 
     #[test]
     fn test_mfa_gemm() -> Result<()> {
@@ -308,7 +351,7 @@ mod tests {
                 )?
                 .into_metal()?;
 
-                let c = mfa_gemm(context, &a, &b)?;
+                let c = mfa_gemm(context, &a, false, &b, false)?;
 
                 let expected_c = Tensor::from_shape(
                     &[1, 2, 4],
@@ -328,7 +371,7 @@ mod tests {
                     &(0..b * n * k).map(|f| f as f32).collect::<Vec<_>>(),
                 )?;
 
-                let c = mfa_gemm(context, &a, &b)?;
+                let c = mfa_gemm(context, &a, false, &b, false)?;
 
                 let expected_c = Tensor::from_shape(
                     &[2, 2, 4],
@@ -347,12 +390,12 @@ mod tests {
     proptest::proptest! {
         #[test]
         fn mmm_prop_f32(pb in any::<MmmProblem<f32>>()) {
-            prop_assert_eq!(pb.run().unwrap(), pb.reference())
+            prop_assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
         }
 
         #[test]
         fn mmm_prop_f16(pb in any::<MmmProblem<f16>>()) {
-            prop_assert_eq!(pb.run().unwrap(), pb.reference())
+            prop_assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
         }
     }
 
@@ -367,7 +410,9 @@ mod tests {
         pub k: usize,
         pub n: usize,
         pub lhs: Vec<F>,
+        pub transpose_lhs: bool,
         pub rhs: Vec<F>,
+        pub transpose_rhs: bool,
     }
 
     impl<F> Arbitrary for MmmProblem<F>
@@ -391,10 +436,21 @@ mod tests {
                         Just(k),
                         Just(n),
                         vec(lhs, lhs_len..=lhs_len),
+                        proptest::bool::ANY,
                         vec(rhs, rhs_len..=rhs_len),
+                        proptest::bool::ANY,
                     )
                 })
-                .prop_map(|(b, m, k, n, lhs, rhs)| Self { b, m, k, n, lhs, rhs })
+                .prop_map(|(b, m, k, n, lhs, transpose_lhs, rhs, transpose_rhs)| Self {
+                    b,
+                    m,
+                    k,
+                    n,
+                    lhs,
+                    transpose_lhs,
+                    rhs,
+                    transpose_rhs,
+                })
                 .boxed()
         }
     }
@@ -404,29 +460,44 @@ mod tests {
         F: Datum + Float + std::ops::AddAssign,
         usize: AsPrimitive<F>,
     {
-        pub fn reference(&self) -> Vec<F> {
-            let mut vi = vec![F::zero(); self.b * self.m * self.n];
-            for m in 0..self.m {
-                for n in 0..self.n {
-                    for k in 0..self.k {
-                        // m, k * k, n
-                        let lhs: F = self.lhs[k + self.k * m];
-                        let rhs: F = self.rhs[n + self.n * k];
-                        let offset = n + m * self.n;
-                        vi[offset] += lhs * rhs;
-                    }
-                }
-            }
-            vi
+        pub fn reference(&self) -> Result<Vec<F>> {
+            let matmul = BasicMatMul {
+                transpose_a: self.transpose_lhs,
+                transpose_b: self.transpose_rhs,
+                transpose_c: false,
+                quantize_output: None,
+            };
+
+            let lhs_tensor = if self.transpose_lhs {
+                Tensor::from_shape(&[self.b, self.k, self.m], &self.lhs)?
+            } else {
+                Tensor::from_shape(&[self.b, self.m, self.k], &self.lhs)?
+            };
+            let rhs_tensor = if self.transpose_rhs {
+                Tensor::from_shape(&[self.b, self.n, self.k], &self.rhs)?
+            } else {
+                Tensor::from_shape(&[self.b, self.k, self.n], &self.rhs)?
+            };
+
+            let output = matmul.eval(tvec![lhs_tensor.into_tvalue(), rhs_tensor.into_tvalue()])?;
+
+            Ok(output[0].clone().into_tensor().as_slice::<F>()?.to_vec())
         }
 
         pub fn run(&self) -> Result<Vec<F>> {
             objc::rc::autoreleasepool(|| {
                 crate::METAL_CONTEXT.with_borrow(|context| {
-                    let (b, m, n, k) = (self.b, self.m, self.n, self.k);
-                    let lhs = Tensor::from_shape(&[b, m, k], &self.lhs)?.into_metal()?;
-                    let rhs = Tensor::from_shape(&[b, k, n], &self.rhs)?.into_metal()?;
-                    let c = mfa_gemm(context, &lhs, &rhs)?;
+                    let lhs = if self.transpose_lhs {
+                        Tensor::from_shape(&[self.b, self.k, self.m], &self.lhs)?.into_metal()?
+                    } else {
+                        Tensor::from_shape(&[self.b, self.m, self.k], &self.lhs)?.into_metal()?
+                    };
+                    let rhs = if self.transpose_rhs {
+                        Tensor::from_shape(&[self.b, self.n, self.k], &self.rhs)?.into_metal()?
+                    } else {
+                        Tensor::from_shape(&[self.b, self.k, self.n], &self.rhs)?.into_metal()?
+                    };
+                    let c = mfa_gemm(context, &lhs, self.transpose_lhs, &rhs, self.transpose_rhs)?;
                     Ok(c.to_cpu().as_slice::<F>()?.to_vec())
                 })
             })

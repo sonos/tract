@@ -1,4 +1,5 @@
 use crate::fact::MetalTypedFactExt;
+use num_traits::{AsPrimitive, Zero};
 use tract_core::internal::*;
 
 pub fn div_ceil(m: usize, b: usize) -> metal::NSUInteger {
@@ -58,4 +59,22 @@ pub fn metal_fact<'a, T: 'a>(
     } else {
         (map_fact)(fact)
     }
+}
+
+pub fn compute_broadcast_strides<T: Zero + Copy + 'static>(
+    shape: &[usize],
+    strides: &[isize],
+) -> TractResult<Vec<T>>
+where
+    isize: AsPrimitive<T>,
+{
+    ensure!(
+        shape.len() == strides.len(),
+        "Mistmach between shape and strides length while computing broadcast strides"
+    );
+    Ok(strides
+        .into_iter()
+        .zip(shape)
+        .map(|(s, dim)| if *dim == 1 { T::zero() } else { s.as_() })
+        .collect::<Vec<T>>())
 }

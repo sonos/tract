@@ -1,21 +1,20 @@
 use crate::kernels::BroadcastKind;
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
-use anyhow::bail;
-use anyhow::{ensure, Result};
+use anyhow::{bail, Result};
 use std::fmt;
 use tract_core::internal::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct MultiBroadcast;
+pub struct PermuteAxes;
 
-impl fmt::Display for MultiBroadcast {
+impl fmt::Display for PermuteAxes {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
-impl MultiBroadcast {
+impl PermuteAxes {
     pub fn is_supported_dt(dt: DatumType) -> bool {
         Self::tname(dt).is_ok()
     }
@@ -57,9 +56,9 @@ impl MultiBroadcast {
         &self,
         context: &MetalContext,
         input: &MetalTensor,
-        output_shape: &[usize],
+        axes: &[usize],
     ) -> Result<MetalTensor> {
-        let output = self.dispatch_eval(context, input, output_shape)?;
+        let output = self.dispatch_eval(context, input, axes)?;
         context.wait_until_completed()?;
         Ok(output)
     }
@@ -68,29 +67,34 @@ impl MultiBroadcast {
         &self,
         context: &MetalContext,
         input: &MetalTensor,
-        output_shape: &[usize],
+        axes: &[usize],
     ) -> Result<MetalTensor> {
-        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), output_shape)? };
-        ensure!(input.rank() <= output.rank(), "Input must have a rank lowe than output");
+        // Validate give axes permutation
+        let mut usage_counts = vec![0; input.rank()];
+        for axis in axes {
+            usage_counts[*axis] += 1;
+        }
+        for count in usage_counts {
+            assert_eq!(count, 1, "each axis must be listed exactly once");
+        }
 
-        let mut input_shape = vec![1; output.rank() - input.rank()];
-        input_shape.extend(input.shape());
-        let input_strides = Tensor::natural_strides(&input_shape);
+        let shape = input.shape();
+        let strides = input.strides();
 
-        let broadcast_kind = BroadcastKind::from_rank(output.rank()).with_context(|| {
-            anyhow!(
-                "Unsupported broadcast for broadcast op: (in: {:?}, out: {:?})",
-                input.shape(),
-                output_shape
-            )
-        })?;
+        let mut new_shape = vec![0; input.rank()];
+        let mut new_strides = vec![0u32; input.rank()];
+
+        for (new_axis, &axis) in axes.iter().enumerate() {
+            new_shape[new_axis] = shape[axis];
+            new_strides[new_axis] = strides[axis] as u32;
+        }
+
+        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), &new_shape)? };
+
+        let broadcast_kind = BroadcastKind::from_rank(input.rank())
+            .with_context(|| anyhow!("Unsupported rank {:?} for PermuteAxes", input.rank()))?;
 
         let kernel_name = self.kernel_name(input.datum_type(), broadcast_kind)?;
-
-        let input_broadcast_strides = crate::utils::compute_broadcast_strides::<u32>(
-            input_shape.as_slice(),
-            input_strides.as_slice(),
-        )?;
 
         let output_shape = output.shape().iter().map(|d| *d as u32).collect::<Vec<_>>();
 
@@ -102,8 +106,8 @@ impl MultiBroadcast {
         encoder.set_buffer(0, Some(input.metal()), 0);
         encoder.set_bytes(
             1,
-            (input_broadcast_strides.len() * std::mem::size_of::<u32>()) as _,
-            input_broadcast_strides.as_ptr() as *const _,
+            (new_strides.len() * std::mem::size_of::<u32>()) as _,
+            new_strides.as_ptr() as *const _,
         );
         encoder.set_buffer(2, Some(output.metal()), 0);
         encoder.set_bytes(
@@ -120,5 +124,38 @@ impl MultiBroadcast {
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
         Ok(output)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::IntoMetal;
+
+    use num_traits::Zero;
+
+    use tract_core::internal::Tensor;
+
+    fn run_test_case<F: Datum + Zero + Copy>(shape: &[usize], axes: &[usize]) -> Result<()> {
+        objc::rc::autoreleasepool(|| {
+            crate::METAL_CONTEXT.with_borrow(|context| {
+                let a_len = shape.iter().product::<usize>();
+                let a_data = (0..a_len).map(|f| f as f32).collect::<Vec<_>>();
+
+                let a = Tensor::from_shape(shape, &a_data)?.into_metal()?;
+
+                let output = PermuteAxes.eval(context, &a, axes)?;
+                let ref_output = a.tensor().clone().permute_axes(axes)?;
+                assert_eq!(&ref_output, output.tensor());
+                Ok(())
+            })
+        })
+    }
+
+    #[test]
+    fn test_permute_axes() -> Result<()> {
+        run_test_case::<f32>(&[3, 4], &[1, 0])?;
+        run_test_case::<f32>(&[1, 2, 3, 4, 5], &[4, 1, 2, 3, 0])?;
+        Ok(())
     }
 }
