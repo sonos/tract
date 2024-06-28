@@ -9,6 +9,7 @@ use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PoolSpec;
 use tract_core::ops::konst::Const;
+use tract_core::ops::math::min;
 use tract_core::ops::nn::{DataFormat, Softmax, SoftmaxExp};
 use tract_itertools::Itertools;
 
@@ -159,11 +160,14 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
     let strides: TVec<isize> =
         invocation.named_arg_as(builder, "stride").unwrap_or_else(|_| tvec!(1; axes.len()));
     for (ix, axis) in axes.into_iter().enumerate() {
+        let axis_len =
+            builder.wire_as_outlets(Const(rctensor0(input_fact.shape[axis].clone())), &[])?[0];
         let b = builder.wire_as_outlets(
             tract_core::ops::array::Slice { axis: 0, start: ix.into(), end: ix.to_dim() + 1 },
             &[begins],
         )?;
         let mut b = builder.wire_as_outlets(tract_core::ops::change_axes::AxisOp::Rm(0), &b)?;
+        b = builder.wire_as_outlets(min(), &[b[0], axis_len])?;
         if let Some(k) = &builder.model.outlet_fact(b[0])?.konst {
             if let Ok(i) = k.cast_to_scalar::<i64>() {
                 if i < 0 {
@@ -179,6 +183,7 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
             &[ends],
         )?;
         let mut e = builder.wire_as_outlets(tract_core::ops::change_axes::AxisOp::Rm(0), &e)?;
+        e = builder.wire_as_outlets(min(), &[e[0], axis_len])?;
         // use "<=", no "<" end[axis] = 0 means "up to the end"
         // CAUTION: this notation is 1/ deprecated 2/ invalid with non trivial slicing
         if let Some(k) = &builder.model.outlet_fact(e[0])?.konst {
