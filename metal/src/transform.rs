@@ -11,6 +11,7 @@ use std::borrow::Cow;
 use std::fmt::Debug;
 use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
+use tract_core::ops::array::MultiBroadcastTo;
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::einsum::{rewrite_einsums_as_matmul, BasicMatMul};
 use tract_core::ops::element_wise::ElementWiseOp;
@@ -165,7 +166,8 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             convert_bin_ops_to_metal(op).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<BasicMatMul>() {
             convert_matmul_to_metal(source, node, op)?.map(|o| -> Box<dyn TypedOp> { Box::new(o) })
-            //None
+        } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
+            Some(Box::new(ops::MetalMultiBroadcastTo::new(op.shape.clone())))
         } else if let Some(op) = node.op_as::<Const>() {
             ops::MetalConst::new(op.0.clone())?.map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<AxisOp>() {
@@ -195,14 +197,12 @@ fn convert_matmul_to_metal(
     node: &TypedNode,
     op: &BasicMatMul,
 ) -> Result<Option<ops::MetalGemm>> {
-    if !op.transpose_a
-        && !op.transpose_b
-        && !op.transpose_c
+    if !op.transpose_c
         && op.quantize_output.is_none()
         && (model.node_input_facts(node.id)?.iter().all(|f| f.datum_type == f32::datum_type())
             || model.node_input_facts(node.id)?.iter().all(|f| f.datum_type == f16::datum_type()))
     {
-        Ok(Some(ops::MetalGemm::default()))
+        Ok(Some(ops::MetalGemm { transpose_a: op.transpose_a, transpose_b: op.transpose_b }))
     } else {
         Ok(None)
     }

@@ -3,13 +3,16 @@ use crate::tensor::MetalTensorExt;
 use crate::{IntoMetal, MetalContext};
 use anyhow::{bail, ensure};
 use num_traits::Float;
-use tract_core::broadcast;
+use num_traits::One;
 use tract_core::internal::*;
 use tract_core::ndarray;
 use tract_core::ndarray::Dimension;
 
 #[derive(Debug, Default, Clone)]
-pub struct MetalGemm {}
+pub struct MetalGemm {
+    pub transpose_a: bool,
+    pub transpose_b: bool,
+}
 
 impl Op for MetalGemm {
     fn name(&self) -> Cow<str> {
@@ -20,27 +23,47 @@ impl Op for MetalGemm {
 }
 
 impl MetalGemm {
-    fn output_shape<D: DimLike>(&self, a: &[D], b: &[D]) -> TractResult<TVec<D>> {
-        ensure!(a.len() == b.len());
-        let a_rank = a.len();
-        let b_rank = b.len();
-        let m = a[a_rank - 2].clone();
-        let n = b[b_rank - 1].clone();
-        let mut c_shape = broadcast::multi_broadcast(&[&a[..a_rank - 2], &b[..b_rank - 2]])
-            .context("Unable to broadcast")?;
-        c_shape.push(m);
-        c_shape.push(n);
-        Ok(c_shape)
+    fn output_shape<D: DimLike + One>(&self, a: &[D], b: &[D]) -> TVec<D> {
+        let rank = a.len();
+        let mut output: TVec<D> = (0..rank - 2)
+            .map(|ix| if a[ix].is_one() { b[ix].clone() } else { a[ix].clone() })
+            .collect();
+        output.push(a[rank - 2 + self.transpose_a as usize].clone());
+        output.push(b[rank - 2 + !self.transpose_b as usize].clone());
+        output
     }
 
+    // fn output_shape<D: DimLike>(&self, a: &[D], b: &[D]) -> TractResult<TVec<D>> {
+    //     ensure!(a.len() == b.len());
+    //     let a_rank = a.len();
+    //     let b_rank = b.len();
+    //     let m = a[a_rank - 2].clone();
+    //     let n = b[b_rank - 1].clone();
+    //     let mut c_shape = broadcast::multi_broadcast(&[&a[..a_rank - 2], &b[..b_rank - 2]])
+    //         .context("Unable to broadcast")?;
+    //     c_shape.push(m);
+    //     c_shape.push(n);
+    //     Ok(c_shape)
+    // }
+
     fn resolve_output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        if inputs[0].datum_type == f16::datum_type() {
-            ensure!(inputs[1].datum_type == f16::datum_type());
-            Ok(tvec!(f16::fact(&self.output_shape(&inputs[0].shape, &inputs[1].shape)?)))
+        let [a, b] = inputs else {
+            bail!("Expects 2 inputs");
+        };
+        ensure!(a.rank() == b.rank());
+        ensure!(a.rank() >= 2);
+        ensure!(
+            a.shape[a.rank() - 2 + !self.transpose_a as usize]
+                == b.shape[b.rank() - 2 + self.transpose_b as usize]
+        );
+
+        if a.datum_type == f16::datum_type() {
+            ensure!(b.datum_type == f16::datum_type());
+            Ok(tvec!(f16::fact(&self.output_shape(&a.shape, &b.shape))))
         } else {
-            ensure!(inputs[0].datum_type == f32::datum_type());
-            ensure!(inputs[1].datum_type == f32::datum_type());
-            Ok(tvec!(f32::fact(&self.output_shape(&inputs[0].shape, &inputs[1].shape)?)))
+            ensure!(a.datum_type == f32::datum_type());
+            ensure!(b.datum_type == f32::datum_type());
+            Ok(tvec!(f32::fact(&self.output_shape(&a.shape, &b.shape))))
         }
     }
 
@@ -52,14 +75,22 @@ impl MetalGemm {
     ) -> TractResult<Tensor> {
         let a_ptr = a.as_ptr::<F>()?;
         let b_ptr = b.as_ptr::<F>()?;
-        let c_shape = self.output_shape(a.shape(), b.shape())?;
+        let c_shape = self.output_shape(a.shape(), b.shape());
         let rank = c_shape.len();
         let m = c_shape[rank - 2];
         let n = c_shape[rank - 1];
-        let k = a.shape()[rank - 1];
+        let k = a.shape()[a.rank() - 2 + !self.transpose_a as usize];
 
-        let a_mk_strides = natural_strides(&[1, m, k]);
-        let b_kn_strides = natural_strides(&[1, k, n]);
+        let a_strides = if self.transpose_a {
+            natural_strides(&[1, k, m])
+        } else {
+            natural_strides(&[1, m, k])
+        };
+        let b_strides = if self.transpose_b {
+            natural_strides(&[1, n, k])
+        } else {
+            natural_strides(&[1, k, n])
+        };
         unsafe {
             let mut c = Tensor::uninitialized::<F>(&c_shape)?;
             let c_ptr = c.as_ptr_mut::<F>()?;
@@ -83,66 +114,25 @@ impl MetalGemm {
                     context,
                     (1, m, n, k),
                     std::slice::from_raw_parts(a_ptr, m * k),
-                    &a_mk_strides,
+                    &a_strides,
+                    self.transpose_a,
                     std::slice::from_raw_parts(b_ptr, k * n),
-                    &b_kn_strides,
+                    &b_strides,
+                    self.transpose_b,
                     std::slice::from_raw_parts_mut(c_ptr, m * n),
-                )?;
+                )
+                .with_context(|| {
+                    anyhow!(
+                        "Error while performing MatMul (a: {:?}), (b: {:?}) = (c: {:?})",
+                        a.shape(),
+                        b.shape(),
+                        c_shape
+                    )
+                })?;
             }
 
             Ok(c)
         }
-    }
-
-    fn _eval<F: Datum + Float>(&self, a: TValue, b: TValue) -> TractResult<TVec<TValue>> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let a_ptr = a.as_ptr::<F>()?;
-                let b_ptr = b.as_ptr::<F>()?;
-                let c_shape = self.output_shape(a.shape(), b.shape())?;
-                let rank = c_shape.len();
-                let m = c_shape[rank - 2];
-                let n = c_shape[rank - 1];
-                let k = a.shape()[rank - 1];
-
-                let a_mk_strides = natural_strides(&[1, m, k]);
-                let b_kn_strides = natural_strides(&[1, k, n]);
-                unsafe {
-                    let mut c = Tensor::uninitialized::<F>(&c_shape)?;
-                    let c_ptr = c.as_ptr_mut::<F>()?;
-                    let silent_a_axis = c.rank() - a.rank();
-                    let silent_b_axis = c.rank() - b.rank();
-                    for prefix in ndarray::indices(&c_shape[0..rank - 2]) {
-                        let mut a_ptr = a_ptr;
-                        let mut b_ptr = b_ptr;
-                        let mut c_ptr = c_ptr;
-                        for (axis, x) in prefix.as_array_view().iter().enumerate() {
-                            if axis >= silent_a_axis && a.shape()[axis - silent_a_axis] != 1 {
-                                a_ptr =
-                                    a_ptr.offset(*x as isize * a.strides()[axis - silent_a_axis]);
-                            }
-                            if axis >= silent_b_axis && b.shape()[axis - silent_b_axis] != 1 {
-                                b_ptr =
-                                    b_ptr.offset(*x as isize * b.strides()[axis - silent_b_axis]);
-                            }
-                            c_ptr = c_ptr.offset(*x as isize * c.strides()[axis]);
-                        }
-
-                        mfa_gemm::mfa_gemm_with_slice(
-                            context,
-                            (1, m, n, k),
-                            std::slice::from_raw_parts(a_ptr, m * k),
-                            &a_mk_strides,
-                            std::slice::from_raw_parts(b_ptr, k * n),
-                            &b_kn_strides,
-                            std::slice::from_raw_parts_mut(c_ptr, m * n),
-                        )?;
-                    }
-
-                    Ok(tvec!(c.into_tvalue()))
-                }
-            })
-        })
     }
 }
 
@@ -209,7 +199,7 @@ impl TypedOp for MetalGemm {
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         crate::utils::metal_facts(inputs, |input_facts| {
             let fma = self
-                .output_shape(&input_facts[0].shape, &input_facts[1].shape)?
+                .output_shape(&input_facts[0].shape, &input_facts[1].shape)
                 .iter()
                 .product::<TDim>()
                 * input_facts[0].shape.last().unwrap();

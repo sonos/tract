@@ -41,7 +41,7 @@ impl Cast {
     pub fn kernel_name(&self, from_dt: DatumType, to_dt: DatumType) -> Result<String> {
         let from_tname = Self::tname(from_dt)?;
         let to_tname = Self::tname(to_dt)?;
-        Ok(format!("array_ops::broadcast_cast_{from_tname}_{to_tname}"))
+        Ok(format!("array_ops::cast_{from_tname}_{to_tname}"))
     }
 
     pub fn eval(

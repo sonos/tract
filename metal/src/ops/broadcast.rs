@@ -1,4 +1,9 @@
-use crate::internal::*;
+use crate::kernels;
+use crate::tensor::MetalTensorExt;
+use derive_new::new;
+use std::fmt::Debug;
+
+use tract_core::internal::*;
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct MetalMultiBroadcastTo {
@@ -23,26 +28,31 @@ impl EvalOp for MetalMultiBroadcastTo {
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-
         let shape = self.shape.eval_to_usize(&session.resolved_symbols)?;
         let input = args_1!(inputs);
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let input = input.into_tensor().into_metal()?;
-                Ok(tvec![kernels::MultiBroadcast
-                    .eval(context, &input, shape)?
-                    .to_cpu()
-                    .into_tvalue()])
+        if let Some(t) = input.as_metal_tensor() {
+            objc::rc::autoreleasepool(|| {
+                crate::METAL_CONTEXT.with_borrow(|context| {
+                    Ok(tvec![kernels::MultiBroadcast
+                        .dispatch_eval(context, t, &shape)?
+                        .into_opaque_tensor()
+                        .into_tvalue()])
+                })
             })
-        })
+        } else {
+            Ok(tvec!(input.broadcast_to_shape(&shape)?.into_tvalue()))
+        }
     }
 }
 
 impl TypedOp for MetalMultiBroadcastTo {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let mut fact = inputs[0].datum_type.fact(self.shape.clone());
-        fact.uniform.clone_from(&inputs[0].uniform);
-        Ok(tvec!(fact))
+        crate::utils::metal_output_facts(inputs, |facts| {
+            let mut fact = facts[0].datum_type.fact(self.shape.clone());
+            fact.uniform.clone_from(&inputs[0].uniform);
+            Ok(tvec!(fact))
+        })
+        .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
     }
 
     as_op!();
