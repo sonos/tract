@@ -48,6 +48,10 @@ tract-onnx = { optional = true, version = "=0.21.6-pre", path = "../onnx" }
 tract-tensorflow = { optional = true, version = "=0.21.6-pre", path = "../tensorflow" }
 tract-tflite = { optional = true, version = "=0.21.6-pre", path = "../tflite" }
 
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+tract-metal = { version = "=0.21.6-pre", path = "../metal" }
+
+
 [features]
 default = ["onnx", "tf", "pulse", "pulse-opl", "tflite", "extra"]
 apple-amx-ios = [ "tract-linalg/apple-amx-ios" ]

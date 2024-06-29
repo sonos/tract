@@ -416,7 +416,7 @@ impl Tensor {
         &self.shape
     }
 
-    /// Get the number of valeus in the tensor.
+    /// Get the number of values in the tensor.
     #[inline]
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
