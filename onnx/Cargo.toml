@@ -18,6 +18,9 @@ rust-version = "1.75"
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+aes-gcm = "0.9"
+hex = "0.4"
+generic-array = "0.14.6"
 bytes.workspace = true
 derive-new.workspace = true
 log.workspace = true
@@ -28,6 +31,7 @@ smallvec.workspace = true
 tract-nnef = { version = "=0.21.4-pre", path = "../nnef" }
 tract-hir = { version = "=0.21.4-pre", path = "../hir" }
 tract-onnx-opl = { version = "=0.21.4-pre", path = "../onnx-opl" }
+tract-core = { version = "=0.21.4-pre", path = "../core" }
 
 [dev-dependencies]
 env_logger.workspace = true

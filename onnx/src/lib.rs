@@ -36,7 +36,7 @@ use tract_hir::prelude::*;
 
 #[deprecated(note = "Please use onnx().model_for_path(..)")]
 pub fn for_path(p: impl AsRef<std::path::Path>) -> TractResult<InferenceModel> {
-    onnx().model_for_path(p)
+    onnx().model_for_path(p, None)
 }
 
 #[deprecated(note = "Please use onnx().model_for_read(..)")]

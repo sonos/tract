@@ -4,6 +4,14 @@ use std::fmt::Debug;
 use std::io::Read;
 use std::path::Path;
 
+#[repr(C)]
+pub struct EncryptionParameters {
+    pub key: *const u8,
+    pub iv: *const u8,
+    pub aad: *const u8,
+    pub tag: *const u8
+}
+
 /// A Framework that translate its model to tract core model.
 ///
 /// The ProtoModel is the parsed representation of the imported model. It does
@@ -24,12 +32,12 @@ where
     fn model_for_proto_model_with_symbols(&self, proto: &ProtoModel, symbols: &SymbolTable) -> TractResult<Model>;
 
     /// Read a proto model from a filename.
-    fn proto_model_for_path(&self, p: impl AsRef<Path>) -> TractResult<ProtoModel> {
+    fn proto_model_for_path(&self, p: impl AsRef<Path>, _params: Option<*const EncryptionParameters>) -> TractResult<ProtoModel> {
         let mut r = std::fs::File::open(p.as_ref())
             .with_context(|| format!("Could not open {:?}", p.as_ref()))?;
         self.proto_model_for_read(&mut r)
     }
-
+    
     /// Read a model from a reader
     fn model_for_read(&self, r: &mut dyn Read) -> TractResult<Model> {
         let proto_model = self.proto_model_for_read(r).context("Reading proto model")?;
@@ -37,7 +45,7 @@ where
     }
 
     /// Build a model from a filename.
-    fn model_for_path(&self, p: impl AsRef<Path>) -> TractResult<Model> {
+    fn model_for_path(&self, p: impl AsRef<Path>, _params: Option<*const EncryptionParameters>) -> TractResult<Model> {
         let mut r = std::fs::File::open(p.as_ref())
             .with_context(|| format!("Could not open {:?}", p.as_ref()))?;
         self.model_for_read(&mut r)

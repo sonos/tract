@@ -21,4 +21,12 @@ after_includes = """
       TRACT_DATUM_TYPE_COMPLEX_F32 = 84,
       TRACT_DATUM_TYPE_COMPLEX_F64 = 88,
     } DatumType;
+
+    typedef struct EncryptionParameters 
+    {
+      const uint8_t *key;
+      const uint8_t *iv;
+      const uint8_t *aad;
+      const uint8_t *tag;
+    } EncryptionParameters;
 """
