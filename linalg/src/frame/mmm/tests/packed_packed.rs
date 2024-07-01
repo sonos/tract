@@ -1,6 +1,6 @@
 use crate::frame::mmm::*;
 use crate::LADatum;
-use num_traits::{AsPrimitive, One, Zero};
+use num_traits::{AsPrimitive, Zero};
 use proptest::collection::vec;
 use proptest::prelude::*;
 use std::fmt;
@@ -91,8 +91,8 @@ macro_rules! mmm_packed_packed_tests {
 pub struct PackedPackedProblem<K, TA, TB, TC, TI>
 where
     K: MatMatMulKer<Acc = TI>,
-    TA: 'static + Debug + AsPrimitive<TI>,
-    TB: 'static + Debug + AsPrimitive<TI>,
+    TA: LADatum + AsPrimitive<TI>,
+    TB: LADatum + AsPrimitive<TI>,
     TC: LADatum + Copy + PartialEq + 'static + Debug,
     TI: LADatum + fmt::Display + AsPrimitive<TC>,
     usize: AsPrimitive<TA> + AsPrimitive<TB>,
@@ -110,8 +110,8 @@ where
 impl<K, TA, TB, TC, TI> Arbitrary for PackedPackedProblem<K, TA, TB, TC, TI>
 where
     K: MatMatMulKer<Acc = TI> + Default + Copy,
-    TA: 'static + Debug + AsPrimitive<TI>,
-    TB: 'static + Debug + AsPrimitive<TI>,
+    TA: LADatum + AsPrimitive<TI>,
+    TB: LADatum + AsPrimitive<TI>,
     TC: LADatum + Copy + PartialEq + 'static + Debug,
     TI: LADatum + fmt::Display + AsPrimitive<TC>,
     usize: AsPrimitive<TA> + AsPrimitive<TB>,
@@ -146,8 +146,8 @@ where
 impl<K, TA, TB, TC, TI> PackedPackedProblem<K, TA, TB, TC, TI>
 where
     K: MatMatMulKer<Acc = TI>,
-    TA: 'static + Debug + AsPrimitive<TI> + Datum,
-    TB: 'static + Debug + AsPrimitive<TI> + Datum,
+    TA: LADatum + AsPrimitive<TI>,
+    TB: LADatum + AsPrimitive<TI>,
     TC: LADatum + Copy + Zero + PartialEq + 'static + Debug,
     TI: LADatum + fmt::Display + AsPrimitive<TC>,
     usize: AsPrimitive<TA> + AsPrimitive<TB>,
@@ -173,9 +173,24 @@ where
     pub fn run(&self) -> TractResult<Vec<TC>> {
         let pack_a = self.ker.packings()[self.packing].0;
         let pack_b = self.ker.packings()[self.packing].1;
-        let a = tensor1(&self.a).into_shape(&[pack_a.r(), self.k])?;
+        assert!(pack_b.k_alignment() == 1);
+        let k_aligned = self.k.next_multiple_of(pack_a.k_alignment());
+
+        let mut a = Tensor::zero::<TA>(&[pack_a.r(), k_aligned])?;
+        for row in 0..pack_a.r() {
+            for col in 0..self.k {
+                a.to_array_view_mut()?[[row, col]] = self.a[col + self.k * row];
+            }
+        }
         let pa = pack_a.prepare_tensor(&a, 1, 0)?;
-        let b = tensor1(&self.b).into_shape(&[self.k, pack_b.r()])?;
+
+        let mut b = Tensor::zero::<TB>(&[k_aligned, pack_b.r()])?;
+        for row in 0..self.k {
+            for col in 0..pack_b.r() {
+                b.to_array_view_mut()?[[row, col]] = self.b[col + pack_b.r() * row];
+            }
+        }
+
         let pb = pack_b.prepare_tensor(&b, 0, 1)?;
 
         let mut v = vec![TC::zero(); self.ker.mr() * self.ker.nr()];
@@ -186,7 +201,7 @@ where
         };
 
         let mut non_linear_ops = tvec!(FusedKerSpec::AddMatMul {
-            k: self.k,
+            k: k_aligned,
             pa: pa.panel_bytes(0, None)?,
             pb: pb.panel_bytes(0, None)?,
             packing: self.packing,
@@ -206,8 +221,8 @@ where
 pub fn packed_packed<K, TA, TB, TC, TI>(ker: K, packing: usize, k: usize)
 where
     K: MatMatMulKer<Acc = TI>,
-    TA: Copy + One + Datum + AsPrimitive<TI>,
-    TB: Copy + One + Datum + AsPrimitive<TI>,
+    TA: LADatum + AsPrimitive<TI>,
+    TB: LADatum + AsPrimitive<TI>,
     TC: LADatum + Copy + PartialEq + Zero + 'static + Debug,
     TI: LADatum + AsPrimitive<TC>,
     usize: AsPrimitive<TC> + AsPrimitive<TA> + AsPrimitive<TB>,

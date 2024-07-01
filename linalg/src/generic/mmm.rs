@@ -71,6 +71,7 @@ unsafe fn add_mat_mul_pq40<const MR: usize, const NR: usize, TI>(
     f16: AsPrimitive<TI>,
     i8: AsPrimitive<TI>,
 {
+    assert!(k % Q4_0.block_len() == 0);
     let len = (k * MR) / Q4_0.block_len() * Q4_0.block_bytes();
     let mut pa = NibbleReader::for_slice(std::slice::from_raw_parts(pa, len));
     let b = pb as *const TI;
@@ -247,7 +248,7 @@ MMMKernelWrapper!(f32, generic_f32_4x4; kernel::<f32, 4, 4>; 4, 4; 4, 4; 0, 0; n
          const PQ40_F32: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&PQ40_A, &F32_B);
      },
  packings: PQ40_F32,
- test: mmm_packed_packed_tests!{ true, generic_f32_4x4, q40f32:1, i8, i8, f32, f32 }
+ test: mmm_packed_packed_tests!{ true, generic_f32_4x4, q40f32:1, f32, f32, f32, f32 }
 );
 MMMKernelWrapper!(f32, generic_f32_4x1; kernel::<f32, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true);
 MMMKernelWrapper!(f64, generic_f64_4x4; kernel::<f64, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true);

@@ -146,11 +146,24 @@ impl MMMInputFormat for PackedBlockQuantFormat {
 
     fn prepare_tensor(
         &self,
-        _t: &Tensor,
-        _k_axis: usize,
-        _mn_axis: usize,
+        t: &Tensor,
+        k_axis: usize,
+        mn_axis: usize,
     ) -> TractResult<Box<dyn crate::mmm::MMMInputValue>> {
-        todo!()
+        let k = t.shape()[k_axis];
+        assert!(k % self.bq.block_len() == 0);
+        let quant = if k_axis == 1 && mn_axis == 0 {
+            self.bq.quant_f32(t.as_slice::<f32>()?)?
+        } else if k_axis == 0 && mn_axis == 1 {
+            self.bq.quant_f32(t.clone().move_axis(1, 0)?.as_slice::<f32>()?)?
+        } else {
+            todo!()
+        };
+        Ok(Box::new(self.bq.pack(&quant, k, self.r)?))
+    }
+
+    fn k_alignment(&self) -> usize {
+        self.bq.block_len()
     }
 
     fn r(&self) -> usize {
