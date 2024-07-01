@@ -7,8 +7,8 @@ use proptest::strategy::{BoxedStrategy, Strategy};
 use tract_data::internal::*;
 use tract_linalg::frame::mmm::FusedSpec;
 // use tract_linalg::frame::mmm::{VirtualInput, VirtualInputSpec};
-use tract_linalg::frame::{Packer, PackingWriter};
-use tract_linalg::mmm::MMMInput;
+use tract_linalg::frame::{PackedFormat, PackingWriter};
+use tract_linalg::mmm::MMMInputValue;
 use DatumType::F32;
 
 proptest::proptest! {
@@ -154,16 +154,16 @@ impl ConvProblem {
         let (a_pack, b_pack) = mmm.packings()[0];
         let a = a_pack.prepare_tensor(&reshaped_filters, 0, 1)?;
         unsafe {
-            let im2col: Box<dyn MMMInput> = if self.lazy_im2col {
+            let im2col: Box<dyn MMMInputValue> = if self.lazy_im2col {
                 LazyIm2colSpec {
                     full_kernel_shape: self.filters.shape().into(),
-                    packer: b_pack.downcast_ref::<Packer>().unwrap().clone(),
+                    packer: b_pack.downcast_ref::<PackedFormat>().unwrap().clone(),
                 }
                 .wrap(&self.input.view())
             } else {
                 EagerIm2colSpec {
                     full_kernel_shape: self.filters.shape().into(),
-                    packer: b_pack.downcast_ref::<Packer>().unwrap().clone(),
+                    packer: b_pack.downcast_ref::<PackedFormat>().unwrap().clone(),
                 }
                 .wrap(&self.input.view())
             };
@@ -216,12 +216,12 @@ fn tensor(shape: Vec<usize>) -> Tensor {
 
 #[derive(Clone, Debug, Hash)]
 struct EagerIm2colSpec {
-    packer: Packer,
+    packer: PackedFormat,
     full_kernel_shape: TVec<usize>,
 }
 
 impl EagerIm2colSpec {
-    fn wrap(&self, input: &TensorView) -> Box<dyn MMMInput> {
+    fn wrap(&self, input: &TensorView) -> Box<dyn MMMInputValue> {
         let (_, k, n, h, w) = mknhw(&self.full_kernel_shape, input.shape());
         // let input = input.to_array_view::<f32>().unwrap();
         let ci = input.shape()[0];
@@ -239,7 +239,7 @@ impl EagerIm2colSpec {
 
 #[derive(Clone, Debug, Hash)]
 struct EagerIm2col {
-    packer: Packer,
+    packer: PackedFormat,
     im2col: Tensor,
     k: usize,
 }
@@ -250,7 +250,7 @@ impl Display for EagerIm2col {
     }
 }
 
-impl MMMInput for EagerIm2col {
+impl MMMInputValue for EagerIm2col {
     fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
         Some(
             Layout::from_size_align(
@@ -261,7 +261,7 @@ impl MMMInput for EagerIm2col {
         )
     }
 
-    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
+    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> TractResult<*const u8> {
         let buffer = buffer.unwrap();
         let mn = self.im2col.shape()[1];
         unsafe {
@@ -275,7 +275,7 @@ impl MMMInput for EagerIm2col {
                 (i * self.packer.r)..((i + 1) * self.packer.r),
             );
         }
-        buffer
+        Ok(buffer)
     }
 
     fn k(&self) -> usize {
@@ -293,12 +293,12 @@ impl MMMInput for EagerIm2col {
 
 #[derive(Clone, Debug, Hash)]
 struct LazyIm2colSpec {
-    packer: Packer,
+    packer: PackedFormat,
     full_kernel_shape: TVec<usize>,
 }
 
 impl LazyIm2colSpec {
-    fn wrap(&self, input: &TensorView) -> Box<dyn MMMInput> {
+    fn wrap(&self, input: &TensorView) -> Box<dyn MMMInputValue> {
         let (_, _, _, h, w) = mknhw(&self.full_kernel_shape, input.shape());
         let kh = self.full_kernel_shape[0];
         let kw = self.full_kernel_shape[1];
@@ -331,7 +331,7 @@ impl LazyIm2colSpec {
 
 #[derive(Clone, Debug, Hash)]
 struct LazyIm2col {
-    packer: Packer,
+    packer: PackedFormat,
     image: *const f32,
     n_offsets: Vec<isize>,
     k_offsets: Vec<isize>,
@@ -345,7 +345,7 @@ impl Display for LazyIm2col {
     }
 }
 
-impl MMMInput for LazyIm2col {
+impl MMMInputValue for LazyIm2col {
     fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
         Some(
             Layout::from_size_align(
@@ -356,7 +356,7 @@ impl MMMInput for LazyIm2col {
         )
     }
 
-    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
+    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> TractResult<*const u8> {
         let buffer = buffer.unwrap() as *mut f32;
         let mn_end = ((i + 1) * self.packer.r).min(self.n_offsets.len());
         let n_range = (i * self.packer.r)..mn_end;
@@ -373,7 +373,7 @@ impl MMMInput for LazyIm2col {
                 }
             }
         }
-        buffer as _
+        Ok(buffer as _)
     }
 
     fn k(&self) -> usize {

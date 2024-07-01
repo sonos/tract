@@ -12,7 +12,7 @@ macro_rules! MMMExternKernel {
                 use crate::frame::mmm::*;
                 extern_kernel!(fn $func(op: *const FusedKerSpec<$ti>) -> isize);
             }
-            MMMKernelWrapper!($ti, $func; [<sys_ $func>]::$func; $mr, $nr; $alignment_bytes_packed_a, $alignment_bytes_packed_b; $end_padding_packed_a, $end_padding_packed_b; $prefetch, $cond 
+            MMMKernelWrapper!($ti, $func; [<sys_ $func>]::$func; $mr, $nr; $alignment_bytes_packed_a, $alignment_bytes_packed_b; $end_padding_packed_a, $end_padding_packed_b; $prefetch, $cond
                 $(, can_fuse: $can_fuse )?
                 $(, packing_defs: { $($packing_def)* } )?
                 $(, packings: $($packing)* )?
@@ -47,12 +47,12 @@ macro_rules! MMMKernelWrapper {
             }
 
             mod [<packing_ $id>] {
-                use $crate::frame::mmm::pack::Packer;
+                use $crate::frame::mmm::pack::PackedFormat;
                 use $crate::frame::mmm::MMMInputFormat;
                 use tract_data::prelude::*;
 
-                const NATIVE_A: Packer = Packer::new(DatumType::[<$ti:upper>], $mr, $alignment_bytes_packed_a, $end_padding_packed_a);
-                const NATIVE_B: Packer = Packer::new(DatumType::[<$ti:upper>], $nr, $alignment_bytes_packed_b, $end_padding_packed_b);
+                const NATIVE_A: PackedFormat = PackedFormat::new(DatumType::[<$ti:upper>], $mr, $alignment_bytes_packed_a, $end_padding_packed_a);
+                const NATIVE_B: PackedFormat = PackedFormat::new(DatumType::[<$ti:upper>], $nr, $alignment_bytes_packed_b, $end_padding_packed_b);
                 const NATIVE: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&NATIVE_A, &NATIVE_B);
                 $($($packing_def)*)?
                 pub const PACKINGS: &[(&dyn MMMInputFormat, &dyn MMMInputFormat)] = &[NATIVE $( $(, $packing)* )?];

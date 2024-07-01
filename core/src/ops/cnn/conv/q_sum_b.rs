@@ -1,5 +1,5 @@
 use crate::internal::*;
-use tract_linalg::mmm::MMMInput;
+use tract_linalg::mmm::MMMInputValue;
 use tract_ndarray::prelude::*;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -61,7 +61,7 @@ impl QSumB {
                 let mut output_view = output_view.index_axis_mut(Axis(0), g);
                 let output_slice = output_view.as_slice_mut().unwrap();
                 let payload = payloads[[b, g]]
-                    .downcast_ref::<Box<dyn MMMInput>>()
+                    .downcast_ref::<Box<dyn MMMInputValue>>()
                     .context("Expected MMMInputs")?;
                 match self.dt.unquantized() {
                     DatumType::I8 => self.eval_t::<i8>(&**payload, output_slice)?,
@@ -75,13 +75,13 @@ impl QSumB {
 
     fn eval_t<T: Datum + tract_num_traits::AsPrimitive<i32>>(
         &self,
-        input: &dyn MMMInput,
+        input: &dyn MMMInputValue,
         output: &mut [i32],
     ) -> TractResult<()> {
         let (r, k, n) = (input.r(), input.k(), input.mn());
         let panels = n.divceil(r);
         for ipanel in 0..panels {
-            let panel = input.panel_bytes(ipanel, None);
+            let panel = input.panel_bytes(ipanel, None)?;
             let panel: &[T] = unsafe { std::slice::from_raw_parts(panel as *const T, r * k) };
             let mut vec = vec![0i32; r];
             for ik in 0..k {

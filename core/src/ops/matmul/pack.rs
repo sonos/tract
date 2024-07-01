@@ -1,12 +1,15 @@
 use crate::axes::Axis;
 use crate::internal::*;
 use ndarray::*;
+use tract_linalg::frame::block_quant::RepackingPackedBlockQuantValue;
+use tract_linalg::frame::PackedFormat;
+use tract_linalg::mmm::MMMInputValue;
 
-use tract_linalg::frame::Packer;
+use super::de_block_quant::DeBlockQuant;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MatMatMulPack {
-    pub(crate) packer: Packer,
+    pub(crate) packer: PackedFormat,
     pub(crate) k_axis: usize,
     pub(crate) mn_axis: usize,
 }
@@ -56,6 +59,10 @@ impl TypedOp for MatMatMulPack {
         AxesMapping::new(1, 1, axes)
     }
 
+    fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        self.fuse_dequant_block(model, node)
+    }
+
     as_op!();
 }
 
@@ -97,6 +104,27 @@ impl MatMatMulPack {
             };
             Ok(tvec!(stores.into_tvalue()))
         }
+    }
+
+    fn fuse_dequant_block(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let Some(prec) = model.single_prec(node.id)? else { return Ok(None) };
+        let Some(deq) = prec.op_as::<DeBlockQuant>() else { return Ok(None) };
+        let Some(weights) = model.outlet_fact(prec.inputs[0])?.konst.as_ref() else {
+            return Ok(None);
+        };
+        let k = deq.fact.shape[self.k_axis].to_usize().unwrap();
+        let value = deq.bq.pack(weights.to_scalar::<Blob>()?, k, self.packer.r)?;
+        let mmm_input: Box<dyn MMMInputValue> =
+            Box::new(RepackingPackedBlockQuantValue { value, pack: self.packer.clone() });
+        let packed = tensor0(Opaque::from(mmm_input)).into_arc_tensor();
+        let mut patch = TypedModelPatch::default();
+        let wire = patch.add_const(&node.name, packed)?;
+        patch.shunt_outside(model, node.id.into(), wire)?;
+        Ok(Some(patch))
     }
 
     pub fn output_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {

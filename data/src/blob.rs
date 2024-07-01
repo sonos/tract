@@ -73,7 +73,7 @@ impl Blob {
         let mut data = null_mut();
         if layout.size() > 0 {
             data = unsafe { alloc(layout) };
-            assert!(!data.is_null());
+            assert!(!data.is_null(), "failed to allocate {layout:?}");
         }
         Blob { layout, data }
     }
@@ -139,10 +139,14 @@ impl std::fmt::Display for Blob {
         assert!(self.data.is_null() == self.layout.size().is_zero());
         write!(
             fmt,
-            "Blob of {} bytes (align @{}): {}",
+            "Blob of {} bytes (align @{}): {} {}",
             self.len(),
             self.layout.align(),
-            String::from_utf8_lossy(self)
+            String::from_utf8(
+                self.iter().take(20).copied().flat_map(std::ascii::escape_default).collect::<Vec<u8>>()
+            )
+            .unwrap(),
+            if self.len() >= 20 { "[...]" } else { "" }
         )
     }
 }

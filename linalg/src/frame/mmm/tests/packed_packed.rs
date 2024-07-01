@@ -1,5 +1,5 @@
 use crate::frame::mmm::*;
-use crate::frame::Packer;
+use crate::frame::PackedFormat;
 use crate::LADatum;
 use num_traits::{AsPrimitive, One, Zero};
 use proptest::collection::vec;
@@ -174,8 +174,8 @@ where
     pub fn run(&self) -> Vec<TC> {
         unsafe {
             let packing = 0;
-            let pack_a = self.ker.packings()[packing].0.downcast_ref::<Packer>().unwrap();
-            let pack_b = self.ker.packings()[packing].1.downcast_ref::<Packer>().unwrap();
+            let pack_a = self.ker.packings()[packing].0.downcast_ref::<PackedFormat>().unwrap();
+            let pack_b = self.ker.packings()[packing].1.downcast_ref::<PackedFormat>().unwrap();
             let a = self
                 .a
                 .iter()

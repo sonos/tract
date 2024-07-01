@@ -1,7 +1,7 @@
 use crate::LADatum;
 use num_traits::AsPrimitive;
 use crate::frame::mmm::*;
-use crate::frame::mmm::pack::Packer;
+use crate::frame::mmm::pack::PackedFormat;
 use proptest::prelude::*;
 use std::ops::Neg;
 use tract_data::internal::*;
@@ -223,8 +223,8 @@ pub fn strat_mat_mat_mul(
     ker: &dyn MatMatMul,
     packing: usize,
 ) -> BoxedStrategy<(usize, usize, usize, Tensor, Tensor)> {
-    let dta = ker.packings()[packing].0.downcast_ref::<Packer>().unwrap().dt;
-    let dtb = ker.packings()[packing].1.downcast_ref::<Packer>().unwrap().dt;
+    let dta = ker.packings()[packing].0.downcast_ref::<PackedFormat>().unwrap().dt;
+    let dtb = ker.packings()[packing].1.downcast_ref::<PackedFormat>().unwrap().dt;
     (1usize..5, 1usize..5, 1usize..5)
         .prop_flat_map(move |(m, k, n)| {
             (Just(m), Just(k), Just(n), tensor(dta, vec![m, k]), tensor(dtb, vec![k, n]))
@@ -236,8 +236,8 @@ pub fn strat_mat_vec_mul(
     ker: &dyn MatMatMul,
     packing: usize,
 ) -> BoxedStrategy<(usize, usize, Tensor, Tensor)> {
-    let dta = ker.packings()[packing].0.downcast_ref::<Packer>().unwrap().dt;
-    let dtb = ker.packings()[packing].1.downcast_ref::<Packer>().unwrap().dt;
+    let dta = ker.packings()[packing].0.downcast_ref::<PackedFormat>().unwrap().dt;
+    let dtb = ker.packings()[packing].1.downcast_ref::<PackedFormat>().unwrap().dt;
     (1usize..15, 1usize..15)
         .prop_flat_map(move |(m, k)| {
             (Just(m), Just(k), tensor(dta, vec![m, k]), tensor(dtb, vec![k, 1]))

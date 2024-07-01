@@ -268,12 +268,12 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                         (tls.blob.as_mut_ptr().add(*loc) as *mut AddMatMulTemp).as_mut().unwrap();
                     if scratch.panel_a_id != down {
                         scratch.ptr_a =
-                            a.panel_bytes(down, buffer_a.map(|o| tls.blob.as_mut_ptr().add(o)));
+                            a.panel_bytes(down, buffer_a.map(|o| tls.blob.as_mut_ptr().add(o)))?;
                         scratch.panel_a_id = down;
                     }
                     if scratch.panel_b_id != right {
                         scratch.ptr_b =
-                            b.panel_bytes(right, buffer_b.map(|o| tls.blob.as_mut_ptr().add(o)));
+                            b.panel_bytes(right, buffer_b.map(|o| tls.blob.as_mut_ptr().add(o)))?;
                         scratch.panel_b_id = right;
                     }
                     FKS::AddMatMul {
@@ -442,12 +442,12 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     let scratch = (loc as *mut AddMatMulTemp).as_mut().unwrap();
                     if scratch.panel_a_id != down {
                         scratch.ptr_a =
-                            a.panel_bytes(down, buffer_a.map(|o| tls.blob.as_mut_ptr().add(o)));
+                            a.panel_bytes(down, buffer_a.map(|o| tls.blob.as_mut_ptr().add(o)))?;
                         scratch.panel_a_id = down;
                     }
                     if scratch.panel_b_id != right {
                         scratch.ptr_b =
-                            b.panel_bytes(right, buffer_b.map(|o| tls.blob.as_mut_ptr().add(o)));
+                            b.panel_bytes(right, buffer_b.map(|o| tls.blob.as_mut_ptr().add(o)))?;
                         scratch.panel_b_id = right;
                     }
                     FKS::AddMatMul {

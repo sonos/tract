@@ -11,7 +11,7 @@ pub mod as_blas;
 use super::array::TypedConcat;
 use super::math::add;
 mod as_matmul;
-mod codegen;
+pub mod codegen;
 
 #[cfg(test)]
 mod proptest;

@@ -1,24 +1,24 @@
 use std::alloc::Layout;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 use std::ops::Range;
 use tract_data::internal::*;
 
-use crate::mmm::{EagerPackedInput, MMMInput};
+use crate::mmm::{EagerPackedInput, MMMInputValue};
 
 use super::MMMInputFormat;
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Packer {
+#[derive(Clone, Eq, PartialEq, Hash)]
+pub struct PackedFormat {
     pub dt: DatumType,
     pub r: usize,
     pub alignment: usize,
     pub end_padding_record: usize,
 }
 
-impl MMMInputFormat for Packer {
+impl MMMInputFormat for PackedFormat {
     fn can_prepare_types(&self) -> Vec<DatumType> {
-        vec!(self.dt)
+        vec![self.dt]
     }
 
     fn prepare_tensor(
@@ -26,14 +26,35 @@ impl MMMInputFormat for Packer {
         t: &Tensor,
         k_axis: usize,
         mn_axis: usize,
-    ) -> TractResult<Box<dyn MMMInput>> {
-        Packer::pack_tensor(self, t, k_axis, mn_axis)
+    ) -> TractResult<Box<dyn MMMInputValue>> {
+        PackedFormat::pack_tensor(self, t, k_axis, mn_axis)
+    }
+
+    fn r(&self) -> usize {
+        self.r
     }
 }
 
-impl Packer {
-    pub const fn new(dt: DatumType, nr: usize, alignment: usize, end_padding_record: usize) -> Packer {
-        Packer { dt, r: nr, alignment, end_padding_record }
+impl Display for PackedFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Packed(dt={:?} r={})", self.dt, self.r)
+    }
+}
+
+impl Debug for PackedFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        <Self as Display>::fmt(self, f)
+    }
+}
+
+impl PackedFormat {
+    pub const fn new(
+        dt: DatumType,
+        nr: usize,
+        alignment: usize,
+        end_padding_record: usize,
+    ) -> PackedFormat {
+        PackedFormat { dt, r: nr, alignment, end_padding_record }
     }
 
     #[inline]
@@ -67,7 +88,8 @@ impl Packer {
         t: &Tensor,
         k_axis: usize,
         mn_axis: usize,
-    ) -> TractResult<Box<dyn MMMInput>> {
+    ) -> TractResult<Box<dyn MMMInputValue>> {
+        ensure!(t.datum_type().is_copy());
         ensure!(t.datum_type().unquantized() == self.dt.unquantized());
         let k = t.shape()[k_axis];
         let mn = t.shape()[mn_axis];
@@ -77,10 +99,13 @@ impl Packer {
         let strides = t.strides();
         unsafe {
             let mut packed =
-                Tensor::uninitialized_aligned_dt(t.datum_type(), &[packed_len], self.alignment())?;
+                Blob::new_for_size_and_align(t.datum_type().size_of() * packed_len, self.alignment);
+            if cfg!(debug_assertions) {
+                packed.as_bytes_mut().fill(0u8);
+            }
             dispatch_copy!(Self::pack_t(t.datum_type())(
                 self,
-                packed.as_ptr_mut_unchecked(),
+                packed.as_mut_ptr() as _,
                 t.as_ptr_unchecked(),
                 mn,
                 strides[k_axis],
@@ -88,7 +113,13 @@ impl Packer {
                 0..k,
                 0..mn
             ));
-            Ok(Box::new(EagerPackedInput { packed, panel_bytes, mn, k, r: self.r }))
+            Ok(Box::new(EagerPackedInput {
+                format: Box::new(self.clone()),
+                packed,
+                panel_bytes,
+                mn,
+                k,
+            }))
         }
     }
 
@@ -97,7 +128,7 @@ impl Packer {
         t: &TensorView,
         k_axis: usize,
         mn_axis: usize,
-    ) -> TractResult<Box<dyn MMMInput>> {
+    ) -> TractResult<Box<dyn MMMInputValue>> {
         ensure!(t.datum_type().unquantized() == self.dt.unquantized());
         let k = t.shape()[k_axis];
         let mn = t.shape()[mn_axis];
@@ -107,10 +138,13 @@ impl Packer {
         let strides = t.strides();
         unsafe {
             let mut packed =
-                Tensor::uninitialized_aligned_dt(t.datum_type(), &[packed_len], self.alignment())?;
+                Blob::new_for_size_and_align(t.datum_type().size_of() * packed_len, self.alignment);
+            if cfg!(debug_assertions) {
+                packed.as_bytes_mut().fill(0u8);
+            }
             dispatch_copy!(Self::pack_t(t.datum_type())(
                 self,
-                packed.as_ptr_mut_unchecked(),
+                packed.as_mut_ptr() as _,
                 t.as_ptr_unchecked(),
                 mn,
                 strides[k_axis],
@@ -118,7 +152,13 @@ impl Packer {
                 0..k,
                 0..mn
             ));
-            Ok(Box::new(EagerPackedInput { packed, panel_bytes, mn, k, r: self.r }))
+            Ok(Box::new(EagerPackedInput {
+                format: Box::new(self.clone()),
+                packed,
+                panel_bytes,
+                mn,
+                k,
+            }))
         }
     }
 
@@ -493,7 +533,7 @@ mod test {
 
         fn packer(&self) -> Array2<u32> {
             let panels = self.mn_range.len().divceil(self.r);
-            let packer = super::Packer::new(u32::datum_type(), self.r, self.align_panel, 0);
+            let packer = super::PackedFormat::new(u32::datum_type(), self.r, self.align_panel, 0);
             let input = self.input().into_tensor();
             let panel_len = packer.single_panel_len(self.k_range.len());
             let mut output =

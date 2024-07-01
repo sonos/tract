@@ -17,8 +17,8 @@ MMMExternKernel!(f32, armv7neon_mmm_f32_32x1_generic; 32, 1; 4, 4; 0, 0; prefetc
 
 MMMExternKernel!(i32, armv7neon_mmm_i32_8x4; 8, 4; 32, 4; 0, 0; prefetch, crate::arm32::has_neon(),
      packing_defs: {
-         const I8_A: Packer = Packer::new(DatumType::I8, 8, 32, 0);
-         const I8_B: Packer = Packer::new(DatumType::I8, 4, 4, 0);
+         const I8_A: PackedFormat = PackedFormat::new(DatumType::I8, 8, 32, 0);
+         const I8_B: PackedFormat = PackedFormat::new(DatumType::I8, 4, 4, 0);
          const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
      },
      packings: I8_I8,
@@ -27,8 +27,8 @@ MMMExternKernel!(i32, armv7neon_mmm_i32_8x4; 8, 4; 32, 4; 0, 0; prefetch, crate:
 
 MMMExternKernel!(i32, armv7neon_mmm_i32_32x1; 32,1 ; 32, 4; 0, 0; prefetch, crate::arm32::has_neon(),
      packing_defs: {
-         const I8_A: Packer = Packer::new(DatumType::I8, 32, 32, 0);
-         const I8_B: Packer = Packer::new(DatumType::I8, 1, 4, 0);
+         const I8_A: PackedFormat = PackedFormat::new(DatumType::I8, 32, 32, 0);
+         const I8_B: PackedFormat = PackedFormat::new(DatumType::I8, 1, 4, 0);
          const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
      },
      packings: I8_I8,

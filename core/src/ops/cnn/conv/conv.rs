@@ -28,7 +28,7 @@ use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
 use crate::ops::matmul::lir_unary::{LirMatMulUnary, ProtoFusedSpec};
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
 
-use tract_linalg::frame::Packer;
+use tract_linalg::frame::PackedFormat;
 use tract_linalg::mmm::MatMatMul;
 
 #[derive(Debug, Clone, new, Hash)]
@@ -74,7 +74,7 @@ impl Conv {
         &self,
         model: &mut TypedModel,
         name: &str,
-        packer: Packer,
+        packer: PackedFormat,
         kernel: OutletId,
     ) -> TractResult<OutletId> {
         Ok(model.wire_node(
@@ -177,7 +177,7 @@ impl Conv {
             &sum_ker_n_g_c,
         )?;
 
-        ensure!(mmm.packings()[packing].1.downcast_ref::<Packer>().is_some());
+        ensure!(mmm.packings()[packing].1.downcast_ref::<PackedFormat>().is_some());
         let mut sum_x = model.wire_node(
             format!("{name}.sum_x"),
             super::QSumB { dt: b_fact.datum_type, n, r: mmm.nr(), k },
@@ -405,7 +405,7 @@ impl Conv {
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo.output_shape)?;
         let packer = mmm.packings()[packing]
             .1
-            .downcast_ref::<Packer>()
+            .downcast_ref::<PackedFormat>()
             .with_context(|| {
                 format_err!(
                     "Quand Im2Col expects regular packed format, got {:?}",
@@ -486,7 +486,7 @@ impl Conv {
         ensure!(model.outlet_fact(bias)?.datum_type == mmm.internal_type());
         let a_pack = mmm.packings()[packing]
             .0
-            .downcast_ref::<Packer>()
+            .downcast_ref::<PackedFormat>()
             .context("Conv expects wights in regular packed format")?
             .clone();
         let packed_ker = self

@@ -343,10 +343,10 @@ impl DatumType {
 
     #[inline]
     pub fn alignment(&self) -> usize {
-        match self {
-            DatumType::TDim => std::mem::size_of::<usize>(),
-            DatumType::String => std::mem::size_of::<usize>(),
-            _ => self.size_of(),
+        if self.is_copy() {
+            self.size_of()
+        } else {
+            std::mem::size_of::<usize>()
         }
     }
 
