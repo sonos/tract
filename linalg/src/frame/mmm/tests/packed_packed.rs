@@ -62,8 +62,7 @@ macro_rules! mmm_packed_packed_tests {
                         vec![<$ta>::zero(); 0],
                         vec![<$tb>::zero(); 0],
                         false,
-                        false,
-                    );
+                        );
                     assert_eq!(pb.run().unwrap(), pb.reference())
                 }
             }
@@ -78,8 +77,7 @@ macro_rules! mmm_packed_packed_tests {
                         vec![<$ta>::zero(); $ker.mr()],
                         vec![<$tb>::zero(); $ker.nr()],
                         true,
-                        true,
-                    );
+                        );
                     assert_eq!(pb.run().unwrap(), pb.reference())
                 }
             }
@@ -103,7 +101,6 @@ where
     pub a: Vec<TA>,
     pub b: Vec<TB>,
     pub trans_c: bool,
-    pub add_one: bool,
     pub _phantom: PhantomData<(K, TC, TI)>,
 }
 
@@ -127,16 +124,15 @@ where
                 let n = k * ker.nr();
                 let a = (0usize..10).prop_map(|x| x.as_());
                 let b = (0usize..10).prop_map(|x| x.as_());
-                (Just(k), Just(trans_c), Just(add_one), vec(a, m..=m), vec(b, n..=n))
+                (Just(k), Just(trans_c), vec(a, m..=m), vec(b, n..=n))
             })
-            .prop_map(move |(k, trans_c, add_one, a, b)| Self {
+            .prop_map(move |(k, trans_c, a, b)| Self {
                 ker,
                 packing,
                 k,
                 a,
                 b,
                 trans_c,
-                add_one,
                 _phantom: PhantomData,
             })
             .boxed()
@@ -153,10 +149,9 @@ where
     usize: AsPrimitive<TA> + AsPrimitive<TB>,
 {
     pub fn reference(&self) -> Vec<TC> {
-        let init = if self.add_one { TI::one() } else { TI::zero() };
         let mr = self.ker.mr();
         let nr = self.ker.nr();
-        let mut vi = vec![init; mr * nr];
+        let mut vi = vec![TI::zero(); mr * nr];
         for m in 0..mr {
             for n in 0..nr {
                 for k in 0..self.k {
@@ -200,18 +195,17 @@ where
             mmm_stride_storage(&mut v, self.ker.nr(), 1)
         };
 
-        let mut non_linear_ops = tvec!(FusedKerSpec::AddMatMul {
-            k: k_aligned,
-            pa: pa.panel_bytes(0, None)?,
-            pb: pb.panel_bytes(0, None)?,
-            packing: self.packing,
-        });
-        if self.add_one {
-            non_linear_ops.push(FusedKerSpec::ScalarAdd(TI::one()));
-        }
-        non_linear_ops.push(FusedKerSpec::Store(c));
-        non_linear_ops.push(FusedKerSpec::Done);
-        non_linear_ops.insert(0, FusedKerSpec::Clear);
+        let non_linear_ops = tvec!(
+            FusedKerSpec::Clear,
+            FusedKerSpec::AddMatMul {
+                k: k_aligned,
+                pa: pa.panel_bytes(0, None)?,
+                pb: pb.panel_bytes(0, None)?,
+                packing: self.packing
+            },
+            FusedKerSpec::Store(c),
+            FusedKerSpec::Done
+        );
         let err = self.ker.kernel(&non_linear_ops);
         assert_eq!(err, 0);
         Ok(v)
@@ -229,7 +223,7 @@ where
 {
     let a = vec![TA::one(); ker.mr() * k];
     let b = vec![TB::one(); ker.nr() * k];
-    let pb = PackedPackedProblem::<K, TA, TB, TC, TI>::new(ker, packing, k, a, b, false, false);
+    let pb = PackedPackedProblem::<K, TA, TB, TC, TI>::new(ker, packing, k, a, b, false);
     assert_eq!(pb.run().unwrap(), pb.reference())
 }
 
