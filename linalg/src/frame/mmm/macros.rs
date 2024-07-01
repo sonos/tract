@@ -37,12 +37,18 @@ macro_rules! MMMKernelWrapper {
 
         paste! {
             #[allow(non_camel_case_types)]
-            #[derive(Copy, Clone, Debug, new, Default)]
+            #[derive(Copy, Clone, new, Default)]
             pub struct [<$id:camel>];
 
             impl [<$id:camel>] {
                 pub fn mmm(&self) -> Box<dyn $crate::frame::mmm::MatMatMul> {
                     Box::new(Self)
+                }
+            }
+
+            impl std::fmt::Debug for [<$id:camel>] {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    write!(f, stringify!($id))
                 }
             }
 
