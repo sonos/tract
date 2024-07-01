@@ -187,6 +187,9 @@ impl PackedFormat {
         k_range: Range<usize>,
         mn_range: Range<usize>,
         ) {
+        if k_range.len() == 0 || mn_range.len() == 0 {
+            return
+        }
         if self.r == 1 && k_stride == 1 && mn == 1 {
             pb.copy_from_nonoverlapping(b.add(k_range.start), k_range.len())
         } else if mn_stride == 1 {

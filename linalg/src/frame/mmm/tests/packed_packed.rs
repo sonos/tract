@@ -1,5 +1,4 @@
 use crate::frame::mmm::*;
-use crate::frame::PackedFormat;
 use crate::LADatum;
 use num_traits::{AsPrimitive, One, Zero};
 use proptest::collection::vec;
@@ -27,7 +26,7 @@ macro_rules! mmm_packed_packed_tests {
                 #[test]
                 fn packed_packed_prop(pb in any_with::<PackedPackedProblem<_, $ta, $tb, $tc, $ti>>(($ker, $packing))) {
                     if $cond {
-                        prop_assert_eq!(pb.run(), pb.reference())
+                        prop_assert_eq!(pb.run().unwrap(), pb.reference())
                     }
                 }
             }
@@ -65,7 +64,7 @@ macro_rules! mmm_packed_packed_tests {
                         false,
                         false,
                     );
-                    assert_eq!(pb.run(), pb.reference())
+                    assert_eq!(pb.run().unwrap(), pb.reference())
                 }
             }
 
@@ -81,7 +80,7 @@ macro_rules! mmm_packed_packed_tests {
                         true,
                         true,
                     );
-                    assert_eq!(pb.run(), pb.reference())
+                    assert_eq!(pb.run().unwrap(), pb.reference())
                 }
             }
         }
@@ -161,7 +160,7 @@ where
         for m in 0..mr {
             for n in 0..nr {
                 for k in 0..self.k {
-                    let a: TI = self.a[m + mr * k].as_();
+                    let a: TI = self.a[k + self.k * m].as_();
                     let b: TI = self.b[n + nr * k].as_();
                     let offset = if self.trans_c { m + n * mr } else { n + m * nr };
                     vi[offset] += a * b;
@@ -171,49 +170,36 @@ where
         vi.into_iter().map(|ti| ti.as_()).collect()
     }
 
-    pub fn run(&self) -> Vec<TC> {
-        unsafe {
-            let packing = 0;
-            let pack_a = self.ker.packings()[packing].0.downcast_ref::<PackedFormat>().unwrap();
-            let pack_b = self.ker.packings()[packing].1.downcast_ref::<PackedFormat>().unwrap();
-            let a = self
-                .a
-                .iter()
-                .cloned()
-                .chain(vec![0.as_(); pack_a.end_padding_record * self.ker.mr()])
-                .collect::<Vec<_>>();
-            let pa = Tensor::from_slice_align(&a, pack_a.alignment).unwrap();
-            let b = self
-                .b
-                .iter()
-                .cloned()
-                .chain(vec![0.as_(); pack_b.end_padding_record * self.ker.nr()])
-                .collect::<Vec<_>>();
-            let pb = Tensor::from_slice_align(&b, pack_b.alignment).unwrap();
-            let mut v = vec![TC::zero(); self.ker.mr() * self.ker.nr()];
-            let c = if self.trans_c {
-                mmm_stride_storage(&mut v, 1, self.ker.mr())
-            } else {
-                mmm_stride_storage(&mut v, self.ker.nr(), 1)
-            };
-            let b_store = pb.as_ptr_unchecked::<TB>() as _;
+    pub fn run(&self) -> TractResult<Vec<TC>> {
+        let pack_a = self.ker.packings()[self.packing].0;
+        let pack_b = self.ker.packings()[self.packing].1;
+        let a = tensor1(&self.a).into_shape(&[pack_a.r(), self.k])?;
+        let pa = pack_a.prepare_tensor(&a, 1, 0)?;
+        let b = tensor1(&self.b).into_shape(&[self.k, pack_b.r()])?;
+        let pb = pack_b.prepare_tensor(&b, 0, 1)?;
 
-            let mut non_linear_ops = tvec!(FusedKerSpec::AddMatMul {
-                k: self.k,
-                pa: pa.as_ptr_unchecked::<u8>() as _,
-                pb: b_store,
-                packing: self.packing,
-            });
-            if self.add_one {
-                non_linear_ops.push(FusedKerSpec::ScalarAdd(TI::one()));
-            }
-            non_linear_ops.push(FusedKerSpec::Store(c));
-            non_linear_ops.push(FusedKerSpec::Done);
-            non_linear_ops.insert(0, FusedKerSpec::Clear);
-            let err = self.ker.kernel(&non_linear_ops);
-            assert_eq!(err, 0);
-            v
+        let mut v = vec![TC::zero(); self.ker.mr() * self.ker.nr()];
+        let c = if self.trans_c {
+            mmm_stride_storage(&mut v, 1, self.ker.mr())
+        } else {
+            mmm_stride_storage(&mut v, self.ker.nr(), 1)
+        };
+
+        let mut non_linear_ops = tvec!(FusedKerSpec::AddMatMul {
+            k: self.k,
+            pa: pa.panel_bytes(0, None)?,
+            pb: pb.panel_bytes(0, None)?,
+            packing: self.packing,
+        });
+        if self.add_one {
+            non_linear_ops.push(FusedKerSpec::ScalarAdd(TI::one()));
         }
+        non_linear_ops.push(FusedKerSpec::Store(c));
+        non_linear_ops.push(FusedKerSpec::Done);
+        non_linear_ops.insert(0, FusedKerSpec::Clear);
+        let err = self.ker.kernel(&non_linear_ops);
+        assert_eq!(err, 0);
+        Ok(v)
     }
 }
 
@@ -229,7 +215,7 @@ where
     let a = vec![TA::one(); ker.mr() * k];
     let b = vec![TB::one(); ker.nr() * k];
     let pb = PackedPackedProblem::<K, TA, TB, TC, TI>::new(ker, packing, k, a, b, false, false);
-    assert_eq!(pb.run(), pb.reference())
+    assert_eq!(pb.run().unwrap(), pb.reference())
 }
 
 pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize, csc: usize) -> OutputStoreKer {
