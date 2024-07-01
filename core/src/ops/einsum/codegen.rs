@@ -1,8 +1,11 @@
+use tract_linalg::frame::block_quant::PackedBlockQuantFormat;
 use tract_linalg::frame::PackedFormat;
+use tract_linalg::mmm::MatMatMul;
 
 use super::*;
 use crate::ops::cast::cast;
 use crate::ops::math::add;
+use crate::ops::matmul::de_block_quant::DeBlockQuant;
 use crate::ops::matmul::lir_unary::{
     AddMatMulGeometry, LirMatMulUnary, MapOutputAxisToInput, ProtoFusedSpec,
 };
@@ -292,6 +295,28 @@ fn dequant(
     Ok(Some(patch))
 }
 
+fn select_kernel_and_packing(
+    model: &TypedModel,
+    node: &TypedNode,
+) -> TractResult<Option<(Box<dyn MatMatMul>, usize)>> {
+    if let Some(dbq) = model.node(node.inputs[0].node).op_as::<DeBlockQuant>() {
+        let mut options: Vec<(&Box<dyn MatMatMul>, usize)> = vec![];
+        for imp in tract_linalg::ops().mmm_impls() {
+            for (packing, (pack_a, _)) in imp.packings().iter().enumerate() {
+                if let Some(input) = pack_a.downcast_ref::<PackedBlockQuantFormat>() {
+                    if input.bq.same_as(&*dbq.bq) {
+                        options.push((imp, packing));
+                    }
+                }
+            }
+        }
+        if let Some(k) = options.iter().max_by_key(|a| a.0.mr() * a.0.nr()) {
+            return Ok(Some((k.0.clone(), k.1)));
+        }
+    }
+    return Ok(None);
+}
+
 fn lir_mat_mul_unary(
     op: &EinSum,
     model: &TypedModel,
@@ -331,28 +356,42 @@ fn lir_mat_mul_unary(
         )
         .map(Some);
     }
-    let a_dt = input_facts[0].datum_type;
-    let b_dt = input_facts[1].datum_type;
-    let dt = op.operating_dt;
-    let mmm = tract_linalg::ops()
-        .mmm(a_dt, b_dt, dt, m.to_usize().ok(), k.to_usize().ok(), n.to_usize().ok())
-        .unwrap();
+
+    let (mmm, packing) = if let Some(pair) = select_kernel_and_packing(model, node)? {
+        pair
+    } else {
+        let a_dt = input_facts[0].datum_type;
+        let b_dt = input_facts[1].datum_type;
+        let dt = op.operating_dt;
+        let mmm = tract_linalg::ops()
+            .mmm(a_dt, b_dt, dt, m.to_usize().ok(), k.to_usize().ok(), n.to_usize().ok())
+            .unwrap();
+        let packing = mmm
+            .packings()
+            .iter()
+            .position(|p| {
+                p.0.can_prepare_types().contains(&a_dt.unquantized())
+                    && p.1.can_prepare_types().contains(&b_dt.unquantized())
+            })
+            .with_context(|| format!("No packing for {mmm:?} with inputs {a_dt:?} and {b_dt:?}"))?;
+        (mmm, packing)
+    };
+
     let name = &node.name;
     let mut patch = TypedModelPatch::new("Einsum to LirMatMulUnary");
     let a = patch.tap_model(model, node.inputs[0])?;
     let b = patch.tap_model(model, node.inputs[1])?;
-    let packing = mmm
-        .packings()
-        .iter()
-        .position(|p| {
-            p.0.can_prepare_types().contains(&a_dt.unquantized()) && p.1.can_prepare_types().contains(&b_dt.unquantized())
-        })
-        .with_context(|| format!("No packing for {mmm:?} with inputs {a_dt:?} and {b_dt:?}"))?;
     let packers = mmm.packings()[packing];
-    let a_pack =
-        packers.0.downcast_ref::<PackedFormat>().context("Expects regular packed format for A")?.clone();
-    let b_pack =
-        packers.1.downcast_ref::<PackedFormat>().context("Expects regular packed format for B")?.clone();
+    let a_pack = packers
+        .0
+        .downcast_ref::<PackedFormat>()
+        .context("Expects regular packed format for A")?
+        .clone();
+    let b_pack = packers
+        .1
+        .downcast_ref::<PackedFormat>()
+        .context("Expects regular packed format for B")?
+        .clone();
     let pack_a = MatMatMulPack { packer: a_pack, k_axis: a_k, mn_axis: a_m };
     let pack_b = MatMatMulPack { packer: b_pack, k_axis: b_k, mn_axis: b_n };
     let pa = patch.wire_node(format!("{name}.pack_a"), pack_a, &[a])?[0];
