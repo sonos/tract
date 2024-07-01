@@ -16,6 +16,7 @@ pub trait MMMInputFormat: Downcast + Debug + DynHash + DynClone + Send + Sync + 
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>>;
     fn r(&self) -> usize;
+    fn k_alignment(&self) -> usize;
 }
 dyn_clone::clone_trait_object!(MMMInputFormat);
 impl_downcast!(MMMInputFormat);

@@ -33,6 +33,10 @@ impl MMMInputFormat for PackedFormat {
     fn r(&self) -> usize {
         self.r
     }
+
+    fn k_alignment(&self) -> usize {
+        1
+    }
 }
 
 impl Display for PackedFormat {

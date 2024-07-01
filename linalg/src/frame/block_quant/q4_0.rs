@@ -121,7 +121,11 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
     fn pack(&self, input: &[u8], k: usize, r: usize) -> TractResult<EagerPackedInput> {
         assert!(input.len() % self.block_bytes() == 0);
         assert!(k % self.block_len() == 0);
-        let m = input.len() / self.block_bytes() * self.block_len() / k;
+        let m = if input.len() == 0 {
+            0
+        } else {
+            input.len() / self.block_bytes() * self.block_len() / k
+        };
         assert!(m % r == 0);
 
         let panels = m.divceil(r);
