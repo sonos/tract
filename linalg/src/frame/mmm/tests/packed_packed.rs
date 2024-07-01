@@ -1,3 +1,4 @@
+use crate::frame::block_quant::PackedBlockQuantFormat;
 use crate::frame::mmm::*;
 use crate::LADatum;
 use num_traits::{AsPrimitive, Zero};
@@ -26,7 +27,7 @@ macro_rules! mmm_packed_packed_tests {
                 #[test]
                 fn packed_packed_prop(pb in any_with::<PackedPackedProblem<_, $ta, $tb, $tc, $ti>>(($ker, $packing))) {
                     if $cond {
-                        prop_assert_eq!(pb.run().unwrap(), pb.reference())
+                        prop_assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
                     }
                 }
             }
@@ -63,7 +64,7 @@ macro_rules! mmm_packed_packed_tests {
                         vec![<$tb>::zero(); 0],
                         false,
                         );
-                    assert_eq!(pb.run().unwrap(), pb.reference())
+                    assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
                 }
             }
 
@@ -78,7 +79,7 @@ macro_rules! mmm_packed_packed_tests {
                         vec![<$tb>::zero(); $ker.nr()],
                         true,
                         );
-                    assert_eq!(pb.run().unwrap(), pb.reference())
+                    assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
                 }
             }
         }
@@ -117,8 +118,8 @@ where
     type Strategy = BoxedStrategy<Self>;
 
     fn arbitrary_with((ker, packing): Self::Parameters) -> Self::Strategy {
-        (0usize..20, any::<bool>(), any::<bool>())
-            .prop_flat_map(|(k, trans_c, add_one)| {
+        (0usize..20, any::<bool>())
+            .prop_flat_map(|(k, trans_c)| {
                 let ker = K::default();
                 let m = k * ker.mr();
                 let n = k * ker.nr();
@@ -148,24 +149,7 @@ where
     TI: LADatum + fmt::Display + AsPrimitive<TC>,
     usize: AsPrimitive<TA> + AsPrimitive<TB>,
 {
-    pub fn reference(&self) -> Vec<TC> {
-        let mr = self.ker.mr();
-        let nr = self.ker.nr();
-        let mut vi = vec![TI::zero(); mr * nr];
-        for m in 0..mr {
-            for n in 0..nr {
-                for k in 0..self.k {
-                    let a: TI = self.a[k + self.k * m].as_();
-                    let b: TI = self.b[n + nr * k].as_();
-                    let offset = if self.trans_c { m + n * mr } else { n + m * nr };
-                    vi[offset] += a * b;
-                }
-            }
-        }
-        vi.into_iter().map(|ti| ti.as_()).collect()
-    }
-
-    pub fn run(&self) -> TractResult<Vec<TC>> {
+    pub fn padded_inputs(&self) -> TractResult<(Tensor, Tensor)> {
         let pack_a = self.ker.packings()[self.packing].0;
         let pack_b = self.ker.packings()[self.packing].1;
         assert!(pack_b.k_alignment() == 1);
@@ -177,8 +161,6 @@ where
                 a.to_array_view_mut()?[[row, col]] = self.a[col + self.k * row];
             }
         }
-        let pa = pack_a.prepare_tensor(&a, 1, 0)?;
-
         let mut b = Tensor::zero::<TB>(&[k_aligned, pack_b.r()])?;
         for row in 0..self.k {
             for col in 0..pack_b.r() {
@@ -186,6 +168,40 @@ where
             }
         }
 
+        Ok((a, b))
+    }
+
+    pub fn reference(&self) -> TractResult<Vec<TC>> {
+        let mr = self.ker.mr();
+        let nr = self.ker.nr();
+        let pack_a = self.ker.packings()[self.packing].0;
+        let (mut a, _b) = self.padded_inputs()?;
+        let k_aligned = self.k.next_multiple_of(pack_a.k_alignment());
+        if let Some(pbqf) = pack_a.downcast_ref::<PackedBlockQuantFormat>() {
+            pbqf.simulate_precision_loss(&mut a, 1)?
+        };
+        let mut vi = vec![TI::zero(); mr * nr];
+        for m in 0..mr {
+            for n in 0..nr {
+                for k in 0..self.k {
+                    let a: TI = a.as_slice::<TA>()?[k + k_aligned * m].as_();
+                    let b: TI = self.b[n + nr * k].as_();
+                    let offset = if self.trans_c { m + n * mr } else { n + m * nr };
+                    vi[offset] += a * b;
+                }
+            }
+        }
+        Ok(vi.into_iter().map(|ti| ti.as_()).collect())
+    }
+
+    pub fn run(&self) -> TractResult<Vec<TC>> {
+        let pack_a = self.ker.packings()[self.packing].0;
+        let pack_b = self.ker.packings()[self.packing].1;
+        assert!(pack_b.k_alignment() == 1);
+        let k_aligned = self.k.next_multiple_of(pack_a.k_alignment());
+
+        let (a, b) = self.padded_inputs()?;
+        let pa = pack_a.prepare_tensor(&a, 1, 0)?;
         let pb = pack_b.prepare_tensor(&b, 0, 1)?;
 
         let mut v = vec![TC::zero(); self.ker.mr() * self.ker.nr()];
@@ -224,7 +240,7 @@ where
     let a = vec![TA::one(); ker.mr() * k];
     let b = vec![TB::one(); ker.nr() * k];
     let pb = PackedPackedProblem::<K, TA, TB, TC, TI>::new(ker, packing, k, a, b, false);
-    assert_eq!(pb.run().unwrap(), pb.reference())
+    assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
 }
 
 pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize, csc: usize) -> OutputStoreKer {
