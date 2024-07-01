@@ -139,6 +139,20 @@ impl Debug for PackedBlockQuantFormat {
     }
 }
 
+impl PackedBlockQuantFormat {
+    #[cfg(test)]
+    pub fn simulate_precision_loss(&self, tensor: &mut Tensor, block_axis: usize) -> TractResult<()> {
+        ensure!(block_axis == tensor.rank() - 1);
+        ensure!(tensor.shape()[block_axis] % self.bq.block_len() == 0);
+        let mut scratch = vec!(0u8; self.bq.block_bytes());
+        for block in tensor.as_slice_mut::<f32>()?.chunks_mut(self.bq.block_len()) {
+            self.bq.quant_block_f32(block, &mut scratch);
+            self.bq.dequant_block_f32(&scratch, block);
+        }
+        Ok(())
+    }
+}
+
 impl MMMInputFormat for PackedBlockQuantFormat {
     fn can_prepare_types(&self) -> Vec<DatumType> {
         vec![]
