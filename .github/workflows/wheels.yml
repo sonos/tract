@@ -38,6 +38,11 @@ jobs:
 
       - uses: actions/setup-python@v3
 
+      - name: Install rust toolchains
+        if: startsWith(matrix.os, 'macOS')
+        run: rustup target install x86_64-apple-darwin aarch64-apple-darwin
+          
+
       - name: Install cibuildwheel
         run: python -m pip install cibuildwheel
 
