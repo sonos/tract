@@ -374,7 +374,6 @@ impl Framework<pb::ModelProto, InferenceModel> for Onnx {
             Ok(_) => {
                 match crate::pb::ModelProto::decode(&*model_data) {
                     Ok(model_proto) => {
-                        println!("Decryption and decoding successful!");
                         Ok(model_proto)
                     }
                     Err(e) => {
