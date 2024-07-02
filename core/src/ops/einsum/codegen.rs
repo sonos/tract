@@ -299,6 +299,7 @@ fn select_kernel_and_packing(
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<Option<(Box<dyn MatMatMul>, usize)>> {
+    /*
     if let Some(dbq) = model.node(node.inputs[0].node).op_as::<DeBlockQuant>() {
         let mut options: Vec<(&Box<dyn MatMatMul>, usize)> = vec![];
         for imp in tract_linalg::ops().mmm_impls() {
@@ -314,6 +315,7 @@ fn select_kernel_and_packing(
             return Ok(Some((k.0.clone(), k.1)));
         }
     }
+    */
     return Ok(None);
 }
 
@@ -412,8 +414,10 @@ fn lir_mat_mul_unary(
         (mmm, packing)
     };
 
+
     let mut patch = TypedModelPatch::new("Einsum to LirMatMulUnary");
     let packers = mmm.packings()[packing];
+    dbg!(&mmm, &packers);
 
     let pa = wire_packing(model, node, 0, &mut patch, packers.0, a_k, a_m)?;
     let pb = wire_packing(model, node, 1, &mut patch, packers.1, b_k, b_n)?;
