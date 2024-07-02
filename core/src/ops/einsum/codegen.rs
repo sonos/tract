@@ -1,6 +1,6 @@
 use tract_linalg::frame::block_quant::PackedBlockQuantFormat;
 use tract_linalg::frame::PackedFormat;
-use tract_linalg::mmm::MatMatMul;
+use tract_linalg::mmm::{EagerPackedInput, MMMInputFormat, MMMInputValue, MatMatMul};
 
 use super::*;
 use crate::ops::cast::cast;
@@ -317,6 +317,41 @@ fn select_kernel_and_packing(
     return Ok(None);
 }
 
+fn wire_packing(
+    model: &TypedModel,
+    node: &TypedNode,
+    input: usize,
+    patch: &mut TypedModelPatch,
+    packer: &dyn MMMInputFormat,
+    k_axis: usize,
+    mn_axis: usize,
+) -> TractResult<OutletId> {
+    let name = format!("{}.pack_{}", node.name, ['a', 'b'][input]);
+    if let Some(packed_format) = packer.downcast_ref::<PackedFormat>().cloned() {
+        let wire = patch.tap_model(model, node.inputs[input])?;
+        let pack_a = MatMatMulPack { packer: packed_format, k_axis, mn_axis };
+        Ok(patch.wire_node(&name, pack_a, &[wire])?[0])
+    } else if let Some(pbqf) = packer.downcast_ref::<PackedBlockQuantFormat>() {
+        ensure!(k_axis == 1);
+        ensure!(mn_axis == 0);
+        let prec = model.node(node.inputs[input].node);
+        ensure!(prec.outputs[0].successors.len() == 1);
+        let Some(deq) = prec.op_as::<DeBlockQuant>() else {
+            bail!("Precursor should be dequantizer")
+        };
+        ensure!(deq.bq.same_as(&*pbqf.bq));
+        let Some(weights) = &model.outlet_fact(prec.inputs[0])?.konst else {
+            bail!("Block quant packing with non-const inputs")
+        };
+        let k = deq.fact.shape[k_axis].to_usize()?;
+        let packed = deq.bq.pack(weights.to_scalar::<Blob>()?, k, pbqf.r)?;
+        let mmm_input: Box<dyn MMMInputValue> = Box::new(packed);
+        patch.add_const(name, tensor0(Opaque::from(mmm_input)))
+    } else {
+        bail!("Unexpected packing format: {:?}", packer);
+    }
+}
+
 fn lir_mat_mul_unary(
     op: &EinSum,
     model: &TypedModel,
@@ -377,25 +412,11 @@ fn lir_mat_mul_unary(
         (mmm, packing)
     };
 
-    let name = &node.name;
     let mut patch = TypedModelPatch::new("Einsum to LirMatMulUnary");
-    let a = patch.tap_model(model, node.inputs[0])?;
-    let b = patch.tap_model(model, node.inputs[1])?;
     let packers = mmm.packings()[packing];
-    let a_pack = packers
-        .0
-        .downcast_ref::<PackedFormat>()
-        .context("Expects regular packed format for A")?
-        .clone();
-    let b_pack = packers
-        .1
-        .downcast_ref::<PackedFormat>()
-        .context("Expects regular packed format for B")?
-        .clone();
-    let pack_a = MatMatMulPack { packer: a_pack, k_axis: a_k, mn_axis: a_m };
-    let pack_b = MatMatMulPack { packer: b_pack, k_axis: b_k, mn_axis: b_n };
-    let pa = patch.wire_node(format!("{name}.pack_a"), pack_a, &[a])?[0];
-    let pb = patch.wire_node(format!("{name}.pack_b"), pack_b, &[b])?[0];
+
+    let pa = wire_packing(model, node, 0, &mut patch, packers.0, a_k, a_m)?;
+    let pb = wire_packing(model, node, 1, &mut patch, packers.1, b_k, b_n)?;
 
     let mut c_to_a_axis_mapping = tvec!();
     let mut c_to_b_axis_mapping = tvec!();
