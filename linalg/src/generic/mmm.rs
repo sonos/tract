@@ -75,13 +75,13 @@ unsafe fn add_mat_mul_pq40<const MR: usize, const NR: usize, TI>(
     let len = (k * MR) / Q4_0.block_len() * Q4_0.block_bytes();
     let mut pa = NibbleReader::for_slice(std::slice::from_raw_parts(pa, len));
     let b = pb as *const TI;
-    for _ in 0..k / 32 {
+    for bk in 0..k / 32 {
         let mut scales: [TI; MR] = [TI::zero(); MR];
         scales.iter_mut().for_each(|x| *x = pa.read_f16().as_());
         for ik in 0..32 {
             let mut a: [TI; MR] = [TI::zero(); MR];
             a.iter_mut().zip(&scales).for_each(|(x, s)| *x = *s * (pa.read_i4() - 8).as_());
-            let b = std::slice::from_raw_parts(b.add(NR * ik), NR);
+            let b = std::slice::from_raw_parts(b.add(NR * (ik + 32 * bk)), NR);
             for i in 0..MR {
                 for j in 0..NR {
                     ab[i][j] += a[i] * b[j];
