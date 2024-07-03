@@ -23,10 +23,13 @@ pub enum ProtoFusedSpec {
 }
 
 impl ProtoFusedSpec {
-    pub fn name(&self) -> String {
+    pub fn format(&self, mmm: &dyn MatMatMul) -> String {
         use ProtoFusedSpec::*;
         match self {
-            AddMatMul { geo, .. } => format!("matmul(k={})", geo.k),
+            AddMatMul { geo, packing, .. } => {
+                let (a,b) = mmm.packings()[*packing];
+                format!("matmul(k={}, {a:?}•{b:?})", geo.k)
+            },
             BinScalar(_, op) => format!("scalar{op:?}"),
             LeakyRelu(alpha) => format!("leaky_relu({alpha:?})"),
             BinPerRow(_, op, _) => format!("row{op:?}"),
@@ -273,7 +276,7 @@ impl Op for LirMatMulUnary {
         } else {
             infos.push(format!("Mult: {:?}", self.mmm));
         }
-        infos.push(format!("Ops: {}", self.micro_ops.iter().map(|o| o.name()).join(" >>> ")));
+        infos.push(format!("Ops: {}", self.micro_ops.iter().map(|o| o.format(&*self.mmm)).join(" >>> ")));
         Ok(infos)
     }
 
