@@ -7,12 +7,14 @@ use proptest::prelude::*;
 use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use tests::display_error;
 use tract_data::internal::*;
 
 #[macro_export]
 macro_rules! mmm_packed_packed_tests {
     ($cond:expr, $ker:ident, $packing_id:ident : $packing: expr, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
         mod $packing_id {
+            use tract_data::TractResult;
             #[allow(unused_imports)]
             use super::$ker;
             use num_traits::Zero;
@@ -27,60 +29,61 @@ macro_rules! mmm_packed_packed_tests {
                 #[test]
                 fn packed_packed_prop(pb in any_with::<PackedPackedProblem<_, $ta, $tb, $tc, $ti>>(($ker, $packing))) {
                     if $cond {
-                        prop_assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
+                        pb.check().unwrap()
                     }
                 }
             }
 
             #[test]
-            fn packed_packed_1() {
+            fn packed_packed_1()  -> TractResult<()> {
                 if $cond {
-                    packed_packed::<_, $ta, $tb, $tc, $ti>($ker, $packing, 1)
+                    packed_packed::<_, $ta, $tb, $tc, $ti>($ker, $packing, 1)?;
                 }
+                Ok(())
             }
 
             #[test]
-            fn packed_packed_2() {
+            fn packed_packed_2()  -> TractResult<()> {
                 if $cond {
-                    packed_packed::<_, $ta, $tb, $tc, $ti>($ker, $packing, 2)
+                    packed_packed::<_, $ta, $tb, $tc, $ti>($ker, $packing, 2)?;
                 }
+                Ok(())
             }
 
             #[test]
-            fn packed_packed_13() {
+            fn packed_packed_13()  -> TractResult<()> {
                 if $cond {
-                    packed_packed::<_, $ta, $tb, $tc, $ti>($ker, $packing, 13)
+                    packed_packed::<_, $ta, $tb, $tc, $ti>($ker, $packing, 13)?;
                 }
+                Ok(())
             }
 
             #[test]
-            fn packed_packed_empty() {
+            fn packed_packed_empty() -> TractResult<()> {
                 if $cond {
-                    let pb = PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new(
+                    PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new(
                         $ker,
                         $packing,
                         0,
                         vec![<$ta>::zero(); 0],
                         vec![<$tb>::zero(); 0],
-                        false,
-                        );
-                    assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
+                        ).check()?;
                 }
+                Ok(())
             }
 
             #[test]
-            fn packed_packed_bug_1() {
+            fn packed_packed_bug_1() -> TractResult<()> {
                 if $cond {
-                    let pb = PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new(
+                    PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new(
                         $ker,
                         $packing,
                         1,
                         vec![<$ta>::zero(); $ker.mr()],
                         vec![<$tb>::zero(); $ker.nr()],
-                        true,
-                        );
-                    assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
+                        ).check()?;
                 }
+                Ok(())
             }
         }
     };
@@ -101,8 +104,22 @@ where
     pub k: usize,
     pub a: Vec<TA>,
     pub b: Vec<TB>,
-    pub trans_c: bool,
     pub _phantom: PhantomData<(K, TC, TI)>,
+}
+
+fn data<T: LADatum>() -> BoxedStrategy<T>
+where
+    f32: AsPrimitive<T>,
+    i8: AsPrimitive<T>,
+{
+    match T::datum_type() {
+        DatumType::F64 => (-1f32..1f32).prop_map(|t| t.as_()).boxed(),
+        DatumType::F32 => (-1f32..1f32).prop_map(|t| t.as_()).boxed(),
+        DatumType::F16 => (-1f32..1f32).prop_map(|t| t.as_()).boxed(),
+        DatumType::I8 => (-5i8..5).prop_map(|t| t.as_()).boxed(),
+        DatumType::I32 => (-5i8..5).prop_map(|t| t.as_()).boxed(),
+        _ => todo!(),
+    }
 }
 
 impl<K, TA, TB, TC, TI> Arbitrary for PackedPackedProblem<K, TA, TB, TC, TI>
@@ -113,29 +130,21 @@ where
     TC: LADatum + Copy + PartialEq + 'static + Debug,
     TI: LADatum + fmt::Display + AsPrimitive<TC>,
     usize: AsPrimitive<TA> + AsPrimitive<TB>,
+    f32: AsPrimitive<TA> + AsPrimitive<TB>,
+    i8: AsPrimitive<TA> + AsPrimitive<TB>,
 {
     type Parameters = (K, usize);
     type Strategy = BoxedStrategy<Self>;
 
     fn arbitrary_with((ker, packing): Self::Parameters) -> Self::Strategy {
-        (0usize..20, any::<bool>())
-            .prop_flat_map(|(k, trans_c)| {
+        (0usize..100)
+            .prop_flat_map(|k| {
                 let ker = K::default();
                 let m = k * ker.mr();
                 let n = k * ker.nr();
-                let a = (0usize..10).prop_map(|x| x.as_());
-                let b = (0usize..10).prop_map(|x| x.as_());
-                (Just(k), Just(trans_c), vec(a, m..=m), vec(b, n..=n))
+                (Just(k), vec(data::<TA>(), m..=m), vec(data::<TB>(), n..=n))
             })
-            .prop_map(move |(k, trans_c, a, b)| Self {
-                ker,
-                packing,
-                k,
-                a,
-                b,
-                trans_c,
-                _phantom: PhantomData,
-            })
+            .prop_map(move |(k, a, b)| Self { ker, packing, k, a, b, _phantom: PhantomData })
             .boxed()
     }
 }
@@ -171,7 +180,7 @@ where
         Ok((a, b))
     }
 
-    pub fn reference(&self) -> TractResult<Vec<TC>> {
+    pub fn reference(&self) -> TractResult<Tensor> {
         let mr = self.ker.mr();
         let nr = self.ker.nr();
         let pack_a = self.ker.packings()[self.packing].0;
@@ -180,21 +189,21 @@ where
         if let Some(pbqf) = pack_a.downcast_ref::<PackedBlockQuantFormat>() {
             pbqf.simulate_precision_loss(&mut a, 1)?
         };
-        let mut vi = vec![TI::zero(); mr * nr];
+        let mut vi = Tensor::zero::<TI>(&[mr, nr])?;
+        let mut view = vi.to_array_view_mut::<TI>()?.into_dimensionality()?;
         for m in 0..mr {
             for n in 0..nr {
                 for k in 0..self.k {
                     let a: TI = a.as_slice::<TA>()?[k + k_aligned * m].as_();
                     let b: TI = self.b[n + nr * k].as_();
-                    let offset = if self.trans_c { m + n * mr } else { n + m * nr };
-                    vi[offset] += a * b;
+                    view[(m, n)] += a * b;
                 }
             }
         }
-        Ok(vi.into_iter().map(|ti| ti.as_()).collect())
+        Ok(vi.cast_to::<TC>()?.into_owned())
     }
 
-    pub fn run(&self) -> TractResult<Vec<TC>> {
+    pub fn run(&self) -> TractResult<Tensor> {
         let pack_a = self.ker.packings()[self.packing].0;
         let pack_b = self.ker.packings()[self.packing].1;
         assert!(pack_b.k_alignment() == 1);
@@ -205,11 +214,7 @@ where
         let pb = pack_b.prepare_tensor(&b, 0, 1)?;
 
         let mut v = vec![TC::zero(); self.ker.mr() * self.ker.nr()];
-        let c = if self.trans_c {
-            mmm_stride_storage(&mut v, 1, self.ker.mr())
-        } else {
-            mmm_stride_storage(&mut v, self.ker.nr(), 1)
-        };
+        let c = mmm_stride_storage(&mut v, self.ker.nr(), 1);
 
         let non_linear_ops = tvec!(
             FusedKerSpec::Clear,
@@ -224,11 +229,28 @@ where
         );
         let err = self.ker.kernel(&non_linear_ops);
         assert_eq!(err, 0);
-        Ok(v)
+        tensor1(&v).into_shape(&[self.ker.mr(), self.ker.nr()])
+    }
+
+    pub fn check(&self) -> TractResult<()> {
+        let expected = self.reference()?;
+        let found = self.run()?;
+        let app = if TI::datum_type() == f16::datum_type() {
+            Approximation::SuperApproximate
+        } else {
+            Approximation::Approximate
+        };
+        let result = found.close_enough(&expected, app);
+        if result.is_err() {
+            let exp = expected.as_slice::<TC>()?;
+            let found = found.as_slice::<TC>()?;
+            display_error(found, exp, self.ker.mr(), self.ker.nr());
+        }
+        result
     }
 }
 
-pub fn packed_packed<K, TA, TB, TC, TI>(ker: K, packing: usize, k: usize)
+pub fn packed_packed<K, TA, TB, TC, TI>(ker: K, packing: usize, k: usize) -> TractResult<()>
 where
     K: MatMatMulKer<Acc = TI>,
     TA: LADatum + AsPrimitive<TI>,
@@ -239,8 +261,7 @@ where
 {
     let a = vec![TA::one(); ker.mr() * k];
     let b = vec![TB::one(); ker.nr() * k];
-    let pb = PackedPackedProblem::<K, TA, TB, TC, TI>::new(ker, packing, k, a, b, false);
-    assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
+    PackedPackedProblem::<K, TA, TB, TC, TI>::new(ker, packing, k, a, b).check()
 }
 
 pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize, csc: usize) -> OutputStoreKer {
