@@ -27,18 +27,13 @@ impl Problem {
         let q4ed =
             crate::transform::get_transform("block-quant").unwrap().transform_into(&model)?;
 
-        let q4 = dbg!(q4ed
-            .into_optimized()?)
+        let q4 = q4ed
+            .into_optimized()?
             .into_runnable()?
             .run(tvec!(self.activation.clone().into_tvalue()))?
             .remove(0);
 
-        eprintln!("{}", refer.to_array_view::<f32>()?);
-        eprintln!("{}", q4.to_array_view::<f32>()?);
-
-        panic!();
-
-        Ok(())
+        q4.close_enough(&refer, Approximation::SuperApproximate)
     }
 }
 
@@ -50,10 +45,20 @@ fn for_m_k_n(m: usize, k: usize, n: usize) -> TractResult<()> {
 
 #[test]
 fn ex_4x32x4() -> TractResult<()> {
-    for_m_k_n(4,32, 4)
+    for_m_k_n(4, 32, 4)
 }
 
 #[test]
 fn ex_8x32x8() -> TractResult<()> {
-    for_m_k_n(8,32, 8)
+    for_m_k_n(8, 32, 8)
+}
+
+#[test]
+fn ex_4x64x4() -> TractResult<()> {
+    for_m_k_n(4, 64, 4)
+}
+
+#[test]
+fn ex_8x64x8() -> TractResult<()> {
+    for_m_k_n(8, 64, 8)
 }
