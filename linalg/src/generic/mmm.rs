@@ -242,8 +242,7 @@ MMMKernelWrapper!(f16, generic_f16_4x1; kernel::<f16, 4, 1>; 4, 1; 4, 4; 0, 0; n
 MMMKernelWrapper!(f32, generic_f32_4x4; kernel::<f32, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true,
      packing_defs: {
          use crate::frame::block_quant::*;
-         const Q40: &'static dyn BlockQuant = &crate::generic::mmm::Q4_0;
-         const PQ40_A: PackedBlockQuantFormat = PackedBlockQuantFormat { bq: StaticBlockQuant::Borrow(Q40), r: 4};
+         const PQ40_A: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 4);
          const F32_B: PackedFormat = PackedFormat::new(DatumType::F32, 4, 4, 0);
          const PQ40_F32: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&PQ40_A, &F32_B);
      },
