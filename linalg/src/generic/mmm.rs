@@ -4,7 +4,7 @@ use num_traits::AsPrimitive;
 use tract_data::prelude::*;
 
 use super::*;
-use crate::frame::block_quant::{BlockQuant, NibbleReader, Q4_0};
+use crate::frame::block_quant::{BlockQuant, NibbleReader, PackedBlockQuantFormat, Q4_0};
 use crate::frame::mmm::*;
 use crate::LADatum;
 
@@ -237,19 +237,27 @@ where
     0
 }
 
+const PQ40_R4: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 4);
+
 MMMKernelWrapper!(f16, generic_f16_4x4; kernel::<f16, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true);
 MMMKernelWrapper!(f16, generic_f16_4x1; kernel::<f16, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true);
+
 MMMKernelWrapper!(f32, generic_f32_4x4; kernel::<f32, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true,
      packing_defs: {
-         use crate::frame::block_quant::*;
-         const PQ40_A: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 4);
          const F32_B: PackedFormat = PackedFormat::new(DatumType::F32, 4, 4, 0);
-         const PQ40_F32: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&PQ40_A, &F32_B);
+         const PQ40_F32: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4, &F32_B);
      },
  packings: PQ40_F32,
  test: mmm_packed_packed_tests!{ true, generic_f32_4x4, q40f32:1, f32, f32, f32, f32 }
 );
-MMMKernelWrapper!(f32, generic_f32_4x1; kernel::<f32, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true);
+MMMKernelWrapper!(f32, generic_f32_4x1; kernel::<f32, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true,
+     packing_defs: {
+         const F32_B: PackedFormat = PackedFormat::new(DatumType::F32, 1, 4, 0);
+         const PQ40_F32: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4, &F32_B);
+     },
+ packings: PQ40_F32,
+ test: mmm_packed_packed_tests!{ true, generic_f32_4x1, q40f32:1, f32, f32, f32, f32 }
+);
 MMMKernelWrapper!(f64, generic_f64_4x4; kernel::<f64, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true);
 MMMKernelWrapper!(f64, generic_f64_4x1; kernel::<f64, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true);
 MMMKernelWrapper!(i32, generic_i32_4x4; kernel::<i32, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true,
