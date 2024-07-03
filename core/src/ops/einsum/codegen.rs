@@ -298,6 +298,8 @@ fn dequant(
 fn select_kernel_and_packing(
     model: &TypedModel,
     node: &TypedNode,
+    m: &TDim,
+    n: &TDim,
 ) -> TractResult<Option<(Box<dyn MatMatMul>, usize)>> {
     if let Some(dbq) = model.node(node.inputs[0].node).op_as::<DeBlockQuant>() {
         let mut options: Vec<(&Box<dyn MatMatMul>, usize)> = vec![];
@@ -310,8 +312,20 @@ fn select_kernel_and_packing(
                 }
             }
         }
-        if let Some(k) = options.iter().max_by_key(|a| a.0.mr() * a.0.nr()) {
-            return Ok(Some((k.0.clone(), k.1)));
+        if options.len() > 0 {
+            let pair = if let (Some(m), Some(n)) = (m.as_i64(), n.as_i64()) {
+                options
+                    .iter()
+                    .min_by_key(|a| {
+                        ((m as usize).divceil(a.0.mr()) * (n as usize).divceil(a.0.nr()))
+                            * a.0.mr()
+                            * a.0.nr()
+                    })
+                    .unwrap()
+            } else {
+                options.iter().max_by_key(|a| a.0.mr() * a.0.nr()).unwrap()
+            };
+            return Ok(Some((pair.0.clone(), pair.1)));
         }
     }
     return Ok(None);
@@ -392,7 +406,7 @@ fn lir_mat_mul_unary(
         .map(Some);
     }
 
-    let (mmm, packing) = if let Some(pair) = select_kernel_and_packing(model, node)? {
+    let (mmm, packing) = if let Some(pair) = select_kernel_and_packing(model, node, &m, &n)? {
         pair
     } else {
         let a_dt = input_facts[0].datum_type;
