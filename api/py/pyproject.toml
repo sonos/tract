@@ -32,6 +32,7 @@ RUSTC_WRAPPER=sccache
 
 [tool.cibuildwheel.macos]
 archs = "x86_64 universal2 arm64"
+skip = "pp*"
 before-build = """
 python -m ensurepip --upgrade
 pip install "numpy<2" --config-settings=setup-args="-Dallow-noblas=true" 
