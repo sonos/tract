@@ -24,18 +24,14 @@ impl<const QK: usize> BaseQ4_0<QK> {
                 max = *v;
             }
         }
-        eprintln!("block:{:?} —— ", block);
         let scale: T = max / (-8f32).as_();
-        let scale = if scale.is_zero() { T::zero() } else { scale.recip() };
-        eprint!("scale:{:?} —— ", scale);
+        let r_scale = if scale.is_zero() { T::zero() } else { scale.recip() };
         writer.write_f16(scale.as_());
 
         for x in block {
-            let i: i8 = (*x * scale + (8.5f32).as_()).as_();
-            eprint!("{i} ");
+            let i: i8 = (*x * r_scale + (8.5f32).as_()).as_();
             writer.write_i4(i.min(15));
         }
-        eprintln!("");
     }
 
     fn dequant_block<T: Float + 'static>(&self, quant: &[u8], block: &mut [T])
@@ -232,14 +228,22 @@ mod tests {
     }
 
     #[test]
-    fn loop_q4_pos() {
+    fn loop_q4f32_pos() {
         cycle_f32(Q4_0, &[1.0, 2.0, 3.0, 4.0]);
+    }
+
+    #[test]
+    fn loop_q4f16_pos() {
         cycle_f16(Q4_0, &[1.0, 2.0, 3.0, 4.0]);
     }
 
     #[test]
-    fn loop_q4_neg() {
+    fn loop_q4f32_neg() {
         cycle_f32(Q4_0, &[-1.0, -2.0, -3.0, -4.0]);
+    }
+
+    #[test]
+    fn loop_q4f16_beg() {
         cycle_f16(Q4_0, &[-1.0, -2.0, -3.0, -4.0]);
     }
 
