@@ -126,13 +126,10 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
         } else {
             input.len() / self.block_bytes() * self.block_len() / k
         };
-        eprintln!("{:?}", input);
         let full_panels = m / r;
         let panels = m.divceil(r);
         let blocks_for_k = k / self.block_len();
-        dbg!(blocks_for_k);
         let row_bytes = blocks_for_k * self.block_bytes();
-        dbg!(self.block_bytes());
         let panel_bytes = row_bytes * r;
         let mut blob =
             unsafe { Blob::for_layout(Layout::from_size_align(panel_bytes * panels, 128)?) };
@@ -142,7 +139,7 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
             let mut readers =
                 (0..r).map(|r| NibbleReader::for_slice(&input[r * row_bytes..])).collect_vec();
             for _ in 0..blocks_for_k {
-                readers.iter_mut().for_each(|r| writer.write_f16(dbg!(r.read_f16())));
+                readers.iter_mut().for_each(|r| writer.write_f16(r.read_f16()));
                 for _ in 0..self.block_len() {
                     for r in &mut readers {
                         writer.write_i4(r.read_i4());
