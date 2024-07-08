@@ -240,7 +240,14 @@ where
 const PQ40_R4: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 4);
 
 MMMKernelWrapper!(f16, generic_f16_4x4; kernel::<f16, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true);
-MMMKernelWrapper!(f16, generic_f16_4x1; kernel::<f16, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true);
+MMMKernelWrapper!(f16, generic_f16_4x1; kernel::<f16, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true,
+     packing_defs: {
+         const F16_B: PackedFormat = PackedFormat::new(DatumType::F16, 1, 4, 0);
+         const PQ40_F16: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4, &F16_B);
+     },
+ packings: PQ40_F16,
+ test: mmm_packed_packed_tests!{ true, generic_f16_4x1, q40f16:1, f16, f16, f16, f16 }
+);
 
 MMMKernelWrapper!(f32, generic_f32_4x4; kernel::<f32, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true,
      packing_defs: {

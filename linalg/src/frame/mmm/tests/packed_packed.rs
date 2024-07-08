@@ -17,7 +17,7 @@ macro_rules! mmm_packed_packed_tests {
             use tract_data::TractResult;
             #[allow(unused_imports)]
             use super::$ker;
-            use num_traits::Zero;
+            use num_traits::{Zero, One};
             use proptest::prelude::*;
             #[allow(unused_imports)]
             use tract_data::prelude::f16;
@@ -67,7 +67,7 @@ macro_rules! mmm_packed_packed_tests {
                         0,
                         vec![<$ta>::zero(); 0],
                         vec![<$tb>::zero(); 0],
-                        ).check()?;
+                    ).check()?;
                 }
                 Ok(())
             }
@@ -81,12 +81,59 @@ macro_rules! mmm_packed_packed_tests {
                         1,
                         vec![<$ta>::zero(); $ker.mr()],
                         vec![<$tb>::zero(); $ker.nr()],
-                        ).check()?;
+                    ).check()?;
                 }
                 Ok(())
             }
+
+            #[test]
+            fn packed_packed_bug_2() -> TractResult<()> {
+                if $cond {
+                    let mut a = vec![<$ta>::zero(); $ker.mr()];
+                    a[0] = <$ta>::one();
+                    let mut b = vec![<$tb>::zero(); $ker.nr()];
+                    b[0] = <$tb>::one();
+                    PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new(
+                        $ker,
+                        $packing,
+                        1, a, b
+                    ).check()?;
+                }
+                Ok(())
+            }
+
+            /*
+               #[test]
+               fn packed_packed_bug_3() -> TractResult<()> {
+               if $cond && $ker.mr() >= 4 {
+               let mut a = vec![<$ta>::zero(); $ker.mr()];
+               a[1] = 0.26635742f32.as_();
+               a[2] = -0.4741211;
+               let mut b = vec![<$tb>::zero(); $ker.nr()];
+               b[0] = <$tb>::one();
+               PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new(
+               $ker,
+               $packing,
+               1, a, b
+               ).check()?;
+               }
+               Ok(())
+               }
+               */
         }
     };
+}
+
+#[test]
+fn generic_f16_q40f16() {
+    PackedPackedProblem {
+        ker: generic_f16_q40f16(),
+        packing: 1,
+        k: 2,
+        a: vec![[0.0, 0.0, 0.26635742, -0.4741211, 0.0, 0.0, 0.0, 0.0]],
+        b: vec![-0.25195313, 0.0],
+        _phantom: PhantomData,
+    }.check()
 }
 
 #[derive(Debug, new)]
@@ -187,7 +234,7 @@ where
         let (mut a, _b) = self.padded_inputs()?;
         let k_aligned = self.k.next_multiple_of(pack_a.k_alignment());
         if let Some(pbqf) = pack_a.downcast_ref::<PackedBlockQuantFormat>() {
-            pbqf.simulate_precision_loss(&mut a, 1)?
+            a = pbqf.simulate_precision_loss(a, 1)?;
         };
         let mut vi = Tensor::zero::<TI>(&[mr, nr])?;
         let mut view = vi.to_array_view_mut::<TI>()?.into_dimensionality()?;
@@ -210,6 +257,7 @@ where
         let k_aligned = self.k.next_multiple_of(pack_a.k_alignment());
 
         let (a, b) = self.padded_inputs()?;
+        dbg!(a.to_array_view::<TA>()?);
         let pa = pack_a.prepare_tensor(&a, 1, 0)?;
         let pb = pack_b.prepare_tensor(&b, 0, 1)?;
 
