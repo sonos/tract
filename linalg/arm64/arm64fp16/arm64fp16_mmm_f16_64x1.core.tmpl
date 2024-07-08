@@ -103,12 +103,10 @@
 {% endfor %}
 
     subs        x4, x4, #1
-    bge         .q4f16_innerloop
+    bne         .q4f16_innerloop
 
     subs        x3, x3, #32
-    cmp         x3, 0
     bne         .q4f16_outerloop
-
 
     b           .non_linear_loop
 

@@ -79,7 +79,6 @@ macro_rules! mmm_packed_packed_tests {
                 if $cond {
                     let a = tensor1(&(1..=2*$ker.mr() as i64).collect::<Vec<_>>()).cast_to::<$ta>()?.as_slice::<$ta>()?.to_vec();
                     let b = vec![<$tb>::one(); $ker.nr() * 2];
-                    eprintln!("{a:?} / {b:?}");
                     PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new($ker, $packing, a, b).check()?;
                 }
                 Ok(())
