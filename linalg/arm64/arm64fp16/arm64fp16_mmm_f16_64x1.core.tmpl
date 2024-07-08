@@ -28,11 +28,14 @@
 {% include "dispatcher.tmpliq" %}
 
 .add_mat_mul:
-    ldr         x2, [x0, #24]       // b
+    ldp         x2, x4, [x0, #24]   // b, packing
     ldp         x3, x1, [x0, #8]    // k, a
 
     cmp         x3, #0
     beq         .non_linear_loop
+
+    cmp         x4, #1
+    beq         .q4f16
 
 .p2align 4
 .packed_packed_loop_1:
@@ -50,6 +53,67 @@
     fmla        v31.8h, v7.8h, v8.h[0]
     subs        x3, x3, #1
     bge         .packed_packed_loop_1
+
+    b           .non_linear_loop
+
+.q4f16:
+    movi     v14.16b, 8
+    movi     v15.16b, 15
+.q4f16_outerloop:
+    // scales
+    ld1         { v16.8h-v19.8h }, [ x1 ], #64
+    ld1         { v20.8h-v23.8h }, [ x1 ], #64
+    mov         x4, #32
+
+.p2align 4
+.q4f16_innerloop:
+        ld1      { v0.16b-v1.16b }, [x1], #32 // v0, v1
+        ld1      { v8.h }[0], [ x2 ], #2
+
+        and      v4.16b, v0.16b, v15.16b
+        ushr     v5.16b, v0.16b, 4
+        and      v6.16b, v1.16b, v15.16b
+        ushr     v7.16b, v1.16b, 4
+
+        zip1     v0.16b, v4.16b, v6.16b
+        zip2     v1.16b, v4.16b, v6.16b
+        zip1     v2.16b, v5.16b, v7.16b
+        zip2     v3.16b, v5.16b, v7.16b
+
+        sub      v6.16b, v3.16b, v14.16b
+        sub      v4.16b, v2.16b, v14.16b
+        sub      v2.16b, v1.16b, v14.16b
+        sub      v0.16b, v0.16b, v14.16b
+
+{% for i in (0..3) %}
+        sshll2   v{{i|times:2|plus:1}}.8h, v{{i|times:2}}.16b, 0
+        sshll    v{{i|times:2}}.8h, v{{i|times: 2}}.8b, 0
+{% endfor %}
+
+{% for i in (0..7) %}
+        scvtf    v{{i}}.8h, v{{i}}.8h
+{% endfor %}
+
+{% for i in (0..7) %}
+       fmul     v{{i}}.8h, v{{i}}.8h, v{{i|plus:16}}.8h
+{% endfor %}
+
+{% for i in (0..7) %}
+        mov v{{i|plus:24}}.8h, v{{i|plus:16}}.8h
+{% endfor %}
+
+/*
+{% for i in (0..7) %}
+        fmla        v{{ i|plus: 24 }}.8h, v{{i}}.8h, v8.h[0]
+{% endfor %}
+*/
+/*
+    subs        x4, x4, #1
+    bge         .q4f16_innerloop
+
+    subs        x3, x3, #32
+    bge         .q4f16_outerloop
+*/
 
     b           .non_linear_loop
 

@@ -5,6 +5,7 @@ use tract_data::internal::*;
 use tract_data::itertools::Itertools;
 
 use std::alloc::Layout;
+use std::borrow::Cow;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::ops::Deref;
@@ -148,17 +149,19 @@ impl PackedBlockQuantFormat {
     #[cfg(test)]
     pub fn simulate_precision_loss(
         &self,
-        tensor: &mut Tensor,
+        tensor: Tensor,
         block_axis: usize,
-    ) -> TractResult<()> {
+    ) -> TractResult<Tensor> {
         ensure!(block_axis == tensor.rank() - 1);
         ensure!(tensor.shape()[block_axis] % self.bq.block_len() == 0);
+        let dt = tensor.datum_type();
         let mut scratch = vec![0u8; self.bq.block_bytes()];
+        let mut tensor = tensor.cast_to::<f32>()?.into_owned();
         for block in tensor.as_slice_mut::<f32>()?.chunks_mut(self.bq.block_len()) {
             self.bq.quant_block_f32(block, &mut scratch);
             self.bq.dequant_block_f32(&scratch, block);
         }
-        Ok(())
+        Ok(tensor.cast_to_dt(dt)?.into_owned())
     }
 }
 
@@ -175,10 +178,15 @@ impl MMMInputFormat for PackedBlockQuantFormat {
     ) -> TractResult<Box<dyn crate::mmm::MMMInputValue>> {
         let k = t.shape()[k_axis];
         assert!(k % self.bq.block_len() == 0);
-        let quant = if k_axis == 1 && mn_axis == 0 {
-            self.bq.quant_f32(t.as_slice::<f32>()?)?
-        } else if k_axis == 0 && mn_axis == 1 {
-            self.bq.quant_f32(t.clone().move_axis(1, 0)?.as_slice::<f32>()?)?
+        let t: Cow<Tensor> = if k_axis == 1 && mn_axis == 0 {
+            Cow::Borrowed(t)
+        } else {
+            Cow::Owned(t.clone().move_axis(1, 0)?)
+        };
+        let quant = if t.datum_type() == f32::datum_type() {
+            self.bq.quant_f32(t.as_slice()?)?
+        } else if t.datum_type() == f16::datum_type() {
+            self.bq.quant_f16(t.as_slice()?)?
         } else {
             todo!()
         };

@@ -64,18 +64,17 @@ macro_rules! test_mmm_kernel_i32 {
 
 fn display_error<TC: LADatum>(v: &[TC], expected: &[TC], m: usize, n: usize) {
     if v != expected {
-        println!("found, expected:");
-        for m in 0..m {
-            for n in 0..n {
+        for ixm in 0..m {
+            for ixn in 0..n {
                 use nu_ansi_term::Color::*;
-                let f = v[m * n + n];
-                let e = expected[m * n + n];
+                let f = v[ixm * n + ixn];
+                let e = expected[ixm * n + ixn];
                 let color = if f != e { Red } else { Green };
                 print!("{} ", color.paint(format!("{:4}", f)));
             }
             print!("      ");
-            for n in 0..n {
-                print!("{:4} ", expected[m * n + n]);
+            for ixn in 0..n {
+                print!("{:4} ", expected[ixm * n + ixn]);
             }
             println!();
         }
