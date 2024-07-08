@@ -65,6 +65,27 @@ macro_rules! mmm_packed_packed_tests {
             }
 
             #[test]
+            fn packed_packed_a_scale()  -> TractResult<()> {
+                if $cond {
+                    let a = tensor1(&(1..=$ker.mr() as i64).collect::<Vec<_>>()).cast_to::<$ta>()?.as_slice::<$ta>()?.to_vec();
+                    let b = vec![<$tb>::one(); $ker.nr()];
+                    PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new($ker, $packing, a, b).check()?;
+                }
+                Ok(())
+            }
+            
+            #[test]
+            fn packed_packed_a_scale_times_2()  -> TractResult<()> {
+                if $cond {
+                    let a = tensor1(&(1..=2*$ker.mr() as i64).collect::<Vec<_>>()).cast_to::<$ta>()?.as_slice::<$ta>()?.to_vec();
+                    let b = vec![<$tb>::one(); $ker.nr() * 2];
+                    eprintln!("{a:?} / {b:?}");
+                    PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new($ker, $packing, a, b).check()?;
+                }
+                Ok(())
+            }
+
+            #[test]
             fn packed_packed_empty() -> TractResult<()> {
                 if $cond {
                     PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new(
