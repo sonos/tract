@@ -37,7 +37,9 @@ macro_rules! mmm_packed_packed_tests {
             #[test]
             fn packed_packed_1()  -> TractResult<()> {
                 if $cond {
-                    packed_packed::<_, $ta, $tb, $tc, $ti>($ker, $packing, 1)?;
+                    let a = vec![<$ta>::one(); $ker.mr()];
+                    let b = vec![<$tb>::one(); $ker.nr()];
+                    PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new($ker, $packing, a, b).check()?;
                 }
                 Ok(())
             }
@@ -45,7 +47,9 @@ macro_rules! mmm_packed_packed_tests {
             #[test]
             fn packed_packed_2()  -> TractResult<()> {
                 if $cond {
-                    packed_packed::<_, $ta, $tb, $tc, $ti>($ker, $packing, 2)?;
+                    let a = vec![<$ta>::one(); $ker.mr() * 2];
+                    let b = vec![<$tb>::one(); $ker.nr() * 2];
+                    PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new($ker, $packing, a, b).check()?;
                 }
                 Ok(())
             }
@@ -53,7 +57,9 @@ macro_rules! mmm_packed_packed_tests {
             #[test]
             fn packed_packed_13()  -> TractResult<()> {
                 if $cond {
-                    packed_packed::<_, $ta, $tb, $tc, $ti>($ker, $packing, 13)?;
+                    let a = vec![<$ta>::one(); $ker.mr() * 13];
+                    let b = vec![<$tb>::one(); $ker.nr() * 13];
+                    PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new($ker, $packing, a, b).check()?;
                 }
                 Ok(())
             }
@@ -258,7 +264,13 @@ where
         let pb = pack_b.prepare_tensor(&b, 0, 1)?;
 
         let mut v = vec![TC::zero(); self.ker.mr() * self.ker.nr()];
-        let c = mmm_stride_storage(&mut v, self.ker.nr(), 1);
+
+        let c = OutputStoreKer {
+            ptr: v.as_mut_ptr() as _,
+            row_byte_stride: (std::mem::size_of::<TC>() * self.ker.nr()) as isize,
+            col_byte_stride: (std::mem::size_of::<TC>()) as isize,
+            item_size: std::mem::size_of::<TC>(),
+        };
 
         let non_linear_ops = tvec!(
             FusedKerSpec::Clear,
@@ -291,28 +303,5 @@ where
             display_error(found, exp, self.ker.mr(), self.ker.nr());
         }
         result
-    }
-}
-
-pub fn packed_packed<K, TA, TB, TC, TI>(ker: K, packing: usize, k: usize) -> TractResult<()>
-where
-    K: MatMatMulKer<Acc = TI>,
-    TA: LADatum + AsPrimitive<TI>,
-    TB: LADatum + AsPrimitive<TI>,
-    TC: LADatum + Copy + PartialEq + Zero + 'static + Debug,
-    TI: LADatum + AsPrimitive<TC>,
-    usize: AsPrimitive<TC> + AsPrimitive<TA> + AsPrimitive<TB>,
-{
-    let a = vec![TA::one(); ker.mr() * k];
-    let b = vec![TB::one(); ker.nr() * k];
-    PackedPackedProblem::<K, TA, TB, TC, TI>::new(ker, packing, a, b).check()
-}
-
-pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize, csc: usize) -> OutputStoreKer {
-    OutputStoreKer {
-        ptr: v.as_mut_ptr() as _,
-        row_byte_stride: (std::mem::size_of::<T>() * rsc) as isize,
-        col_byte_stride: (std::mem::size_of::<T>() * csc) as isize,
-        item_size: std::mem::size_of::<T>(),
     }
 }

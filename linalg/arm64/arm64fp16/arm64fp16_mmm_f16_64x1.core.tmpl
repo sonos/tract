@@ -67,7 +67,7 @@
 
 .p2align 4
 .q4f16_innerloop:
-        ld1      { v0.16b-v1.16b }, [x1], #32 // v0, v1
+        ld1      { v0.16b-v1.16b }, [x1], #32
         ld1      { v8.h }[0], [ x2 ], #2
 
         and      v4.16b, v0.16b, v15.16b
@@ -99,21 +99,15 @@
 {% endfor %}
 
 {% for i in (0..7) %}
-        mov v{{i|plus:24}}.8h, v{{i|plus:16}}.8h
-{% endfor %}
-
-/*
-{% for i in (0..7) %}
         fmla        v{{ i|plus: 24 }}.8h, v{{i}}.8h, v8.h[0]
 {% endfor %}
-*/
-/*
+
     subs        x4, x4, #1
     bge         .q4f16_innerloop
 
     subs        x3, x3, #32
-    bge         .q4f16_outerloop
-*/
+    cmp         x3, 0
+    bne         .q4f16_outerloop
 
     b           .non_linear_loop
 
