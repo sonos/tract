@@ -14,7 +14,7 @@ use tract_data::internal::*;
 macro_rules! mmm_packed_packed_tests {
     ($cond:expr, $ker:ident, $packing_id:ident : $packing: expr, $ta:ty, $tb:ty, $tc:ty, $ti: ty) => {
         mod $packing_id {
-            use tract_data::TractResult;
+            use tract_data::prelude::*;
             #[allow(unused_imports)]
             use super::$ker;
             use num_traits::{Zero, One};
@@ -64,7 +64,6 @@ macro_rules! mmm_packed_packed_tests {
                     PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new(
                         $ker,
                         $packing,
-                        0,
                         vec![<$ta>::zero(); 0],
                         vec![<$tb>::zero(); 0],
                     ).check()?;
@@ -78,7 +77,6 @@ macro_rules! mmm_packed_packed_tests {
                     PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new(
                         $ker,
                         $packing,
-                        1,
                         vec![<$ta>::zero(); $ker.mr()],
                         vec![<$tb>::zero(); $ker.nr()],
                     ).check()?;
@@ -96,7 +94,33 @@ macro_rules! mmm_packed_packed_tests {
                     PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new(
                         $ker,
                         $packing,
-                        1, a, b
+                        a, b
+                    ).check()?;
+                }
+                Ok(())
+            }
+
+            macro_rules! set {
+                ($lhs: expr, $rhs: expr) => {
+                    if let Ok(x) = tensor0($rhs).cast_to_scalar() {
+                        $lhs = x;
+                    }
+
+                }
+            }
+
+            #[test]
+            fn packed_packed_bug_3() -> TractResult<()> {
+                if $cond && $ker.mr() >= 4 {
+                    let mut a = vec![<$ta>::zero(); 2 * $ker.mr()];
+                    let mut b = vec![<$tb>::zero(); 2 * $ker.nr()];
+                    set!(a[2], -0.7548828f32);
+                    set!(a[3], 0.23547363f32);
+                    set!(b[2*$ker.nr() - 1], 0.93603516);
+                    PackedPackedProblem::<_, $ta, $tb, $tc, $ti>::new(
+                        $ker,
+                        $packing,
+                        a, b
                     ).check()?;
                 }
                 Ok(())
@@ -118,7 +142,6 @@ where
 {
     pub ker: K,
     pub packing: usize,
-    pub k: usize,
     pub a: Vec<TA>,
     pub b: Vec<TB>,
     pub _phantom: PhantomData<(K, TC, TI)>,
@@ -159,9 +182,9 @@ where
                 let ker = K::default();
                 let m = k * ker.mr();
                 let n = k * ker.nr();
-                (Just(k), vec(data::<TA>(), m..=m), vec(data::<TB>(), n..=n))
+                (vec(data::<TA>(), m..=m), vec(data::<TB>(), n..=n))
             })
-            .prop_map(move |(k, a, b)| Self { ker, packing, k, a, b, _phantom: PhantomData })
+            .prop_map(move |(a, b)| Self { ker, packing, a, b, _phantom: PhantomData })
             .boxed()
     }
 }
@@ -179,16 +202,17 @@ where
         let pack_a = self.ker.packings()[self.packing].0;
         let pack_b = self.ker.packings()[self.packing].1;
         assert!(pack_b.k_alignment() == 1);
-        let k_aligned = self.k.next_multiple_of(pack_a.k_alignment());
+        let k = self.a.len() / self.ker.mr();
+        let k_aligned = k.next_multiple_of(pack_a.k_alignment());
 
         let mut a = Tensor::zero::<TA>(&[pack_a.r(), k_aligned])?;
         for row in 0..pack_a.r() {
-            for col in 0..self.k {
-                a.to_array_view_mut()?[[row, col]] = self.a[col + self.k * row];
+            for col in 0..k {
+                a.to_array_view_mut()?[[row, col]] = self.a[col + k * row];
             }
         }
         let mut b = Tensor::zero::<TB>(&[k_aligned, pack_b.r()])?;
-        for row in 0..self.k {
+        for row in 0..k {
             for col in 0..pack_b.r() {
                 b.to_array_view_mut()?[[row, col]] = self.b[col + pack_b.r() * row];
             }
@@ -200,9 +224,11 @@ where
     pub fn reference(&self) -> TractResult<Tensor> {
         let mr = self.ker.mr();
         let nr = self.ker.nr();
+        ensure!(self.a.len() / mr == self.b.len() / nr);
+        let k = self.a.len() / mr;
         let pack_a = self.ker.packings()[self.packing].0;
         let (mut a, _b) = self.padded_inputs()?;
-        let k_aligned = self.k.next_multiple_of(pack_a.k_alignment());
+        let k_aligned = k.next_multiple_of(pack_a.k_alignment());
         if let Some(pbqf) = pack_a.downcast_ref::<PackedBlockQuantFormat>() {
             a = pbqf.simulate_precision_loss(a, 1)?;
         };
@@ -210,9 +236,9 @@ where
         let mut view = vi.to_array_view_mut::<TI>()?.into_dimensionality()?;
         for m in 0..mr {
             for n in 0..nr {
-                for k in 0..self.k {
-                    let a: TI = a.as_slice::<TA>()?[k + k_aligned * m].as_();
-                    let b: TI = self.b[n + nr * k].as_();
+                for ik in 0..k {
+                    let a: TI = a.as_slice::<TA>()?[ik + k_aligned * m].as_();
+                    let b: TI = self.b[n + nr * ik].as_();
                     view[(m, n)] += a * b;
                 }
             }
@@ -224,7 +250,8 @@ where
         let pack_a = self.ker.packings()[self.packing].0;
         let pack_b = self.ker.packings()[self.packing].1;
         assert!(pack_b.k_alignment() == 1);
-        let k_aligned = self.k.next_multiple_of(pack_a.k_alignment());
+        let k = self.a.len() / self.ker.mr();
+        let k_aligned = k.next_multiple_of(pack_a.k_alignment());
 
         let (a, b) = self.padded_inputs()?;
         let pa = pack_a.prepare_tensor(&a, 1, 0)?;
@@ -278,7 +305,7 @@ where
 {
     let a = vec![TA::one(); ker.mr() * k];
     let b = vec![TB::one(); ker.nr() * k];
-    PackedPackedProblem::<K, TA, TB, TC, TI>::new(ker, packing, k, a, b).check()
+    PackedPackedProblem::<K, TA, TB, TC, TI>::new(ker, packing, a, b).check()
 }
 
 pub fn mmm_stride_storage<T: Copy>(v: &mut [T], rsc: usize, csc: usize) -> OutputStoreKer {

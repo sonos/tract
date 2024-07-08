@@ -149,19 +149,27 @@ impl PackedBlockQuantFormat {
     #[cfg(test)]
     pub fn simulate_precision_loss(
         &self,
-        tensor: Tensor,
+        mut tensor: Tensor,
         block_axis: usize,
     ) -> TractResult<Tensor> {
         ensure!(block_axis == tensor.rank() - 1);
         ensure!(tensor.shape()[block_axis] % self.bq.block_len() == 0);
-        let dt = tensor.datum_type();
         let mut scratch = vec![0u8; self.bq.block_bytes()];
-        let mut tensor = tensor.cast_to::<f32>()?.into_owned();
-        for block in tensor.as_slice_mut::<f32>()?.chunks_mut(self.bq.block_len()) {
-            self.bq.quant_block_f32(block, &mut scratch);
-            self.bq.dequant_block_f32(&scratch, block);
+        if tensor.datum_type() == f32::datum_type() {
+            for block in tensor.as_slice_mut::<f32>()?.chunks_mut(self.bq.block_len()) {
+                self.bq.quant_block_f32(block, &mut scratch);
+                self.bq.dequant_block_f32(&scratch, block);
+            }
+            Ok(tensor)
+        } else if tensor.datum_type() == f16::datum_type() {
+            for block in tensor.as_slice_mut::<f16>()?.chunks_mut(self.bq.block_len()) {
+                self.bq.quant_block_f16(block, &mut scratch);
+                self.bq.dequant_block_f16(&scratch, block);
+            }
+            Ok(tensor)
+        } else {
+            todo!()
         }
-        Ok(tensor.cast_to_dt(dt)?.into_owned())
     }
 }
 
