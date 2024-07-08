@@ -328,7 +328,7 @@ fn select_kernel_and_packing(
             return Ok(Some((pair.0.clone(), pair.1)));
         }
     }
-    return Ok(None);
+    Ok(None)
 }
 
 fn wire_packing(
@@ -406,7 +406,7 @@ fn lir_mat_mul_unary(
         .map(Some);
     }
 
-    let (mmm, packing) = if let Some(pair) = select_kernel_and_packing(model, node, &m, &n)? {
+    let (mmm, packing) = if let Some(pair) = select_kernel_and_packing(model, node, m, n)? {
         pair
     } else {
         let a_dt = input_facts[0].datum_type;
