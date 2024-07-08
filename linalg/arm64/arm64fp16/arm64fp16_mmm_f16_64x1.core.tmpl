@@ -67,23 +67,23 @@
 
 .p2align 4
 .q4f16_innerloop:
-        ld1      { v0.16b-v1.16b }, [x1], #32
+        ld1      { v9.16b-v10.16b }, [x1], #32
         ld1      { v8.h }[0], [ x2 ], #2
 
-        and      v4.16b, v0.16b, v15.16b
-        ushr     v5.16b, v0.16b, 4
-        and      v6.16b, v1.16b, v15.16b
-        ushr     v7.16b, v1.16b, 4
+        and      v11.16b, v9.16b, v15.16b
+        ushr     v12.16b, v9.16b, 4
+        zip1     v0.16b, v11.16b, v12.16b
+        zip2     v2.16b, v11.16b, v12.16b
 
-        zip1     v0.16b, v4.16b, v6.16b
-        zip2     v1.16b, v4.16b, v6.16b
-        zip1     v2.16b, v5.16b, v7.16b
-        zip2     v3.16b, v5.16b, v7.16b
+        and      v11.16b, v10.16b, v15.16b
+        ushr     v12.16b, v10.16b, 4
+        zip1     v4.16b, v11.16b, v12.16b
+        zip2     v6.16b, v11.16b, v12.16b
 
-        sub      v6.16b, v3.16b, v14.16b
-        sub      v4.16b, v2.16b, v14.16b
-        sub      v2.16b, v1.16b, v14.16b
         sub      v0.16b, v0.16b, v14.16b
+        sub      v2.16b, v2.16b, v14.16b
+        sub      v4.16b, v4.16b, v14.16b
+        sub      v6.16b, v6.16b, v14.16b
 
 {% for i in (0..3) %}
         sshll2   v{{i|times:2|plus:1}}.8h, v{{i|times:2}}.16b, 0
@@ -108,6 +108,7 @@
     subs        x3, x3, #32
     cmp         x3, 0
     bne         .q4f16_outerloop
+
 
     b           .non_linear_loop
 
