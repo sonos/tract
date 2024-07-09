@@ -48,7 +48,7 @@ pub fn metal_mmm_tile_8x8(
         constants,
     )?;
 
-    let command_buffer = context.command_buffer()?;
+    let command_buffer = context.command_buffer();
     let encoder = command_buffer.new_compute_command_encoder();
     encoder.set_compute_pipeline_state(&pipeline);
     encoder.set_buffer(0, Some(output), 0);

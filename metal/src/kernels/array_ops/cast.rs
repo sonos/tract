@@ -57,7 +57,7 @@ impl Cast {
         let output_buffer = output.metal();
         let pipeline =
             context.shared_context().load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
-        let command_buffer = context.command_buffer()?;
+        let command_buffer = context.command_buffer();
         let encoder = command_buffer.new_compute_command_encoder();
         encoder.set_compute_pipeline_state(&pipeline);
         encoder.set_buffer(0, Some(input_buffer), 0);

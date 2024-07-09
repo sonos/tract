@@ -199,7 +199,7 @@ impl BinOps {
                 let output_buffer = output.metal();
                 let pipeline =
                     context.shared_context().load_pipeline(LibraryName::BinOps, &kernel_name)?;
-                let command_buffer = context.command_buffer()?;
+                let command_buffer = context.command_buffer();
                 let encoder = command_buffer.new_compute_command_encoder();
                 encoder.set_compute_pipeline_state(&pipeline);
                 encoder.set_buffer(0, Some(lhs_buffer), 0);
@@ -239,7 +239,7 @@ impl BinOps {
                 let output_buffer = output.metal();
                 let pipeline =
                     context.shared_context().load_pipeline(LibraryName::BinOps, &kernel_name)?;
-                let command_buffer = context.command_buffer()?;
+                let command_buffer = context.command_buffer();
                 let encoder = command_buffer.new_compute_command_encoder();
                 encoder.set_compute_pipeline_state(&pipeline);
                 encoder.set_buffer(0, Some(lhs_buffer), 0);
