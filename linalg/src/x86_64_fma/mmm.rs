@@ -22,7 +22,7 @@ MMMExternKernel!(f32, fma_mmm_f32_32x1; 32, 1; 32, 4; 0, 0; no_prefetch, is_x86_
          const PQ40_F32: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R32, &F32_B);
      },
  packings: PQ40_F32,
- test: mmm_packed_packed_tests!{ is_x86_feature_detected!("fma"), fma_mmm_f32_32x1, q40f32:1, f32, f32, f32, f32 }
+ test: mmm_packed_packed_tests!{ is_x86_feature_detected!("fma"), fma_mmm_f32_32x1, q40f32:1 }
 );
 */
 
@@ -43,5 +43,5 @@ MMMExternKernel!(i32, avx2_mmm_i32_8x8; 8, 8; 32, 4; 0, 0; no_prefetch, is_x86_f
      const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
  },
  packings: I8_I8,
- test: mmm_packed_packed_tests!{ true, avx2_mmm_i32_8x8, i8i8:1, i8, i8, i32, i32 }
+ test: mmm_packed_packed_tests!{ true, avx2_mmm_i32_8x8, i8i8:1 }
 );

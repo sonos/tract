@@ -26,7 +26,7 @@ MMMExternKernel!(f16, arm64fp16_mmm_f16_64x1_gen; 64, 1; 16, 16; 1, 1; no_prefet
          const PQ40_F16: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&PQ40_R64, &F16_B);
      },
  packings: PQ40_F16,
- test: mmm_packed_packed_tests!{ crate::arm64::has_fp16(), arm64fp16_mmm_f16_64x1_gen, q40f16:1, f16, f16, f16, f16 }
+ test: mmm_packed_packed_tests!{ crate::arm64::has_fp16(), arm64fp16_mmm_f16_64x1_gen, q40f16:1 }
 );
 
 tanh_impl!(f16, arm64fp16_tanh_f16_8n, 8, 8, crate::arm64::has_fp16());
