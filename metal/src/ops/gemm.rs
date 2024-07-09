@@ -1,9 +1,8 @@
-use crate::kernels::mfa_gemm;
+use crate::kernels::matmul;
 use crate::tensor::MetalTensorExt;
 use crate::{IntoMetal, MetalContext};
 use anyhow::{bail, ensure};
-use num_traits::Float;
-use num_traits::One;
+use num_traits::{Float, One};
 use tract_core::internal::*;
 use tract_core::ndarray;
 use tract_core::ndarray::Dimension;
@@ -32,19 +31,6 @@ impl MetalGemm {
         output.push(b[rank - 2 + !self.transpose_b as usize].clone());
         output
     }
-
-    // fn output_shape<D: DimLike>(&self, a: &[D], b: &[D]) -> TractResult<TVec<D>> {
-    //     ensure!(a.len() == b.len());
-    //     let a_rank = a.len();
-    //     let b_rank = b.len();
-    //     let m = a[a_rank - 2].clone();
-    //     let n = b[b_rank - 1].clone();
-    //     let mut c_shape = broadcast::multi_broadcast(&[&a[..a_rank - 2], &b[..b_rank - 2]])
-    //         .context("Unable to broadcast")?;
-    //     c_shape.push(m);
-    //     c_shape.push(n);
-    //     Ok(c_shape)
-    // }
 
     fn resolve_output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let [a, b] = inputs else {
@@ -110,7 +96,7 @@ impl MetalGemm {
                     c_ptr = c_ptr.offset(*x as isize * c.strides()[axis]);
                 }
 
-                mfa_gemm::mfa_dispatch_gemm_with_slice(
+                matmul::mfa_dispatch_gemm_with_slice(
                     context,
                     (1, m, n, k),
                     std::slice::from_raw_parts(a_ptr, m * k),
