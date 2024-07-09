@@ -1,6 +1,7 @@
 use criterion::measurement::WallTime;
 use criterion::*;
 use ggml::Context;
+use tract_metal::kernels::matmul;
 // use ggml;
 use tract_core::internal::*;
 use tract_metal::*;
@@ -100,11 +101,11 @@ pub fn metal_mat_vec(
     let metal_a = a.into_metal().unwrap();
     let metal_b = b.into_metal().unwrap();
     // Warmup
-    let _ = tract_metal::kernels::mat_vec(&context, &metal_a, &metal_b).unwrap();
+    let _ = matmul::mat_vec(&context, &metal_a, &metal_b).unwrap();
 
     crit.bench_function(&format!("tract_metal_mat_vec_{:?}", dt), |be| {
         be.iter(|| {
-            let _ = tract_metal::kernels::mat_vec(&context, &metal_a, &metal_b).unwrap();
+            let _ = matmul::mat_vec(&context, &metal_a, &metal_b).unwrap();
         });
     });
     // metal_mat_vec
@@ -125,11 +126,11 @@ pub fn metal_gemm(
     let metal_a = a.into_metal().unwrap();
     let metal_b = b.into_metal().unwrap();
     // Warmup
-    let _ = tract_metal::kernels::mfa_gemm(&context, &metal_a, &metal_b).unwrap();
+    let _ = matmul::mfa_gemm(&context, &metal_a, false, &metal_b, false).unwrap();
 
     crit.bench_function(&format!("tract_metal_gemm_{:?}", dt), |be| {
         be.iter(|| {
-            let _ = tract_metal::kernels::mfa_gemm(&context, &metal_a, &metal_b).unwrap();
+            let _ = matmul::mfa_gemm(&context, &metal_a, false, &metal_b, false).unwrap();
         });
     });
 }
@@ -149,12 +150,12 @@ pub fn metal_gemm_without_cache(
     let metal_a = a.into_metal().unwrap();
     let metal_b = b.into_metal().unwrap();
     // Warmup
-    let _ = tract_metal::kernels::mfa_gemm(&context, &metal_a, &metal_b).unwrap();
+    let _ = matmul::mfa_gemm(&context, &metal_a, false, &metal_b, false).unwrap();
 
     crit.bench_function(&format!("tract_metal_gemm_without_cache_{:?}", dt), |be| {
         be.iter(|| {
             context.shared_context().flush_pipeline_cache().unwrap();
-            let _ = tract_metal::kernels::mfa_gemm(&context, &metal_a, &metal_b).unwrap();
+            let _ = matmul::mfa_gemm(&context, &metal_a, false, &metal_b, false).unwrap();
         });
     });
 }
@@ -168,7 +169,7 @@ pub fn metal_tile_8x8(crit: &mut BenchmarkGroup<WallTime>, dim: usize, dt: Datum
         let metal_b = b.into_metal().unwrap();
 
         be.iter(|| {
-            let _ = tract_metal::kernels::mmm_tile_8x8(&context, &metal_a, &metal_b).unwrap();
+            let _ = matmul::mmm_tile_8x8(&context, &metal_a, &metal_b).unwrap();
         });
     });
 }
