@@ -1,4 +1,4 @@
-use tract_core::ops::binary::wire_with_rank_broadcast;
+use tract_core::ops::change_axes::wire_with_rank_broadcast;
 
 use crate::infer::*;
 use crate::internal::*;

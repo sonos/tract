@@ -1,4 +1,4 @@
-use tract_core::ops::binary::wire_cast;
+use tract_core::ops::cast::wire_cast;
 
 use crate::infer::*;
 use crate::internal::*;

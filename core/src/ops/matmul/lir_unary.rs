@@ -1,7 +1,7 @@
 use crate::internal::*;
-use crate::ops::binary::wire_with_rank_broadcast;
 use crate::ops::cast::cast;
 use crate::ops::nn::LeakyRelu;
+use crate::ops::change_axes::wire_with_rank_broadcast;
 use ndarray::*;
 use tract_itertools::Itertools;
 

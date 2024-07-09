@@ -497,6 +497,38 @@ impl AxisOp {
     }
 }
 
+pub fn wire_rank_broadcast(
+    prefix: impl AsRef<str>,
+    target: &mut TypedModel,
+    inputs: &[OutletId],
+) -> TractResult<TVec<OutletId>> {
+    let facts =
+        inputs.iter().map(|o| target.outlet_fact(*o).cloned()).collect::<TractResult<TVec<_>>>()?;
+    let max_rank = facts.iter().map(|f| f.rank()).max().unwrap();
+    let mut wires = tvec!();
+    let prefix = prefix.as_ref();
+    for i in 0..inputs.len() {
+        let mut wire = inputs[i];
+        for j in facts[i].rank()..max_rank {
+            wire =
+                target.wire_node(format!("{prefix}.fix-rank-{i}-{j}"), AxisOp::Add(0), &[wire])?[0];
+        }
+        wires.push(wire);
+    }
+    Ok(wires)
+}
+
+pub fn wire_with_rank_broadcast(
+    prefix: impl AsRef<str>,
+    target: &mut TypedModel,
+    op: impl Into<Box<dyn TypedOp>>,
+    inputs: &[OutletId],
+) -> TractResult<TVec<OutletId>> {
+    let prefix = prefix.as_ref();
+    let wires = wire_rank_broadcast(prefix, target, inputs)?;
+    target.wire_node(prefix, &op.into(), &wires)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct AxisChange {
     pub outlet: OutletId,
