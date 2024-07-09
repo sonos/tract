@@ -1,7 +1,7 @@
+use crate::frame::mmm::pack::PackedFormat;
+use crate::frame::mmm::*;
 use crate::LADatum;
 use num_traits::AsPrimitive;
-use crate::frame::mmm::*;
-use crate::frame::mmm::pack::PackedFormat;
 use proptest::prelude::*;
 use std::ops::Neg;
 use tract_data::internal::*;
@@ -20,13 +20,6 @@ macro_rules! mmm_frame_tests {
                 fn mat_mul_prepacked_prop((m, k, n, ref a, ref b) in strat_mat_mat_mul(& $ker, 0)) {
                     if $cond {
                         test_mat_mat_mul_prep::<_, $ta, $tb, $tc, $ti>($ker, m, k, n, &a, &b)?;
-                    }
-                }
-
-                #[test]
-                fn mat_vec_prepacked_prop((m, k, ref a, ref b) in strat_mat_vec_mul(& $ker, 0)) {
-                    if $cond {
-                        test_mat_vec_mul_prep::<_, $ta, $tb, $tc, $ti>($ker, m, k, &*a, b)?
                     }
                 }
             }
@@ -114,8 +107,8 @@ macro_rules! mmm_frame_tests {
             fn mat_vec_1() {
                 if $cond {
                     let a = tensor2(&[[0], [1]]).cast_to::<$ta>().unwrap().into_owned();
-                    let b = tensor1(&[1]).cast_to::<$tb>().unwrap().into_owned();
-                    test_mat_vec_mul_prep::<_, $ta, $tb, $tc, $ti>($ker, 2, 1, &a, &b).unwrap()
+                    let b = tensor2(&[[1]]).cast_to::<$tb>().unwrap().into_owned();
+                    test_mat_mat_mul_prep::<_, $ta, $tb, $tc, $ti>($ker, 2, 1, 1, &a, &b).unwrap()
                 }
             }
 
@@ -124,18 +117,18 @@ macro_rules! mmm_frame_tests {
                 if $cond {
                     let a = tensor1(&[0, 0, 0, 0, 0, 0, -4, 1]).into_shape(&[8, 1]).unwrap();
                     let a = a.cast_to::<$ta>().unwrap();
-                    let b = tensor1(&[-64]).cast_to::<$tb>().unwrap().into_owned();
-                    test_mat_vec_mul_prep::<_, $ta, $tb, $tc, $ti>($ker, 8, 1, &a, &b).unwrap()
+                    let b = tensor2(&[[-64]]).cast_to::<$tb>().unwrap().into_owned();
+                    test_mat_mat_mul_prep::<_, $ta, $tb, $tc, $ti>($ker, 8, 1, 1, &a, &b).unwrap()
                 }
             }
 
             #[test]
             fn mat_vec_3() {
                 if $cond {
-                    let a = tensor1(&[0, 0]).into_shape(&[1, 2]).unwrap();
+                    let a = tensor2(&[[0, 0]]);
                     let a = a.cast_to::<$ta>().unwrap();
-                    let b = tensor1(&[0, 0]).cast_to::<$tb>().unwrap().into_owned();
-                    test_mat_vec_mul_prep::<_, $ta, $tb, $tc, $ti>($ker, 1, 2, &a, &b).unwrap()
+                    let b = tensor2(&[[0, 0]]).cast_to::<$tb>().unwrap().into_owned();
+                    test_mat_mat_mul_prep::<_, $ta, $tb, $tc, $ti>($ker, 1, 2, 1, &a, &b).unwrap()
                 }
             }
 
@@ -232,19 +225,6 @@ pub fn strat_mat_mat_mul(
         .boxed()
 }
 
-pub fn strat_mat_vec_mul(
-    ker: &dyn MatMatMul,
-    packing: usize,
-) -> BoxedStrategy<(usize, usize, Tensor, Tensor)> {
-    let dta = ker.packings()[packing].0.downcast_ref::<PackedFormat>().unwrap().dt;
-    let dtb = ker.packings()[packing].1.downcast_ref::<PackedFormat>().unwrap().dt;
-    (1usize..15, 1usize..15)
-        .prop_flat_map(move |(m, k)| {
-            (Just(m), Just(k), tensor(dta, vec![m, k]), tensor(dtb, vec![k, 1]))
-        })
-        .boxed()
-}
-
 pub fn test_mat_mat_mul_prep<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
     ker: K,
     m: usize,
@@ -282,47 +262,6 @@ where
                     v += a * b;
                 }
                 v.as_()
-            },
-        )
-    }
-}
-
-pub fn test_mat_vec_mul_prep<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
-    ker: K,
-    m: usize,
-    k: usize,
-    a: &Tensor,
-    b: &Tensor,
-) -> Result<(), proptest::test_runner::TestCaseError>
-where
-    TA: LADatum + AsPrimitive<TI> + 'static,
-    TB: LADatum + AsPrimitive<TI> + 'static,
-    TC: LADatum + AsPrimitive<TI> + 'static,
-    TI: LADatum + AsPrimitive<TC> + 'static + Neg<Output = TI>,
-    i32: AsPrimitive<TI>,
-    usize: AsPrimitive<TI>,
-{
-    crate::setup_test_logger();
-    unsafe {
-        let packing = 0;
-        let b = b.clone().into_shape(&[k, 1]).unwrap();
-        let pack = &ker.packings()[packing];
-        let packed_a = pack.0.prepare_tensor(a, 1, 0).unwrap();
-        let packed_b = pack.1.prepare_tensor(&b, 0, 1).unwrap();
-
-        fused_ops::<K, TA, TB, TC, TI, _>(
-            ker,
-            m,
-            1,
-            &[FusedSpec::AddMatMul { a: &*packed_a, b: &*packed_b, packing }],
-            |r, _| {
-                let mut inter = TI::zero();
-                for i in 0..k {
-                    let a: TI = a.as_slice::<TA>().unwrap()[i + k * r].as_();
-                    let b: TI = b.as_slice::<TB>().unwrap()[i].as_();
-                    inter += a * b;
-                }
-                inter.as_()
             },
         )
     }
