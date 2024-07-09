@@ -142,38 +142,6 @@ where
     pub b: Vec<f32>,
 }
 
-/*
-fn data<T: LADatum>() -> BoxedStrategy<T>
-where
-f32: AsPrimitive<T>,
-i8: AsPrimitive<T>,
-{
-match T::datum_type() {
-DatumType::F64 => (-1f32..1f32).prop_map(|t| t.as_()).boxed(),
-DatumType::F32 => (-1f32..1f32).prop_map(|t| t.as_()).boxed(),
-DatumType::F16 => (-1f32..1f32).prop_map(|t| t.as_()).boxed(),
-DatumType::I8 => (-5i8..5).prop_map(|t| t.as_()).boxed(),
-DatumType::I32 => (-5i8..5).prop_map(|t| t.as_()).boxed(),
-_ => todo!(),
-}
-}
-
-pub fn input_dts(ker: &impl MatMatMulKer, packing: usize) -> (DatumType, DatumType) {
-    let (a_pack, b_pack) = ker.packings()[0];
-    let dta = if let Some(pf) = a_pack.downcast_ref::<PackedFormat>() {
-        pf.dt
-    } else {
-        f32::datum_type()
-    };
-    let dtb = if let Some(pf) = b_pack.downcast_ref::<PackedFormat>() {
-        pf.dt
-    } else {
-        f32::datum_type()
-    };
-    (dta, dtb)
-}
-*/
-
 impl<K> Arbitrary for PackedPackedProblem<K>
 where
     K: MatMatMulKer + Default,
