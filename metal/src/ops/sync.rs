@@ -51,12 +51,10 @@ impl EvalOp for MetalSync {
                     .to_metal_tensor()
                     .with_context(|| anyhow!("Error while syncing metal tensor to cpu"))?;
                 let tvalue = metal_tensor.tensor().clone().into();
-                // log::info!("Sync to CPU: from {:?} to {:?} -> Sane float: {:?}", input, tvalue, metal_tensor.assert_sane_floats()?);
                 Ok(tvec![tvalue])
             }),
             MetalSyncKind::ToGpu => {
                 let metal_input = input.into_tensor().into_metal()?;
-                // log::info!("Sync to GPU: {:?} -> Sane float: {:?}", metal_input, metal_input.assert_sane_floats()?);
                 Ok(tvec![metal_input.into_opaque_tensor().into()])
             }
         }

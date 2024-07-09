@@ -1,4 +1,4 @@
-use crate::kernels::BroadcastKind;
+use crate::kernels::{utils, BroadcastKind};
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::bail;
@@ -96,7 +96,7 @@ impl MultiBroadcast {
 
         let pipeline =
             context.shared_context().load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
-        let command_buffer = context.command_buffer()?;
+        let command_buffer = context.command_buffer();
         let encoder = command_buffer.new_compute_command_encoder();
         encoder.set_compute_pipeline_state(&pipeline);
         encoder.set_buffer(0, Some(input.metal()), 0);
@@ -112,8 +112,8 @@ impl MultiBroadcast {
             output_shape.as_ptr() as *const _,
         );
 
-        let grid_size = super::build_metal_size_for_shape(output.shape());
-        let group_size = super::build_metal_size_with_ones();
+        let grid_size = utils::build_metal_size_for_shape(output.shape());
+        let group_size = utils::build_metal_size_with_ones();
 
         encoder.use_resource(input.metal(), metal::MTLResourceUsage::Read);
         encoder.use_resource(output.metal(), metal::MTLResourceUsage::Write);

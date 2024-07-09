@@ -1,21 +1,21 @@
 use crate::fact::MetalTypedFactExt;
+use crate::kernels::nn::Reducer;
 use crate::ops;
 use crate::ops::sync::MetalSyncKind;
 use crate::ops::MetalSync;
 use crate::tensor::MetalTensorExt;
-use crate::IntoMetal;
-use crate::MetalFact;
-use crate::MetalTensor;
+use crate::{IntoMetal, MetalFact, MetalTensor};
 use anyhow::Result;
 use std::borrow::Cow;
 use std::fmt::Debug;
 use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
 use tract_core::ops::array::MultiBroadcastTo;
-use tract_core::ops::binary::TypedBinOp;
+use tract_core::ops::binary::{BinMiniOp, MergeOpUnicast, TypedBinOp};
 use tract_core::ops::einsum::{rewrite_einsums_as_matmul, BasicMatMul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
+use tract_core::ops::nn::Reduce;
 use tract_core::transform::ModelTransform;
 
 #[derive(Debug, Default)]
@@ -28,6 +28,7 @@ impl ModelTransform for MetalTransform {
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         rewrite_einsums_as_matmul(model)?;
+        model.optimize()?;
 
         // Rewriter::default()
         //     .with_rule_for("matmul-to-metal-gemm", matmul_to_gemm)
@@ -125,8 +126,8 @@ impl MetalTransform {
 
 macro_rules! map_bin_ops {
     ([$(($tract_bin_op:path, $metal_bin_op:ident)),* $(,)?]) => {
-        |op: &tract_core::ops::binary::TypedBinOp| {
-            $(if let Some(_op) = op.0.downcast_ref::<$tract_bin_op>() {
+        |op: &Box<dyn tract_core::ops::binary::BinMiniOp >| {
+            $(if let Some(_op) = op.downcast_ref::<$tract_bin_op>() {
                 return Some($crate::ops::binary::MetalBinOp($crate::ops::binary::BinOps::$metal_bin_op));
             })*
             return None;
@@ -163,7 +164,9 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         } else if let Some(op) = node.op_as::<ElementWiseOp>() {
             convert_element_wise_ops_to_metal(op).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<TypedBinOp>() {
-            convert_bin_ops_to_metal(op).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+            convert_bin_ops_to_metal(&op.0).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+        } else if let Some(op) = node.op_as::<MergeOpUnicast>() {
+            convert_bin_ops_to_metal(&op.0).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<BasicMatMul>() {
             convert_matmul_to_metal(source, node, op)?.map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
@@ -172,6 +175,19 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             ops::MetalConst::new(op.0.clone())?.map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<AxisOp>() {
             ops::MetalAxisOp::new(op.clone()).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+        } else if let Some(op) = node.op_as::<IntoShape>() {
+            Some(Box::new(ops::MetalIntoShape::new(op.clone())))
+        } else if let Some(op) = node.op_as::<Reduce>() {
+            let is_dts_supported = source.node_input_facts(node.id)?.iter().all(|f| {
+                Reducer::is_supported_dt(f.datum_type)
+                    || f.as_metal_fact()
+                        .map(|f| Reducer::is_supported_dt(f.datum_type))
+                        .unwrap_or(false)
+            });
+            is_dts_supported
+                .then(|| ops::MetalReduce::from_tract_core(op).ok())
+                .flatten()
+                .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else {
             None
         };
@@ -220,7 +236,7 @@ pub fn matmul_to_gemm(
         .transpose()
 }
 
-fn convert_bin_ops_to_metal(op: &TypedBinOp) -> Option<ops::MetalBinOp> {
+fn convert_bin_ops_to_metal(op: &Box<dyn BinMiniOp>) -> Option<ops::MetalBinOp> {
     map_bin_ops!([
         (tract_core::ops::math::Mul, Mul),
         (tract_core::ops::math::Add, Add),
@@ -259,7 +275,7 @@ pub fn bin_ops_to_metal(
         return Ok(None);
     }
 
-    convert_bin_ops_to_metal(op)
+    convert_bin_ops_to_metal(&op.0)
         .map(|metal_op| TypedModelPatch::replace_single_op(model, node, &node.inputs, metal_op))
         .transpose()
 }

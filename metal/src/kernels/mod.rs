@@ -4,6 +4,8 @@ mod element_wise;
 mod mat_vec;
 pub mod mfa_gemm;
 mod mmm_tile_8x8;
+pub mod nn;
+mod utils;
 
 pub use array_ops::{Cast, Memcpy, MultiBroadcast, PermuteAxes};
 pub use bin_ops::BinOps;
@@ -24,6 +26,7 @@ pub const MMM_TILE_8X8_METAL_SOURCE: &str = include_str!("mmm_tile_8x8.metal");
 pub const MUL_MAT_VEC: &str = include_str!("mat_vec.metal");
 pub const ARRAY_OPS: &str = include_str!("array_ops.metal");
 pub const BIN_OPS: &str = include_str!("bin_ops.metal");
+pub const NN_OPS: &str = include_str!("nn_ops.metal");
 pub const ELEMENT_WISE_OPS: &str = include_str!("element_wise.metal");
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -39,6 +42,7 @@ pub enum LibraryName {
     MulMatVec,
     BinOps,
     ArrayOps,
+    NNOps,
     ElementWiseOps,
 }
 
@@ -50,6 +54,7 @@ impl LibraryName {
             Self::MulMatVec => LibraryContent::Source(MUL_MAT_VEC),
             Self::ArrayOps => LibraryContent::Source(ARRAY_OPS),
             Self::BinOps => LibraryContent::Source(BIN_OPS),
+            Self::NNOps => LibraryContent::Source(NN_OPS),
             Self::ElementWiseOps => LibraryContent::Source(ELEMENT_WISE_OPS),
         }
     }

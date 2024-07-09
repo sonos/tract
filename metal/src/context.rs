@@ -155,11 +155,11 @@ impl SharedMetalContext {
 pub struct MetalContext {
     shared: SharedMetalContext,
     command_queue: CommandQueue,
-    // TODO replace RwLock by RefCell,
-    command_buffer: RwLock<CommandBuffer>,
-    command_buffer_used: RwLock<usize>,
+    command_buffer: RefCell<CommandBuffer>,
+    command_buffer_used: RefCell<usize>,
     command_buffer_id: AtomicUsize,
     command_buffer_capacity: usize,
+    local_var_tensors: RefCell<Vec<MetalTensor>>,
 }
 
 impl Default for MetalContext {
@@ -177,10 +177,11 @@ impl MetalContext {
         Self {
             shared,
             command_queue,
-            command_buffer: RwLock::new(command_buffer),
-            command_buffer_used: RwLock::new(0),
+            command_buffer: RefCell::new(command_buffer),
+            command_buffer_used: RefCell::new(0),
             command_buffer_capacity: 100,
             command_buffer_id: AtomicUsize::new(0),
+            local_var_tensors: RefCell::new(vec![]),
         }
     }
 
@@ -212,13 +213,14 @@ impl MetalContext {
         )
     }
 
-    pub fn command_buffer(&self) -> Result<CommandBuffer> {
-        let mut self_command_buffer =
-            self.command_buffer.try_write().map_err(|e| anyhow!("{:?}", e))?;
-        let mut command_buffer = self_command_buffer.to_owned();
+    pub fn add_local_var_tensor(&self, tensor: MetalTensor) {
+        self.local_var_tensors.borrow_mut().push(tensor);
+    }
 
-        let mut command_buffer_used =
-            self.command_buffer_used.try_write().map_err(|e| anyhow!("{:?}", e))?;
+    pub fn command_buffer(&self) -> CommandBuffer {
+        let mut command_buffer = self.command_buffer.borrow().to_owned();
+
+        let mut command_buffer_used = self.command_buffer_used.borrow_mut();
 
         if *command_buffer_used > self.command_buffer_capacity {
             *command_buffer_used = 1;
@@ -232,19 +234,18 @@ impl MetalContext {
             command_buffer.commit();
             log::trace!("Command buffer {:?} commit", command_buffer_id);
             command_buffer = self.command_queue.new_command_buffer().to_owned();
-            *self_command_buffer = command_buffer.clone();
+            *self.command_buffer.borrow_mut() = command_buffer.clone();
             self.command_buffer_id.fetch_add(1, Ordering::Relaxed);
-            Ok(command_buffer.to_owned())
+            command_buffer.to_owned()
         } else {
             *command_buffer_used += 1;
-            Ok(command_buffer)
+            command_buffer
         }
     }
 
     pub fn wait_until_completed(&self) -> Result<()> {
-        let mut command_buffer = self.command_buffer.try_write().map_err(|e| anyhow!("{:?}", e))?;
-        let mut command_buffer_used =
-            self.command_buffer_used.try_write().map_err(|e| anyhow!("{:?}", e))?;
+        let mut command_buffer = self.command_buffer.borrow_mut();
+        let mut command_buffer_used = self.command_buffer_used.borrow_mut();
 
         if *command_buffer_used == 0 {
             return Ok(());
@@ -262,6 +263,10 @@ impl MetalContext {
         log::trace!("Command buffer {:?} commit", command_buffer_id);
         command_buffer.wait_until_completed();
         log::trace!("Command buffer {:?} has completed (Blocking call)", command_buffer_id);
+
+        // Clear local var tensor used by the command buffer
+        self.local_var_tensors.borrow_mut().clear();
+
         *command_buffer = self.command_queue.new_command_buffer().to_owned();
         *command_buffer_used = 0;
         self.command_buffer_id.fetch_add(1, Ordering::Relaxed);
@@ -293,8 +298,7 @@ impl MetalContext {
 
 impl Drop for MetalContext {
     fn drop(&mut self) {
-        let command_buffer =
-            self.command_buffer.try_write().map_err(|e| anyhow!("{:?}", e)).unwrap();
+        let command_buffer = self.command_buffer.borrow_mut();
 
         match command_buffer.status() {
             metal::MTLCommandBufferStatus::Committed
