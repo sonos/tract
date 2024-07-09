@@ -1,6 +1,5 @@
 use tract_core::internal::*;
 use tract_core::ops::array::{Pad, PadMode};
-use tract_core::ops::binary::wire_with_rank_broadcast;
 use tract_core::ops::cnn::{rewrite_conv_with_n_axis, KernelFormat, MaxPool, PoolSpec, SumPool};
 use tract_core::ops::cnn::{Conv, PaddingSpec};
 use tract_core::ops::einsum::BasicMatMul;

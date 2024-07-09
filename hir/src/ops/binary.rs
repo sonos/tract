@@ -3,8 +3,8 @@ use crate::internal::*;
 
 use tract_core::broadcast::multi_broadcast;
 use tract_core::ops as mir;
-pub use tract_core::ops::binary::wire_cast;
-pub use tract_core::ops::binary::wire_rank_broadcast;
+pub use tract_core::ops::cast::wire_cast;
+pub use tract_core::ops::change_axes::wire_rank_broadcast;
 use tract_core::ops::binary::BinMiniOp;
 
 #[derive(Debug, Clone)]

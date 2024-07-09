@@ -2,7 +2,7 @@ use crate::infer::*;
 use crate::internal::*;
 
 pub use tract_core::ops::array::TypedConcat;
-use tract_core::ops::binary::wire_cast;
+use tract_core::ops::cast::wire_cast;
 
 /// Concat: high level concat op
 #[derive(Debug, Clone, new, Hash)]

@@ -1,5 +1,5 @@
 use anyhow::ensure;
-use ops::binary::wire_with_rank_broadcast;
+use ops::change_axes::wire_with_rank_broadcast;
 
 use crate::internal::*;
 use crate::ops;

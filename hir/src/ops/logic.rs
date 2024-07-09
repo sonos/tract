@@ -2,8 +2,8 @@ use crate::infer::*;
 use crate::internal::*;
 
 use tract_core::broadcast::multi_broadcast;
-use tract_core::ops::binary::wire_cast;
-pub use tract_core::ops::binary::wire_with_rank_broadcast;
+use tract_core::ops::cast::wire_cast;
+pub use tract_core::ops::change_axes::wire_with_rank_broadcast;
 pub use tract_core::ops::logic::*;
 
 #[derive(Debug, Clone, Hash)]

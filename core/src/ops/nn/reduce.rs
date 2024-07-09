@@ -1,9 +1,10 @@
 use crate::internal::Axis;
 use crate::internal::*;
-use crate::ops::binary::{wire_cast, wire_with_rank_broadcast, TypedBinOp};
-use crate::ops::cast::cast;
+use crate::ops::binary::TypedBinOp;
+use crate::ops::cast::{cast, wire_cast};
 use crate::ops::element_wise::ElementWiseOp;
 use crate::ops::math::{div, mul, square, Mul, Square};
+use crate::ops::change_axes::wire_with_rank_broadcast;
 use std::convert::TryFrom;
 use std::iter::Sum;
 use std::mem::transmute;
