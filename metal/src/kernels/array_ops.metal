@@ -50,7 +50,7 @@ namespace utils {
       idx += (indices.z % shape[2]) * strides[2];
       indices.z /= shape[2];
       idx += (indices.z % shape[1]) * strides[1];
-      indices.z /= shape[2];
+      indices.z /= shape[1];
       idx += indices.z * strides[0];
       return idx;
     }

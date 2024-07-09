@@ -76,7 +76,7 @@ pub fn metal_mat_vec(
     let pipeline =
         context.shared_context().load_pipeline(LibraryName::MulMatVec, "op_mat_vec_f32")?;
 
-    let command_buffer = context.command_buffer()?;
+    let command_buffer = context.command_buffer();
     let encoder = command_buffer.new_compute_command_encoder();
     encoder.set_compute_pipeline_state(&pipeline);
     encoder.set_buffer(0, Some(lhs_buffer), 0);

@@ -71,7 +71,9 @@ impl EvalOp for MetalAxisOp {
                 })?;
                 return Ok(tvec!(output.into_opaque_tensor().into_tvalue()));
             } else {
-                self.0.change_tensor(&mut input, false)?;
+                self.0
+                    .change_tensor(&mut input, false)
+                    .with_context(|| anyhow!("Error while doing metal move axis"))?;
                 return Ok(tvec!(input.into_tvalue()));
             }
         }
@@ -144,10 +146,6 @@ impl TypedOp for MetalAxisOp {
         self.0.declutter(model, node)
     }
 
-    fn suggested_axis_changes(&self) -> TractResult<TVec<(InOut, AxisOp)>> {
-        self.0.suggested_axis_changes()
-    }
-
     fn change_axes(
         &self,
         model: &TypedModel,
@@ -209,10 +207,21 @@ impl TypedOp for MetalAxisOp {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MetalIntoShape {
-    pub(crate) mapping: AxesMapping,
-    pub(crate) len: usize,
-    pub(crate) dims: TVec<usize>,
-    pub(crate) strides: TVec<isize>,
+    pub mapping: AxesMapping,
+    pub len: usize,
+    pub dims: TVec<usize>,
+    pub strides: TVec<isize>,
+}
+
+impl MetalIntoShape {
+    pub fn new(core_op: IntoShape) -> Self {
+        MetalIntoShape {
+            mapping: core_op.mapping,
+            len: core_op.len,
+            strides: core_op.strides,
+            dims: core_op.dims,
+        }
+    }
 }
 
 impl Op for MetalIntoShape {
@@ -292,4 +301,56 @@ impl TypedOp for MetalIntoShape {
     }
 
     as_op!();
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use crate::MetalTransform;
+    use tract_core::transform::ModelTransform;
+
+    #[test]
+    fn test_change_axes() -> TractResult<()> {
+        let input = Tensor::from_shape(
+            &[1, 1, 4, 6],
+            &[
+                0.0f32, 6.0, 1.0, 7.0, 2.0, 8.0, 12.0, 18.0, 13.0, 19.0, 14.0, 20.0, 3.0, 9.0, 4.0,
+                10.0, 5.0, 11.0, 15.0, 21.0, 16.0, 22.0, 17.0, 23.0,
+            ],
+        )?;
+        let mut model = TypedModel::default();
+
+        let x = model.add_source("x", f32::fact([1, 1, 4, 6]))?;
+        let y_0 = model.wire_node(
+            "y.0",
+            AxisOp::Reshape(
+                2,
+                tvec![4.into(), 6.into()],
+                tvec![2.into(), 2.into(), 3.into(), 2.into()],
+            ),
+            &[x],
+        )?[0];
+        let y_1 = model.wire_node("y.1", AxisOp::Move(3, 1), &[y_0])?[0];
+
+        let y_2 = model.wire_node("y.2", AxisOp::Move(5, 2), &[y_1])?[0];
+
+        let y_3_0 = model.wire_node("y.3.0", AxisOp::Rm(3), &[y_2])?[0];
+
+        let _y_3_1 = model.wire_node(
+            "y.3.1",
+            AxisOp::Reshape(1, tvec![2.into(), 2.into()], tvec![4.into()]),
+            &[y_3_0],
+        )?[0];
+
+        model.auto_outputs()?;
+
+        let expected = model.clone().into_runnable()?.run(tvec![input.clone().into()])?;
+
+        let metal_model = MetalTransform.transform_into(&model)?;
+        let output = metal_model.clone().into_runnable()?.run(tvec![input.clone().into()])?;
+
+        let _ = &output[0].close_enough(&expected[0], Approximation::Close)?;
+
+        Ok(())
+    }
 }
