@@ -52,7 +52,7 @@
     fmla        v30.8h, v6.8h, v8.h[0]
     fmla        v31.8h, v7.8h, v8.h[0]
     subs        x3, x3, #1
-    bge         .packed_packed_loop_1
+    bne         .packed_packed_loop_1
 
     b           .non_linear_loop
 
@@ -177,6 +177,7 @@
     {% for reg in (24..31) %}
         st1 { v{{reg}}.8h }, [ x5 ], #16
     {% endfor %}
+
     b           .non_linear_loop
 
 .return:

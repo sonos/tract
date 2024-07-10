@@ -304,7 +304,7 @@ impl<K: MatMatMulKer + Default> PackedPackedProblem<K> {
         let pa = pack_a.prepare_tensor(&a, 1, 0)?;
         let pb = pack_b.prepare_tensor(&b, 0, 1)?;
 
-        let mut v = Tensor::zero_dt(self.ker.internal_type(), &[m, n])?;
+        let mut v = unsafe { Tensor::uninitialized_dt(self.ker.internal_type(), &[m, n])? };
         let item_size = self.ker.internal_type().size_of();
 
         if self.frame_test.is_some() {
