@@ -23,30 +23,6 @@ impl MetalSlice {
     pub fn suffix(&self, name: &str) -> String {
         format!("{}.axis{}_{}_{}", name, self.axis, self.start, self.end)
     }
-
-    pub fn declutter_slice_after_slice(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let prec = model.node(node.inputs[0].node);
-        if let Some(other) = prec.op_as::<MetalSlice>() {
-            if other.axis == self.axis {
-                return TypedModelPatch::replace_single_op(
-                    model,
-                    node,
-                    &prec.inputs,
-                    MetalSlice {
-                        axis: self.axis,
-                        start: self.start.clone() + &other.start,
-                        end: self.end.clone() + &other.start,
-                    },
-                )
-                .map(Some);
-            }
-        }
-        Ok(None)
-    }
 }
 
 impl Op for MetalSlice {
@@ -182,22 +158,6 @@ impl TypedOp for MetalSlice {
         } else {
             Ok(None)
         }
-    }
-
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        crate::utils::metal_fact(model.outlet_fact(node.inputs[0])?, |fact| {
-            if self.start.is_zero() && (self.end == fact.shape[self.axis]) {
-                TypedModelPatch::shunt_one_op(model, node)
-            } else if let Some(p) = self.declutter_slice_after_slice(model, node)? {
-                Ok(Some(p))
-            } else {
-                Ok(None)
-            }
-        })
     }
 
     fn concretize_dims(
