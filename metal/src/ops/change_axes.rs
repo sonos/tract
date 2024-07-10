@@ -97,7 +97,7 @@ impl EvalOp for MetalAxisOp {
             objc::rc::autoreleasepool(|| {
                 crate::METAL_CONTEXT.with_borrow(|context| -> TractResult<_> {
                     // Copy perform by GPU
-                    let mut cpy_t = Memcpy.dispatch_eval(context, t)?;
+                    let mut cpy_t = Memcpy.dispatch_eval(context, t, 0)?;
                     let ref_mut_tensor = cpy_t.tensor_mut().ok_or_else(|| {
                         anyhow!(
                             "Could not take mutable reference of inner tensor after a metal copy."
@@ -254,7 +254,7 @@ impl EvalOp for MetalIntoShape {
             objc::rc::autoreleasepool(|| {
                 crate::METAL_CONTEXT.with_borrow(|context| -> TractResult<_>{
                     // Copy perform by GPU
-                    let mut cpy_t = Memcpy.dispatch_eval(context, t)?;
+                    let mut cpy_t = Memcpy.dispatch_eval(context, t, 0)?;
                     unsafe {
                         cpy_t.tensor_mut()
                           .ok_or_else(|| {

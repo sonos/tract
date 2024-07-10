@@ -57,9 +57,10 @@ impl MultiBroadcast {
         &self,
         context: &MetalContext,
         input: &MetalTensor,
+        input_offset: usize,
         output_shape: &[usize],
     ) -> Result<MetalTensor> {
-        let output = self.dispatch_eval(context, input, output_shape)?;
+        let output = self.dispatch_eval(context, input, input_offset, output_shape)?;
         context.wait_until_completed()?;
         Ok(output)
     }
@@ -68,8 +69,11 @@ impl MultiBroadcast {
         &self,
         context: &MetalContext,
         input: &MetalTensor,
+        input_offset: usize,
         output_shape: &[usize],
     ) -> Result<MetalTensor> {
+        ensure!(input_offset % input.datum_type().size_of() == 0);
+
         let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), output_shape)? };
         ensure!(input.rank() <= output.rank(), "Input must have a rank lowe than output");
 
@@ -99,7 +103,7 @@ impl MultiBroadcast {
         let command_buffer = context.command_buffer();
         let encoder = command_buffer.new_compute_command_encoder();
         encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_buffer(0, Some(input.metal()), 0);
+        encoder.set_buffer(0, Some(input.metal()), input_offset as _);
         encoder.set_bytes(
             1,
             (input_broadcast_strides.len() * std::mem::size_of::<u32>()) as _,

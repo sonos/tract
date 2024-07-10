@@ -48,7 +48,9 @@ impl Memcpy {
         &self,
         context: &MetalContext,
         input: &MetalTensor,
+        input_offset: usize,
     ) -> Result<MetalTensor> {
+        ensure!(input_offset % input.datum_type().size_of() == 0);
         let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         let kernel_name = self.kernel_name(input.datum_type())?;
 
@@ -59,7 +61,7 @@ impl Memcpy {
         let command_buffer = context.command_buffer();
         let encoder = command_buffer.new_compute_command_encoder();
         encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_buffer(0, Some(input_buffer), 0);
+        encoder.set_buffer(0, Some(input_buffer), input_offset as NSUInteger);
         encoder.set_buffer(1, Some(output.metal()), 0);
 
         let grid_size = MTLSize { width: output.len() as NSUInteger, height: 1, depth: 1 };
@@ -71,8 +73,13 @@ impl Memcpy {
         Ok(output)
     }
 
-    pub fn eval(&self, context: &MetalContext, input: &MetalTensor) -> Result<MetalTensor> {
-        let output = self.dispatch_eval(context, input)?;
+    pub fn eval(
+        &self,
+        context: &MetalContext,
+        input: &MetalTensor,
+        input_offset: usize,
+    ) -> Result<MetalTensor> {
+        let output = self.dispatch_eval(context, input, input_offset)?;
         context.wait_until_completed()?;
         Ok(output)
     }

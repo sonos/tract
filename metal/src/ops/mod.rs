@@ -6,6 +6,7 @@ pub mod element_wise;
 pub mod gemm;
 pub mod konst;
 pub mod reduce;
+pub mod slice;
 pub mod softmax;
 pub mod sync;
 
@@ -17,5 +18,6 @@ pub use element_wise::MetalElementWiseOp;
 pub use gemm::MetalGemm;
 pub use konst::MetalConst;
 pub use reduce::MetalReduce;
+pub use slice::MetalSlice;
 pub use softmax::MetalSoftmax;
 pub use sync::MetalSync;

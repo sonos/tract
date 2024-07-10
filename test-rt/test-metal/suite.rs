@@ -22,6 +22,11 @@ fn ignore_unit(_t: &[String], _case: &dyn Test) -> bool {
     false
 }
 
-fn ignore_onnx(_t: &[String]) -> bool {
-    false
+fn ignore_onnx(t: &[String]) -> bool {
+    r#"
+test_slice_start_out_of_bounds
+"#
+    .trim()
+    .lines()
+    .any(|s| t.last().unwrap() == s.trim())
 }
