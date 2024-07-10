@@ -15,7 +15,7 @@ use tract_core::ops::binary::{BinMiniOp, MergeOpUnicast, TypedBinOp};
 use tract_core::ops::einsum::{rewrite_einsums_as_matmul, BasicMatMul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
-use tract_core::ops::nn::Reduce;
+use tract_core::ops::nn::{Reduce, Softmax};
 use tract_core::transform::ModelTransform;
 
 #[derive(Debug, Default)]
@@ -186,6 +186,17 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             });
             is_dts_supported
                 .then(|| ops::MetalReduce::from_tract_core(op).ok())
+                .flatten()
+                .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+        } else if let Some(op) = node.op_as::<Softmax>() {
+            let is_dts_supported = source.node_input_facts(node.id)?.iter().all(|f| {
+                crate::kernels::nn::Softmax::is_supported_dt(f.datum_type)
+                    || f.as_metal_fact()
+                        .map(|f| crate::kernels::nn::Softmax::is_supported_dt(f.datum_type))
+                        .unwrap_or(false)
+            });
+            is_dts_supported
+                .then(|| ops::MetalSoftmax::from_tract_core(op).ok())
                 .flatten()
                 .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else {
