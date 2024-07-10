@@ -1,6 +1,3 @@
-use proptest::prelude::*;
-use tract_data::internal::*;
-
 use crate::LADatum;
 
 #[macro_use]
