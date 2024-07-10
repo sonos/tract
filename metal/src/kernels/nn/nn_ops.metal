@@ -61,8 +61,8 @@ template<typename F, typename Op>
                 constant const size_t input_strides[3],
                 constant const size_t output_strides[3],
                 uint3  tgpig[[threadgroup_position_in_grid]],
-        		uint  tiisg[[thread_index_in_simdgroup]],
-        		uint  tpsg[[threads_per_simdgroup]]
+        		    uint  tiisg[[thread_index_in_simdgroup]],
+        		    uint  tpsg[[threads_per_simdgroup]]
                 ) {
 
     Op op = Op();
@@ -88,6 +88,51 @@ template<typename F, typename Op>
     }
 }
 
+template<typename F>  
+[[kernel]] void softmax_nd3(
+                device const F *input [[buffer(0)]],
+                device F *output [[buffer(1)]],
+                constant const size_t shape[3], 
+                constant const size_t strides[3],
+                uint3  tgpig[[threadgroup_position_in_grid]],
+                uint  tiisg[[thread_index_in_simdgroup]],
+                uint  tpsg[[threads_per_simdgroup]]
+                ) {
+
+    size_t dim = shape[1];
+
+    size_t base_idx = tgpig.x * strides[2] 
+            + tgpig.z * strides[0];
+
+    // Get max value on softmax dim
+    float partial_max = -INFINITY;
+    for (size_t i = tiisg; i < dim; i += tpsg) {
+        auto idx = base_idx + i * strides[1];
+        float el = static_cast<float>(input[idx]);
+        partial_max = max(partial_max, el);
+    }
+
+    float axis_max = simd_max(partial_max);
+
+    // Compute Sum(exp(x - max))
+    float partial_norm = 0;
+    for (size_t i = tiisg; i < dim; i += tpsg) {
+        auto idx = base_idx + i * strides[1];
+        float el = static_cast<float>(input[idx]);
+        float exp_el = fast::exp(el - axis_max);
+        partial_norm += exp_el;
+    }
+
+    float axis_norm = simd_sum(partial_norm);
+
+    for (size_t i = tiisg; i < dim; i += tpsg) {
+        auto idx = base_idx + i * strides[1];
+        float el = static_cast<float>(input[idx]);
+        float exp_el = fast::exp(el - axis_max);
+        output[idx] = static_cast<F>(exp_el / axis_norm);
+    }
+}
+
 #define INSTANTIATE_REDUCE(name, op, tname, type)                    \
 template [[host_name("nn_ops::reduce_" #name "_nd3_" #tname)]]       \
 [[kernel]] void reduce_nd3<type, op<type>>(                          \
@@ -101,10 +146,28 @@ template [[host_name("nn_ops::reduce_" #name "_nd3_" #tname)]]       \
         uint  tpsg[[threads_per_simdgroup]]                          \
     );
 
+
 INSTANTIATE_REDUCE(mean_of_squares, MeanOfSquares, f32, float)
 INSTANTIATE_REDUCE(mean_of_squares, MeanOfSquares, f16, half)
 INSTANTIATE_REDUCE(sum, Sum, f32, float)
 INSTANTIATE_REDUCE(sum, Sum, f16, half)
 INSTANTIATE_REDUCE(prod, Prod, f32, float)
 INSTANTIATE_REDUCE(prod, Prod, f16, half)
+
+#define INSTANTIATE_SOFTMAX(tname, type)                             \
+template [[host_name("nn_ops::softmax_nd3_" #tname)]]                \
+[[kernel]] void softmax_nd3<type>(                                   \
+        device const type *input [[buffer(0)]],                      \
+        device type *output [[buffer(1)]],                           \
+        constant const size_t shape[3],                              \
+        constant const size_t strides[3],                            \
+        uint3  tgpig[[threadgroup_position_in_grid]],                \
+        uint  tiisg[[thread_index_in_simdgroup]],                    \
+        uint  tpsg[[threads_per_simdgroup]]                          \
+    );
+
+INSTANTIATE_SOFTMAX(f32, float)
+INSTANTIATE_SOFTMAX(f16, half)
+
+
 
