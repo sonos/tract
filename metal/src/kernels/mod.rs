@@ -12,7 +12,7 @@ pub use element_wise::ElementWiseOps;
 use tract_core::internal::*;
 
 #[cfg(target_os = "ios")]
-pub const METAL_FLASH_ATTENTION_LIB: &[u8] = include_bytes!("libMetalFlashAttention-ios.metallib");
+pub const METAL_FLASH_ATTENTION_LIB: &[u8] = include_bytes!("matmul/libMetalFlashAttention-ios.metallib");
 #[cfg(target_os = "macos")]
 pub const METAL_FLASH_ATTENTION_LIB: &[u8] =
     include_bytes!("matmul/libMetalFlashAttention-macos.metallib");
