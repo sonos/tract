@@ -143,6 +143,16 @@ macro_rules! mmm_packed_packed_tests {
                 }
 
                 #[test]
+                fn packed_packed_empty() -> TractResult<()> {
+                    t($ker.mr(), $ker.nr(), [], [])
+                }
+
+                #[test]
+                fn packed_packed_empty_2() -> TractResult<()> {
+                    t(2 * $ker.mr(), 2 * $ker.nr(), [], [])
+                }
+
+                #[test]
                 fn mat_mul_1() -> TractResult<()> {
                     ti(3, 2, [-3, 3, 5, -5, 6, 0, -6, -5, 0, 0, 9, 7], [-8, 5, 5, -3, 5, 7, -8, -1])
                 }
