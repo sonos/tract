@@ -303,15 +303,14 @@ fn select_kernel_and_packing(
 ) -> TractResult<Option<(Box<dyn MatMatMul>, usize)>> {
     if let Some(dbq) = model.node(node.inputs[0].node).op_as::<DeBlockQuant>() {
         let mut options: Vec<(&Box<dyn MatMatMul>, usize)> = vec![];
+        let b_dt = model.outlet_fact(node.inputs[1])?.datum_type;
         for imp in tract_linalg::ops().mmm_impls() {
             for (packing, (pack_a, pack_b)) in imp.packings().iter().enumerate() {
                 if let (Some(input), Some(b)) = (
                     pack_a.downcast_ref::<PackedBlockQuantFormat>(),
                     pack_b.downcast_ref::<PackedFormat>(),
                 ) {
-                    if input.bq.same_as(&*dbq.bq)
-                        && b.dt == model.outlet_fact(node.inputs[1])?.datum_type
-                    {
+                    if input.bq.same_as(&*dbq.bq) && b.dt == b_dt {
                         options.push((imp, packing));
                     }
                 }
