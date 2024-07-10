@@ -2,6 +2,7 @@ use criterion::*;
 use tract_data::prelude::*;
 use tract_linalg::element_wise::ElementWiseKer;
 use tract_linalg::frame::reduce::{MapReduceKer, ReduceKer};
+use tract_linalg::generic::reduce::softmax_l2::SSoftMaxL2;
 
 #[inline(never)]
 fn loop1_f32_naive(slice: &mut [f32]) -> f32 {
@@ -63,7 +64,7 @@ fn softmax_f32(c: &mut Criterion) {
     });
     group.bench_function("loop2/naive", |b| b.iter(|| loop2_f32(input, 1.0)));
     group.bench_function("loop2/generic", |b| {
-        b.iter(|| tract_linalg::generic::SSoftMaxL2::red().run_with_params(input, 10.))
+        b.iter(|| SSoftMaxL2::red().run_with_params(input, 10.))
     });
     #[cfg(target_arch = "x86_64")]
     group.bench_function("loop2/iasm", |b| {
