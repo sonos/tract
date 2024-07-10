@@ -587,7 +587,7 @@
     ands        x8, x6, 0x7f
     bne         .store_generic
 
-    lsl x8, x6, 32
+    lsl x8, x6, 5
     add x8, x8, x5                          // x8 = 32*rsc
     orr x8, x8, {{ 0|setting:56 }}          // first to x8 is z1
 
