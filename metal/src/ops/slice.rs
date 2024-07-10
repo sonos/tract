@@ -76,14 +76,11 @@ impl EvalOp for MetalSlice {
             axis
         );
 
-        dbg!((&start, &end, &input, &axis));
-
         let mut o_shape: TVec<_> = input_shape.into();
         o_shape[axis] = end - start;
         ensure!(o_shape[axis] != 0);
 
         let offset = (start * input_strides[axis] as usize) * input_dt.size_of();
-        // dbg!(offset);
 
         if let Some(t) = input.as_metal_tensor() {
             objc::rc::autoreleasepool(|| {
