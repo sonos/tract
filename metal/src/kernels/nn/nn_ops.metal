@@ -124,12 +124,14 @@ template<typename F>
     }
 
     float axis_norm = simd_sum(partial_norm);
+    float inv_axis_norm = 1.0 / axis_norm;
 
     for (size_t i = tiisg; i < dim; i += tpsg) {
         auto idx = base_idx + i * strides[1];
         float el = static_cast<float>(input[idx]);
+        // TODO: avoid computing exp_el twice
         float exp_el = fast::exp(el - axis_max);
-        output[idx] = static_cast<F>(exp_el / axis_norm);
+        output[idx] = static_cast<F>(exp_el * inv_axis_norm);
     }
 }
 
