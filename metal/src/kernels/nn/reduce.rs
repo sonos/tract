@@ -38,9 +38,9 @@ impl Reducer {
     }
 
     pub fn reshape_to_rank_3(shape: &[usize], axis: usize) -> Vec<usize> {
-        let dim_axis_0 = shape[0..axis].into_iter().product::<usize>();
+        let dim_axis_0 = shape[0..axis].iter().product::<usize>();
         let dim_axis_1 = shape[axis];
-        let dim_axis_2 = shape[axis + 1..].into_iter().product::<usize>();
+        let dim_axis_2 = shape[axis + 1..].iter().product::<usize>();
 
         vec![dim_axis_0, dim_axis_1, dim_axis_2]
     }

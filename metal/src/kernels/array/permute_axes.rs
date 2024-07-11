@@ -110,7 +110,7 @@ impl PermuteAxes {
         encoder.set_buffer(2, Some(output.metal()), 0);
         encoder.set_bytes(
             3,
-            (output.shape().len() * std::mem::size_of::<usize>()) as _,
+            std::mem::size_of_val(output.shape()) as _,
             output.shape().as_ptr() as *const _,
         );
         encoder.set_bytes(

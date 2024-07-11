@@ -73,7 +73,7 @@ where
         "Mistmach between shape and strides length while computing broadcast strides"
     );
     Ok(strides
-        .into_iter()
+        .iter()
         .zip(shape)
         .map(|(s, dim)| if *dim == 1 { T::zero() } else { s.as_() })
         .collect::<TVec<T>>())

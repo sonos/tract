@@ -24,6 +24,7 @@ impl GemmPrecision {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn mfa_gemm_with_slice<T: Datum + Float>(
     context: &MetalContext,
     (b, m, n, k): (usize, usize, usize, usize),
@@ -50,6 +51,7 @@ pub fn mfa_gemm_with_slice<T: Datum + Float>(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn mfa_dispatch_gemm_with_slice<T: Datum + Float>(
     context: &MetalContext,
     (b, m, n, k): (usize, usize, usize, usize),
