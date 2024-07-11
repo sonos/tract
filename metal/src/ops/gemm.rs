@@ -117,44 +117,6 @@ impl MetalGemm {
                         c_shape
                     )
                 })?;
-
-                //     let mut c = Tensor::uninitialized::<f32>(&c_shape)?;
-                // let c_ptr = c.as_ptr_mut::<f32>()?;
-                // let silent_a_axis = c.rank() - a.rank();
-                // let silent_b_axis = c.rank() - b.rank();
-                // for prefix in ndarray::indices(&c_shape[0..rank - 2]) {
-                //     let mut a_ptr = a_ptr;
-                //     let mut b_ptr = b_ptr;
-                //     let mut c_ptr = c_ptr;
-                //     for (axis, x) in prefix.as_array_view().iter().enumerate() {
-                //         if axis >= silent_a_axis && a.shape()[axis - silent_a_axis] != 1 {
-                //             a_ptr = a_ptr.offset(*x as isize * a.strides()[axis - silent_a_axis]);
-                //         }
-                //         if axis >= silent_b_axis && b.shape()[axis - silent_b_axis] != 1 {
-                //             b_ptr = b_ptr.offset(*x as isize * b.strides()[axis - silent_b_axis]);
-                //         }
-                //         c_ptr = c_ptr.offset(*x as isize * c.strides()[axis]);
-                //     }
-
-                // matmul::mfa_dispatch_gemm_with_slice(
-                //     context,
-                //     (1, m, n, k),
-                //     std::slice::from_raw_parts(a_ptr, m * k),
-                //     &a_strides,
-                //     self.transpose_a,
-                //     std::slice::from_raw_parts(b_ptr, k * n),
-                //     &b_strides,
-                //     self.transpose_b,
-                //     std::slice::from_raw_parts_mut(c_ptr, m * n),
-                // )
-                // .with_context(|| {
-                //     anyhow!(
-                //         "Error while performing MatMul (a: {:?}), (b: {:?}) = (c: {:?})",
-                //         a.shape(),
-                //         b.shape(),
-                //         c_shape
-                //     )
-                // })?;
             }
 
             Ok(c)
