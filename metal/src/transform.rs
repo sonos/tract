@@ -174,9 +174,10 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         } else if let Some(op) = node.op_as::<Const>() {
             ops::MetalConst::new(op.0.clone())?.map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<AxisOp>() {
-            ops::MetalAxisOp::new(op.clone()).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+            ops::MetalAxisOp::from_tract_core(op.clone())
+                .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<IntoShape>() {
-            Some(Box::new(ops::MetalIntoShape::new(op.clone())))
+            Some(Box::new(ops::MetalIntoShape::from_tract_core(op.clone())))
         } else if let Some(op) = node.op_as::<Slice>() {
             Some(Box::new(ops::MetalSlice::from_tract_core(op)))
         } else if let Some(op) = node.op_as::<TypedConcat>() {

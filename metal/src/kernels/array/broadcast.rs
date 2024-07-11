@@ -110,7 +110,7 @@ impl MultiBroadcast {
         encoder.set_buffer(2, Some(output.metal()), 0);
         encoder.set_bytes(
             3,
-            (output_shape.len() * std::mem::size_of::<usize>()) as _,
+            std::mem::size_of_val(output_shape) as _,
             output_shape.as_ptr() as *const _,
         );
         encoder.set_bytes(

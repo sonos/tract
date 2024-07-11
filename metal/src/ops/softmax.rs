@@ -88,7 +88,7 @@ impl EvalOp for MetalSoftmax {
 
                 match input.as_metal_tensor() {
                     Some(input) => Ok(tvec!(Softmax
-                        .dispatch_eval(context, &input, self.axes[0])?
+                        .dispatch_eval(context, input, self.axes[0])?
                         .into_opaque_tensor()
                         .into_tvalue())),
                     None => {

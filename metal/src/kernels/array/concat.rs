@@ -118,11 +118,7 @@ impl Concat {
                 i_strides.as_ptr() as *const _,
             );
             encoder.set_buffer(2, Some(output.metal()), offset as _);
-            encoder.set_bytes(
-                3,
-                (i_shape.len() * std::mem::size_of::<usize>()) as _,
-                i_shape.as_ptr() as *const _,
-            );
+            encoder.set_bytes(3, std::mem::size_of_val(i_shape) as _, i_shape.as_ptr() as *const _);
             encoder.set_bytes(
                 4,
                 (output_strides.len() * std::mem::size_of::<usize>()) as _,
