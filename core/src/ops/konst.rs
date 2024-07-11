@@ -7,6 +7,10 @@ impl Const {
     pub fn new(tensor: Arc<Tensor>) -> Const {
         Const(tensor, None)
     }
+
+    pub fn new_with_opaque_fact(tensor: Arc<Tensor>, fact: Box<dyn OpaqueMetadata>) -> Const {
+        Const(tensor, Some(fact))
+    }
 }
 
 impl Op for Const {
@@ -24,7 +28,7 @@ impl EvalOp for Const {
     }
 
     fn eval(&self, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        Ok(tvec![self.0.clone().into_tvalue()])
+        Ok(tvec![Arc::clone(&self.0).into_tvalue()])
     }
 }
 
