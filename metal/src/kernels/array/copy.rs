@@ -41,7 +41,7 @@ impl Memcpy {
 
     pub fn kernel_name(&self, from_dt: DatumType) -> Result<String> {
         let tname = Self::tname(from_dt)?;
-        Ok(format!("array_ops::copy_{tname}"))
+        Ok(format!("array_ops::copy_unicast_{tname}"))
     }
 
     pub fn dispatch_eval(

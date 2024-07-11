@@ -7,21 +7,21 @@ using namespace metal;
 
 namespace utils {
 
-    METAL_FUNC uint indices_to_idx_1(uint index, constant const uint strides[1]) {
+    METAL_FUNC uint indices_to_idx_1(uint index, constant const size_t strides[1]) {
       return index * strides[0];
     }
 
-    METAL_FUNC uint indices_to_idx_2(uint2 indices, constant const uint strides[2]) {
+    METAL_FUNC uint indices_to_idx_2(uint2 indices, constant const size_t strides[2]) {
       return indices.x * strides[1] + indices.y * strides[0];
     }
 
-    METAL_FUNC uint indices_to_idx_3(uint3 indices, constant const uint strides[3]) {
+    METAL_FUNC uint indices_to_idx_3(uint3 indices, constant const size_t strides[3]) {
       return indices.x * strides[2] + indices.y * strides[1] + indices.z * strides[0];
     }
 
     METAL_FUNC uint indices_to_idx_4(uint3 indices,
-                                     constant const uint shape[4], 
-                                     constant const uint strides[4]) {
+                                     constant const size_t shape[4], 
+                                     constant const size_t strides[4]) {
       auto idx = indices.x * strides[3] + indices.y * strides[2];
       idx += (indices.z % shape[1]) * strides[1];
       indices.z /= shape[1];
@@ -30,8 +30,8 @@ namespace utils {
     }
 
     METAL_FUNC uint indices_to_idx_5(uint3 indices,
-                                     constant const uint shape[5], 
-                                     constant const uint strides[5]) {
+                                     constant const size_t shape[5], 
+                                     constant const size_t strides[5]) {
       auto idx = indices.x * strides[4] + indices.y * strides[3];
       idx += (indices.z % shape[2]) * strides[2];
       indices.z /= shape[2];
@@ -172,41 +172,41 @@ namespace bin_ops {
     );                                                             \
     template [[host_name("bin_ops::" #name "_nd2_" #itname)]] [[kernel]] void bin_op_nd2<itype, otype, op>(                                                    \
         device const itype *lhs [[buffer(0)]],                     \
-        constant const uint * lhs_strides [[buffer(1)]],           \
+        constant const size_t * lhs_strides [[buffer(1)]],           \
         device const itype *rhs [[buffer(2)]],                     \
-        constant const uint * rhs_strides [[buffer(3)]],           \
+        constant const size_t * rhs_strides [[buffer(3)]],           \
         device otype *output [[buffer(4)]],                        \
-        constant const uint * out_shape [[buffer(5)]],             \
+        constant const size_t * out_shape [[buffer(5)]],             \
         uint2 tpig[[thread_position_in_grid]],                     \
         uint2 grid_dim [[threads_per_grid]]                        \
     );                                                             \
     template [[host_name("bin_ops::" #name "_nd3_" #itname)]] [[kernel]] void bin_op_nd3<itype, otype, op>(                                                    \
            device const itype *lhs [[buffer(0)]],                  \
-        constant const uint * lhs_strides [[buffer(1)]],           \
+        constant const size_t * lhs_strides [[buffer(1)]],           \
         device const itype *rhs [[buffer(2)]],                     \
-        constant const uint * rhs_strides [[buffer(3)]],           \
+        constant const size_t * rhs_strides [[buffer(3)]],           \
         device otype *output [[buffer(4)]],                        \
-        constant const uint * out_shape [[buffer(5)]],             \
+        constant const size_t * out_shape [[buffer(5)]],             \
         uint3 tpig[[thread_position_in_grid]],                     \
         uint3 grid_dim [[threads_per_grid]]                        \
     );                                                             \
     template [[host_name("bin_ops::" #name "_nd4_" #itname)]] [[kernel]] void bin_op_nd4<itype, otype, op>(                                                    \
         device const itype *lhs [[buffer(0)]],                     \
-        constant const uint * lhs_strides [[buffer(1)]],           \
+        constant const size_t * lhs_strides [[buffer(1)]],           \
         device const itype *rhs [[buffer(2)]],                     \
-        constant const uint * rhs_strides [[buffer(3)]],           \
+        constant const size_t * rhs_strides [[buffer(3)]],           \
         device otype *output [[buffer(4)]],                        \
-        constant const uint * out_shape [[buffer(5)]],             \
+        constant const size_t * out_shape [[buffer(5)]],             \
         uint3 tpig[[thread_position_in_grid]],                     \
         uint3 grid_dim [[threads_per_grid]]                        \
     );                                                             \
     template [[host_name("bin_ops::" #name "_nd5_" #itname)]] [[kernel]] void bin_op_nd5<itype, otype, op>(                                                    \
         device const itype *lhs [[buffer(0)]],                     \
-        constant const uint * lhs_strides [[buffer(1)]],           \
+        constant const size_t * lhs_strides [[buffer(1)]],           \
         device const itype *rhs [[buffer(2)]],                     \
-        constant const uint * rhs_strides [[buffer(3)]],           \
+        constant const size_t * rhs_strides [[buffer(3)]],           \
         device otype *output [[buffer(4)]],                        \
-        constant const uint * out_shape [[buffer(5)]],             \
+        constant const size_t * out_shape [[buffer(5)]],             \
         uint3 tpig[[thread_position_in_grid]],                     \
         uint3 grid_dim [[threads_per_grid]]                        \
     );
@@ -274,11 +274,11 @@ namespace bin_ops {
 
     template<typename In, typename Out, typename Op>
     [[kernel]] void bin_op_nd2(device const In *lhs [[buffer(0)]],
-                       constant const uint * lhs_strides [[buffer(1)]],
+                       constant const size_t * lhs_strides [[buffer(1)]],
                        device const In *rhs [[buffer(2)]],
-                       constant const uint * rhs_strides [[buffer(3)]],
+                       constant const size_t * rhs_strides [[buffer(3)]],
                        device Out *output [[buffer(4)]],
-                       constant const uint * out_shape [[buffer(5)]],
+                       constant const size_t * out_shape [[buffer(5)]],
                        uint2 tpig[[thread_position_in_grid]],
                        uint2 grid_dim [[threads_per_grid]]) {
        auto lhs_idx = utils::indices_to_idx_2(tpig, lhs_strides);
@@ -289,11 +289,11 @@ namespace bin_ops {
 
     template<typename In, typename Out, typename Op>
     [[kernel]] void bin_op_nd3(device const In *lhs [[buffer(0)]],
-                       constant const uint * lhs_strides [[buffer(1)]],
+                       constant const size_t * lhs_strides [[buffer(1)]],
                        device const In *rhs [[buffer(2)]],
-                       constant const uint * rhs_strides [[buffer(3)]],
+                       constant const size_t * rhs_strides [[buffer(3)]],
                        device Out *output [[buffer(4)]],
-                       constant const uint * out_shape [[buffer(5)]],
+                       constant const size_t * out_shape [[buffer(5)]],
                        uint3 tpig[[thread_position_in_grid]],
                        uint3 grid_dim [[threads_per_grid]]) {
        auto lhs_idx = utils::indices_to_idx_3(tpig, lhs_strides);
@@ -304,11 +304,11 @@ namespace bin_ops {
 
     template<typename In, typename Out, typename Op>
     [[kernel]] void bin_op_nd4(device const In *lhs [[buffer(0)]],
-                       constant const uint * lhs_strides [[buffer(1)]],
+                       constant const size_t * lhs_strides [[buffer(1)]],
                        device const In *rhs [[buffer(2)]],
-                       constant const uint * rhs_strides [[buffer(3)]],
+                       constant const size_t * rhs_strides [[buffer(3)]],
                        device Out *output [[buffer(4)]],
-                       constant const uint * out_shape [[buffer(5)]],
+                       constant const size_t * out_shape [[buffer(5)]],
                        uint3 tpig[[thread_position_in_grid]],
                        uint3 grid_dim [[threads_per_grid]]) {
        auto lhs_idx = utils::indices_to_idx_4(tpig, out_shape, lhs_strides);
@@ -319,11 +319,11 @@ namespace bin_ops {
 
     template<typename In, typename Out, typename Op>
     [[kernel]] void bin_op_nd5(device const In *lhs [[buffer(0)]],
-                       constant const uint * lhs_strides [[buffer(1)]],
+                       constant const size_t * lhs_strides [[buffer(1)]],
                        device const In *rhs [[buffer(2)]],
-                       constant const uint * rhs_strides [[buffer(3)]],
+                       constant const size_t * rhs_strides [[buffer(3)]],
                        device Out *output [[buffer(4)]],
-                       constant const uint * out_shape [[buffer(5)]],
+                       constant const size_t * out_shape [[buffer(5)]],
                        uint3 tpig[[thread_position_in_grid]],
                        uint3 grid_dim [[threads_per_grid]]) {
        auto lhs_idx = utils::indices_to_idx_5(tpig, out_shape, lhs_strides);

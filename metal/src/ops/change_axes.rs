@@ -1,4 +1,4 @@
-use crate::kernels::{Memcpy, PermuteAxes};
+use crate::kernels::array::{Memcpy, PermuteAxes};
 use crate::tensor::MetalTensorExt;
 use std::fmt::Debug;
 use tract_core::internal::*;

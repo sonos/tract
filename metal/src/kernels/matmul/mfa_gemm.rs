@@ -74,7 +74,7 @@ pub fn mfa_dispatch_gemm_with_slice<T: Datum + Float>(
     let lhs_buff = context.buffer_from_slice(lhs);
     let rhs_buff = context.buffer_from_slice(rhs);
     let out_buff = context.buffer_from_slice_mut(output);
-    metal_mfa_gemm(
+    dispatch_metal_mfa_gemm(
         context,
         precision,
         (b, m, n, k),
@@ -87,6 +87,7 @@ pub fn mfa_dispatch_gemm_with_slice<T: Datum + Float>(
         &rhs_buff,
         rhs_transpose,
         &out_buff,
+        0,
     )?;
     Ok(())
 }
@@ -141,7 +142,7 @@ pub fn mfa_gemm(
 
     let output = unsafe { MetalTensor::uninitialized_dt(o_dt, o_shape)? };
 
-    metal_mfa_gemm(
+    dispatch_metal_mfa_gemm(
         context,
         precision,
         (b, m, n, k),
@@ -154,13 +155,14 @@ pub fn mfa_gemm(
         rhs.metal(),
         rhs_transpose,
         output.metal(),
+        0,
     )?;
     context.wait_until_completed()?;
     Ok(output)
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn metal_mfa_gemm(
+pub fn dispatch_metal_mfa_gemm(
     context: &MetalContext,
     precision: GemmPrecision,
     (b, m, n, k): (usize, usize, usize, usize),
@@ -173,6 +175,7 @@ pub fn metal_mfa_gemm(
     rhs_buffer: &Buffer,
     rhs_transpose: bool,
     output: &Buffer,
+    output_offset: usize,
 ) -> Result<()> {
     assert!(rhs_stride.len() >= 2);
     assert!(lhs_stride.len() >= 2);
@@ -289,7 +292,7 @@ pub fn metal_mfa_gemm(
     encoder.set_threadgroup_memory_length(0, block_bytes.into());
     encoder.set_buffer(0, Some(lhs_buffer), lhs_offset as NSUInteger);
     encoder.set_buffer(1, Some(rhs_buffer), rhs_offset as NSUInteger);
-    encoder.set_buffer(2, Some(output), 0);
+    encoder.set_buffer(2, Some(output), output_offset as NSUInteger);
     // TODO Tensor D
 
     let grid_z = b;
