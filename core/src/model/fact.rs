@@ -70,7 +70,8 @@ impl ShapeFact {
     #[inline]
     pub fn eval_to_isize(&self, values: &SymbolValues) -> TractResult<Cow<TVec<isize>>> {
         if let Some(c) = &self.concrete {
-            #[allow(unknown_lints, clippy::missing_transmute_annotations)] // TVec<usize> -> TVec<isize>
+            #[allow(unknown_lints, clippy::missing_transmute_annotations)]
+            // TVec<usize> -> TVec<isize>
             Ok(unsafe { std::mem::transmute(Cow::Borrowed(c)) })
         } else {
             Ok(Cow::Owned(
@@ -200,7 +201,7 @@ pub struct TypedFact {
     /// optional uniform value
     pub uniform: Option<Arc<Tensor>>,
     /// optional opaque fact
-    pub opaque_fact: Option<Box<dyn OpaqueFact>>
+    pub opaque_fact: Option<Box<dyn OpaqueFact>>,
 }
 
 impl TypedFact {
@@ -230,12 +231,12 @@ impl TypedFact {
     }
 
     pub fn dt_scalar(datum_type: DatumType) -> TypedFact {
-        TypedFact { 
-            datum_type, 
-            shape: ShapeFact::scalar(), 
-            konst: None, 
-            uniform: None, 
-            opaque_fact: None, 
+        TypedFact {
+            datum_type,
+            shape: ShapeFact::scalar(),
+            konst: None,
+            uniform: None,
+            opaque_fact: None,
         }
     }
 
@@ -243,13 +244,7 @@ impl TypedFact {
     where
         S: Into<ShapeFact>,
     {
-        TypedFact { 
-            datum_type, 
-            shape: shape.into(), 
-            konst: None, 
-            uniform: None,
-            opaque_fact: None,
-        }
+        TypedFact { datum_type, shape: shape.into(), konst: None, uniform: None, opaque_fact: None }
     }
 
     pub fn rank(&self) -> usize {
@@ -302,7 +297,10 @@ impl TypedFact {
         Self::dt_shape(self.datum_type, self.shape.clone())
     }
 
-    pub fn with_opaque_metadata<O: Into<Box<dyn OpaqueFact>>>(mut self, opaque_metadata: O) -> Self {
+    pub fn with_opaque_metadata<O: Into<Box<dyn OpaqueFact>>>(
+        mut self,
+        opaque_metadata: O,
+    ) -> Self {
         self.opaque_fact = Some(opaque_metadata.into());
         self
     }
@@ -397,13 +395,17 @@ impl<'a> From<&'a Arc<Tensor>> for TypedFact {
 
 impl fmt::Debug for TypedFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match (self.konst.as_ref(), self.opaque_fact.as_ref()) {
-            (Some(ref k), _) => write!(fmt, "{k:?}"),
-            (None, None) if self.rank() > 0 => write!(fmt, "{:?},{:?}", self.shape, self.datum_type),
-            (None, Some(ref meta)) if self.rank() > 0 => write!(fmt, "{:?},{:?},{:?}", self.shape, self.datum_type, meta),
-            (None, Some(ref meta)) => write!(fmt, "{:?}, {:?}", self.datum_type, meta),
-            (None, None) => write!(fmt, "{:?}", self.datum_type),
+        if let Some(k) = &self.konst {
+            write!(fmt, "{k:?}")?
+        } else if self.rank() > 0 {
+            write!(fmt, "{:?},{:?}", self.shape, self.datum_type)?
+        } else {
+            write!(fmt, "{:?}", self.datum_type)?
+        };
+        if let Some(of) = &self.opaque_fact {
+            write!(fmt, " {:?}", of)?;
         }
+        Ok(())
     }
 }
 
