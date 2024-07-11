@@ -7,21 +7,21 @@ using namespace metal;
 
 namespace utils {
 
-    METAL_FUNC uint indices_to_idx_1(uint index, constant const uint strides[1]) {
+    METAL_FUNC uint indices_to_idx_1(uint index, constant const size_t strides[1]) {
       return index * strides[0];
     }
 
-    METAL_FUNC uint indices_to_idx_2(uint2 indices, constant const uint strides[2]) {
+    METAL_FUNC uint indices_to_idx_2(uint2 indices, constant const size_t strides[2]) {
       return indices.x * strides[1] + indices.y * strides[0];
     }
 
-    METAL_FUNC uint indices_to_idx_3(uint3 indices, constant const uint strides[3]) {
+    METAL_FUNC uint indices_to_idx_3(uint3 indices, constant const size_t strides[3]) {
       return indices.x * strides[2] + indices.y * strides[1] + indices.z * strides[0];
     }
 
     METAL_FUNC uint indices_to_idx_4(uint3 indices,
-                                     constant const uint shape[4], 
-                                     constant const uint strides[4]) {
+                                     constant const size_t shape[4], 
+                                     constant const size_t strides[4]) {
       auto idx = indices.x * strides[3] + indices.y * strides[2];
       idx += (indices.z % shape[1]) * strides[1];
       indices.z /= shape[1];
@@ -30,8 +30,8 @@ namespace utils {
     }
 
     METAL_FUNC uint indices_to_idx_5(uint3 indices,
-                                     constant const uint shape[5], 
-                                     constant const uint strides[5]) {
+                                     constant const size_t shape[5], 
+                                     constant const size_t strides[5]) {
       auto idx = indices.x * strides[4] + indices.y * strides[3];
       idx += (indices.z % shape[2]) * strides[2];
       indices.z /= shape[2];
@@ -42,8 +42,8 @@ namespace utils {
     }
 
     METAL_FUNC uint indices_to_idx_6(uint3 indices,
-                                     constant const uint shape[6], 
-                                     constant const uint strides[6]) {
+                                     constant const size_t shape[6], 
+                                     constant const size_t strides[6]) {
       auto idx = indices.x * strides[5] + indices.y * strides[4];
       idx += (indices.z % shape[3]) * strides[3];
       indices.z /= shape[3];
@@ -58,61 +58,59 @@ namespace utils {
 
 namespace array_ops {
 
-    #define INSTANTIATE_BROADCAST(tname, type)                       \
-    template [[host_name("array_ops::broadcast_nd1_" #tname)]] [[kernel]] void broadcast_nd1<type>(                                                           \
-        device const type *input [[buffer(0)]],                     \
-        constant const uint * input_strides [[buffer(1)]],           \
-        device type *output [[buffer(2)]],                          \
-        constant const uint * out_shape [[buffer(3)]],               \
-        uint tpig[[thread_position_in_grid]],                        \
-        uint grid_dim [[threads_per_grid]]                           \
+    #define INSTANTIATE_COPY(tname, type)                       \
+    template [[host_name("array_ops::copy_nd1_" #tname)]] [[kernel]] void copy_nd1<type>(                                                           \
+        device const type *input [[buffer(0)]],                      \
+        constant const size_t * input_strides [[buffer(1)]],         \
+        device type *output [[buffer(2)]],                           \
+        constant const size_t * out_shape [[buffer(3)]],             \
+        constant const size_t * out_strides [[buffer(4)]],           \
+        uint tpig[[thread_position_in_grid]]                         \
     );                                                               \
-    template [[host_name("array_ops::broadcast_nd2_" #tname)]] [[kernel]] void broadcast_nd2<type>(                                                        \
-        device const type *input [[buffer(0)]],                   \
-        constant const uint * input_strides [[buffer(1)]],         \
-        device type *output [[buffer(2)]],                        \
-        constant const uint * out_shape [[buffer(3)]],             \
-        uint2 tpig[[thread_position_in_grid]],                     \
-        uint2 grid_dim [[threads_per_grid]]                        \
+    template [[host_name("array_ops::copy_nd2_" #tname)]] [[kernel]] void copy_nd2<type>(                                                           \
+        device const type *input [[buffer(0)]],                      \
+        constant const size_t * input_strides [[buffer(1)]],         \
+        device type *output [[buffer(2)]],                           \
+        constant const size_t * out_shape [[buffer(3)]],             \
+        constant const size_t * out_strides [[buffer(4)]],           \
+        uint2 tpig[[thread_position_in_grid]]                      \
     );                                                             \
-    template [[host_name("array_ops::broadcast_nd3_" #tname)]] [[kernel]] void broadcast_nd3<type>(                                 \
+    template [[host_name("array_ops::copy_nd3_" #tname)]] [[kernel]] void copy_nd3<type>(                                 \
           device const type *input [[buffer(0)]],                  \
-        constant const uint * input_strides [[buffer(1)]],         \
+        constant const size_t * input_strides [[buffer(1)]],         \
         device type *output [[buffer(2)]],                         \
-        constant const uint * out_shape [[buffer(3)]],             \
-        uint3 tpig[[thread_position_in_grid]],                     \
-        uint3 grid_dim [[threads_per_grid]]                        \
+        constant const size_t * out_shape [[buffer(3)]],           \
+        constant const size_t * out_strides [[buffer(4)]],         \
+        uint3 tpig[[thread_position_in_grid]]                      \
     );                                                             \
-    template [[host_name("array_ops::broadcast_nd4_" #tname)]] [[kernel]] void broadcast_nd4<type>(                                 \
+    template [[host_name("array_ops::copy_nd4_" #tname)]] [[kernel]] void copy_nd4<type>(                                 \
           device const type *input [[buffer(0)]],                  \
-        constant const uint * input_strides [[buffer(1)]],         \
+        constant const size_t * input_strides [[buffer(1)]],       \
         device type *output [[buffer(2)]],                         \
-        constant const uint * out_shape [[buffer(3)]],             \
-        uint3 tpig[[thread_position_in_grid]],                     \
-        uint3 grid_dim [[threads_per_grid]]                        \
+        constant const size_t * out_shape [[buffer(3)]],           \
+        constant const size_t * out_strides [[buffer(4)]],         \
+        uint3 tpig[[thread_position_in_grid]]                      \
     );                                                             \
-    template [[host_name("array_ops::broadcast_nd5_" #tname)]] [[kernel]] void broadcast_nd5<type>(                                 \
+    template [[host_name("array_ops::copy_nd5_" #tname)]] [[kernel]] void copy_nd5<type>(                                 \
           device const type *input [[buffer(0)]],                  \
-        constant const uint * input_strides [[buffer(1)]],         \
+        constant const size_t * input_strides [[buffer(1)]],       \
         device type *output [[buffer(2)]],                         \
-        constant const uint * out_shape [[buffer(3)]],             \
-        uint3 tpig[[thread_position_in_grid]],                     \
-        uint3 grid_dim [[threads_per_grid]]                        \
+        constant const size_t * out_shape [[buffer(3)]],           \
+        constant const size_t * out_strides [[buffer(4)]],         \
+        uint3 tpig[[thread_position_in_grid]]                      \
     );                                                             \
-    template [[host_name("array_ops::broadcast_nd6_" #tname)]] [[kernel]] void broadcast_nd6<type>(                                 \
-          device const type *input [[buffer(0)]],                 \
-        constant const uint * input_strides [[buffer(1)]],         \
-        device type *output [[buffer(2)]],                        \
-        constant const uint * out_shape [[buffer(3)]],             \
-        uint3 tpig[[thread_position_in_grid]],                     \
-        uint3 grid_dim [[threads_per_grid]]                        \
-    );
-
-    #define INSTANTIATE_COPY_OP(tname, type)     \
-    template [[host_name("array_ops::copy_" #tname)]] [[kernel]] void mem_copy<type>(                                                 \
-        device const type *input [[buffer(0)]],                     \
-        device type *output [[buffer(1)]],                          \
-        uint tpig[[thread_position_in_grid]]                        \
+    template [[host_name("array_ops::copy_nd6_" #tname)]] [[kernel]] void copy_nd6<type>(                                                \
+          device const type *input [[buffer(0)]],                  \
+        constant const size_t * input_strides [[buffer(1)]],       \
+        device type *output [[buffer(2)]],                         \
+        constant const size_t * out_shape [[buffer(3)]],           \
+        constant const size_t * out_strides [[buffer(4)]],         \
+        uint3 tpig[[thread_position_in_grid]]                      \
+    );                                                             \
+    template [[host_name("array_ops::copy_unicast_" #tname)]] [[kernel]] void copy_unicast<type>(                  \
+        device const type *input [[buffer(0)]],          \
+        device type *output [[buffer(1)]],               \
+        uint tpig[[thread_position_in_grid]]             \
     );
 
     #define INSTANTIATE_CAST_OP(tname, itype, otype)     \
@@ -122,7 +120,7 @@ namespace array_ops {
         uint tpig[[thread_position_in_grid]]                         \
     );       
     
-    template<typename T> [[kernel]] void mem_copy(             
+    template<typename T> [[kernel]] void copy_unicast(             
         device const T *input [[buffer(0)]],                 
         device T *output [[buffer(1)]],                        
         uint tpig[[thread_position_in_grid]]                    
@@ -138,90 +136,90 @@ namespace array_ops {
       output[tpig] = static_cast<Out>(input[tpig]);
     }
 
-    template<typename T>  [[kernel]] void broadcast_nd1(             
+    template<typename T>  [[kernel]] void copy_nd1(             
           device const T *input [[buffer(0)]],                 
-        constant const uint * input_strides [[buffer(1)]],         
+        constant const size_t * input_strides [[buffer(1)]],         
         device T *output [[buffer(2)]],                        
-        constant const uint * out_shape [[buffer(3)]],             
-        uint tpig[[thread_position_in_grid]],                     
-        uint grid_dim [[threads_per_grid]]                        
+        constant const size_t * out_shape [[buffer(3)]],
+        constant const size_t * out_strides [[buffer(4)]],             
+        uint tpig[[thread_position_in_grid]]                     
     ) {
       auto idx = utils::indices_to_idx_1(tpig, input_strides);
-      output[idx] = input[idx];
+      auto out_idx = utils::indices_to_idx_1(tpig, out_strides);
+      output[out_idx] = input[idx];
     }
 
     template<typename T>  
-    [[kernel]] void broadcast_nd2(             
+    [[kernel]] void copy_nd2(             
           device const T *input [[buffer(0)]],                 
-        constant const uint * input_strides [[buffer(1)]],         
+        constant const size_t * input_strides [[buffer(1)]],         
         device T *output [[buffer(2)]],                        
-        constant const uint * out_shape [[buffer(3)]],             
-        uint2 tpig[[thread_position_in_grid]],                     
-        uint2 grid_dim [[threads_per_grid]]                        
+        constant const size_t * out_shape [[buffer(3)]],
+        constant const size_t * out_strides [[buffer(4)]],              
+        uint2 tpig[[thread_position_in_grid]]                   
     ) {
       auto idx = utils::indices_to_idx_2(tpig, input_strides);
-      auto out_idx = tpig.x + grid_dim.x * tpig.y;
+      auto out_idx = utils::indices_to_idx_2(tpig, out_strides);
       output[out_idx] = input[idx];
     }
 
     template<typename T>  
-    [[kernel]] void broadcast_nd3(             
+    [[kernel]] void copy_nd3(             
           device const T *input [[buffer(0)]],                 
-        constant const uint * input_strides [[buffer(1)]],         
+        constant const size_t * input_strides [[buffer(1)]],         
         device T *output [[buffer(2)]],                        
-        constant const uint * out_shape [[buffer(3)]],             
-        uint3 tpig[[thread_position_in_grid]],                     
-        uint3 grid_dim [[threads_per_grid]]                        
+        constant const size_t * out_shape [[buffer(3)]],  
+        constant const size_t * out_strides [[buffer(4)]],           
+        uint3 tpig[[thread_position_in_grid]]                        
     ) {
       auto idx = utils::indices_to_idx_3(tpig, input_strides);
-      auto out_idx = tpig.x + grid_dim.x * (tpig.y + grid_dim.y * tpig.z);
+      auto out_idx = utils::indices_to_idx_3(tpig, out_strides);
       output[out_idx] = input[idx];
     }
 
     template<typename T>  
-    [[kernel]] void broadcast_nd4(             
+    [[kernel]] void copy_nd4(             
           device const T *input [[buffer(0)]],                 
-        constant const uint * input_strides [[buffer(1)]],         
+        constant const size_t * input_strides [[buffer(1)]],         
         device T *output [[buffer(2)]],                        
-        constant const uint * out_shape [[buffer(3)]],             
-        uint3 tpig[[thread_position_in_grid]],                     
-        uint3 grid_dim [[threads_per_grid]]                        
+        constant const size_t * out_shape [[buffer(3)]],  
+        constant const size_t * out_strides [[buffer(4)]],           
+        uint3 tpig[[thread_position_in_grid]]                     
     ) {
       auto idx = utils::indices_to_idx_4(tpig, out_shape, input_strides);
-      auto out_idx = tpig.x + grid_dim.x * (tpig.y + grid_dim.y * tpig.z);
+      auto out_idx = utils::indices_to_idx_4(tpig, out_shape, out_strides);
       output[out_idx] = input[idx];
     }
 
     template<typename T>  
-    [[kernel]] void broadcast_nd5(             
+    [[kernel]] void copy_nd5(             
           device const T *input [[buffer(0)]],                 
-        constant const uint * input_strides [[buffer(1)]],         
+        constant const size_t * input_strides [[buffer(1)]],         
         device T *output [[buffer(2)]],                        
-        constant const uint * out_shape [[buffer(3)]],             
-        uint3 tpig[[thread_position_in_grid]],                     
-        uint3 grid_dim [[threads_per_grid]]                        
+        constant const size_t * out_shape [[buffer(3)]],
+        constant const size_t * out_strides [[buffer(4)]],              
+        uint3 tpig[[thread_position_in_grid]]                     
     ) {
       auto idx = utils::indices_to_idx_5(tpig, out_shape, input_strides);
-      auto out_idx = tpig.x + grid_dim.x * (tpig.y + grid_dim.y * tpig.z);
+      auto out_idx = utils::indices_to_idx_5(tpig, out_shape, out_strides);
       output[out_idx] = input[idx];
     }
 
     template<typename T>  
-    [[kernel]] void broadcast_nd6(             
+    [[kernel]] void copy_nd6(             
           device const T *input [[buffer(0)]],                 
-        constant const uint * input_strides [[buffer(1)]],         
+        constant const size_t * input_strides [[buffer(1)]],         
         device T *output [[buffer(2)]],                        
-        constant const uint * out_shape [[buffer(3)]],             
-        uint3 tpig[[thread_position_in_grid]],                     
-        uint3 grid_dim [[threads_per_grid]]                        
+        constant const size_t * out_shape [[buffer(3)]],
+        constant const size_t * out_strides [[buffer(4)]],           
+        uint3 tpig[[thread_position_in_grid]]                     
     ) {
       auto idx = utils::indices_to_idx_6(tpig, out_shape, input_strides);
-      auto out_idx = tpig.x + grid_dim.x * (tpig.y + grid_dim.y * tpig.z);
+      auto out_idx = utils::indices_to_idx_6(tpig, out_shape, out_strides);
       output[out_idx] = input[idx];
     }
 
-    #define INSTANTIATE_ALL(tname, type)                             \
-    INSTANTIATE_COPY_OP(tname, type)                                 \
+    #define INSTANTIATE_ALL(tname, type)              \
     INSTANTIATE_CAST_OP(tname ##_bool, type, bool)    \
     INSTANTIATE_CAST_OP(tname ##_f32, type, float)    \
     INSTANTIATE_CAST_OP(tname ##_f16, type, half)     \
@@ -233,7 +231,7 @@ namespace array_ops {
     INSTANTIATE_CAST_OP(tname ##_i16, type, int16_t)  \
     INSTANTIATE_CAST_OP(tname ##_i32, type, int32_t)  \
     INSTANTIATE_CAST_OP(tname ##_i64, type, int64_t)  \
-    INSTANTIATE_BROADCAST(tname, type)
+    INSTANTIATE_COPY(tname, type)
 
     INSTANTIATE_ALL(bool, bool)
     INSTANTIATE_ALL(f32, float)

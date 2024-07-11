@@ -58,6 +58,12 @@ impl SharedMetalContext {
         for bin_func in crate::kernels::BinOps::all_functions() {
             let _ = self.load_pipeline(LibraryName::BinOps, &bin_func);
         }
+        for func in crate::kernels::array::all_functions() {
+            let _ = self.load_pipeline(LibraryName::ArrayOps, &func);
+        }
+        for func in crate::kernels::nn::all_functions() {
+            let _ = self.load_pipeline(LibraryName::NNOps, &func);
+        }
         Ok(())
     }
 

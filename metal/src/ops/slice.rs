@@ -1,7 +1,6 @@
 use crate::kernels;
 use crate::tensor::MetalTensorExt;
 use tract_core::internal::*;
-use tract_core::num_traits::Zero;
 use tract_core::ops::array::Slice;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
@@ -85,7 +84,7 @@ impl EvalOp for MetalSlice {
         if let Some(t) = input.as_metal_tensor() {
             objc::rc::autoreleasepool(|| {
                 crate::METAL_CONTEXT.with_borrow(|context| {
-                    Ok(tvec![kernels::MultiBroadcast
+                    Ok(tvec![kernels::array::MultiBroadcast
                         .dispatch_eval(context, t, offset, &o_shape)?
                         .into_opaque_tensor()
                         .into_tvalue()])

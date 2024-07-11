@@ -10,7 +10,7 @@ use std::borrow::Cow;
 use std::fmt::Debug;
 use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
-use tract_core::ops::array::{MultiBroadcastTo, Slice};
+use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
 use tract_core::ops::binary::{BinMiniOp, MergeOpUnicast, TypedBinOp};
 use tract_core::ops::einsum::{rewrite_einsums_as_matmul, BasicMatMul};
 use tract_core::ops::element_wise::ElementWiseOp;
@@ -179,6 +179,8 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             Some(Box::new(ops::MetalIntoShape::new(op.clone())))
         } else if let Some(op) = node.op_as::<Slice>() {
             Some(Box::new(ops::MetalSlice::from_tract_core(op)))
+        } else if let Some(op) = node.op_as::<TypedConcat>() {
+            Some(Box::new(ops::MetalConcat::from_tract_core(op)))
         } else if let Some(op) = node.op_as::<Reduce>() {
             let is_dts_supported = source.node_input_facts(node.id)?.iter().all(|f| {
                 Reducer::is_supported_dt(f.datum_type)

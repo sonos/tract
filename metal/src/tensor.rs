@@ -97,6 +97,10 @@ impl MetalTensor {
         Tensor::uninitialized_dt(dt, shape)?.into_metal()
     }
 
+    pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> Result<MetalTensor> {
+        Self::uninitialized_dt(T::datum_type(), shape)
+    }
+
     /// Create a MetalTensor filled of zeros
     pub fn zero_dt(datum_type: DatumType, shape: &[usize]) -> Result<MetalTensor> {
         Tensor::zero_dt(datum_type, shape)?.into_metal()

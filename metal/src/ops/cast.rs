@@ -30,7 +30,10 @@ impl EvalOp for MetalCast {
             objc::rc::autoreleasepool(|| {
                 crate::METAL_CONTEXT.with_borrow(|context| {
                     let input = input.into_tensor().into_metal()?;
-                    Ok(tvec![kernels::Cast.eval(context, &input, self.to)?.to_cpu().into_tvalue()])
+                    Ok(tvec![kernels::array::Cast
+                        .eval(context, &input, self.to)?
+                        .to_cpu()
+                        .into_tvalue()])
                 })
             })
         }

@@ -50,7 +50,7 @@ impl MultiBroadcast {
             _ => bail!("Unsupported broadcast kind {:?} for array ops", broadcast_kind),
         };
 
-        Ok(format!("array_ops::broadcast_{broadcast_name}_{tname}"))
+        Ok(format!("array_ops::copy_{broadcast_name}_{tname}"))
     }
 
     pub fn eval(
@@ -91,12 +91,10 @@ impl MultiBroadcast {
 
         let kernel_name = self.kernel_name(input.datum_type(), broadcast_kind)?;
 
-        let input_broadcast_strides = crate::utils::compute_broadcast_strides::<u32>(
+        let input_broadcast_strides = crate::utils::compute_broadcast_strides::<usize>(
             input_shape.as_slice(),
             input_strides.as_slice(),
         )?;
-
-        let output_shape = output.shape().iter().map(|d| *d as u32).collect::<Vec<_>>();
 
         let pipeline =
             context.shared_context().load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
@@ -106,14 +104,19 @@ impl MultiBroadcast {
         encoder.set_buffer(0, Some(input.metal()), input_offset as _);
         encoder.set_bytes(
             1,
-            (input_broadcast_strides.len() * std::mem::size_of::<u32>()) as _,
+            (input_broadcast_strides.len() * std::mem::size_of::<usize>()) as _,
             input_broadcast_strides.as_ptr() as *const _,
         );
         encoder.set_buffer(2, Some(output.metal()), 0);
         encoder.set_bytes(
             3,
-            (output_shape.len() * std::mem::size_of::<u32>()) as _,
+            (output_shape.len() * std::mem::size_of::<usize>()) as _,
             output_shape.as_ptr() as *const _,
+        );
+        encoder.set_bytes(
+            4,
+            (output.strides().len() * std::mem::size_of::<usize>()) as _,
+            output.strides().as_ptr() as *const _,
         );
 
         let grid_size = utils::build_metal_size_for_shape(output.shape());

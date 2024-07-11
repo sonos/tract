@@ -49,7 +49,7 @@ impl PermuteAxes {
             _ => bail!("Unsupported broadcast kind {:?} for array ops", broadcast_kind),
         };
 
-        Ok(format!("array_ops::broadcast_{broadcast_name}_{tname}"))
+        Ok(format!("array_ops::copy_{broadcast_name}_{tname}"))
     }
 
     pub fn eval(
@@ -82,11 +82,11 @@ impl PermuteAxes {
         let strides = input.strides();
 
         let mut new_shape = vec![0; input.rank()];
-        let mut new_strides = vec![0u32; input.rank()];
+        let mut new_strides = vec![0; input.rank()];
 
         for (new_axis, &axis) in axes.iter().enumerate() {
             new_shape[new_axis] = shape[axis];
-            new_strides[new_axis] = strides[axis] as u32;
+            new_strides[new_axis] = strides[axis];
         }
 
         let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), &new_shape)? };
@@ -96,8 +96,6 @@ impl PermuteAxes {
 
         let kernel_name = self.kernel_name(input.datum_type(), broadcast_kind)?;
 
-        let output_shape = output.shape().iter().map(|d| *d as u32).collect::<Vec<_>>();
-
         let pipeline =
             context.shared_context().load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
         let command_buffer = context.command_buffer();
@@ -106,14 +104,19 @@ impl PermuteAxes {
         encoder.set_buffer(0, Some(input.metal()), 0);
         encoder.set_bytes(
             1,
-            (new_strides.len() * std::mem::size_of::<u32>()) as _,
+            (new_strides.len() * std::mem::size_of::<usize>()) as _,
             new_strides.as_ptr() as *const _,
         );
         encoder.set_buffer(2, Some(output.metal()), 0);
         encoder.set_bytes(
             3,
-            (output_shape.len() * std::mem::size_of::<u32>()) as _,
-            output_shape.as_ptr() as *const _,
+            (output.shape().len() * std::mem::size_of::<usize>()) as _,
+            output.shape().as_ptr() as *const _,
+        );
+        encoder.set_bytes(
+            4,
+            (output.strides().len() * std::mem::size_of::<usize>()) as _,
+            output.strides().as_ptr() as *const _,
         );
 
         let grid_size = utils::build_metal_size_for_shape(output.shape());
