@@ -2,11 +2,12 @@ use std::fmt::Debug;
 
 use crate::internal::*;
 use crate::ops::array::Slice;
+use crate::ops::matmul::de_block_quant::BlockQuantFact;
 use crate::tract_data::itertools::Itertools;
 
 mod eval;
 
-#[cfg(feature="blas")]
+#[cfg(feature = "blas")]
 pub mod as_blas;
 use super::array::TypedConcat;
 use super::math::add;
@@ -217,11 +218,22 @@ impl EvalOp for EinSum {
 impl TypedOp for EinSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs.len() == self.axes.input_count());
-        ensure!(inputs
+        let shapes: TVec<&[TDim]> = inputs
+            .iter()
+            .map(|t| {
+                if let Some(bqf) =
+                    t.opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
+                {
+                    &*bqf.shape
+                } else {
+                    &*t.shape
+                }
+            })
+            .collect();
+        ensure!(shapes
             .iter()
             .enumerate()
-            .all(|(ix, fact)| fact.rank() == self.axes.rank(InOut::In(ix))));
-        let shapes: TVec<&[TDim]> = inputs.iter().map(|t| &*t.shape).collect();
+            .all(|(ix, fact)| fact.len() == self.axes.rank(InOut::In(ix))));
         if let Some(qp) = self.q_params {
             ensure!(inputs.len() == 9);
             Ok(tvec!(qp.fact(eval::output_shape(&self.axes, &shapes[0..2]))))

@@ -3,7 +3,16 @@ use tract_linalg::frame::block_quant::{BlockQuant, Q4_0};
 use crate::internal::*;
 use crate::ops::einsum::codegen::{ensure_mkn_axes, AxesOrPatch};
 use crate::ops::einsum::EinSum;
+use crate::ops::konst::Const;
 use crate::transform::ModelTransform;
+
+#[derive(Clone, Debug, Hash)]
+pub struct BlockQuantFact {
+    pub format: Box<dyn BlockQuant>,
+    pub shape: ShapeFact,
+}
+
+impl OpaqueFact for BlockQuantFact {}
 
 #[derive(Debug)]
 pub struct BlockQuantTransform;
@@ -60,21 +69,23 @@ fn block_quant_einsum_weights(
         patch.shunt_outside(model, node.id.into(), output[0])?;
         return Ok(Some(patch));
     }
+    let format = Q4_0;
     let mut patch = TypedModelPatch::default();
     let weights = if a.datum_type == f16::datum_type() {
-        Q4_0.quant_f16(a.konst.as_ref().unwrap().as_slice::<f16>()?)?
+        format.quant_f16(a.konst.as_ref().unwrap().as_slice::<f16>()?)?
     } else {
-        Q4_0.quant_f32(a.konst.as_ref().unwrap().cast_to::<f32>()?.as_slice::<f32>()?)?
+        format.quant_f32(a.konst.as_ref().unwrap().cast_to::<f32>()?.as_slice::<f32>()?)?
     };
     let name = &model.node(node.inputs[0].node).name;
-    let weights = patch.add_const(name, tensor0(weights))?;
+    let fact = BlockQuantFact { format: Box::new(format), shape: a.shape.clone() };
     let weights = patch.wire_node(
-        format!("{name}.deq"),
-        DeBlockQuant { bq: Box::new(Q4_0), fact: a.without_value() },
-        &[weights],
+        name,
+        Const::new_with_opaque_fact(rctensor0(weights), Box::new(fact)),
+        &[],
     )?;
-    patch.shunt_outside(model, node.inputs[0], weights[0])?;
-    patch.obliterate(node.inputs[0].node)?;
+    let tap = patch.tap_model(model, node.inputs[1])?;
+    let wire = patch.wire_node(prefix, op.clone(), &[weights[0], tap])?;
+    patch.shunt_outside(model, node.id.into(), wire[0])?;
     Ok(Some(patch))
 }
 

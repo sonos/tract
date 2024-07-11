@@ -361,7 +361,7 @@ where
 
     /// Get tensor information for a single outlet.
     pub fn outlet_fact(&self, outlet: OutletId) -> TractResult<&F> {
-        anyhow::ensure!(outlet.node < self.nodes.len(), "Invalid outlet for graph");
+        ensure!(outlet.node < self.nodes.len(), "Invalid outlet for graph");
         let outlets = &self.nodes[outlet.node].outputs;
         outlets
             .get(outlet.slot)
