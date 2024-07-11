@@ -57,5 +57,5 @@ fn konst(
     } else {
         bail!("Could not extract value out of Constant node")
     };
-    Ok((Box::new(tract_hir::ops::konst::Const(value.into_arc_tensor())), vec![]))
+    Ok((Box::new(tract_hir::ops::konst::Const::new(value.into_arc_tensor())), vec![]))
 }
