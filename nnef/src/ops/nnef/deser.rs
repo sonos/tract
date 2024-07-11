@@ -161,7 +161,7 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
         invocation.named_arg_as(builder, "stride").unwrap_or_else(|_| tvec!(1; axes.len()));
     for (ix, axis) in axes.into_iter().enumerate() {
         let axis_len =
-            builder.wire_as_outlets(Const(rctensor0(input_fact.shape[axis].clone())), &[])?[0];
+            builder.wire_as_outlets(Const::new(rctensor0(input_fact.shape[axis].clone())), &[])?[0];
         let b = builder.wire_as_outlets(
             tract_core::ops::array::Slice { axis: 0, start: ix.into(), end: ix.to_dim() + 1 },
             &[begins],

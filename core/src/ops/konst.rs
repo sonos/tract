@@ -1,7 +1,13 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, new, Hash, Eq, PartialEq)]
-pub struct Const(pub Arc<Tensor>);
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub struct Const(pub Arc<Tensor>, Option<Box<dyn OpaqueMetadata>>);
+
+impl Const {
+    pub fn new(tensor: Arc<Tensor>) -> Const {
+        Const(tensor, None)
+    }
+}
 
 impl Op for Const {
     fn name(&self) -> Cow<str> {
@@ -40,7 +46,7 @@ impl TypedOp for Const {
         let mut new_tensor = self.0.clone().into_tensor();
         if change.change_tensor(&mut new_tensor, false).is_ok() {
             Ok(Some(AxisChangeConsequence {
-                substitute_op: Some(Box::new(Const(new_tensor.into_arc_tensor()))),
+                substitute_op: Some(Box::new(Const(new_tensor.into_arc_tensor(), self.1.clone()))),
                 wire_changes: tvec!((io, change.clone())),
             }))
         } else {
@@ -65,7 +71,7 @@ impl TypedOp for Const {
             for d in tensor.as_slice_mut::<TDim>()? {
                 *d = d.eval(values);
             }
-            Const(tensor.into_arc_tensor())
+            Const(tensor.into_arc_tensor(), self.1.clone())
         } else {
             self.clone()
         };
