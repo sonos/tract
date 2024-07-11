@@ -64,7 +64,7 @@ pub fn metal_fact<'a, T: 'a>(
 pub fn compute_broadcast_strides<T: Zero + Copy + 'static>(
     shape: &[usize],
     strides: &[isize],
-) -> TractResult<Vec<T>>
+) -> TractResult<TVec<T>>
 where
     isize: AsPrimitive<T>,
 {
@@ -76,5 +76,5 @@ where
         .into_iter()
         .zip(shape)
         .map(|(s, dim)| if *dim == 1 { T::zero() } else { s.as_() })
-        .collect::<Vec<T>>())
+        .collect::<TVec<T>>())
 }

@@ -221,22 +221,16 @@ impl BinOps {
                 ensure!(lhs.rank() == rhs.rank());
                 let lhs_buffer = lhs.metal();
                 let rhs_buffer = rhs.metal();
-                let lhs_strides = lhs
-                    .strides()
-                    .iter()
-                    .zip(lhs.shape())
-                    .map(|(s, dim)| if *dim == 1 { 0 } else { *s as u32 })
-                    .collect::<Vec<_>>();
 
-                let rhs_strides = rhs
-                    .strides()
-                    .iter()
-                    .zip(rhs.shape())
-                    .map(|(s, dim)| if *dim == 1 { 0 } else { *s as u32 })
-                    .collect::<Vec<_>>();
-                let output_shape = output.shape().iter().map(|d| *d as u32).collect::<Vec<_>>();
+                let lhs_strides =
+                    crate::utils::compute_broadcast_strides::<usize>(lhs.shape(), lhs.strides())?;
 
+                let rhs_strides =
+                    crate::utils::compute_broadcast_strides::<usize>(rhs.shape(), rhs.strides())?;
+
+                let output_shape = output.shape();
                 let output_buffer = output.metal();
+
                 let pipeline =
                     context.shared_context().load_pipeline(LibraryName::BinOps, &kernel_name)?;
                 let command_buffer = context.command_buffer();
@@ -245,19 +239,19 @@ impl BinOps {
                 encoder.set_buffer(0, Some(lhs_buffer), 0);
                 encoder.set_bytes(
                     1,
-                    (lhs_strides.len() * std::mem::size_of::<u32>()) as NSUInteger,
+                    (lhs_strides.len() * std::mem::size_of::<usize>()) as NSUInteger,
                     lhs_strides.as_ptr() as *const _,
                 );
                 encoder.set_buffer(2, Some(rhs_buffer), 0);
                 encoder.set_bytes(
                     3,
-                    (rhs_strides.len() * std::mem::size_of::<u32>()) as NSUInteger,
+                    (rhs_strides.len() * std::mem::size_of::<usize>()) as NSUInteger,
                     rhs_strides.as_ptr() as *const _,
                 );
                 encoder.set_buffer(4, Some(output.metal()), 0);
                 encoder.set_bytes(
                     5,
-                    (output_shape.len() * std::mem::size_of::<u32>()) as NSUInteger,
+                    (output_shape.len() * std::mem::size_of::<usize>()) as NSUInteger,
                     output_shape.as_ptr() as *const _,
                 );
 

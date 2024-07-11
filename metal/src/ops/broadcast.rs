@@ -33,7 +33,7 @@ impl EvalOp for MetalMultiBroadcastTo {
         if let Some(t) = input.as_metal_tensor() {
             objc::rc::autoreleasepool(|| {
                 crate::METAL_CONTEXT.with_borrow(|context| {
-                    Ok(tvec![kernels::MultiBroadcast
+                    Ok(tvec![kernels::array::MultiBroadcast
                         .dispatch_eval(context, t, 0, &shape)?
                         .into_opaque_tensor()
                         .into_tvalue()])
