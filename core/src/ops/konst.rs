@@ -1,7 +1,7 @@
 use crate::internal::*;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub struct Const(pub Arc<Tensor>, Option<Box<dyn OpaqueFact>>);
+pub struct Const(pub Arc<Tensor>, pub Option<Box<dyn OpaqueFact>>);
 
 impl Const {
     pub fn new(tensor: Arc<Tensor>) -> Const {

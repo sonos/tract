@@ -6,10 +6,16 @@ use crate::ops::einsum::EinSum;
 use crate::ops::konst::Const;
 use crate::transform::ModelTransform;
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Hash)]
 pub struct BlockQuantFact {
     pub format: Box<dyn BlockQuant>,
     pub shape: ShapeFact,
+}
+
+impl std::fmt::Debug for BlockQuantFact {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}({:?})", self.format, self.shape)
+    }
 }
 
 impl OpaqueFact for BlockQuantFact {}
