@@ -14,7 +14,7 @@ pub fn metal_output_facts(
         let metal_facts = facts
             .iter()
             .map(|it| it.to_metal_fact().map(|it| it.as_ref()))
-            .collect::<TractResult<Vec<_>>>()?;
+            .collect::<TractResult<TVec<_>>>()?;
         let output_facts = (resolve_facts)(metal_facts.as_slice())?;
         Ok(output_facts
             .into_iter()
@@ -25,7 +25,7 @@ pub fn metal_output_facts(
     } else {
         bail!(
             "Inconsistent facts datum type: {:?}",
-            facts.iter().map(|it| it.datum_type).collect::<Vec<_>>()
+            facts.iter().map(|it| it.datum_type).collect::<TVec<_>>()
         );
     }
 }
@@ -38,7 +38,7 @@ pub fn metal_facts<'a, 'b: 'a, T>(
         let metal_facts = facts
             .iter()
             .map(|it| it.to_metal_fact().map(|it| it.as_ref()))
-            .collect::<TractResult<Vec<_>>>()?;
+            .collect::<TractResult<TVec<_>>>()?;
         (map_facts)(metal_facts.as_slice())
     } else if facts.iter().all(|it| it.datum_type != DatumType::Opaque) {
         (map_facts)(facts)

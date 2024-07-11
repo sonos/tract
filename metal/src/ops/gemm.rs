@@ -1,8 +1,8 @@
 use crate::kernels::matmul;
 use crate::tensor::MetalTensorExt;
-use crate::{IntoMetal, MetalContext};
+use crate::{MetalContext, MetalTensor};
 use anyhow::{bail, ensure};
-use num_traits::{Float, One};
+use num_traits::One;
 use tract_core::internal::*;
 use tract_core::ndarray;
 use tract_core::ndarray::Dimension;
@@ -53,14 +53,13 @@ impl MetalGemm {
         }
     }
 
-    fn dispatch_eval<F: Datum + Float>(
+    fn dispatch_eval(
         &self,
         context: &MetalContext,
-        a: &Tensor,
-        b: &Tensor,
-    ) -> TractResult<Tensor> {
-        let a_ptr = a.as_ptr::<F>()?;
-        let b_ptr = b.as_ptr::<F>()?;
+        a: &MetalTensor,
+        b: &MetalTensor,
+    ) -> TractResult<MetalTensor> {
+        let c_dt = a.datum_type();
         let c_shape = self.output_shape(a.shape(), b.shape());
         let rank = c_shape.len();
         let m = c_shape[rank - 2];
@@ -78,34 +77,37 @@ impl MetalGemm {
             natural_strides(&[1, k, n])
         };
         unsafe {
-            let mut c = Tensor::uninitialized::<F>(&c_shape)?;
-            let c_ptr = c.as_ptr_mut::<F>()?;
+            let c = MetalTensor::uninitialized_dt(c_dt, &c_shape)?;
             let silent_a_axis = c.rank() - a.rank();
             let silent_b_axis = c.rank() - b.rank();
             for prefix in ndarray::indices(&c_shape[0..rank - 2]) {
-                let mut a_ptr = a_ptr;
-                let mut b_ptr = b_ptr;
-                let mut c_ptr = c_ptr;
+                let mut a_offset = 0;
+                let mut b_offset = 0;
+                let mut c_offset = 0;
                 for (axis, x) in prefix.as_array_view().iter().enumerate() {
                     if axis >= silent_a_axis && a.shape()[axis - silent_a_axis] != 1 {
-                        a_ptr = a_ptr.offset(*x as isize * a.strides()[axis - silent_a_axis]);
+                        a_offset += *x as isize * a.strides()[axis - silent_a_axis];
                     }
                     if axis >= silent_b_axis && b.shape()[axis - silent_b_axis] != 1 {
-                        b_ptr = b_ptr.offset(*x as isize * b.strides()[axis - silent_b_axis]);
+                        b_offset += *x as isize * b.strides()[axis - silent_b_axis];
                     }
-                    c_ptr = c_ptr.offset(*x as isize * c.strides()[axis]);
+                    c_offset += *x as isize * c.strides()[axis];
                 }
 
-                matmul::mfa_dispatch_gemm_with_slice(
+                matmul::dispatch_metal_mfa_gemm(
                     context,
+                    matmul::GemmPrecision::from_dt(c_dt)?,
                     (1, m, n, k),
-                    std::slice::from_raw_parts(a_ptr, m * k),
-                    &a_strides,
+                    std::mem::transmute::<&[isize], &[usize]>(a_strides.as_slice()),
+                    a_offset as usize * c_dt.size_of(),
+                    &a.metal(),
                     self.transpose_a,
-                    std::slice::from_raw_parts(b_ptr, k * n),
-                    &b_strides,
+                    std::mem::transmute::<&[isize], &[usize]>(b_strides.as_slice()),
+                    b_offset as usize * c_dt.size_of(),
+                    &b.metal(),
                     self.transpose_b,
-                    std::slice::from_raw_parts_mut(c_ptr, m * n),
+                    &c.metal(),
+                    c_offset as usize * c_dt.size_of(),
                 )
                 .with_context(|| {
                     anyhow!(
@@ -115,6 +117,44 @@ impl MetalGemm {
                         c_shape
                     )
                 })?;
+
+                //     let mut c = Tensor::uninitialized::<f32>(&c_shape)?;
+                // let c_ptr = c.as_ptr_mut::<f32>()?;
+                // let silent_a_axis = c.rank() - a.rank();
+                // let silent_b_axis = c.rank() - b.rank();
+                // for prefix in ndarray::indices(&c_shape[0..rank - 2]) {
+                //     let mut a_ptr = a_ptr;
+                //     let mut b_ptr = b_ptr;
+                //     let mut c_ptr = c_ptr;
+                //     for (axis, x) in prefix.as_array_view().iter().enumerate() {
+                //         if axis >= silent_a_axis && a.shape()[axis - silent_a_axis] != 1 {
+                //             a_ptr = a_ptr.offset(*x as isize * a.strides()[axis - silent_a_axis]);
+                //         }
+                //         if axis >= silent_b_axis && b.shape()[axis - silent_b_axis] != 1 {
+                //             b_ptr = b_ptr.offset(*x as isize * b.strides()[axis - silent_b_axis]);
+                //         }
+                //         c_ptr = c_ptr.offset(*x as isize * c.strides()[axis]);
+                //     }
+
+                // matmul::mfa_dispatch_gemm_with_slice(
+                //     context,
+                //     (1, m, n, k),
+                //     std::slice::from_raw_parts(a_ptr, m * k),
+                //     &a_strides,
+                //     self.transpose_a,
+                //     std::slice::from_raw_parts(b_ptr, k * n),
+                //     &b_strides,
+                //     self.transpose_b,
+                //     std::slice::from_raw_parts_mut(c_ptr, m * n),
+                // )
+                // .with_context(|| {
+                //     anyhow!(
+                //         "Error while performing MatMul (a: {:?}), (b: {:?}) = (c: {:?})",
+                //         a.shape(),
+                //         b.shape(),
+                //         c_shape
+                //     )
+                // })?;
             }
 
             Ok(c)
@@ -131,42 +171,10 @@ impl EvalOp for MetalGemm {
         let (a, b) = args_2!(inputs);
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
-                if a.datum_type() == DatumType::F32 {
-                    let out = self.dispatch_eval::<f32>(context, &a, &b)?.into_tvalue();
-                    context.wait_until_completed()?;
-                    Ok(tvec![out])
-                } else if a.datum_type() == DatumType::F16 {
-                    let out = self.dispatch_eval::<f16>(context, &a, &b)?.into_tvalue();
-                    context.wait_until_completed()?;
-                    Ok(tvec![out])
-                } else if a.datum_type() == DatumType::Opaque {
-                    let a_metal_ref = a.to_metal_tensor()?;
-                    let b_metal_ref = b.to_metal_tensor()?;
-                    let out = if a_metal_ref.datum_type() == DatumType::F16 {
-                        self.dispatch_eval::<f16>(
-                            context,
-                            a_metal_ref.tensor(),
-                            b_metal_ref.tensor(),
-                        )?
-                    } else if a_metal_ref.datum_type() == DatumType::F32 {
-                        self.dispatch_eval::<f32>(
-                            context,
-                            a_metal_ref.tensor(),
-                            b_metal_ref.tensor(),
-                        )?
-                    } else {
-                        bail!(
-                            "{:?} doesn't support this datum type: {:?} inside Opaque Metal tensor",
-                            self.name(),
-                            a_metal_ref.datum_type()
-                        )
-                    };
-                    // We convert the output tensor as a metal tensor. Indeed the tensor will be accessible
-                    // only when the command buffer will be commit and completed.
-                    Ok(tvec![out.into_metal()?.into_opaque_tensor().into_tvalue()])
-                } else {
-                    bail!("{:?} doesn't support this datum type: {:?}", self.name(), a.datum_type())
-                }
+                let a_metal_ref = a.to_metal_tensor()?;
+                let b_metal_ref = b.to_metal_tensor()?;
+                let out = self.dispatch_eval(context, a_metal_ref, b_metal_ref)?;
+                Ok(tvec![out.into_opaque_tensor().into_tvalue()])
             })
         })
     }
