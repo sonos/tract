@@ -13,34 +13,34 @@ impl_downcast!(OpaquePayload);
 dyn_hash::hash_trait_object!(OpaquePayload);
 
 
-pub trait OpaqueMetadata: DynHash + Send + Sync + Debug + dyn_clone::DynClone + Downcast {
-    fn same_as(&self, _other: &dyn OpaqueMetadata) -> bool {
+pub trait OpaqueFact: DynHash + Send + Sync + Debug + dyn_clone::DynClone + Downcast {
+    fn same_as(&self, _other: &dyn OpaqueFact) -> bool {
         false
     }
 }
-impl_downcast!(OpaqueMetadata);
-dyn_hash::hash_trait_object!(OpaqueMetadata);
-dyn_clone::clone_trait_object!(OpaqueMetadata);
+impl_downcast!(OpaqueFact);
+dyn_hash::hash_trait_object!(OpaqueFact);
+dyn_clone::clone_trait_object!(OpaqueFact);
 
 
-impl<T: OpaqueMetadata> From<T> for Box<dyn OpaqueMetadata> {
+impl<T: OpaqueFact> From<T> for Box<dyn OpaqueFact> {
     fn from(v: T) -> Self {
         Box::new(v)
     }
 }
 
 
-impl PartialEq for Box<dyn OpaqueMetadata> {
+impl PartialEq for Box<dyn OpaqueFact> {
     fn eq(&self, other: &Self) -> bool {
         self.as_ref().same_as(other.as_ref())
     }
 }
 
-impl Eq for Box<dyn OpaqueMetadata> { }
+impl Eq for Box<dyn OpaqueFact> { }
 
 
-impl OpaqueMetadata for TVec<Box<dyn OpaqueMetadata>> { }
-impl OpaqueMetadata for TVec<Option<Box<dyn OpaqueMetadata>>> { }
+impl OpaqueFact for TVec<Box<dyn OpaqueFact>> { }
+impl OpaqueFact for TVec<Option<Box<dyn OpaqueFact>>> { }
 
 
 
