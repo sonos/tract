@@ -82,7 +82,7 @@ impl Concat {
 
         for (i_idx, input) in inputs.iter().enumerate() {
             let i_shape = input.shape();
-            ensure!(i_shape[axis] != 0);
+            // ensure!(i_shape[axis] != 0);
             ensure!(i_shape[..axis] == output_shape[..axis]);
             ensure!(i_shape[axis + 1..] == output_shape[axis + 1..]);
             offsets[i_idx] = cursor * (output_strides[axis] as usize) * output_dt.size_of();
