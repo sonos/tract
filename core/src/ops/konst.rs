@@ -1,14 +1,14 @@
 use crate::internal::*;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub struct Const(pub Arc<Tensor>, Option<Box<dyn OpaqueMetadata>>);
+pub struct Const(pub Arc<Tensor>, Option<Box<dyn OpaqueFact>>);
 
 impl Const {
     pub fn new(tensor: Arc<Tensor>) -> Const {
         Const(tensor, None)
     }
 
-    pub fn new_with_opaque_fact(tensor: Arc<Tensor>, fact: Box<dyn OpaqueMetadata>) -> Const {
+    pub fn new_with_opaque_fact(tensor: Arc<Tensor>, fact: Box<dyn OpaqueFact>) -> Const {
         Const(tensor, Some(fact))
     }
 }
@@ -36,7 +36,12 @@ impl TypedOp for Const {
     as_op!();
 
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(Arc::clone(&self.0).into()))
+        let fact = TypedFact::from(&self.0);
+        if let Some(opaque) = &self.1 {
+            Ok(tvec!(fact.with_opaque_metadata(opaque.clone())))
+        } else {
+            Ok(tvec!(fact))
+        }
     }
 
     fn change_axes(
