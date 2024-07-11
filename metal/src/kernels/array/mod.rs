@@ -17,7 +17,6 @@ pub fn all_functions() -> Vec<String> {
     functions.extend(
         crate::MetalTensor::SUPPORTED_DT
             .into_iter()
-            .map(move |dt| dt)
             .flat_map(|dt| crate::kernels::BroadcastKind::ALL.into_iter().map(move |b| (dt, b)))
             .flat_map(|(dt, b)| MultiBroadcast.kernel_name(dt, b).into_iter()),
     );
@@ -25,14 +24,12 @@ pub fn all_functions() -> Vec<String> {
     functions.extend(
         crate::MetalTensor::SUPPORTED_DT
             .into_iter()
-            .map(move |dt| dt)
             .flat_map(|dt| Memcpy.kernel_name(dt).into_iter()),
     );
 
     functions.extend(
         crate::MetalTensor::SUPPORTED_DT
             .into_iter()
-            .map(move |dt| dt)
             .flat_map(|dt1| crate::MetalTensor::SUPPORTED_DT.into_iter().map(move |dt2| (dt1, dt2)))
             .flat_map(|(dt1, dt2)| Cast.kernel_name(dt1, dt2).into_iter()),
     );

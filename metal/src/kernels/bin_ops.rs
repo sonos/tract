@@ -251,7 +251,7 @@ impl BinOps {
                 encoder.set_buffer(4, Some(output.metal()), 0);
                 encoder.set_bytes(
                     5,
-                    (output_shape.len() * std::mem::size_of::<usize>()) as NSUInteger,
+                    std::mem::size_of_val(output_shape) as NSUInteger,
                     output_shape.as_ptr() as *const _,
                 );
 

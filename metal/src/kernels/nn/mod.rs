@@ -17,7 +17,6 @@ pub fn all_functions() -> Vec<String> {
     functions.extend(
         crate::MetalTensor::SUPPORTED_DT
             .into_iter()
-            .map(move |dt| dt)
             .flat_map(|dt| Softmax.kernel_name(dt).into_iter()),
     );
 

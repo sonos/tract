@@ -10,7 +10,7 @@ use tract_itertools::Itertools;
 pub struct MetalAxisOp(pub AxisOp);
 
 impl MetalAxisOp {
-    pub fn new(op: AxisOp) -> Option<Self> {
+    pub fn from_tract_core(op: AxisOp) -> Option<Self> {
         Some(Self(op))
     }
 }
@@ -214,7 +214,7 @@ pub struct MetalIntoShape {
 }
 
 impl MetalIntoShape {
-    pub fn new(core_op: IntoShape) -> Self {
+    pub fn from_tract_core(core_op: IntoShape) -> Self {
         MetalIntoShape {
             mapping: core_op.mapping,
             len: core_op.len,

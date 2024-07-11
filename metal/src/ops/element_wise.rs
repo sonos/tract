@@ -36,7 +36,7 @@ impl EvalOp for MetalElementWiseOp {
                 match a.as_metal_tensor() {
                     Some(a_metal) => Ok(tvec!(self
                         .0
-                        .dispatch_eval(context, &a_metal)?
+                        .dispatch_eval(context, a_metal)?
                         .into_opaque_tensor()
                         .into_tvalue())),
                     None => {

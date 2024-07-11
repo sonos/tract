@@ -170,7 +170,7 @@ impl MetalTensor {
     /// Get underlying inner tensor.
     #[inline]
     pub fn tensor(&self) -> &Tensor {
-        &self.inner.tensor()
+        self.inner.tensor()
     }
 
     /// Get underlying inner tensor.
