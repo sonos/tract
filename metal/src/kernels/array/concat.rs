@@ -82,7 +82,6 @@ impl Concat {
 
         for (i_idx, input) in inputs.iter().enumerate() {
             let i_shape = input.shape();
-            // ensure!(i_shape[axis] != 0);
             ensure!(i_shape[..axis] == output_shape[..axis]);
             ensure!(i_shape[axis + 1..] == output_shape[axis + 1..]);
             offsets[i_idx] = cursor * (output_strides[axis] as usize) * output_dt.size_of();
@@ -105,6 +104,9 @@ impl Concat {
         let command_buffer = context.command_buffer();
 
         for (input, offset) in inputs.iter().zip(offsets.into_iter()) {
+            if input.volume() == 0 {
+                continue;
+            }
             let i_strides = input.strides();
             let i_shape = input.shape();
 
@@ -172,23 +174,15 @@ mod tests {
     #[test]
     fn test_concat() -> Result<()> {
         run_test_case::<f32>(&[&[3, 4], &[3, 4]], 0)?;
-
         run_test_case::<f32>(&[&[3, 4], &[3, 4]], 1)?;
-
         run_test_case::<f32>(&[&[1, 5, 4], &[2, 5, 4]], 0)?;
-
         run_test_case::<f32>(&[&[3, 1, 8], &[3, 2, 8]], 1)?;
-
         run_test_case::<f32>(&[&[3, 5, 1], &[3, 5, 2]], 2)?;
-
         run_test_case::<f32>(&[&[1, 5, 4, 10], &[2, 5, 4, 10]], 0)?;
-
         run_test_case::<f32>(&[&[3, 1, 8, 10], &[3, 2, 8, 10]], 1)?;
-
         run_test_case::<f32>(&[&[3, 5, 1, 10], &[3, 5, 2, 10]], 2)?;
-
+        run_test_case::<f32>(&[&[3, 5, 1, 10], &[3, 5, 0, 10]], 2)?;
         run_test_case::<f32>(&[&[3, 5, 1, 2], &[3, 5, 1, 8]], 3)?;
-
         Ok(())
     }
 }

@@ -156,6 +156,12 @@ impl MetalTensor {
         self.inner.tensor().len()
     }
 
+    /// Compute the volume of the tensor.
+    #[inline]
+    pub fn volume(&self) -> usize {
+        self.shape().into_iter().product()
+    }
+
     /// Get the strides of the tensor.
     #[inline]
     pub fn strides(&self) -> &[isize] {
