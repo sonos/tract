@@ -199,8 +199,8 @@ pub struct TypedFact {
     pub konst: Option<Arc<Tensor>>,
     /// optional uniform value
     pub uniform: Option<Arc<Tensor>>,
-    /// optional opaque metadata
-    pub opaque_metadata: Option<Box<dyn OpaqueMetadata>>
+    /// optional opaque fact
+    pub opaque_fact: Option<Box<dyn OpaqueFact>>
 }
 
 impl TypedFact {
@@ -225,7 +225,7 @@ impl TypedFact {
             shape: ShapeFact::from_dims(t.shape().iter().map(TDim::from)),
             uniform: None,
             konst: None,
-            opaque_metadata: None,
+            opaque_fact: None,
         }
     }
 
@@ -235,7 +235,7 @@ impl TypedFact {
             shape: ShapeFact::scalar(), 
             konst: None, 
             uniform: None, 
-            opaque_metadata: None, 
+            opaque_fact: None, 
         }
     }
 
@@ -248,7 +248,7 @@ impl TypedFact {
             shape: shape.into(), 
             konst: None, 
             uniform: None,
-            opaque_metadata: None,
+            opaque_fact: None,
         }
     }
 
@@ -302,8 +302,8 @@ impl TypedFact {
         Self::dt_shape(self.datum_type, self.shape.clone())
     }
 
-    pub fn with_opaque_metadata<O: Into<Box<dyn OpaqueMetadata>>>(mut self, opaque_metadata: O) -> Self {
-        self.opaque_metadata = Some(opaque_metadata.into());
+    pub fn with_opaque_metadata<O: Into<Box<dyn OpaqueFact>>>(mut self, opaque_metadata: O) -> Self {
+        self.opaque_fact = Some(opaque_metadata.into());
         self
     }
 }
@@ -377,7 +377,7 @@ impl From<Arc<Tensor>> for TypedFact {
             datum_type: t.datum_type(),
             shape: ShapeFact::from_dims(t.shape().iter().map(TDim::from)),
             uniform: t.as_uniform().map(Arc::new),
-            opaque_metadata: None,
+            opaque_fact: None,
             konst: Some(t),
         }
     }
@@ -397,7 +397,7 @@ impl<'a> From<&'a Arc<Tensor>> for TypedFact {
 
 impl fmt::Debug for TypedFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match (self.konst.as_ref(), self.opaque_metadata.as_ref()) {
+        match (self.konst.as_ref(), self.opaque_fact.as_ref()) {
             (Some(ref k), _) => write!(fmt, "{k:?}"),
             (None, None) if self.rank() > 0 => write!(fmt, "{:?},{:?}", self.shape, self.datum_type),
             (None, Some(ref meta)) if self.rank() > 0 => write!(fmt, "{:?},{:?},{:?}", self.shape, self.datum_type, meta),
