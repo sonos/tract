@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::fmt::Debug;
 
 use crate::internal::*;
@@ -35,6 +36,31 @@ impl EinSum {
 
     pub fn newq(axes: AxesMapping, operating_dt: DatumType, output_type: DatumType) -> EinSum {
         EinSum { axes, operating_dt, q_params: Some(output_type) }
+    }
+
+    pub fn actual_input_shapes_from_facts<'m>(
+        &self,
+        inputs: &'m [impl Borrow<TypedFact>],
+    ) -> TractResult<TVec<&'m [TDim]>> {
+        ensure!(inputs.len() == self.axes.input_count());
+        let shapes: TVec<&[TDim]> = inputs
+            .iter()
+            .map(|t| {
+                let t = t.borrow();
+                if let Some(bqf) =
+                    t.opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
+                {
+                    &*bqf.shape
+                } else {
+                    &*t.shape
+                }
+            })
+            .collect();
+        ensure!(shapes
+            .iter()
+            .enumerate()
+            .all(|(ix, fact)| fact.len() == self.axes.rank(InOut::In(ix))));
+        Ok(shapes)
     }
 
     #[allow(unused_variables)]
@@ -217,23 +243,7 @@ impl EvalOp for EinSum {
 
 impl TypedOp for EinSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        ensure!(inputs.len() == self.axes.input_count());
-        let shapes: TVec<&[TDim]> = inputs
-            .iter()
-            .map(|t| {
-                if let Some(bqf) =
-                    t.opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
-                {
-                    &*bqf.shape
-                } else {
-                    &*t.shape
-                }
-            })
-            .collect();
-        ensure!(shapes
-            .iter()
-            .enumerate()
-            .all(|(ix, fact)| fact.len() == self.axes.rank(InOut::In(ix))));
+        let shapes = self.actual_input_shapes_from_facts(inputs)?;
         if let Some(qp) = self.q_params {
             ensure!(inputs.len() == 9);
             Ok(tvec!(qp.fact(eval::output_shape(&self.axes, &shapes[0..2]))))
