@@ -1,5 +1,4 @@
 use tract_data::itertools::Itertools;
-use tract_linalg::frame::PackedFormat;
 use tract_linalg::Scaler;
 use tract_ndarray::Ix2;
 use tract_num_traits::One;

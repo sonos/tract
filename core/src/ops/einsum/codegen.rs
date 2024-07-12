@@ -5,6 +5,7 @@ use tract_linalg::mmm::{MMMInputFormat, MMMInputValue, MatMatMul};
 use super::*;
 use crate::ops::cast::cast;
 use crate::ops::math::add;
+use crate::ops::matmul::de_block_quant::BlockQuantValue;
 use crate::ops::matmul::lir_unary::{
     AddMatMulGeometry, LirMatMulUnary, MapOutputAxisToInput, ProtoFusedSpec,
 };
@@ -363,8 +364,12 @@ fn wire_packing(
         let Some(weights) = &a_fact.konst else {
             bail!("Block quant packing with non-const inputs")
         };
+        ensure!(weights.datum_type() == Opaque::datum_type());
+        let Some(weights) = weights.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>() else {
+            bail!("Expected a BlockQuantValue, found {weights:?}")
+        };
         let k = pbqf.shape[k_axis].to_usize()?;
-        let packed = pbqf.format.pack(weights.to_scalar::<Blob>()?, k, packer.r())?;
+        let packed = pbqf.format.pack(&weights.value, k, packer.r())?;
         let mmm_input: Box<dyn MMMInputValue> = Box::new(packed);
         patch.add_const(name, tensor0(Opaque::from(mmm_input)))
     } else {

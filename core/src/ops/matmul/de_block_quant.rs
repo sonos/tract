@@ -20,6 +20,26 @@ impl std::fmt::Debug for BlockQuantFact {
 
 impl OpaqueFact for BlockQuantFact {}
 
+#[derive(Clone, Hash)]
+pub struct BlockQuantValue {
+    pub fact: BlockQuantFact,
+    pub value: Blob,
+}
+
+impl OpaquePayload for BlockQuantValue {}
+
+impl std::fmt::Debug for BlockQuantValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?} {:?}", self.fact, self.value)
+    }
+}
+
+impl std::fmt::Display for BlockQuantValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
 #[derive(Debug)]
 pub struct BlockQuantTransform;
 
@@ -84,9 +104,10 @@ fn block_quant_einsum_weights(
     };
     let name = &model.node(node.inputs[0].node).name;
     let fact = BlockQuantFact { format: Box::new(format), shape: a.shape.clone() };
+    let value = BlockQuantValue { fact: fact.clone(), value: weights };
     let weights = patch.wire_node(
         name,
-        Const::new_with_opaque_fact(rctensor0(weights), Box::new(fact)),
+        Const::new_with_opaque_fact(rctensor0(Opaque(Arc::new(value))), Box::new(fact)),
         &[],
     )?;
     let tap = patch.tap_model(model, node.inputs[1])?;
