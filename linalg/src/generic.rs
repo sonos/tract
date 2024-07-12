@@ -1,4 +1,3 @@
-pub mod binary;
 pub mod by_scalar;
 pub mod erf;
 pub mod leaky_relu;
@@ -8,6 +7,7 @@ pub mod reduce;
 pub mod rounding;
 pub mod sigmoid;
 pub mod tanh;
+pub mod unicast;
 
 pub use self::by_scalar::{HMulByScalar8, SMulByScalar4};
 pub use self::erf::SErf4;

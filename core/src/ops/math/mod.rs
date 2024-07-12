@@ -11,8 +11,8 @@ use num_traits::{Float, Zero};
 use tract_data::internal::ClampCast;
 use tract_data::itertools::Itertools;
 pub use tract_data::prelude::round_ties_to_even;
+use tract_linalg::frame::unicast::Unicast;
 use tract_linalg::frame::ElementWise;
-use tract_linalg::frame::binary::Binary;
 use tract_linalg::{ScaleShiftAndRound, Scaler};
 use tract_ndarray::Axis;
 use tract_num_traits::AsPrimitive;
@@ -99,12 +99,12 @@ bin_to_super_type!(mul, Mul,
                         if b.datum_type() == f32::datum_type() {
                             let a = a.as_slice::<f32>()?;
                             let slice = b.as_slice_mut::<f32>()?;
-                            (tract_linalg::ops().binary_mul_f32)().run(slice, a)?;
+                            (tract_linalg::ops().unicast_mul_f32)().run(slice, a)?;
                             Ok(true)
                         } else if b.datum_type() == f16::datum_type() {
                             let a = a.as_slice::<f16>()?;
                             let slice = b.as_slice_mut::<f16>()?;
-                            (tract_linalg::ops().binary_mul_f16)().run(slice, a)?;
+                            (tract_linalg::ops().unicast_mul_f16)().run(slice, a)?;
                             Ok(true)
                         } else {
                             Ok(false)
@@ -152,49 +152,67 @@ bin_to_super_type!(mul, Mul,
 [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() * b
 );
 
-fn mul_eval_in_a(a: &mut Tensor, b: &Tensor) -> TractResult<bool>{
+fn mul_eval_in_a(a: &mut Tensor, b: &Tensor) -> TractResult<bool> {
     let b_shape = b.shape();
-    let leading_unary_dims: Vec<usize> = b_shape.iter()
-        .enumerate()
-        .take_while(|&(_, &dim)| dim == 1)
-        .map(|(i, _)| i)
-        .collect();
-    let trailing_unary_dims: Vec<usize> = b_shape.iter()
+    let leading_unary_dims: Vec<usize> =
+        b_shape.iter().enumerate().take_while(|&(_, &dim)| dim == 1).map(|(i, _)| i).collect();
+    let trailing_unary_dims: Vec<usize> = b_shape
+        .iter()
         .enumerate()
         .rev()
         .take_while(|&(_, &dim)| dim == 1)
         .map(|(i, _)| i)
         .collect();
-    let uniform_in_place_should_be_efficient = trailing_unary_dims.iter().fold(1, |num_elements, it| num_elements * a.shape()[*it]) > 32;
-    let unicast_in_place_should_be_efficient = leading_unary_dims.iter().fold(1, |num_elements, it| num_elements * a.shape()[*it]) > 32;
+    let uniform_in_place_should_be_efficient =
+        trailing_unary_dims.iter().fold(1, |num_elements, it| num_elements * a.shape()[*it]) > 32;
+    let unicast_in_place_should_be_efficient =
+        leading_unary_dims.iter().fold(1, |num_elements, it| num_elements * a.shape()[*it]) > 32;
     // Better to try uniform in place first (should be more efficient)
     if uniform_in_place_should_be_efficient {
         if b.datum_type() == f32::datum_type() {
-            mul_by_scalar::<f32>(a, b, &trailing_unary_dims, (tract_linalg::ops().mul_by_scalar_f32)())
+            mul_by_scalar::<f32>(
+                a,
+                b,
+                &trailing_unary_dims,
+                (tract_linalg::ops().mul_by_scalar_f32)(),
+            )
         } else if b.datum_type() == f16::datum_type() {
-            mul_by_scalar::<f16>(a, b, &trailing_unary_dims, (tract_linalg::ops().mul_by_scalar_f16)())
+            mul_by_scalar::<f16>(
+                a,
+                b,
+                &trailing_unary_dims,
+                (tract_linalg::ops().mul_by_scalar_f16)(),
+            )
         } else {
             Ok(false)
         }
     } else if unicast_in_place_should_be_efficient {
         if b.datum_type() == f32::datum_type() {
-            mul_unicast::<f32>(a, b, &trailing_unary_dims, (tract_linalg::ops().binary_mul_f32)())
+            mul_unicast::<f32>(a, b, &leading_unary_dims, (tract_linalg::ops().unicast_mul_f32)())
         } else if b.datum_type() == f16::datum_type() {
-            mul_unicast::<f16>(a, b, &trailing_unary_dims, (tract_linalg::ops().binary_mul_f16)())
+            mul_unicast::<f16>(a, b, &leading_unary_dims, (tract_linalg::ops().unicast_mul_f16)())
         } else {
-            return Ok(false)
+            return Ok(false);
         }
-
     } else {
         Ok(false)
     }
 }
 
-fn mul_unicast<T: Datum + Float>(a: &mut Tensor, b: &Tensor, leading_unary_dims: &[usize], eval: Box<dyn Binary<T>>) -> TractResult<bool> {
+fn mul_unicast<T: Datum + Float>(
+    a: &mut Tensor,
+    b: &Tensor,
+    leading_unary_dims: &[usize],
+    eval: Box<dyn Unicast<T>>,
+) -> TractResult<bool> {
     let mut a_view = a.to_array_view_mut::<T>()?;
     let b_view = b.to_array_view::<T>()?;
     let mut iterating_shape = a_view.shape().to_vec();
-    iterating_shape.iter_mut().enumerate().for_each(|(idx, dim)| if !leading_unary_dims.contains(&idx) {*dim =1} );
+    iterating_shape.iter_mut().enumerate().for_each(|(idx, dim)| {
+        if !leading_unary_dims.contains(&idx) {
+            *dim = 1
+        }
+    });
     for it_coords in tract_ndarray::indices(iterating_shape) {
         let mut a_view = a_view.view_mut();
         for idx in 0..a_view.shape().len() {
@@ -206,19 +224,24 @@ fn mul_unicast<T: Datum + Float>(a: &mut Tensor, b: &Tensor, leading_unary_dims:
         if let Some((a_slice, b_slice)) = a_view.as_slice_mut().zip(b_view.as_slice()) {
             eval.run(a_slice, b_slice)?;
         } else {
-            return Ok(false)
+            return Ok(false);
         }
     }
     Ok(true)
 }
 
-fn mul_by_scalar<T: Datum + Float>(a: &mut Tensor, b: &Tensor, trailing_unary_dims: &[usize], eval: Box<dyn ElementWise<T, T>>) -> TractResult<bool>{
+fn mul_by_scalar<T: Datum + Float>(
+    a: &mut Tensor,
+    b: &Tensor,
+    trailing_unary_dims: &[usize],
+    eval: Box<dyn ElementWise<T, T>>,
+) -> TractResult<bool> {
     let mut view = a.to_array_view_mut::<T>()?;
     let b = b.to_array_view::<T>()?;
     for it_coords in tract_ndarray::indices(b.shape()) {
         // Prepare array view to perform computation
         // - view should be a slice
-        // - b should be a scalar 
+        // - b should be a scalar
         let mut view = view.view_mut();
         let mut b = b.view();
         for idx in 0..b.shape().len() {

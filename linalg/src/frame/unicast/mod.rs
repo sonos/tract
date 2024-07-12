@@ -8,14 +8,14 @@ use tract_data::TractResult;
 use crate::frame::element_wise_helper::TempBuffer;
 use crate::LADatum;
 
-macro_rules! binary_impl_wrap {
+macro_rules! unicast_impl_wrap {
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $run: item) => {
         paste! {
             #[derive(Copy, Clone, Debug)]
             #[allow(non_camel_case_types)]
             pub struct $func;
 
-            impl crate::frame::binary::BinaryKer<$ti> for $func {
+            impl crate::frame::unicast::UnicastKer<$ti> for $func {
                 #[inline(always)]
                 fn name() -> &'static str {
                     stringify!($func)
@@ -34,7 +34,7 @@ macro_rules! binary_impl_wrap {
     };
 }
 
-pub trait Binary<T>: Send + Sync + Debug + dyn_clone::DynClone
+pub trait Unicast<T>: Send + Sync + Debug + dyn_clone::DynClone
 where
     T: Copy + Debug + PartialEq + Send + Sync,
 {
@@ -42,31 +42,31 @@ where
     fn run(&self, a: &mut [T], b: &[T]) -> TractResult<()>;
 }
 
-dyn_clone::clone_trait_object!(<T> Binary<T> where T: Copy);
+dyn_clone::clone_trait_object!(<T> Unicast<T> where T: Copy);
 
 #[derive(Debug, Clone, new)]
-pub struct BinaryImpl<K, T>
+pub struct UnicastImpl<K, T>
 where
     T: LADatum,
-    K: BinaryKer<T> + Clone,
+    K: UnicastKer<T> + Clone,
 {
     phantom: PhantomData<(K, T)>,
 }
 
-impl<K, T> Binary<T> for BinaryImpl<K, T>
+impl<K, T> Unicast<T> for UnicastImpl<K, T>
 where
     T: LADatum,
-    K: BinaryKer<T> + Clone,
+    K: UnicastKer<T> + Clone,
 {
     fn name(&self) -> &'static str {
         K::name()
     }
     fn run(&self, a: &mut [T], b: &[T]) -> TractResult<()> {
-        binary_with_alignment(a, b, |a, b| K::run(a, b), K::nr(), K::alignment_bytes())
+        unicast_with_alignment(a, b, |a, b| K::run(a, b), K::nr(), K::alignment_bytes())
     }
 }
 
-pub trait BinaryKer<T>: Send + Sync + Debug + dyn_clone::DynClone + Clone + 'static
+pub trait UnicastKer<T>: Send + Sync + Debug + dyn_clone::DynClone + Clone + 'static
 where
     T: LADatum,
 {
@@ -77,8 +77,8 @@ where
     fn alignment_items() -> usize;
     fn nr() -> usize;
     fn run(a: &mut [T], b: &[T]);
-    fn bin() -> Box<dyn Binary<T>> {
-        Box::new(BinaryImpl::<Self, T>::new())
+    fn bin() -> Box<dyn Unicast<T>> {
+        Box::new(UnicastImpl::<Self, T>::new())
     }
 }
 
@@ -86,7 +86,7 @@ std::thread_local! {
     static TMP: std::cell::RefCell<(TempBuffer, TempBuffer)> = std::cell::RefCell::new((TempBuffer::default(), TempBuffer::default()));
 }
 
-pub(crate) fn binary_with_alignment<T>(
+pub(crate) fn unicast_with_alignment<T>(
     a: &mut [T],
     b: &[T],
     f: impl Fn(&mut [T], &[T]),
@@ -138,13 +138,13 @@ pub mod test {
     use proptest::test_runner::{TestCaseError, TestCaseResult};
     use tract_data::internal::*;
 
-    pub fn test_binary<K: BinaryKer<T>, T: LADatum>(
+    pub fn test_unicast<K: UnicastKer<T>, T: LADatum>(
         a: &[T],
         b: &[T],
         reference: impl Fn(T, T) -> T,
     ) -> TestCaseResult {
         crate::setup_test_logger();
-        let op = BinaryImpl::<K, T>::new();
+        let op = UnicastImpl::<K, T>::new();
         let expected = a.iter().zip(b.iter()).map(|(a, b)| (reference)(*a, *b)).collect::<Vec<_>>();
         let mut found = a.to_vec();
         op.run(&mut found, &b).unwrap();

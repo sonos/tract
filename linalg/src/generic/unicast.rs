@@ -1,7 +1,7 @@
 pub use tract_data::internal::f16;
-binary_impl_wrap!(
+unicast_impl_wrap!(
     f32,
-    SBinaryMul4,
+    SUnicastMul4,
     4,
     4,
     fn run(a: &mut [f32], b: &[f32]) {
@@ -13,9 +13,9 @@ binary_impl_wrap!(
     }
 );
 
-binary_impl_wrap!(
+unicast_impl_wrap!(
     f16,
-    HBinaryMul8,
+    HUnicastMul8,
     8,
     8,
     fn run(a: &mut [f16], b: &[f16]) {
@@ -30,12 +30,12 @@ binary_impl_wrap!(
 #[cfg(test)]
 #[macro_use]
 pub mod s {
-    crate::binary_mul_frame_tests!(true, f32, crate::generic::binary::SBinaryMul4);
+    crate::unicast_mul_frame_tests!(true, f32, crate::generic::unicast::SUnicastMul4);
 }
 
 #[cfg(test)]
 #[macro_use]
 pub mod h {
     use super::*;
-    crate::binary_mul_frame_tests!(true, f16, crate::generic::binary::HBinaryMul8);
+    crate::unicast_mul_frame_tests!(true, f16, crate::generic::unicast::HUnicastMul8);
 }

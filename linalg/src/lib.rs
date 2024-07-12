@@ -20,10 +20,10 @@ include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 pub mod frame;
 pub mod generic;
 pub mod multithread;
-use frame::binary::BinaryKer;
+use frame::unicast::UnicastKer;
 use frame::element_wise::ElementWiseKer;
 use frame::reduce::{MapReduceKer, ReduceKer};
-use frame::{binary, reduce, MatMatMul};
+use frame::{unicast, reduce, MatMatMul};
 pub use generic::{ScaleShiftAndRound, Scaler};
 #[cfg(target_arch = "x86_64")]
 pub mod x86_64_fma;
@@ -83,8 +83,8 @@ pub struct Ops {
     pub sum_f16: Box<dyn Fn() -> Box<dyn reduce::Reduce<f16>> + Send + Sync>,
     pub sum_f32: Box<dyn Fn() -> Box<dyn reduce::Reduce<f32>> + Send + Sync>,
 
-    pub binary_mul_f16: Box<dyn Fn() -> Box<dyn binary::Binary<f16>> + Send + Sync>,
-    pub binary_mul_f32: Box<dyn Fn() -> Box<dyn binary::Binary<f32>> + Send + Sync>,
+    pub unicast_mul_f16: Box<dyn Fn() -> Box<dyn unicast::Unicast<f16>> + Send + Sync>,
+    pub unicast_mul_f32: Box<dyn Fn() -> Box<dyn unicast::Unicast<f32>> + Send + Sync>,
 
     pub softmax2_fastcompact_f16:
         Box<dyn Fn() -> Box<dyn reduce::MapReduce<f16, f16>> + Send + Sync>,
@@ -154,8 +154,8 @@ pub fn generic() -> Ops {
         max_f32: Box::new(|| generic::reduce::max::SMax4::red()),
         sum_f16: Box::new(|| generic::reduce::sum::HSum8::red()),
         sum_f32: Box::new(|| generic::reduce::sum::SSum4::red()),
-        binary_mul_f16: Box::new(|| generic::binary::HBinaryMul8::bin()),
-        binary_mul_f32: Box::new(|| generic::binary::SBinaryMul4::bin()),
+        unicast_mul_f16: Box::new(|| generic::unicast::HUnicastMul8::bin()),
+        unicast_mul_f32: Box::new(|| generic::unicast::SUnicastMul4::bin()),
         /*
         activation_f32: Box::new(|microcode| generic::SActivation::new(microcode))
         */
