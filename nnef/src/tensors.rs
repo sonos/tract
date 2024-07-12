@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::io::{Read, Write};
 
 use byteorder::{ReadBytesExt, WriteBytesExt, LE};
 use tract_core::internal::*;
@@ -39,13 +39,12 @@ impl Header {
         w.write_all(slice)?;
         Ok(())
     }
-}
 
-pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
-    unsafe {
-        let mut header: Header = std::mem::zeroed();
-        let buffer: &mut [u8; 128] = std::mem::transmute(&mut header);
-        reader.read_exact(buffer)?;
+    pub fn read(reader: &mut impl Read) -> TractResult<Header> {
+        let mut header: Header = unsafe { std::mem::zeroed() };
+        reader.read_exact(unsafe {
+            std::mem::transmute::<&mut Header, &mut [u8; 128]>(&mut header)
+        })?;
         if header.magic != [0x4e, 0xef] {
             bail!("Wrong magic number");
         };
@@ -55,24 +54,19 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
         if header.rank > 8 {
             bail!("Wrong tensor rank {}", header.rank);
         }
-        let shape: TVec<usize> =
-            header.dims[0..header.rank as usize].iter().map(|d| *d as _).collect();
-        let len = shape.iter().product::<usize>();
+        Ok(header)
+    }
+}
 
-        if header.item_type == 5 {
-            let expected_bit_size = len * header.bits_per_item as usize;
-            let real_bit_size = header.data_size_bytes as usize * 8;
-            if !(real_bit_size - 8 <= expected_bit_size && expected_bit_size <= real_bit_size) {
-                bail!(
-                    "Shape and len mismatch: shape:{:?}, bits_per_item:{}, bytes:{} ",
-                    shape,
-                    header.bits_per_item,
-                    header.data_size_bytes
-                );
-            }
-        } else if header.bits_per_item != 0xFFFFFFFF
-            && len * (header.bits_per_item as usize / 8) != header.data_size_bytes as usize
-        {
+pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
+    let header = Header::read(&mut reader)?;
+    let shape: TVec<usize> = header.dims[0..header.rank as usize].iter().map(|d| *d as _).collect();
+    let len = shape.iter().product::<usize>();
+
+    if header.item_type == 5 {
+        let expected_bit_size = len * header.bits_per_item as usize;
+        let real_bit_size = header.data_size_bytes as usize * 8;
+        if !(real_bit_size - 8 <= expected_bit_size && expected_bit_size <= real_bit_size) {
             bail!(
                 "Shape and len mismatch: shape:{:?}, bits_per_item:{}, bytes:{} ",
                 shape,
@@ -80,102 +74,113 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
                 header.data_size_bytes
             );
         }
-        if header.item_type_vendor != 0 && header.item_type_vendor != TRACT_ITEM_TYPE_VENDOR {
-            bail!("Unknownn item type vendor {}", header.item_type_vendor);
-        }
+    } else if header.bits_per_item != u32::MAX
+        && len * (header.bits_per_item as usize / 8) != header.data_size_bytes as usize
+    {
+        bail!(
+            "Shape and len mismatch: shape:{:?}, bits_per_item:{}, bytes:{} ",
+            shape,
+            header.bits_per_item,
+            header.data_size_bytes
+        );
+    }
+    if header.item_type_vendor != 0 && header.item_type_vendor != TRACT_ITEM_TYPE_VENDOR {
+        bail!("Unknownn item type vendor {}", header.item_type_vendor);
+    }
 
-        // last checked with spec 1.0.5: https://registry.khronos.org/NNEF/specs/1.0/nnef-1.0.5.html
-        //
-        // Quantized types are not instanciated as DatumType::Q* here since
-        // quant infos are joined later from .quant file (
-        //  see: ops/nnef/deser.rs
-        // )
-        let dt = match (header.item_type_vendor, header.item_type, header.bits_per_item) {
-            // 0 - 0b0000 - float values in IEEE format, valid bits per item is 16, 32, 64
-            (0, 0, 16) => DatumType::F16,
-            (0, 0, 32) => DatumType::F32,
-            (0, 0, 64) => DatumType::F64,
+    // last checked with spec 1.0.5: https://registry.khronos.org/NNEF/specs/1.0/nnef-1.0.5.html
+    //
+    // Quantized types are not instanciated as DatumType::Q* here since
+    // quant infos are joined later from .quant file (
+    //  see: ops/nnef/deser.rs
+    // )
+    let dt = match (header.item_type_vendor, header.item_type, header.bits_per_item) {
+        // 0 - 0b0000 - float values in IEEE format, valid bits per item is 16, 32, 64
+        (0, 0, 16) => DatumType::F16,
+        (0, 0, 32) => DatumType::F32,
+        (0, 0, 64) => DatumType::F64,
 
-            // 1 - 0b0001 - unsigned integer values, maximum bits per item is 64.
-            (0, 1, 8) => DatumType::U8,
-            (0, 1, 16) => DatumType::U16,
-            (0, 1, 32) => DatumType::U32,
-            (0, 1, 64) => DatumType::U64,
+        // 1 - 0b0001 - unsigned integer values, maximum bits per item is 64.
+        (0, 1, 8) => DatumType::U8,
+        (0, 1, 16) => DatumType::U16,
+        (0, 1, 32) => DatumType::U32,
+        (0, 1, 64) => DatumType::U64,
 
-            // 2 - 0b0010 - quantized unsigned integer values, maximum bits per item is 64.
-            (0, 2, 8) => DatumType::U8,
-            (0, 2, 16) => DatumType::U16,
-            (0, 2, 32) => DatumType::U32,
-            (0, 2, 64) => DatumType::U64,
+        // 2 - 0b0010 - quantized unsigned integer values, maximum bits per item is 64.
+        (0, 2, 8) => DatumType::U8,
+        (0, 2, 16) => DatumType::U16,
+        (0, 2, 32) => DatumType::U32,
+        (0, 2, 64) => DatumType::U64,
 
-            // 3 - 0b0011 - quantized signed integer values, maximum bits per item is 64.
-            (0, 3, 8) => DatumType::I8,
-            (0, 3, 16) => DatumType::I16,
-            (0, 3, 32) => DatumType::I32,
-            (0, 3, 64) => DatumType::I64,
+        // 3 - 0b0011 - quantized signed integer values, maximum bits per item is 64.
+        (0, 3, 8) => DatumType::I8,
+        (0, 3, 16) => DatumType::I16,
+        (0, 3, 32) => DatumType::I32,
+        (0, 3, 64) => DatumType::I64,
 
-            // 4 - 0b0100 - signed integer values, maximum bits per item is 64.
-            (0, 4, 8) => DatumType::I8,
-            (0, 4, 16) => DatumType::I16,
-            (0, 4, 32) => DatumType::I32,
-            (0, 4, 64) => DatumType::I64,
+        // 4 - 0b0100 - signed integer values, maximum bits per item is 64.
+        (0, 4, 8) => DatumType::I8,
+        (0, 4, 16) => DatumType::I16,
+        (0, 4, 32) => DatumType::I32,
+        (0, 4, 64) => DatumType::I64,
 
-            // 5 - 0b0101 - bool values, 1 bit or 8 bits (0 means false, non-zero means true)
-            (0, 5, 1 | 8) => DatumType::Bool,
-            (TRACT_ITEM_TYPE_VENDOR, 0x1000, 0xFFFF) => DatumType::String,
-            #[cfg(feature = "complex")]
-            (TRACT_ITEM_TYPE_VENDOR, 0, 32) => DatumType::ComplexF16,
-            #[cfg(feature = "complex")]
-            (TRACT_ITEM_TYPE_VENDOR, 0, 64) => DatumType::ComplexF32,
-            #[cfg(feature = "complex")]
-            (TRACT_ITEM_TYPE_VENDOR, 0, 128) => DatumType::ComplexF64,
-            #[cfg(feature = "complex")]
-            (TRACT_ITEM_TYPE_VENDOR, 4, 32) => DatumType::ComplexI16,
-            #[cfg(feature = "complex")]
-            (TRACT_ITEM_TYPE_VENDOR, 4, 64) => DatumType::ComplexI32,
-            #[cfg(feature = "complex")]
-            (TRACT_ITEM_TYPE_VENDOR, 4, 128) => DatumType::ComplexI64,
-            _ => bail!(
-                "Unsupported type in tensor type:{} bits_per_item:{}",
-                header.item_type,
-                header.bits_per_item
-            ),
-        };
-        if dt.is_copy() {
-            let mut tensor = Tensor::uninitialized_dt(dt, &shape)?;
-            if dt == DatumType::Bool && header.bits_per_item == 1 {
-                let buf = tensor.as_slice_mut::<bool>()?;
+        // 5 - 0b0101 - bool values, 1 bit or 8 bits (0 means false, non-zero means true)
+        (0, 5, 1 | 8) => DatumType::Bool,
+        (TRACT_ITEM_TYPE_VENDOR, 0x1000, 0xFFFF) => DatumType::String,
+        #[cfg(feature = "complex")]
+        (TRACT_ITEM_TYPE_VENDOR, 0, 32) => DatumType::ComplexF16,
+        #[cfg(feature = "complex")]
+        (TRACT_ITEM_TYPE_VENDOR, 0, 64) => DatumType::ComplexF32,
+        #[cfg(feature = "complex")]
+        (TRACT_ITEM_TYPE_VENDOR, 0, 128) => DatumType::ComplexF64,
+        #[cfg(feature = "complex")]
+        (TRACT_ITEM_TYPE_VENDOR, 4, 32) => DatumType::ComplexI16,
+        #[cfg(feature = "complex")]
+        (TRACT_ITEM_TYPE_VENDOR, 4, 64) => DatumType::ComplexI32,
+        #[cfg(feature = "complex")]
+        (TRACT_ITEM_TYPE_VENDOR, 4, 128) => DatumType::ComplexI64,
+        _ => bail!(
+            "Unsupported type in tensor type:{} bits_per_item:{}",
+            header.item_type,
+            header.bits_per_item
+        ),
+    };
+    if dt.is_copy() {
+        let mut tensor = unsafe { Tensor::uninitialized_dt(dt, &shape)? };
+        if dt == DatumType::Bool && header.bits_per_item == 1 {
+            let buf = tensor.as_slice_mut::<bool>()?;
 
-                let mut current_byte = 0;
-                for (ix, value) in buf.iter_mut().enumerate() {
-                    let bit_ix = ix % 8;
-                    if bit_ix == 0 {
-                        current_byte = reader.read_u8()?;
-                    }
-                    *value = ((current_byte >> (7 - bit_ix)) & 0x1) != 0;
+            let mut current_byte = 0;
+            for (ix, value) in buf.iter_mut().enumerate() {
+                let bit_ix = ix % 8;
+                if bit_ix == 0 {
+                    current_byte = reader.read_u8()?;
                 }
-            } else {
-                reader.read_exact(tensor.as_bytes_mut())?;
+                *value = ((current_byte >> (7 - bit_ix)) & 0x1) != 0;
             }
-            Ok(tensor)
-        } else if dt == DatumType::String {
-            let mut tensor = Tensor::zero_dt(dt, &shape)?;
-            for item in tensor.as_slice_mut_unchecked::<String>() {
-                let len: u32 = reader.read_u32::<LE>()?;
-                let mut bytes = Vec::with_capacity(len as usize);
-                #[allow(clippy::uninit_vec)]
-                bytes.set_len(len as usize);
-                reader.read_exact(&mut bytes)?;
-                *item = String::from_utf8(bytes)?;
-            }
-            Ok(tensor)
         } else {
-            todo!()
+            reader.read_exact(tensor.as_bytes_mut())?;
         }
+        Ok(tensor)
+    } else if dt == DatumType::String {
+        let mut tensor = Tensor::zero_dt(dt, &shape)?;
+        for item in tensor.as_slice_mut::<String>()? {
+            let len: u32 = reader.read_u32::<LE>()?;
+            let mut bytes = Vec::with_capacity(len as usize);
+            #[allow(clippy::uninit_vec)]
+            unsafe {
+                bytes.set_len(len as usize);
+            };
+            reader.read_exact(&mut bytes)?;
+            *item = String::from_utf8(bytes)?;
+        }
+        Ok(tensor)
+    } else {
+        todo!()
     }
 }
 
-pub fn write_tensor<W: std::io::Write>(w: &mut W, tensor: &Tensor) -> TractResult<()> {
+pub fn write_tensor(w: &mut impl Write, tensor: &Tensor) -> TractResult<()> {
     ensure!(tensor.datum_type() != TDim::datum_type());
     if tensor.datum_type() == Opaque::datum_type() && tensor.len() == 1 {
         if let Some(bqv) = tensor.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>() {
@@ -205,7 +210,7 @@ pub fn write_tensor<W: std::io::Write>(w: &mut W, tensor: &Tensor) -> TractResul
         | DatumType::QI8(_)
         | DatumType::QI32(_) => (0, 3),
         DatumType::String => {
-            header.bits_per_item = 0xFFFF;
+            header.bits_per_item = u32::MAX;
             (TRACT_ITEM_TYPE_VENDOR, 0x1000)
         }
         #[cfg(feature = "complex")]
@@ -243,7 +248,7 @@ fn write_block_quant_value(w: &mut impl Write, value: &BlockQuantValue) -> Tract
     header.rank = 2;
     header.dims[0] = value.fact.shape[0].to_usize()? as _;
     header.dims[1] = value.fact.shape[1].to_usize()? as _;
-    header.bits_per_item = 0xFFFFFFFF;
+    header.bits_per_item = u32::MAX;
     header.data_size_bytes = value.value.len() as _;
     header.item_type_vendor = TRACT_ITEM_TYPE_VENDOR;
     // 0x2040 2 is for GGML formats, 0 for Q formats then 4 and 0
