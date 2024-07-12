@@ -1,5 +1,9 @@
+use std::io::Write;
+
 use byteorder::{ReadBytesExt, WriteBytesExt, LE};
 use tract_core::internal::*;
+use tract_core::ops::matmul::de_block_quant::BlockQuantValue;
+use tract_linalg::frame::block_quant::Q4_0;
 
 const TRACT_ITEM_TYPE_VENDOR: u16 = (b'T' as u16) << 8u16 | b'R' as u16;
 
@@ -17,6 +21,24 @@ struct Header {
     item_type_vendor: u16,
     item_type_params_deprecated: [u8; 32],
     padding: [u32; 11],
+}
+
+impl Default for Header {
+    fn default() -> Self {
+        let mut header: Header = unsafe { std::mem::zeroed() };
+        header.magic = [0x4e, 0xef];
+        header.version_maj = 1;
+        header.version_min = 0;
+        header
+    }
+}
+
+impl Header {
+    pub fn write(&self, w: &mut impl Write) -> TractResult<()> {
+        let slice = unsafe { std::mem::transmute::<&Header, &[u8; 128]>(self) };
+        w.write_all(slice)?;
+        Ok(())
+    }
 }
 
 pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
@@ -154,66 +176,81 @@ pub fn read_tensor<R: std::io::Read>(mut reader: R) -> TractResult<Tensor> {
 }
 
 pub fn write_tensor<W: std::io::Write>(w: &mut W, tensor: &Tensor) -> TractResult<()> {
-    unsafe {
-        ensure!(tensor.datum_type() != TDim::datum_type());
-        let mut header: Header = std::mem::zeroed();
-        header.magic = [0x4e, 0xef];
-        header.version_maj = 1;
-        header.version_min = 0;
-        if tensor.rank() > 8 {
-            bail!("Only rank up to 8 are supported");
+    ensure!(tensor.datum_type() != TDim::datum_type());
+    if tensor.datum_type() == Opaque::datum_type() && tensor.len() == 1 {
+        if let Some(bqv) = tensor.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>() {
+            return write_block_quant_value(w, bqv);
         }
-        header.rank = tensor.rank() as u32;
-        for d in 0..tensor.rank() {
-            header.dims[d] = tensor.shape()[d] as u32;
-        }
-        header.data_size_bytes = (tensor.len() * tensor.datum_type().size_of()) as u32;
-        header.bits_per_item = (tensor.datum_type().size_of() * 8) as u32;
-
-        let (itv, it) = match tensor.datum_type() {
-            DatumType::F16 | DatumType::F32 | DatumType::F64 => (0, 0),
-            DatumType::U8
-            | DatumType::U16
-            | DatumType::U32
-            | DatumType::U64
-            | DatumType::QU8(_) => (0, 2),
-            DatumType::I8
-            | DatumType::I16
-            | DatumType::I32
-            | DatumType::I64
-            | DatumType::QI8(_)
-            | DatumType::QI32(_) => (0, 3),
-            DatumType::String => {
-                header.bits_per_item = 0xFFFF;
-                (TRACT_ITEM_TYPE_VENDOR, 0x1000)
-            }
-            #[cfg(feature = "complex")]
-            DatumType::ComplexF16 | DatumType::ComplexF32 | DatumType::ComplexF64 => {
-                (TRACT_ITEM_TYPE_VENDOR, 0)
-            }
-            #[cfg(feature = "complex")]
-            DatumType::ComplexI16 | DatumType::ComplexI32 | DatumType::ComplexI64 => {
-                (TRACT_ITEM_TYPE_VENDOR, 4)
-            }
-            DatumType::Bool => (0, 5),
-            DatumType::TDim | DatumType::Blob | DatumType::Opaque => {
-                bail!("Don't know how to serialize {:?}", tensor.datum_type())
-            }
-        };
-        header.item_type = it;
-        header.item_type_vendor = itv;
-        let header_buf: &[u8; 128] = std::mem::transmute(&header);
-        w.write_all(header_buf)?;
-        if tensor.datum_type().is_copy() {
-            w.write_all(tensor.as_bytes())?;
-        } else if tensor.datum_type() == DatumType::String {
-            for s in tensor.as_slice_unchecked::<String>() {
-                w.write_u32::<LE>(s.as_bytes().len() as u32)?;
-                w.write_all(s.as_bytes())?;
-            }
-        }
-        Ok(())
     }
+    let mut header = Header::default();
+    if tensor.rank() > 8 {
+        bail!("Only rank up to 8 are supported");
+    }
+    header.rank = tensor.rank() as u32;
+    for d in 0..tensor.rank() {
+        header.dims[d] = tensor.shape()[d] as u32;
+    }
+    header.data_size_bytes = (tensor.len() * tensor.datum_type().size_of()) as u32;
+    header.bits_per_item = (tensor.datum_type().size_of() * 8) as u32;
+
+    let (itv, it) = match tensor.datum_type() {
+        DatumType::F16 | DatumType::F32 | DatumType::F64 => (0, 0),
+        DatumType::U8 | DatumType::U16 | DatumType::U32 | DatumType::U64 | DatumType::QU8(_) => {
+            (0, 2)
+        }
+        DatumType::I8
+        | DatumType::I16
+        | DatumType::I32
+        | DatumType::I64
+        | DatumType::QI8(_)
+        | DatumType::QI32(_) => (0, 3),
+        DatumType::String => {
+            header.bits_per_item = 0xFFFF;
+            (TRACT_ITEM_TYPE_VENDOR, 0x1000)
+        }
+        #[cfg(feature = "complex")]
+        DatumType::ComplexF16 | DatumType::ComplexF32 | DatumType::ComplexF64 => {
+            (TRACT_ITEM_TYPE_VENDOR, 0)
+        }
+        #[cfg(feature = "complex")]
+        DatumType::ComplexI16 | DatumType::ComplexI32 | DatumType::ComplexI64 => {
+            (TRACT_ITEM_TYPE_VENDOR, 4)
+        }
+        DatumType::Bool => (0, 5),
+        DatumType::TDim | DatumType::Blob | DatumType::Opaque => {
+            bail!("Don't know how to serialize {:?}", tensor.datum_type())
+        }
+    };
+    header.item_type = it;
+    header.item_type_vendor = itv;
+    header.write(w)?;
+    if tensor.datum_type().is_copy() {
+        w.write_all(tensor.as_bytes())?;
+    } else if tensor.datum_type() == DatumType::String {
+        for s in tensor.as_slice::<String>()? {
+            w.write_u32::<LE>(s.as_bytes().len() as u32)?;
+            w.write_all(s.as_bytes())?;
+        }
+    }
+    Ok(())
+}
+
+fn write_block_quant_value(w: &mut impl Write, value: &BlockQuantValue) -> TractResult<()> {
+    ensure!(value.fact.format.same_as(&Q4_0));
+    ensure!(value.fact.shape.rank() == 2);
+
+    let mut header = Header::default();
+    header.rank = 2;
+    header.dims[0] = value.fact.shape[0].to_usize()? as _;
+    header.dims[1] = value.fact.shape[1].to_usize()? as _;
+    header.bits_per_item = 0xFFFFFFFF;
+    header.data_size_bytes = value.value.len() as _;
+    header.item_type_vendor = TRACT_ITEM_TYPE_VENDOR;
+    // 0x2040 2 is for GGML formats, 0 for Q formats then 4 and 0
+    header.item_type = 0x2040;
+    header.write(w)?;
+    w.write_all(value.value.as_bytes())?;
+    Ok(())
 }
 
 #[cfg(test)]
