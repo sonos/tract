@@ -81,22 +81,16 @@ impl EvalOp for MetalSlice {
 
         let offset = (start * input_strides[axis] as usize) * input_dt.size_of();
 
-        if let Some(t) = input.as_metal_tensor() {
-            objc::rc::autoreleasepool(|| {
-                crate::METAL_CONTEXT.with_borrow(|context| {
-                    Ok(tvec![kernels::array::MultiBroadcast
-                        .dispatch_eval(context, t, offset, &o_shape)?
-                        .into_opaque_tensor()
-                        .into_tvalue()])
-                })
+        let t = input.to_metal_tensor()?;
+
+        objc::rc::autoreleasepool(|| {
+            crate::METAL_CONTEXT.with_borrow(|context| {
+                Ok(tvec![kernels::array::MultiBroadcast
+                    .dispatch_eval(context, t, offset, &o_shape)?
+                    .into_opaque_tensor()
+                    .into_tvalue()])
             })
-        } else {
-            unsafe {
-                let mut tensor = Tensor::uninitialized_dt(input.datum_type(), &o_shape)?;
-                tensor.assign_slice_unchecked(.., &input, start..end, axis);
-                Ok(tvec!(tensor.into_tvalue()))
-            }
-        }
+        })
     }
 }
 

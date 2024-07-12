@@ -14,6 +14,9 @@ pub fn mmm_tile_8x8(
     ensure!(lhs.datum_type() == rhs.datum_type());
     ensure!(lhs.datum_type() == DatumType::F32);
 
+    lhs.retain_until_completion();
+    rhs.retain_until_completion();
+
     let m = lhs.shape()[0];
     let n = rhs.shape()[1];
     let k = lhs.shape()[1];
@@ -24,6 +27,7 @@ pub fn mmm_tile_8x8(
     let o_shape = &[m, m];
 
     let output = unsafe { MetalTensor::uninitialized_dt(o_dt, o_shape)? };
+    output.retain_until_completion();
 
     metal_mmm_tile_8x8(context, m, lhs.metal(), rhs.metal(), output.metal())?;
     context.wait_until_completed()?;

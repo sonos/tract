@@ -62,6 +62,8 @@ impl Reducer {
         input: &MetalTensor,
         axis: usize,
     ) -> Result<MetalTensor> {
+        input.retain_until_completion();
+
         let o_dt = input.datum_type();
         let mut o_shape = input.shape().to_vec();
         o_shape[axis] = 1;
@@ -72,6 +74,7 @@ impl Reducer {
         let output_strides_nd3 = Tensor::natural_strides(&output_shape_nd3);
 
         let output = unsafe { MetalTensor::uninitialized_dt(o_dt, &o_shape)? };
+        output.retained_until_completion();
 
         let pipeline = context
             .shared_context()
