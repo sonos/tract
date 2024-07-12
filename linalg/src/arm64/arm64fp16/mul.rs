@@ -39,5 +39,6 @@ unicast_impl_wrap!(
 #[cfg(test)]
 mod test_arm64fp16_unicast_mul_f16_32n {
     use super::*;
+    use proptest::strategy::Strategy;
     crate::unicast_mul_frame_tests!(crate::arm64::has_fp16(), f16, arm64fp16_unicast_mul_f16_32n);
 }

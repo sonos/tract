@@ -30,6 +30,7 @@ unicast_impl_wrap!(
 #[cfg(test)]
 #[macro_use]
 pub mod s {
+    use proptest::strategy::Strategy;
     crate::unicast_mul_frame_tests!(true, f32, crate::generic::unicast::SUnicastMul4);
 }
 
@@ -37,5 +38,6 @@ pub mod s {
 #[macro_use]
 pub mod h {
     use super::*;
+    use proptest::strategy::Strategy;
     crate::unicast_mul_frame_tests!(true, f16, crate::generic::unicast::HUnicastMul8);
 }
