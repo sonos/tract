@@ -1,8 +1,8 @@
 use tract_data::half::f16;
 
-binary_impl_wrap!(
+unicast_impl_wrap!(
     f16,
-    arm64fp16_binary_mul_f16_32n,
+    arm64fp16_unicast_mul_f16_32n,
     32,
     8,
     #[inline(never)]
@@ -37,7 +37,7 @@ binary_impl_wrap!(
 );
 
 #[cfg(test)]
-mod test_arm64fp16_binary_mul_f16_32n {
+mod test_arm64fp16_unicast_mul_f16_32n {
     use super::*;
-    crate::binary_mul_frame_tests!(crate::arm64::has_fp16(), f16, arm64fp16_binary_mul_f16_32n);
+    crate::unicast_mul_frame_tests!(crate::arm64::has_fp16(), f16, arm64fp16_unicast_mul_f16_32n);
 }
