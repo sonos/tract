@@ -17,6 +17,7 @@ use std::hash::Hash;
 use std::ops::Range;
 use std::sync::Arc;
 
+pub mod indices;
 pub mod litteral;
 pub mod view;
 
