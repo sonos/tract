@@ -104,7 +104,7 @@ impl Concat {
         let command_buffer = context.command_buffer();
 
         for (input, offset) in inputs.iter().zip(offsets.into_iter()) {
-            if input.volume() == 0 {
+            if input.len() == 0 {
                 continue;
             }
             let i_strides = input.strides();
@@ -163,9 +163,9 @@ mod tests {
                 let output = Concat.eval(context, &inputs.iter().collect_vec(), axis)?;
                 let ref_output = Tensor::stack_tensors(
                     axis,
-                    &inputs.iter().map(|it| it.tensor()).collect_vec(),
+                    &inputs.iter().map(|it| it.to_cpu()).collect_vec(),
                 )?;
-                assert_eq!(&ref_output, output.tensor());
+                assert_eq!(ref_output, output.to_cpu());
                 Ok(())
             })
         })
