@@ -234,7 +234,7 @@ fn convert_matmul_to_metal(
         && (model.node_input_facts(node.id)?.iter().all(|f| f.datum_type == f32::datum_type())
             || model.node_input_facts(node.id)?.iter().all(|f| f.datum_type == f16::datum_type()))
     {
-        Ok(Some(ops::MetalGemm { transpose_a: op.transpose_a, transpose_b: op.transpose_b }))
+        Ok(Some(ops::MetalGemm::new(op.transpose_a, op.transpose_b)))
     } else {
         Ok(None)
     }

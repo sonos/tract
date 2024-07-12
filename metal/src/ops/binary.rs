@@ -1,6 +1,5 @@
 pub use crate::kernels::BinOps;
 use crate::tensor::MetalTensorExt;
-use crate::IntoMetal;
 use tract_core::internal::*;
 
 #[derive(Debug, Clone)]
@@ -46,24 +45,14 @@ impl EvalOp for MetalBinOp {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
                 let (a, b) = args_2!(inputs);
-                let a_metal_ref = a.as_metal_tensor();
-                let b_metal_ref = b.as_metal_tensor();
-
-                match (a_metal_ref, b_metal_ref) {
-                    (Some(a_metal), Some(b_metal)) => {
-                        ensure!(a.rank() == b.rank());
-                        Ok(tvec!(self.0.dispatch_eval(context, a_metal, b_metal)?.into_opaque_tensor().into_tvalue()))
-                    },
-                    (None, None) => {
-                        let a_metal = a.into_tensor().into_metal()?;
-                        let b_metal = b.into_tensor().into_metal()?;
-                        ensure!(a_metal.rank() == b_metal.rank());
-                        Ok(tvec!(self.0.eval(context, &a_metal, &b_metal)?.to_cpu().into_tvalue()))
-                    },
-                    _ => {
-                        panic!("Inconsistent inputs for {:?}: (a: {:?}, b: {:?}). Either no metal tensor as input or both", self, a.datum_type(), b.datum_type());
-                    },
-                }
+                let a_metal = a.to_metal_tensor()?;
+                let b_metal = b.to_metal_tensor()?;
+                ensure!(a.rank() == b.rank());
+                Ok(tvec!(self
+                    .0
+                    .dispatch_eval(context, a_metal, b_metal)?
+                    .into_opaque_tensor()
+                    .into_tvalue()))
             })
         })
     }

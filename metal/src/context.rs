@@ -165,7 +165,7 @@ pub struct MetalContext {
     command_buffer_used: RefCell<usize>,
     command_buffer_id: AtomicUsize,
     command_buffer_capacity: usize,
-    local_var_tensors: RefCell<Vec<MetalTensor>>,
+    retained_tensors: RefCell<Vec<MetalTensor>>,
 }
 
 impl Default for MetalContext {
@@ -187,7 +187,7 @@ impl MetalContext {
             command_buffer_used: RefCell::new(0),
             command_buffer_capacity: 100,
             command_buffer_id: AtomicUsize::new(0),
-            local_var_tensors: RefCell::new(vec![]),
+            retained_tensors: RefCell::new(vec![]),
         }
     }
 
@@ -219,8 +219,8 @@ impl MetalContext {
         )
     }
 
-    pub fn add_local_var_tensor(&self, tensor: MetalTensor) {
-        self.local_var_tensors.borrow_mut().push(tensor);
+    pub fn retain_tensor(&self, tensor: &MetalTensor) {
+        self.retained_tensors.borrow_mut().push(tensor.clone());
     }
 
     pub fn command_buffer(&self) -> CommandBuffer {
@@ -270,8 +270,8 @@ impl MetalContext {
         command_buffer.wait_until_completed();
         log::trace!("Command buffer {:?} has completed (Blocking call)", command_buffer_id);
 
-        // Clear local var tensor used by the command buffer
-        self.local_var_tensors.borrow_mut().clear();
+        // Clear local retained values used by the command buffer
+        self.retained_tensors.borrow_mut().clear();
 
         *command_buffer = self.command_queue.new_command_buffer().to_owned();
         *command_buffer_used = 0;

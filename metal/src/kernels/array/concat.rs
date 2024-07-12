@@ -89,6 +89,7 @@ impl Concat {
         }
 
         let output = unsafe { MetalTensor::uninitialized_dt(output_dt, &output_shape)? };
+        output.retain_until_completion();
 
         let broadcast_kind = BroadcastKind::from_rank(output.rank()).with_context(|| {
             anyhow!(
@@ -107,6 +108,7 @@ impl Concat {
             if input.len() == 0 {
                 continue;
             }
+            input.retain_until_completion();
             let i_strides = input.strides();
             let i_shape = input.shape();
 

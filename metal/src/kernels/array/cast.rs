@@ -50,7 +50,21 @@ impl Cast {
         input: &MetalTensor,
         to_dt: DatumType,
     ) -> Result<MetalTensor> {
+        let o = self.dispatch_eval(context, input, to_dt)?;
+        context.wait_until_completed()?;
+        Ok(o)
+    }
+
+    pub fn dispatch_eval(
+        &self,
+        context: &MetalContext,
+        input: &MetalTensor,
+        to_dt: DatumType,
+    ) -> Result<MetalTensor> {
         let output = unsafe { MetalTensor::uninitialized_dt(to_dt, input.shape())? };
+        input.retain_until_completion();
+        output.retain_until_completion();
+
         let kernel_name = self.kernel_name(input.datum_type(), to_dt)?;
 
         let input_buffer = input.metal();
@@ -69,7 +83,6 @@ impl Cast {
         encoder.use_resource(output_buffer, metal::MTLResourceUsage::Write);
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
-        context.wait_until_completed()?;
         Ok(output)
     }
 }

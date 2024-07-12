@@ -75,6 +75,10 @@ impl MultiBroadcast {
         ensure!(input_offset % input.datum_type().size_of() == 0);
 
         let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), output_shape)? };
+
+        input.retain_until_completion();
+        output.retain_until_completion();
+
         ensure!(input.rank() <= output.rank(), "Input must have a rank lowe than output");
 
         let mut input_shape = vec![1; output.rank() - input.rank()];

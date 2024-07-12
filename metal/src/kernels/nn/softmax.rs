@@ -50,6 +50,8 @@ impl Softmax {
         input: &MetalTensor,
         axis: usize,
     ) -> Result<MetalTensor> {
+        input.retained_until_completion();
+
         let o_dt = input.datum_type();
         let o_shape = input.shape().to_vec();
 
@@ -57,6 +59,7 @@ impl Softmax {
         let strides_nd3 = Tensor::natural_strides(&shape_nd3);
 
         let output = unsafe { MetalTensor::uninitialized_dt(o_dt, &o_shape)? };
+        output.retained_until_completion();
 
         let pipeline = context
             .shared_context()

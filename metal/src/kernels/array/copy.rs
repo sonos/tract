@@ -51,7 +51,12 @@ impl Memcpy {
         input_offset: usize,
     ) -> Result<MetalTensor> {
         ensure!(input_offset % input.datum_type().size_of() == 0);
+
+        input.retain_until_completion();
+
         let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), input.shape())? };
+        output.retain_until_completion();
+
         let kernel_name = self.kernel_name(input.datum_type())?;
 
         let input_buffer = input.metal();

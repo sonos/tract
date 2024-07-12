@@ -53,7 +53,7 @@ impl From<Arc<Tensor>> for MValue {
 
 /// This struct represents a metal tensor that can be accessed from the
 /// GPU and the CPU. Metal's MTLResourceStorageModeShared is used.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MetalTensor {
     dt: DatumType,
     inner: MValue,
@@ -98,6 +98,10 @@ impl MetalTensor {
 
     pub fn is_supported_dt(dt: DatumType) -> bool {
         Self::SUPPORTED_DT.contains(&dt)
+    }
+
+    pub fn value(&self) -> &MValue {
+        &self.inner
     }
 
     /// Create a metal tensor from a cpu tensor.
@@ -214,6 +218,17 @@ impl MetalTensor {
                 metal: self.metal.clone(),
             },
         }
+    }
+
+    #[inline]
+    pub fn retain_until_completion(&self) {
+        crate::METAL_CONTEXT.with_borrow(|ctxt| ctxt.retain_tensor(self));
+    }
+
+    #[inline]
+    pub fn retained_until_completion(&self) -> &Self {
+        self.retain_until_completion();
+        self
     }
 
     pub fn from_opaque_tensor(t: &Tensor) -> Result<&MetalTensor> {

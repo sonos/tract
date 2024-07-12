@@ -4,9 +4,11 @@ use anyhow::ensure;
 use anyhow::{bail, Result};
 use metal::NSUInteger;
 use metal::{Buffer, MTLSize};
-use num_traits::Float;
+use num_traits::One;
 use std::ffi::c_void;
 use tract_core::internal::*;
+use tract_core::ndarray;
+use tract_core::ndarray::Dimension;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum GemmPrecision {
@@ -24,143 +26,106 @@ impl GemmPrecision {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn mfa_gemm_with_slice<T: Datum + Float>(
-    context: &MetalContext,
-    (b, m, n, k): (usize, usize, usize, usize),
-    lhs: &[T],
-    lhs_strides: &[isize],
-    lhs_transpose: bool,
-    rhs: &[T],
-    rhs_strides: &[isize],
-    rhs_transpose: bool,
-    output: &mut [T],
-) -> Result<()> {
-    mfa_dispatch_gemm_with_slice(
-        context,
-        (b, m, n, k),
-        lhs,
-        lhs_strides,
-        lhs_transpose,
-        rhs,
-        rhs_strides,
-        rhs_transpose,
-        output,
-    )?;
-    context.wait_until_completed()?;
-    Ok(())
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct MfaGemm {
+    pub transpose_a: bool,
+    pub transpose_b: bool,
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn mfa_dispatch_gemm_with_slice<T: Datum + Float>(
-    context: &MetalContext,
-    (b, m, n, k): (usize, usize, usize, usize),
-    lhs: &[T],
-    lhs_strides: &[isize],
-    lhs_transpose: bool,
-    rhs: &[T],
-    rhs_strides: &[isize],
-    rhs_transpose: bool,
-    output: &mut [T],
-) -> Result<()> {
-    ensure!(
-        lhs_strides.len() == rhs_strides.len() && lhs_strides.len() == 3,
-        "Only 3D tensors are supported in Metal GEMM"
-    );
+impl MfaGemm {
+    pub fn output_shape<D: DimLike + One>(&self, a: &[D], b: &[D]) -> TVec<D> {
+        let rank = a.len();
+        let mut output: TVec<D> = (0..rank - 2)
+            .map(|ix| if a[ix].is_one() { b[ix].clone() } else { a[ix].clone() })
+            .collect();
+        output.push(a[rank - 2 + self.transpose_a as usize].clone());
+        output.push(b[rank - 2 + !self.transpose_b as usize].clone());
+        output
+    }
 
-    let precision = GemmPrecision::from_dt(T::datum_type())?;
+    pub fn eval(
+        &self,
+        context: &MetalContext,
+        a: &MetalTensor,
+        b: &MetalTensor,
+    ) -> TractResult<MetalTensor> {
+        let o = self.dispatch_eval(context, a, b)?;
+        context.wait_until_completed()?;
+        Ok(o)
+    }
 
-    let lhs_strides = lhs_strides.iter().map(|it| *it as usize).collect::<Vec<_>>();
-    let rhs_strides = rhs_strides.iter().map(|it| *it as usize).collect::<Vec<_>>();
+    pub fn dispatch_eval(
+        &self,
+        context: &MetalContext,
+        a: &MetalTensor,
+        b: &MetalTensor,
+    ) -> TractResult<MetalTensor> {
+        a.retain_until_completion();
+        b.retain_until_completion();
 
-    let lhs_buff = context.buffer_from_slice(lhs);
-    let rhs_buff = context.buffer_from_slice(rhs);
-    let out_buff = context.buffer_from_slice_mut(output);
-    dispatch_metal_mfa_gemm(
-        context,
-        precision,
-        (b, m, n, k),
-        &lhs_strides,
-        0,
-        &lhs_buff,
-        lhs_transpose,
-        &rhs_strides,
-        0,
-        &rhs_buff,
-        rhs_transpose,
-        &out_buff,
-        0,
-    )?;
-    Ok(())
-}
+        let c_dt = a.datum_type();
+        let c_shape = self.output_shape(a.shape(), b.shape());
+        let rank = c_shape.len();
+        let m = c_shape[rank - 2];
+        let n = c_shape[rank - 1];
+        let k = a.shape()[a.rank() - 2 + !self.transpose_a as usize];
 
-pub fn mfa_gemm(
-    context: &MetalContext,
-    lhs: &MetalTensor,
-    lhs_transpose: bool,
-    rhs: &MetalTensor,
-    rhs_transpose: bool,
-) -> Result<MetalTensor> {
-    ensure!(lhs.rank() == 3 && rhs.rank() == 3);
-    ensure!(lhs.datum_type() == rhs.datum_type());
+        let a_strides = if self.transpose_a {
+            natural_strides(&[1, k, m])
+        } else {
+            natural_strides(&[1, m, k])
+        };
+        let b_strides = if self.transpose_b {
+            natural_strides(&[1, n, k])
+        } else {
+            natural_strides(&[1, k, n])
+        };
+        unsafe {
+            let c = MetalTensor::uninitialized_dt(c_dt, &c_shape)?;
+            let silent_a_axis = c.rank() - a.rank();
+            let silent_b_axis = c.rank() - b.rank();
+            for prefix in ndarray::indices(&c_shape[0..rank - 2]) {
+                let mut a_offset = 0;
+                let mut b_offset = 0;
+                let mut c_offset = 0;
+                for (axis, x) in prefix.as_array_view().iter().enumerate() {
+                    if axis >= silent_a_axis && a.shape()[axis - silent_a_axis] != 1 {
+                        a_offset += *x as isize * a.strides()[axis - silent_a_axis];
+                    }
+                    if axis >= silent_b_axis && b.shape()[axis - silent_b_axis] != 1 {
+                        b_offset += *x as isize * b.strides()[axis - silent_b_axis];
+                    }
+                    c_offset += *x as isize * c.strides()[axis];
+                }
 
-    let precision = GemmPrecision::from_dt(lhs.datum_type())?;
-    let (b, m, n, k) = match (lhs_transpose, rhs_transpose) {
-        (false, false) => {
-            let b = lhs.shape()[0];
-            let m = lhs.shape()[1];
-            let n = rhs.shape()[2];
-            let k = lhs.shape()[2];
-            (b, m, n, k)
+                dispatch_metal_mfa_gemm(
+                    context,
+                    GemmPrecision::from_dt(c_dt)?,
+                    (1, m, n, k),
+                    std::mem::transmute::<&[isize], &[usize]>(a_strides.as_slice()),
+                    a_offset as usize * c_dt.size_of(),
+                    &a.metal(),
+                    self.transpose_a,
+                    std::mem::transmute::<&[isize], &[usize]>(b_strides.as_slice()),
+                    b_offset as usize * c_dt.size_of(),
+                    &b.metal(),
+                    self.transpose_b,
+                    &c.metal(),
+                    c_offset as usize * c_dt.size_of(),
+                )
+                .with_context(|| {
+                    anyhow!(
+                        "Error while performing MatMul (a: {:?}), (b: {:?}) = (c: {:?})",
+                        a.shape(),
+                        b.shape(),
+                        c_shape
+                    )
+                })?;
+            }
+
+            Ok(c)
         }
-        (true, false) => {
-            let b = lhs.shape()[0];
-            let m = lhs.shape()[2];
-            let n = rhs.shape()[2];
-            let k = lhs.shape()[1];
-            (b, m, n, k)
-        }
-        (false, true) => {
-            let b = lhs.shape()[0];
-            let m = lhs.shape()[1];
-            let n = rhs.shape()[1];
-            let k = lhs.shape()[2];
-            (b, m, n, k)
-        }
-        (true, true) => {
-            let b = lhs.shape()[0];
-            let m = lhs.shape()[2];
-            let n = rhs.shape()[1];
-            let k = lhs.shape()[1];
-            (b, m, n, k)
-        }
-    };
-
-    let lhs_strides = lhs.strides().iter().map(|it| *it as usize).collect::<Vec<_>>();
-    let rhs_strides = rhs.strides().iter().map(|it| *it as usize).collect::<Vec<_>>();
-
-    let o_dt = lhs.datum_type();
-    let o_shape = &[b, m, n];
-
-    let output = unsafe { MetalTensor::uninitialized_dt(o_dt, o_shape)? };
-
-    dispatch_metal_mfa_gemm(
-        context,
-        precision,
-        (b, m, n, k),
-        &lhs_strides,
-        0,
-        lhs.metal(),
-        lhs_transpose,
-        &rhs_strides,
-        0,
-        rhs.metal(),
-        rhs_transpose,
-        output.metal(),
-        0,
-    )?;
-    context.wait_until_completed()?;
-    Ok(output)
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -336,6 +301,7 @@ mod tests {
     use crate::IntoMetal;
     use derive_new::new;
     use num_traits::AsPrimitive;
+    use num_traits::Float;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use tract_core::ops::einsum::BasicMatMul;
@@ -356,7 +322,7 @@ mod tests {
                 )?
                 .into_metal()?;
 
-                let c = mfa_gemm(context, &a, false, &b, false)?;
+                let c = MfaGemm::default().eval(context, &a, &b)?;
 
                 let expected_c = Tensor::from_shape(
                     &[1, 2, 4],
@@ -376,7 +342,7 @@ mod tests {
                     &(0..b * n * k).map(|f| f as f32).collect::<Vec<_>>(),
                 )?;
 
-                let c = mfa_gemm(context, &a, false, &b, false)?;
+                let c = MfaGemm::default().eval(context, &a, &b)?;
 
                 let expected_c = Tensor::from_shape(
                     &[2, 2, 4],
@@ -502,7 +468,12 @@ mod tests {
                     } else {
                         Tensor::from_shape(&[self.b, self.k, self.n], &self.rhs)?.into_metal()?
                     };
-                    let c = mfa_gemm(context, &lhs, self.transpose_lhs, &rhs, self.transpose_rhs)?;
+                    let matmul = MfaGemm {
+                        transpose_a: self.transpose_lhs,
+                        transpose_b: self.transpose_rhs,
+                    };
+
+                    let c = matmul.eval(context, &lhs, &rhs)?;
                     Ok(c.to_cpu().as_slice::<F>()?.to_vec())
                 })
             })

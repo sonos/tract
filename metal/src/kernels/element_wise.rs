@@ -179,7 +179,11 @@ impl ElementWiseOps {
     }
 
     pub fn dispatch_eval(&self, context: &MetalContext, a: &MetalTensor) -> Result<MetalTensor> {
+        a.retain_until_completion();
+
         let output = unsafe { MetalTensor::uninitialized_dt(a.datum_type(), a.shape())? };
+        output.retained_until_completion();
+
         let kernel_name = self.kernel_name(a.datum_type(), false)?;
 
         let a_buffer = a.metal();

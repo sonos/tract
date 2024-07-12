@@ -161,10 +161,14 @@ impl BinOps {
         lhs: &MetalTensor,
         rhs: &MetalTensor,
     ) -> Result<MetalTensor> {
+        lhs.retain_until_completion();
+        rhs.retain_until_completion();
+
         let out_shape = tract_core::broadcast::multi_broadcast(&[lhs.shape(), rhs.shape()])?;
         let out_dt = self.output_datum_type(lhs.datum_type(), rhs.datum_type())?;
 
         let output = unsafe { MetalTensor::uninitialized_dt(out_dt, &out_shape)? };
+        output.retained_until_completion();
 
         let broadcast_kind = if lhs.len() == 1 {
             BroadcastKind::ByScalarLeft

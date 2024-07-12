@@ -1,6 +1,5 @@
 use crate::kernels::nn::Reducer;
 use crate::tensor::MetalTensorExt;
-use crate::IntoMetal;
 use tract_core::internal::*;
 use tract_core::ops::nn as core_ops_nn;
 use tract_itertools::Itertools;
@@ -47,22 +46,12 @@ impl EvalOp for MetalReduce {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
                 let input = args_1!(inputs);
-
-                match input.as_metal_tensor() {
-                    Some(input) => Ok(tvec!(self
-                        .reducer
-                        .dispatch_eval(context, input, self.axes[0])?
-                        .into_opaque_tensor()
-                        .into_tvalue())),
-                    None => {
-                        let input = input.into_tensor().into_metal()?;
-                        Ok(tvec!(self
-                            .reducer
-                            .eval(context, &input, self.axes[0])?
-                            .to_cpu()
-                            .into_tvalue()))
-                    }
-                }
+                let input_metal = input.to_metal_tensor()?;
+                Ok(tvec!(self
+                    .reducer
+                    .dispatch_eval(context, input_metal, self.axes[0])?
+                    .into_opaque_tensor()
+                    .into_tvalue()))
             })
         })
     }
