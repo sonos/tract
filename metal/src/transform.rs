@@ -71,7 +71,7 @@ impl MetalTransform {
                             let metal_fact = MetalFact::new(in_fact.clone())?;
 
                             *in_fact = TypedFact::dt_scalar(DatumType::Opaque)
-                                .with_opaque_metadata(metal_fact);
+                                .with_opaque_fact(metal_fact);
 
                             in_fact.konst = Some(Arc::new(konst_metal));
                             mapped_inputs.push(mapping[i]);

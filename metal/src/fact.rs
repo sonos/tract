@@ -14,11 +14,11 @@ impl MetalFact {
     }
 
     pub fn into_opaque_fact(self) -> TypedFact {
-        TypedFact::dt_scalar(DatumType::Opaque).with_opaque_metadata(self)
+        TypedFact::dt_scalar(DatumType::Opaque).with_opaque_fact(self)
     }
 }
 
-impl OpaqueMetadata for MetalFact {}
+impl OpaqueFact for MetalFact {}
 
 pub trait MetalTypedFactExt {
     fn into_opaque_metal_fact(self) -> TractResult<TypedFact>;
@@ -36,13 +36,13 @@ impl MetalTypedFactExt for TypedFact {
             self.datum_type == DatumType::Opaque,
             "Cannot retrieve MetalFact from a non Opaque Tensor"
         );
-        self.opaque_metadata
+        self.opaque_fact
             .as_ref()
             .and_then(|m| m.downcast_ref::<MetalFact>())
             .ok_or_else(|| anyhow!("MetalFact not found in Opaque Tensor"))
     }
     fn as_metal_fact(&self) -> Option<&MetalFact> {
-        self.opaque_metadata.as_ref().and_then(|m| m.downcast_ref::<MetalFact>())
+        self.opaque_fact.as_ref().and_then(|m| m.downcast_ref::<MetalFact>())
     }
 }
 
