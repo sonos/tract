@@ -1,7 +1,7 @@
 
-binary_impl_wrap!(
+unicast_impl_wrap!(
     f32,
-    arm64simd_binary_mul_f32_16n,
+    arm64simd_unicast_mul_f32_16n,
     16,
     4,
     #[inline(never)]
@@ -35,7 +35,7 @@ binary_impl_wrap!(
 );
 
 #[cfg(test)]
-mod test_arm64simd_binary_mul_f32_16n {
+mod test_arm64simd_unicast_mul_f32_16n {
     use super::*;
-    crate::binary_mul_frame_tests!(true, f32, arm64simd_binary_mul_f32_16n);
+    crate::unicast_mul_frame_tests!(true, f32, arm64simd_unicast_mul_f32_16n);
 }
