@@ -18,6 +18,10 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
     fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()>;
     fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()>;
 
+    // Temporary introduced to test TensorView approach
+    fn eval_by_scalar(&self, a: &mut TensorView, b: &TensorView) -> TractResult<()>;
+    fn eval_unicast(&self, a: &mut TensorView, b: &TensorView) -> TractResult<()>;
+
     #[allow(unused_variables)]
     fn maybe_eval_qbinary_as_float_op(
         &self,
@@ -202,39 +206,201 @@ impl TypedOp for TypedBinOp {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        self.0.declutter(model, node)
-    }
-
-    fn codegen(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let facts = model.node_input_facts(node.id)?;
-        if self.output_datum_type(facts[0].datum_type, facts[1].datum_type)? == facts[0].datum_type
-            && facts[0].without_value() == facts[1].without_value()
-        {
-            Ok(Some(
-                TypedModelPatch::replace_single_op(
-                    model,
-                    node,
-                    &node.inputs,
-                    MergeOpUnicast(self.0.clone()),
-                )?
-                .with_context("Unicast"),
-            ))
+        // Need to add new methods to BinMiniOp firt
+        //if let Some(neutral_patch) = declutter_neutral(model, node, &self.0)? {
+        //    return Ok(Some(neutral_patch))
+        //}
+        
+        let (by_scalar_should_be_efficient, unicast_should_be_efficient) =  find_most_efficient_config(model, node)?;
+        let can_eval_in_a = if let &[a, b] = &*model.node_input_facts(node.id)? {
+            let c_dt = self.output_datum_type(a.datum_type, b.datum_type)?;
+            let c_shape = crate::broadcast::multi_broadcast(&[a.shape.clone(), b.shape.clone()])?;
+            (c_shape == a.shape.to_tvec()) && (c_dt == a.datum_type)
         } else {
-            Ok(None)
-        }
+            false
+        };
+
+        // Don't declutter yet (missing AST for ByScalar + ByUnicast)
+        //if by_scalar_should_be_efficient & can_eval_in_a {
+        //    return Ok(Some(
+        //        TypedModelPatch::replace_single_op(
+        //            model,
+        //            node,
+        //            &node.inputs,
+        //            BinOpByScalar(self.0.clone()),
+        //        )?
+        //        .with_context("ByScalar"),
+        //    ))
+        //}
+
+        //if unicast_should_be_efficient & can_eval_in_a {
+        //    return Ok(Some(
+        //        TypedModelPatch::replace_single_op(
+        //            model,
+        //            node,
+        //            &node.inputs,
+        //            BinOpUnicast(self.0.clone()),
+        //        )?
+        //        .with_context("Unicast"),
+        //    ))
+        //}
+        self.0.declutter(model, node)
     }
 
     as_op!();
 }
 
-#[derive(Debug, Clone)]
-pub struct MergeOpUnicast(pub Box<dyn BinMiniOp>);
+fn find_most_efficient_config(
+    model: &TypedModel,
+    node: &TypedNode,
+) -> TractResult<(bool, bool)> {
+    if let &[a, b] = &*model.node_input_facts(node.id)? {
+        let a_shape = a.shape.clone();
+        let b_shape = b.shape.clone();
 
-impl Op for MergeOpUnicast {
+        let by_scalar_is_possible = BinOpByScalar::check_input_shapes(&a_shape, &b_shape);
+        let num_trailing_elements = if  by_scalar_is_possible {
+            a_shape.iter().zip(b_shape.iter()).rev().take_while(|(_, rev_b_dim)| **rev_b_dim == TDim::Val(1)).map(|(rev_a_dim, _)| rev_a_dim).product::<TDim>()
+        } else {
+            TDim::Val(0)
+        };
+        
+        let unicast_is_possible = BinOpUnicast::check_input_shapes(&a_shape, &b_shape);
+        let num_leading_elements = if unicast_is_possible {
+            a_shape.iter().zip(b_shape.iter()).take_while(|(_, b_dim)| **b_dim == TDim::Val(1)).map(|(a_dim, _)| a_dim).product::<TDim>()
+        } else {
+            TDim::Val(0)
+        };
+
+        let min_num_elements = 32;
+        let by_scalar_should_be_efficient = gt_tdim(num_trailing_elements, min_num_elements);
+        let unicast_should_be_efficient = gt_tdim(num_leading_elements, min_num_elements);
+        return Ok((by_scalar_should_be_efficient, unicast_should_be_efficient))
+    }
+    Ok((false, false))
+}
+
+pub fn gt_tdim(x: TDim, min_val: i64) -> bool {
+    TDim::Val(min_val).mini(x).to_i64().map_or(false, |v| v == min_val)
+}
+
+#[derive(Debug, Clone)]
+pub struct BinOpByScalar(pub Box<dyn BinMiniOp>);
+
+impl BinOpByScalar {
+    fn check_input_shapes(a_shape: &[TDim], b_shape:&[TDim]) -> bool{
+        if a_shape.len() != b_shape.len() {return false};
+
+        let mut must_be_unary = false;
+        a_shape.iter().zip(b_shape.iter()).all(|(a_dim, b_dim)| {
+            // As soon as a and b dimensions differ, b dimensions must be 1 until the end.
+            if (a_dim != b_dim) && !must_be_unary {
+                must_be_unary = true
+            }
+
+            // Leading dimensions: a_dim==b_dim condition
+            // Trailing dimensison: b_dim == 1
+            ((a_dim == b_dim) & !must_be_unary) || ((*b_dim == 1.into()) & must_be_unary)
+        })
+    }
+}
+
+impl Op for BinOpByScalar {
+    fn name(&self) -> Cow<str> {
+        format!("{}ByScalar", self.0.name()).into()
+    }
+
+    op_as_typed_op!();
+}
+
+impl EvalOp for BinOpByScalar {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let (a, b) = args_2!(inputs);
+        let mut a = a.into_tensor();
+        let b_shape = b.shape();
+        let view = a.view_mut();
+        let b_view = b.view();
+
+        let trailing_unary_dims: Vec<usize> = b_shape.iter()
+            .enumerate()
+            .rev()
+            .take_while(|&(_, &dim)| dim == 1)
+            .map(|(i, _)| i)
+            .collect();
+        for it_coords in tract_data::internal::iter_indices(b_shape) {
+            // Prepare array view to perform computation
+            // - view should be a slice
+            // - b should be a scalar 
+            let mut view = view.clone();
+            let mut tmp_b_view = b_view.clone();
+            for idx in 0..b_shape.len() {
+                if !trailing_unary_dims.contains(&idx) {
+                    view.collapse_axis(idx, it_coords[idx] as isize);
+                    tmp_b_view.collapse_axis(idx, it_coords[idx] as isize);
+                }
+            }
+
+            self.0.eval_by_scalar(&mut view, &tmp_b_view)?;
+        }
+        Ok(tvec!(a.into_tvalue()))
+    }
+}
+
+impl TypedOp for BinOpByScalar {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(Self::check_input_shapes(&inputs[0].shape, &inputs[1].shape));
+        let out_dt = self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
+        let out_shape = inputs[0].shape.clone();
+        Ok(tvec!(out_dt.fact(out_shape)))
+    }
+
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let count: TDim = self.output_facts(inputs)?[0].shape.iter().product();
+        Ok(self
+            .0
+            .cost_per_element(inputs[0].datum_type)
+            .into_iter()
+            .map(|(c, n)| (c, count.clone() * n))
+            .collect())
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        self.0.declutter(model, node)
+    }
+
+    as_op!();
+}
+ 
+#[derive(Debug, Clone)]
+pub struct BinOpUnicast(pub Box<dyn BinMiniOp>);
+
+impl BinOpUnicast {
+    fn check_input_shapes(a_shape: &[TDim], b_shape:&[TDim]) -> bool{
+        if a_shape.len() != b_shape.len() {return false};
+
+        let mut must_be_equal = false;
+        a_shape.iter().zip(b_shape.iter()).all(|(a_dim, b_dim)| {
+            // As soon as b dimension not equal to one, a and b dimensions must be equal.
+            if  (*b_dim != 1.into()) && !must_be_equal {
+                must_be_equal = true
+            }
+
+            // Leading dimensions: b_dim==1 condition
+            // Trailing dimensison: a_dim == b_dim
+            ((*b_dim == 1.into()) & !must_be_equal) || ((a_dim == b_dim) & must_be_equal)
+        })
+    }
+}
+
+impl Op for BinOpUnicast {
     fn name(&self) -> Cow<str> {
         format!("{}Unicast", self.0.name()).into()
     }
@@ -242,23 +408,42 @@ impl Op for MergeOpUnicast {
     op_as_typed_op!();
 }
 
-impl EvalOp for MergeOpUnicast {
+impl EvalOp for BinOpUnicast {
     fn is_stateless(&self) -> bool {
         true
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
-        let mut b = b.into_tensor();
-        self.0.eval_unicast_in_place(&a, &mut b)?;
-        Ok(tvec!(b.into_tvalue()))
+        let mut a = a.into_tensor();
+        let b_shape = b.shape();
+        let view = a.view_mut();
+        let b_view = b.view();
+
+        let leading_unary_dims: Vec<usize> = b_shape.iter()
+            .enumerate()
+            .take_while(|&(_, &dim)| dim == 1)
+            .map(|(i, _)| i)
+            .collect();
+        for it_coords in tract_data::internal::iter_indices(b_shape) { 
+            let mut view = view.clone();
+            for idx in 0..view.shape().len() {
+                if leading_unary_dims.contains(&idx) {
+                    view.collapse_axis(idx, it_coords[idx] as isize);
+                }
+            }            
+            self.0.eval_unicast(&mut view, &b_view)?;
+        }
+        Ok(tvec!(a.into_tvalue()))
     }
 }
 
-impl TypedOp for MergeOpUnicast {
+impl TypedOp for BinOpUnicast {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        debug_assert_eq!(inputs[0].shape, inputs[1].shape);
-        Ok(tvec!(inputs[0].without_value()))
+        ensure!(Self::check_input_shapes(&inputs[0].shape, &inputs[1].shape));
+        let out_dt = self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
+        let out_shape = inputs[0].shape.clone();
+        Ok(tvec!(out_dt.fact(out_shape)))
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -282,6 +467,7 @@ impl TypedOp for MergeOpUnicast {
     as_op!();
 }
 
+
 #[macro_export]
 macro_rules! bin_to_super_type {
     ($func:ident, $Op:ident,
@@ -294,6 +480,8 @@ macro_rules! bin_to_super_type {
      $(operating_datum_type: $operating_datum_type:expr,)?
      $(uniform_in_place: $uniform_in_place:expr,)?
      $(unicast_in_place: $unicast_in_place:expr,)?
+     $(eval_by_scalar: $eval_by_scalar:expr,)?
+     $(eval_unicast: $eval_unicast:expr,)?
      $(out_of_place: $out_of_place:expr,)?
      $(validation: $validation:expr,)?
      $(q: $([$($typ_dt:ident),*] => $cab_dt:expr),* ;)?
@@ -420,6 +608,32 @@ macro_rules! bin_to_super_type {
                     bail!("{} does not support {:?} (out of place)", self.name(), c.datum_type());
             }
 
+            fn eval_by_scalar(&self, a: &mut TensorView, b: &TensorView) -> TractResult<()> {
+                $(if $eval_by_scalar(a, b)? { return Ok(()) } )?
+                $(
+                    $(if b.datum_type() == $typ::datum_type() {
+                        let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
+                        let b = &b.as_slice::<$typ>()?[0];
+                        let a_slice = a.as_slice_mut::<$typ>()?;
+                        a_slice.iter_mut().for_each(|a| cab(a, &a.clone(), b));
+                        return Ok(())
+                    })*
+                )*
+                bail!("{} does not support {:?} (eval by scalar)", self.name(), a.datum_type());
+            }
+            fn eval_unicast(&self, a: &mut TensorView, b: &TensorView) -> TractResult<()> {
+                $(if $eval_unicast(a, b)? { return Ok(()) } )?
+                $(
+                    $(if b.datum_type() == $typ::datum_type() {
+                        let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
+                        let b = &b.as_slice::<$typ>()?[0];
+                        let a_slice = a.as_slice_mut::<$typ>()?;
+                        a_slice.iter_mut().for_each(|a| cab(a, &a.clone(), b));
+                        return Ok(())
+                    })*
+                )*
+                bail!("{} does not support {:?} (eval unicast)", self.name(), a.datum_type());
+            }
             fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
                 // c and a are same type
                 $(if $eval_in_a(a, b)? { return Ok(()) } )?
