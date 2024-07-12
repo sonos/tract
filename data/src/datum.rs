@@ -219,6 +219,9 @@ impl DatumType {
         *self == DatumType::TDim
     }
 
+    pub fn is_opaque(&self) -> bool {
+        *self == DatumType::Opaque
+    }
 
     #[cfg(feature = "complex")]
     pub fn is_complex(&self) -> bool {

@@ -2,6 +2,7 @@ use crate::ast::*;
 use crate::internal::*;
 use tract_core::ndarray::ArrayViewD;
 use tract_core::ndarray::Axis;
+use tract_core::ops::matmul::de_block_quant::BlockQuantValue;
 use tract_itertools::Itertools;
 
 pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
@@ -392,6 +393,15 @@ impl<'a> IntoAst<'a> {
 
         self.tensors.insert(name.clone(), tensor.clone());
         let id = self.scoped_id(&name);
+        let shape = if tensor.datum_type().is_opaque() {
+            if let Some(bqv) = tensor.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>() {
+                bqv.fact.shape.as_concrete().unwrap()
+            } else {
+                bail!("Unexpected opaque tensor in serialization {tensor:?}");
+            }
+        } else {
+            tensor.shape()
+        };
         self.assignment(
             id.clone(),
             RValue::Invocation(Invocation {
@@ -399,7 +409,7 @@ impl<'a> IntoAst<'a> {
                 generic_type_name: Some(TypeName::Scalar),
                 arguments: vec![
                     named_arg("label", string(name.0)),
-                    named_arg("shape", ints(tensor.shape())),
+                    named_arg("shape", ints(shape)),
                 ],
             })
             .into(),
