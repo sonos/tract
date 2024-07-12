@@ -1,4 +1,5 @@
 use tract_data::itertools::Itertools;
+use tract_linalg::frame::PackedFormat;
 use tract_linalg::Scaler;
 use tract_ndarray::Ix2;
 use tract_num_traits::One;
@@ -6,6 +7,8 @@ use tract_num_traits::One;
 use super::codegen::*;
 use super::EinSum;
 use crate::internal::*;
+use crate::ops::konst::Const;
+use crate::ops::matmul::de_block_quant::BlockQuantFact;
 
 pub fn rewrite_einsums_as_matmul(model: &mut TypedModel) -> TractResult<()> {
     let rules = Rewriter::default().with_rule_for::<EinSum>("einsum-to-matmul", einsum_rules);
@@ -59,6 +62,14 @@ fn einsum_rules(
     for (ix, op) in a_transform.into_iter().enumerate() {
         wire[0] = patch.wire_node(format!("{node_name}.fix_a.{ix}"), op, &[wire[0]])?[0];
     }
+    // terrible hack to maintain opaque fact through eager propatagation of constant through the
+    // axes transformation
+    if let Some(op) = patch.node_mut(wire[0].node).op_as_mut::<Const>() {
+        op.1 = model.outlet_fact(node.inputs[0])?.opaque_fact.clone();
+    }
+    patch.outlet_fact_mut(wire[0])?.opaque_fact =
+        model.outlet_fact(node.inputs[0])?.opaque_fact.clone();
+    // end of hack
 
     let b_order_es: String = op.axes.axes(InOut::In(1)).map(|a| a.repr).collect();
     let b_order_mm = format!("{prefix}{k}{n}");
@@ -104,7 +115,6 @@ fn einsum_rules(
     } else {
         None
     };
-
     wire = patch.wire_node(
         node_name,
         BasicMatMul { transpose_a, transpose_b, transpose_c, quantize_output },
@@ -223,16 +233,28 @@ impl TypedOp for BasicMatMul {
         let [a, b] = inputs else {
             bail!("Expects 2 inputs");
         };
-        ensure!(a.rank() == b.rank());
-        ensure!(a.rank() >= 2);
-        ensure!(
-            a.shape[a.rank() - 2 + !self.transpose_a as usize]
-                == b.shape[b.rank() - 2 + self.transpose_b as usize]
-        );
-        Ok(tvec!(self
-            .quantize_output
-            .unwrap_or(a.datum_type)
-            .fact(self.output_shape(&a.shape, &b.shape))))
+        if a.datum_type.is_number() {
+            ensure!(a.rank() == b.rank());
+            ensure!(a.rank() >= 2);
+            ensure!(
+                a.shape[a.rank() - 2 + !self.transpose_a as usize]
+                    == b.shape[b.rank() - 2 + self.transpose_b as usize]
+            );
+            Ok(tvec!(self
+                .quantize_output
+                .unwrap_or(a.datum_type)
+                .fact(self.output_shape(&a.shape, &b.shape))))
+        } else if let Some(opf) =
+            inputs[0].opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
+        {
+            let a_shape: ShapeFact = a.shape.into_iter().chain(opf.shape.iter()).collect();
+            Ok(tvec!(self
+                .quantize_output
+                .unwrap_or(b.datum_type)
+                .fact(self.output_shape(&a_shape, &b.shape))))
+        } else {
+            todo!()
+        }
     }
 
     as_op!();

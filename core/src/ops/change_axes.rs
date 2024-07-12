@@ -615,7 +615,9 @@ impl TypedOp for AxisOp {
         let mut shape = inputs[0].shape.clone();
         self.change_shape(&mut shape, false)
             .with_context(|| format!("Applying {self:?} to {:?}", inputs[0]))?;
-        Ok(tvec!(inputs[0].datum_type.fact(shape)))
+        let mut fact = inputs[0].datum_type.fact(shape);
+        fact.opaque_fact = inputs[0].opaque_fact.clone();
+        Ok(tvec!(fact))
     }
 
     fn axes_mapping(
@@ -979,7 +981,7 @@ impl TypedOp for IntoShape {
     ) -> TractResult<Option<TypedModelPatch>> {
         let input = model.outlet_fact(node.inputs[0])?;
         if input.shape.as_concrete().is_some_and(|shape| shape == &*self.dims) {
-            return TypedModelPatch::shunt_one_op(model, node)
+            return TypedModelPatch::shunt_one_op(model, node);
         }
         if let Some(succ) = model.single_succ(node.id)? {
             if let Some(into_shape) = succ.op_as::<IntoShape>() {
