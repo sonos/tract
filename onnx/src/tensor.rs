@@ -94,7 +94,7 @@ fn get_external_resources(
         .transpose()
         .context("Error while parsing length value on external data description")?;
 
-    let p = PathBuf::from(format!("{}/{}", path, location));
+    let p = PathBuf::from(path).join(location);
 
     trace!("external file detected: {:?}, offset {:?}, length: {:?}", p, offset, length);
     provider.read_bytes_from_path(&mut tensor_data, &p, offset, length)?;
