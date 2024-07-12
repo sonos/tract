@@ -126,11 +126,11 @@ pub fn metal_gemm(
     let metal_a = a.into_metal().unwrap();
     let metal_b = b.into_metal().unwrap();
     // Warmup
-    let _ = matmul::mfa_gemm(&context, &metal_a, false, &metal_b, false).unwrap();
+    let _ = MfaGemm::default().eval(&context, &metal_a, &metal_b).unwrap();
 
     crit.bench_function(&format!("tract_metal_gemm_{:?}", dt), |be| {
         be.iter(|| {
-            let _ = matmul::mfa_gemm(&context, &metal_a, false, &metal_b, false).unwrap();
+            let _ = MfaGemm::default().eval(&context, &metal_a, &metal_b).unwrap();
         });
     });
 }

@@ -1,6 +1,5 @@
 use crate::kernels::nn::Softmax;
 use crate::tensor::MetalTensorExt;
-use crate::IntoMetal;
 use std::fmt::Debug;
 use tract_core::internal::*;
 use tract_core::ops::nn as core_ops_nn;
@@ -85,20 +84,12 @@ impl EvalOp for MetalSoftmax {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
                 let input = args_1!(inputs);
+                let t = input.to_metal_tensor()?;
 
-                match input.as_metal_tensor() {
-                    Some(input) => Ok(tvec!(Softmax
-                        .dispatch_eval(context, input, self.axes[0])?
-                        .into_opaque_tensor()
-                        .into_tvalue())),
-                    None => {
-                        let input = input.into_tensor().into_metal()?;
-                        Ok(tvec!(Softmax
-                            .eval(context, &input, self.axes[0])?
-                            .to_cpu()
-                            .into_tvalue()))
-                    }
-                }
+                Ok(tvec!(Softmax
+                    .dispatch_eval(context, t, self.axes[0])?
+                    .into_opaque_tensor()
+                    .into_tvalue()))
             })
         })
     }

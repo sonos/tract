@@ -2,7 +2,6 @@ use crate::kernels;
 use crate::tensor::MetalTensorExt;
 use derive_new::new;
 use std::fmt::Debug;
-
 use tract_core::internal::*;
 
 #[derive(Debug, Clone, new, Hash)]
@@ -30,18 +29,15 @@ impl EvalOp for MetalMultiBroadcastTo {
     ) -> TractResult<TVec<TValue>> {
         let shape = self.shape.eval_to_usize(&session.resolved_symbols)?;
         let input = args_1!(inputs);
-        if let Some(t) = input.as_metal_tensor() {
-            objc::rc::autoreleasepool(|| {
-                crate::METAL_CONTEXT.with_borrow(|context| {
-                    Ok(tvec![kernels::array::MultiBroadcast
-                        .dispatch_eval(context, t, 0, &shape)?
-                        .into_opaque_tensor()
-                        .into_tvalue()])
-                })
+        let t = input.to_metal_tensor()?;
+        objc::rc::autoreleasepool(|| {
+            crate::METAL_CONTEXT.with_borrow(|context| {
+                Ok(tvec![kernels::array::MultiBroadcast
+                    .dispatch_eval(context, t, 0, &shape)?
+                    .into_opaque_tensor()
+                    .into_tvalue()])
             })
-        } else {
-            Ok(tvec!(input.broadcast_to_shape(&shape)?.into_tvalue()))
-        }
+        })
     }
 }
 

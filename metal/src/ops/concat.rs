@@ -45,22 +45,14 @@ impl EvalOp for MetalConcat {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
-                let metal_inputs =
-                    inputs.iter().map(|it| it.as_metal_tensor()).collect::<Option<TVec<_>>>();
-                match metal_inputs {
-                    Some(metal_inputs) => Ok(tvec!(Concat
-                        .dispatch_eval(context, &metal_inputs, self.axis)?
-                        .into_opaque_tensor()
-                        .into_tvalue())),
-                    None => {
-                        ensure!(
-                            inputs.iter().all(|it| it.as_metal_tensor().is_none()),
-                            "Inconsistent inputs, found mix of metal tensors and cpu tensors"
-                        );
-                        let result = Tensor::stack_tensors(self.axis, &inputs)?;
-                        Ok(tvec![result.into_tvalue()])
-                    }
-                }
+                let metal_inputs = inputs
+                    .iter()
+                    .map(|it| it.to_metal_tensor())
+                    .collect::<TractResult<TVec<_>>>()?;
+                Ok(tvec!(Concat
+                    .dispatch_eval(context, &metal_inputs, self.axis)?
+                    .into_opaque_tensor()
+                    .into_tvalue()))
             })
         })
     }

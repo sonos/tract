@@ -1,5 +1,5 @@
 use crate::kernels;
-use crate::IntoMetal;
+use crate::tensor::MetalTensorExt;
 use derive_new::new;
 use tract_core::internal::*;
 
@@ -24,15 +24,15 @@ impl EvalOp for MetalCast {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
-        if input.datum_type() == self.to {
+        let t = input.to_metal_tensor()?;
+        if t.datum_type() == self.to {
             Ok(tvec!(input))
         } else {
             objc::rc::autoreleasepool(|| {
                 crate::METAL_CONTEXT.with_borrow(|context| {
-                    let input = input.into_tensor().into_metal()?;
                     Ok(tvec![kernels::array::Cast
-                        .eval(context, &input, self.to)?
-                        .to_cpu()
+                        .dispatch_eval(context, t, self.to)?
+                        .into_opaque_tensor()
                         .into_tvalue()])
                 })
             })

@@ -69,6 +69,7 @@ impl PermuteAxes {
         input: &MetalTensor,
         axes: &[usize],
     ) -> Result<MetalTensor> {
+        input.retain_until_completion();
         // Validate give axes permutation
         let mut usage_counts = vec![0; input.rank()];
         for axis in axes {
@@ -90,6 +91,7 @@ impl PermuteAxes {
         }
 
         let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), &new_shape)? };
+        output.retained_until_completion();
 
         let broadcast_kind = BroadcastKind::from_rank(input.rank())
             .with_context(|| anyhow!("Unsupported rank {:?} for PermuteAxes", input.rank()))?;
