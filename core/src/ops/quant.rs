@@ -277,6 +277,12 @@ impl crate::ops::binary::BinMiniOp for Scale {
     fn name(&self) -> &'static str {
         "Scale"
     }
+    fn eval_by_scalar(&self, _a: &mut TensorView, _b: &TensorView) -> TractResult<()> {
+        unimplemented!("Eval by scalar not implemented")
+    }
+    fn eval_unicast(&self, _a: &mut TensorView, _b: &TensorView) -> TractResult<()> {
+        unimplemented!("Eval unicast not implemented")
+    }
 
     fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
         if !a.is_float() {

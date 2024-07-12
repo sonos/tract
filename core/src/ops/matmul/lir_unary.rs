@@ -485,7 +485,7 @@ impl TypedOp for LirMatMulUnary {
                 }
             }
         }
-        if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
+        if let Some(op) = succ.op_as::<ops::binary::BinOpUnicast>() {
             if op.0.is::<ops::math::Add>() {
                 let other_slot = 1 - node.outputs[0].successors[0].slot;
                 let other_input = succ.inputs[other_slot];
