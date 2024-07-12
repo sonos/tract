@@ -220,30 +220,29 @@ impl TypedOp for TypedBinOp {
             false
         };
 
-        // Don't declutter yet (missing AST for ByScalar + ByUnicast)
-        //if by_scalar_should_be_efficient & can_eval_in_a {
-        //    return Ok(Some(
-        //        TypedModelPatch::replace_single_op(
-        //            model,
-        //            node,
-        //            &node.inputs,
-        //            BinOpByScalar(self.0.clone()),
-        //        )?
-        //        .with_context("ByScalar"),
-        //    ))
-        //}
+        if by_scalar_should_be_efficient & can_eval_in_a {
+            return Ok(Some(
+                TypedModelPatch::replace_single_op(
+                    model,
+                    node,
+                    &node.inputs,
+                    BinOpByScalar(self.0.clone()),
+                )?
+                .with_context("ByScalar"),
+            ))
+        }
 
-        //if unicast_should_be_efficient & can_eval_in_a {
-        //    return Ok(Some(
-        //        TypedModelPatch::replace_single_op(
-        //            model,
-        //            node,
-        //            &node.inputs,
-        //            BinOpUnicast(self.0.clone()),
-        //        )?
-        //        .with_context("Unicast"),
-        //    ))
-        //}
+        if unicast_should_be_efficient & can_eval_in_a {
+            return Ok(Some(
+                TypedModelPatch::replace_single_op(
+                    model,
+                    node,
+                    &node.inputs,
+                    BinOpUnicast(self.0.clone()),
+                )?
+                .with_context("Unicast"),
+            ))
+        }
         self.0.declutter(model, node)
     }
 
