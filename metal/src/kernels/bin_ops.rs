@@ -283,7 +283,6 @@ mod tests {
     use num_traits::Zero;
     use proptest::collection::vec;
     use proptest::prelude::*;
-    use tract_core::internal::Tensor;
 
     fn reference<FI: Datum, FO: Datum>(
         a: &Tensor,
@@ -322,8 +321,8 @@ mod tests {
                 )?
                 .into_metal()?;
                 let output = op.eval(context, &a, &b)?;
-                let ref_output = reference::<F, bool>(a.tensor(), b.tensor(), cab)?;
-                assert_eq!(&ref_output, output.tensor());
+                let ref_output = reference::<F, bool>(&a.to_cpu(), &b.to_cpu(), cab)?;
+                assert_eq!(ref_output, output.to_cpu());
                 Ok(())
             })
         })
@@ -349,22 +348,22 @@ mod tests {
                 )?
                 .into_metal()?;
                 let output = op.eval(context, &a, &b)?;
-                let ref_output = reference::<F, F>(a.tensor(), b.tensor(), cab)?;
-                assert_eq!(&ref_output, output.tensor());
+                let ref_output = reference::<F, F>(&a.to_cpu(), &b.to_cpu(), cab)?;
+                assert_eq!(ref_output, output.to_cpu());
                 Ok(())
             })
         })
     }
 
     #[test]
-    fn test_bin_ops_mul_unicast() -> Result<()> {
+    fn test_bin_ops_unicast() -> Result<()> {
         run_test_case::<f32>(BinOps::Mul, &[4, 4], &[4, 4], |c, a, b| *c = *a * *b)?;
         run_test_case::<f32>(BinOps::Mul, &[2, 16], &[2, 16], |c, a, b| *c = *a * *b)?;
         Ok(())
     }
 
     #[test]
-    fn test_bin_ops_mul_with_broadcast_nd2() -> Result<()> {
+    fn test_bin_ops_with_broadcast_nd2() -> Result<()> {
         run_test_case::<f32>(BinOps::Mul, &[4, 1], &[1, 20], |c, a, b| *c = *a * *b)?;
         run_test_case::<f32>(BinOps::Mul, &[1, 20], &[10, 20], |c, a, b| *c = *a * *b)?;
         run_test_case::<f32>(BinOps::Add, &[4, 1], &[4, 20], |c, a, b| *c = *a + *b)?;
@@ -376,7 +375,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bin_ops_mul_with_broadcast_nd3() -> Result<()> {
+    fn test_bin_ops_with_broadcast_nd3() -> Result<()> {
         run_test_case::<f32>(BinOps::Mul, &[4, 1, 10], &[1, 20, 1], |c, a, b| *c = *a * *b)?;
         run_test_case::<f32>(BinOps::Mul, &[1, 20, 1], &[10, 20, 10], |c, a, b| *c = *a * *b)?;
         run_test_case::<f32>(BinOps::Add, &[4, 1, 10], &[1, 20, 1], |c, a, b| *c = *a + *b)?;
@@ -385,7 +384,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bin_ops_mul_with_broadcast_nd4() -> Result<()> {
+    fn test_bin_ops_with_broadcast_nd4() -> Result<()> {
         run_test_case::<f32>(BinOps::Mul, &[4, 1, 10, 1], &[1, 20, 1, 5], |c, a, b| *c = *a * *b)?;
         run_test_case::<f32>(BinOps::Mul, &[1, 20, 1, 5], &[5, 20, 10, 5], |c, a, b| *c = *a * *b)?;
         run_test_case::<f32>(BinOps::Add, &[4, 1, 10, 1], &[1, 20, 1, 5], |c, a, b| *c = *a + *b)?;
@@ -395,17 +394,9 @@ mod tests {
 
     #[test]
     fn test_bin_ops_mul_by_scalar() -> Result<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let a =
-                    Tensor::from_shape(&[4, 4], &(0..4 * 4).map(|f| f as f32).collect::<Vec<_>>())?
-                        .into_metal()?;
-                let b = Tensor::from_shape(&[1], &[2f32])?.into_metal()?;
-                dbg!(BinOps::Add.eval(context, &a, &b)?);
-
-                Ok(())
-            })
-        })
+        run_test_case::<f32>(BinOps::Add, &[4, 4], &[1], |c, a, b| *c = *a + *b)?;
+        run_test_case::<f32>(BinOps::Mul, &[4, 4], &[1], |c, a, b| *c = *a * *b)?;
+        Ok(())
     }
 
     proptest::proptest! {

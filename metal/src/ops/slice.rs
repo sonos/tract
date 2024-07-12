@@ -200,11 +200,8 @@ mod tests {
                     .eval_with_session(&SessionState::default(), tvec![a_metal.clone()])?;
                 context.wait_until_completed()?;
 
-                dbg!(&cpu_output[0]);
-                dbg!(metal_output[0].to_metal_tensor()?.tensor());
-
                 cpu_output[0].close_enough(
-                    metal_output[0].to_metal_tensor()?.tensor(),
+                    &metal_output[0].to_metal_tensor()?.to_cpu(),
                     Approximation::Approximate,
                 )?;
                 Ok(())

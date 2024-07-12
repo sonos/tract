@@ -121,11 +121,10 @@ mod tests {
                     exp: SoftmaxExp::Libc,
                 };
 
-                let cpu_output = cpu_softmax.eval(tvec![a.tensor().clone().into_tvalue()])?[0]
-                    .clone()
-                    .into_tensor();
+                let cpu_output =
+                    cpu_softmax.eval(tvec![a.to_cpu().into_tvalue()])?[0].clone().into_tensor();
                 let metal_output = Softmax.eval(context, &a, axis)?;
-                cpu_output.close_enough(metal_output.tensor(), Approximation::Approximate)?;
+                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
                 Ok(())
             })
         })
@@ -151,11 +150,10 @@ mod tests {
                     exp: SoftmaxExp::Libc,
                 };
 
-                let cpu_output = cpu_softmax.eval(tvec![a.tensor().clone().into_tvalue()])?[0]
-                    .clone()
-                    .into_tensor();
+                let cpu_output =
+                    cpu_softmax.eval(tvec![a.to_cpu().into_tvalue()])?[0].clone().into_tensor();
                 let metal_output = Softmax.eval(context, &a, axis)?;
-                cpu_output.close_enough(metal_output.tensor(), Approximation::Approximate)?;
+                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
                 Ok(())
             })
         })
@@ -181,11 +179,10 @@ mod tests {
                     exp: SoftmaxExp::Libc,
                 };
 
-                let cpu_output = cpu_softmax.eval(tvec![a.tensor().clone().into_tvalue()])?[0]
-                    .clone()
-                    .into_tensor();
+                let cpu_output =
+                    cpu_softmax.eval(tvec![a.to_cpu().into_tvalue()])?[0].clone().into_tensor();
                 let metal_output = Softmax.eval(context, &a, axis)?;
-                cpu_output.close_enough(metal_output.tensor(), Approximation::Approximate)?;
+                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
                 Ok(())
             })
         })

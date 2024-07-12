@@ -50,7 +50,7 @@ impl EvalOp for MetalSync {
                 let metal_tensor = input
                     .to_metal_tensor()
                     .with_context(|| anyhow!("Error while syncing metal tensor to cpu"))?;
-                let tvalue = metal_tensor.tensor().clone().into();
+                let tvalue = metal_tensor.to_cpu().into();
                 Ok(tvec![tvalue])
             }),
             MetalSyncKind::ToGpu => {

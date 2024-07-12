@@ -179,7 +179,7 @@ impl ElementWiseOps {
     }
 
     pub fn dispatch_eval(&self, context: &MetalContext, a: &MetalTensor) -> Result<MetalTensor> {
-        let output = MetalTensor::zero_dt(a.datum_type(), a.shape())?;
+        let output = unsafe { MetalTensor::uninitialized_dt(a.datum_type(), a.shape())? };
         let kernel_name = self.kernel_name(a.datum_type(), false)?;
 
         let a_buffer = a.metal();
@@ -247,8 +247,8 @@ mod tests {
                 )?
                 .into_metal()?;
                 let output = op.eval(context, &a)?;
-                let ref_output = reference::<F>(a.tensor(), ca)?;
-                assert!(ref_output.close_enough(output.tensor(), Approximation::Close).is_ok());
+                let ref_output = reference::<F>(&a.to_cpu(), ca)?;
+                assert!(ref_output.close_enough(&output.to_cpu(), Approximation::Close).is_ok());
                 Ok(())
             })
         })

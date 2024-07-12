@@ -23,7 +23,7 @@ pub fn mmm_tile_8x8(
     let o_dt = lhs.datum_type();
     let o_shape = &[m, m];
 
-    let output = MetalTensor::zero_dt(o_dt, o_shape)?;
+    let output = unsafe { MetalTensor::uninitialized_dt(o_dt, o_shape)? };
 
     metal_mmm_tile_8x8(context, m, lhs.metal(), rhs.metal(), output.metal())?;
     context.wait_until_completed()?;

@@ -1,4 +1,4 @@
-use crate::kernels::array::{Memcpy, PermuteAxes};
+use crate::kernels::array::PermuteAxes;
 use crate::tensor::MetalTensorExt;
 use std::fmt::Debug;
 use tract_core::internal::*;
@@ -57,10 +57,10 @@ impl EvalOp for MetalAxisOp {
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let mut input = args_1!(inputs).into_tensor();
-
-        if let AxisOp::Move(from, to) = &self.0 {
-            if let Some(t) = input.as_metal_tensor() {
+        let opaque = args_1!(inputs).into_tensor();
+        let t = opaque.to_metal_tensor()?;
+        let new_shape = match &self.0 {
+            AxisOp::Move(from, to) => {
                 let output = objc::rc::autoreleasepool(|| {
                     crate::METAL_CONTEXT.with_borrow(|context| -> TractResult<_> {
                         let mut permutation: Vec<usize> = (0..t.rank()).collect();
@@ -70,46 +70,25 @@ impl EvalOp for MetalAxisOp {
                     })
                 })?;
                 return Ok(tvec!(output.into_opaque_tensor().into_tvalue()));
-            } else {
-                self.0
-                    .change_tensor(&mut input, false)
-                    .with_context(|| anyhow!("Error while doing metal move axis"))?;
-                return Ok(tvec!(input.into_tvalue()));
             }
-        }
-
-        fn _eval(op: &MetalAxisOp, session: &SessionState, t: &mut Tensor) -> TractResult<()> {
-            match &op.0 {
-                AxisOp::Reshape(skip, from, to) => {
-                    let from = from.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
-                    let to = to.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
-                    AxisOp::Reshape(*skip, from, to).change_tensor(t, false)?
-                }
-                _ => op.0.change_tensor(t, false)?,
+            AxisOp::Reshape(skip, from, to) => {
+                let from = from.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
+                let to = to.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
+                let mut shape: TVec<usize> = t.shape().into();
+                AxisOp::Reshape(*skip, from, to).change_shape_array(&mut shape, false)?;
+                shape
             }
-            Ok(())
-        }
+            _ => {
+                let mut shape: TVec<usize> = t.shape().into();
+                self.0.change_shape_array(&mut shape, false)?;
+                shape
+            }
+        };
 
-        if let Some(t) = input.as_metal_tensor_mut().and_then(|t| t.tensor_mut()) {
-            _eval(self, session, t)?;
-            Ok(tvec!(input.into_tvalue()))
-        } else if let Some(t) = input.as_metal_tensor() {
-            objc::rc::autoreleasepool(|| {
-                crate::METAL_CONTEXT.with_borrow(|context| -> TractResult<_> {
-                    // Copy perform by GPU
-                    let mut cpy_t = Memcpy.dispatch_eval(context, t, 0)?;
-                    let ref_mut_tensor = cpy_t.tensor_mut().ok_or_else(|| {
-                        anyhow!(
-                            "Could not take mutable reference of inner tensor after a metal copy."
-                        )
-                    })?;
-                    _eval(self, session, ref_mut_tensor)?;
-                    Ok(tvec![cpy_t.into_opaque_tensor().into_tvalue()])
-                })
-            })
+        if new_shape.as_slice() != t.shape() {
+            Ok(tvec![t.reshaped(new_shape)?.into_opaque_tensor().into_tvalue()])
         } else {
-            _eval(self, session, &mut input)?;
-            Ok(tvec!(input.into_tvalue()))
+            Ok(tvec![opaque.into_tvalue()])
         }
     }
 }
@@ -243,34 +222,15 @@ impl EvalOp for MetalIntoShape {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let mut input = args_1!(inputs).into_tensor();
+        let opaque = args_1!(inputs).into_tensor();
+        let t = opaque.to_metal_tensor()?;
 
-        if let Some(t) = input.as_metal_tensor_mut().and_then(|t| t.tensor_mut()) {
-            ensure!(t.len() == self.len);
-            unsafe { t.set_geometry_unchecked(&self.dims, &self.strides) };
-            Ok(tvec!(input.into_tvalue()))
-        } else if let Some(t) = input.as_metal_tensor() {
-            ensure!(t.len() == self.len);
-            objc::rc::autoreleasepool(|| {
-                crate::METAL_CONTEXT.with_borrow(|context| -> TractResult<_>{
-                    // Copy perform by GPU
-                    let mut cpy_t = Memcpy.dispatch_eval(context, t, 0)?;
-                    unsafe {
-                        cpy_t.tensor_mut()
-                          .ok_or_else(|| {
-                             anyhow!("Could not take mutable reference of inner tensor after a metal copy.")
-                          })?
-                          .set_geometry_unchecked(&self.dims, &self.strides)
-                    };
-                    Ok(tvec![cpy_t.into_opaque_tensor()
-                        .into_tvalue()])
-
-                })
-            })
-        } else {
-            ensure!(input.len() == self.len);
-            unsafe { input.set_geometry_unchecked(&self.dims, &self.strides) };
-            Ok(tvec!(input.into_tvalue()))
+        ensure!(t.len() == self.len);
+        unsafe {
+            Ok(tvec![t
+                .reshaped_with_geometry_unchecked(self.dims.clone(), self.strides.clone())
+                .into_opaque_tensor()
+                .into_tvalue()])
         }
     }
 }

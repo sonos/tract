@@ -148,8 +148,8 @@ mod tests {
                 let a = Tensor::from_shape(shape, &a_data)?.into_metal()?;
 
                 let output = PermuteAxes.eval(context, &a, axes)?;
-                let ref_output = a.tensor().clone().permute_axes(axes)?;
-                assert_eq!(&ref_output, output.tensor());
+                let ref_output = a.to_cpu().permute_axes(axes)?;
+                assert_eq!(ref_output, output.to_cpu());
                 Ok(())
             })
         })

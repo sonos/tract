@@ -50,7 +50,7 @@ pub fn mat_vec(
     let o_dt = lhs.datum_type();
     let o_shape = &[m, n];
 
-    let output = MetalTensor::zero_dt(o_dt, o_shape)?;
+    let output = unsafe { MetalTensor::uninitialized_dt(o_dt, o_shape)? };
 
     if n == 1 {
         metal_mat_vec(context, m, k, lhs.metal(), rhs.metal(), output.metal())?;
@@ -102,6 +102,7 @@ mod tests {
     use super::*;
     use crate::IntoMetal;
     use tract_core::internal::Tensor;
+    use tract_core::ops::einsum::BasicMatMul;
 
     #[test]
     fn test_mat_vec() -> Result<()> {
@@ -115,7 +116,14 @@ mod tests {
                         .into_metal()?;
                 let b = Tensor::from_shape(&[k, 1], &(0..k).map(|_f| 1_f32).collect::<Vec<_>>())?
                     .into_metal()?;
-                dbg!(mat_vec(context, &a, &b)?);
+
+                let metal_output = mat_vec(context, &a, &b)?;
+                let matmul = BasicMatMul::default();
+                let output = args_1!(
+                    matmul.eval(tvec![a.to_cpu().into_tvalue(), b.to_cpu().into_tvalue()])?
+                );
+
+                output.close_enough(&metal_output.to_cpu(), Approximation::Close)?;
                 Ok(())
             })
         })
@@ -133,7 +141,14 @@ mod tests {
                         .into_metal()?;
                 let b = Tensor::from_shape(&[k, 1], &(0..k).map(|_f| 1_f32).collect::<Vec<_>>())?
                     .into_metal()?;
-                dbg!(mat_vec(context, &a, &b)?);
+
+                let metal_output = mat_vec(context, &a, &b)?;
+                let matmul = BasicMatMul::default();
+                let output = args_1!(
+                    matmul.eval(tvec![a.to_cpu().into_tvalue(), b.to_cpu().into_tvalue()])?
+                );
+
+                output.close_enough(&metal_output.to_cpu(), Approximation::Close)?;
                 Ok(())
             })
         })
