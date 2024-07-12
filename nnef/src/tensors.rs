@@ -2,8 +2,8 @@ use std::io::{Read, Write};
 
 use byteorder::{ReadBytesExt, WriteBytesExt, LE};
 use tract_core::internal::*;
-use tract_core::ops::matmul::de_block_quant::BlockQuantValue;
-use tract_linalg::frame::block_quant::Q4_0;
+use tract_core::ops::matmul::de_block_quant::{BlockQuantFact, BlockQuantValue};
+use tract_linalg::frame::block_quant::{BlockQuant, Q4_0};
 
 const TRACT_ITEM_TYPE_VENDOR: u16 = (b'T' as u16) << 8u16 | b'R' as u16;
 
@@ -126,7 +126,7 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
 
         // 5 - 0b0101 - bool values, 1 bit or 8 bits (0 means false, non-zero means true)
         (0, 5, 1 | 8) => DatumType::Bool,
-        (TRACT_ITEM_TYPE_VENDOR, 0x1000, 0xFFFF) => DatumType::String,
+        (TRACT_ITEM_TYPE_VENDOR, 0x1000, _) => DatumType::String,
         #[cfg(feature = "complex")]
         (TRACT_ITEM_TYPE_VENDOR, 0, 32) => DatumType::ComplexF16,
         #[cfg(feature = "complex")]
@@ -139,6 +139,9 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
         (TRACT_ITEM_TYPE_VENDOR, 4, 64) => DatumType::ComplexI32,
         #[cfg(feature = "complex")]
         (TRACT_ITEM_TYPE_VENDOR, 4, 128) => DatumType::ComplexI64,
+        (TRACT_ITEM_TYPE_VENDOR, it, _) if (it & 0x2000) == 0x2000 => {
+            return read_block_quant_value(&mut reader, &header);
+        }
         _ => bail!(
             "Unsupported type in tensor type:{} bits_per_item:{}",
             header.item_type,
@@ -238,6 +241,22 @@ pub fn write_tensor(w: &mut impl Write, tensor: &Tensor) -> TractResult<()> {
         }
     }
     Ok(())
+}
+
+fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Tensor> {
+    let format =
+        if header.item_type == 0x2040 { Q4_0 } else { bail!("Unexpected block quant format") };
+    ensure!(header.rank == 2);
+    let shape: ShapeFact = header.dims[0..2].iter().map(|x| (*x as usize).to_dim()).collect();
+    ensure!(shape.volume().to_usize()? % format.block_len() == 0);
+    let expected_len = shape.volume().to_usize()? / format.block_len() * format.block_bytes();
+    ensure!(expected_len == header.data_size_bytes as _);
+    let mut blob = unsafe { Blob::new_for_size_and_align(expected_len, 128) };
+    r.read_exact(&mut *blob)?;
+    let fact = BlockQuantFact { format: Box::new(format), shape };
+    let bqv = BlockQuantValue { value: blob, fact };
+    let tensor = tensor0(Opaque(Arc::new(bqv)));
+    Ok(tensor)
 }
 
 fn write_block_quant_value(w: &mut impl Write, value: &BlockQuantValue) -> TractResult<()> {

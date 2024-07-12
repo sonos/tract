@@ -10,6 +10,7 @@ use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PoolSpec;
 use tract_core::ops::konst::Const;
 use tract_core::ops::math::min;
+use tract_core::ops::matmul::de_block_quant::BlockQuantValue;
 use tract_core::ops::nn::{DataFormat, Softmax, SoftmaxExp};
 use tract_itertools::Itertools;
 
@@ -67,15 +68,21 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
             tensor = tensor.cast_to_dt(*dt)?.into_owned().into_arc_tensor()
         }
     }
-    if tensor.shape() != &*shape {
-        bail!(
+    if let Some(bqv) =
+        tensor.to_scalar::<Opaque>().ok().and_then(|o| o.downcast_ref::<BlockQuantValue>())
+    {
+        let fact = Box::new(bqv.fact.clone());
+        builder.wire(Const::new_with_opaque_fact(tensor, fact), &[])
+    } else {
+        ensure!(
+            tensor.shape() == &*shape,
             "Wrong shape for tensor: {:?}, tensor file says {:?}, graph files says {:?}",
             label,
             tensor.shape(),
             shape
         );
+        builder.wire(Const::new(tensor), &[])
     }
-    builder.wire(tract_core::ops::konst::Const::new(tensor), &[])
 }
 
 // fragment reshape<?>( input: tensor<?>, shape: integer[], axis_start: integer = 0, axis_count: integer = -1 )
