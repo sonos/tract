@@ -11,9 +11,9 @@ pub mod test {
         ($cond:expr, $t: ty, $ker:ty) => {
             proptest::proptest! {
                 #[test]
-                fn prop(xs in proptest::collection::vec(-25f32..25.0, 0..100)) {
+                fn prop(a in proptest::collection::vec(-25f32..25.0, 0..100), b in proptest::collection::vec(-25f32..25.0, 0..100)) {
                     if $cond {
-                        $crate::frame::unicast::mul::test::test_unicast_mul::<$ker, $t>(&*xs).unwrap()
+                        $crate::frame::unicast::mul::test::test_unicast_mul::<$ker, $t>(&a, &b).unwrap()
                     }
                 }
             }
@@ -21,20 +21,20 @@ pub mod test {
             #[test]
             fn empty() {
                 if $cond {
-                    $crate::frame::unicast::mul::test::test_unicast_mul::<$ker, $t>(&[]).unwrap()
+                    $crate::frame::unicast::mul::test::test_unicast_mul::<$ker, $t>(&[], &[]).unwrap()
                 }
             }
         };
     }
 
-    pub fn test_unicast_mul<K: UnicastKer<T>, T: LADatum + Float>(values: &[f32]) -> TestCaseResult
+    pub fn test_unicast_mul<K: UnicastKer<T>, T: LADatum + Float>(a: &[f32], b: &[f32]) -> TestCaseResult
     where
         f32: AsPrimitive<T>,
         T: AsPrimitive<f32>,
     {
         crate::setup_test_logger();
-        let a: Vec<T> = values.iter().copied().map(|x| x.as_()).collect();
-        let b: Vec<T> = values.iter().rev().copied().map(|x| x.as_()).collect();
+        let a: Vec<T> = a.iter().copied().map(|x| x.as_()).collect();
+        let b: Vec<T> = b.iter().copied().map(|x| x.as_()).collect();
         crate::frame::unicast::test::test_unicast::<K, _>(&a, &b, |a, b| a * b)
     }
 }
