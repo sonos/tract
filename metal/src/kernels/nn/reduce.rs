@@ -120,7 +120,6 @@ mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use tract_core::internal::Tensor;
-    use tract_core::ndarray::s;
     use tract_core::ops::nn::Reducer as TractReducer;
 
     #[test]
@@ -133,9 +132,10 @@ mod tests {
                 let a =
                     Tensor::from_shape(&[m, k], &(0..m * k).map(|f| f as f32).collect::<Vec<_>>())?
                         .into_metal()?;
-                let cpu_output = TractReducer::MeanOfSquares.reduce(&[1], a.tensor())?;
+
                 let metal_output = Reducer::MeanOfSquares.eval(context, &a, 1)?;
-                assert_eq!(&cpu_output, metal_output.tensor());
+                let cpu_output = TractReducer::MeanOfSquares.reduce(&[1], &a.to_cpu())?;
+                assert_eq!(cpu_output, metal_output.to_cpu());
                 Ok(())
             })
         })
@@ -151,9 +151,10 @@ mod tests {
                 let a =
                     Tensor::from_shape(&[m, k], &(0..m * k).map(|f| f as f32).collect::<Vec<_>>())?
                         .into_metal()?;
-                let cpu_output = TractReducer::MeanOfSquares.reduce(&[1], a.tensor())?;
+
                 let metal_output = Reducer::MeanOfSquares.eval(context, &a, 1)?;
-                assert_eq!(&cpu_output, metal_output.tensor());
+                let cpu_output = TractReducer::MeanOfSquares.reduce(&[1], &a.to_cpu())?;
+                assert_eq!(cpu_output, metal_output.to_cpu());
                 Ok(())
             })
         })
@@ -171,9 +172,9 @@ mod tests {
                     &(0..m * n).map(|_f| 1 as f32).collect::<Vec<_>>(),
                 )?
                 .into_metal()?;
-                let cpu_output = TractReducer::MeanOfSquares.reduce(&[0], a.tensor())?;
                 let metal_output = Reducer::MeanOfSquares.eval(context, &a, 0)?;
-                assert_eq!(&cpu_output, metal_output.tensor());
+                let cpu_output = TractReducer::MeanOfSquares.reduce(&[0], &a.to_cpu())?;
+                assert_eq!(cpu_output, metal_output.to_cpu());
                 Ok(())
             })
         })
@@ -190,9 +191,10 @@ mod tests {
                 let a =
                     Tensor::from_shape(shape, &(0..len).map(|_f| 1 as f32).collect::<Vec<_>>())?
                         .into_metal()?;
-                let cpu_output = TractReducer::MeanOfSquares.reduce(&[axis], a.tensor())?;
+
                 let metal_output = Reducer::MeanOfSquares.eval(context, &a, axis)?;
-                cpu_output.close_enough(metal_output.tensor(), Approximation::Close)?;
+                let cpu_output = TractReducer::MeanOfSquares.reduce(&[axis], &a.to_cpu())?;
+                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Close)?;
                 Ok(())
             })
         })
@@ -209,9 +211,9 @@ mod tests {
                 let a =
                     Tensor::from_shape(shape, &(0..len).map(|_f| 1 as f32).collect::<Vec<_>>())?
                         .into_metal()?;
-                let cpu_output = TractReducer::MeanOfSquares.reduce(&[axis], a.tensor())?;
                 let metal_output = Reducer::MeanOfSquares.eval(context, &a, axis)?;
-                cpu_output.close_enough(metal_output.tensor(), Approximation::Close)?;
+                let cpu_output = TractReducer::MeanOfSquares.reduce(&[axis], &a.to_cpu())?;
+                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Close)?;
                 Ok(())
             })
         })
@@ -228,9 +230,10 @@ mod tests {
                 let a =
                     Tensor::from_shape(shape, &(0..len).map(|_f| 1 as f32).collect::<Vec<_>>())?
                         .into_metal()?;
-                let cpu_output = TractReducer::Sum.reduce(&[axis], a.tensor())?;
+
                 let metal_output = Reducer::Sum.eval(context, &a, axis)?;
-                cpu_output.close_enough(metal_output.tensor(), Approximation::Close)?;
+                let cpu_output = TractReducer::Sum.reduce(&[axis], &a.to_cpu())?;
+                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Close)?;
                 Ok(())
             })
         })
@@ -246,9 +249,10 @@ mod tests {
 
                 let a = Tensor::from_shape(shape, &(0..len).map(|f| f as f32).collect::<Vec<_>>())?
                     .into_metal()?;
-                let cpu_output = TractReducer::Sum.reduce(&[axis], a.tensor())?;
+
                 let metal_output = Reducer::Sum.eval(context, &a, axis)?;
-                cpu_output.close_enough(metal_output.tensor(), Approximation::Close)?;
+                let cpu_output = TractReducer::Sum.reduce(&[axis], &a.to_cpu())?;
+                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Close)?;
                 Ok(())
             })
         })
@@ -267,19 +271,16 @@ mod tests {
                     &(0..len).map(|f| -> f16 { f.as_() }).collect::<Vec<_>>(),
                 )?
                 .into_metal()?;
-                let view = a.tensor().to_array_view::<f16>()?;
-                dbg!(view.slice(s![4, .., 3]));
-                dbg!(view.slice(s![4, .., 3]).sum());
-                dbg!(view);
-                let cpu_output = TractReducer::Sum.reduce(&[axis], a.tensor())?;
+
+                let cpu_output = TractReducer::Sum.reduce(&[axis], &a.to_cpu())?;
                 let metal_output = Reducer::Sum.eval(context, &a, axis)?;
                 cpu_output
-                    .close_enough(metal_output.tensor(), Approximation::Approximate)
+                    .close_enough(&metal_output.to_cpu(), Approximation::Approximate)
                     .with_context(|| {
                         anyhow!(
                             "Cpu: {:?}, Metal: {:?}",
                             cpu_output.dump(true),
-                            metal_output.tensor().dump(true)
+                            metal_output.to_cpu().dump(true)
                         )
                     })?;
                 Ok(())
