@@ -299,15 +299,12 @@ impl TypedFact {
             shape: self.shape.clone(),
             konst: None,
             uniform: None,
-            opaque_metadata: self.opaque_metadata.clone(),
+            opaque_fact: self.opaque_fact.clone(),
         }
     }
 
-    pub fn with_opaque_metadata<O: Into<Box<dyn OpaqueFact>>>(
-        mut self,
-        opaque_metadata: O,
-    ) -> Self {
-        self.opaque_fact = Some(opaque_metadata.into());
+    pub fn with_opaque_fact<O: Into<Box<dyn OpaqueFact>>>(mut self, opaque_fact: O) -> Self {
+        self.opaque_fact = Some(opaque_fact.into());
         self
     }
 }
