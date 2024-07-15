@@ -252,13 +252,14 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
     let expected_len = shape.volume().to_usize()? / format.block_len() * format.block_bytes();
     ensure!(expected_len == header.data_size_bytes as _);
     let mut blob = unsafe { Blob::new_for_size_and_align(expected_len, 128) };
-    r.read_exact(&mut *blob)?;
+    r.read_exact(&mut blob)?;
     let fact = BlockQuantFact { format: Box::new(format), shape };
     let bqv = BlockQuantValue { value: blob, fact };
     let tensor = tensor0(Opaque(Arc::new(bqv)));
     Ok(tensor)
 }
 
+#[warn(clippy::field_reassign_with_default)]
 fn write_block_quant_value(w: &mut impl Write, value: &BlockQuantValue) -> TractResult<()> {
     ensure!(value.fact.format.same_as(&Q4_0));
     ensure!(value.fact.shape.rank() == 2);
