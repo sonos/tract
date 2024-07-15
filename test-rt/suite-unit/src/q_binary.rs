@@ -268,6 +268,16 @@ pub fn suite() -> TractResult<TestSuite> {
             c_dt: qu8_dt(1, 0.5),
         },
     );
+    
+    suite.add(
+        "bug_aligned_dt_0",
+        QBinaryOpProblem {
+            operator: tract_core::ops::math::mul(),
+            tensor_a: qu8_tensor1(&[0u8, 0, 0, 0, 0], 95, 1.5)?,
+            tensor_b: qu8_tensor1(&[0u8, 0, 0, 0, 0], 95, 1.5)?,
+            c_dt: qu8_dt(95, 1.5),
+        },
+    );
 
     Ok(suite)
 }
