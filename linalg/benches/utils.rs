@@ -66,7 +66,7 @@ unsafe fn run(
 
 fn mat_mat(be: &mut Bencher, params: &(DatumType, usize, usize, usize, bool)) {
     let (dt, m, k, n, _) = *params;
-    let mm = tract_linalg::ops().mmm(dt, dt, dt, Some(m), Some(k), Some(n)).unwrap();
+    let mm = tract_linalg::ops().mmm(dt, Some(m), Some(k), Some(n)).unwrap();
     mat_mat_with_mm(be, &*mm, params)
 }
 
