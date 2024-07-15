@@ -148,6 +148,9 @@ bin_to_super_type!(mul, Mul,
                            }
                        }
                    },
+                   q: [i8, u8, i32] => |c, a, b, zp, scale| {
+                    *c = (scale_by((a.clone() as i32 - zp as i32) * (*b as i32 - zp as i32) , scale) + zp as i32).clamp_cast()
+                   };
                    q_op_on_f32: |a: f32, b: f32| a * b,
 [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() * b
 );
