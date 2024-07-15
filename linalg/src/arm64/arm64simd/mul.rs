@@ -14,7 +14,7 @@ unicast_impl_wrap!(
             let a_ptr = a.as_ptr();
             let b_ptr = b.as_ptr();
             std::arch::asm!("
-                1:
+                2:
                     ld1 {{v0.4s, v1.4s, v2.4s, v3.4s}}, [{a_ptr}]
                     ld1 {{v4.4s, v5.4s, v6.4s, v7.4s}}, [{b_ptr}], 64
                     fmul v0.4s, v0.4s, v4.4s
@@ -23,7 +23,7 @@ unicast_impl_wrap!(
                     fmul v3.4s, v3.4s, v7.4s
                     st1 {{v0.4s, v1.4s, v2.4s, v3.4s}}, [{a_ptr}], 64
                     subs {len}, {len}, 16
-                    bne 1b
+                    bne 2b
             ",
             len = inout(reg) len => _,
             a_ptr = inout(reg) a_ptr => _,

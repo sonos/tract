@@ -14,7 +14,7 @@ ew_impl_wrap!(
             std::arch::asm!("
                 dup v0.4s, {alpha:v}.s[0]
                 dup v1.4s, {one:v}.s[0]
-                1:
+                2:
                     ldp q3, q4, [{ptr}]
 
                     fcmgt v5.4s, v3.4s, #0.0
@@ -26,7 +26,7 @@ ew_impl_wrap!(
 
                     stp q3, q4, [{ptr}], #32
                     subs {len}, {len}, 8
-                    bne 1b
+                    bne 2b
             ",
             one = in(vreg) 1.0f32,
             alpha = in(vreg) alpha,

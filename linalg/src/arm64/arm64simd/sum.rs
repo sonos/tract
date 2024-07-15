@@ -20,7 +20,7 @@ reduce_impl_wrap!(
                 movi v1.4s, #0
                 movi v2.4s, #0
                 movi v3.4s, #0
-                1:
+                2:
                     ld1 {{v4.4s, v5.4s, v6.4s, v7.4s}}, [{ptr}], 64
                     fadd v0.4s, v0.4s, v4.4s
                     fadd v1.4s, v1.4s, v5.4s
@@ -28,7 +28,7 @@ reduce_impl_wrap!(
                     fadd v3.4s, v3.4s, v7.4s
 
                     subs {len}, {len}, 16
-                    bne 1b
+                    bne 2b
 
                 fadd v0.4s, v0.4s, v1.4s
                 fadd v2.4s, v2.4s, v3.4s
