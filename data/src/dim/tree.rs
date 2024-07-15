@@ -113,7 +113,7 @@ impl TDim {
     pub fn eval_to_i64(&self, values: &SymbolValues) -> TractResult<i64> {
         match self {
             Sym(sym) => {
-                let Some(v) = values[sym] else { bail!(UndeterminedSymbol(self.clone())) };
+                let Some(v) = values.get(sym) else { bail!(UndeterminedSymbol(self.clone())) };
                 Ok(v)
             }
             Val(v) => Ok(*v),
@@ -140,7 +140,7 @@ impl TDim {
 
     pub fn eval(&self, values: &SymbolValues) -> TDim {
         match self {
-            Sym(sym) => values[sym].map(Val).unwrap_or_else(|| Sym(sym.clone())),
+            Sym(sym) => values.get(sym).map(Val).unwrap_or_else(|| Sym(sym.clone())),
             Val(v) => Val(*v),
             Add(terms) => terms.iter().fold(Val(0), |acc, it| -> TDim { acc + it.eval(values) }),
             Mul(terms) => terms.iter().fold(Val(1), |acc, it| -> TDim { acc * it.eval(values) }),

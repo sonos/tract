@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use std::collections::HashMap;
 use std::fmt::{self, Display};
 use std::sync::{Arc, Mutex};
 use string_interner::DefaultStringInterner;
@@ -101,35 +102,21 @@ impl fmt::Debug for Symbol {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct SymbolValues(Vec<Option<i64>>);
+pub struct SymbolValues {
+    values: HashMap<Symbol, i64>,
+}
 
 impl SymbolValues {
     pub fn with(mut self, s: &Symbol, v: i64) -> Self {
-        self[s] = Some(v);
+        self.set(s, v);
         self
     }
 
     pub fn set(&mut self, s: &Symbol, v: i64) {
-        self[s] = Some(v);
+        self.values.insert(s.clone(), v);
     }
-}
 
-impl std::ops::Index<&Symbol> for SymbolValues {
-    type Output = Option<i64>;
-    fn index(&self, index: &Symbol) -> &Self::Output {
-        if index.1.to_usize() < self.0.len() {
-            &self.0[index.1.to_usize()]
-        } else {
-            &None
-        }
-    }
-}
-
-impl std::ops::IndexMut<&Symbol> for SymbolValues {
-    fn index_mut(&mut self, index: &Symbol) -> &mut Self::Output {
-        if index.1.to_usize() >= self.0.len() {
-            self.0.resize_with(index.1.to_usize() + 1, Default::default)
-        }
-        &mut self.0[index.1.to_usize()]
+    pub fn get(&self, s: &Symbol) -> Option<i64> {
+        self.values.get(s).copied()
     }
 }

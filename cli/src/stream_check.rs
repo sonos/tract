@@ -94,7 +94,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
                 };
                 if offset + input_pulse > stream_dim {
                     debug!("Set known_stream_len: {}", stream_dim);
-                    state.session_state.resolved_symbols[&stream_symbol] = Some(stream_dim as _);
+                    state.session_state.resolved_symbols.set(&stream_symbol, stream_dim as _);
                 };
 
                 let output =

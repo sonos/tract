@@ -405,7 +405,7 @@ where
             let sym = expected.symbols().into_iter().next().unwrap();
             if let Some(v) = solve_for(&sym, &expected, &provided.to_dim()) {
                 debug!("Determined symbol {sym}={v}");
-                symbols[&sym] = Some(v.to_i64().unwrap());
+                symbols.set(&sym, v.to_i64().unwrap());
             }
         }
         Ok(())
