@@ -64,10 +64,12 @@ fn einsum_rules(
     // terrible hack to maintain opaque fact through eager propatagation of constant through the
     // axes transformation
     if let Some(op) = patch.node_mut(wire[0].node).op_as_mut::<Const>() {
-        op.1 = model.outlet_fact(node.inputs[0])?.opaque_fact.clone();
+        op.1.clone_from(&model.outlet_fact(node.inputs[0])?.opaque_fact);
     }
-    patch.outlet_fact_mut(wire[0])?.opaque_fact =
-        model.outlet_fact(node.inputs[0])?.opaque_fact.clone();
+    patch
+        .outlet_fact_mut(wire[0])?
+        .opaque_fact
+        .clone_from(&model.outlet_fact(node.inputs[0])?.opaque_fact);
     // end of hack
 
     let b_order_es: String = op.axes.axes(InOut::In(1)).map(|a| a.repr).collect();
@@ -246,7 +248,7 @@ impl TypedOp for BasicMatMul {
         } else if let Some(opf) =
             inputs[0].opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
         {
-            let a_shape: ShapeFact = a.shape.into_iter().chain(opf.shape.iter()).collect();
+            let a_shape: ShapeFact = a.shape.iter().chain(opf.shape.iter()).collect();
             Ok(tvec!(self
                 .quantize_output
                 .unwrap_or(b.datum_type)

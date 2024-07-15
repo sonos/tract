@@ -259,7 +259,7 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
     Ok(tensor)
 }
 
-#[warn(clippy::field_reassign_with_default)]
+#[allow(clippy::field_reassign_with_default)]
 fn write_block_quant_value(w: &mut impl Write, value: &BlockQuantValue) -> TractResult<()> {
     ensure!(value.fact.format.same_as(&Q4_0));
     ensure!(value.fact.shape.rank() == 2);

@@ -616,7 +616,7 @@ impl TypedOp for AxisOp {
         self.change_shape(&mut shape, false)
             .with_context(|| format!("Applying {self:?} to {:?}", inputs[0]))?;
         let mut fact = inputs[0].datum_type.fact(shape);
-        fact.opaque_fact = inputs[0].opaque_fact.clone();
+        fact.opaque_fact.clone_from(&inputs[0].opaque_fact);
         Ok(tvec!(fact))
     }
 
