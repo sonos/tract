@@ -165,7 +165,7 @@ impl OpState for PulsedSameAxisConcatState {
         let pre_length = op.pre_slice.shape()[op.axis];
         let pre_offset = op.input_delay - pre_length;
         overwrite_part_of_pulse(op.axis, &mut data, current_pos, &op.pre_slice, pre_offset)?;
-        if self.symbols_in_dim.iter().all(|s| session.resolved_symbols[s].is_some()) {
+        if self.symbols_in_dim.iter().all(|s| session.resolved_symbols.get(s).is_some()) {
             let l = op.input_len.eval(&session.resolved_symbols).to_usize().unwrap();
             let post_offset = op.input_delay + l;
             overwrite_part_of_pulse(op.axis, &mut data, current_pos, &op.post_slice, post_offset)?;
