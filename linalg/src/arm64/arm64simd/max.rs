@@ -19,14 +19,14 @@ reduce_impl_wrap!(
             and v1.16b, v0.16b, v0.16b
             and v2.16b, v0.16b, v0.16b
             and v3.16b, v0.16b, v0.16b
-            1:
+            2:
                 ld1 {{v4.4s, v5.4s, v6.4s, v7.4s}}, [{ptr}], 64
                 fmax v0.4s, v0.4s, v4.4s
                 fmax v1.4s, v1.4s, v5.4s
                 fmax v2.4s, v2.4s, v6.4s
                 fmax v3.4s, v3.4s, v7.4s
                 subs {len}, {len}, 16
-                bne 1b
+                bne 2b
             fmax v0.4s, v0.4s, v1.4s
             fmax v2.4s, v2.4s, v3.4s
             fmax v0.4s, v0.4s, v2.4s
