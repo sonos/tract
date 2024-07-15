@@ -20,10 +20,10 @@ include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 pub mod frame;
 pub mod generic;
 pub mod multithread;
-use frame::unicast::UnicastKer;
 use frame::element_wise::ElementWiseKer;
 use frame::reduce::{MapReduceKer, ReduceKer};
-use frame::{unicast, reduce, MatMatMul};
+use frame::unicast::UnicastKer;
+use frame::{reduce, unicast, MatMatMul};
 pub use generic::{ScaleShiftAndRound, Scaler};
 #[cfg(target_arch = "x86_64")]
 pub mod x86_64_fma;
@@ -99,28 +99,17 @@ impl Ops {
 
     pub fn mmm(
         &self,
-        a: DatumType,
-        b: DatumType,
-        c: DatumType,
+        accumulator: DatumType,
         m: Option<usize>,
         k: Option<usize>,
         n: Option<usize>,
     ) -> Option<Box<dyn mmm::MatMatMul>> {
         use DatumType::*;
-        match (a.unquantized(), b.unquantized(), c.unquantized()) {
-            (F64, F64, F64) => {
-                Some(if n == Some(1) { (self.mmv_f64)(m, k) } else { (self.mmm_f64)(m, k, n) })
-            }
-            (F32, F32, F32) => {
-                Some(if n == Some(1) { (self.mmv_f32)(m, k) } else { (self.mmm_f32)(m, k, n) })
-            }
-            (F16, F16, F16) => {
-                Some(if n == Some(1) { (self.mmv_f16)(m, k) } else { (self.mmm_f16)(m, k, n) })
-            }
-            (I8, I8, I32) => {
-                Some(if n == Some(1) { (self.qmmv_i32)(m, k) } else { (self.qmmm_i32)(m, k, n) })
-            }
-            (I8, I8, I8) => {
+        match accumulator {
+            F64 => Some(if n == Some(1) { (self.mmv_f64)(m, k) } else { (self.mmm_f64)(m, k, n) }),
+            F32 => Some(if n == Some(1) { (self.mmv_f32)(m, k) } else { (self.mmm_f32)(m, k, n) }),
+            F16 => Some(if n == Some(1) { (self.mmv_f16)(m, k) } else { (self.mmm_f16)(m, k, n) }),
+            I32 => {
                 Some(if n == Some(1) { (self.qmmv_i32)(m, k) } else { (self.qmmm_i32)(m, k, n) })
             }
             _ => None,

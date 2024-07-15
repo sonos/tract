@@ -127,10 +127,9 @@ impl Conv {
         wire_ensure_q8_flavour(model, name, &mut kernel, "k", &mut k0, i8::datum_type())?;
         wire_ensure_q8_flavour(model, name, &mut x, "x", &mut x0, i8::datum_type())?;
 
-        let a_fact = model.outlet_fact(kernel)?.clone();
         let b_fact = model.outlet_fact(x)?.clone();
 
-        let (_, _, k, n, mmm) = self.compute_geo(&a_fact, &b_fact)?;
+        let (_, _, k, n, mmm) = self.compute_geo(&b_fact)?;
         let packing = 1; // FIXME
         let output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
 
@@ -253,13 +252,12 @@ impl Conv {
         name: &str,
         wire: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let &[x, kernel, bias] = wire else { bail!("Wrong number of inputs") };
+        let &[x, _kernel, bias] = wire else { bail!("Wrong number of inputs") };
         let x_fact = model.outlet_fact(x)?.clone();
-        let k_fact = model.outlet_fact(kernel)?.clone();
         let b_dt = x_fact.datum_type;
         let c_dt = crate::ops::matmul::output_type(x_fact.datum_type);
 
-        let (_, _, k, _, mmm) = self.compute_geo(&k_fact, &x_fact)?;
+        let (_, _, k, _, mmm) = self.compute_geo(&x_fact)?;
         let geo_output_shape = self.pool_spec.output_shape(&x_fact.shape)?;
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo_output_shape)?;
 
@@ -360,8 +358,7 @@ impl Conv {
     ) -> TractResult<TVec<OutletId>> {
         let &[mut x, kernel, bias] = wire else { bail!("Wrong number of inputs") };
         let mut x_fact = model.outlet_fact(x)?.clone();
-        let k_fact = model.outlet_fact(kernel)?.clone();
-        let (geo, m, k, n, mmm) = self.compute_geo(&k_fact, &x_fact)?;
+        let (geo, m, k, n, mmm) = self.compute_geo(&x_fact)?;
         let packing = 0;
         debug!("{name} as lazy_im2col: m={m} k={k} n={n} {mmm:?}");
         let input_shape = x_fact.shape.as_concrete().unwrap().to_vec();
@@ -444,12 +441,10 @@ impl Conv {
     #[allow(clippy::type_complexity)]
     fn compute_geo(
         &self,
-        kernel_fact: &TypedFact,
         input_fact: &TypedFact,
     ) -> TractResult<(PoolGeometry, usize, usize, TDim, Box<dyn MatMatMul>)> {
-        let a_dt = kernel_fact.datum_type;
         let b_dt = input_fact.datum_type;
-        let c_dt = crate::ops::matmul::output_type(b_dt);
+        let acc = if b_dt.is_float() { b_dt } else { i32::datum_type() };
 
         let geo = self.pool_spec.compute_geo(&input_fact.shape)?;
 
@@ -461,8 +456,8 @@ impl Conv {
             self.pool_spec.output_shape(&input_fact.shape)?.hw_dims().iter().cloned().product();
 
         let mmm = tract_linalg::ops()
-            .mmm(a_dt, b_dt, c_dt, Some(m), Some(k), n.to_usize().ok())
-            .with_context(|| format!("No multiplier for {a_dt:?}x{b_dt:?} to {c_dt:?}",))?;
+            .mmm(acc, Some(m), Some(k), n.to_usize().ok())
+            .with_context(|| format!("No multiplier for {acc:?}, {m}x{k}x{n}",))?;
 
         Ok((geo, m, k, n, mmm))
     }

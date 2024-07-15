@@ -415,9 +415,8 @@ fn lir_mat_mul_unary(
     } else {
         let a_dt = input_facts[0].datum_type;
         let b_dt = input_facts[1].datum_type;
-        let dt = op.operating_dt;
         let mmm = tract_linalg::ops()
-            .mmm(a_dt, b_dt, dt, m.to_usize().ok(), k.to_usize().ok(), n.to_usize().ok())
+            .mmm(op.operating_dt, m.to_usize().ok(), k.to_usize().ok(), n.to_usize().ok())
             .unwrap();
         let packing = mmm
             .packings()
