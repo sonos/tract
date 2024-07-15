@@ -599,15 +599,23 @@ pub fn reduce(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
 pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let a: OutletId = invocation.named_arg_as(builder, "A")?;
     let b: OutletId = invocation.named_arg_as(builder, "B")?;
-    let a_trans = invocation.named_arg_as(builder, "transposeA")?;
-    let b_trans = invocation.named_arg_as(builder, "transposeB")?;
+    let a_trans:bool = invocation.named_arg_as(builder, "transposeA")?;
+    let b_trans:bool = invocation.named_arg_as(builder, "transposeB")?;
     let a_dt = builder.model.outlet_fact(a)?.datum_type;
     let b_dt = builder.model.outlet_fact(b)?.datum_type;
     let a_rank = builder.model.outlet_fact(a)?.rank();
     let b_rank = builder.model.outlet_fact(b)?.rank();
     let c_rank = a_rank.max(b_rank);
-    let mut axes = AxesMapping::for_numpy_matmul(c_rank, a_trans, b_trans, false)?;
     let name = &*invocation.invocation.id.0;
+    if b_dt.is_opaque() {
+        let mut axes = AxesMapping::for_numpy_matmul(c_rank, false, !a_trans, true)?;
+        // remove prefix on block quant matrix
+        while axes.rank(InOut::In(0)) > 2 {
+            axes = axes.remove_axis_occurency(InOut::In(0), 0)?;
+        }
+        return builder.wire(ops::einsum::EinSum { axes, operating_dt: a_dt, q_params: None }, &[b, a])
+    }
+    let mut axes = AxesMapping::for_numpy_matmul(c_rank, a_trans, b_trans, false)?;
     if a_dt.is_quantized() || b_dt.is_quantized() {
         for input in 0..7 {
             axes = axes.with_extra_input(2 + input)?;

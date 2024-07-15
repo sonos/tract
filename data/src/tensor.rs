@@ -145,7 +145,7 @@ impl Drop for Tensor {
 
 impl Tensor {
     #[allow(unreachable_code, unexpected_cfgs)]
-    fn default_alignment(dt: DatumType, shape: &[usize]) -> usize {
+    pub fn default_alignment(dt: DatumType, shape: &[usize]) -> usize {
         if shape.len() == 0 {
             return dt.alignment();
         }
