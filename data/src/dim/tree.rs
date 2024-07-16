@@ -504,6 +504,33 @@ impl TDim {
         }
     }
 
+    pub fn search_and_replace(self, rules: &HashMap<TDim, TDim>) -> TDim {
+        use self::TDim::*;
+        if let Some(result) = rules.get(&self) {
+            return result.clone();
+        }
+        match self {
+            Val(_) | Sym(_) => self,
+            Add(terms) => {
+                Add(terms.into_iter().map(|t| t.search_and_replace(rules)).collect()).simplify()
+            }
+            Mul(terms) => {
+                Mul(terms.into_iter().map(|t| t.search_and_replace(rules)).collect()).simplify()
+            }
+            Min(terms) => {
+                Min(terms.into_iter().map(|t| t.search_and_replace(rules)).collect()).simplify()
+            }
+            Max(terms) => {
+                Max(terms.into_iter().map(|t| t.search_and_replace(rules)).collect()).simplify()
+            }
+            Broadcast(terms) => {
+                Broadcast(terms.into_iter().map(|t| t.search_and_replace(rules)).collect()).simplify()
+            }
+            MulInt(i, t) => MulInt(i, Box::new(t.search_and_replace(rules))).simplify(),
+            Div(p, q) => Div(Box::new(p.search_and_replace(rules)), q).simplify(),
+        }
+    }
+
     pub fn gcd(&self) -> u64 {
         use self::TDim::*;
         use num_integer::Integer;

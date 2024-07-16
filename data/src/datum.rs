@@ -215,6 +215,11 @@ impl DatumType {
         self.is_signed() | self.is_unsigned() | self.is_float() | self.is_quantized()
     }
 
+    pub fn is_tdim(&self) -> bool {
+        *self == DatumType::TDim
+    }
+
+
     #[cfg(feature = "complex")]
     pub fn is_complex(&self) -> bool {
         self.is_complex_float() || self.is_complex_signed()
