@@ -136,8 +136,13 @@ jobs:
         key: ${{ runner.os }}-all-targets-${{steps.date.outputs.date}}-e
     - name: Check all targets
       run: |
+<<<<<<< HEAD
         ROOT=$(pwd) ./.travis/ci-system-setup.sh
         cargo check --all-targets
+=======
+        ./.travis/ci-system-setup.sh
+        cargo check --all-targets --exclude tract-metal --workspace
+>>>>>>> 365238e3f (Fix for CI)
 
   cli-tests:
     runs-on: ubuntu-latest

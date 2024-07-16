@@ -102,11 +102,11 @@ pub fn metal_basic_matmul(
     let metal_a = a.into_metal().unwrap();
     let metal_b = b.into_metal().unwrap();
     // Warmup
-    let _ = BasicMatMul.eval(&context, &metal_a, &metal_b).unwrap();
+    let _ = BasicMatMul::default().eval(&context, &metal_a, &metal_b).unwrap();
 
     crit.bench_function(&format!("tract_metal_mat_vec_{:?}", dt), |be| {
         be.iter(|| {
-            let _ = BasicMatMul.eval(&context, &metal_a, &metal_b).unwrap();
+            let _ = BasicMatMul::default().eval(&context, &metal_a, &metal_b).unwrap();
         });
     });
     // metal_mat_vec
