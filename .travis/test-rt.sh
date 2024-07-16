@@ -24,10 +24,16 @@ fi
 set +x
 
 cd $ROOT
+
 for c in test-rt/test*
 do
-    if [ "$c" != "test-rt/test-tflite" -a "$c" != "test-rt/test-metal" ]
+    if [ "$c" == "test-rt/test-tflite" ]
     then
+        :
+    elif [ "$c" == "test-rt/test-metal" -a  `uname` != "Darwin" ]
+    then
+        :
+    else
         echo
         echo "$WHITE ### $c ### $NC"
         echo
