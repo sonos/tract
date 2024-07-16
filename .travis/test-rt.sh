@@ -29,10 +29,10 @@ for c in test-rt/test*
 do
     if [ "$c" == "test-rt/test-tflite" ]
     then
-        :
+        echo "$WHITE ### $c ### IGNORED $NC"
     elif [ "$c" == "test-rt/test-metal" -a  `uname` != "Darwin" ]
     then
-        :
+        echo "$WHITE ### $c ### IGNORED $NC"
     else
         echo
         echo "$WHITE ### $c ### $NC"
