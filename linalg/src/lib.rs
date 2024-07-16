@@ -26,6 +26,7 @@ use frame::reduce::{MapReduceKer, ReduceKer};
 use frame::unicast::UnicastKer;
 use frame::{reduce, unicast, MatMatMul};
 pub use generic::{ScaleShiftAndRound, Scaler};
+use tract_data::internal::TensorView;
 #[cfg(target_arch = "x86_64")]
 pub mod x86_64_fma;
 
@@ -173,6 +174,73 @@ lazy_static::lazy_static! {
     static ref OPS: Ops = {
         best()
     };
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum BinOp {
+    Min,
+    Max,
+    Add,
+    Mul,
+    Sub,
+    SubF,
+}
+
+impl BinOp {
+    pub fn flip(&self) -> BinOp {
+        use BinOp::*;
+        match self {
+            Sub => SubF,
+            SubF => Sub,
+            sym => *sym,
+        }
+    }
+}
+
+pub fn bin_by_scalar(bin: BinOp) -> Box<dyn Fn(&mut TensorView, &TensorView) -> TractResult<()>> {
+    match bin {
+        BinOp::Mul => {
+            return Box::new(|a: &mut TensorView, b: &TensorView| -> TractResult<()> {
+                match b.datum_type() {
+                    DatumType::F32 =>{
+                        let a_slice = a.as_slice_mut()?;
+                        let b_slice = b.as_slice()?[0];
+                        (ops().mul_by_scalar_f32)().run_with_params(a_slice, b_slice)
+                    },
+                    DatumType::F16 => {
+                        let a_slice = a.as_slice_mut()?;
+                        let b_slice = b.as_slice()?[0];
+                        (ops().mul_by_scalar_f16)().run_with_params(a_slice, b_slice)
+                    },
+                    _ => unimplemented!(""),
+                }
+            })
+        },
+        _ => unimplemented!()
+    }
+}
+
+pub fn bin_unicast(bin: BinOp) -> Box<dyn Fn(&mut TensorView, &TensorView) -> TractResult<()>> {
+    match bin {
+        BinOp::Mul => {
+            return Box::new(|a: &mut TensorView, b: &TensorView| -> TractResult<()> {
+                match b.datum_type() {
+                    DatumType::F32 => {
+                        let a_slice = a.as_slice_mut()?;
+                        let b_slice = b.as_slice()?;
+                        (ops().unicast_mul_f32)().run(a_slice, b_slice)
+                    },
+                    DatumType::F16 => {
+                        let a_slice = a.as_slice_mut()?;
+                        let b_slice = b.as_slice()?;
+                        (ops().unicast_mul_f32)().run(a_slice, b_slice)
+                    },
+                    _ => unimplemented!(""),
+                }
+            })
+        },
+        _ => unimplemented!()
+    }
 }
 
 pub fn ops() -> &'static Ops {
