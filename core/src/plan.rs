@@ -12,19 +12,13 @@ use crate::ops::FrozenOpState;
 
 use self::order::{eval_order_for_nodes, eval_order_opt_ram_for_nodes};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct PlanOptions {
     /// Use the simple ordering instead of the newer memory friendly one
     pub skip_order_opt_ram: bool,
 
     /// Override default global executor
     pub executor: Option<Executor>,
-}
-
-impl Default for PlanOptions {
-    fn default() -> Self {
-        Self { skip_order_opt_ram: false, executor: None }
-    }
 }
 
 #[derive(Default)]
