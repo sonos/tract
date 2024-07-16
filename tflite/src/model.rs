@@ -77,14 +77,13 @@ impl Framework<TfliteProtoModel, TypedModel> for Tflite {
         TfliteProtoModel::new(buf)
     }
 
-    fn model_for_proto_model_with_symbols(
+    fn model_for_proto_model_with_model_template(
         &self,
         proto: &TfliteProtoModel,
-        _symbols: &SymbolTable,
+        mut target: TypedModel,
     ) -> TractResult<TypedModel> {
         let root = proto.root();
         let main = &root.subgraphs().context("No subgraphs in Tflite model")?.get(0);
-        let mut target = TypedModel::default();
         let mut mapping = HashMap::new();
         for input in main.inputs().context("No inputs in Tflite model")? {
             if !flat_tensor_uses_per_axis_q(main, input) {

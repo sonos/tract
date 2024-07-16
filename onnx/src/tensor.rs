@@ -49,7 +49,7 @@ pub fn translate_inference_fact(
                         if v == "?" || (v.starts_with("unk__") && !include_unknown_symbols) {
                             Ok(DimFact::default())
                         } else {
-                            let dim = parse_tdim(&ctx.symbol_table, v)
+                            let dim = parse_tdim(&ctx.template.symbol_table, v)
                                 .with_context(|| format!("Parsing as TDim: `{v}'"))?;
                             Ok(DimFact::from(dim))
                         }
