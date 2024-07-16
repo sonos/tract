@@ -158,24 +158,6 @@ impl Registry {
                 let b = ast.mapping[&node.inputs[1]].clone();
                 return Ok(Some(invocation(&op.0, &[a, b], &[])));
             }
-        // Temporary allow for by scalar serialization
-        } else if let Some(op) = node.op().downcast_ref::<ops::binary::BinOpByScalar>() {
-            if let Some(op) =
-                self.binary_ops.iter().find(|ew| ew.1.as_ref().type_id() == op.0.type_id())
-            {
-                let a = ast.mapping[&node.inputs[0]].clone();
-                let b = ast.mapping[&node.inputs[1]].clone();
-                return Ok(Some(invocation(&op.0, &[a, b], &[])));
-            }
-        // Temporary allow for unicast serialization
-        } else if let Some(op) = node.op().downcast_ref::<ops::binary::BinOpUnicast>() {
-            if let Some(op) =
-                self.binary_ops.iter().find(|ew| ew.1.as_ref().type_id() == op.0.type_id())
-            {
-                let a = ast.mapping[&node.inputs[0]].clone();
-                let b = ast.mapping[&node.inputs[1]].clone();
-                return Ok(Some(invocation(&op.0, &[a, b], &[])));
-            }
         } else if let Some(op) = self.from_tract.get(&node.op().type_id()) {
             if let Some(result) = op(ast, node)? {
                 return Ok(Some(result));
