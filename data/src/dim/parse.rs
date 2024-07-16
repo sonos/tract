@@ -3,8 +3,8 @@ use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::{alpha1, alphanumeric1, digit1, one_of};
 use nom::combinator::{all_consuming, map, map_res, recognize};
-use nom::multi::many0;
-use nom::sequence::{delimited, pair, separated_pair};
+use nom::multi::{many0, separated_list0};
+use nom::sequence::{delimited, pair, preceded, separated_pair};
 use nom::IResult;
 
 pub fn parse_tdim(symbol_table: &SymbolTable, input: &str) -> TractResult<TDim> {
@@ -43,10 +43,23 @@ fn div<'i>(symbol_table: &SymbolTable, input: &'i str) -> IResult<&'i str, TDim>
 fn atom<'i>(symbol_table: &SymbolTable, i: &'i str) -> IResult<&'i str, TDim> {
     alt((
         map(numeric, TDim::Val),
+        map(|i| func(symbol_table, "min", i), TDim::Min),
+        map(|i| func(symbol_table, "max", i), TDim::Max),
         map(|i| identifier(symbol_table, i), TDim::Sym),
         map(pair(recognize(stag("-")), |i| atom(symbol_table, i)), |(_, dim)| dim * -1),
         delimited(stag("("), |i| expr(symbol_table, i), stag(")")),
     ))(i)
+}
+
+fn func<'i>(
+    symbol_table: &SymbolTable,
+    name: &'static str,
+    i: &'i str,
+) -> IResult<&'i str, Vec<TDim>> {
+    preceded(
+        stag(name),
+        delimited(stag("("), separated_list0(stag(","), |i| expr(symbol_table, i)), stag(")")),
+    )(i)
 }
 
 fn identifier<'i>(symbol_table: &SymbolTable, i: &'i str) -> IResult<&'i str, Symbol> {
@@ -109,5 +122,14 @@ mod test {
         let table = SymbolTable::default();
         assert_eq!(parse_tdim(&table, "1+2*3").unwrap(), 7.into());
         assert_eq!(parse_tdim(&table, "1*2+3").unwrap(), 5.into());
+    }
+
+    #[test]
+    fn parse_min() {
+        let table = SymbolTable::default();
+        assert_eq!(
+            parse_tdim(&table, "min(P,S)").unwrap(),
+            TDim::Min(vec!(table.sym("P").into(), table.sym("S").into()))
+        );
     }
 }
