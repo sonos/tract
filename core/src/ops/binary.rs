@@ -215,8 +215,14 @@ impl TypedOp for TypedBinOp {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let (a_dt, b_dt) = if let &[a, b] = &*model.node_input_facts(node.id)? {(a.datum_type().unwrap(), b.datum_type().unwrap())} else {unreachable!("")};
-        if let Some(neutral_patch) = declutter_neutral(model, node, &self.0, self.output_datum_type(a_dt, b_dt)?)? {
+        let (a_dt, b_dt) = if let &[a, b] = &*model.node_input_facts(node.id)? {
+            (a.datum_type().unwrap(), b.datum_type().unwrap())
+        } else {
+            unreachable!("TypedBinOp has two inputs.")
+        };
+        if let Some(neutral_patch) =
+            declutter_neutral(model, node, self.0.as_ref(), self.output_datum_type(a_dt, b_dt)?)?
+        {
             return Ok(Some(neutral_patch));
         }
 
@@ -276,7 +282,7 @@ impl TypedOp for TypedBinOp {
 fn declutter_neutral(
     model: &TypedModel,
     node: &TypedNode,
-    mini_op: &Box<dyn BinMiniOp>,
+    mini_op: &dyn BinMiniOp,
     out_dt: DatumType,
 ) -> TractResult<Option<TypedModelPatch>> {
     if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
