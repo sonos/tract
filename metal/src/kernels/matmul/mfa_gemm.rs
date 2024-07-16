@@ -6,6 +6,7 @@ use metal::NSUInteger;
 use metal::{Buffer, MTLSize};
 use num_traits::One;
 use std::ffi::c_void;
+use std::fmt;
 use tract_core::internal::*;
 use tract_core::ndarray;
 use tract_core::ndarray::Dimension;
@@ -30,6 +31,12 @@ impl GemmPrecision {
 pub struct MfaGemm {
     pub transpose_a: bool,
     pub transpose_b: bool,
+}
+
+impl fmt::Display for MfaGemm {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 impl MfaGemm {

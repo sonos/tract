@@ -1,22 +1,28 @@
-use crate::kernels::matmul::MfaGemm;
+use crate::kernels::matmul;
 use crate::tensor::MetalTensorExt;
 use anyhow::{bail, ensure};
 use tract_core::internal::*;
 
+#[cfg(target_os = "macos")]
+type MatMulImpl = matmul::MfaGemm;
+#[cfg(target_os = "ios")]
+type MatMulImpl = matmul::BasicMatMul;
+
+
 #[derive(Debug, Default, Clone)]
 pub struct MetalGemm {
-    pub kernel: MfaGemm,
+    pub kernel: MatMulImpl
 }
 
 impl MetalGemm {
     pub fn new(transpose_a: bool, transpose_b: bool) -> Self {
-        Self { kernel: MfaGemm { transpose_a, transpose_b } }
+        Self { kernel: MatMulImpl { transpose_a, transpose_b } }
     }
 }
 
 impl Op for MetalGemm {
     fn name(&self) -> Cow<str> {
-        "MetalGemm".into()
+        format!("Metal{}", self.kernel).into()
     }
 
     op_as_typed_op!();
@@ -62,8 +68,12 @@ impl EvalOp for MetalGemm {
         let (a, b) = args_2!(inputs);
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
-                let a_metal_ref = a.to_metal_tensor()?;
-                let b_metal_ref = b.to_metal_tensor()?;
+                let a_metal_ref = a
+                    .to_metal_tensor()
+                    .with_context(|| anyhow!("A tensor is not a metal tensor"))?;
+                let b_metal_ref = b
+                    .to_metal_tensor()
+                    .with_context(|| anyhow!("B tensor is not a metal tensor {:?}", b))?;
                 let out = self.kernel.dispatch_eval(context, a_metal_ref, b_metal_ref)?;
                 Ok(tvec![out.into_opaque_tensor().into_tvalue()])
             })
