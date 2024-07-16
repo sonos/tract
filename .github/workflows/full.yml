@@ -141,8 +141,12 @@ jobs:
         cargo check --all-targets
 =======
         ./.travis/ci-system-setup.sh
+<<<<<<< HEAD
         cargo check --all-targets --exclude tract-metal --workspace
 >>>>>>> 365238e3f (Fix for CI)
+=======
+        cargo check --all-targets --exclude tract-metal --exclude test-metal --workspace
+>>>>>>> 392756b72 (Fix CI)
 
   cli-tests:
     runs-on: ubuntu-latest
