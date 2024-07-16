@@ -21,13 +21,12 @@ impl<'mb> ModelBuilder<'mb> {
     pub fn new(
         framework: &'mb Nnef,
         proto_model: &'mb ProtoModel,
-        symbols: &SymbolTable,
+        template: TypedModel,
     ) -> ModelBuilder<'mb> {
-        let model = TypedModel { symbol_table: symbols.to_owned(), ..TypedModel::default() };
         ModelBuilder {
             registries: vec!["tract_nnef".into()],
             framework,
-            model,
+            model: template,
             naming_scopes: vec![],
             scopes: vec![],
             proto_model,

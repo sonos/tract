@@ -45,6 +45,8 @@ where
     pub properties: HashMap<String, Arc<Tensor>>,
     /// symbol table
     pub symbol_table: SymbolTable,
+    /// TDim forced simplifications
+    pub tdim_rules: HashMap<TDim, TDim>,
 }
 
 impl<F, O> Default for Graph<F, O>
@@ -60,6 +62,7 @@ where
             outlet_labels: HashMap::new(),
             properties: HashMap::new(),
             symbol_table: Default::default(),
+            tdim_rules: Default::default(),
         }
     }
 }

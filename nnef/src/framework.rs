@@ -73,9 +73,9 @@ impl Nnef {
     pub fn translate(
         &self,
         proto_model: &ProtoModel,
-        symbols: &SymbolTable,
+        template: TypedModel,
     ) -> Result<TypedModel, (TypedModel, TractError)> {
-        ModelBuilder::new(self, proto_model, symbols).into_typed_model()
+        ModelBuilder::new(self, proto_model, template).into_typed_model()
     }
 
     pub fn write(&self, model: &TypedModel, w: impl std::io::Write) -> TractResult<()> {
@@ -298,12 +298,12 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
         proto_model_from_resources(resources)
     }
 
-    fn model_for_proto_model_with_symbols(
+    fn model_for_proto_model_with_model_template(
         &self,
         proto: &ProtoModel,
-        symbols: &SymbolTable,
+        template: TypedModel,
     ) -> TractResult<TypedModel> {
-        self.translate(proto, symbols).map_err(|e| e.1)
+        self.translate(proto, template).map_err(|e| e.1)
     }
 }
 
@@ -357,7 +357,7 @@ fn proto_model_from_resources(
         .map_err(|_| anyhow!("Error while downcasting NNEF document resource"))?;
 
     let doc = Arc::try_unwrap(doc)
-        .map_err(|_| anyhow!("Error while extracting NNEF Document from shared reference. Only one reference to the document is expected"))?;
+            .map_err(|_| anyhow!("Error while extracting NNEF Document from shared reference. Only one reference to the document is expected"))?;
 
     // Collect all resources that can be downcastable to Arc<Tensor>.
     let tensors: HashMap<_, _> = new_resources
