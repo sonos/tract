@@ -111,13 +111,13 @@ impl MfaGemm {
                     (1, m, n, k),
                     std::mem::transmute::<&[isize], &[usize]>(a_strides.as_slice()),
                     a_offset as usize * c_dt.size_of(),
-                    &a.metal(),
+                    a.metal(),
                     self.transpose_a,
                     std::mem::transmute::<&[isize], &[usize]>(b_strides.as_slice()),
                     b_offset as usize * c_dt.size_of(),
-                    &b.metal(),
+                    b.metal(),
                     self.transpose_b,
-                    &c.metal(),
+                    c.metal(),
                     c_offset as usize * c_dt.size_of(),
                 )
                 .with_context(|| {
