@@ -710,7 +710,7 @@ macro_rules! bin_to_super_type {
             }
 
             fn eval_by_scalar(&self, a: &mut TensorView, b: &TensorView) -> TractResult<()> {
-                $(if $eval_by_scalar(a, b)? { return Ok(()) } )?
+                $(if $eval_by_scalar(a, b)? { return Ok(())} )?
                 $(
                     $(if b.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
