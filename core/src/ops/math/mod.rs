@@ -23,8 +23,8 @@ mod complex;
 pub use complex::{ComplexToInnerDim, InnerDimToComplex};
 
 bin_to_super_type!(add, Add,
-                   declutter: declutter_add,
                    linalg: Add,
+                   neutral_element: 0,
                    validation: Validation::Rounding,
                    q: [i8, u8, i32, i32] => add_quant;
                    q_op_on_f32: |a: f32, b: f32| -> f32 {a+b},
@@ -39,8 +39,9 @@ where
 }
 
 bin_to_super_type!(sub, Sub,
-                   declutter: declutter_sub,
                    linalg:Sub,
+                   is_commutative: false,
+                   neutral_element: 0,
                    q: [i8, u8, i32, i32] => sub_quant;
                    q_op_on_f32: |a: f32, b: f32| -> f32 {a-b},
                    [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
@@ -110,6 +111,7 @@ bin_to_super_type!(mul, Mul,
                             Ok(false)
                         }
                    },
+                   neutral_element: 1,
                    out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
                        if c.datum_type() == TDim::datum_type() &&
                            a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
@@ -338,6 +340,8 @@ eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
             Div.generic_eval(a, b, c_dt)
         }
 },
+is_commutative: false,
+neutral_element: 1,
 out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
     if c.datum_type() == TDim::datum_type() &&
         a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
@@ -452,60 +456,18 @@ bin_to_super_type!(max, Max,
 
 bin_to_super_type!(pow, Pow,
                    declutter: declutter_pow,
+                   is_commutative: false,
+                   neutral_element: 1,
                    q_op_on_f32: |a: f32, b: f32| -> f32 {a.powf(b)},
                    [f16, f32, f64] => |c,a,b| *c = a.powf(*b),
                    [i32, i64] => |c,a,b| *c = a.pow(*b as u32));
 
 bin_to_super_type!(shift_left, ShiftLeft,
+                   is_commutative: false,
                    [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a << *b);
 bin_to_super_type!(shift_right, ShiftRight,
+                   is_commutative: false,
                    [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a >> *b);
-
-fn declutter_neutral(
-    model: &TypedModel,
-    node: &TypedNode,
-    value: i64,
-    also_left: bool,
-) -> TractResult<Option<TypedModelPatch>> {
-    if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
-        // casting to i64 uni quantized type need to be avoided
-        if uniform.uni.datum_type().is_quantized() {
-            return Ok(None);
-        }
-        let Ok(integer) = uniform.uni.cast_to_scalar::<i64>() else { return Ok(None) };
-        if tensor0(integer)
-            .cast_to_dt(uniform.uni.datum_type())?
-            .close_enough(&uniform.uni, false)
-            .is_ok()
-            && integer == value
-            && (also_left || !uniform.left_is_uniform)
-        {
-            return Ok(Some(TypedModelPatch::rewire(
-                model,
-                &[uniform.var],
-                &[node.id.into()],
-                &|_, inputs| Ok(inputs.into()),
-            )?));
-        }
-    }
-    Ok(None)
-}
-
-fn declutter_add(
-    _op: &Add,
-    model: &TypedModel,
-    node: &TypedNode,
-) -> TractResult<Option<TypedModelPatch>> {
-    declutter_neutral(model, node, 0, true)
-}
-
-fn declutter_sub(
-    _op: &Sub,
-    model: &TypedModel,
-    node: &TypedNode,
-) -> TractResult<Option<TypedModelPatch>> {
-    declutter_neutral(model, node, 0, false)
-}
 
 fn declutter_mul(
     _op: &Mul,
@@ -520,9 +482,7 @@ fn declutter_mul(
             square(),
         )?));
     }
-    if let Some(p) = declutter_neutral(model, node, 1, true).context("decluttering neutral")? {
-        return Ok(Some(p));
-    }
+
     if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
         let var_fact = model.outlet_fact(uniform.var)?;
         if uniform.uni.cast_to_scalar::<f64>()? == 0.0 {
@@ -597,9 +557,6 @@ fn declutter_div(
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if let Some(p) = declutter_neutral(model, node, 1, false)? {
-        return Ok(Some(p));
-    }
     if let &[p, q] = &*model.node_input_facts(node.id)? {
         let dt = q.datum_type;
         if let Some(q) = &q.uniform {
@@ -648,9 +605,6 @@ fn declutter_pow(
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if let Some(p) = declutter_neutral(model, node, 1, false)? {
-        return Ok(Some(p));
-    }
     let b = model.outlet_fact(node.inputs[1])?;
     if let Some(b) = &b.uniform {
         let b = b.cast_to_scalar::<f32>()?;
