@@ -26,7 +26,7 @@ set +x
 cd $ROOT
 for c in test-rt/test*
 do
-    if [ "$c" != "test-rt/test-tflite" ]
+    if [ "$c" != "test-rt/test-tflite" -a "$c" != "test-rt/test-metal" ]
     then
         echo
         echo "$WHITE ### $c ### $NC"
