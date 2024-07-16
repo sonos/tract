@@ -4,6 +4,8 @@ use tract_itertools::Itertools;
 use std::fmt;
 use tract_data::itertools::izip;
 
+use super::cast::cast;
+
 pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast {
     fn name(&self) -> &'static str;
     fn validation(&self) -> Validation {
@@ -21,6 +23,13 @@ pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + 
     // Temporary introduced to test TensorView approach
     fn eval_by_scalar(&self, a: &mut TensorView, b: &TensorView) -> TractResult<()>;
     fn eval_unicast(&self, a: &mut TensorView, b: &TensorView) -> TractResult<()>;
+
+    fn is_commutative(&self) -> bool {
+        true
+    }
+    fn neutral_element(&self) -> Option<i64> {
+        None
+    }
 
     #[allow(unused_variables)]
     fn maybe_eval_qbinary_as_float_op(
@@ -206,10 +215,10 @@ impl TypedOp for TypedBinOp {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        // Need to add new methods to BinMiniOp firt
-        //if let Some(neutral_patch) = declutter_neutral(model, node, &self.0)? {
-        //    return Ok(Some(neutral_patch))
-        //}
+        let (a_dt, b_dt) = if let &[a, b] = &*model.node_input_facts(node.id)? {(a.datum_type().unwrap(), b.datum_type().unwrap())} else {unreachable!("")};
+        if let Some(neutral_patch) = declutter_neutral(model, node, &self.0, self.output_datum_type(a_dt, b_dt)?)? {
+            return Ok(Some(neutral_patch));
+        }
 
         self.0.declutter(model, node)
     }
@@ -262,6 +271,55 @@ impl TypedOp for TypedBinOp {
         Ok(None)
     }
     as_op!();
+}
+
+fn declutter_neutral(
+    model: &TypedModel,
+    node: &TypedNode,
+    mini_op: &Box<dyn BinMiniOp>,
+    out_dt: DatumType,
+) -> TractResult<Option<TypedModelPatch>> {
+    if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
+        // Not sure to understand why this check was needed
+        //let integer = uniform.uni.cast_to_scalar::<f64>()?;
+        //let is_scalar = tensor0(integer)
+        //    .cast_to_dt(uniform.uni.datum_type())?
+        //    .close_enough(&uniform.uni, false)
+        //    .is_ok();
+
+        let is_neutral = mini_op
+            .neutral_element()
+            .map(|neutral| tensor0(neutral).close_enough(&uniform.uni, false).is_ok())
+            .unwrap_or(false);
+
+        // For some operand neural element can be the left one while for other
+        // it is not the case (neutral - 1 -> not ok, 1 - neutal -> ok)
+        let pos_checked = mini_op.is_commutative() || !uniform.left_is_uniform;
+
+        if is_neutral && pos_checked {
+            // Neutral decluttering for quant values is special.
+            // - if (fa) (a-az)*as + (fb = 0) (b-bz)*bs = (fc) (c-cz)*cs
+            // - then even if fa = fc, quant params needs to be updated (a != c).
+            // So it's not a no_op.
+            if uniform.uni.datum_type().is_quantized() {
+                return Ok(Some(TypedModelPatch::replace_single_op(
+                    model,
+                    node,
+                    &[node.inputs[0]],
+                    cast(out_dt),
+                )?));
+            // In the non quantized case, it's a no_op.
+            } else {
+                return Ok(Some(TypedModelPatch::rewire(
+                    model,
+                    &[uniform.var],
+                    &[node.id.into()],
+                    &|_, inputs| Ok(inputs.into()),
+                )?));
+            }
+        }
+    }
+    Ok(None)
 }
 
 fn find_most_efficient_config(model: &TypedModel, node: &TypedNode) -> TractResult<(bool, bool)> {
@@ -517,6 +575,8 @@ macro_rules! bin_to_super_type {
      $(unicast_in_place: $unicast_in_place:expr,)?
      $(eval_by_scalar: $eval_by_scalar:expr,)?
      $(eval_unicast: $eval_unicast:expr,)?
+     $(is_commutative: $is_commutative:expr,)?
+     $(neutral_element: $neutral_element:expr,)?
      $(out_of_place: $out_of_place:expr,)?
      $(validation: $validation:expr,)?
      $(q: $([$($typ_dt:ident),*] => $cab_dt:expr),* ;)?
@@ -675,6 +735,12 @@ macro_rules! bin_to_super_type {
                 )*
                 bail!("{} does not support {:?} (eval unicast)", self.name(), a.datum_type());
             }
+            $(fn is_commutative(&self) -> bool {
+                $is_commutative
+            })?
+            $(fn neutral_element(&self) -> Option<i64> {
+                Some($neutral_element)
+            })?
             fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
                 // c and a are same type
                 $(if $eval_in_a(a, b)? { return Ok(()) } )?
