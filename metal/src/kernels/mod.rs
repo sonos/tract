@@ -18,7 +18,7 @@ pub const METAL_FLASH_ATTENTION_LIB: &[u8] =
     include_bytes!("matmul/libMetalFlashAttention-macos.metallib");
 
 pub const MMM_TILE_8X8_METAL_SOURCE: &str = include_str!("matmul/mmm_tile_8x8.metal");
-pub const MUL_MAT_VEC: &str = include_str!("matmul/mat_vec.metal");
+pub const BASIC_MAT_MUL: &str = include_str!("matmul/basic_mat_mul.metal");
 pub const ARRAY_OPS: &str = include_str!("array/array_ops.metal");
 pub const BIN_OPS: &str = include_str!("bin_ops.metal");
 pub const NN_OPS: &str = include_str!("nn/nn_ops.metal");
@@ -34,7 +34,7 @@ pub enum LibraryContent<'a> {
 pub enum LibraryName {
     MfaLib,
     MmmTile8x8,
-    MulMatVec,
+    BasicMatMul,
     BinOps,
     ArrayOps,
     NNOps,
@@ -46,7 +46,7 @@ impl LibraryName {
         match self {
             Self::MfaLib => LibraryContent::Data(METAL_FLASH_ATTENTION_LIB),
             Self::MmmTile8x8 => LibraryContent::Source(MMM_TILE_8X8_METAL_SOURCE),
-            Self::MulMatVec => LibraryContent::Source(MUL_MAT_VEC),
+            Self::BasicMatMul => LibraryContent::Source(BASIC_MAT_MUL),
             Self::ArrayOps => LibraryContent::Source(ARRAY_OPS),
             Self::BinOps => LibraryContent::Source(BIN_OPS),
             Self::NNOps => LibraryContent::Source(NN_OPS),
