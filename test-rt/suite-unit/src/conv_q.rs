@@ -1221,5 +1221,21 @@ pub fn suite() -> TractResult<TestSuite> {
             raw_output_dt: DatumType::I32,
         },
     );
+    let mut qp = qp_noop_i8();
+    qp[0] = tensor0(-3);
+    suite.add(
+        "bin_by_scalar_and_bin_unicast_selection_0",
+        QConvProblem {
+            shape_in: NHWC.from_n_c_hw(2, 2, [4, 4]).unwrap(),
+            co: 2,
+            kernel_format: OIHW,
+            group: 2,
+            kernel: tensor4(&[[[[1i8]]],[[[0i8]]]]),
+            bias: None,
+            data: Tensor::zero::<i8>(&[2, 4, 4, 2]).unwrap(),
+            qp,
+            raw_output_dt: DatumType::I8,
+        },
+    );
     Ok(suite)
 }

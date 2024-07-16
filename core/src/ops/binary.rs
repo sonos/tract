@@ -212,6 +212,12 @@ impl TypedOp for TypedBinOp {
         //}
         
         let (by_scalar_should_be_efficient, unicast_should_be_efficient) =  find_most_efficient_config(model, node)?;
+        let op_is_quant = if let &[a, b] = &*model.node_input_facts(node.id)? {
+            let c_dt = self.output_datum_type(a.datum_type, b.datum_type)?;
+            c_dt.is_quantized() || a.datum_type.is_quantized() || b.datum_type.is_quantized()
+        } else {
+            false
+        };
         let can_eval_in_a = if let &[a, b] = &*model.node_input_facts(node.id)? {
             let c_dt = self.output_datum_type(a.datum_type, b.datum_type)?;
             let c_shape = crate::broadcast::multi_broadcast(&[a.shape.clone(), b.shape.clone()])?;
@@ -220,7 +226,7 @@ impl TypedOp for TypedBinOp {
             false
         };
 
-        if by_scalar_should_be_efficient & can_eval_in_a {
+        if by_scalar_should_be_efficient & can_eval_in_a & !op_is_quant{
             return Ok(Some(
                 TypedModelPatch::replace_single_op(
                     model,
@@ -232,7 +238,7 @@ impl TypedOp for TypedBinOp {
             ))
         }
 
-        if unicast_should_be_efficient & can_eval_in_a {
+        if unicast_should_be_efficient & can_eval_in_a & !op_is_quant {
             return Ok(Some(
                 TypedModelPatch::replace_single_op(
                     model,
@@ -258,22 +264,22 @@ fn find_most_efficient_config(
         let b_shape = b.shape.clone();
 
         let by_scalar_is_possible = BinOpByScalar::check_input_shapes(&a_shape, &b_shape);
-        let num_trailing_elements = if  by_scalar_is_possible {
+        let num_by_scalar_elements = if  by_scalar_is_possible {
             a_shape.iter().zip(b_shape.iter()).rev().take_while(|(_, rev_b_dim)| **rev_b_dim == TDim::Val(1)).map(|(rev_a_dim, _)| rev_a_dim).product::<TDim>()
         } else {
             TDim::Val(0)
         };
         
         let unicast_is_possible = BinOpUnicast::check_input_shapes(&a_shape, &b_shape);
-        let num_leading_elements = if unicast_is_possible {
-            a_shape.iter().zip(b_shape.iter()).take_while(|(_, b_dim)| **b_dim == TDim::Val(1)).map(|(a_dim, _)| a_dim).product::<TDim>()
+        let num_unicast_elements = if unicast_is_possible {
+            a_shape.iter().zip(b_shape.iter()).rev().take_while(|(a_dim, b_dim)| a_dim == b_dim).map(|(a_dim, _)| a_dim).product::<TDim>()
         } else {
             TDim::Val(0)
         };
 
         let min_num_elements = 32;
-        let by_scalar_should_be_efficient = gt_tdim(num_trailing_elements, min_num_elements);
-        let unicast_should_be_efficient = gt_tdim(num_leading_elements, min_num_elements);
+        let by_scalar_should_be_efficient = gt_tdim(num_by_scalar_elements, min_num_elements);
+        let unicast_should_be_efficient = gt_tdim(num_unicast_elements, min_num_elements);
         return Ok((by_scalar_should_be_efficient, unicast_should_be_efficient))
     }
     Ok((false, false))
@@ -424,13 +430,23 @@ impl EvalOp for BinOpUnicast {
             .take_while(|&(_, &dim)| dim == 1)
             .map(|(i, _)| i)
             .collect();
-        for it_coords in tract_data::internal::iter_indices(b_shape) { 
+
+        // We only iterate on a dims that correspond to b leading_unary dims.
+        // To to so, we set all remaining a dims to 1.
+        // ex: A: [2, 16, 16, 32] B: [1, 1, 16, 32] -> [2, 16, 1, 1]
+        let mut iterating_shape = view.shape().to_vec();
+        iterating_shape.iter_mut().enumerate().for_each(|(idx, dim)| {
+            if !leading_unary_dims.contains(&idx) {
+                *dim = 1
+            }
+        });
+
+        // Iterate on outter dimensions and evaluate with unicast subviews
+        for it_coords in tract_data::internal::iter_indices(&iterating_shape) { 
             let mut view = view.clone();
-            for idx in 0..view.shape().len() {
-                if leading_unary_dims.contains(&idx) {
-                    view.collapse_axis(idx, it_coords[idx] as isize);
-                }
-            }            
+            leading_unary_dims.iter().for_each(|idx| {
+                view.collapse_axis(*idx, it_coords[*idx] as isize);
+            });
             self.0.eval_unicast(&mut view, &b_view)?;
         }
         Ok(tvec!(a.into_tvalue()))
@@ -625,9 +641,15 @@ macro_rules! bin_to_super_type {
                 $(
                     $(if b.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
-                        let b = &b.as_slice::<$typ>()?[0];
+                        let b = &b.as_slice::<$typ>()?;
                         let a_slice = a.as_slice_mut::<$typ>()?;
-                        a_slice.iter_mut().for_each(|a| cab(a, &a.clone(), b));
+                        unsafe {
+                            for i in 0..b.len() {
+                                let mut c = $typ::default();
+                                cab(&mut c, &a_slice[i], b.get_unchecked(i));
+                                *a_slice.get_unchecked_mut(i) = c;
+                            }
+                        }
                         return Ok(())
                     })*
                 )*
