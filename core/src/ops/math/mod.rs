@@ -111,6 +111,14 @@ bin_to_super_type!(mul, Mul,
                             Ok(false)
                         }
                    },
+                   eval_by_scalar: |a: &mut TensorView, b: &TensorView | -> TractResult<bool> {
+                       let res = tract_linalg::bin_by_scalar(tract_linalg::BinOp::Mul)(a, b).is_ok();
+                       Ok(res)
+                   },
+                   eval_unicast: |a: &mut TensorView, b: &TensorView | -> TractResult<bool> {
+                       let res = tract_linalg::bin_unicast(tract_linalg::BinOp::Mul)(a, b).is_ok();
+                       Ok(res)
+                   },
                    neutral_element: 1,
                    out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
                        if c.datum_type() == TDim::datum_type() &&
