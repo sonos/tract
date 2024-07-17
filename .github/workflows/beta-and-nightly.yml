@@ -68,7 +68,7 @@ jobs:
         RUST_VERSION: ${{matrix.rust}}
       run: |
           rustc --version
-          cargo check
+          cargo check --exclude tract-metal --exclude test-metal --workspace
 
   cargo-clippy:
     strategy:
@@ -87,7 +87,7 @@ jobs:
       env:
         RUST_VERSION: ${{matrix.rust}}
     - name: Run cargo-clippy
-      run: cargo clippy
+      run: cargo clippy --exclude tract-metal --exclude test-metal --workspace
       env:
         RUSTFLAGS: "-D warnings --force-warn unknown_lints"
         RUST_VERSION: ${{matrix.rust}}
