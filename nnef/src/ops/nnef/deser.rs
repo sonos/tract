@@ -157,6 +157,8 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
                 invocation.named_arg_as(builder, "end")?,
             ))
         })?;
+    ensure!(builder.model.outlet_fact(begins)?.rank() == 1);
+    ensure!(builder.model.outlet_fact(ends)?.rank() == 1);
     let strides: TVec<isize> =
         invocation.named_arg_as(builder, "stride").unwrap_or_else(|_| tvec!(1; axes.len()));
     for (ix, axis) in axes.into_iter().enumerate() {
