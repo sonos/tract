@@ -5,6 +5,7 @@ pub mod fact;
 pub mod func_constants;
 pub mod kernels;
 pub mod ops;
+pub mod rewrite_rules;
 pub mod tensor;
 pub mod transform;
 pub mod utils;

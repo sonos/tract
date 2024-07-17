@@ -55,8 +55,8 @@ struct Prod {
 
 template<typename F, typename Op>  
 [[kernel]] void reduce_nd3(
-                device const F *input [[buffer(0)]],
-                device F *output [[buffer(1)]],
+                device const F *input,
+                device F *output,
                 constant const size_t input_shape[3], 
                 constant const size_t input_strides[3],
                 constant const size_t output_strides[3],
@@ -89,9 +89,41 @@ template<typename F, typename Op>
 }
 
 template<typename F>  
+[[kernel]] void rms_norm_nd3(
+                device const F *input,
+                device const F & eps,
+                device F *output,
+                constant const size_t shape[3], 
+                constant const size_t strides[3],
+                uint3  tgpig[[threadgroup_position_in_grid]],
+                uint  tiisg[[thread_index_in_simdgroup]],
+                uint  tpsg[[threads_per_simdgroup]]
+                ) {
+
+    size_t dim = shape[1];
+
+    size_t base_idx = tgpig.x * strides[2] 
+            + tgpig.z * strides[0];
+
+    float partial_acc = 0.0;
+    for (size_t i = tiisg; i < dim; i += tpsg) {
+        F el = input[base_idx + i * strides[1]];
+        partial_acc += el * el;
+    }
+    float mean_of_squares = simd_sum(partial_acc) / static_cast<float>(dim);
+
+    F norm = metal::rsqrt(static_cast<F>(mean_of_squares) + eps);
+
+    for (size_t i = tiisg; i < dim; i += tpsg) {
+        auto idx = base_idx + i * strides[1];
+        output[idx] = input[idx] * norm;
+    }
+}
+
+template<typename F>  
 [[kernel]] void softmax_nd3(
-                device const F *input [[buffer(0)]],
-                device F *output [[buffer(1)]],
+                device const F *input,
+                device F *output,
                 constant const size_t shape[3], 
                 constant const size_t strides[3],
                 uint3  tgpig[[threadgroup_position_in_grid]],
@@ -138,8 +170,8 @@ template<typename F>
 #define INSTANTIATE_REDUCE(name, op, tname, type)                    \
 template [[host_name("nn_ops::reduce_" #name "_nd3_" #tname)]]       \
 [[kernel]] void reduce_nd3<type, op<type>>(                          \
-        device const type *input [[buffer(0)]],                      \
-        device type *output [[buffer(1)]],                           \
+        device const type *input,                                    \
+        device type *output,                                         \
         constant const size_t input_shape[3],                        \
         constant const size_t input_strides[3],                      \
         constant const size_t output_strides[3],                     \
@@ -159,8 +191,8 @@ INSTANTIATE_REDUCE(prod, Prod, f16, half)
 #define INSTANTIATE_SOFTMAX(tname, type)                             \
 template [[host_name("nn_ops::softmax_nd3_" #tname)]]                \
 [[kernel]] void softmax_nd3<type>(                                   \
-        device const type *input [[buffer(0)]],                      \
-        device type *output [[buffer(1)]],                           \
+        device const type *input,                                    \
+        device type *output,                                         \
         constant const size_t shape[3],                              \
         constant const size_t strides[3],                            \
         uint3  tgpig[[threadgroup_position_in_grid]],                \
@@ -170,6 +202,23 @@ template [[host_name("nn_ops::softmax_nd3_" #tname)]]                \
 
 INSTANTIATE_SOFTMAX(f32, float)
 INSTANTIATE_SOFTMAX(f16, half)
+
+#define INSTANTIATE_RMS_NORM(tname, type)                            \
+template [[host_name("nn_ops::rms_norm_nd3_" #tname)]]               \
+[[kernel]] void rms_norm_nd3<type>(                                  \
+        device const type *input,                                    \
+        device const type &eps,                                      \
+        device type *output,                                         \
+        constant const size_t shape[3],                              \
+        constant const size_t strides[3],                            \
+        uint3  tgpig[[threadgroup_position_in_grid]],                \
+        uint  tiisg[[thread_index_in_simdgroup]],                    \
+        uint  tpsg[[threads_per_simdgroup]]                          \
+    );
+
+INSTANTIATE_RMS_NORM(f32, float)
+INSTANTIATE_RMS_NORM(f16, half)
+
 
 
 
