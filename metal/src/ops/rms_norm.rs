@@ -12,7 +12,7 @@ pub struct MetalRmsNorm {
 
 impl Op for MetalRmsNorm {
     fn name(&self) -> Cow<str> {
-        format!("MetalRmsNorm").into()
+        "MetalRmsNorm".into()
     }
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("axis: {:?}, eps: {:?}", self.axis, self.eps)])

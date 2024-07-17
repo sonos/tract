@@ -14,12 +14,12 @@ pub enum MValue {
 
 impl MValue {
     #[inline]
-    pub fn view<'a>(&'a self) -> TensorView<'a> {
+    pub fn view(&self) -> TensorView<'_> {
         match self {
             Self::Const(t) => t.view(),
             Self::Var(t) => t.view(),
             Self::Reshaped { t, shape, strides } => unsafe {
-                TensorView::from_bytes(&t, 0, shape.as_slice(), strides.as_slice())
+                TensorView::from_bytes(t, 0, shape.as_slice(), strides.as_slice())
             },
         }
     }
@@ -189,7 +189,7 @@ impl MetalTensor {
                 MValue::Const(t) | MValue::Var(t) | MValue::Reshaped { t, .. } => Ok(Self {
                     dt: self.dt,
                     inner: MValue::Reshaped {
-                        t: Arc::clone(&t),
+                        t: Arc::clone(t),
                         strides: Tensor::natural_strides(&shape),
                         shape,
                     },
@@ -211,7 +211,7 @@ impl MetalTensor {
             MValue::Const(t) | MValue::Var(t) | MValue::Reshaped { t, .. } => Self {
                 dt: self.dt,
                 inner: MValue::Reshaped {
-                    t: Arc::clone(&t),
+                    t: Arc::clone(t),
                     strides: strides.into(),
                     shape: shape.into(),
                 },

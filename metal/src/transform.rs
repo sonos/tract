@@ -4,7 +4,7 @@ use crate::ops;
 use crate::ops::sync::MetalSyncKind;
 use crate::ops::MetalSync;
 use crate::rewrite_rules::as_rms_norm_rule;
-use crate::rewrite_rules::RewrittenRmsNorm;
+use crate::rewrite_rules::BasicRmsNorm;
 use crate::tensor::MetalTensorExt;
 use crate::{IntoMetal, MetalFact, MetalTensor};
 use anyhow::Result;
@@ -191,7 +191,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 .then(|| ops::MetalSoftmax::from_tract_core(op).ok())
                 .flatten()
                 .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
-        } else if let Some(op) = node.op_as::<RewrittenRmsNorm>() {
+        } else if let Some(op) = node.op_as::<BasicRmsNorm>() {
             check_in_dts_are_supported(source, node.id, RmsNorm::is_supported_dt)?
                 .then(|| ops::MetalRmsNorm::new(op.axis, op.eps.clone()))
                 .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
