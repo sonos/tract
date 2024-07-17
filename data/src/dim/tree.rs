@@ -582,7 +582,7 @@ impl TDim {
         TDim::Div(Box::new(Add(vec![self, Val(rhs as i64 - 1)])), rhs).reduce()
     }
 
-    fn guess_slope(&self, sym: &Symbol) -> (i64, u64) {
+    pub(super) fn guess_slope(&self, sym: &Symbol) -> (i64, u64) {
         fn slope_rec(d: &TDim, sym: &Symbol) -> (i64, i64) {
             match d {
                 Val(_) => (0, 1),

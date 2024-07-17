@@ -58,7 +58,10 @@ impl SymbolScope {
     }
 
     pub fn resolving<R>(&self, sym: &Symbol, f: impl FnOnce(&str) -> R) -> Option<R> {
-        self.0.lock().unwrap().table.resolve(sym.1).map(f)
+        match self.0.try_lock() {
+            Ok(lock) => lock.table.resolve(sym.1).map(f),
+            Err(_) => None,
+        }
     }
 
     pub fn add_rule(&self, from: TDim, to: TDim) {
@@ -75,6 +78,46 @@ impl SymbolScope {
 
     pub fn parse_inequality(&self, input: impl AsRef<str>) -> TractResult<Inequality> {
         parse_inequality(self, input.as_ref())
+    }
+
+    pub fn add_inequality(&self, ineq: Inequality) {
+        self.0.lock().unwrap().inequalities.push(ineq)
+    }
+
+    pub fn prove_positive(&self, t: &TDim) -> bool {
+        if let TDim::Val(v) = t {
+            return *v >= 0;
+        }
+        let ineqs = self.0.lock().unwrap().inequalities.clone();
+        let positives = ineqs.iter().map(|i| i.as_known_positive()).collect_vec();
+        let mut visited = vec![];
+        let mut todo = vec![t.clone()];
+        while let Some(t) = todo.pop() {
+            if t.to_i64().is_ok_and(|i| i >= 0) {
+                return true;
+            }
+            let syms = t.symbols();
+            for s in syms {
+                let me = t.guess_slope(&s);
+                for pos in &positives {
+                    if pos.symbols().contains(&s) {
+                        let other = pos.guess_slope(&s);
+                        if me.0.signum() == other.0.signum() {
+                            let new = t.clone() * me.1 * other.0.abs()
+                                - pos.clone() * me.0.abs() * other.1;
+                            if !visited.contains(&new) {
+                                todo.push(new);
+                            }
+                        }
+                    }
+                }
+            }
+            visited.push(t);
+            if visited.len() > 10 {
+                return false;
+            }
+        }
+        return false;
     }
 }
 
@@ -102,7 +145,13 @@ pub struct Inequality {
 
 impl Inequality {
     pub fn as_known_positive(&self) -> TDim {
-        todo!();
+        use InequalitySign::*;
+        match self.sign {
+            GTE => self.left.clone() - &self.right,
+            GT => self.left.clone() - 1 - &self.right,
+            LTE => self.right.clone() - &self.left,
+            LT => self.right.clone() - 1 - &self.left,
+        }
     }
 }
 
@@ -164,5 +213,86 @@ impl SymbolValues {
 
     pub fn get(&self, s: &Symbol) -> Option<i64> {
         self.values.get(s).copied()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn as_known_positive_gte() {
+        let s = SymbolScope::default();
+        assert_eq!(
+            s.parse_inequality("S>=0").unwrap().as_known_positive(),
+            s.parse_tdim("S").unwrap()
+        );
+    }
+
+    #[test]
+    fn as_known_positive_gt() {
+        let s = SymbolScope::default();
+        assert_eq!(
+            s.parse_inequality("S>0").unwrap().as_known_positive(),
+            s.parse_tdim("S-1").unwrap()
+        );
+    }
+
+    #[test]
+    fn as_known_positive_lte() {
+        let s = SymbolScope::default();
+        assert_eq!(
+            s.parse_inequality("S<=0").unwrap().as_known_positive(),
+            s.parse_tdim("-S").unwrap()
+        );
+    }
+
+    #[test]
+    fn as_known_positive_lt() {
+        let s = SymbolScope::default();
+        assert_eq!(
+            s.parse_inequality("S<0").unwrap().as_known_positive(),
+            s.parse_tdim("-S - 1").unwrap()
+        );
+    }
+
+    #[test]
+    fn prove_positive_0() {
+        let s = SymbolScope::default();
+        assert!(s.prove_positive(&s.parse_tdim("0").unwrap()));
+    }
+
+    #[test]
+    fn prove_positive_1() {
+        let s = SymbolScope::default();
+        assert!(s.prove_positive(&s.parse_tdim("1").unwrap()));
+    }
+
+    #[test]
+    fn prove_positive_neg1() {
+        let s = SymbolScope::default();
+        assert!(!s.prove_positive(&s.parse_tdim("-1").unwrap()));
+    }
+
+    #[test]
+    fn prove_positive_add_0() {
+        let s = SymbolScope::default();
+        assert!(!s.prove_positive(&s.parse_tdim("s+1").unwrap()));
+    }
+
+    #[test]
+    fn prove_positive_with_axiom() {
+        let s = SymbolScope::default();
+        s.add_inequality(s.parse_inequality("s>=0").unwrap());
+        assert!(s.prove_positive(&s.parse_tdim("s").unwrap()));
+    }
+
+    #[test]
+    fn prove_positive_with_axiom_2() {
+        let s = SymbolScope::default();
+        s.add_inequality(s.parse_inequality("s>=0").unwrap());
+        s.add_inequality(s.parse_inequality("p>=0").unwrap());
+        s.add_inequality(s.parse_inequality("p+s<4096").unwrap());
+        assert!(s.prove_positive(&s.parse_tdim("4096-p").unwrap()));
     }
 }
