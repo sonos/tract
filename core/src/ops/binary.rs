@@ -1,5 +1,6 @@
 use crate::internal::*;
 use downcast_rs::Downcast;
+use tract_itertools::Itertools;
 use std::fmt;
 use tract_data::itertools::izip;
 
@@ -132,7 +133,11 @@ impl EvalOp for TypedBinOp {
 impl TypedOp for TypedBinOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         if inputs[0].rank() != inputs[1].rank() {
-            bail!("Typed ops require rank match. Invalid inputs for {}: {:?}", self.name(), inputs);
+            bail!(
+                "Typed ops require rank match. Invalid inputs for {}: {}",
+                self.name(),
+                inputs.iter().map(|s| format!("{s:?}")).join(" ; ")
+            );
         }
         let out_dt = self.output_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
         Ok(tvec!(out_dt.fact(&*crate::broadcast::multi_broadcast(&[
