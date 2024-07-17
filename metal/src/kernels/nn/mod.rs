@@ -1,7 +1,9 @@
 pub mod reduce;
+pub mod rms_norm;
 pub mod softmax;
 
 pub use reduce::Reducer;
+pub use rms_norm::RmsNorm;
 pub use softmax::Softmax;
 
 pub fn all_functions() -> Vec<String> {

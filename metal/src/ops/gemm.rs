@@ -8,10 +8,9 @@ type MatMulImpl = matmul::MfaGemm;
 #[cfg(target_os = "ios")]
 type MatMulImpl = matmul::BasicMatMul;
 
-
 #[derive(Debug, Default, Clone)]
 pub struct MetalGemm {
-    pub kernel: MatMulImpl
+    pub kernel: MatMulImpl,
 }
 
 impl MetalGemm {

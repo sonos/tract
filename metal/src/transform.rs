@@ -1,8 +1,10 @@
 use crate::fact::MetalTypedFactExt;
-use crate::kernels::nn::Reducer;
+use crate::kernels::nn::{Reducer, RmsNorm, Softmax};
 use crate::ops;
 use crate::ops::sync::MetalSyncKind;
 use crate::ops::MetalSync;
+use crate::rewrite_rules::as_rms_norm_rule;
+use crate::rewrite_rules::RewrittenRmsNorm;
 use crate::tensor::MetalTensorExt;
 use crate::{IntoMetal, MetalFact, MetalTensor};
 use anyhow::Result;
@@ -15,7 +17,7 @@ use tract_core::ops::binary::{BinMiniOp, MergeOpUnicast, TypedBinOp};
 use tract_core::ops::einsum::{rewrite_einsums_as_matmul, BasicMatMul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
-use tract_core::ops::nn::{Reduce, Softmax};
+use tract_core::ops::nn::{Reduce, Softmax as CoreSoftmax};
 use tract_core::transform::ModelTransform;
 
 #[derive(Debug, Default)]
@@ -28,14 +30,11 @@ impl ModelTransform for MetalTransform {
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         rewrite_einsums_as_matmul(model)?;
+        Rewriter::default()
+            .with_rule_for::<Reduce>("as-rms-norm", as_rms_norm_rule)
+            .rewrite(&(), model)?;
+
         model.optimize()?;
-
-        // Rewriter::default()
-        //     .with_rule_for("matmul-to-metal-gemm", matmul_to_gemm)
-        //     .with_rule_for("binops-to-metal", bin_ops_to_metal)
-        //     .with_rule_for("element-wise-to-metal", element_wise_ops_to_metal)
-        //     .rewrite(&(), model)?;
-
         let new = self.translate_model(model)?;
         *model = new;
         Ok(())
@@ -183,26 +182,18 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         } else if let Some(op) = node.op_as::<TypedConcat>() {
             Some(Box::new(ops::MetalConcat::from_tract_core(op)))
         } else if let Some(op) = node.op_as::<Reduce>() {
-            let is_dts_supported = source.node_input_facts(node.id)?.iter().all(|f| {
-                Reducer::is_supported_dt(f.datum_type)
-                    || f.as_metal_fact()
-                        .map(|f| Reducer::is_supported_dt(f.datum_type))
-                        .unwrap_or(false)
-            });
-            is_dts_supported
+            check_in_dts_are_supported(source, node.id, Reducer::is_supported_dt)?
                 .then(|| ops::MetalReduce::from_tract_core(op).ok())
                 .flatten()
                 .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
-        } else if let Some(op) = node.op_as::<Softmax>() {
-            let is_dts_supported = source.node_input_facts(node.id)?.iter().all(|f| {
-                crate::kernels::nn::Softmax::is_supported_dt(f.datum_type)
-                    || f.as_metal_fact()
-                        .map(|f| crate::kernels::nn::Softmax::is_supported_dt(f.datum_type))
-                        .unwrap_or(false)
-            });
-            is_dts_supported
+        } else if let Some(op) = node.op_as::<CoreSoftmax>() {
+            check_in_dts_are_supported(source, node.id, Softmax::is_supported_dt)?
                 .then(|| ops::MetalSoftmax::from_tract_core(op).ok())
                 .flatten()
+                .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+        } else if let Some(op) = node.op_as::<RewrittenRmsNorm>() {
+            check_in_dts_are_supported(source, node.id, RmsNorm::is_supported_dt)?
+                .then(|| ops::MetalRmsNorm::new(op.axis, op.eps.clone()))
                 .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else {
             None
@@ -222,6 +213,17 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             }
         }
     }
+}
+
+fn check_in_dts_are_supported(
+    model: &TypedModel,
+    node_id: usize,
+    is_supported_dt: impl Fn(DatumType) -> bool,
+) -> TractResult<bool> {
+    Ok(model.node_input_facts(node_id)?.iter().all(|f| {
+        (is_supported_dt)(f.datum_type)
+            || f.as_metal_fact().map(|f| (is_supported_dt)(f.datum_type)).unwrap_or(false)
+    }))
 }
 
 fn convert_matmul_to_metal(

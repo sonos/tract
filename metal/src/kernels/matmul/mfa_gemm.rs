@@ -35,7 +35,7 @@ pub struct MfaGemm {
 
 impl fmt::Display for MfaGemm {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "MfaGemm")
     }
 }
 
