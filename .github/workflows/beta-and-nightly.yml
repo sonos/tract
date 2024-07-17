@@ -54,7 +54,7 @@ jobs:
         rust: [ 1.75.0, beta ]
       fail-fast: false
 
-    runs-on: ubuntu-latest
+    runs-on: [ ubuntu-latest, macos-14 ]
 
     steps:
     - uses: actions/checkout@v3
@@ -63,12 +63,21 @@ jobs:
     - name: LLVM setup
       run: sudo apt-get install -y llvm
     - name: cargo check, -D warnings
+      if: runner.os == 'Linux'
       env:
         RUSTFLAGS: "-D warnings"
         RUST_VERSION: ${{matrix.rust}}
       run: |
           rustc --version
           cargo check --exclude tract-metal --exclude test-metal --workspace
+    - name: cargo check, -D warnings
+      if: runner.os == 'macOS'
+      env:
+        RUSTFLAGS: "-D warnings"
+        RUST_VERSION: ${{matrix.rust}}
+      run: |
+          rustc --version
+          cargo check 
 
   cargo-clippy:
     strategy:
@@ -76,7 +85,7 @@ jobs:
       matrix:
         rust: [ stable, beta, nightly ]
 
-    runs-on: ubuntu-latest
+    runs-on: [ ubuntu-latest, macos-14 ]
 
     steps:
     - uses: actions/checkout@v3
@@ -87,7 +96,14 @@ jobs:
       env:
         RUST_VERSION: ${{matrix.rust}}
     - name: Run cargo-clippy
+      if: runner.os == 'Linux'
       run: cargo clippy --exclude tract-metal --exclude test-metal --workspace
+      env:
+        RUSTFLAGS: "-D warnings --force-warn unknown_lints"
+        RUST_VERSION: ${{matrix.rust}}
+    - name: Run cargo-clippy
+      if: runner.os == 'macOS'
+      run: cargo clippy 
       env:
         RUSTFLAGS: "-D warnings --force-warn unknown_lints"
         RUST_VERSION: ${{matrix.rust}}
