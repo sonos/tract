@@ -38,16 +38,6 @@ impl SymbolTable {
     }
 }
 
-impl std::hash::Hash for SymbolTable {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        let table = self.0.lock().unwrap();
-        table.len().hash(state);
-        for t in &*table {
-            t.hash(state);
-        }
-    }
-}
-
 impl fmt::Debug for SymbolTable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let table = self.0.lock().unwrap();
