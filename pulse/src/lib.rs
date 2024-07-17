@@ -52,7 +52,6 @@ fn decl_stream_symbol(
     args: &[Identifier],
 ) -> TractResult<ControlFlow<(), ()>> {
     if args[0].0 == "tract_pulse_streaming_symbol" {
-        log::warn!("\"tract_pulse_streaming_symbol\" is deprecated. (\"S\" is no longer a magic symbol).");
         Ok(ControlFlow::Break(()))
     } else {
         Ok(ControlFlow::Continue(()))
