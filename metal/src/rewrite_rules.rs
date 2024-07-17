@@ -7,14 +7,14 @@ use tract_core::ops::math::{Add, Mul, Rsqrt};
 use tract_core::ops::nn::{Reduce, Reducer};
 
 #[derive(Clone, Debug, Hash)]
-pub struct RewrittenRmsNorm {
+pub struct BasicRmsNorm {
     pub axis: usize,
     pub eps: Arc<Tensor>,
 }
 
-impl Op for RewrittenRmsNorm {
+impl Op for BasicRmsNorm {
     fn name(&self) -> Cow<str> {
-        format!("RewrittenRmsNorm").into()
+        "BasicRmsNorm".to_string().into()
     }
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("axis: {:?}, eps: {:?}", self.axis, self.eps)])
@@ -22,13 +22,13 @@ impl Op for RewrittenRmsNorm {
     op_as_typed_op!();
 }
 
-impl EvalOp for RewrittenRmsNorm {
+impl EvalOp for BasicRmsNorm {
     fn is_stateless(&self) -> bool {
         true
     }
 }
 
-impl TypedOp for RewrittenRmsNorm {
+impl TypedOp for BasicRmsNorm {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let dt = inputs[0].datum_type;
         let fact = dt.fact(inputs[0].shape.clone());
@@ -109,11 +109,8 @@ pub fn as_rms_norm_rule(
     rule_ensure!(mul_succ_op.0.is::<Mul>());
     rule_ensure!(mul_succ.inputs.contains(&node.inputs[0]));
 
-    let out = patch.wire_node(
-        format!("{node_name}.rms_norm"),
-        RewrittenRmsNorm { axis, eps },
-        &rsm_input,
-    )?;
+    let out =
+        patch.wire_node(format!("{node_name}.rms_norm"), BasicRmsNorm { axis, eps }, &rsm_input)?;
 
     patch.shunt_outside(model, mul_succ.id.into(), out[0])?;
 
