@@ -174,8 +174,7 @@ impl Parameters {
         probe: Option<&Probe>,
         location: &Location,
         tensors_values: &TensorsValues,
-        symbol_table: SymbolScope,
-        tdim_rules: HashMap<TDim, TDim>,
+        symbols: SymbolScope,
     ) -> TractResult<(SomeGraphDef, Box<dyn Model>, Option<TfExt>)> {
         let need_graph =
             matches.is_present("proto") || matches.subcommand_name() == Some("compare-pbdir");
@@ -261,7 +260,7 @@ impl Parameters {
                     }
                 }
                 info_usage("proto model loaded", probe);
-                let template = TypedModel { symbols: symbol_table, tdim_rules, ..TypedModel::default() };
+                let template = TypedModel { symbols, ..TypedModel::default() };
                 let graph_def = if need_graph {
                     SomeGraphDef::Nnef(proto_model.clone())
                 } else {
@@ -282,7 +281,7 @@ impl Parameters {
                 info_usage("loaded framework (tflite)", probe);
                 let proto = tflite.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
-                let template = TypedModel { symbols: symbol_table, tdim_rules, ..TypedModel::default() };
+                let template = TypedModel { symbols, ..TypedModel::default() };
                 let model = tflite.model_for_proto_model_with_model_template(&proto, template)?;
                 info_usage("proto model translated", probe);
                 (SomeGraphDef::Tflite(proto), Box::new(model), Option::<TfExt>::None)
@@ -300,8 +299,7 @@ impl Parameters {
                 let graph = onnx.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
                 let path = &location.path().clone();
-                let template =
-                    InferenceModel { symbols: symbol_table, tdim_rules, ..InferenceModel::default() };
+                let template = InferenceModel { symbols, ..InferenceModel::default() };
                 let mut parsed = onnx.parse_with_template(
                     &graph,
                     path.parent().and_then(|it| it.to_str()),
@@ -331,8 +329,7 @@ impl Parameters {
                 if matches.is_present("determinize") {
                     tract_tensorflow::Tensorflow::determinize(&mut graph)?;
                 }
-                let template =
-                    InferenceModel { symbols: symbol_table, tdim_rules, ..InferenceModel::default() };
+                let template = InferenceModel { symbols, ..InferenceModel::default() };
                 let mut model_and_ext = tf.parse_graph_with_template(&graph, template)?;
                 model_and_ext.1.initializing_nodes = matches
                     .values_of("tf-initializer-output-node")
@@ -845,26 +842,19 @@ impl Parameters {
     #[allow(clippy::let_unit_value)]
     /// Parses the command-line arguments.
     pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> TractResult<Parameters> {
-        let symbol_table = SymbolScope::default();
-        let mut tdim_rules: HashMap<TDim, TDim> = Default::default();
+        let symbols = SymbolScope::default();
         for rule in matches.values_of("tdim-rule").unwrap_or_default() {
-            let (a, b) = rule
+            let (from, to) = rule
                 .split_once('=')
                 .with_context(|| format!("Invalid TDim rule. Expect from=to form. Got {rule}"))?;
-            let a = parse_tdim(&symbol_table, a)?;
-            let b = parse_tdim(&symbol_table, b)?;
-            tdim_rules.insert(a, b);
+            let from = parse_tdim(&symbols, from)?;
+            let to = parse_tdim(&symbols, to)?;
+            symbols.add_rule(from, to)
         }
         let (filename, onnx_tc) = Self::disco_model(matches)?;
-        let tensors_values = Self::parse_tensors(matches, &filename, onnx_tc, &symbol_table)?;
-        let (mut graph, mut raw_model, tf_model_extensions) = Self::load_model(
-            matches,
-            probe,
-            &filename,
-            &tensors_values,
-            symbol_table.clone(),
-            tdim_rules,
-        )?;
+        let tensors_values = Self::parse_tensors(matches, &filename, onnx_tc, &symbols)?;
+        let (mut graph, mut raw_model, tf_model_extensions) =
+            Self::load_model(matches, probe, &filename, &tensors_values, symbols.clone())?;
 
         info!("Model {:?} loaded", filename);
         info_usage("model loaded", probe);
@@ -919,7 +909,7 @@ impl Parameters {
 
         if let Some(override_facts) = matches.values_of("override-fact") {
             for fact in override_facts {
-                let (name, fact) = tensor::for_string(&symbol_table, fact)?;
+                let (name, fact) = tensor::for_string(&symbols, fact)?;
                 let node = raw_model.node_id_by_name(&name.unwrap())?;
                 if let Some(inf) = raw_model.downcast_mut::<InferenceModel>() {
                     inf.set_outlet_fact(OutletId::new(node, 0), fact)?;
@@ -974,7 +964,7 @@ impl Parameters {
             .collect();
 
         let assertions = match matches.subcommand() {
-            Some(("dump" | "run", sm)) => Assertions::from_clap(sm, &symbol_table)?,
+            Some(("dump" | "run", sm)) => Assertions::from_clap(sm, &symbols)?,
             _ => Assertions::default(),
         };
 

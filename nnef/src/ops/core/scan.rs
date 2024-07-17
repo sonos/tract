@@ -144,11 +144,7 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
         .iter()
         .find(|n| n.decl.id.0 == fragment_name)
         .ok_or_else(|| format_err!("Cound not find fragment `{}'", fragment_name))?;
-    let template = TypedModel {
-        symbols: builder.model.symbols.clone(),
-        tdim_rules: builder.model.tdim_rules.clone(),
-        ..TypedModel::default()
-    };
+    let template = TypedModel { symbols: builder.model.symbols.clone(), ..TypedModel::default() };
     let mut body = ModelBuilder::new(builder.framework, builder.proto_model, template);
     body.scopes.push(HashMap::new());
     body.naming_scopes.clone_from(&builder.naming_scopes);

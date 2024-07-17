@@ -43,10 +43,8 @@ where
     pub outlet_labels: HashMap<OutletId, String>,
     /// model properties
     pub properties: HashMap<String, Arc<Tensor>>,
-    /// symbol table
+    /// symbol scope, including table
     pub symbols: SymbolScope,
-    /// TDim forced simplifications
-    pub tdim_rules: HashMap<TDim, TDim>,
 }
 
 impl<F, O> Default for Graph<F, O>
@@ -62,7 +60,6 @@ where
             outlet_labels: HashMap::new(),
             properties: HashMap::new(),
             symbols: Default::default(),
-            tdim_rules: Default::default(),
         }
     }
 }
