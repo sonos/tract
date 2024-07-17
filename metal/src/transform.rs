@@ -254,6 +254,7 @@ pub fn matmul_to_gemm(
         .transpose()
 }
 
+#[allow(clippy::borrowed_box)]
 fn convert_bin_ops_to_metal(op: &Box<dyn BinMiniOp>) -> Option<ops::MetalBinOp> {
     map_bin_ops!([
         (tract_core::ops::math::Mul, Mul),
