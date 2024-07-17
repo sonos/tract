@@ -60,7 +60,7 @@ impl<'mb> ModelBuilder<'mb> {
                     if ext.len() != 2 {
                         bail!("tract_symbol expects symbol: example: \"extension tract_symbol S;\"")
                     }
-                    let symbol = self.model.symbol_table.new_with_prefix(&ext[1].0);
+                    let symbol = self.model.symbols.new_with_prefix(&ext[1].0);
                     self.symbols.push(symbol);
                 }
                 _ => {
@@ -465,11 +465,11 @@ impl RValue {
                         }
                     }
                     Ok(outlet)
-                } else if let Some(sym) = builder.model.symbol_table.get(&id.0) {
+                } else if let Some(sym) = builder.model.symbols.get(&id.0) {
                     Ok(Value::Dim(sym.into()))
                 } else if builder.allow_new_symbol {
                     warn!("Introducing symbol {id:?} without forward declaration (\"extension tract_symbol ...\"). May be deprecated soon.");
-                    let sym = builder.model.symbol_table.sym(&id.0);
+                    let sym = builder.model.symbols.sym(&id.0);
                     Ok(Value::Dim(sym.into()))
                 } else {
                     bail!("Can not resolve {:?}. Not a known identifier, and symbol introduction is forbidden out of \"external\" shape field", id);
@@ -542,7 +542,7 @@ impl RValue {
                         .with_context(|| format!("Can not parse {f} as f32"))
                 } else if let Ok(i) = f.parse::<i64>() {
                     Ok(Value::Dim(i.into()))
-                } else if let Some(s) = builder.model.symbol_table.get(f) {
+                } else if let Some(s) = builder.model.symbols.get(f) {
                     Ok(Value::Dim(s.into()))
                 } else {
                     bail!("Can not parse {}", f)

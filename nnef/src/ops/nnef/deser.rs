@@ -211,7 +211,7 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
             ev.cast_to::<TDim>()?.to_scalar::<TDim>()?.clone()
                 - bv.cast_to::<TDim>()?.to_scalar::<TDim>()?
         } else {
-            builder.model.symbol_table.new_with_prefix("slice").into()
+            builder.model.symbols.new_with_prefix("slice").into()
         };
         wire = builder.wire_as_outlets(
             tract_core::ops::array::DynSlice { axis, len },

@@ -162,7 +162,7 @@ fn run_regular(
                 let mut tokens = set.split('=');
                 let sym = tokens.next().context("--set expect S=12 form")?;
                 let value = tokens.next().context("--set expect S=12 form")?;
-                let sym = state.model().symbol_table.sym(sym).to_owned();
+                let sym = state.model().symbols.sym(sym).to_owned();
                 let value: i64 = value.parse().context("Can not parse symbol value in set")?;
                 state.session_state.resolved_symbols =
                     state.session_state.resolved_symbols.with(&sym, value);

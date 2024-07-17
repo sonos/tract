@@ -334,7 +334,7 @@ mod tests {
 
     #[test]
     fn inference_3() {
-        let table = SymbolTable::default();
+        let table = SymbolScope::default();
         let s = table.new_with_prefix("S").to_dim();
         let mut op = strided_slice(5, 7, 0);
         let input = f32::fact(dims!(1, s.clone() - 2, 16)).into();

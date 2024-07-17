@@ -223,7 +223,7 @@ mod test {
     #[test]
     fn left_padded_conv_wo_delay() -> TractResult<()> {
         let mut model = TypedModel::default();
-        let stream_sym = model.symbol_table.sym("S");
+        let stream_sym = model.symbols.sym("S");
         let stream_dim = stream_sym.to_dim();
         let source = model.add_source("source", f32::fact(dims!(1, stream_dim)))?;
         let kernel = model.add_const("kernel", rctensor3(&[[[1f32, 2f32]]]))?;

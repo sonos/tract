@@ -230,7 +230,7 @@ impl StridedSlice {
                     AxisOp::Rm(0),
                     &right,
                 )?[0];
-                let sym = target.symbol_table.new_with_prefix("l");
+                let sym = target.symbols.new_with_prefix("l");
                 wire = target.wire_node(
                     format!("{prefix}.slice-axis-{axis}"),
                     crate::ops::array::DynSlice::new(axis, sym.to_dim()),

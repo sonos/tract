@@ -11,7 +11,7 @@ mod tree;
 
 pub use self::parse::parse_tdim;
 pub use self::resolve::solve_for;
-pub use self::sym::{Symbol, SymbolTable, SymbolValues};
+pub use self::sym::{Symbol, SymbolScope, SymbolValues};
 pub use self::tree::{TDim, UndeterminedSymbol};
 
 use crate::{TractError, TractResult};
@@ -274,8 +274,8 @@ mod tests {
     use super::*;
 
     lazy_static::lazy_static! {
-        static ref S: (SymbolTable, Symbol) = {
-            let table = SymbolTable::default();
+        static ref S: (SymbolScope, Symbol) = {
+            let table = SymbolScope::default();
             let s = table.new_with_prefix("S");
             (table, s)
         };

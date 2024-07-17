@@ -227,6 +227,6 @@ where
     }
 
     fn get_or_intern_symbol(&self, name: &str) -> Symbol {
-        self.symbol_table.sym(name)
+        self.symbols.sym(name)
     }
 }

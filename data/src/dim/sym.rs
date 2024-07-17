@@ -6,55 +6,62 @@ use string_interner::DefaultStringInterner;
 use string_interner::Symbol as _;
 
 #[derive(Clone, Default)]
-pub struct SymbolTable(pub Arc<Mutex<DefaultStringInterner>>);
+pub struct SymbolScope(Arc<Mutex<SymbolScopeData>>);
 
-impl SymbolTable {
+impl PartialEq for SymbolScope {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for SymbolScope {}
+
+#[derive(Default)]
+pub struct SymbolScopeData(DefaultStringInterner);
+
+impl SymbolScope {
     pub fn get(&self, name: &str) -> Option<Symbol> {
         let table = self.0.lock().unwrap();
-        table.get(name).map(|sym| Symbol(Arc::clone(&self.0), sym))
+        table.0.get(name).map(|sym| Symbol(self.clone(), sym))
     }
 
     pub fn sym(&self, name: &str) -> Symbol {
         let mut table = self.0.lock().unwrap();
-        let sym = table.get_or_intern(name);
-        Symbol(Arc::clone(&self.0), sym)
+        let sym = table.0.get_or_intern(name);
+        Symbol(self.clone(), sym)
     }
 
     pub fn new_with_prefix(&self, prefix: &str) -> Symbol {
         let mut table = self.0.lock().unwrap();
-        let sym = if table.get(prefix).is_none() {
-            table.get_or_intern(prefix)
+        let sym = if table.0.get(prefix).is_none() {
+            table.0.get_or_intern(prefix)
         } else {
             let mut i = 0;
             loop {
                 let s = format!("{prefix}_{i}");
-                if table.get(&s).is_none() {
-                    break table.get_or_intern(s);
+                if table.0.get(&s).is_none() {
+                    break table.0.get_or_intern(s);
                 }
                 i += 1;
             }
         };
-        Symbol(Arc::clone(&self.0), sym)
+        Symbol(self.clone(), sym)
+    }
+
+    pub fn resolving<R>(&self, sym: &Symbol, f: impl FnOnce(&str) -> R) -> Option<R> {
+        self.0.lock().unwrap().0.resolve(sym.1).map(f)
     }
 }
 
-impl fmt::Debug for SymbolTable {
+impl fmt::Debug for SymbolScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let table = self.0.lock().unwrap();
-        write!(f, "{}", (&table).into_iter().map(|(_, s)| s).join(" "))
+        write!(f, "{}", (&table).0.into_iter().map(|(_, s)| s).join(" "))
     }
 }
 
-#[derive(Clone)]
-pub struct Symbol(Arc<Mutex<DefaultStringInterner>>, string_interner::DefaultSymbol);
-
-impl PartialEq for Symbol {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0) && self.1 == other.1
-    }
-}
-
-impl Eq for Symbol {}
+#[derive(Clone, PartialEq, Eq)]
+pub struct Symbol(SymbolScope, string_interner::DefaultSymbol);
 
 impl PartialOrd for Symbol {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -76,12 +83,9 @@ impl std::hash::Hash for Symbol {
 
 impl std::fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Ok(table) = self.0.lock() {
-            if let Some(s) = table.resolve(self.1) {
-                return write!(f, "{s}");
-            }
-        }
-        write!(f, "<Sym{}>", self.1.to_usize())
+        self.0
+            .resolving(self, |s| write!(f, "{s}"))
+            .unwrap_or_else(|| write!(f, "<Sym{}>", self.1.to_usize()))
     }
 }
 

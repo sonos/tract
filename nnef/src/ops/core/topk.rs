@@ -32,6 +32,6 @@ fn de_topk(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
     let k = invocation.named_arg_as(builder, "k")?;
     let axis = invocation.named_arg_as(builder, "axis")?;
     let largest = invocation.named_arg_as(builder, "largest")?;
-    let fallback_k = builder.model.symbol_table.new_with_prefix("k").into();
+    let fallback_k = builder.model.symbols.new_with_prefix("k").into();
     builder.wire(Topk { largest, fallback_k, axis }, &[input, k])
 }

@@ -18,7 +18,7 @@ pub type TractResult<T> = anyhow::Result<T>;
 pub mod prelude {
     pub use crate::blob::Blob;
     pub use crate::datum::{round_ties_to_even, Datum, DatumType, QParams};
-    pub use crate::dim::{Symbol, SymbolTable, SymbolValues, TDim, ToDim};
+    pub use crate::dim::{Symbol, SymbolScope, SymbolValues, TDim, ToDim};
     pub use crate::opaque::Opaque;
     pub use crate::tensor::litteral::*;
     pub use crate::tensor::{natural_strides, IntoArcTensor, IntoTensor, Tensor};

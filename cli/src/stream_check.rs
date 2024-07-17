@@ -59,7 +59,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
             let delay = stream.delay;
 
             let stream_dim = delay + 3 * input_pulse + input_pulse / 2;
-            let stream_symbol = model.symbol_table.sym("S");
+            let stream_symbol = model.symbols.sym("S");
 
             let fixed_input =
                 tract_libcli::tensor::tensor_for_fact(decl_input_fact, Some(stream_dim), None)?;

@@ -65,7 +65,7 @@ mod tests {
     #[test]
     fn test_source_must_stream() {
         let mut model = TypedModel::default();
-        let s = model.symbol_table.sym("S");
+        let s = model.symbols.sym("S");
         let _a = model.add_source("a", f32::fact([1, 2, 3])).unwrap();
         model.auto_outputs().unwrap();
         assert!(PulsedModel::new(&model, s.clone(), &4.to_dim()).is_err());
@@ -83,7 +83,7 @@ mod tests {
     #[test]
     fn test_immediate() {
         let mut model = TypedModel::default();
-        let s = model.symbol_table.sym("S");
+        let s = model.symbols.sym("S");
         let _a = model.add_source("a", f32::fact(dims![s, 2, 3].as_ref())).unwrap();
         model.auto_outputs().unwrap();
 

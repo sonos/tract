@@ -174,7 +174,7 @@ impl Parameters {
         probe: Option<&Probe>,
         location: &Location,
         tensors_values: &TensorsValues,
-        symbol_table: SymbolTable,
+        symbol_table: SymbolScope,
         tdim_rules: HashMap<TDim, TDim>,
     ) -> TractResult<(SomeGraphDef, Box<dyn Model>, Option<TfExt>)> {
         let need_graph =
@@ -261,7 +261,7 @@ impl Parameters {
                     }
                 }
                 info_usage("proto model loaded", probe);
-                let template = TypedModel { symbol_table, tdim_rules, ..TypedModel::default() };
+                let template = TypedModel { symbols: symbol_table, tdim_rules, ..TypedModel::default() };
                 let graph_def = if need_graph {
                     SomeGraphDef::Nnef(proto_model.clone())
                 } else {
@@ -282,7 +282,7 @@ impl Parameters {
                 info_usage("loaded framework (tflite)", probe);
                 let proto = tflite.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
-                let template = TypedModel { symbol_table, tdim_rules, ..TypedModel::default() };
+                let template = TypedModel { symbols: symbol_table, tdim_rules, ..TypedModel::default() };
                 let model = tflite.model_for_proto_model_with_model_template(&proto, template)?;
                 info_usage("proto model translated", probe);
                 (SomeGraphDef::Tflite(proto), Box::new(model), Option::<TfExt>::None)
@@ -301,7 +301,7 @@ impl Parameters {
                 info_usage("proto model loaded", probe);
                 let path = &location.path().clone();
                 let template =
-                    InferenceModel { symbol_table, tdim_rules, ..InferenceModel::default() };
+                    InferenceModel { symbols: symbol_table, tdim_rules, ..InferenceModel::default() };
                 let mut parsed = onnx.parse_with_template(
                     &graph,
                     path.parent().and_then(|it| it.to_str()),
@@ -332,7 +332,7 @@ impl Parameters {
                     tract_tensorflow::Tensorflow::determinize(&mut graph)?;
                 }
                 let template =
-                    InferenceModel { symbol_table, tdim_rules, ..InferenceModel::default() };
+                    InferenceModel { symbols: symbol_table, tdim_rules, ..InferenceModel::default() };
                 let mut model_and_ext = tf.parse_graph_with_template(&graph, template)?;
                 model_and_ext.1.initializing_nodes = matches
                     .values_of("tf-initializer-output-node")
@@ -383,7 +383,7 @@ impl Parameters {
     }
 
     fn use_onnx_test_case_data_set(
-        symbol_table: &SymbolTable,
+        symbol_table: &SymbolScope,
         inputs_dir: &std::path::Path,
     ) -> TractResult<Vec<TensorValues>> {
         let mut result = vec![];
@@ -498,7 +498,7 @@ impl Parameters {
         matches: &clap::ArgMatches,
         location: &Location,
         onnx_tc: bool,
-        symbol_table: &SymbolTable,
+        symbol_table: &SymbolScope,
     ) -> TractResult<TensorsValues> {
         let mut result = TensorsValues::default();
 
@@ -719,13 +719,13 @@ impl Parameters {
             if let Some(spec) = matches.value_of("pulse") {
                 stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| {
                     let (sym, pulse) = if let Ok((s,p)) = scan_fmt!(spec, "{}={}", String, String) {
-                        (s, parse_tdim(&m.symbol_table, &p)?)
-                    } else if let Ok(i) = parse_tdim(&m.symbol_table, spec) {
+                        (s, parse_tdim(&m.symbols, &p)?)
+                    } else if let Ok(i) = parse_tdim(&m.symbols, spec) {
                         ("S".to_owned(), i)
                     } else {
                         bail!("Can not parse pulse specification {}", spec)
                     };
-                    let sym = m.symbol_table.sym(&sym);
+                    let sym = m.symbols.sym(&sym);
                     PulsedModel::new(&m, sym, &pulse)
                 });
                 stage!("pulse-to-type", pulsed_model -> typed_model, |m:PulsedModel| m.into_typed());
@@ -845,7 +845,7 @@ impl Parameters {
     #[allow(clippy::let_unit_value)]
     /// Parses the command-line arguments.
     pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> TractResult<Parameters> {
-        let symbol_table = SymbolTable::default();
+        let symbol_table = SymbolScope::default();
         let mut tdim_rules: HashMap<TDim, TDim> = Default::default();
         for rule in matches.values_of("tdim-rule").unwrap_or_default() {
             let (a, b) = rule
@@ -1101,7 +1101,7 @@ pub struct Assertions {
 }
 
 impl Assertions {
-    fn from_clap(sub: &clap::ArgMatches, symbol_table: &SymbolTable) -> TractResult<Assertions> {
+    fn from_clap(sub: &clap::ArgMatches, symbol_table: &SymbolScope) -> TractResult<Assertions> {
         let assert_outputs =
             sub.is_present("assert-output") || sub.is_present("assert-output-bundle");
         let assert_output_facts: Option<Vec<InferenceFact>> = sub

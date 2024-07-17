@@ -44,7 +44,7 @@ where
     /// model properties
     pub properties: HashMap<String, Arc<Tensor>>,
     /// symbol table
-    pub symbol_table: SymbolTable,
+    pub symbols: SymbolScope,
     /// TDim forced simplifications
     pub tdim_rules: HashMap<TDim, TDim>,
 }
@@ -61,7 +61,7 @@ where
             outputs: vec![],
             outlet_labels: HashMap::new(),
             properties: HashMap::new(),
-            symbol_table: Default::default(),
+            symbols: Default::default(),
             tdim_rules: Default::default(),
         }
     }
@@ -560,6 +560,16 @@ where
 
     pub fn outlet_successors(&self, outlet: OutletId) -> &[InletId] {
         &self.nodes[outlet.node].outputs[outlet.slot].successors
+    }
+
+    /// retrieve of create a symbol
+    pub fn sym(&self, s: &str) -> Symbol {
+        self.symbols.sym(s)
+    }
+
+    /// create a new symbol with the prefix
+    pub fn new_sym_with_prefix(&self, prefix: &str) -> Symbol {
+        self.symbols.new_with_prefix(prefix)
     }
 }
 

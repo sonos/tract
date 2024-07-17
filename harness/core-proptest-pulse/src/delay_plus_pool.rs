@@ -46,7 +46,7 @@ impl Arbitrary for DelayPlusPoolProblem {
 impl DelayPlusPoolProblem {
     pub fn run(&self) -> TestCaseResult {
         let mut model = TypedModel::default();
-        let s = model.symbol_table.sym("S");
+        let s = model.symbols.sym("S");
         let a = model.add_source("a", f32::fact(dims!(1, s, 1))).unwrap();
         let crop = model.wire_node("delay", Slice::new(1, self.delay, s), &[a]).unwrap();
         let pool_spec = PoolSpec::new(
