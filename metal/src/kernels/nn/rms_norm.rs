@@ -99,14 +99,14 @@ impl RmsNorm {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::IntoMetal;
-    use derive_new::new;
-    use num_traits::AsPrimitive;
-    use num_traits::Float;
-    use proptest::collection::vec;
-    use proptest::prelude::*;
-    use tract_core::internal::Tensor;
+    // use super::*;
+    // use crate::IntoMetal;
+    // use derive_new::new;
+    // use num_traits::AsPrimitive;
+    // use num_traits::Float;
+    // use proptest::collection::vec;
+    // use proptest::prelude::*;
+    // use tract_core::internal::Tensor;
     // use tract_core::ops::nn::RmsNorm as TractRmsNorm;
     // use tract_core::ops::nn::RmsNormExp;
 
