@@ -68,7 +68,7 @@ jobs:
         RUST_VERSION: ${{matrix.rust}}
       run: |
           rustc --version
-          cargo check
+          cargo check --exclude tract-metal --exclude test-metal --workspace
 
   cargo-clippy:
     strategy:
@@ -81,7 +81,7 @@ jobs:
     - name: Rustup update, install clippy
       run: rustup update && rustup component add clippy && sudo apt-get install -y llvm
     - name: Run cargo-clippy
-      run: cargo clippy
+      run: cargo clippy --exclude tract-metal --exclude test-metal --workspace
       env:
         RUSTFLAGS: "-D warnings"
 
