@@ -4,14 +4,37 @@ use nom::bytes::complete::tag;
 use nom::character::complete::{alpha1, alphanumeric1, digit1, one_of};
 use nom::combinator::{all_consuming, map, map_res, recognize};
 use nom::multi::{many0, separated_list0};
-use nom::sequence::{delimited, pair, preceded, separated_pair};
+use nom::sequence::{delimited, pair, preceded, separated_pair, tuple};
 use nom::IResult;
+use sym::{Inequality, InequalitySign};
 
 pub fn parse_tdim(symbol_table: &SymbolScope, input: &str) -> TractResult<TDim> {
     match all_consuming(|i| expr(symbol_table, i))(input) {
         Ok(pair) => Ok(pair.1),
         Err(e) => bail!("Failed to parse {:?}, {:?}", input, e),
     }
+}
+
+pub fn parse_inequality(symbol_table: &SymbolScope, input: &str) -> TractResult<Inequality> {
+    match all_consuming(|i| inequality(symbol_table, i))(input) {
+        Ok(pair) => Ok(pair.1),
+        Err(e) => bail!("Failed to parse {:?}, {:?}", input, e),
+    }
+}
+
+fn inequality<'i>(s: &SymbolScope, i: &'i str) -> IResult<&'i str, Inequality> {
+    map(tuple((|i| expr(s, i), inequality_sign, |i| expr(s, i))), |(left, sign, right)| {
+        Inequality { left, sign, right }
+    })(i)
+}
+
+fn inequality_sign<'i>(i: &'i str) -> IResult<&'i str, InequalitySign> {
+    alt((
+        map(stag("<="), |_| InequalitySign::LTE),
+        map(stag("<"), |_| InequalitySign::LT),
+        map(stag(">="), |_| InequalitySign::GTE),
+        map(stag(">"), |_| InequalitySign::GT),
+    ))(i)
 }
 
 fn expr<'i>(symbol_table: &SymbolScope, i: &'i str) -> IResult<&'i str, TDim> {
@@ -130,6 +153,19 @@ mod test {
         assert_eq!(
             parse_tdim(&table, "min(P,S)").unwrap(),
             TDim::Min(vec!(table.sym("P").into(), table.sym("S").into()))
+        );
+    }
+
+    #[test]
+    fn parse_inequality_0() {
+        let table = SymbolScope::default();
+        assert_eq!(
+            parse_inequality(&table, "P+S<4096").unwrap(),
+            Inequality {
+                left: parse_tdim(&table, "P+S").unwrap(),
+                sign: InequalitySign::LT,
+                right: 4096.to_dim()
+            }
         );
     }
 }

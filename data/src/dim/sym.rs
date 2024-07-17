@@ -5,7 +5,10 @@ use std::sync::{Arc, Mutex};
 use string_interner::DefaultStringInterner;
 use string_interner::Symbol as _;
 
-use super::TDim;
+use crate::TractResult;
+
+use super::parse::parse_inequality;
+use super::{parse_tdim, TDim};
 
 #[derive(Clone, Default)]
 pub struct SymbolScope(pub Arc<Mutex<SymbolScopeData>>);
@@ -22,6 +25,7 @@ impl Eq for SymbolScope {}
 pub struct SymbolScopeData {
     table: DefaultStringInterner,
     pub manual_rules: HashMap<TDim, TDim>,
+    pub inequalities: Vec<Inequality>,
 }
 
 impl SymbolScope {
@@ -64,12 +68,41 @@ impl SymbolScope {
     pub(crate) fn apply_rules(&self, t: &TDim) -> Option<TDim> {
         self.0.lock().unwrap().manual_rules.get(t).cloned()
     }
+
+    pub fn parse_tdim(&self, input: impl AsRef<str>) -> TractResult<TDim> {
+        parse_tdim(self, input.as_ref())
+    }
+
+    pub fn parse_inequality(&self, input: impl AsRef<str>) -> TractResult<Inequality> {
+        parse_inequality(self, input.as_ref())
+    }
 }
 
 impl fmt::Debug for SymbolScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let locked = self.0.lock().unwrap();
         write!(f, "{}", locked.table.into_iter().map(|(_, s)| s).join(" "))
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Hash)]
+pub enum InequalitySign {
+    LT,
+    GT,
+    LTE,
+    GTE,
+}
+
+#[derive(Debug, PartialEq, Clone, Hash)]
+pub struct Inequality {
+    pub left: TDim,
+    pub sign: InequalitySign,
+    pub right: TDim,
+}
+
+impl Inequality {
+    pub fn as_known_positive(&self) -> TDim {
+        todo!();
     }
 }
 

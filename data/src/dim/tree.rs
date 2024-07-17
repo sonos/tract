@@ -582,7 +582,7 @@ impl TDim {
         TDim::Div(Box::new(Add(vec![self, Val(rhs as i64 - 1)])), rhs).reduce()
     }
 
-    pub fn slope(&self, sym: &Symbol) -> (i64, u64) {
+    fn guess_slope(&self, sym: &Symbol) -> (i64, u64) {
         fn slope_rec(d: &TDim, sym: &Symbol) -> (i64, i64) {
             match d {
                 Val(_) => (0, 1),
@@ -590,7 +590,7 @@ impl TDim {
                 Add(terms) => terms
                     .iter()
                     .map(|d| slope_rec(d, sym))
-                    .fold((1, 1), |a, b| ((a.0 * b.1 + a.1 * b.0), (b.1 * a.1))),
+                    .fold((0, 1), |a, b| ((a.0 * b.1 + a.1 * b.0), (b.1 * a.1))),
                 Mul(terms) => terms
                     .iter()
                     .map(|d| slope_rec(d, sym))
@@ -886,6 +886,14 @@ mod tests {
         };
     }
 
+    fn a() -> Symbol {
+        S.0.sym("a")
+    }
+
+    fn b() -> Symbol {
+        S.0.sym("b")
+    }
+
     fn s() -> TDim {
         S.1.clone().into()
     }
@@ -1129,5 +1137,42 @@ mod tests {
     #[test]
     fn min_diff_1() {
         assert_eq!((s() + 1).mini(s() + 2), s() + 1);
+    }
+
+    #[test]
+    fn slope_0() {
+        assert_eq!(12.to_dim().guess_slope(&S.1), (0, 1));
+    }
+
+    #[test]
+    fn slope_1() {
+        assert_eq!(s().guess_slope(&S.1), (1, 1));
+    }
+
+    #[test]
+    fn slope_2() {
+        assert_eq!((s() * 2).guess_slope(&S.1), (2, 1));
+    }
+
+    #[test]
+    fn slope_3() {
+        assert_eq!((s() * 2 + s() / 2).guess_slope(&S.1), (5, 2));
+    }
+
+    #[test]
+    fn slope_4() {
+        assert_eq!((a().to_dim()).guess_slope(&b()), (0, 1));
+    }
+
+    #[test]
+    fn slope_5() {
+        assert_eq!((a().to_dim() + 1).guess_slope(&a()), (1, 1));
+        assert_eq!((a().to_dim() + 1).guess_slope(&b()), (0, 1));
+    }
+
+    #[test]
+    fn slope_6() {
+        assert_eq!((a().to_dim() + 1).guess_slope(&a()), (1, 1));
+        assert_eq!((a().to_dim() + b().to_dim()).guess_slope(&b()), (1, 1));
     }
 }
