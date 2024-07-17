@@ -1663,7 +1663,7 @@ impl IntoArcTensor for Arc<Tensor> {
 
 #[cfg(test)]
 mod tests {
-    use crate::dim::SymbolTable;
+    use crate::dim::SymbolScope;
     use crate::prelude::tensor1;
 
     use super::*;
@@ -1816,7 +1816,7 @@ mod tests {
 
     #[test]
     fn clone_tdim_tensor() {
-        let symbols = SymbolTable::default();
+        let symbols = SymbolScope::default();
         let a = symbols.sym("a");
         let t = tensor0(TDim::from(a));
         let _ = t.clone();

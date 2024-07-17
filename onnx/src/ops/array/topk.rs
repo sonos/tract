@@ -68,7 +68,7 @@ impl Expansion for Topk {
         let input = model.outlet_fact(inputs[0])?;
         let rank = input.rank();
         let axis = if self.axis >= 0 { self.axis } else { self.axis + rank as i64 } as usize;
-        let fallback_k = model.symbol_table.new_with_prefix("k").into();
+        let fallback_k = model.symbols.new_with_prefix("k").into();
         model.wire_node(
             prefix,
             tract_core::ops::array::Topk { axis, fallback_k, largest: self.largest },

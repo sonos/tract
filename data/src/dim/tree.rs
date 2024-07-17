@@ -883,8 +883,8 @@ mod tests {
     macro_rules! b( ($e:expr) => { Box::new($e) } );
 
     lazy_static::lazy_static! {
-        static ref S: (SymbolTable, Symbol) = {
-            let table = SymbolTable::default();
+        static ref S: (SymbolScope, Symbol) = {
+            let table = SymbolScope::default();
             let s = table.new_with_prefix("S");
             (table, s)
         };

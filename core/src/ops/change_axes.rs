@@ -1487,7 +1487,7 @@ mod proptests {
 
     #[test]
     fn compute_bug_1() {
-        let table = SymbolTable::default();
+        let table = SymbolScope::default();
         let s = table.new_with_prefix("S");
         assert_eq!(
             &*compute_shape_with_tf_rules(s![s, 1, 2, 128], s!(0, 0, -1)).unwrap(),
@@ -1497,7 +1497,7 @@ mod proptests {
 
     #[test]
     fn compute_bug_2() {
-        let table = SymbolTable::default();
+        let table = SymbolScope::default();
         let b = table.new_with_prefix("B");
         let s = table.new_with_prefix("S");
         assert_eq!(

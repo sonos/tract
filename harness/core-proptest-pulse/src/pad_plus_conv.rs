@@ -61,7 +61,7 @@ impl Arbitrary for PadPlusConvProblem {
 impl PadPlusConvProblem {
     pub fn run(&self) -> TestCaseResult {
         let mut model = TypedModel::default();
-        let s = model.symbol_table.sym("S");
+        let s = model.symbols.sym("S");
         let mut wire = model.add_source("a", f32::fact(dims!(1, 1, s))).unwrap();
         if self.pad_before > 0 || self.pad_after > 0 {
             wire = model

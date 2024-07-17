@@ -40,7 +40,7 @@ mod test {
 
     fn test_pulse_delay_over(pulse: usize, delay: usize, overlap: usize) {
         let mut model = PulsedModel::default();
-        let stream_dim = model.symbol_table.sym("S").to_dim();
+        let stream_dim = model.symbols.sym("S").to_dim();
         let fact1 = PulsedFact {
             datum_type: u8::datum_type(),
             shape: (&[pulse]).into(),
@@ -94,7 +94,7 @@ mod test {
     fn test_two_delays() {
         let pulse = 4usize;
         let mut model = PulsedModel::default();
-        let stream_dim = model.symbol_table.sym("S").to_dim();
+        let stream_dim = model.symbols.sym("S").to_dim();
         let fact_0 = PulsedFact {
             datum_type: u8::datum_type(),
             shape: (&[pulse]).into(),

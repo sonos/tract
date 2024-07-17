@@ -145,7 +145,7 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
         .find(|n| n.decl.id.0 == fragment_name)
         .ok_or_else(|| format_err!("Cound not find fragment `{}'", fragment_name))?;
     let template = TypedModel {
-        symbol_table: builder.model.symbol_table.clone(),
+        symbols: builder.model.symbols.clone(),
         tdim_rules: builder.model.tdim_rules.clone(),
         ..TypedModel::default()
     };

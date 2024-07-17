@@ -12,7 +12,7 @@ pub fn non_zero(
     _node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     // symbol table is shared between all templates and models
-    let x = ctx.template.symbol_table.new_with_prefix("x");
+    let x = ctx.template.symbols.new_with_prefix("x");
     Ok((Box::new(NonZero(x)) as _, vec!()))
 }
 
