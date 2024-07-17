@@ -5,8 +5,10 @@ use std::sync::{Arc, Mutex};
 use string_interner::DefaultStringInterner;
 use string_interner::Symbol as _;
 
+use super::TDim;
+
 #[derive(Clone, Default)]
-pub struct SymbolScope(Arc<Mutex<SymbolScopeData>>);
+pub struct SymbolScope(pub Arc<Mutex<SymbolScopeData>>);
 
 impl PartialEq for SymbolScope {
     fn eq(&self, other: &Self) -> bool {
@@ -17,30 +19,33 @@ impl PartialEq for SymbolScope {
 impl Eq for SymbolScope {}
 
 #[derive(Default)]
-pub struct SymbolScopeData(DefaultStringInterner);
+pub struct SymbolScopeData {
+    table: DefaultStringInterner,
+    pub manual_rules: HashMap<TDim, TDim>,
+}
 
 impl SymbolScope {
     pub fn get(&self, name: &str) -> Option<Symbol> {
-        let table = self.0.lock().unwrap();
-        table.0.get(name).map(|sym| Symbol(self.clone(), sym))
+        let locked = self.0.lock().unwrap();
+        locked.table.get(name).map(|sym| Symbol(self.clone(), sym))
     }
 
     pub fn sym(&self, name: &str) -> Symbol {
-        let mut table = self.0.lock().unwrap();
-        let sym = table.0.get_or_intern(name);
+        let mut locked = self.0.lock().unwrap();
+        let sym = locked.table.get_or_intern(name);
         Symbol(self.clone(), sym)
     }
 
     pub fn new_with_prefix(&self, prefix: &str) -> Symbol {
-        let mut table = self.0.lock().unwrap();
-        let sym = if table.0.get(prefix).is_none() {
-            table.0.get_or_intern(prefix)
+        let mut locked = self.0.lock().unwrap();
+        let sym = if locked.table.get(prefix).is_none() {
+            locked.table.get_or_intern(prefix)
         } else {
             let mut i = 0;
             loop {
                 let s = format!("{prefix}_{i}");
-                if table.0.get(&s).is_none() {
-                    break table.0.get_or_intern(s);
+                if locked.table.get(&s).is_none() {
+                    break locked.table.get_or_intern(s);
                 }
                 i += 1;
             }
@@ -49,19 +54,33 @@ impl SymbolScope {
     }
 
     pub fn resolving<R>(&self, sym: &Symbol, f: impl FnOnce(&str) -> R) -> Option<R> {
-        self.0.lock().unwrap().0.resolve(sym.1).map(f)
+        self.0.lock().unwrap().table.resolve(sym.1).map(f)
+    }
+
+    pub fn add_rule(&self, from: TDim, to: TDim) {
+        self.0.lock().unwrap().manual_rules.insert(from, to);
+    }
+
+    pub(crate) fn apply_rules(&self, t: &TDim) -> Option<TDim> {
+        self.0.lock().unwrap().manual_rules.get(t).cloned()
     }
 }
 
 impl fmt::Debug for SymbolScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let table = self.0.lock().unwrap();
-        write!(f, "{}", (&table).0.into_iter().map(|(_, s)| s).join(" "))
+        let locked = self.0.lock().unwrap();
+        write!(f, "{}", locked.table.into_iter().map(|(_, s)| s).join(" "))
     }
 }
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct Symbol(SymbolScope, string_interner::DefaultSymbol);
+
+impl Symbol {
+    pub fn scope(&self) -> &SymbolScope {
+        &self.0
+    }
+}
 
 impl PartialOrd for Symbol {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {

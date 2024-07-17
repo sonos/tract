@@ -2,6 +2,7 @@ use crate::internal::*;
 
 use super::{sym::*, DimLike};
 use itertools::Itertools;
+use num_integer::Integer;
 use num_traits::{AsPrimitive, PrimInt, Zero};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -272,14 +273,36 @@ impl TDim {
 
     pub fn simplify(self) -> TDim {
         use self::TDim::*;
-        use num_integer::Integer;
+        if let Val(v) = self {
+            return Val(v);
+        }
+
+        fn find_any_sym(tdim: &TDim) -> Option<&Symbol> {
+            match tdim {
+                Val(_) => None,
+                Sym(s) => Some(s),
+                Add(terms) | Mul(terms) | Min(terms) | Max(terms) | Broadcast(terms) => {
+                    terms.iter().find_map(find_any_sym)
+                }
+                MulInt(_, t) | Div(t, _) => find_any_sym(t),
+            }
+        }
+
+        let scope = find_any_sym(&self).map(|s| s.scope().clone());
+        self.simplify_rec(scope.as_ref())
+    }
+
+    fn simplify_rec(self, scope: Option<&SymbolScope>) -> TDim {
+        if let Some(sub) = scope.and_then(|scope| scope.apply_rules(&self)) {
+            return sub;
+        }
         match self {
             Add(mut terms) => {
                 #[allow(clippy::mutable_key_type)]
                 let mut simplified_terms: HashMap<TDim, i64> = HashMap::new();
                 // factorize common sub-expr
                 while let Some(term) = terms.pop() {
-                    let simplified = term.simplify();
+                    let simplified = term.simplify_rec(scope);
                     match simplified {
                         Val(0) => {} // ignore
                         Add(members) => {
@@ -325,7 +348,7 @@ impl TDim {
                         .into_iter()
                         .map(|t| {
                             let gcd = t.gcd();
-                            (t / gcd).simplify()
+                            (t / gcd).simplify_rec(scope)
                         })
                         .collect()
                 } else {
@@ -348,18 +371,18 @@ impl TDim {
             }
             MulInt(coef, expr) => {
                 match *expr {
-                    MulInt(c2, inner) => return MulInt(coef * c2, inner).simplify(),
+                    MulInt(c2, inner) => return MulInt(coef * c2, inner).simplify_rec(scope),
                     Val(v) => return Val(coef * v),
                     _ => {}
                 }
 
-                let simplified = expr.simplify();
+                let simplified = expr.simplify_rec(scope);
                 match (coef, simplified) {
                     (0, _) => Val(0), // Case #1: If coef is 0, return 0
                     (1, s) => s,      // Case #2: If coef is 1, return the simplified expression
                     (_, Add(terms)) => Add(terms
                         .into_iter()
-                        .map(|term| MulInt(coef, Box::new(term)).simplify())
+                        .map(|term| MulInt(coef, Box::new(term)).simplify_rec(scope))
                         .collect()), // Case #3: If expression is an addition, distribute the coef
                     (c, Val(v)) => Val(c * v), // Case #4: If expression is a value, combine coefs
                     (c, MulInt(v, inner)) => MulInt(c * v, inner), // Case #5: If expression is a MulInt, combine coefs
@@ -368,11 +391,11 @@ impl TDim {
             }
             Div(a, q) => {
                 if q == 1 {
-                    return a.simplify();
+                    return a.simplify_rec(scope);
                 } else if let Div(a, q2) = *a {
-                    return Div(a, q * q2).simplify();
+                    return Div(a, q * q2).simplify_rec(scope);
                 }
-                let a = a.simplify();
+                let a = a.simplify_rec(scope);
                 if let Val(a) = a {
                     Val(a / q as i64)
                 } else if let MulInt(-1, a) = a {
@@ -389,7 +412,7 @@ impl TDim {
                             -1,
                             b!(Div(
                                 b!(Add(terms.into_iter().map(|t| MulInt(-1, b!(t))).collect())
-                                    .simplify()),
+                                    .simplify_rec(scope)),
                                 q
                             )),
                         )
@@ -405,7 +428,7 @@ impl TDim {
                         };
                         if let Some(val) = offset {
                             terms.push(Val(-val * q as i64));
-                            Add(vec![Val(val), Div(b!(Add(terms).simplify()), q)])
+                            Add(vec![Val(val), Div(b!(Add(terms).simplify_rec(scope)), q)])
                         } else {
                             Div(b!(Add(terms)), q)
                         }
@@ -422,7 +445,7 @@ impl TDim {
                         } else if gcd == q as i64 {
                             MulInt(p / gcd, a)
                         } else if gcd > 1 {
-                            Div(b!(MulInt(p / gcd, a)), q / gcd as u64).simplify()
+                            Div(b!(MulInt(p / gcd, a)), q / gcd as u64).simplify_rec(scope)
                         } else {
                             Div(b!(MulInt(p, a)), q)
                         }
@@ -434,7 +457,7 @@ impl TDim {
             Broadcast(terms) => {
                 let mut terms: Vec<TDim> = terms
                     .iter()
-                    .map(|s| s.clone().simplify())
+                    .map(|s| s.clone().simplify_rec(scope))
                     .flat_map(|t| if let Broadcast(t) = t { t } else { vec![t] })
                     .filter(|t| !t.is_one())
                     .sorted_by(tdim_compare)
@@ -451,7 +474,7 @@ impl TDim {
             Min(terms) => {
                 let flatten: Vec<TDim> = terms
                     .into_iter()
-                    .map(TDim::simplify)
+                    .map(|t| t.simplify_rec(scope))
                     .flat_map(|t| if let Min(t) = t { t } else { vec![t] })
                     .sorted_by(tdim_compare)
                     .dedup()
@@ -477,7 +500,7 @@ impl TDim {
             Max(terms) => {
                 let flatten: Vec<TDim> = terms
                     .into_iter()
-                    .map(TDim::simplify)
+                    .map(|t| t.simplify_rec(scope))
                     .flat_map(|t| if let Max(t) = t { t } else { vec![t] })
                     .sorted_by(tdim_compare)
                     .dedup()
@@ -501,33 +524,6 @@ impl TDim {
                 }
             }
             Val(_) | Sym(_) => self,
-        }
-    }
-
-    pub fn search_and_replace(self, rules: &HashMap<TDim, TDim>) -> TDim {
-        use self::TDim::*;
-        if let Some(result) = rules.get(&self) {
-            return result.clone();
-        }
-        match self {
-            Val(_) | Sym(_) => self,
-            Add(terms) => {
-                Add(terms.into_iter().map(|t| t.search_and_replace(rules)).collect()).simplify()
-            }
-            Mul(terms) => {
-                Mul(terms.into_iter().map(|t| t.search_and_replace(rules)).collect()).simplify()
-            }
-            Min(terms) => {
-                Min(terms.into_iter().map(|t| t.search_and_replace(rules)).collect()).simplify()
-            }
-            Max(terms) => {
-                Max(terms.into_iter().map(|t| t.search_and_replace(rules)).collect()).simplify()
-            }
-            Broadcast(terms) => {
-                Broadcast(terms.into_iter().map(|t| t.search_and_replace(rules)).collect()).simplify()
-            }
-            MulInt(i, t) => MulInt(i, Box::new(t.search_and_replace(rules))).simplify(),
-            Div(p, q) => Div(Box::new(p.search_and_replace(rules)), q).simplify(),
         }
     }
 
