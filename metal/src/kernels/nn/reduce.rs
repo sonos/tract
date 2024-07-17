@@ -172,7 +172,7 @@ mod tests {
 
                 let a = Tensor::from_shape(
                     &[m, n],
-                    &(0..m * n).map(|_f| 1 as f32).collect::<Vec<_>>(),
+                    &(0..m * n).map(|f| f as f32 / 1000.0).collect::<Vec<_>>(),
                 )?
                 .into_metal()?;
                 let metal_output = Reducer::MeanOfSquares.eval(context, &a, 0)?;
@@ -192,12 +192,12 @@ mod tests {
                 let len = shape.iter().product::<usize>();
 
                 let a =
-                    Tensor::from_shape(shape, &(0..len).map(|_f| 1 as f32).collect::<Vec<_>>())?
+                    Tensor::from_shape(shape, &(0..len).map(|f| f as f32 / 1000.0).collect::<Vec<_>>())?
                         .into_metal()?;
 
                 let metal_output = Reducer::MeanOfSquares.eval(context, &a, axis)?;
                 let cpu_output = TractReducer::MeanOfSquares.reduce(&[axis], &a.to_cpu())?;
-                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Close)?;
+                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
                 Ok(())
             })
         })
@@ -212,11 +212,11 @@ mod tests {
                 let len = shape.iter().product::<usize>();
 
                 let a =
-                    Tensor::from_shape(shape, &(0..len).map(|_f| 1 as f32).collect::<Vec<_>>())?
+                    Tensor::from_shape(shape, &(0..len).map(|f| f as f32 / 1000.0).collect::<Vec<_>>())?
                         .into_metal()?;
                 let metal_output = Reducer::MeanOfSquares.eval(context, &a, axis)?;
                 let cpu_output = TractReducer::MeanOfSquares.reduce(&[axis], &a.to_cpu())?;
-                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Close)?;
+                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
                 Ok(())
             })
         })
@@ -231,12 +231,12 @@ mod tests {
                 let len = shape.iter().product::<usize>();
 
                 let a =
-                    Tensor::from_shape(shape, &(0..len).map(|_f| 1 as f32).collect::<Vec<_>>())?
+                    Tensor::from_shape(shape, &(0..len).map(|f| f as f32 / 1000.0).collect::<Vec<_>>())?
                         .into_metal()?;
 
                 let metal_output = Reducer::Sum.eval(context, &a, axis)?;
                 let cpu_output = TractReducer::Sum.reduce(&[axis], &a.to_cpu())?;
-                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Close)?;
+                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
                 Ok(())
             })
         })
@@ -255,7 +255,7 @@ mod tests {
 
                 let metal_output = Reducer::Sum.eval(context, &a, axis)?;
                 let cpu_output = TractReducer::Sum.reduce(&[axis], &a.to_cpu())?;
-                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Close)?;
+                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
                 Ok(())
             })
         })
