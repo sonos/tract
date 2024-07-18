@@ -28,7 +28,7 @@ fn inequality<'i>(s: &SymbolScope, i: &'i str) -> IResult<&'i str, Inequality> {
     })(i)
 }
 
-fn inequality_sign<'i>(i: &'i str) -> IResult<&'i str, InequalitySign> {
+fn inequality_sign(i: &str) -> IResult<&str, InequalitySign> {
     alt((
         map(stag("<="), |_| InequalitySign::LTE),
         map(stag("<"), |_| InequalitySign::LT),
