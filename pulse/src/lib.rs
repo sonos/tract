@@ -49,9 +49,10 @@ fn tract_nnef_registry() -> Registry {
 
 fn decl_stream_symbol(
     _proto_model: &mut ModelBuilder,
-    args: &[Identifier],
+    name: &Identifier,
+    _rest: &str,
 ) -> TractResult<ControlFlow<(), ()>> {
-    if args[0].0 == "tract_pulse_streaming_symbol" {
+    if name.0 == "tract_pulse_streaming_symbol" {
         Ok(ControlFlow::Break(()))
     } else {
         Ok(ControlFlow::Continue(()))

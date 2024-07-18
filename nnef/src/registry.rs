@@ -16,7 +16,7 @@ pub type FromTractWithOp<O> =
     fn(&mut IntoAst, node: &TypedNode, op: &O) -> TractResult<Option<Arc<RValue>>>;
 pub type BinOp = (Identifier, Box<dyn BinMiniOp>);
 pub type Extension = Box<
-    dyn Fn(&mut crate::deser::ModelBuilder, &[Identifier]) -> TractResult<ControlFlow<(), ()>>
+    dyn Fn(&mut crate::deser::ModelBuilder, &Identifier, &str) -> TractResult<ControlFlow<(), ()>>
         + Send
         + Sync,
 >;

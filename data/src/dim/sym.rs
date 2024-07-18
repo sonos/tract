@@ -24,7 +24,7 @@ impl Eq for SymbolScope {}
 #[derive(Default)]
 pub struct SymbolScopeData {
     table: DefaultStringInterner,
-    pub inequalities: Vec<Inequality>,
+    inequalities: Vec<Inequality>,
 }
 
 impl SymbolScope {
@@ -105,10 +105,18 @@ impl SymbolScope {
             }
             visited.push(t);
             if visited.len() > 10 {
-                break
+                break;
             }
         }
         false
+    }
+
+    pub fn all_symbols(&self) -> Vec<Symbol> {
+        self.0.lock().unwrap().table.into_iter().map(|is| Symbol(self.clone(), is.0)).collect()
+    }
+
+    pub fn all_assertions(&self) -> Vec<Inequality> {
+        self.0.lock().unwrap().inequalities.clone()
     }
 }
 
@@ -128,6 +136,18 @@ pub enum InequalitySign {
     GTE,
 }
 
+impl Display for InequalitySign {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use InequalitySign::*;
+        match self {
+            LT => write!(f, "<"),
+            GT => write!(f, ">"),
+            LTE => write!(f, "<="),
+            GTE => write!(f, ">="),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Hash)]
 pub struct Inequality {
     pub left: TDim,
@@ -144,6 +164,12 @@ impl Inequality {
             LTE => self.right.clone() - &self.left,
             LT => self.right.clone() - 1 - &self.left,
         }
+    }
+}
+
+impl Display for Inequality {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {} {}", self.left, self.sign, self.right)
     }
 }
 

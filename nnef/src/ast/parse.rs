@@ -54,9 +54,14 @@ fn version(i: &str) -> IResult<&str, NumericLiteral> {
     delimited(stag("version"), numeric_literal, stag(";"))(i)
 }
 
-// <extension> ::= "extension" <identifier>+ ";"
-fn extension(i: &str) -> IResult<&str, Vec<Identifier>> {
-    delimited(stag("extension"), many1(spaced(identifier)), stag(";"))(i)
+// NNEF spec: <extension> ::= "extension" <identifier>+ ";"
+// tract accepts: <extension> ::= "extension" <identifier> <anything-but-;>";"
+fn extension(i: &str) -> IResult<&str, (Identifier, String)> {
+    delimited(
+        stag("extension"),
+        pair(spaced(identifier), map(take_until(";"), |s: &str| s.to_string())),
+        stag(";"),
+    )(i)
 }
 
 // FRAGMENT

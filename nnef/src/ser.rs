@@ -52,7 +52,6 @@ pub struct IntoAst<'a> {
     pub framework: &'a Nnef,
     pub parent: Option<&'a IntoAst<'a>>,
     pub registries: Vec<Identifier>,
-    pub symbols: Vec<Symbol>,
     pub model: &'a TypedModel,
     pub parameters: Vec<Identifier>,
     pub results: Vec<Identifier>,
@@ -75,7 +74,6 @@ impl<'a> IntoAst<'a> {
         IntoAst {
             framework,
             registries: Default::default(),
-            symbols: Default::default(),
             model,
             parameters: Default::default(),
             results: Default::default(),
@@ -95,13 +93,6 @@ impl<'a> IntoAst<'a> {
         }
         if !self.registries.iter().any(|r| r == id) {
             self.registries.push(id.clone());
-        }
-        Ok(())
-    }
-
-    pub fn ensure_symbol(&mut self, s: &Symbol) -> TractResult<()> {
-        if !self.symbols.contains(s) {
-            self.symbols.push(s.clone());
         }
         Ok(())
     }
@@ -199,11 +190,14 @@ impl<'a> IntoAst<'a> {
         self.registries.sort();
         for reg in self.registries {
             if reg.0 != "tract_nnef" {
-                extension.push(vec!["tract_registry".into(), reg]);
+                extension.push(("tract_registry".into(), reg.0));
             }
         }
-        for sym in self.symbols {
-            extension.push(vec!["tract_symbol".into(), Identifier(sym.to_string())]);
+        for sym in self.model.symbols.all_symbols() {
+            extension.push(("tract_symbol".into(), sym.to_string()));
+        }
+        for assert in self.model.symbols.all_assertions() {
+            extension.push(("tract_assert".into(), assert.to_string()));
         }
         let properties = FragmentDef {
             decl: FragmentDecl {
