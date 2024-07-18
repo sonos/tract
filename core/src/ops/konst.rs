@@ -39,7 +39,7 @@ impl TypedOp for Const {
         let fact = TypedFact::from(&self.0);
         if let Some(opaque) = &self.1 {
             ensure!(self.1.is_some());
-            Ok(tvec!(fact.with_opaque_metadata(opaque.clone())))
+            Ok(tvec!(fact.with_opaque_fact(opaque.clone())))
         } else {
             Ok(tvec!(fact))
         }
