@@ -58,7 +58,7 @@ impl<'mb> ModelBuilder<'mb> {
                     }
                 }
                 "tract_symbol" => {
-                    let symbol = self.model.symbols.new_with_prefix(&ext.1.trim());
+                    let symbol = self.model.symbols.new_with_prefix(ext.1.trim());
                     self.symbols.push(symbol);
                 }
                 "KHR_enable_fragment_definitions" | "KHR_enable_operator_expressions" => (),
