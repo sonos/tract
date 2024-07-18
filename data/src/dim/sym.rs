@@ -24,7 +24,6 @@ impl Eq for SymbolScope {}
 #[derive(Default)]
 pub struct SymbolScopeData {
     table: DefaultStringInterner,
-    pub manual_rules: HashMap<TDim, TDim>,
     pub inequalities: Vec<Inequality>,
 }
 
@@ -62,14 +61,6 @@ impl SymbolScope {
             Ok(lock) => lock.table.resolve(sym.1).map(f),
             Err(_) => None,
         }
-    }
-
-    pub fn add_rule(&self, from: TDim, to: TDim) {
-        self.0.lock().unwrap().manual_rules.insert(from, to);
-    }
-
-    pub(crate) fn apply_rules(&self, t: &TDim) -> Option<TDim> {
-        self.0.lock().unwrap().manual_rules.get(t).cloned()
     }
 
     pub fn parse_tdim(&self, input: impl AsRef<str>) -> TractResult<TDim> {
