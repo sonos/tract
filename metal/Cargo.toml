@@ -21,8 +21,10 @@ maintenance = { status = "actively-developed" }
 anyhow.workspace = true
 block.workspace = true
 derive-new.workspace = true
+foreign-types.workspace = true
 log.workspace = true
 metal.workspace = true
+paste.workspace = true
 objc = { version = "0.2.7" }
 num-traits.workspace = true
 tract-core = { version = "=0.21.6-pre", path = "../core" }
