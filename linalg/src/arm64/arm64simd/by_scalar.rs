@@ -1,4 +1,4 @@
-ew_impl_wrap!(
+by_scalar_impl_wrap!(
     f32,
     arm64simd_mul_by_scalar_f32_16n,
     16,
