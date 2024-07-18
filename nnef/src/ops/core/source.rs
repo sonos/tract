@@ -13,15 +13,10 @@ pub fn register(registry: &mut Registry) {
 }
 
 fn external_dump(
-    ast: &mut IntoAst,
+    _ast: &mut IntoAst,
     _node: &TypedNode,
     op: &TypedSource,
 ) -> TractResult<Option<Arc<RValue>>> {
-    for dim in op.fact.shape.iter() {
-        for sym in dim.symbols() {
-            ast.ensure_symbol(&sym)?;
-        }
-    }
     let shape = tdims(&op.fact.shape);
     Ok(Some(invocation(
         "tract_core_external",

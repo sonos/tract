@@ -44,35 +44,34 @@ impl<'mb> ModelBuilder<'mb> {
 
     fn translate(&mut self) -> TractResult<()> {
         'ext: for ext in &self.proto_model.doc.extension {
-            match &*ext[0].0 {
+            match &*ext.0 .0 {
                 "tract_registry" => {
-                    if self.framework.registries.iter().any(|reg| reg.id == ext[1]) {
-                        self.registries.push(ext[1].clone())
+                    let registry = Identifier(ext.1.trim().to_owned());
+                    if self.framework.registries.iter().any(|reg| reg.id == registry) {
+                        self.registries.push(registry.clone())
                     } else if let Some(reg) =
-                        self.framework.registries.iter().find(|reg| reg.aliases.contains(&ext[1]))
+                        self.framework.registries.iter().find(|reg| reg.aliases.contains(&registry))
                     {
                         self.registries.push(reg.id.clone())
                     } else {
-                        bail!("Registry not found {:?}", &ext[1])
+                        bail!("Registry not found {:?}", registry)
                     }
                 }
                 "tract_symbol" => {
-                    if ext.len() != 2 {
-                        bail!("tract_symbol expects symbol: example: \"extension tract_symbol S;\"")
-                    }
-                    let symbol = self.model.symbols.new_with_prefix(&ext[1].0);
+                    let symbol = self.model.symbols.new_with_prefix(&ext.1.trim());
                     self.symbols.push(symbol);
                 }
+                "KHR_enable_fragment_definitions" | "KHR_enable_operator_expressions" => (),
                 _ => {
                     for reg in &self.framework.registries {
                         for reg_ext in &reg.extensions {
-                            match reg_ext(self, ext)? {
+                            match reg_ext(self, &ext.0, &ext.1)? {
                                 ControlFlow::Continue(_) => (),
                                 ControlFlow::Break(_) => continue 'ext,
                             }
                         }
                     }
-                    warn!("Ignore unknown extension {}", ext.iter().map(|i| &i.0).join(" "));
+                    warn!("Ignore unknown extension {:?}", ext.0);
                 }
             };
         }
