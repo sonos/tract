@@ -25,7 +25,6 @@ use frame::by_scalar::ByScalarKer;
 use frame::element_wise::ElementWiseKer;
 use frame::mmm::panel_extract::PanelExtractor;
 use frame::reduce::{MapReduceKer, ReduceKer};
-use frame::unicast::UnicastKer;
 use frame::{reduce, unicast, MatMatMul};
 pub use generic::{ScaleShiftAndRound, Scaler};
 use lazy_static::lazy_static;
