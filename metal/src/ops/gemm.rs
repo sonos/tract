@@ -6,7 +6,7 @@ use tract_core::internal::*;
 #[cfg(target_os = "macos")]
 type MatMulImpl = matmul::MfaGemm;
 #[cfg(target_os = "ios")]
-type MatMulImpl = matmul::BasicMatMul;
+type MatMulImpl = matmul::MpsMatMul;
 
 #[derive(Debug, Default, Clone)]
 pub struct MetalGemm {

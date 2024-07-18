@@ -191,9 +191,11 @@ mod tests {
                 let shape = &[2, 2, 82, 38];
                 let len = shape.iter().product::<usize>();
 
-                let a =
-                    Tensor::from_shape(shape, &(0..len).map(|f| f as f32 / 1000.0).collect::<Vec<_>>())?
-                        .into_metal()?;
+                let a = Tensor::from_shape(
+                    shape,
+                    &(0..len).map(|f| f as f32 / 1000.0).collect::<Vec<_>>(),
+                )?
+                .into_metal()?;
 
                 let metal_output = Reducer::MeanOfSquares.eval(context, &a, axis)?;
                 let cpu_output = TractReducer::MeanOfSquares.reduce(&[axis], &a.to_cpu())?;
@@ -211,9 +213,11 @@ mod tests {
                 let shape = &[1, 85, 82, 38];
                 let len = shape.iter().product::<usize>();
 
-                let a =
-                    Tensor::from_shape(shape, &(0..len).map(|f| f as f32 / 1000.0).collect::<Vec<_>>())?
-                        .into_metal()?;
+                let a = Tensor::from_shape(
+                    shape,
+                    &(0..len).map(|f| f as f32 / 1000.0).collect::<Vec<_>>(),
+                )?
+                .into_metal()?;
                 let metal_output = Reducer::MeanOfSquares.eval(context, &a, axis)?;
                 let cpu_output = TractReducer::MeanOfSquares.reduce(&[axis], &a.to_cpu())?;
                 cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
@@ -230,9 +234,11 @@ mod tests {
                 let shape = &[1, 85, 82, 38];
                 let len = shape.iter().product::<usize>();
 
-                let a =
-                    Tensor::from_shape(shape, &(0..len).map(|f| f as f32 / 1000.0).collect::<Vec<_>>())?
-                        .into_metal()?;
+                let a = Tensor::from_shape(
+                    shape,
+                    &(0..len).map(|f| f as f32 / 1000.0).collect::<Vec<_>>(),
+                )?
+                .into_metal()?;
 
                 let metal_output = Reducer::Sum.eval(context, &a, axis)?;
                 let cpu_output = TractReducer::Sum.reduce(&[axis], &a.to_cpu())?;

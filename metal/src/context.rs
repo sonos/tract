@@ -1,4 +1,5 @@
 use crate::func_constants::ConstantValues;
+use crate::kernels::matmul::mps;
 pub use crate::kernels::{LibraryContent, LibraryName};
 pub use crate::tensor::MetalTensor;
 use metal::Buffer;
@@ -35,6 +36,7 @@ pub struct SharedMetalContext {
     #[allow(clippy::type_complexity)]
     cache_pipelines:
         Arc<RwLock<HashMap<(LibraryName, String, Option<ConstantValues>), ComputePipelineState>>>,
+    cache_mps_matmul: Arc<RwLock<HashMap<mps::MpsMatmulKey, mps::api::MatrixMultiplication>>>,
 }
 
 impl SharedMetalContext {
@@ -46,6 +48,7 @@ impl SharedMetalContext {
             device,
             cache_libraries: Arc::new(RwLock::new(HashMap::new())),
             cache_pipelines: Arc::new(RwLock::new(HashMap::new())),
+            cache_mps_matmul: Arc::new(RwLock::new(HashMap::new())),
         };
         ctxt.preload_pipelines()?;
         Ok(ctxt)
@@ -70,6 +73,35 @@ impl SharedMetalContext {
     pub fn flush_pipeline_cache(&self) -> Result<()> {
         self.cache_pipelines.write().map_err(|e| anyhow!("{:?}", e))?.clear();
         Ok(())
+    }
+
+    pub fn load_mps_matmul(
+        &self,
+        key: &mps::MpsMatmulKey,
+    ) -> Result<mps::api::MatrixMultiplication> {
+        {
+            let cache = self.cache_mps_matmul.read().map_err(|e| anyhow!("{:?}", e))?;
+            if let Some(matmul) = cache.get(key) {
+                return Ok(matmul.clone());
+            }
+        }
+
+        let mut cache = self.cache_mps_matmul.write().map_err(|e| anyhow!("{:?}", e))?;
+
+        let matmul = mps::api::MatrixMultiplication::new(
+            self.device.to_owned(),
+            key.transpose_a,
+            key.transpose_b,
+            key.m as _,
+            key.n as _,
+            key.k as _,
+            1.0,
+            0.0,
+        )
+        .ok_or_else(|| anyhow!("An error occured when creating MatrixMultiplication"))?;
+
+        cache.insert(*key, matmul.clone());
+        Ok(matmul)
     }
 
     pub fn load_library(&self, name: LibraryName) -> Result<Library> {
