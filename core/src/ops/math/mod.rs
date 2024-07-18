@@ -112,11 +112,15 @@ bin_to_super_type!(mul, Mul,
                         }
                    },
                    eval_by_scalar: |a: &mut TensorView, b: &TensorView | -> TractResult<bool> {
-                       let res = tract_linalg::bin_by_scalar(tract_linalg::BinOp::Mul)(a, b).is_ok();
+                       let res = tract_linalg::bin_by_scalar(a.datum_type(), tract_linalg::BinOp::Mul)
+                           .context("unimplemented mul by scalar")?(a, b)
+                           .is_ok();
                        Ok(res)
                    },
                    eval_unicast: |a: &mut TensorView, b: &TensorView | -> TractResult<bool> {
-                       let res = tract_linalg::bin_unicast(tract_linalg::BinOp::Mul)(a, b).is_ok();
+                       let res = tract_linalg::bin_unicast(a.datum_type(), tract_linalg::BinOp::Mul)
+                           .context("unimplemented mul unicast")?(a, b)
+                           .is_ok();
                        Ok(res)
                    },
                    neutral_element: 1,
