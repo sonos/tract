@@ -409,7 +409,7 @@ impl fmt::Debug for TypedFact {
             }
             (None, Some(ref meta)) => write!(fmt, "{:?}, {:?}", self.datum_type, meta),
             (None, None) => write!(fmt, "{:?}", self.datum_type),
-        }
+        }?;
         Ok(())
     }
 }

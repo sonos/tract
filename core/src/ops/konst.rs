@@ -38,7 +38,7 @@ impl TypedOp for Const {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let fact = TypedFact::from(&self.0);
         if let Some(opaque) = &self.1 {
-            Ok(tvec!(fact.with_opaque_metadata(opaque.clone())))
+            Ok(tvec!(fact.with_opaque_fact(opaque.clone())))
         } else {
             Ok(tvec!(fact))
         }
