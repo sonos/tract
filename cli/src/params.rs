@@ -843,7 +843,7 @@ impl Parameters {
     /// Parses the command-line arguments.
     pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> TractResult<Parameters> {
         let symbols = SymbolScope::default();
-        for rule in matches.values_of("tdim-assert").unwrap_or_default() {
+        for rule in matches.values_of("assert").unwrap_or_default() {
             let ineq = symbols.parse_inequality(rule)?;
             symbols.add_inequality(ineq);
         }
