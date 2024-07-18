@@ -54,7 +54,7 @@ jobs:
         rust: [ 1.75.0, beta ]
       fail-fast: false
 
-    runs-on: [ ubuntu-latest, macos-14 ]
+    runs-on: [ ubuntu-latest, macos-latest ]
 
     steps:
     - uses: actions/checkout@v3
@@ -85,7 +85,7 @@ jobs:
       matrix:
         rust: [ stable, beta, nightly ]
 
-    runs-on: [ ubuntu-latest, macos-14 ]
+    runs-on: [ ubuntu-latest, macos-latest ]
 
     steps:
     - uses: actions/checkout@v3
