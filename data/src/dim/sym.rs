@@ -114,10 +114,10 @@ impl SymbolScope {
             }
             visited.push(t);
             if visited.len() > 10 {
-                return false;
+                break
             }
         }
-        return false;
+        false
     }
 }
 
@@ -129,6 +129,7 @@ impl fmt::Debug for SymbolScope {
 }
 
 #[derive(Debug, PartialEq, Clone, Hash)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum InequalitySign {
     LT,
     GT,
