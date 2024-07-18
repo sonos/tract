@@ -14,8 +14,9 @@ mod arm64fp16;
 pub use arm64fp16::*;
 
 use crate::f16;
-use crate::Ops;
+use crate::{Ops, LinalgRegistry, DatumType, BinOp};
 
+use crate::frame::by_scalar::ByScalarKer;
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::reduce::{MapReduceKer, ReduceKer};
 use crate::frame::unicast::UnicastKer;
@@ -211,6 +212,16 @@ impl Kind {
         log::info!("CPU optimisation: {:?}", kind);
         kind
     }
+}
+
+pub(crate)fn register_all_unicast(registry: &mut LinalgRegistry) {
+    registry.insert((BinOp::Mul, DatumType::F32),Box::new(|| arm64simd_unicast_mul_f32_16n::bin_1()));
+    registry.insert((BinOp::Mul, DatumType::F16),Box::new(|| arm64fp16_unicast_mul_f16_32n::bin_1()));
+}
+
+pub(crate)fn register_all_by_scalar(registry: &mut LinalgRegistry) {
+    registry.insert((BinOp::Mul, DatumType::F32),Box::new(|| arm64simd_mul_by_scalar_f32_16n::bin_1()));
+    registry.insert((BinOp::Mul, DatumType::F16),Box::new(|| arm64fp16_mul_by_scalar_f16_32n::bin_1()));
 }
 
 pub fn plug(ops: &mut Ops) {

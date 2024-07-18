@@ -1,3 +1,61 @@
+use std::{fmt::Debug, marker::PhantomData};
+
+use tract_data::{TractResult, internal::TensorView};
+
+use crate::{LADatum, element_wise::ElementWiseKer};
+
+use super::{ElementWise, element_wise_helper::map_slice_with_alignment};
+
+
+/// Generic implementation struct that unify all by scalar kernels.
+/// A by scalar operation is an ElementWise operation with a scalar paramerer.
+#[derive(Debug, Clone, new)]
+pub struct ByScalarImpl<K, T>
+where
+    T: LADatum,
+    K: ByScalarKer<T> + Clone,
+{
+    phantom: PhantomData<(K, T)>,
+}
+
+impl<K, T> ElementWise<T, T> for ByScalarImpl<K, T>
+where
+    T: LADatum,
+    K: ByScalarKer<T> + Clone,
+{
+    fn name(&self) -> &'static str {
+        K::name()
+    }
+    fn run_with_params(&self, vec: &mut [T], params: T) -> TractResult<()> {
+        map_slice_with_alignment(vec, |data| K::run(data, params), K::nr(), K::alignment_bytes())
+    }
+}
+
+
+pub trait ByScalarKer<T>: ElementWiseKer<T, T>
+where
+    T: LADatum
+{
+    fn bin_1() -> Box<dyn Fn(&mut TensorView, &TensorView) -> TractResult<()>> {
+        Box::new(|a: &mut TensorView, b: &TensorView| {
+            let a_slice = a.as_slice_mut()?;
+            let b = b.as_slice()?[0];
+            (Self::ew()).run_with_params(a_slice, b)
+        })
+    }
+}
+
+macro_rules! by_scalar_impl_wrap {
+    ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $params: ty, $run: item) => {
+        paste! {
+            ew_impl_wrap!($ti, $func, $nr, $alignment_items, $ti, $run);
+
+            impl crate::frame::by_scalar::ByScalarKer<$ti> for $func {}
+        }
+    };
+}
+
+
 #[cfg(test)]
 #[macro_use]
 pub mod test {
