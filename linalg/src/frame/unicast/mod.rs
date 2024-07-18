@@ -4,6 +4,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use tract_data::TractResult;
+use tract_data::internal::TensorView;
 
 use crate::frame::element_wise_helper::TempBuffer;
 use crate::LADatum;
@@ -53,6 +54,13 @@ where
     phantom: PhantomData<(K, T)>,
 }
 
+
+impl<K, T> UnicastImpl<K, T>
+where
+    T: LADatum,
+    K: UnicastKer<T> + Clone,
+{
+}
 impl<K, T> Unicast<T> for UnicastImpl<K, T>
 where
     T: LADatum,
@@ -79,6 +87,13 @@ where
     fn run(a: &mut [T], b: &[T]);
     fn bin() -> Box<dyn Unicast<T>> {
         Box::new(UnicastImpl::<Self, T>::new())
+    }
+    fn bin_1() -> Box<dyn Fn(&mut TensorView, &TensorView) -> TractResult<()>> {
+        Box::new(|a: &mut TensorView, b: &TensorView| {
+            let a_slice = a.as_slice_mut()?;
+            let b_slice = b.as_slice()?;
+            (Self::bin()).run(a_slice, b_slice)
+        })
     }
 }
 
