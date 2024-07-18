@@ -1,4 +1,4 @@
-use crate::matmul::{BasicMatMul, MfaGemm};
+use crate::matmul::{BasicMatMul, MfaGemm, MpsMatMul};
 use criterion::measurement::WallTime;
 use criterion::*;
 use ggml::Context;
@@ -104,12 +104,35 @@ pub fn metal_basic_matmul(
     // Warmup
     let _ = BasicMatMul::default().eval(&context, &metal_a, &metal_b).unwrap();
 
-    crit.bench_function(&format!("tract_metal_mat_vec_{:?}", dt), |be| {
+    crit.bench_function(&format!("tract_metal_basic_matmul_{:?}", dt), |be| {
         be.iter(|| {
             let _ = BasicMatMul::default().eval(&context, &metal_a, &metal_b).unwrap();
         });
     });
-    // metal_mat_vec
+}
+
+pub fn metal_mps_matmul(
+    crit: &mut BenchmarkGroup<WallTime>,
+    m: usize,
+    k: usize,
+    n: usize,
+    dt: DatumType,
+) {
+    let context = MetalContext::new();
+    context.shared_context().load_library(LibraryName::MfaLib).unwrap();
+
+    let a = Tensor::zero_dt(dt, &[m, k]).unwrap();
+    let b = Tensor::zero_dt(dt, &[k, n]).unwrap();
+    let metal_a = a.into_metal().unwrap();
+    let metal_b = b.into_metal().unwrap();
+    // Warmup
+    let _ = MpsMatMul::default().eval(&context, &metal_a, &metal_b).unwrap();
+
+    crit.bench_function(&format!("tract_metal_mps_matmul_{:?}", dt), |be| {
+        be.iter(|| {
+            let _ = MpsMatMul::default().eval(&context, &metal_a, &metal_b).unwrap();
+        });
+    });
 }
 
 pub fn metal_gemm(
@@ -180,6 +203,7 @@ fn matmul(c: &mut Criterion, m: usize, k: usize, n: usize) {
     c.throughput(Throughput::Elements((m * k * n) as _));
     // ggml_matmul(&mut c, m, k, n, f32::datum_type());
     metal_basic_matmul(&mut c, m, k, n, f32::datum_type());
+    metal_mps_matmul(&mut c, m, k, n, f32::datum_type());
     // tract_with_packing(&mut c, m, k, n, f32::datum_type());
     metal_gemm(&mut c, m, k, n, f32::datum_type());
     metal_gemm_without_cache(&mut c, m, k, n, f32::datum_type());
