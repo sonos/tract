@@ -92,7 +92,7 @@ fn main() -> TractResult<()> {
         .arg(Arg::new("constantize").long("constantize").multiple_occurrences(true).takes_value(true).long_help(
                 "Transorm an input into a Constant"))
 
-        .arg(arg!(--"tdim-rule").multiple_occurrences(true).takes_value(true).long_help("Set a manual TDim simplification"))
+        .arg(arg!(--"tdim-assert").multiple_occurrences(true).takes_value(true).long_help("Adds a TDim pre-condition"))
 
         // deprecated
         .arg(arg!(--"input-bundle" [input_bundle] "Path to an input container (.npz). This sets input facts and tensor values.").hide(true))

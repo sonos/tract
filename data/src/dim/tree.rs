@@ -293,9 +293,6 @@ impl TDim {
     }
 
     fn simplify_rec(self, scope: Option<&SymbolScope>) -> TDim {
-        if let Some(sub) = scope.and_then(|scope| scope.apply_rules(&self)) {
-            return sub;
-        }
         match self {
             Add(mut terms) => {
                 #[allow(clippy::mutable_key_type)]
@@ -479,20 +476,22 @@ impl TDim {
                     .sorted_by(tdim_compare)
                     .dedup()
                     .collect();
-                let mut new_terms: Vec<TDim> = flatten
+                let new_terms: Vec<TDim> = flatten
                     .iter()
                     .filter(|&t| {
                         t != &i64::MAX.to_dim()
-                            && !flatten
-                                .iter()
-                                .any(|other| (t.clone() - other).to_i64().is_ok_and(|i| i > 0))
+                            && !flatten.iter().filter(|other| other != &t).any(|other| {
+                                let diff = t.clone() - other;
+                                diff.to_i64().is_ok_and(|i| i >= 0)
+                                    || scope.is_some_and(|scope| scope.prove_positive(&diff))
+                            })
                     })
                     .cloned()
                     .collect();
                 if new_terms.len() == 0 {
                     i64::MAX.to_dim()
                 } else if new_terms.len() == 1 {
-                    new_terms.remove(0)
+                    new_terms.into_iter().next().unwrap()
                 } else {
                     Min(new_terms)
                 }
@@ -505,20 +504,22 @@ impl TDim {
                     .sorted_by(tdim_compare)
                     .dedup()
                     .collect();
-                let mut new_terms: Vec<TDim> = flatten
+                let new_terms: Vec<TDim> = flatten
                     .iter()
                     .filter(|&t| {
                         t != &i64::MIN.to_dim()
-                            && !flatten
-                                .iter()
-                                .any(|other| (t.clone() - other).to_i64().is_ok_and(|i| i < 0))
+                            && !flatten.iter().filter(|other| other != &t).any(|other| {
+                                let diff = other.clone() - t;
+                                diff.to_i64().is_ok_and(|i| i >= 0)
+                                    || scope.is_some_and(|scope| scope.prove_positive(&diff))
+                            })
                     })
                     .cloned()
                     .collect();
                 if new_terms.len() == 0 {
                     i64::MIN.to_dim()
                 } else if new_terms.len() == 1 {
-                    new_terms.remove(0)
+                    new_terms.into_iter().next().unwrap()
                 } else {
                     Max(new_terms)
                 }
@@ -1174,5 +1175,16 @@ mod tests {
     fn slope_6() {
         assert_eq!((a().to_dim() + 1).guess_slope(&a()), (1, 1));
         assert_eq!((a().to_dim() + b().to_dim()).guess_slope(&b()), (1, 1));
+    }
+
+    #[test]
+    fn min_max_with_axiom() {
+        let symbols = SymbolScope::default();
+        symbols.add_inequality(symbols.parse_inequality("a>=0").unwrap());
+        assert_eq!(symbols.parse_tdim("min(a,0)").unwrap().simplify(), 0.into());
+        assert_eq!(
+            symbols.parse_tdim("max(a,0)").unwrap().simplify(),
+            symbols.parse_tdim("a").unwrap()
+        );
     }
 }

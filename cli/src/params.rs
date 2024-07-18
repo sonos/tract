@@ -843,13 +843,9 @@ impl Parameters {
     /// Parses the command-line arguments.
     pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> TractResult<Parameters> {
         let symbols = SymbolScope::default();
-        for rule in matches.values_of("tdim-rule").unwrap_or_default() {
-            let (from, to) = rule
-                .split_once('=')
-                .with_context(|| format!("Invalid TDim rule. Expect from=to form. Got {rule}"))?;
-            let from = parse_tdim(&symbols, from)?;
-            let to = parse_tdim(&symbols, to)?;
-            symbols.add_rule(from, to)
+        for rule in matches.values_of("tdim-assert").unwrap_or_default() {
+            let ineq = symbols.parse_inequality(rule)?;
+            symbols.add_inequality(ineq);
         }
         let (filename, onnx_tc) = Self::disco_model(matches)?;
         let tensors_values = Self::parse_tensors(matches, &filename, onnx_tc, &symbols)?;
