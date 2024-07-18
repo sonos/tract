@@ -2,6 +2,7 @@ version 1.0;
 
 extension tract_registry tract_core;
 extension tract_registry tract_pulse;
+extension tract_symbol S;
 
 fragment tract_core_properties(
 ) -> (properties: (string, tensor<scalar>)[])
