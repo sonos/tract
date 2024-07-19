@@ -278,14 +278,14 @@ mod tests {
     fn test_reduce_max() -> Result<()> {
         test_case::<f32>(Reducer::Max, TractReducer::Max, &[4, 4], 1, 1.0)?;
         test_case::<f16>(Reducer::Max, TractReducer::Max, &[4, 4], 1, 1.0 / 100.0)?;
-        test_case::<f16>(Reducer::Max, TractReducer::Max, &[1, 10], 0, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Max, TractReducer::Max, &[1, 10], 0, -1.0 / 100.0)?;
         test_case::<f32>(Reducer::Max, TractReducer::Max, &[1, 10], 0, 1.0 / 100.0)?;
-        test_case::<f16>(Reducer::Max, TractReducer::Max, &[2, 1], 1, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Max, TractReducer::Max, &[2, 1], 1, -1.0 / 100.0)?;
         test_case::<f32>(Reducer::Max, TractReducer::Max, &[2, 1], 1, 1.0 / 100.0)?;
-        test_case::<f16>(Reducer::Max, TractReducer::Max, &[2, 2, 82, 38], 1, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Max, TractReducer::Max, &[2, 2, 82, 38], 1, -1.0 / 100.0)?;
         test_case::<f16>(Reducer::Max, TractReducer::Max, &[2, 2, 82, 38], 2, 1.0 / 100.0)?;
         test_case::<f32>(Reducer::Max, TractReducer::Max, &[2, 2, 82, 38], 1, 1.0 / 100.0)?;
-        test_case::<f32>(Reducer::Max, TractReducer::Max, &[2, 2, 82, 38], 2, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Max, TractReducer::Max, &[2, 2, 82, 38], 2, -1.0 / 100.0)?;
         Ok(())
     }
 
@@ -293,13 +293,13 @@ mod tests {
     fn test_reduce_min() -> Result<()> {
         test_case::<f32>(Reducer::Min, TractReducer::Min, &[4, 4], 1, 1.0)?;
         test_case::<f16>(Reducer::Min, TractReducer::Min, &[4, 4], 1, 1.0 / 100.0)?;
-        test_case::<f16>(Reducer::Min, TractReducer::Min, &[1, 10], 0, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Min, TractReducer::Min, &[1, 10], 0, -1.0 / 100.0)?;
         test_case::<f32>(Reducer::Min, TractReducer::Min, &[1, 10], 0, 1.0 / 100.0)?;
         test_case::<f16>(Reducer::Min, TractReducer::Min, &[2, 1], 1, 1.0 / 100.0)?;
         test_case::<f32>(Reducer::Min, TractReducer::Min, &[2, 1], 1, 1.0 / 100.0)?;
-        test_case::<f16>(Reducer::Min, TractReducer::Min, &[2, 2, 82, 38], 1, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Min, TractReducer::Min, &[2, 2, 82, 38], 1, -1.0 / 100.0)?;
         test_case::<f16>(Reducer::Min, TractReducer::Min, &[2, 2, 82, 38], 2, 1.0 / 100.0)?;
-        test_case::<f32>(Reducer::Min, TractReducer::Min, &[2, 2, 82, 38], 1, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Min, TractReducer::Min, &[2, 2, 82, 38], 1, -1.0 / 100.0)?;
         test_case::<f32>(Reducer::Min, TractReducer::Min, &[2, 2, 82, 38], 2, 1.0 / 100.0)?;
         Ok(())
     }
