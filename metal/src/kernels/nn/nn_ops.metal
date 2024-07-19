@@ -120,6 +120,22 @@ template<typename F>
     }
 }
 
+struct Sigmoid {
+  template <typename T>
+  T operator()(T x) {
+    auto y = 1 / (1 + metal::exp(-metal::abs(x)));
+    return (x < 0) ? 1 - y : y;
+  }
+};
+
+template<typename T>
+[[kernel]] void silu(device const T *input[  [buffer(0)]],
+                             device T *output [[buffer(1)]],
+                             uint tpig[[thread_position_in_grid]]) {
+   output[tpig] = Sigmoid()(input[tpig]) * input[tpig];
+}
+
+
 template<typename F>  
 [[kernel]] void softmax_nd3(
                 device const F *input,
@@ -153,6 +169,7 @@ template<typename F>
         float el = static_cast<float>(input[idx]);
         float exp_el = fast::exp(el - axis_max);
         partial_norm += exp_el;
+        output[idx] = static_cast<F>(exp_el);
     }
 
     float axis_norm = simd_sum(partial_norm);
@@ -160,9 +177,7 @@ template<typename F>
 
     for (size_t i = tiisg; i < dim; i += tpsg) {
         auto idx = base_idx + i * strides[1];
-        float el = static_cast<float>(input[idx]);
-        // TODO: avoid computing exp_el twice
-        float exp_el = fast::exp(el - axis_max);
+        float exp_el = static_cast<float>(output[idx]);
         output[idx] = static_cast<F>(exp_el * inv_axis_norm);
     }
 }
@@ -218,6 +233,17 @@ template [[host_name("nn_ops::rms_norm_nd3_" #tname)]]               \
 
 INSTANTIATE_RMS_NORM(f32, float)
 INSTANTIATE_RMS_NORM(f16, half)
+
+#define INSTANTIATE_SILU(tname, type)                                   \
+template [[host_name("nn_ops::silu_" #tname)]]                          \
+[[kernel]] void silu<type>(                                             \
+        device const type *input [[buffer(0)]],                         \
+        device type *output [[buffer(1)]],                              \
+        uint tpig[[thread_position_in_grid]]                            \
+    );
+
+INSTANTIATE_SILU(f32, float)
+INSTANTIATE_SILU(f16, half)
 
 
 
