@@ -1,5 +1,5 @@
 #include <metal_stdlib>
-#include <metal_simdgroup_matrix>  // Available from Metal version 2.3 released with OS X 11.0+
+#include <metal_math>
 
 using namespace metal;
 
@@ -37,6 +37,38 @@ struct Sum {
     return acc + a;
   }
 };
+
+template <typename U>
+struct Min {
+  template <typename T>
+  T simd_reduce(T val, size_t reduce_dim) {
+    return simd_min(val);
+  }
+
+  static constexpr constant U init = metal::numeric_limits<U>::max();
+
+  // Operator
+  U operator()(U a, U b) {
+    return a < b ? a : b;
+  }
+};
+
+template <typename U>
+struct Max {
+  template <typename T>
+  T simd_reduce(T val, size_t reduce_dim) {
+    return simd_max(val);
+  }
+
+  static constexpr constant U init = metal::numeric_limits<U>::min();
+
+  // Operator
+  U operator()(U a, U b) {
+    return a > b ? a : b;
+  }
+};
+
+
 
 template <typename U>
 struct Prod {
@@ -200,6 +232,10 @@ INSTANTIATE_REDUCE(mean_of_squares, MeanOfSquares, f32, float)
 INSTANTIATE_REDUCE(mean_of_squares, MeanOfSquares, f16, half)
 INSTANTIATE_REDUCE(sum, Sum, f32, float)
 INSTANTIATE_REDUCE(sum, Sum, f16, half)
+INSTANTIATE_REDUCE(min, Min, f32, float)
+INSTANTIATE_REDUCE(min, Min, f16, half)
+INSTANTIATE_REDUCE(max, Max, f32, float)
+INSTANTIATE_REDUCE(max, Max, f16, half)
 INSTANTIATE_REDUCE(prod, Prod, f32, float)
 INSTANTIATE_REDUCE(prod, Prod, f16, half)
 

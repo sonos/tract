@@ -28,10 +28,10 @@ impl EvalOp for MetalMultiBroadcastTo {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let shape = self.shape.eval_to_usize(&session.resolved_symbols)?;
-        let input = args_1!(inputs);
-        let t = input.to_metal_tensor()?;
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
+                let input = args_1!(inputs);
+                let t = input.to_metal_tensor()?;
                 Ok(tvec![kernels::array::MultiBroadcast
                     .dispatch_eval(context, t, 0, &shape)?
                     .into_opaque_tensor()
