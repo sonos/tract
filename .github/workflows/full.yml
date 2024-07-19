@@ -136,7 +136,7 @@ jobs:
         key: ${{ runner.os }}-all-targets-${{steps.date.outputs.date}}-e
     - name: Check all targets
       run: |
-        ./.travis/ci-system-setup.sh
+        ROOT=$(pwd) ./.travis/ci-system-setup.sh
         cargo check --all-targets
 
   cli-tests:
