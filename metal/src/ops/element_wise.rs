@@ -31,7 +31,6 @@ impl EvalOp for MetalElementWiseOp {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
                 let a = args_1!(inputs);
-
                 let a_metal = a.to_metal_tensor()?;
                 Ok(tvec!(self
                     .0

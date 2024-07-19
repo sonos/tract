@@ -9,10 +9,13 @@ pub enum Reducer {
     MeanOfSquares,
     Sum,
     Prod,
+    Min,
+    Max,
 }
 
 impl Reducer {
-    pub const ALL: [Reducer; 3] = [Self::MeanOfSquares, Self::Sum, Self::Prod];
+    pub const ALL: [Reducer; 5] =
+        [Self::MeanOfSquares, Self::Sum, Self::Prod, Self::Min, Self::Max];
 
     pub fn is_supported_dt(dt: DatumType) -> bool {
         Self::tname(dt).is_ok()
@@ -33,6 +36,8 @@ impl Reducer {
             Self::MeanOfSquares => "mean_of_squares",
             Self::Sum => "sum",
             Self::Prod => "prod",
+            Self::Min => "min",
+            Self::Max => "max",
         };
         Ok(format!("nn_ops::reduce_{op}_nd3_{tname}"))
     }
@@ -125,169 +130,42 @@ mod tests {
     use tract_core::internal::Tensor;
     use tract_core::ops::nn::Reducer as TractReducer;
 
-    #[test]
-    fn test_reduce_mean_of_squares() -> Result<()> {
+    fn test_case<F>(
+        reducer: Reducer,
+        tract_reducer: TractReducer,
+        shape: &[usize],
+        axis: usize,
+        scale: f32,
+    ) -> Result<()>
+    where
+        F: Float + Datum,
+        usize: AsPrimitive<f32>,
+        f32: AsPrimitive<F>,
+    {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
-                let m = 4;
-                let k = 4;
-
-                let a =
-                    Tensor::from_shape(&[m, k], &(0..m * k).map(|f| f as f32).collect::<Vec<_>>())?
-                        .into_metal()?;
-
-                let metal_output = Reducer::MeanOfSquares.eval(context, &a, 1)?;
-                let cpu_output = TractReducer::MeanOfSquares.reduce(&[1], &a.to_cpu())?;
-                assert_eq!(cpu_output, metal_output.to_cpu());
-                Ok(())
-            })
-        })
-    }
-
-    #[test]
-    fn test_reduce_mean_of_squares_2() -> Result<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let m = 2;
-                let k = 1;
-
-                let a =
-                    Tensor::from_shape(&[m, k], &(0..m * k).map(|f| f as f32).collect::<Vec<_>>())?
-                        .into_metal()?;
-
-                let metal_output = Reducer::MeanOfSquares.eval(context, &a, 1)?;
-                let cpu_output = TractReducer::MeanOfSquares.reduce(&[1], &a.to_cpu())?;
-                assert_eq!(cpu_output, metal_output.to_cpu());
-                Ok(())
-            })
-        })
-    }
-
-    #[test]
-    fn test_reduce_mean_of_squares_3() -> Result<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let m = 1;
-                let n = 10;
-
-                let a = Tensor::from_shape(
-                    &[m, n],
-                    &(0..m * n).map(|f| f as f32 / 1000.0).collect::<Vec<_>>(),
-                )?
-                .into_metal()?;
-                let metal_output = Reducer::MeanOfSquares.eval(context, &a, 0)?;
-                let cpu_output = TractReducer::MeanOfSquares.reduce(&[0], &a.to_cpu())?;
-                assert_eq!(cpu_output, metal_output.to_cpu());
-                Ok(())
-            })
-        })
-    }
-
-    #[test]
-    fn test_reduce_mean_of_squares_4() -> Result<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let axis = 1;
-                let shape = &[2, 2, 82, 38];
                 let len = shape.iter().product::<usize>();
 
                 let a = Tensor::from_shape(
                     shape,
-                    &(0..len).map(|f| f as f32 / 1000.0).collect::<Vec<_>>(),
+                    &(0..len)
+                        .map(|f| -> F {
+                            let v: f32 = f.as_();
+                            (v * scale).as_()
+                        })
+                        .collect::<Vec<_>>(),
                 )?
                 .into_metal()?;
 
-                let metal_output = Reducer::MeanOfSquares.eval(context, &a, axis)?;
-                let cpu_output = TractReducer::MeanOfSquares.reduce(&[axis], &a.to_cpu())?;
-                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
-                Ok(())
-            })
-        })
-    }
-
-    #[test]
-    fn test_reduce_mean_of_squares_5() -> Result<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let axis = 1;
-                let shape = &[1, 85, 82, 38];
-                let len = shape.iter().product::<usize>();
-
-                let a = Tensor::from_shape(
-                    shape,
-                    &(0..len).map(|f| f as f32 / 1000.0).collect::<Vec<_>>(),
-                )?
-                .into_metal()?;
-                let metal_output = Reducer::MeanOfSquares.eval(context, &a, axis)?;
-                let cpu_output = TractReducer::MeanOfSquares.reduce(&[axis], &a.to_cpu())?;
-                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
-                Ok(())
-            })
-        })
-    }
-
-    #[test]
-    fn test_reduce_sum_1() -> Result<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let axis = 1;
-                let shape = &[1, 85, 82, 38];
-                let len = shape.iter().product::<usize>();
-
-                let a = Tensor::from_shape(
-                    shape,
-                    &(0..len).map(|f| f as f32 / 1000.0).collect::<Vec<_>>(),
-                )?
-                .into_metal()?;
-
-                let metal_output = Reducer::Sum.eval(context, &a, axis)?;
-                let cpu_output = TractReducer::Sum.reduce(&[axis], &a.to_cpu())?;
-                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
-                Ok(())
-            })
-        })
-    }
-
-    #[test]
-    fn test_reduce_sum_2() -> Result<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let axis = 0;
-                let shape = &[2];
-                let len = shape.iter().product::<usize>();
-
-                let a = Tensor::from_shape(shape, &(0..len).map(|f| f as f32).collect::<Vec<_>>())?
-                    .into_metal()?;
-
-                let metal_output = Reducer::Sum.eval(context, &a, axis)?;
-                let cpu_output = TractReducer::Sum.reduce(&[axis], &a.to_cpu())?;
-                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
-                Ok(())
-            })
-        })
-    }
-
-    #[test]
-    fn test_reduce_sum_3() -> Result<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let axis = 1;
-                let shape = &[5, 9, 9];
-                let len = shape.iter().product::<usize>();
-
-                let a = Tensor::from_shape(
-                    shape,
-                    &(0..len).map(|f| -> f16 { f.as_() }).collect::<Vec<_>>(),
-                )?
-                .into_metal()?;
-
-                let cpu_output = TractReducer::Sum.reduce(&[axis], &a.to_cpu())?;
-                let metal_output = Reducer::Sum.eval(context, &a, axis)?;
+                let cpu_output = tract_reducer.reduce(&[axis], &a.to_cpu())?;
+                let metal_output = reducer.eval(context, &a, axis)?;
                 cpu_output
                     .close_enough(&metal_output.to_cpu(), Approximation::Approximate)
                     .with_context(|| {
                         anyhow!(
-                            "Cpu: {:?}, Metal: {:?}",
+                            "A: {:?}, scale: {:?} Cpu: {:?}, Metal: {:?}",
+                            a.to_cpu().dump(true),
+                            scale,
                             cpu_output.dump(true),
                             metal_output.to_cpu().dump(true)
                         )
@@ -295,6 +173,135 @@ mod tests {
                 Ok(())
             })
         })
+    }
+
+    #[test]
+    fn test_reduce_mean_of_squares() -> Result<()> {
+        test_case::<f32>(Reducer::MeanOfSquares, TractReducer::MeanOfSquares, &[4, 4], 1, 1.0)?;
+        test_case::<f16>(
+            Reducer::MeanOfSquares,
+            TractReducer::MeanOfSquares,
+            &[4, 4],
+            1,
+            1.0 / 100.0,
+        )?;
+        test_case::<f16>(
+            Reducer::MeanOfSquares,
+            TractReducer::MeanOfSquares,
+            &[1, 10],
+            0,
+            1.0 / 100.0,
+        )?;
+        test_case::<f32>(
+            Reducer::MeanOfSquares,
+            TractReducer::MeanOfSquares,
+            &[1, 10],
+            0,
+            1.0 / 100.0,
+        )?;
+        test_case::<f16>(
+            Reducer::MeanOfSquares,
+            TractReducer::MeanOfSquares,
+            &[2, 1],
+            1,
+            1.0 / 100.0,
+        )?;
+        test_case::<f32>(
+            Reducer::MeanOfSquares,
+            TractReducer::MeanOfSquares,
+            &[2, 1],
+            1,
+            1.0 / 100.0,
+        )?;
+        test_case::<f16>(
+            Reducer::MeanOfSquares,
+            TractReducer::MeanOfSquares,
+            &[2, 2, 82, 38],
+            1,
+            1.0 / 100.0,
+        )?;
+        test_case::<f16>(
+            Reducer::MeanOfSquares,
+            TractReducer::MeanOfSquares,
+            &[2, 2, 82, 38],
+            2,
+            1.0 / 100.0,
+        )?;
+        test_case::<f32>(
+            Reducer::MeanOfSquares,
+            TractReducer::MeanOfSquares,
+            &[2, 2, 82, 38],
+            1,
+            1.0 / 100.0,
+        )?;
+        test_case::<f32>(
+            Reducer::MeanOfSquares,
+            TractReducer::MeanOfSquares,
+            &[2, 2, 82, 38],
+            2,
+            1.0 / 100.0,
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_reduce_sum() -> Result<()> {
+        test_case::<f32>(Reducer::Sum, TractReducer::Sum, &[4, 4], 1, 1.0)?;
+        test_case::<f16>(Reducer::Sum, TractReducer::Sum, &[4, 4], 1, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Sum, TractReducer::Sum, &[1, 10], 0, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Sum, TractReducer::Sum, &[1, 10], 0, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Sum, TractReducer::Sum, &[2, 1], 1, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Sum, TractReducer::Sum, &[2, 1], 1, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Sum, TractReducer::Sum, &[2, 2, 82, 38], 1, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Sum, TractReducer::Sum, &[2, 2, 82, 38], 2, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Sum, TractReducer::Sum, &[2, 2, 82, 38], 1, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Sum, TractReducer::Sum, &[2, 2, 82, 38], 2, 1.0 / 100.0)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_reduce_prod() -> Result<()> {
+        test_case::<f32>(Reducer::Prod, TractReducer::Prod, &[4, 4], 1, 1.0)?;
+        test_case::<f16>(Reducer::Prod, TractReducer::Prod, &[4, 4], 1, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Prod, TractReducer::Prod, &[1, 10], 0, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Prod, TractReducer::Prod, &[1, 10], 0, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Prod, TractReducer::Prod, &[2, 1], 1, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Prod, TractReducer::Prod, &[2, 1], 1, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Prod, TractReducer::Prod, &[2, 2, 82, 38], 1, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Prod, TractReducer::Prod, &[2, 2, 82, 38], 2, 1.0 / 100000.0)?;
+        test_case::<f32>(Reducer::Prod, TractReducer::Prod, &[2, 2, 82, 38], 1, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Prod, TractReducer::Prod, &[2, 2, 82, 38], 2, 1.0 / 1000.0)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_reduce_max() -> Result<()> {
+        test_case::<f32>(Reducer::Max, TractReducer::Max, &[4, 4], 1, 1.0)?;
+        test_case::<f16>(Reducer::Max, TractReducer::Max, &[4, 4], 1, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Max, TractReducer::Max, &[1, 10], 0, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Max, TractReducer::Max, &[1, 10], 0, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Max, TractReducer::Max, &[2, 1], 1, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Max, TractReducer::Max, &[2, 1], 1, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Max, TractReducer::Max, &[2, 2, 82, 38], 1, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Max, TractReducer::Max, &[2, 2, 82, 38], 2, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Max, TractReducer::Max, &[2, 2, 82, 38], 1, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Max, TractReducer::Max, &[2, 2, 82, 38], 2, 1.0 / 100.0)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_reduce_min() -> Result<()> {
+        test_case::<f32>(Reducer::Min, TractReducer::Min, &[4, 4], 1, 1.0)?;
+        test_case::<f16>(Reducer::Min, TractReducer::Min, &[4, 4], 1, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Min, TractReducer::Min, &[1, 10], 0, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Min, TractReducer::Min, &[1, 10], 0, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Min, TractReducer::Min, &[2, 1], 1, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Min, TractReducer::Min, &[2, 1], 1, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Min, TractReducer::Min, &[2, 2, 82, 38], 1, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Min, TractReducer::Min, &[2, 2, 82, 38], 2, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Min, TractReducer::Min, &[2, 2, 82, 38], 1, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Min, TractReducer::Min, &[2, 2, 82, 38], 2, 1.0 / 100.0)?;
+        Ok(())
     }
 
     proptest::proptest! {
@@ -374,6 +381,8 @@ mod tests {
                 Reducer::Sum => TractReducer::Sum.reduce(&[self.axis], &a)?,
                 Reducer::Prod => TractReducer::Prod.reduce(&[self.axis], &a)?,
                 Reducer::MeanOfSquares => TractReducer::MeanOfSquares.reduce(&[self.axis], &a)?,
+                Reducer::Min => TractReducer::Min.reduce(&[self.axis], &a)?,
+                Reducer::Max => TractReducer::Max.reduce(&[self.axis], &a)?,
             };
             Ok(cpu_output)
         }
