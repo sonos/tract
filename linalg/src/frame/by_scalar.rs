@@ -2,7 +2,7 @@ use std::{fmt::Debug, marker::PhantomData};
 
 use tract_data::{TractResult, internal::TensorView};
 
-use crate::{LADatum, element_wise::ElementWiseKer};
+use crate::{LADatum, element_wise::ElementWiseKer, LinalgFn};
 
 use super::{ElementWise, element_wise_helper::map_slice_with_alignment};
 
@@ -36,7 +36,7 @@ pub trait ByScalarKer<T>: ElementWiseKer<T, T>
 where
     T: LADatum
 {
-    fn bin_1() -> Box<dyn Fn(&mut TensorView, &TensorView) -> TractResult<()>> {
+    fn bin_1() -> LinalgFn {
         Box::new(|a: &mut TensorView, b: &TensorView| {
             let a_slice = a.as_slice_mut()?;
             let b = b.as_slice()?[0];
