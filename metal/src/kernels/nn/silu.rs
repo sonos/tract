@@ -61,6 +61,7 @@ impl Silu {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rewrite_rules::BasicSilu;
     use crate::IntoMetal;
     use derive_new::new;
     use num_traits::AsPrimitive;
@@ -68,8 +69,6 @@ mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use tract_core::internal::Tensor;
-    use crate::rewrite_rules::BasicSilu;
-
 
     fn test_case<F>(
         shape: &[usize],
@@ -101,9 +100,8 @@ mod tests {
                     BasicSilu.eval(tvec![a.to_cpu().into_tvalue()])?[0].clone().into_tensor();
                 let metal_output = Silu.eval(context, &a)?;
 
-                cpu_output
-                    .close_enough(&metal_output.to_cpu(), appriximate)
-                    .with_context(|| {
+                cpu_output.close_enough(&metal_output.to_cpu(), appriximate).with_context(
+                    || {
                         anyhow!(
                             "Input: {:?}, scale: {:?} Cpu: {:?}, Metal: {:?}",
                             a.to_cpu().dump(true),
@@ -111,17 +109,17 @@ mod tests {
                             cpu_output.dump(true),
                             metal_output.to_cpu().dump(true)
                         )
-                    })?;
+                    },
+                )?;
                 Ok(())
             })
         })
     }
 
-
     #[test]
     fn test_silu() -> Result<()> {
-        test_case::<f32>(&[4, 4], -0.0, 1.0/100.0, Approximation::Approximate)?;
-        test_case::<f16>(&[4, 4], -6.0, 1.0/1000.0, Approximation::SuperApproximate)?;
+        test_case::<f32>(&[4, 4], -0.0, 1.0 / 100.0, Approximation::Approximate)?;
+        test_case::<f16>(&[4, 4], -6.0, 1.0 / 1000.0, Approximation::SuperApproximate)?;
         Ok(())
     }
 
@@ -198,8 +196,7 @@ mod tests {
         pub fn reference(&self) -> Result<Tensor> {
             let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?;
 
-            let cpu_output =
-                    BasicSilu.eval(tvec![a.into_tvalue()])?[0].clone().into_tensor();
+            let cpu_output = BasicSilu.eval(tvec![a.into_tvalue()])?[0].clone().into_tensor();
 
             Ok(cpu_output)
         }
@@ -214,5 +211,4 @@ mod tests {
             })
         }
     }
-
 }

@@ -100,6 +100,7 @@ impl RmsNorm {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rewrite_rules::BasicRmsNorm;
     use crate::IntoMetal;
     use derive_new::new;
     use num_traits::AsPrimitive;
@@ -107,15 +108,8 @@ mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use tract_core::internal::Tensor;
-    use crate::rewrite_rules::BasicRmsNorm;
 
-
-    fn test_case<F>(
-        shape: &[usize],
-        axis: usize,
-        offset: f32,
-        scale: f32,
-    ) -> Result<()>
+    fn test_case<F>(shape: &[usize], axis: usize, offset: f32, scale: f32) -> Result<()>
     where
         F: Float + Datum,
         usize: AsPrimitive<f32>,
@@ -137,10 +131,7 @@ mod tests {
                 .into_metal()?;
 
                 let eps = Arc::new(tensor0(0.0001f32.as_()));
-                let cpu_rms = BasicRmsNorm {
-                    axis,
-                    eps: Arc::clone(&eps),
-                };
+                let cpu_rms = BasicRmsNorm { axis, eps: Arc::clone(&eps) };
 
                 let cpu_output =
                     cpu_rms.eval(tvec![a.to_cpu().into_tvalue()])?[0].clone().into_tensor();
@@ -162,11 +153,10 @@ mod tests {
         })
     }
 
-
     #[test]
     fn test_rms() -> Result<()> {
-        test_case::<f32>(&[4, 4], 1, -8.0, 1.0/100.0)?;
-        test_case::<f16>(&[4, 4], 1, -8.0, 1.0/100.0)?;
+        test_case::<f32>(&[4, 4], 1, -8.0, 1.0 / 100.0)?;
+        test_case::<f16>(&[4, 4], 1, -8.0, 1.0 / 100.0)?;
         Ok(())
     }
 
@@ -246,13 +236,9 @@ mod tests {
         pub fn reference(&self) -> Result<Tensor> {
             let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?;
 
-            let cpu_rms = BasicRmsNorm {
-                    axis: self.axis,
-                    eps: Arc::clone(&self.eps),
-                };
+            let cpu_rms = BasicRmsNorm { axis: self.axis, eps: Arc::clone(&self.eps) };
 
-            let cpu_output =
-                    cpu_rms.eval(tvec![a.into_tvalue()])?[0].clone().into_tensor();
+            let cpu_output = cpu_rms.eval(tvec![a.into_tvalue()])?[0].clone().into_tensor();
 
             Ok(cpu_output)
         }
