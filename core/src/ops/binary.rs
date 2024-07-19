@@ -1,10 +1,10 @@
 use crate::internal::*;
 use downcast_rs::Downcast;
-use std::fmt;
+use std::fmt::{self, Debug};
 use tract_data::itertools::izip;
 use tract_itertools::Itertools;
 
-use super::cast::cast;
+use super::{cast::cast, math::Mul};
 
 pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast {
     fn name(&self) -> &'static str;
@@ -416,7 +416,7 @@ impl EvalOp for BinOpByScalar {
         let (a, b) = args_2!(inputs);
         // Not a requirement as TensorView doesn't require a owned tensor but in reality
         // "a "should be mutable (it's omitted here as Rust compiler advise to remove it)
-        let a = a.into_tensor(); 
+        let a = a.into_tensor();
         let b_shape = b.shape();
 
         let first_unary_axis = b_shape
@@ -469,7 +469,19 @@ impl TypedOp for BinOpByScalar {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        self.0.declutter(model, node)
+        if self.0.downcast_ref::<Mul>().is_some() {
+            let dt = model.node_input_facts(node.id)?[0].datum_type().unwrap();
+            let func = tract_linalg::bin_by_scalar(dt, tract_linalg::BinOp::Mul).unwrap();
+            let eval = Arc::from(func);
+            return Ok(Some(TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &node.inputs,
+                BinOpByScalar(Box::new(LirMul { eval, return_dt: dt })),
+            )?));
+        }
+        Ok(None)
+        //self.0.declutter(model, node)
     }
 
     as_op!();
@@ -519,7 +531,7 @@ impl EvalOp for BinOpUnicast {
         let (a, b) = args_2!(inputs);
         // Not a requirement as TensorView doesn't require a owned tensor but in reality
         // "a "should be mutable (it's omitted here as Rust compiler advise to remove it)
-        let a = a.into_tensor(); 
+        let a = a.into_tensor();
         let b_shape = b.shape();
         let b_view = b.view();
         let first_non_unary_axis =
@@ -566,10 +578,68 @@ impl TypedOp for BinOpUnicast {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        self.0.declutter(model, node)
+        if self.0.downcast_ref::<Mul>().is_some() {
+            let dt = model.node_input_facts(node.id)?[0].datum_type().unwrap();
+            let func = tract_linalg::bin_unicast(dt, tract_linalg::BinOp::Mul).unwrap();
+            let eval = Arc::from(func);
+            return Ok(Some(TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &node.inputs,
+                BinOpUnicast(Box::new(LirMul { eval, return_dt: dt })),
+            )?));
+        }
+        Ok(None)
+        //self.0.declutter(model, node)
     }
 
     as_op!();
+}
+
+#[derive(Clone)]
+pub struct LirMul {
+    return_dt: DatumType,
+    eval: Arc<dyn Fn(&mut TensorView, &TensorView) -> TractResult<()> + Send + Sync>,
+}
+
+impl Debug for LirMul {
+    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        unimplemented!()
+    }
+}
+
+impl BinMiniOp for LirMul {
+    fn name(&self) -> &'static str {
+        "LirMul"
+    }
+
+    fn result_datum_type(&self, _a: DatumType, _b: DatumType) -> TractResult<DatumType> {
+        Ok(self.return_dt)
+    }
+
+    fn eval_in_a(&self, _a: &mut Tensor, _b: &Tensor) -> TractResult<()> {
+        unimplemented!()
+    }
+
+    fn eval_unicast(&self, a: &mut TensorView, b: &TensorView) -> TractResult<()> {
+        (self.eval)(a, b)
+    }
+
+    fn eval_by_scalar(&self, a: &mut TensorView, b: &TensorView) -> TractResult<()> {
+        (self.eval)(a, b)
+    }
+
+    fn eval_out_of_place(&self, _c: &mut Tensor, _a: &Tensor, _b: &Tensor) -> TractResult<()> {
+        unimplemented!()
+    }
+
+    fn eval_unicast_in_place(&self, _a: &Tensor, _b: &mut Tensor) -> TractResult<()> {
+        unimplemented!()
+    }
+
+    fn eval_uniform_in_place(&self, _a: &Tensor, _b: &mut Tensor) -> TractResult<()> {
+        unimplemented!()
+    }
 }
 
 #[macro_export]
