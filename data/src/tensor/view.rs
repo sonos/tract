@@ -2,16 +2,16 @@ use super::*;
 use crate::internal::*;
 
 #[derive(Clone, Debug)]
-enum Indexing {
+enum Indexing<'a> {
     Prefix(usize),
-    Custom { shape: Vec<usize>, strides: Vec<isize> },
+    Custom { shape: &'a [usize], strides: &'a [isize] },
 }
 
 #[derive(Clone, Debug)]
 pub struct TensorView<'a> {
     pub tensor: &'a Tensor,
     offset_bytes: isize,
-    indexing: Indexing,
+    indexing: Indexing<'a>,
 }
 
 impl<'a> TensorView<'a> {
@@ -24,7 +24,7 @@ impl<'a> TensorView<'a> {
         TensorView {
             tensor,
             offset_bytes,
-            indexing: Indexing::Custom { shape: shape.to_vec(), strides: strides.to_vec() },
+            indexing: Indexing::Custom { shape, strides },
         }
     }
 
@@ -46,8 +46,8 @@ impl<'a> TensorView<'a> {
             tensor,
             offset_bytes,
             indexing: Indexing::Custom {
-                shape: tensor.shape.to_vec(),
-                strides: tensor.strides.to_vec(),
+                shape: &tensor.shape,
+                strides: &tensor.strides,
             },
         }
     }
@@ -237,29 +237,6 @@ impl<'a> TensorView<'a> {
     }
 
     #[inline]
-    pub fn collapse_axis(&mut self, axis: usize, index: isize) {
-        let stride = self.strides()[axis] * self.datum_type().size_of() as isize;
-        unsafe { self.offset_bytes(stride * index) };
-        match &mut self.indexing {
-            Indexing::Prefix(x) => {
-                if *x == 0 {
-                    let mut new_shape = self.tensor.shape().to_owned();
-                    new_shape[axis] = 1;
-                    self.indexing = Indexing::Custom {
-                        shape: new_shape,
-                        strides: self.tensor.strides().to_owned(),
-                    }
-                } else {
-                    unimplemented!("TODO: understand how it is used")
-                }
-            }
-            Indexing::Custom { shape, .. } => {
-                shape[axis] = 1;
-            }
-        }
-    }
-
-    #[inline]
     pub fn at_mut<T: Datum>(&mut self, coords: impl AsRef<[usize]>) -> TractResult<&mut T> {
         self.check_dt::<T>()?;
         let coords = coords.as_ref();
@@ -288,13 +265,15 @@ impl<'a> TensorView<'a> {
 #[cfg(test)]
 mod test {
     use crate::prelude::Tensor;
+    use super::TensorView;
 
     #[test]
-    fn test_collapse_axis() {
+    fn test_at_prefix() {
         let a = Tensor::from_shape(&[2, 2], &[1, 2, 3, 4]).unwrap();
-        let mut a_view = a.view();
-        a_view.collapse_axis(0, 1);
-        assert_eq!(a_view.shape(), &[1, 2]);
+        let a_view = TensorView::at_prefix(&a, &[1]).unwrap();
+        assert_eq!(a_view.shape(), &[2]);
         assert_eq!(a_view.as_slice::<i32>().unwrap(), &[3, 4]);
+
+
     }
 }

@@ -414,10 +414,10 @@ impl EvalOp for BinOpByScalar {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
-        let mut a = a.into_tensor();
+        // Not a requirement as TensorView doesn't require a owned tensor but in reality
+        // "a "should be mutable (it's omitted here as Rust compiler advise to remove it)
+        let a = a.into_tensor(); 
         let b_shape = b.shape();
-        let mut view = a.view_mut();
-        let b_view = b.view();
 
         let first_unary_axis = b_shape
             .iter()
@@ -428,21 +428,18 @@ impl EvalOp for BinOpByScalar {
             .last()
             .context("Cannot use by_scalar when no trailing dimensions are unary")?;
 
-        let iterating_shape = view.shape()[..first_unary_axis].to_vec();
+        let iterating_shape = a.shape()[..first_unary_axis].to_vec();
         if !iterating_shape.is_empty() {
             for it_coords in tract_data::internal::iter_indices(&iterating_shape) {
-                let mut view = view.clone();
-                let mut tmp_b_view = b_view.clone();
-
-                // Prepare array view to perform computation
-                for (axis, idx) in it_coords.iter().enumerate() {
-                    view.collapse_axis(axis, *idx as isize);
-                    tmp_b_view.collapse_axis(axis, *idx as isize);
-                }
-
-                self.0.eval_by_scalar(&mut view, &tmp_b_view)?;
+                let mut view = TensorView::at_prefix(&a, &it_coords)?;
+                let b_view = TensorView::at_prefix(&b, &it_coords)?;
+                debug_assert_eq!(b_view.shape().iter().product::<usize>(), 1);
+                self.0.eval_by_scalar(&mut view, &b_view)?;
             }
         } else {
+            let mut view = a.view();
+            let b_view = b.view();
+            debug_assert_eq!(b_view.shape().iter().product::<usize>(), 1);
             self.0.eval_by_scalar(&mut view, &b_view)?;
         }
         Ok(tvec!(a.into_tvalue()))
@@ -520,25 +517,24 @@ impl EvalOp for BinOpUnicast {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
-        let mut a = a.into_tensor();
+        // Not a requirement as TensorView doesn't require a owned tensor but in reality
+        // "a "should be mutable (it's omitted here as Rust compiler advise to remove it)
+        let a = a.into_tensor(); 
         let b_shape = b.shape();
-        let mut view = a.view_mut();
         let b_view = b.view();
-
         let first_non_unary_axis =
             b_shape.iter().enumerate().take_while(|&(_, &dim)| dim == 1).map(|(i, _)| i + 1).last();
 
         if let Some(first_non_unary_axis) = first_non_unary_axis {
             // Iterate on outter dimensions and evaluate with unicast subviews
-            let iterating_shape = view.shape()[..first_non_unary_axis].to_vec();
+            let iterating_shape = a.shape()[..first_non_unary_axis].to_vec();
             for it_coords in tract_data::internal::iter_indices(&iterating_shape) {
-                let mut view = view.clone();
-                it_coords.iter().enumerate().for_each(|(axis, idx)| {
-                    view.collapse_axis(axis, *idx as isize);
-                });
+                let mut view = TensorView::at_prefix(&a, &it_coords)?;
+                debug_assert_eq!(view.shape(), &b_view.shape()[it_coords.len()..]);
                 self.0.eval_unicast(&mut view, &b_view)?;
             }
         } else {
+            let mut view = a.view();
             debug_assert_eq!(view.shape(), b_view.shape());
             self.0.eval_unicast(&mut view, &b_view)?;
         }
