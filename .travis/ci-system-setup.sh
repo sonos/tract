@@ -1,6 +1,6 @@
 #!/bin/sh
 
-[ -d $ROOT/.travis ] || exit "\$ROOT not set correctly '$ROOT'"
+[ -d $ROOT/.travis ] || exit 1 "\$ROOT not set correctly '$ROOT'"
 
 if [ -n "$CI" -a ! -e ".setup-done" ]
 then
