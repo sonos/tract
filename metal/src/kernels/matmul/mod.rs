@@ -22,6 +22,7 @@ pub type DefaultGemmImpl = GemmImpl<MpsMatMul>;
 pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default {
     fn is_supported_dt(&self, dt: DatumType) -> bool;
 
+    #[allow(clippy::too_many_arguments)]
     fn dispatch_eval(
         &self,
         context: &MetalContext,
