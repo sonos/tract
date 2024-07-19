@@ -82,45 +82,31 @@ bin_to_super_type!(mul, Mul,
                     },
                    linalg: Mul,
                    uniform_in_place: |a: &Tensor, b: &mut Tensor| -> TractResult<bool> {
-                        if b.datum_type() == f32::datum_type() {
-                            let a = a.to_scalar::<f32>()?;
-                            let slice = b.as_slice_mut::<f32>()?;
-                            (tract_linalg::ops().mul_by_scalar_f32)().run_with_params(slice, *a)?;
-                            Ok(true)
-                        } else if b.datum_type() == f16::datum_type() {
-                            let a = a.to_scalar::<f16>()?;
-                            let slice = b.as_slice_mut::<f16>()?;
-                            (tract_linalg::ops().mul_by_scalar_f16)().run_with_params(slice, *a)?;
-                            Ok(true)
-                        } else {
-                            Ok(false)
-                        }
+                        let mut slice = b.view_mut();
+                        let scalar = a.view();
+                        let res = tract_linalg::bin_by_scalar(a.datum_type(), tract_linalg::BinOp::Mul)
+                            .and_then(move |func| (func)(&mut slice, &scalar).ok())
+                            .is_some();
+                        Ok(res)
                    },
                    unicast_in_place: |a: &Tensor, b: &mut Tensor| -> TractResult<bool> {
-                        if b.datum_type() == f32::datum_type() {
-                            let a = a.as_slice::<f32>()?;
-                            let slice = b.as_slice_mut::<f32>()?;
-                            (tract_linalg::ops().unicast_mul_f32)().run(slice, a)?;
-                            Ok(true)
-                        } else if b.datum_type() == f16::datum_type() {
-                            let a = a.as_slice::<f16>()?;
-                            let slice = b.as_slice_mut::<f16>()?;
-                            (tract_linalg::ops().unicast_mul_f16)().run(slice, a)?;
-                            Ok(true)
-                        } else {
-                            Ok(false)
-                        }
+                       let mut slice = b.view_mut();
+                       let other = a.view();
+                       let res = tract_linalg::bin_unicast(a.datum_type(), tract_linalg::BinOp::Mul)
+                            .and_then(move |func| (func)(&mut slice, &other).ok())
+                            .is_some();
+                       Ok(res)
                    },
                    eval_by_scalar: |a: &mut TensorView, b: &TensorView | -> TractResult<bool> {
                        let res = tract_linalg::bin_by_scalar(a.datum_type(), tract_linalg::BinOp::Mul)
-                           .context("unimplemented mul by scalar")?(a, b)
-                           .is_ok();
+                            .and_then(move |func| (func)(a, b).ok())
+                            .is_some();
                        Ok(res)
                    },
                    eval_unicast: |a: &mut TensorView, b: &TensorView | -> TractResult<bool> {
                        let res = tract_linalg::bin_unicast(a.datum_type(), tract_linalg::BinOp::Mul)
-                           .context("unimplemented mul unicast")?(a, b)
-                           .is_ok();
+                            .and_then(move |func| (func)(a, b).ok())
+                            .is_some();
                        Ok(res)
                    },
                    neutral_element: 1,

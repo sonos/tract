@@ -1,8 +1,8 @@
 use crate::internal::*;
 use downcast_rs::Downcast;
-use tract_itertools::Itertools;
 use std::fmt;
 use tract_data::itertools::izip;
+use tract_itertools::Itertools;
 
 use super::cast::cast;
 
@@ -399,6 +399,11 @@ impl Op for BinOpByScalar {
         format!("{}ByScalar", self.0.name()).into()
     }
 
+    fn same_as(&self, other: &dyn Op) -> bool {
+        let Some(other) = other.downcast_ref::<BinOpByScalar>() else { return false };
+        self.0.same_as(&*other.0)
+    }
+
     op_as_typed_op!();
 }
 
@@ -501,6 +506,10 @@ impl Op for BinOpUnicast {
         format!("{}Unicast", self.0.name()).into()
     }
 
+    fn same_as(&self, other: &dyn Op) -> bool {
+        let Some(other) = other.downcast_ref::<BinOpUnicast>() else { return false };
+        self.0.same_as(&*other.0)
+    }
     op_as_typed_op!();
 }
 
