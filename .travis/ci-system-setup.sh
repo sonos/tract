@@ -1,7 +1,5 @@
 #!/bin/sh
 
-set -ex
-
 [ -d $ROOT/.travis ] || exit "\$ROOT not set correctly '$ROOT'"
 
 if [ -n "$CI" -a ! -e ".setup-done" ]
