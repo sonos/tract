@@ -2,16 +2,15 @@
 
 cd `dirname $0`
 
-set -ex
+ROOT=$(dirname $(realpath $0))/../../..
+. $ROOT/.travis/ci-system-setup.sh
 
-if [ -z "$CACHEDIR" ]
-then
-    CACHEDIR=../../../.cached
-fi
+set -ex
 
 : ${TRACT_RUN:=cargo run -p tract $CARGO_OPTS --}
 
-$TRACT_RUN $CACHEDIR/hey_snips_v4_model17.pb -i S,20,f32 --pulse 8 --nnef-tract-pulse --nnef-extended-identifier dump -q --nnef-graph found
+$CACHE_FILE hey_snips_v4_model17.pb
+$TRACT_RUN $MODELS/hey_snips_v4_model17.pb -i S,20,f32 --pulse 8 --nnef-tract-pulse --nnef-extended-identifier dump -q --nnef-graph found
 
 version=`cargo metadata --format-version 1 | jq -r '.packages | map(select( (.name) == "tract-core") | .version) | .[] '`
 perl -pi -e "s/$version/0.19.3-pre/" found

@@ -11,7 +11,8 @@ fi
 
 set -x
 
-. $(dirname $0)/ci-system-setup.sh
+ROOT=$(dirname $0)/..
+. $ROOT/.travis/ci-system-setup.sh
 
 set -e
 

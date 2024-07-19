@@ -2,7 +2,8 @@
 
 set -ex
 
-. $(dirname $0)/ci-system-setup.sh
+ROOT=$(dirname $(realpath $0))/..
+. $ROOT/.travis/ci-system-setup.sh
 
 opset=onnx_"${1:-1_13_0}"
 
