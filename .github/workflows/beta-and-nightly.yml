@@ -52,10 +52,8 @@ jobs:
     strategy:
       matrix:
         rust: [ 1.75.0, beta ]
+        os: [ ubuntu-latest, macOS-latest ]
       fail-fast: false
-
-    runs-on: [ ubuntu-latest, macos-latest ]
-
     steps:
     - uses: actions/checkout@v3
     - name: Rustup update
@@ -81,12 +79,10 @@ jobs:
 
   cargo-clippy:
     strategy:
-      fail-fast: false
       matrix:
+        os: [ ubuntu-latest, macOS-latest ]
         rust: [ stable, beta, nightly ]
-
-    runs-on: [ ubuntu-latest, macos-latest ]
-
+      fail-fast: false
     steps:
     - uses: actions/checkout@v3
     - name: Rustup update, install clippy
