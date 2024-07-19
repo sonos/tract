@@ -1,3 +1,4 @@
+use tract_core::ops::binary::BinMiniOp;
 use crate::rewrite_rules::next_node;
 use crate::rule_ensure;
 use tract_core::internal::*;
@@ -19,6 +20,15 @@ impl Op for BasicSilu {
 impl EvalOp for BasicSilu {
     fn is_stateless(&self) -> bool {
         true
+    }
+
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let input = args_1!(inputs);
+        let dt = input.datum_type();
+        let mut a = input.clone().into_tensor();
+        Sigmoid { }.eval_in_place(&mut a, None)?;
+        let a3 = Mul.eval(input.clone(), a.into_tvalue(), dt)?;
+        Ok(tvec![a3.into()])
     }
 }
 

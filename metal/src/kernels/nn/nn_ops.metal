@@ -45,7 +45,7 @@ struct Min {
     return simd_min(val);
   }
 
-  static constexpr constant U init = metal::numeric_limits<U>::max();
+  static constexpr constant U init = metal::numeric_limits<U>::infinity();
 
   // Operator
   U operator()(U a, U b) {
@@ -60,7 +60,7 @@ struct Max {
     return simd_max(val);
   }
 
-  static constexpr constant U init = metal::numeric_limits<U>::lowest();
+  static constexpr constant U init = -metal::numeric_limits<U>::infinity();
 
   // Operator
   U operator()(U a, U b) {
