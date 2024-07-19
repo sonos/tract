@@ -1,4 +1,4 @@
-use crate::matmul::{BasicMatMul, MfaGemm, MpsMatMul, GemmImpl};
+use crate::matmul::{BasicMatMul, GemmImpl, MfaGemm, MpsMatMul};
 use criterion::measurement::WallTime;
 use criterion::*;
 use ggml::Context;
