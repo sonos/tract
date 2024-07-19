@@ -8,20 +8,12 @@ pub struct RmsNorm;
 
 impl RmsNorm {
     pub fn is_supported_dt(dt: DatumType) -> bool {
-        Self::tname(dt).is_ok()
-    }
-
-    pub fn tname(dt: DatumType) -> Result<&'static str> {
-        let tname = match dt {
-            DatumType::F32 => "f32",
-            DatumType::F16 => "f16",
-            _ => bail!("Unsupport dt {:?} for reducer op", dt),
-        };
-        Ok(tname)
+        matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
     pub fn kernel_name(&self, dt: DatumType) -> Result<String> {
-        let tname = Self::tname(dt)?;
+        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal rms  op", dt);
+        let tname = MetalTensor::tname(dt)?;
         Ok(format!("nn_ops::rms_norm_nd3_{tname}"))
     }
 

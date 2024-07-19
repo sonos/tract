@@ -82,6 +82,23 @@ impl MetalTensor {
         DatumType::U64,
     ];
 
+    pub fn tname(dt: DatumType) -> TractResult<&'static str> {
+        Ok(match dt {
+            DatumType::F32 => "f32",
+            DatumType::F16 => "f16",
+            DatumType::U8 => "u8",
+            DatumType::U16 => "u16",
+            DatumType::U32 => "u32",
+            DatumType::U64 => "u64",
+            DatumType::I8 => "i8",
+            DatumType::I16 => "i16",
+            DatumType::I32 => "i32",
+            DatumType::I64 => "i64",
+            DatumType::Bool => "bool",
+            _ => bail!("Unsupport dt {:?} for metal kernel function", dt),
+        })
+    }
+
     // Create a metal tensor with a given shape and a slice of elements. The data is copied and aligned to size of T.
     pub fn from_shape<T: Copy + Datum>(shape: &[usize], data: &[T]) -> Result<MetalTensor> {
         Tensor::from_shape(shape, data)?.into_metal()

@@ -18,29 +18,25 @@ impl fmt::Display for Memcpy {
 
 impl Memcpy {
     pub fn is_supported_dt(dt: DatumType) -> bool {
-        Self::tname(dt).is_ok()
+        matches!(
+            dt,
+            DatumType::F32
+                | DatumType::F16
+                | DatumType::U8
+                | DatumType::U16
+                | DatumType::U32
+                | DatumType::U64
+                | DatumType::I8
+                | DatumType::I16
+                | DatumType::I32
+                | DatumType::I64
+                | DatumType::Bool
+        )
     }
 
-    pub fn tname(dt: DatumType) -> Result<&'static str> {
-        let tname = match dt {
-            DatumType::F32 => "f32",
-            DatumType::F16 => "f16",
-            DatumType::U8 => "u8",
-            DatumType::U16 => "u16",
-            DatumType::U32 => "u32",
-            DatumType::U64 => "u64",
-            DatumType::I8 => "i8",
-            DatumType::I16 => "i16",
-            DatumType::I32 => "i32",
-            DatumType::I64 => "i64",
-            DatumType::Bool => "bool",
-            _ => bail!("Unsupport dt {:?} for metal array ops", dt),
-        };
-        Ok(tname)
-    }
-
-    pub fn kernel_name(&self, from_dt: DatumType) -> Result<String> {
-        let tname = Self::tname(from_dt)?;
+    pub fn kernel_name(&self, dt: DatumType) -> Result<String> {
+        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal copy  op", dt);
+        let tname = MetalTensor::tname(dt)?;
         Ok(format!("array_ops::copy_unicast_{tname}"))
     }
 

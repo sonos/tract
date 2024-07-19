@@ -1,7 +1,6 @@
 use crate::kernels::{utils, BroadcastKind};
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
-use anyhow::bail;
 use anyhow::{ensure, Result};
 use std::fmt;
 use tract_core::internal::*;
@@ -17,39 +16,25 @@ impl fmt::Display for Concat {
 
 impl Concat {
     pub fn is_supported_dt(dt: DatumType) -> bool {
-        Self::tname(dt).is_ok()
-    }
-
-    pub fn tname(dt: DatumType) -> Result<&'static str> {
-        let tname = match dt {
-            DatumType::F32 => "f32",
-            DatumType::F16 => "f16",
-            DatumType::U8 => "u8",
-            DatumType::U16 => "u16",
-            DatumType::U32 => "u32",
-            DatumType::U64 => "u64",
-            DatumType::I8 => "i8",
-            DatumType::I16 => "i16",
-            DatumType::I32 => "i32",
-            DatumType::I64 => "i64",
-            _ => bail!("Unsupport dt {:?} for metal concat", dt),
-        };
-        Ok(tname)
+        matches!(
+            dt,
+            DatumType::F32
+                | DatumType::F16
+                | DatumType::U8
+                | DatumType::U16
+                | DatumType::U32
+                | DatumType::U64
+                | DatumType::I8
+                | DatumType::I16
+                | DatumType::I32
+                | DatumType::I64
+        )
     }
 
     pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> Result<String> {
-        let tname = Self::tname(dt)?;
-
-        let broadcast_name = match broadcast_kind {
-            BroadcastKind::Nd1 => "nd1",
-            BroadcastKind::Nd2 => "nd2",
-            BroadcastKind::Nd3 => "nd3",
-            BroadcastKind::Nd4 => "nd4",
-            BroadcastKind::Nd5 => "nd5",
-            BroadcastKind::Nd6 => "nd6",
-            _ => bail!("Unsupported broadcast kind {:?} for array ops", broadcast_kind),
-        };
-
+        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal concat  op", dt);
+        let tname = MetalTensor::tname(dt)?;
+        let broadcast_name = broadcast_kind.to_func_part();
         Ok(format!("array_ops::copy_{broadcast_name}_{tname}"))
     }
 

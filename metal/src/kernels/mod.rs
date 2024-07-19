@@ -80,6 +80,20 @@ impl BroadcastKind {
             _ => bail!("Unsupported rank {rank} for broadcasting"),
         }
     }
+
+    pub fn to_func_part(&self) -> &'static str {
+        match self {
+            BroadcastKind::Unicast => "unicast",
+            BroadcastKind::ByScalarLeft => "by_scalar_lhs",
+            BroadcastKind::ByScalarRight => "by_scalar_rhs",
+            BroadcastKind::Nd1 => "nd1",
+            BroadcastKind::Nd2 => "nd2",
+            BroadcastKind::Nd3 => "nd3",
+            BroadcastKind::Nd4 => "nd4",
+            BroadcastKind::Nd5 => "nd5",
+            BroadcastKind::Nd6 => "nd6",
+        }
+    }
 }
 
 impl BroadcastKind {
