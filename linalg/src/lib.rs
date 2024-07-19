@@ -214,7 +214,7 @@ fn register_all_by_scalar(registry: &mut LinalgRegistry) {
 }
 
 
-type LinalgFn = Box<dyn Fn(&mut TensorView, &TensorView) -> TractResult<()>>;
+pub type LinalgFn = Box<dyn Fn(&mut TensorView, &TensorView) -> TractResult<()> + Send + Sync>;
 type LinalgRegistry = HashMap<(BinOp, DatumType), Box<dyn Fn() -> LinalgFn + Send + Sync>>;
 lazy_static! {
     static ref BIN_UNICAST_OPS: Mutex<LinalgRegistry> = {

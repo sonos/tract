@@ -7,7 +7,7 @@ use tract_data::TractResult;
 use tract_data::internal::TensorView;
 
 use crate::frame::element_wise_helper::TempBuffer;
-use crate::LADatum;
+use crate::{LADatum, LinalgFn};
 
 macro_rules! unicast_impl_wrap {
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $run: item) => {
@@ -88,11 +88,11 @@ where
     fn bin() -> Box<dyn Unicast<T>> {
         Box::new(UnicastImpl::<Self, T>::new())
     }
-    fn bin_1() -> Box<dyn Fn(&mut TensorView, &TensorView) -> TractResult<()>> {
+    fn bin_1() -> LinalgFn {
         Box::new(|a: &mut TensorView, b: &TensorView| {
             let a_slice = a.as_slice_mut()?;
             let b_slice = b.as_slice()?;
-            (Self::bin()).run(a_slice, b_slice)
+            Self::bin().run(a_slice, b_slice)
         })
     }
 }
