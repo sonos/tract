@@ -31,6 +31,15 @@ do
     cargo -q test $CARGO_EXTRA -q -p tract-$c
 done
 
+if [ `uname` = "Darwin" ]
+then
+    echo
+    echo "$WHITE ### metal ### $NC"
+    echo
+    cargo -q test $CARGO_EXTRA -q -p tract-metal
+fi
+
+
 # doc test are not finding libtensorflow.so
 if ! cargo -q test $CARGO_EXTRA -q -p tract-tensorflow --lib $ALL_FEATURES
 then
