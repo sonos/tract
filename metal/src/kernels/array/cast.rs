@@ -1,6 +1,5 @@
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
-use anyhow::bail;
 use anyhow::Result;
 use derive_new::new;
 use metal::{MTLSize, NSUInteger};
@@ -18,29 +17,30 @@ impl fmt::Display for Cast {
 
 impl Cast {
     pub fn is_supported_dt(dt: DatumType) -> bool {
-        Self::tname(dt).is_ok()
-    }
-
-    pub fn tname(dt: DatumType) -> Result<&'static str> {
-        let tname = match dt {
-            DatumType::F32 => "f32",
-            DatumType::F16 => "f16",
-            DatumType::U8 => "u8",
-            DatumType::U16 => "u16",
-            DatumType::U32 => "u32",
-            DatumType::U64 => "u64",
-            DatumType::I8 => "i8",
-            DatumType::I16 => "i16",
-            DatumType::I32 => "i32",
-            DatumType::I64 => "i64",
-            _ => bail!("Unsupport dt {:?} for metal memory ops", dt),
-        };
-        Ok(tname)
+        matches!(
+            dt,
+            DatumType::F32
+                | DatumType::F16
+                | DatumType::U8
+                | DatumType::U16
+                | DatumType::U32
+                | DatumType::U64
+                | DatumType::I8
+                | DatumType::I16
+                | DatumType::I32
+                | DatumType::I64
+        )
     }
 
     pub fn kernel_name(&self, from_dt: DatumType, to_dt: DatumType) -> Result<String> {
-        let from_tname = Self::tname(from_dt)?;
-        let to_tname = Self::tname(to_dt)?;
+        ensure!(
+            Self::is_supported_dt(from_dt),
+            "Unsupported from_dt {:?} for metal cast  op",
+            from_dt
+        );
+        ensure!(Self::is_supported_dt(to_dt), "Unsupported to_dt {:?} for metal cast  op", to_dt);
+        let from_tname = MetalTensor::tname(from_dt)?;
+        let to_tname = MetalTensor::tname(to_dt)?;
         Ok(format!("array_ops::cast_{from_tname}_{to_tname}"))
     }
 
