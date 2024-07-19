@@ -5,31 +5,31 @@ using namespace metal;
 
 #define NUM_SIMDGROUP 32
 
-#define INSTANTIATE_BASIC_MATMUL(tname, type)                \
-template [[host_name("matmul::basic_matvec_" #tname)]]       \
-[[kernel]] void basic_matvec<type>(                          \
-device const type *lhs [[buffer(0)]],                        \
-device const type *rhs [[buffer(1)]],                        \
-device type *output [[buffer(2)]],                           \
-constant   int32_t & nrows,                                  \
-constant   int32_t & ncols,                                  \
-uint3 tgpig[[threadgroup_position_in_grid]],                 \
-uint  tiisg[[thread_index_in_simdgroup]],                    \
-uint  sgitg[[simdgroup_index_in_threadgroup]]                \
-);                                                           \
-template [[host_name("matmul::basic_matmul_" #tname)]]       \
-[[kernel]] void basic_matmul<type>(                          \
-device const type *lhs [[buffer(0)]],                        \
-device const type *rhs [[buffer(1)]],                        \
-device type *output [[buffer(2)]],                           \
-constant   int32_t & m,                                      \
-constant   int32_t & k,                                      \
-constant   int32_t & n,                                      \
-constant   int32_t & transpose_lhs,                          \
-constant   int32_t & transpose_rhs,                          \
-uint3 tgpig[[threadgroup_position_in_grid]],                 \
-uint  tiisg[[thread_index_in_simdgroup]],                    \
-uint  sgitg[[simdgroup_index_in_threadgroup]]                \
+#define INSTANTIATE_BASIC_MATMUL(tname, type)                    \
+template [[host_name("matmul::basic_matvec_" #tname)]]           \
+[[kernel]] void basic_matvec<type>(                              \
+    device const type *lhs [[buffer(0)]],                        \
+    device const type *rhs [[buffer(1)]],                        \
+    device type *output [[buffer(2)]],                           \
+    constant   int32_t & nrows,                                  \
+    constant   int32_t & ncols,                                  \
+    uint3 tgpig[[threadgroup_position_in_grid]],                 \
+    uint  tiisg[[thread_index_in_simdgroup]],                    \
+    uint  sgitg[[simdgroup_index_in_threadgroup]]                \
+);                                                               \
+template [[host_name("matmul::basic_matmul_" #tname)]]           \
+[[kernel]] void basic_matmul<type>(                              \
+    device const type *lhs [[buffer(0)]],                        \
+    device const type *rhs [[buffer(1)]],                        \
+    device type *output [[buffer(2)]],                           \
+    constant   int32_t & m,                                      \
+    constant   int32_t & k,                                      \
+    constant   int32_t & n,                                      \
+    constant   int32_t & transpose_lhs,                          \
+    constant   int32_t & transpose_rhs,                          \
+    uint3 tgpig[[threadgroup_position_in_grid]],                 \
+    uint  tiisg[[thread_index_in_simdgroup]],                    \
+    uint  sgitg[[simdgroup_index_in_threadgroup]]                \
 );                                                           
 
 
