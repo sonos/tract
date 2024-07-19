@@ -314,7 +314,7 @@ impl MetalContext {
     pub fn capture_trace<P, F>(&self, path: P, compute: F) -> Result<()>
     where
         P: AsRef<Path>,
-        F: Fn(&Self) -> Result<()>,
+        F: FnOnce(&Self) -> Result<()>,
     {
         self.wait_until_completed()?;
 
