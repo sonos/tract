@@ -61,6 +61,10 @@ impl<'mb> ModelBuilder<'mb> {
                     let symbol = self.model.symbols.new_with_prefix(ext.1.trim());
                     self.symbols.push(symbol);
                 }
+                "tract_assert" => {
+                    let ineq = self.model.symbols.parse_inequality(&ext.1)?;
+                    self.model.symbols.add_inequality(ineq);
+                }
                 "KHR_enable_fragment_definitions" | "KHR_enable_operator_expressions" => (),
                 _ => {
                     for reg in &self.framework.registries {
