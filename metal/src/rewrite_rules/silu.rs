@@ -1,7 +1,7 @@
-use tract_core::ops::binary::BinMiniOp;
 use crate::rewrite_rules::next_node;
 use crate::rule_ensure;
 use tract_core::internal::*;
+use tract_core::ops::binary::BinMiniOp;
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::math::Mul;
@@ -26,7 +26,7 @@ impl EvalOp for BasicSilu {
         let input = args_1!(inputs);
         let dt = input.datum_type();
         let mut a = input.clone().into_tensor();
-        Sigmoid { }.eval_in_place(&mut a, None)?;
+        Sigmoid {}.eval_in_place(&mut a, None)?;
         let a3 = Mul.eval(input.clone(), a.into_tvalue(), dt)?;
         Ok(tvec![a3.into()])
     }

@@ -196,8 +196,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(_op) = node.op_as::<BasicSilu>() {
             check_in_dts_are_supported(source, node.id, Silu::is_supported_dt)?
-                .then(|| ops::MetalSilu)
-                .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+                .then(|| -> Box<dyn TypedOp> { Box::new(ops::MetalSilu) })
         } else {
             None
         };

@@ -227,6 +227,7 @@ impl MatrixMultiplication {
     ///
     /// - beta: The scale factor to apply to the initial values of C, specified in double precision. This value will be converted to the appropriate precision in the implementation itself, subject to rounding and/or clamping as necessary.
     ///
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         device: Device,
         transpose_left: bool,
