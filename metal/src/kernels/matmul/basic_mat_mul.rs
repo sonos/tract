@@ -1,19 +1,59 @@
-use crate::MetalTensor;
+use crate::kernels::matmul::GemmKernel;
 use crate::{LibraryName, MetalContext};
 use anyhow::bail;
 use anyhow::Result;
 use derive_new::new;
 use metal::{Buffer, MTLSize, NSUInteger};
-use num_traits::One;
 use std::fmt;
 use tract_core::internal::*;
-use tract_core::ndarray;
-use tract_core::ndarray::Dimension;
 
 #[derive(Debug, Clone, new, Default, PartialEq, Eq, Hash)]
-pub struct BasicMatMul {
-    pub transpose_a: bool,
-    pub transpose_b: bool,
+pub struct BasicMatMul;
+
+impl GemmKernel for BasicMatMul {
+    fn is_supported_dt(&self, dt: DatumType) -> bool {
+        Self::tname(dt).is_ok()
+    }
+
+    fn dispatch_eval(
+        &self,
+        context: &MetalContext,
+        dt: DatumType,
+        m: usize,
+        n: usize,
+        k: usize,
+        a_buffer: &Buffer,
+        a_offset: usize,
+        transpose_a: bool,
+        b_buffer: &Buffer,
+        b_offset: usize,
+        transpose_b: bool,
+        c_buffer: &Buffer,
+        c_offset: usize,
+    ) -> TractResult<()> {
+        if n == 1 && !transpose_a && !transpose_b {
+            Self::metal_mat_vec(
+                context, dt, m, k, a_buffer, a_offset, b_buffer, b_offset, c_buffer, c_offset,
+            )?;
+        } else {
+            Self::metal_mat_mul(
+                context,
+                dt,
+                m,
+                k,
+                n,
+                a_buffer,
+                a_offset,
+                transpose_a,
+                b_buffer,
+                b_offset,
+                transpose_b,
+                c_buffer,
+                c_offset,
+            )?;
+        }
+        Ok(())
+    }
 }
 
 impl fmt::Display for BasicMatMul {
@@ -23,10 +63,6 @@ impl fmt::Display for BasicMatMul {
 }
 
 impl BasicMatMul {
-    pub fn is_supported_dt(dt: DatumType) -> bool {
-        Self::tname(dt).is_ok()
-    }
-
     pub fn tname(dt: DatumType) -> Result<&'static str> {
         let tname = match dt {
             DatumType::F32 => "f32",
@@ -42,98 +78,6 @@ impl BasicMatMul {
             Ok(format!("matmul::basic_matvec_{tname}"))
         } else {
             Ok(format!("matmul::basic_matmul_{tname}"))
-        }
-    }
-
-    pub fn output_shape<D: DimLike + One>(&self, a: &[D], b: &[D]) -> TVec<D> {
-        let rank = a.len();
-        let mut output: TVec<D> = (0..rank - 2)
-            .map(|ix| if a[ix].is_one() { b[ix].clone() } else { a[ix].clone() })
-            .collect();
-        output.push(a[rank - 2 + self.transpose_a as usize].clone());
-        output.push(b[rank - 2 + !self.transpose_b as usize].clone());
-        output
-    }
-
-    pub fn eval(
-        &self,
-        context: &MetalContext,
-        a: &MetalTensor,
-        b: &MetalTensor,
-    ) -> TractResult<MetalTensor> {
-        let output = self.dispatch_eval(context, a, b)?;
-        context.wait_until_completed()?;
-        Ok(output)
-    }
-
-    pub fn dispatch_eval(
-        &self,
-        context: &MetalContext,
-        a: &MetalTensor,
-        b: &MetalTensor,
-    ) -> TractResult<MetalTensor> {
-        a.retain_until_completion();
-        b.retain_until_completion();
-
-        let c_dt = a.datum_type();
-        let c_shape = self.output_shape(a.shape(), b.shape());
-        let rank = c_shape.len();
-        let m = c_shape[rank - 2];
-        let n = c_shape[rank - 1];
-        let k = a.shape()[a.rank() - 2 + !self.transpose_a as usize];
-
-        unsafe {
-            let c = MetalTensor::uninitialized_dt(c_dt, &c_shape)?;
-            c.retain_until_completion();
-            let silent_a_axis = c.rank() - a.rank();
-            let silent_b_axis = c.rank() - b.rank();
-            for prefix in ndarray::indices(&c_shape[0..rank - 2]) {
-                let mut a_offset = 0;
-                let mut b_offset = 0;
-                let mut c_offset = 0;
-                for (axis, x) in prefix.as_array_view().iter().enumerate() {
-                    if axis >= silent_a_axis && a.shape()[axis - silent_a_axis] != 1 {
-                        a_offset += *x as isize * a.strides()[axis - silent_a_axis];
-                    }
-                    if axis >= silent_b_axis && b.shape()[axis - silent_b_axis] != 1 {
-                        b_offset += *x as isize * b.strides()[axis - silent_b_axis];
-                    }
-                    c_offset += *x as isize * c.strides()[axis];
-                }
-
-                if n == 1 && !self.transpose_a && !self.transpose_b {
-                    Self::metal_mat_vec(
-                        context,
-                        c_dt,
-                        m,
-                        k,
-                        a.metal(),
-                        a_offset as usize * c_dt.size_of(),
-                        b.metal(),
-                        b_offset as usize * c_dt.size_of(),
-                        c.metal(),
-                        c_offset as usize * c_dt.size_of(),
-                    )?;
-                } else {
-                    Self::metal_mat_mul(
-                        context,
-                        c_dt,
-                        m,
-                        k,
-                        n,
-                        a.metal(),
-                        a_offset as usize * c_dt.size_of(),
-                        self.transpose_a,
-                        b.metal(),
-                        b_offset as usize * c_dt.size_of(),
-                        self.transpose_b,
-                        c.metal(),
-                        c_offset as usize * c_dt.size_of(),
-                    )?;
-                }
-            }
-
-            Ok(c)
         }
     }
 
@@ -226,6 +170,7 @@ impl BasicMatMul {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kernels::matmul::GemmImpl;
     use crate::IntoMetal;
     use tract_core::internal::Tensor;
     use tract_core::ops::einsum::BasicMatMul as TractBasicMatMul;
@@ -252,7 +197,7 @@ mod tests {
                 .into_metal()?;
 
                 let metal_output =
-                    BasicMatMul::new(transpose_a, transpose_b).eval(context, &a, &b)?;
+                    GemmImpl::<BasicMatMul>::new(transpose_a, transpose_b).eval(context, &a, &b)?;
                 let matmul = TractBasicMatMul {
                     transpose_a,
                     transpose_b,
