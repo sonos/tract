@@ -1,21 +1,16 @@
-use crate::kernels::matmul;
+use crate::kernels::matmul::DefaultGemmImpl;
 use crate::tensor::MetalTensorExt;
 use anyhow::{bail, ensure};
 use tract_core::internal::*;
 
-#[cfg(target_os = "macos")]
-type MatMulImpl = matmul::MfaGemm;
-#[cfg(target_os = "ios")]
-type MatMulImpl = matmul::MpsMatMul;
-
 #[derive(Debug, Default, Clone)]
 pub struct MetalGemm {
-    pub kernel: MatMulImpl,
+    pub kernel: DefaultGemmImpl,
 }
 
 impl MetalGemm {
     pub fn new(transpose_a: bool, transpose_b: bool) -> Self {
-        Self { kernel: MatMulImpl { transpose_a, transpose_b } }
+        Self { kernel: DefaultGemmImpl::new(transpose_a, transpose_b) }
     }
 }
 

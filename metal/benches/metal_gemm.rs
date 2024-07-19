@@ -1,4 +1,4 @@
-use crate::matmul::{BasicMatMul, MfaGemm, MpsMatMul};
+use crate::matmul::{BasicMatMul, MfaGemm, MpsMatMul, GemmImpl};
 use criterion::measurement::WallTime;
 use criterion::*;
 use ggml::Context;
@@ -102,11 +102,11 @@ pub fn metal_basic_matmul(
     let metal_a = a.into_metal().unwrap();
     let metal_b = b.into_metal().unwrap();
     // Warmup
-    let _ = BasicMatMul::default().eval(&context, &metal_a, &metal_b).unwrap();
+    let _ = GemmImpl::<BasicMatMul>::default().eval(&context, &metal_a, &metal_b).unwrap();
 
     crit.bench_function(&format!("tract_metal_basic_matmul_{:?}", dt), |be| {
         be.iter(|| {
-            let _ = BasicMatMul::default().eval(&context, &metal_a, &metal_b).unwrap();
+            let _ = GemmImpl::<BasicMatMul>::default().eval(&context, &metal_a, &metal_b).unwrap();
         });
     });
 }
@@ -126,11 +126,11 @@ pub fn metal_mps_matmul(
     let metal_a = a.into_metal().unwrap();
     let metal_b = b.into_metal().unwrap();
     // Warmup
-    let _ = MpsMatMul::default().eval(&context, &metal_a, &metal_b).unwrap();
+    let _ = GemmImpl::<MpsMatMul>::default().eval(&context, &metal_a, &metal_b).unwrap();
 
     crit.bench_function(&format!("tract_metal_mps_matmul_{:?}", dt), |be| {
         be.iter(|| {
-            let _ = MpsMatMul::default().eval(&context, &metal_a, &metal_b).unwrap();
+            let _ = GemmImpl::<MpsMatMul>::default().eval(&context, &metal_a, &metal_b).unwrap();
         });
     });
 }
@@ -150,11 +150,11 @@ pub fn metal_gemm(
     let metal_a = a.into_metal().unwrap();
     let metal_b = b.into_metal().unwrap();
     // Warmup
-    let _ = MfaGemm::default().eval(&context, &metal_a, &metal_b).unwrap();
+    let _ = GemmImpl::<MfaGemm>::default().eval(&context, &metal_a, &metal_b).unwrap();
 
     crit.bench_function(&format!("tract_metal_gemm_{:?}", dt), |be| {
         be.iter(|| {
-            let _ = MfaGemm::default().eval(&context, &metal_a, &metal_b).unwrap();
+            let _ = GemmImpl::<MfaGemm>::default().eval(&context, &metal_a, &metal_b).unwrap();
         });
     });
 }
@@ -174,12 +174,12 @@ pub fn metal_gemm_without_cache(
     let metal_a = a.into_metal().unwrap();
     let metal_b = b.into_metal().unwrap();
     // Warmup
-    let _ = MfaGemm::default().eval(&context, &metal_a, &metal_b).unwrap();
+    let _ = GemmImpl::<MfaGemm>::default().eval(&context, &metal_a, &metal_b).unwrap();
 
     crit.bench_function(&format!("tract_metal_gemm_without_cache_{:?}", dt), |be| {
         be.iter(|| {
             context.shared_context().flush_pipeline_cache().unwrap();
-            let _ = MfaGemm::default().eval(&context, &metal_a, &metal_b).unwrap();
+            let _ = GemmImpl::<MfaGemm>::default().eval(&context, &metal_a, &metal_b).unwrap();
         });
     });
 }

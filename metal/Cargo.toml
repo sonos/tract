@@ -21,6 +21,7 @@ maintenance = { status = "actively-developed" }
 anyhow.workspace = true
 block.workspace = true
 derive-new.workspace = true
+downcast-rs.workspace = true
 foreign-types.workspace = true
 log.workspace = true
 metal.workspace = true
