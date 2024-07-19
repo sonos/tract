@@ -2,6 +2,8 @@
 
 set -ex
 
+[ -d $ROOT/.travis ] || exit "\$ROOT not set correctly '$ROOT'"
+
 if [ -n "$CI" -a ! -e ".setup-done" ]
 then
     which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
@@ -21,14 +23,17 @@ then
     else
         sudo apt-get install -y llvm python3 python3-numpy
     fi
-    if [ -z "$CACHEDIR" ]
-    then
-        CACHEDIR=$(realpath `dirname $0`/../.cached)
-    fi
-
-    export CACHEDIR
-
     touch .setup-done
 fi
 
+S3=https://s3.amazonaws.com/tract-ci-builds/tests
 
+if [ -n "$CI" ]
+then
+    MODELS=$S3
+    CACHE_FILE=/bin/true
+else 
+    CACHE_FILE=$ROOT/.travis/cache_file.sh
+    MODELS=${MODELS:-$ROOT/.cached}
+    mkdir -p $MODELS
+fi
