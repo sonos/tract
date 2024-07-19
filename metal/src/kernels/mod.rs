@@ -12,10 +12,10 @@ use tract_core::internal::*;
 
 #[cfg(target_os = "ios")]
 pub const METAL_FLASH_ATTENTION_LIB: &[u8] =
-    include_bytes!("matmul/libMetalFlashAttention-ios.metallib");
+    include_bytes!("matmul/mfa/libMetalFlashAttention-ios.metallib");
 #[cfg(target_os = "macos")]
 pub const METAL_FLASH_ATTENTION_LIB: &[u8] =
-    include_bytes!("matmul/libMetalFlashAttention-macos.metallib");
+    include_bytes!("matmul/mfa/libMetalFlashAttention-macos.metallib");
 
 pub const MMM_TILE_8X8_METAL_SOURCE: &str = include_str!("matmul/mmm_tile_8x8.metal");
 pub const BASIC_MAT_MUL: &str = include_str!("matmul/basic_mat_mul.metal");
