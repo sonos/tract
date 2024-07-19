@@ -296,7 +296,7 @@ where
             let model = plan.model();
             for (step, n) in plan.order.iter().enumerate() {
                 let node = model.node(*n);
-                debug!("Running step {}, node {}", step, node);
+                trace!("Running step {}, node {}", step, node);
                 let mut inputs: TVec<TValue> = tvec![];
                 for i in &node.inputs {
                     trace!("  use input {:?}", i);
