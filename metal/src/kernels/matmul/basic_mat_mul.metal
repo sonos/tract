@@ -5,47 +5,49 @@ using namespace metal;
 
 #define NUM_SIMDGROUP 32
 
-#define INSTANTIATE_BASIC_MATMUL(tname, type)                       \
-template [[host_name("matmul::basic_matvec_" #tname)]] [[kernel]] void basic_matvec<type>(                                                           \
-    device const type *lhs [[buffer(0)]],                              \
-    device const type *rhs [[buffer(1)]],                              \
-    device type *output [[buffer(2)]],                           \
-    constant   int32_t & nrows,                                  \
-    constant   int32_t & ncols,                                  \
-    uint3 tgpig[[threadgroup_position_in_grid]],                 \
-    uint  tiisg[[thread_index_in_simdgroup]],                    \
-    uint  sgitg[[simdgroup_index_in_threadgroup]]                \
-);                                                               \
-template [[host_name("matmul::basic_matmul_" #tname)]] [[kernel]] void basic_matmul<type>(                                                           \
-    device const type *lhs [[buffer(0)]],                        \
-    device const type *rhs [[buffer(1)]],                        \
-    device type *output [[buffer(2)]],                           \
-    constant   int32_t & m,                                      \
-    constant   int32_t & k,                                      \
-    constant   int32_t & n,                                      \
-    constant   int32_t & transpose_lhs,                          \
-    constant   int32_t & transpose_rhs,                          \
-    uint3 tgpig[[threadgroup_position_in_grid]],                 \
-    uint  tiisg[[thread_index_in_simdgroup]],                    \
-    uint  sgitg[[simdgroup_index_in_threadgroup]]                \
-);                                                               \
+#define INSTANTIATE_BASIC_MATMUL(tname, type)                \
+template [[host_name("matmul::basic_matvec_" #tname)]]       \
+[[kernel]] void basic_matvec<type>(                          \
+device const type *lhs [[buffer(0)]],                        \
+device const type *rhs [[buffer(1)]],                        \
+device type *output [[buffer(2)]],                           \
+constant   int32_t & nrows,                                  \
+constant   int32_t & ncols,                                  \
+uint3 tgpig[[threadgroup_position_in_grid]],                 \
+uint  tiisg[[thread_index_in_simdgroup]],                    \
+uint  sgitg[[simdgroup_index_in_threadgroup]]                \
+);                                                           \
+template [[host_name("matmul::basic_matmul_" #tname)]]       \
+[[kernel]] void basic_matmul<type>(                          \
+device const type *lhs [[buffer(0)]],                        \
+device const type *rhs [[buffer(1)]],                        \
+device type *output [[buffer(2)]],                           \
+constant   int32_t & m,                                      \
+constant   int32_t & k,                                      \
+constant   int32_t & n,                                      \
+constant   int32_t & transpose_lhs,                          \
+constant   int32_t & transpose_rhs,                          \
+uint3 tgpig[[threadgroup_position_in_grid]],                 \
+uint  tiisg[[thread_index_in_simdgroup]],                    \
+uint  sgitg[[simdgroup_index_in_threadgroup]]                \
+);                                                           
 
 
 template<typename T>  
 [[kernel]]  void basic_matvec(device const T *lhs [[buffer(0)]],
-                           device const T *rhs [[buffer(1)]],
-                           device T *output [[buffer(2)]],
-                           constant   int32_t & nrows,
-                           constant   int32_t & ncols,
-                           uint3 tgpig[[threadgroup_position_in_grid]],
-        				   uint  tiisg[[thread_index_in_simdgroup]],
-        				   uint  sgitg[[simdgroup_index_in_threadgroup]]
-                           ) {
-
+                              device const T *rhs [[buffer(1)]],
+                              device T *output [[buffer(2)]],
+                              constant   int32_t & nrows,
+                              constant   int32_t & ncols,
+                              uint3 tgpig[[threadgroup_position_in_grid]],
+                              uint  tiisg[[thread_index_in_simdgroup]],
+                              uint  sgitg[[simdgroup_index_in_threadgroup]]
+                              ) {
+    
     const int32_t row_group_size = 4;
     const int32_t _batch_idx = tgpig.x;
     const int32_t row_group_start = tgpig.y*row_group_size;
-
+    
     for (int row_group_idx = 0; row_group_idx < row_group_size; ++row_group_idx) {
         int row_idx = row_group_start + row_group_idx;
         if (row_idx >= nrows) {
@@ -67,24 +69,24 @@ template<typename T>
 
 template<typename T>  
 [[kernel]]  void basic_matmul(device const T  *lhs [[buffer(0)]],
-                           device const T *rhs [[buffer(1)]],
-                           device T *output [[buffer(2)]],
-                           constant   int32_t & m,
-                           constant   int32_t & k,
-                           constant   int32_t & n,
-                           constant   int32_t & transpose_lhs,
-                           constant   int32_t & transpose_rhs, 
-                           uint3 tgpig[[threadgroup_position_in_grid]],
-                           uint  tiisg[[thread_index_in_simdgroup]],
-                           uint  sgitg[[simdgroup_index_in_threadgroup]]
-                           ) {
-
+                              device const T *rhs [[buffer(1)]],
+                              device T *output [[buffer(2)]],
+                              constant   int32_t & m,
+                              constant   int32_t & k,
+                              constant   int32_t & n,
+                              constant   int32_t & transpose_lhs,
+                              constant   int32_t & transpose_rhs, 
+                              uint3 tgpig[[threadgroup_position_in_grid]],
+                              uint  tiisg[[thread_index_in_simdgroup]],
+                              uint  sgitg[[simdgroup_index_in_threadgroup]]
+                              ) {
+    
     const int32_t group_size = 4;
     const int32_t n_group_start = tgpig.x * group_size;
     const int32_t m_group_start = tgpig.y * group_size;
-
+    
     // [m_idx, n_idx] = m_idx * n + n_idx
-
+    
     for (int m_group_idx = 0; m_group_idx < group_size; ++m_group_idx) {
         int m_idx = m_group_start + m_group_idx;
         if (m_idx >= m) {
@@ -96,7 +98,7 @@ template<typename T>
             if (n_idx >= n) {
                 break;
             }
-
+            
             T sumf = 0;
             // Accumulate per simd
             if(transpose_lhs == 0 && transpose_rhs == 0) {
@@ -124,7 +126,7 @@ template<typename T>
                     sumf += rhs[i * n + n_idx] * lhs[i * m + m_idx];
                 }
             }
-
+            
             T all_sum = simd_sum(sumf);
             if (tiisg == 0) {
                 output[m_idx * n + n_idx] = all_sum;

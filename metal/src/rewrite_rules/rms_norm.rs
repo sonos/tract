@@ -2,7 +2,7 @@ use crate::rewrite_rules::{collect_node_const_inputs, next_node};
 use crate::rule_ensure;
 use std::sync::Arc;
 use tract_core::internal::*;
-use tract_core::ops::binary::{ TypedBinOp, BinMiniOp };
+use tract_core::ops::binary::{BinMiniOp, TypedBinOp};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::math::{Add, Mul, Rsqrt};
 use tract_core::ops::nn::{Reduce, Reducer};
@@ -33,7 +33,7 @@ impl EvalOp for BasicRmsNorm {
         let dt = input.datum_type();
         let a1 = Reducer::MeanOfSquares.reduce(&[self.axis], &input)?;
         let mut a2 = Add.eval(a1.into_tvalue(), self.eps.clone().into_tvalue(), dt)?;
-        Rsqrt { }.eval_in_place(&mut a2, None)?;
+        Rsqrt {}.eval_in_place(&mut a2, None)?;
         let a3 = Mul.eval(a2.into_tvalue(), input.clone(), dt)?;
 
         Ok(tvec![a3.into()])
