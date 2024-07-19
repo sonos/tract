@@ -12,13 +12,13 @@ use tract_core::ndarray;
 use tract_core::ndarray::Dimension;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum GemmPrecision {
+pub enum MfaGemmPrecision {
     Single,
     Half,
 }
 
-impl GemmPrecision {
-    pub fn from_dt(dt: DatumType) -> Result<GemmPrecision> {
+impl MfaGemmPrecision {
+    pub fn from_dt(dt: DatumType) -> Result<MfaGemmPrecision> {
         match dt {
             DatumType::F32 => Ok(Self::Single),
             DatumType::F16 => Ok(Self::Half),
@@ -107,7 +107,7 @@ impl MfaGemm {
 
                 dispatch_metal_mfa_gemm(
                     context,
-                    GemmPrecision::from_dt(c_dt)?,
+                    MfaGemmPrecision::from_dt(c_dt)?,
                     (1, m, n, k),
                     std::mem::transmute::<&[isize], &[usize]>(a_strides.as_slice()),
                     a_offset as usize * c_dt.size_of(),
@@ -138,7 +138,7 @@ impl MfaGemm {
 #[allow(clippy::too_many_arguments)]
 pub fn dispatch_metal_mfa_gemm(
     context: &MetalContext,
-    precision: GemmPrecision,
+    precision: MfaGemmPrecision,
     (b, m, n, k): (usize, usize, usize, usize),
     lhs_stride: &[usize],
     lhs_offset: usize,
@@ -227,8 +227,8 @@ pub fn dispatch_metal_mfa_gemm(
     ]));
 
     let name = match precision {
-        GemmPrecision::Single => "sgemm",
-        GemmPrecision::Half => "hgemm",
+        MfaGemmPrecision::Single => "sgemm",
+        MfaGemmPrecision::Half => "hgemm",
     };
 
     let pipeline = context.shared_context().load_pipeline_with_constants(
@@ -255,8 +255,8 @@ pub fn dispatch_metal_mfa_gemm(
         }
     }
     let bytes = match precision {
-        GemmPrecision::Single => 4,
-        GemmPrecision::Half => 2,
+        MfaGemmPrecision::Single => 4,
+        MfaGemmPrecision::Half => 2,
     };
     let block_bytes = block_elements * bytes;
 
