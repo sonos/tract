@@ -81,7 +81,7 @@ impl SymbolScope {
         let ineqs = self.0.lock().unwrap().inequalities.clone();
         let positives = ineqs
             .iter()
-            .map(|i| parse_inequality(self, &i).unwrap().as_known_positive())
+            .map(|i| parse_inequality(self, i).unwrap().as_known_positive())
             .collect_vec();
         let mut visited = vec![];
         let mut todo = vec![t.clone()];
