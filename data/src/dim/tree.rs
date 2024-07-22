@@ -1180,7 +1180,7 @@ mod tests {
     #[test]
     fn min_max_with_axiom() {
         let symbols = SymbolScope::default();
-        symbols.add_inequality(symbols.parse_inequality("a>=0").unwrap());
+        symbols.add_inequality("a>=0").unwrap();
         assert_eq!(symbols.parse_tdim("min(a,0)").unwrap().simplify(), 0.into());
         assert_eq!(
             symbols.parse_tdim("max(a,0)").unwrap().simplify(),

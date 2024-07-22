@@ -844,8 +844,7 @@ impl Parameters {
     pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> TractResult<Parameters> {
         let symbols = SymbolScope::default();
         for rule in matches.values_of("assert").unwrap_or_default() {
-            let ineq = symbols.parse_inequality(rule)?;
-            symbols.add_inequality(ineq);
+            symbols.add_inequality(rule)?;
         }
         let (filename, onnx_tc) = Self::disco_model(matches)?;
         let tensors_values = Self::parse_tensors(matches, &filename, onnx_tc, &symbols)?;
