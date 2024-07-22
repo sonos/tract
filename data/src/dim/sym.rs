@@ -11,7 +11,7 @@ use super::parse::parse_inequality;
 use super::{parse_tdim, TDim};
 
 #[derive(Clone, Default)]
-pub struct SymbolScope(pub Arc<Mutex<SymbolScopeData>>);
+pub struct SymbolScope(Arc<Mutex<SymbolScopeData>>);
 
 impl PartialEq for SymbolScope {
     fn eq(&self, other: &Self) -> bool {
@@ -24,7 +24,7 @@ impl Eq for SymbolScope {}
 #[derive(Default)]
 pub struct SymbolScopeData {
     table: DefaultStringInterner,
-    inequalities: Vec<Inequality>,
+    inequalities: Vec<String>,
 }
 
 impl SymbolScope {
@@ -67,12 +67,11 @@ impl SymbolScope {
         parse_tdim(self, input.as_ref())
     }
 
-    pub fn parse_inequality(&self, input: impl AsRef<str>) -> TractResult<Inequality> {
-        parse_inequality(self, input.as_ref())
-    }
-
-    pub fn add_inequality(&self, ineq: Inequality) {
-        self.0.lock().unwrap().inequalities.push(ineq)
+    pub fn add_inequality(&self, ineq: impl Into<String>) -> TractResult<()> {
+        let ineq = ineq.into();
+        parse_inequality(self, &ineq)?;
+        self.0.lock().unwrap().inequalities.push(ineq);
+        Ok(())
     }
 
     pub fn prove_positive(&self, t: &TDim) -> bool {
@@ -80,7 +79,10 @@ impl SymbolScope {
             return *v >= 0;
         }
         let ineqs = self.0.lock().unwrap().inequalities.clone();
-        let positives = ineqs.iter().map(|i| i.as_known_positive()).collect_vec();
+        let positives = ineqs
+            .iter()
+            .map(|i| parse_inequality(self, &i).unwrap().as_known_positive())
+            .collect_vec();
         let mut visited = vec![];
         let mut todo = vec![t.clone()];
         while let Some(t) = todo.pop() {
@@ -115,7 +117,7 @@ impl SymbolScope {
         self.0.lock().unwrap().table.into_iter().map(|is| Symbol(self.clone(), is.0)).collect()
     }
 
-    pub fn all_assertions(&self) -> Vec<Inequality> {
+    pub fn all_assertions(&self) -> Vec<String> {
         self.0.lock().unwrap().inequalities.clone()
     }
 }
@@ -242,7 +244,7 @@ mod tests {
     fn as_known_positive_gte() {
         let s = SymbolScope::default();
         assert_eq!(
-            s.parse_inequality("S>=0").unwrap().as_known_positive(),
+            parse_inequality(&s, "S>=0").unwrap().as_known_positive(),
             s.parse_tdim("S").unwrap()
         );
     }
@@ -251,7 +253,7 @@ mod tests {
     fn as_known_positive_gt() {
         let s = SymbolScope::default();
         assert_eq!(
-            s.parse_inequality("S>0").unwrap().as_known_positive(),
+            parse_inequality(&s, "S>0").unwrap().as_known_positive(),
             s.parse_tdim("S-1").unwrap()
         );
     }
@@ -260,7 +262,7 @@ mod tests {
     fn as_known_positive_lte() {
         let s = SymbolScope::default();
         assert_eq!(
-            s.parse_inequality("S<=0").unwrap().as_known_positive(),
+            parse_inequality(&s, "S<=0").unwrap().as_known_positive(),
             s.parse_tdim("-S").unwrap()
         );
     }
@@ -269,7 +271,7 @@ mod tests {
     fn as_known_positive_lt() {
         let s = SymbolScope::default();
         assert_eq!(
-            s.parse_inequality("S<0").unwrap().as_known_positive(),
+            parse_inequality(&s, "S<0").unwrap().as_known_positive(),
             s.parse_tdim("-S - 1").unwrap()
         );
     }
@@ -301,16 +303,16 @@ mod tests {
     #[test]
     fn prove_positive_with_axiom() {
         let s = SymbolScope::default();
-        s.add_inequality(s.parse_inequality("s>=0").unwrap());
+        s.add_inequality("s>=0").unwrap();
         assert!(s.prove_positive(&s.parse_tdim("s").unwrap()));
     }
 
     #[test]
     fn prove_positive_with_axiom_2() {
         let s = SymbolScope::default();
-        s.add_inequality(s.parse_inequality("s>=0").unwrap());
-        s.add_inequality(s.parse_inequality("p>=0").unwrap());
-        s.add_inequality(s.parse_inequality("p+s<4096").unwrap());
+        s.add_inequality("s>=0").unwrap();
+        s.add_inequality("p>=0").unwrap();
+        s.add_inequality("p+s<4096").unwrap();
         assert!(s.prove_positive(&s.parse_tdim("4096-p").unwrap()));
     }
 }
