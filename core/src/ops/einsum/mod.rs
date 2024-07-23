@@ -3,7 +3,7 @@ use std::fmt::Debug;
 
 use crate::internal::*;
 use crate::ops::array::Slice;
-use crate::ops::matmul::de_block_quant::BlockQuantFact;
+use crate::ops::matmul::de_block_quant::{BlockQuantFact, BlockQuantValue};
 use crate::tract_data::itertools::Itertools;
 
 mod eval;
@@ -51,6 +51,13 @@ impl EinSum {
                     t.opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
                 {
                     &*bqf.shape
+                } else if let Some(bqv) = t
+                    .konst
+                    .as_ref()
+                    .and_then(|k| k.to_scalar::<Opaque>().ok())
+                    .and_then(|o| o.downcast_ref::<BlockQuantValue>())
+                {
+                    &*bqv.fact.shape
                 } else {
                     &*t.shape
                 }

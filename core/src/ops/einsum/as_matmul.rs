@@ -8,6 +8,7 @@ use super::EinSum;
 use crate::internal::*;
 use crate::ops::konst::Const;
 use crate::ops::matmul::de_block_quant::BlockQuantFact;
+use crate::ops::matmul::de_block_quant::BlockQuantValue;
 
 pub fn rewrite_einsums_as_matmul(model: &mut TypedModel) -> TractResult<()> {
     let rules = Rewriter::default().with_rule_for::<EinSum>("einsum-to-matmul", einsum_rules);
@@ -22,7 +23,7 @@ fn einsum_rules(
     op: &EinSum,
 ) -> TractResult<Option<TypedModelPatch>> {
     // F: 2 inputs
-    // Q: 2 inputs
+    // Q: 9 inputs
     if !((op.q_params.is_none() && node.inputs.len() == 2)
         || (op.q_params.is_some() && node.inputs.len() == 9))
     {
@@ -33,13 +34,14 @@ fn einsum_rules(
     {
         return Ok(None);
     }
-    let (m, k, n) = match ensure_mkn_axes(op, model, node)? {
-        AxesOrPatch::Axes(m, k, n) => (m, k, n),
-        AxesOrPatch::Patch(p) => return Ok(Some(p)),
-        AxesOrPatch::NotAMatMul(axis) => {
-            bail!("{} is not a matmul because of axis {}", op.axes, axis.repr)
-        }
-    };
+    let (m, k, n) =
+        match ensure_mkn_axes(op, model, node).context("Figuring out m, k and n axes")? {
+            AxesOrPatch::Axes(m, k, n) => (m, k, n),
+            AxesOrPatch::Patch(p) => return Ok(Some(p)),
+            AxesOrPatch::NotAMatMul(axis) => {
+                bail!("{} is not a matmul because of axis {}", op.axes, axis.repr)
+            }
+        };
     let (m, k, n) = (m.repr, k.repr, n.repr);
     let prefix: String =
         op.axes.iter_all_axes().filter(|a| ![m, k, n].contains(&a.repr)).map(|a| a.repr).collect();
@@ -249,6 +251,17 @@ impl TypedOp for BasicMatMul {
             inputs[0].opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
         {
             let a_shape: ShapeFact = a.shape.iter().chain(opf.shape.iter()).collect();
+            Ok(tvec!(self
+                .quantize_output
+                .unwrap_or(b.datum_type)
+                .fact(self.output_shape(&a_shape, &b.shape))))
+        } else if let Some(bqv) = inputs[0]
+            .konst
+            .as_ref()
+            .and_then(|k| k.to_scalar::<Opaque>().ok())
+            .and_then(|o| o.downcast_ref::<BlockQuantValue>())
+        {
+            let a_shape: ShapeFact = a.shape.iter().chain(bqv.fact.shape.iter()).collect();
             Ok(tvec!(self
                 .quantize_output
                 .unwrap_or(b.datum_type)
