@@ -29,7 +29,7 @@ S3=https://s3.amazonaws.com/tract-ci-builds/tests
 if [ -n "$CI" ]
 then
     MODELS=$S3
-    CACHE_FILE=/bin/true
+    CACHE_FILE=true
 else 
     CACHE_FILE=$ROOT/.travis/cache_file.sh
     MODELS=${MODELS:-$ROOT/.cached}
