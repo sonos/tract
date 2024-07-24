@@ -11,7 +11,7 @@ itertools.workspace = true
 lazy_static.workspace = true
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
-tract-core = { path = "../../core", version = "=0.21.6-pre", features = [ "blis" ] }
+tract-core = { path = "../../core", version = "=0.21.6", features = [ "blis" ] }
 
 [dev-dependencies]
 infra = { path = "../infra" }
@@ -20,5 +20,5 @@ lazy_static.workspace = true
 log.workspace = true
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
-tract-core = { path = "../../core", version = "=0.21.6-pre", features = [ "blis" ]  }
-tract-onnx-opl = { path = "../../onnx-opl", version = "=0.21.6-pre" }
+tract-core = { path = "../../core", version = "=0.21.6", features = [ "blis" ]  }
+tract-onnx-opl = { path = "../../onnx-opl", version = "=0.21.6" }
