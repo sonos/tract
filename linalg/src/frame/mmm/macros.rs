@@ -57,8 +57,8 @@ macro_rules! MMMKernelWrapper {
                 use $crate::frame::mmm::MMMInputFormat;
                 use tract_data::prelude::*;
 
-                const NATIVE_A: PackedFormat = PackedFormat::new(DatumType::[<$ti:upper>], $mr, $alignment_bytes_packed_a, $end_padding_packed_a);
-                const NATIVE_B: PackedFormat = PackedFormat::new(DatumType::[<$ti:upper>], $nr, $alignment_bytes_packed_b, $end_padding_packed_b);
+                const NATIVE_A: PackedFormat = PackedFormat::new(DatumType::[<$ti:upper>], $mr, $alignment_bytes_packed_a).with_end_padding_record($end_padding_packed_a);
+                const NATIVE_B: PackedFormat = PackedFormat::new(DatumType::[<$ti:upper>], $nr, $alignment_bytes_packed_b).with_end_padding_record($end_padding_packed_b);
                 const NATIVE: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&NATIVE_A, &NATIVE_B);
                 $($($packing_def)*)?
                 pub const PACKINGS: &[(&dyn MMMInputFormat, &dyn MMMInputFormat)] = &[NATIVE $( $(, $packing)* )?];
