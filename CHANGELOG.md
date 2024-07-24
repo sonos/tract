@@ -1,5 +1,22 @@
 # Unreleased
 
+# 0.21.6 - 2024-07-24
+* [data] Rework tdim and symbols, introduce inequalities assertions, min and max operators
+* [data] Generalize Blob usage in Tensor
+* [linalg] Rework reduce implementation, introduce more generic binary ops support (wip)
+* [linalg] Introduce multithreaded matrix multiplication runner
+* [linalg] Introduce Q4_0 block quantization for weights (wip)
+* [linalg] Introduce AMX f16 kernels, Neon Q40F16 kernel (experimental)
+* [linalg] wasm f32 4x4 kernel 
+* [core] Introduce Opaque and OpaqueFact to escape Tensor and TValue formalism
+* [core] generalize/improve float precision translator, with translation filter
+* [core] Introduce garbage collecting in patch application, new compact algo, and rework constant propagation to spare memory
+* [core] Rework packed format and packing metadata
+* [linalg/core] Introduce multiple packing format for matmul kernels
+* [core] Work In Progress refactoring binary, towards more optimized execution strategies
+* [nnef] inequalities assertions extension, q4_0 extension
+* [tflite] plug in tanh and sigmoid
+
 # 0.21.5 - 2024-05-11
 * [TFLite] fixes for fully connected and max pool layers
 * Allow opting out of new memory friendly execution order optimisation
