@@ -356,11 +356,13 @@ fn wire_packing(
         let wire = patch.tap_model(model, node.inputs[input])?;
         let pack_a = MatMatMulPack { packer: packed_format, k_axis, mn_axis };
         Ok(patch.wire_node(&name, pack_a, &[wire])?[0])
-    } else if let Some(pbqf) =
-        a_fact.opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
-    {
+    } else if let (Some(bqf), Some(pbqf)) = (
+        a_fact.opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>()),
+        packer.downcast_ref::<PackedBlockQuantFormat>(),
+    ) {
         ensure!(k_axis == 1);
         ensure!(mn_axis == 0);
+        ensure!(pbqf.bq.same_as(&*bqf.format));
         let Some(weights) = &a_fact.konst else {
             bail!("Block quant packing with non-const inputs")
         };
@@ -368,8 +370,8 @@ fn wire_packing(
         let Some(weights) = weights.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>() else {
             bail!("Expected a BlockQuantValue, found {weights:?}")
         };
-        let k = pbqf.shape[k_axis].to_usize()?;
-        let packed = pbqf.format.pack(&weights.value, k, packer.r())?;
+        let k = bqf.shape[k_axis].to_usize()?;
+        let packed = pbqf.pack(&weights.value, k)?;
         let mmm_input: Box<dyn MMMInputValue> = Box::new(packed);
         patch.add_const(name, tensor0(Opaque::from(mmm_input)))
     } else {

@@ -118,7 +118,7 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
     //  s0_0 S1_0 S2_0 s3_0  n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
     //  s0_32 S1_32 S2_32 s3_32  n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
     //  ...
-    fn pack(&self, input: &[u8], k: usize, r: usize) -> TractResult<EagerPackedInput> {
+    fn pack(&self, input: &[u8], k: usize, r: usize, zip: usize) -> TractResult<EagerPackedInput> {
         assert!(input.len() % self.block_bytes() == 0);
         assert!(k % self.block_len() == 0);
         let m = if input.len() == 0 {
@@ -172,6 +172,7 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
             format: Box::new(PackedBlockQuantFormat {
                 bq: StaticBlockQuant::Owned(Box::new(*self)),
                 r,
+                zip
             }),
             packed: blob,
             mn: m,
