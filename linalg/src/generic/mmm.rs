@@ -242,7 +242,7 @@ const PQ40_R4: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 4);
 MMMKernelWrapper!(f16, generic_f16_4x4; kernel::<f16, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true);
 MMMKernelWrapper!(f16, generic_f16_4x1; kernel::<f16, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true,
      packing_defs: {
-         const F16_B: PackedFormat = PackedFormat::new(DatumType::F16, 1, 4, 0);
+         const F16_B: PackedFormat = PackedFormat::new(DatumType::F16, 1, 4);
          const PQ40_F16: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4, &F16_B);
      },
  packings: PQ40_F16,
@@ -251,7 +251,7 @@ MMMKernelWrapper!(f16, generic_f16_4x1; kernel::<f16, 4, 1>; 4, 1; 4, 4; 0, 0; n
 
 MMMKernelWrapper!(f32, generic_f32_4x4; kernel::<f32, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true,
      packing_defs: {
-         const F32_B: PackedFormat = PackedFormat::new(DatumType::F32, 4, 4, 0);
+         const F32_B: PackedFormat = PackedFormat::new(DatumType::F32, 4, 4);
          const PQ40_F32: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4, &F32_B);
      },
  packings: PQ40_F32,
@@ -259,7 +259,7 @@ MMMKernelWrapper!(f32, generic_f32_4x4; kernel::<f32, 4, 4>; 4, 4; 4, 4; 0, 0; n
 );
 MMMKernelWrapper!(f32, generic_f32_4x1; kernel::<f32, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true,
      packing_defs: {
-         const F32_B: PackedFormat = PackedFormat::new(DatumType::F32, 1, 4, 0);
+         const F32_B: PackedFormat = PackedFormat::new(DatumType::F32, 1, 4);
          const PQ40_F32: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4, &F32_B);
      },
  packings: PQ40_F32,
@@ -269,8 +269,8 @@ MMMKernelWrapper!(f64, generic_f64_4x4; kernel::<f64, 4, 4>; 4, 4; 4, 4; 0, 0; n
 MMMKernelWrapper!(f64, generic_f64_4x1; kernel::<f64, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true);
 MMMKernelWrapper!(i32, generic_i32_4x4; kernel::<i32, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true,
  packing_defs: {
-     const I8_A: PackedFormat = PackedFormat::new(DatumType::I8, 4, 4, 0);
-     const I8_B: PackedFormat = PackedFormat::new(DatumType::I8, 4, 4, 0);
+     const I8_A: PackedFormat = PackedFormat::new(DatumType::I8, 4, 4);
+     const I8_B: PackedFormat = PackedFormat::new(DatumType::I8, 4, 4);
      const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
  },
  packings: I8_I8,
@@ -279,8 +279,8 @@ MMMKernelWrapper!(i32, generic_i32_4x4; kernel::<i32, 4, 4>; 4, 4; 4, 4; 0, 0; n
 
 MMMKernelWrapper!(i32, generic_i32_4x1; kernel::<i32, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true,
  packing_defs: {
-     const I8_A: PackedFormat = PackedFormat::new(DatumType::I8, 4, 4, 0);
-     const I8_B: PackedFormat = PackedFormat::new(DatumType::I8, 1, 4, 0);
+     const I8_A: PackedFormat = PackedFormat::new(DatumType::I8, 4, 4);
+     const I8_B: PackedFormat = PackedFormat::new(DatumType::I8, 1, 4);
      const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
  },
  packings: I8_I8,
@@ -293,8 +293,8 @@ MMMKernelWrapper!(f32, generic_f32_3x2; kernel::<f32, 3, 2>; 3, 2; 4, 4; 0, 0; n
 #[cfg(test)]
 MMMKernelWrapper!(i32, generic_i32_3x2; kernel::<i32, 3, 2>; 3, 2; 4, 4; 0, 0; no_prefetch, true,
  packing_defs: {
-     const I8_A: PackedFormat = PackedFormat::new(DatumType::I8, 3, 4, 0);
-     const I8_B: PackedFormat = PackedFormat::new(DatumType::I8, 2, 4, 0);
+     const I8_A: PackedFormat = PackedFormat::new(DatumType::I8, 3, 4);
+     const I8_B: PackedFormat = PackedFormat::new(DatumType::I8, 2, 4);
      const I8_I8: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&I8_A, &I8_B);
  },
  packings: I8_I8,
