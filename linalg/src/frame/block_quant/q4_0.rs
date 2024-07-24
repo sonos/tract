@@ -269,7 +269,7 @@ mod tests {
         let weights_f32 =
             q.dequant_f32(&q.quant_f32(weights_orig.as_slice::<f32>()?)?)?.into_shape(&[m, k])?;
         eprintln!("{:?}", weights_f32.to_array_view::<f32>()?);
-        let packer = PackedFormat::new(f32::datum_type(), r, 128, 0);
+        let packer = PackedFormat::new(f32::datum_type(), r, 128);
         let packed_f32 = packer.pack_tensor(&weights_f32, 1, 0)?;
         assert_eq!(packed_f32.panels_count(), 2);
 

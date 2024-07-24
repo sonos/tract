@@ -14,6 +14,7 @@ pub struct PackedFormat {
     pub r: usize,
     pub alignment: usize,
     pub end_padding_record: usize,
+    pub zip: usize,
 }
 
 impl MMMInputFormat for PackedFormat {
@@ -52,13 +53,16 @@ impl Debug for PackedFormat {
 }
 
 impl PackedFormat {
-    pub const fn new(
-        dt: DatumType,
-        nr: usize,
-        alignment: usize,
-        end_padding_record: usize,
-    ) -> PackedFormat {
-        PackedFormat { dt, r: nr, alignment, end_padding_record }
+    pub const fn new(dt: DatumType, nr: usize, alignment: usize) -> PackedFormat {
+        PackedFormat { dt, r: nr, alignment, end_padding_record: 0, zip: nr }
+    }
+
+    pub const fn with_end_padding_record(self, end_padding_record: usize) -> Self {
+        PackedFormat { end_padding_record, ..self }
+    }
+
+    pub const fn with_zip(self, zip: usize) -> Self {
+        PackedFormat { zip, ..self }
     }
 
     #[inline]
@@ -540,7 +544,7 @@ mod test {
 
         fn packer(&self) -> Array2<u32> {
             let panels = self.mn_range.len().divceil(self.r);
-            let packer = super::PackedFormat::new(u32::datum_type(), self.r, self.align_panel, 0);
+            let packer = super::PackedFormat::new(u32::datum_type(), self.r, self.align_panel);
             let input = self.input().into_tensor();
             let panel_len = packer.single_panel_len(self.k_range.len());
             let mut output =
