@@ -14,7 +14,6 @@ pub struct PackedFormat {
     pub r: usize,
     pub alignment: usize,
     pub end_padding_record: usize,
-    pub zip: usize,
 }
 
 impl MMMInputFormat for PackedFormat {
@@ -54,15 +53,11 @@ impl Debug for PackedFormat {
 
 impl PackedFormat {
     pub const fn new(dt: DatumType, nr: usize, alignment: usize) -> PackedFormat {
-        PackedFormat { dt, r: nr, alignment, end_padding_record: 0, zip: nr }
+        PackedFormat { dt, r: nr, alignment, end_padding_record: 0 }
     }
 
     pub const fn with_end_padding_record(self, end_padding_record: usize) -> Self {
         PackedFormat { end_padding_record, ..self }
-    }
-
-    pub const fn with_zip(self, zip: usize) -> Self {
-        PackedFormat { zip, ..self }
     }
 
     #[inline]
