@@ -56,9 +56,18 @@
 
     b           .non_linear_loop
 
+.p2align 8
+.q40f16_const:
+    .byte 0xc8, 0xc7, 0xc6, 0xc5, 0xc4, 0xc2, 0xc0, 0xbc
+    .byte 0x00, 0x3c, 0x40, 0x42, 0x44, 0x45, 0x46, 0x47
+    
 .q4f16:
+    adr      x4, .q40f16_const
     movi     v14.16b, 8
     movi     v15.16b, 15
+    ld1      {v13.16b}, [ x4 ]
+    eor      v12.16b, v12.16b, v12.16b
+
 .q4f16_outerloop:
     // scales
     ld1         { v16.8h-v19.8h }, [ x1 ], #64
@@ -67,32 +76,33 @@
 
 .p2align 4
 .q4f16_innerloop:
-        ld1      { v9.16b-v10.16b }, [x1], #32
+        ld1      { v6.16b-v7.16b }, [x1], #32
         ld1      { v8.h }[0], [ x2 ], #2
 
-        and      v11.16b, v9.16b, v15.16b
-        ushr     v12.16b, v9.16b, 4
-        zip1     v0.16b, v11.16b, v12.16b
-        zip2     v2.16b, v11.16b, v12.16b
+        and      v4.16b, v6.16b, v15.16b
+        ushr     v5.16b, v6.16b, 4
+        zip1     v0.16b, v4.16b, v5.16b
+        zip2     v2.16b, v4.16b, v5.16b
 
-        and      v11.16b, v10.16b, v15.16b
-        ushr     v12.16b, v10.16b, 4
-        zip1     v4.16b, v11.16b, v12.16b
-        zip2     v6.16b, v11.16b, v12.16b
+        and      v4.16b, v7.16b, v15.16b
+        ushr     v5.16b, v7.16b, 4
+        zip2     v6.16b, v4.16b, v5.16b
+        zip1     v4.16b, v4.16b, v5.16b
 
-        sub      v0.16b, v0.16b, v14.16b
-        sub      v2.16b, v2.16b, v14.16b
-        sub      v4.16b, v4.16b, v14.16b
-        sub      v6.16b, v6.16b, v14.16b
+        tbl      v0.16b, { v13.16b }, v0.16b
+        tbl      v2.16b, { v13.16b }, v2.16b
+        tbl      v4.16b, { v13.16b }, v4.16b
+        tbl      v6.16b, { v13.16b }, v6.16b
 
-{% for i in (0..3) %}
-        sshll2   v{{i|times:2|plus:1}}.8h, v{{i|times:2}}.16b, 0
-        sshll    v{{i|times:2}}.8h, v{{i|times: 2}}.8b, 0
-{% endfor %}
+        zip2     v1.16b, v12.16b, v0.16b
+        zip2     v3.16b, v12.16b, v2.16b
+        zip2     v5.16b, v12.16b, v4.16b
+        zip2     v7.16b, v12.16b, v6.16b
 
-{% for i in (0..7) %}
-        scvtf    v{{i}}.8h, v{{i}}.8h
-{% endfor %}
+        zip1     v0.16b, v12.16b, v0.16b
+        zip1     v2.16b, v12.16b, v2.16b
+        zip1     v4.16b, v12.16b, v4.16b
+        zip1     v6.16b, v12.16b, v6.16b
 
 {% for i in (0..7) %}
        fmul     v{{i}}.8h, v{{i}}.8h, v{{i|plus:16}}.8h
