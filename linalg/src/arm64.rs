@@ -16,9 +16,9 @@ pub use arm64fp16::*;
 use crate::f16;
 use crate::Ops;
 
-use crate::frame::unicast::UnicastKer;
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::reduce::{MapReduceKer, ReduceKer};
+use crate::frame::unicast::UnicastKer;
 
 // https://en.wikipedia.org/wiki/Comparison_of_ARMv8-A_cores
 const PART_A53: &str = "0xd03";
@@ -97,11 +97,9 @@ pub fn has_amx() -> bool {
 #[cfg(target_os = "ios")]
 lazy_static::lazy_static! {
     static ref IPHONE_MODEL_MAJOR:Option<usize> = {
-        unsafe {
-            let version = apple_get_syscall("hw.machine");
-            let Some((major, _)) = version.trim_start_matches("iPhone").split_once(",") else { return None };
-            major.parse::<usize>().ok()
-        }
+        let version = apple_get_syscall("hw.machine");
+        let Some((major, _)) = version.trim_start_matches("iPhone").split_once(",") else { return None };
+        major.parse::<usize>().ok()
     };
 }
 
@@ -216,26 +214,24 @@ impl Kind {
 }
 
 pub fn plug(ops: &mut Ops) {
-    ops.mmm_impls.extend(
-        [
-            arm64simd_mmm_f32_12x8_gen.mmm(),
-            arm64simd_mmm_f32_12x8_a53.mmm(),
-            arm64simd_mmm_f32_12x8_a55.mmm(),
-            arm64simd_mmm_f32_8x8_gen.mmm(),
-            arm64simd_mmm_f32_8x8_a53.mmm(),
-            arm64simd_mmm_f32_8x8_a55.mmm(),
-            arm64simd_mmm_f32_16x4_gen.mmm(),
-            arm64simd_mmm_f32_16x4_a53.mmm(),
-            arm64simd_mmm_f32_16x4_a55.mmm(),
-            arm64simd_mmm_f32_24x4_gen.mmm(),
-            arm64simd_mmm_f32_24x4_a53.mmm(),
-            arm64simd_mmm_f32_24x4_a55.mmm(),
-            arm64simd_mmm_f32_64x1_gen.mmm(),
-            arm64simd_mmm_f32_64x1_a53.mmm(),
-            arm64simd_mmm_i32_8x8.mmm(),
-            arm64simd_mmm_i32_64x1.mmm(),
-        ]
-    );
+    ops.mmm_impls.extend([
+        arm64simd_mmm_f32_12x8_gen.mmm(),
+        arm64simd_mmm_f32_12x8_a53.mmm(),
+        arm64simd_mmm_f32_12x8_a55.mmm(),
+        arm64simd_mmm_f32_8x8_gen.mmm(),
+        arm64simd_mmm_f32_8x8_a53.mmm(),
+        arm64simd_mmm_f32_8x8_a55.mmm(),
+        arm64simd_mmm_f32_16x4_gen.mmm(),
+        arm64simd_mmm_f32_16x4_a53.mmm(),
+        arm64simd_mmm_f32_16x4_a55.mmm(),
+        arm64simd_mmm_f32_24x4_gen.mmm(),
+        arm64simd_mmm_f32_24x4_a53.mmm(),
+        arm64simd_mmm_f32_24x4_a55.mmm(),
+        arm64simd_mmm_f32_64x1_gen.mmm(),
+        arm64simd_mmm_f32_64x1_a53.mmm(),
+        arm64simd_mmm_i32_8x8.mmm(),
+        arm64simd_mmm_i32_64x1.mmm(),
+    ]);
 
     #[cfg(not(feature = "no_fp16"))]
     if has_fp16() {
