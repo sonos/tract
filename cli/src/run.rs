@@ -142,9 +142,10 @@ pub fn handle(
 fn run_regular(
     tract: &dyn Model,
     run_params: &RunParams,
-    _matches: &clap::ArgMatches,
+    matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> TractResult<TVec<Vec<TValue>>> {
+    let plan_options = crate::plan_options::plan_options_from_subcommand(matches)?;
     let steps = sub_matches.is_present("steps");
     let check_f16_overflow = sub_matches.is_present("check-f16-overflow");
     let assert_sane_floats = sub_matches.is_present("assert-sane-floats");
@@ -155,7 +156,7 @@ fn run_regular(
         None
     };
     dispatch_model!(tract, |m| {
-        let plan = SimplePlan::new(m)?;
+        let plan = SimplePlan::new_with_options(m, &plan_options)?;
         let mut state = SimpleState::new(plan)?;
         let inputs = tract_libcli::tensor::retrieve_or_make_inputs(tract, run_params)?;
         let mut results = tvec!(vec!(); state.model().outputs.len());

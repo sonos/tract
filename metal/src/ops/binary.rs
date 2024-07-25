@@ -50,7 +50,8 @@ impl EvalOp for MetalBinOp {
                 ensure!(a.rank() == b.rank());
                 Ok(tvec!(self
                     .0
-                    .dispatch_eval(context, a_metal, b_metal)?
+                    .dispatch_eval(context, a_metal, b_metal)
+                    .with_context(|| "Error while dispatching eval for Metal Bin Op")?
                     .into_opaque_tensor()
                     .into_tvalue()))
             })

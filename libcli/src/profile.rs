@@ -53,6 +53,7 @@ pub fn profile(
     model: &TypedModel,
     bench_limits: &BenchLimits,
     dg: &mut Annotations,
+    plan_options: &PlanOptions,
     inputs: &TVec<TValue>,
     custom_profiler: Option<HashMap<TypeId, Profiler>>,
     folded: bool,
@@ -63,7 +64,7 @@ pub fn profile(
 
     bench_limits.warmup(model, inputs)?;
 
-    let plan = TypedSimplePlan::new(model.clone())?;
+    let plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
     let start = crate::time::now();
     let mut time_accounted_by_inner_nodes = Duration::default();
