@@ -28,7 +28,7 @@ metal.workspace = true
 paste.workspace = true
 objc = { version = "0.2.7" }
 num-traits.workspace = true
-tract-core = { version = "=0.21.6-pre", path = "../core" }
+tract-core = { version = "=0.21.7-pre", path = "../core" }
 
 [features]
 default = [ ]
