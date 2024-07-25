@@ -1,5 +1,5 @@
 use super::*;
-use num_traits::{AsPrimitive, Float, Zero};
+use num_traits::{AsPrimitive, Float};
 use std::alloc::Layout;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -48,6 +48,7 @@ impl<const QK: usize> BaseQ4_0<QK> {
         }
     }
 
+    /*
     unsafe fn repack_panel_t<T: Float + 'static>(
         &self,
         value: &EagerPackedInput,
@@ -79,6 +80,7 @@ impl<const QK: usize> BaseQ4_0<QK> {
         }
         Ok(())
     }
+    */
 }
 
 impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
@@ -126,7 +128,6 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
         } else {
             input.len() / self.block_bytes() * self.block_len() / k
         };
-        let full_panels = m / r;
         let panels = m.divceil(r);
         let blocks_for_k = k / self.block_len();
         let row_bytes = blocks_for_k * self.block_bytes();
@@ -134,37 +135,37 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
         let mut blob =
             unsafe { Blob::for_layout(Layout::from_size_align(panel_bytes * panels, 128)?) };
         let mut writer = NibbleWriter::for_slice(&mut blob);
-        for p in 0..full_panels {
-            let input = &input[r * p * row_bytes..];
-            let mut readers =
-                (0..r).map(|r| NibbleReader::for_slice(&input[r * row_bytes..])).collect_vec();
+        let order = if zip == 0 {
+            (0..r).collect_vec()
+        } else {
+            (0..r)
+                .map(|i| {
+                    let vec_pair_ix = i / (2 * zip);
+                    let lane = (i % (2 * zip)) / 2;
+                    let side = i % 2;
+                    vec_pair_ix * 2 * zip + side * zip + lane
+                })
+                .collect_vec()
+        };
+        for p in 0..panels {
+            let input = &input[(r * p) * row_bytes..];
+            let mut readers = (0..r)
+                .map(|r| {
+                    // manage partial panel
+                    let offset = if r * row_bytes < input.len() { r * row_bytes } else { 0 };
+                    NibbleReader::for_slice(&input[offset..])
+                })
+                .collect_vec();
             for _ in 0..blocks_for_k {
                 for reader in &mut readers {
                     let scale = reader.read_f16();
                     writer.write_f16(scale);
                 }
                 for _ in 0..self.block_len() {
-                    for r in &mut readers {
-                        let nib = r.read_i4();
+                    for &ix in &order {
+                        let nib = readers[ix].read_i4();
                         writer.write_i4(nib);
                     }
-                }
-            }
-        }
-        let partial_panel = m % r;
-        if partial_panel > 0 {
-            let input = &input[r * full_panels * row_bytes..];
-            let mut readers = (0..partial_panel)
-                .map(|r| NibbleReader::for_slice(&input[r * row_bytes..]))
-                .collect_vec();
-            for _ in 0..blocks_for_k {
-                readers.iter_mut().for_each(|r| writer.write_f16(r.read_f16()));
-                (partial_panel..r).for_each(|_| writer.write_f16(f16::zero()));
-                for _ in 0..self.block_len() {
-                    for r in &mut readers {
-                        writer.write_i4(r.read_i4());
-                    }
-                    (partial_panel..r).for_each(|_| writer.write_i4(0));
                 }
             }
         }
@@ -172,7 +173,7 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
             format: Box::new(PackedBlockQuantFormat {
                 bq: StaticBlockQuant::Owned(Box::new(*self)),
                 r,
-                zip
+                zip,
             }),
             packed: blob,
             mn: m,
@@ -181,6 +182,7 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
         })
     }
 
+    /*
     unsafe fn repack_panel(
         &self,
         value: &EagerPackedInput,
@@ -190,6 +192,7 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
     ) -> TractResult<()> {
         dispatch_floatlike!(Self::repack_panel_t(target.dt)(self, value, target, panel, scratch))
     }
+    */
 }
 
 impl<const QK: usize> Display for BaseQ4_0<QK> {
@@ -283,10 +286,25 @@ mod tests {
                 let panel_f32 = std::slice::from_raw_parts(panel_f32 as *const f32, k * r);
                 eprintln!("{panel_f32:?}");
                 let mut panel_q4 = Tensor::zero::<f32>(&[k * r])?;
-                q.repack_panel(&packed_q4, &packer, panel, panel_q4.as_bytes_mut().as_mut_ptr())?;
+//                q.repack_panel(&packed_q4, &packer, panel, panel_q4.as_bytes_mut().as_mut_ptr())?;
                 eprintln!("{panel_q4:?}");
                 assert_eq!(panel_q4.as_slice::<f32>()?, panel_f32);
             }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn packing_with_zip() -> TractResult<()> {
+        let (q, k, m, r) = (BaseQ4_0::<2>, 2, 8, 8);
+        let weights_orig = Array2::from_shape_fn((m, k), |(m, _)| m as f32).into_tensor();
+        let weights_f32 =
+            q.dequant_f32(&q.quant_f32(weights_orig.as_slice::<f32>()?)?)?.into_shape(&[m, k])?;
+
+        let q4 = q.quant_f32(&weights_f32.as_slice::<f32>()?)?;
+        let packed_q4 = q.pack(&q4, k, r, 4)?;
+        unsafe {
+
         }
         Ok(())
     }
