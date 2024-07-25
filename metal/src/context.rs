@@ -196,7 +196,6 @@ pub struct MetalContext {
     command_buffer: RefCell<CommandBuffer>,
     command_buffer_used: RefCell<usize>,
     command_buffer_id: AtomicUsize,
-    command_buffer_capacity: usize,
     retained_tensors: RefCell<Vec<MetalTensor>>,
 }
 
@@ -217,7 +216,6 @@ impl MetalContext {
             command_queue,
             command_buffer: RefCell::new(command_buffer),
             command_buffer_used: RefCell::new(0),
-            command_buffer_capacity: 100,
             command_buffer_id: AtomicUsize::new(0),
             retained_tensors: RefCell::new(vec![]),
         }
@@ -256,29 +254,10 @@ impl MetalContext {
     }
 
     pub fn command_buffer(&self) -> CommandBuffer {
-        let mut command_buffer = self.command_buffer.borrow().to_owned();
-
+        let command_buffer = self.command_buffer.borrow().to_owned();
         let mut command_buffer_used = self.command_buffer_used.borrow_mut();
-
-        if *command_buffer_used > self.command_buffer_capacity {
-            *command_buffer_used = 1;
-            let command_buffer_id = self.command_buffer_id.load(Ordering::Relaxed);
-
-            let block = block::ConcreteBlock::new(move |_| {
-                log::trace!("Command buffer {:?} has completed", command_buffer_id);
-            })
-            .copy();
-            command_buffer.add_completed_handler(&block);
-            command_buffer.commit();
-            log::trace!("Command buffer {:?} commit", command_buffer_id);
-            command_buffer = self.command_queue.new_command_buffer().to_owned();
-            *self.command_buffer.borrow_mut() = command_buffer.clone();
-            self.command_buffer_id.fetch_add(1, Ordering::Relaxed);
-            command_buffer.to_owned()
-        } else {
-            *command_buffer_used += 1;
-            command_buffer
-        }
+        *command_buffer_used += 1;
+        command_buffer
     }
 
     pub fn wait_until_completed(&self) -> Result<()> {
