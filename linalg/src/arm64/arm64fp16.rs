@@ -23,8 +23,8 @@ MMMExternKernel!(f16, arm64fp16_mmm_f16_128x1_a55; 128, 1; 16, 16; 1, 1; no_pref
 MMMExternKernel!(f16, arm64fp16_mmm_f16_64x1_gen; 64, 1; 16, 16; 1, 1; no_prefetch, crate::arm64::has_fp16(),
      packing_defs: {
          use crate::frame::block_quant::*;
-         const PQ40_R64: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 64);
-         const F16_B: PackedFormat = PackedFormat::new(DatumType::F16, 1, 2, 0);
+         const PQ40_R64: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 64, 0);
+         const F16_B: PackedFormat = PackedFormat::new(DatumType::F16, 1, 2);
          const PQ40_F16: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&PQ40_R64, &F16_B);
      },
  packings: PQ40_F16,
