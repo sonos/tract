@@ -4,23 +4,19 @@ use tract_core::internal::*;
 use tract_core::ops::array::Slice;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
-pub struct MetalSlice {
-    pub axis: usize,
-    pub start: TDim,
-    pub end: TDim,
-}
+pub struct MetalSlice(Slice);
 
 impl MetalSlice {
-    pub fn new(axis: usize, start: impl ToDim, end: impl ToDim) -> MetalSlice {
-        MetalSlice { axis, start: start.to_dim(), end: end.to_dim() }
-    }
+    // pub fn new(axis: usize, start: impl ToDim, end: impl ToDim) -> MetalSlice {
+    //     MetalSlice { axis, start: start.to_dim(), end: end.to_dim() }
+    // }
 
-    pub fn from_tract_core(op: &Slice) -> Self {
-        Self { axis: op.axis, start: op.start.clone(), end: op.end.clone() }
+    pub fn from_tract_core(op: Slice) -> Self {
+        Self(op)
     }
 
     pub fn suffix(&self, name: &str) -> String {
-        format!("{}.axis{}_{}_{}", name, self.axis, self.start, self.end)
+        format!("{}.axis{}_{}_{}", name, self.0.axis, self.0.start, self.0.end)
     }
 }
 
@@ -30,7 +26,7 @@ impl Op for MetalSlice {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("axis: {}, {}..{}", self.axis, self.start, self.end)])
+        self.0.info()
     }
 
     op_as_typed_op!();
@@ -55,9 +51,9 @@ impl EvalOp for MetalSlice {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
-        let start = self.start.eval(&session.resolved_symbols).to_usize()?;
-        let end = self.end.eval(&session.resolved_symbols).to_usize()?;
-        let axis = self.axis;
+        let start = self.0.start.eval(&session.resolved_symbols).to_usize()?;
+        let end = self.0.end.eval(&session.resolved_symbols).to_usize()?;
+        let axis = self.0.axis;
 
         let input_shape = input.as_metal_tensor().map(|it| it.shape()).unwrap_or(input.shape());
         let input_strides =
@@ -96,58 +92,8 @@ impl EvalOp for MetalSlice {
 
 impl TypedOp for MetalSlice {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        anyhow::ensure!(inputs.len() == 1, "MetalSlice has one single input");
-        crate::utils::metal_output_facts(inputs, |facts| {
-            if let (Ok(start), Ok(end), Ok(len)) =
-                (self.start.to_usize(), self.end.to_usize(), facts[0].shape[self.axis].to_usize())
-            {
-                ensure!(start <= end);
-                ensure!(end <= len);
-            }
-            let mut fact = facts[0].without_value();
-            fact.shape.set(self.axis, (self.end.clone() - &self.start).to_dim());
-            Ok(tvec!(fact))
-        })
-        .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
-    }
-
-    fn axes_mapping(
-        &self,
-        inputs: &[&TypedFact],
-        outputs: &[&TypedFact],
-    ) -> TractResult<AxesMapping> {
-        let mut mapping = AxesMapping::disconnected(inputs, outputs)?;
-        for (axis, repr) in (0..inputs[0].rank()).zip('a'..) {
-            if self.axis != axis {
-                mapping = mapping
-                    .renaming((InOut::In(0), axis), repr)?
-                    .linking(repr, (InOut::Out(0), axis))?;
-            }
-        }
-        Ok(mapping)
-    }
-
-    fn change_axes(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-        _io: InOut,
-        change: &AxisOp,
-    ) -> TractResult<Option<AxisChangeConsequence>> {
-        if let Some(axis) = change.transform_axis(self.axis) {
-            if axis != self.axis {
-                Ok(Some(AxisChangeConsequence::new(
-                    model,
-                    node,
-                    Some(Box::new(MetalSlice { axis, ..self.clone() }) as _),
-                    change,
-                )))
-            } else {
-                Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
-            }
-        } else {
-            Ok(None)
-        }
+        crate::utils::metal_output_facts(inputs, |facts| self.0.output_facts(facts))
+            .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
     }
 
     fn concretize_dims(
@@ -158,11 +104,11 @@ impl TypedOp for MetalSlice {
         mapping: &HashMap<OutletId, OutletId>,
         values: &SymbolValues,
     ) -> TractResult<TVec<OutletId>> {
-        let op = MetalSlice {
-            axis: self.axis,
-            start: self.start.eval(values),
-            end: self.end.eval(values),
-        };
+        let op = MetalSlice(Slice {
+            axis: self.0.axis,
+            start: self.0.start.eval(values),
+            end: self.0.end.eval(values),
+        });
         let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
         target.wire_node(&node.name, op, &inputs)
     }
@@ -188,7 +134,7 @@ mod tests {
                 let cpu_output = slice
                     .eval_with_session(&SessionState::default(), tvec![a.clone().into_tvalue()])?;
 
-                let metal_slice = MetalSlice::from_tract_core(&slice);
+                let metal_slice = MetalSlice::from_tract_core(slice);
                 let a_metal = a.clone().into_metal()?.into_opaque_tensor().into_tvalue();
                 let metal_output = metal_slice
                     .eval_with_session(&SessionState::default(), tvec![a_metal.clone()])?;
