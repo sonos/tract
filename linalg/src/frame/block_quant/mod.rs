@@ -94,6 +94,7 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
 
     fn pack(&self, input: &[u8], k: usize, r: usize, zip: usize) -> TractResult<EagerPackedInput>;
 
+    /*
     unsafe fn repack_panel(
         &self,
         value: &EagerPackedInput,
@@ -101,6 +102,7 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
         panel: usize,
         scratch: *mut u8,
     ) -> TractResult<()>;
+    */
 }
 
 dyn_clone::clone_trait_object!(BlockQuant);
