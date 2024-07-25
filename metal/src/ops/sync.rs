@@ -21,7 +21,7 @@ impl fmt::Display for MetalSyncKind {
 
 #[derive(Debug, Clone, new, Copy, PartialEq, Eq, Hash)]
 pub struct MetalSync {
-    kind: MetalSyncKind,
+    pub kind: MetalSyncKind,
 }
 
 impl Op for MetalSync {

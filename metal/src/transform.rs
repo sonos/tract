@@ -2,7 +2,9 @@ use crate::fact::MetalTypedFactExt;
 use crate::kernels::nn::{Reducer, RmsNorm, Silu, Softmax};
 use crate::ops;
 use crate::ops::{MetalSync, MetalSyncKind};
-use crate::rewrite_rules::{as_rms_norm_rule, as_silu_rule, BasicRmsNorm, BasicSilu};
+use crate::rewrite_rules::{
+    as_rms_norm_rule, as_silu_rule, rewire_metal_sync, BasicRmsNorm, BasicSilu,
+};
 use crate::tensor::MetalTensorExt;
 use crate::{IntoMetal, MetalFact, MetalTensor};
 use anyhow::Result;
@@ -33,7 +35,11 @@ impl ModelTransform for MetalTransform {
             .with_rule_for::<ElementWiseOp>("as-silu", as_silu_rule)
             .rewrite(&(), model)?;
 
-        let new = self.translate_model(model)?;
+        let mut new = self.translate_model(model)?;
+
+        Rewriter::default()
+            .with_rule_for::<MetalSync>("rewire-metal-sync", rewire_metal_sync)
+            .rewrite(&(), &mut new)?;
         *model = new;
         Ok(())
     }
@@ -108,7 +114,7 @@ impl MetalTransform {
             let is_src_output = src.outputs.contains(&OutletId::new(node.id, o_idx));
             if target.outlet_fact(o)?.as_metal_fact().is_some() && is_src_output {
                 let sync_output = target.wire_node(
-                    format!("{}.to-cpu-{o_idx}", node.name),
+                    format!("{}.to-cpu-{o_idx}-out", node.name),
                     MetalSync::new(MetalSyncKind::ToCpu),
                     &[o],
                 )?[0];

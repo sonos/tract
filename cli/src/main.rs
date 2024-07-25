@@ -29,6 +29,7 @@ mod params;
 mod run;
 #[cfg(feature = "pulse")]
 mod stream_check;
+mod plan_options;
 mod tensor;
 mod utils;
 
@@ -471,6 +472,10 @@ fn run_options(command: clap::Command) -> clap::Command {
                 "Path to a directory containing input tensors in NNEF format (.dat files). This sets tensor values.",
                 ),
                 )
+        .arg(Arg::new("skip-order-opt-ram")
+            .long("skip-order-opt-ram")
+            .help("Plan node evaluation order without RAM optimisation"),
+            )
         .arg(
             Arg::new("allow-random-input")
             .short('R')
