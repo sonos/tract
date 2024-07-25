@@ -248,13 +248,6 @@ impl MetalTensor {
         self
     }
 
-    pub fn from_opaque_tensor(t: &Tensor) -> Result<&MetalTensor> {
-        let opaque = t.to_scalar::<Opaque>()?;
-        opaque.downcast_ref::<MetalTensor>().ok_or_else(|| {
-            anyhow::anyhow!("Could convert opaque tensor to reference on a metal tensor")
-        })
-    }
-
     pub fn assert_sane_floats(&self) -> Result<()> {
         if let Ok(floats) = self.inner.view().as_slice::<f32>() {
             if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {

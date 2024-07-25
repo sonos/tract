@@ -1,7 +1,7 @@
 use crate::kernels::{utils, BroadcastKind};
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
-use anyhow::{bail, Result};
+use anyhow::Result;
 use std::fmt;
 use tract_core::internal::*;
 
