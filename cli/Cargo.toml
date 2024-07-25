@@ -15,7 +15,6 @@ include = [ "Cargo.toml", "src/**/*.rs", "LICENSE*" ]
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-atty.workspace = true
 box_drawing.workspace = true
 clap.workspace = true
 criterion.workspace = true
