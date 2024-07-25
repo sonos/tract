@@ -257,9 +257,11 @@ pub fn unsqueeze(
 
 // fragment tile<?>( input: tensor<?>, repeats: integer[] ) -> ( output: tensor<?> );
 pub fn tile(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
-    let multipliers: TVec<TDim> = invocation.named_arg_as(builder, "repeats")?;
-    let wire = tvec!(invocation.named_arg_as(builder, "input")?);
-    builder.wire(ops::array::Tile { multipliers }, &wire)
+    let repeats: Arc<Tensor> = invocation.named_arg_as(builder, "repeats")?;
+    let wire = invocation.named_arg_as(builder, "input")?;
+    ensure!(builder.model.outlet_fact(wire)?.rank() == repeats.len());
+    let repeats = repeats.cast_to::<TDim>()?.as_slice::<TDim>()?.into();
+    builder.wire(ops::array::Tile { multipliers: repeats }, &[wire])
 }
 
 pub fn pad_mode(border: &str, value: Tensor) -> TractResult<tract_core::ops::array::PadMode> {
