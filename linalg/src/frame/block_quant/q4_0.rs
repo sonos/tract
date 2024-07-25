@@ -275,7 +275,7 @@ mod tests {
         assert_eq!(packed_f32.panels_count(), 2);
 
         let q4 = q.quant_f32(&weights_f32.as_slice::<f32>()?)?;
-        let packed_q4 = q.pack(&q4, k, r)?;
+        let packed_q4 = q.pack(&q4, k, r, 0)?;
 
         for panel in 0..2 {
             unsafe {
