@@ -11,7 +11,7 @@ use std::fmt::Debug;
 use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
 use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
-use tract_core::ops::binary::{BinMiniOp, MergeOpUnicast, TypedBinOp};
+use tract_core::ops::binary::{BinMiniOp, TypedBinOp};
 use tract_core::ops::einsum::{rewrite_einsums_as_matmul, BasicMatMul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
@@ -33,7 +33,6 @@ impl ModelTransform for MetalTransform {
             .with_rule_for::<ElementWiseOp>("as-silu", as_silu_rule)
             .rewrite(&(), model)?;
 
-        model.optimize()?;
         let new = self.translate_model(model)?;
         *model = new;
         Ok(())
@@ -163,8 +162,6 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             convert_element_wise_ops_to_metal(op).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<TypedBinOp>() {
             convert_bin_ops_to_metal(&op.0).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
-        } else if let Some(op) = node.op_as::<MergeOpUnicast>() {
-            convert_bin_ops_to_metal(&op.0).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<BasicMatMul>() {
             convert_matmul_to_metal(source, node, op)?.map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
@@ -174,10 +171,8 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         } else if let Some(op) = node.op_as::<AxisOp>() {
             ops::MetalAxisOp::from_tract_core(op.clone())
                 .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
-        } else if let Some(op) = node.op_as::<IntoShape>() {
-            Some(Box::new(ops::MetalIntoShape::from_tract_core(op.clone())))
         } else if let Some(op) = node.op_as::<Slice>() {
-            Some(Box::new(ops::MetalSlice::from_tract_core(op)))
+            Some(Box::new(ops::MetalSlice::from_tract_core(op.clone())))
         } else if let Some(op) = node.op_as::<TypedConcat>() {
             Some(Box::new(ops::MetalConcat::from_tract_core(op)))
         } else if let Some(op) = node.op_as::<Reduce>() {

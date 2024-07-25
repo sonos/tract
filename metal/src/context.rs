@@ -318,6 +318,8 @@ impl MetalContext {
     {
         self.wait_until_completed()?;
 
+        anyhow::ensure!(path.as_ref().is_absolute());
+
         let capture = metal::CaptureManager::shared();
         let descriptor = metal::CaptureDescriptor::new();
         descriptor.set_destination(metal::MTLCaptureDestination::GpuTraceDocument);

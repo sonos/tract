@@ -1,6 +1,5 @@
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
-use anyhow::bail;
 use anyhow::Result;
 use derive_new::new;
 use metal::{MTLSize, NSUInteger};
