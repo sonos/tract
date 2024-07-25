@@ -150,7 +150,10 @@ impl BinOps {
         lhs.retain_until_completion();
         rhs.retain_until_completion();
 
-        let out_shape = tract_core::broadcast::multi_broadcast(&[lhs.shape(), rhs.shape()])?;
+        let out_shape = tract_core::broadcast::multi_broadcast(&[lhs.shape(), rhs.shape()])
+            .with_context(|| {
+                anyhow!("Error while broadcasting {:?} {:?}", lhs.shape(), rhs.shape())
+            })?;
         let out_dt = self.output_datum_type(lhs.datum_type(), rhs.datum_type())?;
 
         let output = unsafe { MetalTensor::uninitialized_dt(out_dt, &out_shape)? };
