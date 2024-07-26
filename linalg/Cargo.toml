@@ -48,7 +48,7 @@ proptest.workspace = true
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 # Wasm doesn't support the `rayon` feature of criterion
-criterion.workspace = true
+criterion = { version = "0.5", default-features = false, features = ["plotters", "cargo_bench_support"] }
 # Wasm doesn't support the `fork` feature of proptest.
 proptest = { version = "1.0.0", default-features = false, features = ["std", "bit-set"] }
 
