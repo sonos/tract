@@ -530,7 +530,6 @@ impl TDim {
 
     pub fn gcd(&self) -> u64 {
         use self::TDim::*;
-        use num_integer::Integer;
         match self {
             Val(v) => v.unsigned_abs(),
             Sym(_) => 1,
@@ -555,7 +554,6 @@ impl TDim {
 
     fn div(&self, d: u64) -> TDim {
         use self::TDim::*;
-        use num_integer::Integer;
         if d == 1 {
             return self.clone();
         }
@@ -638,7 +636,6 @@ impl TDim {
 }
 
 pub(super) fn reduce_ratio(mut p: i64, mut q: i64) -> (i64, u64) {
-    use num_integer::Integer;
     let gcd = p.abs().gcd(&q.abs());
     if gcd > 1 {
         p /= gcd;
