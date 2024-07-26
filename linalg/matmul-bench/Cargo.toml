@@ -31,3 +31,7 @@ criterion = "*"
 [[bench]]
 name = "matmul"
 harness = false
+
+[[bench]]
+name = "memory"
+harness = false
