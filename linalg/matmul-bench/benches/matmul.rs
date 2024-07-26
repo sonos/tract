@@ -35,9 +35,9 @@ b!(ctile_8x8);
 b!(cpacked_tile_8x8);
 b!(matrixmultiply);
 b!(cblas);
-b!(tract);
+b!(tract_including_packing);
 
-pub fn tract_blaslike(
+pub fn tract_prepacked(
     crit: &mut BenchmarkGroup<WallTime>,
     m: usize,
     k: usize,
@@ -50,34 +50,22 @@ pub fn tract_blaslike(
     let mut c = Tensor::zero_dt(dt, &[m, n]).unwrap();
 
     unsafe {
-        let mmm = tract_linalg::ops().mmm(dt, dt, dt, Some(m), Some(k), Some(n)).unwrap();
-        let a_storage = mmm.a_packed(dt.size_of(), k);
-        let b_storage = mmm.b_packed(dt.size_of(), k);
+        let mmm = tract_linalg::ops().mmm(dt, Some(m), Some(k), Some(n)).unwrap();
+        let (packer_a, packer_b) = mmm.packings()[0];
         let c_storage = mmm.c_view(0, 1);
 
-        let mut pa =
-            Tensor::zero_aligned_dt(dt, &[mmm.a_pack().len(k, m)], mmm.a_pack().alignment())
-                .unwrap();
-        let mut pb =
-            Tensor::zero_aligned_dt(dt, &[mmm.b_pack().len(k, n)], mmm.b_pack().alignment())
-                .unwrap();
         let mut scratch = mmm.allocate_scratch_space();
+        let pa = packer_a.prepare_tensor(&a, 1, 0).unwrap();
+        let pb = packer_b.prepare_tensor(&b, 0, 1).unwrap();
 
-        crit.bench_function(&format!("tract_blaslike_{:?}", dt), |be| {
-            mmm.a_pack().pack(&mut pa.view_mut(), &a.view(), 1, 0);
-            mmm.b_pack().pack(&mut pb.view_mut(), &b.view(), 0, 1);
-
+        crit.bench_function(&format!("tract_prepacked_{:?}", dt), |be| {
             be.iter(|| {
                 mmm.run_with_scratch_space(
                     m,
                     n,
                     &mut *scratch,
                     &[
-                        FusedSpec::AddMatMul {
-                            k,
-                            a: a_storage.wrap(&pa.view()),
-                            b: b_storage.wrap(&pb.view()),
-                        },
+                        FusedSpec::AddMatMul { a: &*pa, b: &*pb, packing: 0 },
                         FusedSpec::Store(c_storage.wrap(&mut c.view_mut())),
                     ],
                 )
@@ -88,24 +76,34 @@ pub fn tract_blaslike(
 }
 
 fn matmul(c: &mut Criterion, m: usize, k: usize, n: usize) {
-    let mut c = c.benchmark_group(format!("{}x{}x{}", m, k, n));
-    c.throughput(Throughput::Elements((m * k * n) as _));
-    naive(&mut c, m, k, n);
-    ctile_1x1(&mut c, m, k, n);
-    tile_2x2(&mut c, m, k, n);
-    ctile_2x2(&mut c, m, k, n);
-    tile_4x4(&mut c, m, k, n);
-    ctile_4x4(&mut c, m, k, n);
-    cpacked_tile_4x4(&mut c, m, k, n);
-    tile_8x8(&mut c, m, k, n);
-    ctile_8x8(&mut c, m, k, n);
-    cpacked_tile_8x8(&mut c, m, k, n);
-    matrixmultiply(&mut c, m, k, n);
-    cblas(&mut c, m, k, n);
-    tract(&mut c, m, k, n);
-    tract_blaslike(&mut c, m, k, n, f32::datum_type());
-    tract_blaslike(&mut c, m, k, n, f16::datum_type());
-    c.finish();
+    let mut g = c.benchmark_group(format!("{}x{}x{}", m, k, n));
+    g.throughput(Throughput::Elements((m * k * n) as _));
+    naive(&mut g, m, k, n);
+    ctile_1x1(&mut g, m, k, n);
+    tile_2x2(&mut g, m, k, n);
+    ctile_2x2(&mut g, m, k, n);
+    tile_4x4(&mut g, m, k, n);
+    ctile_4x4(&mut g, m, k, n);
+    cpacked_tile_4x4(&mut g, m, k, n);
+    tile_8x8(&mut g, m, k, n);
+    ctile_8x8(&mut g, m, k, n);
+    cpacked_tile_8x8(&mut g, m, k, n);
+    matrixmultiply(&mut g, m, k, n);
+    cblas(&mut g, m, k, n);
+    tract_including_packing(&mut g, m, k, n);
+    tract_prepacked(&mut g, m, k, n, f32::datum_type());
+    tract_prepacked(&mut g, m, k, n, f16::datum_type());
+    g.finish();
+
+    let mut g = c.benchmark_group(format!("mt/{}x{}x{}", m, k, n));
+    g.throughput(Throughput::Elements((m * k * n) as _));
+    let executor = tract_linalg::multithread::Executor::multithread_with_name(num_cpus::get(), "linalg-mt");
+    tract_linalg::multithread::multithread_tract_scope(executor, || {
+        tract_including_packing(&mut g, m, k, n);
+        tract_prepacked(&mut g, m, k, n, f32::datum_type());
+        tract_prepacked(&mut g, m, k, n, f16::datum_type());
+    });
+    g.finish();
 }
 
 fn big(c: &mut Criterion) {
@@ -132,5 +130,9 @@ fn whisper_base(c: &mut Criterion) {
     matmul(c, 512, 512, 1500);
 }
 
-criterion_group!(benches, big, wavenet, asr_15M, inception, whisper_base);
+fn big_matvec(c: &mut Criterion) {
+    matmul(c, 4096, 4096, 1);
+}
+
+criterion_group!(benches, big, wavenet, asr_15M, inception, whisper_base, big_matvec);
 criterion_main!(benches);

@@ -1,4 +1,6 @@
 #![allow(non_snake_case)]
+
+use tract_data::TractResult;
 #[cfg(feature = "accelerate")]
 extern crate accelerate_src;
 #[cfg(feature = "blis")]
@@ -402,35 +404,19 @@ pub fn cblas(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) 
     }
 }
 
-pub fn tract(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) {
+pub fn tract_including_packing(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) -> TractResult<()> {
     use tract_data::internal::*;
     use tract_linalg::frame::mmm::FusedSpec;
     unsafe {
-        let mmm = tract_linalg::ops()
-            .mmm(DatumType::F32, DatumType::F32, DatumType::F32, Some(m), Some(k), Some(n))
-            .unwrap();
-        let a_storage = mmm.a_packed(f32::datum_type().size_of(), k);
-        let b_storage = mmm.b_packed(f32::datum_type().size_of(), k);
+        let mmm = tract_linalg::ops().mmm(DatumType::F32, Some(m), Some(k), Some(n)).unwrap();
+        let (packer_a, packer_b) = mmm.packings()[0];
         let c_storage = mmm.c_view(0, 1);
 
         let a = Tensor::from_shape(&[m, k], a).unwrap();
         let b = Tensor::from_shape(&[k, n], b).unwrap();
+        let pa = packer_a.prepare_tensor(&a, 1, 0)?;
+        let pb = packer_b.prepare_tensor(&b, 0, 1)?;
         let mut tc = Tensor::uninitialized_dt(f32::datum_type(), &[m, n]).unwrap();
-
-        let mut pa = Tensor::uninitialized_aligned_dt(
-            DatumType::F32,
-            &[mmm.a_pack().len(k, m)],
-            mmm.a_pack().alignment(),
-        )
-        .unwrap();
-        let mut pb = Tensor::uninitialized_aligned_dt(
-            DatumType::F32,
-            &[mmm.b_pack().len(k, n)],
-            mmm.b_pack().alignment(),
-        )
-        .unwrap();
-        mmm.a_pack().pack(&mut pa.view_mut(), &a.view(), 1, 0);
-        mmm.b_pack().pack(&mut pb.view_mut(), &b.view(), 0, 1);
 
         let mut scratch = mmm.allocate_scratch_space();
 
@@ -439,15 +425,12 @@ pub fn tract(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) 
             n,
             &mut *scratch,
             &[
-                FusedSpec::AddMatMul {
-                    k,
-                    a: a_storage.wrap(&pa.view()),
-                    b: b_storage.wrap(&pb.view()),
-                },
+                FusedSpec::AddMatMul { a: &*pa, b: &*pb, packing: 0 },
                 FusedSpec::Store(c_storage.wrap(&mut tc.view_mut())),
             ],
         )
         .unwrap();
-        c.copy_from_slice(tc.as_slice_unchecked())
+        c.copy_from_slice(tc.as_slice_unchecked());
+        Ok(())
     }
 }

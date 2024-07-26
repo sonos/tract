@@ -12,9 +12,9 @@ cblas = { version = "0.3", optional = true }
 accelerate-src = { version = "0.3", optional = true }
 blis-src = { version = "0.2", features = ["static"], optional = true }
 matrixmultiply = "*"
+num_cpus = "*"
 tract-data = { path = "../../data", version = "=0.21.7-pre" }
 tract-linalg = { path = "../../linalg", version = "=0.21.7-pre" }
-
 
 [features]
 default = []
