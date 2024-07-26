@@ -16,8 +16,8 @@ pub fn rewire_metal_sync(
 
     // Identify precessor ToCpu
     let Some(sync_cpu_prec) = previous_node(model, node) else { return Ok(None) };
-    let Some(cpu_succ_op) = sync_cpu_prec.op_as::<MetalSync>() else { return Ok(None) };
-    rule_ensure!(cpu_succ_op.kind == MetalSyncKind::ToCpu);
+    let Some(sync_cpu_prec_op) = sync_cpu_prec.op_as::<MetalSync>() else { return Ok(None) };
+    rule_ensure!(sync_cpu_prec_op.kind == MetalSyncKind::ToCpu);
 
     let patch =
         TypedModelPatch::rewire(model, &sync_cpu_prec.inputs, &[node.id.into()], &|_p, xs| {
