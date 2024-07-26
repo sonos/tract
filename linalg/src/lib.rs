@@ -4,6 +4,7 @@
 #![allow(clippy::excessive_precision)]
 #![allow(clippy::approx_constant)]
 #![allow(unexpected_cfgs)]
+#![allow(unused_macros)]
 #[macro_use]
 extern crate derive_new;
 extern crate lazy_static;
