@@ -74,6 +74,7 @@ impl SymbolScope {
         Ok(())
     }
 
+    #[allow(clippy::mutable_key_type)]
     pub fn prove_positive(&self, t: &TDim) -> bool {
         if let TDim::Val(v) = t {
             return *v >= 0;

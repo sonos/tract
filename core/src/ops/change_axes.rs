@@ -526,7 +526,7 @@ pub fn wire_with_rank_broadcast(
 ) -> TractResult<TVec<OutletId>> {
     let prefix = prefix.as_ref();
     let wires = wire_rank_broadcast(prefix, target, inputs)?;
-    target.wire_node(prefix, &op.into(), &wires)
+    target.wire_node(prefix, op.into(), &wires)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
