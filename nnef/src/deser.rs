@@ -790,6 +790,19 @@ impl<D: CoerceFrom<Value>> CoerceFrom<Value> for TVec<D> {
     }
 }
 
+impl CoerceFrom<Value> for ShapeFact {
+    fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
+        match from {
+            Value::Array(vec) => vec.iter().map(|item| TDim::coerce(builder, item)).collect(),
+            Value::Tuple(vec) => vec.iter().map(|item| TDim::coerce(builder, item)).collect(),
+            _ => {
+                let t = from.to::<Arc<Tensor>>(builder)?;
+                Ok(t.cast_to::<TDim>()?.as_slice::<TDim>()?.into())
+            }
+        }
+    }
+}
+
 macro_rules! tuple {
     ($($d: ident),*) => {
         impl<$($d),*> CoerceFrom<Value> for ($($d),*)
