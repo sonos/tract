@@ -47,11 +47,7 @@ fn render_prefixed(
 ) -> TractResult<()> {
     let mut drawing_state =
         if options.should_draw() { Some(DrawingState::default()) } else { None };
-    let node_ids = if options.natural_order {
-        (0..model.nodes_len()).collect()
-    } else {
-        model.eval_order()?
-    };
+    let node_ids = options.order(model)?;
     for node in node_ids {
         if options.filter(model, scope, node)? {
             render_node_prefixed(
@@ -92,9 +88,7 @@ fn render_node_prefixed(
 
     if let Some(ref mut ds) = &mut drawing_state {
         for l in ds.draw_node_vprefix(model, node_id, options)? {
-            println!(
-                "{cost_column_pad}{profile_column_pad}{flops_column_pad}{prefix}{l} "
-            );
+            println!("{cost_column_pad}{profile_column_pad}{flops_column_pad}{prefix}{l} ");
         }
     }
 
@@ -135,7 +129,7 @@ fn render_node_prefixed(
 
     // flops column
     let mut flops_column = if options.profile && options.cost {
-        let timing: f64 = tags.profile.as_ref().unwrap().as_secs_f64();
+        let timing: f64 = tags.profile.as_ref().map(|d| d.as_secs_f64()).unwrap_or(0.0);
         let flops_column_pad = flops_column_pad.clone();
         let it = tags.cost.iter().map(move |c| {
             if c.0.is_compute() {
@@ -295,7 +289,13 @@ fn render_node_prefixed(
             let mut scope: TVec<_> = scope.into();
             scope.push((node_id, label));
             let scope_prefix = scope.iter().map(|(_, p)| p).join("|");
-            render_prefixed(sub, &format!("{prefix} [{scope_prefix}] "), &scope, annotations, options)?
+            render_prefixed(
+                sub,
+                &format!("{prefix} [{scope_prefix}] "),
+                &scope,
+                annotations,
+                options,
+            )?
         }
     }
     if let Io::Short = options.io {

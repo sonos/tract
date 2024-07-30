@@ -7,8 +7,6 @@ use tract_core::internal::*;
 use tract_core::ops::scan::Scan;
 use tract_itertools::izip;
 use tract_itertools::Itertools;
-#[cfg(feature = "tf")]
-use tract_tensorflow::tfpb::tensorflow::GraphDef;
 
 use crate::model::Model;
 
@@ -153,7 +151,7 @@ impl Annotations {
                     while tags.outlet_axes[outlet.slot].len() <= axis {
                         tags.outlet_axes[outlet.slot].push(Default::default());
                     }
-                    tags.outlet_axes[outlet.slot][axis] = name.clone();
+                    tags.outlet_axes[outlet.slot][axis].clone_from(&name);
                 }
             }
             for node in &model.nodes {

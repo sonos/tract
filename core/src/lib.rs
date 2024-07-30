@@ -54,7 +54,6 @@ extern crate blis_src;
 #[cfg(feature="openblas")]
 extern crate openblas_src;
 
-pub extern crate anyhow;
 extern crate bit_set;
 #[macro_use]
 extern crate derive_new;
@@ -99,7 +98,7 @@ mod late_bind;
 pub mod prelude {
     pub use crate::framework::Framework;
     pub use crate::model::*;
-    pub use crate::plan::{SimplePlan, SimpleState};
+    pub use crate::plan::{SimplePlan, SimpleState, PlanOptions};
     pub use crate::value::{IntoTValue, TValue};
     pub use std::sync::Arc;
     pub use tract_data::prelude::*;
@@ -108,6 +107,7 @@ pub mod prelude {
     pub use num_traits as tract_num_traits;
     pub use tract_data;
     pub use tract_linalg;
+    pub use tract_linalg::multithread;
 }
 
 /// This prelude is meant for code extending tract (like implementing new ops).
@@ -120,7 +120,6 @@ pub mod internal {
     pub use crate::ops::{Cost, EvalOp, FrozenOpState, Op, OpState, Validation};
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
-    pub use anyhow::{anyhow, bail, ensure, format_err, Context as TractErrorContext};
     pub use dims;
     pub use downcast_rs as tract_downcast_rs;
     pub use std::borrow::Cow;

@@ -134,7 +134,7 @@ pub fn handle_npz(
     run_params: &RunParams,
 ) -> TractResult<()> {
     use tract_libcli::tensor::for_npz;
-    let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(npz)?)?;
+    let mut npz = ndarray_npy::NpzReader::new(fs_err::File::open(npz)?)?;
     let mut values: HashMap<String, Vec<TractResult<TValue>>> = HashMap::new();
     let multiturn = npz.names()?.iter().any(|n| n.starts_with("turn_0/"));
     for name in npz.names()? {

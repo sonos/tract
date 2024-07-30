@@ -1,4 +1,5 @@
 use std::alloc::Layout;
+use std::fmt::Display;
 
 use proptest::arbitrary::Arbitrary;
 use proptest::prelude::*;
@@ -6,8 +7,8 @@ use proptest::strategy::{BoxedStrategy, Strategy};
 use tract_data::internal::*;
 use tract_linalg::frame::mmm::FusedSpec;
 // use tract_linalg::frame::mmm::{VirtualInput, VirtualInputSpec};
-use tract_linalg::frame::{Packer, PackingWriter};
-use tract_linalg::mmm::{InputStore, InputStoreSpec};
+use tract_linalg::frame::{PackedFormat, PackingWriter};
+use tract_linalg::mmm::MMMInputValue;
 use DatumType::F32;
 
 proptest::proptest! {
@@ -143,46 +144,46 @@ impl ConvProblem {
         output
     }
 
-    pub fn tract(&self) -> Tensor {
+    pub fn tract(&self) -> TractResult<Tensor> {
         let (m, k, n, h, w) = mknhw(self.filters.shape(), self.input.shape());
         let output_shape = [m, h, w];
         let internal_output_shape = [m, h * w];
-        let mmm = tract_linalg::ops().mmm(F32, F32, F32, Some(m), Some(k), Some(n)).unwrap();
-        let output = Tensor::zero::<f32>(&internal_output_shape).unwrap();
-        let mut packed_filter =
-            Tensor::zero_aligned::<f32>(&[mmm.a_pack().len(k, m)], mmm.a_pack().alignment())
-                .unwrap();
-        let reshaped_filters = self.filters.clone().into_shape(&[k, m]).unwrap();
+        let mmm = tract_linalg::ops().mmm(F32, Some(m), Some(k), Some(n)).unwrap();
+        let output = Tensor::zero::<f32>(&internal_output_shape)?;
+        let reshaped_filters = self.filters.clone().into_shape(&[k, m])?;
+        let (a_pack, b_pack) = mmm.packings()[0];
+        let a = a_pack.prepare_tensor(&reshaped_filters, 0, 1)?;
         unsafe {
-            mmm.a_pack().pack(packed_filter.view_mut(), reshaped_filters.view(), 0, 1);
-            let a_store = mmm.a_packed(F32.size_of(), k).wrap(&packed_filter.view());
-            let im2col: Box<dyn InputStoreSpec> = if self.lazy_im2col {
-                Box::new(LazyIm2colSpec {
+            let im2col: Box<dyn MMMInputValue> = if self.lazy_im2col {
+                LazyIm2colSpec {
                     full_kernel_shape: self.filters.shape().into(),
-                    packer: mmm.b_pack(),
-                })
+                    packer: b_pack.downcast_ref::<PackedFormat>().unwrap().clone(),
+                }
+                .wrap(&self.input.view())
             } else {
-                Box::new(EagerIm2colSpec {
+                EagerIm2colSpec {
                     full_kernel_shape: self.filters.shape().into(),
-                    packer: mmm.b_pack(),
-                })
+                    packer: b_pack.downcast_ref::<PackedFormat>().unwrap().clone(),
+                }
+                .wrap(&self.input.view())
             };
-            //            let b_store = mmm.b_virtual_input(im2col, k).wrap(&self.input.view());
-            let b_store = im2col.wrap(&self.input.view());
             let c_store = mmm.c_view(0, 1).wrap(&output.view());
             mmm.run(
                 m,
                 n,
-                &[FusedSpec::AddMatMul { k, a: a_store, b: b_store }, FusedSpec::Store(c_store)],
+                &[
+                    FusedSpec::AddMatMul { a: &*a, b: &*im2col, packing: 0 },
+                    FusedSpec::Store(c_store),
+                ],
             )
             .unwrap()
         }
-        output.into_shape(&output_shape).unwrap()
+        output.into_shape(&output_shape)
     }
 
     fn check(&self) {
-        let found = self.tract();
         let expected = self.reference();
+        let found = self.tract().unwrap();
         if found.close_enough(&expected, true).is_err() {
             println!("found: ");
             println!("{:?}", found.to_array_view::<f32>().unwrap());
@@ -215,12 +216,12 @@ fn tensor(shape: Vec<usize>) -> Tensor {
 
 #[derive(Clone, Debug, Hash)]
 struct EagerIm2colSpec {
-    packer: Packer,
+    packer: PackedFormat,
     full_kernel_shape: TVec<usize>,
 }
 
-impl InputStoreSpec for EagerIm2colSpec {
-    fn wrap(&self, input: &TensorView) -> Box<dyn InputStore> {
+impl EagerIm2colSpec {
+    fn wrap(&self, input: &TensorView) -> Box<dyn MMMInputValue> {
         let (_, k, n, h, w) = mknhw(&self.full_kernel_shape, input.shape());
         // let input = input.to_array_view::<f32>().unwrap();
         let ci = input.shape()[0];
@@ -236,14 +237,20 @@ impl InputStoreSpec for EagerIm2colSpec {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 struct EagerIm2col {
-    packer: Packer,
+    packer: PackedFormat,
     im2col: Tensor,
     k: usize,
 }
 
-impl InputStore for EagerIm2col {
+impl Display for EagerIm2col {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "eager")
+    }
+}
+
+impl MMMInputValue for EagerIm2col {
     fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
         Some(
             Layout::from_size_align(
@@ -254,7 +261,7 @@ impl InputStore for EagerIm2col {
         )
     }
 
-    fn panel(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
+    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> TractResult<*const u8> {
         let buffer = buffer.unwrap();
         let mn = self.im2col.shape()[1];
         unsafe {
@@ -268,18 +275,30 @@ impl InputStore for EagerIm2col {
                 (i * self.packer.r)..((i + 1) * self.packer.r),
             );
         }
-        buffer
+        Ok(buffer)
+    }
+
+    fn k(&self) -> usize {
+        self.k
+    }
+
+    fn mn(&self) -> usize {
+        self.im2col.shape()[1]
+    }
+
+    fn r(&self) -> usize {
+        self.packer.r
     }
 }
 
 #[derive(Clone, Debug, Hash)]
 struct LazyIm2colSpec {
-    packer: Packer,
+    packer: PackedFormat,
     full_kernel_shape: TVec<usize>,
 }
 
-impl InputStoreSpec for LazyIm2colSpec {
-    fn wrap(&self, input: &TensorView) -> Box<dyn InputStore> {
+impl LazyIm2colSpec {
+    fn wrap(&self, input: &TensorView) -> Box<dyn MMMInputValue> {
         let (_, _, _, h, w) = mknhw(&self.full_kernel_shape, input.shape());
         let kh = self.full_kernel_shape[0];
         let kw = self.full_kernel_shape[1];
@@ -310,9 +329,9 @@ impl InputStoreSpec for LazyIm2colSpec {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 struct LazyIm2col {
-    packer: Packer,
+    packer: PackedFormat,
     image: *const f32,
     n_offsets: Vec<isize>,
     k_offsets: Vec<isize>,
@@ -320,7 +339,13 @@ struct LazyIm2col {
 unsafe impl Send for LazyIm2col {}
 unsafe impl Sync for LazyIm2col {}
 
-impl InputStore for LazyIm2col {
+impl Display for LazyIm2col {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "lazy")
+    }
+}
+
+impl MMMInputValue for LazyIm2col {
     fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
         Some(
             Layout::from_size_align(
@@ -331,7 +356,7 @@ impl InputStore for LazyIm2col {
         )
     }
 
-    fn panel(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
+    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> TractResult<*const u8> {
         let buffer = buffer.unwrap() as *mut f32;
         let mn_end = ((i + 1) * self.packer.r).min(self.n_offsets.len());
         let n_range = (i * self.packer.r)..mn_end;
@@ -348,6 +373,18 @@ impl InputStore for LazyIm2col {
                 }
             }
         }
-        buffer as _
+        Ok(buffer as _)
+    }
+
+    fn k(&self) -> usize {
+        self.k_offsets.len()
+    }
+
+    fn mn(&self) -> usize {
+        self.n_offsets.len()
+    }
+
+    fn r(&self) -> usize {
+        self.packer.r
     }
 }

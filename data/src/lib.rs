@@ -16,8 +16,10 @@ pub type TractError = anyhow::Error;
 pub type TractResult<T> = anyhow::Result<T>;
 
 pub mod prelude {
-    pub use crate::datum::{round_ties_to_even, Blob, Datum, DatumType, QParams};
-    pub use crate::dim::{Symbol, SymbolTable, SymbolValues, TDim, ToDim};
+    pub use crate::blob::Blob;
+    pub use crate::datum::{round_ties_to_even, Datum, DatumType, QParams};
+    pub use crate::dim::{Symbol, SymbolScope, SymbolValues, TDim, ToDim};
+    pub use crate::opaque::Opaque;
     pub use crate::tensor::litteral::*;
     pub use crate::tensor::{natural_strides, IntoArcTensor, IntoTensor, Tensor};
     #[cfg(feature = "complex")]
@@ -38,21 +40,23 @@ pub mod prelude {
 pub mod internal {
     pub use crate::datum::ClampCast;
     pub use crate::dim::{parse_tdim, solve_for, DimLike};
+    pub use crate::opaque::{ OpaquePayload, OpaqueFact };
     pub use crate::prelude::*;
     pub use crate::tensor::view::TensorView;
     pub use crate::tensor::Approximation;
-    pub use anyhow::{bail, ensure};
+    pub use anyhow::{anyhow, bail, ensure, format_err, Context as TractErrorContext};
     pub use ndarray as tract_ndarray;
     pub use num_integer;
     pub use num_traits as tract_num_traits;
     pub use smallvec as tract_smallvec;
 }
 
-pub use anyhow;
 pub use dim::UndeterminedSymbol;
 pub use half;
 
+mod blob;
 mod datum;
 mod dim;
+mod opaque;
 mod scatter;
 mod tensor;

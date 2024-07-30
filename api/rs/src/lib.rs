@@ -241,7 +241,7 @@ impl ModelInterface for Model {
     ) -> Result<()> {
         let mut table = SymbolValues::default();
         for (k, v) in values {
-            table = table.with(&self.0.symbol_table.sym(k.as_ref()), v);
+            table = table.with(&self.0.symbols.sym(k.as_ref()), v);
         }
         self.0 = self.0.concretize_dims(&table)?;
         Ok(())
@@ -254,8 +254,8 @@ impl ModelInterface for Model {
     }
 
     fn pulse(&mut self, name: impl AsRef<str>, value: impl AsRef<str>) -> Result<()> {
-        let stream_sym = self.0.symbol_table.sym(name.as_ref());
-        let pulse_dim = parse_tdim(&self.0.symbol_table, value.as_ref())?;
+        let stream_sym = self.0.symbols.sym(name.as_ref());
+        let pulse_dim = parse_tdim(&self.0.symbols, value.as_ref())?;
         self.0 = PulsedModel::new(&self.0, stream_sym, &pulse_dim)?.into_typed()?;
         Ok(())
     }
@@ -401,7 +401,7 @@ impl FactInterface for Fact {}
 
 impl Fact {
     fn new(model: &mut Model, spec: impl ToString) -> Result<Fact> {
-        let fact = tract_libcli::tensor::parse_spec(&model.0.symbol_table, &spec.to_string())?;
+        let fact = tract_libcli::tensor::parse_spec(&model.0.symbols, &spec.to_string())?;
         let fact = tract_onnx::prelude::Fact::to_typed_fact(&fact)?.into_owned();
         Ok(Fact(fact))
     }
@@ -428,7 +428,7 @@ impl InferenceFactInterface for InferenceFact {
 
 impl InferenceFact {
     fn new(model: &mut InferenceModel, spec: impl ToString) -> Result<InferenceFact> {
-        let fact = tract_libcli::tensor::parse_spec(&model.0.symbol_table, &spec.to_string())?;
+        let fact = tract_libcli::tensor::parse_spec(&model.0.symbols, &spec.to_string())?;
         Ok(InferenceFact(fact))
     }
 

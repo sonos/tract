@@ -1,0 +1,195 @@
+// vim: ft=arm
+
+// C tile regs: v16 to v31, no need to preserve
+
+// no preservation either for v0-v7...
+// v8..v15 are callee-preserved
+// packed A buffering (2x8 values): alternating v0, v1 with v2, v3
+// packed B buffering (2x8 values): alternating v4, v5 with v6, v7
+
+.text
+.align 4
+
+{% if needs_pragma == true %}
+.cpu generic+fp+simd+fp16
+{% endif %}
+.global {{G}}arm64fp16_mmm_f16_64x1_{{core}}_{{suffix}}
+{{G}}arm64fp16_mmm_f16_64x1_{{core}}_{{suffix}}:
+
+    stp         x20, x21, [sp, #-16]!
+    stp         x22, x23, [sp, #-16]!
+    stp         x24, x25, [sp, #-16]!
+
+    stp         d8, d9, [sp, #-16]!
+    stp         d10, d11, [sp, #-16]!
+    stp         d12, d13, [sp, #-16]!
+    stp         d14, d15, [sp, #-16]!
+
+{% include "dispatcher.tmpliq" %}
+
+.add_mat_mul:
+    ldp         x2, x4, [x0, #24]   // b, packing
+    ldp         x3, x1, [x0, #8]    // k, a
+
+    cmp         x3, #0
+    beq         .non_linear_loop
+
+    cmp         x4, #1
+    beq         .q4f16
+
+.p2align 4
+.packed_packed_loop_1:
+    ld1         { v8.h }[0], [ x2 ], #2
+    ld1         { v0.8h, v1.8h, v2.8h, v3.8h }, [ x1 ], #64
+    ld1         { v4.8h, v5.8h, v6.8h, v7.8h }, [ x1 ], #64
+
+    fmla        v24.8h, v0.8h, v8.h[0]
+    fmla        v25.8h, v1.8h, v8.h[0]
+    fmla        v26.8h, v2.8h, v8.h[0]
+    fmla        v27.8h, v3.8h, v8.h[0]
+    fmla        v28.8h, v4.8h, v8.h[0]
+    fmla        v29.8h, v5.8h, v8.h[0]
+    fmla        v30.8h, v6.8h, v8.h[0]
+    fmla        v31.8h, v7.8h, v8.h[0]
+    subs        x3, x3, #1
+    bne         .packed_packed_loop_1
+
+    b           .non_linear_loop
+
+.q4f16:
+    movi     v14.16b, 8
+    movi     v15.16b, 15
+.q4f16_outerloop:
+    // scales
+    ld1         { v16.8h-v19.8h }, [ x1 ], #64
+    ld1         { v20.8h-v23.8h }, [ x1 ], #64
+    mov         x4, #32
+
+.p2align 4
+.q4f16_innerloop:
+        ld1      { v9.16b-v10.16b }, [x1], #32
+        ld1      { v8.h }[0], [ x2 ], #2
+
+        and      v11.16b, v9.16b, v15.16b
+        ushr     v12.16b, v9.16b, 4
+        zip1     v0.16b, v11.16b, v12.16b
+        zip2     v2.16b, v11.16b, v12.16b
+
+        and      v11.16b, v10.16b, v15.16b
+        ushr     v12.16b, v10.16b, 4
+        zip1     v4.16b, v11.16b, v12.16b
+        zip2     v6.16b, v11.16b, v12.16b
+
+        sub      v0.16b, v0.16b, v14.16b
+        sub      v2.16b, v2.16b, v14.16b
+        sub      v4.16b, v4.16b, v14.16b
+        sub      v6.16b, v6.16b, v14.16b
+
+{% for i in (0..3) %}
+        sshll2   v{{i|times:2|plus:1}}.8h, v{{i|times:2}}.16b, 0
+        sshll    v{{i|times:2}}.8h, v{{i|times: 2}}.8b, 0
+{% endfor %}
+
+{% for i in (0..7) %}
+        scvtf    v{{i}}.8h, v{{i}}.8h
+{% endfor %}
+
+{% for i in (0..7) %}
+       fmul     v{{i}}.8h, v{{i}}.8h, v{{i|plus:16}}.8h
+{% endfor %}
+
+{% for i in (0..7) %}
+        fmla        v{{ i|plus: 24 }}.8h, v{{i}}.8h, v8.h[0]
+{% endfor %}
+
+    subs        x4, x4, #1
+    bne         .q4f16_innerloop
+
+    subs        x3, x3, #32
+    bne         .q4f16_outerloop
+
+    b           .non_linear_loop
+
+{% include "arm64fp16_mmm_f16_scalars.tmpliq" from:24, to:31%}
+{% include "arm64fp16_mmm_f16_per_rows.tmpliq" mr:64, from:24, to:31%}
+{% include "arm64fp16_mmm_f16_per_cols.tmpliq" mr:64, from:24, to:31%}
+
+.add_unicast:
+    ldp         x5, x6, [x0, #8]           // c base ptr, rsc
+    cmp         x6, #2
+    beq         .do_per_row_add
+
+    {% for reg in (24..31) %}
+        {% for lane in (0..7) %}
+            ld1 {v0.h}[{{lane}}], [ x5 ], x6
+        {% endfor %}
+        fadd v{{reg}}.8h, v{{reg}}.8h, v0.8h
+    {% endfor %}
+
+    b           .non_linear_loop
+
+.do_per_row_add:
+    ld1     {v0.8h-v3.8h}, [x5], #64
+    ld1     {v4.8h-v7.8h}, [x5], #64
+
+    {% for r in (0..7) %}
+        fadd v{{r| plus: 24}}.8h, v{{r | plus: 24}}.8h, v{{r}}.8h
+    {% endfor %}
+
+    b           .non_linear_loop
+
+.add_row_col_products:
+    ldr     x3, [x0, #16]
+    ldr     x2, [x0, #8]
+
+    ld1         {v8.h}[0], [ x3 ]
+
+    {% for r in (0..7) %}
+        ldr     q{{r}}, [x2], #16
+    {% endfor %}
+
+    fmla        v24.8h, v0.8h, v8.h[0]
+    fmla        v25.8h, v1.8h, v8.h[0] 
+    fmla        v26.8h, v2.8h, v8.h[0] 
+    fmla        v27.8h, v3.8h, v8.h[0] 
+    fmla        v28.8h, v4.8h, v8.h[0] 
+    fmla        v29.8h, v5.8h, v8.h[0] 
+    fmla        v30.8h, v6.8h, v8.h[0] 
+    fmla        v31.8h, v7.8h, v8.h[0] 
+
+    b           .non_linear_loop
+
+.store:
+    ldp         x5, x6, [x0, #8]                // c base ptr, rsc$
+
+    cmp         x6, #2
+    beq         .store_strides_contig
+
+    {% for reg in (24..31) %}
+        {% for lane in (0..7) %}
+            st1 { v{{reg}}.h }[{{lane}}], [ x5 ], x6
+        {% endfor %}
+    {% endfor %}
+    b           .non_linear_loop
+
+.store_strides_contig:
+
+    {% for reg in (24..31) %}
+        st1 { v{{reg}}.8h }, [ x5 ], #16
+    {% endfor %}
+
+    b           .non_linear_loop
+
+.return:
+
+    ldp         d14, d15, [sp], #16
+    ldp         d12, d13, [sp], #16
+    ldp         d10, d11, [sp], #16
+    ldp         d8, d9, [sp], #16
+
+    ldp         x24, x25, [sp], #16
+    ldp         x22, x23, [sp], #16
+    ldp         x20, x21, [sp], #16
+
+    ret
+

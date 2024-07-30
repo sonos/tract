@@ -7,25 +7,21 @@ use DatumType::F32;
 
 fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)) {
     unsafe {
-        let mm = tract_linalg::ops().mmm(F32, F32, F32, Some(m), Some(k), Some(n)).unwrap();
-        let pa =
-            Tensor::uninitialized_aligned::<f32>(&[mm.a_pack().len(k, m)], mm.a_pack().alignment())
-                .unwrap();
-        let pb =
-            Tensor::uninitialized_aligned::<f32>(&[mm.b_pack().len(k, n)], mm.b_pack().alignment())
-                .unwrap();
+        let mmm = tract_linalg::ops().mmm(F32, Some(m), Some(k), Some(n)).unwrap();
+        let a = Tensor::zero::<f32>(&[m, k]).unwrap();
+        let b = Tensor::zero::<f32>(&[k, n]).unwrap();
+        let packing = mmm.packings()[0];
+        let pa = packing.0.prepare_tensor(&a, 1, 0).unwrap();
+        let pb = packing.1.prepare_tensor(&b, 0, 1).unwrap();
+
         let mut c = Tensor::zero::<f32>(&[m, n]).unwrap();
         be.iter(move || {
-            mm.run(
+            mmm.run(
                 m,
                 n,
                 &[
-                    FusedSpec::AddMatMul {
-                        a: mm.a_packed(F32.size_of(), k).wrap(&pa.view()),
-                        b: mm.b_packed(F32.size_of(), k).wrap(&pb.view()),
-                        k,
-                    },
-                    FusedSpec::Store(mm.c_view(0, 1).wrap(&c.view_mut())),
+                    FusedSpec::AddMatMul { a: &*pa, b: &*pb, packing: 0 },
+                    FusedSpec::Store(mmm.c_view(0, 1).wrap(&c.view_mut())),
                 ],
             )
         });

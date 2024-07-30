@@ -1,6 +1,6 @@
 use tract_core::internal::*;
 use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
-use tract_core::ops::binary::wire_cast;
+use tract_core::ops::cast::wire_cast;
 use tract_core::ops::Downsample;
 use tract_core::prelude::tract_itertools::Itertools;
 use tract_ndarray::ArrayView2;

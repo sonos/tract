@@ -8,7 +8,7 @@ pub fn resize(
     ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let op = match dbg!(ctx.onnx_operator_set_version) {
+    let op = match ctx.onnx_operator_set_version {
         10 => resize_10(node)?,
         11..=12 => resize_11(node)?,
         13..=17 => resize_13(node)?,

@@ -2,7 +2,6 @@ use tract_data::internal::f16;
 
 use crate::element_wise::ElementWiseKer;
 
-
 #[derive(Clone, Debug)]
 pub struct SMulByScalar4;
 

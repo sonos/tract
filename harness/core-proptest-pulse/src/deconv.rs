@@ -97,7 +97,7 @@ impl DeconvProblem {
     pub fn run(&self) -> TestCaseResult {
         let mut model = TypedModel::default();
         let mut fact = f32::fact(self.input.shape());
-        let s = model.symbol_table.sym("S");
+        let s = model.symbols.sym("S");
         fact.shape.set(2, s.to_dim());
         let input = model.add_source("a", fact).unwrap();
         let id = self.deconv.chain("deconv1", &mut model, input);
@@ -258,7 +258,7 @@ fn adj_0() {
 #[test]
 fn deconv2d() {
     let mut model = TypedModel::default();
-    let s = model.symbol_table.sym("S");
+    let s = model.symbols.sym("S");
     let a = model.add_source("a", f32::fact(dims!(1, 2, s, 8))).unwrap();
     let mut kernel = Tensor::zero::<f32>(&[2, 2, 1, 3]).unwrap();
     kernel.as_slice_mut::<f32>().unwrap().iter_mut().enumerate().for_each(|(ix, x)| *x = ix as f32);

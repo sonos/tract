@@ -7,7 +7,9 @@ use crate::tflite::{
     MulOptionsArgs, SubOptions, SubOptionsArgs,
 };
 use tract_core::internal::*;
-use tract_core::ops::binary::{wire_cast, wire_rank_broadcast, TypedBinOp};
+use tract_core::ops::binary::TypedBinOp;
+use tract_core::ops::cast::wire_cast;
+use tract_core::ops::change_axes::wire_rank_broadcast;
 use tract_core::ops::logic;
 
 pub fn register_all(reg: &mut Registry) {

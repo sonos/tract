@@ -5,6 +5,8 @@ use crate::ops::konst::Const;
 use crate::optim::OptimizerSession;
 use crate::plan::{FrozenSimpleState, SimplePlan, SimpleState};
 use crate::transform::ModelTransform;
+use tract_data::UndeterminedSymbol;
+use tract_num_traits::Zero;
 
 /// A model with completely determined types and shapes.
 pub type TypedModel = Graph<TypedFact, Box<dyn TypedOp>>;
@@ -45,6 +47,9 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
     ) -> TractResult<TVec<OutletId>> {
         let op = op.into();
         let name = name.into();
+        if self.nodes.iter().any(|n| n.name == name) {
+            bail!("Duplicate node name: {name}");
+        }
         {
             let input_facts = inputs
                 .iter()
@@ -54,7 +59,13 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
             if op.is_stateless() && input_facts.len() > 0 {
                 if let Some(tensors) = input_facts
                     .iter()
-                    .map(|f| f.konst.clone().map(|t| t.into_tvalue()))
+                    .map(|f| {
+                        f.konst
+                            .as_ref()
+                            .filter(|k| k.volume() < 16)
+                            .cloned()
+                            .map(|t| t.into_tvalue())
+                    })
                     .collect::<Option<TVec<_>>>()
                 {
                     if let Ok(outputs) = op.eval_with_session(&SessionState::default(), tensors) {
@@ -72,9 +83,17 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
             }
 
             let input_facts: TVec<_> = input_facts.iter().collect();
-            let output_facts = op
+            let mut output_facts = op
                 .output_facts(&input_facts)
                 .with_context(|| format!("in output_facts invocation for {name}: {}", op.name()))?;
+            for fact in &mut output_facts {
+                if fact.konst.is_none() && fact.shape.is_concrete() && fact.shape.volume().is_zero()
+                {
+                    let tensor =
+                        Tensor::zero_dt(fact.datum_type, fact.shape.as_concrete().unwrap())?;
+                    fact.konst = Some(tensor.into_arc_tensor());
+                }
+            }
             let id = self.add_node(&name, &op, output_facts)?;
             inputs
                 .iter()
@@ -183,23 +202,11 @@ impl TypedModel {
     }
 
     pub fn concretize_dims(&self, values: &SymbolValues) -> TractResult<TypedModel> {
-        use crate::model::translator::Translate;
-        impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for SymbolValues {
-            fn translate_node(
-                &self,
-                source: &TypedModel,
-                node: &TypedNode,
-                target: &mut TypedModel,
-                mapping: &HashMap<OutletId, OutletId>,
-            ) -> TractResult<TVec<OutletId>> {
-                let outlets = node.op.concretize_dims(source, node, target, mapping, self)?;
-                for outlet in &outlets {
-                    target.outlet_fact(*outlet)?.consistent()?;
-                }
-                Ok(outlets)
-            }
-        }
         values.translate_model(self)
+    }
+
+    pub fn prop_consts(&mut self) -> TractResult<()> {
+        crate::optim::Optimizer::prop_consts().optimize(self)
     }
 
     /// Translate the graph to locally optimized operators (LIR or MIR ops).
@@ -214,6 +221,62 @@ impl TypedModel {
 
     pub fn axes_mapping(&self) -> TractResult<AxesMapping> {
         crate::axes::for_model(self)
+    }
+
+    pub fn compute_const_facts(&mut self) -> TractResult<()> {
+        for n in self.eval_order()? {
+            let node = self.node(n);
+            let (inputs, outputs) = self.node_facts(n)?;
+            if node.op.is_stateless()
+                && inputs.iter().all(|i| i.konst.is_some())
+                && outputs.iter().any(|o| o.konst.is_none())
+            {
+                let inputs_ref =
+                    inputs.iter().map(|f| f.konst.clone().unwrap().into_tvalue()).collect();
+                match node.op.eval_with_session(&SessionState::default(), inputs_ref) {
+                    Ok(res) => {
+                        drop(inputs);
+                        drop(outputs);
+                        for (ix, output) in res.into_iter().enumerate() {
+                            self.nodes[n].outputs[ix].fact.konst = Some(output.into_arc_tensor());
+                        }
+                    }
+                    Err(e) => {
+                        if !e.root_cause().is::<UndeterminedSymbol>() {
+                            Err(e).with_context(|| {
+                                format!("Eager eval {} during const fact computation", self.node(n))
+                            })?;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+use crate::model::translator::Translate;
+impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for SymbolValues {
+    fn translate_node(
+        &self,
+        source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        target.check_consistency()?;
+        let outlets = node.op.concretize_dims(source, node, target, mapping, self)?;
+        for &outlet in &outlets {
+            let fact = &mut target.nodes[outlet.node].outputs[outlet.slot].fact;
+            if fact.shape.volume().is_zero() {
+                if let Some(shape) = fact.shape.as_concrete() {
+                    let tensor = Tensor::zero_dt(fact.datum_type, shape)?;
+                    fact.konst = Some(tensor.into_arc_tensor());
+                }
+            }
+            fact.consistent()?;
+        }
+        Ok(outlets)
     }
 }
 

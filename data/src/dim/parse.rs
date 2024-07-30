@@ -3,24 +3,47 @@ use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::{alpha1, alphanumeric1, digit1, one_of};
 use nom::combinator::{all_consuming, map, map_res, recognize};
-use nom::multi::many0;
-use nom::sequence::{delimited, pair, separated_pair};
+use nom::multi::{many0, separated_list0};
+use nom::sequence::{delimited, pair, preceded, separated_pair, tuple};
 use nom::IResult;
+use sym::{Inequality, InequalitySign};
 
-pub fn parse_tdim(symbol_table: &SymbolTable, input: &str) -> TractResult<TDim> {
+pub fn parse_tdim(symbol_table: &SymbolScope, input: &str) -> TractResult<TDim> {
     match all_consuming(|i| expr(symbol_table, i))(input) {
         Ok(pair) => Ok(pair.1),
-        Err(e) => anyhow::bail!("Failed to parse {:?}, {:?}", input, e),
+        Err(e) => bail!("Failed to parse {:?}, {:?}", input, e),
     }
 }
 
-fn expr<'i>(symbol_table: &SymbolTable, i: &'i str) -> IResult<&'i str, TDim> {
+pub fn parse_inequality(symbol_table: &SymbolScope, input: &str) -> TractResult<Inequality> {
+    match all_consuming(|i| inequality(symbol_table, i))(input) {
+        Ok(pair) => Ok(pair.1),
+        Err(e) => bail!("Failed to parse {:?}, {:?}", input, e),
+    }
+}
+
+fn inequality<'i>(s: &SymbolScope, i: &'i str) -> IResult<&'i str, Inequality> {
+    map(tuple((|i| expr(s, i), inequality_sign, |i| expr(s, i))), |(left, sign, right)| {
+        Inequality { left, sign, right }
+    })(i)
+}
+
+fn inequality_sign(i: &str) -> IResult<&str, InequalitySign> {
+    alt((
+        map(stag("<="), |_| InequalitySign::LTE),
+        map(stag("<"), |_| InequalitySign::LT),
+        map(stag(">="), |_| InequalitySign::GTE),
+        map(stag(">"), |_| InequalitySign::GT),
+    ))(i)
+}
+
+fn expr<'i>(symbol_table: &SymbolScope, i: &'i str) -> IResult<&'i str, TDim> {
     add(symbol_table, i)
 }
 
 macro_rules! bin {
     ($name: ident, $next: ident, $op: expr, $builder: expr) => {
-        fn $name<'i>(symbol_table: &SymbolTable, input: &'i str) -> IResult<&'i str, TDim> {
+        fn $name<'i>(symbol_table: &SymbolScope, input: &'i str) -> IResult<&'i str, TDim> {
             let s = symbol_table;
             alt((map(separated_pair(|i| $next(s, i), stag($op), |i| $next(s, i)), $builder), |i| {
                 $next(s, i)
@@ -33,23 +56,36 @@ bin!(add, sub, "+", |(a, b)| a + b);
 bin!(sub, mul, "-", |(a, b)| a - b);
 bin!(mul, div, "*", |(a, b)| a * b);
 
-fn div<'i>(symbol_table: &SymbolTable, input: &'i str) -> IResult<&'i str, TDim> {
+fn div<'i>(symbol_table: &SymbolScope, input: &'i str) -> IResult<&'i str, TDim> {
     let s = symbol_table;
     alt((map(separated_pair(|i| atom(s, i), stag("/"), numeric), |(a, b)| a / b), |i| atom(s, i)))(
         input,
     )
 }
 
-fn atom<'i>(symbol_table: &SymbolTable, i: &'i str) -> IResult<&'i str, TDim> {
+fn atom<'i>(symbol_table: &SymbolScope, i: &'i str) -> IResult<&'i str, TDim> {
     alt((
         map(numeric, TDim::Val),
+        map(|i| func(symbol_table, "min", i), TDim::Min),
+        map(|i| func(symbol_table, "max", i), TDim::Max),
         map(|i| identifier(symbol_table, i), TDim::Sym),
         map(pair(recognize(stag("-")), |i| atom(symbol_table, i)), |(_, dim)| dim * -1),
         delimited(stag("("), |i| expr(symbol_table, i), stag(")")),
     ))(i)
 }
 
-fn identifier<'i>(symbol_table: &SymbolTable, i: &'i str) -> IResult<&'i str, Symbol> {
+fn func<'i>(
+    symbol_table: &SymbolScope,
+    name: &'static str,
+    i: &'i str,
+) -> IResult<&'i str, Vec<TDim>> {
+    preceded(
+        stag(name),
+        delimited(stag("("), separated_list0(stag(","), |i| expr(symbol_table, i)), stag(")")),
+    )(i)
+}
+
+fn identifier<'i>(symbol_table: &SymbolScope, i: &'i str) -> IResult<&'i str, Symbol> {
     map(recognize(pair(alt((alpha1, tag("_"))), many0(alt((alphanumeric1, tag("_")))))), |s| {
         symbol_table.sym(s)
     })(i)
@@ -80,14 +116,14 @@ mod test {
 
     #[test]
     fn parse_int() {
-        let table = SymbolTable::default();
+        let table = SymbolScope::default();
         assert_eq!(parse_tdim(&table, "12").unwrap(), TDim::Val(12));
         assert_eq!(parse_tdim(&table, "-12").unwrap(), TDim::Val(-12));
     }
 
     #[test]
     fn parse_sym() {
-        let table = SymbolTable::default();
+        let table = SymbolScope::default();
         assert_eq!(parse_tdim(&table, "x").unwrap(), TDim::Sym(table.sym("x")));
         assert_eq!(
             parse_tdim(&table, "-y").unwrap(),
@@ -97,7 +133,7 @@ mod test {
 
     #[test]
     fn parse_bin() {
-        let table = SymbolTable::default();
+        let table = SymbolScope::default();
         assert_eq!(parse_tdim(&table, "1+2").unwrap(), 3.into());
         assert_eq!(parse_tdim(&table, "1-2").unwrap(), (-1).into());
         assert_eq!(parse_tdim(&table, "1*2").unwrap(), 2.into());
@@ -106,8 +142,30 @@ mod test {
 
     #[test]
     fn parse_prio() {
-        let table = SymbolTable::default();
+        let table = SymbolScope::default();
         assert_eq!(parse_tdim(&table, "1+2*3").unwrap(), 7.into());
         assert_eq!(parse_tdim(&table, "1*2+3").unwrap(), 5.into());
+    }
+
+    #[test]
+    fn parse_min() {
+        let table = SymbolScope::default();
+        assert_eq!(
+            parse_tdim(&table, "min(P,S)").unwrap(),
+            TDim::Min(vec!(table.sym("P").into(), table.sym("S").into()))
+        );
+    }
+
+    #[test]
+    fn parse_inequality_0() {
+        let table = SymbolScope::default();
+        assert_eq!(
+            parse_inequality(&table, "P+S<4096").unwrap(),
+            Inequality {
+                left: parse_tdim(&table, "P+S").unwrap(),
+                sign: InequalitySign::LT,
+                right: 4096.to_dim()
+            }
+        );
     }
 }

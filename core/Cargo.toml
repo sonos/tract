@@ -1,6 +1,6 @@
 [package]
 name = "tract-core"
-version = "0.21.4-pre"
+version = "0.21.7-pre"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -34,8 +34,8 @@ openblas-src = { workspace=true, optional = true }
 paste.workspace = true
 rustfft.workspace = true
 smallvec.workspace = true
-tract-linalg = { version = "=0.21.4-pre", path = "../linalg" }
-tract-data = { version = "=0.21.4-pre", path = "../data" }
+tract-linalg = { version = "=0.21.7-pre", path = "../linalg" }
+tract-data = { version = "=0.21.7-pre", path = "../data" }
 
 [features]
 default = [ ]

@@ -13,12 +13,12 @@ use super::math::round_ties_to_even;
 
 pub fn quantize_linear_f32_u8(x: f32, scale: f32, zero_point: i32) -> u8 {
     (((x * scale).round() as i32) + zero_point)
-        .clamp(u8::min_value() as i32, u8::max_value() as i32) as u8
+        .clamp(u8::MIN as i32, u8::MAX as i32) as u8
 }
 
 pub fn quantize_linear_f32_i8(x: f32, scale: f32, zero_point: i32) -> i8 {
     (((x * scale).round() as i32) + zero_point)
-        .clamp(i8::min_value() as i32, i8::max_value() as i32) as i8
+        .clamp(i8::MIN as i32, i8::MAX as i32) as i8
 }
 
 element_wise_oop!(quantize_linear_u8,
@@ -221,7 +221,7 @@ impl TypedOp for DequantizeLinearF32 {
                     let output =
                         SimplePlan::new(adhoc_model)?.run(tvec!(input.into_tvalue()))?.remove(0);
                     let table: &[u8] = match dt {
-                        DatumType::I8 => unsafe { std::mem::transmute(output.as_slice::<i8>()?) },
+                        DatumType::I8 => unsafe { std::mem::transmute::<&[i8], &[u8]>(output.as_slice::<i8>()?) },
                         DatumType::U8 => output.as_slice::<u8>()?,
                         _ => unreachable!(),
                     };

@@ -12,5 +12,5 @@ anstyle-query.workspace = true
 ndarray.workspace = true
 tokenizers.workspace = true
 clap_builder = { version = "4.4" }
-clap_lex = { version = "0.6" }
-tract-onnx = { path = "../../onnx", version = "=0.21.4-pre" }
+clap_lex = { version = "0.7" }
+tract-onnx = { path = "../../onnx", version = "=0.21.7-pre" }

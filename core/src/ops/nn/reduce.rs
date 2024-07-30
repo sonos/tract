@@ -1,15 +1,17 @@
 use crate::internal::Axis;
 use crate::internal::*;
-use crate::ops::binary::{wire_cast, wire_with_rank_broadcast, TypedBinOp};
-use crate::ops::cast::cast;
+use crate::ops::binary::TypedBinOp;
+use crate::ops::cast::{cast, wire_cast};
 use crate::ops::element_wise::ElementWiseOp;
 use crate::ops::math::{div, mul, square, Mul, Square};
+use crate::ops::change_axes::wire_with_rank_broadcast;
 use std::convert::TryFrom;
+use std::iter::Sum;
 use std::mem::transmute;
 use tract_data::internal::ClampCast;
 use tract_data::itertools::Itertools;
 use tract_ndarray::prelude::*;
-use tract_num_traits::Bounded;
+use tract_num_traits::{AsPrimitive, Bounded};
 
 macro_rules! r {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
@@ -142,44 +144,58 @@ impl Reducer {
     // tricky (not associative)
     unsafe fn sum<T>(&self, axes: &[usize], input: &Tensor) -> Tensor
     where
-        T: Copy + Datum + num_traits::Zero,
+        T: Copy + Datum + num_traits::Zero + Sum,
+        f16: AsPrimitive<T>,
+        f32: AsPrimitive<T>,
     {
         if axes.len() == 0 {
             return input.to_owned();
         }
+
         let mut output: Option<ArrayD<T>> = None;
-        for axis in axes.iter() {
-            let current_input = output
+        for axis in axes.iter().copied() {
+            let input_view = output
                 .as_ref()
                 .map(|o| o.view())
                 .unwrap_or_else(|| input.to_array_view_unchecked::<T>());
-            let mut new_shape = current_input.shape().to_vec();
-            let reduced_dim = current_input.shape()[*axis];
-            new_shape[*axis] = 1;
-            let input_stride = current_input.strides()[*axis] as usize;
-            let current_output = if current_input.shape().iter().take(*axis).all(|d| *d == 1) {
-                // we are actually summing _reduced_dim_ contiguous vector term to term
-                let mut output = ArrayD::<T>::zeros(new_shape);
-                let first = current_input.as_ptr();
-                let output_ptr = output.as_mut_ptr();
-                for i in 0..reduced_dim as isize {
-                    let slice = first.offset(i * input_stride as isize);
-                    for j in 0..input_stride as isize {
-                        *output_ptr.offset(j) = *output_ptr.offset(j) + *slice.offset(j);
+
+            // Create array that will contain intermidiate result
+            let reduced_dim = input_view.shape()[axis];
+            let input_stride = input_view.strides()[axis] as usize;
+            let output_shape = input_view
+                .shape()
+                .iter()
+                .enumerate()
+                .map(|(idx, dim)| if idx != axis { *dim } else { 1 })
+                .collect_vec();
+
+            output = Some(ArrayD::from_shape_fn(output_shape.clone(), |coords| {
+                let mut view = input_view.view();
+                for ix in 0..output_shape.len() {
+                    if ix != axis {
+                        view.collapse_axis(Axis(ix), coords[ix]);
                     }
                 }
-                output
-            } else {
-                ArrayD::from_shape_fn(new_shape, |coords| {
-                    let first: *const T = &current_input[coords];
+
+                if let Some(slice) = view.as_slice() {
+                    if T::datum_type() == f16::datum_type() {
+                        let slice: &[f16] = unsafe { std::mem::transmute(slice) };
+                        (tract_linalg::ops().sum_f16)().run_with_params(slice, ()).unwrap().as_()
+                    } else if T::datum_type() == f32::datum_type() {
+                        let slice: &[f32] = unsafe { std::mem::transmute(slice) };
+                        (tract_linalg::ops().sum_f32)().run_with_params(slice, ()).unwrap().as_()
+                    } else {
+                        slice.iter().cloned().sum::<T>()
+                    }
+                } else {
+                    let first: *const T = &input_view[coords];
                     let mut sum = T::zero();
                     for i in 0..reduced_dim {
                         sum = sum + *(first.add(i * input_stride));
                     }
                     sum
-                })
-            };
-            output = Some(current_output);
+                }
+            }));
         }
         output.unwrap().into_tensor()
     }
@@ -229,7 +245,7 @@ where
 {
     if T::datum_type() == f32::datum_type() {
         if let Some(slice) = v.as_slice() {
-            let slice = unsafe { transmute(slice) };
+            let slice = unsafe { transmute::<&[T], &[f32]>(slice) };
             (tract_linalg::ops().max_f32)().run(slice).unwrap();
         }
     }

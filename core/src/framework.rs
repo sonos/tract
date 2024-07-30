@@ -16,20 +16,25 @@ pub struct EncryptionParameters {
 ///
 /// The ProtoModel is the parsed representation of the imported model. It does
 /// not have to be Protobuf based.
-pub trait Framework<ProtoModel, Model> : Send + Sync
+pub trait Framework<ProtoModel, Model>: Send + Sync
 where
-    ProtoModel: Debug
+    ProtoModel: Debug,
+    Model: Default,
 {
     /// Parse a proto model from a reader.
     fn proto_model_for_read(&self, reader: &mut dyn Read) -> TractResult<ProtoModel>;
 
     /// Translate a proto model into a model.
     fn model_for_proto_model(&self, proto: &ProtoModel) -> TractResult<Model> {
-        self.model_for_proto_model_with_symbols(proto, &SymbolTable::default())
+        self.model_for_proto_model_with_model_template(proto, Model::default())
     }
 
     /// Translate a proto model into a model, with some symbols already listed.
-    fn model_for_proto_model_with_symbols(&self, proto: &ProtoModel, symbols: &SymbolTable) -> TractResult<Model>;
+    fn model_for_proto_model_with_model_template(
+        &self,
+        proto: &ProtoModel,
+        template: Model,
+    ) -> TractResult<Model>;
 
     /// Read a proto model from a filename.
     fn proto_model_for_path(&self, p: impl AsRef<Path>, _params: Option<*const EncryptionParameters>) -> TractResult<ProtoModel> {

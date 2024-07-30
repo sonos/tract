@@ -34,12 +34,9 @@ impl<'a> Dumper<'a> {
     pub fn document(&mut self, document: &Document) -> TractResult<()> {
         writeln!(self.w, "version {};\n", document.version)?;
         for ext in document.extension.iter().sorted() {
-            write!(self.w, "extension")?;
-            for id in ext {
-                write!(self.w, " ")?;
-                self.identifier(id)?;
-            }
-            writeln!(self.w, ";")?;
+            write!(self.w, "extension ")?;
+            self.identifier(&ext.0)?;
+            writeln!(self.w, " {};", ext.1)?;
         }
         if document.extension.len() > 0 {
             writeln!(self.w)?;

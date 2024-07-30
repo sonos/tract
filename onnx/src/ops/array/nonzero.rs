@@ -7,13 +7,12 @@ use crate::pb::NodeProto;
 #[derive(Debug, Clone, Hash)]
 pub struct NonZero(Symbol);
 
-
-
 pub fn non_zero(
     ctx: &ParsingContext,
     _node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let x = ctx.symbol_table.new_with_prefix("x");
+    // symbol table is shared between all templates and models
+    let x = ctx.template.symbols.new_with_prefix("x");
     Ok((Box::new(NonZero(x)) as _, vec!()))
 }
 

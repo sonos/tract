@@ -1,4 +1,4 @@
-use tract_core::ops::binary::wire_cast;
+use tract_core::ops::cast::wire_cast;
 
 use crate::internal::*;
 
@@ -54,7 +54,7 @@ impl Expansion for Range {
         )
         .context("No supertype for inputs")?;
         let inputs = wire_cast(prefix, model, inputs, dt)?;
-        let len = model.symbol_table.new_with_prefix("range");
+        let len = model.symbols.new_with_prefix("range");
         model.wire_node(prefix, tract_core::ops::array::Range::new(len.into()), &inputs)
     }
 }

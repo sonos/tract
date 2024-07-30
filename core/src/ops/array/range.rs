@@ -92,15 +92,19 @@ impl TypedOp for Range {
         };
         ensure!(start.datum_type() == end.datum_type());
         ensure!(start.datum_type() == step.datum_type());
-        ensure!(start.rank() == 0);
-        ensure!(end.rank() == 0);
-        ensure!(step.rank() == 0);
+        ensure!(start.shape.volume().is_one());
+        ensure!(end.shape.volume().is_one());
+        ensure!(step.shape.volume().is_one());
         if let (Some(start), Some(end), Some(step)) = (&start.konst, &end.konst, &step.konst) {
             let len = if start.datum_type() == TDim::datum_type() {
                 let start = start.to_scalar::<TDim>()?;
                 let end = end.to_scalar::<TDim>()?;
                 let step = step.cast_to_scalar::<i64>()?;
-                (end.clone() - start).divceil(step as usize)
+                if step < 0 {
+                    (start.clone() - end).divceil(-step as usize)
+                } else {
+                    (end.clone() - start).divceil(step as usize)
+                }
             } else {
                 dispatch_numbers!(Self::len_for_numbers(start.datum_type())(
                     self, start, end, step

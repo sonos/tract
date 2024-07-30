@@ -144,11 +144,11 @@ fn de_scan(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
         .iter()
         .find(|n| n.decl.id.0 == fragment_name)
         .ok_or_else(|| format_err!("Cound not find fragment `{}'", fragment_name))?;
-    let mut body =
-        ModelBuilder::new(builder.framework, builder.proto_model, &builder.model.symbol_table);
+    let template = TypedModel { symbols: builder.model.symbols.clone(), ..TypedModel::default() };
+    let mut body = ModelBuilder::new(builder.framework, builder.proto_model, template);
     body.scopes.push(HashMap::new());
-    body.naming_scopes = builder.naming_scopes.clone();
-    body.registries = builder.registries.clone();
+    body.naming_scopes.clone_from(&builder.naming_scopes);
+    body.registries.clone_from(&builder.registries);
     let mut outer_inputs: TVec<OutletId> = tvec!();
     let mut input_mapping = vec![];
     let scan: TVec<(String, OutletId, usize, isize)> = invocation.named_arg_as(builder, "scan")?;

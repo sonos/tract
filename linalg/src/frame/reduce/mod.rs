@@ -1,3 +1,7 @@
+pub mod max;
+pub mod softmax;
+pub mod sum;
+
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
@@ -41,41 +45,6 @@ macro_rules! reduce_impl_wrap {
         }
     };
 }
-
-/*
-macro_rules! reduce_impl {
-    ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr) => {
-        paste! {
-            mod [<sys_ $func>] {
-                #[allow(unused_imports)]
-                use tract_data::prelude::f16;
-                extern_kernel!(fn $func(ptr: *mut $ti, count: usize) -> ());
-            }
-            reduce_impl_wrap!($ti, $func, $nr, $alignment_items, (),
-                #[inline(never)]
-                fn run(buf: &mut [$ti], _params: ()) {
-                    unsafe { [<sys_ $func>]::$func(buf.as_mut_ptr(), buf.len()) }
-                }
-            );
-        }
-    };
-    ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $params: ty) => {
-        paste! {
-            mod [<sys_ $func>] {
-                #[allow(unused_imports)]
-                use tract_data::prelude::f16;
-                extern_kernel!(fn $func(ptr: *mut $ti, count: usize, params: $params) -> ());
-            }
-            ew_impl_wrap!($ti, $func, $nr, $alignment_items, $params,
-                #[inline(never)]
-                fn run(buf: &mut [$ti], params: $params) {
-                    unsafe { [<sys_ $func>]::$func(buf.as_mut_ptr(), buf.len(), params) }
-                }
-            );
-        }
-    };
-}
-*/
 
 pub trait Reduce<T, Params = ()>: Send + Sync + Debug + dyn_clone::DynClone
 where
@@ -277,8 +246,8 @@ pub mod test {
         crate::setup_test_logger();
         let op = K::red();
         let expected = values.iter().fold(neutral, |acc, i| reference_reducer(acc, *i));
-        let mut found = values;
-        let red = op.run_with_params(&mut found, params).unwrap();
+        let found = values;
+        let red = op.run_with_params(found, params).unwrap();
         tensor0(red)
             .close_enough(&tensor0(expected), true)
             .map_err(|e| TestCaseError::fail(e.root_cause().to_string()))?;

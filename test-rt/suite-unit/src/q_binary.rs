@@ -145,8 +145,10 @@ impl Test for QBinaryOpProblem {
         model.set_output_outlets(&[c])?;
 
         let result = runtime
-            .prepare(model)?
-            .run(tvec![self.tensor_a.clone().into_tvalue()])?
+            .prepare(model)
+            .context("Preparing model for runtime")?
+            .run(tvec![self.tensor_a.clone().into_tvalue()])
+            .context("Running model with runtime")?
             .remove(0)
             .into_tensor();
         self.check_ref_with_approx(result, approx)
@@ -244,6 +246,36 @@ pub fn suite() -> TractResult<TestSuite> {
             tensor_a: qu8_tensor1(&[3_u8, 4, 10, 25], 3, 4.5)?,
             tensor_b: qu8_tensor1(&[6u8], 4, 2.5)?,
             c_dt: qu8_dt(0, 1.),
+        },
+    );
+
+    suite.add(
+        "bug_invalid_to_scalar_0",
+        QBinaryOpProblem {
+            operator: tract_core::ops::math::max(),
+            tensor_a: qu8_tensor1(&[0u8, 0u8], 0, 0.5)?,
+            tensor_b: qu8_tensor1(&[0u8, 0u8], 0, 0.5)?,
+            c_dt: qu8_dt(0, 0.5),
+        },
+    );
+
+    suite.add(
+        "bug_invalid_to_scalar_1",
+        QBinaryOpProblem {
+            operator: tract_core::ops::math::max(),
+            tensor_a: qu8_tensor1(&[0u8, 0u8], 0, 0.5)?,
+            tensor_b: qu8_tensor1(&[0u8, 0u8], 0, 0.5)?,
+            c_dt: qu8_dt(1, 0.5),
+        },
+    );
+    
+    suite.add(
+        "bug_aligned_dt_0",
+        QBinaryOpProblem {
+            operator: tract_core::ops::math::mul(),
+            tensor_a: qu8_tensor1(&[0u8, 0, 0, 0, 0], 95, 1.5)?,
+            tensor_b: qu8_tensor1(&[0u8, 0, 0, 0, 0], 95, 1.5)?,
+            c_dt: qu8_dt(95, 1.5),
         },
     );
 

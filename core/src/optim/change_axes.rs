@@ -2,15 +2,16 @@ use super::OptimizerSession;
 use super::TypedPass;
 use crate::internal::*;
 use crate::model::*;
+use crate::ops::dummy::Dummy;
 use crate::ops::einsum::EinSum;
-use std::collections::HashSet;
 use std::collections::hash_map::Entry;
+use std::collections::HashSet;
 use std::fmt::Debug;
 
 use crate::ops::change_axes::*;
 
 #[derive(Clone, Default)]
-pub struct ChangeAxes(HashSet<crate::ops::change_axes::AxisChange>);
+pub struct ChangeAxes(HashSet<crate::ops::change_axes::AxisChange>, usize);
 
 impl Debug for ChangeAxes {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -21,6 +22,7 @@ impl Debug for ChangeAxes {
 impl TypedPass for ChangeAxes {
     fn reset(&mut self) -> TractResult<()> {
         self.0.clear();
+        self.1 = 0;
         Ok(())
     }
     fn next(
@@ -30,31 +32,36 @@ impl TypedPass for ChangeAxes {
     ) -> TractResult<Option<TypedModelPatch>> {
         let mut interfaces = model.output_outlets()?.to_vec();
         interfaces.extend(model.input_outlets()?.iter());
-        for n in model.eval_order()? {
-            for suggestion in model.node(n).op.suggested_axis_changes()? {
-                let outlet = suggestion.0.as_outlet(model.node(n));
+        for node in &model.nodes[self.1..] {
+            if node.op_is::<Dummy>() {
+                continue;
+            }
+            for suggestion in node.op.suggested_axis_changes()? {
+                let outlet = suggestion.0.as_outlet(node);
                 let change = AxisChange { outlet, op: suggestion.1 };
                 if self.0.insert(change.clone()) {
                     if let Some((patch, _)) = change_axes(model, &change, &interfaces, &[])
                         .with_context(|| {
-                            format!("Making patch for {:?} from {}", change, model.node(n))
+                            format!("Making patch for {:?} from {}", change, node)
                         })?
                     {
+                        self.1 = node.id;
                         return Ok(Some(patch));
                     }
                 }
             }
-            for (slot, fact) in model.node(n).outputs.iter().enumerate() {
+            for (slot, fact) in node.outputs.iter().enumerate() {
                 for (ix, dim) in fact.fact.shape.iter().enumerate() {
                     if dim.is_one() {
                         let change =
-                            AxisChange { outlet: OutletId::new(n, slot), op: AxisOp::Rm(ix) };
+                            AxisChange { outlet: OutletId::new(node.id, slot), op: AxisOp::Rm(ix) };
                         if self.0.insert(change.clone()) {
                             if let Some((patch, _)) = change_axes(model, &change, &interfaces, &[])
                                 .with_context(|| {
-                                    format!("Making patch for {:?} from {}", change, model.node(n))
+                                    format!("Making patch for {:?} from {}", change, node)
                                 })?
                             {
+                                self.1 = node.id;
                                 return Ok(Some(patch));
                             }
                         }
@@ -219,4 +226,3 @@ pub fn change_axes(
     debug!("Patch ready for {:?}", change);
     Ok(Some((patch, interface_change)))
 }
-

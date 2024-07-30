@@ -62,7 +62,7 @@ impl StridedSlice {
             None
         } else if end.datum_type() == i64::datum_type() {
             let end = *end.as_slice::<i64>()?.get(ix).unwrap();
-            if end == std::i64::MAX || end == std::i64::MIN || end == std::i64::MIN + 1 || end == std::i32::MAX as _ {
+            if end == i64::MAX || end == i64::MIN || end == i64::MIN + 1 || end == i32::MAX as _ {
                 None
             } else {
                 Some(end.to_dim())
@@ -79,6 +79,7 @@ impl StridedSlice {
             let neg = if let Ok(b) = bound.to_isize() {
                 b < 0
             } else {
+                #[allow(clippy::mutable_key_type)]
                 let symbols = bound.symbols();
                 if symbols.len() == 1 {
                     let sym = symbols.into_iter().next().unwrap();
@@ -229,7 +230,7 @@ impl StridedSlice {
                     AxisOp::Rm(0),
                     &right,
                 )?[0];
-                let sym = target.symbol_table.new_with_prefix("l");
+                let sym = target.symbols.new_with_prefix("l");
                 wire = target.wire_node(
                     format!("{prefix}.slice-axis-{axis}"),
                     crate::ops::array::DynSlice::new(axis, sym.to_dim()),

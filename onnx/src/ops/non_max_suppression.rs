@@ -17,7 +17,7 @@ pub fn non_max_suppression(
             optional_iou_threshold_input: options.next().unwrap(),
             optional_score_threshold_input: options.next().unwrap(),
             center_point_box,
-            num_selected_indices_symbol: ctx.symbol_table.new_with_prefix("x"),
+            num_selected_indices_symbol: ctx.template.symbols.new_with_prefix("x"),
         }),
         vec![],
     ))
@@ -31,8 +31,6 @@ struct NonMaxSuppression {
     center_point_box: BoxRepr,
     num_selected_indices_symbol: Symbol,
 }
-
-
 
 impl Expansion for NonMaxSuppression {
     fn name(&self) -> Cow<str> {
@@ -108,10 +106,10 @@ impl Expansion for NonMaxSuppression {
             .unwrap_or_else(|| {
                 model.add_const(format!("{name}.max_output_boxes_per_class"), tensor0(0i64))
             })?;
-        let iou_threshold =
-            self.optional_iou_threshold_input.map(|index| Ok(inputs[index])).unwrap_or_else(
-                || model.add_const(format!("{name}.iou_threshold"), tensor0(0.0f32)),
-            )?;
+        let iou_threshold = self
+            .optional_iou_threshold_input
+            .map(|index| Ok(inputs[index]))
+            .unwrap_or_else(|| model.add_const(format!("{name}.iou_threshold"), tensor0(0.0f32)))?;
         // score_threshold is an optional input, but we cannot assing it a meaningful default value
         let score_threshold = self.optional_score_threshold_input.map(|index| inputs[index]);
 

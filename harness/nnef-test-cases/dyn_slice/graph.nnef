@@ -1,0 +1,27 @@
+version 1.0;
+
+extension tract_pulse_streaming_symbol;
+extension tract_registry tract_core;
+extension KHR_enable_fragment_definitions;
+extension KHR_enable_operator_expressions;
+
+
+
+fragment trunc( x: tensor<scalar> ) -> ( y: tensor<scalar> )
+{
+    y = select(x < 0, ceil(x), floor(x));
+}
+
+
+
+
+graph net_2024_06_26T15_36_33(input_0) -> (output_0)
+{
+    input_0 = external<scalar>(shape = [3, 1, S]);
+    v1_shape = tract_core_shape_of(input_0);
+    v0_sliced = slice(v1_shape, axes = [0], begin = [2], end = [3], stride = [1]);
+    v1_shape_2 = squeeze(v0_sliced, axes = [0]);
+    v4_div = div(v1_shape_2, 2);
+    v4 = trunc(v4_div);
+    output_0 = slice(input_0, axes = [2], begin = [0], end = [v4], stride = [1]);
+}

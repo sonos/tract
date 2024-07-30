@@ -80,9 +80,11 @@ fn deepspeech_raw() -> TractResult<()> {
     let assign_2 = model.node_id_by_name("Assign_2")?;
     let assign_3 = model.node_id_by_name("Assign_3")?;
 
-    let plan = SimplePlan::new_for_outputs(
+    let plan = SimplePlan::build(
         model,
         &[logits.into(), (lstm, 1).into(), (lstm, 6).into(), assign_2.into(), assign_3.into()],
+        &[],
+        &PlanOptions::default(),
     )?;
 
     let mut state = SimpleState::new(plan)?;

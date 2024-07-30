@@ -206,7 +206,7 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
             }
             self.const_cache.push((k.clone(), self.tensors.len() as i32));
 
-            let data = self.fb().create_vector(unsafe { k.as_bytes() });
+            let data = self.fb().create_vector(k.as_bytes());
             let buffer = Buffer::create(self.fb(), &BufferArgs { data: Some(data) });
             self.model.buffers.push(buffer);
             self.model.buffers.len() as u32 - 1

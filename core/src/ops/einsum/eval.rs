@@ -26,7 +26,17 @@ pub fn eval_t<Acc: Datum + Zero + One>(
     expr: &AxesMapping,
     inputs: TVec<TValue>,
 ) -> TractResult<Tensor> {
-    let shapes: TVec<_> = inputs.iter().map(|t| t.shape()).collect();
+    let shapes: TVec<_> = inputs
+        .iter()
+        .map(|t| {
+            if t.datum_type() == Opaque::datum_type() {
+                dbg!(t);
+                todo!();
+            } else {
+                t.shape()
+            }
+        })
+        .collect();
     let output_shape = output_shape(expr, &shapes);
     let inputs: TVec<Cow<Tensor>> =
         inputs.iter().map(|t| t.cast_to::<Acc>()).collect::<TractResult<_>>()?;

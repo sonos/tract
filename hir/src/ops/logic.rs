@@ -2,8 +2,8 @@ use crate::infer::*;
 use crate::internal::*;
 
 use tract_core::broadcast::multi_broadcast;
-use tract_core::ops::binary::wire_cast;
-pub use tract_core::ops::binary::wire_with_rank_broadcast;
+use tract_core::ops::cast::wire_cast;
+pub use tract_core::ops::change_axes::wire_with_rank_broadcast;
 pub use tract_core::ops::logic::*;
 
 #[derive(Debug, Clone, Hash)]
@@ -30,8 +30,7 @@ impl Expansion for Iff {
             s.equals(&outputs[0].datum_type, dt)
         })?;
         s.given_3(&inputs[0].shape, &inputs[1].shape, &inputs[2].shape, move |s, c, t, f| {
-            let shape = multi_broadcast(&[&c, &t, &f])
-                .with_context(|| format!("Incompatible shapes {c:?}, {t:?} and {f:?}"))?;
+            let shape = multi_broadcast(&[&c, &t, &f])?;
             s.equals(&outputs[0].shape, shape)
         })?;
         Ok(())

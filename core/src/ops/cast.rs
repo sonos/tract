@@ -4,7 +4,28 @@ pub fn cast(to: DatumType) -> Cast {
     Cast { to }
 }
 
-#[derive(Debug, Clone, new, Hash)]
+pub fn wire_cast(
+    prefix: impl AsRef<str>,
+    target: &mut TypedModel,
+    inputs: &[OutletId],
+    operating_datum_type: DatumType,
+) -> TractResult<TVec<OutletId>> {
+    let prefix = prefix.as_ref();
+    let mut wires = tvec!();
+    for (ix, mut wire) in inputs.iter().copied().enumerate() {
+        if target.outlet_fact(wire)?.datum_type != operating_datum_type {
+            wire = target.wire_node(
+                format!("{prefix}.cast-{ix}"),
+                crate::ops::cast::cast(operating_datum_type),
+                &[wire],
+            )?[0];
+        }
+        wires.push(wire);
+    }
+    Ok(wires)
+}
+
+#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct Cast {
     pub to: DatumType,
 }
@@ -15,6 +36,7 @@ impl Op for Cast {
     }
 
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl EvalOp for Cast {

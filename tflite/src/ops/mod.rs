@@ -1,5 +1,5 @@
 use tract_core::internal::*;
-use tract_core::ops::binary::wire_with_rank_broadcast;
+use tract_core::ops::change_axes::wire_with_rank_broadcast;
 use tract_core::ops::logic::Iff;
 use tract_core::prelude::tract_itertools::Itertools;
 

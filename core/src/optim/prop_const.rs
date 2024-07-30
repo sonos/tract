@@ -1,14 +1,17 @@
 use tract_data::UndeterminedSymbol;
 
 use crate::internal::*;
+use crate::ops::dummy::Dummy;
 use crate::ops::konst::Const;
+use crate::ops::source::TypedSource;
 use crate::optim::OptimizerSession;
 
-#[derive(Clone, Debug)]
-pub struct PropConst;
+#[derive(Clone, Debug, Default)]
+pub struct PropConst(usize);
 
 impl super::TypedPass for PropConst {
     fn reset(&mut self) -> TractResult<()> {
+        self.0 = 0;
         Ok(())
     }
     fn next(
@@ -16,44 +19,63 @@ impl super::TypedPass for PropConst {
         _session: &mut OptimizerSession,
         model: &TypedModel,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let mut patch = TypedModelPatch::default();
-        for n in model.eval_order()? {
-            let node = model.node(n);
-            // bit of a hack here. pulse erase const from fact, so this little dance puts it back
+        for node in &model.nodes[self.0..] {
             if node.op_is::<Const>() && node.outputs[0].fact.konst.is_none() {
-                let k = node.op_as::<Const>().unwrap().0.clone();
-                let wire = patch.add_const(&node.name, k)?;
+                self.0 = node.id;
+                let mut patch = TypedModelPatch::default();
+                let wire = patch.add_const(&node.name, node.op_as::<Const>().unwrap().0.clone())?;
                 patch.shunt_outside(model, node.id.into(), wire)?;
+                return Ok(Some(patch));
             }
-            if node.op.is_stateless() && !node.op_is::<Const>() {
-                if let Some(inputs) = model
-                    .node_input_facts(n)?
-                    .iter()
-                    .map(|f| f.konst.clone().map(|t| t.into_tvalue()))
-                    .collect()
-                {
-                    match node.op.eval_with_session(&SessionState::default(), inputs) {
-                        Ok(res) => {
-                            for (ix, output) in res.into_iter().enumerate() {
-                                let mut name = node.name.clone();
-                                if ix > 0 {
-                                    name = format!("{name}.{ix}");
-                                }
-                                let wire = patch.add_const(name, output.into_arc_tensor())?;
-                                patch.shunt_outside(model, (n, ix).into(), wire)?;
+            let inputs = model.node_input_facts(node.id)?;
+            if !node.op_is::<Const>()
+                && !node.op_is::<Dummy>()
+                && !node.op_is::<TypedSource>()
+                && node.op.is_stateless()
+                && inputs.iter().all(|i| i.konst.is_some())
+            {
+                let inputs =
+                    inputs.iter().map(|f| f.konst.clone().unwrap().into_tvalue()).collect();
+                match node.op.eval_with_session(&SessionState::default(), inputs) {
+                    Ok(mut res) => {
+                        self.0 = node.id;
+                        let mut node = node;
+                        loop {
+                            let Some(succ) = model.single_succ(node.id)? else { break };
+                            if succ.inputs.len() > 1 || !succ.op.is_stateless() {
+                                break;
                             }
+                            let Ok(succ_res) =
+                                succ.op.eval_with_session(&SessionState::default(), res.clone())
+                            else {
+                                break;
+                            };
+                            res = succ_res;
+                            node = succ;
                         }
-                        Err(e) => {
-                            if !e.root_cause().is::<UndeterminedSymbol>() {
-                                Err(e).with_context(|| {
-                                    format!("Eager eval {} during optimisation", model.node(n))
-                                })?;
-                            }
+                        let mut patch = TypedModelPatch::default();
+                        for (ix, output) in res.into_iter().enumerate() {
+                            let name = if ix > 0 {
+                                format!("{}.{ix}", node.name)
+                            } else {
+                                node.name.clone()
+                            };
+                            let wire = patch.add_const(name, output.into_arc_tensor())?;
+                            patch.shunt_outside(model, (node.id, ix).into(), wire)?;
+                        }
+                        self.0 = node.id;
+                        return Ok(Some(patch));
+                    }
+                    Err(e) => {
+                        if !e.root_cause().is::<UndeterminedSymbol>() {
+                            Err(e).with_context(|| {
+                                format!("Eager eval {} during optimisation", node)
+                            })?;
                         }
                     }
                 }
             }
         }
-        Ok(Some(patch).filter(|p| p.nodes.len() > 0))
+        Ok(None)
     }
 }

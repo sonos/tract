@@ -124,8 +124,8 @@ impl PulsePadOpState {
         let pulse_end = self.current_pos + pulse;
         self.current_pos += pulse - op.overlap;
         let end_input =
-            op.end_input.eval(&session.resolved_symbols).to_usize().unwrap_or(std::usize::MAX);
-        let after = op.after.eval(&session.resolved_symbols).to_usize().unwrap_or(std::usize::MAX);
+            op.end_input.eval(&session.resolved_symbols).to_usize().unwrap_or(usize::MAX);
+        let after = op.after.eval(&session.resolved_symbols).to_usize().unwrap_or(usize::MAX);
 
         if let PadMode::Edge = op.mode {
             if after != 0 && pulse_begin < end_input {

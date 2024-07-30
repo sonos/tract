@@ -33,6 +33,6 @@ fn range_load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let end: OutletId = invocation.named_arg_as(builder, "end")?;
     let step: OutletId = invocation.named_arg_as(builder, "step")?;
 
-    let len = builder.model.symbol_table.new_with_prefix("range");
+    let len = builder.model.symbols.new_with_prefix("range");
     builder.wire(Range::new(len.into()), &[start, end, step])
 }

@@ -43,7 +43,7 @@ pub struct ParsingContext<'a> {
     pub model: &'a pb::ModelProto,
     pub parent_graphs: Vec<&'a pb::GraphProto>,
     pub model_dir: Option<&'a str>,
-    pub symbol_table: SymbolTable,
+    pub template: InferenceModel,
 }
 
 #[derive(Clone, Debug)]
@@ -61,8 +61,7 @@ impl<'a> ParsingContext<'a> {
     pub fn parse_graph(&self, graph: &pb::GraphProto) -> TractResult<ParseResult> {
         let mut ctx = self.clone();
         ctx.parent_graphs.push(graph);
-        let mut model =
-            InferenceModel { symbol_table: ctx.symbol_table.clone(), ..InferenceModel::default() };
+        let mut model = self.template.clone();
         let mut unresolved_inputs = vec![];
         let mut closures_to_wire = vec![];
         trace!("trying to initialize initializers hashmap...");
@@ -235,13 +234,13 @@ impl Default for Onnx {
 
 impl Onnx {
     pub fn parse(&self, proto: &pb::ModelProto, path: Option<&str>) -> TractResult<ParseResult> {
-        self.parse_with_symbols(proto, path, &SymbolTable::default())
+        self.parse_with_template(proto, path, Default::default())
     }
-    pub fn parse_with_symbols(
+    pub fn parse_with_template(
         &self,
         proto: &pb::ModelProto,
         model_dir: Option<&str>,
-        symbol_table: &SymbolTable,
+        template: InferenceModel,
     ) -> TractResult<ParseResult> {
         let onnx_operator_set_version = proto
             .opset_import
@@ -263,7 +262,7 @@ impl Onnx {
             parent_graphs: vec![],
             onnx_operator_set_version,
             model_dir,
-            symbol_table: symbol_table.clone(),
+            template,
         };
         trace!("created ParsingContext");
         ctx.parse_graph(graph)
@@ -394,13 +393,13 @@ impl Framework<pb::ModelProto, InferenceModel> for Onnx {
         Ok(crate::pb::ModelProto::decode(b)?)
     }
 
-    fn model_for_proto_model_with_symbols(
+    fn model_for_proto_model_with_model_template(
         &self,
         proto: &pb::ModelProto,
-        symbols: &SymbolTable,
+        template: InferenceModel,
     ) -> TractResult<InferenceModel> {
         let ParseResult { model, unresolved_inputs, .. } =
-            self.parse_with_symbols(proto, None, symbols)?;
+            self.parse_with_template(proto, None, template)?;
         if unresolved_inputs.len() > 0 {
             bail!("Could not resolve inputs at top-level: {:?}", unresolved_inputs)
         }

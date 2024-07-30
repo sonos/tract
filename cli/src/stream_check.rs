@@ -34,7 +34,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
     let mut annotations = Annotations::from_model(&*params.tract_model)?;
     annotate_with_graph_def(&mut annotations, &*params.tract_model, &params.graph)?;
 
-    let eval_order = ::tract_core::model::eval_order(decl)?;
+    let eval_order = tract_core::model::order::eval_order_opt_ram(decl)?;
 
     for &decl_node in eval_order.iter() {
         let pulsed_node = match pulsed.node_by_name(&*decl.node(decl_node).name) {
@@ -59,7 +59,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
             let delay = stream.delay;
 
             let stream_dim = delay + 3 * input_pulse + input_pulse / 2;
-            let stream_symbol = model.symbol_table.sym("S");
+            let stream_symbol = model.symbols.sym("S");
 
             let fixed_input =
                 tract_libcli::tensor::tensor_for_fact(decl_input_fact, Some(stream_dim), None)?;
@@ -82,7 +82,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
                     .iter()
                     .map(|d| d.to_usize())
                     .collect::<TractResult<TVec<_>>>()?;
-                let mut pulsed_input = ArrayD::from_elem(&*input_shape, std::f32::NAN);
+                let mut pulsed_input = ArrayD::from_elem(&*input_shape, f32::NAN);
                 let offset = i * input_pulse;
                 if offset < stream_dim {
                     let count = input_pulse.min(stream_dim - offset);
@@ -94,7 +94,7 @@ pub fn handle(params: &Parameters, options: &DisplayParams) -> TractResult<()> {
                 };
                 if offset + input_pulse > stream_dim {
                     debug!("Set known_stream_len: {}", stream_dim);
-                    state.session_state.resolved_symbols[&stream_symbol] = Some(stream_dim as _);
+                    state.session_state.resolved_symbols.set(&stream_symbol, stream_dim as _);
                 };
 
                 let output =

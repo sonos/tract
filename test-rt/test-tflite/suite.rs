@@ -47,6 +47,9 @@ fn ignore_onnx(t: &[String]) -> bool {
         Conv1d
         Conv2d
 
+        test_averagepool_2d
+        test_maxpool_2d
+
         squeeze
         _transpose_
         test_concat
@@ -81,7 +84,6 @@ fn ignore_onnx(t: &[String]) -> bool {
         test_sqrt
         test_rsqrt
 
-
         test_cos
         test_sin
         # lol, no tan :)
@@ -93,6 +95,8 @@ fn ignore_onnx(t: &[String]) -> bool {
         test_prelu
         test_relu
         test_selu
+        test_sigmoid
+        test_tanh
         test_thresholdrelu
         ",
     );
@@ -107,7 +111,11 @@ fn ignore_onnx(t: &[String]) -> bool {
             test_split_zero_size
             test_mul_uint8
             test_div_uint8
-            test_reduce_log_sum_exp.*                        # tflite does not support f64 reducers 🤷
+            test_reduce_log_sum_exp.*           # tflite does not support f64 reducers 🤷
+            pool_2d_ceil
+            pool_2d_pads
+            pool_2d_precomputed_pads_count_include_pad
+            pool_2d_same_lower
             test_cosh.*
             test_sinh.*
             ");

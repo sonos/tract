@@ -1,17 +1,19 @@
+use std::borrow::Borrow;
 use std::fmt::Debug;
 
 use crate::internal::*;
 use crate::ops::array::Slice;
+use crate::ops::matmul::de_block_quant::{BlockQuantFact, BlockQuantValue};
 use crate::tract_data::itertools::Itertools;
 
 mod eval;
 
-#[cfg(feature="blas")]
+#[cfg(feature = "blas")]
 pub mod as_blas;
 use super::array::TypedConcat;
 use super::math::add;
 mod as_matmul;
-mod codegen;
+pub mod codegen;
 
 #[cfg(test)]
 mod proptest;
@@ -34,6 +36,38 @@ impl EinSum {
 
     pub fn newq(axes: AxesMapping, operating_dt: DatumType, output_type: DatumType) -> EinSum {
         EinSum { axes, operating_dt, q_params: Some(output_type) }
+    }
+
+    pub fn actual_input_shapes_from_facts<'m>(
+        &self,
+        inputs: &'m [impl Borrow<TypedFact>],
+    ) -> TractResult<TVec<&'m [TDim]>> {
+        ensure!(inputs.len() == self.axes.input_count());
+        let shapes: TVec<&[TDim]> = inputs
+            .iter()
+            .map(|t| {
+                let t = t.borrow();
+                if let Some(bqf) =
+                    t.opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
+                {
+                    &*bqf.shape
+                } else if let Some(bqv) = t
+                    .konst
+                    .as_ref()
+                    .and_then(|k| k.to_scalar::<Opaque>().ok())
+                    .and_then(|o| o.downcast_ref::<BlockQuantValue>())
+                {
+                    &*bqv.fact.shape
+                } else {
+                    &*t.shape
+                }
+            })
+            .collect();
+        ensure!(shapes
+            .iter()
+            .enumerate()
+            .all(|(ix, fact)| fact.len() == self.axes.rank(InOut::In(ix))));
+        Ok(shapes)
     }
 
     #[allow(unused_variables)]
@@ -216,12 +250,7 @@ impl EvalOp for EinSum {
 
 impl TypedOp for EinSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        ensure!(inputs.len() == self.axes.input_count());
-        ensure!(inputs
-            .iter()
-            .enumerate()
-            .all(|(ix, fact)| fact.rank() == self.axes.rank(InOut::In(ix))));
-        let shapes: TVec<&[TDim]> = inputs.iter().map(|t| &*t.shape).collect();
+        let shapes = self.actual_input_shapes_from_facts(inputs)?;
         if let Some(qp) = self.q_params {
             ensure!(inputs.len() == 9);
             Ok(tvec!(qp.fact(eval::output_shape(&self.axes, &shapes[0..2]))))

@@ -55,7 +55,7 @@ impl QuantFormat {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Document {
     pub version: NumericLiteral,
-    pub extension: Vec<Vec<Identifier>>,
+    pub extension: Vec<(Identifier, String)>,
     pub fragments: Vec<FragmentDef>,
     pub graph_def: GraphDef,
 }

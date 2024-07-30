@@ -18,12 +18,9 @@ targets = [
 ]
 
 [advisories]
-version = 2
 git-fetch-with-cli = true
 yanked = "deny"
 ignore = [
-	"RUSTSEC-2021-0145", # in atty, only impacts benches (through criterion) or pytorch example
-	"RUSTSEC-2023-0080", # transpose has an unsafe method, but rustfst uses it a safe predictable manner
 ]
 
 [bans]
@@ -35,7 +32,7 @@ deny = [
 
 # Skip some multiple-versions checks, until they can be fixed.
 skip = [
-    { name = "itertools", version="<0.12.1" },
+    { name = "itertools", version="<=0.12.1" },
     { name = "regex-syntax", version="<8" },
     { name = "syn", version="<2" },
 ]

@@ -100,12 +100,7 @@ where
         K::name()
     }
     fn run_with_params(&self, vec: &mut [T], params: Params) -> TractResult<()> {
-        map_slice_with_alignment(
-            vec,
-            |data| K::run(data, params),
-            K::nr(),
-            K::alignment_bytes(),
-        )
+        map_slice_with_alignment(vec, |data| K::run(data, params), K::nr(), K::alignment_bytes())
     }
 }
 

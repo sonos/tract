@@ -43,7 +43,7 @@ fn proptest_regular_against_pulse(
     let len = input_array.shape()[axis];
     let model = model.into_decluttered().unwrap();
     // dbg!(&model);
-    let s = model.symbol_table.sym("S");
+    let s = model.symbols.sym("S");
     let symbols = SymbolValues::default().with(&s, len as i64);
 
     let concrete = model.clone().concretize_dims(&symbols).unwrap();
@@ -93,7 +93,7 @@ fn proptest_regular_against_pulse(
                 &[chunk.view(), ArrayD::from_elem(filler_shape, std::f32::NAN).view()],
             )
             .unwrap();
-            state.session_state.resolved_symbols[&s] = Some(written as i64);
+            state.session_state.resolved_symbols.set(&s, written as i64);
             output_len = stream_info
                 .dim
                 .eval(&state.session_state.resolved_symbols)
@@ -138,7 +138,7 @@ proptest! {
     fn proptest_crop(pulse in 1i32..3, input_len in 0i32..10, begin in 0i32..3, end in 0i32..3) {
         let full_len = input_len + begin + end;
         let mut model = TypedModel::default();
-        let s = model.symbol_table.sym("S");
+        let s = model.symbols.sym("S");
         let a = model.add_source("a", f32::fact(&[s])).unwrap();
         let slice = model.wire_node("slice", Slice::new(0, begin as usize, (input_len + begin) as usize), &[a]).unwrap();
         model.set_output_outlets(&slice).unwrap();
@@ -150,7 +150,7 @@ proptest! {
     #[test]
     fn proptest_pad(pulse in 1i32..3, input_len in 0i32..10, begin in 0i32..3, end in 0i32..3) {
         let mut model = TypedModel::default();
-        let s = model.symbol_table.sym("S");
+        let s = model.symbols.sym("S");
         let a = model.add_source("a", f32::fact(&[s])).unwrap();
         let pad = model.wire_node("pad", Pad::new(vec![(begin as _, end as _)],
         PadMode::Constant(Arc::new(Tensor::from(-1f32)))), &[a]).unwrap();
@@ -170,7 +170,7 @@ fn vec(len: impl Strategy<Value = usize>) -> impl Strategy<Value = Vec<f32>> {
 fn test_simple_conv() {
     let mut model = TypedModel::default();
     let kernel = rctensor3(&[[[0.5f32, 1.0, -0.1]]]);
-    let s = model.symbol_table.sym("S");
+    let s = model.symbols.sym("S");
     let a = model.add_source("a", f32::fact(dims!(1, 1, s))).unwrap();
     let kernel = model.add_const("kernel", kernel).unwrap();
     let bias = model.add_const("bias", tensor0(0f32)).unwrap();
@@ -204,7 +204,7 @@ fn test_simple_conv() {
 #[test]
 fn test_pad_before_1() {
     let mut model = TypedModel::default();
-    let s = model.symbol_table.sym("S");
+    let s = model.symbols.sym("S");
     let a = model.add_source("a", f32::fact(&[s])).unwrap();
     model
         .wire_node(
@@ -222,7 +222,7 @@ fn test_pad_before_1() {
 #[test]
 fn test_pad_before_2() {
     let mut model = TypedModel::default();
-    let s = model.symbol_table.sym("S");
+    let s = model.symbols.sym("S");
     let a = model.add_source("a", f32::fact(&[s])).unwrap();
     model
         .wire_node(
