@@ -64,7 +64,7 @@ free_predictions(prediction **inf, int length)
 }
 
 prediction *
-inference(char *model_name, TractValue *input, TractValue *input2, prediction *inf, struct EncryptionParameters *params)
+inference(char *model_name, TractValue *input, TractValue *input2, prediction *inf)
 {
     struct timeval t1, t2;
     double elapsedTime;
@@ -77,7 +77,7 @@ inference(char *model_name, TractValue *input, TractValue *input2, prediction *i
     // Load the model
     TractModel *model = NULL;
     TractInferenceModel *inference_model = NULL;
-    if (tract_onnx_model_for_path(onnx, model_name, &inference_model, params) != TRACT_RESULT_OK) {
+    if (tract_onnx_model_for_path(onnx, model_name, &inference_model,NULL) != TRACT_RESULT_OK) {
         fprintf(stderr, "Error loading model %s\n", model_name);
         free_prediction(inf);
         check(tract_onnx_destroy(&onnx));
@@ -171,44 +171,6 @@ decode_pb(FILE *fd)
     return shape;
 }
 
-// test tract decryption
-#define KEY_BYTES 32
-#define IV_BYTES 12
-#define TAG_BYTES 16
-#define ADD_DATA_BYTES 64
-
-uint8_t *
-write_to_buffer(char *filename)
-{
-    FILE *fd = fopen(filename, "rb");
-    if (!fd) {
-        fprintf(stderr, "Error opening file %s\n", filename);
-        return NULL;
-    }
-    fseek(fd, 0, SEEK_END);
-    long file_size = ftell(fd);
-    fseek(fd, 0, SEEK_SET);
-
-    rewind(fd);
-
-    uint8_t *data = (uint8_t *)malloc(file_size + 1);
-    if (!data) {
-        fprintf(stderr, "Memory allocation for %s failed\n", filename);
-        return NULL;
-    }
-    size_t read_len = fread(data, 1, file_size, fd);
-    if (read_len != (size_t)(file_size)) {
-        fprintf(stderr, "fread failed\n");
-        free(data);
-        fclose(fd);
-        return NULL;
-    }
-    fclose(fd);
-
-    return data;
-}
-// end testing
-
 int
 main(int argc, char **argv)
 {
@@ -225,44 +187,6 @@ main(int argc, char **argv)
         }
         fclose(fd);
     }
-
-    //test tract decryption
-    EncryptionParameters *params = (EncryptionParameters *)malloc(sizeof(EncryptionParameters));
-    if (!params) {
-        fprintf(stderr, "Memory allocation for params failed\n");
-        return 1;
-    }
-    uint8_t *key = NULL;
-    uint8_t *iv = NULL;
-    uint8_t *tag = NULL;
-    uint8_t *aad = NULL;
-    key = write_to_buffer("key.bin");
-    iv = write_to_buffer("iv.bin");
-    aad = write_to_buffer("add_data.bin");
-    if (!key || !iv || !aad) {
-        fprintf(stderr, "Error writing to buffer\n");
-        free(params);
-        return 1;
-    }
-    params->key = key;
-    params->iv = iv;
-    params->aad = aad;
-
-    // print the params
-    fprintf(stderr, "Key: ");
-    for (int i = 0; i < KEY_BYTES; i++) {
-        fprintf(stderr, "%02x", params->key[i]);
-    }
-    fprintf(stderr, "\nIV: ");
-    for (int i = 0; i < IV_BYTES; i++) {
-        fprintf(stderr, "%02x", params->iv[i]);
-    }
-    fprintf(stderr, "\nAAD: ");
-    for (int i = 0; i < ADD_DATA_BYTES; i++) {
-        fprintf(stderr, "%02x", params->aad[i]);
-    }
-    fprintf(stderr, "\n");
-    // end testing
 
     FILE *fd = fopen(argv[argc - 1], "rb");
     if (!fd) {
@@ -291,53 +215,11 @@ main(int argc, char **argv)
     //Hint for splitting the models into a node that is part of cut from parent node (circle)
     //The inference of the last model is gonna take the output of the 2 previous models, like input2, input3
     for (int i = 1; i < argc-1; i++) {
-        int i_size=0, k=i;
-        while (k != 0) {
-            k /= 10;
-            i_size++;
-        }
-        char tag_message[] = "0b02d0418d572d1e090990df6495381f";
-        tag = (uint8_t *)malloc(TAG_BYTES * 2);
-        if (!tag) {
-            fprintf(stderr, "Memory allocation for tag failed\n");
-            free_predictions(preds, argc-1);
-            return 1;
-        }
-        memcpy(tag, tag_message, TAG_BYTES * 2);
-        //tag = write_to_buffer(tag_message);
-        if (!tag) {
-            fprintf(stderr, "Error writing to buffer\n");
-            free_predictions(preds, argc-1);
-            return 1;
-        }
-        params->tag = tag;
-        fprintf(stderr, "\nTag: ");
-        for (int i = 0; i < TAG_BYTES; i++) {
-            fprintf(stderr, "%02x", params->tag[i]);
-        }
-        fprintf(stderr, "\n");
-        preds[i] = inference(argv[i], preds[i-1]->output, NULL, preds[i], params);
-        if (!preds[i]) {
-            fprintf(stderr, "Error running inference for model %s\n", argv[i]);
-            free_predictions(preds, argc-1);
-            free(tag);
-            free(key);
-            free(iv);
-            free(aad);
-            free(params);
-            return 1;
-        }
-        free(tag);
+        preds[i] = inference(argv[i], preds[i-1]->output, NULL, preds[i]);
     }
 
     free_predictions(preds, argc-1);
     fprintf(stderr, "All done\n");
-
-    // testing
-    free(key);
-    free(iv);
-    free(aad);
-    free(params);
 
     return 0;
 }

@@ -270,20 +270,16 @@ pub unsafe extern "C" fn tract_onnx_destroy(onnx: *mut *mut TractOnnx) -> TRACT_
 pub unsafe extern "C" fn tract_onnx_model_for_path(
     onnx: *const TractOnnx,
     path: *const c_char,
-    model: *mut *mut TractInferenceModel,
-    params: *const tract_core::framework::EncryptionParameters
+    model: *mut *mut TractInferenceModel
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         //Inside tract_onnx_model_for_path function
-        check_not_null!(onnx, path, model, params);
-
-        let params = &*params;
-        check_not_null!(params.key, params.iv, params.aad, params.tag);
+        check_not_null!(onnx, path, model);
 
         *model = std::ptr::null_mut();
         let path = CStr::from_ptr(path).to_str()?;
 
-        let m = Box::new(TractInferenceModel((*onnx).0.model_for_path(path, Some(params))?));
+        let m = Box::new(TractInferenceModel((*onnx).0.model_for_path(path)?));
         *model = Box::into_raw(m);
         Ok(())
     })

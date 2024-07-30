@@ -81,7 +81,7 @@ pub trait NnefInterface: Sized {
 
 pub trait OnnxInterface {
     type InferenceModel: InferenceModelInterface;
-    fn model_for_path(&self, path: impl AsRef<Path>, params: Option<*const tract_core::framework::EncryptionParameters>) -> Result<Self::InferenceModel>;
+    fn model_for_path(&self, path: impl AsRef<Path>) -> Result<Self::InferenceModel>;
 }
 
 pub trait InferenceModelInterface: Sized {
