@@ -305,7 +305,7 @@ impl MetalContext {
         descriptor.set_capture_device(self.device());
         descriptor.set_output_url(path);
 
-        capture.start_capture(&descriptor).map_err(|e| anyhow!("{:?}", e))?;
+        capture.start_capture(&descriptor).map_err(|e| anyhow!("Error Metal Capture: {:?}", e))?;
 
         (compute)(self)?;
 
