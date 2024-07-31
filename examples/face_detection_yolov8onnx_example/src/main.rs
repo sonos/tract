@@ -2,7 +2,7 @@ use tract_onnx::prelude::*;
 use tract_ndarray::{Array,s, Array3};
 use clap::Parser;
 use anyhow::{Error, Result};
-use image::DynamicImage;
+use image::{DynamicImage, GenericImage, GenericImageView};
 use std::cmp::Ordering;
 use std::cmp::{PartialOrd};
 
@@ -16,11 +16,6 @@ struct CliArgs {
     
     #[arg(long)]
     weights: String,
-}
-
-fn scale_wh(w0: f32, h0: f32, w1: f32, h1: f32) -> (f32, f32, f32) {
-    let r = (w1 / w0).min(h1 / h0);
-    (r, (w0 * r).round(), (h0 * r).round())
 }
 
 #[derive(Debug, Clone)]
@@ -66,6 +61,18 @@ impl Bbox {
             confidence: self.confidence,
         }
     }
+    pub fn crop_bbox(&self, original_image: &DynamicImage) -> Result<DynamicImage, Error> {
+        let bbox_width = (self.x2 - self.x1) as u32;
+        let bbox_height = (self.y2 - self.y1) as u32;
+        Ok(original_image.to_owned().crop_imm(
+            self.x1 as u32,
+            self.y1 as u32,
+            bbox_width,
+            bbox_height,
+        ))
+    }
+
+
 }
 
 
@@ -102,22 +109,30 @@ fn calculate_iou(box1: &Bbox, box2: &Bbox) -> f32 {
 
 fn main() -> Result<(), Error> {
     let args = CliArgs::parse();
-    let total_classes: usize = 80;  // iterate over the total yolo classes,  in our case, 80, TODO: make it dynamic?!
     let model = tract_onnx::onnx()
         .model_for_path(args.weights)?
         .with_input_fact(0, f32::fact([1,3,640,640]).into())?
         .into_optimized()?
         .into_runnable()?;
     let raw_image = image::open(args.input_image)?;
-
-    let (_, w_new, h_new) = scale_wh(raw_image.width() as f32,
-                                      raw_image.height() as f32, 
-                                    640.0,640.0);
-    let resized = image::imageops::resize(&raw_image.to_rgb8(), w_new as u32, h_new as u32 , image::imageops::FilterType::Triangle);
+    
+    // scale the image with black padding
+    let width = raw_image.width();
+    let height = raw_image.height();
+    let scale = 640.0 / width.max(height) as f32;
+    let new_width = (width as f32 * scale) as u32;
+    let new_height = (height as f32 * scale) as u32;
+    let resized = image::imageops::resize(&raw_image.to_rgb8(), new_width, new_height, image::imageops::FilterType::Triangle);
+    let mut padded = image::RgbImage::new(640, 640);
+    image::imageops::replace(&mut padded, &resized, (640 - new_width as i64) / 2, (640 - new_height as i64) / 2);
     let image: Tensor = tract_ndarray::Array4::from_shape_fn((1, 3, 640, 640), |(_, c, y, x)| {
-        resized[(x as _, y as _)][c] as f32 / 255.0
+        padded.get_pixel(x as u32, y as u32)[c] as f32 / 255.0
     })
-    .into();    
+    .into();   
+    
+
+    //run model
+    //
     let forward = model.run(tvec![image.to_owned().into()])?;
     let results = forward[0].to_array_view::<f32>()?.view().t().into_owned();
     let mut bbox_vec: Vec<Bbox> = vec![];
@@ -136,14 +151,18 @@ fn main() -> Result<(), Error> {
             let y2 = y + h / 2.0;
             let bbox = Bbox::new(x1, y1, x2, y2, confidence).apply_image_scale(
                 &raw_image,
-                w_new as f32,
-                h_new as f32,
+                640.0,
+                640.0,
             );
             bbox_vec.push(bbox);
         
         }
     }    
+    // uncomment below to save preview face
+    // let test_save = bbox_vec[0].crop_bbox(&raw_image)?.save("test_crop.png");
+    
     println!("bboxes: {:?}", bbox_vec);
+    
     Ok(())
 }
 
