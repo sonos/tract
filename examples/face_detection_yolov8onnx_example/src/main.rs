@@ -1,12 +1,10 @@
 use tract_onnx::prelude::*;
-use tract_ndarray::{Array,s, Array3};
+use tract_ndarray::s;
 use clap::Parser;
 use anyhow::{Error, Result};
-use image::{DynamicImage, GenericImage, GenericImageView};
+use image::DynamicImage;
 use std::cmp::Ordering;
 use std::cmp::{PartialOrd};
-
-
 
 
 #[derive(Parser)]
@@ -140,7 +138,7 @@ fn main() -> Result<(), Error> {
         let row = results.slice(s![i, .., ..]);
         let confidence = row[[4, 0]];
 
-        if &confidence >= &0.5 {
+        if confidence >= 0.5 {
             let x = row[[0, 0]];
             let y = row[[1, 0]];
             let w = row[[2, 0]];
