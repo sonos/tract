@@ -1,0 +1,10 @@
+[package]
+name = "yolov8onnx_example"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow.workspace = true
+clap = { version = "4.5.9", features = ["derive"] }
+image.workspace = true 
+tract-onnx = {path="../../onnx", vversion="=0.21.7-pre" }
