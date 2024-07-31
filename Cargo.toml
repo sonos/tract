@@ -50,7 +50,7 @@ members = [
     "test-rt/test-onnx-core",
     "test-rt/test-nnef-cycle",
     "test-rt/test-tflite"
-, "examples/yolov8onnx_example"]
+, "examples/face_detection_yolov8onnx_example"]
 
 [workspace.dependencies]
 accelerate-src = "0.3"
