@@ -30,18 +30,16 @@ pub struct Bbox {
     pub x2: f32,
     pub y2: f32,
     pub confidence: f32,
-    pub class_index: i32
 }
 
 impl Bbox {
-    pub fn new(x1: f32, y1: f32, x2: f32, y2: f32, confidence: f32, class_index: i32) -> Bbox {
+    pub fn new(x1: f32, y1: f32, x2: f32, y2: f32, confidence: f32) -> Bbox {
         Bbox {
             x1,
             y1,
             x2,
             y2,
             confidence,
-            class_index
         }
     }
     pub fn apply_image_scale(
@@ -66,7 +64,6 @@ impl Bbox {
             x2: cart_x2,
             y2: cart_y2,
             confidence: self.confidence,
-            class_index: self.class_index
         }
     }
 }
@@ -105,6 +102,7 @@ fn calculate_iou(box1: &Bbox, box2: &Bbox) -> f32 {
 
 fn main() -> Result<(), Error> {
     let args = CliArgs::parse();
+    let total_classes: usize = 80;  // iterate over the total yolo classes,  in our case, 80, TODO: make it dynamic?!
     let model = tract_onnx::onnx()
         .model_for_path(args.weights)?
         .with_input_fact(0, f32::fact([1,3,640,640]).into())?
@@ -127,18 +125,6 @@ fn main() -> Result<(), Error> {
         let row = results.slice(s![i, .., ..]);
         let confidence = row[[4, 0]];
 
-        let mut max_prob = 0.0;
-        let mut class_index = 0;
-        for j in 0..80 {  
-            // iterate over the total yolo classes, 
-            // in our case, 80, TODO: make it dynamic?!
-            let prob = row[[j + 5, 0]];
-            if prob > max_prob {
-                max_prob = prob;
-                class_index = j;
-            }
-        }
-
         if &confidence >= &0.5 {
             let x = row[[0, 0]];
             let y = row[[1, 0]];
@@ -148,7 +134,7 @@ fn main() -> Result<(), Error> {
             let y1 = y - h / 2.0;
             let x2 = x + w / 2.0;
             let y2 = y + h / 2.0;
-            let bbox = Bbox::new(x1, y1, x2, y2, confidence, class_index as i32).apply_image_scale(
+            let bbox = Bbox::new(x1, y1, x2, y2, confidence).apply_image_scale(
                 &raw_image,
                 w_new as f32,
                 h_new as f32,
