@@ -8,7 +8,7 @@ use tract_hir::prelude::tract_itertools::Itertools;
 
 use crate::data_resolver::{self, ModelDataResolver};
 use crate::pb::type_proto::Value;
-use crate::pb::{self, OperatorSetIdProto, TensorProto, TypeProto};
+use crate::pb::{self, GraphProto, OperatorSetIdProto, TensorProto, TypeProto};
 use crate::tensor::{load_tensor, translate_inference_fact};
 use prost::Message;
 
@@ -222,6 +222,7 @@ pub struct OnnxMetadata {
     pub domain: String,
     pub model_version: i64,
     pub doc_string: String,
+    pub graph: Option<GraphProto>,
     pub metadata_props: HashMap<String,String> 
 }
 
@@ -243,6 +244,10 @@ impl OnnxMetadata {
             domain: model_proto.domain,
             model_version: model_proto.model_version,
             doc_string: model_proto.doc_string,
+            graph: match model_proto.graph {
+                Some(_) => model_proto.graph ,
+                None => None
+            },
             metadata_props:  parse_metadata_props 
         })
     }
