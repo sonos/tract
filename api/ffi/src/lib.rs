@@ -244,6 +244,177 @@ pub unsafe extern "C" fn tract_nnef_write_model_to_dir(
 // ONNX
 pub struct TractOnnx(tract_rs::Onnx);
 
+use tract_core::ndarray::s;
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+};
+use tract_core::internal::tvec;
+use tract_core::internal::Tensor;
+use tokenizers::tokenizer::{Tokenizer};
+use tract_onnx::prelude::*;
+/// Run the Albert example from the tract-onnx crate.
+/// The returned char must be freed with tract_free_cstring().
+#[no_mangle]
+pub unsafe extern "C" fn tract_run_albert(
+    model_path: *const c_char,
+    inference: *mut *mut c_char
+) -> TRACT_RESULT  {
+    fn handle_error<T>(result: Result<T, anyhow::Error>) -> TRACT_RESULT {
+        match result {
+            Ok(_) => TRACT_RESULT::TRACT_RESULT_OK,
+            Err(_) => TRACT_RESULT::TRACT_RESULT_KO,
+        }
+    }
+
+    // Define the result to be returned
+    let result = (|| -> Result<(), anyhow::Error> {
+        let path = CStr::from_ptr(model_path).to_str()?;
+        let model_dir = PathBuf::from_str(path)?;
+        
+        let tokenizer_result = Tokenizer::from_file(Path::join(&model_dir, "tokenizer.json"));
+        let tokenizer = match tokenizer_result {
+            Ok(tokenizer) => tokenizer,
+            Err(_) => return Err(anyhow::anyhow!("Failed to load tokenizer")),
+        };
+
+        let text = "Paris is the [MASK] of France.";
+        let tokenizer_output_result = tokenizer.encode(text, true);
+        let tokenizer_output = match tokenizer_output_result {
+            Ok(output) => output,
+            Err(_) => return Err(anyhow::anyhow!("Failed to encode text")),
+        };
+
+        let input_ids = tokenizer_output.get_ids();
+        let attention_mask = tokenizer_output.get_attention_mask();
+        let token_type_ids = tokenizer_output.get_type_ids();
+        let length = input_ids.len();
+        let mask_pos = input_ids
+            .iter()
+            .position(|&x| x == tokenizer.token_to_id("[MASK]").unwrap())
+            .ok_or_else(|| anyhow::anyhow!("Mask token not found"))?;
+
+        let model = tract_onnx::onnx()
+            .model_for_path(Path::join(&model_dir, "model.onnx"))?
+            .into_optimized()?
+            .into_runnable()?;
+
+        let input_ids_tensor: Tensor = tract_ndarray::Array2::from_shape_vec(
+            (1, length),
+            input_ids.iter().map(|&x| x as i64).collect(),
+        )?
+        .into();
+        let attention_mask_tensor: Tensor = tract_ndarray::Array2::from_shape_vec(
+            (1, length),
+            attention_mask.iter().map(|&x| x as i64).collect(),
+        )?
+        .into();
+        let token_type_ids_tensor: Tensor = tract_ndarray::Array2::from_shape_vec(
+            (1, length),
+            token_type_ids.iter().map(|&x| x as i64).collect(),
+        )?
+        .into();
+
+        let outputs = model.run(tvec!(input_ids_tensor.into(), attention_mask_tensor.into(), token_type_ids_tensor.into()))?;
+        let logits = outputs[0].to_array_view::<f32>()?;
+        let logits = logits.slice(s![0, mask_pos, ..]);
+        let word_id = logits
+            .iter()
+            .zip(0..)
+            .max_by(|a, b| a.0.partial_cmp(b.0).unwrap())
+            .unwrap()
+            .1;
+        let word = tokenizer.id_to_token(word_id);
+
+        // Handle the Option and create a CString
+        let c_word = CString::new(word.unwrap_or_else(|| "No word found".to_string()))?;
+        *inference = c_word.into_raw(); // Pass the result back
+        Ok(())
+    })();
+
+    handle_error(result)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tract_run_albert(
+    model_path: *const c_char,
+    inference: *mut *mut c_char
+) -> TRACT_RESULT  {
+    fn handle_error<T>(result: Result<T, anyhow::Error>) -> TRACT_RESULT {
+        match result {
+            Ok(_) => TRACT_RESULT::TRACT_RESULT_OK,
+            Err(_) => TRACT_RESULT::TRACT_RESULT_KO,
+        }
+    }
+
+    // Define the result to be returned
+    let result = (|| -> Result<(), anyhow::Error> {
+        let path = CStr::from_ptr(model_path).to_str()?;
+        let model_dir = PathBuf::from_str(path)?;
+        
+        let tokenizer_result = Tokenizer::from_file(Path::join(&model_dir, "tokenizer.json"));
+        let tokenizer = match tokenizer_result {
+            Ok(tokenizer) => tokenizer,
+            Err(_) => return Err(anyhow::anyhow!("Failed to load tokenizer")),
+        };
+
+        let text = "Paris is the [MASK] of France.";
+        let tokenizer_output_result = tokenizer.encode(text, true);
+        let tokenizer_output = match tokenizer_output_result {
+            Ok(output) => output,
+            Err(_) => return Err(anyhow::anyhow!("Failed to encode text")),
+        };
+
+        let input_ids = tokenizer_output.get_ids();
+        let attention_mask = tokenizer_output.get_attention_mask();
+        let token_type_ids = tokenizer_output.get_type_ids();
+        let length = input_ids.len();
+        let mask_pos = input_ids
+            .iter()
+            .position(|&x| x == tokenizer.token_to_id("[MASK]").unwrap())
+            .ok_or_else(|| anyhow::anyhow!("Mask token not found"))?;
+
+        let model = tract_onnx::onnx()
+            .model_for_path(Path::join(&model_dir, "model.onnx"))?
+            .into_optimized()?
+            .into_runnable()?;
+
+        let input_ids_tensor: Tensor = tract_ndarray::Array2::from_shape_vec(
+            (1, length),
+            input_ids.iter().map(|&x| x as i64).collect(),
+        )?
+        .into();
+        let attention_mask_tensor: Tensor = tract_ndarray::Array2::from_shape_vec(
+            (1, length),
+            attention_mask.iter().map(|&x| x as i64).collect(),
+        )?
+        .into();
+        let token_type_ids_tensor: Tensor = tract_ndarray::Array2::from_shape_vec(
+            (1, length),
+            token_type_ids.iter().map(|&x| x as i64).collect(),
+        )?
+        .into();
+
+        let outputs = model.run(tvec!(input_ids_tensor.into(), attention_mask_tensor.into(), token_type_ids_tensor.into()))?;
+        let logits = outputs[0].to_array_view::<f32>()?;
+        let logits = logits.slice(s![0, mask_pos, ..]);
+        let word_id = logits
+            .iter()
+            .zip(0..)
+            .max_by(|a, b| a.0.partial_cmp(b.0).unwrap())
+            .unwrap()
+            .1;
+        let word = tokenizer.id_to_token(word_id);
+
+        // Handle the Option and create a CString
+        let c_word = CString::new(word.unwrap_or_else(|| "No word found".to_string()))?;
+        *inference = c_word.into_raw(); // Pass the result back
+        Ok(())
+    })();
+
+    handle_error(result)
+}
+
 /// Creates an instance of an ONNX framework and parser that can be used to load models.
 ///
 /// The returned object should be destroyed with `tract_nnef_destroy` once the model

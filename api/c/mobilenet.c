@@ -77,7 +77,7 @@ inference(char *model_name, TractValue *input, TractValue *input2, prediction *i
     // Load the model
     TractModel *model = NULL;
     TractInferenceModel *inference_model = NULL;
-    if (tract_onnx_model_for_path(onnx, model_name, &inference_model,NULL) != TRACT_RESULT_OK) {
+    if (tract_onnx_model_for_path(onnx, model_name, &inference_model) != TRACT_RESULT_OK) {
         fprintf(stderr, "Error loading model %s\n", model_name);
         free_prediction(inf);
         check(tract_onnx_destroy(&onnx));
@@ -177,6 +177,15 @@ main(int argc, char **argv)
     if (argc < 3) {
         fprintf(stderr, "Usage: %s <model1.onnx> <model2.onnx> ... <modelN.onnx> <input.pb>\n", argv[0]);
         return 1;
+    }
+
+    if (strcmp(argv[1], "albert") == 0) {
+        const char* model_path = "../../examples/pytorch-albert-v2/albert/";
+        char *inference = NULL;
+        check(tract_run_albert(model_path, &inference));
+        fprintf(stderr, "%s\n", inference);
+        tract_free_cstring(inference);
+        return 0;
     }
 
     for (int i = 1; i < argc-1; i++) {

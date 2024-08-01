@@ -155,6 +155,12 @@ enum TRACT_RESULT tract_nnef_write_model_to_dir(const struct TractNnef *nnef,
                                                 const struct TractModel *model);
 
 /**
+ * Run the Albert example from the tract-onnx crate.
+ * The returned char must be freed with tract_free_cstring().
+ */
+enum TRACT_RESULT tract_run_albert(const char *model_path, char **inference);
+
+/**
  * Creates an instance of an ONNX framework and parser that can be used to load models.
  *
  * The returned object should be destroyed with `tract_nnef_destroy` once the model
@@ -174,8 +180,7 @@ enum TRACT_RESULT tract_onnx_destroy(struct TractOnnx **onnx);
  */
 enum TRACT_RESULT tract_onnx_model_for_path(const struct TractOnnx *onnx,
                                             const char *path,
-                                            struct TractInferenceModel **model,
-                                            const EncryptionParameters *params);
+                                            struct TractInferenceModel **model);
 
 /**
  * Query an InferenceModel input counts.
