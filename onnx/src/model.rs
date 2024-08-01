@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::{default, fs, path};
+use std::{ fs, path};
 
 use std::collections::HashMap;
 
@@ -8,7 +8,7 @@ use tract_hir::prelude::tract_itertools::Itertools;
 
 use crate::data_resolver::{self, ModelDataResolver};
 use crate::pb::type_proto::Value;
-use crate::pb::{self, GraphProto, ModelProto, OperatorSetIdProto, TensorProto, TypeProto};
+use crate::pb::{self, GraphProto, OperatorSetIdProto, TensorProto, TypeProto};
 use crate::tensor::{load_tensor, translate_inference_fact};
 use prost::Message;
 
