@@ -8,7 +8,7 @@ use tract_hir::prelude::tract_itertools::Itertools;
 
 use crate::data_resolver::{self, ModelDataResolver};
 use crate::pb::type_proto::Value;
-use crate::pb::{self, TensorProto, TypeProto};
+use crate::pb::{self, OperatorSetIdProto, TensorProto, TypeProto};
 use crate::tensor::{load_tensor, translate_inference_fact};
 use prost::Message;
 
@@ -212,6 +212,42 @@ impl OnnxOpRegister {
         self.0.insert(s.into(), builder);
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct OnnxMetadata {
+    pub ir_version: i64,
+    pub opset_import: Vec<OperatorSetIdProto>,
+    pub producer_name: String,
+    pub producer_version: String,
+    pub domain: String,
+    pub model_version: i64,
+    pub doc_string: String,
+    pub metadata_props: HashMap<String,String> 
+}
+
+
+impl OnnxMetadata {
+    pub fn get_metadata(model_path: impl AsRef<path::Path> ) -> TractResult<OnnxMetadata> {
+        let model_path = model_path.as_ref();
+        let map = unsafe {
+            memmap2::Mmap::map(&fs::File::open(model_path).with_context(|| format!("Opening {model_path:?}"))?)?
+        };
+        let model_proto = crate::pb::ModelProto::decode(&*map)?;
+        let parse_metadata_props: HashMap<String,String> = model_proto.to_owned().metadata_props
+            .into_iter().map(|entry| (entry.key, entry.value)).collect();
+       Ok(OnnxMetadata {
+            ir_version: model_proto.ir_version,
+            opset_import: model_proto.opset_import,
+            producer_name: model_proto.producer_name,
+            producer_version: model_proto.producer_version,
+            domain: model_proto.domain,
+            model_version: model_proto.model_version,
+            doc_string: model_proto.doc_string,
+            metadata_props:  parse_metadata_props 
+        })
+    }
+}
+
 
 #[derive(Clone)]
 pub struct Onnx {
