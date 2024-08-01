@@ -290,23 +290,9 @@ impl Onnx {
     pub fn parse(&self, proto: &pb::ModelProto, path: Option<&str>) -> TractResult<ParseResult> {
         self.parse_with_template(proto, path, Default::default())
     }
-
-    pub fn load_model_with_metadata(&mut self, model_path: impl AsRef<path::Path>) -> TractResult<(InferenceModel, OnnxMetadata)>{
-        let mut path = PathBuf::new();
-        path.push(&model_path);
-        let proto = self.proto_model_for_path(&model_path)?;
-        let mut dir: Option<&str> = None;
-        if let Some(dir_opt) = path.parent() {
-            dir = dir_opt.to_str();
-        }
-        let ParseResult { model, unresolved_inputs, .. } = self.parse(&proto, dir)?;
-        if unresolved_inputs.len() > 0 {
-            bail!("Could not resolve inputs at top-level: {:?}", unresolved_inputs)
-        }
-        let _metadata = OnnxMetadata::get_metadata(&proto)?; 
-        Ok((model, _metadata))
+    pub fn load_metadata(model_proto: &pb::ModelProto) -> TractResult<OnnxMetadata> {
+        Ok(OnnxMetadata::get_metadata(model_proto)?)
     }
-
     pub fn parse_with_template(
         &self,
         proto: &pb::ModelProto,
