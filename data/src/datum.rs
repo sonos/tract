@@ -1,39 +1,16 @@
 //! `Tensor` is the main data container for tract
+use crate::internal::*;
 use crate::dim::TDim;
-use crate::tensor::litteral::*;
 use crate::tensor::Tensor;
 use crate::TVec;
 use half::f16;
 #[cfg(feature = "complex")]
 use num_complex::Complex;
 use scan_fmt::scan_fmt;
+use std::fmt;
 use std::hash::Hash;
-use std::{fmt, ops};
 
 use num_traits::AsPrimitive;
-
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
-pub struct Blob(pub Vec<u8>);
-
-impl ops::Deref for Blob {
-    type Target = [u8];
-    fn deref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl fmt::Display for Blob {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "Blob of {} bytes: {}", self.len(), String::from_utf8_lossy(self))
-    }
-}
-
-impl std::str::FromStr for Blob {
-    type Err = ();
-    fn from_str(s: &str) -> Result<Blob, ()> {
-        Ok(Blob(s.as_bytes().to_vec()))
-    }
-}
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum QParams {
@@ -151,6 +128,7 @@ pub enum DatumType {
     ComplexF32,
     #[cfg(feature = "complex")]
     ComplexF64,
+    Opaque,
 }
 
 impl DatumType {
@@ -233,6 +211,18 @@ impl DatumType {
         matches!(self, DatumType::F16 | DatumType::F32 | DatumType::F64)
     }
 
+    pub fn is_number(&self) -> bool {
+        self.is_signed() | self.is_unsigned() | self.is_float() | self.is_quantized()
+    }
+
+    pub fn is_tdim(&self) -> bool {
+        *self == DatumType::TDim
+    }
+
+    pub fn is_opaque(&self) -> bool {
+        *self == DatumType::Opaque
+    }
+
     #[cfg(feature = "complex")]
     pub fn is_complex(&self) -> bool {
         self.is_complex_float() || self.is_complex_signed()
@@ -249,7 +239,7 @@ impl DatumType {
     }
 
     #[cfg(feature = "complex")]
-    pub fn complexify(&self) -> anyhow::Result<DatumType> {
+    pub fn complexify(&self) -> TractResult<DatumType> {
         match *self {
             DatumType::I16 => Ok(DatumType::ComplexI16),
             DatumType::I32 => Ok(DatumType::ComplexI32),
@@ -257,12 +247,12 @@ impl DatumType {
             DatumType::F16 => Ok(DatumType::ComplexF16),
             DatumType::F32 => Ok(DatumType::ComplexF32),
             DatumType::F64 => Ok(DatumType::ComplexF64),
-            _ => anyhow::bail!("No complex datum type formed on {:?}", self),
+            _ => bail!("No complex datum type formed on {:?}", self),
         }
     }
 
     #[cfg(feature = "complex")]
-    pub fn decomplexify(&self) -> anyhow::Result<DatumType> {
+    pub fn decomplexify(&self) -> TractResult<DatumType> {
         match *self {
             DatumType::ComplexI16 => Ok(DatumType::I16),
             DatumType::ComplexI32 => Ok(DatumType::I32),
@@ -270,7 +260,7 @@ impl DatumType {
             DatumType::ComplexF16 => Ok(DatumType::F16),
             DatumType::ComplexF32 => Ok(DatumType::F32),
             DatumType::ComplexF64 => Ok(DatumType::F64),
-            _ => anyhow::bail!("{:?} is not a complex type", self),
+            _ => bail!("{:?} is not a complex type", self),
         }
     }
 
@@ -361,10 +351,10 @@ impl DatumType {
 
     #[inline]
     pub fn alignment(&self) -> usize {
-        match self {
-            DatumType::TDim => std::mem::size_of::<usize>(),
-            DatumType::String => std::mem::size_of::<usize>(),
-            _ => self.size_of(),
+        if self.is_copy() {
+            self.size_of()
+        } else {
+            std::mem::size_of::<usize>()
         }
     }
 
@@ -406,7 +396,7 @@ impl DatumType {
 }
 
 impl std::str::FromStr for DatumType {
-    type Err = anyhow::Error;
+    type Err = TractError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Ok((z, s)) = scan_fmt!(s, "QU8(Z:{d} S:{f})", i32, f32) {
@@ -444,13 +434,13 @@ impl std::str::FromStr for DatumType {
                 "ComplexF32" | "complexf32" => Ok(DatumType::ComplexF32),
                 #[cfg(feature = "complex")]
                 "ComplexF64" | "complexf64" => Ok(DatumType::ComplexF64),
-                _ => anyhow::bail!("Unknown type {}", s),
+                _ => bail!("Unknown type {}", s),
             }
         }
     }
 }
 
-const TOINT: f32 = 1.0f32 / std::f32::EPSILON;
+const TOINT: f32 = 1.0f32 / f32::EPSILON;
 
 pub fn round_ties_to_even(x: f32) -> f32 {
     let u = x.to_bits();
@@ -538,7 +528,8 @@ datum!(u32, U32);
 datum!(u64, U64);
 datum!(TDim, TDim);
 datum!(String, String);
-datum!(Blob, Blob);
+datum!(crate::blob::Blob, Blob);
+datum!(crate::opaque::Opaque, Opaque);
 #[cfg(feature = "complex")]
 datum!(Complex<i16>, ComplexI16);
 #[cfg(feature = "complex")]
@@ -575,7 +566,7 @@ mod tests {
 
     #[test]
     fn test_cast_i32_to_dim() {
-        let t_i32: Tensor = tensor1(&[0i32, 0]);
+        let t_i32: Tensor = tensor1(&[0i32, 12]);
         t_i32.cast_to::<TDim>().unwrap();
     }
 

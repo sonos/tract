@@ -77,7 +77,6 @@ pub trait Factoid: fmt::Debug + Clone + PartialEq + Default + Hash {
 }
 
 /// Partial information about a value of type T.
-#[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum GenericFactoid<T: fmt::Debug + Clone + PartialEq + Hash> {
     Only(T),
@@ -154,7 +153,6 @@ pub type TypeFactoid = GenericFactoid<DatumType>;
 /// to only specify its first dimensions, so `shapefactoid![1, 2; ..]` matches any
 /// shape that starts with `[1, 2]` (e.g. `[1, 2, i]` or `[1, 2, i, j]`), while
 /// `shapefactoid![..]` matches any shape.
-#[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct ShapeFactoid {
     pub(super) open: bool,

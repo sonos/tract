@@ -43,6 +43,23 @@ impl TypedOp for SumPool {
         self.pool_spec.output_facts(inputs)
     }
 
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let fact = model.outlet_fact(node.inputs[0])?;
+        if let Some(pool_spec) = self.pool_spec.declutter(&fact.shape)? {
+            return Ok(Some(TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &node.inputs,
+                Self { pool_spec, ..self.clone() },
+            )?));
+        }
+        Ok(None)
+    }
+
     as_op!();
 }
 
@@ -114,6 +131,23 @@ impl EvalOp for LirSumPool {
 impl TypedOp for LirSumPool {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         self.pool_spec.output_facts(inputs)
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let fact = model.outlet_fact(node.inputs[0])?;
+        if let Some(pool_spec) = self.pool_spec.declutter(&fact.shape)? {
+            return Ok(Some(TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &node.inputs,
+                Self { pool_spec, ..self.clone() },
+            )?));
+        }
+        Ok(None)
     }
 
     as_op!();

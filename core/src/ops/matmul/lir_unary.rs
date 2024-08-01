@@ -1,25 +1,17 @@
 use crate::internal::*;
-use crate::ops::binary::wire_with_rank_broadcast;
 use crate::ops::cast::cast;
 use crate::ops::nn::LeakyRelu;
+use crate::ops::change_axes::wire_with_rank_broadcast;
 use ndarray::*;
 use tract_itertools::Itertools;
 
-use tract_linalg::mmm::{
-    BinOp, FusedSpec, InputStoreSpec, MatMatMul, OutputStoreSpec, ScratchSpace,
-};
+use tract_linalg::mmm::{BinOp, FusedSpec, MMMInputValue, MatMatMul, OutputStoreSpec};
 use tract_linalg::Scaler;
 use tract_smallvec::ToSmallVec;
 
 #[derive(Clone, Debug)]
-pub enum ProtoInputStoreSpec {
-    Packed { item_size: usize },
-    Virtual { func: Box<dyn InputStoreSpec> },
-}
-
-#[derive(Clone, Debug)]
 pub enum ProtoFusedSpec {
-    AddMatMul(AddMatMulGeometry, usize, usize),
+    AddMatMul { geo: AddMatMulGeometry, a: usize, b: usize, packing: usize },
     BinScalar(usize, BinOp),
     LeakyRelu(usize),
     BinPerRow(usize, BinOp, MapOutputAxisToInput),
@@ -31,10 +23,13 @@ pub enum ProtoFusedSpec {
 }
 
 impl ProtoFusedSpec {
-    pub fn name(&self) -> String {
+    pub fn format(&self, mmm: &dyn MatMatMul) -> String {
         use ProtoFusedSpec::*;
         match self {
-            AddMatMul(geo, _, _) => format!("matmul(k={})", geo.k),
+            AddMatMul { geo, packing, .. } => {
+                let (a,b) = mmm.packings()[*packing];
+                format!("matmul(k={}, {a:?}•{b:?})", geo.k)
+            },
             BinScalar(_, op) => format!("scalar{op:?}"),
             LeakyRelu(alpha) => format!("leaky_relu({alpha:?})"),
             BinPerRow(_, op, _) => format!("row{op:?}"),
@@ -50,35 +45,23 @@ impl ProtoFusedSpec {
         &'t self,
         inputs: &'t [TValue],
         output_coords: &[usize],
-        symbols: &SymbolValues,
         output: &Tensor,
     ) -> FusedSpec<'t> {
         let fs = match self {
-            ProtoFusedSpec::AddMatMul(geo, a, b) => {
+            ProtoFusedSpec::AddMatMul { geo, a, b, packing } => {
                 let mut a = inputs[*a].view();
                 unsafe {
                     geo.c_to_a_axis_mapping.translate_view(output_coords, &mut a);
                 }
+                let a =
+                    a.as_slice::<Opaque>().unwrap()[0].downcast_ref::<Box<dyn MMMInputValue>>().unwrap();
                 let mut b = inputs[*b].view();
                 unsafe {
                     geo.c_to_b_axis_mapping.translate_view(output_coords, &mut b);
                 }
-                let k = geo.k.eval(symbols).to_usize().unwrap();
-                unsafe {
-                    // careful here. this work because a_packed() return a packer from which
-                    // nothing is borrowed
-                    let a = if let Some(sto) = &geo.a_storage {
-                        sto.wrap(&a)
-                    } else {
-                        geo.mmm.a_packed(a.datum_type().size_of(), k).wrap(&a)
-                    };
-                    let b = if let Some(sto) = &geo.b_storage {
-                        sto.wrap(&b)
-                    } else {
-                        geo.mmm.b_packed(b.datum_type().size_of(), k).wrap(&b)
-                    };
-                    FusedSpec::AddMatMul { k, a, b }
-                }
+                let b =
+                    b.as_slice::<Opaque>().unwrap()[0].downcast_ref::<Box<dyn MMMInputValue>>().unwrap();
+                FusedSpec::AddMatMul { a: &**a, b: &**b, packing: *packing }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
             ProtoFusedSpec::LeakyRelu(v) => FusedSpec::LeakyRelu(&inputs[*v]),
@@ -111,9 +94,7 @@ impl ProtoFusedSpec {
 
     pub fn is_trivial(&self) -> bool {
         match self {
-            ProtoFusedSpec::AddMatMul(geo, _, _) => {
-                geo.k.as_i64().is_some() && geo.a_storage.is_some() && geo.b_storage.is_some()
-            }
+            ProtoFusedSpec::AddMatMul { geo, .. } => geo.k.as_i64().is_some(),
             _ => true,
         }
     }
@@ -124,15 +105,14 @@ impl ProtoFusedSpec {
         output: &mut Tensor,
     ) -> FusedSpec<'t> {
         let fs = match self {
-            ProtoFusedSpec::AddMatMul(geo, a, b) => {
-                let a = inputs[*a].view();
-                let b = inputs[*b].view();
-                unsafe {
-                    let k = geo.k.as_i64().unwrap_unchecked() as usize;
-                    let a = geo.a_storage.as_ref().unwrap().wrap(&a);
-                    let b = geo.b_storage.as_ref().unwrap().wrap(&b);
-                    FusedSpec::AddMatMul { k, a, b }
-                }
+            ProtoFusedSpec::AddMatMul { a, b, packing, .. } => {
+                let a = &inputs[*a];
+                let b = &inputs[*b];
+                let a =
+                    a.to_scalar::<Opaque>().unwrap().downcast_ref::<Box<dyn MMMInputValue>>().unwrap();
+                let b =
+                    b.to_scalar::<Opaque>().unwrap().downcast_ref::<Box<dyn MMMInputValue>>().unwrap();
+                FusedSpec::AddMatMul { a: &**a, b: &**b, packing: *packing }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
             ProtoFusedSpec::LeakyRelu(v) => FusedSpec::LeakyRelu(&inputs[*v]),
@@ -157,9 +137,32 @@ impl ProtoFusedSpec {
         fs
     }
 
+    fn check_inputs(&self, inputs: &[&TypedFact]) -> TractResult<()> {
+        use ProtoFusedSpec::*;
+        match self {
+            AddMatMul { a, b, .. } => {
+                ensure!(inputs[*a].datum_type == Opaque::datum_type());
+                ensure!(inputs[*b].datum_type == Opaque::datum_type());
+            }
+            BinScalar(v, _)
+            | LeakyRelu(v)
+            | BinPerCol(v, _, _)
+            | BinPerRow(v, _, _)
+            | AddUnicast(_, v, _) => {
+                ensure!(inputs[*v].datum_type.is_number());
+            }
+            AddRowColProducts(row, col) => {
+                ensure!(inputs[*row].datum_type.is_number());
+                ensure!(inputs[*col].datum_type.is_number());
+            }
+            _ => (),
+        };
+        Ok(())
+    }
+
     fn cost(&self, m: &TDim, n: &TDim, idt: DatumType) -> TVec<(Cost, TDim)> {
         match self {
-            ProtoFusedSpec::AddMatMul(geo, _, _) => {
+            ProtoFusedSpec::AddMatMul { geo, .. } => {
                 tvec!((Cost::FMA(idt), m.clone() * n * &geo.k))
             }
             _ => tvec!(), /* FIXME maybe */
@@ -169,7 +172,7 @@ impl ProtoFusedSpec {
     fn rm_c_axis(&mut self, axis: usize) {
         use ProtoFusedSpec::*;
         match self {
-            AddMatMul(geo, _a, _b) => {
+            AddMatMul { geo, .. } => {
                 geo.c_to_a_axis_mapping.rm_c_axis(axis);
                 geo.c_to_b_axis_mapping.rm_c_axis(axis);
             }
@@ -211,8 +214,6 @@ impl MapOutputAxisToInput {
 #[derive(Clone, Debug)]
 pub struct AddMatMulGeometry {
     pub k: TDim,
-    pub a_storage: Option<Box<dyn InputStoreSpec>>,
-    pub b_storage: Option<Box<dyn InputStoreSpec>>,
     pub mmm: Box<dyn MatMatMul>,
     pub c_to_a_axis_mapping: MapOutputAxisToInput,
     pub c_to_b_axis_mapping: MapOutputAxisToInput,
@@ -242,7 +243,6 @@ impl ResolveTo<ConcreteMatrixGeometry> for SymbolicMatrixGeometry {
     fn resolve(&self, param: &Self::Param) -> TractResult<ConcreteMatrixGeometry> {
         let m = self.m.eval(param).to_usize()?;
         let n = self.n.eval(param).to_usize()?;
-        //        let b_storage = unsafe { self.mmm.b_packed(self.b_datum_type.size_of(), k) };
         Ok(ConcreteMatrixGeometry { m, n })
     }
 }
@@ -272,110 +272,80 @@ impl Op for LirMatMulUnary {
         )];
         let (m, n) = self.m_n();
         if let Some(k) = self.guess_k() {
-            infos.push(format!("Mult: m:{} k:{} n:{} with {}", m, k, n, self.mmm));
+            infos.push(format!("Mult: m:{} k:{} n:{} with {:?}", m, k, n, self.mmm));
         } else {
-            infos.push(format!("Mult: {}", self.mmm));
+            infos.push(format!("Mult: {:?}", self.mmm));
         }
-        infos.push(format!("Ops: {}", self.micro_ops.iter().map(|o| o.name()).join(" >>> ")));
+        infos.push(format!("Ops: {}", self.micro_ops.iter().map(|o| o.format(&*self.mmm)).join(" >>> ")));
         Ok(infos)
     }
 
     op_as_typed_op!();
 }
 
-#[derive(Clone, Debug)]
-struct State;
-trivial_op_state_freeeze!(State);
-
-impl OpState for State {
-    fn eval(
-        &mut self,
-        session: &mut SessionState,
-        op: &dyn Op,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        let op = op.downcast_ref::<LirMatMulUnary>().unwrap();
-        unsafe {
-            if session
-                .cached_mmm_scratch_space
-                .as_deref()
-                .map(|scratch| op.mmm.can_use_scratch_space(scratch))
-                == Some(false)
-            {
-                session.cached_mmm_scratch_space = None
-            }
-            let scratch = session
-                .cached_mmm_scratch_space
-                .get_or_insert_with(|| op.mmm.allocate_scratch_space());
-            eval(op, &session.resolved_symbols, scratch.as_mut(), &inputs)
-        }
-    }
-}
-
 impl EvalOp for LirMatMulUnary {
     fn is_stateless(&self) -> bool {
-        self.geometry.is_concrete()
+        true
     }
 
-    fn state(
+    fn eval_with_session(
         &self,
-        _session: &mut SessionState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(State)))
-    }
-
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let mut scratch = unsafe { self.mmm.allocate_scratch_space() };
-        eval(self, &Default::default(), scratch.as_mut(), &inputs)
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn eval(
-    op: &LirMatMulUnary,
-    symbols: &SymbolValues,
-    scratch: &mut dyn ScratchSpace,
-    inputs: &[TValue],
-) -> TractResult<TVec<TValue>> {
-    unsafe {
-        if op.trivial_path {
-            let c_shape = op.c_fact.shape.as_concrete().unwrap_unchecked();
-            let geometry = op.geometry.as_concrete().unwrap_unchecked();
-            let mut c = Tensor::uninitialized_dt(op.c_fact.datum_type, c_shape)?;
-            let uops: Vec<FusedSpec> =
-                op.micro_ops.iter().map(|o| o.resolve_trivial(inputs, &mut c)).collect();
-            op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &uops)?;
-            Ok(tvec!(c.into_tvalue()))
-        } else {
-            let geometry = op.geometry.to_concrete(symbols)?;
-            let c_shape = op.c_fact.shape.eval_to_usize(symbols)?;
-            let c = Tensor::uninitialized_dt(op.c_fact.datum_type, &c_shape)?;
-            let mut uops = vec![FusedSpec::ShiftLeft(0); op.micro_ops.len()];
-            let mut looping_shape: TVec<usize> = c_shape.to_smallvec();
-            looping_shape[op.c_m_axis] = 1;
-            looping_shape[op.c_n_axis] = 1;
-            for c_coords in indices(&*looping_shape) {
-                for ix in 0..op.micro_ops.len() {
-                    *uops.get_unchecked_mut(ix) = op.micro_ops.get_unchecked(ix).resolve(
-                        inputs,
-                        c_coords.slice(),
-                        symbols,
-                        &c,
-                    );
-                }
-                op.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch, &uops)?;
+        session: &SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        unsafe {
+            let mut cell = session.cached_mmm_scratch_space.borrow_mut();
+            if !cell
+                .as_ref()
+                .map(|scratch| self.mmm.can_use_scratch_space(&**scratch))
+                .unwrap_or(false)
+            {
+                *cell = None
             }
-            Ok(tvec!(c.into_tvalue()))
+            let scratch = cell.get_or_insert_with(|| self.mmm.allocate_scratch_space());
+
+            if self.trivial_path {
+                let c_shape = self.c_fact.shape.as_concrete().unwrap_unchecked();
+                let geometry = self.geometry.as_concrete().unwrap_unchecked();
+                let mut c = Tensor::uninitialized_dt(self.c_fact.datum_type, c_shape)?;
+                let uops: Vec<FusedSpec> =
+                    self.micro_ops.iter().map(|o| o.resolve_trivial(&inputs, &mut c)).collect();
+                self.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch.as_mut(), &uops)?;
+                Ok(tvec!(c.into_tvalue()))
+            } else {
+                let geometry = self.geometry.to_concrete(&session.resolved_symbols)?;
+                let c_shape = self.c_fact.shape.eval_to_usize(&session.resolved_symbols)?;
+                let c = Tensor::uninitialized_dt(self.c_fact.datum_type, &c_shape)?;
+                let mut uops = vec![FusedSpec::ShiftLeft(0); self.micro_ops.len()];
+                let mut looping_shape: TVec<usize> = c_shape.to_smallvec();
+                looping_shape[self.c_m_axis] = 1;
+                looping_shape[self.c_n_axis] = 1;
+                for c_coords in indices(&*looping_shape) {
+                    for ix in 0..self.micro_ops.len() {
+                        *uops.get_unchecked_mut(ix) =
+                            self.micro_ops.get_unchecked(ix).resolve(&inputs, c_coords.slice(), &c);
+                    }
+                    self.mmm.run_with_scratch_space(
+                        geometry.m,
+                        geometry.n,
+                        scratch.as_mut(),
+                        &uops,
+                    ).context("In mmm.run_with_scratch_space")?;
+                }
+                Ok(tvec!(c.into_tvalue()))
+            }
         }
     }
 }
 
 impl TypedOp for LirMatMulUnary {
-    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(self.c_m_axis < self.c_fact.rank());
         ensure!(self.c_n_axis < self.c_fact.rank());
         ensure!(self.trivial_path == self.can_use_trivial_path());
+        for op in &self.micro_ops {
+            op.check_inputs(inputs)?;
+        }
         Ok(tvec!(self.c_fact.clone()))
     }
 
@@ -576,7 +546,7 @@ impl LirMatMulUnary {
             .iter()
             .find_map(
                 |o| {
-                    if let ProtoFusedSpec::AddMatMul(geo, _, _) = o {
+                    if let ProtoFusedSpec::AddMatMul { geo, .. } = o {
                         Some(geo)
                     } else {
                         None

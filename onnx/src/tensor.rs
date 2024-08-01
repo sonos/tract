@@ -1,7 +1,7 @@
+use crate::data_resolver::ModelDataResolver;
 use crate::model::ParsingContext;
 use crate::pb::tensor_proto::DataType;
 use crate::pb::*;
-use crate::data_resolver::ModelDataResolver;
 use prost::Message;
 use std::convert::{TryFrom, TryInto};
 use std::path::PathBuf;
@@ -46,10 +46,11 @@ pub fn translate_inference_fact(
                         Ok(DimFact::from(v.to_dim()))
                     }
                     Some(tensor_shape_proto::dimension::Value::DimParam(v)) => {
-                        if v.starts_with("unk__") && !include_unknown_symbols {
+                        if v == "?" || (v.starts_with("unk__") && !include_unknown_symbols) {
                             Ok(DimFact::default())
                         } else {
-                            let dim = parse_tdim(&ctx.symbol_table, v)?;
+                            let dim = parse_tdim(&ctx.template.symbols, v)
+                                .with_context(|| format!("Parsing as TDim: `{v}'"))?;
                             Ok(DimFact::from(dim))
                         }
                     }
@@ -93,7 +94,7 @@ fn get_external_resources(
         .transpose()
         .context("Error while parsing length value on external data description")?;
 
-    let p = PathBuf::from(format!("{}/{}", path, location));
+    let p = PathBuf::from(path).join(location);
 
     trace!("external file detected: {:?}, offset {:?}, length: {:?}", p, offset, length);
     provider.read_bytes_from_path(&mut tensor_data, &p, offset, length)?;

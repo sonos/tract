@@ -40,10 +40,10 @@ pub fn solve_for(sym: &Symbol, left: &TDim, right: &TDim) -> Option<TDim> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::{parse_tdim, SymbolTable};
+    use super::{parse_tdim, SymbolScope};
 
     lazy_static::lazy_static!(
-        static ref TABLE:SymbolTable = SymbolTable::default();
+        static ref TABLE:SymbolScope = SymbolScope::default();
         static ref A:Symbol = TABLE.sym("a");
     );
 
@@ -58,7 +58,7 @@ mod tests {
 
     #[test]
     fn negative() {
-        assert_eq!(solve_for(&A, &p("a + 3"), &p("0")), Some(-3i32.to_dim()));
+        assert_eq!(solve_for(&A, &p("a + 3"), &p("0")), Some(-(3i32.to_dim())));
     }
 
     #[test]

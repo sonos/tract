@@ -42,6 +42,31 @@
     orr x6, x5, {{ 0|setting:20 }}  // z offset
     orr x6, x6, {{ 0|setting:16 }}  // x offset
 
+    cmp         x3, #16
+    blt         .packed_packed_loop_1
+
+    mov x9, {{0|setting:32}}        // Y broadcast offset += 1
+
+    .packed_packed_loop_16:
+        mov x7, x5
+        mov x8, x6
+        {% amx ldy x2 %}
+        {% for k in (0..15) %}
+            {% amx ldx x4 %}
+            add x4, x4, 128
+            {% amx vecfp x7 %}
+            {% amx vecfp x8 %}
+            add x7, x7, x9
+            add x8, x8, x9
+        {% endfor %}
+        add x2, x2, #64
+        sub x3, x3, #16
+        cmp x3, #16
+    bge .packed_packed_loop_16
+
+    cmp x3, #0
+    beq .non_linear_loop
+
     .packed_packed_loop_1:
         ldr w7, [x2], #4
         str w7, [x1]

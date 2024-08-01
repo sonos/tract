@@ -1,6 +1,11 @@
+use tract_linalg::frame::block_quant::PackedBlockQuantFormat;
+use tract_linalg::frame::PackedFormat;
+use tract_linalg::mmm::{MMMInputFormat, MMMInputValue, MatMatMul};
+
 use super::*;
 use crate::ops::cast::cast;
 use crate::ops::math::add;
+use crate::ops::matmul::de_block_quant::BlockQuantValue;
 use crate::ops::matmul::lir_unary::{
     AddMatMulGeometry, LirMatMulUnary, MapOutputAxisToInput, ProtoFusedSpec,
 };
@@ -39,13 +44,13 @@ pub(crate) fn codegen(
     }
 }
 
-pub(super) fn ensure_mkn_axes<'a>(
+pub(crate) fn ensure_mkn_axes<'a>(
     op: &'a EinSum,
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<AxesOrPatch<'a>> {
     let input_facts = model.node_input_facts(node.id)?;
-    let input_shapes: TVec<&[TDim]> = input_facts.iter().map(|f| &*f.shape).collect();
+    let input_shapes: TVec<&[TDim]> = op.actual_input_shapes_from_facts(&input_facts)?;
     let output_shape = super::eval::output_shape(&op.axes, &input_shapes);
     let candidate_k_axes: TVec<&Axis> = op
         .axes
@@ -53,13 +58,13 @@ pub(super) fn ensure_mkn_axes<'a>(
         // Filter possible candidates (should be one time in each inputs but not in output)
         .filter(|a| {
             a.inputs[0].len() == 1 && a.inputs[1].len() == 1 && a.outputs[0].len() == 0 &&
-                input_facts[0].shape[a.inputs[0][0]] == input_facts[1].shape[a.inputs[1][0]]
+                input_shapes[0][a.inputs[0][0]] == input_shapes[1][a.inputs[1][0]]
         })
     .collect();
 
     let non_trivial_k_axis = candidate_k_axes
         .iter()
-        .filter(|a| !input_facts[0].shape[a.inputs[0][0]].is_one())
+        .filter(|a| !input_shapes[0][a.inputs[0][0]].is_one())
         .collect::<TVec<_>>();
 
     let k_axis = if non_trivial_k_axis.len() > 1 {
@@ -76,7 +81,7 @@ pub(super) fn ensure_mkn_axes<'a>(
         .iter_all_axes()
         .filter(|a| {
             a.inputs[0].len() == 1
-                && (a.inputs[1].len() == 0 || input_facts[1].shape[a.inputs[1][0]].is_one())
+                && (a.inputs[1].len() == 0 || input_shapes[1][a.inputs[1][0]].is_one())
                 && a.outputs[0].len() == 1
         })
         .max_by_key(|a| output_shape[a.outputs[0][0]].as_i64().unwrap_or(i64::MAX));
@@ -87,7 +92,7 @@ pub(super) fn ensure_mkn_axes<'a>(
         .axes
         .iter_all_axes()
         .filter(|a| {
-            (a.inputs[0].len() == 0 || input_facts[0].shape[a.inputs[0][0]].is_one())
+            (a.inputs[0].len() == 0 || input_shapes[0][a.inputs[0][0]].is_one())
                 && a.inputs[1].len() == 1
                 && a.outputs[0].len() == 1
         })
@@ -104,9 +109,9 @@ pub(super) fn ensure_mkn_axes<'a>(
     for axis in op.axes.iter_all_axes() {
         let one = TDim::one();
         let in_left =
-            axis.inputs[0].first().map(|pos| &input_facts[0].shape[*pos]).unwrap_or(&one) != &one;
+            axis.inputs[0].first().map(|pos| &input_shapes[0][*pos]).unwrap_or(&one) != &one;
         let in_right =
-            axis.inputs[1].first().map(|pos| &input_facts[1].shape[*pos]).unwrap_or(&one) != &one;
+            axis.inputs[1].first().map(|pos| &input_shapes[1][*pos]).unwrap_or(&one) != &one;
         let in_out = axis.outputs[0].first().map(|pos| &output_shape[*pos]).unwrap_or(&one) != &one;
         if (in_left ^ in_right) && !in_out {
             return Ok(AxesOrPatch::NotAMatMul(axis));
@@ -144,12 +149,13 @@ pub(super) fn inject_m_or_n_axis(
     is_n: bool,
     exclude: &[&Axis],
 ) -> TractResult<TypedModelPatch> {
+    let input_facts = model.node_input_facts(node.id)?;
+    let input_shapes: TVec<&[TDim]> = op.actual_input_shapes_from_facts(&input_facts)?;
     let input_to_fix = is_n as usize;
     let label = if is_n { "n" } else { "m" };
-    let input_facts = model.node_input_facts(node.id)?;
     let quasi_m_or_n_axis = op.axes.iter_all_axes().filter(|a| !exclude.contains(a)).find(|a| {
         (a.inputs[1 - input_to_fix].len() == 0
-            || input_facts[1 - input_to_fix].shape[a.inputs[1 - input_to_fix][0]].is_one())
+            || input_shapes[1 - input_to_fix][a.inputs[1 - input_to_fix][0]].is_one())
             && (a.inputs[input_to_fix].len() == 1 || a.outputs[0].len() == 1)
     });
     let name = &node.name;
@@ -290,6 +296,87 @@ fn dequant(
     Ok(Some(patch))
 }
 
+fn select_kernel_and_packing(
+    model: &TypedModel,
+    node: &TypedNode,
+    m: &TDim,
+    n: &TDim,
+) -> TractResult<Option<(Box<dyn MatMatMul>, usize)>> {
+    if let Some(bqf) = model
+        .outlet_fact(node.inputs[0])?
+        .opaque_fact
+        .as_ref()
+        .and_then(|of| of.downcast_ref::<BlockQuantFact>())
+    {
+        let mut options: Vec<(&Box<dyn MatMatMul>, usize)> = vec![];
+        let b_dt = model.outlet_fact(node.inputs[1])?.datum_type;
+        for imp in tract_linalg::ops().mmm_impls() {
+            for (packing, (pack_a, pack_b)) in imp.packings().iter().enumerate() {
+                if let (Some(input), Some(b)) = (
+                    pack_a.downcast_ref::<PackedBlockQuantFormat>(),
+                    pack_b.downcast_ref::<PackedFormat>(),
+                ) {
+                    if input.bq.same_as(&*bqf.format) && b.dt == b_dt {
+                        options.push((imp, packing));
+                    }
+                }
+            }
+        }
+        if options.len() > 0 {
+            let pair = if let (Some(m), Some(n)) = (m.as_i64(), n.as_i64()) {
+                options
+                    .iter()
+                    .min_by_key(|a| {
+                        ((m as usize).divceil(a.0.mr()) * (n as usize).divceil(a.0.nr()))
+                            * a.0.mr()
+                            * a.0.nr()
+                    })
+                    .unwrap()
+            } else {
+                options.iter().max_by_key(|a| a.0.mr() * a.0.nr()).unwrap()
+            };
+            return Ok(Some((pair.0.clone(), pair.1)));
+        }
+    }
+    Ok(None)
+}
+
+fn wire_packing(
+    model: &TypedModel,
+    node: &TypedNode,
+    input: usize,
+    patch: &mut TypedModelPatch,
+    packer: &dyn MMMInputFormat,
+    k_axis: usize,
+    mn_axis: usize,
+) -> TractResult<OutletId> {
+    let name = format!("{}.pack_{}", node.name, ['a', 'b'][input]);
+    let a_fact = model.outlet_fact(node.inputs[0])?;
+    if let Some(packed_format) = packer.downcast_ref::<PackedFormat>().cloned() {
+        let wire = patch.tap_model(model, node.inputs[input])?;
+        let pack_a = MatMatMulPack { packer: packed_format, k_axis, mn_axis };
+        Ok(patch.wire_node(&name, pack_a, &[wire])?[0])
+    } else if let Some(pbqf) =
+        a_fact.opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
+    {
+        ensure!(k_axis == 1);
+        ensure!(mn_axis == 0);
+        let Some(weights) = &a_fact.konst else {
+            bail!("Block quant packing with non-const inputs")
+        };
+        ensure!(weights.datum_type() == Opaque::datum_type());
+        let Some(weights) = weights.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>() else {
+            bail!("Expected a BlockQuantValue, found {weights:?}")
+        };
+        let k = pbqf.shape[k_axis].to_usize()?;
+        let packed = pbqf.format.pack(&weights.value, k, packer.r())?;
+        let mmm_input: Box<dyn MMMInputValue> = Box::new(packed);
+        patch.add_const(name, tensor0(Opaque::from(mmm_input)))
+    } else {
+        bail!("Unexpected packing format: {:?}", packer);
+    }
+}
+
 fn lir_mat_mul_unary(
     op: &EinSum,
     model: &TypedModel,
@@ -297,75 +384,76 @@ fn lir_mat_mul_unary(
     (m_axis, k_axis, n_axis): (&Axis, &Axis, &Axis),
 ) -> TractResult<Option<TypedModelPatch>> {
     let input_facts = model.node_input_facts(node.id)?;
+    let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
     let a_m = m_axis.inputs[0][0];
     let a_k = k_axis.inputs[0][0];
     let b_n = n_axis.inputs[1][0];
     let b_k = k_axis.inputs[1][0];
     let c_m = m_axis.outputs[0][0];
     let c_n = n_axis.outputs[0][0];
-    let m = &input_facts[0].shape[a_m];
-    let k = &input_facts[0].shape[a_k];
-    let n = &input_facts[1].shape[b_n];
-    if let (Some(m), Some(n)) = (m.as_i64(), n.as_i64()) {
-        if m < n {
-            let expr = op
-                .axes
-                .iter_all_axes()
-                .map(|axis| {
-                    let mut axis = axis.clone();
-                    axis.inputs.swap(0, 1);
-                    axis
-                })
-                .collect::<TVec<Axis>>();
-            return TypedModelPatch::replace_single_op(
-                model,
-                node,
-                &[node.inputs[1], node.inputs[0]],
-                EinSum { axes: AxesMapping::new(node.inputs.len(), 1, expr)?, ..op.clone() },
-            )
-            .map(Some);
-        }
+    let m = &input_shapes[0][a_m];
+    let k = &input_shapes[0][a_k];
+    let n = &input_shapes[1][b_n];
+    let must_transpose = match (m.as_i64(), n.as_i64()) {
+        (Some(m), Some(n)) => m < n,
+        (None, Some(n)) => n >= 8,
+        _ => false,
+    };
+    if must_transpose {
+        let expr = op
+            .axes
+            .iter_all_axes()
+            .map(|axis| {
+                let mut axis = axis.clone();
+                axis.inputs.swap(0, 1);
+                axis
+            })
+            .collect::<TVec<Axis>>();
+        return TypedModelPatch::replace_single_op(
+            model,
+            node,
+            &[node.inputs[1], node.inputs[0]],
+            EinSum { axes: AxesMapping::new(node.inputs.len(), 1, expr)?, ..op.clone() },
+        )
+        .map(Some);
     }
-    let a_dt = input_facts[0].datum_type;
-    let b_dt = input_facts[1].datum_type;
-    let dt = op.operating_dt;
-    let mmm = tract_linalg::ops()
-        .mmm(a_dt, b_dt, dt, m.to_usize().ok(), k.to_usize().ok(), n.to_usize().ok())
-        .unwrap();
-    let name = &node.name;
+
+    let (mmm, packing) = if let Some(pair) = select_kernel_and_packing(model, node, m, n)? {
+        pair
+    } else {
+        let a_dt = input_facts[0].datum_type;
+        let b_dt = input_facts[1].datum_type;
+        let mmm = tract_linalg::ops()
+            .mmm(op.operating_dt, m.to_usize().ok(), k.to_usize().ok(), n.to_usize().ok())
+            .unwrap();
+        let packing = mmm
+            .packings()
+            .iter()
+            .position(|p| {
+                p.0.can_prepare_types().contains(&a_dt.unquantized())
+                    && p.1.can_prepare_types().contains(&b_dt.unquantized())
+            })
+            .with_context(|| format!("No packing for {mmm:?} with inputs {a_dt:?} and {b_dt:?}"))?;
+        (mmm, packing)
+    };
+
     let mut patch = TypedModelPatch::new("Einsum to LirMatMulUnary");
-    let a = patch.tap_model(model, node.inputs[0])?;
-    let b = patch.tap_model(model, node.inputs[1])?;
-    let a_output_shape_fact =
-        MatMatMulPack::output_shape(&patch.outlet_fact(a)?.shape, &mmm.a_pack(), a_m, a_k);
-    let pack_a = MatMatMulPack {
-        packer: mmm.a_pack(),
-        k_axis: a_k,
-        mn_axis: a_m,
-        output_shape_fact: a_output_shape_fact,
-    };
-    let b_output_shape_fact =
-        MatMatMulPack::output_shape(&patch.outlet_fact(b)?.shape, &mmm.b_pack(), b_n, b_k);
-    let pack_b = MatMatMulPack {
-        packer: mmm.b_pack(),
-        k_axis: b_k,
-        mn_axis: b_n,
-        output_shape_fact: b_output_shape_fact,
-    };
-    let pa = patch.wire_node(format!("{name}.pack_a"), pack_a, &[a])?[0];
-    let pb = patch.wire_node(format!("{name}.pack_b"), pack_b, &[b])?[0];
+    let packers = mmm.packings()[packing];
+
+    let pa = wire_packing(model, node, 0, &mut patch, packers.0, a_k, a_m)?;
+    let pb = wire_packing(model, node, 1, &mut patch, packers.1, b_k, b_n)?;
 
     let mut c_to_a_axis_mapping = tvec!();
     let mut c_to_b_axis_mapping = tvec!();
     for axis in op.axes.iter_all_axes().filter(|&axis| ![m_axis, k_axis, n_axis].contains(&axis)) {
         if let (&[c], &[a]) = (&*axis.outputs[0], &*axis.inputs[0]) {
-            if input_facts[0].shape[a] != 1.to_dim() {
+            if input_shapes[0][a] != 1.to_dim() {
                 let a = a - (a > a_m) as usize - (a > a_k) as usize;
                 c_to_a_axis_mapping.push((c, a));
             }
         }
         if let (&[c], &[b]) = (&*axis.outputs[0], &*axis.inputs[1]) {
-            if input_facts[1].shape[b] != 1.to_dim() {
+            if input_shapes[1][b] != 1.to_dim() {
                 let b = b - (b > b_n) as usize - (b > b_k) as usize;
                 c_to_b_axis_mapping.push((c, b));
             }
@@ -376,8 +464,6 @@ fn lir_mat_mul_unary(
     let name = &node.name;
     let geo = AddMatMulGeometry {
         k: k.clone(),
-        a_storage: k.as_i64().map(|k| unsafe { mmm.a_packed(a_dt.size_of(), k as usize) }),
-        b_storage: k.as_i64().map(|k| unsafe { mmm.b_packed(b_dt.size_of(), k as usize) }),
         mmm: mmm.clone(),
         c_to_a_axis_mapping: MapOutputAxisToInput(c_to_a_axis_mapping),
         c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
@@ -388,7 +474,7 @@ fn lir_mat_mul_unary(
         c_fact,
         c_m,
         c_n,
-        vec![ProtoFusedSpec::AddMatMul(geo, 0, 1), ProtoFusedSpec::Store(output)],
+        vec![ProtoFusedSpec::AddMatMul { geo, a: 0, b: 1, packing }, ProtoFusedSpec::Store(output)],
     )
     .context("Creating LirMatMulUnary")?;
     let output = patch.wire_node(name, lir, &[pa, pb])?[0];

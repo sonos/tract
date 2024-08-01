@@ -277,7 +277,7 @@ fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractRes
     let center_point_box =
         BoxRepr::from_i64(invocation.named_arg_as(builder, "center_point_box")?)?;
 
-    let n = builder.model.symbol_table.sym("n");
+    let n = builder.model.symbols.sym("n");
     let op = NonMaxSuppression {
         center_point_box,
         num_selected_indices_symbol: n,

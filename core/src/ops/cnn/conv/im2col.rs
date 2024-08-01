@@ -1,4 +1,5 @@
-use tract_linalg::frame::{MatMatMul, Packer, PackingWriter};
+use tract_linalg::frame::{MatMatMul, PackedFormat, PackingWriter};
+use tract_linalg::mmm::{EagerPackedInput, MMMInputValue};
 
 use crate::internal::*;
 use ndarray::prelude::*;
@@ -20,7 +21,7 @@ struct SymbolicGeometry {
     group: usize,
     pool_spec: PoolSpec,
     pool_geometry: PoolGeometry,
-    b_pack: Packer,
+    b_pack: PackedFormat,
     k: usize,
 }
 
@@ -29,7 +30,7 @@ struct ConcreteGeometry {
     pool: ConcretePoolGeometry,
     pub n: usize,
     k: usize,
-    pub b_pack: Packer,
+    pub b_pack: PackedFormat,
     pub ci_per_group: usize,
     patcher: Patcher,
     input_shape_with_n: DataShape,
@@ -37,7 +38,7 @@ struct ConcreteGeometry {
 }
 
 impl GeometryBound<SymbolicGeometry, ConcreteGeometry> {
-    pub fn b_pack(&self) -> &Packer {
+    pub fn b_pack(&self) -> &PackedFormat {
         match self {
             GeometryBound::Symbolic(s) => &s.b_pack,
             GeometryBound::Concrete(s) => &s.b_pack,
@@ -79,13 +80,7 @@ impl ResolveTo<ConcreteGeometry> for SymbolicGeometry {
             )?,
             _ => pool.input_shape.clone(),
         };
-        let packed_shape = Im2Col::packed_shape(
-            &pool.input_shape,
-            &pool.output_shape,
-            self.group,
-            self.k,
-            &self.b_pack,
-        )?;
+        let packed_shape = Im2Col::packed_shape(&pool.input_shape, self.group)?;
         Ok(ConcreteGeometry {
             pool,
             n,
@@ -107,7 +102,12 @@ impl Im2Col {
         input_full_shape: &ShapeFact,
         mmm: Box<dyn MatMatMul>,
     ) -> TractResult<Im2Col> {
-        let b_pack = mmm.b_pack();
+        let b_pack = mmm.packings()[0]
+            .1
+            .downcast_ref::<PackedFormat>()
+            .context("Im2Col expects regular packed format")?
+            .clone();
+
         let pool_geometry = pool_spec.compute_geo(input_full_shape)?;
         let geometry: GeometryBound<_, _> =
             SymbolicGeometry { group, pool_spec: pool_spec.clone(), pool_geometry, b_pack, k }
@@ -116,19 +116,14 @@ impl Im2Col {
         Ok(Im2Col { pool_spec, group, geometry })
     }
 
-    // packed shape is Batch,Group,Packed
+    // packed shape is Batch,Group
     fn packed_shape<D: DimLike>(
         input_shape: &BaseDataShape<D, TVec<D>>,
-        conv_output_shape: &BaseDataShape<D, TVec<D>>,
         group: usize,
-        k: usize,
-        b_pack: &Packer,
     ) -> TractResult<TVec<D>> {
         let mut output_shape: TVec<D> = tvec!();
         output_shape.push(input_shape.n().cloned().unwrap_or_else(|| 1.into()));
         output_shape.push(group.into());
-        let n: D = conv_output_shape.hw_dims().iter().cloned().product();
-        output_shape.push(b_pack.len(k.into(), n));
         Ok(output_shape)
     }
 }
@@ -156,14 +151,13 @@ impl EvalOp for Im2Col {
         unsafe {
             let mut input = inputs.remove(0).into_tensor();
             let pad_value: Option<&Tensor> = if inputs.len() > 0 { Some(&inputs[0]) } else { None };
-            let mut output = Tensor::uninitialized_aligned_dt(
-                input.datum_type(),
-                &geometry.packed_shape,
-                geometry.b_pack.alignment(),
-            )?;
+            let mut output = Tensor::uninitialized::<Opaque>(&geometry.packed_shape)?;
             if !self.pool_spec.data_format.has_n() {
                 input.insert_axis(0)?;
             }
+            let mut output_view = output.to_array_view_mut::<Opaque>()?;
+            let panel_bytes =
+                geometry.b_pack.single_panel_len(geometry.k) * input.datum_type().size_of();
 
             // in the loop, we have normalized the input so that N is
             // always here, and output so that N and G are there.
@@ -171,17 +165,27 @@ impl EvalOp for Im2Col {
                 for i in 0..*geometry.input_shape_with_n.n().unwrap_or(&1) {
                     let input = input.view_at_prefix(&[i])?;
                     for g in 0..self.group {
-                        let full_prefix = [i, g];
-                        let actual_prefix = &full_prefix[..=(self.group > 1) as usize];
-                        let mut packed = output.view_at_prefix_mut(actual_prefix)?;
+                        let mut data = Tensor::uninitialized_aligned_dt(
+                            input.datum_type(),
+                            &[geometry.b_pack.len(geometry.k, geometry.n)],
+                            geometry.b_pack.alignment(),
+                        )?;
                         dispatch_copy_by_size!(Patcher::patch(input.datum_type())(
                             &geometry.patcher,
                             &geometry,
                             &input,
-                            &mut packed,
+                            &mut data.view_mut(),
                             g,
                             pad_value
-                        ))?
+                        ))?;
+                        let input: Box<dyn MMMInputValue> = Box::new(EagerPackedInput {
+                            format: Box::new(geometry.b_pack.clone()),
+                            packed: data.into_blob()?,
+                            panel_bytes,
+                            k: geometry.k,
+                            mn: geometry.n,
+                        });
+                        output_view[[i, g]] = input.into();
                     }
                 }
             }
@@ -195,15 +199,7 @@ impl TypedOp for Im2Col {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let input_shape = self.pool_spec.data_format.shape(inputs[0].shape.to_tvec())?;
-        let output_shape = self.pool_spec.output_shape(&inputs[0].shape)?;
-        let shape = Self::packed_shape(
-            &input_shape,
-            &output_shape,
-            self.group,
-            self.geometry.k(),
-            self.geometry.b_pack(),
-        )?;
-        Ok(tvec!(inputs[0].datum_type.fact(shape)))
+        Ok(tvec!(Opaque::fact(&[input_shape.n().cloned().unwrap_or(1.into()), self.group.into()])))
     }
 
     fn declutter(
@@ -398,7 +394,7 @@ impl Patcher {
     unsafe fn padded_2d_invalid_x_loop<T: Copy + Datum>(
         count: usize,
         pad_value: T,
-        writer: &mut tract_linalg::frame::pack::KOutWriter<T>,
+        writer: &mut tract_linalg::frame::mmm::pack::KOutWriter<T>,
     ) {
         for _ in 0..count {
             writer.write(pad_value);
@@ -411,7 +407,7 @@ impl Patcher {
         x_max: isize,
         x_stride_ptr: isize,
         iptr: *const T,
-        writer: &mut tract_linalg::frame::pack::KOutWriter<T>,
+        writer: &mut tract_linalg::frame::mmm::pack::KOutWriter<T>,
     ) {
         for x in x_min..x_max {
             writer.write(*iptr.offset(x * x_stride_ptr));

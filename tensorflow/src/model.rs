@@ -33,8 +33,12 @@ impl TfModelExtensions {
         if self.initializing_nodes.len() > 0 {
             let as_outlets =
                 self.initializing_nodes.iter().map(|n| OutletId::new(*n, 0)).collect::<Vec<_>>();
-            let plan =
-                SimplePlan::new_for_outputs_and_deps(&original, &as_outlets, &self.control_inputs)?;
+            let plan = SimplePlan::build(
+                &original,
+                &as_outlets,
+                &self.control_inputs,
+                &PlanOptions::default(),
+            )?;
             let mut state = SimpleState::new(plan)?;
             state.exec()?;
             let tensors = state.session_state.tensors;
@@ -81,7 +85,7 @@ impl Tensorflow {
         Ok(())
     }
 
-    #[cfg(target_family="wasm")]
+    #[cfg(target_family = "wasm")]
     pub fn read_frozen_from_path(&self, p: impl AsRef<path::Path>) -> TractResult<GraphDef> {
         use std::io::Read;
         let mut file = fs::File::open(p)?;
@@ -119,17 +123,16 @@ impl Tensorflow {
     }
 
     pub fn parse_graph(&self, graph: &GraphDef) -> TractResult<TfModelAndExtensions> {
-        self.parse_graph_with_symbols(graph, &SymbolTable::default())
+        self.parse_graph_with_template(graph, Default::default())
     }
-    pub fn parse_graph_with_symbols(
+
+    pub fn parse_graph_with_template(
         &self,
         graph: &GraphDef,
-        symbols: &SymbolTable,
+        mut model: InferenceModel
     ) -> TractResult<TfModelAndExtensions> {
         use crate::ops::control_flow as cf;
 
-        let mut model =
-            InferenceModel { symbol_table: symbols.to_owned(), ..InferenceModel::default() };
         let mut inputs = tvec!();
         let mut context = ParsingContext::default();
         let mut control_inputs = vec![];
@@ -257,11 +260,11 @@ impl Framework<GraphDef, InferenceModel> for Tensorflow {
         self.read_frozen_model(r)
     }
 
-    fn model_for_proto_model_with_symbols(
-        &self,
-        graph: &GraphDef,
-        symbols: &SymbolTable,
-    ) -> TractResult<InferenceModel> {
-        Ok(self.parse_graph_with_symbols(graph, symbols)?.0)
+    fn model_for_proto_model_with_model_template(
+            &self,
+            proto: &GraphDef,
+            template: InferenceModel,
+        ) -> TractResult<InferenceModel> {
+        Ok(self.parse_graph_with_template(proto, template)?.0)
     }
 }

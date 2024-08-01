@@ -111,7 +111,7 @@ impl TypedOp for Pad {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let mut fact = inputs[0].clone();
+        let mut fact = inputs[0].without_value();
         if self.pads.len() != fact.rank() {
             bail!("Inconsistent pad: input of rank {}, pads are: {:?}", fact.rank(), self.pads);
         }

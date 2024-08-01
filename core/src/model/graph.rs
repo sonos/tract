@@ -1,6 +1,7 @@
 use super::*;
 use crate::internal::*;
 use crate::ops::Op;
+use crate::plan::PlanOptions;
 use crate::prelude::*;
 use std::fmt;
 use tract_data::internal::*;
@@ -42,8 +43,8 @@ where
     pub outlet_labels: HashMap<OutletId, String>,
     /// model properties
     pub properties: HashMap<String, Arc<Tensor>>,
-    /// symbol table
-    pub symbol_table: SymbolTable,
+    /// symbol scope, including table
+    pub symbols: SymbolScope,
 }
 
 impl<F, O> Default for Graph<F, O>
@@ -58,7 +59,7 @@ where
             outputs: vec![],
             outlet_labels: HashMap::new(),
             properties: HashMap::new(),
-            symbol_table: Default::default(),
+            symbols: Default::default(),
         }
     }
 }
@@ -357,7 +358,7 @@ where
 
     /// Get tensor information for a single outlet.
     pub fn outlet_fact(&self, outlet: OutletId) -> TractResult<&F> {
-        anyhow::ensure!(outlet.node < self.nodes.len(), "Invalid outlet for graph");
+        ensure!(outlet.node < self.nodes.len(), "Invalid outlet for graph");
         let outlets = &self.nodes[outlet.node].outputs;
         outlets
             .get(outlet.slot)
@@ -429,7 +430,13 @@ where
 
     /// Computes an evalutation order for the graph inputs and outputs
     pub fn eval_order(&self) -> TractResult<Vec<usize>> {
-        eval_order(self)
+        super::order::eval_order(self)
+    }
+
+    /// Computes an evalutation order for the graph inputs and outputs. This order will minimize
+    /// temporary buffers.
+    pub fn eval_order_opt_ram(&self) -> TractResult<Vec<usize>> {
+        super::order::eval_order_opt_ram(self)
     }
 
     #[cfg(not(all(debug_assertions, feature = "paranoid_assertions")))]
@@ -485,9 +492,18 @@ where
         Ok(())
     }
 
-    /// Converts the model into a `RunnableModel` which fixes the inputs and outputs and allows passing data through the model.
+    /// Converts the model into a `RunnableModel` to actually process user data.
     pub fn into_runnable(self) -> TractResult<RunnableModel<F, O, Self>> {
-        crate::plan::SimplePlan::new(self)
+        crate::plan::SimplePlan::new_with_options(self, &PlanOptions::default())
+    }
+
+    /// Converts the model into a `RunnableModel` to actually process user data. This variant
+    /// accepts options.
+    pub fn into_runnable_with_options(
+        self,
+        options: &PlanOptions,
+    ) -> TractResult<RunnableModel<F, O, Self>> {
+        crate::plan::SimplePlan::new_with_options(self, options)
     }
 
     pub fn single_prec(&self, id: usize) -> TractResult<Option<&Node<F, O>>> {
@@ -542,6 +558,16 @@ where
     pub fn outlet_successors(&self, outlet: OutletId) -> &[InletId] {
         &self.nodes[outlet.node].outputs[outlet.slot].successors
     }
+
+    /// retrieve of create a symbol
+    pub fn sym(&self, s: &str) -> Symbol {
+        self.symbols.sym(s)
+    }
+
+    /// create a new symbol with the prefix
+    pub fn new_sym_with_prefix(&self, prefix: &str) -> Symbol {
+        self.symbols.new_with_prefix(prefix)
+    }
 }
 
 impl<F, O> fmt::Display for Graph<F, O>
@@ -554,19 +580,17 @@ where
             let input_1 =
                 self.nodes[i].inputs.first().map(|o| format!("{o:?}")).unwrap_or_default();
             let input_2 = self.nodes[i].inputs.get(1).map(|o| format!("{o:?}")).unwrap_or_default();
-            let output_1 = self
-                .outlet_successors(OutletId::new(i, 0))
+            let successors = self.nodes[i]
+                .outputs
                 .first()
-                .map(|o| format!("{o:?}"))
-                .unwrap_or_default();
-            let output_2 = self
-                .outlet_successors(OutletId::new(i, 0))
-                .get(1)
-                .map(|o| format!("{o:?}"))
-                .unwrap_or_default();
+                .iter()
+                .flat_map(|o| o.successors.iter())
+                .collect_vec();
+            let output_1 = successors.first().map(|o| format!("{o:?}")).unwrap_or_default();
+            let output_2 = successors.get(1).map(|o| format!("{o:?}")).unwrap_or_default();
             writeln!(
                 fmt,
-                "{:5} | {:8} {:8} -> {:8} {:8} | {:25} {:50} {:?} => {:?}",
+                "{:5} | {:8} {:8} -> {:8} {:8} | {:25} {:50} {} => {}",
                 i,
                 input_1,
                 input_2,
@@ -574,8 +598,8 @@ where
                 output_2,
                 self.nodes[i].op().name(),
                 self.nodes[i].name,
-                self.node_input_facts(i).unwrap(),
-                self.node_output_facts(i).unwrap(),
+                self.node_input_facts(i).unwrap().iter().map(|f| format!("{f:?}")).join(" ; "),
+                self.node_output_facts(i).unwrap().iter().map(|f| format!("{f:?}")).join(" ; "),
             )?;
             if self.nodes[i].inputs.len() > 2 {
                 writeln!(
@@ -585,7 +609,7 @@ where
                 )?;
             }
             if self.nodes[i].outputs.len() > 1
-                || self.outlet_successors((i, 0).into()).len() > 2
+                || successors.len() > 2
                 || (self.outlet_label(i.into()).is_some()
                     && self.outlet_label(i.into()).unwrap() != self.nodes[i].name)
             {
@@ -651,7 +675,6 @@ where
                 bail!("Invalid node id: position is {}, node is {}", ix, n);
             }
             if seen.contains(&n.name) {
-                eprintln!("{self}");
                 bail!("duplicate name {}", n.name);
             }
             seen.insert(&n.name);
@@ -660,8 +683,62 @@ where
     }
 
     pub fn compact(&mut self) -> TractResult<()> {
-        use crate::model::translator::Translate;
-        *self = crate::model::translator::IntoTranslator.translate_model(self)?;
+        let mut order = self.eval_order()?;
+        if order.len() == self.nodes.len() && order.iter().enumerate().all(|(a, b)| a == *b) {
+            return Ok(());
+        }
+        for i in &self.inputs {
+            if !order.contains(&i.node) {
+                order.push(i.node);
+            }
+        }
+        let mut old_to_new = vec![usize::MAX; self.nodes.len()];
+        let mut new_nodes = vec![
+            Node {
+                id: self.nodes.len(),
+                name: "".to_string(),
+                inputs: vec![],
+                op: self.create_dummy(),
+                outputs: tvec!(),
+            };
+            order.len()
+        ];
+        for (ix, id) in order.iter().enumerate() {
+            old_to_new[*id] = ix;
+            std::mem::swap(&mut new_nodes[ix], &mut self.nodes[*id]);
+        }
+        for node in &mut new_nodes {
+            if self.inputs.iter().any(|n| n.node == node.id) && !Self::is_source(&node.op) {
+                node.inputs.clear();
+                node.op = self.create_source(node.outputs[0].fact.clone());
+            }
+            node.id = old_to_new[node.id];
+            for input in &mut node.inputs {
+                assert!(old_to_new[input.node] < order.len());
+                input.node = old_to_new[input.node];
+            }
+            for output in &mut node.outputs {
+                for succ in &mut output.successors {
+                    succ.node = old_to_new[succ.node];
+                }
+                output.successors.retain(|s| s.node < order.len());
+            }
+        }
+        self.nodes = new_nodes;
+        for input in &mut self.inputs {
+            assert!(old_to_new[input.node] < order.len());
+            input.node = old_to_new[input.node];
+        }
+        for output in &mut self.outputs {
+            assert!(old_to_new[output.node] < order.len());
+            output.node = old_to_new[output.node];
+        }
+        self.outlet_labels = std::mem::take(&mut self.outlet_labels)
+            .into_iter()
+            .map(|(k, v)| (OutletId::new(old_to_new[k.node], k.slot), v))
+            .filter(|(k, _)| k.node < order.len())
+            .collect();
+        ensure!(self.nodes.iter().enumerate().all(|(ix, n)| n.id == ix));
         #[cfg(debug_assertions)]
         {
             self.check_compact().context("after graph compaction")?;

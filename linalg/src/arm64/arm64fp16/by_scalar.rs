@@ -15,7 +15,7 @@ ew_impl_wrap!(
             let ptr = buf.as_ptr();
             std::arch::asm!("
             dup v0.8h, v0.h[0]
-            1:
+            2:
                 ld1 {{v4.8h, v5.8h, v6.8h, v7.8h}}, [{ptr}]
                 fmul v4.8h, v4.8h, v0.8h
                 fmul v5.8h, v5.8h, v0.8h
@@ -23,7 +23,7 @@ ew_impl_wrap!(
                 fmul v7.8h, v7.8h, v0.8h
                 st1 {{v4.8h, v5.8h, v6.8h, v7.8h}}, [{ptr}], 64
                 subs {len}, {len}, 32
-                bne 1b
+                bne 2b
             ",
             len = inout(reg) len => _,
             ptr = inout(reg) ptr => _,

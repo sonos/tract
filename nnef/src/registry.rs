@@ -16,7 +16,7 @@ pub type FromTractWithOp<O> =
     fn(&mut IntoAst, node: &TypedNode, op: &O) -> TractResult<Option<Arc<RValue>>>;
 pub type BinOp = (Identifier, Box<dyn BinMiniOp>);
 pub type Extension = Box<
-    dyn Fn(&mut crate::deser::ModelBuilder, &[Identifier]) -> TractResult<ControlFlow<(), ()>>
+    dyn Fn(&mut crate::deser::ModelBuilder, &Identifier, &str) -> TractResult<ControlFlow<(), ()>>
         + Send
         + Sync,
 >;
@@ -215,27 +215,34 @@ impl Registry {
                 invocation.arguments[1].rvalue.resolve(builder, &[])?.to::<OutletId>(builder)?;
             let a_fact = builder.model.outlet_fact(a)?;
             let b_fact = builder.model.outlet_fact(b)?;
-            let mut a_dt = a_fact.datum_type;
-            let mut b_dt = b_fact.datum_type;
+            let a_dt = a_fact.datum_type;
+            let b_dt = b_fact.datum_type;
 
             // mitigation of nnef "scalar" type mismatch with tract-core more
             // strict types
             if !a_dt.is_quantized() || !b_dt.is_quantized() {
-                if a_dt != b_dt {
-                    if builder.model.node(a.node).op_is::<tract_core::ops::konst::Const>() {
-                        a = builder.wire_as_outlets(tract_core::ops::cast::cast(b_dt), &[a])?[0];
-                        a_dt = b_dt;
-                    } else {
-                        b = builder.wire_as_outlets(tract_core::ops::cast::cast(a_dt), &[b])?[0];
-                        b_dt = a_dt;
-                    }
-                }
-                let operating_dt = bin.1.operating_datum_type(a_dt, b_dt)?;
-                // avoid cast unified dtype to happen when all inputs quantized
-                // that can be unaligned at process time
+                let operating_dt = if a_dt == b_dt
+                    && bin.1.operating_datum_type(a_dt, b_dt).map(|it| it == a_dt).unwrap_or(false)
+                {
+                    a_dt
+                } else if a_dt == TDim::datum_type() || b_dt == TDim::datum_type() {
+                    bin.1.operating_datum_type(a_dt, b_dt)?
+                // assume scalar are inline and we should not trust their DT
+                } else if a_fact.konst.is_some() && a_fact.shape.volume().is_one() {
+                    b_dt
+                } else if b_fact.konst.is_some() && b_fact.shape.volume().is_one() {
+                    a_dt
+                } else if builder.model.node(a.node).op_is::<tract_core::ops::konst::Const>() {
+                    b_dt
+                } else if builder.model.node(b.node).op_is::<tract_core::ops::konst::Const>() {
+                    a_dt
+                } else {
+                    bin.1.operating_datum_type(a_dt, b_dt)?
+                };
                 a = builder.wire_as_outlets(tract_core::ops::cast::cast(operating_dt), &[a])?[0];
                 b = builder.wire_as_outlets(tract_core::ops::cast::cast(operating_dt), &[b])?[0];
             }
+
             let inputs = multi_rank_broadcast(builder, &[a, b])?;
 
             let c_dt: Option<DatumType> = dt.first().cloned().and_then(|dt| dt);

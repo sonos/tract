@@ -54,6 +54,11 @@ pub trait ElementWiseMiniOp:
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![])
     }
+
+    #[allow(unused_variables)]
+    fn same_as(&self, other: &dyn ElementWiseMiniOp) -> bool {
+        false
+    }
 }
 
 dyn_clone::clone_trait_object!(ElementWiseMiniOp);
@@ -79,6 +84,11 @@ impl Op for ElementWiseOp {
 
     fn validation(&self) -> Validation {
         self.0.validation()
+    }
+
+    fn same_as(&self, other: &dyn Op) -> bool {
+        let Some(other) = other.downcast_ref::<ElementWiseOp>() else { return false };
+        self.1 == other.1 && self.0.same_as(&*other.0)
     }
 
     op_as_typed_op!();
@@ -127,6 +137,16 @@ impl TypedOp for ElementWiseOp {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(prec) = model.single_prec(node.id)? {
+            if prec.op_is::<AxisOp>() || prec.op_is::<IntoShape>()  {
+                let mut patch = TypedModelPatch::default();
+                let mut wire = tvec!(patch.tap_model(model, prec.inputs[0])?);
+                wire = patch.wire_node(&node.name, &node.op, &wire)?;
+                wire = patch.wire_node(&prec.name, &prec.op, &wire)?;
+                patch.shunt_outside(model, node.id.into(), wire[0])?;
+                return Ok(Some(patch))
+            }
+        }
         self.0.declutter(model, node)
     }
 
@@ -183,6 +203,12 @@ macro_rules! element_wise {
         impl $crate::ops::element_wise::ElementWiseMiniOp for $Op {
             fn name(&self) -> String {
                 format!("{}{}", self.prefix(), stringify!($Op))
+            }
+            #[allow(unused_variables)]
+            fn same_as(&self, other: &dyn ElementWiseMiniOp) -> bool {
+                let Some(other) = other.downcast_ref::<$Op>() else { return false };
+                $( $( if self.$var != other.$var { return false; })* )?
+                true
             }
             fn eval_in_place(&self, t: &mut Tensor, out_dt: Option<DatumType>) -> TractResult<()> {
                 $(

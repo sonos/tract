@@ -1,0 +1,26 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol B;
+extension tract_symbol S;
+
+graph net_2024_07_25T14_48_31(input_0) -> (output_0)
+{
+    input_0 = external<scalar>(shape = [B, S, 4]);
+    reducedform_x_shape = tract_core_shape_of(input_0);
+    reducedform_8_sliced = slice(reducedform_x_shape, axes = [0], begin = [1], end = [2], stride = [1]);
+    reducedform_x_shape_1 = squeeze(reducedform_8_sliced, axes = [0]);
+    reducedform_mask_to_be_expanded = [[0.0]];
+    reducedform_mask = tile(reducedform_mask_to_be_expanded, repeats = [reducedform_x_shape_1, reducedform_x_shape_1]);
+    reducedform_mask_shape = tract_core_shape_of(reducedform_mask);
+    reducedform_23_sliced = slice(reducedform_mask_shape, axes = [0], begin = [1], end = [2], stride = [1]);
+    reducedform_mask_shape_1 = squeeze(reducedform_23_sliced, axes = [0]);
+    reducedform_mask_cond = tract_core_range(0, reducedform_mask_shape_1, step = 1);
+    reducedform_33 = add(reducedform_mask_cond, 1);
+    reducedform_40 = reshape(reducedform_33, shape = [reducedform_mask_shape_1, 1]);
+    reducedform_mask_cond_expanded = unsqueeze(reducedform_mask_cond, axes = [0]);
+    reducedform_41 = lt(reducedform_mask_cond_expanded, reducedform_40);
+    reducedform_43_shape_of_false = tract_core_shape_of(reducedform_mask);
+    reducedform_43_true_expanded = tile([[0.0]], repeats = reducedform_43_shape_of_false);
+    output_0 = select(reducedform_41, reducedform_43_true_expanded, reducedform_mask);
+}

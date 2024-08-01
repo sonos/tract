@@ -1,7 +1,6 @@
 use tract_core::internal::*;
 use tract_core::ops::array::{Pad, PadMode};
-use tract_core::ops::binary::wire_with_rank_broadcast;
-use tract_core::ops::cnn::{rewrite_conv_with_n_axis, KernelFormat};
+use tract_core::ops::cnn::{rewrite_conv_with_n_axis, KernelFormat, MaxPool, PoolSpec, SumPool};
 use tract_core::ops::cnn::{Conv, PaddingSpec};
 use tract_core::ops::einsum::BasicMatMul;
 use tract_core::ops::element_wise::ElementWiseOp;
@@ -15,15 +14,18 @@ pub fn rewrite_for_tflite(model: &mut TypedModel) -> TractResult<()> {
         .with_rule_for("trivial_axes_around_matmul", trivial_axes_around_matmul)
         .with_rule_for("kernel_in_ohwi", kernel_in_ohwi)
         .with_rule_for("bias_as_vector", bias_as_vector)
-//        .with_rule_for("per_layer_in_u8", per_layer_in_u8)
+        //        .with_rule_for("per_layer_in_u8", per_layer_in_u8)
         .with_rule_for("make_1d_2d", make_1d_2d)
         .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
-        .with_rule_for("nchw-to-nhwc", nchw_to_nhwc)
+        .with_rule_for("conv-nchw-to-nhwc", conv_nchw_to_nhwc)
+        .with_rule_for("maxpool-nchw-to-nhwc", maxpool_nchw_to_nhwc)
+        .with_rule_for("sumpool-nchw-to-nhwc", sumpool_nchw_to_nhwc)
         .with_rule_for("padding", padding)
         .with_rule_for("manual_recip", manual_recip)
         .with_rule_for("softmax_on_last_axis", softmax_on_last_axis)
         .with_rule_for("expand-means-of-square", expand_mean_of_squares)
-        .rewrite(&(), model)
+        .rewrite(&(), model)?;
+    tract_core::optim::Optimizer::prop_consts().optimize(model)
 }
 
 fn trivial_axes_around_matmul(
@@ -130,32 +132,32 @@ fn bias_as_vector(
 
 /*
 fn per_layer_in_u8(
-    _ctx: &(),
-    model: &TypedModel,
-    node: &TypedNode,
-    name: &str,
-    conv: &Conv,
+_ctx: &(),
+model: &TypedModel,
+node: &TypedNode,
+name: &str,
+conv: &Conv,
 ) -> TractResult<Option<TypedModelPatch>> {
-    let input_fact = model.outlet_fact(node.inputs[0])?;
-    let idt = input_fact.datum_type;
-    let kernel_fact = model.outlet_fact(node.inputs[1])?;
-    let kdt = kernel_fact.datum_type;
-    if idt.is_float() || model.outlet_fact(node.inputs[6])?.shape.len() > 1 {
-        return Ok(None);
-    }
-    if idt.unquantized() == u8::datum_type() && kdt.unquantized() == u8::datum_type() {
-        return Ok(None);
-    }
-    let mut patch = TypedModelPatch::default();
-    let wire = patch.taps(model, &node.inputs)?;
-    let [mut i, mut k, b, mut i0, is, mut k0, ks, o0, os] = &*wire else {
-        bail!("Unexpected number of inputs")
-    };
-    wire_ensure_q8_flavour(&mut patch, name, &mut i, "input", &mut i0, DatumType::U8)?;
-    wire_ensure_q8_flavour(&mut patch, name, &mut k, "kernel", &mut k0, DatumType::U8)?;
-    let output = patch.wire_node(name, conv.clone(), &[i, k, *b, i0, *is, k0, *ks, *o0, *os])?;
-    patch.shunt_outside(model, node.id.into(), output[0])?;
-    Ok(Some(patch))
+let input_fact = model.outlet_fact(node.inputs[0])?;
+let idt = input_fact.datum_type;
+let kernel_fact = model.outlet_fact(node.inputs[1])?;
+let kdt = kernel_fact.datum_type;
+if idt.is_float() || model.outlet_fact(node.inputs[6])?.shape.len() > 1 {
+return Ok(None);
+}
+if idt.unquantized() == u8::datum_type() && kdt.unquantized() == u8::datum_type() {
+return Ok(None);
+}
+let mut patch = TypedModelPatch::default();
+let wire = patch.taps(model, &node.inputs)?;
+let [mut i, mut k, b, mut i0, is, mut k0, ks, o0, os] = &*wire else {
+bail!("Unexpected number of inputs")
+};
+wire_ensure_q8_flavour(&mut patch, name, &mut i, "input", &mut i0, DatumType::U8)?;
+wire_ensure_q8_flavour(&mut patch, name, &mut k, "kernel", &mut k0, DatumType::U8)?;
+let output = patch.wire_node(name, conv.clone(), &[i, k, *b, i0, *is, k0, *ks, *o0, *os])?;
+patch.shunt_outside(model, node.id.into(), output[0])?;
+Ok(Some(patch))
 }
 */
 
@@ -184,29 +186,66 @@ fn make_1d_2d(
     Ok(None)
 }
 
-fn nchw_to_nhwc(
+fn conv_nchw_to_nhwc(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
     name: &str,
     conv: &Conv,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if !conv.pool_spec.data_format.c_is_last() {
-        let mut new = conv.clone();
-        new.pool_spec.data_format = match conv.pool_spec.data_format {
+    nchw_to_nhwc(_ctx, model, node, name, &conv.pool_spec, &|pool_spec| {
+        Box::new(Conv { pool_spec, ..conv.clone() })
+    })
+}
+
+fn maxpool_nchw_to_nhwc(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    op: &MaxPool,
+) -> TractResult<Option<TypedModelPatch>> {
+    nchw_to_nhwc(_ctx, model, node, name, &op.pool_spec, &|pool_spec| {
+        Box::new(MaxPool { pool_spec, ..op.clone() })
+    })
+}
+
+fn sumpool_nchw_to_nhwc(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    op: &SumPool,
+) -> TractResult<Option<TypedModelPatch>> {
+    nchw_to_nhwc(_ctx, model, node, name, &op.pool_spec, &|pool_spec| {
+        Box::new(SumPool { pool_spec, ..op.clone() })
+    })
+}
+
+fn nchw_to_nhwc(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    old: &PoolSpec,
+    op: &dyn Fn(PoolSpec) -> Box<dyn TypedOp>,
+) -> TractResult<Option<TypedModelPatch>> {
+    if !old.data_format.c_is_last() {
+        let mut new = old.clone();
+        new.data_format = match new.data_format {
             DataFormat::NHWC | DataFormat::HWC => unreachable!(),
             DataFormat::CHW => DataFormat::HWC,
             DataFormat::NCHW => DataFormat::NHWC,
         };
         let mut patch = TypedModelPatch::default();
         let fact = model.outlet_fact(node.inputs[0])?;
-        let shape = conv.pool_spec.data_format.shape(&fact.shape)?;
+        let shape = old.data_format.shape(&fact.shape)?;
         let before = shape.c_axis();
         let after = fact.rank() - 1;
         let mut wire = patch.taps(model, &node.inputs)?;
         wire[0] =
             patch.wire_node(format!("{name}.nhwc"), AxisOp::Move(before, after), &[wire[0]])?[0];
-        wire = patch.wire_node(name, new, &wire)?;
+        wire = patch.wire_node(name, op(new), &wire)?;
         wire = patch.wire_node(format!("{name}.nchw"), AxisOp::Move(after, before), &wire)?;
         patch.shunt_outside(model, node.id.into(), wire[0])?;
         return Ok(Some(patch));

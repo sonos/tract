@@ -1,0 +1,11 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+graph net_2024_06_26T18_12_43(input_0) -> (output_0)
+{
+    input_0 = external<scalar>(shape = [2, 3]);
+    v2 = tract_core_cast(input_0);
+    v1 = mul(v2, v2);
+    output_0 = tract_core_cast(v1, to = 'f32');
+}

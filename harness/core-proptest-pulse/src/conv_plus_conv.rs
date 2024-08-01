@@ -96,7 +96,7 @@ impl ConvPlusConvProblem {
             .collect();
         for s in 0usize.. {
             let symbols =
-                SymbolValues::default().with(&model.symbol_table.get("S").unwrap(), s as _);
+                SymbolValues::default().with(&model.symbols.get("S").unwrap(), s as _);
             if dims.iter().all(|d| d.eval(&symbols).to_isize().unwrap() > 0) {
                 return s;
             }
@@ -106,7 +106,7 @@ impl ConvPlusConvProblem {
 
     pub fn model(ops: &[ConvOp]) -> TypedModel {
         let mut model = TypedModel::default();
-        let s = model.symbol_table.sym("S");
+        let s = model.symbols.sym("S");
         let wire = model.add_source("a", f32::fact(dims!(1, 1, s))).unwrap();
         let mut wire = tvec!(wire);
         for (ix, cv) in ops.iter().enumerate() {

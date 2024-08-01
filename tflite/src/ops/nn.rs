@@ -1,10 +1,11 @@
 use tract_core::internal::*;
 use tract_core::ops as core;
-use tract_core::ops::binary::wire_cast;
-use tract_core::ops::binary::wire_with_rank_broadcast;
+use tract_core::ops::cast::wire_cast;
+use tract_core::ops::change_axes::wire_with_rank_broadcast;
 use tract_core::ops::cast::Cast;
 use tract_core::ops::einsum::BasicMatMul;
 use tract_core::ops::einsum::EinSum;
+use tract_core::ops::math::add;
 use tract_core::ops::nn::Softmax;
 use tract_core::ops::nn::{Reduce, Reducer};
 use tract_core::prelude::tract_itertools::Itertools;
@@ -76,11 +77,29 @@ fn de_fully_connected(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     ensure!(weights.rank() == 2);
     ensure!(bias.rank() == 1);
     let mut inputs: TVec<OutletId> = op.inputs.into();
-    let qp = super::linearops_quantization_suport(op, &input, &mut inputs)?;
-    let operating_dt =
-        if input.datum_type.is_float() { input.datum_type } else { i32::datum_type() };
-    let einsum = EinSum { axes: "BI,OI,O,,,,,,->BO".parse()?, q_params: qp, operating_dt };
-    let wires = op.ctx.target.wire_node(op.prefix, einsum, &inputs)?;
+    let wires = if input.datum_type.is_float() {
+        let axes = "BI,OI->BO".parse()?;
+        let einsum = EinSum { axes, q_params: None, operating_dt: input.datum_type };
+        let mut wires = op.ctx.target.wire_node(op.prefix, einsum, &inputs[0..2])?;
+        if inputs.len() == 3 {
+            let bias = op.ctx.target.wire_node(
+                format!("{}.bias_rank", op.prefix),
+                AxisOp::Add(0),
+                &inputs[2..3],
+            )?;
+            wires = op.ctx.target.wire_node(
+                format!("{}.bias", op.prefix),
+                add(),
+                &[wires[0], bias[0]],
+            )?;
+        }
+        wires
+    } else {
+        let qp = super::linearops_quantization_suport(op, &input, &mut inputs)?;
+        let axes = "BI,OI,O,,,,,,->BO".parse()?;
+        let einsum = EinSum { axes, q_params: qp, operating_dt: i32::datum_type() };
+        op.ctx.target.wire_node(op.prefix, einsum, &inputs)?
+    };
     super::wire_fused_activation(op, &wires, &options.fused_activation_function())
 }
 

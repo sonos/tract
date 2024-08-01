@@ -1,68 +1,94 @@
 use crate::internal::*;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::ops::Range;
-use tract_linalg::frame::{Packer, PackingWriter};
-use tract_linalg::mmm::{InputStore, InputStoreSpec};
+use tract_linalg::frame::{PackedFormat, PackingWriter};
+use tract_linalg::mmm::MMMInputValue;
 
-#[derive(Clone, Hash)]
-pub struct LazyIm2colSpec {
-    pub packer: Packer,
-    pub n_bytes_offsets: Vec<isize>,
-    pub k_bytes_offsets: Vec<isize>,
+#[derive(Clone, Debug, Hash, PartialEq)]
+pub struct LazyIm2colParams {
+    pub packer: PackedFormat,
+    pub n_byte_offsets: Vec<isize>,
+    pub k_byte_offsets: Vec<isize>,
 }
 
-impl Debug for LazyIm2colSpec {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "LazyIm2colSpec {{...}}")
+#[derive(Clone, Debug, Hash, PartialEq)]
+pub struct LazyIm2Col {
+    pub params: Arc<LazyIm2colParams>,
+}
+
+impl Op for LazyIm2Col {
+    fn name(&self) -> Cow<str> {
+        "LazyIm2col".into()
+    }
+
+    impl_op_same_as!();
+    op_as_typed_op!();
+}
+
+impl EvalOp for LazyIm2Col {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let tensor = args_1!(inputs);
+        let input: Box<dyn MMMInputValue> =
+            Box::new(LazyIm2colInput { tensor, im2col: self.params.clone() });
+        let input = Opaque(Arc::new(input));
+        Ok(tvec!(tensor2(&[[input]]).into_tvalue()))
     }
 }
 
-impl LazyIm2colSpec {
-    fn wrap_t<T: Datum + Copy>(&self, view: &TensorView) -> Box<dyn InputStore> {
-        let input = LazyIm2col::<T> {
-            packer: self.packer.clone(),
-            ptr: view.as_ptr().unwrap(),
-            k: self.k_bytes_offsets.len(),
-            n: self.n_bytes_offsets.len(),
-            n_byte_offsets: self.n_bytes_offsets.as_ptr(),
-            k_byte_offsets: self.k_bytes_offsets.as_ptr(),
-        };
-        Box::new(input)
+impl TypedOp for LazyIm2Col {
+    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(Opaque::fact([1, 1])))
     }
-}
 
-impl InputStoreSpec for LazyIm2colSpec {
-    fn wrap(&self, view: &TensorView) -> Box<dyn InputStore> {
-        dispatch_copy!(Self::wrap_t(view.datum_type())(self, view))
-    }
+    as_op!();
 }
 
 #[derive(Clone, Debug)]
-struct LazyIm2col<T: Datum + Copy> {
-    packer: Packer,
-    ptr: *const T,
-    k: usize,
-    n: usize,
-    n_byte_offsets: *const isize,
-    k_byte_offsets: *const isize,
+struct LazyIm2colInput {
+    tensor: TValue,
+    im2col: Arc<LazyIm2colParams>,
 }
 
-unsafe impl<T: Datum + Copy> Send for LazyIm2col<T> {}
-unsafe impl<T: Datum + Copy> Sync for LazyIm2col<T> {}
+impl Display for LazyIm2colInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
 
-impl<T: Datum + Copy> LazyIm2col<T> {
-    fn input_8n(&self, writer: &mut impl PackingWriter<T>, k_range: Range<isize>, n: isize) {
+impl Hash for LazyIm2colInput {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (self.tensor.as_bytes(), &self.im2col).hash(state);
+    }
+}
+
+unsafe impl Send for LazyIm2colInput {}
+unsafe impl Sync for LazyIm2colInput {}
+
+impl LazyIm2colInput {
+    fn input_8n<T: Datum + Copy>(
+        &self,
+        writer: &mut impl PackingWriter<T>,
+        k_range: Range<isize>,
+        n: isize,
+    ) {
+        let k_byte_offsets = self.im2col.k_byte_offsets.as_ptr();
+        let n_byte_offsets = self.im2col.n_byte_offsets.as_ptr();
         unsafe {
-            let o1 = *self.n_byte_offsets.offset(n);
-            let o2 = *self.n_byte_offsets.offset(n + 1);
-            let o3 = *self.n_byte_offsets.offset(n + 2);
-            let o4 = *self.n_byte_offsets.offset(n + 3);
-            let o5 = *self.n_byte_offsets.offset(n + 4);
-            let o6 = *self.n_byte_offsets.offset(n + 5);
-            let o7 = *self.n_byte_offsets.offset(n + 6);
-            let o8 = *self.n_byte_offsets.offset(n + 7);
+            let ptr = self.tensor.as_ptr_unchecked::<u8>();
+            let o1 = *n_byte_offsets.offset(n);
+            let o2 = *n_byte_offsets.offset(n + 1);
+            let o3 = *n_byte_offsets.offset(n + 2);
+            let o4 = *n_byte_offsets.offset(n + 3);
+            let o5 = *n_byte_offsets.offset(n + 4);
+            let o6 = *n_byte_offsets.offset(n + 5);
+            let o7 = *n_byte_offsets.offset(n + 6);
+            let o8 = *n_byte_offsets.offset(n + 7);
             for k in k_range.start..k_range.end {
-                let ptr = (self.ptr as *const u8).offset(*self.k_byte_offsets.offset(k));
+                let ptr = ptr.offset(*k_byte_offsets.offset(k));
                 let v1 = *(ptr.offset(o1) as *const T);
                 let v2 = *(ptr.offset(o2) as *const T);
                 let v3 = *(ptr.offset(o3) as *const T);
@@ -83,16 +109,24 @@ impl<T: Datum + Copy> LazyIm2col<T> {
         }
     }
 
-    fn input_6n(&self, writer: &mut impl PackingWriter<T>, k_range: Range<isize>, n: isize) {
+    fn input_6n<T: Datum + Copy>(
+        &self,
+        writer: &mut impl PackingWriter<T>,
+        k_range: Range<isize>,
+        n: isize,
+    ) {
         unsafe {
-            let o1 = *self.n_byte_offsets.offset(n);
-            let o2 = *self.n_byte_offsets.offset(n + 1);
-            let o3 = *self.n_byte_offsets.offset(n + 2);
-            let o4 = *self.n_byte_offsets.offset(n + 3);
-            let o5 = *self.n_byte_offsets.offset(n + 4);
-            let o6 = *self.n_byte_offsets.offset(n + 5);
+            let ptr = self.tensor.as_ptr_unchecked::<u8>();
+            let k_byte_offsets = self.im2col.k_byte_offsets.as_ptr();
+            let n_byte_offsets = self.im2col.n_byte_offsets.as_ptr();
+            let o1 = *n_byte_offsets.offset(n);
+            let o2 = *n_byte_offsets.offset(n + 1);
+            let o3 = *n_byte_offsets.offset(n + 2);
+            let o4 = *n_byte_offsets.offset(n + 3);
+            let o5 = *n_byte_offsets.offset(n + 4);
+            let o6 = *n_byte_offsets.offset(n + 5);
             for k in k_range.start..k_range.end {
-                let ptr = (self.ptr as *const u8).offset(*self.k_byte_offsets.offset(k));
+                let ptr = ptr.offset(*k_byte_offsets.offset(k));
                 let v1 = *(ptr.offset(o1) as *const T);
                 let v2 = *(ptr.offset(o2) as *const T);
                 let v3 = *(ptr.offset(o3) as *const T);
@@ -109,14 +143,22 @@ impl<T: Datum + Copy> LazyIm2col<T> {
         }
     }
 
-    fn input_4n(&self, writer: &mut impl PackingWriter<T>, k_range: Range<isize>, n: isize) {
+    fn input_4n<T: Datum + Copy>(
+        &self,
+        writer: &mut impl PackingWriter<T>,
+        k_range: Range<isize>,
+        n: isize,
+    ) {
         unsafe {
-            let o1 = *self.n_byte_offsets.offset(n);
-            let o2 = *self.n_byte_offsets.offset(n + 1);
-            let o3 = *self.n_byte_offsets.offset(n + 2);
-            let o4 = *self.n_byte_offsets.offset(n + 3);
+            let ptr = self.tensor.as_ptr_unchecked::<u8>();
+            let k_byte_offsets = self.im2col.k_byte_offsets.as_ptr();
+            let n_byte_offsets = self.im2col.n_byte_offsets.as_ptr();
+            let o1 = *n_byte_offsets.offset(n);
+            let o2 = *n_byte_offsets.offset(n + 1);
+            let o3 = *n_byte_offsets.offset(n + 2);
+            let o4 = *n_byte_offsets.offset(n + 3);
             for k in k_range.start..k_range.end {
-                let ptr = (self.ptr as *const u8).offset(*self.k_byte_offsets.offset(k));
+                let ptr = ptr.offset(*k_byte_offsets.offset(k));
                 let v1 = *(ptr.offset(o1) as *const T);
                 let v2 = *(ptr.offset(o2) as *const T);
                 let v3 = *(ptr.offset(o3) as *const T);
@@ -129,12 +171,20 @@ impl<T: Datum + Copy> LazyIm2col<T> {
         }
     }
 
-    fn input_2n(&self, writer: &mut impl PackingWriter<T>, k_range: Range<isize>, n: isize) {
+    fn input_2n<T: Datum + Copy>(
+        &self,
+        writer: &mut impl PackingWriter<T>,
+        k_range: Range<isize>,
+        n: isize,
+    ) {
         unsafe {
-            let o1 = *self.n_byte_offsets.offset(n);
-            let o2 = *self.n_byte_offsets.offset(n + 1);
+            let ptr = self.tensor.as_ptr_unchecked::<u8>();
+            let k_byte_offsets = self.im2col.k_byte_offsets.as_ptr();
+            let n_byte_offsets = self.im2col.n_byte_offsets.as_ptr();
+            let o1 = *n_byte_offsets.offset(n);
+            let o2 = *n_byte_offsets.offset(n + 1);
             for k in k_range.start..k_range.end {
-                let ptr = (self.ptr as *const u8).offset(*self.k_byte_offsets.offset(k));
+                let ptr = ptr.offset(*k_byte_offsets.offset(k));
                 let v1 = *(ptr.offset(o1) as *const T);
                 let v2 = *(ptr.offset(o2) as *const T);
                 writer.write(v1);
@@ -143,13 +193,13 @@ impl<T: Datum + Copy> LazyIm2col<T> {
         }
     }
 
-    fn write(
+    fn write<T: Datum + Copy>(
         &self,
         writer: &mut impl PackingWriter<T>,
         k_range: std::ops::Range<isize>,
         mn_range: std::ops::Range<isize>,
     ) {
-        let mn_end = mn_range.end.min(self.n as isize);
+        let mn_end = mn_range.end.min(self.im2col.n_byte_offsets.len() as isize);
         let n_range = mn_range.start..mn_end;
         match n_range.len() {
             8 => return self.input_8n(writer, k_range, n_range.start),
@@ -159,18 +209,21 @@ impl<T: Datum + Copy> LazyIm2col<T> {
             _ => (),
         }
         unsafe {
+            let ptr = self.tensor.as_ptr_unchecked::<u8>();
+            let k_byte_offsets = self.im2col.k_byte_offsets.as_ptr();
+            let n_byte_offsets = self.im2col.n_byte_offsets.as_ptr();
             for k in k_range.start..k_range.end {
-                let ptr = (self.ptr as *const u8).offset(*self.k_byte_offsets.offset(k));
+                let ptr = ptr.offset(*k_byte_offsets.offset(k));
                 let mut n = n_range.start;
                 while n + 8 <= n_range.end {
-                    let o1 = *self.n_byte_offsets.offset(n);
-                    let o2 = *self.n_byte_offsets.offset(n + 1);
-                    let o3 = *self.n_byte_offsets.offset(n + 2);
-                    let o4 = *self.n_byte_offsets.offset(n + 3);
-                    let o5 = *self.n_byte_offsets.offset(n + 4);
-                    let o6 = *self.n_byte_offsets.offset(n + 5);
-                    let o7 = *self.n_byte_offsets.offset(n + 6);
-                    let o8 = *self.n_byte_offsets.offset(n + 7);
+                    let o1 = *n_byte_offsets.offset(n);
+                    let o2 = *n_byte_offsets.offset(n + 1);
+                    let o3 = *n_byte_offsets.offset(n + 2);
+                    let o4 = *n_byte_offsets.offset(n + 3);
+                    let o5 = *n_byte_offsets.offset(n + 4);
+                    let o6 = *n_byte_offsets.offset(n + 5);
+                    let o7 = *n_byte_offsets.offset(n + 6);
+                    let o8 = *n_byte_offsets.offset(n + 7);
                     let v1 = *(ptr.offset(o1) as *const T);
                     let v2 = *(ptr.offset(o2) as *const T);
                     let v3 = *(ptr.offset(o3) as *const T);
@@ -190,12 +243,12 @@ impl<T: Datum + Copy> LazyIm2col<T> {
                     n += 8;
                 }
                 while n + 6 <= n_range.end {
-                    let o1 = *self.n_byte_offsets.offset(n);
-                    let o2 = *self.n_byte_offsets.offset(n + 1);
-                    let o3 = *self.n_byte_offsets.offset(n + 2);
-                    let o4 = *self.n_byte_offsets.offset(n + 3);
-                    let o5 = *self.n_byte_offsets.offset(n + 4);
-                    let o6 = *self.n_byte_offsets.offset(n + 5);
+                    let o1 = *n_byte_offsets.offset(n);
+                    let o2 = *n_byte_offsets.offset(n + 1);
+                    let o3 = *n_byte_offsets.offset(n + 2);
+                    let o4 = *n_byte_offsets.offset(n + 3);
+                    let o5 = *n_byte_offsets.offset(n + 4);
+                    let o6 = *n_byte_offsets.offset(n + 5);
                     let v1 = *(ptr.offset(o1) as *const T);
                     let v2 = *(ptr.offset(o2) as *const T);
                     let v3 = *(ptr.offset(o3) as *const T);
@@ -211,10 +264,10 @@ impl<T: Datum + Copy> LazyIm2col<T> {
                     n += 6;
                 }
                 while n + 4 <= n_range.end {
-                    let o1 = *self.n_byte_offsets.offset(n);
-                    let o2 = *self.n_byte_offsets.offset(n + 1);
-                    let o3 = *self.n_byte_offsets.offset(n + 2);
-                    let o4 = *self.n_byte_offsets.offset(n + 3);
+                    let o1 = *n_byte_offsets.offset(n);
+                    let o2 = *n_byte_offsets.offset(n + 1);
+                    let o3 = *n_byte_offsets.offset(n + 2);
+                    let o4 = *n_byte_offsets.offset(n + 3);
                     let v1 = *(ptr.offset(o1) as *const T);
                     let v2 = *(ptr.offset(o2) as *const T);
                     let v3 = *(ptr.offset(o3) as *const T);
@@ -226,7 +279,7 @@ impl<T: Datum + Copy> LazyIm2col<T> {
                     n += 4;
                 }
                 while n < n_range.end {
-                    let o1 = *self.n_byte_offsets.offset(n);
+                    let o1 = *n_byte_offsets.offset(n);
                     let v1 = *(ptr.offset(o1) as *const T);
                     writer.write(v1);
                     n += 1;
@@ -236,23 +289,47 @@ impl<T: Datum + Copy> LazyIm2col<T> {
     }
 }
 
-impl<T: Datum + Copy> InputStore for LazyIm2col<T> {
+impl MMMInputValue for LazyIm2colInput {
     fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
-        Some(self.packer.single_panel_layout(self.k, T::datum_type().size_of()))
+        let k = self.im2col.k_byte_offsets.len();
+        Some(self.im2col.packer.single_panel_layout(k, self.tensor.datum_type().size_of()))
     }
 
-    fn panel(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
-        let mn_start = i * self.packer.r;
-        let mn_end = (mn_start + self.packer.r).min(self.n);
+    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> TractResult<*const u8> {
+        Ok(dispatch_copy!(Self::do_panel(self.tensor.datum_type())(self, i, buffer)))
+    }
+
+    fn k(&self) -> usize {
+        self.im2col.k_byte_offsets.len()
+    }
+
+    fn mn(&self) -> usize {
+        self.im2col.n_byte_offsets.len()
+    }
+
+    fn r(&self) -> usize {
+        self.im2col.packer.r
+    }
+}
+
+impl LazyIm2colInput {
+    fn do_panel<T: Datum + Copy>(&self, i: usize, buffer: Option<*mut u8>) -> *const u8 {
+        let r = self.im2col.packer.r;
+        let mn_start = i * r;
+        let mn_end = (mn_start + self.im2col.packer.r).min(self.im2col.n_byte_offsets.len());
+        let k = self.im2col.k_byte_offsets.len();
         let mn_range = mn_start as isize..mn_end as isize;
-        let k_range = 0..self.k as isize;
+        let k_range = 0..k as isize;
         let packed = buffer.unwrap();
-        if mn_range.len() == self.packer.r && mn_start % self.packer.r == 0 {
-            let mut writer = self.packer.write_single_panel_with_k_outer(packed as *mut T);
+        if mn_range.len() == r && mn_start % r == 0 {
+            let mut writer = self.im2col.packer.write_single_panel_with_k_outer(packed as *mut T);
             self.write(&mut writer, k_range, mn_range);
         } else {
-            let mut writer =
-                self.packer.write_with_k_outer(packed as *mut T, k_range.len(), mn_range.len());
+            let mut writer = self.im2col.packer.write_with_k_outer(
+                packed as *mut T,
+                k_range.len(),
+                mn_range.len(),
+            );
             self.write(&mut writer, k_range, mn_range);
         }
         packed

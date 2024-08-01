@@ -2,9 +2,11 @@ use crate::ast::*;
 use crate::internal::*;
 use tract_core::ndarray::ArrayViewD;
 use tract_core::ndarray::Axis;
+use tract_core::ops::matmul::de_block_quant::BlockQuantValue;
 use tract_itertools::Itertools;
 
 pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
+    model.prop_consts()?;
     tract_core::ops::einsum::rewrite_einsums_as_matmul(model)?;
     Rewriter::default()
         .with_rule_for("rewrite_conv_with_n_axis", tract_core::ops::cnn::rewrite_conv_with_n_axis)
@@ -50,7 +52,6 @@ pub struct IntoAst<'a> {
     pub framework: &'a Nnef,
     pub parent: Option<&'a IntoAst<'a>>,
     pub registries: Vec<Identifier>,
-    pub symbols: Vec<Symbol>,
     pub model: &'a TypedModel,
     pub parameters: Vec<Identifier>,
     pub results: Vec<Identifier>,
@@ -73,7 +74,6 @@ impl<'a> IntoAst<'a> {
         IntoAst {
             framework,
             registries: Default::default(),
-            symbols: Default::default(),
             model,
             parameters: Default::default(),
             results: Default::default(),
@@ -93,13 +93,6 @@ impl<'a> IntoAst<'a> {
         }
         if !self.registries.iter().any(|r| r == id) {
             self.registries.push(id.clone());
-        }
-        Ok(())
-    }
-
-    pub fn ensure_symbol(&mut self, s: &Symbol) -> TractResult<()> {
-        if !self.symbols.contains(s) {
-            self.symbols.push(s.clone());
         }
         Ok(())
     }
@@ -197,11 +190,14 @@ impl<'a> IntoAst<'a> {
         self.registries.sort();
         for reg in self.registries {
             if reg.0 != "tract_nnef" {
-                extension.push(vec!["tract_registry".into(), reg]);
+                extension.push(("tract_registry".into(), reg.0));
             }
         }
-        for sym in self.symbols {
-            extension.push(vec!["tract_symbol".into(), Identifier(sym.to_string())]);
+        for sym in self.model.symbols.all_symbols() {
+            extension.push(("tract_symbol".into(), sym.to_string()));
+        }
+        for assert in self.model.symbols.all_assertions() {
+            extension.push(("tract_assert".into(), assert.to_string()));
         }
         let properties = FragmentDef {
             decl: FragmentDecl {
@@ -391,6 +387,15 @@ impl<'a> IntoAst<'a> {
 
         self.tensors.insert(name.clone(), tensor.clone());
         let id = self.scoped_id(&name);
+        let shape = if tensor.datum_type().is_opaque() {
+            if let Some(bqv) = tensor.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>() {
+                bqv.fact.shape.as_concrete().unwrap()
+            } else {
+                bail!("Unexpected opaque tensor in serialization {tensor:?}");
+            }
+        } else {
+            tensor.shape()
+        };
         self.assignment(
             id.clone(),
             RValue::Invocation(Invocation {
@@ -398,7 +403,7 @@ impl<'a> IntoAst<'a> {
                 generic_type_name: Some(TypeName::Scalar),
                 arguments: vec![
                     named_arg("label", string(name.0)),
-                    named_arg("shape", ints(tensor.shape())),
+                    named_arg("shape", ints(shape)),
                 ],
             })
             .into(),
@@ -446,6 +451,8 @@ pub fn tdim(dim: &TDim) -> RValue {
             .unwrap(),
         TDim::MulInt(x, y) => RValue::Binary(numeric(x).boxed(), "*".to_string(), tdim(y).boxed()),
         TDim::Div(x, y) => RValue::Binary(tdim(x).boxed(), "/".to_string(), numeric(y).boxed()),
+        TDim::Broadcast(_) => todo!(),
+        TDim::Min(_) | TDim::Max(_) => todo!(),
     }
 }
 

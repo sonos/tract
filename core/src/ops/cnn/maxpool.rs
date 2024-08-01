@@ -58,6 +58,15 @@ impl TypedOp for MaxPool {
             patch.shunt_outside(model, node.id.into(), wire)?;
             return Ok(Some(patch));
         }
+        let fact = model.outlet_fact(node.inputs[0])?;
+        if let Some(pool_spec) = self.pool_spec.declutter(&fact.shape)? {
+            return Ok(Some(TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &node.inputs,
+                Self { pool_spec, ..self.clone() },
+            )?));
+        }
         Ok(None)
     }
 
@@ -80,8 +89,6 @@ pub struct LirMaxPool {
     pub with_index_outputs: Option<DatumType>,
     pub geometry: PoolGeometry,
 }
-
-
 
 impl Op for LirMaxPool {
     fn name(&self) -> Cow<str> {

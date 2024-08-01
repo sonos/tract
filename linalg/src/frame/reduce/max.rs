@@ -1,18 +1,3 @@
-
-/*macro_rules! max_impl {
-    ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $cond: expr) => {
-        reduce_impl!($ti, $func, $nr, $alignment_items);
-        #[cfg(test)]
-        paste! {
-            mod [<test_ $func>] {
-                use super::*;
-                max_frame_tests!($cond, $ti, $func);
-            }
-        }
-    };
-}
-*/
-
 #[cfg(test)]
 #[macro_use]
 pub mod test {
@@ -28,7 +13,7 @@ pub mod test {
                 #[test]
                 fn prop(xs in proptest::collection::vec(-25f32..25.0, 0..100)) {
                     if $cond {
-                        $crate::frame::max::test::test_max::<$ker, $t>(&*xs).unwrap()
+                        $crate::frame::reduce::max::test::test_max::<$ker, $t>(&*xs).unwrap()
                     }
                 }
             }
@@ -36,7 +21,7 @@ pub mod test {
             #[test]
             fn empty() {
                 if $cond {
-                    $crate::frame::max::test::test_max::<$ker, $t>(&[]).unwrap()
+                    $crate::frame::reduce::max::test::test_max::<$ker, $t>(&[]).unwrap()
                 }
             }
         };

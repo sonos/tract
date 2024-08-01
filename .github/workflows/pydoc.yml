@@ -24,17 +24,22 @@ jobs:
 
       - name: Build doc
         run: |
+          set -ex
           git config user.name "CI bot"
           git config user.email ci-bot@tract.rs
           git fetch origin gh-pages --depth=1
           cd api/py
-          pip install -r requirements-docs.txt
+          sudo apt-get install -y python3-pip
+          pip3 install virtualenv
+          virtualenv pydocs
+          source pydocs/bin/activate
+          pip install --ignore-installed -r requirements-docs.txt
           version=${{steps.version.outputs.value}}
           if [ -n "$version" ]
           then
             mike deploy $version
           else
-            mike deploy 0.20.dev
+            mike deploy 0.21.dev
           fi
           git fetch
           git rebase --onto origin/gh-pages gh-pages

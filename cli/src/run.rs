@@ -1,9 +1,10 @@
-use std::fs::File;
+use fs::File;
 use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::TractResult;
 use crate::{Model, Parameters};
+use fs_err as fs;
 use ndarray_npy::NpzWriter;
 use nu_ansi_term::Color::*;
 use tract_core::ops::cnn::conv::Im2Col;
@@ -63,8 +64,7 @@ pub fn handle(
     }
 
     if let Some(file_path) = sub_matches.value_of("save-outputs-nnef") {
-        std::fs::create_dir_all(file_path)
-            .with_context(|| format!("Creating {file_path} directory"))?;
+        fs::create_dir_all(file_path).with_context(|| format!("Creating {file_path} directory"))?;
         for (ix, outputs) in outputs.iter().enumerate() {
             let name = params
                 .tract_model
@@ -73,12 +73,12 @@ pub fn handle(
                 .unwrap_or_else(|| format!("output_{ix}.dat"));
 
             if outputs.len() == 1 {
-                let mut f = std::fs::File::create(PathBuf::from_str(file_path)?.join(&name))?;
+                let mut f = fs::File::create(PathBuf::from_str(file_path)?.join(&name))?;
                 write_tensor(&mut f, &outputs[0])?;
             } else {
                 for (turn, output) in outputs.iter().enumerate() {
                     let name = format!("turn_{turn}/{name}");
-                    let mut f = std::fs::File::open(PathBuf::from_str(file_path)?.join(name))?;
+                    let mut f = fs::File::open(PathBuf::from_str(file_path)?.join(name))?;
                     write_tensor(&mut f, output)?;
                 }
             }
@@ -86,8 +86,7 @@ pub fn handle(
     }
 
     if let Some(file_path) = sub_matches.value_of("save-outputs-npz") {
-        let file =
-            std::fs::File::create(file_path).with_context(|| format!("Creating {file_path}"))?;
+        let file = fs::File::create(file_path).with_context(|| format!("Creating {file_path}"))?;
         let mut npz = ndarray_npy::NpzWriter::new_compressed(file);
 
         for (ix, outputs) in outputs.iter().enumerate() {
@@ -150,7 +149,7 @@ fn run_regular(
     let check_f16_overflow = sub_matches.is_present("check-f16-overflow");
     let assert_sane_floats = sub_matches.is_present("assert-sane-floats");
     let mut npz = if let Some(npz) = sub_matches.value_of("save-steps") {
-        let npz = std::fs::File::create(npz).with_context(|| format!("Creating {npz}"))?;
+        let npz = fs::File::create(npz).with_context(|| format!("Creating {npz}"))?;
         Some(ndarray_npy::NpzWriter::new_compressed(npz))
     } else {
         None
@@ -163,7 +162,7 @@ fn run_regular(
                 let mut tokens = set.split('=');
                 let sym = tokens.next().context("--set expect S=12 form")?;
                 let value = tokens.next().context("--set expect S=12 form")?;
-                let sym = state.model().symbol_table.sym(sym).to_owned();
+                let sym = state.model().symbols.sym(sym).to_owned();
                 let value: i64 = value.parse().context("Can not parse symbol value in set")?;
                 state.session_state.resolved_symbols =
                     state.session_state.resolved_symbols.with(&sym, value);
@@ -228,22 +227,12 @@ fn run_regular(
                             if let Ok(floats) = o.as_slice::<f32>() {
                                 if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
                                     eprintln!("{floats:?}");
-                                    tract_core::anyhow::bail!(
-                                        "Found {} in output {} of {}",
-                                        floats[pos],
-                                        ix,
-                                        node
-                                    );
+                                    bail!("Found {} in output {} of {}", floats[pos], ix, node);
                                 }
                             } else if let Ok(floats) = o.as_slice::<f16>() {
                                 if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
                                     eprintln!("{floats:?}");
-                                    tract_core::anyhow::bail!(
-                                        "Found {} in output {} of {}",
-                                        floats[pos],
-                                        ix,
-                                        node
-                                    );
+                                    bail!("Found {} in output {} of {}", floats[pos], ix, node);
                                 }
                             }
                         }

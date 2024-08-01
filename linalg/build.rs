@@ -265,7 +265,7 @@ fn preprocess_file(
     } else if family == "windows" {
         ""
     } else {
-        "."
+        ".L"
     }
     .to_owned();
     let long = if msvc { "dd" } else { ".long" };

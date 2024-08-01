@@ -4,26 +4,84 @@ use crate::ser::{BuiltinOp, SubgraphBuilder};
 use crate::tflite::{
     ActivationFunctionType, BuiltinOperator, BuiltinOptions, Conv2DOptions, Conv2DOptionsArgs,
     DepthwiseConv2DOptions, DepthwiseConv2DOptionsArgs, PadOptions, PadOptionsArgs, Padding,
+    Pool2DOptions, Pool2DOptionsArgs,
 };
+use flatbuffers::{FlatBufferBuilder, WIPOffset};
 use tract_core::internal::*;
 use tract_core::ops as core;
 use tract_core::ops::array::{Pad, PadMode};
 use tract_core::ops::cast::cast;
-use tract_core::ops::cnn::KernelFormat;
-use tract_core::ops::cnn::{Conv, PaddingSpec};
+use tract_core::ops::cnn::{Conv, MaxPool, PaddingSpec, PoolSpec};
+use tract_core::ops::cnn::{KernelFormat, SumPool};
 use tract_core::ops::nn::DataFormat;
 use tract_core::prelude::tract_itertools::Itertools;
 
 pub fn register_all(reg: &mut Registry) {
-    reg.reg_to_tract(BuiltinOperator::AVERAGE_POOL_2D, average_pool_2d);
+    reg.reg_to_tflite(ser_max_pool);
+    reg.reg_to_tflite(ser_sum_pool);
+    reg.reg_to_tract(BuiltinOperator::AVERAGE_POOL_2D, de_average_pool_2d);
+    reg.reg_to_tract(BuiltinOperator::MAX_POOL_2D, de_max_pool_2d);
     reg.reg_to_tract(BuiltinOperator::CONV_2D, de_conv2d);
     reg.reg_to_tflite(ser_conv);
     reg.reg_to_tract(BuiltinOperator::DEPTHWISE_CONV_2D, de_dw_conv2d);
     reg.reg_to_tflite(ser_pad);
 }
 
-fn average_pool_2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
-    let options = builtin!(op, builtin_options_as_pool_2_doptions);
+fn pool_2d_options<'fb>(
+    fb: &mut FlatBufferBuilder<'fb>,
+    pool_spec: &PoolSpec,
+) -> TractResult<WIPOffset<Pool2DOptions<'fb>>> {
+    ensure!(pool_spec.data_format == DataFormat::NHWC);
+    ensure!(pool_spec.rank() == 2);
+    ensure!(
+        pool_spec.padding == PaddingSpec::Valid || pool_spec.padding == PaddingSpec::SameUpper,
+        "unsupported padding {:?}",
+        pool_spec.padding
+    );
+    let padding =
+        if pool_spec.padding == PaddingSpec::Valid { Padding::VALID } else { Padding::SAME };
+    let options = Pool2DOptions::create(
+        fb,
+        &Pool2DOptionsArgs {
+            padding,
+            stride_h: pool_spec.stride(0) as _,
+            stride_w: pool_spec.stride(1) as _,
+            filter_height: pool_spec.kernel_shape[0] as _,
+            filter_width: pool_spec.kernel_shape[1] as _,
+            fused_activation_function: ActivationFunctionType::NONE,
+        },
+    );
+    Ok(options)
+}
+
+fn ser_max_pool(
+    builder: &mut SubgraphBuilder,
+    model: &TypedModel,
+    node: &TypedNode,
+    op: &MaxPool,
+) -> TractResult<()> {
+    let inputs = tvec!(builder.map_outlet(model, node.inputs[0])?);
+    let output = builder.outlets_to_tensors[&node.id.into()];
+    let options = pool_2d_options(builder.fb(), &op.pool_spec)?;
+    let op = BuiltinOp::new(17, 1, BuiltinOperator::MAX_POOL_2D, BuiltinOptions::Pool2DOptions);
+    builder.write_op_with_options(&inputs, &[output], op, options.as_union_value())
+}
+
+fn ser_sum_pool(
+    builder: &mut SubgraphBuilder,
+    model: &TypedModel,
+    node: &TypedNode,
+    op: &SumPool,
+) -> TractResult<()> {
+    ensure!(op.normalize);
+    let inputs = tvec!(builder.map_outlet(model, node.inputs[0])?);
+    let output = builder.outlets_to_tensors[&node.id.into()];
+    let options = pool_2d_options(builder.fb(), &op.pool_spec)?;
+    let op = BuiltinOp::new(1, 1, BuiltinOperator::AVERAGE_POOL_2D, BuiltinOptions::Pool2DOptions);
+    builder.write_op_with_options(&inputs, &[output], op, options.as_union_value())
+}
+
+fn de_pool_2d_options(options: &Pool2DOptions, shape: &ShapeFact) -> TractResult<PoolSpec> {
     let strides = tvec!(options.stride_h() as usize, options.stride_w() as usize);
     let kernel_shape = tvec!(options.filter_height() as usize, options.filter_width() as usize);
     let padding = match options.padding() {
@@ -31,12 +89,9 @@ fn average_pool_2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         Padding::VALID => PaddingSpec::Valid,
         _ => todo!(),
     };
-    let ci = DataFormat::NHWC
-        .shape(&op.facts()?[0].shape)?
-        .c()
-        .to_usize()
-        .context("Except defined integer depth")?;
-    let pool_spec = core::cnn::PoolSpec {
+    let ci =
+        DataFormat::NHWC.shape(&shape)?.c().to_usize().context("Except defined integer depth")?;
+    Ok(core::cnn::PoolSpec {
         data_format: DataFormat::NHWC,
         kernel_shape,
         padding,
@@ -44,8 +99,21 @@ fn average_pool_2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         dilations: None,
         input_channels: ci,
         output_channels: ci,
-    };
+    })
+}
+
+fn de_average_pool_2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let options = builtin!(op, builtin_options_as_pool_2_doptions);
+    let pool_spec = de_pool_2d_options(&options, &op.output_facts[0].shape)?;
     let pool = core::cnn::SumPool { pool_spec, normalize: true, count_include_pad: false };
+    let wires = op.ctx.target.wire_node(op.prefix, pool, &op.inputs[0..1])?;
+    wire_fused_activation(op, &wires, &options.fused_activation_function())
+}
+
+fn de_max_pool_2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let options = builtin!(op, builtin_options_as_pool_2_doptions);
+    let pool_spec = de_pool_2d_options(&options, &op.output_facts[0].shape)?;
+    let pool = core::cnn::MaxPool { pool_spec, with_index_outputs: None };
     let wires = op.ctx.target.wire_node(op.prefix, pool, &op.inputs[0..1])?;
     wire_fused_activation(op, &wires, &options.fused_activation_function())
 }
@@ -75,12 +143,16 @@ fn ser_conv(
         let kscale = facts[6].konst.as_ref().unwrap().as_slice::<f32>()?;
         let per_channel = !kscale.iter().all_equal();
         if per_channel {
-            let kernel = model.outlet_fact(node.inputs[1])?.konst.as_ref().context(
-                "tract TODO: dynamic convolution and per-channel scales",
-            )?;
-            let bias = model.outlet_fact(node.inputs[2])?.konst.as_ref().context(
-                "tract TODO: dynamic convolution and per-channel scales",
-            )?;
+            let kernel = model
+                .outlet_fact(node.inputs[1])?
+                .konst
+                .as_ref()
+                .context("tract TODO: dynamic convolution and per-channel scales")?;
+            let bias = model
+                .outlet_fact(node.inputs[2])?
+                .konst
+                .as_ref()
+                .context("tract TODO: dynamic convolution and per-channel scales")?;
             inputs.push(builder.write_fact_with_per_axis_q(
                 &format!("{node_name}.weights"),
                 kernel,
@@ -191,8 +263,7 @@ fn de_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     inputs[2] =
         op.ctx.target.wire_node(format!("{}.cast_bias", op.prefix), cast(bias_dt), &[inputs[2]])?
             [0];
-    let conv =
-        core::cnn::Conv { pool_spec, kernel_fmt: KernelFormat::OHWI, group: 1, q_params };
+    let conv = core::cnn::Conv { pool_spec, kernel_fmt: KernelFormat::OHWI, group: 1, q_params };
     let wires = op.ctx.target.wire_node(op.prefix, conv, &inputs)?;
     wire_fused_activation(op, &wires, &options.fused_activation_function())
 }

@@ -12,5 +12,11 @@ dyn-clone.workspace = true
 env_logger.workspace = true
 itertools.workspace = true
 lazy_static.workspace = true
+tract-core = { path = "../../core", version = "=0.21.7-pre" }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
 proptest.workspace = true
-tract-core = { path = "../../core", version = "=0.21.4-pre" }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+# Wasm doesn't support the `fork` feature of proptest.
+proptest = { version = "1.0.0", default-features = false, features = ["std", "bit-set"] }

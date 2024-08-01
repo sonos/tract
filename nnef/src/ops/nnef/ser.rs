@@ -127,7 +127,7 @@ pub fn pad(
 ) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
     let dt = ast.model.outlet_fact(node.inputs[0])?.datum_type;
-    let padding = array(&op.pads.iter().map(|pair| ints(&[pair.0, pair.1])).collect::<TVec<_>>());
+    let padding = array(op.pads.iter().map(|pair| ints(&[pair.0, pair.1])).collect::<TVec<_>>());
     let mut params = tvec!(("padding", padding));
     let (border, value) = pad_mode(&op.mode, dt)?;
     params.push(("border", string(border)));
@@ -174,7 +174,7 @@ pub fn make_conv_named_args<'a>(
     let output_shape = pool_spec.data_format.shape(node.outputs[0].fact.shape.to_tvec())?;
     let padding = match &pool_spec.padding {
         PaddingSpec::ExplicitOnnxPool(bef, after, _) | PaddingSpec::Explicit(bef, after) => array(
-            &bef.iter()
+            bef.iter()
                 .zip(after.iter())
                 .map(|(a, b)| tuple_2(numeric(a), numeric(b)))
                 .collect::<Vec<_>>(),
@@ -473,7 +473,8 @@ pub fn rewrite_consistent_quantized_conv(
     op: &Conv,
 ) -> TractResult<Option<TypedModelPatch>> {
     let facts = model.node_input_facts(node.id)?;
-    if facts.len() > 3 && facts[3..9].iter().all(|fact| fact.konst.is_some()) {
+    if facts.len() > 3 {
+        ensure!(facts[3..9].iter().all(|fact| fact.konst.is_some()));
         for ix in [0, 1] {
             let fact = model.outlet_fact(node.inputs[ix])?;
             if !fact.datum_type.is_quantized() {

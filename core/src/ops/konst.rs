@@ -1,7 +1,17 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, new, Hash, Eq, PartialEq)]
-pub struct Const(pub Arc<Tensor>);
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub struct Const(pub Arc<Tensor>, pub Option<Box<dyn OpaqueFact>>);
+
+impl Const {
+    pub fn new(tensor: Arc<Tensor>) -> Const {
+        Const(tensor, None)
+    }
+
+    pub fn new_with_opaque_fact(tensor: Arc<Tensor>, fact: Box<dyn OpaqueFact>) -> Const {
+        Const(tensor, Some(fact))
+    }
+}
 
 impl Op for Const {
     fn name(&self) -> Cow<str> {
@@ -18,7 +28,7 @@ impl EvalOp for Const {
     }
 
     fn eval(&self, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        Ok(tvec![self.0.clone().into_tvalue()])
+        Ok(tvec![Arc::clone(&self.0).into_tvalue()])
     }
 }
 
@@ -26,7 +36,12 @@ impl TypedOp for Const {
     as_op!();
 
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(Arc::clone(&self.0).into()))
+        let fact = TypedFact::from(&self.0);
+        if let Some(opaque) = &self.1 {
+            Ok(tvec!(fact.with_opaque_metadata(opaque.clone())))
+        } else {
+            Ok(tvec!(fact))
+        }
     }
 
     fn change_axes(
@@ -40,7 +55,7 @@ impl TypedOp for Const {
         let mut new_tensor = self.0.clone().into_tensor();
         if change.change_tensor(&mut new_tensor, false).is_ok() {
             Ok(Some(AxisChangeConsequence {
-                substitute_op: Some(Box::new(Const(new_tensor.into_arc_tensor()))),
+                substitute_op: Some(Box::new(Const(new_tensor.into_arc_tensor(), self.1.clone()))),
                 wire_changes: tvec!((io, change.clone())),
             }))
         } else {
@@ -65,7 +80,7 @@ impl TypedOp for Const {
             for d in tensor.as_slice_mut::<TDim>()? {
                 *d = d.eval(values);
             }
-            Const(tensor.into_arc_tensor())
+            Const(tensor.into_arc_tensor(), self.1.clone())
         } else {
             self.clone()
         };

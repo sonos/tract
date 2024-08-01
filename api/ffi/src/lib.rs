@@ -799,7 +799,7 @@ pub unsafe extern "C" fn tract_model_set_output_names(
 /// Give value one or more symbols used in the model.
 ///
 /// * symbols is an array of `nb_symbols` pointers to null-terminated UTF-8 string for the symbols
-/// names to substitue
+///   names to substitue
 /// * values is an array of `nb_symbols` integer values
 #[no_mangle]
 pub unsafe extern "C" fn tract_model_concretize_symbols(

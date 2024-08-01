@@ -145,15 +145,7 @@ impl EvalOp for Iff {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (cond, t, f) = args_3!(inputs);
         anyhow::ensure!(t.datum_type() == f.datum_type());
-        let shape: TVec<usize> = multi_broadcast(&[cond.shape(), t.shape(), f.shape()])
-            .ok_or_else(|| {
-                format_err!(
-                    "Incompatible shapes {:?}, {:?} and {:?}",
-                    cond.shape(),
-                    t.shape(),
-                    f.shape()
-                )
-            })?;
+        let shape: TVec<usize> = multi_broadcast(&[cond.shape(), t.shape(), f.shape()])?;
         unsafe {
             let mut result = Tensor::uninitialized_dt(t.datum_type(), &shape)?;
             let cond = cond.to_array_view::<bool>()?;

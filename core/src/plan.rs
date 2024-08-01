@@ -1,19 +1,32 @@
 use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 
+use multithread::Executor;
+
 use crate::internal::*;
-use crate::model::order::eval_order_for_nodes;
 use crate::model::{Fact, Graph, OutletId};
 use crate::ops::konst::Const;
 use crate::ops::FrozenOpState;
+
+use self::order::{eval_order_for_nodes, eval_order_opt_ram_for_nodes};
+
+#[derive(Default, Clone, Debug)]
+pub struct PlanOptions {
+    /// Use the simple ordering instead of the newer memory friendly one
+    pub skip_order_opt_ram: bool,
+
+    /// Override default global executor
+    pub executor: Option<Executor>,
+}
 
 #[derive(Default)]
 pub struct SessionState {
     pub inputs: HashMap<usize, TValue>,
     pub resolved_symbols: SymbolValues,
     pub tensors: HashMap<String, Tensor>,
-    pub cached_mmm_scratch_space: Option<Box<dyn tract_linalg::mmm::ScratchSpace>>,
+    pub cached_mmm_scratch_space: RefCell<Option<Box<dyn tract_linalg::mmm::ScratchSpace>>>,
 }
 
 impl Clone for SessionState {
@@ -22,7 +35,7 @@ impl Clone for SessionState {
             inputs: self.inputs.clone(),
             resolved_symbols: self.resolved_symbols.clone(),
             tensors: self.tensors.clone(),
-            cached_mmm_scratch_space: None,
+            cached_mmm_scratch_space: None.into(),
         }
     }
 }
@@ -45,6 +58,7 @@ where
     order: Vec<usize>,
     flush_lists: Vec<TVec<usize>>,
     has_unresolved_symbols: bool,
+    executor: Option<Executor>,
     _casper: PhantomData<(F, O)>,
 }
 
@@ -57,28 +71,49 @@ where
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
     pub fn new(model: M) -> TractResult<SimplePlan<F, O, M>> {
         let outputs = model.borrow().output_outlets()?.to_vec();
-        Self::new_for_outputs(model, &outputs)
+        Self::build(model, &outputs, &[], &PlanOptions::default())
+    }
+
+    /// This contructor returns a plan that will compute all the model default outputs in one pass.
+    pub fn new_with_options(model: M, options: &PlanOptions) -> TractResult<SimplePlan<F, O, M>> {
+        let outputs = model.borrow().output_outlets()?.to_vec();
+        Self::build(model, &outputs, &[], options)
     }
 
     /// This contructor returns a plan that will compute the specified output.
+    #[deprecated]
     pub fn new_for_output(model: M, output: OutletId) -> TractResult<SimplePlan<F, O, M>> {
-        Self::new_for_outputs_and_deps(model, &[output], &[])
+        Self::build(model, &[output], &[], &PlanOptions::default())
     }
 
     /// This contructor returns a plan that will compute all specified outputs in one pass.
+    #[deprecated]
     pub fn new_for_outputs(model: M, outputs: &[OutletId]) -> TractResult<SimplePlan<F, O, M>> {
-        Self::new_for_outputs_and_deps(model, outputs, &[])
+        Self::build(model, outputs, &[], &PlanOptions::default())
     }
 
+    #[deprecated]
     pub fn new_for_outputs_and_deps(
         model: M,
         outputs: &[OutletId],
         deps: &[(usize, usize)],
     ) -> TractResult<SimplePlan<F, O, M>> {
+        Self::build(model, outputs, deps, &PlanOptions::default())
+    }
+
+    pub fn build(
+        model: M,
+        outputs: &[OutletId],
+        deps: &[(usize, usize)],
+        options: &PlanOptions,
+    ) -> TractResult<SimplePlan<F, O, M>> {
         let inputs = model.borrow().input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
         let outputs_nodes = outputs.iter().map(|n| n.node).collect::<Vec<usize>>();
-        let mut order =
-            eval_order_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes, deps)?;
+        let mut order = if options.skip_order_opt_ram {
+            eval_order_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes, deps)?
+        } else {
+            eval_order_opt_ram_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes, deps)?
+        };
         order.retain(|node| !model.borrow().node(*node).op_is::<Const>());
         let mut values_needed_until_step = vec![0; model.borrow().nodes().len()];
         for (step, node) in order.iter().enumerate() {
@@ -95,6 +130,7 @@ where
                 flush_lists[flush_at].push(node)
             }
         }
+        #[allow(clippy::mutable_key_type)]
         let mut symbols: std::collections::HashSet<Symbol> = Default::default();
         for node in &model.borrow().nodes {
             for output in &node.outputs {
@@ -110,6 +146,7 @@ where
             outputs: outputs.to_vec(),
             has_unresolved_symbols: !symbols.is_empty(),
             _casper: PhantomData,
+            executor: options.executor.clone(),
         })
     }
 
@@ -216,7 +253,26 @@ where
         Ok(outputs)
     }
 
-    pub fn exec_plan_with_eval<Eval, E>(&mut self, mut eval: Eval) -> TractResult<()>
+    pub fn exec_plan_with_eval<Eval, E>(&mut self, eval: Eval) -> TractResult<()>
+    where
+        Eval: for<'a, 'b, 'c> FnMut(
+            &'a mut SessionState,
+            Option<&'b mut (dyn OpState + 'static)>,
+            &'c Node<F, O>,
+            TVec<TValue>,
+        ) -> Result<TVec<TValue>, E>,
+        E: Into<anyhow::Error> + Send + Sync + 'static,
+    {
+        if let Some(executor) = self.plan().executor.as_ref() {
+            tract_linalg::multithread::multithread_tract_scope(executor.clone(), || {
+                self.do_exec_plan_with_eval(eval)
+            })
+        } else {
+            self.do_exec_plan_with_eval(eval)
+        }
+    }
+
+    fn do_exec_plan_with_eval<Eval, E>(&mut self, mut eval: Eval) -> TractResult<()>
     where
         Eval: for<'a, 'b, 'c> FnMut(
             &'a mut SessionState,
@@ -342,14 +398,14 @@ where
         let expected = expression.eval(symbols);
         if let Ok(x) = expected.to_i64() {
             if x != provided {
-                bail!("Clashing resolution for expression. {expression}={x} != {provided}.")
+                bail!("Clashing resolution for expression. {expression}={x} != {provided}. ({symbols:?})")
             }
         }
         if expected.symbols().len() == 1 {
             let sym = expected.symbols().into_iter().next().unwrap();
             if let Some(v) = solve_for(&sym, &expected, &provided.to_dim()) {
                 debug!("Determined symbol {sym}={v}");
-                symbols[&sym] = Some(v.to_i64().unwrap());
+                symbols.set(&sym, v.to_i64().unwrap());
             }
         }
         Ok(())
@@ -589,7 +645,7 @@ where
                 inputs: self.inputs.iter().map(|(ix, t)| (*ix, t.clone().into_tvalue())).collect(),
                 resolved_symbols: self.resolved_symbols.clone(),
                 tensors: self.tensors.clone(),
-                cached_mmm_scratch_space: None,
+                cached_mmm_scratch_space: None.into(),
             },
             states: self.states.iter().map(|s| s.as_ref().map(|s| s.unfreeze())).collect(),
             values: self

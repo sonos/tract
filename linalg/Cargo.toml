@@ -1,6 +1,6 @@
 [package]
 name = "tract-linalg"
-version = "0.21.4-pre"
+version = "0.21.7-pre"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -14,15 +14,18 @@ edition = "2021"
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+byteorder.workspace = true
 derive-new.workspace = true
 downcast-rs.workspace = true
 dyn-clone.workspace = true
+dyn-hash.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 num-traits.workspace = true
 paste.workspace = true
+rayon.workspace = true
 scan_fmt.workspace = true
-tract-data = { version = "=0.21.4-pre", path = "../data" }
+tract-data = { version = "=0.21.7-pre", path = "../data" }
 
 [build-dependencies]
 cc.workspace = true
@@ -35,11 +38,19 @@ time.workspace = true
 walkdir.workspace = true
 
 [dev-dependencies]
-criterion.workspace = true
 env_logger.workspace = true
 nu-ansi-term.workspace = true
-proptest.workspace = true
 core_affinity.workspace = true
+
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
+criterion.workspace = true
+proptest.workspace = true
+
+[target.'cfg(target_family = "wasm")'.dev-dependencies]
+# Wasm doesn't support the `rayon` feature of criterion
+criterion = { version = "0.5", default-features = false, features = ["plotters", "cargo_bench_support"] }
+# Wasm doesn't support the `fork` feature of proptest.
+proptest = { version = "1.0.0", default-features = false, features = ["std", "bit-set"] }
 
 [features]
 # This feature is meant to accomodate very restrictive / legacy toolchains that do
@@ -62,10 +73,6 @@ harness = false
 
 [[bench]]
 name = "mm_for_wavenet_hw"
-harness = false
-
-[[bench]]
-name = "conv_for_wavenet_hw"
 harness = false
 
 [[bench]]

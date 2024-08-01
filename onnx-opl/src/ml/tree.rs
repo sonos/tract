@@ -53,7 +53,7 @@ impl TryFrom<u8> for Cmp {
     type Error = TractError;
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         if (1..=5).contains(&value) {
-            unsafe { Ok(std::mem::transmute(value)) }
+            unsafe { Ok(std::mem::transmute::<u8, Cmp>(value)) }
         } else {
             bail!("Invalid value for Cmp: {}", value);
         }

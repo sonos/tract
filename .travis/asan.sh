@@ -2,12 +2,9 @@
 
 set -ex
 
-TARGET=$(rustc -vV | sed -n 's|host: ||p')
+# RUSTFLAGS=-Zsanitizer=address cargo +nightly test -Zbuild-std --target $(rustc -vV | sed -n 's|host: ||p')
 
-if [ -n "$GITHUB_ACTIONS" ]
-then
-    pip3 install numpy
-fi
+TARGET=$(rustc -vV | sed -n 's|host: ||p')
 
 rustup toolchain add nightly
 rustup component add rust-src --toolchain nightly-$TARGET
@@ -17,6 +14,8 @@ export RUSTDOCFLAGS=$RUSTFLAGS
 export RUSTUP_TOOLCHAIN=nightly
 export RUST_VERSION=nightly
 export CARGO_EXTRA="-Zbuild-std --target $TARGET"
+
+cargo -q test -q -p tract-core --features paranoid_assertions $CARGO_EXTRA
 
 ./.travis/regular-tests.sh
 if [ -n "$CI" ]

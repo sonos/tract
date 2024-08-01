@@ -8,8 +8,10 @@ use tract_core::ops::cast::cast;
 use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PoolSpec;
+use tract_core::ops::konst::Const;
+use tract_core::ops::math::min;
+use tract_core::ops::matmul::de_block_quant::BlockQuantValue;
 use tract_core::ops::nn::{DataFormat, Softmax, SoftmaxExp};
-use tract_itertools::izip;
 use tract_itertools::Itertools;
 
 use tract_core::ops;
@@ -66,15 +68,21 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
             tensor = tensor.cast_to_dt(*dt)?.into_owned().into_arc_tensor()
         }
     }
-    if tensor.shape() != &*shape {
-        bail!(
+    if let Some(bqv) =
+        tensor.to_scalar::<Opaque>().ok().and_then(|o| o.downcast_ref::<BlockQuantValue>())
+    {
+        let fact = Box::new(bqv.fact.clone());
+        builder.wire(Const::new_with_opaque_fact(tensor, fact), &[])
+    } else {
+        ensure!(
+            tensor.shape() == &*shape,
             "Wrong shape for tensor: {:?}, tensor file says {:?}, graph files says {:?}",
             label,
             tensor.shape(),
             shape
         );
+        builder.wire(Const::new(tensor), &[])
     }
-    builder.wire(tract_core::ops::konst::Const::new(tensor), &[])
 }
 
 // fragment reshape<?>( input: tensor<?>, shape: integer[], axis_start: integer = 0, axis_count: integer = -1 )
@@ -85,10 +93,19 @@ pub fn reshape(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
     let start: usize = invocation.named_arg_as(builder, "axis_start")?;
     let count: i64 = invocation.named_arg_as(builder, "axis_count")?;
     let count = if count == -1 { input_shape.len() - start } else { count as usize };
-    let shape: TVec<TDim> =
+    let shape: TVec<Arc<Tensor>> =
         builder.allowing_new_symbols(|builder| invocation.named_arg_as(builder, "shape"))?;
-
-    let mut replacement = shape;
+    if shape.iter().any(|t| t.rank() > 0) {
+        warn!("Reshape called with invalid shape for node {:?}: {}. Flattening the shape will be deprecated.",
+              &builder.naming_scopes.iter().map(|i| &i.0).join("/"), shape.iter().map(|t| format!("{t:?}")).join(" ; "));
+    }
+    let mut replacement = tvec!();
+    for dims in shape {
+        let dims = dims.cast_to::<TDim>()?;
+        for dim in dims.as_slice::<TDim>()? {
+            replacement.push(dim.clone())
+        }
+    }
     for i in 0..replacement.len() {
         if replacement[i] == 0.to_dim() {
             replacement[i] = input_shape[i + start].clone();
@@ -121,11 +138,14 @@ pub fn transpose(
 pub fn concat(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let axis: usize = invocation.named_arg_as(builder, "axis")?;
     let mut values: TVec<OutletId> = invocation.named_arg_as(builder, "values")?;
-    if let Some(Some(dt)) = invocation.dt_from_quant_file.first() {
-        for value in &mut values {
-            if builder.model.node(value.node).outputs[value.slot].fact.datum_type != *dt {
-                *value = builder.wire_as_outlets(ops::cast::cast(*dt), &[*value])?[0];
-            }
+    let dt = if let Some(dt) = invocation.dt_from_quant_file.first().and_then(|it| *it) {
+        dt
+    } else {
+        builder.model.outlet_fact(values[0])?.datum_type
+    };
+    for value in &mut values {
+        if builder.model.outlet_fact(*value)?.datum_type != dt {
+            *value = builder.wire_as_outlets(ops::cast::cast(dt), &[*value])?[0];
         }
     }
 
@@ -134,49 +154,77 @@ pub fn concat(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
 
 // fragment slice<?>( input: tensor<?>, axes: integer[], begin: integer[], end: integer[] ) -> ( output: tensor<?> );
 pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
-    let wire = tvec!(invocation.named_arg_as(builder, "input")?);
+    let mut wire = tvec!(invocation.named_arg_as(builder, "input")?);
     let input_fact = builder.model.outlet_fact(wire[0])?.clone();
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
-    let (mut begins, mut ends): (TVec<TDim>, TVec<TDim>) =
+    let (begins, ends): (OutletId, OutletId) =
         builder.allowing_new_symbols(|builder| -> TractResult<_> {
             Ok((
                 invocation.named_arg_as(builder, "begin")?,
                 invocation.named_arg_as(builder, "end")?,
             ))
         })?;
-    for (ix, d) in begins.iter_mut().enumerate() {
-        if let Ok(i) = d.to_i64() {
-            if i < 0 {
-                *d += input_fact.shape[axes[ix]].to_dim();
+    ensure!(builder.model.outlet_fact(begins)?.rank() == 1);
+    ensure!(builder.model.outlet_fact(ends)?.rank() == 1);
+    let strides: TVec<isize> =
+        invocation.named_arg_as(builder, "stride").unwrap_or_else(|_| tvec!(1; axes.len()));
+    for (ix, axis) in axes.into_iter().enumerate() {
+        let axis_len =
+            builder.wire_as_outlets(Const::new(rctensor0(input_fact.shape[axis].clone())), &[])?[0];
+        let b = builder.wire_as_outlets(
+            tract_core::ops::array::Slice { axis: 0, start: ix.into(), end: ix.to_dim() + 1 },
+            &[begins],
+        )?;
+        let mut b = builder.wire_as_outlets(tract_core::ops::change_axes::AxisOp::Rm(0), &b)?;
+        b = builder.wire_as_outlets(min(), &[b[0], axis_len])?;
+        if let Some(k) = &builder.model.outlet_fact(b[0])?.konst {
+            if let Ok(i) = k.cast_to_scalar::<i64>() {
+                if i < 0 {
+                    b = builder.wire_as_outlets(
+                        Const::new(rctensor0(input_fact.shape[axis].clone() + i)),
+                        &[],
+                    )?;
+                }
             }
         }
-    }
-
-    // use "<=", no "<" end[axis] = 0 means "up to the end"
-    // CAUTION: this notation is 1/ deprecated 2/ invalid with non trivial slicing
-    for (ix, d) in ends.iter_mut().enumerate() {
-        if let Ok(i) = d.to_i64() {
-            if i <= 0 {
-                *d += input_fact.shape[axes[ix]].to_dim();
+        let e = builder.wire_as_outlets(
+            tract_core::ops::array::Slice { axis: 0, start: ix.into(), end: ix.to_dim() + 1 },
+            &[ends],
+        )?;
+        let mut e = builder.wire_as_outlets(tract_core::ops::change_axes::AxisOp::Rm(0), &e)?;
+        e = builder.wire_as_outlets(min(), &[e[0], axis_len])?;
+        // use "<=", no "<" end[axis] = 0 means "up to the end"
+        // CAUTION: this notation is 1/ deprecated 2/ invalid with non trivial slicing
+        if let Some(k) = &builder.model.outlet_fact(e[0])?.konst {
+            if let Ok(i) = k.cast_to_scalar::<i64>() {
+                if i <= 0 {
+                    e = builder.wire_as_outlets(
+                        Const::new(rctensor0(input_fact.shape[axis].clone() + i)),
+                        &[],
+                    )?;
+                }
             }
         }
+        let len = if let (Some(ev), Some(bv)) =
+            (&builder.model.outlet_fact(e[0])?.konst, &builder.model.outlet_fact(b[0])?.konst)
+        {
+            ev.cast_to::<TDim>()?.to_scalar::<TDim>()?.clone()
+                - bv.cast_to::<TDim>()?.to_scalar::<TDim>()?
+        } else {
+            builder.model.symbols.new_with_prefix("slice").into()
+        };
+        wire = builder.wire_as_outlets(
+            tract_core::ops::array::DynSlice { axis, len },
+            &[wire[0], b[0], e[0]],
+        )?;
+        if strides[ix] != 1 {
+            wire = builder.wire_as_outlets(
+                tract_core::ops::downsample::Downsample::new(axis, strides[ix], 0),
+                &wire,
+            )?;
+        }
     }
-    let strides: TVec<isize> = invocation
-        .named_arg_as(builder, "stride")
-        .unwrap_or_else(|_| ends.iter().map(|_| 1).collect());
-    izip!(axes, begins, ends, strides)
-        .try_fold(wire, |wire, (axis, start, end, stride)| {
-            let mut w =
-                builder.wire_as_outlets(tract_core::ops::array::Slice { axis, start, end }, &wire);
-            if stride != 1 {
-                w = builder.wire_as_outlets(
-                    tract_core::ops::downsample::Downsample::new(axis, stride, 0),
-                    &w?,
-                );
-            }
-            w
-        })
-        .map(Value::from)
+    Ok(wire.into())
 }
 
 // fragment squeeze<?>( input: tensor<?>, axes: integer[] ) -> ( output: tensor<?> );
@@ -209,9 +257,10 @@ pub fn unsqueeze(
 
 // fragment tile<?>( input: tensor<?>, repeats: integer[] ) -> ( output: tensor<?> );
 pub fn tile(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
-    let multipliers: TVec<TDim> = invocation.named_arg_as(builder, "repeats")?;
-    let wire = tvec!(invocation.named_arg_as(builder, "input")?);
-    builder.wire(ops::array::Tile { multipliers }, &wire)
+    let repeats: ShapeFact = invocation.named_arg_as(builder, "repeats")?;
+    let wire = invocation.named_arg_as(builder, "input")?;
+    ensure!(builder.model.outlet_fact(wire)?.rank() == repeats.len());
+    builder.wire(ops::array::Tile { multipliers: repeats.to_tvec()} , &[wire])
 }
 
 pub fn pad_mode(border: &str, value: Tensor) -> TractResult<tract_core::ops::array::PadMode> {
@@ -340,7 +389,8 @@ pub fn conv_or_deconv(
                 [0];
     }
 
-    let bias_dt = if input_fact.datum_type.is_float() { input_fact.datum_type } else { i32::datum_type() };
+    let bias_dt =
+        if input_fact.datum_type.is_float() { input_fact.datum_type } else { i32::datum_type() };
     bias = builder.model.wire_node(format!("{name}.cast_bias"), cast(bias_dt), &[bias])?[0];
 
     let mut inputs = tvec!(input, kernel, bias);
@@ -550,15 +600,24 @@ pub fn reduce(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
 pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let a: OutletId = invocation.named_arg_as(builder, "A")?;
     let b: OutletId = invocation.named_arg_as(builder, "B")?;
-    let a_trans = invocation.named_arg_as(builder, "transposeA")?;
-    let b_trans = invocation.named_arg_as(builder, "transposeB")?;
+    let a_trans: bool = invocation.named_arg_as(builder, "transposeA")?;
+    let b_trans: bool = invocation.named_arg_as(builder, "transposeB")?;
     let a_dt = builder.model.outlet_fact(a)?.datum_type;
     let b_dt = builder.model.outlet_fact(b)?.datum_type;
     let a_rank = builder.model.outlet_fact(a)?.rank();
     let b_rank = builder.model.outlet_fact(b)?.rank();
     let c_rank = a_rank.max(b_rank);
-    let mut axes = AxesMapping::for_numpy_matmul(c_rank, a_trans, b_trans, false)?;
     let name = &*invocation.invocation.id.0;
+    if b_dt.is_opaque() {
+        let mut axes = AxesMapping::for_numpy_matmul(c_rank, false, !a_trans, true)?;
+        // remove prefix on block quant matrix
+        while axes.rank(InOut::In(0)) > 2 {
+            axes = axes.remove_axis_occurency(InOut::In(0), 0)?;
+        }
+        return builder
+            .wire(ops::einsum::EinSum { axes, operating_dt: a_dt, q_params: None }, &[b, a]);
+    }
+    let mut axes = AxesMapping::for_numpy_matmul(c_rank, a_trans, b_trans, false)?;
     if a_dt.is_quantized() || b_dt.is_quantized() {
         for input in 0..7 {
             axes = axes.with_extra_input(2 + input)?;

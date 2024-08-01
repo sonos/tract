@@ -2,6 +2,7 @@ use criterion::*;
 use tract_data::prelude::*;
 use tract_linalg::element_wise::ElementWiseKer;
 use tract_linalg::frame::reduce::{MapReduceKer, ReduceKer};
+use tract_linalg::generic::reduce::softmax_l2::SSoftMaxL2;
 
 #[inline(never)]
 fn loop1_f32_naive(slice: &mut [f32]) -> f32 {
@@ -19,7 +20,7 @@ fn loop2_f32(slice: &mut [f32], max: f32) -> f32 {
     let mut sum = 0.;
     for x in slice.iter_mut() {
         *x = (*x - max).exp();
-        sum = sum + *x;
+        sum += *x;
     }
     sum
 }
@@ -28,7 +29,7 @@ fn loop2_f32(slice: &mut [f32], max: f32) -> f32 {
 fn loop3_f32(slice: &mut [f32], sum: f32) {
     let recip = sum.recip();
     for x in slice {
-        *x = *x * recip;
+        *x *= recip;
     }
 }
 
@@ -47,7 +48,7 @@ fn softmax_f32(c: &mut Criterion) {
     group.bench_function("rust", |b| b.iter(|| rust_f32(input)));
     group.bench_function("loop1/naive", |b| b.iter(|| loop1_f32_naive(input)));
     group.bench_function("loop1/generic", |b| {
-        b.iter(|| tract_linalg::generic::max::SMax4::red().run(&input))
+        b.iter(|| tract_linalg::generic::reduce::max::SMax4::red().run(input))
     });
     #[cfg(target_arch = "x86_64")]
     group.bench_function("loop1/iasm", |b| {
@@ -63,7 +64,7 @@ fn softmax_f32(c: &mut Criterion) {
     });
     group.bench_function("loop2/naive", |b| b.iter(|| loop2_f32(input, 1.0)));
     group.bench_function("loop2/generic", |b| {
-        b.iter(|| tract_linalg::generic::softmax::SSoftMaxL2::red().run_with_params(input, 10.))
+        b.iter(|| SSoftMaxL2::red().run_with_params(input, 10.))
     });
     #[cfg(target_arch = "x86_64")]
     group.bench_function("loop2/iasm", |b| {

@@ -1,3 +1,4 @@
+use fs_err as fs;
 use reqwest::Url;
 use scan_fmt::scan_fmt;
 use std::io::Cursor;
@@ -59,7 +60,7 @@ impl Location {
 
     fn read(&self) -> TractResult<Box<dyn Read>> {
         match self {
-            Location::Fs(p) => Ok(Box::new(std::fs::File::open(p)?)),
+            Location::Fs(p) => Ok(Box::new(fs::File::open(p)?)),
             Location::Http(u) => Ok(Box::new(reqwest::blocking::get(u.clone())?)),
         }
     }
@@ -97,7 +98,7 @@ impl Location {
 }
 
 #[derive(Debug, Clone)]
-#[allow(clippy::large_enum_variant)]
+#[allow(clippy::large_enum_variant, dead_code)]
 pub enum SomeGraphDef {
     NoGraphDef,
     Nnef(tract_nnef::ProtoModel),
@@ -161,8 +162,11 @@ impl Parameters {
     fn disco_model(matches: &clap::ArgMatches) -> TractResult<(Location, bool)> {
         let model = matches.value_of("model").context("Model argument required")?;
         let location = Location::find(model)?;
-        let onnx_tc = location.is_dir() && location.path().join("model.onnx").exists();
-        Ok((location, onnx_tc))
+        if location.is_dir() && location.path().join("model.onnx").exists() {
+            Ok((Location::Fs(location.path().join("model.onnx")), false))
+        } else {
+            Ok((location, false))
+        }
     }
 
     fn load_model(
@@ -170,7 +174,7 @@ impl Parameters {
         probe: Option<&Probe>,
         location: &Location,
         tensors_values: &TensorsValues,
-        symbol_table: &SymbolTable,
+        symbols: SymbolScope,
     ) -> TractResult<(SomeGraphDef, Box<dyn Model>, Option<TfExt>)> {
         let need_graph =
             matches.is_present("proto") || matches.subcommand_name() == Some("compare-pbdir");
@@ -256,6 +260,7 @@ impl Parameters {
                     }
                 }
                 info_usage("proto model loaded", probe);
+                let template = TypedModel { symbols, ..TypedModel::default() };
                 let graph_def = if need_graph {
                     SomeGraphDef::Nnef(proto_model.clone())
                 } else {
@@ -264,7 +269,7 @@ impl Parameters {
                 (
                     graph_def,
                     Box::new(
-                        nnef.translate(&proto_model, symbol_table)
+                        nnef.translate(&proto_model, template)
                             .map_err(|(g, e)| ModelBuildingError(Box::new(g), e.into()))?,
                     ),
                     Option::<TfExt>::None,
@@ -276,7 +281,8 @@ impl Parameters {
                 info_usage("loaded framework (tflite)", probe);
                 let proto = tflite.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
-                let model = tflite.model_for_proto_model_with_symbols(&proto, symbol_table)?;
+                let template = TypedModel { symbols, ..TypedModel::default() };
+                let model = tflite.model_for_proto_model_with_model_template(&proto, template)?;
                 info_usage("proto model translated", probe);
                 (SomeGraphDef::Tflite(proto), Box::new(model), Option::<TfExt>::None)
             }
@@ -293,10 +299,11 @@ impl Parameters {
                 let graph = onnx.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
                 let path = &location.path().clone();
-                let mut parsed = onnx.parse_with_symbols(
+                let template = InferenceModel { symbols, ..InferenceModel::default() };
+                let mut parsed = onnx.parse_with_template(
                     &graph,
                     path.parent().and_then(|it| it.to_str()),
-                    symbol_table,
+                    template,
                 )?;
 
                 if matches.is_present("determinize") {
@@ -322,7 +329,8 @@ impl Parameters {
                 if matches.is_present("determinize") {
                     tract_tensorflow::Tensorflow::determinize(&mut graph)?;
                 }
-                let mut model_and_ext = tf.parse_graph_with_symbols(&graph, symbol_table)?;
+                let template = InferenceModel { symbols, ..InferenceModel::default() };
+                let mut model_and_ext = tf.parse_graph_with_template(&graph, template)?;
                 model_and_ext.1.initializing_nodes = matches
                     .values_of("tf-initializer-output-node")
                     .map(|values| {
@@ -372,7 +380,7 @@ impl Parameters {
     }
 
     fn use_onnx_test_case_data_set(
-        symbol_table: &SymbolTable,
+        symbol_table: &SymbolScope,
         inputs_dir: &std::path::Path,
     ) -> TractResult<Vec<TensorValues>> {
         let mut result = vec![];
@@ -393,7 +401,7 @@ impl Parameters {
                     .next()
                     .unwrap()
                     .parse::<usize>()?;
-                let fd = std::fs::File::open(file.path())?;
+                let fd = fs::File::open(file.path())?;
                 let (name, tensor) =
                     tensor::for_data(symbol_table, file.path().to_str().unwrap(), fd)?;
                 result.push(TensorValues {
@@ -442,11 +450,11 @@ impl Parameters {
         get_values: bool,
         get_facts: bool,
     ) -> TractResult<Vec<TensorValues>> {
-        let files = std::fs::read_dir(input)?;
+        let files = fs::read_dir(input)?;
         let vector = files
             .map(|n| {
                 let file_path = n?.path();
-                let tensor_file = std::fs::read(&file_path)?;
+                let tensor_file = fs::read(&file_path)?;
                 let file_name = file_path.as_os_str().to_str().unwrap();
                 if let Ok((turn, name)) =
                     scan_fmt::scan_fmt!(file_name, "turn_{d}/{}.dat", usize, String)
@@ -487,7 +495,7 @@ impl Parameters {
         matches: &clap::ArgMatches,
         location: &Location,
         onnx_tc: bool,
-        symbol_table: &SymbolTable,
+        symbol_table: &SymbolScope,
     ) -> TractResult<TensorsValues> {
         let mut result = TensorsValues::default();
 
@@ -708,13 +716,13 @@ impl Parameters {
             if let Some(spec) = matches.value_of("pulse") {
                 stage!("pulse", typed_model -> pulsed_model, |m:TypedModel| {
                     let (sym, pulse) = if let Ok((s,p)) = scan_fmt!(spec, "{}={}", String, String) {
-                        (s, parse_tdim(&m.symbol_table, &p)?)
-                    } else if let Ok(i) = parse_tdim(&m.symbol_table, spec) {
+                        (s, parse_tdim(&m.symbols, &p)?)
+                    } else if let Ok(i) = parse_tdim(&m.symbols, spec) {
                         ("S".to_owned(), i)
                     } else {
                         bail!("Can not parse pulse specification {}", spec)
                     };
-                    let sym = m.symbol_table.sym(&sym);
+                    let sym = m.symbols.sym(&sym);
                     PulsedModel::new(&m, sym, &pulse)
                 });
                 stage!("pulse-to-type", pulsed_model -> typed_model, |m:PulsedModel| m.into_typed());
@@ -739,6 +747,7 @@ impl Parameters {
                     let transform = tract_core::transform::get_transform(transform).with_context(|| format!("Could not find transform named {}", transform))?;
                     transform.transform_into(&m)
                 });
+                stage!(&format!("{}-declutter", transform), typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
             }
         }
         if let Some(set) = matches.values_of("set") {
@@ -773,7 +782,14 @@ impl Parameters {
                 }
                 m.concretize_dims(&values)
             });
-            stage!("set-declutter", typed_model -> typed_model, TypedModel::into_decluttered);
+            stage!("set-declutter", typed_model -> typed_model, |mut m| {
+                let mut dec = tract_core::optim::Optimizer::declutter();
+                if let Some(steps) = matches.value_of("declutter-set-step") {
+                    dec = dec.stopping_at(steps.parse()?);
+                }
+                dec.optimize(&mut m)?;
+                Ok(m)
+            })
         }
         if matches.is_present("nnef-cycle") {
             stage!("nnef-cycle", typed_model -> typed_model, |m:TypedModel| {
@@ -826,11 +842,14 @@ impl Parameters {
     #[allow(clippy::let_unit_value)]
     /// Parses the command-line arguments.
     pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> TractResult<Parameters> {
-        let symbol_table = SymbolTable::default();
+        let symbols = SymbolScope::default();
+        for rule in matches.values_of("assert").unwrap_or_default() {
+            symbols.add_inequality(rule)?;
+        }
         let (filename, onnx_tc) = Self::disco_model(matches)?;
-        let tensors_values = Self::parse_tensors(matches, &filename, onnx_tc, &symbol_table)?;
+        let tensors_values = Self::parse_tensors(matches, &filename, onnx_tc, &symbols)?;
         let (mut graph, mut raw_model, tf_model_extensions) =
-            Self::load_model(matches, probe, &filename, &tensors_values, &symbol_table)?;
+            Self::load_model(matches, probe, &filename, &tensors_values, symbols.clone())?;
 
         info!("Model {:?} loaded", filename);
         info_usage("model loaded", probe);
@@ -885,7 +904,7 @@ impl Parameters {
 
         if let Some(override_facts) = matches.values_of("override-fact") {
             for fact in override_facts {
-                let (name, fact) = tensor::for_string(&symbol_table, fact)?;
+                let (name, fact) = tensor::for_string(&symbols, fact)?;
                 let node = raw_model.node_id_by_name(&name.unwrap())?;
                 if let Some(inf) = raw_model.downcast_mut::<InferenceModel>() {
                     inf.set_outlet_fact(OutletId::new(node, 0), fact)?;
@@ -940,7 +959,7 @@ impl Parameters {
             .collect();
 
         let assertions = match matches.subcommand() {
-            Some(("dump" | "run", sm)) => Assertions::from_clap(sm, &symbol_table)?,
+            Some(("dump" | "run", sm)) => Assertions::from_clap(sm, &symbols)?,
             _ => Assertions::default(),
         };
 
@@ -1036,6 +1055,7 @@ pub fn display_params_from_clap(
         invariants: matches.is_present("invariants"),
         quiet: matches.is_present("quiet"),
         natural_order: matches.is_present("natural-order"),
+        opt_ram_order: matches.is_present("opt-ram-order"),
         debug_op: matches.is_present("debug-op"),
         node_ids: matches.values_of("node-id").map(|values| {
             values.map(|id| tvec!((id.parse::<usize>().unwrap(), "".to_string()))).collect()
@@ -1066,7 +1086,7 @@ pub struct Assertions {
 }
 
 impl Assertions {
-    fn from_clap(sub: &clap::ArgMatches, symbol_table: &SymbolTable) -> TractResult<Assertions> {
+    fn from_clap(sub: &clap::ArgMatches, symbol_table: &SymbolScope) -> TractResult<Assertions> {
         let assert_outputs =
             sub.is_present("assert-output") || sub.is_present("assert-output-bundle");
         let assert_output_facts: Option<Vec<InferenceFact>> = sub

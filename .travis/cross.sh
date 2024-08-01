@@ -100,7 +100,7 @@ case "$PLATFORM" in
 
     "aarch64-apple-darwin")
         rustup target add aarch64-apple-darwin
-        cargo build --target aarch64-apple-darwin
+        cargo build --target aarch64-apple-darwin -p tract
         ;;
 
     "aarch64-unknown-linux-gnu-stretch" | "armv7-unknown-linux-gnueabihf-stretch" )
@@ -206,6 +206,15 @@ case "$PLATFORM" in
         cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
         ;;
 
+    wasm32-wasi)
+        rustup target add $PLATFORM
+        cargo check --target $PLATFORM --features getrandom-js -p tract-onnx -p tract-tensorflow
+        curl https://wasmtime.dev/install.sh -sSf | bash
+        WASMTIME=$HOME/.wasmtime/bin/wasmtime
+        $WASMTIME --version
+        RUSTFLAGS='-C target-feature=+simd128' CARGO_TARGET_WASM32_WASI_RUNNER=$WASMTIME \
+            cargo test --target=wasm32-wasi -p tract-linalg -p tract-core -p test-unit-core
+        ;;
     wasm32-*)
         rustup target add $PLATFORM
         cargo check --target $PLATFORM --features getrandom-js -p tract-onnx -p tract-tensorflow

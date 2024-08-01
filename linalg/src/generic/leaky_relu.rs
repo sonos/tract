@@ -6,7 +6,7 @@ use tract_num_traits::Zero;
 #[derive(Clone, Debug)]
 pub struct SLeakyRelu4;
 
-impl ElementWiseKer<f32,f32> for SLeakyRelu4 {
+impl ElementWiseKer<f32, f32> for SLeakyRelu4 {
     fn name() -> &'static str {
         "generic"
     }
@@ -66,5 +66,9 @@ pub mod s {
 #[cfg(test)]
 #[macro_use]
 pub mod h {
-    leaky_relu_frame_tests!(true, tract_data::internal::f16, crate::generic::leaky_relu::HLeakyRelu8);
+    leaky_relu_frame_tests!(
+        true,
+        tract_data::internal::f16,
+        crate::generic::leaky_relu::HLeakyRelu8
+    );
 }

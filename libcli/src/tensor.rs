@@ -88,14 +88,14 @@ fn parse_dt(dt: &str) -> TractResult<DatumType> {
     })
 }
 
-pub fn parse_spec(symbol_table: &SymbolTable, size: &str) -> TractResult<InferenceFact> {
+pub fn parse_spec(symbol_table: &SymbolScope, size: &str) -> TractResult<InferenceFact> {
     if size.is_empty() {
         return Ok(InferenceFact::default());
     }
     parse_coma_spec(symbol_table, size)
 }
 
-pub fn parse_coma_spec(symbol_table: &SymbolTable, size: &str) -> TractResult<InferenceFact> {
+pub fn parse_coma_spec(symbol_table: &SymbolScope, size: &str) -> TractResult<InferenceFact> {
     let splits = size.split(',').collect::<Vec<_>>();
 
     if splits.is_empty() {
@@ -140,7 +140,7 @@ fn parse_values<T: Datum + FromStr>(shape: &[usize], it: Vec<&str>) -> TractResu
 }
 
 fn tensor_for_text_data(
-    symbol_table: &SymbolTable,
+    symbol_table: &SymbolScope,
     _filename: &str,
     mut reader: impl Read,
 ) -> TractResult<Tensor> {
@@ -164,7 +164,7 @@ fn tensor_for_text_data(
 
 /// Parses the `data` command-line argument.
 pub fn for_data(
-    symbol_table: &SymbolTable,
+    symbol_table: &SymbolScope,
     filename: &str,
     reader: impl Read + std::io::Seek,
 ) -> TractResult<(Option<String>, InferenceFact)> {
@@ -234,7 +234,7 @@ pub fn for_npz(
 }
 
 pub fn for_string(
-    symbol_table: &SymbolTable,
+    symbol_table: &SymbolScope,
     value: &str,
 ) -> TractResult<(Option<String>, InferenceFact)> {
     let (name, value) = if value.contains(':') {
@@ -269,12 +269,12 @@ pub fn for_string(
 }
 
 lazy_static::lazy_static! {
-    static ref WARNING_ONCE: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
+    static ref MESSAGE_ONCE: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
 }
 
-fn warn_once(msg: String) {
-    if WARNING_ONCE.lock().unwrap().insert(msg.clone()) {
-        warn!("{}", msg);
+fn info_once(msg: String) {
+    if MESSAGE_ONCE.lock().unwrap().insert(msg.clone()) {
+        info!("{}", msg);
     }
 }
 
@@ -364,7 +364,7 @@ pub fn retrieve_or_make_inputs(
             };
         } else if params.allow_random_input {
             let fact = tract.outlet_typedfact(*input)?;
-            warn_once(format!("Using random input for input called {name:?}: {fact:?}"));
+            info_once(format!("Using random input for input called {name:?}: {fact:?}"));
             let tv = params
                 .tensors_values
                 .by_name(name)
@@ -399,26 +399,6 @@ pub fn tensor_for_fact(
 ) -> TractResult<Tensor> {
     if let Some(value) = &fact.konst {
         return Ok(value.clone().into_tensor());
-    }
-    #[cfg(pulse)]
-    {
-        if fact.shape.stream_info().is_some() {
-            use tract_pulse::fact::StreamFact;
-            use tract_pulse::internal::stream_symbol;
-            let s = stream_symbol();
-            if let Some(dim) = streaming_dim {
-                let shape = fact
-                    .shape
-                    .iter()
-                    .map(|d| {
-                        d.eval(&SymbolValues::default().with(s, dim as i64)).to_usize().unwrap()
-                    })
-                    .collect::<TVec<_>>();
-                return Ok(random(&shape, fact.datum_type));
-            } else {
-                bail!("random tensor requires a streaming dim")
-            }
-        }
     }
     Ok(random(
         fact.shape

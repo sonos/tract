@@ -111,5 +111,5 @@ unsafe fn x86_64_fma_softmax2_fastcompact_f32_32n_run(buf: &mut [f32], max: f32)
 #[cfg(test)]
 mod test_x86_64_fma_softmax2_fastcompact_f32_32n {
     use super::*;
-    softmax_l2_frame_tests!(is_x86_feature_detected!("fma"), f32, x86_64_fma_softmax2_fastcompact_f32_32n);
+    crate::softmax_l2_frame_tests!(is_x86_feature_detected!("fma"), f32, x86_64_fma_softmax2_fastcompact_f32_32n);
 }

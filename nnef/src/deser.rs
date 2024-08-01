@@ -21,13 +21,12 @@ impl<'mb> ModelBuilder<'mb> {
     pub fn new(
         framework: &'mb Nnef,
         proto_model: &'mb ProtoModel,
-        symbols: &SymbolTable,
+        template: TypedModel,
     ) -> ModelBuilder<'mb> {
-        let model = TypedModel { symbol_table: symbols.to_owned(), ..TypedModel::default() };
         ModelBuilder {
             registries: vec!["tract_nnef".into()],
             framework,
-            model,
+            model: template,
             naming_scopes: vec![],
             scopes: vec![],
             proto_model,
@@ -45,35 +44,37 @@ impl<'mb> ModelBuilder<'mb> {
 
     fn translate(&mut self) -> TractResult<()> {
         'ext: for ext in &self.proto_model.doc.extension {
-            match &*ext[0].0 {
+            match &*ext.0 .0 {
                 "tract_registry" => {
-                    if self.framework.registries.iter().any(|reg| reg.id == ext[1]) {
-                        self.registries.push(ext[1].clone())
+                    let registry = Identifier(ext.1.trim().to_owned());
+                    if self.framework.registries.iter().any(|reg| reg.id == registry) {
+                        self.registries.push(registry.clone())
                     } else if let Some(reg) =
-                        self.framework.registries.iter().find(|reg| reg.aliases.contains(&ext[1]))
+                        self.framework.registries.iter().find(|reg| reg.aliases.contains(&registry))
                     {
                         self.registries.push(reg.id.clone())
                     } else {
-                        bail!("Registry not found {:?}", &ext[1])
+                        bail!("Registry not found {:?}", registry)
                     }
                 }
                 "tract_symbol" => {
-                    if ext.len() != 2 {
-                        bail!("tract_symbol expects symbol: example: \"extension tract_symbol S;\"")
-                    }
-                    let symbol = self.model.symbol_table.new_with_prefix(&ext[1].0);
+                    let symbol = self.model.symbols.new_with_prefix(ext.1.trim());
                     self.symbols.push(symbol);
                 }
+                "tract_assert" => {
+                    self.model.symbols.add_inequality(&ext.1)?;
+                }
+                "KHR_enable_fragment_definitions" | "KHR_enable_operator_expressions" => (),
                 _ => {
                     for reg in &self.framework.registries {
                         for reg_ext in &reg.extensions {
-                            match reg_ext(self, ext)? {
+                            match reg_ext(self, &ext.0, &ext.1)? {
                                 ControlFlow::Continue(_) => (),
                                 ControlFlow::Break(_) => continue 'ext,
                             }
                         }
                     }
-                    warn!("Ignore unknown extension {}", ext.iter().map(|i| &i.0).join(" "));
+                    warn!("Ignore unknown extension {:?}", ext.0);
                 }
             };
         }
@@ -183,8 +184,21 @@ impl<'mb> ModelBuilder<'mb> {
                     if qparam != self.model.outlet_fact(*value)?.datum_type {
                         self.model.node_mut(value.node).name =
                             format!("{}_raw", self.naming_scopes.iter().map(|i| &i.0).join("_"));
+                        if self.model.outlet_fact(*value)?.datum_type == TDim::datum_type() {
+                            *value = self.model.wire_node(
+                                format!(
+                                    "{}_cast_to_f32",
+                                    self.naming_scopes.iter().map(|i| &i.0).join("_")
+                                ),
+                                tract_core::ops::cast::cast(f32::datum_type()),
+                                &[*value],
+                            )?[0];
+                        }
                         *value = self.model.wire_node(
-                            "foo",
+                            format!(
+                                "{}_cast_to_q",
+                                self.naming_scopes.iter().map(|i| &i.0).join("_")
+                            ),
                             tract_core::ops::cast::cast(qparam),
                             &[*value],
                         )?[0];
@@ -453,11 +467,11 @@ impl RValue {
                         }
                     }
                     Ok(outlet)
-                } else if let Some(sym) = builder.model.symbol_table.get(&id.0) {
+                } else if let Some(sym) = builder.model.symbols.get(&id.0) {
                     Ok(Value::Dim(sym.into()))
                 } else if builder.allow_new_symbol {
                     warn!("Introducing symbol {id:?} without forward declaration (\"extension tract_symbol ...\"). May be deprecated soon.");
-                    let sym = builder.model.symbol_table.sym(&id.0);
+                    let sym = builder.model.symbols.sym(&id.0);
                     Ok(Value::Dim(sym.into()))
                 } else {
                     bail!("Can not resolve {:?}. Not a known identifier, and symbol introduction is forbidden out of \"external\" shape field", id);
@@ -530,7 +544,7 @@ impl RValue {
                         .with_context(|| format!("Can not parse {f} as f32"))
                 } else if let Ok(i) = f.parse::<i64>() {
                     Ok(Value::Dim(i.into()))
-                } else if let Some(s) = builder.model.symbol_table.get(f) {
+                } else if let Some(s) = builder.model.symbols.get(f) {
                     Ok(Value::Dim(s.into()))
                 } else {
                     bail!("Can not parse {}", f)
@@ -654,9 +668,15 @@ impl CoerceFrom<Value> for OutletId {
                 [0]),
             Value::Wire(outlet) => Ok(*outlet),
             Value::Tuple(tuple) if tuple.len() == 1 => OutletId::coerce(builder, &tuple[0]),
-            Value::Array(_) => {
-                let tensor = Arc::<Tensor>::coerce(builder, from)?;
-                Ok(builder.wire_as_outlets(tract_core::ops::konst::Const::new(tensor), &[])?[0])
+            Value::Array(inputs) => {
+                let mut outlets = tvec!();
+                for i in inputs {
+                    let outlet = OutletId::coerce(builder, i)?;
+                    outlets.push(builder.wire_as_outlets(AxisOp::Add(0), &[outlet])?[0]);
+                }
+                builder
+                    .wire_as_outlets(tract_core::ops::array::TypedConcat::new(0), &outlets)
+                    .map(|o| o[0])
             }
             Value::String(s) => Ok(builder
                 .wire_as_outlets(tract_core::ops::konst::Const::new(rctensor0(s.clone())), &[])?
@@ -750,6 +770,7 @@ impl CoerceFrom<Value> for f32 {
     fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
             Value::Scalar(f) => Ok(*f),
+            Value::Dim(d) => Ok(d.to_i64()? as f32),
             Value::Tensor(t) => Ok(*t.to_scalar::<f32>()?),
             Value::Wire(_) => {
                 Ok(*from.to::<Arc<Tensor>>(builder)?.cast_to::<f32>()?.to_scalar::<f32>()?)
@@ -765,6 +786,19 @@ impl<D: CoerceFrom<Value>> CoerceFrom<Value> for TVec<D> {
             Value::Array(vec) => vec.iter().map(|item| D::coerce(builder, item)).collect(),
             Value::Tuple(vec) => vec.iter().map(|item| D::coerce(builder, item)).collect(),
             any => Ok(tvec!(D::coerce(builder, any)?)),
+        }
+    }
+}
+
+impl CoerceFrom<Value> for ShapeFact {
+    fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
+        match from {
+            Value::Array(vec) => vec.iter().map(|item| TDim::coerce(builder, item)).collect(),
+            Value::Tuple(vec) => vec.iter().map(|item| TDim::coerce(builder, item)).collect(),
+            _ => {
+                let t = from.to::<Arc<Tensor>>(builder)?;
+                Ok(t.cast_to::<TDim>()?.as_slice::<TDim>()?.into())
+            }
         }
     }
 }

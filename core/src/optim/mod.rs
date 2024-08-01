@@ -51,9 +51,13 @@ impl Optimizer {
         Optimizer { steps: Some(steps), ..self }
     }
 
+    pub fn prop_consts() -> Optimizer {
+        Optimizer::passes(vec![Box::<PropConst>::default()])
+    }
+
     pub fn declutter() -> Optimizer {
         Optimizer::passes(vec![
-            Box::new(PropConst),
+            Box::<PropConst>::default(),
             Box::new(OpOptim("declutter", TypedOp::declutter_with_session, 0)),
             Box::new(PushSliceUp),
             Box::new(PushSplitDown),
@@ -63,7 +67,7 @@ impl Optimizer {
 
     pub fn codegen() -> Optimizer {
         Optimizer::passes(vec![
-            Box::new(PropConst),
+            Box::<PropConst>::default(),
             Box::new(OpOptim(
                 "codegen",
                 |op, _session, model, node| TypedOp::codegen(op, model, node),
@@ -166,8 +170,9 @@ impl<'o> OptimizerSession<'o> {
                     self.seen.insert(watchdog);
                 }
             }
-            debug!("applying patch #{}: {}", self.counter, patch.context.iter().rev().join(" >> "),);
-            patch.apply(model)?;
+            let patch_name = patch.context.iter().rev().join(" >> ");
+            debug!("applying patch #{}: {patch_name}", self.counter);
+            patch.apply(model).with_context(|| format!("Applying patch {patch_name}"))?;
             model
                 .check_consistency()
                 .context("Checking target model consistency after patching")?;
