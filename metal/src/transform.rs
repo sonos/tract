@@ -1,9 +1,10 @@
 use crate::fact::MetalTypedFactExt;
-use crate::kernels::nn::{Reducer, RmsNorm, Silu, Softmax};
+use crate::kernels::nn::{NewGelu, Reducer, RmsNorm, Silu, Softmax};
 use crate::ops;
 use crate::ops::{MetalSync, MetalSyncKind};
 use crate::rewrite_rules::{
-    as_rms_norm_rule, as_silu_rule, rewire_metal_sync, BasicRmsNorm, BasicSilu,
+    as_new_gelu_rule, as_rms_norm_rule, as_silu_rule, rewire_metal_sync, BasicNewGelu,
+    BasicRmsNorm, BasicSilu,
 };
 use crate::tensor::MetalTensorExt;
 use crate::{IntoMetal, MetalFact, MetalTensor};
@@ -33,6 +34,7 @@ impl ModelTransform for MetalTransform {
         Rewriter::default()
             .with_rule_for::<Reduce>("as-rms-norm", as_rms_norm_rule)
             .with_rule_for::<ElementWiseOp>("as-silu", as_silu_rule)
+            .with_rule_for::<TypedBinOp>("as-new-gelu", as_new_gelu_rule)
             .rewrite(&(), model)?;
 
         let mut new = self.translate_model(model)?;
@@ -198,6 +200,9 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         } else if let Some(_op) = node.op_as::<BasicSilu>() {
             check_in_dts_are_supported(source, node.id, Silu::is_supported_dt)?
                 .then(|| -> Box<dyn TypedOp> { Box::new(ops::MetalSilu) })
+        } else if let Some(_op) = node.op_as::<BasicNewGelu>() {
+            check_in_dts_are_supported(source, node.id, NewGelu::is_supported_dt)?
+                .then(|| -> Box<dyn TypedOp> { Box::new(ops::MetalNewGelu) })
         } else {
             None
         };

@@ -262,4 +262,51 @@ typedef decltype(softmax_nd3<float>) softmax_nd3_t;
 template [[host_name("nn_ops::softmax_nd3_f32")]] [[kernel]] softmax_nd3_t softmax_nd3<float>;
 template [[host_name("nn_ops::softmax_nd3_f16")]] [[kernel]] softmax_nd3_t softmax_nd3<half>;
 
+constant float GELU_COEF_A     = 0.044715f;
+constant float SQRT_2_OVER_PI  = 0.79788456080286535587989211986876f;
+
+template<typename F>  
+[[kernel]] void new_gelu(
+                device const void *input_b,
+                device void *output_b,
+                uint tpig[[thread_position_in_grid]]
+                ) {
+
+    device const F *input = (device const F *)input_b;
+    device F *output = (device F *)output_b;
+
+    float x = static_cast<float>(input[tpig]);
+    float output_f32 = 0.5 * x * (
+      1.0 + precise::tanh(SQRT_2_OVER_PI
+          *(x + GELU_COEF_A * metal::powr(x, 3))));
+    output[tpig] = static_cast<F>(output_f32);
+}
+
+typedef decltype(new_gelu<float>) new_gelu_t;
+
+template [[host_name("nn_ops::new_gelu_f32")]] [[kernel]] new_gelu_t new_gelu<float>;
+template [[host_name("nn_ops::new_gelu_f16")]] [[kernel]] new_gelu_t new_gelu<half>;
+
+template<typename F>  
+[[kernel]] void new_gelu_fast(
+                device const void *input_b,
+                device void *output_b,
+                uint tpig[[thread_position_in_grid]]
+                ) {
+
+    device const F *input = (device const F *)input_b;
+    device F *output = (device F *)output_b;
+
+    float x = static_cast<float>(input[tpig]);
+    float output_f32 = 0.5 * x * (
+      1.0 + precise::tanh(SQRT_2_OVER_PI
+          *(x + GELU_COEF_A * metal::powr(x, 2))));
+    output[tpig] = static_cast<F>(output_f32);
+}
+
+typedef decltype(new_gelu_fast<float>) new_gelu_fast_t;
+
+template [[host_name("nn_ops::new_gelu_fast_f32")]] [[kernel]] new_gelu_fast_t new_gelu_fast<float>;
+template [[host_name("nn_ops::new_gelu_fast_f16")]] [[kernel]] new_gelu_fast_t new_gelu_fast<half>;
+
 
