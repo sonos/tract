@@ -102,8 +102,13 @@ impl<M: GemmKernel> GemmImpl<M> {
         let k = a.shape()[a.rank() - 2 + !self.transpose_a as usize];
 
         unsafe {
-            let c = MetalTensor::uninitialized_dt(c_dt, &c_shape)?;
+            let c = MetalTensor::zero_dt(c_dt, &c_shape)?;
             c.retain_until_completion();
+
+            if k == 0 {
+                return Ok(c);
+            }
+
             let silent_a_axis = c.rank() - a.rank();
             let silent_b_axis = c.rank() - b.rank();
             for prefix in ndarray::indices(&c_shape[0..rank - 2]) {
