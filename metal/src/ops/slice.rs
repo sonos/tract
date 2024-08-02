@@ -1,5 +1,5 @@
 use crate::kernels;
-use crate::tensor::MetalTensorExt;
+use crate::tensor::{MetalTensor, MetalTensorExt };
 use tract_core::internal::*;
 use tract_core::ops::array::Slice;
 
@@ -73,7 +73,7 @@ impl EvalOp for MetalSlice {
 
         let mut o_shape: TVec<_> = input_shape.into();
         o_shape[axis] = end - start;
-        ensure!(o_shape[axis] != 0);
+        
 
         let offset = (start * input_strides[axis] as usize) * input_dt.size_of();
 
@@ -81,10 +81,16 @@ impl EvalOp for MetalSlice {
 
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
-                Ok(tvec![kernels::array::MultiBroadcast
-                    .dispatch_eval(context, t, offset, &o_shape)?
-                    .into_opaque_tensor()
-                    .into_tvalue()])
+                if o_shape[axis] == 0 {
+                    Ok(tvec![
+                        unsafe { MetalTensor::uninitialized_dt(t.datum_type(), &o_shape)?.into_opaque_tensor().into_tvalue() }
+                    ])
+                } else {
+                    Ok(tvec![kernels::array::MultiBroadcast
+                        .dispatch_eval(context, t, offset, &o_shape)?
+                        .into_opaque_tensor()
+                        .into_tvalue()])
+                }
             })
         })
     }

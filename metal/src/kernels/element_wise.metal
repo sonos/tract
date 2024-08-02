@@ -218,7 +218,7 @@ struct Tan {
 struct Atan {
     template <typename T>
     T operator()(T x) {
-        return metal::atan(x);
+        return metal::precise::atan(x);
     }
 };
 
@@ -226,7 +226,7 @@ struct Atan {
 struct Atanh {
     template <typename T>
     T operator()(T x) {
-        return metal::atanh(x);
+        return metal::precise::atanh(x);
     }
 };
 
@@ -234,7 +234,8 @@ struct Atanh {
 struct Tanh {
     template <typename T>
     T operator()(T x) {
-        return metal::tanh(x);
+        // Use precise to avoid NaN for large value with fast implementation 
+        return metal::precise::tanh(x);
     }
 };
 
