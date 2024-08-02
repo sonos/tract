@@ -50,6 +50,7 @@ impl TypedOp for BasicRmsNorm {
     as_op!();
 }
 
+/// Search pattern => A = A * RSQRT(MEAN_OF_SQUARES(A) + EPS)
 pub fn as_rms_norm_rule(
     _ctx: &(),
     model: &TypedModel,
@@ -57,8 +58,6 @@ pub fn as_rms_norm_rule(
     node_name: &str,
     op: &Reduce,
 ) -> TractResult<Option<TypedModelPatch>> {
-    // Search pattern => A = A * RSQRT(MEAN_OF_SQUARES(A) + EPS);
-
     rule_ensure!(op.reducer == Reducer::MeanOfSquares);
     rule_ensure!(op.axes.len() == 1);
     let axis = op.axes[0];

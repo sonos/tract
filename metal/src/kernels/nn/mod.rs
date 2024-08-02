@@ -1,8 +1,10 @@
+pub mod new_gelu;
 pub mod reduce;
 pub mod rms_norm;
 pub mod silu;
 pub mod softmax;
 
+pub use new_gelu::NewGelu;
 pub use reduce::Reducer;
 pub use rms_norm::RmsNorm;
 pub use silu::Silu;

@@ -161,7 +161,7 @@ mod tests {
         run_test(&[4, 4], Slice { axis: 1, start: 0.into(), end: 4.into() })?;
         run_test(&[8, 3, 5], Slice { axis: 1, start: 1.into(), end: 3.into() })?;
         assert!(run_test(&[8, 3, 5], Slice { axis: 1, start: 1.into(), end: 7.into() }).is_err());
-        assert!(run_test(&[8, 3, 5], Slice { axis: 1, start: 1.into(), end: 1.into() }).is_err());
+        run_test(&[8, 3, 5], Slice { axis: 1, start: 1.into(), end: 1.into() })?;
         Ok(())
     }
 }

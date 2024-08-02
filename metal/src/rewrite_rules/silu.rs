@@ -42,6 +42,7 @@ impl TypedOp for BasicSilu {
     as_op!();
 }
 
+/// Search pattern => A = A * SIGMOID(A)
 pub fn as_silu_rule(
     _ctx: &(),
     model: &TypedModel,
