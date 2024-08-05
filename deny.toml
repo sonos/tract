@@ -35,6 +35,7 @@ skip = [
     { name = "itertools", version="<=0.12.1" },
     { name = "regex-syntax", version="<8" },
     { name = "syn", version="<2" },
+    { name = "windows-sys", version="<0.59" },
 ]
 
 [sources]
