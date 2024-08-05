@@ -35,19 +35,19 @@ impl GatherNd {
         let remaining = indices.shape().iter().skip(batch_dims).rev().skip(1).product();
         let indices_shape_op = tvec!(batch_size, remaining, n);
         let reshaped_indices: ArrayViewD<i32> =
-            indices.view().into_shape(&*indices_shape_op).unwrap();
+            indices.view().into_shape_with_order(&*indices_shape_op).unwrap();
 
         let mut data_shape_op: TVec<usize> =
             data.shape().iter().skip(batch_dims).copied().collect();
         data_shape_op.insert(0, batch_size);
         let reshaped_data =
-            data.to_array_view_unchecked::<T>().into_shape(&*data_shape_op).unwrap();
+            data.to_array_view_unchecked::<T>().into_shape_with_order(&*data_shape_op).unwrap();
 
         let mut output_shape_op: TVec<usize> =
             data.shape().iter().skip(n + batch_dims).copied().collect();
         output_shape_op.insert(0, batch_size * remaining);
         let mut output =
-            output.to_array_view_mut_unchecked::<T>().into_shape(&*output_shape_op).unwrap();
+            output.to_array_view_mut_unchecked::<T>().into_shape_with_order(&*output_shape_op).unwrap();
 
         for b in 0..batch_size {
             let mut i = reshaped_data.view();

@@ -93,8 +93,9 @@ liquid-core = "0.26"
 log = "0.4.14"
 maplit = "1.0.2"
 memmap2 = "0.9"
-ndarray = "0.15.3"
-ndarray-npy = { version = "0.8.0", features = [ "compressed_npz" ] }
+ndarray = "0.16.0"
+#ndarray-npy = { version = "0.8.0", features = [ "compressed_npz" ] }
+ndarray-npy = { git = "https://github.com/Dirreke/ndarray-npy.git", branch = "bump-ndarray", features = ["compressed_npz"] }
 nom = "7.0.0"
 nu-ansi-term = "0.46"
 num-complex = "0.4.0"

@@ -204,7 +204,7 @@ impl DeconvProblem {
         if let Some(b) = &self.bias {
             let mut bias_shape = tvec!(1; output_shape.rank());
             bias_shape[output_shape.c_axis()] = co;
-            let b = b.clone().into_shape(&*bias_shape)?;
+            let b = b.clone().into_shape_with_order(&*bias_shape)?;
             output += &b;
         }
         let co_per_group = co / self.group;
@@ -599,7 +599,7 @@ pub fn suite() -> TractResult<TestSuite> {
             padding: PaddingSpec::Valid,
             input: arr4(&[[[[0.0, 0.0, 0.0, 1.0]]]]).into_dyn(),
             kernel: arr1(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0])
-                .into_shape(vec![2, 2, 1, 2, 1])
+                .into_shape_with_order(vec![2, 2, 1, 2, 1])
                 .unwrap()
                 .into_dyn(),
             bias: None,
