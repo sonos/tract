@@ -29,7 +29,8 @@ impl MMMInputValue for RepackingPackedBlockQuantValue {
         let buffer = buffer.context("Scratch panel expected")?;
         let pbqf = self.value.format.downcast_ref::<PackedBlockQuantFormat>().unwrap();
         unsafe {
-            pbqf.bq.repack_panel(&self.value, &self.pack, i, buffer)?;
+            todo!();
+//            pbqf.bq.repack_panel(&self.value, &self.pack, i, buffer)?;
         }
         Ok(buffer)
     }
