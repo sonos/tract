@@ -12,7 +12,7 @@ test-requires = "pytest"
 test-command = """pytest {project}"""
 
 [tool.cibuildwheel.linux]
-skip = "*i686"
+skip = "*i686 cp313*" # 3.13 is RC for now
 before-build = """
 set -ex
 python -m ensurepip --upgrade
