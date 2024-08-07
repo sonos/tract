@@ -32,7 +32,7 @@ RUSTC_WRAPPER=sccache
 
 [tool.cibuildwheel.macos]
 archs = "x86_64 universal2 arm64"
-skip = "pp*"
+skip = "pp* cp313*"
 before-build = """
 python -m ensurepip --upgrade
 pip install "numpy<2" --config-settings=setup-args="-Dallow-noblas=true" 
@@ -48,5 +48,5 @@ choco install mingw --version=8.1.0
 pip install "numpy==1.24.4"
 pip install "numpy==1.25.2"
 """
-skip = "*-win32 cp36-* cp37-* pp*"
+skip = "*-win32 cp36-* cp37-* pp* cp313*"
 
