@@ -4,9 +4,10 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use tract_data::TractResult;
+use tract_data::internal::TensorView;
 
 use crate::frame::element_wise_helper::TempBuffer;
-use crate::LADatum;
+use crate::{LADatum, LinalgFn};
 
 macro_rules! unicast_impl_wrap {
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $run: item) => {
@@ -53,6 +54,13 @@ where
     phantom: PhantomData<(K, T)>,
 }
 
+
+impl<K, T> UnicastImpl<K, T>
+where
+    T: LADatum,
+    K: UnicastKer<T> + Clone,
+{
+}
 impl<K, T> Unicast<T> for UnicastImpl<K, T>
 where
     T: LADatum,
@@ -80,11 +88,32 @@ where
     fn bin() -> Box<dyn Unicast<T>> {
         Box::new(UnicastImpl::<Self, T>::new())
     }
+    fn bin_1() -> LinalgFn {
+        Box::new(|a: &mut TensorView, b: &TensorView| {
+            let a_slice = a.as_slice_mut()?;
+            let b_slice = b.as_slice()?;
+            Self::bin().run(a_slice, b_slice)
+        })
+    }
 }
 
 std::thread_local! {
     static TMP: std::cell::RefCell<(TempBuffer, TempBuffer)> = std::cell::RefCell::new((TempBuffer::default(), TempBuffer::default()));
 }
+
+fn create_incomplete_tile<'a, T: LADatum>(a: &'a mut [T], b: &'a [T], a_prefix_len: usize, b_prefix_len: usize) -> (&'a mut [T], &'a [T], usize) {
+    let effective_prefix = if (a_prefix_len == 0) || (b_prefix_len == 0) {
+        // One of the two slice is aligned, the target size is the number of unaligned elements of
+        // the other slice, the max value between the two.
+        a_prefix_len.max(b_prefix_len)
+    } else {
+        // Both are unaligned, the minimal common subset is the one including elements from a and b
+        // so it's the min value between the two.
+        a_prefix_len.min(b_prefix_len)
+    };
+    (&mut a[..effective_prefix], &b[..effective_prefix], effective_prefix)
+}
+
 
 pub(crate) fn unicast_with_alignment<T>(
     a: &mut [T],
@@ -112,18 +141,33 @@ where
                 f(tmp_a, tmp_b);
                 a.copy_from_slice(&tmp_a[..a.len()])
             };
-            let prefix_len = a.as_ptr().align_offset(alignment_bytes).min(a.len());
-            if prefix_len > 0 {
-                compute_via_temp_buffer(&mut a[..prefix_len], &b[..prefix_len]);
+
+            let mut num_element_processed = 0;
+            let a_prefix_len = a.as_ptr().align_offset(alignment_bytes).min(a.len());
+            let b_prefix_len = b.as_ptr().align_offset(alignment_bytes).min(b.len());
+            let mut applied_prefix_len = 0;
+            if (a_prefix_len > 0) || (b_prefix_len > 0) {
+                // Incomplete tile needs to be created to process unaligned data.
+                let (mut sub_a, sub_b, applied_prefix) = create_incomplete_tile(a, b, a_prefix_len, b_prefix_len);
+                applied_prefix_len = applied_prefix;
+                compute_via_temp_buffer(&mut sub_a, &sub_b);
+                num_element_processed += applied_prefix_len;
             }
-            let aligned_len = (a.len() - prefix_len) / nr * nr;
-            if aligned_len > 0 {
-                f(&mut a[prefix_len..][..aligned_len], &b[prefix_len..][..aligned_len]);
+
+            let num_complete_tiles = (a.len() - applied_prefix_len) / nr;
+            if num_complete_tiles > 0 {
+                // Process all tiles that are complete.
+                let mut sub_a = &mut a[applied_prefix_len..][..(num_complete_tiles * nr)];
+                let sub_b = &b[applied_prefix_len..][..(num_complete_tiles * nr)];
+                f(&mut sub_a, &sub_b);
+                num_element_processed += num_complete_tiles * nr;
             }
-            if prefix_len + aligned_len < a.len() {
+
+            if num_element_processed < a.len() {
+                // Incomplete tile needs to be created to process remaining elements.
                 compute_via_temp_buffer(
-                    &mut a[prefix_len + aligned_len..],
-                    &b[prefix_len + aligned_len..],
+                    &mut a[num_element_processed..],
+                    &b[num_element_processed..],
                 );
             }
         })

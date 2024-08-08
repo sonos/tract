@@ -1,6 +1,6 @@
 use crate::f16;
 
-ew_impl_wrap!(
+by_scalar_impl_wrap!(
     f16,
     arm64fp16_mul_by_scalar_f16_32n,
     32,

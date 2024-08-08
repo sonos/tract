@@ -43,6 +43,7 @@ pub mod internal {
     pub use crate::opaque::{ OpaquePayload, OpaqueFact };
     pub use crate::prelude::*;
     pub use crate::tensor::view::TensorView;
+    pub use crate::tensor::indices::iter_indices;
     pub use crate::tensor::Approximation;
     pub use anyhow::{anyhow, bail, ensure, format_err, Context as TractErrorContext};
     pub use ndarray as tract_ndarray;
