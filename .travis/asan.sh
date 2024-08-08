@@ -13,7 +13,7 @@ export RUSTFLAGS=-Zsanitizer=address
 export RUSTDOCFLAGS=$RUSTFLAGS
 export RUSTUP_TOOLCHAIN=nightly
 export RUST_VERSION=nightly
-export CARGO_EXTRA="-Zbuild-std --target $TARGET"
+export CARGO_EXTRA="--target $TARGET"
 
 cargo -q test -q -p tract-core --features paranoid_assertions $CARGO_EXTRA
 
