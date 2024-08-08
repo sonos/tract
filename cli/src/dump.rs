@@ -1,3 +1,4 @@
+use crate::plan_options::plan_options_from_subcommand;
 use crate::params::SomeGraphDef;
 use crate::tensor::run_params_from_subcommand;
 use crate::Parameters;
@@ -113,6 +114,7 @@ pub fn handle(
     }
     if options.profile {
         let run_params = run_params_from_subcommand(params, sub_matches)?;
+        let plan_options = plan_options_from_subcommand(sub_matches)?;
         let model = params
             .tract_model
             .downcast_ref::<TypedModel>()
@@ -122,6 +124,7 @@ pub fn handle(
             model,
             bench_limits,
             &mut annotations,
+            &plan_options,
             &inputs[0],
             None,
             options.folded,

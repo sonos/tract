@@ -10,7 +10,7 @@ use tract_core::ops::konst::Const;
 use tract_itertools::Itertools;
 use tract_libcli::profile::BenchLimits;
 use tract_nnef::tensors::read_tensor;
-
+use tract_core::transform::ModelTransform;
 use tract_core::internal::*;
 use tract_core::model::TypedModel;
 use tract_hir::internal::*;
@@ -741,6 +741,22 @@ impl Parameters {
                 tract_core::floats::FloatPrecisionTranslator::<f16, f32>::default().translate_model(&m)
             });
         }
+        {
+            if matches.is_present("metal") {
+                #[cfg(any(target_os = "macos", target_os = "ios"))]
+                {
+                    stage!("metal", typed_model -> typed_model, |m:TypedModel| {
+                        tract_metal::transform::MetalTransform
+                            .transform_into(&m)
+                    });
+                }
+                #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+                {
+                    bail!("`--metal` present but it is only available on MacOS and iOS")
+                }
+            }
+        }
+
         if let Some(transform) = matches.values_of("transform") {
             for transform in transform {
                 stage!(transform, typed_model -> typed_model, |m:TypedModel| {
