@@ -154,7 +154,7 @@ impl ConvProblem {
         if let Some(bias) = &self.bias {
             let mut shape = vec![1; out.ndim()];
             shape[shape_out.c_axis()] = bias.len();
-            out += &bias.clone().into_shape(shape).unwrap();
+            out += &bias.clone().into_shape_with_order(shape).unwrap();
         }
         out
     }

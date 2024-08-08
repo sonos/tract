@@ -60,7 +60,7 @@ impl DelayPlusPoolProblem {
         );
         let pool = model.wire_node("pool", MaxPool::new(pool_spec, None), &crop).unwrap();
         model.set_output_outlets(&pool).unwrap();
-        let input = arr1(&self.input).into_shape((1, self.input.len(), 1)).unwrap().into_dyn();
+        let input = arr1(&self.input).into_shape_with_order((1, self.input.len(), 1)).unwrap().into_dyn();
         proptest_regular_against_pulse(model, self.pulse as _, input, 1)
     }
 }

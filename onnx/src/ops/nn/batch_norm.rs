@@ -23,10 +23,10 @@ impl BatchNorm {
         T: Datum + tract_num_traits::Float,
         f32: AsPrimitive<T>,
     {
-        let scale = scale.to_array_view::<T>()?.into_shape((c_dim,))?;
-        let beta = beta.to_array_view::<T>()?.into_shape((c_dim,))?;
-        let mean = mean.to_array_view::<T>()?.into_shape((c_dim,))?;
-        let var = var.to_array_view::<T>()?.into_shape((c_dim,))?;
+        let scale = scale.to_array_view::<T>()?.into_shape_with_order((c_dim,))?;
+        let beta = beta.to_array_view::<T>()?.into_shape_with_order((c_dim,))?;
+        let mean = mean.to_array_view::<T>()?.into_shape_with_order((c_dim,))?;
+        let var = var.to_array_view::<T>()?.into_shape_with_order((c_dim,))?;
 
         let denominator = var.mapv(|x| (x + self.epsilon.as_()).sqrt());
 

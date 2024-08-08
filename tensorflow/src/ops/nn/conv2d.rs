@@ -24,7 +24,7 @@ mod tests {
 
     fn mk(sizes: &[usize]) -> Tensor {
         Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)
-            .into_shape(sizes)
+            .into_shape_with_order(sizes)
             .unwrap()
             .into()
     }

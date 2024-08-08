@@ -82,7 +82,7 @@ fn batch_to_space<T: Copy + Datum + Zero>(
     let batches = data.shape()[0] / block_size;
     unflatten_blocked_shape.push(batches);
     unflatten_blocked_shape.extend(&data.shape()[1..]);
-    let data = data.into_shape(&*unflatten_blocked_shape)?;
+    let data = data.into_shape_with_order(&*unflatten_blocked_shape)?;
     let mut permuted_axes = vec![block_shape.len()];
     let mut padded_shape = vec![batches];
     for i in 0..block_shape.shape()[0] {
