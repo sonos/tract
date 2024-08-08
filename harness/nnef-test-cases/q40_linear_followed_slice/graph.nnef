@@ -1,0 +1,13 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+graph net_2024_08_07_bug_slice_bubble_up(input_0) -> (output_0)
+{
+    input_0 = tract_core_external(shape = [10, 96], datum_type = 'f32');
+    linear__var0 = variable(label = 'linear__var0_q4_0', shape = [16, 96]);
+    linear0 = linear(input_0, linear__var0, 0.0);
+    slice_a = slice(linear0, axes = [1], begin = [0], end = [8], stride = [1]);
+    slice_b = slice(linear0, axes = [1], begin = [8], end = [16], stride = [1]);
+    output_0 = mul(slice_a, slice_b);
+}
