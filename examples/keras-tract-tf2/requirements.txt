@@ -1,6 +1,4 @@
-tensorflow
-numpy
-tf2onnx
-onnxmltools
-onnxconverter_common
-tract
+tensorflow==2.11.0
+numpy==1.24.4
+tf2onnx==1.13.0
+tract==0.21.6

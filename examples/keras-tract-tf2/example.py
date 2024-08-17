@@ -2,8 +2,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Activation
-import onnxmltools
-
+import tf2onnx
 import tract
 
 # Define a simple demo model and training data
@@ -22,9 +21,7 @@ labels = np.random.randint(2, size=(1000, 1))
 model.fit(data, labels, epochs=10, batch_size=32)
 
 # Save the model in ONNX format to pass to tract
-onnx_model = onnxmltools.convert_keras(model)
-
-onnxmltools.utils.save_model(onnx_model, 'example.onnx')
+model_proto, _ = tf2onnx.convert.from_keras(model, output_path="example.onnx")
 
 # Generate a demo input, and run the model in Tensorflow
 input = np.random.random((1,100)).astype(np.float32)
