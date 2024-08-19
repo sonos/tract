@@ -12,9 +12,9 @@ fn load_a_slice(slice: &[u8]) {
         while ptr < end {
             std::arch::asm!("
                 vmovaps ymm0, [rsi]
-                vmovaps ymm1, [rsi + 256]
-                vmovaps ymm2, [rsi + 512]
-                vmovaps ymm3, [rsi + 768]
+                vmovaps ymm1, [rsi + 32]
+                vmovaps ymm2, [rsi + 64]
+                vmovaps ymm3, [rsi + 96]
                     ", inout("rsi") ptr,
                     out("ymm0") _,
                     out("ymm1") _,
