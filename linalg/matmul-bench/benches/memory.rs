@@ -1,3 +1,4 @@
+use rayon::prelude::*;
 use tract_data::prelude::Blob;
 
 #[path = "../../benches/nano.rs"]
@@ -50,13 +51,19 @@ fn load_a_slice(slice: &[u8]) {
 
 fn main() {
     let buffer = unsafe { Blob::new_for_size_and_align(1024 * 1024 * 1024, 256) };
-    for size in (0..)
-        .flat_map(|po2| (0..2).map(move |f| (1024 + 512 * f) * (1 << po2)))
+    for threads in [1 /*, 2, 3, 4 */] {
+        println!("Threads: {}", threads);
+        for size in (0..)
+            .flat_map(|po2| (0..2).map(move |f| (1024 + 512 * f) * (1 << po2)))
             .take_while(|&s| s < buffer.len())
-            {
-                let b = nano::run_bench(|| load_a_slice(&buffer[0..size]));
-                let bw = size as f64 / b;
-                // println!("{:12} B : {:4.0} GB/s", size, (bw / (1024. * 1024. * 1024.)) as usize);
-                println!("{} {}", size, (bw / (1024. * 1024. * 1024.)) as usize);
-            }
+        {
+            let b = (0..threads)
+                .into_par_iter()
+                .map(|_| nano::run_bench(|| load_a_slice(&buffer[0..size])))
+                .sum::<f64>();
+            let bw: f64 = size as f64 * threads as f64 / b;
+            // println!("{:12} B : {:4.0} GB/s", size, (bw / (1024. * 1024. * 1024.)) as usize);
+            println!("{} {}", size, (bw / (1024. * 1024. * 1024.)) as usize);
+        }
+    }
 }
