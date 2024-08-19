@@ -1,0 +1,19 @@
+version 1.0;
+
+graph check_uniform_mul_not_applied(input) -> (output)
+{
+    input = external<scalar>(shape = [2, 2, 33]);
+    
+    # a_shape = [1, 2, 1]
+    a = [[[2.0], [3.0]]];
+    # This mul shouldn't be optimized with a mul_by_scalar as input_dim[0] != a_dim[0]
+    mul_1 = mul(input, a);
+
+   # b_shape = [2, 2, 1]
+    b = [[[2.0], [3.0]], [[2.0], [3.0]]];
+    
+    # This mul should be optimized with a mul_by_scalar as input_dim[0] == b_dim[0] + num_elements > 32
+    mul_2 = mul(input, b);
+
+    output = mul_1 + mul_2;
+}
