@@ -1,0 +1,17 @@
+version 1.0;
+
+fragment tract_core_properties(
+) -> (properties: (string, tensor<scalar>)[])
+{
+  properties = [("tract_nnef_ser_version", "0.18.3-pre"), ("tract_nnef_format_version", "beta1")];
+}
+
+graph network(input) -> (output) {
+  input = external(shape = [2, 2, 33]);
+  a_6 = [[[2.0], [3.0]]];
+  mul_1_0 = mul(input, a_6);
+  b_3 = [[[2.0], [3.0]], [[2.0], [3.0]]];
+  mul_2_0 = mul(input, b_3);
+  output_1 = add(mul_1_0, mul_2_0);
+  output = output_1;
+}
