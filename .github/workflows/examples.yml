@@ -1,0 +1,49 @@
+name: Examples
+
+on:
+  pull_request:
+  schedule:
+    - cron:  '0 3 * * *'
+  workflow_dispatch:
+
+env:
+  CARGO_INCREMENTAL: false
+
+jobs:
+  examples:
+    runs-on: ubuntu-latest
+    outputs:
+      examples: ${{steps.set-matrix.outputs.examples}}
+
+    steps:
+      - uses: actions/checkout@v2
+      - id: set-matrix
+        run: |
+          echo examples=`find examples -name ci.sh | cut -d/ -f 2 | jq -Rsc '. / "\n" - [""]'` >> "$GITHUB_OUTPUT"
+
+  example:
+    name: ${{ matrix.ex }}
+    runs-on: ubuntu-latest
+    needs: examples
+    strategy:
+      fail-fast: false
+      matrix:
+        ex: ${{fromJSON(needs.examples.outputs.examples)}}
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Configure AWS Credentials
+      # if: github.repository == 'sonos/tract'
+      continue-on-error: true
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
+        aws-region: us-east-2
+
+    - name: example tests
+      env:
+        AWS_EC2_METADATA_DISABLED: true
+      run: |
+        cd examples/${{matrix.ex}}
+        ./ci.sh

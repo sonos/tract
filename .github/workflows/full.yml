@@ -162,45 +162,6 @@ jobs:
         AWS_EC2_METADATA_DISABLED: true
       run: .travis/cli-tests.sh
 
-  examples:
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v3
-    - name: Get current date
-      id: date
-      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-
-    - name: Configure AWS Credentials
-      # if: github.repository == 'sonos/tract'
-      continue-on-error: true
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
-        aws-region: us-east-2
-
-        #   - uses: actions/cache@v3
-        #     with:
-        #       path: |
-        #         ~/.rustup
-        #         ~/.cargo/registry
-        #         ~/.cargo/git
-        #         #          ~/.cache/sccache
-        #         target
-        #         .cached
-        #       key: ${{ runner.os }}-full-regular-${{steps.date.outputs.date}}-e
-
-        #         #  - name: "Setup sccache"
-        #         #    run: .travis/setup-sccache.sh
-
-    - name: example tests
-      env:
-        AWS_EC2_METADATA_DISABLED: true
-      run: .travis/examples.sh
-
-        # - name: Stop sccache server
-        #   run: sccache --stop-server || true
-
   onnx-tests:
     runs-on: ubuntu-latest
     strategy:
