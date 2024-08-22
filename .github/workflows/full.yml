@@ -172,7 +172,7 @@ jobs:
         run: echo ::set-output name=matrix::["keras-tract-tf2","onnx-mobilenet-v2","tflite-mobilenet-v3","tensorflow-mobilenet-v2","pytorch-resnet","nnef-mobilenet-v2","nnef-dump-mobilenet-v2","pytorch-albert-v2","face_detection_yolov8onnx_example"]
 
   example:
-    name: Example: ${{ matrix.ex }}
+    name: "Example: ${{ matrix.ex }}"
     runs-on: ubuntu-latest
     needs: examples
     strategy:
