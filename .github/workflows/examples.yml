@@ -17,14 +17,14 @@ jobs:
       - uses: actions/checkout@v2
       - id: set-matrix
         #        run: echo "::set-output name=matrix::$(find examples -name ci.sh | cut -d/ -f 2 | jq -Rsc '. / \"\n\" - [""]')"
-        run: echo ::set-output name=examples::["keras-tract-tf2","onnx-mobilenet-v2","tflite-mobilenet-v3","tensorflow-mobilenet-v2","pytorch-resnet","nnef-mobilenet-v2","nnef-dump-mobilenet-v2","pytorch-albert-v2","face_detection_yolov8onnx_example"]
+        run: echo name=examples::["keras-tract-tf2","onnx-mobilenet-v2","tflite-mobilenet-v3","tensorflow-mobilenet-v2","pytorch-resnet","nnef-mobilenet-v2","nnef-dump-mobilenet-v2","pytorch-albert-v2","face_detection_yolov8onnx_example"] >> $GITHUB_OUTPUT
 
   debug:
     needs: examples
     runs-on: ubuntu-latest
     steps:
-      - run: echo ${{needs.examples.outputs.examples}}
-      - run: echo ${{fromJSON(needs.examples.outputs.examples)}}
+      - run: echo "${{steps.examples.outputs.examples}}"
+      - run: echo ${{fromJSON(steps.examples.outputs.examples)}}
 
   example:
     name: ${{ matrix.ex }}
