@@ -168,7 +168,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - id: set-matrix
-        run: echo "::set-output name=matrix::$(find examples -name ci.sh | cut -d/ -f 2 | jq -Rsc '. / "\n" - [""]')"
+        run: |
+          echo ::set-output name=matrix::$(find examples -name ci.sh | cut -d/ -f 2 | jq -Rsc '. / "\n" - [""]')
 
   example:
     name: Example: ${{ matrix.ex }}
