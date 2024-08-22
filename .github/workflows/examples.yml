@@ -23,7 +23,8 @@ jobs:
     needs: examples
     runs-on: ubuntu-latest
     steps:
-      - run: echo ${{needs.examples}}
+      - run: echo ${{needs.examples.outputs.examples}}
+      - run: echo ${{fromJSON(needs.examples.outputs.examples)}}
 
   example:
     name: ${{ matrix.ex }}
