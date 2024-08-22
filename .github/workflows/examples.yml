@@ -12,6 +12,9 @@ env:
 jobs:
   examples:
     runs-on: ubuntu-latest
+    outputs:
+      foo: ${{steps.set-matrix.outputs.foo}}
+      examples: ${{steps.set-matrix.outputs.examples}}
 
     steps:
       - uses: actions/checkout@v2
@@ -26,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          echo "${{steps.examples.outputs.foo}}"
+          echo "${{needs.examples.outputs.foo}}"
       - run: |
           echo "${{steps.examples.outputs.examples}}"
       - run: |
