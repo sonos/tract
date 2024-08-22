@@ -22,9 +22,8 @@ jobs:
   debug:
     needs: examples
     runs-on: ubuntu-latest
-
     steps:
-      run: echo ${{needs.examples}}
+      - run: echo ${{needs.examples}}
 
   example:
     name: ${{ matrix.ex }}
