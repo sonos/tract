@@ -21,15 +21,6 @@ jobs:
         run: |
           echo examples=`find examples -name ci.sh | cut -d/ -f 2 | jq -Rsc '. / "\n" - [""]'` >> "$GITHUB_OUTPUT"
 
-  debug:
-    needs: examples
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          echo "${{needs.examples.outputs.examples}}"
-      - run: |
-          echo "${{fromJSON(needs.examples.outputs.examples)}}"
-
   example:
     name: ${{ matrix.ex }}
     runs-on: ubuntu-latest
@@ -53,4 +44,6 @@ jobs:
     - name: example tests
       env:
         AWS_EC2_METADATA_DISABLED: true
-      run: examples/${{matrix.ex}}/ci.sh
+      run: |
+        cd examples/${{matrix.ex}}
+        ./ci.sh
