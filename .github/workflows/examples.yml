@@ -19,6 +19,13 @@ jobs:
         #        run: echo "::set-output name=matrix::$(find examples -name ci.sh | cut -d/ -f 2 | jq -Rsc '. / \"\n\" - [""]')"
         run: echo ::set-output name=examples::["keras-tract-tf2","onnx-mobilenet-v2","tflite-mobilenet-v3","tensorflow-mobilenet-v2","pytorch-resnet","nnef-mobilenet-v2","nnef-dump-mobilenet-v2","pytorch-albert-v2","face_detection_yolov8onnx_example"]
 
+  debug:
+    needs: examples
+    runs-on: ubuntu-latest
+
+    steps:
+      run: echo ${{needs.examples}}
+
   example:
     name: ${{ matrix.ex }}
     runs-on: ubuntu-latest
