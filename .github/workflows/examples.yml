@@ -31,9 +31,9 @@ jobs:
       - run: |
           echo "${{needs.examples.outputs.foo}}"
       - run: |
-          echo "${{steps.examples.outputs.examples}}"
+          echo "${{needs.examples.outputs.examples}}"
       - run: |
-          echo "${{fromJSON(steps.examples.outputs.examples)}}"
+          echo "${{fromJSON(needs.examples.outputs.examples)}}"
 
   example:
     name: ${{ matrix.ex }}
