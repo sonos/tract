@@ -166,6 +166,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v2
+      - id: set-matrix
+        run: echo "::set-output name=matrix::$(find examples -name ci.sh | cut -d/ -f 2 | jq -Rsc '. / "\n" - [""]')"
+
+  example:
+    name: Example: ${{ matrix.ex }}
+    runs-on: ubuntu-latest
+    needs: examples
+    strategy:
+      matrix:
+        ex: ${{fromJSON(needs.examples.outputs.matrix)}}
+
+    steps:
     - uses: actions/checkout@v3
     - name: Get current date
       id: date
@@ -179,27 +192,11 @@ jobs:
         role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
         aws-region: us-east-2
 
-        #   - uses: actions/cache@v3
-        #     with:
-        #       path: |
-        #         ~/.rustup
-        #         ~/.cargo/registry
-        #         ~/.cargo/git
-        #         #          ~/.cache/sccache
-        #         target
-        #         .cached
-        #       key: ${{ runner.os }}-full-regular-${{steps.date.outputs.date}}-e
-
-        #         #  - name: "Setup sccache"
-        #         #    run: .travis/setup-sccache.sh
-
     - name: example tests
       env:
         AWS_EC2_METADATA_DISABLED: true
-      run: .travis/examples.sh
+      run: examples/${{matrix.ex}}/ci.sh
 
-        # - name: Stop sccache server
-        #   run: sccache --stop-server || true
 
   onnx-tests:
     runs-on: ubuntu-latest
