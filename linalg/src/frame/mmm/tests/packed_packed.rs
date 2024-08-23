@@ -100,6 +100,18 @@ macro_rules! mmm_packed_packed_tests {
                     }
                     Ok(())
                 }
+
+                #[test]
+                fn packed_packed_bug_4() -> TractResult<()> {
+                    if $ker.mr() >= 16 {
+                        let mut a = vec![0f32; $ker.mr()];
+                        let mut b = vec![0f32; $ker.nr()];
+                        a[16] = 1.;
+                        b[0] = 1.;
+                        t(a, b)?;
+                    }
+                    Ok(())
+                }
             }
 
             mod frame {
@@ -199,12 +211,10 @@ where
                     Just((m, n)),
                 )
             })
-            .prop_map(move |(a, b, mn)| Self {
-                frame_test: Some(mn).filter(|_| frame_test),
-                ker,
-                packing,
-                a,
-                b,
+            .prop_map(move |(mut a, mut b, mn)| {
+                a.reverse();
+                b.reverse();
+                Self { frame_test: Some(mn).filter(|_| frame_test), ker, packing, a, b }
             })
             .boxed()
     }
