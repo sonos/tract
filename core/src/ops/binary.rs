@@ -186,6 +186,8 @@ impl TypedOp for TypedBinOp {
     fn slice(
         &self,
         patch: &mut TypedModelPatch,
+        _model: &TypedModel,
+        _node: &TypedNode,
         prefix: &str,
         inputs: &[OutletId],
         _output_axis: usize,

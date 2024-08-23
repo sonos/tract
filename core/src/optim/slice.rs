@@ -56,18 +56,22 @@ impl super::TypedPass for PushSliceUp {
                             }
                             wires.push(wire);
                         }
-                        let Some(wire) = node.op.slice(
-                            &mut patch,
-                            &format!(
-                                "{}.split-over-{}.{}..{}",
-                                &node.name, axis, start, end
-                                ),
+                        let Some(wire) = node
+                            .op
+                            .slice(
+                                &mut patch,
+                                model,
+                                node,
+                                &format!("{}.split-over-{}.{}..{}", &node.name, axis, start, end),
                                 &wires,
                                 axis,
                                 start,
                                 *end,
-                                ).with_context(|| format!("Calling slice on {node}"))? else {
-                            continue 'axis };
+                            )
+                            .with_context(|| format!("Calling slice on {node}"))?
+                        else {
+                            continue 'axis;
+                        };
                         splits.push(wire[0]);
                         start = *end;
                     }

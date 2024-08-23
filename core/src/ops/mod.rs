@@ -216,6 +216,8 @@ pub trait TypedOp:
     fn slice(
         &self,
         patch: &mut TypedModelPatch,
+        model: &TypedModel,
+        node: &TypedNode,
         prefix: &str,
         inputs: &[OutletId],
         output_axis: usize,

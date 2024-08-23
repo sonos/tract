@@ -110,6 +110,8 @@ impl TypedOp for TypedConcat {
     fn slice(
         &self,
         patch: &mut TypedModelPatch,
+        _model: &TypedModel,
+        _node: &TypedNode,
         prefix: &str,
         inputs: &[OutletId],
         output_axis: usize,
