@@ -35,6 +35,9 @@
     beq         .non_linear_loop
 
     cmp         x4, #1
+    beq         .q4f16se
+    
+    cmp         x4, #2
     beq         .q4f16
 
 .p2align 4
@@ -60,6 +63,64 @@
 .q40f16_const:
     .byte 0xc8, 0xc7, 0xc6, 0xc5, 0xc4, 0xc2, 0xc0, 0xbc
     .byte 0x00, 0x3c, 0x40, 0x42, 0x44, 0x45, 0x46, 0x47
+
+.q4f16se:
+    adr      x4, .q40f16_const
+    movi     v15.16b, 15
+    ld1      {v13.16b}, [ x4 ]
+    eor      v12.16b, v12.16b, v12.16b
+
+.q4f16se_outerloop:
+{% for i in (0..7) %}
+    eor      v{{i|plus:16}}.16b, v{{i|plus:16}}.16b, v{{i|plus:16}}.16b
+{% endfor %}
+    mov         x4, #32
+
+.p2align 4
+.q4f16se_innerloop:
+        ld1      { v9.16b-v10.16b }, [x1], #32
+        ld1      { v8.h }[0], [ x2 ], #2
+
+        and      v0.16b, v9.16b, v15.16b
+        ushr     v2.16b, v9.16b, 4
+
+        and      v4.16b, v10.16b, v15.16b
+        ushr     v6.16b, v10.16b, 4
+
+        tbl      v0.16b, { v13.16b }, v0.16b
+        tbl      v2.16b, { v13.16b }, v2.16b
+        tbl      v4.16b, { v13.16b }, v4.16b
+        tbl      v6.16b, { v13.16b }, v6.16b
+
+        zip2     v1.16b, v12.16b, v0.16b
+        zip2     v3.16b, v12.16b, v2.16b
+        zip2     v5.16b, v12.16b, v4.16b
+        zip2     v7.16b, v12.16b, v6.16b
+
+        zip1     v0.16b, v12.16b, v0.16b
+        zip1     v2.16b, v12.16b, v2.16b
+        zip1     v4.16b, v12.16b, v4.16b
+        zip1     v6.16b, v12.16b, v6.16b
+
+{% for i in (0..7) %}
+        fmla        v{{ i|plus: 16 }}.8h, v{{i}}.8h, v8.h[0]
+{% endfor %}
+
+    subs        x4, x4, #1
+    bne         .q4f16se_innerloop
+
+    // scales
+    ld1         { v0.8h-v3.8h }, [ x1 ], #64
+    ld1         { v4.8h-v7.8h }, [ x1 ], #64
+
+{% for i in (0..7) %}
+       fmla     v{{i|plus:24}}.8h, v{{i}}.8h, v{{i|plus:16}}.8h
+{% endfor %}
+
+    subs        x3, x3, #32
+    bne         .q4f16se_outerloop
+
+    b           .non_linear_loop
     
 .q4f16:
     adr      x4, .q40f16_const
