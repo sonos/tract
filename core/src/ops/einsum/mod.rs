@@ -268,10 +268,10 @@ impl TypedOp for EinSum {
         _outputs: &[&TypedFact],
     ) -> TractResult<AxesMapping> {
         let mut axes = self.axes.clone();
-        for input in 0..inputs.len().min(2) {
-            if inputs[input].datum_type.is_opaque() {
-                while axes.axes(InOut::In(input)).next().is_some() {
-                    axes = axes.remove_axis_occurency(InOut::In(input), 0)?;
+        for (ix, input) in inputs.iter().enumerate().take(2) {
+            if input.datum_type.is_opaque() {
+                while axes.axes(InOut::In(ix)).next().is_some() {
+                    axes = axes.remove_axis_occurency(InOut::In(ix), 0)?;
                 }
             }
         }
