@@ -1,5 +1,5 @@
 use super::*;
-use num_traits::{AsPrimitive, Float};
+use num_traits::{AsPrimitive, Float, Zero};
 use std::alloc::Layout;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -68,24 +68,27 @@ impl<const QK: usize> BaseQ4_0<QK> {
         let scratch = std::slice::from_raw_parts_mut(scratch as *mut T, value.k * target.r);
         let blocks_for_k = value.k / self.block_len();
         let row_bytes = blocks_for_k * self.block_bytes();
-        dbg!(&value);
-        dbg!(&value.packed);
-        dbg!(&value.packed[panel * target.r * row_bytes..]);
-        let mut input = NibbleReader::for_slice(&value.packed[panel * target.r * row_bytes..]);
+        let input = &value.packed[panel * target.r * row_bytes..];
         let mut scales = vec![T::zero(); target.r];
         let mut scratch = scratch.iter_mut();
         let zipped_order = zipped_order(pbqf.r, pbqf.zip);
-        let mut weights = vec!(0i8; pbqf.r);
-        dbg!(pbqf);
-        dbg!(panel, blocks_for_k);
-        for _ in 0..blocks_for_k {
+        let mut weights = vec![0i8; pbqf.r];
+        let panel_block_bytes = target.r * self.block_bytes();
+        let (scale_offset, weights_offset) = if pbqf.scales_at_end {
+            (panel_block_bytes - target.r * f16::datum_type().size_of(), 0)
+        } else {
+            (0, target.r * f16::datum_type().size_of())
+        };
+        for block in 0..blocks_for_k {
+            let block = &input[block * panel_block_bytes..][..panel_block_bytes];
+            let mut s_reader = NibbleReader::for_slice(&block[scale_offset..]);
+            let mut w_reader = NibbleReader::for_slice(&block[weights_offset..]);
             for s in &mut scales {
-                *s = input.read_f16().as_();
+                *s = s_reader.read_f16().as_();
             }
-            dbg!(&scales);
             for _ in 0..self.block_len() {
                 for &o in &zipped_order {
-                    weights[o] = input.read_i4();
+                    weights[o] = w_reader.read_i4();
                 }
                 for (w, s) in weights.iter().zip(scales.iter()) {
                     *scratch.next().unwrap() = *s * (*w - 8).as_();
@@ -148,7 +151,14 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
     //  s0_0 S1_0 S2_0 s3_0  n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
     //  s0_32 S1_32 S2_32 s3_32  n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
     //  ...
-    fn pack(&self, input: &[u8], k: usize, r: usize, zip: usize) -> TractResult<EagerPackedInput> {
+    fn pack(
+        &self,
+        input: &[u8],
+        k: usize,
+        r: usize,
+        zip: usize,
+        scales_at_end: bool,
+    ) -> TractResult<EagerPackedInput> {
         assert!(input.len() % self.block_bytes() == 0);
         assert!(k % self.block_len() == 0);
         let m = if input.len() == 0 {
@@ -164,6 +174,7 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
             unsafe { Blob::for_layout(Layout::from_size_align(panel_bytes * panels, 128)?) };
         let mut writer = NibbleWriter::for_slice(&mut blob);
         let order = zipped_order(r, zip);
+        let mut scales = vec![f16::zero(); r];
         for p in 0..panels {
             let input = &input[(r * p) * row_bytes..];
             let mut readers = (0..r)
@@ -174,15 +185,20 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
                 })
                 .collect_vec();
             for _ in 0..blocks_for_k {
-                for reader in &mut readers {
-                    let scale = reader.read_f16();
-                    writer.write_f16(scale);
+                for (ix, reader) in readers.iter_mut().enumerate() {
+                    scales[ix] = reader.read_f16();
+                }
+                if !scales_at_end {
+                    scales.iter().for_each(|s| writer.write_f16(*s))
                 }
                 for _ in 0..self.block_len() {
                     for &ix in &order {
                         let nib = readers[ix].read_i4();
                         writer.write_i4(nib);
                     }
+                }
+                if scales_at_end {
+                    scales.iter().for_each(|s| writer.write_f16(*s))
                 }
             }
         }
@@ -191,6 +207,7 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
                 bq: StaticBlockQuant::Owned(Box::new(*self)),
                 r,
                 zip,
+                scales_at_end,
             }),
             packed: blob,
             mn: m,
@@ -279,19 +296,29 @@ mod tests {
         cycle_f16(Q4_0, &[-1234.0]);
     }
 
-
-
     #[test]
     fn packing() -> TractResult<()> {
-        test_packing(BaseQ4_0::<2>, 4, 4, 2, 0)
+        test_packing(BaseQ4_0::<2>, 4, 4, 2, 0, false)
     }
 
     #[test]
     fn packing_with_zip() -> TractResult<()> {
-        test_packing(BaseQ4_0::<2>, 2, 8, 8, 4)
+        test_packing(BaseQ4_0::<2>, 2, 8, 8, 4, false)
     }
 
-    fn test_packing(q: impl BlockQuant, k: usize, m: usize, r:usize, zip: usize) -> TractResult<()> {
+    #[test]
+    fn packing_with_scales_at_end() -> TractResult<()> {
+        test_packing(BaseQ4_0::<2>, 2, 4, 4, 0, true)
+    }
+
+    fn test_packing(
+        q: impl BlockQuant,
+        k: usize,
+        m: usize,
+        r: usize,
+        zip: usize,
+        scales_at_end: bool,
+    ) -> TractResult<()> {
         let weights_orig =
             Array2::from_shape_fn((m, k), |(m, k)| ((m * 31 + k * 17) % 20) as f32 - 10.)
                 .into_tensor();
@@ -301,7 +328,7 @@ mod tests {
         let packed_f32 = packer.pack_tensor(&weights_f32, 1, 0)?;
 
         let q4 = q.quant_f32(&weights_f32.as_slice::<f32>()?)?;
-        let packed_q4 = q.pack(&q4, k, r, zip)?;
+        let packed_q4 = q.pack(&q4, k, r, zip, scales_at_end)?;
 
         for panel in 0..packed_f32.panels_count() {
             unsafe {
@@ -314,5 +341,4 @@ mod tests {
         }
         Ok(())
     }
-
 }

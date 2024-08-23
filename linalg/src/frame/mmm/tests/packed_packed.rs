@@ -103,7 +103,7 @@ macro_rules! mmm_packed_packed_tests {
 
                 #[test]
                 fn packed_packed_bug_4() -> TractResult<()> {
-                    if $ker.mr() >= 16 {
+                    if $ker.mr() > 16 {
                         let mut a = vec![0f32; $ker.mr()];
                         let mut b = vec![0f32; $ker.nr()];
                         a[16] = 1.;

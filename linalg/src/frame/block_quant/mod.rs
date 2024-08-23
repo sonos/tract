@@ -90,7 +90,14 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
         }
     }
 
-    fn pack(&self, input: &[u8], k: usize, r: usize, zip: usize) -> TractResult<EagerPackedInput>;
+    fn pack(
+        &self,
+        input: &[u8],
+        k: usize,
+        r: usize,
+        zip: usize,
+        scales_at_end: bool,
+    ) -> TractResult<EagerPackedInput>;
 
     unsafe fn extract_panel(
         &self,
@@ -126,6 +133,7 @@ pub struct PackedBlockQuantFormat {
     pub bq: StaticBlockQuant,
     pub r: usize,
     pub zip: usize,
+    pub scales_at_end: bool,
 }
 
 impl Display for PackedBlockQuantFormat {
@@ -141,8 +149,13 @@ impl Debug for PackedBlockQuantFormat {
 }
 
 impl PackedBlockQuantFormat {
-    pub const fn new(bq: &'static dyn BlockQuant, r: usize, zip: usize) -> Self {
-        PackedBlockQuantFormat { bq: StaticBlockQuant::Borrow(bq), r, zip }
+    pub const fn new(
+        bq: &'static dyn BlockQuant,
+        r: usize,
+        zip: usize,
+        scales_at_end: bool,
+    ) -> Self {
+        PackedBlockQuantFormat { bq: StaticBlockQuant::Borrow(bq), r, zip, scales_at_end }
     }
 
     #[cfg(test)]
@@ -172,7 +185,7 @@ impl PackedBlockQuantFormat {
     }
 
     pub fn pack(&self, input: &[u8], k: usize) -> TractResult<EagerPackedInput> {
-        self.bq.pack(input, k, self.r, self.zip)
+        self.bq.pack(input, k, self.r, self.zip, self.scales_at_end)
     }
 }
 
@@ -201,7 +214,7 @@ impl MMMInputFormat for PackedBlockQuantFormat {
         } else {
             todo!()
         };
-        Ok(Box::new(self.bq.pack(&quant, k, self.r, self.zip)?))
+        Ok(Box::new(self.pack(&quant, k)?))
     }
 
     fn k_alignment(&self) -> usize {
