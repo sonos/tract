@@ -305,13 +305,19 @@ impl TypedOp for EinSum {
     fn slice(
         &self,
         patch: &mut TypedModelPatch,
+        model: &TypedModel,
+        node: &TypedNode,
         prefix: &str,
         inputs: &[OutletId],
         _output_axis: usize,
         _start: usize,
         _end: usize,
     ) -> TractResult<Option<TVec<OutletId>>> {
-        patch.wire_node(prefix, self.clone(), inputs).map(Some)
+        if model.node_input_facts(node.id)?.iter().any(|f| f.datum_type.is_opaque()) {
+            Ok(None)
+        } else {
+            patch.wire_node(prefix, self.clone(), inputs).map(Some)
+        }
     }
 
     #[allow(unused_variables)]
