@@ -264,10 +264,18 @@ impl TypedOp for EinSum {
 
     fn axes_mapping(
         &self,
-        _inputs: &[&TypedFact],
+        inputs: &[&TypedFact],
         _outputs: &[&TypedFact],
     ) -> TractResult<AxesMapping> {
-        Ok(self.axes.clone())
+        let mut axes = self.axes.clone();
+        for input in [0, 1] {
+            if inputs[input].datum_type.is_opaque() {
+                while axes.axes(InOut::In(input)).next().is_some() {
+                    axes = axes.remove_axis_occurency(InOut::In(input), 0)?;
+                }
+            }
+        }
+        Ok(axes)
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
