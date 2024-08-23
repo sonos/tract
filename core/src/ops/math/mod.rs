@@ -194,12 +194,14 @@ fn mul_eval_in_a(a: &mut Tensor, b: &Tensor) -> TractResult<bool> {
     let uniform_is_possible = check_uniform_is_possible(a.shape(), b.shape());
     let uniform_in_place_should_be_efficient =
         trailing_unary_dims.iter().fold(1, |num_elements, it| num_elements * a.shape()[*it]) > 32;
+    dbg!(&uniform_is_possible);
+    dbg!(&uniform_in_place_should_be_efficient);
     let unicast_is_possible = check_unicast_is_possible(a.shape(), b.shape());
     let unicast_in_place_should_be_efficient =
         leading_unary_dims.iter().fold(1, |num_elements, it| num_elements * a.shape()[*it]) > 32;
 
     // Better to try uniform in place first (should be more efficient)
-    if uniform_in_place_should_be_efficient & uniform_is_possible {
+    if uniform_in_place_should_be_efficient && uniform_is_possible {
         if b.datum_type() == f32::datum_type() {
             mul_by_scalar::<f32>(
                 a,
@@ -217,7 +219,7 @@ fn mul_eval_in_a(a: &mut Tensor, b: &Tensor) -> TractResult<bool> {
         } else {
             Ok(false)
         }
-    } else if unicast_in_place_should_be_efficient & unicast_is_possible {
+    } else if unicast_in_place_should_be_efficient && unicast_is_possible {
         if b.datum_type() == f32::datum_type() {
             mul_unicast::<f32>(a, b, &leading_unary_dims, (tract_linalg::ops().unicast_mul_f32)())
         } else if b.datum_type() == f16::datum_type() {
