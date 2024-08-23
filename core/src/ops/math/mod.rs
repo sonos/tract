@@ -155,23 +155,16 @@ bin_to_super_type!(mul, Mul,
 [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() * b
 );
 
-
 fn check_uniform_is_possible(a_shape: &[usize], b_shape: &[usize]) -> bool {
     if a_shape.len() != b_shape.len() {
         return false;
     };
 
-    let mut must_be_unary = false;
-    a_shape.iter().zip(b_shape.iter()).all(|(a_dim, b_dim)| {
-        // As soon as a and b dimensions differ, b dimensions must be 1 until the end.
-        if (a_dim != b_dim) && !must_be_unary {
-            must_be_unary = true
-        }
-
-        // Leading dimensions: a_dim==b_dim condition
-        // Trailing dimensison: b_dim == 1
-        ((a_dim == b_dim) & !must_be_unary) || ((*b_dim == 1) & must_be_unary)
-    })
+    a_shape
+        .iter()
+        .zip(b_shape.iter())
+        .skip_while(|(a_dim, b_dim)| a_dim == b_dim)
+        .all(|(_, b_dim)| *b_dim == 1)
 }
 
 fn check_unicast_is_possible(a_shape: &[usize], b_shape: &[usize]) -> bool {
@@ -179,17 +172,11 @@ fn check_unicast_is_possible(a_shape: &[usize], b_shape: &[usize]) -> bool {
         return false;
     };
 
-    let mut must_be_equal = false;
-    a_shape.iter().zip(b_shape.iter()).all(|(a_dim, b_dim)| {
-        // As soon as b dimension not equal to one, a and b dimensions must be equal.
-        if (*b_dim != 1) && !must_be_equal {
-            must_be_equal = true
-        }
-
-        // Leading dimensions: b_dim==1 condition
-        // Trailing dimensison: a_dim == b_dim
-        ((*b_dim == 1) & !must_be_equal) || ((a_dim == b_dim) & must_be_equal)
-    })
+    a_shape
+        .iter()
+        .zip(b_shape.iter())
+        .skip_while(|(_, b_dim)| **b_dim == 1)
+        .all(|(a_dim, b_dim)| a_dim == b_dim)
 }
 
 fn mul_eval_in_a(a: &mut Tensor, b: &Tensor) -> TractResult<bool> {
