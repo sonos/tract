@@ -10,10 +10,11 @@ use tract_core::internal::*;
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::cast::wire_cast;
 use tract_core::ops::change_axes::wire_rank_broadcast;
-use tract_core::ops::logic;
+use tract_core::ops::logic::{self, Comp};
 
 pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite(ser_bin);
+    reg.reg_to_tflite(ser_comp);
 
     reg.reg_to_tract(BuiltinOperator::ADD, deser_add);
     reg.reg_to_tract(BuiltinOperator::SUB, deser_sub);
@@ -22,12 +23,12 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::MAXIMUM, |op| deser_bin(op, tract_core::ops::math::max()));
     reg.reg_to_tract(BuiltinOperator::MINIMUM, |op| deser_bin(op, tract_core::ops::math::min()));
 
-    reg.reg_to_tract(BuiltinOperator::EQUAL, |op| deser_bin(op, tract_core::ops::logic::equals()));
-    reg.reg_to_tract(BuiltinOperator::NOT_EQUAL, |op| deser_bin(op, logic::not_equals()));
-    reg.reg_to_tract(BuiltinOperator::LESS, |op| deser_bin(op, tract_core::ops::logic::less()));
-    reg.reg_to_tract(BuiltinOperator::LESS_EQUAL, |op| deser_bin(op, logic::less_equal()));
-    reg.reg_to_tract(BuiltinOperator::GREATER, |op| deser_bin(op, logic::greater()));
-    reg.reg_to_tract(BuiltinOperator::GREATER_EQUAL, |op| deser_bin(op, logic::greater_equal()));
+    reg.reg_to_tract(BuiltinOperator::EQUAL, |op| deser_comp(op, Comp::Eq));
+    reg.reg_to_tract(BuiltinOperator::NOT_EQUAL, |op| deser_comp(op, Comp::NE));
+    reg.reg_to_tract(BuiltinOperator::LESS, |op| deser_comp(op, Comp::LT));
+    reg.reg_to_tract(BuiltinOperator::LESS_EQUAL, |op| deser_comp(op, Comp::LTE));
+    reg.reg_to_tract(BuiltinOperator::GREATER, |op| deser_comp(op, Comp::GT));
+    reg.reg_to_tract(BuiltinOperator::GREATER_EQUAL, |op| deser_comp(op, Comp::GTE));
     reg.reg_to_tract(BuiltinOperator::LOGICAL_OR, |op| deser_bin(op, logic::or()));
     reg.reg_to_tract(BuiltinOperator::LOGICAL_AND, |op| deser_bin(op, logic::and()));
 }
@@ -46,6 +47,11 @@ fn wire_cast_and_rank_broadcast(op: &mut DeserOp) -> TractResult<TVec<OutletId>>
 fn deser_bin(op: &mut DeserOp, mini: TypedBinOp) -> TractResult<TVec<OutletId>> {
     let wires = wire_cast_and_rank_broadcast(op)?;
     op.ctx.target.wire_node(op.prefix, mini, &wires)
+}
+
+fn deser_comp(op: &mut DeserOp, comp: Comp) -> TractResult<TVec<OutletId>> {
+    let wires = wire_cast_and_rank_broadcast(op)?;
+    op.ctx.target.wire_node(op.prefix, comp, &wires)
 }
 
 fn deser_add(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
@@ -99,12 +105,6 @@ fn ser_bin(
             }
         };
     }
-    ser_logic!(logic::Less, 58, 1, LESS);
-    ser_logic!(logic::Greater, 61, 1, GREATER);
-    ser_logic!(logic::GreaterEqual, 62, 1, GREATER_EQUAL);
-    ser_logic!(logic::LessEqual, 63, 1, LESS_EQUAL);
-    ser_logic!(logic::Equals, 71, 1, EQUAL);
-    ser_logic!(logic::NotEquals, 72, 1, NOT_EQUAL);
 
     ser_logic!(logic::Or, 84, 1, LOGICAL_OR);
     ser_logic!(logic::And, 86, 1, LOGICAL_AND);
@@ -197,4 +197,24 @@ fn ser_bin(
         }
         it => todo!("Missing iplementation for binary {it:?} serialization"),
     }
+}
+
+fn ser_comp(
+    builder: &mut SubgraphBuilder,
+    model: &TypedModel,
+    node: &TypedNode,
+    op: &Comp,
+) -> TractResult<()> {
+    use Comp::*;
+    let (code, version, builtin) = match *op {
+        LT => (58, 1, BuiltinOperator::LESS),
+        GT => (61, 1, BuiltinOperator::GREATER),
+        GTE => (62, 1, BuiltinOperator::GREATER_EQUAL),
+        LTE => (63, 1, BuiltinOperator::LESS_EQUAL),
+        Eq => (71, 1, BuiltinOperator::EQUAL),
+        NE => (72, 1, BuiltinOperator::NOT_EQUAL),
+    };
+    let inputs = builder.map_outlets(model, &node.inputs)?;
+    let outputs = builder.map_outlets(model, [OutletId::from(node.id)])?;
+    return builder.write_op(&inputs, &outputs, code, version, builtin);
 }

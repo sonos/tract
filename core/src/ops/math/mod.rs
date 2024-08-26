@@ -397,7 +397,6 @@ bin_to_super_type!(rem, Rem,
                                       [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64] => |c, a, b| *c = a.clone() % b);
 
 bin_to_super_type!(min, Min, linalg:Min,
-                   operating_datum_type: super::logic::operating_datum_type_for_cmp,
                    q: [i8, u8, i32] => |c, a, b, _, _| *c = if a < b { *a } else { *b };
                    q_op_on_f32: |a: f32, b: f32| a.min(b),
                    [f16, f32, f64] => |c,a,b| *c = a.min(*b),
@@ -445,7 +444,6 @@ bin_to_super_type!(max, Max,
                     Max.generic_eval(a, b, c_dt)
                    },
                    linalg:Max,
-                   operating_datum_type: super::logic::operating_datum_type_for_cmp,
                    q: [i8, u8, i32] => |c, a, b, _, _| *c = if a < b { *b } else { *a };
                    q_op_on_f32: |a: f32, b: f32| -> f32 {a.max(b)},
                    [f16, f32, f64] => |c,a,b| *c = a.max(*b),

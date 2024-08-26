@@ -4,6 +4,7 @@ use crate::model::ParsingContext;
 use crate::pb::NodeProto;
 use tract_core::ops;
 use tract_hir::internal::*;
+use tract_hir::ops::logic::Comp;
 use tract_itertools::Itertools;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
@@ -12,11 +13,11 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Or", |_, _| Ok((ops::logic::Or.into_hir(), vec![])));
     reg.insert("Xor", |_, _| Ok((ops::logic::Xor.into_hir(), vec![])));
 
-    reg.insert("Equal", |_, _| Ok((ops::logic::Equals.into_hir(), vec![])));
-    reg.insert("Greater", |_, _| Ok((ops::logic::Greater.into_hir(), vec![])));
-    reg.insert("Less", |_, _| Ok((ops::logic::Less.into_hir(), vec![])));
-    reg.insert("LessOrEqual", |_, _| Ok((ops::logic::LessEqual.into_hir(), vec![])));
-    reg.insert("GreaterOrEqual", |_, _| Ok((ops::logic::GreaterEqual.into_hir(), vec![])));
+    reg.insert("Equal", |_, _| Ok((expand(Comp::Eq), vec![])));
+    reg.insert("Greater", |_, _| Ok((expand(Comp::GT), vec![])));
+    reg.insert("Less", |_, _| Ok((expand(Comp::LT), vec![])));
+    reg.insert("LessOrEqual", |_, _| Ok((expand(Comp::LTE), vec![])));
+    reg.insert("GreaterOrEqual", |_, _| Ok((expand(Comp::GTE), vec![])));
 
     reg.insert("Where", |_, _| Ok((expand(tract_hir::ops::logic::Iff), vec![])));
 

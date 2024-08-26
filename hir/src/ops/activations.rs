@@ -1,4 +1,5 @@
 use crate::internal::*;
+use tract_core::ops::logic::Comp;
 use tract_core::ops::math::*;
 
 macro_rules! activation {
@@ -89,9 +90,11 @@ activation!(Celu, |op, name: &str, model: &mut TypedModel, inputs| {
     cst!(model, inputs, name, zero, 0.0);
     cst!(model, inputs, name, one, 1.0);
     cst!(model, inputs, name, alpha, op.0);
-    let x_over_alpha = model.wire_node(name.to_string() + ".x_over_alpha", div(), &[inputs[0], alpha])?;
+    let x_over_alpha =
+        model.wire_node(name.to_string() + ".x_over_alpha", div(), &[inputs[0], alpha])?;
     let x_over_alpha_exp = model.wire_node(name.to_string() + ".exp", exp(), &[x_over_alpha[0]])?;
-    let minus_one = model.wire_node(name.to_string() + ".minus_one", sub(), &[x_over_alpha_exp[0], one])?;
+    let minus_one =
+        model.wire_node(name.to_string() + ".minus_one", sub(), &[x_over_alpha_exp[0], one])?;
     let wire = model.wire_node(name.to_string() + ".sat-zero", min(), &[zero, minus_one[0]])?;
     let relu = model.wire_node(name.to_string() + ".relu", max(), &[zero, inputs[0]])?;
     let wire = model.wire_node(name.to_string(), add(), &[relu[0], wire[0]])?;
@@ -108,11 +111,7 @@ activation!(Elu, |op, name: &str, model: &mut TypedModel, inputs| {
     let x_exp = model.wire_node(name.to_string() + ".exp", exp(), inputs)?;
     let minus_one = model.wire_node(name.to_string() + ".minus_one", sub(), &[x_exp[0], one])?;
     let neg = model.wire_node(name.to_string() + ".mul_alpha", mul(), &[alpha, minus_one[0]])?;
-    let test = model.wire_node(
-        name.to_string() + ".test",
-        tract_core::ops::logic::less(),
-        &[zero, inputs[0]],
-    )?;
+    let test = model.wire_node(name.to_string() + ".test", Comp::LT, &[zero, inputs[0]])?;
     let wire = model.wire_node(
         name.to_string() + ".iff",
         tract_core::ops::logic::Iff,
@@ -171,10 +170,7 @@ activation!(ScaledTanh, |op, name: &str, model: &mut TypedModel, inputs| {
 });
 
 #[derive(Debug, Clone, new)]
-pub struct Selu(
-    pub f32,
-    pub f32,
-);
+pub struct Selu(pub f32, pub f32);
 
 activation!(Selu, |op, name: &str, model: &mut TypedModel, inputs| {
     cst!(model, inputs, name, zero, 0.0);
@@ -183,11 +179,7 @@ activation!(Selu, |op, name: &str, model: &mut TypedModel, inputs| {
     let wire = model.wire_node(name.to_string() + ".exp", exp(), inputs)?;
     let wire = model.wire_node(name.to_string() + ".mul_alpha", mul(), &[wire[0], alpha])?;
     let wire = model.wire_node(name.to_string() + ".sub_alpha", sub(), &[wire[0], alpha])?;
-    let test = model.wire_node(
-        name.to_string() + ".test",
-        tract_core::ops::logic::less(),
-        &[zero, inputs[0]],
-    )?;
+    let test = model.wire_node(name.to_string() + ".test", Comp::LT, &[zero, inputs[0]])?;
     let wire = model.wire_node(
         name.to_string() + ".iff",
         tract_core::ops::logic::Iff,
@@ -198,10 +190,7 @@ activation!(Selu, |op, name: &str, model: &mut TypedModel, inputs| {
 });
 
 #[derive(Debug, Clone, new)]
-pub struct Shrink(
-    pub f32,
-    pub f32,
-);
+pub struct Shrink(pub f32, pub f32);
 
 activation!(Shrink, |op, name: &str, model: &mut TypedModel, inputs| {
     cst!(model, inputs, name, bias, op.0);
@@ -209,21 +198,15 @@ activation!(Shrink, |op, name: &str, model: &mut TypedModel, inputs| {
     cst!(model, inputs, name, minus_lambda, -op.1);
     let zero = broadcast_scalar(0.0, model, inputs)?;
     let zero = model.add_const(name.to_string() + ".zero", zero)?;
-    let test_pos = model.wire_node(
-        name.to_string() + ".test_pos",
-        tract_core::ops::logic::less(),
-        &[lambda, inputs[0]],
-    )?;
+    let test_pos =
+        model.wire_node(name.to_string() + ".test_pos", Comp::LT, &[lambda, inputs[0]])?;
     let pos = model.wire_node(
         name.to_string() + ".pos",
         tract_core::ops::math::sub(),
         &[inputs[0], bias],
     )?;
-    let test_neg = model.wire_node(
-        name.to_string() + ".test_neg",
-        tract_core::ops::logic::greater(),
-        &[minus_lambda, inputs[0]],
-    )?;
+    let test_neg =
+        model.wire_node(name.to_string() + ".test_neg", Comp::GT, &[minus_lambda, inputs[0]])?;
     let neg = model.wire_node(
         name.to_string() + ".neg",
         tract_core::ops::math::add(),
@@ -248,11 +231,7 @@ pub struct ThresholdRelu(pub f32);
 activation!(ThresholdRelu, |op, name: &str, model: &mut TypedModel, inputs| {
     cst!(model, inputs, name, zero, 0.0);
     cst!(model, inputs, name, alpha, op.0);
-    let test = model.wire_node(
-        name.to_string() + ".test",
-        tract_core::ops::logic::less(),
-        &[alpha, inputs[0]],
-    )?;
+    let test = model.wire_node(name.to_string() + ".test", Comp::LT, &[alpha, inputs[0]])?;
     let wire = model.wire_node(
         name.to_string() + ".iff",
         tract_core::ops::logic::Iff,

@@ -1,111 +1,21 @@
 #![allow(clippy::bool_comparison)]
 #![allow(clippy::unnecessary_cast)]
 
+mod comparison;
 mod ite;
 pub use ite::IfThenElse;
+pub use comparison::Comp;
 
 use ndarray::*;
 
 use crate::broadcast::multi_broadcast;
 use crate::internal::*;
 
-use super::binary::BinMiniOp;
-use super::element_wise::ElementWiseOp;
-
 bin_to_super_type!(and, And,
                    [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 && b as i64 != 0) as _);
 bin_to_super_type!(or, Or,
                    [bool, u8, u16, u32, u64, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 || b as i64 != 0) as _);
 bin_to_super_type!(xor, Xor, /*flip: commute, */ [bool] => |c, &a, &b| *c = a ^ b);
-bin_to_bool!(equals, Equals,
- [bool, u8, u16, u32, u64, i8, i16, i32, i64, f16, f32, f64, TDim] => |c, a, b | *c = a == b
-);
-bin_to_bool!(not_equals, NotEquals, /* flip: commute, */
- [bool, u8, u16, u32, u64, i8, i16, i32, i64, f16, f32, f64, TDim] => |c, a, b | *c = a != b
-);
-
-bin_to_bool!(less, Less,
-             codegen: codegen_compare_to_zero,
-             operating_datum_type: operating_datum_type_for_cmp,
-             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f16, f32, f64] => |c, &a, &b | *c = a < b);
-bin_to_bool!(less_equal, LessEqual,
-             codegen: codegen_compare_to_zero,
-             operating_datum_type: operating_datum_type_for_cmp,
-             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f16, f32, f64] => |c, &a, &b | *c = a <= b);
-bin_to_bool!(greater, Greater,
-             codegen: codegen_compare_to_zero,
-             operating_datum_type: operating_datum_type_for_cmp,
-             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f16, f32, f64] => |c, &a, &b | *c = a > b);
-bin_to_bool!(greater_equal, GreaterEqual,
-             codegen: codegen_compare_to_zero,
-             operating_datum_type: operating_datum_type_for_cmp,
-             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f16, f32, f64] => |c, &a, &b | *c = a >= b);
-
-pub fn operating_datum_type_for_cmp(a: DatumType, b: DatumType) -> TractResult<DatumType> {
-    let dt = a
-        .common_super_type(b)
-        .with_context(|| format_err!("No super type for {:?} and {:?}", a, b))?;
-    if dt == DatumType::TDim {
-        Ok(DatumType::I64)
-    } else {
-        Ok(dt)
-    }
-}
-
-fn codegen_compare_to_zero(
-    op: &dyn BinMiniOp,
-    model: &TypedModel,
-    node: &TypedNode,
-) -> TractResult<Option<TypedModelPatch>> {
-    let facts = model.node_input_facts(node.id)?;
-    if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
-        let dt = facts[0].datum_type;
-        if (dt.is_signed() || dt.is_float()) && *uniform.uni == Tensor::zero_scalar_dt(dt)? {
-            let reversed = uniform.left_is_uniform;
-            let mapped = || -> Box<dyn ElementWiseMiniOp> {
-                macro_rules! m {
-                    ($bin: ty, $same: expr, $other: expr) => {
-                        if op.is::<$bin>() {
-                            return if reversed { Box::new($other) } else { Box::new($same) };
-                        };
-                    };
-                }
-                m!(Less, LessThanZero {}, GreaterEqualThanZero {});
-                m!(LessEqual, LessEqualThanZero {}, GreaterThanZero {});
-                m!(Greater, GreaterThanZero {}, LessEqualThanZero {});
-                m!(GreaterEqual, GreaterEqualThanZero {}, LessThanZero {});
-                unreachable!();
-            };
-            return Ok(Some(TypedModelPatch::replace_single_op(
-                model,
-                node,
-                &[uniform.var],
-                ElementWiseOp(mapped(), None),
-            )?));
-        }
-    }
-    Ok(None)
-}
-
-element_wise_oop!(less_than_zero, LessThanZero, [f16, f32, f64, i8, i16, i32, i64] => bool |_op, xs, ys| {
-    xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = *x < num_traits::Zero::zero());
-    Ok(())
-});
-
-element_wise_oop!(less_equal_than_zero, LessEqualThanZero, [f16, f32, f64, i8, i16, i32, i64] => bool |_op, xs, ys| {
-    xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = *x <= num_traits::Zero::zero());
-    Ok(())
-});
-
-element_wise_oop!(greater_than_zero, GreaterThanZero, [f16, f32, f64, i8, i16, i32, i64] => bool |_op, xs, ys| {
-    xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = *x > num_traits::Zero::zero());
-    Ok(())
-});
-
-element_wise_oop!(greater_equal_than_zero, GreaterEqualThanZero, [f16, f32, f64, i8, i16, i32, i64] => bool |_op, xs, ys| {
-    xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = *x >= num_traits::Zero::zero());
-    Ok(())
-});
 
 element_wise!(not, Not, [bool] => |_, vs| {
     vs.iter_mut().for_each(|a| *a = !*a);
