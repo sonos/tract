@@ -2,6 +2,7 @@ use crate::model::ParsingContext;
 use crate::pb::*;
 use tract_hir::internal::*;
 use tract_hir::ops;
+use tract_hir::ops::logic::Comp;
 
 pub fn rem(
     _ctx: &ParsingContext,
@@ -16,8 +17,6 @@ pub fn rem(
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct RemInt;
-
-
 
 impl Expansion for RemInt {
     fn name(&self) -> Cow<str> {
@@ -44,9 +43,8 @@ impl Expansion for RemInt {
         let zero = tract_hir::ops::activations::broadcast_scalar(0.0, model, inputs)?;
         let a = model.outlet_fact(inputs[0])?.datum_type;
         let b = model.outlet_fact(inputs[1])?.datum_type;
-        let dt = a
-            .common_super_type(b)
-            .with_context(|| format!("No super type for {a:?} and {b:?}"))?;
+        let dt =
+            a.common_super_type(b).with_context(|| format!("No super type for {a:?} and {b:?}"))?;
         let wires = tract_hir::ops::binary::wire_rank_broadcast(name, model, inputs)?;
         let wires = tract_hir::ops::binary::wire_cast(name, model, &wires, dt)?;
         if dt.is_unsigned() || dt == DatumType::TDim {
@@ -58,26 +56,14 @@ impl Expansion for RemInt {
         let zero = model.add_const(name.to_string() + ".zero", zero)?;
         let rem =
             model.wire_node(name.to_string() + ".rem", tract_hir::ops::math::rem(), &wires)?[0];
-        let rem_is_neg = model.wire_node(
-            name.to_string() + ".rem_is_neg",
-            tract_hir::ops::logic::greater(),
-            &[zero, rem],
-        )?;
-        let rem_is_pos = model.wire_node(
-            name.to_string() + ".rem_is_pos",
-            tract_hir::ops::logic::less(),
-            &[zero, rem],
-        )?;
-        let b_is_neg = model.wire_node(
-            name.to_string() + ".b_is_neg",
-            tract_hir::ops::logic::greater(),
-            &[zero, wires[1]],
-        )?;
-        let b_is_pos = model.wire_node(
-            name.to_string() + ".b_is_pos",
-            tract_hir::ops::logic::less(),
-            &[zero, wires[1]],
-        )?;
+        let rem_is_neg =
+            model.wire_node(name.to_string() + ".rem_is_neg", Comp::GT, &[zero, rem])?;
+        let rem_is_pos =
+            model.wire_node(name.to_string() + ".rem_is_pos", Comp::LT, &[zero, rem])?;
+        let b_is_neg =
+            model.wire_node(name.to_string() + ".b_is_neg", Comp::GT, &[zero, wires[1]])?;
+        let b_is_pos =
+            model.wire_node(name.to_string() + ".b_is_pos", Comp::LT, &[zero, wires[1]])?;
         let rem_is_neg_b_is_pos = model.wire_node(
             name.to_string() + ".rem_is_neg_b_is_pos",
             tract_hir::ops::logic::and(),

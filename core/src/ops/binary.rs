@@ -594,6 +594,7 @@ macro_rules! bin_to_super_type {
     };
 }
 
+/*
 macro_rules! bin_to_bool {
     ($func:ident, $Op:ident,
      $( codegen: $codegen:expr, )?
@@ -711,6 +712,7 @@ macro_rules! bin_to_bool {
         }
     };
 }
+*/
 
 #[derive(Debug)]
 pub(crate) struct OneUniformInput {

@@ -1,5 +1,6 @@
 use tract_hir::internal::*;
 use tract_hir::ops;
+use tract_hir::ops::logic::Comp;
 use tract_hir::ops::{cnn, nn};
 
 use crate::model::{OnnxOpRegister, ParsingContext};
@@ -364,11 +365,7 @@ impl Expansion for Prelu {
             .broadcast_into_rank(rank)?;
         let ab = model.wire_node(format!("{name}.mul"), tract_hir::ops::math::mul(), &[a, b])?[0];
         let zero = model.add_const(name.to_string() + ".zero", zero)?;
-        let test = model.wire_node(
-            name.to_string() + ".test",
-            tract_hir::ops::logic::greater(),
-            &[zero, a],
-        )?;
+        let test = model.wire_node(name.to_string() + ".test", Comp::GT, &[zero, a])?;
         model.wire_node(name.to_string() + ".iff", tract_core::ops::logic::Iff, &[test[0], ab, a])
     }
 }

@@ -6,6 +6,38 @@ use tract_core::ops::cast::wire_cast;
 pub use tract_core::ops::change_axes::wire_with_rank_broadcast;
 pub use tract_core::ops::logic::*;
 
+impl Expansion for Comp {
+    fn name(&self) -> Cow<str> {
+        <Comp as Op>::name(self)
+    }
+
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> InferenceResult {
+        super::binary::rules(s, inputs, outputs, |_, _| Ok(bool::datum_type()))
+    }
+
+    fn wire(
+        &self,
+        prefix: &str,
+        target: &mut TypedModel,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let a = target.outlet_fact(inputs[0])?;
+        let b = target.outlet_fact(inputs[1])?;
+        let operating_datum_type = a
+            .datum_type
+            .common_super_type(b.datum_type)
+            .context("No super type for {a:?} and {b:?}")?;
+        let wires = wire_rank_broadcast(prefix, target, inputs)?;
+        let wires = wire_cast(prefix, target, &wires, operating_datum_type)?;
+        target.wire_node(prefix, *self, &wires)
+    }
+}
+
 #[derive(Debug, Clone, Hash)]
 pub struct Iff;
 

@@ -32,7 +32,11 @@ pub fn source(
     Ok(None)
 }
 
-pub fn basic_matmul(ast: &mut IntoAst, node: &TypedNode, op: &BasicMatMul) -> TractResult<Option<Arc<RValue>>> {
+pub fn basic_matmul(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &BasicMatMul,
+) -> TractResult<Option<Arc<RValue>>> {
     let inputs = node.inputs.iter().map(|i| (*ast.mapping[i]).clone()).collect_vec();
     if op.transpose_c {
         Ok(Some(invocation(
@@ -55,6 +59,24 @@ pub fn konst(
     op: &ops::konst::Const,
 ) -> TractResult<Option<Arc<RValue>>> {
     Ok(Some(ast.konst(&node.name, &op.0)?))
+}
+
+pub fn comp(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &ops::logic::Comp,
+) -> TractResult<Option<Arc<RValue>>> {
+    use ops::logic::Comp::*;
+    let inputs = node.inputs.iter().map(|i| Arc::clone(&ast.mapping[i])).collect_vec();
+    let name = match *op {
+        Eq => "eq",
+        NE => "ne",
+        LT => "lt",
+        GT => "gt",
+        LTE => "le",
+        GTE => "ge",
+    };
+    Ok(Some(invocation(name, &*inputs, &[])))
 }
 
 pub fn concat(
@@ -455,7 +477,7 @@ pub fn softmax(
     op: &ops::nn::Softmax,
 ) -> TractResult<Option<Arc<RValue>>> {
     if op.exp != SoftmaxExp::default() {
-        return Ok(None)
+        return Ok(None);
     }
     let litteral_axes: Vec<_> = op.axes.iter().map(|&it| (it as i64).into()).collect();
     Ok(Some(invocation(

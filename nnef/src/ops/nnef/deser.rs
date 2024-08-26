@@ -9,6 +9,7 @@ use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PoolSpec;
 use tract_core::ops::konst::Const;
+use tract_core::ops::logic::Comp;
 use tract_core::ops::math::min;
 use tract_core::ops::matmul::de_block_quant::BlockQuantValue;
 use tract_core::ops::nn::{DataFormat, Softmax, SoftmaxExp};
@@ -260,7 +261,7 @@ pub fn tile(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Trac
     let repeats: ShapeFact = invocation.named_arg_as(builder, "repeats")?;
     let wire = invocation.named_arg_as(builder, "input")?;
     ensure!(builder.model.outlet_fact(wire)?.rank() == repeats.len());
-    builder.wire(ops::array::Tile { multipliers: repeats.to_tvec()} , &[wire])
+    builder.wire(ops::array::Tile { multipliers: repeats.to_tvec() }, &[wire])
 }
 
 pub fn pad_mode(border: &str, value: Tensor) -> TractResult<tract_core::ops::array::PadMode> {
@@ -647,6 +648,37 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     } else {
         builder.wire(ops::einsum::EinSum { axes, operating_dt: a_dt, q_params: None }, &[a, b])
     }
+}
+
+/*
+fragment lt( x: tensor<scalar>, y: tensor<scalar> ) -> ( z: tensor<logical> )
+fragment gt( x: tensor<scalar>, y: tensor<scalar> ) -> ( z: tensor<logical> )
+fragment le( x: tensor<scalar>, y: tensor<scalar> ) -> ( z: tensor<logical> )
+fragment ge( x: tensor<scalar>, y: tensor<scalar> ) -> ( z: tensor<logical> )
+fragment eq( x: tensor<scalar>, y: tensor<scalar> ) -> ( z: tensor<logical> )
+fragment ne( x: tensor<scalar>, y: tensor<scalar> ) -> ( z: tensor<logical> )
+*/
+pub fn comp(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+    let op = match &*invocation.invocation.id.0 {
+        "eq" => Comp::Eq,
+        "ne" => Comp::NE,
+        "lt" => Comp::LT,
+        "gt" => Comp::GT,
+        "le" => Comp::LTE,
+        "ge" => Comp::GTE,
+        _ => bail!("Unexpected comparing operator"),
+    };
+    let mut a =
+        invocation.invocation.arguments[0].rvalue.resolve(builder, &[])?.to::<OutletId>(builder)?;
+    let mut b =
+        invocation.invocation.arguments[1].rvalue.resolve(builder, &[])?.to::<OutletId>(builder)?;
+    let a_dt = builder.model.outlet_fact(a)?.datum_type;
+    let b_dt = builder.model.outlet_fact(b)?.datum_type;
+    let dt = a_dt.common_super_type(b_dt).context("no supertype found")?;
+    a = builder.wire_as_outlets(tract_core::ops::cast::cast(dt), &[a])?[0];
+    b = builder.wire_as_outlets(tract_core::ops::cast::cast(dt), &[b])?[0];
+    let inputs = crate::registry::multi_rank_broadcast(builder, &[a, b])?;
+    builder.wire(op, &inputs)
 }
 
 /*

@@ -10,7 +10,7 @@ use std::fmt::Debug;
 use std::{fmt, ops};
 
 #[derive(Debug)]
-pub struct UndeterminedSymbol(TDim);
+pub struct UndeterminedSymbol(pub TDim);
 
 impl std::fmt::Display for UndeterminedSymbol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -37,7 +37,7 @@ pub enum TDim {
 
 use TDim::*;
 
-fn tdim_compare(a: &TDim, b: &TDim) -> Ordering {
+fn tdim_lexi_order(a: &TDim, b: &TDim) -> Ordering {
     match (a, b) {
         (Sym(a), Sym(b)) => a.cmp(b),
         (Val(a), Val(b)) => a.cmp(b),
@@ -48,10 +48,10 @@ fn tdim_compare(a: &TDim, b: &TDim) -> Ordering {
         | (Max(a), Max(b)) => a.len().cmp(&b.len()).then(
             a.iter()
                 .zip(b.iter())
-                .fold(Ordering::Equal, |acc, (a, b)| acc.then_with(|| tdim_compare(a, b))),
+                .fold(Ordering::Equal, |acc, (a, b)| acc.then_with(|| tdim_lexi_order(a, b))),
         ),
-        (MulInt(p, d), MulInt(q, e)) => p.cmp(q).then_with(|| tdim_compare(d, e)),
-        (Div(d, p), Div(e, q)) => p.cmp(q).then_with(|| tdim_compare(d, e)),
+        (MulInt(p, d), MulInt(q, e)) => p.cmp(q).then_with(|| tdim_lexi_order(d, e)),
+        (Div(d, p), Div(e, q)) => p.cmp(q).then_with(|| tdim_lexi_order(d, e)),
         (Sym(_), _) => Ordering::Less,
         (_, Sym(_)) => Ordering::Greater,
         (Val(_), _) => Ordering::Less,
@@ -187,7 +187,7 @@ impl TDim {
         self.simplify()
             .wiggle()
             .into_iter()
-            .sorted_by(tdim_compare)
+            .sorted_by(tdim_lexi_order)
             .unique()
             .map(|e| e.simplify())
             .min_by_key(|e| e.cost())
@@ -271,24 +271,28 @@ impl TDim {
         }
     }
 
+    fn find_any_sym(tdim: &TDim) -> Option<&Symbol> {
+        match tdim {
+            Val(_) => None,
+            Sym(s) => Some(s),
+            Add(terms) | Mul(terms) | Min(terms) | Max(terms) | Broadcast(terms) => {
+                terms.iter().find_map(Self::find_any_sym)
+            }
+            MulInt(_, t) | Div(t, _) => Self::find_any_sym(t),
+        }
+    }
+
+    pub fn find_scope(&self) -> Option<SymbolScope> {
+        Self::find_any_sym(&self).map(|s| s.scope().clone())
+    }
+
     pub fn simplify(self) -> TDim {
         use self::TDim::*;
         if let Val(v) = self {
             return Val(v);
         }
 
-        fn find_any_sym(tdim: &TDim) -> Option<&Symbol> {
-            match tdim {
-                Val(_) => None,
-                Sym(s) => Some(s),
-                Add(terms) | Mul(terms) | Min(terms) | Max(terms) | Broadcast(terms) => {
-                    terms.iter().find_map(find_any_sym)
-                }
-                MulInt(_, t) | Div(t, _) => find_any_sym(t),
-            }
-        }
-
-        let scope = find_any_sym(&self).map(|s| s.scope().clone());
+        let scope = Self::find_any_sym(&self).map(|s| s.scope().clone());
         self.simplify_rec(scope.as_ref())
     }
 
@@ -327,7 +331,7 @@ impl TDim {
                     .into_iter()
                     .filter_map(|(term, count)| evaluate_count(term, count))
                     .collect();
-                members.sort_by(tdim_compare);
+                members.sort_by(tdim_lexi_order);
 
                 match members.len() {
                     0 => TDim::Val(0),
@@ -355,7 +359,7 @@ impl TDim {
                     gcd = -gcd;
                 }
                 terms.retain(|t| !t.is_one() && t != &Val(-1));
-                terms.sort_by(tdim_compare);
+                terms.sort_by(tdim_lexi_order);
                 match (gcd, terms.len()) {
                     (_, 0) => Val(gcd), // Case #1: If 0 variables, return product
                     (0, _) => Val(0),   // Case #2: Result is 0 if coef is 0 (actually
@@ -457,7 +461,7 @@ impl TDim {
                     .map(|s| s.clone().simplify_rec(scope))
                     .flat_map(|t| if let Broadcast(t) = t { t } else { vec![t] })
                     .filter(|t| !t.is_one())
-                    .sorted_by(tdim_compare)
+                    .sorted_by(tdim_lexi_order)
                     .dedup()
                     .collect_vec();
                 if terms.len() == 0 {
@@ -473,7 +477,7 @@ impl TDim {
                     .into_iter()
                     .map(|t| t.simplify_rec(scope))
                     .flat_map(|t| if let Min(t) = t { t } else { vec![t] })
-                    .sorted_by(tdim_compare)
+                    .sorted_by(tdim_lexi_order)
                     .dedup()
                     .collect();
                 let new_terms: Vec<TDim> = flatten
@@ -483,7 +487,8 @@ impl TDim {
                             && !flatten.iter().filter(|other| other != &t).any(|other| {
                                 let diff = t.clone() - other;
                                 diff.to_i64().is_ok_and(|i| i >= 0)
-                                    || scope.is_some_and(|scope| scope.prove_positive(&diff))
+                                    || scope
+                                        .is_some_and(|scope| scope.prove_positive_or_zero(&diff))
                             })
                     })
                     .cloned()
@@ -501,7 +506,7 @@ impl TDim {
                     .into_iter()
                     .map(|t| t.simplify_rec(scope))
                     .flat_map(|t| if let Max(t) = t { t } else { vec![t] })
-                    .sorted_by(tdim_compare)
+                    .sorted_by(tdim_lexi_order)
                     .dedup()
                     .collect();
                 let new_terms: Vec<TDim> = flatten
@@ -511,7 +516,8 @@ impl TDim {
                             && !flatten.iter().filter(|other| other != &t).any(|other| {
                                 let diff = other.clone() - t;
                                 diff.to_i64().is_ok_and(|i| i >= 0)
-                                    || scope.is_some_and(|scope| scope.prove_positive(&diff))
+                                    || scope
+                                        .is_some_and(|scope| scope.prove_positive_or_zero(&diff))
                             })
                     })
                     .cloned()

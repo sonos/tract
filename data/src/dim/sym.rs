@@ -75,7 +75,7 @@ impl SymbolScope {
     }
 
     #[allow(clippy::mutable_key_type)]
-    pub fn prove_positive(&self, t: &TDim) -> bool {
+    pub fn prove_positive_or_zero(&self, t: &TDim) -> bool {
         if let TDim::Val(v) = t {
             return *v >= 0;
         }
@@ -280,32 +280,32 @@ mod tests {
     #[test]
     fn prove_positive_0() {
         let s = SymbolScope::default();
-        assert!(s.prove_positive(&s.parse_tdim("0").unwrap()));
+        assert!(s.prove_positive_or_zero(&s.parse_tdim("0").unwrap()));
     }
 
     #[test]
     fn prove_positive_1() {
         let s = SymbolScope::default();
-        assert!(s.prove_positive(&s.parse_tdim("1").unwrap()));
+        assert!(s.prove_positive_or_zero(&s.parse_tdim("1").unwrap()));
     }
 
     #[test]
     fn prove_positive_neg1() {
         let s = SymbolScope::default();
-        assert!(!s.prove_positive(&s.parse_tdim("-1").unwrap()));
+        assert!(!s.prove_positive_or_zero(&s.parse_tdim("-1").unwrap()));
     }
 
     #[test]
     fn prove_positive_add_0() {
         let s = SymbolScope::default();
-        assert!(!s.prove_positive(&s.parse_tdim("s+1").unwrap()));
+        assert!(!s.prove_positive_or_zero(&s.parse_tdim("s+1").unwrap()));
     }
 
     #[test]
     fn prove_positive_with_axiom() {
         let s = SymbolScope::default();
         s.add_inequality("s>=0").unwrap();
-        assert!(s.prove_positive(&s.parse_tdim("s").unwrap()));
+        assert!(s.prove_positive_or_zero(&s.parse_tdim("s").unwrap()));
     }
 
     #[test]
@@ -314,6 +314,6 @@ mod tests {
         s.add_inequality("s>=0").unwrap();
         s.add_inequality("p>=0").unwrap();
         s.add_inequality("p+s<4096").unwrap();
-        assert!(s.prove_positive(&s.parse_tdim("4096-p").unwrap()));
+        assert!(s.prove_positive_or_zero(&s.parse_tdim("4096-p").unwrap()));
     }
 }

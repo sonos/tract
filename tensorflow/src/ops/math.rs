@@ -24,7 +24,6 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Sum", reduce::sum);
     reg.insert("Maximum", |_, _| Ok(ops::math::Max.into_hir()));
     reg.insert("Minimum", |_, _| Ok(ops::math::Min.into_hir()));
-    reg.insert("Less", |_, _| Ok(ops::logic::Less.into_hir()));
     reg.insert("Log", |_, _| Ok(ops::math::ln().into_hir()));
     reg.insert("Mul", |_, _| Ok(ops::math::Mul.into_hir()));
     reg.insert("Pow", |_, _| Ok(ops::math::Pow.into_hir()));
