@@ -194,8 +194,6 @@ fn mul_eval_in_a(a: &mut Tensor, b: &Tensor) -> TractResult<bool> {
     let uniform_is_possible = check_uniform_is_possible(a.shape(), b.shape());
     let uniform_in_place_should_be_efficient =
         trailing_unary_dims.iter().fold(1, |num_elements, it| num_elements * a.shape()[*it]) > 32;
-    dbg!(&uniform_is_possible);
-    dbg!(&uniform_in_place_should_be_efficient);
     let unicast_is_possible = check_unicast_is_possible(a.shape(), b.shape());
     let unicast_in_place_should_be_efficient =
         leading_unary_dims.iter().fold(1, |num_elements, it| num_elements * a.shape()[*it]) > 32;
