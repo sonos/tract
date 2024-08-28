@@ -216,5 +216,5 @@ fn ser_comp(
     };
     let inputs = builder.map_outlets(model, &node.inputs)?;
     let outputs = builder.map_outlets(model, [OutletId::from(node.id)])?;
-    return builder.write_op(&inputs, &outputs, code, version, builtin);
+    builder.write_op(&inputs, &outputs, code, version, builtin)
 }
