@@ -283,7 +283,7 @@ impl TDim {
     }
 
     pub fn find_scope(&self) -> Option<SymbolScope> {
-        Self::find_any_sym(&self).map(|s| s.scope().clone())
+        Self::find_any_sym(self).map(|s| s.scope().clone())
     }
 
     pub fn simplify(self) -> TDim {

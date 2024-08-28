@@ -76,7 +76,7 @@ pub fn comp(
         LTE => "le",
         GTE => "ge",
     };
-    Ok(Some(invocation(name, &*inputs, &[])))
+    Ok(Some(invocation(name, &inputs, &[])))
 }
 
 pub fn concat(
