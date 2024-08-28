@@ -20,6 +20,7 @@ impl Gather {
         input_shape: &[D],
         indices_shape: &[D],
     ) -> TractResult<TVec<D>> {
+        ensure!(input_shape.len() > self.axis);
         let mut output_shape: TVec<D> = input_shape[..self.axis].into();
         output_shape.extend(indices_shape.iter().cloned());
         output_shape.extend(input_shape[self.axis + 1..].iter().cloned());
