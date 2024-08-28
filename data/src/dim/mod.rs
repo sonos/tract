@@ -175,7 +175,7 @@ impl DimLike for TDim {
     }
 
     fn maxi(self, other: Self) -> Self {
-        TDim::Min(vec![self, other]).simplify()
+        TDim::Max(vec![self, other]).simplify()
     }
 }
 
