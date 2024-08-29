@@ -145,97 +145,46 @@ impl TypedOp for Comp {
         Ok(tvec!(bool::datum_type().fact(shape)))
     }
 
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        if let AxisOp::Rm(rm) = change {
+            let (inputs, outputs) = model.node_facts(node.id)?;
+            if !inputs[0].shape[*rm].is_one()
+                || !inputs[0].shape[*rm].is_one()
+                || !outputs[0].shape[*rm].is_one()
+            {
+                return Ok(None);
+            }
+        }
+        Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
+    }
+
+    fn slice(
+        &self,
+        patch: &mut TypedModelPatch,
+        _model: &TypedModel,
+        _node: &TypedNode,
+        prefix: &str,
+        inputs: &[OutletId],
+        _output_axis: usize,
+        _start: usize,
+        _end: usize,
+    ) -> TractResult<Option<TVec<OutletId>>> {
+        Ok(Some(patch.wire_node(prefix, self.clone(), inputs)?))
+    }
+
+    fn axes_mapping(
+        &self,
+        inputs: &[&TypedFact],
+        outputs: &[&TypedFact],
+    ) -> TractResult<AxesMapping> {
+        AxesMapping::natural(inputs, outputs)
+    }
+
     as_op!();
 }
-
-/*
-   pub fn operating_datum_type_for_cmp(a: DatumType, b: DatumType) -> TractResult<DatumType> {
-   let dt = a
-   .common_super_type(b)
-   .with_context(|| format_err!("No super type for {:?} and {:?}", a, b))?;
-   if dt == DatumType::TDim {
-   Ok(DatumType::I64)
-   } else {
-   Ok(dt)
-   }
-   }
-
-   bin_to_bool!(equals, Equals,
-   [bool, u8, u16, u32, u64, i8, i16, i32, i64, f16, f32, f64, TDim] => |c, a, b | *c = a == b
-   );
-   bin_to_bool!(not_equals, NotEquals, /* flip: commute, */
-[bool, u8, u16, u32, u64, i8, i16, i32, i64, f16, f32, f64, TDim] => |c, a, b | *c = a != b
-);
-
-bin_to_bool!(less, Less,
-             codegen: codegen_compare_to_zero,
-             operating_datum_type: operating_datum_type_for_cmp,
-             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f16, f32, f64] => |c, &a, &b | *c = a < b);
-bin_to_bool!(less_equal, LessEqual,
-             codegen: codegen_compare_to_zero,
-             operating_datum_type: operating_datum_type_for_cmp,
-             [bool, u8, u16, u32, u64, i8, i16, iua32, i64, f16, f32, f64] => |c, &a, &b | *c = a <= b);
-bin_to_bool!(greater, Greater,
-             codegen: codegen_compare_to_zero,
-             operating_datum_type: operating_datum_type_for_cmp,
-             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f16, f32, f64] => |c, &a, &b | *c = a > b);
-bin_to_bool!(greater_equal, GreaterEqual,
-             codegen: codegen_compare_to_zero,
-             operating_datum_type: operating_datum_type_for_cmp,
-             [bool, u8, u16, u32, u64, i8, i16, i32, i64, f16, f32, f64] => |c, &a, &b | *c = a >= b);
-
-fn codegen_compare_to_zero(
-    op: &dyn BinMiniOp,
-    model: &TypedModel,
-    node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-    let facts = model.node_input_facts(node.id)?;
-    if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
-        let dt = facts[0].datum_type;
-        if (dt.is_signed() || dt.is_float()) && *uniform.uni == Tensor::zero_scalar_dt(dt)? {
-            let reversed = uniform.left_is_uniform;
-            let mapped = || -> Box<dyn ElementWiseMiniOp> {
-                macro_rules! m {
-                    ($bin: ty, $same: expr, $other: expr) => {
-                        if op.is::<$bin>() {
-                            return if reversed { Box::new($other) } else { Box::new($same) };
-                        };
-                    };
-                }
-                m!(Less, LessThanZero {}, GreaterEqualThanZero {});
-                m!(LessEqual, LessEqualThanZero {}, GreaterThanZero {});
-                m!(Greater, GreaterThanZero {}, LessEqualThanZero {});
-                m!(GreaterEqual, GreaterEqualThanZero {}, LessThanZero {});
-                unreachable!();
-            };
-            return Ok(Some(TypedModelPatch::replace_single_op(
-                        model,
-                        node,
-                        &[uniform.var],
-                        ElementWiseOp(mapped(), None),
-                        )?));
-        }
-    }
-    Ok(None)
-}
-
-element_wise_oop!(less_than_zero, LessThanZero, [f16, f32, f64, i8, i16, i32, i64] => bool |_op, xs, ys| {
-    xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = *x < num_traits::Zero::zero());
-    Ok(())
-});
-
-element_wise_oop!(less_equal_than_zero, LessEqualThanZero, [f16, f32, f64, i8, i16, i32, i64] => bool |_op, xs, ys| {
-    xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = *x <= num_traits::Zero::zero());
-    Ok(())
-});
-
-element_wise_oop!(greater_than_zero, GreaterThanZero, [f16, f32, f64, i8, i16, i32, i64] => bool |_op, xs, ys| {
-    xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = *x > num_traits::Zero::zero());
-    Ok(())
-});
-
-element_wise_oop!(greater_equal_than_zero, GreaterEqualThanZero, [f16, f32, f64, i8, i16, i32, i64] => bool |_op, xs, ys| {
-    xs.iter().zip(ys.iter_mut()).for_each(|(x,y)| *y = *x >= num_traits::Zero::zero());
-    Ok(())
-});
-*/
