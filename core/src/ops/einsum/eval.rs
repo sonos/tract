@@ -5,7 +5,7 @@ use tract_linalg::Scaler;
 use tract_ndarray::{Axis, Dimension};
 use tract_num_traits::{One, Zero};
 
-pub fn output_shape<D: DimLike>(expr: &AxesMapping, inputs: &[&[D]]) -> TVec<D> {
+pub fn output_shape<D: DimLike>(expr: &AxesMapping, inputs: &[impl AsRef<[D]>]) -> TVec<D> {
     expr.iter_all_axes()
         .filter(|a| a.outputs[0].len() > 0)
         .sorted_by_key(|axis| axis.outputs[0][0])
@@ -14,7 +14,7 @@ pub fn output_shape<D: DimLike>(expr: &AxesMapping, inputs: &[&[D]]) -> TVec<D> 
                 .iter()
                 .enumerate()
                 .flat_map(|(input_id, positions)| {
-                    positions.iter().map(move |p| inputs[input_id][*p].clone())
+                    positions.iter().map(move |p| inputs[input_id].as_ref()[*p].clone())
                 })
                 .find(|x| x != &1.into())
                 .unwrap_or_else(|| 1.into())
