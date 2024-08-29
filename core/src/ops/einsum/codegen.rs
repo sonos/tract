@@ -50,7 +50,7 @@ pub(crate) fn ensure_mkn_axes<'a>(
     node: &TypedNode,
 ) -> TractResult<AxesOrPatch<'a>> {
     let input_facts = model.node_input_facts(node.id)?;
-    let input_shapes: TVec<&[TDim]> = op.actual_input_shapes_from_facts(&input_facts)?;
+    let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
     let output_shape = super::eval::output_shape(&op.axes, &input_shapes);
     let candidate_k_axes: TVec<&Axis> = op
         .axes
@@ -150,7 +150,7 @@ pub(super) fn inject_m_or_n_axis(
     exclude: &[&Axis],
 ) -> TractResult<TypedModelPatch> {
     let input_facts = model.node_input_facts(node.id)?;
-    let input_shapes: TVec<&[TDim]> = op.actual_input_shapes_from_facts(&input_facts)?;
+    let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
     let input_to_fix = is_n as usize;
     let label = if is_n { "n" } else { "m" };
     let quasi_m_or_n_axis = op.axes.iter_all_axes().filter(|a| !exclude.contains(a)).find(|a| {

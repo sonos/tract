@@ -41,25 +41,31 @@ impl EinSum {
     pub fn actual_input_shapes_from_facts<'m>(
         &self,
         inputs: &'m [impl Borrow<TypedFact>],
-    ) -> TractResult<TVec<&'m [TDim]>> {
+    ) -> TractResult<TVec<Cow<'m, [TDim]>>> {
         ensure!(inputs.len() == self.axes.input_count());
-        let shapes: TVec<&[TDim]> = inputs
+        let shapes: TVec<Cow<[TDim]>> = inputs
             .iter()
             .map(|t| {
                 let t = t.borrow();
                 if let Some(bqf) =
                     t.opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
                 {
-                    &*bqf.shape
+                    Cow::Borrowed(&*bqf.shape)
                 } else if let Some(bqv) = t
                     .konst
                     .as_ref()
                     .and_then(|k| k.to_scalar::<Opaque>().ok())
                     .and_then(|o| o.downcast_ref::<BlockQuantValue>())
                 {
-                    &*bqv.fact.shape
+                    if t.rank() == 0 {
+                        Cow::Borrowed(&*bqv.fact.shape)
+                    } else {
+                        let shape: Vec<TDim> =
+                            t.shape.iter().chain(bqv.fact.shape.iter()).cloned().collect();
+                        Cow::Owned(shape)
+                    }
                 } else {
-                    &*t.shape
+                    Cow::Borrowed(&*t.shape)
                 }
             })
             .collect();
@@ -251,6 +257,9 @@ impl EvalOp for EinSum {
 impl TypedOp for EinSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let shapes = self.actual_input_shapes_from_facts(inputs)?;
+        for i in 0..inputs.len() {
+            ensure!(shapes[i].len() == self.axes.rank(InOut::In(i)));
+        }
         if let Some(qp) = self.q_params {
             ensure!(inputs.len() == 9);
             Ok(tvec!(qp.fact(eval::output_shape(&self.axes, &shapes[0..2]))))
