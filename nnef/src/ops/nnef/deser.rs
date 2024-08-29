@@ -1,5 +1,6 @@
 use crate::ast::*;
 use crate::deser::Value;
+use crate::ops::tract_core;
 use ops::cnn::deconv::Deconv;
 use ops::cnn::{Conv, KernelFormat};
 use tract_core::internal::*;
@@ -605,19 +606,22 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let b_trans: bool = invocation.named_arg_as(builder, "transposeB")?;
     let a_dt = builder.model.outlet_fact(a)?.datum_type;
     let b_dt = builder.model.outlet_fact(b)?.datum_type;
-    let a_rank = builder.model.outlet_fact(a)?.rank();
-    let b_rank = builder.model.outlet_fact(b)?.rank();
-    let c_rank = a_rank.max(b_rank);
     let name = &*invocation.invocation.id.0;
+    ensure!(!a_dt.is_opaque());
+    let a_rank = builder.model.outlet_fact(a)?.rank();
     if b_dt.is_opaque() {
-        let mut axes = AxesMapping::for_numpy_matmul(c_rank, false, !a_trans, true)?;
-        // remove prefix on block quant matrix
-        while axes.rank(InOut::In(0)) > 2 {
-            axes = axes.remove_axis_occurency(InOut::In(0), 0)?;
-        }
+        ensure!(builder.model.outlet_fact(b)?.shape.volume().is_one());
+        let b_rank =
+            tract_core::ops::einsum::block_quant_aware_input_shape(builder.model.outlet_fact(b)?)
+                .len();
+        ensure!(a_rank == b_rank);
+        let axes = AxesMapping::for_numpy_matmul(a_rank, false, !a_trans, true)?;
         return builder
             .wire(ops::einsum::EinSum { axes, operating_dt: a_dt, q_params: None }, &[b, a]);
     }
+    let b_rank = builder.model.outlet_fact(b)?.rank();
+    ensure!(a_rank == b_rank);
+    let c_rank = a_rank.max(b_rank);
     let mut axes = AxesMapping::for_numpy_matmul(c_rank, a_trans, b_trans, false)?;
     if a_dt.is_quantized() || b_dt.is_quantized() {
         for input in 0..7 {

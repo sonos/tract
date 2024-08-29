@@ -20,6 +20,28 @@ mod proptest;
 
 pub use as_matmul::{rewrite_einsums_as_matmul, BasicMatMul};
 
+pub fn block_quant_aware_input_shape(fact: &TypedFact) -> Cow<[TDim]> {
+    if let Some(bqf) = fact.opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
+    {
+        Cow::Borrowed(&*bqf.shape)
+    } else if let Some(bqv) = fact
+        .konst
+        .as_ref()
+        .and_then(|k| k.to_scalar::<Opaque>().ok())
+        .and_then(|o| o.downcast_ref::<BlockQuantValue>())
+    {
+        if fact.rank() == 0 {
+            Cow::Borrowed(&*bqv.fact.shape)
+        } else {
+            let shape: Vec<TDim> =
+                fact.shape.iter().chain(bqv.fact.shape.iter()).cloned().collect();
+            Cow::Owned(shape)
+        }
+    } else {
+        Cow::Borrowed(&*fact.shape)
+    }
+}
+
 #[derive(Clone, Hash)]
 pub struct EinSum {
     pub axes: AxesMapping,
@@ -43,32 +65,8 @@ impl EinSum {
         inputs: &'m [impl Borrow<TypedFact>],
     ) -> TractResult<TVec<Cow<'m, [TDim]>>> {
         ensure!(inputs.len() == self.axes.input_count());
-        let shapes: TVec<Cow<[TDim]>> = inputs
-            .iter()
-            .map(|t| {
-                let t = t.borrow();
-                if let Some(bqf) =
-                    t.opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
-                {
-                    Cow::Borrowed(&*bqf.shape)
-                } else if let Some(bqv) = t
-                    .konst
-                    .as_ref()
-                    .and_then(|k| k.to_scalar::<Opaque>().ok())
-                    .and_then(|o| o.downcast_ref::<BlockQuantValue>())
-                {
-                    if t.rank() == 0 {
-                        Cow::Borrowed(&*bqv.fact.shape)
-                    } else {
-                        let shape: Vec<TDim> =
-                            t.shape.iter().chain(bqv.fact.shape.iter()).cloned().collect();
-                        Cow::Owned(shape)
-                    }
-                } else {
-                    Cow::Borrowed(&*t.shape)
-                }
-            })
-            .collect();
+        let shapes: TVec<Cow<[TDim]>> =
+            inputs.iter().map(|t| block_quant_aware_input_shape(t.borrow())).collect();
         ensure!(shapes
             .iter()
             .enumerate()
