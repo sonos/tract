@@ -175,7 +175,7 @@ impl TypedOp for Comp {
         _start: usize,
         _end: usize,
     ) -> TractResult<Option<TVec<OutletId>>> {
-        Ok(Some(patch.wire_node(prefix, self.clone(), inputs)?))
+        Ok(Some(patch.wire_node(prefix, *self, inputs)?))
     }
 
     fn axes_mapping(
