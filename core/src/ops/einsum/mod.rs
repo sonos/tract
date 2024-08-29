@@ -3,7 +3,7 @@ use std::fmt::Debug;
 
 use crate::internal::*;
 use crate::ops::array::Slice;
-use crate::ops::matmul::de_block_quant::{BlockQuantFact, BlockQuantValue};
+use crate::ops::matmul::de_block_quant::BlockQuantFact;
 use crate::tract_data::itertools::Itertools;
 
 mod eval;
@@ -20,25 +20,21 @@ mod proptest;
 
 pub use as_matmul::{rewrite_einsums_as_matmul, BasicMatMul};
 
-pub fn block_quant_aware_input_shape(fact: &TypedFact) -> Cow<[TDim]> {
-    if let Some(bqf) = fact.opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
-    {
-        Cow::Borrowed(&*bqf.shape)
-    } else if let Some(bqv) = fact
-        .konst
-        .as_ref()
-        .and_then(|k| k.to_scalar::<Opaque>().ok())
-        .and_then(|o| o.downcast_ref::<BlockQuantValue>())
-    {
-        if fact.rank() == 0 {
-            Cow::Borrowed(&*bqv.fact.shape)
-        } else {
-            let shape: Vec<TDim> =
-                fact.shape.iter().chain(bqv.fact.shape.iter()).cloned().collect();
-            Cow::Owned(shape)
-        }
+pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<[TDim]>> {
+    if !fact.datum_type.is_opaque() {
+        return Ok(Cow::Borrowed(&*fact.shape));
+    }
+    let Some(opaque_fact) = fact.opaque_fact.as_ref() else {
+        bail!("Datum fact is opaque, but no opaque fact was found.")
+    };
+    let Some(bqf) = opaque_fact.downcast_ref::<BlockQuantFact>() else {
+        bail!("Datum fact is opaque, but no opaque fact was found.")
+    };
+    if bqf.shape.rank() == 0 {
+        Ok(Cow::Borrowed(&*bqf.shape))
     } else {
-        Cow::Borrowed(&*fact.shape)
+        let shape: Vec<TDim> = fact.shape.iter().chain(bqf.shape.iter()).cloned().collect();
+        Ok(Cow::Owned(shape))
     }
 }
 
@@ -65,8 +61,10 @@ impl EinSum {
         inputs: &'m [impl Borrow<TypedFact>],
     ) -> TractResult<TVec<Cow<'m, [TDim]>>> {
         ensure!(inputs.len() == self.axes.input_count());
-        let shapes: TVec<Cow<[TDim]>> =
-            inputs.iter().map(|t| block_quant_aware_input_shape(t.borrow())).collect();
+        let shapes: TVec<Cow<[TDim]>> = inputs
+            .iter()
+            .map(|t| block_quant_aware_input_shape(t.borrow()))
+            .collect::<TractResult<_>>()?;
         ensure!(shapes
             .iter()
             .enumerate()

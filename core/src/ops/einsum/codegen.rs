@@ -302,11 +302,12 @@ fn select_kernel_and_packing(
     m: &TDim,
     n: &TDim,
 ) -> TractResult<Option<(Box<dyn MatMatMul>, usize)>> {
-    if let Some(bqf) = model
+    if let Some(bqv) = model
         .outlet_fact(node.inputs[0])?
-        .opaque_fact
+        .konst
         .as_ref()
-        .and_then(|of| of.downcast_ref::<BlockQuantFact>())
+        .filter(|t| t.volume() == 1 && t.datum_type().is_opaque())
+        .and_then(|t| t.as_slice::<Opaque>().unwrap()[0].downcast_ref::<BlockQuantValue>())
     {
         let mut options: Vec<(&Box<dyn MatMatMul>, usize)> = vec![];
         let b_dt = model.outlet_fact(node.inputs[1])?.datum_type;
@@ -316,7 +317,7 @@ fn select_kernel_and_packing(
                     pack_a.downcast_ref::<PackedBlockQuantFormat>(),
                     pack_b.downcast_ref::<PackedFormat>(),
                 ) {
-                    if input.bq.same_as(&*bqf.format) && b.dt == b_dt {
+                    if input.bq.same_as(&*bqv.fact.format) && b.dt == b_dt {
                         options.push((imp, packing));
                     }
                 }
@@ -442,8 +443,10 @@ fn lir_mat_mul_unary(
     let mut patch = TypedModelPatch::new("Einsum to LirMatMulUnary");
     let packers = mmm.packings()[packing];
 
-    let pa = wire_packing(model, node, 0, &mut patch, packers.0, a_k, a_m)?;
-    let pb = wire_packing(model, node, 1, &mut patch, packers.1, b_k, b_n)?;
+    let pa = wire_packing(model, node, 0, &mut patch, packers.0, a_k, a_m)
+        .with_context(|| format!("Wiring packing {:?} for a: {:?}", packers.0, input_facts[0]))?;
+    let pb = wire_packing(model, node, 1, &mut patch, packers.1, b_k, b_n)
+        .with_context(|| format!("Wiring packing {:?} for b: {:?}", packers.1, input_facts[1]))?;
 
     let mut c_to_a_axis_mapping = tvec!();
     let mut c_to_b_axis_mapping = tvec!();

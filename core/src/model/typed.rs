@@ -2,6 +2,7 @@ use crate::internal::*;
 use crate::model::*;
 use crate::ops;
 use crate::ops::konst::Const;
+use crate::ops::matmul::de_block_quant::BlockQuantValue;
 use crate::optim::OptimizerSession;
 use crate::plan::{FrozenSimpleState, SimplePlan, SimpleState};
 use crate::transform::ModelTransform;
@@ -122,7 +123,13 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                 return Ok(node.id.into());
             }
         }
-        let fact = TypedFact::from(v.clone());
+        let mut fact = TypedFact::from(v.clone());
+        // this feel incredibly hackish and dirty...
+        if v.datum_type().is_opaque() && v.volume() == 1 {
+            if let Some(bqv) = v.as_slice::<Opaque>()?[0].downcast_ref::<BlockQuantValue>() {
+                fact.opaque_fact = Some(Box::new(bqv.fact.clone()));
+            }
+        }
         let name = name.into();
         self.add_node(name, crate::ops::konst::Const::new(v), tvec!(fact)).map(|id| id.into())
     }
@@ -166,8 +173,8 @@ impl TypedModel {
                 .any(|(a, b)| a.datum_type != b.datum_type || a.shape != b.shape)
             {
                 bail!(
-                            "Inconsistent model, output types mismatch. Op says: {:?}, node says: {:?}. {} with inputs {:?}. {}",
-                            output_facts, node.outputs.iter().map(|o| &o.fact).collect::<Vec<_>>(), node, input_facts, node)
+                    "Inconsistent model, output types mismatch. Op says: {:?}, node says: {:?}. {} with inputs {:?}. {}",
+                    output_facts, node.outputs.iter().map(|o| &o.fact).collect::<Vec<_>>(), node, input_facts, node)
             }
         }
         for node in &self.nodes {
