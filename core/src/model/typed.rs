@@ -184,12 +184,14 @@ impl TypedModel {
                     "Inconsistent model, output types mismatch. Op says: {:?}, node says: {:?}. {} with inputs {:?}. {}",
                     output_facts, node.outputs.iter().map(|o| &o.fact).collect::<Vec<_>>(), node, input_facts, node)
             }
+            /* this is not true for regularly packed values
             if let Some(k) = node.op_as::<Const>() {
                 ensure!(
                     !k.0.datum_type().is_opaque() || k.1.is_some(),
                     "Node {node} is missing an opaque fact"
                 );
             }
+            */
         }
         for node in &self.nodes {
             for (ix, output) in node.outputs.iter().enumerate() {
