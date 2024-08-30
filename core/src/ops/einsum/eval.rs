@@ -30,13 +30,12 @@ pub fn eval_t<Acc: Datum + Zero + One>(
         .iter()
         .map(|t| {
             if t.datum_type() == Opaque::datum_type() {
-                dbg!(t);
-                todo!();
+                bail!("Unoptimized einsum execution with BlockQuantized input is not implemented.");
             } else {
-                t.shape()
+                Ok(t.shape())
             }
         })
-        .collect();
+        .collect::<TractResult<_>>()?;
     let output_shape = output_shape(expr, &shapes);
     let inputs: TVec<Cow<Tensor>> =
         inputs.iter().map(|t| t.cast_to::<Acc>()).collect::<TractResult<_>>()?;
