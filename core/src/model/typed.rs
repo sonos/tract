@@ -124,13 +124,21 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
             }
         }
         let mut fact = TypedFact::from(v.clone());
+        let name = name.into();
         // this feel incredibly hackish and dirty...
         if v.datum_type().is_opaque() && v.volume() == 1 {
             if let Some(bqv) = v.as_slice::<Opaque>()?[0].downcast_ref::<BlockQuantValue>() {
-                fact.opaque_fact = Some(Box::new(bqv.fact.clone()));
+                let opaque = Box::new(bqv.fact.clone());
+                fact.opaque_fact = Some(opaque.clone());
+                return self
+                    .add_node(
+                        name,
+                        crate::ops::konst::Const::new_with_opaque_fact(v, opaque),
+                        tvec!(fact),
+                    )
+                    .map(|id| id.into());
             }
         }
-        let name = name.into();
         self.add_node(name, crate::ops::konst::Const::new(v), tvec!(fact)).map(|id| id.into())
     }
 }
@@ -175,6 +183,12 @@ impl TypedModel {
                 bail!(
                     "Inconsistent model, output types mismatch. Op says: {:?}, node says: {:?}. {} with inputs {:?}. {}",
                     output_facts, node.outputs.iter().map(|o| &o.fact).collect::<Vec<_>>(), node, input_facts, node)
+            }
+            if let Some(k) = node.op_as::<Const>() {
+                ensure!(
+                    !k.0.datum_type().is_opaque() || k.1.is_some(),
+                    "Node {node} is missing an opaque fact"
+                );
             }
         }
         for node in &self.nodes {
