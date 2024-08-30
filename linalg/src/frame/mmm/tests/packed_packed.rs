@@ -352,8 +352,11 @@ impl<K: MatMatMulKer + Default> PackedPackedProblem<K> {
     }
 
     pub fn check(&self) -> TractResult<()> {
+        dbg!(self);
         let expected = self.reference()?;
+        dbg!(&expected);
         let found = self.run()?;
+        dbg!(&found);
         let app = if K::Acc::datum_type() == f16::datum_type() {
             Approximation::SuperApproximate
         } else {
