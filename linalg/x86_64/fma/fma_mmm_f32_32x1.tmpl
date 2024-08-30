@@ -61,10 +61,81 @@ Windows ABI:
 
     jmp             {{L}}non_linear_loop
 
-{{L}}q40f32:
-    // read scales:64 f16 scales
+{{L}}q40f32_mask:
+{{long}} 0x0F0F0F0F
+{{L}}q40f32_eight:
+{{long}} 8
 
-    jmp             {{L}}unsupported
+{{L}}q40f32:
+    // ymm0-3: acc
+    // ymm4-7: scales
+    // ymm13: 8
+    // ymm14: mask
+    // ymm15: b value
+    vbroadcastss    ymm14, dword ptr [{{offset}} {{L}}q40f32_mask]
+    vbroadcastss    ymm13, dword ptr [{{offset}} {{L}}q40f32_eight]
+
+{{L}}q40f32_outerloop:
+    // scales
+    vmovaps         xmm4, [rax]
+    vmovaps         xmm5, [rax + 16]
+    vmovaps         xmm6, [rax + 32]
+    vmovaps         xmm7, [rax + 48]
+    vcvtph2ps       ymm4, xmm4
+    vcvtph2ps       ymm5, xmm5
+    vcvtph2ps       ymm6, xmm6
+    vcvtph2ps       ymm7, xmm7
+    add             rax, 64
+
+    mov             rdx, 32
+
+{{L}}q40f32_innerloop:
+    vbroadcastss    ymm15, dword ptr [rcx]
+    vmovaps         xmm8, [rax]            // 32 nibbles
+
+    vpand           xmm10, xmm8, xmm14      // 16 bytes
+
+    vpmovzxbd       ymm9, xmm10            // 8 u32
+
+    vpermilpd       xmm10, xmm10, 1        // swap 64bit halves
+    vpmovzxbd       ymm10, xmm10            // 8 u32
+
+    vpsrlw          xmm8, xmm8, 4
+    vpand           xmm12, xmm8, xmm14      // 16 bytes
+    vpmovzxbd       ymm11, xmm12            // 8 u32
+    vpermilpd       xmm12, xmm12, 1        // swap 64bit halves
+    vpmovzxbd       ymm12, xmm12            // 8 u32
+
+    vpsubd          ymm9, ymm9, ymm13
+    vpsubd          ymm10, ymm10, ymm13
+    vpsubd          ymm11, ymm11, ymm13
+    vpsubd          ymm12, ymm12, ymm13
+
+    vcvtdq2ps       ymm9, ymm9
+    vcvtdq2ps       ymm10, ymm10
+    vcvtdq2ps       ymm11, ymm11
+    vcvtdq2ps       ymm12, ymm12
+
+    vmulps          ymm9, ymm9, ymm4
+    vmulps          ymm10, ymm10, ymm5
+    vmulps          ymm11, ymm11, ymm6
+    vmulps          ymm12, ymm12, ymm7
+
+    vfmadd231ps     ymm0, ymm15, ymm9
+    vfmadd231ps     ymm1, ymm15, ymm10
+    vfmadd231ps     ymm2, ymm15, ymm11
+    vfmadd231ps     ymm3, ymm15, ymm12
+
+    add             rax, 16
+    add             rcx, 4
+    sub             rdx, 1
+    jnz             {{L}}q40f32_innerloop
+
+    sub             rbx, 32
+    jnz             {{L}}q40f32_outerloop
+
+    jmp             {{L}}non_linear_loop
+
 
 {% include "fma_mmm_f32_scalars.tmpliq" from:0, to:3, type:"f32" %}
 {% include "fma_mmm_f32_per_rows.tmpliq" mr:32, from:0, to:3, type:"f32" %}

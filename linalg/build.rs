@@ -283,6 +283,7 @@ fn preprocess_file(
         "long": long,
         "jump_table": jump_table(),
         "align": align,
+        "offset": if msvc { "offset" } else { "rip + "},
     });
     for (k, v) in variants {
         globals.insert(k.to_string().into(), liquid::model::Value::scalar(*v));

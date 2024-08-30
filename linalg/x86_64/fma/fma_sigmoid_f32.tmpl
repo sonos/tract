@@ -81,8 +81,6 @@ fma_sigmoid_f32_{{suffix}} proc
     ldmxcsr     [rsp]
 // ----------------------------------------------------------------------
 
-{%capture offset%}{% if msvc %} offset {%else%} rip + {%endif%} {%endcapture%}
-
     cmp     rsi, 0
     je      {{L}}done
 

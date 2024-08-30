@@ -159,8 +159,10 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
         zip: usize,
         scales_at_end: bool,
     ) -> TractResult<EagerPackedInput> {
-        assert!(input.len() % self.block_bytes() == 0);
-        assert!(k % self.block_len() == 0);
+        ensure!(input.len() % self.block_bytes() == 0);
+        ensure!(k % self.block_len() == 0);
+        // ensure!(input.len() == k * r / self.block_len() * self.block_bytes());
+        ensure!(zip < r);
         let m = if input.len() == 0 {
             0
         } else {

@@ -1,8 +1,9 @@
 //use crate::frame::block_quant::{PackedBlockQuantFormat, Q4_0};
 use crate::mmm::no_prefetch;
 use tract_data::prelude::f16;
+use crate::frame::block_quant::*;
 
-// const PQ40_R32: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 32);
+const PQ40_R32: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 32, 16, false);
 
 MMMExternKernel!(f16, fma_mmm_f16_8x8; 8, 8; 32, 2; 0, 0; no_prefetch, is_x86_feature_detected!("fma") && is_x86_feature_detected!("f16c"));
 
@@ -14,8 +15,6 @@ MMMExternKernel!(f32, fma_mmm_f32_32x3; 32, 3; 32, 4; 0, 0; no_prefetch, is_x86_
 MMMExternKernel!(f32, fma_mmm_f32_40x2; 40, 2; 32, 4; 0, 0; no_prefetch, is_x86_feature_detected!("fma"));
 MMMExternKernel!(f32, fma_mmm_f32_64x1; 64, 1; 32, 4; 0, 0; no_prefetch, is_x86_feature_detected!("fma"));
 
-MMMExternKernel!(f32, fma_mmm_f32_32x1; 32, 1; 32, 4; 0, 0; no_prefetch, is_x86_feature_detected!("fma"));
-/*
 MMMExternKernel!(f32, fma_mmm_f32_32x1; 32, 1; 32, 4; 0, 0; no_prefetch, is_x86_feature_detected!("fma"),
      packing_defs: {
          const F32_B: PackedFormat = PackedFormat::new(DatumType::F32, 1, 4);
@@ -24,7 +23,6 @@ MMMExternKernel!(f32, fma_mmm_f32_32x1; 32, 1; 32, 4; 0, 0; no_prefetch, is_x86_
  packings: PQ40_F32,
  test: mmm_packed_packed_tests!{ is_x86_feature_detected!("fma"), fma_mmm_f32_32x1, q40f32:1 }
 );
-*/
 
 MMMExternKernel!(f32, avx512_mmm_f32_128x1; 128, 1; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
 MMMExternKernel!(f32, avx512_mmm_f32_16x1; 16, 1; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
