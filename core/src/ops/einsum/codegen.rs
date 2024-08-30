@@ -329,8 +329,7 @@ fn select_kernel_and_packing(
                     .iter()
                     .min_by_key(|a| {
                         ((m as usize).divceil(a.0.mr()) * (n as usize).divceil(a.0.nr()))
-                            * a.0.mr()
-                            * a.0.nr()
+                            * (a.0.mr() * a.0.nr() + 100)
                     })
                     .unwrap()
             } else {
