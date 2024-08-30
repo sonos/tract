@@ -61,10 +61,17 @@ Windows ABI:
 
     jmp             {{L}}non_linear_loop
 
+{% if msvc %}
 {{L}}q40f32_mask:
-    {{long}} {{hex}}0F0F0F0F
+    {{long}} 0F0F0F0Fh
 {{L}}q40f32_eight:
-    {{long}} {{hex}}00000008
+    {{long}} 08h
+{% else %}
+{{L}}q40f32_mask:
+    {{long}} 0x0F0F0F0F
+{{L}}q40f32_eight:
+    {{long}} 8
+{% end %}
 
 {{L}}q40f32:
     // ymm0-3: acc
