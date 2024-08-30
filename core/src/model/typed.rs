@@ -198,7 +198,7 @@ impl TypedModel {
                 })?
             }
         }
-        self.axes_mapping()?;
+        self.axes_mapping().context("Checking model axes mapping")?;
         Ok(())
     }
 
