@@ -98,13 +98,6 @@ fn plug_fma(ops: &mut Ops) {
             _ => unreachable!("not a valid index"),
         }
     });
-    ops.mmm_impls.push(mmm::fma_mmm_f32_16x6.mmm());
-    ops.mmm_impls.push(mmm::fma_mmm_f32_16x5.mmm());
-    ops.mmm_impls.push(mmm::fma_mmm_f32_24x4.mmm());
-    ops.mmm_impls.push(mmm::fma_mmm_f32_32x3.mmm());
-    ops.mmm_impls.push(mmm::fma_mmm_f32_40x2.mmm());
-    ops.mmm_impls.push(mmm::fma_mmm_f32_8x8.mmm());
-    ops.mmm_impls.push(mmm::fma_mmm_f16_8x8.mmm());
 
     ops.sigmoid_f32 = Box::new(|| fma_sigmoid_f32::ew());
     ops.tanh_f32 = Box::new(|| fma_tanh_f32::ew());
@@ -115,6 +108,7 @@ fn plug_fma(ops: &mut Ops) {
 
     if is_x86_feature_detected!("f16c") {
         ops.mmm_f16 = Box::new(|_, _, _| mmm::fma_mmm_f16_8x8.mmm());
+        ops.mmm_impls.push(mmm::fma_mmm_f32_32x1.mmm()); // q40f32 requires f16c
     }
 
     log::info!("mmm_f32, mmv_f32, sigmoid_f32, tanh_f32: x86_64/fma activated");
