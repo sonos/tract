@@ -109,6 +109,7 @@ fn plug_fma(ops: &mut Ops) {
     if is_x86_feature_detected!("f16c") {
         ops.mmm_f16 = Box::new(|_, _, _| mmm::fma_mmm_f16_8x8.mmm());
         ops.mmm_impls.push(mmm::fma_mmm_f32_32x1.mmm()); // q40f32 requires f16c
+        log::info!("found f16c, added fake-f16 and q40-able kernels");
     }
 
     log::info!("mmm_f32, mmv_f32, sigmoid_f32, tanh_f32: x86_64/fma activated");
