@@ -284,6 +284,7 @@ fn preprocess_file(
         "jump_table": jump_table(),
         "align": align,
         "offset": if msvc { "offset" } else { "rip + "},
+        "hex": if msvc { "0" } else { "0x"},
     });
     for (k, v) in variants {
         globals.insert(k.to_string().into(), liquid::model::Value::scalar(*v));
