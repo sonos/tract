@@ -273,11 +273,13 @@ impl TypedOp for EinSum {
         _outputs: &[&TypedFact],
     ) -> TractResult<AxesMapping> {
         let mut axes = self.axes.clone();
-        for (ix, input) in inputs.iter().enumerate().take(2) {
-            if input.datum_type.is_opaque() {
-                while axes.axes(InOut::In(ix)).next().is_some() {
-                    axes = axes.remove_axis_occurency(InOut::In(ix), 0)?;
-                }
+        for (slot, i) in inputs.iter().enumerate() {
+            if i.datum_type.is_opaque()
+                && i.opaque_fact.as_ref().is_some_and(|of| of.is::<BlockQuantFact>())
+            {
+                axes = axes
+                    .remove_axis_occurency(InOut::In(slot), i.rank())?
+                    .remove_axis_occurency(InOut::In(slot), i.rank())?;
             }
         }
         Ok(axes)

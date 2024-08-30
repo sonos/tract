@@ -95,11 +95,17 @@ impl AxisTracking {
             let emiter_node = model.node(wire.node);
             let mut nodes = vec![];
             let (input_facts, output_facts) = model.node_facts(emiter_node.id)?;
-            let invs = emiter_node
+            let map = emiter_node
                 .op
                 .axes_mapping(&input_facts, &output_facts)
                 .with_context(|| format!("Computing axes mapping for {emiter_node}"))?;
-            let info = invs.axis((InOut::Out(wire.slot), axis)).unwrap();
+            let info = map.axis((InOut::Out(wire.slot), axis)).with_context(|| {
+                format!(
+                    "Axes mapping for {} is {map}, need output axis {:?} from slot {}",
+                    emiter_node, axis, wire.slot,
+                )
+            })?;
+
             if info.inputs.iter().any(|i| i.len() > 0) {
                 nodes.push((wire.node, info.clone()));
             } else {
@@ -108,8 +114,13 @@ impl AxisTracking {
             for succ in &emiter_node.outputs[wire.slot].successors {
                 let succ_node = model.node(succ.node);
                 let (input_facts, output_facts) = model.node_facts(succ_node.id)?;
-                let invs = succ_node.op.axes_mapping(&input_facts, &output_facts)?;
-                let info = invs.axis((InOut::In(succ.slot), axis)).unwrap();
+                let map = succ_node.op.axes_mapping(&input_facts, &output_facts)?;
+                let info = map.axis((InOut::In(succ.slot), axis)).with_context(|| {
+                    format!(
+                        "Axes mapping for {succ_node} is {map}, need input axis {:?} from slot {}",
+                        axis, succ.slot,
+                    )
+                })?;
                 if info.outputs.iter().any(|o| o.len() > 0) {
                     nodes.push((succ_node.id, info.clone()));
                 } else {
@@ -177,7 +188,7 @@ pub fn for_model(model: &TypedModel) -> TractResult<AxesMapping> {
         .collect::<TractResult<TVec<usize>>>()?;
     let mut result = AxesMapping::disconnected_for_ranks(&input_ranks, &output_ranks)?;
     for tracking in full_axis_tracking(model)? {
-        let mut reprs:Vec<char> = vec![];
+        let mut reprs: Vec<char> = vec![];
         for (ix, outlet) in model.input_outlets()?.iter().enumerate() {
             if let Some(appearance) = tracking.outlets.get(outlet) {
                 reprs.push(result.axis((InOut::In(ix), *appearance)).unwrap().repr);
