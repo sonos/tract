@@ -4,7 +4,7 @@ use super::*;
 use tract_data::internal::*;
 
 #[derive(Debug, Clone, new)]
-pub struct LirScanOpParams {
+pub struct ScanOpParams {
     pub skip: usize,
     pub reset_every_turn: bool,
     pub plan: Arc<TypedSimplePlan<TypedModel>>,
@@ -13,22 +13,22 @@ pub struct LirScanOpParams {
 }
 
 #[derive(Debug, Clone, new)]
-pub struct LirScan(Arc<LirScanOpParams>);
+pub struct OptScan(Arc<ScanOpParams>);
 
-impl std::ops::Deref for LirScan {
-    type Target = LirScanOpParams;
-    fn deref(&self) -> &LirScanOpParams {
+impl std::ops::Deref for OptScan {
+    type Target = ScanOpParams;
+    fn deref(&self) -> &ScanOpParams {
         &self.0
     }
 }
 
-impl LirScan {
+impl OptScan {
     pub fn iteration_count(&self, inputs: &[&TypedFact]) -> Option<TDim> {
         super::iteration_count(&self.input_mapping, inputs)
     }
 }
 
-impl Op for LirScan {
+impl Op for OptScan {
     fn name(&self) -> Cow<str> {
         "Scan".into()
     }
@@ -47,7 +47,7 @@ impl Op for LirScan {
     op_as_typed_op!();
 }
 
-impl EvalOp for LirScan {
+impl EvalOp for OptScan {
     fn is_stateless(&self) -> bool {
         false
     }
@@ -68,7 +68,7 @@ impl EvalOp for LirScan {
 
 #[derive(Clone, Debug)]
 pub struct State {
-    op: Arc<LirScanOpParams>,
+    op: Arc<ScanOpParams>,
     position: usize,
     hidden_state: TVec<TValue>,
     pub model_state: TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
@@ -76,7 +76,7 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 struct FrozenState {
-    op: Arc<LirScanOpParams>,
+    op: Arc<ScanOpParams>,
     position: usize,
     hidden_state: TVec<Tensor>,
     model_state: TypedFrozenSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
@@ -266,7 +266,7 @@ impl OpState for State {
     }
 }
 
-impl TypedOp for LirScan {
+impl TypedOp for OptScan {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
