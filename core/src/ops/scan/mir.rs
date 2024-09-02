@@ -2,7 +2,7 @@ use crate::ops::einsum::EinSum;
 use crate::ops::konst::Const;
 use crate::optim::OptimizerSession;
 
-use super::lir::{LirScan, LirScanOpParams};
+use super::lir::{OptScan, ScanOpParams};
 use tract_data::internal::*;
 
 use super::*;
@@ -18,14 +18,14 @@ pub struct Scan {
 }
 
 impl Scan {
-    pub fn to_codegen_op(&self, optimize_inner: bool) -> TractResult<LirScan> {
+    pub fn to_codegen_op(&self, optimize_inner: bool) -> TractResult<OptScan> {
         let mut model = self.body.clone();
         if optimize_inner {
             model = model.into_optimized()?;
         }
         let plan = SimplePlan::new(model)?;
 
-        Ok(LirScan::new(Arc::new(LirScanOpParams::new(
+        Ok(OptScan::new(Arc::new(ScanOpParams::new(
             self.skip,
             self.reset_every_turn,
             Arc::new(plan),
