@@ -1,3 +1,4 @@
+use crate::dim::parse::parse_inequality;
 use crate::internal::*;
 
 use super::{sym::*, DimLike};
@@ -5,7 +6,7 @@ use itertools::Itertools;
 use num_integer::Integer;
 use num_traits::{AsPrimitive, PrimInt, Zero};
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::{fmt, ops};
 
@@ -472,65 +473,168 @@ impl TDim {
                     Broadcast(terms)
                 }
             }
+
             Min(terms) => {
-                let flatten: Vec<TDim> = terms
+                let mut flatten: Vec<TDim> = terms
                     .into_iter()
                     .map(|t| t.simplify_rec(scope))
                     .flat_map(|t| if let Min(t) = t { t } else { vec![t] })
                     .sorted_by(tdim_lexi_order)
                     .dedup()
                     .collect();
-                let new_terms: Vec<TDim> = flatten
-                    .iter()
-                    .filter(|&t| {
-                        t != &i64::MAX.to_dim()
-                            && !flatten.iter().filter(|other| other != &t).any(|other| {
-                                let diff = t.clone() - other;
-                                diff.to_i64().is_ok_and(|i| i >= 0)
-                                    || scope
-                                        .is_some_and(|scope| scope.prove_positive_or_zero(&diff))
-                            })
-                    })
-                    .cloned()
-                    .collect();
-                if new_terms.len() == 0 {
+                let mut redundant = HashSet::<TDim>::default();
+                for pair in flatten.iter().permutations(2).into_iter() {
+                    let (a, b) = (pair[0], pair[1]);
+                    if redundant.contains(a) || redundant.contains(b) {
+                        continue;
+                    }
+                    let diff = a.clone() - b;
+                    if diff.as_i64().is_some_and(|i| i >= 0)
+                        || scope.is_some_and(|scope| scope.prove_positive_or_zero(&diff))
+                    {
+                        redundant.insert(a.clone());
+                    }
+                }
+                flatten.retain(|t| !redundant.contains(t));
+                if flatten.len() == 0 {
                     i64::MAX.to_dim()
-                } else if new_terms.len() == 1 {
-                    new_terms.into_iter().next().unwrap()
+                } else if flatten.len() == 1 {
+                    flatten.into_iter().next().unwrap()
                 } else {
-                    Min(new_terms)
+                    Min(flatten)
                 }
             }
             Max(terms) => {
-                let flatten: Vec<TDim> = terms
+                let mut flatten: Vec<TDim> = terms
                     .into_iter()
                     .map(|t| t.simplify_rec(scope))
                     .flat_map(|t| if let Max(t) = t { t } else { vec![t] })
                     .sorted_by(tdim_lexi_order)
                     .dedup()
                     .collect();
-                let new_terms: Vec<TDim> = flatten
-                    .iter()
-                    .filter(|&t| {
-                        t != &i64::MIN.to_dim()
-                            && !flatten.iter().filter(|other| other != &t).any(|other| {
-                                let diff = other.clone() - t;
-                                diff.to_i64().is_ok_and(|i| i >= 0)
-                                    || scope
-                                        .is_some_and(|scope| scope.prove_positive_or_zero(&diff))
-                            })
-                    })
-                    .cloned()
-                    .collect();
-                if new_terms.len() == 0 {
+                let mut redundant = HashSet::<TDim>::default();
+                for pair in flatten.iter().permutations(2).into_iter() {
+                    let (a, b) = (pair[0], pair[1]);
+                    if redundant.contains(a) || redundant.contains(b) {
+                        continue;
+                    }
+                    let diff = a.clone() - b;
+                    if diff.as_i64().is_some_and(|i| i >= 0)
+                        || scope.is_some_and(|scope| scope.prove_positive_or_zero(&diff))
+                    {
+                        redundant.insert(b.clone());
+                    }
+                }
+                flatten.retain(|t| !redundant.contains(t));
+                if flatten.len() == 0 {
                     i64::MIN.to_dim()
-                } else if new_terms.len() == 1 {
-                    new_terms.into_iter().next().unwrap()
+                } else if flatten.len() == 1 {
+                    flatten.into_iter().next().unwrap()
                 } else {
-                    Max(new_terms)
+                    Max(flatten)
                 }
             }
             Val(_) | Sym(_) => self,
+        }
+    }
+
+    pub fn low_inclusive_bound(&self, scope: &SymbolScope) -> Option<i64> {
+        use self::TDim::*;
+        match self {
+            Val(n) => Some(*n),
+            Sym(_) => scope
+                .all_assertions()
+                .iter()
+                .filter_map(|assert| {
+                    let Inequality { left, sign, right } =
+                        parse_inequality(scope, &assert).unwrap();
+                    if &left == self && sign == InequalitySign::GT && right.as_i64().is_some() {
+                        Some(right.as_i64().unwrap() + 1)
+                    } else if &left == self
+                        && sign == InequalitySign::GTE
+                        && right.as_i64().is_some()
+                    {
+                        Some(right.as_i64().unwrap())
+                    } else {
+                        None
+                    }
+                })
+                .max(),
+            Add(terms) => {
+                let mut bound = 0;
+                for t in terms {
+                    if let Some(b) = t.low_inclusive_bound(scope) {
+                        bound += b;
+                    } else {
+                        return None;
+                    }
+                }
+                return Some(bound);
+            }
+            MulInt(p, a) => {
+                if *p == 0 {
+                    Some(0)
+                } else if *p > 0 {
+                    a.low_inclusive_bound(scope).map(|x| x * p)
+                } else {
+                    a.high_inclusive_bound(scope).map(|x| x * p)
+                }
+            }
+            Mul(_) => None,
+            Min(terms) => terms.iter().filter_map(|t| t.low_inclusive_bound(scope)).min(),
+            Max(_) => None,
+            Div(a, q) => a.low_inclusive_bound(scope).map(|x| x / (*q as i64)),
+            Broadcast(_) => None,
+        }
+    }
+
+    pub fn high_inclusive_bound(&self, scope: &SymbolScope) -> Option<i64> {
+        use self::TDim::*;
+        match self {
+            Val(n) => Some(*n),
+            Sym(_) => scope
+                .all_assertions()
+                .iter()
+                .filter_map(|assert| {
+                    let Inequality { left, sign, right } =
+                        parse_inequality(scope, &assert).unwrap();
+                    if &left == self && sign == InequalitySign::LT && right.as_i64().is_some() {
+                        Some(right.as_i64().unwrap() - 1)
+                    } else if &left == self
+                        && sign == InequalitySign::LTE
+                        && right.as_i64().is_some()
+                    {
+                        Some(right.as_i64().unwrap())
+                    } else {
+                        None
+                    }
+                })
+                .min(),
+            Add(terms) => {
+                let mut bound = 0;
+                for t in terms {
+                    if let Some(b) = t.high_inclusive_bound(scope) {
+                        bound += b;
+                    } else {
+                        return None;
+                    }
+                }
+                return Some(bound);
+            }
+            MulInt(p, a) => {
+                if *p == 0 {
+                    Some(0)
+                } else if *p > 0 {
+                    a.high_inclusive_bound(scope).map(|x| x * p)
+                } else {
+                    a.low_inclusive_bound(scope).map(|x| x * p)
+                }
+            }
+            Mul(_) => None,
+            Min(terms) => terms.iter().filter_map(|t| t.high_inclusive_bound(scope)).min(),
+            Max(_) => None,
+            Div(a, q) => a.high_inclusive_bound(scope).map(|x| x / (*q as i64)),
+            Broadcast(_) => None,
         }
     }
 
@@ -1119,6 +1223,13 @@ mod tests {
     }
 
     #[test]
+    fn factorize_complex_expr_times_int() {
+        let term = (s() + 1) / 4;
+        let e = term.clone() * 2 - &term - 1;
+        assert_eq!(e, term - 1);
+    }
+
+    #[test]
     fn min_ints_1() {
         assert_eq!(2.to_dim().mini(1.to_dim()), 1.to_dim());
     }
@@ -1188,6 +1299,71 @@ mod tests {
         assert_eq!(
             symbols.parse_tdim("max(a,0)").unwrap().simplify(),
             symbols.parse_tdim("a").unwrap()
+        );
+    }
+
+    #[test]
+    fn low_bound_0() -> TractResult<()> {
+        let symbols = SymbolScope::default().with_inequality("S>=0")?;
+        assert_eq!(symbols.parse_tdim("S").unwrap().low_inclusive_bound(&symbols), Some(0));
+        Ok(())
+    }
+
+    #[test]
+    fn low_bound_1() -> TractResult<()> {
+        let symbols = SymbolScope::default().with_inequality("S>0")?;
+        assert_eq!(symbols.parse_tdim("S").unwrap().low_inclusive_bound(&symbols), Some(1));
+        Ok(())
+    }
+
+    #[test]
+    fn low_bound_2() -> TractResult<()> {
+        let symbols = SymbolScope::default().with_inequality("S>0")?;
+        assert_eq!(symbols.parse_tdim("S + 1").unwrap().low_inclusive_bound(&symbols), Some(2));
+        Ok(())
+    }
+
+    #[test]
+    fn low_bound_3() -> TractResult<()> {
+        let symbols = SymbolScope::default().with_inequality("S>0")?;
+        assert_eq!(symbols.parse_tdim("4*S").unwrap().low_inclusive_bound(&symbols), Some(4));
+        Ok(())
+    }
+
+    #[test]
+    fn low_bound_4() -> TractResult<()> {
+        let symbols = SymbolScope::default().with_inequality("S>0")?.with_inequality("S>5")?;
+        assert_eq!(symbols.parse_tdim("S + 3").unwrap().low_inclusive_bound(&symbols), Some(9));
+        Ok(())
+    }
+
+    #[test]
+    fn max_bug_1() {
+        let symbols = SymbolScope::default();
+        symbols.add_inequality("S>8").unwrap();
+        assert_eq!(
+            symbols.parse_tdim("max(1,-1+(S+1)/4)").unwrap().simplify(),
+            symbols.parse_tdim("-1+(S+1)/4").unwrap(),
+        );
+    }
+
+    #[test]
+    fn min_bug_1() {
+        let symbols = SymbolScope::default();
+        symbols.add_inequality("S>8").unwrap();
+        assert_eq!(
+            symbols.parse_tdim("min(1,-1+(S+1)/4)").unwrap().simplify(),
+            symbols.parse_tdim("1").unwrap()
+        );
+    }
+
+    #[test]
+    fn min_bug_2() {
+        let symbols = SymbolScope::default();
+        symbols.add_inequality("S>50").unwrap();
+        assert_eq!(
+            symbols.parse_tdim("min(-3+2*(S+1)/4,-1+(S+1)/4)").unwrap().simplify(),
+            symbols.parse_tdim("-1+(S+1)/4").unwrap()
         );
     }
 }
