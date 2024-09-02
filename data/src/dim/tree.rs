@@ -482,8 +482,9 @@ impl TDim {
                     .sorted_by(tdim_lexi_order)
                     .dedup()
                     .collect();
+                #[allow(clippy::mutable_key_type)]
                 let mut redundant = HashSet::<TDim>::default();
-                for pair in flatten.iter().permutations(2).into_iter() {
+                for pair in flatten.iter().permutations(2) {
                     let (a, b) = (pair[0], pair[1]);
                     if redundant.contains(a) || redundant.contains(b) {
                         continue;
@@ -512,8 +513,9 @@ impl TDim {
                     .sorted_by(tdim_lexi_order)
                     .dedup()
                     .collect();
+                #[allow(clippy::mutable_key_type)]
                 let mut redundant = HashSet::<TDim>::default();
-                for pair in flatten.iter().permutations(2).into_iter() {
+                for pair in flatten.iter().permutations(2) {
                     let (a, b) = (pair[0], pair[1]);
                     if redundant.contains(a) || redundant.contains(b) {
                         continue;
@@ -547,7 +549,7 @@ impl TDim {
                 .iter()
                 .filter_map(|assert| {
                     let Inequality { left, sign, right } =
-                        parse_inequality(scope, &assert).unwrap();
+                        parse_inequality(scope, assert).unwrap();
                     if &left == self && sign == InequalitySign::GT && right.as_i64().is_some() {
                         Some(right.as_i64().unwrap() + 1)
                     } else if &left == self
@@ -569,16 +571,12 @@ impl TDim {
                         return None;
                     }
                 }
-                return Some(bound);
+                Some(bound)
             }
-            MulInt(p, a) => {
-                if *p == 0 {
-                    Some(0)
-                } else if *p > 0 {
-                    a.low_inclusive_bound(scope).map(|x| x * p)
-                } else {
-                    a.high_inclusive_bound(scope).map(|x| x * p)
-                }
+            MulInt(p, a) => match p.cmp(&0) {
+                Ordering::Equal => Some(0),
+                Ordering::Greater => a.low_inclusive_bound(scope).map(|x| x * p),
+                Ordering::Less => a.high_inclusive_bound(scope).map(|x| x * p),
             }
             Mul(_) => None,
             Min(terms) => terms.iter().filter_map(|t| t.low_inclusive_bound(scope)).min(),
@@ -596,8 +594,7 @@ impl TDim {
                 .all_assertions()
                 .iter()
                 .filter_map(|assert| {
-                    let Inequality { left, sign, right } =
-                        parse_inequality(scope, &assert).unwrap();
+                    let Inequality { left, sign, right } = parse_inequality(scope, assert).unwrap();
                     if &left == self && sign == InequalitySign::LT && right.as_i64().is_some() {
                         Some(right.as_i64().unwrap() - 1)
                     } else if &left == self
@@ -619,17 +616,13 @@ impl TDim {
                         return None;
                     }
                 }
-                return Some(bound);
+                Some(bound)
             }
-            MulInt(p, a) => {
-                if *p == 0 {
-                    Some(0)
-                } else if *p > 0 {
-                    a.high_inclusive_bound(scope).map(|x| x * p)
-                } else {
-                    a.low_inclusive_bound(scope).map(|x| x * p)
-                }
-            }
+            MulInt(p, a) => match p.cmp(&0) {
+                Ordering::Equal => Some(0),
+                Ordering::Greater => a.high_inclusive_bound(scope).map(|x| x * p),
+                Ordering::Less => a.low_inclusive_bound(scope).map(|x| x * p),
+            },
             Mul(_) => None,
             Min(terms) => terms.iter().filter_map(|t| t.high_inclusive_bound(scope)).min(),
             Max(_) => None,
