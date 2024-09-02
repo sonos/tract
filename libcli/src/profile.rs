@@ -274,5 +274,5 @@ pub fn extract_costs(
         }
         Ok(())
     }
-    extract_costs_rec(annotations, model, &[], 1.into(), &extra_symbols)
+    extract_costs_rec(annotations, model, &[], 1.into(), extra_symbols)
 }
