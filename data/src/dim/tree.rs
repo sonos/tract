@@ -540,32 +540,61 @@ impl TDim {
         }
     }
 
-    pub fn low_inclusive_bound(&self, scope: &SymbolScope) -> Option<i64> {
+    pub fn inclusive_bound(&self, scope: &SymbolScope, upper: bool) -> Option<i64> {
         use self::TDim::*;
         match self {
             Val(n) => Some(*n),
-            Sym(_) => scope
-                .all_assertions()
-                .iter()
-                .filter_map(|assert| {
-                    let Inequality { left, sign, right } =
-                        parse_inequality(scope, assert).unwrap();
-                    if &left == self && sign == InequalitySign::GT && right.as_i64().is_some() {
-                        Some(right.as_i64().unwrap() + 1)
-                    } else if &left == self
-                        && sign == InequalitySign::GTE
-                        && right.as_i64().is_some()
-                    {
-                        Some(right.as_i64().unwrap())
-                    } else {
-                        None
-                    }
-                })
-                .max(),
+            Sym(_) => {
+                if upper {
+                    scope
+                        .all_assertions()
+                        .iter()
+                        .filter_map(|assert| {
+                            let Inequality { left, sign, right } =
+                                parse_inequality(scope, assert).unwrap();
+                            if &left == self
+                                && sign == InequalitySign::LT
+                                && right.as_i64().is_some()
+                            {
+                                Some(right.as_i64().unwrap() - 1)
+                            } else if &left == self
+                                && sign == InequalitySign::LTE
+                                && right.as_i64().is_some()
+                            {
+                                Some(right.as_i64().unwrap())
+                            } else {
+                                None
+                            }
+                        })
+                        .min()
+                } else {
+                    scope
+                        .all_assertions()
+                        .iter()
+                        .filter_map(|assert| {
+                            let Inequality { left, sign, right } =
+                                parse_inequality(scope, assert).unwrap();
+                            if &left == self
+                                && sign == InequalitySign::GT
+                                && right.as_i64().is_some()
+                            {
+                                Some(right.as_i64().unwrap() + 1)
+                            } else if &left == self
+                                && sign == InequalitySign::GTE
+                                && right.as_i64().is_some()
+                            {
+                                Some(right.as_i64().unwrap())
+                            } else {
+                                None
+                            }
+                        })
+                        .max()
+                }
+            }
             Add(terms) => {
                 let mut bound = 0;
                 for t in terms {
-                    if let Some(b) = t.low_inclusive_bound(scope) {
+                    if let Some(b) = t.inclusive_bound(scope, upper) {
                         bound += b;
                     } else {
                         return None;
@@ -575,60 +604,23 @@ impl TDim {
             }
             MulInt(p, a) => match p.cmp(&0) {
                 Ordering::Equal => Some(0),
-                Ordering::Greater => a.low_inclusive_bound(scope).map(|x| x * p),
-                Ordering::Less => a.high_inclusive_bound(scope).map(|x| x * p),
-            }
+                Ordering::Greater => a.inclusive_bound(scope, upper).map(|x| x * p),
+                Ordering::Less => a.inclusive_bound(scope, !upper).map(|x| x * p),
+            },
             Mul(_) => None,
-            Min(terms) => terms.iter().filter_map(|t| t.low_inclusive_bound(scope)).min(),
-            Max(_) => None,
-            Div(a, q) => a.low_inclusive_bound(scope).map(|x| x / (*q as i64)),
-            Broadcast(_) => None,
+            Min(terms) if !upper => terms.iter().filter_map(|t| t.low_inclusive_bound(scope)).min(),
+            Max(terms) if upper => terms.iter().filter_map(|t| t.high_inclusive_bound(scope)).max(),
+            Div(a, q) => a.inclusive_bound(scope, upper).map(|x| x / (*q as i64)),
+            _ => None,
         }
     }
 
+    pub fn low_inclusive_bound(&self, scope: &SymbolScope) -> Option<i64> {
+        self.inclusive_bound(scope, false)
+    }
+
     pub fn high_inclusive_bound(&self, scope: &SymbolScope) -> Option<i64> {
-        use self::TDim::*;
-        match self {
-            Val(n) => Some(*n),
-            Sym(_) => scope
-                .all_assertions()
-                .iter()
-                .filter_map(|assert| {
-                    let Inequality { left, sign, right } = parse_inequality(scope, assert).unwrap();
-                    if &left == self && sign == InequalitySign::LT && right.as_i64().is_some() {
-                        Some(right.as_i64().unwrap() - 1)
-                    } else if &left == self
-                        && sign == InequalitySign::LTE
-                        && right.as_i64().is_some()
-                    {
-                        Some(right.as_i64().unwrap())
-                    } else {
-                        None
-                    }
-                })
-                .min(),
-            Add(terms) => {
-                let mut bound = 0;
-                for t in terms {
-                    if let Some(b) = t.high_inclusive_bound(scope) {
-                        bound += b;
-                    } else {
-                        return None;
-                    }
-                }
-                Some(bound)
-            }
-            MulInt(p, a) => match p.cmp(&0) {
-                Ordering::Equal => Some(0),
-                Ordering::Greater => a.high_inclusive_bound(scope).map(|x| x * p),
-                Ordering::Less => a.low_inclusive_bound(scope).map(|x| x * p),
-            },
-            Mul(_) => None,
-            Min(terms) => terms.iter().filter_map(|t| t.high_inclusive_bound(scope)).min(),
-            Max(_) => None,
-            Div(a, q) => a.high_inclusive_bound(scope).map(|x| x / (*q as i64)),
-            Broadcast(_) => None,
-        }
+        self.inclusive_bound(scope, true)
     }
 
     pub fn gcd(&self) -> u64 {
@@ -1327,6 +1319,16 @@ mod tests {
     fn low_bound_4() -> TractResult<()> {
         let symbols = SymbolScope::default().with_inequality("S>0")?.with_inequality("S>5")?;
         assert_eq!(symbols.parse_tdim("S + 3").unwrap().low_inclusive_bound(&symbols), Some(9));
+        Ok(())
+    }
+
+    #[test]
+    fn min_0() -> TractResult<()> {
+        let symbols = SymbolScope::default();
+        assert_eq!(
+            symbols.parse_tdim("min(S+3, S+2)").unwrap().simplify(),
+            symbols.parse_tdim("S+2").unwrap(),
+        );
         Ok(())
     }
 
