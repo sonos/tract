@@ -2,7 +2,7 @@ use crate::ops::einsum::EinSum;
 use crate::ops::konst::Const;
 use crate::optim::OptimizerSession;
 
-use super::lir::{OptScan, ScanOpParams};
+use super::optimized::{OptScan, ScanOpParams};
 use tract_data::internal::*;
 
 use super::*;

@@ -1,10 +1,10 @@
 use crate::internal::*;
 use std::fmt;
 
-mod lir;
+mod optimized;
 mod mir;
 
-pub use lir::{OptScan, State};
+pub use optimized::{OptScan, State};
 pub use mir::Scan;
 
 #[derive(Clone, new, Hash, Eq, PartialEq, Copy, Debug)]

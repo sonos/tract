@@ -287,7 +287,7 @@ impl Conv {
                 c_axis,
                 h_axis,
             )
-            .context("in wire_lir_matmatmul")?;
+            .context("in wire_opt_matmul")?;
 
         let wire = self.wire_remove_group(model, name, &wire, &mmm_output_shape, c_axis)?;
         let wire = self.wire_rm_n_if_needed(model, name, &wire)?;

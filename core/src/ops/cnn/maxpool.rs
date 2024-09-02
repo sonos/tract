@@ -28,7 +28,7 @@ impl EvalOp for MaxPool {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape: TVec<TDim> = inputs[0].shape().iter().map(|d| d.to_dim()).collect();
-        self.to_lir(&shape)?.eval(inputs)
+        self.to_optimized(&shape)?.eval(inputs)
     }
 }
 
@@ -74,8 +74,8 @@ impl TypedOp for MaxPool {
 }
 
 impl MaxPool {
-    fn to_lir(&self, input_shape: &[TDim]) -> TractResult<LirMaxPool> {
-        Ok(LirMaxPool {
+    fn to_optimized(&self, input_shape: &[TDim]) -> TractResult<OptMaxPool> {
+        Ok(OptMaxPool {
             pool_spec: self.pool_spec.clone(),
             with_index_outputs: self.with_index_outputs,
             geometry: self.pool_spec.compute_geo(input_shape)?,
@@ -84,15 +84,15 @@ impl MaxPool {
 }
 
 #[derive(Debug, Clone, new, Hash)]
-pub struct LirMaxPool {
+pub struct OptMaxPool {
     pub pool_spec: PoolSpec,
     pub with_index_outputs: Option<DatumType>,
     pub geometry: PoolGeometry,
 }
 
-impl Op for LirMaxPool {
+impl Op for OptMaxPool {
     fn name(&self) -> Cow<str> {
-        "LirMaxPool".into()
+        "OptMaxPool".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -102,7 +102,7 @@ impl Op for LirMaxPool {
     op_as_typed_op!();
 }
 
-impl EvalOp for LirMaxPool {
+impl EvalOp for OptMaxPool {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -114,7 +114,7 @@ impl EvalOp for LirMaxPool {
     }
 }
 
-impl TypedOp for LirMaxPool {
+impl TypedOp for OptMaxPool {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut facts = self.pool_spec.output_facts(inputs)?;
         if let Some(idt) = self.with_index_outputs {
@@ -127,7 +127,7 @@ impl TypedOp for LirMaxPool {
     as_op!();
 }
 
-impl LirMaxPool {
+impl OptMaxPool {
     fn eval_t<T: Datum + Copy + num_traits::Bounded + PartialOrd>(
         &self,
         input: &Tensor,

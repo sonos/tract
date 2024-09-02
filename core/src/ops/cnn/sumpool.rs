@@ -34,7 +34,7 @@ impl EvalOp for SumPool {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape: TVec<TDim> = inputs[0].shape().iter().map(|d| d.to_dim()).collect();
-        self.to_lir(&shape)?.eval(inputs)
+        self.to_optimized(&shape)?.eval(inputs)
     }
 }
 
@@ -64,8 +64,8 @@ impl TypedOp for SumPool {
 }
 
 impl SumPool {
-    fn to_lir(&self, input_shape: &[TDim]) -> TractResult<LirSumPool> {
-        Ok(LirSumPool {
+    fn to_optimized(&self, input_shape: &[TDim]) -> TractResult<OptSumPool> {
+        Ok(OptSumPool {
             pool_spec: self.pool_spec.clone(),
             count_include_pad: self.count_include_pad,
             normalize: self.normalize,
@@ -75,16 +75,16 @@ impl SumPool {
 }
 
 #[derive(Debug, Clone, new, Hash)]
-pub struct LirSumPool {
+pub struct OptSumPool {
     pub pool_spec: PoolSpec,
     pub count_include_pad: bool,
     pub normalize: bool,
     pub geometry: PoolGeometry,
 }
 
-impl Op for LirSumPool {
+impl Op for OptSumPool {
     fn name(&self) -> Cow<str> {
-        "LirSumPool".into()
+        "OptSumPool".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -98,7 +98,7 @@ impl Op for LirSumPool {
     op_as_typed_op!();
 }
 
-impl EvalOp for LirSumPool {
+impl EvalOp for OptSumPool {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -128,7 +128,7 @@ impl EvalOp for LirSumPool {
     }
 }
 
-impl TypedOp for LirSumPool {
+impl TypedOp for OptSumPool {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         self.pool_spec.output_facts(inputs)
     }
@@ -153,7 +153,7 @@ impl TypedOp for LirSumPool {
     as_op!();
 }
 
-impl LirSumPool {
+impl OptSumPool {
     fn eval_t<T: Copy + Datum + Sum + num_traits::Float>(
         &self,
         input: &Tensor,

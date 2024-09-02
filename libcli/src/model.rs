@@ -69,7 +69,7 @@ pub trait Model:
         {
             return vec![("submodel".into(), submodel.model())];
         }
-        if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::LirScan>() {
+        if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::OptScan>() {
             return vec![("loop".into(), lir.plan.model())];
         }
         if let Some(mir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::Scan>() {
@@ -95,7 +95,7 @@ pub trait Model:
             self.node_op(id).downcast_ref::<tract_core::ops::submodel::SubmodelOp>()
         {
             submodel.iteration_count(input)
-        } else if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::LirScan>()
+        } else if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::OptScan>()
         {
             lir.iteration_count(input)
         } else if let Some(mir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::Scan>() {

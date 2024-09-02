@@ -473,7 +473,7 @@ fn optimized_mat_mul(
         c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
     };
     let output = unsafe { mmm.c_view(c_m, c_n) };
-    let lir = OptMatMul::new(
+    let opt = OptMatMul::new(
         mmm,
         c_fact,
         c_m,
@@ -481,7 +481,7 @@ fn optimized_mat_mul(
         vec![ProtoFusedSpec::AddMatMul { geo, a: 0, b: 1, packing }, ProtoFusedSpec::Store(output)],
     )
     .context("Creating OptMatMul")?;
-    let output = patch.wire_node(name, lir, &[pa, pb])?[0];
+    let output = patch.wire_node(name, opt, &[pa, pb])?[0];
     patch.shunt_outside(model, node.id.into(), output)?;
     Ok(Some(patch))
 }
