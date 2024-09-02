@@ -263,7 +263,7 @@ impl ModelInterface for Model {
         E: Into<anyhow::Error> + Debug,
     {
         let mut annotations = Annotations::from_model(&self.0)?;
-        tract_libcli::profile::extract_costs(&mut annotations, &self.0)?;
+        tract_libcli::profile::extract_costs(&mut annotations, &self.0, &SymbolValues::default())?;
         if let Some(inputs) = inputs {
             let inputs = inputs
                 .into_iter()
