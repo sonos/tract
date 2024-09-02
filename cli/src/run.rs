@@ -157,19 +157,6 @@ fn run_regular(
     dispatch_model!(tract, |m| {
         let plan = SimplePlan::new(m)?;
         let mut state = SimpleState::new(plan)?;
-        /*
-        if let Some(set) = sub_matches.values_of("set") {
-            for set in set {
-                let mut tokens = set.split('=');
-                let sym = tokens.next().context("--set expect S=12 form")?;
-                let value = tokens.next().context("--set expect S=12 form")?;
-                let sym = state.model().symbols.sym(sym).to_owned();
-                let value: i64 = value.parse().context("Can not parse symbol value in set")?;
-                state.session_state.resolved_symbols =
-                    state.session_state.resolved_symbols.with(&sym, value);
-            }
-        }
-        */
         let inputs = tract_libcli::tensor::retrieve_or_make_inputs(tract, run_params)?;
         let mut results = tvec!(vec!(); state.model().outputs.len());
         let multiturn = inputs.len() > 1;
