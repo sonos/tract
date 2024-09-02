@@ -1,7 +1,7 @@
 pub mod de_block_quant;
 pub mod optimized;
-pub mod mir_quant;
 pub mod pack;
+pub mod quant;
 
 use crate::internal::*;
 

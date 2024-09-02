@@ -1,11 +1,11 @@
 use crate::internal::*;
 use std::fmt;
 
+mod decluttered;
 mod optimized;
-mod mir;
 
 pub use optimized::{OptScan, State};
-pub use mir::Scan;
+pub use decluttered::Scan;
 
 #[derive(Clone, new, Hash, Eq, PartialEq, Copy, Debug)]
 pub struct ScanInfo {
