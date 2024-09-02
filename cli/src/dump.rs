@@ -1,6 +1,7 @@
 use crate::params::SomeGraphDef;
 use crate::tensor::run_params_from_subcommand;
 use crate::Parameters;
+use fs_err as fs;
 #[allow(unused_imports)]
 use nu_ansi_term::Style;
 use tract_hir::internal::*;
@@ -10,7 +11,6 @@ use tract_libcli::model::Model;
 use tract_libcli::profile::BenchLimits;
 use tract_libcli::tensor::retrieve_or_make_inputs;
 use tract_libcli::terminal;
-use fs_err as fs;
 
 #[allow(unused_variables)]
 pub fn annotate_with_graph_def(
@@ -108,11 +108,11 @@ pub fn handle(
     let model = &*params.tract_model;
     let mut annotations = Annotations::from_model(model)?;
     annotate_with_graph_def(&mut annotations, model, &params.graph)?;
+    let run_params = run_params_from_subcommand(params, sub_matches)?;
     if options.cost {
-        tract_libcli::profile::extract_costs(&mut annotations, model)?;
+        tract_libcli::profile::extract_costs(&mut annotations, model, &run_params.symbols)?;
     }
     if options.profile {
-        let run_params = run_params_from_subcommand(params, sub_matches)?;
         let model = params
             .tract_model
             .downcast_ref::<TypedModel>()
