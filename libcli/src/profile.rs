@@ -35,8 +35,7 @@ impl BenchLimits {
         let plan = TypedSimplePlan::new(model.clone())?;
         let mut state = TypedSimpleState::new(Arc::new(plan))?;
         let mut iters = 0;
-        let max_loops =
-            if self.warmup_loops.is_zero() { usize::MAX } else { self.warmup_loops };
+        let max_loops = if self.warmup_loops.is_zero() { usize::MAX } else { self.warmup_loops };
         let max_time = if self.warmup_time.is_zero() { Duration::MAX } else { self.warmup_time };
 
         let start_warmup = crate::time::now();
@@ -234,12 +233,17 @@ impl Hash for Profiler {
     }
 }
 
-pub fn extract_costs(annotations: &mut Annotations, model: &dyn Model) -> TractResult<()> {
+pub fn extract_costs(
+    annotations: &mut Annotations,
+    model: &dyn Model,
+    extra_symbols: &SymbolValues,
+) -> TractResult<()> {
     fn extract_costs_rec(
         annotations: &mut Annotations,
         model: &dyn Model,
         prefix: &[(usize, String)],
         multiplier: TDim,
+        extra_symbols: &SymbolValues,
     ) -> TractResult<()> {
         if let Some(model) = model.downcast_ref::<TypedModel>() {
             for node_id in 0..model.nodes().len() {
@@ -247,7 +251,10 @@ pub fn extract_costs(annotations: &mut Annotations, model: &dyn Model) -> TractR
                 let cost = model.node(node_id).op.cost(&inputs)?;
                 annotations.node_mut(NodeQId(prefix.into(), node_id)).cost = cost
                     .into_iter()
-                    .map(|(k, v)| (k, if k.is_compute() { v * &multiplier } else { v }))
+                    .map(|(k, v)| {
+                        let cost = if k.is_compute() { v * &multiplier } else { v };
+                        (k, cost.eval(extra_symbols))
+                    })
                     .collect();
 
                 let nested_subs = model.nested_models(node_id);
@@ -260,11 +267,12 @@ pub fn extract_costs(annotations: &mut Annotations, model: &dyn Model) -> TractR
                         sub,
                         &prefix,
                         nested_multis.clone().unwrap_or_else(|| 1.into()) * &multiplier,
+                        extra_symbols,
                     )?;
                 }
             }
         }
         Ok(())
     }
-    extract_costs_rec(annotations, model, &[], 1.into())
+    extract_costs_rec(annotations, model, &[], 1.into(), &extra_symbols)
 }
