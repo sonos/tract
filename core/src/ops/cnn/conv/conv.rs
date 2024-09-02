@@ -17,7 +17,7 @@ use crate::ops::math::{add, div, mul, sub};
 use crate::ops::math::{Add, Div, Mul, Sub};
 use crate::ops::matmul::optimized::AddMatMulGeometry;
 use crate::ops::matmul::optimized::MapOutputAxisToInput;
-use crate::ops::matmul::mir_quant::wire_ensure_q8_flavour;
+use crate::ops::matmul::quant::wire_ensure_q8_flavour;
 use crate::ops::matmul::pack::MatMatMulPack;
 use crate::ops::nn::Reduce;
 
@@ -117,7 +117,7 @@ impl Conv {
         wires: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         ensure!(self.q_params.is_some());
-        use crate::ops::matmul::mir_quant as qmm;
+        use crate::ops::matmul::quant as qmm;
 
         let c_dt = self.q_params.unwrap();
         let &[mut x, mut kernel, bias, mut x0, x_scale, mut k0, mut k_scale, y0, y_scale] = wires

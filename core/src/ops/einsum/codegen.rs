@@ -9,7 +9,7 @@ use crate::ops::matmul::de_block_quant::BlockQuantValue;
 use crate::ops::matmul::optimized::{
     AddMatMulGeometry, OptMatMul, MapOutputAxisToInput, ProtoFusedSpec,
 };
-use crate::ops::matmul::mir_quant::{
+use crate::ops::matmul::quant::{
     combine_scales, compensate_zero_points, requant, wire_ensure_q8_flavour,
 };
 use crate::ops::matmul::pack::MatMatMulPack;
