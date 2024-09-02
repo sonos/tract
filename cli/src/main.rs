@@ -228,14 +228,6 @@ fn main() -> TractResult<()> {
         )
         .arg(Arg::new("steps").long("steps").help("Show all inputs and outputs"))
         .arg(
-            Arg::new("set")
-                .long("set")
-                .takes_value(true)
-                .multiple_occurrences(true)
-                .number_of_values(1)
-                .help("Set a symbol value before running the model (--set S=12)"),
-        )
-        .arg(
             Arg::new("save-steps")
                 .long("save-steps")
                 .takes_value(true)
@@ -440,6 +432,14 @@ fn run_options(command: clap::Command) -> clap::Command {
             .takes_value(true)
             .help("Path to an input container (.npz). This sets tensor values."),
             )
+        .arg(
+            Arg::new("set")
+                .long("set")
+                .takes_value(true)
+                .multiple_occurrences(true)
+                .number_of_values(1)
+                .help("Set a symbol value before running the model (--set S=12)"),
+        )
         .arg(
             Arg::new("input-from-nnef").long("input-from-nnef").takes_value(true).help(
                 "Path to a directory containing input tensors in NNEF format (.dat files). This sets tensor values.",

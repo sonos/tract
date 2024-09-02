@@ -29,5 +29,15 @@ pub fn run_params_from_subcommand(
     let allow_float_casts: bool =
         params.allow_float_casts || sub_matches.is_present("allow-float-casts");
 
-    Ok(RunParams { tensors_values: tv, allow_random_input, allow_float_casts })
+    let mut symbols = SymbolValues::default();
+    if let Some(set) = sub_matches.values_of("set") {
+        for set in set {
+            let (sym, value) = set.split_once('=').context("--set expect S=12 form")?;
+            let sym = params.tract_model.get_or_intern_symbol(sym);
+            let value: i64 = value.parse().with_context(|| format!("Can not parse symbol value in set {set}"))?;
+            symbols.set(&sym, value);
+        }
+    }
+
+    Ok(RunParams { tensors_values: tv, allow_random_input, allow_float_casts, symbols })
 }

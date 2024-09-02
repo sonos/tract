@@ -282,6 +282,7 @@ pub struct RunParams {
     pub tensors_values: TensorsValues,
     pub allow_random_input: bool,
     pub allow_float_casts: bool,
+    pub symbols: SymbolValues,
 }
 
 pub fn retrieve_or_make_inputs(
@@ -363,12 +364,13 @@ pub fn retrieve_or_make_inputs(
                 bail!("For input {}, can not reconcile model input fact {:?} with provided input {:?}", name, fact, value[0]);
             };
         } else if params.allow_random_input {
-            let fact = tract.outlet_typedfact(*input)?;
+            let mut fact:TypedFact = tract.outlet_typedfact(*input)?.clone();
             info_once(format!("Using random input for input called {name:?}: {fact:?}"));
             let tv = params
                 .tensors_values
                 .by_name(name)
                 .or_else(|| params.tensors_values.by_input_ix(ix));
+            fact.shape = fact.shape.iter().map(|dim| dim.eval(&params.symbols)).collect();
             tmp.push(vec![crate::tensor::tensor_for_fact(&fact, None, tv)?.into()]);
         } else {
             bail!("Unmatched tensor {}. Fix the input or use \"--allow-random-input\" if this was intended", name);
