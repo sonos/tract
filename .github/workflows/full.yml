@@ -139,6 +139,16 @@ jobs:
         ROOT=$(pwd) ./.travis/ci-system-setup.sh
         cargo check --all-targets
 
+  check-all:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Check all
+      env:
+        AWS_EC2_METADATA_DISABLED: true
+      run: cargo check --all-targets --workspace
+
   cli-tests:
     runs-on: ubuntu-latest
 
