@@ -250,7 +250,7 @@ impl ResolveTo<ConcreteMatrixGeometry> for SymbolicMatrixGeometry {
 pub type MatrixGeometry = GeometryBound<SymbolicMatrixGeometry, ConcreteMatrixGeometry>;
 
 #[derive(Clone, Debug)]
-pub struct LirMatMulUnary {
+pub struct OptMatMul {
     pub c_fact: TypedFact,
     pub micro_ops: Vec<ProtoFusedSpec>,
     pub geometry: MatrixGeometry,
@@ -260,9 +260,9 @@ pub struct LirMatMulUnary {
     pub trivial_path: bool,
 }
 
-impl Op for LirMatMulUnary {
+impl Op for OptMatMul {
     fn name(&self) -> Cow<str> {
-        "LirMatMulUnary".into()
+        "OptMatMul".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -283,7 +283,7 @@ impl Op for LirMatMulUnary {
     op_as_typed_op!();
 }
 
-impl EvalOp for LirMatMulUnary {
+impl EvalOp for OptMatMul {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -338,7 +338,7 @@ impl EvalOp for LirMatMulUnary {
     }
 }
 
-impl TypedOp for LirMatMulUnary {
+impl TypedOp for OptMatMul {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(self.c_m_axis < self.c_fact.rank());
         ensure!(self.c_n_axis < self.c_fact.rank());
@@ -512,7 +512,7 @@ impl TypedOp for LirMatMulUnary {
     as_op!();
 }
 
-impl LirMatMulUnary {
+impl OptMatMul {
     pub fn new(
         mmm: Box<dyn MatMatMul>,
         c_fact: TypedFact,
@@ -528,7 +528,7 @@ impl LirMatMulUnary {
             n: c_fact.shape[c_n_axis].clone(),
         });
         let geometry = geometry.clone().optimize_if(Some(&Default::default())).unwrap_or(geometry);
-        let mut it = LirMatMulUnary {
+        let mut it = OptMatMul {
             mmm,
             c_fact,
             geometry,
