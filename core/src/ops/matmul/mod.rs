@@ -1,5 +1,5 @@
 pub mod de_block_quant;
-pub mod lir_unary;
+pub mod optimized;
 pub mod mir_quant;
 pub mod pack;
 

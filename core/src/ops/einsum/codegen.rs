@@ -6,8 +6,8 @@ use super::*;
 use crate::ops::cast::cast;
 use crate::ops::math::add;
 use crate::ops::matmul::de_block_quant::BlockQuantValue;
-use crate::ops::matmul::lir_unary::{
-    AddMatMulGeometry, LirMatMulUnary, MapOutputAxisToInput, ProtoFusedSpec,
+use crate::ops::matmul::optimized::{
+    AddMatMulGeometry, OptMatMul, MapOutputAxisToInput, ProtoFusedSpec,
 };
 use crate::ops::matmul::mir_quant::{
     combine_scales, compensate_zero_points, requant, wire_ensure_q8_flavour,
@@ -37,8 +37,8 @@ pub(crate) fn codegen(
         AxesOrPatch::NotAMatMul(_) => return Ok(None),
     };
     if op.q_params.is_none() {
-        lir_mat_mul_unary(op, model, node, (m_axis, k_axis, n_axis))
-            .context("Translating to LirMatMul")
+        optimized_mat_mul(op, model, node, (m_axis, k_axis, n_axis))
+            .context("Translating to OptMatMul")
     } else {
         dequant(op, model, node, (m_axis, k_axis, n_axis)).context("Dequantize")
     }
@@ -379,7 +379,7 @@ fn wire_packing(
     }
 }
 
-fn lir_mat_mul_unary(
+fn optimized_mat_mul(
     op: &EinSum,
     model: &TypedModel,
     node: &TypedNode,
@@ -439,7 +439,7 @@ fn lir_mat_mul_unary(
         (mmm, packing)
     };
 
-    let mut patch = TypedModelPatch::new("Einsum to LirMatMulUnary");
+    let mut patch = TypedModelPatch::new("Einsum to OptMatMul");
     let packers = mmm.packings()[packing];
 
     let pa = wire_packing(model, node, 0, &mut patch, packers.0, a_k, a_m)
@@ -473,14 +473,14 @@ fn lir_mat_mul_unary(
         c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
     };
     let output = unsafe { mmm.c_view(c_m, c_n) };
-    let lir = LirMatMulUnary::new(
+    let lir = OptMatMul::new(
         mmm,
         c_fact,
         c_m,
         c_n,
         vec![ProtoFusedSpec::AddMatMul { geo, a: 0, b: 1, packing }, ProtoFusedSpec::Store(output)],
     )
-    .context("Creating LirMatMulUnary")?;
+    .context("Creating OptMatMul")?;
     let output = patch.wire_node(name, lir, &[pa, pb])?[0];
     patch.shunt_outside(model, node.id.into(), output)?;
     Ok(Some(patch))

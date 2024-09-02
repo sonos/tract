@@ -15,8 +15,8 @@ use crate::ops::cnn::PaddingSpec::*;
 use crate::ops::einsum::EinSum;
 use crate::ops::math::{add, div, mul, sub};
 use crate::ops::math::{Add, Div, Mul, Sub};
-use crate::ops::matmul::lir_unary::AddMatMulGeometry;
-use crate::ops::matmul::lir_unary::MapOutputAxisToInput;
+use crate::ops::matmul::optimized::AddMatMulGeometry;
+use crate::ops::matmul::optimized::MapOutputAxisToInput;
 use crate::ops::matmul::mir_quant::wire_ensure_q8_flavour;
 use crate::ops::matmul::pack::MatMatMulPack;
 use crate::ops::nn::Reduce;
@@ -25,7 +25,7 @@ use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
-use crate::ops::matmul::lir_unary::{LirMatMulUnary, ProtoFusedSpec};
+use crate::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
 
 use tract_linalg::frame::PackedFormat;
@@ -511,7 +511,7 @@ impl Conv {
         ops.push(ProtoFusedSpec::Store(unsafe { mmm.c_view(c_m_axis, c_n_axis) }));
         model.wire_node(
             format!("{name}.matmatmul"),
-            LirMatMulUnary::new(mmm, c_datum_type.fact(mmm_output_shape), c_m_axis, c_n_axis, ops)?,
+            OptMatMul::new(mmm, c_datum_type.fact(mmm_output_shape), c_m_axis, c_n_axis, ops)?,
             &wires,
         )
     }
