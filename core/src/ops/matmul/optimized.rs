@@ -1,7 +1,7 @@
 use crate::internal::*;
 use crate::ops::cast::cast;
-use crate::ops::nn::LeakyRelu;
 use crate::ops::change_axes::wire_with_rank_broadcast;
+use crate::ops::nn::LeakyRelu;
 use ndarray::*;
 use tract_itertools::Itertools;
 
@@ -27,9 +27,9 @@ impl ProtoFusedSpec {
         use ProtoFusedSpec::*;
         match self {
             AddMatMul { geo, packing, .. } => {
-                let (a,b) = mmm.packings()[*packing];
+                let (a, b) = mmm.packings()[*packing];
                 format!("matmul(k={}, {a:?}•{b:?})", geo.k)
-            },
+            }
             BinScalar(_, op) => format!("scalar{op:?}"),
             LeakyRelu(alpha) => format!("leaky_relu({alpha:?})"),
             BinPerRow(_, op, _) => format!("row{op:?}"),
@@ -53,14 +53,16 @@ impl ProtoFusedSpec {
                 unsafe {
                     geo.c_to_a_axis_mapping.translate_view(output_coords, &mut a);
                 }
-                let a =
-                    a.as_slice::<Opaque>().unwrap()[0].downcast_ref::<Box<dyn MMMInputValue>>().unwrap();
+                let a = a.as_slice::<Opaque>().unwrap()[0]
+                    .downcast_ref::<Box<dyn MMMInputValue>>()
+                    .unwrap();
                 let mut b = inputs[*b].view();
                 unsafe {
                     geo.c_to_b_axis_mapping.translate_view(output_coords, &mut b);
                 }
-                let b =
-                    b.as_slice::<Opaque>().unwrap()[0].downcast_ref::<Box<dyn MMMInputValue>>().unwrap();
+                let b = b.as_slice::<Opaque>().unwrap()[0]
+                    .downcast_ref::<Box<dyn MMMInputValue>>()
+                    .unwrap();
                 FusedSpec::AddMatMul { a: &**a, b: &**b, packing: *packing }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
@@ -108,10 +110,16 @@ impl ProtoFusedSpec {
             ProtoFusedSpec::AddMatMul { a, b, packing, .. } => {
                 let a = &inputs[*a];
                 let b = &inputs[*b];
-                let a =
-                    a.to_scalar::<Opaque>().unwrap().downcast_ref::<Box<dyn MMMInputValue>>().unwrap();
-                let b =
-                    b.to_scalar::<Opaque>().unwrap().downcast_ref::<Box<dyn MMMInputValue>>().unwrap();
+                let a = a
+                    .to_scalar::<Opaque>()
+                    .unwrap()
+                    .downcast_ref::<Box<dyn MMMInputValue>>()
+                    .unwrap();
+                let b = b
+                    .to_scalar::<Opaque>()
+                    .unwrap()
+                    .downcast_ref::<Box<dyn MMMInputValue>>()
+                    .unwrap();
                 FusedSpec::AddMatMul { a: &**a, b: &**b, packing: *packing }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
@@ -276,7 +284,10 @@ impl Op for OptMatMul {
         } else {
             infos.push(format!("Mult: {:?}", self.mmm));
         }
-        infos.push(format!("Ops: {}", self.micro_ops.iter().map(|o| o.format(&*self.mmm)).join(" >>> ")));
+        infos.push(format!(
+            "Ops: {}",
+            self.micro_ops.iter().map(|o| o.format(&*self.mmm)).join(" >>> ")
+        ));
         Ok(infos)
     }
 
@@ -325,12 +336,9 @@ impl EvalOp for OptMatMul {
                         *uops.get_unchecked_mut(ix) =
                             self.micro_ops.get_unchecked(ix).resolve(&inputs, c_coords.slice(), &c);
                     }
-                    self.mmm.run_with_scratch_space(
-                        geometry.m,
-                        geometry.n,
-                        scratch.as_mut(),
-                        &uops,
-                    ).context("In mmm.run_with_scratch_space")?;
+                    self.mmm
+                        .run_with_scratch_space(geometry.m, geometry.n, scratch.as_mut(), &uops)
+                        .context("In mmm.run_with_scratch_space")?;
                 }
                 Ok(tvec!(c.into_tvalue()))
             }
@@ -528,15 +536,8 @@ impl OptMatMul {
             n: c_fact.shape[c_n_axis].clone(),
         });
         let geometry = geometry.clone().optimize_if(Some(&Default::default())).unwrap_or(geometry);
-        let mut it = OptMatMul {
-            mmm,
-            c_fact,
-            geometry,
-            c_m_axis,
-            c_n_axis,
-            micro_ops,
-            trivial_path: false,
-        };
+        let mut it =
+            OptMatMul { mmm, c_fact, geometry, c_m_axis, c_n_axis, micro_ops, trivial_path: false };
         it.update_trivial_path();
         Ok(it)
     }
