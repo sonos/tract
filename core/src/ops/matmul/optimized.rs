@@ -237,12 +237,11 @@ pub struct ConcreteMatrixGeometry {
 pub struct SymbolicMatrixGeometry {
     pub m: TDim,
     pub n: TDim,
-    pub mmm: Box<dyn MatMatMul>,
 }
 
 impl std::fmt::Debug for SymbolicMatrixGeometry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "m:{} n:{} mmm:{}", self.m, self.n, self.mmm.kernel_name())
+        write!(f, "m:{} n:{}", self.m, self.n)
     }
 }
 
@@ -531,7 +530,6 @@ impl OptMatMul {
         ensure!(c_m_axis < c_fact.rank());
         ensure!(c_n_axis < c_fact.rank());
         let geometry = MatrixGeometry::from(SymbolicMatrixGeometry {
-            mmm: mmm.clone(),
             m: c_fact.shape[c_m_axis].clone(),
             n: c_fact.shape[c_n_axis].clone(),
         });
