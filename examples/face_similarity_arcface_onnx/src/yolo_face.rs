@@ -13,10 +13,17 @@ pub struct YoloFace {
     height: i32
 }
 
+pub fn sort_conf_bbox(input_bbox: &mut Vec<Bbox>) -> Vec<Bbox> {
+    input_bbox.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
+    input_bbox.to_vec()
+}
+
 impl YoloFace {
-    pub fn get_faces_bbox(&self, input_image: &DynamicImage) -> Result<Vec<Bbox>, Error> {
-        // assuming that model has input of square format 
+    pub fn get_faces_bbox(&self, input_image: &DynamicImage, confidence_threshold: f32, iou_threshold: f32) -> Result<Vec<Bbox>, Error> {
+        // assuming that model has input shape of a square 
         let preprocess_image = preprocess_yoloface_square(input_image, self.width as f32); 
+
+        // run forward pass and then convert result to f32
         let forward = self.model.run(tvec![preprocess_image.to_owned().into()])?;
         let results = forward[0].to_array_view::<f32>()?.view().t().into_owned();    
 
@@ -26,7 +33,7 @@ impl YoloFace {
             let row = results.slice(s![i, .., ..]);
             let confidence = row[[4, 0]];
 
-            if confidence >= 0.5 {
+            if confidence >= confidence_threshold {
                 let x = row[[0, 0]];
                 let y = row[[1, 0]];
                 let w = row[[2, 0]];
@@ -44,7 +51,7 @@ impl YoloFace {
             
             }
         }
-        Ok(bbox_vec)
+        Ok(non_maximum_suppression(bbox_vec, iou_threshold))
     }
 }
 
@@ -92,6 +99,7 @@ impl Bbox {
             confidence: self.confidence,
         }
     }
+
     pub fn crop_bbox(&self, original_image: &DynamicImage) -> Result<DynamicImage, Error> {
         let bbox_width = (self.x2 - self.x1) as u32;
         let bbox_height = (self.y2 - self.y1) as u32;
@@ -155,8 +163,8 @@ fn preprocess_yoloface_square(input_image: &DynamicImage, target_size: f32) -> T
     let new_height = (height as f32 * scale) as u32;
     let resized = image::imageops::resize(&input_image.to_rgb8(), new_width, new_height, image::imageops::FilterType::Triangle);
     let mut padded = image::RgbImage::new(target_size as u32, target_size as u32);
-    image::imageops::replace(&mut padded, &resized, (640 - new_width as i64) / 2, (640 - new_height as i64) / 2);
-    let image: Tensor = tract_ndarray::Array4::from_shape_fn((1, 3, 640, 640), |(_, c, y, x)| {
+    image::imageops::replace(&mut padded, &resized, (target_size as u32 - new_width ) as i64 / 2, (target_size as u32 - new_height) as i64 / 2);
+    let image: Tensor = tract_ndarray::Array4::from_shape_fn((1, 3, target_size as usize, target_size as usize), |(_, c, y, x)| {
         padded.get_pixel(x as u32, y as u32)[c] as f32 / 255.0
     })
     .into();
