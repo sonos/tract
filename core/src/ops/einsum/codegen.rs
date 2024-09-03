@@ -7,12 +7,12 @@ use crate::ops::cast::cast;
 use crate::ops::math::add;
 use crate::ops::matmul::de_block_quant::BlockQuantValue;
 use crate::ops::matmul::optimized::{
-    AddMatMulGeometry, OptMatMul, MapOutputAxisToInput, ProtoFusedSpec,
+    AddMatMulGeometry, MapOutputAxisToInput, OptMatMul, ProtoFusedSpec,
 };
+use crate::ops::matmul::pack::MatMatMulPack;
 use crate::ops::matmul::quant::{
     combine_scales, compensate_zero_points, requant, wire_ensure_q8_flavour,
 };
-use crate::ops::matmul::pack::MatMatMulPack;
 use crate::ops::nn::{Reduce, Reducer};
 
 #[allow(clippy::large_enum_variant)]
@@ -469,7 +469,6 @@ fn optimized_mat_mul(
     let name = &node.name;
     let geo = AddMatMulGeometry {
         k: k.clone(),
-        mmm: mmm.clone(),
         c_to_a_axis_mapping: MapOutputAxisToInput(c_to_a_axis_mapping),
         c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
     };

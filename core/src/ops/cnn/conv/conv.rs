@@ -17,8 +17,8 @@ use crate::ops::math::{add, div, mul, sub};
 use crate::ops::math::{Add, Div, Mul, Sub};
 use crate::ops::matmul::optimized::AddMatMulGeometry;
 use crate::ops::matmul::optimized::MapOutputAxisToInput;
-use crate::ops::matmul::quant::wire_ensure_q8_flavour;
 use crate::ops::matmul::pack::MatMatMulPack;
+use crate::ops::matmul::quant::wire_ensure_q8_flavour;
 use crate::ops::nn::Reduce;
 
 use super::depth_wise::DepthWise;
@@ -495,7 +495,6 @@ impl Conv {
 
         let geo = AddMatMulGeometry {
             k: k.to_dim(),
-            mmm: mmm.clone(),
             c_to_a_axis_mapping: MapOutputAxisToInput(c_to_a_axis_mapping),
             c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
         };
