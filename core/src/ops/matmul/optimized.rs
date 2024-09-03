@@ -291,8 +291,8 @@ impl EvalOp for OptMatMul {
                 let uops: Vec<FusedSpec> =
                     self.micro_ops.iter().map(|o| o.resolve_trivial(&inputs, &mut c)).collect();
                 self.mmm.run_with_scratch_space(
-                    self.m.to_i64()? as usize,
-                    self.n.to_i64()? as usize,
+                    *c_shape.get_unchecked(self.c_m_axis),
+                    *c_shape.get_unchecked(self.c_n_axis),
                     scratch.as_mut(),
                     &uops,
                 )?;
