@@ -230,8 +230,6 @@ pub struct AddMatMulGeometry {
 pub struct OptMatMul {
     pub c_fact: TypedFact,
     pub micro_ops: Vec<ProtoFusedSpec>,
-    pub m: TDim,
-    pub n: TDim,
     pub mmm: Box<dyn MatMatMul>,
     pub c_m_axis: usize,
     pub c_n_axis: usize,
@@ -244,12 +242,14 @@ impl Op for OptMatMul {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
+        let m = &self.c_fact.shape[self.c_m_axis];
+        let n = &self.c_fact.shape[self.c_n_axis];
         let mut infos = vec![format!(
             "c_shape:{:?}, c_m_axis:{} c_n_axis:{} m:{} n:{}",
-            self.c_fact, self.c_m_axis, self.c_n_axis, self.m, self.n,
+            self.c_fact, self.c_m_axis, self.c_n_axis, m, n,
         )];
         if let Some(k) = self.guess_k() {
-            infos.push(format!("Mult: m:{} k:{} n:{} with {:?}", self.m, k, self.n, self.mmm));
+            infos.push(format!("Mult: m:{} k:{} n:{} with {:?}", m, k, n, self.mmm));
         } else {
             infos.push(format!("Mult: {:?}", self.mmm));
         }
@@ -303,8 +303,8 @@ impl EvalOp for OptMatMul {
                 let mut looping_shape: TVec<usize> = c_shape.to_smallvec();
                 looping_shape[self.c_m_axis] = 1;
                 looping_shape[self.c_n_axis] = 1;
-                let m = self.m.eval(&session.resolved_symbols).to_usize()?;
-                let n = self.n.eval(&session.resolved_symbols).to_usize()?;
+                let m = c_shape[self.c_m_axis];
+                let n = c_shape[self.c_n_axis];
                 for c_coords in indices(&*looping_shape) {
                     for ix in 0..self.micro_ops.len() {
                         *uops.get_unchecked_mut(ix) =
@@ -333,8 +333,10 @@ impl TypedOp for OptMatMul {
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let mut sums = HashMap::new();
+        let m = &self.c_fact.shape[self.c_m_axis];
+        let n = &self.c_fact.shape[self.c_n_axis];
         for op in &self.micro_ops {
-            for (cost, count) in op.cost(&self.m, &self.n, self.mmm.internal_type()) {
+            for (cost, count) in op.cost(m, n, self.mmm.internal_type()) {
                 *sums.entry(cost).or_default() += count;
             }
         }
@@ -503,10 +505,7 @@ impl OptMatMul {
     ) -> TractResult<Self> {
         ensure!(c_m_axis < c_fact.rank());
         ensure!(c_n_axis < c_fact.rank());
-        let m = c_fact.shape[c_m_axis].clone();
-        let n = c_fact.shape[c_n_axis].clone();
-        let mut it =
-            OptMatMul { mmm, c_fact, m, n, c_m_axis, c_n_axis, micro_ops, trivial_path: false };
+        let mut it = OptMatMul { mmm, c_fact, c_m_axis, c_n_axis, micro_ops, trivial_path: false };
         it.update_trivial_path();
         Ok(it)
     }
@@ -532,8 +531,6 @@ impl OptMatMul {
 
     fn can_use_trivial_path(&self) -> bool {
         self.c_fact.shape.is_concrete()
-            && self.m.as_i64().is_some()
-            && self.n.as_i64().is_some()
             && self
                 .c_fact
                 .shape
