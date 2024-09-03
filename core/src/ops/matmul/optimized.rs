@@ -222,7 +222,6 @@ impl MapOutputAxisToInput {
 #[derive(Clone, Debug)]
 pub struct AddMatMulGeometry {
     pub k: TDim,
-    pub mmm: Box<dyn MatMatMul>,
     pub c_to_a_axis_mapping: MapOutputAxisToInput,
     pub c_to_b_axis_mapping: MapOutputAxisToInput,
 }
