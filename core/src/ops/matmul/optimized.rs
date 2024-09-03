@@ -227,40 +227,12 @@ pub struct AddMatMulGeometry {
     pub c_to_b_axis_mapping: MapOutputAxisToInput,
 }
 
-#[derive(Clone, Debug, Hash)]
-pub struct ConcreteMatrixGeometry {
-    pub m: usize,
-    pub n: usize,
-}
-
-#[derive(Clone, Hash)]
-pub struct SymbolicMatrixGeometry {
-    pub m: TDim,
-    pub n: TDim,
-}
-
-impl std::fmt::Debug for SymbolicMatrixGeometry {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "m:{} n:{}", self.m, self.n)
-    }
-}
-
-impl ResolveTo<ConcreteMatrixGeometry> for SymbolicMatrixGeometry {
-    type Param = SymbolValues;
-    fn resolve(&self, param: &Self::Param) -> TractResult<ConcreteMatrixGeometry> {
-        let m = self.m.eval(param).to_usize()?;
-        let n = self.n.eval(param).to_usize()?;
-        Ok(ConcreteMatrixGeometry { m, n })
-    }
-}
-
-pub type MatrixGeometry = GeometryBound<SymbolicMatrixGeometry, ConcreteMatrixGeometry>;
-
 #[derive(Clone, Debug)]
 pub struct OptMatMul {
     pub c_fact: TypedFact,
     pub micro_ops: Vec<ProtoFusedSpec>,
-    pub geometry: MatrixGeometry,
+    pub m: TDim,
+    pub n: TDim,
     pub mmm: Box<dyn MatMatMul>,
     pub c_m_axis: usize,
     pub c_n_axis: usize,
@@ -274,12 +246,11 @@ impl Op for OptMatMul {
 
     fn info(&self) -> TractResult<Vec<String>> {
         let mut infos = vec![format!(
-            "c_shape:{:?}, c_m_axis:{} c_n_axis:{} geometry:{:?}",
-            self.c_fact, self.c_m_axis, self.c_n_axis, self.geometry,
+            "c_shape:{:?}, c_m_axis:{} c_n_axis:{} m:{} n:{}",
+            self.c_fact, self.c_m_axis, self.c_n_axis, self.m, self.n,
         )];
-        let (m, n) = self.m_n();
         if let Some(k) = self.guess_k() {
-            infos.push(format!("Mult: m:{} k:{} n:{} with {:?}", m, k, n, self.mmm));
+            infos.push(format!("Mult: m:{} k:{} n:{} with {:?}", self.m, k, self.n, self.mmm));
         } else {
             infos.push(format!("Mult: {:?}", self.mmm));
         }
@@ -316,27 +287,32 @@ impl EvalOp for OptMatMul {
 
             if self.trivial_path {
                 let c_shape = self.c_fact.shape.as_concrete().unwrap_unchecked();
-                let geometry = self.geometry.as_concrete().unwrap_unchecked();
                 let mut c = Tensor::uninitialized_dt(self.c_fact.datum_type, c_shape)?;
                 let uops: Vec<FusedSpec> =
                     self.micro_ops.iter().map(|o| o.resolve_trivial(&inputs, &mut c)).collect();
-                self.mmm.run_with_scratch_space(geometry.m, geometry.n, scratch.as_mut(), &uops)?;
+                self.mmm.run_with_scratch_space(
+                    self.m.to_i64()? as usize,
+                    self.n.to_i64()? as usize,
+                    scratch.as_mut(),
+                    &uops,
+                )?;
                 Ok(tvec!(c.into_tvalue()))
             } else {
-                let geometry = self.geometry.to_concrete(&session.resolved_symbols)?;
                 let c_shape = self.c_fact.shape.eval_to_usize(&session.resolved_symbols)?;
                 let c = Tensor::uninitialized_dt(self.c_fact.datum_type, &c_shape)?;
                 let mut uops = vec![FusedSpec::ShiftLeft(0); self.micro_ops.len()];
                 let mut looping_shape: TVec<usize> = c_shape.to_smallvec();
                 looping_shape[self.c_m_axis] = 1;
                 looping_shape[self.c_n_axis] = 1;
+                let m = self.m.eval(&session.resolved_symbols).to_usize()?;
+                let n = self.n.eval(&session.resolved_symbols).to_usize()?;
                 for c_coords in indices(&*looping_shape) {
                     for ix in 0..self.micro_ops.len() {
                         *uops.get_unchecked_mut(ix) =
                             self.micro_ops.get_unchecked(ix).resolve(&inputs, c_coords.slice(), &c);
                     }
                     self.mmm
-                        .run_with_scratch_space(geometry.m, geometry.n, scratch.as_mut(), &uops)
+                        .run_with_scratch_space(m, n, scratch.as_mut(), &uops)
                         .context("In mmm.run_with_scratch_space")?;
                 }
                 Ok(tvec!(c.into_tvalue()))
@@ -358,9 +334,8 @@ impl TypedOp for OptMatMul {
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let mut sums = HashMap::new();
-        let (m, n) = self.m_n();
         for op in &self.micro_ops {
-            for (cost, count) in op.cost(&m, &n, self.mmm.internal_type()) {
+            for (cost, count) in op.cost(&self.m, &self.n, self.mmm.internal_type()) {
                 *sums.entry(cost).or_default() += count;
             }
         }
@@ -529,13 +504,10 @@ impl OptMatMul {
     ) -> TractResult<Self> {
         ensure!(c_m_axis < c_fact.rank());
         ensure!(c_n_axis < c_fact.rank());
-        let geometry = MatrixGeometry::from(SymbolicMatrixGeometry {
-            m: c_fact.shape[c_m_axis].clone(),
-            n: c_fact.shape[c_n_axis].clone(),
-        });
-        let geometry = geometry.clone().optimize_if(Some(&Default::default())).unwrap_or(geometry);
+        let m = c_fact.shape[c_m_axis].clone();
+        let n = c_fact.shape[c_n_axis].clone();
         let mut it =
-            OptMatMul { mmm, c_fact, geometry, c_m_axis, c_n_axis, micro_ops, trivial_path: false };
+            OptMatMul { mmm, c_fact, m, n, c_m_axis, c_n_axis, micro_ops, trivial_path: false };
         it.update_trivial_path();
         Ok(it)
     }
@@ -555,20 +527,14 @@ impl OptMatMul {
             .map(|geo| geo.k.clone())
     }
 
-    fn m_n(&self) -> (TDim, TDim) {
-        match &self.geometry {
-            MatrixGeometry::Concrete(ConcreteMatrixGeometry { m, n }) => (m.to_dim(), n.to_dim()),
-            MatrixGeometry::Symbolic(SymbolicMatrixGeometry { m, n, .. }) => (m.clone(), n.clone()),
-        }
-    }
-
     fn update_trivial_path(&mut self) {
         self.trivial_path = self.can_use_trivial_path();
     }
 
     fn can_use_trivial_path(&self) -> bool {
         self.c_fact.shape.is_concrete()
-            && self.geometry.is_concrete()
+            && self.m.as_i64().is_some()
+            && self.n.as_i64().is_some()
             && self
                 .c_fact
                 .shape
