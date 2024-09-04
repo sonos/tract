@@ -7,13 +7,14 @@ use tract_onnx::prelude::*;
 use tract_ndarray::s;
 
 
+#[allow(clippy::type_complexity)]
 pub struct YoloFace {  
     model: SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>,
     width: i32,
     height: i32
 }
 
-pub fn sort_conf_bbox(input_bbox: &mut Vec<Bbox>) -> Vec<Bbox> {
+pub fn sort_conf_bbox(input_bbox: &mut [Bbox]) -> Vec<Bbox> {
     input_bbox.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
     input_bbox.to_vec()
 }
@@ -43,7 +44,7 @@ impl YoloFace {
                 let x2 = x + w / 2.0;
                 let y2 = y + h / 2.0;
                 let bbox = Bbox::new(x1, y1, x2, y2, confidence).apply_image_scale(
-                    &input_image,
+                    input_image,
                     self.width as f32,
                     self.height as f32,
                 );
