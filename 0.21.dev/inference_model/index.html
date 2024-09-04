@@ -793,7 +793,7 @@
     <div class="doc doc-contents ">
 
 
-      <p>ONNX model are loaded as an
+        <p>ONNX model are loaded as an
 <code>InferenceModel</code>s instead of <code>Model</code>s: many ONNX models come with partial shape and
 element type information, while tract's <code>Model</code> assume full shape and element type
 knownledge. In this case, it is generally sufficient to inform tract about the input
@@ -1150,7 +1150,7 @@ model = model.into_optimized().into_runnable()
 
     <div class="doc doc-contents ">
 
-      <p>Perform shape and element type inference on the model.</p>
+        <p>Perform shape and element type inference on the model.</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/inference_model.py</code></summary>
@@ -1182,7 +1182,7 @@ model = model.into_optimized().into_runnable()
 
     <div class="doc doc-contents ">
 
-      <p>Parse an fact specification as an <code>InferenceFact</code></p>
+        <p>Parse an fact specification as an <code>InferenceFact</code></p>
 <p>Typical <code>InferenceFact</code> specification is in the form "1,224,224,3,f32". Comma-separated
 list of dimension, one for each axis, plus an mnemonic for the element type. f32 is 
 single precision "float", i16 is a 16-bit signed integer, and u8 a 8-bit unsigned integer.</p>
@@ -1231,7 +1231,7 @@ single precision "float", i16 is a 16-bit signed integer, and u8 a 8-bit unsigne
 
     <div class="doc doc-contents ">
 
-      <p>Return the number of inputs of the model</p>
+        <p>Return the number of inputs of the model</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/inference_model.py</code></summary>
@@ -1263,7 +1263,7 @@ single precision "float", i16 is a 16-bit signed integer, and u8 a 8-bit unsigne
 
     <div class="doc doc-contents ">
 
-      <p>Extract the InferenceFact of the <code>input_id</code>th input.</p>
+        <p>Extract the InferenceFact of the <code>input_id</code>th input.</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/inference_model.py</code></summary>
@@ -1295,7 +1295,7 @@ single precision "float", i16 is a 16-bit signed integer, and u8 a 8-bit unsigne
 
     <div class="doc doc-contents ">
 
-      <p>Return the name of the <code>input_id</code>th input.</p>
+        <p>Return the name of the <code>input_id</code>th input.</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/inference_model.py</code></summary>
@@ -1331,7 +1331,7 @@ single precision "float", i16 is a 16-bit signed integer, and u8 a 8-bit unsigne
 
     <div class="doc doc-contents ">
 
-      <p>Perform shape and element type inference on the model.</p>
+        <p>Perform shape and element type inference on the model.</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/inference_model.py</code></summary>
@@ -1363,7 +1363,7 @@ single precision "float", i16 is a 16-bit signed integer, and u8 a 8-bit unsigne
 
     <div class="doc doc-contents ">
 
-      <p>Run the InferenceModel through the full tract optimisation pipeline to get an
+        <p>Run the InferenceModel through the full tract optimisation pipeline to get an
 optimised Model.</p>
 
             <details class="quote">
@@ -1402,7 +1402,7 @@ optimised Model.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Convert an InferenceModel to a regular typed <code>Model</code>.</p>
+        <p>Convert an InferenceModel to a regular typed <code>Model</code>.</p>
 <p>This will leave the opportunity to run more transformation on the intermediary form of the
 model, before optimisint it all the way.</p>
 
@@ -1446,7 +1446,7 @@ model, before optimisint it all the way.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Return the number of outputs of the model</p>
+        <p>Return the number of outputs of the model</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/inference_model.py</code></summary>
@@ -1478,7 +1478,7 @@ model, before optimisint it all the way.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Extract the InferenceFact of the <code>output_id</code>th output.</p>
+        <p>Extract the InferenceFact of the <code>output_id</code>th output.</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/inference_model.py</code></summary>
@@ -1510,7 +1510,7 @@ model, before optimisint it all the way.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Return the name of the <code>output_id</code>th output.</p>
+        <p>Return the name of the <code>output_id</code>th output.</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/inference_model.py</code></summary>
@@ -1546,7 +1546,7 @@ model, before optimisint it all the way.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Change the InferenceFact of the <code>input_id</code>th input.</p>
+        <p>Change the InferenceFact of the <code>input_id</code>th input.</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/inference_model.py</code></summary>
@@ -1584,7 +1584,7 @@ model, before optimisint it all the way.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Change the InferenceFact of the <code>output_id</code>th output.</p>
+        <p>Change the InferenceFact of the <code>output_id</code>th output.</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/inference_model.py</code></summary>
@@ -1622,7 +1622,7 @@ model, before optimisint it all the way.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Change the output nodes of the model</p>
+        <p>Change the output nodes of the model</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/inference_model.py</code></summary>

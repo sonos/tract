@@ -985,7 +985,7 @@
     <div class="doc doc-contents ">
 
 
-      <h3 id="tract.model.Model--main-model-object">Main model object</h3>
+        <h3 id="tract.model.Model--main-model-object">Main model object</h3>
 <h4 id="tract.model.Model--central-focus-point-of-the-model-transformation-pipeline">Central focus point of the model transformation pipeline</h4>
 <p>The Model is the central point of tract model loading and "model cooking". ONNX and NNEF 
 serialized models are converted to Model (more or less directly) before we can do anything
@@ -1504,7 +1504,7 @@ a Model where all tensors shapes start with the <code>N</code> or <code>Batch</c
 
     <div class="doc doc-contents ">
 
-      <p>Substitute symbols by a value</p>
+        <p>Substitute symbols by a value</p>
 <p>Replace all occurencies of the symbols in the dictionary, in all the Model facts shapes.</p>
 <p>While this is not strictly necesary, the optimizing steps may make better choices if the model
 is informed of some specific symbol values.</p>
@@ -1563,7 +1563,7 @@ is informed of some specific symbol values.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Declutter a model.</p>
+        <p>Declutter a model.</p>
 <p>Perform the first "half" of optimisation phases, consisting or removing training artefacts and converge
 on tract-core canonical form.</p>
 
@@ -1601,7 +1601,7 @@ on tract-core canonical form.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Convert the model from half to f32 precision</p>
+        <p>Convert the model from half to f32 precision</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/model.py</code></summary>
@@ -1629,7 +1629,7 @@ on tract-core canonical form.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Convert the model from f32 to half precision</p>
+        <p>Convert the model from f32 to half precision</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/model.py</code></summary>
@@ -1657,7 +1657,7 @@ on tract-core canonical form.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Return the number of inputs of the model</p>
+        <p>Return the number of inputs of the model</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/model.py</code></summary>
@@ -1689,7 +1689,7 @@ on tract-core canonical form.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Return the fact of the input_id-th input</p>
+        <p>Return the fact of the input_id-th input</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/model.py</code></summary>
@@ -1721,7 +1721,7 @@ on tract-core canonical form.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Return the name of the input_id-th input</p>
+        <p>Return the name of the input_id-th input</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/model.py</code></summary>
@@ -1757,7 +1757,7 @@ on tract-core canonical form.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Convenience method performing <code>declutter()</code> and returning the model</p>
+        <p>Convenience method performing <code>declutter()</code> and returning the model</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/model.py</code></summary>
@@ -1785,7 +1785,7 @@ on tract-core canonical form.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Convenience method performing <code>optimize()</code> and returning the model</p>
+        <p>Convenience method performing <code>optimize()</code> and returning the model</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/model.py</code></summary>
@@ -1813,7 +1813,7 @@ on tract-core canonical form.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Transform the model into a ready to be used Runnable model</p>
+        <p>Transform the model into a ready to be used Runnable model</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/model.py</code></summary>
@@ -1845,7 +1845,7 @@ on tract-core canonical form.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Optimize a model.</p>
+        <p>Optimize a model.</p>
 <p>Perform the second "half" of optimisation phases, consisting of translating the tract-core canonical
 form to the best runtime for the current architecture.</p>
 
@@ -1883,7 +1883,7 @@ form to the best runtime for the current architecture.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Return the number of outputs of the model</p>
+        <p>Return the number of outputs of the model</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/model.py</code></summary>
@@ -1915,7 +1915,7 @@ form to the best runtime for the current architecture.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Return the fact of the output_id-th output</p>
+        <p>Return the fact of the output_id-th output</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/model.py</code></summary>
@@ -1947,7 +1947,7 @@ form to the best runtime for the current architecture.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Return the name of the output_id-th output</p>
+        <p>Return the name of the output_id-th output</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/model.py</code></summary>
@@ -1983,7 +1983,7 @@ form to the best runtime for the current architecture.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Profile the model. Also compute the static costs of operators.</p>
+        <p>Profile the model. Also compute the static costs of operators.</p>
 <p>Returns is a json buffer.</p>
 
             <details class="quote">
@@ -2052,7 +2052,7 @@ form to the best runtime for the current architecture.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Query a property by name</p>
+        <p>Query a property by name</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/model.py</code></summary>
@@ -2084,7 +2084,7 @@ form to the best runtime for the current architecture.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Query the list of properties names of the model.</p>
+        <p>Query the list of properties names of the model.</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/model.py</code></summary>
@@ -2130,7 +2130,7 @@ form to the best runtime for the current architecture.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Pulsify a model.</p>
+        <p>Pulsify a model.</p>
 <p><code>pulse</code> is typically a one-length dictionary mapping the time dimension symbol to a pulse len.</p>
 
             <details class="quote">
@@ -2165,7 +2165,7 @@ form to the best runtime for the current architecture.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Change the output nodes of the model</p>
+        <p>Change the output nodes of the model</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/model.py</code></summary>
@@ -2205,7 +2205,7 @@ form to the best runtime for the current architecture.</p>
 
     <div class="doc doc-contents ">
 
-      <p>Apply a transform to the model</p>
+        <p>Apply a transform to the model</p>
 
             <details class="quote">
               <summary>Source code in <code>tract/model.py</code></summary>
