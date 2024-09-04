@@ -10,6 +10,9 @@
 
 {%if cols == "1" %}
         ld1         {v0.h}[0], [ x2 ]
+{% elsif cols == "3" %}
+        ld1         {v0.s}[0], [ x2 ], #4
+        ld1         {v0.h}[2], [ x2 ]
 {% elsif cols == "4" %}
         ldr         d0, [ x2 ]
 {% else %}
