@@ -118,6 +118,8 @@ impl Bencher {
 fn measure_add_mat_mul(bencher: &Bencher, mm: &dyn MatMatMul, m: usize, k: usize, n: usize) -> f64 {
     let dt = mm.internal_type();
     bencher.probe.log_event(&format!("start_{},{},{}", m, k, n)).unwrap();
+    let a = Tensor::zero_dt(dt, &[m, k]).unwrap();
+    let b = Tensor::zero_dt(dt, &[k, n]).unwrap();
     unsafe {
         let time = bencher.run_bench(
             || {
@@ -125,35 +127,25 @@ fn measure_add_mat_mul(bencher: &Bencher, mm: &dyn MatMatMul, m: usize, k: usize
                 let inputs = (10_000_000 / pb_size).max(1);
                 (0..inputs)
                     .map(|_| {
-                        let a = Tensor::zero_aligned_dt(
-                            dt,
-                            &[mm.a_pack().len(k, m)],
-                            mm.a_pack().alignment(),
-                        )
-                        .unwrap();
-                        let b = Tensor::zero_aligned_dt(
-                            dt,
-                            &[mm.b_pack().len(k, n)],
-                            mm.b_pack().alignment(),
-                        )
-                        .unwrap();
+                        let (packed_a, packed_b) = mm.packings()[0];
+                        let pa = packed_a.prepare_tensor(&a, 1, 0).unwrap();
+                        let pb = packed_b.prepare_tensor(&b, 0, 1).unwrap();
                         let c = Tensor::zero_dt(dt, &[m, n]).unwrap();
-                        let pa = mm.a_packed(dt.size_of(), k).wrap(&a.view());
-                        let pb = mm.b_packed(dt.size_of(), k).wrap(&b.view()).unwrap();
                         let pc = mm.c_view(0, 1).wrap(&c.view());
                         let scratch = mm.allocate_scratch_space();
-                        (scratch, a, b, c, pa, pb, pc)
+                        (scratch, c, pa, pb, pc)
                     })
                     .collect()
             },
-            |input| {
+            #[allow(unused_mut)] // not sure why the warning pops
+            |(scratch, _c, pa, pb, mut pc)| {
                 mm.run_with_scratch_space(
                     m,
                     n,
-                    input.0.as_mut(),
+                    scratch.as_mut(),
                     &[
-                        FusedSpec::AddMatMul { a: input.4.clone(), b: input.5.clone(), k },
-                        FusedSpec::Store(input.6.clone()),
+                        FusedSpec::AddMatMul { a: &**pa, b: &**pb, packing: 0 },
+                        FusedSpec::Store(pc),
                     ],
                 )
                 .unwrap();
@@ -174,7 +166,7 @@ impl SamplingStrategy {
         use SamplingStrategy::*;
         let mut rng = thread_rng();
         match self {
-            Random(range) => vec!(rng.gen_range(range.clone())),
+            Random(range) => vec![rng.gen_range(range.clone())],
             Fixed(v) => v.clone(),
         }
     }
@@ -196,7 +188,7 @@ impl FromStr for SamplingStrategy {
 
 #[derive(Clone, Debug)]
 struct Sample {
-    kernel: &'static str,
+    kernel: String,
     mr: usize,
     nr: usize,
     m: usize,
@@ -226,7 +218,7 @@ impl Dataset {
                 for &n in &ns {
                     for k in ks {
                         inputs.push(Sample {
-                            kernel: mm.kernel_name(),
+                            kernel: mm.kernel_name().to_string(),
                             mr: mm.mr(),
                             nr: mm.nr(),
                             m,
@@ -261,7 +253,7 @@ impl Dataset {
                                 continue;
                             }
                             inputs.push(Sample {
-                                kernel: mm.kernel_name(),
+                                kernel: mm.kernel_name().to_string(),
                                 mr: mm.mr(),
                                 nr: mm.nr(),
                                 m,
@@ -305,15 +297,22 @@ impl Dataset {
     }
 }
 
-fn display_comparison(m: usize, k: usize, n: usize, alts: &[(&str, f64)], choice: Option<&str>) {
+fn display_comparison(
+    m: usize,
+    k: usize,
+    n: usize,
+    alts: &[(impl AsRef<str>, f64)],
+    choice: Option<&str>,
+) {
     alts.iter().sorted_by(|a, b| order_f(&a.1, &b.1)).enumerate().for_each(|(ix, (s, t))| {
+        let s = s.as_ref();
         let line = format!(
             "{:30} truth: {:9.03} us / {:9.03} GFLops",
             s,
             t * 1e6,
             (m * k * n) as f64 / t / 1e9,
         );
-        if Some(*s) == choice {
+        if Some(s) == choice {
             if ix == 0 {
                 println!("{}", nu_ansi_term::Color::Green.bold().paint(line));
             } else {
@@ -429,7 +428,7 @@ fn main() {
         probe,
     };
 
-    let impls = tract_linalg::ops().mmm_f32_impls().iter().collect_vec();
+    let impls = tract_linalg::ops().mmm_impls().iter().collect_vec();
     let mmms: Vec<&dyn MatMatMul> = impls.iter().map(|p| &***p).collect_vec();
     match matches.subcommand() {
         Some(("list-models", _sub)) => {
