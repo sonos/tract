@@ -44,8 +44,8 @@ impl YoloFace {
                 let y2 = y + h / 2.0;
                 let bbox = Bbox::new(x1, y1, x2, y2, confidence).apply_image_scale(
                     &input_image,
-                    640.0,
-                    640.0,
+                    self.width as f32,
+                    self.height as f32,
                 );
                 bbox_vec.push(bbox);
             
