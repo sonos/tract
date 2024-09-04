@@ -26,7 +26,7 @@ pub struct Bencher {
     chunk_time_target: Duration,
     chunks_min_count: usize,
     chunks_max_count: usize,
-    probe: readings_probe::Probe,
+    probe: Option<readings_probe::Probe>,
 }
 
 impl Bencher {
@@ -117,7 +117,9 @@ impl Bencher {
 
 fn measure_add_mat_mul(bencher: &Bencher, mm: &dyn MatMatMul, m: usize, k: usize, n: usize) -> f64 {
     let dt = mm.internal_type();
-    bencher.probe.log_event(&format!("start_{},{},{}", m, k, n)).unwrap();
+    if let Some(probe) = &bencher.probe {
+        probe.log_event(&format!("start_{},{},{}", m, k, n)).unwrap();
+    }
     let a = Tensor::zero_dt(dt, &[m, k]).unwrap();
     let b = Tensor::zero_dt(dt, &[k, n]).unwrap();
     unsafe {
@@ -327,9 +329,13 @@ fn display_comparison(
 fn main() {
     use clap::*;
 
-    let mut probe =
-        readings_probe::Probe::new(std::fs::File::create("readings.out").unwrap()).unwrap();
-    probe.spawn_heartbeat(std::time::Duration::from_millis(1000)).unwrap();
+    let probe = if let Ok(file) = std::fs::File::create("readings.out") {
+        let mut probe = readings_probe::Probe::new(file).unwrap();
+        probe.spawn_heartbeat(std::time::Duration::from_millis(1000)).unwrap();
+        Some(probe)
+    } else {
+        None
+    };
 
     let parser = App::new("tract-linalg-cost-model")
         .arg(
