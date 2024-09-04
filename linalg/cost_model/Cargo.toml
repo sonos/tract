@@ -12,7 +12,7 @@ clap = "3.0.7"
 scan_fmt = "0.2.6"
 rand = "0.8.4"
 colorous = "1.0.6"
-nu_ansi_term = "0.12.1"
+nu-ansi-term = "0.50"
 pbr = "1"
 readings-probe = "0.1.4"
 tract-linalg = { path="../../linalg", version = "=0.21.7-pre" }
