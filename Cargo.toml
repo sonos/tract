@@ -25,7 +25,6 @@ members = [
     "api/proxy/sys",
 
     "examples/face_detection_yolov8onnx_example",
-    "examples/face_similarity_arcface_onnx",
     "examples/tensorflow-mobilenet-v2",
     "examples/tflite-mobilenet-v3",
     "examples/keras-tract-tf2",
