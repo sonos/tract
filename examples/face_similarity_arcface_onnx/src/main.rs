@@ -26,7 +26,6 @@ fn main() -> Result<(), Error>{
     let mut face1_bbox = yolo_model.get_faces_bbox(&face1, 0.5,0.5)?;
     let mut face2_bbox = yolo_model.get_faces_bbox(&face2, 0.5, 0.5)?;
 
-
     let f1_sorted_bbox = sort_conf_bbox(&mut face1_bbox);
     let f2_sorted_bbox = sort_conf_bbox(&mut face2_bbox);
     
