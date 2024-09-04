@@ -1,17 +1,16 @@
+use anyhow::{Error, Result};
 use image::DynamicImage;
-use anyhow::{Result, Error};
 use std::cmp::Ordering;
 use std::cmp::PartialOrd;
 use tract_core::plan::SimplePlan;
-use tract_onnx::prelude::*;
 use tract_ndarray::s;
-
+use tract_onnx::prelude::*;
 
 #[allow(clippy::type_complexity)]
-pub struct YoloFace {  
+pub struct YoloFace {
     model: SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>,
     width: i32,
-    height: i32
+    height: i32,
 }
 
 pub fn sort_conf_bbox(input_bbox: &mut [Bbox]) -> Vec<Bbox> {
@@ -20,13 +19,18 @@ pub fn sort_conf_bbox(input_bbox: &mut [Bbox]) -> Vec<Bbox> {
 }
 
 impl YoloFace {
-    pub fn get_faces_bbox(&self, input_image: &DynamicImage, confidence_threshold: f32, iou_threshold: f32) -> Result<Vec<Bbox>, Error> {
-        // assuming that model has input shape of a square 
-        let preprocess_image = preprocess_yoloface_square(input_image, self.width as f32); 
+    pub fn get_faces_bbox(
+        &self,
+        input_image: &DynamicImage,
+        confidence_threshold: f32,
+        iou_threshold: f32,
+    ) -> Result<Vec<Bbox>, Error> {
+        // assuming that model has input shape of a square
+        let preprocess_image = preprocess_yoloface_square(input_image, self.width as f32);
 
         // run forward pass and then convert result to f32
         let forward = self.model.run(tvec![preprocess_image.to_owned().into()])?;
-        let results = forward[0].to_array_view::<f32>()?.view().t().into_owned();    
+        let results = forward[0].to_array_view::<f32>()?.view().t().into_owned();
 
         // process results
         let mut bbox_vec: Vec<Bbox> = vec![];
@@ -49,13 +53,11 @@ impl YoloFace {
                     self.height as f32,
                 );
                 bbox_vec.push(bbox);
-            
             }
         }
         Ok(non_maximum_suppression(bbox_vec, iou_threshold))
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct Bbox {
@@ -68,13 +70,7 @@ pub struct Bbox {
 
 impl Bbox {
     pub fn new(x1: f32, y1: f32, x2: f32, y2: f32, confidence: f32) -> Bbox {
-        Bbox {
-            x1,
-            y1,
-            x2,
-            y2,
-            confidence,
-        }
+        Bbox { x1, y1, x2, y2, confidence }
     }
     pub fn apply_image_scale(
         &mut self,
@@ -92,13 +88,7 @@ impl Bbox {
         let cart_y1 = original_image.height() as f32 * normalized_y1;
         let cart_y2 = original_image.height() as f32 * normalized_y2;
 
-        Bbox {
-            x1: cart_x1,
-            y1: cart_y1,
-            x2: cart_x2,
-            y2: cart_y2,
-            confidence: self.confidence,
-        }
+        Bbox { x1: cart_x1, y1: cart_y1, x2: cart_x2, y2: cart_y2, confidence: self.confidence }
     }
 
     pub fn crop_bbox(&self, original_image: &DynamicImage) -> Result<DynamicImage, Error> {
@@ -114,25 +104,21 @@ impl Bbox {
 }
 
 /// loads model, panic on failure.
-pub fn load_yolo_model(model_path: &str, input_size: (i32,i32)) -> YoloFace {
-    let load_model = tract_onnx::onnx().model_for_path(model_path).unwrap()
-        .with_input_fact(0, f32::fact([1,3,input_size.0, input_size.1]).into()).unwrap()
-        .into_optimized().unwrap()
-        .into_runnable().unwrap();
-    YoloFace {
-        model: load_model,
-        width: input_size.0,
-        height: input_size.1
-    }
+pub fn load_yolo_model(model_path: &str, input_size: (i32, i32)) -> YoloFace {
+    let load_model = tract_onnx::onnx()
+        .model_for_path(model_path)
+        .unwrap()
+        .with_input_fact(0, f32::fact([1, 3, input_size.0, input_size.1]).into())
+        .unwrap()
+        .into_optimized()
+        .unwrap()
+        .into_runnable()
+        .unwrap();
+    YoloFace { model: load_model, width: input_size.0, height: input_size.1 }
 }
 
-
 fn non_maximum_suppression(mut boxes: Vec<Bbox>, iou_threshold: f32) -> Vec<Bbox> {
-    boxes.sort_by(|a, b| {
-        a.confidence
-            .partial_cmp(&b.confidence)
-            .unwrap_or(Ordering::Equal)
-    });
+    boxes.sort_by(|a, b| a.confidence.partial_cmp(&b.confidence).unwrap_or(Ordering::Equal));
     let mut keep = Vec::new();
     while !boxes.is_empty() {
         let current = boxes.remove(0);
@@ -162,12 +148,23 @@ fn preprocess_yoloface_square(input_image: &DynamicImage, target_size: f32) -> T
     let scale = target_size / (width.max(height) as f32);
     let new_width = (width as f32 * scale) as u32;
     let new_height = (height as f32 * scale) as u32;
-    let resized = image::imageops::resize(&input_image.to_rgb8(), new_width, new_height, image::imageops::FilterType::Triangle);
+    let resized = image::imageops::resize(
+        &input_image.to_rgb8(),
+        new_width,
+        new_height,
+        image::imageops::FilterType::Triangle,
+    );
     let mut padded = image::RgbImage::new(target_size as u32, target_size as u32);
-    image::imageops::replace(&mut padded, &resized, (target_size as u32 - new_width ) as i64 / 2, (target_size as u32 - new_height) as i64 / 2);
-    let image: Tensor = tract_ndarray::Array4::from_shape_fn((1, 3, target_size as usize, target_size as usize), |(_, c, y, x)| {
-        padded.get_pixel(x as u32, y as u32)[c] as f32 / 255.0
-    })
+    image::imageops::replace(
+        &mut padded,
+        &resized,
+        (target_size as u32 - new_width) as i64 / 2,
+        (target_size as u32 - new_height) as i64 / 2,
+    );
+    let image: Tensor = tract_ndarray::Array4::from_shape_fn(
+        (1, 3, target_size as usize, target_size as usize),
+        |(_, c, y, x)| padded.get_pixel(x as u32, y as u32)[c] as f32 / 255.0,
+    )
     .into();
     image
 }
