@@ -242,6 +242,7 @@ pub fn plug(ops: &mut Ops) {
         ops.mmm_impls.push(arm64fp16_mmm_f16_128x1_a55.mmm());
         ops.mmm_impls.push(arm64fp16_mmm_f16_128x1_gen.mmm());
         ops.mmm_impls.push(arm64fp16_mmm_f16_64x1_gen.mmm());
+        ops.mmm_impls.push(arm64fp16_mmm_f16_64x3_gen.mmm());
     }
 
     ops.qmmm_i32 = Box::new(|_, _, _| arm64simd_mmm_i32_8x8.mmm());
