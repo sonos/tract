@@ -1,10 +1,9 @@
 mod yolo_face;
 mod arc_face;
-use arc_face::{load_arcface_model, ArcFace};
+use arc_face::{cosine_similarity, load_arcface_model, ArcFace};
 use yolo_face::{load_yolo_model, YoloFace, sort_conf_bbox};
 use clap::Parser;
 use anyhow::{Error, Result};
-use semanticsimilarity_rs::{cosine_similarity, euclidean_distance};
 
 #[derive(Parser)]
 struct CliArgs {
@@ -35,18 +34,15 @@ fn main() -> Result<(), Error>{
     
     let f1_crop = f1_sorted_bbox[0].crop_bbox(&face1)?;
     let f2_crop = f2_sorted_bbox[0].crop_bbox(&face2)?;
+    
+    f1_crop.save("f1.png")?;
+    f2_crop.save("f2.png")?;
 
     let f1_embed = arcface_model.get_face_embedding(&f1_crop)?;
     let f2_embed = arcface_model.get_face_embedding(&f2_crop)?;
 
     println!("F1 {:?}, \n\n\n\n F2 {:?}", f1_embed, f2_embed);
-    let f1_f64: Vec<f64> = {
-        f1_embed.into_raw_vec().iter().map(|x| x.to_owned() as f64).collect()
-    };
-    let f2_f64: Vec<f64> = {
-        f2_embed.into_raw_vec().iter().map(|x| x.to_owned() as f64).collect()
-    };
-    let similarity = cosine_similarity(&f1_f64, &f2_f64,false);
+    let similarity = cosine_similarity(&f1_embed, &f2_embed);
     println!("SIMILARITY {:#?}", similarity);
     Ok(())
 }

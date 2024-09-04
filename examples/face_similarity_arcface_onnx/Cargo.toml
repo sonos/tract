@@ -9,5 +9,4 @@ clap = { version = "4.5.9", features = ["derive"] }
 image.workspace = true 
 tract-onnx = {path="../../onnx", version="=0.21.7-pre" }
 tract-core = {path="../../core", version="=0.21.7-pre"}
-semanticsimilarity_rs = "0.1.1"
 

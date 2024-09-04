@@ -1,10 +1,10 @@
-use image::{imageops, DynamicImage, GenericImageView};
+use image::{imageops, DynamicImage, GenericImageView, ImageBuffer, Rgb};
 use tract_core::plan::SimplePlan;
 use tract_onnx::prelude::*;
 use anyhow::{Result, Error};
 use tract_ndarray::{ArrayBase, OwnedRepr};
 use tract_ndarray::linalg::Dot;
-use tract_ndarray::{Array1, Array3};
+use tract_ndarray::{Array, Axis,Array1, Array3, Array4};
 
 pub struct ArcFace {
     model: SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>,
@@ -37,7 +37,9 @@ fn image_to_tract_tensor(img: &DynamicImage) -> Array3<f32> {
     let height = img.height();
     let width = img.width();
     let img_buffer = img.to_rgb8();
-    Array3::from_shape_vec((height as usize, width as usize, 3), img_buffer.into_raw()).expect("cannot convert image to ndarray").mapv(|x| x as f32)
+    Array3::from_shape_vec((height as usize, width as usize, 3), img_buffer.into_raw()).expect("cannot convert image to ndarray").mapv(|x| {
+        x as f32
+    })
 }
 
 
@@ -47,13 +49,14 @@ pub fn preprocess_arcface(
 ) -> Result<Tensor, Error> {
     let resize = input_image.resize_exact(target_size, target_size, imageops::FilterType::Triangle);
     let mut ndarray_img = image_to_tract_tensor(&resize);
-    ndarray_img -= 127.5;
-    ndarray_img *= 1.0 / 128.0;
+    // ndarray_img *= 1.0 / 127.5;
+    // ndarray_img -= 127.5;
     let mut _final: Tensor = ndarray_img.permuted_axes((2,0,1)).into();
     _final.insert_axis(0).unwrap();
-    println!("FINAL SHAPE: {:?}", _final.shape());
-    Ok(_final)
+    Ok(_final.into())
 }
+
+
 
 pub fn cosine_similarity(a: &Array1<f32>, b: &Array1<f32>) -> f32 {
     let dotprod = a.dot(b);
