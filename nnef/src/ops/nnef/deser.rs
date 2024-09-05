@@ -177,15 +177,16 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
             tract_core::ops::array::Slice { axis: 0, start: ix.into(), end: ix.to_dim() + 1 },
             &[begins],
         )?;
-        let mut b = builder.wire_as_outlets(tract_core::ops::change_axes::AxisOp::Rm(0), &b)?;
-        b = builder.wire_as_outlets(min(), &[b[0], axis_len])?;
-        if let Some(k) = &builder.model.outlet_fact(b[0])?.konst {
+        let mut b = builder.wire_as_outlets(tract_core::ops::change_axes::AxisOp::Rm(0), &b)?[0];
+        b = builder.wire_as_outlets(cast(TDim::datum_type()), &[b])?[0];
+        b = builder.wire_as_outlets(min(), &[b, axis_len])?[0];
+        if let Some(k) = &builder.model.outlet_fact(b)?.konst {
             if let Ok(i) = k.cast_to_scalar::<i64>() {
                 if i < 0 {
                     b = builder.wire_as_outlets(
                         Const::new(rctensor0(input_fact.shape[axis].clone() + i)),
                         &[],
-                    )?;
+                    )?[0];
                 }
             }
         }
@@ -193,32 +194,31 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
             tract_core::ops::array::Slice { axis: 0, start: ix.into(), end: ix.to_dim() + 1 },
             &[ends],
         )?;
-        let mut e = builder.wire_as_outlets(tract_core::ops::change_axes::AxisOp::Rm(0), &e)?;
-        e = builder.wire_as_outlets(min(), &[e[0], axis_len])?;
+        let mut e = builder.wire_as_outlets(tract_core::ops::change_axes::AxisOp::Rm(0), &e)?[0];
+        e = builder.wire_as_outlets(cast(TDim::datum_type()), &[e])?[0];
+        e = builder.wire_as_outlets(min(), &[e, axis_len])?[0];
         // use "<=", no "<" end[axis] = 0 means "up to the end"
         // CAUTION: this notation is 1/ deprecated 2/ invalid with non trivial slicing
-        if let Some(k) = &builder.model.outlet_fact(e[0])?.konst {
+        if let Some(k) = &builder.model.outlet_fact(e)?.konst {
             if let Ok(i) = k.cast_to_scalar::<i64>() {
                 if i <= 0 {
                     e = builder.wire_as_outlets(
                         Const::new(rctensor0(input_fact.shape[axis].clone() + i)),
                         &[],
-                    )?;
+                    )?[0];
                 }
             }
         }
         let len = if let (Some(ev), Some(bv)) =
-            (&builder.model.outlet_fact(e[0])?.konst, &builder.model.outlet_fact(b[0])?.konst)
+            (&builder.model.outlet_fact(e)?.konst, &builder.model.outlet_fact(b)?.konst)
         {
             ev.cast_to::<TDim>()?.to_scalar::<TDim>()?.clone()
                 - bv.cast_to::<TDim>()?.to_scalar::<TDim>()?
         } else {
             builder.model.symbols.new_with_prefix("slice").into()
         };
-        wire = builder.wire_as_outlets(
-            tract_core::ops::array::DynSlice { axis, len },
-            &[wire[0], b[0], e[0]],
-        )?;
+        wire = builder
+            .wire_as_outlets(tract_core::ops::array::DynSlice { axis, len }, &[wire[0], b, e])?;
         if strides[ix] != 1 {
             wire = builder.wire_as_outlets(
                 tract_core::ops::downsample::Downsample::new(axis, strides[ix], 0),
