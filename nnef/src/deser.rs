@@ -669,6 +669,9 @@ impl CoerceFrom<Value> for OutletId {
             Value::Wire(outlet) => Ok(*outlet),
             Value::Tuple(tuple) if tuple.len() == 1 => OutletId::coerce(builder, &tuple[0]),
             Value::Array(inputs) => {
+                if let Ok(c) = from.to::<Arc<Tensor>>(builder) {
+                    return builder.add_const(c)
+                }
                 let mut outlets = tvec!();
                 for i in inputs {
                     let outlet = OutletId::coerce(builder, i)?;
