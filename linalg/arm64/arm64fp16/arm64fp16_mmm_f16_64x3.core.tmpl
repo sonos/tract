@@ -120,13 +120,11 @@
     b           .non_linear_loop
 
 .store:
-    ldp         x5, x6, [x0, #8]                // c base ptr, rsc$
+    ldp         x5, x6, [x0, #8]                // c base ptr, rsc
     ldp         x7, x8, [x0, #24]               // csc, item_size
 
-/*
     cmp         x6, #2
     beq         .store_strides_contig
-*/
 
     {% for col in (0..2) %}
         mov x4, x5
@@ -139,15 +137,17 @@
     {% endfor %}
     b           .non_linear_loop
 
-/*
 .store_strides_contig:
 
-    {% for reg in (24..31) %}
-        st1 { v{{reg}}.8h }, [ x5 ], #16
+    {% for col in (0..2) %}
+        mov x4, x5
+        {% for r in (0..7) %}
+            st1 { v{{col | times:8 | plus: 8 | plus: r}}.8h }, [ x4 ], 16
+        {% endfor %}
+        add x5, x5, x7
     {% endfor %}
 
     b           .non_linear_loop
-*/
 
 .return:
 
