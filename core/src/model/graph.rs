@@ -568,6 +568,22 @@ where
     pub fn new_sym_with_prefix(&self, prefix: &str) -> Symbol {
         self.symbols.new_with_prefix(prefix)
     }
+
+    /// generates a name for a new node in the model that will not conflict (by suffixing with a
+    /// dot and number) 
+    pub fn unique_name<'n>(&self, prefix: impl Into<Cow<'n, str>>) -> Cow<'n, str> {
+        let prefix = prefix.into();
+        if self.nodes.iter().all(|n| n.name !=  &*prefix) {
+            return prefix;
+        }
+        for i in 1.. {
+            let s = format!("{prefix}.{i}");
+            if self.nodes.iter().all(|n| n.name !=  s) {
+                return Cow::Owned(s)
+            }
+        }
+        unreachable!();
+    }
 }
 
 impl<F, O> fmt::Display for Graph<F, O>
