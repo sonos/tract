@@ -73,17 +73,20 @@ jobs:
   cargo-clippy:
     strategy:
       fail-fast: false
+      matrix:
+        rust: [ stable, beta, nightly ]
 
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v3
     - name: Rustup update, install clippy
-      run: rustup update && rustup component add clippy && sudo apt-get install -y llvm
+      run: ROOT=. .travis/ci-system-setup.sh
     - name: Run cargo-clippy
       run: cargo clippy
       env:
         RUSTFLAGS: "-D warnings"
+        RUST_VERSION: ${{matrix.rust}}
 
   cargo-deny:
     strategy:
