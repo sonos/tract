@@ -487,6 +487,33 @@ pub fn softmax(
     )))
 }
 
+pub fn rewrite_matmul_to_same_rank(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    prefix: &str,
+    op: &BasicMatMul,
+) -> TractResult<Option<TypedModelPatch>> {
+    let a_rank = model.outlet_fact(node.inputs[0])?.rank();
+    let b_rank = model.outlet_fact(node.inputs[0])?.rank();
+    if a_rank == b_rank {
+        return Ok(None);
+    }
+    let mut patch = TypedModelPatch::default();
+    let mut inputs = patch.taps(model, &node.inputs)?;
+    for i in a_rank..a_rank.max(b_rank) {
+        inputs[0] =
+            patch.wire_node(format!("{prefix}.extra_a_axis.{i}"), AxisOp::Add(0), &[inputs[0]])?[0];
+    }
+    for i in b_rank..a_rank.max(b_rank) {
+        inputs[1] =
+            patch.wire_node(format!("{prefix}.extra_b_axis.{i}"), AxisOp::Add(0), &[inputs[1]])?[1];
+    }
+    let result = patch.wire_node(prefix, op.clone(), &inputs)?[0];
+    patch.shunt_outside(model, node.id.into(), result)?;
+    Ok(Some(patch))
+}
+
 pub fn rewrite_consistent_quantized_conv(
     _ctx: &(),
     model: &TypedModel,

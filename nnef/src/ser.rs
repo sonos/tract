@@ -9,6 +9,10 @@ pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
     model.prop_consts()?;
     tract_core::ops::einsum::rewrite_einsums_as_matmul(model)?;
     Rewriter::default()
+        .with_rule_for(
+            "rewrite_matmul_to_same_rank",
+            crate::ops::nnef::ser::rewrite_matmul_to_same_rank,
+        )
         .with_rule_for("rewrite_conv_with_n_axis", tract_core::ops::cnn::rewrite_conv_with_n_axis)
         .with_rule_for(
             "rewrite_deconv_with_n_axis",

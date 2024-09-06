@@ -136,4 +136,3 @@ pub fn tract_nnef() -> Registry {
     }
     registry
 }
-
