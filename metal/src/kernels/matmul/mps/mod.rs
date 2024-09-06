@@ -3,7 +3,7 @@ pub mod api;
 use crate::kernels::matmul::GemmKernel;
 use crate::MetalContext;
 use anyhow::bail;
-use api::{MPSDataType, Matrix};
+use api::{MPSDataType, Matrix, MatrixVectorMultiplication, Vector};
 use derive_new::new;
 use metal::Buffer;
 use std::fmt;
@@ -54,37 +54,70 @@ impl GemmKernel for MpsMatMul {
             _ => bail!("Unsupported datum type for MpsMatMul {:?}", dt),
         };
 
-        let a_matrix = Matrix::new(
-            a_buffer.to_owned(),
-            a_offset as _,
-            data_type,
-            if transpose_a { k } else { m } as _,
-            if transpose_a { m } else { k } as _,
-        )
-        .ok_or_else(|| anyhow!("An error occured when creating MPS matrix"))?;
+        if m == 1 {
+            let a_vector = Vector::new(a_buffer.to_owned(), a_offset as _, data_type, k as _)
+                .ok_or_else(|| anyhow!("An error occured when creating MPS vector"))?;
 
-        let b_matrix = Matrix::new(
-            b_buffer.to_owned(),
-            b_offset as _,
-            data_type,
-            if transpose_b { n } else { k } as _,
-            if transpose_b { k } else { n } as _,
-        )
-        .ok_or_else(|| anyhow!("An error occured when creating MPS matrix"))?;
-
-        let c_matrix = Matrix::new(c_buffer.to_owned(), c_offset as _, data_type, m as _, n as _)
+            let b_matrix = Matrix::new(
+                b_buffer.to_owned(),
+                b_offset as _,
+                data_type,
+                if transpose_b { n } else { k } as _,
+                if transpose_b { k } else { n } as _,
+            )
             .ok_or_else(|| anyhow!("An error occured when creating MPS matrix"))?;
 
-        let matmul = context.shared_context().load_mps_matmul(&MpsMatmulKey {
-            transpose_a,
-            transpose_b,
-            m,
-            n,
-            k,
-        })?;
+            let c_vector = Vector::new(c_buffer.to_owned(), c_offset as _, data_type, n as _)
+                .ok_or_else(|| anyhow!("An error occured when creating MPS vector"))?;
 
-        matmul.encode(context.command_buffer(), a_matrix, b_matrix, c_matrix);
-        Ok(())
+            let mat_vec = MatrixVectorMultiplication::new(
+                context.device().to_owned(),
+                !transpose_b,
+                n as _,
+                k as _,
+                1.0,
+                0.0,
+            )
+            .ok_or_else(|| {
+                anyhow!("An error occured when createing MPS Matrix vector multiplication")
+            })?;
+
+            mat_vec.encode(context.command_buffer(), b_matrix, a_vector, c_vector);
+            Ok(())
+        } else {
+            let a_matrix = Matrix::new(
+                a_buffer.to_owned(),
+                a_offset as _,
+                data_type,
+                if transpose_a { k } else { m } as _,
+                if transpose_a { m } else { k } as _,
+            )
+            .ok_or_else(|| anyhow!("An error occured when creating MPS matrix"))?;
+
+            let b_matrix = Matrix::new(
+                b_buffer.to_owned(),
+                b_offset as _,
+                data_type,
+                if transpose_b { n } else { k } as _,
+                if transpose_b { k } else { n } as _,
+            )
+            .ok_or_else(|| anyhow!("An error occured when creating MPS matrix"))?;
+
+            let c_matrix =
+                Matrix::new(c_buffer.to_owned(), c_offset as _, data_type, m as _, n as _)
+                    .ok_or_else(|| anyhow!("An error occured when creating MPS matrix"))?;
+
+            let matmul = context.shared_context().load_mps_matmul(&MpsMatmulKey {
+                transpose_a,
+                transpose_b,
+                m,
+                n,
+                k,
+            })?;
+
+            matmul.encode(context.command_buffer(), a_matrix, b_matrix, c_matrix);
+            Ok(())
+        }
     }
 }
 

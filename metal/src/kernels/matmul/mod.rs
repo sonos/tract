@@ -15,7 +15,7 @@ use std::fmt;
 use tract_core::{internal::*, ndarray, ndarray::Dimension};
 
 #[cfg(target_os = "macos")]
-pub type DefaultGemmImpl = GemmImpl<MfaGemm>;
+pub type DefaultGemmImpl = GemmImpl<MpsMatMul>;
 #[cfg(target_os = "ios")]
 pub type DefaultGemmImpl = GemmImpl<MpsMatMul>;
 
