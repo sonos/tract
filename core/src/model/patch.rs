@@ -6,7 +6,6 @@ use tract_data::itertools::{izip, Itertools};
 
 use crate::internal::*;
 use crate::model::*;
-use crate::ops::dummy::Dummy;
 use crate::ops::konst::Const;
 
 /// A change to apply to a model.
@@ -252,6 +251,25 @@ where
         Ok(patch)
     }
 
+    pub fn wire_node(
+        &mut self,
+        name: impl Into<String>,
+        op: impl Into<O>,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let mut name = name.into();
+        if self.nodes.iter().any(|n| n.name == &*name) {
+            for i in 1.. {
+                let s = format!("{name}#{i}");
+                if self.nodes.iter().all(|n| n.name != s) {
+                    name = s;
+                    break;
+                }
+            }
+        }
+        self.model.wire_node(name, op.into(), inputs)
+    }
+
     /// Apply all changes in the patch to the target model.
     pub fn apply(self, target: &mut Graph<F, O>) -> TractResult<()> {
         let prior_target_inputs = target.input_outlets()?.len();
@@ -350,6 +368,7 @@ where
                 && target.node(maybe).outputs.iter().all(|of| of.successors.is_empty())
             {
                 target.node_mut(maybe).op = target.create_dummy();
+                target.node_mut(maybe).name = format!("Dummy-node-{}", maybe);
                 target.node_mut(maybe).outputs.clear(); // necessary to drop facts and consts
                 let inputs = std::mem::take(&mut target.node_mut(maybe).inputs);
                 for &i in &inputs {
@@ -360,11 +379,14 @@ where
             }
         }
         for n in new_nodes.iter() {
-            let node = &target.nodes[*n];
-            if target.nodes.iter().filter(|n| n.name == node.name && !n.op_is::<Dummy>()).count()
-                > 1
+            if let Some((prefix, _)) = target.nodes[*n].name.split_once('#') {
+                target.nodes[*n].name = target.unique_name(prefix).into();
+            } else if target
+                .nodes
+                .iter()
+                .any(|node| node.id != *n && target.nodes[*n].name == node.name)
             {
-                bail!("Patch created duplicate name with {node}");
+                target.nodes[*n].name = target.unique_name(&target.nodes[*n].name).to_string();
             }
         }
         Ok(())
