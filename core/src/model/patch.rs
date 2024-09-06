@@ -258,7 +258,7 @@ where
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let mut name = name.into();
-        if self.nodes.iter().any(|n| n.name == &*name) {
+        if self.nodes.iter().any(|n| n.name == *name) {
             for i in 1.. {
                 let s = format!("{name}#{i}");
                 if self.nodes.iter().all(|n| n.name != s) {
