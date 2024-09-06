@@ -315,7 +315,7 @@ impl Expansion for TreeEnsembleClassifier {
             }
             Some(PostTransform::Logistic) => {
                 scores = model.wire_node(
-                    &format!("{prefix}.logistic"),
+                    format!("{prefix}.logistic"),
                     tract_core::ops::nn::sigmoid(),
                     &scores,
                 )?;
@@ -324,18 +324,18 @@ impl Expansion for TreeEnsembleClassifier {
         let processed_scores = scores.clone();
         if self.binary_result_layout {
             scores = model.wire_node(
-                &format!("{prefix}.binary_result_slice"),
+                format!("{prefix}.binary_result_slice"),
                 Slice::new(1, 0, 1),
                 &scores,
             )?;
             let one = model.add_const(prefix.to_string() + ".one", rctensor2(&[[1f32]]))?;
             let complement = model.wire_node(
-                &format!("{prefix}.binary_result_complement"),
+                format!("{prefix}.binary_result_complement"),
                 tract_core::ops::math::sub(),
                 &[one, scores[0]],
             )?;
             scores = model.wire_node(
-                &format!("{prefix}.binary_result"),
+                format!("{prefix}.binary_result"),
                 TypedConcat::new(1),
                 &[complement[0], scores[0]],
             )?;

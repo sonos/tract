@@ -572,7 +572,7 @@ mod tests {
     fn test_tree_ensemble() {
         let ensemble = generate_gbm_ensemble();
         let input = generate_gbm_input();
-        let output = ensemble.eval(&input.view().into_dyn()).unwrap();
+        let output = ensemble.eval(input.view().into_dyn()).unwrap();
         assert_eq!(output, generate_gbm_raw_output().into_dyn());
     }
 }

@@ -180,7 +180,7 @@ macro_rules! mmm_q_scale_tests {
         #[test]
         fn return_c_scale_bigpot() {
             if $cond {
-                crate::frame::mmm::tests::q_scale::return_c_scale_bigpot::<_>($ker)
+                $crate::frame::mmm::tests::q_scale::return_c_scale_bigpot::<_>($ker)
             }
         }
     };

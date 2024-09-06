@@ -189,7 +189,7 @@ impl InferenceRulesOp for Nary {
         let inputs = wire_cast(&node.name, target, &inputs, operating)?;
         let mut wire = inputs[0];
         for (ix, i) in inputs[1..].iter().enumerate() {
-            let wires = wire_rank_broadcast(&format!("{}.{}", node.name, ix), target, &[wire, *i])?;
+            let wires = wire_rank_broadcast(format!("{}.{}", node.name, ix), target, &[wire, *i])?;
             wire = target.wire_node(
                 format!("{}.{}", node.name, ix),
                 mir::binary::TypedBinOp(self.0.clone(), None),

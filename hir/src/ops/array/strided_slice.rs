@@ -357,7 +357,7 @@ mod tests {
                 0,
                 &4.to_dim(),
                 &tensor1(&[-1i64]),
-                &tensor1(&[std::i64::MIN]),
+                &tensor1(&[i64::MIN]),
                 &[-1]
             )
             .unwrap(),
@@ -373,7 +373,7 @@ mod tests {
                 0,
                 &4.to_dim(),
                 &tensor1(&[-1i64]),
-                &tensor1(&[std::i64::MIN + 1]),
+                &tensor1(&[i64::MIN + 1]),
                 &[-1]
             )
             .unwrap(),

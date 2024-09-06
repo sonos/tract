@@ -147,7 +147,7 @@ pub mod test {
         let op = UnicastImpl::<K, T>::new();
         let expected = a.iter().zip(b.iter()).map(|(a, b)| (reference)(*a, *b)).collect::<Vec<_>>();
         let mut found = a.to_vec();
-        op.run(&mut found, &b).unwrap();
+        op.run(&mut found, b).unwrap();
         tensor1(&found)
             .close_enough(&tensor1(&expected), true)
             .map_err(|e| TestCaseError::fail(e.root_cause().to_string()))?;

@@ -102,7 +102,7 @@ impl Deconv {
         )?[0];
         let output_shape = super::output_shape(&self.pool_spec, &shape.shape, &self.adjustments)?;
         bias = target.wire_node(
-            &format!("{name}.broadcast_bias"),
+            format!("{name}.broadcast_bias"),
             MultiBroadcastTo { shape: output_shape.into() },
             &[bias],
         )?[0];

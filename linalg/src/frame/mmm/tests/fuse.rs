@@ -11,7 +11,7 @@ macro_rules! mmm_kernel_fuse_tests {
     ($cond:expr, $ker:ident, $tc:ty, $ti: ty) => {
         mod fuse {
             use super::$ker;
-            use crate::frame::mmm::MatMatMulKer;
+            use $crate::frame::mmm::MatMatMulKer;
             use num_traits::Zero;
             #[allow(unused_imports)]
             use tract_data::prelude::f16;

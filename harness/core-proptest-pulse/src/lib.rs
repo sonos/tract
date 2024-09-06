@@ -90,7 +90,7 @@ fn proptest_regular_against_pulse(
             filler_shape[axis] = pulse - to_write_in_chunk;
             chunk = tract_ndarray::concatenate(
                 Axis(axis),
-                &[chunk.view(), ArrayD::from_elem(filler_shape, std::f32::NAN).view()],
+                &[chunk.view(), ArrayD::from_elem(filler_shape, f32::NAN).view()],
             )
             .unwrap();
             state.session_state.resolved_symbols.set(&s, written as i64);
