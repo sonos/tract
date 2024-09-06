@@ -89,7 +89,7 @@ jobs:
     - name: Run cargo-clippy
       run: cargo clippy
       env:
-        RUSTFLAGS: "-D warnings"
+        RUSTFLAGS: "-D warnings --force-warn unknown_lints"
         RUST_VERSION: ${{matrix.rust}}
 
   cargo-deny:
