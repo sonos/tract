@@ -495,7 +495,7 @@ pub fn rewrite_matmul_to_same_rank(
     op: &BasicMatMul,
 ) -> TractResult<Option<TypedModelPatch>> {
     let a_rank = model.outlet_fact(node.inputs[0])?.rank();
-    let b_rank = model.outlet_fact(node.inputs[0])?.rank();
+    let b_rank = model.outlet_fact(node.inputs[1])?.rank();
     if a_rank == b_rank {
         return Ok(None);
     }
