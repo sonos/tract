@@ -1,24 +1,22 @@
+use tract_core::ops::logic::Comp;
+use crate::kernels::nn::{ Reducer, Softmax, RmsNorm, Silu, NewGelu };
 use crate::fact::MetalTypedFactExt;
-use crate::kernels::nn::{NewGelu, Reducer, RmsNorm, Silu, Softmax};
 use crate::ops;
-use crate::ops::{MetalSync, MetalSyncKind};
-use crate::rewrite_rules::{
-    as_new_gelu_rule, as_rms_norm_rule, as_silu_rule, rewire_metal_sync, BasicNewGelu,
-    BasicRmsNorm, BasicSilu,
-};
+use crate::ops::{ MetalSync, MetalSyncKind };
 use crate::tensor::MetalTensorExt;
-use crate::{IntoMetal, MetalFact, MetalTensor};
+use crate::{ IntoMetal, MetalFact, MetalTensor };
 use anyhow::Result;
 use std::borrow::Cow;
 use std::fmt::Debug;
 use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
-use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
-use tract_core::ops::binary::{BinMiniOp, TypedBinOp};
+use tract_core::ops::nn::{ Reduce, Softmax as CoreSoftmax };
+use tract_core::ops::array::{ MultiBroadcastTo, Slice, TypedConcat };
+use tract_core::ops::binary::{ TypedBinOp, BinMiniOp };
 use tract_core::ops::einsum::{rewrite_einsums_as_matmul, BasicMatMul};
+use crate::rewrite_rules::{ as_rms_norm_rule, rewire_metal_sync, BasicRmsNorm, as_silu_rule, BasicSilu, as_new_gelu_rule, BasicNewGelu };
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
-use tract_core::ops::nn::{Reduce, Softmax as CoreSoftmax};
 use tract_core::transform::ModelTransform;
 
 #[derive(Debug, Default)]
@@ -46,6 +44,7 @@ impl ModelTransform for MetalTransform {
         Ok(())
     }
 }
+
 
 impl MetalTransform {
     fn sync_inputs_if_required(
@@ -129,28 +128,6 @@ impl MetalTransform {
     }
 }
 
-macro_rules! map_bin_ops {
-    ([$(($tract_bin_op:path, $metal_bin_op:ident)),* $(,)?]) => {
-        |op: &Box<dyn tract_core::ops::binary::BinMiniOp >| {
-            $(if let Some(_op) = op.downcast_ref::<$tract_bin_op>() {
-                return Some($crate::ops::binary::MetalBinOp($crate::ops::binary::BinOps::$metal_bin_op));
-            })*
-            return None;
-        }
-    };
-}
-
-macro_rules! map_element_wise_ops {
-    ([$(($tract_bin_op:path, $metal_bin_op:ident)),* $(,)?]) => {
-        |op: &tract_core::ops::element_wise::ElementWiseOp| {
-            $(if let Some(_op) = op.0.downcast_ref::<$tract_bin_op>() {
-                return Some($crate::ops::element_wise::MetalElementWiseOp($crate::ops::element_wise::ElementWiseOps::$metal_bin_op));
-            })*
-            return None;
-        }
-    };
-}
-
 impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for MetalTransform {
     fn translate_node(
         &self,
@@ -170,6 +147,8 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             convert_element_wise_ops_to_metal(op).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<TypedBinOp>() {
             convert_bin_ops_to_metal(&op.0).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+        } else if let Some(op) = node.op_as::<Comp>() {
+            Some(Box::new(convert_logic_ops_to_metal(op)))
         } else if let Some(op) = node.op_as::<BasicMatMul>() {
             convert_matmul_to_metal(source, node, op)?.map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
@@ -177,31 +156,30 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         } else if let Some(op) = node.op_as::<Const>() {
             ops::MetalConst::new(op.0.clone())?.map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<AxisOp>() {
-            ops::MetalAxisOp::from_tract_core(op.clone())
-                .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+            ops::MetalAxisOp::from_tract_core(op.clone()).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<Slice>() {
             Some(Box::new(ops::MetalSlice::from_tract_core(op.clone())))
         } else if let Some(op) = node.op_as::<TypedConcat>() {
             Some(Box::new(ops::MetalConcat::from_tract_core(op)))
         } else if let Some(op) = node.op_as::<Reduce>() {
-            check_in_dts_are_supported(source, node.id, Reducer::is_supported_dt)?
+            check_in_dts_are_supported(source, node.id,  Reducer::is_supported_dt)?
                 .then(|| ops::MetalReduce::from_tract_core(op).ok())
                 .flatten()
                 .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<CoreSoftmax>() {
-            check_in_dts_are_supported(source, node.id, Softmax::is_supported_dt)?
+            check_in_dts_are_supported(source, node.id,  Softmax::is_supported_dt)?
                 .then(|| ops::MetalSoftmax::from_tract_core(op).ok())
                 .flatten()
                 .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<BasicRmsNorm>() {
-            check_in_dts_are_supported(source, node.id, RmsNorm::is_supported_dt)?
+            check_in_dts_are_supported(source, node.id,  RmsNorm::is_supported_dt)?
                 .then(|| ops::MetalRmsNorm::new(op.axis, op.eps.clone()))
                 .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(_op) = node.op_as::<BasicSilu>() {
-            check_in_dts_are_supported(source, node.id, Silu::is_supported_dt)?
+            check_in_dts_are_supported(source, node.id,  Silu::is_supported_dt)?
                 .then(|| -> Box<dyn TypedOp> { Box::new(ops::MetalSilu) })
         } else if let Some(_op) = node.op_as::<BasicNewGelu>() {
-            check_in_dts_are_supported(source, node.id, NewGelu::is_supported_dt)?
+            check_in_dts_are_supported(source, node.id,  NewGelu::is_supported_dt)?
                 .then(|| -> Box<dyn TypedOp> { Box::new(ops::MetalNewGelu) })
         } else {
             None
@@ -223,15 +201,36 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
     }
 }
 
-fn check_in_dts_are_supported(
-    model: &TypedModel,
-    node_id: usize,
-    is_supported_dt: impl Fn(DatumType) -> bool,
-) -> TractResult<bool> {
-    Ok(model.node_input_facts(node_id)?.iter().all(|f| {
-        (is_supported_dt)(f.datum_type)
-            || f.as_metal_fact().map(|f| (is_supported_dt)(f.datum_type)).unwrap_or(false)
-    }))
+fn check_in_dts_are_supported(model: &TypedModel, node_id: usize, is_supported_dt: impl Fn(DatumType) -> bool) -> TractResult<bool> {
+    Ok(model
+            .node_input_facts(node_id)?
+            .iter()
+            .all(|f| {
+                (is_supported_dt)(f.datum_type) 
+                    || f.as_metal_fact().map(|f| (is_supported_dt)(f.datum_type)).unwrap_or(false)
+            }))
+}
+
+macro_rules! map_bin_ops {
+    ([$(($tract_bin_op:path, $metal_bin_op:ident)),* $(,)?]) => {
+        |op: &Box<dyn tract_core::ops::binary::BinMiniOp >| {
+            $(if let Some(_op) = op.downcast_ref::<$tract_bin_op>() {
+                return Some($crate::ops::binary::MetalBinOp($crate::ops::binary::BinOps::$metal_bin_op));
+            })*
+            return None;
+        }
+    };
+}
+
+macro_rules! map_element_wise_ops {
+    ([$(($tract_bin_op:path, $metal_bin_op:ident)),* $(,)?]) => {
+        |op: &tract_core::ops::element_wise::ElementWiseOp| {
+            $(if let Some(_op) = op.0.downcast_ref::<$tract_bin_op>() {
+                return Some($crate::ops::element_wise::MetalElementWiseOp($crate::ops::element_wise::ElementWiseOps::$metal_bin_op));
+            })*
+            return None;
+        }
+    };
 }
 
 fn convert_matmul_to_metal(
@@ -270,15 +269,20 @@ fn convert_bin_ops_to_metal(op: &Box<dyn BinMiniOp>) -> Option<ops::MetalBinOp> 
         (tract_core::ops::math::Div, Div),
         (tract_core::ops::math::Sub, Sub),
         (tract_core::ops::math::Pow, Pow),
-        (tract_core::ops::logic::Less, Less),
-        (tract_core::ops::logic::LessEqual, LessEqual),
-        (tract_core::ops::logic::Greater, Greater),
-        (tract_core::ops::logic::GreaterEqual, GreaterEqual),
-        (tract_core::ops::logic::Equals, Equals),
-        (tract_core::ops::logic::NotEquals, NotEquals),
         (tract_core::ops::logic::And, And),
         (tract_core::ops::logic::Or, Or),
     ])(op)
+}
+
+fn convert_logic_ops_to_metal(op: &Comp) -> ops::MetalBinOp {
+    match op {
+        Comp::Eq => ops::MetalBinOp(ops::binary::BinOps::Equals),
+        Comp::NE => ops::MetalBinOp(ops::binary::BinOps::NotEquals),
+        Comp::LT => ops::MetalBinOp(ops::binary::BinOps::Less),
+        Comp::LTE => ops::MetalBinOp(ops::binary::BinOps::LessEqual),
+        Comp::GT => ops::MetalBinOp(ops::binary::BinOps::Greater),
+        Comp::GTE => ops::MetalBinOp(ops::binary::BinOps::GreaterEqual),
+    }
 }
 
 pub fn bin_ops_to_metal(
