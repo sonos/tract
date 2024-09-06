@@ -82,6 +82,8 @@ jobs:
     - uses: actions/checkout@v3
     - name: Rustup update, install clippy
       run: ROOT=. .travis/ci-system-setup.sh
+      env:
+        RUST_VERSION: ${{matrix.rust}}
     - name: Run cargo-clippy
       run: cargo clippy
       env:
