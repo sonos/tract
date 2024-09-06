@@ -154,7 +154,7 @@ fn ser_conv(
                 .as_ref()
                 .context("tract TODO: dynamic convolution and per-channel scales")?;
             inputs.push(builder.write_fact_with_per_axis_q(
-                &format!("{node_name}.weights"),
+                format!("{node_name}.weights"),
                 kernel,
                 &vec![k0_tract; conv.output_channels()],
                 kscale,
@@ -163,7 +163,7 @@ fn ser_conv(
             let bscale = kscale.iter().map(|k| k * iscale).collect_vec();
             let bias = bias.clone().into_tensor().cast_to::<i32>()?.into_owned().into_arc_tensor();
             inputs.push(builder.write_fact_with_per_axis_q(
-                &format!("{node_name}.bias"),
+                format!("{node_name}.bias"),
                 &bias,
                 &vec![0i64; bias.len()],
                 &bscale,
@@ -176,7 +176,7 @@ fn ser_conv(
                 .datum_type()
                 .quantize(QParams::ZpScale { zero_point: 0, scale: iscale * kscale[0] });
             let bias = bias.cast_to_dt(bias_qdt)?.into_owned();
-            inputs.push(builder.write_fact(&format!("{node_name}.bias"), bias)?);
+            inputs.push(builder.write_fact(format!("{node_name}.bias"), bias)?);
         }
     } else {
         inputs.push(builder.map_outlet(model, node.inputs[1])?);

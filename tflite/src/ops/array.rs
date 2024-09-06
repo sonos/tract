@@ -189,7 +189,7 @@ fn ser_axisop(
             let mut permutation: Vec<i32> = (0..rank).map(|d| d as i32).collect();
             permutation.remove(*from);
             permutation.insert(*to, *from as _);
-            inputs.push(builder.write_fact(&format!("{}.perm", node.name), tensor1(&permutation))?);
+            inputs.push(builder.write_fact(format!("{}.perm", node.name), tensor1(&permutation))?);
             let options = TransposeOptions::create(builder.fb(), &TransposeOptionsArgs {});
             builder.write_op_with_options(
                 &inputs,
@@ -199,7 +199,7 @@ fn ser_axisop(
             )
         }
         AxisOp::Add(a) => {
-            inputs.push(builder.write_fact(&format!("{}.axis", node.name), tensor0(*a as i32))?);
+            inputs.push(builder.write_fact(format!("{}.axis", node.name), tensor0(*a as i32))?);
             let options = ExpandDimsOptions::create(builder.fb(), &ExpandDimsOptionsArgs {});
             builder.write_op_with_options(
                 &inputs,

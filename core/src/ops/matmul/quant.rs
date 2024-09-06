@@ -70,13 +70,13 @@ pub(crate) fn combine_scales(
     c_scale: OutletId,
 ) -> TractResult<OutletId> {
     let ab_scale = wire_with_rank_broadcast(
-        &format!("{name}.ab_scale"),
+        format!("{name}.ab_scale"),
         model,
         ops::math::mul(),
         &[a_scale, b_scale],
     )?[0];
     let abc_scale = wire_with_rank_broadcast(
-        &format!("{name}.abc_scales"),
+        format!("{name}.abc_scales"),
         model,
         ops::math::div(),
         &[ab_scale, c_scale],
@@ -109,41 +109,41 @@ pub(crate) fn compensate_zero_points(
     let k = model.wire_node(format!("{name}.cast_k"), ops::cast::cast(i32::datum_type()), &[k])?[0];
 
     let a0_sum_b = wire_with_rank_broadcast(
-        &format!("{name}.a0_sum_b"),
+        format!("{name}.a0_sum_b"),
         model,
         ops::math::mul(),
         &[a0, sum_b],
     )?[0];
 
     let b0_sum_a = wire_with_rank_broadcast(
-        &format!("{name}.b0_sum_a"),
+        format!("{name}.b0_sum_a"),
         model,
         ops::math::mul(),
         &[b0, sum_a],
     )?[0];
 
     let a0_k =
-        wire_with_rank_broadcast(&format!("{name}.a0_k"), model, ops::math::mul(), &[a0, k])?[0];
+        wire_with_rank_broadcast(format!("{name}.a0_k"), model, ops::math::mul(), &[a0, k])?[0];
 
     let a0_k_b0 =
-        wire_with_rank_broadcast(&format!("{name}.a0_k_b0"), model, ops::math::mul(), &[a0_k, b0])?
+        wire_with_rank_broadcast(format!("{name}.a0_k_b0"), model, ops::math::mul(), &[a0_k, b0])?
             [0];
 
     let result = wire_with_rank_broadcast(
-        &format!("{}.minus_a0_B", &name),
+        format!("{}.minus_a0_B", &name),
         model,
         ops::math::sub(),
         &[result, a0_sum_b],
     )?[0];
     let result = wire_with_rank_broadcast(
-        &format!("{}.minus_b0_A", &name),
+        format!("{}.minus_b0_A", &name),
         model,
         ops::math::sub(),
         &[result, b0_sum_a],
     )?[0];
 
     let result = wire_with_rank_broadcast(
-        &format!("{}.plus_a0_k_b0", &name),
+        format!("{}.plus_a0_k_b0", &name),
         model,
         ops::math::add(),
         &[result, a0_k_b0],
@@ -161,7 +161,7 @@ pub(crate) fn requant(
     zero_point: OutletId,
 ) -> TractResult<OutletId> {
     let wire = wire_with_rank_broadcast(
-        &format!("{name}.scale"),
+        format!("{name}.scale"),
         model,
         ops::quant::scale(),
         &[scale, wire],
@@ -174,7 +174,7 @@ pub(crate) fn requant(
     )?[0];
 
     let wire = wire_with_rank_broadcast(
-        &format!("{name}.zeropoint"),
+        format!("{name}.zeropoint"),
         model,
         ops::math::add(),
         &[wire, zero_point],
