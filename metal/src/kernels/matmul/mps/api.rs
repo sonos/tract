@@ -277,10 +277,143 @@ impl MatrixMultiplicationRef {
     ) {
         unsafe {
             msg_send![self, encodeToCommandBuffer: command_buffer
-			 					  leftMatrix: left
-			 					  rightMatrix: right
-			 					  resultMatrix: result]
+                                  leftMatrix: left
+                                  rightMatrix: right
+                                  resultMatrix: result]
         }
+    }
+}
+
+pub enum MPSMatrixVectorMultiplication {}
+
+foreign_obj_type! {
+    type CType = MPSMatrixVectorMultiplication;
+    pub struct MatrixVectorMultiplication;
+    type ParentType = Kernel;
+}
+
+impl MatrixVectorMultiplication {
+    /// Initializes a matrix multiplication kernel.
+    ///
+    /// - device: The device on which the matrix vector multiplication kernel will run.
+    ///
+    /// - transpose: A boolean value.
+    ///
+    /// - rows: The number of rows.
+    ///
+    /// - columns: The number of columns.
+    ///
+    /// - alpha: The scale factor to apply to the product, specified in double precision. This value will be converted to the appropriate precision in the implementation itself, subject to rounding and/or clamping as necessary.
+    ///
+    /// - beta: The scale factor to apply to the initial values of C, specified in double precision. This value will be converted to the appropriate precision in the implementation itself, subject to rounding and/or clamping as necessary.
+    ///
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        device: Device,
+        transpose: bool,
+        rows: NSUInteger,
+        columns: NSUInteger,
+        alpha: f64,
+        beta: f64,
+    ) -> Option<Self> {
+        unsafe {
+            let instance: MatrixVectorMultiplication =
+                msg_send![class!(MPSMatrixVectorMultiplication), alloc];
+            let ptr: *mut Object = msg_send![instance.as_ref(), initWithDevice: device
+                                                       transpose: transpose
+                                                       rows: rows
+                                                       columns: columns
+                                                       alpha: alpha
+                                                       beta: beta];
+            if ptr.is_null() {
+                None
+            } else {
+                Some(instance)
+            }
+        }
+    }
+}
+
+impl MatrixVectorMultiplicationRef {
+    /// Encodes a matrix multiplication kernel to a command buffer.
+    ///
+    /// - commandBuffer: The command buffer that will receive the encoded kernel.
+    ///
+    /// - left: The left input matrix.
+    ///
+    /// - right: The right input matrix.
+    ///
+    /// - result: The addend matrix which will also be overwritten by the operation result.
+    ///
+    pub fn encode(
+        &self,
+        command_buffer: CommandBuffer,
+        left: Matrix,
+        right: Vector,
+        result: Vector,
+    ) {
+        unsafe {
+            msg_send![self, encodeToCommandBuffer: command_buffer
+                                  inputMatrix: left
+                                  inputVector: right
+                                  resultVector: result]
+        }
+    }
+}
+
+pub enum MPSVectorDescriptor {}
+
+foreign_obj_type! {
+    type CType = MPSVectorDescriptor;
+    pub struct VectorDescriptor;
+}
+
+impl VectorDescriptor {
+    /// Build a MPS vector descriptor
+    /// - lenght: The length of the vector.
+    /// - data_type: The type of the data to be stored in the matrix.
+    pub fn new(length: NSUInteger, data_type: MPSDataType) -> Self {
+        unsafe {
+            msg_send![class!(MPSVectorDescriptor), vectorDescriptorWithLength:length
+                                        dataType: data_type]
+        }
+    }
+}
+
+pub enum MPSVector {}
+
+foreign_obj_type! {
+    type CType = MPSVector;
+    pub struct Vector;
+}
+
+impl Vector {
+    pub fn new_with_descriptor(
+        buffer: Buffer,
+        offset: NSUInteger,
+        descriptor: VectorDescriptor,
+    ) -> Option<Self> {
+        unsafe {
+            let instance: Vector = msg_send![class!(MPSVector), alloc];
+            let ptr: *mut Object = msg_send![instance.as_ref(), initWithBuffer: buffer
+                                                       offset: offset
+                                                       descriptor: descriptor];
+            if ptr.is_null() {
+                None
+            } else {
+                Some(instance)
+            }
+        }
+    }
+
+    pub fn new(
+        buffer: Buffer,
+        offset: NSUInteger,
+        data_type: MPSDataType,
+        length: NSUInteger,
+    ) -> Option<Self> {
+        let descriptor = VectorDescriptor::new(length, data_type);
+        Self::new_with_descriptor(buffer, offset, descriptor)
     }
 }
 
@@ -387,6 +520,55 @@ mod tests {
                 context.wait_until_completed()?;
 
                 assert_eq!(output.as_slice(), &vec![4.0; 4 * 4]);
+                Ok(())
+            })
+        })
+    }
+
+    #[test]
+    fn test_mps_matrix_vector_multiplication() -> Result<()> {
+        objc::rc::autoreleasepool(|| {
+            crate::METAL_CONTEXT.with_borrow(|context| {
+                let lhs = vec![1f32; 4 * 4];
+                let lhs_buffer = context.buffer_from_slice(&lhs);
+
+                let lhs_matrix = Matrix::new(lhs_buffer, 0, MPSDataType::Float32, 4, 4)
+                    .ok_or_else(|| anyhow!("An error occured when creating LHS matrix"))?;
+
+                let rhs = vec![1f32; 4];
+                let rhs_buffer = context.buffer_from_slice(&rhs);
+
+                let rhs_vector = Vector::new(rhs_buffer, 0, MPSDataType::Float32, 4)
+                    .ok_or_else(|| anyhow!("An error occured when creating RHS vector"))?;
+
+                let output = vec![0f32; 4 * 1];
+                let output_buffer = context.buffer_from_slice(&output);
+
+                let output_vector = Vector::new(output_buffer, 0, MPSDataType::Float32, 4)
+                    .ok_or_else(|| anyhow!("An error occured when creating output vector"))?;
+
+                let matmul = MatrixVectorMultiplication::new(
+                    context.device().to_owned(),
+                    false,
+                    4,
+                    4,
+                    1.0,
+                    0.0,
+                )
+                .ok_or_else(|| anyhow!("An error occured when creating MatrixMultiplication"))?;
+
+                let cmd_buffer = context.command_buffer();
+
+                matmul.encode(
+                    cmd_buffer,
+                    lhs_matrix.to_owned(),
+                    rhs_vector.to_owned(),
+                    output_vector.to_owned(),
+                );
+
+                context.wait_until_completed()?;
+
+                assert_eq!(output.as_slice(), &vec![4.0; 4]);
                 Ok(())
             })
         })

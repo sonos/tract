@@ -19,6 +19,12 @@ impl Op for MetalGemm {
         format!("Metal{}", self.kernel).into()
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![
+            format!("transpose_a: {} transpose_b: {}", self.transpose_a(), self.transpose_b(),),
+        ])
+    }
+
     op_as_typed_op!();
 }
 
