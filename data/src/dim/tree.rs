@@ -611,6 +611,13 @@ impl TDim {
             Min(terms) if !upper => terms.iter().filter_map(|t| t.low_inclusive_bound(scope)).min(),
             Max(terms) if upper => terms.iter().filter_map(|t| t.high_inclusive_bound(scope)).max(),
             Div(a, q) => a.inclusive_bound(scope, upper).map(|x| x / (*q as i64)),
+            Broadcast(terms) => {
+                if upper {
+                    Max(terms.clone()).high_inclusive_bound(scope)
+                } else {
+                    Min(terms.clone()).low_inclusive_bound(scope)
+                }
+            }
             _ => None,
         }
     }
@@ -1359,6 +1366,17 @@ mod tests {
         assert_eq!(
             symbols.parse_tdim("min(-3+2*(S+1)/4,-1+(S+1)/4)").unwrap().simplify(),
             symbols.parse_tdim("-1+(S+1)/4").unwrap()
+        );
+    }
+
+    #[test]
+    fn min_bug_3() {
+        let symbols = SymbolScope::default();
+        symbols.add_inequality("S>=0").unwrap();
+        symbols.add_inequality("P>=0").unwrap();
+        assert_eq!(
+            symbols.parse_tdim("min(0,(S)#(P+S))").unwrap().simplify(),
+            symbols.parse_tdim("0").unwrap()
         );
     }
 }
