@@ -38,7 +38,7 @@ fn inequality_sign(i: &str) -> IResult<&str, InequalitySign> {
 }
 
 fn expr<'i>(symbol_table: &SymbolScope, i: &'i str) -> IResult<&'i str, TDim> {
-    add(symbol_table, i)
+    broadcast(symbol_table, i)
 }
 
 macro_rules! bin {
@@ -51,10 +51,19 @@ macro_rules! bin {
         }
     };
 }
-
 bin!(add, sub, "+", |(a, b)| a + b);
 bin!(sub, mul, "-", |(a, b)| a - b);
 bin!(mul, div, "*", |(a, b)| a * b);
+
+fn broadcast<'i>(symbol_table: &SymbolScope, input: &'i str) -> IResult<&'i str, TDim> {
+    let s = symbol_table;
+    alt((
+        map_res(separated_pair(|i| add(s, i), stag("#"), |i| add(s, i)), |(a, b)| {
+            a.broadcast(b)
+        }),
+        |i| add(s, i),
+    ))(input)
+}
 
 fn div<'i>(symbol_table: &SymbolScope, input: &'i str) -> IResult<&'i str, TDim> {
     let s = symbol_table;
