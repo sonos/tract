@@ -10,6 +10,10 @@ pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
     tract_core::ops::einsum::rewrite_einsums_as_matmul(model)?;
     Rewriter::default()
         .with_rule_for(
+            "rewrite_block_quant_const_to_scalar",
+            crate::ops::nnef::ser::rewrite_block_quant_const_to_scalar,
+        )
+        .with_rule_for(
             "rewrite_matmul_to_same_rank",
             crate::ops::nnef::ser::rewrite_matmul_to_same_rank,
         )

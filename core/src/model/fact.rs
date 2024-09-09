@@ -294,13 +294,10 @@ impl TypedFact {
     }
 
     pub fn without_value(&self) -> Self {
-        TypedFact {
-            datum_type: self.datum_type,
-            shape: self.shape.clone(),
-            konst: None,
-            uniform: None,
-            opaque_fact: self.opaque_fact.clone(),
-        }
+        let mut new = self.clone();
+        new.konst = None;
+        new.uniform = None;
+        new
     }
 
     pub fn with_opaque_fact<O: Into<Box<dyn OpaqueFact>>>(mut self, opaque_fact: O) -> Self {
