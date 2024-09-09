@@ -522,7 +522,7 @@ pub fn rewrite_block_quant_const_to_scalar(
     }
 
     patch.shunt_outside(model, node.id.into(), output[0])?;
-    return Ok(Some(patch));
+    Ok(Some(patch))
 }
 
 pub fn rewrite_matmul_to_same_rank(
