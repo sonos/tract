@@ -185,7 +185,8 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
 
 pub fn write_tensor(w: &mut impl Write, tensor: &Tensor) -> TractResult<()> {
     ensure!(tensor.datum_type() != TDim::datum_type());
-    if tensor.datum_type() == Opaque::datum_type() && tensor.len() == 1 {
+    if tensor.datum_type() == Opaque::datum_type() {
+        ensure!(tensor.rank() == 0);
         if let Some(bqv) = tensor.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>() {
             return write_block_quant_value(w, bqv);
         }

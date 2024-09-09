@@ -9,7 +9,11 @@ use tract_core::ops::cnn::Conv;
 use tract_core::ops::cnn::Deconv;
 use tract_core::ops::cnn::KernelFormat;
 use tract_core::ops::cnn::PoolSpec;
+use tract_core::ops::einsum::block_quant_aware_input_shape;
 use tract_core::ops::einsum::BasicMatMul;
+use tract_core::ops::identity::PinConst;
+use tract_core::ops::konst::Const;
+use tract_core::ops::matmul::de_block_quant::BlockQuantFact;
 use tract_core::ops::nn::DataFormat;
 use tract_core::ops::nn::SoftmaxExp;
 use tract_core::tract_data::itertools::Itertools;
@@ -487,6 +491,40 @@ pub fn softmax(
     )))
 }
 
+pub fn rewrite_block_quant_const_to_scalar(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    prefix: &str,
+    op: &Const,
+) -> TractResult<Option<TypedModelPatch>> {
+    let fact = &node.outputs[0].fact;
+    if fact.shape.len() == 0
+        || fact.datum_type.is_integer()
+        || !fact.opaque_fact.as_ref().is_some_and(|of| of.is::<BlockQuantFact>())
+    {
+        return Ok(None);
+    };
+    ensure!(fact.shape.volume().is_one());
+    let mut patch = TypedModelPatch::default();
+    let mut new_fact = fact.clone();
+    new_fact.shape = ShapeFact::scalar();
+    let new_tensor = op.0.to_scalar_tensor()?.into_arc_tensor();
+    new_fact.konst = Some(new_tensor.clone());
+    let mut output = patch.wire_node(
+        prefix,
+        Const::new_with_opaque_fact(new_tensor, fact.opaque_fact.clone().unwrap()),
+        &[],
+    )?;
+    output = patch.wire_node(format!("{prefix}.lock"), PinConst, &output)?;
+    for i in 0..fact.rank() {
+        output = patch.wire_node(format!("{prefix}.{i}"), AxisOp::Add(0), &output)?;
+    }
+
+    patch.shunt_outside(model, node.id.into(), output[0])?;
+    return Ok(Some(patch));
+}
+
 pub fn rewrite_matmul_to_same_rank(
     _ctx: &(),
     model: &TypedModel,
@@ -494,8 +532,8 @@ pub fn rewrite_matmul_to_same_rank(
     prefix: &str,
     op: &BasicMatMul,
 ) -> TractResult<Option<TypedModelPatch>> {
-    let a_rank = model.outlet_fact(node.inputs[0])?.rank();
-    let b_rank = model.outlet_fact(node.inputs[1])?.rank();
+    let a_rank = block_quant_aware_input_shape(model.outlet_fact(node.inputs[0])?)?.len();
+    let b_rank = block_quant_aware_input_shape(model.outlet_fact(node.inputs[1])?)?.len();
     if a_rank == b_rank {
         return Ok(None);
     }
