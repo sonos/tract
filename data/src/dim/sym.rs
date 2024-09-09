@@ -87,7 +87,7 @@ impl SymbolScope {
         let ineqs = self.0.lock().unwrap().inequalities.clone();
         let positives = ineqs
             .iter()
-            .map(|i| parse_inequality(self, i).unwrap().as_known_positive())
+            .filter_map(|i| parse_inequality(self, i).unwrap().as_known_positive())
             .collect_vec();
         let mut visited = vec![];
         let mut todo = vec![t.clone()];
@@ -140,47 +140,34 @@ impl fmt::Debug for SymbolScope {
 
 #[derive(Debug, PartialEq, Clone, Hash)]
 #[allow(clippy::upper_case_acronyms)]
-pub enum InequalitySign {
-    LT,
-    GT,
-    LTE,
-    GTE,
-}
-
-impl Display for InequalitySign {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use InequalitySign::*;
-        match self {
-            LT => write!(f, "<"),
-            GT => write!(f, ">"),
-            LTE => write!(f, "<="),
-            GTE => write!(f, ">="),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone, Hash)]
-pub struct Inequality {
-    pub left: TDim,
-    pub sign: InequalitySign,
-    pub right: TDim,
-}
-
-impl Inequality {
-    pub fn as_known_positive(&self) -> TDim {
-        use InequalitySign::*;
-        match self.sign {
-            GTE => self.left.clone() - &self.right,
-            GT => self.left.clone() - 1 - &self.right,
-            LTE => self.right.clone() - &self.left,
-            LT => self.right.clone() - 1 - &self.left,
-        }
-    }
+pub enum Inequality {
+    LT(TDim, TDim),
+    GT(TDim, TDim),
+    LTE(TDim, TDim),
+    GTE(TDim, TDim),
 }
 
 impl Display for Inequality {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {} {}", self.left, self.sign, self.right)
+        use Inequality::*;
+        match self {
+            LT(l, r) => write!(f, "{l} < {r}"),
+            GT(l, r) => write!(f, "{l} > {r}"),
+            LTE(l, r) => write!(f, "{l} <= {r}"),
+            GTE(l, r) => write!(f, "{l} >= {r}"),
+        }
+    }
+}
+
+impl Inequality {
+    pub fn as_known_positive(&self) -> Option<TDim> {
+        use Inequality::*;
+        match self {
+            GTE(left, right) => Some(left.clone() - right),
+            GT(left, right) => Some(left.clone() - 1 - right),
+            LTE(left, right) => Some(right.clone() - left),
+            LT(left, right) => Some(right.clone() - 1 - left),
+        }
     }
 }
 
@@ -254,7 +241,7 @@ mod tests {
         let s = SymbolScope::default();
         assert_eq!(
             parse_inequality(&s, "S>=0").unwrap().as_known_positive(),
-            s.parse_tdim("S").unwrap()
+            Some(s.parse_tdim("S").unwrap())
         );
     }
 
@@ -263,7 +250,7 @@ mod tests {
         let s = SymbolScope::default();
         assert_eq!(
             parse_inequality(&s, "S>0").unwrap().as_known_positive(),
-            s.parse_tdim("S-1").unwrap()
+            Some(s.parse_tdim("S-1").unwrap())
         );
     }
 
@@ -272,7 +259,7 @@ mod tests {
         let s = SymbolScope::default();
         assert_eq!(
             parse_inequality(&s, "S<=0").unwrap().as_known_positive(),
-            s.parse_tdim("-S").unwrap()
+            Some(s.parse_tdim("-S").unwrap())
         );
     }
 
@@ -281,7 +268,7 @@ mod tests {
         let s = SymbolScope::default();
         assert_eq!(
             parse_inequality(&s, "S<0").unwrap().as_known_positive(),
-            s.parse_tdim("-S - 1").unwrap()
+            Some(s.parse_tdim("-S - 1").unwrap())
         );
     }
 

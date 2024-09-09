@@ -550,20 +550,19 @@ impl TDim {
                         .all_assertions()
                         .iter()
                         .filter_map(|assert| {
-                            let Inequality { left, sign, right } =
-                                parse_inequality(scope, assert).unwrap();
-                            if &left == self
-                                && sign == InequalitySign::LT
-                                && right.as_i64().is_some()
-                            {
-                                Some(right.as_i64().unwrap() - 1)
-                            } else if &left == self
-                                && sign == InequalitySign::LTE
-                                && right.as_i64().is_some()
-                            {
-                                Some(right.as_i64().unwrap())
-                            } else {
-                                None
+                            let ineq = parse_inequality(scope, assert).unwrap();
+                            match &ineq {
+                                Inequality::LT(left, right)
+                                    if left == self && right.as_i64().is_some() =>
+                                {
+                                    Some(right.as_i64().unwrap() - 1)
+                                }
+                                Inequality::LTE(left, right)
+                                    if left == self && right.as_i64().is_some() =>
+                                {
+                                    Some(right.as_i64().unwrap())
+                                }
+                                _ => None,
                             }
                         })
                         .min()
@@ -572,20 +571,19 @@ impl TDim {
                         .all_assertions()
                         .iter()
                         .filter_map(|assert| {
-                            let Inequality { left, sign, right } =
-                                parse_inequality(scope, assert).unwrap();
-                            if &left == self
-                                && sign == InequalitySign::GT
-                                && right.as_i64().is_some()
-                            {
-                                Some(right.as_i64().unwrap() + 1)
-                            } else if &left == self
-                                && sign == InequalitySign::GTE
-                                && right.as_i64().is_some()
-                            {
-                                Some(right.as_i64().unwrap())
-                            } else {
-                                None
+                            let ineq = parse_inequality(scope, assert).unwrap();
+                            match &ineq {
+                                Inequality::GT(left, right)
+                                    if left == self && right.as_i64().is_some() =>
+                                {
+                                    Some(right.as_i64().unwrap() + 1)
+                                }
+                                Inequality::GTE(left, right)
+                                    if left == self && right.as_i64().is_some() =>
+                                {
+                                    Some(right.as_i64().unwrap())
+                                }
+                                _ => None,
                             }
                         })
                         .max()
@@ -1377,6 +1375,17 @@ mod tests {
         assert_eq!(
             symbols.parse_tdim("min(0,(S)#(P+S))").unwrap().simplify(),
             symbols.parse_tdim("0").unwrap()
+        );
+    }
+
+    #[test]
+    fn min_llm_0() {
+        let symbols = SymbolScope::default();
+        symbols.add_inequality("S>=0").unwrap();
+        symbols.add_inequality("P>=0").unwrap();
+        assert_eq!(
+            symbols.parse_tdim("min(P,(S)#(P+S))").unwrap().simplify(),
+            symbols.parse_tdim("P").unwrap()
         );
     }
 }
