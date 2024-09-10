@@ -54,6 +54,7 @@ jobs:
         rust: [ 1.75.0, beta ]
         os: [ ubuntu-latest, macOS-latest ]
       fail-fast: false
+    runs-on: {{ matrix.os }}
     steps:
     - uses: actions/checkout@v3
     - name: Rustup update
