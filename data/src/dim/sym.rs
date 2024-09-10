@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use std::collections::HashMap;
 use std::fmt::{self, Display};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, Weak};
 use string_interner::DefaultStringInterner;
 use string_interner::Symbol as _;
 
@@ -11,7 +11,7 @@ use super::parse::parse_inequality;
 use super::{parse_tdim, TDim};
 
 #[derive(Clone, Default)]
-pub struct SymbolScope(Arc<Mutex<SymbolScopeData>>);
+pub struct SymbolScope(Arc<RwLock<SymbolScopeData>>);
 
 impl PartialEq for SymbolScope {
     fn eq(&self, other: &Self) -> bool {
@@ -24,23 +24,23 @@ impl Eq for SymbolScope {}
 #[derive(Default)]
 pub struct SymbolScopeData {
     table: DefaultStringInterner,
-    inequalities: Vec<String>,
+    inequalities: Vec<Assertions>,
 }
 
 impl SymbolScope {
     pub fn get(&self, name: &str) -> Option<Symbol> {
-        let locked = self.0.lock().unwrap();
-        locked.table.get(name).map(|sym| Symbol(self.clone(), sym))
+        let locked = self.0.read().unwrap();
+        locked.table.get(name).map(|sym| Symbol(Arc::downgrade(&self.0), sym))
     }
 
     pub fn sym(&self, name: &str) -> Symbol {
-        let mut locked = self.0.lock().unwrap();
+        let mut locked = self.0.write().unwrap();
         let sym = locked.table.get_or_intern(name);
-        Symbol(self.clone(), sym)
+        Symbol(Arc::downgrade(&self.0), sym)
     }
 
     pub fn new_with_prefix(&self, prefix: &str) -> Symbol {
-        let mut locked = self.0.lock().unwrap();
+        let mut locked = self.0.write().unwrap();
         let sym = if locked.table.get(prefix).is_none() {
             locked.table.get_or_intern(prefix)
         } else {
@@ -53,14 +53,7 @@ impl SymbolScope {
                 i += 1;
             }
         };
-        Symbol(self.clone(), sym)
-    }
-
-    pub fn resolving<R>(&self, sym: &Symbol, f: impl FnOnce(&str) -> R) -> Option<R> {
-        match self.0.try_lock() {
-            Ok(lock) => lock.table.resolve(sym.1).map(f),
-            Err(_) => None,
-        }
+        Symbol(Arc::downgrade(&self.0), sym)
     }
 
     pub fn parse_tdim(&self, input: impl AsRef<str>) -> TractResult<TDim> {
@@ -69,8 +62,8 @@ impl SymbolScope {
 
     pub fn add_inequality(&self, ineq: impl Into<String>) -> TractResult<()> {
         let ineq = ineq.into();
-        parse_inequality(self, &ineq)?;
-        self.0.lock().unwrap().inequalities.push(ineq);
+        let ineq = parse_inequality(self, &ineq)?;
+        self.0.write().unwrap().inequalities.push(ineq);
         Ok(())
     }
 
@@ -79,23 +72,41 @@ impl SymbolScope {
         Ok(self)
     }
 
+    pub fn all_symbols(&self) -> Vec<Symbol> {
+        self.0.read().unwrap().table.into_iter().map(|is| Symbol(Arc::downgrade(&self.0), is.0)).collect()
+    }
+
+    pub fn all_assertions(&self) -> Vec<Assertions> {
+        self.0.read().unwrap().inequalities.clone()
+    }
+
+    pub fn lock(&self) -> Option<RwLockReadGuard<SymbolScopeData>> {
+        self.0.read().ok()
+    }
+}
+
+impl SymbolScopeData {
+    pub fn all_assertions(&self) -> &[Assertions] {
+        &self.inequalities
+    }
+
+    pub fn resolving<R>(&self, sym: &Symbol, f: impl FnOnce(&str) -> R) -> Option<R> {
+        self.table.resolve(sym.1).map(f)
+    }
+
     #[allow(clippy::mutable_key_type)]
     pub fn prove_positive_or_zero(&self, t: &TDim) -> bool {
         if let TDim::Val(v) = t {
             return *v >= 0;
         }
-        let ineqs = self.0.lock().unwrap().inequalities.clone();
-        let positives = ineqs
-            .iter()
-            .filter_map(|i| parse_inequality(self, i).unwrap().as_known_positive())
-            .collect_vec();
+        let positives = self.inequalities.iter().filter_map(|i| i.as_known_positive()).collect_vec();
         let mut visited = vec![];
         let mut todo = vec![t.clone()];
         while let Some(t) = todo.pop() {
             if t.to_i64().is_ok_and(|i| i >= 0) {
                 return true;
             }
-            if t.low_inclusive_bound(self).is_some_and(|l| l >= 0) {
+            if t.inclusive_bound(self, false).is_some_and(|l| l >= 0) {
                 return true;
             }
             let syms = t.symbols();
@@ -122,18 +133,11 @@ impl SymbolScope {
         false
     }
 
-    pub fn all_symbols(&self) -> Vec<Symbol> {
-        self.0.lock().unwrap().table.into_iter().map(|is| Symbol(self.clone(), is.0)).collect()
-    }
-
-    pub fn all_assertions(&self) -> Vec<String> {
-        self.0.lock().unwrap().inequalities.clone()
-    }
 }
 
 impl fmt::Debug for SymbolScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let locked = self.0.lock().unwrap();
+        let locked = self.0.read().unwrap();
         write!(f, "{}", locked.table.into_iter().map(|(_, s)| s).join(" "))
     }
 }
@@ -171,18 +175,26 @@ impl Assertions {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
-pub struct Symbol(SymbolScope, string_interner::DefaultSymbol);
+#[derive(Clone)]
+pub struct Symbol(Weak<RwLock<SymbolScopeData>>, string_interner::DefaultSymbol);
+
+impl Eq for Symbol {}
+
+impl PartialEq for Symbol {
+    fn eq(&self, other: &Self) -> bool {
+        self.1 == other.1
+    }
+}
 
 impl Symbol {
-    pub fn scope(&self) -> &SymbolScope {
-        &self.0
+    pub fn scope(&self) -> Option<SymbolScope> {
+        self.0.upgrade().map(SymbolScope)
     }
 }
 
 impl PartialOrd for Symbol {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
+        Some(self.1.cmp(&other.1))
     }
 }
 
@@ -200,9 +212,14 @@ impl std::hash::Hash for Symbol {
 
 impl std::fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0
-            .resolving(self, |s| write!(f, "{s}"))
-            .unwrap_or_else(|| write!(f, "<Sym{}>", self.1.to_usize()))
+        if let Some(scope) = self.scope() {
+            if let Ok(lock) = scope.0.read() {
+                if let Some(s) = lock.table.resolve(self.1) {
+                    return write!(f, "{}", s);
+                }
+            }
+        }
+        write!(f, "<Sym{}>", self.1.to_usize())
     }
 }
 
@@ -275,32 +292,32 @@ mod tests {
     #[test]
     fn prove_positive_0() {
         let s = SymbolScope::default();
-        assert!(s.prove_positive_or_zero(&s.parse_tdim("0").unwrap()));
+        assert!(s.parse_tdim("0").unwrap().prove_positive_or_zero());
     }
 
     #[test]
     fn prove_positive_1() {
         let s = SymbolScope::default();
-        assert!(s.prove_positive_or_zero(&s.parse_tdim("1").unwrap()));
+        assert!(s.parse_tdim("1").unwrap().prove_positive_or_zero());
     }
 
     #[test]
     fn prove_positive_neg1() {
         let s = SymbolScope::default();
-        assert!(!s.prove_positive_or_zero(&s.parse_tdim("-1").unwrap()));
+        assert!(!s.parse_tdim("-1").unwrap().prove_positive_or_zero());
     }
 
     #[test]
     fn prove_positive_add_0() {
         let s = SymbolScope::default();
-        assert!(!s.prove_positive_or_zero(&s.parse_tdim("s+1").unwrap()));
+        assert!(!s.parse_tdim("s+1").unwrap().prove_positive_or_zero());
     }
 
     #[test]
     fn prove_positive_with_axiom() {
         let s = SymbolScope::default();
         s.add_inequality("s>=0").unwrap();
-        assert!(s.prove_positive_or_zero(&s.parse_tdim("s").unwrap()));
+        assert!(s.parse_tdim("s").unwrap().prove_positive_or_zero());
     }
 
     #[test]
@@ -309,6 +326,6 @@ mod tests {
         s.add_inequality("s>=0").unwrap();
         s.add_inequality("p>=0").unwrap();
         s.add_inequality("p+s<4096").unwrap();
-        assert!(s.prove_positive_or_zero(&s.parse_tdim("4096-p").unwrap()));
+        assert!(s.parse_tdim("4096-p").unwrap().prove_positive_or_zero());
     }
 }
