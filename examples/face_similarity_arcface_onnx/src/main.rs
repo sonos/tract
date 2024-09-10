@@ -16,7 +16,7 @@ struct CliArgs {
 
 fn main() -> Result<(), Error> {
     let args = CliArgs::parse();
-    println!("face1 {:#?}, \n face2 {:?}", &args.face1, &args.face2);
+    println!("face1 {:#?},\nface2 {:?}", &args.face1, &args.face2);
     let face1 = image::open(&args.face1)?;
     let face2 = image::open(&args.face2)?;
 
