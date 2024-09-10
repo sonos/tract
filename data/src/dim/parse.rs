@@ -6,7 +6,7 @@ use nom::combinator::{all_consuming, map, map_res, recognize};
 use nom::multi::{many0, separated_list0};
 use nom::sequence::{delimited, pair, preceded, separated_pair};
 use nom::IResult;
-use sym::Inequality;
+use sym::Assertions;
 
 pub fn parse_tdim(symbol_table: &SymbolScope, input: &str) -> TractResult<TDim> {
     match all_consuming(|i| expr(symbol_table, i))(input) {
@@ -15,26 +15,26 @@ pub fn parse_tdim(symbol_table: &SymbolScope, input: &str) -> TractResult<TDim> 
     }
 }
 
-pub fn parse_inequality(symbol_table: &SymbolScope, input: &str) -> TractResult<Inequality> {
+pub fn parse_inequality(symbol_table: &SymbolScope, input: &str) -> TractResult<Assertions> {
     match all_consuming(|i| inequality(symbol_table, i))(input) {
         Ok(pair) => Ok(pair.1),
         Err(e) => bail!("Failed to parse {:?}, {:?}", input, e),
     }
 }
 
-fn inequality<'i>(s: &SymbolScope, i: &'i str) -> IResult<&'i str, Inequality> {
+fn inequality<'i>(s: &SymbolScope, i: &'i str) -> IResult<&'i str, Assertions> {
     alt((
         map(separated_pair(|i| expr(s, i), stag("<="), |i| expr(s, i)), |(a, b)| {
-            Inequality::LTE(a, b)
+            Assertions::LTE(a, b)
         }),
         map(separated_pair(|i| expr(s, i), stag(">="), |i| expr(s, i)), |(a, b)| {
-            Inequality::GTE(a, b)
+            Assertions::GTE(a, b)
         }),
         map(separated_pair(|i| expr(s, i), stag("<"), |i| expr(s, i)), |(a, b)| {
-            Inequality::LT(a, b)
+            Assertions::LT(a, b)
         }),
         map(separated_pair(|i| expr(s, i), stag(">"), |i| expr(s, i)), |(a, b)| {
-            Inequality::GT(a, b)
+            Assertions::GT(a, b)
         }),
     ))(i)
 }
@@ -170,7 +170,7 @@ mod test {
         let table = SymbolScope::default();
         assert_eq!(
             parse_inequality(&table, "P+S<4096").unwrap(),
-            Inequality::LT(parse_tdim(&table, "P+S").unwrap(), 4096.to_dim())
+            Assertions::LT(parse_tdim(&table, "P+S").unwrap(), 4096.to_dim())
         );
     }
 }

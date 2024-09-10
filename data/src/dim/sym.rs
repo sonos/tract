@@ -140,16 +140,16 @@ impl fmt::Debug for SymbolScope {
 
 #[derive(Debug, PartialEq, Clone, Hash)]
 #[allow(clippy::upper_case_acronyms)]
-pub enum Inequality {
+pub enum Assertions {
     LT(TDim, TDim),
     GT(TDim, TDim),
     LTE(TDim, TDim),
     GTE(TDim, TDim),
 }
 
-impl Display for Inequality {
+impl Display for Assertions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use Inequality::*;
+        use Assertions::*;
         match self {
             LT(l, r) => write!(f, "{l} < {r}"),
             GT(l, r) => write!(f, "{l} > {r}"),
@@ -159,9 +159,9 @@ impl Display for Inequality {
     }
 }
 
-impl Inequality {
+impl Assertions {
     pub fn as_known_positive(&self) -> Option<TDim> {
-        use Inequality::*;
+        use Assertions::*;
         match self {
             GTE(left, right) => Some(left.clone() - right),
             GT(left, right) => Some(left.clone() - 1 - right),
