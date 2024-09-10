@@ -52,8 +52,58 @@ members = [
     "test-rt/test-unit-core",
     "test-rt/test-onnx-core",
     "test-rt/test-nnef-cycle",
-    "test-rt/test-tflite",
-    "metal"
+    "test-rt/test-tflite"
+]
+
+# same, without metal and tflite which are probelematic on specific targets
+default-members = [
+    "data",
+    "linalg",
+    "core",
+    "pulse",
+    "pulse-opl",
+    "hir",
+    "nnef",
+    "nnef/nnef-resources",
+    "tensorflow",
+    "onnx-opl",
+    "onnx",
+    "libcli",
+    "cli",
+    "extra",
+
+    "api",
+    "api/rs",
+    "api/ffi",
+    "api/proxy",
+    "api/proxy/sys",
+
+    "examples/face_detection_yolov8onnx_example",
+    "examples/tensorflow-mobilenet-v2",
+    "examples/tflite-mobilenet-v3",
+    "examples/keras-tract-tf2",
+    "examples/nnef-dump-mobilenet-v2",
+    "examples/nnef-mobilenet-v2",
+    "examples/onnx-mobilenet-v2",
+    "examples/pytorch-albert-v2",
+    "examples/pytorch-resnet",
+
+    "harness/core-proptest-pulse",
+    "harness/lstm-proptest-onnx-vs-tf",
+    "harness/nnef-inceptionv3",
+    "harness/tf-inceptionv3",
+    "harness/tf-mobilenet-v2",
+    "harness/tf-moz-deepspeech",
+    "harness/tfl-mobilenet-v2-q",
+
+    "test-rt/infra",
+    "test-rt/suite-unit",
+    "test-rt/suite-onnx",
+    "test-rt/test-f16",
+    "test-rt/test-blas",
+    "test-rt/test-unit-core",
+    "test-rt/test-onnx-core",
+    "test-rt/test-nnef-cycle",
 ]
 
 [workspace.dependencies]
