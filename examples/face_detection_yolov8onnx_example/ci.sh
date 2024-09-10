@@ -3,7 +3,7 @@
 set -ex
 
 # download pre-exported onnx model
-wget -O yolov8n-face.onnx --no-check-certificate -r "https://drive.google.com/uc?export=download&id=1PYAG1ypAuwh_rDROaUF0OdLmBqOefBGL"
+wget -q "https://tract-ci-builds.s3.amazonaws.com/model/yolov8n-face.onnx"
 
 # on win/linux 
 cargo run -- --input-image grace_hopper.jpg --weights yolov8n-face.onnx 
