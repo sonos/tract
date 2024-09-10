@@ -69,8 +69,6 @@ impl Bbox {
             bbox_height,
         ))
     }
-
-
 }
 
 

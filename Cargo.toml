@@ -19,6 +19,9 @@ members = [
 
     "tflite",
 
+    "metal",
+
+
     "api",
     "api/rs",
     "api/ffi",
@@ -26,6 +29,7 @@ members = [
     "api/proxy/sys",
 
     "examples/face_detection_yolov8onnx_example",
+    "examples/face_similarity_arcface_onnx",
     "examples/tensorflow-mobilenet-v2",
     "examples/tflite-mobilenet-v3",
     "examples/keras-tract-tf2",
@@ -52,8 +56,7 @@ members = [
     "test-rt/test-unit-core",
     "test-rt/test-onnx-core",
     "test-rt/test-nnef-cycle",
-    "test-rt/test-tflite",
-    "metal"
+    "test-rt/test-tflite"
 ]
 
 [workspace.dependencies]
