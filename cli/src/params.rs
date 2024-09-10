@@ -10,6 +10,7 @@ use tract_core::ops::konst::Const;
 use tract_itertools::Itertools;
 use tract_libcli::profile::BenchLimits;
 use tract_nnef::tensors::read_tensor;
+#[allow(unused_imports)]
 use tract_core::transform::ModelTransform;
 use tract_core::internal::*;
 use tract_core::model::TypedModel;
