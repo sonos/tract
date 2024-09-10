@@ -15,6 +15,7 @@ use crate::ops::matmul::quant::{
 use crate::ops::matmul::pack::MatMatMulPack;
 use crate::ops::nn::{Reduce, Reducer};
 
+#[allow(clippy::large_enum_variant)]
 pub enum AxesOrPatch<'a> {
     Axes(&'a Axis, &'a Axis, &'a Axis),
     Patch(TypedModelPatch),

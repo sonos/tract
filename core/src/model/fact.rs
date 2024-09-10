@@ -294,14 +294,17 @@ impl TypedFact {
     }
 
     pub fn without_value(&self) -> Self {
-        Self::dt_shape(self.datum_type, self.shape.clone())
+        TypedFact {
+            datum_type: self.datum_type,
+            shape: self.shape.clone(),
+            konst: None,
+            uniform: None,
+            opaque_fact: self.opaque_fact.clone(),
+        }
     }
 
-    pub fn with_opaque_metadata<O: Into<Box<dyn OpaqueFact>>>(
-        mut self,
-        opaque_metadata: O,
-    ) -> Self {
-        self.opaque_fact = Some(opaque_metadata.into());
+    pub fn with_opaque_fact<O: Into<Box<dyn OpaqueFact>>>(mut self, opaque_fact: O) -> Self {
+        self.opaque_fact = Some(opaque_fact.into());
         self
     }
 }
@@ -395,16 +398,18 @@ impl<'a> From<&'a Arc<Tensor>> for TypedFact {
 
 impl fmt::Debug for TypedFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(k) = &self.konst {
-            write!(fmt, "{k:?}")?
-        } else if self.rank() > 0 {
-            write!(fmt, "{:?},{:?}", self.shape, self.datum_type)?
-        } else {
-            write!(fmt, "{:?}", self.datum_type)?
-        };
-        if let Some(of) = &self.opaque_fact {
-            write!(fmt, " {:?}", of)?;
-        }
+        match (self.konst.as_ref(), self.opaque_fact.as_ref()) {
+            (Some(ref k), None) => write!(fmt, "{k:?}"),
+            (Some(ref k), Some(meta)) => write!(fmt, "{meta:?} {k:?}"),
+            (None, None) if self.rank() > 0 => {
+                write!(fmt, "{:?},{:?}", self.shape, self.datum_type)
+            }
+            (None, Some(ref meta)) if self.rank() > 0 => {
+                write!(fmt, "{:?},{:?},{:?}", self.shape, self.datum_type, meta)
+            }
+            (None, Some(ref meta)) => write!(fmt, "{:?}, {:?}", self.datum_type, meta),
+            (None, None) => write!(fmt, "{:?}", self.datum_type),
+        }?;
         Ok(())
     }
 }

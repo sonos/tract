@@ -8,10 +8,10 @@ fragment tract_core_properties(
 
 graph network(input) -> (output) {
   input = external(shape = [2, 2, 33]);
-  a_6 = [[[2.0], [3.0]]];
-  mul_1_0 = mul(input, a_6);
-  b_3 = [[[2.0], [3.0]], [[2.0], [3.0]]];
-  mul_2_0 = mul(input, b_3);
+  a = [[[2.0], [3.0]]];
+  mul_1_0 = mul(input, a);
+  b = [[[2.0], [3.0]], [[2.0], [3.0]]];
+  mul_2_0 = mul(input, b);
   output_1 = add(mul_1_0, mul_2_0);
   output = output_1;
 }

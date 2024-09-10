@@ -12,7 +12,7 @@ use crate::ops::FrozenOpState;
 
 use self::order::{eval_order_for_nodes, eval_order_opt_ram_for_nodes};
 
-#[derive(Default, Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct PlanOptions {
     /// Use the simple ordering instead of the newer memory friendly one
     pub skip_order_opt_ram: bool,
@@ -125,11 +125,13 @@ where
             values_needed_until_step[o.node] = order.len();
         }
         let mut flush_lists: Vec<TVec<usize>> = vec![tvec!(); order.len() + 1];
+    
         for (node, &flush_at) in values_needed_until_step.iter().enumerate() {
             if flush_at != 0 && !model.borrow().node(node).op_is::<Const>() {
                 flush_lists[flush_at].push(node)
             }
         }
+        
         #[allow(clippy::mutable_key_type)]
         let mut symbols: std::collections::HashSet<Symbol> = Default::default();
         for node in &model.borrow().nodes {

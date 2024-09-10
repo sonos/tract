@@ -60,8 +60,9 @@ fn einsum_rules(
         .translate_to_axis_ops()?;
     let transpose_a = a_transform.len() > a_transform_t.len();
     let a_transform = if transpose_a { a_transform_t } else { a_transform };
-    for (ix, op) in a_transform.into_iter().enumerate() {
-        wire[0] = patch.wire_node(format!("{node_name}.fix_a.{ix}"), op, &[wire[0]])?[0];
+    let name = format!("{node_name}.fix_a");
+    for op in a_transform {
+        wire[0] = patch.wire_node(&name, op, &[wire[0]])?[0];
     }
     // terrible hack to maintain opaque fact through eager propatagation of constant through the
     // axes transformation
@@ -85,8 +86,9 @@ fn einsum_rules(
         .translate_to_axis_ops()?;
     let transpose_b = b_transform.len() > b_transform_t.len();
     let b_transform = if transpose_b { b_transform_t } else { b_transform };
-    for (ix, op) in b_transform.into_iter().enumerate() {
-        wire[1] = patch.wire_node(format!("{node_name}.fix_b.{ix}"), op, &[wire[1]])?[0];
+    let name = format!("{node_name}.fix_b");
+    for op in b_transform {
+        wire[1] = patch.wire_node(&name, op, &[wire[1]])?[0];
     }
 
     let c_order_es: String = op.axes.axes(InOut::Out(0)).map(|a| a.repr).collect();

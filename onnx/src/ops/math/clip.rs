@@ -77,7 +77,7 @@ impl Expansion for Clip11 {
         let mut wire = inputs[0];
         if let Some(min) = self.input_min {
             wire = wire_with_rank_broadcast(
-                &format!("{name}.min"),
+                format!("{name}.min"),
                 model,
                 tract_hir::ops::math::max(),
                 &[wire, inputs[min]],
@@ -85,7 +85,7 @@ impl Expansion for Clip11 {
         }
         if let Some(max) = self.input_max {
             wire = wire_with_rank_broadcast(
-                &format!("{name}.max"),
+                format!("{name}.max"),
                 model,
                 tract_hir::ops::math::min(),
                 &[wire, inputs[max]],

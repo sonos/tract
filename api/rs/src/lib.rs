@@ -15,6 +15,7 @@ use tract_nnef::prelude::{
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
 use tract_pulse::model::{PulsedModel, PulsedModelExt};
+use tract_pulse::internal::PlanOptions;
 use tract_pulse::WithPulse;
 
 use tract_api::*;
@@ -273,6 +274,7 @@ impl ModelInterface for Model {
                 &self.0,
                 &BenchLimits::default(),
                 &mut annotations,
+                &PlanOptions::default(),
                 &inputs,
                 None,
                 true,

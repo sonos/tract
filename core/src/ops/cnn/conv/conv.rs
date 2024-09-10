@@ -99,7 +99,7 @@ impl Conv {
         } else {
             let bias = AxisOp::wire_split_axis(
                 model,
-                &format!("{name}.reformat_bias"),
+                format!("{name}.reformat_bias"),
                 bias,
                 0,
                 self.group,
@@ -601,7 +601,7 @@ impl Conv {
             taps[1] =
                 self.wire_kernel_as_g_o_ihw(&mut patch, &format!("{name}.filters"), taps[1])?[0];
             taps[1] =
-                patch.wire_node(&format!("{name}.filters_as_co_ci"), AxisOp::Rm(0), &[taps[1]])?[0];
+                patch.wire_node(format!("{name}.filters_as_co_ci"), AxisOp::Rm(0), &[taps[1]])?[0];
 
             while axes.rank(InOut::In(1)) > 0 {
                 axes = axes.remove_axis_occurency(InOut::In(1), 0)?;

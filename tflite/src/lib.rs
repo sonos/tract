@@ -14,7 +14,8 @@ mod tensors;
     clippy::extra_unused_lifetimes,
     clippy::missing_safety_doc,
     clippy::derivable_impls,
-    clippy::needless_lifetimes
+    clippy::needless_lifetimes,
+    clippy::too_long_first_doc_paragraph
 )]
 mod tflite_generated;
 pub use tflite_generated::tflite;

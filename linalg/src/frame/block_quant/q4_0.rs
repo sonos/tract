@@ -329,7 +329,7 @@ mod tests {
         let packer = PackedFormat::new(f32::datum_type(), r, 128);
         let packed_f32 = packer.pack_tensor(&weights_f32, 1, 0)?;
 
-        let q4 = q.quant_f32(&weights_f32.as_slice::<f32>()?)?;
+        let q4 = q.quant_f32(weights_f32.as_slice::<f32>()?)?;
         let packed_q4 = q.pack(&q4, k, r, zip, scales_at_end)?;
 
         for panel in 0..packed_f32.panels_count() {

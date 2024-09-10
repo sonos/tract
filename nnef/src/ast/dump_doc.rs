@@ -1,6 +1,6 @@
 use crate::ast::dump::Dumper;
-use std::path::Path;
 use crate::ast::*;
+use std::path::Path;
 use tract_core::internal::*;
 
 pub struct DocDumper<'a> {
@@ -8,7 +8,7 @@ pub struct DocDumper<'a> {
 }
 
 impl<'a> DocDumper<'a> {
-    pub fn new(w: &'a mut dyn std::io::Write) -> DocDumper {
+    pub fn new(w: &mut dyn std::io::Write) -> DocDumper {
         DocDumper { w }
     }
 
@@ -22,7 +22,11 @@ impl<'a> DocDumper<'a> {
         for unit_el_wise_op in registry.unit_element_wise_ops.iter() {
             // we are assuming function names will not exhibit crazy node name weirdness, so we can
             // dispense with escaping
-            writeln!(self.w, "fragment {}( x: tensor<scalar> ) -> (y: tensor<scalar>);", &unit_el_wise_op.0.0)?;
+            writeln!(
+                self.w,
+                "fragment {}( x: tensor<scalar> ) -> (y: tensor<scalar>);",
+                &unit_el_wise_op.0 .0
+            )?;
         }
         writeln!(self.w)?;
 
@@ -32,17 +36,14 @@ impl<'a> DocDumper<'a> {
                 id: el_wise_op.0.clone(),
                 generic_decl: None,
                 parameters: el_wise_op.3.clone(),
-                results: vec![Result_ { id: "output".into(), spec: TypeName::Any.tensor() }]
+                results: vec![Result_ { id: "output".into(), spec: TypeName::Any.tensor() }],
             };
             Dumper::new(&Nnef::default(), self.w).with_doc().fragment_decl(&fragment_decl)?;
         }
         // Generate and write Primitive declarations.
         for primitive in registry.primitives.values().sorted_by_key(|v| &v.decl.id) {
-            primitive.docstrings.iter().flatten()
-                .try_for_each(|d| {
-                    writeln!(self.w, "# {d}")
-                })?;
-            
+            primitive.docstrings.iter().flatten().try_for_each(|d| writeln!(self.w, "# {d}"))?;
+
             Dumper::new(&Nnef::default(), self.w).with_doc().fragment_decl(&primitive.decl)?;
             writeln!(self.w, ";\n")?;
         }
@@ -64,8 +65,9 @@ impl<'a> DocDumper<'a> {
     pub fn to_directory(path: impl AsRef<Path>, nnef: &Nnef) -> TractResult<()> {
         for registry in nnef.registries.iter() {
             let registry_file = path.as_ref().join(format!("{}.nnef", registry.id.0));
-            let mut file = std::fs::File::create(&registry_file)
-                .with_context(|| anyhow!("Error while creating file at path: {:?}", registry_file))?;
+            let mut file = std::fs::File::create(&registry_file).with_context(|| {
+                anyhow!("Error while creating file at path: {:?}", registry_file)
+            })?;
             DocDumper::new(&mut file).registry(registry)?;
         }
         Ok(())
@@ -100,8 +102,9 @@ mod test {
         let mut dumper = DocDumper::new(&mut docbytes);
         dumper.registry(&registry)?;
         let docstring = String::from_utf8(docbytes)?;
-        assert_eq!(docstring, 
-r#"# test_doc registry gather all the needed primitives
+        assert_eq!(
+            docstring,
+            r#"# test_doc registry gather all the needed primitives
 # to test the documentation dumper
 
 
@@ -109,8 +112,8 @@ fragment tract_primitive(
     input: tensor<integer>
 ) -> (output: tensor<scalar>);
 
-"#);
+"#
+        );
         Ok(())
     }
 }
-

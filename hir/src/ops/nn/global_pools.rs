@@ -42,7 +42,7 @@ impl Expansion for GlobalAvgPool {
             &[div],
         )?;
         wire_with_rank_broadcast(
-            &format!("{name}.norm"),
+            format!("{name}.norm"),
             target,
             tract_core::ops::math::div(),
             &[wire[0], div[0]],
