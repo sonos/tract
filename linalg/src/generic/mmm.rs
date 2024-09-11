@@ -128,6 +128,24 @@ unsafe fn add_mat_mul_pq40_scales_at_end<const MR: usize, const NR: usize, TB, T
     }
 }
 
+unsafe fn add_unicast<const MR: usize, const NR: usize, TI, TO>(
+    ab: &mut [[TI; NR]; MR],
+    other: &OutputStoreKer,
+) where
+    TI: LADatum,
+    TO: LADatum + AsPrimitive<TI>,
+{
+    for i in 0usize..MR {
+        for j in 0usize..NR {
+            let value: *const TO = other
+                .ptr
+                .offset(other.row_byte_stride * i as isize + other.col_byte_stride * j as isize)
+                as _;
+            ab[i].as_mut()[j] += (*value).as_();
+        }
+    }
+}
+
 unsafe fn store_t<const MR: usize, const NR: usize, TC, TI>(
     tile: &OutputStoreKer,
     ab: &[[TI; NR]; MR],
@@ -151,9 +169,11 @@ unsafe fn kernel<TI, const MR: usize, const NR: usize>(mut pnl: *const FusedKerS
 where
     TI: LADatum + ScaleShiftAndRound + AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
-    i8: AsPrimitive<TI>,
     f16: AsPrimitive<TI>,
     f32: AsPrimitive<TI>,
+    f64: AsPrimitive<TI>,
+    i8: AsPrimitive<TI>,
+    i32: AsPrimitive<TI>,
 {
     unsafe {
         let mut ab = [[TI::zero(); NR]; MR];
@@ -192,28 +212,17 @@ where
                         }
                     }
                 }
-                FusedKerSpec::AddUnicast(tile) => {
-                    if tile.item_size == TI::datum_type().size_of() {
-                        for i in 0usize..MR {
-                            for j in 0usize..NR {
-                                let value: *const TI = tile.ptr.offset(
-                                    tile.row_byte_stride * i as isize
-                                        + tile.col_byte_stride * j as isize,
-                                ) as _;
-                                ab[i].as_mut()[j] += *value;
-                            }
-                        }
-                    } else if TI::datum_type() == i32::datum_type() && tile.item_size == 1 {
-                        for i in 0usize..MR {
-                            for j in 0usize..NR {
-                                let value: i8 = *(tile.ptr.offset(
-                                    tile.row_byte_stride * i as isize
-                                        + tile.col_byte_stride * j as isize,
-                                ) as *const i8);
-                                let acc: *mut i32 = ab[i].as_mut().as_mut_ptr().add(j) as *mut i32;
-                                *acc += value as i32;
-                            }
-                        }
+                FusedKerSpec::AddUnicast(other) => {
+                    if TI::datum_type().is_float() && other.item_size == 2 {
+                        add_unicast::<MR, NR, TI, f16>(&mut ab, &other)
+                    } else if TI::datum_type().is_float() && other.item_size == 4 {
+                        add_unicast::<MR, NR, TI, f32>(&mut ab, &other)
+                    } else if TI::datum_type().is_float() && other.item_size == 8 {
+                        add_unicast::<MR, NR, TI, f64>(&mut ab, &other)
+                    } else if TI::datum_type() == i32::datum_type() && other.item_size == 1 {
+                        add_unicast::<MR, NR, TI, i8>(&mut ab, &other)
+                    } else if TI::datum_type() == i32::datum_type() && other.item_size == 4 {
+                        add_unicast::<MR, NR, TI, i32>(&mut ab, &other)
                     } else {
                         unimplemented!("Missing AddUnicast type");
                     }
@@ -286,13 +295,13 @@ const PQ40_R4_SE: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 4,
 
 MMMKernelWrapper!(f16, generic_f16_4x4; kernel::<f16, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true);
 MMMKernelWrapper!(f16, generic_f16_4x1; kernel::<f16, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true,
-     packing_defs: {
-         const F16_B: PackedFormat = PackedFormat::new(DatumType::F16, 1, 4);
-         const F32_B: PackedFormat = PackedFormat::new(DatumType::F32, 1, 4);
-         const PQ40_F16: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4, &F16_B);
-         const PQ40_F16_SE: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4_SE, &F16_B);
-         const PQ40_F32: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4, &F32_B);
-     },
+ packing_defs: {
+     const F16_B: PackedFormat = PackedFormat::new(DatumType::F16, 1, 4);
+     const F32_B: PackedFormat = PackedFormat::new(DatumType::F32, 1, 4);
+     const PQ40_F16: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4, &F16_B);
+     const PQ40_F16_SE: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4_SE, &F16_B);
+     const PQ40_F32: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4, &F32_B);
+ },
  packings: PQ40_F16 PQ40_F16_SE PQ40_F32,
  test: mmm_packed_packed_tests!{ true, generic_f16_4x1, q40f16:1 },
  test: mmm_packed_packed_tests!{ true, generic_f16_4x1, q40f16se:2 },
@@ -303,13 +312,13 @@ MMMKernelWrapper!(f16, generic_f16_4x1; kernel::<f16, 4, 1>; 4, 1; 4, 4; 0, 0; n
 
 MMMKernelWrapper!(f32, generic_f32_4x4; kernel::<f32, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true);
 MMMKernelWrapper!(f32, generic_f32_4x1; kernel::<f32, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true,
-     packing_defs: {
-         const F16_B: PackedFormat = PackedFormat::new(DatumType::F16, 1, 4);
-         const F32_B: PackedFormat = PackedFormat::new(DatumType::F32, 1, 4);
-         const PQ40_F16: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4, &F16_B);
-         const PQ40_F32: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4, &F32_B);
-         const PQ40_F16_SE: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4_SE, &F16_B);
-     },
+ packing_defs: {
+     const F16_B: PackedFormat = PackedFormat::new(DatumType::F16, 1, 4);
+     const F32_B: PackedFormat = PackedFormat::new(DatumType::F32, 1, 4);
+     const PQ40_F16: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4, &F16_B);
+     const PQ40_F32: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4, &F32_B);
+     const PQ40_F16_SE: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4_SE, &F16_B);
+ },
  packings: PQ40_F16 PQ40_F16_SE PQ40_F32,
  test: mmm_packed_packed_tests!{ true, generic_f32_4x1, q40f16:1 },
  test: mmm_packed_packed_tests!{ true, generic_f32_4x1, q40f16se:2 },
