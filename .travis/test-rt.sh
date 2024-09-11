@@ -37,6 +37,10 @@ do
         echo "$WHITE ### $c ### $NC"
         echo
         (cd $c; cargo test -q $CARGO_EXTRA)
+        if [ -n "$CI" ]
+        then
+            cargo clean
+        fi
     fi
 done
 
