@@ -55,10 +55,10 @@ jobs:
         os: [ ubuntu-latest, macOS-latest ]
       fail-fast: false
     runs-on: ${{ matrix.os }}
-    steps:
     env:
       RUSTFLAGS: "-D warnings"
       RUST_VERSION: ${{matrix.rust}}
+    steps:
     - uses: actions/checkout@v3
     - name: Rustup update
       run: |
