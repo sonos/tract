@@ -56,27 +56,20 @@ jobs:
       fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
+    env:
+      RUSTFLAGS: "-D warnings"
+      RUST_VERSION: ${{matrix.rust}}
     - uses: actions/checkout@v3
     - name: Rustup update
-      run: rustup update
-    - name: LLVM setup
-      run: sudo apt-get install -y llvm
-    - name: cargo check, -D warnings
-      if: runner.os == 'Linux'
-      env:
-        RUSTFLAGS: "-D warnings"
-        RUST_VERSION: ${{matrix.rust}}
       run: |
-          rustc --version
-          cargo check --exclude tract-metal --exclude test-metal --workspace
+        ROOT=. .travis/ci-system-setup.sh
+    - name: cargo check, -D warnings
+    - name: cargo check test-tflite, -D warnings 
+      if: runner.os == 'Linux'
+      run: cargo check -p test-tflite
     - name: cargo check, -D warnings
       if: runner.os == 'macOS'
-      env:
-        RUSTFLAGS: "-D warnings"
-        RUST_VERSION: ${{matrix.rust}}
-      run: |
-          rustc --version
-          cargo check 
+      run: cargo check -p metal -p test-metal
 
   cargo-clippy:
     strategy:
@@ -85,26 +78,22 @@ jobs:
         rust: [ stable, beta, nightly ]
       fail-fast: false
     runs-on: ${{ matrix.os }}
+    env:
+      RUST_VERSION: ${{matrix.rust}}
+      RUSTFLAGS: "-D warnings --force-warn unknown_lints"
+      ROOT: .
     steps:
     - uses: actions/checkout@v3
     - name: Rustup update, install clippy
       run: |
-        ROOT=. .travis/ci-system-setup.sh
+        .travis/ci-system-setup.sh
         rustup +${{matrix.rust}} component add clippy
-      env:
-        RUST_VERSION: ${{matrix.rust}}
     - name: Run cargo-clippy
       if: runner.os == 'Linux'
-      run: cargo clippy --exclude tract-metal --exclude test-metal --workspace
-      env:
-        RUSTFLAGS: "-D warnings --force-warn unknown_lints"
-        RUST_VERSION: ${{matrix.rust}}
+      run: cargo clippy -p test-tflite
     - name: Run cargo-clippy
       if: runner.os == 'macOS'
-      run: cargo clippy 
-      env:
-        RUSTFLAGS: "-D warnings --force-warn unknown_lints"
-        RUST_VERSION: ${{matrix.rust}}
+      run: cargo clippy -p metal -p test-metal
 
   cargo-deny:
     strategy:
