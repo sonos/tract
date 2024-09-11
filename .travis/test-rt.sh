@@ -39,6 +39,7 @@ do
         (cd $c; cargo test -q $CARGO_EXTRA)
         if [ -n "$CI" ]
         then
+            df -h
             cargo clean
         fi
     fi
