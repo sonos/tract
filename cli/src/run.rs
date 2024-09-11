@@ -142,10 +142,10 @@ pub fn handle(
 fn run_regular(
     tract: &dyn Model,
     run_params: &RunParams,
-    matches: &clap::ArgMatches,
+    _matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> TractResult<TVec<Vec<TValue>>> {
-    let plan_options = crate::plan_options::plan_options_from_subcommand(matches)?;
+    let plan_options = crate::plan_options::plan_options_from_subcommand(sub_matches)?;
     let steps = sub_matches.is_present("steps");
     let check_f16_overflow = sub_matches.is_present("check-f16-overflow");
     let assert_sane_floats = sub_matches.is_present("assert-sane-floats");
