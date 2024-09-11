@@ -61,7 +61,7 @@ unsafe fn add_mat_mul<const MR: usize, const NR: usize, TI, TA, TB>(
     }
 }
 
-unsafe fn add_mat_mul_pq40<const MR: usize, const NR: usize, TI>(
+unsafe fn add_mat_mul_pq40<const MR: usize, const NR: usize, TB, TI>(
     pa: *const u8,
     pb: *const u8,
     k: usize,
@@ -69,12 +69,13 @@ unsafe fn add_mat_mul_pq40<const MR: usize, const NR: usize, TI>(
 ) where
     TI: LADatum,
     f16: AsPrimitive<TI>,
+    TB: AsPrimitive<TI>,
     i8: AsPrimitive<TI>,
 {
     assert!(k % Q4_0.block_len() == 0);
     let len = (k * MR) / Q4_0.block_len() * Q4_0.block_bytes();
     let mut pa = NibbleReader::for_slice(std::slice::from_raw_parts(pa, len));
-    let b = pb as *const TI;
+    let b = pb as *const TB;
     for bk in 0..k / 32 {
         let mut scales: [TI; MR] = [TI::zero(); MR];
         scales.iter_mut().for_each(|x| *x = pa.read_f16().as_());
@@ -84,14 +85,14 @@ unsafe fn add_mat_mul_pq40<const MR: usize, const NR: usize, TI>(
             let b = std::slice::from_raw_parts(b.add(NR * (ik + 32 * bk)), NR);
             for i in 0..MR {
                 for j in 0..NR {
-                    ab[i][j] += a[i] * b[j];
+                    ab[i][j] += a[i] * b[j].as_();
                 }
             }
         }
     }
 }
 
-unsafe fn add_mat_mul_pq40_scales_at_end<const MR: usize, const NR: usize, TI>(
+unsafe fn add_mat_mul_pq40_scales_at_end<const MR: usize, const NR: usize, TB, TI>(
     pa: *const u8,
     pb: *const u8,
     k: usize,
@@ -99,12 +100,13 @@ unsafe fn add_mat_mul_pq40_scales_at_end<const MR: usize, const NR: usize, TI>(
 ) where
     TI: LADatum,
     f16: AsPrimitive<TI>,
+    TB: AsPrimitive<TI>,
     i8: AsPrimitive<TI>,
 {
     assert!(k % Q4_0.block_len() == 0);
     let len = (k * MR) / Q4_0.block_len() * Q4_0.block_bytes();
     let mut pa = NibbleReader::for_slice(std::slice::from_raw_parts(pa, len));
-    let b = pb as *const TI;
+    let b = pb as *const TB;
     for bk in 0..k / 32 {
         let mut temp = [[TI::zero(); NR]; MR];
         for ik in 0..32 {
@@ -113,7 +115,7 @@ unsafe fn add_mat_mul_pq40_scales_at_end<const MR: usize, const NR: usize, TI>(
             let b = std::slice::from_raw_parts(b.add(NR * (ik + 32 * bk)), NR);
             for i in 0..MR {
                 for j in 0..NR {
-                    temp[i][j] += a[i] * b[j];
+                    temp[i][j] += a[i] * b[j].as_();
                 }
             }
         }
@@ -151,6 +153,7 @@ where
     usize: AsPrimitive<TI>,
     i8: AsPrimitive<TI>,
     f16: AsPrimitive<TI>,
+    f32: AsPrimitive<TI>,
 {
     unsafe {
         let mut ab = [[TI::zero(); NR]; MR];
@@ -242,9 +245,11 @@ where
                         if packing == 0 {
                             add_mat_mul::<MR, NR, TI, TI, TI>(pa, pb, k, &mut ab);
                         } else if packing == 1 {
-                            add_mat_mul_pq40(pa, pb, k, &mut ab);
+                            add_mat_mul_pq40::<MR, NR, f16, TI>(pa, pb, k, &mut ab);
                         } else if packing == 2 {
-                            add_mat_mul_pq40_scales_at_end(pa, pb, k, &mut ab)
+                            add_mat_mul_pq40_scales_at_end::<MR, NR, f16, TI>(pa, pb, k, &mut ab)
+                        } else if packing == 3 {
+                            add_mat_mul_pq40::<MR, NR, f32, TI>(pa, pb, k, &mut ab);
                         }
                     } else if TI::datum_type() == i32::datum_type() {
                         // transmute to allow using explicitly i3 in add_mat_mul generic params
@@ -277,36 +282,47 @@ where
 const PQ40_R4: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 4, 0, false);
 const PQ40_R4_SE: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 4, 0, true);
 
+// f16 kernels
+
 MMMKernelWrapper!(f16, generic_f16_4x4; kernel::<f16, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true);
 MMMKernelWrapper!(f16, generic_f16_4x1; kernel::<f16, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true,
      packing_defs: {
          const F16_B: PackedFormat = PackedFormat::new(DatumType::F16, 1, 4);
+         const F32_B: PackedFormat = PackedFormat::new(DatumType::F32, 1, 4);
          const PQ40_F16: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4, &F16_B);
          const PQ40_F16_SE: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4_SE, &F16_B);
+         const PQ40_F32: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4, &F32_B);
      },
- packings: PQ40_F16 PQ40_F16_SE,
+ packings: PQ40_F16 PQ40_F16_SE PQ40_F32,
  test: mmm_packed_packed_tests!{ true, generic_f16_4x1, q40f16:1 },
- test: mmm_packed_packed_tests!{ true, generic_f16_4x1, q40f16se:2 }
+ test: mmm_packed_packed_tests!{ true, generic_f16_4x1, q40f16se:2 },
+ test: mmm_packed_packed_tests!{ true, generic_f16_4x1, q40f32:3 }
 );
 
-MMMKernelWrapper!(f32, generic_f32_4x4; kernel::<f32, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true,
-     packing_defs: {
-         const F32_B: PackedFormat = PackedFormat::new(DatumType::F32, 4, 4);
-         const PQ40_F32: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4, &F32_B);
-     },
- packings: PQ40_F32,
- test: mmm_packed_packed_tests!{ true, generic_f32_4x4, q40f32:1 }
-);
+// f64 kernels
+
+MMMKernelWrapper!(f32, generic_f32_4x4; kernel::<f32, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true);
 MMMKernelWrapper!(f32, generic_f32_4x1; kernel::<f32, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true,
      packing_defs: {
+         const F16_B: PackedFormat = PackedFormat::new(DatumType::F16, 1, 4);
          const F32_B: PackedFormat = PackedFormat::new(DatumType::F32, 1, 4);
+         const PQ40_F16: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4, &F16_B);
          const PQ40_F32: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4, &F32_B);
+         const PQ40_F16_SE: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&super::PQ40_R4_SE, &F16_B);
      },
- packings: PQ40_F32,
- test: mmm_packed_packed_tests!{ true, generic_f32_4x1, q40f32:1 }
+ packings: PQ40_F16 PQ40_F16_SE PQ40_F32,
+ test: mmm_packed_packed_tests!{ true, generic_f32_4x1, q40f16:1 },
+ test: mmm_packed_packed_tests!{ true, generic_f32_4x1, q40f16se:2 },
+ test: mmm_packed_packed_tests!{ true, generic_f32_4x1, q40f32:3 }
 );
+
+// f64 kernels
+
 MMMKernelWrapper!(f64, generic_f64_4x4; kernel::<f64, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true);
 MMMKernelWrapper!(f64, generic_f64_4x1; kernel::<f64, 4, 1>; 4, 1; 4, 4; 0, 0; no_prefetch, true);
+
+// I32 kernels
+
 MMMKernelWrapper!(i32, generic_i32_4x4; kernel::<i32, 4, 4>; 4, 4; 4, 4; 0, 0; no_prefetch, true,
  packing_defs: {
      const I8_A: PackedFormat = PackedFormat::new(DatumType::I8, 4, 4);
@@ -326,6 +342,8 @@ MMMKernelWrapper!(i32, generic_i32_4x1; kernel::<i32, 4, 1>; 4, 1; 4, 4; 0, 0; n
  packings: I8_I8,
  test: mmm_packed_packed_tests!{ true, generic_i32_4x1, i8i8:1 }
 );
+
+// extra tests kernels
 
 #[cfg(test)]
 MMMKernelWrapper!(f32, generic_f32_3x2; kernel::<f32, 3, 2>; 3, 2; 4, 4; 0, 0; no_prefetch, true);
