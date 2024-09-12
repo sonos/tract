@@ -31,7 +31,7 @@ do
     cargo -q test $CARGO_EXTRA -q -p tract-$c
 done
 
-if [ `uname` = "Darwin" ]
+if [ `uname` = "Darwin" -a -z "$CI" ]
 then
     echo
     echo "$WHITE ### metal ### $NC"
