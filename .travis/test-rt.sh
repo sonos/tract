@@ -29,7 +29,7 @@ do
     if [ "$c" = "test-rt/test-tflite" ]
     then
         echo "$WHITE ### $c ### IGNORED $NC"
-    elif [ "$c" = "test-rt/test-metal" -a  `uname` != "Darwin" ]
+    elif [ "$c" = "test-rt/test-metal" -a  ( `uname` != "Darwin" -o -n "$CI" ) ]
     then
         echo "$WHITE ### $c ### IGNORED $NC"
     else

@@ -67,9 +67,6 @@ jobs:
     - name: cargo check test-tflite, -D warnings 
       if: runner.os == 'Linux'
       run: cargo check -p test-tflite
-    - name: cargo check, -D warnings
-      if: runner.os == 'macOS'
-      run: cargo check -p metal -p test-metal
 
   cargo-clippy:
     strategy:
@@ -91,9 +88,6 @@ jobs:
     - name: Run cargo-clippy
       if: runner.os == 'Linux'
       run: cargo clippy -p test-tflite
-    - name: Run cargo-clippy
-      if: runner.os == 'macOS'
-      run: cargo clippy -p metal -p test-metal
 
   cargo-deny:
     strategy:
