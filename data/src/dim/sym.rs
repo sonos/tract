@@ -1,7 +1,8 @@
 use itertools::Itertools;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
-use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, Weak};
+use std::ops::Deref;
+use std::sync::{Arc, RwLock, Weak};
 use string_interner::DefaultStringInterner;
 use string_interner::Symbol as _;
 
@@ -25,6 +26,7 @@ impl Eq for SymbolScope {}
 pub struct SymbolScopeData {
     table: DefaultStringInterner,
     assertions: Vec<Assertion>,
+    scenarios: BTreeMap<String, Vec<Assertion>>,
 }
 
 impl SymbolScope {
@@ -72,15 +74,51 @@ impl SymbolScope {
         Ok(self)
     }
 
-    pub fn all_symbols(&self) -> Vec<Symbol> {
-        self.0.read().unwrap().table.into_iter().map(|is| Symbol(Arc::downgrade(&self.0), is.0)).collect()
-    }
-
     pub fn all_assertions(&self) -> Vec<Assertion> {
         self.0.read().unwrap().assertions.clone()
     }
 
-    pub fn lock(&self) -> Option<RwLockReadGuard<SymbolScopeData>> {
+    pub fn add_scenario(&self, scenario: impl Into<String>) -> TractResult<()> {
+        self.0.write().unwrap().scenarios.insert(scenario.into(), vec![]);
+        Ok(())
+    }
+
+    pub fn add_scenario_assertion(
+        &self,
+        scenario: impl Into<String>,
+        assertion: impl Into<String>,
+    ) -> TractResult<()> {
+        let assert = parse_assertion(self, &assertion.into())?;
+        let s = scenario.into();
+        self.0.write().unwrap().scenarios.entry(s).or_default().push(assert);
+        Ok(())
+    }
+
+    pub fn with_scenario_assertion(
+        self,
+        scenario: impl Into<String>,
+        assertion: impl Into<String>,
+    ) -> TractResult<Self> {
+        self.add_scenario_assertion(scenario, assertion)?;
+        Ok(self)
+    }
+
+    pub fn with_scenario(self, scenario: impl Into<String>) -> TractResult<Self> {
+        self.add_scenario(scenario)?;
+        Ok(self)
+    }
+
+    pub fn all_symbols(&self) -> Vec<Symbol> {
+        self.0
+            .read()
+            .unwrap()
+            .table
+            .into_iter()
+            .map(|is| Symbol(Arc::downgrade(&self.0), is.0))
+            .collect()
+    }
+
+    pub fn read(&self) -> Option<impl Deref<Target = SymbolScopeData> + '_> {
         self.0.read().ok()
     }
 }
@@ -132,7 +170,6 @@ impl SymbolScopeData {
         }
         false
     }
-
 }
 
 impl fmt::Debug for SymbolScope {
