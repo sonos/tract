@@ -292,7 +292,7 @@ impl TDim {
             return Val(v);
         }
         let scope = self.find_scope();
-        let data = scope.as_ref().and_then(|scope| scope.lock());
+        let data = scope.as_ref().and_then(|scope| scope.read());
         self.simplify_rec(data.as_deref())
     }
 
@@ -622,7 +622,7 @@ impl TDim {
             return Some(*v);
         }
         let Some(scope) = self.find_scope() else { return None };
-        let Some(data) = scope.lock() else { return None };
+        let Some(data) = scope.read() else { return None };
         self.inclusive_bound(&*data, false)
     }
 
@@ -631,7 +631,7 @@ impl TDim {
             return Some(*v);
         }
         let Some(scope) = self.find_scope() else { return None };
-        let Some(data) = scope.lock() else { return None };
+        let Some(data) = scope.read() else { return None };
         self.inclusive_bound(&*data, true)
     }
 
@@ -640,7 +640,7 @@ impl TDim {
             return *v >= 0;
         }
         let Some(scope) = self.find_scope() else { return false };
-        let Some(data) = scope.lock() else { return false };
+        let Some(data) = scope.read() else { return false };
         data.prove_positive_or_zero(&self)
     }
 
@@ -1397,13 +1397,16 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn min_llm_0() {
-        let symbols = SymbolScope::default();
-        symbols.add_assertion("S>=0").unwrap();
-        symbols.add_assertion("P>=0").unwrap();
+    fn min_llm_0() -> TractResult<()> {
+        let symbols = SymbolScope::default()
+            .with_assertion("S>=0")?
+            .with_assertion("P>=0")?
+            .with_scenario_assertion("tg", "S=1")?
+            .with_scenario_assertion("pp", "P=0")?;
         assert_eq!(
             symbols.parse_tdim("min(P,(S)#(P+S))").unwrap().simplify(),
             symbols.parse_tdim("P").unwrap()
         );
+        Ok(())
     }
 }
