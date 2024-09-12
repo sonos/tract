@@ -62,7 +62,7 @@ impl<'mb> ModelBuilder<'mb> {
                     self.symbols.push(symbol);
                 }
                 "tract_assert" => {
-                    self.model.symbols.add_inequality(&ext.1)?;
+                    self.model.symbols.add_assertion(&ext.1)?;
                 }
                 "KHR_enable_fragment_definitions" | "KHR_enable_operator_expressions" => (),
                 _ => {

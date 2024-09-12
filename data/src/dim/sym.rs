@@ -7,7 +7,7 @@ use string_interner::Symbol as _;
 
 use crate::TractResult;
 
-use super::parse::parse_inequality;
+use super::parse::parse_assertion;
 use super::{parse_tdim, TDim};
 
 #[derive(Clone, Default)]
@@ -24,7 +24,7 @@ impl Eq for SymbolScope {}
 #[derive(Default)]
 pub struct SymbolScopeData {
     table: DefaultStringInterner,
-    inequalities: Vec<Assertions>,
+    assertions: Vec<Assertion>,
 }
 
 impl SymbolScope {
@@ -60,15 +60,15 @@ impl SymbolScope {
         parse_tdim(self, input.as_ref())
     }
 
-    pub fn add_inequality(&self, ineq: impl Into<String>) -> TractResult<()> {
-        let ineq = ineq.into();
-        let ineq = parse_inequality(self, &ineq)?;
-        self.0.write().unwrap().inequalities.push(ineq);
+    pub fn add_assertion(&self, assert: impl Into<String>) -> TractResult<()> {
+        let assert = assert.into();
+        let assert = parse_assertion(self, &assert)?;
+        self.0.write().unwrap().assertions.push(assert);
         Ok(())
     }
 
-    pub fn with_inequality(self, ineq: impl Into<String>) -> TractResult<Self> {
-        self.add_inequality(ineq)?;
+    pub fn with_assertion(self, assert: impl Into<String>) -> TractResult<Self> {
+        self.add_assertion(assert)?;
         Ok(self)
     }
 
@@ -76,8 +76,8 @@ impl SymbolScope {
         self.0.read().unwrap().table.into_iter().map(|is| Symbol(Arc::downgrade(&self.0), is.0)).collect()
     }
 
-    pub fn all_assertions(&self) -> Vec<Assertions> {
-        self.0.read().unwrap().inequalities.clone()
+    pub fn all_assertions(&self) -> Vec<Assertion> {
+        self.0.read().unwrap().assertions.clone()
     }
 
     pub fn lock(&self) -> Option<RwLockReadGuard<SymbolScopeData>> {
@@ -86,8 +86,8 @@ impl SymbolScope {
 }
 
 impl SymbolScopeData {
-    pub fn all_assertions(&self) -> &[Assertions] {
-        &self.inequalities
+    pub fn all_assertions(&self) -> &[Assertion] {
+        &self.assertions
     }
 
     pub fn resolving<R>(&self, sym: &Symbol, f: impl FnOnce(&str) -> R) -> Option<R> {
@@ -99,7 +99,7 @@ impl SymbolScopeData {
         if let TDim::Val(v) = t {
             return *v >= 0;
         }
-        let positives = self.inequalities.iter().filter_map(|i| i.as_known_positive()).collect_vec();
+        let positives = self.assertions.iter().filter_map(|i| i.as_known_positive()).collect_vec();
         let mut visited = vec![];
         let mut todo = vec![t.clone()];
         while let Some(t) = todo.pop() {
@@ -144,16 +144,16 @@ impl fmt::Debug for SymbolScope {
 
 #[derive(Debug, PartialEq, Clone, Hash)]
 #[allow(clippy::upper_case_acronyms)]
-pub enum Assertions {
+pub enum Assertion {
     LT(TDim, TDim),
     GT(TDim, TDim),
     LTE(TDim, TDim),
     GTE(TDim, TDim),
 }
 
-impl Display for Assertions {
+impl Display for Assertion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use Assertions::*;
+        use Assertion::*;
         match self {
             LT(l, r) => write!(f, "{l} < {r}"),
             GT(l, r) => write!(f, "{l} > {r}"),
@@ -163,9 +163,9 @@ impl Display for Assertions {
     }
 }
 
-impl Assertions {
+impl Assertion {
     pub fn as_known_positive(&self) -> Option<TDim> {
-        use Assertions::*;
+        use Assertion::*;
         match self {
             GTE(left, right) => Some(left.clone() - right),
             GT(left, right) => Some(left.clone() - 1 - right),
@@ -257,7 +257,7 @@ mod tests {
     fn as_known_positive_gte() {
         let s = SymbolScope::default();
         assert_eq!(
-            parse_inequality(&s, "S>=0").unwrap().as_known_positive(),
+            parse_assertion(&s, "S>=0").unwrap().as_known_positive(),
             Some(s.parse_tdim("S").unwrap())
         );
     }
@@ -266,7 +266,7 @@ mod tests {
     fn as_known_positive_gt() {
         let s = SymbolScope::default();
         assert_eq!(
-            parse_inequality(&s, "S>0").unwrap().as_known_positive(),
+            parse_assertion(&s, "S>0").unwrap().as_known_positive(),
             Some(s.parse_tdim("S-1").unwrap())
         );
     }
@@ -275,7 +275,7 @@ mod tests {
     fn as_known_positive_lte() {
         let s = SymbolScope::default();
         assert_eq!(
-            parse_inequality(&s, "S<=0").unwrap().as_known_positive(),
+            parse_assertion(&s, "S<=0").unwrap().as_known_positive(),
             Some(s.parse_tdim("-S").unwrap())
         );
     }
@@ -284,7 +284,7 @@ mod tests {
     fn as_known_positive_lt() {
         let s = SymbolScope::default();
         assert_eq!(
-            parse_inequality(&s, "S<0").unwrap().as_known_positive(),
+            parse_assertion(&s, "S<0").unwrap().as_known_positive(),
             Some(s.parse_tdim("-S - 1").unwrap())
         );
     }
@@ -316,16 +316,16 @@ mod tests {
     #[test]
     fn prove_positive_with_axiom() {
         let s = SymbolScope::default();
-        s.add_inequality("s>=0").unwrap();
+        s.add_assertion("s>=0").unwrap();
         assert!(s.parse_tdim("s").unwrap().prove_positive_or_zero());
     }
 
     #[test]
     fn prove_positive_with_axiom_2() {
         let s = SymbolScope::default();
-        s.add_inequality("s>=0").unwrap();
-        s.add_inequality("p>=0").unwrap();
-        s.add_inequality("p+s<4096").unwrap();
+        s.add_assertion("s>=0").unwrap();
+        s.add_assertion("p>=0").unwrap();
+        s.add_assertion("p+s<4096").unwrap();
         assert!(s.parse_tdim("4096-p").unwrap().prove_positive_or_zero());
     }
 }
