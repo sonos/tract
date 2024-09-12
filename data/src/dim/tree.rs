@@ -549,12 +549,12 @@ impl TDim {
                         .all_assertions()
                         .iter()
                         .filter_map(|assert| match &assert {
-                            Assertions::LT(left, right)
+                            Assertion::LT(left, right)
                                 if left == self && right.as_i64().is_some() =>
                             {
                                 Some(right.as_i64().unwrap() - 1)
                             }
-                            Assertions::LTE(left, right)
+                            Assertion::LTE(left, right)
                                 if left == self && right.as_i64().is_some() =>
                             {
                                 Some(right.as_i64().unwrap())
@@ -567,12 +567,12 @@ impl TDim {
                         .all_assertions()
                         .iter()
                         .filter_map(|assert| match &assert {
-                            Assertions::GT(left, right)
+                            Assertion::GT(left, right)
                                 if left == self && right.as_i64().is_some() =>
                             {
                                 Some(right.as_i64().unwrap() + 1)
                             }
-                            Assertions::GTE(left, right)
+                            Assertion::GTE(left, right)
                                 if left == self && right.as_i64().is_some() =>
                             {
                                 Some(right.as_i64().unwrap())
@@ -1300,7 +1300,7 @@ mod tests {
     #[test]
     fn min_max_with_axiom() {
         let symbols = SymbolScope::default();
-        symbols.add_inequality("a>=0").unwrap();
+        symbols.add_assertion("a>=0").unwrap();
         assert_eq!(symbols.parse_tdim("min(a,0)").unwrap().simplify(), 0.into());
         assert_eq!(
             symbols.parse_tdim("max(a,0)").unwrap().simplify(),
@@ -1310,7 +1310,7 @@ mod tests {
 
     #[test]
     fn low_bound_0() -> TractResult<()> {
-        let symbols = SymbolScope::default().with_inequality("S>=0")?;
+        let symbols = SymbolScope::default().with_assertion("S>=0")?;
         let s = symbols.parse_tdim("S").unwrap();
         assert_eq!(s.low_inclusive_bound(), Some(0));
         Ok(())
@@ -1318,28 +1318,28 @@ mod tests {
 
     #[test]
     fn low_bound_1() -> TractResult<()> {
-        let symbols = SymbolScope::default().with_inequality("S>0")?;
+        let symbols = SymbolScope::default().with_assertion("S>0")?;
         assert_eq!(symbols.parse_tdim("S").unwrap().low_inclusive_bound(), Some(1));
         Ok(())
     }
 
     #[test]
     fn low_bound_2() -> TractResult<()> {
-        let symbols = SymbolScope::default().with_inequality("S>0")?;
+        let symbols = SymbolScope::default().with_assertion("S>0")?;
         assert_eq!(symbols.parse_tdim("S + 1").unwrap().low_inclusive_bound(), Some(2));
         Ok(())
     }
 
     #[test]
     fn low_bound_3() -> TractResult<()> {
-        let symbols = SymbolScope::default().with_inequality("S>0")?;
+        let symbols = SymbolScope::default().with_assertion("S>0")?;
         assert_eq!(symbols.parse_tdim("4*S").unwrap().low_inclusive_bound(), Some(4));
         Ok(())
     }
 
     #[test]
     fn low_bound_4() -> TractResult<()> {
-        let symbols = SymbolScope::default().with_inequality("S>0")?.with_inequality("S>5")?;
+        let symbols = SymbolScope::default().with_assertion("S>0")?.with_assertion("S>5")?;
         assert_eq!(symbols.parse_tdim("S + 3").unwrap().low_inclusive_bound(), Some(9));
         Ok(())
     }
@@ -1357,7 +1357,7 @@ mod tests {
     #[test]
     fn max_bug_1() {
         let symbols = SymbolScope::default();
-        symbols.add_inequality("S>8").unwrap();
+        symbols.add_assertion("S>8").unwrap();
         assert_eq!(
             symbols.parse_tdim("max(1,-1+(S+1)/4)").unwrap().simplify(),
             symbols.parse_tdim("-1+(S+1)/4").unwrap(),
@@ -1367,7 +1367,7 @@ mod tests {
     #[test]
     fn min_bug_1() {
         let symbols = SymbolScope::default();
-        symbols.add_inequality("S>8").unwrap();
+        symbols.add_assertion("S>8").unwrap();
         assert_eq!(
             symbols.parse_tdim("min(1,-1+(S+1)/4)").unwrap().simplify(),
             symbols.parse_tdim("1").unwrap()
@@ -1377,7 +1377,7 @@ mod tests {
     #[test]
     fn min_bug_2() {
         let symbols = SymbolScope::default();
-        symbols.add_inequality("S>50").unwrap();
+        symbols.add_assertion("S>50").unwrap();
         assert_eq!(
             symbols.parse_tdim("min(-3+2*(S+1)/4,-1+(S+1)/4)").unwrap().simplify(),
             symbols.parse_tdim("-1+(S+1)/4").unwrap()
@@ -1387,8 +1387,8 @@ mod tests {
     #[test]
     fn min_bug_3() {
         let symbols = SymbolScope::default();
-        symbols.add_inequality("S>=0").unwrap();
-        symbols.add_inequality("P>=0").unwrap();
+        symbols.add_assertion("S>=0").unwrap();
+        symbols.add_assertion("P>=0").unwrap();
         assert_eq!(
             symbols.parse_tdim("min(0,(S)#(P+S))").unwrap().simplify(),
             symbols.parse_tdim("0").unwrap()
@@ -1399,8 +1399,8 @@ mod tests {
     #[ignore]
     fn min_llm_0() {
         let symbols = SymbolScope::default();
-        symbols.add_inequality("S>=0").unwrap();
-        symbols.add_inequality("P>=0").unwrap();
+        symbols.add_assertion("S>=0").unwrap();
+        symbols.add_assertion("P>=0").unwrap();
         assert_eq!(
             symbols.parse_tdim("min(P,(S)#(P+S))").unwrap().simplify(),
             symbols.parse_tdim("P").unwrap()
