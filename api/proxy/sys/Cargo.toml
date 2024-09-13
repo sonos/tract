@@ -12,6 +12,3 @@ edition = "2021"
 rust-version = "1.75"
 include = [ "Cargo.toml", "src/**/*.rs", "LICENSE*", "build.rs", "tract.h", "bindings.rs" ]
 
-
-[dependencies]
-tract-ffi = { path =  "../../ffi" , version = "=0.21.7-pre" }
