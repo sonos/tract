@@ -118,7 +118,7 @@ impl SymbolScope {
             .collect()
     }
 
-    pub fn read(&self) -> Option<impl Deref<Target = SymbolScopeData> + '_> {
+    fn read(&self) -> Option<impl Deref<Target = SymbolScopeData> + '_> {
         self.0.read().ok()
     }
 }
