@@ -993,23 +993,9 @@ mod tests {
     macro_rules! b( ($e:expr) => { Box::new($e) } );
 
     lazy_static::lazy_static! {
-        static ref S: (SymbolScope, Symbol) = {
-            let table = SymbolScope::default();
-            let s = table.new_with_prefix("S");
-            (table, s)
-        };
-    }
-
-    fn a() -> Symbol {
-        S.0.sym("a")
-    }
-
-    fn b() -> Symbol {
-        S.0.sym("b")
-    }
-
-    fn s() -> TDim {
-        S.1.clone().into()
+        static ref table: SymbolScope = SymbolScope::default();
+        static ref A: Symbol = table.sym("a");
+        static ref B: Symbol = table.sym("b");
     }
 
     fn neg(a: &TDim) -> TDim {
@@ -1030,50 +1016,54 @@ mod tests {
 
     #[test]
     fn reduce_add() {
-        assert_eq!(add(&s(), &neg(&s())).reduce(), Val(0))
+        assert_eq!(add(&A.to_dim(), &neg(&A.to_dim())).reduce(), Val(0))
     }
 
     #[test]
     fn reduce_neg_mul() {
-        assert_eq!(neg(&mul(2, &s())).reduce(), mul(-2, &s()))
+        assert_eq!(neg(&mul(2, &A.to_dim())).reduce(), mul(-2, &A.to_dim()))
     }
 
     #[test]
     fn reduce_cplx_ex_2() {
         assert_eq!(
-            add(&add(&Val(-4), &mul(-2, &div(&s(), 4))), &mul(-2, &mul(-1, &div(&s(), 4))))
-                .reduce(),
+            add(
+                &add(&Val(-4), &mul(-2, &div(&A.to_dim(), 4))),
+                &mul(-2, &mul(-1, &div(&A.to_dim(), 4)))
+            )
+            .reduce(),
             Val(-4)
         )
     }
 
     #[test]
     fn reduce_cplx_ex_3() {
-        assert_eq!(div(&MulInt(1, b!(MulInt(4, b!(s())))), 4).reduce(), s())
+        assert_eq!(div(&MulInt(1, b!(MulInt(4, b!(A.to_dim())))), 4).reduce(), A.to_dim())
     }
 
     #[test]
     fn reduce_cplx_ex_4() {
         // (S+1)/2 + (1-S)/2 == 1
         assert_eq!(
-            add(&div(&add(&s(), &Val(1)), 2), &div(&add(&neg(&s()), &Val(1)), 2)).reduce(),
+            add(&div(&add(&A.to_dim(), &Val(1)), 2), &div(&add(&neg(&A.to_dim()), &Val(1)), 2))
+                .reduce(),
             1.into()
         );
     }
 
     #[test]
     fn reduce_mul_mul_1() {
-        assert_eq!(mul(3, &mul(2, &s())).reduce(), mul(6, &s()))
+        assert_eq!(mul(3, &mul(2, &A.to_dim())).reduce(), mul(6, &A.to_dim()))
     }
 
     #[test]
     fn reduce_mul_mul_2() {
-        assert_eq!(mul(-2, &mul(-1, &s())).reduce(), mul(2, &s()))
+        assert_eq!(mul(-2, &mul(-1, &A.to_dim())).reduce(), mul(2, &A.to_dim()))
     }
 
     #[test]
     fn reduce_mul_div_1() {
-        assert_eq!(mul(2, &div(&mul(-1, &s()), 3)).reduce(), mul(-2, &div(&s(), 3)))
+        assert_eq!(mul(2, &div(&mul(-1, &A.to_dim()), 3)).reduce(), mul(-2, &div(&A.to_dim(), 3)))
     }
 
     #[test]
@@ -1090,11 +1080,10 @@ mod tests {
 
     #[test]
     fn substitution() {
-        let x = S.0.sym("x");
-        let e: TDim = x.clone().into();
-        assert_eq!(e.eval(&SymbolValues::default().with(&x, 2)).to_i64().unwrap(), 2);
-        let e = e + 3;
-        assert_eq!(e.eval(&SymbolValues::default().with(&x, 2)).to_i64().unwrap(), 5);
+        let a: TDim = A.to_dim();
+        assert_eq!(a.eval(&SymbolValues::default().with(&A, 2)).to_i64().unwrap(), 2);
+        let e = a + 3;
+        assert_eq!(e.eval(&SymbolValues::default().with(&A, 2)).to_i64().unwrap(), 5);
     }
 
     #[test]
@@ -1111,11 +1100,10 @@ mod tests {
 
     #[test]
     fn reduce_muls() {
-        let e: TDim = Val(1) * s();
-        assert_eq!(e, s());
-        let b = S.0.sym("b");
-        let e: TDim = s() * &b * 1;
-        assert_eq!(e, s() * &b);
+        let e: TDim = Val(1) * A.to_dim();
+        assert_eq!(e, A.to_dim());
+        let e: TDim = A.to_dim() * &B.to_dim() * 1;
+        assert_eq!(e, A.to_dim() * &B.to_dim());
     }
 
     #[test]
@@ -1134,69 +1122,69 @@ mod tests {
 
     #[test]
     fn reduce_div_bug_0() {
-        let e1: TDim = (s() + 23) / 2 - 1;
-        let e2: TDim = (s() + 21) / 2;
+        let e1: TDim = (A.to_dim() + 23) / 2 - 1;
+        let e2: TDim = (A.to_dim() + 21) / 2;
         assert_eq!(e1, e2);
     }
 
     #[test]
     fn reduce_div_bug_1() {
-        let e1: TDim = (s() + -1) / 2;
-        let e2: TDim = (s() + 1) / 2 - 1;
+        let e1: TDim = (A.to_dim() + -1) / 2;
+        let e2: TDim = (A.to_dim() + 1) / 2 - 1;
         assert_eq!(e1, e2);
     }
 
     #[test]
     fn reduce_div_bug_2() {
-        let e1: TDim = ((s() + 1) / 2 + 1) / 2;
-        let e2: TDim = (s() + 3) / 4;
+        let e1: TDim = ((A.to_dim() + 1) / 2 + 1) / 2;
+        let e2: TDim = (A.to_dim() + 3) / 4;
         assert_eq!(e1, e2);
     }
 
     #[test]
     fn reduce_div_bug_3() {
-        let e1: TDim = (s() / 2) * -4;
-        let e2: TDim = (s() / 2) * -4 / 1;
+        let e1: TDim = (A.to_dim() / 2) * -4;
+        let e2: TDim = (A.to_dim() / 2) * -4 / 1;
         assert_eq!(e1, e2);
     }
 
     #[test]
     fn reduce_mul_div() {
-        let e: TDim = s() * 2 / 2;
-        assert_eq!(e, s());
+        let e: TDim = A.to_dim() * 2 / 2;
+        assert_eq!(e, A.to_dim());
     }
 
     #[test]
     fn reduce_div_mul() {
-        let e: TDim = s() / 2 * 2;
-        assert_ne!(e, s());
+        let e: TDim = A.to_dim() / 2 * 2;
+        assert_ne!(e, A.to_dim());
     }
 
     #[test]
     fn reduce_add_div() {
-        let e: TDim = s() / 2 + 1;
-        assert_eq!(e, ((s() + 2) / 2));
+        let e: TDim = A.to_dim() / 2 + 1;
+        assert_eq!(e, ((A.to_dim() + 2) / 2));
     }
 
     #[test]
     fn reduce_neg_mul_() {
-        let e: TDim = TDim::from(1) - s() * 2;
-        assert_eq!(e, TDim::from(1) + s() * -2);
+        let e: TDim = TDim::from(1) - A.to_dim() * 2;
+        assert_eq!(e, TDim::from(1) + A.to_dim() * -2);
     }
 
     #[test]
     fn reduce_add_rem_1() {
-        assert_eq!(((s() + 4) % 2), (s() % 2));
+        assert_eq!(((A.to_dim() + 4) % 2), (A.to_dim() % 2));
     }
 
     #[test]
     fn reduce_add_rem_2() {
-        assert_eq!(((s() - 4) % 2), (s() % 2));
+        assert_eq!(((A.to_dim() - 4) % 2), (A.to_dim() % 2));
     }
 
     #[test]
     fn reduce_rem_div() {
-        let e: TDim = s() % 2 / 2;
+        let e: TDim = A.to_dim() % 2 / 2;
         assert_eq!(e, TDim::from(0));
     }
 
@@ -1208,13 +1196,13 @@ mod tests {
 
     #[test]
     fn conv2d_ex_2() {
-        let e = (s() - 3 + 1).div_ceil(1);
-        assert_eq!(e, s() + -2);
+        let e = (A.to_dim() - 3 + 1).div_ceil(1);
+        assert_eq!(e, A.to_dim() + -2);
     }
 
     #[test]
     fn extract_int_gcd_from_muls() {
-        let term = (s() + 1) / 4;
+        let term = (A.to_dim() + 1) / 4;
         let mul = (term.clone() * 24 - 24) * (term.clone() * 2 - 2);
         let target = (term.clone() - 1) * (term.clone() - 1) * 48;
         assert_eq!(mul, target);
@@ -1222,7 +1210,7 @@ mod tests {
 
     #[test]
     fn equality_of_muls() {
-        let term = (s() + 1) / 4;
+        let term = (A.to_dim() + 1) / 4;
         let mul1 = (term.clone() * 2 - 3) * (term.clone() - 1);
         let mul2 = (term.clone() - 1) * (term.clone() * 2 - 3);
         assert_eq!(mul1, mul2);
@@ -1230,7 +1218,7 @@ mod tests {
 
     #[test]
     fn factorize_complex_expr_times_int() {
-        let term = (s() + 1) / 4;
+        let term = (A.to_dim() + 1) / 4;
         let e = term.clone() * 2 - &term - 1;
         assert_eq!(e, term - 1);
     }
@@ -1247,54 +1235,54 @@ mod tests {
 
     #[test]
     fn min_same() {
-        assert_eq!(s().mini(s()), s());
+        assert_eq!(A.to_dim().mini(A.to_dim()), A.to_dim());
     }
 
     #[test]
     fn min_noop() {
-        assert_eq!(s().mini(1.to_dim()), s().mini(1.to_dim()));
+        assert_eq!(A.to_dim().mini(1.to_dim()), A.to_dim().mini(1.to_dim()));
     }
 
     #[test]
     fn min_diff_1() {
-        assert_eq!((s() + 1).mini(s() + 2), s() + 1);
+        assert_eq!((A.to_dim() + 1).mini(A.to_dim() + 2), A.to_dim() + 1);
     }
 
     #[test]
     fn slope_0() {
-        assert_eq!(12.to_dim().guess_slope(&S.1), (0, 1));
+        assert_eq!(12.to_dim().guess_slope(&A), (0, 1));
     }
 
     #[test]
     fn slope_1() {
-        assert_eq!(s().guess_slope(&S.1), (1, 1));
+        assert_eq!(A.to_dim().guess_slope(&A), (1, 1));
     }
 
     #[test]
     fn slope_2() {
-        assert_eq!((s() * 2).guess_slope(&S.1), (2, 1));
+        assert_eq!((A.to_dim() * 2).guess_slope(&A), (2, 1));
     }
 
     #[test]
     fn slope_3() {
-        assert_eq!((s() * 2 + s() / 2).guess_slope(&S.1), (5, 2));
+        assert_eq!((A.to_dim() * 2 + A.to_dim() / 2).guess_slope(&A), (5, 2));
     }
 
     #[test]
     fn slope_4() {
-        assert_eq!((a().to_dim()).guess_slope(&b()), (0, 1));
+        assert_eq!((A.to_dim()).guess_slope(&B), (0, 1));
     }
 
     #[test]
     fn slope_5() {
-        assert_eq!((a().to_dim() + 1).guess_slope(&a()), (1, 1));
-        assert_eq!((a().to_dim() + 1).guess_slope(&b()), (0, 1));
+        assert_eq!((A.to_dim() + 1).guess_slope(&A), (1, 1));
+        assert_eq!((A.to_dim() + 1).guess_slope(&B), (0, 1));
     }
 
     #[test]
     fn slope_6() {
-        assert_eq!((a().to_dim() + 1).guess_slope(&a()), (1, 1));
-        assert_eq!((a().to_dim() + b().to_dim()).guess_slope(&b()), (1, 1));
+        assert_eq!((A.to_dim() + 1).guess_slope(&A), (1, 1));
+        assert_eq!((A.to_dim() + B.to_dim()).guess_slope(&B), (1, 1));
     }
 
     #[test]
