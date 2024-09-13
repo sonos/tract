@@ -78,8 +78,6 @@ default-members = [
     "api",
     "api/rs",
     "api/ffi",
-    "api/proxy",
-    "api/proxy/sys",
 
     "examples/face_detection_yolov8onnx_example",
     "examples/face_similarity_arcface_onnx",
