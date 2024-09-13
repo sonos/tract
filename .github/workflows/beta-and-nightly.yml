@@ -64,7 +64,6 @@ jobs:
       run: |
         ROOT=. .travis/ci-system-setup.sh
     - name: cargo check, -D warnings
-    - name: cargo check test-tflite, -D warnings 
       if: runner.os == 'Linux'
       run: cargo check -p test-tflite
 
