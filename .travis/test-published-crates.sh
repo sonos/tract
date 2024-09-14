@@ -23,7 +23,7 @@ fi
 
 set +x
 
-for c in data linalg core nnef hir onnx pulse onnx-opl pulse-opl rs proxy
+for c in data linalg core nnef hir onnx pulse onnx-opl pulse-opl rs
 do
     echo
     echo "$WHITE ### $c ### $NC"
@@ -31,7 +31,7 @@ do
     cargo -q test $CARGO_EXTRA -q -p tract-$c
 done
 
-if [ `uname` = "Darwin" ]
+if [ `uname` = "Darwin" -a -z "$CI" ]
 then
     echo
     echo "$WHITE ### metal ### $NC"
@@ -39,6 +39,7 @@ then
     cargo -q test $CARGO_EXTRA -q -p tract-metal
 fi
 
+$ROOT/api/proxy/ci.sh
 
 # doc test are not finding libtensorflow.so
 if ! cargo -q test $CARGO_EXTRA -q -p tract-tensorflow --lib $ALL_FEATURES
