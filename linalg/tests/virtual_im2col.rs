@@ -231,7 +231,7 @@ impl EagerIm2colSpec {
             [kh, kw, ci, h, w],
             |(kh, kw, ci, h, w)| *input.at([ci, h + kh, w + kw]).unwrap(),
         )
-        .into_shape([k, n])
+        .into_shape_with_order([k, n])
         .unwrap();
         Box::new(EagerIm2col { im2col: im2col.into_tensor(), packer: self.packer.clone(), k })
     }

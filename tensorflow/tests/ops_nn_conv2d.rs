@@ -54,11 +54,11 @@ fn img_and_ker() -> BoxedStrategy<(Tensor, Tensor, (usize, usize))> {
         .prop_map(|(img_shape, ker_shape, img, ker, strides)| {
             (
                 tract_ndarray::Array::from(img.into_iter().map(|i| i as f32).collect::<Vec<_>>())
-                    .into_shape(img_shape)
+                    .into_shape_with_order(img_shape)
                     .unwrap()
                     .into(),
                 tract_ndarray::Array::from(ker.into_iter().map(|i| i as f32).collect::<Vec<_>>())
-                    .into_shape(ker_shape)
+                    .into_shape_with_order(ker_shape)
                     .unwrap()
                     .into(),
                 strides,

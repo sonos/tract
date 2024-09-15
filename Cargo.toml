@@ -151,8 +151,8 @@ log = "0.4.14"
 maplit = "1.0.2"
 memmap2 = "0.9"
 metal = { version = "0.27.0", features = ["mps"] }
-ndarray = "0.15.3"
-ndarray-npy = { version = "0.8.0", features = [ "compressed_npz" ] }
+ndarray = "0.16"
+ndarray-npy = { version = "0.9.1", features = [ "compressed_npz" ] }
 nom = "7.0.0"
 nu-ansi-term = "0.46"
 num-complex = "0.4.0"

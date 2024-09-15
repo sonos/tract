@@ -15,7 +15,7 @@ struct DelayPlusDownsampleProblem {
 }
 
 fn t(n: usize) -> ArrayD<f32> {
-    arr1(&(0..n).map(|x| x as f32).collect_vec()).into_shape(vec![1, n, 1]).unwrap()
+    arr1(&(0..n).map(|x| x as f32).collect_vec()).into_shape_with_order(vec![1, n, 1]).unwrap()
 }
 
 impl Arbitrary for DelayPlusDownsampleProblem {
