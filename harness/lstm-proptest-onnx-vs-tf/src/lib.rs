@@ -4,6 +4,7 @@ use proptest::prelude::*;
 
 use tract_hir::internal::*;
 use tract_ndarray::prelude::*;
+use tract_ndarray::Order;
 use tract_onnx::prelude::*;
 use tract_onnx::tract_hir;
 
@@ -39,9 +40,9 @@ impl LstmProblem {
                 .slice_axis_mut(Axis(0), (s * icfo..s * (icfo + 1)).into())
                 .assign(&self.b_icfo.slice_axis(Axis(0), (s * iofc..s * (iofc + 1)).into()));
         }
-        let w_iofc = w_iofc.t().into_shape((1, 4 * s, s))?.to_owned();
-        let r_iofc = r_iofc.t().into_shape((1, 4 * s, s))?.to_owned();
-        let b_iofc = b_iofc.into_shape((1, 8 * s))?;
+        let w_iofc = w_iofc.t().into_shape_with_order(((1, 4 * s, s), Order::ColumnMajor))?.to_owned();
+        let r_iofc = r_iofc.t().into_shape_with_order(((1, 4 * s, s), Order::ColumnMajor))?.to_owned();
+        let b_iofc = b_iofc.into_shape_with_order(((1, 8 * s), Order::ColumnMajor))?;
 
         let x = model.add_source("x", self.x.datum_type().fact(self.x.shape()).into())?;
         let op = tract_onnx::ops::rec::common::CommonRec {
@@ -190,7 +191,7 @@ impl LstmProblem {
         let plan = SimplePlan::new(model)?;
         let mut state = SimpleState::new(plan)?;
         let y = state.run(tvec!(self.x.clone()))?.remove(0).into_tensor().into_array::<f32>()?;
-        let y = y.into_shape((self.length, self.batch_size, self.cell_size)).unwrap();
+        let y = y.into_shape_with_order((self.length, self.batch_size, self.cell_size)).unwrap();
         Ok(y.into_tvalue())
     }
 

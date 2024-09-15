@@ -189,7 +189,7 @@ impl QConvProblem {
         if let Some(bias) = &self.bias {
             let mut shape = vec![1; temp.ndim()];
             shape[shape_out.c_axis()] = bias.len();
-            temp += &bias.clone().into_shape(shape).unwrap();
+            temp += &bias.clone().into_shape_with_order(shape).unwrap();
         }
         let cdt = self.output_dt();
         temp.axis_iter_mut(Axis(shape_out.c_axis())).zip(k_scale).for_each(

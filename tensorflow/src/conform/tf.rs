@@ -106,7 +106,7 @@ impl From<Tensor> for TensorHolder {
 
 fn tensor_to_array<T: ::tensorflow::TensorType>(tensor: &tf::Tensor<T>) -> TractResult<ArrayD<T>> {
     let shape: Vec<usize> = tensor.dims().iter().map(|d| *d as _).collect();
-    Ok(Array::from(tensor.into_iter().cloned().collect::<Vec<_>>()).into_shape(shape)?)
+    Ok(Array::from(tensor.into_iter().cloned().collect::<Vec<_>>()).into_shape_with_order(shape)?)
 }
 
 impl Tensorflow {

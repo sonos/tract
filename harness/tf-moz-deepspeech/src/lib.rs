@@ -39,7 +39,7 @@ fn parse_tensor<T: Datum + FromStr>(s: &str) -> TractResult<Tensor> {
     let shape = &shape[1..shape.len() - 1];
     let shape: Vec<usize> = shape.split(',').map(|s| s.parse().unwrap()).collect();
     Ok(tract_ndarray::Array1::from(tokens.filter_map(|s| s.parse::<T>().ok()).collect::<Vec<_>>())
-        .into_shape(shape)?
+        .into_shape_with_order(shape)?
         .into())
 }
 
