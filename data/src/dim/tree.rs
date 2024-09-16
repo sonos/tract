@@ -7,6 +7,7 @@ use num_traits::{AsPrimitive, PrimInt, Zero};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
+use std::ops::Neg;
 use std::{fmt, ops};
 
 #[derive(Debug)]
@@ -646,6 +647,27 @@ impl TDim {
         let data = scope.0.lock();
         let data = data.borrow();
         data.prove_positive_or_zero(&self)
+    }
+
+    pub fn prove_strict_positive(&self) -> bool {
+        if let TDim::Val(v) = self {
+            return *v > 0;
+        }
+        (self.clone() - 1).prove_positive_or_zero()
+    }
+
+    pub fn prove_negative_or_zero(&self) -> bool {
+        if let TDim::Val(v) = self {
+            return *v <= 0;
+        }
+        self.clone().neg().prove_positive_or_zero()
+    }
+
+    pub fn prove_strict_negative(&self) -> bool {
+        if let TDim::Val(v) = self {
+            return *v < 0;
+        }
+        self.clone().neg().prove_strict_positive()
     }
 
     pub fn gcd(&self) -> u64 {
