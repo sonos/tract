@@ -15,14 +15,17 @@ pub fn parse_tdim(symbol_table: &SymbolScope, input: &str) -> TractResult<TDim> 
 }
 
 pub fn parse_assertion(symbol_table: &SymbolScope, input: &str) -> TractResult<Assertion> {
-    match all_consuming(|i| inequality(symbol_table, i))(input) {
+    match all_consuming(|i| assertion(symbol_table, i))(input) {
         Ok(pair) => Ok(pair.1),
         Err(e) => bail!("Failed to parse {:?}, {:?}", input, e),
     }
 }
 
-fn inequality<'i>(s: &SymbolScope, i: &'i str) -> IResult<&'i str, Assertion> {
+fn assertion<'i>(s: &SymbolScope, i: &'i str) -> IResult<&'i str, Assertion> {
     alt((
+        map(separated_pair(|i| expr(s, i), stag("=="), |i| expr(s, i)), |(a, b)| {
+            Assertion::Eq(a, b)
+        }),
         map(separated_pair(|i| expr(s, i), stag("<="), |i| expr(s, i)), |(a, b)| {
             Assertion::LTE(a, b)
         }),
