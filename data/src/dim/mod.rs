@@ -163,7 +163,13 @@ impl DimLike for TDim {
     }
 
     fn broadcast(self, other: Self) -> TractResult<Self> {
-        Ok(TDim::Broadcast(vec![self, other]).simplify())
+        if self.is_one() {
+            Ok(other)
+        } else if other.is_one() {
+            Ok(self)
+        } else {
+            Ok(TDim::Broadcast(vec![self, other]).simplify())
+        }
     }
 
     fn compatible_with(&self, other: &Self) -> bool {
