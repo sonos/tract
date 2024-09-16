@@ -7,7 +7,6 @@ pub mod deser;
 pub mod ser;
 
 pub fn tract_nnef() -> Registry {
-    use tract_core::ops;
     let mut registry = Registry::new("tract_nnef");
     let mut stdlib = crate::framework::stdlib();
 
