@@ -289,18 +289,17 @@ impl TDim {
     pub fn simplify(self) -> TDim {
         use self::TDim::*;
         if let Ok(v) = self.eval_to_i64(&SymbolValues::default()) {
-            return Val(v);
-        }
-        if let Some(scope) = self.find_scope() {
+            Val(v)
+        } else if let Some(scope) = self.find_scope() {
             let locked = scope.0.lock();
             let borrow = locked.borrow();
-            self.simplify_rec(Some(&borrow))
+            self.simplify_rec(&borrow)
         } else {
             self
         }
     }
 
-    fn simplify_rec(self, scope: Option<&SymbolScopeData>) -> TDim {
+    fn simplify_rec(self, scope: &SymbolScopeData) -> TDim {
         match self {
             Add(mut terms) => {
                 #[allow(clippy::mutable_key_type)]
@@ -493,8 +492,7 @@ impl TDim {
                         continue;
                     }
                     let diff = a.clone() - b;
-                    if diff.as_i64().is_some_and(|i| i >= 0)
-                        || scope.is_some_and(|scope| scope.prove_positive_or_zero(&diff))
+                    if diff.as_i64().is_some_and(|i| i >= 0) || scope.prove_positive_or_zero(&diff)
                     {
                         redundant.insert(a.clone());
                     }
@@ -524,8 +522,7 @@ impl TDim {
                         continue;
                     }
                     let diff = a.clone() - b;
-                    if diff.as_i64().is_some_and(|i| i >= 0)
-                        || scope.is_some_and(|scope| scope.prove_positive_or_zero(&diff))
+                    if diff.as_i64().is_some_and(|i| i >= 0) || scope.prove_positive_or_zero(&diff)
                     {
                         redundant.insert(b.clone());
                     }
