@@ -43,6 +43,13 @@ impl Assertion {
 mod tests {
     use super::*;
     #[test]
+    fn use_equalities() {
+        let s = SymbolScope::default();
+        s.add_assertion("s==0").unwrap();
+        assert!(s.parse_tdim("s").unwrap().simplify().is_zero());
+    }
+
+    #[test]
     fn prove_positive_with_axiom() {
         let s = SymbolScope::default();
         s.add_assertion("s>=0").unwrap();

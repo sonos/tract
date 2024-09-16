@@ -291,24 +291,35 @@ impl TDim {
     pub fn simplify(self) -> TDim {
         use self::TDim::*;
         if let Ok(v) = self.eval_to_i64(&SymbolValues::default()) {
-            Val(v)
-        } else if let Some(scope) = self.find_scope() {
-            let locked = scope.0.lock();
-            let borrow = locked.borrow();
-            self.simplify_rec(&borrow)
-        } else {
-            self
+            return Val(v);
         }
+        let Some(scope) = self.find_scope() else {
+            return self;
+        };
+        let scope = scope.0;
+        let locked = scope.lock();
+        let scope = locked.borrow();
+        let it = self.simplify_rec(&scope, None);
+        let mut current: Option<TDim> = None;
+        for scenario in scope.scenarios() {
+            let v = it.clone().simplify_rec(&scope, Some(scenario));
+            if current.is_some_and(|c| c != v) {
+                return it;
+            } else {
+                current = Some(v);
+            }
+        }
+        current.unwrap_or(it)
     }
 
-    fn simplify_rec(self, scope: &SymbolScopeData) -> TDim {
+    fn simplify_rec(self, scope: &SymbolScopeData, scenario: Option<&str>) -> TDim {
         match self {
             Add(mut terms) => {
                 #[allow(clippy::mutable_key_type)]
                 let mut simplified_terms: HashMap<TDim, i64> = HashMap::new();
                 // factorize common sub-expr
                 while let Some(term) = terms.pop() {
-                    let simplified = term.simplify_rec(scope);
+                    let simplified = term.simplify_rec(scope, scenario);
                     match simplified {
                         Val(0) => {} // ignore
                         Add(members) => {
@@ -354,7 +365,7 @@ impl TDim {
                         .into_iter()
                         .map(|t| {
                             let gcd = t.gcd();
-                            (t / gcd).simplify_rec(scope)
+                            (t / gcd).simplify_rec(scope, scenario)
                         })
                         .collect()
                 } else {
@@ -377,18 +388,20 @@ impl TDim {
             }
             MulInt(coef, expr) => {
                 match *expr {
-                    MulInt(c2, inner) => return MulInt(coef * c2, inner).simplify_rec(scope),
+                    MulInt(c2, inner) => {
+                        return MulInt(coef * c2, inner).simplify_rec(scope, scenario)
+                    }
                     Val(v) => return Val(coef * v),
                     _ => {}
                 }
 
-                let simplified = expr.simplify_rec(scope);
+                let simplified = expr.simplify_rec(scope, scenario);
                 match (coef, simplified) {
                     (0, _) => Val(0), // Case #1: If coef is 0, return 0
                     (1, s) => s,      // Case #2: If coef is 1, return the simplified expression
                     (_, Add(terms)) => Add(terms
                         .into_iter()
-                        .map(|term| MulInt(coef, Box::new(term)).simplify_rec(scope))
+                        .map(|term| MulInt(coef, Box::new(term)).simplify_rec(scope, scenario))
                         .collect()), // Case #3: If expression is an addition, distribute the coef
                     (c, Val(v)) => Val(c * v), // Case #4: If expression is a value, combine coefs
                     (c, MulInt(v, inner)) => MulInt(c * v, inner), // Case #5: If expression is a MulInt, combine coefs
@@ -397,11 +410,11 @@ impl TDim {
             }
             Div(a, q) => {
                 if q == 1 {
-                    return a.simplify_rec(scope);
+                    return a.simplify_rec(scope, scenario);
                 } else if let Div(a, q2) = *a {
-                    return Div(a, q * q2).simplify_rec(scope);
+                    return Div(a, q * q2).simplify_rec(scope, scenario);
                 }
-                let a = a.simplify_rec(scope);
+                let a = a.simplify_rec(scope, scenario);
                 if let Val(a) = a {
                     Val(a / q as i64)
                 } else if let MulInt(-1, a) = a {
@@ -418,7 +431,7 @@ impl TDim {
                             -1,
                             b!(Div(
                                 b!(Add(terms.into_iter().map(|t| MulInt(-1, b!(t))).collect())
-                                    .simplify_rec(scope)),
+                                    .simplify_rec(scope, scenario)),
                                 q
                             )),
                         )
@@ -434,7 +447,10 @@ impl TDim {
                         };
                         if let Some(val) = offset {
                             terms.push(Val(-val * q as i64));
-                            Add(vec![Val(val), Div(b!(Add(terms).simplify_rec(scope)), q)])
+                            Add(vec![
+                                Val(val),
+                                Div(b!(Add(terms).simplify_rec(scope, scenario)), q),
+                            ])
                         } else {
                             Div(b!(Add(terms)), q)
                         }
@@ -451,7 +467,8 @@ impl TDim {
                         } else if gcd == q as i64 {
                             MulInt(p / gcd, a)
                         } else if gcd > 1 {
-                            Div(b!(MulInt(p / gcd, a)), q / gcd as u64).simplify_rec(scope)
+                            Div(b!(MulInt(p / gcd, a)), q / gcd as u64)
+                                .simplify_rec(scope, scenario)
                         } else {
                             Div(b!(MulInt(p, a)), q)
                         }
@@ -463,7 +480,7 @@ impl TDim {
             Broadcast(terms) => {
                 let mut terms: Vec<TDim> = terms
                     .iter()
-                    .map(|s| s.clone().simplify_rec(scope))
+                    .map(|s| s.clone().simplify_rec(scope, scenario))
                     .flat_map(|t| if let Broadcast(t) = t { t } else { vec![t] })
                     .filter(|t| !t.is_one())
                     .sorted_by(tdim_lexi_order)
@@ -481,7 +498,7 @@ impl TDim {
             Min(terms) => {
                 let mut flatten: Vec<TDim> = terms
                     .into_iter()
-                    .map(|t| t.simplify_rec(scope))
+                    .map(|t| t.simplify_rec(scope, scenario))
                     .flat_map(|t| if let Min(t) = t { t } else { vec![t] })
                     .sorted_by(tdim_lexi_order)
                     .dedup()
@@ -511,7 +528,7 @@ impl TDim {
             Max(terms) => {
                 let mut flatten: Vec<TDim> = terms
                     .into_iter()
-                    .map(|t| t.simplify_rec(scope))
+                    .map(|t| t.simplify_rec(scope, scenario))
                     .flat_map(|t| if let Max(t) = t { t } else { vec![t] })
                     .sorted_by(tdim_lexi_order)
                     .dedup()
@@ -538,7 +555,14 @@ impl TDim {
                     Max(flatten)
                 }
             }
-            Val(_) | Sym(_) => self,
+            Sym(s) => scope
+                .assertions(scenario)
+                .find_map(|a| match a {
+                    Assertion::Eq(Sym(sym), v) if sym == &s => Some(v.clone()),
+                    _ => None,
+                })
+                .unwrap_or(Sym(s)),
+            Val(_) => self,
         }
     }
 
@@ -1355,7 +1379,6 @@ mod tests {
         assert_eq!((A.to_dim() + B.to_dim()).guess_slope(&B), (1, 1));
     }
 
-
     #[test]
     fn min_0() -> TractResult<()> {
         let symbols = SymbolScope::default();
@@ -1365,5 +1388,4 @@ mod tests {
         );
         Ok(())
     }
-
 }
