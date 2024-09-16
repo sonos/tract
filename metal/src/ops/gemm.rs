@@ -50,11 +50,11 @@ impl MetalGemm {
 
         if a.datum_type == f16::datum_type() {
             ensure!(b.datum_type == f16::datum_type());
-            Ok(tvec!(f16::fact(&self.kernel.output_shape(&a.shape, &b.shape))))
+            Ok(tvec!(f16::fact(self.kernel.output_shape(&a.shape, &b.shape))))
         } else {
             ensure!(a.datum_type == f32::datum_type());
             ensure!(b.datum_type == f32::datum_type());
-            Ok(tvec!(f32::fact(&self.kernel.output_shape(&a.shape, &b.shape))))
+            Ok(tvec!(f32::fact(self.kernel.output_shape(&a.shape, &b.shape))))
         }
     }
 }
