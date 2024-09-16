@@ -5,16 +5,16 @@ use std::io::Cursor;
 use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
+use tract_core::internal::*;
+use tract_core::model::TypedModel;
 use tract_core::ops::konst::Const;
+#[allow(unused_imports)]
+use tract_core::transform::ModelTransform;
+use tract_hir::internal::*;
 #[allow(unused_imports)]
 use tract_itertools::Itertools;
 use tract_libcli::profile::BenchLimits;
 use tract_nnef::tensors::read_tensor;
-#[allow(unused_imports)]
-use tract_core::transform::ModelTransform;
-use tract_core::internal::*;
-use tract_core::model::TypedModel;
-use tract_hir::internal::*;
 #[cfg(feature = "pulse")]
 use tract_pulse::internal::*;
 #[cfg(feature = "tf")]
@@ -860,8 +860,15 @@ impl Parameters {
     /// Parses the command-line arguments.
     pub fn from_clap(matches: &clap::ArgMatches, probe: Option<&Probe>) -> TractResult<Parameters> {
         let symbols = SymbolScope::default();
+        for scenario in matches.values_of("scenario").unwrap_or_default() {
+            symbols.add_scenario(scenario)?;
+        }
         for rule in matches.values_of("assert").unwrap_or_default() {
-            symbols.add_assertion(rule)?;
+            if let Some((scenario, assertion)) = rule.split_once(':') {
+                symbols.add_scenario_assertion(scenario, assertion)?;
+            } else {
+                symbols.add_assertion(rule)?;
+            }
         }
         let (filename, onnx_tc) = Self::disco_model(matches)?;
         let tensors_values = Self::parse_tensors(matches, &filename, onnx_tc, &symbols)?;
