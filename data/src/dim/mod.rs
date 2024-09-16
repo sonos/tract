@@ -4,11 +4,13 @@ use num_traits::Zero;
 use std::fmt;
 use std::ops;
 
+mod assertion;
 mod parse;
 mod resolve;
 mod sym;
 mod tree;
 
+pub use self::assertion::Assertion;
 pub use self::parse::parse_tdim;
 pub use self::resolve::solve_for;
 pub use self::sym::{Symbol, SymbolScope, SymbolValues};

@@ -6,7 +6,6 @@ use nom::combinator::{all_consuming, map, map_res, recognize};
 use nom::multi::{many0, separated_list0};
 use nom::sequence::{delimited, pair, preceded, separated_pair};
 use nom::IResult;
-use sym::Assertion;
 
 pub fn parse_tdim(symbol_table: &SymbolScope, input: &str) -> TractResult<TDim> {
     match all_consuming(|i| expr(symbol_table, i))(input) {
