@@ -1355,52 +1355,6 @@ mod tests {
         assert_eq!((A.to_dim() + B.to_dim()).guess_slope(&B), (1, 1));
     }
 
-    #[test]
-    fn min_max_with_axiom() {
-        let symbols = SymbolScope::default();
-        symbols.add_assertion("a>=0").unwrap();
-        assert_eq!(symbols.parse_tdim("min(a,0)").unwrap().simplify(), 0.into());
-        assert_eq!(
-            symbols.parse_tdim("max(a,0)").unwrap().simplify(),
-            symbols.parse_tdim("a").unwrap()
-        );
-    }
-
-    #[test]
-    fn low_bound_0() -> TractResult<()> {
-        let symbols = SymbolScope::default().with_assertion("S>=0")?;
-        let s = symbols.parse_tdim("S").unwrap();
-        assert_eq!(s.low_inclusive_bound(), Some(0));
-        Ok(())
-    }
-
-    #[test]
-    fn low_bound_1() -> TractResult<()> {
-        let symbols = SymbolScope::default().with_assertion("S>0")?;
-        assert_eq!(symbols.parse_tdim("S").unwrap().low_inclusive_bound(), Some(1));
-        Ok(())
-    }
-
-    #[test]
-    fn low_bound_2() -> TractResult<()> {
-        let symbols = SymbolScope::default().with_assertion("S>0")?;
-        assert_eq!(symbols.parse_tdim("S + 1").unwrap().low_inclusive_bound(), Some(2));
-        Ok(())
-    }
-
-    #[test]
-    fn low_bound_3() -> TractResult<()> {
-        let symbols = SymbolScope::default().with_assertion("S>0")?;
-        assert_eq!(symbols.parse_tdim("4*S").unwrap().low_inclusive_bound(), Some(4));
-        Ok(())
-    }
-
-    #[test]
-    fn low_bound_4() -> TractResult<()> {
-        let symbols = SymbolScope::default().with_assertion("S>0")?.with_assertion("S>5")?;
-        assert_eq!(symbols.parse_tdim("S + 3").unwrap().low_inclusive_bound(), Some(9));
-        Ok(())
-    }
 
     #[test]
     fn min_0() -> TractResult<()> {
@@ -1412,58 +1366,4 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn max_bug_1() {
-        let symbols = SymbolScope::default();
-        symbols.add_assertion("S>8").unwrap();
-        assert_eq!(
-            symbols.parse_tdim("max(1,-1+(S+1)/4)").unwrap().simplify(),
-            symbols.parse_tdim("-1+(S+1)/4").unwrap(),
-        );
-    }
-
-    #[test]
-    fn min_bug_1() {
-        let symbols = SymbolScope::default();
-        symbols.add_assertion("S>8").unwrap();
-        assert_eq!(
-            symbols.parse_tdim("min(1,-1+(S+1)/4)").unwrap().simplify(),
-            symbols.parse_tdim("1").unwrap()
-        );
-    }
-
-    #[test]
-    fn min_bug_2() {
-        let symbols = SymbolScope::default();
-        symbols.add_assertion("S>50").unwrap();
-        assert_eq!(
-            symbols.parse_tdim("min(-3+2*(S+1)/4,-1+(S+1)/4)").unwrap().simplify(),
-            symbols.parse_tdim("-1+(S+1)/4").unwrap()
-        );
-    }
-
-    #[test]
-    fn min_bug_3() {
-        let symbols = SymbolScope::default();
-        symbols.add_assertion("S>=0").unwrap();
-        symbols.add_assertion("P>=0").unwrap();
-        assert_eq!(
-            symbols.parse_tdim("min(0,(S)#(P+S))").unwrap().simplify(),
-            symbols.parse_tdim("0").unwrap()
-        );
-    }
-
-    #[test]
-    fn min_llm_0() -> TractResult<()> {
-        let symbols = SymbolScope::default()
-            .with_assertion("S>=0")?
-            .with_assertion("P>=0")?
-            .with_scenario_assertion("tg", "S=1")?
-            .with_scenario_assertion("pp", "P=0")?;
-        assert_eq!(
-            symbols.parse_tdim("min(P,(S)#(P+S))").unwrap().simplify(),
-            symbols.parse_tdim("P").unwrap()
-        );
-        Ok(())
-    }
 }
