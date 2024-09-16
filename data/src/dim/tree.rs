@@ -288,7 +288,7 @@ impl TDim {
 
     pub fn simplify(self) -> TDim {
         use self::TDim::*;
-        if let Val(v) = self {
+        if let Ok(v) = self.eval_to_i64(&SymbolValues::default()) {
             return Val(v);
         }
         if let Some(scope) = self.find_scope() {
@@ -626,8 +626,9 @@ impl TDim {
             return Some(*v);
         }
         let Some(scope) = self.find_scope() else { return None };
-        let Some(data) = scope.0.lock().ok() else { return None };
-        self.inclusive_bound(&*data, false)
+        let data = scope.0.lock();
+        let data = data.borrow();
+        self.inclusive_bound(&data, false)
     }
 
     pub fn high_inclusive_bound(&self) -> Option<i64> {
@@ -635,7 +636,8 @@ impl TDim {
             return Some(*v);
         }
         let Some(scope) = self.find_scope() else { return None };
-        let Some(data) = scope.0.lock().ok() else { return None };
+        let data = scope.0.lock();
+        let data = data.borrow();
         self.inclusive_bound(&*data, true)
     }
 
@@ -644,7 +646,8 @@ impl TDim {
             return *v >= 0;
         }
         let Some(scope) = self.find_scope() else { return false };
-        let Some(data) = scope.0.lock().ok() else { return false };
+        let data = scope.0.lock();
+        let data = data.borrow();
         data.prove_positive_or_zero(&self)
     }
 

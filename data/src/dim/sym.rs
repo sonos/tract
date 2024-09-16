@@ -3,8 +3,7 @@ use parking_lot::ReentrantMutex;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
-use std::ops::Deref;
-use std::sync::{Arc, Mutex, RwLock, Weak};
+use std::sync::{Arc, Weak};
 use string_interner::DefaultStringInterner;
 use string_interner::Symbol as _;
 
