@@ -32,7 +32,7 @@ impl EvalOp for BasicNewGelu {
 
         let new_gelu_f32_data = a_f32
             .as_slice::<f32>()?
-            .into_iter()
+            .iter()
             .map(|x| 0.5 * x * (1.0 + f32::tanh(sqrt_2_over_pi * (x + 0.044715 * x.powi(3)))))
             .collect::<Vec<_>>();
 
@@ -124,8 +124,8 @@ pub fn as_new_gelu_rule(
             .iter()
             .filter_map(|i| {
                 let n = &model.nodes()[i.node];
-                let Some(op) = n.op_as::<TypedBinOp>() else { return None };
-                op.0.is::<Mul>().then(|| n)
+                let op = n.op_as::<TypedBinOp>()?;
+                op.0.is::<Mul>().then_some(n)
             })
             .next()
         else {

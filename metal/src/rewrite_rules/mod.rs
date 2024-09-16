@@ -53,10 +53,10 @@ fn find_succ_mul_with_const<'a>(
     node: &'a TypedNode,
     konst: f32,
 ) -> Option<&'a TypedNode> {
-    let Some(mul_coef_a) = next_node(model, node) else { return None };
-    let Some(mul_coef_a_op) = mul_coef_a.op_as::<TypedBinOp>() else { return None };
+    let mul_coef_a = next_node(model, node)?;
+    let mul_coef_a_op = mul_coef_a.op_as::<TypedBinOp>()?;
     (mul_coef_a_op.0.is::<Mul>() && matches_single_input_const(model, mul_coef_a, konst))
-        .then(|| mul_coef_a)
+        .then_some(mul_coef_a)
 }
 
 fn find_succ_add_with<'a>(
@@ -64,9 +64,9 @@ fn find_succ_add_with<'a>(
     node: &'a TypedNode,
     outled_id: &OutletId,
 ) -> Option<&'a TypedNode> {
-    let Some(add_succ) = next_node(model, node) else { return None };
-    let Some(add_succ_op) = add_succ.op_as::<TypedBinOp>() else { return None };
-    (add_succ_op.0.is::<Add>() && add_succ.inputs.contains(outled_id)).then(|| add_succ)
+    let add_succ = next_node(model, node)?;
+    let add_succ_op = add_succ.op_as::<TypedBinOp>()?;
+    (add_succ_op.0.is::<Add>() && add_succ.inputs.contains(outled_id)).then_some(add_succ)
 }
 
 fn matches_single_input_const(model: &TypedModel, node: &TypedNode, konst: f32) -> bool {
@@ -85,11 +85,11 @@ fn find_succ_add_with_const<'a>(
     node: &'a TypedNode,
     konst: f32,
 ) -> Option<&'a TypedNode> {
-    let Some(add_coef_a) = next_node(model, node) else { return None };
-    let Some(add_coef_a_op) = add_coef_a.op_as::<TypedBinOp>() else { return None };
+    let add_coef_a = next_node(model, node)?;
+    let add_coef_a_op = add_coef_a.op_as::<TypedBinOp>()?;
     if !add_coef_a_op.0.is::<Add>() {
         return None;
     }
     (add_coef_a_op.0.is::<Add>() && matches_single_input_const(model, add_coef_a, konst))
-        .then(|| add_coef_a)
+        .then_some(add_coef_a)
 }
