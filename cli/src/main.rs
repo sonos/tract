@@ -26,10 +26,10 @@ mod cost;
 mod dump;
 mod errors {}
 mod params;
+mod plan_options;
 mod run;
 #[cfg(feature = "pulse")]
 mod stream_check;
-mod plan_options;
 mod tensor;
 mod utils;
 
@@ -93,7 +93,8 @@ fn main() -> TractResult<()> {
         .arg(Arg::new("constantize").long("constantize").multiple_occurrences(true).takes_value(true).long_help(
                 "Transorm an input into a Constant"))
 
-        .arg(arg!(--"assert").multiple_occurrences(true).takes_value(true).long_help("Adds a TDim pre-condition"))
+        .arg(arg!(--"assert").multiple_occurrences(true).takes_value(true).long_help("Adds a TDim pre-condition (prefix by optional \"scenario_name:\")"))
+        .arg(arg!(--"scenario").multiple_occurrences(true).takes_value(true).long_help("Adds a scenario"))
 
         // deprecated
         .arg(arg!(--"input-bundle" [input_bundle] "Path to an input container (.npz). This sets input facts and tensor values.").hide(true))
@@ -287,18 +288,20 @@ fn main() -> TractResult<()> {
 
     let res = if matches.is_present("metal-gpu-trace") {
         #[cfg(any(target_os = "macos", target_os = "ios"))]
-        {   
-            let gpu_trace_path = std::path::Path::new(matches.value_of("metal-gpu-trace").unwrap()).to_path_buf();
+        {
+            let gpu_trace_path =
+                std::path::Path::new(matches.value_of("metal-gpu-trace").unwrap()).to_path_buf();
             ensure!(gpu_trace_path.is_absolute(), "Metal GPU trace file has to be absolute");
-            ensure!(!gpu_trace_path.exists(), format!("Given Metal GPU trace file {:?} already exists.", gpu_trace_path));
+            ensure!(
+                !gpu_trace_path.exists(),
+                format!("Given Metal GPU trace file {:?} already exists.", gpu_trace_path)
+            );
             log::info!("Capturing Metal GPU trace at : {:?}", gpu_trace_path);
             std::env::set_var("METAL_CAPTURE_ENABLED", "1");
             std::env::set_var("METAL_DEVICE_WRAPPER_TYPE", "1");
             let probe_ref = probe.as_ref();
             tract_metal::METAL_CONTEXT.with_borrow(move |context| {
-            context.capture_trace(gpu_trace_path, move |_ctxt| {
-                    handle(matches, probe_ref)
-                })
+                context.capture_trace(gpu_trace_path, move |_ctxt| handle(matches, probe_ref))
             })
         }
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
