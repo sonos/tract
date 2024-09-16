@@ -82,43 +82,44 @@ impl EvalOp for Comp {
             let b = b.broadcast(&*shape).unwrap();
             for ixs in tract_ndarray::indices(&*shape) {
                 let (a, b) = (&a[&ixs], &b[&ixs]);
+                let diff = a.clone() - b;
                 view[&ixs] = match *self {
                     Eq => a == b,
                     NE => a != b,
                     GTE => {
-                        if (a.clone() - b).prove_positive_or_zero() {
+                        if diff.prove_positive_or_zero() {
                             true
-                        } else if (b.clone() - a - 1).prove_positive_or_zero() {
+                        } else if diff.prove_strict_negative() {
                             false
                         } else {
-                            bail!(UndeterminedSymbol(a.clone() - b));
+                            bail!(UndeterminedSymbol(diff));
                         }
                     }
                     GT => {
-                        if (a.clone() - b - 1).prove_positive_or_zero() {
+                        if diff.prove_strict_positive() {
                             true
-                        } else if (b.clone() - a).prove_positive_or_zero() {
+                        } else if diff.prove_negative_or_zero() {
                             false
                         } else {
-                            bail!(UndeterminedSymbol(a.clone() - b));
+                            bail!(UndeterminedSymbol(diff));
                         }
                     }
                     LTE => {
-                        if (b.clone() - a).prove_positive_or_zero() {
+                        if diff.prove_negative_or_zero() {
                             true
-                        } else if (a.clone() - b - 1).prove_positive_or_zero() {
+                        } else if diff.prove_strict_positive() {
                             false
                         } else {
-                            bail!(UndeterminedSymbol(a.clone() - b));
+                            bail!(UndeterminedSymbol(diff));
                         }
                     }
                     LT => {
-                        if (b.clone() - a - 1).prove_positive_or_zero() {
+                        if diff.prove_strict_negative() {
                             true
-                        } else if (a.clone() - b).prove_positive_or_zero() {
+                        } else if diff.prove_negative_or_zero() {
                             false
                         } else {
-                            bail!(UndeterminedSymbol(a.clone() - b));
+                            bail!(UndeterminedSymbol(diff));
                         }
                     }
                 };
