@@ -87,6 +87,9 @@ jobs:
     - name: Run cargo-clippy
       if: runner.os == 'Linux'
       run: cargo clippy -p test-tflite
+    - name: Run cargo-clippy
+      if: runner.os == 'macos'
+      run: cargo clippy -p test-metal -p tract-metal
 
   cargo-deny:
     strategy:
