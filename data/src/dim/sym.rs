@@ -136,6 +136,18 @@ impl SymbolScopeData {
         &self.assertions
     }
 
+    pub fn assertions(&self, scenario: Option<&str>) -> impl Iterator<Item = &'_ Assertion> {
+        self.assertions.iter().chain(if let Some(s) = scenario {
+            self.scenarios[s].iter()
+        } else {
+            [].iter()
+        })
+    }
+
+    pub fn scenarios(&self) -> impl Iterator<Item = &'_ str> {
+        self.scenarios.keys().map(|s| s.as_ref())
+    }
+
     pub fn resolving<R>(&self, sym: &Symbol, f: impl FnOnce(&str) -> R) -> Option<R> {
         self.table.resolve(sym.1).map(f)
     }
