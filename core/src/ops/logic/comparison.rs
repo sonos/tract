@@ -73,12 +73,6 @@ impl EvalOp for Comp {
             if let (Ok(a), Ok(b)) = (a.cast_to::<i64>(), b.cast_to::<i64>()) {
                 return Ok(tvec!(self.eval::<i64>(&a, &b)?.into_tvalue()));
             }
-            let scope = a
-                .as_slice::<TDim>()?
-                .iter()
-                .chain(b.as_slice::<TDim>().unwrap().iter())
-                .find_map(|d| d.find_scope())
-                .unwrap();
             let a = inputs[0].to_array_view::<TDim>()?;
             let b = inputs[0].to_array_view::<TDim>()?;
             let shape = multi_broadcast(&[a.shape(), b.shape()])?;
@@ -92,36 +86,36 @@ impl EvalOp for Comp {
                     Eq => a == b,
                     NE => a != b,
                     GTE => {
-                        if scope.prove_positive_or_zero(&(a.clone() - b)) {
+                        if (a.clone() - b).prove_positive_or_zero() {
                             true
-                        } else if scope.prove_positive_or_zero(&(b.clone() - a - 1)) {
+                        } else if (b.clone() - a - 1).prove_positive_or_zero() {
                             false
                         } else {
                             bail!(UndeterminedSymbol(a.clone() - b));
                         }
                     }
                     GT => {
-                        if scope.prove_positive_or_zero(&(a.clone() - b - 1)) {
+                        if (a.clone() - b - 1).prove_positive_or_zero() {
                             true
-                        } else if scope.prove_positive_or_zero(&(b.clone() - a)) {
+                        } else if (b.clone() - a).prove_positive_or_zero() {
                             false
                         } else {
                             bail!(UndeterminedSymbol(a.clone() - b));
                         }
                     }
                     LTE => {
-                        if scope.prove_positive_or_zero(&(b.clone() - a)) {
+                        if (b.clone() - a).prove_positive_or_zero() {
                             true
-                        } else if scope.prove_positive_or_zero(&(a.clone() - b - 1)) {
+                        } else if (a.clone() - b - 1).prove_positive_or_zero() {
                             false
                         } else {
                             bail!(UndeterminedSymbol(a.clone() - b));
                         }
                     }
                     LT => {
-                        if scope.prove_positive_or_zero(&(b.clone() - a - 1)) {
+                        if (b.clone() - a - 1).prove_positive_or_zero() {
                             true
-                        } else if scope.prove_positive_or_zero(&(a.clone() - b)) {
+                        } else if (a.clone() - b).prove_positive_or_zero() {
                             false
                         } else {
                             bail!(UndeterminedSymbol(a.clone() - b));
