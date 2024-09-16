@@ -62,7 +62,11 @@ impl<'mb> ModelBuilder<'mb> {
                     self.symbols.push(symbol);
                 }
                 "tract_assert" => {
-                    self.model.symbols.add_assertion(&ext.1)?;
+                    if let Some((scen, rule)) = ext.1.split_once(':') {
+                        self.model.symbols.add_scenario_assertion(scen, rule)?;
+                    } else {
+                        self.model.symbols.add_assertion(&ext.1)?;
+                    }
                 }
                 "KHR_enable_fragment_definitions" | "KHR_enable_operator_expressions" => (),
                 _ => {

@@ -204,8 +204,14 @@ impl<'a> IntoAst<'a> {
         for sym in self.model.symbols.all_symbols() {
             extension.push(("tract_symbol".into(), sym.to_string()));
         }
-        for assert in self.model.symbols.all_assertions() {
+        let locked = self.model.symbols.0.lock();
+        for assert in locked.borrow().all_assertions() {
             extension.push(("tract_assert".into(), assert.to_string()));
+        }
+        for scenario in locked.borrow().scenarios() {
+            for assert in locked.borrow().scenario(scenario) {
+                extension.push(("tract_assert".into(), format!("{scenario}: {assert}")));
+            }
         }
         let properties = FragmentDef {
             decl: FragmentDecl {

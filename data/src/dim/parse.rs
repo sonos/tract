@@ -22,7 +22,7 @@ pub fn parse_assertion(symbol_table: &SymbolScope, input: &str) -> TractResult<A
 }
 
 fn assertion<'i>(s: &SymbolScope, i: &'i str) -> IResult<&'i str, Assertion> {
-    alt((
+    delimited(spaces, alt((
         map(separated_pair(|i| expr(s, i), stag("=="), |i| expr(s, i)), |(a, b)| {
             Assertion::Eq(a, b)
         }),
@@ -38,7 +38,7 @@ fn assertion<'i>(s: &SymbolScope, i: &'i str) -> IResult<&'i str, Assertion> {
         map(separated_pair(|i| expr(s, i), stag(">"), |i| expr(s, i)), |(a, b)| {
             Assertion::GT(a, b)
         }),
-    ))(i)
+    )), spaces)(i)
 }
 
 fn expr<'i>(symbol_table: &SymbolScope, i: &'i str) -> IResult<&'i str, TDim> {
