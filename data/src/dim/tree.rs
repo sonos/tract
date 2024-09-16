@@ -291,9 +291,13 @@ impl TDim {
         if let Val(v) = self {
             return Val(v);
         }
-        let scope = self.find_scope();
-        let data = scope.as_ref().and_then(|scope| scope.read());
-        self.simplify_rec(data.as_deref())
+        if let Some(scope) = self.find_scope() {
+            let locked = scope.0.lock();
+            let borrow = locked.borrow();
+            self.simplify_rec(Some(&borrow))
+        } else {
+            self
+        }
     }
 
     fn simplify_rec(self, scope: Option<&SymbolScopeData>) -> TDim {
@@ -622,7 +626,7 @@ impl TDim {
             return Some(*v);
         }
         let Some(scope) = self.find_scope() else { return None };
-        let Some(data) = scope.read() else { return None };
+        let Some(data) = scope.0.lock().ok() else { return None };
         self.inclusive_bound(&*data, false)
     }
 
@@ -631,7 +635,7 @@ impl TDim {
             return Some(*v);
         }
         let Some(scope) = self.find_scope() else { return None };
-        let Some(data) = scope.read() else { return None };
+        let Some(data) = scope.0.lock().ok() else { return None };
         self.inclusive_bound(&*data, true)
     }
 
@@ -640,7 +644,7 @@ impl TDim {
             return *v >= 0;
         }
         let Some(scope) = self.find_scope() else { return false };
-        let Some(data) = scope.read() else { return false };
+        let Some(data) = scope.0.lock().ok() else { return false };
         data.prove_positive_or_zero(&self)
     }
 

@@ -1,8 +1,10 @@
 use itertools::Itertools;
+use parking_lot::ReentrantMutex;
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 use std::ops::Deref;
-use std::sync::{Arc, RwLock, Weak};
+use std::sync::{Arc, Mutex, RwLock, Weak};
 use string_interner::DefaultStringInterner;
 use string_interner::Symbol as _;
 
@@ -12,7 +14,7 @@ use super::parse::parse_assertion;
 use super::{parse_tdim, TDim};
 
 #[derive(Clone, Default)]
-pub struct SymbolScope(Arc<RwLock<SymbolScopeData>>);
+pub struct SymbolScope(pub Arc<ReentrantMutex<RefCell<SymbolScopeData>>>);
 
 impl PartialEq for SymbolScope {
     fn eq(&self, other: &Self) -> bool {
@@ -31,18 +33,21 @@ pub struct SymbolScopeData {
 
 impl SymbolScope {
     pub fn get(&self, name: &str) -> Option<Symbol> {
-        let locked = self.0.read().unwrap();
+        let locked = self.0.lock();
+        let locked = locked.borrow();
         locked.table.get(name).map(|sym| Symbol(Arc::downgrade(&self.0), sym))
     }
 
     pub fn sym(&self, name: &str) -> Symbol {
-        let mut locked = self.0.write().unwrap();
+        let locked = self.0.lock();
+        let mut locked = locked.borrow_mut();
         let sym = locked.table.get_or_intern(name);
         Symbol(Arc::downgrade(&self.0), sym)
     }
 
     pub fn new_with_prefix(&self, prefix: &str) -> Symbol {
-        let mut locked = self.0.write().unwrap();
+        let locked = self.0.lock();
+        let mut locked = locked.borrow_mut();
         let sym = if locked.table.get(prefix).is_none() {
             locked.table.get_or_intern(prefix)
         } else {
@@ -65,7 +70,9 @@ impl SymbolScope {
     pub fn add_assertion(&self, assert: impl Into<String>) -> TractResult<()> {
         let assert = assert.into();
         let assert = parse_assertion(self, &assert)?;
-        self.0.write().unwrap().assertions.push(assert);
+        let locked = self.0.lock();
+        let mut locked = locked.borrow_mut();
+        locked.assertions.push(assert);
         Ok(())
     }
 
@@ -75,11 +82,15 @@ impl SymbolScope {
     }
 
     pub fn all_assertions(&self) -> Vec<Assertion> {
-        self.0.read().unwrap().assertions.clone()
+        let locked = self.0.lock();
+        let locked = locked.borrow();
+        locked.assertions.clone()
     }
 
     pub fn add_scenario(&self, scenario: impl Into<String>) -> TractResult<()> {
-        self.0.write().unwrap().scenarios.insert(scenario.into(), vec![]);
+        let locked = self.0.lock();
+        let mut locked = locked.borrow_mut();
+        locked.scenarios.insert(scenario.into(), vec![]);
         Ok(())
     }
 
@@ -90,7 +101,9 @@ impl SymbolScope {
     ) -> TractResult<()> {
         let assert = parse_assertion(self, &assertion.into())?;
         let s = scenario.into();
-        self.0.write().unwrap().scenarios.entry(s).or_default().push(assert);
+        let locked = self.0.lock();
+        let mut locked = locked.borrow_mut();
+        locked.scenarios.entry(s).or_default().push(assert);
         Ok(())
     }
 
@@ -110,16 +123,12 @@ impl SymbolScope {
 
     pub fn all_symbols(&self) -> Vec<Symbol> {
         self.0
-            .read()
-            .unwrap()
+            .lock()
+            .borrow()
             .table
             .into_iter()
             .map(|is| Symbol(Arc::downgrade(&self.0), is.0))
             .collect()
-    }
-
-    fn read(&self) -> Option<impl Deref<Target = SymbolScopeData> + '_> {
-        self.0.read().ok()
     }
 }
 
@@ -174,7 +183,8 @@ impl SymbolScopeData {
 
 impl fmt::Debug for SymbolScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let locked = self.0.read().unwrap();
+        let locked = self.0.lock();
+        let locked = locked.borrow();
         write!(f, "{}", locked.table.into_iter().map(|(_, s)| s).join(" "))
     }
 }
@@ -213,7 +223,7 @@ impl Assertion {
 }
 
 #[derive(Clone)]
-pub struct Symbol(Weak<RwLock<SymbolScopeData>>, string_interner::DefaultSymbol);
+pub struct Symbol(Weak<ReentrantMutex<RefCell<SymbolScopeData>>>, string_interner::DefaultSymbol);
 
 impl Eq for Symbol {}
 
@@ -250,10 +260,10 @@ impl std::hash::Hash for Symbol {
 impl std::fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(scope) = self.scope() {
-            if let Ok(lock) = scope.0.read() {
-                if let Some(s) = lock.table.resolve(self.1) {
-                    return write!(f, "{}", s);
-                }
+            let lock = scope.0.lock();
+            let lock = lock.borrow();
+            if let Some(s) = lock.table.resolve(self.1) {
+                return write!(f, "{}", s);
             }
         }
         write!(f, "<Sym{}>", self.1.to_usize())
