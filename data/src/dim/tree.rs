@@ -941,7 +941,6 @@ impl<'a> ops::Add<&'a TDim> for TDim {
 #[allow(clippy::suspicious_op_assign_impl)]
 impl<'a> ops::SubAssign<&'a TDim> for TDim {
     fn sub_assign(&mut self, rhs: &'a TDim) {
-        use std::ops::Neg;
         if rhs.is_zero() {
         } else if self.is_zero() {
             *self = rhs.clone().neg();
