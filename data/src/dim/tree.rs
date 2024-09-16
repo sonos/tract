@@ -1,3 +1,4 @@
+use crate::dim::Assertion;
 use crate::internal::*;
 
 use super::{sym::*, DimLike};
@@ -1453,7 +1454,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn min_llm_0() -> TractResult<()> {
         let symbols = SymbolScope::default()
             .with_assertion("S>=0")?
