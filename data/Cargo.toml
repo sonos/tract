@@ -31,6 +31,7 @@ smallvec.workspace = true
 lazy_static.workspace = true
 scan_fmt.workspace = true
 string-interner.workspace = true
+parking_lot = "0.12.3"
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 criterion.workspace = true
