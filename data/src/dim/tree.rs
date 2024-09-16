@@ -623,7 +623,7 @@ impl TDim {
         if let TDim::Val(v) = self {
             return Some(*v);
         }
-        let Some(scope) = self.find_scope() else { return None };
+        let scope = self.find_scope()?;
         let data = scope.0.lock();
         let data = data.borrow();
         self.inclusive_bound(&data, false)
@@ -633,10 +633,10 @@ impl TDim {
         if let TDim::Val(v) = self {
             return Some(*v);
         }
-        let Some(scope) = self.find_scope() else { return None };
+        let scope = self.find_scope()?;
         let data = scope.0.lock();
         let data = data.borrow();
-        self.inclusive_bound(&*data, true)
+        self.inclusive_bound(&data, true)
     }
 
     pub fn prove_positive_or_zero(&self) -> bool {
@@ -646,7 +646,7 @@ impl TDim {
         let Some(scope) = self.find_scope() else { return false };
         let data = scope.0.lock();
         let data = data.borrow();
-        data.prove_positive_or_zero(&self)
+        data.prove_positive_or_zero(self)
     }
 
     pub fn prove_strict_positive(&self) -> bool {
@@ -792,16 +792,16 @@ pub(super) fn reduce_ratio(mut p: i64, mut q: i64) -> (i64, u64) {
 
 impl Zero for TDim {
     fn zero() -> Self {
-        Self::from(0)
+        Val(0)
     }
     fn is_zero(&self) -> bool {
-        *self == Self::zero()
+        matches!(self, Val(0))
     }
 }
 
 impl Default for TDim {
     fn default() -> TDim {
-        TDim::zero()
+        Val(0)
     }
 }
 
@@ -892,7 +892,6 @@ impl ops::Neg for TDim {
 impl<'a> ops::AddAssign<&'a TDim> for TDim {
     fn add_assign(&mut self, rhs: &'a TDim) {
         if rhs.is_zero() {
-            ()
         } else if self.is_zero() {
             *self = rhs.clone();
         } else if let (Val(s), Val(o)) = (&mut *self, &rhs) {
@@ -910,7 +909,6 @@ where
     fn add_assign(&mut self, rhs: I) {
         let rhs = rhs.into();
         if rhs.is_zero() {
-            ()
         } else if self.is_zero() {
             *self = rhs;
         } else if let (Val(s), Val(o)) = (&mut *self, &rhs) {
@@ -945,7 +943,6 @@ impl<'a> ops::SubAssign<&'a TDim> for TDim {
     fn sub_assign(&mut self, rhs: &'a TDim) {
         use std::ops::Neg;
         if rhs.is_zero() {
-            ()
         } else if self.is_zero() {
             *self = rhs.clone().neg();
         } else if let (Val(s), Val(o)) = (&mut *self, &rhs) {
@@ -963,7 +960,6 @@ where
     fn sub_assign(&mut self, rhs: I) {
         let rhs = rhs.into();
         if rhs.is_zero() {
-            ()
         } else if self.is_zero() {
             *self = rhs.neg();
         } else if let (Val(s), Val(o)) = (&mut *self, &rhs) {
@@ -999,7 +995,6 @@ impl<I: Into<TDim>> ops::MulAssign<I> for TDim {
         if self.is_one() {
             *self = rhs
         } else if rhs.is_one() {
-            ()
         } else {
             *self = TDim::Mul(vec![rhs, std::mem::take(self)]).reduce()
         }
@@ -1011,7 +1006,6 @@ impl<'a> ops::MulAssign<&'a TDim> for TDim {
         if self.is_one() {
             *self = rhs.clone()
         } else if rhs.is_one() {
-            ()
         } else {
             *self = TDim::Mul(vec![std::mem::take(self), rhs.clone()]).reduce()
         }
