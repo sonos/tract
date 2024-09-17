@@ -15,6 +15,9 @@
         ld1         {v0.h}[2], [ x2 ]
 {% elsif cols == "4" %}
         ldr         d0, [ x2 ]
+{% elsif cols == "6" %}
+        ld1         {v0.d}[0], [ x2 ], #8
+        ld1         {v0.s}[2], [ x2 ]
 {% else %}
     {% for reg in (1..loads) %}
         ldr         q{{reg |minus:1}}, [ x2 ], #16

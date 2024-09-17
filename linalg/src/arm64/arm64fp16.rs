@@ -21,6 +21,7 @@ MMMExternKernel!(f16, arm64fp16_mmm_f16_128x1_gen; 128, 1; 16, 16; 1, 1; no_pref
 MMMExternKernel!(f16, arm64fp16_mmm_f16_128x1_a55; 128, 1; 16, 16; 1, 1; no_prefetch, crate::arm64::has_fp16());
 
 MMMExternKernel!(f16, arm64fp16_mmm_f16_64x3_gen; 64, 3; 16, 16; 1, 1; no_prefetch, crate::arm64::has_fp16());
+MMMExternKernel!(f16, arm64fp16_mmm_f16_32x6_gen; 32, 6; 16, 16; 1, 1; no_prefetch, crate::arm64::has_fp16());
 
 MMMExternKernel!(f16, arm64fp16_mmm_f16_64x1_gen; 64, 1; 16, 16; 1, 1; no_prefetch, crate::arm64::has_fp16(),
      packing_defs: {
