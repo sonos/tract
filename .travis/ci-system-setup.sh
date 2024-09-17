@@ -15,11 +15,11 @@ then
     if [ `uname` = "Darwin" ]
     then
         sysctl -n machdep.cpu.brand_string
-        brew install coreutils python3 numpy python-setuptools
+        brew install coreutils python3 numpy python-setuptools jshon
         PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"
         export PYTHON_BIN_PATH=python3
     else
-        sudo apt-get install -y llvm python3 python3-numpy
+        sudo apt-get install -y llvm python3 python3-numpy jshon
     fi
     touch .setup-done
 fi
