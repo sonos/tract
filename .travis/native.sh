@@ -8,6 +8,7 @@ cargo check --all-targets --workspace --exclude test-tflite --exclude test-metal
 
 ./.travis/onnx-tests.sh
 ./.travis/regular-tests.sh
+./.travis/test-harness.sh
 
 if [ -n "$CI" ]
 then
@@ -23,6 +24,7 @@ if [ `uname` = "Darwin" ]
 then
     cargo test -p test-metal
 fi
+
 
 if [ -n "$CI" ]
 then
