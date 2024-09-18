@@ -11,8 +11,8 @@ template [[host_name("matmul::basic_matvec_" #tname)]]           \
     device const type *lhs [[buffer(0)]],                        \
     device const type *rhs [[buffer(1)]],                        \
     device type *output [[buffer(2)]],                           \
-    constant   int32_t & nrows,                                  \
-    constant   int32_t & ncols,                                  \
+    constant   int32_t & m,                                      \
+    constant   int32_t & k,                                      \
     uint3 tgpig[[threadgroup_position_in_grid]],                 \
     uint  tiisg[[thread_index_in_simdgroup]],                    \
     uint  sgitg[[simdgroup_index_in_threadgroup]]                \
@@ -37,31 +37,32 @@ template<typename T>
 [[kernel]]  void basic_matvec(device const T *lhs [[buffer(0)]],
                               device const T *rhs [[buffer(1)]],
                               device T *output [[buffer(2)]],
-                              constant   int32_t & nrows,
-                              constant   int32_t & ncols,
+                              constant   int32_t & m,
+                              constant   int32_t & k,
                               uint3 tgpig[[threadgroup_position_in_grid]],
                               uint  tiisg[[thread_index_in_simdgroup]],
                               uint  sgitg[[simdgroup_index_in_threadgroup]]
                               ) {
     
-    const int32_t row_group_size = 4;
+    const int32_t m_group_size = 4;
     const int32_t _batch_idx = tgpig.x;
-    const int32_t row_group_start = tgpig.y*row_group_size;
+    const int32_t m_group_start = tgpig.y*m_group_size;
     
-    for (int row_group_idx = 0; row_group_idx < row_group_size; ++row_group_idx) {
-        int row_idx = row_group_start + row_group_idx;
-        if (row_idx >= nrows) {
+    for (int m_group_idx = 0; m_group_idx < m_group_size; ++m_group_idx) {
+        int m_idx = m_group_start + m_group_idx;
+        if (m_idx >= m) {
             break;
         }
-        device const T * lhs_row = (device const T *) (lhs + row_idx * ncols);
+        device const T * lhs_m = (device const T *) (lhs + m_idx * k);
         T sumf = 0;
         // Accumulate per simd
-        for (int i = tiisg; i < ncols; i += NUM_SIMDGROUP) {
-            sumf +=  rhs[i] * lhs_row[i];
+
+        for (int i = tiisg; i < k; i += NUM_SIMDGROUP) {
+            sumf +=  rhs[i] * lhs_m[i];
         }
         T all_sum = simd_sum(sumf);
         if (tiisg == 0) {
-            output[row_idx] = all_sum;
+            output[m_idx] = all_sum;
         }
     }
 }
