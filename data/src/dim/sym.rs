@@ -86,6 +86,12 @@ impl SymbolScope {
         locked.assertions.clone()
     }
 
+    pub fn all_scenarios(&self) -> impl IntoIterator<Item=(String, Vec<Assertion>)> {
+        let locked = self.0.lock();
+        let locked = locked.borrow();
+        locked.scenarios.clone()
+    }
+
     pub fn add_scenario(&self, scenario: impl Into<String>) -> TractResult<()> {
         let locked = self.0.lock();
         let mut locked = locked.borrow_mut();
