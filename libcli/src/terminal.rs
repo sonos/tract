@@ -26,6 +26,21 @@ pub fn render(
     for (k, v) in model.properties().iter().sorted_by_key(|(k, _)| k.to_string()) {
         println!("* {}: {:?}", White.paint(k), v)
     }
+    let symbols = model.symbols();
+    if !symbols.all_assertions().is_empty() {
+        println!("{}", White.bold().paint("# Assertions"));
+        for a in symbols.all_assertions() {
+            println!(" * {a}");
+        }
+    }
+    for (ix, scenario) in symbols.all_scenarios().into_iter().enumerate() {
+        if ix == 0 {
+            println!("{}", White.bold().paint("# Scenarios"));
+        }
+        for a in scenario.1 {
+            println!(" * {}: {}", scenario.0, a);
+        }
+    }
     Ok(())
 }
 
