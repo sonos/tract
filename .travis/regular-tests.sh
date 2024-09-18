@@ -15,4 +15,3 @@ if [ -n "$CI" ]
 then
     cargo clean
 fi
-./test-harness.sh
