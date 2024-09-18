@@ -221,13 +221,15 @@ fn matmul(c: &mut Criterion, m: usize, k: usize, n: usize) {
 
 fn tinyllama(c: &mut Criterion) {
     let shapes = vec![
-        (32003, 2048, 6),
-        (1, 32, 32),
-        (1, 4, 4),
-        (1, 4096, 4096),
-        (1, 2048, 2048),
-        (1, 1024, 1024),
-        (1, 128, 128),
+        (32003, 2048, 1),
+        (1, 2048, 32003),
+        // (32003, 2048, 6),
+        // (1, 32, 32),
+        // (1, 4, 4),
+        // (1, 4096, 4096),
+        // (1, 2048, 2048),
+        // (1, 1024, 1024),
+        // (1, 128, 128),
         // (1, 64, 3),
         // (1, 64, 1),
         // (1, 5632, 2048),
@@ -271,5 +273,5 @@ fn whisper_base(c: &mut Criterion) {
     matmul(c, 512, 512, 1500);
 }
 
-criterion_group!(benches, tinyllama, big, wavenet, asr_15_m, inception, whisper_base);
+criterion_group!(benches, tinyllama); //big, wavenet, asr_15_m, inception, whisper_base);
 criterion_main!(benches);

@@ -85,8 +85,8 @@ impl BasicMatMul {
     pub fn metal_mat_vec(
         context: &MetalContext,
         dt: DatumType,
-        nrows: usize,
-        ncols: usize,
+        m: usize,
+        k: usize,
         lhs_buffer: &Buffer,
         lhs_offset: usize,
         rhs_buffer: &Buffer,
@@ -104,11 +104,12 @@ impl BasicMatMul {
         encoder.set_buffer(0, Some(lhs_buffer), lhs_offset as _);
         encoder.set_buffer(1, Some(rhs_buffer), rhs_offset as _);
         encoder.set_buffer(2, Some(output), output_offset as _);
-        encoder.set_bytes(3, 4, &(nrows as i32) as *const i32 as *const _);
-        encoder.set_bytes(4, 4, &(ncols as i32) as *const i32 as *const _);
+        encoder.set_bytes(3, 4, &(m as i32) as *const i32 as *const _);
+        encoder.set_bytes(4, 4, &(k as i32) as *const i32 as *const _);
 
+        // m x k * k * 1
         let grid_size =
-            MTLSize { width: 1, height: nrows.div_ceil(4) as NSUInteger, depth: 1 as NSUInteger };
+            MTLSize { width: 1, height: m.div_ceil(4) as NSUInteger, depth: 1 as NSUInteger };
         let group_size = MTLSize { width: 32, height: 1, depth: 1 };
         encoder.use_resource(lhs_buffer, metal::MTLResourceUsage::Read);
         encoder.use_resource(rhs_buffer, metal::MTLResourceUsage::Read);
