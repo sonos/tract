@@ -10,11 +10,12 @@ pub fn criterion(
     _matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> TractResult<()> {
+    let plan_options = crate::plan_options::plan_options_from_subcommand(sub_matches)?;
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
 
     let model =
         params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
-    let plan = SimplePlan::new(model)?;
+    let plan = SimplePlan::new_with_options(model, &plan_options)?;
     let mut state = SimpleState::new(plan)?;
 
     let mut crit = criterion::Criterion::default();
@@ -31,11 +32,12 @@ pub fn handle(
     limits: &BenchLimits,
     probe: Option<&Probe>,
 ) -> TractResult<()> {
+    let plan_options = crate::plan_options::plan_options_from_subcommand(sub_matches)?;
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
     let model =
         params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
     let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
-    let plan = SimplePlan::new(model)?;
+    let plan = SimplePlan::new_with_options(model, &plan_options)?;
 
     limits.warmup(model, &inputs)?;
 
