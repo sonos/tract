@@ -36,14 +36,19 @@
 
 .p2align 4
 .packed_packed_loop_1:
-    ld1         { v7.d }[0], [ x2 ], #8
-    ld1         { v7.s }[2], [ x2 ], #4
+    ld1         { v7.8h }, [ x2 ]
     ld1         { v0.8h, v1.8h, v2.8h, v3.8h }, [ x1 ], #64
+    add         x2, x2, 12
 
 {% for row in (0..3) %}
     {% for col in (0..5) %}
         fmla        v{{ col|times:4|plus:8|plus:row}}.8h, v{{row}}.8h, v7.h[{{col}}]
     {% endfor %}
+    /*
+    {% for col in (0..1) %}
+        fmla        v{{ col|plus:4|times:4|plus:8|plus:row}}.8h, v{{row}}.8h, v6.h[{{col}}]
+    {% endfor %}
+    */
 {% endfor %}
 
     subs        x3, x3, #1

@@ -239,6 +239,7 @@ pub fn plug(ops: &mut Ops) {
         ops.mmm_impls.push(arm64fp16_mmm_f16_16x8_gen.mmm());
         ops.mmm_impls.push(arm64fp16_mmm_f16_32x4_a55.mmm());
         ops.mmm_impls.push(arm64fp16_mmm_f16_32x4_gen.mmm());
+        ops.mmm_impls.push(arm64fp16_mmm_f16_32x6_gen.mmm());
         ops.mmm_impls.push(arm64fp16_mmm_f16_128x1_a55.mmm());
         ops.mmm_impls.push(arm64fp16_mmm_f16_128x1_gen.mmm());
         ops.mmm_impls.push(arm64fp16_mmm_f16_64x1_gen.mmm());
