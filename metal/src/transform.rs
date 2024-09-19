@@ -31,7 +31,7 @@ impl Default for MetalGemmImplKind {
         }
         #[cfg(target_os = "ios")]
         {
-            Self::Mps
+            Self::Mlx
         }
     }
 }
