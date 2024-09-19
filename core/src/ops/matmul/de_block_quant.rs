@@ -1,7 +1,7 @@
 use tract_linalg::frame::block_quant::{BlockQuant, Q4_0};
 
 use crate::internal::*;
-use crate::ops::einsum::codegen::{ensure_mkn_axes, AxesOrPatch};
+use crate::ops::einsum::optimize::{ensure_mkn_axes, AxesOrPatch};
 use crate::ops::einsum::EinSum;
 use crate::ops::konst::Const;
 use crate::transform::ModelTransform;

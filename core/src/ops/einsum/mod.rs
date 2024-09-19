@@ -13,7 +13,7 @@ pub mod as_blas;
 use super::array::TypedConcat;
 use super::math::add;
 mod as_matmul;
-pub mod codegen;
+pub mod optimize;
 pub mod kernel_selection;
 
 #[cfg(test)]
@@ -374,7 +374,7 @@ impl TypedOp for EinSum {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        codegen::codegen(self, model, node)
+        optimize::codegen(self, model, node)
     }
 
     as_op!();
