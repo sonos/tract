@@ -15,24 +15,24 @@ pub fn select_kernel_and_packing(
     operating_dt: DatumType,
 ) -> TractResult<(Box<dyn MatMatMul>, usize)> {
     let input_facts = model.node_input_facts(node.id)?;
+    let a_dt = input_facts[0].datum_type;
+    let b_dt = input_facts[1].datum_type;
+
     if let Some(bqv) = input_facts[0]
         .konst
         .as_ref()
         .filter(|t| t.volume() == 1 && t.datum_type().is_opaque())
         .and_then(|t| t.as_slice::<Opaque>().unwrap()[0].downcast_ref::<BlockQuantValue>())
     {
-        /*
         let all_n_values = model
             .symbols
             .all_scenarios()
             .into_iter()
             .map(|(s, _)| n.eval_with_scenario(&s))
             .collect_vec();
-        let need_matvec = all_n_values.iter().any(|n| n.is_one());
-        */
+        let _need_matvec = all_n_values.iter().any(|n| n.is_one());
         //        println!("{m} {n} {all_n_values:?} {need_matvec:?}");
         let mut options: Vec<(&Box<dyn MatMatMul>, usize)> = vec![];
-        let b_dt = model.outlet_fact(node.inputs[1])?.datum_type;
         for imp in tract_linalg::ops().mmm_impls() {
             for (packing, (pack_a, pack_b)) in imp.packings().iter().enumerate() {
                 //                println!("{imp:?} {packing} {pack_a} {pack_b}");
@@ -61,8 +61,8 @@ pub fn select_kernel_and_packing(
             return Ok((pair.0.clone(), pair.1));
         }
     }
-    let a_dt = input_facts[0].datum_type;
-    let b_dt = input_facts[1].datum_type;
+
+    // "simple" kernel selection
     let mmm = tract_linalg::ops()
         .mmm(operating_dt, m.to_usize().ok(), k.to_usize().ok(), n.to_usize().ok())
         .unwrap();
@@ -70,8 +70,11 @@ pub fn select_kernel_and_packing(
         .packings()
         .iter()
         .position(|p| {
-            p.0.can_prepare_types().contains(&a_dt.unquantized())
-                && p.1.can_prepare_types().contains(&b_dt.unquantized())
+            p.0.downcast_ref::<PackedFormat>()
+                .is_some_and(|pf| pf.dt.unquantized() == a_dt.unquantized())
+                && p.1
+                    .downcast_ref::<PackedFormat>()
+                    .is_some_and(|pf| pf.dt.unquantized() == b_dt.unquantized())
         })
         .with_context(|| format!("No packing for {mmm:?} with inputs {a_dt:?} and {b_dt:?}"))?;
     Ok((mmm, packing))

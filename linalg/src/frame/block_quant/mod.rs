@@ -196,10 +196,6 @@ impl PackedBlockQuantFormat {
 }
 
 impl MMMInputFormat for PackedBlockQuantFormat {
-    fn can_prepare_types(&self) -> Vec<DatumType> {
-        vec![]
-    }
-
     fn prepare_tensor(
         &self,
         t: &Tensor,

@@ -17,10 +17,6 @@ pub struct PackedFormat {
 }
 
 impl MMMInputFormat for PackedFormat {
-    fn can_prepare_types(&self) -> Vec<DatumType> {
-        vec![self.dt]
-    }
-
     fn prepare_tensor(
         &self,
         t: &Tensor,

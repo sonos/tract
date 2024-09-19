@@ -13,10 +13,6 @@ pub struct PanelExtractFormat {
 }
 
 impl MMMInputFormat for PanelExtractFormat {
-    fn can_prepare_types(&self) -> Vec<tract_data::prelude::DatumType> {
-        vec![]
-    }
-
     fn prepare_tensor(
         &self,
         _t: &tract_data::prelude::Tensor,

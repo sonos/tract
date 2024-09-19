@@ -8,7 +8,6 @@ use std::sync::Arc;
 use tract_data::internal::*;
 
 pub trait MMMInputFormat: Downcast + Debug + DynHash + DynClone + Send + Sync + Display {
-    fn can_prepare_types(&self) -> Vec<DatumType>;
     fn prepare_tensor(
         &self,
         t: &Tensor,
