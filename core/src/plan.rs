@@ -409,8 +409,6 @@ where
                 debug!("Determined symbol {sym}={v}");
                 state.resolved_symbols.set(&sym, v.to_i64().unwrap());
             }
-            dbg!(&sym);
-            dbg!(&sym.scope());
             if state.scenario.is_none() {
                 state.scenario = sym.scope().unwrap().guess_scenario(&state.resolved_symbols)?;
             }
