@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use parking_lot::ReentrantMutex;
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fmt::{self, Display};
 use std::sync::{Arc, Weak};
 use string_interner::DefaultStringInterner;
@@ -10,7 +10,7 @@ use string_interner::Symbol as _;
 use crate::TractResult;
 
 use super::parse::parse_assertion;
-use super::{parse_tdim, Assertion, TDim};
+use super::{parse_tdim, Assertion, TDim, TVec};
 
 #[derive(Clone, Default)]
 pub struct SymbolScope(pub Arc<ReentrantMutex<RefCell<SymbolScopeData>>>);
@@ -27,7 +27,7 @@ impl Eq for SymbolScope {}
 pub struct SymbolScopeData {
     table: DefaultStringInterner,
     assertions: Vec<Assertion>,
-    scenarios: BTreeMap<String, Vec<Assertion>>,
+    scenarios: Vec<(String, Vec<Assertion>)>,
 }
 
 impl SymbolScope {
@@ -95,7 +95,10 @@ impl SymbolScope {
     pub fn add_scenario(&self, scenario: impl Into<String>) -> TractResult<()> {
         let locked = self.0.lock();
         let mut locked = locked.borrow_mut();
-        locked.scenarios.insert(scenario.into(), vec![]);
+        let s = scenario.into();
+        if !locked.scenarios.iter().any(|sc| sc.0 == s) {
+            locked.scenarios.push((s, vec![]));
+        }
         Ok(())
     }
 
@@ -108,7 +111,11 @@ impl SymbolScope {
         let s = scenario.into();
         let locked = self.0.lock();
         let mut locked = locked.borrow_mut();
-        locked.scenarios.entry(s).or_default().push(assert);
+        if let Some(s) = locked.scenarios.iter_mut().find(|sc| sc.0 == s) {
+            s.1.push(assert);
+        } else {
+            locked.scenarios.push((s, vec![assert]));
+        }
         Ok(())
     }
 
@@ -135,6 +142,25 @@ impl SymbolScope {
             .map(|is| Symbol(Arc::downgrade(&self.0), is.0))
             .collect()
     }
+
+    pub fn guess_scenario(&self, values: &SymbolValues) -> TractResult<Option<usize>> {
+        let locked = self.0.lock();
+        let locked = locked.borrow();
+        let valid: TVec<_> = locked
+            .scenarios
+            .iter()
+            .enumerate()
+            .filter(|(_ix, (_name, assertions))| {
+                assertions.iter().all(|assertion| assertion.check(values).unwrap_or(true))
+            })
+            .map(|s| s.0)
+            .collect();
+        match valid.len() {
+            0 if locked.scenarios.len() > 0 => anyhow::bail!("No valid scenario"),
+            1 => Ok(Some(valid[0])),
+            _ => Ok(None)
+        }
+    }
 }
 
 impl SymbolScopeData {
@@ -143,19 +169,21 @@ impl SymbolScopeData {
     }
 
     pub fn assertions(&self, scenario: Option<&str>) -> impl Iterator<Item = &'_ Assertion> {
-        self.assertions.iter().chain(if let Some(s) = scenario {
-            self.scenarios[s].iter()
-        } else {
-            [].iter()
-        })
+        self.assertions.iter().chain(
+            scenario
+                .and_then(|s| self.scenarios.iter().find(|s2| s2.0 == s))
+                .map(|s| &*s.1)
+                .unwrap_or(&[])
+                .iter(),
+        )
     }
 
     pub fn scenarios(&self) -> impl Iterator<Item = &'_ str> {
-        self.scenarios.keys().map(|s| s.as_ref())
+        self.scenarios.iter().map(|s| &*s.0)
     }
 
     pub fn scenario(&self, s: &str) -> impl Iterator<Item = &'_ Assertion> {
-        self.scenarios[s].iter()
+        self.scenarios.iter().find(|sc| sc.0 == s).map(|sc| &*sc.1).unwrap_or(&[]).iter()
     }
 
     pub fn resolving<R>(&self, sym: &Symbol, f: impl FnOnce(&str) -> R) -> Option<R> {

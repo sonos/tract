@@ -25,6 +25,7 @@ pub struct PlanOptions {
 pub struct SessionState {
     pub inputs: HashMap<usize, TValue>,
     pub resolved_symbols: SymbolValues,
+    pub scenario: Option<usize>,
     pub tensors: HashMap<String, Tensor>,
     pub cached_mmm_scratch_space: RefCell<Option<Box<dyn tract_linalg::mmm::ScratchSpace>>>,
 }
@@ -35,6 +36,7 @@ impl Clone for SessionState {
             inputs: self.inputs.clone(),
             resolved_symbols: self.resolved_symbols.clone(),
             tensors: self.tensors.clone(),
+            scenario: self.scenario.clone(),
             cached_mmm_scratch_space: None.into(),
         }
     }
@@ -125,13 +127,13 @@ where
             values_needed_until_step[o.node] = order.len();
         }
         let mut flush_lists: Vec<TVec<usize>> = vec![tvec!(); order.len() + 1];
-    
+
         for (node, &flush_at) in values_needed_until_step.iter().enumerate() {
             if flush_at != 0 && !model.borrow().node(node).op_is::<Const>() {
                 flush_lists[flush_at].push(node)
             }
         }
-        
+
         #[allow(clippy::mutable_key_type)]
         let mut symbols: std::collections::HashSet<Symbol> = Default::default();
         for node in &model.borrow().nodes {
@@ -285,15 +287,8 @@ where
         E: Into<anyhow::Error> + Send + Sync + 'static,
     {
         {
-            let &mut SimpleState {
-                ref plan,
-                ref mut session_state,
-                ref mut states,
-                ref mut values,
-                ..
-            } = self;
-            let plan = plan.borrow();
-            let model = plan.model();
+            let plan = self.plan.borrow();
+            let model = plan.model.borrow();
             for (step, n) in plan.order.iter().enumerate() {
                 let node = model.node(*n);
                 trace!("Running step {}, node {}", step, node);
@@ -301,7 +296,7 @@ where
                 for i in &node.inputs {
                     trace!("  use input {:?}", i);
                     let prec_node = model.node(i.node);
-                    let prec = values[i.node].as_ref().ok_or_else(|| {
+                    let prec = self.values[i.node].as_ref().ok_or_else(|| {
                         format_err!("Computing {}, precursor {} not done:", node, prec_node)
                     })?;
                     inputs.push(prec[i.slot].clone())
@@ -309,7 +304,7 @@ where
 
                 for flush in &plan.flush_lists[step] {
                     trace!("  Ran {} can now flush {}", node, model.node(*flush));
-                    values[*flush] = None;
+                    self.values[*flush] = None;
                 }
 
                 if cfg!(debug_assertions) {
@@ -323,7 +318,7 @@ where
                         );
                     }
                     for (ix, (v, f)) in inputs.iter().zip(facts.iter()).enumerate() {
-                        if !f.matches(v, Some(&session_state.resolved_symbols))? {
+                        if !f.matches(v, Some(&self.session_state.resolved_symbols))? {
                             bail!(
                                 "Evaluating {}: input {:?}, expected {:?}, got {:?}",
                                 node,
@@ -335,15 +330,20 @@ where
                     }
                 }
 
-                let vs = eval(session_state, states[node.id].as_deref_mut(), node, inputs)
-                    .map_err(|e| e.into())?;
+                let vs = eval(
+                    &mut self.session_state,
+                    self.states[node.id].as_deref_mut(),
+                    node,
+                    inputs,
+                )
+                .map_err(|e| e.into())?;
 
                 if plan.has_unresolved_symbols {
                     for (o, v) in node.outputs.iter().zip(vs.iter()) {
                         if let Ok(f) = o.fact.to_typed_fact() {
                             for (dim_abstract, dim_concrete) in f.shape.iter().zip(v.shape()) {
                                 Self::resolve(
-                                    &mut session_state.resolved_symbols,
+                                    &mut self.session_state,
                                     dim_abstract,
                                     *dim_concrete as i64,
                                 )?;
@@ -365,7 +365,7 @@ where
                         if node.outputs[ix].successors.len() == 0 {
                             continue;
                         }
-                        if !f.matches(v, Some(&session_state.resolved_symbols))? {
+                        if !f.matches(v, Some(&self.session_state.resolved_symbols))? {
                             bail!(
                                 "Evaluating {}: output {:?}, expected {:?}, got {:?}",
                                 node,
@@ -377,7 +377,7 @@ where
                     }
                 }
 
-                values[node.id] = Some(vs);
+                self.values[node.id] = Some(vs);
             }
         }
         Ok(())
@@ -396,18 +396,23 @@ where
         Ok(())
     }
 
-    fn resolve(symbols: &mut SymbolValues, expression: &TDim, provided: i64) -> TractResult<()> {
-        let expected = expression.eval(symbols);
+    fn resolve(state: &mut SessionState, expression: &TDim, provided: i64) -> TractResult<()> {
+        let expected = expression.eval(&state.resolved_symbols);
         if let Ok(x) = expected.to_i64() {
             if x != provided {
-                bail!("Clashing resolution for expression. {expression}={x} != {provided}. ({symbols:?})")
+                bail!("Clashing resolution for expression. {expression}={x} != {provided}. ({state:?})")
             }
         }
         if expected.symbols().len() == 1 {
             let sym = expected.symbols().into_iter().next().unwrap();
             if let Some(v) = solve_for(&sym, &expected, &provided.to_dim()) {
                 debug!("Determined symbol {sym}={v}");
-                symbols.set(&sym, v.to_i64().unwrap());
+                state.resolved_symbols.set(&sym, v.to_i64().unwrap());
+            }
+            dbg!(&sym);
+            dbg!(&sym.scope());
+            if state.scenario.is_none() {
+                state.scenario = sym.scope().unwrap().guess_scenario(&state.resolved_symbols)?;
             }
         }
         Ok(())
@@ -419,12 +424,9 @@ where
             .input_outlets()?
             .get(input)
             .with_context(|| format!("Invalid input id for model ({input})."))?;
-        let SimpleState { plan, session_state, .. } = self;
-        let plan = (*plan).borrow();
-        let model = plan.model.borrow();
-        if let Ok(fact) = model.outlet_fact(outlet)?.to_typed_fact() {
+        if let Ok(fact) = self.plan.borrow().model().outlet_fact(outlet)?.to_typed_fact() {
             for (expected, provided) in fact.shape.iter().zip(t.shape()) {
-                Self::resolve(&mut session_state.resolved_symbols, expected, *provided as i64)?;
+                Self::resolve(&mut self.session_state, expected, *provided as i64)?;
             }
         }
         let fact = self.plan.borrow().model().outlet_fact(outlet)?;
@@ -577,6 +579,7 @@ where
                 .map(|(ix, t)| (*ix, t.clone().into_tensor()))
                 .collect(),
             resolved_symbols: self.session_state.resolved_symbols.clone(),
+            scenario: self.session_state.scenario.clone(),
             tensors: self.session_state.tensors.clone(),
             states: self.states.iter().map(|s| s.as_ref().map(|s| s.freeze())).collect(),
             values: self
@@ -627,6 +630,7 @@ where
     plan: P,
     pub inputs: HashMap<usize, Tensor>,
     pub resolved_symbols: SymbolValues,
+    pub scenario: Option<usize>,
     pub tensors: HashMap<String, Tensor>,
     pub states: Vec<Option<Box<dyn FrozenOpState>>>,
     pub values: Vec<Option<TVec<Tensor>>>,
@@ -646,6 +650,7 @@ where
             session_state: SessionState {
                 inputs: self.inputs.iter().map(|(ix, t)| (*ix, t.clone().into_tvalue())).collect(),
                 resolved_symbols: self.resolved_symbols.clone(),
+                scenario: self.scenario.clone(),
                 tensors: self.tensors.clone(),
                 cached_mmm_scratch_space: None.into(),
             },

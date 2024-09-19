@@ -36,8 +36,28 @@ impl Assertion {
             LT(left, right) => Some(right.clone() - 1 - left),
         }
     }
-}
 
+    pub fn check(&self, values: &SymbolValues) -> Option<bool> {
+        use Assertion::*;
+        match self {
+            Eq(left, right) => {
+                (left.eval(values) - right.eval(values)).to_i64().ok().map(|d| d == 0)
+            }
+            GTE(left, right) => {
+                (left.eval(values) - right.eval(values)).to_i64().ok().map(|d| d >= 0)
+            }
+            GT(left, right) => {
+                (left.eval(values) - right.eval(values)).to_i64().ok().map(|d| d > 0)
+            }
+            LTE(left, right) => {
+                (left.eval(values) - right.eval(values)).to_i64().ok().map(|d| d <= 0)
+            }
+            LT(left, right) => {
+                (left.eval(values) - right.eval(values)).to_i64().ok().map(|d| d < 0)
+            }
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -151,6 +171,22 @@ mod tests {
             symbols.parse_tdim("min(0,(S)#(P+S))").unwrap().simplify(),
             symbols.parse_tdim("0").unwrap()
         );
+    }
+
+    #[test]
+    fn guess_scenario() -> TractResult<()> {
+        let symbols = SymbolScope::default()
+            .with_assertion("S>=0")?
+            .with_assertion("P>=0")?
+            .with_scenario_assertion("tg", "S==1")?
+            .with_scenario_assertion("pp", "P==0")?;
+        let s = symbols.sym("S");
+        let p = symbols.sym("P");
+        assert_eq!(symbols.guess_scenario(&SymbolValues::default())?, None);
+        assert_eq!(symbols.guess_scenario(&SymbolValues::default().with(&s, 50))?, Some(1));
+        assert_eq!(symbols.guess_scenario(&SymbolValues::default().with(&p, 50))?, Some(0));
+        assert!(symbols.guess_scenario(&SymbolValues::default().with(&p, 50).with(&s, 50)).is_err());
+        Ok(())
     }
 
     #[test]
