@@ -3,7 +3,7 @@ use tract_linalg::Scaler;
 use tract_ndarray::Ix2;
 use tract_num_traits::One;
 
-use super::codegen::*;
+use super::optimize::*;
 use super::EinSum;
 use crate::internal::*;
 use crate::ops::konst::Const;
