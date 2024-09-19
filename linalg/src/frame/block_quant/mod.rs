@@ -1,6 +1,7 @@
 use downcast_rs::{impl_downcast, Downcast};
 use dyn_clone::DynClone;
 use dyn_hash::DynHash;
+use panel_extract_input::PanelExtractFormat;
 use tract_data::internal::*;
 use tract_data::itertools::Itertools;
 
@@ -11,6 +12,7 @@ use std::hash::Hash;
 use std::ops::Deref;
 
 mod helpers;
+mod panel_extract_input;
 mod q4_0;
 
 pub use helpers::{NibbleReader, NibbleWriter};
@@ -186,6 +188,10 @@ impl PackedBlockQuantFormat {
 
     pub fn pack(&self, input: &[u8], k: usize) -> TractResult<EagerPackedInput> {
         self.bq.pack(input, k, self.r, self.zip, self.scales_at_end)
+    }
+
+    pub fn panel_extract(&self) -> PanelExtractFormat {
+        PanelExtractFormat { pbqf: self.clone() }
     }
 }
 
