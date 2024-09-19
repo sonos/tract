@@ -28,6 +28,7 @@ where
         source: &Graph<TI1, O1>,
     ) -> TractResult<(Graph<TI2, O2>, HashMap<OutletId, OutletId>)> {
         let mut target = Graph::default();
+        target.symbols = source.symbols.clone();
         let mut mapping = HashMap::new();
         for old_id in source.eval_order()? {
             let node = source.node(old_id);
@@ -55,7 +56,6 @@ where
         // maintaining order of i/o interface
         target.inputs = source.input_outlets()?.iter().map(|i| mapping[i]).collect();
         target.outputs = source.output_outlets()?.iter().map(|o| mapping[o]).collect();
-        target.symbols = source.symbols.clone();
         target.properties.clone_from(&source.properties);
         Ok((target, mapping))
     }
