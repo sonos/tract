@@ -1,6 +1,6 @@
 use tract_linalg::frame::block_quant::PackedBlockQuantFormat;
 use tract_linalg::frame::PackedFormat;
-use tract_linalg::mmm::{MMMInputFormat, MMMInputValue, MatMatMul};
+use tract_linalg::mmm::{MMMInputFormat, MMMInputValue};
 
 use super::*;
 use crate::ops::cast::cast;
