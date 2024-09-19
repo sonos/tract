@@ -310,10 +310,13 @@ fn select_kernel_and_packing(
         .filter(|t| t.volume() == 1 && t.datum_type().is_opaque())
         .and_then(|t| t.as_slice::<Opaque>().unwrap()[0].downcast_ref::<BlockQuantValue>())
     {
+        println!("{m} {n}");
+        println!("{:?}", model.symbols);
         let mut options: Vec<(&Box<dyn MatMatMul>, usize)> = vec![];
         let b_dt = model.outlet_fact(node.inputs[1])?.datum_type;
         for imp in tract_linalg::ops().mmm_impls() {
             for (packing, (pack_a, pack_b)) in imp.packings().iter().enumerate() {
+                println!("{imp:?} {packing} {pack_a} {pack_b}");
                 if let (Some(input), Some(b)) = (
                     pack_a.downcast_ref::<PackedBlockQuantFormat>(),
                     pack_b.downcast_ref::<PackedFormat>(),
@@ -324,6 +327,7 @@ fn select_kernel_and_packing(
                 }
             }
         }
+        panic!();
         if options.len() > 0 {
             let pair = if let (Some(m), Some(n)) = (m.as_i64(), n.as_i64()) {
                 options
