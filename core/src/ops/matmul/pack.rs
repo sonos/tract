@@ -5,7 +5,7 @@ use tract_linalg::frame::PackedFormat;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MatMatMulPack {
-    pub(crate) packer: PackedFormat,
+    pub(crate) packers: Vec<PackedFormat>,
     pub(crate) k_axis: usize,
     pub(crate) mn_axis: usize,
 }
@@ -16,7 +16,7 @@ impl Op for MatMatMulPack {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("{:?}. k axis: {}, mn axis: {}", self.packer, self.k_axis, self.mn_axis)])
+        Ok(vec![format!("{:?}. k axis: {}, mn axis: {}", self.packers, self.k_axis, self.mn_axis)])
     }
 
     op_as_typed_op!();
@@ -28,8 +28,12 @@ impl EvalOp for MatMatMulPack {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        self.do_eval(&inputs[0])
+    fn eval_with_session(
+        &self,
+        session: &SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        self.do_eval(session, &inputs[0])
     }
 }
 
@@ -59,11 +63,16 @@ impl TypedOp for MatMatMulPack {
 }
 
 impl MatMatMulPack {
-    fn do_eval(&self, input: &Tensor) -> TractResult<TVec<TValue>> {
+    fn do_eval(&self, session: &SessionState, input: &Tensor) -> TractResult<TVec<TValue>> {
         unsafe {
+            let packer = if self.packers.len() == 1 {
+                &self.packers[0]
+            } else {
+                &self.packers[session.scenario.context("Scenario should be set")?]
+            };
             let output_shape: TVec<usize> = self.output_shape(input.shape());
             let stores = if output_shape.iter().all(|d| *d == 1) {
-                tensor0::<Opaque>(self.packer.pack_tensor(input, self.k_axis, self.mn_axis)?.into())
+                tensor0::<Opaque>(packer.pack_tensor(input, self.k_axis, self.mn_axis)?.into())
                     .into_shape(&output_shape)?
             } else {
                 let mut stores = Tensor::uninitialized_dt(Opaque::datum_type(), &output_shape)?;
@@ -83,8 +92,7 @@ impl MatMatMulPack {
                     let mut pack_coords: TVec<usize> = coord.slice().into();
                     pack_coords.remove(self.k_axis.max(self.mn_axis));
                     pack_coords.remove(self.k_axis.min(self.mn_axis));
-                    stores_view[&*pack_coords] = self
-                        .packer
+                    stores_view[&*pack_coords] = packer
                         .pack_tensor_view(
                             &TensorView::from_bytes(input, offset, input.shape(), input.strides()),
                             self.k_axis,

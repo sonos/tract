@@ -13,7 +13,7 @@ pub fn select_kernel_and_packing(
     k: &TDim,
     n: &TDim,
     operating_dt: DatumType,
-) -> TractResult<(Box<dyn MatMatMul>, usize)> {
+) -> TractResult<Vec<(Box<dyn MatMatMul>, usize)>> {
     let input_facts = model.node_input_facts(node.id)?;
     let a_dt = input_facts[0].datum_type;
     let b_dt = input_facts[1].datum_type;
@@ -58,7 +58,7 @@ pub fn select_kernel_and_packing(
             } else {
                 options.iter().max_by_key(|a| a.0.mr() * a.0.nr()).unwrap()
             };
-            return Ok((pair.0.clone(), pair.1));
+            return Ok(vec!((pair.0.clone(), pair.1)));
         }
     }
 
@@ -77,5 +77,5 @@ pub fn select_kernel_and_packing(
                     .is_some_and(|pf| pf.dt.unquantized() == b_dt.unquantized())
         })
         .with_context(|| format!("No packing for {mmm:?} with inputs {a_dt:?} and {b_dt:?}"))?;
-    Ok((mmm, packing))
+    Ok(vec!((mmm, packing)))
 }
