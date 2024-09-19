@@ -1,10 +1,12 @@
 mod basic_mat_mul;
 mod mfa;
+mod mlx_gemm;
 mod mmm_tile_8x8;
 pub mod mps;
 
 pub use basic_mat_mul::BasicMatMul;
-pub use mfa::{MfaGemm, MfaGemmPrecision};
+pub use mfa::MfaGemm;
+pub use mlx_gemm::MlxGemm;
 pub use mmm_tile_8x8::{metal_mmm_tile_8x8, mmm_tile_8x8};
 pub use mps::MpsMatMul;
 
@@ -14,12 +16,14 @@ use num_traits::One;
 use std::fmt;
 use tract_core::{internal::*, ndarray, ndarray::Dimension};
 
-#[cfg(target_os = "macos")]
-pub type DefaultGemmImpl = GemmImpl<MfaGemm>;
-#[cfg(target_os = "ios")]
-pub type DefaultGemmImpl = GemmImpl<MpsMatMul>;
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum MetalGemmImplKind {
+    Mlx,
+    Mps,
+    Mfa,
+}
 
-pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default {
+pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync {
     fn is_supported_dt(&self, dt: DatumType) -> bool;
 
     #[allow(clippy::too_many_arguments)]
@@ -153,6 +157,164 @@ impl<M: GemmKernel> GemmImpl<M> {
             }
 
             Ok(c)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::kernels::matmul::GemmImpl;
+    use crate::IntoMetal;
+    use anyhow::Result;
+    use derive_new::new;
+    use num_traits::AsPrimitive;
+    use num_traits::Float;
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+    use tract_core::ops::einsum::BasicMatMul;
+
+    proptest::proptest! {
+        #[test]
+        fn mmm_mfa_prop_f32(pb in any::<MmmProblem<MfaGemm, f32>>()) {
+            prop_assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
+        }
+
+        #[test]
+        fn mmm_mfa_prop_f16(pb in any::<MmmProblem<MfaGemm, f16>>()) {
+            prop_assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
+        }
+
+        #[test]
+        fn mmm_mps_prop_f32(pb in any::<MmmProblem<MpsMatMul, f32>>()) {
+            prop_assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
+        }
+
+        #[test]
+        fn mmm_mps_prop_f16(pb in any::<MmmProblem<MpsMatMul, f16>>()) {
+            prop_assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
+        }
+
+        #[test]
+        fn mmm_mlx_prop_f32(pb in any::<MmmProblem<MlxGemm, f32>>()) {
+            prop_assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
+        }
+
+        #[test]
+        fn mmm_mlx_prop_f16(pb in any::<MmmProblem<MlxGemm, f16>>()) {
+            prop_assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
+        }
+    }
+
+    #[derive(Debug, new)]
+    pub struct MmmProblem<K: GemmKernel, F: Datum + Float>
+    where
+        F: Datum + Float,
+        usize: AsPrimitive<F>,
+    {
+        pub b: usize,
+        pub m: usize,
+        pub k: usize,
+        pub n: usize,
+        pub lhs: Vec<F>,
+        pub transpose_lhs: bool,
+        pub rhs: Vec<F>,
+        pub transpose_rhs: bool,
+        pub _phantom: std::marker::PhantomData<K>,
+    }
+
+    impl<K, F> Arbitrary for MmmProblem<K, F>
+    where
+        K: GemmKernel,
+        F: Datum + Float,
+        usize: AsPrimitive<F>,
+    {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<Self>;
+
+        fn arbitrary_with(_: ()) -> Self::Strategy {
+            (1usize..2, 1usize..20, 1usize..20, 1usize..20)
+                .prop_flat_map(|(b, m, k, n)| {
+                    let lhs_len = b * m * k;
+                    let rhs_len = b * k * n;
+                    let lhs = (0usize..10).prop_map(|x| x.as_());
+                    let rhs = (0usize..10).prop_map(|x| x.as_());
+                    (
+                        Just(b),
+                        Just(m),
+                        Just(k),
+                        Just(n),
+                        vec(lhs, lhs_len..=lhs_len),
+                        proptest::bool::ANY,
+                        vec(rhs, rhs_len..=rhs_len),
+                        proptest::bool::ANY,
+                    )
+                })
+                .prop_map(|(b, m, k, n, lhs, transpose_lhs, rhs, transpose_rhs)| Self {
+                    b,
+                    m,
+                    k,
+                    n,
+                    lhs,
+                    transpose_lhs,
+                    rhs,
+                    transpose_rhs,
+                    _phantom: std::marker::PhantomData,
+                })
+                .boxed()
+        }
+    }
+
+    impl<K, F> MmmProblem<K, F>
+    where
+        K: GemmKernel,
+        F: Datum + Float + std::ops::AddAssign,
+        usize: AsPrimitive<F>,
+    {
+        pub fn reference(&self) -> Result<Vec<F>> {
+            let matmul = BasicMatMul {
+                transpose_a: self.transpose_lhs,
+                transpose_b: self.transpose_rhs,
+                transpose_c: false,
+                quantize_output: None,
+            };
+
+            let lhs_tensor = if self.transpose_lhs {
+                Tensor::from_shape(&[self.b, self.k, self.m], &self.lhs)?
+            } else {
+                Tensor::from_shape(&[self.b, self.m, self.k], &self.lhs)?
+            };
+            let rhs_tensor = if self.transpose_rhs {
+                Tensor::from_shape(&[self.b, self.n, self.k], &self.rhs)?
+            } else {
+                Tensor::from_shape(&[self.b, self.k, self.n], &self.rhs)?
+            };
+
+            let output = matmul.eval(tvec![lhs_tensor.into_tvalue(), rhs_tensor.into_tvalue()])?;
+
+            Ok(output[0].clone().into_tensor().as_slice::<F>()?.to_vec())
+        }
+
+        pub fn run(&self) -> Result<Vec<F>> {
+            objc::rc::autoreleasepool(|| {
+                crate::METAL_CONTEXT.with_borrow(|context| {
+                    let lhs = if self.transpose_lhs {
+                        Tensor::from_shape(&[self.b, self.k, self.m], &self.lhs)?.into_metal()?
+                    } else {
+                        Tensor::from_shape(&[self.b, self.m, self.k], &self.lhs)?.into_metal()?
+                    };
+                    let rhs = if self.transpose_rhs {
+                        Tensor::from_shape(&[self.b, self.n, self.k], &self.rhs)?.into_metal()?
+                    } else {
+                        Tensor::from_shape(&[self.b, self.k, self.n], &self.rhs)?.into_metal()?
+                    };
+
+                    let matmul = GemmImpl::<K>::new(self.transpose_lhs, self.transpose_rhs);
+
+                    let c = matmul.eval(context, &lhs, &rhs)?;
+                    Ok(c.to_cpu().as_slice::<F>()?.to_vec())
+                })
+            })
         }
     }
 }

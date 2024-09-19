@@ -276,7 +276,7 @@ pub mod tests {
 
         let expected = model.clone().into_runnable()?.run(tvec![input.clone().into()])?;
 
-        let metal_model = MetalTransform.transform_into(&model)?;
+        let metal_model = MetalTransform::default().transform_into(&model)?;
         let output = metal_model.clone().into_runnable()?.run(tvec![input.clone().into()])?;
 
         let _ = &output[0].close_enough(&expected[0], Approximation::Close)?;

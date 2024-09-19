@@ -54,7 +54,10 @@ impl GemmKernel for MpsMatMul {
             _ => bail!("Unsupported datum type for MpsMatMul {:?}", dt),
         };
 
-        if m == 1 {
+        if m == 1 && dt == DatumType::F32 {
+            // The F16 integration seems broken while running prop tests.
+            // Therefore we limit the integration to F32 for the moment.
+
             let a_vector = Vector::new(a_buffer.to_owned(), a_offset as _, data_type, k as _)
                 .ok_or_else(|| anyhow!("An error occured when creating MPS vector"))?;
 
@@ -170,6 +173,7 @@ mod tests {
     fn test_mat_vec() -> TractResult<()> {
         run_test_case((4, 4, 1), false, false)?;
         run_test_case((1, 4, 4), false, false)?;
+        run_test_case((1, 15, 7), false, true)?;
         Ok(())
     }
 
