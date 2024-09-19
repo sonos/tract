@@ -79,7 +79,7 @@ impl Conv {
     ) -> TractResult<OutletId> {
         Ok(model.wire_node(
             format!("{name}.prep_kernel.pack"),
-            MatMatMulPack { packer, k_axis: 2, mn_axis: 1 },
+            MatMatMulPack { packers: vec!(packer), k_axis: 2, mn_axis: 1 },
             &[kernel],
         )?[0])
     }
