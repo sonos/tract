@@ -86,7 +86,7 @@ impl SymbolScope {
         locked.assertions.clone()
     }
 
-    pub fn all_scenarios(&self) -> impl IntoIterator<Item=(String, Vec<Assertion>)> {
+    pub fn all_scenarios(&self) -> impl IntoIterator<Item = (String, Vec<Assertion>)> {
         let locked = self.0.lock();
         let locked = locked.borrow();
         locked.scenarios.clone()
@@ -206,7 +206,21 @@ impl fmt::Debug for SymbolScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let locked = self.0.lock();
         let locked = locked.borrow();
-        write!(f, "{}", locked.table.into_iter().map(|(_, s)| s).join(" "))
+        write!(
+            f,
+            "symbols: {}; assertions: {}; {}",
+            locked.table.into_iter().map(|(_, s)| s).sorted().join(", "),
+            locked.assertions.iter().map(|s| s.to_string()).sorted().join(", "),
+            locked
+                .scenarios
+                .iter()
+                .map(|s| format!(
+                    "{}: {}",
+                    s.0,
+                    s.1.iter().map(|s| s.to_string()).sorted().join(", ")
+                ))
+                .join(" ; "),
+        )
     }
 }
 
