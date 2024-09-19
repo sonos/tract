@@ -1,20 +1,21 @@
-use crate::kernels::matmul::DefaultGemmImpl;
+use crate::kernels::matmul::{GemmImpl, GemmKernel};
+
 use crate::tensor::MetalTensorExt;
 use anyhow::{bail, ensure};
 use tract_core::internal::*;
 
 #[derive(Debug, Default, Clone)]
-pub struct MetalGemm {
-    pub kernel: DefaultGemmImpl,
+pub struct MetalGemm<K: GemmKernel> {
+    pub kernel: GemmImpl<K>,
 }
 
-impl MetalGemm {
+impl<K: GemmKernel> MetalGemm<K> {
     pub fn new(transpose_a: bool, transpose_b: bool) -> Self {
-        Self { kernel: DefaultGemmImpl::new(transpose_a, transpose_b) }
+        Self { kernel: GemmImpl::<K>::new(transpose_a, transpose_b) }
     }
 }
 
-impl Op for MetalGemm {
+impl<K: GemmKernel + 'static> Op for MetalGemm<K> {
     fn name(&self) -> Cow<str> {
         format!("Metal{}", self.kernel).into()
     }
@@ -28,7 +29,7 @@ impl Op for MetalGemm {
     op_as_typed_op!();
 }
 
-impl MetalGemm {
+impl<K: GemmKernel> MetalGemm<K> {
     fn transpose_a(&self) -> bool {
         self.kernel.transpose_a
     }
@@ -59,7 +60,7 @@ impl MetalGemm {
     }
 }
 
-impl EvalOp for MetalGemm {
+impl<K: GemmKernel> EvalOp for MetalGemm<K> {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -81,7 +82,7 @@ impl EvalOp for MetalGemm {
     }
 }
 
-impl TypedOp for MetalGemm {
+impl<K: GemmKernel + 'static> TypedOp for MetalGemm<K> {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         crate::utils::metal_output_facts(inputs, |input_facts| {
             self.resolve_output_facts(input_facts)
