@@ -374,7 +374,7 @@ impl TypedOp for EinSum {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        optimize::codegen(self, model, node)
+        optimize::optimize(self, model, node)
     }
 
     as_op!();

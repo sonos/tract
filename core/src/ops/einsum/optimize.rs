@@ -22,7 +22,7 @@ pub enum AxesOrPatch<'a> {
     NotAMatMul(&'a Axis),
 }
 
-pub(crate) fn codegen(
+pub(crate) fn optimize(
     op: &EinSum,
     model: &TypedModel,
     node: &TypedNode,
