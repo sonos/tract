@@ -297,55 +297,6 @@ fn dequant(
     Ok(Some(patch))
 }
 
-fn select_kernel_and_packing(
-    model: &TypedModel,
-    node: &TypedNode,
-    m: &TDim,
-    n: &TDim,
-) -> TractResult<Option<(Box<dyn MatMatMul>, usize)>> {
-    if let Some(bqv) = model
-        .outlet_fact(node.inputs[0])?
-        .konst
-        .as_ref()
-        .filter(|t| t.volume() == 1 && t.datum_type().is_opaque())
-        .and_then(|t| t.as_slice::<Opaque>().unwrap()[0].downcast_ref::<BlockQuantValue>())
-    {
-        println!("{m} {n}");
-        println!("{:?}", model.symbols);
-        let mut options: Vec<(&Box<dyn MatMatMul>, usize)> = vec![];
-        let b_dt = model.outlet_fact(node.inputs[1])?.datum_type;
-        for imp in tract_linalg::ops().mmm_impls() {
-            for (packing, (pack_a, pack_b)) in imp.packings().iter().enumerate() {
-                println!("{imp:?} {packing} {pack_a} {pack_b}");
-                if let (Some(input), Some(b)) = (
-                    pack_a.downcast_ref::<PackedBlockQuantFormat>(),
-                    pack_b.downcast_ref::<PackedFormat>(),
-                ) {
-                    if input.bq.same_as(&*bqv.fact.format) && b.dt == b_dt {
-                        options.push((imp, packing));
-                    }
-                }
-            }
-        }
-        panic!();
-        if options.len() > 0 {
-            let pair = if let (Some(m), Some(n)) = (m.as_i64(), n.as_i64()) {
-                options
-                    .iter()
-                    .min_by_key(|a| {
-                        ((m as usize).divceil(a.0.mr()) * (n as usize).divceil(a.0.nr()))
-                            * (a.0.mr() * a.0.nr() + 100)
-                    })
-                    .unwrap()
-            } else {
-                options.iter().max_by_key(|a| a.0.mr() * a.0.nr()).unwrap()
-            };
-            return Ok(Some((pair.0.clone(), pair.1)));
-        }
-    }
-    Ok(None)
-}
-
 fn wire_packing(
     model: &TypedModel,
     node: &TypedNode,
@@ -425,24 +376,8 @@ fn optimized_mat_mul(
         .map(Some);
     }
 
-    let (mmm, packing) = if let Some(pair) = select_kernel_and_packing(model, node, m, n)? {
-        pair
-    } else {
-        let a_dt = input_facts[0].datum_type;
-        let b_dt = input_facts[1].datum_type;
-        let mmm = tract_linalg::ops()
-            .mmm(op.operating_dt, m.to_usize().ok(), k.to_usize().ok(), n.to_usize().ok())
-            .unwrap();
-        let packing = mmm
-            .packings()
-            .iter()
-            .position(|p| {
-                p.0.can_prepare_types().contains(&a_dt.unquantized())
-                    && p.1.can_prepare_types().contains(&b_dt.unquantized())
-            })
-            .with_context(|| format!("No packing for {mmm:?} with inputs {a_dt:?} and {b_dt:?}"))?;
-        (mmm, packing)
-    };
+    let (mmm, packing) =
+        super::kernel_selection::select_kernel_and_packing(model, node, m, k, n, op.operating_dt)?;
 
     let mut patch = TypedModelPatch::new("Einsum to OptMatMul");
     let packers = mmm.packings()[packing];

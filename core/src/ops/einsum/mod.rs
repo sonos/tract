@@ -14,6 +14,7 @@ use super::array::TypedConcat;
 use super::math::add;
 mod as_matmul;
 pub mod codegen;
+pub mod kernel_selection;
 
 #[cfg(test)]
 mod proptest;

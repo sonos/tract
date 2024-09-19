@@ -161,6 +161,17 @@ impl TDim {
         }
     }
 
+    pub fn eval_with_scenario(&self, scenario: &str) -> TDim {
+        if let Val(v) = self {
+            return Val(*v);
+        }
+        let scope = self.find_scope().unwrap();
+        let scope = scope.0;
+        let locked = scope.lock();
+        let scope = locked.borrow();
+        self.clone().simplify_rec(&scope, Some(scenario))
+    }
+
     pub fn substitute(&self, from: &Symbol, to: &Self) -> TractResult<Self> {
         match self {
             Sym(sym) => Ok(if sym == from { to.clone() } else { self.clone() }),
@@ -401,7 +412,9 @@ impl TDim {
                     (1, s) => s,      // Case #2: If coef is 1, return the simplified expression
                     (_, Add(terms)) => Add(terms
                         .into_iter()
-                        .map(|term| MulInt(coef, Box::new(term)).simplify_rec(scope, scenario))
+                        .map(|term| {
+                            MulInt(coef, Box::new(term)).simplify_rec(scope, scenario)
+                        })
                         .collect()), // Case #3: If expression is an addition, distribute the coef
                     (c, Val(v)) => Val(c * v), // Case #4: If expression is a value, combine coefs
                     (c, MulInt(v, inner)) => MulInt(c * v, inner), // Case #5: If expression is a MulInt, combine coefs
