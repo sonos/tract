@@ -1,6 +1,7 @@
 use crate::axes::Axis;
 use crate::internal::*;
 use ndarray::*;
+use tract_data::TooEarly;
 use tract_linalg::frame::PackedFormat;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -67,8 +68,10 @@ impl MatMatMulPack {
         unsafe {
             let packer = if self.packers.len() == 1 {
                 &self.packers[0]
+            } else if let Some(scen) = session.scenario {
+                &self.packers[scen]
             } else {
-                &self.packers[session.scenario.context("Scenario should be set")?]
+                bail!(TooEarly::Other("Undetermined scenario".into()))
             };
             let output_shape: TVec<usize> = self.output_shape(input.shape());
             let stores = if output_shape.iter().all(|d| *d == 1) {

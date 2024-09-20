@@ -1,7 +1,7 @@
 use super::Factoid;
 use crate::infer::*;
 use std::fmt;
-use tract_data::UndeterminedSymbol;
+use tract_data::TooEarly;
 
 tract_core::dyn_clone::clone_trait_object!(InferenceOp);
 
@@ -39,7 +39,7 @@ pub trait InferenceOp: Op {
                         values.into_iter().map(|t| t.into_arc_tensor().into()).collect::<TVec<_>>();
                     return Ok((infered_inputs, output_values, observed));
                 }
-                Err(e) if e.root_cause().downcast_ref::<UndeterminedSymbol>().is_some() => (),
+                Err(e) if e.root_cause().downcast_ref::<TooEarly>().is_some() => (),
                 Err(e) => return Err(e).context("Eager eval during inference"),
             }
         }

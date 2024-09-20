@@ -12,15 +12,21 @@ use std::ops::Neg;
 use std::{fmt, ops};
 
 #[derive(Debug)]
-pub struct UndeterminedSymbol(pub TDim);
+pub enum TooEarly {
+    UndeterminedSymbol(TDim),
+    Other(String),
+}
 
-impl std::fmt::Display for UndeterminedSymbol {
+impl std::fmt::Display for TooEarly {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Undetermined symbol in expression: {}", self.0)
+        match self {
+            TooEarly::UndeterminedSymbol(s) => write!(f, "Undetermined symbol in expression: {s}"),
+            TooEarly::Other(s) => write!(f, "{s}"),
+        }
     }
 }
 
-impl std::error::Error for UndeterminedSymbol {}
+impl std::error::Error for TooEarly {}
 
 macro_rules! b( ($e:expr) => { Box::new($e) } );
 
@@ -100,7 +106,7 @@ impl TDim {
         if let Val(v) = self {
             Ok(*v)
         } else {
-            Err(UndeterminedSymbol(self.clone()).into())
+            Err(TooEarly::UndeterminedSymbol(self.clone()).into())
         }
     }
 
@@ -116,7 +122,9 @@ impl TDim {
     pub fn eval_to_i64(&self, values: &SymbolValues) -> TractResult<i64> {
         match self {
             Sym(sym) => {
-                let Some(v) = values.get(sym) else { bail!(UndeterminedSymbol(self.clone())) };
+                let Some(v) = values.get(sym) else {
+                    bail!(TooEarly::UndeterminedSymbol(self.clone()))
+                };
                 Ok(v)
             }
             Val(v) => Ok(*v),
@@ -412,9 +420,7 @@ impl TDim {
                     (1, s) => s,      // Case #2: If coef is 1, return the simplified expression
                     (_, Add(terms)) => Add(terms
                         .into_iter()
-                        .map(|term| {
-                            MulInt(coef, Box::new(term)).simplify_rec(scope, scenario)
-                        })
+                        .map(|term| MulInt(coef, Box::new(term)).simplify_rec(scope, scenario))
                         .collect()), // Case #3: If expression is an addition, distribute the coef
                     (c, Val(v)) => Val(c * v), // Case #4: If expression is a value, combine coefs
                     (c, MulInt(v, inner)) => MulInt(c * v, inner), // Case #5: If expression is a MulInt, combine coefs
