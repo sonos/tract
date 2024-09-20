@@ -17,7 +17,7 @@ mod run_with_metal {
         }
 
         fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
-            let metal_model = tract_metal::transform::MetalTransform.transform_into(&model)?;
+            let metal_model = tract_metal::transform::MetalTransform::default().transform_into(&model)?;
             Ok(Box::new(Arc::new(metal_model.into_optimized()?.into_runnable()?)))
         }
     }

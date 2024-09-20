@@ -38,6 +38,17 @@ struct GEMMParams {
   const int batch_ndim;
 };
 
+struct GEMMDebug {
+  int TM_stride;
+  int TN_stride;
+  int WM;
+  int WN;
+  int TM;
+  int TN;
+  int num_threads_in_simd;
+  int num_simd_group;
+};
+
 struct GEMMSpiltKParams {
   const int M;
   const int N;
@@ -1008,6 +1019,8 @@ constant bool align_K [[function_constant(202)]];
 
 constant bool do_gather [[function_constant(300)]];
 
+constant bool debug_mode [[function_constant(400)]];
+
 constant bool gather_bias = do_gather && use_out_source;
 
 // clang-format off
@@ -1036,6 +1049,10 @@ template <
     const constant int* operand_shape [[buffer(13), function_constant(do_gather)]],
     const constant size_t* operand_strides [[buffer(14), function_constant(do_gather)]],
     const constant packed_int3& operand_batch_ndim [[buffer(15), function_constant(do_gather)]],
+    device GEMMDebug * debug [[buffer(16), function_constant(debug_mode)]],
+    uint3 tpig[[thread_position_in_grid]],
+    uint num_simd_group [[simdgroups_per_threadgroup]],
+    uint num_threads_in_simd [[threads_per_simdgroup]],
     uint simd_lane_id [[thread_index_in_simdgroup]],
     uint simd_group_id [[simdgroup_index_in_threadgroup]],
     uint3 tid [[threadgroup_position_in_grid]],
@@ -1178,6 +1195,18 @@ template <
 
   // Prepare threadgroup mma operation
   thread mma_t mma_op(simd_group_id, simd_lane_id);
+
+  // Collect debug information
+  if(debug_mode && tpig.x == 0 && tpig.y == 0 && tpig.z == 0) {
+     debug -> WM = WM;
+     debug -> WN = WN;
+     debug -> TM_stride = mma_op.TM_stride;
+     debug -> TN_stride = mma_op.TN_stride;
+     debug -> TM = mma_op.TM;
+     debug -> TN = mma_op.TN;
+     debug -> num_threads_in_simd = num_threads_in_simd;
+     debug -> num_simd_group = num_simd_group;
+  }
 
   // Prepare threadgroup loading operations
   thread loader_a_t loader_a(A, params->lda, As, simd_group_id, simd_lane_id);
@@ -1422,6 +1451,10 @@ template <
       const constant int* operand_shape [[buffer(13), function_constant(do_gather)]], \
       const constant size_t* operand_strides [[buffer(14), function_constant(do_gather)]], \
       const constant packed_int3& operand_batch_ndim [[buffer(15), function_constant(do_gather)]], \
+      device GEMMDebug * debug [[buffer(16), function_constant(debug_mode)]], \
+      uint3 tpig[[thread_position_in_grid]], \
+      uint num_simd_group [[simdgroups_per_threadgroup]], \
+      uint num_threads_in_simd [[threads_per_simdgroup]], \
       uint simd_lane_id [[thread_index_in_simdgroup]], \
       uint simd_group_id [[simdgroup_index_in_threadgroup]], \
       uint3 tid [[threadgroup_position_in_grid]], \

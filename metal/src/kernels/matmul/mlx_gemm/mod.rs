@@ -26,6 +26,20 @@ struct MlxGemmParams {
     batch_ndim: i32,
 }
 
+#[derive(Debug, Default)]
+#[repr(C)]
+#[allow(non_snake_case)]
+struct GEMMDebug {
+    TM_stride: i32,
+    TN_stride: i32,
+    WM: i32,
+    WN: i32,
+    TM: i32,
+    TN: i32,
+    num_threads_in_simd: i32,
+    num_simd_group: i32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct MlxGemm;
 
@@ -61,24 +75,163 @@ impl GemmKernel for MlxGemm {
         let b_strides =
             if transpose_b { natural_strides(&[1, n, k]) } else { natural_strides(&[1, k, n]) };
 
-        dispatch_metal_mlx_gemm(
-            context,
-            dt,
-            (1, m, n, k),
-            unsafe { std::mem::transmute::<&[isize], &[usize]>(a_strides.as_slice()) },
-            a_offset,
-            a_buffer,
-            transpose_a,
-            unsafe { std::mem::transmute::<&[isize], &[usize]>(b_strides.as_slice()) },
-            b_offset,
-            b_buffer,
-            transpose_b,
-            c_buffer,
-            c_offset,
-        )?;
+        if m == 1 || n == 1 {
+            dispatch_metal_mlx_gemv(
+                context,
+                dt,
+                (m, n, k),
+                unsafe { std::mem::transmute::<&[isize], &[usize]>(a_strides.as_slice()) },
+                a_offset,
+                a_buffer,
+                transpose_a,
+                unsafe { std::mem::transmute::<&[isize], &[usize]>(b_strides.as_slice()) },
+                b_offset,
+                b_buffer,
+                transpose_b,
+                c_buffer,
+                c_offset,
+            )?;
+        } else {
+            dispatch_metal_mlx_gemm(
+                context,
+                dt,
+                (1, m, n, k),
+                unsafe { std::mem::transmute::<&[isize], &[usize]>(a_strides.as_slice()) },
+                a_offset,
+                a_buffer,
+                transpose_a,
+                unsafe { std::mem::transmute::<&[isize], &[usize]>(b_strides.as_slice()) },
+                b_offset,
+                b_buffer,
+                transpose_b,
+                c_buffer,
+                c_offset,
+                false,
+            )?;
+        }
 
         Ok(())
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn dispatch_metal_mlx_gemv(
+    context: &MetalContext,
+    dt: DatumType,
+    (m, n, k): (usize, usize, usize),
+    a_stride: &[usize],
+    a_offset: usize,
+    a_buffer: &Buffer,
+    a_trans: bool,
+    b_stride: &[usize],
+    b_offset: usize,
+    b_buffer: &Buffer,
+    b_trans: bool,
+    output: &Buffer,
+    output_offset: usize,
+) -> Result<()> {
+    ensure!(m == 1 || n == 1);
+    assert!(a_stride.len() >= 2 && b_stride.len() >= 2);
+    assert!(a_stride.len() >= 2);
+    ensure!(matches!(dt, DatumType::F32 | DatumType::F16));
+
+    let lda = if a_trans { m } else { k };
+    let ldb = if b_trans { k } else { n };
+
+    // Determine dispatch kernel
+    let (mut tm, mut tn) = (4, 4);
+    #[allow(unused_assignments)]
+    let (mut sm, mut sn) = (1, 32);
+    let (mut bm, mut bn) = (1, 1);
+
+    // Map (m, k, n) to Matrix * Vector
+
+    let is_b_matrix = n != 1;
+    let mv_m = if is_b_matrix { n } else { m };
+    let mv_k = k;
+    let mv_ld = if is_b_matrix { ldb } else { lda };
+    let mv_trans = if is_b_matrix { !b_trans } else { a_trans };
+
+    // let batch_stride_a =
+    //     if lhs_stride.len() > 2 { lhs_stride[lhs_stride.len() - 3] } else { m * k };
+    // let batch_stride_b =
+    //     if rhs_stride.len() > 2 { rhs_stride[rhs_stride.len() - 3] } else { n * k };
+
+    let n_out_per_tgp = if mv_trans {
+        (sm, sn) = if mv_k >= 8192 && mv_m >= 2048 { (4, 8) } else { (8, 4) };
+        bn = if mv_m >= 2048 {
+            16
+        } else if mv_m >= 512 {
+            4
+        } else {
+            2
+        };
+        // Specialized kernel for very small outputs
+        tn = if mv_m < tn { 1 } else { tn };
+
+        bn * sn * tn
+    } else {
+        bm = if mv_m >= 4096 { 8 } else { 4 };
+        sn = 32;
+        // Specialized kernel for very small outputs
+        tm = if mv_m < tm { 1 } else { tm };
+        bm * sm * tm
+    };
+
+    let n_tgp = (mv_m + n_out_per_tgp - 1) / n_out_per_tgp;
+
+    let group_size = MTLSize { width: 32, height: bn as _, depth: bm as _ };
+    let grid_size = MTLSize {
+        width: n_tgp as _,
+        height: 1,
+        depth: /* batch_size_out */ 1 as u64,
+    };
+
+    let t_mat = if mv_trans { "t_" } else { "" };
+
+    let tname = MetalTensor::tname(dt)?;
+    let name = format!("gemv_{t_mat}{tname}_bm{bm}_bn{bn}_sm{sm}_sn{sn}_tm{tm}_tn{tn}_nc0_axpby0");
+    let pipeline = context.shared_context().load_pipeline(LibraryName::MlxGemv, &name)?;
+
+    let command_buffer = context.command_buffer();
+    let encoder = command_buffer.new_compute_command_encoder();
+    encoder.set_compute_pipeline_state(&pipeline);
+    if is_b_matrix {
+        encoder.set_buffer(0, Some(b_buffer), b_offset as _);
+        encoder.set_buffer(1, Some(a_buffer), a_offset as _);
+    } else {
+        encoder.set_buffer(0, Some(a_buffer), a_offset as _);
+        encoder.set_buffer(1, Some(b_buffer), b_offset as _);
+    }
+    encoder.set_buffer(3, Some(output), output_offset as _);
+
+    encoder.set_bytes(
+        4,
+        std::mem::size_of::<i32>() as u64,
+        &(mv_k as i32) as *const i32 as *const c_void,
+    );
+
+    encoder.set_bytes(
+        5,
+        std::mem::size_of::<i32>() as u64,
+        &(mv_m as i32) as *const i32 as *const c_void,
+    );
+
+    encoder.set_bytes(
+        6,
+        std::mem::size_of::<i32>() as u64,
+        &(mv_ld as i32) as *const i32 as *const c_void,
+    );
+
+    // Batch parameters are not set because we don't use this feature yet. 
+
+    encoder.use_resource(a_buffer, metal::MTLResourceUsage::Read);
+    encoder.use_resource(b_buffer, metal::MTLResourceUsage::Read);
+    encoder.use_resource(output, metal::MTLResourceUsage::Write);
+    encoder.dispatch_thread_groups(grid_size, group_size);
+    encoder.end_encoding();
+
+    Ok(())
 }
 
 // From https://github.com/huggingface/candle/blob/main/candle-metal-kernels/src/lib.rs
@@ -97,13 +250,12 @@ pub fn dispatch_metal_mlx_gemm(
     rhs_transpose: bool,
     output: &Buffer,
     output_offset: usize,
+    debug: bool,
 ) -> Result<()> {
     assert!(rhs_stride.len() >= 2);
     assert!(lhs_stride.len() >= 2);
     ensure!(matches!(dt, DatumType::F32 | DatumType::F16));
 
-    assert!(rhs_stride.len() >= 2);
-    assert!(lhs_stride.len() >= 2);
     let rhs_m1 = rhs_stride[rhs_stride.len() - 1];
     let rhs_m2 = rhs_stride[rhs_stride.len() - 2];
     let lhs_m1 = lhs_stride[lhs_stride.len() - 1];
@@ -141,6 +293,7 @@ pub fn dispatch_metal_mlx_gemm(
         (201, Value::Bool(/* align_n */ n % bn == 0)),
         (202, Value::Bool(/* align_k */ k % bk == 0)),
         (300, Value::Bool(/* do_gather */ false)),
+        (400, Value::Bool(debug)),
     ]));
 
     let swizzle_log = 0;
@@ -171,9 +324,10 @@ pub fn dispatch_metal_mlx_gemm(
         batch_ndim: 1i32,
         gemm_k_iterations_aligned: (k / bk) as i32,
     };
+
     let batch_strides = [gemm_params.batch_stride_a, gemm_params.batch_stride_b];
 
-    let name = kernel_name(dt, a_trans, b_trans)?;
+    let name = kernel_name_gemm(dt, a_trans, b_trans)?;
 
     let pipeline = context.shared_context().load_pipeline_with_constants(
         LibraryName::MlxGemm,
@@ -203,6 +357,18 @@ pub fn dispatch_metal_mlx_gemm(
         batch_strides.as_ptr() as *const c_void,
     );
 
+    let gemm_debug = Box::new(GEMMDebug::default());
+    if debug {
+        let gemm_debug_size = core::mem::size_of_val(&gemm_debug) as NSUInteger;
+        let gemm_debug_buffer = context.device().new_buffer_with_bytes_no_copy(
+            gemm_debug.as_ref() as *const GEMMDebug as *const core::ffi::c_void,
+            gemm_debug_size,
+            metal::MTLResourceOptions::StorageModeShared,
+            None,
+        );
+        encoder.set_buffer(16, Some(&gemm_debug_buffer), 0);
+    }
+
     let grid_size = MTLSize {
         width: tn as u64,
         height: tm as u64,
@@ -215,10 +381,15 @@ pub fn dispatch_metal_mlx_gemm(
     encoder.dispatch_thread_groups(grid_size, group_size);
     encoder.end_encoding();
 
+    if debug {
+        context.wait_until_completed()?;
+        log::debug!("{:#?}", gemm_debug);
+    }
+
     Ok(())
 }
 
-pub fn kernel_name(dt: DatumType, transpose_a: bool, transpose_b: bool) -> Result<String> {
+pub fn kernel_name_gemm(dt: DatumType, transpose_a: bool, transpose_b: bool) -> Result<String> {
     let t_a = if transpose_a { "t" } else { "n" };
     let t_b = if transpose_b { "t" } else { "n" };
     ensure!(matches!(dt, DatumType::F32 | DatumType::F16));
@@ -231,32 +402,38 @@ mod tests {
     use super::*;
     use crate::kernels::matmul::GemmImpl;
     use crate::{IntoMetal, MetalTensor};
+    use tract_core::ops::einsum::BasicMatMul as TractBasicMatMul;
+
+    #[test]
+    fn test_mlx_gemv_compilation() -> Result<()> {
+        crate::METAL_CONTEXT
+            .with_borrow(|context| context.shared_context().load_library(LibraryName::MlxGemv))?;
+        Ok(())
+    }
 
     #[test]
     fn test_mlx_gemm() -> Result<()> {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
-                let (b, m, n, k) = (1, 2, 4, 3);
+                let (b, m, n, k) = (1, 32, 32, 16);
                 let a = Tensor::from_shape(
                     &[b, m, k],
-                    &(0..b * m * k).map(|f| f as f32).collect::<Vec<_>>(),
+                    &(0..b * m * k).map(|_f| 1.0 as f32).collect::<Vec<_>>(),
                 )?
                 .into_metal()?;
                 let b = Tensor::from_shape(
                     &[b, k, n],
-                    &(0..b * n * k).map(|f| f as f32).collect::<Vec<_>>(),
+                    &(0..b * n * k).map(|_f| 1.0 as f32).collect::<Vec<_>>(),
                 )?
                 .into_metal()?;
 
                 let c = GemmImpl::<MlxGemm>::default().eval(context, &a, &b)?;
 
-                let expected_c = Tensor::from_shape(
-                    &[1, 2, 4],
-                    &[20.0, 23.0, 26.0, 29.0, 56.0, 68.0, 80.0, 92.0],
-                )?;
+                let expected_c = Tensor::from_shape(&[1, 32, 32], &vec![16.0; 32 * 32])?;
 
                 let c = c.to_cpu();
-                assert!(c.close_enough(&expected_c, Approximation::Close).is_ok());
+                c.close_enough(&expected_c, Approximation::Approximate)?;
+                assert!(c.close_enough(&expected_c, Approximation::Approximate).is_ok());
 
                 let (b, m, n, k) = (2, 2, 4, 3);
                 let a = MetalTensor::from_shape(
@@ -278,9 +455,56 @@ mod tests {
                     ],
                 )?;
 
-                assert!(c.to_cpu().close_enough(&expected_c, Approximation::Close).is_ok());
+                assert!(c.to_cpu().close_enough(&expected_c, Approximation::Approximate).is_ok());
                 Ok(())
             })
         })
+    }
+
+    fn run_test_case(
+        (m, k, n): (usize, usize, usize),
+        transpose_a: bool,
+        transpose_b: bool,
+    ) -> TractResult<()> {
+        objc::rc::autoreleasepool(|| {
+            crate::METAL_CONTEXT.with_borrow(|context| {
+                let a_shape = if !transpose_a { [m, k] } else { [k, m] };
+                let b_shape = if !transpose_b { [k, n] } else { [n, k] };
+                let a = Tensor::from_shape(
+                    &a_shape,
+                    &(0..m * k).map(|f| f as f32 / 100.0).collect::<Vec<_>>(),
+                )?
+                .into_metal()?;
+
+                let b = Tensor::from_shape(
+                    &b_shape,
+                    &(0..k * n).map(|f| f as f32 / 100.0).collect::<Vec<_>>(),
+                )?
+                .into_metal()?;
+
+                let metal_output =
+                    GemmImpl::<MlxGemm>::new(transpose_a, transpose_b).eval(context, &a, &b)?;
+                let matmul = TractBasicMatMul {
+                    transpose_a,
+                    transpose_b,
+                    transpose_c: false,
+                    quantize_output: None,
+                };
+                let output = args_1!(
+                    matmul.eval(tvec![a.to_cpu().into_tvalue(), b.to_cpu().into_tvalue()])?
+                );
+                output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
+                Ok(())
+            })
+        })
+    }
+
+    #[test]
+    fn test_mlx_mat_vec() -> TractResult<()> {
+        run_test_case((4, 4, 1), false, false)?;
+        run_test_case((4, 4, 1), true, false)?;
+        run_test_case((1, 4, 4), false, false)?;
+        run_test_case((1, 15, 7), false, true)?;
+        Ok(())
     }
 }

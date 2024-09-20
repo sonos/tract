@@ -23,19 +23,6 @@ use tract_core::ops::logic::Comp;
 use tract_core::ops::nn::{Reduce, Softmax as CoreSoftmax};
 use tract_core::transform::ModelTransform;
 
-impl Default for MetalGemmImplKind {
-    fn default() -> Self {
-        #[cfg(target_os = "macos")]
-        {
-            Self::Mfa
-        }
-        #[cfg(target_os = "ios")]
-        {
-            Self::Mlx
-        }
-    }
-}
-
 impl MetalGemmImplKind {
     pub fn variants() -> Vec<MetalGemmImplKind> {
         vec![Self::Mlx, Self::Mfa, Self::Mps]
