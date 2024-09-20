@@ -23,6 +23,12 @@ pub enum MetalGemmImplKind {
     Mfa,
 }
 
+impl Default for MetalGemmImplKind {
+    fn default() -> Self {
+        Self::Mlx
+    }
+}
+
 pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync {
     fn is_supported_dt(&self, dt: DatumType) -> bool;
 

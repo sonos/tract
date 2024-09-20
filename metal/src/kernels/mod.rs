@@ -18,6 +18,7 @@ pub const METAL_FLASH_ATTENTION_LIB: &[u8] =
     include_bytes!("matmul/mfa/libMetalFlashAttention-macos.metallib");
 
 pub const MLX_GEMM: &str = include_str!("matmul/mlx_gemm/mlx_gemm.metal");
+pub const MLX_GEMV: &str = include_str!("matmul/mlx_gemm/mlx_gemv.metal");
 pub const MMM_TILE_8X8_METAL_SOURCE: &str = include_str!("matmul/mmm_tile_8x8.metal");
 pub const BASIC_MAT_MUL: &str = include_str!("matmul/basic_mat_mul.metal");
 pub const ARRAY_OPS: &str = include_str!("array/array_ops.metal");
@@ -34,6 +35,7 @@ pub enum LibraryContent<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LibraryName {
     MlxGemm,
+    MlxGemv,
     MfaLib,
     MmmTile8x8,
     BasicMatMul,
@@ -54,6 +56,7 @@ impl LibraryName {
             Self::NNOps => LibraryContent::Source(NN_OPS),
             Self::ElementWiseOps => LibraryContent::Source(ELEMENT_WISE_OPS),
             Self::MlxGemm => LibraryContent::Source(MLX_GEMM),
+            Self::MlxGemv => LibraryContent::Source(MLX_GEMV),
         }
     }
 }
