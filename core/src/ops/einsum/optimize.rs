@@ -1,16 +1,12 @@
 use kernel_selection::select_kernel_and_packing;
-use tract_linalg::frame::block_quant::PackedBlockQuantFormat;
-use tract_linalg::frame::PackedFormat;
-use tract_linalg::mmm::{MMMInputFormat, MMMInputValue};
 
 use super::*;
 use crate::ops::cast::cast;
 use crate::ops::math::add;
-use crate::ops::matmul::de_block_quant::BlockQuantValue;
 use crate::ops::matmul::optimized::{
     AddMatMulGeometry, MapOutputAxisToInput, OptMatMul, ProtoFusedSpec,
 };
-use crate::ops::matmul::pack::{MatMatMulPack, Packer};
+use crate::ops::matmul::pack::MatMatMulPack;
 use crate::ops::matmul::quant::{
     combine_scales, compensate_zero_points, requant, wire_ensure_q8_flavour,
 };
@@ -298,49 +294,54 @@ fn dequant(
     Ok(Some(patch))
 }
 
-fn wire_packing(
-    model: &TypedModel,
-    node: &TypedNode,
-    input: usize,
-    patch: &mut TypedModelPatch,
-    packer: &[&dyn MMMInputFormat],
-    k_axis: usize,
-    mn_axis: usize,
-) -> TractResult<OutletId> {
-    let name = format!("{}.pack_{}", node.name, ['a', 'b'][input]);
-    let a_fact = model.outlet_fact(node.inputs[0])?;
-    if let Some(packers) = packer
-        .iter()
-        .map(|p| p.downcast_ref::<PackedFormat>().cloned().map(|f| Packer::Regular(f)))
-        .collect::<Option<Vec<_>>>()
-    {
-        let wire = patch.tap_model(model, node.inputs[input])?;
-        let pack_a = MatMatMulPack { packers, k_axis, mn_axis };
-        Ok(patch.wire_node(&name, pack_a, &[wire])?[0])
-        /*
-        } else if let (Some(bqf), Some(pbqf)) = (
-            a_fact.opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>()),
-            packer.downcast_ref::<PackedBlockQuantFormat>(),
-        ) {
-            ensure!(k_axis == 1);
-            ensure!(mn_axis == 0);
-            ensure!(pbqf.bq.same_as(&*bqf.format));
-            let Some(weights) = &a_fact.konst else {
-                bail!("Block quant packing with non-const inputs")
-            };
-            ensure!(weights.datum_type() == Opaque::datum_type());
-            let Some(weights) = weights.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>() else {
-                bail!("Expected a BlockQuantValue, found {weights:?}")
-            };
-            let k = bqf.shape[k_axis].to_usize()?;
-            let packed = pbqf.pack(&weights.value, k)?;
-            let mmm_input: Box<dyn MMMInputValue> = Box::new(packed);
-            patch.add_const(name, tensor0(Opaque::from(mmm_input)))
-            */
-    } else {
-        bail!("Unexpected packing format: {:?}", packer);
-    }
+/*
+   fn wire_packing(
+   model: &TypedModel,
+   node: &TypedNode,
+   input: usize,
+   patch: &mut TypedModelPatch,
+   packers: Vec<Packer>,
+   k_axis: usize,
+   mn_axis: usize,
+   ) -> TractResult<OutletId> {
+   let name = format!("{}.pack_{}", node.name, ['a', 'b'][input]);
+//    let a_fact = model.outlet_fact(node.inputs[0])?;
+let wire = patch.tap_model(model, node.inputs[input])?;
+let pack_a = MatMatMulPack { packers, k_axis, mn_axis };
+Ok(patch.wire_node(&name, pack_a, &[wire])?[0])
+/*
+if let Some(packers) = packer
+.iter()
+.map(|p| p.downcast_ref::<PackedFormat>().cloned().map(|f| Packer::Regular(f)))
+.collect::<Option<Vec<_>>>()
+{
+let wire = patch.tap_model(model, node.inputs[input])?;
+let pack_a = MatMatMulPack { packers, k_axis, mn_axis };
+Ok(patch.wire_node(&name, pack_a, &[wire])?[0])
+} else if let (Some(bqf), Some(pbqf)) = (
+a_fact.opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>()),
+packer.downcast_ref::<PackedBlockQuantFormat>(),
+) {
+ensure!(k_axis == 1);
+ensure!(mn_axis == 0);
+ensure!(pbqf.bq.same_as(&*bqf.format));
+let Some(weights) = &a_fact.konst else {
+bail!("Block quant packing with non-const inputs")
+};
+ensure!(weights.datum_type() == Opaque::datum_type());
+let Some(weights) = weights.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>() else {
+bail!("Expected a BlockQuantValue, found {weights:?}")
+};
+let k = bqf.shape[k_axis].to_usize()?;
+let packed = pbqf.pack(&weights.value, k)?;
+let mmm_input: Box<dyn MMMInputValue> = Box::new(packed);
+patch.add_const(name, tensor0(Opaque::from(mmm_input)))
+} else {
+bail!("Unexpected packing format: {:?}", packer);
 }
+*/
+}
+*/
 
 fn optimized_mat_mul(
     op: &EinSum,
@@ -383,17 +384,38 @@ fn optimized_mat_mul(
         .map(Some);
     }
 
-    let selection = select_kernel_and_packing(model, node, m, k, n, op.operating_dt)?;
-    let (packers_a, packers_b): (Vec<_>, Vec<_>) =
-        selection.iter().map(|(mm, pack)| mm.packings()[*pack]).unzip();
-
+    let strategy = select_kernel_and_packing(model, node, m, k, n, op.operating_dt)?;
+    let name = &node.name;
     let mut patch = TypedModelPatch::new("Einsum to OptMatMul");
-
-    let pa = wire_packing(model, node, 0, &mut patch, &packers_a, a_k, a_m)
-        .with_context(|| format!("Wiring packing {:?} for a: {:?}", &packers_a, input_facts[0]))?;
-    let pb = wire_packing(model, node, 1, &mut patch, &packers_b, b_k, b_n)
-        .with_context(|| format!("Wiring packing {:?} for b: {:?}", &packers_b, input_facts[1]))?;
-
+    let taps = patch.taps(model, &node.inputs)?;
+    let pack_a_0 = patch.wire_node(
+        format!("{name}.pack_a_0"),
+        MatMatMulPack { k_axis: a_k, mn_axis: a_m, packers: vec![strategy.static_packing_for_a] },
+        &[taps[0]],
+    )?;
+    let pack_a = patch.wire_node(
+        format!("{name}.pack_a"),
+        MatMatMulPack {
+            k_axis: a_k,
+            mn_axis: a_m,
+            packers: strategy.scenarios.iter().map(|s| s.2.clone()).collect(),
+        },
+        &pack_a_0,
+    )?;
+    let pack_b_0 = patch.wire_node(
+        format!("{name}.pack_b_0"),
+        MatMatMulPack { k_axis: b_k, mn_axis: b_n, packers: vec![strategy.static_packing_for_b] },
+        &[taps[1]],
+    )?;
+    let pack_b = patch.wire_node(
+        format!("{name}.pack_b"),
+        MatMatMulPack {
+            k_axis: b_k,
+            mn_axis: b_n,
+            packers: strategy.scenarios.iter().map(|s| s.3.clone()).collect(),
+        },
+        &pack_b_0,
+    )?;
     let mut c_to_a_axis_mapping = tvec!();
     let mut c_to_b_axis_mapping = tvec!();
     for axis in op.axes.iter_all_axes().filter(|&axis| ![m_axis, k_axis, n_axis].contains(&axis)) {
@@ -412,13 +434,12 @@ fn optimized_mat_mul(
     }
 
     let c_fact = op.output_facts(&input_facts)?.remove(0);
-    let name = &node.name;
     let geo = AddMatMulGeometry {
         k: k.clone(),
         c_to_a_axis_mapping: MapOutputAxisToInput(c_to_a_axis_mapping),
         c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
     };
-    let (mmm, packing) = selection[0].clone();
+    let (mmm, packing, _, _) = strategy.scenarios[0].clone();
     let output = unsafe { mmm.c_view(c_m, c_n) };
     let opt = OptMatMul::new(
         mmm,
@@ -428,7 +449,7 @@ fn optimized_mat_mul(
         vec![ProtoFusedSpec::AddMatMul { geo, a: 0, b: 1, packing }, ProtoFusedSpec::Store(output)],
     )
     .context("Creating OptMatMul")?;
-    let output = patch.wire_node(name, opt, &[pa, pb])?[0];
+    let output = patch.wire_node(name, opt, &[pack_a[0], pack_b[0]])?[0];
     patch.shunt_outside(model, node.id.into(), output)?;
     Ok(Some(patch))
 }
