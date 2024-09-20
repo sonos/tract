@@ -52,7 +52,7 @@ pub mod internal {
     pub use smallvec as tract_smallvec;
 }
 
-pub use dim::UndeterminedSymbol;
+pub use dim::TooEarly;
 pub use half;
 
 mod blob;

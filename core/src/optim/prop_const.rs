@@ -1,4 +1,4 @@
-use tract_data::UndeterminedSymbol;
+use tract_data::TooEarly;
 
 use crate::internal::*;
 use crate::ops::dummy::Dummy;
@@ -67,7 +67,7 @@ impl super::TypedPass for PropConst {
                         return Ok(Some(patch));
                     }
                     Err(e) => {
-                        if !e.root_cause().is::<UndeterminedSymbol>() {
+                        if !e.root_cause().is::<TooEarly>() {
                             Err(e).with_context(|| {
                                 format!("Eager eval {} during optimisation", node)
                             })?;

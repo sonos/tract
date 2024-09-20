@@ -12,7 +12,7 @@ pub enum Comp {
     LTE,
 }
 
-use tract_data::UndeterminedSymbol;
+use tract_data::TooEarly;
 use Comp::*;
 
 impl Op for Comp {
@@ -92,7 +92,7 @@ impl EvalOp for Comp {
                         } else if diff.prove_strict_negative() {
                             false
                         } else {
-                            bail!(UndeterminedSymbol(diff));
+                            bail!(TooEarly::UndeterminedSymbol(diff));
                         }
                     }
                     GT => {
@@ -101,7 +101,7 @@ impl EvalOp for Comp {
                         } else if diff.prove_negative_or_zero() {
                             false
                         } else {
-                            bail!(UndeterminedSymbol(diff));
+                            bail!(TooEarly::UndeterminedSymbol(diff));
                         }
                     }
                     LTE => {
@@ -110,7 +110,7 @@ impl EvalOp for Comp {
                         } else if diff.prove_strict_positive() {
                             false
                         } else {
-                            bail!(UndeterminedSymbol(diff));
+                            bail!(TooEarly::UndeterminedSymbol(diff));
                         }
                     }
                     LT => {
@@ -119,7 +119,7 @@ impl EvalOp for Comp {
                         } else if diff.prove_negative_or_zero() {
                             false
                         } else {
-                            bail!(UndeterminedSymbol(diff));
+                            bail!(TooEarly::UndeterminedSymbol(diff));
                         }
                     }
                 };

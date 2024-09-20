@@ -6,7 +6,7 @@ use crate::ops::matmul::de_block_quant::BlockQuantValue;
 use crate::optim::OptimizerSession;
 use crate::plan::{FrozenSimpleState, SimplePlan, SimpleState};
 use crate::transform::ModelTransform;
-use tract_data::UndeterminedSymbol;
+use tract_data::TooEarly;
 use tract_num_traits::Zero;
 
 /// A model with completely determined types and shapes.
@@ -265,7 +265,7 @@ impl TypedModel {
                         }
                     }
                     Err(e) => {
-                        if !e.root_cause().is::<UndeterminedSymbol>() {
+                        if !e.root_cause().is::<TooEarly>() {
                             Err(e).with_context(|| {
                                 format!("Eager eval {} during const fact computation", self.node(n))
                             })?;
