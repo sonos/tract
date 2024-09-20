@@ -130,7 +130,15 @@ impl Deref for StaticBlockQuant {
     }
 }
 
-#[derive(Clone, Hash)]
+impl PartialEq for StaticBlockQuant {
+    fn eq(&self, other: &Self) -> bool {
+        self.deref().same_as(other.deref())
+    }
+}
+
+impl Eq for StaticBlockQuant {}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct PackedBlockQuantFormat {
     pub bq: StaticBlockQuant,
     pub r: usize,

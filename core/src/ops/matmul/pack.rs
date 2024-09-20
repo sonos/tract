@@ -2,12 +2,15 @@ use crate::axes::Axis;
 use crate::internal::*;
 use ndarray::*;
 use tract_data::TooEarly;
+use tract_itertools::Itertools;
+use tract_linalg::frame::block_quant::PackedBlockQuantFormat;
 use tract_linalg::frame::PackedFormat;
 use tract_linalg::mmm::MMMInputValue;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Packer {
     Regular(PackedFormat),
+    PackBlockQuant(PackedBlockQuantFormat),
     PanelExtractionWrapper,
     Identity,
 }
@@ -21,7 +24,7 @@ impl Packer {
     ) -> TractResult<Box<dyn MMMInputValue>> {
         match self {
             Packer::Regular(format) => format.pack_tensor_view(view, k_axis, mn_axis),
-            _ => todo!(),
+            _ => todo!("Missing packer {self:?}"),
         }
     }
 }
@@ -54,9 +57,9 @@ impl EvalOp for MatMatMulPack {
     fn eval_with_session(
         &self,
         session: &SessionState,
-        inputs: TVec<TValue>,
+        mut inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        self.do_eval(session, &inputs[0])
+        self.do_eval(session, inputs.remove(0))
     }
 }
 
@@ -82,11 +85,22 @@ impl TypedOp for MatMatMulPack {
         AxesMapping::new(1, 1, axes)
     }
 
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if self.packers.iter().all(|p| *p == Packer::Identity) {
+            return TypedModelPatch::shunt_one_op(model, node)
+        }
+        Ok(None)
+    }
+
     as_op!();
 }
 
 impl MatMatMulPack {
-    fn do_eval(&self, session: &SessionState, input: &Tensor) -> TractResult<TVec<TValue>> {
+    fn do_eval(&self, session: &SessionState, input: TValue) -> TractResult<TVec<TValue>> {
         unsafe {
             let packer = if self.packers.len() == 1 {
                 &self.packers[0]
@@ -95,6 +109,9 @@ impl MatMatMulPack {
             } else {
                 bail!(TooEarly::Other("Undetermined scenario".into()))
             };
+            if *packer == Packer::Identity {
+                return Ok(tvec!(input))
+            }
             let output_shape: TVec<usize> = self.output_shape(input.shape());
             let stores = if output_shape.iter().all(|d| *d == 1) {
                 tensor0::<Opaque>(
@@ -121,7 +138,7 @@ impl MatMatMulPack {
                     pack_coords.remove(self.k_axis.min(self.mn_axis));
                     stores_view[&*pack_coords] = packer
                         .pack_tensor_view(
-                            &TensorView::from_bytes(input, offset, input.shape(), input.strides()),
+                            &TensorView::from_bytes(&input, offset, input.shape(), input.strides()),
                             self.k_axis,
                             self.mn_axis,
                         )?
@@ -134,9 +151,12 @@ impl MatMatMulPack {
     }
 
     pub fn output_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {
+        assert!(self.packers.iter().map(|p| matches!(p, Packer::Regular(_))).all_equal());
         let mut packed_shape: TVec<D> = input.into();
-        packed_shape.remove(self.mn_axis.max(self.k_axis));
-        packed_shape.remove(self.mn_axis.min(self.k_axis));
+        if matches!(self.packers[0], Packer::Regular(_)) {
+            packed_shape.remove(self.mn_axis.max(self.k_axis));
+            packed_shape.remove(self.mn_axis.min(self.k_axis));
+        }
         packed_shape
     }
 }
