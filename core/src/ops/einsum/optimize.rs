@@ -10,7 +10,7 @@ use crate::ops::matmul::de_block_quant::BlockQuantValue;
 use crate::ops::matmul::optimized::{
     AddMatMulGeometry, MapOutputAxisToInput, OptMatMul, ProtoFusedSpec,
 };
-use crate::ops::matmul::pack::MatMatMulPack;
+use crate::ops::matmul::pack::{MatMatMulPack, Packer};
 use crate::ops::matmul::quant::{
     combine_scales, compensate_zero_points, requant, wire_ensure_q8_flavour,
 };
@@ -309,8 +309,10 @@ fn wire_packing(
 ) -> TractResult<OutletId> {
     let name = format!("{}.pack_{}", node.name, ['a', 'b'][input]);
     let a_fact = model.outlet_fact(node.inputs[0])?;
-    if let Some(packers) =
-        packer.iter().map(|p| p.downcast_ref::<PackedFormat>().cloned()).collect::<Option<Vec<_>>>()
+    if let Some(packers) = packer
+        .iter()
+        .map(|p| p.downcast_ref::<PackedFormat>().cloned().map(|f| Packer::Regular(f)))
+        .collect::<Option<Vec<_>>>()
     {
         let wire = patch.tap_model(model, node.inputs[input])?;
         let pack_a = MatMatMulPack { packers, k_axis, mn_axis };

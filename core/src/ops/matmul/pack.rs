@@ -3,10 +3,32 @@ use crate::internal::*;
 use ndarray::*;
 use tract_data::TooEarly;
 use tract_linalg::frame::PackedFormat;
+use tract_linalg::mmm::MMMInputValue;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Packer {
+    Regular(PackedFormat),
+    PanelExtractionWrapper,
+    Identity,
+}
+
+impl Packer {
+    fn pack_tensor_view(
+        &self,
+        view: &TensorView,
+        k_axis: usize,
+        mn_axis: usize,
+    ) -> TractResult<Box<dyn MMMInputValue>> {
+        match self {
+            Packer::Regular(format) => format.pack_tensor_view(view, k_axis, mn_axis),
+            _ => todo!(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MatMatMulPack {
-    pub(crate) packers: Vec<PackedFormat>,
+    pub(crate) packers: Vec<Packer>,
     pub(crate) k_axis: usize,
     pub(crate) mn_axis: usize,
 }
