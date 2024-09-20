@@ -75,8 +75,10 @@ impl MatMatMulPack {
             };
             let output_shape: TVec<usize> = self.output_shape(input.shape());
             let stores = if output_shape.iter().all(|d| *d == 1) {
-                tensor0::<Opaque>(packer.pack_tensor(input, self.k_axis, self.mn_axis)?.into())
-                    .into_shape(&output_shape)?
+                tensor0::<Opaque>(
+                    packer.pack_tensor_view(&input.view(), self.k_axis, self.mn_axis)?.into(),
+                )
+                .into_shape(&output_shape)?
             } else {
                 let mut stores = Tensor::uninitialized_dt(Opaque::datum_type(), &output_shape)?;
                 let mut stores_view = stores.to_array_view_mut::<Opaque>()?;
