@@ -31,16 +31,16 @@ fi
 
 crate=$(tomato get package.name $CRATE_PATH/Cargo.toml)
 tomato set package.version $VERSION $CRATE_PATH/Cargo.toml
-# if [ "$crate" = "tract-metal" ]
-# then
-#     cargo publish --allow-dirty --no-verify -p $crate 
-# else
-#     cargo publish --allow-dirty -p $crate
-# fi
-# 
+if [ "$crate" = "tract-metal" ]
+then
+    cargo publish --allow-dirty --no-verify -p $crate 
+else
+    cargo publish --allow-dirty -p $crate
+fi
+
 for other_cargo_toml in `find . -name Cargo.toml \!  -path "./target/*" \! -path "./issue*"`
 do
-    for prefix in "" "dev-" "build-" 'cfg(any(target_os = \"macos\", target_os = \"ios\"'
+    for prefix in "" "dev-" "build-"
     do
         if tomato get "${prefix}dependencies.$crate" $other_cargo_toml | grep .
         then
@@ -49,11 +49,11 @@ do
     done
 done
 
-# cargo update
-# 
-# if [ "$CRATE_PATH" = "cli" ]
-# then
-#     git commit -m "release $VERSION" .
-#     git tag -f v"$VERSION"
-#     git push -f --tags
-# fi
+cargo update
+
+if [ "$CRATE_PATH" = "cli" ]
+then
+    git commit -m "release $VERSION" .
+    git tag -f v"$VERSION"
+    git push -f --tags
+fi
