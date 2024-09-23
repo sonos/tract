@@ -1,5 +1,13 @@
 # Unreleased
 
+# 0.21.7 - 2024-09-23
+* [metal] (experimental) introduce partial support for Apple Metal
+* [core] Potential internal API breaking changes (operator names, comparison ops refactored)
+* [data] (experimental) Smarter TDim simplification, handling of Min and Max. TDim assertions for simplifications.
+* [data] (experimental) WIP around multiple scenarios (modes) for LLM inference
+* Extra examples
+* [linalg] (experimental) kernels targetting LLM block-quantized tasks (inc. intel 32x1 q40f32)
+
 # 0.21.6 - 2024-07-24
 * [data] Rework tdim and symbols, introduce inequalities assertions, min and max operators
 * [data] Generalize Blob usage in Tensor
