@@ -38,16 +38,7 @@ else
     cargo publish --allow-dirty -p $crate
 fi
 
-for other_cargo_toml in `find . -name Cargo.toml \!  -path "./target/*" \! -path "./issue*"`
-do
-    for prefix in "" "dev-" "build-"
-    do
-        if tomato get "${prefix}dependencies.$crate" $other_cargo_toml | grep .
-        then
-            tomato set "${prefix}dependencies.$crate.version" "=$VERSION" $other_cargo_toml
-        fi
-    done
-done
+./.change_crate_dep.sh $crate $VERSION
 
 cargo update
 
