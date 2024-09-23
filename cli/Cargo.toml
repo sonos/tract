@@ -1,6 +1,6 @@
 [package]
 name = "tract"
-version = "0.21.7-pre"
+version = "0.21.7"
 authors = [ "Romain Liautaud <romain.liautaud@snips.ai>", "Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT OR Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -35,20 +35,20 @@ rustls.workspace = true
 scan_fmt.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tract-linalg = { version = "=0.21.7-pre", path = "../linalg" }
-tract-core = { version = "=0.21.7-pre", path = "../core" }
-tract-hir = { version = "=0.21.7-pre", path = "../hir" }
-tract-nnef = { version = "=0.21.7-pre", path = "../nnef" }
-tract-libcli = { version = "=0.21.7-pre", path = "../libcli" }
-tract-extra = { optional = true, version = "=0.21.7-pre", path = "../extra" }
-tract-pulse-opl = { optional = true, version = "=0.21.7-pre", path = "../pulse-opl" }
-tract-pulse = { optional = true, version = "=0.21.7-pre", path = "../pulse" }
-tract-onnx = { optional = true, version = "=0.21.7-pre", path = "../onnx" }
-tract-tensorflow = { optional = true, version = "=0.21.7-pre", path = "../tensorflow" }
-tract-tflite = { optional = true, version = "=0.21.7-pre", path = "../tflite" }
+tract-linalg = { version = "=0.21.7", path = "../linalg" }
+tract-core = { version = "=0.21.7", path = "../core" }
+tract-hir = { version = "=0.21.7", path = "../hir" }
+tract-nnef = { version = "=0.21.7", path = "../nnef" }
+tract-libcli = { version = "=0.21.7", path = "../libcli" }
+tract-extra = { optional = true, version = "=0.21.7", path = "../extra" }
+tract-pulse-opl = { optional = true, version = "=0.21.7", path = "../pulse-opl" }
+tract-pulse = { optional = true, version = "=0.21.7", path = "../pulse" }
+tract-onnx = { optional = true, version = "=0.21.7", path = "../onnx" }
+tract-tensorflow = { optional = true, version = "=0.21.7", path = "../tensorflow" }
+tract-tflite = { optional = true, version = "=0.21.7", path = "../tflite" }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-tract-metal = { version = "=0.21.7-pre", path = "../metal" }
+tract-metal = { version = "=0.21.7", path = "../metal" }
 
 
 [features]

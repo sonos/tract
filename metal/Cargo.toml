@@ -1,6 +1,6 @@
 [package]
 name = "tract-metal"
-version = "0.21.7-pre"
+version = "0.21.7"
 license = "MIT OR Apache-2.0"
 authors = [
 	"Hubert de La Jonquière <hubert.delajonquiere@sonos.com>",
@@ -28,13 +28,13 @@ metal.workspace = true
 paste.workspace = true
 objc = { version = "0.2.7" }
 num-traits.workspace = true
-tract-core = { version = "=0.21.7-pre", path = "../core" }
+tract-core = { version = "=0.21.7", path = "../core" }
 
 [features]
 default = [ ]
 
 [dev-dependencies]
-criterion = "*"
+criterion.workspace = true
 proptest.workspace = true
 rand.workspace = true
 ggml = { git = "https://github.com/rustformers/llm.git", rev="9376078", features = ["metal"] }

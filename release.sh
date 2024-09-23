@@ -31,11 +31,16 @@ fi
 
 crate=$(tomato get package.name $CRATE_PATH/Cargo.toml)
 tomato set package.version $VERSION $CRATE_PATH/Cargo.toml
-cargo publish --allow-dirty -p $crate
-
+# if [ "$crate" = "tract-metal" ]
+# then
+#     cargo publish --allow-dirty --no-verify -p $crate 
+# else
+#     cargo publish --allow-dirty -p $crate
+# fi
+# 
 for other_cargo_toml in `find . -name Cargo.toml \!  -path "./target/*" \! -path "./issue*"`
 do
-    for prefix in "" "dev-" "build-"
+    for prefix in "" "dev-" "build-" "cfg(any(target_os = \"macos\", target_os = \"ios\""
     do
         if tomato get ${prefix}dependencies.$crate $other_cargo_toml | grep .
         then

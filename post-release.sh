@@ -22,7 +22,7 @@ do
     tomato set package.version $VERSION $path/Cargo.toml > /dev/null
     for other_cargo_toml in `find . -name Cargo.toml \!  -path "./target/*" \! -path "./issue*"`
     do
-        for prefix in "" "dev-" "build-"
+        for prefix in "" "dev-" "build-" "cfg(any(target_os = \"macos\", target_os = \"ios\"
         do
             if tomato get ${prefix}dependencies.$crate $other_cargo_toml | grep -F . > /dev/null
             then
