@@ -52,7 +52,7 @@ jobs:
           timeout_seconds: 54000 # 15 hours :/
           command: python -m cibuildwheel --output-dir wheelhouse api/py
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           path: ./wheelhouse/*.whl
 
@@ -65,7 +65,7 @@ jobs:
     - name: Build SDist
       run: cd api/py ; pipx run build --sdist
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         path: api/py/dist/*.tar.gz
 
