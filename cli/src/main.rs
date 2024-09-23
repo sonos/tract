@@ -408,7 +408,7 @@ fn assertions_options(command: clap::Command) -> clap::Command {
         .arg(
             Arg::new("approx")
             .takes_value(true)
-            .possible_values(&["exact", "close", "approximate", "super"])
+            .possible_values(["exact", "close", "approximate", "super"])
             .default_value("close")
             .long("approx")
             .help("Approximation level used in assertions."),
