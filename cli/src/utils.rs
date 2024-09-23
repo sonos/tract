@@ -45,7 +45,10 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
         {
             exp = exp.cast_to_dt(got.datum_type())?.into_owned().into_tvalue();
         }
-        if let Err(e) = exp.close_enough(&got, true).context(format!("Checking output {ix}")) {
+        if let Err(e) = exp
+            .close_enough(&got, params.assertions.approximation)
+            .context(format!("Checking output {ix}"))
+        {
             if error.is_some() {
                 error!("{:?}", e);
             } else {
