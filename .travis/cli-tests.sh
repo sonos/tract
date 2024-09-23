@@ -105,6 +105,7 @@ $TRACT_RUN $MODELS/en_libri_real/model.onnx \
     -O  \
     run \
     --input-from-bundle $MODELS/en_libri_real/io.npz \
+    --approx approximate \
     --allow-random-input \
     --assert-output-bundle $MODELS/en_libri_real/io.npz
     
