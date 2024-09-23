@@ -15,5 +15,5 @@ colorous = "1.0.6"
 nu-ansi-term = "0.50"
 pbr = "1"
 readings-probe = "0.1.4"
-tract-linalg = { path="../../linalg", version = "=0.21.7" }
-tract-data = { path="../../data", version = "=0.21.7" }
+tract-linalg = { path="../../linalg", version = "=0.21.8-pre" }
+tract-data = { path="../../data", version = "=0.21.8-pre" }

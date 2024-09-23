@@ -40,20 +40,20 @@ tomato set package.version $VERSION $CRATE_PATH/Cargo.toml
 # 
 for other_cargo_toml in `find . -name Cargo.toml \!  -path "./target/*" \! -path "./issue*"`
 do
-    for prefix in "" "dev-" "build-" "cfg(any(target_os = \"macos\", target_os = \"ios\""
+    for prefix in "" "dev-" "build-" 'cfg(any(target_os = \"macos\", target_os = \"ios\"'
     do
-        if tomato get ${prefix}dependencies.$crate $other_cargo_toml | grep .
+        if tomato get "${prefix}dependencies.$crate" $other_cargo_toml | grep .
         then
             tomato set "${prefix}dependencies.$crate.version" "=$VERSION" $other_cargo_toml
         fi
     done
 done
 
-cargo update
-
-if [ "$CRATE_PATH" = "cli" ]
-then
-    git commit -m "release $VERSION" .
-    git tag -f v"$VERSION"
-    git push -f --tags
-fi
+# cargo update
+# 
+# if [ "$CRATE_PATH" = "cli" ]
+# then
+#     git commit -m "release $VERSION" .
+#     git tag -f v"$VERSION"
+#     git push -f --tags
+# fi

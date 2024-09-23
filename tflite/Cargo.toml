@@ -1,6 +1,6 @@
 [package]
 name = "tract-tflite"
-version = "0.21.7"
+version = "0.21.8-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT OR Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -10,7 +10,7 @@ edition = "2021"
 [dependencies]
 derive-new.workspace = true
 flatbuffers.workspace = true
-tract-core = { version = "=0.21.7", path = "../core" }
+tract-core = { version = "=0.21.8-pre", path = "../core" }
 
 [features]
 complex = []

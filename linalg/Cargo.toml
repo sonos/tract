@@ -1,6 +1,6 @@
 [package]
 name = "tract-linalg"
-version = "0.21.7"
+version = "0.21.8-pre"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -25,7 +25,7 @@ num-traits.workspace = true
 paste.workspace = true
 rayon.workspace = true
 scan_fmt.workspace = true
-tract-data = { version = "=0.21.7", path = "../data" }
+tract-data = { version = "=0.21.8-pre", path = "../data" }
 
 [build-dependencies]
 cc.workspace = true
