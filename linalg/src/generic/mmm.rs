@@ -166,10 +166,30 @@ unsafe fn store_t<const MR: usize, const NR: usize, TC, TI>(
     }
 }
 
+unsafe fn store_float_t<const MR: usize, const NR: usize, TC, TI>(
+    tile: &OutputStoreKer,
+    ab: &[[TI; NR]; MR],
+) where
+    TC: Copy + 'static,
+    TI: Copy + 'static + AsPrimitive<TC>,
+{
+    for i in 0usize..MR {
+        for j in 0usize..NR {
+            let loc: *mut TC = tile
+                .ptr
+                .offset(tile.row_byte_stride * i as isize + tile.col_byte_stride * j as isize)
+                as _;
+            let val = (&ab[i].as_ref()[j]).as_();
+            *loc = val
+        }
+    }
+}
+
 #[inline(never)]
 unsafe fn kernel<TI, const MR: usize, const NR: usize>(mut pnl: *const FusedKerSpec<TI>) -> isize
 where
     TI: LADatum + ScaleShiftAndRound + AsPrimitive<TI>,
+    TI: AsPrimitive<f16> + AsPrimitive<f32> + AsPrimitive<f64>,
     usize: AsPrimitive<TI>,
     f16: AsPrimitive<TI>,
     f32: AsPrimitive<TI>,
@@ -276,13 +296,24 @@ where
                         return 1;
                     }
                 }
-                FusedKerSpec::Store(tile) => match tile.item_size {
-                    1 => store_t::<MR, NR, u8, _>(&tile, &ab),
-                    2 => store_t::<MR, NR, u16, _>(&tile, &ab),
-                    4 => store_t::<MR, NR, u32, _>(&tile, &ab),
-                    8 => store_t::<MR, NR, f64, _>(&tile, &ab),
-                    _ => unimplemented!(),
-                },
+                FusedKerSpec::Store(tile) => {
+                    if TI::datum_type().is_float() {
+                        match tile.item_size {
+                            2 => store_float_t::<MR, NR, f16, _>(&tile, &ab),
+                            4 => store_float_t::<MR, NR, f32, _>(&tile, &ab),
+                            8 => store_float_t::<MR, NR, f64, _>(&tile, &ab),
+                            _ => unimplemented!(),
+                        }
+                    } else {
+                        match tile.item_size {
+                            1 => store_t::<MR, NR, u8, _>(&tile, &ab),
+                            2 => store_t::<MR, NR, u16, _>(&tile, &ab),
+                            4 => store_t::<MR, NR, u32, _>(&tile, &ab),
+                            8 => store_t::<MR, NR, u64, _>(&tile, &ab),
+                            _ => unimplemented!(),
+                        }
+                    }
+                }
             };
             pnl = pnl.add(1);
         }
