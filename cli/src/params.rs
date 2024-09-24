@@ -1128,6 +1128,7 @@ impl Assertions {
             "exact" => Approximation::Exact,
             "close" => Approximation::Close,
             "approximate" => Approximation::Approximate,
+            "very" => Approximation::VeryApproximate,
             "super" => Approximation::SuperApproximate,
             _ => panic!()
         };
