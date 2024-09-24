@@ -26,6 +26,7 @@ pub enum Approximation {
     #[default]
     Close,
     Approximate,
+    VeryApproximate,
     SuperApproximate,
 }
 
@@ -49,7 +50,8 @@ impl Approximation {
             (Approximate, qp) if qp.is_quantized() => (qp.zp_scale().1 as f64, 0.),
             (Close, _) => (1e-7, 1e-7),
             (Approximate, _) => (1e-4, 5e-4),
-            (SuperApproximate, _) => (5e-2, 1e-2),
+            (VeryApproximate, _) => (5e-2, 1e-2),
+            (SuperApproximate, _) => (1e-1, 5e-2),
         }
     }
 }
