@@ -88,10 +88,6 @@ macro_rules! MMMKernelWrapper {
                     debug_assert!(matches!(spec[spec.len() - 1], $crate::frame::mmm::FusedKerSpec::Done));
                     unsafe { $func(spec.as_ptr()) }
                 }
-                #[inline(always)]
-                fn prefetch(&self, ptr: *const u8, len: usize) {
-                    ($prefetch)(ptr, len)
-                }
                 $(
                     fn can_fuse(&self, spec: &FusedSpec) -> bool {
                         ($can_fuse)(spec)
