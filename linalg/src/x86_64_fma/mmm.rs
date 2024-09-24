@@ -1,5 +1,4 @@
 //use crate::frame::block_quant::{PackedBlockQuantFormat, Q4_0};
-use crate::mmm::no_prefetch;
 use tract_data::prelude::f16;
 use crate::frame::block_quant::*;
 

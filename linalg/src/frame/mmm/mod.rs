@@ -30,7 +30,7 @@ pub use storage::*;
 pub fn no_prefetch(_ptr: *const u8, _len: usize) {}
 
 pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
-    fn kernel_name(&self) -> Cow<'static, str>;
+    fn kernel_name(&self) -> Cow<str>;
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;
 
@@ -79,7 +79,7 @@ impl std::hash::Hash for Box<dyn MatMatMul> {
 }
 
 impl<K: MatMatMulKer> MatMatMul for K {
-    fn kernel_name(&self) -> Cow<'static, str> {
+    fn kernel_name(&self) -> Cow<str> {
         self.name()
     }
     fn mr(&self) -> usize {
