@@ -5,6 +5,7 @@ pub mod cost_model;
 #[macro_use]
 pub(crate) mod fuse;
 pub(crate) mod input_store;
+pub(crate) mod kernel;
 pub mod pack;
 mod scratch;
 mod storage;
@@ -13,46 +14,27 @@ mod storage;
 #[macro_use]
 pub mod tests;
 
-use std::borrow::Cow;
-use std::fmt::Debug;
-use crate::LADatum;
-use tract_data::internal::*;
 use crate::multithread::Executor;
 use rayon::prelude::*;
+use std::borrow::Cow;
+use std::fmt::Debug;
+use tract_data::internal::*;
 
 pub use cost_model::*;
 pub use fuse::*;
 pub use input_store::*;
+pub use kernel::*;
 pub use scratch::*;
 pub use storage::*;
 
-
 pub fn no_prefetch(_ptr: *const u8, _len: usize) {}
-
-pub trait MatMatMulKer: Copy + Clone + Debug + Send + Sync + 'static {
-    type Acc: LADatum;
-    fn name(&self) -> Cow<'static, str>;
-    fn kernel(&self, op: &[FusedKerSpec<Self::Acc>]) -> isize;
-    fn mr(&self) -> usize;
-    fn nr(&self) -> usize;
-
-    fn packings(&self) -> &[(&dyn MMMInputFormat, &dyn MMMInputFormat)];
-
-    #[allow(unused_variables)]
-    fn prefetch(&self, ptr: *const u8, len: usize) {}
-
-    #[allow(unused_variables)]
-    fn can_fuse(&self, spec: &FusedSpec) -> bool {
-        true
-    }
-}
 
 pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
     fn kernel_name(&self) -> Cow<'static, str>;
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;
 
-    fn packings(&self) -> &[(&dyn MMMInputFormat, &dyn MMMInputFormat)];
+    fn packings(&self) -> Cow<[(&dyn MMMInputFormat, &dyn MMMInputFormat)]>;
 
     fn internal_type(&self) -> DatumType;
 
@@ -107,7 +89,7 @@ impl<K: MatMatMulKer> MatMatMul for K {
         self.nr()
     }
 
-    fn packings(&self) -> &[(&dyn MMMInputFormat, &dyn MMMInputFormat)] {
+    fn packings(&self) -> Cow<[(&dyn MMMInputFormat, &dyn MMMInputFormat)]> {
         self.packings()
     }
 

@@ -79,8 +79,8 @@ macro_rules! MMMKernelWrapper {
                     $nr
                 }
                 #[inline(always)]
-                fn packings(&self) -> &[(&dyn crate::frame::mmm::MMMInputFormat, &dyn crate::frame::mmm::MMMInputFormat)] {
-                    &[<packing_ $id>]::PACKINGS
+                fn packings(&self) -> std::borrow::Cow<[(&dyn crate::frame::mmm::MMMInputFormat, &dyn crate::frame::mmm::MMMInputFormat)]> {
+                    std::borrow::Cow::Borrowed(&[<packing_ $id>]::PACKINGS)
                 }
                 #[inline(always)]
                 fn kernel(&self, spec: &[$crate::frame::mmm::FusedKerSpec<$ti>]) -> isize {
