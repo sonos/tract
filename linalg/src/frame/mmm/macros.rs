@@ -1,4 +1,4 @@
-macro_rules! MMMExternKernel2 {
+macro_rules! MMMExternKernel {
     (
             $func:ident<$ti:ident>($mr: expr, $nr: expr)@($align_a:expr, $align_b:expr)
             $(where($where:expr))?
