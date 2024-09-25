@@ -75,7 +75,7 @@ macro_rules! MMMRustKernel {
 }
 
 macro_rules! MMMKernel {
-    (       
+    (
         $func: path as
         $id:ident<$ti:ident>($mr: expr, $nr: expr)@($align_a:expr, $align_b:expr)
         $(where($where:expr))?
@@ -83,7 +83,8 @@ macro_rules! MMMKernel {
      ) => {
         paste! {
             lazy_static::lazy_static! {
-                pub static ref $id: DynKernel<$mr, $nr, $ti> = {
+                pub static ref $id: $crate::mmm::DynKernel<$mr, $nr, $ti> = {
+                    use $crate::mmm::DynKernel;
                     #[allow(unused_mut)]
                     let mut k = DynKernel::<$mr, $nr, $ti>::new(stringify!($id), $func, ($align_a, $align_b));
                     $(k = k.with_platform_condition($where);)?
