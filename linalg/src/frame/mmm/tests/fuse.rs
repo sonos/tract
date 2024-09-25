@@ -8,9 +8,8 @@ use tract_data::internal::*;
 
 #[macro_export]
 macro_rules! mmm_kernel_fuse_tests {
-    ($cond:expr, $ker:expr, $tc:ty, $ti: ty) => {
+    ($ker:expr, $tc:ty, $ti: ty) => {
         mod fuse {
-            use $crate::frame::mmm::MatMatMulKer;
             use num_traits::Zero;
             #[allow(unused_imports)]
             use tract_data::prelude::f16;
@@ -18,26 +17,21 @@ macro_rules! mmm_kernel_fuse_tests {
             use $crate::frame::mmm::tests::fuse as test;
             #[allow(unused_imports)]
             use $crate::frame::mmm::tests::fuse::*;
+            use $crate::frame::mmm::MatMatMulKer;
 
             #[test]
             fn return_zeros() {
-                if $cond {
-                    test::return_zeros::<_, $tc, $ti>($ker)
-                }
+                test::return_zeros::<_, $tc, $ti>($ker)
             }
 
             #[test]
             fn store_non_contiguous() {
-                if $cond {
-                    test::store_non_contiguous::<_, $tc, $ti>($ker)
-                }
+                test::store_non_contiguous::<_, $tc, $ti>($ker)
             }
             proptest::proptest! {
                 #[test]
                 fn return_c_prop(c in tile::<_, $ti>($ker)) {
-                    if $cond {
-                        test::return_c::<_, $ti>($ker, &c)
-                    }
+                    test::return_c::<_, $ti>($ker, &c)
                 }
             }
 
@@ -62,7 +56,7 @@ macro_rules! mmm_kernel_fuse_tests {
                     paste! {
                         #[test]
                         fn [<$FKS:snake>]() {
-                            if $cond && $extra_cond {
+                            if ($ker).is_supported_here() && $extra_cond {
                                 test::$geo::<_, $ti>($ker, crate::mmm::FusedKerSpec::$FKS, $f);
                             }
                         }
@@ -100,23 +94,17 @@ macro_rules! mmm_kernel_fuse_tests {
 
             #[test]
             fn return_c_add_row_col_product() {
-                if $cond {
-                    test::return_c_add_row_col_product::<_, $ti>($ker)
-                }
+                test::return_c_add_row_col_product::<_, $ti>($ker)
             }
 
             #[test]
             fn return_c_plus_d() {
-                if $cond {
-                    test::return_c_plus_d::<_, $ti, $ti>($ker)
-                }
+                test::return_c_plus_d::<_, $ti, $ti>($ker)
             }
 
             #[test]
             fn return_c_clear() {
-                if $cond {
-                    test::return_c_clear::<_, $ti>($ker)
-                }
+                test::return_c_clear::<_, $ti>($ker)
             }
         }
     };
@@ -138,6 +126,9 @@ where
     TC: LADatum,
     TI: LADatum + Bounded + PartialEq,
 {
+    if !ker.is_supported_here() {
+        return;
+    }
     let v = vec![TC::max_value(); ker.mr() * ker.nr()];
     let c = mmm_stride_storage(&v, ker.nr());
     let non_linear = tvec![FusedKerSpec::Clear, FusedKerSpec::Store(c), FusedKerSpec::Done];
@@ -154,6 +145,9 @@ where
     TC: LADatum,
     TI: LADatum + Bounded + PartialEq,
 {
+    if !ker.is_supported_here() {
+        return;
+    }
     let v = vec![TC::max_value(); ker.mr() * 5 * ker.nr() * 3];
     let c = OutputStoreKer {
         ptr: v.as_ptr() as _,
@@ -179,6 +173,9 @@ where
     TI: LADatum,
     E: Fn(usize, usize, TI) -> TI,
 {
+    if !ker.is_supported_here() {
+        return;
+    }
     assert!(c.len() == ker.mr() * ker.nr());
     let v = c.to_vec();
     let c = mmm_stride_storage(&v, ker.nr());

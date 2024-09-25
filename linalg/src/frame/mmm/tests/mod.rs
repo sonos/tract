@@ -11,54 +11,54 @@ pub mod q_scale;
 
 #[cfg(test)]
 macro_rules! test_mmm_kernel {
-    (f16, $ker:expr, $cond: expr) => {
-        test_mmm_kernel_f16!($ker, $cond);
+    (f16, $ker:expr) => {
+        test_mmm_kernel_f16!($ker);
     };
-    (f32, $ker:expr, $cond: expr) => {
-        test_mmm_kernel_f32!($ker, $cond);
+    (f32, $ker:expr) => {
+        test_mmm_kernel_f32!($ker);
     };
-    (f64, $ker:expr, $cond: expr) => {
-        test_mmm_kernel_f64!($ker, $cond);
+    (f64, $ker:expr) => {
+        test_mmm_kernel_f64!($ker);
     };
-    (i32, $ker:expr, $cond: expr) => {
-        test_mmm_kernel_i32!($ker, $cond);
+    (i32, $ker:expr) => {
+        test_mmm_kernel_i32!($ker);
     };
 }
 
 #[macro_export]
 macro_rules! test_mmm_kernel_f16 {
-    ($ker: expr, $cond: expr) => {
-        mmm_packed_packed_tests!($cond, &*$ker, f16f16:0);
-        mmm_frame_tests!($cond, &*$ker, f16, f16, f16, f16);
-        mmm_kernel_fuse_tests!($cond, &*$ker, f16, f16);
+    ($ker: expr) => {
+        mmm_packed_packed_tests!(&*$ker, f16f16:0);
+        mmm_frame_tests!(&*$ker, f16, f16, f16, f16);
+        mmm_kernel_fuse_tests!(&*$ker, f16, f16);
     };
 }
 
 #[macro_export]
 macro_rules! test_mmm_kernel_f32 {
-    ($ker: expr, $cond: expr) => {
-        mmm_packed_packed_tests!($cond, &*$ker, f32f32:0);
-        mmm_frame_tests!($cond, &*$ker, f32, f32, f32, f32);
-        mmm_kernel_fuse_tests!($cond, &*$ker, f32, f32);
+    ($ker: expr) => {
+        mmm_packed_packed_tests!(&*$ker, f32f32:0);
+        mmm_frame_tests!(&*$ker, f32, f32, f32, f32);
+        mmm_kernel_fuse_tests!(&*$ker, f32, f32);
     };
 }
 
 #[macro_export]
 macro_rules! test_mmm_kernel_f64 {
-    ($ker:expr, $cond: expr) => {
-        mmm_packed_packed_tests!($cond, &*$ker, f64f64:0);
-        mmm_frame_tests!($cond, &*$ker, f64, f64, f64, f64);
-        mmm_kernel_fuse_tests!($cond, &*$ker, f64, f64);
+    ($ker:expr) => {
+        mmm_packed_packed_tests!(&*$ker, f64f64:0);
+        mmm_frame_tests!(&*$ker, f64, f64, f64, f64);
+        mmm_kernel_fuse_tests!(&*$ker, f64, f64);
     };
 }
 
 #[macro_export]
 macro_rules! test_mmm_kernel_i32 {
-    ($ker: expr, $cond: expr) => {
-        mmm_packed_packed_tests!($cond, &*$ker, i32i32:0);
-        mmm_kernel_fuse_tests!($cond, &*$ker, i32, i32);
-        mmm_frame_tests!($cond, &*$ker, i32, i32, i32, i32);
-        mmm_q_scale_tests!($cond, &*$ker);
+    ($ker: expr) => {
+        mmm_packed_packed_tests!(&*$ker, i32i32:0);
+        mmm_kernel_fuse_tests!(&*$ker, i32, i32);
+        mmm_frame_tests!(&*$ker, i32, i32, i32, i32);
+        mmm_q_scale_tests!(&*$ker);
     };
 }
 

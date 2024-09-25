@@ -75,8 +75,8 @@ macro_rules! MMMKernel {
             #[cfg(test)]
             mod [<test_$id>] {
                 use super::$id;
-                test_mmm_kernel!($ti, &*super::$id, true);
-                $(mmm_packed_packed_tests!(true, &*super::$id, $pid : $pnum);)*
+                test_mmm_kernel!($ti, &*super::$id);
+                $(mmm_packed_packed_tests!(&*super::$id, $pid : $pnum);)*
             }
         }
     };
