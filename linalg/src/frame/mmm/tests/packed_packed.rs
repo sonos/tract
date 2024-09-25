@@ -9,7 +9,7 @@ use tract_data::internal::*;
 
 #[macro_export]
 macro_rules! mmm_packed_packed_tests {
-    ($cond:expr, $ker:expr, $packing_id:ident : $packing: expr) => {
+    ($ker:expr, $packing_id:ident : $packing: expr) => {
         mod $packing_id {
             use super::*;
             #[allow(unused_imports)]
@@ -28,17 +28,12 @@ macro_rules! mmm_packed_packed_tests {
                 proptest::proptest! {
                     #[test]
                     fn prop(pb in arbitrary_problem(false, $ker, $packing)) {
-                        if $cond {
-                            pb.check().unwrap()
-                        }
+                        pb.check().unwrap()
                     }
                 }
 
                 fn t(a: impl Into<Vec<f32>>, b: impl Into<Vec<f32>>) -> TractResult<()> {
-                    if $cond {
-                        PackedPackedProblem::kernel($ker, $packing, a, b).check()?;
-                    }
-                    Ok(())
+                    PackedPackedProblem::kernel($ker, $packing, a, b).check()
                 }
 
                 #[test]
@@ -120,9 +115,7 @@ macro_rules! mmm_packed_packed_tests {
                 proptest::proptest! {
                     #[test]
                     fn prop(pb in arbitrary_problem(true, $ker, $packing)) {
-                        if $cond {
-                            pb.check().unwrap()
-                        }
+                        pb.check().unwrap()
                     }
                 }
 
@@ -132,10 +125,7 @@ macro_rules! mmm_packed_packed_tests {
                     a: impl Into<Vec<f32>>,
                     b: impl Into<Vec<f32>>,
                 ) -> TractResult<()> {
-                    if $cond {
-                        PackedPackedProblem::frame($ker, $packing, m, n, a, b).check()?;
-                    }
-                    Ok(())
+                    PackedPackedProblem::frame($ker, $packing, m, n, a, b).check()
                 }
 
                 fn ti(
@@ -366,6 +356,9 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
     }
 
     pub fn check(&self) -> TractResult<()> {
+        if !self.ker.is_supported_here() {
+            return Ok(())
+        }
         dbg!(self);
         let expected = self.reference()?;
         dbg!(&expected);

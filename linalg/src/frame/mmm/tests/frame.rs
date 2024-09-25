@@ -7,7 +7,7 @@ use tract_data::internal::*;
 
 #[macro_export]
 macro_rules! mmm_frame_tests {
-    ($cond:expr, $ker:expr, $ta:ty, $tb:ty, $tc:ty, $ti:ty) => {
+    ($ker:expr, $ta:ty, $tb:ty, $tc:ty, $ti:ty) => {
         mod frame {
             use tract_data::internal::*;
             #[allow(unused_imports)]
@@ -15,65 +15,49 @@ macro_rules! mmm_frame_tests {
 
             #[test]
             fn row_mul_2_1_3() -> TractResult<()> {
-                if $cond {
-                    unsafe { row_mul::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
-                }
+                unsafe { row_mul::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
                 Ok(())
             }
 
             #[test]
             fn row_add_2_1_3() -> TractResult<()> {
-                if $cond {
-                    unsafe { row_add::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
-                }
+                unsafe { row_add::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
                 Ok(())
             }
 
             #[test]
             fn col_mul_2_1_3() -> TractResult<()> {
-                if $cond {
-                    unsafe { col_mul::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
-                }
+                unsafe { col_mul::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
                 Ok(())
             }
 
             #[test]
             fn col_add_2_1_3() -> TractResult<()> {
-                if $cond {
-                    unsafe { col_add::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
-                }
+                unsafe { col_add::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
                 Ok(())
             }
 
             #[test]
             fn max_2_1_3() -> TractResult<()> {
-                if $cond {
-                    unsafe { max::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
-                }
+                unsafe { max::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
                 Ok(())
             }
 
             #[test]
             fn min_2_1_3() -> TractResult<()> {
-                if $cond {
-                    unsafe { min::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
-                }
+                unsafe { min::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
                 Ok(())
             }
 
             #[test]
             fn add_d_2_1_3() -> TractResult<()> {
-                if $cond {
-                    unsafe { add_d::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
-                }
+                unsafe { add_d::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
                 Ok(())
             }
 
             #[test]
             fn add_d_big() -> TractResult<()> {
-                if $cond {
-                    unsafe { add_d::<_, $ta, $tb, $tc, $ti>($ker, 197, 1)? }
-                }
+                unsafe { add_d::<_, $ta, $tb, $tc, $ti>($ker, 197, 1)? }
                 Ok(())
             }
         }
@@ -102,6 +86,9 @@ where
     i32: AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
+    if !ker.is_supported_here() {
+        return Ok(())
+    };
     crate::setup_test_logger();
 
     let mut found = Tensor::zero::<TC>(&[m, n])?;
