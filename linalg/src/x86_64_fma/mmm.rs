@@ -1,7 +1,6 @@
 //use crate::frame::block_quant::{PackedBlockQuantFormat, Q4_0};
 use crate::frame::block_quant::*;
 use crate::frame::PackedFormat;
-use crate::mmm::DynKernel;
 use tract_data::prelude::*;
 
 const AVX2: fn() -> bool = || is_x86_feature_detected!("avx2");

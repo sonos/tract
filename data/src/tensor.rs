@@ -150,14 +150,14 @@ pub fn vector_size() -> usize {
     {
         return if is_x86_feature_detected!("avx512f") { 512 / 8 } else { 256 / 8 };
     }
-    return 128 / 8;
+    128 / 8
 }
 
 impl Tensor {
     #[allow(unreachable_code, unexpected_cfgs)]
     pub fn default_alignment(dt: DatumType, shape: &[usize]) -> usize {
         if shape.len() == 0 {
-            return dt.alignment();
+            dt.alignment()
         } else {
             vector_size()
         }
