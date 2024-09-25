@@ -36,6 +36,7 @@ pub struct DynKernel<const MR: usize, const NR: usize, Acc: LADatum> {
     pub default_packing_alignments: (usize, usize),
     pub packings: Vec<(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)>,
     pub supported_predicate: fn() -> bool,
+    pub can_fuse: fn(&FusedSpec) -> bool,
 }
 
 impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
@@ -50,6 +51,7 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
             packings: vec![],
             supported_predicate: || true,
             default_packing_alignments,
+            can_fuse: |_| true,
         };
         let a = kernel.regular_pack_a();
         let b = kernel.regular_pack_b();
@@ -79,6 +81,10 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
         PackedFormat::new(Acc::datum_type(), NR, self.default_packing_alignments.1)
     }
 
+    pub fn with_can_fuse(self, can_fuse: fn(&FusedSpec) -> bool) -> Self {
+        Self { can_fuse, ..self }
+    }
+
     pub fn mmm(&self) -> Box<dyn MatMatMul> {
         Box::new(self.clone())
     }
@@ -106,6 +112,10 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> MatMatMulKer for DynKernel<
 
     fn nr(&self) -> usize {
         NR
+    }
+
+    fn can_fuse(&self, spec: &FusedSpec) -> bool {
+        (self.can_fuse)(spec)
     }
 
     fn kernel(&self, op: &[FusedKerSpec<Self::Acc>]) -> isize {

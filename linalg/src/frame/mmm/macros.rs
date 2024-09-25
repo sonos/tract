@@ -2,6 +2,7 @@ macro_rules! MMMExternKernel {
     (
             $func:ident<$ti:ident>($mr: expr, $nr: expr)@($align_a:expr, $align_b:expr)
             $(where($where:expr))?
+            $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr)*
      ) => {
         paste! {
@@ -20,6 +21,7 @@ macro_rules! MMMExternKernel {
 
             MMMKernel!([<sys_$func>]::rusty as $func<$ti>($mr, $nr)@($align_a, $align_b)
                 $(where($where))?
+                $(can_fuse($can_fuse))?
                 $(packing[$pnum] = $pid => $packing)*
             );
         }
@@ -29,6 +31,7 @@ macro_rules! MMMRustKernel {
     (       $func: path =>
             $id:ident<$ti:ident>($mr: expr, $nr: expr)@($align_a:expr, $align_b:expr)
             $(where($where:expr))?
+            $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr)*
      ) => {
         paste! {
@@ -43,6 +46,7 @@ macro_rules! MMMRustKernel {
             }
             MMMKernel!([<sys_$id>]::rusty as $id<$ti>($mr, $nr)@($align_a, $align_b)
                 $(where($where))?
+                $(can_fuse($can_fuse))?
                 $(packing[$pnum] = $pid => $packing)*
             );
         }
@@ -54,6 +58,7 @@ macro_rules! MMMKernel {
         $func: path as
         $id:ident<$ti:ident>($mr: expr, $nr: expr)@($align_a:expr, $align_b:expr)
         $(where($where:expr))?
+        $(can_fuse($can_fuse:expr))?
         $(packing[$pnum:literal] = $pid:ident => $packing:expr)*
      ) => {
         paste! {
@@ -68,6 +73,7 @@ macro_rules! MMMKernel {
                         let f: fn(DynKernel<$mr, $nr, $ti>) -> DynKernel<$mr, $nr, $ti> = $packing;
                         k = f(k);
                     )*
+                    $(k.can_fuse = $can_fuse;)?
                     k
                 };
             }
