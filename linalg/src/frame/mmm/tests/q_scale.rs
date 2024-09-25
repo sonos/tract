@@ -18,36 +18,32 @@ where
     pub boo: std::marker::PhantomData<K>,
 }
 
-impl<K> Arbitrary for QScaleProblem<K>
-where
-    K: MatMatMulKer<Acc = i32> + 'static + Copy + Default,
-{
-    type Parameters = K;
-    type Strategy = BoxedStrategy<Self>;
-    fn arbitrary_with(ker: K) -> Self::Strategy {
-        use RoundingPolicy::*;
-        let len = ker.mr() * ker.nr();
-        (
-            proptest::collection::vec(-20i32..20, len..=len),
-            -5i32..5,
-            prop_oneof!(Just(1f32), 0f32..1f32),
-            proptest::prop_oneof![
-                Just(Zero),
-                Just(Away),
-                Just(PlusInf),
-                Just(MinusInf),
-                Just(Odd),
-                Just(Even)
-            ],
-        )
-            .prop_map(|(c, scale_pot, scale_mult, policy)| QScaleProblem {
-                ker: K::default(),
-                c,
-                scaler: Scaler::new(scale_mult * 2f32.powi(scale_pot), policy),
-                boo: std::marker::PhantomData,
-            })
-            .boxed()
-    }
+pub fn arbitrary_qscale_problem<K: MatMatMulKer<Acc = i32>>(
+    ker: &K,
+) -> BoxedStrategy<QScaleProblem<K>> {
+    use RoundingPolicy::*;
+    let ker = ker.clone();
+    let len = ker.mr() * ker.nr();
+    (
+        proptest::collection::vec(-20i32..20, len..=len),
+        -5i32..5,
+        prop_oneof!(Just(1f32), 0f32..1f32),
+        proptest::prop_oneof![
+            Just(Zero),
+            Just(Away),
+            Just(PlusInf),
+            Just(MinusInf),
+            Just(Odd),
+            Just(Even)
+        ],
+    )
+        .prop_map(move |(c, scale_pot, scale_mult, policy)| QScaleProblem {
+            ker: ker.clone(),
+            c,
+            scaler: Scaler::new(scale_mult * 2f32.powi(scale_pot), policy),
+            boo: std::marker::PhantomData,
+        })
+        .boxed()
 }
 
 impl<K> QScaleProblem<K>
@@ -82,10 +78,11 @@ where
     }
 }
 
-pub fn return_c_scale_bigpot<K>(ker: K)
+pub fn return_c_scale_bigpot<K>(ker: &K)
 where
     K: MatMatMulKer<Acc = i32>,
 {
+    let ker = ker.clone();
     let len = ker.mr() * ker.nr();
     let v: Vec<i32> = (-(len as i32) / 2..).take(len).collect();
     fused_ops::<K, i32, _>(&ker, &v, &[FusedKerSpec::ShiftLeft(1)], |_, _, c| c.q_shl(1))
@@ -93,68 +90,73 @@ where
 
 #[macro_export]
 macro_rules! mmm_q_scale_tests {
-    ($cond:expr, $ker:ident) => {
+    ($cond:expr, $ker:expr) => {
         use $crate::frame::mmm::fuse::RoundingPolicy;
+        use $crate::frame::mmm::tests::q_scale::arbitrary_qscale_problem;
         use $crate::frame::mmm::tests::q_scale::QScaleProblem;
         use $crate::frame::mmm::MatMatMulKer;
         use $crate::generic::Scaler;
-        use proptest::prelude::*;
-
         // FIXME: Scaler should be arbitrary
         macro_rules! test_q_scale {
             ($policy: ident) => {
                 paste! {
                     #[test]
                     fn [<return_q_scale_halfpos_ $policy:lower>]() {
+                        let ker = $ker;
                         if $cond {
-                            let len = ($ker.mr() * $ker.nr()) as i64;
+                            let len = (ker.mr() * ker.nr()) as i64;
                             let v = (0..len).map(|i| (i - len / 2) as i32).collect();
-                            QScaleProblem::new($ker, v, Scaler::new(0.5f32, RoundingPolicy::$policy)).run()
+                            QScaleProblem::new(ker.clone(), v, Scaler::new(0.5f32, RoundingPolicy::$policy)).run()
                         }
                     }
 
                     #[test]
                     fn [<return_q_scale_halfneg_ $policy:lower>]() {
+                        let ker = $ker;
                         if $cond {
-                            let len = ($ker.mr() * $ker.nr()) as i64;
+                            let len = (ker.mr() * ker.nr()) as i64;
                             let v = (0..len).map(|i| (i - len / 2) as i32).collect();
-                            QScaleProblem::new($ker, v, Scaler::new(-0.5f32, RoundingPolicy::$policy)).run()
+                            QScaleProblem::new(ker.clone(), v, Scaler::new(-0.5f32, RoundingPolicy::$policy)).run()
                         }
                     }
 
                     #[test]
                     fn [<return_q_scale_pot_ $policy:lower>]() {
+                        let ker = $ker;
                         if $cond {
-                            let len = ($ker.mr() * $ker.nr()) as i64;
+                            let len = (ker.mr() * ker.nr()) as i64;
                             let v = (0..len).map(|i| (i - len / 2) as i32).collect();
-                            QScaleProblem::new($ker, v, Scaler::new(0.25f32, RoundingPolicy::$policy)).run()
+                            QScaleProblem::new(ker.clone(), v, Scaler::new(0.25f32, RoundingPolicy::$policy)).run()
                         }
                     }
 
                     #[test]
                     fn [<return_q_scale_nonpot_ $policy:lower>]() {
+                        let ker = $ker;
                         if $cond {
-                            let len = ($ker.mr() * $ker.nr()) as i64;
+                            let len = (ker.mr() * ker.nr()) as i64;
                             let v = (0..len).map(|i| (i - len / 2) as i32).collect();
-                            QScaleProblem::new($ker, v, Scaler::new(1f32 / 5., RoundingPolicy::$policy)).run()
+                            QScaleProblem::new(ker.clone(), v, Scaler::new(1f32 / 5., RoundingPolicy::$policy)).run()
                         }
                     }
 
                     #[test]
                     fn [<return_q_scale_bigpot_ $policy:lower>]() {
+                        let ker = $ker;
                         if $cond {
-                            let len = ($ker.mr() * $ker.nr()) as i64;
+                            let len = (ker.mr() * ker.nr()) as i64;
                             let v = (0..len).map(|i| (i - len / 2) as i32).collect();
-                            QScaleProblem::new($ker, v, Scaler::new(4f32, RoundingPolicy::$policy)).run()
+                            QScaleProblem::new(ker.clone(), v, Scaler::new(4f32, RoundingPolicy::$policy)).run()
                         }
                     }
 
                     #[test]
                     fn [<return_q_scale_bignonpot_ $policy:lower>]() {
+                        let ker = $ker;
                         if $cond {
-                            let len = ($ker.mr() * $ker.nr()) as i64;
+                            let len = (ker.mr() * ker.nr()) as i64;
                             let v = (0..len).map(|i| (i - len / 2) as i32).collect();
-                            QScaleProblem::new($ker, v, Scaler::new(14., RoundingPolicy::$policy)).run()
+                            QScaleProblem::new(ker.clone(), v, Scaler::new(14., RoundingPolicy::$policy)).run()
                         }
                     }
                 }
@@ -170,7 +172,7 @@ macro_rules! mmm_q_scale_tests {
 
         proptest::proptest! {
             #[test]
-            fn return_q_scale_prop(pb in any_with::<QScaleProblem::<_>>($ker)) {
+            fn return_q_scale_prop(pb in arbitrary_qscale_problem($ker)) {
                 if $cond {
                     pb.run()
                 }

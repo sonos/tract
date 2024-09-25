@@ -23,7 +23,11 @@ macro_rules! MMMExternKernel {
 }
 
 macro_rules! MMMExternKernel2 {
-    ($func:ident<$ti:ident>($mr: expr, $nr: expr)) => {
+    (
+            $func:ident<$ti:ident>($mr: expr, $nr: expr)@($align_a:expr, $align_b:expr)
+            $(where($where:expr))?
+            $(packing[$pnum:literal] = $pid:ident => $packing:expr)*
+     ) => {
         paste! {
             mod [<sys_ $func>] {
                 #[allow(unused_imports)]
@@ -32,21 +36,26 @@ macro_rules! MMMExternKernel2 {
                 use crate::frame::mmm::*;
                 extern_kernel!(fn $func(op: *const FusedKerSpec<$ti>) -> isize);
             }
-//            MMMKernelWrapper2!($func, $ti; [<sys_ $func>]::$func; $mr, $nr);
-
-            fn init_fma_f32_32x1() -> DynKernel<$mr, $nr, $ti> {
-                DynKernel::<$mr, $nr, $ti>::new(stringify!($func), [<sys_$func>]::$func)
-            }
 
             lazy_static::lazy_static! {
-                pub static ref $func: DynKernel<$mr, $nr, $ti> = init_fma_f32_32x1();
+                pub static ref $func: DynKernel<$mr, $nr, $ti> = {
+                    #[allow(unused_mut)]
+                    let mut k = DynKernel::<$mr, $nr, $ti>::new(stringify!($func), [<sys_$func>]::$func, ($align_a, $align_b));
+                    $(k = k.with_platform_condition($where);)?
+                    $(
+                        assert!(k.packings().len() == $pnum);
+                        let f: fn(DynKernel<$mr, $nr, $ti>) -> DynKernel<$mr, $nr, $ti> = $packing;
+                        k = f(k);
+                    )*
+                    k
+                };
             }
 
             #[cfg(test)]
             mod [<test_$func>] {
                 use super::$func;
                 test_mmm_kernel!($ti, super::$func, true);
-//                $(#[cfg(test)] $test)*
+                $(mmm_packed_packed_tests!(true, &*super::$func, $pid : $pnum);)*
             }
         }
     };
@@ -54,7 +63,6 @@ macro_rules! MMMExternKernel2 {
 
 macro_rules! MMMKernelWrapper2 {
     ($id:ident, $ti:ident; $func: path; $mr: expr, $nr: expr) => {
-
         paste! {
             /*
             #[allow(non_camel_case_types)]
@@ -127,7 +135,7 @@ macro_rules! MMMKernelWrapper2 {
             }
             */
         }
-    }
+    };
 }
 
 macro_rules! MMMKernelWrapper {
