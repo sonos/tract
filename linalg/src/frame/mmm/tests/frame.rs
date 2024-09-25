@@ -7,9 +7,8 @@ use tract_data::internal::*;
 
 #[macro_export]
 macro_rules! mmm_frame_tests {
-    ($cond:expr, $ker:ident, $ta:ty, $tb:ty, $tc:ty, $ti:ty) => {
+    ($cond:expr, $ker:expr, $ta:ty, $tb:ty, $tc:ty, $ti:ty) => {
         mod frame {
-            use super::*;
             use tract_data::internal::*;
             #[allow(unused_imports)]
             use $crate::frame::mmm::tests::frame::*;
@@ -89,7 +88,7 @@ pub unsafe fn fused_ops<
     TI,
     F: Fn(usize, usize) -> TC,
 >(
-    ker: K,
+    ker: &K,
     m: usize,
     n: usize,
     spec: &[FusedSpec],
@@ -123,7 +122,7 @@ where
 }
 
 pub unsafe fn row_add<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
-    ker: K,
+    ker: &K,
     m: usize,
     n: usize,
 ) -> TractResult<()>
@@ -137,7 +136,7 @@ where
 {
     let bias = (0..m).map(|i| i.as_()).collect::<Vec<TI>>();
     fused_ops::<K, TA, TB, TC, TI, _>(
-        ker,
+        &ker,
         m,
         n,
         &[FusedSpec::BinPerRow(tensor1(&bias).view(), BinOp::Add)],
@@ -146,7 +145,7 @@ where
 }
 
 pub unsafe fn row_mul<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
-    ker: K,
+    ker: &K,
     m: usize,
     n: usize,
 ) -> TractResult<()>
@@ -172,7 +171,7 @@ where
 }
 
 pub unsafe fn col_add<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
-    ker: K,
+    ker: &K,
     m: usize,
     n: usize,
 ) -> TractResult<()>
@@ -195,7 +194,7 @@ where
 }
 
 pub unsafe fn col_mul<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
-    ker: K,
+    ker: &K,
     m: usize,
     n: usize,
 ) -> TractResult<()>
@@ -221,7 +220,7 @@ where
 }
 
 pub unsafe fn add_d<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
-    ker: K,
+    ker: &K,
     m: usize,
     n: usize,
 ) -> TractResult<()>
@@ -247,7 +246,7 @@ where
 }
 
 pub unsafe fn max<K: MatMatMulKer<Acc = TI>, TA, TB, TC, TI>(
-    ker: K,
+    ker: &K,
     m: usize,
     n: usize,
 ) -> TractResult<()>
@@ -270,7 +269,7 @@ where
 }
 
 pub unsafe fn min<K: MatMatMulKer<Acc = TI>, TA, TB, TC, TI>(
-    ker: K,
+    ker: &K,
     m: usize,
     n: usize,
 ) -> TractResult<()>

@@ -22,6 +22,114 @@ macro_rules! MMMExternKernel {
     }
 }
 
+macro_rules! MMMExternKernel2 {
+    ($func:ident<$ti:ident>($mr: expr, $nr: expr)) => {
+        paste! {
+            mod [<sys_ $func>] {
+                #[allow(unused_imports)]
+                use super::*;
+                #[allow(unused_imports)]
+                use crate::frame::mmm::*;
+                extern_kernel!(fn $func(op: *const FusedKerSpec<$ti>) -> isize);
+            }
+//            MMMKernelWrapper2!($func, $ti; [<sys_ $func>]::$func; $mr, $nr);
+
+            fn init_fma_f32_32x1() -> DynKernel<$mr, $nr, $ti> {
+                DynKernel::<$mr, $nr, $ti>::new(stringify!($func), [<sys_$func>]::$func)
+            }
+
+            lazy_static::lazy_static! {
+                pub static ref $func: DynKernel<$mr, $nr, $ti> = init_fma_f32_32x1();
+            }
+
+            #[cfg(test)]
+            mod [<test_$func>] {
+                use super::$func;
+                test_mmm_kernel!($ti, super::$func, true);
+//                $(#[cfg(test)] $test)*
+            }
+        }
+    };
+}
+
+macro_rules! MMMKernelWrapper2 {
+    ($id:ident, $ti:ident; $func: path; $mr: expr, $nr: expr) => {
+
+        paste! {
+            /*
+            #[allow(non_camel_case_types)]
+            #[derive(Copy, Clone, new, Default)]
+            pub struct [<$id:camel>];
+
+            impl [<$id:camel>] {
+                pub fn mmm(&self) -> Box<dyn $crate::frame::mmm::MatMatMul> {
+                    Box::new(Self)
+                }
+            }
+
+            impl std::fmt::Debug for [<$id:camel>] {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    write!(f, stringify!($id))
+                }
+            }
+
+            mod [<packing_ $id>] {
+                use $crate::frame::mmm::pack::PackedFormat;
+                use $crate::frame::mmm::MMMInputFormat;
+                use tract_data::prelude::*;
+
+                const NATIVE_A: PackedFormat = PackedFormat::new(DatumType::[<$ti:upper>], $mr, $alignment_bytes_packed_a).with_end_padding_record($end_padding_packed_a);
+                const NATIVE_B: PackedFormat = PackedFormat::new(DatumType::[<$ti:upper>], $nr, $alignment_bytes_packed_b).with_end_padding_record($end_padding_packed_b);
+                const NATIVE: (&dyn MMMInputFormat, &dyn MMMInputFormat) = (&NATIVE_A, &NATIVE_B);
+                $($($packing_def)*)?
+                pub const PACKINGS: &[(&dyn MMMInputFormat, &dyn MMMInputFormat)] = &[NATIVE $( $(, $packing)* )?];
+            }
+
+            impl $crate::frame::mmm::MatMatMulKer for  [<$id:camel>] {
+                type Acc = $ti;
+                #[inline(always)]
+                fn name(&self) -> std::borrow::Cow<'static, str> {
+                    std::borrow::Cow::Borrowed(stringify!($id))
+                }
+                #[inline(always)]
+                fn mr(&self) -> usize {
+                    $mr
+                }
+                #[inline(always)]
+                fn nr(&self) -> usize {
+                    $nr
+                }
+                #[inline(always)]
+                fn packings(&self) -> std::borrow::Cow<[(&dyn crate::frame::mmm::MMMInputFormat, &dyn crate::frame::mmm::MMMInputFormat)]> {
+                    std::borrow::Cow::Borrowed(&[<packing_ $id>]::PACKINGS)
+                }
+                #[inline(always)]
+                fn kernel(&self, spec: &[$crate::frame::mmm::FusedKerSpec<$ti>]) -> isize {
+                    debug_assert!(spec.len() > 0);
+                    debug_assert!(matches!(spec[spec.len() - 1], $crate::frame::mmm::FusedKerSpec::Done));
+                    unsafe { $func(spec.as_ptr()) }
+                }
+                $(
+                    fn can_fuse(&self, spec: &FusedSpec) -> bool {
+                        ($can_fuse)(spec)
+                    }
+                 )?
+            }
+
+            #[allow(non_upper_case_globals)]
+            pub const $id: [<$id:camel>] = [<$id:camel>];
+
+            #[cfg(test)]
+            mod [<test_$id>] {
+                use super::$id;
+                test_mmm_kernel!($ti, $id, $cond);
+                $(#[cfg(test)] $test)*
+            }
+            */
+        }
+    }
+}
+
 macro_rules! MMMKernelWrapper {
     (   $ti:ident, $id:ident;
         $func: path;
@@ -98,12 +206,14 @@ macro_rules! MMMKernelWrapper {
             #[allow(non_upper_case_globals)]
             pub const $id: [<$id:camel>] = [<$id:camel>];
 
+            /*
             #[cfg(test)]
             mod [<test_$id>] {
                 use super::$id;
                 test_mmm_kernel!($ti, $id, $cond);
                 $(#[cfg(test)] $test)*
             }
+            */
         }
     }
 }
