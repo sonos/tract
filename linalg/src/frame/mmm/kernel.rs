@@ -27,15 +27,15 @@ pub trait MatMatMulKer: Clone + Debug + Send + Sync + 'static {
     }
 }
 
-type Kernel<Acc> = unsafe extern "C" fn(*const FusedKerSpec<Acc>) -> isize;
+type Kernel<Acc> = unsafe fn(&[FusedKerSpec<Acc>]) -> isize;
 
 #[derive(Clone)]
 pub struct DynKernel<const MR: usize, const NR: usize, Acc: LADatum> {
-    name: String,
-    kernel: Kernel<Acc>,
-    default_packing_alignments: (usize, usize),
-    packings: Vec<(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)>,
-    supported_predicate: fn() -> bool,
+    pub name: String,
+    pub kernel: Kernel<Acc>,
+    pub default_packing_alignments: (usize, usize),
+    pub packings: Vec<(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)>,
+    pub supported_predicate: fn() -> bool,
 }
 
 impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
@@ -109,7 +109,7 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> MatMatMulKer for DynKernel<
     }
 
     fn kernel(&self, op: &[FusedKerSpec<Self::Acc>]) -> isize {
-        unsafe { (self.kernel)(op.as_ptr()) }
+        unsafe { (self.kernel)(op) }
     }
 
     fn packings(&self) -> Cow<[(&dyn MMMInputFormat, &dyn MMMInputFormat)]> {

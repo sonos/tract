@@ -11,6 +11,7 @@ macro_rules! MMMExternKernel {
                 #[allow(unused_imports)]
                 use crate::frame::mmm::*;
                 extern_kernel!(fn $func(op: *const FusedKerSpec<$ti>) -> isize);
+
             }
             MMMKernelWrapper!($ti, $func; [<sys_ $func>]::$func; $mr, $nr; $alignment_bytes_packed_a, $alignment_bytes_packed_b; $end_padding_packed_a, $end_padding_packed_b; $prefetch, $cond
                 $(, can_fuse: $can_fuse )?
@@ -35,15 +36,59 @@ macro_rules! MMMExternKernel2 {
                 #[allow(unused_imports)]
                 use crate::frame::mmm::*;
                 extern_kernel!(fn $func(op: *const FusedKerSpec<$ti>) -> isize);
+
+                #[inline]
+                pub unsafe fn rusty(op: &[FusedKerSpec<$ti>]) -> isize {
+                    $func(op.as_ptr())
+                }
             }
 
+            MMMKernel!([<sys_$func>]::rusty as $func<$ti>($mr, $nr)@($align_a, $align_b)
+                $(where($where))?
+                $(packing[$pnum] = $pid => $packing)*
+            );
+        }
+    };
+}
+macro_rules! MMMRustKernel {
+    (       $func: path =>
+            $id:ident<$ti:ident>($mr: expr, $nr: expr)@($align_a:expr, $align_b:expr)
+            $(where($where:expr))?
+            $(packing[$pnum:literal] = $pid:ident => $packing:expr)*
+     ) => {
+        paste! {
+            mod [<sys_ $id>] {
+                #[allow(unused_imports)]
+                use crate::frame::mmm::*;
+                use super::*;
+                #[inline]
+                pub unsafe fn rusty(op: &[FusedKerSpec<$ti>]) -> isize {
+                    $func(op.as_ptr())
+                }
+            }
+            MMMKernel!([<sys_$id>]::rusty as $id<$ti>($mr, $nr)@($align_a, $align_b)
+                $(where($where))?
+                $(packing[$pnum] = $pid => $packing)*
+            );
+        }
+    }
+}
+
+macro_rules! MMMKernel {
+    (       
+        $func: path as
+        $id:ident<$ti:ident>($mr: expr, $nr: expr)@($align_a:expr, $align_b:expr)
+        $(where($where:expr))?
+        $(packing[$pnum:literal] = $pid:ident => $packing:expr)*
+     ) => {
+        paste! {
             lazy_static::lazy_static! {
-                pub static ref $func: DynKernel<$mr, $nr, $ti> = {
+                pub static ref $id: DynKernel<$mr, $nr, $ti> = {
                     #[allow(unused_mut)]
-                    let mut k = DynKernel::<$mr, $nr, $ti>::new(stringify!($func), [<sys_$func>]::$func, ($align_a, $align_b));
+                    let mut k = DynKernel::<$mr, $nr, $ti>::new(stringify!($id), $func, ($align_a, $align_b));
                     $(k = k.with_platform_condition($where);)?
                     $(
-                        assert!(k.packings().len() == $pnum);
+                        assert!(k.packings.len() == $pnum);
                         let f: fn(DynKernel<$mr, $nr, $ti>) -> DynKernel<$mr, $nr, $ti> = $packing;
                         k = f(k);
                     )*
@@ -52,16 +97,16 @@ macro_rules! MMMExternKernel2 {
             }
 
             #[cfg(test)]
-            mod [<test_$func>] {
-                use super::$func;
-                test_mmm_kernel!($ti, super::$func, true);
-                $(mmm_packed_packed_tests!(true, &*super::$func, $pid : $pnum);)*
+            mod [<test_$id>] {
+                use super::$id;
+                test_mmm_kernel!($ti, &*super::$id, true);
+                $(mmm_packed_packed_tests!(true, &*super::$id, $pid : $pnum);)*
             }
         }
     };
 }
 
-macro_rules! MMMKernelWrapper2 {
+macro_rules! MMMKernelWrapper {
     ($id:ident, $ti:ident; $func: path; $mr: expr, $nr: expr) => {
         paste! {
             /*
