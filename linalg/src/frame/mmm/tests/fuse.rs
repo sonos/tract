@@ -8,9 +8,8 @@ use tract_data::internal::*;
 
 #[macro_export]
 macro_rules! mmm_kernel_fuse_tests {
-    ($cond:expr, $ker:ident, $tc:ty, $ti: ty) => {
+    ($cond:expr, $ker:expr, $tc:ty, $ti: ty) => {
         mod fuse {
-            use super::$ker;
             use $crate::frame::mmm::MatMatMulKer;
             use num_traits::Zero;
             #[allow(unused_imports)]
@@ -96,7 +95,7 @@ macro_rules! mmm_kernel_fuse_tests {
                 LeakyRelu,
                 scalar,
                 |a, b| if b > <$ti>::zero() { b } else { a * b },
-                $ker.can_fuse(&crate::mmm::FusedSpec::LeakyRelu(&tensor0(<$ti>::from(1_u8))))
+                ($ker).can_fuse(&crate::mmm::FusedSpec::LeakyRelu(&tensor0(<$ti>::from(1_u8))))
             );
 
             #[test]
@@ -133,7 +132,7 @@ pub fn mmm_stride_storage<T: Copy>(v: &[T], rsc: usize) -> OutputStoreKer {
 }
 
 use crate::LADatum;
-pub fn return_zeros<K, TC, TI>(ker: K)
+pub fn return_zeros<K, TC, TI>(ker: &K)
 where
     K: MatMatMulKer<Acc = TI>,
     TC: LADatum,
@@ -149,7 +148,7 @@ where
     assert_eq!(v, expected);
 }
 
-pub fn store_non_contiguous<K, TC, TI>(ker: K)
+pub fn store_non_contiguous<K, TC, TI>(ker: &K)
 where
     K: MatMatMulKer<Acc = TI>,
     TC: LADatum,
@@ -174,7 +173,7 @@ where
     assert_eq!(v, expected);
 }
 
-pub fn fused_ops<K, TI, E>(ker: K, c: &[TI], ops: &[FusedKerSpec<TI>], expect: E)
+pub fn fused_ops<K, TI, E>(ker: &K, c: &[TI], ops: &[FusedKerSpec<TI>], expect: E)
 where
     K: MatMatMulKer<Acc = TI>,
     TI: LADatum,
@@ -196,7 +195,7 @@ where
     assert_eq!(v, expected);
 }
 
-pub fn return_c<K, TI>(ker: K, v: &[TI])
+pub fn return_c<K, TI>(ker: &K, v: &[TI])
 where
     K: MatMatMulKer<Acc = TI>,
     TI: LADatum,
@@ -205,7 +204,7 @@ where
     fused_ops::<K, TI, _>(ker, v, &[], |_, _, c| c + 1.as_() - 1.as_())
 }
 
-pub fn return_c_plus_d<K, TI, TD>(ker: K)
+pub fn return_c_plus_d<K, TI, TD>(ker: &K)
 where
     K: MatMatMulKer<Acc = TI>,
     TI: LADatum,
@@ -223,7 +222,7 @@ where
     );
 }
 
-pub fn per_col<K, TI>(ker: K, op: impl Fn(*const TI) -> FusedKerSpec<TI>, f: impl Fn(TI, TI) -> TI)
+pub fn per_col<K, TI>(ker: &K, op: impl Fn(*const TI) -> FusedKerSpec<TI>, f: impl Fn(TI, TI) -> TI)
 where
     K: MatMatMulKer<Acc = TI>,
     TI: LADatum,
@@ -235,7 +234,7 @@ where
     fused_ops::<K, TI, _>(ker, &v, &[op(bias.as_ptr())], |_, col, c| f(bias[col], c))
 }
 
-pub fn per_row<K, TI>(ker: K, op: impl Fn(*const TI) -> FusedKerSpec<TI>, f: impl Fn(TI, TI) -> TI)
+pub fn per_row<K, TI>(ker: &K, op: impl Fn(*const TI) -> FusedKerSpec<TI>, f: impl Fn(TI, TI) -> TI)
 where
     K: MatMatMulKer<Acc = TI>,
     TI: LADatum,
@@ -247,7 +246,7 @@ where
     fused_ops::<K, TI, _>(ker, &v, &[op(bias.as_ptr())], |row, _, c| f(bias[row], c))
 }
 
-pub fn scalar<K, TI>(ker: K, op: impl Fn(TI) -> FusedKerSpec<TI>, f: impl Fn(TI, TI) -> TI)
+pub fn scalar<K, TI>(ker: &K, op: impl Fn(TI) -> FusedKerSpec<TI>, f: impl Fn(TI, TI) -> TI)
 where
     K: MatMatMulKer<Acc = TI>,
     TI: LADatum,
@@ -259,7 +258,7 @@ where
     fused_ops::<K, TI, _>(ker, &v, &[op(five)], |_, _, c| f(five, c))
 }
 
-pub fn return_c_add_row_col_product<K, TI>(ker: K)
+pub fn return_c_add_row_col_product<K, TI>(ker: &K)
 where
     K: MatMatMulKer<Acc = TI>,
     TI: LADatum,
@@ -277,7 +276,7 @@ where
     )
 }
 
-pub fn return_c_clear<K, TI>(ker: K)
+pub fn return_c_clear<K, TI>(ker: &K)
 where
     K: MatMatMulKer<Acc = TI>,
     TI: LADatum,
@@ -288,7 +287,7 @@ where
     fused_ops::<K, TI, _>(ker, &v, &[FusedKerSpec::Clear], |_, _, _| 0.as_())
 }
 
-pub fn tile<K, TI>(ker: K) -> BoxedStrategy<Vec<TI>>
+pub fn tile<K, TI>(ker: &K) -> BoxedStrategy<Vec<TI>>
 where
     K: MatMatMulKer<Acc = TI>,
     TI: LADatum,

@@ -1,3 +1,4 @@
+use pack::PackedFormat;
 use tract_itertools::Itertools;
 
 use super::*;
@@ -21,11 +22,39 @@ pub trait MatMatMulKer: Clone + Debug + Send + Sync + 'static {
     }
 }
 
+type F<Acc> = unsafe extern "C" fn(*const FusedKerSpec<Acc>) -> isize;
+
 #[derive(Clone)]
-struct DynKernel<const MR: usize, const NR: usize, Acc: LADatum> {
+pub struct DynKernel<const MR: usize, const NR: usize, Acc: LADatum> {
     name: String,
-    kernel: unsafe fn(&[FusedKerSpec<Acc>]) -> isize,
+    kernel: F<Acc>,
     packings: Vec<(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)>,
+}
+
+impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
+    pub fn new(name: &str, kernel: F<Acc>) -> Self {
+        let kernel = DynKernel { name: name.to_string(), kernel, packings: vec![] };
+        let a = kernel.regular_pack_a();
+        let b = kernel.regular_pack_b();
+        kernel.with_packing(a, b)
+    }
+
+    pub fn with_packing(mut self, a: Box<dyn MMMInputFormat>, b: Box<dyn MMMInputFormat>) -> Self {
+        self.packings.push((a, b));
+        self
+    }
+
+    pub fn regular_pack_a(&self) -> Box<dyn MMMInputFormat> {
+        Box::new(PackedFormat::new(Acc::datum_type(), MR, vector_size()))
+    }
+
+    pub fn regular_pack_b(&self) -> Box<dyn MMMInputFormat> {
+        Box::new(PackedFormat::new(Acc::datum_type(), NR, vector_size()))
+    }
+
+    pub fn mmm(&self) -> Box<dyn MatMatMul> {
+        Box::new(self.clone())
+    }
 }
 
 impl<const MR: usize, const NR: usize, Acc: LADatum> Debug for DynKernel<MR, NR, Acc> {
@@ -49,7 +78,7 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> MatMatMulKer for DynKernel<
     }
 
     fn kernel(&self, op: &[FusedKerSpec<Self::Acc>]) -> isize {
-        unsafe { (self.kernel)(op) }
+        unsafe { (self.kernel)(op.as_ptr()) }
     }
 
     fn packings(&self) -> Cow<[(&dyn MMMInputFormat, &dyn MMMInputFormat)]> {

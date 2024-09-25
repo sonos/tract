@@ -9,25 +9,25 @@ use tract_data::internal::*;
 
 #[macro_export]
 macro_rules! mmm_packed_packed_tests {
-    ($cond:expr, $ker:ident, $packing_id:ident : $packing: expr) => {
+    ($cond:expr, $ker:expr, $packing_id:ident : $packing: expr) => {
         mod $packing_id {
+            use super::*;
             #[allow(unused_imports)]
-            use super::$ker;
             use proptest::prelude::*;
             #[allow(unused_imports)]
             use tract_data::prelude::f16;
             use tract_data::prelude::*;
             use tract_itertools::Itertools;
+            use $crate::frame::mmm::kernel::MatMatMulKer;
             #[allow(unused_imports)]
             use $crate::frame::mmm::tests::packed_packed::*;
-            use $crate::frame::mmm::MatMatMulKer;
 
             mod fuse {
                 use super::*;
 
                 proptest::proptest! {
                     #[test]
-                    fn prop(pb in any_with::<PackedPackedProblem<_>>((false, $ker, $packing))) {
+                    fn prop(pb in arbitrary_problem(false, $ker, $packing)) {
                         if $cond {
                             pb.check().unwrap()
                         }
@@ -119,7 +119,7 @@ macro_rules! mmm_packed_packed_tests {
 
                 proptest::proptest! {
                     #[test]
-                    fn prop(pb in any_with::<PackedPackedProblem<_>>((true, $ker, $packing))) {
+                    fn prop(pb in arbitrary_problem(true, $ker, $packing)) {
                         if $cond {
                             pb.check().unwrap()
                         }
@@ -190,55 +190,69 @@ where
     pub b: Vec<f32>,
 }
 
-impl<K> Arbitrary for PackedPackedProblem<K>
-where
-    K: MatMatMulKer + Default + 'static,
-{
-    type Parameters = (bool, K, usize);
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with((frame_test, ker, packing): Self::Parameters) -> Self::Strategy {
-        let (mr, nr) = (ker.mr(), ker.nr());
-        let item_range =
-            if ker.internal_type().is_integer() { (-5f32)..5f32 } else { (-1f32)..1f32 };
-        let (m_range, n_range) =
-            if frame_test { (1usize..3 * mr, 1usize..3 * nr) } else { (mr..mr + 1, nr..nr + 1) };
-        (m_range, 0usize..40, n_range)
-            .prop_flat_map(move |(m, k, n)| {
-                (
-                    vec(item_range.clone(), k * m..=k * m),
-                    vec(item_range.clone(), k * n..=k * n),
-                    Just((m, n)),
-                )
-            })
-            .prop_map(move |(mut a, mut b, mn)| {
-                a.reverse();
-                b.reverse();
-                Self { frame_test: Some(mn).filter(|_| frame_test), ker, packing, a, b }
-            })
-            .boxed()
-    }
+pub fn arbitrary_problem<K: MatMatMulKer>(
+    frame_test: bool,
+    ker: &K,
+    packing: usize,
+) -> BoxedStrategy<PackedPackedProblem<K>> {
+    let (mr, nr) = (ker.mr(), ker.nr());
+    let item_range = if ker.internal_type().is_integer() { (-5f32)..5f32 } else { (-1f32)..1f32 };
+    let (m_range, n_range) =
+        if frame_test { (1usize..3 * mr, 1usize..3 * nr) } else { (mr..mr + 1, nr..nr + 1) };
+    let ker = ker.clone();
+    (m_range, 0usize..40, n_range)
+        .prop_flat_map(move |(m, k, n)| {
+            (
+                vec(item_range.clone(), k * m..=k * m),
+                vec(item_range.clone(), k * n..=k * n),
+                Just((m, n)),
+            )
+        })
+        .prop_map(move |(mut a, mut b, mn)| {
+            a.reverse();
+            b.reverse();
+            PackedPackedProblem {
+                frame_test: Some(mn).filter(|_| frame_test),
+                ker: ker.clone(),
+                packing,
+                a,
+                b,
+            }
+        })
+        .boxed()
 }
 
-impl<K: MatMatMulKer + Default> PackedPackedProblem<K> {
+impl<K: MatMatMulKer> PackedPackedProblem<K> {
     pub fn kernel(
-        ker: K,
+        ker: &K,
         packing: usize,
         a: impl Into<Vec<f32>>,
         b: impl Into<Vec<f32>>,
     ) -> PackedPackedProblem<K> {
-        PackedPackedProblem { frame_test: None, ker, packing, a: a.into(), b: b.into() }
+        PackedPackedProblem {
+            frame_test: None,
+            ker: ker.clone(),
+            packing,
+            a: a.into(),
+            b: b.into(),
+        }
     }
 
     pub fn frame(
-        ker: K,
+        ker: &K,
         packing: usize,
         m: usize,
         n: usize,
         a: impl Into<Vec<f32>>,
         b: impl Into<Vec<f32>>,
     ) -> PackedPackedProblem<K> {
-        PackedPackedProblem { frame_test: Some((m, n)), ker, packing, a: a.into(), b: b.into() }
+        PackedPackedProblem {
+            frame_test: Some((m, n)),
+            ker: ker.clone(),
+            packing,
+            a: a.into(),
+            b: b.into(),
+        }
     }
 
     pub fn mkn(&self) -> (usize, usize, usize) {

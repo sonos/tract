@@ -1,6 +1,8 @@
+use lazy_static::lazy_static;
 //use crate::frame::block_quant::{PackedBlockQuantFormat, Q4_0};
-use tract_data::prelude::f16;
 use crate::frame::block_quant::*;
+use crate::mmm::{DynKernel, MatMatMul};
+use tract_data::prelude::f16;
 
 const PQ40_R32: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 32, 16, false);
 
@@ -14,6 +16,9 @@ MMMExternKernel!(f32, fma_mmm_f32_32x3; 32, 3; 32, 4; 0, 0; no_prefetch, is_x86_
 MMMExternKernel!(f32, fma_mmm_f32_40x2; 40, 2; 32, 4; 0, 0; no_prefetch, is_x86_feature_detected!("fma"));
 MMMExternKernel!(f32, fma_mmm_f32_64x1; 64, 1; 32, 4; 0, 0; no_prefetch, is_x86_feature_detected!("fma"));
 
+MMMExternKernel2!(fma_mmm_f32_32x1<f32>(32, 1));
+
+/*
 MMMExternKernel!(f32, fma_mmm_f32_32x1; 32, 1; 32, 4; 0, 0; no_prefetch, is_x86_feature_detected!("fma"),
      packing_defs: {
          const F32_B: PackedFormat = PackedFormat::new(DatumType::F32, 1, 4);
@@ -22,6 +27,15 @@ MMMExternKernel!(f32, fma_mmm_f32_32x1; 32, 1; 32, 4; 0, 0; no_prefetch, is_x86_
  packings: PQ40_F32,
  test: mmm_packed_packed_tests!{ is_x86_feature_detected!("fma"), fma_mmm_f32_32x1, q40f32:1 }
 );
+
+fn init_fma_f32_32x1() -> DynKernel<32,1,f32> {
+    DynKernel
+}
+
+lazy_static::lazy_static! {
+    pub static ref fma_mmm_f32_32x1: DynKernel<32,1,f32> = init_fma_f32_32x1();
+}
+*/
 
 MMMExternKernel!(f32, avx512_mmm_f32_128x1; 128, 1; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));
 MMMExternKernel!(f32, avx512_mmm_f32_16x1; 16, 1; 64, 4; 0, 0; no_prefetch, is_x86_feature_detected!("avx512f"));

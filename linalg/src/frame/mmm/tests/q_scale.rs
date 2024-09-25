@@ -57,21 +57,21 @@ where
     pub fn run(&self) {
         if let FusedSpec::QScale(shift, policy, mult) = self.scaler.as_fused_spec() {
             fused_ops::<K, i32, _>(
-                self.ker,
+                &self.ker,
                 &self.c,
                 &[FusedKerSpec::QScale(shift, policy, mult)],
                 |_, _, c| c.q_scale(self.scaler),
             )
         } else if let FusedSpec::RoundingShiftRight(shift, policy) = self.scaler.as_fused_spec() {
             fused_ops::<K, i32, _>(
-                self.ker,
+                &self.ker,
                 &self.c,
                 &[FusedKerSpec::RoundingShiftRight(shift, policy)],
                 |_, _, c| c.q_shr(shift, policy),
             )
         } else if let FusedSpec::ShiftLeft(shift) = self.scaler.as_fused_spec() {
             fused_ops::<K, i32, _>(
-                self.ker,
+                &self.ker,
                 &self.c,
                 &[FusedKerSpec::ShiftLeft(shift)],
                 |_, _, c| c.q_shl(shift),
@@ -88,7 +88,7 @@ where
 {
     let len = ker.mr() * ker.nr();
     let v: Vec<i32> = (-(len as i32) / 2..).take(len).collect();
-    fused_ops::<K, i32, _>(ker, &v, &[FusedKerSpec::ShiftLeft(1)], |_, _, c| c.q_shl(1))
+    fused_ops::<K, i32, _>(&ker, &v, &[FusedKerSpec::ShiftLeft(1)], |_, _, c| c.q_shl(1))
 }
 
 #[macro_export]
