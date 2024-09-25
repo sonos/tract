@@ -27,9 +27,9 @@ macro_rules! test_mmm_kernel {
 
 #[macro_export]
 macro_rules! test_mmm_kernel_f16 {
-    ($k: ident, $ker: expr, $cond: expr) => {
-        mmm_packed_packed_tests!($cond, $k, &*$ker, f16f16:0);
-        mmm_frame_tests!($cond, $k, &*$ker, f16, f16, f16, f16);
+    ($ker: expr, $cond: expr) => {
+        mmm_packed_packed_tests!($cond, &*$ker, f16f16:0);
+        mmm_frame_tests!($cond, &*$ker, f16, f16, f16, f16);
         mmm_kernel_fuse_tests!($cond, &*$ker, f16, f16);
     };
 }

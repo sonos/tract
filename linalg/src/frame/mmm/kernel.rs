@@ -20,40 +20,71 @@ pub trait MatMatMulKer: Clone + Debug + Send + Sync + 'static {
     fn can_fuse(&self, spec: &FusedSpec) -> bool {
         true
     }
+
+    #[allow(unused_variables)]
+    fn is_supported_here(&self) -> bool {
+        true
+    }
 }
 
-type F<Acc> = unsafe extern "C" fn(*const FusedKerSpec<Acc>) -> isize;
+type Kernel<Acc> = unsafe extern "C" fn(*const FusedKerSpec<Acc>) -> isize;
 
 #[derive(Clone)]
 pub struct DynKernel<const MR: usize, const NR: usize, Acc: LADatum> {
     name: String,
-    kernel: F<Acc>,
+    kernel: Kernel<Acc>,
+    default_packing_alignments: (usize, usize),
     packings: Vec<(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)>,
+    supported_predicate: fn() -> bool,
 }
 
 impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
-    pub fn new(name: &str, kernel: F<Acc>) -> Self {
-        let kernel = DynKernel { name: name.to_string(), kernel, packings: vec![] };
+    pub fn new(
+        name: &str,
+        kernel: Kernel<Acc>,
+        default_packing_alignments: (usize, usize),
+    ) -> Self {
+        let kernel = DynKernel {
+            name: name.to_string(),
+            kernel,
+            packings: vec![],
+            supported_predicate: || true,
+            default_packing_alignments,
+        };
         let a = kernel.regular_pack_a();
         let b = kernel.regular_pack_b();
         kernel.with_packing(a, b)
     }
 
-    pub fn with_packing(mut self, a: Box<dyn MMMInputFormat>, b: Box<dyn MMMInputFormat>) -> Self {
-        self.packings.push((a, b));
+    pub fn with_platform_condition(mut self, f: fn() -> bool) -> Self {
+        self.supported_predicate = f;
         self
     }
 
-    pub fn regular_pack_a(&self) -> Box<dyn MMMInputFormat> {
-        Box::new(PackedFormat::new(Acc::datum_type(), MR, vector_size()))
+    pub fn with_packing(mut self, a: impl MMMInputFormat, b: impl MMMInputFormat) -> Self {
+        self.packings.push((Box::new(a), Box::new(b)));
+        self
     }
 
-    pub fn regular_pack_b(&self) -> Box<dyn MMMInputFormat> {
-        Box::new(PackedFormat::new(Acc::datum_type(), NR, vector_size()))
+    pub fn with_packing_a(self, a: impl MMMInputFormat) -> Self {
+        let b = self.regular_pack_b();
+        self.with_packing(a, b)
+    }
+
+    pub fn regular_pack_a(&self) -> PackedFormat {
+        PackedFormat::new(Acc::datum_type(), MR, self.default_packing_alignments.0)
+    }
+
+    pub fn regular_pack_b(&self) -> PackedFormat {
+        PackedFormat::new(Acc::datum_type(), NR, self.default_packing_alignments.1)
     }
 
     pub fn mmm(&self) -> Box<dyn MatMatMul> {
         Box::new(self.clone())
+    }
+
+    pub fn is_supported_here(&self) -> bool {
+        (self.supported_predicate)()
     }
 }
 
