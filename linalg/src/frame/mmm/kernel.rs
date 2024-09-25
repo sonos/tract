@@ -89,9 +89,6 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
         Box::new(self.clone())
     }
 
-    pub fn is_supported_here(&self) -> bool {
-        (self.supported_predicate)()
-    }
 }
 
 impl<const MR: usize, const NR: usize, Acc: LADatum> Debug for DynKernel<MR, NR, Acc> {
@@ -112,6 +109,10 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> MatMatMulKer for DynKernel<
 
     fn nr(&self) -> usize {
         NR
+    }
+
+    fn is_supported_here(&self) -> bool {
+        (self.supported_predicate)()
     }
 
     fn can_fuse(&self, spec: &FusedSpec) -> bool {
