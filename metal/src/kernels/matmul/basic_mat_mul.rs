@@ -108,7 +108,7 @@ impl BasicMatMul {
         encoder.set_bytes(4, 4, &(ncols as i32) as *const i32 as *const _);
 
         let grid_size =
-            MTLSize { width: 1, height: crate::utils::div_ceil(nrows, 4), depth: 1 as NSUInteger };
+            MTLSize { width: 1, height: nrows.div_ceil(4) as NSUInteger, depth: 1 as NSUInteger };
         let group_size = MTLSize { width: 32, height: 1, depth: 1 };
         encoder.use_resource(lhs_buffer, metal::MTLResourceUsage::Read);
         encoder.use_resource(rhs_buffer, metal::MTLResourceUsage::Read);
@@ -152,8 +152,8 @@ impl BasicMatMul {
         encoder.set_bytes(7, 4, &(rhs_transpose as i32) as *const i32 as *const _);
 
         let grid_size = MTLSize {
-            width: crate::utils::div_ceil(n, 4),
-            height: crate::utils::div_ceil(m, 4),
+            width: n.div_ceil(4) as NSUInteger,
+            height: m.div_ceil(4) as NSUInteger,
             depth: 1 as NSUInteger,
         };
         let group_size = MTLSize { width: 32, height: 1, depth: 1 };

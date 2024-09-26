@@ -60,8 +60,8 @@ pub fn metal_mmm_tile_8x8(
     encoder.set_buffer(2, Some(rhs_buffer), 0);
 
     let grid_size = MTLSize {
-        width: crate::utils::div_ceil(dim, 8 * 4),
-        height: crate::utils::div_ceil(dim, 8 * 4 * 2),
+        width: dim.div_ceil(8*4) as NSUInteger,
+        height: dim.div_ceil(8*4) as NSUInteger,
         depth: 1 as NSUInteger,
     };
     let group_size = MTLSize { width: 32, height: 2, depth: 1 };

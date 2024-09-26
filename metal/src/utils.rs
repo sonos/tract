@@ -2,10 +2,6 @@ use crate::fact::MetalTypedFactExt;
 use num_traits::{AsPrimitive, Zero};
 use tract_core::internal::*;
 
-pub fn div_ceil(m: usize, b: usize) -> metal::NSUInteger {
-    ((m + b - 1) / b) as metal::NSUInteger
-}
-
 pub fn metal_output_facts(
     facts: &[&TypedFact],
     resolve_facts: impl Fn(&[&TypedFact]) -> TractResult<TVec<TypedFact>>,
