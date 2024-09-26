@@ -3,7 +3,8 @@ macro_rules! MMMExternKernel {
             $func:ident<$ti:ident>($mr: expr, $nr: expr)@($align_a:expr, $align_b:expr)
             $(where($where:expr))?
             $(can_fuse($can_fuse:expr))?
-            $(packing[$pnum:literal] = $pid:ident => $packing:expr)*
+            $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
+            $(store($($store:ty),*))?
      ) => {
         paste! {
             mod [<sys_ $func>] {
@@ -22,7 +23,8 @@ macro_rules! MMMExternKernel {
             MMMKernel!([<sys_$func>]::rusty as $func<$ti>($mr, $nr)@($align_a, $align_b)
                 $(where($where))?
                 $(can_fuse($can_fuse))?
-                $(packing[$pnum] = $pid => $packing)*
+                $(packing[$pnum] = $pid => $packing;)*
+                $(store($($store),*))?
             );
         }
     };
@@ -32,7 +34,8 @@ macro_rules! MMMRustKernel {
             $id:ident<$ti:ident>($mr: expr, $nr: expr)@($align_a:expr, $align_b:expr)
             $(where($where:expr))?
             $(can_fuse($can_fuse:expr))?
-            $(packing[$pnum:literal] = $pid:ident => $packing:expr)*
+            $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
+            $(store($($store:ty),*))?
      ) => {
         paste! {
             mod [<sys_ $id>] {
@@ -47,7 +50,8 @@ macro_rules! MMMRustKernel {
             MMMKernel!([<sys_$id>]::rusty as $id<$ti>($mr, $nr)@($align_a, $align_b)
                 $(where($where))?
                 $(can_fuse($can_fuse))?
-                $(packing[$pnum] = $pid => $packing)*
+                $(packing[$pnum] = $pid => $packing;)*
+                $(store($($store),*))?
             );
         }
     }
@@ -59,7 +63,8 @@ macro_rules! MMMKernel {
         $id:ident<$ti:ident>($mr: expr, $nr: expr)@($align_a:expr, $align_b:expr)
         $(where($where:expr))?
         $(can_fuse($can_fuse:expr))?
-        $(packing[$pnum:literal] = $pid:ident => $packing:expr)*
+        $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
+        $(store($($store:ty),*))?
      ) => {
         paste! {
             lazy_static::lazy_static! {

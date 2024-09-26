@@ -8,6 +8,8 @@ pub mod frame;
 pub mod packed_packed;
 #[macro_use]
 pub mod q_scale;
+#[macro_use]
+pub mod store;
 
 #[cfg(test)]
 macro_rules! test_mmm_kernel {
@@ -31,6 +33,7 @@ macro_rules! test_mmm_kernel_f16 {
         mmm_packed_packed_tests!(&*$ker, f16f16:0);
         mmm_frame_tests!(&*$ker, f16, f16, f16, f16);
         mmm_kernel_fuse_tests!(&*$ker, f16, f16);
+        mmm_store_test!(&*$ker, f16);
     };
 }
 
@@ -40,6 +43,7 @@ macro_rules! test_mmm_kernel_f32 {
         mmm_packed_packed_tests!(&*$ker, f32f32:0);
         mmm_frame_tests!(&*$ker, f32, f32, f32, f32);
         mmm_kernel_fuse_tests!(&*$ker, f32, f32);
+        mmm_store_test!(&*$ker, f32);
     };
 }
 
@@ -49,6 +53,7 @@ macro_rules! test_mmm_kernel_f64 {
         mmm_packed_packed_tests!(&*$ker, f64f64:0);
         mmm_frame_tests!(&*$ker, f64, f64, f64, f64);
         mmm_kernel_fuse_tests!(&*$ker, f64, f64);
+        mmm_store_test!(&*$ker, f64);
     };
 }
 
@@ -59,6 +64,7 @@ macro_rules! test_mmm_kernel_i32 {
         mmm_kernel_fuse_tests!(&*$ker, i32, i32);
         mmm_frame_tests!(&*$ker, i32, i32, i32, i32);
         mmm_q_scale_tests!(&*$ker);
+        mmm_store_test!(&*$ker, i32);
     };
 }
 

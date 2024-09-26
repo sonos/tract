@@ -179,7 +179,7 @@ unsafe fn store_float_t<const MR: usize, const NR: usize, TC, TI>(
                 .ptr
                 .offset(tile.row_byte_stride * i as isize + tile.col_byte_stride * j as isize)
                 as _;
-            let val = (&ab[i].as_ref()[j]).as_();
+            let val = ab[i].as_ref()[j].as_();
             *loc = val
         }
     }
@@ -327,17 +327,17 @@ const PQ40_R4_SE: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 4,
 // f16 kernels
 MMMRustKernel!(kernel::<f16, 4, 4> => generic_f16_4x4<f16>(4,4)@(4,4));
 MMMRustKernel! {kernel::<f16, 4, 1> => generic_f16_4x1<f16>(4,1)@(4,1)
-    packing[1] = q40f16 => |k| k.with_packing_a(PQ40_R4)
-    packing[2] = q40f16se => |k| k.with_packing_a(PQ40_R4_SE)
-    packing[3] = q40f32 => |k| k.with_packing(PQ40_R4, PackedFormat::new(DatumType::F32, 1, 4))
+    packing[1] = q40f16 => |k| k.with_packing_a(PQ40_R4);
+    packing[2] = q40f16se => |k| k.with_packing_a(PQ40_R4_SE);
+    packing[3] = q40f32 => |k| k.with_packing(PQ40_R4, PackedFormat::new(DatumType::F32, 1, 4));
 }
 
 // f32 kernels
 MMMRustKernel!(kernel::<f32, 4, 4> => generic_f32_4x4<f32>(4,4)@(4,4));
 MMMRustKernel! {kernel::<f32, 4, 1> => generic_f32_4x1<f32>(4,1)@(4,1)
-    packing[1] = q40f16 => |k| k.with_packing(PQ40_R4, PackedFormat::new(DatumType::F16, 1, 4))
-    packing[2] = q40f16se => |k| k.with_packing(PQ40_R4_SE, PackedFormat::new(DatumType::F16, 1, 4))
-    packing[3] = q40f32 => |k| k.with_packing_a(PQ40_R4)
+    packing[1] = q40f16 => |k| k.with_packing(PQ40_R4, PackedFormat::new(DatumType::F16, 1, 4));
+    packing[2] = q40f16se => |k| k.with_packing(PQ40_R4_SE, PackedFormat::new(DatumType::F16, 1, 4));
+    packing[3] = q40f32 => |k| k.with_packing_a(PQ40_R4);
 }
 
 // f64 kernels
@@ -346,11 +346,11 @@ MMMRustKernel!(kernel::<f64, 4, 1> => generic_f64_4x1<f64>(4,1)@(4,1));
 
 // I32 kernels
 MMMRustKernel! {kernel::<i32, 4, 4> => generic_i32_4x4<i32>(4,4)@(4,4)
-    packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 4, 4), PackedFormat::new(DatumType::I8, 4, 4))
+    packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 4, 4), PackedFormat::new(DatumType::I8, 4, 4));
 }
 
 MMMRustKernel! {kernel::<i32, 4, 1> => generic_i32_4x1<i32>(4,1)@(4,4)
-    packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 4, 4), PackedFormat::new(DatumType::I8, 1, 4))
+    packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 4, 4), PackedFormat::new(DatumType::I8, 1, 4));
 }
 
 // extra tests kernels
@@ -360,5 +360,5 @@ MMMRustKernel!(kernel::<f32, 3, 2> => generic_f32_3x2<f32>(3,2)@(4,4));
 
 #[cfg(test)]
 MMMRustKernel! {kernel::<i32, 3, 2> => generic_i32_3x2<i32>(3,2)@(4,4)
-    packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 3, 4), PackedFormat::new(DatumType::I8, 2, 4))
+    packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 3, 4), PackedFormat::new(DatumType::I8, 2, 4));
 }
