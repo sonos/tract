@@ -7,7 +7,7 @@
 /// > export CARGO_TARGET_WASM32_WASI_RUNNER=wasmtime
 /// > cargo test --target=wasm32-wasi
 /// ```
-use crate::mmm::{FusedKerSpec, no_prefetch};
+use crate::mmm::FusedKerSpec;
 use crate::{Ops, Scaler};
 
 pub fn plug(ops: &mut Ops) {
@@ -281,4 +281,4 @@ unsafe fn kernel_f32_4x4(mut pnl: *const FusedKerSpec<f32>) -> isize {
     0
 }
 
-MMMKernelWrapper!(f32, wasm_f32_4x4; kernel_f32_4x4; 4, 4; 4, 4; 0, 0; no_prefetch, true);
+MMMRustKernel!(kernel_f32_4x4 => wasm_f32_4x4<f32>(4,4)@(4,4));
