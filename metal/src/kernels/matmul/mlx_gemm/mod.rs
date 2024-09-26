@@ -244,7 +244,7 @@ pub fn dispatch_metal_mlx_gemv(
     encoder.set_bytes(
         9, // batch_ndim
         std::mem::size_of::<i32>() as u64,
-        &(1 as i32) as *const i32 as *const c_void,
+        &1_i32 as *const i32 as *const c_void,
     );
     encoder.set_bytes(
         10, // batch_shape
@@ -399,7 +399,7 @@ pub fn dispatch_metal_mlx_gemm(
         batch_strides.as_ptr() as *const c_void,
     );
 
-    let gemm_debug = Box::new(GEMMDebug::default());
+    let gemm_debug = Box::<GEMMDebug>::default();
     if debug {
         let gemm_debug_size = core::mem::size_of_val(&gemm_debug) as NSUInteger;
         let gemm_debug_buffer = context.device().new_buffer_with_bytes_no_copy(
