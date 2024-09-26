@@ -1,6 +1,6 @@
 pub mod api;
 
-use crate::kernels::matmul::GemmKernel;
+use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
 use crate::MetalContext;
 use anyhow::bail;
 use api::{MPSDataType, Matrix, MatrixVectorMultiplication, Vector};
@@ -28,6 +28,10 @@ impl fmt::Display for MpsMatMul {
 }
 
 impl GemmKernel for MpsMatMul {
+    fn name() -> &'static str {
+        "mps"
+    }
+
     fn is_supported_dt(&self, dt: DatumType) -> bool {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
@@ -35,155 +39,127 @@ impl GemmKernel for MpsMatMul {
     fn dispatch_eval(
         &self,
         context: &MetalContext,
-        dt: DatumType,
-        m: usize,
-        n: usize,
-        k: usize,
+        params: GemmDispatchParams,
         a_buffer: &Buffer,
-        a_offset: usize,
-        transpose_a: bool,
         b_buffer: &Buffer,
-        b_offset: usize,
-        transpose_b: bool,
         c_buffer: &Buffer,
-        c_offset: usize,
     ) -> TractResult<()> {
-        let data_type = match dt {
+        let GemmDispatchParams {
+            dt,
+            batch,
+            m,
+            k,
+            n,
+            transpose_a,
+            a_offset,
+            transpose_b,
+            b_offset,
+            c_offset,
+        } = params;
+
+        let data_type = match params.dt {
             DatumType::F32 => MPSDataType::Float32,
             DatumType::F16 => MPSDataType::Float16,
-            _ => bail!("Unsupported datum type for MpsMatMul {:?}", dt),
+            _ => bail!("Unsupported datum type for MpsMatMul {:?}", params.dt),
         };
 
-        if m == 1 && dt == DatumType::F32 {
-            // The F16 integration seems broken while running prop tests.
-            // Therefore we limit the integration to F32 for the moment.
+        for b_idx in 0..batch {
+            let a_offset = a_offset + b_idx * m * k * dt.size_of();
+            let b_offset = b_offset + b_idx * n * k * dt.size_of();
+            let c_offset = c_offset + b_idx * m * n * dt.size_of();
 
-            let a_vector = Vector::new(a_buffer.to_owned(), a_offset as _, data_type, k as _)
-                .ok_or_else(|| anyhow!("An error occured when creating MPS vector"))?;
+            if m == 1 && dt == DatumType::F32 {
+                // The F16 integration seems broken while running prop tests.
+                // Therefore we limit the integration to F32 for the moment.
 
-            let b_matrix = Matrix::new(
-                b_buffer.to_owned(),
-                b_offset as _,
-                data_type,
-                if transpose_b { n } else { k } as _,
-                if transpose_b { k } else { n } as _,
-            )
-            .ok_or_else(|| anyhow!("An error occured when creating MPS matrix"))?;
+                let a_vector =
+                    Vector::new(a_buffer.to_owned(), a_offset as _, data_type, k as _)
+                        .ok_or_else(|| anyhow!("An error occured when creating MPS vector"))?;
 
-            let c_vector = Vector::new(c_buffer.to_owned(), c_offset as _, data_type, n as _)
-                .ok_or_else(|| anyhow!("An error occured when creating MPS vector"))?;
+                let b_matrix = Matrix::new(
+                    b_buffer.to_owned(),
+                    b_offset as _,
+                    data_type,
+                    if transpose_b { n } else { k } as _,
+                    if transpose_b { k } else { n } as _,
+                )
+                .ok_or_else(|| anyhow!("An error occured when creating MPS matrix"))?;
 
-            let mat_vec = MatrixVectorMultiplication::new(
-                context.device().to_owned(),
-                !transpose_b,
-                n as _,
-                k as _,
-                1.0,
-                0.0,
-            )
-            .ok_or_else(|| {
-                anyhow!("An error occured when createing MPS Matrix vector multiplication")
-            })?;
+                let c_vector =
+                    Vector::new(c_buffer.to_owned(), c_offset as _, data_type, n as _)
+                        .ok_or_else(|| anyhow!("An error occured when creating MPS vector"))?;
 
-            mat_vec.encode(context.command_buffer(), b_matrix, a_vector, c_vector);
-            Ok(())
-        } else {
-            let a_matrix = Matrix::new(
-                a_buffer.to_owned(),
-                a_offset as _,
-                data_type,
-                if transpose_a { k } else { m } as _,
-                if transpose_a { m } else { k } as _,
-            )
-            .ok_or_else(|| anyhow!("An error occured when creating MPS matrix"))?;
+                let mat_vec = MatrixVectorMultiplication::new(
+                    context.device().to_owned(),
+                    !transpose_b,
+                    n as _,
+                    k as _,
+                    1.0,
+                    0.0,
+                )
+                .ok_or_else(|| {
+                    anyhow!("An error occured when createing MPS Matrix vector multiplication")
+                })?;
 
-            let b_matrix = Matrix::new(
-                b_buffer.to_owned(),
-                b_offset as _,
-                data_type,
-                if transpose_b { n } else { k } as _,
-                if transpose_b { k } else { n } as _,
-            )
-            .ok_or_else(|| anyhow!("An error occured when creating MPS matrix"))?;
+                mat_vec.encode(context.command_buffer(), b_matrix, a_vector, c_vector);
+            } else {
+                let a_matrix = Matrix::new(
+                    a_buffer.to_owned(),
+                    a_offset as _,
+                    data_type,
+                    if transpose_a { k } else { m } as _,
+                    if transpose_a { m } else { k } as _,
+                )
+                .ok_or_else(|| anyhow!("An error occured when creating MPS matrix"))?;
 
-            let c_matrix =
-                Matrix::new(c_buffer.to_owned(), c_offset as _, data_type, m as _, n as _)
-                    .ok_or_else(|| anyhow!("An error occured when creating MPS matrix"))?;
+                let b_matrix = Matrix::new(
+                    b_buffer.to_owned(),
+                    b_offset as _,
+                    data_type,
+                    if transpose_b { n } else { k } as _,
+                    if transpose_b { k } else { n } as _,
+                )
+                .ok_or_else(|| anyhow!("An error occured when creating MPS matrix"))?;
 
-            let matmul = context.shared_context().load_mps_matmul(&MpsMatmulKey {
-                transpose_a,
-                transpose_b,
-                m,
-                n,
-                k,
-            })?;
+                let c_matrix =
+                    Matrix::new(c_buffer.to_owned(), c_offset as _, data_type, m as _, n as _)
+                        .ok_or_else(|| anyhow!("An error occured when creating MPS matrix"))?;
 
-            matmul.encode(context.command_buffer(), a_matrix, b_matrix, c_matrix);
-            Ok(())
+                let matmul = context.shared_context().load_mps_matmul(&MpsMatmulKey {
+                    transpose_a,
+                    transpose_b,
+                    m,
+                    n,
+                    k,
+                })?;
+
+                matmul.encode(context.command_buffer(), a_matrix, b_matrix, c_matrix);
+            }
         }
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kernels::matmul::GemmImpl;
-    use crate::IntoMetal;
-    use tract_core::ops::einsum::BasicMatMul as TractBasicMatMul;
-
-    fn run_test_case(
-        (m, k, n): (usize, usize, usize),
-        transpose_a: bool,
-        transpose_b: bool,
-    ) -> TractResult<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let a_shape = if !transpose_a { [m, k] } else { [k, m] };
-                let b_shape = if !transpose_b { [k, n] } else { [n, k] };
-                let a = Tensor::from_shape(
-                    &a_shape,
-                    &(0..m * k).map(|f| f as f32 / 100.0).collect::<Vec<_>>(),
-                )?
-                .into_metal()?;
-
-                let b = Tensor::from_shape(
-                    &b_shape,
-                    &(0..k * n).map(|f| f as f32 / 100.0).collect::<Vec<_>>(),
-                )?
-                .into_metal()?;
-
-                let metal_output =
-                    GemmImpl::<MpsMatMul>::new(transpose_a, transpose_b).eval(context, &a, &b)?;
-                let matmul = TractBasicMatMul {
-                    transpose_a,
-                    transpose_b,
-                    transpose_c: false,
-                    quantize_output: None,
-                };
-                let output = args_1!(
-                    matmul.eval(tvec![a.to_cpu().into_tvalue(), b.to_cpu().into_tvalue()])?
-                );
-                output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
-                Ok(())
-            })
-        })
-    }
+    use crate::kernels::matmul::tests::run_mmm_test_case;
 
     #[test]
     fn test_mat_vec() -> TractResult<()> {
-        run_test_case((4, 4, 1), false, false)?;
-        run_test_case((1, 4, 4), false, false)?;
-        run_test_case((1, 15, 7), false, true)?;
+        run_mmm_test_case::<MpsMatMul>((1, 4, 4, 1), false, false)?;
+        run_mmm_test_case::<MpsMatMul>((1, 1, 4, 4), false, false)?;
+        run_mmm_test_case::<MpsMatMul>((1, 1, 15, 7), false, true)?;
         Ok(())
     }
 
     #[test]
     fn test_mat_mul() -> TractResult<()> {
-        run_test_case((3, 5, 4), false, false)?;
-        run_test_case((2, 5, 10), false, true)?;
-        run_test_case((4, 4, 4), false, true)?;
-        run_test_case((4, 4, 200), false, true)?;
-        run_test_case((25, 1280, 32000), false, true)?;
+        run_mmm_test_case::<MpsMatMul>((1, 3, 5, 4), false, false)?;
+        run_mmm_test_case::<MpsMatMul>((1, 2, 5, 10), false, true)?;
+        run_mmm_test_case::<MpsMatMul>((1, 4, 4, 4), false, true)?;
+        run_mmm_test_case::<MpsMatMul>((1, 4, 4, 200), false, true)?;
+        run_mmm_test_case::<MpsMatMul>((1, 25, 1280, 32000), false, true)?;
         Ok(())
     }
 }

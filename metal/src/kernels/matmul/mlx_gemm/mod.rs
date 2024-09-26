@@ -1,4 +1,4 @@
-use crate::kernels::matmul::GemmKernel;
+use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
 use crate::MetalTensor;
 use crate::{ConstantValues, LibraryName, MetalContext, Value};
 use anyhow::{ensure, Result};
@@ -50,6 +50,10 @@ impl fmt::Display for MlxGemm {
 }
 
 impl GemmKernel for MlxGemm {
+    fn name() -> &'static str {
+        "mlx"
+    }
+
     fn is_supported_dt(&self, dt: DatumType) -> bool {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
@@ -57,25 +61,36 @@ impl GemmKernel for MlxGemm {
     fn dispatch_eval(
         &self,
         context: &MetalContext,
-        dt: DatumType,
-        m: usize,
-        n: usize,
-        k: usize,
+        params: GemmDispatchParams,
         a_buffer: &Buffer,
-        a_offset: usize,
-        transpose_a: bool,
         b_buffer: &Buffer,
-        b_offset: usize,
-        transpose_b: bool,
         c_buffer: &Buffer,
-        c_offset: usize,
     ) -> TractResult<()> {
-        let a_strides =
-            if transpose_a { natural_strides(&[1, k, m]) } else { natural_strides(&[1, m, k]) };
-        let b_strides =
-            if transpose_b { natural_strides(&[1, n, k]) } else { natural_strides(&[1, k, n]) };
+        let GemmDispatchParams {
+            dt,
+            batch,
+            m,
+            k,
+            n,
+            transpose_a,
+            a_offset,
+            transpose_b,
+            b_offset,
+            c_offset,
+        } = params;
 
-        if m == 1 || n == 1 {
+        let a_strides = if transpose_a {
+            natural_strides(&[batch, k, m])
+        } else {
+            natural_strides(&[batch, m, k])
+        };
+        let b_strides = if transpose_b {
+            natural_strides(&[batch, n, k])
+        } else {
+            natural_strides(&[batch, k, n])
+        };
+
+        if batch == 1 && (m == 1 || n == 1) {
             dispatch_metal_mlx_gemv(
                 context,
                 dt,
@@ -95,7 +110,7 @@ impl GemmKernel for MlxGemm {
             dispatch_metal_mlx_gemm(
                 context,
                 dt,
-                (1, m, n, k),
+                (batch, m, n, k),
                 unsafe { std::mem::transmute::<&[isize], &[usize]>(a_strides.as_slice()) },
                 a_offset,
                 a_buffer,
@@ -223,7 +238,7 @@ pub fn dispatch_metal_mlx_gemv(
         &(mv_ld as i32) as *const i32 as *const c_void,
     );
 
-    // Batch parameters are not set because we don't use this feature yet. 
+    // Batch parameters are not set because we don't use this feature yet.
 
     encoder.use_resource(a_buffer, metal::MTLResourceUsage::Read);
     encoder.use_resource(b_buffer, metal::MTLResourceUsage::Read);
@@ -415,7 +430,7 @@ mod tests {
     fn test_mlx_gemm() -> Result<()> {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
-                let (b, m, n, k) = (1, 32, 32, 16);
+                let (b, m, n, k) = (10, 32, 32, 16);
                 let a = Tensor::from_shape(
                     &[b, m, k],
                     &(0..b * m * k).map(|_f| 1.0 as f32).collect::<Vec<_>>(),
@@ -429,7 +444,7 @@ mod tests {
 
                 let c = GemmImpl::<MlxGemm>::default().eval(context, &a, &b)?;
 
-                let expected_c = Tensor::from_shape(&[1, 32, 32], &vec![16.0; 32 * 32])?;
+                let expected_c = Tensor::from_shape(&[10, 32, 32], &vec![16.0; 10 * 32 * 32])?;
 
                 let c = c.to_cpu();
                 c.close_enough(&expected_c, Approximation::Approximate)?;

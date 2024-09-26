@@ -1,4 +1,4 @@
-use crate::kernels::matmul::GemmKernel;
+use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
 use crate::{ConstantValues, LibraryName, MetalContext, Value};
 use anyhow::{ensure, Result};
 use metal::{Buffer, MTLSize, NSUInteger};
@@ -16,6 +16,10 @@ impl fmt::Display for MfaGemm {
 }
 
 impl GemmKernel for MfaGemm {
+    fn name() -> &'static str {
+        "mfa"
+    }
+
     fn is_supported_dt(&self, dt: DatumType) -> bool {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
@@ -23,28 +27,39 @@ impl GemmKernel for MfaGemm {
     fn dispatch_eval(
         &self,
         context: &MetalContext,
-        dt: DatumType,
-        m: usize,
-        n: usize,
-        k: usize,
+        params: GemmDispatchParams,
         a_buffer: &Buffer,
-        a_offset: usize,
-        transpose_a: bool,
         b_buffer: &Buffer,
-        b_offset: usize,
-        transpose_b: bool,
         c_buffer: &Buffer,
-        c_offset: usize,
     ) -> TractResult<()> {
-        let a_strides =
-            if transpose_a { natural_strides(&[1, k, m]) } else { natural_strides(&[1, m, k]) };
-        let b_strides =
-            if transpose_b { natural_strides(&[1, n, k]) } else { natural_strides(&[1, k, n]) };
+        let GemmDispatchParams {
+            dt,
+            batch,
+            m,
+            k,
+            n,
+            transpose_a,
+            a_offset,
+            transpose_b,
+            b_offset,
+            c_offset,
+        } = params;
+
+        let a_strides = if transpose_a {
+            natural_strides(&[batch, k, m])
+        } else {
+            natural_strides(&[batch, m, k])
+        };
+        let b_strides = if transpose_b {
+            natural_strides(&[batch, n, k])
+        } else {
+            natural_strides(&[batch, k, n])
+        };
 
         dispatch_metal_mfa_gemm(
             context,
             dt,
-            (1, m, n, k),
+            (batch, m, n, k),
             unsafe { std::mem::transmute::<&[isize], &[usize]>(a_strides.as_slice()) },
             a_offset,
             a_buffer,
