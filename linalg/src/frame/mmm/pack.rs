@@ -360,7 +360,7 @@ where
         mn: usize,
         _k: usize,
     ) -> KOutWriter<'p, T> {
-        let panels = (mn + panel_width - 1) / panel_width;
+        let panels = mn.divceil(panel_width);
         let last_panel_width = mn - (panels - 1) * panel_width;
         KOutWriter {
             ptr,
@@ -434,7 +434,7 @@ where
         mn: usize,
         k: usize,
     ) -> KInWriter<'p, T> {
-        let panels = (mn + panel_width - 1) / panel_width;
+        let panels = mn.divceil(panel_width);
         let last_panel_width = mn - (panels - 1) * panel_width;
         KInWriter {
             ptr,
