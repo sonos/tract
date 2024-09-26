@@ -36,7 +36,7 @@ torch.onnx.export(
         "token_type_ids": dynamic_axes,
         "logits": dynamic_axes,
     },
-    opset_version=13,
+    opset_version=14,
 )
 
 tokenizer.save_pretrained(output_dir)
