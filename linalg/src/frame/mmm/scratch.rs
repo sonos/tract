@@ -124,6 +124,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
             LocDependant { spec, ker_spec: uspec, loc, buffer_a: None, buffer_b: None }
         }
         for (ix, spec) in specs.iter().enumerate() {
+            offset = offset.next_multiple_of(&align);
             let ker_spec = match spec {
                 FS::BinScalar(t, op) => match op {
                     BinOp::Min => FKS::ScalarMin(*t.to_scalar()?),
