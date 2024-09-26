@@ -410,9 +410,6 @@ mod tests {
         F: Datum + Copy,
         usize: AsPrimitive<F>,
     {
-        pub b: usize,
-        pub m: usize,
-        pub n: usize,
         pub lhs: Tensor,
         pub rhs: Tensor,
         _phantom: std::marker::PhantomData<F>,
@@ -442,9 +439,6 @@ mod tests {
                     )
                 })
                 .prop_map(|(b, m, n, lhs, rhs)| Self {
-                    b,
-                    m,
-                    n,
                     lhs: Tensor::from_shape(&[b, m, n], &lhs).unwrap(),
                     rhs: Tensor::from_shape(&[b, m, n], &rhs).unwrap(),
                     _phantom: std::marker::PhantomData,
