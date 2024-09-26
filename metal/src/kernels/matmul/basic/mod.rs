@@ -1,4 +1,4 @@
-use crate::kernels::matmul::GemmKernel;
+use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
 use crate::{LibraryName, MetalContext};
 use anyhow::bail;
 use anyhow::Result;
@@ -11,6 +11,10 @@ use tract_core::internal::*;
 pub struct BasicMatMul;
 
 impl GemmKernel for BasicMatMul {
+    fn name() -> &'static str {
+        "basic"
+    }
+
     fn is_supported_dt(&self, dt: DatumType) -> bool {
         Self::tname(dt).is_ok()
     }
@@ -18,39 +22,48 @@ impl GemmKernel for BasicMatMul {
     fn dispatch_eval(
         &self,
         context: &MetalContext,
-        dt: DatumType,
-        m: usize,
-        n: usize,
-        k: usize,
+        params: GemmDispatchParams,
         a_buffer: &Buffer,
-        a_offset: usize,
-        transpose_a: bool,
         b_buffer: &Buffer,
-        b_offset: usize,
-        transpose_b: bool,
         c_buffer: &Buffer,
-        c_offset: usize,
     ) -> TractResult<()> {
-        if n == 1 && !transpose_a && !transpose_b {
-            Self::metal_mat_vec(
-                context, dt, m, k, a_buffer, a_offset, b_buffer, b_offset, c_buffer, c_offset,
-            )?;
-        } else {
-            Self::metal_mat_mul(
-                context,
-                dt,
-                m,
-                k,
-                n,
-                a_buffer,
-                a_offset,
-                transpose_a,
-                b_buffer,
-                b_offset,
-                transpose_b,
-                c_buffer,
-                c_offset,
-            )?;
+        let GemmDispatchParams {
+            dt,
+            batch,
+            m,
+            k,
+            n,
+            transpose_a,
+            a_offset,
+            transpose_b,
+            b_offset,
+            c_offset,
+        } = params;
+        for b_idx in 0..batch {
+            let a_offset = a_offset + b_idx * m * k * dt.size_of();
+            let b_offset = b_offset + b_idx * n * k * dt.size_of();
+            let c_offset = c_offset + b_idx * m * n * dt.size_of();
+            if n == 1 && !transpose_a && !transpose_b {
+                Self::metal_mat_vec(
+                    context, dt, m, k, a_buffer, a_offset, b_buffer, b_offset, c_buffer, c_offset,
+                )?;
+            } else {
+                Self::metal_mat_mul(
+                    context,
+                    dt,
+                    m,
+                    k,
+                    n,
+                    a_buffer,
+                    a_offset,
+                    transpose_a,
+                    b_buffer,
+                    b_offset,
+                    transpose_b,
+                    c_buffer,
+                    c_offset,
+                )?;
+            }
         }
         Ok(())
     }
@@ -171,63 +184,29 @@ impl BasicMatMul {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kernels::matmul::GemmImpl;
-    use crate::IntoMetal;
-    use tract_core::internal::Tensor;
-    use tract_core::ops::einsum::BasicMatMul as TractBasicMatMul;
-
-    fn run_test_case(
-        (m, k, n): (usize, usize, usize),
-        transpose_a: bool,
-        transpose_b: bool,
-    ) -> Result<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let a_shape = if !transpose_a { [m, k] } else { [k, m] };
-                let b_shape = if !transpose_b { [k, n] } else { [n, k] };
-                let a = Tensor::from_shape(
-                    &a_shape,
-                    &(0..m * k).map(|f| f as f32 / 100.0).collect::<Vec<_>>(),
-                )?
-                .into_metal()?;
-
-                let b = Tensor::from_shape(
-                    &b_shape,
-                    &(0..k * n).map(|f| f as f32 / 100.0).collect::<Vec<_>>(),
-                )?
-                .into_metal()?;
-
-                let metal_output =
-                    GemmImpl::<BasicMatMul>::new(transpose_a, transpose_b).eval(context, &a, &b)?;
-                let matmul = TractBasicMatMul {
-                    transpose_a,
-                    transpose_b,
-                    transpose_c: false,
-                    quantize_output: None,
-                };
-                let output = args_1!(
-                    matmul.eval(tvec![a.to_cpu().into_tvalue(), b.to_cpu().into_tvalue()])?
-                );
-                output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
-                Ok(())
-            })
-        })
-    }
+    use crate::kernels::matmul::tests::run_mmm_test_case;
 
     #[test]
-    fn test_mat_vec() -> Result<()> {
-        run_test_case((4, 4, 1), false, false)?;
-        run_test_case((1, 4, 4), false, false)?;
+    fn test_mat_vec() -> TractResult<()> {
+        run_mmm_test_case::<BasicMatMul>((1, 4, 4, 1), false, false)?;
+        run_mmm_test_case::<BasicMatMul>((1, 1, 4, 4), false, false)?;
+        run_mmm_test_case::<BasicMatMul>((1, 1, 15, 7), false, true)?;
         Ok(())
     }
 
     #[test]
-    fn test_mat_mul() -> Result<()> {
-        run_test_case((3, 5, 4), false, false)?;
-        run_test_case((2, 5, 10), false, true)?;
-        run_test_case((4, 4, 4), false, true)?;
-        run_test_case((4, 4, 200), false, true)?;
-        run_test_case((25, 1280, 32000), false, true)?;
+    fn test_mat_mul() -> TractResult<()> {
+        run_mmm_test_case::<BasicMatMul>((1, 3, 5, 4), false, false)?;
+        run_mmm_test_case::<BasicMatMul>((1, 2, 5, 10), false, true)?;
+        run_mmm_test_case::<BasicMatMul>((1, 4, 4, 4), false, true)?;
+        run_mmm_test_case::<BasicMatMul>((1, 4, 4, 200), false, true)?;
+        run_mmm_test_case::<BasicMatMul>((1, 25, 1280, 32000), false, true)?;
+
+        run_mmm_test_case::<BasicMatMul>((10, 3, 5, 4), false, false)?;
+        run_mmm_test_case::<BasicMatMul>((10, 2, 5, 10), false, true)?;
+        run_mmm_test_case::<BasicMatMul>((10, 4, 4, 4), false, true)?;
+        run_mmm_test_case::<BasicMatMul>((10, 4, 4, 200), false, true)?;
+        run_mmm_test_case::<BasicMatMul>((10, 25, 1280, 32000), false, true)?;
         Ok(())
     }
 }
