@@ -15,6 +15,7 @@ pub trait MatMatMulKer: Clone + Debug + Send + Sync + 'static {
     fn nr(&self) -> usize;
 
     fn packings(&self) -> Cow<[(&dyn MMMInputFormat, &dyn MMMInputFormat)]>;
+    fn stores(&self) -> Cow<[DatumType]>;
 
     #[allow(unused_variables)]
     fn can_fuse(&self, spec: &FusedSpec) -> bool {
@@ -35,6 +36,7 @@ pub struct DynKernel<const MR: usize, const NR: usize, Acc: LADatum> {
     pub kernel: Kernel<Acc>,
     pub default_packing_alignments: (usize, usize),
     pub packings: Vec<(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)>,
+    pub stores: Vec<DatumType>,
     pub supported_predicate: fn() -> bool,
     pub can_fuse: fn(&FusedSpec) -> bool,
 }
@@ -49,6 +51,7 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
             name: name.to_string(),
             kernel,
             packings: vec![],
+            stores: vec![Acc::datum_type()],
             supported_predicate: || true,
             default_packing_alignments,
             can_fuse: |_| true,
@@ -85,10 +88,14 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
         Self { can_fuse, ..self }
     }
 
+    pub fn with_store<D: LADatum>(mut self) -> Self {
+        self.stores.push(D::datum_type());
+        self
+    }
+
     pub fn mmm(&self) -> Box<dyn MatMatMul> {
         Box::new(self.clone())
     }
-
 }
 
 impl<const MR: usize, const NR: usize, Acc: LADatum> Debug for DynKernel<MR, NR, Acc> {
@@ -125,5 +132,9 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> MatMatMulKer for DynKernel<
 
     fn packings(&self) -> Cow<[(&dyn MMMInputFormat, &dyn MMMInputFormat)]> {
         Cow::Owned(self.packings.iter().map(|p| (&*p.0, &*p.1)).collect_vec())
+    }
+
+    fn stores(&self) -> Cow<[DatumType]> {
+        Cow::Borrowed(&self.stores)
     }
 }
