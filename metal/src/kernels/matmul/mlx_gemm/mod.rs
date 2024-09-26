@@ -236,6 +236,7 @@ pub fn dispatch_metal_mlx_gemv(
     );
 
     // Batch parameters are not set because we don't use this feature yet.
+<<<<<<< HEAD
     encoder.set_bytes(
         9, // batch_ndim
         std::mem::size_of::<i32>() as u64,
@@ -256,6 +257,8 @@ pub fn dispatch_metal_mlx_gemv(
         std::mem::size_of::<usize>() as u64,
         &mat_batch_stride as *const usize as *const c_void,
     );
+=======
+>>>>>>> 4175a8b4a (Improve GEMM metal implementation)
 
     encoder.use_resource(a_buffer, metal::MTLResourceUsage::Read);
     encoder.use_resource(b_buffer, metal::MTLResourceUsage::Read);
