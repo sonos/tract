@@ -41,7 +41,7 @@ impl<K: LutKer> Lut for LutImpl<K> {
         unsafe {
             let table: *const u8 = self.table.as_ptr_unchecked();
             let align = K::input_alignment_bytes();
-            let aligned_start = (buf.as_ptr() as usize + align - 1) / align * align;
+            let aligned_start = (buf.as_ptr() as usize).next_multiple_of(align);
             let prefix = (aligned_start - buf.as_ptr() as usize).min(buf.len());
             for i in 0..(prefix as isize) {
                 let ptr = buf.as_mut_ptr().offset(i);
