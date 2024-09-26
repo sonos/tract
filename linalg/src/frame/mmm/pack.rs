@@ -53,7 +53,7 @@ impl Debug for PackedFormat {
 
 impl PackedFormat {
     pub const fn new(dt: DatumType, nr: usize, alignment: usize) -> PackedFormat {
-        PackedFormat { dt, r: nr, alignment, end_padding_record: 0 }
+        PackedFormat { dt, r: nr, alignment, end_padding_record: 1 }
     }
 
     pub const fn with_end_padding_record(self, end_padding_record: usize) -> Self {
@@ -539,7 +539,8 @@ mod test {
 
         fn packer(&self) -> Array2<u32> {
             let panels = self.mn_range.len().divceil(self.r);
-            let packer = super::PackedFormat::new(u32::datum_type(), self.r, self.align_panel);
+            let packer = super::PackedFormat::new(u32::datum_type(), self.r, self.align_panel)
+                .with_end_padding_record(0);
             let input = self.input().into_tensor();
             let panel_len = packer.single_panel_len(self.k_range.len());
             let mut output =
