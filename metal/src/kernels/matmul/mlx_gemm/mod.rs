@@ -90,11 +90,11 @@ impl GemmKernel for MlxGemm {
             natural_strides(&[batch, k, n])
         };
 
-        if batch == 1 && (m == 1 || n == 1) {
+        if m == 1 || n == 1 {
             dispatch_metal_mlx_gemv(
                 context,
                 dt,
-                (m, n, k),
+                (batch, m, n, k),
                 unsafe { std::mem::transmute::<&[isize], &[usize]>(a_strides.as_slice()) },
                 a_offset,
                 a_buffer,
@@ -133,7 +133,7 @@ impl GemmKernel for MlxGemm {
 pub fn dispatch_metal_mlx_gemv(
     context: &MetalContext,
     dt: DatumType,
-    (m, n, k): (usize, usize, usize),
+    (b, m, n, k): (usize, usize, usize, usize),
     a_stride: &[usize],
     a_offset: usize,
     a_buffer: &Buffer,
@@ -166,6 +166,8 @@ pub fn dispatch_metal_mlx_gemv(
     let mv_k = k;
     let mv_ld = if is_b_matrix { ldb } else { lda };
     let mv_trans = if is_b_matrix { !b_trans } else { a_trans };
+    let vec_batch_stride = mv_k;
+    let mat_batch_stride = mv_k * mv_m;
 
     // let batch_stride_a =
     //     if lhs_stride.len() > 2 { lhs_stride[lhs_stride.len() - 3] } else { m * k };
@@ -199,7 +201,7 @@ pub fn dispatch_metal_mlx_gemv(
     let grid_size = MTLSize {
         width: n_tgp as _,
         height: 1,
-        depth: /* batch_size_out */ 1 as u64,
+        depth: /* batch_size_out */ b as u64,
     };
 
     let t_mat = if mv_trans { "t_" } else { "" };
@@ -239,6 +241,31 @@ pub fn dispatch_metal_mlx_gemv(
     );
 
     // Batch parameters are not set because we don't use this feature yet.
+    encoder.set_bytes(
+        9, // batch_ndim
+        std::mem::size_of::<i32>() as u64,
+        &(1 as i32) as *const i32 as *const c_void,
+    );
+    encoder.set_bytes(
+        10, // batch_shape
+        std::mem::size_of::<i32>() as u64,
+        &(b as i32) as *const i32 as *const c_void,
+    );
+    encoder.set_bytes(
+        11, // batch_strides_vec
+        std::mem::size_of::<i32>() as u64,
+        &(vec_batch_stride as i32) as *const i32 as *const c_void,
+    );
+    encoder.set_bytes(
+        12, // batch_strides_mat
+        std::mem::size_of::<i32>() as u64,
+        &(mat_batch_stride as i32) as *const i32 as *const c_void,
+    );
+
+    // compute_encoder->setBytes(&batch_ndim, sizeof(int), 9);
+    // set_vector_bytes(compute_encoder, batch_shape, 10);
+    // set_vector_bytes(compute_encoder, batch_strides_vec, 11);
+    // set_vector_bytes(compute_encoder, batch_strides_mat, 12);
 
     encoder.use_resource(a_buffer, metal::MTLResourceUsage::Read);
     encoder.use_resource(b_buffer, metal::MTLResourceUsage::Read);
@@ -415,9 +442,9 @@ pub fn kernel_name_gemm(dt: DatumType, transpose_a: bool, transpose_b: bool) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kernels::matmul::tests::run_mmm_test_case;
     use crate::kernels::matmul::GemmImpl;
     use crate::{IntoMetal, MetalTensor};
-    use tract_core::ops::einsum::BasicMatMul as TractBasicMatMul;
 
     #[test]
     fn test_mlx_gemv_compilation() -> Result<()> {
@@ -476,50 +503,21 @@ mod tests {
         })
     }
 
-    fn run_test_case(
-        (m, k, n): (usize, usize, usize),
-        transpose_a: bool,
-        transpose_b: bool,
-    ) -> TractResult<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let a_shape = if !transpose_a { [m, k] } else { [k, m] };
-                let b_shape = if !transpose_b { [k, n] } else { [n, k] };
-                let a = Tensor::from_shape(
-                    &a_shape,
-                    &(0..m * k).map(|f| f as f32 / 100.0).collect::<Vec<_>>(),
-                )?
-                .into_metal()?;
-
-                let b = Tensor::from_shape(
-                    &b_shape,
-                    &(0..k * n).map(|f| f as f32 / 100.0).collect::<Vec<_>>(),
-                )?
-                .into_metal()?;
-
-                let metal_output =
-                    GemmImpl::<MlxGemm>::new(transpose_a, transpose_b).eval(context, &a, &b)?;
-                let matmul = TractBasicMatMul {
-                    transpose_a,
-                    transpose_b,
-                    transpose_c: false,
-                    quantize_output: None,
-                };
-                let output = args_1!(
-                    matmul.eval(tvec![a.to_cpu().into_tvalue(), b.to_cpu().into_tvalue()])?
-                );
-                output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
-                Ok(())
-            })
-        })
+    #[test]
+    fn test_mat_vec() -> TractResult<()> {
+        run_mmm_test_case::<MlxGemm>((1, 4, 4, 1), false, false)?;
+        run_mmm_test_case::<MlxGemm>((10, 1, 4, 4), false, false)?;
+        run_mmm_test_case::<MlxGemm>((5, 1, 15, 7), false, true)?;
+        Ok(())
     }
 
     #[test]
-    fn test_mlx_mat_vec() -> TractResult<()> {
-        run_test_case((4, 4, 1), false, false)?;
-        run_test_case((4, 4, 1), true, false)?;
-        run_test_case((1, 4, 4), false, false)?;
-        run_test_case((1, 15, 7), false, true)?;
+    fn test_mat_mul() -> TractResult<()> {
+        run_mmm_test_case::<MlxGemm>((1, 3, 5, 4), false, false)?;
+        run_mmm_test_case::<MlxGemm>((1, 2, 5, 10), false, true)?;
+        run_mmm_test_case::<MlxGemm>((1, 4, 4, 4), false, true)?;
+        run_mmm_test_case::<MlxGemm>((1, 4, 4, 200), false, true)?;
+        run_mmm_test_case::<MlxGemm>((1, 25, 1280, 32000), false, true)?;
         Ok(())
     }
 }
