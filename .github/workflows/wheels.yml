@@ -54,6 +54,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
+          name: wheels-${{github.run_id}}
           path: ./wheelhouse/*.whl
 
   make_sdist:
