@@ -229,8 +229,8 @@ pub fn dispatch_metal_mfa_gemm(
     }
 
     let grid_size = MTLSize {
-        width: crate::utils::div_ceil(n, n_group.into()),
-        height: crate::utils::div_ceil(m, m_group.into()),
+        width: n.div_ceil(n_group.into()) as NSUInteger,
+        height: m.div_ceil(m_group.into()) as NSUInteger,
         depth: grid_z as NSUInteger,
     };
     let group_size =
