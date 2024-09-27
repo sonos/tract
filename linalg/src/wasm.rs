@@ -36,6 +36,13 @@ unsafe fn kernel_f32_4x4(mut pnl: *const FusedKerSpec<f32>) -> isize {
                 ab2 = a;
                 ab3 = a;
             }
+            FusedKerSpec::LoadTile(_cols, rows) => {
+                let rows = rows as *const v128;
+                ab0 = *rows;
+                ab1 = *rows.add(1);
+                ab2 = *rows.add(2);
+                ab3 = *rows.add(3);
+            }
             FusedKerSpec::ScalarMin(a) => {
                 let a = f32x4_splat(a);
                 ab0 = f32x4_min(a, ab0);
