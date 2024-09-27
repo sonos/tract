@@ -48,6 +48,7 @@ Windows ABI:
 {% include "f32_scalars.tmpliq" from:0, to:7 %}
 {% include "f32_per_rows.tmpliq" mr:128, from:0, to:7 %}
 {% include "f32_per_cols.tmpliq" mr:128, from:0, to:7 %}
+{% include "avx512_mmm_load_tile_col_major.tmpliq" from:0, to:7 %}
 
 {{L}}add_unicast:
     mov     r10,    [rdi + 8]           // c ptr

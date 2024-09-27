@@ -29,7 +29,6 @@
 {% endfor %}
     {{long}}      {{L}}unsupported-{{L}}jmp_table
 
-{{L}}load_tile_col_major:
 {{L}}unsupported:
     mov     rax,    1
     jmp     {{L}}return
