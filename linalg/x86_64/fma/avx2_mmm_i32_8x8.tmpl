@@ -174,6 +174,7 @@ avx2_mmm_i32_8x8_{{suffix}} proc
 {% include "fma_mmm_i32_scalars.tmpliq" from:0, to:7 %}
 {% include "fma_mmm_i32_per_rows.tmpliq" mr:8,from:0, to:7 %}
 {% include "fma_mmm_i32_per_cols.tmpliq" mr:8,from:0, to:7 %}
+{% include "fma_mmm_load_tile_col_major.tmpliq" from:0, to:7 %}
 
 {{L}}add_unicast:
 

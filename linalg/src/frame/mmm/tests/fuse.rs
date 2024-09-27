@@ -1,6 +1,7 @@
 use crate::frame::mmm::fuse::FusedKerSpec;
 use crate::frame::mmm::storage::*;
 use crate::frame::mmm::tests::display_error;
+use crate::frame::mmm::tests::store::mmm_stride_storage;
 use crate::frame::mmm::*;
 use num_traits::{AsPrimitive, Bounded};
 use proptest::prelude::*;
@@ -108,15 +109,6 @@ macro_rules! mmm_kernel_fuse_tests {
             }
         }
     };
-}
-
-pub fn mmm_stride_storage<T: Copy>(v: &[T], rsc: usize) -> OutputStoreKer {
-    OutputStoreKer {
-        ptr: v.as_ptr() as _,
-        row_byte_stride: (std::mem::size_of::<T>() * rsc) as isize,
-        col_byte_stride: std::mem::size_of::<T>() as isize,
-        item_size: std::mem::size_of::<T>(),
-    }
 }
 
 use crate::LADatum;
