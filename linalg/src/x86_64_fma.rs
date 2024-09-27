@@ -20,18 +20,15 @@ fn plug_avx2(ops: &mut Ops) {
 }
 
 fn plug_fma(ops: &mut Ops) {
-    ops.mmm_impls.extend(
-        [
-            mmm::fma_mmm_f16_8x8.mmm(),
-            mmm::fma_mmm_f32_8x8.mmm(),
-            mmm::fma_mmm_f32_16x5.mmm(),
-            mmm::fma_mmm_f32_16x6.mmm(),
-            mmm::fma_mmm_f32_24x4.mmm(),
-            mmm::fma_mmm_f32_32x3.mmm(),
-            mmm::fma_mmm_f32_40x2.mmm(),
-            mmm::fma_mmm_f32_64x1.mmm(),
-        ]
-    );
+    ops.mmm_impls.extend([
+        mmm::fma_mmm_f32_8x8.mmm(),
+        mmm::fma_mmm_f32_16x5.mmm(),
+        mmm::fma_mmm_f32_16x6.mmm(),
+        mmm::fma_mmm_f32_24x4.mmm(),
+        mmm::fma_mmm_f32_32x3.mmm(),
+        mmm::fma_mmm_f32_40x2.mmm(),
+        mmm::fma_mmm_f32_64x1.mmm(),
+    ]);
     ops.mmv_f32 = Box::new(|_, _| mmm::fma_mmm_f32_64x1.mmm());
 
     ops.mmm_f32 = Box::new(|_, _, n| {
@@ -107,7 +104,6 @@ fn plug_fma(ops: &mut Ops) {
     ops.softmax2_fastcompact_f32 = Box::new(|| x86_64_fma_softmax2_fastcompact_f32_32n::red());
 
     if is_x86_feature_detected!("f16c") {
-        ops.mmm_f16 = Box::new(|_, _, _| mmm::fma_mmm_f16_8x8.mmm());
         ops.mmm_impls.push(mmm::fma_mmm_f32_32x1.mmm()); // q40f32 requires f16c
         log::info!("found f16c, added fake-f16 and q40-able kernels");
     }
