@@ -78,6 +78,9 @@ macro_rules! MMMKernel {
                         let f: fn(DynKernel<$mr, $nr, $ti>) -> DynKernel<$mr, $nr, $ti> = $packing;
                         k = f(k);
                     )*
+                    $($(
+                        k.stores.push(<$store>::datum_type());
+                    )*)?
                     $(k.can_fuse = $can_fuse;)?
                     k
                 };
@@ -88,6 +91,7 @@ macro_rules! MMMKernel {
                 use super::$id;
                 test_mmm_kernel!($ti, &*super::$id);
                 $(mmm_packed_packed_tests!(&*super::$id, $pid : $pnum);)*
+                $($(mmm_store_test!(&*super::$id, $store);)*)?
             }
         }
     };

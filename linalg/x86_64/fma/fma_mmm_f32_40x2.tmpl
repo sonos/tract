@@ -49,6 +49,7 @@ Windows ABI:
 {% include "fma_mmm_f32_scalars.tmpliq" from:0, to:9, type:"f32" %}
 {% include "fma_mmm_f32_per_rows.tmpliq" mr:40, from:0, to:9, type:"f32" %}
 {% include "fma_mmm_f32_per_cols.tmpliq" mr:40, from:0, to:9, type:"f32" %}
+{% include "fma_mmm_load_tile_col_major.tmpliq" from:0, to:9 %}
 
 {{L}}add_unicast:
     mov     r8,    [rdi + 8]           // c ptr

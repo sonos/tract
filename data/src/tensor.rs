@@ -478,6 +478,8 @@ impl Tensor {
     }
 
     pub fn permute_axes(self, axes: &[usize]) -> TractResult<Tensor> {
+        ensure!(axes.iter().duplicates().next().is_none());
+        ensure!(axes.iter().all(|a| *a < self.rank()));
         unsafe {
             #[inline]
             unsafe fn permute<T: Datum>(axes: &[usize], input: Tensor) -> Tensor {
