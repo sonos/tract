@@ -190,7 +190,7 @@ pub fn dispatch_metal_mlx_gemv(
         bm * sm * tm
     };
 
-    let n_tgp = (mv_m + n_out_per_tgp - 1) / n_out_per_tgp;
+    let n_tgp = mv_m.div_ceil(n_out_per_tgp);
 
     let group_size = MTLSize { width: 32, height: bn as _, depth: bm as _ };
     let grid_size = MTLSize {
