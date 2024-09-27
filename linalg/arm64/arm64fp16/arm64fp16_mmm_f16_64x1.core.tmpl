@@ -179,6 +179,7 @@
 {% include "arm64fp16_mmm_f16_scalars.tmpliq" from:24, to:31%}
 {% include "arm64fp16_mmm_f16_per_rows.tmpliq" mr:64, from:24, to:31%}
 {% include "arm64fp16_mmm_f16_per_cols.tmpliq" mr:64, from:24, to:31%}
+{% include "arm64fp16_mmm_load_tile_col_major.tmpliq" from:24, to:31 %}
 
 .add_unicast:
     ldp         x5, x6, [x0, #8]           // c base ptr, rsc

@@ -5,6 +5,7 @@ macro_rules! MMMExternKernel {
             $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
             $(store($($store:ty),*))?
+            $(tweak($tweak: expr))*
      ) => {
         paste! {
             mod [<sys_ $func>] {
@@ -36,6 +37,7 @@ macro_rules! MMMRustKernel {
             $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
             $(store($($store:ty),*))?
+            $(tweak($tweak: expr))*
      ) => {
         paste! {
             mod [<sys_ $id>] {
@@ -59,12 +61,13 @@ macro_rules! MMMRustKernel {
 
 macro_rules! MMMKernel {
     (
-        $func: path as
-        $id:ident<$ti:ident>($mr: expr, $nr: expr)@($align_a:expr, $align_b:expr)
-        $(where($where:expr))?
-        $(can_fuse($can_fuse:expr))?
-        $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
-        $(store($($store:ty),*))?
+            $func: path as
+            $id:ident<$ti:ident>($mr: expr, $nr: expr)@($align_a:expr, $align_b:expr)
+            $(where($where:expr))?
+            $(can_fuse($can_fuse:expr))?
+            $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
+            $(store($($store:ty),*))?
+            $(tweak($tweak: expr))*
      ) => {
         paste! {
             lazy_static::lazy_static! {
@@ -82,6 +85,7 @@ macro_rules! MMMKernel {
                         k.stores.push(<$store>::datum_type());
                     )*)?
                     $(k.can_fuse = $can_fuse;)?
+                    $($tweak(&mut k);)*
                     k
                 };
             }
