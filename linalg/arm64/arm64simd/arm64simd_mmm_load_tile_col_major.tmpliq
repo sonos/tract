@@ -1,6 +1,6 @@
 // vim: ft=arm
 
-.load_tile_col_major:
+.load_tile:
     ldr         x2, [ x0, #8 ]
     {% for reg in (from..to) %}
         ld1         { v{{reg}}.4s }, [ x2 ], #16
