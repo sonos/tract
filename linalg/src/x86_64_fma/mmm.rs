@@ -5,11 +5,7 @@ use tract_data::prelude::*;
 
 const AVX2: fn() -> bool = || is_x86_feature_detected!("avx2");
 const FMA: fn() -> bool = || is_x86_feature_detected!("fma");
-const FMA_F16C: fn() -> bool =
-    || is_x86_feature_detected!("fma") && is_x86_feature_detected!("f16c");
 const AVX512F: fn() -> bool = || is_x86_feature_detected!("avx512f");
-
-MMMExternKernel!(fma_mmm_f16_8x8<f16>(8,8)@(32,2) where(FMA_F16C));
 
 MMMExternKernel!(fma_mmm_f32_8x8 <f32>(8, 8)@(32,4) where(FMA));
 MMMExternKernel!(fma_mmm_f32_16x6<f32>(16,6)@(32,4) where(FMA));
