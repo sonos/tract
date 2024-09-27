@@ -73,6 +73,8 @@ macro_rules! MMMKernel {
             lazy_static::lazy_static! {
                 pub static ref $id: $crate::mmm::DynKernel<$mr, $nr, $ti> = {
                     use $crate::mmm::DynKernel;
+                    #[allow(unused_imports)]
+                    use tract_data::prelude::*;
                     #[allow(unused_mut)]
                     let mut k = DynKernel::<$mr, $nr, $ti>::new(stringify!($id), $func, ($align_a, $align_b));
                     $(k = k.with_platform_condition($where);)?

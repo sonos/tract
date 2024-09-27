@@ -1,7 +1,6 @@
 //use crate::frame::block_quant::{PackedBlockQuantFormat, Q4_0};
 use crate::frame::block_quant::*;
 use crate::frame::PackedFormat;
-use tract_data::prelude::*;
 
 const AVX2: fn() -> bool = || is_x86_feature_detected!("avx2");
 const FMA: fn() -> bool = || is_x86_feature_detected!("fma");
@@ -32,4 +31,5 @@ MMMExternKernel!(avx512_mmm_f32_80x2 <f32>( 80, 2)@(64,4) where (AVX512F));
 
 MMMExternKernel! { avx2_mmm_i32_8x8<i32>(8,8)@(32,4) where(AVX2)
     packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 8,32), PackedFormat::new(DatumType::I8, 8, 4));
+    store(i8)
 }
