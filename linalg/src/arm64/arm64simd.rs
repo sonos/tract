@@ -1,5 +1,3 @@
-use tract_data::internal::*;
-
 mod by_scalar;
 mod leaky_relu;
 mod max;
