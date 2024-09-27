@@ -9,7 +9,12 @@ impl MetalBinOp {
     fn resolve_output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let (a, b) = (inputs[0], inputs[1]);
         if a.rank() != b.rank() {
-            bail!("Typed ops require rank match. Invalid inputs for {}: {:?}", self.name(), inputs);
+            bail!(
+                "Typed ops require rank match. Invalid inputs for {}: {{a: {:?}, b: {:?}}}",
+                self.name(),
+                a.shape,
+                b.shape
+            );
         }
         let out_dt = self.0.output_datum_type(a.datum_type, b.datum_type)?;
         Ok(tvec!(out_dt.fact(&*tract_core::broadcast::multi_broadcast(&[
