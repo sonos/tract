@@ -139,7 +139,7 @@ non_linear_addc_i32:
 {% include "arm64simd_mmm_i32_per_rows.tmpliq" mr:64, from:16, to:31 %}
 {% include "arm64simd_mmm_i32_per_cols.tmpliq" mr:64, from:16, to:31 %}
 {% include "arm64simd_mmm_i32_scale_q16_q31.tmpliq" %}
-{% include "arm64simd_mmm_load_tile_col_major.tmpliq" from:16, to:31 %}
+{% include "arm64simd_mmm_load_tile.tmpliq" from:16, to:31 %}
 
 .store:
     ldp         x5, x6, [x0, #8]            // c base ptr, rsc

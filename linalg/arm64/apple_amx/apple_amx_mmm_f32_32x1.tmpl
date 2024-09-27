@@ -522,7 +522,7 @@
     
     b .non_linear_loop
 
-.load_tile_col_major:
+.load_tile:
     ldr  x2, [x0, #16]                      // row major ptr
     orr  x2, x2, {{0|setting:62}}           // load pairs
     {% amx ldz x2 %}

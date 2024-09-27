@@ -88,7 +88,7 @@
 {% include "arm64fp16_mmm_f16_scalars.tmpliq" from:16, to:31%}
 {% include "arm64fp16_mmm_f16_per_rows.tmpliq" mr:16, from:16, to:31 %}
 {% include "arm64fp16_mmm_f16_per_cols.tmpliq" mr:16, from:16, to:31 %}
-{% include "arm64fp16_mmm_load_tile_col_major.tmpliq" from:16, to:31 %}
+{% include "arm64fp16_mmm_load_tile.tmpliq" from:16, to:31 %}
 
 .add_unicast:
     ldp         x5, x6, [x0, #8]

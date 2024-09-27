@@ -738,7 +738,7 @@ z62[0] .. z62[15] z63[0] .. z63[15]
 
     b .non_linear_loop
 
-.load_tile_col_major:
+.load_tile:
     ldr  x2, [x0, #16]                      // row major ptr
     orr  x2, x2, {{0|setting:62}}           // load pairs
     mov  x3, x2
@@ -749,13 +749,13 @@ z62[0] .. z62[15] z63[0] .. z63[15]
     add  x4, x4, #128
 
     mov x8, 16
-    .loop_load_tile_col_major:
+    .loop_load_tile:
         {% amx ldz x2 %}
         {% amx ldz x3 %}
         add x2, x2, x4
         add x3, x3, x4
     subs x8, x8, 1
-    bne .loop_load_tile_col_major
+    bne .loop_load_tile
 
     b .non_linear_loop
 
