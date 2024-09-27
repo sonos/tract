@@ -126,18 +126,18 @@ mod tests {
                 let cpu_rms = BasicRmsNorm { axis, eps: Arc::clone(&eps) };
 
                 let cpu_output =
-                    cpu_rms.eval(tvec![a.to_cpu().into_tvalue()])?[0].clone().into_tensor();
+                    cpu_rms.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
                 let metal_output = RmsNorm.eval(context, &a, axis, &eps)?;
 
                 cpu_output
-                    .close_enough(&metal_output.to_cpu(), Approximation::Approximate)
+                    .close_enough(&metal_output.to_cpu()?, Approximation::Approximate)
                     .with_context(|| {
                         anyhow!(
                             "Input: {:?}, scale: {:?} Cpu: {:?}, Metal: {:?}",
-                            a.to_cpu().dump(true),
+                            a.to_cpu().and_then(|it| it.dump(true)),
                             scale,
                             cpu_output.dump(true),
-                            metal_output.to_cpu().dump(true)
+                            metal_output.to_cpu().and_then(|it| it.dump(true))
                         )
                     })?;
                 Ok(())
@@ -240,7 +240,7 @@ mod tests {
                 crate::METAL_CONTEXT.with_borrow(|context| {
                     let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_metal()?;
                     let metal_output = RmsNorm.eval(context, &a, self.axis, &self.eps)?;
-                    Ok(metal_output.to_cpu())
+                    metal_output.to_cpu()
                 })
             })
         }

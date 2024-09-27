@@ -18,7 +18,11 @@ impl MetalFact {
     }
 }
 
-impl OpaqueFact for MetalFact {}
+impl OpaqueFact for MetalFact {
+    fn clarify_dt_shape(&self) -> Option<(DatumType, &[usize])> {
+        self.0.shape.as_concrete().map(|s| (self.0.datum_type, s))
+    }
+}
 
 pub trait MetalTypedFactExt {
     fn into_opaque_metal_fact(self) -> TractResult<TypedFact>;

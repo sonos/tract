@@ -1,5 +1,6 @@
 #![allow(clippy::derived_hash_with_manual_eq)]
-use crate::TVec;
+use crate::datum::DatumType;
+use crate::internal::{TVec, Tensor, TractResult};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::ops::Deref;
@@ -8,20 +9,26 @@ use std::sync::Arc;
 use downcast_rs::{impl_downcast, Downcast};
 use dyn_hash::DynHash;
 
-pub trait OpaquePayload: DynHash + Send + Sync + Debug + Display + Downcast { }
+pub trait OpaquePayload: DynHash + Send + Sync + Debug + Display + Downcast {
+    fn clarify_to_tensor(&self) -> Option<TractResult<Tensor>> {
+        None
+    }
+}
 impl_downcast!(OpaquePayload);
 dyn_hash::hash_trait_object!(OpaquePayload);
-
 
 pub trait OpaqueFact: DynHash + Send + Sync + Debug + dyn_clone::DynClone + Downcast {
     fn same_as(&self, _other: &dyn OpaqueFact) -> bool {
         false
     }
+
+    fn clarify_dt_shape(&self) -> Option<(DatumType, &[usize])> {
+        None
+    }
 }
 impl_downcast!(OpaqueFact);
 dyn_hash::hash_trait_object!(OpaqueFact);
 dyn_clone::clone_trait_object!(OpaqueFact);
-
 
 impl<T: OpaqueFact> From<T> for Box<dyn OpaqueFact> {
     fn from(v: T) -> Self {
@@ -29,20 +36,16 @@ impl<T: OpaqueFact> From<T> for Box<dyn OpaqueFact> {
     }
 }
 
-
 impl PartialEq for Box<dyn OpaqueFact> {
     fn eq(&self, other: &Self) -> bool {
         self.as_ref().same_as(other.as_ref())
     }
 }
 
-impl Eq for Box<dyn OpaqueFact> { }
+impl Eq for Box<dyn OpaqueFact> {}
 
-
-impl OpaqueFact for TVec<Box<dyn OpaqueFact>> { }
-impl OpaqueFact for TVec<Option<Box<dyn OpaqueFact>>> { }
-
-
+impl OpaqueFact for TVec<Box<dyn OpaqueFact>> {}
+impl OpaqueFact for TVec<Option<Box<dyn OpaqueFact>>> {}
 
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub struct DummyPayload;

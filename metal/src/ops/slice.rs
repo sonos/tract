@@ -148,7 +148,7 @@ mod tests {
                 context.wait_until_completed()?;
 
                 cpu_output[0].close_enough(
-                    &metal_output[0].to_metal_tensor()?.to_cpu(),
+                    &metal_output[0].to_metal_tensor()?.to_cpu()?,
                     Approximation::Approximate,
                 )?;
                 Ok(())

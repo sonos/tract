@@ -466,7 +466,7 @@ mod tests {
 
                 let expected_c = Tensor::from_shape(&[10, 32, 32], &vec![16.0; 10 * 32 * 32])?;
 
-                let c = c.to_cpu();
+                let c = c.to_cpu()?;
                 c.close_enough(&expected_c, Approximation::Approximate)?;
                 assert!(c.close_enough(&expected_c, Approximation::Approximate).is_ok());
 
@@ -490,7 +490,7 @@ mod tests {
                     ],
                 )?;
 
-                assert!(c.to_cpu().close_enough(&expected_c, Approximation::Approximate).is_ok());
+                assert!(c.to_cpu()?.close_enough(&expected_c, Approximation::Approximate).is_ok());
                 Ok(())
             })
         })

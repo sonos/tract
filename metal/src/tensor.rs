@@ -1,5 +1,5 @@
 use crate::IntoMetal;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use metal::{Buffer, MTLResourceOptions, NSUInteger};
 use std::fmt::Display;
 use tract_core::internal::*;
@@ -271,8 +271,15 @@ impl MetalTensor {
         tensor0::<Opaque>(self.into())
     }
 
-    pub fn to_cpu(&self) -> Tensor {
-        self.inner.clone().into_tensor()
+    /// Synchronize the Metal Tensor by completing all current
+    /// commands on GPU and returns the inner tensor.
+    pub fn to_cpu(&self) -> Result<Tensor> {
+        crate::METAL_CONTEXT
+            .with_borrow(|context| -> Result<Tensor> {
+                context.wait_until_completed()?;
+                Ok(self.inner.clone().into_tensor())
+            })
+            .with_context(|| anyhow!("Error while synchronize metal tensor to its cpu counterpart"))
     }
 }
 
@@ -309,7 +316,11 @@ impl From<MetalTensor> for Opaque {
     }
 }
 
-impl OpaquePayload for MetalTensor {}
+impl OpaquePayload for MetalTensor {
+    fn clarify_to_tensor(&self) -> Option<Result<Tensor>> {
+        Some(self.to_cpu())
+    }
+}
 
 pub trait MetalTensorExt {
     fn to_metal_tensor(&self) -> Result<&MetalTensor>;
@@ -351,7 +362,7 @@ mod tests {
     #[test]
     fn test_metal_tensor() -> Result<()> {
         let a = MetalTensor::from_shape(&[1], &[0f32])?;
-        assert_eq!(a.to_cpu().as_slice::<f32>()?, &[0.0]);
+        assert_eq!(a.to_cpu()?.as_slice::<f32>()?, &[0.0]);
         Ok(())
     }
 }

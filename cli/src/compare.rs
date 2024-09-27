@@ -319,8 +319,18 @@ where
                             .and_then(get_value)
                             .or_else(|| get_value(&node.name).filter(|_| ix == 0))
                             .map(|t| {
-                                let needed_type =
-                                    node.outputs[ix].fact.to_typed_fact().unwrap().datum_type;
+                                let needed_fact = crate::utils::clarify_typed_fact(node.outputs[ix].fact.to_typed_fact().unwrap());
+                                let needed_type = needed_fact.datum_type;
+                                let needed_shape = needed_fact.shape.as_concrete().unwrap();
+                                let t = if t.shape() != needed_shape {
+
+                                    t.into_tensor().into_shape(needed_shape)
+                                        .expect("Comparing incompatible shapes")
+                                        .into_tvalue()
+                                } else {
+                                    t.clone()
+                                };
+
                                 if needed_type == t.datum_type() {
                                     t
                                 } else if needed_type.unquantized() == t.datum_type().unquantized()
@@ -348,20 +358,24 @@ where
                     tags.labels.push(Red.paint("Unimplemented").to_string());
                     failing.insert(node.id);
                 } else {
+                    log::info!("{}", format!("Running {node}"));
                     let obtained = tract_core::plan::eval(session_state, state, node, input);
                     match obtained {
                         Err(e) => {
                             error = Some(format!("{}: {}", Red.bold().paint("ERROR"), e));
+                            dbg!(&e);
                         }
                         Ok(obtained) => {
-                            tested = Some(obtained.clone());
+                            let clear_obtained = crate::utils::clarify_tvalues(&obtained);
+                            tested = Some(obtained);
                             if let Some(reference) = &reference {
-                                if reference.len() != obtained.len() {
+                                if reference.len() != clear_obtained.len() {
                                     error = Some("Output number mismatch".to_string());
                                 } else {
                                     for ix in 0..node.outputs.len() {
+
                                         if let Err(e) =
-                                            obtained[ix].close_enough(&reference[ix], true)
+                                            clear_obtained[ix].close_enough(&reference[ix], true)
                                         {
                                             error = Some("Mismatch value".to_string());
                                             let mut msg = vec![Red
@@ -370,7 +384,7 @@ where
                                                     "At turn {turn}, wrong value for output {ix}, {e}"
                                                 ))
                                                 .to_string()];
-                                            msg.push(format!("got     : {:?}", obtained[ix]));
+                                            msg.push(format!("got     : {:?}", clear_obtained[ix]));
                                             msg.push(format!("ref     : {:?}", reference[ix]));
                                             tags.sections.push(msg);
                                         } else {

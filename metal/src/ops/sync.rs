@@ -45,14 +45,14 @@ impl EvalOp for MetalSync {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         match self.kind {
-            MetalSyncKind::ToCpu => crate::METAL_CONTEXT.with_borrow(|context| {
-                context.wait_until_completed()?;
-                let metal_tensor = input
+            MetalSyncKind::ToCpu => {
+                let tvalue = input
                     .to_metal_tensor()
+                    .and_then(|t| t.to_cpu())
+                    .map(|t| t.into())
                     .with_context(|| anyhow!("Error while syncing metal tensor to cpu"))?;
-                let tvalue = metal_tensor.to_cpu().into();
                 Ok(tvec![tvalue])
-            }),
+            }
             MetalSyncKind::ToGpu => {
                 let metal_input = input.into_tensor().into_metal()?;
                 Ok(tvec![metal_input.into_opaque_tensor().into()])

@@ -306,9 +306,9 @@ mod tests {
                     quantize_output: None,
                 };
                 let output = args_1!(
-                    matmul.eval(tvec![a.to_cpu().into_tvalue(), b.to_cpu().into_tvalue()])?
+                    matmul.eval(tvec![a.to_cpu()?.into_tvalue(), b.to_cpu()?.into_tvalue()])?
                 );
-                output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
+                output.close_enough(&metal_output.to_cpu()?, Approximation::Approximate)?;
                 Ok(())
             })
         })
@@ -598,7 +598,7 @@ mod tests {
                     let matmul = GemmImpl::<K>::new(self.transpose_lhs, self.transpose_rhs);
 
                     let c = matmul.eval(context, &lhs, &rhs)?;
-                    Ok(c.to_cpu().as_slice::<F>()?.to_vec())
+                    Ok(c.to_cpu()?.as_slice::<F>()?.to_vec())
                 })
             })
         }
