@@ -16,6 +16,7 @@ use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
 use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
 use tract_core::ops::binary::{BinMiniOp, TypedBinOp};
+use tract_core::ops::cast::Cast;
 use tract_core::ops::einsum::{rewrite_einsums_as_matmul, BasicMatMul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
@@ -178,6 +179,8 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             Some(Box::new(ops::MetalMultiBroadcastTo::new(op.shape.clone())))
         } else if let Some(op) = node.op_as::<Const>() {
             ops::MetalConst::new(op.0.clone())?.map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+        } else if let Some(op) = node.op_as::<Cast>() {
+            Some(Box::new(ops::MetalCast { to: op.to }))
         } else if let Some(op) = node.op_as::<AxisOp>() {
             ops::MetalAxisOp::from_tract_core(op.clone())
                 .map(|o| -> Box<dyn TypedOp> { Box::new(o) })

@@ -90,7 +90,7 @@ impl GemmKernel for MlxGemm {
             natural_strides(&[batch, k, n])
         };
 
-        if  m == 1 || n == 1 {
+        if m == 1 || n == 1 {
             dispatch_metal_mlx_gemv(
                 context,
                 dt,
@@ -168,7 +168,7 @@ pub fn dispatch_metal_mlx_gemv(
     let mv_trans = if is_b_matrix { !b_trans } else { a_trans };
     let mat_batch_stride = if is_b_matrix { b_strides[0] } else { a_strides[0] };
     let vec_batch_stride = if is_b_matrix { a_strides[0] } else { b_strides[0] };
-    
+
     let n_out_per_tgp = if mv_trans {
         (sm, sn) = if mv_k >= 8192 && mv_m >= 2048 { (4, 8) } else { (8, 4) };
         bn = if mv_m >= 2048 {

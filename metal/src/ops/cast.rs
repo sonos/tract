@@ -42,7 +42,10 @@ impl EvalOp for MetalCast {
 
 impl TypedOp for MetalCast {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(self.to.fact(inputs[0].shape.clone())))
+        crate::utils::metal_output_facts(inputs, |facts| {
+            Ok(tvec!(self.to.fact(facts[0].shape.clone())))
+        })
+        .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
     }
 
     as_op!();
