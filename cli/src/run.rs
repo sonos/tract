@@ -176,8 +176,10 @@ fn run_regular(
                         }
                     }
                     let r = tract_core::plan::eval(session_state, state, node, input)?;
+                    let clarified_r = crate::utils::clarify_tvalues(&r);
+
                     if steps {
-                        for (ix, o) in r.iter().enumerate() {
+                        for (ix, o) in clarified_r.iter().enumerate() {
                             eprintln!(
                                 "{} {}{}{:?}",
                                 White.bold().paint(node.to_string()),
@@ -188,7 +190,7 @@ fn run_regular(
                         }
                     }
                     if let Some(npz) = npz.as_mut() {
-                        for (ix, t) in r.iter().enumerate() {
+                        for (ix, t) in clarified_r.iter().enumerate() {
                             let mut name = if ix == 0 {
                                 node.name.to_string()
                             } else {
@@ -201,7 +203,7 @@ fn run_regular(
                         }
                     }
                     if check_f16_overflow {
-                        for (ix, o) in r.iter().enumerate() {
+                        for (ix, o) in clarified_r.iter().enumerate() {
                             if let Ok(f32s) = o.as_slice::<f32>() {
                                 if f32s.iter().any(|f| f.abs() > f16::MAX.to_f32()) {
                                     warn!("{node}, output {ix} overflows f16");
@@ -210,7 +212,7 @@ fn run_regular(
                         }
                     }
                     if assert_sane_floats {
-                        for (ix, o) in r.iter().enumerate() {
+                        for (ix, o) in clarified_r.iter().enumerate() {
                             if node.op_is::<Im2Col>() || node.op_is::<MatMatMulPack>() {
                                 continue;
                             }

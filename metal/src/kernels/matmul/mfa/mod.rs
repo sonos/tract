@@ -271,7 +271,7 @@ mod tests {
                     &[20.0, 23.0, 26.0, 29.0, 56.0, 68.0, 80.0, 92.0],
                 )?;
 
-                let c = c.to_cpu();
+                let c = c.to_cpu()?;
                 assert!(c.close_enough(&expected_c, Approximation::Close).is_ok());
 
                 let (b, m, n, k) = (2, 2, 4, 3);
@@ -294,7 +294,7 @@ mod tests {
                     ],
                 )?;
 
-                assert!(c.to_cpu().close_enough(&expected_c, Approximation::Close).is_ok());
+                assert!(c.to_cpu()?.close_enough(&expected_c, Approximation::Close).is_ok());
                 Ok(())
             })
         })

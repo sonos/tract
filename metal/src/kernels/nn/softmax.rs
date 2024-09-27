@@ -117,9 +117,9 @@ mod tests {
                 };
 
                 let cpu_output =
-                    cpu_softmax.eval(tvec![a.to_cpu().into_tvalue()])?[0].clone().into_tensor();
+                    cpu_softmax.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
                 let metal_output = Softmax.eval(context, &a, axis)?;
-                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
+                cpu_output.close_enough(&metal_output.to_cpu()?, Approximation::Approximate)?;
                 Ok(())
             })
         })
@@ -146,9 +146,9 @@ mod tests {
                 };
 
                 let cpu_output =
-                    cpu_softmax.eval(tvec![a.to_cpu().into_tvalue()])?[0].clone().into_tensor();
+                    cpu_softmax.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
                 let metal_output = Softmax.eval(context, &a, axis)?;
-                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
+                cpu_output.close_enough(&metal_output.to_cpu()?, Approximation::Approximate)?;
                 Ok(())
             })
         })
@@ -175,9 +175,9 @@ mod tests {
                 };
 
                 let cpu_output =
-                    cpu_softmax.eval(tvec![a.to_cpu().into_tvalue()])?[0].clone().into_tensor();
+                    cpu_softmax.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
                 let metal_output = Softmax.eval(context, &a, axis)?;
-                cpu_output.close_enough(&metal_output.to_cpu(), Approximation::Approximate)?;
+                cpu_output.close_enough(&metal_output.to_cpu()?, Approximation::Approximate)?;
                 Ok(())
             })
         })
@@ -269,7 +269,7 @@ mod tests {
                 crate::METAL_CONTEXT.with_borrow(|context| {
                     let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_metal()?;
                     let metal_output = Softmax.eval(context, &a, self.axis)?;
-                    Ok(metal_output.to_cpu())
+                    metal_output.to_cpu()
                 })
             })
         }

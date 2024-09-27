@@ -84,6 +84,30 @@ pub fn check_inferred(got: &[InferenceFact], expected: &[InferenceFact]) -> Trac
     Ok(())
 }
 
+pub fn clarify_tvalues(values: &TVec<TValue>) -> TVec<TValue>{
+    values.iter().map(|t| {
+                        t.to_scalar::<Opaque>()
+                         .and_then(|ot| ot.clarify_to_tensor().transpose())
+                         .ok()
+                         .flatten()
+                         .map(|ot| ot.into_tvalue())
+                         .unwrap_or(t.clone())
+                    }).collect::<TVec<_>>()
+}
+
+pub fn clarify_typed_fact<'a>(fact: impl Into<Cow<'a, TypedFact>>) -> Cow<'a, TypedFact> {
+    let fact = fact.into();
+    if fact.datum_type == DatumType::Opaque {
+        fact.opaque_fact
+            .as_ref()
+            .and_then(|it| it.clarify_dt_shape())
+            .map(|(dt, s)| Cow::Owned(TypedFact::dt_shape(dt, s)))
+            .unwrap_or_else(||  fact)
+    } else {
+        fact
+    }
+}
+
 pub fn count_op(model: &dyn Model, name: &str) -> TractResult<usize> {
     Ok(model
         .eval_order()
