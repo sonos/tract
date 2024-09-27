@@ -474,6 +474,9 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     mov         r0,     #0
     b   .return
 
+.load_tile:
+    vldmia       r3!, { s16-s31 }
+    b .non_linear_loop
 
 .q_scale:
 .q_shl:

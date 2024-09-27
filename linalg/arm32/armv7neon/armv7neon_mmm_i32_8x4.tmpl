@@ -282,6 +282,10 @@ b .non_linear_loop
 
     b .non_linear_loop
 
+.load_tile:
+    vldmia          r3!, { q8-q15 }
+    b .non_linear_loop
+
 .return:
     vpop        { q4-q7 }
     pop         { r4-r12 }
