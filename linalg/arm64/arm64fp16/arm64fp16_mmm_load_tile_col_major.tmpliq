@@ -1,0 +1,10 @@
+// vim: ft=arm
+
+.load_tile_col_major:
+    ldr         x2, [ x0, #8 ]
+    {% for reg in (from..to) %}
+        ld1         { v{{reg}}.4s }, [ x2 ], #16
+    {% endfor %}
+
+    b           .non_linear_loop
+
