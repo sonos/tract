@@ -206,10 +206,10 @@ where
             match *pnl {
                 FusedKerSpec::Done => break,
                 FusedKerSpec::Clear => ab = std::mem::zeroed(),
-                FusedKerSpec::LoadTileColMajor(ptr) => {
+                FusedKerSpec::LoadTile(col_major, _row_major) => {
                     for row in 0..MR {
                         for col in 0..NR {
-                            ab[row][col] = *ptr.add(col * MR + row);
+                            ab[row][col] = *col_major.add(col * MR + row);
                         }
                     }
                 }

@@ -74,7 +74,8 @@ impl<'t> FusedSpec<'t> {
 pub enum FusedKerSpec<TI: Copy> {
     Done,                                       // jump_to:done
     Clear,                                      // jump_to:clear
-    LoadTileColMajor(*const TI),                // jump_to:load_tile_col_major
+                                                //
+    LoadTile(*const TI, *const TI),             // jump_to:load_tile_col_major
 
     ScalarMin(TI),                              // jump_to:scalar_min
     ScalarMax(TI),                              // jump_to:scalar_max
