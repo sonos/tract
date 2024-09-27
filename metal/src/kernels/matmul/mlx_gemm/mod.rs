@@ -90,7 +90,7 @@ impl GemmKernel for MlxGemm {
             natural_strides(&[batch, k, n])
         };
 
-        if m == 1 || n == 1 {
+        if  m == 1 || n == 1 {
             dispatch_metal_mlx_gemv(
                 context,
                 dt,
@@ -134,11 +134,11 @@ pub fn dispatch_metal_mlx_gemv(
     context: &MetalContext,
     dt: DatumType,
     (b, m, n, k): (usize, usize, usize, usize),
-    a_stride: &[usize],
+    a_strides: &[usize],
     a_offset: usize,
     a_buffer: &Buffer,
     a_trans: bool,
-    b_stride: &[usize],
+    b_strides: &[usize],
     b_offset: usize,
     b_buffer: &Buffer,
     b_trans: bool,
@@ -146,8 +146,8 @@ pub fn dispatch_metal_mlx_gemv(
     output_offset: usize,
 ) -> Result<()> {
     ensure!(m == 1 || n == 1);
-    assert!(a_stride.len() >= 2 && b_stride.len() >= 2);
-    assert!(a_stride.len() >= 2);
+    assert!(a_strides.len() >= 2 && b_strides.len() >= 2);
+    assert!(a_strides.len() >= 2);
     ensure!(matches!(dt, DatumType::F32 | DatumType::F16));
 
     let lda = if a_trans { m } else { k };
@@ -166,14 +166,9 @@ pub fn dispatch_metal_mlx_gemv(
     let mv_k = k;
     let mv_ld = if is_b_matrix { ldb } else { lda };
     let mv_trans = if is_b_matrix { !b_trans } else { a_trans };
-    let vec_batch_stride = mv_k;
-    let mat_batch_stride = mv_k * mv_m;
-
-    // let batch_stride_a =
-    //     if lhs_stride.len() > 2 { lhs_stride[lhs_stride.len() - 3] } else { m * k };
-    // let batch_stride_b =
-    //     if rhs_stride.len() > 2 { rhs_stride[rhs_stride.len() - 3] } else { n * k };
-
+    let mat_batch_stride = if is_b_matrix { b_strides[0] } else { a_strides[0] };
+    let vec_batch_stride = if is_b_matrix { a_strides[0] } else { b_strides[0] };
+    
     let n_out_per_tgp = if mv_trans {
         (sm, sn) = if mv_k >= 8192 && mv_m >= 2048 { (4, 8) } else { (8, 4) };
         bn = if mv_m >= 2048 {
@@ -253,19 +248,14 @@ pub fn dispatch_metal_mlx_gemv(
     );
     encoder.set_bytes(
         11, // batch_strides_vec
-        std::mem::size_of::<i32>() as u64,
-        &(vec_batch_stride as i32) as *const i32 as *const c_void,
+        std::mem::size_of::<usize>() as u64,
+        &vec_batch_stride as *const usize as *const c_void,
     );
     encoder.set_bytes(
         12, // batch_strides_mat
-        std::mem::size_of::<i32>() as u64,
-        &(mat_batch_stride as i32) as *const i32 as *const c_void,
+        std::mem::size_of::<usize>() as u64,
+        &mat_batch_stride as *const usize as *const c_void,
     );
-
-    // compute_encoder->setBytes(&batch_ndim, sizeof(int), 9);
-    // set_vector_bytes(compute_encoder, batch_shape, 10);
-    // set_vector_bytes(compute_encoder, batch_strides_vec, 11);
-    // set_vector_bytes(compute_encoder, batch_strides_mat, 12);
 
     encoder.use_resource(a_buffer, metal::MTLResourceUsage::Read);
     encoder.use_resource(b_buffer, metal::MTLResourceUsage::Read);
