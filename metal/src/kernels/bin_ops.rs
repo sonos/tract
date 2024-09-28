@@ -1,4 +1,5 @@
 use super::BroadcastKind;
+use crate::encoder::EncoderExt;
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::bail;
@@ -187,23 +188,17 @@ impl BinOps {
 
         match broadcast_kind {
             BroadcastKind::ByScalarLeft | BroadcastKind::ByScalarRight | BroadcastKind::Unicast => {
-                let lhs_buffer = lhs.metal();
-                let rhs_buffer = rhs.metal();
-                let output_buffer = output.metal();
                 let pipeline =
                     context.shared_context().load_pipeline(LibraryName::BinOps, &kernel_name)?;
                 let command_buffer = context.command_buffer();
                 let encoder = command_buffer.new_compute_command_encoder();
                 encoder.set_compute_pipeline_state(&pipeline);
-                encoder.set_buffer(0, Some(lhs_buffer), 0);
-                encoder.set_buffer(1, Some(rhs_buffer), 0);
-                encoder.set_buffer(2, Some(output.metal()), 0);
+                encoder.set_metal_tensor(0, lhs, metal::MTLResourceUsage::Read);
+                encoder.set_metal_tensor(1, rhs, metal::MTLResourceUsage::Read);
+                encoder.set_metal_tensor(2, &output, metal::MTLResourceUsage::Write);
 
                 let grid_size = MTLSize { width: output.len() as NSUInteger, height: 1, depth: 1 };
                 let group_size = MTLSize { width: 1, height: 1, depth: 1 };
-                encoder.use_resource(lhs_buffer, metal::MTLResourceUsage::Read);
-                encoder.use_resource(rhs_buffer, metal::MTLResourceUsage::Read);
-                encoder.use_resource(output_buffer, metal::MTLResourceUsage::Write);
                 encoder.dispatch_thread_groups(grid_size, group_size);
                 encoder.end_encoding();
             }
@@ -212,8 +207,6 @@ impl BinOps {
             }
             BroadcastKind::Nd2 | BroadcastKind::Nd3 | BroadcastKind::Nd4 | BroadcastKind::Nd5 => {
                 ensure!(lhs.rank() == rhs.rank());
-                let lhs_buffer = lhs.metal();
-                let rhs_buffer = rhs.metal();
 
                 let lhs_strides =
                     crate::utils::compute_broadcast_strides::<usize>(lhs.shape(), lhs.strides())?;
@@ -222,31 +215,18 @@ impl BinOps {
                     crate::utils::compute_broadcast_strides::<usize>(rhs.shape(), rhs.strides())?;
 
                 let output_shape = output.shape();
-                let output_buffer = output.metal();
 
                 let pipeline =
                     context.shared_context().load_pipeline(LibraryName::BinOps, &kernel_name)?;
                 let command_buffer = context.command_buffer();
                 let encoder = command_buffer.new_compute_command_encoder();
                 encoder.set_compute_pipeline_state(&pipeline);
-                encoder.set_buffer(0, Some(lhs_buffer), 0);
-                encoder.set_bytes(
-                    1,
-                    (lhs_strides.len() * std::mem::size_of::<usize>()) as NSUInteger,
-                    lhs_strides.as_ptr() as *const _,
-                );
-                encoder.set_buffer(2, Some(rhs_buffer), 0);
-                encoder.set_bytes(
-                    3,
-                    (rhs_strides.len() * std::mem::size_of::<usize>()) as NSUInteger,
-                    rhs_strides.as_ptr() as *const _,
-                );
-                encoder.set_buffer(4, Some(output.metal()), 0);
-                encoder.set_bytes(
-                    5,
-                    std::mem::size_of_val(output_shape) as NSUInteger,
-                    output_shape.as_ptr() as *const _,
-                );
+                encoder.set_metal_tensor(0, lhs, metal::MTLResourceUsage::Read);
+                encoder.set_slice(1, &lhs_strides);
+                encoder.set_metal_tensor(2, rhs, metal::MTLResourceUsage::Read);
+                encoder.set_slice(3, &rhs_strides);
+                encoder.set_metal_tensor(4, &output, metal::MTLResourceUsage::Write);
+                encoder.set_slice(5, &output_shape);
 
                 let grid_size = MTLSize {
                     width: out_shape[out_shape.len() - 1] as NSUInteger,
@@ -256,9 +236,6 @@ impl BinOps {
                 };
 
                 let group_size = MTLSize { width: 1, height: 1, depth: 1 };
-                encoder.use_resource(lhs_buffer, metal::MTLResourceUsage::Read);
-                encoder.use_resource(rhs_buffer, metal::MTLResourceUsage::Read);
-                encoder.use_resource(output_buffer, metal::MTLResourceUsage::Write);
                 encoder.dispatch_thread_groups(grid_size, group_size);
                 encoder.end_encoding();
             }

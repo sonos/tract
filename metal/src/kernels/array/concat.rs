@@ -1,3 +1,4 @@
+use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
@@ -100,25 +101,18 @@ impl Concat {
             let encoder = command_buffer.new_compute_command_encoder();
 
             encoder.set_compute_pipeline_state(&pipeline);
-            encoder.set_buffer(0, Some(input.metal()), 0);
-            encoder.set_bytes(
-                1,
-                (i_strides.len() * std::mem::size_of::<usize>()) as _,
-                i_strides.as_ptr() as *const _,
+            encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+            encoder.set_slice(1, &i_strides);
+            encoder.set_metal_tensor_with_offset(
+                2,
+                &output,
+                offset as _,
+                metal::MTLResourceUsage::Write,
             );
-            encoder.set_buffer(2, Some(output.metal()), offset as _);
-            encoder.set_bytes(3, std::mem::size_of_val(i_shape) as _, i_shape.as_ptr() as *const _);
-            encoder.set_bytes(
-                4,
-                (output_strides.len() * std::mem::size_of::<usize>()) as _,
-                output_strides.as_ptr() as *const _,
-            );
-
+            encoder.set_slice(3, &i_shape);
+            encoder.set_slice(4, &output_strides);
             let grid_size = utils::build_metal_size_for_shape(i_shape);
             let group_size = utils::build_metal_size_with_ones();
-
-            encoder.use_resource(input.metal(), metal::MTLResourceUsage::Read);
-            encoder.use_resource(output.metal(), metal::MTLResourceUsage::Write);
             encoder.dispatch_thread_groups(grid_size, group_size);
             encoder.end_encoding();
         }

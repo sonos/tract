@@ -1,3 +1,4 @@
+use crate::encoder::EncoderExt;
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::Result;
@@ -54,20 +55,21 @@ impl Memcpy {
 
         let kernel_name = self.kernel_name(input.datum_type())?;
 
-        let input_buffer = input.metal();
-        let output_buffer = output.metal();
         let pipeline =
             context.shared_context().load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
         let command_buffer = context.command_buffer();
         let encoder = command_buffer.new_compute_command_encoder();
         encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_buffer(0, Some(input_buffer), input_offset as NSUInteger);
-        encoder.set_buffer(1, Some(output.metal()), 0);
+        encoder.set_metal_tensor_with_offset(
+            0,
+            input,
+            input_offset as _,
+            metal::MTLResourceUsage::Read,
+        );
+        encoder.set_metal_tensor(1, &output, metal::MTLResourceUsage::Write);
 
         let grid_size = MTLSize { width: output.len() as NSUInteger, height: 1, depth: 1 };
         let group_size = MTLSize { width: 1, height: 1, depth: 1 };
-        encoder.use_resource(input_buffer, metal::MTLResourceUsage::Read);
-        encoder.use_resource(output_buffer, metal::MTLResourceUsage::Write);
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
         Ok(output)
