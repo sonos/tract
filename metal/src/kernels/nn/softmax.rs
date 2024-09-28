@@ -1,3 +1,4 @@
+use crate::encoder::EncoderExt;
 use crate::{LibraryName, MetalContext, MetalTensor};
 use anyhow::Result;
 use metal::MTLSize;
@@ -60,24 +61,14 @@ impl Softmax {
         let command_buffer = context.command_buffer();
         let encoder = command_buffer.new_compute_command_encoder();
         encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_buffer(0, Some(input.metal()), 0);
-        encoder.set_buffer(1, Some(output.metal()), 0);
-        encoder.set_bytes(
-            2,
-            (shape_nd3.len() * std::mem::size_of::<usize>()) as _,
-            shape_nd3.as_ptr() as *const _,
-        );
-        encoder.set_bytes(
-            3,
-            (strides_nd3.len() * std::mem::size_of::<usize>()) as _,
-            strides_nd3.as_ptr() as *const _,
-        );
+        encoder.set_metal_tensor(0, &input, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, &output, metal::MTLResourceUsage::Write);
+        encoder.set_slice(2, &shape_nd3);
+        encoder.set_slice(3, &strides_nd3);
 
         let grid_size = MTLSize { width: shape_nd3[2] as _, height: 1, depth: shape_nd3[0] as _ };
         let group_size = MTLSize { width: usize::min(32, shape_nd3[1]) as _, height: 1, depth: 1 };
 
-        encoder.use_resource(input.metal(), metal::MTLResourceUsage::Read);
-        encoder.use_resource(output.metal(), metal::MTLResourceUsage::Write);
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
 

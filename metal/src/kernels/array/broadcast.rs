@@ -1,3 +1,4 @@
+use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
@@ -60,8 +61,6 @@ impl MultiBroadcast {
         ensure!(input_offset % input.datum_type().size_of() == 0);
 
         let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), output_shape)? };
-
-        input.retain_until_completion();
         output.retain_until_completion();
 
         ensure!(input.rank() <= output.rank(), "Input must have a rank lowe than output");
@@ -90,29 +89,20 @@ impl MultiBroadcast {
         let command_buffer = context.command_buffer();
         let encoder = command_buffer.new_compute_command_encoder();
         encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_buffer(0, Some(input.metal()), input_offset as _);
-        encoder.set_bytes(
-            1,
-            (input_broadcast_strides.len() * std::mem::size_of::<usize>()) as _,
-            input_broadcast_strides.as_ptr() as *const _,
+        encoder.set_metal_tensor_with_offset(
+            0,
+            input,
+            input_offset as _,
+            metal::MTLResourceUsage::Read,
         );
-        encoder.set_buffer(2, Some(output.metal()), 0);
-        encoder.set_bytes(
-            3,
-            std::mem::size_of_val(output_shape) as _,
-            output_shape.as_ptr() as *const _,
-        );
-        encoder.set_bytes(
-            4,
-            (output.strides().len() * std::mem::size_of::<usize>()) as _,
-            output.strides().as_ptr() as *const _,
-        );
+        encoder.set_slice(1, &input_broadcast_strides);
+        encoder.set_metal_tensor(2, &output, metal::MTLResourceUsage::Write);
+        encoder.set_slice(3, &output_shape);
+        encoder.set_slice(4, output.strides());
 
         let grid_size = utils::build_metal_size_for_shape(output.shape());
         let group_size = utils::build_metal_size_with_ones();
 
-        encoder.use_resource(input.metal(), metal::MTLResourceUsage::Read);
-        encoder.use_resource(output.metal(), metal::MTLResourceUsage::Write);
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
         Ok(output)
