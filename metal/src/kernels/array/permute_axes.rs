@@ -1,3 +1,4 @@
+use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
@@ -90,29 +91,15 @@ impl PermuteAxes {
         let command_buffer = context.command_buffer();
         let encoder = command_buffer.new_compute_command_encoder();
         encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_buffer(0, Some(input.metal()), 0);
-        encoder.set_bytes(
-            1,
-            (new_strides.len() * std::mem::size_of::<usize>()) as _,
-            new_strides.as_ptr() as *const _,
-        );
-        encoder.set_buffer(2, Some(output.metal()), 0);
-        encoder.set_bytes(
-            3,
-            std::mem::size_of_val(output.shape()) as _,
-            output.shape().as_ptr() as *const _,
-        );
-        encoder.set_bytes(
-            4,
-            (output.strides().len() * std::mem::size_of::<usize>()) as _,
-            output.strides().as_ptr() as *const _,
-        );
+        encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Write);
+        encoder.set_slice(1, &new_strides);
+        encoder.set_metal_tensor(2, &output, metal::MTLResourceUsage::Write);
+        encoder.set_slice(3, output.shape());
+        encoder.set_slice(4, output.strides());
 
         let grid_size = utils::build_metal_size_for_shape(output.shape());
         let group_size = utils::build_metal_size_with_ones();
 
-        encoder.use_resource(input.metal(), metal::MTLResourceUsage::Read);
-        encoder.use_resource(output.metal(), metal::MTLResourceUsage::Write);
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
         Ok(output)

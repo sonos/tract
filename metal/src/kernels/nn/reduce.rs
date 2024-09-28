@@ -1,3 +1,4 @@
+use crate::encoder::EncoderExt;
 use crate::kernels::utils;
 use crate::{LibraryName, MetalContext, MetalTensor};
 use anyhow::Result;
@@ -72,29 +73,15 @@ impl Reducer {
         let command_buffer = context.command_buffer();
         let encoder = command_buffer.new_compute_command_encoder();
         encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_buffer(0, Some(input.metal()), 0);
-        encoder.set_buffer(1, Some(output.metal()), 0);
-        encoder.set_bytes(
-            2,
-            (input_shape_nd3.len() * std::mem::size_of::<usize>()) as _,
-            input_shape_nd3.as_ptr() as *const _,
-        );
-        encoder.set_bytes(
-            3,
-            (input_strides_nd3.len() * std::mem::size_of::<usize>()) as _,
-            input_strides_nd3.as_ptr() as *const _,
-        );
-        encoder.set_bytes(
-            4,
-            (output_strides_nd3.len() * std::mem::size_of::<usize>()) as _,
-            output_strides_nd3.as_ptr() as *const _,
-        );
+        encoder.set_metal_tensor(0, &input, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, &output, metal::MTLResourceUsage::Write);
+        encoder.set_slice(2, &input_shape_nd3);
+        encoder.set_slice(3, &input_strides_nd3);
+        encoder.set_slice(4, &output_strides_nd3);
 
         let grid_size = utils::build_metal_size_for_shape(&output_shape_nd3);
         let group_size =
             MTLSize { width: usize::min(32, input_shape_nd3[1]) as _, height: 1, depth: 1 };
-        encoder.use_resource(input.metal(), metal::MTLResourceUsage::Read);
-        encoder.use_resource(output.metal(), metal::MTLResourceUsage::Write);
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
 

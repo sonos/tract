@@ -1,6 +1,7 @@
 use crate::IntoMetal;
 use anyhow::{Context, Result};
 use metal::{Buffer, MTLResourceOptions, NSUInteger};
+use num_traits::AsPrimitive;
 use std::fmt::Display;
 use tract_core::internal::*;
 use tract_data::itertools::Itertools;
@@ -187,6 +188,14 @@ impl MetalTensor {
     /// Get underlying inner metal buffer.
     pub fn metal(&self) -> &Buffer {
         &self.metal
+    }
+
+    /// Get underlying inner metal buffer offset
+    pub fn metal_offset<I: Copy + 'static>(&self) -> I
+    where
+        usize: AsPrimitive<I>,
+    {
+        0usize.as_()
     }
 
     /// Get underlying inner tensor view.
