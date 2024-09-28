@@ -2,6 +2,7 @@
 #![allow(clippy::missing_transmute_annotations)]
 
 pub mod context;
+pub mod encoder;
 pub mod fact;
 pub mod func_constants;
 pub mod kernels;
