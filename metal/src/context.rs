@@ -1,6 +1,7 @@
 use crate::func_constants::ConstantValues;
 use crate::kernels::matmul::mps;
 pub use crate::kernels::{LibraryContent, LibraryName};
+use crate::tensor::MetalArena;
 pub use crate::tensor::MetalTensor;
 use metal::Buffer;
 use metal::MTLResourceOptions;
@@ -196,6 +197,7 @@ pub struct MetalContext {
     command_buffer: RefCell<CommandBuffer>,
     command_buffer_used: RefCell<usize>,
     command_buffer_id: AtomicUsize,
+    arena: Option<MetalArena>,
     retained_tensors: RefCell<Vec<MetalTensor>>,
 }
 
@@ -212,17 +214,25 @@ impl MetalContext {
         let command_buffer = command_queue.new_command_buffer().to_owned();
         command_buffer.enqueue();
         Self {
-            shared,
             command_queue,
             command_buffer: RefCell::new(command_buffer),
             command_buffer_used: RefCell::new(0),
             command_buffer_id: AtomicUsize::new(0),
             retained_tensors: RefCell::new(vec![]),
+            arena: Some(
+                MetalArena::with_capacity(&shared.device, 1024 * 1024 * 50)
+                    .expect("Could not create metal arena"),
+            ),
+            shared,
         }
     }
 
     pub fn device(&self) -> &Device {
         &self.shared.device
+    }
+
+    pub fn memory_arena(&self) -> Option<&MetalArena> {
+        self.arena.as_ref()
     }
 
     pub fn shared_context(&self) -> &SharedMetalContext {
