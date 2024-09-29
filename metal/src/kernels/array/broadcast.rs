@@ -58,6 +58,7 @@ impl MultiBroadcast {
         input_offset: usize,
         output_shape: &[usize],
     ) -> Result<MetalTensor> {
+        input.retain_until_completion();
         ensure!(input_offset % input.datum_type().size_of() == 0);
 
         let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), output_shape)? };
