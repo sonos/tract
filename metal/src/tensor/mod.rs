@@ -1,71 +1,25 @@
+mod arena;
+mod arena_view;
+mod owned;
+
+pub use arena::*;
+pub use arena_view::*;
+pub use owned::*;
+
 use crate::IntoMetal;
 use anyhow::{Context, Result};
-use metal::{Buffer, MTLResourceOptions, NSUInteger};
+use metal::Buffer;
 use num_traits::AsPrimitive;
 use std::fmt::Display;
 use tract_core::internal::*;
 use tract_data::itertools::Itertools;
 
+/// This struct represents a metal tensor that can be either a owned tensor
+/// or an arena view.
 #[derive(Debug, Clone, Hash)]
-pub enum MValue {
-    Const(Arc<Tensor>),
-    Var(Arc<Tensor>),
-    Reshaped { t: Arc<Tensor>, shape: TVec<usize>, strides: TVec<isize> },
-}
-
-impl MValue {
-    #[inline]
-    pub fn view(&self) -> TensorView<'_> {
-        match self {
-            Self::Const(t) => t.view(),
-            Self::Var(t) => t.view(),
-            Self::Reshaped { t, shape, strides } => unsafe {
-                TensorView::from_bytes(t, 0, shape.as_slice(), strides.as_slice())
-            },
-        }
-    }
-}
-
-impl IntoTensor for MValue {
-    fn into_tensor(self) -> Tensor {
-        match self {
-            Self::Var(t) => Arc::try_unwrap(t).unwrap_or_else(|t| (*t).clone()),
-            Self::Const(t) => Arc::try_unwrap(t).unwrap_or_else(|t| (*t).clone()),
-            Self::Reshaped { t, shape, strides: _ } => {
-                let mut t = Arc::try_unwrap(t).unwrap_or_else(|t| (*t).clone());
-                t.set_shape(&shape).expect("Could not apply shape to reshaped metal tensor");
-                t
-            }
-        }
-    }
-}
-
-impl From<Tensor> for MValue {
-    fn from(v: Tensor) -> Self {
-        Self::Var(Arc::new(v))
-    }
-}
-
-impl From<Arc<Tensor>> for MValue {
-    fn from(v: Arc<Tensor>) -> Self {
-        Self::Const(v)
-    }
-}
-
-/// This struct represents a metal tensor that can be accessed from the
-/// GPU and the CPU. Metal's MTLResourceStorageModeShared is used.
-#[derive(Debug, Clone)]
-pub struct MetalTensor {
-    dt: DatumType,
-    inner: MValue,
-    metal: Buffer,
-}
-
-impl Hash for MetalTensor {
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.inner.hash(state);
-    }
+pub enum MetalTensor {
+    Owned(OwnedMetalTensor),
+    ArenaView(MetalArenaView),
 }
 
 impl MetalTensor {
@@ -107,12 +61,14 @@ impl MetalTensor {
 
     /// Create an uninitialized MetalTensor
     pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> Result<MetalTensor> {
-        Tensor::uninitialized_dt(dt, shape)?.into_metal()
-    }
-
-    /// Create a zeroed MetalTensor
-    pub fn zero_dt(dt: DatumType, shape: &[usize]) -> Result<MetalTensor> {
-        Tensor::zero_dt(dt, shape)?.into_metal()
+        crate::METAL_CONTEXT
+            .with_borrow(|ctxt| {
+                ctxt.memory_arena()
+                    .and_then(|arena| arena.view_uninitialized_dt(dt, shape))
+                    .map(Self::ArenaView)
+                    .map(Result::Ok)
+            })
+            .unwrap_or_else(|| Tensor::uninitialized_dt(dt, shape)?.into_metal())
     }
 
     pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> Result<MetalTensor> {
@@ -123,35 +79,13 @@ impl MetalTensor {
         Self::SUPPORTED_DT.contains(&dt)
     }
 
-    pub fn value(&self) -> &MValue {
-        &self.inner
-    }
-
-    /// Create a metal tensor from a cpu tensor.
-    pub fn from_tensor<T: Into<MValue>>(tensor: T) -> Result<Self> {
-        crate::METAL_CONTEXT.with_borrow(|ctxt| {
-            let m_value = tensor.into();
-            let tensor_view = m_value.view();
-            ensure!(
-                Self::is_supported_dt(tensor_view.datum_type()),
-                "Tensor of {:?} is not copied. No Metal buffer can be allocated for it.",
-                tensor_view.datum_type(),
-            );
-            let size = (tensor_view.datum_type().size_of() * tensor_view.len()) as NSUInteger;
-            let buffer = ctxt.device().new_buffer_with_bytes_no_copy(
-                tensor_view.tensor.as_bytes().as_ptr() as *const core::ffi::c_void,
-                size,
-                MTLResourceOptions::StorageModeShared,
-                None,
-            );
-            Ok(Self { dt: tensor_view.datum_type(), inner: m_value, metal: buffer })
-        })
-    }
-
     /// Get the datum type of the tensor.
     #[inline]
     pub fn datum_type(&self) -> DatumType {
-        self.dt
+        match self {
+            Self::Owned(OwnedMetalTensor { inner, .. }) => inner.datum_type(),
+            Self::ArenaView(view) => view.datum_type(),
+        }
     }
 
     /// Get the number of dimensions (or axes) of the tensor.
@@ -163,9 +97,9 @@ impl MetalTensor {
     /// Get the shape of the tensor.
     #[inline]
     pub fn shape(&self) -> &[usize] {
-        match &self.inner {
-            MValue::Const(t) | MValue::Var(t) => t.shape(),
-            MValue::Reshaped { shape, .. } => shape,
+        match self {
+            Self::Owned(t) => t.shape(),
+            Self::ArenaView(t) => t.shape(),
         }
     }
 
@@ -173,21 +107,27 @@ impl MetalTensor {
     #[inline]
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
-        self.inner.view().len()
+        match self {
+            Self::Owned(t) => t.len(),
+            Self::ArenaView(t) => t.len(),
+        }
     }
 
     /// Get the strides of the tensor.
     #[inline]
     pub fn strides(&self) -> &[isize] {
-        match &self.inner {
-            MValue::Const(t) | MValue::Var(t) => t.strides(),
-            MValue::Reshaped { strides, .. } => strides,
+        match self {
+            Self::Owned(t) => t.strides(),
+            Self::ArenaView(t) => t.strides(),
         }
     }
 
     /// Get underlying inner metal buffer.
     pub fn metal(&self) -> &Buffer {
-        &self.metal
+        match self {
+            Self::Owned(t) => t.metal(),
+            Self::ArenaView(t) => t.metal(),
+        }
     }
 
     /// Get underlying inner metal buffer offset
@@ -195,13 +135,19 @@ impl MetalTensor {
     where
         usize: AsPrimitive<I>,
     {
-        0usize.as_()
+        match self {
+            Self::Owned(t) => t.metal_offset(),
+            Self::ArenaView(t) => t.metal_offset(),
+        }
     }
 
     /// Get underlying inner tensor view.
     #[inline]
     pub fn view(&self) -> TensorView {
-        self.inner.view()
+        match self {
+            Self::Owned(t) => t.view(),
+            Self::ArenaView(t) => t.view(),
+        }
     }
 
     /// Returns short description of the inner tensor.
@@ -211,43 +157,9 @@ impl MetalTensor {
 
     /// Reshaped tensor with given shape.
     pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> Result<Self> {
-        let shape = shape.into();
-        if self.len() != shape.iter().product::<usize>() {
-            bail!("Invalid reshape {:?} to {:?}", self.shape(), shape);
-        }
-        if shape.as_slice() != self.shape() {
-            match &self.inner {
-                MValue::Const(t) | MValue::Var(t) | MValue::Reshaped { t, .. } => Ok(Self {
-                    dt: self.dt,
-                    inner: MValue::Reshaped {
-                        t: Arc::clone(t),
-                        strides: Tensor::natural_strides(&shape),
-                        shape,
-                    },
-                    metal: self.metal.clone(),
-                }),
-            }
-        } else {
-            Ok(Self { dt: self.dt, inner: self.inner.clone(), metal: self.metal.clone() })
-        }
-    }
-
-    /// Reshaped tensor with given shape and strides, no consistency check.
-    pub unsafe fn reshaped_with_geometry_unchecked(
-        &self,
-        shape: impl Into<TVec<usize>>,
-        strides: impl Into<TVec<isize>>,
-    ) -> Self {
-        match &self.inner {
-            MValue::Const(t) | MValue::Var(t) | MValue::Reshaped { t, .. } => Self {
-                dt: self.dt,
-                inner: MValue::Reshaped {
-                    t: Arc::clone(t),
-                    strides: strides.into(),
-                    shape: shape.into(),
-                },
-                metal: self.metal.clone(),
-            },
+        match self {
+            Self::Owned(t) => Ok(Self::Owned(t.reshaped(shape)?)),
+            Self::ArenaView(t) => Ok(Self::ArenaView(t.reshaped(shape)?)),
         }
     }
 
@@ -262,18 +174,32 @@ impl MetalTensor {
         self
     }
 
-    pub fn assert_sane_floats(&self) -> Result<()> {
-        if let Ok(floats) = self.inner.view().as_slice::<f32>() {
-            if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
-                bail!("Found {} in at position {:?}", floats[pos], pos);
-            }
-        } else if let Ok(floats) = self.inner.view().as_slice::<f16>() {
-            if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
-                bail!("Found {} in at position {:?}", floats[pos], pos);
+    /// Reshaped tensor with given shape and strides, no consistency check.
+    pub unsafe fn reshaped_with_geometry_unchecked(
+        &self,
+        shape: impl Into<TVec<usize>>,
+        strides: impl Into<TVec<isize>>,
+    ) -> Self {
+        match self {
+            Self::Owned(t) => Self::Owned(t.reshaped_with_geometry_unchecked(shape, strides)),
+            Self::ArenaView(t) => {
+                Self::ArenaView(t.reshaped_with_geometry_unchecked(shape, strides))
             }
         }
-        Ok(())
     }
+
+    // pub fn assert_sane_floats(&self) -> Result<()> {
+    //     if let Ok(floats) = self.inner.view().as_slice::<f32>() {
+    //         if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
+    //             bail!("Found {} in at position {:?}", floats[pos], pos);
+    //         }
+    //     } else if let Ok(floats) = self.inner.view().as_slice::<f16>() {
+    //         if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
+    //             bail!("Found {} in at position {:?}", floats[pos], pos);
+    //         }
+    //     }
+    //     Ok(())
+    // }
 
     /// Convert Metal tensor to Opaque Tensor.
     pub fn into_opaque_tensor(self) -> Tensor {
@@ -286,7 +212,10 @@ impl MetalTensor {
         crate::METAL_CONTEXT
             .with_borrow(|context| -> Result<Tensor> {
                 context.wait_until_completed()?;
-                Ok(self.inner.clone().into_tensor())
+                Ok(match self {
+                    Self::Owned(o) => o.inner.clone().into_tensor(),
+                    Self::ArenaView(v) => v.clone().into_tensor(),
+                })
             })
             .with_context(|| anyhow!("Error while synchronize metal tensor to its cpu counterpart"))
     }
@@ -294,14 +223,24 @@ impl MetalTensor {
 
 impl Display for MetalTensor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.inner {
-            MValue::Const(t) | MValue::Var(t) => {
-                let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
-                write!(f, "Metal {{ {content} }}")
-            }
-            MValue::Reshaped { t, shape, strides: _ } => {
-                let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
-                write!(f, "Metal reshaped: {:?} - {{ {content} }}", shape)
+        match self {
+            Self::Owned(o) => match &o.inner {
+                MValue::Const(t) | MValue::Var(t) => {
+                    let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
+                    write!(f, "Metal Owned: {{ {content} }}")
+                }
+                MValue::Reshaped { t, shape, .. } => {
+                    let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
+                    write!(f, "Metal Owned reshaped: {:?} - {{ {content} }}", shape)
+                }
+            },
+            Self::ArenaView(v) => {
+                let content = v
+                    .clone()
+                    .into_tensor()
+                    .dump(false)
+                    .unwrap_or_else(|e| format!("Error : {e:?}"));
+                write!(f, "Metal ArenaView: {{ {content} }}")
             }
         }
     }
@@ -309,13 +248,13 @@ impl Display for MetalTensor {
 
 impl IntoMetal<MetalTensor> for Tensor {
     fn into_metal(self) -> Result<MetalTensor> {
-        MetalTensor::from_tensor(self)
+        Ok(MetalTensor::Owned(OwnedMetalTensor::from_tensor(self)?))
     }
 }
 
 impl IntoMetal<MetalTensor> for Arc<Tensor> {
     fn into_metal(self) -> Result<MetalTensor> {
-        MetalTensor::from_tensor(self)
+        Ok(MetalTensor::Owned(OwnedMetalTensor::from_tensor(self)?))
     }
 }
 
