@@ -214,7 +214,7 @@ impl<M: GemmKernel> GemmImpl<M> {
         let c_dt = a.datum_type();
         let c_shape = self.output_shape(a.shape(), b.shape());
 
-        let c = MetalTensor::zero_dt(c_dt, &c_shape)?;
+        let c = unsafe { MetalTensor::uninitialized_dt(c_dt, &c_shape)? };
         c.retain_until_completion();
 
         if c_shape.iter().product::<usize>() == 0 {
