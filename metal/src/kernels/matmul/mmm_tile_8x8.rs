@@ -3,7 +3,7 @@ use crate::func_constants::{ConstantValues, Value};
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
-use metal::{Buffer, MTLSize, NSUInteger};
+use metal::{MTLSize, NSUInteger};
 use tract_core::internal::DatumType;
 
 pub fn mmm_tile_8x8(
