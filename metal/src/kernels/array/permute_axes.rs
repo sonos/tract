@@ -91,7 +91,7 @@ impl PermuteAxes {
         let command_buffer = context.command_buffer();
         let encoder = command_buffer.new_compute_command_encoder();
         encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Write);
+        encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
         encoder.set_slice(1, &new_strides);
         encoder.set_metal_tensor(2, &output, metal::MTLResourceUsage::Write);
         encoder.set_slice(3, output.shape());
