@@ -1,11 +1,16 @@
-use crate::kernels;
 use crate::tensor::MetalTensorExt;
-use derive_new::new;
+use crate::{kernels, MetalTensor};
 use tract_core::internal::*;
 
-#[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct MetalCast {
     pub to: DatumType,
+}
+
+impl MetalCast {
+    pub fn new(to: DatumType) -> Option<Self> {
+        MetalTensor::is_supported_dt(to).then(|| Self { to })
+    }
 }
 
 impl Op for MetalCast {

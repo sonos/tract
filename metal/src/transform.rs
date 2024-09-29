@@ -180,7 +180,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         } else if let Some(op) = node.op_as::<Const>() {
             ops::MetalConst::new(op.0.clone())?.map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<Cast>() {
-            Some(Box::new(ops::MetalCast { to: op.to }))
+            ops::MetalCast::new(op.to).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<AxisOp>() {
             ops::MetalAxisOp::from_tract_core(op.clone())
                 .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
