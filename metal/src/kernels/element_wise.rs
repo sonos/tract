@@ -183,6 +183,7 @@ impl ElementWiseOps {
         input: &MetalTensor,
     ) -> Result<MetalTensor> {
         let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), input.shape())? };
+        input.retain_until_completion();
         output.retained_until_completion();
 
         let kernel_name = self.kernel_name(input.datum_type(), false)?;
