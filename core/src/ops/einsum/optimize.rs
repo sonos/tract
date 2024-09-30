@@ -1,4 +1,6 @@
-use kernel_selection::select_kernel_and_packing;
+use std::ops::Deref;
+
+use kernel_selection::wire_packing;
 
 use super::*;
 use crate::ops::cast::cast;
@@ -6,7 +8,6 @@ use crate::ops::math::add;
 use crate::ops::matmul::optimized::{
     AddMatMulGeometry, MapOutputAxisToInput, OptMatMul, ProtoFusedSpec,
 };
-use crate::ops::matmul::pack::MatMatMulPack;
 use crate::ops::matmul::quant::{
     combine_scales, compensate_zero_points, requant, wire_ensure_q8_flavour,
 };
@@ -14,9 +15,47 @@ use crate::ops::nn::{Reduce, Reducer};
 
 #[allow(clippy::large_enum_variant)]
 pub enum AxesOrPatch<'a> {
-    Axes(&'a Axis, &'a Axis, &'a Axis),
+    Annotated(EinSumAnnotatedAsMatMul<'a>),
     Patch(TypedModelPatch),
     NotAMatMul(&'a Axis),
+}
+
+pub struct EinSumAnnotatedAsMatMul<'a> {
+    pub op: &'a EinSum,
+    pub m_axis: &'a Axis,
+    pub k_axis: &'a Axis,
+    pub n_axis: &'a Axis,
+    pub m: TDim,
+    pub k: TDim,
+    pub n: TDim,
+}
+
+impl<'a> EinSumAnnotatedAsMatMul<'a> {
+    pub fn a_m(&self) -> usize {
+        self.m_axis.inputs[0][0]
+    }
+    pub fn a_k(&self) -> usize {
+        self.k_axis.inputs[0][0]
+    }
+    pub fn b_k(&self) -> usize {
+        self.k_axis.inputs[1][0]
+    }
+    pub fn b_n(&self) -> usize {
+        self.n_axis.inputs[1][0]
+    }
+    pub fn c_m(&self) -> usize {
+        self.m_axis.outputs[0][0]
+    }
+    pub fn c_n(&self) -> usize {
+        self.n_axis.outputs[0][0]
+    }
+}
+
+impl<'a> Deref for EinSumAnnotatedAsMatMul<'a> {
+    type Target = EinSum;
+    fn deref(&self) -> &Self::Target {
+        &self.op
+    }
 }
 
 pub(crate) fn optimize(
@@ -29,16 +68,15 @@ pub(crate) fn optimize(
     {
         return Ok(None);
     }
-    let (m_axis, k_axis, n_axis) = match ensure_mkn_axes(op, model, node)? {
-        AxesOrPatch::Axes(m, k, n) => (m, k, n),
+    let annotated = match ensure_mkn_axes(op, model, node)? {
+        AxesOrPatch::Annotated(op) => op,
         AxesOrPatch::Patch(p) => return Ok(Some(p)),
         AxesOrPatch::NotAMatMul(_) => return Ok(None),
     };
     if op.q_params.is_none() {
-        optimized_mat_mul(op, model, node, (m_axis, k_axis, n_axis))
-            .context("Translating to OptMatMul")
+        optimized_mat_mul(model, node, &annotated).context("Translating to OptMatMul")
     } else {
-        dequant(op, model, node, (m_axis, k_axis, n_axis)).context("Dequantize")
+        dequant(model, node, annotated).context("Dequantize")
     }
 }
 
@@ -115,7 +153,10 @@ pub(crate) fn ensure_mkn_axes<'a>(
             return Ok(AxesOrPatch::NotAMatMul(axis));
         }
     }
-    Ok(AxesOrPatch::Axes(m_axis, k_axis, n_axis))
+    let m = input_shapes[0][m_axis.inputs[0][0]].clone();
+    let k = input_shapes[0][k_axis.inputs[0][0]].clone();
+    let n = input_shapes[1][n_axis.inputs[1][0]].clone();
+    Ok(AxesOrPatch::Annotated(EinSumAnnotatedAsMatMul { op, m_axis, k_axis, n_axis, m, k, n }))
 }
 
 pub(super) fn inject_k_axis(
@@ -220,10 +261,9 @@ fn wire_axes_fix(
 }
 
 fn dequant(
-    op: &EinSum,
     model: &TypedModel,
     node: &TypedNode,
-    (_, k_axis, _): (&Axis, &Axis, &Axis),
+    op: EinSumAnnotatedAsMatMul,
 ) -> TractResult<Option<TypedModelPatch>> {
     let name = &node.name;
     let mut patch = TypedModelPatch::new("Dequantizing einsum");
@@ -232,7 +272,7 @@ fn dequant(
     for ab in [0, 1] {
         let scale_input = 4 + ab * 2;
         if !patch.outlet_fact(taps[scale_input])?.shape.volume().is_one() {
-            let q_axis_in_output = op.axes.axis((InOut::In(scale_input), 0))?.outputs[0][0];
+            let q_axis_in_output = op.op.axes.axis((InOut::In(scale_input), 0))?.outputs[0][0];
             let output_rank = node.outputs[0].fact.rank();
             for i in 1..(output_rank - q_axis_in_output) {
                 taps[scale_input] = patch.wire_node(
@@ -255,8 +295,8 @@ fn dequant(
         &node.name,
         EinSum {
             q_params: None,
-            axes: op.axes.extract_sub_mapping(&[0, 1], &[0])?,
-            operating_dt: op.operating_dt,
+            axes: op.op.axes.extract_sub_mapping(&[0, 1], &[0])?,
+            operating_dt: op.op.operating_dt,
         },
         &[a, b],
     )?;
@@ -265,108 +305,65 @@ fn dequant(
     let b_i32 = patch.wire_node(format!("{name}.b_as_i32"), cast(i32::datum_type()), &[b])?[0];
     let sum_a = patch.wire_node(
         format!("{name}.sum_a"),
-        Reduce::new(tvec!(k_axis.inputs[0][0]), Reducer::Sum),
+        Reduce::new(tvec!(op.k_axis.inputs[0][0]), Reducer::Sum),
         &[a_i32],
     )?;
     let sum_b = patch.wire_node(
         format!("{name}.sum_b"),
-        Reduce::new(tvec!(k_axis.inputs[1][0]), Reducer::Sum),
+        Reduce::new(tvec!(op.k_axis.inputs[1][0]), Reducer::Sum),
         &[b_i32],
     )?;
 
-    let sum_a =
-        wire_axes_fix(&mut patch, name, "sum_a", &op.axes.extract_sub_mapping(&[0], &[0])?, sum_a)?;
-    let sum_b =
-        wire_axes_fix(&mut patch, name, "sum_b", &op.axes.extract_sub_mapping(&[1], &[0])?, sum_b)?;
+    let sum_a = wire_axes_fix(
+        &mut patch,
+        name,
+        "sum_a",
+        &op.op.axes.extract_sub_mapping(&[0], &[0])?,
+        sum_a,
+    )?;
+    let sum_b = wire_axes_fix(
+        &mut patch,
+        name,
+        "sum_b",
+        &op.op.axes.extract_sub_mapping(&[1], &[0])?,
+        sum_b,
+    )?;
     let bias = tvec!(bias);
-    let bias =
-        wire_axes_fix(&mut patch, name, "bias", &op.axes.extract_sub_mapping(&[2], &[0])?, bias)?;
+    let bias = wire_axes_fix(
+        &mut patch,
+        name,
+        "bias",
+        &op.op.axes.extract_sub_mapping(&[2], &[0])?,
+        bias,
+    )?;
 
     let abc_scale = combine_scales(&mut patch, name, a_scale, b_scale, c_scale)?;
 
     output = patch.wire_node(format!("{name}.add_bias"), add(), &[output[0], bias[0]])?;
 
-    let k = model.outlet_fact(node.inputs[0])?.shape[k_axis.inputs[0][0]].clone();
+    let k = model.outlet_fact(node.inputs[0])?.shape[op.k_axis.inputs[0][0]].clone();
     let output = compensate_zero_points(&mut patch, name, output[0], k, a0, b0, sum_a[0], sum_b[0])
         .context("Zero point compensation")?;
-    let output = requant(&mut patch, name, output, op.q_params.unwrap(), abc_scale, c0)?;
+    let output = requant(&mut patch, name, output, op.op.q_params.unwrap(), abc_scale, c0)?;
     patch.shunt_outside(model, node.id.into(), output)?;
     Ok(Some(patch))
 }
 
-/*
-   fn wire_packing(
-   model: &TypedModel,
-   node: &TypedNode,
-   input: usize,
-   patch: &mut TypedModelPatch,
-   packers: Vec<Packer>,
-   k_axis: usize,
-   mn_axis: usize,
-   ) -> TractResult<OutletId> {
-   let name = format!("{}.pack_{}", node.name, ['a', 'b'][input]);
-//    let a_fact = model.outlet_fact(node.inputs[0])?;
-let wire = patch.tap_model(model, node.inputs[input])?;
-let pack_a = MatMatMulPack { packers, k_axis, mn_axis };
-Ok(patch.wire_node(&name, pack_a, &[wire])?[0])
-/*
-if let Some(packers) = packer
-.iter()
-.map(|p| p.downcast_ref::<PackedFormat>().cloned().map(|f| Packer::Regular(f)))
-.collect::<Option<Vec<_>>>()
-{
-let wire = patch.tap_model(model, node.inputs[input])?;
-let pack_a = MatMatMulPack { packers, k_axis, mn_axis };
-Ok(patch.wire_node(&name, pack_a, &[wire])?[0])
-} else if let (Some(bqf), Some(pbqf)) = (
-a_fact.opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>()),
-packer.downcast_ref::<PackedBlockQuantFormat>(),
-) {
-ensure!(k_axis == 1);
-ensure!(mn_axis == 0);
-ensure!(pbqf.bq.same_as(&*bqf.format));
-let Some(weights) = &a_fact.konst else {
-bail!("Block quant packing with non-const inputs")
-};
-ensure!(weights.datum_type() == Opaque::datum_type());
-let Some(weights) = weights.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>() else {
-bail!("Expected a BlockQuantValue, found {weights:?}")
-};
-let k = bqf.shape[k_axis].to_usize()?;
-let packed = pbqf.pack(&weights.value, k)?;
-let mmm_input: Box<dyn MMMInputValue> = Box::new(packed);
-patch.add_const(name, tensor0(Opaque::from(mmm_input)))
-} else {
-bail!("Unexpected packing format: {:?}", packer);
-}
-*/
-}
-*/
-
 fn optimized_mat_mul(
-    op: &EinSum,
     model: &TypedModel,
     node: &TypedNode,
-    (m_axis, k_axis, n_axis): (&Axis, &Axis, &Axis),
+    op: &EinSumAnnotatedAsMatMul,
 ) -> TractResult<Option<TypedModelPatch>> {
     let input_facts = model.node_input_facts(node.id)?;
-    let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
-    let a_m = m_axis.inputs[0][0];
-    let a_k = k_axis.inputs[0][0];
-    let b_n = n_axis.inputs[1][0];
-    let b_k = k_axis.inputs[1][0];
-    let c_m = m_axis.outputs[0][0];
-    let c_n = n_axis.outputs[0][0];
-    let m = &input_shapes[0][a_m];
-    let k = &input_shapes[0][a_k];
-    let n = &input_shapes[1][b_n];
-    let must_transpose = match (m.as_i64(), n.as_i64()) {
+    let input_shapes = op.op.actual_input_shapes_from_facts(&input_facts)?;
+    let must_transpose = match (op.m.as_i64(), op.n.as_i64()) {
         (Some(m), Some(n)) => m < n,
         (None, Some(n)) => n >= 8,
         _ => false,
     };
     if must_transpose {
         let expr = op
+            .op
             .axes
             .iter_all_axes()
             .map(|axis| {
@@ -379,77 +376,56 @@ fn optimized_mat_mul(
             model,
             node,
             &[node.inputs[1], node.inputs[0]],
-            EinSum { axes: AxesMapping::new(node.inputs.len(), 1, expr)?, ..op.clone() },
+            EinSum { axes: AxesMapping::new(node.inputs.len(), 1, expr)?, ..op.op.clone() },
         )
         .map(Some);
     }
 
-    let strategy = select_kernel_and_packing(model, node, m, k, n, op.operating_dt)?;
-    let name = &node.name;
     let mut patch = TypedModelPatch::new("Einsum to OptMatMul");
+    let name = &node.name;
     let taps = patch.taps(model, &node.inputs)?;
-    let pack_a_0 = patch.wire_node(
-        format!("{name}.pack_a_0"),
-        MatMatMulPack { k_axis: a_k, mn_axis: a_m, packers: vec![strategy.static_packing_for_a] },
-        &[taps[0]],
-    )?;
-    let pack_a = patch.wire_node(
-        format!("{name}.pack_a"),
-        MatMatMulPack {
-            k_axis: a_k,
-            mn_axis: a_m,
-            packers: strategy.scenarios.iter().map(|s| s.2.clone()).collect(),
-        },
-        &pack_a_0,
-    )?;
-    let pack_b_0 = patch.wire_node(
-        format!("{name}.pack_b_0"),
-        MatMatMulPack { k_axis: b_k, mn_axis: b_n, packers: vec![strategy.static_packing_for_b] },
-        &[taps[1]],
-    )?;
-    let pack_b = patch.wire_node(
-        format!("{name}.pack_b"),
-        MatMatMulPack {
-            k_axis: b_k,
-            mn_axis: b_n,
-            packers: strategy.scenarios.iter().map(|s| s.3.clone()).collect(),
-        },
-        &pack_b_0,
-    )?;
+    let (a, b, mut mmms) = wire_packing(model, &mut patch, name, &taps[0..2], op)?;
+
+    dbg!(&patch);
     let mut c_to_a_axis_mapping = tvec!();
     let mut c_to_b_axis_mapping = tvec!();
-    for axis in op.axes.iter_all_axes().filter(|&axis| ![m_axis, k_axis, n_axis].contains(&axis)) {
+    for axis in op
+        .op
+        .axes
+        .iter_all_axes()
+        .filter(|&axis| ![op.m_axis, op.k_axis, op.n_axis].contains(&axis))
+    {
         if let (&[c], &[a]) = (&*axis.outputs[0], &*axis.inputs[0]) {
             if input_shapes[0][a] != 1.to_dim() {
-                let a = a - (a > a_m) as usize - (a > a_k) as usize;
+                let a = a - (a > op.a_m()) as usize - (a > op.a_k()) as usize;
                 c_to_a_axis_mapping.push((c, a));
             }
         }
         if let (&[c], &[b]) = (&*axis.outputs[0], &*axis.inputs[1]) {
             if input_shapes[1][b] != 1.to_dim() {
-                let b = b - (b > b_n) as usize - (b > b_k) as usize;
+                let b = b - (b > op.b_n()) as usize - (b > op.b_k()) as usize;
                 c_to_b_axis_mapping.push((c, b));
             }
         }
     }
 
-    let c_fact = op.output_facts(&input_facts)?.remove(0);
+    let c_fact = op.op.output_facts(&input_facts)?.remove(0);
     let geo = AddMatMulGeometry {
-        k: k.clone(),
+        k: op.k.clone(),
         c_to_a_axis_mapping: MapOutputAxisToInput(c_to_a_axis_mapping),
         c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
     };
-    let (mmm, packing, _, _) = strategy.scenarios[0].clone();
-    let output = unsafe { mmm.c_view(c_m, c_n) };
+    let (mmm, packing) = mmms.remove(0);
+    let output = unsafe { mmm.c_view(op.c_m(), op.c_n()) };
     let opt = OptMatMul::new(
         mmm,
         c_fact,
-        c_m,
-        c_n,
+        op.c_m(),
+        op.c_n(),
         vec![ProtoFusedSpec::AddMatMul { geo, a: 0, b: 1, packing }, ProtoFusedSpec::Store(output)],
     )
     .context("Creating OptMatMul")?;
-    let output = patch.wire_node(name, opt, &[pack_a[0], pack_b[0]])?[0];
+    let output = patch.wire_node(name, opt, &[a, b])?[0];
     patch.shunt_outside(model, node.id.into(), output)?;
     Ok(Some(patch))
 }
