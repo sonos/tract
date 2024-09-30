@@ -23,7 +23,7 @@ pub fn wire_packing(
     if a_fact.konst.is_some()
         && a_fact.datum_type.is_opaque()
         && a_fact.opaque_fact.as_ref().is_some_and(|of| of.is::<BlockQuantFact>())
-        && op.op.operating_dt.is_float()
+        && op.operating_dt.is_float()
     {
         dbg!("block quant");
         let weights =
@@ -34,7 +34,7 @@ pub fn wire_packing(
     dbg!("simple one");
     // "simple" kernel selection
     let mmm = tract_linalg::ops()
-        .mmm(op.op.operating_dt, op.m.to_usize().ok(), op.k.to_usize().ok(), op.n.to_usize().ok())
+        .mmm(op.operating_dt, op.m.to_usize().ok(), op.k.to_usize().ok(), op.n.to_usize().ok())
         .unwrap();
     let (packing, pa, pb) = mmm
         .packings()
