@@ -34,21 +34,24 @@ fn einsum_rules(
     {
         return Ok(None);
     }
-    let (m, k, n) =
-        match ensure_mkn_axes(op, model, node).context("Figuring out m, k and n axes")? {
-            AxesOrPatch::Axes(m, k, n) => (m, k, n),
-            AxesOrPatch::Patch(p) => return Ok(Some(p)),
-            AxesOrPatch::NotAMatMul(axis) => {
-                bail!("{} is not a matmul because of axis {}", op.axes, axis.repr)
-            }
-        };
-    let (m, k, n) = (m.repr, k.repr, n.repr);
-    let prefix: String =
-        op.axes.iter_all_axes().filter(|a| ![m, k, n].contains(&a.repr)).map(|a| a.repr).collect();
+    let op = match ensure_mkn_axes(op, model, node).context("Figuring out m, k and n axes")? {
+        AxesOrPatch::Annotated(op) => op,
+        AxesOrPatch::Patch(p) => return Ok(Some(p)),
+        AxesOrPatch::NotAMatMul(axis) => {
+            bail!("{} is not a matmul because of axis {}", op.axes, axis.repr)
+        }
+    };
+    let prefix: String = op
+        .axes
+        .iter_all_axes()
+        .filter(|a| ![op.m_axis, op.k_axis, op.n_axis].contains(&a))
+        .map(|a| a.repr)
+        .collect();
     let mut patch = TypedModelPatch::default();
     let inputs = patch.taps(model, &node.inputs)?;
     let mut wire = tvec!(inputs[0], inputs[1]);
 
+    let (m,k,n) = (op.m_axis.repr, op.k_axis.repr, op.n_axis.repr);
     let a_order_es: String = op.axes.axes(InOut::In(0)).map(|a| a.repr).collect();
     let a_order_mm = format!("{prefix}{m}{k}");
     let a_order_mm_t = format!("{prefix}{k}{m}");

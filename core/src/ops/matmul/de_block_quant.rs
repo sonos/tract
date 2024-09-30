@@ -79,19 +79,20 @@ fn block_quant_einsum_weights(
     if a.konst.is_none() || a.rank() != 2 {
         return Ok(None);
     }
-    let AxesOrPatch::Axes(m, k, _n) = ensure_mkn_axes(op, model, node)? else { return Ok(None) };
-    if m.inputs[0][0] == 1 && k.inputs[0][0] == 0 {
+    let AxesOrPatch::Annotated(op) = ensure_mkn_axes(op, model, node)? else { return Ok(None) };
+    if op.a_m() == 1 && op.a_k() == 0 {
         let a: &Tensor = a.konst.as_ref().unwrap();
         let mut patch = TypedModelPatch::default();
         let konst =
             patch.add_const(&model.node(node.inputs[0].node).name, a.clone().move_axis(1, 0)?)?;
         let axes = op
+            .op
             .axes
             .clone()
-            .with_extra_axis_occurency(k, InOut::In(0), 2)?
+            .with_extra_axis_occurency(op.k_axis, InOut::In(0), 2)?
             .remove_axis_occurency(InOut::In(0), 0)?;
         let tap = patch.tap_model(model, node.inputs[1])?;
-        let output = patch.wire_node(prefix, EinSum { axes, ..op.clone() }, &[konst, tap])?;
+        let output = patch.wire_node(prefix, EinSum { axes, ..op.op.clone() }, &[konst, tap])?;
         patch.shunt_outside(model, node.id.into(), output[0])?;
         return Ok(Some(patch));
     }
@@ -111,7 +112,7 @@ fn block_quant_einsum_weights(
         &[],
     )?;
     let tap = patch.tap_model(model, node.inputs[1])?;
-    let wire = patch.wire_node(prefix, op.clone(), &[weights[0], tap])?;
+    let wire = patch.wire_node(prefix, op.op.clone(), &[weights[0], tap])?;
     patch.shunt_outside(model, node.id.into(), wire[0])?;
     Ok(Some(patch))
 }

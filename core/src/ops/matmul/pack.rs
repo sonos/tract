@@ -1,38 +1,12 @@
 use crate::axes::Axis;
 use crate::internal::*;
-use crate::ops::matmul::de_block_quant::BlockQuantValue;
 use ndarray::*;
 use tract_data::TooEarly;
-use tract_itertools::Itertools;
-use tract_linalg::frame::block_quant::PackedBlockQuantFormat;
 use tract_linalg::frame::PackedFormat;
-use tract_linalg::mmm::MMMInputValue;
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Packer {
-    Regular(PackedFormat),
-    PackBlockQuant(PackedBlockQuantFormat),
-    PanelExtractionWrapper,
-    Identity,
-}
-
-impl Packer {
-    fn pack_tensor_view(
-        &self,
-        view: &TensorView,
-        k_axis: usize,
-        mn_axis: usize,
-    ) -> TractResult<Box<dyn MMMInputValue>> {
-        match self {
-            Packer::Regular(format) => format.pack_tensor_view(view, k_axis, mn_axis),
-            _ => todo!("Missing packer {self:?}"),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MatMatMulPack {
-    pub(crate) packers: Vec<Packer>,
+    pub(crate) packers: Vec<PackedFormat>,
     pub(crate) k_axis: usize,
     pub(crate) mn_axis: usize,
 }
@@ -86,17 +60,6 @@ impl TypedOp for MatMatMulPack {
         AxesMapping::new(1, 1, axes)
     }
 
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        if self.packers.iter().all(|p| *p == Packer::Identity) {
-            return TypedModelPatch::shunt_one_op(model, node);
-        }
-        Ok(None)
-    }
-
     as_op!();
 }
 
@@ -110,23 +73,6 @@ impl MatMatMulPack {
             } else {
                 bail!(TooEarly::Other("Undetermined scenario".into()))
             };
-            if *packer == Packer::Identity {
-                return Ok(tvec!(input));
-            }
-            if let Packer::PackBlockQuant(pbqf) = packer {
-                let value = input
-                    .to_scalar::<Opaque>()?
-                    .downcast_ref::<BlockQuantValue>()
-                    .context("Expected a BlockQuant value")?;
-                ensure!(self.k_axis == 1);
-                ensure!(self.mn_axis == 0);
-                ensure!(pbqf.bq.same_as(&*value.fact.format));
-                let k = value.fact.shape[0].to_usize()?;
-                let packed = pbqf.pack(&value.value, k)?;
-                let mmm_input: Box<dyn MMMInputValue> = Box::new(packed);
-                let t = tensor0(Opaque::from(mmm_input));
-                return Ok(tvec!(t.into_tvalue()))
-            }
             let output_shape: TVec<usize> = self.output_shape(input.shape());
             let stores = if output_shape.iter().all(|d| *d == 1) {
                 tensor0::<Opaque>(
@@ -166,12 +112,9 @@ impl MatMatMulPack {
     }
 
     pub fn output_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {
-        assert!(self.packers.iter().map(|p| matches!(p, Packer::Regular(_))).all_equal());
         let mut packed_shape: TVec<D> = input.into();
-        if matches!(self.packers[0], Packer::Regular(_)) {
-            packed_shape.remove(self.mn_axis.max(self.k_axis));
-            packed_shape.remove(self.mn_axis.min(self.k_axis));
-        }
+        packed_shape.remove(self.mn_axis.max(self.k_axis));
+        packed_shape.remove(self.mn_axis.min(self.k_axis));
         packed_shape
     }
 }
