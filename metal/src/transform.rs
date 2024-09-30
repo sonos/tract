@@ -180,7 +180,10 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         } else if let Some(op) = node.op_as::<Const>() {
             ops::MetalConst::new(op.0.clone())?.map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<Cast>() {
-            ops::MetalCast::new(op.to).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+            check_in_dts_are_supported(source, node.id, ops::MetalCast::is_supported_dt)?
+                .then(|| ops::MetalCast::new(op.to))
+                .flatten()
+                .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<AxisOp>() {
             ops::MetalAxisOp::from_tract_core(op.clone())
                 .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
