@@ -272,7 +272,7 @@ fn dequant(
     for ab in [0, 1] {
         let scale_input = 4 + ab * 2;
         if !patch.outlet_fact(taps[scale_input])?.shape.volume().is_one() {
-            let q_axis_in_output = op.op.axes.axis((InOut::In(scale_input), 0))?.outputs[0][0];
+            let q_axis_in_output = op.axes.axis((InOut::In(scale_input), 0))?.outputs[0][0];
             let output_rank = node.outputs[0].fact.rank();
             for i in 1..(output_rank - q_axis_in_output) {
                 taps[scale_input] = patch.wire_node(
@@ -295,8 +295,8 @@ fn dequant(
         &node.name,
         EinSum {
             q_params: None,
-            axes: op.op.axes.extract_sub_mapping(&[0, 1], &[0])?,
-            operating_dt: op.op.operating_dt,
+            axes: op.axes.extract_sub_mapping(&[0, 1], &[0])?,
+            operating_dt: op.operating_dt,
         },
         &[a, b],
     )?;
@@ -318,14 +318,14 @@ fn dequant(
         &mut patch,
         name,
         "sum_a",
-        &op.op.axes.extract_sub_mapping(&[0], &[0])?,
+        &op.axes.extract_sub_mapping(&[0], &[0])?,
         sum_a,
     )?;
     let sum_b = wire_axes_fix(
         &mut patch,
         name,
         "sum_b",
-        &op.op.axes.extract_sub_mapping(&[1], &[0])?,
+        &op.axes.extract_sub_mapping(&[1], &[0])?,
         sum_b,
     )?;
     let bias = tvec!(bias);
@@ -333,7 +333,7 @@ fn dequant(
         &mut patch,
         name,
         "bias",
-        &op.op.axes.extract_sub_mapping(&[2], &[0])?,
+        &op.axes.extract_sub_mapping(&[2], &[0])?,
         bias,
     )?;
 
@@ -344,7 +344,7 @@ fn dequant(
     let k = model.outlet_fact(node.inputs[0])?.shape[op.k_axis.inputs[0][0]].clone();
     let output = compensate_zero_points(&mut patch, name, output[0], k, a0, b0, sum_a[0], sum_b[0])
         .context("Zero point compensation")?;
-    let output = requant(&mut patch, name, output, op.op.q_params.unwrap(), abc_scale, c0)?;
+    let output = requant(&mut patch, name, output, op.q_params.unwrap(), abc_scale, c0)?;
     patch.shunt_outside(model, node.id.into(), output)?;
     Ok(Some(patch))
 }
@@ -355,7 +355,7 @@ fn optimized_mat_mul(
     op: &EinSumAnnotatedAsMatMul,
 ) -> TractResult<Option<TypedModelPatch>> {
     let input_facts = model.node_input_facts(node.id)?;
-    let input_shapes = op.op.actual_input_shapes_from_facts(&input_facts)?;
+    let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
     let must_transpose = match (op.m.as_i64(), op.n.as_i64()) {
         (Some(m), Some(n)) => m < n,
         (None, Some(n)) => n >= 8,
@@ -409,7 +409,7 @@ fn optimized_mat_mul(
         }
     }
 
-    let c_fact = op.op.output_facts(&input_facts)?.remove(0);
+    let c_fact = op.output_facts(&input_facts)?.remove(0);
     let geo = AddMatMulGeometry {
         k: op.k.clone(),
         c_to_a_axis_mapping: MapOutputAxisToInput(c_to_a_axis_mapping),
