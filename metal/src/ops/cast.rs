@@ -1,5 +1,5 @@
+use crate::kernels;
 use crate::tensor::MetalTensorExt;
-use crate::{kernels, MetalTensor};
 use tract_core::internal::*;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -8,8 +8,12 @@ pub struct MetalCast {
 }
 
 impl MetalCast {
+    pub fn is_supported_dt(dt: DatumType) -> bool {
+        kernels::array::Cast::is_supported_dt(dt)
+    }
+
     pub fn new(to: DatumType) -> Option<Self> {
-        MetalTensor::is_supported_dt(to).then(|| Self { to })
+        Self::is_supported_dt(to).then_some(Self { to })
     }
 }
 
