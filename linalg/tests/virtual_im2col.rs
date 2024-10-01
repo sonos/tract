@@ -8,7 +8,7 @@ use tract_data::internal::*;
 use tract_linalg::frame::mmm::FusedSpec;
 // use tract_linalg::frame::mmm::{VirtualInput, VirtualInputSpec};
 use tract_linalg::frame::{PackedFormat, PackingWriter};
-use tract_linalg::mmm::MMMInputValue;
+use tract_linalg::mmm::{MMMInputFormat, MMMInputValue};
 use DatumType::F32;
 
 proptest::proptest! {
@@ -214,7 +214,7 @@ fn tensor(shape: Vec<usize>) -> Tensor {
     tensor
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
 struct EagerIm2colSpec {
     packer: PackedFormat,
     full_kernel_shape: TVec<usize>,
@@ -234,6 +234,35 @@ impl EagerIm2colSpec {
         .into_shape_with_order([k, n])
         .unwrap();
         Box::new(EagerIm2col { im2col: im2col.into_tensor(), packer: self.packer.clone(), k })
+    }
+}
+
+impl Display for EagerIm2colSpec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "EagerIm2colSpec")
+    }
+}
+
+impl MMMInputFormat for EagerIm2colSpec {
+    fn prepare_tensor(
+        &self,
+        _t: &Tensor,
+        _k_axis: usize,
+        _mn_axis: usize,
+    ) -> TractResult<Box<dyn MMMInputValue>> {
+        todo!();
+    }
+
+    fn k_alignment(&self) -> usize {
+        1
+    }
+
+    fn r(&self) -> usize {
+        self.packer.r()
+    }
+
+    fn same_as(&self, other: &dyn MMMInputFormat) -> bool {
+        other.downcast_ref::<Self>().is_some_and(|other| other == self)
     }
 }
 
@@ -286,12 +315,12 @@ impl MMMInputValue for EagerIm2col {
         self.im2col.shape()[1]
     }
 
-    fn r(&self) -> usize {
-        self.packer.r
+    fn format(&self) -> &dyn tract_linalg::mmm::MMMInputFormat {
+        &self.packer
     }
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 struct LazyIm2colSpec {
     packer: PackedFormat,
     full_kernel_shape: TVec<usize>,
@@ -320,6 +349,7 @@ impl LazyIm2colSpec {
             .collect();
         unsafe {
             Box::new(LazyIm2col {
+                spec: self.clone(),
                 image: input.as_ptr_unchecked(),
                 k_offsets,
                 n_offsets,
@@ -329,8 +359,38 @@ impl LazyIm2colSpec {
     }
 }
 
+impl Display for LazyIm2colSpec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "LazyIm2colSpec")
+    }
+}
+
+impl MMMInputFormat for LazyIm2colSpec {
+    fn prepare_tensor(
+        &self,
+        _t: &Tensor,
+        _k_axis: usize,
+        _mn_axis: usize,
+    ) -> TractResult<Box<dyn MMMInputValue>> {
+        todo!();
+    }
+
+    fn k_alignment(&self) -> usize {
+        1
+    }
+
+    fn r(&self) -> usize {
+        self.packer.r()
+    }
+
+    fn same_as(&self, other: &dyn MMMInputFormat) -> bool {
+        other.downcast_ref::<Self>().is_some_and(|other| other == self)
+    }
+}
+
 #[derive(Clone, Debug, Hash)]
 struct LazyIm2col {
+    spec: LazyIm2colSpec,
     packer: PackedFormat,
     image: *const f32,
     n_offsets: Vec<isize>,
@@ -384,7 +444,7 @@ impl MMMInputValue for LazyIm2col {
         self.n_offsets.len()
     }
 
-    fn r(&self) -> usize {
-        self.packer.r
+    fn format(&self) -> &dyn MMMInputFormat {
+        &self.spec
     }
 }

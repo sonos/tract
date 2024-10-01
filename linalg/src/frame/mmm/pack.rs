@@ -33,6 +33,10 @@ impl MMMInputFormat for PackedFormat {
     fn k_alignment(&self) -> usize {
         1
     }
+
+    fn same_as(&self, other: &dyn MMMInputFormat) -> bool {
+        other.downcast_ref::<Self>().is_some_and(|other| self == other)
+    }
 }
 
 impl Display for PackedFormat {

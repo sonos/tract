@@ -499,7 +499,7 @@ impl Conv {
             c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
         };
         let mut ops: Vec<ProtoFusedSpec> =
-            vec![ProtoFusedSpec::AddMatMul { geo, a: 1, b: 0, packing: vec![packing] }];
+            vec![ProtoFusedSpec::AddMatMul { geo, a: 1, b: 0, packings: vec![packing] }];
         let mut wires: TVec<OutletId> = tvec!(input, packed_ker);
         let bias_fact = model.outlet_fact(bias)?;
         if bias_fact.konst.is_none() || !bias_fact.konst.as_ref().unwrap().is_all_zero()? {

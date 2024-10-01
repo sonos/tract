@@ -6,13 +6,14 @@ use ndarray::*;
 use tract_data::TooEarly;
 use tract_itertools::Itertools;
 
+use tract_linalg::frame::PackedFormat;
 use tract_linalg::mmm::{BinOp, FusedSpec, MMMInputValue, MatMatMul, OutputStoreSpec};
 use tract_linalg::Scaler;
 use tract_smallvec::ToSmallVec;
 
 #[derive(Clone, Debug)]
 pub enum ProtoFusedSpec {
-    AddMatMul { geo: AddMatMulGeometry, a: usize, b: usize, packing: Vec<usize> },
+    AddMatMul { geo: AddMatMulGeometry, a: usize, b: usize, packings: Vec<usize> },
     BinScalar(usize, BinOp),
     LeakyRelu(usize),
     BinPerRow(usize, BinOp, MapOutputAxisToInput),
@@ -27,7 +28,7 @@ impl ProtoFusedSpec {
     pub fn format(&self, mmm: &dyn MatMatMul, scenario: usize) -> String {
         use ProtoFusedSpec::*;
         match self {
-            AddMatMul { geo, packing, .. } => {
+            AddMatMul { geo, packings: packing, .. } => {
                 let (a, b) = mmm.packings()[packing[scenario]];
                 format!("matmul(k={}, {a:?}•{b:?})", geo.k)
             }
@@ -51,7 +52,7 @@ impl ProtoFusedSpec {
         scenario: usize,
     ) -> FusedSpec<'t> {
         let fs = match self {
-            ProtoFusedSpec::AddMatMul { geo, a, b, packing } => {
+            ProtoFusedSpec::AddMatMul { geo, a, b, packings } => {
                 let mut a = inputs[*a].view();
                 unsafe {
                     geo.c_to_a_axis_mapping.translate_view(output_coords, &mut a);
@@ -66,9 +67,16 @@ impl ProtoFusedSpec {
                 let b = b.as_slice::<Opaque>().unwrap()[0]
                     .downcast_ref::<Box<dyn MMMInputValue>>()
                     .unwrap();
-                assert!(a == mmm.packings()[packing[scenario]]);
-                assert!(b.r() == mmm.nr());
-                FusedSpec::AddMatMul { a: &**a, b: &**b, packing: packing[scenario] }
+                let (a_packing, b_packing) = mmm.packings()[packings[scenario]];
+                assert!(
+                    a_packing.same_as(a.format())
+                        || (a_packing.is::<PackedFormat>() && a_packing.r() == a.format().r())
+                );
+                assert!(
+                    b_packing.same_as(b.format())
+                        || (b_packing.is::<PackedFormat>() && b_packing.r() == b.format().r())
+                );
+                FusedSpec::AddMatMul { a: &**a, b: &**b, packing: packings[scenario] }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
             ProtoFusedSpec::LeakyRelu(v) => FusedSpec::LeakyRelu(&inputs[*v]),
@@ -114,7 +122,7 @@ impl ProtoFusedSpec {
         scenario: usize,
     ) -> FusedSpec<'t> {
         let fs = match self {
-            ProtoFusedSpec::AddMatMul { a, b, packing, .. } => {
+            ProtoFusedSpec::AddMatMul { a, b, packings, .. } => {
                 let a = &inputs[*a];
                 let b = &inputs[*b];
                 let a = a
@@ -127,9 +135,16 @@ impl ProtoFusedSpec {
                     .unwrap()
                     .downcast_ref::<Box<dyn MMMInputValue>>()
                     .unwrap();
-                assert!(a.r() == mmm.mr());
-                assert!(b.r() == mmm.nr());
-                FusedSpec::AddMatMul { a: &**a, b: &**b, packing: packing[scenario] }
+                let (a_packing, b_packing) = mmm.packings()[packings[scenario]];
+                assert!(
+                    a_packing.same_as(a.format())
+                        || (a_packing.is::<PackedFormat>() && a_packing.r() == a.format().r())
+                );
+                assert!(
+                    b_packing.same_as(b.format())
+                        || (b_packing.is::<PackedFormat>() && b_packing.r() == b.format().r())
+                );
+                FusedSpec::AddMatMul { a: &**a, b: &**b, packing: packings[scenario] }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
             ProtoFusedSpec::LeakyRelu(v) => FusedSpec::LeakyRelu(&inputs[*v]),
@@ -299,9 +314,6 @@ impl EvalOp for OptMatMul {
                 bail!(TooEarly::Other("Undetermined scenario".into()))
             };
             let mmm = &*self.mmm[scenario];
-            println!("{:?}", self.mmm);
-            println!("scenario: {scenario} mmm: {mmm:?}");
-            println!("    {inputs:?}");
             let mut cell = session.cached_mmm_scratch_space.borrow_mut();
             if !cell.as_ref().map(|scratch| mmm.can_use_scratch_space(&**scratch)).unwrap_or(false)
             {
@@ -364,7 +376,7 @@ impl TypedOp for OptMatMul {
             let scenarios = scope.all_scenarios().into_iter().count().max(1);
             ensure!(self.mmm.len() == scenarios);
             for uop in &self.micro_ops {
-                if let ProtoFusedSpec::AddMatMul { packing, .. } = uop {
+                if let ProtoFusedSpec::AddMatMul { packings: packing, .. } = uop {
                     ensure!(packing.len() == scenarios);
                 }
             }
