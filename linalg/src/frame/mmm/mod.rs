@@ -140,10 +140,19 @@ impl<K: MatMatMulKer> MatMatMul for K {
         scratch.prepare(self, m, n, non_linear)?;
         if n == 1 && self.nr() == 1 {
             run_with_scratch_space_vec(self, m, scratch, non_linear)
-        } else if non_linear.iter().any(|f| f.prefer_col_outer()) {
-            run_with_scratch_space_col_outer(self, m, n, scratch, non_linear)
         } else {
-            run_with_scratch_space_row_outer(self, m, n, scratch, non_linear)
+            let (mut prefer_col, mut prefer_row) = (0, 0);
+            for uop in non_linear.iter() {
+                if let Some(col) = uop.prefer_col_outer() {
+                    prefer_col = col as usize;
+                    prefer_row = (!col) as usize;
+                }
+            }
+            if prefer_col > prefer_row {
+                run_with_scratch_space_col_outer(self, m, n, scratch, non_linear)
+            } else {
+                run_with_scratch_space_row_outer(self, m, n, scratch, non_linear)
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use super::pack::PackedFormat;
 use super::{MMMInputValue, OutputStore, OutputStoreKer};
 use tract_data::internal::*;
 
@@ -52,18 +53,18 @@ pub enum FusedSpec<'t> {
 }
 
 impl FusedSpec<'_> {
-    pub fn prefer_col_outer(&self) -> bool {
-        false
-        /*
-        if let FusedSpec::AddMatMul { b, .. } = self {
-        match b {
-        InputStore::Packed { .. } => false,
-        InputStore::VirtualPacking { .. } => true,
-        }
+    pub fn prefer_col_outer(&self) -> Option<bool> {
+        if let FusedSpec::AddMatMul { a, b, .. } = self {
+            let a_is_eager = a.format().is::<PackedFormat>();
+            let b_is_eager = b.format().is::<PackedFormat>();
+            if a_is_eager == b_is_eager {
+                None
+            } else {
+                Some(a_is_eager)
+            }
         } else {
-        false
+            None
         }
-        */
     }
 }
 
