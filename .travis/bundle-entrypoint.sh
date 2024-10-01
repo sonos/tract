@@ -104,6 +104,7 @@ net_bench en_tdnn_15M 2600ms $CACHEDIR/en_tdnn_15M.onnx --output-node output -i 
 net_bench en_tdnn_15M pulse_240ms $CACHEDIR/en_tdnn_15M.onnx --output-node output -i S,40 --pulse 24
 net_bench en_tdnn_15M pulse_120ms $CACHEDIR/en_tdnn_15M.onnx --output-node output -i S,40 --pulse 12
 net_bench en_tdnn_15M_nnef pulse_240ms $CACHEDIR/en_tdnn_15M.alpha1.tar --nnef-tract-pulse
+net_bench dummy-conmer-12M pulse_120ms $CACHEDIR/dummy-conmer-12M.nnef.tar --nnef-tract-core --pulse 12
 
 net_bench en_tdnn_pyt_15M pulse_120ms $CACHEDIR/mdl-en-2023-03-27-allen-17h11m50s.nnef.tar --nnef-tract-core --pulse 12
 
