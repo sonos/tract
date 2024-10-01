@@ -3,6 +3,7 @@ use crate::ops::cast::cast;
 use crate::ops::change_axes::wire_with_rank_broadcast;
 use crate::ops::nn::LeakyRelu;
 use ndarray::*;
+use tract_data::TooEarly;
 use tract_itertools::Itertools;
 
 use tract_linalg::mmm::{BinOp, FusedSpec, MMMInputValue, MatMatMul, OutputStoreSpec};
@@ -11,7 +12,7 @@ use tract_smallvec::ToSmallVec;
 
 #[derive(Clone, Debug)]
 pub enum ProtoFusedSpec {
-    AddMatMul { geo: AddMatMulGeometry, a: usize, b: usize, packing: usize },
+    AddMatMul { geo: AddMatMulGeometry, a: usize, b: usize, packing: Vec<usize> },
     BinScalar(usize, BinOp),
     LeakyRelu(usize),
     BinPerRow(usize, BinOp, MapOutputAxisToInput),
@@ -19,15 +20,15 @@ pub enum ProtoFusedSpec {
     AddRowColProducts(usize, usize),
     AddUnicast(OutputStoreSpec, usize, MapOutputAxisToInput),
     Scaler(Scaler),
-    Store(OutputStoreSpec),
+    Store(Vec<OutputStoreSpec>),
 }
 
 impl ProtoFusedSpec {
-    pub fn format(&self, mmm: &dyn MatMatMul) -> String {
+    pub fn format(&self, mmm: &dyn MatMatMul, scenario: usize) -> String {
         use ProtoFusedSpec::*;
         match self {
             AddMatMul { geo, packing, .. } => {
-                let (a, b) = mmm.packings()[*packing];
+                let (a, b) = mmm.packings()[packing[scenario]];
                 format!("matmul(k={}, {a:?}•{b:?})", geo.k)
             }
             BinScalar(_, op) => format!("scalar{op:?}"),
@@ -46,6 +47,8 @@ impl ProtoFusedSpec {
         inputs: &'t [TValue],
         output_coords: &[usize],
         output: &Tensor,
+        mmm: &dyn MatMatMul,
+        scenario: usize,
     ) -> FusedSpec<'t> {
         let fs = match self {
             ProtoFusedSpec::AddMatMul { geo, a, b, packing } => {
@@ -63,7 +66,9 @@ impl ProtoFusedSpec {
                 let b = b.as_slice::<Opaque>().unwrap()[0]
                     .downcast_ref::<Box<dyn MMMInputValue>>()
                     .unwrap();
-                FusedSpec::AddMatMul { a: &**a, b: &**b, packing: *packing }
+                assert!(a == mmm.packings()[packing[scenario]]);
+                assert!(b.r() == mmm.nr());
+                FusedSpec::AddMatMul { a: &**a, b: &**b, packing: packing[scenario] }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
             ProtoFusedSpec::LeakyRelu(v) => FusedSpec::LeakyRelu(&inputs[*v]),
@@ -88,7 +93,7 @@ impl ProtoFusedSpec {
             ProtoFusedSpec::Scaler(scaler) => scaler.as_fused_spec(),
             ProtoFusedSpec::Store(oss) => unsafe {
                 let view = output.view_offsetting_unchecked(output_coords);
-                FusedSpec::Store(oss.wrap(&view))
+                FusedSpec::Store(oss[scenario].wrap(&view))
             },
         };
         fs
@@ -105,6 +110,8 @@ impl ProtoFusedSpec {
         &'t self,
         inputs: &'t [TValue],
         output: &mut Tensor,
+        mmm: &dyn MatMatMul,
+        scenario: usize,
     ) -> FusedSpec<'t> {
         let fs = match self {
             ProtoFusedSpec::AddMatMul { a, b, packing, .. } => {
@@ -120,7 +127,9 @@ impl ProtoFusedSpec {
                     .unwrap()
                     .downcast_ref::<Box<dyn MMMInputValue>>()
                     .unwrap();
-                FusedSpec::AddMatMul { a: &**a, b: &**b, packing: *packing }
+                assert!(a.r() == mmm.mr());
+                assert!(b.r() == mmm.nr());
+                FusedSpec::AddMatMul { a: &**a, b: &**b, packing: packing[scenario] }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
             ProtoFusedSpec::LeakyRelu(v) => FusedSpec::LeakyRelu(&inputs[*v]),
@@ -140,7 +149,9 @@ impl ProtoFusedSpec {
                 FusedSpec::AddUnicast(store.wrap(&view))
             },
             ProtoFusedSpec::Scaler(scaler) => scaler.as_fused_spec(),
-            ProtoFusedSpec::Store(oss) => unsafe { FusedSpec::Store(oss.wrap(&output.view_mut())) },
+            ProtoFusedSpec::Store(oss) => unsafe {
+                FusedSpec::Store(oss[scenario].wrap(&output.view_mut()))
+            },
         };
         fs
     }
@@ -189,13 +200,17 @@ impl ProtoFusedSpec {
             AddUnicast(_, _, map) => {
                 map.rm_c_axis(axis);
             }
-            Store(oss, ..) => match oss {
-                OutputStoreSpec::View { m_axis, n_axis, .. } => {
-                    *m_axis -= (*m_axis > axis) as usize;
-                    *n_axis -= (*n_axis > axis) as usize;
+            Store(oss, ..) => {
+                for oss in oss {
+                    match oss {
+                        OutputStoreSpec::View { m_axis, n_axis, .. } => {
+                            *m_axis -= (*m_axis > axis) as usize;
+                            *n_axis -= (*n_axis > axis) as usize;
+                        }
+                        OutputStoreSpec::Strides { .. } => {}
+                    }
                 }
-                OutputStoreSpec::Strides { .. } => {}
-            },
+            }
         }
     }
 }
@@ -230,7 +245,7 @@ pub struct AddMatMulGeometry {
 pub struct OptMatMul {
     pub c_fact: TypedFact,
     pub micro_ops: Vec<ProtoFusedSpec>,
-    pub mmm: Box<dyn MatMatMul>,
+    pub mmm: Vec<Box<dyn MatMatMul>>,
     pub c_m_axis: usize,
     pub c_n_axis: usize,
     pub trivial_path: bool,
@@ -253,10 +268,12 @@ impl Op for OptMatMul {
         } else {
             infos.push(format!("Mult: {:?}", self.mmm));
         }
-        infos.push(format!(
-            "Ops: {}",
-            self.micro_ops.iter().map(|o| o.format(&*self.mmm)).join(" >>> ")
-        ));
+        for (scenario, mmm) in self.mmm.iter().enumerate() {
+            infos.push(format!(
+                "Ops: {}",
+                self.micro_ops.iter().map(|o| o.format(&**mmm, scenario)).join(" >>> ")
+            ));
+        }
         Ok(infos)
     }
 
@@ -274,22 +291,33 @@ impl EvalOp for OptMatMul {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         unsafe {
+            let scenario = if self.mmm.len() == 1 {
+                0
+            } else if let Some(scen) = session.scenario {
+                scen
+            } else {
+                bail!(TooEarly::Other("Undetermined scenario".into()))
+            };
+            let mmm = &*self.mmm[scenario];
+            println!("{:?}", self.mmm);
+            println!("scenario: {scenario} mmm: {mmm:?}");
+            println!("    {inputs:?}");
             let mut cell = session.cached_mmm_scratch_space.borrow_mut();
-            if !cell
-                .as_ref()
-                .map(|scratch| self.mmm.can_use_scratch_space(&**scratch))
-                .unwrap_or(false)
+            if !cell.as_ref().map(|scratch| mmm.can_use_scratch_space(&**scratch)).unwrap_or(false)
             {
                 *cell = None
             }
-            let scratch = cell.get_or_insert_with(|| self.mmm.allocate_scratch_space());
+            let scratch = cell.get_or_insert_with(|| mmm.allocate_scratch_space());
 
             if self.trivial_path {
                 let c_shape = self.c_fact.shape.as_concrete().unwrap_unchecked();
                 let mut c = Tensor::uninitialized_dt(self.c_fact.datum_type, c_shape)?;
-                let uops: Vec<FusedSpec> =
-                    self.micro_ops.iter().map(|o| o.resolve_trivial(&inputs, &mut c)).collect();
-                self.mmm.run_with_scratch_space(
+                let uops: Vec<FusedSpec> = self
+                    .micro_ops
+                    .iter()
+                    .map(|o| o.resolve_trivial(&inputs, &mut c, mmm, scenario))
+                    .collect();
+                mmm.run_with_scratch_space(
                     *c_shape.get_unchecked(self.c_m_axis),
                     *c_shape.get_unchecked(self.c_n_axis),
                     scratch.as_mut(),
@@ -307,11 +335,15 @@ impl EvalOp for OptMatMul {
                 let n = c_shape[self.c_n_axis];
                 for c_coords in indices(&*looping_shape) {
                     for ix in 0..self.micro_ops.len() {
-                        *uops.get_unchecked_mut(ix) =
-                            self.micro_ops.get_unchecked(ix).resolve(&inputs, c_coords.slice(), &c);
+                        *uops.get_unchecked_mut(ix) = self.micro_ops.get_unchecked(ix).resolve(
+                            &inputs,
+                            c_coords.slice(),
+                            &c,
+                            mmm,
+                            scenario,
+                        );
                     }
-                    self.mmm
-                        .run_with_scratch_space(m, n, scratch.as_mut(), &uops)
+                    mmm.run_with_scratch_space(m, n, scratch.as_mut(), &uops)
                         .context("In mmm.run_with_scratch_space")?;
                 }
                 Ok(tvec!(c.into_tvalue()))
@@ -325,6 +357,18 @@ impl TypedOp for OptMatMul {
         ensure!(self.c_m_axis < self.c_fact.rank());
         ensure!(self.c_n_axis < self.c_fact.rank());
         ensure!(self.trivial_path == self.can_use_trivial_path());
+        ensure!(self.mmm.iter().map(|mmm| mmm.internal_type()).all_equal());
+        if let Some(scope) =
+            inputs.iter().flat_map(|fact| &*fact.shape).find_map(|dim| dim.find_scope())
+        {
+            let scenarios = scope.all_scenarios().into_iter().count().max(1);
+            ensure!(self.mmm.len() == scenarios);
+            for uop in &self.micro_ops {
+                if let ProtoFusedSpec::AddMatMul { packing, .. } = uop {
+                    ensure!(packing.len() == scenarios);
+                }
+            }
+        }
         for op in &self.micro_ops {
             op.check_inputs(inputs)?;
         }
@@ -336,7 +380,7 @@ impl TypedOp for OptMatMul {
         let m = &self.c_fact.shape[self.c_m_axis];
         let n = &self.c_fact.shape[self.c_n_axis];
         for op in &self.micro_ops {
-            for (cost, count) in op.cost(m, n, self.mmm.internal_type()) {
+            for (cost, count) in op.cost(m, n, self.mmm[0].internal_type()) {
                 *sums.entry(cost).or_default() += count;
             }
         }
@@ -391,12 +435,16 @@ impl TypedOp for OptMatMul {
                 );
             }
             if let Some(op) = op.downcast_ref::<LeakyRelu>() {
-                if !self.mmm.can_fuse(&FusedSpec::LeakyRelu(&tensor0(op.alpha))) {
+                if !self
+                    .mmm
+                    .iter()
+                    .all(|mmm| mmm.can_fuse(&FusedSpec::LeakyRelu(&tensor0(op.alpha))))
+                {
                     return Ok(None);
                 }
                 let alpha = patch.add_const(
                     node.name.to_string() + ".alpha",
-                    tensor0(op.alpha).cast_to_dt(self.mmm.internal_type())?.into_owned(),
+                    tensor0(op.alpha).cast_to_dt(self.mmm[0].internal_type())?.into_owned(),
                 )?;
                 return self.fuse_op(
                     model,
@@ -412,9 +460,10 @@ impl TypedOp for OptMatMul {
                 || cast_to.unquantized() == u8::datum_type())
                 && self.c_fact.datum_type == i32::datum_type()
             {
-                if let Some(ProtoFusedSpec::Store(OutputStoreSpec::View { .. })) =
-                    self.micro_ops.last()
-                {
+                if let Some(ProtoFusedSpec::Store(stores)) = self.micro_ops.last() {
+                    if stores.iter().any(|s| matches!(s, OutputStoreSpec::Strides { .. })) {
+                        return Ok(None);
+                    }
                     let c_fact = cast_to.fact(self.c_fact.shape.clone());
                     let mut patch = TypedModelPatch::fuse_with_next(
                         model,
@@ -469,14 +518,14 @@ impl TypedOp for OptMatMul {
             }
         }
         if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
-            if op.0.is::<ops::math::Add>() {
+            if op.0.is::<ops::math::Add>() && self.mmm.len() == 1 {
                 let other_slot = 1 - node.outputs[0].successors[0].slot;
                 let other_input = succ.inputs[other_slot];
                 let other_input = patch.tap_model(model, other_input)?;
                 let other_fact = patch.outlet_fact(other_input)?;
 
                 if other_fact.shape == self.c_fact.shape {
-                    let other_storage = unsafe { self.mmm.c_view(self.c_m_axis, self.c_n_axis) };
+                    let other_storage = unsafe { self.mmm[0].c_view(self.c_m_axis, self.c_n_axis) };
                     let mapping =
                         MapOutputAxisToInput((0..other_fact.rank()).map(|x| (x, x)).collect());
                     return self.fuse_op(
@@ -497,7 +546,7 @@ impl TypedOp for OptMatMul {
 
 impl OptMatMul {
     pub fn new(
-        mmm: Box<dyn MatMatMul>,
+        mmm: Vec<Box<dyn MatMatMul>>,
         c_fact: TypedFact,
         c_m_axis: usize,
         c_n_axis: usize,
@@ -571,10 +620,10 @@ impl OptMatMul {
     ) -> TractResult<Option<TypedModelPatch>> {
         let fact = model.outlet_fact(value)?;
         let mut v = patch.tap_model(model, value)?;
-        if fact.datum_type != self.mmm.internal_type() {
+        if fact.datum_type != self.mmm[0].internal_type() {
             v = patch.wire_node(
                 format!("{}.cast-input-{}", node.name, node.inputs.len()),
-                cast(self.mmm.internal_type()),
+                cast(self.mmm[0].internal_type()),
                 &[v],
             )?[0];
         }
