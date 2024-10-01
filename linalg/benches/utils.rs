@@ -4,6 +4,7 @@ use tract_data::internal::*;
 use tract_linalg::frame::mmm::{FusedSpec, MMMInputValue};
 use tract_linalg::frame::MatMatMul;
 
+use tract_linalg::mmm::AsInputValue;
 use DatumType::*;
 
 pub fn packed_packed(c: &mut Criterion, name: &str, m: usize, k: usize, n: usize) {
@@ -54,7 +55,11 @@ unsafe fn run(
                 m,
                 n,
                 scratch.as_mut(),
-                &[FusedSpec::AddMatMul { a, b, packing: 0 }],
+                &[FusedSpec::AddMatMul {
+                    a: AsInputValue::Borrowed(a),
+                    b: AsInputValue::Borrowed(b),
+                    packing: 0,
+                }],
             )
             .unwrap();
             let time = instant.elapsed();

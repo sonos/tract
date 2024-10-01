@@ -161,13 +161,13 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                 FS::AddMatMul { a, b, packing } => {
                     let mut ld = ld(ix, self.ker_specs.len(), offset);
                     offset += std::mem::size_of::<AddMatMulTemp>();
-                    if let Some(tmp) = a.scratch_panel_buffer_layout() {
+                    if let Some(tmp) = a.as_ref().scratch_panel_buffer_layout() {
                         align = tmp.align().lcm(&align);
                         offset = Integer::next_multiple_of(&offset, &tmp.align());
                         ld.buffer_a = Some(offset);
                         offset += tmp.size();
                     }
-                    if let Some(tmp) = b.scratch_panel_buffer_layout() {
+                    if let Some(tmp) = b.as_ref().scratch_panel_buffer_layout() {
                         align = tmp.align().lcm(&align);
                         offset = Integer::next_multiple_of(&offset, &tmp.align());
                         ld.buffer_b = Some(offset);
@@ -268,17 +268,19 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     let scratch =
                         (tls.blob.as_mut_ptr().add(*loc) as *mut AddMatMulTemp).as_mut().unwrap();
                     if scratch.panel_a_id != down {
-                        scratch.ptr_a =
-                            a.panel_bytes(down, buffer_a.map(|o| tls.blob.as_mut_ptr().add(o)))?;
+                        scratch.ptr_a = a
+                            .as_ref()
+                            .panel_bytes(down, buffer_a.map(|o| tls.blob.as_mut_ptr().add(o)))?;
                         scratch.panel_a_id = down;
                     }
                     if scratch.panel_b_id != right {
-                        scratch.ptr_b =
-                            b.panel_bytes(right, buffer_b.map(|o| tls.blob.as_mut_ptr().add(o)))?;
+                        scratch.ptr_b = b
+                            .as_ref()
+                            .panel_bytes(right, buffer_b.map(|o| tls.blob.as_mut_ptr().add(o)))?;
                         scratch.panel_b_id = right;
                     }
                     FKS::AddMatMul {
-                        k: b.k(),
+                        k: b.as_ref().k(),
                         pa: scratch.ptr_a,
                         pb: scratch.ptr_b,
                         packing: *packing,
@@ -442,17 +444,19 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                 FS::AddMatMul { a, b, packing } => {
                     let scratch = (loc as *mut AddMatMulTemp).as_mut().unwrap();
                     if scratch.panel_a_id != down {
-                        scratch.ptr_a =
-                            a.panel_bytes(down, buffer_a.map(|o| tls.blob.as_mut_ptr().add(o)))?;
+                        scratch.ptr_a = a
+                            .as_ref()
+                            .panel_bytes(down, buffer_a.map(|o| tls.blob.as_mut_ptr().add(o)))?;
                         scratch.panel_a_id = down;
                     }
                     if scratch.panel_b_id != right {
-                        scratch.ptr_b =
-                            b.panel_bytes(right, buffer_b.map(|o| tls.blob.as_mut_ptr().add(o)))?;
+                        scratch.ptr_b = b
+                            .as_ref()
+                            .panel_bytes(right, buffer_b.map(|o| tls.blob.as_mut_ptr().add(o)))?;
                         scratch.panel_b_id = right;
                     }
                     FKS::AddMatMul {
-                        k: b.k(),
+                        k: b.as_ref().k(),
                         pa: scratch.ptr_a,
                         pb: scratch.ptr_b,
                         packing: *packing,
