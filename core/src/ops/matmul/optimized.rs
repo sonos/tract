@@ -7,7 +7,9 @@ use tract_data::TooEarly;
 use tract_itertools::Itertools;
 
 use tract_linalg::frame::PackedFormat;
-use tract_linalg::mmm::{BinOp, FusedSpec, MMMInputValue, MatMatMul, OutputStoreSpec};
+use tract_linalg::mmm::{
+    AsInputValue, BinOp, FusedSpec, MMMInputValue, MatMatMul, OutputStoreSpec,
+};
 use tract_linalg::Scaler;
 use tract_smallvec::ToSmallVec;
 
@@ -76,7 +78,11 @@ impl ProtoFusedSpec {
                     b_packing.same_as(b.format())
                         || (b_packing.is::<PackedFormat>() && b_packing.r() == b.format().r())
                 );
-                FusedSpec::AddMatMul { a: &**a, b: &**b, packing: packings[scenario] }
+                FusedSpec::AddMatMul {
+                    a: AsInputValue::Borrowed(&**a),
+                    b: AsInputValue::Borrowed(&**b),
+                    packing: packings[scenario],
+                }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
             ProtoFusedSpec::LeakyRelu(v) => FusedSpec::LeakyRelu(&inputs[*v]),
@@ -144,7 +150,11 @@ impl ProtoFusedSpec {
                     b_packing.same_as(b.format())
                         || (b_packing.is::<PackedFormat>() && b_packing.r() == b.format().r())
                 );
-                FusedSpec::AddMatMul { a: &**a, b: &**b, packing: packings[scenario] }
+                FusedSpec::AddMatMul {
+                    a: AsInputValue::Borrowed(&**a),
+                    b: AsInputValue::Borrowed(&**b),
+                    packing: packings[scenario],
+                }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
             ProtoFusedSpec::LeakyRelu(v) => FusedSpec::LeakyRelu(&inputs[*v]),
