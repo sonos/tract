@@ -314,28 +314,13 @@ fn dequant(
         &[b_i32],
     )?;
 
-    let sum_a = wire_axes_fix(
-        &mut patch,
-        name,
-        "sum_a",
-        &op.axes.extract_sub_mapping(&[0], &[0])?,
-        sum_a,
-    )?;
-    let sum_b = wire_axes_fix(
-        &mut patch,
-        name,
-        "sum_b",
-        &op.axes.extract_sub_mapping(&[1], &[0])?,
-        sum_b,
-    )?;
+    let sum_a =
+        wire_axes_fix(&mut patch, name, "sum_a", &op.axes.extract_sub_mapping(&[0], &[0])?, sum_a)?;
+    let sum_b =
+        wire_axes_fix(&mut patch, name, "sum_b", &op.axes.extract_sub_mapping(&[1], &[0])?, sum_b)?;
     let bias = tvec!(bias);
-    let bias = wire_axes_fix(
-        &mut patch,
-        name,
-        "bias",
-        &op.axes.extract_sub_mapping(&[2], &[0])?,
-        bias,
-    )?;
+    let bias =
+        wire_axes_fix(&mut patch, name, "bias", &op.axes.extract_sub_mapping(&[2], &[0])?, bias)?;
 
     let abc_scale = combine_scales(&mut patch, name, a_scale, b_scale, c_scale)?;
 
@@ -384,7 +369,7 @@ fn optimized_mat_mul(
     let mut patch = TypedModelPatch::new("Einsum to OptMatMul");
     let name = &node.name;
     let taps = patch.taps(model, &node.inputs)?;
-    let (a, b, mut mmms) = wire_packing(model, &mut patch, name, &taps[0..2], op)?;
+    let (a, b, mmms) = wire_packing(model, &mut patch, name, &taps[0..2], op)?;
 
     let mut c_to_a_axis_mapping = tvec!();
     let mut c_to_b_axis_mapping = tvec!();
@@ -414,14 +399,18 @@ fn optimized_mat_mul(
         c_to_a_axis_mapping: MapOutputAxisToInput(c_to_a_axis_mapping),
         c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
     };
-    let (mmm, packing) = mmms.remove(0);
-    let output = unsafe { mmm.c_view(op.c_m(), op.c_n()) };
+    let outputs =
+        mmms.iter().map(|(mmm, _packing)| unsafe { mmm.c_view(op.c_m(), op.c_n()) }).collect();
+    let (mmms, packing): (Vec<_>, Vec<_>) = mmms.into_iter().unzip();
     let opt = OptMatMul::new(
-        mmm,
+        mmms,
         c_fact,
         op.c_m(),
         op.c_n(),
-        vec![ProtoFusedSpec::AddMatMul { geo, a: 0, b: 1, packing }, ProtoFusedSpec::Store(output)],
+        vec![
+            ProtoFusedSpec::AddMatMul { geo, a: 0, b: 1, packing },
+            ProtoFusedSpec::Store(outputs),
+        ],
     )
     .context("Creating OptMatMul")?;
     let output = patch.wire_node(name, opt, &[a, b])?[0];

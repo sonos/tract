@@ -76,9 +76,14 @@ fn with_block_quant(
             return with_block_quant_matmat(patch, prefix, op, operands, a_bq, b_dt);
         }
     } else {
-        let (pa, pb, mut mmv) =
+        let first_scenario = model.symbols.all_scenarios().into_iter().next().unwrap().0;
+        ensure!(
+            op.n.eval_with_scenario(&first_scenario).is_one(),
+            "Expect TG (n=1) to be the first scenario"
+        );
+        let (pa, pb, mut mmms) =
             with_block_quant_matvec(patch, prefix, op, operands, m, a_bq, b_dt)?;
-        let mr = mmv[0].0.mr();
+        let mr = mmms[0].0.mr();
         let matching_matmat = tract_linalg::ops()
             .mmm_impls()
             .into_iter()
@@ -98,8 +103,8 @@ fn with_block_quant(
             .packers
             .push(alternative_b_packing);
 
-        mmv.push((matching_matmat.clone(), 0));
-        return Ok((pa, pb, mmv));
+        mmms.push((matching_matmat.clone(), 0));
+        return Ok((pa, pb, mmms));
     }
 }
 

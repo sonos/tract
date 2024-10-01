@@ -499,7 +499,7 @@ impl Conv {
             c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
         };
         let mut ops: Vec<ProtoFusedSpec> =
-            vec![ProtoFusedSpec::AddMatMul { geo, a: 1, b: 0, packing }];
+            vec![ProtoFusedSpec::AddMatMul { geo, a: 1, b: 0, packing: vec![packing] }];
         let mut wires: TVec<OutletId> = tvec!(input, packed_ker);
         let bias_fact = model.outlet_fact(bias)?;
         if bias_fact.konst.is_none() || !bias_fact.konst.as_ref().unwrap().is_all_zero()? {
@@ -507,10 +507,16 @@ impl Conv {
             wires.push(bias);
             ops.push(fused);
         }
-        ops.push(ProtoFusedSpec::Store(unsafe { mmm.c_view(c_m_axis, c_n_axis) }));
+        ops.push(ProtoFusedSpec::Store(vec![unsafe { mmm.c_view(c_m_axis, c_n_axis) }]));
         model.wire_node(
             format!("{name}.matmatmul"),
-            OptMatMul::new(mmm, c_datum_type.fact(mmm_output_shape), c_m_axis, c_n_axis, ops)?,
+            OptMatMul::new(
+                vec![mmm],
+                c_datum_type.fact(mmm_output_shape),
+                c_m_axis,
+                c_n_axis,
+                ops,
+            )?,
             &wires,
         )
     }
