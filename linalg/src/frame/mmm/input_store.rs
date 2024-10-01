@@ -16,19 +16,20 @@ pub trait MMMInputFormat: Downcast + Debug + DynHash + DynClone + Send + Sync + 
     ) -> TractResult<Box<dyn MMMInputValue>>;
     fn r(&self) -> usize;
     fn k_alignment(&self) -> usize;
+    fn same_as(&self, other: &dyn MMMInputFormat) -> bool;
 }
 dyn_clone::clone_trait_object!(MMMInputFormat);
 impl_downcast!(MMMInputFormat);
 dyn_hash::hash_trait_object!(MMMInputFormat);
 
 pub trait MMMInputValue: DynClone + Debug + DynHash + Send + Sync + Display {
+    fn format(&self) -> &dyn MMMInputFormat;
     fn scratch_panel_buffer_layout(&self) -> Option<Layout>;
     fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> TractResult<*const u8>;
     fn panels_count(&self) -> usize {
-        self.mn().divceil(self.r())
+        self.mn().divceil(self.format().r())
     }
     fn mn(&self) -> usize;
-    fn r(&self) -> usize;
     fn k(&self) -> usize;
 }
 dyn_clone::clone_trait_object!(MMMInputValue);
@@ -64,8 +65,8 @@ impl MMMInputValue for EagerPackedInput {
     fn mn(&self) -> usize {
         self.mn
     }
-    fn r(&self) -> usize {
-        self.format.r()
+    fn format(&self) -> &dyn MMMInputFormat {
+        &*self.format
     }
 }
 

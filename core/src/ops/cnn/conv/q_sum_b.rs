@@ -78,7 +78,7 @@ impl QSumB {
         input: &dyn MMMInputValue,
         output: &mut [i32],
     ) -> TractResult<()> {
-        let (r, k, n) = (input.r(), input.k(), input.mn());
+        let (r, k, n) = (input.format().r(), input.k(), input.mn());
         let panels = n.divceil(r);
         for ipanel in 0..panels {
             let panel = input.panel_bytes(ipanel, None)?;

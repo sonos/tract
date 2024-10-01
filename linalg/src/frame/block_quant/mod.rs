@@ -234,4 +234,8 @@ impl MMMInputFormat for PackedBlockQuantFormat {
     fn r(&self) -> usize {
         self.r
     }
+
+    fn same_as(&self, other: &dyn MMMInputFormat) -> bool {
+        other.downcast_ref::<Self>().is_some_and(|other| self == other)
+    }
 }

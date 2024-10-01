@@ -7,7 +7,7 @@ use crate::mmm::{EagerPackedInput, MMMInputFormat, MMMInputValue};
 
 use super::PackedBlockQuantFormat;
 
-#[derive(Clone, Hash)]
+#[derive(Clone, Hash, Eq, PartialEq)]
 pub struct PanelExtractFormat {
     pub pbqf: PackedBlockQuantFormat,
 }
@@ -28,6 +28,10 @@ impl MMMInputFormat for PanelExtractFormat {
 
     fn r(&self) -> usize {
         self.pbqf.r
+    }
+
+    fn same_as(&self, other: &dyn MMMInputFormat) -> bool {
+        other.downcast_ref::<Self>().is_some_and(|other| self == other)
     }
 }
 
@@ -65,11 +69,11 @@ impl MMMInputValue for PanelExtractInput {
     fn mn(&self) -> usize {
         self.data.mn()
     }
-    fn r(&self) -> usize {
-        self.data.r()
-    }
     fn k(&self) -> usize {
         self.data.k()
+    }
+    fn format(&self) -> &dyn MMMInputFormat {
+        &self.pbqf
     }
 }
 

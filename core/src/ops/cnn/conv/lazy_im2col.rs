@@ -2,13 +2,42 @@ use crate::internal::*;
 use std::fmt::{Debug, Display};
 use std::ops::Range;
 use tract_linalg::frame::{PackedFormat, PackingWriter};
-use tract_linalg::mmm::MMMInputValue;
+use tract_linalg::mmm::{MMMInputFormat, MMMInputValue};
 
 #[derive(Clone, Debug, Hash, PartialEq)]
 pub struct LazyIm2colParams {
     pub packer: PackedFormat,
     pub n_byte_offsets: Vec<isize>,
     pub k_byte_offsets: Vec<isize>,
+}
+
+impl MMMInputFormat for LazyIm2colParams {
+    fn r(&self) -> usize {
+        self.packer.r
+    }
+
+    fn prepare_tensor(
+        &self,
+        _t: &Tensor,
+        _k_axis: usize,
+        _mn_axis: usize,
+    ) -> TractResult<Box<dyn MMMInputValue>> {
+        bail!("Unexpected call to prepare_tensor on LazyIm2Col")
+    }
+
+    fn k_alignment(&self) -> usize {
+        1
+    }
+
+    fn same_as(&self, other: &dyn MMMInputFormat) -> bool {
+        other.downcast_ref::<Self>().is_some_and(|other| self == other)
+    }
+}
+
+impl Display for LazyIm2colParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "LazyIm2Col")
+    }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq)]
@@ -307,8 +336,8 @@ impl MMMInputValue for LazyIm2colInput {
         self.im2col.n_byte_offsets.len()
     }
 
-    fn r(&self) -> usize {
-        self.im2col.packer.r
+    fn format(&self) -> &dyn MMMInputFormat {
+        &*self.im2col
     }
 }
 

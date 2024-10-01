@@ -401,14 +401,14 @@ fn optimized_mat_mul(
     };
     let outputs =
         mmms.iter().map(|(mmm, _packing)| unsafe { mmm.c_view(op.c_m(), op.c_n()) }).collect();
-    let (mmms, packing): (Vec<_>, Vec<_>) = mmms.into_iter().unzip();
+    let (mmms, packings): (Vec<_>, Vec<_>) = mmms.into_iter().unzip();
     let opt = OptMatMul::new(
         mmms,
         c_fact,
         op.c_m(),
         op.c_n(),
         vec![
-            ProtoFusedSpec::AddMatMul { geo, a: 0, b: 1, packing },
+            ProtoFusedSpec::AddMatMul { geo, a: 0, b: 1, packings },
             ProtoFusedSpec::Store(outputs),
         ],
     )
