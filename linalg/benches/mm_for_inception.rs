@@ -3,6 +3,7 @@ use criterion::*;
 use tract_data::internal::*;
 use tract_linalg::frame::mmm::FusedSpec;
 
+use tract_linalg::mmm::AsInputValue;
 use DatumType::F32;
 
 fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)) {
@@ -20,7 +21,11 @@ fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize))
                 m,
                 n,
                 &[
-                    FusedSpec::AddMatMul { a: &*pa, b: &*pb, packing: 0 },
+                    FusedSpec::AddMatMul {
+                        a: AsInputValue::Borrowed(&*pa),
+                        b: AsInputValue::Borrowed(&*pb),
+                        packing: 0,
+                    },
                     FusedSpec::Store(mmm.c_view(0, 1).wrap(&c.view_mut())),
                 ],
             )

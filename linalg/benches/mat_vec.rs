@@ -2,6 +2,7 @@ use criterion::*;
 use tract_data::internal::*;
 use tract_linalg::frame::mmm::FusedSpec;
 
+use tract_linalg::mmm::AsInputValue;
 use DatumType::F32;
 
 fn mat_vec_mul(c: &mut Criterion) {
@@ -26,7 +27,11 @@ fn mat_vec_mul(c: &mut Criterion) {
                             m,
                             1,
                             &[
-                                FusedSpec::AddMatMul { a: &*pa, b: &*pb, packing: 0 },
+                                FusedSpec::AddMatMul {
+                                    a: AsInputValue::Borrowed(&*pa),
+                                    b: AsInputValue::Borrowed(&*pb),
+                                    packing: 0,
+                                },
                                 FusedSpec::Store(mmm.c_view(0, 0).wrap(&c.view_mut())),
                             ],
                         )

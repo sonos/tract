@@ -325,7 +325,11 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
             unsafe {
                 let c = self.ker.c_view(0, 1).wrap(&v.view_mut());
                 let ops = tvec!(
-                    FusedSpec::AddMatMul { a: &*pa, b: &*pb, packing: self.packing },
+                    FusedSpec::AddMatMul {
+                        a: AsInputValue::Owned(pa),
+                        b: AsInputValue::Owned(pb),
+                        packing: self.packing
+                    },
                     FusedSpec::Store(c)
                 );
                 self.ker.run(m, n, &ops)?;
@@ -357,7 +361,7 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
 
     pub fn check(&self) -> TractResult<()> {
         if !self.ker.is_supported_here() {
-            return Ok(())
+            return Ok(());
         }
         dbg!(self);
         let expected = self.reference()?;

@@ -8,7 +8,7 @@ use tract_data::internal::*;
 use tract_linalg::frame::mmm::FusedSpec;
 // use tract_linalg::frame::mmm::{VirtualInput, VirtualInputSpec};
 use tract_linalg::frame::{PackedFormat, PackingWriter};
-use tract_linalg::mmm::{MMMInputFormat, MMMInputValue};
+use tract_linalg::mmm::{AsInputValue, MMMInputFormat, MMMInputValue};
 use DatumType::F32;
 
 proptest::proptest! {
@@ -172,7 +172,11 @@ impl ConvProblem {
                 m,
                 n,
                 &[
-                    FusedSpec::AddMatMul { a: &*a, b: &*im2col, packing: 0 },
+                    FusedSpec::AddMatMul {
+                        a: AsInputValue::Owned(a),
+                        b: AsInputValue::Owned(im2col),
+                        packing: 0,
+                    },
                     FusedSpec::Store(c_store),
                 ],
             )

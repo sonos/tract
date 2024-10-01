@@ -38,6 +38,24 @@ impl BinOp {
 }
 
 #[derive(Clone, Debug)]
+pub enum AsInputValue<'t> {
+    Owned(Box<dyn MMMInputValue>),
+    Borrowed(&'t dyn MMMInputValue),
+}
+
+impl<'t> AsInputValue<'t> {
+    pub fn as_ref<'a>(&'a self) -> &'a dyn MMMInputValue
+    where
+        't: 'a,
+    {
+        match self {
+            AsInputValue::Owned(b) => &**b,
+            AsInputValue::Borrowed(r) => *r,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum FusedSpec<'t> {
     BinScalar(&'t Tensor, BinOp),
     BinPerRow(TensorView<'t>, BinOp),
@@ -49,14 +67,14 @@ pub enum FusedSpec<'t> {
     RoundingShiftRight(usize, RoundingPolicy),
     ShiftLeft(usize),
     Store(OutputStore),
-    AddMatMul { a: &'t dyn MMMInputValue, b: &'t dyn MMMInputValue, packing: usize },
+    AddMatMul { a: AsInputValue<'t>, b: AsInputValue<'t>, packing: usize },
 }
 
 impl FusedSpec<'_> {
     pub fn prefer_col_outer(&self) -> Option<bool> {
         if let FusedSpec::AddMatMul { a, b, .. } = self {
-            let a_is_eager = a.format().is::<PackedFormat>();
-            let b_is_eager = b.format().is::<PackedFormat>();
+            let a_is_eager = a.as_ref().format().is::<PackedFormat>();
+            let b_is_eager = b.as_ref().format().is::<PackedFormat>();
             if a_is_eager == b_is_eager {
                 None
             } else {
