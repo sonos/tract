@@ -386,7 +386,6 @@ fn optimized_mat_mul(
     let taps = patch.taps(model, &node.inputs)?;
     let (a, b, mut mmms) = wire_packing(model, &mut patch, name, &taps[0..2], op)?;
 
-    dbg!(&patch);
     let mut c_to_a_axis_mapping = tvec!();
     let mut c_to_b_axis_mapping = tvec!();
     for axis in op
