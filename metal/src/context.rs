@@ -3,6 +3,7 @@ use crate::kernels::matmul::mps;
 pub use crate::kernels::{LibraryContent, LibraryName};
 use crate::tensor::MetalArena;
 pub use crate::tensor::MetalTensor;
+use core::cell::Ref;
 use metal::Buffer;
 use metal::MTLResourceOptions;
 use metal::NSUInteger;
@@ -197,7 +198,7 @@ pub struct MetalContext {
     command_buffer: RefCell<CommandBuffer>,
     command_buffer_used: RefCell<usize>,
     command_buffer_id: AtomicUsize,
-    arena: Option<MetalArena>,
+    arena: RefCell<Option<MetalArena>>,
     retained_tensors: RefCell<Vec<MetalTensor>>,
 }
 
@@ -219,20 +220,39 @@ impl MetalContext {
             command_buffer_used: RefCell::new(0),
             command_buffer_id: AtomicUsize::new(0),
             retained_tensors: RefCell::new(vec![]),
-            arena: Some(
-                MetalArena::with_capacity(&shared.device, 1024 * 1024 * 50)
-                    .expect("Could not create metal arena"),
-            ),
+            arena: RefCell::new(None),
             shared,
         }
+    }
+
+    /// Execute callback inside a MetalArena for MetalTensor allocation used during
+    /// Metal kernel execution. When the arena is full, MetalTensor are allocated in the heap and available
+    /// to kernels.
+    pub fn execute_in_arena<T>(
+        &self,
+        arena: MetalArena,
+        exe: impl FnOnce() -> Result<T>,
+    ) -> Result<(MetalArena, T)> {
+        anyhow::ensure!(
+            self.arena.borrow().is_none(),
+            "Cannot execute inside an arena because an MetalArena is already in use"
+        );
+        *self.arena.borrow_mut() = Some(arena);
+        let res = (exe)()?;
+        let arena =
+            self.arena.borrow_mut().take().ok_or_else(|| {
+                anyhow!("Unexpected None arena while executing inside a metal arena")
+            })?;
+        arena.try_reset();
+        Ok((arena, res))
     }
 
     pub fn device(&self) -> &Device {
         &self.shared.device
     }
 
-    pub fn memory_arena(&self) -> Option<&MetalArena> {
-        self.arena.as_ref()
+    pub fn memory_arena(&self) -> Ref<'_, Option<MetalArena>> {
+        self.arena.borrow()
     }
 
     pub fn shared_context(&self) -> &SharedMetalContext {

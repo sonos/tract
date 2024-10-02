@@ -34,6 +34,15 @@ impl MetalArena {
         })
     }
 
+    pub fn free_capacity(&self) -> usize {
+        let cursor = self.cursor.load(Ordering::SeqCst);
+        self.capacity - cursor
+    }
+
+    pub fn used_capacity(&self) -> usize {
+        self.cursor.load(Ordering::SeqCst)
+    }
+
     pub fn view_uninitialized_dt(&self, dt: DatumType, shape: &[usize]) -> Option<MetalArenaView> {
         // Check if we can reset the cursor of the arena for next
         // view.
