@@ -48,7 +48,7 @@ impl MetalArenaView {
     #[inline]
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
-        self.shape().into_iter().product()
+        self.shape().iter().product()
     }
 
     /// Reshaped tensor with given shape.
@@ -94,7 +94,7 @@ impl MetalArenaView {
     pub fn view(&self) -> TensorView<'_> {
         unsafe {
             TensorView::from_bytes(
-                &self.arena.tensor(),
+                self.arena.tensor(),
                 self.offset_bytes as _,
                 self.shape.as_slice(),
                 self.strides.as_slice(),
