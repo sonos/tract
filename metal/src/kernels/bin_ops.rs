@@ -226,7 +226,7 @@ impl BinOps {
                 encoder.set_metal_tensor(2, rhs, metal::MTLResourceUsage::Read);
                 encoder.set_slice(3, &rhs_strides);
                 encoder.set_metal_tensor(4, &output, metal::MTLResourceUsage::Write);
-                encoder.set_slice(5, &output_shape);
+                encoder.set_slice(5, output_shape);
 
                 let grid_size = MTLSize {
                     width: out_shape[out_shape.len() - 1] as NSUInteger,
