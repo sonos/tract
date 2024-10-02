@@ -49,7 +49,7 @@ impl MetalArena {
         self.try_reset();
 
         let alignment = dt.alignment();
-        let size = dt.size_of() * shape.into_iter().product::<usize>();
+        let size = dt.size_of() * shape.iter().product::<usize>();
 
         let cursor = self.cursor.load(Ordering::SeqCst);
 

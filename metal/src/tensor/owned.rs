@@ -46,7 +46,7 @@ impl MValue {
     #[inline]
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
-        self.shape().into_iter().product()
+        self.shape().iter().product()
     }
 
     /// Reshaped tensor with given shape.
@@ -156,7 +156,7 @@ impl OwnedMetalTensor {
     #[inline]
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
-        self.shape().into_iter().product()
+        self.shape().iter().product()
     }
 
     /// Get the strides of the tensor.
