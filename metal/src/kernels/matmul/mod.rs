@@ -44,6 +44,7 @@ pub struct GemmDispatchParams {
 }
 
 impl GemmDispatchParams {
+    #[allow(clippy::too_many_arguments)]
     pub fn compute_dispatches_params(
         dt: DatumType,
         a_offset: usize,
