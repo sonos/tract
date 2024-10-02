@@ -39,6 +39,6 @@ impl<'a> EncoderExt for &'a ComputeCommandEncoderRef {
     }
 
     fn set_slice<T: Copy>(&self, idx: u64, data: &[T]) {
-        self.set_bytes(idx, (data.len() * std::mem::size_of::<T>()) as _, data.as_ptr() as *const _)
+        self.set_bytes(idx, std::mem::size_of_val(data) as _, data.as_ptr() as *const _)
     }
 }
