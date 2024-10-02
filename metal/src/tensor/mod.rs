@@ -64,6 +64,7 @@ impl MetalTensor {
         crate::METAL_CONTEXT
             .with_borrow(|ctxt| {
                 ctxt.memory_arena()
+                    .as_ref()
                     .and_then(|arena| arena.view_uninitialized_dt(dt, shape))
                     .map(Self::ArenaView)
                     .map(Result::Ok)
