@@ -98,7 +98,7 @@ impl MultiBroadcast {
         );
         encoder.set_slice(1, &input_broadcast_strides);
         encoder.set_metal_tensor(2, &output, metal::MTLResourceUsage::Write);
-        encoder.set_slice(3, &output_shape);
+        encoder.set_slice(3, output_shape);
         encoder.set_slice(4, output.strides());
 
         let grid_size = utils::build_metal_size_for_shape(output.shape());
