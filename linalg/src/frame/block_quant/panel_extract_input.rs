@@ -1,7 +1,5 @@
 use std::fmt::{Debug, Display};
 
-use tract_data::prelude::DatumType;
-
 use crate::frame::PackedFormat;
 use crate::mmm::{EagerPackedInput, MMMInputFormat, MMMInputValue};
 
@@ -49,20 +47,19 @@ impl Debug for PanelExtractFormat {
 
 #[derive(Clone, Hash)]
 pub struct PanelExtractInput {
-    pbqf: PackedBlockQuantFormat,
-    data: EagerPackedInput,
-    to: PackedFormat,
-    dt: DatumType,
+    pub format: PanelExtractFormat,
+    pub data: EagerPackedInput,
+    pub to: PackedFormat,
 }
 
 impl MMMInputValue for PanelExtractInput {
     fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
-        Some(self.to.single_panel_layout(self.data.k(), self.dt.size_of()))
+        Some(self.to.single_panel_layout(self.data.k(), self.to.dt.size_of()))
     }
     fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> tract_data::TractResult<*const u8> {
         let scratch = buffer.unwrap();
         unsafe {
-            self.pbqf.bq.extract_panel(&self.data, &self.to, i, scratch)?;
+            self.format.pbqf.bq.extract_panel(&self.data, &self.to, i, scratch)?;
         }
         Ok(scratch)
     }
@@ -73,7 +70,7 @@ impl MMMInputValue for PanelExtractInput {
         self.data.k()
     }
     fn format(&self) -> &dyn MMMInputFormat {
-        &self.pbqf
+        &self.format
     }
 }
 
