@@ -22,7 +22,7 @@ dyn_clone::clone_trait_object!(MMMInputFormat);
 impl_downcast!(MMMInputFormat);
 dyn_hash::hash_trait_object!(MMMInputFormat);
 
-pub trait MMMInputValue: DynClone + Debug + DynHash + Send + Sync + Display {
+pub trait MMMInputValue: DynClone + Debug + DynHash + Send + Sync + Display + Downcast {
     fn format(&self) -> &dyn MMMInputFormat;
     fn scratch_panel_buffer_layout(&self) -> Option<Layout>;
     fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> TractResult<*const u8>;
@@ -33,6 +33,7 @@ pub trait MMMInputValue: DynClone + Debug + DynHash + Send + Sync + Display {
     fn k(&self) -> usize;
 }
 dyn_clone::clone_trait_object!(MMMInputValue);
+impl_downcast!(MMMInputValue);
 dyn_hash::hash_trait_object!(MMMInputValue);
 
 impl From<Box<dyn MMMInputValue>> for Opaque {
@@ -46,7 +47,7 @@ impl OpaquePayload for Box<dyn MMMInputValue> {}
 #[derive(Clone, Hash)]
 pub struct EagerPackedInput {
     pub format: Box<dyn MMMInputFormat>,
-    pub packed: Blob,
+    pub packed: Arc<Blob>,
     pub panel_bytes: usize,
     pub mn: usize,
     pub k: usize,

@@ -6,9 +6,12 @@ use ndarray::*;
 use tract_data::TooEarly;
 use tract_itertools::Itertools;
 
+use tract_linalg::frame::block_quant::{
+    PackedBlockQuantFormat, PanelExtractFormat, PanelExtractInput,
+};
 use tract_linalg::frame::PackedFormat;
 use tract_linalg::mmm::{
-    AsInputValue, BinOp, FusedSpec, MMMInputValue, MatMatMul, OutputStoreSpec,
+    AsInputValue, BinOp, EagerPackedInput, FusedSpec, MMMInputValue, MatMatMul, OutputStoreSpec,
 };
 use tract_linalg::Scaler;
 use tract_smallvec::ToSmallVec;
@@ -70,16 +73,31 @@ impl ProtoFusedSpec {
                     .downcast_ref::<Box<dyn MMMInputValue>>()
                     .unwrap();
                 let (a_packing, b_packing) = mmm.packings()[packings[scenario]];
-                assert!(
-                    a_packing.same_as(a.format())
-                        || (a_packing.is::<PackedFormat>() && a_packing.r() == a.format().r())
-                );
+                let pa = if a_packing.same_as(a.format()) {
+                    AsInputValue::Borrowed(&**a)
+                } else if a_packing.is::<PackedFormat>()
+                    && a_packing.r() == a.format().r()
+                    && a.is::<EagerPackedInput>()
+                    && a.format().is::<PackedBlockQuantFormat>()
+                {
+                    let format = PanelExtractFormat {
+                        pbqf: a.format().downcast_ref::<PackedBlockQuantFormat>().unwrap().clone(),
+                    };
+                    let data = a.downcast_ref::<EagerPackedInput>().unwrap();
+                    AsInputValue::Owned(Box::new(PanelExtractInput {
+                        format,
+                        data: data.clone(),
+                        to: a_packing.downcast_ref::<PackedFormat>().unwrap().clone()
+                    }))
+                } else {
+                    panic!("Un-matchable input and output for weights {:?} -> {a_packing}", a);
+                };
                 assert!(
                     b_packing.same_as(b.format())
                         || (b_packing.is::<PackedFormat>() && b_packing.r() == b.format().r())
                 );
                 FusedSpec::AddMatMul {
-                    a: AsInputValue::Borrowed(&**a),
+                    a: pa,
                     b: AsInputValue::Borrowed(&**b),
                     packing: packings[scenario],
                 }

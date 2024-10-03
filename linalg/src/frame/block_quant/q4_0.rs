@@ -211,7 +211,7 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
                 zip,
                 scales_at_end,
             }),
-            packed: blob,
+            packed: blob.into(),
             mn: m,
             k,
             panel_bytes,

@@ -1,7 +1,6 @@
 use downcast_rs::{impl_downcast, Downcast};
 use dyn_clone::DynClone;
 use dyn_hash::DynHash;
-use panel_extract_input::PanelExtractFormat;
 use tract_data::internal::*;
 use tract_data::itertools::Itertools;
 
@@ -19,6 +18,7 @@ pub use helpers::{NibbleReader, NibbleWriter};
 pub use q4_0::Q4_0;
 
 use crate::mmm::{EagerPackedInput, MMMInputFormat};
+pub use panel_extract_input::{PanelExtractFormat, PanelExtractInput};
 
 use super::PackedFormat;
 

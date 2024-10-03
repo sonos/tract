@@ -118,7 +118,7 @@ impl PackedFormat {
             ));
             Ok(Box::new(EagerPackedInput {
                 format: Box::new(self.clone()),
-                packed,
+                packed: packed.into(),
                 panel_bytes,
                 mn,
                 k,
@@ -157,7 +157,7 @@ impl PackedFormat {
             ));
             Ok(Box::new(EagerPackedInput {
                 format: Box::new(self.clone()),
-                packed,
+                packed: packed.into(),
                 panel_bytes,
                 mn,
                 k,
