@@ -477,7 +477,7 @@ impl TypedOp for BinOpByScalar {
                 model,
                 node,
                 &node.inputs,
-                BinOpByScalar(Box::new(LirMul { eval, return_dt: dt })),
+                BinOpByScalar(Box::new(OptMul { eval, return_dt: dt })),
             )?));
         }
         Ok(None)
@@ -586,7 +586,7 @@ impl TypedOp for BinOpUnicast {
                 model,
                 node,
                 &node.inputs,
-                BinOpUnicast(Box::new(LirMul { eval, return_dt: dt })),
+                BinOpUnicast(Box::new(OptMul { eval, return_dt: dt })),
             )?));
         }
         Ok(None)
@@ -597,20 +597,20 @@ impl TypedOp for BinOpUnicast {
 }
 
 #[derive(Clone)]
-pub struct LirMul {
+pub struct OptMul {
     return_dt: DatumType,
     eval: Arc<dyn Fn(&mut TensorView, &TensorView) -> TractResult<()> + Send + Sync>,
 }
 
-impl Debug for LirMul {
+impl Debug for OptMul {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         unimplemented!()
     }
 }
 
-impl BinMiniOp for LirMul {
+impl BinMiniOp for OptMul {
     fn name(&self) -> &'static str {
-        "LirMul"
+        "OptMul"
     }
 
     fn result_datum_type(&self, _a: DatumType, _b: DatumType) -> TractResult<DatumType> {
