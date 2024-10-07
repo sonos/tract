@@ -162,12 +162,8 @@ impl TypedOp for DynTile {
         } else {
             self.multiplier_placeholders.clone()
         };
-        let shape = inputs[0]
-            .shape
-            .iter()
-            .zip(multipliers.into_iter())
-            .map(|(a, b)| b * a)
-            .collect::<TVec<_>>();
+        let shape =
+            inputs[0].shape.iter().zip(multipliers).map(|(a, b)| b * a).collect::<TVec<_>>();
         Ok(tvec!(inputs[0].datum_type.fact(shape)))
     }
 }
