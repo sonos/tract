@@ -130,6 +130,16 @@ pub fn tile(
     Ok(Some(invocation("tile", &[wire], &[("repeats", tdims(&op.multipliers))])))
 }
 
+pub fn dyn_tile(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    _: &ops::array::DynTile,
+) -> TractResult<Option<Arc<RValue>>> {
+    let wire = ast.mapping[&node.inputs[0]].clone();
+    let multiplier = ast.mapping[&node.inputs[1]].clone();
+    Ok(Some(invocation("tile", &[wire], &[("repeats", (*multiplier).clone())])))
+}
+
 pub fn pad_mode(mode: &ops::array::PadMode, dt: DatumType) -> TractResult<(&str, Option<RValue>)> {
     use ops::array::PadMode;
     Ok(match &mode {
