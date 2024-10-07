@@ -6,7 +6,7 @@ use tract_linalg::generic::reduce::softmax_l2::SSoftMaxL2;
 
 #[inline(never)]
 fn loop1_f32_naive(slice: &mut [f32]) -> f32 {
-    let mut max = std::f32::MIN;
+    let mut max = f32::MIN;
     for x in &*slice {
         if *x > max {
             max = *x;
