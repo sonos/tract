@@ -123,7 +123,7 @@ where
 {
     let bias = (0..m).map(|i| i.as_()).collect::<Vec<TI>>();
     fused_ops::<K, TA, TB, TC, TI, _>(
-        &ker,
+        ker,
         m,
         n,
         &[FusedSpec::BinPerRow(tensor1(&bias).view(), BinOp::Add)],

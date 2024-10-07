@@ -99,7 +99,7 @@ pub struct OptimizerSession<'o> {
     seen: HashSet<String>,
 }
 
-impl<'o> OptimizerSession<'o> {
+impl OptimizerSession<'_> {
     pub fn optimize(&mut self, model: &mut TypedModel) -> TractResult<()> {
         model.check_consistency().context("during optimizer preflight check")?;
         model.compact().context("during optimizer preflight compaction")?;

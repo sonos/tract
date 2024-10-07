@@ -49,7 +49,7 @@ impl<'a, T: Clone> std::ops::Index<&'a OutletId> for OutletMap<T> {
 
 pub struct OutletMapKeysIter<'a, T>(&'a OutletMap<T>, OutletId);
 
-impl<'a, T> std::iter::Iterator for OutletMapKeysIter<'a, T> {
+impl<T> std::iter::Iterator for OutletMapKeysIter<'_, T> {
     type Item = OutletId;
     fn next(&mut self) -> Option<Self::Item> {
         loop {

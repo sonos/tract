@@ -58,7 +58,7 @@ macro_rules! mmm_kernel_fuse_tests {
                         #[test]
                         fn [<$FKS:snake>]() {
                             if ($ker).is_supported_here() && $extra_cond {
-                                test::$geo::<_, $ti>($ker, crate::mmm::FusedKerSpec::$FKS, $f);
+                                test::$geo::<_, $ti>($ker, $crate::mmm::FusedKerSpec::$FKS, $f);
                             }
                         }
                     }

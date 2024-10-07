@@ -28,7 +28,7 @@ impl AxisPattern for (InOut, usize) {
     }
 }
 
-impl<'axis> AxisPattern for &'axis Axis {
+impl AxisPattern for &Axis {
     fn search(&self, mapping: &AxesMapping) -> Option<usize> {
         mapping.axes.iter().position(|ax| self == &ax)
     }

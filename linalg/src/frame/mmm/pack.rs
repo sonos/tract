@@ -320,7 +320,7 @@ where
     }
 }
 
-impl<'p, T> PackingWriter<T> for KOutSinglePanelWriter<'p, T>
+impl<T> PackingWriter<T> for KOutSinglePanelWriter<'_, T>
 where
     T: Copy + std::fmt::Debug,
 {
@@ -377,7 +377,7 @@ where
     }
 }
 
-impl<'p, T> PackingWriter<T> for KOutWriter<'p, T>
+impl<T> PackingWriter<T> for KOutWriter<'_, T>
 where
     T: Copy + std::fmt::Debug,
 {
@@ -453,7 +453,7 @@ where
     }
 }
 
-impl<'p, T> PackingWriter<T> for KInWriter<'p, T>
+impl<T> PackingWriter<T> for KInWriter<'_, T>
 where
     T: Copy + std::fmt::Debug,
 {

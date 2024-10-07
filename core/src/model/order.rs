@@ -292,7 +292,7 @@ mod tests {
         let e = model.wire_node("e", Gather::new(0), &[c, d])?[0];
         model.set_output_outlets(&[e]).unwrap();
         eprintln!("{model}");
-        assert!(&model.eval_order_opt_ram()?[2..] == &[c.node, d.node, e.node]);
+        assert!(model.eval_order_opt_ram()?[2..] == [c.node, d.node, e.node]);
         Ok(())
     }
 }

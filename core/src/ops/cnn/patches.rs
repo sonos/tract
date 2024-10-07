@@ -599,7 +599,7 @@ pub enum PatchIterator<'p> {
     Safe(SafePatchIterator<'p>),
 }
 
-impl<'p> Iterator for PatchIterator<'p> {
+impl Iterator for PatchIterator<'_> {
     type Item = Option<isize>;
     #[inline(always)]
     fn next(&mut self) -> Option<Option<isize>> {
@@ -617,7 +617,7 @@ pub struct FastPatchIterator<'p> {
     item: usize,
 }
 
-impl<'p> Iterator for FastPatchIterator<'p> {
+impl Iterator for FastPatchIterator<'_> {
     type Item = Option<isize>;
     #[inline(always)]
     fn next(&mut self) -> Option<Option<isize>> {
@@ -641,7 +641,7 @@ pub struct SafePatchIterator<'p> {
     center: isize,
 }
 
-impl<'p> Iterator for SafePatchIterator<'p> {
+impl Iterator for SafePatchIterator<'_> {
     type Item = Option<isize>;
     fn next(&mut self) -> Option<Option<isize>> {
         unsafe {

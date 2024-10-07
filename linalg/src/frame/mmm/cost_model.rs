@@ -26,7 +26,7 @@ pub struct CostModel<'a> {
     pub b2: &'a [f32],
 }
 
-impl<'a> CostModel<'a> {
+impl CostModel<'_> {
     pub fn features(&self, m: usize, k: usize, n: usize) -> Vec<f32> {
         let mut feat = vec![
             (m as f32).ln(),

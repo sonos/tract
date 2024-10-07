@@ -51,7 +51,7 @@ pub enum FusedSpec<'t> {
     AddMatMul { a: &'t dyn MMMInputValue, b: &'t dyn MMMInputValue, packing: usize },
 }
 
-impl<'t> FusedSpec<'t> {
+impl FusedSpec<'_> {
     pub fn prefer_col_outer(&self) -> bool {
         false
         /*

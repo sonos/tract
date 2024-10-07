@@ -330,7 +330,7 @@ pub struct ResolvedInvocation<'a> {
     pub default_params: &'a [Parameter],
 }
 
-impl<'a> ResolvedInvocation<'a> {
+impl ResolvedInvocation<'_> {
     pub fn named_arg_as<T>(&self, builder: &mut ModelBuilder, name: &str) -> TractResult<T>
     where
         T: CoerceFrom<Value>,
@@ -421,7 +421,7 @@ impl<'a> ResolvedInvocation<'a> {
     }
 }
 
-impl<'mb> ModelBuilder<'mb> {}
+impl ModelBuilder<'_> {}
 
 impl LValue {
     fn to_identifier(&self) -> TractResult<&Identifier> {

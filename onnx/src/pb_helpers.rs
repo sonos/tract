@@ -26,7 +26,7 @@ pub trait Reason {
     fn reason(&self) -> Cow<str>;
 }
 
-impl<'a> Reason for &'a str {
+impl Reason for &str {
     fn reason(&self) -> Cow<str> {
         (*self).into()
     }
