@@ -472,7 +472,7 @@ fn declutter_neutral(
         if uniform.uni.datum_type().is_quantized() {
             return Ok(None);
         }
-        let integer = uniform.uni.cast_to_scalar::<i64>()?;
+        let Ok(integer) = uniform.uni.cast_to_scalar::<i64>() else { return Ok(None) };
         if tensor0(integer)
             .cast_to_dt(uniform.uni.datum_type())?
             .close_enough(&uniform.uni, false)

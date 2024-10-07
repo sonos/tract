@@ -259,10 +259,12 @@ pub fn unsqueeze(
 
 // fragment tile<?>( input: tensor<?>, repeats: integer[] ) -> ( output: tensor<?> );
 pub fn tile(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
-    let repeats: ShapeFact = invocation.named_arg_as(builder, "repeats")?;
     let wire = invocation.named_arg_as(builder, "input")?;
-    ensure!(builder.model.outlet_fact(wire)?.rank() == repeats.len());
-    builder.wire(ops::array::Tile { multipliers: repeats.to_tvec() }, &[wire])
+    let multipliers = invocation.named_arg_as(builder, "repeats")?;
+    let rank = builder.model.outlet_fact(wire)?.rank();
+    ensure!(builder.model.outlet_fact(multipliers)?.rank() == 1);
+    ensure!(builder.model.outlet_fact(multipliers)?.shape[0] == rank.to_dim());
+    builder.wire(ops::array::DynTile::new(&builder.model.symbols, rank), &[wire, multipliers])
 }
 
 pub fn pad_mode(border: &str, value: Tensor) -> TractResult<tract_core::ops::array::PadMode> {
