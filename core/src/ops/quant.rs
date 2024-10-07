@@ -479,7 +479,7 @@ pub mod scale {
     fn test_scale(a: i8, b: i8, scale: f32) {
         let expected = (((a as i32) * (b as i32)) as f32) / scale;
         let expected = round_ties_to_even(expected.abs()) * expected.signum();
-        let expected = (expected as i32).max(-128).min(127);
+        let expected = (expected as i32).clamp(-128, 127);
         let expected = tensor2(&[[expected as i8]]);
 
         let input = tvec!(tensor2(&[[b]]).into_tvalue());
