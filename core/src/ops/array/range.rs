@@ -1,6 +1,9 @@
 use tract_num_traits::AsPrimitive;
+use tract_num_traits::Zero;
 
 use crate::internal::*;
+
+use super::Slice;
 
 #[derive(Debug, Default, Clone, new, Hash)]
 pub struct Range {
@@ -86,6 +89,23 @@ impl Range {
 }
 
 impl TypedOp for Range {
+    fn declutter(
+            &self,
+            model: &TypedModel,
+            node: &TypedNode,
+        ) -> TractResult<Option<TypedModelPatch>> {
+        let Some(succ) = model.single_succ(node.id)? else { return Ok(None) };
+        let Some(slice) = succ.op_as::<Slice>() else { return Ok(None) };
+        if slice.start.is_zero() && slice.end.is_one() {
+            let mut patch = TypedModelPatch::default();
+            let wire = patch.tap_model(model, node.inputs[0])?;
+            let wire = patch.wire_node(&node.name, AxisOp::Add(0), &[wire])?;
+            patch.shunt_outside(model, succ.id.into(), wire[0])?;
+            return Ok(Some(patch))
+        }
+        Ok(None)
+    }
+
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let [start, end, step] = inputs else {
             bail!("Expects three inputs");
