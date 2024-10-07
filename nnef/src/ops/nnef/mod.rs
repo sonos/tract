@@ -37,6 +37,7 @@ pub fn tract_nnef() -> Registry {
 
     primitive(&mut registry, "tile", deser::tile);
     registry.register_dumper(ser::tile);
+    registry.register_dumper(ser::dyn_tile);
 
     primitive(&mut registry, "pad", deser::pad);
     registry.register_dumper(ser::pad);
