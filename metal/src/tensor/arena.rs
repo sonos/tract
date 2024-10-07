@@ -1,9 +1,8 @@
+use crate::MetalContext;
 use crate::tensor::MetalArenaView;
 use anyhow::{anyhow, Context};
 use core::sync::atomic::AtomicUsize;
-use metal::Buffer;
-use metal::Device;
-use metal::MTLResourceOptions;
+use metal::{ MTLResourceOptions, Buffer };
 use std::sync::atomic::Ordering;
 use tract_core::internal::*;
 
@@ -12,16 +11,18 @@ pub struct MetalArena {
     storage: Arc<MetalArenaStorage>,
     cursor: AtomicUsize,
     capacity: usize,
+    alignment: usize,
 }
 
 impl MetalArena {
-    pub fn with_capacity(device: &Device, capacity: usize) -> TractResult<Self> {
+    pub fn with_capacity(context: &MetalContext, capacity: usize) -> TractResult<Self> {
+        let alignment = std::mem::size_of::<usize>();
         let tensor = unsafe {
-            Tensor::uninitialized_dt(DatumType::U8, &[capacity]).with_context(|| {
+            Tensor::uninitialized_aligned_dt(DatumType::U8, &[capacity], alignment).with_context(|| {
                 anyhow!("Error while allocating a tensor of {:?} bytes", capacity)
             })?
         };
-        let buffer = device.new_buffer_with_bytes_no_copy(
+        let buffer = context.device().new_buffer_with_bytes_no_copy(
             tensor.as_bytes().as_ptr() as *const core::ffi::c_void,
             capacity as _,
             MTLResourceOptions::StorageModeShared,
@@ -31,6 +32,7 @@ impl MetalArena {
             storage: Arc::new(MetalArenaStorage { tensor, metal: buffer }),
             cursor: AtomicUsize::new(0),
             capacity,
+            alignment,
         })
     }
 
@@ -49,6 +51,9 @@ impl MetalArena {
         self.try_reset();
 
         let alignment = dt.alignment();
+        if self.alignment % alignment != 0 {
+            return None;
+        }
         let size = dt.size_of() * shape.iter().product::<usize>();
 
         let cursor = self.cursor.load(Ordering::SeqCst);
