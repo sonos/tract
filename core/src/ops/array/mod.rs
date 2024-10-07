@@ -31,6 +31,6 @@ pub use self::scatter_elements::ScatterElements;
 pub use self::scatter_nd::ScatterNd;
 pub use self::strided_slice::StridedSlice;
 pub use self::slice::Slice;
-pub use self::tile::Tile;
+pub use self::tile::{ DynTile, Tile };
 pub use self::topk::Topk;
 pub use self::trilu::Trilu;
