@@ -28,7 +28,7 @@ pub struct ModelBuilder<'f, 'b> {
     pub buffers: &'b mut Vec<WIPOffset<Buffer<'f>>>,
 }
 
-impl<'f, 'b> ModelBuilder<'f, 'b> {
+impl ModelBuilder<'_, '_> {
     pub fn write_model(&mut self, model: &TypedModel) -> TractResult<()> {
         let mut subgraph = SubgraphBuilder::new(self);
         subgraph.write_subgraph(model)?;

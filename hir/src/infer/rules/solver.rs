@@ -184,7 +184,7 @@ impl<'rules, T: Output + Factoid> Rule<'rules> for WithRule<'rules, T> {
     }
 }
 
-impl<'s, T: Output + Factoid> fmt::Debug for WithRule<'s, T> {
+impl<T: Output + Factoid> fmt::Debug for WithRule<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "WithRule {{ {:?} }}", self.item)
     }
@@ -251,7 +251,7 @@ impl<'rules, T: Output + Factoid> Rule<'rules> for GivenRule<'rules, T> {
     }
 }
 
-impl<'s, T: Output + Factoid> fmt::Debug for GivenRule<'s, T> {
+impl<T: Output + Factoid> fmt::Debug for GivenRule<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "GivenRule {{ {:?} }}", self.item)
     }
@@ -313,7 +313,7 @@ impl<'rules, T: Output + Factoid> Rule<'rules> for GivenAllRule<'rules, T> {
     }
 }
 
-impl<'s, T: Output + Factoid> fmt::Debug for GivenAllRule<'s, T> {
+impl<T: Output + Factoid> fmt::Debug for GivenAllRule<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "GivenAllRule {:?}", self.items)
     }

@@ -80,7 +80,7 @@ fn tensor_from_repeated_field<T: Datum>(shape: &[usize], data: Vec<T>) -> TractR
     Ok(t)
 }
 
-impl<'a> TryFrom<&'a TensorProto> for Tensor {
+impl TryFrom<&TensorProto> for Tensor {
     type Error = TractError;
     fn try_from(t: &TensorProto) -> TractResult<Tensor> {
         let dims: TVec<usize> =
@@ -142,7 +142,7 @@ fn empty_tensor_proto() -> TensorProto {
     }
 }
 
-impl<'a> TryFrom<&'a Tensor> for TensorProto {
+impl TryFrom<&Tensor> for TensorProto {
     type Error = TractError;
     fn try_from(from: &Tensor) -> TractResult<TensorProto> {
         let mut tensor = empty_tensor_proto();

@@ -381,7 +381,7 @@ impl From<Arc<Tensor>> for TypedFact {
     }
 }
 
-impl<'a> From<&'a TypedFact> for TypedFact {
+impl From<&TypedFact> for TypedFact {
     fn from(fact: &TypedFact) -> TypedFact {
         fact.clone()
     }

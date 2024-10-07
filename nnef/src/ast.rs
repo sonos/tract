@@ -218,7 +218,7 @@ impl<S: Into<String>> From<(S, TypeSpec)> for Result_ {
 #[derive(Clone, Debug, PartialEq, Eq, Default, Ord, PartialOrd, Hash)]
 pub struct Identifier(pub String);
 
-impl<'s> From<&'s str> for Identifier {
+impl From<&str> for Identifier {
     fn from(value: &str) -> Self {
         Identifier(value.to_string())
     }

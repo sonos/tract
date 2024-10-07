@@ -7,7 +7,7 @@ pub struct DocDumper<'a> {
     w: &'a mut dyn std::io::Write,
 }
 
-impl<'a> DocDumper<'a> {
+impl DocDumper<'_> {
     pub fn new(w: &mut dyn std::io::Write) -> DocDumper {
         DocDumper { w }
     }

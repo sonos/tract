@@ -405,7 +405,7 @@ impl IntoExp<TypeFactoid> for TypeProxy {
     }
 }
 
-impl<'a> IntoExp<TypeFactoid> for &'a TypeProxy {
+impl IntoExp<TypeFactoid> for &TypeProxy {
     fn bex(self) -> Exp<TypeFactoid> {
         VariableExp(self.get_path().clone(), PhantomData).bex()
     }
@@ -417,7 +417,7 @@ impl IntoExp<TypeFactoid> for DatumType {
     }
 }
 
-impl<'a> IntoExp<TypeFactoid> for &'a DatumType {
+impl IntoExp<TypeFactoid> for &DatumType {
     fn bex(self) -> Exp<TypeFactoid> {
         ConstantExp((*self).into()).bex()
     }
@@ -425,13 +425,13 @@ impl<'a> IntoExp<TypeFactoid> for &'a DatumType {
 
 // Int
 
-impl<'a> IntoExp<IntFactoid> for &'a IntProxy {
+impl IntoExp<IntFactoid> for &IntProxy {
     fn bex(self) -> Exp<IntFactoid> {
         VariableExp(self.get_path().clone(), PhantomData).bex()
     }
 }
 
-impl<'a> IntoExp<IntFactoid> for &'a ElementProxy {
+impl IntoExp<IntFactoid> for &ElementProxy {
     fn bex(self) -> Exp<IntFactoid> {
         VariableExp(self.get_path().clone(), PhantomData).bex()
     }
@@ -472,7 +472,7 @@ impl Mul<Exp<IntFactoid>> for i64 {
 
 // Dim
 
-impl<'a> IntoExp<DimFact> for &'a DimProxy {
+impl IntoExp<DimFact> for &DimProxy {
     fn bex(self) -> Exp<DimFact> {
         VariableExp(self.get_path().clone(), PhantomData).bex()
     }
@@ -543,7 +543,7 @@ impl IntoExp<ShapeFactoid> for ShapeProxy {
     }
 }
 
-impl<'a> IntoExp<ShapeFactoid> for &'a ShapeProxy {
+impl IntoExp<ShapeFactoid> for &ShapeProxy {
     fn bex(self) -> Exp<ShapeFactoid> {
         VariableExp(self.get_path().clone(), PhantomData).bex()
     }
@@ -563,7 +563,7 @@ impl IntoExp<ValueFact> for ValueProxy {
     }
 }
 
-impl<'a> IntoExp<ValueFact> for &'a ValueProxy {
+impl IntoExp<ValueFact> for &ValueProxy {
     fn bex(self) -> Exp<ValueFact> {
         VariableExp(self.get_path().clone(), PhantomData).bex()
     }

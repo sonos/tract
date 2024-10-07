@@ -53,7 +53,7 @@ pub struct ParseResult {
     pub outlets_by_name: HashMap<String, OutletId>,
 }
 
-impl<'a> ParsingContext<'a> {
+impl ParsingContext<'_> {
     pub fn load_tensor(&self, proto: &TensorProto) -> TractResult<Tensor> {
         load_tensor(&*self.framework.provider, proto, self.model_dir)
     }

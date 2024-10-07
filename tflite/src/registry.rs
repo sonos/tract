@@ -34,7 +34,7 @@ pub struct DeserOp<'op> {
     pub output_facts: &'op [TypedFact],
 }
 
-impl<'op> DeserOp<'op> {
+impl DeserOp<'_> {
     pub fn facts(&self) -> TractResult<TVec<TypedFact>> {
         self.inputs
             .iter()

@@ -165,7 +165,7 @@ impl Fact for InferenceFact {
     }
 }
 
-impl<'a> TryFrom<&'a InferenceFact> for TypedFact {
+impl TryFrom<&InferenceFact> for TypedFact {
     type Error = TractError;
     fn try_from(fact: &InferenceFact) -> TractResult<TypedFact> {
         if let (Some(datum_type), Some(shape)) =

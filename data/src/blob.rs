@@ -157,7 +157,7 @@ impl std::fmt::Debug for Blob {
     }
 }
 
-impl<'a> TryFrom<&'a [u8]> for Blob {
+impl TryFrom<&[u8]> for Blob {
     type Error = TractError;
     #[inline]
     fn try_from(s: &[u8]) -> Result<Blob, Self::Error> {
