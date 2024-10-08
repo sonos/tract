@@ -1,3 +1,4 @@
+#![allow(clippy::type_complexity)]
 use dyn_clone::clone_box;
 use tract_linalg::frame::block_quant::{BlockQuant, PackedBlockQuantFormat, StaticBlockQuant};
 use tract_linalg::frame::PackedFormat;
