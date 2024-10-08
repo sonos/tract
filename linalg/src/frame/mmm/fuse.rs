@@ -44,7 +44,7 @@ pub enum AsInputValue<'t> {
     Borrowed(&'t dyn MMMInputValue),
 }
 
-impl<'t> Deref for AsInputValue<'t> {
+impl Deref for AsInputValue<'_> {
     type Target = dyn MMMInputValue;
     fn deref(&self) -> &Self::Target {
         match self {

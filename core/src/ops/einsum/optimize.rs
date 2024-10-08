@@ -30,7 +30,7 @@ pub struct EinSumAnnotatedAsMatMul<'a> {
     pub n: TDim,
 }
 
-impl<'a> EinSumAnnotatedAsMatMul<'a> {
+impl EinSumAnnotatedAsMatMul<'_> {
     pub fn a_m(&self) -> usize {
         self.m_axis.inputs[0][0]
     }
@@ -51,7 +51,7 @@ impl<'a> EinSumAnnotatedAsMatMul<'a> {
     }
 }
 
-impl<'a> Deref for EinSumAnnotatedAsMatMul<'a> {
+impl Deref for EinSumAnnotatedAsMatMul<'_> {
     type Target = EinSum;
     fn deref(&self) -> &Self::Target {
         self.op
