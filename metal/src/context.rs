@@ -243,7 +243,9 @@ impl MetalContext {
             self.arena.borrow_mut().take().ok_or_else(|| {
                 anyhow!("Unexpected None arena while executing inside a metal arena")
             })?;
+        log::info!("MetalArena: {:.3} %", arena.used_capacity() as f32 / arena.capacity() as f32);
         arena.try_reset();
+        log::info!("MetalArena after reset: {:.3} %", arena.used_capacity() as f32 / arena.capacity() as f32);
         Ok((arena, res))
     }
 
