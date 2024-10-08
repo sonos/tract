@@ -44,7 +44,7 @@ fn einsum_rules(
     let prefix: String = op
         .axes
         .iter_all_axes()
-        .filter(|a| ![op.m_axis, op.k_axis, op.n_axis].contains(&a))
+        .filter(|a| ![op.m_axis, op.k_axis, op.n_axis].contains(a))
         .map(|a| a.repr)
         .collect();
     let mut patch = TypedModelPatch::default();
