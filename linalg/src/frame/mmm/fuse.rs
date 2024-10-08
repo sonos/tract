@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::ops::Deref;
 
 use super::pack::PackedFormat;
 use super::{MMMInputValue, OutputStore, OutputStoreKer};
@@ -43,11 +44,9 @@ pub enum AsInputValue<'t> {
     Borrowed(&'t dyn MMMInputValue),
 }
 
-impl<'t> AsInputValue<'t> {
-    pub fn as_ref<'a>(&'a self) -> &'a dyn MMMInputValue
-    where
-        't: 'a,
-    {
+impl<'t> Deref for AsInputValue<'t> {
+    type Target = dyn MMMInputValue;
+    fn deref(&self) -> &Self::Target {
         match self {
             AsInputValue::Owned(b) => &**b,
             AsInputValue::Borrowed(r) => *r,
@@ -73,8 +72,8 @@ pub enum FusedSpec<'t> {
 impl FusedSpec<'_> {
     pub fn prefer_col_outer(&self) -> Option<bool> {
         if let FusedSpec::AddMatMul { a, b, .. } = self {
-            let a_is_eager = a.as_ref().format().is::<PackedFormat>();
-            let b_is_eager = b.as_ref().format().is::<PackedFormat>();
+            let a_is_eager = a.format().is::<PackedFormat>();
+            let b_is_eager = b.format().is::<PackedFormat>();
             if a_is_eager == b_is_eager {
                 None
             } else {
