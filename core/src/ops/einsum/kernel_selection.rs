@@ -37,7 +37,7 @@ pub fn wire_packing(
         .unwrap();
     let (packing, pa, pb) = mmm
         .packings()
-        .into_iter()
+        .iter()
         .enumerate()
         .filter_map(|(ix, p)| {
             Some((ix, p.0.downcast_ref::<PackedFormat>()?, p.1.downcast_ref::<PackedFormat>()?))
@@ -71,9 +71,9 @@ fn with_block_quant(
     let m = op.m.to_usize().expect("m is expected to be an integer");
     if model.symbols.all_scenarios().into_iter().count() < 2 {
         if op.n.is_one() {
-            return with_block_quant_matvec(patch, prefix, op, operands, m, a_bq, b_dt);
+            with_block_quant_matvec(patch, prefix, op, operands, m, a_bq, b_dt)
         } else {
-            return with_block_quant_matmat(patch, prefix, op, operands, a_bq, b_dt);
+            with_block_quant_matmat(patch, prefix, op, operands, a_bq, b_dt)
         }
     } else {
         let first_scenario = model.symbols.all_scenarios().into_iter().next().unwrap().0;
@@ -86,7 +86,7 @@ fn with_block_quant(
         let mr = mmms[0].0.mr();
         let matching_matmat = tract_linalg::ops()
             .mmm_impls()
-            .into_iter()
+            .iter()
             .filter(|mm| mm.mr() == mr && mm.internal_type().is_float())
             .max_by_key(|mm| mm.nr())
             .unwrap();
@@ -104,7 +104,7 @@ fn with_block_quant(
             .push(alternative_b_packing);
 
         mmms.push((matching_matmat.clone(), 0));
-        return Ok((pa, pb, mmms));
+        Ok((pa, pb, mmms))
     }
 }
 
@@ -122,7 +122,7 @@ fn with_block_quant_matmat(
         .unwrap();
     let (packing, pa, pb) = mmm
         .packings()
-        .into_iter()
+        .iter()
         .enumerate()
         .filter_map(|(ix, p)| {
             Some((ix, p.0.downcast_ref::<PackedFormat>()?, p.1.downcast_ref::<PackedFormat>()?))
@@ -175,7 +175,7 @@ fn with_block_quant_matvec(
                 pack_a.downcast_ref::<PackedBlockQuantFormat>(),
                 pack_b.downcast_ref::<PackedFormat>(),
             ) {
-                if pa.bq.same_as(&*a_bq) && pb.dt == b_dt {
+                if pa.bq.same_as(a_bq) && pb.dt == b_dt {
                     options.push((imp, packing, pa, pb));
                 }
             }
@@ -184,7 +184,7 @@ fn with_block_quant_matvec(
     ensure!(options.len() > 0, "should always have at least a generic impl");
     let (mmm, packing, pa, pb) = options
         .into_iter()
-        .min_by_key(|a| ((m as usize).divceil(a.0.mr())) * (a.0.mr() + 100))
+        .min_by_key(|a| (m.divceil(a.0.mr())) * (a.0.mr() + 100))
         .unwrap();
     let value = patch.outlet_fact(operands[0])?.konst.as_ref().context("A should be a const")?;
     let value = value

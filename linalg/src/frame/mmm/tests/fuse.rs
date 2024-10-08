@@ -90,7 +90,7 @@ macro_rules! mmm_kernel_fuse_tests {
                 LeakyRelu,
                 scalar,
                 |a, b| if b > <$ti>::zero() { b } else { a * b },
-                ($ker).can_fuse(&crate::mmm::FusedSpec::LeakyRelu(&tensor0(<$ti>::from(1_u8))))
+                ($ker).can_fuse(&$crate::mmm::FusedSpec::LeakyRelu(&tensor0(<$ti>::from(1_u8))))
             );
 
             #[test]

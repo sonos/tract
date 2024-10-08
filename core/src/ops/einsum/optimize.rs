@@ -54,7 +54,7 @@ impl<'a> EinSumAnnotatedAsMatMul<'a> {
 impl<'a> Deref for EinSumAnnotatedAsMatMul<'a> {
     type Target = EinSum;
     fn deref(&self) -> &Self::Target {
-        &self.op
+        self.op
     }
 }
 

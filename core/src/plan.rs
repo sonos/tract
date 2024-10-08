@@ -36,7 +36,7 @@ impl Clone for SessionState {
             inputs: self.inputs.clone(),
             resolved_symbols: self.resolved_symbols.clone(),
             tensors: self.tensors.clone(),
-            scenario: self.scenario.clone(),
+            scenario: self.scenario,
             cached_mmm_scratch_space: None.into(),
         }
     }
@@ -577,7 +577,7 @@ where
                 .map(|(ix, t)| (*ix, t.clone().into_tensor()))
                 .collect(),
             resolved_symbols: self.session_state.resolved_symbols.clone(),
-            scenario: self.session_state.scenario.clone(),
+            scenario: self.session_state.scenario,
             tensors: self.session_state.tensors.clone(),
             states: self.states.iter().map(|s| s.as_ref().map(|s| s.freeze())).collect(),
             values: self
@@ -648,7 +648,7 @@ where
             session_state: SessionState {
                 inputs: self.inputs.iter().map(|(ix, t)| (*ix, t.clone().into_tvalue())).collect(),
                 resolved_symbols: self.resolved_symbols.clone(),
-                scenario: self.scenario.clone(),
+                scenario: self.scenario,
                 tensors: self.tensors.clone(),
                 cached_mmm_scratch_space: None.into(),
             },
