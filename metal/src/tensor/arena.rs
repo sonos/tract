@@ -41,6 +41,10 @@ impl MetalArena {
         self.capacity - cursor
     }
 
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
     pub fn used_capacity(&self) -> usize {
         self.cursor.load(Ordering::SeqCst)
     }
