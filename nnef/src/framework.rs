@@ -292,7 +292,10 @@ impl tract_core::prelude::Framework<ProtoModel, TypedModel> for Nnef {
         };
         for entry in tar.entries()? {
             let mut entry = entry?;
-            let path = entry.path()?.to_path_buf();
+            let mut path = entry.path()?.to_path_buf();
+            if path.starts_with("./") {
+                path = path.strip_prefix("./")?.to_path_buf();
+            }
             read_stream(&path, &mut entry, &mut resources, self)?;
         }
         proto_model_from_resources(resources)
