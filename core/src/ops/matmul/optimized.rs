@@ -59,13 +59,13 @@ impl ProtoFusedSpec {
         let fs = match self {
             ProtoFusedSpec::AddMatMul { geo, a, b, packings } => {
                 let mut a = inputs[*a].view();
+                let mut b = inputs[*b].view();
                 unsafe {
                     geo.c_to_a_axis_mapping.translate_view(output_coords, &mut a);
                 }
                 let a = a.as_slice::<Opaque>().unwrap()[0]
                     .downcast_ref::<Box<dyn MMMInputValue>>()
                     .unwrap();
-                let mut b = inputs[*b].view();
                 unsafe {
                     geo.c_to_b_axis_mapping.translate_view(output_coords, &mut b);
                 }
@@ -149,27 +149,38 @@ impl ProtoFusedSpec {
             ProtoFusedSpec::AddMatMul { a, b, packings, .. } => {
                 let a = &inputs[*a];
                 let b = &inputs[*b];
-                let a = a
-                    .to_scalar::<Opaque>()
-                    .unwrap()
+                let a = a.as_slice::<Opaque>().unwrap()[0]
                     .downcast_ref::<Box<dyn MMMInputValue>>()
                     .unwrap();
-                let b = b
-                    .to_scalar::<Opaque>()
-                    .unwrap()
+                let b = b.as_slice::<Opaque>().unwrap()[0]
                     .downcast_ref::<Box<dyn MMMInputValue>>()
                     .unwrap();
                 let (a_packing, b_packing) = mmm.packings()[packings[scenario]];
-                assert!(
-                    a_packing.same_as(a.format())
-                        || (a_packing.is::<PackedFormat>() && a_packing.r() == a.format().r())
-                );
+                let pa = if a_packing.same_as(a.format()) {
+                    AsInputValue::Borrowed(&**a)
+                } else if a_packing.is::<PackedFormat>()
+                    && a_packing.r() == a.format().r()
+                    && a.is::<EagerPackedInput>()
+                    && a.format().is::<PackedBlockQuantFormat>()
+                {
+                    let format = PanelExtractFormat {
+                        pbqf: a.format().downcast_ref::<PackedBlockQuantFormat>().unwrap().clone(),
+                    };
+                    let data = a.downcast_ref::<EagerPackedInput>().unwrap();
+                    AsInputValue::Owned(Box::new(PanelExtractInput {
+                        format,
+                        data: data.clone(),
+                        to: a_packing.downcast_ref::<PackedFormat>().unwrap().clone()
+                    }))
+                } else {
+                    panic!("Un-matchable input and output for weights {:?} -> {a_packing}", a);
+                };
                 assert!(
                     b_packing.same_as(b.format())
                         || (b_packing.is::<PackedFormat>() && b_packing.r() == b.format().r())
                 );
                 FusedSpec::AddMatMul {
-                    a: AsInputValue::Borrowed(&**a),
+                    a: pa,
                     b: AsInputValue::Borrowed(&**b),
                     packing: packings[scenario],
                 }
