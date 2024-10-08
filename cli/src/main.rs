@@ -408,7 +408,7 @@ fn assertions_options(command: clap::Command) -> clap::Command {
         .arg(
             Arg::new("approx")
             .takes_value(true)
-            .possible_values(["exact", "close", "approximate", "very", "super"])
+            .possible_values(["exact", "close", "approximate", "very", "super", "ultra"])
             .default_value("close")
             .long("approx")
             .help("Approximation level used in assertions."),
@@ -438,6 +438,11 @@ fn assertions_options(command: clap::Command) -> clap::Command {
             .takes_value(true)
             .long("assert-output-count")
             .help("Check the number of outputs found."),
+            )
+        .arg(
+            Arg::new("allow-missing-outputs")
+            .long("allow-missing-outputs")
+            .help("Allow missing output in checks")
             )
         .arg(
             Arg::new("assert-op-count")

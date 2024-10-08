@@ -1107,7 +1107,8 @@ pub struct Assertions {
     pub assert_outputs: bool,
     pub assert_output_facts: Option<Vec<InferenceFact>>,
     pub assert_op_count: Option<Vec<(String, usize)>>,
-    pub approximation: Approximation
+    pub approximation: Approximation,
+    pub allow_missing_outputs: bool,
 }
 
 impl Assertions {
@@ -1124,14 +1125,16 @@ impl Assertions {
                     .map(|mut args| Some((args.next()?.to_string(), args.next()?.parse().ok()?)))
                     .collect()
             });
+        let allow_missing_outputs = sub.is_present("allow-missing-outputs");
         let approximation = match sub.value_of("approx").unwrap() {
             "exact" => Approximation::Exact,
             "close" => Approximation::Close,
             "approximate" => Approximation::Approximate,
             "very" => Approximation::VeryApproximate,
             "super" => Approximation::SuperApproximate,
+            "ultra" => Approximation::UltraApproximate,
             _ => panic!()
         };
-        Ok(Assertions { assert_outputs, assert_output_facts, assert_op_count, approximation })
+        Ok(Assertions { assert_outputs, assert_output_facts, assert_op_count, approximation, allow_missing_outputs })
     }
 }

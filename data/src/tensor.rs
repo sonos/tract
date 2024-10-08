@@ -28,6 +28,7 @@ pub enum Approximation {
     Approximate,
     VeryApproximate,
     SuperApproximate,
+    UltraApproximate,
 }
 
 impl From<bool> for Approximation {
@@ -52,6 +53,7 @@ impl Approximation {
             (Approximate, _) => (1e-4, 5e-4),
             (VeryApproximate, _) => (5e-2, 1e-2),
             (SuperApproximate, _) => (1e-1, 5e-2),
+            (UltraApproximate, _) => (2e-1, 1e-1),
         }
     }
 }

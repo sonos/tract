@@ -14,10 +14,16 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
             params.tract_model.node_name(output.node)
         };
         // pick expected tensor values for this output
-        let exp = params
-            .tensors_values
-            .by_name(name)
-            .with_context(|| format!("Do not have reference value for output {name:?}"))?;
+        let exp = params.tensors_values.by_name(name);
+        if exp.is_none() {
+            if params.assertions.allow_missing_outputs {
+                warn!("Missing reference output in bundle for {name}");
+                continue;
+            } else {
+                bail!("Missing reference output in bundle for {name}");
+            }
+        }
+        let exp = exp.unwrap();
         debug!("Output {}, expects {:?}", ix, exp);
         let mut exp: TValue = exp.values.as_ref().with_context(|| {
             format!("Output {name:?}: found reference info without value: {exp:?}")
@@ -84,15 +90,18 @@ pub fn check_inferred(got: &[InferenceFact], expected: &[InferenceFact]) -> Trac
     Ok(())
 }
 
-pub fn clarify_tvalues(values: &TVec<TValue>) -> TVec<TValue>{
-    values.iter().map(|t| {
-                        t.to_scalar::<Opaque>()
-                         .and_then(|ot| ot.clarify_to_tensor().transpose())
-                         .ok()
-                         .flatten()
-                         .map(|ot| ot.into_tvalue())
-                         .unwrap_or(t.clone())
-                    }).collect::<TVec<_>>()
+pub fn clarify_tvalues(values: &TVec<TValue>) -> TVec<TValue> {
+    values
+        .iter()
+        .map(|t| {
+            t.to_scalar::<Opaque>()
+                .and_then(|ot| ot.clarify_to_tensor().transpose())
+                .ok()
+                .flatten()
+                .map(|ot| ot.into_tvalue())
+                .unwrap_or(t.clone())
+        })
+        .collect::<TVec<_>>()
 }
 
 pub fn clarify_typed_fact<'a>(fact: impl Into<Cow<'a, TypedFact>>) -> Cow<'a, TypedFact> {
@@ -102,7 +111,7 @@ pub fn clarify_typed_fact<'a>(fact: impl Into<Cow<'a, TypedFact>>) -> Cow<'a, Ty
             .as_ref()
             .and_then(|it| it.clarify_dt_shape())
             .map(|(dt, s)| Cow::Owned(TypedFact::dt_shape(dt, s)))
-            .unwrap_or_else(||  fact)
+            .unwrap_or_else(|| fact)
     } else {
         fact
     }
