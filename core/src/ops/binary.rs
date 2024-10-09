@@ -155,7 +155,7 @@ impl TypedOp for TypedBinOp {
         if let AxisOp::Rm(rm) = change {
             let (inputs, outputs) = model.node_facts(node.id)?;
             if !inputs[0].shape[*rm].is_one()
-                || !inputs[0].shape[*rm].is_one()
+                || !inputs[1].shape[*rm].is_one()
                 || !outputs[0].shape[*rm].is_one()
             {
                 return Ok(None);
@@ -211,7 +211,11 @@ impl TypedOp for TypedBinOp {
         {
             return Ok(Some(neutral_patch));
         }
-
+        if let Some(broadcast_patch) =
+            declutter_broadcasting_operand_1(model, node, self.0.clone())?
+        {
+            return Ok(Some(broadcast_patch));
+        }
         self.0.declutter(model, node)
     }
 
@@ -240,7 +244,9 @@ impl TypedOp for TypedBinOp {
 
             let dt = model.node_input_facts(node.id)?[0].datum_type().unwrap();
             if by_scalar_should_be_efficient & can_eval_in_a & !op_is_quant {
-                let Some(func) = tract_linalg::bin_by_scalar(dt, linalg_bin_op) else {return Ok(None)};
+                let Some(func) = tract_linalg::bin_by_scalar(dt, linalg_bin_op) else {
+                    return Ok(None);
+                };
                 let eval_fn = Arc::from(func);
                 return Ok(Some(
                     TypedModelPatch::replace_single_op(
@@ -254,7 +260,9 @@ impl TypedOp for TypedBinOp {
             }
 
             if unicast_should_be_efficient & can_eval_in_a & !op_is_quant {
-                let Some(func) = tract_linalg::bin_unicast(dt, linalg_bin_op) else {return Ok(None)};
+                let Some(func) = tract_linalg::bin_unicast(dt, linalg_bin_op) else {
+                    return Ok(None);
+                };
                 let eval_fn = Arc::from(func);
                 return Ok(Some(
                     TypedModelPatch::replace_single_op(
@@ -273,6 +281,34 @@ impl TypedOp for TypedBinOp {
     as_op!();
 }
 
+fn declutter_broadcasting_operand_1(
+    model: &TypedModel,
+    node: &TypedNode,
+    mini_op: Box<dyn BinMiniOp>,
+) -> TractResult<Option<TypedModelPatch>> {
+    let (a_shape, b_shape) = if let &[a, b] = &*model.node_input_facts(node.id)? {
+        (a.shape.clone(), b.shape.clone())
+    } else {
+        unreachable!("TypedBinOp has two inputs.")
+    };
+
+    let a_num_elements = a_shape.iter().product::<TDim>();
+    let b_num_elements = b_shape.iter().product::<TDim>();
+    let a_should_be_broadcast = (a_num_elements - b_num_elements).prove_strict_negative();
+    if a_should_be_broadcast & mini_op.is_commutative() {
+        let mut swap_input = node.inputs.clone();
+        swap_input.swap(0, 1);
+        return Ok(Some(TypedModelPatch::replace_single_op(
+            model,
+            node,
+            &swap_input,
+            TypedBinOp(mini_op, None),
+        )?));
+    }
+
+    Ok(None)
+}
+
 fn declutter_neutral(
     model: &TypedModel,
     node: &TypedNode,
@@ -280,13 +316,6 @@ fn declutter_neutral(
     out_dt: DatumType,
 ) -> TractResult<Option<TypedModelPatch>> {
     if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
-        // Not sure to understand why this check was needed
-        //let integer = uniform.uni.cast_to_scalar::<f64>()?;
-        //let is_scalar = tensor0(integer)
-        //    .cast_to_dt(uniform.uni.datum_type())?
-        //    .close_enough(&uniform.uni, false)
-        //    .is_ok();
-
         let is_neutral = mini_op
             .neutral_element()
             .map(|neutral| tensor0(neutral).close_enough(&uniform.uni, false).is_ok())
