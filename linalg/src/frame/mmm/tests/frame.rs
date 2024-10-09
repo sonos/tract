@@ -1,5 +1,5 @@
 use crate::frame::mmm::*;
-use crate::LADatum;
+use crate::{BinOp, LADatum};
 use num_traits::AsPrimitive;
 use std::ops::Neg;
 use tests::display_error;

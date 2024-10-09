@@ -217,11 +217,19 @@ impl Kind {
 pub(crate)fn register_all_unicast(registry: &mut LinalgRegistry) {
     registry.insert((BinOp::Mul, DatumType::F32),Box::new(|| arm64simd_unicast_mul_f32_16n::bin_1()));
     registry.insert((BinOp::Mul, DatumType::F16),Box::new(|| arm64fp16_unicast_mul_f16_32n::bin_1()));
+    registry.insert((BinOp::Add, DatumType::F32),Box::new(|| arm64simd_unicast_add_f32_16n::bin_1()));
+    registry.insert((BinOp::Add, DatumType::F16),Box::new(|| arm64fp16_unicast_add_f16_32n::bin_1()));
+    registry.insert((BinOp::Sub, DatumType::F32),Box::new(|| arm64simd_unicast_sub_f32_16n::bin_1()));
+    registry.insert((BinOp::Sub, DatumType::F16),Box::new(|| arm64fp16_unicast_sub_f16_32n::bin_1()));
 }
 
 pub(crate)fn register_all_by_scalar(registry: &mut LinalgRegistry) {
     registry.insert((BinOp::Mul, DatumType::F32),Box::new(|| arm64simd_mul_by_scalar_f32_16n::bin_1()));
     registry.insert((BinOp::Mul, DatumType::F16),Box::new(|| arm64fp16_mul_by_scalar_f16_32n::bin_1()));
+    registry.insert((BinOp::Add, DatumType::F32),Box::new(|| arm64simd_add_by_scalar_f32_16n::bin_1()));
+    registry.insert((BinOp::Add, DatumType::F16),Box::new(|| arm64fp16_add_by_scalar_f16_32n::bin_1()));
+    registry.insert((BinOp::Sub, DatumType::F32),Box::new(|| arm64simd_sub_by_scalar_f32_16n::bin_1()));
+    registry.insert((BinOp::Sub, DatumType::F16),Box::new(|| arm64fp16_sub_by_scalar_f16_32n::bin_1()));
 }
 
 pub fn plug(ops: &mut Ops) {
