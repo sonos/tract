@@ -344,7 +344,7 @@ pub unsafe extern "C" fn tract_inference_model_output_name(
         check_not_null!(model, name);
         *name = std::ptr::null_mut();
         let m = &(*model).0;
-        *name = CString::new(&*m.output_name(output)?)?.into_raw();
+        *name = CString::new(&*m.output_name(output)?)?.into_raw() as _;
         Ok(())
     })
 }
@@ -639,7 +639,7 @@ pub unsafe extern "C" fn tract_model_concretize_symbols(
         let model = &mut (*model).0;
         let mut table = vec![];
         for i in 0..nb_symbols {
-            let name = CStr::from_ptr(*symbols.add(i))
+            let name = CStr::from_ptr(*symbols.add(i) as _)
                 .to_str()
                 .with_context(|| {
                     format!("failed to parse symbol name for {i}th symbol (not utf8)")
@@ -664,10 +664,10 @@ pub unsafe extern "C" fn tract_model_pulse_simple(
     wrap(|| unsafe {
         check_not_null!(model, *model, stream_symbol, pulse_expr);
         let model = &mut (**model).0;
-        let stream_sym = CStr::from_ptr(stream_symbol)
+        let stream_sym = CStr::from_ptr(stream_symbol as _)
             .to_str()
             .context("failed to parse stream symbol name (not utf8)")?;
-        let pulse_dim = CStr::from_ptr(pulse_expr)
+        let pulse_dim = CStr::from_ptr(pulse_expr as _)
             .to_str()
             .context("failed to parse stream symbol name (not utf8)")?;
         model.pulse(stream_sym, pulse_dim)
@@ -682,7 +682,7 @@ pub unsafe extern "C" fn tract_model_transform(
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(model, transform);
-        let t = CStr::from_ptr(transform)
+        let t = CStr::from_ptr(transform as _)
             .to_str()
             .context("failed to parse transform name (not utf8)")?;
         (*model).0.transform(t)
@@ -728,7 +728,7 @@ pub unsafe extern "C" fn tract_model_profile_json(
             None
         };
         let profile = (*model).0.profile_json(input)?;
-        *json = CString::new(profile)?.into_raw();
+        *json = CString::new(profile)?.into_raw() as _;
         Ok(())
     })
 }
@@ -778,7 +778,7 @@ pub unsafe extern "C" fn tract_model_property_names(
     wrap(|| unsafe {
         check_not_null!(model, names);
         for (ix, name) in (*model).0.property_keys()?.iter().enumerate() {
-            *names.add(ix) = CString::new(&**name)?.into_raw();
+            *names.add(ix) = CString::new(&**name)?.into_raw() as _;
         }
         Ok(())
     })
@@ -793,7 +793,7 @@ pub unsafe extern "C" fn tract_model_property(
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(model, name, value);
-        let name = CStr::from_ptr(name)
+        let name = CStr::from_ptr(name as _)
             .to_str()
             .context("failed to parse property name (not utf8)")?
             .to_owned();
