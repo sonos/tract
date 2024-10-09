@@ -365,16 +365,6 @@ fn declutter_mul(
                     },
                 )?));
             }
-            if !uniform.left_is_uniform {
-                let mut swap_input = node.inputs.clone();
-                swap_input.swap(0, 1);
-                return Ok(Some(TypedModelPatch::replace_single_op(
-                    model,
-                    node,
-                    &swap_input,
-                    mul(),
-                )?));
-            }
         }
     }
     Ok(None)
