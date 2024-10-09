@@ -90,12 +90,12 @@ case "$PLATFORM" in
         fi
 
         rustup target add $RUSTC_TRIPLE
-        cargo dinghy --platform auto-android-$ANDROID_CPU build -p tract-linalg
+        cargo dinghy --platform auto-android-$ANDROID_CPU build -p tract-linalg -p tract-ffi
         ;;
 
     "aarch64-apple-ios")
         rustup target add aarch64-apple-ios
-        cargo dinghy --platform auto-ios-aarch64 build -p tract-linalg
+        cargo dinghy --platform auto-ios-aarch64 build -p tract-linalg -p tract-ffi
         ;;
 
     "aarch64-apple-darwin")
@@ -202,6 +202,7 @@ case "$PLATFORM" in
             cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS test --profile opt-no-lto -p tract-core
         fi
 
+        cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS check -p tract-ffi
         # keep lto for these two are they're going to devices.
         cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2
         ;;
