@@ -67,11 +67,13 @@ pub mod test {
     #[macro_export]
     macro_rules! mul_by_scalar_frame_tests {
         ($cond:expr, $t: ty, $ker:ty) => {
-            proptest::proptest! {
-                #[test]
-                fn prop(xs in proptest::collection::vec(-25f32..25.0, 0..100), scalar in -25f32..25f32) {
-                    if $cond {
-                        $crate::frame::by_scalar::test::test_mul_by_scalar::<$ker, $t>(&*xs, scalar).unwrap()
+            paste::paste! {
+                proptest::proptest! {
+                    #[test]
+                    fn [<prop_ $ker:snake>](xs in proptest::collection::vec(-25f32..25.0, 0..100), scalar in -25f32..25f32) {
+                        if $cond {
+                            $crate::frame::by_scalar::test::test_mul_by_scalar::<$ker, $t>(&*xs, scalar).unwrap()
+                        }
                     }
                 }
             }
