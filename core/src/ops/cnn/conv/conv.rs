@@ -92,7 +92,7 @@ impl Conv {
         bias: OutletId,
         c_group_axis: usize,
     ) -> TractResult<(ProtoFusedSpec, OutletId)> {
-        use tract_linalg::mmm::BinOp::Add;
+        use tract_linalg::BinOp::Add;
         let fact = model.outlet_fact(bias)?;
         if fact.shape.volume().is_one() {
             Ok((ProtoFusedSpec::BinScalar(2, Add), bias))
