@@ -277,13 +277,6 @@ impl crate::ops::binary::BinMiniOp for Scale {
     fn name(&self) -> &'static str {
         "Scale"
     }
-    fn eval_by_scalar(&self, _a: &mut TensorView, _b: &TensorView) -> TractResult<()> {
-        unimplemented!("Eval by scalar not implemented")
-    }
-    fn eval_unicast(&self, _a: &mut TensorView, _b: &TensorView) -> TractResult<()> {
-        unimplemented!("Eval unicast not implemented")
-    }
-
     fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
         if !a.is_float() {
             bail!("Scale left operand must be float, got {:?}", a);
@@ -296,34 +289,6 @@ impl crate::ops::binary::BinMiniOp for Scale {
             bail!("Scale left operand must be float, got {:?}", a);
         }
         Ok(b)
-    }
-
-    fn eval_uniform_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
-        let a = a.cast_to_scalar::<f32>()?;
-        unsafe fn eval_in_place_t<T: Datum + AsPrimitive<f32>>(a: f32, b: &mut Tensor)
-        where
-            f32: AsPrimitive<T>,
-        {
-            b.as_slice_mut_unchecked::<T>().iter_mut().for_each(|x| *x = scale_by(*x, a));
-        }
-        unsafe { dispatch_numbers!(eval_in_place_t(b.datum_type())(a, b)) }
-        Ok(())
-    }
-
-    fn eval_unicast_in_place(&self, a: &Tensor, b: &mut Tensor) -> TractResult<()> {
-        let a = a.cast_to::<f32>()?;
-        let a = a.to_array_view::<f32>()?;
-        unsafe fn eval_in_place_t<T: Datum + AsPrimitive<f32>>(
-            a: &ndarray::ArrayViewD<f32>,
-            b: &mut Tensor,
-        ) where
-            f32: AsPrimitive<T>,
-        {
-            let mut b = b.to_array_view_mut_unchecked::<T>();
-            ndarray::Zip::from(&mut b).and_broadcast(a).for_each(|b, a| *b = scale_by(*b, *a))
-        }
-        unsafe { dispatch_numbers!(eval_in_place_t(b.datum_type())(&a, b)) }
-        Ok(())
     }
 
     fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()> {

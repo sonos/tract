@@ -88,7 +88,7 @@ fn ser_bin(
     node: &TypedNode,
     op: &TypedBinOp,
 ) -> TractResult<()> {
-    use tract_linalg::mmm::BinOp;
+    use tract_linalg::BinOp;
     let inputs = builder.map_outlets(model, &node.inputs)?;
     let outputs = builder.map_outlets(model, [OutletId::from(node.id)])?;
 
