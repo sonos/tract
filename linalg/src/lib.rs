@@ -199,21 +199,17 @@ impl BinOp {
     }
 }
 
-
 fn register_all_unicast(registry: &mut LinalgRegistry) {
     generic::register_all_unicast(registry);
     #[cfg(target_arch = "aarch64")]
     arm64::register_all_unicast(registry);
-
 }
 
 fn register_all_by_scalar(registry: &mut LinalgRegistry) {
     generic::register_all_by_scalar(registry);
     #[cfg(target_arch = "aarch64")]
     arm64::register_all_by_scalar(registry);
-
 }
-
 
 pub type LinalgFn = Box<dyn Fn(&mut TensorView, &TensorView) -> TractResult<()> + Send + Sync>;
 type LinalgRegistry = HashMap<(BinOp, DatumType), Box<dyn Fn() -> LinalgFn + Send + Sync>>;
@@ -230,16 +226,15 @@ lazy_static! {
     };
 }
 
-pub fn bin_by_scalar(dt: DatumType, bin: BinOp) ->  Option<LinalgFn> { 
+pub fn bin_by_scalar(dt: DatumType, bin: BinOp) -> Option<LinalgFn> {
     let map = BIN_BY_SCALAR_OPS.lock().unwrap();
-   map.get(&(bin, dt)).map(|it| (it)())
+    map.get(&(bin, dt)).map(|it| (it)())
 }
 
-pub fn bin_unicast(dt: DatumType, bin: BinOp) ->  Option<LinalgFn> { 
+pub fn bin_unicast(dt: DatumType, bin: BinOp) -> Option<LinalgFn> {
     let map = BIN_UNICAST_OPS.lock().unwrap();
-   map.get(&(bin, dt)).map(|it| (it)())
+    map.get(&(bin, dt)).map(|it| (it)())
 }
-
 
 pub fn ops() -> &'static Ops {
     &OPS
