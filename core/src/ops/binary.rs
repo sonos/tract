@@ -3,6 +3,7 @@ use downcast_rs::Downcast;
 use std::fmt::{self, Debug};
 use tract_data::itertools::izip;
 use tract_itertools::Itertools;
+use tract_linalg::LinalgFn;
 
 use super::cast::cast;
 
@@ -397,7 +398,7 @@ pub fn gt_tdim(x: TDim, min_val: i64) -> bool {
 #[derive(Clone)]
 pub struct OptBinByScalar {
     pub binop: Box<dyn BinMiniOp>,
-    eval_fn: Arc<dyn Fn(&mut TensorView, &TensorView) -> TractResult<()> + Send + Sync>,
+    eval_fn: Arc<LinalgFn>,
 }
 
 impl Debug for OptBinByScalar {
@@ -496,7 +497,7 @@ impl TypedOp for OptBinByScalar {
 #[derive(Clone)]
 pub struct OptBinUnicast {
     pub binop: Box<dyn BinMiniOp>,
-    eval_fn: Arc<dyn Fn(&mut TensorView, &TensorView) -> TractResult<()> + Send + Sync>,
+    eval_fn: Arc<LinalgFn>,
 }
 
 impl Debug for OptBinUnicast {
