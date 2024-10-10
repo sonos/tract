@@ -105,7 +105,7 @@ by_scalar_impl_wrap!(
 #[cfg(test)]
 mod test_arm64fp16_mul_by_scalar_f16_32n {
     use super::*;
-    mul_by_scalar_frame_tests!(crate::arm64::has_fp16(), f16, arm64fp16_mul_by_scalar_f16_32n);
-    mul_by_scalar_frame_tests!(crate::arm64::has_fp16(), f16, arm64fp16_add_by_scalar_f16_32n);
-    mul_by_scalar_frame_tests!(crate::arm64::has_fp16(), f16, arm64fp16_sub_by_scalar_f16_32n);
+    by_scalar_frame_tests!(crate::arm64::has_fp16(), f16, arm64fp16_mul_by_scalar_f16_32n, |a, b| a * b);
+    by_scalar_frame_tests!(crate::arm64::has_fp16(), f16, arm64fp16_add_by_scalar_f16_32n, |a, b| a + b);
+    by_scalar_frame_tests!(crate::arm64::has_fp16(), f16, arm64fp16_sub_by_scalar_f16_32n, |a, b| a - b);
 }

@@ -45,9 +45,10 @@ unsafe fn x86_64_avx_f32_mul_by_scalar_32n_run(buf: &mut [f32], scalar: f32) {
 #[macro_use]
 pub mod test_x86_64_avx_f32_mul_by_scalar_32n {
     use super::*;
-    mul_by_scalar_frame_tests!(
+    by_scalar_frame_tests!(
         is_x86_feature_detected!("avx2"),
         f32,
         x86_64_avx_f32_mul_by_scalar_32n
+        |a, b| a * b
     );
 }

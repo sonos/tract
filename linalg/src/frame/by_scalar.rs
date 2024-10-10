@@ -65,14 +65,14 @@ pub mod test {
     use proptest::test_runner::TestCaseResult;
 
     #[macro_export]
-    macro_rules! mul_by_scalar_frame_tests {
-        ($cond:expr, $t: ty, $ker:ty) => {
+    macro_rules! by_scalar_frame_tests {
+        ($cond:expr, $t: ty, $ker:ty, $func:expr) => {
             paste::paste! {
                 proptest::proptest! {
                     #[test]
                     fn [<prop_ $ker:snake>](xs in proptest::collection::vec(-25f32..25.0, 0..100), scalar in -25f32..25f32) {
                         if $cond {
-                            $crate::frame::by_scalar::test::test_mul_by_scalar::<$ker, $t>(&*xs, scalar).unwrap()
+                            $crate::frame::by_scalar::test::test_by_scalar::<$ker, $t>(&*xs, scalar, $func).unwrap()
                         }
                     }
                 }
@@ -80,9 +80,10 @@ pub mod test {
         };
     }
 
-    pub fn test_mul_by_scalar<K: ElementWiseKer<T, T>, T: LADatum + Float>(
+    pub fn test_by_scalar<K: ElementWiseKer<T, T>, T: LADatum + Float>(
         values: &[f32],
         scalar: f32,
+        func: impl Fn(T, T) -> T,
     ) -> TestCaseResult
     where
         f32: AsPrimitive<T>,
@@ -92,7 +93,7 @@ pub mod test {
         let values: Vec<T> = values.iter().copied().map(|x| x.as_()).collect();
         crate::frame::element_wise::test::test_element_wise_params::<K, T, _, T>(
             &values,
-            |a| a * scalar.as_(),
+            |a| (func)(a, scalar.as_()),
             scalar.as_(),
         )
     }

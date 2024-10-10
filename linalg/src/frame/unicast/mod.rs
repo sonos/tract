@@ -180,11 +180,13 @@ where
 }
 
 #[cfg(test)]
+#[macro_use]
 pub mod test {
     use super::*;
     use crate::LADatum;
     use proptest::test_runner::{TestCaseError, TestCaseResult};
     use tract_data::internal::*;
+    use tract_num_traits::{AsPrimitive, Float};
 
     pub fn test_unicast<K: UnicastKer<T>, T: LADatum>(
         a: &[T],
@@ -201,4 +203,41 @@ pub mod test {
             .map_err(|e| TestCaseError::fail(e.root_cause().to_string()))?;
         Ok(())
     }
+    
+    pub fn test_unicast_t<K: UnicastKer<T>, T: LADatum + Float>(a: &[f32], b: &[f32], func: impl Fn(T, T) -> T) -> TestCaseResult
+    where
+        f32: AsPrimitive<T>,
+        T: AsPrimitive<f32>,
+    {
+        crate::setup_test_logger();
+        let a: Vec<T> = a.iter().copied().map(|x| x.as_()).collect();
+        let b: Vec<T> = b.iter().copied().map(|x| x.as_()).collect();
+        crate::frame::unicast::test::test_unicast::<K, _>(&a, &b, func)
+    }
+    
+    #[macro_export]
+    macro_rules! unicast_frame_tests {
+        ($cond:expr, $t: ty, $ker:ty, $func:expr) => {
+            paste::paste! {
+                proptest::proptest! {
+                    #[test]
+                    fn [<prop_ $ker:snake>](
+                        (a, b) in (0..100_usize).prop_flat_map(|len| (vec![-25f32..25.0; len], vec![-25f32..25.0; len]))
+                    ) {
+                        if $cond {
+                            $crate::frame::unicast::test::test_unicast_t::<$ker, $t>(&*a, &*b, $func).unwrap()
+                        }
+                    }
+                }
+
+                #[test]
+                fn [<empty_ $ker:snake>]() {
+                    if $cond {
+                        $crate::frame::unicast::test::test_unicast_t::<$ker, $t>(&[], &[], $func).unwrap()
+                    }
+                }
+            }
+        };
+    }
+
 }
