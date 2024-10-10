@@ -221,6 +221,12 @@ pub(crate)fn register_all_unicast(registry: &mut LinalgRegistry) {
     registry.insert((BinOp::Add, DatumType::F16),Box::new(|| arm64fp16_unicast_add_f16_32n::bin()));
     registry.insert((BinOp::Sub, DatumType::F32),Box::new(|| arm64simd_unicast_sub_f32_16n::bin()));
     registry.insert((BinOp::Sub, DatumType::F16),Box::new(|| arm64fp16_unicast_sub_f16_32n::bin()));
+    registry.insert((BinOp::SubF, DatumType::F32),Box::new(|| arm64simd_unicast_subf_f32_16n::bin()));
+    registry.insert((BinOp::SubF, DatumType::F16),Box::new(|| arm64fp16_unicast_subf_f16_32n::bin()));
+    registry.insert((BinOp::Min, DatumType::F32),Box::new(|| arm64simd_unicast_min_f32_16n::bin()));
+    registry.insert((BinOp::Min, DatumType::F16),Box::new(|| arm64fp16_unicast_min_f16_32n::bin()));
+    registry.insert((BinOp::Max, DatumType::F32),Box::new(|| arm64simd_unicast_max_f32_16n::bin()));
+    registry.insert((BinOp::Max, DatumType::F16),Box::new(|| arm64fp16_unicast_max_f16_32n::bin()));
 }
 
 pub(crate)fn register_all_by_scalar(registry: &mut LinalgRegistry) {
@@ -230,6 +236,12 @@ pub(crate)fn register_all_by_scalar(registry: &mut LinalgRegistry) {
     registry.insert((BinOp::Add, DatumType::F16),Box::new(|| arm64fp16_add_by_scalar_f16_32n::bin()));
     registry.insert((BinOp::Sub, DatumType::F32),Box::new(|| arm64simd_sub_by_scalar_f32_16n::bin()));
     registry.insert((BinOp::Sub, DatumType::F16),Box::new(|| arm64fp16_sub_by_scalar_f16_32n::bin()));
+    registry.insert((BinOp::SubF, DatumType::F32),Box::new(|| arm64simd_subf_by_scalar_f32_16n::bin()));
+    registry.insert((BinOp::SubF, DatumType::F16),Box::new(|| arm64fp16_subf_by_scalar_f16_32n::bin()));
+    registry.insert((BinOp::Min, DatumType::F32),Box::new(|| arm64simd_min_by_scalar_f32_16n::bin()));
+    registry.insert((BinOp::Min, DatumType::F16),Box::new(|| arm64fp16_min_by_scalar_f16_32n::bin()));
+    registry.insert((BinOp::Max, DatumType::F32),Box::new(|| arm64simd_max_by_scalar_f32_16n::bin()));
+    registry.insert((BinOp::Max, DatumType::F16),Box::new(|| arm64fp16_max_by_scalar_f16_32n::bin()));
 }
 
 pub fn plug(ops: &mut Ops) {

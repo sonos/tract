@@ -7,18 +7,10 @@ mod max;
 pub mod panel_extract;
 mod unicast;
 mod sum;
-pub use by_scalar::{
-    arm64fp16_mul_by_scalar_f16_32n,
-    arm64fp16_add_by_scalar_f16_32n,
-    arm64fp16_sub_by_scalar_f16_32n
-};
+pub use by_scalar::*;
 pub use leaky_relu::*;
 pub use max::*;
-pub use unicast::{
-    arm64fp16_unicast_mul_f16_32n,
-    arm64fp16_unicast_add_f16_32n,
-    arm64fp16_unicast_sub_f16_32n
-};
+pub use unicast::*;
 pub use sum::*;
 
 use crate::frame::block_quant::PackedBlockQuantFormat;
