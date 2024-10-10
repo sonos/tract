@@ -21,7 +21,11 @@ impl<'a> TensorView<'a> {
         shape: &'a [usize],
         strides: &'a [isize],
     ) -> TensorView<'a> {
-        TensorView { tensor, offset_bytes, indexing: Indexing::Custom { shape, strides } }
+        TensorView {
+            tensor,
+            offset_bytes,
+            indexing: Indexing::Custom { shape, strides },
+        }
     }
 
     pub fn offsetting(tensor: &'a Tensor, coords: &[usize]) -> TractResult<TensorView<'a>> {
@@ -41,7 +45,10 @@ impl<'a> TensorView<'a> {
         TensorView {
             tensor,
             offset_bytes,
-            indexing: Indexing::Custom { shape: &tensor.shape, strides: &tensor.strides },
+            indexing: Indexing::Custom {
+                shape: &tensor.shape,
+                strides: &tensor.strides,
+            },
         }
     }
 
@@ -253,4 +260,20 @@ impl<'a> TensorView<'a> {
     TensorView { shape: shape.into(), strides, ..*self }
     }
     */
+}
+
+#[cfg(test)]
+mod test {
+    use crate::prelude::Tensor;
+    use super::TensorView;
+
+    #[test]
+    fn test_at_prefix() {
+        let a = Tensor::from_shape(&[2, 2], &[1, 2, 3, 4]).unwrap();
+        let a_view = TensorView::at_prefix(&a, &[1]).unwrap();
+        assert_eq!(a_view.shape(), &[2]);
+        assert_eq!(a_view.as_slice::<i32>().unwrap(), &[3, 4]);
+
+
+    }
 }
