@@ -36,7 +36,7 @@ pub trait ByScalarKer<T>: ElementWiseKer<T, T>
 where
     T: LADatum
 {
-    fn bin_1() -> Box<LinalgFn> {
+    fn bin() -> Box<LinalgFn> {
         Box::new(|a: &mut TensorView, b: &TensorView| {
             let a_slice = a.as_slice_mut()?;
             let b = b.as_slice()?[0];
