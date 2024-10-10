@@ -25,7 +25,7 @@ use frame::by_scalar::ByScalarKer;
 use frame::element_wise::ElementWiseKer;
 use frame::reduce::{MapReduceKer, ReduceKer};
 use frame::unicast::UnicastKer;
-use frame::{reduce, unicast, MatMatMul};
+use frame::{reduce, MatMatMul};
 pub use generic::{ScaleShiftAndRound, Scaler};
 use lazy_static::lazy_static;
 use tract_data::internal::TensorView;
@@ -87,9 +87,6 @@ pub struct Ops {
     pub sum_f16: Box<dyn Fn() -> Box<dyn reduce::Reduce<f16>> + Send + Sync>,
     pub sum_f32: Box<dyn Fn() -> Box<dyn reduce::Reduce<f32>> + Send + Sync>,
 
-    pub unicast_mul_f16: Box<dyn Fn() -> Box<dyn unicast::Unicast<f16>> + Send + Sync>,
-    pub unicast_mul_f32: Box<dyn Fn() -> Box<dyn unicast::Unicast<f32>> + Send + Sync>,
-
     pub softmax2_fastcompact_f16:
         Box<dyn Fn() -> Box<dyn reduce::MapReduce<f16, f16>> + Send + Sync>,
     pub softmax2_fastcompact_f32:
@@ -147,8 +144,6 @@ pub fn generic() -> Ops {
         max_f32: Box::new(|| generic::reduce::max::SMax4::red()),
         sum_f16: Box::new(|| generic::reduce::sum::HSum8::red()),
         sum_f32: Box::new(|| generic::reduce::sum::SSum4::red()),
-        unicast_mul_f16: Box::new(|| generic::unicast::HUnicastMul8::bin()),
-        unicast_mul_f32: Box::new(|| generic::unicast::SUnicastMul4::bin()),
         /*
         activation_f32: Box::new(|microcode| generic::SActivation::new(microcode))
         */
