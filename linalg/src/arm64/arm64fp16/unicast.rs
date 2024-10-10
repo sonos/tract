@@ -113,5 +113,7 @@ unicast_impl_wrap!(
 mod test_arm64fp16_unicast_mul_f16_32n {
     use super::*;
     use proptest::strategy::Strategy;
-    crate::unicast_mul_frame_tests!(crate::arm64::has_fp16(), f16, arm64fp16_unicast_mul_f16_32n);
+    crate::unicast_frame_tests!(crate::arm64::has_fp16(), f16, arm64fp16_unicast_mul_f16_32n, |a, b| a * b);
+    crate::unicast_frame_tests!(crate::arm64::has_fp16(), f16, arm64fp16_unicast_add_f16_32n, |a, b| a + b);
+    crate::unicast_frame_tests!(crate::arm64::has_fp16(), f16, arm64fp16_unicast_sub_f16_32n, |a, b| a - b);
 }
