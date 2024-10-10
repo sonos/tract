@@ -39,6 +39,7 @@ impl NodeQId {
 #[derive(Debug, Default, Clone)]
 pub struct NodeTags {
     pub cost: Vec<(Cost, TDim)>,
+    pub eval_memory: Option<TDim>,
     pub style: Option<Style>,
     pub labels: Vec<String>,
     pub sections: Vec<Vec<String>>,
@@ -61,6 +62,13 @@ impl<'a> std::ops::Add<&'a NodeTags> for &'a NodeTags {
             .into_iter()
             .map(|(cost, dims)| (*cost, dims.into_iter().fold(0.to_dim(), |acc, d| acc + &d.1)))
             .collect::<Vec<(Cost, TDim)>>();
+
+        let eval_memory = match (self.eval_memory.clone(), other.eval_memory.clone()) {
+            (Some(self_mem), Some(other_mem)) => Some(self_mem + other_mem),
+            (_, Some(mem)) | (Some(mem), _) => Some(mem),
+            (None, None) => None
+        };
+
         let profile = self.profile.unwrap_or_default() + other.profile.unwrap_or_default();
         let profile = if profile != Duration::default() { Some(profile) } else { None };
         let style = self.style.or(other.style);
@@ -76,6 +84,7 @@ impl<'a> std::ops::Add<&'a NodeTags> for &'a NodeTags {
             .collect();
         NodeTags {
             cost,
+            eval_memory,
             profile,
             style,
             labels,
@@ -99,6 +108,7 @@ impl<'a> std::iter::Sum<&'a NodeTags> for NodeTags {
 
 const EMPTY: NodeTags = NodeTags {
     cost: Vec::new(),
+    eval_memory: None,
     style: None,
     labels: Vec::new(),
     sections: Vec::new(),
@@ -118,6 +128,24 @@ pub struct Annotations {
 impl Annotations {
     pub fn node_mut(&mut self, qid: NodeQId) -> &mut NodeTags {
         self.tags.entry(qid).or_default()
+    }
+
+
+    pub fn track_eval_memory<F, O, Flushable>(
+        &mut self,
+        model: &dyn Model,
+        order: &[usize],
+        flushable: Flushable,
+        only_flushable: bool,
+    ) -> TractResult<()> 
+    where
+        Flushable: Fn(&TypedNode) -> bool {
+
+        let Some(model) = model.downcast_ref::<TypedModel>() else { return Ok(()) };
+        let eval_memory = model.eval_memory(order, flushable, only_flushable)?;
+
+
+        Ok(())
     }
 
     pub fn track_axes(

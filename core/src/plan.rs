@@ -10,7 +10,7 @@ use crate::model::{Fact, Graph, OutletId};
 use crate::ops::konst::Const;
 use crate::ops::FrozenOpState;
 
-use self::order::{eval_order_for_nodes, eval_order_opt_ram_for_nodes};
+use self::order::{eval_order_for_nodes, eval_order_opt_ram_for_nodes, build_flush_list};
 
 #[derive(Clone, Debug, Default)]
 pub struct PlanOptions {
@@ -117,22 +117,7 @@ where
             eval_order_opt_ram_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes, deps)?
         };
         order.retain(|node| !model.borrow().node(*node).op_is::<Const>());
-        let mut values_needed_until_step = vec![0; model.borrow().nodes().len()];
-        for (step, node) in order.iter().enumerate() {
-            for i in &model.borrow().node(*node).inputs {
-                values_needed_until_step[i.node] = step;
-            }
-        }
-        for o in outputs.iter() {
-            values_needed_until_step[o.node] = order.len();
-        }
-        let mut flush_lists: Vec<TVec<usize>> = vec![tvec!(); order.len() + 1];
-
-        for (node, &flush_at) in values_needed_until_step.iter().enumerate() {
-            if flush_at != 0 && !model.borrow().node(node).op_is::<Const>() {
-                flush_lists[flush_at].push(node)
-            }
-        }
+        let flush_lists = build_flush_list(model.borrow(), &order, outputs, |n| !n.op_is::<Const>());
 
         #[allow(clippy::mutable_key_type)]
         let mut symbols: std::collections::HashSet<Symbol> = Default::default();
