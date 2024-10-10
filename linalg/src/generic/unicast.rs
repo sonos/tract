@@ -88,9 +88,9 @@ unicast_impl_wrap!(
 pub mod s {
     use super::*;
     use proptest::strategy::Strategy;
-    crate::unicast_mul_frame_tests!(true, f32, SUnicastMul4);
-    crate::unicast_mul_frame_tests!(true, f32, SUnicastAdd4);
-    crate::unicast_mul_frame_tests!(true, f32, SUnicastSub4);
+    crate::unicast_frame_tests!(true, f32, SUnicastMul4, |a, b| a * b);
+    crate::unicast_frame_tests!(true, f32, SUnicastAdd4, |a, b| a + b);
+    crate::unicast_frame_tests!(true, f32, SUnicastSub4, |a, b| a - b);
 }
 
 #[cfg(test)]
@@ -98,7 +98,7 @@ pub mod s {
 pub mod h {
     use super::*;
     use proptest::strategy::Strategy;
-    crate::unicast_mul_frame_tests!(true, f16, HUnicastMul8);
-    crate::unicast_mul_frame_tests!(true, f16, HUnicastAdd8);
-    crate::unicast_mul_frame_tests!(true, f16, HUnicastSub8);
+    crate::unicast_frame_tests!(true, f16, HUnicastMul8, |a, b| a * b);
+    crate::unicast_frame_tests!(true, f16, HUnicastAdd8, |a, b| a + b);
+    crate::unicast_frame_tests!(true, f16, HUnicastSub8, |a, b| a - b);
 }

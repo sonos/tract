@@ -43,9 +43,9 @@ by_scalar_impl_wrap!(
 #[macro_use]
 pub mod mul_by_scalar_f32 {
     use super::*;
-    mul_by_scalar_frame_tests!(true, f32, SMulByScalar4);
-    mul_by_scalar_frame_tests!(true, f32, SAddByScalar4);
-    mul_by_scalar_frame_tests!(true, f32, SSubByScalar4);
+    by_scalar_frame_tests!(true, f32, SMulByScalar4, |a, b| a * b);
+    by_scalar_frame_tests!(true, f32, SAddByScalar4, |a, b| a + b );
+    by_scalar_frame_tests!(true, f32, SSubByScalar4, |a, b| a - b);
 }
 
 by_scalar_impl_wrap!(
@@ -91,7 +91,7 @@ by_scalar_impl_wrap!(
 #[macro_use]
 pub mod mul_by_scalar_f16 {
     use super::*;
-    mul_by_scalar_frame_tests!(true, f16, HMulByScalar8);
-    mul_by_scalar_frame_tests!(true, f16, HAddByScalar8);
-    mul_by_scalar_frame_tests!(true, f16, HSubByScalar8);
+    by_scalar_frame_tests!(true, f16, HMulByScalar8, |a, b| a * b);
+    by_scalar_frame_tests!(true, f16, HAddByScalar8, |a, b| a + b);
+    by_scalar_frame_tests!(true, f16, HSubByScalar8, |a, b| a - b);
 }
