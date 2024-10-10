@@ -1,5 +1,3 @@
-pub mod mul;
-
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
