@@ -3,8 +3,8 @@ pub mod mul;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
-use tract_data::TractResult;
 use tract_data::internal::TensorView;
+use tract_data::TractResult;
 
 use crate::frame::element_wise_helper::TempBuffer;
 use crate::{LADatum, LinalgFn};
@@ -54,7 +54,6 @@ where
     phantom: PhantomData<(K, T)>,
 }
 
-
 impl<K, T> UnicastImpl<K, T>
 where
     T: LADatum,
@@ -88,7 +87,7 @@ where
     fn bin() -> Box<dyn Unicast<T>> {
         Box::new(UnicastImpl::<Self, T>::new())
     }
-    fn bin_1() -> LinalgFn {
+    fn bin_1() -> Box<LinalgFn> {
         Box::new(|a: &mut TensorView, b: &TensorView| {
             let a_slice = a.as_slice_mut()?;
             let b_slice = b.as_slice()?;
@@ -101,7 +100,12 @@ std::thread_local! {
     static TMP: std::cell::RefCell<(TempBuffer, TempBuffer)> = std::cell::RefCell::new((TempBuffer::default(), TempBuffer::default()));
 }
 
-fn create_incomplete_tile<'a, T: LADatum>(a: &'a mut [T], b: &'a [T], a_prefix_len: usize, b_prefix_len: usize) -> (&'a mut [T], &'a [T], usize) {
+fn create_incomplete_tile<'a, T: LADatum>(
+    a: &'a mut [T],
+    b: &'a [T],
+    a_prefix_len: usize,
+    b_prefix_len: usize,
+) -> (&'a mut [T], &'a [T], usize) {
     let effective_prefix = if (a_prefix_len == 0) || (b_prefix_len == 0) {
         // One of the two slice is aligned, the target size is the number of unaligned elements of
         // the other slice, the max value between the two.
@@ -113,7 +117,6 @@ fn create_incomplete_tile<'a, T: LADatum>(a: &'a mut [T], b: &'a [T], a_prefix_l
     };
     (&mut a[..effective_prefix], &b[..effective_prefix], effective_prefix)
 }
-
 
 pub(crate) fn unicast_with_alignment<T>(
     a: &mut [T],
@@ -148,18 +151,19 @@ where
             let mut applied_prefix_len = 0;
             if (a_prefix_len > 0) || (b_prefix_len > 0) {
                 // Incomplete tile needs to be created to process unaligned data.
-                let (mut sub_a, sub_b, applied_prefix) = create_incomplete_tile(a, b, a_prefix_len, b_prefix_len);
+                let (sub_a, sub_b, applied_prefix) =
+                    create_incomplete_tile(a, b, a_prefix_len, b_prefix_len);
                 applied_prefix_len = applied_prefix;
-                compute_via_temp_buffer(&mut sub_a, &sub_b);
+                compute_via_temp_buffer(sub_a, sub_b);
                 num_element_processed += applied_prefix_len;
             }
 
             let num_complete_tiles = (a.len() - applied_prefix_len) / nr;
             if num_complete_tiles > 0 {
                 // Process all tiles that are complete.
-                let mut sub_a = &mut a[applied_prefix_len..][..(num_complete_tiles * nr)];
+                let sub_a = &mut a[applied_prefix_len..][..(num_complete_tiles * nr)];
                 let sub_b = &b[applied_prefix_len..][..(num_complete_tiles * nr)];
-                f(&mut sub_a, &sub_b);
+                f(sub_a, sub_b);
                 num_element_processed += num_complete_tiles * nr;
             }
 
