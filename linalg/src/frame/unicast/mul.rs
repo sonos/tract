@@ -12,7 +12,7 @@ pub mod test {
             paste::paste! {
                 proptest::proptest! {
                     #[test]
-                    fn [<prop_ $ker>](
+                    fn [<prop_ $ker:snake>](
                         (a, b) in (0..100_usize).prop_flat_map(|len| (vec![-25f32..25.0; len], vec![-25f32..25.0; len]))
                     ) {
                         if $cond {
@@ -22,7 +22,7 @@ pub mod test {
                 }
 
                 #[test]
-                fn [<empty_ $ker>]() {
+                fn [<empty_ $ker:snake>]() {
                     if $cond {
                         $crate::frame::unicast::mul::test::test_unicast_mul::<$ker, $t>(&[], &[]).unwrap()
                     }
