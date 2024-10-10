@@ -7,18 +7,10 @@ mod sum;
 
 use crate::frame::PackedFormat;
 
-pub use by_scalar::{
-    arm64simd_mul_by_scalar_f32_16n,
-    arm64simd_add_by_scalar_f32_16n,
-    arm64simd_sub_by_scalar_f32_16n
-};
+pub use by_scalar::*;
 pub use leaky_relu::arm64simd_leaky_relu_f32_8n;
 pub use max::arm64simd_max_f32_16n;
-pub use unicast::{
-    arm64simd_unicast_mul_f32_16n,
-    arm64simd_unicast_add_f32_16n,
-    arm64simd_unicast_sub_f32_16n
-};
+pub use unicast::*;
 pub use softmax::arm64simd_softmax2_fastcompact_f32_16n;
 pub use sum::arm64simd_sum_f32_16n;
 

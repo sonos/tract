@@ -29,6 +29,12 @@ pub(crate) fn register_all_unicast(registry: &mut LinalgRegistry) {
     registry.insert((BinOp::Add, DatumType::F16), Box::new(|| unicast::HUnicastAdd8::bin()));
     registry.insert((BinOp::Sub, DatumType::F32), Box::new(|| unicast::SUnicastSub4::bin()));
     registry.insert((BinOp::Sub, DatumType::F16), Box::new(|| unicast::HUnicastSub8::bin()));
+    registry.insert((BinOp::SubF, DatumType::F32), Box::new(|| unicast::SUnicastSubF4::bin()));
+    registry.insert((BinOp::SubF, DatumType::F16), Box::new(|| unicast::HUnicastSubF8::bin()));
+    registry.insert((BinOp::Min, DatumType::F32), Box::new(|| unicast::SUnicastMin4::bin()));
+    registry.insert((BinOp::Min, DatumType::F16), Box::new(|| unicast::HUnicastMin8::bin()));
+    registry.insert((BinOp::Max, DatumType::F32), Box::new(|| unicast::SUnicastMax4::bin()));
+    registry.insert((BinOp::Max, DatumType::F16), Box::new(|| unicast::HUnicastMax8::bin()));
 }
 
 pub(crate) fn register_all_by_scalar(registry: &mut LinalgRegistry) {
@@ -38,4 +44,10 @@ pub(crate) fn register_all_by_scalar(registry: &mut LinalgRegistry) {
     registry.insert((BinOp::Add, DatumType::F16), Box::new(|| by_scalar::HAddByScalar8::bin()));
     registry.insert((BinOp::Sub, DatumType::F32), Box::new(|| by_scalar::SSubByScalar4::bin()));
     registry.insert((BinOp::Sub, DatumType::F16), Box::new(|| by_scalar::HSubByScalar8::bin()));
+    registry.insert((BinOp::SubF, DatumType::F32), Box::new(|| by_scalar::SSubFByScalar4::bin()));
+    registry.insert((BinOp::SubF, DatumType::F16), Box::new(|| by_scalar::HSubFByScalar8::bin()));
+    registry.insert((BinOp::Min, DatumType::F32), Box::new(|| by_scalar::SMinByScalar4::bin()));
+    registry.insert((BinOp::Min, DatumType::F16), Box::new(|| by_scalar::HMinByScalar8::bin()));
+    registry.insert((BinOp::Max, DatumType::F32), Box::new(|| by_scalar::SMaxByScalar4::bin()));
+    registry.insert((BinOp::Max, DatumType::F16), Box::new(|| by_scalar::HMaxByScalar8::bin()));
 }
