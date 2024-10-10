@@ -82,14 +82,11 @@ where
     fn alignment_items() -> usize;
     fn nr() -> usize;
     fn run(a: &mut [T], b: &[T]);
-    fn bin() -> Box<dyn Unicast<T>> {
-        Box::new(UnicastImpl::<Self, T>::new())
-    }
-    fn bin_1() -> Box<LinalgFn> {
+    fn bin() -> Box<LinalgFn> {
         Box::new(|a: &mut TensorView, b: &TensorView| {
             let a_slice = a.as_slice_mut()?;
             let b_slice = b.as_slice()?;
-            Self::bin().run(a_slice, b_slice)
+            UnicastImpl::<Self, T>::new().run(a_slice, b_slice)
         })
     }
 }
