@@ -319,6 +319,10 @@ impl crate::ops::binary::BinMiniOp for Scale {
         Ok(())
     }
 
+    fn is_commutative(&self) -> bool {
+        false
+    }
+
     fn declutter(
         &self,
         model: &TypedModel,
