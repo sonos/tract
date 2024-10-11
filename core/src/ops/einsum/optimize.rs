@@ -402,6 +402,8 @@ fn optimized_mat_mul(
     let outputs =
         mmms.iter().map(|(mmm, _packing)| unsafe { mmm.c_view(op.c_m(), op.c_n()) }).collect();
     let (mmms, packings): (Vec<_>, Vec<_>) = mmms.into_iter().unzip();
+    let trivial_packing =
+        mmms.len() == 1 && packings[0] == 0 && patch.outlet_fact(a)?.opaque_fact.is_none();
     let opt = OptMatMul::new(
         mmms,
         c_fact,
@@ -411,6 +413,7 @@ fn optimized_mat_mul(
             ProtoFusedSpec::AddMatMul { geo, a: 0, b: 1, packings },
             ProtoFusedSpec::Store(outputs),
         ],
+        trivial_packing,
     )
     .context("Creating OptMatMul")?;
     let output = patch.wire_node(name, opt, &[a, b])?[0];

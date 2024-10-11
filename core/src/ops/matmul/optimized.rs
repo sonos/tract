@@ -87,7 +87,7 @@ impl ProtoFusedSpec {
                     AsInputValue::Owned(Box::new(PanelExtractInput {
                         format,
                         data: data.clone(),
-                        to: a_packing.downcast_ref::<PackedFormat>().unwrap().clone()
+                        to: a_packing.downcast_ref::<PackedFormat>().unwrap().clone(),
                     }))
                 } else {
                     panic!("Un-matchable input and output for weights {:?} -> {a_packing}", a);
@@ -142,49 +142,43 @@ impl ProtoFusedSpec {
         &'t self,
         inputs: &'t [TValue],
         output: &mut Tensor,
-        mmm: &dyn MatMatMul,
+        _mmm: &dyn MatMatMul,
         scenario: usize,
     ) -> FusedSpec<'t> {
         let fs = match self {
-            ProtoFusedSpec::AddMatMul { a, b, packings, .. } => {
-                let a = &inputs[*a];
-                let b = &inputs[*b];
-                let a = a.as_slice::<Opaque>().unwrap()[0]
-                    .downcast_ref::<Box<dyn MMMInputValue>>()
-                    .unwrap();
-                let b = b.as_slice::<Opaque>().unwrap()[0]
-                    .downcast_ref::<Box<dyn MMMInputValue>>()
-                    .unwrap();
-                let (a_packing, b_packing) = &mmm.packings()[packings[scenario]];
-                let pa = if a_packing.same_as(a.format()) {
-                    AsInputValue::Borrowed(&**a)
-                } else if a_packing.is::<PackedFormat>()
-                    && a_packing.r() == a.format().r()
-                    && a.is::<EagerPackedInput>()
-                    && a.format().is::<PackedBlockQuantFormat>()
+            ProtoFusedSpec::AddMatMul { a, b, packings, .. } => unsafe {
+                debug_assert!(inputs.get(*a).is_some());
+                debug_assert!(inputs.get(*b).is_some());
+                let a = inputs.get_unchecked(*a);
+                let b = inputs.get_unchecked(*b);
+                debug_assert!(a.datum_type().is_opaque());
+                debug_assert!(a.len() == 1);
+                debug_assert!(b.datum_type().is_opaque());
+                debug_assert!(b.len() == 1);
+                let a = a.as_slice_unchecked::<Opaque>().get_unchecked(0);
+                let b = b.as_slice_unchecked::<Opaque>().get_unchecked(0);
+                debug_assert!(a.is::<Box<dyn MMMInputValue>>());
+                debug_assert!(b.is::<Box<dyn MMMInputValue>>());
+                let a = a.downcast_ref::<Box<dyn MMMInputValue>>().unwrap_unchecked();
+                let b = b.downcast_ref::<Box<dyn MMMInputValue>>().unwrap_unchecked();
+                #[cfg(debug_assertions)]
                 {
-                    let format = PanelExtractFormat {
-                        pbqf: a.format().downcast_ref::<PackedBlockQuantFormat>().unwrap().clone(),
-                    };
-                    let data = a.downcast_ref::<EagerPackedInput>().unwrap();
-                    AsInputValue::Owned(Box::new(PanelExtractInput {
-                        format,
-                        data: data.clone(),
-                        to: a_packing.downcast_ref::<PackedFormat>().unwrap().clone()
-                    }))
-                } else {
-                    panic!("Un-matchable input and output for weights {:?} -> {a_packing}", a);
-                };
-                assert!(
-                    b_packing.same_as(b.format())
-                        || (b_packing.is::<PackedFormat>() && b_packing.r() == b.format().r())
-                );
+                    let (a_packing, b_packing) = &_mmm.packings()[packings[scenario]];
+                    debug_assert!(
+                        a_packing.same_as(a.format())
+                            || (a_packing.is::<PackedFormat>() && a_packing.r() == a.format().r())
+                    );
+                    debug_assert!(
+                        b_packing.same_as(b.format())
+                            || (b_packing.is::<PackedFormat>() && b_packing.r() == b.format().r())
+                    );
+                }
                 FusedSpec::AddMatMul {
-                    a: pa,
+                    a: AsInputValue::Borrowed(&**a),
                     b: AsInputValue::Borrowed(&**b),
                     packing: packings[scenario],
                 }
-            }
+            },
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
             ProtoFusedSpec::LeakyRelu(v) => FusedSpec::LeakyRelu(&inputs[*v]),
             ProtoFusedSpec::BinPerRow(v, op, _) => {
@@ -302,6 +296,7 @@ pub struct OptMatMul {
     pub mmm: Vec<Box<dyn MatMatMul>>,
     pub c_m_axis: usize,
     pub c_n_axis: usize,
+    pub trivial_packing: bool,
     pub trivial_path: bool,
 }
 
@@ -591,10 +586,19 @@ impl OptMatMul {
         c_m_axis: usize,
         c_n_axis: usize,
         micro_ops: Vec<ProtoFusedSpec>,
+        trivial_packing: bool,
     ) -> TractResult<Self> {
         ensure!(c_m_axis < c_fact.rank());
         ensure!(c_n_axis < c_fact.rank());
-        let mut it = OptMatMul { mmm, c_fact, c_m_axis, c_n_axis, micro_ops, trivial_path: false };
+        let mut it = OptMatMul {
+            mmm,
+            c_fact,
+            c_m_axis,
+            c_n_axis,
+            micro_ops,
+            trivial_path: false,
+            trivial_packing,
+        };
         it.update_trivial_path();
         Ok(it)
     }
@@ -626,6 +630,7 @@ impl OptMatMul {
                 .iter()
                 .enumerate()
                 .all(|(ax, dim)| ax == self.c_m_axis || ax == self.c_n_axis || dim.is_one())
+            && self.trivial_packing
             && self.micro_ops.iter().all(|o| o.is_trivial())
     }
 
