@@ -34,6 +34,7 @@ pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;
 
+    #[allow(clippy::type_complexity)]
     fn packings(&self) -> &[(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)];
 
     fn internal_type(&self) -> DatumType;

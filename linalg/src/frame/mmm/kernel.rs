@@ -13,6 +13,7 @@ pub trait MatMatMulKer: Clone + Debug + Send + Sync + 'static {
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;
 
+    #[allow(clippy::type_complexity)]
     fn packings(&self) -> &[(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)];
     fn stores(&self) -> Cow<[DatumType]>;
 
@@ -45,7 +46,7 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
         name: &str,
         kernel: Kernel<Acc>,
         default_packing_alignments: (usize, usize),
-        ) -> Self {
+    ) -> Self {
         let kernel = DynKernel {
             name: name.to_string(),
             kernel,
@@ -129,6 +130,7 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> MatMatMulKer for DynKernel<
         unsafe { (self.kernel)(op) }
     }
 
+    #[allow(clippy::type_complexity)]
     fn packings(&self) -> &[(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)] {
         &self.packings
     }
@@ -136,4 +138,4 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> MatMatMulKer for DynKernel<
     fn stores(&self) -> Cow<[DatumType]> {
         Cow::Borrowed(&self.stores)
     }
-    }
+}
