@@ -1336,18 +1336,23 @@ impl Tensor {
         }
     }
 
-    fn from_datum<T: Datum>(it: ArrayD<T>) -> Tensor {
+    fn from_datum<T: Datum>(mut it: ArrayD<T>) -> Tensor {
         unsafe {
             let mut t = Self::uninitialized::<T>(it.shape()).unwrap();
-            if let Some(slice) = it.as_slice() {
+            if let Some(slice) = it.as_slice_mut() {
                 if t.datum_type().is_copy() {
                     std::ptr::copy_nonoverlapping(
                         slice.as_ptr() as *const i8,
                         t.as_ptr_mut_unchecked(),
                         t.data.layout().size(),
                     );
-                    return t;
+                } else {
+                    t.as_slice_mut_unchecked::<T>()
+                        .iter_mut()
+                        .zip(slice.iter_mut())
+                        .for_each(|(t, s)| *t = std::mem::take(s));
                 }
+                return t;
             }
             if it.strides().iter().all(|&s| s > 0) {
                 let mut len_and_strides: TVec<(usize, usize)> = tvec!();
