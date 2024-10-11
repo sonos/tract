@@ -254,7 +254,7 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
     }
 
     pub fn padded_inputs(&self) -> TractResult<(Tensor, Tensor)> {
-        let (pack_a, pack_b) = self.ker.packings()[self.packing];
+        let (pack_a, pack_b) = &self.ker.packings()[self.packing];
         assert!(pack_b.k_alignment() == 1);
         let (m, k, n) = self.mkn();
         let k_aligned = k.next_multiple_of(pack_a.k_alignment());
@@ -283,7 +283,7 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
 
     pub fn reference(&self) -> TractResult<Tensor> {
         let (m, k, n) = self.mkn();
-        let pack_a = self.ker.packings()[self.packing].0;
+        let pack_a = &self.ker.packings()[self.packing].0;
         let (mut a, b) = self.padded_inputs()?;
         let k_aligned = k.next_multiple_of(pack_a.k_alignment());
         if let Some(pbqf) = pack_a.downcast_ref::<PackedBlockQuantFormat>() {
@@ -310,7 +310,7 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
 
     pub fn run(&self) -> TractResult<Tensor> {
         let (m, k, n) = self.mkn();
-        let (pack_a, pack_b) = self.ker.packings()[self.packing];
+        let (pack_a, pack_b) = &self.ker.packings()[self.packing];
         assert!(pack_b.k_alignment() == 1);
         let k_aligned = k.next_multiple_of(pack_a.k_alignment());
 

@@ -1,5 +1,4 @@
 use pack::PackedFormat;
-use tract_itertools::Itertools;
 
 use super::*;
 use std::borrow::Cow;
@@ -14,7 +13,7 @@ pub trait MatMatMulKer: Clone + Debug + Send + Sync + 'static {
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;
 
-    fn packings(&self) -> Cow<[(&dyn MMMInputFormat, &dyn MMMInputFormat)]>;
+    fn packings(&self) -> &[(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)];
     fn stores(&self) -> Cow<[DatumType]>;
 
     #[allow(unused_variables)]
@@ -46,7 +45,7 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
         name: &str,
         kernel: Kernel<Acc>,
         default_packing_alignments: (usize, usize),
-    ) -> Self {
+        ) -> Self {
         let kernel = DynKernel {
             name: name.to_string(),
             kernel,
@@ -130,11 +129,11 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> MatMatMulKer for DynKernel<
         unsafe { (self.kernel)(op) }
     }
 
-    fn packings(&self) -> Cow<[(&dyn MMMInputFormat, &dyn MMMInputFormat)]> {
-        Cow::Owned(self.packings.iter().map(|p| (&*p.0, &*p.1)).collect_vec())
+    fn packings(&self) -> &[(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)] {
+        &self.packings
     }
 
     fn stores(&self) -> Cow<[DatumType]> {
         Cow::Borrowed(&self.stores)
     }
-}
+    }

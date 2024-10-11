@@ -34,7 +34,7 @@ impl ProtoFusedSpec {
         use ProtoFusedSpec::*;
         match self {
             AddMatMul { geo, packings: packing, .. } => {
-                let (a, b) = mmm.packings()[packing[scenario]];
+                let (a, b) = &mmm.packings()[packing[scenario]];
                 format!("matmul(k={}, {a:?}•{b:?})", geo.k)
             }
             BinScalar(_, op) => format!("scalar{op:?}"),
@@ -72,7 +72,7 @@ impl ProtoFusedSpec {
                 let b = b.as_slice::<Opaque>().unwrap()[0]
                     .downcast_ref::<Box<dyn MMMInputValue>>()
                     .unwrap();
-                let (a_packing, b_packing) = mmm.packings()[packings[scenario]];
+                let (a_packing, b_packing) = &mmm.packings()[packings[scenario]];
                 let pa = if a_packing.same_as(a.format()) {
                     AsInputValue::Borrowed(&**a)
                 } else if a_packing.is::<PackedFormat>()
@@ -155,7 +155,7 @@ impl ProtoFusedSpec {
                 let b = b.as_slice::<Opaque>().unwrap()[0]
                     .downcast_ref::<Box<dyn MMMInputValue>>()
                     .unwrap();
-                let (a_packing, b_packing) = mmm.packings()[packings[scenario]];
+                let (a_packing, b_packing) = &mmm.packings()[packings[scenario]];
                 let pa = if a_packing.same_as(a.format()) {
                     AsInputValue::Borrowed(&**a)
                 } else if a_packing.is::<PackedFormat>()
