@@ -124,6 +124,9 @@ $TRACT_RUN $MODELS/hey_snips_v4_model17.pb -i S,20,f32 \
     dump -q \
     --assert-op-count AddAxis 0
 
+$CACHE_FILE trunet_dummy.nnef.tgz
+$TRACT_RUN --nnef-tract-core $MODELS/trunet_dummy.nnef.tgz dump -q
+
 echo $WHITE     LLM $NC
 
 TEMP_ELM=$(mktemp -d)
