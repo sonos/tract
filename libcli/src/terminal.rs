@@ -360,6 +360,7 @@ fn render_node_prefixed(
         prefix!();
         println!();
     }
+
     Ok(())
 }
 
@@ -375,6 +376,39 @@ pub fn render_summaries(
         if let Some(summary) = &annotations.memory_summary {
             println!("{}", White.bold().paint("Memory summary"));
             println!(" * Peak flushable memory: {}", render_memory(summary.max));
+
+            if let Some(plan) = &annotations.memory_plan {
+                println!("{}", White.bold().paint("Memory plan"));
+                let size_by_partition = plan.size_by_partition();
+
+                for (step, mem_step) in plan.by_steps.iter().enumerate() {
+                println!(
+                   "{:15}> |{}|",
+                   format!("step: {:5}", step),
+                   mem_step.iter()
+                           .map(|n| -> String { n.as_ref().map(|it| format!("{:^6}", it.node)).unwrap_or(format!("{:^6}", "*"))})
+                           .collect::<Vec<String>>()
+                           .join("|")
+                    );
+
+                println!(
+                   "{:15}> |{}|",
+                   "",
+                   mem_step.iter()
+                           .enumerate()
+                           .map(|(p_idx, n)| -> String { 
+                                let Some(n) = n else { return format!("{:^6}", "*"); };
+                                format!("{:^6.0}", n.mem_size as f32 / size_by_partition[p_idx] as f32 * 100.0)
+                            })
+                           .map(|s| White.bold().paint(s).to_string())
+                           .collect::<Vec<_>>()
+                           .join("|")
+                    );
+
+                }
+                println!("{} {}", Blue.bold().paint(" * Plan arena memory size:"), render_memory(plan.memory_size()));
+                println!("{} {:>4.1}%", Blue.bold().paint(" * Plan fragmentation: "), (1.0 - summary.max as f32 / plan.memory_size() as f32) * 100.0);
+            }
         }
     }
     if options.cost {
@@ -455,6 +489,7 @@ pub fn render_summaries(
 
     Ok(())
 }
+
 
 /// Format a rusage::Duration showing avgtime in ms.
 pub fn dur_avg(measure: Duration) -> String {
