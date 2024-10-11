@@ -43,6 +43,7 @@ impl<'mb> ModelBuilder<'mb> {
     }
 
     fn translate(&mut self) -> TractResult<()> {
+        let mut scenario_specs = vec![];
         'ext: for ext in &self.proto_model.doc.extension {
             match &*ext.0 .0 {
                 "tract_registry" => {
@@ -62,8 +63,8 @@ impl<'mb> ModelBuilder<'mb> {
                     self.symbols.push(symbol);
                 }
                 "tract_assert" => {
-                    if let Some((scen, rule)) = ext.1.split_once(':') {
-                        self.model.symbols.add_scenario_assertion(scen, rule)?;
+                    if let Some(pair) = ext.1.split_once(':') {
+                        scenario_specs.push(pair);
                     } else {
                         self.model.symbols.add_assertion(&ext.1)?;
                     }
@@ -81,6 +82,9 @@ impl<'mb> ModelBuilder<'mb> {
                     warn!("Ignore unknown extension {:?}", ext.0);
                 }
             };
+        }
+        for (scen, rule) in scenario_specs {
+            self.model.symbols.add_scenario_assertion(scen, rule)?;
         }
         self.scopes.push(HashMap::new());
         self.wire_body(&self.proto_model.doc.graph_def.body).context("Wiring root graph body")?;
@@ -674,7 +678,7 @@ impl CoerceFrom<Value> for OutletId {
             Value::Tuple(tuple) if tuple.len() == 1 => OutletId::coerce(builder, &tuple[0]),
             Value::Array(inputs) => {
                 if let Ok(c) = from.to::<Arc<Tensor>>(builder) {
-                    return builder.add_const(c)
+                    return builder.add_const(c);
                 }
                 let mut outlets = tvec!();
                 for i in inputs {
