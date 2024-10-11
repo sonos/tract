@@ -1073,7 +1073,7 @@ pub fn display_params_from_clap(
     Ok(DisplayParams {
         konst: matches.is_present("const"),
         cost: matches.is_present("cost"),
-        flushable_mem: matches.is_present("flushable_mem"),
+        tmp_mem_usage: matches.is_present("tmp_mem_usage"),
         profile: matches.is_present("profile"),
         folded: matches.is_present("folded"),
         left_column_width: 0,

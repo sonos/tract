@@ -542,7 +542,7 @@ fn output_options(command: clap::Command) -> clap::Command {
         .arg(Arg::new("json").long("json").help("dump performance info as json"))
         .arg(Arg::new("outlet-labels").long("outlet-labels").help("display outlet labels"))
         .arg(Arg::new("cost").long("cost").help("Include const information"))
-        .arg(Arg::new("flushable_mem").long("flushable-mem").help("Include flushable memory information"))
+        .arg(Arg::new("tmp_mem_usage").long("tmp-mem-usage").help("Include temporary memory usage information"))
         .arg(Arg::new("profile").long("profile").help("Include results for profile run"))
         .arg(Arg::new("folded").long("folded").help("Don't display submodel informations"))
         .arg(
