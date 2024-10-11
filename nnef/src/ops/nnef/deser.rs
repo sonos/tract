@@ -4,7 +4,7 @@ use crate::ops::tract_core;
 use ops::cnn::deconv::Deconv;
 use ops::cnn::{Conv, KernelFormat};
 use tract_core::internal::*;
-use tract_core::ops::array::PadMode;
+use tract_core::ops::array::{PadMode, TypedConcat};
 use tract_core::ops::cast::cast;
 use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::cnn::PaddingSpec;
@@ -19,6 +19,36 @@ use tract_itertools::Itertools;
 use tract_core::ops;
 
 use crate::deser::{ModelBuilder, ResolvedInvocation};
+
+fn convert_to_shape_input(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+    name: &str,
+) -> TractResult<Value> {
+    if let Ok(tensor) = invocation.named_arg_as::<Arc<Tensor>>(builder, name) {
+        return Ok(Value::Tensor(tensor.cast_to::<TDim>()?.into_owned().into_arc_tensor()));
+    }
+    if let Ok(bits) = invocation.named_arg_as::<TVec<OutletId>>(builder, name) {
+        let concat_input = bits
+            .into_iter()
+            .map(|mut bit| {
+                let fact = builder.model.outlet_fact(bit)?.to_owned();
+                if fact.rank() != 1 {
+                    bit = builder.wire_as_outlets(
+                        AxisOp::Reshape(0, fact.shape.to_tvec(), tvec![fact.shape.volume()]),
+                        &[bit],
+                    )?[0];
+                }
+                if !fact.datum_type.is_tdim() {
+                    bit = builder.wire_as_outlets(cast(TDim::datum_type()), &[bit])?[0];
+                }
+                Ok(bit)
+            })
+            .collect::<TractResult<TVec<OutletId>>>()?;
+        return builder.wire(TypedConcat::new(0), &concat_input);
+    }
+    todo!();
+}
 
 // fragment external<? = scalar>( shape: integer[] ) -> ( output: tensor<?> );
 pub fn external(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
@@ -95,19 +125,8 @@ pub fn reshape(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
     let start: usize = invocation.named_arg_as(builder, "axis_start")?;
     let count: i64 = invocation.named_arg_as(builder, "axis_count")?;
     let count = if count == -1 { input_shape.len() - start } else { count as usize };
-    let shape: TVec<Arc<Tensor>> =
-        builder.allowing_new_symbols(|builder| invocation.named_arg_as(builder, "shape"))?;
-    if shape.iter().any(|t| t.rank() > 0) {
-        warn!("Reshape called with invalid shape for node {:?}: {}. Flattening the shape will be deprecated.",
-              &builder.naming_scopes.iter().map(|i| &i.0).join("/"), shape.iter().map(|t| format!("{t:?}")).join(" ; "));
-    }
-    let mut replacement = tvec!();
-    for dims in shape {
-        let dims = dims.cast_to::<TDim>()?;
-        for dim in dims.as_slice::<TDim>()? {
-            replacement.push(dim.clone())
-        }
-    }
+    let replacement = convert_to_shape_input(builder, invocation, "shape")?.to::<Arc<Tensor>>(builder)?;
+    let mut replacement:TVec<TDim> = replacement.as_slice::<TDim>()?.into();
     for i in 0..replacement.len() {
         if replacement[i] == 0.to_dim() {
             replacement[i] = input_shape[i + start].clone();
@@ -260,7 +279,8 @@ pub fn unsqueeze(
 // fragment tile<?>( input: tensor<?>, repeats: integer[] ) -> ( output: tensor<?> );
 pub fn tile(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let wire = invocation.named_arg_as(builder, "input")?;
-    let multipliers = invocation.named_arg_as(builder, "repeats")?;
+    let multipliers =
+        convert_to_shape_input(builder, invocation, "repeats")?.to::<OutletId>(builder)?;
     let rank = builder.model.outlet_fact(wire)?.rank();
     ensure!(builder.model.outlet_fact(multipliers)?.rank() == 1);
     ensure!(builder.model.outlet_fact(multipliers)?.shape[0] == rank.to_dim());
