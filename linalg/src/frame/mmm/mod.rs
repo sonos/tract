@@ -34,7 +34,7 @@ pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;
 
-    fn packings(&self) -> Cow<[(&dyn MMMInputFormat, &dyn MMMInputFormat)]>;
+    fn packings(&self) -> &[(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)];
 
     fn internal_type(&self) -> DatumType;
 
@@ -89,7 +89,7 @@ impl<K: MatMatMulKer> MatMatMul for K {
         self.nr()
     }
 
-    fn packings(&self) -> Cow<[(&dyn MMMInputFormat, &dyn MMMInputFormat)]> {
+    fn packings(&self) -> &[(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)] {
         self.packings()
     }
 
