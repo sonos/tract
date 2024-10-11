@@ -99,12 +99,13 @@ fn render_node_prefixed(
     let node_op_name = model.node_op_name(node_id);
     let profile_column_pad = format!("{:>1$}", "", options.profile as usize * 20);
     let cost_column_pad = format!("{:>1$}", "", options.cost as usize * 25);
-    let flushable_mem_column_pad = format!("{:>1$}", "", options.flushable_mem as usize * 30);
+    let mem_padding = if annotations.memory_summary.is_some() { 15 } else { 30 };
+    let tmp_mem_usage_column_pad = format!("{:>1$}", "", options.tmp_mem_usage as usize * mem_padding);
     let flops_column_pad = format!("{:>1$}", "", (options.profile && options.cost) as usize * 20);
 
     if let Some(ref mut ds) = &mut drawing_state {
         for l in ds.draw_node_vprefix(model, node_id, options)? {
-            println!("{cost_column_pad}{profile_column_pad}{flops_column_pad}{flushable_mem_column_pad}{prefix}{l} ");
+            println!("{cost_column_pad}{profile_column_pad}{flops_column_pad}{tmp_mem_usage_column_pad}{prefix}{l} ");
         }
     }
 
@@ -169,15 +170,15 @@ fn render_node_prefixed(
         None
     };
 
-    // flushable_mem column
-    let mut flushable_mem_column = if options.flushable_mem {
-        let it = tags.flushable_mem.iter().map(move |mem| {
+    // tmp_mem_usage column
+    let mut tmp_mem_usage_column = if options.tmp_mem_usage {
+        let it = tags.tmp_mem_usage.iter().map(move |mem| {
             let unpadded = if let Ok(mem_size) = mem.to_usize() {
                 render_memory(mem_size)
             } else {
                 format!("{mem:.3} B")
             };
-            format!("{:>1$} ", unpadded, 29)
+            format!("{:>1$} ", unpadded, mem_padding - 1)
         });
         Some(it)
     } else {
@@ -209,11 +210,11 @@ fn render_node_prefixed(
                 .as_mut()
                 .map(|it| it.next().unwrap_or_else(|| flops_column_pad.to_string()))
                 .unwrap_or("".to_string());
-            let flushable_mem = flushable_mem_column
+            let tmp_mem_usage = tmp_mem_usage_column
                 .as_mut()
-                .map(|it| it.next().unwrap_or_else(|| flushable_mem_column_pad.to_string()))
+                .map(|it| it.next().unwrap_or_else(|| tmp_mem_usage_column_pad.to_string()))
                 .unwrap_or("".to_string());
-            print!("{}{}{}{}{}{} ", profile, cost, flops, flushable_mem, prefix, drawing_lines.next().unwrap(),)
+            print!("{}{}{}{}{}{} ", profile, cost, flops, tmp_mem_usage, prefix, drawing_lines.next().unwrap(),)
         };
     }
 
@@ -370,7 +371,7 @@ pub fn render_summaries(
     let total = annotations.tags.values().sum::<NodeTags>();
 
     
-    if options.flushable_mem {
+    if options.tmp_mem_usage {
         if let Some(summary) = &annotations.memory_summary {
             println!("{}", White.bold().paint("Memory summary"));
             println!(" * Peak flushable memory: {}", render_memory(summary.max));

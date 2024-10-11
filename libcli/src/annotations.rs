@@ -39,7 +39,7 @@ impl NodeQId {
 #[derive(Debug, Default, Clone)]
 pub struct NodeTags {
     pub cost: Vec<(Cost, TDim)>,
-    pub flushable_mem: Option<TDim>,
+    pub tmp_mem_usage: Option<TDim>,
     pub style: Option<Style>,
     pub labels: Vec<String>,
     pub sections: Vec<Vec<String>>,
@@ -63,7 +63,7 @@ impl<'a> std::ops::Add<&'a NodeTags> for &'a NodeTags {
             .map(|(cost, dims)| (*cost, dims.into_iter().fold(0.to_dim(), |acc, d| acc + &d.1)))
             .collect::<Vec<(Cost, TDim)>>();
 
-        let flushable_mem = match (self.flushable_mem.clone(), other.flushable_mem.clone()) {
+        let tmp_mem_usage = match (self.tmp_mem_usage.clone(), other.tmp_mem_usage.clone()) {
             (Some(self_mem), Some(other_mem)) => Some(self_mem + other_mem),
             (_, Some(mem)) | (Some(mem), _) => Some(mem),
             (None, None) => None
@@ -84,7 +84,7 @@ impl<'a> std::ops::Add<&'a NodeTags> for &'a NodeTags {
             .collect();
         NodeTags {
             cost,
-            flushable_mem,
+            tmp_mem_usage,
             profile,
             style,
             labels,
@@ -108,7 +108,7 @@ impl<'a> std::iter::Sum<&'a NodeTags> for NodeTags {
 
 const EMPTY: NodeTags = NodeTags {
     cost: Vec::new(),
-    flushable_mem: None,
+    tmp_mem_usage: None,
     style: None,
     labels: Vec::new(),
     sections: Vec::new(),
@@ -132,7 +132,7 @@ impl Annotations {
     }
 
 
-    pub fn track_flushable_mem<Flushable>(
+    pub fn track_tmp_memory_usage<Flushable>(
         &mut self,
         model: &dyn Model,
         flushable: Flushable,
@@ -148,9 +148,9 @@ impl Annotations {
             tract_core::model::order::eval_order_opt_ram(model)?
         };
 
-        let flushable_mem = model.eval_flushable_memory(&order, flushable)?;
+        let tmp_mem_usage = model.eval_tmp_memory_usage(&order, flushable)?;
 
-        let peak_flushable_mem = flushable_mem.iter()
+        let peak_tmp_mem_usage = tmp_mem_usage.iter()
             .map(|(n, mem)| mem.to_usize().map(|m| (*n, m)))
             .collect::<TractResult<TVec<_>>>()
             .ok()
@@ -160,14 +160,14 @@ impl Annotations {
                     .max_by_key(|it| it.1)
             });
 
-        self.memory_summary = peak_flushable_mem
+        self.memory_summary = peak_tmp_mem_usage
             .map(|(n, mem)| MemorySummary { max: mem, max_reached_by_node: n });
 
 
-        for (n, mem_size) in flushable_mem.into_iter() {
+        for (n, mem_size) in tmp_mem_usage.into_iter() {
             let qid = NodeQId(tvec![], n);
             let tags = self.tags.entry(qid).or_default();
-            tags.flushable_mem = Some(mem_size.simplify());
+            tags.tmp_mem_usage = Some(mem_size.simplify());
         }
         Ok(())
     }

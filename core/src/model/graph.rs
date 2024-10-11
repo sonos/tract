@@ -478,8 +478,8 @@ where
         Ok(())
     }
 
-    /// Evaluate flushable memory required and its related node at each step of the given order.
-    pub fn eval_flushable_memory<Flushable>(
+    /// Evaluate temporary memory usage with its related node at each step of the given order.
+    pub fn eval_tmp_memory_usage<Flushable>(
         &self,
         order: &[usize],
         flushable: Flushable,
@@ -489,7 +489,7 @@ where
     {
         let outputs = self.output_outlets()?.to_vec();
 
-        let flush_lists = super::order::build_flush_list(self, &order, &outputs, &flushable);
+        let flush_lists = super::order::build_flush_list(self, order, &outputs, &flushable);
         let mut values: TVec<bool> = tvec![false; self.nodes.len()];
 
         let mut mem_by_steps: TVec<_> = tvec![(0, 0.into()); order.len()];
@@ -508,15 +508,16 @@ where
                 values[*flush] = false;
             }
 
-            values[*n] = true;
-
             // Active nodes are node that has not been flushed + inputs of the current node and current node.
             let mut step_active_nodes: HashSet<_> =
                 values.iter().enumerate().filter_map(|(n, active)| active.then_some(n)).collect();
 
             step_active_nodes.extend(node.inputs.iter().map(|it| it.node));
+            step_active_nodes.insert(*n);
 
-            // Remove non flushable nodes.
+            values[*n] = true;
+
+            // Keep only flushable nodes.
             let step_active_flushable_nodes = step_active_nodes.intersection(&flushable_nodes);
 
             mem_by_steps[step] = (*n, 0.into());
