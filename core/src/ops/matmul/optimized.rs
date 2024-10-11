@@ -409,17 +409,6 @@ impl TypedOp for OptMatMul {
         ensure!(self.c_n_axis < self.c_fact.rank());
         ensure!(self.trivial_path == self.can_use_trivial_path());
         ensure!(self.mmm.iter().map(|mmm| mmm.internal_type()).all_equal());
-        if let Some(scope) =
-            inputs.iter().flat_map(|fact| &*fact.shape).find_map(|dim| dim.find_scope())
-        {
-            let scenarios = scope.all_scenarios().into_iter().count().max(1);
-            ensure!(self.mmm.len() == scenarios);
-            for uop in &self.micro_ops {
-                if let ProtoFusedSpec::AddMatMul { packings: packing, .. } = uop {
-                    ensure!(packing.len() == scenarios);
-                }
-            }
-        }
         for op in &self.micro_ops {
             op.check_inputs(inputs)?;
         }
