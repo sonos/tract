@@ -516,6 +516,7 @@ impl Conv {
                 c_m_axis,
                 c_n_axis,
                 ops,
+                packing == 0 && self.group == 1,
             )?,
             &wires,
         )
