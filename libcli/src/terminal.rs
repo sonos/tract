@@ -99,11 +99,12 @@ fn render_node_prefixed(
     let node_op_name = model.node_op_name(node_id);
     let profile_column_pad = format!("{:>1$}", "", options.profile as usize * 20);
     let cost_column_pad = format!("{:>1$}", "", options.cost as usize * 25);
+    let flushable_mem_column_pad = format!("{:>1$}", "", options.flushable_mem as usize * 30);
     let flops_column_pad = format!("{:>1$}", "", (options.profile && options.cost) as usize * 20);
 
     if let Some(ref mut ds) = &mut drawing_state {
         for l in ds.draw_node_vprefix(model, node_id, options)? {
-            println!("{cost_column_pad}{profile_column_pad}{flops_column_pad}{prefix}{l} ");
+            println!("{cost_column_pad}{profile_column_pad}{flops_column_pad}{flushable_mem_column_pad}{prefix}{l} ");
         }
     }
 
@@ -168,6 +169,21 @@ fn render_node_prefixed(
         None
     };
 
+    // flushable_mem column
+    let mut flushable_mem_column = if options.flushable_mem {
+        let it = tags.flushable_mem.iter().map(move |mem| {
+            let unpadded = if let Ok(mem_size) = mem.to_usize() {
+                render_memory(mem_size)
+            } else {
+                format!("{mem:.3} B")
+            };
+            format!("{:>1$} ", unpadded, 29)
+        });
+        Some(it)
+    } else {
+        None
+    };
+
     // drawing column
     let mut drawing_lines: Box<dyn Iterator<Item = String>> =
         if let Some(ds) = drawing_state.as_mut() {
@@ -193,7 +209,11 @@ fn render_node_prefixed(
                 .as_mut()
                 .map(|it| it.next().unwrap_or_else(|| flops_column_pad.to_string()))
                 .unwrap_or("".to_string());
-            print!("{}{}{}{}{} ", profile, cost, flops, prefix, drawing_lines.next().unwrap(),)
+            let flushable_mem = flushable_mem_column
+                .as_mut()
+                .map(|it| it.next().unwrap_or_else(|| flushable_mem_column_pad.to_string()))
+                .unwrap_or("".to_string());
+            print!("{}{}{}{}{}{} ", profile, cost, flops, flushable_mem, prefix, drawing_lines.next().unwrap(),)
         };
     }
 
@@ -349,6 +369,13 @@ pub fn render_summaries(
 ) -> TractResult<()> {
     let total = annotations.tags.values().sum::<NodeTags>();
 
+    
+    if options.flushable_mem {
+        if let Some(summary) = &annotations.memory_summary {
+            println!("{}", White.bold().paint("Memory summary"));
+            println!(" * Peak flushable memory: {}", render_memory(summary.max));
+        }
+    }
     if options.cost {
         println!("{}", White.bold().paint("Cost summary"));
         for (c, i) in &total.cost {
@@ -443,6 +470,22 @@ pub fn dur_avg_ratio(measure: Duration, global: Duration) -> String {
             .bold()
             .paint(format!("{:>4.1}%", measure.as_secs_f64() / global.as_secs_f64() * 100.)),
     )
+}
+
+fn render_memory(mem_size: usize) -> String {
+    let kb = 1024.0;
+    let mb = kb * 1024.0;
+    let gb = mb * 1024.0;
+    let mem_size = mem_size as f32;
+    if mem_size > gb {
+        format!("{:.3} GB", mem_size/ gb)
+    } else if mem_size > mb {
+        format!("{:.3} MB", mem_size/ mb)
+    } else if mem_size > kb {
+        format!("{:.3} KB", mem_size/ kb)
+    } else {
+        format!("{mem_size:.3} B")
+    }
 }
 
 fn render_tdim(d: &TDim) -> AnsiString<'static> {

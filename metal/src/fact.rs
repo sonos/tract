@@ -22,6 +22,10 @@ impl OpaqueFact for MetalFact {
     fn clarify_dt_shape(&self) -> Option<(DatumType, &[usize])> {
         self.0.shape.as_concrete().map(|s| (self.0.datum_type, s))
     }
+
+    fn mem_size(&self) -> TDim {
+        self.0.mem_size()
+    }
 }
 
 pub trait MetalTypedFactExt {

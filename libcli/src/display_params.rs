@@ -18,6 +18,7 @@ pub struct DisplayParams {
     pub opt_ram_order: bool,
     pub debug_op: bool,
     pub cost: bool,
+    pub flushable_mem: bool,
     pub profile: bool,
     pub folded: bool,
     pub node_ids: Option<Vec<TVec<(usize, String)>>>,

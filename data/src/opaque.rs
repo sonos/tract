@@ -1,4 +1,5 @@
 #![allow(clippy::derived_hash_with_manual_eq)]
+use crate::dim::TDim;
 use crate::datum::DatumType;
 use crate::internal::{TVec, Tensor, TractResult};
 use std::fmt::{Debug, Display};
@@ -25,7 +26,10 @@ pub trait OpaqueFact: DynHash + Send + Sync + Debug + dyn_clone::DynClone + Down
     fn clarify_dt_shape(&self) -> Option<(DatumType, &[usize])> {
         None
     }
+
+    fn mem_size(&self) -> TDim;
 }
+
 impl_downcast!(OpaqueFact);
 dyn_hash::hash_trait_object!(OpaqueFact);
 dyn_clone::clone_trait_object!(OpaqueFact);
@@ -44,8 +48,16 @@ impl PartialEq for Box<dyn OpaqueFact> {
 
 impl Eq for Box<dyn OpaqueFact> {}
 
-impl OpaqueFact for TVec<Box<dyn OpaqueFact>> {}
-impl OpaqueFact for TVec<Option<Box<dyn OpaqueFact>>> {}
+impl OpaqueFact for TVec<Box<dyn OpaqueFact>> {
+    fn mem_size(&self) -> TDim {
+        self.iter().map(|it| it.mem_size()).sum()
+    }
+}
+impl OpaqueFact for TVec<Option<Box<dyn OpaqueFact>>> {
+    fn mem_size(&self) -> TDim {
+        self.iter().flatten().map(|it| it.mem_size()).sum()
+    }
+}
 
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub struct DummyPayload;

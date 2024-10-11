@@ -148,6 +148,11 @@ pub fn handle(
         annotations.track_axes(model, &hints)?;
     }
 
+    if sub_matches.is_present("flushable_mem") {
+        let plan_options = plan_options_from_subcommand(sub_matches)?;
+        annotations.track_flushable_mem(model, |n| !n.op_is::<tract_core::ops::konst::Const>(), plan_options.skip_order_opt_ram)?;
+    }
+
     if let Some(asserts) = &params.assertions.assert_output_facts {
         let outputs_facts: Vec<InferenceFact> = model
             .output_outlets()

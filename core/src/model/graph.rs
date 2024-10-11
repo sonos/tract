@@ -3,6 +3,7 @@ use crate::internal::*;
 use crate::ops::Op;
 use crate::plan::PlanOptions;
 use crate::prelude::*;
+use std::collections::HashSet;
 use std::fmt;
 use tract_data::internal::*;
 use tract_itertools::Itertools;
@@ -477,39 +478,59 @@ where
         Ok(())
     }
 
-    pub fn eval_memory<Flushable>(&self, order: &[usize], flushable: Flushable) -> TractResult<TVec<TDim>> 
-    where Flushable: Fn(&Node<F, O>) -> bool {
+    /// Evaluate flushable memory required and its related node at each step of the given order.
+    pub fn eval_flushable_memory<Flushable>(
+        &self,
+        order: &[usize],
+        flushable: Flushable,
+    ) -> TractResult<TVec<(usize, TDim)>>
+    where
+        Flushable: Fn(&Node<F, O>) -> bool,
+    {
         let outputs = self.output_outlets()?.to_vec();
 
         let flush_lists = super::order::build_flush_list(self, &order, &outputs, &flushable);
-        let mut values: TVec<Option<TDim>> = tvec![None; self.nodes.len()];
+        let mut values: TVec<bool> = tvec![false; self.nodes.len()];
 
-        let mut mem_by_steps: TVec<TDim> = tvec![0.into(); order.len()];
+        let mut mem_by_steps: TVec<_> = tvec![(0, 0.into()); order.len()];
 
-        // Populate non flushable values. 
-        for node in &self.nodes {
-            if !(flushable)(node) {
-                let out_facts = self.node_output_facts(node.id)?.into_iter().map(|it| it.to_typed_fact()).collect::<TractResult<TVec<_>>>()?;
-                let out_facts_volume = out_facts.iter().map(|it| it.shape.volume()).sum::<TDim>();
-                values[node.id] = Some(out_facts_volume);
-            }
-        }
+        let flushable_nodes = self
+            .nodes()
+            .iter()
+            .filter(|node| (flushable)(node))
+            .map(|it| it.id)
+            .collect::<HashSet<_>>();
 
         for (step, n) in order.iter().enumerate() {
             let node = self.node(*n);
 
             for flush in flush_lists[step].iter() {
-                values[*flush] = None;
+                values[*flush] = false;
             }
-            
-            let in_facts = self.node_input_facts(node.id)?.into_iter().map(|it| it.to_typed_fact()).collect::<TractResult<TVec<_>>>()?;
-            let out_facts = self.node_output_facts(node.id)?.into_iter().map(|it| it.to_typed_fact()).collect::<TractResult<TVec<_>>>()?;
-            let in_facts_volume = in_facts.iter().map(|it| it.shape.volume()).sum::<TDim>();
-            let out_facts_volume = out_facts.iter().map(|it| it.shape.volume()).sum::<TDim>();
-            values[*n] = Some(out_facts_volume);
-            mem_by_steps[step] = values.iter().flatten().sum::<TDim>() + in_facts_volume;
+
+            values[*n] = true;
+
+            // Active nodes are node that has not been flushed + inputs of the current node and current node.
+            let mut step_active_nodes: HashSet<_> =
+                values.iter().enumerate().filter_map(|(n, active)| active.then_some(n)).collect();
+
+            step_active_nodes.extend(node.inputs.iter().map(|it| it.node));
+
+            // Remove non flushable nodes.
+            let step_active_flushable_nodes = step_active_nodes.intersection(&flushable_nodes);
+
+            mem_by_steps[step] = (*n, 0.into());
+
+            for n in step_active_flushable_nodes {
+                let out_facts = self
+                    .node_output_facts(*n)?
+                    .into_iter()
+                    .map(|it| it.to_typed_fact())
+                    .collect::<TractResult<TVec<_>>>()?;
+                mem_by_steps[step].1 += out_facts.iter().map(|it| it.mem_size()).sum::<TDim>();
+            }
         }
-        todo!();
+        Ok(mem_by_steps)
     }
 
     #[cfg(not(all(debug_assertions, feature = "paranoid_assertions")))]

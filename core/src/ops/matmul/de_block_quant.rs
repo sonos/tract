@@ -18,7 +18,12 @@ impl std::fmt::Debug for BlockQuantFact {
     }
 }
 
-impl OpaqueFact for BlockQuantFact {}
+impl OpaqueFact for BlockQuantFact {
+
+    fn mem_size(&self) -> TDim {
+        self.shape.volume() * self.format.block_bytes()
+    }
+}
 
 #[derive(Clone, Hash)]
 pub struct BlockQuantValue {

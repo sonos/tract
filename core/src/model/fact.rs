@@ -230,6 +230,10 @@ impl TypedFact {
         }
     }
 
+    pub fn mem_size(&self) -> TDim {
+        self.shape.volume() * self.datum_type.size_of() + self.opaque_fact.as_ref().map(|it| it.mem_size()).unwrap_or(0.into())
+    }
+
     pub fn dt_scalar(datum_type: DatumType) -> TypedFact {
         TypedFact {
             datum_type,
