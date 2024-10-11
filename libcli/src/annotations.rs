@@ -39,7 +39,7 @@ impl NodeQId {
 #[derive(Debug, Default, Clone)]
 pub struct NodeTags {
     pub cost: Vec<(Cost, TDim)>,
-    pub eval_memory: Option<TDim>,
+    pub flushable_mem: Option<TDim>,
     pub style: Option<Style>,
     pub labels: Vec<String>,
     pub sections: Vec<Vec<String>>,
@@ -63,7 +63,7 @@ impl<'a> std::ops::Add<&'a NodeTags> for &'a NodeTags {
             .map(|(cost, dims)| (*cost, dims.into_iter().fold(0.to_dim(), |acc, d| acc + &d.1)))
             .collect::<Vec<(Cost, TDim)>>();
 
-        let eval_memory = match (self.eval_memory.clone(), other.eval_memory.clone()) {
+        let flushable_mem = match (self.flushable_mem.clone(), other.flushable_mem.clone()) {
             (Some(self_mem), Some(other_mem)) => Some(self_mem + other_mem),
             (_, Some(mem)) | (Some(mem), _) => Some(mem),
             (None, None) => None
@@ -84,7 +84,7 @@ impl<'a> std::ops::Add<&'a NodeTags> for &'a NodeTags {
             .collect();
         NodeTags {
             cost,
-            eval_memory,
+            flushable_mem,
             profile,
             style,
             labels,
@@ -108,7 +108,7 @@ impl<'a> std::iter::Sum<&'a NodeTags> for NodeTags {
 
 const EMPTY: NodeTags = NodeTags {
     cost: Vec::new(),
-    eval_memory: None,
+    flushable_mem: None,
     style: None,
     labels: Vec::new(),
     sections: Vec::new(),
@@ -123,6 +123,7 @@ const EMPTY: NodeTags = NodeTags {
 pub struct Annotations {
     pub tags: HashMap<NodeQId, NodeTags>,
     pub profile_summary: Option<ProfileSummary>,
+    pub memory_summary: Option<MemorySummary>,
 }
 
 impl Annotations {
@@ -131,20 +132,43 @@ impl Annotations {
     }
 
 
-    pub fn track_eval_memory<F, O, Flushable>(
+    pub fn track_flushable_mem<Flushable>(
         &mut self,
         model: &dyn Model,
-        order: &[usize],
         flushable: Flushable,
-        only_flushable: bool,
+        skip_order_opt_ram: bool,
     ) -> TractResult<()> 
     where
         Flushable: Fn(&TypedNode) -> bool {
 
         let Some(model) = model.downcast_ref::<TypedModel>() else { return Ok(()) };
-        let eval_memory = model.eval_memory(order, flushable, only_flushable)?;
+        let order = if skip_order_opt_ram {
+            tract_core::model::order::eval_order(model)?
+        } else {
+            tract_core::model::order::eval_order_opt_ram(model)?
+        };
+
+        let flushable_mem = model.eval_flushable_memory(&order, flushable)?;
+
+        let peak_flushable_mem = flushable_mem.iter()
+            .map(|(n, mem)| mem.to_usize().map(|m| (*n, m)))
+            .collect::<TractResult<TVec<_>>>()
+            .ok()
+            .and_then(|mems| {
+                mems.into_iter()
+                    .map(|(n, mem)| (NodeQId(tvec![], n), mem))
+                    .max_by_key(|it| it.1)
+            });
+
+        self.memory_summary = peak_flushable_mem
+            .map(|(n, mem)| MemorySummary { max: mem, max_reached_by_node: n });
 
 
+        for (n, mem_size) in flushable_mem.into_iter() {
+            let qid = NodeQId(tvec![], n);
+            let tags = self.tags.entry(qid).or_default();
+            tags.flushable_mem = Some(mem_size.simplify());
+        }
         Ok(())
     }
 
@@ -248,4 +272,10 @@ pub struct ProfileSummary {
     pub sum: Duration,
     pub entire: Duration,
     pub iters: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct MemorySummary {
+    pub max: usize,
+    pub max_reached_by_node: NodeQId,
 }
