@@ -40,6 +40,7 @@ mod fact;
 mod graph;
 mod node;
 pub mod order;
+pub mod memory;
 mod patch;
 mod rewriter;
 pub mod translator;
