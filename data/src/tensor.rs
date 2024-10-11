@@ -159,6 +159,7 @@ pub fn vector_size() -> usize {
 
 impl Tensor {
     #[allow(unreachable_code, unexpected_cfgs)]
+    #[inline]
     pub fn default_alignment(dt: DatumType, shape: &[usize]) -> usize {
         if shape.len() == 0 {
             dt.alignment()
@@ -168,16 +169,19 @@ impl Tensor {
     }
 
     /// Create an uninitialized tensor (dt as type paramater).
+    #[inline]
     pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> TractResult<Tensor> {
         Self::uninitialized_dt(T::datum_type(), shape)
     }
 
     /// Create an uninitialized tensor (dt as regular parameter).
+    #[inline]
     pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> TractResult<Tensor> {
         Self::uninitialized_aligned_dt(dt, shape, dt.alignment())
     }
 
     /// Create an uninitialized tensor with a given alignment (in bytes).
+    #[inline]
     pub unsafe fn uninitialized_aligned<T: Datum>(
         shape: &[usize],
         alignment: usize,
@@ -194,7 +198,11 @@ impl Tensor {
         let bytes = shape.iter().cloned().product::<usize>() * dt.size_of();
         let data = Blob::new_for_size_and_align(bytes, alignment);
         let mut tensor = Tensor { strides: tvec!(), dt, shape: shape.into(), data, len: 0 };
-        tensor.update_strides_and_len();
+        if tensor.shape.len() == 0 {
+            tensor.len = 1;
+        } else {
+            tensor.update_strides_and_len();
+        }
         if !tensor.data.is_empty() {
             if dt == String::datum_type() || dt == Blob::datum_type() {
                 // assumes zero-initialized string and blob are valid
@@ -445,12 +453,12 @@ impl Tensor {
 
     fn update_strides_and_len(&mut self) {
         self.strides.clear();
-        compute_natural_stride_to(&mut self.strides, &self.shape);
-        self.len = if self.rank() == 0 {
-            1
-        } else {
-            unsafe { *self.strides.get_unchecked(0) as usize * self.shape.get_unchecked(0) }
+        if self.shape.len() == 0 {
+            self.len = 1;
+            return;
         }
+        compute_natural_stride_to(&mut self.strides, &self.shape);
+        self.len = unsafe { *self.strides.get_unchecked(0) as usize * self.shape.get_unchecked(0) };
     }
 
     /// Force the tensor shape, no consistency check.
