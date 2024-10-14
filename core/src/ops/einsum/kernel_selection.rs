@@ -6,7 +6,7 @@ use tract_linalg::mmm::{MMMInputValue, MatMatMul};
 
 use crate::internal::*;
 use crate::ops::matmul::de_block_quant::{BlockQuantFact, BlockQuantValue};
-use crate::ops::matmul::pack::MatMatMulPack;
+use crate::ops::matmul::pack::OptMatMulPack;
 
 use super::optimize::EinSumAnnotatedAsMatMul;
 
@@ -47,13 +47,13 @@ pub fn wire_packing(
         .with_context(|| format!("No packing for {mmm:?} with inputs {a_dt:?} and {b_dt:?}"))?;
     let pa = patch.wire_node(
         format!("{prefix}.pack_a"),
-        MatMatMulPack { k_axis: op.a_k(), mn_axis: op.a_m(), packers: vec![pa.clone()] },
+        OptMatMulPack { k_axis: op.a_k(), mn_axis: op.a_m(), packers: vec![pa.clone()] },
         &[operands[0]],
     )?[0];
 
     let pb = patch.wire_node(
         format!("{prefix}.pack_b"),
-        MatMatMulPack { k_axis: op.b_k(), mn_axis: op.b_n(), packers: vec![pb.clone()] },
+        OptMatMulPack { k_axis: op.b_k(), mn_axis: op.b_n(), packers: vec![pb.clone()] },
         &[operands[1]],
     )?[0];
 
@@ -99,7 +99,7 @@ fn with_block_quant(
             .clone();
         patch
             .node_mut(pb.node)
-            .op_as_mut::<MatMatMulPack>()
+            .op_as_mut::<OptMatMulPack>()
             .context("Expected MatMatMulPack on B")?
             .packers
             .push(alternative_b_packing);
@@ -149,7 +149,7 @@ fn with_block_quant_matmat(
 
     let pb = patch.wire_node(
         format!("{prefix}.pack_b"),
-        MatMatMulPack { k_axis: op.b_k(), mn_axis: op.b_n(), packers: vec![pb.clone()] },
+        OptMatMulPack { k_axis: op.b_k(), mn_axis: op.b_n(), packers: vec![pb.clone()] },
         &[operands[1]],
     )?[0];
 
@@ -198,7 +198,7 @@ fn with_block_quant_matvec(
 
     let pb = patch.wire_node(
         format!("{prefix}.pack_b"),
-        MatMatMulPack { k_axis: op.b_k(), mn_axis: op.b_n(), packers: vec![pb.clone()] },
+        OptMatMulPack { k_axis: op.b_k(), mn_axis: op.b_n(), packers: vec![pb.clone()] },
         &[operands[1]],
     )?[0];
 

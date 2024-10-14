@@ -17,7 +17,7 @@ use crate::ops::math::{add, div, mul, sub};
 use crate::ops::math::{Add, Div, Mul, Sub};
 use crate::ops::matmul::optimized::AddMatMulGeometry;
 use crate::ops::matmul::optimized::MapOutputAxisToInput;
-use crate::ops::matmul::pack::MatMatMulPack;
+use crate::ops::matmul::pack::OptMatMulPack;
 use crate::ops::matmul::quant::wire_ensure_q8_flavour;
 use crate::ops::nn::Reduce;
 
@@ -79,7 +79,7 @@ impl Conv {
     ) -> TractResult<OutletId> {
         Ok(model.wire_node(
             format!("{name}.prep_kernel.pack"),
-            MatMatMulPack { packers: vec![format], k_axis: 2, mn_axis: 1 },
+            OptMatMulPack { packers: vec![format], k_axis: 2, mn_axis: 1 },
             &[kernel],
         )?[0])
     }

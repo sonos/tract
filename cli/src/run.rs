@@ -8,7 +8,7 @@ use fs_err as fs;
 use ndarray_npy::NpzWriter;
 use nu_ansi_term::Color::*;
 use tract_core::ops::cnn::conv::Im2Col;
-use tract_core::ops::matmul::pack::MatMatMulPack;
+use tract_core::ops::matmul::pack::OptMatMulPack;
 use tract_core::tract_data::itertools::izip;
 use tract_hir::internal::*;
 use tract_libcli::tensor::RunParams;
@@ -213,7 +213,7 @@ fn run_regular(
                     }
                     if assert_sane_floats {
                         for (ix, o) in clarified_r.iter().enumerate() {
-                            if node.op_is::<Im2Col>() || node.op_is::<MatMatMulPack>() {
+                            if node.op_is::<Im2Col>() || node.op_is::<OptMatMulPack>() {
                                 continue;
                             }
                             if let Ok(floats) = o.as_slice::<f32>() {
