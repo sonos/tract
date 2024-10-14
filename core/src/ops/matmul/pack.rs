@@ -5,15 +5,15 @@ use tract_data::TooEarly;
 use tract_linalg::frame::PackedFormat;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct MatMatMulPack {
+pub struct OptMatMulPack {
     pub(crate) packers: Vec<PackedFormat>,
     pub(crate) k_axis: usize,
     pub(crate) mn_axis: usize,
 }
 
-impl Op for MatMatMulPack {
+impl Op for OptMatMulPack {
     fn name(&self) -> Cow<str> {
-        "MatMatMulPack".into()
+        "OptMatMulPack".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -24,7 +24,7 @@ impl Op for MatMatMulPack {
     impl_op_same_as!();
 }
 
-impl EvalOp for MatMatMulPack {
+impl EvalOp for OptMatMulPack {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -38,9 +38,14 @@ impl EvalOp for MatMatMulPack {
     }
 }
 
-impl TypedOp for MatMatMulPack {
+impl TypedOp for OptMatMulPack {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(Opaque::datum_type().fact(self.output_shape(&inputs[0].shape))))
+        let k = inputs[0].shape[self.k_axis].clone();
+        let mn = inputs[0].shape[self.mn_axis].clone();
+        let opaque_fact = PackedOpaqueFact { k, mn, packers: self.packers.clone() };
+        Ok(tvec!(Opaque::datum_type()
+            .fact(self.output_shape(&inputs[0].shape))
+            .with_opaque_fact(opaque_fact)))
     }
 
     fn axes_mapping(
@@ -63,7 +68,7 @@ impl TypedOp for MatMatMulPack {
     as_op!();
 }
 
-impl MatMatMulPack {
+impl OptMatMulPack {
     fn do_eval(&self, session: &SessionState, input: TValue) -> TractResult<TVec<TValue>> {
         unsafe {
             let packer = if self.packers.len() == 1 {
@@ -116,5 +121,18 @@ impl MatMatMulPack {
         packed_shape.remove(self.mn_axis.max(self.k_axis));
         packed_shape.remove(self.mn_axis.min(self.k_axis));
         packed_shape
+    }
+}
+
+#[derive(Hash, Clone, Debug, PartialEq, Eq)]
+pub struct PackedOpaqueFact {
+    pub k: TDim,
+    pub mn: TDim,
+    pub packers: Vec<PackedFormat>,
+}
+
+impl OpaqueFact for PackedOpaqueFact {
+    fn mem_size(&self) -> TDim {
+        self.k.clone() * &self.mn * self.packers[0].dt.size_of()
     }
 }
