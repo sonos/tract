@@ -403,8 +403,10 @@ pub struct OptBinByScalar {
 }
 
 impl Debug for OptBinByScalar {
-    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        unimplemented!()
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_struct("OptBinByScalar")
+            .field("binop", &self.binop)
+            .finish()
     }
 }
 
@@ -502,8 +504,10 @@ pub struct OptBinUnicast {
 }
 
 impl Debug for OptBinUnicast {
-    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        unimplemented!()
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_struct("OptBinUnicast")
+            .field("binop", &self.binop)
+            .finish()
     }
 }
 
