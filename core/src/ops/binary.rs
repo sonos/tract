@@ -371,7 +371,8 @@ fn find_most_efficient_config(model: &TypedModel, node: &TypedNode) -> TractResu
         };
 
         let unicast_is_possible = OptBinUnicast::check_input_shapes(&a_shape, &b_shape);
-        let num_unicast_elements = if unicast_is_possible {
+        let unicast_is_aligned = OptBinUnicast::check_b_alignement(&b_shape);
+        let num_unicast_elements = if unicast_is_possible & unicast_is_aligned {
             a_shape
                 .iter()
                 .zip(b_shape.iter())
@@ -507,6 +508,15 @@ impl Debug for OptBinUnicast {
 }
 
 impl OptBinUnicast {
+    fn check_b_alignement(b_shape: &[TDim]) -> bool {
+        let num_element = b_shape.iter().product::<TDim>();
+        if let Ok(num_element) = num_element.to_i64() {
+            let required_alignment = vector_size();
+            (num_element as usize % required_alignment) == 0
+        } else {
+            false
+        }
+    }
     fn check_input_shapes(a_shape: &[TDim], b_shape: &[TDim]) -> bool {
         if a_shape.len() != b_shape.len() {
             return false;
