@@ -596,10 +596,6 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
     }
 
     let builder_result = Parameters::from_clap(&matches, probe);
-    if matches.is_present("list-ops") {
-        return Ok(());
-    }
-
     #[allow(unused_mut)]
     let mut params = match builder_result {
         Ok(params) => params,
