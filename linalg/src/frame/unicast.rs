@@ -95,24 +95,6 @@ std::thread_local! {
     static TMP: std::cell::RefCell<(TempBuffer, TempBuffer)> = std::cell::RefCell::new((TempBuffer::default(), TempBuffer::default()));
 }
 
-fn create_incomplete_tile<'a, T: LADatum>(
-    a: &'a mut [T],
-    b: &'a [T],
-    a_prefix_len: usize,
-    b_prefix_len: usize,
-) -> (&'a mut [T], &'a [T], usize) {
-    let effective_prefix = if (a_prefix_len == 0) || (b_prefix_len == 0) {
-        // One of the two slice is aligned, the target size is the number of unaligned elements of
-        // the other slice, the max value between the two.
-        a_prefix_len.max(b_prefix_len)
-    } else {
-        // Both are unaligned, the minimal common subset is the one including elements from a and b
-        // so it's the min value between the two.
-        a_prefix_len.min(b_prefix_len)
-    };
-    (&mut a[..effective_prefix], &b[..effective_prefix], effective_prefix)
-}
-
 pub(crate) fn unicast_with_alignment<T>(
     a: &mut [T],
     b: &[T],
@@ -143,14 +125,18 @@ where
             let mut num_element_processed = 0;
             let a_prefix_len = a.as_ptr().align_offset(alignment_bytes).min(a.len());
             let b_prefix_len = b.as_ptr().align_offset(alignment_bytes).min(b.len());
+            assert!(
+                a_prefix_len == b_prefix_len,
+                "Both inputs should be of the same alignement, got {a_prefix_len:?}, {b_prefix_len:?}"
+            );
             let mut applied_prefix_len = 0;
-            if (a_prefix_len > 0) || (b_prefix_len > 0) {
+            if a_prefix_len > 0 {
                 // Incomplete tile needs to be created to process unaligned data.
-                let (sub_a, sub_b, applied_prefix) =
-                    create_incomplete_tile(a, b, a_prefix_len, b_prefix_len);
-                applied_prefix_len = applied_prefix;
+                let sub_a = &mut a[..a_prefix_len];
+                let sub_b = &b[..a_prefix_len];
                 compute_via_temp_buffer(sub_a, sub_b);
-                num_element_processed += applied_prefix_len;
+                num_element_processed += a_prefix_len;
+                applied_prefix_len = a_prefix_len;
             }
 
             let num_complete_tiles = (a.len() - applied_prefix_len) / nr;
@@ -198,8 +184,12 @@ pub mod test {
             .map_err(|e| TestCaseError::fail(e.root_cause().to_string()))?;
         Ok(())
     }
-    
-    pub fn test_unicast_t<K: UnicastKer<T>, T: LADatum + Float>(a: &[f32], b: &[f32], func: impl Fn(T, T) -> T) -> TestCaseResult
+
+    pub fn test_unicast_t<K: UnicastKer<T>, T: LADatum + Float>(
+        a: &[f32],
+        b: &[f32],
+        func: impl Fn(T, T) -> T,
+    ) -> TestCaseResult
     where
         f32: AsPrimitive<T>,
         T: AsPrimitive<f32>,
@@ -209,7 +199,7 @@ pub mod test {
         let b: Vec<T> = b.iter().copied().map(|x| x.as_()).collect();
         crate::frame::unicast::test::test_unicast::<K, _>(&a, &b, func)
     }
-    
+
     #[macro_export]
     macro_rules! unicast_frame_tests {
         ($cond:expr, $t: ty, $ker:ty, $func:expr) => {
@@ -234,5 +224,4 @@ pub mod test {
             }
         };
     }
-
 }
