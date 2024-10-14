@@ -149,7 +149,14 @@ pub struct PackedBlockQuantFormat {
 
 impl Display for PackedBlockQuantFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Packed{} (r={})", &*self.bq, self.r)
+        write!(f, "Packed{}[{}]", &*self.bq, self.r)?;
+        if self.zip != 0 {
+            write!(f, "Z{}", self.zip)?;
+        }
+        if self.scales_at_end {
+            write!(f, "Se")?;
+        }
+        Ok(())
     }
 }
 

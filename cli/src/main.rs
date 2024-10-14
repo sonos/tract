@@ -16,6 +16,7 @@ use tract_libcli::annotations::Annotations;
 use tract_libcli::display_params::DisplayParams;
 use tract_libcli::model::Model;
 use tract_libcli::profile::BenchLimits;
+use nu_ansi_term::Color::*;
 
 use fs_err as fs;
 use readings_probe::*;
@@ -582,11 +583,11 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             return Ok(());
         }
         Some(("kernels", _)) => {
-            println!("# Matrix multiplication");
+            println!("{}", White.bold().paint("# Matrix multiplication"));
             for m in tract_linalg::ops().mmm_impls() {
-                println!(" * {}", m.kernel_name());
+                println!("{}", Green.paint(format!(" * {}", m.kernel_name())));
                 for packings in m.packings() {
-                    println!("   - {:?}", packings);
+                    println!("   - {} • {}", packings.0, packings.1);
                 }
             }
             return Ok(());

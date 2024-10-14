@@ -112,6 +112,11 @@ fn plug_fma(ops: &mut Ops) {
 }
 
 fn plug_avx512f(ops: &mut Ops) {
+    ops.mmm_impls.push(mmm::avx512_mmm_f32_128x1.mmm());
+    ops.mmm_impls.push(mmm::avx512_mmm_f32_80x2.mmm());
+    ops.mmm_impls.push(mmm::avx512_mmm_f32_48x4.mmm());
+    ops.mmm_impls.push(mmm::avx512_mmm_f32_64x3.mmm());
+    ops.mmm_impls.push(mmm::avx512_mmm_f32_16x12.mmm());
     ops.mmv_f32 = Box::new(|m, _k| match m {
         Some(m) if m < 31 => mmm::avx512_mmm_f32_16x1.mmm(),
         _ => mmm::avx512_mmm_f32_128x1.mmm(),
