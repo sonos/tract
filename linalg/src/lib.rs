@@ -22,6 +22,7 @@ pub mod frame;
 pub mod generic;
 pub mod multithread;
 use frame::element_wise::ElementWiseKer;
+use frame::mmm::panel_extract::PanelExtractFormat;
 use frame::reduce::{MapReduceKer, ReduceKer};
 use frame::unicast::UnicastKer;
 use frame::{reduce, unicast, MatMatMul};
@@ -51,6 +52,7 @@ type MMVImpl = Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMu
 #[allow(clippy::type_complexity)]
 pub struct Ops {
     mmm_impls: Vec<Box<dyn MatMatMul>>,
+    panel_extractors: Vec<PanelExtractFormat>,
 
     mmm_f64: MMMImpl,
     mmv_f64: MMVImpl,
@@ -98,6 +100,11 @@ impl Ops {
         &self.mmm_impls
     }
 
+    pub fn panel_extractors(&self) -> &[PanelExtractFormat] {
+        &self.panel_extractors
+    }
+
+
     pub fn mmm(
         &self,
         accumulator: DatumType,
@@ -122,6 +129,7 @@ pub fn generic() -> Ops {
     use crate::generic::mmm::*;
     Ops {
         mmm_impls: vec![generic_f32_4x4.mmm(), generic_f32_4x1.mmm()],
+        panel_extractors: vec!(),
         mmm_f64: Box::new(|_, _, _| generic_f64_4x4.mmm()),
         mmv_f64: Box::new(|_, _| generic_f64_4x1.mmm()),
         mmm_f32: Box::new(|_, _, _| generic_f32_4x4.mmm()),

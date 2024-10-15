@@ -11,14 +11,12 @@ use std::hash::Hash;
 use std::ops::Deref;
 
 mod helpers;
-mod panel_extract_input;
 mod q4_0;
 
 pub use helpers::{NibbleReader, NibbleWriter};
 pub use q4_0::Q4_0;
 
 use crate::mmm::{EagerPackedInput, MMMInputFormat};
-pub use panel_extract_input::{PanelExtractFormat, PanelExtractInput};
 
 use super::PackedFormat;
 
@@ -204,10 +202,6 @@ impl PackedBlockQuantFormat {
 
     pub fn pack(&self, input: &[u8], k: usize) -> TractResult<EagerPackedInput> {
         self.bq.pack(input, k, self.r, self.zip, self.scales_at_end)
-    }
-
-    pub fn panel_extract(&self) -> PanelExtractFormat {
-        PanelExtractFormat { pbqf: self.clone() }
     }
 }
 

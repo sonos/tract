@@ -74,14 +74,3 @@ impl MMMInputValue for PanelExtractInput {
     }
 }
 
-impl Display for PanelExtractInput {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "PanelExtract({})", self.data)
-    }
-}
-
-impl Debug for PanelExtractInput {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "PanelExtract({})", self.data)
-    }
-}

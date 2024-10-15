@@ -6,10 +6,9 @@ use ndarray::*;
 use tract_data::TooEarly;
 use tract_itertools::Itertools;
 
-use tract_linalg::frame::block_quant::{
-    PackedBlockQuantFormat, PanelExtractFormat, PanelExtractInput,
-};
+use tract_linalg::frame::block_quant::PackedBlockQuantFormat;
 use tract_linalg::frame::PackedFormat;
+use tract_linalg::mmm::panel_extract::PanelExtractInput;
 use tract_linalg::mmm::{
     AsInputValue, BinOp, EagerPackedInput, FusedSpec, MMMInputValue, MatMatMul, OutputStoreSpec,
 };
@@ -80,14 +79,16 @@ impl ProtoFusedSpec {
                     && a.is::<EagerPackedInput>()
                     && a.format().is::<PackedBlockQuantFormat>()
                 {
-                    let format = PanelExtractFormat {
-                        pbqf: a.format().downcast_ref::<PackedBlockQuantFormat>().unwrap().clone(),
-                    };
+                    let to = a_packing.downcast_ref::<PackedFormat>().unwrap();
+                    let format = tract_linalg::ops()
+                        .panel_extractors()
+                        .iter()
+                        .find(|pe| pe.from.same_as(a.format()) && pe.to == *to)
+                        .unwrap();
                     let data = a.downcast_ref::<EagerPackedInput>().unwrap();
                     AsInputValue::Owned(Box::new(PanelExtractInput {
-                        format,
+                        format: format.clone(),
                         data: data.clone(),
-                        to: a_packing.downcast_ref::<PackedFormat>().unwrap().clone(),
                     }))
                 } else {
                     panic!("Un-matchable input and output for weights {:?} -> {a_packing}", a);

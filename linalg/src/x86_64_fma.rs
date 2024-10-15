@@ -8,6 +8,7 @@ pub mod mmm;
 pub mod by_scalar;
 mod intel;
 pub mod max;
+pub mod panel_extract;
 pub mod softmax;
 
 tanh_impl!(f32, fma_tanh_f32, 8, 8, is_x86_feature_detected!("fma"));
@@ -29,6 +30,8 @@ fn plug_fma(ops: &mut Ops) {
         mmm::fma_mmm_f32_40x2.mmm(),
         mmm::fma_mmm_f32_64x1.mmm(),
     ]);
+    panel_extract::plug(ops);
+
     ops.mmv_f32 = Box::new(|_, _| mmm::fma_mmm_f32_64x1.mmm());
 
     ops.mmm_f32 = Box::new(|_, _, n| {
