@@ -85,6 +85,10 @@ impl Scope {
     pub fn is_alive_at_step(&self, step: usize) -> bool {
         self.start <= step && step < self.end
     }
+
+    pub fn len(&self) -> usize {
+        self.end - self.start
+    } 
 }
 
 pub fn eval_scoped_node_memories<F, O, Flushable>(
@@ -177,7 +181,7 @@ where
 {
 
     let mut scoped_node_memories = eval_scoped_node_memories(&model, &order, flushable)?;
-    scoped_node_memories.sort_by_key(|it| it.mem_size);
+    scoped_node_memories.sort_by_key(|it| it.scope.len() as isize * -1);
 
 
     let mut partitions: Vec<Vec<ScopedNodeMemory>> = vec![];
