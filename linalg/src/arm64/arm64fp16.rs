@@ -4,6 +4,7 @@ mod by_scalar;
 mod leaky_relu;
 mod max;
 mod mul;
+pub mod panel_extract;
 mod sum;
 pub use by_scalar::*;
 pub use leaky_relu::*;
