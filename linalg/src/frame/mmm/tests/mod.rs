@@ -68,7 +68,7 @@ macro_rules! test_mmm_kernel_i32 {
     };
 }
 
-fn display_error<TC: LADatum>(v: &[TC], expected: &[TC], m: usize, n: usize) {
+pub fn display_error<TC: LADatum>(v: &[TC], expected: &[TC], m: usize, n: usize) {
     if v != expected {
         for ixm in 0..m {
             for ixn in 0..n {
