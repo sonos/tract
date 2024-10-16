@@ -371,8 +371,7 @@ fn find_most_efficient_config(model: &TypedModel, node: &TypedNode) -> TractResu
         };
 
         let unicast_is_possible = OptBinUnicast::check_input_shapes(&a_shape, &b_shape);
-        let unicast_is_aligned = OptBinUnicast::check_b_alignement(&b_shape);
-        let num_unicast_elements = if unicast_is_possible & unicast_is_aligned {
+        let num_unicast_elements = if unicast_is_possible {
             a_shape
                 .iter()
                 .zip(b_shape.iter())
@@ -404,9 +403,7 @@ pub struct OptBinByScalar {
 
 impl Debug for OptBinByScalar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        f.debug_struct("OptBinByScalar")
-            .field("binop", &self.binop)
-            .finish()
+        f.debug_struct("OptBinByScalar").field("binop", &self.binop).finish()
     }
 }
 
@@ -505,16 +502,31 @@ pub struct OptBinUnicast {
 
 impl Debug for OptBinUnicast {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        f.debug_struct("OptBinUnicast")
-            .field("binop", &self.binop)
-            .finish()
+        f.debug_struct("OptBinUnicast").field("binop", &self.binop).finish()
     }
 }
 
 impl OptBinUnicast {
-    fn check_b_alignement(b_shape: &[TDim]) -> bool {
-        let num_element = b_shape.iter().product::<TDim>();
-        if let Ok(num_element) = num_element.to_i64() {
+    fn check_b_alignement(a_shape: &[TDim], b_shape: &[TDim]) -> bool {
+        let num_iterations: TDim = a_shape
+            .iter()
+            .zip(b_shape.iter())
+            .take_while(|(_, b_dim)| **b_dim == 1.to_dim())
+            .map(|(a_dim, _)| a_dim)
+            .product();
+
+        if num_iterations.is_one() {
+            return true;
+        }
+
+        let elements_per_iteration: TDim = a_shape
+            .iter()
+            .zip(b_shape.iter())
+            .skip_while(|(_, b_dim)| **b_dim == 1.to_dim())
+            .map(|(_, b_dim)| b_dim)
+            .product();
+
+        if let Ok(num_element) = elements_per_iteration.to_i64() {
             let required_alignment = vector_size();
             (num_element as usize % required_alignment) == 0
         } else {
@@ -526,11 +538,14 @@ impl OptBinUnicast {
             return false;
         };
 
-        a_shape
+        let unicast_possible = a_shape
             .iter()
             .zip(b_shape.iter())
             .skip_while(|(_, b_dim)| **b_dim == 1.to_dim())
-            .all(|(a_dim, b_dim)| a_dim == b_dim)
+            .all(|(a_dim, b_dim)| a_dim == b_dim);
+        let unicast_is_aligned = Self::check_b_alignement(a_shape, b_shape);
+
+        unicast_possible && unicast_is_aligned
     }
 }
 
