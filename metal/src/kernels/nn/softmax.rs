@@ -55,7 +55,7 @@ impl Softmax {
         let encoder = command_buffer.new_compute_command_encoder();
         encoder.set_compute_pipeline_state(&pipeline);
         encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
-        encoder.set_metal_tensor(1, &output, metal::MTLResourceUsage::Write);
+        encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
         encoder.set_slice(2, &shape_nd3);
         encoder.set_slice(3, &strides_nd3);
 

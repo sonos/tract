@@ -58,7 +58,7 @@ impl RmsNorm {
         encoder.set_compute_pipeline_state(&pipeline);
         encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
         encoder.set_tensor(1, eps);
-        encoder.set_metal_tensor(2, &output, metal::MTLResourceUsage::Write);
+        encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
         encoder.set_slice(3, &shape_nd3);
         encoder.set_slice(4, &strides_nd3);
 
