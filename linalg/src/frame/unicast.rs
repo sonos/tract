@@ -170,16 +170,15 @@ pub mod test {
     use tract_num_traits::{AsPrimitive, Float};
 
     pub fn test_unicast<K: UnicastKer<T>, T: LADatum>(
-        a: &[T],
+        a: &mut [T],
         b: &[T],
         reference: impl Fn(T, T) -> T,
     ) -> TestCaseResult {
         crate::setup_test_logger();
         let op = UnicastImpl::<K, T>::new();
         let expected = a.iter().zip(b.iter()).map(|(a, b)| (reference)(*a, *b)).collect::<Vec<_>>();
-        let mut found = a.to_vec();
-        op.run(&mut found, b).unwrap();
-        tensor1(&found)
+        op.run(a, b).unwrap();
+        tensor1(&a)
             .close_enough(&tensor1(&expected), true)
             .map_err(|e| TestCaseError::fail(e.root_cause().to_string()))?;
         Ok(())
@@ -195,9 +194,17 @@ pub mod test {
         T: AsPrimitive<f32>,
     {
         crate::setup_test_logger();
-        let a: Vec<T> = a.iter().copied().map(|x| x.as_()).collect();
-        let b: Vec<T> = b.iter().copied().map(|x| x.as_()).collect();
-        crate::frame::unicast::test::test_unicast::<K, _>(&a, &b, func)
+        let vec_a: Vec<T> = a.iter().copied().map(|x| x.as_()).collect();
+        // We allocate a tensor to ensure allocation is done with alignement
+        let mut a = unsafe { Tensor::from_slice_align(vec_a.as_slice(), vector_size()).unwrap() };
+        let vec_b: Vec<T> = b.iter().copied().map(|x| x.as_()).collect();
+        // We allocate a tensor to ensure allocation is done with alignement
+        let b = unsafe { Tensor::from_slice_align(vec_b.as_slice(), vector_size()).unwrap() };
+        crate::frame::unicast::test::test_unicast::<K, _>(
+            a.as_slice_mut::<T>().unwrap(),
+            &b.as_slice::<T>().unwrap(),
+            func,
+        )
     }
 
     #[macro_export]
