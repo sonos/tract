@@ -7,7 +7,9 @@ use std::fmt;
 use tract_core::internal::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Concat;
+pub struct Concat {
+    pub axis: usize,
+}
 
 impl fmt::Display for Concat {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -39,13 +41,14 @@ impl Concat {
         Ok(format!("array_ops::copy_{broadcast_name}_{tname}"))
     }
 
-    pub fn eval(
-        &self,
-        context: &MetalContext,
-        inputs: &[&MetalTensor],
-        axis: usize,
-    ) -> Result<MetalTensor> {
-        let output = self.dispatch_eval(context, inputs, axis)?;
+    pub fn eval(&self, context: &MetalContext, inputs: &[&MetalTensor]) -> Result<MetalTensor> {
+        ensure!(!inputs.is_empty());
+        let mut output_shape = inputs[0].shape().to_vec();
+        output_shape[self.axis] = inputs.iter().map(|it| it.shape()[self.axis]).sum();
+        let output =
+            unsafe { MetalTensor::uninitialized_dt(inputs[0].datum_type(), &output_shape)? };
+
+        self.dispatch_eval(context, inputs, &output)?;
         context.wait_until_completed()?;
         Ok(output)
     }
@@ -54,28 +57,26 @@ impl Concat {
         &self,
         context: &MetalContext,
         inputs: &[&MetalTensor],
-        axis: usize,
-    ) -> Result<MetalTensor> {
+        output: &MetalTensor,
+    ) -> Result<()> {
         ensure!(!inputs.is_empty());
 
-        let output_dt = inputs[0].datum_type();
-        let mut output_shape = inputs[0].shape().to_vec();
-        output_shape[axis] = inputs.iter().map(|it| it.shape()[axis]).sum();
-        let output_strides = Tensor::natural_strides(&output_shape);
+        output.retain_until_completion();
+
+        let output_shape = output.shape();
+        let output_strides = output.strides();
 
         let mut offsets = tvec![0; inputs.len()];
         let mut cursor = 0;
 
         for (i_idx, input) in inputs.iter().enumerate() {
             let i_shape = input.shape();
-            ensure!(i_shape[..axis] == output_shape[..axis]);
-            ensure!(i_shape[axis + 1..] == output_shape[axis + 1..]);
-            offsets[i_idx] = cursor * (output_strides[axis] as usize) * output_dt.size_of();
-            cursor += i_shape[axis];
+            ensure!(i_shape[..self.axis] == output_shape[..self.axis]);
+            ensure!(i_shape[self.axis + 1..] == output_shape[self.axis + 1..]);
+            offsets[i_idx] =
+                cursor * (output_strides[self.axis] as usize) * output.datum_type().size_of();
+            cursor += i_shape[self.axis];
         }
-
-        let output = unsafe { MetalTensor::uninitialized_dt(output_dt, &output_shape)? };
-        output.retain_until_completion();
 
         let broadcast_kind = BroadcastKind::from_rank(output.rank()).with_context(|| {
             anyhow!(
@@ -85,7 +86,7 @@ impl Concat {
             )
         })?;
 
-        let kernel_name = self.kernel_name(output_dt, broadcast_kind)?;
+        let kernel_name = self.kernel_name(output.datum_type(), broadcast_kind)?;
         let pipeline =
             context.shared_context().load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
         let command_buffer = context.command_buffer();
@@ -117,7 +118,7 @@ impl Concat {
             encoder.end_encoding();
         }
 
-        Ok(output)
+        Ok(())
     }
 }
 
@@ -141,7 +142,7 @@ mod tests {
                     inputs.push(Tensor::from_shape(shape, &data)?.into_metal()?);
                 }
 
-                let output = Concat.eval(context, &inputs.iter().collect_vec(), axis)?;
+                let output = Concat { axis }.eval(context, &inputs.iter().collect_vec())?;
                 let ref_output = Tensor::stack_tensors(
                     axis,
                     &inputs.iter().map(|it| it.to_cpu()).collect::<Result<Vec<_>>>()?,

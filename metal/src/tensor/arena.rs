@@ -1,8 +1,8 @@
-use crate::MetalContext;
 use crate::tensor::MetalArenaView;
+use crate::MetalContext;
 use anyhow::{anyhow, Context};
 use core::sync::atomic::AtomicUsize;
-use metal::{ MTLResourceOptions, Buffer };
+use metal::{Buffer, MTLResourceOptions};
 use std::sync::atomic::Ordering;
 use tract_core::internal::*;
 
@@ -18,9 +18,9 @@ impl MetalArena {
     pub fn with_capacity(context: &MetalContext, capacity: usize) -> TractResult<Self> {
         let alignment = std::mem::size_of::<usize>();
         let tensor = unsafe {
-            Tensor::uninitialized_aligned_dt(DatumType::U8, &[capacity], alignment).with_context(|| {
-                anyhow!("Error while allocating a tensor of {:?} bytes", capacity)
-            })?
+            Tensor::uninitialized_aligned_dt(DatumType::U8, &[capacity], alignment).with_context(
+                || anyhow!("Error while allocating a tensor of {:?} bytes", capacity),
+            )?
         };
         let buffer = context.device().new_buffer_with_bytes_no_copy(
             tensor.as_bytes().as_ptr() as *const core::ffi::c_void,

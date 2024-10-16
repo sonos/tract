@@ -41,9 +41,12 @@ impl Reducer {
         input: &MetalTensor,
         axis: usize,
     ) -> Result<MetalTensor> {
-        let o = self.dispatch_eval(context, input, axis)?;
+        let mut o_shape = input.shape().to_vec();
+        o_shape[axis] = 1;
+        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), &o_shape)? };
+        self.dispatch_eval(context, input, axis, &output)?;
         context.wait_until_completed()?;
-        Ok(o)
+        Ok(output)
     }
 
     pub fn dispatch_eval(
@@ -51,20 +54,18 @@ impl Reducer {
         context: &MetalContext,
         input: &MetalTensor,
         axis: usize,
-    ) -> Result<MetalTensor> {
+        output: &MetalTensor,
+    ) -> Result<()> {
         input.retain_until_completion();
+        output.retained_until_completion();
 
-        let o_dt = input.datum_type();
-        let mut o_shape = input.shape().to_vec();
-        o_shape[axis] = 1;
+        ensure!(output.datum_type() == input.datum_type());
+        ensure!(output.shape()[axis] == 1);
 
         let input_shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
         let input_strides_nd3 = Tensor::natural_strides(&input_shape_nd3);
-        let output_shape_nd3 = utils::reshape_to_rank_3(&o_shape, axis);
+        let output_shape_nd3 = utils::reshape_to_rank_3(&output.shape(), axis);
         let output_strides_nd3 = Tensor::natural_strides(&output_shape_nd3);
-
-        let output = unsafe { MetalTensor::uninitialized_dt(o_dt, &o_shape)? };
-        output.retained_until_completion();
 
         let pipeline = context
             .shared_context()
@@ -85,7 +86,7 @@ impl Reducer {
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
 
-        Ok(output)
+        Ok(())
     }
 }
 
