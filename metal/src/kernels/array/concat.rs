@@ -106,12 +106,12 @@ impl Concat {
             encoder.set_slice(1, i_strides);
             encoder.set_metal_tensor_with_offset(
                 2,
-                &output,
+                output,
                 offset as _,
                 metal::MTLResourceUsage::Write,
             );
             encoder.set_slice(3, i_shape);
-            encoder.set_slice(4, &output_strides);
+            encoder.set_slice(4, output_strides);
             let grid_size = utils::build_metal_size_for_shape(i_shape);
             let group_size = utils::build_metal_size_with_ones();
             encoder.dispatch_thread_groups(grid_size, group_size);

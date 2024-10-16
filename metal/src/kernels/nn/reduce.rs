@@ -64,7 +64,7 @@ impl Reducer {
 
         let input_shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
         let input_strides_nd3 = Tensor::natural_strides(&input_shape_nd3);
-        let output_shape_nd3 = utils::reshape_to_rank_3(&output.shape(), axis);
+        let output_shape_nd3 = utils::reshape_to_rank_3(output.shape(), axis);
         let output_strides_nd3 = Tensor::natural_strides(&output_shape_nd3);
 
         let pipeline = context
@@ -75,7 +75,7 @@ impl Reducer {
         let encoder = command_buffer.new_compute_command_encoder();
         encoder.set_compute_pipeline_state(&pipeline);
         encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
-        encoder.set_metal_tensor(1, &output, metal::MTLResourceUsage::Write);
+        encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
         encoder.set_slice(2, &input_shape_nd3);
         encoder.set_slice(3, &input_strides_nd3);
         encoder.set_slice(4, &output_strides_nd3);
