@@ -19,20 +19,23 @@ impl Silu {
     }
 
     pub fn eval(&self, context: &MetalContext, input: &MetalTensor) -> Result<MetalTensor> {
-        let o = self.dispatch_eval(context, input)?;
+        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), input.shape())? };
+        self.dispatch_eval(context, input, &output)?;
         context.wait_until_completed()?;
-        Ok(o)
+        Ok(output)
     }
 
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
         input: &MetalTensor,
-    ) -> Result<MetalTensor> {
+        output: &MetalTensor,
+    ) -> Result<()> {
         input.retain_until_completion();
-
-        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         output.retained_until_completion();
+
+        ensure!(output.shape() == input.shape());
+        ensure!(output.datum_type() == input.datum_type());
 
         let kernel_name = self.kernel_name(input.datum_type())?;
 
@@ -47,7 +50,7 @@ impl Silu {
         let group_size = MTLSize { width: 1, height: 1, depth: 1 };
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
-        Ok(output)
+        Ok(())
     }
 }
 

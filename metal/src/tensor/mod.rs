@@ -228,11 +228,11 @@ impl Display for MetalTensor {
             Self::Owned(o) => match &o.inner {
                 MValue::Const(t) | MValue::Var(t) => {
                     let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
-                    write!(f, "Metal Owned: {{ {content} }}")
+                    write!(f, "Metal,Owned: {{ {content} }}")
                 }
                 MValue::Reshaped { t, shape, .. } => {
                     let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
-                    write!(f, "Metal Owned reshaped: {:?} - {{ {content} }}", shape)
+                    write!(f, "Metal,Owned,Reshaped: {:?} - {{ {content} }}", shape)
                 }
             },
             Self::ArenaView(v) => {
@@ -241,7 +241,7 @@ impl Display for MetalTensor {
                     .into_tensor()
                     .dump(false)
                     .unwrap_or_else(|e| format!("Error : {e:?}"));
-                write!(f, "Metal ArenaView: {{ {content} }}")
+                write!(f, "Metal,ArenaView: {{ {content} }}")
             }
         }
     }

@@ -65,6 +65,11 @@ impl BinOps {
         }
     }
 
+    pub fn output_shape<D: DimLike>(&self, a: &[D], b: &[D]) -> Result<TVec<D>> {
+        tract_core::broadcast::multi_broadcast(&[a, b])
+            .with_context(|| anyhow!("Error while broadcasting {:?} {:?}", a, b))
+    }
+
     pub fn all_functions() -> Vec<String> {
         Self::ALL
             .into_iter()
@@ -137,7 +142,10 @@ impl BinOps {
         lhs: &MetalTensor,
         rhs: &MetalTensor,
     ) -> TractResult<MetalTensor> {
-        let output = self.dispatch_eval(context, lhs, rhs)?;
+        let out_shape = self.output_shape(lhs.shape(), rhs.shape())?;
+        let out_dt = self.output_datum_type(lhs.datum_type(), rhs.datum_type())?;
+        let output = unsafe { MetalTensor::uninitialized_dt(out_dt, &out_shape)? };
+        self.dispatch_eval(context, lhs, rhs, &output)?;
         context.wait_until_completed()?;
         Ok(output)
     }
@@ -147,18 +155,13 @@ impl BinOps {
         context: &MetalContext,
         lhs: &MetalTensor,
         rhs: &MetalTensor,
-    ) -> Result<MetalTensor> {
+        output: &MetalTensor,
+    ) -> Result<()> {
         lhs.retain_until_completion();
         rhs.retain_until_completion();
-
-        let out_shape = tract_core::broadcast::multi_broadcast(&[lhs.shape(), rhs.shape()])
-            .with_context(|| {
-                anyhow!("Error while broadcasting {:?} {:?}", lhs.shape(), rhs.shape())
-            })?;
-        let out_dt = self.output_datum_type(lhs.datum_type(), rhs.datum_type())?;
-
-        let output = unsafe { MetalTensor::uninitialized_dt(out_dt, &out_shape)? };
         output.retained_until_completion();
+
+        let out_shape = output.shape();
 
         let broadcast_kind = if lhs.len() == 1 {
             BroadcastKind::ByScalarLeft
@@ -240,7 +243,7 @@ impl BinOps {
                 encoder.end_encoding();
             }
         }
-        Ok(output)
+        Ok(())
     }
 }
 

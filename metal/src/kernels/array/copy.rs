@@ -45,12 +45,12 @@ impl Memcpy {
         context: &MetalContext,
         input: &MetalTensor,
         input_offset: usize,
-    ) -> Result<MetalTensor> {
+        output: &MetalTensor,
+    ) -> Result<()> {
         ensure!(input_offset % input.datum_type().size_of() == 0);
+        ensure!(output.len() <= input.len() - input_offset);
 
         input.retain_until_completion();
-
-        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         output.retain_until_completion();
 
         let kernel_name = self.kernel_name(input.datum_type())?;
@@ -72,7 +72,7 @@ impl Memcpy {
         let group_size = MTLSize { width: 1, height: 1, depth: 1 };
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
-        Ok(output)
+        Ok(())
     }
 
     pub fn eval(
@@ -80,8 +80,10 @@ impl Memcpy {
         context: &MetalContext,
         input: &MetalTensor,
         input_offset: usize,
+        output_shape: &[usize],
     ) -> Result<MetalTensor> {
-        let output = self.dispatch_eval(context, input, input_offset)?;
+        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), output_shape)? };
+        self.dispatch_eval(context, input, input_offset, &output)?;
         context.wait_until_completed()?;
         Ok(output)
     }
