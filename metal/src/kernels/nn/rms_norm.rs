@@ -26,9 +26,10 @@ impl RmsNorm {
         axis: usize,
         eps: &Tensor,
     ) -> Result<MetalTensor> {
-        let o = self.dispatch_eval(context, input, axis, eps)?;
+        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), input.shape())? };
+        self.dispatch_eval(context, input, axis, eps, &output)?;
         context.wait_until_completed()?;
-        Ok(o)
+        Ok(output)
     }
 
     pub fn dispatch_eval(
@@ -37,17 +38,16 @@ impl RmsNorm {
         input: &MetalTensor,
         axis: usize,
         eps: &Tensor,
-    ) -> Result<MetalTensor> {
+        output: &MetalTensor,
+    ) -> Result<()> {
         input.retained_until_completion();
+        output.retained_until_completion();
 
-        let o_dt = input.datum_type();
-        let o_shape = input.shape().to_vec();
+        ensure!(output.shape() == input.shape());
+        ensure!(output.datum_type() == input.datum_type());
 
         let shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
         let strides_nd3 = Tensor::natural_strides(&shape_nd3);
-
-        let output = unsafe { MetalTensor::uninitialized_dt(o_dt, &o_shape)? };
-        output.retained_until_completion();
 
         let pipeline = context
             .shared_context()
@@ -68,7 +68,7 @@ impl RmsNorm {
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
 
-        Ok(output)
+        Ok(())
     }
 }
 
