@@ -1,7 +1,4 @@
 use std::fmt::{Debug, Display};
-use tract_data::internal::*;
-
-use crate::frame::block_quant::{self, PackedBlockQuantFormat};
 
 use super::pack::PackedFormat;
 use super::{EagerPackedInput, MMMInputFormat, MMMInputValue};
@@ -70,66 +67,74 @@ impl Debug for PanelExtractInput {
 }
 
 #[cfg(test)]
-pub fn test_packing(extractor: &PanelExtractor, k: usize, m: usize) -> TractResult<()> {
+pub mod test {
+    use tract_data::internal::*;
     use tract_ndarray::Array2;
+    use crate::frame::block_quant::PackedBlockQuantFormat;
 
-    dbg!(&extractor);
-    let from = extractor.from.downcast_ref::<PackedBlockQuantFormat>().unwrap();
-    let to = &extractor.to;
-    let weights_orig =
-        Array2::from_shape_fn((m, k), |(m, k)| ((m * 31 + k * 17) % 20) as f32 - 10.)
-            .into_tensor()
-            .cast_to_dt(to.dt)?
-            .into_owned();
-    let weights = if to.dt == f32::datum_type() {
-        from.bq
-            .dequant_f32(&from.bq.quant_f32(weights_orig.as_slice::<f32>()?)?)?
-            .into_shape(&[m, k])?
-    } else {
-        from.bq
-            .dequant_f16(&from.bq.quant_f16(weights_orig.as_slice::<f16>()?)?)?
-            .into_shape(&[m, k])?
-    };
-    let block_quant = if to.dt == f32::datum_type() {
-        from.bq.quant_f32(weights.as_slice::<f32>()?)?
-    } else {
-        from.bq.quant_f16(weights.as_slice::<f16>()?)?
-    };
-    let packed_block_quant = from.bq.pack(&block_quant, k, from.r, from.zip, from.scales_at_end)?;
+    use super::*;
 
-    for panel in 0..packed_block_quant.panels_count() {
-        unsafe {
-            let mut reference_extracted = Tensor::zero_dt(to.dt, &[k, from.r])?;
-            from.bq.extract_panel(
-                &packed_block_quant,
-                to,
-                panel,
-                reference_extracted.as_bytes_mut().as_mut_ptr(),
-            )?;
+    pub fn test_packing(extractor: &PanelExtractor, k: usize, m: usize) -> TractResult<()> {
+        assert!(extractor.from.r() == extractor.to.r());
+        assert!(m % extractor.from.r() == 0);
+        let from = extractor.from.downcast_ref::<PackedBlockQuantFormat>().unwrap();
+        let to = &extractor.to;
+        let weights_orig =
+            Array2::from_shape_fn((m, k), |(m, k)| ((m * 31 + k * 17) % 20) as f32 - 10.)
+                .into_tensor()
+                .cast_to_dt(to.dt)?
+                .into_owned();
+        let weights = if to.dt == f32::datum_type() {
+            from.bq
+                .dequant_f32(&from.bq.quant_f32(weights_orig.as_slice::<f32>()?)?)?
+                .into_shape(&[m, k])?
+        } else {
+            from.bq
+                .dequant_f16(&from.bq.quant_f16(weights_orig.as_slice::<f16>()?)?)?
+                .into_shape(&[m, k])?
+        };
+        let block_quant = if to.dt == f32::datum_type() {
+            from.bq.quant_f32(weights.as_slice::<f32>()?)?
+        } else {
+            from.bq.quant_f16(weights.as_slice::<f16>()?)?
+        };
+        let packed_block_quant =
+            from.bq.pack(&block_quant, k, from.r, from.zip, from.scales_at_end)?;
 
-            let mut tested_extracted = Tensor::zero_dt(to.dt, &[k, from.r])?;
-            let source =
-                packed_block_quant.packed.as_ptr().add(packed_block_quant.panel_bytes * panel);
-            (extractor.kernel)(source, tested_extracted.as_bytes_mut().as_mut_ptr(), k);
-            if tested_extracted != reference_extracted {
-                if to.dt == f32::datum_type() {
-                    crate::frame::mmm::tests::display_error(
-                        tested_extracted.as_slice::<f32>().unwrap(),
-                        reference_extracted.as_slice::<f32>().unwrap(),
-                        from.r,
-                        k,
-                    );
-                } else {
-                    crate::frame::mmm::tests::display_error(
-                        tested_extracted.as_slice::<f16>().unwrap(),
-                        reference_extracted.as_slice::<f16>().unwrap(),
-                        from.r,
-                        k,
-                    );
+        for panel in 0..packed_block_quant.panels_count() {
+            unsafe {
+                let mut reference_extracted = Tensor::zero_dt(to.dt, &[k, from.r])?;
+                from.bq.extract_panel(
+                    &packed_block_quant,
+                    to,
+                    panel,
+                    reference_extracted.as_bytes_mut().as_mut_ptr(),
+                )?;
+
+                let mut tested_extracted = Tensor::zero_dt(to.dt, &[k, from.r])?;
+                let source =
+                    packed_block_quant.packed.as_ptr().add(packed_block_quant.panel_bytes * panel);
+                (extractor.kernel)(source, tested_extracted.as_bytes_mut().as_mut_ptr(), k);
+                if tested_extracted != reference_extracted {
+                    if to.dt == f32::datum_type() {
+                        crate::frame::mmm::tests::display_error(
+                            tested_extracted.as_slice::<f32>().unwrap(),
+                            reference_extracted.as_slice::<f32>().unwrap(),
+                            from.r,
+                            k,
+                        );
+                    } else {
+                        crate::frame::mmm::tests::display_error(
+                            tested_extracted.as_slice::<f16>().unwrap(),
+                            reference_extracted.as_slice::<f16>().unwrap(),
+                            from.r,
+                            k,
+                        );
+                    }
                 }
+                assert_eq!(tested_extracted, reference_extracted);
             }
-            assert_eq!(tested_extracted, reference_extracted);
         }
+        Ok(())
     }
-    Ok(())
 }
