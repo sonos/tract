@@ -72,7 +72,7 @@ unsafe fn packed_64_q40_to_f16(input: *const u8, output: *mut u8, k: usize) {
         subs    {k2}, {k2}, #1
         bne     3b
 
-        add     {i}, {i}, 32 // skip scales
+        add     {i}, {i}, 128 // skip scales
         subs    {k}, {k}, 32
         bne     2b
             ",
@@ -93,12 +93,17 @@ unsafe fn packed_64_q40_to_f16(input: *const u8, output: *mut u8, k: usize) {
 
 #[cfg(test)]
 mod test {
-    use crate::mmm::panel_extract::test_packing;
+    use crate::mmm::panel_extract::test::test_packing;
 
-    use super::new_packed_64_q40_to_f16;
+    use super::*;
 
     #[test]
-    fn test_packed_64_q40_to_f16() {
+    fn test_packed_64_q40_to_f16_1block_1panel() {
         test_packing(&new_packed_64_q40_to_f16(), 32, 64).unwrap();
+    }
+
+    #[test]
+    fn test_packed_64_q40_to_f16_2blocks_1panel() {
+        test_packing(&new_packed_64_q40_to_f16(), 64, 64).unwrap();
     }
 }
