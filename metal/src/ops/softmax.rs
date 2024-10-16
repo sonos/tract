@@ -1,5 +1,5 @@
 use crate::kernels::nn::Softmax;
-use crate::tensor::MetalTensorExt;
+use crate::{MetalTensor, MetalTensorExt};
 use std::fmt::Debug;
 use tract_core::internal::*;
 use tract_core::ops::nn as core_ops_nn;
@@ -35,7 +35,7 @@ impl Op for MetalSoftmax {
 
 impl TypedOp for MetalSoftmax {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_output_facts(inputs, |facts| {
+        crate::utils::metal_tmp_output_facts(inputs, |facts| {
             let dt = facts[0].datum_type;
             let fact = dt.fact(facts[0].shape.clone());
             Ok(tvec!(fact))
@@ -83,13 +83,13 @@ impl EvalOp for MetalSoftmax {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
-                let input = args_1!(inputs);
-                let t = input.to_metal_tensor()?;
+                let opaque = args_1!(inputs);
+                let input = opaque.to_metal_tensor()?;
+                let output =
+                    unsafe { MetalTensor::uninitialized_dt(input.datum_type(), input.shape())? };
+                Softmax.dispatch_eval(context, input, self.axes[0], &output)?;
 
-                Ok(tvec!(Softmax
-                    .dispatch_eval(context, t, self.axes[0])?
-                    .into_opaque_tensor()
-                    .into_tvalue()))
+                Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
             })
         })
     }

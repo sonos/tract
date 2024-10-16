@@ -1,6 +1,6 @@
 use crate::kernels::matmul::{GemmImpl, GemmKernel};
 
-use crate::tensor::MetalTensorExt;
+use crate::{MetalTensor, MetalTensorExt};
 use anyhow::{bail, ensure};
 use tract_core::internal::*;
 
@@ -66,17 +66,20 @@ impl<K: GemmKernel> EvalOp for MetalGemm<K> {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let (a, b) = args_2!(inputs);
+        let (a_opaque, b_opaque) = args_2!(inputs);
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
-                let a_metal_ref = a
+                let a = a_opaque
                     .to_metal_tensor()
-                    .with_context(|| anyhow!("A tensor is not a metal tensor"))?;
-                let b_metal_ref = b
+                    .with_context(|| anyhow!("A tensor is not a metal tensor: {:?}", a_opaque))?;
+                let b = b_opaque
                     .to_metal_tensor()
-                    .with_context(|| anyhow!("B tensor is not a metal tensor {:?}", b))?;
-                let out = self.kernel.dispatch_eval(context, a_metal_ref, b_metal_ref)?;
-                Ok(tvec![out.into_opaque_tensor().into_tvalue()])
+                    .with_context(|| anyhow!("B tensor is not a metal tensor {:?}", b_opaque))?;
+                let c_dt = a.datum_type();
+                let c_shape = self.kernel.output_shape(a.shape(), b.shape());
+                let c = unsafe { MetalTensor::uninitialized_dt(c_dt, &c_shape)? };
+                self.kernel.dispatch_eval(context, a, b, &c)?;
+                Ok(tvec![c.into_opaque_tensor().into_tvalue()])
             })
         })
     }
@@ -84,7 +87,7 @@ impl<K: GemmKernel> EvalOp for MetalGemm<K> {
 
 impl<K: GemmKernel + 'static> TypedOp for MetalGemm<K> {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_output_facts(inputs, |input_facts| {
+        crate::utils::metal_tmp_output_facts(inputs, |input_facts| {
             self.resolve_output_facts(input_facts)
         })
         .with_context(|| {

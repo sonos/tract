@@ -1,5 +1,5 @@
 use crate::kernels;
-use crate::tensor::MetalTensorExt;
+use crate::{MetalTensor, MetalTensorExt};
 use tract_core::internal::*;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -32,17 +32,17 @@ impl EvalOp for MetalCast {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let input = args_1!(inputs);
-        let t = input.to_metal_tensor()?;
-        if t.datum_type() == self.to {
-            Ok(tvec!(input))
+        let opaque = args_1!(inputs);
+        let input = opaque.to_metal_tensor()?;
+        if input.datum_type() == self.to {
+            Ok(tvec!(opaque))
         } else {
             objc::rc::autoreleasepool(|| {
                 crate::METAL_CONTEXT.with_borrow(|context| {
-                    Ok(tvec![kernels::array::Cast
-                        .dispatch_eval(context, t, self.to)?
-                        .into_opaque_tensor()
-                        .into_tvalue()])
+                    let output = unsafe { MetalTensor::uninitialized_dt(self.to, input.shape())? };
+                    kernels::array::Cast.dispatch_eval(context, input, &output)?;
+
+                    Ok(tvec![output.into_opaque_tensor().into_tvalue()])
                 })
             })
         }
@@ -51,7 +51,7 @@ impl EvalOp for MetalCast {
 
 impl TypedOp for MetalCast {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_output_facts(inputs, |facts| {
+        crate::utils::metal_tmp_output_facts(inputs, |facts| {
             Ok(tvec!(self.to.fact(facts[0].shape.clone())))
         })
         .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
