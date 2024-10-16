@@ -80,7 +80,7 @@ impl Cast {
         let encoder = command_buffer.new_compute_command_encoder();
         encoder.set_compute_pipeline_state(&pipeline);
         encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
-        encoder.set_metal_tensor(1, &output, metal::MTLResourceUsage::Write);
+        encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
 
         let grid_size = MTLSize { width: output.len() as NSUInteger, height: 1, depth: 1 };
         let group_size = MTLSize { width: 1, height: 1, depth: 1 };

@@ -66,7 +66,7 @@ impl Memcpy {
             input_offset as _,
             metal::MTLResourceUsage::Read,
         );
-        encoder.set_metal_tensor(1, &output, metal::MTLResourceUsage::Write);
+        encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
 
         let grid_size = MTLSize { width: output.len() as NSUInteger, height: 1, depth: 1 };
         let group_size = MTLSize { width: 1, height: 1, depth: 1 };
