@@ -1,8 +1,8 @@
-use crate::fact::MetalTypedFactExt;
+use crate::fact::{MetalFact, MetalFactKind, MetalTypedFactExt};
 use num_traits::{AsPrimitive, Zero};
 use tract_core::internal::*;
 
-pub fn metal_output_facts(
+pub fn metal_tmp_output_facts(
     facts: &[&TypedFact],
     resolve_facts: impl Fn(&[&TypedFact]) -> TractResult<TVec<TypedFact>>,
 ) -> TractResult<TVec<TypedFact>> {
@@ -14,7 +14,7 @@ pub fn metal_output_facts(
         let output_facts = (resolve_facts)(metal_facts.as_slice())?;
         Ok(output_facts
             .into_iter()
-            .map(|it| it.into_opaque_metal_fact())
+            .map(|it| Ok(MetalFact::new(MetalFactKind::Temporary, it)?.into_opaque_fact()))
             .collect::<TractResult<_>>()?)
     } else if facts.iter().all(|it| it.datum_type != DatumType::Opaque) {
         (resolve_facts)(facts)

@@ -40,13 +40,29 @@ impl PermuteAxes {
         Ok(format!("array_ops::copy_{broadcast_name}_{tname}"))
     }
 
+    pub fn output_shape<D: DimLike>(shape: &[D], axes: &[usize]) -> TractResult<TVec<D>> {
+        let rank = shape.len();
+        let mut new_shape = tvec![0.into(); rank];
+
+        for (new_axis, &axis) in axes.iter().enumerate() {
+            new_shape[new_axis] = shape[axis].clone();
+        }
+        Ok(new_shape)
+    }
+
     pub fn eval(
         &self,
         context: &MetalContext,
         input: &MetalTensor,
         axes: &[usize],
     ) -> Result<MetalTensor> {
-        let output = self.dispatch_eval(context, input, axes)?;
+        let output = unsafe {
+            MetalTensor::uninitialized_dt(
+                input.datum_type(),
+                &Self::output_shape(input.shape(), axes)?,
+            )?
+        };
+        self.dispatch_eval(context, input, axes, &output)?;
         context.wait_until_completed()?;
         Ok(output)
     }
@@ -56,8 +72,11 @@ impl PermuteAxes {
         context: &MetalContext,
         input: &MetalTensor,
         axes: &[usize],
-    ) -> Result<MetalTensor> {
+        output: &MetalTensor,
+    ) -> Result<()> {
         input.retain_until_completion();
+        output.retained_until_completion();
+
         // Validate give axes permutation
         let mut usage_counts = vec![0; input.rank()];
         for axis in axes {
@@ -69,17 +88,20 @@ impl PermuteAxes {
 
         let shape = input.shape();
         let strides = input.strides();
-
-        let mut new_shape = vec![0; input.rank()];
         let mut new_strides = vec![0; input.rank()];
+        let mut new_shape = vec![0; input.rank()];
 
         for (new_axis, &axis) in axes.iter().enumerate() {
             new_shape[new_axis] = shape[axis];
             new_strides[new_axis] = strides[axis];
         }
 
-        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), &new_shape)? };
-        output.retained_until_completion();
+        ensure!(
+            output.shape() == new_shape,
+            "Mismatch between expected new shape {:?} and output shape {:?}",
+            new_shape,
+            output.shape()
+        );
 
         let broadcast_kind = BroadcastKind::from_rank(input.rank())
             .with_context(|| anyhow!("Unsupported rank {:?} for PermuteAxes", input.rank()))?;
@@ -102,7 +124,7 @@ impl PermuteAxes {
 
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
-        Ok(output)
+        Ok(())
     }
 }
 

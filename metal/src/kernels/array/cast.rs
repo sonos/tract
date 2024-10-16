@@ -51,22 +51,28 @@ impl Cast {
         input: &MetalTensor,
         to_dt: DatumType,
     ) -> Result<MetalTensor> {
-        let o = self.dispatch_eval(context, input, to_dt)?;
+        let output = unsafe { MetalTensor::uninitialized_dt(to_dt, input.shape())? };
+        self.dispatch_eval(context, input, &output)?;
         context.wait_until_completed()?;
-        Ok(o)
+        Ok(output)
     }
 
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
         input: &MetalTensor,
-        to_dt: DatumType,
-    ) -> Result<MetalTensor> {
-        let output = unsafe { MetalTensor::uninitialized_dt(to_dt, input.shape())? };
+        output: &MetalTensor,
+    ) -> Result<()> {
         input.retain_until_completion();
         output.retain_until_completion();
+        ensure!(
+            input.shape() == output.shape(),
+            "Cast I/O don't have the same shape in: {:?}, out: {:?}",
+            input.shape(),
+            output.shape()
+        );
 
-        let kernel_name = self.kernel_name(input.datum_type(), to_dt)?;
+        let kernel_name = self.kernel_name(input.datum_type(), output.datum_type())?;
 
         let pipeline =
             context.shared_context().load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
@@ -80,6 +86,6 @@ impl Cast {
         let group_size = MTLSize { width: 1, height: 1, depth: 1 };
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
-        Ok(output)
+        Ok(())
     }
 }

@@ -100,7 +100,7 @@ impl MetalTransform {
                         if konst.as_metal_tensor().is_none() {
                             let konst_metal =
                                 konst.as_ref().clone().into_metal()?.into_opaque_tensor();
-                            let metal_fact = MetalFact::new(in_fact.clone())?;
+                            let metal_fact = MetalFact::shared(in_fact.clone())?;
 
                             *in_fact = TypedFact::dt_scalar(DatumType::Opaque)
                                 .with_opaque_fact(metal_fact);

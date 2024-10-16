@@ -76,22 +76,17 @@ impl EvalOp for MetalSlice {
 
         let offset = (start * input_strides[axis] as usize) * input_dt.size_of();
 
-        let t = input.to_metal_tensor()?;
+        let input = input.to_metal_tensor()?;
+        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), &o_shape)? };
 
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
-                if o_shape[axis] == 0 {
-                    Ok(tvec![unsafe {
-                        MetalTensor::uninitialized_dt(t.datum_type(), &o_shape)?
-                            .into_opaque_tensor()
-                            .into_tvalue()
-                    }])
-                } else {
-                    Ok(tvec![kernels::array::MultiBroadcast
-                        .dispatch_eval(context, t, offset, &o_shape)?
-                        .into_opaque_tensor()
-                        .into_tvalue()])
+                // Perform slicing only if the output is not empty.
+                if o_shape[axis] != 0 {
+                    kernels::array::MultiBroadcast
+                        .dispatch_eval(context, input, offset, &output)?;
                 }
+                Ok(tvec![output.into_opaque_tensor().into_tvalue()])
             })
         })
     }
@@ -99,7 +94,7 @@ impl EvalOp for MetalSlice {
 
 impl TypedOp for MetalSlice {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_output_facts(inputs, |facts| self.0.output_facts(facts))
+        crate::utils::metal_tmp_output_facts(inputs, |facts| self.0.output_facts(facts))
             .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
     }
 

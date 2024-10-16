@@ -46,7 +46,8 @@ impl MultiBroadcast {
         input_offset: usize,
         output_shape: &[usize],
     ) -> Result<MetalTensor> {
-        let output = self.dispatch_eval(context, input, input_offset, output_shape)?;
+        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), &output_shape)? };
+        self.dispatch_eval(context, input, input_offset, &output)?;
         context.wait_until_completed()?;
         Ok(output)
     }
@@ -56,15 +57,13 @@ impl MultiBroadcast {
         context: &MetalContext,
         input: &MetalTensor,
         input_offset: usize,
-        output_shape: &[usize],
-    ) -> Result<MetalTensor> {
+        output: &MetalTensor,
+    ) -> Result<()> {
         input.retain_until_completion();
-        ensure!(input_offset % input.datum_type().size_of() == 0);
-
-        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), output_shape)? };
         output.retain_until_completion();
 
-        ensure!(input.rank() <= output.rank(), "Input must have a rank lowe than output");
+        ensure!(input_offset % input.datum_type().size_of() == 0);
+        ensure!(input.rank() <= output.rank(), "Input must have a rank lower or equal to output");
 
         let mut input_shape = vec![1; output.rank() - input.rank()];
         input_shape.extend(input.shape());
@@ -74,7 +73,7 @@ impl MultiBroadcast {
             anyhow!(
                 "Unsupported broadcast for broadcast op: (in: {:?}, out: {:?})",
                 input.shape(),
-                output_shape
+                output.shape(),
             )
         })?;
 
@@ -98,7 +97,7 @@ impl MultiBroadcast {
         );
         encoder.set_slice(1, &input_broadcast_strides);
         encoder.set_metal_tensor(2, &output, metal::MTLResourceUsage::Write);
-        encoder.set_slice(3, output_shape);
+        encoder.set_slice(3, output.shape());
         encoder.set_slice(4, output.strides());
 
         let grid_size = utils::build_metal_size_for_shape(output.shape());
@@ -106,6 +105,6 @@ impl MultiBroadcast {
 
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
-        Ok(output)
+        Ok(())
     }
 }
