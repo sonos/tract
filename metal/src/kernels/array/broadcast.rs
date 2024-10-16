@@ -46,7 +46,7 @@ impl MultiBroadcast {
         input_offset: usize,
         output_shape: &[usize],
     ) -> Result<MetalTensor> {
-        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), &output_shape)? };
+        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), output_shape)? };
         self.dispatch_eval(context, input, input_offset, &output)?;
         context.wait_until_completed()?;
         Ok(output)
@@ -96,7 +96,7 @@ impl MultiBroadcast {
             metal::MTLResourceUsage::Read,
         );
         encoder.set_slice(1, &input_broadcast_strides);
-        encoder.set_metal_tensor(2, &output, metal::MTLResourceUsage::Write);
+        encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
         encoder.set_slice(3, output.shape());
         encoder.set_slice(4, output.strides());
 
