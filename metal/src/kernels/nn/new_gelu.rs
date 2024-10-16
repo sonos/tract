@@ -1,3 +1,4 @@
+use crate::encoder::EncoderExt;
 use crate::{LibraryName, MetalContext, MetalTensor};
 use anyhow::Result;
 use metal::MTLSize;
@@ -56,13 +57,10 @@ impl NewGelu {
         let command_buffer = context.command_buffer();
         let encoder = command_buffer.new_compute_command_encoder();
         encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_buffer(0, Some(input.metal()), input.metal_offset());
-        encoder.set_buffer(1, Some(output.metal()), output.metal_offset());
-
+        encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
         let grid_size = MTLSize { width: output.len() as _, height: 1, depth: 1 };
         let group_size = MTLSize { width: 1, height: 1, depth: 1 };
-        encoder.use_resource(input.metal(), metal::MTLResourceUsage::Read);
-        encoder.use_resource(output.metal(), metal::MTLResourceUsage::Write);
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
         Ok(())
