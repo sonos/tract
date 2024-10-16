@@ -198,9 +198,13 @@ impl<M: GemmKernel> GemmImpl<M> {
         a: &MetalTensor,
         b: &MetalTensor,
     ) -> TractResult<MetalTensor> {
-        let output = self.dispatch_eval(context, a, b)?;
+        let c_dt = a.datum_type();
+        let c_shape = self.output_shape(a.shape(), b.shape());
+        let c = unsafe { MetalTensor::uninitialized_dt(c_dt, &c_shape)? };
+
+        self.dispatch_eval(context, a, b, &c)?;
         context.wait_until_completed()?;
-        Ok(output)
+        Ok(c)
     }
 
     pub fn dispatch_eval(
@@ -208,22 +212,21 @@ impl<M: GemmKernel> GemmImpl<M> {
         context: &MetalContext,
         a: &MetalTensor,
         b: &MetalTensor,
-    ) -> TractResult<MetalTensor> {
+        c: &MetalTensor,
+    ) -> TractResult<()> {
         a.retain_until_completion();
         b.retain_until_completion();
-
-        let c_dt = a.datum_type();
-        let c_shape = self.output_shape(a.shape(), b.shape());
-
-        let c = unsafe { MetalTensor::uninitialized_dt(c_dt, &c_shape)? };
         c.retain_until_completion();
 
-        if c_shape.iter().product::<usize>() == 0 {
-            return Ok(c);
+        ensure!(c.datum_type() == a.datum_type());
+        ensure!(c.shape() == self.output_shape(a.shape(), b.shape()).as_slice());
+
+        if c.shape().iter().product::<usize>() == 0 {
+            return Ok(());
         }
 
         let dispatches = GemmDispatchParams::compute_dispatches_params(
-            c_dt,
+            c.datum_type(),
             a.metal_offset(),
             a.shape(),
             self.transpose_a,
@@ -249,13 +252,13 @@ impl<M: GemmKernel> GemmImpl<M> {
                     self.matmul,
                     a.shape(),
                     b.shape(),
-                    c_shape,
+                    c.shape(),
                     d,
                 )
             })?;
         }
 
-        Ok(c)
+        Ok(())
     }
 }
 
