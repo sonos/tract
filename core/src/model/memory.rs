@@ -181,8 +181,12 @@ where
 {
 
     let mut scoped_node_memories = eval_scoped_node_memories(&model, &order, flushable)?;
-    scoped_node_memories.sort_by_key(|it| it.scope.len() as isize * -1);
-
+    scoped_node_memories
+        .sort_by(|lhs, rhs| {
+            lhs.scope.end.cmp(&rhs.scope.end).reverse()
+                .then(lhs.scope.len().cmp(&rhs.scope.len()).reverse())
+                .then(lhs.mem_size.cmp(&rhs.mem_size).reverse())
+        });
 
     let mut partitions: Vec<Vec<ScopedNodeMemory>> = vec![];
     for node_mem in scoped_node_memories {
@@ -192,7 +196,6 @@ where
                 .filter(|it| it.iter().all(|n| n.scope.is_disjoint(&node_mem.scope)))
                 .collect::<Vec<_>>();
 
-        // Find first available partition that has the max memory size
         available.sort_by_key(|n| n.iter().map(|it| it.mem_size as isize * -1).sum::<isize>());
 
         match available.first_mut() {
