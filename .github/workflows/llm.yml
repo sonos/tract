@@ -33,6 +33,9 @@ jobs:
         os: [ macos-latest, ubuntu-latest ]
         model: [ apple--OpenELM-270M,  apple--OpenELM-1_1B, TinyLlama--TinyLlama_v1.1, microsoft--phi-1_5 ]
         q: [ f16f16, f32f32, q40f16, q40f32 ]
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
     - uses: actions/checkout@v3
