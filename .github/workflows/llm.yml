@@ -59,8 +59,9 @@ jobs:
     - name: Download and run
       run: |
         pwd
-        echo $GITHUB_WORKSPACE
-        find $GITHUB_WORKSPACE/tract-cli
+        ls
+        find tract-cli-${{matrix.os}}
+        PATH=$PATH:$GITHUB_WORKSPACE/tract-cli-${{matrix.os}}
         PATH=$PATH:$GITHUB_WORKSPACE/tract-cli-${{matrix.os}}
         tract --version
         aws s3 sync --no-progress s3://tract-ci-builds/tests/llm/current/$id $id
