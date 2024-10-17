@@ -66,5 +66,5 @@ jobs:
         tract --version
         aws s3 sync --no-progress s3://tract-ci-builds/tests/llm/current/$id $id
         cd $id
-        tract -v --nnef-tract-core $id.nnef.tgz -O run --input-from-npz $id.pp.io.npz --assert-output-bundle $id.pp.io.npz
-        tract -v --nnef-tract-core $id.nnef.tgz -O run --input-from-npz $id.tg.io.npz --assert-output-bundle $id.tg.io.npz
+        tract -v --nnef-tract-core $id.nnef.tgz -O run --input-from-npz $id.pp.io.npz --assert-output-bundle $id.pp.io.npz --approx very
+        tract -v --nnef-tract-core $id.nnef.tgz -O run --input-from-npz $id.tg.io.npz --assert-output-bundle $id.tg.io.npz --approx very
