@@ -1,4 +1,4 @@
-name: Examples
+name: Foundation LLM examples
 
 on:
   pull_request:
@@ -12,7 +12,7 @@ env:
 jobs:
   cli: 
     name: Build tract on ${{ matrix.os }}
-    runs-on: ${{ matrix.os}}
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ macos-latest, ubuntu-latest ]
@@ -32,11 +32,11 @@ jobs:
   example:
     name: ${{ matrix.model }} — ${{ matrix.q }}
     needs: [ cli ]
-    runs-on: ${{ matrix.os}}
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ macos-latest, ubuntu-latest ]
-        model: [ apple--OpenELM-270M,  apple--OpenELM-1_1B, TinyLlama--TinyLlama_v1.1, microsoft--phi-1_5
+        model: [ apple--OpenELM-270M,  apple--OpenELM-1_1B, TinyLlama--TinyLlama_v1.1, microsoft--phi-1_5 ]
         q: [ f16f16, f32f32, q40f16, q40f32 ]
 
     steps:
@@ -48,16 +48,20 @@ jobs:
         pattern: tract-cli-${matrix.os}}
         path: tract
 
-    - name: Download assets
-      run: |
-        wget https://tract-ci-builds.s3.amazonaws.com/tests/llm/current/${{matrix.model}}/${{matrix.model}}-${{matrix.q}}.nnef.tgz -O model.nnef.tgz
-        wget https://tract-ci-builds.s3.amazonaws.com/tests/llm/current/${{matrix.model}}/${{matrix.model}}-${{matrix.q}}.pp.io.npz -O pp.io.npz
-        wget https://tract-ci-builds.s3.amazonaws.com/tests/llm/current/${{matrix.model}}/${{matrix.model}}-${{matrix.q}}.tg.io.npz -O tg.io.npz
+    - name: Configure AWS Credentials
+      # if: github.repository == 'sonos/tract'
+      continue-on-error: true
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
+        aws-region: us-east-2
 
-    - name: TG
-      run: |
-        ./tract -v --nnef-tract-core model.nnef.tgz -O run --input-from-npz tg.io.npz --assert-output-bundle tg.io.npz
+    - name: Set the test id 
+      run: echo id=${{matrix.model}}-${{matrix.q}} >> "$GITHUB_ENV"
 
-    - name: PP
+    - name: Download and run
       run: |
-        ./tract -v --nnef-tract-core model.nnef.tgz -O run --input-from-npz pp.io.npz --assert-output-bundle pp.io.npz
+        aws s3 sync s3://tract-ci-builds/tests/llm/current/$id $id
+        cd $id
+        ../tract -v --nnef-tract-core $id.nnef.tgz -O run --input-from-npz $id.pp.io.npz --assert-output-bundle $id.pp.io.npz
+        ../tract -v --nnef-tract-core $id.nnef.tgz -O run --input-from-npz $id.tg.io.npz --assert-output-bundle $id.tg.io.npz
