@@ -21,11 +21,6 @@ jobs:
       - run: cargo build -p tract --release --no-default-features
       - uses: actions/upload-artifact@v4
         with:
-          name: tract-cli-${{
-          path: target/release/tract
-
-      - uses: actions/upload-artifact@v4
-        with:
           name: tract-cli-${{matrix.os}}
           path: ./target/release/tract
 
