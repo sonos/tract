@@ -62,7 +62,7 @@ jobs:
         ls
         find tract-cli-${{matrix.os}}
         PATH=$PATH:$GITHUB_WORKSPACE/tract-cli-${{matrix.os}}
-        PATH=$PATH:$GITHUB_WORKSPACE/tract-cli-${{matrix.os}}
+        chmod +x tract-cli-${{matrix.os}}/tract
         tract --version
         aws s3 sync --no-progress s3://tract-ci-builds/tests/llm/current/$id $id
         cd $id
