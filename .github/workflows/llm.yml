@@ -44,7 +44,7 @@ jobs:
     - uses: actions/download-artifact@v4.1.7
       with:
         pattern: tract-cli-${{matrix.os}}
-        path: tract
+        path: tract-cli
 
     - name: Configure AWS Credentials
       # if: github.repository == 'sonos/tract'
@@ -59,7 +59,9 @@ jobs:
 
     - name: Download and run
       run: |
+        PATH=$PATH:$GITHUB_WORKSPACE/tract-cli
+        tract --version
         aws s3 sync --no-progress s3://tract-ci-builds/tests/llm/current/$id $id
         cd $id
-        ../tract -v --nnef-tract-core $id.nnef.tgz -O run --input-from-npz $id.pp.io.npz --assert-output-bundle $id.pp.io.npz
-        ../tract -v --nnef-tract-core $id.nnef.tgz -O run --input-from-npz $id.tg.io.npz --assert-output-bundle $id.tg.io.npz
+        tract -v --nnef-tract-core $id.nnef.tgz -O run --input-from-npz $id.pp.io.npz --assert-output-bundle $id.pp.io.npz
+        tract -v --nnef-tract-core $id.nnef.tgz -O run --input-from-npz $id.tg.io.npz --assert-output-bundle $id.tg.io.npz
