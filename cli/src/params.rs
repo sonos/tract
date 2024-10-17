@@ -161,7 +161,12 @@ type TfExt = ();
 
 impl Parameters {
     fn disco_model(matches: &clap::ArgMatches) -> TractResult<(Location, bool)> {
-        let model = matches.value_of("model").context("Model argument required")?;
+        let model = matches.value_of("model").with_context(|| {
+            format!(
+                "Model argument required for subcommand {}",
+                matches.subcommand_name().unwrap_or("")
+            )
+        })?;
         let location = Location::find(model)?;
         if location.is_dir() && location.path().join("model.onnx").exists() {
             Ok((Location::Fs(location.path().join("model.onnx")), false))
@@ -1134,8 +1139,14 @@ impl Assertions {
             "very" => Approximation::VeryApproximate,
             "super" => Approximation::SuperApproximate,
             "ultra" => Approximation::UltraApproximate,
-            _ => panic!()
+            _ => panic!(),
         };
-        Ok(Assertions { assert_outputs, assert_output_facts, assert_op_count, approximation, allow_missing_outputs })
+        Ok(Assertions {
+            assert_outputs,
+            assert_output_facts,
+            assert_op_count,
+            approximation,
+            allow_missing_outputs,
+        })
     }
 }

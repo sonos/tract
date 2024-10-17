@@ -7,6 +7,7 @@ pub(crate) mod fuse;
 pub(crate) mod input_store;
 pub(crate) mod kernel;
 pub mod pack;
+pub mod panel_extract;
 mod scratch;
 mod storage;
 

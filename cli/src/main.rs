@@ -16,6 +16,7 @@ use tract_libcli::annotations::Annotations;
 use tract_libcli::display_params::DisplayParams;
 use tract_libcli::model::Model;
 use tract_libcli::profile::BenchLimits;
+use nu_ansi_term::Color::*;
 
 use fs_err as fs;
 use readings_probe::*;
@@ -85,7 +86,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--readings "Start readings instrumentation"))
         .arg(arg!(--"readings-heartbeat" [MS] "Heartbeat for readings background collector").default_value("5"))
         .arg(arg!(verbose: -v ... "Sets the level of verbosity."))
-        .arg(arg!([model] "Sets the model to use"))
+        .arg(arg!([model] "Sets the model to use").required(false))
         .arg(arg!(-f --format [format]
                   "Hint the model format ('onnx', 'nnef', 'tflite' or 'tf') instead of guess from extension."))
         .arg(Arg::new("input").long("input").short('i').multiple_occurrences(true).takes_value(true).long_help(
@@ -158,7 +159,8 @@ fn main() -> TractResult<()> {
 
         .arg(arg!(--"machine-friendly" "Machine friendly output"))
 
-        .arg(arg!(--"list-ops" "List all known operators"));
+        .subcommand(Command::new("list-ops").about("List ops in TF/ONNX frameworks"))
+        .subcommand(Command::new("kernels").about("Print kernels for the current plaform"));
 
     let compare = clap::Command::new("compare")
         .long_about("Compares the output of tract and tensorflow on randomly generated input.")
@@ -258,6 +260,7 @@ fn main() -> TractResult<()> {
     let stream_check = clap::Command::new("stream-check")
         .long_about("Compare output of streamed and regular exec");
     app = app.subcommand(output_options(stream_check));
+
     let matches = app.get_matches();
 
     let probe = if matches.is_present("readings") {
@@ -542,7 +545,11 @@ fn output_options(command: clap::Command) -> clap::Command {
         .arg(Arg::new("json").long("json").help("dump performance info as json"))
         .arg(Arg::new("outlet-labels").long("outlet-labels").help("display outlet labels"))
         .arg(Arg::new("cost").long("cost").help("Include const information"))
-        .arg(Arg::new("tmp_mem_usage").long("tmp-mem-usage").help("Include temporary memory usage information"))
+        .arg(
+            Arg::new("tmp_mem_usage")
+                .long("tmp-mem-usage")
+                .help("Include temporary memory usage information"),
+        )
         .arg(Arg::new("profile").long("profile").help("Include results for profile run"))
         .arg(Arg::new("folded").long("folded").help("Don't display submodel informations"))
         .arg(
@@ -555,24 +562,37 @@ fn output_options(command: clap::Command) -> clap::Command {
 
 /// Handles the command-line input.
 fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
-    if matches.is_present("list-ops") {
-        #[cfg(feature = "onnx")]
-        {
-            let onnx = tract_onnx::onnx();
-            let names = onnx.op_register.0.keys().sorted().join(", ");
-            println!("Onnx:\n");
-            println!("{names}");
-            println!("\n");
+    match matches.subcommand() {
+        Some(("list-ops", _)) => {
+            #[cfg(feature = "onnx")]
+            {
+                let onnx = tract_onnx::onnx();
+                let names = onnx.op_register.0.keys().sorted().join(", ");
+                println!("Onnx:\n");
+                println!("{names}");
+                println!("\n");
+            }
+            #[cfg(feature = "tf")]
+            {
+                let tf = tract_tensorflow::tensorflow();
+                let names = tf.op_register.0.keys().sorted().join(", ");
+                println!("Tensorflow:\n");
+                println!("{names}");
+                println!("\n");
+            }
+            return Ok(());
         }
-        #[cfg(feature = "tf")]
-        {
-            let tf = tract_tensorflow::tensorflow();
-            let names = tf.op_register.0.keys().sorted().join(", ");
-            println!("Tensorflow:\n");
-            println!("{names}");
-            println!("\n");
+        Some(("kernels", _)) => {
+            println!("{}", White.bold().paint("# Matrix multiplication"));
+            for m in tract_linalg::ops().mmm_impls() {
+                println!("{}", Green.paint(format!(" * {}", m.kernel_name())));
+                for packings in m.packings() {
+                    println!("   - {} • {}", packings.0, packings.1);
+                }
+            }
+            return Ok(());
         }
-        return Ok(());
+        _ => ()
     }
 
     let builder_result = Parameters::from_clap(&matches, probe);

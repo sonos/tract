@@ -41,7 +41,7 @@ impl MMMInputFormat for PackedFormat {
 
 impl Display for PackedFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Packed{:?}(r={})", self.dt, self.r)
+        write!(f, "Packed{:?}[{}]", self.dt, self.r)
     }
 }
 

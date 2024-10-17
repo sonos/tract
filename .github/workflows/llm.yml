@@ -1,0 +1,67 @@
+name: Foundation LLM examples
+
+on:
+  pull_request:
+  schedule:
+    - cron:  '0 3 * * *'
+  workflow_dispatch:
+
+env:
+  CARGO_INCREMENTAL: false
+
+jobs:
+  cli: 
+    name: Build tract on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}-latest
+    strategy:
+      matrix:
+        os: [ macos, ubuntu ]
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo build -p tract --release --no-default-features
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tract-cli-${{matrix.os}}
+          path: ./target/release/tract
+
+  example:
+    name: ${{ matrix.os }} / ${{ matrix.model }} / ${{ matrix.q }}
+    needs: [ cli ]
+    runs-on: ${{ matrix.os }}-latest
+    strategy:
+      matrix:
+        os: [ macos, ubuntu ]
+        model: [ apple--OpenELM-270M,  apple--OpenELM-1_1B, TinyLlama--TinyLlama_v1.1, microsoft--phi-1_5 ]
+        q: [ f16f16, f32f32, q40f16, q40f32 ]
+      fail-fast: false
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/download-artifact@v4.1.7
+      with:
+        pattern: tract-cli-${{matrix.os}}
+
+    - name: Configure AWS Credentials
+      # if: github.repository == 'sonos/tract'
+      continue-on-error: false
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::567805100031:role/github-runner-tract-ci
+        aws-region: us-east-2
+
+    - name: Set the test id 
+      run: echo id=${{matrix.model}}-${{matrix.q}} >> "$GITHUB_ENV"
+
+    - name: Download and run
+      run: |
+        PATH=$PATH:$GITHUB_WORKSPACE/tract-cli-${{matrix.os}}
+        chmod +x tract-cli-${{matrix.os}}/tract
+        tract --version
+        aws s3 sync --no-progress s3://tract-ci-builds/tests/llm/current/$id $id
+        cd $id
+        tract -v --nnef-tract-core $id.nnef.tgz -O run --input-from-npz $id.pp.io.npz --assert-output-bundle $id.pp.io.npz --approx very --allow-float-casts
+        tract -v --nnef-tract-core $id.nnef.tgz -O run --input-from-npz $id.tg.io.npz --assert-output-bundle $id.tg.io.npz --approx very --allow-float-casts

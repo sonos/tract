@@ -72,7 +72,7 @@ impl TypedOp for Tile {
             TypedModelPatch::replace_single_op(
                 model,
                 node,
-                &node.inputs,
+                &node.inputs[0..1],
                 MultiBroadcastTo { shape: output_fact.shape },
             )
             .map(Some)
