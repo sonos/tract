@@ -1,10 +1,10 @@
 use crate::frame::PackedFormat;
-use crate::mmm::panel_extract::PanelExtract;
+use crate::mmm::panel_extract::PanelExtractor;
 use crate::Ops;
 use tract_data::internal::*;
 
 pub fn plug(ops: &mut Ops) {
-    ops.panel_extractors.push(PanelExtract::new(
+    ops.panel_extractors.push(PanelExtractor::new(
         "packed_32_q40_to_f32".to_string(),
         Box::new(super::mmm::PQ40_R32),
         PackedFormat::new(f32::datum_type(), 32, 32),
