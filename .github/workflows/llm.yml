@@ -1,0 +1,63 @@
+name: Examples
+
+on:
+  pull_request:
+  schedule:
+    - cron:  '0 3 * * *'
+  workflow_dispatch:
+
+env:
+  CARGO_INCREMENTAL: false
+
+jobs:
+  cli: 
+    name: Build tract on ${{ matrix.os }}
+    runs-on: ${{ matrix.os}}
+    strategy:
+      matrix:
+        os: [ macos-latest, ubuntu-latest ]
+    steps:
+      - uses: actions/checkout@v2
+      - run: cargo build -p tract --release --no-default-features
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tract-cli-${{
+          path: target/release/tract
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tract-cli-${{matrix.os}}
+          path: ./target/release/tract
+
+  example:
+    name: ${{ matrix.model }} — ${{ matrix.q }}
+    needs: [ cli ]
+    runs-on: ${{ matrix.os}}
+    strategy:
+      matrix:
+        os: [ macos-latest, ubuntu-latest ]
+        model: [ apple--OpenELM-270M,  apple--OpenELM-1_1B, TinyLlama--TinyLlama_v1.1, microsoft--phi-1_5
+        q: [ f16f16, f32f32, q40f16, q40f32 ]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    steps:
+    - uses: actions/download-artifact@v4.1.7
+      with:
+        pattern: tract-cli-${matrix.os}}
+        path: tract
+
+    - name: Download assets
+      run: |
+        wget https://tract-ci-builds.s3.amazonaws.com/tests/llm/current/${{matrix.model}}/${{matrix.model}}-${{matrix.q}}.nnef.tgz -O model.nnef.tgz
+        wget https://tract-ci-builds.s3.amazonaws.com/tests/llm/current/${{matrix.model}}/${{matrix.model}}-${{matrix.q}}.pp.io.npz -O pp.io.npz
+        wget https://tract-ci-builds.s3.amazonaws.com/tests/llm/current/${{matrix.model}}/${{matrix.model}}-${{matrix.q}}.tg.io.npz -O tg.io.npz
+
+    - name: TG
+      run: |
+        ./tract -v --nnef-tract-core model.nnef.tgz -O run --input-from-npz tg.io.npz --assert-output-bundle tg.io.npz
+
+    - name: PP
+      run: |
+        ./tract -v --nnef-tract-core model.nnef.tgz -O run --input-from-npz pp.io.npz --assert-output-bundle pp.io.npz
