@@ -10,7 +10,7 @@ use string_interner::Symbol as _;
 use crate::TractResult;
 
 use super::parse::parse_assertion;
-use super::{parse_tdim, Assertion, TDim, TVec};
+use super::{parse_tdim, Assertion, TDim};
 
 #[derive(Clone, Default)]
 pub struct SymbolScope(pub Arc<ReentrantMutex<RefCell<SymbolScopeData>>>);
@@ -146,19 +146,20 @@ impl SymbolScope {
     pub fn guess_scenario(&self, values: &SymbolValues) -> TractResult<Option<usize>> {
         let locked = self.0.lock();
         let locked = locked.borrow();
-        let valid: TVec<_> = locked
-            .scenarios
-            .iter()
-            .enumerate()
-            .filter(|(_ix, (_name, assertions))| {
-                assertions.iter().all(|assertion| assertion.check(values).unwrap_or(true))
-            })
-            .map(|s| s.0)
-            .collect();
-        match valid.len() {
-            0 if locked.scenarios.len() > 0 => anyhow::bail!("No valid scenario"),
-            1 => Ok(Some(valid[0])),
-            _ => Ok(None)
+        let mut still_undecided = false;
+        for (ix, (_name, assertions)) in locked.scenarios.iter().enumerate() {
+            if assertions.iter().any(|a| a.check(values) == Some(false)) {
+                continue;
+            } else if assertions.iter().all(|a| a.check(values) == Some(true)) {
+                return Ok(Some(ix));
+            } else {
+                still_undecided = true;
+            }
+        }
+        if still_undecided {
+            Ok(None)
+        } else {
+            anyhow::bail!("No possible scenario");
         }
     }
 }
