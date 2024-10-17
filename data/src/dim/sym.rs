@@ -146,18 +146,23 @@ impl SymbolScope {
     pub fn guess_scenario(&self, values: &SymbolValues) -> TractResult<Option<usize>> {
         let locked = self.0.lock();
         let locked = locked.borrow();
-        let mut still_undecided = false;
+        if locked.scenarios.len() == 0 {
+            return Ok(None)
+        }
+        let mut maybe = None;
         for (ix, (_name, assertions)) in locked.scenarios.iter().enumerate() {
             if assertions.iter().any(|a| a.check(values) == Some(false)) {
                 continue;
             } else if assertions.iter().all(|a| a.check(values) == Some(true)) {
                 return Ok(Some(ix));
+            } else if maybe.is_none() {
+                maybe = Some(ix);
             } else {
-                still_undecided = true;
+                return Ok(None)
             }
         }
-        if still_undecided {
-            Ok(None)
+        if maybe.is_some() {
+            Ok(maybe)
         } else {
             anyhow::bail!("No possible scenario");
         }
