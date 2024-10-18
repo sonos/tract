@@ -5,11 +5,6 @@ set -e
 ROOT=$(dirname $(dirname $(realpath $0)))
 . $ROOT/.travis/ci-system-setup.sh
 
-if [ -z "$CACHEDIR" ]
-then
-    CACHEDIR=`dirname $0`/../.cached
-fi
-
 if [ -z $TRACT_RUN ]
 then
     TRACT_RUN=$(cargo build --message-format json -p tract $CARGO_EXTRA --profile opt-no-lto --no-default-features | jq -r 'select(.target.name == "tract" and .executable).executable')
@@ -39,12 +34,12 @@ tg=llm/$generation/$id/$id.tg.io.npz
 set -x
 $CACHE_FILE $nnef $pp $tg
 
-$TRACT_RUN -v --nnef-tract-core $CACHEDIR/$nnef -O run \
-    --input-from-npz $CACHEDIR/$pp \
-    --assert-output-bundle $CACHEDIR/$pp \
+$TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O run \
+    --input-from-npz $MODELS/$pp \
+    --assert-output-bundle $MODELS/$pp \
     --approx very --allow-float-casts
 
-$TRACT_RUN -v --nnef-tract-core $CACHEDIR/$nnef -O run \
-    --input-from-npz $CACHEDIR/$tg \
-    --assert-output-bundle $CACHEDIR/$tg \
+$TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O run \
+    --input-from-npz $MODELS/$tg \
+    --assert-output-bundle $MODELS/$tg \
     --approx very --allow-float-casts
