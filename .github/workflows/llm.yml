@@ -31,7 +31,7 @@ jobs:
     strategy:
       matrix:
         os: [ macos, ubuntu ]
-        model: [ apple--OpenELM-270M,  apple--OpenELM-1_1B, TinyLlama--TinyLlama_v1.1, microsoft--phi-1_5 ]
+        model: [ OpenELM-270M, OpenELM-1_1B, TinyLlama_v1.1, phi-1_5 ]
         q: [ f16f16, f32f32, q40f16, q40f32 ]
       fail-fast: false
     permissions:
@@ -58,10 +58,6 @@ jobs:
 
     - name: Download and run
       run: |
-        PATH=$PATH:$GITHUB_WORKSPACE/tract-cli-${{matrix.os}}
         chmod +x tract-cli-${{matrix.os}}/tract
-        tract --version
-        aws s3 sync --no-progress s3://tract-ci-builds/tests/llm/current/$id $id
-        cd $id
-        tract -v --nnef-tract-core $id.nnef.tgz -O run --input-from-npz $id.pp.io.npz --assert-output-bundle $id.pp.io.npz --approx very --allow-float-casts
-        tract -v --nnef-tract-core $id.nnef.tgz -O run --input-from-npz $id.tg.io.npz --assert-output-bundle $id.tg.io.npz --approx very --allow-float-casts
+        export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{matrix.os}}/tract
+        .travis/test-llm.sh ${{matrix.model}} ${{matrix.id}}
