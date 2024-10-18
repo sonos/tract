@@ -1,4 +1,3 @@
-use tract_core::internal::memory::MemoryPlan;
 use nu_ansi_term::Style;
 use std::collections::HashMap;
 #[allow(unused_imports)]
@@ -125,7 +124,6 @@ pub struct Annotations {
     pub tags: HashMap<NodeQId, NodeTags>,
     pub profile_summary: Option<ProfileSummary>,
     pub memory_summary: Option<MemorySummary>,
-    pub memory_plan: Option<MemoryPlan>,
 }
 
 impl Annotations {
@@ -164,10 +162,6 @@ impl Annotations {
 
         self.memory_summary = peak_tmp_mem_usage
             .map(|(n, mem)| MemorySummary { max: mem, max_reached_by_node: n });
-
-        if self.memory_summary.is_some() {
-            self.memory_plan = Some(tract_core::model::memory::eval_memory_plan(&model, &order, &flushable)?);
-        }
 
         for (n, mem_size) in tmp_mem_usage.into_iter() {
             let qid = NodeQId(tvec![], n);
