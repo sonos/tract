@@ -60,4 +60,4 @@ jobs:
       run: |
         chmod +x tract-cli-${{matrix.os}}/tract
         export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{matrix.os}}/tract
-        .travis/test-llm.sh ${{matrix.model}} ${{matrix.id}}
+        .travis/test-llm.sh ${{matrix.model}} ${{matrix.q}}
