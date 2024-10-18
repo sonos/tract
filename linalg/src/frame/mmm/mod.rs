@@ -8,6 +8,7 @@ pub(crate) mod input_store;
 pub(crate) mod kernel;
 pub mod kit;
 pub mod pack;
+#[macro_use]
 pub mod panel_extract;
 mod scratch;
 mod storage;
