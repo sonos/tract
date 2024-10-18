@@ -8,7 +8,7 @@ use crate::LADatum;
 
 pub trait MatMatMulKer: Clone + Debug + Send + Sync + 'static {
     type Acc: LADatum;
-    fn name(&self) -> Cow<str>;
+    fn name(&self) -> &str;
     fn kernel(&self, op: &[FusedKerSpec<Self::Acc>]) -> isize;
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;
@@ -106,8 +106,8 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> Debug for DynKernel<MR, NR,
 
 impl<const MR: usize, const NR: usize, Acc: LADatum> MatMatMulKer for DynKernel<MR, NR, Acc> {
     type Acc = Acc;
-    fn name(&self) -> Cow<str> {
-        Cow::Borrowed(&self.name)
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn mr(&self) -> usize {

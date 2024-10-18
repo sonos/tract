@@ -78,13 +78,9 @@ impl CostModel<'_> {
     ) -> Box<dyn MatMatMul> {
         if let (Some(m), Some(k), Some(n)) = (m, k, n) {
             let choice = self.predict(m, k, n);
-            impls.iter().find(|k| k.kernel_name() == choice).unwrap().clone()
+            impls.iter().find(|k| k.name() == choice).unwrap().clone()
         } else {
-            impls
-                .iter()
-                .find(|k| k.kernel_name() == self.big_product_kernel_choice)
-                .unwrap()
-                .clone()
+            impls.iter().find(|k| k.name() == self.big_product_kernel_choice).unwrap().clone()
         }
     }
 }

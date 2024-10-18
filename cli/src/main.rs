@@ -12,11 +12,11 @@ use tract_itertools::Itertools;
 use tract_core::internal::*;
 use tract_hir::internal::*;
 
+use nu_ansi_term::Color::*;
 use tract_libcli::annotations::Annotations;
 use tract_libcli::display_params::DisplayParams;
 use tract_libcli::model::Model;
 use tract_libcli::profile::BenchLimits;
-use nu_ansi_term::Color::*;
 
 use fs_err as fs;
 use readings_probe::*;
@@ -585,14 +585,37 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         Some(("kernels", _)) => {
             println!("{}", White.bold().paint("# Matrix multiplication"));
             for m in tract_linalg::ops().mmm_impls() {
-                println!("{}", Green.paint(format!(" * {}", m.kernel_name())));
+                println!("{}", Green.paint(format!(" * {}", m.name())));
                 for packings in m.packings() {
                     println!("   - {} • {}", packings.0, packings.1);
                 }
             }
+            println!("{}", White.bold().paint("# MatMul kits"));
+            for m in tract_linalg::ops().mmm_kits() {
+                println!(
+                    " * {} {:?}•{:?} ({:?} Accum:{:?})",
+                    if m.generic_fallback {
+                        DarkGray.paint(m.name())
+                    } else {
+                        Green.paint(m.name())
+                    },
+                    m.weight,
+                    m.activation,
+                    m.static_packer,
+                    m.accumulator,
+                );
+                for item in &m.items {
+                    println!(
+                        "   - {} ({:?} • {:?})",
+                        item.mmm.name(),
+                        item.mmm.packings()[item.packing].0,
+                        item.mmm.packings()[item.packing].1,
+                    );
+                }
+            }
             return Ok(());
         }
-        _ => ()
+        _ => (),
     }
 
     let builder_result = Parameters::from_clap(&matches, probe);
