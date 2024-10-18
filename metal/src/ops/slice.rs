@@ -128,13 +128,16 @@ mod tests {
                     &shape,
                     &(0..num_elements).map(|f| f as f32).collect::<Vec<_>>(),
                 )?;
+
                 let cpu_output = slice
                     .eval_with_session(&SessionState::default(), tvec![a.clone().into_tvalue()])?;
 
                 let metal_slice = MetalSlice::from_tract_core(slice);
                 let a_metal = a.clone().into_metal()?.into_opaque_tensor().into_tvalue();
-                let metal_output = metal_slice
-                    .eval_with_session(&SessionState::default(), tvec![a_metal.clone()])?;
+                let mut session_state = SessionState::default();
+                let mut metal_slice_state = metal_slice.state(&mut session_state, 0)?.unwrap();
+                let metal_output =
+                    metal_slice_state.eval(&mut session_state, &metal_slice, tvec![a_metal])?;
                 context.wait_until_completed()?;
 
                 cpu_output[0].close_enough(

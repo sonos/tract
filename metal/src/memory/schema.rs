@@ -201,7 +201,11 @@ impl fmt::Display for MetalMemSchema {
 }
 
 impl MetalMemSchema {
-    pub fn resolve(&self, num_nodes: usize, symbols: &SymbolValues) -> TractResult<MetalResolvedMemSchema> {
+    pub fn resolve(
+        &self,
+        num_nodes: usize,
+        symbols: &SymbolValues,
+    ) -> TractResult<MetalResolvedMemSchema> {
         Ok(MetalResolvedMemSchema {
             offsets_by_node: self.compute_offset_by_node(num_nodes, symbols)?,
             memory_size: self.eval_memory_size(symbols)?.try_into()?,
