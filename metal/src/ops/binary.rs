@@ -1,5 +1,6 @@
 pub use crate::kernels::BinOps;
-use crate::{MetalTensor, MetalTensorExt};
+use crate::ops::MetalEvalOp;
+use crate::{MetalContext, MetalTensorExt};
 use tract_core::internal::*;
 
 #[derive(Debug, Clone)]
@@ -40,29 +41,28 @@ impl Op for MetalBinOp {
     op_as_typed_op!();
 }
 
-impl EvalOp for MetalBinOp {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+crate::impl_eval_op_for_metal_op!(MetalBinOp);
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let (opaque_a, opaque_b) = args_2!(inputs);
-                let a = opaque_a.to_metal_tensor()?;
-                let b = opaque_b.to_metal_tensor()?;
+impl MetalEvalOp for MetalBinOp {
+    fn metal_eval(
+        &self,
+        context: &MetalContext,
+        node_id: usize,
+        _session: &mut SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let (opaque_a, opaque_b) = args_2!(inputs);
+        let a = opaque_a.to_metal_tensor()?;
+        let b = opaque_b.to_metal_tensor()?;
+        let out_shape = self.0.output_shape(a.shape(), b.shape())?;
+        let out_dt = self.0.output_datum_type(a.datum_type(), b.datum_type())?;
+        let output = crate::ops::make_tensor_for_node(context, node_id, out_dt, &out_shape)?;
+        self.0
+            .dispatch_eval(context, a, b, &output)
+            .with_context(|| "Error while dispatching eval for Metal Bin Op")?;
 
-                let out_shape = self.0.output_shape(a.shape(), b.shape())?;
-                let out_dt = self.0.output_datum_type(a.datum_type(), b.datum_type())?;
-                let output = unsafe { MetalTensor::uninitialized_dt(out_dt, &out_shape)? };
-                self.0
-                    .dispatch_eval(context, a, b, &output)
-                    .with_context(|| "Error while dispatching eval for Metal Bin Op")?;
-
-                ensure!(a.rank() == b.rank());
-                Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
-            })
-        })
+        ensure!(a.rank() == b.rank());
+        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }
 

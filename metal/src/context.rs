@@ -1,17 +1,13 @@
 use crate::func_constants::ConstantValues;
 use crate::kernels::matmul::mps;
 pub use crate::kernels::{LibraryContent, LibraryName};
-use crate::tensor::MetalArena;
-pub use crate::tensor::MetalTensor;
+use crate::{MetalMemoryPool, MetalTensor};
 use core::cell::Ref;
-use metal::Buffer;
-use metal::MTLResourceOptions;
-use metal::NSUInteger;
+use metal::{Buffer, MTLResourceOptions, NSUInteger};
 use std::cell::RefCell;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-use std::sync::{OnceLock, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 use anyhow::{anyhow, Context, Result};
 use metal::{
@@ -198,7 +194,7 @@ pub struct MetalContext {
     command_buffer: RefCell<CommandBuffer>,
     command_buffer_used: RefCell<usize>,
     command_buffer_id: AtomicUsize,
-    arena: RefCell<Option<MetalArena>>,
+    mem_pool: RefCell<Option<MetalMemoryPool>>,
     retained_tensors: RefCell<Vec<MetalTensor>>,
 }
 
@@ -220,44 +216,37 @@ impl MetalContext {
             command_buffer_used: RefCell::new(0),
             command_buffer_id: AtomicUsize::new(0),
             retained_tensors: RefCell::new(vec![]),
-            arena: RefCell::new(None),
+            mem_pool: RefCell::new(None),
             shared,
         }
     }
 
-    /// Execute callback inside a MetalArena for MetalTensor allocation used during
-    /// Metal kernel execution. When the arena is full, MetalTensor are allocated in the heap and available
-    /// to kernels.
-    pub fn execute_in_arena<T>(
+    /// Execute callback inside a MetalMemoryPool for MetalTensor allocation used during
+    /// Metal kernel execution.
+    pub fn execute_in_mem_pool<T>(
         &self,
-        arena: MetalArena,
+        mem_pool: MetalMemoryPool,
         exe: impl FnOnce() -> Result<T>,
-    ) -> Result<(MetalArena, T)> {
+    ) -> Result<(MetalMemoryPool, T)> {
         anyhow::ensure!(
-            self.arena.borrow().is_none(),
-            "Cannot execute inside an arena because an MetalArena is already in use"
+            self.mem_pool.borrow().is_none(),
+            "Cannot execute inside a memory pool because a MetalMemoryPool is already in use"
         );
-        *self.arena.borrow_mut() = Some(arena);
+        *self.mem_pool.borrow_mut() = Some(mem_pool);
         let res = (exe)()?;
-        let arena =
-            self.arena.borrow_mut().take().ok_or_else(|| {
-                anyhow!("Unexpected None arena while executing inside a metal arena")
-            })?;
-        log::debug!("MetalArena: {:.3} %", arena.used_capacity() as f32 / arena.capacity() as f32);
-        arena.try_reset();
-        log::debug!(
-            "MetalArena after reset: {:.3} %",
-            arena.used_capacity() as f32 / arena.capacity() as f32
-        );
-        Ok((arena, res))
+        let mem_pool = self.mem_pool.borrow_mut().take().ok_or_else(|| {
+            anyhow!("Unexpected None memory pool while executing inside a metal memory pool")
+        })?;
+        mem_pool.reset();
+        Ok((mem_pool, res))
     }
 
     pub fn device(&self) -> &Device {
         &self.shared.device
     }
 
-    pub fn memory_arena(&self) -> Ref<'_, Option<MetalArena>> {
-        self.arena.borrow()
+    pub fn memory_pool(&self) -> Ref<'_, Option<MetalMemoryPool>> {
+        self.mem_pool.borrow()
     }
 
     pub fn shared_context(&self) -> &SharedMetalContext {
@@ -320,6 +309,7 @@ impl MetalContext {
         self.retained_tensors.borrow_mut().clear();
 
         *command_buffer = self.command_queue.new_command_buffer().to_owned();
+        command_buffer.enqueue();
         *command_buffer_used = 0;
         self.command_buffer_id.fetch_add(1, Ordering::Relaxed);
         Ok(())

@@ -1,8 +1,6 @@
-mod arena;
 mod arena_view;
 mod owned;
 
-pub use arena::*;
 pub use arena_view::*;
 pub use owned::*;
 
@@ -54,26 +52,18 @@ impl MetalTensor {
         })
     }
 
-    // Create a metal tensor with a given shape and a slice of elements. The data is copied and aligned to size of T.
-    pub fn from_shape<T: Copy + Datum>(shape: &[usize], data: &[T]) -> Result<MetalTensor> {
-        Tensor::from_shape(shape, data)?.into_metal()
-    }
-
     /// Create an uninitialized MetalTensor
     pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> Result<MetalTensor> {
-        crate::METAL_CONTEXT
-            .with_borrow(|ctxt| {
-                ctxt.memory_arena()
-                    .as_ref()
-                    .and_then(|arena| arena.view_uninitialized_dt(dt, shape))
-                    .map(Self::ArenaView)
-                    .map(Result::Ok)
-            })
-            .unwrap_or_else(|| Tensor::uninitialized_dt(dt, shape)?.into_metal())
+        Tensor::uninitialized_dt(dt, shape)?.into_metal()
     }
 
     pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> Result<MetalTensor> {
         Self::uninitialized_dt(T::datum_type(), shape)
+    }
+
+    // Create a metal tensor with a given shape and a slice of elements. The data is copied and aligned to size of T.
+    pub fn from_shape<T: Copy + Datum>(shape: &[usize], data: &[T]) -> Result<MetalTensor> {
+        Tensor::from_shape(shape, data)?.into_metal()
     }
 
     pub fn is_supported_dt(dt: DatumType) -> bool {
@@ -262,6 +252,12 @@ impl IntoMetal<MetalTensor> for Arc<Tensor> {
 impl From<MetalTensor> for Opaque {
     fn from(value: MetalTensor) -> Self {
         Opaque(Arc::new(value))
+    }
+}
+
+impl From<MetalArenaView> for MetalTensor {
+    fn from(view: MetalArenaView) -> Self {
+        Self::ArenaView(view)
     }
 }
 
