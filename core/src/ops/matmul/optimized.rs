@@ -455,16 +455,6 @@ impl TypedOp for OptMatMul {
             let other_outlet = succ.inputs[flipped as usize];
             return self.fuse_binary(model, node, patch, other_outlet, binop);
         }
-        if let Some(op) = succ.op_as::<ops::binary::OptBinUnicast>() {
-            let mut binop =
-                if let Some(op) = op.binop.as_linalg_binop() { op } else { return Ok(None) };
-            let flipped = succ.inputs[0].node == node.id;
-            if flipped {
-                binop = binop.flip();
-            }
-            let other_outlet = succ.inputs[flipped as usize];
-            return self.fuse_binary(model, node, patch, other_outlet, binop);
-        }
 
         if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
             if let Some(op) = op.downcast_ref::<ops::math::QScale>() {
