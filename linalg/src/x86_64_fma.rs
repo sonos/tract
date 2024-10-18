@@ -21,6 +21,7 @@ fn plug_avx2(ops: &mut Ops) {
 }
 
 fn plug_fma(ops: &mut Ops) {
+    mmm::plug(ops);
     ops.mmm_impls.extend([
         mmm::fma_mmm_f32_8x8.mmm(),
         mmm::fma_mmm_f32_16x5.mmm(),

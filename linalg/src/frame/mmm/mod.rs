@@ -18,7 +18,6 @@ pub mod tests;
 
 use crate::multithread::Executor;
 use rayon::prelude::*;
-use std::borrow::Cow;
 use std::fmt::Debug;
 use tract_data::internal::*;
 
@@ -33,7 +32,7 @@ pub use storage::*;
 pub fn no_prefetch(_ptr: *const u8, _len: usize) {}
 
 pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
-    fn kernel_name(&self) -> Cow<str>;
+    fn name(&self) -> &str;
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;
 
@@ -83,7 +82,7 @@ impl std::hash::Hash for Box<dyn MatMatMul> {
 }
 
 impl<K: MatMatMulKer> MatMatMul for K {
-    fn kernel_name(&self) -> Cow<str> {
+    fn name(&self) -> &str {
         self.name()
     }
     fn mr(&self) -> usize {

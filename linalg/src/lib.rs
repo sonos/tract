@@ -102,6 +102,10 @@ impl Ops {
         &self.mmm_impls
     }
 
+    pub fn mmm_kits(&self) -> &[MMMKit] {
+        &self.mmm_kits
+    }
+
     pub fn panel_extractors(&self) -> &[PanelExtractor] {
         &self.panel_extractors
     }

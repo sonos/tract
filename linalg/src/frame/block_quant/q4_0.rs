@@ -2,10 +2,20 @@ use super::*;
 use num_traits::{AsPrimitive, Float, Zero};
 use std::alloc::Layout;
 
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq)]
 pub struct BaseQ4_0<const QK: usize = 32>;
 
 pub const Q4_0: BaseQ4_0 = BaseQ4_0::<32>;
+
+impl<const QK: usize> Debug for BaseQ4_0<QK> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if QK == 32 {
+            write!(f, "Q4_0")
+        } else {
+            write!(f, "BaseQ4_0<{}>", QK)
+        }
+    }
+}
 
 impl<const QK: usize> BaseQ4_0<QK> {
     fn quant_block<T>(&self, block: &[T], quant: &mut [u8])

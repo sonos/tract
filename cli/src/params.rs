@@ -134,6 +134,7 @@ type PulsedModel = ();
 pub struct Parameters {
     pub graph: SomeGraphDef,
 
+    #[allow(dead_code)]
     pub pulsed_model: Option<Arc<PulsedModel>>,
 
     pub tract_model: Arc<dyn Model>,
