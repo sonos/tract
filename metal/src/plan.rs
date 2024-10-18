@@ -44,8 +44,9 @@ where
         self.state.session_state = SessionState::default();
         self.state.set_inputs(inputs)?;
 
-        let resolved_mem_schema =
-            self.mem_schema.resolve(self.model().nodes().len(), &self.state.session_state.resolved_symbols)?;
+        let resolved_mem_schema = self
+            .mem_schema
+            .resolve(self.model().nodes().len(), &self.state.session_state.resolved_symbols)?;
 
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
