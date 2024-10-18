@@ -1,19 +1,19 @@
 use crate::frame::PackedFormat;
-use crate::mmm::panel_extract::PanelExtractor;
 use crate::Ops;
 use tract_data::internal::*;
+use super::*;
 
 pub fn plug(ops: &mut Ops) {
-    ops.panel_extractors.push(PanelExtractor::new(
-        "packed_32_q40_to_f32".to_string(),
-        Box::new(super::mmm::PQ40_R32),
-        PackedFormat::new(f32::datum_type(), 32, 32),
-        packed_32_q40_to_f32,
-    ));
+    ops.panel_extractors.push(packed_32_q40_to_f32.clone())
 }
 
-#[target_feature(enable = "avx")]
-unsafe fn packed_32_q40_to_f32(input: *const u8, output: *mut u8, k: usize) {
+panel_extractor!(kernel_packed_32_q40_to_f32 as packed_32_q40_to_f32(
+    Box::new(super::mmm::PQ40_R32),
+    PackedFormat::new(f32::datum_type(), 32, 32)
+) where(AVX2));
+
+#[target_feature(enable = "avx2")]
+unsafe fn kernel_packed_32_q40_to_f32(input: *const u8, output: *mut u8, k: usize) {
     std::arch::asm!("
     vbroadcastss    ymm14, dword ptr [{mask}]
     vbroadcastss    ymm13, dword ptr [{eight}]

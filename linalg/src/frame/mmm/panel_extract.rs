@@ -5,12 +5,13 @@ use super::{EagerPackedInput, MMMInputFormat, MMMInputValue};
 
 type Kernel = unsafe fn(input: *const u8, output: *mut u8, k: usize);
 
-#[derive(new, Hash, Clone)]
+#[derive(Hash, Clone)]
 pub struct PanelExtractor {
     pub name: String,
     pub from: Box<dyn MMMInputFormat>,
     pub to: PackedFormat,
     pub kernel: Kernel,
+    pub supported_predicate: fn() -> bool,
 }
 
 impl Debug for PanelExtractor {
@@ -22,6 +23,13 @@ impl Debug for PanelExtractor {
 impl Display for PanelExtractor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name)
+    }
+}
+
+impl PanelExtractor {
+    #[allow(unused_variables)]
+    pub fn is_supported_here(&self) -> bool {
+        true
     }
 }
 
@@ -66,15 +74,60 @@ impl Debug for PanelExtractInput {
     }
 }
 
+#[macro_export]
+macro_rules! panel_extractor {
+    ( $func:path as $id:ident($from:expr, $to: expr)
+            $(where($where:expr))?
+     ) => {
+        paste! {
+            lazy_static::lazy_static! {
+                pub static ref $id: $crate::frame::mmm::panel_extract::PanelExtractor = {
+                    let mut it = $crate::frame::mmm::panel_extract::PanelExtractor {
+                        name: stringify!($id).to_string(),
+                        from: $from,
+                        to: $to,
+                        kernel: $func,
+                        supported_predicate: || true
+                    };
+                    $(
+                        it.supported_predicate = $where;
+                    )?
+                    it
+                };
+            }
+
+            #[cfg(test)]
+            mod [<test_$id>] {
+                use super::$id;
+                use $crate::frame::block_quant::*;
+                #[test]
+                fn repack_1block_1panel() {
+                    let bq = $id.from.downcast_ref::<PackedBlockQuantFormat>().unwrap();
+                    $crate::frame::mmm::panel_extract::test::test_packing(&$id, bq.bq.block_len(), bq.r).unwrap();
+                }
+
+                #[test]
+                fn repack_2block_1panel() {
+                    let bq = $id.from.downcast_ref::<PackedBlockQuantFormat>().unwrap();
+                    $crate::frame::mmm::panel_extract::test::test_packing(&$id, bq.bq.block_len(), bq.r).unwrap();
+                }
+            }
+        }
+    };
+}
+
 #[cfg(test)]
 pub mod test {
+    use crate::frame::block_quant::PackedBlockQuantFormat;
     use tract_data::internal::*;
     use tract_ndarray::Array2;
-    use crate::frame::block_quant::PackedBlockQuantFormat;
 
     use super::*;
 
     pub fn test_packing(extractor: &PanelExtractor, k: usize, m: usize) -> TractResult<()> {
+        if !extractor.is_supported_here() {
+            return Ok(())
+        }
         assert!(extractor.from.r() == extractor.to.r());
         assert!(m % extractor.from.r() == 0);
         let from = extractor.from.downcast_ref::<PackedBlockQuantFormat>().unwrap();

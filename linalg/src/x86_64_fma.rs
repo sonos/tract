@@ -11,6 +11,10 @@ pub mod max;
 pub mod panel_extract;
 pub mod softmax;
 
+const AVX2: fn() -> bool = || is_x86_feature_detected!("avx2");
+const FMA: fn() -> bool = || is_x86_feature_detected!("fma");
+const AVX512F: fn() -> bool = || is_x86_feature_detected!("avx512f");
+
 tanh_impl!(f32, fma_tanh_f32, 8, 8, is_x86_feature_detected!("fma"));
 sigmoid_impl!(f32, fma_sigmoid_f32, 8, 8, is_x86_feature_detected!("fma"));
 

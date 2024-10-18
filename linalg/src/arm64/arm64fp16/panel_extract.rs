@@ -1,24 +1,20 @@
 use crate::frame::block_quant::{PackedBlockQuantFormat, Q4_0};
 use crate::frame::PackedFormat;
-use crate::mmm::panel_extract::PanelExtractor;
 use crate::Ops;
 use tract_data::internal::*;
+use super::FP16;
 
 pub fn plug(ops: &mut Ops) {
-    ops.panel_extractors.push(new_packed_64_q40_to_f16());
+    ops.panel_extractors.push(packed_64_q40_to_f16.clone());
 }
 
-fn new_packed_64_q40_to_f16() -> PanelExtractor {
-    PanelExtractor::new(
-        "packed_64_q40_to_f16".to_string(),
-        Box::new(PackedBlockQuantFormat::new(&Q4_0, 64, 16, true)),
-        PackedFormat::new(f16::datum_type(), 64, 16),
-        packed_64_q40_to_f16,
-    )
-}
+panel_extractor!(kernel_packed_64_q40_to_f16 as packed_64_q40_to_f16(
+    Box::new(PackedBlockQuantFormat::new(&Q4_0, 64, 16, true)),
+    PackedFormat::new(f16::datum_type(), 64, 16)
+) where(FP16));
 
 #[target_feature(enable = "fp16")]
-unsafe fn packed_64_q40_to_f16(input: *const u8, output: *mut u8, k: usize) {
+unsafe fn kernel_packed_64_q40_to_f16(input: *const u8, output: *mut u8, k: usize) {
     let lookup_table: [u8; 16] = [
         0xc8, 0xc7, 0xc6, 0xc5, 0xc4, 0xc2, 0xc0, 0xbc, 0x00, 0x3c, 0x40, 0x42, 0x44, 0x45, 0x46,
         0x47,
@@ -90,21 +86,4 @@ unsafe fn packed_64_q40_to_f16(input: *const u8, output: *mut u8, k: usize) {
     out("v16") _, out("v17") _, out("v18") _, out("v19") _,
     out("v20") _, out("v21") _, out("v22") _, out("v23") _,
     );
-}
-
-#[cfg(test)]
-mod test {
-    use crate::mmm::panel_extract::test::test_packing;
-
-    use super::*;
-
-    #[test]
-    fn test_packed_64_q40_to_f16_1block_1panel() {
-        test_packing(&new_packed_64_q40_to_f16(), 32, 64).unwrap();
-    }
-
-    #[test]
-    fn test_packed_64_q40_to_f16_2blocks_1panel() {
-        test_packing(&new_packed_64_q40_to_f16(), 64, 64).unwrap();
-    }
 }

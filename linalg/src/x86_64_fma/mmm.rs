@@ -5,9 +5,7 @@ use crate::mmm::MatMatMulKer;
 use crate::Ops;
 use tract_data::internal::*;
 
-const AVX2: fn() -> bool = || is_x86_feature_detected!("avx2");
-const FMA: fn() -> bool = || is_x86_feature_detected!("fma");
-const AVX512F: fn() -> bool = || is_x86_feature_detected!("avx512f");
+use super::*;
 
 MMMExternKernel!(fma_mmm_f32_8x8 <f32>(8, 8)@(32,4) where(FMA));
 MMMExternKernel!(fma_mmm_f32_16x6<f32>(16,6)@(32,4) where(FMA));
