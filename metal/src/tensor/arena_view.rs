@@ -1,9 +1,55 @@
-use crate::tensor::MetalArenaStorage;
+use crate::MetalContext;
 use anyhow::Result;
 use metal::Buffer;
+use metal::MTLResourceOptions;
 use num_traits::AsPrimitive;
 use std::fmt::Display;
 use tract_core::internal::*;
+
+#[derive(Debug, Clone)]
+pub struct MetalArenaStorage {
+    tensor: Tensor,
+    metal: Buffer,
+}
+
+impl MetalArenaStorage {
+    pub fn with_capacity(
+        context: &MetalContext,
+        capacity: usize,
+        alignment: usize,
+    ) -> TractResult<Self> {
+        let tensor = unsafe {
+            Tensor::uninitialized_aligned_dt(DatumType::U8, &[capacity], alignment).with_context(
+                || anyhow!("Error while allocating a tensor of {:?} bytes", capacity),
+            )?
+        };
+        let buffer = context.device().new_buffer_with_bytes_no_copy(
+            tensor.as_bytes().as_ptr() as *const core::ffi::c_void,
+            capacity as _,
+            MTLResourceOptions::StorageModeShared,
+            None,
+        );
+        Ok(MetalArenaStorage { tensor, metal: buffer })
+    }
+}
+
+impl MetalArenaStorage {
+    /// Get underlying inner metal buffer.
+    pub fn metal(&self) -> &Buffer {
+        &self.metal
+    }
+
+    pub fn tensor(&self) -> &Tensor {
+        &self.tensor
+    }
+}
+
+impl Hash for MetalArenaStorage {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.tensor.hash(state)
+    }
+}
 
 #[derive(Debug, Clone, Hash)]
 pub struct MetalArenaView {

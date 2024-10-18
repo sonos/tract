@@ -1,5 +1,6 @@
 use crate::kernels;
-use crate::{MetalTensor, MetalTensorExt};
+use crate::ops::MetalEvalOp;
+use crate::{MetalContext, MetalTensorExt};
 use tract_core::internal::*;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -26,25 +27,25 @@ impl Op for MetalCast {
     impl_op_same_as!();
 }
 
-impl EvalOp for MetalCast {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+crate::impl_eval_op_for_metal_op!(MetalCast);
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+impl MetalEvalOp for MetalCast {
+    fn metal_eval(
+        &self,
+        context: &MetalContext,
+        node_id: usize,
+        _session: &mut SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs);
         let input = opaque.to_metal_tensor()?;
         if input.datum_type() == self.to {
             Ok(tvec!(opaque))
         } else {
-            objc::rc::autoreleasepool(|| {
-                crate::METAL_CONTEXT.with_borrow(|context| {
-                    let output = unsafe { MetalTensor::uninitialized_dt(self.to, input.shape())? };
-                    kernels::array::Cast.dispatch_eval(context, input, &output)?;
-
-                    Ok(tvec![output.into_opaque_tensor().into_tvalue()])
-                })
-            })
+            let output =
+                crate::ops::make_tensor_for_node(context, node_id, self.to, input.shape())?;
+            kernels::array::Cast.dispatch_eval(context, input, &output)?;
+            Ok(tvec![output.into_opaque_tensor().into_tvalue()])
         }
     }
 }
