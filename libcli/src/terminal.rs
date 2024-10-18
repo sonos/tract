@@ -360,6 +360,7 @@ fn render_node_prefixed(
         prefix!();
         println!();
     }
+
     Ok(())
 }
 
@@ -455,6 +456,7 @@ pub fn render_summaries(
 
     Ok(())
 }
+
 
 /// Format a rusage::Duration showing avgtime in ms.
 pub fn dur_avg(measure: Duration) -> String {

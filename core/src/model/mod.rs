@@ -38,6 +38,7 @@ use std::str;
 
 mod fact;
 mod graph;
+pub mod memory;
 mod node;
 pub mod order;
 mod patch;
