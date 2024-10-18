@@ -17,6 +17,7 @@ use std::hash::Hash;
 use std::ops::Range;
 use std::sync::Arc;
 
+pub mod indices;
 pub mod litteral;
 pub mod view;
 
@@ -177,7 +178,7 @@ impl Tensor {
     /// Create an uninitialized tensor (dt as regular parameter).
     #[inline]
     pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> TractResult<Tensor> {
-        Self::uninitialized_aligned_dt(dt, shape, dt.alignment())
+        Self::uninitialized_aligned_dt(dt, shape, Self::default_alignment(dt, shape))
     }
 
     /// Create an uninitialized tensor with a given alignment (in bytes).

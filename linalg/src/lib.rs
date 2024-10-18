@@ -21,12 +21,15 @@ include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 pub mod frame;
 pub mod generic;
 pub mod multithread;
+use frame::by_scalar::ByScalarKer;
 use frame::element_wise::ElementWiseKer;
 use frame::mmm::panel_extract::PanelExtractor;
 use frame::reduce::{MapReduceKer, ReduceKer};
 use frame::unicast::UnicastKer;
-use frame::{reduce, unicast, MatMatMul};
+use frame::{reduce, MatMatMul};
 pub use generic::{ScaleShiftAndRound, Scaler};
+use lazy_static::lazy_static;
+use tract_data::internal::TensorView;
 #[cfg(target_arch = "x86_64")]
 pub mod x86_64_fma;
 
@@ -85,9 +88,6 @@ pub struct Ops {
 
     pub sum_f16: Box<dyn Fn() -> Box<dyn reduce::Reduce<f16>> + Send + Sync>,
     pub sum_f32: Box<dyn Fn() -> Box<dyn reduce::Reduce<f32>> + Send + Sync>,
-
-    pub unicast_mul_f16: Box<dyn Fn() -> Box<dyn unicast::Unicast<f16>> + Send + Sync>,
-    pub unicast_mul_f32: Box<dyn Fn() -> Box<dyn unicast::Unicast<f32>> + Send + Sync>,
 
     pub softmax2_fastcompact_f16:
         Box<dyn Fn() -> Box<dyn reduce::MapReduce<f16, f16>> + Send + Sync>,
@@ -152,8 +152,6 @@ pub fn generic() -> Ops {
         max_f32: Box::new(|| generic::reduce::max::SMax4::red()),
         sum_f16: Box::new(|| generic::reduce::sum::HSum8::red()),
         sum_f32: Box::new(|| generic::reduce::sum::SSum4::red()),
-        unicast_mul_f16: Box::new(|| generic::unicast::HUnicastMul8::bin()),
-        unicast_mul_f32: Box::new(|| generic::unicast::SUnicastMul4::bin()),
         /*
         activation_f32: Box::new(|microcode| generic::SActivation::new(microcode))
         */
@@ -183,13 +181,73 @@ lazy_static::lazy_static! {
     };
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum BinOp {
+    Min,
+    Max,
+    Add,
+    Mul,
+    Sub,
+    SubF,
+}
+
+impl BinOp {
+    pub fn flip(&self) -> BinOp {
+        use BinOp::*;
+        match self {
+            Sub => SubF,
+            SubF => Sub,
+            sym => *sym,
+        }
+    }
+}
+
+fn register_all_unicast(registry: &mut LinalgRegistry) {
+    generic::register_all_unicast(registry);
+    #[cfg(target_arch = "aarch64")]
+    arm64::register_all_unicast(registry);
+}
+
+fn register_all_by_scalar(registry: &mut LinalgRegistry) {
+    generic::register_all_by_scalar(registry);
+    #[cfg(target_arch = "aarch64")]
+    arm64::register_all_by_scalar(registry);
+}
+
+pub type LinalgFn = dyn Fn(&mut TensorView, &TensorView) -> TractResult<()> + Send + Sync;
+type LinalgRegistry = HashMap<(BinOp, DatumType), Box<dyn Fn() -> Box<LinalgFn> + Send + Sync>>;
+lazy_static! {
+    static ref BIN_UNICAST_OPS: Mutex<LinalgRegistry> = {
+        let mut registry = HashMap::default();
+        register_all_unicast(&mut registry);
+        Mutex::new(registry)
+    };
+    static ref BIN_BY_SCALAR_OPS: Mutex<LinalgRegistry> = {
+        let mut registry = HashMap::default();
+        register_all_by_scalar(&mut registry);
+        Mutex::new(registry)
+    };
+}
+
+pub fn bin_by_scalar(dt: DatumType, bin: BinOp) -> Option<Box<LinalgFn>> {
+    let map = BIN_BY_SCALAR_OPS.lock().unwrap();
+    map.get(&(bin, dt)).map(|it| (it)())
+}
+
+pub fn bin_unicast(dt: DatumType, bin: BinOp) -> Option<Box<LinalgFn>> {
+    let map = BIN_UNICAST_OPS.lock().unwrap();
+    map.get(&(bin, dt)).map(|it| (it)())
+}
+
 pub fn ops() -> &'static Ops {
     &OPS
 }
 
 use num_traits::*;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::*;
+use std::sync::Mutex;
 
 pub trait LADatum:
     Sized

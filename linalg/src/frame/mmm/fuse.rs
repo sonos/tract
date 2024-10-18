@@ -2,6 +2,8 @@ use std::fmt::Debug;
 use std::ops::Deref;
 
 use super::pack::PackedFormat;
+use crate::BinOp;
+
 use super::{MMMInputValue, OutputStore, OutputStoreKer};
 use tract_data::internal::*;
 
@@ -15,27 +17,6 @@ pub enum RoundingPolicy {
     PlusInf,
     Even,
     Odd,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum BinOp {
-    Min,
-    Max,
-    Add,
-    Mul,
-    Sub,
-    SubF,
-}
-
-impl BinOp {
-    pub fn flip(&self) -> BinOp {
-        use BinOp::*;
-        match self {
-            Sub => SubF,
-            SubF => Sub,
-            sym => *sym,
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
