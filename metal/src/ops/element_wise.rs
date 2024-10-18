@@ -1,5 +1,6 @@
 pub use crate::kernels::ElementWiseOps;
-use crate::{MetalTensor, MetalTensorExt};
+use crate::ops::MetalEvalOp;
+use crate::{MetalContext, MetalTensorExt};
 use tract_core::internal::*;
 
 #[derive(Debug, Clone)]
@@ -22,21 +23,21 @@ impl Op for MetalElementWiseOp {
     op_as_typed_op!();
 }
 
-impl EvalOp for MetalElementWiseOp {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+crate::impl_eval_op_for_metal_op!(MetalElementWiseOp);
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let opaque_a = args_1!(inputs);
-                let a = opaque_a.to_metal_tensor()?;
-                let output = unsafe { MetalTensor::uninitialized_dt(a.datum_type(), a.shape())? };
-                self.0.dispatch_eval(context, a, &output)?;
-                Ok(tvec![output.into_opaque_tensor().into_tvalue()])
-            })
-        })
+impl MetalEvalOp for MetalElementWiseOp {
+    fn metal_eval(
+        &self,
+        context: &MetalContext,
+        node_id: usize,
+        _session: &mut SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let opaque_a = args_1!(inputs);
+        let a = opaque_a.to_metal_tensor()?;
+        let output = crate::ops::make_tensor_for_node(context, node_id, a.datum_type(), a.shape())?;
+        self.0.dispatch_eval(context, a, &output)?;
+        Ok(tvec![output.into_opaque_tensor().into_tvalue()])
     }
 }
 

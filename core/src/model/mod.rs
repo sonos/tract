@@ -38,9 +38,9 @@ use std::str;
 
 mod fact;
 mod graph;
+pub mod memory;
 mod node;
 pub mod order;
-pub mod memory;
 mod patch;
 mod rewriter;
 pub mod translator;

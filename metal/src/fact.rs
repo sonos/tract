@@ -27,6 +27,14 @@ impl MetalFact {
         Self { kind: MetalFactKind::Temporary, ..self }
     }
 
+    pub fn is_temporary(&self) -> bool {
+        matches!(self.kind, MetalFactKind::Temporary)
+    }
+
+    pub fn is_shared(&self) -> bool {
+        matches!(self.kind, MetalFactKind::Shared)
+    }
+
     pub fn into_typed_fact(self) -> TypedFact {
         self.fact
     }

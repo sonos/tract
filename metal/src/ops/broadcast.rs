@@ -1,5 +1,5 @@
-use crate::tensor::MetalTensorExt;
-use crate::{kernels, MetalTensor};
+use crate::ops::MetalEvalOp;
+use crate::{kernels, MetalContext, MetalTensorExt};
 use derive_new::new;
 use std::fmt::Debug;
 use tract_core::internal::*;
@@ -17,26 +17,23 @@ impl Op for MetalMultiBroadcastTo {
     op_as_typed_op!();
 }
 
-impl EvalOp for MetalMultiBroadcastTo {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+crate::impl_eval_op_for_metal_op!(MetalMultiBroadcastTo);
 
-    fn eval_with_session(
+impl MetalEvalOp for MetalMultiBroadcastTo {
+    fn metal_eval(
         &self,
-        session: &SessionState,
+        context: &MetalContext,
+        node_id: usize,
+        session: &mut SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
+        let opaque = args_1!(inputs);
         let shape = self.shape.eval_to_usize(&session.resolved_symbols)?;
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let opaque = args_1!(inputs);
-                let input = opaque.to_metal_tensor()?;
-                let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), &shape)? };
-                kernels::array::MultiBroadcast.dispatch_eval(context, input, 0, &output)?;
-                Ok(tvec![output.into_opaque_tensor().into_tvalue()])
-            })
-        })
+        let input = opaque.to_metal_tensor()?;
+        let output =
+            crate::ops::make_tensor_for_node(context, node_id, input.datum_type(), &shape)?;
+        kernels::array::MultiBroadcast.dispatch_eval(context, input, 0, &output)?;
+        Ok(tvec![output.into_opaque_tensor().into_tvalue()])
     }
 }
 

@@ -1,5 +1,6 @@
 use crate::kernels::nn::NewGelu;
-use crate::{MetalTensor, MetalTensorExt};
+use crate::ops::MetalEvalOp;
+use crate::{MetalContext, MetalTensorExt};
 use derive_new::new;
 use tract_core::internal::*;
 
@@ -14,24 +15,26 @@ impl Op for MetalNewGelu {
     op_as_typed_op!();
 }
 
-impl EvalOp for MetalNewGelu {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+crate::impl_eval_op_for_metal_op!(MetalNewGelu);
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let input = args_1!(inputs);
-                let input_metal = input.to_metal_tensor()?;
-                let output = unsafe {
-                    MetalTensor::uninitialized_dt(input_metal.datum_type(), input_metal.shape())?
-                };
-                NewGelu::accurate().dispatch_eval(context, input_metal, &output)?;
-
-                Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
-            })
-        })
+impl MetalEvalOp for MetalNewGelu {
+    fn metal_eval(
+        &self,
+        context: &MetalContext,
+        node_id: usize,
+        _session: &mut SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let input = args_1!(inputs);
+        let input_metal = input.to_metal_tensor()?;
+        let output = crate::ops::make_tensor_for_node(
+            context,
+            node_id,
+            input_metal.datum_type(),
+            input_metal.shape(),
+        )?;
+        NewGelu::accurate().dispatch_eval(context, input_metal, &output)?;
+        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }
 

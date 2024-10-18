@@ -2,6 +2,26 @@ use crate::fact::{MetalFact, MetalFactKind, MetalTypedFactExt};
 use num_traits::{AsPrimitive, Zero};
 use tract_core::internal::*;
 
+#[macro_export]
+macro_rules! impl_eval_op_for_metal_op {
+    ($op:ty) => {
+        impl tract_core::internal::EvalOp for $op {
+            fn is_stateless(&self) -> bool {
+                false
+            }
+
+            #[allow(unused_variables)]
+            fn state(
+                &self,
+                session: &mut tract_core::internal::SessionState,
+                node_id: usize,
+            ) -> TractResult<Option<Box<dyn OpState>>> {
+                Ok(Some(Box::new(crate::ops::MetalOpState::new(node_id, self.clone()))))
+            }
+        }
+    };
+}
+
 pub fn metal_tmp_output_facts(
     facts: &[&TypedFact],
     resolve_facts: impl Fn(&[&TypedFact]) -> TractResult<TVec<TypedFact>>,

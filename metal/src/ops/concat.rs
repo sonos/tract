@@ -1,5 +1,6 @@
 use crate::kernels::array::Concat;
-use crate::{MetalTensor, MetalTensorExt};
+use crate::ops::MetalEvalOp;
+use crate::{MetalContext, MetalTensorExt};
 use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::array::TypedConcat;
@@ -41,29 +42,32 @@ impl Op for MetalConcat {
     op_as_typed_op!();
 }
 
-impl EvalOp for MetalConcat {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+crate::impl_eval_op_for_metal_op!(MetalConcat);
 
-    fn eval(&self, opaque_inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let inputs = opaque_inputs
-                    .iter()
-                    .map(|it| it.to_metal_tensor())
-                    .collect::<TractResult<TVec<_>>>()?;
+impl MetalEvalOp for MetalConcat {
+    fn metal_eval(
+        &self,
+        context: &MetalContext,
+        node_id: usize,
+        _session: &mut SessionState,
+        opaque_inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let inputs = opaque_inputs
+            .iter()
+            .map(|it| it.to_metal_tensor())
+            .collect::<TractResult<TVec<_>>>()?;
 
-                let mut output_shape = inputs[0].shape().to_vec();
-                output_shape[self.axis()] = inputs.iter().map(|it| it.shape()[self.axis()]).sum();
-                let output = unsafe {
-                    MetalTensor::uninitialized_dt(inputs[0].datum_type(), &output_shape)?
-                };
-                self.kernel.dispatch_eval(context, &inputs, &output)?;
+        let mut output_shape = inputs[0].shape().to_vec();
+        output_shape[self.axis()] = inputs.iter().map(|it| it.shape()[self.axis()]).sum();
+        let output = crate::ops::make_tensor_for_node(
+            context,
+            node_id,
+            inputs[0].datum_type(),
+            &output_shape,
+        )?;
+        self.kernel.dispatch_eval(context, &inputs, &output)?;
 
-                Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
-            })
-        })
+        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }
 

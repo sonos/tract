@@ -1,6 +1,7 @@
 use crate::kernels::matmul::{GemmImpl, GemmKernel};
+use crate::ops::MetalEvalOp;
 
-use crate::{MetalTensor, MetalTensorExt};
+use crate::{MetalContext, MetalTensorExt};
 use anyhow::{bail, ensure};
 use tract_core::internal::*;
 
@@ -60,28 +61,41 @@ impl<K: GemmKernel> MetalGemm<K> {
     }
 }
 
-impl<K: GemmKernel> EvalOp for MetalGemm<K> {
+impl<K: GemmKernel + 'static> MetalEvalOp for MetalGemm<K> {
+    fn metal_eval(
+        &self,
+        context: &MetalContext,
+        node_id: usize,
+        _session: &mut SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let (a_opaque, b_opaque) = args_2!(inputs);
+        let a = a_opaque
+            .to_metal_tensor()
+            .with_context(|| anyhow!("A tensor is not a metal tensor: {:?}", a_opaque))?;
+        let b = b_opaque
+            .to_metal_tensor()
+            .with_context(|| anyhow!("B tensor is not a metal tensor {:?}", b_opaque))?;
+        let c_dt = a.datum_type();
+        let c_shape = self.kernel.output_shape(a.shape(), b.shape());
+        let c = crate::ops::make_tensor_for_node(context, node_id, c_dt, &c_shape)?;
+        self.kernel.dispatch_eval(context, a, b, &c)?;
+        Ok(tvec![c.into_opaque_tensor().into_tvalue()])
+    }
+}
+
+impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
     fn is_stateless(&self) -> bool {
-        true
+        false
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let (a_opaque, b_opaque) = args_2!(inputs);
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let a = a_opaque
-                    .to_metal_tensor()
-                    .with_context(|| anyhow!("A tensor is not a metal tensor: {:?}", a_opaque))?;
-                let b = b_opaque
-                    .to_metal_tensor()
-                    .with_context(|| anyhow!("B tensor is not a metal tensor {:?}", b_opaque))?;
-                let c_dt = a.datum_type();
-                let c_shape = self.kernel.output_shape(a.shape(), b.shape());
-                let c = unsafe { MetalTensor::uninitialized_dt(c_dt, &c_shape)? };
-                self.kernel.dispatch_eval(context, a, b, &c)?;
-                Ok(tvec![c.into_opaque_tensor().into_tvalue()])
-            })
-        })
+    #[allow(unused_variables)]
+    fn state(
+        &self,
+        session: &mut tract_core::internal::SessionState,
+        node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(crate::ops::MetalOpState::new(node_id, self.clone()))))
     }
 }
 
