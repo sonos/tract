@@ -6,6 +6,7 @@ pub mod cost_model;
 pub(crate) mod fuse;
 pub(crate) mod input_store;
 pub(crate) mod kernel;
+pub mod kit;
 pub mod pack;
 pub mod panel_extract;
 mod scratch;
@@ -25,6 +26,7 @@ pub use cost_model::*;
 pub use fuse::*;
 pub use input_store::*;
 pub use kernel::*;
+pub use kit::*;
 pub use scratch::*;
 pub use storage::*;
 

@@ -8,7 +8,7 @@ use tract_data::prelude::*;
 use super::*;
 use crate::frame::block_quant::{BlockQuant, NibbleReader, PackedBlockQuantFormat, Q4_0};
 use crate::frame::mmm::*;
-use crate::LADatum;
+use crate::{LADatum, Ops};
 
 macro_rules! scalar {
     ($ab: expr, $m: expr, $f: expr) => {
@@ -373,4 +373,12 @@ MMMRustKernel!(kernel::<f32, 3, 2> => generic_f32_3x2<f32>(3,2)@(4,4) store(f16,
 MMMRustKernel! {kernel::<i32, 3, 2> => generic_i32_3x2<i32>(3,2)@(4,4)
     packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 3, 4), PackedFormat::new(DatumType::I8, 2, 4));
     store(i8)
+}
+
+pub fn plug(ops: &mut Ops) {
+    ops.mmm_kits.push(
+        MMMKit::new(Q4_0, f32::datum_type(), f32::datum_type(), &PQ40_R4)
+            .with_native(generic_f32_4x4.mmm(), 1)
+            .with_generic_fallback(true),
+    );
 }

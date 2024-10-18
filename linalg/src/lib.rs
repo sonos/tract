@@ -23,6 +23,7 @@ pub mod generic;
 pub mod multithread;
 use frame::element_wise::ElementWiseKer;
 use frame::mmm::panel_extract::PanelExtractor;
+use frame::mmm::MMMKit;
 use frame::reduce::{MapReduceKer, ReduceKer};
 use frame::unicast::UnicastKer;
 use frame::{reduce, unicast, MatMatMul};
@@ -53,6 +54,7 @@ type MMVImpl = Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMu
 pub struct Ops {
     mmm_impls: Vec<Box<dyn MatMatMul>>,
     panel_extractors: Vec<PanelExtractor>,
+    mmm_kits: Vec<MMMKit>,
 
     mmm_f64: MMMImpl,
     mmv_f64: MMVImpl,
@@ -104,7 +106,6 @@ impl Ops {
         &self.panel_extractors
     }
 
-
     pub fn mmm(
         &self,
         accumulator: DatumType,
@@ -127,9 +128,10 @@ impl Ops {
 
 pub fn generic() -> Ops {
     use crate::generic::mmm::*;
-    Ops {
+    let mut ops = Ops {
         mmm_impls: vec![generic_f32_4x4.mmm(), generic_f32_4x1.mmm()],
-        panel_extractors: vec!(),
+        mmm_kits: vec![],
+        panel_extractors: vec![],
         mmm_f64: Box::new(|_, _, _| generic_f64_4x4.mmm()),
         mmv_f64: Box::new(|_, _| generic_f64_4x1.mmm()),
         mmm_f32: Box::new(|_, _, _| generic_f32_4x4.mmm()),
@@ -159,7 +161,9 @@ pub fn generic() -> Ops {
         */
         softmax2_fastcompact_f16: Box::new(|| generic::reduce::softmax_l2::HSoftMaxL2::red()),
         softmax2_fastcompact_f32: Box::new(|| generic::reduce::softmax_l2::SSoftMaxL2::red()),
-    }
+    };
+    crate::generic::mmm::plug(&mut ops);
+    ops
 }
 
 #[allow(unreachable_code, unused_mut, unexpected_cfgs)]
