@@ -164,6 +164,13 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
+
+        if let Some(op) = node.op_as::<MultiBroadcastTo>() {
+            dbg!(op);
+            dbg!(source
+            .node_input_facts(node.id)?);
+        }
+        
         let in_dts_metal_compatible = source
             .node_input_facts(node.id)?
             .iter()

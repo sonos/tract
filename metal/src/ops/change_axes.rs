@@ -1,5 +1,6 @@
 use crate::kernels::array::PermuteAxes;
-use crate::{MetalTensor, MetalTensorExt};
+use crate::ops::MetalEvalOp;
+use crate::{MetalContext, MetalTensorExt};
 use std::fmt::Debug;
 use tract_core::internal::*;
 use tract_itertools::Itertools;
@@ -47,35 +48,31 @@ impl Op for MetalAxisOp {
     op_as_typed_op!();
 }
 
-impl EvalOp for MetalAxisOp {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+crate::impl_eval_op_for_metal_op!(MetalAxisOp);
 
-    fn eval_with_session(
+impl MetalEvalOp for MetalAxisOp {
+    fn metal_eval(
         &self,
-        session: &SessionState,
+        context: &MetalContext,
+        node_id: usize,
+        session: &mut SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs).into_tensor();
         let input = opaque.to_metal_tensor()?;
         let new_shape = match &self.0 {
             AxisOp::Move(from, to) => {
-                return objc::rc::autoreleasepool(|| {
-                    crate::METAL_CONTEXT.with_borrow(|context| -> TractResult<_> {
-                        let mut permutation: Vec<usize> = (0..input.rank()).collect();
-                        permutation.remove(*from);
-                        permutation.insert(*to, *from);
-                        let output = unsafe {
-                            MetalTensor::uninitialized_dt(
-                                input.datum_type(),
-                                &PermuteAxes::output_shape(input.shape(), &permutation)?,
-                            )?
-                        };
-                        PermuteAxes.dispatch_eval(context, input, &permutation, &output)?;
-                        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
-                    })
-                });
+                let mut permutation: Vec<usize> = (0..input.rank()).collect();
+                permutation.remove(*from);
+                permutation.insert(*to, *from);
+                let output = crate::ops::make_tensor_for_node(
+                    context,
+                    node_id,
+                    input.datum_type(),
+                    &PermuteAxes::output_shape(input.shape(), &permutation)?,
+                )?;
+                PermuteAxes.dispatch_eval(context, input, &permutation, &output)?;
+                return Ok(tvec!(output.into_opaque_tensor().into_tvalue()));
             }
             AxisOp::Reshape(skip, from, to) => {
                 let from = from.iter().map(|d| d.eval(&session.resolved_symbols)).collect();

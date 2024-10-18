@@ -1,5 +1,6 @@
 use crate::kernels;
-use crate::tensor::{MetalTensor, MetalTensorExt};
+use crate::ops::MetalEvalOp;
+use crate::{MetalContext, MetalTensorExt};
 use tract_core::internal::*;
 use tract_core::ops::array::Slice;
 
@@ -40,27 +41,26 @@ impl Op for MetalSlice {
     }
 }
 
-impl EvalOp for MetalSlice {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+crate::impl_eval_op_for_metal_op!(MetalSlice);
 
-    fn eval_with_session(
+impl MetalEvalOp for MetalSlice {
+    fn metal_eval(
         &self,
-        session: &SessionState,
+        context: &MetalContext,
+        node_id: usize,
+        session: &mut SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let input = args_1!(inputs);
+        let opaque = args_1!(inputs);
+        let input = opaque.to_metal_tensor()?;
+
         let start = self.0.start.eval(&session.resolved_symbols).to_usize()?;
         let end = self.0.end.eval(&session.resolved_symbols).to_usize()?;
         let axis = self.0.axis;
 
-        let input_shape = input.as_metal_tensor().map(|it| it.shape()).unwrap_or(input.shape());
-        let input_strides =
-            input.as_metal_tensor().map(|it| it.strides()).unwrap_or(input.strides());
-
-        let input_dt =
-            input.as_metal_tensor().map(|it| it.datum_type()).unwrap_or(input.datum_type());
+        let input_shape = input.shape();
+        let input_strides = input.strides();
+        let input_dt = input.datum_type();
 
         ensure!(
             end <= input_shape[axis] && start <= end,
@@ -76,19 +76,14 @@ impl EvalOp for MetalSlice {
 
         let offset = (start * input_strides[axis] as usize) * input_dt.size_of();
 
-        let input = input.to_metal_tensor()?;
-        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), &o_shape)? };
+        let output =
+            crate::ops::make_tensor_for_node(context, node_id, input.datum_type(), &o_shape)?;
 
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                // Perform slicing only if the output is not empty.
-                if o_shape[axis] != 0 {
-                    kernels::array::MultiBroadcast
-                        .dispatch_eval(context, input, offset, &output)?;
-                }
-                Ok(tvec![output.into_opaque_tensor().into_tvalue()])
-            })
-        })
+        // Perform slicing only if the output is not empty.
+        if o_shape[axis] != 0 {
+            kernels::array::MultiBroadcast.dispatch_eval(context, input, offset, &output)?;
+        }
+        Ok(tvec![output.into_opaque_tensor().into_tvalue()])
     }
 }
 
