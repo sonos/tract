@@ -2,7 +2,7 @@
 use dyn_clone::clone_box;
 use tract_linalg::frame::block_quant::{BlockQuant, PackedBlockQuantFormat, StaticBlockQuant};
 use tract_linalg::frame::PackedFormat;
-use tract_linalg::mmm::{MMMInputValue, MatMatMul};
+use tract_linalg::mmm::{KitDatumType, MMMInputValue, MatMatMul, WeightType};
 
 use crate::internal::*;
 use crate::ops::matmul::de_block_quant::{BlockQuantFact, BlockQuantValue};
@@ -23,17 +23,10 @@ pub fn wire_packing(
     let a_dt = a_fact.datum_type;
     let b_dt = b_fact.datum_type;
 
-    /*
-    if a_fact.konst.is_some()
-        && a_fact.datum_type.is_opaque()
-        && a_fact.opaque_fact.as_ref().is_some_and(|of| of.is::<BlockQuantFact>())
-        && op.operating_dt.is_float()
-    {
-        let weights =
-            a_fact.opaque_fact.as_ref().unwrap().downcast_ref::<BlockQuantFact>().unwrap();
-        return with_block_quant(model, patch, prefix, op, operands, &*weights.format, b_dt);
+    if a_fact.konst.is_some() && !op.n.as_i64().is_some() {
+        let a = a_fact.konst.unwrap();
+        return wire_linear(model, patch, prefix, op, &a, operands[1]);
     }
-    */
 
     // "simple" kernel selection
     let mmm = tract_linalg::ops()
@@ -72,6 +65,41 @@ pub fn wire_packing(
     )?[0];
 
     Ok((pa, pb, vec![(mmm, packing)], mode_picker))
+}
+
+pub fn wire_linear(
+    model: &TypedModel,
+    patch: &mut TypedModelPatch,
+    prefix: &str,
+    op: &EinSumAnnotatedAsMatMul,
+    a: &Arc<Tensor>,
+    b: OutletId,
+) -> TractResult<(OutletId, OutletId, Vec<(Box<dyn MatMatMul>, usize)>, ModePicker)> {
+    let weight = if a.datum_type().is_opaque() {
+        let a_payload = a
+            .to_scalar::<Opaque>()?
+            .downcast_ref::<BlockQuantValue>()
+            .context("Expected BlockQuantValue or regular tensor value")?;
+        WeightType::BlockQuant(a_payload.fact.format.clone())
+    } else {
+        WeightType::Plain(a.datum_type())
+    };
+    let b_fact = patch.outlet_fact(b)?;
+    let accumulator = if b_fact.datum_type.is_integer() {
+        KitDatumType::I32
+    } else if b_fact.datum_type == f16::datum_type() && tract_linalg::has_fp16() {
+        KitDatumType::F16
+    } else {
+        KitDatumType::F32
+    };
+    let kit = tract_linalg::ops()
+        .mmm_kits()
+        .iter()
+        .filter(|kit| kit.weight == weight && kit.accumulator == accumulator)
+        .min_by_key(|kit| kit.generic_fallback as usize)
+        .unwrap();
+    println!("{kit:?}");
+    todo!();
 }
 
 /*
