@@ -170,7 +170,7 @@ template<typename F>
     }
     float mean_of_squares = simd_sum(partial_acc) / static_cast<float>(dim);
 
-    F norm = metal::rsqrt(static_cast<F>(mean_of_squares) + eps);
+    F norm = static_cast<F>(metal::rsqrt(mean_of_squares + static_cast<float>(eps)));
 
     for (size_t i = tiisg; i < dim; i += tpsg) {
         auto idx = base_idx + i * strides[1];
