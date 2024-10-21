@@ -5,9 +5,8 @@ use crate::ops::nn::LeakyRelu;
 use ndarray::*;
 use tract_itertools::Itertools;
 
-use tract_linalg::frame::block_quant::PackedBlockQuantFormat;
 use tract_linalg::frame::PackedFormat;
-use tract_linalg::mmm::panel_extract::PanelExtractInput;
+use tract_linalg::mmm::panel_extract::{PanelExtractInput, PanelExtractor};
 use tract_linalg::mmm::{
     AsInputValue, BinOp, EagerPackedInput, FusedSpec, MMMInputValue, MatMatMul, OutputStoreSpec,
 };
@@ -18,7 +17,12 @@ use super::ModePicker;
 
 #[derive(Clone, Debug)]
 pub enum ProtoFusedSpec {
-    AddMatMul { geo: AddMatMulGeometry, a: usize, b: usize, packings: Vec<usize> },
+    AddMatMul {
+        geo: AddMatMulGeometry,
+        a: usize,
+        b: usize,
+        packings: Vec<(usize, Option<PanelExtractor>)>,
+    },
     BinScalar(usize, BinOp),
     LeakyRelu(usize),
     BinPerRow(usize, BinOp, MapOutputAxisToInput),
@@ -34,7 +38,7 @@ impl ProtoFusedSpec {
         use ProtoFusedSpec::*;
         match self {
             AddMatMul { geo, packings: packing, .. } => {
-                let (a, b) = &mmm.packings()[packing[mode]];
+                let (a, b) = &mmm.packings()[packing[mode].0];
                 format!("matmul(k={}, {a:?}•{b:?})", geo.k)
             }
             BinScalar(_, op) => format!("scalar{op:?}"),
@@ -72,27 +76,15 @@ impl ProtoFusedSpec {
                 let b = b.as_slice::<Opaque>().unwrap()[0]
                     .downcast_ref::<Box<dyn MMMInputValue>>()
                     .unwrap();
-                let (a_packing, b_packing) = &mmm.packings()[packings[mode]];
-                let pa = if a_packing.same_as(a.format()) {
-                    AsInputValue::Borrowed(&**a)
-                } else if a_packing.is::<PackedFormat>()
-                    && a_packing.r() == a.format().r()
-                    && a.is::<EagerPackedInput>()
-                    && a.format().is::<PackedBlockQuantFormat>()
-                {
-                    let to = a_packing.downcast_ref::<PackedFormat>().unwrap();
-                    let format = tract_linalg::ops()
-                        .panel_extractors()
-                        .iter()
-                        .find(|pe| pe.from.same_as(a.format()) && pe.to == *to)
-                        .unwrap();
+                let (_a_packing, b_packing) = &mmm.packings()[packings[mode].0];
+                let pa = if let Some(extractor) = &packings[mode].1 {
                     let data = a.downcast_ref::<EagerPackedInput>().unwrap();
                     AsInputValue::Owned(Box::new(PanelExtractInput {
-                        format: format.clone(),
+                        format: extractor.clone(),
                         data: data.clone(),
                     }))
                 } else {
-                    panic!("Un-matchable input and output for weights {:?} -> {a_packing}", a);
+                    AsInputValue::Borrowed(&**a)
                 };
                 assert!(
                     b_packing.same_as(b.format())
@@ -101,7 +93,7 @@ impl ProtoFusedSpec {
                 FusedSpec::AddMatMul {
                     a: pa,
                     b: AsInputValue::Borrowed(&**b),
-                    packing: packings[mode],
+                    packing: packings[mode].0,
                 }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
@@ -165,7 +157,7 @@ impl ProtoFusedSpec {
                 let b = b.downcast_ref::<Box<dyn MMMInputValue>>().unwrap_unchecked();
                 #[cfg(debug_assertions)]
                 {
-                    let (a_packing, b_packing) = &_mmm.packings()[packings[mode]];
+                    let (a_packing, b_packing) = &_mmm.packings()[packings[mode].0];
                     debug_assert!(
                         a_packing.same_as(a.format())
                             || (a_packing.is::<PackedFormat>() && a_packing.r() == a.format().r())
@@ -178,7 +170,7 @@ impl ProtoFusedSpec {
                 FusedSpec::AddMatMul {
                     a: AsInputValue::Borrowed(&**a),
                     b: AsInputValue::Borrowed(&**b),
-                    packing: packings[mode],
+                    packing: packings[mode].0,
                 }
             },
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),

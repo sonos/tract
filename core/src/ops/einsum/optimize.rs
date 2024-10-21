@@ -1,6 +1,7 @@
 use std::ops::Deref;
 
 use kernel_selection::wire_packing;
+use tract_itertools::{izip, multiunzip};
 
 use super::*;
 use crate::ops::cast::cast;
@@ -369,7 +370,7 @@ fn optimized_mat_mul(
     let mut patch = TypedModelPatch::new("Einsum to OptMatMul");
     let name = &node.name;
     let taps = patch.taps(model, &node.inputs)?;
-    let (a, b, mmms, mode_picker) = wire_packing(model, &mut patch, name, &taps[0..2], op)?;
+    let (a, b, mmms, mode_picker) = wire_packing(&mut patch, name, &taps[0..2], op)?;
 
     let mut c_to_a_axis_mapping = tvec!();
     let mut c_to_b_axis_mapping = tvec!();
@@ -399,9 +400,8 @@ fn optimized_mat_mul(
         c_to_a_axis_mapping: MapOutputAxisToInput(c_to_a_axis_mapping),
         c_to_b_axis_mapping: MapOutputAxisToInput(c_to_b_axis_mapping),
     };
-    let outputs =
-        mmms.iter().map(|(mmm, _packing)| unsafe { mmm.c_view(op.c_m(), op.c_n()) }).collect();
-    let (mmms, packings): (Vec<_>, Vec<_>) = mmms.into_iter().unzip();
+    let (mmms, packings, extractor): (Vec<_>, Vec<_>, Vec<_>) = multiunzip(mmms);
+    let outputs = mmms.iter().map(|mmm| unsafe { mmm.c_view(op.c_m(), op.c_n()) }).collect();
     let trivial_packing =
         mmms.len() == 1 && packings[0] == 0 && patch.outlet_fact(a)?.opaque_fact.is_none();
     let opt = OptMatMul::new(
@@ -411,7 +411,12 @@ fn optimized_mat_mul(
         op.c_m(),
         op.c_n(),
         vec![
-            ProtoFusedSpec::AddMatMul { geo, a: 0, b: 1, packings },
+            ProtoFusedSpec::AddMatMul {
+                geo,
+                a: 0,
+                b: 1,
+                packings: izip!(packings, extractor).collect_vec(),
+            },
             ProtoFusedSpec::Store(outputs),
         ],
         trivial_packing,

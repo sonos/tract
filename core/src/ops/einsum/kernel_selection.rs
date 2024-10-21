@@ -1,31 +1,36 @@
 #![allow(clippy::type_complexity)]
-use dyn_clone::clone_box;
-use tract_linalg::frame::block_quant::{BlockQuant, PackedBlockQuantFormat, StaticBlockQuant};
+use tract_itertools::Itertools;
+use tract_linalg::frame::block_quant::PackedBlockQuantFormat;
 use tract_linalg::frame::PackedFormat;
+use tract_linalg::mmm::panel_extract::PanelExtractor;
 use tract_linalg::mmm::{KitDatumType, MMMInputValue, MatMatMul, WeightType};
 
 use crate::internal::*;
-use crate::ops::matmul::de_block_quant::{BlockQuantFact, BlockQuantValue};
+use crate::ops::matmul::de_block_quant::BlockQuantValue;
 use crate::ops::matmul::pack::OptMatMulPack;
 use crate::ops::matmul::ModePicker;
 
 use super::optimize::EinSumAnnotatedAsMatMul;
 
 pub fn wire_packing(
-    model: &TypedModel,
     patch: &mut TypedModelPatch,
     prefix: &str,
     operands: &[OutletId],
     op: &EinSumAnnotatedAsMatMul,
-) -> TractResult<(OutletId, OutletId, Vec<(Box<dyn MatMatMul>, usize)>, ModePicker)> {
+) -> TractResult<(
+    OutletId,
+    OutletId,
+    Vec<(Box<dyn MatMatMul>, usize, Option<PanelExtractor>)>,
+    ModePicker,
+)> {
     let a_fact = patch.outlet_fact(operands[0])?.clone();
     let b_fact = patch.outlet_fact(operands[1])?.clone();
     let a_dt = a_fact.datum_type;
     let b_dt = b_fact.datum_type;
 
-    if a_fact.konst.is_some() && !op.n.as_i64().is_some() {
+    if a_fact.konst.is_some() && op.n.as_i64().is_none() {
         let a = a_fact.konst.unwrap();
-        return wire_linear(model, patch, prefix, op, &a, operands[1]);
+        return wire_linear(patch, prefix, op, &a, operands[1]);
     }
 
     // "simple" kernel selection
@@ -64,30 +69,31 @@ pub fn wire_packing(
         &[operands[1]],
     )?[0];
 
-    Ok((pa, pb, vec![(mmm, packing)], mode_picker))
+    Ok((pa, pb, vec![(mmm, packing, None)], mode_picker))
 }
 
 pub fn wire_linear(
-    model: &TypedModel,
     patch: &mut TypedModelPatch,
     prefix: &str,
     op: &EinSumAnnotatedAsMatMul,
     a: &Arc<Tensor>,
     b: OutletId,
-) -> TractResult<(OutletId, OutletId, Vec<(Box<dyn MatMatMul>, usize)>, ModePicker)> {
-    let weight = if a.datum_type().is_opaque() {
-        let a_payload = a
-            .to_scalar::<Opaque>()?
-            .downcast_ref::<BlockQuantValue>()
-            .context("Expected BlockQuantValue or regular tensor value")?;
+) -> TractResult<(
+    OutletId,
+    OutletId,
+    Vec<(Box<dyn MatMatMul>, usize, Option<PanelExtractor>)>,
+    ModePicker,
+)> {
+    let a_as_bqv = a.to_scalar::<Opaque>().ok().and_then(|a| a.downcast_ref::<BlockQuantValue>());
+    let weight = if let Some(a_payload) = a_as_bqv {
         WeightType::BlockQuant(a_payload.fact.format.clone())
     } else {
         WeightType::Plain(a.datum_type())
     };
     let b_fact = patch.outlet_fact(b)?;
-    let accumulator = if b_fact.datum_type.is_integer() {
+    let accumulator = if op.operating_dt.is_integer() {
         KitDatumType::I32
-    } else if b_fact.datum_type == f16::datum_type() && tract_linalg::has_fp16() {
+    } else if op.operating_dt == f16::datum_type() && tract_linalg::has_fp16() {
         KitDatumType::F16
     } else {
         KitDatumType::F32
@@ -97,152 +103,46 @@ pub fn wire_linear(
         .iter()
         .filter(|kit| kit.weight == weight && kit.accumulator == accumulator)
         .min_by_key(|kit| kit.generic_fallback as usize)
-        .unwrap();
-    println!("{kit:?}");
-    todo!();
-}
-
-/*
-fn with_block_quant(
-    model: &TypedModel,
-    patch: &mut TypedModelPatch,
-    prefix: &str,
-    op: &EinSumAnnotatedAsMatMul,
-    operands: &[OutletId],
-    a_bq: &dyn BlockQuant,
-    b_dt: DatumType,
-) -> TractResult<(OutletId, OutletId, Vec<(Box<dyn MatMatMul>, usize)>)> {
-    let m = op.m.to_usize().expect("m is expected to be an integer");
-    if model.symbols.all_scenarios().into_iter().count() < 2 {
-        if op.n.is_one() {
-            with_block_quant_matvec(patch, prefix, op, operands, m, a_bq, b_dt)
-        } else {
-            with_block_quant_matmat(patch, prefix, op, operands, a_bq, b_dt)
-        }
+        .with_context(|| format!("No kit found for matmul {a:?} • {b_fact:?}"))?;
+    let packed: Box<dyn MMMInputValue> = if let Some(a_payload) = a_as_bqv {
+        let packed = kit
+            .static_packer
+            .downcast_ref::<PackedBlockQuantFormat>()
+            .unwrap()
+            .pack(&a_payload.value, op.k.to_usize().unwrap())?;
+        Box::new(packed) as _
     } else {
-        let first_scenario = model.symbols.all_scenarios().into_iter().next().unwrap().0;
-        ensure!(
-            op.n.eval_with_scenario(&first_scenario).is_one(),
-            "Expect TG (n=1) to be the first scenario"
-        );
-        let (pa, pb, mut mmms) =
-            with_block_quant_matvec(patch, prefix, op, operands, m, a_bq, b_dt)?;
-        let mr = mmms[0].0.mr();
-        let matching_matmat = tract_linalg::ops()
-            .mmm_impls()
-            .iter()
-            .filter(|mm| mm.mr() == mr && mm.internal_type().is_float())
-            .max_by_key(|mm| mm.nr())
-            .unwrap();
-
-        let alternative_b_packing = matching_matmat.packings()[0]
-            .1
-            .downcast_ref::<PackedFormat>()
-            .context("First B packing should be trivial")?
-            .clone();
-        patch
-            .node_mut(pb.node)
-            .op_as_mut::<OptMatMulPack>()
-            .context("Expected MatMatMulPack on B")?
-            .packers
-            .push(alternative_b_packing);
-
-        mmms.push((matching_matmat.clone(), 0));
-        Ok((pa, pb, mmms))
-    }
-}
-
-fn with_block_quant_matmat(
-    patch: &mut TypedModelPatch,
-    prefix: &str,
-    op: &EinSumAnnotatedAsMatMul,
-    operands: &[OutletId],
-    a_bq: &dyn BlockQuant,
-    b_dt: DatumType,
-) -> TractResult<(OutletId, OutletId, Vec<(Box<dyn MatMatMul>, usize)>)> {
-    // just pick a kernel with regular packing
-    let mmm = tract_linalg::ops()
-        .mmm(op.operating_dt, op.m.to_usize().ok(), op.k.to_usize().ok(), op.n.to_usize().ok())
-        .unwrap();
-    let (packing, pa, pb) = mmm
-        .packings()
-        .iter()
-        .enumerate()
-        .filter_map(|(ix, p)| {
-            Some((ix, p.0.downcast_ref::<PackedFormat>()?, p.1.downcast_ref::<PackedFormat>()?))
-        })
-        .find(|(_ix, pa, pb)| pa.dt == b_dt.unquantized() && pb.dt == b_dt.unquantized())
-        .with_context(|| format!("No packing for {mmm:?} with inputs {b_dt:?} and {b_dt:?}"))?;
-
-    // just do a block quant aware packing for now
-    let packer = PackedBlockQuantFormat {
-        bq: StaticBlockQuant::Owned(clone_box(a_bq)),
-        r: pa.r,
-        zip: 0,
-        scales_at_end: false,
+        kit.static_packer.prepare_tensor(a, op.a_k(), op.a_m())?
     };
-    let value = patch.outlet_fact(operands[0])?.konst.as_ref().context("A should be a const")?;
-    let value = value
-        .to_scalar::<Opaque>()?
-        .downcast_ref::<BlockQuantValue>()
-        .context("A should be a BlockQuantValue")?;
-    let packed = packer.pack(&value.value, op.k.to_usize()?)?;
-    let konst = tensor0(Opaque::from(Box::new(packed) as Box<dyn MMMInputValue>));
+    let konst = tensor0(Opaque::from(packed));
     let pa = patch.add_const(format!("{prefix}.pack_a"), konst)?;
 
+    let configs = [kit.item_for_mv(), kit.item_for_squarish()];
+
+    let packers = configs
+        .iter()
+        .map(|conf| {
+            conf.mmm.packings()[conf.packing].1.downcast_ref::<PackedFormat>().unwrap().clone()
+        })
+        .collect_vec();
     let pb = patch.wire_node(
         format!("{prefix}.pack_b"),
-        OptMatMulPack { k_axis: op.b_k(), mn_axis: op.b_n(), packers: vec![pb.clone()] },
-        &[operands[1]],
+        OptMatMulPack {
+            k_axis: op.b_k(),
+            mn_axis: op.b_n(),
+            packers,
+            mode_picker: ModePicker::VecVsMat,
+        },
+        &[b],
     )?[0];
 
-    Ok((pa, pb, vec![(mmm.clone(), packing)]))
+    Ok((
+        pa,
+        pb,
+        configs
+            .iter()
+            .map(|cf| (cf.mmm.clone(), cf.packing, cf.weight_panel_extractor.clone()))
+            .collect_vec(),
+        ModePicker::VecVsMat,
+    ))
 }
-
-fn with_block_quant_matvec(
-    patch: &mut TypedModelPatch,
-    prefix: &str,
-    op: &EinSumAnnotatedAsMatMul,
-    operands: &[OutletId],
-    m: usize,
-    a_bq: &dyn BlockQuant,
-    b_dt: DatumType,
-) -> TractResult<(OutletId, OutletId, Vec<(Box<dyn MatMatMul>, usize)>)> {
-    let mut options: Vec<(&Box<dyn MatMatMul>, usize, &PackedBlockQuantFormat, &PackedFormat)> =
-        vec![];
-    for imp in tract_linalg::ops().mmm_impls() {
-        if imp.nr() > 1 {
-            continue;
-        }
-        for (packing, (pack_a, pack_b)) in imp.packings().iter().enumerate() {
-            if let (Some(pa), Some(pb)) = (
-                pack_a.downcast_ref::<PackedBlockQuantFormat>(),
-                pack_b.downcast_ref::<PackedFormat>(),
-            ) {
-                if pa.bq.same_as(a_bq) && pb.dt == b_dt {
-                    options.push((imp, packing, pa, pb));
-                }
-            }
-        }
-    }
-    ensure!(options.len() > 0, "should always have at least a generic impl");
-    let (mmm, packing, pa, pb) =
-        options.into_iter().min_by_key(|a| (m.divceil(a.0.mr())) * (a.0.mr() + 100)).unwrap();
-    let value = patch.outlet_fact(operands[0])?.konst.as_ref().context("A should be a const")?;
-    let value = value
-        .to_scalar::<Opaque>()?
-        .downcast_ref::<BlockQuantValue>()
-        .context("A should be a BlockQuantValue")?;
-    let packed = pa.pack(&value.value, op.k.to_usize()?)?;
-    let konst = tensor0(Opaque::from(Box::new(packed) as Box<dyn MMMInputValue>));
-    let pa = patch.add_const(format!("{prefix}.pack_a"), konst)?;
-
-    let pb = patch.wire_node(
-        format!("{prefix}.pack_b"),
-        OptMatMulPack { k_axis: op.b_k(), mn_axis: op.b_n(), packers: vec![pb.clone()] },
-        &[operands[1]],
-    )?[0];
-
-    Ok((pa, pb, vec![(mmm.clone(), packing)]))
-}
-*/

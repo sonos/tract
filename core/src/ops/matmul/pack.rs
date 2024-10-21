@@ -1,7 +1,6 @@
 use crate::axes::Axis;
 use crate::internal::*;
 use ndarray::*;
-use tract_data::TooEarly;
 use tract_linalg::frame::PackedFormat;
 
 use super::ModePicker;
@@ -72,7 +71,7 @@ impl TypedOp for OptMatMulPack {
 }
 
 impl OptMatMulPack {
-    fn do_eval(&self, session: &SessionState, input: TValue) -> TractResult<TVec<TValue>> {
+    fn do_eval(&self, _session: &SessionState, input: TValue) -> TractResult<TVec<TValue>> {
         unsafe {
             let mode = self.mode_picker.pick(input.shape()[self.mn_axis])?;
             let packer = &self.packers[mode];

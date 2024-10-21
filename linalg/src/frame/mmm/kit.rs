@@ -121,11 +121,36 @@ impl MMMKit {
         self
     }
 
+    pub(crate) fn with_alternative(mut self, mmm: Box<dyn MatMatMul>, packing: usize, weight_panel_extractor: Option<PanelExtractor>) -> Self {
+        assert!(self.accumulator == mmm.internal_type().into());
+        self.items.push(MMMKitItem {
+            mmm,
+            packing,
+            weight_panel_extractor,
+            activation_panel_extractor: None,
+        });
+        self
+    }
+
     pub(crate) fn with_generic_fallback(self, generic_fallback: bool) -> Self {
         Self { generic_fallback, ..self }
     }
 
     pub fn name(&self) -> &str {
         self.items[0].mmm.name()
+    }
+
+    pub fn item_for_mv(&self) -> &MMMKitItem {
+        self.items.iter().min_by_key(|item| item.n()).unwrap()
+    }
+
+    pub fn item_for_squarish(&self) -> &MMMKitItem {
+        self.items.iter().max_by_key(|item| item.n()).unwrap()
+    }
+}
+
+impl MMMKitItem {
+    pub fn n(&self) -> usize {
+        self.mmm.packings()[self.packing].1.r()
     }
 }
