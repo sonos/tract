@@ -20,6 +20,7 @@ pub enum ModePicker {
 }
 
 impl ModePicker {
+    #[inline]
     pub fn pick(&self, n: usize) -> TractResult<usize> {
         match self {
             ModePicker::Single => Ok(0),

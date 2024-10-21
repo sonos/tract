@@ -30,6 +30,17 @@ impl From<DatumType> for WeightType {
     }
 }
 
+impl PartialEq for WeightType {
+    fn eq(&self, other: &Self) -> bool {
+        use WeightType::*;
+        match (self, other) {
+            (Plain(a), Plain(b)) => a == b,
+            (BlockQuant(a), BlockQuant(b)) => a.same_as(&**b),
+            _ => false,
+        }
+    }
+}
+
 impl<BQ: BlockQuant> From<BQ> for WeightType {
     fn from(value: BQ) -> Self {
         WeightType::BlockQuant(dyn_clone::clone_box(&value))

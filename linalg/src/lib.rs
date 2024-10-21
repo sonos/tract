@@ -34,6 +34,14 @@ pub mod x86_64_fma;
 #[cfg(target_arch = "aarch64")]
 pub mod arm64;
 
+#[cfg(target_arch = "aarch64")]
+pub use arm64::has_fp16;
+
+#[cfg(not(target_arch = "aarch64"))]
+pub fn has_fp16() -> bool {
+    false
+}
+
 #[cfg(any(target_arch = "arm", target_arch = "armv7", target_arch = "arm"))]
 pub mod arm32;
 
