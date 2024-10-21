@@ -12,3 +12,18 @@ pub fn output_type(input: DatumType) -> DatumType {
         i32::datum_type()
     }
 }
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum ModePicker {
+    Single,
+    VecVsMat,
+}
+
+impl ModePicker {
+    pub fn pick(&self, n: usize) -> TractResult<usize> {
+        match self {
+            ModePicker::Single => Ok(0),
+            ModePicker::VecVsMat => Ok((n > 1) as usize),
+        }
+    }
+}

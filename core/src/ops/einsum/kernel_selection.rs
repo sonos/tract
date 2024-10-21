@@ -7,6 +7,7 @@ use tract_linalg::mmm::{MMMInputValue, MatMatMul};
 use crate::internal::*;
 use crate::ops::matmul::de_block_quant::{BlockQuantFact, BlockQuantValue};
 use crate::ops::matmul::pack::OptMatMulPack;
+use crate::ops::matmul::ModePicker;
 
 use super::optimize::EinSumAnnotatedAsMatMul;
 
@@ -16,12 +17,13 @@ pub fn wire_packing(
     prefix: &str,
     operands: &[OutletId],
     op: &EinSumAnnotatedAsMatMul,
-) -> TractResult<(OutletId, OutletId, Vec<(Box<dyn MatMatMul>, usize)>)> {
+) -> TractResult<(OutletId, OutletId, Vec<(Box<dyn MatMatMul>, usize)>, ModePicker)> {
     let a_fact = patch.outlet_fact(operands[0])?.clone();
     let b_fact = patch.outlet_fact(operands[1])?.clone();
     let a_dt = a_fact.datum_type;
     let b_dt = b_fact.datum_type;
 
+    /*
     if a_fact.konst.is_some()
         && a_fact.datum_type.is_opaque()
         && a_fact.opaque_fact.as_ref().is_some_and(|of| of.is::<BlockQuantFact>())
@@ -31,11 +33,13 @@ pub fn wire_packing(
             a_fact.opaque_fact.as_ref().unwrap().downcast_ref::<BlockQuantFact>().unwrap();
         return with_block_quant(model, patch, prefix, op, operands, &*weights.format, b_dt);
     }
+    */
 
     // "simple" kernel selection
     let mmm = tract_linalg::ops()
         .mmm(op.operating_dt, op.m.to_usize().ok(), op.k.to_usize().ok(), op.n.to_usize().ok())
         .unwrap();
+    let mode_picker = ModePicker::Single;
     let (packing, pa, pb) = mmm
         .packings()
         .iter()
@@ -47,19 +51,30 @@ pub fn wire_packing(
         .with_context(|| format!("No packing for {mmm:?} with inputs {a_dt:?} and {b_dt:?}"))?;
     let pa = patch.wire_node(
         format!("{prefix}.pack_a"),
-        OptMatMulPack { k_axis: op.a_k(), mn_axis: op.a_m(), packers: vec![pa.clone()] },
+        OptMatMulPack {
+            k_axis: op.a_k(),
+            mn_axis: op.a_m(),
+            packers: vec![pa.clone()],
+            mode_picker: ModePicker::Single,
+        },
         &[operands[0]],
     )?[0];
 
     let pb = patch.wire_node(
         format!("{prefix}.pack_b"),
-        OptMatMulPack { k_axis: op.b_k(), mn_axis: op.b_n(), packers: vec![pb.clone()] },
+        OptMatMulPack {
+            k_axis: op.b_k(),
+            mn_axis: op.b_n(),
+            packers: vec![pb.clone()],
+            mode_picker: ModePicker::Single,
+        },
         &[operands[1]],
     )?[0];
 
-    Ok((pa, pb, vec![(mmm, packing)]))
+    Ok((pa, pb, vec![(mmm, packing)], mode_picker))
 }
 
+/*
 fn with_block_quant(
     model: &TypedModel,
     patch: &mut TypedModelPatch,
@@ -183,10 +198,8 @@ fn with_block_quant_matvec(
         }
     }
     ensure!(options.len() > 0, "should always have at least a generic impl");
-    let (mmm, packing, pa, pb) = options
-        .into_iter()
-        .min_by_key(|a| (m.divceil(a.0.mr())) * (a.0.mr() + 100))
-        .unwrap();
+    let (mmm, packing, pa, pb) =
+        options.into_iter().min_by_key(|a| (m.divceil(a.0.mr())) * (a.0.mr() + 100)).unwrap();
     let value = patch.outlet_fact(operands[0])?.konst.as_ref().context("A should be a const")?;
     let value = value
         .to_scalar::<Opaque>()?
@@ -204,3 +217,4 @@ fn with_block_quant_matvec(
 
     Ok((pa, pb, vec![(mmm.clone(), packing)]))
 }
+*/
