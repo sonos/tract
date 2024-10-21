@@ -82,10 +82,13 @@ macro_rules! panel_extractor {
         paste! {
             lazy_static::lazy_static! {
                 pub static ref $id: $crate::frame::mmm::panel_extract::PanelExtractor = {
+                    use $crate::mmm::MMMInputFormat;
+                    let (from, to) = ($from, $to);
+                    assert!(from.r() == to.r());
                     let mut it = $crate::frame::mmm::panel_extract::PanelExtractor {
                         name: stringify!($id).to_string(),
-                        from: $from,
-                        to: $to,
+                        from,
+                        to,
                         kernel: $func,
                         supported_predicate: || true
                     };
@@ -99,17 +102,24 @@ macro_rules! panel_extractor {
             #[cfg(test)]
             mod [<test_$id>] {
                 use super::$id;
-                use $crate::frame::block_quant::*;
                 #[test]
                 fn repack_1block_1panel() {
-                    let bq = $id.from.downcast_ref::<PackedBlockQuantFormat>().unwrap();
-                    $crate::frame::mmm::panel_extract::test::test_packing(&$id, bq.bq.block_len(), bq.r).unwrap();
+                    $crate::frame::mmm::panel_extract::test::test_packing(&$id, 1, 1).unwrap();
                 }
 
                 #[test]
                 fn repack_2block_1panel() {
-                    let bq = $id.from.downcast_ref::<PackedBlockQuantFormat>().unwrap();
-                    $crate::frame::mmm::panel_extract::test::test_packing(&$id, bq.bq.block_len(), bq.r).unwrap();
+                    $crate::frame::mmm::panel_extract::test::test_packing(&$id, 2, 1).unwrap();
+                }
+
+                #[test]
+                fn repack_1block_2panel() {
+                    $crate::frame::mmm::panel_extract::test::test_packing(&$id, 1, 2).unwrap();
+                }
+
+                #[test]
+                fn repack_2block_2panel() {
+                    $crate::frame::mmm::panel_extract::test::test_packing(&$id, 2, 2).unwrap();
                 }
             }
         }
@@ -124,13 +134,19 @@ pub mod test {
 
     use super::*;
 
-    pub fn test_packing(extractor: &PanelExtractor, k: usize, m: usize) -> TractResult<()> {
+    pub fn test_packing(
+        extractor: &PanelExtractor,
+        blocks: usize,
+        panels: usize,
+    ) -> TractResult<()> {
         if !extractor.is_supported_here() {
-            return Ok(())
+            return Ok(());
         }
         assert!(extractor.from.r() == extractor.to.r());
-        assert!(m % extractor.from.r() == 0);
+        assert!(extractor.to.dt == f32::datum_type() || extractor.to.dt == f16::datum_type());
         let from = extractor.from.downcast_ref::<PackedBlockQuantFormat>().unwrap();
+        let m = from.r * panels;
+        let k = from.bq.block_len() * blocks;
         let to = &extractor.to;
         let weights_orig =
             Array2::from_shape_fn((m, k), |(m, k)| ((m * 31 + k * 17) % 20) as f32 - 10.)
@@ -154,38 +170,39 @@ pub mod test {
         let packed_block_quant =
             from.bq.pack(&block_quant, k, from.r, from.zip, from.scales_at_end)?;
 
+        let mut reference_panel = Tensor::zero_dt(to.dt, &[k, from.r])?;
+        let mut tested_panel = Tensor::zero_dt(to.dt, &[k, from.r])?;
+
         for panel in 0..packed_block_quant.panels_count() {
             unsafe {
-                let mut reference_extracted = Tensor::zero_dt(to.dt, &[k, from.r])?;
                 from.bq.extract_panel(
                     &packed_block_quant,
                     to,
                     panel,
-                    reference_extracted.as_bytes_mut().as_mut_ptr(),
+                    reference_panel.as_bytes_mut().as_mut_ptr(),
                 )?;
 
-                let mut tested_extracted = Tensor::zero_dt(to.dt, &[k, from.r])?;
                 let source =
                     packed_block_quant.packed.as_ptr().add(packed_block_quant.panel_bytes * panel);
-                (extractor.kernel)(source, tested_extracted.as_bytes_mut().as_mut_ptr(), k);
-                if tested_extracted != reference_extracted {
+                (extractor.kernel)(source, tested_panel.as_bytes_mut().as_mut_ptr(), k);
+                if tested_panel != reference_panel {
                     if to.dt == f32::datum_type() {
                         crate::frame::mmm::tests::display_error(
-                            tested_extracted.as_slice::<f32>().unwrap(),
-                            reference_extracted.as_slice::<f32>().unwrap(),
+                            tested_panel.as_slice::<f32>().unwrap(),
+                            reference_panel.as_slice::<f32>().unwrap(),
                             from.r,
                             k,
                         );
                     } else {
                         crate::frame::mmm::tests::display_error(
-                            tested_extracted.as_slice::<f16>().unwrap(),
-                            reference_extracted.as_slice::<f16>().unwrap(),
+                            tested_panel.as_slice::<f16>().unwrap(),
+                            reference_panel.as_slice::<f16>().unwrap(),
                             from.r,
                             k,
                         );
                     }
                 }
-                assert_eq!(tested_extracted, reference_extracted);
+                assert_eq!(tested_panel, reference_panel);
             }
         }
         Ok(())
