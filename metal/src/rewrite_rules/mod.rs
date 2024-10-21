@@ -8,7 +8,7 @@ use tract_core::ops::konst::Const;
 
 pub use new_gelu::{as_new_gelu_rule, BasicNewGelu};
 pub use rewire_metal_sync::rewire_metal_sync;
-pub use rms_norm::{as_rms_norm_rule, BasicRmsNorm};
+pub use rms_norm::{as_rms_norm_rule, remove_rms_norm_cast, BasicRmsNorm};
 pub use silu::{as_silu_rule, BasicSilu};
 
 use tract_core::ops::binary::TypedBinOp;

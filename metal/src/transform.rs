@@ -4,8 +4,8 @@ use crate::kernels::nn::{NewGelu, Reducer, RmsNorm, Silu, Softmax};
 use crate::ops;
 use crate::ops::{MetalSync, MetalSyncKind};
 use crate::rewrite_rules::{
-    as_new_gelu_rule, as_rms_norm_rule, as_silu_rule, rewire_metal_sync, BasicNewGelu,
-    BasicRmsNorm, BasicSilu,
+    as_new_gelu_rule, as_rms_norm_rule, as_silu_rule, remove_rms_norm_cast, rewire_metal_sync,
+    BasicNewGelu, BasicRmsNorm, BasicSilu,
 };
 use crate::tensor::MetalTensorExt;
 use crate::{IntoMetal, MetalFact, MetalTensor};
@@ -56,6 +56,7 @@ impl ModelTransform for MetalTransform {
         rewrite_einsums_as_matmul(model)?;
         Rewriter::default()
             .with_rule_for::<Reduce>("as-rms-norm", as_rms_norm_rule)
+            .with_rule_for::<BasicRmsNorm>("remove_rms_norm_cast", remove_rms_norm_cast)
             .with_rule_for::<ElementWiseOp>("as-silu", as_silu_rule)
             .with_rule_for::<TypedBinOp>("as-new-gelu", as_new_gelu_rule)
             .rewrite(&(), model)?;
