@@ -1,6 +1,7 @@
 mod new_gelu;
 mod rewire_metal_sync;
 mod rms_norm;
+mod rotate_half;
 mod silu;
 
 use tract_core::internal::*;
@@ -9,6 +10,7 @@ use tract_core::ops::konst::Const;
 pub use new_gelu::{as_new_gelu_rule, BasicNewGelu};
 pub use rewire_metal_sync::rewire_metal_sync;
 pub use rms_norm::{as_rms_norm_rule, remove_rms_norm_cast, BasicRmsNorm};
+pub use rotate_half::{as_rotate_half_rule, BasicRotateHalf};
 pub use silu::{as_silu_rule, BasicSilu};
 
 use tract_core::ops::binary::TypedBinOp;
@@ -36,6 +38,10 @@ fn previous_node<'a>(model: &'a TypedModel, node: &TypedNode) -> Option<&'a Type
         return None;
     }
     Some(&model.nodes()[node.inputs[0].node])
+}
+
+fn previous_nodes<'a>(model: &'a TypedModel, node: &TypedNode) -> TVec<&'a TypedNode> {
+    node.inputs.iter().map(|n| &model.nodes()[n.node]).collect()
 }
 
 fn collect_node_const_inputs<'a>(model: &'a TypedModel, node: &TypedNode) -> TVec<&'a Const> {
