@@ -177,7 +177,7 @@ impl Tensor {
     /// Create an uninitialized tensor (dt as regular parameter).
     #[inline]
     pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> TractResult<Tensor> {
-        Self::uninitialized_aligned_dt(dt, shape, dt.alignment())
+        Self::uninitialized_aligned_dt(dt, shape, Self::default_alignment(dt, shape))
     }
 
     /// Create an uninitialized tensor with a given alignment (in bytes).
@@ -295,7 +295,7 @@ impl Tensor {
     }
 
     pub fn zero_dt(dt: DatumType, shape: &[usize]) -> TractResult<Tensor> {
-        Tensor::zero_aligned_dt(dt, shape, 4)
+        Tensor::zero_aligned_dt(dt, shape, Self::default_alignment(dt, shape))
     }
 
     pub fn fill_t<T: Datum + Clone>(&mut self, value: T) -> TractResult<()> {
