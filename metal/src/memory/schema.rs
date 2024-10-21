@@ -25,6 +25,10 @@ impl Scope {
         self.start <= step && step < self.end
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn len(&self) -> usize {
         self.end - self.start
     }
@@ -159,7 +163,7 @@ impl MetalMemSchema {
             .map(|active_nodes| {
                 active_nodes
                     .iter()
-                    .flat_map(|it| it)
+                    .flatten()
                     .map(|it| it.mem_size.clone())
                     .sum::<TDim>()
                     .eval_to_i64(symbols)
@@ -217,7 +221,7 @@ impl MetalMemSchema {
         order: &[usize],
         hint: &SymbolValues,
     ) -> TractResult<MetalMemSchema> {
-        let mut scoped_nodes_mem = eval_metal_scope_node_mem(&model, &order)?;
+        let mut scoped_nodes_mem = eval_metal_scope_node_mem(model, order)?;
 
         let hinted_mem_size = scoped_nodes_mem
             .iter()
@@ -245,7 +249,7 @@ impl MetalMemSchema {
                 .collect::<Vec<_>>();
 
             available.sort_by_cached_key(|n| {
-                n.nodes.iter().flat_map(|it| hinted_mem_size.get(&it.node)).sum::<i64>() * -1
+                -n.nodes.iter().flat_map(|it| hinted_mem_size.get(&it.node)).sum::<i64>()
             });
 
             match available.first_mut() {

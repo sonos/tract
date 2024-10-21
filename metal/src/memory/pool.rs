@@ -35,6 +35,7 @@ impl MetalMemoryPool {
         dt: DatumType,
         shape: &[usize],
     ) -> Result<MetalTensor> {
+        // unsafe { Tensor::uninitialized_dt(dt, shape)?.into_metal() }
         // ensure!(!self.node_seen.borrow().contains(&node_id), "Tensor for node {:?} was already requested. Maybe the memory pool was not reset properly.", node_id);
         let alignment = dt.alignment();
         (self.alignment % alignment == 0)
