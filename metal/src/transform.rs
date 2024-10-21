@@ -4,7 +4,7 @@ use crate::kernels::nn::{NewGelu, Reducer, RmsNorm, Silu, Softmax};
 use crate::ops;
 use crate::ops::{MetalSync, MetalSyncKind};
 use crate::rewrite_rules::{
-    as_new_gelu_rule, as_rms_norm_rule, as_silu_rule, remove_rms_norm_cast, rewire_metal_sync,
+    as_new_gelu_rule, as_rms_norm_rule, as_rotate_half_rule, as_silu_rule, remove_rms_norm_cast, rewire_metal_sync,
     BasicNewGelu, BasicRmsNorm, BasicSilu,
 };
 use crate::tensor::MetalTensorExt;
@@ -59,6 +59,7 @@ impl ModelTransform for MetalTransform {
             .with_rule_for::<BasicRmsNorm>("remove_rms_norm_cast", remove_rms_norm_cast)
             .with_rule_for::<ElementWiseOp>("as-silu", as_silu_rule)
             .with_rule_for::<TypedBinOp>("as-new-gelu", as_new_gelu_rule)
+            .with_rule_for::<TypedConcat>("as-rotate-half", as_rotate_half_rule)
             .rewrite(&(), model)?;
 
         let mut new = self.translate_model(model)?;
