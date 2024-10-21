@@ -3,6 +3,7 @@ use crate::frame::PackedFormat;
 use crate::mmm::MMMKit;
 use crate::mmm::MatMatMulKer;
 use crate::Ops;
+use panel_extract::packed_32_q40_to_f32;
 use tract_data::internal::*;
 
 use super::*;
@@ -38,8 +39,19 @@ MMMExternKernel! { avx2_mmm_i32_8x8<i32>(8,8)@(32,4) where(AVX2)
 pub fn plug(ops: &mut Ops) {
     if fma_mmm_f32_32x1.is_supported_here() {
         ops.mmm_kits.push(
+            MMMKit::new(
+                f32::datum_type(),
+                f32::datum_type(),
+                f32::datum_type(),
+                &PackedFormat::new(f32::datum_type(), 32, 32),
+            )
+            .with_native(fma_mmm_f32_32x1.mmm(), 0)
+            .with_native(fma_mmm_f32_32x3.mmm(), 0),
+        );
+        ops.mmm_kits.push(
             MMMKit::new(Q4_0, f32::datum_type(), f32::datum_type(), &PQ40_R32)
-                .with_native(fma_mmm_f32_32x1.mmm(), 1),
+                .with_native(fma_mmm_f32_32x1.mmm(), 1)
+                .with_alternative(fma_mmm_f32_32x3.mmm(), 0, Some(packed_32_q40_to_f32.clone())),
         );
     }
 }
