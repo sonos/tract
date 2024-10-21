@@ -16,7 +16,7 @@ macro_rules! impl_eval_op_for_metal_op {
                 session: &mut tract_core::internal::SessionState,
                 node_id: usize,
             ) -> TractResult<Option<Box<dyn OpState>>> {
-                Ok(Some(Box::new(crate::ops::MetalOpState::new(node_id, self.clone()))))
+                Ok(Some(Box::new($crate::ops::MetalOpState::new(node_id, self.clone()))))
             }
         }
     };

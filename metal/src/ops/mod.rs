@@ -90,6 +90,6 @@ pub fn make_tensor_for_node(
     context
         .memory_pool()
         .as_ref()
-        .map(|mem| mem.tensor_for_node(node_id, dt, &shape))
-        .unwrap_or_else(|| unsafe { MetalTensor::uninitialized_dt(dt, &shape) })
+        .map(|mem| mem.tensor_for_node(node_id, dt, shape))
+        .unwrap_or_else(|| unsafe { MetalTensor::uninitialized_dt(dt, shape) })
 }

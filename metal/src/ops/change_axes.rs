@@ -1,4 +1,4 @@
-use crate::kernels::array::PermuteAxes;
+use crate::kernels::array::{Memcpy, PermuteAxes};
 use crate::ops::MetalEvalOp;
 use crate::{MetalContext, MetalTensorExt};
 use std::fmt::Debug;
@@ -88,11 +88,21 @@ impl MetalEvalOp for MetalAxisOp {
             }
         };
 
-        if new_shape.as_slice() != input.shape() {
-            Ok(tvec![input.reshaped(new_shape)?.into_opaque_tensor().into_tvalue()])
-        } else {
-            Ok(tvec![opaque.into_tvalue()])
-        }
+        // TODO: avoid copy because of memory pool integration
+
+        // if new_shape.as_slice() != input.shape() {
+        //     Ok(tvec![input.reshaped(new_shape)?.into_opaque_tensor().into_tvalue()])
+        // } else {
+        //     Ok(tvec![opaque.into_tvalue()])
+        // }
+
+        // Perform copy because of memory pool integration
+
+        let output =
+            crate::ops::make_tensor_for_node(context, node_id, input.datum_type(), &new_shape)?;
+
+        Memcpy.dispatch_eval(context, input, 0, &output)?;
+        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }
 
