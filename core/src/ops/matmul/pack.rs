@@ -4,9 +4,12 @@ use ndarray::*;
 use tract_data::TooEarly;
 use tract_linalg::frame::PackedFormat;
 
+use super::ModePicker;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OptMatMulPack {
     pub(crate) packers: Vec<PackedFormat>,
+    pub(crate) mode_picker: ModePicker,
     pub(crate) k_axis: usize,
     pub(crate) mn_axis: usize,
 }
@@ -71,13 +74,8 @@ impl TypedOp for OptMatMulPack {
 impl OptMatMulPack {
     fn do_eval(&self, session: &SessionState, input: TValue) -> TractResult<TVec<TValue>> {
         unsafe {
-            let packer = if self.packers.len() == 1 {
-                &self.packers[0]
-            } else if let Some(scen) = session.scenario {
-                &self.packers[scen]
-            } else {
-                bail!(TooEarly::Other("Undetermined scenario".into()))
-            };
+            let mode = self.mode_picker.pick(input.shape()[self.mn_axis])?;
+            let packer = &self.packers[mode];
             let output_shape: TVec<usize> = self.output_shape(input.shape());
             let stores = if output_shape.iter().all(|d| *d == 1) {
                 tensor0::<Opaque>(

@@ -369,7 +369,7 @@ fn optimized_mat_mul(
     let mut patch = TypedModelPatch::new("Einsum to OptMatMul");
     let name = &node.name;
     let taps = patch.taps(model, &node.inputs)?;
-    let (a, b, mmms) = wire_packing(model, &mut patch, name, &taps[0..2], op)?;
+    let (a, b, mmms, mode_picker) = wire_packing(model, &mut patch, name, &taps[0..2], op)?;
 
     let mut c_to_a_axis_mapping = tvec!();
     let mut c_to_b_axis_mapping = tvec!();
@@ -406,6 +406,7 @@ fn optimized_mat_mul(
         mmms.len() == 1 && packings[0] == 0 && patch.outlet_fact(a)?.opaque_fact.is_none();
     let opt = OptMatMul::new(
         mmms,
+        mode_picker,
         c_fact,
         op.c_m(),
         op.c_n(),

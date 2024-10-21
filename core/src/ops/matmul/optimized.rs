@@ -3,7 +3,6 @@ use crate::ops::cast::cast;
 use crate::ops::change_axes::wire_with_rank_broadcast;
 use crate::ops::nn::LeakyRelu;
 use ndarray::*;
-use tract_data::TooEarly;
 use tract_itertools::Itertools;
 
 use tract_linalg::frame::block_quant::PackedBlockQuantFormat;
@@ -14,6 +13,8 @@ use tract_linalg::mmm::{
 };
 use tract_linalg::Scaler;
 use tract_smallvec::ToSmallVec;
+
+use super::ModePicker;
 
 #[derive(Clone, Debug)]
 pub enum ProtoFusedSpec {
@@ -29,11 +30,11 @@ pub enum ProtoFusedSpec {
 }
 
 impl ProtoFusedSpec {
-    pub fn format(&self, mmm: &dyn MatMatMul, scenario: usize) -> String {
+    pub fn format(&self, mmm: &dyn MatMatMul, mode: usize) -> String {
         use ProtoFusedSpec::*;
         match self {
             AddMatMul { geo, packings: packing, .. } => {
-                let (a, b) = &mmm.packings()[packing[scenario]];
+                let (a, b) = &mmm.packings()[packing[mode]];
                 format!("matmul(k={}, {a:?}•{b:?})", geo.k)
             }
             BinScalar(_, op) => format!("scalar{op:?}"),
@@ -53,7 +54,7 @@ impl ProtoFusedSpec {
         output_coords: &[usize],
         output: &Tensor,
         mmm: &dyn MatMatMul,
-        scenario: usize,
+        mode: usize,
     ) -> FusedSpec<'t> {
         let fs = match self {
             ProtoFusedSpec::AddMatMul { geo, a, b, packings } => {
@@ -71,7 +72,7 @@ impl ProtoFusedSpec {
                 let b = b.as_slice::<Opaque>().unwrap()[0]
                     .downcast_ref::<Box<dyn MMMInputValue>>()
                     .unwrap();
-                let (a_packing, b_packing) = &mmm.packings()[packings[scenario]];
+                let (a_packing, b_packing) = &mmm.packings()[packings[mode]];
                 let pa = if a_packing.same_as(a.format()) {
                     AsInputValue::Borrowed(&**a)
                 } else if a_packing.is::<PackedFormat>()
@@ -100,7 +101,7 @@ impl ProtoFusedSpec {
                 FusedSpec::AddMatMul {
                     a: pa,
                     b: AsInputValue::Borrowed(&**b),
-                    packing: packings[scenario],
+                    packing: packings[mode],
                 }
             }
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
@@ -126,7 +127,7 @@ impl ProtoFusedSpec {
             ProtoFusedSpec::Scaler(scaler) => scaler.as_fused_spec(),
             ProtoFusedSpec::Store(oss) => unsafe {
                 let view = output.view_offsetting_unchecked(output_coords);
-                FusedSpec::Store(oss[scenario].wrap(&view))
+                FusedSpec::Store(oss[mode].wrap(&view))
             },
         };
         fs
@@ -144,7 +145,7 @@ impl ProtoFusedSpec {
         inputs: &'t [TValue],
         output: &mut Tensor,
         _mmm: &dyn MatMatMul,
-        scenario: usize,
+        mode: usize,
     ) -> FusedSpec<'t> {
         let fs = match self {
             ProtoFusedSpec::AddMatMul { a, b, packings, .. } => unsafe {
@@ -164,7 +165,7 @@ impl ProtoFusedSpec {
                 let b = b.downcast_ref::<Box<dyn MMMInputValue>>().unwrap_unchecked();
                 #[cfg(debug_assertions)]
                 {
-                    let (a_packing, b_packing) = &_mmm.packings()[packings[scenario]];
+                    let (a_packing, b_packing) = &_mmm.packings()[packings[mode]];
                     debug_assert!(
                         a_packing.same_as(a.format())
                             || (a_packing.is::<PackedFormat>() && a_packing.r() == a.format().r())
@@ -177,7 +178,7 @@ impl ProtoFusedSpec {
                 FusedSpec::AddMatMul {
                     a: AsInputValue::Borrowed(&**a),
                     b: AsInputValue::Borrowed(&**b),
-                    packing: packings[scenario],
+                    packing: packings[mode],
                 }
             },
             ProtoFusedSpec::BinScalar(v, op) => FusedSpec::BinScalar(&inputs[*v], *op),
@@ -199,7 +200,7 @@ impl ProtoFusedSpec {
             },
             ProtoFusedSpec::Scaler(scaler) => scaler.as_fused_spec(),
             ProtoFusedSpec::Store(oss) => unsafe {
-                FusedSpec::Store(oss[scenario].wrap(&output.view_mut()))
+                FusedSpec::Store(oss[mode].wrap(&output.view_mut()))
             },
         };
         fs
@@ -295,6 +296,7 @@ pub struct OptMatMul {
     pub c_fact: TypedFact,
     pub micro_ops: Vec<ProtoFusedSpec>,
     pub mmm: Vec<Box<dyn MatMatMul>>,
+    pub mode_picker: ModePicker,
     pub c_m_axis: usize,
     pub c_n_axis: usize,
     pub trivial_packing: bool,
@@ -318,10 +320,10 @@ impl Op for OptMatMul {
         } else {
             infos.push(format!("Mult: {:?}", self.mmm));
         }
-        for (scenario, mmm) in self.mmm.iter().enumerate() {
+        for (mode, mmm) in self.mmm.iter().enumerate() {
             infos.push(format!(
                 "Ops: {}",
-                self.micro_ops.iter().map(|o| o.format(&**mmm, scenario)).join(" >>> ")
+                self.micro_ops.iter().map(|o| o.format(&**mmm, mode)).join(" >>> ")
             ));
         }
         Ok(infos)
@@ -341,28 +343,21 @@ impl EvalOp for OptMatMul {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         unsafe {
-            let scenario = if self.mmm.len() == 1 {
-                0
-            } else if let Some(scen) = session.scenario {
-                scen
-            } else {
-                bail!(TooEarly::Other("Undetermined scenario".into()))
-            };
-            let mmm = &*self.mmm[scenario];
+            let c_shape = self.c_fact.shape.eval_to_usize(&session.resolved_symbols)?;
+            let mut c = Tensor::uninitialized_dt(self.c_fact.datum_type, &c_shape)?;
+            let mode = self.mode_picker.pick(c_shape[self.c_n_axis])?;
+            let mmm = &*self.mmm[mode];
             let mut cell = session.cached_mmm_scratch_space.borrow_mut();
-            if !cell.as_ref().map(|scratch| mmm.can_use_scratch_space(&**scratch)).unwrap_or(false)
-            {
+            if !cell.as_ref().is_some_and(|scratch| mmm.can_use_scratch_space(&**scratch)) {
                 *cell = None
             }
             let scratch = cell.get_or_insert_with(|| mmm.allocate_scratch_space());
 
             if self.trivial_path {
-                let c_shape = self.c_fact.shape.as_concrete().unwrap_unchecked();
-                let mut c = Tensor::uninitialized_dt(self.c_fact.datum_type, c_shape)?;
                 let uops: Vec<FusedSpec> = self
                     .micro_ops
                     .iter()
-                    .map(|o| o.resolve_trivial(&inputs, &mut c, mmm, scenario))
+                    .map(|o| o.resolve_trivial(&inputs, &mut c, mmm, mode))
                     .collect();
                 mmm.run_with_scratch_space(
                     *c_shape.get_unchecked(self.c_m_axis),
@@ -372,8 +367,6 @@ impl EvalOp for OptMatMul {
                 )?;
                 Ok(tvec!(c.into_tvalue()))
             } else {
-                let c_shape = self.c_fact.shape.eval_to_usize(&session.resolved_symbols)?;
-                let c = Tensor::uninitialized_dt(self.c_fact.datum_type, &c_shape)?;
                 let mut uops = vec![FusedSpec::ShiftLeft(0); self.micro_ops.len()];
                 let mut looping_shape: TVec<usize> = c_shape.to_smallvec();
                 looping_shape[self.c_m_axis] = 1;
@@ -387,7 +380,7 @@ impl EvalOp for OptMatMul {
                             c_coords.slice(),
                             &c,
                             mmm,
-                            scenario,
+                            mode,
                         );
                     }
                     mmm.run_with_scratch_space(m, n, scratch.as_mut(), &uops)
@@ -583,6 +576,7 @@ impl TypedOp for OptMatMul {
 impl OptMatMul {
     pub fn new(
         mmm: Vec<Box<dyn MatMatMul>>,
+        mode_picker: ModePicker,
         c_fact: TypedFact,
         c_m_axis: usize,
         c_n_axis: usize,
@@ -593,6 +587,7 @@ impl OptMatMul {
         ensure!(c_n_axis < c_fact.rank());
         let mut it = OptMatMul {
             mmm,
+            mode_picker,
             c_fact,
             c_m_axis,
             c_n_axis,
