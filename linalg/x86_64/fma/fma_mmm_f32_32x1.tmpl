@@ -40,6 +40,9 @@ Windows ABI:
     cmp     r8, 1
     jz      {{L}}q40f32
 
+    cmp     r8, 2
+    jz      {{L}}q40f16
+
 {{align}} 16
 {{L}}main_loop_packed_packed:
     vbroadcastss    ymm15,  dword ptr [rcx]
@@ -143,6 +146,78 @@ Windows ABI:
 
     jmp             {{L}}non_linear_loop
 
+{{L}}q40f16:
+    // ymm0-3: acc
+    // ymm4-7: scales
+    // ymm13: 8
+    // ymm14: mask
+    // ymm15: b value
+    vbroadcastss    ymm14, dword ptr [{{offset}} {{L}}q40f32_mask]
+    vbroadcastss    ymm13, dword ptr [{{offset}} {{L}}q40f32_eight]
+
+{{L}}q40f16_outerloop:
+    // scales
+    vmovaps         xmm4, [rax]
+    vmovaps         xmm5, [rax + 16]
+    vmovaps         xmm6, [rax + 32]
+    vmovaps         xmm7, [rax + 48]
+    vcvtph2ps       ymm4, xmm4
+    vcvtph2ps       ymm5, xmm5
+    vcvtph2ps       ymm6, xmm6
+    vcvtph2ps       ymm7, xmm7
+    add             rax, 64
+
+    mov             rdx, 32
+
+{{L}}q40f16_innerloop:
+    vpbroadcastw    ymm15, word ptr [rcx]
+    vcvtph2ps       ymm15, xmm15
+
+    vmovaps         xmm8, [rax]            // 32 nibbles
+
+    vpand           xmm10, xmm8, xmm14      // 16 bytes
+
+    vpmovzxbd       ymm9, xmm10            // 8 u32
+
+    vpermilpd       xmm10, xmm10, 1        // swap 64bit halves
+    vpmovzxbd       ymm10, xmm10            // 8 u32
+
+    vpsrlw          xmm8, xmm8, 4
+    vpand           xmm12, xmm8, xmm14      // 16 bytes
+    vpmovzxbd       ymm11, xmm12            // 8 u32
+    vpermilpd       xmm12, xmm12, 1        // swap 64bit halves
+    vpmovzxbd       ymm12, xmm12            // 8 u32
+
+    vpsubd          ymm9, ymm9, ymm13
+    vpsubd          ymm10, ymm10, ymm13
+    vpsubd          ymm11, ymm11, ymm13
+    vpsubd          ymm12, ymm12, ymm13
+
+    vcvtdq2ps       ymm9, ymm9
+    vcvtdq2ps       ymm10, ymm10
+    vcvtdq2ps       ymm11, ymm11
+    vcvtdq2ps       ymm12, ymm12
+
+    vmulps          ymm9, ymm9, ymm4
+    vmulps          ymm10, ymm10, ymm5
+    vmulps          ymm11, ymm11, ymm6
+    vmulps          ymm12, ymm12, ymm7
+
+    vfmadd231ps     ymm0, ymm15, ymm9
+    vfmadd231ps     ymm1, ymm15, ymm10
+    vfmadd231ps     ymm2, ymm15, ymm11
+    vfmadd231ps     ymm3, ymm15, ymm12
+
+    add             rax, 16
+    add             rcx, 2
+    sub             rdx, 1
+    jnz             {{L}}q40f16_innerloop
+
+    sub             rbx, 32
+    jnz             {{L}}q40f16_outerloop
+
+    jmp             {{L}}non_linear_loop
+
 
 {% include "fma_mmm_f32_scalars.tmpliq" from:0, to:3, type:"f32" %}
 {% include "fma_mmm_f32_per_rows.tmpliq" mr:32, from:0, to:3, type:"f32" %}
@@ -202,6 +277,10 @@ Windows ABI:
 {{L}}store:
     mov     r8,     [rdi + 8]           // c ptr
     mov     rsi,    [rdi + 16]          // row stride
+    mov     r11,    [rdi + 32]          // item size
+
+    cmp     r11, 2
+    je      {{L}}store_f16
 
 	cmp rsi, 4
 	jne {{L}}store_generic
@@ -230,5 +309,31 @@ Windows ABI:
 
     jmp    {{L}}non_linear_loop
 
+{{L}}store_f16:
+
+    vcvtps2ph   xmm0, ymm0, 0
+    vcvtps2ph   xmm1, ymm1, 0
+    vcvtps2ph   xmm2, ymm2, 0
+    vcvtps2ph   xmm3, ymm3, 0
+
+    cmp         rsi, 2
+	jne {{L}}store_generic_f16
+
+	{% for row in (0..3) %}
+        vmovups [r8 + {{row|times:16}}], xmm{{row}}
+    {% endfor %}
+
+    jmp     {{L}}non_linear_loop
+    
+{{L}}store_generic_f16:
+
+    {% for vec in (0..3) %}
+        {% for row in (0..7) %}
+            vextractps  dword ptr [r8], xmm{{vec}}, {{row}}
+            add         r8, rsi
+        {% endfor %}
+    {% endfor %}
+
+    jmp     {{L}}non_linear_loop
 
 {% include "postamble.tmpliq" type:"f32", size:"32x1", suffix:suffix, G:G, L:L %}
