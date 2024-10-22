@@ -28,18 +28,67 @@ Windows ABI:
     jmp     {{L}}non_linear_loop
 
 {{L}}add_mat_mul:
+    mov     rbx,    [rdi + 8]    // k
     mov     rcx,    [rdi + 24]   // B
     mov     rax,    [rdi + 16]   // A
 
-    mov     rbx,    [rdi + 8]    // k
+    mov     r8,    [rdi + 32]   // packing
+
     test    rbx,    rbx
     jz      {{L}}non_linear_loop
+
+    cmp     r8, 1
+    jz      {{L}}main_loop_packed_packed_f32_f16
 
 {{L}}main_loop_packed_packed:
     {% include "4x3/packed_packed_loop1/avx.tmpli" %}
 
     dec             rbx
     jnz             {{L}}main_loop_packed_packed
+
+    jmp             {{L}}non_linear_loop
+
+{{L}}main_loop_packed_packed_f32_f16:
+	// Load col of A
+	vmovaps			ymm12,	[rax]
+
+	// Fill 3 cols of B
+    vpbroadcastw    xmm13,  word ptr [rcx + 0]
+    vpbroadcastw    xmm14,  word ptr [rcx + 2]
+    vpbroadcastw    xmm15,  word ptr [rcx + 4]
+
+    vcvtph2ps       ymm13, xmm13
+    vcvtph2ps       ymm14, xmm14
+    vcvtph2ps       ymm15, xmm15
+
+	// N.B. Stepping cols in inner loop
+	vfmadd231ps		ymm0,	ymm12, ymm13
+	vfmadd231ps		ymm4,	ymm12, ymm14
+	vfmadd231ps		ymm8,	ymm12, ymm15
+
+	vmovaps			ymm12,	[rax+32]
+
+	vfmadd231ps		ymm1,	ymm12, ymm13
+	vfmadd231ps		ymm5,	ymm12, ymm14
+	vfmadd231ps		ymm9,	ymm12, ymm15
+
+	vmovaps			ymm12,	[rax+64]
+
+	vfmadd231ps		ymm2,	ymm12, ymm13
+	vfmadd231ps		ymm6,	ymm12, ymm14
+	vfmadd231ps		ymm10,	 ymm12, ymm15
+
+	vmovaps			ymm12,	[rax+96]
+
+	vfmadd231ps		ymm3,	ymm12, ymm13
+	vfmadd231ps		ymm7,	ymm12, ymm14
+	vfmadd231ps		ymm11,	ymm12, ymm15
+
+    add             rcx,    6
+    add             rax,    128
+
+    dec             rbx
+    jnz             {{L}}main_loop_packed_packed_f32_f16
 
     jmp             {{L}}non_linear_loop
 
@@ -121,13 +170,16 @@ Windows ABI:
     mov     r8,     [rdi + 8]           // c ptr
     mov     rsi,    [rdi + 16]          // row stride
     mov     rbx,    [rdi + 24]          // col stride
+    mov     r11,    [rdi + 32]          // item size
 
     lea     r9,     [ r8 + rbx ]
     lea     r10,    [ r8 + 2 * rbx ]
 
+    cmp     r11, 2
+    je      {{L}}store_f16
+
     cmp         rsi, 4
     jne         {{L}}store_strides_generic
-
 
     {% for col in (0..2) %}
         {% for row in (0..3) %}
@@ -153,6 +205,35 @@ Windows ABI:
            {% endfor %}
        {% endfor %}
     {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}store_f16:
+
+    {% for reg in (0..11) %}
+        vcvtps2ph   xmm{{reg}}, ymm{{reg}}, 0
+    {% endfor %}
+
+    cmp         rsi, 2
+	jne {{L}}store_generic_f16
+
+    {% for col in (0..2) %}
+        {% for row in (0..3) %}
+            vmovups [r{{col|plus:8}} + {{row|times:16}}], xmm{{col|times:4|plus:row}}
+        {% endfor %}
+    {% endfor %}
+
+    jmp     {{L}}non_linear_loop
+    
+{{L}}store_generic_f16:
+    {% for col in (0..2) %}
+        {% for vec in (0..3) %}
+            {% for row in (0..7) %}
+                pextrw  word ptr [r{{col|plus:8}}], xmm{{col|times:4|plus:vec}}, {{row}}
+                add         r{{col|plus:8}}, rsi
+            {% endfor %}
+        {% endfor %}
+    {% endfor %}
+
     jmp     {{L}}non_linear_loop
 
 {% include "postamble.tmpliq" type:"f32", size:"32x3", suffix:suffix, G:G, L:L %}
