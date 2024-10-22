@@ -144,7 +144,58 @@ pub mod test {
         }
         assert!(extractor.from.r() == extractor.to.r());
         assert!(extractor.to.dt == f32::datum_type() || extractor.to.dt == f16::datum_type());
-        let from = extractor.from.downcast_ref::<PackedBlockQuantFormat>().unwrap();
+        if let Some(from) = extractor.from.downcast_ref::<PackedBlockQuantFormat>() {
+            test_packing_bq(extractor, from, blocks, panels)
+        } else if let Some(from) = extractor.from.downcast_ref() {
+            test_packing_plain(extractor, &from, blocks, panels)
+        } else {
+            todo!()
+        }
+    }
+
+    pub fn test_packing_plain(
+        extractor: &PanelExtractor,
+        from: &PackedFormat,
+        blocks: usize,
+        panels: usize,
+    ) -> TractResult<()> {
+        let m = from.r * panels;
+        let k = 8 * blocks; // 8 is arbitrary
+        let to = &extractor.to;
+        let weights_orig =
+            Array2::from_shape_fn((m, k), |(m, k)| ((m * 31 + k * 17) % 20) as f32 - 10.)
+                .into_tensor()
+                .cast_to_dt(from.dt)?
+                .into_owned();
+        let packed_orig = from.prepare_tensor(&weights_orig, 1, 0)?;
+        let packed_orig = packed_orig.downcast_ref::<EagerPackedInput>().unwrap();
+
+        for panel in 0..panels {
+            let orig_panel =
+                &packed_orig.packed[packed_orig.panel_bytes * panel..][..k * from.r * from.dt.size_of()];
+            let mut reference_panel = Tensor::zero_dt(from.dt, &[k, from.r])?;
+            reference_panel.as_bytes_mut().copy_from_slice(&orig_panel);
+            reference_panel = reference_panel.cast_to_dt(to.dt)?.into_owned();
+
+            let mut tested_panel = Tensor::zero_dt(to.dt, &[k, from.r])?;
+            unsafe {
+                (extractor.kernel)(
+                    orig_panel.as_ptr(),
+                    tested_panel.as_bytes_mut().as_mut_ptr(),
+                    k,
+                );
+            }
+            compare_panels(&tested_panel, &reference_panel, from.r, k);
+        }
+        Ok(())
+    }
+
+    pub fn test_packing_bq(
+        extractor: &PanelExtractor,
+        from: &PackedBlockQuantFormat,
+        blocks: usize,
+        panels: usize,
+    ) -> TractResult<()> {
         let m = from.r * panels;
         let k = from.bq.block_len() * blocks;
         let to = &extractor.to;
@@ -185,26 +236,30 @@ pub mod test {
                 let source =
                     packed_block_quant.packed.as_ptr().add(packed_block_quant.panel_bytes * panel);
                 (extractor.kernel)(source, tested_panel.as_bytes_mut().as_mut_ptr(), k);
-                if tested_panel != reference_panel {
-                    if to.dt == f32::datum_type() {
-                        crate::frame::mmm::tests::display_error(
-                            tested_panel.as_slice::<f32>().unwrap(),
-                            reference_panel.as_slice::<f32>().unwrap(),
-                            from.r,
-                            k,
-                        );
-                    } else {
-                        crate::frame::mmm::tests::display_error(
-                            tested_panel.as_slice::<f16>().unwrap(),
-                            reference_panel.as_slice::<f16>().unwrap(),
-                            from.r,
-                            k,
-                        );
-                    }
-                }
-                assert_eq!(tested_panel, reference_panel);
             }
+            compare_panels(&tested_panel, &reference_panel, from.r, k);
         }
         Ok(())
+    }
+
+    fn compare_panels(tested_panel: &Tensor, reference_panel: &Tensor, r: usize, k: usize) {
+        if tested_panel != reference_panel {
+            if reference_panel.datum_type() == f32::datum_type() {
+                crate::frame::mmm::tests::display_error(
+                    tested_panel.as_slice::<f32>().unwrap(),
+                    reference_panel.as_slice::<f32>().unwrap(),
+                    r,
+                    k,
+                );
+            } else {
+                crate::frame::mmm::tests::display_error(
+                    tested_panel.as_slice::<f16>().unwrap(),
+                    reference_panel.as_slice::<f16>().unwrap(),
+                    r,
+                    k,
+                );
+            }
+        }
+        assert_eq!(tested_panel, reference_panel);
     }
 }
