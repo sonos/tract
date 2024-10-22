@@ -310,3 +310,36 @@ template [[host_name("nn_ops::new_gelu_fast_f32")]] [[kernel]] new_gelu_fast_t n
 template [[host_name("nn_ops::new_gelu_fast_f16")]] [[kernel]] new_gelu_fast_t new_gelu_fast<half>;
 
 
+template<typename T>  
+[[kernel]] void apply_rope_nd2(             
+      device const void *input_b [[buffer(0)]],
+      device const void *cos_b [[buffer(1)]],
+      device const void *sin_b [[buffer(2)]],                 
+      device void *output_b [[buffer(3)]],                        
+      constant const size_t * shape [[buffer(4)]],
+      constant const size_t * strides [[buffer(5)]],              
+      uint2 tpig[[thread_position_in_grid]]                   
+) {
+  device const T *input = (device const T *)input_b;
+  device const T *cos = (device const T *)cos_b;
+  device const T *sin = (device const T *)sin_b;
+
+  device T* output = (device T *) output_b;
+
+  uint2 rotated_tpig = tpig;
+  rotated_tpig.x += shape[1] / 2;
+
+  auto idx = utils::indices_to_idx_2(tpig, strides);
+  auto rotated_idx = utils::indices_to_idx_2(rotated_tpig, strides);
+
+  output[idx] = input[idx] * cos[idx] - input[rotated_idx] * sin[idx];
+  output[rotated_idx] = input[rotated_idx] * cos[rotated_idx] 
+          + input[idx] * sin[rotated_idx];
+}
+
+
+typedef decltype(apply_rope_nd2<float>) apply_rope_nd2_t;
+
+template [[host_name("nn_ops::apply_rope_nd2_f32")]] [[kernel]] apply_rope_nd2_t apply_rope_nd2<float>;
+
+

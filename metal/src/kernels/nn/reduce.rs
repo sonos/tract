@@ -34,14 +34,6 @@ impl Reducer {
         Ok(format!("nn_ops::reduce_{op}_nd3_{tname}"))
     }
 
-    pub fn reshape_to_rank_3(shape: &[usize], axis: usize) -> Vec<usize> {
-        let dim_axis_0 = shape[0..axis].iter().product::<usize>();
-        let dim_axis_1 = shape[axis];
-        let dim_axis_2 = shape[axis + 1..].iter().product::<usize>();
-
-        vec![dim_axis_0, dim_axis_1, dim_axis_2]
-    }
-
     pub fn eval(
         &self,
         context: &MetalContext,
@@ -65,9 +57,9 @@ impl Reducer {
         let mut o_shape = input.shape().to_vec();
         o_shape[axis] = 1;
 
-        let input_shape_nd3 = Self::reshape_to_rank_3(input.shape(), axis);
+        let input_shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
         let input_strides_nd3 = Tensor::natural_strides(&input_shape_nd3);
-        let output_shape_nd3 = Self::reshape_to_rank_3(&o_shape, axis);
+        let output_shape_nd3 = utils::reshape_to_rank_3(&o_shape, axis);
         let output_strides_nd3 = Tensor::natural_strides(&output_shape_nd3);
 
         let output = unsafe { MetalTensor::uninitialized_dt(o_dt, &o_shape)? };

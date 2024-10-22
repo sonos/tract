@@ -1,3 +1,4 @@
+mod apply_rope;
 mod new_gelu;
 mod rewire_metal_sync;
 mod rms_norm;
@@ -7,6 +8,7 @@ mod silu;
 use tract_core::internal::*;
 use tract_core::ops::konst::Const;
 
+pub use apply_rope::{as_apply_rope_rule, BasicApplyRope};
 pub use new_gelu::{as_new_gelu_rule, BasicNewGelu};
 pub use rewire_metal_sync::rewire_metal_sync;
 pub use rms_norm::{as_rms_norm_rule, remove_rms_norm_cast, BasicRmsNorm};
@@ -52,6 +54,27 @@ fn collect_node_const_inputs<'a>(model: &'a TypedModel, node: &TypedNode) -> TVe
             prec.op_as::<Const>()
         })
         .collect::<TVec<_>>()
+}
+
+fn single_prev_node_as<'a, O: TypedOp>(
+    model: &'a TypedModel,
+    node: &TypedNode,
+) -> Option<(usize, &'a TypedNode)> {
+    let prev_nodes = node
+        .inputs
+        .iter()
+        .enumerate()
+        .filter_map(|(in_idx, i)| {
+            let prec = &model.nodes()[i.node];
+            prec.op_is::<O>().then_some((in_idx, prec))
+        })
+        .collect::<TVec<_>>();
+
+    if prev_nodes.len() != 1 {
+        None
+    } else {
+        Some(prev_nodes[0])
+    }
 }
 
 fn find_succ_mul_with_const<'a>(

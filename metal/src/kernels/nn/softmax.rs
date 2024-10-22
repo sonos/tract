@@ -1,3 +1,4 @@
+use crate::kernels::utils;
 use crate::{LibraryName, MetalContext, MetalTensor};
 use anyhow::Result;
 use metal::MTLSize;
@@ -15,14 +16,6 @@ impl Softmax {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal softmax  op", dt);
         let tname = MetalTensor::tname(dt)?;
         Ok(format!("nn_ops::softmax_nd3_{tname}"))
-    }
-
-    pub fn reshape_to_rank_3(shape: &[usize], axis: usize) -> Vec<usize> {
-        let dim_axis_0 = shape[0..axis].iter().product::<usize>();
-        let dim_axis_1 = shape[axis];
-        let dim_axis_2 = shape[axis + 1..].iter().product::<usize>();
-
-        vec![dim_axis_0, dim_axis_1, dim_axis_2]
     }
 
     pub fn eval(
@@ -47,7 +40,7 @@ impl Softmax {
         let o_dt = input.datum_type();
         let o_shape = input.shape().to_vec();
 
-        let shape_nd3 = Self::reshape_to_rank_3(input.shape(), axis);
+        let shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
         let strides_nd3 = Tensor::natural_strides(&shape_nd3);
 
         let output = unsafe { MetalTensor::uninitialized_dt(o_dt, &o_shape)? };

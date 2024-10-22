@@ -123,6 +123,7 @@ template<typename T>
 ) {
   device const T *input = (device const T *)input_b;
   device T* output = (device T *) output_b;
+
   auto idx = utils::indices_to_idx_2(tpig, input_strides);
   auto out_idx = utils::indices_to_idx_2(tpig, out_strides);
   output[out_idx] = input[idx];
@@ -202,7 +203,46 @@ template<typename T>
 
 typedef decltype(copy_nd6<float>) copy_nd6_t;
 
-#define INSTANTIATE_ALL(tname, type)              \
+// Rotate half of the input buffer 
+//
+// Y = Concat(Neg(Slice(X, X.shape[-1]/2.., -1)), Slice(X, ..X.shape[-1]/2, -1))
+//
+template<typename T>  
+[[kernel]] void rotate_half_nd2(             
+      device const void *input_b [[buffer(0)]],                 
+      device void *output_b [[buffer(1)]],                        
+      constant const size_t * shape [[buffer(2)]],
+      constant const size_t * strides [[buffer(3)]],              
+      uint2 tpig[[thread_position_in_grid]]                   
+) {
+  device const T *input = (device const T *)input_b;
+  device T* output = (device T *) output_b;
+
+  uint2 rotated_tpig = tpig;
+  rotated_tpig.x += shape[1] / 2;
+
+  // output[tpig] = -1 * input[rotated_tpig]
+  // output[rotated_tpig] = input[tpig]
+
+  auto rotated_idx = utils::indices_to_idx_2(rotated_tpig, strides);
+  auto out_idx = utils::indices_to_idx_2(tpig, strides);
+  
+  output[out_idx] = -input[rotated_idx];
+
+  auto idx = utils::indices_to_idx_2(tpig, strides);
+  auto rotated_out_idx = utils::indices_to_idx_2(rotated_tpig, strides);
+
+  output[rotated_out_idx] = input[idx];
+}
+
+typedef decltype(rotate_half_nd2<float>) rotate_half_nd2_t;
+
+#define INSTANTIATE_ROTATE_HALF_OP(tname, type)     \
+template [[host_name("array_ops::rotate_half_nd2_" #tname)]] [[kernel]] rotate_half_nd2_t rotate_half_nd2<type>;
+
+
+
+#define INSTANTIATE_CAST_AND_COPY(tname, type)    \
 INSTANTIATE_CAST_OP(tname ##_bool, type, bool)    \
 INSTANTIATE_CAST_OP(tname ##_f32, type, float)    \
 INSTANTIATE_CAST_OP(tname ##_f16, type, half)     \
@@ -214,18 +254,22 @@ INSTANTIATE_CAST_OP(tname ##_i8, type, int8_t)    \
 INSTANTIATE_CAST_OP(tname ##_i16, type, int16_t)  \
 INSTANTIATE_CAST_OP(tname ##_i32, type, int32_t)  \
 INSTANTIATE_CAST_OP(tname ##_i64, type, int64_t)  \
-INSTANTIATE_COPY(tname, type)
+INSTANTIATE_COPY(tname, type)                     
 
-INSTANTIATE_ALL(bool, bool)
+#define INSTANTIATE_ALL(tname, type)              \
+INSTANTIATE_CAST_AND_COPY(tname, type)            \
+INSTANTIATE_ROTATE_HALF_OP(tname, type)
+
+INSTANTIATE_CAST_AND_COPY(bool, bool)
 INSTANTIATE_ALL(f32, float)
 INSTANTIATE_ALL(f16, half)
 INSTANTIATE_ALL(i8, int8_t)
 INSTANTIATE_ALL(i16, int16_t)
 INSTANTIATE_ALL(i32, int32_t)
 INSTANTIATE_ALL(i64, int64_t)
-INSTANTIATE_ALL(u8, uint8_t)
-INSTANTIATE_ALL(u16, uint16_t)
-INSTANTIATE_ALL(u32, uint32_t)
-INSTANTIATE_ALL(u64, uint64_t)
+INSTANTIATE_CAST_AND_COPY(u8, uint8_t)
+INSTANTIATE_CAST_AND_COPY(u16, uint16_t)
+INSTANTIATE_CAST_AND_COPY(u32, uint32_t)
+INSTANTIATE_CAST_AND_COPY(u64, uint64_t)
 
 
