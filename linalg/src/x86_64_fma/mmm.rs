@@ -3,6 +3,7 @@ use crate::frame::PackedFormat;
 use crate::mmm::MMMKit;
 use crate::mmm::MatMatMulKer;
 use crate::Ops;
+use panel_extract::packed_32_f16_to_f32;
 use panel_extract::packed_32_q40_to_f32;
 use tract_data::internal::*;
 use DatumType::*;
@@ -59,5 +60,10 @@ pub fn plug(ops: &mut Ops) {
                 .with_native(fma_mmm_f32_32x1.mmm(), 2)
                 .with_extracting(fma_mmm_f32_32x3.mmm(), 1, packed_32_q40_to_f32.clone()),
         );
+        ops.mmm_kits.push(MMMKit::new(F16, F32, F16, &PQ40_R32).with_extracting(
+            fma_mmm_f32_32x3.mmm(),
+            1,
+            packed_32_f16_to_f32.clone(),
+        ));
     }
 }

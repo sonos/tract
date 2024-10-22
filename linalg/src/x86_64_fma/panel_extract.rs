@@ -4,11 +4,16 @@ use crate::Ops;
 use tract_data::internal::*;
 
 pub fn plug(ops: &mut Ops) {
-    ops.panel_extractors.push(packed_32_q40_to_f32.clone())
+    ops.panel_extractors.extend([packed_32_q40_to_f32.clone(), packed_32_f16_to_f32.clone()]);
 }
 
 panel_extractor!(kernel_packed_32_q40_to_f32 as packed_32_q40_to_f32(
     Box::new(super::mmm::PQ40_R32),
+    PackedFormat::new(f32::datum_type(), 32, 32)
+) where(AVX2));
+
+panel_extractor!(kernel_packed_32_f16_to_f32 as packed_32_f16_to_f32(
+    Box::new(PackedFormat::new(f16::datum_type(), 32, 32)),
     PackedFormat::new(f32::datum_type(), 32, 32)
 ) where(AVX2));
 
@@ -84,5 +89,38 @@ unsafe fn kernel_packed_32_q40_to_f32(input: *const u8, output: *mut u8, k: usiz
     out("ymm4") _, out("ymm5") _, out("ymm6") _, out("ymm7") _,
     out("ymm8") _, out("ymm9") _, out("ymm10") _, out("ymm11") _,
     out("ymm12") _, out("ymm13") _, out("ymm14") _, out("ymm15") _
+    );
+}
+
+#[target_feature(enable = "avx2")]
+unsafe fn kernel_packed_32_f16_to_f32(input: *const u8, output: *mut u8, k: usize) {
+    debug_assert!(output as usize % 32 == 0);
+    std::arch::asm!("
+    2:
+        vmovaps         xmm4, [{i}]
+        vmovaps         xmm5, [{i} + 16]
+        vmovaps         xmm6, [{i} + 32]
+        vmovaps         xmm7, [{i} + 48]
+
+        vcvtph2ps       ymm4, xmm4
+        vcvtph2ps       ymm5, xmm5
+        vcvtph2ps       ymm6, xmm6
+        vcvtph2ps       ymm7, xmm7
+
+        vmovaps         [{o}], ymm4
+        vmovaps         [{o}+32], ymm5
+        vmovaps         [{o}+64], ymm6
+        vmovaps         [{o}+96], ymm7
+
+        add             {i}, 64
+        add             {o}, 128
+
+        sub {k}, 1
+        jnz 2b;
+            ",
+    k = inout(reg) k => _,
+    i = inout(reg) input => _,
+    o = inout(reg) output => _,
+    out("ymm4") _, out("ymm5") _, out("ymm6") _, out("ymm7") _,
     );
 }
