@@ -2,11 +2,8 @@ use crate::rewrite_rules::{previous_node, previous_nodes};
 use crate::rule_ensure;
 use tract_core::internal::*;
 use tract_core::ops::array::{Slice, TypedConcat};
-use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::element_wise::ElementWiseOp;
-use tract_core::ops::math::Mul;
 use tract_core::ops::math::Neg;
-use tract_core::ops::nn::Sigmoid;
 
 #[derive(Clone, Debug, Hash)]
 pub struct BasicRotateHalf;
