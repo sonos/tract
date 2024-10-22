@@ -89,7 +89,6 @@ pub struct MMMKitItem {
     pub mmm: Box<dyn MatMatMul>,
     pub packing: usize,
     pub weight_panel_extractor: Option<PanelExtractor>,
-    pub activation_panel_extractor: Option<PanelExtractor>,
 }
 
 impl MMMKit {
@@ -112,22 +111,21 @@ impl MMMKit {
     pub(crate) fn with_native(mut self, mmm: Box<dyn MatMatMul>, packing: usize) -> Self {
         assert!(mmm.packings()[packing].0.same_as(&*self.static_packer));
         assert!(self.accumulator == mmm.internal_type().into());
-        self.items.push(MMMKitItem {
-            mmm,
-            packing,
-            weight_panel_extractor: None,
-            activation_panel_extractor: None,
-        });
+        self.items.push(MMMKitItem { mmm, packing, weight_panel_extractor: None });
         self
     }
 
-    pub(crate) fn with_alternative(mut self, mmm: Box<dyn MatMatMul>, packing: usize, weight_panel_extractor: Option<PanelExtractor>) -> Self {
+    pub(crate) fn with_extracting(
+        mut self,
+        mmm: Box<dyn MatMatMul>,
+        packing: usize,
+        weight_panel_extractor: PanelExtractor,
+    ) -> Self {
         assert!(self.accumulator == mmm.internal_type().into());
         self.items.push(MMMKitItem {
             mmm,
             packing,
-            weight_panel_extractor,
-            activation_panel_extractor: None,
+            weight_panel_extractor: Some(weight_panel_extractor),
         });
         self
     }
