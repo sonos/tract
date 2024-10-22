@@ -1,11 +1,11 @@
 use crate::fact::MetalTypedFactExt;
 use crate::kernels::array::RotateHalf;
 use crate::kernels::matmul::{MetalGemmImplKind, MfaGemm, MlxGemm, MpsMatMul};
-use crate::kernels::nn::{NewGelu, Reducer, RmsNorm, Silu, Softmax};
+use crate::kernels::nn::{ApplyRope, NewGelu, Reducer, RmsNorm, Silu, Softmax};
 use crate::ops::{self, MetalSync, MetalSyncKind};
 use crate::rewrite_rules::{
     as_apply_rope_rule, as_new_gelu_rule, as_rms_norm_rule, as_rotate_half_rule, remove_rms_norm_cast, as_silu_rule,
-    rewire_metal_sync, BasicNewGelu, BasicRmsNorm, BasicRotateHalf, BasicSilu,
+    rewire_metal_sync, BasicApplyRope, BasicNewGelu, BasicRmsNorm, BasicRotateHalf, BasicSilu,
 };
 use crate::tensor::MetalTensorExt;
 use crate::{IntoMetal, MetalFact, MetalTensor};
@@ -211,6 +211,10 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         } else if let Some(_op) = node.op_as::<BasicRotateHalf>() {
             check_in_dts_are_supported(source, node.id, RotateHalf::is_supported_dt)?
                 .then_some(ops::MetalRotateHalf)
+                .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+        } else if let Some(_op) = node.op_as::<BasicApplyRope>() {
+            check_in_dts_are_supported(source, node.id, ApplyRope::is_supported_dt)?
+                .then_some(ops::MetalApplyRope)
                 .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(_op) = node.op_as::<BasicSilu>() {
             check_in_dts_are_supported(source, node.id, Silu::is_supported_dt)?
