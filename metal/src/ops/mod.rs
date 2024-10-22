@@ -1,3 +1,4 @@
+pub mod apply_rope;
 pub mod binary;
 pub mod broadcast;
 pub mod cast;
@@ -15,6 +16,7 @@ pub mod slice;
 pub mod softmax;
 pub mod sync;
 
+pub use apply_rope::MetalApplyRope;
 pub use binary::MetalBinOp;
 pub use broadcast::MetalMultiBroadcastTo;
 pub use cast::MetalCast;

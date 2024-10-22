@@ -5,8 +5,22 @@ using namespace metal;
 
 #define NUM_SIMDGROUP 32
 
-METAL_FUNC uint indices_to_idx_3(uint3 indices, constant const uint strides[3]) {
+METAL_FUNC uint indices_to_idx_2(uint2 indices, constant const size_t strides[2]) {
+  return indices.x * strides[1] + indices.y * strides[0];
+}
+
+METAL_FUNC uint indices_to_idx_3(uint3 indices, constant const size_t strides[3]) {
   return indices.x * strides[2] + indices.y * strides[1] + indices.z * strides[0];
+}
+
+METAL_FUNC uint indices_to_idx_4(uint3 indices,
+                                 constant const size_t shape[4], 
+                                 constant const size_t strides[4]) {
+  auto idx = indices.x * strides[3] + indices.y * strides[2];
+  idx += (indices.z % shape[1]) * strides[1];
+  indices.z /= shape[1];
+  idx += indices.z * strides[0];
+  return idx;
 }
 
 template <typename U>
@@ -310,6 +324,7 @@ template [[host_name("nn_ops::new_gelu_fast_f32")]] [[kernel]] new_gelu_fast_t n
 template [[host_name("nn_ops::new_gelu_fast_f16")]] [[kernel]] new_gelu_fast_t new_gelu_fast<half>;
 
 
+
 template<typename T>  
 [[kernel]] void apply_rope_nd2(             
       device const void *input_b [[buffer(0)]],
@@ -317,7 +332,8 @@ template<typename T>
       device const void *sin_b [[buffer(2)]],                 
       device void *output_b [[buffer(3)]],                        
       constant const size_t * shape [[buffer(4)]],
-      constant const size_t * strides [[buffer(5)]],              
+      constant const size_t * strides [[buffer(5)]],
+      constant const size_t * cos_sin_strides [[buffer(6)]],              
       uint2 tpig[[thread_position_in_grid]]                   
 ) {
   device const T *input = (device const T *)input_b;
@@ -329,17 +345,86 @@ template<typename T>
   uint2 rotated_tpig = tpig;
   rotated_tpig.x += shape[1] / 2;
 
-  auto idx = utils::indices_to_idx_2(tpig, strides);
-  auto rotated_idx = utils::indices_to_idx_2(rotated_tpig, strides);
+  auto idx = indices_to_idx_2(tpig, strides);
+  auto rot_idx = indices_to_idx_2(rotated_tpig, strides);
 
-  output[idx] = input[idx] * cos[idx] - input[rotated_idx] * sin[idx];
-  output[rotated_idx] = input[rotated_idx] * cos[rotated_idx] 
-          + input[idx] * sin[rotated_idx];
+  auto cos_sin_idx = indices_to_idx_2(tpig, cos_sin_strides);
+  auto rot_cos_sin_idx = indices_to_idx_2(rotated_tpig, cos_sin_strides);
+
+  output[idx] = input[idx] * cos[cos_sin_idx] - input[rot_idx] * sin[cos_sin_idx];
+  output[rot_idx] = input[rot_idx] * cos[rot_cos_sin_idx] 
+          + input[idx] * sin[rot_cos_sin_idx];
+}
+
+template<typename T>  
+[[kernel]] void apply_rope_nd3(             
+      device const void *input_b [[buffer(0)]],
+      device const void *cos_b [[buffer(1)]],
+      device const void *sin_b [[buffer(2)]],                 
+      device void *output_b [[buffer(3)]],                        
+      constant const size_t * shape [[buffer(4)]],
+      constant const size_t * strides [[buffer(5)]],
+      constant const size_t * cos_sin_strides [[buffer(6)]],              
+      uint3 tpig[[thread_position_in_grid]]                   
+) {
+  device const T *input = (device const T *)input_b;
+  device const T *cos = (device const T *)cos_b;
+  device const T *sin = (device const T *)sin_b;
+
+  device T* output = (device T *) output_b;
+
+  uint3 rotated_tpig = tpig;
+  rotated_tpig.x += shape[2] / 2;
+
+  auto idx = indices_to_idx_3(tpig, strides);
+  auto rot_idx = indices_to_idx_3(rotated_tpig, strides);
+
+  auto cos_sin_idx = indices_to_idx_3(tpig, cos_sin_strides);
+  auto rot_cos_sin_idx = indices_to_idx_3(rotated_tpig, cos_sin_strides);
+
+  output[idx] = input[idx] * cos[cos_sin_idx] - input[rot_idx] * sin[cos_sin_idx];
+  output[rot_idx] = input[rot_idx] * cos[rot_cos_sin_idx] 
+          + input[idx] * sin[rot_cos_sin_idx];
+}
+
+template<typename T>  
+[[kernel]] void apply_rope_nd4(             
+      device const void *input_b [[buffer(0)]],
+      device const void *cos_b [[buffer(1)]],
+      device const void *sin_b [[buffer(2)]],                 
+      device void *output_b [[buffer(3)]],                        
+      constant const size_t * shape [[buffer(4)]],
+      constant const size_t * strides [[buffer(5)]],
+      constant const size_t * cos_sin_strides [[buffer(6)]],              
+      uint3 tpig[[thread_position_in_grid]]                   
+) {
+  device const T *input = (device const T *)input_b;
+  device const T *cos = (device const T *)cos_b;
+  device const T *sin = (device const T *)sin_b;
+
+  device T* output = (device T *) output_b;
+
+  uint3 rotated_tpig = tpig;
+  rotated_tpig.x += shape[3] / 2;
+
+  auto idx = indices_to_idx_4(tpig, shape, strides);
+  auto rot_idx = indices_to_idx_4(rotated_tpig, shape, strides);
+
+  auto cos_sin_idx = indices_to_idx_4(tpig, shape, cos_sin_strides);
+  auto rot_cos_sin_idx = indices_to_idx_4(rotated_tpig, shape, cos_sin_strides);
+
+  output[idx] = input[idx] * cos[cos_sin_idx] - input[rot_idx] * sin[cos_sin_idx];
+  output[rot_idx] = input[rot_idx] * cos[rot_cos_sin_idx] 
+          + input[idx] * sin[rot_cos_sin_idx];
 }
 
 
 typedef decltype(apply_rope_nd2<float>) apply_rope_nd2_t;
+typedef decltype(apply_rope_nd3<float>) apply_rope_nd3_t;
+typedef decltype(apply_rope_nd4<float>) apply_rope_nd4_t;
 
 template [[host_name("nn_ops::apply_rope_nd2_f32")]] [[kernel]] apply_rope_nd2_t apply_rope_nd2<float>;
+template [[host_name("nn_ops::apply_rope_nd3_f32")]] [[kernel]] apply_rope_nd3_t apply_rope_nd3<float>;
+template [[host_name("nn_ops::apply_rope_nd4_f32")]] [[kernel]] apply_rope_nd4_t apply_rope_nd4<float>;
 
 
