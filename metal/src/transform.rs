@@ -4,8 +4,9 @@ use crate::kernels::matmul::{MetalGemmImplKind, MfaGemm, MlxGemm, MpsMatMul};
 use crate::kernels::nn::{ApplyRope, NewGelu, Reducer, RmsNorm, Silu, Softmax};
 use crate::ops::{self, MetalSync, MetalSyncKind};
 use crate::rewrite_rules::{
-    as_apply_rope_rule, as_new_gelu_rule, as_rms_norm_rule, as_rotate_half_rule, remove_rms_norm_cast, as_silu_rule,
-    rewire_metal_sync, BasicApplyRope, BasicNewGelu, BasicRmsNorm, BasicRotateHalf, BasicSilu,
+    as_apply_rope_rule, as_new_gelu_rule, as_rms_norm_rule, as_rotate_half_rule, as_silu_rule,
+    remove_rms_norm_cast, rewire_metal_sync, BasicApplyRope, BasicNewGelu, BasicRmsNorm,
+    BasicRotateHalf, BasicSilu,
 };
 use crate::tensor::MetalTensorExt;
 use crate::{IntoMetal, MetalFact, MetalTensor};
