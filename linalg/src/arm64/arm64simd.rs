@@ -5,7 +5,7 @@ mod mul;
 mod softmax;
 mod sum;
 
-use crate::frame::PackedFormat;
+use crate::{frame::PackedFormat, mmm::MMMKit, Ops};
 
 pub use by_scalar::arm64simd_mul_by_scalar_f32_16n;
 pub use leaky_relu::arm64simd_leaky_relu_f32_8n;
@@ -41,6 +41,15 @@ MMMExternKernel!(arm64simd_mmm_i32_64x1<i32>(64, 1)@(16, 1)
    packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 64,16), PackedFormat::new(DatumType::I8, 1, 1));
    store(i8)
 );
+
+pub fn plug(ops: &mut Ops) {
+    /*
+    panel_extract::plug(ops);
+    */
+    ops.mmm_kits.push(
+        MMMKit::new_for_mmm(arm64simd_mmm_f32_64x1_gen.mmm(), 0)
+    );
+}
 
 tanh_impl!(f32, arm64simd_tanh_f32_4n, 4, 4, true);
 sigmoid_impl!(f32, arm64simd_sigmoid_f32_4n, 4, 4, true);

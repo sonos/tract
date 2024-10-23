@@ -214,6 +214,7 @@ impl Kind {
 }
 
 pub fn plug(ops: &mut Ops) {
+    arm64simd::plug(ops);
     ops.mmm_impls.extend([
         arm64simd_mmm_f32_12x8_gen.mmm(),
         arm64simd_mmm_f32_12x8_a53.mmm(),
@@ -244,7 +245,7 @@ pub fn plug(ops: &mut Ops) {
         ops.mmm_impls.push(arm64fp16_mmm_f16_128x1_gen.mmm());
         ops.mmm_impls.push(arm64fp16_mmm_f16_64x1_gen.mmm());
         ops.mmm_impls.push(arm64fp16_mmm_f16_64x3_gen.mmm());
-        arm64fp16::panel_extract::plug(ops);
+        arm64fp16::plug(ops);
     }
 
     ops.qmmm_i32 = Box::new(|_, _, _| arm64simd_mmm_i32_8x8.mmm());
