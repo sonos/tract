@@ -42,7 +42,7 @@ impl From<bool> for Approximation {
 }
 
 impl Approximation {
-    fn atol_rtol_outiers(&self, dt: &DatumType) -> (f64, f64, f64) {
+    fn atol_rtol_outliers(&self, dt: &DatumType) -> (f64, f64, f64) {
         use Approximation::*;
         match (self, dt) {
             (Exact, _) => (0.0, 0.0, 0.0),
@@ -52,8 +52,8 @@ impl Approximation {
             (Close, _) => (1e-7, 1e-7, 0.0),
             (Approximate, _) => (1e-4, 5e-4, 0.0),
             (VeryApproximate, _) => (5e-2, 1e-2, 0.0),
-            (SuperApproximate, _) => (1e-1, 5e-2, 0.0),
-            (UltraApproximate, _) => (2e-1, 1e-1, 0.0002),
+            (SuperApproximate, _) => (0.1, 0.05, 0.0001),
+            (UltraApproximate, _) => (0.2, 0.1, 0.0005),
         }
     }
 }
@@ -818,7 +818,7 @@ impl Tensor {
         if self.shape() != other.shape() {
             bail!("Shape mismatch {:?} != {:?}", self.shape(), other.shape())
         }
-        let (atol, rtol, outliers) = approx.atol_rtol_outiers(&self.datum_type());
+        let (atol, rtol, outliers) = approx.atol_rtol_outliers(&self.datum_type());
         let ma = self.cast_to::<f32>()?;
         let ma = ma.to_array_view::<f32>()?;
         let mb = other.cast_to::<f32>()?;

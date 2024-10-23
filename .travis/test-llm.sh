@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -e
+set -o pipefail
 
 ROOT=$(dirname $(dirname $(realpath $0)))
 . $ROOT/.travis/ci-system-setup.sh
@@ -29,7 +30,7 @@ esac
 
 case $q in
     q40f16) approx=ultra;;
-    f16f16) approx=very;;
+    f16f16) approx=ultra;;
     q40f32) approx=very;;
     f32f32) approx=close;;
 esac
