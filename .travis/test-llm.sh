@@ -27,6 +27,13 @@ case $model in
         ;;
 esac
 
+case $q in
+    q40f16) approx=ultra;;
+    f16f16) approx=very;;
+    q40f32) approx=very;;
+    f32f32) approx=close;;
+esac
+
 nnef=llm/$generation/$id/$id.nnef.tgz
 pp=llm/$generation/$id/$id.pp.io.npz
 tg=llm/$generation/$id/$id.tg.io.npz
@@ -37,9 +44,9 @@ $CACHE_FILE $nnef $pp $tg
 $TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O run \
     --input-from-npz $MODELS/$pp \
     --assert-output-bundle $MODELS/$pp \
-    --approx very --allow-float-casts
+    --approx $approx --allow-float-casts
 
 $TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O run \
     --input-from-npz $MODELS/$tg \
     --assert-output-bundle $MODELS/$tg \
-    --approx very --allow-float-casts
+    --approx $approx --allow-float-casts
