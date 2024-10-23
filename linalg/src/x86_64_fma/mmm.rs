@@ -60,10 +60,12 @@ pub fn plug(ops: &mut Ops) {
                 .with_native(fma_mmm_f32_32x1.mmm(), 2)
                 .with_extracting(fma_mmm_f32_32x3.mmm(), 1, packed_32_q40_to_f32.clone()),
         );
-        ops.mmm_kits.push(MMMKit::new(F16, F32, F16, &PQ40_R32).with_extracting(
-            fma_mmm_f32_32x3.mmm(),
-            1,
-            packed_32_f16_to_f32.clone(),
-        ));
+        ops.mmm_kits.push(
+            MMMKit::new(F16, F32, F16, &PackedFormat::new(F16, 32, 32)).with_extracting(
+                fma_mmm_f32_32x3.mmm(),
+                1,
+                packed_32_f16_to_f32.clone(),
+            ),
+        );
     }
 }

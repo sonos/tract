@@ -2,8 +2,9 @@ use std::fmt::Debug;
 
 use tract_data::prelude::DatumType;
 
-use crate::frame::block_quant::BlockQuant;
+use crate::frame::block_quant::{BlockQuant, PackedBlockQuantFormat};
 
+use super::pack::PackedFormat;
 use super::panel_extract::PanelExtractor;
 use super::{MMMInputFormat, MatMatMul};
 
@@ -98,19 +99,44 @@ impl MMMKit {
         activation: impl Into<KitDatumType>,
         static_packer: &dyn MMMInputFormat,
     ) -> MMMKit {
-        MMMKit {
-            weight: weight.into(),
-            accumulator: accumulator.into(),
-            activation: activation.into(),
+        let (weight, accumulator, activation) =
+            (weight.into(), accumulator.into(), activation.into());
+        let kit = MMMKit {
+            weight,
+            accumulator,
+            activation,
             static_packer: dyn_clone::clone_box(static_packer),
             items: vec![],
             generic_fallback: false,
-        }
+        };
+        match &kit.weight {
+            WeightType::Plain(p) => {
+                debug_assert!(
+                    kit.static_packer.downcast_ref::<PackedFormat>().is_some_and(|pf| pf.dt == *p),
+                    "Static packer not compatible with weight format {kit:?}"
+                )
+            }
+            WeightType::BlockQuant(bq) => debug_assert!(
+                kit.static_packer
+                    .downcast_ref::<PackedBlockQuantFormat>()
+                    .is_some_and(|pbqf| pbqf.bq.same_as(&**bq)),
+                "Static packer not compatible with weight format {kit:?}"
+            ),
+        };
+        kit
     }
 
     pub(crate) fn with_native(mut self, mmm: Box<dyn MatMatMul>, packing: usize) -> Self {
-        assert!(mmm.packings()[packing].0.same_as(&*self.static_packer));
-        assert!(self.accumulator == mmm.internal_type().into());
+        debug_assert!(
+            mmm.packings()[packing].0.same_as(&*self.static_packer),
+            "Weight packing mismatch {self:?} {mmm:?}/{packing} {:?}",
+            mmm.packings()[packing].0
+        );
+        debug_assert!(
+            self.accumulator == mmm.internal_type().into(),
+            "Accumulator mismatch {self:?} {mmm:?}/{packing} {:?}",
+            mmm.packings()[packing].0
+        );
         self.items.push(MMMKitItem { mmm, packing, weight_panel_extractor: None });
         self
     }
@@ -121,7 +147,21 @@ impl MMMKit {
         packing: usize,
         weight_panel_extractor: PanelExtractor,
     ) -> Self {
-        assert!(self.accumulator == mmm.internal_type().into());
+        debug_assert!(
+            self.accumulator == mmm.internal_type().into(),
+            "Accumulator mismatch {self:?} {mmm:?}/{packing} {:?}",
+            mmm.packings()[packing].0
+        );
+        debug_assert!(
+            self.static_packer.same_as(&*weight_panel_extractor.from),
+            "Static weight packing/extractor mismatch {self:?} {mmm:?}/{packing} {:?} {weight_panel_extractor:?}",
+            mmm.packings()[packing].0
+            );
+        debug_assert!(
+            weight_panel_extractor.to.same_as(&*mmm.packings()[packing].0),
+            "Extractor/kernel packing mismatch {self:?} {mmm:?}/{packing} {:?} {weight_panel_extractor:?}",
+            mmm.packings()[packing].0
+            );
         self.items.push(MMMKitItem {
             mmm,
             packing,
