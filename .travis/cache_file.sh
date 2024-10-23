@@ -12,12 +12,9 @@ cd $CACHEDIR
 for file in $@
 do
     mkdir -p $(dirname $file)
-    if [ -n $AWS_ACCESS_KEY_ID ]
-    then
-        [ -e $file ] || aws s3 cp s3://tract-ci-builds/tests/$file $file
-    else
-        [ -e $file ] || wget https://s3.amazonaws.com/tract-ci-builds/tests/$file -O $file
-    fi
+    [ -e $file ] \
+        || wget --no-verbose https://s3.amazonaws.com/tract-ci-builds/tests/$file -O $file \
+        || aws s3 cp s3://tract-ci-builds/tests/$file $file
 done
 
 exit 0

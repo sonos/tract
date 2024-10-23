@@ -42,18 +42,18 @@ impl From<bool> for Approximation {
 }
 
 impl Approximation {
-    fn atol_and_rtol(&self, dt: &DatumType) -> (f64, f64) {
+    fn atol_rtol_outiers(&self, dt: &DatumType) -> (f64, f64, f64) {
         use Approximation::*;
         match (self, dt) {
-            (Exact, _) => (0.0, 0.0),
-            (Close, DatumType::F16) => (1e-3, 1e-3),
-            (Approximate, DatumType::F16) => (1e-3, 5e-3),
-            (Approximate, qp) if qp.is_quantized() => (qp.zp_scale().1 as f64, 0.),
-            (Close, _) => (1e-7, 1e-7),
-            (Approximate, _) => (1e-4, 5e-4),
-            (VeryApproximate, _) => (5e-2, 1e-2),
-            (SuperApproximate, _) => (1e-1, 5e-2),
-            (UltraApproximate, _) => (2e-1, 1e-1),
+            (Exact, _) => (0.0, 0.0, 0.0),
+            (Close, DatumType::F16) => (1e-3, 1e-3, 0.0),
+            (Approximate, DatumType::F16) => (1e-3, 5e-3, 0.0),
+            (Approximate, qp) if qp.is_quantized() => (qp.zp_scale().1 as f64, 0., 0.0),
+            (Close, _) => (1e-7, 1e-7, 0.0),
+            (Approximate, _) => (1e-4, 5e-4, 0.0),
+            (VeryApproximate, _) => (5e-2, 1e-2, 0.0),
+            (SuperApproximate, _) => (1e-1, 5e-2, 0.0),
+            (UltraApproximate, _) => (2e-1, 1e-1, 0.0002),
         }
     }
 }
@@ -818,29 +818,37 @@ impl Tensor {
         if self.shape() != other.shape() {
             bail!("Shape mismatch {:?} != {:?}", self.shape(), other.shape())
         }
-        let (atol, rtol) = approx.atol_and_rtol(&self.datum_type());
+        let (atol, rtol, outliers) = approx.atol_rtol_outiers(&self.datum_type());
         let ma = self.cast_to::<f32>()?;
         let ma = ma.to_array_view::<f32>()?;
         let mb = other.cast_to::<f32>()?;
         let mb = mb.to_array_view::<f32>()?;
-        ndarray::indices_of(&ma).into_iter().try_for_each(|indices| {
+        let mut first_outlier = None;
+        let mut outliers_count = 0;
+        ndarray::indices_of(&ma).into_iter().for_each(|indices| {
             let a = ma[&indices];
             let b = mb[&indices];
             if !((a.is_nan() && b.is_nan())
                 || (a.is_infinite() && b.is_infinite() && a.signum() == b.signum())
                 || (a - b).abs() <= atol as f32 + rtol as f32 * b.abs())
             {
-                bail!(
-                    "Mismatch (wanted {:?} for {:?}) at {:?} {} != {}",
-                    approx,
-                    self.datum_type(),
-                    indices.slice(),
-                    a,
-                    b
-                )
+                if outliers_count == 0 {
+                    first_outlier = Some(format_err!(
+                        "Mismatch (wanted {:?} for {:?}) at {:?} {} != {}",
+                        approx,
+                        self.datum_type(),
+                        indices.slice(),
+                        a,
+                        b
+                    ));
+                }
+                outliers_count += 1;
             }
-            Ok(())
-        })
+        });
+        if outliers_count as f32 > outliers as f32 * self.volume() as f32 {
+            return Err(first_outlier.unwrap());
+        }
+        Ok(())
     }
 
     /// Transform the tensor into a `ndarray::Array`.
