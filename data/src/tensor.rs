@@ -833,20 +833,27 @@ impl Tensor {
                 || (a - b).abs() <= atol as f32 + rtol as f32 * b.abs())
             {
                 if outliers_count == 0 {
-                    first_outlier = Some(format_err!(
-                        "Mismatch (wanted {:?} for {:?}) at {:?} {} != {}",
-                        approx,
-                        self.datum_type(),
-                        indices.slice(),
-                        a,
-                        b
-                    ));
+                    first_outlier = Some(indices.as_array_view().to_vec());
                 }
                 outliers_count += 1;
             }
         });
-        if outliers_count as f32 > outliers as f32 * self.volume() as f32 {
-            return Err(first_outlier.unwrap());
+        if self.volume() > 0 && outliers_count as f64 / self.volume() as f64 > outliers {
+            let indices = first_outlier.unwrap();
+            let a = ma[&*indices];
+            let b = mb[&*indices];
+            bail!(
+                "Mismatch. First outlier: {:?} for {:?}) at {:?} {} != {}. Outliers: {} / {} = {:0.5} > {:0.5}.",
+                approx,
+                self.datum_type(),
+                indices,
+                a,
+                b,
+                outliers_count,
+                self.volume(),
+                outliers_count as f64 / self.volume() as f64,
+                outliers
+            );
         }
         Ok(())
     }
