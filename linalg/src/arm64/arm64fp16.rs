@@ -1,3 +1,4 @@
+use panel_extract::packed_64_q40_to_f16;
 use tract_data::half::f16;
 
 mod by_scalar;
@@ -40,6 +41,11 @@ pub fn plug(ops: &mut Ops) {
         MMMKit::new_for_mmm(arm64fp16_mmm_f16_64x1_gen.mmm(), 0)
             .with_native(arm64fp16_mmm_f16_64x3_gen.mmm(), 0),
     );
+    ops.mmm_kits.push(MMMKit::new_for_mmm(arm64fp16_mmm_f16_64x1_gen.mmm(), 1).with_extracting(
+        arm64fp16_mmm_f16_64x3_gen.mmm(),
+        0,
+        packed_64_q40_to_f16.clone(),
+    ));
 }
 
 tanh_impl!(f16, arm64fp16_tanh_f16_8n, 8, 8, crate::arm64::has_fp16());
