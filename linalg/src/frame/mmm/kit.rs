@@ -31,6 +31,24 @@ impl From<DatumType> for WeightType {
     }
 }
 
+impl From<Box<dyn MMMInputFormat>> for WeightType {
+    fn from(value: Box<dyn MMMInputFormat>) -> Self {
+        (&*value).into()
+    }
+}
+
+impl From<&dyn MMMInputFormat> for WeightType {
+    fn from(value: &dyn MMMInputFormat) -> Self {
+        if let Some(pf) = value.downcast_ref::<PackedFormat>() {
+            WeightType::Plain(pf.dt)
+        } else if let Some(pbqf) = value.downcast_ref::<PackedBlockQuantFormat>() {
+            WeightType::BlockQuant(dyn_clone::clone_box(&*pbqf.bq))
+        } else {
+            todo!()
+        }
+    }
+}
+
 impl PartialEq for WeightType {
     fn eq(&self, other: &Self) -> bool {
         use WeightType::*;
@@ -75,6 +93,22 @@ impl From<DatumType> for KitDatumType {
     }
 }
 
+impl From<&dyn MMMInputFormat> for KitDatumType {
+    fn from(value: &dyn MMMInputFormat) -> Self {
+        if let Some(pf) = value.downcast_ref::<PackedFormat>() {
+            pf.dt.into()
+        } else {
+            todo!()
+        }
+    }
+}
+
+impl From<Box<dyn MMMInputFormat>> for KitDatumType {
+    fn from(value: Box<dyn MMMInputFormat>) -> Self {
+        (&*value).into()
+    }
+}
+
 #[derive(Debug)]
 pub struct MMMKit {
     pub weight: WeightType,
@@ -93,6 +127,17 @@ pub struct MMMKitItem {
 }
 
 impl MMMKit {
+    pub(crate) fn new_for_mmm(mmm: Box<dyn MatMatMul>, packing: usize) -> MMMKit {
+        let static_packer = mmm.packings()[packing].0.clone();
+        Self::new(
+            static_packer.clone(),
+            mmm.internal_type(),
+            &*mmm.packings()[packing].1,
+            &*static_packer,
+        )
+        .with_native(mmm, packing)
+    }
+
     pub(crate) fn new(
         weight: impl Into<WeightType>,
         accumulator: impl Into<KitDatumType>,
@@ -141,6 +186,7 @@ impl MMMKit {
         self
     }
 
+    #[allow(dead_code)]
     pub(crate) fn with_extracting(
         mut self,
         mmm: Box<dyn MatMatMul>,
@@ -153,15 +199,15 @@ impl MMMKit {
             mmm.packings()[packing].0
         );
         debug_assert!(
-            self.static_packer.same_as(&*weight_panel_extractor.from),
-            "Static weight packing/extractor mismatch {self:?} {mmm:?}/{packing} {:?} {weight_panel_extractor:?}",
-            mmm.packings()[packing].0
-            );
+        self.static_packer.same_as(&*weight_panel_extractor.from),
+        "Static weight packing/extractor mismatch {self:?} {mmm:?}/{packing} {:?} {weight_panel_extractor:?}",
+        mmm.packings()[packing].0
+    );
         debug_assert!(
-            weight_panel_extractor.to.same_as(&*mmm.packings()[packing].0),
-            "Extractor/kernel packing mismatch {self:?} {mmm:?}/{packing} {:?} {weight_panel_extractor:?}",
-            mmm.packings()[packing].0
-            );
+        weight_panel_extractor.to.same_as(&*mmm.packings()[packing].0),
+        "Extractor/kernel packing mismatch {self:?} {mmm:?}/{packing} {:?} {weight_panel_extractor:?}",
+        mmm.packings()[packing].0
+    );
         self.items.push(MMMKitItem {
             mmm,
             packing,

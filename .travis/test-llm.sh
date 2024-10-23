@@ -32,7 +32,7 @@ case $q in
     q40f16) approx=ultra;;
     f16f16) approx=ultra;;
     q40f32) approx=very;;
-    f32f32) approx=close;;
+    f32f32) approx=approximate;;
 esac
 
 nnef=llm/$generation/$id/$id.nnef.tgz
