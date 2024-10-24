@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Get current date
       id: date
@@ -59,7 +59,7 @@ jobs:
       RUSTFLAGS: "-D warnings"
       RUST_VERSION: ${{matrix.rust}}
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Rustup update
       run: |
         ROOT=. .travis/ci-system-setup.sh
@@ -79,7 +79,7 @@ jobs:
       RUSTFLAGS: "-D warnings --force-warn unknown_lints"
       ROOT: .
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Rustup update, install clippy
       run: |
         .travis/ci-system-setup.sh
@@ -98,7 +98,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Rustup update
       run: rustup update
     - name: Install cargo-deny

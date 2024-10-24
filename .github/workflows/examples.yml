@@ -31,7 +31,7 @@ jobs:
         ex: ${{fromJSON(needs.examples.outputs.examples)}}
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Configure AWS Credentials
       # if: github.repository == 'sonos/tract'
