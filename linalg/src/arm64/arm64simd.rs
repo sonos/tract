@@ -1,16 +1,16 @@
 mod by_scalar;
 mod leaky_relu;
 mod max;
-mod mul;
+mod unicast;
 mod softmax;
 mod sum;
 
 use crate::{frame::PackedFormat, mmm::MMMKit, Ops};
 
-pub use by_scalar::arm64simd_mul_by_scalar_f32_16n;
+pub use by_scalar::*;
 pub use leaky_relu::arm64simd_leaky_relu_f32_8n;
 pub use max::arm64simd_max_f32_16n;
-pub use mul::arm64simd_unicast_mul_f32_16n;
+pub use unicast::*;
 pub use softmax::arm64simd_softmax2_fastcompact_f32_16n;
 pub use sum::arm64simd_sum_f32_16n;
 

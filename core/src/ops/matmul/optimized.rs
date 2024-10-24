@@ -8,9 +8,9 @@ use tract_itertools::Itertools;
 use tract_linalg::frame::PackedFormat;
 use tract_linalg::mmm::panel_extract::{PanelExtractInput, PanelExtractor};
 use tract_linalg::mmm::{
-    AsInputValue, BinOp, EagerPackedInput, FusedSpec, MMMInputValue, MatMatMul, OutputStoreSpec,
+    AsInputValue, EagerPackedInput, FusedSpec, MMMInputValue, MatMatMul, OutputStoreSpec,
 };
-use tract_linalg::Scaler;
+use tract_linalg::{BinOp, Scaler};
 use tract_smallvec::ToSmallVec;
 
 use super::ModePicker;
@@ -434,9 +434,20 @@ impl TypedOp for OptMatMul {
         }
         let succ = model.node(node.outputs[0].successors[0].node);
         let mut patch = TypedModelPatch::new(format!("fusing {succ}"));
+
         if let Some(op) = succ.op_as::<ops::binary::TypedBinOp>() {
             let mut binop =
                 if let Some(op) = op.0.as_linalg_binop() { op } else { return Ok(None) };
+            let flipped = succ.inputs[0].node == node.id;
+            if flipped {
+                binop = binop.flip();
+            }
+            let other_outlet = succ.inputs[flipped as usize];
+            return self.fuse_binary(model, node, patch, other_outlet, binop);
+        }
+        if let Some(op) = succ.op_as::<ops::binary::OptBinByScalar>() {
+            let mut binop =
+                if let Some(op) = op.binop.as_linalg_binop() { op } else { return Ok(None) };
             let flipped = succ.inputs[0].node == node.id;
             if flipped {
                 binop = binop.flip();
@@ -538,8 +549,13 @@ impl TypedOp for OptMatMul {
                 }
             }
         }
-        if let Some(op) = succ.op_as::<ops::binary::MergeOpUnicast>() {
-            if op.0.is::<ops::math::Add>() && self.mmm.len() == 1 {
+        if let Some(op) = succ.op_as::<ops::binary::OptBinUnicast>() {
+            let in_1_fact = model.outlet_fact(succ.inputs[0])?;
+            let in_2_fact = model.outlet_fact(succ.inputs[1])?;
+            if op.binop.is::<ops::math::Add>()
+                && self.mmm.len() == 1
+                && in_1_fact.without_value() == in_2_fact.without_value()
+            {
                 let other_slot = 1 - node.outputs[0].successors[0].slot;
                 let other_input = succ.inputs[other_slot];
                 let other_input = patch.tap_model(model, other_input)?;
@@ -557,6 +573,15 @@ impl TypedOp for OptMatMul {
                         &[other_input],
                     );
                 }
+            } else {
+                let mut binop =
+                    if let Some(op) = op.binop.as_linalg_binop() { op } else { return Ok(None) };
+                let flipped = succ.inputs[0].node == node.id;
+                if flipped {
+                    binop = binop.flip();
+                }
+                let other_outlet = succ.inputs[flipped as usize];
+                return self.fuse_binary(model, node, patch, other_outlet, binop);
             }
         };
         Ok(None)

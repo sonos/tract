@@ -4,13 +4,13 @@ use tract_data::half::f16;
 mod by_scalar;
 mod leaky_relu;
 mod max;
-mod mul;
 pub mod panel_extract;
+mod unicast;
 mod sum;
 pub use by_scalar::*;
 pub use leaky_relu::*;
 pub use max::*;
-pub use mul::*;
+pub use unicast::*;
 pub use sum::*;
 
 use crate::frame::block_quant::PackedBlockQuantFormat;

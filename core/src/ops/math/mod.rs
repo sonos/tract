@@ -11,10 +11,7 @@ use num_traits::{Float, Zero};
 use tract_data::internal::ClampCast;
 use tract_data::itertools::Itertools;
 pub use tract_data::prelude::round_ties_to_even;
-use tract_linalg::frame::unicast::Unicast;
-use tract_linalg::frame::ElementWise;
 use tract_linalg::{ScaleShiftAndRound, Scaler};
-use tract_ndarray::Axis;
 use tract_num_traits::AsPrimitive;
 
 #[cfg(feature = "complex")]
@@ -23,8 +20,8 @@ mod complex;
 pub use complex::{ComplexToInnerDim, InnerDimToComplex};
 
 bin_to_super_type!(add, Add,
-                   declutter: declutter_add,
                    linalg: Add,
+                   neutral_element: 0,
                    validation: Validation::Rounding,
                    q: [i8, u8, i32, i32] => add_quant;
                    q_op_on_f32: |a: f32, b: f32| -> f32 {a+b},
@@ -39,8 +36,9 @@ where
 }
 
 bin_to_super_type!(sub, Sub,
-                   declutter: declutter_sub,
                    linalg:Sub,
+                   is_commutative: false,
+                   neutral_element: 0,
                    q: [i8, u8, i32, i32] => sub_quant;
                    q_op_on_f32: |a: f32, b: f32| -> f32 {a-b},
                    [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
@@ -56,7 +54,6 @@ where
 bin_to_super_type!(mul, Mul,
                    cost: |dt| tvec!((Cost::FMA(dt), 1)),
                    declutter: declutter_mul,
-                   eval_in_a: mul_eval_in_a,
                    eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
                     // we apply only if type is QU8 zp_scale datum type
                     if let (DatumType::QU8(QParams::ZpScale {zero_point: a_zp, scale: a_scale}),
@@ -80,36 +77,7 @@ bin_to_super_type!(mul, Mul,
                         }
                     },
                    linalg: Mul,
-                   uniform_in_place: |a: &Tensor, b: &mut Tensor| -> TractResult<bool> {
-                        if b.datum_type() == f32::datum_type() {
-                            let a = a.to_scalar::<f32>()?;
-                            let slice = b.as_slice_mut::<f32>()?;
-                            (tract_linalg::ops().mul_by_scalar_f32)().run_with_params(slice, *a)?;
-                            Ok(true)
-                        } else if b.datum_type() == f16::datum_type() {
-                            let a = a.to_scalar::<f16>()?;
-                            let slice = b.as_slice_mut::<f16>()?;
-                            (tract_linalg::ops().mul_by_scalar_f16)().run_with_params(slice, *a)?;
-                            Ok(true)
-                        } else {
-                            Ok(false)
-                        }
-                   },
-                   unicast_in_place: |a: &Tensor, b: &mut Tensor| -> TractResult<bool> {
-                        if b.datum_type() == f32::datum_type() {
-                            let a = a.as_slice::<f32>()?;
-                            let slice = b.as_slice_mut::<f32>()?;
-                            (tract_linalg::ops().unicast_mul_f32)().run(slice, a)?;
-                            Ok(true)
-                        } else if b.datum_type() == f16::datum_type() {
-                            let a = a.as_slice::<f16>()?;
-                            let slice = b.as_slice_mut::<f16>()?;
-                            (tract_linalg::ops().unicast_mul_f16)().run(slice, a)?;
-                            Ok(true)
-                        } else {
-                            Ok(false)
-                        }
-                   },
+                   neutral_element: 1,
                    out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
                        if c.datum_type() == TDim::datum_type() &&
                            a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
@@ -154,144 +122,6 @@ bin_to_super_type!(mul, Mul,
                    q_op_on_f32: |a: f32, b: f32| a * b,
 [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() * b
 );
-
-fn check_uniform_is_possible(a_shape: &[usize], b_shape: &[usize]) -> bool {
-    if a_shape.len() != b_shape.len() {
-        return false;
-    };
-
-    a_shape
-        .iter()
-        .zip(b_shape.iter())
-        .skip_while(|(a_dim, b_dim)| a_dim == b_dim)
-        .all(|(_, b_dim)| *b_dim == 1)
-}
-
-fn check_unicast_is_possible(a_shape: &[usize], b_shape: &[usize]) -> bool {
-    if a_shape.len() != b_shape.len() {
-        return false;
-    };
-
-    a_shape
-        .iter()
-        .zip(b_shape.iter())
-        .skip_while(|(_, b_dim)| **b_dim == 1)
-        .all(|(a_dim, b_dim)| a_dim == b_dim)
-}
-
-fn mul_eval_in_a(a: &mut Tensor, b: &Tensor) -> TractResult<bool> {
-    let b_shape = b.shape();
-    let leading_unary_dims: Vec<usize> =
-        b_shape.iter().enumerate().take_while(|&(_, &dim)| dim == 1).map(|(i, _)| i).collect();
-    let trailing_unary_dims: Vec<usize> = b_shape
-        .iter()
-        .enumerate()
-        .rev()
-        .take_while(|&(_, &dim)| dim == 1)
-        .map(|(i, _)| i)
-        .collect();
-
-    let uniform_is_possible = check_uniform_is_possible(a.shape(), b.shape());
-    let uniform_in_place_should_be_efficient =
-        trailing_unary_dims.iter().fold(1, |num_elements, it| num_elements * a.shape()[*it]) > 32;
-    let unicast_is_possible = check_unicast_is_possible(a.shape(), b.shape());
-    let unicast_in_place_should_be_efficient =
-        leading_unary_dims.iter().fold(1, |num_elements, it| num_elements * a.shape()[*it]) > 32;
-
-    // Better to try uniform in place first (should be more efficient)
-    if uniform_in_place_should_be_efficient && uniform_is_possible {
-        if b.datum_type() == f32::datum_type() {
-            mul_by_scalar::<f32>(
-                a,
-                b,
-                &trailing_unary_dims,
-                (tract_linalg::ops().mul_by_scalar_f32)(),
-            )
-        } else if b.datum_type() == f16::datum_type() {
-            mul_by_scalar::<f16>(
-                a,
-                b,
-                &trailing_unary_dims,
-                (tract_linalg::ops().mul_by_scalar_f16)(),
-            )
-        } else {
-            Ok(false)
-        }
-    } else if unicast_in_place_should_be_efficient && unicast_is_possible {
-        if b.datum_type() == f32::datum_type() {
-            mul_unicast::<f32>(a, b, &leading_unary_dims, (tract_linalg::ops().unicast_mul_f32)())
-        } else if b.datum_type() == f16::datum_type() {
-            mul_unicast::<f16>(a, b, &leading_unary_dims, (tract_linalg::ops().unicast_mul_f16)())
-        } else {
-            return Ok(false);
-        }
-    } else {
-        Ok(false)
-    }
-}
-
-fn mul_unicast<T: Datum + Float>(
-    a: &mut Tensor,
-    b: &Tensor,
-    leading_unary_dims: &[usize],
-    eval: Box<dyn Unicast<T>>,
-) -> TractResult<bool> {
-    let mut a_view = a.to_array_view_mut::<T>()?;
-    let b_view = b.to_array_view::<T>()?;
-    let mut iterating_shape = a_view.shape().to_vec();
-    iterating_shape.iter_mut().enumerate().for_each(|(idx, dim)| {
-        if !leading_unary_dims.contains(&idx) {
-            *dim = 1
-        }
-    });
-    for it_coords in tract_ndarray::indices(iterating_shape) {
-        let mut a_view = a_view.view_mut();
-        for idx in 0..a_view.shape().len() {
-            if leading_unary_dims.contains(&idx) {
-                a_view.collapse_axis(Axis(idx), it_coords[idx]);
-            }
-        }
-
-        if let Some((a_slice, b_slice)) = a_view.as_slice_mut().zip(b_view.as_slice()) {
-            eval.run(a_slice, b_slice)?;
-        } else {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
-
-fn mul_by_scalar<T: Datum + Float>(
-    a: &mut Tensor,
-    b: &Tensor,
-    trailing_unary_dims: &[usize],
-    eval: Box<dyn ElementWise<T, T>>,
-) -> TractResult<bool> {
-    let mut view = a.to_array_view_mut::<T>()?;
-    let b = b.to_array_view::<T>()?;
-    for it_coords in tract_ndarray::indices(b.shape()) {
-        // Prepare array view to perform computation
-        // - view should be a slice
-        // - b should be a scalar
-        let mut view = view.view_mut();
-        let mut b = b.view();
-        for idx in 0..b.shape().len() {
-            if !trailing_unary_dims.contains(&idx) {
-                view.collapse_axis(Axis(idx), it_coords[idx]);
-                b.collapse_axis(Axis(idx), it_coords[idx]);
-            }
-        }
-
-        // Perform computation on a slice on the view
-        let b = b.as_slice().unwrap()[0];
-        if let Some(slice) = view.as_slice_mut() {
-            eval.run_with_params(slice, b)?;
-        } else {
-            view.iter_mut().for_each(|it| *it = *it * b)
-        }
-    }
-    Ok(true)
-}
 
 bin_to_super_type!(div, Div,
 cost: |dt| tvec!((Cost::Div(dt), 1)),
@@ -338,6 +168,8 @@ eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
             Div.generic_eval(a, b, c_dt)
         }
 },
+is_commutative: false,
+neutral_element: 1,
 out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
     if c.datum_type() == TDim::datum_type() &&
         a.datum_type() == TDim::datum_type() && b.datum_type() == TDim::datum_type() {
@@ -452,60 +284,18 @@ bin_to_super_type!(max, Max,
 
 bin_to_super_type!(pow, Pow,
                    declutter: declutter_pow,
+                   is_commutative: false,
+                   neutral_element: 1,
                    q_op_on_f32: |a: f32, b: f32| -> f32 {a.powf(b)},
                    [f16, f32, f64] => |c,a,b| *c = a.powf(*b),
                    [i32, i64] => |c,a,b| *c = a.pow(*b as u32));
 
 bin_to_super_type!(shift_left, ShiftLeft,
+                   is_commutative: false,
                    [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a << *b);
 bin_to_super_type!(shift_right, ShiftRight,
+                   is_commutative: false,
                    [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = *a >> *b);
-
-fn declutter_neutral(
-    model: &TypedModel,
-    node: &TypedNode,
-    value: i64,
-    also_left: bool,
-) -> TractResult<Option<TypedModelPatch>> {
-    if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
-        // casting to i64 uni quantized type need to be avoided
-        if uniform.uni.datum_type().is_quantized() {
-            return Ok(None);
-        }
-        let Ok(integer) = uniform.uni.cast_to_scalar::<i64>() else { return Ok(None) };
-        if tensor0(integer)
-            .cast_to_dt(uniform.uni.datum_type())?
-            .close_enough(&uniform.uni, false)
-            .is_ok()
-            && integer == value
-            && (also_left || !uniform.left_is_uniform)
-        {
-            return Ok(Some(TypedModelPatch::rewire(
-                model,
-                &[uniform.var],
-                &[node.id.into()],
-                &|_, inputs| Ok(inputs.into()),
-            )?));
-        }
-    }
-    Ok(None)
-}
-
-fn declutter_add(
-    _op: &Add,
-    model: &TypedModel,
-    node: &TypedNode,
-) -> TractResult<Option<TypedModelPatch>> {
-    declutter_neutral(model, node, 0, true)
-}
-
-fn declutter_sub(
-    _op: &Sub,
-    model: &TypedModel,
-    node: &TypedNode,
-) -> TractResult<Option<TypedModelPatch>> {
-    declutter_neutral(model, node, 0, false)
-}
 
 fn declutter_mul(
     _op: &Mul,
@@ -520,9 +310,7 @@ fn declutter_mul(
             square(),
         )?));
     }
-    if let Some(p) = declutter_neutral(model, node, 1, true).context("decluttering neutral")? {
-        return Ok(Some(p));
-    }
+
     if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
         let var_fact = model.outlet_fact(uniform.var)?;
         if uniform.uni.cast_to_scalar::<f64>()? == 0.0 {
@@ -577,16 +365,6 @@ fn declutter_mul(
                     },
                 )?));
             }
-            if !uniform.left_is_uniform {
-                let mut swap_input = node.inputs.clone();
-                swap_input.swap(0, 1);
-                return Ok(Some(TypedModelPatch::replace_single_op(
-                    model,
-                    node,
-                    &swap_input,
-                    mul(),
-                )?));
-            }
         }
     }
     Ok(None)
@@ -597,9 +375,6 @@ fn declutter_div(
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if let Some(p) = declutter_neutral(model, node, 1, false)? {
-        return Ok(Some(p));
-    }
     if let &[p, q] = &*model.node_input_facts(node.id)? {
         let dt = q.datum_type;
         if let Some(q) = &q.uniform {
@@ -648,9 +423,6 @@ fn declutter_pow(
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if let Some(p) = declutter_neutral(model, node, 1, false)? {
-        return Ok(Some(p));
-    }
     let b = model.outlet_fact(node.inputs[1])?;
     if let Some(b) = &b.uniform {
         let b = b.cast_to_scalar::<f32>()?;
