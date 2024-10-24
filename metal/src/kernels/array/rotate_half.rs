@@ -1,3 +1,4 @@
+use crate::encoder::EncoderExt;
 use crate::kernels::utils;
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
@@ -35,7 +36,8 @@ impl RotateHalf {
     }
 
     pub fn eval(&self, context: &MetalContext, input: &MetalTensor) -> Result<MetalTensor> {
-        let output = self.dispatch_eval(context, input)?;
+        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), input.shape())? };
+        self.dispatch_eval(context, input, &output)?;
         context.wait_until_completed()?;
         Ok(output)
     }
@@ -44,9 +46,8 @@ impl RotateHalf {
         &self,
         context: &MetalContext,
         input: &MetalTensor,
-    ) -> Result<MetalTensor> {
-        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), input.shape())? };
-
+        output: &MetalTensor,
+    ) -> Result<()> {
         input.retain_until_completion();
         output.retain_until_completion();
 
@@ -65,28 +66,18 @@ impl RotateHalf {
         let command_buffer = context.command_buffer();
         let encoder = command_buffer.new_compute_command_encoder();
         encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_buffer(0, Some(input.metal()), 0);
-        encoder.set_buffer(1, Some(output.metal()), 0);
-        encoder.set_bytes(
-            2,
-            std::mem::size_of_val(&shape_nd2) as _,
-            shape_nd2.as_ptr() as *const _,
-        );
-        encoder.set_bytes(
-            3,
-            std::mem::size_of_val(&strides_nd2) as _,
-            strides_nd2.as_ptr() as *const _,
-        );
+        encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
+        encoder.set_slice(2, &shape_nd2);
+        encoder.set_slice(3, &strides_nd2);
 
         let grid_size =
             MTLSize { width: (shape_nd2[1] / 2) as _, height: shape_nd2[0] as _, depth: 1 };
         let group_size = utils::build_metal_size_with_ones();
 
-        encoder.use_resource(input.metal(), metal::MTLResourceUsage::Read);
-        encoder.use_resource(output.metal(), metal::MTLResourceUsage::Write);
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
-        Ok(output)
+        Ok(())
     }
 }
 

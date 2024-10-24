@@ -1,3 +1,4 @@
+use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
@@ -33,7 +34,8 @@ impl ApplyRope {
         cos: &MetalTensor,
         sin: &MetalTensor,
     ) -> Result<MetalTensor> {
-        let output = self.dispatch_eval(context, input, cos, sin)?;
+        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), input.shape())? };
+        self.dispatch_eval(context, input, cos, sin, &output)?;
         context.wait_until_completed()?;
         Ok(output)
     }
@@ -44,13 +46,12 @@ impl ApplyRope {
         input: &MetalTensor,
         cos: &MetalTensor,
         sin: &MetalTensor,
-    ) -> Result<MetalTensor> {
+        output: &MetalTensor,
+    ) -> Result<()> {
         ensure!(input.datum_type() == cos.datum_type());
         ensure!(input.datum_type() == sin.datum_type());
 
         ensure!(cos.shape() == sin.shape());
-
-        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), input.shape())? };
 
         input.retain_until_completion();
         output.retain_until_completion();
@@ -76,38 +77,25 @@ impl ApplyRope {
         let command_buffer = context.command_buffer();
         let encoder = command_buffer.new_compute_command_encoder();
         encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_buffer(0, Some(input.metal()), 0);
-        encoder.set_buffer(1, Some(cos.metal()), 0);
-        encoder.set_buffer(2, Some(sin.metal()), 0);
-        encoder.set_buffer(3, Some(output.metal()), 0);
-        encoder.set_bytes(
-            4,
-            std::mem::size_of_val(input.shape()) as _,
-            input.shape().as_ptr() as *const _,
-        );
-        encoder.set_bytes(
-            5,
-            std::mem::size_of_val(input.strides()) as _,
-            input.strides().as_ptr() as *const _,
-        );
-        encoder.set_bytes(
-            6,
-            std::mem::size_of_val(&cos_sin_strides) as _,
-            input.strides().as_ptr() as *const _,
-        );
+        encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, cos, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(2, sin, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(3, output, metal::MTLResourceUsage::Write);
+        encoder.set_slice(4, input.shape());
+        encoder.set_slice(5, input.strides());
+        encoder.set_slice(6, &cos_sin_strides);
 
         let mut grid_size = utils::build_metal_size_for_shape(input.shape());
         grid_size.width /= 2;
 
-        let group_size = utils::build_metal_size_with_ones();
-
-        encoder.use_resource(input.metal(), metal::MTLResourceUsage::Read);
-        encoder.use_resource(cos.metal(), metal::MTLResourceUsage::Read);
-        encoder.use_resource(sin.metal(), metal::MTLResourceUsage::Read);
-        encoder.use_resource(output.metal(), metal::MTLResourceUsage::Write);
-        encoder.dispatch_thread_groups(grid_size, group_size);
+        let group_size = metal::MTLSize {
+            width: 32 as _,
+            height: 32 as _,
+            depth: 1 as _,
+        };
+        encoder.dispatch_threads(grid_size, group_size);
         encoder.end_encoding();
-        Ok(output)
+        Ok(())
     }
 }
 

@@ -1,5 +1,5 @@
-use crate::kernels::utils;
 use crate::encoder::EncoderExt;
+use crate::kernels::utils;
 use crate::{LibraryName, MetalContext, MetalTensor};
 use anyhow::Result;
 use metal::MTLSize;
