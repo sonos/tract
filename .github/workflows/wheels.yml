@@ -29,7 +29,7 @@ jobs:
         os: [ubuntu-20.04, windows-2019, macos-14]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         
       - name: Setup | Rust
         uses: hecrj/setup-rust-action@v1
@@ -61,7 +61,7 @@ jobs:
     name: Make SDist
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Build SDist
       run: cd api/py ; pipx run build --sdist
