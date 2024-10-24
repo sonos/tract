@@ -17,7 +17,7 @@ jobs:
       examples: ${{steps.set-matrix.outputs.examples}}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - id: set-matrix
         run: |
           echo examples=`find examples -name ci.sh | cut -d/ -f 2 | jq -Rsc '. / "\n" - [""]'` >> "$GITHUB_OUTPUT"
