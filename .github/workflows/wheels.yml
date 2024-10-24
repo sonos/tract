@@ -18,6 +18,7 @@ env:
   CARGO_INCREMENTAL: false
   PYPI_VERSION_OVERRIDE: ${{ inputs.pypi_version_override }}
   CIBW_ENVIRONMENT_PASS_LINUX: "PYPI_VERSION_OVERRIDE"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
 
 jobs:
   build_wheels:

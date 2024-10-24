@@ -7,6 +7,7 @@ name: Upload Release Binaries
 
 env:
   CARGO_INCREMENTAL: false
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
 
 jobs:
   assets:
