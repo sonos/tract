@@ -21,11 +21,12 @@ pub const PQ40_R32: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 
 MMMExternKernel! {fma_mmm_f32_32x1<f32>(32,1)@(32,4) where(FMA)
     packing[1] = q40f32 => |k| k.with_packing_a(PQ40_R32);
     packing[2] = q40f16 => |k| k.with_packing(PQ40_R32, PackedFormat::new(F16, 1, 2));
+    packing[3] = f16f16 => |k| k.with_packing(PackedFormat::new(F16, 32, 32), PackedFormat::new(F16, 1, 2));
     store(f16)
 }
 MMMExternKernel!(fma_mmm_f32_32x3<f32>(32,3)@(32,4) where(FMA)
-    packing[1] = f32f16 => |k| k.with_packing(PackedFormat::new(F32, 32, 32), PackedFormat::new(F16, 3, 2));
-    store(f16)
+ packing[1] = f32f16 => |k| k.with_packing(PackedFormat::new(F32, 32, 32), PackedFormat::new(F16, 3, 2));
+ store(f16)
 );
 
 MMMExternKernel!(avx512_mmm_f32_128x1<f32>(128, 1)@(64,4) where (AVX512F));
@@ -59,11 +60,9 @@ pub fn plug(ops: &mut Ops) {
             packed_32_q40_to_f32.clone(),
         ));
         ops.mmm_kits.push(
-            MMMKit::new(F16, F32, F16, &PackedFormat::new(F16, 32, 32)).with_extracting(
-                fma_mmm_f32_32x3.mmm(),
-                1,
-                packed_32_f16_to_f32.clone(),
-            ),
+            MMMKit::new(F16, F32, F16, &PackedFormat::new(F16, 32, 32))
+                .with_native(fma_mmm_f32_32x1.mmm(), 3)
+                .with_extracting(fma_mmm_f32_32x3.mmm(), 1, packed_32_f16_to_f32.clone()),
         );
     }
 }

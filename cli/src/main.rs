@@ -592,24 +592,22 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             }
             println!("{}", White.bold().paint("# MatMul kits"));
             for m in tract_linalg::ops().mmm_kits() {
-                println!(
-                    " * {} {:?}•{:?} ({:?} Accum:{:?})",
+                let label = format!("{:?}•{:?}•{:?}", m.weight, m.accumulator, m.activation);
+                println!(" * {} ({})",
                     if m.generic_fallback {
-                        DarkGray.paint(m.name())
+                        DarkGray.paint(label)
                     } else {
-                        Green.paint(m.name())
+                        Green.paint(label)
                     },
-                    m.weight,
-                    m.activation,
                     m.static_packer,
-                    m.accumulator,
                 );
                 for item in &m.items {
                     println!(
-                        "   - {} ({:?} • {:?})",
+                        "   - {} {:?}•{:?} {}",
                         item.mmm.name(),
                         item.mmm.packings()[item.packing].0,
                         item.mmm.packings()[item.packing].1,
+                        item.weight_panel_extractor.as_ref().map(|pe| format!("[using {}]", pe.name)).unwrap_or_default()
                     );
                 }
             }
