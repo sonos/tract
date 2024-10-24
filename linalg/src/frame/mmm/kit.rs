@@ -171,27 +171,11 @@ impl MMMKit {
         kit
     }
 
-    pub(crate) fn with_native(mut self, mmm: Box<dyn MatMatMul>, packing: usize) -> Self {
-        debug_assert!(
-            mmm.packings()[packing].0.same_as(&*self.static_packer),
-            "Weight packing mismatch {self:?} {mmm:?}/{packing} {:?}",
-            mmm.packings()[packing].0
-        );
-        debug_assert!(
-            self.accumulator == mmm.internal_type().into(),
-            "Accumulator mismatch {self:?} {mmm:?}/{packing} {:?}",
-            mmm.packings()[packing].0
-        );
-        self.items.push(MMMKitItem { mmm, packing, weight_panel_extractor: None });
-        self
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn with_extracting(
+    fn add_item(
         mut self,
         mmm: Box<dyn MatMatMul>,
         packing: usize,
-        weight_panel_extractor: PanelExtractor,
+        weight_panel_extractor: Option<PanelExtractor>,
     ) -> Self {
         debug_assert!(
             self.accumulator == mmm.internal_type().into(),
@@ -199,21 +183,44 @@ impl MMMKit {
             mmm.packings()[packing].0
         );
         debug_assert!(
-        self.static_packer.same_as(&*weight_panel_extractor.from),
-        "Static weight packing/extractor mismatch {self:?} {mmm:?}/{packing} {:?} {weight_panel_extractor:?}",
-        mmm.packings()[packing].0
-    );
-        debug_assert!(
-        weight_panel_extractor.to.same_as(&*mmm.packings()[packing].0),
-        "Extractor/kernel packing mismatch {self:?} {mmm:?}/{packing} {:?} {weight_panel_extractor:?}",
-        mmm.packings()[packing].0
-    );
-        self.items.push(MMMKitItem {
-            mmm,
-            packing,
-            weight_panel_extractor: Some(weight_panel_extractor),
-        });
+            mmm.packings()[packing]
+                .1
+                .downcast_ref::<PackedFormat>()
+                .is_some_and(|pf| KitDatumType::from(pf.dt) == self.activation),
+            "Activation packecd mismatch {self:?} {:?}",
+            mmm.packings()[packing].1
+        );
+        self.items.push(MMMKitItem { mmm, packing, weight_panel_extractor });
         self
+    }
+
+    pub(crate) fn with_native(self, mmm: Box<dyn MatMatMul>, packing: usize) -> Self {
+        debug_assert!(
+            mmm.packings()[packing].0.same_as(&*self.static_packer),
+            "Weight packing mismatch {self:?} {mmm:?}/{packing} {:?}",
+            mmm.packings()[packing].0
+        );
+        self.add_item(mmm, packing, None)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn with_extracting(
+        self,
+        mmm: Box<dyn MatMatMul>,
+        packing: usize,
+        weight_panel_extractor: PanelExtractor,
+    ) -> Self {
+        debug_assert!(
+            self.static_packer.same_as(&*weight_panel_extractor.from),
+            "Static weight packing/extractor mismatch {self:?} {mmm:?}/{packing} {:?} {weight_panel_extractor:?}",
+            mmm.packings()[packing].0
+        );
+        debug_assert!(
+            weight_panel_extractor.to.same_as(&*mmm.packings()[packing].0),
+            "Extractor/kernel packing mismatch {self:?} {mmm:?}/{packing} {:?} {weight_panel_extractor:?}",
+            mmm.packings()[packing].0
+        );
+        self.add_item(mmm, packing, Some(weight_panel_extractor))
     }
 
     pub(crate) fn with_generic_fallback(self, generic_fallback: bool) -> Self {
