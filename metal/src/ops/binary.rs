@@ -48,7 +48,7 @@ impl MetalEvalOp for MetalBinOp {
         &self,
         context: &MetalContext,
         node_id: usize,
-        _session: &mut SessionState,
+        session: &mut SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (opaque_a, opaque_b) = args_2!(inputs);
@@ -56,7 +56,7 @@ impl MetalEvalOp for MetalBinOp {
         let b = opaque_b.to_metal_tensor()?;
         let out_shape = self.0.output_shape(a.shape(), b.shape())?;
         let out_dt = self.0.output_datum_type(a.datum_type(), b.datum_type())?;
-        let output = crate::ops::make_tensor_for_node(context, node_id, out_dt, &out_shape)?;
+        let output = crate::ops::make_tensor_for_node(session, node_id, out_dt, &out_shape)?;
         self.0
             .dispatch_eval(context, a, b, &output)
             .with_context(|| "Error while dispatching eval for Metal Bin Op")?;

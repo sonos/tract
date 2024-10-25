@@ -22,13 +22,13 @@ impl MetalEvalOp for MetalNewGelu {
         &self,
         context: &MetalContext,
         node_id: usize,
-        _session: &mut SessionState,
+        session: &mut SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let input_metal = input.to_metal_tensor()?;
         let output = crate::ops::make_tensor_for_node(
-            context,
+            session,
             node_id,
             input_metal.datum_type(),
             input_metal.shape(),

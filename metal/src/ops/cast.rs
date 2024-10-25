@@ -34,7 +34,7 @@ impl MetalEvalOp for MetalCast {
         &self,
         context: &MetalContext,
         node_id: usize,
-        _session: &mut SessionState,
+        session: &mut SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs);
@@ -43,7 +43,7 @@ impl MetalEvalOp for MetalCast {
             Ok(tvec!(opaque))
         } else {
             let output =
-                crate::ops::make_tensor_for_node(context, node_id, self.to, input.shape())?;
+                crate::ops::make_tensor_for_node(session, node_id, self.to, input.shape())?;
             kernels::array::Cast.dispatch_eval(context, input, &output)?;
             Ok(tvec![output.into_opaque_tensor().into_tvalue()])
         }

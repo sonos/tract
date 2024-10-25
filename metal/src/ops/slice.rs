@@ -77,7 +77,7 @@ impl MetalEvalOp for MetalSlice {
         let offset = (start * input_strides[axis] as usize) * input_dt.size_of();
 
         let output =
-            crate::ops::make_tensor_for_node(context, node_id, input.datum_type(), &o_shape)?;
+            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &o_shape)?;
 
         // Perform slicing only if the output is not empty.
         if o_shape[axis] != 0 {

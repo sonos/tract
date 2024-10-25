@@ -31,7 +31,7 @@ impl MetalEvalOp for MetalMultiBroadcastTo {
         let shape = self.shape.eval_to_usize(&session.resolved_symbols)?;
         let input = opaque.to_metal_tensor()?;
         let output =
-            crate::ops::make_tensor_for_node(context, node_id, input.datum_type(), &shape)?;
+            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &shape)?;
         kernels::array::MultiBroadcast.dispatch_eval(context, input, 0, &output)?;
         Ok(tvec![output.into_opaque_tensor().into_tvalue()])
     }

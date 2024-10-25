@@ -82,14 +82,12 @@ impl<O: MetalEvalOp> OpState for MetalOpState<O> {
 }
 
 pub fn make_tensor_for_node(
-    context: &MetalContext,
+    session: &SessionState,
     node_id: usize,
     dt: DatumType,
     shape: &[usize],
 ) -> TractResult<MetalTensor> {
-    context
-        .memory_pool()
-        .as_ref()
+    crate::session_handler::get_metal_mem_pool(session)
         .map(|mem| mem.tensor_for_node(node_id, dt, shape))
         .unwrap_or_else(|| unsafe { MetalTensor::uninitialized_dt(dt, shape) })
 }
