@@ -28,13 +28,13 @@ impl MetalEvalOp for MetalRmsNorm {
         &self,
         context: &MetalContext,
         node_id: usize,
-        _session: &mut SessionState,
+        session: &mut SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs);
         let input = opaque.to_metal_tensor()?;
         let output =
-            crate::ops::make_tensor_for_node(context, node_id, input.datum_type(), input.shape())?;
+            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
         RmsNorm.dispatch_eval(context, input, self.axis, &self.eps, &output)?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }

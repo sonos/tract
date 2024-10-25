@@ -21,13 +21,27 @@ pub struct PlanOptions {
     pub executor: Option<Executor>,
 }
 
-#[derive(Default)]
 pub struct SessionState {
     pub inputs: HashMap<usize, TValue>,
     pub resolved_symbols: SymbolValues,
     pub scenario: Option<usize>,
     pub tensors: HashMap<String, Tensor>,
     pub cached_mmm_scratch_space: RefCell<Option<Box<dyn tract_linalg::mmm::ScratchSpace>>>,
+    pub scratch_extensions: anymap::Map,
+}
+
+impl Default for SessionState {
+
+    fn default() -> Self {
+        SessionState {
+            inputs: HashMap::default(),
+            resolved_symbols: SymbolValues::default(),
+            tensors: HashMap::default(),
+            scenario: None,
+            cached_mmm_scratch_space: None.into(),
+            scratch_extensions: anymap::Map::new(),
+        }
+    }
 }
 
 impl Clone for SessionState {
@@ -38,8 +52,15 @@ impl Clone for SessionState {
             tensors: self.tensors.clone(),
             scenario: self.scenario,
             cached_mmm_scratch_space: None.into(),
+            scratch_extensions: anymap::Map::new(),
         }
     }
+}
+
+
+pub trait SessionStateHandler: Send + Sync + Debug {
+    fn before_plan_eval(&self, session_state: &mut SessionState) -> TractResult<()>;
+    fn after_plan_eval(&self, session_state: &mut SessionState) -> TractResult<()>;
 }
 
 impl Debug for SessionState {
@@ -61,6 +82,7 @@ where
     flush_lists: Vec<TVec<usize>>,
     has_unresolved_symbols: bool,
     executor: Option<Executor>,
+    session_handler: Option<Arc<dyn SessionStateHandler + 'static>>,
     _casper: PhantomData<(F, O)>,
 }
 
@@ -92,6 +114,11 @@ where
     #[deprecated]
     pub fn new_for_outputs(model: M, outputs: &[OutletId]) -> TractResult<SimplePlan<F, O, M>> {
         Self::build(model, outputs, &[], &PlanOptions::default())
+    }
+
+    pub fn with_session_handler<H: SessionStateHandler + 'static>(mut self, session_handler: H) -> Self {
+        self.session_handler = Some(Arc::new(session_handler));
+        self
     }
 
     #[deprecated]
@@ -136,6 +163,7 @@ where
             has_unresolved_symbols: !symbols.is_empty(),
             _casper: PhantomData,
             executor: options.executor.clone(),
+            session_handler: None,
         })
     }
 
@@ -200,6 +228,7 @@ where
         for node in &self.plan.borrow().order {
             self.values[*node] = None;
         }
+        self.session_state.resolved_symbols = SymbolValues::default();
         Ok(())
     }
 
@@ -274,6 +303,11 @@ where
         {
             let plan = self.plan.borrow();
             let model = plan.model.borrow();
+            plan.session_handler
+                .as_ref()
+                .map(|it| it.before_plan_eval(&mut self.session_state))
+                .transpose()?;
+
             for (step, n) in plan.order.iter().enumerate() {
                 let node = model.node(*n);
                 trace!("Running step {}, node {}", step, node);
@@ -364,6 +398,10 @@ where
 
                 self.values[node.id] = Some(vs);
             }
+            plan.session_handler
+                .as_ref()
+                .map(|it| it.after_plan_eval(&mut self.session_state))
+                .transpose()?;
         }
         Ok(())
     }
@@ -636,6 +674,7 @@ where
                 scenario: self.scenario,
                 tensors: self.tensors.clone(),
                 cached_mmm_scratch_space: None.into(),
+                scratch_extensions: anymap::Map::new(),
             },
             states: self.states.iter().map(|s| s.as_ref().map(|s| s.unfreeze())).collect(),
             values: self

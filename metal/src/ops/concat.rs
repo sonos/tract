@@ -49,7 +49,7 @@ impl MetalEvalOp for MetalConcat {
         &self,
         context: &MetalContext,
         node_id: usize,
-        _session: &mut SessionState,
+        session: &mut SessionState,
         opaque_inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let inputs = opaque_inputs
@@ -60,7 +60,7 @@ impl MetalEvalOp for MetalConcat {
         let mut output_shape = inputs[0].shape().to_vec();
         output_shape[self.axis()] = inputs.iter().map(|it| it.shape()[self.axis()]).sum();
         let output = crate::ops::make_tensor_for_node(
-            context,
+            session,
             node_id,
             inputs[0].datum_type(),
             &output_shape,

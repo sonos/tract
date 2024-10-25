@@ -30,12 +30,12 @@ impl MetalEvalOp for MetalElementWiseOp {
         &self,
         context: &MetalContext,
         node_id: usize,
-        _session: &mut SessionState,
+        session: &mut SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let opaque_a = args_1!(inputs);
         let a = opaque_a.to_metal_tensor()?;
-        let output = crate::ops::make_tensor_for_node(context, node_id, a.datum_type(), a.shape())?;
+        let output = crate::ops::make_tensor_for_node(session, node_id, a.datum_type(), a.shape())?;
         self.0.dispatch_eval(context, a, &output)?;
         Ok(tvec![output.into_opaque_tensor().into_tvalue()])
     }

@@ -1,5 +1,6 @@
 use crate::kernels::nn::Reducer;
-use crate::{MetalTensor, MetalTensorExt};
+use crate::ops::MetalEvalOp;
+use crate::{MetalContext, MetalTensorExt};
 use tract_core::internal::*;
 use tract_core::ops::nn as core_ops_nn;
 use tract_itertools::Itertools;
@@ -39,26 +40,26 @@ impl Op for MetalReduce {
     op_as_typed_op!();
 }
 
-impl EvalOp for MetalReduce {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+crate::impl_eval_op_for_metal_op!(MetalReduce);
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let opaque = args_1!(inputs);
-                let input = opaque.to_metal_tensor()?;
-                let mut output_shape = input.shape().to_vec();
-                output_shape[self.axes[0]] = 1;
-                let output =
-                    unsafe { MetalTensor::uninitialized_dt(input.datum_type(), &output_shape)? };
+impl MetalEvalOp for MetalReduce {
+    fn metal_eval(
+        &self,
+        context: &MetalContext,
+        node_id: usize,
+        session: &mut SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let opaque = args_1!(inputs);
+        let input = opaque.to_metal_tensor()?;
+        let mut output_shape = input.shape().to_vec();
+        output_shape[self.axes[0]] = 1;
+        let output =
+            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &output_shape)?;
 
-                self.reducer.dispatch_eval(context, input, self.axes[0], &output)?;
+        self.reducer.dispatch_eval(context, input, self.axes[0], &output)?;
 
-                Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
-            })
-        })
+        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }
 

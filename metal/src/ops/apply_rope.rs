@@ -21,7 +21,7 @@ impl MetalEvalOp for MetalApplyRope {
         &self,
         context: &MetalContext,
         node_id: usize,
-        _session: &mut SessionState,
+        session: &mut SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (opaque_input, opaque_cos, opaque_sin) = args_3!(inputs);
@@ -29,7 +29,7 @@ impl MetalEvalOp for MetalApplyRope {
         let cos = opaque_cos.to_metal_tensor()?;
         let sin = opaque_sin.to_metal_tensor()?;
         let output =
-            crate::ops::make_tensor_for_node(context, node_id, input.datum_type(), input.shape())?;
+            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
         ApplyRope.dispatch_eval(context, input, cos, sin, &output)?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }

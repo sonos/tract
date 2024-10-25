@@ -66,7 +66,7 @@ impl MetalEvalOp for MetalAxisOp {
                 permutation.remove(*from);
                 permutation.insert(*to, *from);
                 let output = crate::ops::make_tensor_for_node(
-                    context,
+                    session,
                     node_id,
                     input.datum_type(),
                     &PermuteAxes::output_shape(input.shape(), &permutation)?,
@@ -89,17 +89,9 @@ impl MetalEvalOp for MetalAxisOp {
         };
 
         // TODO: avoid copy because of memory pool integration
-
-        // if new_shape.as_slice() != input.shape() {
-        //     Ok(tvec![input.reshaped(new_shape)?.into_opaque_tensor().into_tvalue()])
-        // } else {
-        //     Ok(tvec![opaque.into_tvalue()])
-        // }
-
         // Perform copy because of memory pool integration
-
         let output =
-            crate::ops::make_tensor_for_node(context, node_id, input.datum_type(), &new_shape)?;
+            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &new_shape)?;
 
         Memcpy.dispatch_eval(context, input, 0, &output)?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
@@ -201,18 +193,26 @@ impl Op for MetalIntoShape {
     impl_op_same_as!();
 }
 
-impl EvalOp for MetalIntoShape {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+crate::impl_eval_op_for_metal_op!(MetalIntoShape);
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+impl MetalEvalOp for MetalIntoShape {
+    fn metal_eval(
+        &self,
+        context: &MetalContext,
+        node_id: usize,
+        session: &mut SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs).into_tensor();
-        let t = opaque.to_metal_tensor()?;
+        let input = opaque.to_metal_tensor()?;
+        ensure!(input.len() == self.0.len);
+        let output =
+            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
 
-        ensure!(t.len() == self.0.len);
+        Memcpy.dispatch_eval(context, input, 0, &output)?;
+
         unsafe {
-            Ok(tvec![t
+            Ok(tvec![output
                 .reshaped_with_geometry_unchecked(self.0.dims.clone(), self.0.strides.clone())
                 .into_opaque_tensor()
                 .into_tvalue()])
