@@ -15,7 +15,7 @@ pub trait EncoderExt {
     fn set_slice<T: Copy>(&self, idx: u64, data: &[T]);
 }
 
-impl<'a> EncoderExt for &'a ComputeCommandEncoderRef {
+impl EncoderExt for &ComputeCommandEncoderRef {
     fn set_metal_tensor(&self, idx: u64, t: &MetalTensor, usage: MTLResourceUsage) {
         self.set_buffer(idx, Some(t.metal()), t.metal_offset());
         self.use_resource(t.metal(), usage);
