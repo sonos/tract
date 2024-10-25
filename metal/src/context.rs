@@ -1,8 +1,7 @@
 use crate::func_constants::ConstantValues;
 use crate::kernels::matmul::mps;
-pub use crate::kernels::{LibraryContent, LibraryName};
-use crate::{MetalMemoryPool, MetalTensor};
-use core::cell::Ref;
+use crate::kernels::{LibraryContent, LibraryName};
+use crate::MetalTensor;
 use metal::{Buffer, MTLResourceOptions, NSUInteger};
 use std::cell::RefCell;
 use std::path::Path;
@@ -194,7 +193,6 @@ pub struct MetalContext {
     command_buffer: RefCell<CommandBuffer>,
     command_buffer_used: RefCell<usize>,
     command_buffer_id: AtomicUsize,
-    mem_pool: RefCell<Option<MetalMemoryPool>>,
     retained_tensors: RefCell<Vec<MetalTensor>>,
 }
 
@@ -216,37 +214,12 @@ impl MetalContext {
             command_buffer_used: RefCell::new(0),
             command_buffer_id: AtomicUsize::new(0),
             retained_tensors: RefCell::new(vec![]),
-            mem_pool: RefCell::new(None),
             shared,
         }
     }
 
-    /// Execute callback inside a MetalMemoryPool for MetalTensor allocation used during
-    /// Metal kernel execution.
-    pub fn execute_in_mem_pool<T>(
-        &self,
-        mem_pool: MetalMemoryPool,
-        exe: impl FnOnce() -> Result<T>,
-    ) -> Result<(MetalMemoryPool, T)> {
-        anyhow::ensure!(
-            self.mem_pool.borrow().is_none(),
-            "Cannot execute inside a memory pool because a MetalMemoryPool is already in use"
-        );
-        *self.mem_pool.borrow_mut() = Some(mem_pool);
-        let res = (exe)()?;
-        let mem_pool = self.mem_pool.borrow_mut().take().ok_or_else(|| {
-            anyhow!("Unexpected None memory pool while executing inside a metal memory pool")
-        })?;
-        mem_pool.reset();
-        Ok((mem_pool, res))
-    }
-
     pub fn device(&self) -> &Device {
         &self.shared.device
-    }
-
-    pub fn memory_pool(&self) -> Ref<'_, Option<MetalMemoryPool>> {
-        self.mem_pool.borrow()
     }
 
     pub fn shared_context(&self) -> &SharedMetalContext {
