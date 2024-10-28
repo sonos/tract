@@ -8,7 +8,7 @@ pub fn plug(ops: &mut Ops) {
 }
 
 panel_extractor!(kernel_packed_32_q40_to_f32 as packed_32_q40_to_f32(
-    Box::new(super::mmm::PQ40_R32),
+    Box::new(super::mmm::pq40_r32()),
     PackedFormat::new(f32::datum_type(), 32, 32)
 ) where(AVX2));
 

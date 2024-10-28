@@ -328,24 +328,28 @@ where
     0
 }
 
-const PQ40_R4: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 4, 0, false);
-const PQ40_R4_SE: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 4, 0, true);
+fn pq40_r4() -> PackedBlockQuantFormat {
+    PackedBlockQuantFormat::new(&Q4_0, 4, 0, false)
+}
+fn pq40_r4_se() -> PackedBlockQuantFormat {
+    PackedBlockQuantFormat::new(&Q4_0, 4, 0, true)
+}
 
 // f16 kernels
 MMMRustKernel!(kernel::<f16, 4, 4> => generic_f16_4x4<f16>(4,4)@(4,4) store(f32, f64));
 MMMRustKernel! {kernel::<f16, 4, 1> => generic_f16_4x1<f16>(4,1)@(4,1)
-    packing[1] = q40f16 => |k| k.with_packing_a(PQ40_R4);
-    packing[2] = q40f16se => |k| k.with_packing_a(PQ40_R4_SE);
-    packing[3] = q40f32 => |k| k.with_packing(PQ40_R4, PackedFormat::new(DatumType::F32, 1, 4));
+    packing[1] = q40f16 => |k| k.with_packing_a(pq40_r4());
+    packing[2] = q40f16se => |k| k.with_packing_a(pq40_r4_se());
+    packing[3] = q40f32 => |k| k.with_packing(pq40_r4(), PackedFormat::new(DatumType::F32, 1, 4));
     store(f32, f64)
 }
 
 // f32 kernels
 MMMRustKernel!(kernel::<f32, 4, 4> => generic_f32_4x4<f32>(4,4)@(4,4) store(f16, f64));
 MMMRustKernel! {kernel::<f32, 4, 1> => generic_f32_4x1<f32>(4,1)@(4,1)
-    packing[1] = q40f16 => |k| k.with_packing(PQ40_R4, PackedFormat::new(DatumType::F16, 1, 4));
-    packing[2] = q40f16se => |k| k.with_packing(PQ40_R4_SE, PackedFormat::new(DatumType::F16, 1, 4));
-    packing[3] = q40f32 => |k| k.with_packing_a(PQ40_R4);
+    packing[1] = q40f16 => |k| k.with_packing(pq40_r4(), PackedFormat::new(DatumType::F16, 1, 4));
+    packing[2] = q40f16se => |k| k.with_packing(pq40_r4_se(), PackedFormat::new(DatumType::F16, 1, 4));
+    packing[3] = q40f32 => |k| k.with_packing_a(pq40_r4());
     store(f16, f64)
 }
 
@@ -377,7 +381,7 @@ MMMRustKernel! {kernel::<i32, 3, 2> => generic_i32_3x2<i32>(3,2)@(4,4)
 
 pub fn plug(ops: &mut Ops) {
     ops.mmm_kits.push(
-        MMMKit::new(Q4_0, f32::datum_type(), f32::datum_type(), &PQ40_R4)
+        MMMKit::new(Q4_0, f32::datum_type(), f32::datum_type(), &pq40_r4())
             .with_native(generic_f32_4x1.mmm(), 3)
             .with_generic_fallback(true),
     );

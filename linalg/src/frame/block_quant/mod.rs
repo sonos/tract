@@ -1,5 +1,5 @@
 use downcast_rs::{impl_downcast, Downcast};
-use dyn_clone::DynClone;
+use dyn_clone::{clone_box, DynClone};
 use dyn_hash::DynHash;
 use tract_data::internal::*;
 use tract_data::itertools::Itertools;
@@ -8,7 +8,6 @@ use std::alloc::Layout;
 use std::borrow::Cow;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
-use std::ops::Deref;
 
 mod helpers;
 mod q4_0;
@@ -99,7 +98,7 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
         scales_at_end: bool,
     ) -> TractResult<EagerPackedInput>;
 
-    unsafe fn extract_panel(
+    unsafe fn extract_packed_panel(
         &self,
         value: &EagerPackedInput,
         target: &PackedFormat,
@@ -112,38 +111,24 @@ dyn_clone::clone_trait_object!(BlockQuant);
 dyn_hash::hash_trait_object!(BlockQuant);
 impl_downcast!(BlockQuant);
 
-#[allow(clippy::derived_hash_with_manual_eq)]
 #[derive(Clone, Hash)]
-pub enum StaticBlockQuant {
-    Owned(Box<dyn BlockQuant>),
-    Borrow(&'static dyn BlockQuant),
-}
-
-impl Deref for StaticBlockQuant {
-    type Target = dyn BlockQuant;
-    fn deref(&self) -> &dyn BlockQuant {
-        match self {
-            StaticBlockQuant::Owned(o) => &**o,
-            StaticBlockQuant::Borrow(o) => *o,
-        }
-    }
-}
-
-impl PartialEq for StaticBlockQuant {
-    fn eq(&self, other: &Self) -> bool {
-        self.deref().same_as(other.deref())
-    }
-}
-
-impl Eq for StaticBlockQuant {}
-
-#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct PackedBlockQuantFormat {
-    pub bq: StaticBlockQuant,
+    pub bq: Box<dyn BlockQuant>,
     pub r: usize,
     pub zip: usize,
     pub scales_at_end: bool,
 }
+
+impl PartialEq for PackedBlockQuantFormat {
+    fn eq(&self, other: &Self) -> bool {
+        self.bq.same_as(&*other.bq)
+            && self.r == other.r
+            && self.zip == other.zip
+            && self.scales_at_end == other.scales_at_end
+    }
+}
+
+impl Eq for PackedBlockQuantFormat {}
 
 impl Display for PackedBlockQuantFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -165,13 +150,8 @@ impl Debug for PackedBlockQuantFormat {
 }
 
 impl PackedBlockQuantFormat {
-    pub const fn new(
-        bq: &'static dyn BlockQuant,
-        r: usize,
-        zip: usize,
-        scales_at_end: bool,
-    ) -> Self {
-        PackedBlockQuantFormat { bq: StaticBlockQuant::Borrow(bq), r, zip, scales_at_end }
+    pub fn new(bq: &dyn BlockQuant, r: usize, zip: usize, scales_at_end: bool) -> Self {
+        PackedBlockQuantFormat { bq: clone_box(bq), r, zip, scales_at_end }
     }
 
     #[cfg(test)]
