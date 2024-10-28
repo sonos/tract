@@ -226,7 +226,7 @@ pub mod test {
 
         for panel in 0..packed_block_quant.panels_count() {
             unsafe {
-                from.bq.extract_panel(
+                from.bq.extract_packed_panel(
                     &packed_block_quant,
                     to,
                     panel,

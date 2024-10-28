@@ -216,7 +216,7 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
         }
         Ok(EagerPackedInput {
             format: Box::new(PackedBlockQuantFormat {
-                bq: StaticBlockQuant::Owned(Box::new(*self)),
+                bq: Box::new(self.clone()),
                 r,
                 zip,
                 scales_at_end,
@@ -228,7 +228,7 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
         })
     }
 
-    unsafe fn extract_panel(
+    unsafe fn extract_packed_panel(
         &self,
         value: &EagerPackedInput,
         target: &PackedFormat,
@@ -347,7 +347,12 @@ mod tests {
                 let panel_f32 = packed_f32.panel_bytes(panel, None)?;
                 let panel_f32 = std::slice::from_raw_parts(panel_f32 as *const f32, k * r);
                 let mut panel_q4 = Tensor::zero::<f32>(&[k * r])?;
-                q.extract_panel(&packed_q4, &packer, panel, panel_q4.as_bytes_mut().as_mut_ptr())?;
+                q.extract_packed_panel(
+                    &packed_q4,
+                    &packer,
+                    panel,
+                    panel_q4.as_bytes_mut().as_mut_ptr(),
+                )?;
                 assert_eq!(panel_q4.as_slice::<f32>()?, panel_f32);
             }
         }

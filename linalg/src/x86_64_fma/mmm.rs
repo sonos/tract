@@ -17,10 +17,12 @@ MMMExternKernel!(fma_mmm_f32_24x4<f32>(24,4)@(32,4) where(FMA));
 MMMExternKernel!(fma_mmm_f32_40x2<f32>(40,2)@(32,4) where(FMA));
 MMMExternKernel!(fma_mmm_f32_64x1<f32>(64,1)@(32,4) where(FMA));
 
-pub const PQ40_R32: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 32, 16, false);
+pub fn pq40_r32() -> PackedBlockQuantFormat {
+    PackedBlockQuantFormat::new(&Q4_0, 32, 16, false)
+}
 MMMExternKernel! {fma_mmm_f32_32x1<f32>(32,1)@(32,4) where(FMA)
-    packing[1] = q40f32 => |k| k.with_packing_a(PQ40_R32);
-    packing[2] = q40f16 => |k| k.with_packing(PQ40_R32, PackedFormat::new(F16, 1, 2));
+    packing[1] = q40f32 => |k| k.with_packing_a(pq40_r32());
+    packing[2] = q40f16 => |k| k.with_packing(pq40_r32(), PackedFormat::new(F16, 1, 2));
     packing[3] = f16f16 => |k| k.with_packing(PackedFormat::new(F16, 32, 32), PackedFormat::new(F16, 1, 2));
     store(f16)
 }
