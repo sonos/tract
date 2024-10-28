@@ -1,6 +1,7 @@
 use downcast_rs::{impl_downcast, Downcast};
 use dyn_clone::{clone_box, DynClone};
 use dyn_hash::DynHash;
+use num_traits::Zero;
 use tract_data::internal::*;
 use tract_data::itertools::Itertools;
 
@@ -87,6 +88,28 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
             }
             Ok(tensor)
         }
+    }
+
+    fn extract_at_offset_f16(&self, input: &[u8], offset: usize) -> f16 {
+        let len = self.block_len();
+        let block_id = offset / len;
+        let mut block = vec![f16::zero(); self.block_len()];
+        self.dequant_block_f16(
+            &input[block_id * self.block_bytes()..][..self.block_bytes()],
+            &mut block,
+        );
+        block[offset % len]
+    }
+
+    fn extract_at_offset_f32(&self, input: &[u8], offset: usize) -> f32 {
+        let len = self.block_len();
+        let block_id = offset / len;
+        let mut block = vec![f32::zero(); self.block_len()];
+        self.dequant_block_f32(
+            &input[block_id * self.block_bytes()..][..self.block_bytes()],
+            &mut block,
+        );
+        block[offset % len]
     }
 
     fn pack(
