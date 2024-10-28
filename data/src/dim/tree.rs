@@ -530,7 +530,8 @@ impl TDim {
                         continue;
                     }
                     let diff = a.clone() - b;
-                    if diff.as_i64().is_some_and(|i| i >= 0) || scope.prove_positive_or_zero(&diff)
+                    if diff.as_i64().is_some_and(|i| i >= 0)
+                        || scope.prove_positive_or_zero(&diff, scenario)
                     {
                         redundant.insert(a.clone());
                     }
@@ -560,7 +561,8 @@ impl TDim {
                         continue;
                     }
                     let diff = a.clone() - b;
-                    if diff.as_i64().is_some_and(|i| i >= 0) || scope.prove_positive_or_zero(&diff)
+                    if diff.as_i64().is_some_and(|i| i >= 0)
+                        || scope.prove_positive_or_zero(&diff, scenario)
                     {
                         redundant.insert(b.clone());
                     }
@@ -585,7 +587,12 @@ impl TDim {
         }
     }
 
-    pub(super) fn inclusive_bound(&self, scope: &SymbolScopeData, upper: bool) -> Option<i64> {
+    pub(super) fn _inclusive_bound(
+        &self,
+        scope: &SymbolScopeData,
+        upper: bool,
+        scenario: Option<&str>,
+    ) -> Option<i64> {
         use self::TDim::*;
         match self {
             Val(n) => Some(*n),
@@ -631,7 +638,7 @@ impl TDim {
             Add(terms) => {
                 let mut bound = 0;
                 for t in terms {
-                    if let Some(b) = t.inclusive_bound(scope, upper) {
+                    if let Some(b) = t._inclusive_bound(scope, upper, scenario) {
                         bound += b;
                     } else {
                         return None;
@@ -641,46 +648,48 @@ impl TDim {
             }
             MulInt(p, a) => match p.cmp(&0) {
                 Ordering::Equal => Some(0),
-                Ordering::Greater => a.inclusive_bound(scope, upper).map(|x| x * p),
-                Ordering::Less => a.inclusive_bound(scope, !upper).map(|x| x * p),
+                Ordering::Greater => a._inclusive_bound(scope, upper, scenario).map(|x| x * p),
+                Ordering::Less => a._inclusive_bound(scope, !upper, scenario).map(|x| x * p),
             },
             Mul(_) => None,
             Min(terms) if !upper => {
-                terms.iter().filter_map(|t| t.inclusive_bound(scope, false)).min()
+                terms.iter().filter_map(|t| t._inclusive_bound(scope, false, scenario)).min()
             }
             Max(terms) if upper => {
-                terms.iter().filter_map(|t| t.inclusive_bound(scope, true)).max()
+                terms.iter().filter_map(|t| t._inclusive_bound(scope, true, scenario)).max()
             }
-            Div(a, q) => a.inclusive_bound(scope, upper).map(|x| x / (*q as i64)),
+            Div(a, q) => a._inclusive_bound(scope, upper, scenario).map(|x| x / (*q as i64)),
             Broadcast(terms) => {
                 if upper {
-                    Max(terms.clone()).inclusive_bound(scope, true)
+                    Max(terms.clone())._inclusive_bound(scope, true, scenario)
                 } else {
-                    Min(terms.clone()).inclusive_bound(scope, false)
+                    Min(terms.clone())._inclusive_bound(scope, false, scenario)
                 }
             }
             _ => None,
         }
     }
 
-    pub fn low_inclusive_bound(&self) -> Option<i64> {
+    pub fn inclusive_bound(
+        &self,
+        upper: bool,
+        scenario: Option<&str>,
+    ) -> Option<i64> {
         if let TDim::Val(v) = self {
             return Some(*v);
         }
         let scope = self.find_scope()?;
         let data = scope.0.lock();
         let data = data.borrow();
-        self.inclusive_bound(&data, false)
+        self._inclusive_bound(&data, upper, scenario)
+    }
+
+    pub fn low_inclusive_bound(&self) -> Option<i64> {
+        self.inclusive_bound(false, None)
     }
 
     pub fn high_inclusive_bound(&self) -> Option<i64> {
-        if let TDim::Val(v) = self {
-            return Some(*v);
-        }
-        let scope = self.find_scope()?;
-        let data = scope.0.lock();
-        let data = data.borrow();
-        self.inclusive_bound(&data, true)
+        self.inclusive_bound(true, None)
     }
 
     pub fn prove_positive_or_zero(&self) -> bool {
@@ -690,7 +699,7 @@ impl TDim {
         let Some(scope) = self.find_scope() else { return false };
         let data = scope.0.lock();
         let data = data.borrow();
-        data.prove_positive_or_zero(self)
+        data.prove_positive_or_zero(self, None)
     }
 
     pub fn prove_strict_positive(&self) -> bool {
