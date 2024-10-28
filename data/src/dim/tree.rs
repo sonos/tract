@@ -599,8 +599,7 @@ impl TDim {
             Sym(_) => {
                 if upper {
                     scope
-                        .all_assertions()
-                        .iter()
+                        .assertions(scenario)
                         .filter_map(|assert| match &assert {
                             Assertion::LT(left, right)
                                 if left == self && right.as_i64().is_some() =>
@@ -617,8 +616,7 @@ impl TDim {
                         .min()
                 } else {
                     scope
-                        .all_assertions()
-                        .iter()
+                        .assertions(scenario)
                         .filter_map(|assert| match &assert {
                             Assertion::GT(left, right)
                                 if left == self && right.as_i64().is_some() =>
@@ -670,11 +668,7 @@ impl TDim {
         }
     }
 
-    pub fn inclusive_bound(
-        &self,
-        upper: bool,
-        scenario: Option<&str>,
-    ) -> Option<i64> {
+    pub fn inclusive_bound(&self, upper: bool, scenario: Option<&str>) -> Option<i64> {
         if let TDim::Val(v) = self {
             return Some(*v);
         }
