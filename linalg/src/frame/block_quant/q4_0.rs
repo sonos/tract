@@ -254,7 +254,7 @@ mod tests {
 
     use super::*;
 
-    fn cycle_f32(b: impl BlockQuant, data: &[f32]) {
+    fn test_loop_f32(b: impl BlockQuant, data: &[f32]) {
         let mut input = data.to_vec();
         while input.len() % b.block_len() != 0 {
             input.push(0f32);
@@ -265,7 +265,7 @@ mod tests {
         assert_eq!(data, view);
     }
 
-    fn cycle_f16(b: impl BlockQuant, data: &[f32]) {
+    fn test_loop_f16(b: impl BlockQuant, data: &[f32]) {
         let mut input = data.iter().map(|f| f16::from_f32(*f)).collect_vec();
         while input.len() % b.block_len() != 0 {
             input.push(f16::zero());
@@ -278,49 +278,51 @@ mod tests {
 
     #[test]
     fn loop_q4f32_pos() {
-        cycle_f32(Q4_0, &[1.0, 2.0, 3.0, 4.0]);
+        test_loop_f32(Q4_0, &[1.0, 2.0, 3.0, 4.0]);
     }
 
     #[test]
     fn loop_q4f16_pos() {
-        cycle_f16(Q4_0, &[1.0, 2.0, 3.0, 4.0]);
+        test_loop_f16(Q4_0, &[1.0, 2.0, 3.0, 4.0]);
     }
 
     #[test]
     fn loop_q4f32_neg() {
-        cycle_f32(Q4_0, &[-1.0, -2.0, -3.0, -4.0]);
+        test_loop_f32(Q4_0, &[-1.0, -2.0, -3.0, -4.0]);
     }
 
     #[test]
     fn loop_q4f16_beg() {
-        cycle_f16(Q4_0, &[-1.0, -2.0, -3.0, -4.0]);
+        test_loop_f16(Q4_0, &[-1.0, -2.0, -3.0, -4.0]);
     }
 
     #[test]
     fn loop_q4_big_pos() {
-        cycle_f32(Q4_0, &[1234.0]);
-        cycle_f16(Q4_0, &[-1.0, -2.0, -3.0, -4.0]);
+        test_loop_f32(Q4_0, &[1234.0]);
+        test_loop_f16(Q4_0, &[-1.0, -2.0, -3.0, -4.0]);
     }
 
     #[test]
     fn loop_q4_big_neg() {
-        cycle_f32(Q4_0, &[-1234.0]);
-        cycle_f16(Q4_0, &[-1234.0]);
+        test_loop_f32(Q4_0, &[-1234.0]);
+        test_loop_f16(Q4_0, &[-1234.0]);
+    }
+
+    fn test_extract_f32(b: impl BlockQuant, data: &[f32]) {
+        let mut input = data.to_vec();
+        while input.len() % b.block_len() != 0 {
+            input.push(0f32);
+        }
+        let quant = b.quant_f32(&input).unwrap();
+        for (ix, v) in data.iter().enumerate() {
+            assert_eq!(b.extract_at_offset_f32(&quant, ix).round(), *v);
+        }
     }
 
     #[test]
-    fn packing() -> TractResult<()> {
-        test_packing(BaseQ4_0::<2>, 4, 4, 2, 0, false)
-    }
-
-    #[test]
-    fn packing_with_zip() -> TractResult<()> {
-        test_packing(BaseQ4_0::<2>, 2, 8, 8, 4, false)
-    }
-
-    #[test]
-    fn packing_with_scales_at_end() -> TractResult<()> {
-        test_packing(BaseQ4_0::<2>, 2, 4, 4, 0, true)
+    fn extract_q40f32_pos() {
+        let data = (1..).map(|i| ((i % 14) - 6) as f32).take(5 * Q4_0.block_len()).collect_vec();
+        test_extract_f32(Q4_0, &data);
     }
 
     fn test_packing(
@@ -357,5 +359,20 @@ mod tests {
             }
         }
         Ok(())
+    }
+
+    #[test]
+    fn packing() -> TractResult<()> {
+        test_packing(BaseQ4_0::<2>, 4, 4, 2, 0, false)
+    }
+
+    #[test]
+    fn packing_with_zip() -> TractResult<()> {
+        test_packing(BaseQ4_0::<2>, 2, 8, 8, 4, false)
+    }
+
+    #[test]
+    fn packing_with_scales_at_end() -> TractResult<()> {
+        test_packing(BaseQ4_0::<2>, 2, 4, 4, 0, true)
     }
 }
