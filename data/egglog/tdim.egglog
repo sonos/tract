@@ -1,0 +1,98 @@
+(datatype TDim
+	(Num i64)
+	(Add TDim TDim)
+	(Mul TDim TDim)
+	(Div TDim i64)
+	(Neg TDim)
+	(Var String)
+)
+
+(let zero (Num 0))
+(let one (Num 1))
+(let mone (Num -1))
+(let two (Num 2))
+
+(birewrite (Neg a) (Mul a mone))
+
+(rewrite (Add a zero) a)
+(rewrite (Add a b) (Add b a))
+(rewrite (Add (Add a b) c) (Add a (Add b c)))
+(rewrite (Add (Num a) (Num b)) (Num (+ a b)))
+
+(rewrite (Mul a zero) zero)
+(rewrite (Mul a one) a)
+(rewrite (Mul a b) (Mul b a))
+(rewrite (Mul (Mul a b) c) (Mul a (Mul b c)))
+(rewrite (Mul (Num a) (Num b)) (Num (* a b)))
+
+(birewrite (Add (Mul a b) (Mul a c)) (Mul a (Add b c)))
+
+(rewrite (Div (Num q) q) one :when ((!= q 0)))
+(rewrite (Div (Mul (Num q) b) q) b :when ((!= q 0)))
+(rewrite (Div (Num a) q) (Num (/ a q)))
+(rewrite (Div (Neg a) q) (Neg (Div a q)))
+
+(rewrite (Neg (Div a q)) (Div (Neg a) q))
+(rewrite
+	(Div (Mul (Num a) b) q)
+	(Mul b (Num (/ a q)))
+	:when ((!= q 0) (= (% a q) 0))
+)
+(rewrite
+	(Add (Div (Add a (Num b)) q) (Div (Add (Neg a) (Num c)) q))
+	(Num (/ (+ b c) q))
+	:when ((= (% (+ b c) q) 0))
+)
+
+;; (let s (Var "s"))
+;; 
+;; ;; (push)
+;; ;; (let a (Div (Mul s two) 2))
+;; ;; (run 10)
+;; ;; (extract a)
+;; ;; (pop)
+;; 
+;; ;; (push)
+;; ;; (let a (Add(Add s one) (Add s two)))
+;; ;; (run 10)
+;; ;; (extract a)
+;; ;; (pop)
+;; 
+;; ;; (push)
+;; ;; (let a (Add s (Neg s)))
+;; ;; (run 15)
+;; ;; (extract a)
+;; ;; (pop)
+;; 
+;; ;; (push)
+;; ;; (let a (Add (Add s one) (Add (Neg s) two)))
+;; ;; (run 10)
+;; ;; (extract a)
+;; ;; (pop)
+;; 
+;; (push)
+;; (let a (Add
+;; 	(Div (Add s one) 2)
+;; 	(Neg (Div (Add s mone) 2)))
+;; )
+;; (run 20)
+;; (extract a)
+;; (pop)
+;; 
+;; (push)
+;; (let a (Add
+;; 	(Div (Add s one) 2)
+;; 	(Div (Add (Neg s) one) 2))
+;; )
+;; (run 10)
+;; (extract a)
+;; (pop)
+;; 
+;; ;; (let a10 (Add zero one))
+;; ;; (let a12 (Add one two))
+;; ;;
+;; ;; (run 10)
+;; ;;
+;; ;; (check (= a10 one))
+;; ;; (check (= a12 (Num 3)))
+;; 

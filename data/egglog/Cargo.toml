@@ -1,0 +1,12 @@
+[package]
+name = "tdim-egglog"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+members = []
+
+[dependencies]
+anyhow = "1.0.91"
+egglog = { version = "0.3.0", default-features = false }
+tract-data = "0.21.7"
