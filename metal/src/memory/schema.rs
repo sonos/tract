@@ -42,7 +42,7 @@ pub fn eval_metal_scope_node_mem(
     let flush_lists = order::build_flush_list(model, order, &outputs, |node| {
         let Ok(facts) = model.node_output_facts(node.id) else { return false };
 
-        facts.iter().any(|it| it.to_metal_fact().map(|it| it.is_temporary()).unwrap_or(false))
+        facts.iter().any(|it| it.to_metal_fact().map(|it| it.is_from_gpu()).unwrap_or(false))
     });
     let mut scoped_nodes = tvec![];
 
@@ -62,7 +62,7 @@ pub fn eval_metal_scope_node_mem(
             .node_output_facts(*n)?
             .into_iter()
             .flat_map(|it| it.to_metal_fact().ok())
-            .filter(|it| it.is_temporary())
+            .filter(|it| it.is_from_gpu())
             .collect::<TVec<_>>();
 
         if out_metal_tmp_facts.is_empty() {

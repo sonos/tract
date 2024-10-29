@@ -75,7 +75,7 @@ impl TypedOp for MetalSync {
             MetalSyncKind::ToGpu => {
                 ensure!(input.datum_type != DatumType::Opaque, "Cannot sync Opaque Tensor to GPU");
                 Ok(tvec![TypedFact::dt_scalar(DatumType::Opaque)
-                    .with_opaque_fact(MetalFact::shared(input.clone())?)])
+                    .with_opaque_fact(MetalFact::from_cpu(input.clone())?)])
             }
         }
     }

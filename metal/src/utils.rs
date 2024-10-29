@@ -1,4 +1,4 @@
-use crate::fact::{MetalFact, MetalFactKind, MetalTypedFactExt};
+use crate::fact::{MetalFact, MetalOrigin, MetalTypedFactExt};
 use num_traits::{AsPrimitive, Zero};
 use tract_core::internal::*;
 
@@ -22,7 +22,7 @@ macro_rules! impl_eval_op_for_metal_op {
     };
 }
 
-pub fn metal_tmp_output_facts(
+pub fn metal_facts_from_gpu(
     facts: &[&TypedFact],
     resolve_facts: impl Fn(&[&TypedFact]) -> TractResult<TVec<TypedFact>>,
 ) -> TractResult<TVec<TypedFact>> {
@@ -34,7 +34,7 @@ pub fn metal_tmp_output_facts(
         let output_facts = (resolve_facts)(metal_facts.as_slice())?;
         Ok(output_facts
             .into_iter()
-            .map(|it| Ok(MetalFact::new(MetalFactKind::Temporary, it)?.into_opaque_fact()))
+            .map(|it| Ok(MetalFact::new(MetalOrigin::FromGpu, it)?.into_opaque_fact()))
             .collect::<TractResult<_>>()?)
     } else if facts.iter().all(|it| it.datum_type != DatumType::Opaque) {
         (resolve_facts)(facts)

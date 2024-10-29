@@ -34,9 +34,29 @@ impl Op for MetalSoftmax {
     op_as_typed_op!();
 }
 
+crate::impl_eval_op_for_metal_op!(MetalSoftmax);
+
+impl MetalEvalOp for MetalSoftmax {
+    fn metal_eval(
+        &self,
+        context: &MetalContext,
+        node_id: usize,
+        session: &mut SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let opaque = args_1!(inputs);
+        let input = opaque.to_metal_tensor()?;
+        let output =
+            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
+        Softmax.dispatch_eval(context, input, self.axes[0], &output)?;
+
+        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+    }
+}
+
 impl TypedOp for MetalSoftmax {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_tmp_output_facts(inputs, |facts| {
+        crate::utils::metal_facts_from_gpu(inputs, |facts| {
             let dt = facts[0].datum_type;
             let fact = dt.fact(facts[0].shape.clone());
             Ok(tvec!(fact))
@@ -74,24 +94,4 @@ impl TypedOp for MetalSoftmax {
     }
 
     as_op!();
-}
-
-crate::impl_eval_op_for_metal_op!(MetalSoftmax);
-
-impl MetalEvalOp for MetalSoftmax {
-    fn metal_eval(
-        &self,
-        context: &MetalContext,
-        node_id: usize,
-        session: &mut SessionState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        let opaque = args_1!(inputs);
-        let input = opaque.to_metal_tensor()?;
-        let output =
-            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
-        Softmax.dispatch_eval(context, input, self.axes[0], &output)?;
-
-        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
-    }
 }

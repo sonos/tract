@@ -102,7 +102,7 @@ impl TypedOp for MetalAxisOp {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_tmp_output_facts(inputs, |facts| {
+        crate::utils::metal_facts_from_gpu(inputs, |facts| {
             let mut shape = facts[0].shape.clone();
             self.0
                 .change_shape(&mut shape, false)
@@ -222,7 +222,7 @@ impl MetalEvalOp for MetalIntoShape {
 
 impl TypedOp for MetalIntoShape {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_tmp_output_facts(inputs, |facts| self.0.output_facts(facts))
+        crate::utils::metal_facts_from_gpu(inputs, |facts| self.0.output_facts(facts))
             .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
     }
 

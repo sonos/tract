@@ -37,7 +37,7 @@ impl MetalEvalOp for MetalRotateHalf {
 
 impl TypedOp for MetalRotateHalf {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_tmp_output_facts(inputs, |facts| {
+        crate::utils::metal_facts_from_gpu(inputs, |facts| {
             let dt = facts[0].datum_type;
             let fact = dt.fact(facts[0].shape.clone());
             Ok(tvec!(fact))

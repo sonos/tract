@@ -66,7 +66,7 @@ impl MetalEvalOp for MetalReduce {
 impl TypedOp for MetalReduce {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(self.axes.iter().tuple_windows().all(|(a, b)| a < b));
-        crate::utils::metal_tmp_output_facts(inputs, |facts| {
+        crate::utils::metal_facts_from_gpu(inputs, |facts| {
             let mut shape: TVec<_> = facts[0].shape.to_tvec();
             for &ax in &self.axes {
                 shape[ax] = 1.to_dim();

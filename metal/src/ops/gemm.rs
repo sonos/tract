@@ -101,7 +101,7 @@ impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
 
 impl<K: GemmKernel + 'static> TypedOp for MetalGemm<K> {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_tmp_output_facts(inputs, |input_facts| {
+        crate::utils::metal_facts_from_gpu(inputs, |input_facts| {
             self.resolve_output_facts(input_facts)
         })
         .with_context(|| {

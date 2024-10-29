@@ -43,7 +43,7 @@ impl MetalEvalOp for MetalElementWiseOp {
 
 impl TypedOp for MetalElementWiseOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_tmp_output_facts(inputs, |facts| Ok(tvec!(facts[0].without_value())))
+        crate::utils::metal_facts_from_gpu(inputs, |facts| Ok(tvec!(facts[0].without_value())))
             .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
     }
 
