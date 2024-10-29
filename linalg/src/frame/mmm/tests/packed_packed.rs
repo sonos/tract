@@ -57,6 +57,29 @@ macro_rules! mmm_packed_packed_tests {
                 }
 
                 #[test]
+                fn packed_packed_a_scale_times_2_left() -> TractResult<()> {
+                    t(
+                        (1..=2 * $ker.mr() as i64).map(|x| x as f32).collect_vec(),
+                        vec![1f32; $ker.nr()]
+                            .into_iter()
+                            .chain(vec![0f32; $ker.nr()].into_iter())
+                            .collect_vec(),
+                    )
+                }
+
+                #[test]
+                fn packed_packed_a_scale_times_2_right() -> TractResult<()> {
+                    t(
+                        (1..=2 * $ker.mr() as i64).map(|x| x as f32).collect_vec(),
+                        vec![0f32; $ker.nr()]
+                            .into_iter()
+                            .chain(vec![1f32; $ker.nr()].into_iter())
+                            .collect_vec(),
+                    )
+                }
+
+
+                #[test]
                 fn packed_packed_a_scale_times_2() -> TractResult<()> {
                     t(
                         (1..=2 * $ker.mr() as i64).map(|x| x as f32).collect_vec(),

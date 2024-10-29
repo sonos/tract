@@ -20,6 +20,11 @@ MMMExternKernel!(fma_mmm_f32_64x1<f32>(64,1)@(32,4) where(FMA));
 pub fn pq40_r32() -> PackedBlockQuantFormat {
     PackedBlockQuantFormat::new(&Q4_0, 32, 16, false)
 }
+
+pub fn pq40_r128() -> PackedBlockQuantFormat {
+    PackedBlockQuantFormat::new(&Q4_0, 128, 16, false)
+}
+
 MMMExternKernel! {fma_mmm_f32_32x1<f32>(32,1)@(32,4) where(FMA)
     packing[1] = q40f32 => |k| k.with_packing_a(pq40_r32());
     packing[2] = q40f16 => |k| k.with_packing(pq40_r32(), PackedFormat::new(F16, 1, 2));
@@ -31,7 +36,9 @@ MMMExternKernel!(fma_mmm_f32_32x3<f32>(32,3)@(32,4) where(FMA)
  store(f16)
 );
 
-MMMExternKernel!(avx512_mmm_f32_128x1<f32>(128, 1)@(64,4) where (AVX512F));
+MMMExternKernel!(avx512_mmm_f32_128x1<f32>(128, 1)@(64,4) where (AVX512F)
+    packing[1] = q40f32 => |k| k.with_packing_a(pq40_r128());
+);
 MMMExternKernel!(avx512_mmm_f32_16x1 <f32>( 16, 1)@(64,4) where (AVX512F));
 MMMExternKernel!(avx512_mmm_f32_16x12<f32>( 16,12)@(64,4) where (AVX512F));
 MMMExternKernel!(avx512_mmm_f32_16x8 <f32>( 16, 8)@(64,4) where (AVX512F));
