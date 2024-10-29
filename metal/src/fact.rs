@@ -1,38 +1,39 @@
 use std::fmt;
 use tract_core::internal::*;
 
+/// Origin of the metal tensor
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum MetalFactKind {
-    Temporary,
-    Shared,
+pub enum MetalOrigin {
+    /// Metal tensor outputted by a GPU ops
+    /// Can be either: Owned or ArenaView
+    FromGpu,
+    /// Metal tensor built from a CPU tensor
+    /// Can be only Owned Metal tensor
+    FromCpu,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct MetalFact {
-    pub kind: MetalFactKind,
+    pub origin: MetalOrigin,
     pub fact: TypedFact,
 }
 
 impl MetalFact {
-    pub fn new(kind: MetalFactKind, fact: TypedFact) -> TractResult<Self> {
+    pub fn new(origin: MetalOrigin, fact: TypedFact) -> TractResult<Self> {
         ensure!(fact.as_metal_fact().is_none());
-        Ok(Self { kind, fact })
+        Ok(Self { origin, fact })
     }
 
-    pub fn shared(fact: TypedFact) -> TractResult<Self> {
-        Self::new(MetalFactKind::Shared, fact)
+    pub fn from_cpu(fact: TypedFact) -> TractResult<Self> {
+        Self::new(MetalOrigin::FromGpu, fact)
     }
 
-    pub fn marked_as_temporary(self) -> Self {
-        Self { kind: MetalFactKind::Temporary, ..self }
+    pub fn is_from_gpu(&self) -> bool {
+        matches!(self.origin, MetalOrigin::FromGpu)
     }
 
-    pub fn is_temporary(&self) -> bool {
-        matches!(self.kind, MetalFactKind::Temporary)
-    }
-
-    pub fn is_shared(&self) -> bool {
-        matches!(self.kind, MetalFactKind::Shared)
+    pub fn is_from_cpu(&self) -> bool {
+        matches!(self.origin, MetalOrigin::FromCpu)
     }
 
     pub fn into_typed_fact(self) -> TypedFact {
@@ -56,9 +57,9 @@ impl OpaqueFact for MetalFact {
 
 impl fmt::Debug for MetalFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self.kind {
-            MetalFactKind::Shared => write!(fmt, "Metal,Shared({:?})", self.fact),
-            MetalFactKind::Temporary => write!(fmt, "Metal,Tmp({:?})", self.fact),
+        match self.origin {
+            MetalOrigin::FromCpu => write!(fmt, "Metal,FromCpu({:?})", self.fact),
+            MetalOrigin::FromGpu => write!(fmt, "Metal,FromGpu({:?})", self.fact),
         }
     }
 }

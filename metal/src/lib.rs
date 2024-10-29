@@ -22,7 +22,7 @@ pub use crate::session_handler::MetalSessionHandler;
 pub use crate::tensor::{MetalTensor, MetalTensorExt};
 pub use crate::transform::MetalTransform;
 use anyhow::Result;
-pub use fact::MetalFact;
+pub use fact::{MetalFact, MetalOrigin};
 
 pub trait IntoMetal<T> {
     fn into_metal(self) -> Result<T>;

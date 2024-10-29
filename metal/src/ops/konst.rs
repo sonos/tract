@@ -12,7 +12,7 @@ impl MetalConst {
             return Ok(None);
         }
         let fact = TypedFact::dt_scalar(DatumType::Opaque)
-            .with_opaque_fact(MetalFact::shared(Arc::clone(&c).into())?);
+            .with_opaque_fact(MetalFact::from_cpu(Arc::clone(&c).into())?);
         Ok(Some(Self(c.into_metal()?.into_opaque_tensor().into_arc_tensor(), fact)))
     }
 }
