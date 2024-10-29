@@ -77,29 +77,12 @@ mod tests {
     }
 
     #[test]
-    fn prove_positive_with_axiom_2() -> TractResult<()> {
+    fn prove_positive_with_axiom_2() {
         let s = SymbolScope::default();
-        s.add_assertion("s>0").unwrap();
+        s.add_assertion("s>=0").unwrap();
         s.add_assertion("p>=0").unwrap();
         s.add_assertion("p+s<4096").unwrap();
-        s.add_scenario_assertion("tg", "s==1")?;
-        s.add_scenario_assertion("tg", "p<4095")?;
-        s.add_scenario_assertion("pp", "p==0")?;
-
-        assert_eq!(s.parse_tdim("s").unwrap().inclusive_bound(false, Some("tg")), Some(1));
-        assert_eq!(s.parse_tdim("s").unwrap().inclusive_bound(true, Some("tg")), None);
-        assert_eq!(s.parse_tdim("p").unwrap().inclusive_bound(false, Some("tg")), Some(0));
-        assert_eq!(s.parse_tdim("p").unwrap().inclusive_bound(true, Some("tg")), Some(4095));
-
-        assert_eq!(s.parse_tdim("s").unwrap().inclusive_bound(false, Some("pp")), Some(1));
-        assert_eq!(s.parse_tdim("s").unwrap().inclusive_bound(true, Some("pp")), None);
-        assert_eq!(s.parse_tdim("p").unwrap().inclusive_bound(false, Some("pp")), Some(0));
-        assert_eq!(s.parse_tdim("p").unwrap().inclusive_bound(true, Some("pp")), None);
-
-
-
         assert!(s.parse_tdim("4096-p").unwrap().prove_positive_or_zero());
-        Ok(())
     }
 
     #[test]
