@@ -60,3 +60,19 @@ fn test_0() {
     let simplified = expr_to_tdim(&scope, &termdag.term_to_expr(&extracted));
     println!("{simplified}");
 }
+
+
+#[test]
+fn test_lo() {
+    let mut egraph = egraph().unwrap();
+    let scope = SymbolScope::default();
+    let expr = tdim_to_expr(&scope.parse_tdim("s+3").unwrap());
+    egraph.parse_and_run_program(None, r#"(set (lo (Var "s")) 1)"#).unwrap();
+    
+//    println!("{egraph:?}");
+//    egraph.parse_and_run_program(None, r#"(let x (Add (Var s) (Num 3)))"#).unwrap();
+//    egraph.extract_value("x").unwrap();
+//    egraph.parse_and_run_program(None, r#"(let x (lo (Add (Var "s") (Num 3))))"#).unwrap();
+//    egraph.eval_expr(&Expr::call_no_span("x", [expr])).unwrap();
+    panic!()
+}

@@ -12,7 +12,7 @@
 (let mone (Num -1))
 (let two (Num 2))
 
-(birewrite (Neg a) (Mul a mone))
+;; (birewrite (Neg a) (Mul a mone))
 
 (rewrite (Add a zero) a)
 (rewrite (Add a b) (Add b a))
@@ -33,6 +33,9 @@
 (rewrite (Div (Neg a) q) (Neg (Div a q)))
 
 (rewrite (Neg (Div a q)) (Div (Neg a) q))
+
+;; complicated and a bit adhoc simplification rewrite
+
 (rewrite
 	(Div (Mul (Num a) b) q)
 	(Mul b (Num (/ a q)))
@@ -44,55 +47,54 @@
 	:when ((= (% (+ b c) q) 0))
 )
 
-;; (let s (Var "s"))
-;; 
-;; ;; (push)
-;; ;; (let a (Div (Mul s two) 2))
-;; ;; (run 10)
-;; ;; (extract a)
-;; ;; (pop)
-;; 
-;; ;; (push)
-;; ;; (let a (Add(Add s one) (Add s two)))
-;; ;; (run 10)
-;; ;; (extract a)
-;; ;; (pop)
-;; 
-;; ;; (push)
-;; ;; (let a (Add s (Neg s)))
-;; ;; (run 15)
-;; ;; (extract a)
-;; ;; (pop)
-;; 
-;; ;; (push)
-;; ;; (let a (Add (Add s one) (Add (Neg s) two)))
-;; ;; (run 10)
-;; ;; (extract a)
-;; ;; (pop)
-;; 
-;; (push)
-;; (let a (Add
-;; 	(Div (Add s one) 2)
-;; 	(Neg (Div (Add s mone) 2)))
-;; )
-;; (run 20)
-;; (extract a)
-;; (pop)
-;; 
-;; (push)
-;; (let a (Add
-;; 	(Div (Add s one) 2)
-;; 	(Div (Add (Neg s) one) 2))
-;; )
-;; (run 10)
-;; (extract a)
-;; (pop)
-;; 
-;; ;; (let a10 (Add zero one))
-;; ;; (let a12 (Add one two))
-;; ;;
-;; ;; (run 10)
-;; ;;
-;; ;; (check (= a10 one))
-;; ;; (check (= a12 (Num 3)))
-;; 
+;; range support
+
+(function hi (TDim) i64 :merge (min old new))
+(function lo (TDim) i64 :merge (max old new))
+(relation non-zero (TDim))
+
+(rule ((= e (Num x))) ((set (lo e) x) (set (hi e) x)))
+
+(rule ((= e (Add a b))
+       (= la (lo a))
+       (= lb (lo b)))
+      ((set (lo e) (+ la lb))))
+
+(rule ((= e (Add a b))
+       (= ha (hi a))
+       (= hb (hi b)))
+      ((set (hi e) (+ ha hb))))
+
+(rule ((= e (Add a b))
+       (= la (lo a))
+       (= he (hi e)))
+      ((set (hi b) (- he la))))
+
+(rule ((= e (Mul a b))
+       (= la (lo a))
+       (= ha (hi a))
+       (= lb (lo b))
+       (= hb (hi b)))
+      ((set (lo e) 
+          (min (min (* la lb) (* la hb))
+               (min (* ha lb) (* ha hb))))
+       (set (hi e) 
+          (max (max (* la lb) (* la hb))
+               (max (* ha lb) (* ha hb))))))
+
+(rule ((= e (Div a b))
+       (= la (lo a))
+       (= ha (hi a)))
+      ((set (lo e) 
+          (min (min (/ la b) (/ la b))
+               (min (/ ha b) (/ ha b))))
+       (set (hi e) 
+          (max (max (/ la b) (/ la b))
+               (max (/ ha b) (/ ha b))))))
+
+(rule ((= e (Neg a))
+       (= la (lo a))
+       (= ha (hi a)))
+      ((set (lo e) (- 0 ha))
+       (set (hi e) (- 0 la))))
+
