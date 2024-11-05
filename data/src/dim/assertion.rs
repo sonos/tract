@@ -37,6 +37,20 @@ impl Assertion {
         }
     }
 
+    pub fn left(&self) -> &TDim {
+        use Assertion::*;
+        match self {
+            Eq(l, _) | LT(l, _) | LTE(l, _) | GT(l, _) | GTE(l, _) => l
+        }
+    }
+
+    pub fn right(&self) -> &TDim {
+        use Assertion::*;
+        match self {
+            Eq(_, r) | LT(_, r) | LTE(_, r) | GT(_, r) | GTE(_, r) => r
+        }
+    }
+
     pub fn check(&self, values: &SymbolValues) -> Option<bool> {
         use Assertion::*;
         match self {

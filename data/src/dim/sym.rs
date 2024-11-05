@@ -1,8 +1,10 @@
-use itertools::Itertools;
+use itertools::{izip, Itertools};
+use num_traits::bounds;
 use parking_lot::ReentrantMutex;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::{self, Display};
+use std::ops::Range;
 use std::sync::{Arc, Weak};
 use string_interner::DefaultStringInterner;
 use string_interner::Symbol as _;
@@ -147,7 +149,7 @@ impl SymbolScope {
         let locked = self.0.lock();
         let locked = locked.borrow();
         if locked.scenarios.len() == 0 {
-            return Ok(None)
+            return Ok(None);
         }
         let mut maybe = None;
         for (ix, (_name, assertions)) in locked.scenarios.iter().enumerate() {
@@ -158,7 +160,7 @@ impl SymbolScope {
             } else if maybe.is_none() {
                 maybe = Some(ix);
             } else {
-                return Ok(None)
+                return Ok(None);
             }
         }
         if maybe.is_some() {
@@ -201,38 +203,182 @@ impl SymbolScopeData {
         if let TDim::Val(v) = t {
             return *v >= 0;
         }
+        let known = self.found_boundaries(&[t.clone()], &*self.assertions).unwrap();
+        /*
         let positives = self.assertions.iter().filter_map(|i| i.as_known_positive()).collect_vec();
         let mut visited = vec![];
         let mut todo = vec![t.clone()];
         while let Some(t) = todo.pop() {
-            if t.to_i64().is_ok_and(|i| i >= 0) {
-                return true;
-            }
-            if t.inclusive_bound(self, false).is_some_and(|l| l >= 0) {
-                return true;
-            }
-            let syms = t.symbols();
-            for s in syms {
-                let me = t.guess_slope(&s);
-                for pos in &positives {
-                    if pos.symbols().contains(&s) {
-                        let other = pos.guess_slope(&s);
-                        if me.0.signum() == other.0.signum() {
-                            let new = t.clone() * me.1 * other.0.abs()
-                                - pos.clone() * me.0.abs() * other.1;
-                            if !visited.contains(&new) {
-                                todo.push(new);
-                            }
-                        }
-                    }
+        if t.to_i64().is_ok_and(|i| i >= 0) {
+        return true;
+        }
+        if t.inclusive_bound(self, false).is_some_and(|l| l >= 0) {
+        return true;
+        }
+        let syms = t.symbols();
+        for s in syms {
+        let me = t.guess_slope(&s);
+        for pos in &positives {
+        if pos.symbols().contains(&s) {
+        let other = pos.guess_slope(&s);
+        if me.0.signum() == other.0.signum() {
+        let new = t.clone() * me.1 * other.0.abs()
+        - pos.clone() * me.0.abs() * other.1;
+        if !visited.contains(&new) {
+        todo.push(new);
+        }
+        }
+        }
+        }
+        }
+        visited.push(t);
+        if visited.len() > 10 {
+        break;
+        }
+        }
+        */
+        false
+    }
+    /*
+           pub fn found_boundaries<'a>(
+           &self,
+           seeds: &[TDim],
+           assertions: impl IntoIterator<Item = &'a Assertion>,
+           ) -> TractResult<Vec<(TDim, Range<i64>)>> {
+        // inclusive min and max
+        let mut known: HashMap<TDim, (Option<i64>, Option<i64>)> = assertions
+        .into_iter()
+        .flat_map(|ass| {
+        [
+        (ass.left().clone(), (None, None)),
+        (ass.right().clone(), (None, None)),
+        if let Assertion::Eq(left, right) = ass {
+        (left.clone() - right, (Some(0), Some(0)))
+        } else {
+        (ass.as_known_positive().unwrap(), (Some(0), None))
+        },
+        ]
+        })
+        .collect();
+        for s in seeds {
+        known.insert(s.clone(), (None, None));
+        }
+        for i in 0..1 {
+        let mut new_bits = vec!();
+        let mut new_mins = vec!();
+        let mut new_maxs = vec!();
+        for d in known.keys().cloned() {
+        if matches!(&known[&d], (Some(_), Some(_))) {
+        continue
+        }
+        let discovered = match &d {
+        TDim::Val(n) => { new_mins
+        TDim::Add(terms) => {
+        terms.iter().for_each(|t| { known.entry(t.clone()).or_insert((None, None)); });
+        /*
+        if known[d].min.is_none() {
+        let min = terms.iter().reduce(|(a ,b)| )
+        }
+        */
+    }
+    _ => {}
+    };
+    }
+    //            while let Some((tdim, range)) = known.iter().filter(|(_, min, max)| min
+    println!("\nRUN #{i}");
+    for (d, (min, max)) in &known {
+        println!("{d} {min:?} {max:?}");
+    }
+    }
+    panic!();
+    }
+    */
+
+    pub fn found_boundaries<'a>(
+        &self,
+        seeds: &[TDim],
+        assertions: impl IntoIterator<Item = &'a Assertion>,
+    ) -> TractResult<Vec<(TDim, Range<i64>)>> {
+        let mut terms = vec![];
+        // inclusive min and max
+        let mut boundaries: Vec<(Option<i64>, Option<i64>)> = vec![];
+        macro_rules! discovered {
+            ($tdim: expr) => {
+                if !terms.contains($tdim) {
+                    terms.push($tdim.clone());
+                    boundaries.push((None, None));
                 }
-            }
-            visited.push(t);
-            if visited.len() > 10 {
-                break;
+            };
+        }
+        macro_rules! mined {
+            ($tdim: expr, $i: expr) => {
+                let ix = terms.iter().position(|x| x == &$tdim).unwrap();
+                boundaries[ix].0 = Some($i);
+            };
+        }
+        macro_rules! maxed {
+            ($tdim: expr, $i: expr) => {
+                let ix = terms.iter().position(|x| x == &$tdim).unwrap();
+                boundaries[ix].1 = Some($i);
+            };
+        }
+        for ass in assertions {
+            let known_positive = ass.as_known_positive().unwrap();
+            discovered!(ass.left());
+            discovered!(ass.right());
+            discovered!(&known_positive);
+            mined!(known_positive, 0);
+            if matches!(ass, Assertion::Eq(_, _)) {
+                maxed!(known_positive, 0);
             }
         }
-        false
+        for seed in seeds {
+            discovered!(seed);
+        }
+        for run in 0..1 {
+            println!("\nRUN #{run}");
+            for (term, (min, max)) in izip!(&terms, &boundaries) {
+                println!("{term} {min:?} {max:?}");
+            }
+            let mut encountered = vec!();
+            for ix in 0..terms.len() {
+                if boundaries[ix].0.is_some() && boundaries[ix].1.is_some() {
+                    continue;
+                }
+                match &terms[ix] {
+                    
+                }
+            }
+        }
+        /*
+               for s in seeds {
+               known.insert(s.clone(), (None, None));
+               }
+               for i in 0..1 {
+               let mut new_bits = vec!();
+               let mut new_mins = vec!();
+               let mut new_maxs = vec!();
+               for d in known.keys().cloned() {
+               if matches!(&known[&d], (Some(_), Some(_))) {
+               continue
+               }
+               let discovered = match &d {
+               TDim::Val(n) => { new_mins
+               TDim::Add(terms) => {
+               terms.iter().for_each(|t| { known.entry(t.clone()).or_insert((None, None)); });
+            /*
+            if known[d].min.is_none() {
+            let min = terms.iter().reduce(|(a ,b)| )
+            }
+            */
+        }
+        _ => {}
+        };
+        }
+        //            while let Some((tdim, range)) = known.iter().filter(|(_, min, max)| min
+        }
+        */
+        panic!();
     }
 }
 
