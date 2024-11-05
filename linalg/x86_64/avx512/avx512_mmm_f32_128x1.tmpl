@@ -49,16 +49,16 @@ Windows ABI:
 
     jmp             {{L}}non_linear_loop
 
+{{L}}q40f32_mask:
 {% if msvc %}
-{{L}}q40f32_mask:
     {{long}} 0F0F0F0Fh
-{{L}}q40f32_eight:
-    {{long}} 08h
 {% else %}
-{{L}}q40f32_mask:
     {{long}} 0x0F0F0F0F
+{% endif %}
+
 {{L}}q40f32_eight:
     {{long}} 8
+
 {{L}}q40f32_perm:
     {{quad}} 2
     {{quad}} 3
@@ -66,9 +66,8 @@ Windows ABI:
     {{quad}} 5
     {{quad}} 6
     {{quad}} 7
-    {{quad}} 0 // we dont are what's rolling in from the right
+    {{quad}} 0 // we dont care what's rolling in from the right
     {{quad}} 0
-{% endif %}
 
 {{L}}q40f32:
     // zmm0-7: acc
