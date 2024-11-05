@@ -22,7 +22,7 @@ macro_rules! mmm_packed_packed_tests {
             #[allow(unused_imports)]
             use $crate::frame::mmm::tests::packed_packed::*;
 
-            mod fuse {
+            mod packed_packed {
                 use super::*;
 
                 proptest::proptest! {
@@ -77,7 +77,6 @@ macro_rules! mmm_packed_packed_tests {
                             .collect_vec(),
                     )
                 }
-
 
                 #[test]
                 fn packed_packed_a_scale_times_2() -> TractResult<()> {

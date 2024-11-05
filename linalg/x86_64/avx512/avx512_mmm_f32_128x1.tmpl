@@ -59,6 +59,15 @@ Windows ABI:
     {{long}} 0x0F0F0F0F
 {{L}}q40f32_eight:
     {{long}} 8
+{{L}}q40f32_perm:
+    {{quad}} 2
+    {{quad}} 3
+    {{quad}} 4
+    {{quad}} 5
+    {{quad}} 6
+    {{quad}} 7
+    {{quad}} 0 // we dont are what's rolling in from the right
+    {{quad}} 0
 {% endif %}
 
 {{L}}q40f32:
@@ -69,6 +78,7 @@ Windows ABI:
     // zmm31: b value
     vbroadcastss    zmm29, dword ptr [{{offset}} {{L}}q40f32_mask]
     vbroadcastss    zmm30, dword ptr [{{offset}} {{L}}q40f32_eight]
+    vmovups         zmm28, [{{offset}} {{L}}q40f32_perm]
 
 {{L}}q40f32_outerloop:
     // scales
@@ -89,22 +99,22 @@ Windows ABI:
     vpandq           zmm26, zmm27, zmm29     // 64 bytes
 
     vpmovzxbd       zmm16, xmm26            // 16 u32
-    vpshrdq          zmm26, zmm26, zmm26, 128
+    vpermt2q        zmm26, zmm28, zmm26
     vpmovzxbd       zmm17, xmm26            // 16 u32
-    vpshrdq         zmm26, zmm26, zmm26, 128
+    vpermt2q        zmm26, zmm28, zmm26
     vpmovzxbd       zmm18, xmm26            // 16 u32
-    vpshrdq          zmm26, zmm26, zmm26, 128
+    vpermt2q        zmm26, zmm28, zmm26
     vpmovzxbd       zmm19, xmm26            // 16 u32
 
     vpsrlw          zmm27, zmm27, 4
     vpandq          zmm26, zmm27, zmm29     // 64 bytes
 
     vpmovzxbd       zmm20, xmm26            // 16 u32
-    vpshrdq          zmm26, zmm26, zmm26, 128
+    vpermt2q        zmm26, zmm28, zmm26
     vpmovzxbd       zmm21, xmm26            // 16 u32
-    vpshrdq          zmm26, zmm26, zmm26, 128
+    vpermt2q        zmm26, zmm28, zmm26
     vpmovzxbd       zmm22, xmm26            // 16 u32
-    vpshrdq          zmm26, zmm26, zmm26, 128
+    vpermt2q        zmm26, zmm28, zmm26
     vpmovzxbd       zmm23, xmm26            // 16 u32
 
 
