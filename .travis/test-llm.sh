@@ -30,8 +30,10 @@ esac
 
 case $q in
     q40f16) approx=ultra;;
+    q40ef16) approx=ultra;;
     f16f16) approx=ultra;;
     q40f32) approx=very;;
+    q40ef32) approx=very;;
     f32f32) approx=approximate;;
 esac
 
