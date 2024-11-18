@@ -29,7 +29,7 @@ impl Gather {
         Ok(output_shape)
     }
 
-    fn eval_t<T: Datum + Copy>(&self, data: TValue, indices: &TValue) -> TractResult<Tensor> {
+    fn eval_t<T: Datum>(&self, data: TValue, indices: &TValue) -> TractResult<Tensor> {
         let data_view = unsafe { data.to_array_view_unchecked::<T>() }; // copy only
         let indices = indices.to_array_view::<i64>()?;
         let output_shape = &*self.compute_output_shape(data.shape(), indices.shape())?;
@@ -75,13 +75,13 @@ impl TypedOp for Gather {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs[1].datum_type == i64::datum_type());
-        if inputs[0].datum_type.is_number() {
+        if inputs[0].datum_type.is_opaque() {
+            let data_shape = block_quant_aware_input_shape(&inputs[0])?;
+            Ok(tvec!(f16::fact(&*self.compute_output_shape(&data_shape, &inputs[1].shape)?)))
+        } else {
             Ok(tvec!(inputs[0]
                 .datum_type
                 .fact(&*self.compute_output_shape(&inputs[0].shape, &inputs[1].shape)?)))
-        } else {
-            let data_shape = block_quant_aware_input_shape(&inputs[0])?;
-            Ok(tvec!(f16::fact(&*self.compute_output_shape(&data_shape, &inputs[1].shape)?)))
         }
     }
 
@@ -133,7 +133,7 @@ impl EvalOp for Gather {
                 .context("Expected a BlockQuantValue")?;
             self.eval_bq_to_f16(data, &indices)?
         } else {
-            dispatch_copy_by_size!(Self::eval_t(data.datum_type())(self, data, &indices))?
+            dispatch_datum_by_size!(Self::eval_t(data.datum_type())(self, data, &indices))?
         };
         Ok(tvec!(result.into_tvalue()))
     }
