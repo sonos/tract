@@ -1,4 +1,6 @@
 use crate::internal::*;
+use crate::ops::einsum::block_quant_aware_input_shape;
+use crate::ops::matmul::de_block_quant::BlockQuantValue;
 use ndarray::*;
 
 #[derive(Debug, Clone, new, Hash)]
@@ -27,11 +29,11 @@ impl Gather {
         Ok(output_shape)
     }
 
-    unsafe fn eval_t<T: Datum>(&self, data: TValue, indices: &TValue) -> TractResult<TValue> {
-        let data_view = data.to_array_view_unchecked::<T>();
+    fn eval_t<T: Datum + Copy>(&self, data: TValue, indices: &TValue) -> TractResult<Tensor> {
+        let data_view = unsafe { data.to_array_view_unchecked::<T>() }; // copy only
         let indices = indices.to_array_view::<i64>()?;
         let output_shape = &*self.compute_output_shape(data.shape(), indices.shape())?;
-        let mut output = Tensor::uninitialized::<T>(output_shape)?;
+        let mut output = unsafe { Tensor::uninitialized::<T>(output_shape)? };
         let mut output_view = output.to_array_view_mut::<T>()?;
         for coords in tract_ndarray::indices(output_shape) {
             let ocoords = coords.as_array_view();
@@ -45,7 +47,26 @@ impl Gather {
             output_view[ocoords] = data_view.get(&*icoords).context("Invalid gather")?.clone();
         }
         unsafe { output.set_datum_type(data.datum_type()) };
-        Ok(output.into_tvalue())
+        Ok(output)
+    }
+
+    fn eval_bq_to_f16(&self, data: &BlockQuantValue, indices: &TValue) -> TractResult<Tensor> {
+        ensure!(self.axis == 0);
+        ensure!(data.fact.shape.rank() == 2);
+        let data_shape = data.fact.shape.as_concrete().unwrap();
+        let output_shape = &*self.compute_output_shape(&data_shape, indices.shape())?;
+        let mut output = unsafe { Tensor::uninitialized::<f16>(output_shape)? };
+        let indices_slice = indices.as_slice::<i64>()?;
+        let vector_len = data_shape[1];
+        let output_slice = output.as_slice_mut::<f16>()?;
+        for (pos, ix) in indices_slice.iter().enumerate() {
+            let slice = &mut output_slice[pos * vector_len..][..vector_len];
+            for i in 0..vector_len {
+                let offset = data_shape[1] * *ix as usize + i;
+                slice[i] = data.fact.format.extract_at_offset_f16(&data.value, offset)
+            }
+        }
+        Ok(output)
     }
 }
 
@@ -54,9 +75,14 @@ impl TypedOp for Gather {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs[1].datum_type == i64::datum_type());
-        Ok(tvec!(inputs[0].datum_type.fact(
-            &*self.compute_output_shape(&inputs[0].shape.to_tvec(), &inputs[1].shape.to_tvec())?
-        )))
+        if inputs[0].datum_type.is_number() {
+            Ok(tvec!(inputs[0]
+                .datum_type
+                .fact(&*self.compute_output_shape(&inputs[0].shape, &inputs[1].shape)?)))
+        } else {
+            let data_shape = block_quant_aware_input_shape(&inputs[0])?;
+            Ok(tvec!(f16::fact(&*self.compute_output_shape(&data_shape, &inputs[1].shape)?)))
+        }
     }
 
     fn declutter(
@@ -64,9 +90,9 @@ impl TypedOp for Gather {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let indices_fact = model.outlet_fact(node.inputs[1])?;
+        let (input_fact, indices_fact) = args_2!(model.node_input_facts(node.id)?);
         if let Some(indices) = indices_fact.konst.as_ref() {
-            if indices.rank() == 1 && indices.len() == 1 {
+            if indices.rank() == 1 && indices.len() == 1 && input_fact.datum_type.is_number() {
                 let mut patch = TypedModelPatch::default();
                 let mut wire = patch.tap_model(model, node.inputs[0])?;
                 let index = indices.cast_to_scalar::<i64>()?;
@@ -100,11 +126,16 @@ impl EvalOp for Gather {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices) = args_2!(inputs);
-        unsafe {
-            Ok(tvec!(dispatch_datum_by_size!(Self::eval_t(data.datum_type())(
-                self, data, &indices
-            ))?))
-        }
+        let result = if data.datum_type().is_opaque() {
+            let data = data
+                .to_scalar::<Opaque>()?
+                .downcast_ref::<BlockQuantValue>()
+                .context("Expected a BlockQuantValue")?;
+            self.eval_bq_to_f16(data, &indices)?
+        } else {
+            dispatch_copy_by_size!(Self::eval_t(data.datum_type())(self, data, &indices))?
+        };
+        Ok(tvec!(result.into_tvalue()))
     }
 }
 
