@@ -36,18 +36,15 @@ case $q in
 esac
 
 nnef=llm/$generation/$id/$id.nnef.tgz
-pp=llm/$generation/$id/$id.pp.io.npz
-tg=llm/$generation/$id/$id.tg.io.npz
 
 set -x
-$CACHE_FILE $nnef $pp $tg
-
-$TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O run \
-    --input-from-npz $MODELS/$pp \
-    --assert-output-bundle $MODELS/$pp \
-    --approx $approx --allow-float-casts
-
-$TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O run \
-    --input-from-npz $MODELS/$tg \
-    --assert-output-bundle $MODELS/$tg \
-    --approx $approx --allow-float-casts
+$CACHE_FILE $nnef
+for t in p0s100 p50s50 p99s1 
+do
+    npz=llm/$generation/$id/$id.$t.io.npz
+    $CACHE_FILE $npz
+    $TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O run \
+        --input-from-npz $MODELS/$npz \
+        --assert-output-bundle $MODELS/$npz \
+        --approx $approx --allow-float-casts
+done
