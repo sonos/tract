@@ -54,16 +54,16 @@ impl Gather {
         ensure!(self.axis == 0);
         ensure!(data.fact.shape.rank() == 2);
         let data_shape = data.fact.shape.as_concrete().unwrap();
-        let output_shape = &*self.compute_output_shape(&data_shape, indices.shape())?;
+        let output_shape = &*self.compute_output_shape(data_shape, indices.shape())?;
         let mut output = unsafe { Tensor::uninitialized::<f16>(output_shape)? };
         let indices_slice = indices.as_slice::<i64>()?;
         let vector_len = data_shape[1];
         let output_slice = output.as_slice_mut::<f16>()?;
         for (pos, ix) in indices_slice.iter().enumerate() {
             let slice = &mut output_slice[pos * vector_len..][..vector_len];
-            for i in 0..vector_len {
+            for (i, slot) in slice.iter_mut().enumerate() {
                 let offset = data_shape[1] * *ix as usize + i;
-                slice[i] = data.fact.format.extract_at_offset_f16(&data.value, offset)
+                *slot = data.fact.format.extract_at_offset_f16(&data.value, offset)
             }
         }
         Ok(output)
@@ -76,7 +76,7 @@ impl TypedOp for Gather {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs[1].datum_type == i64::datum_type());
         if inputs[0].datum_type.is_opaque() {
-            let data_shape = block_quant_aware_input_shape(&inputs[0])?;
+            let data_shape = block_quant_aware_input_shape(inputs[0])?;
             Ok(tvec!(f16::fact(&*self.compute_output_shape(&data_shape, &inputs[1].shape)?)))
         } else {
             Ok(tvec!(inputs[0]

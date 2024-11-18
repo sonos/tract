@@ -134,6 +134,7 @@ dyn_clone::clone_trait_object!(BlockQuant);
 dyn_hash::hash_trait_object!(BlockQuant);
 impl_downcast!(BlockQuant);
 
+#[allow(clippy::derived_hash_with_manual_eq)]
 #[derive(Clone, Hash)]
 pub struct PackedBlockQuantFormat {
     pub bq: Box<dyn BlockQuant>,
