@@ -237,7 +237,7 @@ pub fn write_tensor(w: &mut impl Write, tensor: &Tensor) -> TractResult<()> {
         w.write_all(tensor.as_bytes())?;
     } else if tensor.datum_type() == DatumType::String {
         for s in tensor.as_slice::<String>()? {
-            w.write_u32::<LE>(s.as_bytes().len() as u32)?;
+            w.write_u32::<LE>(s.len() as u32)?;
             w.write_all(s.as_bytes())?;
         }
     }
