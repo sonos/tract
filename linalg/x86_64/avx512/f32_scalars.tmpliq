@@ -10,14 +10,14 @@
 {{L}}leaky_relu:
     // can only use zmm12 to zmm15
     // ymm15 <- alpha
-    vbroadcastss    zmm15, dword ptr [rdi + 8]
+    vbroadcastss    zmm31, dword ptr [rdi + 8]
     // ymm14 <- all zero
-    vpxorq          zmm14, zmm14, zmm14
+    vpxorq          zmm30, zmm30, zmm30
 
     {% for reg in (from..to) %}
-        vcmpps      k1, zmm{{reg}}, zmm14, 1 // 1 means LT
+        vcmpps      k1, zmm{{reg}}, zmm30, 1 // 1 means LT
         // ymm12 <- alpha * x if < 0
-        vmulps      zmm{{reg}} {k1}, zmm{{reg}}, zmm15
+        vmulps      zmm{{reg}} {k1}, zmm{{reg}}, zmm31
     {% endfor %}
     // select muled of orginal
 

@@ -1,0 +1,155 @@
+{% comment %}
+// vim: set syntax=asm :
+
+/* mmm 128 x 3:
+
+    zmm0  zmm8  zmm816
+    zmm1  zmm9  zmm17
+    zmm2  zmm10 zmm18
+    zmm3  zmm11 zmm19
+    zmm4  zmm12 zmm20
+    zmm5  zmm13 zmm21
+    zmm6  zmm14 zmm22
+    zmm7  zmm15 zmm23
+
+
+System V ABI:
+    args: rdi, rsi, rdx, rcx, r8, r9
+    preserve: rbx, rsp, rbp, r12, r13, r14, r15
+    scratch: rax, rdi, rsi, rdx, rcx, r8, r9, r10, r11
+    return: rax (+rdx)
+
+Windows ABI:
+    args: RCX, RDX, R8, R9
+    preserve: RBX, RBP, RDI, RSI, RSP, R12, R13, R14, R15, and XMM6-15
+    scratch: RAX, RCX, RDX, R8, R9, R10, R11, XMM0-5, and the upper portions of YMM0-15 and ZMM0-15
+    return: rax (+rdx)
+*/
+{% endcomment %}
+
+{% include "preamble.tmpliq" size:"128x3", suffix:suffix, G:G, arch:"avx512" %}
+
+{{L}}clear:
+    vzeroall
+    {% for i in (16..23) %}
+        vmovapd zmm{{i}}, zmm0
+    {% endfor %}
+    jmp     {{L}}non_linear_loop
+
+{{L}}add_mat_mul:
+    mov     rbx,    [rdi + 24]   // B
+    mov     rax,    [rdi + 16]   // A
+
+    mov     rcx,    [rdi + 8]    // k
+    test    rcx,    rcx
+    jz      {{L}}non_linear_loop
+
+{{L}}main_loop_packed_packed:
+    vbroadcastss    zmm29, dword ptr [rbx]
+    vbroadcastss    zmm30, dword ptr [rbx+4]
+    vbroadcastss    zmm31, dword ptr [rbx+8]
+
+{% for i in (0..7) %}
+    vmovups         zmm28, zmmword ptr [rax+{{i | times:64}}]
+    vfmadd231ps     zmm{{i}}, zmm28, zmm29
+    vfmadd231ps     zmm{{i | plus: 8}}, zmm28, zmm30
+    vfmadd231ps     zmm{{i | plus: 16}}, zmm28, zmm31
+{% endfor %}
+
+    add rbx, 12
+    add rax, 512
+
+    dec             rcx
+    jnz             {{L}}main_loop_packed_packed
+
+    jmp             {{L}}non_linear_loop
+
+{% include "f32_scalars.tmpliq" from:0, to:23 %}
+{% include "f32_per_rows.tmpliq" mr:128, from:0, to:23 %}
+{% include "f32_per_cols.tmpliq" mr:128, from:0, to:23 %}
+{% include "avx512_mmm_load_tile.tmpliq" from:0, to:23 %}
+
+{{L}}range_0_16:
+{% for i in (0..15) %}
+    {{long}} {{i}}
+{% endfor %}
+
+{{L}}add_unicast:
+
+    mov     r10,    [rdi + 8]           // c ptr
+    mov     rsi,    [rdi + 16]          // row stride
+    mov     rbx,    [rdi + 24]          // col stride
+
+    vbroadcastss    zmm29, dword ptr [rdi+16] // row stride (aka esi)
+    vmovups         zmm26, [{{offset}} {{L}}range_0_16]
+    vpmulld         zmm26, zmm26, zmm29
+
+{% for i in (0..2) %}
+    kxnorw k1,k1,k1
+    vgatherdps      zmm24{k1},  [ r10 + zmm26 ]
+    add     r10, rbx
+    vaddps          zmm{{i | times: 8}},   zmm{{i | times: 8}},   zmm24
+{% endfor %}
+
+    imul    esi,    16
+    vpbroadcastd    zmm27, esi
+
+{% for j in (1..7) %}
+    mov     r10,    [rdi + 8]
+    vpaddd          zmm26, zmm26, zmm27
+
+    {% for i in (0..2) %}
+        kxnorw k1,k1,k1
+        vgatherdps      zmm24{k1},  [ r10 + zmm26 ]
+        add     r10, rbx
+        vaddps          zmm{{i | times: 8 | plus: j}},   zmm{{i | times: 8 | plus: j}},   zmm24
+    {% endfor %}
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}add_row_col_products:
+    mov             rax, [ rdi + 8 ]
+    mov             rbx, [ rdi + 16 ]
+
+    vbroadcastss    zmm29, dword ptr [rbx]
+    vbroadcastss    zmm30, dword ptr [rbx+4]
+    vbroadcastss    zmm31, dword ptr [rbx+8]
+
+{% for i in (0..7) %}
+    vmovups         zmm28, zmmword ptr [rax+{{i | times:64}}]
+    vfmadd231ps     zmm{{i}}, zmm28, zmm29
+    vfmadd231ps     zmm{{i | plus: 8}}, zmm28, zmm30
+    vfmadd231ps     zmm{{i | plus: 16}}, zmm28, zmm31
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}store:
+    mov     r8,     [rdi + 8]           // c ptr
+    mov     rsi,    [rdi + 16]          // row stride
+    mov     rbx,    [rdi + 24]          // col stride
+
+    // tops of cols
+    lea     r9,     [ r8 + rbx ]
+    lea     r10,    [ r8 + 2 * rbx ]
+    lea     r11,    [ r10 + rbx ]
+
+    {% for word in (0..7) %}
+        {% for quarter in (0..3) %}
+            {% for r in (0..2) %}
+                vextractf32x4 xmm{{r | plus: 24}}, zmm{{r | times: 8 | plus: word}}, {{quarter}}
+            {% endfor %}
+            {% for row in (0..3) %}
+                {% for i in (0..2) %}
+                    vextractps  dword ptr [r{{i | plus: 8}}], xmm{{i | plus: 24}}, {{row}}
+                    add         r{{i | plus: 8}}, rsi
+                {% endfor %}
+            {% endfor %}
+        {% endfor %}
+    {% endfor %}    
+
+    jmp     {{L}}non_linear_loop
+
+{% include "postamble.tmpliq" size:"128x3", suffix:suffix, G:G, L:L, arch:"avx512" %}
+
