@@ -17,6 +17,18 @@ panel_extractor!(kernel_packed_32_f16_to_f32 as packed_32_f16_to_f32(
     PackedFormat::new(f32::datum_type(), 32, 32)
 ) where(AVX2));
 
+panel_extractor!(kernel_packed_128_q40_to_f32::kernel as packed_128_q40_to_f32(
+    Box::new(super::mmm::PQ40_R128),
+    PackedFormat::new(f32::datum_type(), 128, 32)
+) where(AVX512F));
+
+mod kernel_packed_128_q40_to_f32 {
+    extern_kernel!(fn avx512_packed_128_q40_to_f32(i: *const u8, output: *mut u8, k: usize) -> ());
+    pub unsafe fn kernel(input: *const u8, output: *mut u8, k: usize) {
+        avx512_packed_128_q40_to_f32(input, output, k)
+    }
+}
+
 #[target_feature(enable = "avx2")]
 unsafe fn kernel_packed_32_q40_to_f32(input: *const u8, output: *mut u8, k: usize) {
     debug_assert!(k % 32 == 0);
