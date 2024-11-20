@@ -3,8 +3,8 @@ use crate::frame::PackedFormat;
 use crate::mmm::MMMKit;
 use crate::mmm::MatMatMulKer;
 use crate::Ops;
-use panel_extract::packed_32_f16_to_f32;
-use panel_extract::packed_32_q40_to_f32;
+use panel_extract::fma_packed_32_f16_to_f32;
+use panel_extract::fma_packed_32_q40_to_f32;
 use tract_data::internal::*;
 use DatumType::*;
 
@@ -63,17 +63,17 @@ pub fn plug(ops: &mut Ops) {
         ops.mmm_kits.push(MMMKit::new_for_mmm(fma_mmm_f32_32x1.mmm(), 1).with_extracting(
             fma_mmm_f32_32x3.mmm(),
             0,
-            packed_32_q40_to_f32.clone(),
+            fma_packed_32_q40_to_f32.clone(),
         ));
         ops.mmm_kits.push(MMMKit::new_for_mmm(fma_mmm_f32_32x1.mmm(), 2).with_extracting(
             fma_mmm_f32_32x3.mmm(),
             1,
-            packed_32_q40_to_f32.clone(),
+            fma_packed_32_q40_to_f32.clone(),
         ));
         ops.mmm_kits.push(
             MMMKit::new(F16, F32, F16, &PackedFormat::new(F16, 32, 32))
                 .with_native(fma_mmm_f32_32x1.mmm(), 3)
-                .with_extracting(fma_mmm_f32_32x3.mmm(), 1, packed_32_f16_to_f32.clone()),
+                .with_extracting(fma_mmm_f32_32x3.mmm(), 1, fma_packed_32_f16_to_f32.clone()),
         );
     }
 }

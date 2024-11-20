@@ -54,15 +54,12 @@ avx512_packed_128_q40_to_f32_{{suffix}} proc
     push        rdi
     push        rsi
 
+// win: rcx:input rdx: output, r8:k
     mov         rdi, rcx
+    mov         rsi, rdx
+    mov         rdx, r8
 
 {% endif %}
-
-    push        rbx
-    push        r12
-    push        r13
-    push        r14
-    push        r15
 
     sub         rsp, 8
 {% if family == "unix" %}
@@ -152,12 +149,6 @@ avx512_packed_128_q40_to_f32_{{suffix}} proc
 {{L}}return:
     ldmxcsr     [rsp + 4]
     add         rsp, 8
-
-    pop r15
-    pop r14
-    pop r13
-    pop r12
-    pop rbx
 
 {% if family == "windows" %}
     pop rsi
