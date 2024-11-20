@@ -47,7 +47,7 @@ allow-git = [
 allow = [
     "Apache-2.0",                     # https://tldrlegal.com/license/apache-license-2.0-(apache-2.0)
     "MIT",                            # https://tldrlegal.com/license/mit-license
-    "Unicode-DFS-2016"                # https://spdx.org/licenses/Unicode-DFS-2016.html 
+    "Unicode-3.0"                     # https://spdx.org/licenses/Unicode-3.0.html
 ]
 
 clarify = [
