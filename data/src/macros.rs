@@ -22,6 +22,7 @@ macro_rules! tvec {
 macro_rules! dispatch_datum {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
         use $crate::prelude::DatumType;
+        #[allow(unexpected_cfgs)]
         match $dt {
             DatumType::Bool => $($path)::*::<bool>($($args),*),
             DatumType::U8   => $($path)::*::<u8>($($args),*),
@@ -62,6 +63,7 @@ macro_rules! dispatch_datum {
 macro_rules! dispatch_datum_by_size {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
         use $crate::prelude::DatumType;
+        #[allow(unexpected_cfgs)]
         match $dt {
             DatumType::Bool => $($path)::*::<i8>($($args),*),
             DatumType::U8   => $($path)::*::<i8>($($args),*),
@@ -102,6 +104,7 @@ macro_rules! dispatch_datum_by_size {
 macro_rules! dispatch_copy {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
         use $crate::prelude::DatumType;
+        #[allow(unexpected_cfgs)]
         match $dt {
             DatumType::Bool => $($path)::*::<bool>($($args),*),
             DatumType::U8   => $($path)::*::<u8>($($args),*),
@@ -139,6 +142,7 @@ macro_rules! dispatch_copy {
 macro_rules! dispatch_copy_by_size {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
         use $crate::prelude::DatumType;
+        #[allow(unexpected_cfgs)]
         match $dt {
             DatumType::Bool => $($path)::*::<i8>($($args),*),
             DatumType::U8   => $($path)::*::<i8>($($args),*),
@@ -264,6 +268,7 @@ macro_rules! dispatch_signed {
 macro_rules! dispatch_hash {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
         use $crate::prelude::DatumType;
+        #[allow(unexpected_cfgs)]
         match $dt {
             DatumType::Bool => $($path)::*::<bool>($($args),*),
             DatumType::U8   => $($path)::*::<u8>($($args),*),
