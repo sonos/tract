@@ -1,3 +1,5 @@
+#![allow(unexpected_cfgs)]
+
 pub mod api;
 
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
