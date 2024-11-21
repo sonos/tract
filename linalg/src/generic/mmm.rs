@@ -338,8 +338,8 @@ const PQ40_R4: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 4, 0,
 const PQ40_R4_SE: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 4, 0, true);
 
 // f16 kernels
-MMMRustKernel!(kernel::<f16, 4, 4> => generic_f16_4x4<f16>(4,4)@(2,2) store(f32, f64));
-MMMRustKernel! {kernel::<f16, 4, 1> => generic_f16_4x1<f16>(4,1)@(2,2)
+MMMRustKernel!(kernel::<f16, 4, 4> => generic_f16_4x4<f16>(4,4) store(f32, f64));
+MMMRustKernel! {kernel::<f16, 4, 1> => generic_f16_4x1<f16>(4,1)
     packing[1] = f32f32 => |k| k.with_packing(f32::packing(4), f32::packing(1));
     packing[2] = q40f16 => |k| k.with_packing_a(PQ40_R4);
     packing[3] = q40f16se => |k| k.with_packing_a(PQ40_R4_SE);
@@ -348,11 +348,11 @@ MMMRustKernel! {kernel::<f16, 4, 1> => generic_f16_4x1<f16>(4,1)@(2,2)
 }
 
 // f32 kernels
-MMMRustKernel!(kernel::<f32, 4, 4> => generic_f32_4x4<f32>(4,4)@(4,4)
+MMMRustKernel!(kernel::<f32, 4, 4> => generic_f32_4x4<f32>(4,4)
     packing[1] = f16f16 => |k| k.with_packing(f16::packing(4), f16::packing(4));
     store(f16, f64)
 );
-MMMRustKernel! {kernel::<f32, 4, 1> => generic_f32_4x1<f32>(4,1)@(4,4)
+MMMRustKernel! {kernel::<f32, 4, 1> => generic_f32_4x1<f32>(4,1)
     packing[1] = f16f16 => |k| k.with_packing(f16::packing(4), f16::packing(1));
     packing[2] = q40f16 => |k| k.with_packing(PQ40_R4, f16::packing(1));
     packing[3] = q40f16se => |k| k.with_packing(PQ40_R4_SE, f16::packing(1));
@@ -361,33 +361,33 @@ MMMRustKernel! {kernel::<f32, 4, 1> => generic_f32_4x1<f32>(4,1)@(4,4)
 }
 
 // f64 kernels
-MMMRustKernel!(kernel::<f64, 4, 4> => generic_f64_4x4<f64>(4,4)@(4,4) store(f16, f32));
-MMMRustKernel!(kernel::<f64, 4, 1> => generic_f64_4x1<f64>(4,1)@(4,4) store(f16, f32));
+MMMRustKernel!(kernel::<f64, 4, 4> => generic_f64_4x4<f64>(4,4) store(f16, f32));
+MMMRustKernel!(kernel::<f64, 4, 1> => generic_f64_4x1<f64>(4,1) store(f16, f32));
 
 // I32 kernels
-MMMRustKernel! {kernel::<i32, 4, 4> => generic_i32_4x4<i32>(4,4)@(4,4)
+MMMRustKernel! {kernel::<i32, 4, 4> => generic_i32_4x4<i32>(4,4)
     packing[1] = i8i8 => |k| k.with_packing(i8::packing(4), i8::packing(4));
     store(i8)
 }
 
-MMMRustKernel! {kernel::<i32, 4, 1> => generic_i32_4x1<i32>(4,1)@(4,4)
+MMMRustKernel! {kernel::<i32, 4, 1> => generic_i32_4x1<i32>(4,1)
     packing[1] = i8i8 => |k| k.with_packing(i8::packing(4), i8::packing(1));
     store(i8)
 }
 
 // extra tests kernels
 #[cfg(test)]
-MMMRustKernel!(kernel::<f32, 3, 2> => generic_f32_3x2<f32>(3,2)@(4,4) store(f16, f64));
+MMMRustKernel!(kernel::<f32, 3, 2> => generic_f32_3x2<f32>(3,2) store(f16, f64));
 
 #[cfg(test)]
-MMMRustKernel! {kernel::<i32, 3, 2> => generic_i32_3x2<i32>(3,2)@(4,4)
+MMMRustKernel! {kernel::<i32, 3, 2> => generic_i32_3x2<i32>(3,2)
     packing[1] = i8i8 => |k| k.with_packing(i8::packing(3), i8::packing(2));
     store(i8)
 }
 
 pub fn plug(ops: &mut Ops) {
     ops.mmm_kits.push(
-        MMMKit::new(Q4_0, f32::datum_type(), f32::datum_type(), &PQ40_R4)
+        MMMKit::new(Q4_0, F32, F32, &PQ40_R4)
             .with_native(generic_f32_4x1.mmm(), 4)
             .with_generic_fallback(true),
     );
@@ -397,4 +397,14 @@ pub fn plug(ops: &mut Ops) {
             .with_native(generic_f32_4x4.mmm(), 1)
             .with_generic_fallback(true),
     );
+}
+
+#[cfg(test)]
+mod test {
+
+    #[test]
+    fn kits() {
+        let mut ops = crate::generic();
+        super::plug(&mut ops);
+    }
 }
