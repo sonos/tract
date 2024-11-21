@@ -1,8 +1,8 @@
 #![allow(clippy::needless_range_loop)]
 use num_traits::AsPrimitive;
 
-use pack::PackedFormat;
 use tract_data::prelude::f16;
+use tract_data::prelude::DatumType::*;
 use tract_data::prelude::*;
 
 use super::*;
@@ -280,14 +280,20 @@ where
                 FusedKerSpec::AddMatMul { k, pa, pb, packing } => {
                     use std::mem::transmute;
                     if TI::datum_type().is_float() {
-                        if packing == 0 {
-                            add_mat_mul::<MR, NR, TI, TI, TI>(pa, pb, k, &mut ab);
-                        } else if packing == 1 {
-                            add_mat_mul_pq40::<MR, NR, f16, TI>(pa, pb, k, &mut ab);
-                        } else if packing == 2 {
-                            add_mat_mul_pq40_scales_at_end::<MR, NR, f16, TI>(pa, pb, k, &mut ab)
-                        } else if packing == 3 {
-                            add_mat_mul_pq40::<MR, NR, f32, TI>(pa, pb, k, &mut ab);
+                        match packing {
+                            0 => add_mat_mul::<MR, NR, TI, TI, TI>(pa, pb, k, &mut ab),
+                            1 if TI::is::<f32>() => {
+                                add_mat_mul::<MR, NR, TI, f16, f16>(pa, pb, k, &mut ab)
+                            }
+                            1 if TI::is::<f16>() => {
+                                add_mat_mul::<MR, NR, TI, f32, f32>(pa, pb, k, &mut ab)
+                            }
+                            2 => add_mat_mul_pq40::<MR, NR, f16, TI>(pa, pb, k, &mut ab),
+                            3 => add_mat_mul_pq40_scales_at_end::<MR, NR, f16, TI>(
+                                pa, pb, k, &mut ab,
+                            ),
+                            4 => add_mat_mul_pq40::<MR, NR, f32, TI>(pa, pb, k, &mut ab),
+                            _ => unreachable!(),
                         }
                     } else if TI::datum_type() == i32::datum_type() {
                         // transmute to allow using explicitly i3 in add_mat_mul generic params
@@ -328,28 +334,29 @@ where
     0
 }
 
-fn pq40_r4() -> PackedBlockQuantFormat {
-    PackedBlockQuantFormat::new(&Q4_0, 4, 0, false)
-}
-fn pq40_r4_se() -> PackedBlockQuantFormat {
-    PackedBlockQuantFormat::new(&Q4_0, 4, 0, true)
-}
+const PQ40_R4: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 4, 0, false);
+const PQ40_R4_SE: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 4, 0, true);
 
 // f16 kernels
 MMMRustKernel!(kernel::<f16, 4, 4> => generic_f16_4x4<f16>(4,4)@(4,4) store(f32, f64));
 MMMRustKernel! {kernel::<f16, 4, 1> => generic_f16_4x1<f16>(4,1)@(4,1)
-    packing[1] = q40f16 => |k| k.with_packing_a(pq40_r4());
-    packing[2] = q40f16se => |k| k.with_packing_a(pq40_r4_se());
-    packing[3] = q40f32 => |k| k.with_packing(pq40_r4(), PackedFormat::new(DatumType::F32, 1, 4));
+    packing[1] = f32f32 => |k| k.with_packing_dts::<f32, f32>();
+    packing[2] = q40f16 => |k| k.with_packing_a(PQ40_R4);
+    packing[3] = q40f16se => |k| k.with_packing_a(PQ40_R4_SE);
+    packing[4] = q40f32 => |k| k.with_packing(PQ40_R4, f32::packing(1));
     store(f32, f64)
 }
 
 // f32 kernels
-MMMRustKernel!(kernel::<f32, 4, 4> => generic_f32_4x4<f32>(4,4)@(4,4) store(f16, f64));
+MMMRustKernel!(kernel::<f32, 4, 4> => generic_f32_4x4<f32>(4,4)@(4,4)
+    packing[1] = f16f16 => |k| k.with_packing_dts::<f16, f16>();
+    store(f16, f64)
+);
 MMMRustKernel! {kernel::<f32, 4, 1> => generic_f32_4x1<f32>(4,1)@(4,1)
-    packing[1] = q40f16 => |k| k.with_packing(pq40_r4(), PackedFormat::new(DatumType::F16, 1, 4));
-    packing[2] = q40f16se => |k| k.with_packing(pq40_r4_se(), PackedFormat::new(DatumType::F16, 1, 4));
-    packing[3] = q40f32 => |k| k.with_packing_a(pq40_r4());
+    packing[1] = f16f16 => |k| k.with_packing_dts::<f16, f16>();
+    packing[2] = q40f16 => |k| k.with_packing(PQ40_R4, f16::packing(1));
+    packing[3] = q40f16se => |k| k.with_packing(PQ40_R4_SE, f16::packing(1));
+    packing[4] = q40f32 => |k| k.with_packing_a(PQ40_R4);
     store(f16, f64)
 }
 
@@ -359,30 +366,35 @@ MMMRustKernel!(kernel::<f64, 4, 1> => generic_f64_4x1<f64>(4,1)@(4,1) store(f16,
 
 // I32 kernels
 MMMRustKernel! {kernel::<i32, 4, 4> => generic_i32_4x4<i32>(4,4)@(4,4)
-    packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 4, 4), PackedFormat::new(DatumType::I8, 4, 4));
+    packing[1] = i8i8 => |k| k.with_packing_dts::<i8, i8>();
     store(i8)
 }
 
 MMMRustKernel! {kernel::<i32, 4, 1> => generic_i32_4x1<i32>(4,1)@(4,4)
-    packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 4, 4), PackedFormat::new(DatumType::I8, 1, 4));
+    packing[1] = i8i8 => |k| k.with_packing_dts::<i8, i8>();
     store(i8)
 }
 
 // extra tests kernels
-
 #[cfg(test)]
 MMMRustKernel!(kernel::<f32, 3, 2> => generic_f32_3x2<f32>(3,2)@(4,4) store(f16, f64));
 
 #[cfg(test)]
 MMMRustKernel! {kernel::<i32, 3, 2> => generic_i32_3x2<i32>(3,2)@(4,4)
-    packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 3, 4), PackedFormat::new(DatumType::I8, 2, 4));
+    packing[1] = i8i8 => |k| k.with_packing_dts::<i8, i8>();
     store(i8)
 }
 
 pub fn plug(ops: &mut Ops) {
     ops.mmm_kits.push(
-        MMMKit::new(Q4_0, f32::datum_type(), f32::datum_type(), &pq40_r4())
-            .with_native(generic_f32_4x1.mmm(), 3)
+        MMMKit::new(Q4_0, f32::datum_type(), f32::datum_type(), &PQ40_R4)
+            .with_native(generic_f32_4x1.mmm(), 4)
+            .with_generic_fallback(true),
+    );
+    ops.mmm_kits.push(
+        MMMKit::new(F16, F32, F16, &f16::packing(4))
+            .with_native(generic_f32_4x1.mmm(), 1)
+            .with_native(generic_f32_4x4.mmm(), 1)
             .with_generic_fallback(true),
     );
 }
