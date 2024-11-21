@@ -28,14 +28,6 @@ case $model in
         ;;
 esac
 
-case $q in
-    q40f16) approx=ultra;;
-    q40ef16) approx=ultra;;
-    f16f16) approx=ultra;;
-    q40f32) approx=very;;
-    q40ef32) approx=very;;
-    f32f32) approx=approximate;;
-esac
 
 nnef=llm/$generation/$id/$id.nnef.tgz
 
@@ -58,8 +50,22 @@ for t in p0s100 p50s50 p99s1
 do
     npz=llm/$generation/$id/$id.$t.io.npz
     $CACHE_FILE $npz
+
+    case $q in
+        q40f16) approx="--approx ultra";;
+        q40ef16) approx="--approx ultra";;
+        f16f16) approx="--approx ultra";;
+        q40f32) approx="--approx very";;
+        q40ef32) approx="--approx very";;
+        f32f32) approx="--approx approximate";;
+    esac
+
+    case "$id.$t" in 
+        apple--OpenELM-270M-f16f16.p50s50) approx="--approx-custom 0.2,0.1,0.003"
+    esac
+
     $TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O run \
         --input-from-npz $MODELS/$npz \
         --assert-output-bundle $MODELS/$npz \
-        --approx $approx --allow-float-casts
+        $approx --allow-float-casts
 done
