@@ -61,6 +61,11 @@ impl PackedFormat {
     }
 
     #[inline]
+    pub fn align(self, alignment: usize) -> Self {
+        Self { alignment, ..self }
+    }
+
+    #[inline]
     pub fn alignment(&self) -> usize {
         self.alignment
     }
@@ -505,6 +510,21 @@ unsafe fn pack_mn_major<Chunk: Copy>(
         }
         if partial_pane > 0 {
             p_row.copy_from_nonoverlapping(b_row, partial_pane);
+        }
+    }
+}
+
+pub trait Packing {
+    fn packing(r: usize) -> PackedFormat;
+}
+
+impl<D: Datum> Packing for D {
+    fn packing(r: usize) -> PackedFormat {
+        PackedFormat {
+            dt: Self::datum_type(),
+            r,
+            alignment: Self::datum_type().alignment(),
+            end_padding_record: 0,
         }
     }
 }
