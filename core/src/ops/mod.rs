@@ -11,7 +11,6 @@ pub mod macros;
 pub mod element_wise;
 #[macro_use]
 pub mod binary;
-//pub mod binary_new;
 
 pub mod array;
 pub mod cast;
