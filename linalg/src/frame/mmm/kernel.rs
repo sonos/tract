@@ -34,7 +34,6 @@ type Kernel<Acc> = unsafe fn(&[FusedKerSpec<Acc>]) -> isize;
 pub struct DynKernel<const MR: usize, const NR: usize, Acc: LADatum> {
     pub name: String,
     pub kernel: Kernel<Acc>,
-    pub default_packing_alignments: (usize, usize),
     pub packings: Vec<(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)>,
     pub stores: Vec<DatumType>,
     pub supported_predicate: fn() -> bool,
@@ -45,7 +44,8 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
     pub fn new(
         name: &str,
         kernel: Kernel<Acc>,
-        default_packing_alignments: (usize, usize),
+        packing_a: PackedFormat,
+        packing_b: PackedFormat,
     ) -> Self {
         let kernel = DynKernel {
             name: name.to_string(),
@@ -53,12 +53,9 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
             packings: vec![],
             stores: vec![Acc::datum_type()],
             supported_predicate: || true,
-            default_packing_alignments,
             can_fuse: |_| true,
         };
-        let a = kernel.regular_pack_a();
-        let b = kernel.regular_pack_b();
-        kernel.with_packing(a, b)
+        kernel.with_packing(packing_a, packing_b)
     }
 
     pub fn with_platform_condition(mut self, f: fn() -> bool) -> Self {
@@ -77,11 +74,11 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
     }
 
     pub fn regular_pack_a(&self) -> PackedFormat {
-        PackedFormat::new(Acc::datum_type(), MR, self.default_packing_alignments.0)
+        *self.packings[0].0.clone().downcast::<PackedFormat>().unwrap()
     }
 
     pub fn regular_pack_b(&self) -> PackedFormat {
-        PackedFormat::new(Acc::datum_type(), NR, self.default_packing_alignments.1)
+        *self.packings[0].1.clone().downcast::<PackedFormat>().unwrap()
     }
 
     pub fn with_can_fuse(self, can_fuse: fn(&FusedSpec) -> bool) -> Self {
