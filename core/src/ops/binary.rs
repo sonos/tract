@@ -4,6 +4,7 @@ use std::fmt::{self, Debug};
 use tract_data::itertools::izip;
 use tract_itertools::Itertools;
 use tract_linalg::LinalgFn;
+use crate::ndarray::Dimension;
 
 use super::cast::cast;
 
@@ -455,11 +456,11 @@ impl EvalOp for OptBinByScalar {
             .last()
             .context("Cannot use by_scalar when no trailing dimensions are unary")?;
 
-        let iterating_shape = a.shape()[..first_unary_axis].to_vec();
+        let iterating_shape = &a.shape()[..first_unary_axis];
         if !iterating_shape.is_empty() {
-            for it_coords in tract_data::internal::iter_indices(&iterating_shape) {
-                let mut view = TensorView::at_prefix(&a, &it_coords)?;
-                let b_view = TensorView::at_prefix(&b, &it_coords)?;
+            for it_coords in tract_ndarray::indices(iterating_shape) {
+                let mut view = TensorView::at_prefix(&a, it_coords.slice())?;
+                let b_view = TensorView::at_prefix(&b, it_coords.slice())?;
                 debug_assert_eq!(b_view.shape().iter().product::<usize>(), 1);
                 (self.eval_fn)(&mut view, &b_view)?;
             }
@@ -579,9 +580,9 @@ impl EvalOp for OptBinUnicast {
         if let Some(first_non_unary_axis) = first_non_unary_axis {
             // Iterate on outter dimensions and evaluate with unicast subviews
             let iterating_shape = a.shape()[..first_non_unary_axis].to_vec();
-            for it_coords in tract_data::internal::iter_indices(&iterating_shape) {
-                let mut view = TensorView::at_prefix(&a, &it_coords)?;
-                debug_assert_eq!(view.shape(), &b_view.shape()[it_coords.len()..]);
+            for it_coords in tract_ndarray::indices(iterating_shape) {
+                let mut view = TensorView::at_prefix(&a, it_coords.slice())?;
+                debug_assert_eq!(view.shape(), &b_view.shape()[it_coords.slice().len()..]);
                 (self.eval_fn)(&mut view, &b_view)?;
             }
         } else {
