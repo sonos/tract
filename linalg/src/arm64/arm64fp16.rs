@@ -50,3 +50,13 @@ pub fn plug(ops: &mut Ops) {
 
 tanh_impl!(f16, arm64fp16_tanh_f16_8n, 8, 8, crate::arm64::has_fp16());
 sigmoid_impl!(f16, arm64fp16_sigmoid_f16_8n, 8, 8, crate::arm64::has_fp16());
+
+#[cfg(test)]
+mod test {
+
+    #[test]
+    fn kits() {
+        let mut ops = crate::generic();
+        super::plug(&mut ops);
+    }
+}
