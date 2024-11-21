@@ -195,9 +195,6 @@ impl MMMKit {
     }
 
     pub(crate) fn with_native(self, mmm: Box<dyn MatMatMul>, packing: usize) -> Self {
-        dbg!(mmm.packings()[packing].0.same_as(&*self.static_packer));
-        dbg!(&mmm.packings()[packing].0);
-        dbg!(&*self.static_packer);
         debug_assert!(
             mmm.packings()[packing].0.same_as(&*self.static_packer),
             "Weight packing mismatch {self:?} {mmm:?}/{packing} {:?}",
