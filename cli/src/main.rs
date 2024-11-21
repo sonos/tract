@@ -423,6 +423,12 @@ fn assertions_options(command: clap::Command) -> clap::Command {
             .help("Approximation level used in assertions."),
             )
         .arg(
+            Arg::new("approx-custom")
+            .takes_value(true)
+            .long("approx-custom")
+            .help("Approximation level used in assertions (atol, rtol, outlier ratio). 3 coma-separated floats."),
+            )
+        .arg(
             Arg::new("assert-output")
             .takes_value(true)
             .multiple_occurrences(true)

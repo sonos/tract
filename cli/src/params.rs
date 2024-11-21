@@ -1136,14 +1136,19 @@ impl Assertions {
                     .collect()
             });
         let allow_missing_outputs = sub.is_present("allow-missing-outputs");
-        let approximation = match sub.value_of("approx").unwrap() {
-            "exact" => Approximation::Exact,
-            "close" => Approximation::Close,
-            "approximate" => Approximation::Approximate,
-            "very" => Approximation::VeryApproximate,
-            "super" => Approximation::SuperApproximate,
-            "ultra" => Approximation::UltraApproximate,
-            _ => panic!(),
+        let approximation = if let Some(custom) = sub.value_of("approx-custom") {
+            let Some((atol, rtol, approx)) = custom.split(",").collect_tuple() else { bail!("Can't parse approx custom. It should look like 0.001,0.002,0.003") };
+            Approximation::Custom(atol.parse()?, rtol.parse()?, approx.parse()?)
+        } else {
+            match sub.value_of("approx").unwrap() {
+                "exact" => Approximation::Exact,
+                "close" => Approximation::Close,
+                "approximate" => Approximation::Approximate,
+                "very" => Approximation::VeryApproximate,
+                "super" => Approximation::SuperApproximate,
+                "ultra" => Approximation::UltraApproximate,
+                _ => panic!(),
+            }
         };
         Ok(Assertions {
             assert_outputs,

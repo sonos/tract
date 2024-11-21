@@ -20,7 +20,7 @@ use std::sync::Arc;
 pub mod litteral;
 pub mod view;
 
-#[derive(Copy, Clone, Default, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, Default, Debug)]
 pub enum Approximation {
     Exact,
     #[default]
@@ -29,7 +29,21 @@ pub enum Approximation {
     VeryApproximate,
     SuperApproximate,
     UltraApproximate,
+    Custom(f32, f32, f32),
 }
+
+impl PartialEq for Approximation {
+    fn eq(&self, other: &Self) -> bool {
+        use Approximation::Custom;
+        if let (Custom(aa, ar, ao), Custom(ba, br, bo)) = (self, other) {
+            aa == ba && ar == br && bo == ao
+        } else {
+            std::mem::discriminant(self) == std::mem::discriminant(other)
+        }
+    }
+}
+
+impl Eq for Approximation {}
 
 impl From<bool> for Approximation {
     fn from(b: bool) -> Self {
@@ -54,6 +68,7 @@ impl Approximation {
             (VeryApproximate, _) => (5e-2, 1e-2, 0.0),
             (SuperApproximate, _) => (0.1, 0.05, 0.0001),
             (UltraApproximate, _) => (0.2, 0.1, 0.0005),
+            (Custom(atol, rtol, out), _) => (*atol as _, *rtol as _, *out as _),
         }
     }
 }
