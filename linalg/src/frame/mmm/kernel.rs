@@ -66,15 +66,6 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
         self
     }
 
-    pub fn with_packing_dts<A: Datum, B:Datum>(mut self) -> Self {
-        let mut pa = self.regular_pack_a();
-        pa.dt = A::datum_type();
-        let mut pb = self.regular_pack_b();
-        pb.dt = B::datum_type();
-        self.packings.push((Box::new(pa), Box::new(pb)));
-        self
-    }
-
     pub fn with_packing(mut self, a: impl MMMInputFormat, b: impl MMMInputFormat) -> Self {
         self.packings.push((Box::new(a), Box::new(b)));
         self
