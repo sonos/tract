@@ -26,8 +26,12 @@ impl WithOnnx for tract_nnef::framework::Nnef {
     }
 }
 
-fn onnx_opl_registry() -> Registry {
-    let mut registry: Registry = Registry::new("tract_onnx");
+pub fn onnx_opl_registry() -> Registry {
+    let mut registry: Registry = Registry::new("tract_onnx")
+        .with_doc("Extension `tract_resource` exposes NNEF fragments for accessing")
+        .with_doc("resources files in NNEF folder or archive.")
+        .with_doc("")
+        .with_doc("Add `extension tract_onnx` to `graph.nnef`");
     ml::register(&mut registry);
     non_max_suppression::register(&mut registry);
     multinomial::register(&mut registry);

@@ -1,0 +1,226 @@
+# Extension `tract_core` exposes NNEF fragments for using
+# operator defined by tract-core crate.
+# 
+# Add `extension tract_core` to `graph.nnef`
+
+fragment tract_core_round_even( x: tensor<scalar> ) -> (y: tensor<scalar>);
+fragment tract_core_erf( x: tensor<scalar> ) -> (y: tensor<scalar>);
+fragment tract_core_hard_swish( x: tensor<scalar> ) -> (y: tensor<scalar>);
+fragment tract_core_bitnot( x: tensor<scalar> ) -> (y: tensor<scalar>);
+
+fragment tract_core_argmax_reduce_last(
+    input: tensor<scalar>,
+    axes: integer[]
+) -> (output: tensor<scalar>);
+
+fragment tract_core_argmin_reduce_last(
+    input: tensor<scalar>,
+    axes: integer[]
+) -> (output: tensor<scalar>);
+
+fragment tract_core_broadcast(
+    input: tensor<scalar>,
+    shape: integer[]
+) -> (output: tensor<scalar>);
+
+fragment tract_core_cast(
+    input: tensor<scalar>,
+    to: string
+) -> (output: tensor<scalar>);
+
+fragment tract_core_downsample(
+    input: tensor<scalar>,
+    axis: integer,
+    stride: integer,
+    modulo: integer = 0
+) -> (output: tensor<scalar>);
+
+fragment tract_core_dyn_slice(
+    input: tensor<scalar>,
+    start: integer,
+    end: integer,
+    len: integer,
+    axis: integer
+) -> (output: tensor<scalar>);
+
+fragment tract_core_einsum(
+    inputs: tensor<scalar>[],
+    expr: string,
+    acc: string,
+    output: string = ""
+) -> (output: tensor<scalar>);
+
+fragment tract_core_einsum_q(
+    inputs: tensor<scalar>[],
+    expr: string,
+    acc: string,
+    output: string = "",
+    bias: tensor<scalar> = 0,
+    a0: tensor<integer>,
+    a_scale: tensor<scalar>,
+    b0: tensor<integer>,
+    b_scale: tensor<scalar>,
+    c0: tensor<integer>,
+    c_scale: tensor<scalar>
+) -> (output: tensor<scalar>);
+
+fragment tract_core_external(
+    datum_type: string,
+    shape: integer[]
+) -> (output: tensor<?>);
+
+fragment tract_core_fft(
+    input: tensor<scalar>,
+    axis: integer,
+    inverse: logical
+) -> (output: tensor<scalar>);
+
+fragment tract_core_force_eval(
+    inputs: tensor<scalar>[],
+    slots: integer[]
+) -> (output: tensor<scalar>);
+
+fragment tract_core_gather(
+    input: tensor<scalar>,
+    indices: tensor<scalar>,
+    axis: integer
+) -> (output: tensor<scalar>);
+
+fragment tract_core_gather_elements(
+    input: tensor<scalar>,
+    indices: tensor<scalar>,
+    axis: integer
+) -> (output: tensor<scalar>);
+
+fragment tract_core_gather_nd(
+    input: tensor<scalar>,
+    indices: tensor<scalar>,
+    batch_dims: integer
+) -> (output: tensor<scalar>);
+
+fragment tract_core_load(
+    input: tensor<scalar>[],
+    id: string
+) -> (output: tensor<scalar>);
+
+fragment tract_core_matmul(
+    A: tensor<scalar>,
+    B: tensor<scalar>,
+    axes: integer[]
+) -> (output: tensor<scalar>);
+
+fragment tract_core_one_hot(
+    input: tensor<scalar>,
+    axis: integer,
+    dim: integer,
+    value_off: scalar = 0.0,
+    value_on: scalar = 1.0
+) -> (output: tensor<scalar>);
+
+fragment tract_core_product_reduce(
+    input: tensor<scalar>,
+    axes: integer[]
+) -> (output: tensor<scalar>);
+
+fragment tract_core_qconv(
+    input: tensor<scalar>,
+    filter: tensor<scalar>,
+    bias: tensor<scalar> = 0,
+    group: integer,
+    dilation: integer[],
+    stride: integer[],
+    padding: integer[][],
+    border: string,
+    a0: integer,
+    a_scale: scalar,
+    b0: integer,
+    b_scale: scalar,
+    c0: integer,
+    c_scale: scalar
+) -> (output: tensor<scalar>);
+
+fragment tract_core_qmatmul(
+    A: tensor<scalar>,
+    B: tensor<scalar>,
+    bias: tensor<scalar> = 0,
+    axes: integer[],
+    a0: integer,
+    a_scale: scalar,
+    b0: integer,
+    b_scale: scalar,
+    c0: integer,
+    c_scale: scalar,
+    output_type: string
+) -> (output: tensor<scalar>);
+
+fragment tract_core_range(
+    start: integer,
+    end: integer,
+    step: integer
+) -> (output: tensor<scalar>);
+
+fragment tract_core_scan(
+    body: string,
+    scan: (string, tensor<scalar>, integer, integer)[],
+    full: (string, tensor<scalar>)[],
+    state: (string, tensor<scalar>, string)[],
+    output: (string, string, integer, integer)[],
+    skip: integer = 0,
+    reset_every_turn: integer = 0
+) -> (outputs: tensor<scalar>[]);
+
+fragment tract_core_scatter_elements(
+    input: tensor<scalar>,
+    indices: tensor<scalar>,
+    updates: tensor<scalar>,
+    axis: integer
+) -> (output: tensor<scalar>);
+
+fragment tract_core_scatter_nd(
+    input: tensor<scalar>,
+    indices: tensor<scalar>,
+    updates: tensor<scalar>
+) -> (output: tensor<scalar>);
+
+fragment tract_core_shape_of(
+    input: tensor<scalar>
+) -> (output: tensor<integer>);
+
+fragment tract_core_softmax(
+    x: tensor<scalar>,
+    axes: tensor<integer>,
+    exp: string
+) -> (output: tensor<scalar>);
+
+fragment tract_core_stft(
+    input: tensor<scalar>,
+    axis: integer,
+    frame: integer,
+    stride: integer,
+    window: tensor<scalar> = false
+) -> (output: tensor<scalar>);
+
+fragment tract_core_store(
+    input: tensor<scalar>,
+    state: tensor<scalar>,
+    id: string
+) -> (output: tensor<scalar>);
+
+fragment tract_core_submodel(
+    input: tensor<scalar>[],
+    label: string
+) -> (outputs: tensor<?>[]);
+
+fragment tract_core_topk(
+    input: tensor<scalar>,
+    k: tensor<integer>,
+    axis: integer,
+    largest: logical
+) -> (values: tensor<scalar>, indices: tensor<integer>);
+
+fragment tract_core_trilu(
+    input: tensor<scalar>,
+    k: tensor<integer>,
+    upper: logical
+) -> (output: tensor<scalar>);
+
