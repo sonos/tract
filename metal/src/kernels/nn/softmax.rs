@@ -52,19 +52,19 @@ impl Softmax {
             .load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
 
         let command_buffer = context.command_buffer();
-        let encoder = command_buffer.new_compute_command_encoder();
-        encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
-        encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
-        encoder.set_slice(2, &shape_nd3);
-        encoder.set_slice(3, &strides_nd3);
+        command_buffer.encode(|encoder| {
+            encoder.set_compute_pipeline_state(&pipeline);
+            encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
+            encoder.set_slice(2, &shape_nd3);
+            encoder.set_slice(3, &strides_nd3);
 
-        let grid_size = MTLSize { width: shape_nd3[2] as _, height: 1, depth: shape_nd3[0] as _ };
-        let group_size = MTLSize { width: usize::min(32, shape_nd3[1]) as _, height: 1, depth: 1 };
+            let grid_size = MTLSize { width: shape_nd3[2] as _, height: 1, depth: shape_nd3[0] as _ };
+            let group_size = MTLSize { width: usize::min(32, shape_nd3[1]) as _, height: 1, depth: 1 };
 
-        encoder.dispatch_thread_groups(grid_size, group_size);
-        encoder.end_encoding();
-
+            encoder.dispatch_thread_groups(grid_size, group_size);
+            encoder.end_encoding();
+        });
         Ok(())
     }
 }

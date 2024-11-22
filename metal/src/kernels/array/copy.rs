@@ -58,20 +58,21 @@ impl Memcpy {
         let pipeline =
             context.shared_context().load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
         let command_buffer = context.command_buffer();
-        let encoder = command_buffer.new_compute_command_encoder();
-        encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_metal_tensor_with_offset(
-            0,
-            input,
-            input_offset as _,
-            metal::MTLResourceUsage::Read,
-        );
-        encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
+        command_buffer.encode(|encoder| {
+            encoder.set_compute_pipeline_state(&pipeline);
+            encoder.set_metal_tensor_with_offset(
+                0,
+                input,
+                input_offset as _,
+                metal::MTLResourceUsage::Read,
+            );
+            encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
 
-        let grid_size = MTLSize { width: output.len() as NSUInteger, height: 1, depth: 1 };
-        let group_size = MTLSize { width: 1, height: 1, depth: 1 };
-        encoder.dispatch_thread_groups(grid_size, group_size);
-        encoder.end_encoding();
+            let grid_size = MTLSize { width: output.len() as NSUInteger, height: 1, depth: 1 };
+            let group_size = MTLSize { width: 1, height: 1, depth: 1 };
+            encoder.dispatch_thread_groups(grid_size, group_size);
+            encoder.end_encoding();
+        });
         Ok(())
     }
 

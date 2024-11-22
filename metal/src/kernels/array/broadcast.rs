@@ -87,24 +87,25 @@ impl MultiBroadcast {
         let pipeline =
             context.shared_context().load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
         let command_buffer = context.command_buffer();
-        let encoder = command_buffer.new_compute_command_encoder();
-        encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_metal_tensor_with_offset(
-            0,
-            input,
-            input_offset as _,
-            metal::MTLResourceUsage::Read,
-        );
-        encoder.set_slice(1, &input_broadcast_strides);
-        encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
-        encoder.set_slice(3, output.shape());
-        encoder.set_slice(4, output.strides());
+        command_buffer.encode(|encoder| {
+            encoder.set_compute_pipeline_state(&pipeline);
+            encoder.set_metal_tensor_with_offset(
+                0,
+                input,
+                input_offset as _,
+                metal::MTLResourceUsage::Read,
+            );
+            encoder.set_slice(1, &input_broadcast_strides);
+            encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
+            encoder.set_slice(3, output.shape());
+            encoder.set_slice(4, output.strides());
 
-        let grid_size = utils::build_metal_size_for_shape(output.shape());
-        let group_size = utils::build_metal_size_with_ones();
+                let grid_size = utils::build_metal_size_for_shape(output.shape());
+                let group_size = utils::build_metal_size_with_ones();
 
-        encoder.dispatch_thread_groups(grid_size, group_size);
-        encoder.end_encoding();
+            encoder.dispatch_thread_groups(grid_size, group_size);
+            encoder.end_encoding();
+        });
         Ok(())
     }
 }

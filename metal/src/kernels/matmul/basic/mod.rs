@@ -111,25 +111,25 @@ impl BasicMatMul {
             .shared_context()
             .load_pipeline(LibraryName::BasicMatMul, &Self::kernel_name(dt, true)?)?;
 
-        let command_buffer = context.command_buffer();
-        let encoder = command_buffer.new_compute_command_encoder();
-        encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_buffer(0, Some(lhs_buffer), lhs_offset as _);
-        encoder.set_buffer(1, Some(rhs_buffer), rhs_offset as _);
-        encoder.set_buffer(2, Some(output), output_offset as _);
-        encoder.set_bytes(3, 4, &(m as i32) as *const i32 as *const _);
-        encoder.set_bytes(4, 4, &(k as i32) as *const i32 as *const _);
+        let mut command_buffer = context.command_buffer();
+        command_buffer.encode(|encoder| {
+            encoder.set_compute_pipeline_state(&pipeline);
+            encoder.set_buffer(0, Some(lhs_buffer), lhs_offset as _);
+            encoder.set_buffer(1, Some(rhs_buffer), rhs_offset as _);
+            encoder.set_buffer(2, Some(output), output_offset as _);
+            encoder.set_bytes(3, 4, &(m as i32) as *const i32 as *const _);
+            encoder.set_bytes(4, 4, &(k as i32) as *const i32 as *const _);
 
-        // m x k * k * 1
-        let grid_size =
-            MTLSize { width: 1, height: m.div_ceil(4) as NSUInteger, depth: 1 as NSUInteger };
-        let group_size = MTLSize { width: 32, height: 1, depth: 1 };
-        encoder.use_resource(lhs_buffer, metal::MTLResourceUsage::Read);
-        encoder.use_resource(rhs_buffer, metal::MTLResourceUsage::Read);
-        encoder.use_resource(output, metal::MTLResourceUsage::Write);
-        encoder.dispatch_thread_groups(grid_size, group_size);
-        encoder.end_encoding();
-
+            // m x k * k * 1
+            let grid_size =
+                MTLSize { width: 1, height: m.div_ceil(4) as NSUInteger, depth: 1 as NSUInteger };
+            let group_size = MTLSize { width: 32, height: 1, depth: 1 };
+            encoder.use_resource(lhs_buffer, metal::MTLResourceUsage::Read);
+            encoder.use_resource(rhs_buffer, metal::MTLResourceUsage::Read);
+            encoder.use_resource(output, metal::MTLResourceUsage::Write);
+            encoder.dispatch_thread_groups(grid_size, group_size);
+            encoder.end_encoding();
+        });
         Ok(())
     }
 
@@ -153,30 +153,30 @@ impl BasicMatMul {
             .shared_context()
             .load_pipeline(LibraryName::BasicMatMul, &Self::kernel_name(dt, false)?)?;
 
-        let command_buffer = context.command_buffer();
-        let encoder = command_buffer.new_compute_command_encoder();
-        encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_buffer(0, Some(lhs_buffer), lhs_offset as _);
-        encoder.set_buffer(1, Some(rhs_buffer), rhs_offset as _);
-        encoder.set_buffer(2, Some(output), output_offset as _);
-        encoder.set_bytes(3, 4, &(m as i32) as *const i32 as *const _);
-        encoder.set_bytes(4, 4, &(k as i32) as *const i32 as *const _);
-        encoder.set_bytes(5, 4, &(n as i32) as *const i32 as *const _);
-        encoder.set_bytes(6, 4, &(lhs_transpose as i32) as *const i32 as *const _);
-        encoder.set_bytes(7, 4, &(rhs_transpose as i32) as *const i32 as *const _);
+        let mut command_buffer = context.command_buffer();
+        command_buffer.encode(|encoder| {
+            encoder.set_compute_pipeline_state(&pipeline);
+            encoder.set_buffer(0, Some(lhs_buffer), lhs_offset as _);
+            encoder.set_buffer(1, Some(rhs_buffer), rhs_offset as _);
+            encoder.set_buffer(2, Some(output), output_offset as _);
+            encoder.set_bytes(3, 4, &(m as i32) as *const i32 as *const _);
+            encoder.set_bytes(4, 4, &(k as i32) as *const i32 as *const _);
+            encoder.set_bytes(5, 4, &(n as i32) as *const i32 as *const _);
+            encoder.set_bytes(6, 4, &(lhs_transpose as i32) as *const i32 as *const _);
+            encoder.set_bytes(7, 4, &(rhs_transpose as i32) as *const i32 as *const _);
 
-        let grid_size = MTLSize {
-            width: n.div_ceil(4) as NSUInteger,
-            height: m.div_ceil(4) as NSUInteger,
-            depth: 1 as NSUInteger,
-        };
-        let group_size = MTLSize { width: 32, height: 1, depth: 1 };
-        encoder.use_resource(lhs_buffer, metal::MTLResourceUsage::Read);
-        encoder.use_resource(rhs_buffer, metal::MTLResourceUsage::Read);
-        encoder.use_resource(output, metal::MTLResourceUsage::Write);
-        encoder.dispatch_thread_groups(grid_size, group_size);
-        encoder.end_encoding();
-
+            let grid_size = MTLSize {
+                width: n.div_ceil(4) as NSUInteger,
+                height: m.div_ceil(4) as NSUInteger,
+                depth: 1 as NSUInteger,
+            };
+            let group_size: MTLSize = MTLSize { width: 32, height: 1, depth: 1 };
+            encoder.use_resource(lhs_buffer, metal::MTLResourceUsage::Read);
+            encoder.use_resource(rhs_buffer, metal::MTLResourceUsage::Read);
+            encoder.use_resource(output, metal::MTLResourceUsage::Write);
+            encoder.dispatch_thread_groups(grid_size, group_size);
+            encoder.end_encoding();
+        });
         Ok(())
     }
 }

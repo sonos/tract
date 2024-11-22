@@ -1,3 +1,4 @@
+use crate::command_buffer::{ProfileBuffers, TractCommandBuffer};
 use crate::func_constants::ConstantValues;
 use crate::kernels::matmul::mps;
 use crate::kernels::{LibraryContent, LibraryName};
@@ -10,8 +11,8 @@ use std::sync::{Arc, OnceLock, RwLock};
 
 use anyhow::{anyhow, Context, Result};
 use metal::{
-    CommandBuffer, CommandQueue, CompileOptions, ComputePipelineState, Device, Function,
-    FunctionConstantValues, Library,
+    Buffer, CommandQueue, CompileOptions, ComputePipelineState, Device, Function,
+    FunctionConstantValues, Library, MTLResourceOptions,
 };
 use std::collections::HashMap;
 
@@ -190,7 +191,7 @@ impl SharedMetalContext {
 pub struct MetalContext {
     shared: SharedMetalContext,
     command_queue: CommandQueue,
-    command_buffer: RefCell<CommandBuffer>,
+    command_buffer: RefCell<TractCommandBuffer>,
     command_buffer_used: RefCell<usize>,
     command_buffer_id: AtomicUsize,
     retained_tensors: RefCell<Vec<MetalTensor>>,
@@ -210,7 +211,7 @@ impl MetalContext {
         command_buffer.enqueue();
         Self {
             command_queue,
-            command_buffer: RefCell::new(command_buffer),
+            command_buffer: RefCell::new(TractCommandBuffer::new(command_buffer)),
             command_buffer_used: RefCell::new(0),
             command_buffer_id: AtomicUsize::new(0),
             retained_tensors: RefCell::new(vec![]),
@@ -250,11 +251,18 @@ impl MetalContext {
         self.retained_tensors.borrow_mut().push(tensor.clone());
     }
 
-    pub fn command_buffer(&self) -> CommandBuffer {
-        let command_buffer = self.command_buffer.borrow().to_owned();
+    pub fn command_buffer(&self) -> TractCommandBuffer {
+        let command_buffer = self.command_buffer.borrow_mut().to_owned();
         let mut command_buffer_used = self.command_buffer_used.borrow_mut();
         *command_buffer_used += 1;
         command_buffer
+    }
+
+    pub fn command_buffer_mut(&self) -> RefMut<TractCommandBuffer> {
+        let mut command_buffer_used = self.command_buffer_used.borrow_mut();
+        *command_buffer_used += 1;
+
+        self.command_buffer.borrow_mut()
     }
 
     pub fn wait_until_completed(&self) -> Result<()> {
@@ -281,7 +289,8 @@ impl MetalContext {
         // Clear local retained values used by the command buffer
         self.retained_tensors.borrow_mut().clear();
 
-        *command_buffer = self.command_queue.new_command_buffer().to_owned();
+        *command_buffer =
+            TractCommandBuffer::new(self.command_queue.new_command_buffer().to_owned());
         command_buffer.enqueue();
         *command_buffer_used = 0;
         self.command_buffer_id.fetch_add(1, Ordering::Relaxed);
@@ -310,6 +319,32 @@ impl MetalContext {
         self.wait_until_completed()?;
         capture.stop_capture();
         Ok(())
+    }
+
+    pub fn get_cpu_gpu_timestamps_ns(&self) -> (u64, u64) {
+        let mut cpu_ts = 0;
+        let mut gpu_ts = 0;
+
+        self.device().sample_timestamps(&mut cpu_ts, &mut gpu_ts);
+
+        (cpu_ts, gpu_ts)
+    }
+    pub fn profile<EvalCallback>(
+        &self,
+        sampling_buffers: Arc<Mutex<ProfileBuffers>>,
+        eval: EvalCallback,
+    ) -> Result<MetalTensor>
+    where
+        EvalCallback: Fn() -> Result<MetalTensor>,
+    {
+        let device: &Device = &self.shared.device;
+        assert!(device.supports_counter_sampling(metal::MTLCounterSamplingPoint::AtStageBoundary));
+
+        self.command_buffer_mut().attach_profiler(self.shared.device.clone(), sampling_buffers);
+
+        let output = eval()?;
+
+        Ok(output)
     }
 }
 

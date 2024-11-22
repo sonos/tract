@@ -54,21 +54,21 @@ pub fn metal_mmm_tile_8x8(
     )?;
 
     let command_buffer = context.command_buffer();
-    let encoder = command_buffer.new_compute_command_encoder();
-    encoder.set_compute_pipeline_state(&pipeline);
-    encoder.set_metal_tensor(0, output, metal::MTLResourceUsage::Write);
-    encoder.set_metal_tensor(1, lhs, metal::MTLResourceUsage::Read);
-    encoder.set_metal_tensor(2, rhs, metal::MTLResourceUsage::Read);
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_metal_tensor(0, output, metal::MTLResourceUsage::Write);
+        encoder.set_metal_tensor(1, lhs, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(2, rhs, metal::MTLResourceUsage::Read);
 
-    let grid_size = MTLSize {
-        width: dim.div_ceil(8 * 4) as NSUInteger,
-        height: dim.div_ceil(8 * 4) as NSUInteger,
-        depth: 1 as NSUInteger,
-    };
-    let group_size = MTLSize { width: 32, height: 2, depth: 1 };
-    encoder.dispatch_thread_groups(grid_size, group_size);
-    encoder.end_encoding();
-
+        let grid_size = MTLSize {
+            width: dim.div_ceil(8 * 4) as NSUInteger,
+            height: dim.div_ceil(8 * 4) as NSUInteger,
+            depth: 1 as NSUInteger,
+        };
+        let group_size = MTLSize { width: 32, height: 2, depth: 1 };
+        encoder.dispatch_thread_groups(grid_size, group_size);
+        encoder.end_encoding();
+    });
     Ok(())
 }
 

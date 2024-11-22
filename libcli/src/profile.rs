@@ -2,11 +2,13 @@ use tract_core::internal::*;
 use tract_core::num_traits::Zero;
 use tract_core::ops::scan::State;
 use tract_core::ops::submodel::TypedModelOpState;
+use tract_metal::command_buffer::ProfileBuffers;
 
 use crate::annotations::*;
 use crate::model::Model;
 use crate::tensor::make_inputs_for_model;
 use std::any::TypeId;
+use std::sync::Mutex;
 use std::time::Duration;
 
 pub struct BenchLimits {
@@ -69,6 +71,7 @@ pub fn profile(
     let start = crate::time::now();
     let mut time_accounted_by_inner_nodes = Duration::default();
     while iters < bench_limits.max_loops && start.elapsed() < bench_limits.max_time {
+        /* 
         rec_profiler(
             &mut state,
             dg,
@@ -79,7 +82,17 @@ pub fn profile(
             &mut time_accounted_by_inner_nodes,
             folded,
         )?;
+        */
+        rec_profiler_metal(&mut state,
+                            dg,
+                            inputs,
+                            custom_profiler.as_ref(),
+                            &prefix,
+                            None,
+                            &mut time_accounted_by_inner_nodes,
+                            folded,)?;
         iters += 1;
+
     }
     let entire = start.elapsed() - time_accounted_by_inner_nodes;
     info!("Running {} iterations max. for each node.", bench_limits.max_loops);
@@ -97,6 +110,38 @@ pub fn profile(
     dg.profile_summary = Some(ProfileSummary { max, sum, entire, iters });
     Ok(())
 }
+
+#[allow(clippy::too_many_arguments)]
+pub fn rec_profiler_metal(
+    state: &mut TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
+    dg: &mut Annotations,
+    inputs: &TVec<TValue>,
+    profilers: Option<&HashMap<TypeId, Profiler>>,
+    prefix: &[(usize, String)],
+    multiplier: Option<usize>,
+    time_accounted_by_inner_nodes: &mut Duration,
+    folded: bool,
+) -> TractResult<TVec<TValue>> {
+
+    let result = tract_metal::METAL_CONTEXT.with_borrow( |ctxt| {
+        let mut cpu_start: u64 = 0;
+        let mut gpu_start: u64 = 0;
+        ctxt.device().sample_timestamps(&mut cpu_start, &mut gpu_start);
+        dbg!(state.model().nodes_len());
+        let (r, profiler) = ctxt.profile(|| {
+           state.run(inputs.clone())
+        })?;
+
+        let mut cpu_end: u64 = 0;
+        let mut gpu_end: u64 = 0;
+        ctxt.device().sample_timestamps(&mut cpu_end, &mut gpu_end);
+        
+        dbg!(profiler);
+        Ok(r)
+    });
+    result
+}
+
 
 #[allow(clippy::too_many_arguments)]
 pub fn rec_profiler(

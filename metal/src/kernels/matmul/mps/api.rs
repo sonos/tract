@@ -1,9 +1,11 @@
 use foreign_types::{foreign_type, ForeignType};
 use metal::mps::{Kernel, KernelRef};
-use metal::{Buffer, CommandBuffer, Device, NSUInteger};
+use metal::{Buffer, Device, NSUInteger};
 use objc::runtime::Object;
 use objc::{class, msg_send, sel, sel_impl};
 use paste::paste;
+
+use crate::command_buffer::TractCommandBuffer;
 
 // From https://github.com/gfx-rs/metal-rs
 
@@ -270,7 +272,7 @@ impl MatrixMultiplicationRef {
     ///
     pub fn encode(
         &self,
-        command_buffer: CommandBuffer,
+        command_buffer: TractCommandBuffer,
         left: Matrix,
         right: Matrix,
         result: Matrix,
@@ -347,7 +349,7 @@ impl MatrixVectorMultiplicationRef {
     ///
     pub fn encode(
         &self,
-        command_buffer: CommandBuffer,
+        command_buffer: TractCommandBuffer,
         left: Matrix,
         right: Vector,
         result: Vector,
