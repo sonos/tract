@@ -1,5 +1,4 @@
 use crate::MetalContext;
-use anyhow::Result;
 use metal::Buffer;
 use metal::MTLResourceOptions;
 use num_traits::AsPrimitive;
@@ -95,40 +94,6 @@ impl MetalArenaView {
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.shape().iter().product()
-    }
-
-    /// Reshaped tensor with given shape.
-    pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> Result<Self> {
-        let shape = shape.into();
-        if self.len() != shape.iter().product::<usize>() {
-            bail!("Invalid reshape {:?} to {:?}", self.shape(), shape);
-        }
-        if shape.as_slice() != self.shape() {
-            Ok(Self {
-                dt: self.dt,
-                arena: Arc::clone(&self.arena),
-                strides: Tensor::natural_strides(&shape),
-                shape,
-                offset_bytes: self.offset_bytes,
-            })
-        } else {
-            Ok(self.clone())
-        }
-    }
-
-    /// Reshaped tensor with given shape and strides, no consistency check.
-    pub unsafe fn reshaped_with_geometry_unchecked(
-        &self,
-        shape: impl Into<TVec<usize>>,
-        strides: impl Into<TVec<isize>>,
-    ) -> Self {
-        Self {
-            dt: self.dt,
-            arena: Arc::clone(&self.arena),
-            strides: strides.into(),
-            shape: shape.into(),
-            offset_bytes: self.offset_bytes,
-        }
     }
 
     pub fn as_bytes(&self) -> &[u8] {

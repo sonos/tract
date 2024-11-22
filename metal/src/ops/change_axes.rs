@@ -207,16 +207,11 @@ impl MetalEvalOp for MetalIntoShape {
         let input = opaque.to_metal_tensor()?;
         ensure!(input.len() == self.0.len);
         let output =
-            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
+            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &self.0.dims)?;
 
         Memcpy.dispatch_eval(context, input, 0, &output)?;
 
-        unsafe {
-            Ok(tvec![output
-                .reshaped_with_geometry_unchecked(self.0.dims.clone(), self.0.strides.clone())
-                .into_opaque_tensor()
-                .into_tvalue()])
-        }
+        Ok(tvec![output.into_opaque_tensor().into_tvalue()])
     }
 }
 

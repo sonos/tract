@@ -150,7 +150,7 @@ impl MetalTensor {
     pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> Result<Self> {
         match self {
             Self::Owned(t) => Ok(Self::Owned(t.reshaped(shape)?)),
-            Self::ArenaView(t) => Ok(Self::ArenaView(t.reshaped(shape)?)),
+            Self::ArenaView(_t) => bail!("Reshape a Metal Arena View is not supported"),
         }
     }
 
@@ -164,33 +164,6 @@ impl MetalTensor {
         self.retain_until_completion();
         self
     }
-
-    /// Reshaped tensor with given shape and strides, no consistency check.
-    pub unsafe fn reshaped_with_geometry_unchecked(
-        &self,
-        shape: impl Into<TVec<usize>>,
-        strides: impl Into<TVec<isize>>,
-    ) -> Self {
-        match self {
-            Self::Owned(t) => Self::Owned(t.reshaped_with_geometry_unchecked(shape, strides)),
-            Self::ArenaView(t) => {
-                Self::ArenaView(t.reshaped_with_geometry_unchecked(shape, strides))
-            }
-        }
-    }
-
-    // pub fn assert_sane_floats(&self) -> Result<()> {
-    //     if let Ok(floats) = self.inner.view().as_slice::<f32>() {
-    //         if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
-    //             bail!("Found {} in at position {:?}", floats[pos], pos);
-    //         }
-    //     } else if let Ok(floats) = self.inner.view().as_slice::<f16>() {
-    //         if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
-    //             bail!("Found {} in at position {:?}", floats[pos], pos);
-    //         }
-    //     }
-    //     Ok(())
-    // }
 
     /// Convert Metal tensor to Opaque Tensor.
     pub fn into_opaque_tensor(self) -> Tensor {

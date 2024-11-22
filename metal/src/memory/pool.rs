@@ -35,11 +35,11 @@ impl MetalMemoryPool {
         dt: DatumType,
         shape: &[usize],
     ) -> Result<MetalTensor> {
-        // unsafe { Tensor::uninitialized_dt(dt, shape)?.into_metal() }
-        // ensure!(!self.node_seen.borrow().contains(&node_id), "Tensor for node {:?} was already requested. Maybe the memory pool was not reset properly.", node_id);
+        ensure!(!self.node_seen.borrow().contains(&node_id), "Tensor for node {:?} was already requested. Maybe the memory pool was not reset properly.", node_id);
         let alignment = dt.alignment();
         (self.alignment % alignment == 0)
             .then(|| self.resolved_schema.offsets_by_node[node_id])
+            .flatten()
             .map(|offset| {
                 // self.node_seen.borrow_mut().insert(node_id);
                 Ok(MetalArenaView {

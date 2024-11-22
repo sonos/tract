@@ -4,11 +4,13 @@ use tract_core::internal::*;
 /// Origin of the metal tensor
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum MetalOrigin {
-    /// Metal tensor outputted by a GPU ops
+    /// Metal tensor outputted by a GPU operator
     /// Can be either: Owned or ArenaView
+    /// Note: Tensors marked as FromGPU are from asynchronous operations.
     FromGpu,
-    /// Metal tensor built from a CPU tensor
-    /// Can be only Owned Metal tensor
+    /// Metal tensor built from a CPU tensor (CPU op output or Const)
+    /// Can be only Owned Metal tensor.
+    /// Note: Tensors marked as FromCPU are from synchronous operations.
     FromCpu,
 }
 
