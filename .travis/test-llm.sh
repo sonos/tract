@@ -28,7 +28,6 @@ case $model in
         ;;
 esac
 
-
 nnef=llm/$generation/$id/$id.nnef.tgz
 
 $CACHE_FILE $nnef
@@ -66,6 +65,7 @@ do
         TinyLlama--TinyLlama_v1.1-f16f16.p50s50) approx="--approx-custom 0.2,0.1,0.005";;
         TinyLlama--TinyLlama_v1.1-f16f16.p99s1) approx="--approx-custom 0.2,0.1,0.004";;
     esac
+
 
     $TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O run \
         --input-from-npz $MODELS/$npz \
