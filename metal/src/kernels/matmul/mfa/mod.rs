@@ -200,45 +200,49 @@ pub fn dispatch_metal_mfa_gemm(
 
     let block_bytes = block_elements * dt.size_of() as u16;
 
-    let command_buffer = context.command_buffer();
-    let encoder = command_buffer.new_compute_command_encoder();
-    encoder.set_compute_pipeline_state(&pipeline);
-    encoder.set_threadgroup_memory_length(0, block_bytes.into());
-    encoder.set_buffer(0, Some(lhs_buffer), lhs_offset as NSUInteger);
-    encoder.set_buffer(1, Some(rhs_buffer), rhs_offset as NSUInteger);
-    encoder.set_buffer(2, Some(output), output_offset as NSUInteger);
-    // TODO Tensor D
+    let mut command_buffer = context.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_threadgroup_memory_length(0, block_bytes.into());
+        encoder.set_buffer(0, Some(lhs_buffer), lhs_offset as NSUInteger);
+        encoder.set_buffer(1, Some(rhs_buffer), rhs_offset as NSUInteger);
+        encoder.set_buffer(2, Some(output), output_offset as NSUInteger);
+        // TODO Tensor D
 
-    let grid_z = b;
-    if batched {
-        let byte_stride_a: usize = lhs_stride[lhs_stride.len() - 3] * dt.size_of();
-        let byte_stride_b: usize = rhs_stride[rhs_stride.len() - 3] * dt.size_of();
-        let byte_stride_c = m * n * dt.size_of();
-        // TODO byte_stride_d
-        let byte_stride_d = 0;
+        let grid_z = b;
+        if batched {
+            let byte_stride_a: usize = lhs_stride[lhs_stride.len() - 3] * dt.size_of();
+            let byte_stride_b: usize = rhs_stride[rhs_stride.len() - 3] * dt.size_of();
+            let byte_stride_c = m * n * dt.size_of();
+            // TODO byte_stride_d
+            let byte_stride_d = 0;
 
-        let buffer: Vec<u64> =
-            vec![byte_stride_a as _, byte_stride_b as _, byte_stride_c as _, byte_stride_d as _];
-        encoder.set_bytes(
-            10,
-            (buffer.len() * core::mem::size_of::<u64>()) as NSUInteger,
-            buffer.as_ptr() as *const NSUInteger as *const c_void,
-        );
-    }
+            let buffer: Vec<u64> = vec![
+                byte_stride_a as _,
+                byte_stride_b as _,
+                byte_stride_c as _,
+                byte_stride_d as _,
+            ];
+            encoder.set_bytes(
+                10,
+                (buffer.len() * core::mem::size_of::<u64>()) as NSUInteger,
+                buffer.as_ptr() as *const NSUInteger as *const c_void,
+            );
+        }
 
-    let grid_size = MTLSize {
-        width: n.div_ceil(n_group.into()) as NSUInteger,
-        height: m.div_ceil(m_group.into()) as NSUInteger,
-        depth: grid_z as NSUInteger,
-    };
-    let group_size =
-        MTLSize { width: 32 * (m_splits as u64) * (n_splits as u64), height: 1, depth: 1 };
-    encoder.use_resource(lhs_buffer, metal::MTLResourceUsage::Read);
-    encoder.use_resource(rhs_buffer, metal::MTLResourceUsage::Read);
-    encoder.use_resource(output, metal::MTLResourceUsage::Write);
-    encoder.dispatch_thread_groups(grid_size, group_size);
-    encoder.end_encoding();
-
+        let grid_size = MTLSize {
+            width: n.div_ceil(n_group.into()) as NSUInteger,
+            height: m.div_ceil(m_group.into()) as NSUInteger,
+            depth: grid_z as NSUInteger,
+        };
+        let group_size =
+            MTLSize { width: 32 * (m_splits as u64) * (n_splits as u64), height: 1, depth: 1 };
+        encoder.use_resource(lhs_buffer, metal::MTLResourceUsage::Read);
+        encoder.use_resource(rhs_buffer, metal::MTLResourceUsage::Read);
+        encoder.use_resource(output, metal::MTLResourceUsage::Write);
+        encoder.dispatch_thread_groups(grid_size, group_size);
+        encoder.end_encoding();
+    });
     Ok(())
 }
 

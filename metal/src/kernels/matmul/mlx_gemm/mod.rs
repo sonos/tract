@@ -205,63 +205,63 @@ pub fn dispatch_metal_mlx_gemv(
     let name = format!("gemv_{t_mat}{tname}_bm{bm}_bn{bn}_sm{sm}_sn{sn}_tm{tm}_tn{tn}_nc0_axpby0");
     let pipeline = context.shared_context().load_pipeline(LibraryName::MlxGemv, &name)?;
 
-    let command_buffer = context.command_buffer();
-    let encoder = command_buffer.new_compute_command_encoder();
-    encoder.set_compute_pipeline_state(&pipeline);
-    if is_b_matrix {
-        encoder.set_buffer(0, Some(b_buffer), b_offset as _);
-        encoder.set_buffer(1, Some(a_buffer), a_offset as _);
-    } else {
-        encoder.set_buffer(0, Some(a_buffer), a_offset as _);
-        encoder.set_buffer(1, Some(b_buffer), b_offset as _);
-    }
-    encoder.set_buffer(3, Some(output), output_offset as _);
+    let mut command_buffer = context.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        if is_b_matrix {
+            encoder.set_buffer(0, Some(b_buffer), b_offset as _);
+            encoder.set_buffer(1, Some(a_buffer), a_offset as _);
+        } else {
+            encoder.set_buffer(0, Some(a_buffer), a_offset as _);
+            encoder.set_buffer(1, Some(b_buffer), b_offset as _);
+        }
+        encoder.set_buffer(3, Some(output), output_offset as _);
 
-    encoder.set_bytes(
-        4,
-        std::mem::size_of::<i32>() as u64,
-        &(mv_k as i32) as *const i32 as *const c_void,
-    );
+        encoder.set_bytes(
+            4,
+            std::mem::size_of::<i32>() as u64,
+            &(mv_k as i32) as *const i32 as *const c_void,
+        );
 
-    encoder.set_bytes(
-        5,
-        std::mem::size_of::<i32>() as u64,
-        &(mv_m as i32) as *const i32 as *const c_void,
-    );
+        encoder.set_bytes(
+            5,
+            std::mem::size_of::<i32>() as u64,
+            &(mv_m as i32) as *const i32 as *const c_void,
+        );
 
-    encoder.set_bytes(
-        6,
-        std::mem::size_of::<i32>() as u64,
-        &(mv_ld as i32) as *const i32 as *const c_void,
-    );
+        encoder.set_bytes(
+            6,
+            std::mem::size_of::<i32>() as u64,
+            &(mv_ld as i32) as *const i32 as *const c_void,
+        );
 
-    encoder.set_bytes(
-        9, // batch_ndim
-        std::mem::size_of::<i32>() as u64,
-        &1_i32 as *const i32 as *const c_void,
-    );
-    encoder.set_bytes(
-        10, // batch_shape
-        std::mem::size_of::<i32>() as u64,
-        &(b as i32) as *const i32 as *const c_void,
-    );
-    encoder.set_bytes(
-        11, // batch_strides_vec
-        std::mem::size_of::<usize>() as u64,
-        &vec_batch_stride as *const usize as *const c_void,
-    );
-    encoder.set_bytes(
-        12, // batch_strides_mat
-        std::mem::size_of::<usize>() as u64,
-        &mat_batch_stride as *const usize as *const c_void,
-    );
+        encoder.set_bytes(
+            9, // batch_ndim
+            std::mem::size_of::<i32>() as u64,
+            &1_i32 as *const i32 as *const c_void,
+        );
+        encoder.set_bytes(
+            10, // batch_shape
+            std::mem::size_of::<i32>() as u64,
+            &(b as i32) as *const i32 as *const c_void,
+        );
+        encoder.set_bytes(
+            11, // batch_strides_vec
+            std::mem::size_of::<usize>() as u64,
+            &vec_batch_stride as *const usize as *const c_void,
+        );
+        encoder.set_bytes(
+            12, // batch_strides_mat
+            std::mem::size_of::<usize>() as u64,
+            &mat_batch_stride as *const usize as *const c_void,
+        );
 
-    encoder.use_resource(a_buffer, metal::MTLResourceUsage::Read);
-    encoder.use_resource(b_buffer, metal::MTLResourceUsage::Read);
-    encoder.use_resource(output, metal::MTLResourceUsage::Write);
-    encoder.dispatch_thread_groups(grid_size, group_size);
-    encoder.end_encoding();
-
+        encoder.use_resource(a_buffer, metal::MTLResourceUsage::Read);
+        encoder.use_resource(b_buffer, metal::MTLResourceUsage::Read);
+        encoder.use_resource(output, metal::MTLResourceUsage::Write);
+        encoder.dispatch_thread_groups(grid_size, group_size);
+        encoder.end_encoding();
+    });
     Ok(())
 }
 
@@ -366,55 +366,55 @@ pub fn dispatch_metal_mlx_gemm(
         constants,
     )?;
 
-    let command_buffer = context.command_buffer();
-    let encoder = command_buffer.new_compute_command_encoder();
-    encoder.set_compute_pipeline_state(&pipeline);
-    encoder.set_buffer(0, Some(lhs_buffer), lhs_offset as NSUInteger);
-    encoder.set_buffer(1, Some(rhs_buffer), rhs_offset as NSUInteger);
-    encoder.set_buffer(3, Some(output), output_offset as NSUInteger);
-    encoder.set_bytes(
-        4,
-        std::mem::size_of::<MlxGemmParams>() as u64,
-        &gemm_params as *const MlxGemmParams as *const c_void,
-    );
-    encoder.set_bytes(
-        6, // batch_shape
-        std::mem::size_of::<i32>() as u64,
-        &(b as i32) as *const i32 as *const c_void,
-    );
-    encoder.set_bytes(
-        7,
-        (std::mem::size_of::<isize>() * batch_strides.len()) as u64,
-        batch_strides.as_ptr() as *const c_void,
-    );
-
-    let gemm_debug = Box::<GEMMDebug>::default();
-    if debug {
-        let gemm_debug_size = core::mem::size_of_val(&gemm_debug) as NSUInteger;
-        let gemm_debug_buffer = context.device().new_buffer_with_bytes_no_copy(
-            gemm_debug.as_ref() as *const GEMMDebug as *const core::ffi::c_void,
-            gemm_debug_size,
-            metal::MTLResourceOptions::StorageModeShared,
-            None,
+    let mut command_buffer = context.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_buffer(0, Some(lhs_buffer), lhs_offset as NSUInteger);
+        encoder.set_buffer(1, Some(rhs_buffer), rhs_offset as NSUInteger);
+        encoder.set_buffer(3, Some(output), output_offset as NSUInteger);
+        encoder.set_bytes(
+            4,
+            std::mem::size_of::<MlxGemmParams>() as u64,
+            &gemm_params as *const MlxGemmParams as *const c_void,
         );
-        encoder.set_buffer(16, Some(&gemm_debug_buffer), 0);
-    }
+        encoder.set_bytes(
+            6, // batch_shape
+            std::mem::size_of::<i32>() as u64,
+            &(b as i32) as *const i32 as *const c_void,
+        );
+        encoder.set_bytes(
+            7,
+            (std::mem::size_of::<isize>() * batch_strides.len()) as u64,
+            batch_strides.as_ptr() as *const c_void,
+        );
 
-    let grid_size = MTLSize {
-        width: tn as u64,
-        height: tm as u64,
-        depth: /* batch_size_out */ b as u64,
-    };
-    let group_size = MTLSize { width: 32, height: wn, depth: wm };
-    encoder.use_resource(lhs_buffer, metal::MTLResourceUsage::Read);
-    encoder.use_resource(rhs_buffer, metal::MTLResourceUsage::Read);
-    encoder.use_resource(output, metal::MTLResourceUsage::Write);
-    encoder.dispatch_thread_groups(grid_size, group_size);
-    encoder.end_encoding();
+        let gemm_debug = Box::<GEMMDebug>::default();
+        if debug {
+            let gemm_debug_size = core::mem::size_of_val(&gemm_debug) as NSUInteger;
+            let gemm_debug_buffer = context.device().new_buffer_with_bytes_no_copy(
+                gemm_debug.as_ref() as *const GEMMDebug as *const core::ffi::c_void,
+                gemm_debug_size,
+                metal::MTLResourceOptions::StorageModeShared,
+                None,
+            );
+            encoder.set_buffer(16, Some(&gemm_debug_buffer), 0);
+        }
 
+        let grid_size = MTLSize {
+            width: tn as u64,
+            height: tm as u64,
+            depth: /* batch_size_out */ b as u64,
+        };
+        let group_size = MTLSize { width: 32, height: wn, depth: wm };
+        encoder.use_resource(lhs_buffer, metal::MTLResourceUsage::Read);
+        encoder.use_resource(rhs_buffer, metal::MTLResourceUsage::Read);
+        encoder.use_resource(output, metal::MTLResourceUsage::Write);
+        encoder.dispatch_thread_groups(grid_size, group_size);
+        encoder.end_encoding();
+    });
     if debug {
         context.wait_until_completed()?;
-        log::debug!("{:#?}", gemm_debug);
+        //log::debug!("{:#?}", gemm_debug);
     }
 
     Ok(())

@@ -72,20 +72,20 @@ impl Reducer {
             .load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
 
         let command_buffer = context.command_buffer();
-        let encoder = command_buffer.new_compute_command_encoder();
-        encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
-        encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
-        encoder.set_slice(2, &input_shape_nd3);
-        encoder.set_slice(3, &input_strides_nd3);
-        encoder.set_slice(4, &output_strides_nd3);
+        command_buffer.encode(|encoder| {
+            encoder.set_compute_pipeline_state(&pipeline);
+            encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
+            encoder.set_slice(2, &input_shape_nd3);
+            encoder.set_slice(3, &input_strides_nd3);
+            encoder.set_slice(4, &output_strides_nd3);
 
-        let grid_size = utils::build_metal_size_for_shape(&output_shape_nd3);
-        let group_size =
-            MTLSize { width: usize::min(32, input_shape_nd3[1]) as _, height: 1, depth: 1 };
-        encoder.dispatch_thread_groups(grid_size, group_size);
-        encoder.end_encoding();
-
+            let grid_size = utils::build_metal_size_for_shape(&output_shape_nd3);
+            let group_size =
+                MTLSize { width: usize::min(32, input_shape_nd3[1]) as _, height: 1, depth: 1 };
+            encoder.dispatch_thread_groups(grid_size, group_size);
+            encoder.end_encoding();
+        });
         Ok(())
     }
 }

@@ -94,3 +94,27 @@ where
         .map(|(s, dim)| if *dim == 1 { T::zero() } else { s.as_() })
         .collect::<TVec<T>>())
 }
+
+pub fn rescale_gpu_timestamps_ms(
+    pass_samples: &[u64],
+    cpu_start: u64,
+    cpu_end: u64,
+    gpu_start: u64,
+    gpu_end: u64,
+) -> f64 {
+    let pass_start = pass_samples[0];
+    let pass_end = pass_samples[1];
+
+    let cpu_time_span = cpu_end - cpu_start;
+    let gpu_time_span = gpu_end - gpu_start;
+
+    let scaled_timespan_ns =
+        (pass_end - pass_start) as f64 / (gpu_time_span as f64) * (cpu_time_span as f64);
+    println!(
+        "Compute pass duration: {} µs. CPU Time: {} us",
+        scaled_timespan_ns / 1000.0,
+        cpu_time_span as f32 / 1000.0
+    );
+
+    scaled_timespan_ns / 1000.0
+}
