@@ -32,7 +32,7 @@ nnef=llm/$generation/$id/$id.nnef.tgz
 
 scenarios="p0s100 p99s1"
 
-if [ "$model" != "phi-1_5" ]
+if [ "$model" != "phi-1_5" ]
 then
     scenarios="p0s100 p99s1 p50s50"
 fi
@@ -58,6 +58,9 @@ do
         TinyLlama--TinyLlama_v1.1-f16f16.p0s100) approx="--approx-custom 0.2,0.1,0.001";;
         TinyLlama--TinyLlama_v1.1-f16f16.p50s50) approx="--approx-custom 0.2,0.1,0.005";;
         TinyLlama--TinyLlama_v1.1-f16f16.p99s1) approx="--approx-custom 0.2,0.1,0.004";;
+        TinyLlama--TinyLlama_v1.1-q40f16.p0s100) approx="--approx-custom 0.2,0.1,0.004";;
+        TinyLlama--TinyLlama_v1.1-q40f16.p99s1) approx="--approx-custom 0.2,0.1,0.002";;
+        TinyLlama--TinyLlama_v1.1-q40f16.p50s50) approx="--approx-custom 0.2,0.1,0.004";;
     esac
 
 
