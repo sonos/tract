@@ -6,7 +6,6 @@ use tract_core::internal::*;
 #[derive(Debug, Clone)]
 pub struct MetalSessionHandler {
     mem_schema: MetalMemSchema,
-    num_nodes: usize,
 }
 
 impl MetalSessionHandler {
@@ -20,14 +19,13 @@ impl MetalSessionHandler {
             plan.borrow().order_without_consts(),
             memory_hint,
         )?;
-        Ok(Self { num_nodes: plan.borrow().model().nodes().len(), mem_schema })
+        Ok(Self { mem_schema })
     }
 }
 
 impl SessionStateHandler for MetalSessionHandler {
     fn before_plan_eval(&self, session_state: &mut SessionState) -> TractResult<()> {
-        let resolved_mem_schema =
-            self.mem_schema.resolve(self.num_nodes, &session_state.resolved_symbols)?;
+        let resolved_mem_schema = self.mem_schema.resolve(&session_state.resolved_symbols)?;
         let memory_pool = objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT
                 .with_borrow(|context| MetalMemoryPool::from_schema(context, resolved_mem_schema))

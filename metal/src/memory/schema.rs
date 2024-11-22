@@ -3,21 +3,22 @@ use std::fmt;
 use std::fmt::Debug;
 use tract_core::internal::*;
 
+/// Requirement for node outputs from a memory perspective.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ScopedNodeMemory {
+pub struct NodeMemReq {
     pub node: usize,
-    pub scope: Scope,
+    pub lifetime: Lifetime,
     pub mem_size: TDim,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Scope {
+pub struct Lifetime {
     pub start: usize,
     pub end: usize,
 }
 
-impl Scope {
-    pub fn is_disjoint(&self, other: &Scope) -> bool {
+impl Lifetime {
+    pub fn is_disjoint(&self, other: &Lifetime) -> bool {
         self.start >= other.end || other.start >= self.end
     }
 
@@ -34,10 +35,10 @@ impl Scope {
     }
 }
 
-pub fn eval_metal_scope_node_mem(
+pub fn eval_metal_mem_req_for_nodes(
     model: &TypedModel,
     order: &[usize],
-) -> TractResult<TVec<ScopedNodeMemory>> {
+) -> TractResult<TVec<NodeMemReq>> {
     let outputs = model.output_outlets()?.to_vec();
     let flush_lists = order::build_flush_list(model, order, &outputs, |node| {
         let Ok(facts) = model.node_output_facts(node.id) else { return false };
@@ -47,14 +48,15 @@ pub fn eval_metal_scope_node_mem(
     let mut scoped_nodes = tvec![];
 
     for (step, n) in order.iter().enumerate() {
-        let scope_start = step;
-        let scope_end = flush_lists
+        let lifetime_start = step;
+        let lifetime_end = flush_lists
             .iter()
             .enumerate()
             .find(|(_step, flush_list)| flush_list.contains(n))
             .map(|it| usize::min(it.0 + 1, order.len()));
 
-        let Some(scope_end) = scope_end else {
+        // Ignore nodes that won't be flushed from gpu.
+        let Some(lifetime_end) = lifetime_end else {
             continue;
         };
 
@@ -69,9 +71,9 @@ pub fn eval_metal_scope_node_mem(
             continue;
         }
 
-        scoped_nodes.push(ScopedNodeMemory {
+        scoped_nodes.push(NodeMemReq {
             node: *n,
-            scope: Scope { start: scope_start, end: scope_end },
+            lifetime: Lifetime { start: lifetime_start, end: lifetime_end },
             mem_size: out_metal_tmp_facts.iter().map(|it| it.mem_size()).sum::<TDim>(),
         })
     }
@@ -79,9 +81,11 @@ pub fn eval_metal_scope_node_mem(
     Ok(scoped_nodes)
 }
 
+/// A partition is a list of node that have disjoint memory requirement from a lifetime
+/// perspective.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Partition {
-    pub nodes: Vec<ScopedNodeMemory>,
+    pub nodes: Vec<NodeMemReq>,
 }
 
 impl Partition {
@@ -100,55 +104,67 @@ impl Partition {
         TDim::Max(self.nodes.iter().map(|s| s.mem_size.clone()).collect())
     }
 
-    pub fn is_disjoint(&self, scope: &Scope) -> bool {
-        self.nodes.iter().all(|n| n.scope.is_disjoint(scope))
+    pub fn has_no_conflict_with_lifetime(&self, lifetime: &Lifetime) -> bool {
+        self.nodes.iter().all(|n| n.lifetime.is_disjoint(lifetime))
     }
 
-    pub fn find_node_alive_at_step(&self, step: usize) -> Option<&ScopedNodeMemory> {
-        self.nodes.iter().find(|it| it.scope.is_alive_at_step(step))
+    pub fn find_node_alive_at_step(&self, step: usize) -> Option<&NodeMemReq> {
+        self.nodes.iter().find(|it| it.lifetime.is_alive_at_step(step))
     }
 }
 
+/// This struct represents a resolved memory schema for a model that contains
+/// Metal operators. This schema is concrete.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MetalResolvedMemSchema {
-    pub offsets_by_node: Vec<usize>,
+    pub offsets_by_node: Vec<Option<usize>>,
     pub memory_size: usize,
 }
 
+/// This struct represent a memory schema for node output memory that are handled
+/// by Metal GPU.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MetalMemSchema {
+    /// Total numbef in the model.
+    pub model_num_nodes: usize,
     pub by_partition: Vec<Partition>,
-    pub by_steps: Vec<Vec<Option<ScopedNodeMemory>>>,
+    // vec![vec![Option<NodeMemReq>; num_partitions]; num_steps].
+    pub by_steps: Vec<Vec<Option<NodeMemReq>>>,
 }
 
 impl MetalMemSchema {
-    pub fn eval_size_by_partition(&self, symbols: &SymbolValues) -> TractResult<Vec<i64>> {
-        self.by_partition.iter().map(|it| it.eval_size_to_i64(symbols)).collect()
-    }
-
+    /// Returns memory size of each inner partitions.
     pub fn size_by_partition(&self) -> Vec<TDim> {
         self.by_partition.iter().map(|it| it.size()).collect()
     }
 
+    /// Evaluate memory size by partition for given symbol values.
+    pub fn eval_size_by_partition(&self, symbols: &SymbolValues) -> TractResult<Vec<i64>> {
+        self.by_partition.iter().map(|it| it.eval_size_to_i64(symbols)).collect()
+    }
+
+    /// Returns total memory size required for the schema.
     pub fn memory_size(&self) -> TDim {
         self.by_partition.iter().map(|it| it.size()).sum()
     }
 
+    /// Evaluate memory size required for the schema for given symbol values.
     pub fn eval_memory_size(&self, symbols: &SymbolValues) -> TractResult<i64> {
         self.by_partition.iter().map(|it| it.eval_size_to_i64(symbols)).sum()
     }
 
+    /// Compute offsets for each node for given symbols. Node ids
+    /// are indexes in the returned vector.
     pub fn compute_offset_by_node(
         &self,
-        num_nodes: usize,
         symbols: &SymbolValues,
-    ) -> TractResult<Vec<usize>> {
+    ) -> TractResult<Vec<Option<usize>>> {
         let mut cursor = 0;
-        let mut offset_by_node = vec![0; num_nodes];
+        let mut offset_by_node = vec![None; self.model_num_nodes];
 
         for partition in self.by_partition.iter() {
             for node_mem in partition.nodes.iter() {
-                offset_by_node[node_mem.node] = cursor;
+                offset_by_node[node_mem.node] = Some(cursor);
             }
             cursor += partition.eval_size_to_i64(symbols)? as usize;
         }
@@ -156,6 +172,9 @@ impl MetalMemSchema {
         Ok(offset_by_node)
     }
 
+    /// Evaluate peak memory size for given symbols. The return value is lower or equal to the memory
+    /// size of the schema. The difference between peak memory size and memory size represents the
+    /// memory fragmentation introduced by the schema.
     pub fn eval_peak_memory_size(&self, symbols: &SymbolValues) -> TractResult<i64> {
         Ok(self
             .by_steps
@@ -174,6 +193,9 @@ impl MetalMemSchema {
             .unwrap_or(0))
     }
 
+    /// Evaluate the usage for given symbols as the ratio between
+    /// schema memory size and peak memory size. A value of 1.0 means
+    /// that the schema doesn't introduce memory fragmentation.
     pub fn eval_usage(&self, symbols: &SymbolValues) -> TractResult<f32> {
         let memory_size = self.eval_memory_size(symbols)? as f32;
         let peak_memory_size = self.eval_peak_memory_size(symbols)? as f32;
@@ -205,47 +227,47 @@ impl fmt::Display for MetalMemSchema {
 }
 
 impl MetalMemSchema {
-    pub fn resolve(
-        &self,
-        num_nodes: usize,
-        symbols: &SymbolValues,
-    ) -> TractResult<MetalResolvedMemSchema> {
+    /// Resolve Memory schema with given symbols.
+    pub fn resolve(&self, symbols: &SymbolValues) -> TractResult<MetalResolvedMemSchema> {
         Ok(MetalResolvedMemSchema {
-            offsets_by_node: self.compute_offset_by_node(num_nodes, symbols)?,
+            offsets_by_node: self.compute_offset_by_node(symbols)?,
             memory_size: self.eval_memory_size(symbols)?.try_into()?,
         })
     }
 
+    /// Build a memory schema for given model and execution order. The hint is used to optimize
+    /// the memory schema because it is based on symbolic dimensions. That doesn't mean it will be
+    /// optimal for all possible values for symbolic dimensions.
     pub fn build(
         model: &TypedModel,
         order: &[usize],
         hint: &SymbolValues,
     ) -> TractResult<MetalMemSchema> {
-        let mut scoped_nodes_mem = eval_metal_scope_node_mem(model, order)?;
+        let mut nodes_mem_req = eval_metal_mem_req_for_nodes(model, order)?;
 
-        let hinted_mem_size = scoped_nodes_mem
+        let hinted_mem_size = nodes_mem_req
             .iter()
             .map(|node_mem| Ok((node_mem.node, node_mem.mem_size.eval_to_i64(hint)?)))
             .collect::<TractResult<HashMap<usize, i64>>>()?;
 
-        scoped_nodes_mem.sort_by(|lhs, rhs| {
+        nodes_mem_req.sort_by(|lhs, rhs| {
             let lhs_hint_mem_size = hinted_mem_size.get(&lhs.node);
             let rhs_hint_mem_size = hinted_mem_size.get(&rhs.node);
 
-            lhs.scope
+            lhs.lifetime
                 .end
-                .cmp(&rhs.scope.end)
+                .cmp(&rhs.lifetime.end)
                 .reverse()
-                .then(lhs.scope.len().cmp(&rhs.scope.len()).reverse())
+                .then(lhs.lifetime.len().cmp(&rhs.lifetime.len()).reverse())
                 .then(lhs_hint_mem_size.cmp(&rhs_hint_mem_size).reverse())
         });
 
         let mut partitions: Vec<Partition> = vec![];
-        for node_mem in scoped_nodes_mem {
-            // Find partitions where node scope is disjoint from existing.
+        for node_mem in nodes_mem_req {
+            // Find partitions where node lifetime is disjoint from existing.
             let mut available = partitions
                 .iter_mut()
-                .filter(|it| it.is_disjoint(&node_mem.scope))
+                .filter(|it| it.has_no_conflict_with_lifetime(&node_mem.lifetime))
                 .collect::<Vec<_>>();
 
             available.sort_by_cached_key(|n| {
@@ -260,7 +282,7 @@ impl MetalMemSchema {
             }
         }
 
-        let by_steps: Vec<Vec<Option<ScopedNodeMemory>>> = (0..order.len())
+        let by_steps: Vec<Vec<Option<NodeMemReq>>> = (0..order.len())
             .map(|step| {
                 let mem_step: Vec<_> =
                     partitions.iter().map(|p| p.find_node_alive_at_step(step).cloned()).collect();
@@ -269,6 +291,10 @@ impl MetalMemSchema {
             })
             .collect::<TractResult<Vec<_>>>()?;
 
-        Ok(MetalMemSchema { by_partition: partitions, by_steps })
+        Ok(MetalMemSchema {
+            model_num_nodes: model.nodes().len(),
+            by_partition: partitions,
+            by_steps,
+        })
     }
 }
