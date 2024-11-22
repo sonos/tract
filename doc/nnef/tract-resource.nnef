@@ -1,0 +1,14 @@
+# Extension `tract_resource` exposes NNEF fragments for accessing
+# resources files in NNEF folder or archive.
+# 
+# Add `extension tract_resource` to `graph.nnef`
+
+
+# Access embedded resource by key
+fragment tract_resource_get(
+    # Resource label to access
+    label: string,
+    # Key path in resource
+    key: string
+) -> (output: tensor<?>);
+

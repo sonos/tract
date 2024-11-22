@@ -1,0 +1,65 @@
+# Extension `tract_resource` exposes NNEF fragments for accessing
+# resources files in NNEF folder or archive.
+# 
+# Add `extension tract_onnx` to `graph.nnef`
+
+fragment tract_onnx_is_nan( x: tensor<scalar> ) -> (y: tensor<scalar>);
+
+fragment tract_onnx_isinf(
+    input: tensor<scalar>,
+    detect_positive: logical = true,
+    detect_negative: logical = true
+) -> (output: tensor<?>)fragment tract_onnx_lrn(
+    input: tensor<scalar>,
+    alpha: scalar = 0.0001,
+    beta: scalar = 0.75,
+    bias: scalar = 1.0,
+    size: integer
+) -> (output: tensor<scalar>);
+
+fragment tract_onnx_ml_direct_lookup(
+    input: tensor<string>,
+    values: tensor<scalar>,
+    fallback: tensor<scalar>
+) -> (output: tensor<scalar>);
+
+fragment tract_onnx_ml_reverse_lookup(
+    input: tensor<scalar>,
+    keys: tensor<scalar>,
+    fallback: scalar
+) -> (output: tensor<scalar>);
+
+fragment tract_onnx_ml_tree_ensemble_classifier(
+    input: tensor<scalar>,
+    trees: tensor<scalar>,
+    nodes: tensor<scalar>,
+    leaves: tensor<scalar>,
+    max_used_feature: integer,
+    n_classes: integer,
+    aggregate_fn: string
+) -> (output: tensor<scalar>);
+
+fragment tract_onnx_multinomial(
+    input: tensor<integer>,
+    dtype: integer = 6,
+    sample_size: integer = 1,
+    seed: integer
+) -> (output: tensor<scalar>);
+
+fragment tract_onnx_non_max_suppression(
+    boxes: tensor<integer>,
+    scores: tensor<scalar>,
+    max_output_boxes_per_class: integer = 0,
+    iou_threshold: scalar = 0.0,
+    score_threshold: scalar,
+    center_point_box: integer = 0
+) -> (output: tensor<integer>);
+
+fragment tract_onnx_random(
+    datum_type: string,
+    shape: integer[],
+    dist: string,
+    parameters: scalar[],
+    seed: integer
+) -> (output: tensor<scalar>);
+

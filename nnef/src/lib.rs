@@ -24,6 +24,7 @@ pub mod prelude {
 
 pub mod internal {
     pub use crate::ast::parse::parse_parameters;
+    pub use crate::ast::dump_doc::DocDumper;
     pub use crate::ast::{
         param, FragmentDecl, FragmentDef, Identifier, Parameter, RValue, TypeName,
     };

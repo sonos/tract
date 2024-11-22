@@ -1,0 +1,33 @@
+# Extension `tract_resource` exposes NNEF fragments for accessing
+# resources files in NNEF folder or archive.
+# 
+# Add `extension tract_pulse` to `graph.nnef`
+
+
+fragment tract_pulse_delay(
+    input: tensor<scalar>,
+    axis: integer,
+    delay: integer,
+    overlap: integer
+) -> (output: tensor<scalar>);
+
+fragment tract_pulse_mask(
+    input: tensor<scalar>,
+    axis: integer,
+    begin: integer,
+    end: integer,
+    value: scalar
+) -> (output: tensor<scalar>);
+
+fragment tract_pulse_pulse_pad(
+    input: tensor<scalar>,
+    axis: integer,
+    before: integer,
+    after: integer,
+    begin_input: integer,
+    end_input: integer,
+    border: string,
+    value: scalar,
+    overlap: integer
+) -> (output: tensor<scalar>);
+

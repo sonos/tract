@@ -40,7 +40,7 @@ impl WithPulse for tract_nnef::framework::Nnef {
     }
 }
 
-fn tract_nnef_registry() -> Registry {
+pub fn tract_nnef_registry() -> Registry {
     let mut reg = tract_pulse_opl::tract_nnef_registry();
     ops::delay::register(&mut reg);
     reg.extensions.push(Box::new(decl_stream_symbol));
