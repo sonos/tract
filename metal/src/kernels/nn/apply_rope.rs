@@ -75,22 +75,23 @@ impl ApplyRope {
 
         let pipeline = context.shared_context().load_pipeline(LibraryName::NNOps, &kernel_name)?;
         let command_buffer = context.command_buffer();
-        let encoder = command_buffer.new_compute_command_encoder();
-        encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
-        encoder.set_metal_tensor(1, cos, metal::MTLResourceUsage::Read);
-        encoder.set_metal_tensor(2, sin, metal::MTLResourceUsage::Read);
-        encoder.set_metal_tensor(3, output, metal::MTLResourceUsage::Write);
-        encoder.set_slice(4, input.shape());
-        encoder.set_slice(5, input.strides());
-        encoder.set_slice(6, &cos_sin_strides);
+        command_buffer.encode(|encoder| {
+            encoder.set_compute_pipeline_state(&pipeline);
+            encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(1, cos, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(2, sin, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(3, output, metal::MTLResourceUsage::Write);
+            encoder.set_slice(4, input.shape());
+            encoder.set_slice(5, input.strides());
+            encoder.set_slice(6, &cos_sin_strides);
 
-        let mut grid_size = utils::build_metal_size_for_shape(input.shape());
-        grid_size.width /= 2;
+                let mut grid_size = utils::build_metal_size_for_shape(input.shape());
+                grid_size.width /= 2;
 
-        let group_size = metal::MTLSize { width: 32 as _, height: 32 as _, depth: 1 as _ };
-        encoder.dispatch_threads(grid_size, group_size);
-        encoder.end_encoding();
+            let group_size = metal::MTLSize { width: 32 as _, height: 32 as _, depth: 1 as _ };
+            encoder.dispatch_threads(grid_size, group_size);
+            encoder.end_encoding();
+        });
         Ok(())
     }
 }

@@ -89,7 +89,7 @@ impl Concat {
         let kernel_name = self.kernel_name(output.datum_type(), broadcast_kind)?;
         let pipeline =
             context.shared_context().load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
-        let command_buffer = context.command_buffer();
+        let mut command_buffer = context.command_buffer();
 
         for (input, offset) in inputs.iter().zip(offsets.into_iter()) {
             if input.len() == 0 {
@@ -99,23 +99,23 @@ impl Concat {
             let i_strides = input.strides();
             let i_shape = input.shape();
 
-            let encoder = command_buffer.new_compute_command_encoder();
-
-            encoder.set_compute_pipeline_state(&pipeline);
-            encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
-            encoder.set_slice(1, i_strides);
-            encoder.set_metal_tensor_with_offset(
-                2,
-                output,
-                offset as _,
-                metal::MTLResourceUsage::Write,
-            );
-            encoder.set_slice(3, i_shape);
-            encoder.set_slice(4, output_strides);
-            let grid_size = utils::build_metal_size_for_shape(i_shape);
-            let group_size = utils::build_metal_size_with_ones();
-            encoder.dispatch_thread_groups(grid_size, group_size);
-            encoder.end_encoding();
+            command_buffer.encode(|encoder| {
+                encoder.set_compute_pipeline_state(&pipeline);
+                encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+                encoder.set_slice(1, i_strides);
+                encoder.set_metal_tensor_with_offset(
+                    2,
+                    output,
+                    offset as _,
+                    metal::MTLResourceUsage::Write,
+                );
+                encoder.set_slice(3, i_shape);
+                encoder.set_slice(4, output_strides);
+                let grid_size = utils::build_metal_size_for_shape(i_shape);
+                let group_size = utils::build_metal_size_with_ones();
+                encoder.dispatch_thread_groups(grid_size, group_size);
+                encoder.end_encoding();
+            });
         }
 
         Ok(())
