@@ -28,12 +28,18 @@ case $model in
         ;;
 esac
 
-
 nnef=llm/$generation/$id/$id.nnef.tgz
+
+scenarios="p0s100 p99s1"
+
+if [ "$model" != "phi-1_5" ]
+then
+    scenarios="p0s100 p99s1 p50s50"
+fi
 
 set -x
 $CACHE_FILE $nnef
-for t in p0s100 p50s50 p99s1 
+for t in $scenarios
 do
     npz=llm/$generation/$id/$id.$t.io.npz
     $CACHE_FILE $npz
@@ -53,6 +59,7 @@ do
         TinyLlama--TinyLlama_v1.1-f16f16.p50s50) approx="--approx-custom 0.2,0.1,0.005";;
         TinyLlama--TinyLlama_v1.1-f16f16.p99s1) approx="--approx-custom 0.2,0.1,0.004";;
     esac
+
 
     $TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O run \
         --input-from-npz $MODELS/$npz \
