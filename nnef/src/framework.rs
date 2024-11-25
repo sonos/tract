@@ -157,10 +157,10 @@ impl Nnef {
             ar.append(&header, &mut &*quant_data).context("Appending graph.quant")?;
         }
 
-        let mut labels = proto_model.tensors.keys().cloned().collect::<Vec<_>>();
+        let mut labels = proto_model.tensors.keys().collect::<Vec<_>>();
         labels.sort();
         for label in labels {
-            let t = proto_model.tensors.get(&label).unwrap();
+            let t = proto_model.tensors.get(label).unwrap();
             let mut label = label.0.to_string() + ".dat";
             if label.starts_with('/') {
                 label.insert(0, '.');
