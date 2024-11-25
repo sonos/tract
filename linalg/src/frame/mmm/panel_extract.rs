@@ -29,7 +29,7 @@ impl Display for PanelExtractor {
 impl PanelExtractor {
     #[allow(unused_variables)]
     pub fn is_supported_here(&self) -> bool {
-        true
+        (self.supported_predicate)()
     }
 }
 
