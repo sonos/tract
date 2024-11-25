@@ -1,5 +1,5 @@
-use crate::plan_options::plan_options_from_subcommand;
 use crate::params::SomeGraphDef;
+use crate::plan_options::plan_options_from_subcommand;
 use crate::tensor::run_params_from_subcommand;
 use crate::Parameters;
 use fs_err as fs;
@@ -150,7 +150,11 @@ pub fn handle(
 
     if sub_matches.is_present("tmp_mem_usage") {
         let plan_options = plan_options_from_subcommand(sub_matches)?;
-        annotations.track_tmp_memory_usage(model, |n| !n.op_is::<tract_core::ops::konst::Const>(), plan_options.skip_order_opt_ram)?;
+        annotations.track_tmp_memory_usage(
+            model,
+            |n| !n.op_is::<tract_core::ops::konst::Const>(),
+            plan_options.skip_order_opt_ram,
+        )?;
     }
 
     if let Some(asserts) = &params.assertions.assert_output_facts {
@@ -177,7 +181,7 @@ pub fn handle(
             rename_outputs(&mut typed, sub_matches)?;
             let file = fs::File::create(path)?;
             let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
-            nnef.write_to_tar_with_config(&typed, encoder, compress_submodels)
+            nnef.write_to_tar_with_config(&typed, encoder, compress_submodels, false)
                 .context("Writing model to tgz")?;
         } else {
             bail!("Only typed model can be dumped")
@@ -189,7 +193,7 @@ pub fn handle(
         if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
             rename_outputs(&mut typed, sub_matches)?;
             let file = fs::File::create(path)?;
-            nnef.write_to_tar_with_config(&typed, file, compress_submodels)
+            nnef.write_to_tar_with_config(&typed, file, compress_submodels, false)
                 .context("Writing model to tar")?;
         } else {
             bail!("Only typed model can be dumped")
