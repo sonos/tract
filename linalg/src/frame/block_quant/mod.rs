@@ -67,13 +67,19 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
             let blocks = input.len() / self.block_bytes();
             let mut tensor = Tensor::uninitialized::<f32>(&[blocks * self.block_len()])?;
             let slice = tensor.as_slice_mut::<f32>()?;
-            for b in 0..blocks {
-                let block = &mut slice[b * self.block_len()..][..self.block_len()];
-                let qblock = &input[b * self.block_bytes()..][..self.block_bytes()];
-                self.dequant_block_f32(qblock, block);
-            }
+            self.dequant_f32_into(input, slice)?;
             Ok(tensor)
         }
+    }
+
+    fn dequant_f32_into(&self, input: &[u8], output: &mut [f32]) -> TractResult<()> {
+        let blocks = input.len() / self.block_bytes();
+        for b in 0..blocks {
+            let block = &mut output[b * self.block_len()..][..self.block_len()];
+            let qblock = &input[b * self.block_bytes()..][..self.block_bytes()];
+            self.dequant_block_f32(qblock, block);
+        }
+        Ok(())
     }
 
     fn dequant_f16(&self, input: &[u8]) -> TractResult<Tensor> {
@@ -81,13 +87,19 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
             let blocks = input.len() / self.block_bytes();
             let mut tensor = Tensor::uninitialized::<f16>(&[blocks * self.block_len()])?;
             let slice = tensor.as_slice_mut::<f16>()?;
-            for b in 0..blocks {
-                let block = &mut slice[b * self.block_len()..][..self.block_len()];
-                let qblock = &input[b * self.block_bytes()..][..self.block_bytes()];
-                self.dequant_block_f16(qblock, block);
-            }
+            self.dequant_f16_into(input, slice)?;
             Ok(tensor)
         }
+    }
+
+    fn dequant_f16_into(&self, input: &[u8], output: &mut [f16]) -> TractResult<()> {
+        let blocks = input.len() / self.block_bytes();
+        for b in 0..blocks {
+            let block = &mut output[b * self.block_len()..][..self.block_len()];
+            let qblock = &input[b * self.block_bytes()..][..self.block_bytes()];
+            self.dequant_block_f16(qblock, block);
+        }
+        Ok(())
     }
 
     fn extract_at_offset_f16(&self, input: &[u8], offset: usize) -> f16 {

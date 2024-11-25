@@ -58,13 +58,13 @@ impl Gather {
         let mut output = unsafe { Tensor::uninitialized::<f16>(output_shape)? };
         let indices_slice = indices.as_slice::<i64>()?;
         let vector_len = data_shape[1];
+        let vector_input_len =
+            vector_len / data.fact.format.block_len() * data.fact.format.block_bytes();
         let output_slice = output.as_slice_mut::<f16>()?;
         for (pos, ix) in indices_slice.iter().enumerate() {
-            let slice = &mut output_slice[pos * vector_len..][..vector_len];
-            for (i, slot) in slice.iter_mut().enumerate() {
-                let offset = data_shape[1] * *ix as usize + i;
-                *slot = data.fact.format.extract_at_offset_f16(&data.value, offset)
-            }
+            let islice = &data.value[*ix as usize * vector_input_len..][..vector_input_len];
+            let oslice = &mut output_slice[pos * vector_len..][..vector_len];
+            data.fact.format.dequant_f16_into(islice, oslice)?
         }
         Ok(output)
     }
