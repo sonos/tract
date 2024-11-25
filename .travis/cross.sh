@@ -55,7 +55,7 @@ case "$PLATFORM" in
         TOOLCHAIN=$HOME/cached/raspitools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf
         export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
         rustup target add $RUSTC_TRIPLE
-        echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'\ntoolchain='$TOOLCHAIN'" > $HOME/.dinghy.toml
+        echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'\ntoolchain='$TOOLCHAIN'" > .dinghy.toml
         cargo dinghy --platform $PLATFORM build --release -p tract -p example-tensorflow-mobilenet-v2 -p tract-ffi
         ;;
 
@@ -199,7 +199,7 @@ case "$PLATFORM" in
 
         echo "[script_devices.qemu-$PLATFORM]\nplatform='$PLATFORM'\npath='$ROOT/target/$RUSTC_TRIPLE/qemu-$PLATFORM'" >> .dinghy.toml
         echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$PLATFORM $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > $ROOT/target/$RUSTC_TRIPLE/qemu-$PLATFORM
-        chmod +x $ROOT/target/$RUSTC_TRIPLE/qemu-PLATFORM
+        chmod +x $ROOT/target/$RUSTC_TRIPLE/qemu-$PLATFORM
 
         DINGHY_TEST_ARGS="$DINGHY_TEST_ARGS --env PROPTEST_MAX_SHRINK_ITERS=100000000"
 
