@@ -41,8 +41,8 @@ impl WithPulse for tract_nnef::framework::Nnef {
 
 pub fn tract_nnef_registry() -> Registry {
     let mut reg = Registry::new("tract_pulse")
-        .with_doc("Extension `tract_resource` exposes NNEF fragments for accessing")
-        .with_doc("resources files in NNEF folder or archive.")
+        .with_doc("Extension `tract_resource` extends NNEF with operators")
+        .with_doc("for pulsified networks.")
         .with_doc("")
         .with_doc("Add `extension tract_pulse` to `graph.nnef`");
         
