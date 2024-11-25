@@ -1,5 +1,5 @@
-# Extension `tract_resource` exposes NNEF fragments for accessing
-# resources files in NNEF folder or archive.
+# Extension `tract_resource` extends NNEF with operators
+# for pulsified networks.
 # 
 # Add `extension tract_pulse` to `graph.nnef`
 

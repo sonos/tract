@@ -1,5 +1,4 @@
-# Extension `tract_resource` exposes NNEF fragments for accessing
-# resources files in NNEF folder or archive.
+# Extension `tract_onnx` extends NNEF for supporting some corner case ONNX operators.
 # 
 # Add `extension tract_onnx` to `graph.nnef`
 
