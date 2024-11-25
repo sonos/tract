@@ -115,7 +115,7 @@ case "$PLATFORM" in
         ;;
 
     "aarch64-unknown-linux-gnu" | "armv6vfp-unknown-linux-gnueabihf" | "armv7-unknown-linux-gnueabihf" | \
-        "aarch64-unknown-linux-musl" | "armv7-unknown-linux-musl" )
+        "aarch64-unknown-linux-musl" | "armv7-unknown-linux-musl" | "cortexa53-unknown-linux-musl" )
 
         case "$PLATFORM" in
             "aarch64-unknown-linux-gnu")
@@ -153,7 +153,17 @@ case "$PLATFORM" in
                 export DEBIAN_TRIPLE=$ARCH-linux-gnu
                 export TRACT_CPU_AARCH64_KIND=a55
                 export CUSTOM_TC=`pwd`/aarch64-linux-musl-cross
-#                [ -d "$CUSTOM_TC" ] || curl -s http://musl.cc/aarch64-linux-musl-cross.tgz | tar zx
+                [ -d "$CUSTOM_TC" ] || curl -s https://s3.amazonaws.com/tract-ci-builds/toolchains/aarch64-linux-musl-cross.tgz | tar zx
+                ;;
+            "cortexa53-unknown-linux-musl")
+                export ARCH=aarch64
+                export QEMU_ARCH=aarch64
+                export LIBC_ARCH=arm64
+                export RUSTC_TRIPLE=$ARCH-unknown-linux-musl
+                export DEBIAN_TRIPLE=$ARCH-linux-gnu
+                export TRACT_CPU_AARCH64_KIND=a53
+                export QEMU_OPTS="-cpu cortex-a53"
+                export CUSTOM_TC=`pwd`/aarch64-linux-musl-cross
                 [ -d "$CUSTOM_TC" ] || curl -s https://s3.amazonaws.com/tract-ci-builds/toolchains/aarch64-linux-musl-cross.tgz | tar zx
                 ;;
             "armv7-unknown-linux-musl")
@@ -187,9 +197,9 @@ case "$PLATFORM" in
             echo "toolchain='$CUSTOM_TC'" >> .dinghy.toml
         fi
 
-        echo "[script_devices.qemu-$ARCH]\nplatform='$PLATFORM'\npath='$ROOT/target/$RUSTC_TRIPLE/qemu'" >> .dinghy.toml
-        echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$QEMU_ARCH $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > $ROOT/target/$RUSTC_TRIPLE/qemu
-        chmod +x $ROOT/target/$RUSTC_TRIPLE/qemu
+        echo "[script_devices.qemu-$PLATFORM]\nplatform='$PLATFORM'\npath='$ROOT/target/$RUSTC_TRIPLE/qemu-$PLATFORM'" >> .dinghy.toml
+        echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$PLATFORM $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > $ROOT/target/$RUSTC_TRIPLE/qemu-$PLATFORM
+        chmod +x $ROOT/target/$RUSTC_TRIPLE/qemu-PLATFORM
 
         DINGHY_TEST_ARGS="$DINGHY_TEST_ARGS --env PROPTEST_MAX_SHRINK_ITERS=100000000"
 

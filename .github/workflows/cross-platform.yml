@@ -22,6 +22,7 @@ jobs:
           - armv7-unknown-linux-gnueabihf
           - armv7-unknown-linux-gnueabihf-stretch
           - aarch64-unknown-linux-musl
+          - cortexa53-unknown-linux-musl
           - armv7-unknown-linux-musl
           - aarch64-linux-android
           - armv7-linux-androideabi
