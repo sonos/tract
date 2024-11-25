@@ -198,7 +198,7 @@ case "$PLATFORM" in
         fi
 
         echo "[script_devices.qemu-$PLATFORM]\nplatform='$PLATFORM'\npath='$ROOT/target/$RUSTC_TRIPLE/qemu-$PLATFORM'" >> .dinghy.toml
-        echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$PLATFORM $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > $ROOT/target/$RUSTC_TRIPLE/qemu-$PLATFORM
+        echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$QEMU_ARCH $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > $ROOT/target/$RUSTC_TRIPLE/qemu-$PLATFORM
         chmod +x $ROOT/target/$RUSTC_TRIPLE/qemu-$PLATFORM
 
         DINGHY_TEST_ARGS="$DINGHY_TEST_ARGS --env PROPTEST_MAX_SHRINK_ITERS=100000000"
