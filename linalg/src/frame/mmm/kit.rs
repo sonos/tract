@@ -187,7 +187,7 @@ impl MMMKit {
                 .1
                 .downcast_ref::<PackedFormat>()
                 .is_some_and(|pf| KitDatumType::from(pf.dt) == self.activation),
-            "Activation packecd mismatch {self:?} {:?}",
+            "Activation packed dt mismatch {self:?} {:?}",
             mmm.packings()[packing].1
         );
         self.items.push(MMMKitItem { mmm, packing, weight_panel_extractor });
