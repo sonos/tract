@@ -1,6 +1,7 @@
 use crate::kernels::matmul::{GemmImpl, GemmKernel};
+use crate::ops::MetalEvalOp;
 
-use crate::tensor::MetalTensorExt;
+use crate::{MetalContext, MetalTensorExt};
 use anyhow::{bail, ensure};
 use tract_core::internal::*;
 
@@ -60,31 +61,47 @@ impl<K: GemmKernel> MetalGemm<K> {
     }
 }
 
-impl<K: GemmKernel> EvalOp for MetalGemm<K> {
+impl<K: GemmKernel + 'static> MetalEvalOp for MetalGemm<K> {
+    fn metal_eval(
+        &self,
+        context: &MetalContext,
+        node_id: usize,
+        session: &mut SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let (a_opaque, b_opaque) = args_2!(inputs);
+        let a = a_opaque
+            .to_metal_tensor()
+            .with_context(|| anyhow!("A tensor is not a metal tensor: {:?}", a_opaque))?;
+        let b = b_opaque
+            .to_metal_tensor()
+            .with_context(|| anyhow!("B tensor is not a metal tensor {:?}", b_opaque))?;
+        let c_dt = a.datum_type();
+        let c_shape = self.kernel.output_shape(a.shape(), b.shape());
+        let c = crate::ops::make_tensor_for_node(session, node_id, c_dt, &c_shape)?;
+        self.kernel.dispatch_eval(context, a, b, &c)?;
+        Ok(tvec![c.into_opaque_tensor().into_tvalue()])
+    }
+}
+
+impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
     fn is_stateless(&self) -> bool {
-        true
+        false
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let (a, b) = args_2!(inputs);
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let a_metal_ref = a
-                    .to_metal_tensor()
-                    .with_context(|| anyhow!("A tensor is not a metal tensor"))?;
-                let b_metal_ref = b
-                    .to_metal_tensor()
-                    .with_context(|| anyhow!("B tensor is not a metal tensor {:?}", b))?;
-                let out = self.kernel.dispatch_eval(context, a_metal_ref, b_metal_ref)?;
-                Ok(tvec![out.into_opaque_tensor().into_tvalue()])
-            })
-        })
+    #[allow(unused_variables)]
+    fn state(
+        &self,
+        session: &mut tract_core::internal::SessionState,
+        node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(crate::ops::MetalOpState::new(node_id, self.clone()))))
     }
 }
 
 impl<K: GemmKernel + 'static> TypedOp for MetalGemm<K> {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_output_facts(inputs, |input_facts| {
+        crate::utils::metal_facts_from_gpu(inputs, |input_facts| {
             self.resolve_output_facts(input_facts)
         })
         .with_context(|| {

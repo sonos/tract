@@ -1,15 +1,12 @@
 use crate::func_constants::ConstantValues;
 use crate::kernels::matmul::mps;
-pub use crate::kernels::{LibraryContent, LibraryName};
-pub use crate::tensor::MetalTensor;
-use metal::Buffer;
-use metal::MTLResourceOptions;
-use metal::NSUInteger;
+use crate::kernels::{LibraryContent, LibraryName};
+use crate::MetalTensor;
+use metal::{Buffer, MTLResourceOptions, NSUInteger};
 use std::cell::RefCell;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-use std::sync::{OnceLock, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 use anyhow::{anyhow, Context, Result};
 use metal::{
@@ -212,12 +209,12 @@ impl MetalContext {
         let command_buffer = command_queue.new_command_buffer().to_owned();
         command_buffer.enqueue();
         Self {
-            shared,
             command_queue,
             command_buffer: RefCell::new(command_buffer),
             command_buffer_used: RefCell::new(0),
             command_buffer_id: AtomicUsize::new(0),
             retained_tensors: RefCell::new(vec![]),
+            shared,
         }
     }
 
@@ -285,6 +282,7 @@ impl MetalContext {
         self.retained_tensors.borrow_mut().clear();
 
         *command_buffer = self.command_queue.new_command_buffer().to_owned();
+        command_buffer.enqueue();
         *command_buffer_used = 0;
         self.command_buffer_id.fetch_add(1, Ordering::Relaxed);
         Ok(())

@@ -33,3 +33,61 @@ pub use silu::MetalSilu;
 pub use slice::MetalSlice;
 pub use softmax::MetalSoftmax;
 pub use sync::{MetalSync, MetalSyncKind};
+
+use crate::{MetalContext, MetalTensor};
+use derive_new::new;
+use tract_core::internal::*;
+use tract_core::ops::OpStateFreeze;
+
+pub trait MetalEvalOp: EvalOp + Op + Clone {
+    fn metal_eval(
+        &self,
+        context: &MetalContext,
+        node_id: usize,
+        session: &mut SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>>;
+}
+
+#[derive(Debug, Clone, new)]
+pub struct MetalOpState<O: MetalEvalOp> {
+    node_id: usize,
+    op: O,
+}
+
+impl<O: MetalEvalOp> OpStateFreeze for MetalOpState<O> {
+    fn freeze(&self) -> Box<(dyn FrozenOpState + 'static)> {
+        Box::new(self.clone())
+    }
+}
+
+impl<O: MetalEvalOp> FrozenOpState for MetalOpState<O> {
+    fn unfreeze(&self) -> Box<dyn OpState> {
+        Box::new(self.clone())
+    }
+}
+
+impl<O: MetalEvalOp> OpState for MetalOpState<O> {
+    fn eval(
+        &mut self,
+        session: &mut SessionState,
+        _op: &dyn Op,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        objc::rc::autoreleasepool(|| {
+            crate::METAL_CONTEXT
+                .with_borrow(|context| self.op.metal_eval(context, self.node_id, session, inputs))
+        })
+    }
+}
+
+pub fn make_tensor_for_node(
+    session: &SessionState,
+    node_id: usize,
+    dt: DatumType,
+    shape: &[usize],
+) -> TractResult<MetalTensor> {
+    crate::session_handler::get_metal_mem_pool(session)
+        .map(|mem| mem.tensor_for_node(node_id, dt, shape))
+        .unwrap_or_else(|| unsafe { MetalTensor::uninitialized_dt(dt, shape) })
+}

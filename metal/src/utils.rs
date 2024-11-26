@@ -1,8 +1,28 @@
-use crate::fact::MetalTypedFactExt;
+use crate::fact::{MetalFact, MetalOrigin, MetalTypedFactExt};
 use num_traits::{AsPrimitive, Zero};
 use tract_core::internal::*;
 
-pub fn metal_output_facts(
+#[macro_export]
+macro_rules! impl_eval_op_for_metal_op {
+    ($op:ty) => {
+        impl tract_core::internal::EvalOp for $op {
+            fn is_stateless(&self) -> bool {
+                false
+            }
+
+            #[allow(unused_variables)]
+            fn state(
+                &self,
+                session: &mut tract_core::internal::SessionState,
+                node_id: usize,
+            ) -> TractResult<Option<Box<dyn OpState>>> {
+                Ok(Some(Box::new($crate::ops::MetalOpState::new(node_id, self.clone()))))
+            }
+        }
+    };
+}
+
+pub fn metal_facts_from_gpu(
     facts: &[&TypedFact],
     resolve_facts: impl Fn(&[&TypedFact]) -> TractResult<TVec<TypedFact>>,
 ) -> TractResult<TVec<TypedFact>> {
@@ -14,7 +34,7 @@ pub fn metal_output_facts(
         let output_facts = (resolve_facts)(metal_facts.as_slice())?;
         Ok(output_facts
             .into_iter()
-            .map(|it| it.into_opaque_metal_fact())
+            .map(|it| Ok(MetalFact::new(MetalOrigin::FromGpu, it)?.into_opaque_fact()))
             .collect::<TractResult<_>>()?)
     } else if facts.iter().all(|it| it.datum_type != DatumType::Opaque) {
         (resolve_facts)(facts)

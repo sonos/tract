@@ -1,5 +1,6 @@
 use crate::kernels::nn::Silu;
-use crate::tensor::MetalTensorExt;
+use crate::ops::MetalEvalOp;
+use crate::{MetalContext, MetalTensorExt};
 use derive_new::new;
 use tract_core::internal::*;
 
@@ -14,28 +15,28 @@ impl Op for MetalSilu {
     op_as_typed_op!();
 }
 
-impl EvalOp for MetalSilu {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+crate::impl_eval_op_for_metal_op!(MetalSilu);
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let input = args_1!(inputs);
-                let input_metal = input.to_metal_tensor()?;
-                Ok(tvec!(Silu
-                    .dispatch_eval(context, input_metal)?
-                    .into_opaque_tensor()
-                    .into_tvalue()))
-            })
-        })
+impl MetalEvalOp for MetalSilu {
+    fn metal_eval(
+        &self,
+        context: &MetalContext,
+        node_id: usize,
+        session: &mut SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let opaque = args_1!(inputs);
+        let input = opaque.to_metal_tensor()?;
+        let output =
+            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
+        Silu.dispatch_eval(context, input, &output)?;
+        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }
 
 impl TypedOp for MetalSilu {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_output_facts(inputs, |facts| {
+        crate::utils::metal_facts_from_gpu(inputs, |facts| {
             let dt = facts[0].datum_type;
             let fact = dt.fact(facts[0].shape.clone());
             Ok(tvec!(fact))

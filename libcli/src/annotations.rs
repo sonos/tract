@@ -148,7 +148,7 @@ impl Annotations {
             tract_core::model::order::eval_order_opt_ram(model)?
         };
 
-        let tmp_mem_usage = model.eval_tmp_memory_usage(&order, flushable)?;
+        let tmp_mem_usage = model.eval_tmp_memory_usage(&order, &flushable)?;
 
         let peak_tmp_mem_usage = tmp_mem_usage.iter()
             .map(|(n, mem)| mem.to_usize().map(|m| (*n, m)))
@@ -162,7 +162,6 @@ impl Annotations {
 
         self.memory_summary = peak_tmp_mem_usage
             .map(|(n, mem)| MemorySummary { max: mem, max_reached_by_node: n });
-
 
         for (n, mem_size) in tmp_mem_usage.into_iter() {
             let qid = NodeQId(tvec![], n);

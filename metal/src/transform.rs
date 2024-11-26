@@ -3,6 +3,8 @@ use crate::kernels::array::RotateHalf;
 use crate::kernels::matmul::{MetalGemmImplKind, MfaGemm, MlxGemm, MpsMatMul};
 use crate::kernels::nn::{ApplyRope, NewGelu, Reducer, RmsNorm, Silu, Softmax};
 use crate::ops::{self, MetalSync, MetalSyncKind};
+
+#[allow(unused_imports)]
 use crate::rewrite_rules::{
     as_apply_rope_rule, as_new_gelu_rule, as_rms_norm_rule, as_rotate_half_rule, as_silu_rule,
     remove_rms_norm_cast, rewire_metal_sync, BasicApplyRope, BasicNewGelu, BasicRmsNorm,
@@ -61,7 +63,7 @@ impl ModelTransform for MetalTransform {
             .with_rule_for::<ElementWiseOp>("as-silu", as_silu_rule)
             .with_rule_for::<TypedBinOp>("as-new-gelu", as_new_gelu_rule)
             .with_rule_for::<TypedConcat>("as-rotate-half", as_rotate_half_rule)
-            .with_rule_for::<TypedBinOp>("as-apply-rope", as_apply_rope_rule)
+            //.with_rule_for::<TypedBinOp>("as-apply-rope", as_apply_rope_rule)
             .rewrite(&(), model)?;
 
         let mut new = self.translate_model(model)?;
@@ -100,7 +102,7 @@ impl MetalTransform {
                         if konst.as_metal_tensor().is_none() {
                             let konst_metal =
                                 konst.as_ref().clone().into_metal()?.into_opaque_tensor();
-                            let metal_fact = MetalFact::new(in_fact.clone())?;
+                            let metal_fact = MetalFact::from_cpu(in_fact.clone())?;
 
                             *in_fact = TypedFact::dt_scalar(DatumType::Opaque)
                                 .with_opaque_fact(metal_fact);

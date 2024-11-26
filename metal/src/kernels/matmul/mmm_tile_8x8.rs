@@ -1,8 +1,9 @@
+use crate::encoder::EncoderExt;
 use crate::func_constants::{ConstantValues, Value};
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
-use metal::{Buffer, MTLSize, NSUInteger};
+use metal::{MTLSize, NSUInteger};
 use tract_core::internal::DatumType;
 
 pub fn mmm_tile_8x8(
@@ -29,7 +30,7 @@ pub fn mmm_tile_8x8(
     let output = unsafe { MetalTensor::uninitialized_dt(o_dt, o_shape)? };
     output.retain_until_completion();
 
-    metal_mmm_tile_8x8(context, m, lhs.metal(), rhs.metal(), output.metal())?;
+    metal_mmm_tile_8x8(context, m, lhs, rhs, &output)?;
     context.wait_until_completed()?;
 
     Ok(output)
@@ -39,9 +40,9 @@ pub fn mmm_tile_8x8(
 pub fn metal_mmm_tile_8x8(
     context: &MetalContext,
     dim: usize,
-    lhs_buffer: &Buffer,
-    rhs_buffer: &Buffer,
-    output: &Buffer,
+    lhs: &MetalTensor,
+    rhs: &MetalTensor,
+    output: &MetalTensor,
 ) -> Result<()> {
     ensure!(dim % 8 == 0, "Dim must be a multiple of 8");
 
@@ -55,9 +56,9 @@ pub fn metal_mmm_tile_8x8(
     let command_buffer = context.command_buffer();
     let encoder = command_buffer.new_compute_command_encoder();
     encoder.set_compute_pipeline_state(&pipeline);
-    encoder.set_buffer(0, Some(output), 0);
-    encoder.set_buffer(1, Some(lhs_buffer), 0);
-    encoder.set_buffer(2, Some(rhs_buffer), 0);
+    encoder.set_metal_tensor(0, output, metal::MTLResourceUsage::Write);
+    encoder.set_metal_tensor(1, lhs, metal::MTLResourceUsage::Read);
+    encoder.set_metal_tensor(2, rhs, metal::MTLResourceUsage::Read);
 
     let grid_size = MTLSize {
         width: dim.div_ceil(8 * 4) as NSUInteger,
@@ -65,9 +66,6 @@ pub fn metal_mmm_tile_8x8(
         depth: 1 as NSUInteger,
     };
     let group_size = MTLSize { width: 32, height: 2, depth: 1 };
-    encoder.use_resource(lhs_buffer, metal::MTLResourceUsage::Read);
-    encoder.use_resource(rhs_buffer, metal::MTLResourceUsage::Read);
-    encoder.use_resource(output, metal::MTLResourceUsage::Write);
     encoder.dispatch_thread_groups(grid_size, group_size);
     encoder.end_encoding();
 

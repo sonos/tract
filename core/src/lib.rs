@@ -118,7 +118,7 @@ pub mod internal {
     pub use crate::ops::change_axes::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;
     pub use crate::ops::{Cost, EvalOp, FrozenOpState, Op, OpState, Validation};
-    pub use crate::plan::SessionState;
+    pub use crate::plan::{ SessionState, SessionStateHandler };
     pub use crate::prelude::*;
     pub use dims;
     pub use downcast_rs as tract_downcast_rs;

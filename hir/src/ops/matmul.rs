@@ -62,10 +62,10 @@ impl Expansion for MatMulInference {
         let mn = if self.c_trans { "nm" } else { "mn" };
         let axes: AxesMapping = if a_rank == 1 {
             let prefix: String = ('a'..).take(b_rank - 2).collect();
-            format!("k,{prefix}{kn}->{prefix}{mn}").parse()?
+            format!("k,{prefix}{kn}->{prefix}n").parse()?
         } else if b_rank == 1 {
             let prefix: String = ('a'..).take(a_rank - 2).collect();
-            format!("{prefix}{mk},k->{prefix}{mn}").parse()?
+            format!("{prefix}{mk},k->{prefix}m").parse()?
         } else {
             let c_rank = b_rank.max(a_rank);
             let a_prefix: String =

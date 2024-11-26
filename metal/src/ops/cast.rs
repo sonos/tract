@@ -1,5 +1,6 @@
 use crate::kernels;
-use crate::tensor::MetalTensorExt;
+use crate::ops::MetalEvalOp;
+use crate::{MetalContext, MetalTensorExt};
 use tract_core::internal::*;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -26,32 +27,32 @@ impl Op for MetalCast {
     impl_op_same_as!();
 }
 
-impl EvalOp for MetalCast {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+crate::impl_eval_op_for_metal_op!(MetalCast);
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let input = args_1!(inputs);
-        let t = input.to_metal_tensor()?;
-        if t.datum_type() == self.to {
-            Ok(tvec!(input))
+impl MetalEvalOp for MetalCast {
+    fn metal_eval(
+        &self,
+        context: &MetalContext,
+        node_id: usize,
+        session: &mut SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let opaque = args_1!(inputs);
+        let input = opaque.to_metal_tensor()?;
+        if input.datum_type() == self.to {
+            Ok(tvec!(opaque))
         } else {
-            objc::rc::autoreleasepool(|| {
-                crate::METAL_CONTEXT.with_borrow(|context| {
-                    Ok(tvec![kernels::array::Cast
-                        .dispatch_eval(context, t, self.to)?
-                        .into_opaque_tensor()
-                        .into_tvalue()])
-                })
-            })
+            let output =
+                crate::ops::make_tensor_for_node(session, node_id, self.to, input.shape())?;
+            kernels::array::Cast.dispatch_eval(context, input, &output)?;
+            Ok(tvec![output.into_opaque_tensor().into_tvalue()])
         }
     }
 }
 
 impl TypedOp for MetalCast {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_output_facts(inputs, |facts| {
+        crate::utils::metal_facts_from_gpu(inputs, |facts| {
             Ok(tvec!(self.to.fact(facts[0].shape.clone())))
         })
         .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))

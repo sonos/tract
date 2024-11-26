@@ -1,5 +1,6 @@
-use crate::kernels::array::PermuteAxes;
-use crate::tensor::MetalTensorExt;
+use crate::kernels::array::{Memcpy, PermuteAxes};
+use crate::ops::MetalEvalOp;
+use crate::{MetalContext, MetalTensorExt};
 use std::fmt::Debug;
 use tract_core::internal::*;
 use tract_itertools::Itertools;
@@ -47,49 +48,53 @@ impl Op for MetalAxisOp {
     op_as_typed_op!();
 }
 
-impl EvalOp for MetalAxisOp {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+crate::impl_eval_op_for_metal_op!(MetalAxisOp);
 
-    fn eval_with_session(
+impl MetalEvalOp for MetalAxisOp {
+    fn metal_eval(
         &self,
-        session: &SessionState,
+        context: &MetalContext,
+        node_id: usize,
+        session: &mut SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs).into_tensor();
-        let t = opaque.to_metal_tensor()?;
+        let input = opaque.to_metal_tensor()?;
         let new_shape = match &self.0 {
             AxisOp::Move(from, to) => {
-                let output = objc::rc::autoreleasepool(|| {
-                    crate::METAL_CONTEXT.with_borrow(|context| -> TractResult<_> {
-                        let mut permutation: Vec<usize> = (0..t.rank()).collect();
-                        permutation.remove(*from);
-                        permutation.insert(*to, *from);
-                        PermuteAxes.dispatch_eval(context, t, &permutation)
-                    })
-                })?;
+                let mut permutation: Vec<usize> = (0..input.rank()).collect();
+                permutation.remove(*from);
+                permutation.insert(*to, *from);
+                let output = crate::ops::make_tensor_for_node(
+                    session,
+                    node_id,
+                    input.datum_type(),
+                    &PermuteAxes::output_shape(input.shape(), &permutation)?,
+                )?;
+                PermuteAxes.dispatch_eval(context, input, &permutation, &output)?;
                 return Ok(tvec!(output.into_opaque_tensor().into_tvalue()));
             }
             AxisOp::Reshape(skip, from, to) => {
                 let from = from.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
                 let to = to.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
-                let mut shape: TVec<usize> = t.shape().into();
+                let mut shape: TVec<usize> = input.shape().into();
                 AxisOp::Reshape(*skip, from, to).change_shape_array(&mut shape, false)?;
                 shape
             }
             _ => {
-                let mut shape: TVec<usize> = t.shape().into();
+                let mut shape: TVec<usize> = input.shape().into();
                 self.0.change_shape_array(&mut shape, false)?;
                 shape
             }
         };
 
-        if new_shape.as_slice() != t.shape() {
-            Ok(tvec![t.reshaped(new_shape)?.into_opaque_tensor().into_tvalue()])
-        } else {
-            Ok(tvec![opaque.into_tvalue()])
-        }
+        // TODO: avoid copy because of memory pool integration
+        // Perform copy because of memory pool integration
+        let output =
+            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &new_shape)?;
+
+        Memcpy.dispatch_eval(context, input, 0, &output)?;
+        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }
 
@@ -97,7 +102,7 @@ impl TypedOp for MetalAxisOp {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_output_facts(inputs, |facts| {
+        crate::utils::metal_facts_from_gpu(inputs, |facts| {
             let mut shape = facts[0].shape.clone();
             self.0
                 .change_shape(&mut shape, false)
@@ -188,28 +193,31 @@ impl Op for MetalIntoShape {
     impl_op_same_as!();
 }
 
-impl EvalOp for MetalIntoShape {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+crate::impl_eval_op_for_metal_op!(MetalIntoShape);
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+impl MetalEvalOp for MetalIntoShape {
+    fn metal_eval(
+        &self,
+        context: &MetalContext,
+        node_id: usize,
+        session: &mut SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs).into_tensor();
-        let t = opaque.to_metal_tensor()?;
+        let input = opaque.to_metal_tensor()?;
+        ensure!(input.len() == self.0.len);
+        let output =
+            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &self.0.dims)?;
 
-        ensure!(t.len() == self.0.len);
-        unsafe {
-            Ok(tvec![t
-                .reshaped_with_geometry_unchecked(self.0.dims.clone(), self.0.strides.clone())
-                .into_opaque_tensor()
-                .into_tvalue()])
-        }
+        Memcpy.dispatch_eval(context, input, 0, &output)?;
+
+        Ok(tvec![output.into_opaque_tensor().into_tvalue()])
     }
 }
 
 impl TypedOp for MetalIntoShape {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_output_facts(inputs, |facts| self.0.output_facts(facts))
+        crate::utils::metal_facts_from_gpu(inputs, |facts| self.0.output_facts(facts))
             .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
     }
 

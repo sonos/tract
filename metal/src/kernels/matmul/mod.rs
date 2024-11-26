@@ -44,12 +44,16 @@ pub struct GemmDispatchParams {
 }
 
 impl GemmDispatchParams {
+    #[allow(clippy::too_many_arguments)]
     pub fn compute_dispatches_params(
         dt: DatumType,
+        a_offset: usize,
         a_shape: &[usize],
         transpose_a: bool,
+        b_offset: usize,
         b_shape: &[usize],
         transpose_b: bool,
+        c_offset: usize,
         c_shape: &[usize],
     ) -> TractResult<Vec<GemmDispatchParams>> {
         let rank = c_shape.len();
@@ -76,10 +80,10 @@ impl GemmDispatchParams {
                 n,
                 k,
                 transpose_a,
-                a_offset: 0,
+                a_offset,
                 transpose_b,
-                b_offset: 0,
-                c_offset: 0,
+                b_offset,
+                c_offset,
             }]),
             // bkm, 1kn -> bmn
             // bkm, 1nk -> bmn
@@ -92,10 +96,10 @@ impl GemmDispatchParams {
                     n,
                     k,
                     transpose_a,
-                    a_offset: a_batch_idx * n * k * dt.size_of(),
+                    a_offset: a_offset + a_batch_idx * n * k * dt.size_of(),
                     transpose_b,
-                    b_offset: 0,
-                    c_offset: a_batch_idx * m * n * dt.size_of(),
+                    b_offset,
+                    c_offset: c_offset + a_batch_idx * m * n * dt.size_of(),
                 })
                 .collect()),
             // 1mk, bkn -> bmn
@@ -111,10 +115,10 @@ impl GemmDispatchParams {
                     n,
                     k,
                     transpose_a,
-                    a_offset: 0,
+                    a_offset,
                     transpose_b,
-                    b_offset: b_batch_idx * n * k * dt.size_of(),
-                    c_offset: b_batch_idx * m * n * dt.size_of(),
+                    b_offset: b_offset + b_batch_idx * n * k * dt.size_of(),
+                    c_offset: c_offset + b_batch_idx * m * n * dt.size_of(),
                 })
                 .collect()),
             // bmk, bkn -> bmn
@@ -131,10 +135,10 @@ impl GemmDispatchParams {
                     n,
                     k,
                     transpose_a,
-                    a_offset: 0,
+                    a_offset,
                     transpose_b,
-                    b_offset: 0,
-                    c_offset: 0,
+                    b_offset,
+                    c_offset,
                 }])
             }
         }
@@ -194,9 +198,13 @@ impl<M: GemmKernel> GemmImpl<M> {
         a: &MetalTensor,
         b: &MetalTensor,
     ) -> TractResult<MetalTensor> {
-        let output = self.dispatch_eval(context, a, b)?;
+        let c_dt = a.datum_type();
+        let c_shape = self.output_shape(a.shape(), b.shape());
+        let c = unsafe { MetalTensor::uninitialized_dt(c_dt, &c_shape)? };
+
+        self.dispatch_eval(context, a, b, &c)?;
         context.wait_until_completed()?;
-        Ok(output)
+        Ok(c)
     }
 
     pub fn dispatch_eval(
@@ -204,27 +212,29 @@ impl<M: GemmKernel> GemmImpl<M> {
         context: &MetalContext,
         a: &MetalTensor,
         b: &MetalTensor,
-    ) -> TractResult<MetalTensor> {
+        c: &MetalTensor,
+    ) -> TractResult<()> {
         a.retain_until_completion();
         b.retain_until_completion();
-
-        let c_dt = a.datum_type();
-        let c_shape = self.output_shape(a.shape(), b.shape());
-
-        let c = MetalTensor::zero_dt(c_dt, &c_shape)?;
         c.retain_until_completion();
 
-        if c_shape.iter().product::<usize>() == 0 {
-            return Ok(c);
+        ensure!(c.datum_type() == a.datum_type());
+        ensure!(c.shape() == self.output_shape(a.shape(), b.shape()).as_slice());
+
+        if c.shape().iter().product::<usize>() == 0 {
+            return Ok(());
         }
 
         let dispatches = GemmDispatchParams::compute_dispatches_params(
-            c_dt,
+            c.datum_type(),
+            a.metal_offset(),
             a.shape(),
             self.transpose_a,
+            b.metal_offset(),
             b.shape(),
             self.transpose_b,
-            &c_shape,
+            c.metal_offset(),
+            c.shape(),
         )?;
 
         for d in dispatches {
@@ -242,13 +252,13 @@ impl<M: GemmKernel> GemmImpl<M> {
                     self.matmul,
                     a.shape(),
                     b.shape(),
-                    c_shape,
+                    c.shape(),
                     d,
                 )
             })?;
         }
 
-        Ok(c)
+        Ok(())
     }
 }
 
@@ -321,10 +331,13 @@ mod tests {
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
                 dt,
+                0,
                 &[1, m, k],
                 false,
+                0,
                 &[1, k, n],
                 false,
+                0,
                 &[1, m, n],
             )?,
             vec![GemmDispatchParams {
@@ -344,10 +357,13 @@ mod tests {
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
                 dt,
+                0,
                 &[10, m, k],
                 false,
+                0,
                 &[10, k, n],
                 false,
+                0,
                 &[10, m, n],
             )?,
             vec![GemmDispatchParams {
@@ -367,10 +383,13 @@ mod tests {
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
                 dt,
+                0,
                 &[1, m, k],
                 false,
+                0,
                 &[2, k, n],
                 false,
+                10,
                 &[2, m, n],
             )?,
             vec![
@@ -384,7 +403,7 @@ mod tests {
                     a_offset: 0,
                     transpose_b: false,
                     b_offset: 0,
-                    c_offset: 0,
+                    c_offset: 10,
                 },
                 GemmDispatchParams {
                     dt,
@@ -396,7 +415,7 @@ mod tests {
                     a_offset: 0,
                     transpose_b: false,
                     b_offset: 1 * n * k * dt.size_of(),
-                    c_offset: 1 * m * n * dt.size_of(),
+                    c_offset: 10 + m * n * dt.size_of(),
                 }
             ]
         );
@@ -404,10 +423,13 @@ mod tests {
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
                 dt,
+                0,
                 &[2, k, m],
                 true,
+                0,
                 &[2, k, n],
                 false,
+                100,
                 &[2, m, n],
             )?,
             vec![GemmDispatchParams {
@@ -420,17 +442,20 @@ mod tests {
                 a_offset: 0,
                 transpose_b: false,
                 b_offset: 0,
-                c_offset: 0,
+                c_offset: 100,
             }]
         );
 
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
                 dt,
+                0,
                 &[10, m, k],
                 false,
+                10,
                 &[1, k, n],
                 false,
+                0,
                 &[10, m, n],
             )?,
             vec![GemmDispatchParams {
@@ -442,7 +467,7 @@ mod tests {
                 transpose_a: false,
                 a_offset: 0,
                 transpose_b: false,
-                b_offset: 0,
+                b_offset: 10,
                 c_offset: 0,
             }]
         );

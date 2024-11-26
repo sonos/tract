@@ -1,3 +1,4 @@
+use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
@@ -39,13 +40,29 @@ impl PermuteAxes {
         Ok(format!("array_ops::copy_{broadcast_name}_{tname}"))
     }
 
+    pub fn output_shape<D: DimLike>(shape: &[D], axes: &[usize]) -> TractResult<TVec<D>> {
+        let rank = shape.len();
+        let mut new_shape = tvec![0.into(); rank];
+
+        for (new_axis, &axis) in axes.iter().enumerate() {
+            new_shape[new_axis] = shape[axis].clone();
+        }
+        Ok(new_shape)
+    }
+
     pub fn eval(
         &self,
         context: &MetalContext,
         input: &MetalTensor,
         axes: &[usize],
     ) -> Result<MetalTensor> {
-        let output = self.dispatch_eval(context, input, axes)?;
+        let output = unsafe {
+            MetalTensor::uninitialized_dt(
+                input.datum_type(),
+                &Self::output_shape(input.shape(), axes)?,
+            )?
+        };
+        self.dispatch_eval(context, input, axes, &output)?;
         context.wait_until_completed()?;
         Ok(output)
     }
@@ -55,8 +72,11 @@ impl PermuteAxes {
         context: &MetalContext,
         input: &MetalTensor,
         axes: &[usize],
-    ) -> Result<MetalTensor> {
+        output: &MetalTensor,
+    ) -> Result<()> {
         input.retain_until_completion();
+        output.retained_until_completion();
+
         // Validate give axes permutation
         let mut usage_counts = vec![0; input.rank()];
         for axis in axes {
@@ -68,17 +88,20 @@ impl PermuteAxes {
 
         let shape = input.shape();
         let strides = input.strides();
-
-        let mut new_shape = vec![0; input.rank()];
         let mut new_strides = vec![0; input.rank()];
+        let mut new_shape = vec![0; input.rank()];
 
         for (new_axis, &axis) in axes.iter().enumerate() {
             new_shape[new_axis] = shape[axis];
             new_strides[new_axis] = strides[axis];
         }
 
-        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), &new_shape)? };
-        output.retained_until_completion();
+        ensure!(
+            output.shape() == new_shape,
+            "Mismatch between expected new shape {:?} and output shape {:?}",
+            new_shape,
+            output.shape()
+        );
 
         let broadcast_kind = BroadcastKind::from_rank(input.rank())
             .with_context(|| anyhow!("Unsupported rank {:?} for PermuteAxes", input.rank()))?;
@@ -90,32 +113,18 @@ impl PermuteAxes {
         let command_buffer = context.command_buffer();
         let encoder = command_buffer.new_compute_command_encoder();
         encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_buffer(0, Some(input.metal()), 0);
-        encoder.set_bytes(
-            1,
-            (new_strides.len() * std::mem::size_of::<usize>()) as _,
-            new_strides.as_ptr() as *const _,
-        );
-        encoder.set_buffer(2, Some(output.metal()), 0);
-        encoder.set_bytes(
-            3,
-            std::mem::size_of_val(output.shape()) as _,
-            output.shape().as_ptr() as *const _,
-        );
-        encoder.set_bytes(
-            4,
-            (output.strides().len() * std::mem::size_of::<usize>()) as _,
-            output.strides().as_ptr() as *const _,
-        );
+        encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+        encoder.set_slice(1, &new_strides);
+        encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
+        encoder.set_slice(3, output.shape());
+        encoder.set_slice(4, output.strides());
 
         let grid_size = utils::build_metal_size_for_shape(output.shape());
         let group_size = utils::build_metal_size_with_ones();
 
-        encoder.use_resource(input.metal(), metal::MTLResourceUsage::Read);
-        encoder.use_resource(output.metal(), metal::MTLResourceUsage::Write);
         encoder.dispatch_thread_groups(grid_size, group_size);
         encoder.end_encoding();
-        Ok(output)
+        Ok(())
     }
 }
 

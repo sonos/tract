@@ -150,11 +150,9 @@ pub fn handle(
 
     if sub_matches.is_present("tmp_mem_usage") {
         let plan_options = plan_options_from_subcommand(sub_matches)?;
-        annotations.track_tmp_memory_usage(
-            model,
-            |n| !n.op_is::<tract_core::ops::konst::Const>(),
-            plan_options.skip_order_opt_ram,
-        )?;
+        annotations.track_tmp_memory_usage(model, 
+            |n| !(n.op_is::<tract_core::ops::konst::Const>()),
+            plan_options.skip_order_opt_ram)?;
     }
 
     if let Some(asserts) = &params.assertions.assert_output_facts {
