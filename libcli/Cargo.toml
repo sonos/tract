@@ -28,6 +28,9 @@ tract-hir.workspace = true
 tract-onnx = { workspace = true, optional = true }
 tract-tflite.workspace = true
 
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+tract-metal = { version = "=0.21.8-pre", path = "../metal" }
+
 [features]
 # hir = ["tract-hir"]
 hir = []

@@ -1,11 +1,13 @@
-use crate::command_buffer::{ProfileBuffers, TractCommandBuffer};
+use crate::command_buffer::{MetalProfiler, TractCommandBuffer};
 use crate::func_constants::ConstantValues;
 use crate::kernels::matmul::mps;
-use crate::kernels::{LibraryContent, LibraryName};
-use crate::MetalTensor;
-use metal::{Buffer, MTLResourceOptions, NSUInteger};
-use std::cell::RefCell;
+pub use crate::kernels::{LibraryContent, LibraryName};
+pub use crate::tensor::MetalTensor;
+use metal::NSUInteger;
+use std::borrow::Borrow;
+use std::cell::{RefCell, RefMut};
 use std::path::Path;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
@@ -15,6 +17,7 @@ use metal::{
     FunctionConstantValues, Library, MTLResourceOptions,
 };
 use std::collections::HashMap;
+use tract_core::internal::*;
 
 thread_local! {
     pub static METAL_CONTEXT: RefCell<MetalContext> = RefCell::new(MetalContext::new());
@@ -191,10 +194,10 @@ impl SharedMetalContext {
 pub struct MetalContext {
     shared: SharedMetalContext,
     command_queue: CommandQueue,
-    command_buffer: RefCell<TractCommandBuffer>,
-    command_buffer_used: RefCell<usize>,
+    command_buffer: RefCell<Option<TractCommandBuffer>>,
     command_buffer_id: AtomicUsize,
     retained_tensors: RefCell<Vec<MetalTensor>>,
+    profiler: RefCell<Option<Rc<MetalProfiler>>>,
 }
 
 impl Default for MetalContext {
@@ -207,15 +210,13 @@ impl MetalContext {
     pub fn new() -> Self {
         let shared = shared_metal_context();
         let command_queue = shared.device.new_command_queue();
-        let command_buffer = command_queue.new_command_buffer().to_owned();
-        command_buffer.enqueue();
         Self {
             command_queue,
-            command_buffer: RefCell::new(TractCommandBuffer::new(command_buffer)),
-            command_buffer_used: RefCell::new(0),
+            command_buffer: RefCell::new(None),
             command_buffer_id: AtomicUsize::new(0),
             retained_tensors: RefCell::new(vec![]),
             shared,
+            profiler: RefCell::new(None),
         }
     }
 
@@ -252,26 +253,25 @@ impl MetalContext {
     }
 
     pub fn command_buffer(&self) -> TractCommandBuffer {
-        let command_buffer = self.command_buffer.borrow_mut().to_owned();
-        let mut command_buffer_used = self.command_buffer_used.borrow_mut();
-        *command_buffer_used += 1;
+        let command_buffer = self
+            .command_buffer
+            .borrow_mut()
+            .get_or_insert_with(|| {
+                let command_buffer = TractCommandBuffer::new(
+                    self.command_queue.new_command_buffer().to_owned(),
+                    self.profiler.borrow().clone(),
+                );
+                command_buffer.enqueue();
+                command_buffer
+            })
+            .to_owned();
         command_buffer
     }
 
-    pub fn command_buffer_mut(&self) -> RefMut<TractCommandBuffer> {
-        let mut command_buffer_used = self.command_buffer_used.borrow_mut();
-        *command_buffer_used += 1;
-
-        self.command_buffer.borrow_mut()
-    }
-
     pub fn wait_until_completed(&self) -> Result<()> {
-        let mut command_buffer = self.command_buffer.borrow_mut();
-        let mut command_buffer_used = self.command_buffer_used.borrow_mut();
+        let Some(command_buffer) = self.command_buffer.borrow().to_owned() else { return Ok(()) };
 
-        if *command_buffer_used == 0 {
-            return Ok(());
-        }
+        dbg!(command_buffer.status());
         match command_buffer.status() {
             metal::MTLCommandBufferStatus::Committed
             | metal::MTLCommandBufferStatus::Scheduled
@@ -282,18 +282,14 @@ impl MetalContext {
         }
         let command_buffer_id = self.command_buffer_id.load(Ordering::Relaxed);
         command_buffer.commit();
-        log::trace!("Command buffer {:?} commit", command_buffer_id);
+        println!("Command buffer {:?} commit", command_buffer_id);
         command_buffer.wait_until_completed();
-        log::trace!("Command buffer {:?} has completed (Blocking call)", command_buffer_id);
+        println!("Command buffer {:?} has completed (Blocking call)", command_buffer_id);
 
         // Clear local retained values used by the command buffer
         self.retained_tensors.borrow_mut().clear();
 
-        *command_buffer =
-            TractCommandBuffer::new(self.command_queue.new_command_buffer().to_owned());
-        command_buffer.enqueue();
-        *command_buffer_used = 0;
-        self.command_buffer_id.fetch_add(1, Ordering::Relaxed);
+        *self.command_buffer.borrow_mut() = None;
         Ok(())
     }
 
@@ -331,26 +327,32 @@ impl MetalContext {
     }
     pub fn profile<EvalCallback>(
         &self,
-        sampling_buffers: Arc<Mutex<ProfileBuffers>>,
         eval: EvalCallback,
-    ) -> Result<MetalTensor>
+    ) -> TractResult<(TVec<TValue>, Vec<[usize; 2]>)>
     where
-        EvalCallback: Fn() -> Result<MetalTensor>,
+        EvalCallback: FnOnce() -> TractResult<TVec<TValue>>,
     {
         let device: &Device = &self.shared.device;
         assert!(device.supports_counter_sampling(metal::MTLCounterSamplingPoint::AtStageBoundary));
 
-        self.command_buffer_mut().attach_profiler(self.shared.device.clone(), sampling_buffers);
+        self.wait_until_completed()?;
+        let profiler = Rc::new(MetalProfiler::new(device.to_owned()));
 
-        let output = eval()?;
+        self.profiler.replace(profiler.clone().into());
 
-        Ok(output)
+        let output = eval().unwrap();
+
+        self.wait_until_completed()?;
+        self.profiler.replace(None);
+
+        let profile_buffers = profiler.get_buffers();
+        Ok((output, profile_buffers))
     }
 }
 
 impl Drop for MetalContext {
     fn drop(&mut self) {
-        let command_buffer = self.command_buffer.borrow_mut();
+        let Some(command_buffer) = self.command_buffer.borrow_mut().to_owned() else { return };
 
         match command_buffer.status() {
             metal::MTLCommandBufferStatus::Committed
