@@ -175,13 +175,14 @@ pub fn handle(
     }
 
     let compress_submodels = sub_matches.is_present("compress-submodels");
+    let deterministic = sub_matches.is_present("nnef-deterministic");
     if let Some(path) = sub_matches.value_of("nnef") {
         let nnef = super::nnef(matches);
         if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
             rename_outputs(&mut typed, sub_matches)?;
             let file = fs::File::create(path)?;
             let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
-            nnef.write_to_tar_with_config(&typed, encoder, compress_submodels, false)
+            nnef.write_to_tar_with_config(&typed, encoder, compress_submodels, deterministic)
                 .context("Writing model to tgz")?;
         } else {
             bail!("Only typed model can be dumped")
@@ -193,7 +194,7 @@ pub fn handle(
         if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
             rename_outputs(&mut typed, sub_matches)?;
             let file = fs::File::create(path)?;
-            nnef.write_to_tar_with_config(&typed, file, compress_submodels, false)
+            nnef.write_to_tar_with_config(&typed, file, compress_submodels, deterministic)
                 .context("Writing model to tar")?;
         } else {
             bail!("Only typed model can be dumped")
