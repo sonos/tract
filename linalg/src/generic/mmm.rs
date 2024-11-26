@@ -334,16 +334,21 @@ where
     0
 }
 
-const PQ40_R4: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 4, 0, false);
-const PQ40_R4_SE: PackedBlockQuantFormat = PackedBlockQuantFormat::new(&Q4_0, 4, 0, true);
+fn pq40_r4() -> PackedBlockQuantFormat {
+    PackedBlockQuantFormat::new(&Q4_0, 4, 0, false)
+}
+
+fn pq40_r4_se() -> PackedBlockQuantFormat {
+    PackedBlockQuantFormat::new(&Q4_0, 4, 0, true)
+}
 
 // f16 kernels
 MMMRustKernel!(kernel::<f16, 4, 4> => generic_f16_4x4<f16>(4,4) store(f32, f64));
 MMMRustKernel! {kernel::<f16, 4, 1> => generic_f16_4x1<f16>(4,1)
     packing[1] = f32f32 => |k| k.with_packing(f32::packing(4), f32::packing(1));
-    packing[2] = q40f16 => |k| k.with_packing_a(PQ40_R4);
-    packing[3] = q40f16se => |k| k.with_packing_a(PQ40_R4_SE);
-    packing[4] = q40f32 => |k| k.with_packing(PQ40_R4, f32::packing(1));
+    packing[2] = q40f16 => |k| k.with_packing_a(pq40_r4());
+    packing[3] = q40f16se => |k| k.with_packing_a(pq40_r4_se());
+    packing[4] = q40f32 => |k| k.with_packing(pq40_r4(), f32::packing(1));
     store(f32, f64)
 }
 
@@ -354,9 +359,9 @@ MMMRustKernel!(kernel::<f32, 4, 4> => generic_f32_4x4<f32>(4,4)
 );
 MMMRustKernel! {kernel::<f32, 4, 1> => generic_f32_4x1<f32>(4,1)
     packing[1] = f16f16 => |k| k.with_packing(f16::packing(4), f16::packing(1));
-    packing[2] = q40f16 => |k| k.with_packing(PQ40_R4, f16::packing(1));
-    packing[3] = q40f16se => |k| k.with_packing(PQ40_R4_SE, f16::packing(1));
-    packing[4] = q40f32 => |k| k.with_packing_a(PQ40_R4);
+    packing[2] = q40f16 => |k| k.with_packing(pq40_r4(), f16::packing(1));
+    packing[3] = q40f16se => |k| k.with_packing(pq40_r4_se(), f16::packing(1));
+    packing[4] = q40f32 => |k| k.with_packing_a(pq40_r4());
     store(f16, f64)
 }
 
@@ -387,7 +392,7 @@ MMMRustKernel! {kernel::<i32, 3, 2> => generic_i32_3x2<i32>(3,2)
 
 pub fn plug(ops: &mut Ops) {
     ops.mmm_kits.push(
-        MMMKit::new(Q4_0, F32, F32, &PQ40_R4)
+        MMMKit::new(Q4_0, F32, F32, &pq40_r4())
             .with_native(generic_f32_4x1.mmm(), 4)
             .with_generic_fallback(true),
     );
