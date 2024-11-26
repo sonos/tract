@@ -1,5 +1,6 @@
 use super::*;
 use crate::frame::PackedFormat;
+use crate::frame::mmm::Packing;
 use crate::Ops;
 use tract_data::internal::*;
 
@@ -13,17 +14,17 @@ pub fn plug(ops: &mut Ops) {
 
 panel_extractor!(kernel_packed_32_q40_to_f32 as fma_packed_32_q40_to_f32(
     Box::new(super::mmm::pq40_r32()),
-    PackedFormat::new(f32::datum_type(), 32, 32)
+    f32::packing(32).align(32)
 ) where(AVX2));
 
 panel_extractor!(kernel_packed_32_f16_to_f32 as fma_packed_32_f16_to_f32(
     Box::new(PackedFormat::new(f16::datum_type(), 32, 32)),
-    PackedFormat::new(f32::datum_type(), 32, 32)
+    f32::packing(32).align(32)
 ) where(AVX2));
 
 panel_extractor!(kernel_packed_128_q40_to_f32::kernel as avx512_packed_128_q40_to_f32(
     Box::new(super::mmm::pq40_r128()),
-    PackedFormat::new(f32::datum_type(), 128, 32)
+    f32::packing(128).align(32)
 ) where(AVX512F));
 
 mod kernel_packed_128_q40_to_f32 {
