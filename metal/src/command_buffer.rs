@@ -1,10 +1,11 @@
 use anyhow::Result;
 use metal::{
-    Buffer, CommandBuffer, ComputeCommandEncoderRef, ComputePassDescriptor, ComputePassDescriptorRef, CounterSampleBufferDescriptor, CounterSampleBufferRef, Device, MTLResourceOptions, NSRange
+    Buffer, CommandBuffer, ComputeCommandEncoderRef, ComputePassDescriptor,
+    ComputePassDescriptorRef, Counter, CounterSampleBuffer, CounterSampleBufferDescriptor,
+    CounterSampleBufferRef, Device, MTLResourceOptions, NSRange,
 };
 use std::{
-    ops::{Deref, DerefMut},
-    sync::{Arc, Mutex},
+    borrow::Borrow, cell::RefCell, ops::{Deref, DerefMut}, rc::Rc, sync::{Arc, Mutex}
 };
 
 const NUM_SAMPLES: u64 = 2;
@@ -30,18 +31,16 @@ pub struct ProfileBuffers {
 
 impl ProfileBuffers {
     pub fn new(device: Device) -> Result<Self> {
-            let buffers: Vec<Buffer> = (0..5)
-            .map(|_| device.new_buffer(
-                (std::mem::size_of::<u64>() * NUM_SAMPLES as usize) as u64,
-                MTLResourceOptions::StorageModeShared,
-            ))
-            .collect();
-            
-            Ok(Self {
-                device,
-                buffers,
-                used: 0,
+        let buffers: Vec<Buffer> = (0..100)
+            .map(|_| {
+                device.new_buffer(
+                    (std::mem::size_of::<u64>() * NUM_SAMPLES as usize) as u64,
+                    MTLResourceOptions::StorageModeShared,
+                )
             })
+            .collect();
+
+        Ok(Self { device, buffers, used: 0 })
     }
 
     pub fn next(&mut self) -> &Buffer {
@@ -67,14 +66,53 @@ impl ProfileBuffers {
 }
 
 #[derive(Debug, Clone)]
-pub struct Profiler {
+pub struct MetalProfiler {
     device: Device,
-    sampling_buffers: Arc<Mutex<ProfileBuffers>>,
+    sampling_buffers: RefCell<ProfileBuffers>,
+    counter_sample_buffer: CounterSampleBuffer,
+    compute_pass_descriptor: ComputePassDescriptor,
 }
 
-impl Profiler {
-    pub fn new(device: Device, sampling_buffers: Arc<Mutex<ProfileBuffers>>) -> Self {
-        Self { device, sampling_buffers }
+impl MetalProfiler {
+    pub fn new(device: Device) -> Self {
+        let compute_pass_descriptor = ComputePassDescriptor::new();
+
+        let counter_sample_buffer_desc = CounterSampleBufferDescriptor::new();
+        counter_sample_buffer_desc.set_storage_mode(metal::MTLStorageMode::Shared);
+        counter_sample_buffer_desc.set_sample_count(NUM_SAMPLES);
+        let counter_sets = device.counter_sets();
+        let timestamp_counter = counter_sets.iter().find(|cs| cs.name() == "timestamp");
+
+        counter_sample_buffer_desc
+            .set_counter_set(timestamp_counter.expect("No timestamp counter found"));
+
+        dbg!("Creating a new counter sample buffer");
+        let counter_sample_buffer =
+            device.new_counter_sample_buffer_with_descriptor(&counter_sample_buffer_desc).unwrap();
+
+        handle_compute_pass_sample_buffer_attachment(
+            compute_pass_descriptor,
+            &counter_sample_buffer,
+        );
+
+        Self {
+            device: device.to_owned(),
+            sampling_buffers: RefCell::new(ProfileBuffers::new(device).unwrap()),
+            counter_sample_buffer,
+            compute_pass_descriptor: compute_pass_descriptor.to_owned(),
+        }
+    }
+
+    pub fn get_buffers(&self) -> Vec<[usize; 2]> {
+        self.sampling_buffers.borrow().buffers.iter().map(|buffer|{
+            unsafe {
+                let slice = std::slice::from_raw_parts(
+                    buffer.contents() as *const usize,
+                    NUM_SAMPLES as usize,
+                );
+                [slice[0], slice[1]]
+            }
+        }).collect()
     }
 }
 
@@ -82,56 +120,32 @@ impl Profiler {
 // Define ProfileCommandBuffer as a wrapper around CommandBuffer
 pub struct TractCommandBuffer {
     inner: CommandBuffer,
-    profiler: Option<Profiler>,
+    profiler: Option<Rc<MetalProfiler>>,
 }
 
 impl TractCommandBuffer {
-    pub fn new(command_buffer: CommandBuffer) -> Self {
-        TractCommandBuffer { inner: command_buffer, profiler: None }
-    }
-
-    pub fn attach_profiler(
-        &mut self,
-        device: Device,
-        sampling_buffers: Arc<Mutex<ProfileBuffers>>,
-    ) {
-        self.profiler = Some(Profiler::new(device, sampling_buffers));
+    pub fn new(command_buffer: CommandBuffer, profiler: Option<Rc<MetalProfiler>>) -> Self {
+        dbg!("Creating new command buffer");
+        TractCommandBuffer { inner: command_buffer, profiler }
     }
 
     pub fn encode<EncodeCallback>(&self, encode_cb: EncodeCallback)
     where
         EncodeCallback: Fn(&ComputeCommandEncoderRef),
     {
-        if let Some(profiler) = &mut self.profiler {
-            let compute_pass_descriptor = ComputePassDescriptor::new();
+        if let Some(profiler) = self.profiler.clone() {
 
-            let counter_sample_buffer_desc = CounterSampleBufferDescriptor::new();
-            counter_sample_buffer_desc.set_storage_mode(metal::MTLStorageMode::Shared);
-            counter_sample_buffer_desc.set_sample_count(NUM_SAMPLES);
-            let counter_sets = profiler.device.counter_sets();
-            let timestamp_counter = counter_sets.iter().find(|cs| cs.name() == "timestamp");
+            let encoder = self
+                .inner
+                .compute_command_encoder_with_descriptor(&profiler.compute_pass_descriptor);
 
-            counter_sample_buffer_desc
-                .set_counter_set(timestamp_counter.expect("No timestamp counter found"));
-            let counter_sample_buffer = profiler
-                .device
-                .new_counter_sample_buffer_with_descriptor(&counter_sample_buffer_desc)
-                .unwrap();
-
-            handle_compute_pass_sample_buffer_attachment(
-                compute_pass_descriptor,
-                &counter_sample_buffer,
-            );
-
-            let encoder =
-                self.inner.compute_command_encoder_with_descriptor(compute_pass_descriptor);
             encode_cb(encoder);
-
+            
             let blit_encoder = self.inner.new_blit_command_encoder();
             blit_encoder.resolve_counters(
-                &counter_sample_buffer,
+                &profiler.counter_sample_buffer,
                 NSRange::new(0_u64, NUM_SAMPLES),
-                profiler.sampling_buffers.lock().unwrap().next(),
+                profiler.sampling_buffers.borrow_mut().next(),
                 0_u64,
             );
             blit_encoder.end_encoding();
