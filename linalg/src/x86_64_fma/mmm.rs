@@ -3,6 +3,7 @@ use crate::frame::PackedFormat;
 use crate::mmm::MMMKit;
 use crate::mmm::MatMatMulKer;
 use crate::Ops;
+use panel_extract::avx512_packed_128_q40_to_f32;
 use panel_extract::fma_packed_32_f16_to_f32;
 use panel_extract::fma_packed_32_q40_to_f32;
 use tract_data::internal::*;
@@ -76,4 +77,24 @@ pub fn plug(ops: &mut Ops) {
                 .with_extracting(fma_mmm_f32_32x3.mmm(), 1, fma_packed_32_f16_to_f32.clone()),
         );
     }
+    if avx512_mmm_f32_16x1.is_supported_here() {
+        ops.mmm_kits.push(
+            MMMKit::new(Q4_0, F32, F32, &pq40_r128())
+                .with_native(avx512_mmm_f32_128x1.mmm(), 1)
+                .with_extracting(
+                    avx512_mmm_f32_128x3.mmm(),
+                    0,
+                    avx512_packed_128_q40_to_f32.clone(),
+                ),
+        )
+    }
 }
+
+#[cfg(test)]
+mod test {
+     #[test]
+     fn kits() {
+         let mut ops = crate::generic();
+         super::plug(&mut ops);
+     }
+ }
