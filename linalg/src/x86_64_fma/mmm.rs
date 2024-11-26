@@ -37,10 +37,10 @@ MMMExternKernel!(fma_mmm_f32_32x3<f32>(32,3)@(32,4) where(FMA)
  store(f16)
 );
 
-MMMExternKernel!(avx512_mmm_f32_128x1<f32>(128, 1)@(32,4) where (AVX512F)
+MMMExternKernel!(avx512_mmm_f32_128x1<f32>(128, 1)@(64,4) where (AVX512F)
     packing[1] = q40f32 => |k| k.with_packing_a(pq40_r128());
 );
-MMMExternKernel!(avx512_mmm_f32_128x3<f32>(128, 3)@(32,4) where (AVX512F));
+MMMExternKernel!(avx512_mmm_f32_128x3<f32>(128, 3)@(64,4) where (AVX512F));
 
 MMMExternKernel!(avx512_mmm_f32_16x1 <f32>( 16, 1)@(64,4) where (AVX512F));
 MMMExternKernel!(avx512_mmm_f32_16x12<f32>( 16,12)@(64,4) where (AVX512F));

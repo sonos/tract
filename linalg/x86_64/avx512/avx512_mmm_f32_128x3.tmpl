@@ -50,7 +50,7 @@ Windows ABI:
     vbroadcastss    zmm31, dword ptr [rbx+8]
 
 {% for i in (0..7) %}
-    vmovups         zmm28, zmmword ptr [rax+{{i | times:64}}]
+    vmovaps         zmm28, zmmword ptr [rax+{{i | times:64}}]
     vfmadd231ps     zmm{{i}}, zmm28, zmm29
     vfmadd231ps     zmm{{i | plus: 8}}, zmm28, zmm30
     vfmadd231ps     zmm{{i | plus: 16}}, zmm28, zmm31

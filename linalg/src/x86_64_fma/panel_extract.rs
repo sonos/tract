@@ -24,7 +24,7 @@ panel_extractor!(kernel_packed_32_f16_to_f32 as fma_packed_32_f16_to_f32(
 
 panel_extractor!(kernel_packed_128_q40_to_f32::kernel as avx512_packed_128_q40_to_f32(
     Box::new(super::mmm::pq40_r128()),
-    f32::packing(128).align(32)
+    f32::packing(128).align(64)
 ) where(AVX512F));
 
 mod kernel_packed_128_q40_to_f32 {
