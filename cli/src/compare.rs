@@ -321,10 +321,10 @@ where
                             .map(|t| {
                                 let needed_fact = crate::utils::clarify_typed_fact(node.outputs[ix].fact.to_typed_fact().unwrap());
                                 let needed_type = needed_fact.datum_type;
-                                let needed_shape = needed_fact.shape.as_concrete().unwrap();
-                                let t = if t.shape() != needed_shape {
+                                let needed_shape = needed_fact.shape.as_concrete();
+                                let t = if needed_shape.is_some_and(|it| it != t.shape()) {
 
-                                    t.into_tensor().into_shape(needed_shape)
+                                    t.into_tensor().into_shape(needed_shape.unwrap())
                                         .expect("Comparing incompatible shapes")
                                         .into_tvalue()
                                 } else {
