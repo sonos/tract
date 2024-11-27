@@ -85,7 +85,9 @@ impl Nnef {
 
     pub fn write_to_tar<W: std::io::Write>(&self, model: &TypedModel, w: W) -> TractResult<W> {
         let mut ar = tar::Builder::new(w);
-        self._write_to_tar(model, &mut ar, false)?;
+        let timestamp =
+            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap();
+        self._write_to_tar(model, &mut ar, false, timestamp)?;
         ar.into_inner().context("Finalizing tar")
     }
 
@@ -94,9 +96,17 @@ impl Nnef {
         model: &TypedModel,
         w: W,
         compress_nested_models: bool,
+        deterministic: bool,
     ) -> TractResult<W> {
         let mut ar = tar::Builder::new(w);
-        self._write_to_tar(model, &mut ar, compress_nested_models)?;
+        let timestamp = if deterministic {
+            // 1 Jan 1980, MS-DOS epoch. Some tools have issues with 0 timestamps.
+            std::time::Duration::from_secs(315532800)
+        } else {
+            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap()
+        };
+
+        self._write_to_tar(model, &mut ar, compress_nested_models, timestamp)?;
         ar.into_inner().context("Finalizing tar")
     }
 
@@ -105,6 +115,7 @@ impl Nnef {
         model: &TypedModel,
         ar: &mut Builder<W>,
         compress_nested_models: bool,
+        timestamp: std::time::Duration,
     ) -> TractResult<()> {
         let proto_model =
             crate::ser::to_proto_model(self, model).context("Translating model to proto_model")?;
@@ -113,21 +124,22 @@ impl Nnef {
         crate::ast::dump::Dumper::new(self, &mut graph_data)
             .document(&proto_model.doc)
             .context("Serializing graph.nnef")?;
-        let now =
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap();
 
         let mut header = tar::Header::new_gnu();
         header.set_path("graph.nnef").context("Setting graph.nnef path")?;
         header.set_size(graph_data.len() as u64);
         header.set_mode(0o644);
-        header.set_mtime(now.as_secs());
+        header.set_mtime(timestamp.as_secs());
         header.set_cksum();
         ar.append(&header, &mut &*graph_data).context("Appending graph.nnef")?;
 
-        if let Some(quantization) = proto_model.quantization {
+        if let Some(mut quantization) = proto_model.quantization {
             let mut quant_data = vec![];
 
-            for (name, format) in quantization.into_iter() {
+            let mut keys = quantization.keys().cloned().collect::<Vec<_>>();
+            keys.sort();
+            for name in keys {
+                let format = quantization.remove(&name).unwrap();
                 write_quant_format(
                     &mut quant_data,
                     &name,
@@ -140,12 +152,15 @@ impl Nnef {
             header.set_path("graph.quant").context("Setting graph.quant path")?;
             header.set_size(quant_data.len() as u64);
             header.set_mode(0o644);
-            header.set_mtime(now.as_secs());
+            header.set_mtime(timestamp.as_secs());
             header.set_cksum();
             ar.append(&header, &mut &*quant_data).context("Appending graph.quant")?;
         }
 
-        for (label, t) in &proto_model.tensors {
+        let mut labels = proto_model.tensors.keys().collect::<Vec<_>>();
+        labels.sort();
+        for label in labels {
+            let t = proto_model.tensors.get(label).unwrap();
             let mut label = label.0.to_string() + ".dat";
             if label.starts_with('/') {
                 label.insert(0, '.');
@@ -158,14 +173,17 @@ impl Nnef {
             let mut header = tar::Header::new_gnu();
             header.set_size(data.len() as u64);
             header.set_mode(0o644);
-            header.set_mtime(now.as_secs());
+            header.set_mtime(timestamp.as_secs());
             header.set_cksum();
 
             ar.append_data(&mut header, filename, &mut &*data)
                 .with_context(|| format!("Appending tensor {filename:?}"))?;
         }
 
-        for (label, resource) in proto_model.resources.iter() {
+        let mut labels = proto_model.resources.keys().collect::<Vec<_>>();
+        labels.sort();
+        for label in labels {
+            let resource = proto_model.resources.get(label).unwrap();
             if let Some(typed_model_resource) = resource.downcast_ref::<TypedModelResource>() {
                 let mut submodel_data = vec![];
                 let mut filename = std::path::PathBuf::from_str(label)?;
@@ -186,7 +204,7 @@ impl Nnef {
                 let mut header = tar::Header::new_gnu();
                 header.set_size(submodel_data.len() as u64);
                 header.set_mode(0o644);
-                header.set_mtime(now.as_secs());
+                header.set_mtime(timestamp.as_secs());
                 header.set_cksum();
 
                 ar.append_data(&mut header, filename, &mut &*submodel_data)

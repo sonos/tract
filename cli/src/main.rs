@@ -383,6 +383,11 @@ fn dump_subcommand<'a>() -> clap::Command<'a> {
             Arg::new("compress-submodels")
             .long("compress-submodels")
             .help("Compress submodels if any (as a .tgz file)"),
+        )
+        .arg(
+            Arg::new("nnef-deterministic")
+            .long("nnef-deterministic")
+            .help("If provided, will try to make output .nnef.tar files deterministic"),
             )
         .arg(
             Arg::new("nnef-graph")
