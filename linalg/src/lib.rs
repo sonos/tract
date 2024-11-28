@@ -247,11 +247,17 @@ lazy_static! {
 
 pub fn bin_by_scalar(dt: DatumType, bin: BinOp) -> Option<Box<LinalgFn>> {
     let map = BIN_BY_SCALAR_OPS.lock().unwrap();
+    if (dt == DatumType::F16) && !has_fp16() {
+        return None;
+    }
     map.get(&(bin, dt)).map(|it| (it)())
 }
 
 pub fn bin_unicast(dt: DatumType, bin: BinOp) -> Option<Box<LinalgFn>> {
     let map = BIN_UNICAST_OPS.lock().unwrap();
+    if (dt == DatumType::F16) && !has_fp16() {
+        return None;
+    }
     map.get(&(bin, dt)).map(|it| (it)())
 }
 
