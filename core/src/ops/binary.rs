@@ -1,10 +1,10 @@
 use crate::internal::*;
+use crate::ndarray::Dimension;
 use downcast_rs::Downcast;
 use std::fmt::{self, Debug};
 use tract_data::itertools::izip;
 use tract_itertools::Itertools;
-use tract_linalg::{LinalgFn, BinOp};
-use crate::ndarray::Dimension;
+use tract_linalg::{BinOp, LinalgFn};
 
 use super::{cast::cast, math::SubF};
 
@@ -227,35 +227,43 @@ impl TypedOp for TypedBinOp {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if let Some(linalg_bin_op) = self.0.as_linalg_binop() {
-            let (operand_1, operand_2, should_swap, op) = if let &[a, b] = &*model.node_input_facts(node.id)? {
-                let num_elements_1 = a.shape.iter().product::<TDim>();
-                let num_elements_2 = b.shape.iter().product::<TDim>();
-                let operand_1_should_be_broadcast = (num_elements_1 - num_elements_2).prove_strict_negative();
+            let (operand_1, operand_2, should_swap, op) =
+                if let &[a, b] = &*model.node_input_facts(node.id)? {
+                    let num_elements_1 = a.shape.iter().product::<TDim>();
+                    let num_elements_2 = b.shape.iter().product::<TDim>();
+                    let operand_1_should_be_broadcast =
+                        (num_elements_1 - num_elements_2).prove_strict_negative();
 
-                let is_sub = linalg_bin_op == BinOp::Sub;
-                if operand_1_should_be_broadcast & is_sub {
-                    let sub_flipped: Box<dyn BinMiniOp> = Box::new(SubF {});
-                    (b, a, true, sub_flipped)
+                    let is_sub = linalg_bin_op == BinOp::Sub;
+                    if operand_1_should_be_broadcast & is_sub {
+                        let sub_flipped: Box<dyn BinMiniOp> = Box::new(SubF {});
+                        (b, a, true, sub_flipped)
+                    } else {
+                        (a, b, false, self.0.clone())
+                    }
                 } else {
-                    (a, b, false, self.0.clone())
-                }
-            } else {
-                unreachable!("TypedBinOp has two inputs.")
-            };
+                    unreachable!("TypedBinOp has two inputs.")
+                };
 
             let (by_scalar_should_be_efficient, unicast_should_be_efficient) =
                 find_most_efficient_config(model, node, should_swap)?;
-           
+
             // Check if op is quantized
             let c_dt = self.output_datum_type(operand_1.datum_type, operand_2.datum_type)?;
-            let op_is_quant = c_dt.is_quantized() || operand_1.datum_type.is_quantized() || operand_2.datum_type.is_quantized();
+            let op_is_quant = c_dt.is_quantized()
+                || operand_1.datum_type.is_quantized()
+                || operand_2.datum_type.is_quantized();
 
             // Check if it can be evaluated in a
             let c_dt = self.output_datum_type(operand_1.datum_type, operand_2.datum_type)?;
-            let c_shape = crate::broadcast::multi_broadcast(&[operand_1.shape.clone(), operand_2.shape.clone()])?;
-            let can_eval_in_a = (c_shape.to_vec() == operand_1.shape.to_vec()) && (c_dt == operand_1.datum_type);
+            let c_shape = crate::broadcast::multi_broadcast(&[
+                operand_1.shape.clone(),
+                operand_2.shape.clone(),
+            ])?;
+            let can_eval_in_a =
+                (c_shape.to_vec() == operand_1.shape.to_vec()) && (c_dt == operand_1.datum_type);
 
-            // Swap input if required 
+            // Swap input if required
             let inputs = if should_swap {
                 let mut swap_input = node.inputs.clone();
                 swap_input.swap(0, 1);
@@ -373,10 +381,14 @@ fn declutter_neutral(
     Ok(None)
 }
 
-fn find_most_efficient_config(model: &TypedModel, node: &TypedNode, swap_input: bool) -> TractResult<(bool, bool)> {
+fn find_most_efficient_config(
+    model: &TypedModel,
+    node: &TypedNode,
+    swap_input: bool,
+) -> TractResult<(bool, bool)> {
     if let &[a, b] = &*model.node_input_facts(node.id)? {
-        let a_shape = if swap_input {b.shape.clone()} else { a.shape.clone() };
-        let b_shape = if swap_input {a.shape.clone()} else { b.shape.clone() };
+        let a_shape = if swap_input { b.shape.clone() } else { a.shape.clone() };
+        let b_shape = if swap_input { a.shape.clone() } else { b.shape.clone() };
 
         let by_scalar_is_possible = OptBinByScalar::check_input_shapes(&a_shape, &b_shape);
         let num_by_scalar_elements = if by_scalar_is_possible {
