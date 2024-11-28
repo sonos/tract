@@ -309,7 +309,7 @@ fn declutter_broadcasting_operand_1(
     }
 
     // Special case for sub
-    let is_sub = mini_op.as_linalg_binop().map_or(false, |it| it == BinOp::Sub);
+    let is_sub = mini_op.as_linalg_binop() == Some(BinOp::Sub);
     if a_should_be_broadcast & is_sub {
         let subf_mini_op = Box::new(SubF {});
         let mut swap_input = node.inputs.clone();
