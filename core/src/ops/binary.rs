@@ -227,21 +227,41 @@ impl TypedOp for TypedBinOp {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if let Some(linalg_bin_op) = self.0.as_linalg_binop() {
-            let (by_scalar_should_be_efficient, unicast_should_be_efficient) =
-                find_most_efficient_config(model, node)?;
-            let op_is_quant = if let &[a, b] = &*model.node_input_facts(node.id)? {
-                let c_dt = self.output_datum_type(a.datum_type, b.datum_type)?;
-                c_dt.is_quantized() || a.datum_type.is_quantized() || b.datum_type.is_quantized()
+            let (operand_1, operand_2, should_swap, op) = if let &[a, b] = &*model.node_input_facts(node.id)? {
+                let num_elements_1 = a.shape.iter().product::<TDim>();
+                let num_elements_2 = b.shape.iter().product::<TDim>();
+                let operand_1_should_be_broadcast = (num_elements_1 - num_elements_2).prove_strict_negative();
+
+                let is_sub = linalg_bin_op == BinOp::Sub;
+                if operand_1_should_be_broadcast & is_sub {
+                    let sub_flipped: Box<dyn BinMiniOp> = Box::new(SubF {});
+                    (b, a, true, sub_flipped)
+                } else {
+                    (a, b, false, self.0.clone())
+                }
             } else {
-                false
+                unreachable!("TypedBinOp has two inputs.")
             };
-            let can_eval_in_a = if let &[a, b] = &*model.node_input_facts(node.id)? {
-                let c_dt = self.output_datum_type(a.datum_type, b.datum_type)?;
-                let c_shape =
-                    crate::broadcast::multi_broadcast(&[a.shape.clone(), b.shape.clone()])?;
-                (c_shape == a.shape.to_tvec()) && (c_dt == a.datum_type)
+
+            let (by_scalar_should_be_efficient, unicast_should_be_efficient) =
+                find_most_efficient_config(model, node, should_swap)?;
+           
+            // Check if op is quantized
+            let c_dt = self.output_datum_type(operand_1.datum_type, operand_2.datum_type)?;
+            let op_is_quant = c_dt.is_quantized() || operand_1.datum_type.is_quantized() || operand_2.datum_type.is_quantized();
+
+            // Check if it can be evaluated in a
+            let c_dt = self.output_datum_type(operand_1.datum_type, operand_2.datum_type)?;
+            let c_shape = crate::broadcast::multi_broadcast(&[operand_1.shape.clone(), operand_2.shape.clone()])?;
+            let can_eval_in_a = (c_shape.to_vec() == operand_1.shape.to_vec()) && (c_dt == operand_1.datum_type);
+
+            // Swap input if required 
+            let inputs = if should_swap {
+                let mut swap_input = node.inputs.clone();
+                swap_input.swap(0, 1);
+                swap_input
             } else {
-                false
+                node.inputs.clone()
             };
 
             let dt = model.node_input_facts(node.id)?[0].datum_type().unwrap();
@@ -254,8 +274,8 @@ impl TypedOp for TypedBinOp {
                     TypedModelPatch::replace_single_op(
                         model,
                         node,
-                        &node.inputs,
-                        OptBinByScalar { binop: self.0.clone(), eval_fn },
+                        &inputs,
+                        OptBinByScalar { binop: op, eval_fn },
                     )?
                     .with_context("ByScalar"),
                 ));
@@ -270,8 +290,8 @@ impl TypedOp for TypedBinOp {
                     TypedModelPatch::replace_single_op(
                         model,
                         node,
-                        &node.inputs,
-                        OptBinUnicast { binop: self.0.clone(), eval_fn },
+                        &inputs,
+                        OptBinUnicast { binop: op, eval_fn },
                     )?
                     .with_context("Unicast"),
                 ));
@@ -305,20 +325,6 @@ fn declutter_broadcasting_operand_1(
             node,
             &swap_input,
             TypedBinOp(mini_op, None),
-        )?));
-    }
-
-    // Special case for sub
-    let is_sub = mini_op.as_linalg_binop() == Some(BinOp::Sub);
-    if a_should_be_broadcast & is_sub {
-        let subf_mini_op = Box::new(SubF {});
-        let mut swap_input = node.inputs.clone();
-        swap_input.swap(0, 1);
-        return Ok(Some(TypedModelPatch::replace_single_op(
-            model,
-            node,
-            &swap_input,
-            TypedBinOp(subf_mini_op, None),
         )?));
     }
 
@@ -367,10 +373,10 @@ fn declutter_neutral(
     Ok(None)
 }
 
-fn find_most_efficient_config(model: &TypedModel, node: &TypedNode) -> TractResult<(bool, bool)> {
+fn find_most_efficient_config(model: &TypedModel, node: &TypedNode, swap_input: bool) -> TractResult<(bool, bool)> {
     if let &[a, b] = &*model.node_input_facts(node.id)? {
-        let a_shape = a.shape.clone();
-        let b_shape = b.shape.clone();
+        let a_shape = if swap_input {b.shape.clone()} else { a.shape.clone() };
+        let b_shape = if swap_input {a.shape.clone()} else { b.shape.clone() };
 
         let by_scalar_is_possible = OptBinByScalar::check_input_shapes(&a_shape, &b_shape);
         let num_by_scalar_elements = if by_scalar_is_possible {
