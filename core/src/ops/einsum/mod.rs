@@ -13,8 +13,8 @@ pub mod as_blas;
 use super::array::TypedConcat;
 use super::math::add;
 mod as_matmul;
-pub mod optimize;
 pub mod kernel_selection;
+pub mod optimize;
 
 #[cfg(test)]
 mod proptest;
@@ -257,13 +257,21 @@ impl TypedOp for EinSum {
         for i in 0..inputs.len() {
             ensure!(shapes[i].len() == self.axes.rank(InOut::In(i)));
         }
+        for axis in self.axes.iter_all_axes() {
+            assert!(shapes
+                .iter()
+                .enumerate()
+                .flat_map(|(slot, shape)| axis.inputs[slot].iter().map(|a| &shape[*a]))
+                .try_fold(TDim::one(), |a, b| TDim::broadcast(a, b.clone()))
+                .is_ok());
+        }
         if let Some(qp) = self.q_params {
             ensure!(inputs.len() == 9);
-            Ok(tvec!(qp.fact(eval::output_shape(&self.axes, &shapes[0..2]))))
+            Ok(tvec!(qp.fact(eval::output_shape(&self.axes, &shapes[0..2])?)))
         } else {
             Ok(tvec!(TypedFact::dt_shape(
                 self.operating_dt,
-                eval::output_shape(&self.axes, &shapes)
+                eval::output_shape(&self.axes, &shapes)?
             )))
         }
     }
@@ -288,7 +296,7 @@ impl TypedOp for EinSum {
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let shapes: TVec<&[TDim]> = inputs.iter().map(|t| &*t.shape).collect();
-        let oshape = eval::output_shape(&self.axes, &shapes);
+        let oshape = eval::output_shape(&self.axes, &shapes)?;
         let ks = self
             .axes
             .iter_all_axes()
