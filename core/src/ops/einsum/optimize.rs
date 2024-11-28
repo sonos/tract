@@ -89,26 +89,27 @@ pub(crate) fn ensure_mkn_axes<'a>(
     let input_facts = model.node_input_facts(node.id)?;
     let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
     let output_shape = super::eval::output_shape(&op.axes, &input_shapes)?;
-    let candidate_k_axes: TVec<&Axis> = op
+    let k_axes: TVec<&Axis> = op
         .axes
         .iter_all_axes()
         // Filter possible candidates (should be one time in each inputs but not in output)
         .filter(|a| {
-            a.inputs[0].len() == 1 && a.inputs[1].len() == 1 && a.outputs[0].len() == 0 &&
-                input_shapes[0][a.inputs[0][0]] == input_shapes[1][a.inputs[1][0]]
+            a.inputs[0].len() == 1 && a.inputs[1].len() == 1 && a.outputs[0].len() == 0
         })
     .collect();
 
-    let non_trivial_k_axis = candidate_k_axes
+    let non_trivial_k_axis = k_axes
         .iter()
-        .filter(|a| !input_shapes[0][a.inputs[0][0]].is_one())
+        .filter(|a| {
+            !input_shapes[0][a.inputs[0][0]].is_one() || !input_shapes[1][a.inputs[1][0]].is_one()
+        })
         .collect::<TVec<_>>();
 
     let k_axis = if non_trivial_k_axis.len() > 1 {
         // TODO: handle case where multiple consecutive k in the same order in both input.
         bail!("Multiple k-axis candidate found");
     } else {
-        non_trivial_k_axis.first().copied().or_else(|| candidate_k_axes.first()).copied()
+        non_trivial_k_axis.first().copied().or_else(|| k_axes.first()).copied()
     };
     let Some(k_axis) = k_axis else {
         return Ok(AxesOrPatch::Patch(inject_k_axis(op, model, node)?));
