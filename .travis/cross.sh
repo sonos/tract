@@ -40,7 +40,7 @@ then
      else
          NAME=linux
      fi
-     VERSION=0.6.4
+     VERSION=0.8.0
      wget -q https://github.com/snipsco/dinghy/releases/download/$VERSION/cargo-dinghy-$NAME-$VERSION.tgz -O cargo-dinghy.tgz
      tar vzxf cargo-dinghy.tgz --strip-components 1
      mv cargo-dinghy $HOME/.cargo/bin
