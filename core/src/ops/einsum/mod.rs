@@ -295,7 +295,7 @@ impl TypedOp for EinSum {
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let shapes: TVec<&[TDim]> = inputs.iter().map(|t| &*t.shape).collect();
+        let shapes = self.actual_input_shapes_from_facts(inputs)?;
         let oshape = eval::output_shape(&self.axes, &shapes)?;
         let ks = self
             .axes
