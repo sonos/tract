@@ -88,7 +88,7 @@ pub(crate) fn ensure_mkn_axes<'a>(
 ) -> TractResult<AxesOrPatch<'a>> {
     let input_facts = model.node_input_facts(node.id)?;
     let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
-    let output_shape = super::eval::output_shape(&op.axes, &input_shapes);
+    let output_shape = super::eval::output_shape(&op.axes, &input_shapes)?;
     let candidate_k_axes: TVec<&Axis> = op
         .axes
         .iter_all_axes()

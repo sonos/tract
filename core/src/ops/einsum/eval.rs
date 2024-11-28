@@ -5,8 +5,12 @@ use tract_linalg::Scaler;
 use tract_ndarray::{Axis, Dimension};
 use tract_num_traits::{One, Zero};
 
-pub fn output_shape<D: DimLike>(expr: &AxesMapping, inputs: &[impl AsRef<[D]>]) -> TVec<D> {
-    expr.iter_all_axes()
+pub fn output_shape<D: DimLike>(
+    expr: &AxesMapping,
+    inputs: &[impl AsRef<[D]>],
+) -> TractResult<TVec<D>> {
+    Ok(expr
+        .iter_all_axes()
         .filter(|a| a.outputs[0].len() > 0)
         .sorted_by_key(|axis| axis.outputs[0][0])
         .map(|axis| {
@@ -19,7 +23,7 @@ pub fn output_shape<D: DimLike>(expr: &AxesMapping, inputs: &[impl AsRef<[D]>]) 
                 .find(|x| x != &1.into())
                 .unwrap_or_else(|| 1.into())
         })
-        .collect()
+        .collect())
 }
 
 pub fn eval_t<Acc: Datum + Zero + One>(
@@ -36,7 +40,7 @@ pub fn eval_t<Acc: Datum + Zero + One>(
             }
         })
         .collect::<TractResult<_>>()?;
-    let output_shape = output_shape(expr, &shapes);
+    let output_shape = output_shape(expr, &shapes)?;
     let inputs: TVec<Cow<Tensor>> =
         inputs.iter().map(|t| t.cast_to::<Acc>()).collect::<TractResult<_>>()?;
     let inputs: TVec<tract_ndarray::ArrayViewD<Acc>> =
