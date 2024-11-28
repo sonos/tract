@@ -43,6 +43,14 @@ bin_to_super_type!(sub, Sub,
                    q_op_on_f32: |a: f32, b: f32| -> f32 {a-b},
                    [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
 
+bin_to_super_type!(subf, SubF,
+                   linalg:SubF,
+                   is_commutative: false,
+                   neutral_element: 0,
+                   q: [i8, u8, i32, i32] => subf_quant;
+                   q_op_on_f32: |a: f32, b: f32| -> f32 {b - a},
+                   [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = b.clone() - a);
+
 fn sub_quant<T>(c: &mut T, a: &T, b: &T, zp: i32, _: f32)
 where
     T: PrimInt + Bounded + AsPrimitive<i16> + Datum,
@@ -50,6 +58,15 @@ where
 {
     *c = (a.as_() - b.as_() + zp as i16).clamp_cast()
 }
+
+fn subf_quant<T>(c: &mut T, a: &T, b: &T, zp: i32, _: f32)
+where
+    T: PrimInt + Bounded + AsPrimitive<i16> + Datum,
+    i16: AsPrimitive<T>,
+{
+    *c = (b.as_() - a.as_() + zp as i16).clamp_cast()
+}
+
 
 bin_to_super_type!(mul, Mul,
                    cost: |dt| tvec!((Cost::FMA(dt), 1)),
