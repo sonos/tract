@@ -3,10 +3,10 @@ use downcast_rs::Downcast;
 use std::fmt::{self, Debug};
 use tract_data::itertools::izip;
 use tract_itertools::Itertools;
-use tract_linalg::LinalgFn;
+use tract_linalg::{LinalgFn, BinOp};
 use crate::ndarray::Dimension;
 
-use super::cast::cast;
+use super::{cast::cast, math::SubF};
 
 pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast {
     fn name(&self) -> &'static str;
@@ -305,6 +305,20 @@ fn declutter_broadcasting_operand_1(
             node,
             &swap_input,
             TypedBinOp(mini_op, None),
+        )?));
+    }
+
+    // Special case for sub
+    let is_sub = mini_op.as_linalg_binop().map_or(false, |it| it == BinOp::Sub);
+    if a_should_be_broadcast & is_sub {
+        let subf_mini_op = Box::new(SubF {});
+        let mut swap_input = node.inputs.clone();
+        swap_input.swap(0, 1);
+        return Ok(Some(TypedModelPatch::replace_single_op(
+            model,
+            node,
+            &swap_input,
+            TypedBinOp(subf_mini_op, None),
         )?));
     }
 
