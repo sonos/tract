@@ -196,7 +196,7 @@ pub struct MetalContext {
     command_buffer: RefCell<Option<TractCommandBuffer>>,
     command_buffer_id: AtomicUsize,
     retained_tensors: RefCell<Vec<MetalTensor>>,
-    profiler: RefCell<Option<Rc<MetalProfiler>>>,
+    profiler: RefCell<Option<Rc<RefCell<MetalProfiler>>>>,
 }
 
 impl Default for MetalContext {
@@ -315,9 +315,9 @@ impl MetalContext {
         Ok(())
     }
 
-    pub fn register_new_node(&self, node_id: usize) {
+    pub fn notify_new_node(&self, node_id: usize) {
         if let Some(profiler) = self.profiler.borrow().clone() {
-            profiler.add_node_entry(node_id);
+            profiler.borrow_mut().add_node_entry(node_id);
         }
     }
 
@@ -328,21 +328,21 @@ impl MetalContext {
     where
         EvalCallback: FnOnce() -> TractResult<TVec<TValue>>,
     {
+        self.wait_until_completed()?;
+
         let device: &Device = &self.shared.device;
         assert!(device.supports_counter_sampling(metal::MTLCounterSamplingPoint::AtStageBoundary));
 
-        self.wait_until_completed()?;
-        let profiler = Rc::new(MetalProfiler::new(device.to_owned()));
+        let profiler = Rc::new(RefCell::new(MetalProfiler::new(device.to_owned())));
 
         self.profiler.replace(Some(profiler.clone()));
 
         let output = eval()?;
-
-        let profile_buffers = profiler.get_buffers();
-
-        self.wait_until_completed()?;
+        let profile_buffers = profiler.borrow_mut().get_profile_data();
 
         self.profiler.replace(None);
+        self.wait_until_completed()?;
+
         Ok((output, profile_buffers))
     }
 }
