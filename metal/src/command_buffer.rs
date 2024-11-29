@@ -26,8 +26,8 @@ fn handle_compute_pass_sample_buffer_attachment(
 #[derive(Debug, Clone)]
 pub struct MetalProfiler {
     device: Device,
-    sampling_buffers: RefCell<HashMap<usize, Vec<Buffer>>>,
-    current_node: RefCell<Option<usize>>,
+    profile_buffers: HashMap<usize, Vec<Buffer>>,
+    current_node_id: Option<usize>,
     counter_sample_buffer: CounterSampleBuffer,
     compute_pass_descriptor: ComputePassDescriptor,
 }
@@ -45,7 +45,6 @@ impl MetalProfiler {
         counter_sample_buffer_desc
             .set_counter_set(timestamp_counter.expect("No timestamp counter found"));
 
-        dbg!("Creating a new counter sample buffer");
         let counter_sample_buffer =
             device.new_counter_sample_buffer_with_descriptor(&counter_sample_buffer_desc).unwrap();
 
@@ -56,55 +55,55 @@ impl MetalProfiler {
 
         Self {
             device: device.to_owned(),
-            sampling_buffers: RefCell::new(HashMap::new()),
-            current_node: RefCell::new(None),
+            profile_buffers: HashMap::new(),
+            current_node_id: None,
             counter_sample_buffer,
             compute_pass_descriptor: compute_pass_descriptor.to_owned(),
         }
     }
 
-    pub fn add_node_entry(&self, node_id: usize) {
-        self.sampling_buffers.borrow_mut().insert(node_id, vec![]);
-        self.current_node.replace(Some(node_id));
+    pub fn add_node_entry(&mut self, node_id: usize) {
+        self.profile_buffers.insert(node_id, vec![]);
+        self.current_node_id = Some(node_id);
     }
 
-    pub fn add_buffer(&self, buffer: Buffer) {
-        let current_node = RefCell::borrow(&self.current_node).unwrap();
-
-        let mut sample_buffers = RefCell::borrow_mut(&self.sampling_buffers);
-        let node_values = sample_buffers.get_mut(&current_node).expect("No buffer");
-
+    pub fn add_buffer(&mut self, buffer: Buffer) {
+        let current_node_id = &self.current_node_id.unwrap();
+        let node_values = self
+            .profile_buffers
+            .get_mut(&current_node_id)
+            .expect(&format!("No buffer found for node ID: {}", &current_node_id));
         node_values.push(buffer);
     }
 
-    pub fn get_buffers(&self) -> HashMap<usize, u64> {
+    pub fn get_profile_data(&self) -> HashMap<usize, u64> {
         let mut formatted_hashmap: HashMap<usize, u64> = HashMap::new();
-        self.sampling_buffers.borrow().iter().for_each(|(key, v)| {
-            let mut node_duration_ms = 0;
-            v.iter().for_each(|buffer| {
-                unsafe {
-                    let slice = std::slice::from_raw_parts(
-                        buffer.contents() as *const u64,
-                        NUM_SAMPLES as usize,
-                    );
-                    node_duration_ms += slice[1] - slice[0];
-                }
+        self.profile_buffers.borrow().iter().for_each(|(key, v)| {
+            let mut node_duration_ns = 0;
+            v.iter().for_each(|buffer| unsafe {
+                let slice = std::slice::from_raw_parts(
+                    buffer.contents() as *const u64,
+                    NUM_SAMPLES as usize,
+                );
+                node_duration_ns += slice[1] - slice[0];
             });
-            formatted_hashmap.insert(*key, node_duration_ms);
+            formatted_hashmap.insert(*key, node_duration_ns);
         });
         formatted_hashmap
     }
 }
 
 #[derive(Debug, Clone)]
-// Define ProfileCommandBuffer as a wrapper around CommandBuffer
 pub struct TractCommandBuffer {
     inner: CommandBuffer,
-    profiler: Option<Rc<MetalProfiler>>,
+    profiler: Option<Rc<RefCell<MetalProfiler>>>,
 }
 
 impl TractCommandBuffer {
-    pub fn new(command_buffer: CommandBuffer, profiler: Option<Rc<MetalProfiler>>) -> Self {
+    pub fn new(
+        command_buffer: CommandBuffer,
+        profiler: Option<Rc<RefCell<MetalProfiler>>>,
+    ) -> Self {
         TractCommandBuffer { inner: command_buffer, profiler }
     }
 
@@ -112,7 +111,9 @@ impl TractCommandBuffer {
     where
         EncodeCallback: Fn(&ComputeCommandEncoderRef),
     {
-        if let Some(profiler) = self.profiler.borrow() {
+        if let Some(profiler) = &self.profiler {
+            let mut profiler = profiler.borrow_mut();
+
             let destination_buffer = profiler.device.new_buffer(
                 (std::mem::size_of::<u64>() * NUM_SAMPLES as usize) as u64,
                 MTLResourceOptions::StorageModeShared,
