@@ -334,11 +334,11 @@ impl MetalContext {
         self.wait_until_completed()?;
         let profiler = Rc::new(MetalProfiler::new(device.to_owned()));
 
-        self.profiler.replace(profiler.into());
+        self.profiler.replace(Some(profiler.clone()));
 
-        let output = eval().unwrap();
+        let output = eval()?;
 
-        let profile_buffers = self.profiler.clone().borrow().as_ref().unwrap().get_buffers();
+        let profile_buffers = profiler.get_buffers();
 
         self.wait_until_completed()?;
 
