@@ -13,7 +13,7 @@ def setup_module(module):
         )
     if not Path("mobilenet_v2_1.0.onnx.nnef.tgz").exists():
         urllib.request.urlretrieve(
-            "https://sfo2.digitaloceanspaces.com/nnef-public/mobilenet_v2_1.0.onnx.nnef.tgz",
+            "https://s3.amazonaws.com/tract-ci-builds/tests/mobilenet_v2_1.0.onnx.nnef.tgz",
             "mobilenet_v2_1.0.onnx.nnef.tgz"
         )
 

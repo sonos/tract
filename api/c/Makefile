@@ -16,4 +16,4 @@ tract.h:
 	cp ../ffi/tract.h .
 
 mobilenet_v2_1.0.onnx.nnef.tgz:
-	wget -q https://sfo2.digitaloceanspaces.com/nnef-public/mobilenet_v2_1.0.onnx.nnef.tgz
+	wget -q https://s3.amazonaws.com/tract-ci-builds/tests/mobilenet_v2_1.0.onnx.nnef.tgz
