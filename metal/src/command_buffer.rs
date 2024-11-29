@@ -69,9 +69,9 @@ impl MetalProfiler {
     }
 
     pub fn add_buffer(&self, buffer: Buffer) {
-        let current_node = self.current_node.borrow().unwrap();
+        let current_node = RefCell::borrow(&self.current_node).unwrap();
 
-        let mut sample_buffers = self.sampling_buffers.borrow_mut();
+        let mut sample_buffers = RefCell::borrow_mut(&self.sampling_buffers);
         let node_values = sample_buffers.get_mut(&current_node).expect("No buffer");
 
         node_values.push(buffer);
