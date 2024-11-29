@@ -1,6 +1,7 @@
 macro_rules! MMMExternKernel {
     (
-            $func:ident<$ti:ident>($mr: expr, $nr: expr)@($align_a:expr, $align_b:expr)
+            $func:ident<$ti:ident>($mr: expr, $nr: expr)
+            $(@($align_a:expr, $align_b:expr))?
             $(where($where:expr))?
             $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
@@ -21,7 +22,8 @@ macro_rules! MMMExternKernel {
                 }
             }
 
-            MMMKernel!([<sys_$func>]::rusty as $func<$ti>($mr, $nr)@($align_a, $align_b)
+            MMMKernel!([<sys_$func>]::rusty as $func<$ti>($mr, $nr)
+                $(@($align_a, $align_b))?
                 $(where($where))?
                 $(can_fuse($can_fuse))?
                 $(packing[$pnum] = $pid => $packing;)*
@@ -32,7 +34,8 @@ macro_rules! MMMExternKernel {
 }
 macro_rules! MMMRustKernel {
     (       $func: path =>
-            $id:ident<$ti:ident>($mr: expr, $nr: expr)@($align_a:expr, $align_b:expr)
+            $id:ident<$ti:ident>($mr: expr, $nr: expr)
+            $(@($align_a:expr, $align_b:expr))?
             $(where($where:expr))?
             $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
@@ -49,7 +52,8 @@ macro_rules! MMMRustKernel {
                     $func(op.as_ptr())
                 }
             }
-            MMMKernel!([<sys_$id>]::rusty as $id<$ti>($mr, $nr)@($align_a, $align_b)
+            MMMKernel!([<sys_$id>]::rusty as $id<$ti>($mr, $nr)
+                $(@($align_a, $align_b))?
                 $(where($where))?
                 $(can_fuse($can_fuse))?
                 $(packing[$pnum] = $pid => $packing;)*
@@ -62,7 +66,8 @@ macro_rules! MMMRustKernel {
 macro_rules! MMMKernel {
     (
             $func: path as
-            $id:ident<$ti:ident>($mr: expr, $nr: expr)@($align_a:expr, $align_b:expr)
+            $id:ident<$ti:ident>($mr: expr, $nr: expr)
+            $(@($align_a:expr, $align_b:expr))?
             $(where($where:expr))?
             $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
@@ -75,8 +80,15 @@ macro_rules! MMMKernel {
                     use $crate::mmm::DynKernel;
                     #[allow(unused_imports)]
                     use tract_data::prelude::*;
+                    use $crate::frame::mmm::Packing;
                     #[allow(unused_mut)]
-                    let mut k = DynKernel::<$mr, $nr, $ti>::new(stringify!($id), $func, ($align_a, $align_b));
+                    let (mut packing_a, mut packing_b) = ($ti::packing($mr), $ti::packing($nr));
+                    $(
+                        packing_a = packing_a.align($align_a);
+                        packing_b = packing_b.align($align_b);
+                    )?
+                    #[allow(unused_mut)]
+                    let mut k = DynKernel::<$mr, $nr, $ti>::new(stringify!($id), $func, packing_a, packing_b);
                     $(k = k.with_platform_condition($where);)?
                     $(
                         assert!(k.packings.len() == $pnum);
@@ -102,4 +114,3 @@ macro_rules! MMMKernel {
         }
     };
 }
-

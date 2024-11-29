@@ -269,6 +269,7 @@ fn preprocess_file(
     }
     .to_owned();
     let long = if msvc { "dd" } else { ".long" };
+    let quad = if msvc { "dq" } else { ".quad" };
     let g = if os == "macos" || os == "ios" { "_" } else { "" };
     // note: use .align with bytes instead of p2align since they both use direct bytes.
     let align = if msvc { "align" } else { ".align" };
@@ -281,6 +282,7 @@ fn preprocess_file(
         "G": g,
         "suffix": suffix,
         "long": long,
+        "quad": quad,
         "jump_table": jump_table(),
         "align": align,
         "offset": if msvc { "offset" } else { "rip + "},
