@@ -70,7 +70,7 @@ pub fn profile(
     let start = crate::time::now();
     let mut time_accounted_by_inner_nodes = Duration::default();
     while iters < 1 && start.elapsed() < bench_limits.max_time {
-        if is_metal {
+        if !is_metal {
             rec_profiler(
                 &mut state,
                 dg,
