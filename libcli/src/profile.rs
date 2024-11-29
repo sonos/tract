@@ -90,7 +90,6 @@ pub fn profile(
                             &prefix)?;
             }
         iters += 1;
-
     }
     let entire = start.elapsed() - time_accounted_by_inner_nodes;
     info!("Running {} iterations max. for each node.", bench_limits.max_loops);
@@ -109,7 +108,6 @@ pub fn profile(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn rec_profiler_metal(
     state: &mut TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
     dg: &mut Annotations,

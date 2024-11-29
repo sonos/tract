@@ -105,7 +105,5 @@ pub fn rescale_gpu_duration(
     let cpu_time_span = cpu_end - cpu_start;
     let gpu_time_span = gpu_end - gpu_start;
 
-    let scaled_timespan_ns = pass_duration * cpu_time_span / gpu_time_span;
-
-    scaled_timespan_ns
+    pass_duration * cpu_time_span / gpu_time_span
 }

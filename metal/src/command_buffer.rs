@@ -71,8 +71,8 @@ impl MetalProfiler {
         let current_node_id = &self.current_node_id.unwrap();
         let node_values = self
             .profile_buffers
-            .get_mut(&current_node_id)
-            .expect(&format!("No buffer found for node ID: {}", &current_node_id));
+            .get_mut(current_node_id)
+            .unwrap_or_else(|| panic!("No buffer found for node ID: {}", &current_node_id));
         node_values.push(buffer);
     }
 
