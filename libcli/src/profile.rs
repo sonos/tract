@@ -70,7 +70,7 @@ pub fn profile(
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
     let start = crate::time::now();
     let mut time_accounted_by_inner_nodes = Duration::default();
-    while iters < 1 && start.elapsed() < bench_limits.max_time {
+    while iters < bench_limits.max_loops && start.elapsed() < bench_limits.max_time {
         if !is_metal {
             rec_profiler(
                 &mut state,
