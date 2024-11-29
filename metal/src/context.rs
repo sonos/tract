@@ -317,18 +317,16 @@ impl MetalContext {
         Ok(())
     }
 
-    pub fn get_cpu_gpu_timestamps_ns(&self) -> (u64, u64) {
-        let mut cpu_ts = 0;
-        let mut gpu_ts = 0;
-
-        self.device().sample_timestamps(&mut cpu_ts, &mut gpu_ts);
-
-        (cpu_ts, gpu_ts)
+    pub fn register_new_node(&self, node_id: usize) {
+        if let Some(profiler) = self.profiler.borrow().clone() {
+            profiler.add_node_entry(node_id);
+        }
     }
+
     pub fn profile<EvalCallback>(
         &self,
         eval: EvalCallback,
-    ) -> TractResult<(TVec<TValue>, Vec<[usize; 2]>)>
+    ) -> TractResult<(TVec<TValue>, HashMap<usize, u64>)>
     where
         EvalCallback: FnOnce() -> TractResult<TVec<TValue>>,
     {
@@ -338,14 +336,15 @@ impl MetalContext {
         self.wait_until_completed()?;
         let profiler = Rc::new(MetalProfiler::new(device.to_owned()));
 
-        self.profiler.replace(profiler.clone().into());
+        self.profiler.replace(profiler.into());
 
         let output = eval().unwrap();
 
-        self.wait_until_completed()?;
-        self.profiler.replace(None);
+        let profile_buffers = self.profiler.clone().borrow().as_ref().unwrap().get_buffers();
 
-        let profile_buffers = profiler.get_buffers();
+        self.wait_until_completed()?;
+
+        self.profiler.replace(None);
         Ok((output, profile_buffers))
     }
 }

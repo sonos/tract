@@ -59,6 +59,7 @@ pub fn profile(
     inputs: &TVec<TValue>,
     custom_profiler: Option<HashMap<TypeId, Profiler>>,
     folded: bool,
+    is_metal: bool,
 ) -> TractResult<()> {
     info!("Running entire network");
     let mut iters = 0usize;
@@ -70,27 +71,25 @@ pub fn profile(
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
     let start = crate::time::now();
     let mut time_accounted_by_inner_nodes = Duration::default();
-    while iters < bench_limits.max_loops && start.elapsed() < bench_limits.max_time {
-        /* 
-        rec_profiler(
-            &mut state,
-            dg,
-            inputs,
-            custom_profiler.as_ref(),
-            &prefix,
-            None,
-            &mut time_accounted_by_inner_nodes,
-            folded,
-        )?;
-        */
-        rec_profiler_metal(&mut state,
+    while iters < 1 && start.elapsed() < bench_limits.max_time {
+        if is_metal {
+            rec_profiler(
+                &mut state,
+                dg,
+                inputs,
+                custom_profiler.as_ref(),
+                &prefix,
+                None,
+                &mut time_accounted_by_inner_nodes,
+                folded,
+            )?;
+        }
+        else {
+            rec_profiler_metal(&mut state,
                             dg,
                             inputs,
-                            custom_profiler.as_ref(),
-                            &prefix,
-                            None,
-                            &mut time_accounted_by_inner_nodes,
-                            folded,)?;
+                            &prefix)?;
+            }
         iters += 1;
 
     }
@@ -116,18 +115,14 @@ pub fn rec_profiler_metal(
     state: &mut TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
     dg: &mut Annotations,
     inputs: &TVec<TValue>,
-    profilers: Option<&HashMap<TypeId, Profiler>>,
     prefix: &[(usize, String)],
-    multiplier: Option<usize>,
-    time_accounted_by_inner_nodes: &mut Duration,
-    folded: bool,
 ) -> TractResult<TVec<TValue>> {
 
     let result = tract_metal::METAL_CONTEXT.with_borrow( |ctxt| {
         let mut cpu_start: u64 = 0;
         let mut gpu_start: u64 = 0;
         ctxt.device().sample_timestamps(&mut cpu_start, &mut gpu_start);
-        dbg!(state.model().nodes_len());
+
         let (r, profiler) = ctxt.profile(|| {
            state.run(inputs.clone())
         })?;
@@ -136,7 +131,11 @@ pub fn rec_profiler_metal(
         let mut gpu_end: u64 = 0;
         ctxt.device().sample_timestamps(&mut cpu_end, &mut gpu_end);
         
-        dbg!(profiler);
+        profiler.iter().for_each(|(node_id, duration)| {
+            let node_id = NodeQId(prefix.into(), *node_id);
+            *dg.node_mut(node_id).profile.get_or_insert(Duration::default()) += Duration::from_nanos(*duration);
+        });
+        
         Ok(r)
     });
     result

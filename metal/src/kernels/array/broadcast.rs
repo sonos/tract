@@ -100,8 +100,8 @@ impl MultiBroadcast {
             encoder.set_slice(3, output.shape());
             encoder.set_slice(4, output.strides());
 
-                let grid_size = utils::build_metal_size_for_shape(output.shape());
-                let group_size = utils::build_metal_size_with_ones();
+            let grid_size = utils::build_metal_size_for_shape(output.shape());
+            let group_size = utils::build_metal_size_with_ones();
 
             encoder.dispatch_thread_groups(grid_size, group_size);
             encoder.end_encoding();

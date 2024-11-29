@@ -71,9 +71,9 @@ impl RotateHalf {
             encoder.set_slice(2, &shape_nd2);
             encoder.set_slice(3, &strides_nd2);
 
-                let grid_size =
-                    MTLSize { width: (shape_nd2[1] / 2) as _, height: shape_nd2[0] as _, depth: 1 };
-                let group_size = utils::build_metal_size_with_ones();
+            let grid_size =
+                MTLSize { width: (shape_nd2[1] / 2) as _, height: shape_nd2[0] as _, depth: 1 };
+            let group_size = utils::build_metal_size_with_ones();
 
             encoder.dispatch_thread_groups(grid_size, group_size);
             encoder.end_encoding();

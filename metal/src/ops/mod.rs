@@ -75,8 +75,10 @@ impl<O: MetalEvalOp> OpState for MetalOpState<O> {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT
-                .with_borrow(|context| self.op.metal_eval(context, self.node_id, session, inputs))
+            crate::METAL_CONTEXT.with_borrow(|context| {
+                context.register_new_node(self.node_id);
+                self.op.metal_eval(context, self.node_id, session, inputs)
+            })
         })
     }
 }
