@@ -15,7 +15,7 @@ fn ensure_models() -> anyhow::Result<()> {
                 "mobilenetv2-7.onnx",
             ),
             (
-                "https://sfo2.digitaloceanspaces.com/nnef-public/mobilenet_v2_1.0.onnx.nnef.tgz",
+                "https://s3.amazonaws.com/tract-ci-builds/tests/mobilenet_v2_1.0.onnx.nnef.tgz",
                 "mobilenet_v2_1.0.onnx.nnef.tgz",
             ),
         ] {
