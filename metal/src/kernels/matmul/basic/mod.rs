@@ -111,7 +111,7 @@ impl BasicMatMul {
             .shared_context()
             .load_pipeline(LibraryName::BasicMatMul, &Self::kernel_name(dt, true)?)?;
 
-        let mut command_buffer = context.command_buffer();
+        let command_buffer = context.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
             encoder.set_buffer(0, Some(lhs_buffer), lhs_offset as _);
@@ -153,7 +153,7 @@ impl BasicMatMul {
             .shared_context()
             .load_pipeline(LibraryName::BasicMatMul, &Self::kernel_name(dt, false)?)?;
 
-        let mut command_buffer = context.command_buffer();
+        let command_buffer = context.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
             encoder.set_buffer(0, Some(lhs_buffer), lhs_offset as _);
