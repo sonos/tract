@@ -1,16 +1,13 @@
-use anyhow::Result;
 use metal::{
     Buffer, CommandBuffer, ComputeCommandEncoderRef, ComputePassDescriptor,
     ComputePassDescriptorRef, CounterSampleBuffer, CounterSampleBufferDescriptor,
     CounterSampleBufferRef, Device, MTLResourceOptions, NSRange,
 };
-use std::{
-    borrow::Borrow,
-    cell::RefCell,
-    collections::HashMap,
-    ops::{Deref, DerefMut},
-    rc::Rc,
-};
+use std::borrow::Borrow;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
+use std::rc::Rc;
 
 const NUM_SAMPLES: u64 = 2;
 
@@ -24,42 +21,6 @@ fn handle_compute_pass_sample_buffer_attachment(
     sample_buffer_attachment_descriptor.set_sample_buffer(counter_sample_buffer);
     sample_buffer_attachment_descriptor.set_start_of_encoder_sample_index(0);
     sample_buffer_attachment_descriptor.set_end_of_encoder_sample_index(1);
-}
-
-#[derive(Debug, Clone)]
-pub struct ProfileBuffers {
-    device: Device,
-    buffers: Vec<Rc<RefCell<Buffer>>>,
-    used: usize,
-}
-
-impl ProfileBuffers {
-    pub fn new(device: Device) -> Result<Self> {
-        let buffers: Vec<Rc<RefCell<Buffer>>> = vec![Rc::new(RefCell::new(device.new_buffer(
-            (std::mem::size_of::<u64>() * NUM_SAMPLES as usize) as u64,
-            MTLResourceOptions::StorageModeShared,
-        )))];
-
-        Ok(Self { device, buffers, used: 0 })
-    }
-
-    pub fn next(&mut self) -> Rc<RefCell<Buffer>> {
-        if self.used == self.buffers.len() {
-            let new_buffer = Rc::new(RefCell::new(self.device.new_buffer(
-                (std::mem::size_of::<u64>() * NUM_SAMPLES as usize) as u64,
-                MTLResourceOptions::StorageModeShared,
-            )));
-            self.buffers.push(new_buffer.clone());
-        }
-
-        let buffer = self.buffers[self.used].clone();
-        self.used += 1;
-        buffer
-    }
-
-    pub fn get_buffer_at_idx(&self, idx: usize) -> Rc<RefCell<Buffer>> {
-        self.buffers[idx].clone()
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -144,7 +105,6 @@ pub struct TractCommandBuffer {
 
 impl TractCommandBuffer {
     pub fn new(command_buffer: CommandBuffer, profiler: Option<Rc<MetalProfiler>>) -> Self {
-        dbg!("Creating new command buffer");
         TractCommandBuffer { inner: command_buffer, profiler }
     }
 
