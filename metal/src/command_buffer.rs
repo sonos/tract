@@ -5,7 +5,13 @@ use metal::{
     CounterSampleBufferRef, Device, MTLResourceOptions, NSRange,
 };
 use std::{
-    borrow::Borrow, cell::RefCell, ops::{Deref, DerefMut}, rc::Rc, sync::{Arc, Mutex}
+    borrow::{Borrow, BorrowMut},
+    cell::{RefCell, RefMut},
+    collections::HashMap,
+    hash::Hash,
+    ops::{Deref, DerefMut},
+    rc::Rc,
+    sync::{Arc, Mutex},
 };
 
 const NUM_SAMPLES: u64 = 2;
@@ -25,50 +31,44 @@ fn handle_compute_pass_sample_buffer_attachment(
 #[derive(Debug, Clone)]
 pub struct ProfileBuffers {
     device: Device,
-    buffers: Vec<Buffer>,
+    buffers: Vec<Rc<RefCell<Buffer>>>,
     used: usize,
 }
 
 impl ProfileBuffers {
     pub fn new(device: Device) -> Result<Self> {
-        let buffers: Vec<Buffer> = (0..100)
-            .map(|_| {
-                device.new_buffer(
-                    (std::mem::size_of::<u64>() * NUM_SAMPLES as usize) as u64,
-                    MTLResourceOptions::StorageModeShared,
-                )
-            })
-            .collect();
+        let buffers: Vec<Rc<RefCell<Buffer>>> = vec![Rc::new(RefCell::new(device.new_buffer(
+            (std::mem::size_of::<u64>() * NUM_SAMPLES as usize) as u64,
+            MTLResourceOptions::StorageModeShared,
+        )))];
 
         Ok(Self { device, buffers, used: 0 })
     }
 
-    pub fn next(&mut self) -> &Buffer {
+    pub fn next(&mut self) -> Rc<RefCell<Buffer>> {
         if self.used == self.buffers.len() {
-            self.buffers.push(self.device.new_buffer(
+            let new_buffer = Rc::new(RefCell::new(self.device.new_buffer(
                 (std::mem::size_of::<u64>() * NUM_SAMPLES as usize) as u64,
                 MTLResourceOptions::StorageModeShared,
-            ));
+            )));
+            self.buffers.push(new_buffer.clone());
         }
 
-        let buffer = &self.buffers[self.used];
+        let buffer = self.buffers[self.used].clone();
         self.used += 1;
         buffer
     }
 
-    pub fn len(&self) -> usize {
-        self.used
-    }
-
-    pub fn get_buffer_at_idx(&self, idx: usize) -> &Buffer {
-        &self.buffers[idx]
+    pub fn get_buffer_at_idx(&self, idx: usize) -> Rc<RefCell<Buffer>> {
+        self.buffers[idx].clone()
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct MetalProfiler {
     device: Device,
-    sampling_buffers: RefCell<ProfileBuffers>,
+    sampling_buffers: RefCell<HashMap<usize, Vec<Buffer>>>,
+    current_node: RefCell<Option<usize>>,
     counter_sample_buffer: CounterSampleBuffer,
     compute_pass_descriptor: ComputePassDescriptor,
 }
@@ -97,22 +97,43 @@ impl MetalProfiler {
 
         Self {
             device: device.to_owned(),
-            sampling_buffers: RefCell::new(ProfileBuffers::new(device).unwrap()),
+            sampling_buffers: RefCell::new(HashMap::new()),
+            current_node: RefCell::new(None),
             counter_sample_buffer,
             compute_pass_descriptor: compute_pass_descriptor.to_owned(),
         }
     }
 
-    pub fn get_buffers(&self) -> Vec<[usize; 2]> {
-        self.sampling_buffers.borrow().buffers.iter().map(|buffer|{
-            unsafe {
-                let slice = std::slice::from_raw_parts(
-                    buffer.contents() as *const usize,
-                    NUM_SAMPLES as usize,
-                );
-                [slice[0], slice[1]]
-            }
-        }).collect()
+    pub fn add_node_entry(&self, node_id: usize) {
+        self.sampling_buffers.borrow_mut().insert(node_id, vec![]);
+        self.current_node.replace(Some(node_id));
+    }
+
+    pub fn add_buffer(&self, buffer: Buffer) {
+        let current_node = self.current_node.borrow().unwrap();
+
+        let mut sample_buffers = self.sampling_buffers.borrow_mut();
+        let node_values = sample_buffers.get_mut(&current_node).expect("No buffer");
+
+        node_values.push(buffer);
+    }
+
+    pub fn get_buffers(&self) -> HashMap<usize, u64> {
+        let mut formatted_hashmap: HashMap<usize, u64> = HashMap::new();
+        self.sampling_buffers.borrow().iter().for_each(|(key, v)| {
+            let mut node_duration_ms = 0;
+            v.iter().for_each(|buffer| {
+                unsafe {
+                    let slice = std::slice::from_raw_parts(
+                        buffer.contents() as *const u64,
+                        NUM_SAMPLES as usize,
+                    );
+                    node_duration_ms += slice[1] - slice[0];
+                }
+            });
+            formatted_hashmap.insert(*key, node_duration_ms);
+        });
+        formatted_hashmap
     }
 }
 
@@ -133,22 +154,28 @@ impl TractCommandBuffer {
     where
         EncodeCallback: Fn(&ComputeCommandEncoderRef),
     {
-        if let Some(profiler) = self.profiler.clone() {
+        if let Some(profiler) = self.profiler.borrow() {
+            let destination_buffer = profiler.device.new_buffer(
+                (std::mem::size_of::<u64>() * NUM_SAMPLES as usize) as u64,
+                MTLResourceOptions::StorageModeShared,
+            );
 
             let encoder = self
                 .inner
                 .compute_command_encoder_with_descriptor(&profiler.compute_pass_descriptor);
 
             encode_cb(encoder);
-            
+
             let blit_encoder = self.inner.new_blit_command_encoder();
             blit_encoder.resolve_counters(
                 &profiler.counter_sample_buffer,
                 NSRange::new(0_u64, NUM_SAMPLES),
-                profiler.sampling_buffers.borrow_mut().next(),
+                &destination_buffer,
                 0_u64,
             );
             blit_encoder.end_encoding();
+
+            profiler.add_buffer(destination_buffer);
         } else {
             let encoder = self.inner.new_compute_command_encoder();
             encode_cb(encoder);

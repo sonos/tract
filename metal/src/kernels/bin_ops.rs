@@ -200,7 +200,8 @@ impl BinOps {
                     encoder.set_metal_tensor(1, rhs, metal::MTLResourceUsage::Read);
                     encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
 
-                    let grid_size = MTLSize { width: output.len() as NSUInteger, height: 1, depth: 1 };
+                    let grid_size =
+                        MTLSize { width: output.len() as NSUInteger, height: 1, depth: 1 };
                     let group_size = MTLSize { width: 1, height: 1, depth: 1 };
                     encoder.dispatch_thread_groups(grid_size, group_size);
                     encoder.end_encoding();
@@ -231,14 +232,14 @@ impl BinOps {
                     encoder.set_slice(3, &rhs_strides);
                     encoder.set_metal_tensor(4, output, metal::MTLResourceUsage::Write);
                     encoder.set_slice(5, output_shape);
-    
+
                     let grid_size = MTLSize {
                         width: out_shape[out_shape.len() - 1] as NSUInteger,
                         height: out_shape[out_shape.len() - 2] as NSUInteger,
                         depth: (out_shape[..out_shape.len() - 2].iter().product::<usize>())
                             as NSUInteger,
                     };
-    
+
                     let group_size = MTLSize { width: 1, height: 1, depth: 1 };
                     encoder.dispatch_thread_groups(grid_size, group_size);
                     encoder.end_encoding();
