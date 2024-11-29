@@ -200,7 +200,7 @@ pub fn dispatch_metal_mfa_gemm(
 
     let block_bytes = block_elements * dt.size_of() as u16;
 
-    let mut command_buffer = context.command_buffer();
+    let command_buffer = context.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
         encoder.set_threadgroup_memory_length(0, block_bytes.into());

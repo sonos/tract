@@ -2,13 +2,11 @@ use tract_core::internal::*;
 use tract_core::num_traits::Zero;
 use tract_core::ops::scan::State;
 use tract_core::ops::submodel::TypedModelOpState;
-use tract_metal::command_buffer::ProfileBuffers;
 
 use crate::annotations::*;
 use crate::model::Model;
 use crate::tensor::make_inputs_for_model;
 use std::any::TypeId;
-use std::sync::Mutex;
 use std::time::Duration;
 
 pub struct BenchLimits {
@@ -135,7 +133,7 @@ pub fn rec_profiler_metal(
             let node_id = NodeQId(prefix.into(), *node_id);
             *dg.node_mut(node_id).profile.get_or_insert(Duration::default()) += Duration::from_nanos(*duration);
         });
-        
+
         Ok(r)
     });
     result

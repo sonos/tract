@@ -89,7 +89,7 @@ impl Concat {
         let kernel_name = self.kernel_name(output.datum_type(), broadcast_kind)?;
         let pipeline =
             context.shared_context().load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
-        let mut command_buffer = context.command_buffer();
+        let command_buffer = context.command_buffer();
 
         for (input, offset) in inputs.iter().zip(offsets.into_iter()) {
             if input.len() == 0 {

@@ -205,7 +205,7 @@ pub fn dispatch_metal_mlx_gemv(
     let name = format!("gemv_{t_mat}{tname}_bm{bm}_bn{bn}_sm{sm}_sn{sn}_tm{tm}_tn{tn}_nc0_axpby0");
     let pipeline = context.shared_context().load_pipeline(LibraryName::MlxGemv, &name)?;
 
-    let mut command_buffer = context.command_buffer();
+    let command_buffer = context.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
         if is_b_matrix {
@@ -366,7 +366,7 @@ pub fn dispatch_metal_mlx_gemm(
         constants,
     )?;
 
-    let mut command_buffer = context.command_buffer();
+    let command_buffer = context.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
         encoder.set_buffer(0, Some(lhs_buffer), lhs_offset as NSUInteger);

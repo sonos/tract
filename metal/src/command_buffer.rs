@@ -1,17 +1,15 @@
 use anyhow::Result;
 use metal::{
     Buffer, CommandBuffer, ComputeCommandEncoderRef, ComputePassDescriptor,
-    ComputePassDescriptorRef, Counter, CounterSampleBuffer, CounterSampleBufferDescriptor,
+    ComputePassDescriptorRef, CounterSampleBuffer, CounterSampleBufferDescriptor,
     CounterSampleBufferRef, Device, MTLResourceOptions, NSRange,
 };
 use std::{
-    borrow::{Borrow, BorrowMut},
-    cell::{RefCell, RefMut},
+    borrow::Borrow,
+    cell::RefCell,
     collections::HashMap,
-    hash::Hash,
     ops::{Deref, DerefMut},
     rc::Rc,
-    sync::{Arc, Mutex},
 };
 
 const NUM_SAMPLES: u64 = 2;
