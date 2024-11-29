@@ -95,21 +95,17 @@ where
         .collect::<TVec<T>>())
 }
 
-pub fn rescale_gpu_timestamps_us(
-    pass_samples: &[u64],
+pub fn rescale_gpu_duration(
+    pass_duration: u64,
     cpu_start: u64,
     cpu_end: u64,
     gpu_start: u64,
     gpu_end: u64,
-) -> f64 {
-    let pass_start = pass_samples[0];
-    let pass_end = pass_samples[1];
-
+) -> u64 {
     let cpu_time_span = cpu_end - cpu_start;
     let gpu_time_span = gpu_end - gpu_start;
 
-    let scaled_timespan_ns =
-        (pass_end - pass_start) as f64 / (gpu_time_span as f64) * (cpu_time_span as f64);
+    let scaled_timespan_ns = pass_duration * cpu_time_span / gpu_time_span;
 
-    scaled_timespan_ns / 1000.0
+    scaled_timespan_ns
 }

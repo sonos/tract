@@ -2,6 +2,7 @@ use tract_core::internal::*;
 use tract_core::num_traits::Zero;
 use tract_core::ops::scan::State;
 use tract_core::ops::submodel::TypedModelOpState;
+use tract_metal::utils::rescale_gpu_duration;
 
 use crate::annotations::*;
 use crate::model::Model;
@@ -117,21 +118,20 @@ pub fn rec_profiler_metal(
 ) -> TractResult<TVec<TValue>> {
 
     let result = tract_metal::METAL_CONTEXT.with_borrow( |ctxt| {
-        let mut cpu_start: u64 = 0;
-        let mut gpu_start: u64 = 0;
+        let (mut cpu_start, mut gpu_start): (u64, u64) = (0, 0);
+
         ctxt.device().sample_timestamps(&mut cpu_start, &mut gpu_start);
 
         let (r, profiler) = ctxt.profile(|| {
            state.run(inputs.clone())
         })?;
 
-        let mut cpu_end: u64 = 0;
-        let mut gpu_end: u64 = 0;
+        let (mut cpu_end, mut gpu_end): (u64, u64) = (0, 0);
         ctxt.device().sample_timestamps(&mut cpu_end, &mut gpu_end);
         
         profiler.iter().for_each(|(node_id, duration)| {
             let node_id = NodeQId(prefix.into(), *node_id);
-            *dg.node_mut(node_id).profile.get_or_insert(Duration::default()) += Duration::from_nanos(*duration);
+            *dg.node_mut(node_id).profile.get_or_insert(Duration::default()) += Duration::from_nanos(rescale_gpu_duration(*duration, cpu_start, cpu_end, gpu_start, gpu_end));
         });
 
         Ok(r)
