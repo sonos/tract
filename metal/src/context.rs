@@ -1,8 +1,8 @@
 use crate::command_buffer::{MetalProfiler, TractCommandBuffer};
 use crate::func_constants::ConstantValues;
 use crate::kernels::matmul::mps;
-pub use crate::kernels::{LibraryContent, LibraryName};
-pub use crate::tensor::MetalTensor;
+use crate::kernels::{LibraryContent, LibraryName};
+use crate::tensor::MetalTensor;
 use metal::NSUInteger;
 use std::cell::RefCell;
 use std::path::Path;
@@ -280,7 +280,7 @@ impl MetalContext {
         }
         let command_buffer_id = self.command_buffer_id.load(Ordering::Relaxed);
         command_buffer.commit();
-        log::trace!("Command buffer {:?} commit", command_buffer_id); //TODO: put back prev log levl
+        log::trace!("Command buffer {:?} commit", command_buffer_id);
         command_buffer.wait_until_completed();
         log::trace!("Command buffer {:?} has completed (Blocking call)", command_buffer_id);
 
