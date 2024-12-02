@@ -751,6 +751,7 @@ where
                     succ.node = old_to_new[succ.node];
                 }
                 output.successors.retain(|s| s.node < order.len());
+                output.successors.sort();
             }
         }
         self.nodes = new_nodes;
