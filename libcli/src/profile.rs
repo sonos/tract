@@ -121,11 +121,11 @@ pub fn rec_profiler_metal(
         ctxt.device().sample_timestamps(&mut cpu_start, &mut gpu_start);
 
         let session_handler = MetalSessionHandler::from_plan(state.plan(), &state.session_state.resolved_symbols)?;
-        test.before_plan_eval(&mut state.session_state)?;
+        session_handler.before_plan_eval(&mut state.session_state)?;
         let (r, profiler) = ctxt.profile(|| {
            state.run(inputs.clone())
         })?;
-        test.after_plan_eval(&mut state.session_state)?;
+        session_handler.after_plan_eval(&mut state.session_state)?;
 
         let (mut cpu_end, mut gpu_end): (u64, u64) = (0, 0);
         ctxt.device().sample_timestamps(&mut cpu_end, &mut gpu_end);
