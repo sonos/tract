@@ -94,17 +94,17 @@ impl MetalProfiler {
 }
 
 #[derive(Debug, Clone)]
-pub struct TractCommandBuffer {
+pub struct TCommandBuffer {
     inner: CommandBuffer,
     profiler: Option<Rc<RefCell<MetalProfiler>>>,
 }
 
-impl TractCommandBuffer {
+impl TCommandBuffer {
     pub fn new(
         command_buffer: CommandBuffer,
         profiler: Option<Rc<RefCell<MetalProfiler>>>,
     ) -> Self {
-        TractCommandBuffer { inner: command_buffer, profiler }
+        TCommandBuffer { inner: command_buffer, profiler }
     }
 
     pub fn encode<EncodeCallback>(&self, encode_cb: EncodeCallback)
@@ -142,7 +142,7 @@ impl TractCommandBuffer {
     }
 }
 
-impl Deref for TractCommandBuffer {
+impl Deref for TCommandBuffer {
     type Target = CommandBuffer;
 
     fn deref(&self) -> &Self::Target {
@@ -150,7 +150,7 @@ impl Deref for TractCommandBuffer {
     }
 }
 
-impl DerefMut for TractCommandBuffer {
+impl DerefMut for TCommandBuffer {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
