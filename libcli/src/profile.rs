@@ -3,6 +3,7 @@ use tract_core::num_traits::Zero;
 use tract_core::ops::scan::State;
 use tract_core::ops::submodel::TypedModelOpState;
 use tract_metal::utils::rescale_gpu_duration;
+use tract_metal::MetalSessionHandler;
 
 use crate::annotations::*;
 use crate::model::Model;
@@ -117,12 +118,14 @@ pub fn rec_profiler_metal(
 
     let result = tract_metal::METAL_CONTEXT.with_borrow( |ctxt| {
         let (mut cpu_start, mut gpu_start): (u64, u64) = (0, 0);
-
         ctxt.device().sample_timestamps(&mut cpu_start, &mut gpu_start);
 
+        let session_handler = MetalSessionHandler::from_plan(state.plan(), &state.session_state.resolved_symbols)?;
+        test.before_plan_eval(&mut state.session_state)?;
         let (r, profiler) = ctxt.profile(|| {
            state.run(inputs.clone())
         })?;
+        test.after_plan_eval(&mut state.session_state)?;
 
         let (mut cpu_end, mut gpu_end): (u64, u64) = (0, 0);
         ctxt.device().sample_timestamps(&mut cpu_end, &mut gpu_end);
