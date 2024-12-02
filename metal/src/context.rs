@@ -1,4 +1,4 @@
-use crate::command_buffer::{MetalProfiler, TractCommandBuffer};
+use crate::command_buffer::{MetalProfiler, TCommandBuffer};
 use crate::func_constants::ConstantValues;
 use crate::kernels::matmul::mps;
 use crate::kernels::{LibraryContent, LibraryName};
@@ -193,7 +193,7 @@ impl SharedMetalContext {
 pub struct MetalContext {
     shared: SharedMetalContext,
     command_queue: CommandQueue,
-    command_buffer: RefCell<Option<TractCommandBuffer>>,
+    command_buffer: RefCell<Option<TCommandBuffer>>,
     command_buffer_id: AtomicUsize,
     retained_tensors: RefCell<Vec<MetalTensor>>,
     profiler: RefCell<Option<Rc<RefCell<MetalProfiler>>>>,
@@ -251,12 +251,12 @@ impl MetalContext {
         self.retained_tensors.borrow_mut().push(tensor.clone());
     }
 
-    pub fn command_buffer(&self) -> TractCommandBuffer {
+    pub fn command_buffer(&self) -> TCommandBuffer {
         let command_buffer = self
             .command_buffer
             .borrow_mut()
             .get_or_insert_with(|| {
-                let command_buffer = TractCommandBuffer::new(
+                let command_buffer = TCommandBuffer::new(
                     self.command_queue.new_command_buffer().to_owned(),
                     self.profiler.borrow().clone(),
                 );
