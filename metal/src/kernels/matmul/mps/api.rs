@@ -5,7 +5,7 @@ use objc::runtime::Object;
 use objc::{class, msg_send, sel, sel_impl};
 use paste::paste;
 
-use crate::command_buffer::TractCommandBuffer;
+use crate::command_buffer::TCommandBuffer;
 
 // From https://github.com/gfx-rs/metal-rs
 
@@ -272,7 +272,7 @@ impl MatrixMultiplicationRef {
     ///
     pub fn encode(
         &self,
-        command_buffer: TractCommandBuffer,
+        command_buffer: TCommandBuffer,
         left: Matrix,
         right: Matrix,
         result: Matrix,
@@ -349,7 +349,7 @@ impl MatrixVectorMultiplicationRef {
     ///
     pub fn encode(
         &self,
-        command_buffer: TractCommandBuffer,
+        command_buffer: TCommandBuffer,
         left: Matrix,
         right: Vector,
         result: Vector,
