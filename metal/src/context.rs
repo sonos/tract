@@ -315,10 +315,8 @@ impl MetalContext {
         Ok(())
     }
 
-    pub fn notify_new_node(&self, node_id: usize) {
-        if let Some(profiler) = self.profiler.borrow().clone() {
-            profiler.borrow_mut().add_node_entry(node_id);
-        }
+    pub fn profiler(&self) -> Option<Rc<RefCell<MetalProfiler>>> {
+        self.profiler.borrow().clone()
     }
 
     pub fn profile<EvalCallback>(
