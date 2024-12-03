@@ -2,8 +2,12 @@ use tract_core::internal::*;
 use tract_core::num_traits::Zero;
 use tract_core::ops::scan::State;
 use tract_core::ops::submodel::TypedModelOpState;
-use tract_metal::utils::rescale_gpu_duration;
-use tract_metal::MetalSessionHandler;
+
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+{
+    use tract_metal::utils::rescale_gpu_duration;
+    use tract_metal::MetalSessionHandler;
+}
 
 use crate::annotations::*;
 use crate::model::Model;
@@ -85,7 +89,10 @@ pub fn profile(
                 folded,
             )?;
         } else {
-            rec_profiler_metal(&mut state, dg, inputs, &prefix)?;
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            {
+                rec_profiler_metal(&mut state, dg, inputs, &prefix)?;
+            }
         }
         iters += 1;
     }
@@ -110,58 +117,62 @@ pub fn profile(
     Ok(())
 }
 
-pub fn rec_profiler_metal(
-    state: &mut TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
-    dg: &mut Annotations,
-    inputs: &TVec<TValue>,
-    prefix: &[(usize, String)],
-) -> TractResult<TVec<TValue>> {
-    let result = tract_metal::METAL_CONTEXT.with_borrow(|ctxt| {
-        let session_handler =
-            MetalSessionHandler::from_plan(state.plan(), &state.session_state.resolved_symbols)?;
-        session_handler.before_plan_eval(&mut state.session_state)?;
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+{
+    pub fn rec_profiler_metal(
+        state: &mut TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
+        dg: &mut Annotations,
+        inputs: &TVec<TValue>,
+        prefix: &[(usize, String)],
+    ) -> TractResult<TVec<TValue>> {
 
-        let (mut cpu_start, mut gpu_start): (u64, u64) = (0, 0);
-        ctxt.device().sample_timestamps(&mut cpu_start, &mut gpu_start);
+        let result = tract_metal::METAL_CONTEXT.with_borrow(|ctxt| {
+            let session_handler =
+                MetalSessionHandler::from_plan(state.plan(), &state.session_state.resolved_symbols)?;
+            session_handler.before_plan_eval(&mut state.session_state)?;
 
-        let (r, profiler) = ctxt.profile(|| {
-            let r = state.run_plan_with_eval(
-                inputs.clone(),
-                |session_state, mut node_state, node, input| {
-                    // Profile node
-                    let start = crate::time::now();
-                    let res = tract_core::plan::eval(
-                        session_state,
-                        node_state.as_deref_mut(),
-                        node,
-                        input.clone(),
-                    );
-                    let elapsed = start.elapsed();
-                    let node_id = NodeQId(prefix.into(), node.id);
-                    *dg.node_mut(node_id).profile.get_or_insert(Duration::default()) += elapsed;
+            let (mut cpu_start, mut gpu_start): (u64, u64) = (0, 0);
+            ctxt.device().sample_timestamps(&mut cpu_start, &mut gpu_start);
 
-                    res
-                },
-            )?;
+            let (r, profiler) = ctxt.profile(|| {
+                let r = state.run_plan_with_eval(
+                    inputs.clone(),
+                    |session_state, mut node_state, node, input| {
+                        // Profile node
+                        let start = crate::time::now();
+                        let res = tract_core::plan::eval(
+                            session_state,
+                            node_state.as_deref_mut(),
+                            node,
+                            input.clone(),
+                        );
+                        let elapsed = start.elapsed();
+                        let node_id = NodeQId(prefix.into(), node.id);
+                        *dg.node_mut(node_id).profile.get_or_insert(Duration::default()) += elapsed;
+
+                        res
+                    },
+                )?;
+                Ok(r)
+            })?;
+
+            let (mut cpu_end, mut gpu_end): (u64, u64) = (0, 0);
+            ctxt.device().sample_timestamps(&mut cpu_end, &mut gpu_end);
+
+            session_handler.after_plan_eval(&mut state.session_state)?;
+
+            profiler.iter().for_each(|(node_id, duration)| {
+                let node_id = NodeQId(prefix.into(), *node_id);
+                *dg.node_mut(node_id).accelerator_profile.get_or_insert(Duration::default()) +=
+                    Duration::from_nanos(rescale_gpu_duration(
+                        *duration, cpu_start, cpu_end, gpu_start, gpu_end,
+                    ));
+            });
+
             Ok(r)
-        })?;
-
-        let (mut cpu_end, mut gpu_end): (u64, u64) = (0, 0);
-        ctxt.device().sample_timestamps(&mut cpu_end, &mut gpu_end);
-
-        session_handler.after_plan_eval(&mut state.session_state)?;
-
-        profiler.iter().for_each(|(node_id, duration)| {
-            let node_id = NodeQId(prefix.into(), *node_id);
-            *dg.node_mut(node_id).accelerator_profile.get_or_insert(Duration::default()) +=
-                Duration::from_nanos(rescale_gpu_duration(
-                    *duration, cpu_start, cpu_end, gpu_start, gpu_end,
-                ));
         });
-
-        Ok(r)
-    });
-    result
+        result
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
