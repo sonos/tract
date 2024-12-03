@@ -76,7 +76,9 @@ impl<O: MetalEvalOp> OpState for MetalOpState<O> {
     ) -> TractResult<TVec<TValue>> {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
-                context.notify_new_node(self.node_id);
+                if let Some(profiler) = context.profiler() {
+                    profiler.borrow_mut().add_node_entry(self.node_id);
+                };
                 self.op.metal_eval(context, self.node_id, session, inputs)
             })
         })
