@@ -51,6 +51,7 @@ impl BenchLimits {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn profile(
     model: &TypedModel,
     bench_limits: &BenchLimits,
@@ -83,13 +84,9 @@ pub fn profile(
                 &mut time_accounted_by_inner_nodes,
                 folded,
             )?;
+        } else {
+            rec_profiler_metal(&mut state, dg, inputs, &prefix)?;
         }
-        else {
-            rec_profiler_metal(&mut state,
-                            dg,
-                            inputs,
-                            &prefix)?;
-            }
         iters += 1;
     }
     let entire = start.elapsed() - time_accounted_by_inner_nodes;
@@ -119,11 +116,11 @@ pub fn rec_profiler_metal(
     inputs: &TVec<TValue>,
     prefix: &[(usize, String)],
 ) -> TractResult<TVec<TValue>> {
-
-    let result = tract_metal::METAL_CONTEXT.with_borrow( |ctxt| {
-        let session_handler = MetalSessionHandler::from_plan(state.plan(), &state.session_state.resolved_symbols)?;
+    let result = tract_metal::METAL_CONTEXT.with_borrow(|ctxt| {
+        let session_handler =
+            MetalSessionHandler::from_plan(state.plan(), &state.session_state.resolved_symbols)?;
         session_handler.before_plan_eval(&mut state.session_state)?;
-        
+
         let (mut cpu_start, mut gpu_start): (u64, u64) = (0, 0);
         ctxt.device().sample_timestamps(&mut cpu_start, &mut gpu_start);
 
@@ -142,7 +139,7 @@ pub fn rec_profiler_metal(
                     let elapsed = start.elapsed();
                     let node_id = NodeQId(prefix.into(), node.id);
                     *dg.node_mut(node_id).profile.get_or_insert(Duration::default()) += elapsed;
-        
+
                     res
                 },
             )?;
@@ -151,19 +148,21 @@ pub fn rec_profiler_metal(
 
         let (mut cpu_end, mut gpu_end): (u64, u64) = (0, 0);
         ctxt.device().sample_timestamps(&mut cpu_end, &mut gpu_end);
-        
+
         session_handler.after_plan_eval(&mut state.session_state)?;
 
         profiler.iter().for_each(|(node_id, duration)| {
             let node_id = NodeQId(prefix.into(), *node_id);
-            *dg.node_mut(node_id).accelerator_profile.get_or_insert(Duration::default()) += Duration::from_nanos(rescale_gpu_duration(*duration, cpu_start, cpu_end, gpu_start, gpu_end));
+            *dg.node_mut(node_id).accelerator_profile.get_or_insert(Duration::default()) +=
+                Duration::from_nanos(rescale_gpu_duration(
+                    *duration, cpu_start, cpu_end, gpu_start, gpu_end,
+                ));
         });
 
         Ok(r)
     });
     result
 }
-
 
 #[allow(clippy::too_many_arguments)]
 pub fn rec_profiler(
