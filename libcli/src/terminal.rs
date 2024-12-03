@@ -388,9 +388,10 @@ pub fn render_summaries(
         let summary = annotations.profile_summary.as_ref().unwrap();
 
         println!(
-            "{}           {}",
-                  White.bold().paint("Most time consuming operations"), 
-            if options.has_accelerator { "CPU             Accelerator" } else { "" }
+            "{}{}{}",
+            White.bold().paint(format!("{:<43}", "Most time consuming operations")),
+            White.bold().paint(format!("{:<17}", "CPU")),
+            White.bold().paint(if options.has_accelerator { "Accelerator" } else { "" }),
                 );
         
         for (op, (cpu_dur, accel_dur, n)) in annotations
@@ -419,7 +420,7 @@ pub fn render_summaries(
         {
             println!(
                 " * {} {:3} nodes: {}  {}",
-                Blue.bold().paint(format!("{op:20}")),
+                Blue.bold().paint(format!("{op:22}")),
                 n,
                 dur_avg_ratio(cpu_dur, summary.sum),
                 if options.has_accelerator {
