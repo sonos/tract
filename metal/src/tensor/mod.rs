@@ -150,7 +150,7 @@ impl MetalTensor {
     pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> Result<Self> {
         match self {
             Self::Owned(t) => Ok(Self::Owned(t.reshaped(shape)?)),
-            Self::ArenaView(_t) => bail!("Reshape a Metal Arena View is not supported"),
+            Self::ArenaView(t) => Ok(Self::ArenaView(t.reshaped(shape)?)),
         }
     }
 

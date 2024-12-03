@@ -5,6 +5,7 @@ pub mod cast;
 pub mod change_axes;
 pub mod concat;
 pub mod element_wise;
+pub mod fused_axis_op;
 pub mod gemm;
 pub mod konst;
 pub mod new_gelu;
