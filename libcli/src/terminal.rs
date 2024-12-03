@@ -388,12 +388,20 @@ pub fn render_summaries(
     if options.profile {
         let summary = annotations.profile_summary.as_ref().unwrap();
 
-        println!("{}", White.bold().paint("Most time consuming operations"));
-        for (op, (dur, n)) in annotations
+        println!("{}           {}", 
+                  White.bold().paint("Most time consuming operations"), 
+                  if options.has_accelerator {
+                    "CPU             Accelerator"
+                  } else {
+                    ""
+                  }
+                );
+        
+        for (op, (cpu_dur, accel_dur, n)) in annotations
             .tags
             .iter()
             .map(|(k, v)| {
-                (k.model(model).unwrap().node_op_name(k.1), v.profile.unwrap_or_default())
+                (k.model(model).unwrap().node_op_name(k.1), (v.profile.unwrap_or_default(), v.accelerator_profile.unwrap_or_default()))
             })
             .sorted_by_key(|a| a.0.to_string())
             .group_by(|(n, _)| n.clone())
@@ -403,17 +411,22 @@ pub fn render_summaries(
                     a,
                     group
                         .into_iter()
-                        .fold((Duration::default(), 0), |acc, d| (acc.0 + d.1, acc.1 + 1)),
+                        .fold((Duration::default(), Duration::default(), 0), |(accu, accel_accu, n), d| (accu + d.1.0, accel_accu + d.1.1, n + 1)),
                 )
             })
-            .sorted_by_key(|(_, d)| d.0)
+            .sorted_by_key(|(_, d)| d.1)
             .rev()
         {
             println!(
-                " * {} {:3} nodes: {}",
+                " * {} {:3} nodes: {}  {}",
                 Blue.bold().paint(format!("{op:20}")),
                 n,
-                dur_avg_ratio(dur, summary.sum)
+                dur_avg_ratio(cpu_dur, summary.sum),
+                if options.has_accelerator {
+                    dur_avg_ratio(accel_dur, summary.sum)
+                } else {
+                    "".to_string()
+                }
             );
         }
 
@@ -431,6 +444,7 @@ pub fn render_summaries(
             .sorted()
             .unique()
             .collect::<Vec<String>>();
+
         for prefix in &all_prefixes {
             let sum = annotations
                 .tags
@@ -438,15 +452,19 @@ pub fn render_summaries(
                 .filter(|(k, _v)| k.model(model).unwrap().node_name(k.1).starts_with(prefix))
                 .map(|(_k, v)| v)
                 .sum::<NodeTags>();
-            if sum.profile.unwrap_or_default().as_secs_f64() / summary.entire.as_secs_f64() < 0.01 {
+
+            let profiler = if !options.has_accelerator { sum.profile } else { sum.accelerator_profile }; 
+            if profiler.unwrap_or_default().as_secs_f64() / summary.entire.as_secs_f64() < 0.01 {
                 continue;
             }
-            print!("{}    ", dur_avg_ratio(sum.profile.unwrap_or_default(), summary.sum));
+            print!("{}    ", dur_avg_ratio(profiler.unwrap_or_default(), summary.sum));
+
             for _ in prefix.chars().filter(|c| *c == '.') {
                 print!("   ");
             }
             println!("{prefix}");
         }
+
         println!(
             "Not accounted by ops: {}",
             dur_avg_ratio(summary.entire - summary.sum.min(summary.entire), summary.entire)

@@ -102,6 +102,10 @@ pub fn profile(
         if let Some(d) = d.profile.as_mut() {
             *d = d.mul_f32(denum);
         }
+
+        if let Some(d) = d.accelerator_profile.as_mut() {
+            *d = d.mul_f32(denum);
+        }
     }
     let max = dg.tags.values().filter_map(|t| t.profile).max().unwrap();
     let sum = dg.tags.values().filter_map(|t| t.profile).sum::<Duration>();
@@ -117,22 +121,42 @@ pub fn rec_profiler_metal(
 ) -> TractResult<TVec<TValue>> {
 
     let result = tract_metal::METAL_CONTEXT.with_borrow( |ctxt| {
+        let session_handler = MetalSessionHandler::from_plan(state.plan(), &state.session_state.resolved_symbols)?;
+        session_handler.before_plan_eval(&mut state.session_state)?;
+        
         let (mut cpu_start, mut gpu_start): (u64, u64) = (0, 0);
         ctxt.device().sample_timestamps(&mut cpu_start, &mut gpu_start);
 
-        let session_handler = MetalSessionHandler::from_plan(state.plan(), &state.session_state.resolved_symbols)?;
-        session_handler.before_plan_eval(&mut state.session_state)?;
         let (r, profiler) = ctxt.profile(|| {
-           state.run(inputs.clone())
+            let r = state.run_plan_with_eval(
+                inputs.clone(),
+                |session_state, mut node_state, node, input| {
+                    // Profile node
+                    let start = crate::time::now();
+                    let res = tract_core::plan::eval(
+                        session_state,
+                        node_state.as_deref_mut(),
+                        node,
+                        input.clone(),
+                    );
+                    let elapsed = start.elapsed();
+                    let node_id = NodeQId(prefix.into(), node.id);
+                    *dg.node_mut(node_id).profile.get_or_insert(Duration::default()) += elapsed;
+        
+                    res
+                },
+            )?;
+            Ok(r)
         })?;
-        session_handler.after_plan_eval(&mut state.session_state)?;
 
         let (mut cpu_end, mut gpu_end): (u64, u64) = (0, 0);
         ctxt.device().sample_timestamps(&mut cpu_end, &mut gpu_end);
         
+        session_handler.after_plan_eval(&mut state.session_state)?;
+
         profiler.iter().for_each(|(node_id, duration)| {
             let node_id = NodeQId(prefix.into(), *node_id);
-            *dg.node_mut(node_id).profile.get_or_insert(Duration::default()) += Duration::from_nanos(rescale_gpu_duration(*duration, cpu_start, cpu_end, gpu_start, gpu_end));
+            *dg.node_mut(node_id).accelerator_profile.get_or_insert(Duration::default()) += Duration::from_nanos(rescale_gpu_duration(*duration, cpu_start, cpu_end, gpu_start, gpu_end));
         });
 
         Ok(r)

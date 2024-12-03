@@ -44,6 +44,7 @@ pub struct NodeTags {
     pub labels: Vec<String>,
     pub sections: Vec<Vec<String>>,
     pub profile: Option<Duration>,
+    pub accelerator_profile: Option<Duration>,
     pub model_input: Option<String>,
     pub model_output: Option<String>,
     pub outlet_labels: Vec<Vec<String>>,
@@ -71,6 +72,9 @@ impl<'a> std::ops::Add<&'a NodeTags> for &'a NodeTags {
 
         let profile = self.profile.unwrap_or_default() + other.profile.unwrap_or_default();
         let profile = if profile != Duration::default() { Some(profile) } else { None };
+        let accelerator_profile = self.accelerator_profile.unwrap_or_default() + other.accelerator_profile.unwrap_or_default();
+        let accelerator_profile = if accelerator_profile != Duration::default() { Some(accelerator_profile) } else { None };
+
         let style = self.style.or(other.style);
         let labels = self.labels.iter().chain(other.labels.iter()).cloned().collect();
         let sections = self.sections.iter().chain(other.sections.iter()).cloned().collect();
@@ -86,6 +90,7 @@ impl<'a> std::ops::Add<&'a NodeTags> for &'a NodeTags {
             cost,
             tmp_mem_usage,
             profile,
+            accelerator_profile,
             style,
             labels,
             sections,
@@ -113,6 +118,7 @@ const EMPTY: NodeTags = NodeTags {
     labels: Vec::new(),
     sections: Vec::new(),
     profile: None,
+    accelerator_profile: None,
     model_output: None,
     model_input: None,
     outlet_labels: Vec::new(),
