@@ -370,7 +370,6 @@ pub fn render_summaries(
     options: &DisplayParams,
 ) -> TractResult<()> {
     let total = annotations.tags.values().sum::<NodeTags>();
-
     
     if options.tmp_mem_usage {
         if let Some(summary) = &annotations.memory_summary {
@@ -388,20 +387,20 @@ pub fn render_summaries(
     if options.profile {
         let summary = annotations.profile_summary.as_ref().unwrap();
 
-        println!("{}           {}", 
+        println!(
+            "{}           {}",
                   White.bold().paint("Most time consuming operations"), 
-                  if options.has_accelerator {
-                    "CPU             Accelerator"
-                  } else {
-                    ""
-                  }
+            if options.has_accelerator { "CPU             Accelerator" } else { "" }
                 );
         
         for (op, (cpu_dur, accel_dur, n)) in annotations
             .tags
             .iter()
             .map(|(k, v)| {
-                (k.model(model).unwrap().node_op_name(k.1), (v.profile.unwrap_or_default(), v.accelerator_profile.unwrap_or_default()))
+                (
+                    k.model(model).unwrap().node_op_name(k.1),
+                    (v.profile.unwrap_or_default(), v.accelerator_profile.unwrap_or_default()),
+                )
             })
             .sorted_by_key(|a| a.0.to_string())
             .group_by(|(n, _)| n.clone())
@@ -409,9 +408,10 @@ pub fn render_summaries(
             .map(|(a, group)| {
                 (
                     a,
-                    group
-                        .into_iter()
-                        .fold((Duration::default(), Duration::default(), 0), |(accu, accel_accu, n), d| (accu + d.1.0, accel_accu + d.1.1, n + 1)),
+                    group.into_iter().fold(
+                        (Duration::default(), Duration::default(), 0),
+                        |(accu, accel_accu, n), d| (accu + d.1 .0, accel_accu + d.1 .1, n + 1),
+                    ),
                 )
             })
             .sorted_by_key(|(_, d)| d.1)
@@ -453,7 +453,8 @@ pub fn render_summaries(
                 .map(|(_k, v)| v)
                 .sum::<NodeTags>();
 
-            let profiler = if !options.has_accelerator { sum.profile } else { sum.accelerator_profile }; 
+            let profiler =
+                if !options.has_accelerator { sum.profile } else { sum.accelerator_profile };
             if profiler.unwrap_or_default().as_secs_f64() / summary.entire.as_secs_f64() < 0.01 {
                 continue;
             }
@@ -474,7 +475,6 @@ pub fn render_summaries(
 
     Ok(())
 }
-
 
 /// Format a rusage::Duration showing avgtime in ms.
 pub fn dur_avg(measure: Duration) -> String {
