@@ -68,10 +68,12 @@ pub fn profile(
 
     let plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
-    let start = crate::time::now();
-    let mut time_accounted_by_inner_nodes = Duration::default();
-    while iters < bench_limits.max_loops && start.elapsed() < bench_limits.max_time {
-        if !is_metal {
+
+    let entire;
+    if !is_metal {    
+        let start = crate::time::now();
+        let mut time_accounted_by_inner_nodes = Duration::default();
+        while iters < bench_limits.max_loops && start.elapsed() < bench_limits.max_time {
             rec_profiler(
                 &mut state,
                 dg,
@@ -82,15 +84,32 @@ pub fn profile(
                 &mut time_accounted_by_inner_nodes,
                 folded,
             )?;
-        } else {
-            #[cfg(any(target_os = "macos", target_os = "ios"))]
-            {
-                rec_profiler_metal(&mut state, dg, inputs, &prefix)?;
-            }
+
+            iters += 1;
         }
-        iters += 1;
+
+        entire = start.elapsed() - time_accounted_by_inner_nodes;
+    } else {
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        {
+            let session_handler = tract_metal::MetalSessionHandler::from_plan(
+                state.plan(),
+                &state.session_state.resolved_symbols,
+                )?;
+                session_handler.before_plan_eval(&mut state.session_state)?;
+            
+            let start = crate::time::now();
+            while iters < bench_limits.max_loops && start.elapsed() < bench_limits.max_time {
+                rec_profiler_metal(&mut state, dg, inputs, &prefix)?;
+
+                iters += 1;
+            }
+        
+            entire = start.elapsed();
+            session_handler.after_plan_eval(&mut state.session_state)?;
+        }
     }
-    let entire = start.elapsed() - time_accounted_by_inner_nodes;
+    
     info!("Running {} iterations max. for each node.", bench_limits.max_loops);
     info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
 
@@ -107,7 +126,8 @@ pub fn profile(
     }
     let max = dg.tags.values().filter_map(|t| t.profile).max().unwrap();
     let sum = dg.tags.values().filter_map(|t| t.profile).sum::<Duration>();
-    dg.profile_summary = Some(ProfileSummary { max, sum, entire, iters });
+    let accel_sum = dg.tags.values().filter_map(|t| t.accelerator_profile).sum::<Duration>();
+    dg.profile_summary = Some(ProfileSummary { max, sum, accel_sum, entire, iters });
     Ok(())
 }
 
@@ -118,17 +138,11 @@ pub fn rec_profiler_metal(
     inputs: &TVec<TValue>,
     prefix: &[(usize, String)],
 ) -> TractResult<TVec<TValue>> {
-    let result = tract_metal::METAL_CONTEXT.with_borrow(|ctxt| {
-        let session_handler = tract_metal::MetalSessionHandler::from_plan(
-            state.plan(),
-            &state.session_state.resolved_symbols,
-        )?;
-        session_handler.before_plan_eval(&mut state.session_state)?;
-
+    tract_metal::METAL_CONTEXT.with_borrow(|ctxt| {
         let (mut cpu_start, mut gpu_start): (u64, u64) = (0, 0);
         ctxt.device().sample_timestamps(&mut cpu_start, &mut gpu_start);
 
-        let (r, profiler) = ctxt.profile(|| {
+        let (result, profiler) = ctxt.profile(|| {
             let r = state.run_plan_with_eval(
                 inputs.clone(),
                 |session_state, mut node_state, node, input| {
@@ -153,8 +167,6 @@ pub fn rec_profiler_metal(
         let (mut cpu_end, mut gpu_end): (u64, u64) = (0, 0);
         ctxt.device().sample_timestamps(&mut cpu_end, &mut gpu_end);
 
-        session_handler.after_plan_eval(&mut state.session_state)?;
-
         profiler.iter().for_each(|(node_id, duration)| {
             let node_id = NodeQId(prefix.into(), *node_id);
             *dg.node_mut(node_id).accelerator_profile.get_or_insert(Duration::default()) +=
@@ -163,9 +175,8 @@ pub fn rec_profiler_metal(
                 ));
         });
 
-        Ok(r)
-    });
-    result
+        Ok(result)
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
