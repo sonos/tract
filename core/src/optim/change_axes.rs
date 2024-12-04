@@ -4,6 +4,7 @@ use crate::internal::*;
 use crate::model::*;
 use crate::ops::dummy::Dummy;
 use crate::ops::einsum::EinSum;
+use crate::ops::konst::Const;
 use std::collections::hash_map::Entry;
 use std::collections::HashSet;
 use std::fmt::Debug;
@@ -41,9 +42,7 @@ impl TypedPass for ChangeAxes {
                 let change = AxisChange { outlet, op: suggestion.1 };
                 if self.0.insert(change.clone()) {
                     if let Some((patch, _)) = change_axes(model, &change, &interfaces, &[])
-                        .with_context(|| {
-                            format!("Making patch for {:?} from {}", change, node)
-                        })?
+                        .with_context(|| format!("Making patch for {:?} from {}", change, node))?
                     {
                         self.1 = node.id;
                         return Ok(Some(patch));
@@ -80,6 +79,9 @@ pub fn change_axes(
     locked: &[OutletId],
     bounds: &[TVec<OutletId>],
 ) -> TractResult<Option<(TypedModelPatch, TVec<(InOut, AxisOp)>)>> {
+    if model.node(change.outlet.node).op_as::<Const>().is_some_and(|c| c.0.volume() == 1) {
+        return Ok(None);
+    }
     debug!("  Considering change {:?}", change);
     let mut todo_changes = vec![(change.clone(), None)];
     let mut changed_wires: HashMap<TVec<OutletId>, AxisOp> = HashMap::new();
@@ -88,14 +90,15 @@ pub fn change_axes(
     };
     changed_wires.insert(bound_outlets(change.outlet), change.op.clone());
     let mut changed_ops: HashMap<usize, Box<dyn TypedOp>> = HashMap::new();
-    while let Some((c, emitter)) = todo_changes.pop() {
-        let outlet_group = bound_outlets(c.outlet);
+    let mut rewired_scalar_input: HashMap<InletId, (OutletId, AxisOp)> = Default::default();
+    while let Some((change, emitter)) = todo_changes.pop() {
+        let outlet_group = bound_outlets(change.outlet);
         for &outlet in &outlet_group {
             if locked.contains(&outlet) {
                 debug!("    Change {:?} blocked by locked interface {:?}", change, outlet);
                 return Ok(None);
             }
-            let mut interfaces = vec![(outlet.node, InOut::Out(outlet.slot))];
+            let mut interfaces: Vec<(usize, InOut)> = vec![(outlet.node, InOut::Out(outlet.slot))];
             for inlet in model.outlet_successors(outlet) {
                 interfaces.push((inlet.node, InOut::In(inlet.slot)));
             }
@@ -104,6 +107,7 @@ pub fn change_axes(
                     continue;
                 }
                 let node = model.node(node_id);
+                // if this is a revisit...
                 let op = if let Some(op) = changed_ops.get(&node_id) {
                     trace!("  Change {:?} revisiting {}", change, model.node(node_id));
                     if op.is::<EinSum>() {
@@ -117,20 +121,33 @@ pub fn change_axes(
                     &node.op
                 };
                 let more = op
-                    .change_axes(model, node, io, &c.op)
+                    .change_axes(model, node, io, &change.op)
                     .with_context(|| format!("Propagating {change:?} to node {node}"))?;
                 if more.is_none() {
                     debug!("    Propagation of {:?} blocked by {}", change, node);
                     return Ok(None);
                 }
                 let AxisChangeConsequence { substitute_op, wire_changes } = more.unwrap();
-                trace!("    Change {:?} enters {} from {:?}", c.op, node, io);
+                trace!("    Change {:?} enters {} from {:?}", change.op, node, io);
                 trace!("       propagates as {:?}", wire_changes);
                 if let Some(op) = substitute_op {
                     trace!("       replace op by {:?}", op);
                     changed_ops.insert(node.id, op);
                 }
                 for (wire, op) in wire_changes.into_iter() {
+                    let outlet = wire.as_outlet(node);
+                    // stop upstram propagation to a scalar constant: we will clone it and alter it
+                    // at patch generation time
+                    if let InOut::In(inlet) = wire {
+                        if model
+                            .node(outlet.node)
+                            .op_as::<Const>()
+                            .is_some_and(|k| k.0.volume() == 1)
+                        {
+                            rewired_scalar_input.insert(InletId::new(node.id, inlet), (outlet, op));
+                            continue;
+                        }
+                    }
                     let outlet_group = bound_outlets(wire.as_outlet(node));
                     match changed_wires.entry(outlet_group.clone()) {
                         Entry::Vacant(entry) => {
@@ -180,11 +197,21 @@ pub fn change_axes(
         let node = model.node(node_id);
         if nodes_to_replace.contains(&node_id) {
             let mut inputs = tvec!();
-            for orig in &node.inputs {
-                let tgt = replaced_wires
-                    .entry(*orig)
-                    .or_insert_with(|| patch.tap_model(model, *orig).unwrap());
-                inputs.push(*tgt);
+            for (slot, orig) in node.inputs.iter().enumerate() {
+                let tgt = if let Some((outlet, alteration)) =
+                    rewired_scalar_input.get(&InletId::new(node_id, slot))
+                {
+                    let const_node = model.node(outlet.node);
+                    let mut value = const_node.op_as::<Const>().unwrap().0.clone().into_tensor();
+                    alteration.change_tensor(&mut value, false)?;
+                    let name = model.unique_name(&const_node.name);
+                    patch.add_const(name, value)?
+                } else {
+                    *replaced_wires
+                        .entry(*orig)
+                        .or_insert_with(|| patch.tap_model(model, *orig).unwrap())
+                };
+                inputs.push(tgt);
             }
             let op: Box<dyn TypedOp> =
                 changed_ops.get(&node_id).cloned().unwrap_or_else(|| node.op.clone());
