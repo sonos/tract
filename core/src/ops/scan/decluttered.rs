@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::ops::einsum::EinSum;
 use crate::ops::konst::Const;
 use crate::optim::OptimizerSession;
@@ -592,12 +594,14 @@ impl Scan {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         self.body.check_consistency()?;
         let locked_outlets = self.body_locked_outlets(node_input_facts)?;
+        let mut explored: HashSet<AxisChange> = Default::default();
         let (body_patch, body_changed_wires) = if let Some(changes) =
             crate::optim::change_axes::change_axes(
                 &self.body,
                 &change,
                 if locked_interface { &locked_outlets } else { &[] },
                 &self.body_bounds()?,
+                &mut explored
             )? {
             changes
         } else {
