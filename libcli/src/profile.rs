@@ -69,8 +69,7 @@ pub fn profile(
     let plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
 
-    let entire;
-    if !is_metal {    
+    let entire = if !is_metal {
         let start = crate::time::now();
         let mut time_accounted_by_inner_nodes = Duration::default();
         while iters < bench_limits.max_loops && start.elapsed() < bench_limits.max_time {
@@ -88,28 +87,29 @@ pub fn profile(
             iters += 1;
         }
 
-        entire = start.elapsed() - time_accounted_by_inner_nodes;
+        start.elapsed() - time_accounted_by_inner_nodes
     } else {
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
             let session_handler = tract_metal::MetalSessionHandler::from_plan(
                 state.plan(),
                 &state.session_state.resolved_symbols,
-                )?;
-                session_handler.before_plan_eval(&mut state.session_state)?;
-            
+            )?;
+            session_handler.before_plan_eval(&mut state.session_state)?;
+
             let start = crate::time::now();
             while iters < bench_limits.max_loops && start.elapsed() < bench_limits.max_time {
                 rec_profiler_metal(&mut state, dg, inputs, &prefix)?;
 
                 iters += 1;
             }
-        
-            entire = start.elapsed();
+
+            let entire = start.elapsed();
             session_handler.after_plan_eval(&mut state.session_state)?;
+            entire
         }
-    }
-    
+    };
+
     info!("Running {} iterations max. for each node.", bench_limits.max_loops);
     info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
 
