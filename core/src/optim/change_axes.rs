@@ -31,6 +31,7 @@ impl TypedPass for ChangeAxes {
         _session: &mut OptimizerSession,
         model: &TypedModel,
     ) -> TractResult<Option<TypedModelPatch>> {
+        let mut explored: HashSet<AxisChange> = Default::default();
         let mut interfaces = model.output_outlets()?.to_vec();
         interfaces.extend(model.input_outlets()?.iter());
         for node in &model.nodes[self.1..] {
@@ -41,8 +42,10 @@ impl TypedPass for ChangeAxes {
                 let outlet = suggestion.0.as_outlet(node);
                 let change = AxisChange { outlet, op: suggestion.1 };
                 if self.0.insert(change.clone()) {
-                    if let Some((patch, _)) = change_axes(model, &change, &interfaces, &[])
-                        .with_context(|| format!("Making patch for {:?} from {}", change, node))?
+                    if let Some((patch, _)) =
+                        change_axes(model, &change, &interfaces, &[], &mut explored).with_context(
+                            || format!("Making patch for {:?} from {}", change, node),
+                        )?
                     {
                         self.1 = node.id;
                         return Ok(Some(patch));
@@ -55,10 +58,11 @@ impl TypedPass for ChangeAxes {
                         let change =
                             AxisChange { outlet: OutletId::new(node.id, slot), op: AxisOp::Rm(ix) };
                         if self.0.insert(change.clone()) {
-                            if let Some((patch, _)) = change_axes(model, &change, &interfaces, &[])
-                                .with_context(|| {
-                                    format!("Making patch for {:?} from {}", change, node)
-                                })?
+                            if let Some((patch, _)) =
+                                change_axes(model, &change, &interfaces, &[], &mut explored)
+                                    .with_context(|| {
+                                        format!("Making patch for {:?} from {}", change, node)
+                                    })?
                             {
                                 self.1 = node.id;
                                 return Ok(Some(patch));
@@ -78,8 +82,14 @@ pub fn change_axes(
     change: &AxisChange,
     locked: &[OutletId],
     bounds: &[TVec<OutletId>],
+    explored: &mut HashSet<AxisChange>,
 ) -> TractResult<Option<(TypedModelPatch, TVec<(InOut, AxisOp)>)>> {
+    if explored.contains(change) {
+        debug!("  Not considering change because deja vu {:?}", change);
+        return Ok(None);
+    }
     if model.node(change.outlet.node).op_as::<Const>().is_some_and(|c| c.0.volume() == 1) {
+        debug!("  Not considering change from const {:?}", change);
         return Ok(None);
     }
     debug!("  Considering change {:?}", change);
@@ -92,6 +102,9 @@ pub fn change_axes(
     let mut changed_ops: HashMap<usize, Box<dyn TypedOp>> = HashMap::new();
     let mut rewired_scalar_input: HashMap<InletId, (OutletId, AxisOp)> = Default::default();
     while let Some((change, emitter)) = todo_changes.pop() {
+        if !explored.insert(change.clone()) {
+            return Ok(None);
+        }
         let outlet_group = bound_outlets(change.outlet);
         for &outlet in &outlet_group {
             if locked.contains(&outlet) {
