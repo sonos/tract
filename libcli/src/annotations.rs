@@ -72,8 +72,13 @@ impl<'a> std::ops::Add<&'a NodeTags> for &'a NodeTags {
 
         let profile = self.profile.unwrap_or_default() + other.profile.unwrap_or_default();
         let profile = if profile != Duration::default() { Some(profile) } else { None };
-        let accelerator_profile = self.accelerator_profile.unwrap_or_default() + other.accelerator_profile.unwrap_or_default();
-        let accelerator_profile = if accelerator_profile != Duration::default() { Some(accelerator_profile) } else { None };
+        let accelerator_profile = self.accelerator_profile.unwrap_or_default()
+            + other.accelerator_profile.unwrap_or_default();
+        let accelerator_profile = if accelerator_profile != Duration::default() {
+            Some(accelerator_profile)
+        } else {
+            None
+        };
 
         let style = self.style.or(other.style);
         let labels = self.labels.iter().chain(other.labels.iter()).cloned().collect();
@@ -275,6 +280,7 @@ impl Annotations {
 pub struct ProfileSummary {
     pub max: Duration,
     pub sum: Duration,
+    pub accel_sum: Duration,
     pub entire: Duration,
     pub iters: usize,
 }

@@ -393,7 +393,7 @@ pub fn render_summaries(
             White.bold().paint(format!("{:<17}", "CPU")),
             White.bold().paint(if options.has_accelerator { "Accelerator" } else { "" }),
                 );
-        
+
         for (op, (cpu_dur, accel_dur, n)) in annotations
             .tags
             .iter()
@@ -471,6 +471,13 @@ pub fn render_summaries(
             "Not accounted by ops: {}",
             dur_avg_ratio(summary.entire - summary.sum.min(summary.entire), summary.entire)
         );
+
+        if options.has_accelerator {
+            println!(
+                "(Total CPU Op time - Total Accelerator Op time): {}",
+                dur_avg_ratio(summary.sum - summary.accel_sum.min(summary.sum), summary.entire)
+            );
+        }
         println!("Entire network performance: {}", dur_avg(summary.entire));
     }
 

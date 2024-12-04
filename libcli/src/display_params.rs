@@ -30,7 +30,7 @@ pub struct DisplayParams {
     pub json: bool,
     pub info: bool,
     pub left_column_width: usize,
-    pub has_accelerator: bool
+    pub has_accelerator: bool,
 }
 
 impl DisplayParams {
