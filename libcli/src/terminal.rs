@@ -415,7 +415,7 @@ pub fn render_summaries(
                     ),
                 )
             })
-            .sorted_by_key(|(_, d)| d.1)
+            .sorted_by_key(|(_, d)| if options.has_accelerator { d.1 } else { d.0 })
             .rev()
         {
             println!(
