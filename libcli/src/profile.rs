@@ -108,6 +108,10 @@ pub fn profile(
             session_handler.after_plan_eval(&mut state.session_state)?;
             entire
         }
+        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+        {
+            bail!("Metal Profiling on non-Metal Device");
+        }
     };
 
     info!("Running {} iterations max. for each node.", bench_limits.max_loops);
