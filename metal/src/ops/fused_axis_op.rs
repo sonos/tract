@@ -105,7 +105,7 @@ impl<O: MetalEvalOp + TypedOp> TypedOp for MetalFusedAxisOp<O> {
         );
         // Apply AxisOp
         let inputs = inputs
-            .into_iter()
+            .iter()
             .zip(self.grouped_axis_ops.iter())
             .map(|(i, axis_ops)| {
                 axis_ops.iter().try_fold((*i).clone(), |reshaped_i, axis_op| {

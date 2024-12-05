@@ -70,9 +70,9 @@ pub fn fuse_axis_op(
 
     for (in_idx, in_node) in in_nodes.into_iter().enumerate() {
         match collect_chain_of_axis_ops(model, in_node)? {
-            Some((acc_axis_ops, in_node)) => {
+            Some((acc_axis_ops, head_of_chain)) => {
                 grouped_axis_ops.push(acc_axis_ops);
-                tap_inputs.push(patch.tap_model(model, in_node.inputs[0])?);
+                tap_inputs.push(patch.tap_model(model, head_of_chain.inputs[0])?);
             }
             None => {
                 grouped_axis_ops.push(tvec![]);
