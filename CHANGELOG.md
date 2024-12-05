@@ -1,5 +1,14 @@
 # Unreleased
 
+# 0.21.8 - 2024-12-05
+* [linalg, compression] introduce mmm kits
+* [linalg] (wip) rework f16 on non-f16 machines
+* [linalg] element-wise binary operators optimisation
+* [core, compression] gather with compressed weights
+* [metal] new kernels
+* [metal] new memory management
+* [nnef] opt-in deterministic tar encoding
+
 # 0.21.7 - 2024-09-23
 * [metal] (experimental) introduce partial support for Apple Metal
 * [core] Potential internal API breaking changes (operator names, comparison ops refactored)
