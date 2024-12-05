@@ -105,7 +105,7 @@ impl<K: GemmKernel + 'static> TypedOp for MetalGemm<K> {
             self.resolve_output_facts(input_facts)
         })
         .with_context(|| {
-            anyhow::anyhow!("Error while computing output facts for {:?}", self.name())
+            anyhow::anyhow!("Error while computing output facts for {}", self.name())
         })
     }
 

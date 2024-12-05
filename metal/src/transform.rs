@@ -2,13 +2,13 @@ use crate::fact::MetalTypedFactExt;
 use crate::kernels::array::RotateHalf;
 use crate::kernels::matmul::{MetalGemmImplKind, MfaGemm, MlxGemm, MpsMatMul};
 use crate::kernels::nn::{ApplyRope, NewGelu, Reducer, RmsNorm, Silu, Softmax};
-use crate::ops::{self, MetalSync, MetalSyncKind};
+use crate::ops::{self, MetalAxisOp, MetalSync, MetalSyncKind};
 
 #[allow(unused_imports)]
 use crate::rewrite_rules::{
     as_apply_rope_rule, as_new_gelu_rule, as_rms_norm_rule, as_rotate_half_rule, as_silu_rule,
-    remove_rms_norm_cast, rewire_metal_sync, BasicApplyRope, BasicNewGelu, BasicRmsNorm,
-    BasicRotateHalf, BasicSilu,
+    fuse_axis_op, remove_rms_norm_cast, rewire_metal_sync, BasicApplyRope, BasicNewGelu,
+    BasicRmsNorm, BasicRotateHalf, BasicSilu,
 };
 use crate::tensor::MetalTensorExt;
 use crate::{IntoMetal, MetalFact, MetalTensor};
@@ -70,6 +70,7 @@ impl ModelTransform for MetalTransform {
 
         Rewriter::default()
             .with_rule_for::<MetalSync>("rewire-metal-sync", rewire_metal_sync)
+            .with_rule_for::<MetalAxisOp>("fuse_axis_op", fuse_axis_op)
             .rewrite(&(), &mut new)?;
         *model = new;
         Ok(())
@@ -191,8 +192,8 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 .flatten()
                 .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<AxisOp>() {
-            ops::MetalAxisOp::from_tract_core(op.clone())
-                .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+            let in_fact = source.node_input_facts(node.id)?[0];
+            Some(Box::new(ops::MetalAxisOp::from_tract_core_with_fact(op.clone(), in_fact)))
         } else if let Some(op) = node.op_as::<Slice>() {
             Some(Box::new(ops::MetalSlice::from_tract_core(op.clone())))
         } else if let Some(op) = node.op_as::<TypedConcat>() {

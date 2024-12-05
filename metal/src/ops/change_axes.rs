@@ -11,8 +11,34 @@ use tract_itertools::Itertools;
 pub struct MetalAxisOp(pub AxisOp);
 
 impl MetalAxisOp {
-    pub fn from_tract_core(op: AxisOp) -> Option<Self> {
-        Some(Self(op))
+    pub fn from_tract_core(op: AxisOp) -> Self {
+        Self(op)
+    }
+
+    pub fn from_tract_core_with_fact(op: AxisOp, fact: &TypedFact) -> Self {
+        match op {
+            AxisOp::Move(from, to) if (from as isize - to as isize).abs() == 1 => {
+                let dims = fact.shape.dims();
+                if [&dims[from], &dims[to]].contains(&&1usize.into()) {
+                    if from < to {
+                        Self(AxisOp::Reshape(
+                            from,
+                            tvec![dims[from].clone(), dims[to].clone()],
+                            tvec![dims[to].clone(), dims[from].clone()],
+                        ))
+                    } else {
+                        Self(AxisOp::Reshape(
+                            from,
+                            tvec![dims[to].clone(), dims[from].clone()],
+                            tvec![dims[from].clone(), dims[to].clone()],
+                        ))
+                    }
+                } else {
+                    Self(op)
+                }
+            }
+            _ => Self(op),
+        }
     }
 }
 
@@ -135,111 +161,6 @@ impl TypedOp for MetalAxisOp {
         };
         target.wire_node(&node.name, op, &[mapping[&node.inputs[0]]])
     }
-
-    fn codegen(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let shape =
-            crate::utils::metal_fact(&node.outputs[0].fact, |fact| Ok(fact.shape.to_tvec()))?;
-        if !matches!(self, MetalAxisOp(AxisOp::Move(_, _))) {
-            let (inputs, outputs) = model.node_facts(node.id)?;
-            let mapping = self.axes_mapping(&inputs, &outputs)?;
-            let op = MetalIntoShape { mapping, dims: shape };
-            return Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, op)?));
-        }
-        Ok(None)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct MetalIntoShape {
-    pub mapping: AxesMapping,
-    pub dims: TVec<TDim>,
-}
-
-impl MetalIntoShape {
-    pub fn from_tract_core(core_op: IntoShape) -> Self {
-        MetalIntoShape {
-            mapping: core_op.mapping,
-            dims: core_op.dims.into_iter().map(|it| it.into()).collect(),
-        }
-    }
-}
-
-impl Op for MetalIntoShape {
-    fn name(&self) -> Cow<str> {
-        "MetalIntoShape".into()
-    }
-
-    fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("{}", self.mapping)])
-    }
-
-    op_as_typed_op!();
-    impl_op_same_as!();
-}
-
-crate::impl_eval_op_for_metal_op!(MetalIntoShape);
-
-impl MetalEvalOp for MetalIntoShape {
-    fn metal_eval(
-        &self,
-        context: &MetalContext,
-        node_id: usize,
-        session: &mut SessionState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        let opaque = args_1!(inputs).into_tensor();
-        let input = opaque.to_metal_tensor()?;
-        let dims = self
-            .dims
-            .iter()
-            .map(|d| d.eval_to_i64(&session.resolved_symbols).map(|it| it as usize))
-            .collect::<TractResult<TVec<_>>>()?;
-        let len = dims.iter().product::<usize>();
-
-        ensure!(input.len() == len);
-        let output = crate::ops::make_tensor_for_node(
-            session,
-            node_id,
-            input.datum_type(),
-            dims.as_slice(),
-        )?;
-
-        Memcpy.dispatch_eval(context, input, 0, &output)?;
-
-        Ok(tvec![output.into_opaque_tensor().into_tvalue()])
-    }
-}
-
-impl TypedOp for MetalIntoShape {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_facts_from_gpu(inputs, |facts| {
-            Ok(tvec!(facts[0].datum_type.fact(&self.dims)))
-        })
-        .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
-    }
-
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        if let Some(succ) = model.single_succ(node.id)? {
-            if let Some(into_shape) = succ.op_as::<MetalIntoShape>() {
-                let op = Self {
-                    mapping: self.mapping.compose(&into_shape.mapping)?,
-                    dims: into_shape.dims.clone(),
-                };
-                return Ok(Some(TypedModelPatch::fuse_with_next(model, node, op)?));
-            }
-        }
-        Ok(None)
-    }
-
-    as_op!();
 }
 
 #[cfg(test)]
