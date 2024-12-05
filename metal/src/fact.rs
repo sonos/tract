@@ -27,7 +27,7 @@ impl MetalFact {
     }
 
     pub fn from_cpu(fact: TypedFact) -> TractResult<Self> {
-        Self::new(MetalOrigin::FromGpu, fact)
+        Self::new(MetalOrigin::FromCpu, fact)
     }
 
     pub fn is_from_gpu(&self) -> bool {

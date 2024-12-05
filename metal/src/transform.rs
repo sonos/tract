@@ -184,7 +184,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
             Some(Box::new(ops::MetalMultiBroadcastTo::new(op.shape.clone())))
         } else if let Some(op) = node.op_as::<Const>() {
-            ops::MetalConst::new(op.0.clone())?.map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+            convert_const(op)?.map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<Cast>() {
             check_in_dts_are_supported(source, node.id, ops::MetalCast::is_supported_dt)?
                 .then(|| ops::MetalCast::new(op.to))
@@ -354,6 +354,16 @@ pub fn bin_ops_to_metal(
         .map(|metal_op| TypedModelPatch::replace_single_op(model, node, &node.inputs, metal_op))
         .transpose()
 }
+
+fn convert_const(op: &Const) -> TractResult<Option<Const>> {
+    if !MetalTensor::is_supported_dt(op.0.datum_type()) {
+        return Ok(None);
+    }
+    let metal_fact = MetalFact::from_cpu(Arc::clone(&op.0).into())?;
+    let metal_const = op.0.clone().into_metal()?.into_opaque_tensor().into_arc_tensor();
+    Ok(Some(Const::new_with_opaque_fact(metal_const, Box::new(metal_fact))))
+}
+
 
 fn convert_element_wise_ops_to_metal(op: &ElementWiseOp) -> Option<ops::MetalElementWiseOp> {
     map_element_wise_ops!([
