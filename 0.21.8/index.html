@@ -1,0 +1,886 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+      
+        <link rel="next" href="onnx/">
+      
+      
+      <link rel="icon" href="assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.47">
+    
+    
+      
+        <title>tract-python</title>
+      
+    
+    
+      <link rel="stylesheet" href="assets/stylesheets/main.6f8fc17f.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#tract-python-bindings" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="." title="tract-python" class="md-header__button md-logo" aria-label="tract-python" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            tract-python
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Home
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/sonos/tract" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tract
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="." title="tract-python" class="md-nav__button md-logo" aria-label="tract-python" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    tract-python
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/sonos/tract" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tract
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="." class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#getting-started" class="md-nav__link">
+    <span class="md-ellipsis">
+      Getting started
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Getting started">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#install-tract-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      Install tract library
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#downloading-the-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      Downloading the model
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preprocessing-an-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      Preprocessing an image
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loading-the-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      Loading the model
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#running-the-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      Running the model
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#interpreting-the-result" class="md-nav__link">
+    <span class="md-ellipsis">
+      Interpreting the result
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#model-cooking-with-tract" class="md-nav__link">
+    <span class="md-ellipsis">
+      Model cooking with tract
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cooking-to-nnef" class="md-nav__link">
+    <span class="md-ellipsis">
+      Cooking to NNEF
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-and-benching-models-early" class="md-nav__link">
+    <span class="md-ellipsis">
+      Testing and benching models early
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tract-opl" class="md-nav__link">
+    <span class="md-ellipsis">
+      tract-opl
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pulsing" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pulsing
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="onnx/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    ONNX
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="nnef/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    NNEF
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="inference_model/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Inference model
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="model/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Model
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="fact/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Fact
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="runnable/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Runnable
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="value/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Value
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#getting-started" class="md-nav__link">
+    <span class="md-ellipsis">
+      Getting started
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Getting started">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#install-tract-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      Install tract library
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#downloading-the-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      Downloading the model
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preprocessing-an-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      Preprocessing an image
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loading-the-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      Loading the model
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#running-the-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      Running the model
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#interpreting-the-result" class="md-nav__link">
+    <span class="md-ellipsis">
+      Interpreting the result
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#model-cooking-with-tract" class="md-nav__link">
+    <span class="md-ellipsis">
+      Model cooking with tract
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cooking-to-nnef" class="md-nav__link">
+    <span class="md-ellipsis">
+      Cooking to NNEF
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-and-benching-models-early" class="md-nav__link">
+    <span class="md-ellipsis">
+      Testing and benching models early
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tract-opl" class="md-nav__link">
+    <span class="md-ellipsis">
+      tract-opl
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pulsing" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pulsing
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<h1 id="tract-python-bindings"><code>tract</code> python bindings</h1>
+<p><code>tract</code> is a library for neural network inference. While PyTorch and TensorFlow
+deal with the much harder training problem, <code>tract</code> focuses on what happens once
+the model in trained.</p>
+<p><code>tract</code> ultimate goal is to use the model on end-user data (aka "running the
+model") as efficiently as possible, in a variety of possible deployments,
+including some which are no completely mainstream : a lot of energy have been
+invested in making <code>tract</code> an efficient engine to run models on ARM single board
+computers.</p>
+<h2 id="getting-started">Getting started</h2>
+<h3 id="install-tract-library">Install tract library</h3>
+<p><code>pip install tract</code>. Prebuilt wheels are provided for x86-64 Linux and
+Windows, x86-64 and arm64 for MacOS.</p>
+<h3 id="downloading-the-model">Downloading the model</h3>
+<p>First we need to obtain the model. We will download an ONNX-converted MobileNET
+2.7 from the ONNX model zoo.</p>
+<p><code>wget https://github.com/onnx/models/raw/main/vision/classification/mobilenet/model/mobilenetv2-7.onnx</code>.</p>
+<h3 id="preprocessing-an-image">Preprocessing an image</h3>
+<p>Then we need a sample image. You can use pretty much anything. If you lack
+inspiration, you can this picture of Grace Hopper.</p>
+<p><code>wget https://s3.amazonaws.com/tract-ci-builds/tests/grace_hopper.jpg</code></p>
+<p>We will be needing <code>pillow</code> to load the image and crop it.</p>
+<p><code>pip install pillow</code></p>
+<p>Now let's start our python script. We will want to use tract, obviously, but we
+will also need PIL's Image and numpy to put the data in the form MobileNet expects it.</p>
+<pre><code class="language-python">#!/usr/bin/env python
+
+import tract
+import numpy
+from PIL import Image
+</code></pre>
+<p>We want to load the image, crop it into its central square, then scale this
+square to be 224x224.</p>
+<pre><code class="language-python">im = Image.open(&quot;grace_hopper.jpg&quot;)
+if im.height &gt; im.width:
+    top_crop = int((im.height - im.width) / 2)
+    im = im.crop((0, top_crop, im.width, top_crop + im.width))
+else:
+    left_crop = int((im.width - im.height) / 2)
+    im = im.crop((left_crop, 0, left_crop + im_height, im.height))
+im = im.resize((224, 224))
+im = numpy.array(im)
+</code></pre>
+<p>At this stage, we obtain a 224x224x3 tensor of 8-bit positive integers. We need to transform
+these integers to floats and normalize them for MobileNet.
+At some point during this normalization, numpy decides to promote our tensor to
+double precision, but our model is single precison, so we are converting it
+again after the normalization.</p>
+<pre><code class="language-python">im = (im.astype(float) / 255. - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
+im = im.astype(numpy.single)
+</code></pre>
+<p>Finally, ONNX variant of Mobilenet expects its input in NCHW convention, and
+our data is in HWC. We need to move the C axis before H and W, then insert the
+N at the left.</p>
+<pre><code class="language-python">im = numpy.moveaxis(im, 2, 0)
+im = numpy.expand_dims(im, 0)
+</code></pre>
+<h3 id="loading-the-model">Loading the model</h3>
+<p>Loading a model is relatively simple. We need to instantiate the ONNX loader
+first, the we use it to load the model. Then we ask tract to optimize the model
+and get it ready to run.</p>
+<pre><code class="language-python">model = tract.onnx().model_for_path(&quot;./mobilenetv2-7.onnx&quot;).into_optimized().into_runnable()
+</code></pre>
+<p>If we wanted to process several images, this would only have to be done once
+out of our image loop.</p>
+<h3 id="running-the-model">Running the model</h3>
+<p>tract run methods take a list of inputs and returns a list of outputs. Each input
+can be a numpy array. The outputs are tract's own Value data type, which should 
+be converted to numpy array.</p>
+<pre><code class="language-python">outputs = model.run([im])
+output = outputs[0].to_numpy()
+</code></pre>
+<h3 id="interpreting-the-result">Interpreting the result</h3>
+<p>If we print the output, what we get is a array of 1000 values. Each value is
+the score of our image on one of the 1000 categoris of ImageNet. What we want
+is to find the category with the highest score.</p>
+<pre><code class="language-python">print(numpy.argmax(output))
+</code></pre>
+<p>If all goes according to plan, this should output the number 652. There is a copy
+of ImageNet categories at the following URL, with helpful line numbering.</p>
+<pre><code>https://github.com/sonos/tract/blob/main/examples/nnef-mobilenet-v2/imagenet_slim_labels.txt
+</code></pre>
+<p>And... 652 is "microphone". Which is wrong. The trick is, the lines are
+numbered from 1, while our results starts at 0, plus the label list includes a
+"dummy" label first that should be ignored. So the right value is at the line
+654: "military uniform". If you looked at the picture before you noticed that
+Grace Hopper is in uniform on the picture, so it does make sense.</p>
+<h2 id="model-cooking-with-tract">Model cooking with <code>tract</code></h2>
+<p>Over the years of <code>tract</code> development, it became clear that beside "training"
+and "running", there was a third time in the life-cycle of a model. One of
+our contributors nicknamed it "model cooking" and the term stuck. This extra stage
+is about all what happens after the training and before running.</p>
+<p>If training and Runtime are relatively easy to define, the model cooking gets a
+bit less obvious. It comes from the realisation that the training form (an ONNX
+or TensorFlow file or ste of files) of a model may is usually not the most
+convenient form for running it. Every time a device loads a model in ONNX form
+and transform it into a suitable form for runtime, it goes through the same
+series or more or less complicated operations, that can amount to several
+seconds of high-CPU usage for current models. When running the model on a
+device, this can have several negative impact on experience: the device will
+take time to start-up, consume a lot of battery energy to get ready, maybe fight
+over CPU availability with other processes trying to get ready at the same
+instant on the device.</p>
+<p>As this sequence of operations is generally the same, it becomes relevant to
+persist the model resulting of the transformation. It could be persisted at the
+first application start-up for instance. But it could also be "prepared", or
+"cooked" before distribution to the devices.</p>
+<h2 id="cooking-to-nnef">Cooking to NNEF</h2>
+<p><code>tract</code> supports NNEF. It can read a NNEF neural network and run it. But it can
+also dump its preferred representation of a model in NNEF.</p>
+<p>At this stage, a possible path to production for a neural model becomes can be drawn:
+* model is trained, typically on big servers on the cloud, and exported to ONNX.
+* model is cooked, simplified, using <code>tract</code> command line or python bindings.
+* model is shipped to devices or servers in charge of running it.</p>
+<h2 id="testing-and-benching-models-early">Testing and benching models early</h2>
+<p>As soon as the model is in ONNX form, <code>tract</code> can load and run it. It gives
+opportunities to validate and test on the training system, asserting early on that
+<code>tract</code> will compute at runtime the same result than what the training model
+predicts, limiting the risk of late-minute surprise.</p>
+<p>But tract command line can also be used to bench and profile an ONNX model on
+the target system answering very early the "will the device be fast enough"
+question. The nature of neural network is such that in many cases an
+untrained model, or a poorly trained one will perform the same computations than
+the final model, so it may be possible to bench the model for on-device
+efficiency before going through a costly and long model training.</p>
+<h2 id="tract-opl">tract-opl</h2>
+<p>NNEF is a pretty little standard. But we needed to go beyond it and we extended
+it in several ways. For instance, NNEF does not provide syntax for recurring
+neural network (LSTM and friends), which are an absolute must in signal and voice
+processing. <code>tract</code> also supports symbolic dimensions, which are useful to
+represent a late bound batch dimension (if you don't know in advance how many
+inputs will have to be computed concurrently).</p>
+<h2 id="pulsing">Pulsing</h2>
+<p>For interactive applications where time plays a role (voice, signal, ...),
+<code>tract</code> can automatically transform batch models, to equivalent streaming models
+suitable for runtime. While batch models are presented at training time the
+whole signal in one go, a streaming model received the signal by "pulse" and
+produces step by step the same output that the batching model.</p>
+<p>It does not work for every model, <code>tract</code> can obviously not generate a model
+where the output at a time depends on input not received yet. Of course, models
+have to be <em>causal</em> to be pulsable. For instance, a bi-directional LSTM is not
+pulsable. Most convolution nets can be made causal at designe time by padding,
+or at cooking time by adding fixed delays.</p>
+<p>This cooking step is a recurring annoyance in the real-time voice and signal
+field : it can be done manually, but is very easy to get wrong. <code>tract</code> makes
+it automactic.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": ".", "features": [], "search": "assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="assets/javascripts/bundle.83f73b43.min.js"></script>
+      
+    
+  </body>
+</html>
