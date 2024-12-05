@@ -194,6 +194,26 @@ time-macros = "0.2.10"
 tokenizers = "0.19"
 unicode-normalization = "0.1.19"
 walkdir = "2.3.2"
+tract-api = { version = '0.21.8-pre', path = 'api' }
+tract-core = { version = '0.21.8-pre', path = 'core' }
+tract-data = { version = '0.21.8-pre', path = 'data' }
+tract-extra = { version = '0.21.8-pre', path = 'extra' }
+tract-hir = { version = '0.21.8-pre', path = 'hir' }
+tract-libcli = { version = '0.21.8-pre', path = 'libcli' }
+tract-linalg = { version = '0.21.8-pre', path = 'linalg' }
+tract-metal = { version = '0.21.8-pre', path = 'metal' }
+tract-nnef-resources = { version = '0.21.8-pre', path = 'nnef/nnef-resources' }
+tract-nnef = { version = '0.21.8-pre', path = 'nnef' }
+tract-onnx-opl = { version = '0.21.8-pre', path = 'onnx-opl' }
+tract-onnx = { version = '0.21.8-pre', path = 'onnx' }
+tract-pulse-opl = { version = '0.21.8-pre', path = 'pulse-opl' }
+tract-pulse = { version = '0.21.8-pre', path = 'pulse' }
+tract-tensorflow = { version = '0.21.8-pre', path = 'tensorflow' }
+tract-tflite = { version = '0.21.8-pre', path = 'tflite' }
+tract-rs = { version = '0.21.8-pre', path = 'api/rs' }
+tract-proxy = { version = '0.21.8-pre', path = 'api/proxy' }
+tract-proxy-sys = { version = '0.21.8-pre', path = 'api/proxy/sys' }
+
 
 [profile.opt-no-lto]
 inherits="release"
