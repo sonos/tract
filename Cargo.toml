@@ -113,9 +113,9 @@ default-members = [
 [workspace.dependencies]
 accelerate-src = "0.3"
 ansi_term = "0.12.1"
+anstyle = "1.0.2"
 anstyle-parse = "0.2.1"
 anstyle-query = "1.0.0"
-anstyle = "1.0.2"
 anyhow = "1.0.43"
 anymap = "0.12.1"
 approx = "0.5"
@@ -130,6 +130,7 @@ cblas = "0.4"
 cc = "1.0.69"
 clap = { version = "~3.1", features = [ "cargo" ] }
 colorous = "1.0.5"
+core_affinity = "0.8.0"
 criterion = "0.5.1"
 derive-new = "0.5.9"
 dinghy-test = "0.6"
@@ -144,9 +145,9 @@ fs-err = "2"
 fs2 = "0.4.3"
 getrandom = "0.2"
 half = { version="2.4", features = [ "std", "num-traits" ] }
+home = "0.5.5"
 image = "0.24.1"
 itertools = "0.12.1"
-home = "0.5.5"
 lazy_static = "1.5.0"
 libc = "=0.2.164"
 liquid = "0.26"
@@ -160,9 +161,9 @@ ndarray-npy = { version = "0.9.1", features = [ "compressed_npz" ] }
 nom = "7.0.0"
 nu-ansi-term = "0.46"
 num-complex = "0.4.0"
-num_cpus = "1"
 num-integer = "0.1.44"
 num-traits = "0.2.14"
+num_cpus = "1"
 openblas-src = { version = "0.10", features = ["static"] }
 paste = "1.0.5"
 proptest = "1.0.0"
@@ -178,10 +179,10 @@ reqwest = { version = "0.11.4", features = [ "blocking", "rustls-tls" ], default
 rustfft = { version = "6.1", features = [ "neon" ] }
 rustix = "0.38.4"
 rustls = "0.20.4"
-smallvec = "1.6.1"
 scan_fmt = "0.2.6"
 serde = { version = "1.0.127", features = [ "derive" ] }
 serde_json = "1.0"
+smallvec = "1.6.1"
 string-interner = "0.15"
 structopt = { version = "0.3", default-features = false }
 tar = "0.4.37"
@@ -193,7 +194,6 @@ time-macros = "0.2.10"
 tokenizers = "0.19"
 unicode-normalization = "0.1.19"
 walkdir = "2.3.2"
-core_affinity = "0.8.0"
 
 [profile.opt-no-lto]
 inherits="release"
