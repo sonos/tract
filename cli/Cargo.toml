@@ -1,6 +1,6 @@
 [package]
 name = "tract"
-version = "0.21.8-pre"
+version = "0.21.8"
 authors = [ "Romain Liautaud <romain.liautaud@snips.ai>", "Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT OR Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"

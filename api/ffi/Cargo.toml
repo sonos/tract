@@ -1,6 +1,6 @@
 [package]
 name = "tract-ffi"
-version = "0.21.8-pre"
+version = "0.21.8"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, neural network inference"

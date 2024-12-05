@@ -1,6 +1,6 @@
 [package]
 name = "tract-nnef-resources"
-version = "0.21.8-pre"
+version = "0.21.8"
 authors = [
 	"Mathieu Poumeyrol <kali@zoy.org>",
 	"Hubert de La Jonquière <hubert.delajonquiere@sonos.com>"

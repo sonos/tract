@@ -196,7 +196,7 @@ unicode-normalization = "0.1.19"
 walkdir = "2.3.2"
 tract-api = { version = '0.21.8-pre', path = 'api' }
 tract-core = { version = '0.21.8-pre', path = 'core' }
-tract-data = { version = '0.21.8-pre', path = 'data' }
+tract-data = { version = '0.21.8', path = 'data' }
 tract-extra = { version = '0.21.8-pre', path = 'extra' }
 tract-hir = { version = '0.21.8-pre', path = 'hir' }
 tract-libcli = { version = '0.21.8-pre', path = 'libcli' }

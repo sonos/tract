@@ -5,7 +5,7 @@ set -e
 git pull # make sure we are in sync
 git push
 
-cargo install tomato-toml
+which tomato || cargo install tomato-toml
 
 CRATE_PATH=$1
 VERSION=$2
@@ -33,14 +33,14 @@ crate=$(tomato get package.name $CRATE_PATH/Cargo.toml)
 tomato set package.version $VERSION $CRATE_PATH/Cargo.toml
 if [ "$crate" = "tract-metal" ]
 then
-    cargo publish --allow-dirty --no-verify -p $crate 
+    cargo publish -q --allow-dirty --no-verify -p $crate 
 else
-    cargo publish --allow-dirty -p $crate
+    cargo publish -q --allow-dirty -p $crate
 fi
 
-./.change_crate_dep.sh $crate $VERSION
-
-cargo update
+#./.change_crate_dep.sh $crate $VERSION
+#
+#cargo update
 
 if [ "$CRATE_PATH" = "cli" ]
 then
