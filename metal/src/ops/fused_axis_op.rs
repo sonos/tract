@@ -1,11 +1,13 @@
 use crate::ops::{MetalAxisOp, MetalEvalOp, MetalOpState};
 use crate::tensor::MetalTensorExt;
-use crate::{ MetalTensor, MetalContext };
+use crate::{MetalContext, MetalTensor};
 use derive_new::new;
 use tract_core::internal::*;
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct MetalFusedAxisOp<O: MetalEvalOp + TypedOp> {
+    /// List of axis ops to apply for each op inputs
+    /// Length of the list is equal to number of inputs
     pub grouped_axis_ops: TVec<TVec<MetalAxisOp>>,
     pub op: O,
 }
@@ -18,12 +20,19 @@ impl<O: MetalEvalOp + TypedOp> Op for MetalFusedAxisOp<O> {
     fn info(&self) -> TractResult<Vec<String>> {
         let mut info = self.op.info()?;
         for (idx, axis_ops) in self.grouped_axis_ops.iter().enumerate() {
-
             if !axis_ops.is_empty() {
-                info.push(format!("input #{idx}: {}",  axis_ops.iter()
-                        .map(|axis_op| Ok(format!("{} - {}", axis_op.name(), axis_op.info()?.join(" | "))))
+                info.push(format!(
+                    "input #{idx}: {}",
+                    axis_ops
+                        .iter()
+                        .map(|axis_op| Ok(format!(
+                            "{} - {}",
+                            axis_op.name(),
+                            axis_op.info()?.join(" | ")
+                        )))
                         .collect::<TractResult<TVec<_>>>()?
-                        .join(" | ")));
+                        .join(" | ")
+                ));
             }
         }
         Ok(info)
@@ -40,35 +49,50 @@ impl<O: MetalEvalOp + TypedOp> MetalEvalOp for MetalFusedAxisOp<O> {
         session: &mut SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        // Apply Axis Op
+        // Apply Axis Ops per input
         let inputs = inputs
             .into_iter()
             .zip(self.grouped_axis_ops.iter())
             .map(|(input, axis_ops)| {
-                if axis_ops.is_empty() { return Ok(input) };
+                if axis_ops.is_empty() {
+                    return Ok(input);
+                };
                 let m_input = input.to_metal_tensor()?;
-                let reshaped_input = axis_ops.iter().try_fold(m_input.clone(), |t, axis_op| -> TractResult<MetalTensor> {
-                    let new_shape = match &axis_op.0 {
-                        AxisOp::Move(..) => bail!("Cannot fused {:?} with metal op {:?}", &axis_op.0, self.op.name()),
-                        AxisOp::Reshape(skip, from, to) => {
-                            let from = from.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
-                            let to = to.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
-                            let mut shape: TVec<usize> = t.shape().into();
-                            AxisOp::Reshape(*skip, from, to).change_shape_array(&mut shape, false)?;
-                            shape
-                        }
-                        AxisOp::Add(_) | AxisOp::Rm(_) => {
-                            let mut shape: TVec<usize> = t.shape().into();
-                            axis_op.0.change_shape_array(&mut shape, false)?;
-                            shape
-                        }
-                    };
-                    t.reshaped(new_shape)
-                })?;
+                let reshaped_input = axis_ops.iter().try_fold(
+                    m_input.clone(),
+                    |t, axis_op| -> TractResult<MetalTensor> {
+                        let new_shape = match &axis_op.0 {
+                            AxisOp::Move(..) => bail!(
+                                "Cannot fused {:?} with metal op {:?}",
+                                &axis_op.0,
+                                self.op.name()
+                            ),
+                            AxisOp::Reshape(skip, from, to) => {
+                                let from = from
+                                    .iter()
+                                    .map(|d| d.eval(&session.resolved_symbols))
+                                    .collect();
+                                let to =
+                                    to.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
+                                let mut shape: TVec<usize> = t.shape().into();
+                                AxisOp::Reshape(*skip, from, to)
+                                    .change_shape_array(&mut shape, false)?;
+                                shape
+                            }
+                            AxisOp::Add(_) | AxisOp::Rm(_) => {
+                                let mut shape: TVec<usize> = t.shape().into();
+                                axis_op.0.change_shape_array(&mut shape, false)?;
+                                shape
+                            }
+                        };
+                        t.reshaped(new_shape)
+                    },
+                )?;
 
                 Ok(reshaped_input.into_opaque_tensor().into())
             })
             .collect::<TractResult<TVec<_>>>()?;
+        // Runner inner op
         self.op.metal_eval(context, node_id, session, inputs)
     }
 }

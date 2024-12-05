@@ -104,9 +104,7 @@ impl<K: GemmKernel + 'static> TypedOp for MetalGemm<K> {
         crate::utils::metal_facts_from_gpu(inputs, |input_facts| {
             self.resolve_output_facts(input_facts)
         })
-        .with_context(|| {
-            anyhow::anyhow!("Error while computing output facts for {}", self.name())
-        })
+        .with_context(|| anyhow::anyhow!("Error while computing output facts for {}", self.name()))
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
