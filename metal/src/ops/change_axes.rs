@@ -17,7 +17,7 @@ impl MetalAxisOp {
 
     pub fn from_tract_core_with_fact(op: AxisOp, fact: &TypedFact) -> Self {
         match op {
-            AxisOp::Move(from, to) if (from as isize - to as isize).abs() == 1 => {
+            AxisOp::Move(from, to) if from.abs_diff(to) == 1 => {
                 let dims = fact.shape.dims();
                 if [&dims[from], &dims[to]].contains(&&1usize.into()) {
                     if from < to {
@@ -28,7 +28,7 @@ impl MetalAxisOp {
                         ))
                     } else {
                         Self(AxisOp::Reshape(
-                            from,
+                            to,
                             tvec![dims[to].clone(), dims[from].clone()],
                             tvec![dims[from].clone(), dims[to].clone()],
                         ))
