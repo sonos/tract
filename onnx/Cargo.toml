@@ -25,9 +25,9 @@ memmap2.workspace = true
 num-integer.workspace = true
 prost.workspace = true
 smallvec.workspace = true
-tract-nnef = { version = "=0.21.8-pre", path = "../nnef" }
-tract-hir = { version = "=0.21.8-pre", path = "../hir" }
-tract-onnx-opl = { version = "=0.21.8-pre", path = "../onnx-opl" }
+tract-nnef.workspace = true
+tract-hir.workspace = true
+tract-onnx-opl.workspace = true
 
 [dev-dependencies]
 env_logger.workspace = true

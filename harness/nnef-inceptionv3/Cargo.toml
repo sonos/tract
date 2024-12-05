@@ -8,8 +8,8 @@ edition = "2021"
 [dependencies]
 flate2.workspace = true
 image.workspace = true
-tract-core = { version = "=0.21.8-pre", path = "../../core" }
-tract-nnef = { version = "=0.21.8-pre", path = "../../nnef" }
+tract-core.workspace = true
+tract-nnef.workspace = true
 
 [dev-dependencies]
 dinghy-test.workspace = true

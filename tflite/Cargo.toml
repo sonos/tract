@@ -10,7 +10,7 @@ edition = "2021"
 [dependencies]
 derive-new.workspace = true
 flatbuffers.workspace = true
-tract-core = { version = "=0.21.8-pre", path = "../core" }
+tract-core.workspace = true
 
 [features]
 complex = []

@@ -17,5 +17,5 @@ maintenance = { status = "actively-developed" }
 downcast-rs.workspace = true
 lazy_static.workspace = true
 log.workspace = true
-tract-pulse-opl = { version = "=0.21.8-pre", path = "../pulse-opl" }
+tract-pulse-opl.workspace = true
 

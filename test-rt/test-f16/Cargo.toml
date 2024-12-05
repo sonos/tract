@@ -12,19 +12,19 @@ home.workspace = true
 lazy_static.workspace = true
 regex.workspace = true
 infra = { path = "../infra" }
-tract-core = { path = "../../core" , version = "=0.21.8-pre" }
+tract-core.workspace = true
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
-tract-onnx-opl = { path = "../../onnx-opl", version = "=0.21.8-pre" }
+tract-onnx-opl.workspace = true
 
 [dev-dependencies]
 home.workspace = true
 regex.workspace = true
 lazy_static.workspace = true
 log.workspace = true
-tract-core = { path = "../../core", version = "=0.21.8-pre" }
-tract-nnef = { path = "../../nnef", version = "=0.21.8-pre" }
-tract-onnx-opl = { path = "../../onnx-opl", version = "=0.21.8-pre" }
+tract-core.workspace = true
+tract-nnef.workspace = true
+tract-onnx-opl.workspace = true
 infra = { path = "../infra" }
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }

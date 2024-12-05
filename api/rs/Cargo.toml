@@ -18,13 +18,13 @@ boow.workspace = true
 flate2.workspace = true
 half.workspace = true
 ndarray.workspace = true
-tract-api = { path = ".." , version = "=0.21.8-pre" }
-tract-nnef = { path = "../../nnef/" , version = "=0.21.8-pre" }
-tract-onnx-opl = { path = "../../onnx-opl/" , version = "=0.21.8-pre" }
-tract-onnx = { path = "../../onnx/" , version = "=0.21.8-pre" }
-tract-extra = { path = "../../extra/" , version = "=0.21.8-pre" }
-tract-pulse = { path = "../../pulse/" , version = "=0.21.8-pre" }
-tract-libcli = { path = "../../libcli" , version = "=0.21.8-pre" }
+tract-api.workspace = true
+tract-nnef.workspace = true
+tract-onnx-opl.workspace = true
+tract-onnx.workspace = true
+tract-extra.workspace = true
+tract-pulse.workspace = true
+tract-libcli.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]

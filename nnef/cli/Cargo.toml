@@ -19,6 +19,6 @@ anyhow.workspace = true
 env_logger.workspace = true
 log.workspace = true
 structopt.workspace = true
-tract-nnef = { version = "=0.21.8-pre", path = "../../nnef" }
-tract-pulse = { version = "=0.21.8-pre", path = "../../pulse" }
-tract-onnx-opl = { version = "=0.21.8-pre", path = "../../onnx-opl" }
+tract-nnef.workspace = true
+tract-pulse.workspace = true
+tract-onnx-opl.workspace = true

@@ -25,7 +25,7 @@ num-traits.workspace = true
 paste.workspace = true
 rayon.workspace = true
 scan_fmt.workspace = true
-tract-data = { version = "=0.21.8-pre", path = "../data" }
+tract-data.workspace = true
 
 [build-dependencies]
 cc.workspace = true

@@ -7,6 +7,6 @@ edition = "2021"
 anyhow.workspace = true
 clap = { version = "4.5.9", features = ["derive"] }
 image.workspace = true 
-tract-onnx = {path="../../onnx", version="=0.21.8-pre" }
-tract-core = {path="../../core", version="=0.21.8-pre"}
+tract-onnx.workspace = true
+tract-core.workspace = true
 

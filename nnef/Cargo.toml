@@ -21,7 +21,7 @@ nom.workspace = true
 tar.workspace = true
 flate2 = { workspace = true, optional = true }
 walkdir.workspace = true
-tract-core = { version = "=0.21.8-pre", path = "../core" }
+tract-core.workspace = true
 
 [dev-dependencies]
 temp-dir = "0.1.11"
