@@ -23,10 +23,10 @@ py_literal.workspace = true
 rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tract-core = { version = "=0.21.8-pre", path = "../core" }
-tract-hir = { version = "=0.21.8-pre", path = "../hir" }
-tract-onnx = { version = "=0.21.8-pre", path = "../onnx", optional = true }
-tract-tflite = { version = "=0.21.8-pre", path = "../tflite", optional = true }
+tract-core.workspace = true
+tract-hir.workspace = true
+tract-onnx = { workspace = true, optional = true }
+tract-tflite.workspace = true
 
 [features]
 # hir = ["tract-hir"]

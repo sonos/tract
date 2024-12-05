@@ -15,8 +15,8 @@ rust-version = "1.75"
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-tract-nnef = { version = "=0.21.8-pre", path = "../nnef" }
-tract-pulse = { version = "=0.21.8-pre", path = "../pulse" }
+tract-nnef.workspace = true
+tract-pulse.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

@@ -19,7 +19,7 @@ log.workspace = true
 rand.workspace = true
 rand_distr.workspace = true
 rustfft.workspace = true
-tract-nnef = { version = "=0.21.8-pre", path = "../nnef" }
+tract-nnef.workspace = true
 
 [dev-dependencies]
 env_logger.workspace = true

@@ -23,5 +23,5 @@ anyhow.workspace = true
 flate2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tract-api = { path = ".." , version = "=0.21.8-pre" }
-tract-rs = { path = "../rs" , version = "=0.21.8-pre" }
+tract-api.workspace = true
+tract-rs.workspace = true

@@ -16,7 +16,7 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 downcast-rs.workspace = true
 lazy_static.workspace = true
-tract-nnef = { version = "=0.21.8-pre", path = "../nnef" }
+tract-nnef.workspace = true
 
 [features]
 complex = [ "tract-nnef/complex" ]

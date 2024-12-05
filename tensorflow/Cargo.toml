@@ -23,8 +23,8 @@ memmap2.workspace = true
 prost.workspace = true
 prost-types.workspace = true
 tensorflow = { workspace = true, optional = true }
-tract-hir = { version = "=0.21.8-pre", path = "../hir" }
-tract-pulse = { version = "=0.21.8-pre", path = "../pulse" }
+tract-hir.workspace = true
+tract-pulse.workspace = true
 
 # [build-dependencies]
 # protobuf-src = "1.0.5+3.19.3"

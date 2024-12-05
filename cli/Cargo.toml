@@ -35,20 +35,20 @@ rustls.workspace = true
 scan_fmt.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tract-linalg = { version = "=0.21.8-pre", path = "../linalg" }
-tract-core = { version = "=0.21.8-pre", path = "../core" }
-tract-hir = { version = "=0.21.8-pre", path = "../hir" }
-tract-nnef = { version = "=0.21.8-pre", path = "../nnef" }
-tract-libcli = { version = "=0.21.8-pre", path = "../libcli" }
-tract-extra = { optional = true, version = "=0.21.8-pre", path = "../extra" }
-tract-pulse-opl = { optional = true, version = "=0.21.8-pre", path = "../pulse-opl" }
-tract-pulse = { optional = true, version = "=0.21.8-pre", path = "../pulse" }
-tract-onnx = { optional = true, version = "=0.21.8-pre", path = "../onnx" }
-tract-tensorflow = { optional = true, version = "=0.21.8-pre", path = "../tensorflow" }
-tract-tflite = { optional = true, version = "=0.21.8-pre", path = "../tflite" }
+tract-linalg.workspace = true
+tract-core.workspace = true
+tract-hir.workspace = true
+tract-nnef.workspace = true
+tract-libcli.workspace = true
+tract-extra = { workspace = true, optional = true }
+tract-pulse = { workspace = true, optional = true }
+tract-pulse-opl = { workspace = true, optional = true }
+tract-onnx = { workspace = true, optional = true }
+tract-tensorflow = { workspace = true, optional = true }
+tract-tflite = { workspace = true, optional = true }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-tract-metal = { version = "=0.21.8-pre", path = "../metal" }
+tract-metal.workspace = true
 
 
 [features]
