@@ -1,6 +1,6 @@
 [package]
 name = "tract-onnx"
-version = "0.21.8"
+version = "0.21.9-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT OR Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
