@@ -653,7 +653,26 @@ impl TypedOp for AxisOp {
                 return Ok(Some(p));
             }
         }
-        let simplified = self.simplify();
+        let simplified = self.simplify().into_iter()
+            .map(|simplified_axis_op| {
+                let in_fact = model.node_input_facts(node.id)?[0];
+                match simplified_axis_op {
+                    AxisOp::Move(from, to) if from.abs_diff(to) == 1 => {
+                        let dims = fact.shape.dims();
+                        if [&dims[from], &dims[to]].contains(&&1usize.into()) {
+                            AxisOp::Reshape(
+                                from,
+                                tvec![dims[from].clone(), dims[to].clone()],
+                                tvec![dims[to].clone(), dims[from].clone()],
+                            ))
+                        } else {
+                            Self(op)
+                        }
+                    },
+                    _ => Ok(simplified_axis_op)
+            })
+            .collect::<TractResult<TVec<_>>>()?;
+
         if simplified.len() != 1 || &simplified[0] != self {
             let mut patch = TypedModelPatch::default();
             let mut wire = patch.tap_model(model, node.inputs[0])?;
