@@ -278,6 +278,7 @@ impl ModelInterface for Model {
                 &inputs,
                 None,
                 true,
+                false
             )?;
         };
         let export = tract_libcli::export::GraphPerfInfo::from(&self.0, &annotations);

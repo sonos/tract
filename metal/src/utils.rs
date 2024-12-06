@@ -94,3 +94,16 @@ where
         .map(|(s, dim)| if *dim == 1 { T::zero() } else { s.as_() })
         .collect::<TVec<T>>())
 }
+
+pub fn rescale_gpu_duration(
+    pass_duration: u64,
+    cpu_start: u64,
+    cpu_end: u64,
+    gpu_start: u64,
+    gpu_end: u64,
+) -> u64 {
+    let cpu_time_span = cpu_end - cpu_start;
+    let gpu_time_span = gpu_end - gpu_start;
+
+    pass_duration * cpu_time_span / gpu_time_span
+}

@@ -129,6 +129,7 @@ pub fn handle(
             &inputs[0],
             None,
             options.folded,
+            matches.is_present("metal")
         )?;
     }
 
