@@ -7,6 +7,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
+use tract_core::internal::anyhow;
 
 const NUM_SAMPLES: u64 = 2;
 
@@ -57,7 +58,11 @@ impl MetalProfiler {
     }
 
     pub fn add_buffer(&mut self, buffer: Buffer) {
-        let current_node_id = &self.current_node_id.unwrap();
+        let current_node_id = &self.current_node_id.ok_or_else(|| {
+            anyhow!(
+                "Metal profile doesn't have any current node id to attach a sampling buffer for"
+            )
+        })?;
         let node_values = self
             .profile_buffers
             .get_mut(current_node_id)
