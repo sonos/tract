@@ -1,7 +1,6 @@
 use metal::{
-    Buffer, CommandBuffer, ComputeCommandEncoderRef, ComputePassDescriptor,
-    ComputePassDescriptorRef, CounterSampleBuffer, CounterSampleBufferDescriptor,
-    CounterSampleBufferRef, Device, MTLResourceOptions, NSRange,
+    Buffer, CommandBuffer, ComputeCommandEncoderRef, ComputePassDescriptor, CounterSampleBuffer,
+    CounterSampleBufferDescriptor, Device, MTLResourceOptions, NSRange,
 };
 use std::borrow::Borrow;
 use std::cell::RefCell;
@@ -10,18 +9,6 @@ use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
 const NUM_SAMPLES: u64 = 2;
-
-fn handle_compute_pass_sample_buffer_attachment(
-    compute_pass_descriptor: &ComputePassDescriptorRef,
-    counter_sample_buffer: &CounterSampleBufferRef,
-) {
-    let sample_buffer_attachment_descriptor =
-        compute_pass_descriptor.sample_buffer_attachments().object_at(0).unwrap();
-
-    sample_buffer_attachment_descriptor.set_sample_buffer(counter_sample_buffer);
-    sample_buffer_attachment_descriptor.set_start_of_encoder_sample_index(0);
-    sample_buffer_attachment_descriptor.set_end_of_encoder_sample_index(1);
-}
 
 #[derive(Debug, Clone)]
 pub struct MetalProfiler {
@@ -48,10 +35,12 @@ impl MetalProfiler {
         let counter_sample_buffer =
             device.new_counter_sample_buffer_with_descriptor(&counter_sample_buffer_desc).unwrap();
 
-        handle_compute_pass_sample_buffer_attachment(
-            compute_pass_descriptor,
-            &counter_sample_buffer,
-        );
+        let sample_buffer_attachment_descriptor =
+            compute_pass_descriptor.sample_buffer_attachments().object_at(0).unwrap();
+
+        sample_buffer_attachment_descriptor.set_sample_buffer(&counter_sample_buffer);
+        sample_buffer_attachment_descriptor.set_start_of_encoder_sample_index(0);
+        sample_buffer_attachment_descriptor.set_end_of_encoder_sample_index(1);
 
         Self {
             device: device.to_owned(),
