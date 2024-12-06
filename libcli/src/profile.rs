@@ -334,7 +334,11 @@ pub fn extract_costs(
         if let Some(model) = model.downcast_ref::<TypedModel>() {
             for node_id in 0..model.nodes().len() {
                 let inputs = model.node_input_facts(node_id)?;
-                let cost = model.node(node_id).op.cost(&inputs)?;
+                let cost = model
+                    .node(node_id)
+                    .op
+                    .cost(&inputs)
+                    .with_context(|| format!("costing node {}", model.node(node_id)))?;
                 annotations.node_mut(NodeQId(prefix.into(), node_id)).cost = cost
                     .into_iter()
                     .map(|(k, v)| {
