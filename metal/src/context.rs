@@ -321,8 +321,9 @@ impl MetalContext {
 
     pub fn profile<EvalCallback>(
         &self,
+        num_nodes: usize,
         eval: EvalCallback,
-    ) -> TractResult<(TVec<TValue>, HashMap<usize, u64>)>
+    ) -> TractResult<(TVec<TValue>, Vec<u64>)>
     where
         EvalCallback: FnOnce() -> TractResult<TVec<TValue>>,
     {
@@ -331,11 +332,12 @@ impl MetalContext {
         let device: &Device = &self.shared.device;
         assert!(device.supports_counter_sampling(metal::MTLCounterSamplingPoint::AtStageBoundary));
 
-        let profiler = Rc::new(RefCell::new(MetalProfiler::new(device.to_owned())));
+        let profiler = Rc::new(RefCell::new(MetalProfiler::new(device.to_owned(), num_nodes)));
 
         self.profiler.replace(Some(profiler.clone()));
 
         let output = eval()?;
+
         let profile_buffers = profiler.borrow_mut().get_profile_data();
 
         self.profiler.replace(None);
