@@ -1,8 +1,8 @@
 use crate::fact::MetalTypedFactExt;
 pub use crate::kernels::BinOps;
 use crate::tensor::MetalTensorExt;
-use crate::IntoMetal;
-use crate::MetalFact;
+use crate::ops::MetalEvalOp;
+use crate::{ MetalFact, IntoMetal, MetalContext };
 use derive_new::new;
 use std::fmt;
 use tract_core::internal::*;
@@ -37,12 +37,16 @@ impl Op for MetalSync {
     op_as_typed_op!();
 }
 
-impl EvalOp for MetalSync {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+crate::impl_eval_op_for_metal_op!(MetalSync);
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+impl MetalEvalOp for MetalSync {
+    fn metal_eval(
+        &self,
+        _context: &MetalContext,
+        _node_id: usize,
+        _session: &mut SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         match self.kind {
             MetalSyncKind::ToCpu => {
