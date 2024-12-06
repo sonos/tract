@@ -235,7 +235,8 @@ impl TypedFact {
     }
 
     pub fn mem_size(&self) -> TDim {
-        self.shape.volume() * self.datum_type.size_of() + self.opaque_fact.as_ref().map(|it| it.mem_size()).unwrap_or(0.into())
+        self.shape.volume() * self.datum_type.size_of()
+            + self.opaque_fact.as_ref().map(|it| it.mem_size()).unwrap_or(0.into())
     }
 
     pub fn dt_scalar(datum_type: DatumType) -> TypedFact {
@@ -405,14 +406,14 @@ impl fmt::Debug for TypedFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match (self.konst.as_ref(), self.opaque_fact.as_ref()) {
             (Some(ref k), None) => write!(fmt, "{k:?}"),
-            (Some(ref k), Some(meta)) => write!(fmt, "{meta:?} {k:?}"),
+            (Some(ref k), Some(opaque)) => write!(fmt, "{k:?} {{{opaque:?}}}"),
             (None, None) if self.rank() > 0 => {
                 write!(fmt, "{:?},{:?}", self.shape, self.datum_type)
             }
-            (None, Some(ref meta)) if self.rank() > 0 => {
-                write!(fmt, "{:?},{:?},{:?}", self.shape, self.datum_type, meta)
+            (None, Some(ref opaque)) if self.rank() > 0 => {
+                write!(fmt, "{:?},{:?} {{{:?}}}", self.shape, self.datum_type, opaque)
             }
-            (None, Some(ref meta)) => write!(fmt, "{:?}, {:?}", self.datum_type, meta),
+            (None, Some(ref opaque)) => write!(fmt, "{:?} {{{:?}}}", self.datum_type, opaque),
             (None, None) => write!(fmt, "{:?}", self.datum_type),
         }?;
         Ok(())
