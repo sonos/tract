@@ -365,7 +365,6 @@ fn convert_const(op: &Const) -> TractResult<Option<Const>> {
     Ok(Some(Const::new_with_opaque_fact(metal_const, Box::new(metal_fact))))
 }
 
-
 fn convert_element_wise_ops_to_metal(op: &ElementWiseOp) -> Option<ops::MetalElementWiseOp> {
     map_element_wise_ops!([
         (tract_core::ops::math::Abs, Abs),
