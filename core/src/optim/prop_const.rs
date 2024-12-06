@@ -55,12 +55,18 @@ impl super::TypedPass for PropConst {
                         }
                         let mut patch = TypedModelPatch::default();
                         for (ix, output) in res.into_iter().enumerate() {
+                            let opaque_fact = model.outlet_fact(OutletId::new(node.id, ix))?.opaque_fact.clone();
+
                             let name = if ix > 0 {
                                 format!("{}.{ix}", node.name)
                             } else {
                                 node.name.clone()
                             };
-                            let wire = patch.add_const(name, output.into_arc_tensor())?;
+                            let wire = patch.wire_node(
+                                    name,
+                                    Const(output.into_arc_tensor(), opaque_fact),
+                                    &[],
+                                )?[0];
                             patch.shunt_outside(model, (node.id, ix).into(), wire)?;
                         }
                         self.0 = node.id;
