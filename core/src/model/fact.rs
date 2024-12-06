@@ -406,14 +406,14 @@ impl fmt::Debug for TypedFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match (self.konst.as_ref(), self.opaque_fact.as_ref()) {
             (Some(ref k), None) => write!(fmt, "{k:?}"),
-            (Some(ref k), Some(opaque)) => write!(fmt, "{k:?} {{{opaque:?}}}"),
+            (Some(ref k), Some(opaque)) => write!(fmt, "{k:?} <<{opaque:?}>>"),
             (None, None) if self.rank() > 0 => {
                 write!(fmt, "{:?},{:?}", self.shape, self.datum_type)
             }
             (None, Some(ref opaque)) if self.rank() > 0 => {
-                write!(fmt, "{:?},{:?} {{{:?}}}", self.shape, self.datum_type, opaque)
+                write!(fmt, "{:?},{:?} <<{:?}>>", self.shape, self.datum_type, opaque)
             }
-            (None, Some(ref opaque)) => write!(fmt, "{:?} {{{:?}}}", self.datum_type, opaque),
+            (None, Some(ref opaque)) => write!(fmt, "{:?} <<{:?}>>", self.datum_type, opaque),
             (None, None) => write!(fmt, "{:?}", self.datum_type),
         }?;
         Ok(())
