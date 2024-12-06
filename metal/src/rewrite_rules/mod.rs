@@ -1,4 +1,5 @@
 mod apply_rope;
+mod fuse_axis_op;
 mod new_gelu;
 mod rewire_metal_sync;
 mod rms_norm;
@@ -9,6 +10,7 @@ use tract_core::internal::*;
 use tract_core::ops::konst::Const;
 
 pub use apply_rope::{as_apply_rope_rule, BasicApplyRope};
+pub use fuse_axis_op::fuse_axis_op;
 pub use new_gelu::{as_new_gelu_rule, BasicNewGelu};
 pub use rewire_metal_sync::rewire_metal_sync;
 pub use rms_norm::{as_rms_norm_rule, remove_rms_norm_cast, BasicRmsNorm};

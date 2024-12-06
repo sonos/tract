@@ -548,16 +548,15 @@ mod tests {
                 .prop_flat_map(|(b, m, k, n)| {
                     let lhs_len = b * m * k;
                     let rhs_len = b * k * n;
-                    let lhs = (0usize..10).prop_map(|x| x.as_());
-                    let rhs = (0usize..10).prop_map(|x| x.as_());
+                    let datum = (0usize..10).prop_map(|x| x.as_());
                     (
                         Just(b),
                         Just(m),
                         Just(k),
                         Just(n),
-                        vec(lhs, lhs_len..=lhs_len),
+                        vec(datum.clone(), lhs_len..=lhs_len),
                         proptest::bool::ANY,
-                        vec(rhs, rhs_len..=rhs_len),
+                        vec(datum, rhs_len..=rhs_len),
                         proptest::bool::ANY,
                     )
                 })

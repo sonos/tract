@@ -89,6 +89,10 @@ impl ShapeFact {
         dims
     }
 
+    pub fn dims(&self) -> &[TDim] {
+        self.dims.as_slice()
+    }
+
     pub fn set(&mut self, ix: usize, dim: TDim) {
         self.dims[ix] = dim;
         self.compute_concrete();

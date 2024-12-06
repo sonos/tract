@@ -45,6 +45,7 @@ impl MetalMemoryPool {
                 Ok(MetalArenaView {
                     arena: Arc::clone(&self.storage),
                     dt,
+                    len: shape.iter().product(),
                     shape: shape.into(),
                     strides: Tensor::natural_strides(shape),
                     offset_bytes: offset,

@@ -54,6 +54,7 @@ impl Hash for MetalArenaStorage {
 pub struct MetalArenaView {
     pub(crate) arena: Arc<MetalArenaStorage>,
     pub(crate) dt: DatumType,
+    pub(crate) len: usize,
     pub(crate) shape: TVec<usize>,
     pub(crate) strides: TVec<isize>,
     pub(crate) offset_bytes: usize,
@@ -93,7 +94,7 @@ impl MetalArenaView {
     #[inline]
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
-        self.shape().iter().product()
+        self.len
     }
 
     pub fn as_bytes(&self) -> &[u8] {
@@ -110,6 +111,26 @@ impl MetalArenaView {
                 self.shape.as_slice(),
                 self.strides.as_slice(),
             )
+        }
+    }
+
+    /// Reshaped tensor with given shape.
+    pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> TractResult<Self> {
+        let shape = shape.into();
+        if self.len() != shape.iter().product::<usize>() {
+            bail!("Invalid reshape {:?} to {:?}", self.shape(), shape);
+        }
+        if shape.as_slice() != self.shape() {
+            Ok(Self {
+                arena: Arc::clone(&self.arena),
+                dt: self.dt,
+                len: self.len,
+                strides: Tensor::natural_strides(&shape),
+                shape,
+                offset_bytes: self.offset_bytes,
+            })
+        } else {
+            Ok(self.clone())
         }
     }
 }
