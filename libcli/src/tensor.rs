@@ -6,6 +6,7 @@ use std::sync::Mutex;
 
 use crate::model::Model;
 use tract_hir::internal::*;
+use tract_num_traits::Zero;
 
 #[derive(Debug, Default, Clone)]
 pub struct TensorsValues(pub Vec<TensorValues>);
@@ -293,7 +294,11 @@ pub fn retrieve_or_make_inputs(
     for (ix, input) in tract.input_outlets().iter().enumerate() {
         let name = tract.node_name(input.node);
         let fact = tract.outlet_typedfact(*input)?;
-        if let Some(mut value) = params.tensors_values.by_name(name).and_then(|t| t.values.clone())
+        if let Some(mut value) = params
+            .tensors_values
+            .by_name(name)
+            .or_else(|| params.tensors_values.by_input_ix(ix))
+            .and_then(|t| t.values.clone())
         {
             if !value[0].datum_type().is_quantized()
                 && fact.datum_type.is_quantized()
@@ -363,8 +368,12 @@ pub fn retrieve_or_make_inputs(
             } else {
                 bail!("For input {}, can not reconcile model input fact {:?} with provided input {:?}", name, fact, value[0]);
             };
+        } else if fact.shape.is_concrete() && fact.shape.volume() == TDim::zero() {
+            let shape = fact.shape.as_concrete().unwrap();
+            let tensor = Tensor::zero_dt(fact.datum_type, shape)?;
+            tmp.push(vec![tensor.into()]);
         } else if params.allow_random_input {
-            let mut fact:TypedFact = tract.outlet_typedfact(*input)?.clone();
+            let mut fact: TypedFact = tract.outlet_typedfact(*input)?.clone();
             info_once(format!("Using random input for input called {name:?}: {fact:?}"));
             let tv = params
                 .tensors_values
