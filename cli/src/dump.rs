@@ -133,7 +133,7 @@ pub fn handle(
                     &inputs[0],
                 )?;
             }
-            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            #[cfg(not(any(target_os = "macos", target_os = "ios")))]
             {
                 bail!("Metal profiling called on non-Metal device");
             }
@@ -168,9 +168,11 @@ pub fn handle(
 
     if sub_matches.is_present("tmp_mem_usage") {
         let plan_options = plan_options_from_subcommand(sub_matches)?;
-        annotations.track_tmp_memory_usage(model, 
+        annotations.track_tmp_memory_usage(
+            model,
             |n| !(n.op_is::<tract_core::ops::konst::Const>()),
-            plan_options.skip_order_opt_ram)?;
+            plan_options.skip_order_opt_ram,
+        )?;
     }
 
     if let Some(asserts) = &params.assertions.assert_output_facts {
