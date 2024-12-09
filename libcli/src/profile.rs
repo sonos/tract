@@ -96,14 +96,14 @@ pub fn profile(
                 &state.session_state.resolved_symbols,
             )?;
             session_handler.before_plan_eval(&mut state.session_state)?;
-            
+
             let mut entire = Duration::default();
             while iters < bench_limits.max_loops && entire < bench_limits.max_time {
                 entire += rec_profiler_metal(&mut state, dg, inputs, &prefix)?.1;
 
                 iters += 1;
             }
-            
+
             session_handler.after_plan_eval(&mut state.session_state)?;
             entire
         }

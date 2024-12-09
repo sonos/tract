@@ -370,7 +370,7 @@ pub fn render_summaries(
     options: &DisplayParams,
 ) -> TractResult<()> {
     let total = annotations.tags.values().sum::<NodeTags>();
-    
+
     if options.tmp_mem_usage {
         if let Some(summary) = &annotations.memory_summary {
             println!("{}", White.bold().paint("Memory summary"));
@@ -392,7 +392,7 @@ pub fn render_summaries(
             White.bold().paint(format!("{:<43}", "Most time consuming operations")),
             White.bold().paint(format!("{:<17}", "CPU")),
             White.bold().paint(if options.has_accelerator { "Accelerator" } else { "" }),
-                );
+        );
 
         for (op, (cpu_dur, accel_dur, n)) in annotations
             .tags
