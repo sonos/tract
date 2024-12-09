@@ -121,15 +121,33 @@ pub fn handle(
             .downcast_ref::<TypedModel>()
             .context("Can only profile typed models")?;
         let inputs = retrieve_or_make_inputs(model, &run_params)?;
-        tract_libcli::profile::profile(
-            model,
-            bench_limits,
-            &mut annotations,
-            &plan_options,
-            &inputs[0],
-            None,
-            options.folded,
-        )?;
+
+        if matches.is_present("metal") {
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            {
+                tract_libcli::profile::profile_metal(
+                    model,
+                    bench_limits,
+                    &mut annotations,
+                    &plan_options,
+                    &inputs[0],
+                )?;
+            }
+            #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+            {
+                bail!("Metal profiling called on non-Metal device");
+            }
+        } else {
+            tract_libcli::profile::profile(
+                model,
+                bench_limits,
+                &mut annotations,
+                &plan_options,
+                &inputs[0],
+                None,
+                options.folded,
+            )?;
+        }
     }
 
     if sub_matches.is_present("axes") || sub_matches.is_present("axes-names") {
@@ -150,9 +168,11 @@ pub fn handle(
 
     if sub_matches.is_present("tmp_mem_usage") {
         let plan_options = plan_options_from_subcommand(sub_matches)?;
-        annotations.track_tmp_memory_usage(model, 
+        annotations.track_tmp_memory_usage(
+            model,
             |n| !(n.op_is::<tract_core::ops::konst::Const>()),
-            plan_options.skip_order_opt_ram)?;
+            plan_options.skip_order_opt_ram,
+        )?;
     }
 
     if let Some(asserts) = &params.assertions.assert_output_facts {

@@ -66,6 +66,7 @@ pub fn profile(
 
     let plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
+
     let start = crate::time::now();
     let mut time_accounted_by_inner_nodes = Duration::default();
     while iters < bench_limits.max_loops && start.elapsed() < bench_limits.max_time {
@@ -79,9 +80,12 @@ pub fn profile(
             &mut time_accounted_by_inner_nodes,
             folded,
         )?;
+
         iters += 1;
     }
+
     let entire = start.elapsed() - time_accounted_by_inner_nodes;
+
     info!("Running {} iterations max. for each node.", bench_limits.max_loops);
     info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
 
@@ -91,11 +95,119 @@ pub fn profile(
         if let Some(d) = d.profile.as_mut() {
             *d = d.mul_f32(denum);
         }
+
+        if let Some(d) = d.accelerator_profile.as_mut() {
+            *d = d.mul_f32(denum);
+        }
     }
     let max = dg.tags.values().filter_map(|t| t.profile).max().unwrap();
     let sum = dg.tags.values().filter_map(|t| t.profile).sum::<Duration>();
-    dg.profile_summary = Some(ProfileSummary { max, sum, entire, iters });
+    let accel_sum = dg.tags.values().filter_map(|t| t.accelerator_profile).sum::<Duration>();
+    dg.profile_summary = Some(ProfileSummary { max, sum, accel_sum, entire, iters });
     Ok(())
+}
+
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+pub fn profile_metal(
+    model: &TypedModel,
+    bench_limits: &BenchLimits,
+    dg: &mut Annotations,
+    plan_options: &PlanOptions,
+    inputs: &TVec<TValue>,
+) -> TractResult<()> {
+    info!("Running entire network");
+    let mut iters = 0usize;
+    let prefix = tvec!();
+
+    bench_limits.warmup(model, inputs)?;
+
+    let mut plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
+    let state = TypedSimpleState::new_from_inputs(&plan, inputs.clone())?;
+
+    let session_handler =
+        tract_metal::MetalSessionHandler::from_plan(&plan, &state.session_state.resolved_symbols)?;
+
+    plan = plan.with_session_handler(session_handler);
+
+    let mut state = TypedSimpleState::new(Arc::new(plan))?;
+
+    let mut entire = Duration::default();
+    while iters < bench_limits.max_loops && entire < bench_limits.max_time {
+        entire += rec_profiler_metal(&mut state, dg, inputs, &prefix)?.1;
+
+        iters += 1;
+    }
+
+    info!("Running {} iterations max. for each node.", bench_limits.max_loops);
+    info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
+
+    let denum = (iters as f32).recip();
+    let entire = entire.mul_f32(denum);
+    for d in dg.tags.values_mut() {
+        if let Some(d) = d.profile.as_mut() {
+            *d = d.mul_f32(denum);
+        }
+
+        if let Some(d) = d.accelerator_profile.as_mut() {
+            *d = d.mul_f32(denum);
+        }
+    }
+    let max = dg.tags.values().filter_map(|t| t.profile).max().unwrap();
+    let sum = dg.tags.values().filter_map(|t| t.profile).sum::<Duration>();
+    let accel_sum = dg.tags.values().filter_map(|t| t.accelerator_profile).sum::<Duration>();
+    dg.profile_summary = Some(ProfileSummary { max, sum, accel_sum, entire, iters });
+    Ok(())
+}
+
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+pub fn rec_profiler_metal(
+    state: &mut TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
+    dg: &mut Annotations,
+    inputs: &TVec<TValue>,
+    prefix: &[(usize, String)],
+) -> TractResult<(TVec<TValue>, Duration)> {
+    tract_metal::METAL_CONTEXT.with_borrow(|ctxt| {
+        let (mut cpu_start, mut gpu_start): (u64, u64) = (0, 0);
+        ctxt.device().sample_timestamps(&mut cpu_start, &mut gpu_start);
+
+        let n_nodes = state.plan().model().nodes_len();
+        let (result, eval_dur, profiler) = ctxt.profile(n_nodes, || {
+            let profile_start = crate::time::now();
+            let r = state.run_plan_with_eval(
+                inputs.clone(),
+                |session_state, mut node_state, node, input| {
+                    // Profile node
+                    let start = crate::time::now();
+                    let res = tract_core::plan::eval(
+                        session_state,
+                        node_state.as_deref_mut(),
+                        node,
+                        input.clone(),
+                    );
+                    let elapsed = start.elapsed();
+                    let node_id = NodeQId(prefix.into(), node.id);
+                    *dg.node_mut(node_id).profile.get_or_insert(Duration::default()) += elapsed;
+
+                    res
+                },
+            )?;
+
+            Ok((r, profile_start.elapsed()))
+        })?;
+
+        let (mut cpu_end, mut gpu_end): (u64, u64) = (0, 0);
+        ctxt.device().sample_timestamps(&mut cpu_end, &mut gpu_end);
+
+        profiler.iter().enumerate().for_each(|(node_id, duration)| {
+            let node_id = NodeQId(prefix.into(), node_id);
+            *dg.node_mut(node_id).accelerator_profile.get_or_insert(Duration::default()) +=
+                Duration::from_nanos(tract_metal::utils::rescale_gpu_duration(
+                    *duration, cpu_start, cpu_end, gpu_start, gpu_end,
+                ));
+        });
+
+        Ok((result, eval_dur))
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -249,7 +361,11 @@ pub fn extract_costs(
         if let Some(model) = model.downcast_ref::<TypedModel>() {
             for node_id in 0..model.nodes().len() {
                 let inputs = model.node_input_facts(node_id)?;
-                let cost = model.node(node_id).op.cost(&inputs)?;
+                let cost = model
+                    .node(node_id)
+                    .op
+                    .cost(&inputs)
+                    .with_context(|| format!("costing node {}", model.node(node_id)))?;
                 annotations.node_mut(NodeQId(prefix.into(), node_id)).cost = cost
                     .into_iter()
                     .map(|(k, v)| {

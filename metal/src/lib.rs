@@ -1,6 +1,7 @@
 #![allow(clippy::missing_safety_doc)]
 #![allow(clippy::missing_transmute_annotations)]
 
+pub mod command_buffer;
 pub mod context;
 pub mod encoder;
 pub mod fact;

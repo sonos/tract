@@ -215,6 +215,13 @@ where
         Ok(state)
     }
 
+    pub fn new_from_inputs(plan: P, inputs: TVec<TValue>) -> TractResult<SimpleState<F, O, M, P>> {
+        let mut state = SimpleState::new(plan)?;
+        state.set_inputs(inputs)?;
+
+        Ok(state)
+    }
+    
     fn populate_consts(&mut self) {
         for node in &self.plan.borrow().model().nodes {
             if let Some(k) = node.op_as::<Const>() {
