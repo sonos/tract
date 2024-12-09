@@ -40,7 +40,7 @@ pub fn rewire_metal_sync_after_const(
     let Some(gpu_const) = op.0.as_metal_tensor() else { return Ok(None) };
     let cpu_const = gpu_const.to_cpu()?;
 
-    // Identify precessor ToCpu
+    // Identify successor ToCpu
     let Some(sync_cpu) = next_node(model, node) else { return Ok(None) };
     let Some(sync_cpu_op) = sync_cpu.op_as::<MetalSync>() else { return Ok(None) };
     rule_ensure!(sync_cpu_op.kind == MetalSyncKind::ToCpu);
