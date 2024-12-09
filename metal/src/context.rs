@@ -332,7 +332,9 @@ impl MetalContext {
             self.wait_until_completed()?;
 
             let device: &Device = &self.shared.device;
-            assert!(device.supports_counter_sampling(metal::MTLCounterSamplingPoint::AtStageBoundary));
+            assert!(
+                device.supports_counter_sampling(metal::MTLCounterSamplingPoint::AtStageBoundary)
+            );
 
             let profiler = Rc::new(RefCell::new(MetalProfiler::new(device.to_owned(), num_nodes)));
 
