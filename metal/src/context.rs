@@ -328,22 +328,24 @@ impl MetalContext {
     where
         EvalCallback: FnOnce() -> TractResult<(TVec<TValue>, Duration)>,
     {
-        self.wait_until_completed()?;
+        objc::rc::autoreleasepool(|| {
+            self.wait_until_completed()?;
 
-        let device: &Device = &self.shared.device;
-        assert!(device.supports_counter_sampling(metal::MTLCounterSamplingPoint::AtStageBoundary));
+            let device: &Device = &self.shared.device;
+            assert!(device.supports_counter_sampling(metal::MTLCounterSamplingPoint::AtStageBoundary));
 
-        let profiler = Rc::new(RefCell::new(MetalProfiler::new(device.to_owned(), num_nodes)));
+            let profiler = Rc::new(RefCell::new(MetalProfiler::new(device.to_owned(), num_nodes)));
 
-        self.profiler.replace(Some(profiler.clone()));
+            self.profiler.replace(Some(profiler.clone()));
 
-        let (output, eval_duration) = eval()?;
-        let profile_buffers = profiler.borrow_mut().get_profile_data();
+            let (output, eval_duration) = eval()?;
+            let profile_buffers = profiler.borrow_mut().get_profile_data();
 
-        self.profiler.replace(None);
-        self.wait_until_completed()?;
+            self.profiler.replace(None);
+            self.wait_until_completed()?;
 
-        Ok((output, eval_duration, profile_buffers))
+            Ok((output, eval_duration, profile_buffers))
+        })
     }
 }
 
