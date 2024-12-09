@@ -1,6 +1,6 @@
 use crate::kernels::matmul::MlxGemm;
-use crate::ops::{MetalFusedAxisOp, MetalAxisOp};
-use crate::rewrite_rules::{next_node, previous_nodes, previous_node};
+use crate::ops::{MetalAxisOp, MetalFusedAxisOp};
+use crate::rewrite_rules::{next_node, previous_node, previous_nodes};
 use crate::rule_ensure;
 use tract_core::internal::*;
 
@@ -11,20 +11,20 @@ fn is_suppored_axis_op(op: &MetalAxisOp) -> bool {
 pub fn collect_chain_of_axis_ops<'a>(
     model: &'a TypedModel,
     node: &'a TypedNode,
-    ) -> TractResult<Option<(TVec<MetalAxisOp>, &'a TypedNode)>> {
-
+) -> TractResult<Option<(TVec<MetalAxisOp>, &'a TypedNode)>> {
     let mut cursor = node;
     let mut head_of_chain = node;
     let mut acc_axis_ops = tvec![];
     loop {
-
-        let Some(axis_op) = cursor
-            .op_as::<MetalAxisOp>()
-            .filter(|o| is_suppored_axis_op(o)) else { break; };
+        let Some(axis_op) = cursor.op_as::<MetalAxisOp>().filter(|o| is_suppored_axis_op(o)) else {
+            break;
+        };
 
         head_of_chain = cursor;
 
-        let Some(prev_node) = previous_node(model, cursor) else { break; };
+        let Some(prev_node) = previous_node(model, cursor) else {
+            break;
+        };
 
         acc_axis_ops.push(axis_op.clone());
         cursor = prev_node;
@@ -62,11 +62,11 @@ pub fn fuse_axis_op(
             Some((acc_axis_ops, in_node)) => {
                 grouped_axis_ops.push(acc_axis_ops);
                 tap_inputs.push(patch.tap_model(model, in_node.inputs[0])?);
-            },
+            }
             None => {
                 grouped_axis_ops.push(tvec![]);
                 tap_inputs.push(patch.tap_model(model, node.inputs[in_idx])?);
-            },
+            }
         }
     }
 
@@ -118,7 +118,7 @@ pub fn fuse_axis_op(
             MetalFusedAxisOp { grouped_axis_ops, op: op.clone() },
             &tap_inputs,
         )?
-    } else if let Some(op) = node.op_as::<crate::ops::MetalAxisOp>()  {
+    } else if let Some(op) = node.op_as::<crate::ops::MetalAxisOp>() {
         rule_ensure!(matches!(op.0, AxisOp::Move(..)));
         patch.wire_node(
             format!("{node_name}.fused_axis_op"),

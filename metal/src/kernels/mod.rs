@@ -3,7 +3,7 @@ mod bin_ops;
 mod element_wise;
 pub mod matmul;
 pub mod nn;
-mod utils;
+pub(crate) mod utils;
 
 pub use bin_ops::BinOps;
 pub use element_wise::ElementWiseOps;

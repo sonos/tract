@@ -1,5 +1,6 @@
 use super::BroadcastKind;
 use crate::encoder::EncoderExt;
+use crate::kernels::utils;
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::bail;
@@ -161,7 +162,7 @@ impl BinOps {
         rhs.retain_until_completion();
         output.retained_until_completion();
 
-        let out_shape = output.shape();
+        let output_shape = output.shape();
 
         let broadcast_kind = if lhs.len() == 1 {
             BroadcastKind::ByScalarLeft
@@ -183,7 +184,7 @@ impl BinOps {
                 self,
                 lhs.shape(),
                 rhs.shape(),
-                out_shape
+                output_shape
             );
         };
 
@@ -201,7 +202,7 @@ impl BinOps {
                 encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
 
                 let grid_size = MTLSize { width: output.len() as NSUInteger, height: 1, depth: 1 };
-                let group_size = MTLSize { width: 1, height: 1, depth: 1 };
+                let group_size = utils::build_metal_size_with_ones();
                 encoder.dispatch_thread_groups(grid_size, group_size);
                 encoder.end_encoding();
             }
@@ -217,8 +218,6 @@ impl BinOps {
                 let rhs_strides =
                     crate::utils::compute_broadcast_strides::<usize>(rhs.shape(), rhs.strides())?;
 
-                let output_shape = output.shape();
-
                 let pipeline =
                     context.shared_context().load_pipeline(LibraryName::BinOps, &kernel_name)?;
                 let command_buffer = context.command_buffer();
@@ -231,15 +230,9 @@ impl BinOps {
                 encoder.set_metal_tensor(4, output, metal::MTLResourceUsage::Write);
                 encoder.set_slice(5, output_shape);
 
-                let grid_size = MTLSize {
-                    width: out_shape[out_shape.len() - 1] as NSUInteger,
-                    height: out_shape[out_shape.len() - 2] as NSUInteger,
-                    depth: (out_shape[..out_shape.len() - 2].iter().product::<usize>())
-                        as NSUInteger,
-                };
-
-                let group_size = MTLSize { width: 1, height: 1, depth: 1 };
-                encoder.dispatch_thread_groups(grid_size, group_size);
+                let grid_size = utils::build_metal_size_for_shape(output_shape);
+                // let group_size = utils::build_metal_size_with_ones();
+                encoder.dipatch_non_uniform_threadgroup(grid_size);
                 encoder.end_encoding();
             }
         }

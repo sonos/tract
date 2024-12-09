@@ -199,8 +199,7 @@ impl ElementWiseOps {
         encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
 
         let grid_size = MTLSize { width: output.len() as NSUInteger, height: 1, depth: 1 };
-        let group_size = MTLSize { width: 1, height: 1, depth: 1 };
-        encoder.dispatch_thread_groups(grid_size, group_size);
+        encoder.dipatch_non_uniform_threadgroup(grid_size);
         encoder.end_encoding();
         Ok(())
     }

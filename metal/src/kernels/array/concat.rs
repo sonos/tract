@@ -79,7 +79,7 @@ impl Concat {
         }
 
         let broadcast_kind = BroadcastKind::from_rank(output.rank()).with_context(|| {
-            anyhow!(
+            format!(
                 "Unsupported broadcast for broadcast op: (in: {:?}, out: {:?})",
                 inputs[0].shape(),
                 output_shape

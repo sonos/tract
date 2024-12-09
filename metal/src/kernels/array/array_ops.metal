@@ -207,6 +207,8 @@ typedef decltype(copy_nd6<float>) copy_nd6_t;
 //
 // Y = Concat(Neg(Slice(X, X.shape[-1]/2.., -1)), Slice(X, ..X.shape[-1]/2, -1))
 //
+// Grid size config: shape = [d1, d2] => Grid { x: d2 / 2, y: d1 }
+//
 template<typename T>  
 [[kernel]] void rotate_half_nd2(             
       device const void *input_b [[buffer(0)]],                 
