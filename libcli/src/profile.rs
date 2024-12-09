@@ -49,7 +49,6 @@ impl BenchLimits {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn profile(
     model: &TypedModel,
     bench_limits: &BenchLimits,
@@ -58,7 +57,63 @@ pub fn profile(
     inputs: &TVec<TValue>,
     custom_profiler: Option<HashMap<TypeId, Profiler>>,
     folded: bool,
-    is_metal: bool,
+) -> TractResult<()> {
+    info!("Running entire network");
+    let mut iters = 0usize;
+    let prefix = tvec!();
+
+    bench_limits.warmup(model, inputs)?;
+
+    let plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
+    let mut state = TypedSimpleState::new(Arc::new(plan))?;
+
+    let start = crate::time::now();
+    let mut time_accounted_by_inner_nodes = Duration::default();
+    while iters < bench_limits.max_loops && start.elapsed() < bench_limits.max_time {
+        rec_profiler(
+            &mut state,
+            dg,
+            inputs,
+            custom_profiler.as_ref(),
+            &prefix,
+            None,
+            &mut time_accounted_by_inner_nodes,
+            folded,
+        )?;
+
+        iters += 1;
+    }
+
+    let entire = start.elapsed() - time_accounted_by_inner_nodes;
+
+    info!("Running {} iterations max. for each node.", bench_limits.max_loops);
+    info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
+
+    let denum = (iters as f32).recip();
+    let entire = entire.mul_f32(denum);
+    for d in dg.tags.values_mut() {
+        if let Some(d) = d.profile.as_mut() {
+            *d = d.mul_f32(denum);
+        }
+
+        if let Some(d) = d.accelerator_profile.as_mut() {
+            *d = d.mul_f32(denum);
+        }
+    }
+    let max = dg.tags.values().filter_map(|t| t.profile).max().unwrap();
+    let sum = dg.tags.values().filter_map(|t| t.profile).sum::<Duration>();
+    let accel_sum = dg.tags.values().filter_map(|t| t.accelerator_profile).sum::<Duration>();
+    dg.profile_summary = Some(ProfileSummary { max, sum, accel_sum, entire, iters });
+    Ok(())
+}
+
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+pub fn profile_metal(
+    model: &TypedModel,
+    bench_limits: &BenchLimits,
+    dg: &mut Annotations,
+    plan_options: &PlanOptions,
+    inputs: &TVec<TValue>,
 ) -> TractResult<()> {
     info!("Running entire network");
     let mut iters = 0usize;
@@ -69,55 +124,19 @@ pub fn profile(
     let mut plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
     let state = TypedSimpleState::new_from_inputs(&plan, inputs.clone())?;
 
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    {
-        let session_handler = tract_metal::MetalSessionHandler::from_plan(
-            &plan,
-            &state.session_state.resolved_symbols,
-            )?;
-        
-        plan = plan.with_session_handler(session_handler);
-    }
+    let session_handler =
+        tract_metal::MetalSessionHandler::from_plan(&plan, &state.session_state.resolved_symbols)?;
+
+    plan = plan.with_session_handler(session_handler);
 
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
 
-    let entire = if !is_metal {
-        let start = crate::time::now();
-        let mut time_accounted_by_inner_nodes = Duration::default();
-        while iters < bench_limits.max_loops && start.elapsed() < bench_limits.max_time {
-            rec_profiler(
-                &mut state,
-                dg,
-                inputs,
-                custom_profiler.as_ref(),
-                &prefix,
-                None,
-                &mut time_accounted_by_inner_nodes,
-                folded,
-            )?;
+    let mut entire = Duration::default();
+    while iters < bench_limits.max_loops && entire < bench_limits.max_time {
+        entire += rec_profiler_metal(&mut state, dg, inputs, &prefix)?.1;
 
-            iters += 1;
-        }
-
-        start.elapsed() - time_accounted_by_inner_nodes
-    } else {
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-    {
-            let mut entire = Duration::default();
-            while iters < bench_limits.max_loops && entire < bench_limits.max_time {
-                println!("Running iter {iters}");
-                entire += rec_profiler_metal(&mut state, dg, inputs, &prefix)?.1;
-
-                iters += 1;
-            }
-
-            entire
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-        {
-            bail!("Metal Profiling on non-Metal Device");
-        }
-    };
+        iters += 1;
+    }
 
     info!("Running {} iterations max. for each node.", bench_limits.max_loops);
     info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
