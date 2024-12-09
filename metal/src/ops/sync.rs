@@ -1,8 +1,8 @@
 use crate::fact::MetalTypedFactExt;
 pub use crate::kernels::BinOps;
-use crate::tensor::MetalTensorExt;
 use crate::ops::MetalEvalOp;
-use crate::{ MetalFact, IntoMetal, MetalContext };
+use crate::tensor::MetalTensorExt;
+use crate::{IntoMetal, MetalContext, MetalFact};
 use derive_new::new;
 use std::fmt;
 use tract_core::internal::*;

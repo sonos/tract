@@ -1,7 +1,9 @@
 use crate::ops::{MetalSync, MetalSyncKind};
-use crate::rewrite_rules::previous_node;
+use crate::rewrite_rules::{next_node, previous_node};
 use crate::rule_ensure;
+use crate::tensor::MetalTensorExt;
 use tract_core::internal::*;
+use tract_core::ops::konst::Const;
 
 pub fn rewire_metal_sync(
     _ctx: &(),
@@ -23,5 +25,31 @@ pub fn rewire_metal_sync(
         TypedModelPatch::rewire(model, &sync_cpu_prec.inputs, &[node.id.into()], &|_p, xs| {
             Ok(xs.into())
         })?;
+    Ok(Some(patch))
+}
+
+pub fn rewire_metal_sync_after_const(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    node_name: &str,
+    op: &Const,
+) -> TractResult<Option<TypedModelPatch>> {
+    // Search pattern => Const => ToCPU
+
+    let Some(gpu_const) = op.0.as_metal_tensor() else { return Ok(None) };
+    let cpu_const = gpu_const.to_cpu()?;
+
+    // Identify precessor ToCpu
+    let Some(sync_cpu) = next_node(model, node) else { return Ok(None) };
+    let Some(sync_cpu_op) = sync_cpu.op_as::<MetalSync>() else { return Ok(None) };
+    rule_ensure!(sync_cpu_op.kind == MetalSyncKind::ToCpu);
+
+    let mut patch = TypedModelPatch::default();
+
+    let konst_input = patch.taps(model, &node.inputs)?;
+    let out =
+        patch.wire_node(format!("{node_name}"), Const(cpu_const.into(), None), &konst_input)?;
+    patch.shunt_outside(model, sync_cpu.id.into(), out[0])?;
     Ok(Some(patch))
 }

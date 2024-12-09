@@ -7,8 +7,8 @@ use crate::ops::{self, MetalAxisOp, MetalSync, MetalSyncKind};
 #[allow(unused_imports)]
 use crate::rewrite_rules::{
     as_apply_rope_rule, as_new_gelu_rule, as_rms_norm_rule, as_rotate_half_rule, as_silu_rule,
-    fuse_axis_op, remove_rms_norm_cast, rewire_metal_sync, BasicApplyRope, BasicNewGelu,
-    BasicRmsNorm, BasicRotateHalf, BasicSilu,
+    fuse_axis_op, remove_rms_norm_cast, rewire_metal_sync, rewire_metal_sync_after_const,
+    BasicApplyRope, BasicNewGelu, BasicRmsNorm, BasicRotateHalf, BasicSilu,
 };
 use crate::tensor::MetalTensorExt;
 use crate::{IntoMetal, MetalFact, MetalTensor};
@@ -70,6 +70,7 @@ impl ModelTransform for MetalTransform {
 
         Rewriter::default()
             .with_rule_for::<MetalSync>("rewire-metal-sync", rewire_metal_sync)
+            .with_rule_for::<Const>("rewire-metal-sync-after-const", rewire_metal_sync_after_const)
             .with_rule_for::<MetalAxisOp>("fuse_axis_op", fuse_axis_op)
             .rewrite(&(), &mut new)?;
         *model = new;
@@ -364,7 +365,6 @@ fn convert_const(op: &Const) -> TractResult<Option<Const>> {
     let metal_const = op.0.clone().into_metal()?.into_opaque_tensor().into_arc_tensor();
     Ok(Some(Const::new_with_opaque_fact(metal_const, Box::new(metal_fact))))
 }
-
 
 fn convert_element_wise_ops_to_metal(op: &ElementWiseOp) -> Option<ops::MetalElementWiseOp> {
     map_element_wise_ops!([
