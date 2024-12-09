@@ -66,7 +66,19 @@ pub fn profile(
 
     bench_limits.warmup(model, inputs)?;
 
-    let plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
+    let mut plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
+    let state = TypedSimpleState::new_from_inputs(&plan, inputs.clone())?;
+
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        let session_handler = tract_metal::MetalSessionHandler::from_plan(
+            &plan,
+            &state.session_state.resolved_symbols,
+            )?;
+        
+        plan = plan.with_session_handler(session_handler);
+    }
+
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
 
     let entire = if !is_metal {
@@ -90,21 +102,15 @@ pub fn profile(
         start.elapsed() - time_accounted_by_inner_nodes
     } else {
         #[cfg(any(target_os = "macos", target_os = "ios"))]
-        {
-            let session_handler = tract_metal::MetalSessionHandler::from_plan(
-                state.plan(),
-                &state.session_state.resolved_symbols,
-            )?;
-            session_handler.before_plan_eval(&mut state.session_state)?;
-
+    {
             let mut entire = Duration::default();
             while iters < bench_limits.max_loops && entire < bench_limits.max_time {
+                println!("Running iter {iters}");
                 entire += rec_profiler_metal(&mut state, dg, inputs, &prefix)?.1;
 
                 iters += 1;
             }
 
-            session_handler.after_plan_eval(&mut state.session_state)?;
             entire
         }
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
