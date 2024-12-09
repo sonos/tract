@@ -96,15 +96,14 @@ pub fn profile(
                 &state.session_state.resolved_symbols,
             )?;
             session_handler.before_plan_eval(&mut state.session_state)?;
-
-            let start = crate::time::now();
-            while iters < bench_limits.max_loops && start.elapsed() < bench_limits.max_time {
-                rec_profiler_metal(&mut state, dg, inputs, &prefix)?;
+            
+            let mut entire = Duration::default();
+            while iters < bench_limits.max_loops && entire < bench_limits.max_time {
+                entire += rec_profiler_metal(&mut state, dg, inputs, &prefix)?.1;
 
                 iters += 1;
             }
-
-            let entire = start.elapsed();
+            
             session_handler.after_plan_eval(&mut state.session_state)?;
             entire
         }
@@ -141,13 +140,14 @@ pub fn rec_profiler_metal(
     dg: &mut Annotations,
     inputs: &TVec<TValue>,
     prefix: &[(usize, String)],
-) -> TractResult<TVec<TValue>> {
+) -> TractResult<(TVec<TValue>, Duration)> {
     tract_metal::METAL_CONTEXT.with_borrow(|ctxt| {
         let (mut cpu_start, mut gpu_start): (u64, u64) = (0, 0);
         ctxt.device().sample_timestamps(&mut cpu_start, &mut gpu_start);
 
         let n_nodes = state.plan().model().nodes_len();
-        let (result, profiler) = ctxt.profile(n_nodes, || {
+        let (result, eval_dur, profiler) = ctxt.profile(n_nodes, || {
+            let profile_start = crate::time::now();
             let r = state.run_plan_with_eval(
                 inputs.clone(),
                 |session_state, mut node_state, node, input| {
@@ -166,7 +166,8 @@ pub fn rec_profiler_metal(
                     res
                 },
             )?;
-            Ok(r)
+
+            Ok((r, profile_start.elapsed()))
         })?;
 
         let (mut cpu_end, mut gpu_end): (u64, u64) = (0, 0);
@@ -180,7 +181,7 @@ pub fn rec_profiler_metal(
                 ));
         });
 
-        Ok(result)
+        Ok((result, eval_dur))
     })
 }
 
