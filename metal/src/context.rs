@@ -9,6 +9,7 @@ use std::path::Path;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
+use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use metal::{
@@ -323,9 +324,9 @@ impl MetalContext {
         &self,
         num_nodes: usize,
         eval: EvalCallback,
-    ) -> TractResult<(TVec<TValue>, Vec<u64>)>
+    ) -> TractResult<(TVec<TValue>, Duration, Vec<u64>)>
     where
-        EvalCallback: FnOnce() -> TractResult<TVec<TValue>>,
+        EvalCallback: FnOnce() -> TractResult<(TVec<TValue>, Duration)>,
     {
         self.wait_until_completed()?;
 
@@ -336,14 +337,13 @@ impl MetalContext {
 
         self.profiler.replace(Some(profiler.clone()));
 
-        let output = eval()?;
-
+        let (output, eval_duration) = eval()?;
         let profile_buffers = profiler.borrow_mut().get_profile_data();
 
         self.profiler.replace(None);
         self.wait_until_completed()?;
 
-        Ok((output, profile_buffers))
+        Ok((output, eval_duration, profile_buffers))
     }
 }
 
