@@ -12,7 +12,7 @@ use tract_core::ops::konst::Const;
 pub use apply_rope::{as_apply_rope_rule, BasicApplyRope};
 pub use fuse_axis_op::fuse_axis_op;
 pub use new_gelu::{as_new_gelu_rule, BasicNewGelu};
-pub use rewire_metal_sync::rewire_metal_sync;
+pub use rewire_metal_sync::{rewire_metal_sync, rewire_metal_sync_after_const};
 pub use rms_norm::{as_rms_norm_rule, remove_rms_norm_cast, BasicRmsNorm};
 pub use rotate_half::{as_rotate_half_rule, BasicRotateHalf};
 pub use silu::{as_silu_rule, BasicSilu};
