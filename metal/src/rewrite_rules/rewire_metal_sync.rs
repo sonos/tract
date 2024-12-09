@@ -46,8 +46,7 @@ pub fn rewire_metal_sync_after_const(
     rule_ensure!(sync_cpu_op.kind == MetalSyncKind::ToCpu);
 
     let mut patch = TypedModelPatch::default();
-    let out =
-        patch.wire_node(format!("{node_name}"), Const(cpu_const.into(), None), &[])?;
+    let out = patch.wire_node(node_name.to_string(), Const(cpu_const.into(), None), &[])?;
     patch.shunt_outside(model, sync_cpu.id.into(), out[0])?;
     Ok(Some(patch))
 }
