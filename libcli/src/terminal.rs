@@ -424,7 +424,7 @@ pub fn render_summaries(
                 n,
                 dur_avg_ratio(cpu_dur, summary.sum),
                 if options.has_accelerator {
-                    dur_avg_ratio(accel_dur, summary.sum)
+                    dur_avg_ratio(accel_dur, summary.accel_sum)
                 } else {
                     "".to_string()
                 }
