@@ -9,7 +9,7 @@ keywords = [ "TensorFlow", "NeuralNetworks" ]
 categories = [ "science" ]
 autobenches = false
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.77"
 
 [badges]
 maintenance = { status = "actively-developed" }
@@ -27,6 +27,7 @@ nom.workspace = true
 num-complex = { workspace = true, optional = true }
 num-integer.workspace = true
 num-traits.workspace = true
+rapidhash.workspace = true
 smallvec.workspace = true
 lazy_static.workspace = true
 scan_fmt.workspace = true
