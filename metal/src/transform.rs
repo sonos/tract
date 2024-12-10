@@ -15,6 +15,7 @@ use crate::{IntoMetal, MetalFact, MetalTensor};
 use anyhow::Result;
 use std::borrow::Cow;
 use std::fmt::Debug;
+use std::usize;
 use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
 use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
@@ -56,7 +57,17 @@ impl ModelTransform for MetalTransform {
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        self.transform_up_to_phase(model, usize::MAX)
+    }
+}
+
+impl MetalTransform {
+    pub fn transform_up_to_phase(&self, model: &mut TypedModel, stop_at_phase: usize) -> TractResult<()> {
         rewrite_einsums_as_matmul(model)?;
+        if stop_at_phase == 0 {
+            return Ok(());
+        }
+
         Rewriter::default()
             .with_rule_for::<Reduce>("as-rms-norm", as_rms_norm_rule)
             .with_rule_for::<BasicRmsNorm>("remove_rms_norm_cast", remove_rms_norm_cast)
@@ -66,7 +77,15 @@ impl ModelTransform for MetalTransform {
             //.with_rule_for::<TypedBinOp>("as-apply-rope", as_apply_rope_rule)
             .rewrite(&(), model)?;
 
+        if stop_at_phase == 1 {
+            return Ok(());
+        }
+
         let mut new = self.translate_model(model)?;
+
+        if stop_at_phase == 2 {
+            return Ok(());
+        }
 
         Rewriter::default()
             .with_rule_for::<MetalSync>("rewire-metal-sync", rewire_metal_sync)
@@ -75,9 +94,7 @@ impl ModelTransform for MetalTransform {
         *model = new;
         Ok(())
     }
-}
 
-impl MetalTransform {
     fn sync_inputs_if_required(
         &self,
         model: &mut TypedModel,
