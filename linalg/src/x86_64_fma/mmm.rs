@@ -27,7 +27,7 @@ MMMExternKernel! {fma_mmm_f32_32x1<f32>(32,1)@(32,4) where(FMA)
     store(f16)
 }
 MMMExternKernel!(fma_mmm_f32_32x3<f32>(32,3)@(32,4) where(FMA)
- packing[1] = f32f16 => |k| k.with_packing(PackedFormat::new(F32, 32, 32), PackedFormat::new(F16, 3, 2));
+ packing[1] = f32f16 => |k| k.with_packing(f32::packing(32).align(32), f16::packing(3));
  store(f16)
 );
 
