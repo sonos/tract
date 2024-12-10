@@ -9,6 +9,6 @@ keywords = [ "NeuralNetworks" ]
 categories = [ "science" ]
 autobenches = false
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.77"
 include = [ "Cargo.toml", "src/**/*.rs", "LICENSE*", "build.rs", "tract.h", "bindings.rs" ]
 
