@@ -81,7 +81,7 @@ impl MetalTransform {
             return Ok(());
         }
 
-        let mut new = self.translate_model(model)?;
+        *model = self.translate_model(model)?;
 
         if stop_at_phase == 2 {
             return Ok(());
@@ -90,8 +90,7 @@ impl MetalTransform {
         Rewriter::default()
             .with_rule_for::<MetalSync>("rewire-metal-sync", rewire_metal_sync)
             .with_rule_for::<MetalAxisOp>("fuse_axis_op", fuse_axis_op)
-            .rewrite(&(), &mut new)?;
-        *model = new;
+            .rewrite(&(), model)?;
         Ok(())
     }
 
