@@ -27,7 +27,7 @@ pub fn criterion(
 
 pub fn handle(
     params: &Parameters,
-    _matches: &clap::ArgMatches,
+    matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
     limits: &BenchLimits,
     probe: Option<&Probe>,
@@ -41,20 +41,26 @@ pub fn handle(
     limits.warmup(model, &inputs)?;
 
     let mut state = {
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-        {
-            let mut plan = SimplePlan::new_with_options(model, &plan_options)?;
-            let state = TypedSimpleState::new_from_inputs(&plan, inputs.clone())?;
+        if matches.is_present("metal"){
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            {
+                let mut plan = SimplePlan::new_with_options(model, &plan_options)?;
+                let state = TypedSimpleState::new_from_inputs(&plan, inputs.clone())?;
 
-            let session_handler = tract_metal::MetalSessionHandler::from_plan(
-                &plan,
-                &state.session_state.resolved_symbols,
-            )?;
+                let session_handler = tract_metal::MetalSessionHandler::from_plan(
+                    &plan,
+                    &state.session_state.resolved_symbols,
+                )?;
 
-            plan = plan.with_session_handler(session_handler);
-            SimpleState::new(Arc::new(plan))?
+                plan = plan.with_session_handler(session_handler);
+                SimpleState::new(Arc::new(plan))?
+            }
+            #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+            {
+                bail!("Metal bench called on non-Metal model");
+            }
         }
-        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+        else
         {
             let plan = SimplePlan::new_with_options(model, &plan_options)?;
             SimpleState::new(Arc::new(plan))?
