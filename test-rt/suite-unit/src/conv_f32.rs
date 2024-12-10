@@ -1229,5 +1229,19 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
 
+    suite.add(
+        "bug_metal_0",
+        ConvProblem {
+            shape_in: DataFormat::NHWC.from_n_c_hw(2, 1, [4]).unwrap(),
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: arr3(&[[[0f32], [0.], [0.], [0.]], [[0.], [0.], [0.], [1.]]]).into_dyn(),
+            kernel: arr3(&[[[0f32]], [[1.]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1),
+        },
+    );
+
     Ok(suite)
 }
