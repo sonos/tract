@@ -16,7 +16,7 @@ pub use new_gelu::{as_new_gelu_rule, BasicNewGelu};
 pub use rewire_metal_sync::{rewire_metal_sync, rewire_metal_sync_after_const};
 pub use rms_norm::{as_rms_norm_rule, remove_rms_norm_cast, BasicRmsNorm};
 pub use rotate_half::{as_rotate_half_rule, BasicRotateHalf};
-pub use scaled_masked_softmax::BasicScaledMaskedSoftmax;
+pub use scaled_masked_softmax::{as_scaled_masked_softmax_rule, BasicScaledMaskedSoftmax};
 pub use silu::{as_silu_rule, BasicSilu};
 
 use tract_core::ops::binary::TypedBinOp;
