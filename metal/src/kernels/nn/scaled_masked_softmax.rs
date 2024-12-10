@@ -14,11 +14,7 @@ impl ScaledMaskedSoftmax {
     }
 
     pub fn kernel_name(&self, dt: DatumType) -> Result<String> {
-        ensure!(
-            Self::is_supported_dt(dt),
-            "Unsupport dt {:?} for metal scaled masked softmax  op",
-            dt
-        );
+        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal scaled masked softmax  op", dt);
         let tname = MetalTensor::tname(dt)?;
         Ok(format!("nn_ops::scaled_masked_softmax_nd3_{tname}"))
     }
