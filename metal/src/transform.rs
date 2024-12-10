@@ -15,7 +15,6 @@ use crate::{IntoMetal, MetalFact, MetalTensor};
 use anyhow::Result;
 use std::borrow::Cow;
 use std::fmt::Debug;
-use std::usize;
 use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
 use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
