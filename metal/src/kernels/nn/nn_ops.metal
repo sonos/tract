@@ -276,6 +276,64 @@ typedef decltype(softmax_nd3<float>) softmax_nd3_t;
 template [[host_name("nn_ops::softmax_nd3_f32")]] [[kernel]] softmax_nd3_t softmax_nd3<float>;
 template [[host_name("nn_ops::softmax_nd3_f16")]] [[kernel]] softmax_nd3_t softmax_nd3<half>;
 
+template<typename F>  
+[[kernel]] void scaled_masked_softmax_nd3(
+                device const void *input_b,
+                device const void *mask_b,
+                constant void *scale_b,
+                device void *output_b,
+                constant const size_t shape[3], 
+                constant const size_t strides[3],
+                uint3  tgpig[[threadgroup_position_in_grid]],
+                uint  tiisg[[thread_index_in_simdgroup]],
+                uint  tpsg[[threads_per_simdgroup]]
+                ) {
+
+    device const F *input = (device const F *)input_b;
+    device const F *mask = (device const F *)mask_b;
+    constant F scale = ((constant F *)scale_b)[0];
+    device F *output = (device F *)output_b;
+
+    size_t dim = shape[1];
+
+    size_t base_idx = tgpig.x * strides[2] 
+            + tgpig.z * strides[0];
+
+    // Get max value on softmax dim after apply
+    float partial_max = -INFINITY;
+    for (size_t i = tiisg; i < dim; i += tpsg) {
+        auto idx = base_idx + i * strides[1];
+        float el = static_cast<float>(input[idx] * scale + mask[idx]);
+        partial_max = max(partial_max, el);
+    }
+
+    float axis_max = simd_max(partial_max);
+
+    // Compute Sum(exp(x - max))
+    float partial_norm = 0;
+    for (size_t i = tiisg; i < dim; i += tpsg) {
+        auto idx = base_idx + i * strides[1];
+        float el = static_cast<float>(input[idx] * scale + mask[idx]);
+        float exp_el = fast::exp(el - axis_max);
+        partial_norm += exp_el;
+        output[idx] = static_cast<F>(exp_el);
+    }
+
+    float axis_norm = simd_sum(partial_norm);
+    float inv_axis_norm = 1.0 / axis_norm;
+
+    for (size_t i = tiisg; i < dim; i += tpsg) {
+        auto idx = base_idx + i * strides[1];
+        float exp_el = static_cast<float>(output[idx]);
+        output[idx] = static_cast<F>(exp_el * inv_axis_norm);
+    }
+}
+
+typedef decltype(scaled_masked_softmax_nd3<float>) scaled_masked_softmax_nd3_t;
+
+template [[host_name("nn_ops::scaled_masked_softmax_nd3_f32")]] [[kernel]] scaled_masked_softmax_nd3_t scaled_masked_softmax_nd3<float>;
+template [[host_name("nn_ops::scaled_masked_softmax_nd3_f16")]] [[kernel]] scaled_masked_softmax_nd3_t scaled_masked_softmax_nd3<half>;
+
 constant float GELU_COEF_A     = 0.044715f;
 constant float SQRT_2_OVER_PI  = 0.79788456080286535587989211986876f;
 
