@@ -96,7 +96,7 @@ impl GemmDispatchParams {
                     n,
                     k,
                     transpose_a,
-                    a_offset: a_offset + a_batch_idx * n * k * dt.size_of(),
+                    a_offset: a_offset + a_batch_idx * m * k * dt.size_of(),
                     transpose_b,
                     b_offset,
                     c_offset: c_offset + a_batch_idx * m * n * dt.size_of(),
