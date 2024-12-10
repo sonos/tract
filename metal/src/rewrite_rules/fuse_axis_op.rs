@@ -109,6 +109,7 @@ pub fn fuse_axis_op(
         crate::ops::MetalSlice,
         crate::ops::MetalConcat,
         crate::ops::MetalCast,
+        crate::ops::MetalScaledMaskedSoftmax,
     );
 
     // Handle AxisOp::Move operator.

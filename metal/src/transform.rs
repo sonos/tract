@@ -1,14 +1,17 @@
 use crate::fact::MetalTypedFactExt;
 use crate::kernels::array::RotateHalf;
 use crate::kernels::matmul::{MetalGemmImplKind, MfaGemm, MlxGemm, MpsMatMul};
-use crate::kernels::nn::{ApplyRope, NewGelu, Reducer, RmsNorm, Silu, Softmax};
+use crate::kernels::nn::{
+    ApplyRope, NewGelu, Reducer, RmsNorm, ScaledMaskedSoftmax, Silu, Softmax,
+};
 use crate::ops::{self, MetalAxisOp, MetalSync, MetalSyncKind};
 
 #[allow(unused_imports)]
 use crate::rewrite_rules::{
-    as_apply_rope_rule, as_new_gelu_rule, as_rms_norm_rule, as_rotate_half_rule, as_silu_rule,
-    fuse_axis_op, remove_rms_norm_cast, rewire_metal_sync, rewire_metal_sync_after_const,
-    BasicApplyRope, BasicNewGelu, BasicRmsNorm, BasicRotateHalf, BasicSilu,
+    as_apply_rope_rule, as_new_gelu_rule, as_rms_norm_rule, as_rotate_half_rule,
+    as_scaled_masked_softmax_rule, as_silu_rule, fuse_axis_op, remove_rms_norm_cast,
+    rewire_metal_sync, rewire_metal_sync_after_const, BasicApplyRope, BasicNewGelu, BasicRmsNorm,
+    BasicRotateHalf, BasicScaledMaskedSoftmax, BasicSilu,
 };
 use crate::tensor::MetalTensorExt;
 use crate::{IntoMetal, MetalFact, MetalTensor};
@@ -64,6 +67,7 @@ impl ModelTransform for MetalTransform {
             .with_rule_for::<TypedBinOp>("as-new-gelu", as_new_gelu_rule)
             .with_rule_for::<TypedConcat>("as-rotate-half", as_rotate_half_rule)
             .with_rule_for::<TypedBinOp>("as-apply-rope", as_apply_rope_rule)
+            .with_rule_for::<CoreSoftmax>("as-scaled-masked-softmax", as_scaled_masked_softmax_rule)
             .rewrite(&(), model)?;
 
         let mut new = self.translate_model(model)?;
@@ -208,6 +212,10 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             check_in_dts_are_supported(source, node.id, Softmax::is_supported_dt)?
                 .then(|| ops::MetalSoftmax::from_tract_core(op).ok())
                 .flatten()
+                .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+        } else if let Some(op) = node.op_as::<BasicScaledMaskedSoftmax>() {
+            check_in_dts_are_supported(source, node.id, ScaledMaskedSoftmax::is_supported_dt)?
+                .then(|| ops::MetalScaledMaskedSoftmax { scale: op.scale.clone() })
                 .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
         } else if let Some(op) = node.op_as::<BasicRmsNorm>() {
             check_in_dts_are_supported(source, node.id, RmsNorm::is_supported_dt)?

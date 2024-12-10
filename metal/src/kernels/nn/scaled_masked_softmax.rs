@@ -1,5 +1,4 @@
 use crate::encoder::EncoderExt;
-use crate::kernels::utils;
 use crate::{LibraryName, MetalContext, MetalTensor};
 use anyhow::Result;
 use metal::MTLSize;
@@ -14,7 +13,11 @@ impl ScaledMaskedSoftmax {
     }
 
     pub fn kernel_name(&self, dt: DatumType) -> Result<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal scaled masked softmax  op", dt);
+        ensure!(
+            Self::is_supported_dt(dt),
+            "Unsupport dt {:?} for metal scaled masked softmax  op",
+            dt
+        );
         let tname = MetalTensor::tname(dt)?;
         Ok(format!("nn_ops::scaled_masked_softmax_nd3_{tname}"))
     }
@@ -23,10 +26,12 @@ impl ScaledMaskedSoftmax {
         &self,
         context: &MetalContext,
         input: &MetalTensor,
-        axis: usize,
+        scale: &Tensor,
+        mask: &MetalTensor,
     ) -> Result<MetalTensor> {
         let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), input.shape())? };
-        self.dispatch_eval(context, input, axis, &output)?;
+        dbg!(&output);
+        self.dispatch_eval(context, input, scale, mask, &output)?;
         context.wait_until_completed()?;
         Ok(output)
     }
@@ -37,7 +42,6 @@ impl ScaledMaskedSoftmax {
         input: &MetalTensor,
         scale: &Tensor,
         mask: &MetalTensor,
-        axis: usize,
         output: &MetalTensor,
     ) -> Result<()> {
         input.retained_until_completion();
@@ -45,12 +49,14 @@ impl ScaledMaskedSoftmax {
         output.retained_until_completion();
 
         ensure!(output.shape() == input.shape());
-        ensure!(input.shape() == mask.shape());
+        ensure!(mask.rank() == 3 && input.rank() == 3);
         ensure!(output.datum_type() == input.datum_type());
 
-        let shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
-        let strides_nd3 = Tensor::natural_strides(&shape_nd3);
-
+        let shape = input.shape();
+        let strides = input.strides();
+        let mask_strides_nd3 =
+            crate::utils::compute_broadcast_strides::<usize>(mask.shape(), mask.strides())?;
+        
         let pipeline = context
             .shared_context()
             .load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
@@ -60,15 +66,14 @@ impl ScaledMaskedSoftmax {
             encoder.set_compute_pipeline_state(&pipeline);
             encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
             encoder.set_metal_tensor(1, mask, metal::MTLResourceUsage::Read);
-            encoder.set_tensor(2, eps);
+            encoder.set_tensor(2, scale);
             encoder.set_metal_tensor(3, output, metal::MTLResourceUsage::Write);
-            encoder.set_slice(4, &shape_nd3);
-            encoder.set_slice(5, &strides_nd3);
+            encoder.set_slice(4, &shape);
+            encoder.set_slice(5, &strides);
+            encoder.set_slice(6, &mask_strides_nd3);
 
-            let grid_size =
-                MTLSize { width: shape_nd3[2] as _, height: 1, depth: shape_nd3[0] as _ };
-            let group_size =
-                MTLSize { width: usize::min(32, shape_nd3[1]) as _, height: 1, depth: 1 };
+            let grid_size = MTLSize { width: 1 as _, height: shape[1] as _, depth: shape[0] as _};
+            let group_size = MTLSize { width: usize::min(32, shape[2]) as _, height: 1, depth: 1 };
 
             encoder.dispatch_thread_groups(grid_size, group_size);
             encoder.end_encoding();
@@ -77,45 +82,42 @@ impl ScaledMaskedSoftmax {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use crate::IntoMetal;
-//     use derive_new::new;
-//     use num_traits::AsPrimitive;
-//     use num_traits::Float;
-//     use proptest::collection::vec;
-//     use proptest::prelude::*;
-//     use tract_core::internal::Tensor;
-//     use tract_core::ops::nn::Softmax as TractSoftmax;
-//     use tract_core::ops::nn::SoftmaxExp;
+#[cfg(test)]
+mod tests {
+    use crate::rewrite_rules::BasicScaledMaskedSoftmax;
+use super::*;
+    use crate::IntoMetal;
+    use derive_new::new;
+    
+    
+    
+    
+    use tract_core::internal::Tensor;
 
-//     #[test]
-//     fn test_softmax_f32() -> Result<()> {
-//         objc::rc::autoreleasepool(|| {
-//             crate::METAL_CONTEXT.with_borrow(|context| {
-//                 let m = 4;
-//                 let k = 4;
-//                 let axis = 1;
+    #[test]
+    fn test_scaled_masked_softmax_f32() -> Result<()> {
+        objc::rc::autoreleasepool(|| {
+            crate::METAL_CONTEXT.with_borrow(|context| {
+                let m = 4;
+                let n = 4;
+                let scale: Arc<_> = tensor0(0.125f32).into();
+                let mask = Tensor::from_shape(&[1, m, n], &vec![-1000f32; m*n])?.into_metal()?;
 
-//                 let a =
-//                     Tensor::from_shape(&[m, k], &(0..m * k).map(|f| f as f32).collect::<Vec<_>>())?
-//                         .into_metal()?;
+                let a =
+                    Tensor::from_shape(&[1, m, n], &(0..m * n).map(|f| f as f32).collect::<Vec<_>>())?
+                        .into_metal()?;
 
-//                 let cpu_softmax = TractSoftmax {
-//                     axes: tvec![axis],
-//                     quant_output_dt: None,
-//                     exp: SoftmaxExp::Libc,
-//                 };
+                let cpu = BasicScaledMaskedSoftmax { scale:scale.clone() };
 
-//                 let cpu_output =
-//                     cpu_softmax.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
-//                 let metal_output = Softmax.eval(context, &a, axis)?;
-//                 cpu_output.close_enough(&metal_output.to_cpu()?, Approximation::Approximate)?;
-//                 Ok(())
-//             })
-//         })
-//     }
+                let cpu_output =
+                    cpu.eval(tvec![a.to_cpu()?.into_tvalue(), mask.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
+                let metal_output = ScaledMaskedSoftmax.eval(context, &a, &scale, &mask)?;
+                cpu_output.close_enough(&metal_output.to_cpu()?, Approximation::Approximate)?;
+                Ok(())
+            })
+        })
+    }
+}
 
 //     #[test]
 //     fn test_softmax_f32_2() -> Result<()> {
