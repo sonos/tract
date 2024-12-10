@@ -17,7 +17,7 @@ impl fmt::Display for ApplyRope {
 
 impl ApplyRope {
     pub fn is_supported_dt(dt: DatumType) -> bool {
-        matches!(dt, DatumType::F32)
+        matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
     pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> Result<String> {

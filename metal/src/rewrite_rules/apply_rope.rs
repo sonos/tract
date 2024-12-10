@@ -9,6 +9,12 @@ use tract_core::ops::math::{Add, Mul};
 #[derive(Clone, Debug, Hash)]
 pub struct BasicApplyRope;
 
+impl BasicApplyRope {
+    pub fn is_supported_dt(dt: DatumType) -> bool {
+        matches!(dt, DatumType::F32 | DatumType::F16)
+    }
+}
+
 impl Op for BasicApplyRope {
     fn name(&self) -> Cow<str> {
         "BasicApplyRope".to_string().into()
@@ -68,6 +74,7 @@ pub fn as_apply_rope_rule(
     else {
         return Ok(None);
     };
+
     let apply_rope_in = rotate_half.inputs[0];
     rule_ensure!(cos_mul.inputs.contains(&apply_rope_in));
 
@@ -75,6 +82,11 @@ pub fn as_apply_rope_rule(
         if cos_mul.inputs[0] == apply_rope_in { cos_mul.inputs[1] } else { cos_mul.inputs[0] };
 
     let sin = sin_mul.inputs[1 - rotate_half_in_idx];
+
+    rule_ensure!(BasicApplyRope::is_supported_dt(model.outlet_fact(apply_rope_in)?.datum_type));
+    rule_ensure!(BasicApplyRope::is_supported_dt(model.outlet_fact(cos)?.datum_type));
+    rule_ensure!(BasicApplyRope::is_supported_dt(model.outlet_fact(sin)?.datum_type));
+
     let mut patch = TypedModelPatch::default();
     let input = patch.tap_model(model, apply_rope_in)?;
     let cos = patch.tap_model(model, cos)?;

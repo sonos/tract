@@ -63,7 +63,7 @@ impl ModelTransform for MetalTransform {
             .with_rule_for::<ElementWiseOp>("as-silu", as_silu_rule)
             .with_rule_for::<TypedBinOp>("as-new-gelu", as_new_gelu_rule)
             .with_rule_for::<TypedConcat>("as-rotate-half", as_rotate_half_rule)
-            //.with_rule_for::<TypedBinOp>("as-apply-rope", as_apply_rope_rule)
+            .with_rule_for::<TypedBinOp>("as-apply-rope", as_apply_rope_rule)
             .rewrite(&(), model)?;
 
         let mut new = self.translate_model(model)?;
