@@ -37,8 +37,7 @@ impl EvalOp for BasicScaledMaskedSoftmax {
         let masked_input = Add.eval(scaled_input.into(), mask, dt)?;
         let softmax = Softmax::new(tvec![2], None, SoftmaxExp::Libc)
             .eval(tvec![masked_input.into()])?[0]
-            .clone()
-            .into();
+            .clone();
         Ok(tvec![softmax])
     }
 }
@@ -65,7 +64,7 @@ pub fn as_scaled_masked_softmax_rule(
     node_name: &str,
     op: &Softmax,
 ) -> TractResult<Option<TypedModelPatch>> {
-    rule_ensure!(op.axes.as_slice() == &[2]);
+    rule_ensure!(op.axes.as_slice() == [2]);
 
     let in_fact = model.node_input_facts(node.id)?[0];
     let dt = in_fact.datum_type;

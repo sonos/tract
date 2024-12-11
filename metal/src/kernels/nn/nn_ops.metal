@@ -295,7 +295,7 @@ template<typename F>
     F scale = ((constant F *)scale_b)[0];
     device F *output = (device F *)output_b;
 
-    size_t dim = shape[2];
+    size_t reduce_dim = shape[2];
 
     size_t base_idx = tgpig.y * strides[1] 
             + tgpig.z * strides[0];
@@ -303,9 +303,9 @@ template<typename F>
     size_t mask_base_idx = tgpig.y * mask_strides[1] 
             + tgpig.z * mask_strides[0];
 
-    // Get max value on softmax dim after apply
+    // Get max value on softmax reduce_dim after apply
     float partial_max = -INFINITY;
-    for (size_t i = tiisg; i < dim; i += tpsg) {
+    for (size_t i = tiisg; i < reduce_dim; i += tpsg) {
         auto idx = base_idx + i * strides[2];
         auto mask_idx = mask_base_idx + i * mask_strides[2];
         output[idx] = input[idx] * scale + mask[mask_idx];
@@ -317,7 +317,7 @@ template<typename F>
 
    // Compute Sum(exp(x - max))
    float partial_norm = 0;
-   for (size_t i = tiisg; i < dim; i += tpsg) {
+   for (size_t i = tiisg; i < reduce_dim; i += tpsg) {
        auto idx = base_idx + i * strides[2];
        float el = static_cast<float>(output[idx]);
        float exp_el = fast::exp(el - axis_max);
@@ -327,7 +327,7 @@ template<typename F>
    float axis_norm = simd_sum(partial_norm);
    float inv_axis_norm = 1.0 / axis_norm;
 
-   for (size_t i = tiisg; i < dim; i += tpsg) {
+   for (size_t i = tiisg; i < reduce_dim; i += tpsg) {
        auto idx = base_idx + i * strides[2];
        float el = static_cast<float>(output[idx]);
        float exp_el = fast::exp(el - axis_max);

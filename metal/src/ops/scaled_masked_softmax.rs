@@ -6,7 +6,7 @@ use derive_new::new;
 use tract_core::internal::*;
 
 /// A = SOFTMAX(INPUT * SCALE + MASK, AXIS=1)
-/// Only input of rank of 3 is supported and softmax axis = 1
+/// Only input of rank of 3 is supported and softmax axis = 2
 #[derive(Clone, Debug, new, Hash)]
 pub struct MetalScaledMaskedSoftmax {
     pub scale: Arc<Tensor>,
