@@ -8,8 +8,8 @@ use tract_core::ops::binary::BinMiniOp;
 use tract_core::ops::math::{Add, Mul};
 use tract_core::ops::nn::{Softmax, SoftmaxExp};
 
-/// A = SOFTMAX(INPUT * SCALE + MASK, AXIS=1)
-/// Only input of rank of 3 is supported with softmax axis = 2
+/// A = SOFTMAX(INPUT * SCALE + MASK, AXIS=2)
+/// Only input of rank of 3 is supported.
 #[derive(Clone, Debug, Hash)]
 pub struct BasicScaledMaskedSoftmax {
     pub scale: Arc<Tensor>,
@@ -56,7 +56,7 @@ impl TypedOp for BasicScaledMaskedSoftmax {
     as_op!();
 }
 
-/// Search pattern => A = SOFTMAX(A * SCALE + MASK)
+/// Search pattern => A = SOFTMAX(A * SCALE + MASK, AXIS=2)
 pub fn as_scaled_masked_softmax_rule(
     _ctx: &(),
     model: &TypedModel,
