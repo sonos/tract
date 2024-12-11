@@ -136,7 +136,7 @@ fn einsum_rules(
     Ok(Some(patch))
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Copy, Default)]
 pub struct BasicMatMul {
     pub transpose_a: bool,
     pub transpose_b: bool,

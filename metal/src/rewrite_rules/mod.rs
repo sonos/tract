@@ -6,6 +6,7 @@ mod rms_norm;
 mod rotate_half;
 mod scaled_masked_softmax;
 mod silu;
+mod untranspose_matmul_output;
 
 use tract_core::internal::*;
 use tract_core::ops::konst::Const;
@@ -18,6 +19,7 @@ pub use rms_norm::{as_rms_norm_rule, remove_rms_norm_cast, BasicRmsNorm};
 pub use rotate_half::{as_rotate_half_rule, BasicRotateHalf};
 pub use scaled_masked_softmax::{as_scaled_masked_softmax_rule, BasicScaledMaskedSoftmax};
 pub use silu::{as_silu_rule, BasicSilu};
+pub use untranspose_matmul_output::untranspose_matmul_output;
 
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::math::{Add, Mul};
