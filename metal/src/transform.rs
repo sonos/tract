@@ -4,13 +4,11 @@ use crate::kernels::matmul::{MetalGemmImplKind, MfaGemm, MlxGemm, MpsMatMul};
 use crate::kernels::nn::{
     ApplyRope, NewGelu, Reducer, RmsNorm, ScaledMaskedSoftmax, Silu, Softmax,
 };
-use crate::ops::{self, MetalAxisOp, MetalSync, MetalSyncKind};
+use crate::ops::{self, MetalSync, MetalSyncKind};
 
-#[allow(unused_imports)]
+use crate::rewrite_rules;
 use crate::rewrite_rules::{
-    as_apply_rope_rule, as_new_gelu_rule, as_rms_norm_rule, as_rotate_half_rule,
-    as_scaled_masked_softmax_rule, as_silu_rule, fuse_axis_op, remove_rms_norm_cast,
-    rewire_metal_sync, rewire_metal_sync_after_const, BasicApplyRope, BasicNewGelu, BasicRmsNorm,
+    BasicApplyRope, BasicNewGelu, BasicRmsNorm,
     BasicRotateHalf, BasicScaledMaskedSoftmax, BasicSilu,
 };
 use crate::tensor::MetalTensorExt;
@@ -71,13 +69,14 @@ impl MetalTransform {
         }
 
         Rewriter::default()
-            .with_rule_for::<Reduce>("as-rms-norm", as_rms_norm_rule)
-            .with_rule_for::<BasicRmsNorm>("remove_rms_norm_cast", remove_rms_norm_cast)
-            .with_rule_for::<ElementWiseOp>("as-silu", as_silu_rule)
-            .with_rule_for::<TypedBinOp>("as-new-gelu", as_new_gelu_rule)
-            .with_rule_for::<TypedConcat>("as-rotate-half", as_rotate_half_rule)
-            .with_rule_for::<TypedBinOp>("as-apply-rope", as_apply_rope_rule)
-            .with_rule_for::<CoreSoftmax>("as-scaled-masked-softmax", as_scaled_masked_softmax_rule)
+            .with_rule_for("as-rms-norm", rewrite_rules::as_rms_norm_rule)
+            .with_rule_for("remove_rms_norm_cast", rewrite_rules::remove_rms_norm_cast)
+            .with_rule_for("as-silu", rewrite_rules::as_silu_rule)
+            .with_rule_for("as-new-gelu", rewrite_rules::as_new_gelu_rule)
+            .with_rule_for("as-rotate-half", rewrite_rules::as_rotate_half_rule)
+            .with_rule_for("as-apply-rope", rewrite_rules::as_apply_rope_rule)
+            .with_rule_for("as-scaled-masked-softmax", rewrite_rules::as_scaled_masked_softmax_rule)
+            .with_rule_for("untranspose-matmul-output", rewrite_rules::untranspose_matmul_output)
             .rewrite(&(), model)?;
 
         if stop_at_phase == 1 {
@@ -91,9 +90,9 @@ impl MetalTransform {
         }
 
         Rewriter::default()
-            .with_rule_for::<MetalSync>("rewire-metal-sync", rewire_metal_sync)
-            .with_rule_for::<Const>("rewire-metal-sync-after-const", rewire_metal_sync_after_const)
-            .with_rule_for::<MetalAxisOp>("fuse_axis_op", fuse_axis_op)
+            .with_rule_for("rewire-metal-sync", rewrite_rules::rewire_metal_sync)
+            .with_rule_for("rewire-metal-sync-after-const", rewrite_rules::rewire_metal_sync_after_const)
+            .with_rule_for("fuse_axis_op", rewrite_rules::fuse_axis_op)
             .rewrite(&(), model)?;
         Ok(())
     }
@@ -187,6 +186,8 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
+
+
         let in_dts_metal_compatible = source
             .node_input_facts(node.id)?
             .iter()
