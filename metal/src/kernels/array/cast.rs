@@ -30,6 +30,7 @@ impl Cast {
                 | DatumType::I16
                 | DatumType::I32
                 | DatumType::I64
+                | DatumType::Bool
         )
     }
 
