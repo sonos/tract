@@ -1,7 +1,6 @@
-use tract_core::ops::einsum::BasicMatMul;
 use crate::rule_ensure;
 use tract_core::internal::*;
-
+use tract_core::ops::einsum::BasicMatMul;
 
 /// Rewrite BasicMatMul { .. transpose_c: true } to BasicMatMul { .. transpose_c: false}
 pub fn untranspose_matmul_output(
@@ -13,13 +12,13 @@ pub fn untranspose_matmul_output(
 ) -> TractResult<Option<TypedModelPatch>> {
     rule_ensure!(op.transpose_c);
 
-
     let new_matmul = BasicMatMul {
         transpose_a: !op.transpose_b,
         transpose_b: !op.transpose_a,
         transpose_c: false,
-        .. *op
+        ..*op
     };
 
-    TypedModelPatch::replace_single_op(model, node, &[node.inputs[1], node.inputs[0]], new_matmul).map(Some)
+    TypedModelPatch::replace_single_op(model, node, &[node.inputs[1], node.inputs[0]], new_matmul)
+        .map(Some)
 }

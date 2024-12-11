@@ -8,8 +8,8 @@ use crate::ops::{self, MetalSync, MetalSyncKind};
 
 use crate::rewrite_rules;
 use crate::rewrite_rules::{
-    BasicApplyRope, BasicNewGelu, BasicRmsNorm,
-    BasicRotateHalf, BasicScaledMaskedSoftmax, BasicSilu,
+    BasicApplyRope, BasicNewGelu, BasicRmsNorm, BasicRotateHalf, BasicScaledMaskedSoftmax,
+    BasicSilu,
 };
 use crate::tensor::MetalTensorExt;
 use crate::{IntoMetal, MetalFact, MetalTensor};
@@ -62,7 +62,11 @@ impl ModelTransform for MetalTransform {
 }
 
 impl MetalTransform {
-    pub fn transform_up_to_phase(&self, model: &mut TypedModel, stop_at_phase: usize) -> TractResult<()> {
+    pub fn transform_up_to_phase(
+        &self,
+        model: &mut TypedModel,
+        stop_at_phase: usize,
+    ) -> TractResult<()> {
         rewrite_einsums_as_matmul(model)?;
         if stop_at_phase == 0 {
             return Ok(());
@@ -91,7 +95,10 @@ impl MetalTransform {
 
         Rewriter::default()
             .with_rule_for("rewire-metal-sync", rewrite_rules::rewire_metal_sync)
-            .with_rule_for("rewire-metal-sync-after-const", rewrite_rules::rewire_metal_sync_after_const)
+            .with_rule_for(
+                "rewire-metal-sync-after-const",
+                rewrite_rules::rewire_metal_sync_after_const,
+            )
             .with_rule_for("fuse_axis_op", rewrite_rules::fuse_axis_op)
             .rewrite(&(), model)?;
         Ok(())
@@ -186,8 +193,6 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-
-
         let in_dts_metal_compatible = source
             .node_input_facts(node.id)?
             .iter()
