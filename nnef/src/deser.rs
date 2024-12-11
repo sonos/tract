@@ -664,16 +664,9 @@ impl CoerceFrom<Value> for (Arc<Tensor>, DatumType) {
 impl CoerceFrom<Value> for OutletId {
     fn coerce(builder: &mut ModelBuilder, from: &Value) -> TractResult<Self> {
         match from {
-            Value::Tensor(t) => {
-                Ok(builder.wire_as_outlets(tract_core::ops::konst::Const::new(t.clone()), &[])?[0])
-            }
-            Value::Scalar(f) => {
-                Ok(builder
-                    .wire_as_outlets(tract_core::ops::konst::Const::new(rctensor0(*f)), &[])?[0])
-            }
-            Value::Dim(i) => Ok(builder
-                .wire_as_outlets(tract_core::ops::konst::Const::new(rctensor0(i.clone())), &[])?
-                [0]),
+            Value::Tensor(t) => builder.add_const(t.clone()),
+            Value::Scalar(f) => builder.add_const(rctensor0(*f)),
+            Value::Dim(i) => builder.add_const(rctensor0(i.clone())),
             Value::Wire(outlet) => Ok(*outlet),
             Value::Tuple(tuple) if tuple.len() == 1 => OutletId::coerce(builder, &tuple[0]),
             Value::Array(inputs) => {
@@ -689,13 +682,8 @@ impl CoerceFrom<Value> for OutletId {
                     .wire_as_outlets(tract_core::ops::array::TypedConcat::new(0), &outlets)
                     .map(|o| o[0])
             }
-            Value::String(s) => Ok(builder
-                .wire_as_outlets(tract_core::ops::konst::Const::new(rctensor0(s.clone())), &[])?
-                [0]),
-            Value::Bool(b) => {
-                Ok(builder
-                    .wire_as_outlets(tract_core::ops::konst::Const::new(rctensor0(*b)), &[])?[0])
-            }
+            Value::String(s) => builder.add_const(rctensor0(s.clone())),
+            Value::Bool(b) => builder.add_const(rctensor0(*b)),
             _ => bail!("Can not build an outletid from {:?}", from),
         }
     }
