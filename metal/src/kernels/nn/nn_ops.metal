@@ -303,7 +303,7 @@ template<typename F>
     size_t mask_base_idx = tgpig.y * mask_strides[1] 
             + tgpig.z * mask_strides[0];
 
-    // Get max value on softmax reduce_dim after apply
+    // Get max value on softmax reduce_dim after applying scale and mask
     float partial_max = -INFINITY;
     for (size_t i = tiisg; i < reduce_dim; i += tpsg) {
         auto idx = base_idx + i * strides[2];
