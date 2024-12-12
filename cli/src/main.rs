@@ -587,7 +587,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             for m in tract_linalg::ops().mmm_impls() {
                 println!("{}", Green.paint(format!(" * {}", m.name())));
                 for packings in m.packings() {
-                    println!("   - {} • {}", packings.0, packings.1);
+                    println!("   - {:?} • {:?}", packings.0, packings.1);
                 }
             }
             println!("{}", White.bold().paint("# MatMul kits"));
