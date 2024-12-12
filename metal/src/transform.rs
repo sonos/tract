@@ -104,56 +104,68 @@ impl MetalTransform {
         Ok(())
     }
 
-    fn sync_inputs_if_required(
+    fn sync_inputs_to_cpu_if_required(
         &self,
         model: &mut TypedModel,
         node: &TypedNode,
         mapping: &HashMap<OutletId, OutletId>,
-        sync_kind: MetalSyncKind,
     ) -> TractResult<TVec<OutletId>> {
         let mut mapped_inputs = tvec![];
         for (i_idx, i) in node.inputs.iter().enumerate() {
             let in_fact = model.outlet_fact_mut(mapping[i])?;
-            match sync_kind {
-                MetalSyncKind::ToCpu if in_fact.as_metal_fact().is_some() => {
-                    mapped_inputs.push(
-                        model.wire_node(
-                            format!("{}.to-cpu-{i_idx}", node.name),
-                            MetalSync::new(sync_kind),
-                            &[mapping[i]],
-                        )?[0],
-                    );
-                }
-                MetalSyncKind::ToGpu if in_fact.as_metal_fact().is_none() => {
-                    if let Some(ref konst) = in_fact.konst {
-                        if konst.as_metal_tensor().is_none() {
-                            let konst_metal =
-                                konst.as_ref().clone().into_metal()?.into_opaque_tensor();
-                            let metal_fact = MetalFact::from_cpu(in_fact.clone())?;
+            if in_fact.as_metal_fact().is_some() {
+                mapped_inputs.push(
+                    model.wire_node(
+                        format!("{}.to-cpu-{i_idx}", node.name),
+                        MetalSync::new(MetalSyncKind::ToCpu),
+                        &[mapping[i]],
+                    )?[0],
+                );
+            } else {
+                mapped_inputs.push(mapping[i])
+            }
+        }
+        Ok(mapped_inputs)
+    }
 
-                            *in_fact = TypedFact::dt_scalar(DatumType::Opaque)
-                                .with_opaque_fact(metal_fact);
+    fn sync_inputs_to_gpu_if_required(
+        &self,
+        model: &mut TypedModel,
+        node: &TypedNode,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let mut mapped_inputs = tvec![];
+        for (i_idx, i) in node.inputs.iter().enumerate() {
+            let in_fact = model.outlet_fact_mut(mapping[i])?;
+            if in_fact.as_metal_fact().is_none() {
+                if let Some(ref konst) = in_fact.konst {
+                    if konst.as_metal_tensor().is_none() {
+                        let konst_metal = konst.as_ref().clone().into_metal()?.into_opaque_tensor();
+                        let metal_fact = MetalFact::from_cpu(in_fact.clone())?;
 
-                            in_fact.konst = Some(Arc::new(konst_metal));
-                            mapped_inputs.push(mapping[i]);
-                            continue;
-                        }
+                        *in_fact =
+                            TypedFact::dt_scalar(DatumType::Opaque).with_opaque_fact(metal_fact);
+
+                        in_fact.konst = Some(Arc::new(konst_metal));
+                        mapped_inputs.push(mapping[i]);
+                        continue;
                     }
-                    ensure!(
-                        in_fact.datum_type.is_copy(),
-                        "Only copy DatumType can be sync to GPU: {:?}",
-                        in_fact.datum_type
-                    );
-
-                    mapped_inputs.push(
-                        model.wire_node(
-                            format!("{}.to-gpu-{i_idx}", node.name),
-                            MetalSync::new(sync_kind),
-                            &[mapping[i]],
-                        )?[0],
-                    );
                 }
-                _ => mapped_inputs.push(mapping[i]),
+                ensure!(
+                    in_fact.datum_type.is_copy(),
+                    "Only copy DatumType can be sync to GPU: {:?}",
+                    in_fact.datum_type
+                );
+
+                mapped_inputs.push(
+                    model.wire_node(
+                        format!("{}.to-gpu-{i_idx}", node.name),
+                        MetalSync::new(MetalSyncKind::ToGpu),
+                        &[mapping[i]],
+                    )?[0],
+                );
+            } else {
+                mapped_inputs.push(mapping[i]);
             }
         }
         Ok(mapped_inputs)
@@ -262,14 +274,13 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
 
         match new_metal_op {
             Some(metal_op) => {
-                let gpu_inputs =
-                    self.sync_inputs_if_required(target, node, mapping, MetalSyncKind::ToGpu)?;
+                let gpu_inputs = self.sync_inputs_to_gpu_if_required(target, node, mapping)?;
                 let target_node_outlet_ids = target.wire_node(&node.name, metal_op, &gpu_inputs)?;
+                // Ok(target_node_outlet_ids)
                 self.sync_model_outputs_if_required(source, node, target, target_node_outlet_ids)
             }
             None => {
-                let cpu_inputs =
-                    self.sync_inputs_if_required(target, node, mapping, MetalSyncKind::ToCpu)?;
+                let cpu_inputs = self.sync_inputs_to_cpu_if_required(target, node, mapping)?;
                 target.wire_node(&node.name, node.op.clone(), &cpu_inputs)
             }
         }
