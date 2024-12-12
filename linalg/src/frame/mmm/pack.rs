@@ -47,7 +47,11 @@ impl Display for PackedFormat {
 
 impl Debug for PackedFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Packed{:?}[{}]@{}+{}", self.dt, self.r, self.alignment_bytes, self.end_padding_record)
+        write!(
+            f,
+            "Packed{:?}[{}]@{}+{}",
+            self.dt, self.r, self.alignment_bytes, self.end_padding_record
+        )
     }
 }
 
@@ -106,8 +110,10 @@ impl PackedFormat {
         let panel_bytes = panel_len * t.datum_type().size_of();
         let strides = t.strides();
         unsafe {
-            let mut packed =
-                Blob::new_for_size_and_align(t.datum_type().size_of() * packed_len, self.alignment_bytes);
+            let mut packed = Blob::new_for_size_and_align(
+                t.datum_type().size_of() * packed_len,
+                self.alignment_bytes,
+            );
             if cfg!(debug_assertions) {
                 packed.as_bytes_mut().fill(0u8);
             }
@@ -145,8 +151,10 @@ impl PackedFormat {
         let panel_bytes = panel_len * t.datum_type().size_of();
         let strides = t.strides();
         unsafe {
-            let mut packed =
-                Blob::new_for_size_and_align(t.datum_type().size_of() * packed_len, self.alignment_bytes);
+            let mut packed = Blob::new_for_size_and_align(
+                t.datum_type().size_of() * packed_len,
+                self.alignment_bytes,
+            );
             if cfg!(debug_assertions) {
                 packed.as_bytes_mut().fill(0u8);
             }
@@ -520,12 +528,7 @@ pub trait Packing {
 
 impl<D: Datum> Packing for D {
     fn packing(r: usize) -> PackedFormat {
-        PackedFormat {
-            dt: Self::datum_type(),
-            r,
-            alignment_bytes: Self::datum_type().alignment(),
-            end_padding_record: 0,
-        }
+        PackedFormat::new(Self::datum_type(), r, Self::datum_type().alignment())
     }
 }
 
