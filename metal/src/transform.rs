@@ -88,6 +88,7 @@ impl MetalTransform {
         }
 
         *model = self.translate_model(model)?;
+        self.sync_model_outputs_if_required(model)?;
 
         if stop_at_phase == 2 {
             return Ok(());
@@ -171,29 +172,31 @@ impl MetalTransform {
         Ok(mapped_inputs)
     }
 
-    fn sync_model_outputs_if_required(
-        &self,
-        src: &TypedModel,
-        node: &TypedNode,
-        target: &mut TypedModel,
-        target_node_outlet_ids: TVec<OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        let mut outputs = tvec![];
-        for (o_idx, o) in target_node_outlet_ids.into_iter().enumerate() {
-            // Add MetalSync op for model output
-            let is_src_output = src.outputs.contains(&OutletId::new(node.id, o_idx));
-            if target.outlet_fact(o)?.as_metal_fact().is_some() && is_src_output {
-                let sync_output = target.wire_node(
-                    format!("{}.to-cpu-{o_idx}-out", node.name),
-                    MetalSync::new(MetalSyncKind::ToCpu),
-                    &[o],
-                )?[0];
-                outputs.push(sync_output);
-            } else {
-                outputs.push(o)
+    fn sync_model_outputs_if_required(&self, model: &mut TypedModel) -> TractResult<()> {
+        let mut m_outputs = tvec![];
+        for output in model.output_outlets()? {
+            let fact = model.outlet_fact(*output)?;
+            if fact.as_metal_fact().is_some() {
+                m_outputs.push(*output)
             }
         }
-        Ok(outputs)
+
+        let synced_m_outputs = model.wire_node(
+            "metal-outputs-to-cpu",
+            MetalSync::new(MetalSyncKind::ToCpu),
+            &m_outputs,
+        )?;
+
+        let sync_mapping = m_outputs.iter().zip(synced_m_outputs).collect::<HashMap<_, _>>();
+
+        model.set_output_outlets(
+            &model
+                .output_outlets()?
+                .iter()
+                .map(|o| sync_mapping.get(o).copied().unwrap_or(*o))
+                .collect::<TVec<_>>(),
+        )?;
+        Ok(())
     }
 }
 
@@ -276,8 +279,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             Some(metal_op) => {
                 let gpu_inputs = self.sync_inputs_to_gpu_if_required(target, node, mapping)?;
                 let target_node_outlet_ids = target.wire_node(&node.name, metal_op, &gpu_inputs)?;
-                // Ok(target_node_outlet_ids)
-                self.sync_model_outputs_if_required(source, node, target, target_node_outlet_ids)
+                Ok(target_node_outlet_ids)
             }
             None => {
                 let cpu_inputs = self.sync_inputs_to_cpu_if_required(target, node, mapping)?;
