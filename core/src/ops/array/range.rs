@@ -1,3 +1,4 @@
+use crate::ops::cast::Cast;
 use tract_num_traits::AsPrimitive;
 use tract_num_traits::Zero;
 
@@ -90,18 +91,25 @@ impl Range {
 
 impl TypedOp for Range {
     fn declutter(
-            &self,
-            model: &TypedModel,
-            node: &TypedNode,
-        ) -> TractResult<Option<TypedModelPatch>> {
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
         let Some(succ) = model.single_succ(node.id)? else { return Ok(None) };
         let Some(slice) = succ.op_as::<Slice>() else { return Ok(None) };
         if slice.start.is_zero() && slice.end.is_one() {
             let mut patch = TypedModelPatch::default();
-            let wire = patch.tap_model(model, node.inputs[0])?;
+            let mut wire = patch.tap_model(model, node.inputs[0])?;
+            if model.outlet_fact(node.inputs[0])?.datum_type.is_tdim() {
+                wire = patch.wire_node(
+                    format!("{}.cast-tdim", node.name),
+                    Cast { to: DatumType::I64 },
+                    &[wire],
+                )?[0];
+            }
             let wire = patch.wire_node(&node.name, AxisOp::Add(0), &[wire])?;
             patch.shunt_outside(model, succ.id.into(), wire[0])?;
-            return Ok(Some(patch))
+            return Ok(Some(patch));
         }
         Ok(None)
     }
