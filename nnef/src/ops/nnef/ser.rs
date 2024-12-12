@@ -557,7 +557,7 @@ pub fn rewrite_matmul_to_same_rank(
         inputs[1] =
             patch.wire_node(format!("{prefix}.extra_b_axis.{i}"), AxisOp::Add(0), &[inputs[1]])?[1];
     }
-    let result = patch.wire_node(prefix, op.clone(), &inputs)?[0];
+    let result = patch.wire_node(prefix, *op, &inputs)?[0];
     patch.shunt_outside(model, node.id.into(), result)?;
     Ok(Some(patch))
 }

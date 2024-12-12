@@ -51,7 +51,7 @@ fn trivial_axes_around_matmul(
         wire[1] =
             patch.wire_node(format!("{name}.rm_b_axis_{axis}"), AxisOp::Rm(*axis), &[wire[1]])?[0];
     }
-    let mut out = patch.wire_node(&node.name, conv.clone(), &wire)?;
+    let mut out = patch.wire_node(&node.name, *conv, &wire)?;
     for axis in trivial_axes {
         out = patch.wire_node(format!("{name}.add_axis_{axis}"), AxisOp::Add(axis), &out)?;
     }
