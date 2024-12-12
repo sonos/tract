@@ -492,6 +492,7 @@ pub trait Datum:
 {
     fn name() -> &'static str;
     fn datum_type() -> DatumType;
+    fn is<D: Datum>() -> bool;
 }
 
 macro_rules! datum {
@@ -509,6 +510,10 @@ macro_rules! datum {
 
             fn datum_type() -> DatumType {
                 DatumType::$v
+            }
+
+            fn is<D: Datum>() -> bool {
+                Self::datum_type() == D::datum_type()
             }
         }
     };

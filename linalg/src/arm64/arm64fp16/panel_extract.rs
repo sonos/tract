@@ -1,8 +1,8 @@
+use super::FP16;
 use crate::frame::block_quant::{PackedBlockQuantFormat, Q4_0};
-use crate::frame::PackedFormat;
+use crate::mmm::Packing;
 use crate::Ops;
 use tract_data::internal::*;
-use super::FP16;
 
 pub fn plug(ops: &mut Ops) {
     ops.panel_extractors.push(packed_64_q40_to_f16.clone());
@@ -10,7 +10,7 @@ pub fn plug(ops: &mut Ops) {
 
 panel_extractor!(kernel_packed_64_q40_to_f16 as packed_64_q40_to_f16(
     Box::new(PackedBlockQuantFormat::new(&Q4_0, 64, 16, true)),
-    PackedFormat::new(f16::datum_type(), 64, 16)
+    f16::packing(64).align(16)
 ) where(FP16));
 
 #[target_feature(enable = "fp16")]

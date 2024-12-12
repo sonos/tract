@@ -12,7 +12,7 @@ use super::MMMInputFormat;
 pub struct PackedFormat {
     pub dt: DatumType,
     pub r: usize,
-    pub alignment: usize,
+    pub alignment_bytes: usize,
     pub end_padding_record: usize,
 }
 
@@ -47,13 +47,13 @@ impl Display for PackedFormat {
 
 impl Debug for PackedFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        <Self as Display>::fmt(self, f)
+        write!(f, "Packed{:?}[{}]@{}+{}", self.dt, self.r, self.alignment_bytes, self.end_padding_record)
     }
 }
 
 impl PackedFormat {
-    pub const fn new(dt: DatumType, nr: usize, alignment: usize) -> PackedFormat {
-        PackedFormat { dt, r: nr, alignment, end_padding_record: 1 }
+    pub const fn new(dt: DatumType, nr: usize, alignment_bytes: usize) -> PackedFormat {
+        PackedFormat { dt, r: nr, alignment_bytes, end_padding_record: 1 }
     }
 
     pub const fn with_end_padding_record(self, end_padding_record: usize) -> Self {
@@ -61,8 +61,13 @@ impl PackedFormat {
     }
 
     #[inline]
+    pub fn align(self, alignment: usize) -> Self {
+        Self { alignment_bytes: alignment, ..self }
+    }
+
+    #[inline]
     pub fn alignment(&self) -> usize {
-        self.alignment
+        self.alignment_bytes
     }
 
     #[inline]
@@ -102,7 +107,7 @@ impl PackedFormat {
         let strides = t.strides();
         unsafe {
             let mut packed =
-                Blob::new_for_size_and_align(t.datum_type().size_of() * packed_len, self.alignment);
+                Blob::new_for_size_and_align(t.datum_type().size_of() * packed_len, self.alignment_bytes);
             if cfg!(debug_assertions) {
                 packed.as_bytes_mut().fill(0u8);
             }
@@ -141,7 +146,7 @@ impl PackedFormat {
         let strides = t.strides();
         unsafe {
             let mut packed =
-                Blob::new_for_size_and_align(t.datum_type().size_of() * packed_len, self.alignment);
+                Blob::new_for_size_and_align(t.datum_type().size_of() * packed_len, self.alignment_bytes);
             if cfg!(debug_assertions) {
                 packed.as_bytes_mut().fill(0u8);
             }
@@ -505,6 +510,21 @@ unsafe fn pack_mn_major<Chunk: Copy>(
         }
         if partial_pane > 0 {
             p_row.copy_from_nonoverlapping(b_row, partial_pane);
+        }
+    }
+}
+
+pub trait Packing {
+    fn packing(r: usize) -> PackedFormat;
+}
+
+impl<D: Datum> Packing for D {
+    fn packing(r: usize) -> PackedFormat {
+        PackedFormat {
+            dt: Self::datum_type(),
+            r,
+            alignment_bytes: Self::datum_type().alignment(),
+            end_padding_record: 0,
         }
     }
 }

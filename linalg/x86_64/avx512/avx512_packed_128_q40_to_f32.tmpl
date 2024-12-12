@@ -1,0 +1,201 @@
+{% comment %}
+// vim: set syntax=asm :
+
+/*
+System V ABI:
+    args: rdi, rsi, rdx, rcx, r8, r9
+    preserve: rbx, rsp, rbp, r12, r13, r14, r15
+    scratch: rax, rdi, rsi, rdx, rcx, r8, r9, r10, r11
+    return: rax (+rdx)
+
+Windows ABI:
+    args: RCX, RDX, R8, R9
+    preserve: RBX, RBP, RDI, RSI, RSP, R12, R13, R14, R15, and XMM6-15
+    scratch: RAX, RCX, RDX, R8, R9, R10, R11, XMM0-5, and the upper portions of ZMM0-15 and ZMM0-15
+    return: rax (+rdx)
+*/
+{% endcomment %}
+{% if msvc %}
+
+_text segment
+avx512_packed_128_q40_to_f32_{{suffix}} proc
+
+{% else %}
+
+.intel_syntax noprefix
+.text
+.p2align 5
+.globl {{G}}avx512_packed_128_q40_to_f32_{{suffix}}
+{{G}}avx512_packed_128_q40_to_f32_{{suffix}}:
+.cfi_startproc
+
+{% endif %}
+
+    push        rbp
+    mov         rbp, rsp
+
+{% if family == "windows" %}
+// https://www.agner.org/optimize/calling_conventions.pdf xmm6-15 are not scratch
+// https://stackoverflow.com/questions/43358429/save-value-of-xmm-registers
+    and rsp,-16
+    lea rsp,[rsp-160]
+    vmovaps [rsp], xmm6
+    vmovaps [rsp+16*1],xmm7
+    vmovaps [rsp+16*2],xmm8
+    vmovaps [rsp+16*3],xmm9
+    vmovaps [rsp+16*4],xmm10
+    vmovaps [rsp+16*5],xmm11
+    vmovaps [rsp+16*6],xmm12
+    vmovaps [rsp+16*7],xmm13
+    vmovaps [rsp+16*8],xmm14
+    vmovaps [rsp+16*9],xmm15
+
+// FIXME calling_conventions
+    push        rdi
+    push        rsi
+
+// win: rcx:input rdx: output, r8:k
+    mov         rdi, rcx
+    mov         rsi, rdx
+    mov         rdx, r8
+
+{% endif %}
+
+    sub         rsp, 8
+{% if family == "unix" %}
+.cfi_def_cfa_offset 64
+{% endif %}
+    stmxcsr     [rsp + 4]
+{% if msvc %}
+    mov         rax, 1FC0h
+{% else %}
+    mov         rax, 0x1FC0
+{% endif %}
+    mov         [rsp], eax
+    ldmxcsr     [rsp]
+
+// unix: rdi:input rsi: output, rdx:k
+
+{{L}}q40f32:
+    // zmm0-7: acc
+    // zmm8-16: scales
+    // zmm30: 8
+    // zmm29: mask
+    // zmm31: b value
+    vbroadcastss    zmm29, dword ptr [{{offset}} {{L}}q40f32_mask]
+    vbroadcastss    zmm30, dword ptr [{{offset}} {{L}}q40f32_eight]
+    vmovups         zmm28, [{{offset}} {{L}}q40f32_perm]
+
+{{L}}q40f32_outerloop:
+    // scales
+    {% for i in (0..7) %}
+        vmovaps         ymm{{i|plus:8}}, [rdi + {{i|times:32}}]
+    {% endfor %}
+    {% for i in (0..7) %}
+        vcvtph2ps       zmm{{i|plus:8}}, ymm{{i|plus:8}}
+    {% endfor %}
+    add             rdi, 256
+    mov             rax, 32
+
+{{L}}q40f32_innerloop:
+    vmovaps         zmm27, [rdi]            // 128 nibbles
+
+    vpandq          zmm26, zmm27, zmm29     // 64 bytes
+
+    vpmovzxbd       zmm16, xmm26            // 16 u32
+    vpermt2q        zmm26, zmm28, zmm26
+    vpmovzxbd       zmm17, xmm26            // 16 u32
+    vpermt2q        zmm26, zmm28, zmm26
+    vpmovzxbd       zmm18, xmm26            // 16 u32
+    vpermt2q        zmm26, zmm28, zmm26
+    vpmovzxbd       zmm19, xmm26            // 16 u32
+
+    vpsrlw          zmm27, zmm27, 4
+    vpandq          zmm26, zmm27, zmm29     // 64 bytes
+
+    vpmovzxbd       zmm20, xmm26            // 16 u32
+    vpermt2q        zmm26, zmm28, zmm26
+    vpmovzxbd       zmm21, xmm26            // 16 u32
+    vpermt2q        zmm26, zmm28, zmm26
+    vpmovzxbd       zmm22, xmm26            // 16 u32
+    vpermt2q        zmm26, zmm28, zmm26
+    vpmovzxbd       zmm23, xmm26            // 16 u32
+
+
+    {% for i in (16..23) %}
+        vpsubd          zmm{{i}}, zmm{{i}}, zmm30
+    {% endfor %}
+
+    {% for i in (16..23) %}
+        vcvtdq2ps       zmm{{i}}, zmm{{i}}
+    {% endfor %}
+
+    {% for i in (0..7) %}
+        vmulps      zmm{{i|plus:16}}, zmm{{i|plus:16}}, zmm{{i|plus:8}}
+    {% endfor %}
+
+    {% for i in (0..7) %}
+        vmovaps     [rsi + {{i|times:64}}], zmm{{i|plus:16}}
+    {% endfor %}
+    
+    add             rdi, 64
+    add             rsi, 512
+    sub             rax, 1
+    jnz             {{L}}q40f32_innerloop
+
+    sub             rdx, 32
+    jnz             {{L}}q40f32_outerloop
+
+{{L}}return:
+    ldmxcsr     [rsp + 4]
+    add         rsp, 8
+
+{% if family == "windows" %}
+    pop rsi
+    pop rdi
+
+    vmovaps xmm15, [rsp+16*9]
+    vmovaps xmm14, [rsp+16*8]
+    vmovaps xmm13, [rsp+16*7]
+    vmovaps xmm12, [rsp+16*6]
+    vmovaps xmm11, [rsp+16*5]
+    vmovaps xmm10, [rsp+16*4]
+    vmovaps xmm9, [rsp+16*3]
+    vmovaps xmm8, [rsp+16*2]
+    vmovaps xmm7, [rsp+16*1]
+    vmovaps xmm6, [rsp]
+{% endif %}
+
+    mov rsp, rbp
+    pop rbp
+    ret
+
+{{L}}q40f32_mask:
+{% if msvc %}
+    {{long}} 0F0F0F0Fh
+{% else %}
+    {{long}} 0x0F0F0F0F
+{% endif %}
+
+{{L}}q40f32_eight:
+    {{long}} 8
+
+{{L}}q40f32_perm:
+    {{quad}} 2
+    {{quad}} 3
+    {{quad}} 4
+    {{quad}} 5
+    {{quad}} 6
+    {{quad}} 7
+    {{quad}} 0 // we dont care what's rolling in from the right
+    {{quad}} 0
+
+
+{% if msvc %}
+avx512_packed_128_q40_to_f32_{{suffix}} endp
+_text ends
+end
+
+{% else %}
+.cfi_endproc
+{% endif %}

@@ -172,7 +172,7 @@ where
     let v = c.to_vec();
     let c = mmm_stride_storage(&v, ker.nr());
     let mut ops = ops.to_vec();
-    ops.insert(0, FusedKerSpec::AddUnicast(c));
+    ops.insert(0, FusedKerSpec::AddUnicast(c)); // FIXME
     ops.insert(0, FusedKerSpec::Clear);
     ops.push(FusedKerSpec::Store(c));
     ops.push(FusedKerSpec::Done);

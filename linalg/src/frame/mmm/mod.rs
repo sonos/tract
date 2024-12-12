@@ -30,6 +30,8 @@ pub use kit::*;
 pub use scratch::*;
 pub use storage::*;
 
+pub use pack::Packing;
+
 pub fn no_prefetch(_ptr: *const u8, _len: usize) {}
 
 pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {

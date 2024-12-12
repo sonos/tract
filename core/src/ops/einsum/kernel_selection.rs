@@ -110,7 +110,7 @@ pub fn wire_linear(
             kit.weight == weight && kit.accumulator == accumulator && kit.activation == activation
         })
         .min_by_key(|kit| kit.generic_fallback as usize)
-        .with_context(|| format!("No kit found for matmul {a:?} • {b_fact:?}"))?;
+        .with_context(|| format!("No kit found for matmul {weight:?} {accumulator:?} {activation:?}"))?;
     let configs = [kit.item_for_mv(), kit.item_for_squarish()];
     let packed: Box<dyn MMMInputValue> = if let Some(a_payload) = a_as_bqv {
         let packed = kit

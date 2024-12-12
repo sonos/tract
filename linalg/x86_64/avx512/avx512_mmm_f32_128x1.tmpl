@@ -33,15 +33,113 @@ Windows ABI:
     mov     rax,    [rdi + 16]   // A
 
     mov     rbx,    [rdi + 8]    // k
+    mov     r8,     [rdi + 32]   // packing
     test    rbx,    rbx
     jz      {{L}}non_linear_loop
 
+    cmp     r8, 1
+    jz      {{L}}q40f32
+
 {{align}} 16
-{{L}}main_loop_packed_packed:
+{{L}}f32f32:
 	{% include "8x1/packed_packed_loop1/avx-512.tmpli" %}
 
     sub             rbx, 1
-    jnz             {{L}}main_loop_packed_packed
+    jnz             {{L}}f32f32
+
+    jmp             {{L}}non_linear_loop
+
+{{L}}q40f32_mask:
+{% if msvc %}
+    {{long}} 0F0F0F0Fh
+{% else %}
+    {{long}} 0x0F0F0F0F
+{% endif %}
+
+{{L}}q40f32_eight:
+    {{long}} 8
+
+{{L}}q40f32_perm:
+    {{quad}} 2
+    {{quad}} 3
+    {{quad}} 4
+    {{quad}} 5
+    {{quad}} 6
+    {{quad}} 7
+    {{quad}} 0 // we dont care what's rolling in from the right
+    {{quad}} 0
+
+{{L}}q40f32:
+    // zmm0-7: acc
+    // zmm8-16: scales
+    // zmm30: 8
+    // zmm29: mask
+    // zmm31: b value
+    vbroadcastss    zmm29, dword ptr [{{offset}} {{L}}q40f32_mask]
+    vbroadcastss    zmm30, dword ptr [{{offset}} {{L}}q40f32_eight]
+    vmovups         zmm28, [{{offset}} {{L}}q40f32_perm]
+
+{{L}}q40f32_outerloop:
+    // scales
+    {% for i in (0..7) %}
+        vmovaps         ymm{{i|plus:8}}, [rax + {{i|times:32}}]
+    {% endfor %}
+    {% for i in (0..7) %}
+        vcvtph2ps       zmm{{i|plus:8}}, ymm{{i|plus:8}}
+    {% endfor %}
+    add             rax, 256
+
+    mov             rdx, 32
+
+{{L}}q40f32_innerloop:
+    vbroadcastss    zmm31, dword ptr [rcx]
+    vmovaps         zmm27, [rax]            // 128 nibbles
+
+    vpandq           zmm26, zmm27, zmm29     // 64 bytes
+
+    vpmovzxbd       zmm16, xmm26            // 16 u32
+    vpermt2q        zmm26, zmm28, zmm26
+    vpmovzxbd       zmm17, xmm26            // 16 u32
+    vpermt2q        zmm26, zmm28, zmm26
+    vpmovzxbd       zmm18, xmm26            // 16 u32
+    vpermt2q        zmm26, zmm28, zmm26
+    vpmovzxbd       zmm19, xmm26            // 16 u32
+
+    vpsrlw          zmm27, zmm27, 4
+    vpandq          zmm26, zmm27, zmm29     // 64 bytes
+
+    vpmovzxbd       zmm20, xmm26            // 16 u32
+    vpermt2q        zmm26, zmm28, zmm26
+    vpmovzxbd       zmm21, xmm26            // 16 u32
+    vpermt2q        zmm26, zmm28, zmm26
+    vpmovzxbd       zmm22, xmm26            // 16 u32
+    vpermt2q        zmm26, zmm28, zmm26
+    vpmovzxbd       zmm23, xmm26            // 16 u32
+
+
+    {% for i in (16..23) %}
+        vpsubd          zmm{{i}}, zmm{{i}}, zmm30
+    {% endfor %}
+
+    {% for i in (16..23) %}
+        vcvtdq2ps       zmm{{i}}, zmm{{i}}
+    {% endfor %}
+
+    {% for i in (0..7) %}
+        vmulps      zmm{{i|plus:16}}, zmm{{i|plus:16}}, zmm{{i|plus:8}}
+    {% endfor %}
+    
+    {% for i in (0..7) %}
+        vfmadd231ps zmm{{i}}, zmm{{i|plus:16}}, zmm31
+    {% endfor %}
+
+    add             rax, 64
+    add             rcx, 4
+    sub             rdx, 1
+    jnz             {{L}}q40f32_innerloop
+
+    sub             rbx, 32
+    jnz             {{L}}q40f32_outerloop
 
     jmp             {{L}}non_linear_loop
 
