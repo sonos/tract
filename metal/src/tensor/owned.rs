@@ -1,6 +1,6 @@
 use crate::MetalTensor;
 use anyhow::Result;
-use metal::{Buffer, MTLResourceOptions, NSUInteger};
+use metal::Buffer;
 use num_traits::AsPrimitive;
 use std::fmt::Display;
 use tract_core::internal::*;
@@ -136,13 +136,7 @@ impl OwnedMetalTensor {
                 "Tensor of {:?} is not copied. No Metal buffer can be allocated for it.",
                 tensor_view.datum_type(),
             );
-            let size = (tensor_view.datum_type().size_of() * tensor_view.len()) as NSUInteger;
-            let buffer = ctxt.device().new_buffer_with_bytes_no_copy(
-                tensor_view.tensor.as_bytes().as_ptr() as *const core::ffi::c_void,
-                size,
-                MTLResourceOptions::StorageModeShared,
-                None,
-            );
+            let buffer = ctxt.buffer_from_slice(tensor_view.tensor.as_bytes());
             Ok(OwnedMetalTensor { inner: m_value, metal: buffer })
         })
     }
