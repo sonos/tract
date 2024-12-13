@@ -1,6 +1,6 @@
 use foreign_types::{foreign_type, ForeignType};
 use metal::mps::{Kernel, KernelRef};
-use metal::{Buffer, Device, NSUInteger};
+use metal::{Buffer, CommandBuffer, Device, NSUInteger};
 use objc::runtime::Object;
 use objc::{class, msg_send, sel, sel_impl};
 use paste::paste;
@@ -277,8 +277,9 @@ impl MatrixMultiplicationRef {
         right: Matrix,
         result: Matrix,
     ) {
+        let cmd_buffer: CommandBuffer = command_buffer.as_ref().to_owned();
         unsafe {
-            msg_send![self, encodeToCommandBuffer: command_buffer
+            msg_send![self, encodeToCommandBuffer: cmd_buffer
                                   leftMatrix: left
                                   rightMatrix: right
                                   resultMatrix: result]
@@ -354,8 +355,9 @@ impl MatrixVectorMultiplicationRef {
         right: Vector,
         result: Vector,
     ) {
+        let cmd_buffer: CommandBuffer = command_buffer.as_ref().to_owned();
         unsafe {
-            msg_send![self, encodeToCommandBuffer: command_buffer
+            msg_send![self, encodeToCommandBuffer: cmd_buffer
                                   inputMatrix: left
                                   inputVector: right
                                   resultVector: result]
