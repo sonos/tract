@@ -1,4 +1,5 @@
 use crate::fact::MetalTypedFactExt;
+use crate::ops::{MetalSync, MetalSyncKind};
 use std::fmt;
 use std::fmt::Debug;
 use tract_core::internal::*;
@@ -35,6 +36,16 @@ impl Lifetime {
     }
 }
 
+fn next_nodes<'a>(model: &'a TypedModel, node: &TypedNode) -> Option<TVec<&'a TypedNode>> {
+    if node.outputs.len() == 0 { return None };
+
+    Some(node.outputs.iter().map(|o| {
+        o.successors.iter().map(|succ| {
+            &model.nodes()[succ.node]
+        }).collect::<Vec<_>>()
+    }).flatten().collect())
+}
+
 pub fn eval_metal_mem_req_for_nodes(
     model: &TypedModel,
     order: &[usize],
@@ -43,7 +54,11 @@ pub fn eval_metal_mem_req_for_nodes(
     let flush_lists = order::build_flush_list(model, order, &outputs, |node| {
         let Ok(facts) = model.node_output_facts(node.id) else { return false };
 
-        facts.iter().any(|it| it.to_metal_fact().map(|it| it.is_from_gpu()).unwrap_or(false))
+        let cpu_sync_in_next_nodes = next_nodes(model, node).is_some_and(|nodes| {
+            nodes.iter().any(|it| it.op_as::<crate::ops::MetalSync>().is_some_and(|op| op.kind == MetalSyncKind::ToCpu))
+        });
+        
+        !cpu_sync_in_next_nodes && facts.iter().any(|it| it.to_metal_fact().map(|it| it.is_from_gpu()).unwrap_or(false))
     });
     let mut scoped_nodes = tvec![];
 
