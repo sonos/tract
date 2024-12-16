@@ -75,7 +75,6 @@ pub fn as_rotate_half_rule(
     let Some(pos_half_op) = pos_half.op_as::<Slice>() else { return Ok(None) };
 
     rule_ensure!(pos_half_op.axis == op.axis);
-    rule_ensure!(pos_half_op.start == 0.into());
     rule_ensure!(pos_half_op.end == neg_half_slice_op.start);
     rule_ensure!(neg_half_slice_op.end == out_fact.shape[op.axis].clone());
 
@@ -84,9 +83,24 @@ pub fn as_rotate_half_rule(
     let Some(concatenated_last_dim) = out_fact.shape[op.axis].as_i64() else { return Ok(None) };
     rule_ensure!(pos_half_slice_end * 2 == concatenated_last_dim);
 
+    let in_fact = model.node_input_facts(neg_half_slice.id)?[0];
+
     let mut patch = TypedModelPatch::default();
-    let input = patch.taps(model, &neg_half_slice.inputs)?;
-    let out = patch.wire_node(format!("{node_name}.rotate_half"), BasicRotateHalf, &input)?;
+    let mut inputs = patch.taps(model, &neg_half_slice.inputs)?;
+
+    if pos_half_op.start != 0.into() || neg_half_slice_op.end != in_fact.shape[op.axis] {
+        inputs = patch.wire_node(
+            format!("{node_name}.rotate_half.slice"),
+            Slice {
+                start: pos_half_op.start.clone(),
+                end: neg_half_slice_op.end.clone(),
+                axis: op.axis,
+            },
+            &inputs,
+        )?;
+    }
+
+    let out = patch.wire_node(format!("{node_name}.rotate_half"), BasicRotateHalf, &inputs)?;
     patch.shunt_outside(model, node.id.into(), out[0])?;
 
     Ok(Some(patch))

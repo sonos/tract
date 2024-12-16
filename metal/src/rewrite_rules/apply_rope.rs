@@ -1,5 +1,4 @@
-use crate::rewrite_rules::BasicRotateHalf;
-use crate::rewrite_rules::{previous_nodes, single_prev_node_as};
+use crate::rewrite_rules::{previous_node, previous_nodes, single_prev_node_as, BasicRotateHalf};
 use crate::rule_ensure;
 use tract_core::internal::*;
 use tract_core::ops::binary::BinMiniOp;
@@ -75,11 +74,24 @@ pub fn as_apply_rope_rule(
         return Ok(None);
     };
 
-    let apply_rope_in = rotate_half.inputs[0];
-    rule_ensure!(cos_mul.inputs.contains(&apply_rope_in));
-
-    let cos =
-        if cos_mul.inputs[0] == apply_rope_in { cos_mul.inputs[1] } else { cos_mul.inputs[0] };
+    // If cos and rotate half don't share the same input, we check if they don't
+    // input node that are the same.
+    let (apply_rope_in, cos) = if !cos_mul.inputs.contains(&rotate_half.inputs[0]) {
+        let Some(rotate_half_prev) = previous_node(model, rotate_half) else { return Ok(None) };
+        let Some((cos_common_input_idx, _)) = previous_nodes(model, cos_mul)
+            .iter()
+            .enumerate()
+            .find(|(_, n)| n.same_as(rotate_half_prev))
+        else {
+            return Ok(None);
+        };
+        (rotate_half.inputs[0], cos_mul.inputs[1 - cos_common_input_idx])
+    } else {
+        let apply_rope_in = rotate_half.inputs[0];
+        let cos =
+            if cos_mul.inputs[0] == apply_rope_in { cos_mul.inputs[1] } else { cos_mul.inputs[0] };
+        (apply_rope_in, cos)
+    };
 
     let sin = sin_mul.inputs[1 - rotate_half_in_idx];
 
