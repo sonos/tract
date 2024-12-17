@@ -47,6 +47,41 @@ impl Silu {
             encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
 
             let grid_size = MTLSize { width: output.len() as _, height: 1, depth: 1 };
+            let group_size = MTLSize {
+                width: pipeline.max_total_threads_per_threadgroup(),
+                height: 1,
+                depth: 1,
+            };
+
+            encoder.dispatch_threads(grid_size, group_size);
+
+            encoder.end_encoding();
+        });
+        Ok(())
+    }
+
+    pub fn dispatch_eval_leg(
+        &self,
+        context: &MetalContext,
+        input: &MetalTensor,
+        output: &MetalTensor,
+    ) -> Result<()> {
+        input.retain_until_completion();
+        output.retained_until_completion();
+
+        ensure!(output.shape() == input.shape());
+        ensure!(output.datum_type() == input.datum_type());
+
+        let kernel_name = self.kernel_name(input.datum_type())?;
+
+        let pipeline = context.shared_context().load_pipeline(LibraryName::NNOps, &kernel_name)?;
+        let command_buffer = context.command_buffer();
+        command_buffer.encode(|encoder| {
+            encoder.set_compute_pipeline_state(&pipeline);
+            encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
+
+            let grid_size = MTLSize { width: output.len() as _, height: 1, depth: 1 };
             let group_size = MTLSize { width: 1, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid_size, group_size);
             encoder.end_encoding();
@@ -57,6 +92,9 @@ impl Silu {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+    use std::time::Instant;
+
     use super::*;
     use crate::rewrite_rules::BasicSilu;
     use crate::IntoMetal;
@@ -66,6 +104,7 @@ mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use tract_core::internal::Tensor;
+    use tract_smallvec::SmallVec;
 
     fn test_case<F>(
         shape: &[usize],
@@ -115,8 +154,8 @@ mod tests {
 
     #[test]
     fn test_silu() -> Result<()> {
-        test_case::<f32>(&[4, 4], -0.0, 1.0 / 100.0, Approximation::Approximate)?;
-        test_case::<f16>(&[4, 4], -6.0, 1.0 / 1000.0, Approximation::SuperApproximate)?;
+        test_case::<f32>(&[4, 6], -0.0, 1.0 / 100.0, Approximation::Approximate)?;
+        test_case::<f16>(&[4, 6], -6.0, 1.0 / 1000.0, Approximation::SuperApproximate)?;
         Ok(())
     }
 
@@ -207,5 +246,123 @@ mod tests {
                 })
             })
         }
+    }
+
+    #[test]
+    pub fn profile_silu() -> Result<()> {
+        let n_iters = 1000;
+        objc::rc::autoreleasepool(|| {
+            crate::METAL_CONTEXT.with_borrow(|context| {
+                let shape = &[4096, 1536];
+                let len = shape.iter().product::<usize>();
+
+                let mut rng = rand::thread_rng();
+                let a = Tensor::from_shape(
+                    shape,
+                    &(0..len)
+                        .map(|_| -> f32 {
+                            let v: u64 = rng.gen_range(0..100);
+                            v as f32 * 1. - 50.
+                        })
+                        .collect::<Vec<_>>(),
+                )?
+                .into_metal()?;
+
+                let output = unsafe { MetalTensor::uninitialized_dt(a.datum_type(), a.shape())? };
+                for _ in 0..100 {
+                    Silu.dispatch_eval(context, &a, &output)?;
+                }
+                context.wait_until_completed()?;
+
+                dbg!(a.shape());
+                println!("Running custom  dispatch");
+                let (mut cpu_start, mut gpu_start): (u64, u64) = (0, 0);
+                context.device().sample_timestamps(&mut cpu_start, &mut gpu_start);
+
+                let mut encod_time = Duration::default();
+                let (_, total_dur, profile_gpu) = context.profile(n_iters, || {
+                    let tot_dur = Instant::now();
+                    for i in 0..n_iters {
+                        if let Some(profiler) = context.profiler() {
+                            profiler.borrow_mut().add_node_entry(i);
+                        };
+
+                        let start = Instant::now();
+                        Silu.dispatch_eval(context, &a, &output)?;
+                        encod_time += start.elapsed();
+                    }
+
+                    context.wait_until_completed()?;
+                    Ok((SmallVec::new(), tot_dur.elapsed()))
+                })?;
+
+                let (mut cpu_end, mut gpu_end): (u64, u64) = (0, 0);
+                context.device().sample_timestamps(&mut cpu_end, &mut gpu_end);
+
+                let gpu_sum = Duration::from_nanos(crate::utils::rescale_gpu_duration(
+                    profile_gpu.iter().sum(),
+                    cpu_start,
+                    cpu_end,
+                    gpu_start,
+                    gpu_end,
+                ));
+
+                let encoding_time_per_iter = encod_time.div_f32(n_iters as f32).as_micros();
+                let tot_dur_per_iter = total_dur.div_f32(n_iters as f32).as_micros();
+                let gpu_per_iter = gpu_sum.div_f32(n_iters as f32).as_micros();
+
+                println!("CPU duration: {tot_dur_per_iter:?} us");
+                println!("  dont Encoding time: {encoding_time_per_iter:?} us");
+                println!("GPU duration: {gpu_per_iter:?} us");
+
+                println!("\nRunning legacy dispatch");
+                let (mut cpu_start, mut gpu_start): (u64, u64) = (0, 0);
+                context.device().sample_timestamps(&mut cpu_start, &mut gpu_start);
+
+                let mut encod_time = Duration::default();
+                let (_, total_dur, profile_gpu) = context.profile(n_iters, || {
+                    let tot_dur = Instant::now();
+                    for i in 0..n_iters {
+                        if let Some(profiler) = context.profiler() {
+                            profiler.borrow_mut().add_node_entry(i);
+                        };
+
+                        let start = Instant::now();
+                        Silu.dispatch_eval_leg(context, &a, &output)?;
+                        encod_time += start.elapsed();
+                    }
+
+                    context.wait_until_completed()?;
+                    Ok((SmallVec::new(), tot_dur.elapsed()))
+                })?;
+
+                let (mut cpu_end, mut gpu_end): (u64, u64) = (0, 0);
+                context.device().sample_timestamps(&mut cpu_end, &mut gpu_end);
+
+                let gpu_sum = Duration::from_nanos(crate::utils::rescale_gpu_duration(
+                    profile_gpu.iter().sum(),
+                    cpu_start,
+                    cpu_end,
+                    gpu_start,
+                    gpu_end,
+                ));
+
+                let encoding_time_per_iter = encod_time.div_f32(n_iters as f32).as_micros();
+                let tot_dur_per_iter_leg = total_dur.div_f32(n_iters as f32).as_micros();
+                let gpu_per_iter_leg = gpu_sum.div_f32(n_iters as f32).as_micros();
+
+                println!("CPU duration: {tot_dur_per_iter_leg:?} us");
+                println!("  dont Encoding time: {encoding_time_per_iter:?} us");
+                println!("GPU duration: {gpu_per_iter_leg:?} us");
+
+                let flat_gain = tot_dur_per_iter_leg as f32 - tot_dur_per_iter as f32;
+                let flat_ratio = flat_gain * 100. / tot_dur_per_iter_leg as f32;
+                let flat_gain_gpu = gpu_per_iter_leg as f32 - gpu_per_iter as f32;
+                let flat_ratio_gpu = flat_gain_gpu * 100. / gpu_per_iter_leg as f32;
+                println!("\nTotal Flat gain: {flat_gain} us -> {flat_ratio} %");
+                println!("GPU Flat gain: {flat_gain_gpu} us -> {flat_ratio_gpu} %");
+                Ok(())
+            })
+        })
     }
 }

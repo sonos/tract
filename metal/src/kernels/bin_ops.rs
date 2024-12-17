@@ -200,10 +200,15 @@ impl BinOps {
                     encoder.set_metal_tensor(1, rhs, metal::MTLResourceUsage::Read);
                     encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
 
-                    let grid_size =
-                        MTLSize { width: output.len() as NSUInteger, height: 1, depth: 1 };
-                    let group_size = MTLSize { width: 1, height: 1, depth: 1 };
-                    encoder.dispatch_thread_groups(grid_size, group_size);
+                    let grid_size = MTLSize { width: output.len() as _, height: 1, depth: 1 };
+                    let group_size = MTLSize {
+                        width: pipeline.max_total_threads_per_threadgroup(),
+                        height: 1,
+                        depth: 1,
+                    };
+
+                    encoder.dispatch_threads(grid_size, group_size);
+
                     encoder.end_encoding();
                 });
             }
