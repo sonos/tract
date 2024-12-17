@@ -265,6 +265,44 @@ pub fn dispatch_metal_mlx_gemv(
     Ok(())
 }
 
+fn gemm_params_for_device(
+    b_out: usize,
+    m: usize,
+    n: usize,
+    k: usize,
+    out_dt: DatumType,
+    transpose_a: bool,
+    transpose_b: bool,
+) -> (usize, usize, usize, u64, u64) {
+    if b_out * m * n >= 1 << 20 {
+        if out_dt == DatumType::F16 {
+            if 2 * m.max(n) > k {
+                (64, 64, 16, 1, 2)
+            } else if !transpose_a && transpose_b {
+                (64, 32, 32, 2, 2)
+            } else {
+                (32, 64, 16, 1, 2)
+            }
+        } else {
+            (64, 64, 16, 2, 2)
+        }
+    } else {
+        if out_dt == DatumType::F16 {
+            if !transpose_a && transpose_b {
+                (64, 32, 32, 2, 2)
+            } else {
+                (64, 64, 16, 1, 2)
+            }
+        } else {
+            if !transpose_a && transpose_b {
+                (32, 64, 16, 1, 2)
+            } else {
+                (64, 32, 32, 2, 2)
+            }
+        }
+    }
+}
+
 // From https://github.com/huggingface/candle/blob/main/candle-metal-kernels/src/lib.rs
 #[allow(clippy::too_many_arguments)]
 pub fn dispatch_metal_mlx_gemm(
@@ -314,7 +352,7 @@ pub fn dispatch_metal_mlx_gemm(
             lhs_stride, rhs_stride);
     }
 
-    let (bm, bn, bk, wn, wm) = (32, 32, 16, 2, 2);
+    let (bm, bn, bk, wm, wn) = gemm_params_for_device(b, m, n, k, dt, a_trans, b_trans);
     // https://github.com/ml-explore/mlx/blob/02efb310cac667bc547d1b96f21596c221f84fe7/mlx/backend/metal/matmul.cpp#L422
     let constants = Some(ConstantValues::new(vec![
         (10, Value::Bool(/* has_batch */ b > 1)),
@@ -358,7 +396,7 @@ pub fn dispatch_metal_mlx_gemm(
 
     let batch_strides = [gemm_params.batch_stride_a, gemm_params.batch_stride_b];
 
-    let name = kernel_name_gemm(dt, a_trans, b_trans)?;
+    let name = kernel_name_gemm(dt, a_trans, b_trans, bm, bn, bk, wm, wn)?;
 
     let pipeline = context.shared_context().load_pipeline_with_constants(
         LibraryName::MlxGemm,
@@ -420,12 +458,21 @@ pub fn dispatch_metal_mlx_gemm(
     Ok(())
 }
 
-pub fn kernel_name_gemm(dt: DatumType, transpose_a: bool, transpose_b: bool) -> Result<String> {
+pub fn kernel_name_gemm(
+    dt: DatumType,
+    transpose_a: bool,
+    transpose_b: bool,
+    bm: usize,
+    bn: usize,
+    bk: usize,
+    wm: u64,
+    wn: u64,
+) -> Result<String> {
     let t_a = if transpose_a { "t" } else { "n" };
     let t_b = if transpose_b { "t" } else { "n" };
     ensure!(matches!(dt, DatumType::F32 | DatumType::F16));
     let tname = MetalTensor::tname(dt)?;
-    Ok(format!("gemm_{t_a}{t_b}_{tname}_{tname}_32_32_16_2_2"))
+    Ok(format!("gemm_{t_a}{t_b}_{tname}_{tname}_{bm}_{bn}_{bk}_{wm}_{wn}"))
 }
 
 #[cfg(test)]

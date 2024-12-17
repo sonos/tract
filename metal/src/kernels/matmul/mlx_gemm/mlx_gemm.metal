@@ -1466,5 +1466,12 @@ template <
     instantiate_gemm(tn, true , false, iname, itype, oname, otype, acctype, bm, bn, bk, wm, wn) \
     instantiate_gemm(tt, true , true , iname, itype, oname, otype, acctype, bm, bn, bk, wm, wn)
 
-instantiate_gemm_transpose_helper(f32, float, f32, float, float, 32, 32, 16, 2, 2)
-instantiate_gemm_transpose_helper(f16, half, f16, half, half, 32, 32, 16, 2, 2)
+#define instantiate_gemm_shapes_helper(iname, itype, oname, otype, acctype) \
+    instantiate_gemm_transpose_helper(iname, itype, oname, otype, acctype, 64, 64, 16, 2, 2) \
+    instantiate_gemm_transpose_helper(iname, itype, oname, otype, acctype, 64, 64, 16, 1, 2) \
+    instantiate_gemm_transpose_helper(iname, itype, oname, otype, acctype, 64, 32, 32, 2, 2) \
+    instantiate_gemm_transpose_helper(iname, itype, oname, otype, acctype, 32, 64, 16, 1, 2) \
+    instantiate_gemm_transpose_helper(iname, itype, oname, otype, acctype, 32, 32, 16, 2, 2)
+
+instantiate_gemm_shapes_helper(f16, half, f16, half, half);
+instantiate_gemm_shapes_helper(f32, float, f32, float, float);
