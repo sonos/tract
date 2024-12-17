@@ -3,6 +3,7 @@ use crate::kernels::{utils, BroadcastKind};
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::Result;
+use metal::MTLSize;
 use std::fmt;
 use tract_core::internal::*;
 
@@ -119,10 +120,12 @@ impl PermuteAxes {
             encoder.set_slice(3, output.shape());
             encoder.set_slice(4, output.strides());
 
+            let w = pipeline.thread_execution_width();
+            let h = pipeline.max_total_threads_per_threadgroup() / w;
             let grid_size = utils::build_metal_size_for_shape(output.shape());
-            let group_size = utils::build_metal_size_with_ones();
+            let group_size = MTLSize { width: w, height: h, depth: 1 };
 
-            encoder.dispatch_thread_groups(grid_size, group_size);
+            encoder.dispatch_threads(grid_size, group_size);
             encoder.end_encoding();
         });
         Ok(())

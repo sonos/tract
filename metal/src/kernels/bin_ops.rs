@@ -238,6 +238,8 @@ impl BinOps {
                     encoder.set_metal_tensor(4, output, metal::MTLResourceUsage::Write);
                     encoder.set_slice(5, output_shape);
 
+                    let w = pipeline.thread_execution_width();
+                    let h = pipeline.max_total_threads_per_threadgroup() / w;
                     let grid_size = MTLSize {
                         width: out_shape[out_shape.len() - 1] as NSUInteger,
                         height: out_shape[out_shape.len() - 2] as NSUInteger,
@@ -245,8 +247,8 @@ impl BinOps {
                             as NSUInteger,
                     };
 
-                    let group_size = MTLSize { width: 1, height: 1, depth: 1 };
-                    encoder.dispatch_thread_groups(grid_size, group_size);
+                    let group_size = MTLSize { width: w, height: h, depth: 1 };
+                    encoder.dispatch_threads(grid_size, group_size);
                     encoder.end_encoding();
                 });
             }
