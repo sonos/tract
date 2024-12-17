@@ -3,6 +3,7 @@ use crate::kernels::{utils, BroadcastKind};
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
+use metal::MTLSize;
 use std::fmt;
 use tract_core::internal::*;
 
@@ -110,10 +111,13 @@ impl Concat {
                     metal::MTLResourceUsage::Write,
                 );
                 encoder.set_slice(3, i_shape);
-                encoder.set_slice(4, output_strides);
+                encoder.set_slice(4, output_strides);let w = pipeline.thread_execution_width();
+                
+                let h = pipeline.max_total_threads_per_threadgroup() / w;
                 let grid_size = utils::build_metal_size_for_shape(i_shape);
-                let group_size = utils::build_metal_size_with_ones();
-                encoder.dispatch_thread_groups(grid_size, group_size);
+                let group_size = MTLSize { width: w, height: h, depth: 1 };
+    
+                encoder.dispatch_threads(grid_size, group_size);
                 encoder.end_encoding();
             });
         }
