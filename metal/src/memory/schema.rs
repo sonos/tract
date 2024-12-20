@@ -1,5 +1,5 @@
 use crate::fact::MetalTypedFactExt;
-use crate::ops::{MetalSync, MetalSyncKind};
+use crate::ops::MetalSyncKind;
 use std::fmt;
 use std::fmt::Debug;
 use tract_core::internal::*;
@@ -37,7 +37,7 @@ impl Lifetime {
 }
 
 fn next_nodes<'a>(model: &'a TypedModel, node: &TypedNode) -> Option<TVec<&'a TypedNode>> {
-    if node.outputs.len() == 0 { return None };
+    if node.outputs.is_empty() { return None };
 
     Some(node.outputs.iter().map(|o| {
         o.successors.iter().map(|succ| {
