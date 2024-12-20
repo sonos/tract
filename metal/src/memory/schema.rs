@@ -37,13 +37,18 @@ impl Lifetime {
 }
 
 fn next_nodes<'a>(model: &'a TypedModel, node: &TypedNode) -> Option<TVec<&'a TypedNode>> {
-    if node.outputs.is_empty() { return None };
+    if node.outputs.is_empty() {
+        return None;
+    };
 
-    Some(node.outputs.iter().map(|o| {
-        o.successors.iter().map(|succ| {
-            &model.nodes()[succ.node]
-        }).collect::<Vec<_>>()
-    }).flatten().collect())
+    Some(
+        node.outputs
+            .iter()
+            .flat_map(|o| {
+                o.successors.iter().map(|succ| &model.nodes()[succ.node]).collect::<Vec<_>>()
+            })
+            .collect(),
+    )
 }
 
 pub fn eval_metal_mem_req_for_nodes(
@@ -55,10 +60,14 @@ pub fn eval_metal_mem_req_for_nodes(
         let Ok(facts) = model.node_output_facts(node.id) else { return false };
 
         let cpu_sync_in_next_nodes = next_nodes(model, node).is_some_and(|nodes| {
-            nodes.iter().any(|it| it.op_as::<crate::ops::MetalSync>().is_some_and(|op| op.kind == MetalSyncKind::ToCpu))
+            nodes.iter().any(|it| {
+                it.op_as::<crate::ops::MetalSync>()
+                    .is_some_and(|op| op.kind == MetalSyncKind::ToCpu)
+            })
         });
         
-        !cpu_sync_in_next_nodes && facts.iter().any(|it| it.to_metal_fact().map(|it| it.is_from_gpu()).unwrap_or(false))
+        !cpu_sync_in_next_nodes
+            && facts.iter().any(|it| it.to_metal_fact().map(|it| it.is_from_gpu()).unwrap_or(false))
     });
     let mut scoped_nodes = tvec![];
 
