@@ -159,7 +159,7 @@ pub fn make_f32(shape: &[usize], seed1: u64, seed2: u64) -> TractResult<TValue> 
         tensor.as_slice_mut::<f32>()?.iter_mut().for_each(|x| {
             let mantissa = rng.next().unwrap() & 0x7fffff;
             let exp = 127u32;
-            let f = exp << 23 | mantissa;
+            let f = (exp << 23) | mantissa;
             *x = f32::from_bits(f) - 1.0
         });
         Ok(tensor.into_tvalue())

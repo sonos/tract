@@ -178,7 +178,7 @@ pub mod test {
         let op = UnicastImpl::<K, T>::new();
         let expected = a.iter().zip(b.iter()).map(|(a, b)| (reference)(*a, *b)).collect::<Vec<_>>();
         op.run(a, b).unwrap();
-        tensor1(&a)
+        tensor1(a)
             .close_enough(&tensor1(&expected), true)
             .map_err(|e| TestCaseError::fail(e.root_cause().to_string()))?;
         Ok(())
@@ -191,7 +191,6 @@ pub mod test {
     ) -> TestCaseResult
     where
         f32: AsPrimitive<T>,
-        T: AsPrimitive<f32>,
     {
         crate::setup_test_logger();
         let vec_a: Vec<T> = a.iter().copied().map(|x| x.as_()).collect();
@@ -202,7 +201,7 @@ pub mod test {
         let b = unsafe { Tensor::from_slice_align(vec_b.as_slice(), vector_size()).unwrap() };
         crate::frame::unicast::test::test_unicast::<K, _>(
             a.as_slice_mut::<T>().unwrap(),
-            &b.as_slice::<T>().unwrap(),
+            b.as_slice::<T>().unwrap(),
             func,
         )
     }

@@ -444,7 +444,7 @@ const TOINT: f32 = 1.0f32 / f32::EPSILON;
 
 pub fn round_ties_to_even(x: f32) -> f32 {
     let u = x.to_bits();
-    let e = u >> 23 & 0xff;
+    let e = (u >> 23) & 0xff;
     if e >= 0x7f + 23 {
         return x;
     }

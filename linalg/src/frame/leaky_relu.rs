@@ -45,7 +45,6 @@ pub mod test {
     ) -> TestCaseResult
     where
         f32: AsPrimitive<T>,
-        T: AsPrimitive<f32>,
     {
         let data = tract_data::prelude::tensor1(values);
         let data = data.cast_to::<T>().unwrap();
