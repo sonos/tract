@@ -22,7 +22,7 @@ impl Philox4x32x10 {
 
     #[allow(unused)]
     pub fn for_seeds(seed1: u32, seed2: u32) -> Philox4x32x10 {
-        Self::for_seed((seed2 as u64) << 32 | seed1 as u64)
+        Self::for_seed(((seed2 as u64) << 32) | seed1 as u64)
     }
 
     pub fn for_seed(seed: u64) -> Philox4x32x10 {
@@ -86,7 +86,7 @@ impl Philox4x32x10 {
         let k0 = k0.wrapping_add(kPhiloxW32A) as u64;
         let k1 = k1.wrapping_add(kPhiloxW32B) as u64;
 
-        *key = k1 << 32 | k0;
+        *key = (k1 << 32) | k0;
     }
 
     fn compute_one(counter: &mut u128, key: u64) {
@@ -106,7 +106,7 @@ impl Philox4x32x10 {
         let r2 = (hi0 ^ c3 ^ ((key >> 32) as u32)) as u128;
         let r3 = lo0 as u128;
 
-        *counter = r3 << 96 | r2 << 64 | r1 << 32 | r0
+        *counter = (r3 << 96) | (r2 << 64) | (r1 << 32) | r0
     }
 
     pub fn u32_iter(self) -> impl Iterator<Item = u32> {

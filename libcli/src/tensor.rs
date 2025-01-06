@@ -99,10 +99,9 @@ pub fn parse_spec(symbol_table: &SymbolScope, size: &str) -> TractResult<Inferen
 pub fn parse_coma_spec(symbol_table: &SymbolScope, size: &str) -> TractResult<InferenceFact> {
     let splits = size.split(',').collect::<Vec<_>>();
 
+    #[allow(clippy::literal_string_with_formatting_args)]
     if splits.is_empty() {
-        // Hide '{' in this error message from the formatting machinery in bail macro
-        let msg = "The <size> argument should be formatted as {size},{...},{type}.";
-        bail!(msg);
+        bail!("The <size> argument should be formatted as {{size}},{{...}},{{type}}.");
     }
 
     let last = splits.last().unwrap();

@@ -30,7 +30,6 @@ pub mod test {
     pub fn test_max<K: ReduceKer<T>, T: LADatum + Float>(values: &[f32]) -> TestCaseResult
     where
         f32: AsPrimitive<T>,
-        T: AsPrimitive<f32>,
     {
         crate::setup_test_logger();
         let values: Vec<T> = values.iter().copied().map(|x| x.as_()).collect();

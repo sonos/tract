@@ -31,7 +31,7 @@ impl Expansion for Comp {
         let operating_datum_type = a
             .datum_type
             .common_super_type(b.datum_type)
-            .context("No super type for {a:?} and {b:?}")?;
+            .with_context(|| format!("No super type for {a:?} and {b:?}"))?;
         let wires = wire_rank_broadcast(prefix, target, inputs)?;
         let wires = wire_cast(prefix, target, &wires, operating_datum_type)?;
         target.wire_node(prefix, *self, &wires)

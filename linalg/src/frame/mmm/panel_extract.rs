@@ -147,7 +147,7 @@ pub mod test {
         if let Some(from) = extractor.from.downcast_ref::<PackedBlockQuantFormat>() {
             test_packing_bq(extractor, from, blocks, panels)
         } else if let Some(from) = extractor.from.downcast_ref() {
-            test_packing_plain(extractor, &from, blocks, panels)
+            test_packing_plain(extractor, from, blocks, panels)
         } else {
             todo!()
         }
@@ -174,7 +174,7 @@ pub mod test {
             let orig_panel =
                 &packed_orig.packed[packed_orig.panel_bytes * panel..][..k * from.r * from.dt.size_of()];
             let mut reference_panel = Tensor::zero_dt(from.dt, &[k, from.r])?;
-            reference_panel.as_bytes_mut().copy_from_slice(&orig_panel);
+            reference_panel.as_bytes_mut().copy_from_slice(orig_panel);
             reference_panel = reference_panel.cast_to_dt(to.dt)?.into_owned();
 
             let mut tested_panel = Tensor::zero_dt(to.dt, &[k, from.r])?;

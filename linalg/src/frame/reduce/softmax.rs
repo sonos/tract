@@ -67,7 +67,6 @@ pub mod test {
     ) -> TestCaseResult
     where
         f32: AsPrimitive<T>,
-        T: AsPrimitive<f32>,
     {
         use crate::generic::reduce::softmax_l2::fast_compact_exp_f32;
         crate::setup_test_logger();
