@@ -62,10 +62,11 @@ pub mod test {
         };
     }
 
-    pub fn test_softmax_l2<K: MapReduceKer<T, T>, T: LADatum + Float>(
+    pub fn test_softmax_l2<K: MapReduceKer<T, T>, T>(
         values: &[f32],
     ) -> TestCaseResult
     where
+        T: LADatum + Float + AsPrimitive<f32>,
         f32: AsPrimitive<T>,
     {
         use crate::generic::reduce::softmax_l2::fast_compact_exp_f32;
