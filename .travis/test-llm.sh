@@ -22,6 +22,7 @@ case $model in
     OpenELM-1_1B) id=apple--OpenELM-1_1B-$q;;
     TinyLlama_v1.1) id=TinyLlama--TinyLlama_v1.1-$q;;
     phi-1_5) id=microsoft--phi-1_5-$q;;
+    llama-3.2) id=meta-llama--Llama-3.2-3B-$q;;
     *)
         echo "Unknown model"
         exit 2
