@@ -392,6 +392,12 @@ MMMRustKernel! {kernel::<i32, 3, 2> => generic_i32_3x2<i32>(3,2)
 
 pub fn plug(ops: &mut Ops) {
     ops.mmm_kits.push(
+        MMMKit::new(F32, F32, F32, &f32::packing(4))
+            .with_native(generic_f32_4x1.mmm(), 0)
+            .with_native(generic_f32_4x4.mmm(), 0)
+            .with_generic_fallback(true),
+    );
+    ops.mmm_kits.push(
         MMMKit::new(Q4_0, F32, F32, &pq40_r4())
             .with_native(generic_f32_4x1.mmm(), 4)
             .with_generic_fallback(true),
