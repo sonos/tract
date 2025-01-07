@@ -32,7 +32,7 @@ jobs:
     strategy:
       matrix:
         os: [ macos, ubuntu ]
-        model: [ OpenELM-270M, OpenELM-1_1B, TinyLlama_v1.1, phi-1_5 ]
+        model: [ OpenELM-270M, OpenELM-1_1B, TinyLlama_v1.1, phi-1_5, llama-3.2 ]
         q: [ f16f16, f32f32, q40f16, q40f32, q40ef16, q40ef32 ]
       fail-fast: false
     permissions:
