@@ -34,7 +34,7 @@ if [ -n "$GITHUB_ACTIONS" ]
 then
     if [ "$id" =  meta-llama--Llama-3.2-3B-f32f32 ]
     then
-        echo "::warning title=Untestable model::This model is too big for GHA..."
+        echo "::warning title=Untestable model::$id is too big for GHA..."
         exit 0
     fi
 fi
