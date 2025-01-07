@@ -17,6 +17,7 @@ model=$1
 q=$2
 generation=current
 
+
 case $model in
     OpenELM-270M) id=apple--OpenELM-270M-$q;;
     OpenELM-1_1B) id=apple--OpenELM-1_1B-$q;;
@@ -28,6 +29,16 @@ case $model in
         exit 2
         ;;
 esac
+
+if [ -n "$GITHUB_ACTIONS" ]
+then
+    if [ "$id" =  meta-llama--Llama-3.2-3B-f32f32 ]
+    then
+        echo "::warning title=Untestable model::This model is too big for GHA..."
+        exit 0
+    fi
+fi
+
 
 nnef=llm/$generation/$id/$id.nnef.tgz
 
