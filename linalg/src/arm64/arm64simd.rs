@@ -44,7 +44,7 @@ MMMExternKernel!(arm64simd_mmm_i32_64x1<i32>(64, 1)@(16, 1)
    store(i8)
 );
 
-pub fn plug(ops: &mut ops) {
+pub fn plug(ops: &mut Ops) {
     /*
     panel_extract::plug(ops);
     */
