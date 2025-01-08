@@ -30,8 +30,7 @@ pub fn plug(ops: &mut Ops) {
     ops.mmm_kits.push(
         MMMKit::new(F32, F32, F32, &f32::packing(8))
             .with_native(armv7neon_mmm_f32_8x6_generic.mmm(), 0)
-            .with_native(armv7neon_mmm_f32_8x1_generic.mmm(), 0)
-            .with_generic_fallback(true),
+            .with_native(armv7neon_mmm_f32_8x1_generic.mmm(), 0),
     );
 }
 
