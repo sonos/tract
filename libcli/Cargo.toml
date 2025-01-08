@@ -1,6 +1,6 @@
 [package]
 name = "tract-libcli"
-version = "0.21.9-pre"
+version = "0.21.9"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -29,7 +29,7 @@ tract-onnx = { workspace = true, optional = true }
 tract-tflite.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-tract-metal = { version = "=0.21.9-pre", path = "../metal" }
+tract-metal = { workspace = true }
 
 [features]
 # hir = ["tract-hir"]
