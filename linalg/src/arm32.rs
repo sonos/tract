@@ -48,6 +48,8 @@ pub fn plug(ops: &mut Ops) {
     ops.mmm_impls = impls.clone();
     if has_neon() {
         log::info!("armv7neon activated (smmm, ssigmoid), stanh)");
+        armv7neon::plug(ops);
+
         let cpu = cpu_part().unwrap_or(0);
 
         fn prefer_8x4(_m: Option<usize>, _k: Option<usize>, n: Option<usize>) -> bool {

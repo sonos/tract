@@ -1,4 +1,7 @@
+use crate::frame::mmm::{MMMKit, Packing};
 use crate::frame::PackedFormat;
+use crate::DatumType::*;
+use crate::Ops;
 
 const NEON: fn() -> bool = || crate::arm32::has_neon();
 
@@ -8,6 +11,7 @@ MMMExternKernel!(armv7neon_mmm_f32_8x4_generic  <f32>( 8, 4 )@(4, 4 ) where(NEON
 MMMExternKernel!(armv7neon_mmm_f32_8x6_cortexa7 <f32>( 8, 6 )@(4, 4 ) where(NEON));
 MMMExternKernel!(armv7neon_mmm_f32_8x6_cortexa9 <f32>( 8, 6 )@(4, 4 ) where(NEON));
 MMMExternKernel!(armv7neon_mmm_f32_8x6_generic  <f32>( 8, 6 )@(4, 4 ) where(NEON));
+MMMExternKernel!(armv7neon_mmm_f32_8x1_generic  <f32>( 8, 1 )@(4, 4 ) where(NEON));
 MMMExternKernel!(armv7neon_mmm_f32_32x1_cortexa7<f32>( 32, 1)@( 4, 4) where(NEON));
 MMMExternKernel!(armv7neon_mmm_f32_32x1_cortexa9<f32>( 32, 1)@( 4, 4) where(NEON));
 MMMExternKernel!(armv7neon_mmm_f32_32x1_generic <f32>(32, 1 )@(4, 4 ) where(NEON));
@@ -22,6 +26,14 @@ MMMExternKernel!(armv7neon_mmm_i32_32x1<i32>(32, 1)@(32, 4) where(NEON)
   store(i8)
 );
 
+pub fn plug(ops: &mut Ops) {
+    ops.mmm_kits.push(
+        MMMKit::new(F32, F32, F32, &f32::packing(8))
+            .with_native(armv7neon_mmm_f32_8x6_generic.mmm(), 0)
+            .with_native(armv7neon_mmm_f32_8x1_generic.mmm(), 0)
+            .with_generic_fallback(true),
+    );
+}
+
 sigmoid_impl!(f32, armv7neon_sigmoid_f32_4n, 4, 4, crate::arm32::has_neon());
 tanh_impl!(f32, armv7neon_tanh_f32_4n, 4, 4, crate::arm32::has_neon());
-
