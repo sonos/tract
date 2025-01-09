@@ -2,6 +2,7 @@ mod basic;
 mod mfa;
 mod mlx_gemm;
 mod mmm_tile_8x8;
+mod ggml_matmul;
 pub mod mps;
 
 pub use basic::BasicMatMul;
@@ -9,6 +10,7 @@ pub use mfa::MfaGemm;
 pub use mlx_gemm::MlxGemm;
 pub use mmm_tile_8x8::{metal_mmm_tile_8x8, mmm_tile_8x8};
 pub use mps::MpsMatMul;
+pub use ggml_matmul::GgmlGemm;
 
 use crate::{MetalContext, MetalTensor};
 use metal::Buffer;
@@ -295,10 +297,12 @@ fn squeeze_batch_axes(s: &[usize]) -> TractResult<TVec<usize>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kernels;
     use crate::kernels::matmul::GemmImpl;
     use crate::IntoMetal;
     use anyhow::Result;
     use derive_new::new;
+    use ggml_matmul::GgmlGemm;
     use num_traits::AsPrimitive;
     use num_traits::Float;
     use proptest::collection::vec;
@@ -338,7 +342,66 @@ mod tests {
                     matmul.eval(tvec![a.to_cpu()?.into_tvalue(), b.to_cpu()?.into_tvalue()])?
                 );
                 output.close_enough(&metal_output.to_cpu()?, Approximation::Approximate)?;
-                Ok(())
+                Ok(res)
+            })
+        })
+    }
+
+    pub(crate) fn run_mmm_test_case_ggml(
+        (b, m, k, n): (usize, usize, usize, usize),
+        transpose_a: bool,
+        transpose_b: bool,
+    ) -> TractResult<Duration> {
+        objc::rc::autoreleasepool(|| {
+            crate::METAL_CONTEXT.with_borrow(|context| {
+                let a_shape = [b, m, k];
+                let b_shape = [b, k, n];
+                let a = Tensor::from_shape(
+                    &a_shape,
+                    &(0..b * m * k).map(|f| f as f32 / 100.0).collect::<Vec<_>>(),
+                )?
+                .into_metal()?;
+
+                let b = Tensor::from_shape(
+                    &b_shape,
+                    &(0..b * k * n).map(|f| f as f32 / 100.0).collect::<Vec<_>>(),
+                )?.into_metal()?;
+
+                let matmul = BasicMatMul {
+                    transpose_a,
+                    transpose_b,
+                    transpose_c: false,
+                    quantize_output: None,
+                };
+                let output = args_1!(
+                    matmul.eval(tvec![a.to_cpu()?.into_tvalue(), b.to_cpu()?.into_tvalue()])?
+                );
+
+                let async_exec = true;
+
+                let perm_b;
+                let mut start = Instant::now();
+                if async_exec {
+                    perm_b = unsafe {
+                        MetalTensor::uninitialized_dt(
+                            b.datum_type(),
+                            &kernels::array::permute_axes::PermuteAxes::output_shape(b.shape(), &[0, 2, 1])?,
+                        )?
+                    };
+
+                    kernels::array::permute_axes::PermuteAxes.dispatch_eval(context, &b, &[0, 2, 1], &perm_b)?;
+                }
+                else {
+
+                    start = Instant::now();
+                    perm_b = kernels::array::permute_axes::PermuteAxes.eval(context, &b, &[0, 2, 1])?;
+                }
+
+                let metal_output =
+                    GemmImpl::<GgmlGemm>::new(false, true).eval(context, &a, &perm_b)?;
+                let res = start.elapsed();
+                //output.close_enough(&metal_output.to_cpu()?, Approximation::Approximate)?;
+                Ok(res)
             })
         })
     }

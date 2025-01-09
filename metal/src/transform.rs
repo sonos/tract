@@ -1,6 +1,6 @@
 use crate::fact::MetalTypedFactExt;
 use crate::kernels::array::RotateHalf;
-use crate::kernels::matmul::{GemmKernel, MetalGemmImplKind, MfaGemm, MlxGemm, MpsMatMul};
+use crate::kernels::matmul::{GemmKernel,MetalGemmImplKind, MfaGemm, MlxGemm, GgmlGemm, MpsMatMul};
 use crate::kernels::nn::{
     ApplyRope, NewGelu, Reducer, RmsNorm, ScaledMaskedSoftmax, Silu, Softmax,
 };
@@ -349,6 +349,8 @@ fn convert_matmul_to_metal(
     target: &mut TypedModel,
     inputs: &[OutletId],
     op: &BasicMatMul,
+    target: &mut TypedModel,
+    gpu_inputs: &mut tract_smallvec::SmallVec<[OutletId; 4]>,
     gemm_impl: MetalGemmImplKind,
 ) -> TractResult<TVec<OutletId>> {
     let matmul: Box<dyn TypedOp> = match gemm_impl {
