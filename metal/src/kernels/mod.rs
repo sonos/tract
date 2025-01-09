@@ -19,6 +19,7 @@ pub const METAL_FLASH_ATTENTION_LIB: &[u8] =
 
 pub const MLX_GEMM: &str = include_str!("matmul/mlx_gemm/mlx_gemm.metal");
 pub const MLX_GEMV: &str = include_str!("matmul/mlx_gemm/mlx_gemv.metal");
+pub const GGML: &str = include_str!("matmul/ggml_matmul/ggml_gemm.metal");
 pub const MMM_TILE_8X8_METAL_SOURCE: &str = include_str!("matmul/mmm_tile_8x8.metal");
 pub const BASIC_MAT_MUL: &str = include_str!("matmul/basic/basic_mat_mul.metal");
 pub const ARRAY_OPS: &str = include_str!("array/array_ops.metal");
