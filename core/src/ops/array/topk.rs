@@ -64,7 +64,7 @@ impl Topk {
         let mut view = input.to_array_view::<T>()?;
         for (ix, x) in coords.iter().enumerate() {
             if ix != self.axis {
-                view.index_axis_inplace(Axis(ix), *x);
+                view.collapse_axis(Axis(ix), *x);
             }
         }
         for (ix, (argmax, max)) in view
