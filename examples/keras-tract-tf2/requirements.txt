@@ -1,4 +1,4 @@
-tensorflow==2.12.1
+tensorflow==2.18.0
 numpy==1.24.3
 tf2onnx==1.13.0
 tract==0.21.6
