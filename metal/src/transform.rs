@@ -349,8 +349,6 @@ fn convert_matmul_to_metal(
     target: &mut TypedModel,
     inputs: &[OutletId],
     op: &BasicMatMul,
-    target: &mut TypedModel,
-    gpu_inputs: &mut tract_smallvec::SmallVec<[OutletId; 4]>,
     gemm_impl: MetalGemmImplKind,
 ) -> TractResult<TVec<OutletId>> {
     let matmul: Box<dyn TypedOp> = match gemm_impl {

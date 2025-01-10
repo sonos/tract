@@ -355,16 +355,16 @@ mod tests {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
                 let a_shape = [b, m, k];
-                let b_shape = [b, k, n];
+                let b_shape = if transpose_b {[b, n, k]} else {[b, k, n]};
                 let a = Tensor::from_shape(
                     &a_shape,
-                    &(0..b * m * k).map(|f| f as f32 / 100.0).collect::<Vec<_>>(),
+                    &(0..b * m * k).map(|f| f as f32 / 1000.0).collect::<Vec<_>>(),
                 )?
                 .into_metal()?;
 
                 let b = Tensor::from_shape(
                     &b_shape,
-                    &(0..b * k * n).map(|f| f as f32 / 100.0).collect::<Vec<_>>(),
+                    &(0..b * k * n).map(|f| f as f32 / 1000.0).collect::<Vec<_>>(),
                 )?.into_metal()?;
 
                 let matmul = BasicMatMul {
@@ -377,30 +377,13 @@ mod tests {
                     matmul.eval(tvec![a.to_cpu()?.into_tvalue(), b.to_cpu()?.into_tvalue()])?
                 );
 
-                let async_exec = true;
+                let _perm_b = kernels::array::permute_axes::PermuteAxes.eval(context, &b, &[0, 1, 2])?;
 
-                let perm_b;
-                let mut start = Instant::now();
-                if async_exec {
-                    perm_b = unsafe {
-                        MetalTensor::uninitialized_dt(
-                            b.datum_type(),
-                            &kernels::array::permute_axes::PermuteAxes::output_shape(b.shape(), &[0, 2, 1])?,
-                        )?
-                    };
-
-                    kernels::array::permute_axes::PermuteAxes.dispatch_eval(context, &b, &[0, 2, 1], &perm_b)?;
-                }
-                else {
-
-                    start = Instant::now();
-                    perm_b = kernels::array::permute_axes::PermuteAxes.eval(context, &b, &[0, 2, 1])?;
-                }
-
+                let start = Instant::now();
                 let metal_output =
-                    GemmImpl::<GgmlGemm>::new(false, true).eval(context, &a, &perm_b)?;
+                    GemmImpl::<GgmlGemm>::new(transpose_a, transpose_b).eval(context, &a, &b)?;
                 let res = start.elapsed();
-                //output.close_enough(&metal_output.to_cpu()?, Approximation::Approximate)?;
+                output.close_enough(&metal_output.to_cpu()?, Approximation::Approximate)?;
                 Ok(res)
             })
         })
