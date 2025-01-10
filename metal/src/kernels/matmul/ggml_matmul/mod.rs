@@ -74,6 +74,7 @@ impl GemmKernel for GgmlGemm {
             b_buffer,
             c_buffer,
             c_offset,
+            transpose_b
         )?;
         
 
@@ -93,15 +94,22 @@ pub fn dispatch_metal_ggml_gemm(
     rhs_buffer: &Buffer,
     output: &Buffer,
     output_offset: usize,
+    transpose_b: bool
 ) -> Result<()> {
 
     assert!(k % 32 == 0);
     ensure!(matches!(dt, DatumType::F32));
 
+    //assert!(params.nb01 % 16 == 0);
+    let tname = MetalTensor::tname(dt)?;
+
+    let kernel_type = if !transpose_b { "nn" } else { "nt" };
+    let name = format!("kernel_mul_mm_{kernel_type}_{tname}_{tname}");
+
     let params = GgmlGemmParams {
         ne00: k as i32,
         ne02: b as i32,
-        nb01: (k * 4 )as u64,
+        nb01: (if !transpose_b { n } else { k } * 4 )as u64,
         nb02: (k * n * 4 )as u64,
         nb03: (k * n * b * 4 )as u64,
         ne12: b as i32,
@@ -114,10 +122,6 @@ pub fn dispatch_metal_ggml_gemm(
         r2:  1,
         r3: 1
     };
-
-    assert!(params.nb01 % 16 == 0);
-    let tname = MetalTensor::tname(dt)?;
-    let name = format!("kernel_mul_mm_{tname}_{tname}");
 
     let pipeline = context.shared_context().load_pipeline(
         LibraryName::Ggml,
@@ -171,28 +175,45 @@ mod tests {
 
     #[test]
     fn test_ggml_vs_mlx() -> TractResult<()> {
-        let n_iter = 5;
-        
-        run_mmm_test_case_ggml((1, 3, 32, 2), false, false)?;
+        let n_iter = 10;
+        let (b, m, k , n) = (1, 25, 1280, 32000);
+
+        run_mmm_test_case_ggml((b, m, k, n), false, true)?;
 
         let mut ggml_duration = Duration::default();
         for _ in 0..n_iter {
-            ggml_duration += run_mmm_test_case_ggml((1, 3, 32, 2), false, false)?;
-            ggml_duration += run_mmm_test_case_ggml((1, 2, 1536, 10), false, false)?;
-            ggml_duration += run_mmm_test_case_ggml((1, 4, 32, 4), false, false)?;
-            ggml_duration += run_mmm_test_case_ggml((1, 4, 64, 200), false, false)?;
-            ggml_duration += run_mmm_test_case_ggml((1, 25, 1280, 32000), false, false)?;
+            ggml_duration += run_mmm_test_case_ggml((b, m, k, n), false, true)?;
         }
 
-        run_mmm_test_case::<MlxGemm>((1, 3, 32, 2), false, false)?;
+        run_mmm_test_case::<MlxGemm>((b, m, k , n), false, true)?;
 
         let mut mlx_duration = Duration::default();
         for _ in 0..n_iter {
-            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 3, 32, 2), false, false)?;
-            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 2, 1536, 10), false, false)?;
-            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 4, 32, 4), false, false)?;
-            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 4, 64, 200), false, false)?;
-            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 25, 1280, 32000), false, false)?;
+            mlx_duration += run_mmm_test_case::<MlxGemm>((b, m, k, n), false, true)?;
+        }
+
+        println!("Transpose B: Mlx duration: {:}. Ggml duration: {}", mlx_duration.as_millis(), ggml_duration.as_millis());
+
+        run_mmm_test_case_ggml((b, m, k, n), false, true)?;
+
+        let mut ggml_duration = Duration::default();
+        for _ in 0..n_iter {
+            ggml_duration += run_mmm_test_case_ggml((1, 3, 32, 2), false, true)?;
+            ggml_duration += run_mmm_test_case_ggml((1, 2, 1536, 10), false, true)?;
+            ggml_duration += run_mmm_test_case_ggml((1, 4, 32, 4), false, true)?;
+            ggml_duration += run_mmm_test_case_ggml((1, 4, 64, 200), false, true)?;
+            ggml_duration += run_mmm_test_case_ggml((1, 25, 1280, 32000), false, true)?;
+        }
+
+        run_mmm_test_case::<MlxGemm>((b, m, k , n), false, true)?;
+
+        let mut mlx_duration = Duration::default();
+        for _ in 0..n_iter {
+            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 3, 32, 2), false, true)?;
+            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 2, 1536, 10), false, true)?;
+            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 4, 32, 4), false, true)?;
+            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 4, 64, 200), false, true)?;
+            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 25, 1280, 32000), false, true)?;
         }
 
         println!("Mlx duration: {:}. Ggml duration: {}", mlx_duration.as_millis(), ggml_duration.as_millis());
