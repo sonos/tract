@@ -357,7 +357,7 @@ fn proto_model_from_resources(
                 r.into_iter().partition(|(k, _v)| k.starts_with(&it));
             let submodel_resources = submodel_resources
                 .into_iter()
-                .map(|(k, v)| (k.split('/').last().unwrap().to_string(), v))
+                .map(|(k, v)| (k.split('/').next_back().unwrap().to_string(), v))
                 .collect::<HashMap<String, Arc<dyn Resource>>>();
             let typed_model = nnef()
                 .model_for_proto_model(&proto_model_from_resources(submodel_resources).unwrap())?;
