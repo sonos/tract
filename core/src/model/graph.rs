@@ -557,10 +557,15 @@ where
 
     pub fn single_succ(&self, id: usize) -> TractResult<Option<&Node<F, O>>> {
         let node = &self.nodes()[id];
-        if node.outputs.iter().map(|of| of.successors.len()).sum::<usize>() != 1 {
+
+        // example: topk with 2nd output being indices would be
+        // used without values 1st output
+        let outputs_with_succ: Vec<&Outlet<F>> =
+            node.outputs.iter().filter(|of| !of.successors.is_empty()).collect();
+        if outputs_with_succ.iter().map(|of| of.successors.len()).sum::<usize>() != 1 {
             return Ok(None);
         }
-        let succ = node.outputs[0].successors[0];
+        let succ = outputs_with_succ[0].successors[0];
         let succ = &self.nodes()[succ.node];
         if succ.inputs.len() != 1 {
             return Ok(None);
