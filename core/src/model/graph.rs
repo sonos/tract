@@ -557,15 +557,25 @@ where
 
     pub fn single_succ(&self, id: usize) -> TractResult<Option<&Node<F, O>>> {
         let node = &self.nodes()[id];
-
-        // example: topk with 2nd output being indices would be
-        // used without values 1st output
-        let outputs_with_succ: Vec<&Outlet<F>> =
-            node.outputs.iter().filter(|of| !of.successors.is_empty()).collect();
-        if outputs_with_succ.iter().map(|of| of.successors.len()).sum::<usize>() != 1 {
+        if node
+            .outputs
+            .iter()
+            .map(|of| of.successors.len())
+            .sum::<usize>()
+            != 1
+            ||
+            // example: Topk with 2nd arguments being indices where it would be
+            // used without values
+            node.outputs[0].successors.is_empty()
+        {
             return Ok(None);
         }
-        let succ = outputs_with_succ[0].successors[0];
+        let succ = node
+            .outputs
+            .iter()
+            .find(|of| of.successors.len() > 0)
+            .ok_or_else(|| format_err!("inconsistent with prior statement check"))?
+            .successors[0];
         let succ = &self.nodes()[succ.node];
         if succ.inputs.len() != 1 {
             return Ok(None);
