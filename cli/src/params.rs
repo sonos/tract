@@ -612,8 +612,8 @@ impl Parameters {
         raw_model: Box<dyn Model>,
         tf_model_extensions: Option<TfExt>,
         reference_stage: Option<&str>,
+        keep_last: bool,
     ) -> TractResult<(Arc<dyn Model>, Option<Arc<PulsedModel>>, Option<Arc<dyn Model>>)> {
-        let keep_last = matches.is_present("verbose");
         let stop_at = matches.value_of("pass").unwrap_or(if matches.is_present("optimize") {
             "optimize"
         } else {
@@ -710,6 +710,7 @@ impl Parameters {
                 dec = dec.stopping_at(steps.parse()?);
             }
             dec.optimize(&mut m)?;
+            dbg!("done dec opt");
             Ok(m)
         });
         #[cfg(not(feature = "pulse"))]
@@ -1031,7 +1032,8 @@ impl Parameters {
             warn!("Argument --allow-float-casts as global argument is deprecated and may be removed in a future release. Please move this argument to the right of the subcommand.");
         }
 
-        Self::pipeline(matches, probe, raw_model, tf_model_extensions, need_reference_model).map(
+        let keep_last = matches.is_present("keep-last");
+        Self::pipeline(matches, probe, raw_model, tf_model_extensions, need_reference_model, keep_last).map(
             |(tract_model, pulsed_model, reference_model)| {
                 info!("Model ready");
                 info_usage("model ready", probe);
@@ -1048,7 +1050,7 @@ impl Parameters {
                     allow_float_casts,
                 }
             },
-        )
+            )
     }
 }
 
@@ -1075,7 +1077,7 @@ pub fn bench_limits_from_clap(matches: &clap::ArgMatches) -> TractResult<BenchLi
 pub fn display_params_from_clap(
     root_matches: &clap::ArgMatches,
     matches: &clap::ArgMatches,
-) -> TractResult<DisplayParams> {
+    ) -> TractResult<DisplayParams> {
     Ok(DisplayParams {
         konst: matches.is_present("const"),
         cost: matches.is_present("cost"),
