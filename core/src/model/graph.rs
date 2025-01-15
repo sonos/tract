@@ -555,27 +555,15 @@ where
         Ok(Some(node))
     }
 
+    /// single_succ is only intended for optimisation of simple operators
+    /// with 1 output, and only 1 output successors (successor with only 1 input)
     pub fn single_succ(&self, id: usize) -> TractResult<Option<&Node<F, O>>> {
         let node = &self.nodes()[id];
-        if node
-            .outputs
-            .iter()
-            .map(|of| of.successors.len())
-            .sum::<usize>()
-            != 1
-            ||
-            // example: Topk with 2nd arguments being indices where it would be
-            // used without values
-            node.outputs[0].successors.is_empty()
-        {
+
+        if node.outputs.len() != 1 || node.outputs[0].successors.len() != 1 {
             return Ok(None);
         }
-        let succ = node
-            .outputs
-            .iter()
-            .find(|of| of.successors.len() > 0)
-            .ok_or_else(|| format_err!("inconsistent with prior statement check"))?
-            .successors[0];
+        let succ = node.outputs[0].successors[0];
         let succ = &self.nodes()[succ.node];
         if succ.inputs.len() != 1 {
             return Ok(None);
