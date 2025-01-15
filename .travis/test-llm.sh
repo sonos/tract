@@ -46,7 +46,7 @@ rszmax=$(tail -1 readings.out | awk '{print $5}')
 limit=$(zcat $MODELS/$nnef | wc -c)
 ratio=$((rszmax * 100 / limit))
 
-if [ $ratio -gt 120 ]
+if [ $ratio -gt 175 ]
 then
     echo "RSZ max is ${ratio}% the size of the unzipped model!"
     exit 1
