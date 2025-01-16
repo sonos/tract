@@ -18,7 +18,7 @@ use crate::ops::nn::{Reduce, Reducer};
 pub enum AxesOrPatch<'a> {
     Annotated(EinSumAnnotatedAsMatMul<'a>),
     Patch(TypedModelPatch),
-    NotAMatMul(&'a Axis),
+    NotAMatMul(Vec<&'a Axis>),
 }
 
 pub struct EinSumAnnotatedAsMatMul<'a> {
@@ -69,6 +69,7 @@ pub(crate) fn optimize(
     {
         return Ok(None);
     }
+
     let annotated = match ensure_mkn_axes(op, model, node)? {
         AxesOrPatch::Annotated(op) => op,
         AxesOrPatch::Patch(p) => return Ok(Some(p)),
@@ -114,6 +115,22 @@ pub(crate) fn ensure_mkn_axes<'a>(
     let Some(k_axis) = k_axis else {
         return Ok(AxesOrPatch::Patch(inject_k_axis(op, model, node)?));
     };
+    
+    let non_trivial_m_axes = op.axes.iter_all_axes().filter(|a| {
+                                        a.inputs[0].len() == 1
+                                        && a.outputs[0].len() == 1
+                                        && a.inputs[1].len() == 0
+                                        && !input_shapes[0][a.inputs[0][0]].is_one()
+    }).collect_vec();
+    //let mut m_axes_pos = non_trivial_m_axes.iter().map(|axis| { axis.inputs[0][0] }).collect_vec();
+    //m_axes_pos.sort();
+    //
+    //let consecutive_m_axes = m_axes_pos.windows(2).all(|window| { (window[1] - window[0]) == 1});
+ //
+    if non_trivial_m_axes.len() > 1 {
+        return Ok(AxesOrPatch::NotAMatMul(non_trivial_m_axes))
+    }
+
     let m_axis = op
         .axes
         .iter_all_axes()
@@ -126,6 +143,22 @@ pub(crate) fn ensure_mkn_axes<'a>(
     let Some(m_axis) = m_axis else {
         return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(op, model, node, false, &[k_axis])?));
     };
+
+    let non_trivial_n_axes = op.axes.iter_all_axes().filter(|a| {
+        a.inputs[1].len() == 1
+        && a.outputs[0].len() == 1
+        && a.inputs[0].len() == 0
+        && !input_shapes[1][a.inputs[1][0]].is_one()
+    }).collect_vec();
+
+    //let mut n_axes_pos = non_trivial_n_axes.iter().map(|axis| { axis.inputs[1][0] }).collect_vec();
+    //n_axes_pos.sort();
+//
+    //let consecutive_n_axes = n_axes_pos.windows(2).all(|window| { (window[1] - window[0]) == 1});
+    if non_trivial_n_axes.len() > 1 {
+        return Ok(AxesOrPatch::NotAMatMul(non_trivial_n_axes))
+    }
+
     let n_axis = op
         .axes
         .iter_all_axes()
@@ -133,6 +166,7 @@ pub(crate) fn ensure_mkn_axes<'a>(
             (a.inputs[0].len() == 0 || input_shapes[0][a.inputs[0][0]].is_one())
                 && a.inputs[1].len() == 1
                 && a.outputs[0].len() == 1
+                && *a != m_axis
         })
         .max_by_key(|a| output_shape[a.outputs[0][0]].as_i64().unwrap_or(i64::MAX));
     let Some(n_axis) = n_axis else {
@@ -152,7 +186,7 @@ pub(crate) fn ensure_mkn_axes<'a>(
             axis.inputs[1].first().map(|pos| &input_shapes[1][*pos]).unwrap_or(&one) != &one;
         let in_out = axis.outputs[0].first().map(|pos| &output_shape[*pos]).unwrap_or(&one) != &one;
         if (in_left ^ in_right) && !in_out {
-            return Ok(AxesOrPatch::NotAMatMul(axis));
+            return Ok(AxesOrPatch::NotAMatMul(vec![axis]));
         }
     }
     let m = input_shapes[0][m_axis.inputs[0][0]].clone();

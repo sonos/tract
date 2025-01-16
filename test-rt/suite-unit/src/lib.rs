@@ -6,6 +6,7 @@ use tract_core::ops::cnn::*;
 use tract_core::ops::nn::*;
 use tract_ndarray::*;
 
+pub mod bin_einsum;
 pub mod conv_f32;
 pub mod conv_q;
 pub mod deconv;
@@ -18,6 +19,7 @@ pub mod slice;
 
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite: TestSuite = Default::default();
+    suite.add("bin_einsum", bin_einsum::suite()?);
     suite.add("conv_f32", conv_f32::suite()?);
     suite.add("conv_q", conv_q::suite()?);
     suite.add("deconv", deconv::suite()?);
