@@ -44,8 +44,14 @@ nnef=llm/$generation/$id/$id.nnef.tgz
 $CACHE_FILE $nnef
 
 $TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O --readings dump -q
+if [ -e $MODELS/$nnef ]
+then
+    size=$(stat -c %s $MODELS/$nnef)
+else
+    size=$(curl -I $MODELS/$nnef | grep Content-Length | cut -d " " -f 2)
+fi
+
 alloc_max=$(cat readings.out | tail -n +2 | awk '{print $10-$11}' | sort -n | tail -1)
-size=$(cat $MODELS/$nnef | gunzip | wc -c)
 ratio=$((alloc_max * 100 / size))
 
 echo "  ###########################################"
