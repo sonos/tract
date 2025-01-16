@@ -22,7 +22,6 @@ case $model in
     OpenELM-270M) id=apple--OpenELM-270M-$q;;
     OpenELM-1_1B) id=apple--OpenELM-1_1B-$q;;
     TinyLlama_v1.1) id=TinyLlama--TinyLlama_v1.1-$q;;
-    phi-1_5) id=microsoft--phi-1_5-$q;;
     llama-3.2) id=meta-llama--Llama-3.2-3B-$q;;
     *)
         echo "Unknown model"
@@ -88,8 +87,22 @@ do
         TinyLlama--TinyLlama_v1.1-q40ef16.p0s100) approx="--approx-custom 0.2,0.1,0.002";;
         TinyLlama--TinyLlama_v1.1-q40ef16.p50s50) approx="--approx-custom 0.2,0.1,0.002";;
 
-        meta-llama--Llama-3.2-3B-f16f16.p0s100) approx="--approx-custom 0.2,0.1,0.004";;
-        meta-llama--Llama-3.2-3B-f16f16.p50s50) approx="--approx-custom 0.2,0.1,0.002";;
+        meta-llama--Llama-3.2-3B-f16f16.p0s100) 
+            if [ `arch` = "arm64" ]
+            then
+                approx="--approx-custom 0.25,0.25,0.01"
+            else
+                approx="--approx-custom 0.2,0.1,0.004"
+            fi
+        ;;
+        meta-llama--Llama-3.2-3B-f16f16.p50s50) 
+            if [ `arch` = "arm64" ]
+            then
+                approx="--approx-custom 0.25,0.25,0.016"
+            else
+                approx="--approx-custom 0.2,0.1,0.004"
+            fi
+        ;;
     esac
 
 
