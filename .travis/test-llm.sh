@@ -44,17 +44,15 @@ nnef=llm/$generation/$id/$id.nnef.tgz
 $CACHE_FILE $nnef
 
 $TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O --readings dump -q
-rszmax=$(tail -1 readings.out | awk '{print $5}')
-limit=$(cat $MODELS/$nnef | gunzip | wc -c)
-ratio=$((rszmax * 100 / limit))
-
-echo $rszmax — $limit — $ratio
+alloc_max=$(cat readings.out | tail -n +2 | awk '{print $10-$11}' | sort -n | tail -1)
+size=$(cat $MODELS/$nnef | gunzip | wc -c)
+ratio=$((alloc_max * 100 / size))
 
 echo "  ###########################################"
-echo "      RSZ max to model size ratio: ${ratio}%."
+echo "      Alloc max to model size ratio: ${ratio}%."
 echo "  ###########################################"
 
-if [ $ratio -gt 175 ]
+if [ $ratio -gt 125 ]
 then
     echo "RSZ max is ${ratio}% the size of the unzipped model!"
     exit 1
