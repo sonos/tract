@@ -46,8 +46,12 @@ $CACHE_FILE $nnef
 
 $TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O --readings dump -q
 rszmax=$(tail -1 readings.out | awk '{print $5}')
-limit=$(zcat $MODELS/$nnef | wc -c)
+limit=$(cat $MODELS/$nnef | gunzip | wc -c)
 ratio=$((rszmax * 100 / limit))
+
+echo "  ###########################################"
+echo "      RSZ max to model size ratio: ${ratio}%."
+echo "  ###########################################"
 
 if [ $ratio -gt 175 ]
 then
