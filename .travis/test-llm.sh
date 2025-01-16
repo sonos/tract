@@ -93,7 +93,9 @@ do
         TinyLlama--TinyLlama_v1.1-q40ef16.p0s100) approx="--approx-custom 0.2,0.1,0.002";;
         TinyLlama--TinyLlama_v1.1-q40ef16.p50s50) approx="--approx-custom 0.2,0.1,0.002";;
 
-        meta-llama--Llama-3.2-3B-f16f16.p0s100) 
+        meta-llama--Llama-3.2-3B-f16f16.p0s100 |\
+        meta-llama--Llama-3.2-3B-q40f16.p0s100 |\
+        meta-llama--Llama-3.2-3B-q40ef16.p0s100) 
             if [ `arch` = "arm64" ]
             then
                 approx="--approx-custom 0.25,0.25,0.01"
@@ -101,7 +103,9 @@ do
                 approx="--approx-custom 0.2,0.1,0.004"
             fi
         ;;
-        meta-llama--Llama-3.2-3B-f16f16.p50s50) 
+        meta-llama--Llama-3.2-3B-f16f16.p50s50 |\
+        meta-llama--Llama-3.2-3B-q40f16.p50s50 |\
+        meta-llama--Llama-3.2-3B-q40ef16.p50s50) 
             if [ `arch` = "arm64" ]
             then
                 approx="--approx-custom 0.25,0.25,0.016"
