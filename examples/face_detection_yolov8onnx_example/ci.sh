@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -ex
+export RUSTUP_TOOLCHAIN=1.75.0
 
 # download pre-exported onnx model
 wget -q "https://tract-ci-builds.s3.amazonaws.com/model/yolov8n-face.onnx"
