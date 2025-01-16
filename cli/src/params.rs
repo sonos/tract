@@ -710,7 +710,6 @@ impl Parameters {
                 dec = dec.stopping_at(steps.parse()?);
             }
             dec.optimize(&mut m)?;
-            dbg!("done dec opt");
             Ok(m)
         });
         #[cfg(not(feature = "pulse"))]

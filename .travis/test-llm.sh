@@ -48,6 +48,8 @@ rszmax=$(tail -1 readings.out | awk '{print $5}')
 limit=$(cat $MODELS/$nnef | gunzip | wc -c)
 ratio=$((rszmax * 100 / limit))
 
+echo $rszmax — $limit — $ratio
+
 echo "  ###########################################"
 echo "      RSZ max to model size ratio: ${ratio}%."
 echo "  ###########################################"
