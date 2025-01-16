@@ -39,8 +39,21 @@ esac
 
 nnef=llm/$generation/$id/$id.nnef.tgz
 
-set -x
 $CACHE_FILE $nnef
+
+$TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O --readings dump -q
+rszmax=$(tail -1 readings.out | awk '{print $5}')
+limit=$(zcat $MODELS/$nnef | wc -c)
+ratio=$((rszmax * 100 / limit))
+
+if [ $ratio -gt 175 ]
+then
+    echo "RSZ max is ${ratio}% the size of the unzipped model!"
+    exit 1
+fi
+
+set -x
+
 for t in p0s100 p50s50 p99s1 
 do
     npz=llm/$generation/$id/$id.$t.io.npz

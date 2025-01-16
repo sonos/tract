@@ -86,6 +86,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--readings "Start readings instrumentation"))
         .arg(arg!(--"readings-heartbeat" [MS] "Heartbeat for readings background collector").default_value("5"))
         .arg(arg!(verbose: -v ... "Sets the level of verbosity."))
+        .arg(arg!(--"keep-last" "Keep last model alive to dump if there is an error"))
         .arg(arg!([model] "Sets the model to use").required(false))
         .arg(arg!(-f --format [format]
                   "Hint the model format ('onnx', 'nnef', 'tflite' or 'tf') instead of guess from extension."))
