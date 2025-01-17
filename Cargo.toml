@@ -117,7 +117,7 @@ anstyle = "1.0.2"
 anstyle-parse = "0.2.1"
 anstyle-query = "1.0.0"
 anyhow = "1.0.43"
-anymap = "0.12.1"
+anymap3 = "1.0"
 approx = "0.5"
 bit-set= "0.5.2"
 blis-src = { version = "0.2", features = ["static", "pthreads"] }

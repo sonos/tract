@@ -27,7 +27,7 @@ pub struct SessionState {
     pub scenario: Option<usize>,
     pub tensors: HashMap<String, Tensor>,
     pub cached_mmm_scratch_space: RefCell<Option<Box<dyn tract_linalg::mmm::ScratchSpace>>>,
-    pub scratch_extensions: anymap::Map,
+    pub scratch_extensions: anymap3::Map,
 }
 
 impl Default for SessionState {
@@ -39,7 +39,7 @@ impl Default for SessionState {
             tensors: HashMap::default(),
             scenario: None,
             cached_mmm_scratch_space: None.into(),
-            scratch_extensions: anymap::Map::new(),
+            scratch_extensions: anymap3::Map::new(),
         }
     }
 }
@@ -52,7 +52,7 @@ impl Clone for SessionState {
             tensors: self.tensors.clone(),
             scenario: self.scenario,
             cached_mmm_scratch_space: None.into(),
-            scratch_extensions: anymap::Map::new(),
+            scratch_extensions: anymap3::Map::new(),
         }
     }
 }
@@ -681,7 +681,7 @@ where
                 scenario: self.scenario,
                 tensors: self.tensors.clone(),
                 cached_mmm_scratch_space: None.into(),
-                scratch_extensions: anymap::Map::new(),
+                scratch_extensions: anymap3::Map::new(),
             },
             states: self.states.iter().map(|s| s.as_ref().map(|s| s.unfreeze())).collect(),
             values: self

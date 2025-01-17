@@ -17,7 +17,7 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 accelerate-src = { workspace = true, optional = true }
 anyhow.workspace = true
-anymap.workspace = true
+anymap3.workspace = true
 bit-set.workspace = true
 blis-src = { version = "0.2", features = ["static", "pthreads"], optional = true }
 cblas = { version = "0.4", optional = true }
