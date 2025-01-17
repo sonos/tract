@@ -1,4 +1,9 @@
+use tract_itertools::Itertools;
+
 use crate::internal::*;
+use crate::ops::array::Gather;
+use crate::ops::einsum::EinSum;
+use crate::ops::matmul::de_block_quant::BlockQuantValue;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Const(pub Arc<Tensor>, pub Option<Box<dyn OpaqueFact>>);
@@ -85,5 +90,65 @@ impl TypedOp for Const {
             self.clone()
         };
         target.wire_node(&node.name, op, &[])
+    }
+
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        println!("{node}");
+        let looks_like_weights = (self.0.datum_type().is_number() && self.0.rank() == 2)
+            || (self.0.to_scalar::<Opaque>().is_ok_and(|opaque| opaque.is::<BlockQuantValue>()));
+        if !looks_like_weights {
+            return Ok(None);
+        }
+        let mut have_abstract_einsum = false;
+        for succ in &node.outputs[0].successors {
+            let snode = model.node(succ.node);
+            println!(" * {snode} => {}", snode.op.info()?.join(" :: "));
+            if let Some(gather) = snode.op_as::<Gather>() {
+                if succ.slot != 0 || gather.axis != 0 {
+                    return Ok(None);
+                }
+            } else if let Some(einsum) = snode.op_as::<EinSum>() {
+                if succ.slot != 0 || snode.inputs.len() != 2 {
+                    return Ok(None);
+                }
+                let m_axis = einsum.axes.axis((InOut::In(0), 0))?;
+                if m_axis.inputs[0].len() != 1
+                    || m_axis.inputs[1].len() != 0
+                    || m_axis.outputs[0].len() != 1
+                {
+                    println!("Failed m_axis check");
+                    return Ok(None);
+                }
+                let k_axis = einsum.axes.axis((InOut::In(0), 1))?;
+                if k_axis.inputs[0].len() != 1
+                    || k_axis.inputs[1].len() != 1
+                    || k_axis.outputs[0].len() != 0
+                {
+                    println!("Failed k_axis check");
+                    return Ok(None);
+                }
+                for axis in einsum.axes.iter_all_axes() {
+                    if axis != k_axis
+                        && axis != m_axis
+                        && axis.inputs[0].len() == 0
+                        && axis.inputs[1].len() == 1
+                        && axis.outputs[0].len() == 1
+                        && snode.outputs[0].fact.shape[axis.outputs[0][0]].as_i64().is_none()
+                    {
+                        have_abstract_einsum = true;
+                    }
+                }
+            } else {
+                return Ok(None);
+            }
+        }
+        if node.outputs[0].successors.len() > 1 || have_abstract_einsum {
+            println!("Operate!");
+        }
+        Ok(None)
     }
 }
