@@ -17,6 +17,9 @@ pub fn register(registry: &mut Registry) {
             TypeName::Scalar.tensor().named("weight_scale"),
             TypeName::Scalar.tensor().named("weight_bias"),
             TypeName::Scalar.tensor().named("bias"),
+            TypeName::Integer.named("vector_len"),
+            TypeName::Integer.tensor().named("in_features"),
+            TypeName::Integer.tensor().named("out_features"),
         ],
         &[("output", TypeName::Scalar.tensor())],
         de_vptq_gemm,
@@ -37,6 +40,10 @@ fn ser_vptq_gemm(
     let weight_scale = ast.mapping[&node.inputs[6]].clone();
     let weight_bias = ast.mapping[&node.inputs[7]].clone();
     let bias = ast.mapping[&node.inputs[8]].clone();
+
+    let vector_len = ast.mapping[&node.inputs[9]].clone();
+    let in_features = ast.mapping[&node.inputs[10]].clone();
+    let out_features = ast.mapping[&node.inputs[11]].clone();
     Ok(Some(invocation(
         "tract_core_vptq_gemm",
         &[
@@ -50,7 +57,11 @@ fn ser_vptq_gemm(
             weight_bias,
             bias,
         ],
-        &[],
+        &[
+            ("vector_len", numeric(vector_len)),
+            ("in_features", numeric(in_features)),
+            ("out_features", numeric(out_features)),
+        ],
     )))
 }
 
@@ -65,8 +76,12 @@ fn de_vptq_gemm(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
     let weight_bias = invocation.named_arg_as(builder, "weight_bias")?;
     let bias = invocation.named_arg_as(builder, "bias")?;
 
+    let vector_len = invocation.named_arg_as(builder, "vector_len")?;
+    let in_features = invocation.named_arg_as(builder, "in_features")?;
+    let out_features = invocation.named_arg_as(builder, "out_features")?;
+
     builder.wire(
-        VPTQGemm {},
+        VPTQGemm { vector_len, in_features, out_features },
         &[
             input,
             indices,
