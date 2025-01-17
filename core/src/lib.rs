@@ -45,13 +45,13 @@
 //! tract-tensorflow or tract-onnx crates.
 //!
 
-#[cfg(feature="blas")]
-extern crate cblas;
-#[cfg(feature="accelerate")]
+#[cfg(feature = "accelerate")]
 extern crate accelerate_src;
-#[cfg(feature="blis")]
+#[cfg(feature = "blis")]
 extern crate blis_src;
-#[cfg(feature="openblas")]
+#[cfg(feature = "blas")]
+extern crate cblas;
+#[cfg(feature = "openblas")]
 extern crate openblas_src;
 
 extern crate bit_set;
@@ -81,8 +81,8 @@ pub mod ops;
 
 pub mod axes;
 pub mod broadcast;
-pub mod framework;
 pub mod floats;
+pub mod framework;
 pub mod model;
 pub mod optim;
 pub mod plan;
@@ -98,7 +98,7 @@ mod late_bind;
 pub mod prelude {
     pub use crate::framework::Framework;
     pub use crate::model::*;
-    pub use crate::plan::{SimplePlan, SimpleState, PlanOptions};
+    pub use crate::plan::{PlanOptions, SimplePlan, SimpleState};
     pub use crate::value::{IntoTValue, TValue};
     pub use std::sync::Arc;
     pub use tract_data::prelude::*;
@@ -118,8 +118,9 @@ pub mod internal {
     pub use crate::ops::change_axes::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;
     pub use crate::ops::{Cost, EvalOp, FrozenOpState, Op, OpState, Validation};
-    pub use crate::plan::{ SessionState, SessionStateHandler };
+    pub use crate::plan::{SessionState, SessionStateHandler};
     pub use crate::prelude::*;
+    pub use crate::runtime::{DefaultRuntime, Runnable, Runtime, State};
     pub use dims;
     pub use downcast_rs as tract_downcast_rs;
     pub use std::borrow::Cow;
@@ -131,10 +132,9 @@ pub mod internal {
         dispatch_copy, dispatch_datum, dispatch_datum_by_size, dispatch_floatlike, dispatch_numbers,
     };
     pub use tvec;
-    pub use {args_1, args_2, args_3, args_4, args_5, args_6, args_7, args_8};
+    pub use {args_1, args_2, args_3, args_4, args_5, args_6, args_7, args_8, args_9};
     pub use {as_op, impl_op_same_as, not_a_typed_op, op_as_typed_op};
     pub use {bin_to_super_type, element_wise, element_wise_oop};
-    pub use crate::runtime::{Runtime, Runnable, State, DefaultRuntime};
 }
 
 #[cfg(test)]
