@@ -88,7 +88,11 @@ pub fn change_axes(
         debug!("  Not considering change because deja vu {:?}", change);
         return Ok(None);
     }
-    if model.node(change.outlet.node).op_as::<Const>().is_some_and(|c| c.0.volume() == 1) {
+    if model
+        .node(change.outlet.node)
+        .op_as::<Const>()
+        .is_some_and(|c| c.0.volume() == 1 && c.0.datum_type() != Opaque::datum_type())
+    {
         debug!("  Not considering change from const {:?}", change);
         return Ok(None);
     }
