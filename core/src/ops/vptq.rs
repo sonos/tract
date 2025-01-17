@@ -99,7 +99,7 @@ impl EvalOp for VPTQGemm {
         if bias.len() > 1 {
             unimplemented!("'bias' for vptq not yet supported !");
         }
-        assert_eq!(input.rank(), 3);
+        assert_eq!(input.rank(), 2);
         assert!(input.datum_type().is_float());
 
         assert_eq!(indices.rank(), 3);
@@ -148,14 +148,16 @@ impl EvalOp for VPTQGemm {
         }
         // call matmul now with qweight
 
-        let einsum_op = EinSum::new("bik,kj->ij".parse()?, f32::datum_type());
+        let einsum_op = EinSum::new("ik,kj->".parse()?, f32::datum_type());
         einsum_op.eval(tvec!(input, qweight.into_tvalue()))
     }
 }
 
 impl TypedOp for VPTQGemm {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(inputs[0].without_value()))
+        let mut tfact = inputs[0].without_value();
+        tfact.shape.set(1, self.out_features.into());
+        Ok(tvec!(tfact))
     }
 
     as_op!();
