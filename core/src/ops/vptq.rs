@@ -112,7 +112,7 @@ impl EvalOp for VPTQGemm {
             assert_eq!(outlier_indices.rank(), 3);
             assert_eq!(outlier_indices.datum_type(), DatumType::U16);
             assert_eq!(outlier_centroids.rank(), 3);
-            assert_eq!(outlier_centroids.datum_type().is_float());
+            assert!(outlier_centroids.datum_type().is_float());
         }
 
         let mut qweight = self.eval_extract_from_vector_quant(centroids, indices)?;
