@@ -79,9 +79,10 @@ fn de_vptq_gemm(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
     let vector_len = invocation.named_arg_as(builder, "vector_len")?;
     let in_features = invocation.named_arg_as(builder, "in_features")?;
     let out_features = invocation.named_arg_as(builder, "out_features")?;
+    let is_indice_packed = invocation.named_arg_as(builder, "is_indice_packed")?;
 
     builder.wire(
-        VPTQGemm { vector_len, in_features, out_features },
+        VPTQGemm { vector_len, in_features, out_features, is_indice_packed },
         &[
             input,
             indices,
