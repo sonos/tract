@@ -2,7 +2,6 @@ use crate::{
     internal::*,
     ops::{
         array::{Gather, GatherElements, Topk},
-        cast::cast,
         einsum::EinSum,
     },
 };
@@ -12,6 +11,7 @@ pub struct VPTQGemm {
     pub vector_len: usize,
     pub in_features: usize,
     pub out_features: usize,
+    pub is_indice_packed: bool,
 }
 
 impl Op for VPTQGemm {
@@ -23,17 +23,64 @@ impl Op for VPTQGemm {
 }
 
 impl VPTQGemm {
+    fn eval_unpack_index_tensor(
+        &self,
+        pack_tensor: Tensor,
+        index_bits: usize,
+        num_elements: usize,
+    ) -> TractResult<Tensor> {
+        //
+        //
+        // TODO: implement decompression of index
+        //
+        // total_bits = index_bits + res_bits
+        // wf = torch.arange(0, 32, 1).to(pack_tensor.device).view(1, 1, 1, -1)
+        // out = torch.bitwise_right_shift(torch.unsqueeze(pack_tensor, -1), wf)
+        // torch.bitwise_and(out, 1, out=out)
+        // pad_size = (pack_tensor.shape[-1] * 32) % (
+        //     index_bits * num_elements + res_bits * num_res_elements
+        // )
+        // out = out.reshape(*pack_tensor.shape[:-1], -1)
+        // if pad_size > 0:
+        //     out = out[..., :-pad_size]
+        // out = out.reshape(*pack_tensor.shape[:-1], -1, total_bits)
+        // wf1 = torch.arange(0, total_bits, 1).to(pack_tensor.device).view(1, 1, 1, -1)
+        // out = torch.bitwise_left_shift(out, wf1).sum(dim=-1)
+        //
+        // unpack_indice = out.to(torch.uint64).view(torch.int64)
+        //
+        // indices = (
+        //     (unpack_indice & ((1 << index_bits) - 1)).view(torch.uint64).to(torch.int64)
+        // )
+        //
+        // # indices = indices.squeeze()
+        //
+        // if res_bits > 0:
+        //     res_indices = (
+        //         ((unpack_indice >> index_bits) & ((1 << index_bits) - 1))
+        //         .view(torch.uint64)
+        //         .to(torch.int64)
+        //     )
+        //     # res_indices = res_indices.squeeze()
+        // else:
+        //     res_indices = None
+        //
+        // return indices, res_indices
+
+        Ok(tensor0(0))
+    }
+
     fn eval_extract_from_vector_quant(
         &self,
         centroids: Tensor,
         indices: Tensor,
         is_indice_packed: bool,
     ) -> TractResult<Tensor> {
-        if is_indice_packed {
+        if self.is_indice_packed {
             unimplemented!("unpacking indices not implemented yet !");
         }
         let mut indices = indices.clone();
-        let [num_codebooks, num_centroids, vector_len] = *centroids.shape() else {
+        let [num_codebooks, _num_centroids, vector_len] = *centroids.shape() else {
             unimplemented!("unexected centroid shape ?")
         };
 
@@ -45,7 +92,7 @@ impl VPTQGemm {
         indices.insert_axis(3)?;
         vsh.push(vector_len);
         indices = indices.broadcast_to_shape(&vsh)?;
-        let intermediate_volume = indices.shape()[1..3].iter().fold(1, |r, x| r * x);
+        let intermediate_volume = indices.shape()[1..3].iter().product();
         indices = indices.into_shape(&[num_codebooks, intermediate_volume, vector_len])?;
 
         let gather1 = GatherElements { axis: 1 };
@@ -126,15 +173,14 @@ impl EvalOp for VPTQGemm {
             assert!(outlier_centroids.datum_type().is_float());
         }
 
-        let is_indice_packed = false; // TODO: apply
         let mut qweight =
-            self.eval_extract_from_vector_quant(centroids, indices, is_indice_packed)?;
+            self.eval_extract_from_vector_quant(centroids, indices, self.is_indice_packed)?;
         if enable_outlier {
             // same as centroids to qweights except for outlier
             let outlier_qweight = self.eval_extract_from_vector_quant(
                 outlier_centroids,
                 outlier_indices,
-                is_indice_packed,
+                self.is_indice_packed,
             )?;
             qweight = Tensor::stack_tensors(1, &[outlier_qweight, qweight])?;
         }
@@ -146,7 +192,7 @@ impl EvalOp for VPTQGemm {
             let top_k = Topk { axis, largest: false, fallback_k: dim.into() };
             let invert_perm = top_k
                 .eval(tvec!(
-                    if is_indice_packed {
+                    if self.is_indice_packed {
                         unimplemented!("permutation not implemented yet with indice packed");
                         // self.perm.to(torch.uint16).to(torch.int64)
                     } else {
