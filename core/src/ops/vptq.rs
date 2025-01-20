@@ -1,4 +1,10 @@
-use crate::{internal::*, ops::array::GatherElements, ops::einsum::EinSum};
+use crate::{
+    internal::*,
+    ops::{
+        array::{GatherElements, Topk},
+        einsum::EinSum,
+    },
+};
 
 #[derive(Debug, Clone)]
 pub struct VPTQGemm {
@@ -20,13 +26,17 @@ impl VPTQGemm {
         &self,
         centroids: Tensor,
         indices: Tensor,
+        is_indice_packed: bool,
     ) -> TractResult<Tensor> {
+        if is_indice_packed {
+            unimplemented!("unpacking indices not implemented yet !");
+        }
         let mut indices = indices.clone();
         let [num_codebooks, num_centroids, vector_len] = *centroids.shape() else {
             unimplemented!("unexected centroid shape ?")
         };
 
-        let [_, _, group_size] = *centroids.shape() else {
+        let [_, _, group_size] = *indices.shape() else {
             unimplemented!("unexected indice shape ?")
         };
 
@@ -80,14 +90,14 @@ impl EvalOp for VPTQGemm {
             weight_bias,
             bias,
         ) = args_9!(inputs);
-        let mut indices = indices.into_tensor();
-        let mut centroids = centroids.into_tensor();
-        let mut outlier_indices = outlier_indices.into_tensor();
-        let mut outlier_centroids = outlier_centroids.into_tensor();
-        let mut perm = perm.into_tensor();
-        let mut weight_scale = weight_scale.into_tensor();
-        let mut weight_bias = weight_bias.into_tensor();
-        let mut bias = bias.into_tensor();
+        let indices = indices.into_tensor();
+        let centroids = centroids.into_tensor();
+        let outlier_indices = outlier_indices.into_tensor();
+        let outlier_centroids = outlier_centroids.into_tensor();
+        let perm = perm.into_tensor();
+        let weight_scale = weight_scale.into_tensor();
+        let weight_bias = weight_bias.into_tensor();
+        let bias = bias.into_tensor();
 
         if weight_scale.len() > 1 {
             unimplemented!("'weight scale' for vptq not yet supported !");
@@ -115,31 +125,42 @@ impl EvalOp for VPTQGemm {
             assert!(outlier_centroids.datum_type().is_float());
         }
 
-        let mut qweight = self.eval_extract_from_vector_quant(centroids, indices)?;
+        let is_indice_packed = false; // TODO: apply
+        let mut qweight =
+            self.eval_extract_from_vector_quant(centroids, indices, is_indice_packed)?;
         if enable_outlier {
             // same as centroids to qweights except for outlier
-            let outlier_qweight =
-                self.eval_extract_from_vector_quant(outlier_centroids, outlier_indices)?;
-            // qweight = torch.cat([qweight_outlier, qweight], dim=1)
-            qweight = Tensor::stack_tensors(0, &[qweight, outlier_qweight])?;
+            let outlier_qweight = self.eval_extract_from_vector_quant(
+                outlier_centroids,
+                outlier_indices,
+                is_indice_packed,
+            )?;
+            qweight = Tensor::stack_tensors(1, &[outlier_qweight, qweight])?;
         }
 
-        // let enable_perm = perm.len() <= 1;
-        // if enable_perm {
-        //     // TODO: manage case with packed indice
-        //     //     if self.is_indice_packed:
-        //     //         invert_perm = torch.argsort(
-        //     //             self.perm.to(torch.uint16).to(torch.int64)
-        //     //         )
-        //     //     else:
-        //     //         invert_perm = torch.argsort(self.perm)
-        //     //     if self.vector_quant_dim == "in":
-        //     //         assert True, "Not implemented"
-        //     //         # qweight = qweight[invert_perm, :]
-        //     //     else:
-        //     //         qweight = qweight[:, invert_perm]
-        //     let invert_perm = perm.into_tensor().argsort();
-        // }
+        let enable_perm = perm.len() > 1;
+        if enable_perm {
+            unimplemented!("permutation not implemented yet");
+            //     if is_indice_packed {
+            //         unimplemented!("permutation not implemented yet with indice packed");
+            //     //     if self.is_indice_packed:
+            //     //         invert_perm = torch.argsort(
+            //     //             self.perm.to(torch.uint16).to(torch.int64)
+            //     //         )
+            //     } else {
+            //         let axis = 1;
+            //         top_k = Topk { axis= axis, largest=false};
+            //         let dim= perm.shape()[axis].into_tensor();
+            //         invert_perm = top_k.eval(tvec!(perm, dim));
+            //     }
+            //     //     // TODO: manage case with packed indice
+            //     //     //     if self.vector_quant_dim == "in":
+            //     //     //         assert True, "Not implemented"
+            //     //     //         qweight = qweight[invert_perm, :]
+            //     //     //     else:
+            //     //     //         qweight = qweight[:, invert_perm]
+            //     qweight = qweight[:, invert_perm];
+        }
 
         if enable_norm {
             qweight = (qweight.into_array::<f32>()? * weight_scale.into_array::<f32>()?
@@ -149,7 +170,7 @@ impl EvalOp for VPTQGemm {
         // call matmul now with qweight
 
         let einsum_op = EinSum::new("ik,kj->".parse()?, f32::datum_type());
-        einsum_op.eval(tvec!(input, qweight.into_tvalue()))
+        einsum_op.eval(tvec!(input, qweight.permute_axes(&[1, 0])?.into_tvalue()))
     }
 }
 
