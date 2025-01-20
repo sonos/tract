@@ -1,7 +1,8 @@
 use crate::{
     internal::*,
     ops::{
-        array::{GatherElements, Topk},
+        array::{Gather, GatherElements, Topk},
+        cast::cast,
         einsum::EinSum,
     },
 };
@@ -140,26 +141,33 @@ impl EvalOp for VPTQGemm {
 
         let enable_perm = perm.len() > 1;
         if enable_perm {
-            unimplemented!("permutation not implemented yet");
-            //     if is_indice_packed {
-            //         unimplemented!("permutation not implemented yet with indice packed");
-            //     //     if self.is_indice_packed:
-            //     //         invert_perm = torch.argsort(
-            //     //             self.perm.to(torch.uint16).to(torch.int64)
-            //     //         )
-            //     } else {
-            //         let axis = 1;
-            //         top_k = Topk { axis= axis, largest=false};
-            //         let dim= perm.shape()[axis].into_tensor();
-            //         invert_perm = top_k.eval(tvec!(perm, dim));
-            //     }
-            //     //     // TODO: manage case with packed indice
-            //     //     //     if self.vector_quant_dim == "in":
-            //     //     //         assert True, "Not implemented"
-            //     //     //         qweight = qweight[invert_perm, :]
-            //     //     //     else:
-            //     //     //         qweight = qweight[:, invert_perm]
-            //     qweight = qweight[:, invert_perm];
+            let axis = 0;
+            let dim = perm.shape()[0];
+            let top_k = Topk { axis, largest: false, fallback_k: dim.into() };
+            let invert_perm = top_k
+                .eval(tvec!(
+                    if is_indice_packed {
+                        unimplemented!("permutation not implemented yet with indice packed");
+                        // self.perm.to(torch.uint16).to(torch.int64)
+                    } else {
+                        perm.into_tvalue()
+                    },
+                    tensor0(dim as u16).into()
+                ))?
+                .remove(0);
+            // TODO: manage case with quant dim == 'in' ?
+            // if self.vector_quant_dim == "in":
+            //     assert True, "Not implemented"
+            //     qweight = qweight[invert_perm, :]
+
+            let perm_gather_axis = 1;
+            let gather_perm = Gather { axis: perm_gather_axis };
+            qweight = gather_perm
+                .eval(tvec!(qweight.into(), invert_perm))?
+                .pop()
+                .context("apply gather to permutation")
+                .unwrap()
+                .into_tensor();
         }
 
         if enable_norm {
