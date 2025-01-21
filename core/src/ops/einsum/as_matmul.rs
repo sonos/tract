@@ -51,7 +51,7 @@ fn einsum_rules(
     let inputs = patch.taps(model, &node.inputs)?;
     let mut wire = tvec!(inputs[0], inputs[1]);
 
-    let (m,k,n) = (op.m_axis.repr, op.k_axis.repr, op.n_axis.repr);
+    let (m, k, n) = (op.m_axis.repr, op.k_axis.repr, op.n_axis.repr);
     let a_order_es: String = op.axes.axes(InOut::In(0)).map(|a| a.repr).collect();
     let a_order_mm = format!("{prefix}{m}{k}");
     let a_order_mm_t = format!("{prefix}{k}{m}");

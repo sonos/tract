@@ -45,7 +45,6 @@ mod decluttered {
     include!(concat!(env!("OUT_DIR"), "/tests/decluttered.rs"));
 }
 
-
 mod optimized {
     use super::*;
 
