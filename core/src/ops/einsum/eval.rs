@@ -1,8 +1,7 @@
 use super::AxesMapping;
 use crate::internal::*;
-use ndarray::{ArrayView, ArrayViewD, Zip};
+use ndarray::{ArrayViewD, Zip};
 use tract_data::itertools::Itertools;
-use tract_linalg::Scaler;
 use tract_ndarray::{Axis, Dimension};
 use tract_num_traits::{One, Zero};
 
