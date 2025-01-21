@@ -1,15 +1,21 @@
 fn main() {
     let suite = suite_unit::suite().unwrap();
     suite.test_runtime(
-        "default",
+        "raw",
         "suite_unit::suite().unwrap()",
-        "default()",
+        "raw()",
         "Approximation::Approximate",
     );
     suite.test_runtime(
-        "unoptimized",
+        "decluttered",
         "suite_unit::suite().unwrap()",
-        "unoptimized()",
+        "decluttered()",
+        "Approximation::Approximate",
+    );
+    suite.test_runtime(
+        "optimized",
+        "suite_unit::suite().unwrap()",
+        "optimized()",
         "Approximation::Approximate",
     );
 }
