@@ -1237,5 +1237,22 @@ pub fn suite() -> TractResult<TestSuite> {
             raw_output_dt: DatumType::I8,
         },
     );
+
+    let mut qp = qp_noop_i8();
+    qp[3] = tensor1(&[1f32, 1f32]);
+    suite.add(
+        "batch_vec_scale",
+        QConvProblem {
+            shape_in: NCHW.from_n_c_hw(2, 1, [2]).unwrap(),
+            co: 2,
+            kernel_format: OIHW,
+            group: 1,
+            kernel: Tensor::zero::<i8>(&[2, 1, 1]).unwrap(),
+            bias: None,
+            data: Tensor::zero::<i8>(&[2, 1, 2]).unwrap(),
+            qp,
+            raw_output_dt: DatumType::I8,
+        },
+    );
     Ok(suite)
 }

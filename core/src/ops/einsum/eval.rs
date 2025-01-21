@@ -1,5 +1,6 @@
 use super::AxesMapping;
 use crate::internal::*;
+use ndarray::{ArrayView, ArrayViewD, Zip};
 use tract_data::itertools::Itertools;
 use tract_linalg::Scaler;
 use tract_ndarray::{Axis, Dimension};
@@ -112,40 +113,66 @@ pub fn eval_t<Acc: Datum + Zero + One>(
 }
 
 pub fn eval_q(expr: &AxesMapping, qp: DatumType, inputs: TVec<TValue>) -> TractResult<Tensor> {
+    fn reshape_param<'a>(expr: &AxesMapping, data_slot: InOut, qp: &'a Tensor, qp_slot: InOut) -> TractResult<ArrayViewD<'a, f32>> {
+        if qp.rank() == 0 {
+            qp.to_array_view()
+        }
+        else {
+            let pos = expr.axis((qp_slot, 0))?.interface(data_slot)[0];
+            let rank_a = expr.rank(data_slot);
+    
+            let mut shape = vec![1; rank_a];
+            shape[pos] = qp.len();
+            Ok(qp.to_array_view()?.into_shape_with_order(shape)?)
+        }
+    }
     let [a, b, bias, a0, a_scale, b0, b_scale, c0, c_scale] = &*inputs else {
         bail!("Expect exactly 9 inputs")
     };
 
-    let mut a = a.cast_to::<i32>()?.into_owned();
-    let a0 = a0.cast_to_scalar::<i32>()?;
-    a.as_slice_mut::<i32>()?.iter_mut().for_each(|x| *x -= a0);
-    let mut b = b.cast_to::<i32>()?.into_owned();
-    let b0 = b0.cast_to_scalar::<i32>()?;
-    b.as_slice_mut::<i32>()?.iter_mut().for_each(|x| *x -= b0);
+    let mut a = a.cast_to::<i32>()?.cast_to::<f32>()?.into_owned();
+    let mut b = b.cast_to::<i32>()?.cast_to::<f32>()?.into_owned();
+
+    let a0 = a0.cast_to::<f32>()?;
+    let b0 = b0.cast_to::<f32>()?;
+    let c0 = c0.cast_to::<f32>()?;
+    let a_scale = a_scale.cast_to::<f32>()?;
+    let b_scale = b_scale.cast_to::<f32>()?;
+    let c_scale = c_scale.cast_to::<f32>()?;
+    let bias = bias.cast_to::<f32>()?;
+    ensure!(a0.rank() < 2);
+    ensure!(b0.rank() < 2);
+    ensure!(c0.rank() < 2);
+    ensure!(a_scale.rank() < 2);
+    ensure!(b_scale.rank() < 2);
+    ensure!(c_scale.rank() < 2);
+    ensure!(bias.rank() < 2);
+
+    Zip::from(a.to_array_view_mut::<f32>()?)
+                        .and_broadcast(reshape_param(expr, InOut::In(0), &a0, InOut::In(3))?)
+                        .and_broadcast(reshape_param(expr, InOut::In(0), &a_scale, InOut::In(4))?)
+                        .for_each(|a, a0, a_scale| *a = a_scale * (*a - a0));
+
+    Zip::from(b.to_array_view_mut::<f32>()?)
+    .and_broadcast(reshape_param(expr, InOut::In(1), &b0, InOut::In(5))?)
+    .and_broadcast(reshape_param(expr, InOut::In(1), &b_scale, InOut::In(6))?)
+    .for_each(|b, b0, b_scale| {dbg!(b_scale, b0, &b); *b = b_scale * (*b - b0)});
 
     let mut output =
-        eval_t::<i32>(expr, tvec!(a.into_tvalue(), b.into_tvalue()))?.into_array::<i32>()?;
-    let scale = a_scale.cast_to_scalar::<f32>()? * b_scale.cast_to_scalar::<f32>()?
-        / c_scale.cast_to_scalar::<f32>()?;
-    let scale = Scaler::new(scale, tract_linalg::mmm::RoundingPolicy::Even);
-    let c0 = c0.cast_to_scalar::<i32>()?;
+        eval_t::<f32>(expr, tvec!(a.into_tvalue(), b.into_tvalue()))?.into_array::<f32>()?;
 
-    if bias.rank() == 0 {
-        output += inputs[2].cast_to_scalar::<i32>()?;
-    } else {
-        let mut bias_shape = tvec!(1; output.ndim());
-        bias_shape[expr.axis((InOut::In(2), 0))?.outputs[0][0]] = bias.len();
-        let bias = bias.to_array_view::<i32>()?.into_shape_with_order(&*bias_shape)?;
-        output = output + bias;
-    }
-
-    output.mapv_inplace(|x| x * scale);
-    output.mapv_inplace(|x| x + c0);
+    Zip::from(&mut output)
+    .and_broadcast(reshape_param(expr, InOut::Out(0), &bias, InOut::In(2))?)
+    .and_broadcast(reshape_param(expr, InOut::Out(0), &c0, InOut::In(7))?)
+    .and_broadcast(reshape_param(expr, InOut::Out(0), &c_scale, InOut::In(8))?)
+    .and_broadcast(reshape_param(expr, InOut::Out(0), &a_scale, InOut::In(4))?)
+    .and_broadcast(reshape_param(expr, InOut::Out(0), &b_scale, InOut::In(6))?)
+    .for_each(|c, bias, c0, c_scale, a_scale, b_scale| *c = ((*c + bias * a_scale * b_scale)/ c_scale + c0).round());
 
     if qp.unquantized() == i8::datum_type() {
         output.mapv_inplace(|x| x.clamp(i8::MIN as _, i8::MAX as _))
     } else if qp.unquantized() == u8::datum_type() {
         output.mapv_inplace(|x| x.clamp(u8::MIN as _, u8::MAX as _))
     }
-    Ok(output.into_tensor().cast_to_dt(qp)?.into_owned())
+    Ok(output.into_tensor().cast_to::<i32>()?.cast_to_dt(qp)?.into_owned())
 }
