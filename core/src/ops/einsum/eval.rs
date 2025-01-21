@@ -113,14 +113,18 @@ pub fn eval_t<Acc: Datum + Zero + One>(
 }
 
 pub fn eval_q(expr: &AxesMapping, qp: DatumType, inputs: TVec<TValue>) -> TractResult<Tensor> {
-    fn reshape_param<'a>(expr: &AxesMapping, data_slot: InOut, qp: &'a Tensor, qp_slot: InOut) -> TractResult<ArrayViewD<'a, f32>> {
+    fn reshape_param<'a>(
+        expr: &AxesMapping,
+        data_slot: InOut,
+        qp: &'a Tensor,
+        qp_slot: InOut,
+    ) -> TractResult<ArrayViewD<'a, f32>> {
         if qp.rank() == 0 {
             qp.to_array_view()
-        }
-        else {
+        } else {
             let pos = expr.axis((qp_slot, 0))?.interface(data_slot)[0];
             let rank_a = expr.rank(data_slot);
-    
+
             let mut shape = vec![1; rank_a];
             shape[pos] = qp.len();
             Ok(qp.to_array_view()?.into_shape_with_order(shape)?)
@@ -149,25 +153,27 @@ pub fn eval_q(expr: &AxesMapping, qp: DatumType, inputs: TVec<TValue>) -> TractR
     ensure!(bias.rank() < 2);
 
     Zip::from(a.to_array_view_mut::<f32>()?)
-                        .and_broadcast(reshape_param(expr, InOut::In(0), &a0, InOut::In(3))?)
-                        .and_broadcast(reshape_param(expr, InOut::In(0), &a_scale, InOut::In(4))?)
-                        .for_each(|a, a0, a_scale| *a = a_scale * (*a - a0));
+        .and_broadcast(reshape_param(expr, InOut::In(0), &a0, InOut::In(3))?)
+        .and_broadcast(reshape_param(expr, InOut::In(0), &a_scale, InOut::In(4))?)
+        .for_each(|a, a0, a_scale| *a = a_scale * (*a - a0));
 
     Zip::from(b.to_array_view_mut::<f32>()?)
-    .and_broadcast(reshape_param(expr, InOut::In(1), &b0, InOut::In(5))?)
-    .and_broadcast(reshape_param(expr, InOut::In(1), &b_scale, InOut::In(6))?)
-    .for_each(|b, b0, b_scale| {dbg!(b_scale, b0, &b); *b = b_scale * (*b - b0)});
+        .and_broadcast(reshape_param(expr, InOut::In(1), &b0, InOut::In(5))?)
+        .and_broadcast(reshape_param(expr, InOut::In(1), &b_scale, InOut::In(6))?)
+        .for_each(|b, b0, b_scale| *b = b_scale * (*b - b0));
 
     let mut output =
         eval_t::<f32>(expr, tvec!(a.into_tvalue(), b.into_tvalue()))?.into_array::<f32>()?;
 
     Zip::from(&mut output)
-    .and_broadcast(reshape_param(expr, InOut::Out(0), &bias, InOut::In(2))?)
-    .and_broadcast(reshape_param(expr, InOut::Out(0), &c0, InOut::In(7))?)
-    .and_broadcast(reshape_param(expr, InOut::Out(0), &c_scale, InOut::In(8))?)
-    .and_broadcast(reshape_param(expr, InOut::Out(0), &a_scale, InOut::In(4))?)
-    .and_broadcast(reshape_param(expr, InOut::Out(0), &b_scale, InOut::In(6))?)
-    .for_each(|c, bias, c0, c_scale, a_scale, b_scale| *c = ((*c + bias * a_scale * b_scale)/ c_scale + c0).round());
+        .and_broadcast(reshape_param(expr, InOut::Out(0), &bias, InOut::In(2))?)
+        .and_broadcast(reshape_param(expr, InOut::Out(0), &c0, InOut::In(7))?)
+        .and_broadcast(reshape_param(expr, InOut::Out(0), &c_scale, InOut::In(8))?)
+        .and_broadcast(reshape_param(expr, InOut::Out(0), &a_scale, InOut::In(4))?)
+        .and_broadcast(reshape_param(expr, InOut::Out(0), &b_scale, InOut::In(6))?)
+        .for_each(|c, bias, c0, c_scale, a_scale, b_scale| {
+            *c = ((*c + bias * a_scale * b_scale) / c_scale + c0).round()
+        });
 
     if qp.unquantized() == i8::datum_type() {
         output.mapv_inplace(|x| x.clamp(i8::MIN as _, i8::MAX as _))
