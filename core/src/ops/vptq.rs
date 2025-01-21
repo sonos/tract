@@ -1,8 +1,13 @@
+use tract_ndarray::Array1;
+
 use crate::{
     internal::*,
     ops::{
         array::{Gather, GatherElements, Topk},
         einsum::EinSum,
+        logic::and,
+        math::shift_left,
+        math::shift_right,
     },
 };
 
@@ -23,62 +28,75 @@ impl Op for VPTQGemm {
 }
 
 impl VPTQGemm {
+    /// decompression of indexes
     fn eval_unpack_index_tensor(
         &self,
         pack_tensor: Tensor,
         index_bits: usize,
         num_elements: usize,
     ) -> TractResult<Tensor> {
-        //
-        //
-        // TODO: implement decompression of index
-        //
-        // total_bits = index_bits + res_bits
-        // wf = torch.arange(0, 32, 1).to(pack_tensor.device).view(1, 1, 1, -1)
-        // out = torch.bitwise_right_shift(torch.unsqueeze(pack_tensor, -1), wf)
-        // torch.bitwise_and(out, 1, out=out)
-        // pad_size = (pack_tensor.shape[-1] * 32) % (
-        //     index_bits * num_elements + res_bits * num_res_elements
-        // )
-        // out = out.reshape(*pack_tensor.shape[:-1], -1)
-        // if pad_size > 0:
-        //     out = out[..., :-pad_size]
-        // out = out.reshape(*pack_tensor.shape[:-1], -1, total_bits)
-        // wf1 = torch.arange(0, total_bits, 1).to(pack_tensor.device).view(1, 1, 1, -1)
-        // out = torch.bitwise_left_shift(out, wf1).sum(dim=-1)
-        //
-        // unpack_indice = out.to(torch.uint64).view(torch.int64)
-        //
-        // indices = (
-        //     (unpack_indice & ((1 << index_bits) - 1)).view(torch.uint64).to(torch.int64)
-        // )
-        //
-        // # indices = indices.squeeze()
-        //
-        // if res_bits > 0:
-        //     res_indices = (
-        //         ((unpack_indice >> index_bits) & ((1 << index_bits) - 1))
-        //         .view(torch.uint64)
-        //         .to(torch.int64)
-        //     )
-        //     # res_indices = res_indices.squeeze()
-        // else:
-        //     res_indices = None
-        //
-        // return indices, res_indices
+        dbg!("A");
+        let wf = Tensor::from(Array1::from_iter(0..32u16).to_shape([1, 1, 1, 32])?.into_owned())
+            .cast_to_dt(DatumType::U16)?
+            .into_owned();
 
-        Ok(tensor0(0))
+        dbg!("B");
+        let mut pack_tensor_shape = pack_tensor.shape().to_vec();
+        pack_tensor_shape.push(1);
+
+        dbg!("C");
+        let mut out = shift_right()
+            .eval(tvec!(pack_tensor.clone().into_shape(&pack_tensor_shape)?.into(), wf.into()))?
+            .pop()
+            .unwrap();
+
+        dbg!("D");
+        out = and().eval(tvec!(out, tensor0(1).into()))?.pop().unwrap();
+
+        let pad_size = (pack_tensor_shape[2] * 32) % (index_bits * num_elements);
+
+        dbg!("E");
+        let dim_idx = pack_tensor_shape.len() - 1;
+        pack_tensor_shape[dim_idx] = out.volume() / pack_tensor.volume();
+        out = out.into_tensor().clone().into_shape(&pack_tensor_shape)?.into_tvalue();
+        if pad_size > 0 {
+            let end = out.shape()[out.rank() - 1] - pad_size;
+            out = out.slice(out.rank(), 0, end)?.into();
+        }
+
+        dbg!("F");
+        pack_tensor_shape.pop();
+        let auto = out.volume() / pack_tensor_shape.iter().product::<usize>() / index_bits;
+        pack_tensor_shape.push(auto);
+        pack_tensor_shape.push(index_bits);
+        out = out.into_tensor().into_shape(&pack_tensor_shape)?.into();
+
+        dbg!("G");
+        let wf1 = Tensor::from(
+            Array1::from_iter(0..(index_bits as u16)).to_shape([1, 1, 1, index_bits])?.into_owned(),
+        );
+
+        out = shift_left().eval(tvec!(out, wf1.into()))?.pop().unwrap();
+
+        dbg!("H");
+        let unpack_indice = out.cast_to_dt(DatumType::U16)?;
+
+        let mut indices =
+            unsafe { Tensor::uninitialized_dt(DatumType::U16, unpack_indice.shape())? };
+
+        dbg!("I");
+        crate::ndarray::Zip::from(&mut indices.to_array_view_mut::<u16>()?)
+            .and_broadcast(unpack_indice.to_array_view::<u16>()?)
+            .for_each(|indice, upack_indice| *indice = upack_indice & ((1 << index_bits) - 1));
+
+        Ok(indices)
     }
 
     fn eval_extract_from_vector_quant(
         &self,
         centroids: Tensor,
         indices: Tensor,
-        is_indice_packed: bool,
     ) -> TractResult<Tensor> {
-        if self.is_indice_packed {
-            unimplemented!("unpacking indices not implemented yet !");
-        }
         let mut indices = indices.clone();
         let [num_codebooks, _num_centroids, vector_len] = *centroids.shape() else {
             unimplemented!("unexected centroid shape ?")
@@ -89,6 +107,11 @@ impl VPTQGemm {
         };
 
         let mut vsh = indices.shape().to_vec();
+        if self.is_indice_packed {
+            // unimplemented!("unpacking indices not implemented yet !");
+            let index_bits = (_num_centroids as f32).log2().ceil() as usize;
+            indices = self.eval_unpack_index_tensor(indices, index_bits, _num_centroids)?;
+        }
         indices.insert_axis(3)?;
         vsh.push(vector_len);
         indices = indices.broadcast_to_shape(&vsh)?;
@@ -173,15 +196,11 @@ impl EvalOp for VPTQGemm {
             assert!(outlier_centroids.datum_type().is_float());
         }
 
-        let mut qweight =
-            self.eval_extract_from_vector_quant(centroids, indices, self.is_indice_packed)?;
+        let mut qweight = self.eval_extract_from_vector_quant(centroids, indices)?;
         if enable_outlier {
             // same as centroids to qweights except for outlier
-            let outlier_qweight = self.eval_extract_from_vector_quant(
-                outlier_centroids,
-                outlier_indices,
-                self.is_indice_packed,
-            )?;
+            let outlier_qweight =
+                self.eval_extract_from_vector_quant(outlier_centroids, outlier_indices)?;
             qweight = Tensor::stack_tensors(1, &[outlier_qweight, qweight])?;
         }
 
