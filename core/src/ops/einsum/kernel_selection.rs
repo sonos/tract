@@ -1,12 +1,11 @@
 #![allow(clippy::type_complexity)]
 use tract_itertools::Itertools;
-use tract_linalg::frame::block_quant::PackedBlockQuantFormat;
+use tract_linalg::frame::block_quant::{BlockQuantValue, PackedBlockQuantFormat};
 use tract_linalg::frame::PackedFormat;
 use tract_linalg::mmm::panel_extract::PanelExtractor;
 use tract_linalg::mmm::{KitDatumType, MMMInputValue, MatMatMul, WeightType};
 
 use crate::internal::*;
-use crate::ops::matmul::de_block_quant::BlockQuantValue;
 use crate::ops::matmul::pack::OptMatMulPack;
 use crate::ops::matmul::ModePicker;
 
@@ -35,7 +34,12 @@ pub fn wire_packing(
 
     // "simple" kernel selection
     let mmm = tract_linalg::ops()
-        .mmm(op.operating_dt, op.m.to_usize().ok(), op.k.to_usize().ok(), op.n.to_usize().ok())
+        .mmm(
+            op.operating_dt,
+            op.m.to_usize().ok(),
+            op.k.to_usize().ok(),
+            op.n.to_usize().ok(),
+        )
         .unwrap();
     let mode_picker = ModePicker::Single;
     let (packing, pa, pb) = mmm
@@ -43,7 +47,11 @@ pub fn wire_packing(
         .iter()
         .enumerate()
         .filter_map(|(ix, p)| {
-            Some((ix, p.0.downcast_ref::<PackedFormat>()?, p.1.downcast_ref::<PackedFormat>()?))
+            Some((
+                ix,
+                p.0.downcast_ref::<PackedFormat>()?,
+                p.1.downcast_ref::<PackedFormat>()?,
+            ))
         })
         .find(|(_ix, pa, pb)| pa.dt == a_dt.unquantized() && pb.dt == b_dt.unquantized())
         .with_context(|| format!("No packing for {mmm:?} with inputs {a_dt:?} and {b_dt:?}"))?;
@@ -84,7 +92,10 @@ pub fn wire_linear(
     Vec<(Box<dyn MatMatMul>, usize, Option<PanelExtractor>)>,
     ModePicker,
 )> {
-    let a_as_bqv = a.to_scalar::<Opaque>().ok().and_then(|a| a.downcast_ref::<BlockQuantValue>());
+    let a_as_bqv = a
+        .to_scalar::<Opaque>()
+        .ok()
+        .and_then(|a| a.downcast_ref::<BlockQuantValue>());
     let weight = if let Some(a_payload) = a_as_bqv {
         WeightType::BlockQuant(a_payload.fact.format.clone())
     } else {
@@ -110,7 +121,9 @@ pub fn wire_linear(
             kit.weight == weight && kit.accumulator == accumulator && kit.activation == activation
         })
         .min_by_key(|kit| kit.generic_fallback as usize)
-        .with_context(|| format!("No kit found for matmul {weight:?} {accumulator:?} {activation:?}"))?;
+        .with_context(|| {
+            format!("No kit found for matmul {weight:?} {accumulator:?} {activation:?}")
+        })?;
     let configs = [kit.item_for_mv(), kit.item_for_squarish()];
     let packed: Box<dyn MMMInputValue> = if let Some(a_payload) = a_as_bqv {
         let packed = kit
@@ -128,7 +141,11 @@ pub fn wire_linear(
     let packers = configs
         .iter()
         .map(|conf| {
-            conf.mmm.packings()[conf.packing].1.downcast_ref::<PackedFormat>().unwrap().clone()
+            conf.mmm.packings()[conf.packing]
+                .1
+                .downcast_ref::<PackedFormat>()
+                .unwrap()
+                .clone()
         })
         .collect_vec();
     let pb = patch.wire_node(
@@ -147,7 +164,13 @@ pub fn wire_linear(
         pb,
         configs
             .iter()
-            .map(|cf| (cf.mmm.clone(), cf.packing, cf.weight_panel_extractor.clone()))
+            .map(|cf| {
+                (
+                    cf.mmm.clone(),
+                    cf.packing,
+                    cf.weight_panel_extractor.clone(),
+                )
+            })
             .collect_vec(),
         ModePicker::VecVsMat,
     ))

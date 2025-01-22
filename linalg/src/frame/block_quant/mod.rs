@@ -12,9 +12,11 @@ use std::hash::Hash;
 
 mod helpers;
 mod q4_0;
+mod value;
 
 pub use helpers::{NibbleReader, NibbleWriter};
 pub use q4_0::Q4_0;
+pub use value::{BlockQuantFact, BlockQuantValue};
 
 use crate::mmm::{EagerPackedInput, MMMInputFormat};
 
@@ -175,7 +177,12 @@ impl Debug for PackedBlockQuantFormat {
 
 impl PackedBlockQuantFormat {
     pub fn new(bq: &dyn BlockQuant, r: usize, zip: usize, scales_at_end: bool) -> Self {
-        PackedBlockQuantFormat { bq: clone_box(bq), r, zip, scales_at_end }
+        PackedBlockQuantFormat {
+            bq: clone_box(bq),
+            r,
+            zip,
+            scales_at_end,
+        }
     }
 
     #[cfg(test)]
@@ -188,13 +195,19 @@ impl PackedBlockQuantFormat {
         ensure!(tensor.shape()[block_axis] % self.bq.block_len() == 0);
         let mut scratch = vec![0u8; self.bq.block_bytes()];
         if tensor.datum_type() == f32::datum_type() {
-            for block in tensor.as_slice_mut::<f32>()?.chunks_mut(self.bq.block_len()) {
+            for block in tensor
+                .as_slice_mut::<f32>()?
+                .chunks_mut(self.bq.block_len())
+            {
                 self.bq.quant_block_f32(block, &mut scratch);
                 self.bq.dequant_block_f32(&scratch, block);
             }
             Ok(tensor)
         } else if tensor.datum_type() == f16::datum_type() {
-            for block in tensor.as_slice_mut::<f16>()?.chunks_mut(self.bq.block_len()) {
+            for block in tensor
+                .as_slice_mut::<f16>()?
+                .chunks_mut(self.bq.block_len())
+            {
                 self.bq.quant_block_f16(block, &mut scratch);
                 self.bq.dequant_block_f16(&scratch, block);
             }
@@ -242,6 +255,8 @@ impl MMMInputFormat for PackedBlockQuantFormat {
     }
 
     fn same_as(&self, other: &dyn MMMInputFormat) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|other| self == other)
+        other
+            .downcast_ref::<Self>()
+            .is_some_and(|other| self == other)
     }
 }

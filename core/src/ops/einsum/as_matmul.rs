@@ -1,4 +1,5 @@
 use tract_data::itertools::Itertools;
+use tract_linalg::frame::block_quant::{BlockQuantFact, BlockQuantValue};
 use tract_linalg::Scaler;
 use tract_ndarray::Ix2;
 use tract_num_traits::One;
@@ -7,8 +8,6 @@ use super::optimize::*;
 use super::EinSum;
 use crate::internal::*;
 use crate::ops::konst::Const;
-use crate::ops::matmul::de_block_quant::BlockQuantFact;
-use crate::ops::matmul::de_block_quant::BlockQuantValue;
 
 pub fn rewrite_einsums_as_matmul(model: &mut TypedModel) -> TractResult<()> {
     let rules = Rewriter::default().with_rule_for::<EinSum>("einsum-to-matmul", einsum_rules);
@@ -30,7 +29,11 @@ fn einsum_rules(
         return Ok(None);
     }
     if op.q_params.is_some()
-        && model.node_input_facts(node.id)?.iter().skip(3).any(|i| i.konst.is_none())
+        && model
+            .node_input_facts(node.id)?
+            .iter()
+            .skip(3)
+            .any(|i| i.konst.is_none())
     {
         return Ok(None);
     }
@@ -62,7 +65,11 @@ fn einsum_rules(
         .parse::<AxesMapping>()?
         .translate_to_axis_ops()?;
     let transpose_a = a_transform.len() > a_transform_t.len();
-    let a_transform = if transpose_a { a_transform_t } else { a_transform };
+    let a_transform = if transpose_a {
+        a_transform_t
+    } else {
+        a_transform
+    };
     let name = format!("{node_name}.fix_a");
     for op in a_transform {
         wire[0] = patch.wire_node(&name, op, &[wire[0]])?[0];
@@ -88,7 +95,11 @@ fn einsum_rules(
         .parse::<AxesMapping>()?
         .translate_to_axis_ops()?;
     let transpose_b = b_transform.len() > b_transform_t.len();
-    let b_transform = if transpose_b { b_transform_t } else { b_transform };
+    let b_transform = if transpose_b {
+        b_transform_t
+    } else {
+        b_transform
+    };
     let name = format!("{node_name}.fix_b");
     for op in b_transform {
         wire[1] = patch.wire_node(&name, op, &[wire[1]])?[0];
@@ -104,7 +115,11 @@ fn einsum_rules(
         .parse::<AxesMapping>()?
         .translate_to_axis_ops()?;
     let transpose_c = c_transform.len() > c_transform_t.len();
-    let c_transform = if transpose_c { c_transform_t } else { c_transform };
+    let c_transform = if transpose_c {
+        c_transform_t
+    } else {
+        c_transform
+    };
     let quantize_output = if let Some(qp) = op.q_params {
         let qparams: Vec<&Tensor> = inputs[3..9]
             .iter()
@@ -125,7 +140,12 @@ fn einsum_rules(
     };
     wire = patch.wire_node(
         node_name,
-        BasicMatMul { transpose_a, transpose_b, transpose_c, quantize_output },
+        BasicMatMul {
+            transpose_a,
+            transpose_b,
+            transpose_c,
+            quantize_output,
+        },
         &wire,
     )?;
 
@@ -148,7 +168,13 @@ impl BasicMatMul {
     fn output_shape<D: DimLike + One>(&self, a: &[D], b: &[D]) -> TVec<D> {
         let rank = a.len();
         let mut output: TVec<D> = (0..rank - 2)
-            .map(|ix| if a[ix].is_one() { b[ix].clone() } else { a[ix].clone() })
+            .map(|ix| {
+                if a[ix].is_one() {
+                    b[ix].clone()
+                } else {
+                    a[ix].clone()
+                }
+            })
             .collect();
         output.push(a[rank - 2 + self.transpose_a as usize].clone());
         output.push(b[rank - 2 + !self.transpose_b as usize].clone());
@@ -218,13 +244,21 @@ impl EvalOp for BasicMatMul {
         if let Some(qp) = self.quantize_output {
             let mut acc = Tensor::zero_dt(i32::datum_type(), &output_shape)?;
             let mut a_i32 = a.cast_to::<i32>()?.into_owned();
-            a_i32.as_slice_mut::<i32>()?.iter_mut().for_each(|x| *x -= a.datum_type().zp_scale().0);
+            a_i32
+                .as_slice_mut::<i32>()?
+                .iter_mut()
+                .for_each(|x| *x -= a.datum_type().zp_scale().0);
             let mut b_i32 = b.cast_to::<i32>()?.into_owned();
-            b_i32.as_slice_mut::<i32>()?.iter_mut().for_each(|x| *x -= b.datum_type().zp_scale().0);
+            b_i32
+                .as_slice_mut::<i32>()?
+                .iter_mut()
+                .for_each(|x| *x -= b.datum_type().zp_scale().0);
             self.mm::<i32>(&mut acc, &a_i32, &b_i32)?;
             let scale = a.datum_type().zp_scale().1 * b.datum_type().zp_scale().1 / qp.zp_scale().1;
             let scaler = Scaler::new(scale, tract_linalg::mmm::RoundingPolicy::Even);
-            acc.to_array_view_mut::<i32>()?.iter_mut().for_each(|x| *x = *x * scaler);
+            acc.to_array_view_mut::<i32>()?
+                .iter_mut()
+                .for_each(|x| *x = *x * scaler);
             let mut c: Tensor = acc.cast_to_dt(qp.unquantized())?.into_owned();
             unsafe { c.set_datum_type(qp) };
             Ok(tvec!(c.into_tvalue()))
@@ -265,8 +299,12 @@ impl TypedOp for BasicMatMul {
                     .map(|v| &v.fact)
             })
         {
-            let a_shape: ShapeFact =
-                a.shape.iter().cloned().chain(opf.shape.iter().map(|d| d.to_dim())).collect();
+            let a_shape: ShapeFact = a
+                .shape
+                .iter()
+                .cloned()
+                .chain(opf.shape.iter().map(|d| d.to_dim()))
+                .collect();
             Ok(tvec!(self
                 .quantize_output
                 .unwrap_or(b.datum_type)
@@ -359,8 +397,14 @@ mod test {
                 )
             })
             .prop_flat_map(|(a_shape, b_shape)| (tensor(&a_shape), tensor(&b_shape)))
-            .prop_map(|(a, b)| EinSumProblem { expr: expr.clone(), a, b });
-        runner.run(&cases, |pb| pb.check().map_err(|e| TestCaseError::fail(e.to_string())))?;
+            .prop_map(|(a, b)| EinSumProblem {
+                expr: expr.clone(),
+                a,
+                b,
+            });
+        runner.run(&cases, |pb| {
+            pb.check().map_err(|e| TestCaseError::fail(e.to_string()))
+        })?;
         Ok(())
     }
 
@@ -387,11 +431,18 @@ mod test {
             let a = self.a.clone().into_tvalue();
             let b = self.b.clone().into_tvalue();
             let inputs = tvec!(a, b);
-            let reference =
-                TypedRunnableModel::new(&model).unwrap().run(inputs.clone()).unwrap().remove(0);
+            let reference = TypedRunnableModel::new(&model)
+                .unwrap()
+                .run(inputs.clone())
+                .unwrap()
+                .remove(0);
             rewrite_einsums_as_matmul(&mut model)?;
             assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
-            let test = TypedRunnableModel::new(&model).unwrap().run(inputs).unwrap().remove(0);
+            let test = TypedRunnableModel::new(&model)
+                .unwrap()
+                .run(inputs)
+                .unwrap()
+                .remove(0);
             reference.close_enough(&test, true).unwrap();
             Ok(())
         }
@@ -501,7 +552,10 @@ mod test {
 
     #[test]
     fn q() -> TractResult<()> {
-        let qp = QParams::ZpScale { zero_point: 0, scale: 0.1 };
+        let qp = QParams::ZpScale {
+            zero_point: 0,
+            scale: 0.1,
+        };
         let op = EinSum {
             axes: "mk,kn,m,,,,,,->mn".parse()?,
             operating_dt: i32::datum_type(),
