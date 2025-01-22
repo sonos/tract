@@ -1,5 +1,3 @@
-use tract_itertools::Itertools;
-
 use crate::internal::*;
 use crate::ops::array::Gather;
 use crate::ops::einsum::EinSum;
