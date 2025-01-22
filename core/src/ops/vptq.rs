@@ -1,3 +1,4 @@
+use tract_data::itertools::Itertools;
 use tract_ndarray::Array1;
 
 use crate::{
@@ -26,6 +27,17 @@ impl Op for VPTQGemm {
 
     op_as_typed_op!();
 }
+fn shift_right_zero_and_1(input: TValue, shift_value: TValue) -> TractResult<TValue> {
+    let input = input.to_array_view::<u16>()?;
+    let shift_value = shift_value.to_array_view::<u16>()?;
+    let out_shape = crate::broadcast::multi_broadcast(&[input.shape(), shift_value.shape()])?;
+    let mut out = Tensor::zero_dt(DatumType::U16, &out_shape)?;
+    crate::ndarray::Zip::from(out.to_array_view_mut::<u16>()?)
+        .and_broadcast(input)
+        .and_broadcast(shift_value)
+        .for_each(|c, a, b| *c = a.checked_shr(*b as u32).unwrap_or(0u16) & 1u16);
+    Ok(out.into_tvalue())
+}
 
 impl VPTQGemm {
     /// decompression of indexes
@@ -35,59 +47,57 @@ impl VPTQGemm {
         index_bits: usize,
         num_elements: usize,
     ) -> TractResult<Tensor> {
-        dbg!("A");
-        let wf = Tensor::from(Array1::from_iter(0..32u16).to_shape([1, 1, 1, 32])?.into_owned())
-            .cast_to_dt(DatumType::U16)?
-            .into_owned();
+        // let wf = Tensor::from(Array1::from_iter(0..32u16).to_shape([1, 1, 1, 32])?.into_owned());
+        // can be reexpressed
+        let wf = tensor1(&(0..32u16).collect_vec()).into_shape(&[1, 1, 1, 32])?;
 
-        dbg!("B");
         let mut pack_tensor_shape = pack_tensor.shape().to_vec();
         pack_tensor_shape.push(1);
 
-        dbg!("C");
-        let mut out = shift_right()
-            .eval(tvec!(pack_tensor.clone().into_shape(&pack_tensor_shape)?.into(), wf.into()))?
-            .pop()
-            .unwrap();
-
-        dbg!("D");
-        out = and().eval(tvec!(out, tensor0(1).into()))?.pop().unwrap();
+        let mut out = shift_right_zero_and_1(
+            pack_tensor.clone().into_shape(&pack_tensor_shape)?.into(),
+            wf.into(),
+        )?;
 
         let pad_size = (pack_tensor_shape[2] * 32) % (index_bits * num_elements);
 
-        dbg!("E");
-        let dim_idx = pack_tensor_shape.len() - 1;
-        pack_tensor_shape[dim_idx] = out.volume() / pack_tensor.volume();
+        let mut pack_tensor_shape = pack_tensor.shape().to_vec();
+        pack_tensor_shape.pop();
+        pack_tensor_shape.push(out.volume() / pack_tensor.volume());
         out = out.into_tensor().clone().into_shape(&pack_tensor_shape)?.into_tvalue();
         if pad_size > 0 {
             let end = out.shape()[out.rank() - 1] - pad_size;
             out = out.slice(out.rank(), 0, end)?.into();
         }
 
-        dbg!("F");
         pack_tensor_shape.pop();
         let auto = out.volume() / pack_tensor_shape.iter().product::<usize>() / index_bits;
         pack_tensor_shape.push(auto);
         pack_tensor_shape.push(index_bits);
         out = out.into_tensor().into_shape(&pack_tensor_shape)?.into();
 
-        dbg!("G");
         let wf1 = Tensor::from(
             Array1::from_iter(0..(index_bits as u16)).to_shape([1, 1, 1, index_bits])?.into_owned(),
         );
 
         out = shift_left().eval(tvec!(out, wf1.into()))?.pop().unwrap();
 
-        dbg!("H");
+        let axis = out.rank() - 1;
+        out = out
+            .into_tensor()
+            .into_array::<u16>()?
+            .sum_axis(tract_ndarray::Axis(axis))
+            .into_tvalue();
+
         let unpack_indice = out.cast_to_dt(DatumType::U16)?;
 
         let mut indices =
             unsafe { Tensor::uninitialized_dt(DatumType::U16, unpack_indice.shape())? };
 
-        dbg!("I");
         crate::ndarray::Zip::from(&mut indices.to_array_view_mut::<u16>()?)
             .and_broadcast(unpack_indice.to_array_view::<u16>()?)
             .for_each(|indice, upack_indice| *indice = upack_indice & ((1 << index_bits) - 1));
+        indices = indices.slice(2, 0, num_elements)?;
 
         Ok(indices)
     }
@@ -97,8 +107,9 @@ impl VPTQGemm {
         centroids: Tensor,
         indices: Tensor,
     ) -> TractResult<Tensor> {
+        /// TODO: instead use ndarray for indices to use views transform (--)
         let mut indices = indices.clone();
-        let [num_codebooks, _num_centroids, vector_len] = *centroids.shape() else {
+        let [num_codebooks, num_centroids, vector_len] = *centroids.shape() else {
             unimplemented!("unexected centroid shape ?")
         };
 
@@ -109,12 +120,12 @@ impl VPTQGemm {
         let mut vsh = indices.shape().to_vec();
         if self.is_indice_packed {
             // unimplemented!("unpacking indices not implemented yet !");
-            let index_bits = (_num_centroids as f32).log2().ceil() as usize;
-            indices = self.eval_unpack_index_tensor(indices, index_bits, _num_centroids)?;
+            let index_bits = (num_centroids as f32).log2().ceil() as usize;
+            indices = self.eval_unpack_index_tensor(indices, index_bits, 1)?;
         }
         indices.insert_axis(3)?;
         vsh.push(vector_len);
-        indices = indices.broadcast_to_shape(&vsh)?;
+        indices = indices.broadcast_to_shape(&vsh)?; // NOTE: costly in tract (applied in memory but not in ndarray)
         let intermediate_volume = indices.shape()[1..3].iter().product();
         indices = indices.into_shape(&[num_codebooks, intermediate_volume, vector_len])?;
 
@@ -128,11 +139,12 @@ impl VPTQGemm {
             .into_tensor();
 
         let remain = selected_centroids.volume() / (num_codebooks * group_size * vector_len);
+        // split_axes
         let mut qweight = selected_centroids
             .into_shape(&[num_codebooks, remain, group_size, vector_len])?
-            .permute_axes(&[0, 1, 3, 2])?
+            .permute_axes(&[0, 1, 3, 2])? // NOTE: costly in tract (applied in memory)
             .into_shape(&[num_codebooks, remain * vector_len, group_size])?
-            .permute_axes(&[1, 0, 2])?
+            .permute_axes(&[1, 0, 2])?// NOTE: costly in tract (applied in memory)
             .into_shape(&[vector_len * remain, num_codebooks * group_size])?;
 
         let dim0 = qweight.shape()[0];
@@ -209,17 +221,8 @@ impl EvalOp for VPTQGemm {
             let axis = 0;
             let dim = perm.shape()[0];
             let top_k = Topk { axis, largest: false, fallback_k: dim.into() };
-            let invert_perm = top_k
-                .eval(tvec!(
-                    if self.is_indice_packed {
-                        unimplemented!("permutation not implemented yet with indice packed");
-                        // self.perm.to(torch.uint16).to(torch.int64)
-                    } else {
-                        perm.into_tvalue()
-                    },
-                    tensor0(dim as u16).into()
-                ))?
-                .remove(0);
+            let invert_perm =
+                top_k.eval(tvec!(perm.into_tvalue(), tensor0(dim as u16).into()))?.remove(0);
             // TODO: manage case with quant dim == 'in' ?
             // if self.vector_quant_dim == "in":
             //     assert True, "Not implemented"
@@ -241,8 +244,8 @@ impl EvalOp for VPTQGemm {
             .into_tensor();
         }
         // call matmul now with qweight
-
-        let einsum_op = EinSum::new("ik,kj->".parse()?, f32::datum_type());
+        let einsum_op = EinSum::new("ik,kj->ij".parse()?, f32::datum_type());
+        // einsum -> matmul imperatif
         einsum_op.eval(tvec!(input, qweight.permute_axes(&[1, 0])?.into_tvalue()))
     }
 }
