@@ -3,7 +3,6 @@ use std::fmt::Debug;
 
 use crate::internal::*;
 use crate::ops::array::Slice;
-use crate::ops::matmul::de_block_quant::BlockQuantFact;
 use crate::tract_data::itertools::Itertools;
 
 mod eval;
@@ -20,6 +19,7 @@ pub mod optimize;
 mod proptest;
 
 pub use as_matmul::{rewrite_einsums_as_matmul, BasicMatMul};
+use tract_linalg::frame::block_quant::BlockQuantFact;
 
 pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<[TDim]>> {
     if !fact.datum_type.is_opaque() {
@@ -31,8 +31,12 @@ pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<[TDim]
     let Some(bqf) = opaque_fact.downcast_ref::<BlockQuantFact>() else {
         bail!("Datum fact is opaque, but no opaque fact was found.")
     };
-    let shape: Vec<TDim> =
-        fact.shape.iter().cloned().chain(bqf.shape.iter().map(|d| d.to_dim())).collect();
+    let shape: Vec<TDim> = fact
+        .shape
+        .iter()
+        .cloned()
+        .chain(bqf.shape.iter().map(|d| d.to_dim()))
+        .collect();
     Ok(Cow::Owned(shape))
 }
 
@@ -47,11 +51,19 @@ pub struct EinSum {
 
 impl EinSum {
     pub fn new(axes: AxesMapping, operating_dt: DatumType) -> EinSum {
-        EinSum { axes, operating_dt, q_params: None }
+        EinSum {
+            axes,
+            operating_dt,
+            q_params: None,
+        }
     }
 
     pub fn newq(axes: AxesMapping, operating_dt: DatumType, output_type: DatumType) -> EinSum {
-        EinSum { axes, operating_dt, q_params: Some(output_type) }
+        EinSum {
+            axes,
+            operating_dt,
+            q_params: Some(output_type),
+        }
     }
 
     pub fn actual_input_shapes_from_facts<'m>(
@@ -107,10 +119,23 @@ impl EinSum {
         let new_expr = self
             .axes
             .iter_all_axes()
-            .map(|it| if it.repr == new_axis.repr { new_axis.clone() } else { it.clone() })
+            .map(|it| {
+                if it.repr == new_axis.repr {
+                    new_axis.clone()
+                } else {
+                    it.clone()
+                }
+            })
             .collect_vec();
         let axes = AxesMapping::new(node.inputs.len(), 1, new_expr)?;
-        let mut wire = patch.wire_node(&node.name, Self { axes, ..self.clone() }, &taps)?;
+        let mut wire = patch.wire_node(
+            &node.name,
+            Self {
+                axes,
+                ..self.clone()
+            },
+            &taps,
+        )?;
         if let Some(position) = must_rm_axis {
             wire = patch.wire_node(
                 format!("{}.prop_axis.{}.output", &node.name, repr),
@@ -159,7 +184,11 @@ impl EinSum {
                                     "{}.concat-einsum-slice-{}.{}.{}..{}",
                                     node.name, axis_info.repr, slot, start, end
                                 ),
-                                Slice { axis: axis_info.inputs[slot][0], start, end },
+                                Slice {
+                                    axis: axis_info.inputs[slot][0],
+                                    start,
+                                    end,
+                                },
                                 &[tap],
                             )?;
                             slices.push(wire[0]);
@@ -173,8 +202,12 @@ impl EinSum {
                 for (ix, (start, end)) in offsets.iter().tuple_windows().enumerate() {
                     let mut einsum_inputs = tvec!();
                     for input_ix in 0..node.inputs.len() {
-                        einsum_inputs
-                            .push(inputs[input_ix].get(ix).cloned().unwrap_or(inputs[input_ix][0]));
+                        einsum_inputs.push(
+                            inputs[input_ix]
+                                .get(ix)
+                                .cloned()
+                                .unwrap_or(inputs[input_ix][0]),
+                        );
                     }
                     let einsum = patch.wire_node(
                         format!(
@@ -264,7 +297,9 @@ impl TypedOp for EinSum {
         }
         if let Some(qp) = self.q_params {
             ensure!(inputs.len() == 9);
-            Ok(tvec!(qp.fact(eval::output_shape(&self.axes, &shapes[0..2])?)))
+            Ok(tvec!(
+                qp.fact(eval::output_shape(&self.axes, &shapes[0..2])?)
+            ))
         } else {
             Ok(tvec!(TypedFact::dt_shape(
                 self.operating_dt,
@@ -281,7 +316,9 @@ impl TypedOp for EinSum {
         let mut axes = self.axes.clone();
         for (slot, i) in inputs.iter().enumerate() {
             if i.datum_type.is_opaque()
-                && i.opaque_fact.as_ref().is_some_and(|of| of.is::<BlockQuantFact>())
+                && i.opaque_fact
+                    .as_ref()
+                    .is_some_and(|of| of.is::<BlockQuantFact>())
             {
                 axes = axes
                     .remove_axis_occurency(InOut::In(slot), i.rank())?
@@ -312,7 +349,10 @@ impl TypedOp for EinSum {
                     .unwrap_or_else(|| 1.to_dim())
             })
             .product::<TDim>();
-        Ok(tvec!((Cost::FMA(self.operating_dt), oshape.iter().product::<TDim>() * ks)))
+        Ok(tvec!((
+            Cost::FMA(self.operating_dt),
+            oshape.iter().product::<TDim>() * ks
+        )))
     }
 
     fn slice(
@@ -326,7 +366,11 @@ impl TypedOp for EinSum {
         _start: usize,
         _end: usize,
     ) -> TractResult<Option<TVec<OutletId>>> {
-        if model.node_input_facts(node.id)?.iter().any(|f| f.datum_type.is_opaque()) {
+        if model
+            .node_input_facts(node.id)?
+            .iter()
+            .any(|f| f.datum_type.is_opaque())
+        {
             Ok(None)
         } else {
             patch.wire_node(prefix, self.clone(), inputs).map(Some)
@@ -361,7 +405,10 @@ impl TypedOp for EinSum {
         *interface = axes.into_iter().collect();
         let axes = AxesMapping::from_strs(&inputs, &outputs)?;
         Ok(Some(AxisChangeConsequence {
-            substitute_op: Some(Box::new(EinSum { axes, ..self.clone() })),
+            substitute_op: Some(Box::new(EinSum {
+                axes,
+                ..self.clone()
+            })),
             wire_changes: tvec!((io, change.clone())),
         }))
     }

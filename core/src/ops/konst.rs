@@ -1,7 +1,8 @@
+use tract_linalg::frame::block_quant::BlockQuantValue;
+
 use crate::internal::*;
 use crate::ops::array::Gather;
 use crate::ops::einsum::EinSum;
-use crate::ops::matmul::de_block_quant::BlockQuantValue;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Const(pub Arc<Tensor>, pub Option<Box<dyn OpaqueFact>>);
@@ -58,7 +59,10 @@ impl TypedOp for Const {
         let mut new_tensor = self.0.clone().into_tensor();
         if change.change_tensor(&mut new_tensor, false).is_ok() {
             Ok(Some(AxisChangeConsequence {
-                substitute_op: Some(Box::new(Const(new_tensor.into_arc_tensor(), self.1.clone()))),
+                substitute_op: Some(Box::new(Const(
+                    new_tensor.into_arc_tensor(),
+                    self.1.clone(),
+                ))),
                 wire_changes: tvec!((io, change.clone())),
             }))
         } else {
@@ -67,7 +71,10 @@ impl TypedOp for Const {
     }
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        Ok(tvec!((Cost::Params(self.0.datum_type().unquantized()), self.0.len().into())))
+        Ok(tvec!((
+            Cost::Params(self.0.datum_type().unquantized()),
+            self.0.len().into()
+        )))
     }
 
     fn concretize_dims(
@@ -97,7 +104,10 @@ impl TypedOp for Const {
     ) -> TractResult<Option<TypedModelPatch>> {
         println!("{node}");
         let looks_like_weights = (self.0.datum_type().is_number() && self.0.rank() == 2)
-            || (self.0.to_scalar::<Opaque>().is_ok_and(|opaque| opaque.is::<BlockQuantValue>()));
+            || (self
+                .0
+                .to_scalar::<Opaque>()
+                .is_ok_and(|opaque| opaque.is::<BlockQuantValue>()));
         if !looks_like_weights {
             return Ok(None);
         }
@@ -135,7 +145,9 @@ impl TypedOp for Const {
                         && axis.inputs[0].len() == 0
                         && axis.inputs[1].len() == 1
                         && axis.outputs[0].len() == 1
-                        && snode.outputs[0].fact.shape[axis.outputs[0][0]].as_i64().is_none()
+                        && snode.outputs[0].fact.shape[axis.outputs[0][0]]
+                            .as_i64()
+                            .is_none()
                     {
                         have_abstract_einsum = true;
                     }
