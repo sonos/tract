@@ -403,7 +403,7 @@ impl<'a> IntoAst<'a> {
         let id = self.scoped_id(&name);
         let shape = if tensor.datum_type().is_opaque() {
             if let Some(bqv) = tensor.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>() {
-                bqv.fact.shape.as_concrete().unwrap()
+                &bqv.fact.shape
             } else {
                 bail!("Unexpected opaque tensor in serialization {tensor:?}");
             }

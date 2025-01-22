@@ -9,7 +9,7 @@ use crate::transform::ModelTransform;
 #[derive(Clone, Hash)]
 pub struct BlockQuantFact {
     pub format: Box<dyn BlockQuant>,
-    pub shape: ShapeFact,
+    pub shape: TVec<usize>,
 }
 
 impl std::fmt::Debug for BlockQuantFact {
@@ -19,9 +19,9 @@ impl std::fmt::Debug for BlockQuantFact {
 }
 
 impl OpaqueFact for BlockQuantFact {
-
     fn mem_size(&self) -> TDim {
-        self.shape.volume() * self.format.block_bytes()
+        (self.shape.iter().product::<usize>() / self.format.block_len() * self.format.block_bytes())
+            .to_dim()
     }
 }
 
@@ -84,9 +84,9 @@ fn block_quant_einsum_weights(
     if a.konst.is_none() || a.rank() != 2 {
         return Ok(None);
     }
+    let a: &Tensor = a.konst.as_ref().unwrap();
     let AxesOrPatch::Annotated(op) = ensure_mkn_axes(op, model, node)? else { return Ok(None) };
     if op.a_m() == 1 && op.a_k() == 0 {
-        let a: &Tensor = a.konst.as_ref().unwrap();
         let mut patch = TypedModelPatch::default();
         let konst =
             patch.add_const(&model.node(node.inputs[0].node).name, a.clone().move_axis(1, 0)?)?;
@@ -103,13 +103,13 @@ fn block_quant_einsum_weights(
     }
     let format = Q4_0;
     let mut patch = TypedModelPatch::default();
-    let weights = if a.datum_type == f16::datum_type() {
-        format.quant_f16(a.konst.as_ref().unwrap().as_slice::<f16>()?)?
+    let weights = if a.datum_type() == f16::datum_type() {
+        format.quant_f16(a.as_slice::<f16>()?)?
     } else {
-        format.quant_f32(a.konst.as_ref().unwrap().cast_to::<f32>()?.as_slice::<f32>()?)?
+        format.quant_f32(a.cast_to::<f32>()?.as_slice::<f32>()?)?
     };
     let name = &model.node(node.inputs[0].node).name;
-    let fact = BlockQuantFact { format: Box::new(format), shape: a.shape.clone() };
+    let fact = BlockQuantFact { format: Box::new(format), shape: a.shape().into() };
     let value = BlockQuantValue { fact: fact.clone(), value: weights };
     let weights = patch.wire_node(
         format!("{name}.bq"),

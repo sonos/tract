@@ -31,12 +31,9 @@ pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<[TDim]
     let Some(bqf) = opaque_fact.downcast_ref::<BlockQuantFact>() else {
         bail!("Datum fact is opaque, but no opaque fact was found.")
     };
-    if bqf.shape.rank() == 0 {
-        Ok(Cow::Borrowed(&*bqf.shape))
-    } else {
-        let shape: Vec<TDim> = fact.shape.iter().chain(bqf.shape.iter()).cloned().collect();
-        Ok(Cow::Owned(shape))
-    }
+    let shape: Vec<TDim> =
+        fact.shape.iter().cloned().chain(bqf.shape.iter().map(|d| d.to_dim())).collect();
+    Ok(Cow::Owned(shape))
 }
 
 #[derive(Clone, Hash)]
