@@ -252,21 +252,21 @@ impl TypedOp for BasicMatMul {
                 .quantize_output
                 .unwrap_or(a.datum_type)
                 .fact(self.output_shape(&a.shape, &b.shape))))
-        } else if let Some(opf) =
-            inputs[0].opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
-        {
-            let a_shape: ShapeFact = a.shape.iter().chain(opf.shape.iter()).collect();
-            Ok(tvec!(self
-                .quantize_output
-                .unwrap_or(b.datum_type)
-                .fact(self.output_shape(&a_shape, &b.shape))))
-        } else if let Some(bqv) = inputs[0]
-            .konst
+        } else if let Some(opf) = inputs[0]
+            .opaque_fact
             .as_ref()
-            .and_then(|k| k.to_scalar::<Opaque>().ok())
-            .and_then(|o| o.downcast_ref::<BlockQuantValue>())
+            .and_then(|of| of.downcast_ref::<BlockQuantFact>())
+            .or_else(|| {
+                inputs[0]
+                    .konst
+                    .as_ref()
+                    .and_then(|k| k.to_scalar::<Opaque>().ok())
+                    .and_then(|o| o.downcast_ref::<BlockQuantValue>())
+                    .map(|v| &v.fact)
+            })
         {
-            let a_shape: ShapeFact = a.shape.iter().chain(bqv.fact.shape.iter()).collect();
+            let a_shape: ShapeFact =
+                a.shape.iter().cloned().chain(opf.shape.iter().map(|d| d.to_dim())).collect();
             Ok(tvec!(self
                 .quantize_output
                 .unwrap_or(b.datum_type)

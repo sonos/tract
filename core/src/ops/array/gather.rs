@@ -52,8 +52,8 @@ impl Gather {
 
     fn eval_bq_to_f16(&self, data: &BlockQuantValue, indices: &TValue) -> TractResult<Tensor> {
         ensure!(self.axis == 0);
-        ensure!(data.fact.shape.rank() == 2);
-        let data_shape = data.fact.shape.as_concrete().unwrap();
+        ensure!(data.fact.shape.len() == 2);
+        let data_shape = &data.fact.shape;
         let output_shape = &*self.compute_output_shape(data_shape, indices.shape())?;
         let mut output = unsafe { Tensor::uninitialized::<f16>(output_shape)? };
         let indices_slice = indices.as_slice::<i64>()?;
