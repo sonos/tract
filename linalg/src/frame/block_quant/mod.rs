@@ -6,7 +6,6 @@ use tract_data::internal::*;
 use tract_data::itertools::Itertools;
 
 use std::alloc::Layout;
-use std::borrow::Cow;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
@@ -16,7 +15,7 @@ mod value;
 
 pub use helpers::{NibbleReader, NibbleWriter};
 pub use q4_0::Q4_0;
-pub use value::{BlockQuantFact, BlockQuantValue};
+pub use value::{BlockQuantFact, BlockQuantValue, PackedBlockQuantFact};
 
 use crate::mmm::{EagerPackedInput, MMMInputFormat};
 
@@ -227,23 +226,28 @@ impl MMMInputFormat for PackedBlockQuantFormat {
         &self,
         t: &Tensor,
         k_axis: usize,
-        mn_axis: usize,
+        _mn_axis: usize,
     ) -> TractResult<Box<dyn crate::mmm::MMMInputValue>> {
-        let k = t.shape()[k_axis];
-        assert!(k % self.bq.block_len() == 0);
-        let t: Cow<Tensor> = if k_axis == 1 && mn_axis == 0 {
-            Cow::Borrowed(t)
-        } else {
-            Cow::Owned(t.clone().move_axis(1, 0)?)
-        };
-        let quant = if t.datum_type() == f32::datum_type() {
-            self.bq.quant_f32(t.as_slice()?)?
-        } else if t.datum_type() == f16::datum_type() {
-            self.bq.quant_f16(t.as_slice()?)?
-        } else {
-            todo!()
-        };
-        Ok(Box::new(self.pack(&quant, k)?))
+        ensure!(k_axis == 0);
+        // let k = t.shape()[k_axis];
+        // assert!(k % self.bq.block_len() == 0);
+        // let t: Cow<Tensor> = if k_axis == 1 && mn_axis == 0 {
+        //     Cow::Borrowed(t)
+        // } else {
+        //     Cow::Owned(t.clone().move_axis(1, 0)?)
+        // };
+        // let quant = if t.datum_type() == f32::datum_type() {
+        //     self.bq.quant_f32(t.as_slice()?)?
+        // } else if t.datum_type() == f16::datum_type() {
+        //     self.bq.quant_f16(t.as_slice()?)?
+        // } else {
+        //     todo!()
+        // };
+        let quant = t
+            .to_scalar::<Opaque>()?
+            .downcast_ref::<BlockQuantValue>()
+            .unwrap();
+        Ok(Box::new(self.pack(&quant.value, quant.fact.shape[k_axis])?))
     }
 
     fn k_alignment(&self) -> usize {
@@ -252,6 +256,10 @@ impl MMMInputFormat for PackedBlockQuantFormat {
 
     fn r(&self) -> usize {
         self.r
+    }
+
+    fn mem_size(&self, k: TDim, mn: TDim) -> TDim {
+        k * mn * self.bq.block_bytes() / self.bq.block_len()
     }
 
     fn same_as(&self, other: &dyn MMMInputFormat) -> bool {

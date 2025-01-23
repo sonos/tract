@@ -52,8 +52,12 @@ fn test_axes_1() {
 
 #[test]
 fn test_lazy_0() {
-    ConvProblem { lazy_im2col: true, input: tensor3(&[[[1f32]]]), filters: tensor4(&[[[[1f32]]]]) }
-        .check()
+    ConvProblem {
+        lazy_im2col: true,
+        input: tensor3(&[[[1f32]]]),
+        filters: tensor4(&[[[[1f32]]]]),
+    }
+    .check()
 }
 
 #[test]
@@ -148,7 +152,9 @@ impl ConvProblem {
         let (m, k, n, h, w) = mknhw(self.filters.shape(), self.input.shape());
         let output_shape = [m, h, w];
         let internal_output_shape = [m, h * w];
-        let mmm = tract_linalg::ops().mmm(F32, Some(m), Some(k), Some(n)).unwrap();
+        let mmm = tract_linalg::ops()
+            .mmm(F32, Some(m), Some(k), Some(n))
+            .unwrap();
         let output = Tensor::zero::<f32>(&internal_output_shape)?;
         let reshaped_filters = self.filters.clone().into_shape(&[k, m])?;
         let (a_pack, b_pack) = &mmm.packings()[0];
@@ -202,11 +208,23 @@ impl Arbitrary for ConvProblem {
     type Parameters = ();
     type Strategy = BoxedStrategy<Self>;
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        (any::<bool>(), 1..4usize, 1..4usize, 1..4usize, 1..4usize, 0..3usize, 0..3usize)
+        (
+            any::<bool>(),
+            1..4usize,
+            1..4usize,
+            1..4usize,
+            1..4usize,
+            0..3usize,
+            0..3usize,
+        )
             .prop_map(|(eager_im2col, h, w, i, o, extra_h, extra_w)| {
                 let filters = tensor(vec![h, w, i, o]);
                 let input = tensor(vec![i, h + extra_h, w + extra_w]);
-                ConvProblem { lazy_im2col: eager_im2col, filters, input }
+                ConvProblem {
+                    lazy_im2col: eager_im2col,
+                    filters,
+                    input,
+                }
             })
             .boxed()
     }
@@ -214,7 +232,12 @@ impl Arbitrary for ConvProblem {
 
 fn tensor(shape: Vec<usize>) -> Tensor {
     let mut tensor = Tensor::zero::<f32>(&shape).unwrap();
-    tensor.as_slice_mut::<f32>().unwrap().iter_mut().enumerate().for_each(|(ix, x)| *x = ix as f32);
+    tensor
+        .as_slice_mut::<f32>()
+        .unwrap()
+        .iter_mut()
+        .enumerate()
+        .for_each(|(ix, x)| *x = ix as f32);
     tensor
 }
 
@@ -237,7 +260,11 @@ impl EagerIm2colSpec {
         )
         .into_shape_with_order([k, n])
         .unwrap();
-        Box::new(EagerIm2col { im2col: im2col.into_tensor(), packer: self.packer.clone(), k })
+        Box::new(EagerIm2col {
+            im2col: im2col.into_tensor(),
+            packer: self.packer.clone(),
+            k,
+        })
     }
 }
 
@@ -266,7 +293,13 @@ impl MMMInputFormat for EagerIm2colSpec {
     }
 
     fn same_as(&self, other: &dyn MMMInputFormat) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|other| other == self)
+        other
+            .downcast_ref::<Self>()
+            .is_some_and(|other| other == self)
+    }
+
+    fn mem_size(&self, _k: TDim, _mn: TDim) -> TDim {
+        unimplemented!()
     }
 }
 
@@ -321,6 +354,10 @@ impl MMMInputValue for EagerIm2col {
 
     fn format(&self) -> &dyn tract_linalg::mmm::MMMInputFormat {
         &self.packer
+    }
+
+    fn opaque_fact(&self) -> &dyn OpaqueFact {
+        unimplemented!()
     }
 }
 
@@ -388,7 +425,13 @@ impl MMMInputFormat for LazyIm2colSpec {
     }
 
     fn same_as(&self, other: &dyn MMMInputFormat) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|other| other == self)
+        other
+            .downcast_ref::<Self>()
+            .is_some_and(|other| other == self)
+    }
+
+    fn mem_size(&self, _k: TDim, _mn: TDim) -> TDim {
+        unimplemented!()
     }
 }
 
@@ -413,7 +456,8 @@ impl MMMInputValue for LazyIm2col {
     fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
         Some(
             Layout::from_size_align(
-                self.packer.single_panel_len(self.k_offsets.len() * f32::datum_type().size_of()),
+                self.packer
+                    .single_panel_len(self.k_offsets.len() * f32::datum_type().size_of()),
                 self.packer.alignment(),
             )
             .unwrap(),
@@ -450,5 +494,8 @@ impl MMMInputValue for LazyIm2col {
 
     fn format(&self) -> &dyn MMMInputFormat {
         &self.spec
+    }
+    fn opaque_fact(&self) -> &dyn OpaqueFact {
+        unimplemented!()
     }
 }

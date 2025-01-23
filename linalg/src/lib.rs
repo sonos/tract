@@ -24,7 +24,7 @@ pub mod multithread;
 use frame::by_scalar::ByScalarKer;
 use frame::element_wise::ElementWiseKer;
 use frame::mmm::panel_extract::PanelExtractor;
-use frame::mmm::MMMKit;
+use frame::mmm::{MMMInputFormat, MMMKit, WeightType};
 use frame::reduce::{MapReduceKer, ReduceKer};
 use frame::unicast::UnicastKer;
 use frame::{reduce, MatMatMul};
@@ -39,6 +39,7 @@ pub mod arm64;
 
 #[cfg(target_arch = "aarch64")]
 pub use arm64::has_fp16;
+use tract_itertools::Itertools;
 
 #[cfg(not(target_arch = "aarch64"))]
 pub fn has_fp16() -> bool {
@@ -66,7 +67,7 @@ pub struct Ops {
     mmm_impls: Vec<Box<dyn MatMatMul>>,
     panel_extractors: Vec<PanelExtractor>,
     mmm_kits: Vec<MMMKit>,
-
+    // default_kit: Box<dyn Fn(WeightType) -> Box<dyn MMMInputFormat>>,
     mmm_f64: MMMImpl,
     mmv_f64: MMVImpl,
 
@@ -114,6 +115,17 @@ impl Ops {
         &self.mmm_kits
     }
 
+    pub fn kit_input_format(&self, w: WeightType) -> Box<dyn MMMInputFormat> {
+        self.mmm_kits
+            .iter()
+            .filter(|kit| kit.weight == w)
+            .sorted_by_key(|kit| kit.generic_fallback as usize)
+            .next()
+            .unwrap()
+            .static_packer
+            .clone()
+    }
+
     pub fn panel_extractors(&self) -> &[PanelExtractor] {
         &self.panel_extractors
     }
@@ -127,12 +139,26 @@ impl Ops {
     ) -> Option<Box<dyn mmm::MatMatMul>> {
         use DatumType::*;
         match accumulator {
-            F64 => Some(if n == Some(1) { (self.mmv_f64)(m, k) } else { (self.mmm_f64)(m, k, n) }),
-            F32 => Some(if n == Some(1) { (self.mmv_f32)(m, k) } else { (self.mmm_f32)(m, k, n) }),
-            F16 => Some(if n == Some(1) { (self.mmv_f16)(m, k) } else { (self.mmm_f16)(m, k, n) }),
-            I32 => {
-                Some(if n == Some(1) { (self.qmmv_i32)(m, k) } else { (self.qmmm_i32)(m, k, n) })
-            }
+            F64 => Some(if n == Some(1) {
+                (self.mmv_f64)(m, k)
+            } else {
+                (self.mmm_f64)(m, k, n)
+            }),
+            F32 => Some(if n == Some(1) {
+                (self.mmv_f32)(m, k)
+            } else {
+                (self.mmm_f32)(m, k, n)
+            }),
+            F16 => Some(if n == Some(1) {
+                (self.mmv_f16)(m, k)
+            } else {
+                (self.mmm_f16)(m, k, n)
+            }),
+            I32 => Some(if n == Some(1) {
+                (self.qmmv_i32)(m, k)
+            } else {
+                (self.qmmm_i32)(m, k, n)
+            }),
             _ => None,
         }
     }

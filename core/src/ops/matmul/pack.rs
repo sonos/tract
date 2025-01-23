@@ -47,7 +47,7 @@ impl TypedOp for OptMatMulPack {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let k = inputs[0].shape[self.k_axis].clone();
         let mn = inputs[0].shape[self.mn_axis].clone();
-        let opaque_fact = PackedOpaqueFact {
+        let opaque_fact = DynPackedOpaqueFact {
             k,
             mn,
             packers: self.packers.clone(),
@@ -131,16 +131,13 @@ impl OptMatMulPack {
 }
 
 #[derive(Hash, Clone, Debug, PartialEq, Eq)]
-pub struct PackedOpaqueFact {
+pub struct DynPackedOpaqueFact {
     pub k: TDim,
     pub mn: TDim,
     pub packers: Vec<PackedFormat>,
 }
 
-impl OpaqueFact for PackedOpaqueFact {
-    fn same_as(&self, other: &dyn OpaqueFact) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|o| self == o)
-    }
+impl OpaqueFact for DynPackedOpaqueFact {
     fn mem_size(&self) -> TDim {
         self.k.clone() * &self.mn * self.packers[0].dt.size_of()
     }
