@@ -1,4 +1,4 @@
-use super::BlockQuant;
+use super::{BlockQuant, PackedBlockQuantFormat};
 use tract_data::internal::*;
 use tract_data::TVec;
 
@@ -38,5 +38,25 @@ impl std::fmt::Debug for BlockQuantValue {
 impl std::fmt::Display for BlockQuantValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{self:?}")
+    }
+}
+
+#[derive(Clone, Hash)]
+pub struct PackedBlockQuantFact {
+    pub format: PackedBlockQuantFormat,
+    pub shape: TVec<usize>,
+}
+
+impl std::fmt::Debug for PackedBlockQuantFact {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}({:?})", self.format, self.shape)
+    }
+}
+
+impl OpaqueFact for PackedBlockQuantFact {
+    fn mem_size(&self) -> TDim {
+        (self.shape.iter().product::<usize>() / self.format.bq.block_len()
+            * self.format.bq.block_bytes())
+        .to_dim()
     }
 }

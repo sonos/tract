@@ -411,18 +411,17 @@ impl<'a> From<&'a Arc<Tensor>> for TypedFact {
 
 impl fmt::Debug for TypedFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match (self.konst.as_ref(), self.opaque_fact.as_ref()) {
-            (Some(ref k), None) => write!(fmt, "{k:?}"),
-            (Some(ref k), Some(opaque)) => write!(fmt, "{k:?} 🔍 {opaque:?}"),
-            (None, None) if self.rank() > 0 => {
-                write!(fmt, "{:?},{:?}", self.shape, self.datum_type)
+        write!(fmt, "{:?},{:?}", self.shape, self.datum_type)?;
+        if self.datum_type.is_opaque() {
+            if let Some(of) = &self.opaque_fact {
+                write!(fmt, " 🔍 {:?} ", of)?
+            } else {
+                write!(fmt, " 🔍 <no opaque fact> ")?
             }
-            (None, Some(ref opaque)) if self.rank() > 0 => {
-                write!(fmt, "{:?},{:?} 🔍 {opaque:?}", self.shape, self.datum_type)
-            }
-            (None, Some(ref opaque)) => write!(fmt, "{:?} 🔍 {opaque:?}", self.datum_type),
-            (None, None) => write!(fmt, "{:?}", self.datum_type),
-        }?;
+        }
+        if let Some(k) = &self.konst {
+            write!(fmt, "🟰 {:?}", k)?
+        }
         Ok(())
     }
 }

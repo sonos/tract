@@ -19,7 +19,7 @@ pub mod optimize;
 mod proptest;
 
 pub use as_matmul::{rewrite_einsums_as_matmul, BasicMatMul};
-use tract_linalg::frame::block_quant::BlockQuantFact;
+use tract_linalg::frame::block_quant::{BlockQuantFact, PackedBlockQuantFact};
 
 pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<[TDim]>> {
     if !fact.datum_type.is_opaque() {
@@ -28,14 +28,18 @@ pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<[TDim]
     let Some(opaque_fact) = fact.opaque_fact.as_ref() else {
         bail!("Datum fact is opaque, but no opaque fact was found.")
     };
-    let Some(bqf) = opaque_fact.downcast_ref::<BlockQuantFact>() else {
+    let inner_shape = if let Some(bqf) = opaque_fact.downcast_ref::<BlockQuantFact>() {
+        &bqf.shape
+    } else if let Some(pbqf) = opaque_fact.downcast_ref::<PackedBlockQuantFact>() {
+        &pbqf.shape
+    } else {
         bail!("Datum fact is opaque, but no opaque fact was found.")
     };
     let shape: Vec<TDim> = fact
         .shape
         .iter()
         .cloned()
-        .chain(bqf.shape.iter().map(|d| d.to_dim()))
+        .chain(inner_shape.iter().map(|d| d.to_dim()))
         .collect();
     Ok(Cow::Owned(shape))
 }
@@ -421,13 +425,13 @@ impl TypedOp for EinSum {
         self.declutter_after_concat(model, node)
     }
 
-    fn codegen(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        optimize::optimize(self, model, node)
-    }
+    // fn codegen(
+    //     &self,
+    //     model: &TypedModel,
+    //     node: &TypedNode,
+    // ) -> TractResult<Option<TypedModelPatch>> {
+    //     optimize::optimize(self, model, node)
+    // }
 
     as_op!();
 }

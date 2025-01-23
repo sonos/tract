@@ -17,6 +17,7 @@ pub trait MMMInputFormat: Downcast + Debug + DynHash + DynClone + Send + Sync + 
     fn r(&self) -> usize;
     fn k_alignment(&self) -> usize;
     fn same_as(&self, other: &dyn MMMInputFormat) -> bool;
+    fn mem_size(&self, k: TDim, mn: TDim) -> TDim;
 }
 dyn_clone::clone_trait_object!(MMMInputFormat);
 impl_downcast!(MMMInputFormat);
@@ -31,6 +32,7 @@ pub trait MMMInputValue: DynClone + Debug + DynHash + Send + Sync + Display + Do
     }
     fn mn(&self) -> usize;
     fn k(&self) -> usize;
+    fn opaque_fact(&self) -> &dyn OpaqueFact;
 }
 dyn_clone::clone_trait_object!(MMMInputValue);
 impl_downcast!(MMMInputValue);
@@ -44,13 +46,34 @@ impl From<Box<dyn MMMInputValue>> for Opaque {
 
 impl OpaquePayload for Box<dyn MMMInputValue> {}
 
-#[derive(Clone, Hash)]
-pub struct EagerPackedInput {
+#[derive(Clone, Hash, Debug)]
+pub struct PackedOpaqueFact {
     pub format: Box<dyn MMMInputFormat>,
-    pub packed: Arc<Blob>,
-    pub panel_bytes: usize,
     pub mn: usize,
     pub k: usize,
+}
+
+impl Display for PackedOpaqueFact {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Eager {} tensor (mn={} k={})",
+            self.format, self.mn, self.k
+        )
+    }
+}
+
+impl OpaqueFact for PackedOpaqueFact {
+    fn mem_size(&self) -> TDim {
+        self.format.mem_size(self.k.to_dim(), self.mn.to_dim())
+    }
+}
+
+#[derive(Clone, Hash)]
+pub struct EagerPackedInput {
+    pub fact: PackedOpaqueFact,
+    pub packed: Arc<Blob>,
+    pub panel_bytes: usize,
 }
 
 impl MMMInputValue for EagerPackedInput {
@@ -61,19 +84,22 @@ impl MMMInputValue for EagerPackedInput {
         unsafe { Ok(self.packed.as_ptr().add(i * self.panel_bytes)) }
     }
     fn k(&self) -> usize {
-        self.k
+        self.fact.k
     }
     fn mn(&self) -> usize {
-        self.mn
+        self.fact.mn
     }
     fn format(&self) -> &dyn MMMInputFormat {
-        &*self.format
+        &*self.fact.format
+    }
+    fn opaque_fact(&self) -> &dyn OpaqueFact {
+        &self.fact
     }
 }
 
 impl Display for EagerPackedInput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Eager {} tensor (mn={} k={})", self.format, self.mn(), self.k())
+        (&self.fact as &dyn Display).fmt(f)
     }
 }
 

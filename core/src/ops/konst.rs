@@ -1,4 +1,6 @@
+use dyn_clone::clone_box;
 use tract_linalg::frame::block_quant::BlockQuantValue;
+use tract_linalg::mmm::WeightType;
 
 use crate::internal::*;
 use crate::ops::array::Gather;
@@ -102,7 +104,6 @@ impl TypedOp for Const {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        println!("{node}");
         let looks_like_weights = (self.0.datum_type().is_number() && self.0.rank() == 2)
             || (self
                 .0
@@ -114,7 +115,6 @@ impl TypedOp for Const {
         let mut have_abstract_einsum = false;
         for succ in &node.outputs[0].successors {
             let snode = model.node(succ.node);
-            println!(" * {snode} => {}", snode.op.info()?.join(" :: "));
             if let Some(gather) = snode.op_as::<Gather>() {
                 if succ.slot != 0 || gather.axis != 0 {
                     return Ok(None);
@@ -128,7 +128,6 @@ impl TypedOp for Const {
                     || m_axis.inputs[1].len() != 0
                     || m_axis.outputs[0].len() != 1
                 {
-                    println!("Failed m_axis check");
                     return Ok(None);
                 }
                 let k_axis = einsum.axes.axis((InOut::In(0), 1))?;
@@ -136,7 +135,6 @@ impl TypedOp for Const {
                     || k_axis.inputs[1].len() != 1
                     || k_axis.outputs[0].len() != 0
                 {
-                    println!("Failed k_axis check");
                     return Ok(None);
                 }
                 for axis in einsum.axes.iter_all_axes() {
@@ -157,7 +155,27 @@ impl TypedOp for Const {
             }
         }
         if node.outputs[0].successors.len() > 1 || have_abstract_einsum {
-            println!("Operate!");
+            let weight = self
+                .0
+                .to_scalar::<Opaque>()
+                .ok()
+                .and_then(|a| a.downcast_ref::<BlockQuantValue>());
+            let weight_type = if let Some(a_payload) = weight {
+                WeightType::BlockQuant(a_payload.fact.format.clone())
+            } else {
+                WeightType::Plain(self.0.datum_type())
+            };
+            let format = tract_linalg::ops().kit_input_format(weight_type);
+            let packed = format.prepare_tensor(&self.0, 0, 1)?;
+            let fact = clone_box(packed.opaque_fact());
+            let opaque = Opaque(Arc::new(packed));
+            let konst = Const(rctensor0(opaque), Some(fact));
+            info!("Using versatile kit for {konst:?}");
+            return TypedModelPatch::replace_single_op(model, node, &[], konst)
+                .inspect(|p| {
+                    dbg!(p);
+                })
+                .map(Some);
         }
         Ok(None)
     }
