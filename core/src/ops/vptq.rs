@@ -6,11 +6,10 @@ use crate::{
     ops::{
         array::{Gather, GatherElements, Topk},
         einsum::EinSum,
-        logic::and,
         math::shift_left,
-        math::shift_right,
     },
 };
+use tract_linalg::{mmm::{FusedSpec, Packing}, ops};
 
 #[derive(Debug, Clone)]
 pub struct VPTQGemm {
@@ -18,6 +17,8 @@ pub struct VPTQGemm {
     pub in_features: usize,
     pub out_features: usize,
     pub is_indice_packed: bool,
+    pub group_size: usize,
+    pub outlier_size: usize
 }
 
 impl Op for VPTQGemm {
@@ -28,14 +29,14 @@ impl Op for VPTQGemm {
     op_as_typed_op!();
 }
 fn shift_right_zero_and_1(input: TValue, shift_value: TValue) -> TractResult<TValue> {
-    let input = input.to_array_view::<u16>()?;
-    let shift_value = shift_value.to_array_view::<u16>()?;
+    let input = input.to_array_view::<i32>()?;
+    let shift_value = shift_value.to_array_view::<i32>()?;
     let out_shape = crate::broadcast::multi_broadcast(&[input.shape(), shift_value.shape()])?;
-    let mut out = Tensor::zero_dt(DatumType::U16, &out_shape)?;
-    crate::ndarray::Zip::from(out.to_array_view_mut::<u16>()?)
+    let mut out = Tensor::zero_dt(DatumType::I32, &out_shape)?;
+    crate::ndarray::Zip::from(out.to_array_view_mut::<i32>()?)
         .and_broadcast(input)
         .and_broadcast(shift_value)
-        .for_each(|c, a, b| *c = a.checked_shr(*b as u32).unwrap_or(0u16) & 1u16);
+        .for_each(|c, a, b| *c = a.checked_shr(*b as u32).unwrap_or(0i32) & 1i32);
     Ok(out.into_tvalue())
 }
 
@@ -47,37 +48,39 @@ impl VPTQGemm {
         index_bits: usize,
         num_elements: usize,
     ) -> TractResult<Tensor> {
-        // let wf = Tensor::from(Array1::from_iter(0..32u16).to_shape([1, 1, 1, 32])?.into_owned());
-        // can be reexpressed
-        let wf = tensor1(&(0..32u16).collect_vec()).into_shape(&[1, 1, 1, 32])?;
+        let wf = tensor1(&(0..32i32).collect_vec()).into_shape(&[1, 1, 1, 32])?;
 
-        let mut pack_tensor_shape = pack_tensor.shape().to_vec();
-        pack_tensor_shape.push(1);
+        let pack_tensor_shape = pack_tensor.shape().to_vec();
+
+
+        let mut pre_shift_pack_tensor_shape = pack_tensor_shape.clone();
+        pre_shift_pack_tensor_shape.push(1);
 
         let mut out = shift_right_zero_and_1(
-            pack_tensor.clone().into_shape(&pack_tensor_shape)?.into(),
+            pack_tensor.clone().into_shape(&pre_shift_pack_tensor_shape)?.into(),
             wf.into(),
         )?;
 
-        let pad_size = (pack_tensor_shape[2] * 32) % (index_bits * num_elements);
+        let mut post_shift_pack_tensor_shape = pack_tensor_shape.clone();
+        let pval = post_shift_pack_tensor_shape.pop().unwrap();
+        post_shift_pack_tensor_shape.push(32 * pval);
+        out = out.into_tensor().clone().into_shape(&post_shift_pack_tensor_shape)?.into_tvalue();
 
-        let mut pack_tensor_shape = pack_tensor.shape().to_vec();
-        pack_tensor_shape.pop();
-        pack_tensor_shape.push(out.volume() / pack_tensor.volume());
-        out = out.into_tensor().clone().into_shape(&pack_tensor_shape)?.into_tvalue();
+        let pad_size = (pack_tensor_shape.last().unwrap_or(&0) * 32) % (index_bits * num_elements);
         if pad_size > 0 {
             let end = out.shape()[out.rank() - 1] - pad_size;
-            out = out.slice(out.rank(), 0, end)?.into();
+            out = out.slice(out.rank() - 1, 0, end)?.into();
         }
 
-        pack_tensor_shape.pop();
-        let auto = out.volume() / pack_tensor_shape.iter().product::<usize>() / index_bits;
-        pack_tensor_shape.push(auto);
-        pack_tensor_shape.push(index_bits);
-        out = out.into_tensor().into_shape(&pack_tensor_shape)?.into();
+        let mut post_pad_pack_tensor_shape = pack_tensor_shape.clone();
+        post_pad_pack_tensor_shape.pop();
+        let auto = out.shape().last().unwrap() / index_bits;
+        post_pad_pack_tensor_shape.push(auto);
+        post_pad_pack_tensor_shape.push(index_bits);
+        out = out.into_tensor().into_shape(&post_pad_pack_tensor_shape)?.into();
 
         let wf1 = Tensor::from(
-            Array1::from_iter(0..(index_bits as u16)).to_shape([1, 1, 1, index_bits])?.into_owned(),
+            Array1::from_iter(0..(index_bits as i32)).to_shape([1, 1, 1, index_bits])?.into_owned(),
         );
 
         out = shift_left().eval(tvec!(out, wf1.into()))?.pop().unwrap();
@@ -85,17 +88,17 @@ impl VPTQGemm {
         let axis = out.rank() - 1;
         out = out
             .into_tensor()
-            .into_array::<u16>()?
+            .into_array::<i32>()?
             .sum_axis(tract_ndarray::Axis(axis))
             .into_tvalue();
 
-        let unpack_indice = out.cast_to_dt(DatumType::U16)?;
+        let unpack_indice = out.cast_to_dt(DatumType::I32)?;
 
         let mut indices =
-            unsafe { Tensor::uninitialized_dt(DatumType::U16, unpack_indice.shape())? };
+            unsafe { Tensor::uninitialized_dt(DatumType::I32, unpack_indice.shape())? };
 
-        crate::ndarray::Zip::from(&mut indices.to_array_view_mut::<u16>()?)
-            .and_broadcast(unpack_indice.to_array_view::<u16>()?)
+        crate::ndarray::Zip::from(&mut indices.to_array_view_mut::<i32>()?)
+            .and_broadcast(unpack_indice.to_array_view::<i32>()?)
             .for_each(|indice, upack_indice| *indice = upack_indice & ((1 << index_bits) - 1));
         indices = indices.slice(2, 0, num_elements)?;
 
@@ -106,6 +109,7 @@ impl VPTQGemm {
         &self,
         centroids: Tensor,
         indices: Tensor,
+        group_size: usize
     ) -> TractResult<Tensor> {
         /// TODO: instead use ndarray for indices to use views transform (--)
         let mut indices = indices.clone();
@@ -113,16 +117,13 @@ impl VPTQGemm {
             unimplemented!("unexected centroid shape ?")
         };
 
-        let [_, _, group_size] = *indices.shape() else {
-            unimplemented!("unexected indice shape ?")
-        };
-
-        let mut vsh = indices.shape().to_vec();
         if self.is_indice_packed {
             // unimplemented!("unpacking indices not implemented yet !");
             let index_bits = (num_centroids as f32).log2().ceil() as usize;
-            indices = self.eval_unpack_index_tensor(indices, index_bits, 1)?;
+            indices = self.eval_unpack_index_tensor(indices, index_bits, group_size)?;
         }
+
+        let mut vsh = indices.shape().to_vec();
         indices.insert_axis(3)?;
         vsh.push(vector_len);
         indices = indices.broadcast_to_shape(&vsh)?; // NOTE: costly in tract (applied in memory but not in ndarray)
@@ -139,7 +140,7 @@ impl VPTQGemm {
             .into_tensor();
 
         let remain = selected_centroids.volume() / (num_codebooks * group_size * vector_len);
-        // split_axes
+
         let mut qweight = selected_centroids
             .into_shape(&[num_codebooks, remain, group_size, vector_len])?
             .permute_axes(&[0, 1, 3, 2])? // NOTE: costly in tract (applied in memory)
@@ -196,23 +197,23 @@ impl EvalOp for VPTQGemm {
         assert!(input.datum_type().is_float());
 
         assert_eq!(indices.rank(), 3);
-        assert_eq!(indices.datum_type(), DatumType::U16);
+        assert_eq!(indices.datum_type(), DatumType::I32);
         assert_eq!(centroids.rank(), 3);
         assert!(centroids.datum_type().is_float());
 
         let enable_outlier = outlier_indices.len() > 0;
         if enable_outlier {
             assert_eq!(outlier_indices.rank(), 3);
-            assert_eq!(outlier_indices.datum_type(), DatumType::U16);
+            assert_eq!(outlier_indices.datum_type(), DatumType::I32);
             assert_eq!(outlier_centroids.rank(), 3);
             assert!(outlier_centroids.datum_type().is_float());
         }
 
-        let mut qweight = self.eval_extract_from_vector_quant(centroids, indices)?;
+        let mut qweight = self.eval_extract_from_vector_quant(centroids, indices, self.group_size)?;
         if enable_outlier {
             // same as centroids to qweights except for outlier
             let outlier_qweight =
-                self.eval_extract_from_vector_quant(outlier_centroids, outlier_indices)?;
+                self.eval_extract_from_vector_quant(outlier_centroids, outlier_indices, self.outlier_size)?;
             qweight = Tensor::stack_tensors(1, &[outlier_qweight, qweight])?;
         }
 
@@ -243,10 +244,36 @@ impl EvalOp for VPTQGemm {
                 + weight_bias.into_array::<f32>()?)
             .into_tensor();
         }
-        // call matmul now with qweight
-        let einsum_op = EinSum::new("ik,kj->ij".parse()?, f32::datum_type());
-        // einsum -> matmul imperatif
-        einsum_op.eval(tvec!(input, qweight.permute_axes(&[1, 0])?.into_tvalue()))
+        // // call matmul now with qweight
+        // let einsum_op = EinSum::new("ik,kj->ij".parse()?, f32::datum_type());
+        // // einsum -> matmul imperatif
+        // einsum_op.eval(tvec!(input, qweight.permute_axes(&[1, 0])?.into_tvalue()))
+        //
+        qweight = qweight.permute_axes(&[1, 0])?;
+        let op = ops();
+        let &[m, k] = input.shape() else { bail!("unexpected rank {:?}", input.rank())};
+        let &n = qweight.shape().last().unwrap();
+
+        let mmm = op.mmm(DatumType::F32, Some(m), Some(k), Some(n)).unwrap();
+
+        let (pack_a, pack_b) = &mmm.packings()[0];
+        let cstore = unsafe {
+            mmm.c_view(0, 1)
+        };
+
+
+        let a = pack_a.prepare_tensor(&input, 1, 0)?;
+        let b = pack_b.prepare_tensor(&qweight, 0, 1)?;
+        unsafe {
+            let mut out =
+                Tensor::uninitialized::<f32>(&[m, n])?;
+        let non_linear = &[FusedSpec::AddMatMul {
+            a: tract_linalg::mmm::AsInputValue::Owned(a), b: tract_linalg::mmm::AsInputValue::Owned(b), packing: 0
+        }, FusedSpec::Store(cstore.wrap(&out.view()))];
+            mmm.run(m, n, non_linear);
+
+        Ok(tvec!(out.into()))
+        }
     }
 }
 

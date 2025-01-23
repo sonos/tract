@@ -1,6 +1,5 @@
 use crate::internal::*;
 use crate::ser::*;
-use tract_core::ops::cast::cast;
 use tract_core::ops::vptq::VPTQGemm;
 
 pub fn register(registry: &mut Registry) {
@@ -20,6 +19,8 @@ pub fn register(registry: &mut Registry) {
             TypeName::Integer.named("vector_len"),
             TypeName::Integer.tensor().named("in_features"),
             TypeName::Integer.tensor().named("out_features"),
+            TypeName::Integer.tensor().named("group_size"),
+            TypeName::Integer.tensor().named("outlier_size"),
         ],
         &[("output", TypeName::Scalar.tensor())],
         de_vptq_gemm,
@@ -29,7 +30,7 @@ pub fn register(registry: &mut Registry) {
 fn ser_vptq_gemm(
     ast: &mut IntoAst,
     node: &TypedNode,
-    op: &VPTQGemm,
+    _op: &VPTQGemm,
 ) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
     let indices = ast.mapping[&node.inputs[1]].clone();
@@ -44,6 +45,8 @@ fn ser_vptq_gemm(
     let vector_len = ast.mapping[&node.inputs[9]].clone();
     let in_features = ast.mapping[&node.inputs[10]].clone();
     let out_features = ast.mapping[&node.inputs[11]].clone();
+    let group_size = ast.mapping[&node.inputs[12]].clone();
+    let outlier_size = ast.mapping[&node.inputs[13]].clone();
     Ok(Some(invocation(
         "tract_core_vptq_gemm",
         &[
@@ -61,6 +64,8 @@ fn ser_vptq_gemm(
             ("vector_len", numeric(vector_len)),
             ("in_features", numeric(in_features)),
             ("out_features", numeric(out_features)),
+            ("group_size", numeric(group_size)),
+            ("outlier_size", numeric(outlier_size)),
         ],
     )))
 }
@@ -81,8 +86,11 @@ fn de_vptq_gemm(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
     let out_features = invocation.named_arg_as(builder, "out_features")?;
     let is_indice_packed = invocation.named_arg_as(builder, "is_indice_packed")?;
 
+    let group_size = invocation.named_arg_as(builder, "group_size")?;
+    let outlier_size = invocation.named_arg_as(builder, "outlier_size")?;
+
     builder.wire(
-        VPTQGemm { vector_len, in_features, out_features, is_indice_packed },
+        VPTQGemm { vector_len, in_features, out_features, is_indice_packed, group_size, outlier_size},
         &[
             input,
             indices,
