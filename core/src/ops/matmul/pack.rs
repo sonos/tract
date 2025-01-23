@@ -19,7 +19,10 @@ impl Op for OptMatMulPack {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("{:?}. k axis: {}, mn axis: {}", self.packers, self.k_axis, self.mn_axis)])
+        Ok(vec![format!(
+            "{:?}. k axis: {}, mn axis: {}",
+            self.packers, self.k_axis, self.mn_axis
+        )])
     }
 
     op_as_typed_op!();
@@ -44,7 +47,11 @@ impl TypedOp for OptMatMulPack {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let k = inputs[0].shape[self.k_axis].clone();
         let mn = inputs[0].shape[self.mn_axis].clone();
-        let opaque_fact = PackedOpaqueFact { k, mn, packers: self.packers.clone() };
+        let opaque_fact = PackedOpaqueFact {
+            k,
+            mn,
+            packers: self.packers.clone(),
+        };
         Ok(tvec!(Opaque::datum_type()
             .fact(self.output_shape(&inputs[0].shape))
             .with_opaque_fact(opaque_fact)))
@@ -78,7 +85,9 @@ impl OptMatMulPack {
             let output_shape: TVec<usize> = self.output_shape(input.shape());
             let stores = if output_shape.iter().all(|d| *d == 1) {
                 tensor0::<Opaque>(
-                    packer.pack_tensor_view(&input.view(), self.k_axis, self.mn_axis)?.into(),
+                    packer
+                        .pack_tensor_view(&input.view(), self.k_axis, self.mn_axis)?
+                        .into(),
                 )
                 .into_shape(&output_shape)?
             } else {
@@ -129,6 +138,9 @@ pub struct PackedOpaqueFact {
 }
 
 impl OpaqueFact for PackedOpaqueFact {
+    fn same_as(&self, other: &dyn OpaqueFact) -> bool {
+        other.downcast_ref::<Self>().is_some_and(|o| self == o)
+    }
     fn mem_size(&self) -> TDim {
         self.k.clone() * &self.mn * self.packers[0].dt.size_of()
     }

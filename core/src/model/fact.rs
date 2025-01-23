@@ -16,9 +16,16 @@ impl ShapeFact {
     }
 
     fn compute_concrete(&mut self) {
-        assert!(self.dims.iter().all(|d| d.to_isize().map(|d| d >= 0).unwrap_or(true)));
-        self.concrete =
-            self.dims.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>().ok()
+        assert!(self
+            .dims
+            .iter()
+            .all(|d| d.to_isize().map(|d| d >= 0).unwrap_or(true)));
+        self.concrete = self
+            .dims
+            .iter()
+            .map(|d| d.to_usize())
+            .collect::<TractResult<TVec<_>>>()
+            .ok()
     }
 
     /// Shape of the tensor, unless it has symbolic dimensions.
@@ -50,7 +57,9 @@ impl ShapeFact {
         if self.is_concrete() {
             Ok(Cow::Borrowed(self))
         } else {
-            Ok(Cow::Owned(self.iter().map(|d| d.eval(values)).collect::<ShapeFact>()))
+            Ok(Cow::Owned(
+                self.iter().map(|d| d.eval(values)).collect::<ShapeFact>(),
+            ))
         }
     }
 
@@ -83,8 +92,10 @@ impl ShapeFact {
     }
 
     pub fn from_dims<D: ToDim, T: IntoIterator<Item = D>>(it: T) -> ShapeFact {
-        let mut dims =
-            ShapeFact { dims: it.into_iter().map(|d| d.to_dim()).collect(), concrete: None };
+        let mut dims = ShapeFact {
+            dims: it.into_iter().map(|d| d.to_dim()).collect(),
+            concrete: None,
+        };
         dims.compute_concrete();
         dims
     }
@@ -135,7 +146,12 @@ impl ShapeFact {
     pub fn consistent(&self) -> TractResult<()> {
         ensure!(
             self.concrete
-                == self.dims.iter().map(|d| d.to_usize()).collect::<TractResult<TVec<_>>>().ok()
+                == self
+                    .dims
+                    .iter()
+                    .map(|d| d.to_usize())
+                    .collect::<TractResult<TVec<_>>>()
+                    .ok()
         );
         Ok(())
     }
@@ -236,7 +252,11 @@ impl TypedFact {
 
     pub fn mem_size(&self) -> TDim {
         self.shape.volume() * self.datum_type.size_of()
-            + self.opaque_fact.as_ref().map(|it| it.mem_size()).unwrap_or(0.into())
+            + self
+                .opaque_fact
+                .as_ref()
+                .map(|it| it.mem_size())
+                .unwrap_or(0.into())
     }
 
     pub fn dt_scalar(datum_type: DatumType) -> TypedFact {
@@ -253,7 +273,13 @@ impl TypedFact {
     where
         S: Into<ShapeFact>,
     {
-        TypedFact { datum_type, shape: shape.into(), konst: None, uniform: None, opaque_fact: None }
+        TypedFact {
+            datum_type,
+            shape: shape.into(),
+            konst: None,
+            uniform: None,
+            opaque_fact: None,
+        }
     }
 
     pub fn rank(&self) -> usize {
@@ -282,21 +308,37 @@ impl TypedFact {
         self.shape.consistent()?;
         if let Some(k) = &self.konst {
             if !self.matches(k.as_ref(), None)? {
-                bail!("fact says {}, constant is {:?}", self.format_dt_shape_nocheck(), k);
+                bail!(
+                    "fact says {}, constant is {:?}",
+                    self.format_dt_shape_nocheck(),
+                    k
+                );
             }
         }
         if let Some(u) = &self.uniform {
             if self.datum_type != u.datum_type() {
-                bail!("fact as uniform value {:?}, but is of type {:?}", u, self.datum_type);
+                bail!(
+                    "fact as uniform value {:?}, but is of type {:?}",
+                    u,
+                    self.datum_type
+                );
             }
         }
         if let (Some(u), Some(k)) = (self.uniform.as_deref(), self.konst.as_deref()) {
             if let Some(k) = k.as_uniform() {
                 if &k != u {
-                    bail!("Uniform value and uniform constant mismatch: {:?}, {:?}", u, k);
+                    bail!(
+                        "Uniform value and uniform constant mismatch: {:?}, {:?}",
+                        u,
+                        k
+                    );
                 }
             } else {
-                bail!("Fact said to be uniform ({:?}) and equal to {:?} which is not.", u, k);
+                bail!(
+                    "Fact said to be uniform ({:?}) and equal to {:?} which is not.",
+                    u,
+                    k
+                );
             }
         }
         Ok(())
@@ -328,8 +370,9 @@ impl Fact for TypedFact {
             return Ok(false);
         }
         for i in 0..t.rank() {
-            if let Ok(dim) =
-                self.shape[i].eval(symbols.unwrap_or(&SymbolValues::default())).to_usize()
+            if let Ok(dim) = self.shape[i]
+                .eval(symbols.unwrap_or(&SymbolValues::default()))
+                .to_usize()
             {
                 if dim != t.shape()[i] {
                     return Ok(false);
@@ -361,7 +404,14 @@ impl Fact for TypedFact {
             if cfg!(debug_assertions) {
                 other.consistent().unwrap()
             }
-            self.datum_type == other.datum_type && self.shape.compatible_with(&other.shape)
+            self.datum_type == other.datum_type
+                && self.shape.compatible_with(&other.shape)
+                && self
+                    .opaque_fact
+                    .as_ref()
+                    .zip(other.opaque_fact.as_ref())
+                    .map(|(a, b)| a.same_as(&**b))
+                    .unwrap_or(true)
         } else {
             false
         }
