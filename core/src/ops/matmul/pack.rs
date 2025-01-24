@@ -141,4 +141,8 @@ impl OpaqueFact for DynPackedOpaqueFact {
     fn mem_size(&self) -> TDim {
         self.k.clone() * &self.mn * self.packers[0].dt.size_of()
     }
+
+    fn same_as(&self, other: &dyn OpaqueFact) -> bool {
+        other.downcast_ref::<Self>().is_some_and(|o| o == self)
+    }
 }
