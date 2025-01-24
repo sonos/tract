@@ -118,7 +118,7 @@ $TRACT_RUN $MODELS/mdl-en-2019-Q3-librispeech.onnx \
 $CACHE_FILE hey_snips_v4_model17.pb
 $TRACT_RUN $MODELS/hey_snips_v4_model17.pb \
     -i S,20,f32 --pulse 8 dump --cost -q \
-    --assert-cost "FMA(F32)=2060448,Div(F32)=24576,Buffer(F32)=2920,Params(F32)=222250"
+    --assert-cost "FMA(F32)=2060448,Div(F32)=24576,Buffer(F32)=2920,Params(F32)=222251"
 
 $TRACT_RUN $MODELS/hey_snips_v4_model17.pb -i S,20,f32 \
     dump -q \

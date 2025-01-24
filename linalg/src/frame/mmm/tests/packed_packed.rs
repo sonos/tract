@@ -53,7 +53,10 @@ macro_rules! mmm_packed_packed_tests {
 
                 #[test]
                 fn packed_packed_a_scale() -> TractResult<()> {
-                    t((1..=$ker.mr() as i64).map(|x| x as f32).collect_vec(), vec![1f32; $ker.nr()])
+                    t(
+                        (1..=$ker.mr() as i64).map(|x| x as f32).collect_vec(),
+                        vec![1f32; $ker.nr()],
+                    )
                 }
 
                 #[test]
@@ -156,7 +159,12 @@ macro_rules! mmm_packed_packed_tests {
 
                 #[test]
                 fn mat_mul_1() -> TractResult<()> {
-                    ti(3, 2, [-3, 3, 5, -5, 6, 0, -6, -5, 0, 0, 9, 7], [-8, 5, 5, -3, 5, 7, -8, -1])
+                    ti(
+                        3,
+                        2,
+                        [-3, 3, 5, -5, 6, 0, -6, -5, 0, 0, 9, 7],
+                        [-8, 5, 5, -3, 5, 7, -8, -1],
+                    )
                 }
 
                 #[test]
@@ -186,9 +194,16 @@ pub fn arbitrary_problem<K: MatMatMulKer>(
     packing: usize,
 ) -> BoxedStrategy<PackedPackedProblem<K>> {
     let (mr, nr) = (ker.mr(), ker.nr());
-    let item_range = if ker.internal_type().is_integer() { (-5f32)..5f32 } else { (-1f32)..1f32 };
-    let (m_range, n_range) =
-        if frame_test { (1usize..3 * mr, 1usize..3 * nr) } else { (mr..mr + 1, nr..nr + 1) };
+    let item_range = if ker.internal_type().is_integer() {
+        (-5f32)..5f32
+    } else {
+        (-1f32)..1f32
+    };
+    let (m_range, n_range) = if frame_test {
+        (1usize..3 * mr, 1usize..3 * nr)
+    } else {
+        (mr..mr + 1, nr..nr + 1)
+    };
     let ker = ker.clone();
     (m_range, 0usize..40, n_range)
         .prop_flat_map(move |(m, k, n)| {
