@@ -51,9 +51,10 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
         let op = op.into();
         let name = name.into();
         if let Some(konst) = op.downcast_ref::<Const>() {
-            // only if no opaque fact is present.
-            if konst.1.is_none() {
-                return Ok(tvec![self.add_const(name, konst.0.clone())?]);
+            for node in &self.nodes {
+                if node.op_as::<Const>().is_some_and(|other| other == konst) {
+                    return Ok(tvec!(node.id.into()));
+                }
             }
         }
         if self.nodes.iter().any(|n| n.name == name) {
