@@ -5,11 +5,10 @@ use crate::{
     internal::*,
     ops::{
         array::{Gather, GatherElements, Topk},
-        einsum::EinSum,
         math::shift_left,
     },
 };
-use tract_linalg::{mmm::{FusedSpec, Packing}, ops};
+use tract_linalg::{mmm::FusedSpec, ops};
 
 #[derive(Debug, Clone)]
 pub struct VPTQGemm {
@@ -18,7 +17,7 @@ pub struct VPTQGemm {
     pub out_features: usize,
     pub is_indice_packed: bool,
     pub group_size: usize,
-    pub outlier_size: usize
+    pub outlier_size: usize,
 }
 
 impl Op for VPTQGemm {
@@ -51,7 +50,6 @@ impl VPTQGemm {
         let wf = tensor1(&(0..32i32).collect_vec()).into_shape(&[1, 1, 1, 32])?;
 
         let pack_tensor_shape = pack_tensor.shape().to_vec();
-
 
         let mut pre_shift_pack_tensor_shape = pack_tensor_shape.clone();
         pre_shift_pack_tensor_shape.push(1);
@@ -109,7 +107,7 @@ impl VPTQGemm {
         &self,
         centroids: Tensor,
         indices: Tensor,
-        group_size: usize
+        group_size: usize,
     ) -> TractResult<Tensor> {
         /// TODO: instead use ndarray for indices to use views transform (--)
         let mut indices = indices.clone();
@@ -209,11 +207,15 @@ impl EvalOp for VPTQGemm {
             assert!(outlier_centroids.datum_type().is_float());
         }
 
-        let mut qweight = self.eval_extract_from_vector_quant(centroids, indices, self.group_size)?;
+        let mut qweight =
+            self.eval_extract_from_vector_quant(centroids, indices, self.group_size)?;
         if enable_outlier {
             // same as centroids to qweights except for outlier
-            let outlier_qweight =
-                self.eval_extract_from_vector_quant(outlier_centroids, outlier_indices, self.outlier_size)?;
+            let outlier_qweight = self.eval_extract_from_vector_quant(
+                outlier_centroids,
+                outlier_indices,
+                self.outlier_size,
+            )?;
             qweight = Tensor::stack_tensors(1, &[outlier_qweight, qweight])?;
         }
 
@@ -244,35 +246,35 @@ impl EvalOp for VPTQGemm {
                 + weight_bias.into_array::<f32>()?)
             .into_tensor();
         }
-        // // call matmul now with qweight
+        // NOTE: next step is fast matmul equivalent of {
         // let einsum_op = EinSum::new("ik,kj->ij".parse()?, f32::datum_type());
-        // // einsum -> matmul imperatif
         // einsum_op.eval(tvec!(input, qweight.permute_axes(&[1, 0])?.into_tvalue()))
-        //
+        // }
         qweight = qweight.permute_axes(&[1, 0])?;
         let op = ops();
-        let &[m, k] = input.shape() else { bail!("unexpected rank {:?}", input.rank())};
+        let &[m, k] = input.shape() else { bail!("unexpected rank {:?}", input.rank()) };
         let &n = qweight.shape().last().unwrap();
 
         let mmm = op.mmm(DatumType::F32, Some(m), Some(k), Some(n)).unwrap();
 
         let (pack_a, pack_b) = &mmm.packings()[0];
-        let cstore = unsafe {
-            mmm.c_view(0, 1)
-        };
-
+        let cstore = unsafe { mmm.c_view(0, 1) };
 
         let a = pack_a.prepare_tensor(&input, 1, 0)?;
         let b = pack_b.prepare_tensor(&qweight, 0, 1)?;
         unsafe {
-            let mut out =
-                Tensor::uninitialized::<f32>(&[m, n])?;
-        let non_linear = &[FusedSpec::AddMatMul {
-            a: tract_linalg::mmm::AsInputValue::Owned(a), b: tract_linalg::mmm::AsInputValue::Owned(b), packing: 0
-        }, FusedSpec::Store(cstore.wrap(&out.view()))];
-            mmm.run(m, n, non_linear);
+            let out = Tensor::uninitialized::<f32>(&[m, n])?;
+            let non_linear = &[
+                FusedSpec::AddMatMul {
+                    a: tract_linalg::mmm::AsInputValue::Owned(a),
+                    b: tract_linalg::mmm::AsInputValue::Owned(b),
+                    packing: 0,
+                },
+                FusedSpec::Store(cstore.wrap(&out.view())),
+            ];
+            mmm.run(m, n, non_linear)?;
 
-        Ok(tvec!(out.into()))
+            Ok(tvec!(out.into()))
         }
     }
 }
