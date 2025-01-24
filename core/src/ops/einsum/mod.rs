@@ -19,7 +19,8 @@ pub mod optimize;
 mod proptest;
 
 pub use as_matmul::{rewrite_einsums_as_matmul, BasicMatMul};
-use tract_linalg::frame::block_quant::{BlockQuantFact, PackedBlockQuantFact};
+use tract_linalg::frame::block_quant::BlockQuantFact;
+use tract_linalg::mmm::PackedOpaqueFact;
 
 pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<[TDim]>> {
     if !fact.datum_type.is_opaque() {
@@ -28,12 +29,14 @@ pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<[TDim]
     let Some(opaque_fact) = fact.opaque_fact.as_ref() else {
         bail!("Datum fact is opaque, but no opaque fact was found.")
     };
-    let inner_shape = if let Some(bqf) = opaque_fact.downcast_ref::<BlockQuantFact>() {
-        &bqf.shape
-    } else if let Some(pbqf) = opaque_fact.downcast_ref::<PackedBlockQuantFact>() {
-        &pbqf.shape
+    let inner_shape: &[usize] = if let Some(bqf) = opaque_fact.downcast_ref::<BlockQuantFact>() {
+        &*bqf.shape
+    // } else if let Some(pbqf) = opaque_fact.downcast_ref::<PackedBlockQuantFact>() {
+    //     &pbqf.shape
+    } else if let Some(pof) = opaque_fact.downcast_ref::<PackedOpaqueFact>() {
+        &[pof.mn, pof.k]
     } else {
-        bail!("Datum fact is opaque, but no opaque fact was found.")
+        bail!("Unsupported opaque fact {opaque_fact:?}")
     };
     let shape: Vec<TDim> = fact
         .shape

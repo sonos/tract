@@ -166,16 +166,20 @@ impl TypedOp for Const {
                 WeightType::Plain(self.0.datum_type())
             };
             let format = tract_linalg::ops().kit_input_format(weight_type);
-            let packed = format.prepare_tensor(&self.0, 0, 1)?;
+            let packed = format.prepare_tensor(&self.0, 1, 0)?;
             let fact = clone_box(packed.opaque_fact());
             let opaque = Opaque(Arc::new(packed));
             let konst = Const(rctensor0(opaque), Some(fact));
-            info!("Using versatile kit for {konst:?}");
-            return TypedModelPatch::replace_single_op(model, node, &[], konst)
-                .inspect(|p| {
-                    dbg!(p);
-                })
-                .map(Some);
+            let mut patch = TypedModelPatch::new(format!("Versatile packing {node}"));
+            let konst = patch.wire_node(&node.name, konst, &[])?;
+            for succ in &node.outputs[0].successors {
+                let succ_node = model.node(succ.node);
+                let mut taps = patch.taps(model, &succ_node.inputs)?;
+                taps[succ.slot] = konst[0];
+                let replacement = patch.wire_node(&succ_node.name, succ_node.op.clone(), &taps)?;
+                patch.shunt_outside(model, succ.node.into(), replacement[0])?;
+            }
+            return Ok(Some(patch));
         }
         Ok(None)
     }
