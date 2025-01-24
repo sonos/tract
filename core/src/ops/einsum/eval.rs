@@ -121,11 +121,15 @@ pub fn eval_q(expr: &AxesMapping, qp: DatumType, inputs: TVec<TValue>) -> TractR
         if qp.rank() == 0 {
             qp.to_array_view()
         } else {
-            let pos = expr.axis((qp_slot, 0))?.interface(data_slot)[0];
-            let rank_a = expr.rank(data_slot);
+            let data_rank = expr.rank(data_slot);
+            let pos_in_input = if expr.axis((qp_slot, 0))?.interface(data_slot).len() != 0 {
+                expr.axis((qp_slot, 0))?.interface(data_slot)[0]
+            } else {
+                0
+            };
 
-            let mut shape = vec![1; rank_a];
-            shape[pos] = qp.len();
+            let mut shape = vec![1; data_rank];
+            shape[pos_in_input] = qp.len();
             Ok(qp.to_array_view()?.into_shape_with_order(shape)?)
         }
     }
