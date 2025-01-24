@@ -14,6 +14,8 @@ pub trait OpaquePayload: DynHash + Send + Sync + Debug + Display + Downcast {
     fn clarify_to_tensor(&self) -> Option<TractResult<Tensor>> {
         None
     }
+
+    fn same_as(&self, other: &dyn OpaquePayload) -> bool;
 }
 impl_downcast!(OpaquePayload);
 dyn_hash::hash_trait_object!(OpaquePayload);
@@ -75,7 +77,11 @@ impl OpaqueFact for TVec<Option<Box<dyn OpaqueFact>>> {
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub struct DummyPayload;
 
-impl OpaquePayload for DummyPayload {}
+impl OpaquePayload for DummyPayload {
+    fn same_as(&self, other: &dyn OpaquePayload) -> bool {
+        other.downcast_ref::<Self>().is_some()
+    }
+}
 
 impl Display for DummyPayload {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -117,6 +123,6 @@ impl Default for Opaque {
 
 impl PartialEq for Opaque {
     fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
+        Arc::ptr_eq(&self.0, &other.0) && self.0.same_as(&*other.0)
     }
 }
