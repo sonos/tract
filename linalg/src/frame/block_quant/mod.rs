@@ -228,21 +228,7 @@ impl MMMInputFormat for PackedBlockQuantFormat {
         k_axis: usize,
         _mn_axis: usize,
     ) -> TractResult<Box<dyn crate::mmm::MMMInputValue>> {
-        ensure!(k_axis == 0);
-        // let k = t.shape()[k_axis];
-        // assert!(k % self.bq.block_len() == 0);
-        // let t: Cow<Tensor> = if k_axis == 1 && mn_axis == 0 {
-        //     Cow::Borrowed(t)
-        // } else {
-        //     Cow::Owned(t.clone().move_axis(1, 0)?)
-        // };
-        // let quant = if t.datum_type() == f32::datum_type() {
-        //     self.bq.quant_f32(t.as_slice()?)?
-        // } else if t.datum_type() == f16::datum_type() {
-        //     self.bq.quant_f16(t.as_slice()?)?
-        // } else {
-        //     todo!()
-        // };
+        ensure!(k_axis == 1);
         let quant = t
             .to_scalar::<Opaque>()?
             .downcast_ref::<BlockQuantValue>()

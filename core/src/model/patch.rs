@@ -104,7 +104,12 @@ where
     pub fn tap_model(&mut self, model: &Graph<F, O>, outlet: OutletId) -> TractResult<OutletId> {
         let fact = model.outlet_fact(outlet)?;
         let id = self.add_source(
-            format!("tap.{}-{}/{}", model.node(outlet.node).name, outlet.node, outlet.slot),
+            format!(
+                "tap.{}-{}/{}",
+                model.node(outlet.node).name,
+                outlet.node,
+                outlet.slot
+            ),
             dyn_clone::clone(fact),
         )?;
         self.taps.insert(id, outlet);
@@ -119,7 +124,10 @@ where
         model: &Graph<F, O>,
         outlets: impl IntoIterator<Item = &'a OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        outlets.into_iter().map(|o| self.tap_model(model, *o)).collect::<TractResult<TVec<_>>>()
+        outlets
+            .into_iter()
+            .map(|o| self.tap_model(model, *o))
+            .collect::<TractResult<TVec<_>>>()
     }
 
     pub unsafe fn shunt_outside_unchecked(
@@ -141,7 +149,14 @@ where
         let original_fact = model.outlet_fact(outlet)?;
         let new_fact = self.model.outlet_fact(by)?;
         if !original_fact.compatible_with(new_fact) {
-            bail!("Trying to substitute a {:?} by {:?}.\n{:?}", original_fact, new_fact, self);
+            bail!(
+                "Trying to substitute a {:?} by {:?} as output #{} of {}.\n{:?}",
+                original_fact,
+                new_fact,
+                outlet.slot,
+                model.node(outlet.node),
+                self
+            );
         }
         self.shunts.insert(outlet, by);
         Ok(())
@@ -200,9 +215,11 @@ where
         {
             Ok(None)
         } else {
-            Self::rewire(patched_model, &node.inputs, &[node.id.into()], &|_p, xs| Ok(xs.into()))
-                .with_context(|| format!("Shunting {node}"))
-                .map(Some)
+            Self::rewire(patched_model, &node.inputs, &[node.id.into()], &|_p, xs| {
+                Ok(xs.into())
+            })
+            .with_context(|| format!("Shunting {node}"))
+            .map(Some)
         }
     }
 
@@ -299,7 +316,13 @@ where
                 mapping.insert(node.id.into(), target.add_const(&node.name, k.0.clone())?);
                 continue;
             }
-            let Node { id: patch_node_id, name, inputs, op, outputs } = node;
+            let Node {
+                id: patch_node_id,
+                name,
+                inputs,
+                op,
+                outputs,
+            } = node;
             let n_outputs = outputs.len();
             for dup in 0..target.nodes.len() {
                 if target.node(dup).op().same_as(op.as_ref())
@@ -319,7 +342,10 @@ where
             let added_node_id = target.add_node(name, op, facts)?;
             new_nodes.insert(added_node_id);
             for ix in 0..n_outputs {
-                mapping.insert(OutletId::new(patch_node_id, ix), OutletId::new(added_node_id, ix));
+                mapping.insert(
+                    OutletId::new(patch_node_id, ix),
+                    OutletId::new(added_node_id, ix),
+                );
             }
             all_inputs.insert(added_node_id, inputs);
             if <Graph<F, O>>::is_source(&target.node(added_node_id).op) {
@@ -335,7 +361,9 @@ where
         debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
         for (&outlet, &by) in shunt_outlet_by.iter().sorted() {
             let replace_by = mapping[&by];
-            let succs = target.nodes()[outlet.node].outputs[outlet.slot].successors.clone();
+            let succs = target.nodes()[outlet.node].outputs[outlet.slot]
+                .successors
+                .clone();
             for succ in succs {
                 target.add_edge(replace_by, succ)?;
             }
@@ -368,14 +396,20 @@ where
             maybe_garbage.remove(&maybe);
             if !target.outputs.iter().any(|output| output.node == maybe)
                 && !target.inputs.iter().any(|input| input.node == maybe)
-                && target.node(maybe).outputs.iter().all(|of| of.successors.is_empty())
+                && target
+                    .node(maybe)
+                    .outputs
+                    .iter()
+                    .all(|of| of.successors.is_empty())
             {
                 target.node_mut(maybe).op = target.create_dummy();
                 target.node_mut(maybe).name = format!("Dummy-node-{}", maybe);
                 target.node_mut(maybe).outputs.clear(); // necessary to drop facts and consts
                 let inputs = std::mem::take(&mut target.node_mut(maybe).inputs);
                 for &i in &inputs {
-                    target.node_mut(i.node).outputs[i.slot].successors.retain(|s| s.node != maybe);
+                    target.node_mut(i.node).outputs[i.slot]
+                        .successors
+                        .retain(|s| s.node != maybe);
                     maybe_garbage.insert(i.node);
                 }
                 target.check_edges()?;
