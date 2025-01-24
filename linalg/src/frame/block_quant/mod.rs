@@ -6,8 +6,10 @@ use tract_data::internal::*;
 use tract_data::itertools::Itertools;
 
 use std::alloc::Layout;
+use std::borrow::Cow;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
+use std::sync::Arc;
 
 mod helpers;
 mod q4_0;
@@ -226,8 +228,35 @@ impl MMMInputFormat for PackedBlockQuantFormat {
         &self,
         t: &Tensor,
         k_axis: usize,
-        _mn_axis: usize,
+        mn_axis: usize,
     ) -> TractResult<Box<dyn crate::mmm::MMMInputValue>> {
+        // this code path is essentially there for test scenarios
+        let t = if t.datum_type().is_number() {
+            let k = t.shape()[k_axis];
+            let m = t.shape()[mn_axis];
+            assert!(k % self.bq.block_len() == 0);
+            let t: Cow<Tensor> = if k_axis == 1 && mn_axis == 0 {
+                Cow::Borrowed(t)
+            } else {
+                Cow::Owned(t.clone().move_axis(1, 0)?)
+            };
+            let quant = if t.datum_type() == f32::datum_type() {
+                self.bq.quant_f32(t.as_slice()?)?
+            } else if t.datum_type() == f16::datum_type() {
+                self.bq.quant_f16(t.as_slice()?)?
+            } else {
+                todo!()
+            };
+            Cow::Owned(tensor0(Opaque(Arc::new(BlockQuantValue {
+                value: quant,
+                fact: BlockQuantFact {
+                    format: self.bq.clone(),
+                    shape: tvec!(m, k),
+                },
+            }))))
+        } else {
+            Cow::Borrowed(t)
+        };
         ensure!(k_axis == 1);
         let quant = t
             .to_scalar::<Opaque>()?

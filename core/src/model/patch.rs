@@ -6,7 +6,6 @@ use tract_data::itertools::{izip, Itertools};
 
 use crate::internal::*;
 use crate::model::*;
-use crate::ops::konst::Const;
 
 /// A change to apply to a model.
 ///

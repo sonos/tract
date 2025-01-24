@@ -428,13 +428,13 @@ impl TypedOp for EinSum {
         self.declutter_after_concat(model, node)
     }
 
-    // fn codegen(
-    //     &self,
-    //     model: &TypedModel,
-    //     node: &TypedNode,
-    // ) -> TractResult<Option<TypedModelPatch>> {
-    //     optimize::optimize(self, model, node)
-    // }
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        optimize::optimize(self, model, node)
+    }
 
     as_op!();
 }
