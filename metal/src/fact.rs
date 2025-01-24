@@ -55,6 +55,12 @@ impl OpaqueFact for MetalFact {
     fn mem_size(&self) -> TDim {
         self.fact.mem_size()
     }
+    fn same_as(&self, other: &dyn OpaqueFact) -> bool {
+        other.downcast_ref::<Self>().is_some_and(|o| o == self)
+    }
+    fn compatible_with(&self, other: &dyn OpaqueFact) -> bool {
+        other.is::<Self>()
+    }
 }
 
 impl fmt::Debug for MetalFact {
