@@ -54,6 +54,10 @@ impl OpaqueFact for LazyIm2colParams {
             self.n_byte_offsets.len().to_dim(),
         )
     }
+
+    fn same_as(&self, _other: &dyn OpaqueFact) -> bool {
+        _other.downcast_ref::<Self>().is_some_and(|o| o == self)
+    }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq)]

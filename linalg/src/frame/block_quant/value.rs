@@ -19,6 +19,16 @@ impl OpaqueFact for BlockQuantFact {
         (self.shape.iter().product::<usize>() / self.format.block_len() * self.format.block_bytes())
             .to_dim()
     }
+
+    fn same_as(&self, other: &dyn OpaqueFact) -> bool {
+        other.downcast_ref::<Self>().is_some_and(|o| o == self)
+    }
+}
+
+impl PartialEq for BlockQuantFact {
+    fn eq(&self, other: &Self) -> bool {
+        self.format.same_as(&*other.format) && self.shape == other.shape
+    }
 }
 
 #[derive(Clone, Hash)]
@@ -41,7 +51,7 @@ impl std::fmt::Display for BlockQuantValue {
     }
 }
 
-#[derive(Clone, Hash)]
+#[derive(Clone, Hash, PartialEq)]
 pub struct PackedBlockQuantFact {
     pub format: PackedBlockQuantFormat,
     pub shape: TVec<usize>,
@@ -58,5 +68,8 @@ impl OpaqueFact for PackedBlockQuantFact {
         (self.shape.iter().product::<usize>() / self.format.bq.block_len()
             * self.format.bq.block_bytes())
         .to_dim()
+    }
+    fn same_as(&self, other: &dyn OpaqueFact) -> bool {
+        other.downcast_ref::<Self>().is_some_and(|o| o == self)
     }
 }

@@ -67,6 +67,16 @@ impl OpaqueFact for PackedOpaqueFact {
     fn mem_size(&self) -> TDim {
         self.format.mem_size(self.k.to_dim(), self.mn.to_dim())
     }
+
+    fn same_as(&self, other: &dyn OpaqueFact) -> bool {
+        other.downcast_ref::<Self>().is_some_and(|o| o == self)
+    }
+}
+
+impl PartialEq for PackedOpaqueFact {
+    fn eq(&self, other: &Self) -> bool {
+        self.format.same_as(&*other.format) && self.mn == other.mn && self.k == other.k
+    }
 }
 
 #[derive(Clone, Hash)]

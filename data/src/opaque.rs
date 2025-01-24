@@ -19,9 +19,7 @@ impl_downcast!(OpaquePayload);
 dyn_hash::hash_trait_object!(OpaquePayload);
 
 pub trait OpaqueFact: DynHash + Send + Sync + Debug + dyn_clone::DynClone + Downcast {
-    fn same_as(&self, _other: &dyn OpaqueFact) -> bool {
-        false
-    }
+    fn same_as(&self, other: &dyn OpaqueFact) -> bool;
 
     /// Whether or not it is acceptable for a Patch to substitute `self` by `other`.
     ///
@@ -59,10 +57,18 @@ impl OpaqueFact for TVec<Box<dyn OpaqueFact>> {
     fn mem_size(&self) -> TDim {
         self.iter().map(|it| it.mem_size()).sum()
     }
+
+    fn same_as(&self, other: &dyn OpaqueFact) -> bool {
+        other.downcast_ref::<Self>().is_some_and(|o| self == o)
+    }
 }
 impl OpaqueFact for TVec<Option<Box<dyn OpaqueFact>>> {
     fn mem_size(&self) -> TDim {
         self.iter().flatten().map(|it| it.mem_size()).sum()
+    }
+
+    fn same_as(&self, other: &dyn OpaqueFact) -> bool {
+        other.downcast_ref::<Self>().is_some_and(|o| self == o)
     }
 }
 
