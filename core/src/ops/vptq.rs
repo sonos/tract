@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use tract_data::itertools::Itertools;
 use tract_ndarray::Array1;
 
@@ -206,6 +208,12 @@ impl EvalOp for VPTQGemm {
             assert_eq!(outlier_centroids.rank(), 3);
             assert!(outlier_centroids.datum_type().is_float());
         }
+        let fdtypes = HashSet::from([
+            input.datum_type(),
+            centroids.datum_type(),
+            outlier_centroids.datum_type(),
+        ]);
+        assert!(fdtypes.len() == 1);
 
         let mut qweight =
             self.eval_extract_from_vector_quant(centroids, indices, self.group_size)?;
@@ -246,7 +254,7 @@ impl EvalOp for VPTQGemm {
                 + weight_bias.into_array::<f32>()?)
             .into_tensor();
         }
-        // NOTE: next step is fast matmul equivalent of {
+        // NOTE: next steps is fast matmul equivalent of {
         // let einsum_op = EinSum::new("ik,kj->ij".parse()?, f32::datum_type());
         // einsum_op.eval(tvec!(input, qweight.permute_axes(&[1, 0])?.into_tvalue()))
         // }
@@ -255,7 +263,7 @@ impl EvalOp for VPTQGemm {
         let &[m, k] = input.shape() else { bail!("unexpected rank {:?}", input.rank()) };
         let &n = qweight.shape().last().unwrap();
 
-        let mmm = op.mmm(DatumType::F32, Some(m), Some(k), Some(n)).unwrap();
+        let mmm = op.mmm(*fdtypes.iter().next().unwrap(), Some(m), Some(k), Some(n)).unwrap();
 
         let (pack_a, pack_b) = &mmm.packings()[0];
         let cstore = unsafe { mmm.c_view(0, 1) };
