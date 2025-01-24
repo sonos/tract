@@ -26,6 +26,12 @@ impl Display for PanelExtractor {
     }
 }
 
+impl PartialEq for PanelExtractor {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.from.same_as(&*other.from) && self.to == other.to
+    }
+}
+
 impl PanelExtractor {
     #[allow(unused_variables)]
     pub fn is_supported_here(&self) -> bool {
@@ -66,6 +72,11 @@ impl MMMInputValue for PanelExtractInput {
     }
     fn opaque_fact(&self) -> &dyn tract_data::internal::OpaqueFact {
         self.data.opaque_fact()
+    }
+    fn same_as(&self, other: &dyn MMMInputValue) -> bool {
+        other
+            .downcast_ref::<Self>()
+            .is_some_and(|o| o.format == self.format && o.data.same_as(&self.data))
     }
 }
 

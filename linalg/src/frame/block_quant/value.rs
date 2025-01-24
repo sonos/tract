@@ -37,7 +37,13 @@ pub struct BlockQuantValue {
     pub value: Blob,
 }
 
-impl OpaquePayload for BlockQuantValue {}
+impl OpaquePayload for BlockQuantValue {
+    fn same_as(&self, other: &dyn OpaquePayload) -> bool {
+        other
+            .downcast_ref::<Self>()
+            .is_some_and(|o| o.fact == self.fact && o.value == self.value)
+    }
+}
 
 impl std::fmt::Debug for BlockQuantValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -33,6 +33,7 @@ pub trait MMMInputValue: DynClone + Debug + DynHash + Send + Sync + Display + Do
     fn mn(&self) -> usize;
     fn k(&self) -> usize;
     fn opaque_fact(&self) -> &dyn OpaqueFact;
+    fn same_as(&self, other: &dyn MMMInputValue) -> bool;
 }
 dyn_clone::clone_trait_object!(MMMInputValue);
 impl_downcast!(MMMInputValue);
@@ -44,7 +45,13 @@ impl From<Box<dyn MMMInputValue>> for Opaque {
     }
 }
 
-impl OpaquePayload for Box<dyn MMMInputValue> {}
+impl OpaquePayload for Box<dyn MMMInputValue> {
+    fn same_as(&self, other: &dyn OpaquePayload) -> bool {
+        other
+            .downcast_ref::<Self>()
+            .is_some_and(|other| (*self).same_as(other))
+    }
+}
 
 #[derive(Clone, Hash, Debug)]
 pub struct PackedOpaqueFact {
@@ -104,6 +111,13 @@ impl MMMInputValue for EagerPackedInput {
     }
     fn opaque_fact(&self) -> &dyn OpaqueFact {
         &self.fact
+    }
+    fn same_as(&self, other: &dyn MMMInputValue) -> bool {
+        other.downcast_ref::<Self>().is_some_and(|other| {
+            self.fact.same_as(&other.fact)
+                && self.packed == other.packed
+                && self.panel_bytes == other.panel_bytes
+        })
     }
 }
 

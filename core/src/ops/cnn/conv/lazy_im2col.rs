@@ -371,6 +371,12 @@ impl MMMInputValue for LazyIm2colInput {
     fn opaque_fact(&self) -> &dyn OpaqueFact {
         &*self.im2col
     }
+
+    fn same_as(&self, other: &dyn MMMInputValue) -> bool {
+        other.downcast_ref::<Self>().is_some_and(|o| {
+            o.tensor == self.tensor && (&*o.im2col as &dyn MMMInputFormat).same_as(&*self.im2col)
+        })
+    }
 }
 
 impl LazyIm2colInput {
