@@ -552,7 +552,8 @@ graph network(input_node) -> (i"wavenet_2/post_proc_2-1x1_conv-conv1d/convolutio
   i"wavenet_2/Relu.low" = max(i"wavenet_2/AddN.22", i"wavenet_2/Relu.low.cst.1.1.1");
   i"wavenet_2/post_proc_1-1x1_conv-conv1d/convolution/Conv2D.filters_as_co_ci" = variable<scalar>(label = "wavenet_2/post_proc_1-1x1_conv-conv1d/convolution/Conv2D.filters_as_co_ci", shape = [32, 32]);
   i"wavenet_2/post_proc_1-1x1_conv-conv1d/convolution/Conv2D" = matmul(i"wavenet_2/Relu.low", i"wavenet_2/post_proc_1-1x1_conv-conv1d/convolution/Conv2D.filters_as_co_ci", transposeA = false, transposeB = true);
-  i"wavenet_2/post_proc_1-1x1_conv-conv1d/Relu.low" = max(i"wavenet_2/post_proc_1-1x1_conv-conv1d/convolution/Conv2D", i"wavenet_2/Relu.low.cst.1.1.1");
+  i"wavenet_2/Relu.low.cst.2.1.1" = [[0.0]];
+  i"wavenet_2/post_proc_1-1x1_conv-conv1d/Relu.low" = max(i"wavenet_2/post_proc_1-1x1_conv-conv1d/convolution/Conv2D", i"wavenet_2/Relu.low.cst.2.1.1");
   i"wavenet_2/post_proc_2-1x1_conv-conv1d/convolution/Conv2D.filters_as_co_ci" = variable<scalar>(label = "wavenet_2/post_proc_2-1x1_conv-conv1d/convolution/Conv2D.filters_as_co_ci", shape = [2, 32]);
   i"wavenet_2/post_proc_2-1x1_conv-conv1d/convolution/Conv2D" = matmul(i"wavenet_2/post_proc_1-1x1_conv-conv1d/Relu.low", i"wavenet_2/post_proc_2-1x1_conv-conv1d/convolution/Conv2D.filters_as_co_ci", transposeA = false, transposeB = true);
 }
