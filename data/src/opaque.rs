@@ -1,6 +1,6 @@
 #![allow(clippy::derived_hash_with_manual_eq)]
-use crate::dim::TDim;
 use crate::datum::DatumType;
+use crate::dim::TDim;
 use crate::internal::{TVec, Tensor, TractResult};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
@@ -21,6 +21,13 @@ dyn_hash::hash_trait_object!(OpaquePayload);
 pub trait OpaqueFact: DynHash + Send + Sync + Debug + dyn_clone::DynClone + Downcast {
     fn same_as(&self, _other: &dyn OpaqueFact) -> bool {
         false
+    }
+
+    /// Whether or not it is acceptable for a Patch to substitute `self` by `other`.
+    ///
+    /// In other terms, all operators consuming `self` MUST accept also accept `other` without being altered.
+    fn compatible_with(&self, other: &dyn OpaqueFact) -> bool {
+        self.same_as(other)
     }
 
     fn clarify_dt_shape(&self) -> Option<(DatumType, &[usize])> {
