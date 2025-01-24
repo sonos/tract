@@ -312,10 +312,6 @@ where
                 // this is a tap
                 continue;
             }
-            if let Some(k) = node.op_as::<Const>() {
-                mapping.insert(node.id.into(), target.add_const(&node.name, k.0.clone())?);
-                continue;
-            }
             let Node {
                 id: patch_node_id,
                 name,
