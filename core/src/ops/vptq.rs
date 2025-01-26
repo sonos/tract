@@ -175,9 +175,9 @@ impl EvalOp for VPTQGemm {
             bias,
         ) = args_9!(inputs);
         let indices = indices.into_tensor();
-        let centroids = centroids.into_tensor();
+        let mut centroids = centroids.into_tensor();
         let outlier_indices = outlier_indices.into_tensor();
-        let outlier_centroids = outlier_centroids.into_tensor();
+        let mut outlier_centroids = outlier_centroids.into_tensor();
         let perm = perm.into_tensor();
         let weight_scale = weight_scale.into_tensor();
         let weight_bias = weight_bias.into_tensor();
@@ -193,7 +193,7 @@ impl EvalOp for VPTQGemm {
         if bias.len() > 1 {
             unimplemented!("'bias' for vptq not yet supported !");
         }
-        assert_eq!(input.rank(), 2);
+        assert!([2, 3].contains(&input.rank()));
         assert!(input.datum_type().is_float());
 
         assert_eq!(indices.rank(), 3);
@@ -208,12 +208,16 @@ impl EvalOp for VPTQGemm {
             assert_eq!(outlier_centroids.rank(), 3);
             assert!(outlier_centroids.datum_type().is_float());
         }
-        let fdtypes = HashSet::from([
-            input.datum_type(),
-            centroids.datum_type(),
-            outlier_centroids.datum_type(),
-        ]);
-        assert!(fdtypes.len() == 1);
+        let _fdtypes = [input.datum_type(), centroids.datum_type(), outlier_centroids.datum_type()];
+        let fdtypes = HashSet::from(_fdtypes);
+        if fdtypes.len() != 1 {
+            log::warn!("force cast centroids to be same type as input: {:?}", input.datum_type());
+            centroids = centroids.cast_to_dt(input.datum_type())?.into_owned();
+            outlier_centroids = outlier_centroids.cast_to_dt(input.datum_type())?.into_owned();
+        }
+        let _fdtypes = [input.datum_type(), centroids.datum_type(), outlier_centroids.datum_type()];
+        let fdtypes = HashSet::from(_fdtypes);
+        assert!(fdtypes.len() == 1, "mixed dtypes: {_fdtypes:?}");
 
         let mut qweight =
             self.eval_extract_from_vector_quant(centroids, indices, self.group_size)?;
@@ -290,7 +294,7 @@ impl EvalOp for VPTQGemm {
 impl TypedOp for VPTQGemm {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut tfact = inputs[0].without_value();
-        tfact.shape.set(1, self.out_features.into());
+        tfact.shape.set(tfact.rank() - 1, self.out_features.into());
         Ok(tvec!(tfact))
     }
 

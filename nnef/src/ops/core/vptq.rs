@@ -30,7 +30,7 @@ pub fn register(registry: &mut Registry) {
 fn ser_vptq_gemm(
     ast: &mut IntoAst,
     node: &TypedNode,
-    _op: &VPTQGemm,
+    op: &VPTQGemm,
 ) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
     let indices = ast.mapping[&node.inputs[1]].clone();
@@ -42,11 +42,6 @@ fn ser_vptq_gemm(
     let weight_bias = ast.mapping[&node.inputs[7]].clone();
     let bias = ast.mapping[&node.inputs[8]].clone();
 
-    let vector_len = ast.mapping[&node.inputs[9]].clone();
-    let in_features = ast.mapping[&node.inputs[10]].clone();
-    let out_features = ast.mapping[&node.inputs[11]].clone();
-    let group_size = ast.mapping[&node.inputs[12]].clone();
-    let outlier_size = ast.mapping[&node.inputs[13]].clone();
     Ok(Some(invocation(
         "tract_core_vptq_gemm",
         &[
@@ -61,11 +56,11 @@ fn ser_vptq_gemm(
             bias,
         ],
         &[
-            ("vector_len", numeric(vector_len)),
-            ("in_features", numeric(in_features)),
-            ("out_features", numeric(out_features)),
-            ("group_size", numeric(group_size)),
-            ("outlier_size", numeric(outlier_size)),
+            ("vector_len", numeric(op.vector_len)),
+            ("in_features", numeric(op.in_features)),
+            ("out_features", numeric(op.out_features)),
+            ("group_size", numeric(op.group_size)),
+            ("outlier_size", numeric(op.outlier_size)),
         ],
     )))
 }
@@ -90,7 +85,14 @@ fn de_vptq_gemm(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
     let outlier_size = invocation.named_arg_as(builder, "outlier_size")?;
 
     builder.wire(
-        VPTQGemm { vector_len, in_features, out_features, is_indice_packed, group_size, outlier_size},
+        VPTQGemm {
+            vector_len,
+            in_features,
+            out_features,
+            is_indice_packed,
+            group_size,
+            outlier_size,
+        },
         &[
             input,
             indices,
