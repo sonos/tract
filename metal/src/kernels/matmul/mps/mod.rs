@@ -47,7 +47,7 @@ impl GemmKernel for MpsMatMul {
         c_buffer: &Buffer,
     ) -> TractResult<()> {
         let GemmDispatchParams {
-            dt,
+            dts,
             batch,
             m,
             k,
@@ -59,10 +59,15 @@ impl GemmKernel for MpsMatMul {
             c_offset,
         } = params;
 
-        let data_type = match params.dt {
+        ensure!(dts[0] == dts[1]);
+        ensure!(dts[0] == dts[2]);
+        
+        let dt = dts[0];
+
+        let data_type = match dt {
             DatumType::F32 => MPSDataType::Float32,
             DatumType::F16 => MPSDataType::Float16,
-            _ => bail!("Unsupported datum type for MpsMatMul {:?}", params.dt),
+            _ => bail!("Unsupported datum type for MpsMatMul {:?}", dt),
         };
 
         for b_idx in 0..batch {

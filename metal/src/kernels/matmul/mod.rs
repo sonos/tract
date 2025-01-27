@@ -31,7 +31,7 @@ impl Default for MetalGemmImplKind {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct GemmDispatchParams {
-    pub dt: DatumType,
+    pub dts: [DatumType; 3],
     pub batch: usize,
     pub m: usize,
     pub k: usize,
@@ -46,7 +46,7 @@ pub struct GemmDispatchParams {
 impl GemmDispatchParams {
     #[allow(clippy::too_many_arguments)]
     pub fn compute_dispatches_params(
-        dt: DatumType,
+        dts: [DatumType; 3],
         a_offset: usize,
         a_shape: &[usize],
         transpose_a: bool,
@@ -74,7 +74,7 @@ impl GemmDispatchParams {
             // bmk, 1kn -> bmn
             // bmk, 1nk -> bmn
             (a_batch, 1) if a_batch != 1 && !transpose_a => Ok(vec![GemmDispatchParams {
-                dt,
+                dts,
                 batch: 1,
                 m: m * a_batch,
                 n,
@@ -90,16 +90,16 @@ impl GemmDispatchParams {
             // As many dispatches as batch dimension.
             (a_batch, 1) if a_batch != 1 => Ok((0..a_batch)
                 .map(|a_batch_idx| GemmDispatchParams {
-                    dt,
+                    dts,
                     batch: 1,
                     m,
                     n,
                     k,
                     transpose_a,
-                    a_offset: a_offset + a_batch_idx * m * k * dt.size_of(),
+                    a_offset: a_offset + a_batch_idx * m * k * dts[0].size_of(),
                     transpose_b,
                     b_offset,
-                    c_offset: c_offset + a_batch_idx * m * n * dt.size_of(),
+                    c_offset: c_offset + a_batch_idx * m * n * dts[2].size_of(),
                 })
                 .collect()),
             // 1mk, bkn -> bmn
@@ -109,7 +109,7 @@ impl GemmDispatchParams {
             // As many dispatch as batch dimension.
             (1, b_batch) if b_batch != 1 => Ok((0..b_batch)
                 .map(|b_batch_idx| GemmDispatchParams {
-                    dt,
+                    dts,
                     batch: 1,
                     m,
                     n,
@@ -117,8 +117,8 @@ impl GemmDispatchParams {
                     transpose_a,
                     a_offset,
                     transpose_b,
-                    b_offset: b_offset + b_batch_idx * n * k * dt.size_of(),
-                    c_offset: c_offset + b_batch_idx * m * n * dt.size_of(),
+                    b_offset: b_offset + b_batch_idx * n * k * dts[0].size_of(),
+                    c_offset: c_offset + b_batch_idx * m * n * dts[2].size_of(),
                 })
                 .collect()),
             // bmk, bkn -> bmn
@@ -129,7 +129,7 @@ impl GemmDispatchParams {
                 ensure!(a_batch == b_batch);
 
                 Ok(vec![GemmDispatchParams {
-                    dt,
+                    dts,
                     batch: a_batch,
                     m,
                     n,
@@ -226,7 +226,7 @@ impl<M: GemmKernel> GemmImpl<M> {
         }
 
         let dispatches = GemmDispatchParams::compute_dispatches_params(
-            c.datum_type(),
+            [a.datum_type(), b.datum_type(), c.datum_type()],
             a.metal_offset(),
             a.shape(),
             self.transpose_a,
@@ -330,7 +330,9 @@ mod tests {
         let (m, k, n) = (2, 3, 4);
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
+                [dt,
                 dt,
+                dt],
                 0,
                 &[1, m, k],
                 false,
@@ -341,7 +343,7 @@ mod tests {
                 &[1, m, n],
             )?,
             vec![GemmDispatchParams {
-                dt,
+                dts: [dt; 3],
                 batch: 1,
                 m,
                 n,
@@ -356,7 +358,9 @@ mod tests {
 
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
+                [dt,
                 dt,
+                dt],
                 0,
                 &[10, m, k],
                 false,
@@ -367,7 +371,7 @@ mod tests {
                 &[10, m, n],
             )?,
             vec![GemmDispatchParams {
-                dt,
+                dts: [dt; 3],
                 batch: 10,
                 m,
                 n,
@@ -382,7 +386,9 @@ mod tests {
 
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
+                [dt,
                 dt,
+                dt],
                 0,
                 &[1, m, k],
                 false,
@@ -394,7 +400,7 @@ mod tests {
             )?,
             vec![
                 GemmDispatchParams {
-                    dt,
+                    dts: [dt; 3],
                     batch: 1,
                     m,
                     n,
@@ -406,7 +412,7 @@ mod tests {
                     c_offset: 10,
                 },
                 GemmDispatchParams {
-                    dt,
+                    dts: [dt; 3],
                     batch: 1,
                     m,
                     n,
@@ -422,7 +428,9 @@ mod tests {
 
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
+                [dt,
                 dt,
+                dt],
                 0,
                 &[2, k, m],
                 true,
@@ -433,7 +441,7 @@ mod tests {
                 &[2, m, n],
             )?,
             vec![GemmDispatchParams {
-                dt,
+                dts: [dt; 3],
                 batch: 2,
                 m,
                 n,
@@ -448,7 +456,9 @@ mod tests {
 
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
+                [dt,
                 dt,
+                dt],
                 0,
                 &[2, k, m],
                 true,
@@ -460,7 +470,7 @@ mod tests {
             )?,
             vec![
                 GemmDispatchParams {
-                    dt,
+                    dts: [dt; 3],
                     batch: 1,
                     m,
                     n,
@@ -472,7 +482,7 @@ mod tests {
                     c_offset: 100,
                 },
                 GemmDispatchParams {
-                    dt,
+                    dts: [dt; 3],
                     batch: 1,
                     m,
                     n,
@@ -488,7 +498,7 @@ mod tests {
 
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
-                dt,
+                [dt; 3],
                 0,
                 &[10, m, k],
                 false,
@@ -499,7 +509,7 @@ mod tests {
                 &[10, m, n],
             )?,
             vec![GemmDispatchParams {
-                dt,
+                dts: [dt; 3],
                 batch: 1,
                 m: 10 * m,
                 n,
