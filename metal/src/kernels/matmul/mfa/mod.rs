@@ -33,7 +33,7 @@ impl GemmKernel for MfaGemm {
         c_buffer: &Buffer,
     ) -> TractResult<()> {
         let GemmDispatchParams {
-            dt,
+            dts,
             batch,
             m,
             k,
@@ -58,7 +58,7 @@ impl GemmKernel for MfaGemm {
 
         dispatch_metal_mfa_gemm(
             context,
-            dt,
+            dts,
             (batch, m, n, k),
             unsafe { std::mem::transmute::<&[isize], &[usize]>(a_strides.as_slice()) },
             a_offset,
@@ -80,7 +80,7 @@ impl GemmKernel for MfaGemm {
 #[allow(clippy::too_many_arguments)]
 pub fn dispatch_metal_mfa_gemm(
     context: &MetalContext,
-    dt: DatumType,
+    dts: [DatumType; 3],
     (b, m, n, k): (usize, usize, usize, usize),
     lhs_stride: &[usize],
     lhs_offset: usize,
@@ -167,7 +167,11 @@ pub fn dispatch_metal_mfa_gemm(
         (211, Value::U16(n_splits)),
         (50_001, Value::Bool(fused_bias)),
     ]));
-
+    
+    ensure!(dts[0] == dts[1]);
+    ensure!(dts[0] == dts[2]);
+    
+    let dt = dts[0];
     let name = match dt {
         DatumType::F32 => "sgemm",
         DatumType::F16 => "hgemm",

@@ -28,7 +28,7 @@ impl GemmKernel for BasicMatMul {
         c_buffer: &Buffer,
     ) -> TractResult<()> {
         let GemmDispatchParams {
-            dt,
+            dts,
             batch,
             m,
             k,
@@ -39,6 +39,11 @@ impl GemmKernel for BasicMatMul {
             b_offset,
             c_offset,
         } = params;
+
+        ensure!(dts[0] == dts[1]);
+        ensure!(dts[0] == dts[2]);
+        
+        let dt = dts[0];
         for b_idx in 0..batch {
             let a_offset = a_offset + b_idx * m * k * dt.size_of();
             let b_offset = b_offset + b_idx * n * k * dt.size_of();
