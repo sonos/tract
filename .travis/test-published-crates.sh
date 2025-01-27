@@ -22,6 +22,7 @@ then
 fi
 
 set +x
+cargo update
 
 for c in data linalg core nnef hir onnx pulse onnx-opl pulse-opl rs
 do
