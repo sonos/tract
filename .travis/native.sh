@@ -2,8 +2,15 @@
 
 set -ex
 
+if [ -z "$RUST_TOOLCHAIN" ]
+then
+    export RUST_TOOLCHAIN=1.75.0
+fi
+
 rustup update
 
+cargo clean
+cargo update
 cargo check --all-targets --workspace --exclude test-tflite --exclude test-metal --exclude tract-metal
 
 ./.travis/onnx-tests.sh
