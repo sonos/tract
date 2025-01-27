@@ -2,9 +2,9 @@
 
 set -ex
 
-if [ -z "$RUST_TOOLCHAIN" ]
+if [ -z "$RUSTUP_TOOLCHAIN" ]
 then
-    export RUST_TOOLCHAIN=1.75.0
+    export RUSTUP_TOOLCHAIN=1.75.0
 fi
 
 rustup update

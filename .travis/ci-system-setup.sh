@@ -4,9 +4,9 @@
 
 if [ -n "$CI" -a ! -e ".setup-done" ]
 then
-    if [ -z "$RUST_TOOLCHAIN" ]
+    if [ -z "$RUST_VERSION" ]
     then
-        export RUST_TOOLCHAIN=1.75.0
+        export RUST_VERSION=1.75.0
     fi
 
     which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
