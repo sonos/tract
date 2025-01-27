@@ -198,74 +198,76 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             .iter()
             .all(|f| MetalTensor::is_supported_dt(f.datum_type) || f.as_metal_fact().is_some());
 
-        let new_metal_op: Option<Box<dyn TypedOp>> = if !in_dts_metal_compatible {
+        let new_metal_ops: Option<Vec<Box<dyn TypedOp>>> = if !in_dts_metal_compatible {
             None
         } else if let Some(op) = node.op_as::<ElementWiseOp>() {
-            convert_element_wise_ops_to_metal(op).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+            convert_element_wise_ops_to_metal(op).map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
         } else if let Some(op) = node.op_as::<TypedBinOp>() {
-            convert_bin_ops_to_metal(&op.0).map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+            convert_bin_ops_to_metal(&op.0).map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
         } else if let Some(op) = node.op_as::<Comp>() {
-            Some(Box::new(convert_logic_ops_to_metal(op)))
+            Some(vec![Box::new(convert_logic_ops_to_metal(op))])
         } else if let Some(op) = node.op_as::<BasicMatMul>() {
             convert_matmul_to_metal(source, node, op, self.gemm_impl)?
         } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
-            Some(Box::new(ops::MetalMultiBroadcastTo::new(op.shape.clone())))
+            Some(vec![Box::new(ops::MetalMultiBroadcastTo::new(op.shape.clone()))])
         } else if let Some(op) = node.op_as::<Const>() {
-            convert_const(op)?.map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+            convert_const(op)?.map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
         } else if let Some(op) = node.op_as::<Cast>() {
             check_in_dts_are_supported(source, node.id, ops::MetalCast::is_supported_dt)?
                 .then(|| ops::MetalCast::new(op.to))
                 .flatten()
-                .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+                .map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
         } else if let Some(op) = node.op_as::<AxisOp>() {
             let in_fact = source.node_input_facts(node.id)?[0];
-            Some(Box::new(ops::MetalAxisOp::from_tract_core_with_fact(op.clone(), in_fact)))
+            Some(vec![Box::new(ops::MetalAxisOp::from_tract_core_with_fact(op.clone(), in_fact))])
         } else if let Some(op) = node.op_as::<Slice>() {
-            Some(Box::new(ops::MetalSlice::from_tract_core(op.clone())))
+            Some(vec![Box::new(ops::MetalSlice::from_tract_core(op.clone()))])
         } else if let Some(op) = node.op_as::<TypedConcat>() {
-            Some(Box::new(ops::MetalConcat::from_tract_core(op)))
+            Some(vec![Box::new(ops::MetalConcat::from_tract_core(op))])
         } else if let Some(op) = node.op_as::<Reduce>() {
             check_in_dts_are_supported(source, node.id, Reducer::is_supported_dt)?
                 .then(|| ops::MetalReduce::from_tract_core(op).ok())
                 .flatten()
-                .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+                .map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
         } else if let Some(op) = node.op_as::<CoreSoftmax>() {
             check_in_dts_are_supported(source, node.id, Softmax::is_supported_dt)?
                 .then(|| ops::MetalSoftmax::from_tract_core(op).ok())
                 .flatten()
-                .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+                .map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
         } else if let Some(op) = node.op_as::<BasicScaledMaskedSoftmax>() {
             check_in_dts_are_supported(source, node.id, ScaledMaskedSoftmax::is_supported_dt)?
                 .then(|| ops::MetalScaledMaskedSoftmax { scale: op.scale.clone() })
-                .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+                .map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
         } else if let Some(op) = node.op_as::<BasicRmsNorm>() {
             check_in_dts_are_supported(source, node.id, RmsNorm::is_supported_dt)?
                 .then(|| ops::MetalRmsNorm::new(op.axis, op.eps.clone()))
-                .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+                .map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
         } else if let Some(_op) = node.op_as::<BasicRotateHalf>() {
             check_in_dts_are_supported(source, node.id, RotateHalf::is_supported_dt)?
                 .then_some(ops::MetalRotateHalf)
-                .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+                .map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
         } else if let Some(_op) = node.op_as::<BasicApplyRope>() {
             check_in_dts_are_supported(source, node.id, ApplyRope::is_supported_dt)?
                 .then_some(ops::MetalApplyRope)
-                .map(|o| -> Box<dyn TypedOp> { Box::new(o) })
+                .map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
         } else if let Some(_op) = node.op_as::<BasicSilu>() {
             check_in_dts_are_supported(source, node.id, Silu::is_supported_dt)?
-                .then(|| -> Box<dyn TypedOp> { Box::new(ops::MetalSilu) })
+                .then(|| -> Vec<Box<dyn TypedOp>> { vec![Box::new(ops::MetalSilu)] })
         } else if let Some(_op) = node.op_as::<BasicNewGelu>() {
             check_in_dts_are_supported(source, node.id, NewGelu::is_supported_dt)?
-                .then(|| -> Box<dyn TypedOp> { Box::new(ops::MetalNewGelu) })
+                .then(|| -> Vec<Box<dyn TypedOp>> { vec![Box::new(ops::MetalNewGelu)] })
         } else {
             None
         };
 
-        match new_metal_op {
-            Some(metal_op) => {
-                let gpu_inputs =
+        match new_metal_ops {
+            Some(metal_ops) => {
+                let mut gpu_inputs =
                     self.sync_inputs_if_required(target, node, mapping, MetalSyncKind::ToGpu)?;
-                let target_node_outlet_ids = target.wire_node(&node.name, metal_op, &gpu_inputs)?;
-                self.sync_model_outputs_if_required(source, node, target, target_node_outlet_ids)
+                for op in metal_ops {
+                    gpu_inputs = target.wire_node(node.name.clone() + "." + &op.name(), op, &gpu_inputs)?;
+                }
+                self.sync_model_outputs_if_required(source, node, target, gpu_inputs)
             }
             None => {
                 let cpu_inputs =
@@ -314,23 +316,33 @@ fn convert_matmul_to_metal(
     node: &TypedNode,
     op: &BasicMatMul,
     gemm_impl: MetalGemmImplKind,
-) -> Result<Option<Box<dyn TypedOp>>> {
+) -> Result<Option<Vec<Box<dyn TypedOp>>>> {
     if !op.transpose_c
         && op.quantize_output.is_none()
-        && (model.node_input_facts(node.id)?.iter().all(|f| f.datum_type == f32::datum_type())
-            || model.node_input_facts(node.id)?.iter().all(|f| f.datum_type == f16::datum_type()))
+        // && gemm_impl::is_supported_dts()
     {
-        match gemm_impl {
-            MetalGemmImplKind::Mlx => {
-                Ok(Some(Box::new(ops::MetalGemm::<MlxGemm>::new(op.transpose_a, op.transpose_b))))
-            }
-            MetalGemmImplKind::Mps => {
-                Ok(Some(Box::new(ops::MetalGemm::<MpsMatMul>::new(op.transpose_a, op.transpose_b))))
-            }
-            MetalGemmImplKind::Mfa => {
-                Ok(Some(Box::new(ops::MetalGemm::<MfaGemm>::new(op.transpose_a, op.transpose_b))))
-            }
+        let matmul: Box<dyn TypedOp> = match gemm_impl {
+                                                    MetalGemmImplKind::Mlx => {
+                                                        Box::new(ops::MetalGemm::<MlxGemm>::new(op.transpose_a, op.transpose_b))
+                                                    }
+                                                    MetalGemmImplKind::Mps => {
+                                                        Box::new(ops::MetalGemm::<MpsMatMul>::new(op.transpose_a, op.transpose_b))
+                                                    }
+                                                    MetalGemmImplKind::Mfa => {
+                                                        Box::new(ops::MetalGemm::<MfaGemm>::new(op.transpose_a, op.transpose_b))
+                                                    }
+        };
+
+        let out_dt = matmul.output_facts(&model.node_input_facts(node.id)?)?[0].datum_type;
+        let mut ops = vec![matmul];
+
+        dbg!(model.node_output_facts(node.id)?[0]);
+        if out_dt != model.node_output_facts(node.id)?[0].datum_type {
+            ensure!(ops::MetalCast::is_supported_dt(out_dt), "Matmul output type cannot be casted to expected type");
+            let cast_op = ops::MetalCast::new(model.node_output_facts(node.id)?[0].datum_type).unwrap();
+            ops.push(Box::new(cast_op));
         }
+        Ok(Some(ops))
     } else {
         Ok(None)
     }

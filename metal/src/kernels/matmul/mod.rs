@@ -150,6 +150,17 @@ pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync 
 
     fn is_supported_dt(&self, dt: DatumType) -> bool;
 
+    fn output_facts(&self, a: &TypedFact, b:&TypedFact, c_shape: Vec<TDim>) -> TractResult<TVec<TypedFact>> {
+        if a.datum_type == f16::datum_type() {
+            ensure!(b.datum_type == f16::datum_type());
+            Ok(tvec!(f16::fact(c_shape)))
+        } else {
+            ensure!(a.datum_type == f32::datum_type());
+            ensure!(b.datum_type == f32::datum_type());
+            Ok(tvec!(f32::fact(c_shape)))
+        }
+    }
+
     fn dispatch_eval(
         &self,
         context: &MetalContext,
@@ -192,6 +203,11 @@ impl<M: GemmKernel> GemmImpl<M> {
         output
     }
 
+    pub fn output_facts(&self, a: &TypedFact, b: &TypedFact) -> TractResult<TVec<TypedFact>> {
+        let out_shape = self.output_shape(&a.shape, &b.shape).to_vec();
+        self.matmul.output_facts(a, b, out_shape)
+    }
+
     pub fn eval(
         &self,
         context: &MetalContext,
@@ -218,7 +234,6 @@ impl<M: GemmKernel> GemmImpl<M> {
         b.retain_until_completion();
         c.retain_until_completion();
 
-        ensure!(c.datum_type() == a.datum_type());
         ensure!(c.shape() == self.output_shape(a.shape(), b.shape()).as_slice());
 
         if c.shape().iter().product::<usize>() == 0 {
