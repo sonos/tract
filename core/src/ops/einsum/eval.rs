@@ -122,11 +122,9 @@ pub fn eval_q(expr: &AxesMapping, qp: DatumType, inputs: TVec<TValue>) -> TractR
             qp.to_array_view()
         } else {
             let data_rank = expr.rank(data_slot);
-            let pos_in_input = if expr.axis((qp_slot, 0))?.interface(data_slot).len() != 0 {
-                expr.axis((qp_slot, 0))?.interface(data_slot)[0]
-            } else {
-                0
-            };
+
+            // Handle case where axis is not present in input (qp.len is necessarily 1)
+            let pos_in_input = expr.axis((qp_slot, 0))?.interface(data_slot).get(0).cloned().unwrap_or(0);
 
             let mut shape = vec![1; data_rank];
             shape[pos_in_input] = qp.len();
