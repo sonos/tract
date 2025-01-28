@@ -263,6 +263,8 @@ impl EvalOp for VPTQGemm {
                 .into_tensor();
         }
 
+        let data_type = *fdtypes.iter().next().unwrap();
+
         if enable_norm {
             qweight = (qweight.into_array::<f32>()? * weight_scale.into_array::<f32>()?
                 + weight_bias.into_array::<f32>()?)
@@ -278,33 +280,36 @@ impl EvalOp for VPTQGemm {
 
         let &n = qweight.shape().last().unwrap();
 
-        let (&[m, k], out_shape, offset) = match ishape.len() {
+        let (&[m, k], out_shape) = match ishape.len() {
             2 => {
                 let &[m, k] = ishape else {
-                    bail!("unexpected rank: {:?}", input.len());
+                    bail!("unexpected rank: {:?}", ishape.len());
                 };
-                (&[m, k], vec![m, n], 0usize)
+                (&[m, k], vec![m, n])
             }
             3 => {
                 let &[b, m, k] = ishape else {
-                    bail!("unexpected rank: {:?}", input.len());
+                    bail!("unexpected rank: {:?}", ishape.len());
                 };
-                (&[m, k], vec![b, m, n], 1usize)
+                (&[m, k], vec![b, m, n])
             }
             _ => {
                 bail!("unexpected rank {:?}", ishape.len())
             }
         };
 
-        let mmm = op.mmm(*fdtypes.iter().next().unwrap(), Some(m), Some(k), Some(n)).unwrap();
+        let input_offset = input.rank() - 2;
+        let weight_offset = qweight.rank() - 2;
 
+        let mmm = op.mmm(data_type, Some(m), Some(k), Some(n)).unwrap();
         let (pack_a, pack_b) = &mmm.packings()[0];
-        let cstore = unsafe { mmm.c_view(0 + offset, 1 + offset) };
 
-        let a = pack_a.prepare_tensor(&input, 1 + offset, 0 + offset)?;
-        let b = pack_b.prepare_tensor(&qweight, 0 + offset, 1 + offset)?;
-        unsafe {
-            let out = Tensor::uninitialized::<f32>(out_shape.iter().as_slice().try_into()?)?;
+        let cstore = unsafe { mmm.c_view(input_offset, 1 + input_offset) };
+
+        let a = pack_a.prepare_tensor(&input, 1 + input_offset, input_offset)?;
+        let b = pack_b.prepare_tensor(&qweight, weight_offset, 1 + weight_offset)?;
+        let last = unsafe {
+            let out = Tensor::uninitialized::<f32>(out_shape.iter().as_slice())?;
             let non_linear = &[
                 FusedSpec::AddMatMul {
                     a: tract_linalg::mmm::AsInputValue::Owned(a),
@@ -315,8 +320,11 @@ impl EvalOp for VPTQGemm {
             ];
             mmm.run(m, n, non_linear)?;
 
-            Ok(tvec!(out.into()))
-        }
+            out
+        };
+        // force down cast for now
+        let last_cdt = last.cast_to_dt(input.datum_type())?.into_owned().into_tvalue();
+        Ok(tvec!(last_cdt))
     }
 }
 
