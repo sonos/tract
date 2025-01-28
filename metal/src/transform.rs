@@ -185,6 +185,63 @@ impl MetalTransform {
     }
 }
 
+fn can_translate_op_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResult<bool> {
+    let in_dts_metal_compatible = source
+        .node_input_facts(node.id)?
+        .iter()
+        .all(|f| MetalTensor::is_supported_dt(f.datum_type) || f.as_metal_fact().is_some());
+
+    Ok(in_dts_metal_compatible
+        && (node
+            .op_as::<ElementWiseOp>()
+            .is_some_and(|op| map_element_wise_ops_to_metal(op).is_some())
+            || node
+                .op_as::<TypedBinOp>()
+                .is_some_and(|op| convert_bin_ops_to_metal(&op.0).is_some())
+            || node.op_as::<Comp>().is_some()
+            || node.op_as::<MultiBroadcastTo>().is_some()
+            || node
+                .op_as::<BasicMatMul>()
+                .is_some_and(|op| !op.transpose_c && op.quantize_output.is_none())
+            || node
+                .op_as::<Const>()
+                .is_some_and(|op| !MetalTensor::is_supported_dt(op.0.datum_type()))
+            || node.op_as::<Cast>().is_some_and(|op| {
+                check_in_dts_are_supported(source, node.id, ops::MetalCast::is_supported_dt)
+                    .is_ok_and(|_| ops::MetalCast::new(op.to).is_some())
+            })
+            || node.op_as::<AxisOp>().is_some()
+            || node.op_as::<Slice>().is_some()
+            || node.op_as::<TypedConcat>().is_some()
+            || node.op_as::<Reduce>().is_some_and(|op| {
+                check_in_dts_are_supported(source, node.id, Reducer::is_supported_dt)
+                    .is_ok_and(|_| ops::MetalReduce::from_tract_core(op).is_ok())
+            })
+            || node.op_as::<CoreSoftmax>().is_some_and(|op| {
+                check_in_dts_are_supported(source, node.id, Softmax::is_supported_dt)
+                    .is_ok_and(|_| ops::MetalSoftmax::from_tract_core(op).is_ok())
+            })
+            || node.op_as::<BasicScaledMaskedSoftmax>().is_some_and(|_| {
+                check_in_dts_are_supported(source, node.id, ScaledMaskedSoftmax::is_supported_dt)
+                    .is_ok()
+            })
+            || node.op_as::<BasicRmsNorm>().is_some_and(|_| {
+                check_in_dts_are_supported(source, node.id, RmsNorm::is_supported_dt).is_ok()
+            })
+            || node.op_as::<BasicRotateHalf>().is_some_and(|_| {
+                check_in_dts_are_supported(source, node.id, RotateHalf::is_supported_dt).is_ok()
+            })
+            || node.op_as::<BasicApplyRope>().is_some_and(|_| {
+                check_in_dts_are_supported(source, node.id, ApplyRope::is_supported_dt).is_ok()
+            })
+            || node.op_as::<BasicSilu>().is_some_and(|_| {
+                check_in_dts_are_supported(source, node.id, Silu::is_supported_dt).is_ok()
+            })
+            || node.op_as::<BasicNewGelu>().is_some_and(|_| {
+                check_in_dts_are_supported(source, node.id, NewGelu::is_supported_dt).is_ok()
+            })))
+}
+
 impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for MetalTransform {
     fn translate_node(
         &self,
@@ -193,87 +250,102 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        let in_dts_metal_compatible = source
-            .node_input_facts(node.id)?
-            .iter()
-            .all(|f| MetalTensor::is_supported_dt(f.datum_type) || f.as_metal_fact().is_some());
+        let translatable = can_translate_op_to_metal_op(source, node)?;
 
-        let new_metal_ops: Option<Vec<Box<dyn TypedOp>>> = if !in_dts_metal_compatible {
-            None
-        } else if let Some(op) = node.op_as::<ElementWiseOp>() {
-            convert_element_wise_ops_to_metal(op).map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
-        } else if let Some(op) = node.op_as::<TypedBinOp>() {
-            convert_bin_ops_to_metal(&op.0).map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
-        } else if let Some(op) = node.op_as::<Comp>() {
-            Some(vec![Box::new(convert_logic_ops_to_metal(op))])
-        } else if let Some(op) = node.op_as::<BasicMatMul>() {
-            convert_matmul_to_metal(source, node, op, self.gemm_impl)?
-        } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
-            Some(vec![Box::new(ops::MetalMultiBroadcastTo::new(op.shape.clone()))])
-        } else if let Some(op) = node.op_as::<Const>() {
-            convert_const(op)?.map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
-        } else if let Some(op) = node.op_as::<Cast>() {
-            check_in_dts_are_supported(source, node.id, ops::MetalCast::is_supported_dt)?
-                .then(|| ops::MetalCast::new(op.to))
-                .flatten()
-                .map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
-        } else if let Some(op) = node.op_as::<AxisOp>() {
-            let in_fact = source.node_input_facts(node.id)?[0];
-            Some(vec![Box::new(ops::MetalAxisOp::from_tract_core_with_fact(op.clone(), in_fact))])
-        } else if let Some(op) = node.op_as::<Slice>() {
-            Some(vec![Box::new(ops::MetalSlice::from_tract_core(op.clone()))])
-        } else if let Some(op) = node.op_as::<TypedConcat>() {
-            Some(vec![Box::new(ops::MetalConcat::from_tract_core(op))])
-        } else if let Some(op) = node.op_as::<Reduce>() {
-            check_in_dts_are_supported(source, node.id, Reducer::is_supported_dt)?
-                .then(|| ops::MetalReduce::from_tract_core(op).ok())
-                .flatten()
-                .map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
-        } else if let Some(op) = node.op_as::<CoreSoftmax>() {
-            check_in_dts_are_supported(source, node.id, Softmax::is_supported_dt)?
-                .then(|| ops::MetalSoftmax::from_tract_core(op).ok())
-                .flatten()
-                .map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
-        } else if let Some(op) = node.op_as::<BasicScaledMaskedSoftmax>() {
-            check_in_dts_are_supported(source, node.id, ScaledMaskedSoftmax::is_supported_dt)?
-                .then(|| ops::MetalScaledMaskedSoftmax { scale: op.scale.clone() })
-                .map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
-        } else if let Some(op) = node.op_as::<BasicRmsNorm>() {
-            check_in_dts_are_supported(source, node.id, RmsNorm::is_supported_dt)?
-                .then(|| ops::MetalRmsNorm::new(op.axis, op.eps.clone()))
-                .map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
-        } else if let Some(_op) = node.op_as::<BasicRotateHalf>() {
-            check_in_dts_are_supported(source, node.id, RotateHalf::is_supported_dt)?
-                .then_some(ops::MetalRotateHalf)
-                .map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
-        } else if let Some(_op) = node.op_as::<BasicApplyRope>() {
-            check_in_dts_are_supported(source, node.id, ApplyRope::is_supported_dt)?
-                .then_some(ops::MetalApplyRope)
-                .map(|o| -> Vec<Box<dyn TypedOp>> { vec![Box::new(o)] })
-        } else if let Some(_op) = node.op_as::<BasicSilu>() {
-            check_in_dts_are_supported(source, node.id, Silu::is_supported_dt)?
-                .then(|| -> Vec<Box<dyn TypedOp>> { vec![Box::new(ops::MetalSilu)] })
-        } else if let Some(_op) = node.op_as::<BasicNewGelu>() {
-            check_in_dts_are_supported(source, node.id, NewGelu::is_supported_dt)?
-                .then(|| -> Vec<Box<dyn TypedOp>> { vec![Box::new(ops::MetalNewGelu)] })
+        if translatable {
+            let gpu_inputs =
+                self.sync_inputs_if_required(target, node, mapping, MetalSyncKind::ToGpu)?;
+
+            let outlet_ids: TVec<OutletId> = if let Some(op) = node.op_as::<ElementWiseOp>() {
+                target.wire_node(
+                    node.name.clone(),
+                    map_element_wise_ops_to_metal(op).unwrap(),
+                    &gpu_inputs,
+                )?
+            } else if let Some(op) = node.op_as::<TypedBinOp>() {
+                target.wire_node(
+                    node.name.clone(),
+                    convert_bin_ops_to_metal(&op.0).unwrap(),
+                    &gpu_inputs,
+                )?
+            } else if let Some(op) = node.op_as::<Comp>() {
+                target.wire_node(node.name.clone(), convert_logic_ops_to_metal(op), &gpu_inputs)?
+            } else if let Some(op) = node.op_as::<BasicMatMul>() {
+                convert_matmul_to_metal(source, node, target, &gpu_inputs, op, self.gemm_impl)?
+            } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
+                target.wire_node(
+                    node.name.clone(),
+                    ops::MetalMultiBroadcastTo::new(op.shape.clone()),
+                    &gpu_inputs,
+                )?
+            } else if let Some(op) = node.op_as::<Const>() {
+                target.wire_node(node.name.clone(), convert_const(op)?, &gpu_inputs)?
+            } else if let Some(op) = node.op_as::<Cast>() {
+                target.wire_node(
+                    node.name.clone(),
+                    ops::MetalCast::new(op.to).unwrap(),
+                    &gpu_inputs,
+                )?
+            } else if let Some(op) = node.op_as::<AxisOp>() {
+                let in_fact = source.node_input_facts(node.id)?[0];
+                target.wire_node(
+                    node.name.clone(),
+                    ops::MetalAxisOp::from_tract_core_with_fact(op.clone(), in_fact),
+                    &gpu_inputs,
+                )?
+            } else if let Some(op) = node.op_as::<Slice>() {
+                target.wire_node(
+                    node.name.clone(),
+                    ops::MetalSlice::from_tract_core(op.clone()),
+                    &gpu_inputs,
+                )?
+            } else if let Some(op) = node.op_as::<TypedConcat>() {
+                target.wire_node(
+                    node.name.clone(),
+                    ops::MetalConcat::from_tract_core(op),
+                    &gpu_inputs,
+                )?
+            } else if let Some(op) = node.op_as::<Reduce>() {
+                target.wire_node(
+                    node.name.clone(),
+                    ops::MetalReduce::from_tract_core(op).unwrap(),
+                    &gpu_inputs,
+                )?
+            } else if let Some(op) = node.op_as::<CoreSoftmax>() {
+                target.wire_node(
+                    node.name.clone(),
+                    ops::MetalSoftmax::from_tract_core(op).unwrap(),
+                    &gpu_inputs,
+                )?
+            } else if let Some(op) = node.op_as::<BasicScaledMaskedSoftmax>() {
+                target.wire_node(
+                    node.name.clone(),
+                    ops::MetalScaledMaskedSoftmax { scale: op.scale.clone() },
+                    &gpu_inputs,
+                )?
+            } else if let Some(op) = node.op_as::<BasicRmsNorm>() {
+                target.wire_node(
+                    node.name.clone(),
+                    ops::MetalRmsNorm::new(op.axis, op.eps.clone()),
+                    &gpu_inputs,
+                )?
+            } else if let Some(_op) = node.op_as::<BasicRotateHalf>() {
+                target.wire_node(node.name.clone(), ops::MetalRotateHalf, &gpu_inputs)?
+            } else if let Some(_op) = node.op_as::<BasicApplyRope>() {
+                target.wire_node(node.name.clone(), ops::MetalApplyRope, &gpu_inputs)?
+            } else if let Some(_op) = node.op_as::<BasicSilu>() {
+                target.wire_node(node.name.clone(), ops::MetalSilu, &gpu_inputs)?
+            } else if let Some(_op) = node.op_as::<BasicNewGelu>() {
+                target.wire_node(node.name.clone(), ops::MetalNewGelu, &gpu_inputs)?
+            } else {
+                bail!("Failed to translate a supported Metal Op")
+            };
+
+            self.sync_model_outputs_if_required(source, node, target, outlet_ids)
         } else {
-            None
-        };
-
-        match new_metal_ops {
-            Some(metal_ops) => {
-                let mut gpu_inputs =
-                    self.sync_inputs_if_required(target, node, mapping, MetalSyncKind::ToGpu)?;
-                for op in metal_ops {
-                    gpu_inputs = target.wire_node(node.name.clone() + "." + &op.name(), op, &gpu_inputs)?;
-                }
-                self.sync_model_outputs_if_required(source, node, target, gpu_inputs)
-            }
-            None => {
-                let cpu_inputs =
-                    self.sync_inputs_if_required(target, node, mapping, MetalSyncKind::ToCpu)?;
-                target.wire_node(&node.name, node.op.clone(), &cpu_inputs)
-            }
+            let cpu_inputs =
+                self.sync_inputs_if_required(target, node, mapping, MetalSyncKind::ToCpu)?;
+            target.wire_node(&node.name, node.op.clone(), &cpu_inputs)
         }
     }
 }
@@ -314,38 +386,35 @@ macro_rules! map_element_wise_ops {
 fn convert_matmul_to_metal(
     model: &TypedModel,
     node: &TypedNode,
+    target: &mut TypedModel,
+    inputs: &[OutletId],
     op: &BasicMatMul,
     gemm_impl: MetalGemmImplKind,
-) -> Result<Option<Vec<Box<dyn TypedOp>>>> {
-    if !op.transpose_c
-        && op.quantize_output.is_none()
-        // && gemm_impl::is_supported_dts()
-    {
-        let matmul: Box<dyn TypedOp> = match gemm_impl {
-                                                    MetalGemmImplKind::Mlx => {
-                                                        Box::new(ops::MetalGemm::<MlxGemm>::new(op.transpose_a, op.transpose_b))
-                                                    }
-                                                    MetalGemmImplKind::Mps => {
-                                                        Box::new(ops::MetalGemm::<MpsMatMul>::new(op.transpose_a, op.transpose_b))
-                                                    }
-                                                    MetalGemmImplKind::Mfa => {
-                                                        Box::new(ops::MetalGemm::<MfaGemm>::new(op.transpose_a, op.transpose_b))
-                                                    }
-        };
-
-        let out_dt = matmul.output_facts(&model.node_input_facts(node.id)?)?[0].datum_type;
-        let mut ops = vec![matmul];
-
-        dbg!(model.node_output_facts(node.id)?[0]);
-        if out_dt != model.node_output_facts(node.id)?[0].datum_type {
-            ensure!(ops::MetalCast::is_supported_dt(out_dt), "Matmul output type cannot be casted to expected type");
-            let cast_op = ops::MetalCast::new(model.node_output_facts(node.id)?[0].datum_type).unwrap();
-            ops.push(Box::new(cast_op));
+) -> TractResult<TVec<OutletId>> {
+    let matmul: Box<dyn TypedOp> = match gemm_impl {
+        MetalGemmImplKind::Mlx => {
+            Box::new(ops::MetalGemm::<MlxGemm>::new(op.transpose_a, op.transpose_b))
         }
-        Ok(Some(ops))
-    } else {
-        Ok(None)
+        MetalGemmImplKind::Mps => {
+            Box::new(ops::MetalGemm::<MpsMatMul>::new(op.transpose_a, op.transpose_b))
+        }
+        MetalGemmImplKind::Mfa => {
+            Box::new(ops::MetalGemm::<MfaGemm>::new(op.transpose_a, op.transpose_b))
+        }
+    };
+
+    let out_dt = matmul.output_facts(&model.node_input_facts(node.id)?)?[0].datum_type;
+    let mut matmul_output = target.wire_node(node.name.clone(), matmul, inputs)?;
+
+    if out_dt != model.node_output_facts(node.id)?[0].datum_type {
+        ensure!(
+            ops::MetalCast::is_supported_dt(out_dt),
+            "Matmul output type cannot be casted to expected type"
+        );
+        let cast_op = ops::MetalCast::new(model.node_output_facts(node.id)?[0].datum_type).unwrap();
+        matmul_output = target.wire_node(node.name.clone() + ".cast", cast_op, &matmul_output)?
     }
+    Ok(matmul_output)
 }
 
 #[allow(clippy::borrowed_box)]
@@ -398,16 +467,13 @@ pub fn bin_ops_to_metal(
         .transpose()
 }
 
-fn convert_const(op: &Const) -> TractResult<Option<Const>> {
-    if !MetalTensor::is_supported_dt(op.0.datum_type()) {
-        return Ok(None);
-    }
+fn convert_const(op: &Const) -> TractResult<Const> {
     let metal_fact = MetalFact::from_cpu(Arc::clone(&op.0).into())?;
     let metal_const = op.0.clone().into_metal()?.into_opaque_tensor().into_arc_tensor();
-    Ok(Some(Const::new_with_opaque_fact(metal_const, Box::new(metal_fact))))
+    Ok(Const::new_with_opaque_fact(metal_const, Box::new(metal_fact)))
 }
 
-fn convert_element_wise_ops_to_metal(op: &ElementWiseOp) -> Option<ops::MetalElementWiseOp> {
+fn map_element_wise_ops_to_metal(op: &ElementWiseOp) -> Option<ops::MetalElementWiseOp> {
     map_element_wise_ops!([
         (tract_core::ops::math::Abs, Abs),
         (tract_core::ops::math::Exp, Exp),
@@ -436,30 +502,4 @@ fn convert_element_wise_ops_to_metal(op: &ElementWiseOp) -> Option<ops::MetalEle
         (tract_core::ops::math::Erf, Erf),
         (tract_core::ops::math::Neg, Neg),
     ])(op)
-}
-
-pub fn element_wise_ops_to_metal(
-    _ctx: &(),
-    model: &TypedModel,
-    node: &TypedNode,
-    _node_name: &str,
-    op: &ElementWiseOp,
-) -> Result<Option<TypedModelPatch>> {
-    if op.1.is_some() {
-        return Ok(None);
-    }
-
-    let input_facts = model.node_input_facts(node.id)?;
-    let dt = input_facts[0].datum_type;
-
-    // All input must have the same datum type and it has to be supported.
-    if model.node_input_facts(node.id)?.iter().any(|f| f.datum_type != dt)
-        || !crate::kernels::ElementWiseOps::is_supported_dt(dt)
-    {
-        return Ok(None);
-    }
-
-    convert_element_wise_ops_to_metal(op)
-        .map(|metal_op| TypedModelPatch::replace_single_op(model, node, &node.inputs, metal_op))
-        .transpose()
 }

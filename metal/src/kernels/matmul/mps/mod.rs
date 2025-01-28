@@ -61,7 +61,7 @@ impl GemmKernel for MpsMatMul {
 
         ensure!(dts[0] == dts[1]);
         ensure!(dts[0] == dts[2]);
-        
+
         let dt = dts[0];
 
         let data_type = match dt {

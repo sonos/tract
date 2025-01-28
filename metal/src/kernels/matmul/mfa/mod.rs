@@ -167,10 +167,10 @@ pub fn dispatch_metal_mfa_gemm(
         (211, Value::U16(n_splits)),
         (50_001, Value::Bool(fused_bias)),
     ]));
-    
+
     ensure!(dts[0] == dts[1]);
     ensure!(dts[0] == dts[2]);
-    
+
     let dt = dts[0];
     let name = match dt {
         DatumType::F32 => "sgemm",
