@@ -150,7 +150,12 @@ pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync 
 
     fn is_supported_dt(&self, dt: DatumType) -> bool;
 
-    fn output_facts(&self, a: &TypedFact, b:&TypedFact, c_shape: Vec<TDim>) -> TractResult<TVec<TypedFact>> {
+    fn output_facts(
+        &self,
+        a: &TypedFact,
+        b: &TypedFact,
+        c_shape: Vec<TDim>,
+    ) -> TractResult<TVec<TypedFact>> {
         if a.datum_type == f16::datum_type() {
             ensure!(b.datum_type == f16::datum_type());
             Ok(tvec!(f16::fact(c_shape)))
@@ -345,9 +350,7 @@ mod tests {
         let (m, k, n) = (2, 3, 4);
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
-                [dt,
-                dt,
-                dt],
+                [dt, dt, dt],
                 0,
                 &[1, m, k],
                 false,
@@ -373,9 +376,7 @@ mod tests {
 
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
-                [dt,
-                dt,
-                dt],
+                [dt, dt, dt],
                 0,
                 &[10, m, k],
                 false,
@@ -401,9 +402,7 @@ mod tests {
 
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
-                [dt,
-                dt,
-                dt],
+                [dt, dt, dt],
                 0,
                 &[1, m, k],
                 false,
@@ -443,9 +442,7 @@ mod tests {
 
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
-                [dt,
-                dt,
-                dt],
+                [dt, dt, dt],
                 0,
                 &[2, k, m],
                 true,
@@ -471,9 +468,7 @@ mod tests {
 
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
-                [dt,
-                dt,
-                dt],
+                [dt, dt, dt],
                 0,
                 &[2, k, m],
                 true,

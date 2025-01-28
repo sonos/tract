@@ -422,7 +422,11 @@ pub fn dispatch_metal_mlx_gemm(
     Ok(())
 }
 
-pub fn kernel_name_gemm(dts: [DatumType; 3], transpose_a: bool, transpose_b: bool) -> Result<String> {
+pub fn kernel_name_gemm(
+    dts: [DatumType; 3],
+    transpose_a: bool,
+    transpose_b: bool,
+) -> Result<String> {
     let t_a = if transpose_a { "t" } else { "n" };
     let t_b = if transpose_b { "t" } else { "n" };
 

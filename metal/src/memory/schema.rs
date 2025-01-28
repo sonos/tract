@@ -65,7 +65,7 @@ pub fn eval_metal_mem_req_for_nodes(
                     .is_some_and(|op| op.kind == MetalSyncKind::ToCpu)
             })
         });
-        
+
         !cpu_sync_in_next_nodes
             && facts.iter().any(|it| it.to_metal_fact().map(|it| it.is_from_gpu()).unwrap_or(false))
     });
