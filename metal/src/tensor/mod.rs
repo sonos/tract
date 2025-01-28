@@ -33,7 +33,7 @@ impl MetalTensor {
         DatumType::U32,
         DatumType::I64,
         DatumType::U64,
-        DatumType::TDim
+        DatumType::TDim,
     ];
 
     pub fn tname(dt: DatumType) -> TractResult<&'static str> {
