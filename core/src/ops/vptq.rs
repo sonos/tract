@@ -68,8 +68,9 @@ impl VPTQGemm {
 
         let pad_size = (pack_tensor_shape.last().unwrap_or(&0) * 32) % (index_bits * num_elements);
         if pad_size > 0 {
-            let end = out.shape()[out.rank() - 1] - pad_size;
-            out = out.slice(out.rank() - 1, 0, end)?.into();
+            let axis = out.rank() - 1;
+            let end = out.shape()[axis] - pad_size;
+            out = out.slice(axis, 0, end)?.into();
         }
 
         let mut post_pad_pack_tensor_shape = pack_tensor_shape.clone();
@@ -149,9 +150,10 @@ impl VPTQGemm {
             .into_shape(&[vector_len * remain, num_codebooks * group_size])?;
 
         let dim0 = qweight.shape()[0];
-        let padding = (-(self.out_features as i16) % vector_len as i16) as usize;
+        let padding = (-(self.out_features as i16)).wrapping_rem_euclid(vector_len as i16);
         if padding > 0 {
-            qweight = qweight.slice(0, 0, dim0 - padding)?;
+            let end = dim0 as i16 - padding;
+            qweight = qweight.slice(0, 0, end as usize)?;
         }
         Ok(qweight)
     }
@@ -228,7 +230,15 @@ impl EvalOp for VPTQGemm {
                 outlier_indices,
                 self.outlier_size,
             )?;
-            qweight = Tensor::stack_tensors(1, &[outlier_qweight, qweight])?;
+
+            qweight =
+                Tensor::stack_tensors(1, &[&outlier_qweight, &qweight]).with_context(|| {
+                    format!(
+                        "outlier.shape:{:?}, main.shape:{:?}",
+                        &outlier_qweight.shape(),
+                        &qweight.shape()
+                    )
+                })?;
         }
 
         let enable_perm = perm.len() > 1;
@@ -264,18 +274,37 @@ impl EvalOp for VPTQGemm {
         // }
         qweight = qweight.permute_axes(&[1, 0])?;
         let op = ops();
-        let &[m, k] = input.shape() else { bail!("unexpected rank {:?}", input.rank()) };
+        let ishape = input.shape();
+
         let &n = qweight.shape().last().unwrap();
+
+        let (&[m, k], out_shape, offset) = match ishape.len() {
+            2 => {
+                let &[m, k] = ishape else {
+                    bail!("unexpected rank: {:?}", input.len());
+                };
+                (&[m, k], vec![m, n], 0usize)
+            }
+            3 => {
+                let &[b, m, k] = ishape else {
+                    bail!("unexpected rank: {:?}", input.len());
+                };
+                (&[m, k], vec![b, m, n], 1usize)
+            }
+            _ => {
+                bail!("unexpected rank {:?}", ishape.len())
+            }
+        };
 
         let mmm = op.mmm(*fdtypes.iter().next().unwrap(), Some(m), Some(k), Some(n)).unwrap();
 
         let (pack_a, pack_b) = &mmm.packings()[0];
-        let cstore = unsafe { mmm.c_view(0, 1) };
+        let cstore = unsafe { mmm.c_view(0 + offset, 1 + offset) };
 
-        let a = pack_a.prepare_tensor(&input, 1, 0)?;
-        let b = pack_b.prepare_tensor(&qweight, 0, 1)?;
+        let a = pack_a.prepare_tensor(&input, 1 + offset, 0 + offset)?;
+        let b = pack_b.prepare_tensor(&qweight, 0 + offset, 1 + offset)?;
         unsafe {
-            let out = Tensor::uninitialized::<f32>(&[m, n])?;
+            let out = Tensor::uninitialized::<f32>(out_shape.iter().as_slice().try_into()?)?;
             let non_linear = &[
                 FusedSpec::AddMatMul {
                     a: tract_linalg::mmm::AsInputValue::Owned(a),
