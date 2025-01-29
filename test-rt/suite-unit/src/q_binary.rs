@@ -268,7 +268,7 @@ pub fn suite() -> TractResult<TestSuite> {
             c_dt: qu8_dt(1, 0.5),
         },
     );
-    
+
     suite.add(
         "bug_aligned_dt_0",
         QBinaryOpProblem {
