@@ -15,10 +15,6 @@ impl GemmKernel for BasicMatMul {
         "basic"
     }
 
-    fn is_supported_dt(&self, dt: DatumType) -> bool {
-        Self::tname(dt).is_ok()
-    }
-
     fn dispatch_eval(
         &self,
         context: &MetalContext,

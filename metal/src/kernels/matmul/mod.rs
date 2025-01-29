@@ -148,7 +148,10 @@ impl GemmDispatchParams {
 pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync {
     fn name() -> &'static str;
 
-    fn is_supported_dt(&self, dt: DatumType) -> bool;
+    fn is_supported_dts(&self, dts: &[DatumType]) -> TractResult<bool> {
+        ensure!(dts.len() == 2);
+        Ok(matches!(dts[0], DatumType::F32 | DatumType::F16) && dts[0] == dts[1])
+    }
 
     fn output_facts(
         &self,
@@ -192,10 +195,6 @@ impl<M: GemmKernel> fmt::Display for GemmImpl<M> {
 impl<M: GemmKernel> GemmImpl<M> {
     pub fn new(transpose_a: bool, transpose_b: bool) -> Self {
         Self { transpose_a, transpose_b, matmul: M::default() }
-    }
-
-    pub fn is_supported_dt(&self, dt: DatumType) -> bool {
-        self.matmul.is_supported_dt(dt)
     }
 
     pub fn output_shape<D: DimLike + One>(&self, a: &[D], b: &[D]) -> TVec<D> {
