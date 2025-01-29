@@ -122,12 +122,13 @@ pub(crate) fn ensure_mkn_axes<'a>(
                                         && a.inputs[1].len() == 0
                                         && !input_shapes[0][a.inputs[0][0]].is_one()
     }).collect_vec();
-    //let mut m_axes_pos = non_trivial_m_axes.iter().map(|axis| { axis.inputs[0][0] }).collect_vec();
-    //m_axes_pos.sort();
-    //
-    //let consecutive_m_axes = m_axes_pos.windows(2).all(|window| { (window[1] - window[0]) == 1});
- //
-    if non_trivial_m_axes.len() > 1 {
+    
+    let mut m_axes_pos = non_trivial_m_axes.iter().map(|axis| { axis.inputs[0][0] }).collect_vec();
+    m_axes_pos.sort();
+    
+    let consecutive_m_axes = m_axes_pos.windows(2).all(|window| { (window[1] - window[0]) == 1});
+ 
+    if non_trivial_m_axes.len() > 1 && !consecutive_m_axes {
         return Ok(AxesOrPatch::NotAMatMul(non_trivial_m_axes))
     }
 
@@ -151,11 +152,11 @@ pub(crate) fn ensure_mkn_axes<'a>(
         && !input_shapes[1][a.inputs[1][0]].is_one()
     }).collect_vec();
 
-    //let mut n_axes_pos = non_trivial_n_axes.iter().map(|axis| { axis.inputs[1][0] }).collect_vec();
-    //n_axes_pos.sort();
-//
-    //let consecutive_n_axes = n_axes_pos.windows(2).all(|window| { (window[1] - window[0]) == 1});
-    if non_trivial_n_axes.len() > 1 {
+    let mut n_axes_pos = non_trivial_n_axes.iter().map(|axis| { axis.inputs[1][0] }).collect_vec();
+    n_axes_pos.sort();
+
+    let consecutive_n_axes = n_axes_pos.windows(2).all(|window| { (window[1] - window[0]) == 1});
+    if non_trivial_n_axes.len() > 1 && !consecutive_n_axes {
         return Ok(AxesOrPatch::NotAMatMul(non_trivial_n_axes))
     }
 

@@ -145,8 +145,7 @@ impl DeconvProblem {
             self.kernel_format.input_channels(self.kernel.shape(), self.group).into_owned(),
             self.kernel_format.output_channels(self.kernel.shape(), self.group).into_owned(),
         );
-        let op =
-            Deconv::new(pool_spec, self.kernel_format, self.adjustments.clone(), self.group);
+        let op = Deconv::new(pool_spec, self.kernel_format, self.adjustments.clone(), self.group);
         Ok(op)
     }
 

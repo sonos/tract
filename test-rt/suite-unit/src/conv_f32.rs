@@ -10,6 +10,7 @@ pub struct ConvProblemParams {
     pub no_group: bool,
     pub no_arbitrary_grouping: bool,
     pub geo_rank: Option<Range<usize>>,
+    pub no_batch: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -200,19 +201,29 @@ impl Arbitrary for ConvProblem {
     type Parameters = ConvProblemParams;
     type Strategy = BoxedStrategy<ConvProblem>;
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        let batch_range = if params.no_batch { 1usize..=1 } else { 1usize..=3 };
         let geo_rank = params.geo_rank.unwrap_or(1..4);
         (
             data_format(),
             kernel_format(),
             prop_oneof![Just(PaddingSpec::Valid), Just(PaddingSpec::SameUpper)],
-            1usize..=3,
+            batch_range,
             1usize..=4,
             1usize..=4,
             1usize..=(if params.no_group { 1 } else { 3 }),
             geo_rank.prop_flat_map(shapes),
         )
             .prop_flat_map(
-                move |(df, kf, pad, n, mut ci0, mut co0, group, (mut ker_shape, data_shape))| {
+                move |(
+                    df,
+                    kf,
+                    pad,
+                    batch,
+                    mut ci0,
+                    mut co0,
+                    group,
+                    (mut ker_shape, data_shape),
+                )| {
                     // FIXME in HWIO order, only regular and depthwise are supported
                     if params.no_arbitrary_grouping && group > 1 {
                         ci0 = 1;
@@ -221,7 +232,7 @@ impl Arbitrary for ConvProblem {
                     if kf == KernelFormat::HWIO && group > 1 {
                         ci0 = 1;
                     }
-                    let shape_in = df.from_n_c_hw(n, ci0 * group, data_shape).unwrap();
+                    let shape_in = df.from_n_c_hw(batch, ci0 * group, data_shape).unwrap();
                     let data_in = tensor(&*shape_in.shape);
                     match kf {
                         KernelFormat::HWIO => {
@@ -268,7 +279,7 @@ impl Test for ConvProblem {
         approx: Approximation,
     ) -> TestResult {
         let reference = self.reference().into_tensor();
-        dbg!(&reference);
+        // dbg!(&reference);
         let mut model = self.tract()?;
         //       dbg!(&model);
         model.declutter()?;

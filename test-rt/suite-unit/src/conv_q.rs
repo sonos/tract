@@ -1230,7 +1230,7 @@ pub fn suite() -> TractResult<TestSuite> {
             co: 2,
             kernel_format: OIHW,
             group: 2,
-            kernel: tensor4(&[[[[1i8]]],[[[0i8]]]]),
+            kernel: tensor4(&[[[[1i8]]], [[[0i8]]]]),
             bias: None,
             data: Tensor::zero::<i8>(&[2, 4, 4, 2]).unwrap(),
             qp,

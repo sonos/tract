@@ -11,7 +11,7 @@ use tract_num_traits::{One, Zero};
 
 #[derive(Debug, Clone, Default)]
 pub struct BinEinsumProblemParams {
-    pub no_iter_axes: bool,
+    pub force_unique_non_trivial_m_n: bool,
 }
 
 #[derive(Clone)]
@@ -38,17 +38,23 @@ impl Arbitrary for BinEinsumProblem {
     type Parameters = BinEinsumProblemParams;
     type Strategy = BoxedStrategy<BinEinsumProblem>;
 
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        (1..2usize, 1..2usize, 0..3usize, 0..2usize, 0..2usize)
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+        let m_n_axes_range = if args.force_unique_non_trivial_m_n { 1..2usize } else { 1..3usize };
+        (m_n_axes_range.clone(), m_n_axes_range, 0..3usize, 0..2usize, 0..2usize)
             .prop_map(|(m_axes, n_axes, iter_axes, trivial_m_axes, trivial_n_axes)| {
                 let m_axes: String = ('a'..).take(m_axes).collect();
                 let trivial_m_axes: String = ('m'..).take(trivial_m_axes).collect();
                 let trivial_n_axes: String = ('p'..).take(trivial_n_axes).collect();
                 let n_axes: String = ('g'..).take(n_axes).collect();
                 let iter_axes: String = ('w'..).take(iter_axes).collect();
-                let a_axes: Vec<char> = (m_axes.clone() + &trivial_m_axes + &iter_axes + "k").chars().collect();
-                let b_axes: Vec<char> = (n_axes.clone() + &trivial_n_axes + &iter_axes + "k").chars().collect();
-                let c_axes: Vec<char> = (m_axes + &n_axes + &trivial_m_axes + &trivial_n_axes + &iter_axes).chars().collect();
+                let a_axes: Vec<char> =
+                    (m_axes.clone() + &trivial_m_axes + &iter_axes + "k").chars().collect();
+                let b_axes: Vec<char> =
+                    (n_axes.clone() + &trivial_n_axes + &iter_axes + "k").chars().collect();
+                let c_axes: Vec<char> =
+                    (m_axes + &n_axes + &trivial_m_axes + &trivial_n_axes + &iter_axes)
+                        .chars()
+                        .collect();
                 (Just(a_axes), Just(b_axes), Just(c_axes))
             })
             .prop_flat_map(|(a, b, c)| (a.prop_shuffle(), b.prop_shuffle(), c.prop_shuffle()))
@@ -67,18 +73,30 @@ impl Arbitrary for BinEinsumProblem {
             .prop_flat_map(|(expr, axis_dims)| {
                 let shape_a: TVec<usize> = expr
                     .axes(InOut::In(0))
-                    .map(|axis| {if !('m'..='v').contains(&axis.repr) { expr.iter_all_axes().position(|x| x == axis).unwrap() } else {1000} })
-                    .map(|dim| {if dim != 1000 {axis_dims[dim]} else { 1 } })
+                    .map(|axis| {
+                        expr.iter_all_axes()
+                            .position(|x| (x == axis) && !('m'..='v').contains(&axis.repr))
+                            .map(|dim| axis_dims[dim])
+                            .unwrap_or(1)
+                    })
                     .collect();
                 let shape_b: TVec<usize> = expr
                     .axes(InOut::In(1))
-                    .map(|axis| {if !('m'..='v').contains(&axis.repr) { expr.iter_all_axes().position(|x| x == axis).unwrap() } else {1000} })
-                    .map(|dim| {if dim != 1000 {axis_dims[dim]} else { 1 } })
+                    .map(|axis| {
+                        expr.iter_all_axes()
+                            .position(|x| (x == axis) && !('m'..='v').contains(&axis.repr))
+                            .map(|dim| axis_dims[dim])
+                            .unwrap_or(1)
+                    })
                     .collect();
                 let shape_output: TVec<usize> = expr
                     .axes(InOut::Out(0))
-                    .map(|axis| {if !('m'..='v').contains(&axis.repr) { expr.iter_all_axes().position(|x| x == axis).unwrap() } else {1000} })
-                    .map(|dim| {if dim != 1000 {axis_dims[dim]} else { 1 } })
+                    .map(|axis| {
+                        expr.iter_all_axes()
+                            .position(|x| (x == axis) && !('m'..='v').contains(&axis.repr))
+                            .map(|dim| axis_dims[dim])
+                            .unwrap_or(1)
+                    })
                     .collect();
                 let unicast_add_constant = proptest::option::of(tensor(&shape_output));
                 (Just(expr), tensor(&shape_a), tensor(&shape_b), 0..3usize, unicast_add_constant)
@@ -139,8 +157,8 @@ impl BinEinsumProblem {
         self.expr
             .axes(InOut::Out(0))
             .map(|axis| {
-                let dim_in_a = axis.inputs[0].get(0).map(|pos| self.a.shape()[*pos]).unwrap_or(1);
-                let dim_in_b = axis.inputs[1].get(0).map(|pos| self.b.shape()[*pos]).unwrap_or(1);
+                let dim_in_a = axis.inputs[0].first().map(|pos| self.a.shape()[*pos]).unwrap_or(1);
+                let dim_in_b = axis.inputs[1].first().map(|pos| self.b.shape()[*pos]).unwrap_or(1);
                 dim_in_a.max(dim_in_b)
             })
             .collect()
@@ -159,15 +177,15 @@ impl BinEinsumProblem {
             .expr
             .iter_all_axes()
             .filter(|axis| {
-                axis.outputs[0].len() == 0 && axis.inputs[0].len() == 1 && axis.inputs[1].len() == 1
+                axis.outputs[0].is_empty() && axis.inputs[0].len() == 1 && axis.inputs[1].len() == 1
             })
             .collect();
 
         let summing_shape: TVec<usize> = k_axes
             .iter()
             .map(|axis| {
-                let dim_in_a = axis.inputs[0].get(0).map(|pos| self.a.shape()[*pos]).unwrap_or(1);
-                let dim_in_b = axis.inputs[1].get(0).map(|pos| self.b.shape()[*pos]).unwrap_or(1);
+                let dim_in_a = axis.inputs[0].first().map(|pos| self.a.shape()[*pos]).unwrap_or(1);
+                let dim_in_b = axis.inputs[1].first().map(|pos| self.b.shape()[*pos]).unwrap_or(1);
                 dim_in_a.max(dim_in_b)
             })
             .collect();
@@ -177,11 +195,11 @@ impl BinEinsumProblem {
             let mut a = a.clone();
             let mut b = b.clone();
             for (axis, x) in self.expr.axes(InOut::Out(0)).zip(coords.iter()) {
-                if let Some(pos) = axis.inputs[0].get(0) {
+                if let Some(pos) = axis.inputs[0].first() {
                     a.collapse_axis(Axis(*pos), if a.shape()[*pos] > 1 { *x } else { 0 });
                 }
 
-                if let Some(pos) = axis.inputs[1].get(0) {
+                if let Some(pos) = axis.inputs[1].first() {
                     b.collapse_axis(Axis(*pos), if b.shape()[*pos] > 1 { *x } else { 0 });
                 }
             }
