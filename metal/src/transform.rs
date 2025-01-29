@@ -339,6 +339,7 @@ fn check_matmul_in_dts(gemm_impl: MetalGemmImplKind, dts: &[DatumType]) -> bool 
         MetalGemmImplKind::Mlx => MlxGemm.is_supported_dts(dts),
         MetalGemmImplKind::Mps => MpsMatMul.is_supported_dts(dts),
         MetalGemmImplKind::Mfa => MfaGemm.is_supported_dts(dts),
+        MetalGemmImplKind::Ggml => MfaGemm.is_supported_dts(dts),
     };
     is_supported.unwrap_or(false)
 }
@@ -360,6 +361,9 @@ fn convert_matmul_to_metal(
         }
         MetalGemmImplKind::Mfa => {
             Box::new(ops::MetalGemm::<MfaGemm>::new(op.transpose_a, op.transpose_b))
+        }
+        MetalGemmImplKind::Ggml => {
+            Box::new(ops::MetalGemm::<GgmlGemm>::new(op.transpose_a, op.transpose_b))
         }
     };
 

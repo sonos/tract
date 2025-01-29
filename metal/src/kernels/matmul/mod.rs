@@ -27,7 +27,7 @@ pub enum MetalGemmImplKind {
 
 impl Default for MetalGemmImplKind {
     fn default() -> Self {
-        Self::Mlx
+        Self::Ggml
     }
 }
 
