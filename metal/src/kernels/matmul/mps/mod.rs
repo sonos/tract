@@ -34,10 +34,6 @@ impl GemmKernel for MpsMatMul {
         "mps"
     }
 
-    fn is_supported_dt(&self, dt: DatumType) -> bool {
-        matches!(dt, DatumType::F32 | DatumType::F16)
-    }
-
     fn dispatch_eval(
         &self,
         context: &MetalContext,

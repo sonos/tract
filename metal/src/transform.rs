@@ -1,6 +1,6 @@
 use crate::fact::MetalTypedFactExt;
 use crate::kernels::array::RotateHalf;
-use crate::kernels::matmul::{MetalGemmImplKind, MfaGemm, MlxGemm, MpsMatMul};
+use crate::kernels::matmul::{GemmKernel, MetalGemmImplKind, MfaGemm, MlxGemm, MpsMatMul};
 use crate::kernels::nn::{
     ApplyRope, NewGelu, Reducer, RmsNorm, ScaledMaskedSoftmax, Silu, Softmax,
 };
@@ -13,7 +13,6 @@ use crate::rewrite_rules::{
 };
 use crate::tensor::MetalTensorExt;
 use crate::{IntoMetal, MetalFact, MetalTensor};
-use anyhow::Result;
 use std::borrow::Cow;
 use std::fmt::Debug;
 use tract_core::internal::translator::Translate;
@@ -27,6 +26,7 @@ use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
 use tract_core::ops::nn::{Reduce, Softmax as CoreSoftmax};
 use tract_core::transform::ModelTransform;
+use tract_itertools::Itertools;
 
 impl MetalGemmImplKind {
     pub fn variants() -> Vec<MetalGemmImplKind> {
@@ -185,11 +185,18 @@ impl MetalTransform {
     }
 }
 
-fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResult<bool> {
-    let in_dts_metal_compatible = source
+fn can_translate_to_metal_op(
+    source: &TypedModel,
+    node: &TypedNode,
+    gemm_impl: MetalGemmImplKind,
+) -> TractResult<bool> {
+    let input_dts = source
         .node_input_facts(node.id)?
         .iter()
-        .all(|f| MetalTensor::is_supported_dt(f.datum_type) || f.as_metal_fact().is_some());
+        .map(|f| f.as_metal_fact().map(|f| f.datum_type).unwrap_or(f.datum_type))
+        .collect_vec();
+
+    let in_dts_metal_compatible = input_dts.iter().all(|dt| MetalTensor::is_supported_dt(*dt));
 
     Ok(in_dts_metal_compatible
         && (node
@@ -198,46 +205,45 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
             || node.op_as::<TypedBinOp>().is_some_and(|op| map_bin_ops_to_metal(&op.0).is_some())
             || node.op_as::<Comp>().is_some()
             || node.op_as::<MultiBroadcastTo>().is_some()
-            || node
-                .op_as::<BasicMatMul>()
-                .is_some_and(|op| !op.transpose_c && op.quantize_output.is_none())
+            || node.op_as::<BasicMatMul>().is_some_and(|op| {
+                !op.transpose_c
+                    && op.quantize_output.is_none()
+                    && check_matmul_in_dts(gemm_impl, &input_dts)
+            })
             || node
                 .op_as::<Const>()
                 .is_some_and(|op| !MetalTensor::is_supported_dt(op.0.datum_type()))
             || node.op_as::<Cast>().is_some_and(|op| {
-                check_in_dts_are_supported(source, node.id, ops::MetalCast::is_supported_dt)
-                    .is_ok_and(|_| ops::MetalCast::new(op.to).is_some())
+                ops::MetalCast::is_supported_dt(input_dts[0])
+                    && ops::MetalCast::new(op.to).is_some()
             })
             || node.op_as::<AxisOp>().is_some()
             || node.op_as::<Slice>().is_some()
             || node.op_as::<TypedConcat>().is_some()
             || node.op_as::<Reduce>().is_some_and(|op| {
-                check_in_dts_are_supported(source, node.id, Reducer::is_supported_dt)
-                    .is_ok_and(|_| ops::MetalReduce::from_tract_core(op).is_ok())
+                Reducer::is_supported_dt(input_dts[0])
+                    && ops::MetalReduce::from_tract_core(op).is_ok()
             })
             || node.op_as::<CoreSoftmax>().is_some_and(|op| {
-                check_in_dts_are_supported(source, node.id, Softmax::is_supported_dt)
-                    .is_ok_and(|_| ops::MetalSoftmax::from_tract_core(op).is_ok())
+                Softmax::is_supported_dt(input_dts[0])
+                    && ops::MetalSoftmax::from_tract_core(op).is_ok()
             })
-            || node.op_as::<BasicScaledMaskedSoftmax>().is_some_and(|_| {
-                check_in_dts_are_supported(source, node.id, ScaledMaskedSoftmax::is_supported_dt)
-                    .is_ok()
-            })
-            || node.op_as::<BasicRmsNorm>().is_some_and(|_| {
-                check_in_dts_are_supported(source, node.id, RmsNorm::is_supported_dt).is_ok()
-            })
-            || node.op_as::<BasicRotateHalf>().is_some_and(|_| {
-                check_in_dts_are_supported(source, node.id, RotateHalf::is_supported_dt).is_ok()
-            })
-            || node.op_as::<BasicApplyRope>().is_some_and(|_| {
-                check_in_dts_are_supported(source, node.id, ApplyRope::is_supported_dt).is_ok()
-            })
-            || node.op_as::<BasicSilu>().is_some_and(|_| {
-                check_in_dts_are_supported(source, node.id, Silu::is_supported_dt).is_ok()
-            })
-            || node.op_as::<BasicNewGelu>().is_some_and(|_| {
-                check_in_dts_are_supported(source, node.id, NewGelu::is_supported_dt).is_ok()
-            })))
+            || node
+                .op_as::<BasicScaledMaskedSoftmax>()
+                .is_some_and(|_| ScaledMaskedSoftmax::is_supported_dt(input_dts[0]))
+            || node
+                .op_as::<BasicRmsNorm>()
+                .is_some_and(|_| RmsNorm::is_supported_dt(input_dts[0]))
+            || node
+                .op_as::<BasicRotateHalf>()
+                .is_some_and(|_| RotateHalf::is_supported_dt(input_dts[0]))
+            || node
+                .op_as::<BasicApplyRope>()
+                .is_some_and(|_| ApplyRope::is_supported_dt(input_dts[0]))
+            || node.op_as::<BasicSilu>().is_some_and(|_| Silu::is_supported_dt(input_dts[0]))
+            || node
+                .op_as::<BasicNewGelu>()
+                .is_some_and(|_| NewGelu::is_supported_dt(input_dts[0]))))
 }
 
 impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for MetalTransform {
@@ -248,7 +254,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        let translatable = can_translate_to_metal_op(source, node)?;
+        let translatable = can_translate_to_metal_op(source, node, self.gemm_impl)?;
 
         if translatable {
             let gpu_inputs =
@@ -306,17 +312,6 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
     }
 }
 
-fn check_in_dts_are_supported(
-    model: &TypedModel,
-    node_id: usize,
-    is_supported_dt: impl Fn(DatumType) -> bool,
-) -> TractResult<bool> {
-    Ok(model.node_input_facts(node_id)?.iter().all(|f| {
-        (is_supported_dt)(f.datum_type)
-            || f.as_metal_fact().map(|f| (is_supported_dt)(f.datum_type)).unwrap_or(false)
-    }))
-}
-
 macro_rules! map_bin_ops {
     ([$(($tract_bin_op:path, $metal_bin_op:ident)),* $(,)?]) => {
         |op: &Box<dyn tract_core::ops::binary::BinMiniOp >| {
@@ -337,6 +332,15 @@ macro_rules! map_element_wise_ops {
             return None;
         }
     };
+}
+
+fn check_matmul_in_dts(gemm_impl: MetalGemmImplKind, dts: &[DatumType]) -> bool {
+    let is_supported = match gemm_impl {
+        MetalGemmImplKind::Mlx => MlxGemm.is_supported_dts(dts),
+        MetalGemmImplKind::Mps => MpsMatMul.is_supported_dts(dts),
+        MetalGemmImplKind::Mfa => MfaGemm.is_supported_dts(dts),
+    };
+    is_supported.unwrap_or(false)
 }
 
 fn convert_matmul_to_metal(
