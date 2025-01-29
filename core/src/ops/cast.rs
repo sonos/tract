@@ -15,7 +15,7 @@ pub fn wire_cast(
     for mut wire in inputs.iter().copied() {
         if target.outlet_fact(wire)?.datum_type != operating_datum_type {
             wire = target.wire_node(
-                target.unique_name(&format!("{prefix}.cast")),
+                target.unique_name(format!("{prefix}.cast")),
                 crate::ops::cast::cast(operating_datum_type),
                 &[wire],
             )?[0];
