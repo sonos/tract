@@ -277,7 +277,7 @@ pub fn dispatch_metal_mlx_gemv(
 #[allow(clippy::too_many_arguments)]
 pub fn dispatch_metal_mlx_gemm(
     context: &MetalContext,
-    dts: DatumType,
+    dt: DatumType,
     (b, m, n, k): (usize, usize, usize, usize),
     lhs_stride: &[usize],
     lhs_offset: usize,
@@ -365,7 +365,7 @@ pub fn dispatch_metal_mlx_gemm(
 
     let batch_strides = [gemm_params.batch_stride_a, gemm_params.batch_stride_b];
 
-    let name = kernel_name_gemm(dts, a_trans, b_trans)?;
+    let name = kernel_name_gemm(dt, a_trans, b_trans)?;
 
     let pipeline = context.shared_context().load_pipeline_with_constants(
         LibraryName::MlxGemm,
