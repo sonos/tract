@@ -203,8 +203,8 @@ fn can_translate_to_metal_op(
             .op_as::<ElementWiseOp>()
             .is_some_and(|op| map_element_wise_ops_to_metal(op).is_some())
             || node.op_as::<TypedBinOp>().is_some_and(|op| map_bin_ops_to_metal(&op.0).is_some())
-            || node.op_as::<Comp>().is_some()
-            || node.op_as::<MultiBroadcastTo>().is_some()
+            || node.op_is::<Comp>()
+            || node.op_is::<MultiBroadcastTo>()
             || node.op_as::<BasicMatMul>().is_some_and(|op| {
                 !op.transpose_c
                     && op.quantize_output.is_none()
@@ -217,9 +217,9 @@ fn can_translate_to_metal_op(
                 ops::MetalCast::is_supported_dt(input_dts[0])
                     && ops::MetalCast::new(op.to).is_some()
             })
-            || node.op_as::<AxisOp>().is_some()
-            || node.op_as::<Slice>().is_some()
-            || node.op_as::<TypedConcat>().is_some()
+            || node.op_is::<AxisOp>()
+            || node.op_is::<Slice>()
+            || node.op_is::<TypedConcat>()
             || node.op_as::<Reduce>().is_some_and(|op| {
                 Reducer::is_supported_dt(input_dts[0])
                     && ops::MetalReduce::from_tract_core(op).is_ok()

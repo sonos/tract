@@ -86,8 +86,19 @@ impl GemmKernel for MlxGemm {
             natural_strides(&[batch, k, n])
         };
 
-        ensure!(matches!(dts[0], DatumType::F32 | DatumType::F16));
-        ensure!(dts[0] == dts[1] && dts[0] == dts[2]);
+        ensure!(
+            matches!(dts[0], DatumType::F32 | DatumType::F16),
+            "Unsupported datum type for MlxGemm {:?}",
+            dts[0]
+        );
+        ensure!(
+            dts[0] == dts[1] && dts[0] == dts[2],
+            "MlxGemm only supports homogeneous datum types. I: {:?}, {:?}. O: {:?}",
+            dts[0],
+            dts[1],
+            dts[2]
+        );
+
         if m == 1 || n == 1 {
             dispatch_metal_mlx_gemv(
                 context,
@@ -144,8 +155,8 @@ pub fn dispatch_metal_mlx_gemv(
     output_offset: usize,
 ) -> Result<()> {
     ensure!(m == 1 || n == 1);
-    assert!(a_strides.len() >= 2 && b_strides.len() >= 2);
-    assert!(a_strides.len() >= 2);
+    ensure!(a_strides.len() >= 2 && b_strides.len() >= 2);
+    ensure!(a_strides.len() >= 2);
 
     let lda = if a_trans { m } else { k };
     let ldb = if b_trans { k } else { n };
@@ -280,8 +291,8 @@ pub fn dispatch_metal_mlx_gemm(
     output_offset: usize,
     debug: bool,
 ) -> Result<()> {
-    assert!(rhs_stride.len() >= 2);
-    assert!(lhs_stride.len() >= 2);
+    ensure!(rhs_stride.len() >= 2);
+    ensure!(lhs_stride.len() >= 2);
 
     let rhs_m1 = rhs_stride[rhs_stride.len() - 1];
     let rhs_m2 = rhs_stride[rhs_stride.len() - 2];

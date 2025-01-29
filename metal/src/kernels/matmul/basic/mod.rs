@@ -36,9 +36,18 @@ impl GemmKernel for BasicMatMul {
             c_offset,
         } = params;
 
-        ensure!(dts[0] == dts[1]);
-        ensure!(dts[0] == dts[2]);
-        ensure!(Self::tname(dts[0]).is_ok());
+        ensure!(
+            Self::tname(dts[0]).is_ok(),
+            "Unsupported datum type for Metal BasicMatmul {:?}",
+            dts[0]
+        );
+        ensure!(
+            dts[0] == dts[1] && dts[0] == dts[2],
+            "Metal BasicMatmul only supports homogenous datum types. I: {:?}, {:?}. O: {:?}",
+            dts[0],
+            dts[1],
+            dts[2]
+        );
 
         let dt = dts[0];
         for b_idx in 0..batch {

@@ -52,8 +52,19 @@ impl GemmKernel for MfaGemm {
             natural_strides(&[batch, k, n])
         };
 
-        ensure!(dts[0] == dts[1]);
-        ensure!(dts[0] == dts[2]);
+        ensure!(
+            matches!(dts[0], DatumType::F32 | DatumType::F16),
+            "Unsupported datum type for Mfa {:?}",
+            dts[0]
+        );
+        ensure!(
+            dts[0] == dts[1] && dts[0] == dts[2],
+            "Mfa only supports homogeneous datum types. I: {:?}, {:?}. O: {:?}",
+            dts[0],
+            dts[1],
+            dts[2]
+        );
+
         dispatch_metal_mfa_gemm(
             context,
             dts[0],
