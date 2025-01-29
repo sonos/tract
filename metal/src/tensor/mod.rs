@@ -21,7 +21,7 @@ pub enum MetalTensor {
 }
 
 impl MetalTensor {
-    pub const SUPPORTED_DT: [DatumType; 12] = [
+    pub const SUPPORTED_DT: [DatumType; 11] = [
         DatumType::Bool,
         DatumType::F32,
         DatumType::F16,
@@ -33,7 +33,6 @@ impl MetalTensor {
         DatumType::U32,
         DatumType::I64,
         DatumType::U64,
-        DatumType::TDim,
     ];
 
     pub fn tname(dt: DatumType) -> TractResult<&'static str> {
@@ -49,7 +48,6 @@ impl MetalTensor {
             DatumType::I32 => "i32",
             DatumType::I64 => "i64",
             DatumType::Bool => "bool",
-            DatumType::TDim => "Tdim",
             _ => bail!("Unsupport dt {:?} for metal kernel function", dt),
         })
     }
