@@ -86,10 +86,12 @@ impl GemmKernel for MlxGemm {
             natural_strides(&[batch, k, n])
         };
 
+        ensure!(matches!(dts[0], DatumType::F32 | DatumType::F16));
+        ensure!(dts[0] == dts[1] && dts[0] == dts[2]);
         if m == 1 || n == 1 {
             dispatch_metal_mlx_gemv(
                 context,
-                dts,
+                dts[0],
                 (batch, m, n, k),
                 unsafe { std::mem::transmute::<&[isize], &[usize]>(a_strides.as_slice()) },
                 a_offset,
@@ -105,7 +107,7 @@ impl GemmKernel for MlxGemm {
         } else {
             dispatch_metal_mlx_gemm(
                 context,
-                dts,
+                dts[0],
                 (batch, m, n, k),
                 unsafe { std::mem::transmute::<&[isize], &[usize]>(a_strides.as_slice()) },
                 a_offset,
@@ -128,7 +130,7 @@ impl GemmKernel for MlxGemm {
 #[allow(clippy::too_many_arguments)]
 pub fn dispatch_metal_mlx_gemv(
     context: &MetalContext,
-    dts: [DatumType; 3],
+    dt: DatumType,
     (b, m, n, k): (usize, usize, usize, usize),
     a_strides: &[usize],
     a_offset: usize,
@@ -144,8 +146,6 @@ pub fn dispatch_metal_mlx_gemv(
     ensure!(m == 1 || n == 1);
     assert!(a_strides.len() >= 2 && b_strides.len() >= 2);
     assert!(a_strides.len() >= 2);
-    ensure!(matches!(dts[0], DatumType::F32 | DatumType::F16));
-    ensure!(dts[0] == dts[1] && dts[0] == dts[2]);
 
     let lda = if a_trans { m } else { k };
     let ldb = if b_trans { k } else { n };
@@ -198,7 +198,7 @@ pub fn dispatch_metal_mlx_gemv(
 
     let t_mat = if mv_trans { "t_" } else { "" };
 
-    let tname = MetalTensor::tname(dts[0])?;
+    let tname = MetalTensor::tname(dt)?;
     let name = format!("gemv_{t_mat}{tname}_bm{bm}_bn{bn}_sm{sm}_sn{sn}_tm{tm}_tn{tn}_nc0_axpby0");
     let pipeline = context.shared_context().load_pipeline(LibraryName::MlxGemv, &name)?;
 
@@ -266,7 +266,7 @@ pub fn dispatch_metal_mlx_gemv(
 #[allow(clippy::too_many_arguments)]
 pub fn dispatch_metal_mlx_gemm(
     context: &MetalContext,
-    dts: [DatumType; 3],
+    dts: DatumType,
     (b, m, n, k): (usize, usize, usize, usize),
     lhs_stride: &[usize],
     lhs_offset: usize,
@@ -282,8 +282,6 @@ pub fn dispatch_metal_mlx_gemm(
 ) -> Result<()> {
     assert!(rhs_stride.len() >= 2);
     assert!(lhs_stride.len() >= 2);
-    ensure!(matches!(dts[0], DatumType::F32 | DatumType::F16));
-    ensure!(dts[0] == dts[1] && dts[0] == dts[2]);
 
     let rhs_m1 = rhs_stride[rhs_stride.len() - 1];
     let rhs_m2 = rhs_stride[rhs_stride.len() - 2];
@@ -418,17 +416,12 @@ pub fn dispatch_metal_mlx_gemm(
     Ok(())
 }
 
-pub fn kernel_name_gemm(
-    dts: [DatumType; 3],
-    transpose_a: bool,
-    transpose_b: bool,
-) -> Result<String> {
+pub fn kernel_name_gemm(dt: DatumType, transpose_a: bool, transpose_b: bool) -> Result<String> {
     let t_a = if transpose_a { "t" } else { "n" };
     let t_b = if transpose_b { "t" } else { "n" };
 
-    let i_tname = MetalTensor::tname(dts[0])?;
-    let o_tname = MetalTensor::tname(dts[2])?;
-    Ok(format!("gemm_{t_a}{t_b}_{i_tname}_{o_tname}_32_32_16_2_2"))
+    let tname = MetalTensor::tname(dt)?;
+    Ok(format!("gemm_{t_a}{t_b}_{tname}_{tname}_32_32_16_2_2"))
 }
 
 #[cfg(test)]
