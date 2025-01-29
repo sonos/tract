@@ -20,17 +20,25 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::SUB, deser_sub);
     reg.reg_to_tract(BuiltinOperator::MUL, deser_mul);
     reg.reg_to_tract(BuiltinOperator::DIV, deser_div);
-    reg.reg_to_tract(BuiltinOperator::MAXIMUM, |op| deser_bin(op, tract_core::ops::math::max()));
-    reg.reg_to_tract(BuiltinOperator::MINIMUM, |op| deser_bin(op, tract_core::ops::math::min()));
+    reg.reg_to_tract(BuiltinOperator::MAXIMUM, |op| {
+        deser_bin(op, tract_core::ops::math::max())
+    });
+    reg.reg_to_tract(BuiltinOperator::MINIMUM, |op| {
+        deser_bin(op, tract_core::ops::math::min())
+    });
 
     reg.reg_to_tract(BuiltinOperator::EQUAL, |op| deser_comp(op, Comp::Eq));
     reg.reg_to_tract(BuiltinOperator::NOT_EQUAL, |op| deser_comp(op, Comp::NE));
     reg.reg_to_tract(BuiltinOperator::LESS, |op| deser_comp(op, Comp::LT));
     reg.reg_to_tract(BuiltinOperator::LESS_EQUAL, |op| deser_comp(op, Comp::LTE));
     reg.reg_to_tract(BuiltinOperator::GREATER, |op| deser_comp(op, Comp::GT));
-    reg.reg_to_tract(BuiltinOperator::GREATER_EQUAL, |op| deser_comp(op, Comp::GTE));
+    reg.reg_to_tract(BuiltinOperator::GREATER_EQUAL, |op| {
+        deser_comp(op, Comp::GTE)
+    });
     reg.reg_to_tract(BuiltinOperator::LOGICAL_OR, |op| deser_bin(op, logic::or()));
-    reg.reg_to_tract(BuiltinOperator::LOGICAL_AND, |op| deser_bin(op, logic::and()));
+    reg.reg_to_tract(BuiltinOperator::LOGICAL_AND, |op| {
+        deser_bin(op, logic::and())
+    });
 }
 
 fn wire_cast_and_rank_broadcast(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
@@ -57,28 +65,40 @@ fn deser_comp(op: &mut DeserOp, comp: Comp) -> TractResult<TVec<OutletId>> {
 fn deser_add(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let options = builtin!(op, builtin_options_as_add_options);
     let wires = wire_cast_and_rank_broadcast(op)?;
-    let wires = op.ctx.target.wire_node(op.prefix, tract_core::ops::math::add(), &wires)?;
+    let wires = op
+        .ctx
+        .target
+        .wire_node(op.prefix, tract_core::ops::math::add(), &wires)?;
     wire_fused_activation(op, &wires, &options.fused_activation_function())
 }
 
 fn deser_sub(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let options = builtin!(op, builtin_options_as_sub_options);
     let wires = wire_cast_and_rank_broadcast(op)?;
-    let wires = op.ctx.target.wire_node(op.prefix, tract_core::ops::math::sub(), &wires)?;
+    let wires = op
+        .ctx
+        .target
+        .wire_node(op.prefix, tract_core::ops::math::sub(), &wires)?;
     wire_fused_activation(op, &wires, &options.fused_activation_function())
 }
 
 fn deser_mul(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let options = builtin!(op, builtin_options_as_mul_options);
     let wires = wire_cast_and_rank_broadcast(op)?;
-    let wires = op.ctx.target.wire_node(op.prefix, tract_core::ops::math::mul(), &wires)?;
+    let wires = op
+        .ctx
+        .target
+        .wire_node(op.prefix, tract_core::ops::math::mul(), &wires)?;
     wire_fused_activation(op, &wires, &options.fused_activation_function())
 }
 
 fn deser_div(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let options = builtin!(op, builtin_options_as_div_options);
     let wires = wire_cast_and_rank_broadcast(op)?;
-    let wires = op.ctx.target.wire_node(op.prefix, tract_core::ops::math::div(), &wires)?;
+    let wires = op
+        .ctx
+        .target
+        .wire_node(op.prefix, tract_core::ops::math::div(), &wires)?;
     wire_fused_activation(op, &wires, &options.fused_activation_function())
 }
 
@@ -112,7 +132,9 @@ fn ser_bin(
     if op.0.is::<tract_core::ops::math::Div>() {
         let options = DivOptions::create(
             builder.fb(),
-            &DivOptionsArgs { fused_activation_function: ActivationFunctionType::NONE },
+            &DivOptionsArgs {
+                fused_activation_function: ActivationFunctionType::NONE,
+            },
         );
         return builder.write_op_with_options(
             &inputs,
@@ -122,7 +144,11 @@ fn ser_bin(
         );
     }
 
-    match op.0.as_linalg_binop().with_context(|| "Missing implementation for binary")? {
+    match op
+        .0
+        .as_linalg_binop()
+        .with_context(|| "Missing implementation for binary")?
+    {
         BinOp::Add => {
             let options = AddOptions::create(
                 builder.fb(),
@@ -156,7 +182,9 @@ fn ser_bin(
         BinOp::Mul => {
             let options = MulOptions::create(
                 builder.fb(),
-                &MulOptionsArgs { fused_activation_function: ActivationFunctionType::NONE },
+                &MulOptionsArgs {
+                    fused_activation_function: ActivationFunctionType::NONE,
+                },
             );
             builder.write_op_with_options(
                 &inputs,
