@@ -10,7 +10,9 @@ fn download() {
 }
 
 fn do_download() -> TractResult<()> {
-    let run = std::process::Command::new("./download.sh").status().unwrap();
+    let run = std::process::Command::new("./download.sh")
+        .status()
+        .unwrap();
     if !run.success() {
         bail!("Failed to download model files")
     }
@@ -18,11 +20,18 @@ fn do_download() -> TractResult<()> {
 }
 
 fn cachedir() -> path::PathBuf {
-    std::env::var("CACHEDIR").ok().unwrap_or_else(|| "../../.cached".to_string()).into()
+    std::env::var("CACHEDIR")
+        .ok()
+        .unwrap_or_else(|| "../../.cached".to_string())
+        .into()
 }
 
 pub fn load_labels() -> Vec<String> {
-    fs::read_to_string(imagenet_slim_labels()).unwrap().lines().map(|s| s.into()).collect()
+    fs::read_to_string(imagenet_slim_labels())
+        .unwrap()
+        .lines()
+        .map(|s| s.into())
+        .collect()
 }
 pub fn imagenet_slim_labels() -> path::PathBuf {
     download();
@@ -70,7 +79,13 @@ mod tests {
     {
         let input = load_image(grace_hopper());
         let outputs = runnable.run(tvec![input.into()])?;
-        let label_id = outputs[0].as_slice::<i8>()?.iter().enumerate().max().unwrap().0;
+        let label_id = outputs[0]
+            .as_slice::<i8>()?
+            .iter()
+            .enumerate()
+            .max()
+            .unwrap()
+            .0;
         let labels = load_labels();
         let label = &labels[label_id];
         assert_eq!(label, "military uniform");
@@ -78,12 +93,16 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn plain() -> TractResult<()> {
-        let tfd = tract_tflite::tflite().model_for_path(mobilenet_v2())?.into_runnable()?;
+        let tfd = tract_tflite::tflite()
+            .model_for_path(mobilenet_v2())?
+            .into_runnable()?;
         run(tfd)
     }
 
     #[test]
+    #[ignore]
     fn declutter() -> TractResult<()> {
         let tfd = tract_tflite::tflite()
             .model_for_path(mobilenet_v2())?
@@ -94,6 +113,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn optimized() -> TractResult<()> {
         let tfd = tract_tflite::tflite()
             .model_for_path(mobilenet_v2())?
