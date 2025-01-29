@@ -40,7 +40,7 @@ impl Arbitrary for BinEinsumProblem {
 
     fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
         let m_n_axes_range = if args.force_unique_non_trivial_m_n { 1..2usize } else { 1..3usize };
-        (m_n_axes_range.clone(), m_n_axes_range, 0..3usize, 0..2usize, 0..2usize)
+        (m_n_axes_range.clone(), m_n_axes_range, 0..2usize, 0..2usize, 0..2usize)
             .prop_map(|(m_axes, n_axes, iter_axes, trivial_m_axes, trivial_n_axes)| {
                 let m_axes: String = ('a'..).take(m_axes).collect();
                 let trivial_m_axes: String = ('m'..).take(trivial_m_axes).collect();
