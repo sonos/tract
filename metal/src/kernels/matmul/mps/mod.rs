@@ -55,16 +55,25 @@ impl GemmKernel for MpsMatMul {
             c_offset,
         } = params;
 
-        ensure!(dts[0] == dts[1]);
-        ensure!(dts[0] == dts[2]);
-
         let dt = dts[0];
-
         let data_type = match dt {
             DatumType::F32 => MPSDataType::Float32,
             DatumType::F16 => MPSDataType::Float16,
             _ => bail!("Unsupported datum type for MpsMatMul {:?}", dt),
         };
+
+        ensure!(
+            dts[0] == dts[1],
+            "MpsMatmul: Input datum types are different {:?} != {:?}",
+            dts[0],
+            dts[1]
+        );
+        ensure!(
+            dts[0] == dts[2],
+            "MpsMatmul: Input/Output datum types are different {:?} != {:?}",
+            dts[0],
+            dts[2]
+        );
 
         for b_idx in 0..batch {
             let a_offset = a_offset + b_idx * m * k * dt.size_of();
