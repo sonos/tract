@@ -359,6 +359,10 @@ impl MMMInputValue for EagerIm2col {
     fn opaque_fact(&self) -> &dyn OpaqueFact {
         unimplemented!()
     }
+
+    fn same_as(&self, _other: &dyn MMMInputValue) -> bool {
+        unimplemented!()
+    }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -495,7 +499,12 @@ impl MMMInputValue for LazyIm2col {
     fn format(&self) -> &dyn MMMInputFormat {
         &self.spec
     }
+
     fn opaque_fact(&self) -> &dyn OpaqueFact {
+        unimplemented!()
+    }
+
+    fn same_as(&self, _other: &dyn MMMInputValue) -> bool {
         unimplemented!()
     }
 }
