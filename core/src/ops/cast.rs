@@ -12,10 +12,10 @@ pub fn wire_cast(
 ) -> TractResult<TVec<OutletId>> {
     let prefix = prefix.as_ref();
     let mut wires = tvec!();
-    for (ix, mut wire) in inputs.iter().copied().enumerate() {
+    for mut wire in inputs.iter().copied() {
         if target.outlet_fact(wire)?.datum_type != operating_datum_type {
             wire = target.wire_node(
-                format!("{prefix}.cast-{ix}"),
+                target.unique_name(&format!("{prefix}.cast")),
                 crate::ops::cast::cast(operating_datum_type),
                 &[wire],
             )?[0];
