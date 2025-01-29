@@ -83,7 +83,10 @@ impl Framework<TfliteProtoModel, TypedModel> for Tflite {
         mut target: TypedModel,
     ) -> TractResult<TypedModel> {
         let root = proto.root();
-        let main = &root.subgraphs().context("No subgraphs in Tflite model")?.get(0);
+        let main = &root
+            .subgraphs()
+            .context("No subgraphs in Tflite model")?
+            .get(0);
         let mut mapping = HashMap::new();
         for input in main.inputs().context("No inputs in Tflite model")? {
             if !flat_tensor_uses_per_axis_q(main, input) {
@@ -103,7 +106,9 @@ impl Framework<TfliteProtoModel, TypedModel> for Tflite {
             }
             self.0
                 .deser_op(&root, main, &op, &mut target, &mut mapping)
-                .with_context(|| format!("Parsing op {op:#?}"))?;
+                .with_context(|| {
+                    format!("Translating proto-op from Tflite into tract op: {op:#?}")
+                })?;
         }
         let outputs: TVec<_> = main
             .outputs()
