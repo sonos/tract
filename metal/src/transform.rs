@@ -212,7 +212,7 @@ fn can_translate_to_metal_op(
             })
             || node
                 .op_as::<Const>()
-                .is_some_and(|op| !MetalTensor::is_supported_dt(op.0.datum_type()))
+                .is_some_and(|op| MetalTensor::is_supported_dt(op.0.datum_type()))
             || node.op_as::<Cast>().is_some_and(|op| {
                 ops::MetalCast::is_supported_dt(input_dts[0])
                     && ops::MetalCast::new(op.to).is_some()
