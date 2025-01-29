@@ -349,7 +349,7 @@ mod tests {
         let (m, k, n) = (2, 3, 4);
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
-                [dt, dt, dt],
+                [dt; 3],
                 0,
                 &[1, m, k],
                 false,
@@ -375,7 +375,7 @@ mod tests {
 
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
-                [dt, dt, dt],
+                [dt; 3],
                 0,
                 &[10, m, k],
                 false,
@@ -401,7 +401,7 @@ mod tests {
 
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
-                [dt, dt, dt],
+                [dt; 3],
                 0,
                 &[1, m, k],
                 false,
@@ -441,7 +441,7 @@ mod tests {
 
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
-                [dt, dt, dt],
+                [dt; 3],
                 0,
                 &[2, k, m],
                 true,
@@ -467,7 +467,7 @@ mod tests {
 
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params(
-                [dt, dt, dt],
+                [dt; 3],
                 0,
                 &[2, k, m],
                 true,

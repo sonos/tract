@@ -38,6 +38,7 @@ impl GemmKernel for BasicMatMul {
 
         ensure!(dts[0] == dts[1]);
         ensure!(dts[0] == dts[2]);
+        ensure!(Self::tname(dts[0]).is_ok());
 
         let dt = dts[0];
         for b_idx in 0..batch {
