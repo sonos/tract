@@ -70,10 +70,13 @@ impl InferenceScan {
             .enumerate()
             .map(|(ix, im)| {
                 let scan = if let Some((slot, scan)) = im.scan {
-                    Some((slot, ScanInfo {
-                        chunk: typed_model.input_fact(ix)?.shape[scan.axis].to_isize()?,
-                        ..scan
-                    }))
+                    Some((
+                        slot,
+                        ScanInfo {
+                            chunk: typed_model.input_fact(ix)?.shape[scan.axis].to_isize()?,
+                            ..scan
+                        },
+                    ))
                 } else {
                     None
                 };
@@ -106,10 +109,16 @@ impl InferenceScan {
             .or_else(|| inner.shape.rank().concretize())
             .map(|r| r as usize);
         if let Some(rank) = rank {
-            if outer.shape.unify_with(&ShapeFactoid::closed(tvec!(GenericFactoid::Any; rank)))? {
+            if outer
+                .shape
+                .unify_with(&ShapeFactoid::closed(tvec!(GenericFactoid::Any; rank)))?
+            {
                 changed = true;
             }
-            if inner.shape.unify_with(&ShapeFactoid::closed(tvec!(GenericFactoid::Any; rank)))? {
+            if inner
+                .shape
+                .unify_with(&ShapeFactoid::closed(tvec!(GenericFactoid::Any; rank)))?
+            {
                 changed = true;
             }
             for axis in 0..rank {
@@ -158,7 +167,10 @@ impl InferenceScan {
             ])?;
             facts.push(&mut inputs[state_ix]);
             if Factoid::unify_all(
-                &mut facts.iter_mut().map(|f| &mut f.datum_type).collect::<TVec<_>>(),
+                &mut facts
+                    .iter_mut()
+                    .map(|f| &mut f.datum_type)
+                    .collect::<TVec<_>>(),
             )? {
                 changed = true;
             }
@@ -169,7 +181,7 @@ impl InferenceScan {
         }
         for (slot, i) in self.input_mapping.iter().enumerate() {
             match i {
-                InputMapping::State { .. } => {}
+                InputMapping::State => {}
                 InputMapping::Full => {
                     if inputs[slot].unify_with_mut(self.body.input_fact_mut(slot)?)? {
                         changed = true;
@@ -185,15 +197,18 @@ impl InferenceScan {
                         if incoming.shape.ensure_rank_at_least(scan.axis) {
                             changed = true;
                         }
-                        let value =
-                            self.iter_count_fact.unify(&incoming.shape.dim(scan.axis).unwrap())?;
+                        let value = self
+                            .iter_count_fact
+                            .unify(&incoming.shape.dim(scan.axis).unwrap())?;
                         if self.iter_count_fact != value {
                             changed = true;
                             self.iter_count_fact = value.clone();
                         }
                         if incoming.shape.dim(scan.axis).unwrap() != value {
                             changed = true;
-                            incoming.shape.set_dim(scan.axis, value.concretize().unwrap());
+                            incoming
+                                .shape
+                                .set_dim(scan.axis, value.concretize().unwrap());
                         }
                     }
                 }
@@ -210,15 +225,18 @@ impl InferenceScan {
                     if outgoing.shape.ensure_rank_at_least(scan.axis) {
                         changed = true;
                     }
-                    let value =
-                        self.iter_count_fact.unify(&outgoing.shape.dim(scan.axis).unwrap())?;
+                    let value = self
+                        .iter_count_fact
+                        .unify(&outgoing.shape.dim(scan.axis).unwrap())?;
                     if self.iter_count_fact != value {
                         changed = true;
                         self.iter_count_fact = value.clone();
                     }
                     if outgoing.shape.dim(scan.axis).unwrap() != value {
                         changed = true;
-                        outgoing.shape.set_dim(scan.axis, value.concretize().unwrap());
+                        outgoing
+                            .shape
+                            .set_dim(scan.axis, value.concretize().unwrap());
                     }
                 }
             }
@@ -238,7 +256,11 @@ impl InferenceOp for InferenceScan {
         inputs: TVec<&InferenceFact>,
         outputs: TVec<&InferenceFact>,
         _observed: TVec<&InferenceFact>,
-    ) -> TractResult<(TVec<InferenceFact>, TVec<InferenceFact>, TVec<InferenceFact>)> {
+    ) -> TractResult<(
+        TVec<InferenceFact>,
+        TVec<InferenceFact>,
+        TVec<InferenceFact>,
+    )> {
         let body_inputs = self.body.input_outlets()?.len();
         let body_outputs = self.body.output_outlets()?.len();
         let expected_op_inputs = self.input_mapping.len();
@@ -246,11 +268,20 @@ impl InferenceOp for InferenceScan {
             .output_mapping
             .iter()
             .filter_map(|om| om.last_value_slot)
-            .chain(self.output_mapping.iter().filter_map(|om| om.scan.map(|si| si.0)))
+            .chain(
+                self.output_mapping
+                    .iter()
+                    .filter_map(|om| om.scan.map(|si| si.0)),
+            )
             .max()
-            .context("No output slot found")? + 1;
+            .context("No output slot found")?
+            + 1;
         if inputs.len() != expected_op_inputs {
-            bail!("Scan receives {} inputs, mappings expects {}", inputs.len(), expected_op_inputs)
+            bail!(
+                "Scan receives {} inputs, mappings expects {}",
+                inputs.len(),
+                expected_op_inputs
+            )
         }
         if body_inputs != self.input_mapping.len() {
             bail!(
@@ -260,7 +291,11 @@ impl InferenceOp for InferenceScan {
             )
         }
         if outputs.len() != expected_op_outputs {
-            bail!("Scan has {} outputs, mappings expects {}", outputs.len(), expected_op_outputs);
+            bail!(
+                "Scan has {} outputs, mappings expects {}",
+                outputs.len(),
+                expected_op_outputs
+            );
         }
         if body_outputs != self.output_mapping.len() {
             bail!(
@@ -276,10 +311,20 @@ impl InferenceOp for InferenceScan {
             let mut changed = self.unify_facts(&mut inputs, &mut outputs)?;
             trace!("iters: {:?} changed: {:?}", self.iter_count_fact, changed);
             for (ix, input) in self.body.input_outlets()?.iter().enumerate() {
-                trace!("  Input inner model: {} {:?} {:?}", ix, input, self.body.input_fact(ix));
+                trace!(
+                    "  Input inner model: {} {:?} {:?}",
+                    ix,
+                    input,
+                    self.body.input_fact(ix)
+                );
             }
             for (ix, output) in self.body.output_outlets()?.iter().enumerate() {
-                trace!("  Output inner model: {} {:?} {:?}", ix, output, self.body.output_fact(ix));
+                trace!(
+                    "  Output inner model: {} {:?} {:?}",
+                    ix,
+                    output,
+                    self.body.output_fact(ix)
+                );
             }
             trace!("Inner model analyse");
             if self.body.analyse(false).context("analysing inner model")? {
@@ -301,11 +346,19 @@ impl InferenceOp for InferenceScan {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let inputs = node.inputs.iter().map(|m| mapping[m]).collect::<TVec<_>>();
-        target.wire_node(&*node.name, self.to_mir_scan()? as Box<dyn TypedOp>, &inputs)
+        target.wire_node(
+            &*node.name,
+            self.to_mir_scan()? as Box<dyn TypedOp>,
+            &inputs,
+        )
     }
 
     fn nboutputs(&self) -> TractResult<usize> {
-        Ok(self.output_mapping.iter().filter(|om| !om.invisible()).count())
+        Ok(self
+            .output_mapping
+            .iter()
+            .filter(|om| !om.invisible())
+            .count())
     }
 
     as_op!();
