@@ -49,10 +49,11 @@ impl OpaquePayload for Box<dyn MMMInputValue> {
     fn same_as(&self, other: &dyn OpaquePayload) -> bool {
         other
             .downcast_ref::<Self>()
-            .is_some_and(|other| (*self).same_as(other))
+            .is_some_and(|other| (&**self as &dyn MMMInputValue).same_as(&**other))
     }
 }
 
+#[allow(clippy::derived_hash_with_manual_eq)]
 #[derive(Clone, Hash, Debug)]
 pub struct PackedOpaqueFact {
     pub format: Box<dyn MMMInputFormat>,

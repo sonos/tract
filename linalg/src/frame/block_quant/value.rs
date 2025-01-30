@@ -2,6 +2,7 @@ use super::{BlockQuant, PackedBlockQuantFormat};
 use tract_data::internal::*;
 use tract_data::TVec;
 
+#[allow(clippy::derived_hash_with_manual_eq)]
 #[derive(Clone, Hash)]
 pub struct BlockQuantFact {
     pub format: Box<dyn BlockQuant>,
