@@ -87,7 +87,11 @@ impl OpStateFreeze for State {
         Box::new(FrozenState {
             op: self.op.clone(),
             position: self.position,
-            hidden_state: self.hidden_state.iter().map(|t| t.clone().into_tensor()).collect(),
+            hidden_state: self
+                .hidden_state
+                .iter()
+                .map(|t| t.clone().into_tensor())
+                .collect(),
             model_state: self.model_state.freeze(),
         })
     }
@@ -98,7 +102,11 @@ impl FrozenOpState for FrozenState {
         Box::new(State {
             op: self.op.clone(),
             position: self.position,
-            hidden_state: self.hidden_state.iter().map(|t| t.clone().into_tvalue()).collect(),
+            hidden_state: self
+                .hidden_state
+                .iter()
+                .map(|t| t.clone().into_tvalue())
+                .collect(),
             model_state: self.model_state.unfreeze(),
         })
     }
@@ -180,7 +188,12 @@ impl OpState for State {
     ) -> TractResult<TVec<TValue>> {
         let iters = self.iteration_count(&inputs);
 
-        let State { op, ref mut hidden_state, ref mut position, ref mut model_state } = self;
+        let State {
+            op,
+            ref mut hidden_state,
+            ref mut position,
+            ref mut model_state,
+        } = self;
 
         // initialize state at first pass, or when forced
         if op.reset_every_turn {
@@ -198,8 +211,10 @@ impl OpState for State {
         for (ix, output) in op.output_mapping.iter().enumerate() {
             if let Some((slot, info)) = output.scan {
                 let fact = op.plan.model().output_fact(ix)?;
-                let mut shape: TVec<usize> =
-                    fact.shape.eval_to_usize(&session.resolved_symbols)?.into_owned();
+                let mut shape: TVec<usize> = fact
+                    .shape
+                    .eval_to_usize(&session.resolved_symbols)?
+                    .into_owned();
                 let scanning_dim = output
                     .full_dim_hint
                     .as_ref()
@@ -229,7 +244,7 @@ impl OpState for State {
                 .enumerate()
                 .map(|(slot, m)| {
                     Ok(match m {
-                        InputMapping::State { .. } => Some(hidden_state.pop().unwrap()),
+                        InputMapping::State => Some(hidden_state.pop().unwrap()),
                         InputMapping::Scan(info) => Some(
                             Self::slice_input(&inputs[slot], info.axis, i, info.chunk)?
                                 .into_tvalue(),
@@ -243,8 +258,9 @@ impl OpState for State {
                 .collect();
 
             trace!("iter_inputs #{}: {:?}", i, iter_inputs);
-            let iter_outputs =
-                model_state.run(iter_inputs).with_context(|| "Evaluating inner body")?;
+            let iter_outputs = model_state
+                .run(iter_inputs)
+                .with_context(|| "Evaluating inner body")?;
             trace!("iter_outputs #{}: {:?}", i, iter_outputs);
 
             for (v, mapping) in iter_outputs.into_iter().zip(&op.output_mapping) {
@@ -279,8 +295,10 @@ impl TypedOp for OptScan {
             }
             if let Some((slot, info)) = output.scan {
                 let mut shape = fact.shape.clone();
-                let scanning_dim =
-                    output.full_dim_hint.clone().unwrap_or(shape[info.axis].clone() * &iters);
+                let scanning_dim = output
+                    .full_dim_hint
+                    .clone()
+                    .unwrap_or(shape[info.axis].clone() * &iters);
                 shape.set(info.axis, scanning_dim);
                 outputs.push((slot, fact.datum_type.fact(shape)));
             }
