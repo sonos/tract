@@ -12,6 +12,7 @@ use tract_num_traits::{One, Zero};
 #[derive(Debug, Clone, Default)]
 pub struct BinEinsumProblemParams {
     pub force_unique_non_trivial_m_n: bool,
+    pub no_trivial_axes: bool,
 }
 
 #[derive(Clone)]
@@ -38,9 +39,11 @@ impl Arbitrary for BinEinsumProblem {
     type Parameters = BinEinsumProblemParams;
     type Strategy = BoxedStrategy<BinEinsumProblem>;
 
-    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-        let m_n_axes_range = if args.force_unique_non_trivial_m_n { 1..2usize } else { 1..3usize };
-        (m_n_axes_range.clone(), m_n_axes_range, 0..2usize, 0..2usize, 0..2usize)
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        let m_n_axes_range = if params.force_unique_non_trivial_m_n { 1..2usize } else { 1..3usize };
+        let trivial_axes_range = if params.no_trivial_axes { 0..1usize } else { 0..2usize };
+
+        (m_n_axes_range.clone(), m_n_axes_range, 0..3usize, trivial_axes_range.clone(), trivial_axes_range)
             .prop_map(|(m_axes, n_axes, iter_axes, trivial_m_axes, trivial_n_axes)| {
                 let m_axes: String = ('a'..).take(m_axes).collect();
                 let trivial_m_axes: String = ('m'..).take(trivial_m_axes).collect();
