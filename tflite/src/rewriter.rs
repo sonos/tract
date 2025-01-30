@@ -43,6 +43,8 @@ fn trivial_axes_around_matmul(
     let trivial_axes = (0..rank - 2)
         .filter(|axis| facts[0].shape[*axis].is_one() && facts[1].shape[*axis].is_one())
         .collect_vec();
+    
+    ensure!(!trivial_axes.is_empty(), "Found Einsum with 4 > axes and no trivial axes");
     let mut patch = TypedModelPatch::default();
     let mut wire = patch.taps(model, &node.inputs)?;
     for axis in trivial_axes.iter().rev() {

@@ -29,7 +29,7 @@ fn mk_suite() -> infra::TestSuite {
         compatible_conv_q,
     );
 
-    let einsum_params = BinEinsumProblemParams {no_trivial_axes: true, force_max_one_iter_axis: true, ..BinEinsumProblemParams::default()};
+    let einsum_params = BinEinsumProblemParams { force_unique_non_trivial_m_n: true, no_trivial_axes: true, ..BinEinsumProblemParams::default()};
     unit.get_sub_mut("bin_einsum").add_arbitrary::<BinEinsumProblem>("proptest", einsum_params.clone());
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
 }
