@@ -5,6 +5,7 @@ use super::{EagerPackedInput, MMMInputFormat, MMMInputValue};
 
 type Kernel = unsafe fn(input: *const u8, output: *mut u8, k: usize);
 
+#[allow(clippy::derived_hash_with_manual_eq)]
 #[derive(Hash, Clone)]
 pub struct PanelExtractor {
     pub name: String,
