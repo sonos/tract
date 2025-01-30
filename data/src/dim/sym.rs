@@ -28,6 +28,7 @@ pub struct SymbolScopeData {
     table: DefaultStringInterner,
     assertions: Vec<Assertion>,
     scenarios: Vec<(String, Vec<Assertion>)>,
+    cache_proven_positive_or_zero: RefCell<rapidhash::RapidHashMap<TDim, bool>>,
 }
 
 impl SymbolScope {
@@ -147,7 +148,7 @@ impl SymbolScope {
         let locked = self.0.lock();
         let locked = locked.borrow();
         if locked.scenarios.len() == 0 {
-            return Ok(None)
+            return Ok(None);
         }
         let mut maybe = None;
         for (ix, (_name, assertions)) in locked.scenarios.iter().enumerate() {
@@ -158,7 +159,7 @@ impl SymbolScope {
             } else if maybe.is_none() {
                 maybe = Some(ix);
             } else {
-                return Ok(None)
+                return Ok(None);
             }
         }
         if maybe.is_some() {
@@ -201,38 +202,41 @@ impl SymbolScopeData {
         if let TDim::Val(v) = t {
             return *v >= 0;
         }
-        let positives = self.assertions.iter().filter_map(|i| i.as_known_positive()).collect_vec();
-        let mut visited = vec![];
-        let mut todo = vec![t.clone()];
-        while let Some(t) = todo.pop() {
-            if t.to_i64().is_ok_and(|i| i >= 0) {
-                return true;
-            }
-            if t.inclusive_bound(self, false).is_some_and(|l| l >= 0) {
-                return true;
-            }
-            let syms = t.symbols();
-            for s in syms {
-                let me = t.guess_slope(&s);
-                for pos in &positives {
-                    if pos.symbols().contains(&s) {
-                        let other = pos.guess_slope(&s);
-                        if me.0.signum() == other.0.signum() {
-                            let new = t.clone() * me.1 * other.0.abs()
-                                - pos.clone() * me.0.abs() * other.1;
-                            if !visited.contains(&new) {
-                                todo.push(new);
+        *self.cache_proven_positive_or_zero.borrow_mut().entry(t.clone()).or_insert_with(|| {
+            let positives =
+                self.assertions.iter().filter_map(|i| i.as_known_positive()).collect_vec();
+            let mut visited = vec![];
+            let mut todo = vec![t.clone()];
+            while let Some(t) = todo.pop() {
+                if t.to_i64().is_ok_and(|i| i >= 0) {
+                    return true;
+                }
+                if t.inclusive_bound(self, false).is_some_and(|l| l >= 0) {
+                    return true;
+                }
+                let syms = t.symbols();
+                for s in syms {
+                    let me = t.guess_slope(&s);
+                    for pos in &positives {
+                        if pos.symbols().contains(&s) {
+                            let other = pos.guess_slope(&s);
+                            if me.0.signum() == other.0.signum() {
+                                let new = t.clone() * me.1 * other.0.abs()
+                                    - pos.clone() * me.0.abs() * other.1;
+                                if !visited.contains(&new) {
+                                    todo.push(new);
+                                }
                             }
                         }
                     }
                 }
+                visited.push(t);
+                if visited.len() > 10 {
+                    break;
+                }
             }
-            visited.push(t);
-            if visited.len() > 10 {
-                break;
-            }
-        }
-        false
+            false
+        })
     }
 }
 

@@ -11,7 +11,7 @@ autobenches = false
 edition = "2021"
 exclude = [ "test_cases" ]
 # build = "build-proto-rs"
-rust-version = "1.75"
+rust-version = "1.77"
 
 
 [badges]
