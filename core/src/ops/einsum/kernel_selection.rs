@@ -125,7 +125,7 @@ pub fn wire_for_variable_n(
     if a_konst.datum_type().is_number() {
         let packed_a = kit
             .static_packer
-            .prepare_tensor(&a_konst, op.a_k(), op.a_m())?;
+            .prepare_tensor(a_konst, op.a_k(), op.a_m())?;
         let name = patch.node(a.node).name.clone();
         a = patch.add_const(name, tensor0(Opaque::from(packed_a)))?;
     }
