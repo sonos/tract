@@ -13,6 +13,7 @@ use tract_num_traits::{One, Zero};
 pub struct BinEinsumProblemParams {
     pub force_unique_non_trivial_m_n: bool,
     pub no_trivial_axes: bool,
+    pub force_max_one_iter_axis: bool,
 }
 
 #[derive(Clone)]
@@ -42,8 +43,8 @@ impl Arbitrary for BinEinsumProblem {
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
         let m_n_axes_range = if params.force_unique_non_trivial_m_n { 1..2usize } else { 1..3usize };
         let trivial_axes_range = if params.no_trivial_axes { 0..1usize } else { 0..2usize };
-
-        (m_n_axes_range.clone(), m_n_axes_range, 0..3usize, trivial_axes_range.clone(), trivial_axes_range)
+        let iter_axes_range = if params.force_max_one_iter_axis { 0..2usize } else { 0..3usize };
+        (m_n_axes_range.clone(), m_n_axes_range, iter_axes_range, trivial_axes_range.clone(), trivial_axes_range)
             .prop_map(|(m_axes, n_axes, iter_axes, trivial_m_axes, trivial_n_axes)| {
                 let m_axes: String = ('a'..).take(m_axes).collect();
                 let trivial_m_axes: String = ('m'..).take(trivial_m_axes).collect();
