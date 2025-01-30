@@ -2,7 +2,7 @@
 use tract_itertools::Itertools;
 use tract_linalg::frame::PackedFormat;
 use tract_linalg::mmm::panel_extract::PanelExtractor;
-use tract_linalg::mmm::{KitDatumType, MMMInputValue, MatMatMul};
+use tract_linalg::mmm::{KitDatumType, MMMInputValue, MatMatMul, WeightType};
 
 use crate::internal::*;
 use crate::ops::matmul::pack::OptMatMulPack;
@@ -27,9 +27,8 @@ pub fn wire_packing(
     let b_dt = b_fact.datum_type;
 
     if a_fact.konst.is_some() && op.n.as_i64().is_none() {
-        let a = a_fact.konst.unwrap();
-        let (b, impls, picker) = wire_linear(patch, prefix, op, &a, operands[1])?;
-        return Ok((operands[0], b, impls, picker));
+        return wire_for_variable_n(patch, prefix, op, operands[0], operands[1])
+            .context("In wire_linear");
     }
 
     // "simple" kernel selection
@@ -80,23 +79,18 @@ pub fn wire_packing(
     Ok((pa, pb, vec![(mmm, packing, None)], mode_picker))
 }
 
-pub fn wire_linear(
+pub fn wire_for_variable_n(
     patch: &mut TypedModelPatch,
     prefix: &str,
     op: &EinSumAnnotatedAsMatMul,
-    a: &Arc<Tensor>,
+    mut a: OutletId,
     b: OutletId,
 ) -> TractResult<(
+    OutletId,
     OutletId,
     Vec<(Box<dyn MatMatMul>, usize, Option<PanelExtractor>)>,
     ModePicker,
 )> {
-    let packed = a
-        .to_scalar::<Opaque>()?
-        .0
-        .downcast_ref::<Box<dyn MMMInputValue>>()
-        .unwrap()
-        .format();
     let accumulator = if op.operating_dt.is_integer() {
         KitDatumType::I32
     } else if op.operating_dt == f16::datum_type() && tract_linalg::has_fp16() {
@@ -109,16 +103,32 @@ pub fn wire_linear(
         DatumType::F32 => KitDatumType::F32,
         _ => todo!(),
     };
+
+    let a_konst = patch.outlet_fact(a)?.konst.as_ref().unwrap();
+    // preemptive packing ?
+    let prepack = a_konst
+        .to_scalar::<Opaque>()
+        .ok()
+        .and_then(|opaq| opaq.0.downcast_ref::<Box<dyn MMMInputValue>>());
     let kit = tract_linalg::ops()
         .mmm_kits()
         .iter()
         .filter(|kit| {
-            kit.static_packer.same_as(packed)
+            prepack
+                .map(|pre| kit.static_packer.same_as(pre.format()))
+                .unwrap_or_else(|| kit.weight == WeightType::from(a_konst.datum_type()))
                 && kit.accumulator == accumulator
                 && kit.activation == activation
         })
         .min_by_key(|kit| kit.generic_fallback as usize)
         .with_context(|| format!("No kit found for pre-packed {a:?}"))?;
+    if a_konst.datum_type().is_number() {
+        let packed_a = kit
+            .static_packer
+            .prepare_tensor(&a_konst, op.a_k(), op.a_m())?;
+        let name = patch.node(a.node).name.clone();
+        a = patch.add_const(name, tensor0(Opaque::from(packed_a)))?;
+    }
 
     let configs = [kit.item_for_mv(), kit.item_for_squarish()];
 
@@ -144,6 +154,7 @@ pub fn wire_linear(
     )?[0];
 
     Ok((
+        a,
         pb,
         configs
             .iter()
