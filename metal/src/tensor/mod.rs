@@ -235,6 +235,12 @@ impl From<MetalArenaView> for MetalTensor {
 }
 
 impl OpaquePayload for MetalTensor {
+    fn same_as(&self, other: &dyn OpaquePayload) -> bool {
+        other
+            .downcast_ref::<Self>()
+            .is_some_and(|other| self.metal().gpu_address() == other.metal().gpu_address())
+    }
+
     fn clarify_to_tensor(&self) -> Option<Result<Tensor>> {
         Some(self.to_cpu())
     }
