@@ -119,7 +119,10 @@ impl PackedFormat {
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>> {
         ensure!(t.datum_type().is_copy());
-        ensure!(t.datum_type().unquantized() == self.dt.unquantized());
+        ensure!(
+            t.datum_type().unquantized() == self.dt.unquantized(),
+            "Attempting to pack for {self} tensor {t:?}"
+        );
         let k = t.shape()[k_axis];
         let mn = t.shape()[mn_axis];
         let packed_len = self.len(k, mn);
@@ -162,7 +165,10 @@ impl PackedFormat {
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>> {
-        ensure!(t.datum_type().unquantized() == self.dt.unquantized());
+        ensure!(
+            t.datum_type().unquantized() == self.dt.unquantized(),
+            "Attempting to pack for {self} tensor view {t:?}"
+        );
         let k = t.shape()[k_axis];
         let mn = t.shape()[mn_axis];
         let packed_len = self.len(k, mn);

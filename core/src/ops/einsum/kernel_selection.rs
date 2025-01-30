@@ -104,15 +104,19 @@ pub fn wire_linear(
     } else {
         KitDatumType::F32
     };
-    // let activation = match b_fact.datum_type {
-    //     DatumType::F16 => KitDatumType::F16,
-    //     DatumType::F32 => KitDatumType::F32,
-    //     _ => todo!(),
-    // };
+    let activation = match patch.outlet_fact(b)?.datum_type {
+        DatumType::F16 => KitDatumType::F16,
+        DatumType::F32 => KitDatumType::F32,
+        _ => todo!(),
+    };
     let kit = tract_linalg::ops()
         .mmm_kits()
         .iter()
-        .filter(|kit| kit.static_packer.same_as(packed) && kit.accumulator == accumulator)
+        .filter(|kit| {
+            kit.static_packer.same_as(packed)
+                && kit.accumulator == accumulator
+                && kit.activation == activation
+        })
         .min_by_key(|kit| kit.generic_fallback as usize)
         .with_context(|| format!("No kit found for pre-packed {a:?}"))?;
 
