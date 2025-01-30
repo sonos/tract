@@ -197,7 +197,7 @@ impl SymbolScopeData {
     }
 
     #[allow(clippy::mutable_key_type)]
-    pub fn prove_positive_or_zero(&self, t: &TDim) -> bool {
+    pub(crate) fn prove_positive_or_zero(&self, t: &TDim, scenario: Option<&str>) -> bool {
         if let TDim::Val(v) = t {
             return *v >= 0;
         }
@@ -208,7 +208,7 @@ impl SymbolScopeData {
             if t.to_i64().is_ok_and(|i| i >= 0) {
                 return true;
             }
-            if t.inclusive_bound(self, false).is_some_and(|l| l >= 0) {
+            if t._inclusive_bound(self, false, scenario).is_some_and(|l| l >= 0) {
                 return true;
             }
             let syms = t.symbols();
