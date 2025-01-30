@@ -29,8 +29,9 @@ fn mk_suite() -> infra::TestSuite {
         compatible_conv_q,
     );
 
-    let einsum_params = BinEinsumProblemParams { force_unique_non_trivial_m_n: true, no_trivial_axes: true, ..BinEinsumProblemParams::default()};
-    unit.get_sub_mut("bin_einsum").add_arbitrary::<BinEinsumProblem>("proptest", einsum_params.clone());
+    let einsum_params = BinEinsumProblemParams { max_dims: 4, ..BinEinsumProblemParams::default() };
+    unit.get_sub_mut("bin_einsum")
+        .add_arbitrary::<BinEinsumProblem>("proptest", einsum_params.clone());
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
 }
 
@@ -104,7 +105,8 @@ fn ignore_onnx(t: &[String]) -> bool {
         test_thresholdrelu
         ",
     );
-    let excluded = patterns("
+    let excluded = patterns(
+        "
             test_slice_start_out_of_bounds
             test_Conv1d_groups
             test_Conv2d_groups
@@ -122,7 +124,8 @@ fn ignore_onnx(t: &[String]) -> bool {
             pool_2d_same_lower
             test_cosh.*
             test_sinh.*
-            ");
+            ",
+    );
     !included.iter().any(|pat| pat.is_match(name)) || excluded.iter().any(|pat| pat.is_match(name))
 }
 
@@ -151,7 +154,9 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
         }
     }
 
-    if t[0] == "bin_einsum" && t[1] == "proptest" { return true; }
+    if t[0] == "bin_einsum" && t[1] == "proptest" {
+        return true;
+    }
 
     let [section, _unit] = t else { return false };
     ["deconv", "q_flavours", "q_binary", "q_elmwise"].contains(&&**section)

@@ -9,11 +9,23 @@ use tract_ndarray::{ArrayD, Axis, Dimension};
 use tract_core::ops::einsum::EinSum;
 use tract_num_traits::{One, Zero};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct BinEinsumProblemParams {
     pub force_unique_non_trivial_m_n: bool,
     pub no_trivial_axes: bool,
     pub force_max_one_iter_axis: bool,
+    pub max_dims: usize,
+}
+
+impl Default for BinEinsumProblemParams {
+    fn default() -> BinEinsumProblemParams {
+        BinEinsumProblemParams {
+            force_unique_non_trivial_m_n: false,
+            no_trivial_axes: false,
+            force_max_one_iter_axis: false,
+            max_dims: 8,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -41,22 +53,71 @@ impl Arbitrary for BinEinsumProblem {
     type Strategy = BoxedStrategy<BinEinsumProblem>;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        let m_n_axes_range = if params.force_unique_non_trivial_m_n { 1..2usize } else { 1..3usize };
-        let trivial_axes_range = if params.no_trivial_axes { 0..1usize } else { 0..2usize };
-        let iter_axes_range = if params.force_max_one_iter_axis { 0..2usize } else { 0..3usize };
-        (m_n_axes_range.clone(), m_n_axes_range, iter_axes_range, trivial_axes_range.clone(), trivial_axes_range)
-            .prop_map(|(m_axes, n_axes, iter_axes, trivial_m_axes, trivial_n_axes)| {
-                let m_axes: String = ('a'..).take(m_axes).collect();
+        let supp_m_n_axes_range =
+            if params.force_unique_non_trivial_m_n { 0..1usize } else { 0..2usize };
+        assert!(params.max_dims >= 3);
+        let remaining = params.max_dims - 3; // At least 1 m, and n
+
+        supp_m_n_axes_range
+            .clone()
+            .prop_flat_map(move |supp_m_axes| {
+                let remaining = remaining - supp_m_axes;
+                let n_axes_range = if remaining < supp_m_n_axes_range.end {
+                    0..(remaining + 1)
+                } else {
+                    supp_m_n_axes_range.clone()
+                };
+                let iter_axes_range =
+                    if params.force_max_one_iter_axis { 0..2usize } else { 0..3usize };
+                n_axes_range.prop_flat_map(move |supp_n_axes| {
+                    let remaining = remaining - supp_n_axes;
+                    let iter_axes_range = if remaining < iter_axes_range.end {
+                        0..(remaining + 1)
+                    } else {
+                        iter_axes_range.clone()
+                    };
+                    iter_axes_range.clone().prop_flat_map(move |iter_axes| {
+                        let remaining = remaining - iter_axes;
+                        let trivial_m_n_axes_range =
+                            if params.no_trivial_axes { 0..1usize } else { 0..2usize };
+                        let trivial_m_axes_range = if remaining < trivial_m_n_axes_range.end {
+                            0..(remaining + 1)
+                        } else {
+                            trivial_m_n_axes_range.clone()
+                        };
+                        trivial_m_axes_range.clone().prop_flat_map(move |trivial_m_axes| {
+                            let remaining = remaining - trivial_m_axes;
+                            let trivial_n_axes_range = if remaining < trivial_m_n_axes_range.end {
+                                0..(remaining + 1)
+                            } else {
+                                trivial_m_n_axes_range.clone()
+                            };
+                            trivial_n_axes_range.clone().prop_flat_map(move |trivial_n_axes| {
+                                Just((
+                                    supp_m_axes,
+                                    supp_n_axes,
+                                    iter_axes,
+                                    trivial_m_axes,
+                                    trivial_n_axes,
+                                ))
+                            })
+                        })
+                    })
+                })
+            })
+            .prop_map(|(supp_m_axes, supp_n_axes, iter_axes, trivial_m_axes, trivial_n_axes)| {
+                dbg!(supp_m_axes, supp_n_axes, iter_axes, trivial_m_axes, trivial_n_axes);
+                let m_axes: String = ('b'..).take(supp_m_axes).collect();
                 let trivial_m_axes: String = ('m'..).take(trivial_m_axes).collect();
                 let trivial_n_axes: String = ('p'..).take(trivial_n_axes).collect();
-                let n_axes: String = ('g'..).take(n_axes).collect();
+                let n_axes: String = ('h'..).take(supp_n_axes).collect();
                 let iter_axes: String = ('w'..).take(iter_axes).collect();
                 let a_axes: Vec<char> =
-                    (m_axes.clone() + &trivial_m_axes + &iter_axes + "k").chars().collect();
+                    (m_axes.clone() + "a" + &trivial_m_axes + &iter_axes + "k").chars().collect();
                 let b_axes: Vec<char> =
-                    (n_axes.clone() + &trivial_n_axes + &iter_axes + "k").chars().collect();
+                    (n_axes.clone() + "g" + &trivial_n_axes + &iter_axes + "k").chars().collect();
                 let c_axes: Vec<char> =
-                    (m_axes + &n_axes + &trivial_m_axes + &trivial_n_axes + &iter_axes)
+                    (m_axes + &n_axes + "ag" + &trivial_m_axes + &trivial_n_axes + &iter_axes)
                         .chars()
                         .collect();
                 (Just(a_axes), Just(b_axes), Just(c_axes))

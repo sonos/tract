@@ -19,6 +19,7 @@ fn mk_suite() -> infra::TestSuite {
         QConvProblemParams::default(),
         compatible_conv_q,
     );
+
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
 }
 
@@ -28,6 +29,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
             return true;
         }
     }
+
     let [section, _unit] = t else { return false };
     ["q_flavours"].contains(&&**section)
 }
