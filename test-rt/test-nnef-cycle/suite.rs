@@ -1,4 +1,5 @@
 use infra::Test;
+use suite_unit::bin_einsum::{BinEinsumProblem, BinEinsumProblemParams};
 use suite_unit::conv_q::{QConvProblem, QConvProblemParams};
 
 pub fn suite() -> &'static infra::TestSuite {
@@ -20,6 +21,9 @@ fn mk_suite() -> infra::TestSuite {
         QConvProblemParams::default(),
         compatible_conv_q,
     );
+
+    let einsum_params = BinEinsumProblemParams {no_trivial_axes: true, ..BinEinsumProblemParams::default()};
+    unit.get_sub_mut("bin_einsum").add_arbitrary::<BinEinsumProblem>("proptest", einsum_params.clone());
 
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
 }
@@ -84,6 +88,7 @@ fn ignore_unit(t: &[String], tc: &dyn Test) -> bool {
     if let Some(qcp) = tc.downcast_ref::<QConvProblem>() {
         return !compatible_conv_q(qcp);
     }
+    if t[0] == "bin_einsum" && t[1] == "proptest" { return true; }
     false
 }
 
