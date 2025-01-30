@@ -23,7 +23,11 @@ pub fn render(
     if !model.properties().is_empty() {
         println!("{}", White.bold().paint("# Properties"));
     }
-    for (k, v) in model.properties().iter().sorted_by_key(|(k, _)| k.to_string()) {
+    for (k, v) in model
+        .properties()
+        .iter()
+        .sorted_by_key(|(k, _)| k.to_string())
+    {
         println!("* {}: {:?}", White.paint(k), v)
     }
     let symbols = model.symbols();
@@ -60,8 +64,11 @@ fn render_prefixed(
     annotations: &Annotations,
     options: &DisplayParams,
 ) -> TractResult<()> {
-    let mut drawing_state =
-        if options.should_draw() { Some(DrawingState::default()) } else { None };
+    let mut drawing_state = if options.should_draw() {
+        Some(DrawingState::default())
+    } else {
+        None
+    };
     let node_ids = options.order(model)?;
     for node in node_ids {
         if options.filter(model, scope, node)? {
@@ -99,9 +106,18 @@ fn render_node_prefixed(
     let node_op_name = model.node_op_name(node_id);
     let profile_column_pad = format!("{:>1$}", "", options.profile as usize * 20);
     let cost_column_pad = format!("{:>1$}", "", options.cost as usize * 25);
-    let mem_padding = if annotations.memory_summary.is_some() { 15 } else { 30 };
-    let tmp_mem_usage_column_pad = format!("{:>1$}", "", options.tmp_mem_usage as usize * mem_padding);
-    let flops_column_pad = format!("{:>1$}", "", (options.profile && options.cost) as usize * 20);
+    let mem_padding = if annotations.memory_summary.is_some() {
+        15
+    } else {
+        30
+    };
+    let tmp_mem_usage_column_pad =
+        format!("{:>1$}", "", options.tmp_mem_usage as usize * mem_padding);
+    let flops_column_pad = format!(
+        "{:>1$}",
+        "",
+        (options.profile && options.cost) as usize * 20
+    );
 
     if let Some(ref mut ds) = &mut drawing_state {
         for l in ds.draw_node_vprefix(model, node_id, options)? {
@@ -127,6 +143,7 @@ fn render_node_prefixed(
     });
 
     // cost column
+    #[allow(clippy::manual_repeat_n)]
     let mut cost_column = if options.cost {
         Some(
             tags.cost
@@ -146,7 +163,11 @@ fn render_node_prefixed(
 
     // flops column
     let mut flops_column = if options.profile && options.cost {
-        let timing: f64 = tags.profile.as_ref().map(|d| d.as_secs_f64()).unwrap_or(0.0);
+        let timing: f64 = tags
+            .profile
+            .as_ref()
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
         let flops_column_pad = flops_column_pad.clone();
         let it = tags.cost.iter().map(move |c| {
             if c.0.is_compute() {
@@ -191,7 +212,11 @@ fn render_node_prefixed(
             let body = ds.draw_node_body(model, node_id, options)?;
             let suffix = ds.draw_node_vsuffix(model, node_id, options)?;
             let filler = ds.draw_node_vfiller(model, node_id)?;
-            Box::new(body.into_iter().chain(suffix).chain(std::iter::repeat(filler)))
+            Box::new(
+                body.into_iter()
+                    .chain(suffix)
+                    .chain(std::iter::repeat(filler)),
+            )
         } else {
             Box::new(std::iter::repeat(cost_column_pad.clone()))
         };
@@ -212,9 +237,20 @@ fn render_node_prefixed(
                 .unwrap_or("".to_string());
             let tmp_mem_usage = tmp_mem_usage_column
                 .as_mut()
-                .map(|it| it.next().unwrap_or_else(|| tmp_mem_usage_column_pad.to_string()))
+                .map(|it| {
+                    it.next()
+                        .unwrap_or_else(|| tmp_mem_usage_column_pad.to_string())
+                })
                 .unwrap_or("".to_string());
-            print!("{}{}{}{}{}{} ", profile, cost, flops, tmp_mem_usage, prefix, drawing_lines.next().unwrap(),)
+            print!(
+                "{}{}{}{}{}{} ",
+                profile,
+                cost,
+                flops,
+                tmp_mem_usage,
+                prefix,
+                drawing_lines.next().unwrap(),
+            )
         };
     }
 
@@ -222,7 +258,12 @@ fn render_node_prefixed(
     println!(
         "{} {} {}",
         White.bold().paint(format!("{node_id}")),
-        (if node_name == "UnimplementedOp" { Red.bold() } else { Blue.bold() }).paint(node_op_name),
+        (if node_name == "UnimplementedOp" {
+            Red.bold()
+        } else {
+            Blue.bold()
+        })
+        .paint(node_op_name),
         name_color.italic().paint(node_name)
     );
     for label in tags.labels.iter() {
@@ -245,23 +286,40 @@ fn render_node_prefixed(
             let star = if slot == 0 { '*' } else { ' ' };
             let outlet = OutletId::new(node_id, slot);
             let mut model_io = vec![];
-            for (ix, _) in model.input_outlets().iter().enumerate().filter(|(_, o)| **o == outlet) {
+            for (ix, _) in model
+                .input_outlets()
+                .iter()
+                .enumerate()
+                .filter(|(_, o)| **o == outlet)
+            {
                 model_io.push(Cyan.bold().paint(format!("MODEL INPUT #{ix}")).to_string());
             }
             if let Some(t) = &tags.model_input {
                 model_io.push(t.to_string());
             }
-            for (ix, _) in model.output_outlets().iter().enumerate().filter(|(_, o)| **o == outlet)
+            for (ix, _) in model
+                .output_outlets()
+                .iter()
+                .enumerate()
+                .filter(|(_, o)| **o == outlet)
             {
-                model_io.push(Yellow.bold().paint(format!("MODEL OUTPUT #{ix}")).to_string());
+                model_io.push(
+                    Yellow
+                        .bold()
+                        .paint(format!("MODEL OUTPUT #{ix}"))
+                        .to_string(),
+                );
             }
             if let Some(t) = &tags.model_output {
                 model_io.push(t.to_string());
             }
             let successors = model.outlet_successors(outlet);
             prefix!();
-            let mut axes =
-                tags.outlet_axes.get(slot).map(|s| s.join(",")).unwrap_or_else(|| "".to_string());
+            let mut axes = tags
+                .outlet_axes
+                .get(slot)
+                .map(|s| s.join(","))
+                .unwrap_or_else(|| "".to_string());
             if !axes.is_empty() {
                 axes.push(' ')
             }
@@ -271,7 +329,9 @@ fn render_node_prefixed(
                 slot,
                 Green.bold().italic().paint(axes),
                 model.outlet_fact_format(outlet),
-                White.bold().paint(successors.iter().map(|s| format!("{s:?}")).join(" ")),
+                White
+                    .bold()
+                    .paint(successors.iter().map(|s| format!("{s:?}")).join(" ")),
                 model_io.join(", "),
                 Blue.bold().italic().paint(
                     tags.outlet_labels
@@ -298,7 +358,11 @@ fn render_node_prefixed(
         if let Some(typed) = model.downcast_ref::<TypedModel>() {
             let node = typed.node(node_id);
             let (inputs, outputs) = typed.node_facts(node.id)?;
-            let axes_mapping = node.op().as_typed().unwrap().axes_mapping(&inputs, &outputs)?;
+            let axes_mapping = node
+                .op()
+                .as_typed()
+                .unwrap()
+                .axes_mapping(&inputs, &outputs)?;
             prefix!();
             println!("  * {axes_mapping}");
         }
@@ -341,7 +405,12 @@ fn render_node_prefixed(
                 == model.outlet_fact_format(model.node_inputs(node_id)[0]);
         if !same || model.output_outlets().iter().any(|o| o.node == node_id) {
             let style = drawing_state
-                .map(|s| s.wires.last().and_then(|w| w.color).unwrap_or(s.latest_node_color))
+                .map(|s| {
+                    s.wires
+                        .last()
+                        .and_then(|w| w.color)
+                        .unwrap_or(s.latest_node_color)
+                })
                 .unwrap_or_else(|| White.into());
             for ix in 0..model.node_output_count(node_id) {
                 prefix!();
@@ -356,7 +425,11 @@ fn render_node_prefixed(
         }
     }
 
-    while cost_column.as_mut().map(|cost| cost.peek().is_some()).unwrap_or(false) {
+    while cost_column
+        .as_mut()
+        .map(|cost| cost.peek().is_some())
+        .unwrap_or(false)
+    {
         prefix!();
         println!();
     }
@@ -389,9 +462,15 @@ pub fn render_summaries(
 
         println!(
             "{}{}{}",
-            White.bold().paint(format!("{:<43}", "Most time consuming operations")),
+            White
+                .bold()
+                .paint(format!("{:<43}", "Most time consuming operations")),
             White.bold().paint(format!("{:<17}", "CPU")),
-            White.bold().paint(if options.has_accelerator { "Accelerator" } else { "" }),
+            White.bold().paint(if options.has_accelerator {
+                "Accelerator"
+            } else {
+                ""
+            }),
         );
 
         for (op, (cpu_dur, accel_dur, n)) in annotations
@@ -400,7 +479,10 @@ pub fn render_summaries(
             .map(|(k, v)| {
                 (
                     k.model(model).unwrap().node_op_name(k.1),
-                    (v.profile.unwrap_or_default(), v.accelerator_profile.unwrap_or_default()),
+                    (
+                        v.profile.unwrap_or_default(),
+                        v.accelerator_profile.unwrap_or_default(),
+                    ),
                 )
             })
             .sorted_by_key(|a| a.0.to_string())
@@ -454,12 +536,18 @@ pub fn render_summaries(
                 .map(|(_k, v)| v)
                 .sum::<NodeTags>();
 
-            let profiler =
-                if !options.has_accelerator { sum.profile } else { sum.accelerator_profile };
+            let profiler = if !options.has_accelerator {
+                sum.profile
+            } else {
+                sum.accelerator_profile
+            };
             if profiler.unwrap_or_default().as_secs_f64() / summary.entire.as_secs_f64() < 0.01 {
                 continue;
             }
-            print!("{}    ", dur_avg_ratio(profiler.unwrap_or_default(), summary.sum));
+            print!(
+                "{}    ",
+                dur_avg_ratio(profiler.unwrap_or_default(), summary.sum)
+            );
 
             for _ in prefix.chars().filter(|c| *c == '.') {
                 print!("   ");
@@ -469,13 +557,19 @@ pub fn render_summaries(
 
         println!(
             "Not accounted by ops: {}",
-            dur_avg_ratio(summary.entire - summary.sum.min(summary.entire), summary.entire)
+            dur_avg_ratio(
+                summary.entire - summary.sum.min(summary.entire),
+                summary.entire
+            )
         );
 
         if options.has_accelerator {
             println!(
                 "(Total CPU Op time - Total Accelerator Op time): {}",
-                dur_avg_ratio(summary.sum - summary.accel_sum.min(summary.sum), summary.entire)
+                dur_avg_ratio(
+                    summary.sum - summary.accel_sum.min(summary.sum),
+                    summary.entire
+                )
             );
         }
         println!("Entire network performance: {}", dur_avg(summary.entire));
@@ -486,7 +580,10 @@ pub fn render_summaries(
 
 /// Format a rusage::Duration showing avgtime in ms.
 pub fn dur_avg(measure: Duration) -> String {
-    White.bold().paint(format!("{:.3} ms/i", measure.as_secs_f64() * 1e3)).to_string()
+    White
+        .bold()
+        .paint(format!("{:.3} ms/i", measure.as_secs_f64() * 1e3))
+        .to_string()
 }
 
 /// Format a rusage::Duration showing avgtime in ms, with percentage to a global
@@ -494,10 +591,13 @@ pub fn dur_avg(measure: Duration) -> String {
 pub fn dur_avg_ratio(measure: Duration, global: Duration) -> String {
     format!(
         "{} {}",
-        White.bold().paint(format!("{:7.3} ms/i", measure.as_secs_f64() * 1e3)),
-        Yellow
+        White
             .bold()
-            .paint(format!("{:>4.1}%", measure.as_secs_f64() / global.as_secs_f64() * 100.)),
+            .paint(format!("{:7.3} ms/i", measure.as_secs_f64() * 1e3)),
+        Yellow.bold().paint(format!(
+            "{:>4.1}%",
+            measure.as_secs_f64() / global.as_secs_f64() * 100.
+        )),
     )
 }
 
@@ -507,11 +607,11 @@ fn render_memory(mem_size: usize) -> String {
     let gb = mb * 1024.0;
     let mem_size = mem_size as f32;
     if mem_size > gb {
-        format!("{:.3} GB", mem_size/ gb)
+        format!("{:.3} GB", mem_size / gb)
     } else if mem_size > mb {
-        format!("{:.3} MB", mem_size/ mb)
+        format!("{:.3} MB", mem_size / mb)
     } else if mem_size > kb {
-        format!("{:.3} KB", mem_size/ kb)
+        format!("{:.3} KB", mem_size / kb)
     } else {
         format!("{mem_size:.3} B")
     }
@@ -534,7 +634,13 @@ fn render_big_integer(i: i64) -> nu_ansi_term::AnsiString<'static> {
         .into_iter()
         .map(|mut c| c.join("").chars().rev().join(""))
         .enumerate()
-        .map(|(ix, s)| if ix % 2 == 1 { White.bold().paint(s).to_string() } else { s })
+        .map(|(ix, s)| {
+            if ix % 2 == 1 {
+                White.bold().paint(s).to_string()
+            } else {
+                s
+            }
+        })
         .collect::<Vec<_>>();
     blocks.reverse();
     blocks.into_iter().join("").into()
