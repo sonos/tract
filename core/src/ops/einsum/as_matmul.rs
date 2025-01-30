@@ -38,8 +38,12 @@ fn einsum_rules(
         AxesOrPatch::Annotated(op) => op,
         AxesOrPatch::Patch(p) => return Ok(Some(p)),
         AxesOrPatch::NotAMatMul(axes) => {
-                bail!("{} is not a matmul because of axis {}", op.axes, axes.iter().map(|a| a.repr).join(", ") )
-             }
+            bail!(
+                "{} is not a matmul because of axis {}",
+                op.axes,
+                axes.iter().map(|a| a.repr).join(", ")
+            )
+        }
     };
     let prefix: String = op
         .axes

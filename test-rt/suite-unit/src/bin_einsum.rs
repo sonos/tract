@@ -106,18 +106,17 @@ impl Arbitrary for BinEinsumProblem {
                 })
             })
             .prop_map(|(supp_m_axes, supp_n_axes, iter_axes, trivial_m_axes, trivial_n_axes)| {
-                dbg!(supp_m_axes, supp_n_axes, iter_axes, trivial_m_axes, trivial_n_axes);
-                let m_axes: String = ('b'..).take(supp_m_axes).collect();
-                let trivial_m_axes: String = ('m'..).take(trivial_m_axes).collect();
-                let trivial_n_axes: String = ('p'..).take(trivial_n_axes).collect();
+                let m_axes: String = ('a'..).take(supp_m_axes).collect();
+                let trivial_m_axes: String = ('e'..).take(trivial_m_axes).collect();
                 let n_axes: String = ('h'..).take(supp_n_axes).collect();
+                let trivial_n_axes: String = ('o'..).take(trivial_n_axes).collect();
                 let iter_axes: String = ('w'..).take(iter_axes).collect();
                 let a_axes: Vec<char> =
-                    (m_axes.clone() + "a" + &trivial_m_axes + &iter_axes + "k").chars().collect();
+                    (m_axes.clone() + "m" + &trivial_m_axes + &iter_axes + "k").chars().collect();
                 let b_axes: Vec<char> =
-                    (n_axes.clone() + "g" + &trivial_n_axes + &iter_axes + "k").chars().collect();
+                    (n_axes.clone() + "n" + &trivial_n_axes + &iter_axes + "k").chars().collect();
                 let c_axes: Vec<char> =
-                    (m_axes + &n_axes + "ag" + &trivial_m_axes + &trivial_n_axes + &iter_axes)
+                    (m_axes + &n_axes + "mn" + &trivial_m_axes + &trivial_n_axes + &iter_axes)
                         .chars()
                         .collect();
                 (Just(a_axes), Just(b_axes), Just(c_axes))
@@ -197,16 +196,16 @@ impl BinEinsumProblem {
             model.add_source("b", TypedFact::shape_and_dt_of(&self.b))?
         };
 
-        let output = model.wire_node(
+        let mut output = model.wire_node(
             "einsum",
             EinSum { axes: self.expr.clone(), operating_dt: f32::datum_type(), q_params: None },
             &[a, b],
         )?;
 
-        //if let Some(c) = &self.unicast_add_constant {
-        //    let c = model.add_const("c", c.clone())?;
-        //    output = model.wire_node("add", tract_core::ops::math::add(), &[output[0], c])?;
-        //}
+        if let Some(c) = &self.unicast_add_constant {
+            let c = model.add_const("c", c.clone())?;
+            output = model.wire_node("add", tract_core::ops::math::add(), &[output[0], c])?;
+        }
 
         model.set_output_outlets(&output)?;
 
@@ -285,7 +284,12 @@ impl BinEinsumProblem {
             }
             sum
         });
-        output
+        if let Some(unicast_const) = self.unicast_add_constant.clone() {
+            output + unicast_const.into_array::<Acc>().unwrap()
+        }
+        else {
+            output
+        }
     }
 }
 
