@@ -32,6 +32,7 @@ pub mod scan;
 pub mod source;
 pub mod submodel;
 pub mod unimpl;
+pub mod vptq;
 
 pub use downsample::Downsample;
 pub use memory::*;
