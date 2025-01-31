@@ -303,7 +303,6 @@ fn squeeze_batch_axes(s: &[usize]) -> TractResult<TVec<usize>> {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
     use super::*;
     use crate::kernels::matmul::GemmImpl;
     use crate::IntoMetal;
@@ -321,7 +320,7 @@ mod tests {
         transpose_b: bool,
         a_dt: DatumType,
         b_dt: DatumType,
-    ) -> TractResult<Duration> {
+    ) -> TractResult<()> {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
                 let a_shape = if !transpose_a { [batch, m, k] } else { [batch, k, m] };
@@ -335,7 +334,7 @@ mod tests {
                 else {
                     Tensor::from_shape(
                         &a_shape,
-                        &(0..batch * m * k).map(|f| (f + 128) as f32).collect::<Vec<_>>(),
+                        &(0..batch * m * k).map(|f| f as f32 / (batch * m * k) as f32).collect::<Vec<_>>(),
                     )?
                 };
 
@@ -348,13 +347,13 @@ mod tests {
                 else {
                     Tensor::from_shape(
                         &b_shape,
-                        &(0..batch * k * n).map(|f| f as f32).collect::<Vec<_>>(),
+                        &(0..batch * k * n).map(|f| f as f32 / (batch * m * k) as f32).collect::<Vec<_>>(),
                     )?
                 };
-                let start = Instant::now();
+
                 let metal_output =
                     GemmImpl::<K>::new(transpose_a, transpose_b).eval(context, &a.clone().into_metal()?, &b.clone().into_metal()?)?;
-                let res = start.elapsed();
+
                 let matmul = BasicMatMul {
                     transpose_a,
                     transpose_b,
@@ -374,7 +373,7 @@ mod tests {
                     matmul.eval(tvec![a.into_tvalue(), b.into_tvalue()])?
                 );
                 metal_output.to_cpu()?.close_enough(&output, Approximation::SuperApproximate)?;
-                Ok(res)
+                Ok(())
             })
         })
     }
