@@ -1,6 +1,5 @@
-use std::{collections::HashSet, path::Path};
+use std::collections::HashSet;
 
-use ndarray_npy::NpzWriter;
 use tract_data::itertools::Itertools;
 use tract_ndarray::Array1;
 
