@@ -1,5 +1,6 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, path::Path};
 
+use ndarray_npy::NpzWriter;
 use tract_data::itertools::Itertools;
 use tract_ndarray::Array1;
 
@@ -57,21 +58,14 @@ impl VPTQGemm {
         pre_shift_pack_tensor_shape.push(1);
 
         let mut out = shift_right_zero_and_1(
-            pack_tensor
-                .clone()
-                .into_shape(&pre_shift_pack_tensor_shape)?
-                .into(),
+            pack_tensor.clone().into_shape(&pre_shift_pack_tensor_shape)?.into(),
             wf.into(),
         )?;
 
         let mut post_shift_pack_tensor_shape = pack_tensor_shape.clone();
         let pval = post_shift_pack_tensor_shape.pop().unwrap();
         post_shift_pack_tensor_shape.push(32 * pval);
-        out = out
-            .into_tensor()
-            .clone()
-            .into_shape(&post_shift_pack_tensor_shape)?
-            .into_tvalue();
+        out = out.into_tensor().clone().into_shape(&post_shift_pack_tensor_shape)?.into_tvalue();
 
         let pad_size = (pack_tensor_shape.last().unwrap_or(&0) * 32) % (index_bits * num_elements);
         if pad_size > 0 {
@@ -85,15 +79,10 @@ impl VPTQGemm {
         let auto = out.shape().last().unwrap() / index_bits;
         post_pad_pack_tensor_shape.push(auto);
         post_pad_pack_tensor_shape.push(index_bits);
-        out = out
-            .into_tensor()
-            .into_shape(&post_pad_pack_tensor_shape)?
-            .into();
+        out = out.into_tensor().into_shape(&post_pad_pack_tensor_shape)?.into();
 
         let wf1 = Tensor::from(
-            Array1::from_iter(0..(index_bits as i32))
-                .to_shape([1, 1, 1, index_bits])?
-                .into_owned(),
+            Array1::from_iter(0..(index_bits as i32)).to_shape([1, 1, 1, index_bits])?.into_owned(),
         );
 
         out = shift_left().eval(tvec!(out, wf1.into()))?.pop().unwrap();
@@ -222,27 +211,14 @@ impl EvalOp for VPTQGemm {
             assert_eq!(outlier_centroids.rank(), 3);
             assert!(outlier_centroids.datum_type().is_float());
         }
-        let _fdtypes = [
-            input.datum_type(),
-            centroids.datum_type(),
-            outlier_centroids.datum_type(),
-        ];
+        let _fdtypes = [input.datum_type(), centroids.datum_type(), outlier_centroids.datum_type()];
         let fdtypes = HashSet::from(_fdtypes);
         if fdtypes.len() != 1 {
-            log::warn!(
-                "force cast centroids to be same type as input: {:?}",
-                input.datum_type()
-            );
+            log::warn!("force cast centroids to be same type as input: {:?}", input.datum_type());
             centroids = centroids.cast_to_dt(input.datum_type())?.into_owned();
-            outlier_centroids = outlier_centroids
-                .cast_to_dt(input.datum_type())?
-                .into_owned();
+            outlier_centroids = outlier_centroids.cast_to_dt(input.datum_type())?.into_owned();
         }
-        let _fdtypes = [
-            input.datum_type(),
-            centroids.datum_type(),
-            outlier_centroids.datum_type(),
-        ];
+        let _fdtypes = [input.datum_type(), centroids.datum_type(), outlier_centroids.datum_type()];
         let fdtypes = HashSet::from(_fdtypes);
         assert!(fdtypes.len() == 1, "mixed dtypes: {_fdtypes:?}");
 
@@ -270,23 +246,16 @@ impl EvalOp for VPTQGemm {
         if enable_perm {
             let axis = 0;
             let dim = perm.shape()[0];
-            let top_k = Topk {
-                axis,
-                largest: false,
-                fallback_k: dim.into(),
-            };
-            let invert_perm = top_k
-                .eval(tvec!(perm.into_tvalue(), tensor0(dim as u16).into()))?
-                .remove(0);
+            let top_k = Topk { axis, largest: false, fallback_k: dim.into() };
+            let invert_perm =
+                top_k.eval(tvec!(perm.into_tvalue(), tensor0(dim as u16).into()))?.remove(1);
             // TODO: manage case with quant dim == 'in' ?
             // if self.vector_quant_dim == "in":
             //     assert True, "Not implemented"
             //     qweight = qweight[invert_perm, :]
 
             let perm_gather_axis = 1;
-            let gather_perm = Gather {
-                axis: perm_gather_axis,
-            };
+            let gather_perm = Gather { axis: perm_gather_axis };
             qweight = gather_perm
                 .eval(tvec!(qweight.into(), invert_perm))?
                 .pop()
