@@ -155,19 +155,18 @@ pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync 
         Ok(matches!(dts[0], DatumType::F32 | DatumType::F16) && dts[0] == dts[1])
     }
 
-    fn output_facts(
+    fn output_dt(
         &self,
-        a: &TypedFact,
-        b: &TypedFact,
-        c_shape: Vec<TDim>,
-    ) -> TractResult<TVec<TypedFact>> {
-        if a.datum_type == f16::datum_type() {
-            ensure!(b.datum_type == f16::datum_type());
-            Ok(tvec!(f16::fact(c_shape)))
+        a_dt: DatumType,
+        b_dt: DatumType,
+    ) -> TractResult<DatumType> {
+        if a_dt == f16::datum_type() {
+            ensure!(b_dt == f16::datum_type());
+            Ok(DatumType::F16)
         } else {
-            ensure!(a.datum_type == f32::datum_type());
-            ensure!(b.datum_type == f32::datum_type());
-            Ok(tvec!(f32::fact(c_shape)))
+            ensure!(a_dt == f32::datum_type());
+            ensure!(b_dt == f32::datum_type());
+            Ok(DatumType::F32)
         }
     }
 
@@ -211,7 +210,14 @@ impl<M: GemmKernel> GemmImpl<M> {
 
     pub fn output_facts(&self, a: &TypedFact, b: &TypedFact) -> TractResult<TVec<TypedFact>> {
         let out_shape = self.output_shape(&a.shape, &b.shape).to_vec();
-        self.matmul.output_facts(a, b, out_shape)
+        let out_dt = self.matmul.output_dt(a.datum_type().unwrap(), b.datum_type().unwrap())?;
+        if out_dt == DatumType::F32 {
+            Ok(tvec!(f32::fact(out_shape)))
+        }
+        else {
+            ensure!(out_dt == DatumType::F16);
+            Ok(tvec!(f16::fact(out_shape)))
+        }
     }
 
     pub fn eval(
@@ -220,7 +226,7 @@ impl<M: GemmKernel> GemmImpl<M> {
         a: &MetalTensor,
         b: &MetalTensor,
     ) -> TractResult<MetalTensor> {
-        let c_dt = a.datum_type();
+        let c_dt = self.matmul.output_dt(a.datum_type(), b.datum_type())?;
         let c_shape = self.output_shape(a.shape(), b.shape());
         let c = unsafe { MetalTensor::uninitialized_dt(c_dt, &c_shape)? };
 
@@ -310,80 +316,64 @@ mod tests {
     use tract_core::ops::einsum::BasicMatMul;
 
     pub(crate) fn run_mmm_test_case<K: GemmKernel>(
-        (b, m, k, n): (usize, usize, usize, usize),
+        (batch, m, k, n): (usize, usize, usize, usize),
         transpose_a: bool,
         transpose_b: bool,
-    ) -> TractResult<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let a_shape = if !transpose_a { [b, m, k] } else { [b, k, m] };
-                let b_shape = if !transpose_b { [b, k, n] } else { [b, n, k] };
-                let a = Tensor::from_shape(
-                    &a_shape,
-                    &(0..b * m * k).map(|f| f as f32 / 100.0).collect::<Vec<_>>(),
-                )?
-                .into_metal()?;
-
-                let b = Tensor::from_shape(
-                    &b_shape,
-                    &(0..b * k * n).map(|f| f as f32 / 100.0).collect::<Vec<_>>(),
-                )?
-                .into_metal()?;
-
-                let metal_output =
-                    GemmImpl::<K>::new(transpose_a, transpose_b).eval(context, &a, &b)?;
-                let matmul = BasicMatMul {
-                    transpose_a,
-                    transpose_b,
-                    transpose_c: false,
-                    quantize_output: None,
-                };
-                let output = args_1!(
-                    matmul.eval(tvec![a.to_cpu()?.into_tvalue(), b.to_cpu()?.into_tvalue()])?
-                );
-                output.close_enough(&metal_output.to_cpu()?, Approximation::Approximate)?;
-                Ok(res)
-            })
-        })
-    }
-
-    pub(crate) fn run_mmm_test_case_ggml(
-        (b, m, k, n): (usize, usize, usize, usize),
-        transpose_a: bool,
-        transpose_b: bool,
+        a_dt: DatumType,
+        b_dt: DatumType,
     ) -> TractResult<Duration> {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
-                let a_shape = [b, m, k];
-                let b_shape = if transpose_b {[b, n, k]} else {[b, k, n]};
-                let a = Tensor::from_shape(
+                let a_shape = if !transpose_a { [batch, m, k] } else { [batch, k, m] };
+                let b_shape = if !transpose_b { [batch, k, n] } else { [batch, n, k] };
+                let mut a = if a_dt == DatumType::F16 {
+                    Tensor::from_shape(
                     &a_shape,
-                    &(0..b * m * k).map(|f| f as f32 / 1000.0).collect::<Vec<_>>(),
+                    &(0..batch * m * k).map(|f| f16::from_f32(f as f32 / (batch * m * k) as f32)).collect::<Vec<_>>(),
                 )?
-                .into_metal()?;
+            }
+                else {
+                    Tensor::from_shape(
+                        &a_shape,
+                        &(0..batch * m * k).map(|f| (f + 128) as f32).collect::<Vec<_>>(),
+                    )?
+                };
 
-                let b = Tensor::from_shape(
-                    &b_shape,
-                    &(0..b * k * n).map(|f| f as f32 / 1000.0).collect::<Vec<_>>(),
-                )?.into_metal()?;
-
+                let mut b = if b_dt == DatumType::F16 {
+                     Tensor::from_shape(
+                        &b_shape,
+                        &(0..batch * k * n).map(|f| f16::from_f32(f as f32 / (batch * n * k) as f32)).collect::<Vec<_>>(),
+                    )?
+                }
+                else {
+                    Tensor::from_shape(
+                        &b_shape,
+                        &(0..batch * k * n).map(|f| f as f32).collect::<Vec<_>>(),
+                    )?
+                };
+                let start = Instant::now();
+                let metal_output =
+                    GemmImpl::<K>::new(transpose_a, transpose_b).eval(context, &a.clone().into_metal()?, &b.clone().into_metal()?)?;
+                let res = start.elapsed();
                 let matmul = BasicMatMul {
                     transpose_a,
                     transpose_b,
                     transpose_c: false,
                     quantize_output: None,
                 };
+
+                // Compare to full precision
+                if a_dt == DatumType::F16 && !(b_dt == DatumType::F16) {
+                    a = a.clone().cast_to_dt(DatumType::F32).unwrap().into_owned();
+                }
+                if b_dt == DatumType::F16 && !(a_dt == DatumType::F16) {
+                    b = b.clone().cast_to_dt(DatumType::F32).unwrap().into_owned();
+                }
+
                 let output = args_1!(
-                    matmul.eval(tvec![a.to_cpu()?.into_tvalue(), b.to_cpu()?.into_tvalue()])?
+                    matmul.eval(tvec![a.into_tvalue(), b.into_tvalue()])?
                 );
-
-                let _perm_b = kernels::array::permute_axes::PermuteAxes.eval(context, &b, &[0, 1, 2])?;
-
-                let start = Instant::now();
-                let metal_output =
-                    GemmImpl::<GgmlGemm>::new(transpose_a, transpose_b).eval(context, &a, &b)?;
-                let res = start.elapsed();
-                output.close_enough(&metal_output.to_cpu()?, Approximation::Approximate)?;
+                metal_output.to_cpu()?.close_enough(&output, Approximation::SuperApproximate)?;
                 Ok(res)
             })
         })
