@@ -5,25 +5,15 @@
 using namespace metal;
 
 typedef struct {
-    int32_t  ne00;
-    int32_t  ne01;
-    int32_t  ne02;
-    uint64_t nb00;
-    uint64_t nb01;
-    uint64_t nb02;
-    uint64_t nb03;
-    int32_t  ne10;
-    int32_t  ne11;
-    int32_t  ne12;
-    uint64_t nb10;
-    uint64_t nb11;
-    uint64_t nb12;
-    uint64_t nb13;
-    int32_t  ne0;
-    int32_t  ne1;
-    int16_t  r2;
-    int16_t  r3;
-} ggml_metal_kargs_mul_mv;
+    int32_t batch;
+    int32_t m;
+    int32_t k;
+    int32_t n;
+    uint64_t a_strides[4];
+    uint64_t b_strides[4];
+    int32_t channel_broadcast_ratio;
+    int32_t batch_broadcast_ratio;
+} ggml_metal_kargs_mul;
 
 #define N_MV_T_T 4
 
@@ -39,58 +29,58 @@ void kernel_mul_mv_impl(
     const int rb = tgpig.y*N_MV_T_T;
     const int im = tgpig.z;
 
-    const uint i12 = im%args.ne12;
-    const uint i13 = im/args.ne12;
+    const uint i12 = im%args.batch;
+    const uint i13 = im/args.batch;
 
-    const uint64_t offset0 = r0*args.nb01 + (i12/args.r2)*args.nb02 + (i13/args.r3)*args.nb03;
+    const uint64_t offset0 = r0*args.b_strides[2] + (i12/args.channel_broadcast_ratio)*args.b_strides[1] + (i13/args.batch_broadcast_ratio)*args.b_strides[0];
 
     device const T0 * x = (device const T0 *) (src0 + offset0);
 
-    device float * dst_f32 = (device float *) dst + (uint64_t)im*args.ne0*args.ne1;
+    device float * dst_f32 = (device float *) dst + (uint64_t)im*args.m*args.n;
 
-    if (args.ne00 < 128) {
+    if (args.k < 128) {
         for (int row = 0; row < N_MV_T_T; ++row) {
             int r1 = rb + row;
-            if (r1 >= args.ne11) {
+            if (r1 >= args.m) {
                 break;
             }
 
-            const uint64_t offset1 = r1*args.nb11 + (i12   )*args.nb12 + (i13   )*args.nb13;
+            const uint64_t offset1 = r1*args.a_strides[2] + (i12   )*args.a_strides[1] + (i13   )*args.a_strides[0];
 
             device const T1 * y = (device const T1 *) (src1 + offset1);
 
             float sumf = 0;
-            for (int i = tiisg; i < args.ne00; i += 32) {
+            for (int i = tiisg; i < args.k; i += 32) {
                 sumf += (T0) x[i] * (T1) y[i];
             }
 
             float all_sum = simd_sum(sumf);
             if (tiisg == 0) {
-                dst_f32[(uint64_t)r1*args.ne0 + r0] = all_sum;
+                dst_f32[(uint64_t)r1*args.n + r0] = all_sum;
             }
         }
     } else {
         device const T04 * x4 = (device const T04 *) x;
         for (int row = 0; row < N_MV_T_T; ++row) {
             int r1 = rb + row;
-            if (r1 >= args.ne11) {
+            if (r1 >= args.m) {
                 break;
             }
 
-            const uint64_t offset1 = r1*args.nb11 + (i12   )*args.nb12 + (i13   )*args.nb13;
+            const uint64_t offset1 = r1*args.a_strides[2] + (i12   )*args.a_strides[1] + (i13   )*args.a_strides[0];
 
             device const T1  * y  = (device const T1  *) (src1 + offset1);
             device const T14 * y4 = (device const T14 *) y;
 
             float sumf = 0;
-            for (int i = tiisg; i < args.ne00/4; i += 32) {
+            for (int i = tiisg; i < args.k/4; i += 32) {
                 sumf += dot((float4) x4[i], (float4) y4[i]);
             }
 
             float all_sum = simd_sum(sumf);
             if (tiisg == 0) {
-                for (int i = 4*(args.ne00/4); i < args.ne00; ++i) all_sum += (float) (x[i] * y[i]);
-                dst_f32[(uint64_t)r1*args.ne0 + r0] = all_sum;
+                for (int i = 4*(args.k/4); i < args.k; ++i) all_sum += (float) (x[i] * y[i]);
+                dst_f32[(uint64_t)r1*args.n + r0] = all_sum;
             }
         }
     }
@@ -98,13 +88,13 @@ void kernel_mul_mv_impl(
 
 template<typename T0, typename T04, typename T1, typename T14>
 kernel void kernel_mul_mv(
-        constant ggml_metal_kargs_mul_mv & args,
+        constant ggml_metal_kargs_mul & args,
         device const char * src0,
         device const char * src1,
         device       char * dst,
         uint3  tgpig[[threadgroup_position_in_grid]],
         ushort tiisg[[thread_index_in_simdgroup]]) {
-    kernel_mul_mv_impl<T0, T04, T1, T14, constant ggml_metal_kargs_mul_mv &>(
+    kernel_mul_mv_impl<T0, T04, T1, T14, constant ggml_metal_kargs_mul &>(
         args,
         src0,
         src1,
@@ -121,7 +111,7 @@ template [[host_name("kernel_mul_mv_f16_f16")]]   kernel mul_mv_t kernel_mul_mv<
 
 template<typename T, typename T4>
 kernel void kernel_mul_mv_1row(
-        constant ggml_metal_kargs_mul_mv & args,
+        constant ggml_metal_kargs_mul & args,
         device const char * src0,
         device const char * src1,
         device       char * dst,
@@ -132,20 +122,20 @@ kernel void kernel_mul_mv_1row(
     const int r1 = tgpig.y;
     const int im = tgpig.z;
 
-    const uint i12 = im%args.ne12;
-    const uint i13 = im/args.ne12;
+    const uint i12 = im%args.batch;
+    const uint i13 = im/args.batch;
 
-    const uint64_t offset0 = r0*args.nb01 + (i12/args.r2)*args.nb02 + (i13/args.r3)*args.nb03;
-    const uint64_t offset1 = r1*args.nb11 + (i12        )*args.nb12 + (i13        )*args.nb13;
+    const uint64_t offset0 = r0*args.b_strides[2] + (i12/args.channel_broadcast_ratio)*args.b_strides[1] + (i13/args.batch_broadcast_ratio)*args.b_strides[0];
+    const uint64_t offset1 = r1*args.a_strides[2] + (i12        )*args.a_strides[1] + (i13        )*args.a_strides[0];
 
     device const T     * x = (device const T     *) (src0 + offset0);
     device const float * y = (device const float *) (src1 + offset1);
 
-    device float * dst_f32 = (device float *) dst + (uint64_t)im*args.ne0*args.ne1 + (uint64_t)r1*args.ne0;
+    device float * dst_f32 = (device float *) dst + (uint64_t)im*args.n*args.m + (uint64_t)r1*args.n;
 
     float sumf = 0;
-    if (args.ne00 < 128) {
-        for (int i = tiisg; i < args.ne00; i += 32) {
+    if (args.k < 128) {
+        for (int i = tiisg; i < args.k; i += 32) {
             sumf += (float) x[i] * (float) y[i];
         }
         float all_sum = simd_sum(sumf);
@@ -156,14 +146,14 @@ kernel void kernel_mul_mv_1row(
         device const T4     * x4 = (device const T4     *) x;
         device const float4 * y4 = (device const float4 *) y;
 
-        for (int i = tiisg; i < args.ne00/4; i += 32) {
+        for (int i = tiisg; i < args.k/4; i += 32) {
             sumf += dot((float4) x4[i], y4[i]);
         }
 
         float all_sum = simd_sum(sumf);
 
         if (tiisg == 0) {
-            for (int i = 4*(args.ne00/4); i < args.ne00; ++i) all_sum += (float) (x[i] * y[i]);
+            for (int i = 4*(args.k/4); i < args.k; ++i) all_sum += (float) (x[i] * y[i]);
             dst_f32[r0] = all_sum;
         }
     }
@@ -173,42 +163,42 @@ typedef decltype(kernel_mul_mv_1row<half, half4>) mul_mv_1row_t;
 
 template [[host_name("kernel_mul_mv_f16_f32_1row")]]  kernel mul_mv_1row_t kernel_mul_mv_1row<half,   half4>;
 
-// Assumes row size (ne00) is a multiple of 4
+// Assumes row size (k) is a multiple of 4
 template<typename T, typename T4>
 kernel void kernel_mul_mv_l4(
-        constant ggml_metal_kargs_mul_mv & args,
+        constant ggml_metal_kargs_mul & args,
         device const char * src0,
         device const char * src1,
         device       char * dst,
         uint3  tgpig[[threadgroup_position_in_grid]],
         ushort tiisg[[thread_index_in_simdgroup]]) {
 
-    const int nrows = args.ne11;
+    const int nrows = args.m;
     const int r0 = tgpig.x;
     const int im = tgpig.z;
 
-    const uint i12 = im%args.ne12;
-    const uint i13 = im/args.ne12;
+    const uint i12 = im%args.batch;
+    const uint i13 = im/args.batch;
 
-    const uint64_t offset0 = r0*args.nb01 + (i12/args.r2)*args.nb02 + (i13/args.r3)*args.nb03;
+    const uint64_t offset0 = r0*args.b_strides[2] + (i12/args.channel_broadcast_ratio)*args.b_strides[1] + (i13/args.batch_broadcast_ratio)*args.b_strides[0];
 
     device const T4 * x4 = (device const T4 *) (src0 + offset0);
 
-    device float * dst_f32 = (device float *) dst + (uint64_t)im*args.ne0*args.ne1;
+    device float * dst_f32 = (device float *) dst + (uint64_t)im*args.n*args.m;
 
     for (int r1 = 0; r1 < nrows; ++r1) {
-        const uint64_t offset1 = r1*args.nb11 + (i12   )*args.nb12 + (i13   )*args.nb13;
+        const uint64_t offset1 = r1*args.a_strides[2] + (i12   )*args.a_strides[1] + (i13   )*args.a_strides[0];
 
         device const float4 * y4 = (device const float4 *) (src1 + offset1);
 
         float sumf = 0;
-        for (int i = tiisg; i < args.ne00/4; i += 32) {
+        for (int i = tiisg; i < args.k/4; i += 32) {
             sumf += dot((float4) x4[i], y4[i]);
         }
 
         float all_sum = simd_sum(sumf);
         if (tiisg == 0) {
-            dst_f32[(uint64_t)r1*args.ne0 + r0] = all_sum;
+            dst_f32[(uint64_t)r1*args.n + r0] = all_sum;
         }
     }
 }
@@ -216,23 +206,6 @@ kernel void kernel_mul_mv_l4(
 typedef decltype(kernel_mul_mv_l4<half, half4>) mul_mv_l4_t;
 
 template [[host_name("kernel_mul_mv_f16_f32_l4")]]  kernel mul_mv_l4_t kernel_mul_mv_l4<half, half4>;
-
-typedef struct {
-    int32_t  ne00;
-    int32_t  ne02;
-    uint64_t nb01;
-    uint64_t nb02;
-    uint64_t nb03;
-    int32_t  ne12;
-    uint64_t nb10;
-    uint64_t nb11;
-    uint64_t nb12;
-    uint64_t nb13;
-    int32_t  ne0;
-    int32_t  ne1;
-    int16_t  r2;
-    int16_t  r3;
-} ggml_metal_kargs_mul_mm;
 
 #define BLOCK_SIZE_M 64 // 8 simdgroup matrices from matrix A
 #define BLOCK_SIZE_N 32 // 4 simdgroup matrices from matrix B
@@ -248,7 +221,7 @@ typedef struct {
 // each block_q contains 16*nl weights
 template<typename T, typename T4x4, typename simdgroup_T8x8, typename block_q, short nl, void (*dequantize_func)(device const block_q *, short, thread T4x4 &)>
 kernel void kernel_mul_mm(
-        constant ggml_metal_kargs_mul_mm & args,
+        constant ggml_metal_kargs_mul & args,
         device const char * src0,
         device const char * src1,
         device       char * dst,
@@ -265,8 +238,8 @@ kernel void kernel_mul_mm(
     const int im = tgpig.z;
 
     // if this block is of 64x32 shape or smaller
-    const short n_rows = (args.ne0 - r0*BLOCK_SIZE_M < BLOCK_SIZE_M) ? (args.ne0 - r0*BLOCK_SIZE_M) : BLOCK_SIZE_M;
-    const short n_cols = (args.ne1 - r1*BLOCK_SIZE_N < BLOCK_SIZE_N) ? (args.ne1 - r1*BLOCK_SIZE_N) : BLOCK_SIZE_N;
+    const short n_rows = (args.n - r0*BLOCK_SIZE_M < BLOCK_SIZE_M) ? (args.n - r0*BLOCK_SIZE_M) : BLOCK_SIZE_M;
+    const short n_cols = (args.m - r1*BLOCK_SIZE_N < BLOCK_SIZE_N) ? (args.m - r1*BLOCK_SIZE_N) : BLOCK_SIZE_N;
 
     // a thread shouldn't load data outside of the matrix
     const short thread_row = ((short)tiitg/THREAD_PER_ROW) < n_rows ? ((short)tiitg/THREAD_PER_ROW) : n_rows - 1;
@@ -282,22 +255,22 @@ kernel void kernel_mul_mm(
 
     short il = (tiitg % THREAD_PER_ROW);
 
-    const int i12 = im%args.ne12;
-    const int i13 = im/args.ne12;
+    const int i12 = im%args.batch;
+    const int i13 = im/args.batch;
 
-    const uint64_t offset0 = (i12/args.r2)*args.nb02 + (i13/args.r3)*args.nb03;
+    const uint64_t offset0 = (i12/args.channel_broadcast_ratio)*args.b_strides[1] + (i13/args.batch_broadcast_ratio)*args.b_strides[0];
     const short    offset1 = il/nl;
 
     device const block_q * x = (device const block_q *)(src0
-        + args.nb01*(r0*BLOCK_SIZE_M + thread_row) + offset0) + offset1;
+        + args.b_strides[2]*(r0*BLOCK_SIZE_M + thread_row) + offset0) + offset1;
 
     device const float   * y = (device const float   *)(src1
-        + args.nb13*i13
-        + args.nb12*i12
-        + args.nb11*(r1*BLOCK_SIZE_N + thread_col)
-        + args.nb10*(BLOCK_SIZE_K / THREAD_PER_COL * (tiitg % THREAD_PER_COL)));
+        + args.a_strides[0]*i13
+        + args.a_strides[1]*i12
+        + args.a_strides[2]*(r1*BLOCK_SIZE_N + thread_col)
+        + args.a_strides[3]*(BLOCK_SIZE_K / THREAD_PER_COL * (tiitg % THREAD_PER_COL)));
 
-    for (int loop_k = 0; loop_k < args.ne00; loop_k += BLOCK_SIZE_K) {
+    for (int loop_k = 0; loop_k < args.k; loop_k += BLOCK_SIZE_K) {
         // load data and store to threadgroup memory
         T4x4 temp_a;
         dequantize_func(x, il, temp_a);
@@ -347,13 +320,13 @@ kernel void kernel_mul_mm(
         }
     }
 
-    if ((r0 + 1) * BLOCK_SIZE_M <= args.ne0 && (r1 + 1) * BLOCK_SIZE_N <= args.ne1) {
+    if ((r0 + 1) * BLOCK_SIZE_M <= args.n && (r1 + 1) * BLOCK_SIZE_N <= args.m) {
         device float * C = (device float *) dst +
             (BLOCK_SIZE_M * r0 + 32*(sgitg &  1)) + \
-            (BLOCK_SIZE_N * r1 + 16*(sgitg >> 1)) * args.ne0 + im*args.ne1*args.ne0;
+            (BLOCK_SIZE_N * r1 + 16*(sgitg >> 1)) * args.n + im*args.m*args.n;
 
         for (short i = 0; i < 8; i++) {
-            simdgroup_store(mc[i], C + 8 * (i%4) + 8 * args.ne0 * (i/4), args.ne0);
+            simdgroup_store(mc[i], C + 8 * (i%4) + 8 * args.n * (i/4), args.n);
         }
     } else {
         // block is smaller than 64x32, we should avoid writing data outside of the matrix
@@ -368,7 +341,7 @@ kernel void kernel_mul_mm(
 
         if (sgitg == 0) {
             for (int j = tiitg; j < n_cols; j += BLOCK_SIZE_N) {
-                device float  * D  = (device float  *) dst + (r0*BLOCK_SIZE_M) + (r1*BLOCK_SIZE_N + j)*args.ne0 + im*args.ne1*args.ne0;
+                device float  * D  = (device float  *) dst + (r0*BLOCK_SIZE_M) + (r1*BLOCK_SIZE_N + j)*args.n + im*args.m*args.n;
                 device float4 * D4 = (device float4 *) D;
 
                 threadgroup float  * C  = temp_str + (j*BLOCK_SIZE_M);
