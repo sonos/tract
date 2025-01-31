@@ -2,6 +2,7 @@ use crate::matmul::{BasicMatMul, GemmImpl, GemmKernel, MfaGemm, MlxGemm, MpsMatM
 use criterion::measurement::WallTime;
 use criterion::*;
 use ggml::Context;
+use kernels::matmul::GgmlGemm;
 use tract_metal::kernels::matmul;
 // use ggml;
 use tract_core::internal::*;
@@ -47,52 +48,52 @@ pub fn ggml_matmul(
     });
 }
 
-pub fn tract_with_packing(
-    crit: &mut BenchmarkGroup<WallTime>,
-    batch: usize,
-    m: usize,
-    k: usize,
-    n: usize,
-    dt: DatumType,
-) {
-    use tract_linalg::frame::mmm::FusedSpec;
-    let a = Tensor::zero_dt(dt, &[batch, m, k]).unwrap();
-    let b = Tensor::zero_dt(dt, &[batch, k, n]).unwrap();
-    let mut c = Tensor::zero_dt(dt, &[m, n]).unwrap();
-
-    // mk,kn -> mn
-    unsafe {
-        let mmm = tract_linalg::ops().mmm(dt, Some(m), Some(k), Some(n)).unwrap();
-
-        let c_storage = mmm.c_view(0, 1);
-
-        let mut scratch = mmm.allocate_scratch_space();
-
-        let (packer_a, packer_b) = mmm.packings()[0];
-
-        crit.bench_function(&format!("tract_with_packing_{:?}", dt), |be| {
-            let packed_a = packer_a.prepare_tensor(&a, 1, 0).unwrap();
-            let packed_b = packer_b.prepare_tensor(&b, 0, 1).unwrap();
-
-            be.iter(|| {
-                mmm.run_with_scratch_space(
-                    m,
-                    n,
-                    &mut *scratch,
-                    &[
-                        FusedSpec::AddMatMul {
-                            packing: 0,
-                            a: packed_a.as_ref(),
-                            b: packed_b.as_ref(),
-                        },
-                        FusedSpec::Store(c_storage.wrap(&mut c.view_mut())),
-                    ],
-                )
-                .unwrap()
-            });
-        });
-    }
-}
+// pub fn tract_with_packing(
+//     crit: &mut BenchmarkGroup<WallTime>,
+//     batch: usize,
+//     m: usize,
+//     k: usize,
+//     n: usize,
+//     dt: DatumType,
+// ) {
+//     use tract_linalg::frame::mmm::FusedSpec;
+//     let a = Tensor::zero_dt(dt, &[batch, m, k]).unwrap();
+//     let b = Tensor::zero_dt(dt, &[batch, k, n]).unwrap();
+//     let mut c = Tensor::zero_dt(dt, &[m, n]).unwrap();
+// 
+//     // mk,kn -> mn
+//     unsafe {
+//         let mmm = tract_linalg::ops().mmm(dt, Some(m), Some(k), Some(n)).unwrap();
+// 
+//         let c_storage = mmm.c_view(0, 1);
+// 
+//         let mut scratch = mmm.allocate_scratch_space();
+// 
+//         let (packer_a, packer_b) = mmm.packings()[0];
+// 
+//         crit.bench_function(&format!("tract_with_packing_{:?}", dt), |be| {
+//             let packed_a = packer_a.prepare_tensor(&a, 1, 0).unwrap();
+//             let packed_b = packer_b.prepare_tensor(&b, 0, 1).unwrap();
+// 
+//             be.iter(|| {
+//                 mmm.run_with_scratch_space(
+//                     m,
+//                     n,
+//                     &mut *scratch,
+//                     &[
+//                         FusedSpec::AddMatMul {
+//                             packing: 0,
+//                             a: packed_a.as_ref(),
+//                             b: packed_b.as_ref(),
+//                         },
+//                         FusedSpec::Store(c_storage.wrap(&mut c.view_mut())),
+//                     ],
+//                 )
+//                 .unwrap()
+//             });
+//         });
+//     }
+// }
 
 pub fn metal_gemm<K: GemmKernel>(
     crit: &mut BenchmarkGroup<WallTime>,
@@ -101,12 +102,14 @@ pub fn metal_gemm<K: GemmKernel>(
     k: usize,
     n: usize,
     dt: DatumType,
+    is_ggml: bool,
 ) {
     let context = MetalContext::new();
     context.shared_context().load_library(LibraryName::MfaLib).unwrap();
 
     let a = Tensor::zero_dt(dt, &[batch, m, k]).unwrap();
-    let b = Tensor::zero_dt(dt, &[batch, k, n]).unwrap();
+    let b = if is_ggml { Tensor::zero_dt(dt, &[batch, n, k]).unwrap() } else { Tensor::zero_dt(dt, &[batch, k, n]).unwrap() };
+
     let metal_a = a.into_metal().unwrap();
     let metal_b = b.into_metal().unwrap();
     // Warmup
@@ -114,7 +117,7 @@ pub fn metal_gemm<K: GemmKernel>(
 
     crit.bench_function(&format!("tract_metal_gemm_{}_{:?}", K::name(), dt), |be| {
         be.iter(|| {
-            let _ = GemmImpl::<K>::default().eval(&context, &metal_a, &metal_b).unwrap();
+            let _ = GemmImpl::<K>::new(false, is_ggml).eval(&context, &metal_a, &metal_b).unwrap();
         });
     });
 }
@@ -139,12 +142,13 @@ fn matmul(c: &mut Criterion, b: usize, m: usize, k: usize, n: usize) {
     // ggml_matmul(&mut c, m, k, n, f32::datum_type());
 
     for dt in [f32::datum_type(), f16::datum_type()] {
-        metal_gemm::<BasicMatMul>(&mut c, b, m, k, n, dt);
-        metal_gemm::<MpsMatMul>(&mut c, b, m, k, n, dt);
-        metal_gemm::<MlxGemm>(&mut c, b, m, k, n, dt);
-        metal_gemm::<MfaGemm>(&mut c, b, m, k, n, dt);
+        // metal_gemm::<BasicMatMul>(&mut c, b, m, k, n, dt, false);
+        // metal_gemm::<MpsMatMul>(&mut c, b, m, k, n, dt, false);
+        metal_gemm::<MlxGemm>(&mut c, b, m, k, n, dt, false);
+        // metal_gemm::<MfaGemm>(&mut c, b, m, k, n, dt, false);
+        metal_gemm::<GgmlGemm>(&mut c, b, m, k, n, dt, true);
     }
-    // ggml_matmul(&mut c, m, k, n, f16::datum_type());
+    //ggml_matmul(&mut c, m, k, n, f16::datum_type());
     // tract_with_packing(&mut c, b, m, k, n, f32::datum_type());
     //tract_with_packing(&mut c, b, m, k, n, f16::datum_type());
     c.finish();
@@ -152,26 +156,26 @@ fn matmul(c: &mut Criterion, b: usize, m: usize, k: usize, n: usize) {
 
 fn tinyllama(c: &mut Criterion) {
     let shapes = vec![
-        (32, 1, 25, 32),
-        (1, 32003, 2048, 1),
+        //(32, 1, 25, 32),
+        //(1, 32003, 2048, 1),
+        //(1, 1, 2048, 32003),
+        //(1, 32003, 2048, 6),
+        (1, 1, 32, 32),
+        (1, 1, 4, 4),
+        (1, 1, 4096, 4096),
+        (1, 1, 2048, 2048),
+        (1, 1, 1024, 1024),
+        (1, 1, 128, 128),
+        (1, 1, 64, 3),
+        (1, 1, 64, 1),
+        (1, 1, 5632, 2048),
+        (1, 1, 3, 64),
+        (1, 1, 64, 13),
+        (1, 1, 12, 64),
+        (1, 1, 2048, 5632),
         (1, 1, 2048, 32003),
-        // (32003, 2048, 6),
-        // (1, 32, 32),
-        // (1, 4, 4),
-        // (1, 4096, 4096),
-        // (1, 2048, 2048),
-        // (1, 1024, 1024),
-        // (1, 128, 128),
-        // (1, 64, 3),
-        // (1, 64, 1),
-        // (1, 5632, 2048),
-        // (1, 3, 64),
-        // (1, 64, 13),
-        // (1, 12, 64),
-        // (1, 2048, 5632),
-        // (1, 2048, 32003),
-        // (1, 2048, 2048),
-        // (1, 2048, 256),
+        (1, 1, 2048, 2048),
+        (1, 1, 2048, 256),
     ];
     for (b, m, k, n) in shapes {
         matmul(c, b, m, k, n);
