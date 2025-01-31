@@ -60,21 +60,21 @@ pub fn ggml_matmul(
 //     let a = Tensor::zero_dt(dt, &[batch, m, k]).unwrap();
 //     let b = Tensor::zero_dt(dt, &[batch, k, n]).unwrap();
 //     let mut c = Tensor::zero_dt(dt, &[m, n]).unwrap();
-// 
+//
 //     // mk,kn -> mn
 //     unsafe {
 //         let mmm = tract_linalg::ops().mmm(dt, Some(m), Some(k), Some(n)).unwrap();
-// 
+//
 //         let c_storage = mmm.c_view(0, 1);
-// 
+//
 //         let mut scratch = mmm.allocate_scratch_space();
-// 
+//
 //         let (packer_a, packer_b) = mmm.packings()[0];
-// 
+//
 //         crit.bench_function(&format!("tract_with_packing_{:?}", dt), |be| {
 //             let packed_a = packer_a.prepare_tensor(&a, 1, 0).unwrap();
 //             let packed_b = packer_b.prepare_tensor(&b, 0, 1).unwrap();
-// 
+//
 //             be.iter(|| {
 //                 mmm.run_with_scratch_space(
 //                     m,
@@ -108,7 +108,11 @@ pub fn metal_gemm<K: GemmKernel>(
     context.shared_context().load_library(LibraryName::MfaLib).unwrap();
 
     let a = Tensor::zero_dt(dt, &[batch, m, k]).unwrap();
-    let b = if is_ggml { Tensor::zero_dt(dt, &[batch, n, k]).unwrap() } else { Tensor::zero_dt(dt, &[batch, k, n]).unwrap() };
+    let b = if is_ggml {
+        Tensor::zero_dt(dt, &[batch, n, k]).unwrap()
+    } else {
+        Tensor::zero_dt(dt, &[batch, k, n]).unwrap()
+    };
 
     let metal_a = a.into_metal().unwrap();
     let metal_b = b.into_metal().unwrap();

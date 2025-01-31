@@ -1,6 +1,8 @@
 use crate::fact::MetalTypedFactExt;
 use crate::kernels::array::RotateHalf;
-use crate::kernels::matmul::{GemmKernel,MetalGemmImplKind, MfaGemm, MlxGemm, GgmlGemm, MpsMatMul};
+use crate::kernels::matmul::{
+    GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm, MpsMatMul,
+};
 use crate::kernels::nn::{
     ApplyRope, NewGelu, Reducer, RmsNorm, ScaledMaskedSoftmax, Silu, Softmax,
 };
@@ -364,18 +366,27 @@ fn convert_matmul_to_metal(
             Box::new(ops::MetalGemm::<MfaGemm>::new(op.transpose_a, op.transpose_b))
         }
         MetalGemmImplKind::Ggml => {
-            let input_facts: tract_smallvec::SmallVec<[&TypedFact; 4]> = model.node_input_facts(node.id)?;
-            
+            let input_facts: tract_smallvec::SmallVec<[&TypedFact; 4]> =
+                model.node_input_facts(node.id)?;
+
             if op.transpose_a {
                 let rank = input_facts[0].rank();
-                let perm_a_op: Box<dyn TypedOp> = Box::new(ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(rank - 2, rank - 1)));
+                let perm_a_op: Box<dyn TypedOp> =
+                    Box::new(ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
+                        rank - 2,
+                        rank - 1,
+                    )));
                 let perm_a_name = node.name.clone() + ".perm_a";
                 inputs[0] = target.wire_node(perm_a_name, perm_a_op, &[inputs[0]])?[0];
             }
 
             if !op.transpose_b {
                 let rank = input_facts[1].rank();
-                let perm_b_op: Box<dyn TypedOp> = Box::new(ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(rank - 2, rank - 1)));
+                let perm_b_op: Box<dyn TypedOp> =
+                    Box::new(ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
+                        rank - 2,
+                        rank - 1,
+                    )));
                 let perm_b_name = node.name.clone() + ".perm_b";
                 inputs[1] = target.wire_node(perm_b_name, perm_b_op, &[inputs[1]])?[0];
             }

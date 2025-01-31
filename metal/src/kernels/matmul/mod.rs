@@ -1,16 +1,16 @@
 mod basic;
+mod ggml_gemm;
 mod mfa;
 mod mlx_gemm;
 mod mmm_tile_8x8;
-mod ggml_gemm;
 pub mod mps;
 
 pub use basic::BasicMatMul;
+pub use ggml_gemm::GgmlGemm;
 pub use mfa::MfaGemm;
 pub use mlx_gemm::MlxGemm;
 pub use mmm_tile_8x8::{metal_mmm_tile_8x8, mmm_tile_8x8};
 pub use mps::MpsMatMul;
-pub use ggml_gemm::GgmlGemm;
 
 use crate::{MetalContext, MetalTensor};
 use metal::Buffer;
@@ -156,11 +156,7 @@ pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync 
         Ok(matches!(dts[0], DatumType::F32 | DatumType::F16) && dts[0] == dts[1])
     }
 
-    fn output_dt(
-        &self,
-        a_dt: DatumType,
-        b_dt: DatumType,
-    ) -> TractResult<DatumType> {
+    fn output_dt(&self, a_dt: DatumType, b_dt: DatumType) -> TractResult<DatumType> {
         if a_dt == f16::datum_type() {
             ensure!(b_dt == f16::datum_type());
             Ok(DatumType::F16)
@@ -214,8 +210,7 @@ impl<M: GemmKernel> GemmImpl<M> {
         let out_dt = self.matmul.output_dt(a.datum_type().unwrap(), b.datum_type().unwrap())?;
         if out_dt == DatumType::F32 {
             Ok(tvec!(f32::fact(out_shape)))
-        }
-        else {
+        } else {
             ensure!(out_dt == DatumType::F16);
             Ok(tvec!(f16::fact(out_shape)))
         }
@@ -327,32 +322,41 @@ mod tests {
                 let b_shape = if !transpose_b { [batch, k, n] } else { [batch, n, k] };
                 let mut a = if a_dt == DatumType::F16 {
                     Tensor::from_shape(
-                    &a_shape,
-                    &(0..batch * m * k).map(|f| f16::from_f32(f as f32 / (batch * m * k) as f32)).collect::<Vec<_>>(),
-                )?
-            }
-                else {
+                        &a_shape,
+                        &(0..batch * m * k)
+                            .map(|f| f16::from_f32(f as f32 / (batch * m * k) as f32))
+                            .collect::<Vec<_>>(),
+                    )?
+                } else {
                     Tensor::from_shape(
                         &a_shape,
-                        &(0..batch * m * k).map(|f| f as f32 / (batch * m * k) as f32).collect::<Vec<_>>(),
+                        &(0..batch * m * k)
+                            .map(|f| f as f32 / (batch * m * k) as f32)
+                            .collect::<Vec<_>>(),
                     )?
                 };
 
                 let mut b = if b_dt == DatumType::F16 {
-                     Tensor::from_shape(
-                        &b_shape,
-                        &(0..batch * k * n).map(|f| f16::from_f32(f as f32 / (batch * n * k) as f32)).collect::<Vec<_>>(),
-                    )?
-                }
-                else {
                     Tensor::from_shape(
                         &b_shape,
-                        &(0..batch * k * n).map(|f| f as f32 / (batch * m * k) as f32).collect::<Vec<_>>(),
+                        &(0..batch * k * n)
+                            .map(|f| f16::from_f32(f as f32 / (batch * n * k) as f32))
+                            .collect::<Vec<_>>(),
+                    )?
+                } else {
+                    Tensor::from_shape(
+                        &b_shape,
+                        &(0..batch * k * n)
+                            .map(|f| f as f32 / (batch * m * k) as f32)
+                            .collect::<Vec<_>>(),
                     )?
                 };
 
-                let metal_output =
-                    GemmImpl::<K>::new(transpose_a, transpose_b).eval(context, &a.clone().into_metal()?, &b.clone().into_metal()?)?;
+                let metal_output = GemmImpl::<K>::new(transpose_a, transpose_b).eval(
+                    context,
+                    &a.clone().into_metal()?,
+                    &b.clone().into_metal()?,
+                )?;
 
                 let matmul = BasicMatMul {
                     transpose_a,
@@ -369,9 +373,7 @@ mod tests {
                     b = b.clone().cast_to_dt(DatumType::F32).unwrap().into_owned();
                 }
 
-                let output = args_1!(
-                    matmul.eval(tvec![a.into_tvalue(), b.into_tvalue()])?
-                );
+                let output = args_1!(matmul.eval(tvec![a.into_tvalue(), b.into_tvalue()])?);
                 metal_output.to_cpu()?.close_enough(&output, Approximation::SuperApproximate)?;
                 Ok(())
             })
