@@ -2,7 +2,7 @@ mod basic;
 mod mfa;
 mod mlx_gemm;
 mod mmm_tile_8x8;
-mod ggml_matmul;
+mod ggml_gemm;
 pub mod mps;
 
 pub use basic::BasicMatMul;
@@ -10,7 +10,7 @@ pub use mfa::MfaGemm;
 pub use mlx_gemm::MlxGemm;
 pub use mmm_tile_8x8::{metal_mmm_tile_8x8, mmm_tile_8x8};
 pub use mps::MpsMatMul;
-pub use ggml_matmul::GgmlGemm;
+pub use ggml_gemm::GgmlGemm;
 
 use crate::{MetalContext, MetalTensor};
 use metal::Buffer;
@@ -23,6 +23,7 @@ pub enum MetalGemmImplKind {
     Mlx,
     Mps,
     Mfa,
+    Ggml,
 }
 
 impl Default for MetalGemmImplKind {
@@ -302,13 +303,12 @@ fn squeeze_batch_axes(s: &[usize]) -> TractResult<TVec<usize>> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, Instant};
     use super::*;
-    use crate::kernels;
     use crate::kernels::matmul::GemmImpl;
     use crate::IntoMetal;
     use anyhow::Result;
     use derive_new::new;
-    use ggml_matmul::GgmlGemm;
     use num_traits::AsPrimitive;
     use num_traits::Float;
     use proptest::collection::vec;
