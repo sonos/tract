@@ -41,6 +41,7 @@ impl MetalGemmImplKind {
         match self {
             Self::Mlx => "mlx",
             Self::Mfa => "mfa",
+            Self::Ggml => "ggml",
         }
     }
 }
