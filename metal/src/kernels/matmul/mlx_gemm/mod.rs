@@ -501,19 +501,19 @@ mod tests {
 
     #[test]
     fn test_mat_vec() -> TractResult<()> {
-        run_mmm_test_case::<MlxGemm>((1, 4, 4, 1), false, false)?;
-        run_mmm_test_case::<MlxGemm>((10, 1, 4, 4), false, false)?;
-        run_mmm_test_case::<MlxGemm>((5, 1, 15, 7), false, true)?;
+        run_mmm_test_case::<MlxGemm>((1, 4, 4, 1), false, false, DatumType::F32, DatumType::F32)?;
+        run_mmm_test_case::<MlxGemm>((10, 1, 4, 4), false, false, DatumType::F32, DatumType::F32)?;
+        run_mmm_test_case::<MlxGemm>((5, 1, 15, 7), false, true, DatumType::F32, DatumType::F32)?;
         Ok(())
     }
 
     #[test]
     fn test_mat_mul() -> TractResult<()> {
-        run_mmm_test_case::<MlxGemm>((1, 3, 5, 4), false, false)?;
-        run_mmm_test_case::<MlxGemm>((1, 2, 5, 10), false, true)?;
-        run_mmm_test_case::<MlxGemm>((1, 4, 4, 4), false, true)?;
-        run_mmm_test_case::<MlxGemm>((1, 4, 4, 200), false, true)?;
-        run_mmm_test_case::<MlxGemm>((1, 25, 1280, 32000), false, true)?;
+        run_mmm_test_case::<MlxGemm>((1, 3, 5, 4), false, false, DatumType::F32, DatumType::F32)?;
+        run_mmm_test_case::<MlxGemm>((1, 2, 5, 10), false, true, DatumType::F32, DatumType::F32)?;
+        run_mmm_test_case::<MlxGemm>((1, 4, 4, 4), false, true, DatumType::F32, DatumType::F32)?;
+        run_mmm_test_case::<MlxGemm>((1, 4, 4, 200), false, true, DatumType::F32, DatumType::F32)?;
+        run_mmm_test_case::<MlxGemm>((1, 25, 1280, 32000), false, true, DatumType::F32, DatumType::F32)?;
         Ok(())
     }
 }
