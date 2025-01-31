@@ -59,7 +59,7 @@ impl LibraryName {
             Self::ElementWiseOps => LibraryContent::Source(ELEMENT_WISE_OPS),
             Self::MlxGemm => LibraryContent::Source(MLX_GEMM),
             Self::MlxGemv => LibraryContent::Source(MLX_GEMV),
-            Self::Ggml =>  LibraryContent::Source(GGML),
+            Self::Ggml => LibraryContent::Source(GGML),
         }
     }
 }

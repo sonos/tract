@@ -513,7 +513,13 @@ mod tests {
         run_mmm_test_case::<MlxGemm>((1, 2, 5, 10), false, true, DatumType::F32, DatumType::F32)?;
         run_mmm_test_case::<MlxGemm>((1, 4, 4, 4), false, true, DatumType::F32, DatumType::F32)?;
         run_mmm_test_case::<MlxGemm>((1, 4, 4, 200), false, true, DatumType::F32, DatumType::F32)?;
-        run_mmm_test_case::<MlxGemm>((1, 25, 1280, 32000), false, true, DatumType::F32, DatumType::F32)?;
+        run_mmm_test_case::<MlxGemm>(
+            (1, 25, 1280, 32000),
+            false,
+            true,
+            DatumType::F32,
+            DatumType::F32,
+        )?;
         Ok(())
     }
 }
