@@ -319,38 +319,6 @@ mod tests {
         Ok(())
     }
 
-    #[warn(dead_code)]
-    #[test]
-    fn test_ggml_vs_mlx() -> TractResult<()> {
-        let n_iter = 10;
-
-        run_mmm_test_case::<GgmlGemm>((2, 1, 32, 2), false, true, DatumType::F32, DatumType::F32)?;
-        run_mmm_test_case::<GgmlGemm>((1, 5, 64, 2), false, true, DatumType::F32, DatumType::F16)?;
-
-        let mut ggml_duration = Duration::default();
-        for _ in 0..n_iter {
-            ggml_duration += run_mmm_test_case::<GgmlGemm>((1, 5, 64, 2), false, true, DatumType::F32, DatumType::F32)?;
-            ggml_duration += run_mmm_test_case::<GgmlGemm>((2, 1, 32, 2), false, true, DatumType::F32, DatumType::F32)?;
-            ggml_duration += run_mmm_test_case::<GgmlGemm>((1, 5, 64, 2), false, true, DatumType::F32, DatumType::F16)?;
-            ggml_duration += run_mmm_test_case::<GgmlGemm>((3, 8, 64, 200), false, true, DatumType::F32, DatumType::F16)?;
-            ggml_duration += run_mmm_test_case::<GgmlGemm>((10, 25, 512, 320), false, true, DatumType::F32, DatumType::F16)?;
-        }
-
-        run_mmm_test_case::<MlxGemm>((1, 5, 64, 2), false, true, DatumType::F32, DatumType::F32)?;
-        run_mmm_test_case::<MlxGemm>((3, 8, 64, 200), false, true, DatumType::F16, DatumType::F16)?;
-        let mut mlx_duration = Duration::default();
-        for _ in 0..n_iter {
-            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 5, 64, 2), false, true, DatumType::F32, DatumType::F32)?;
-            mlx_duration += run_mmm_test_case::<MlxGemm>((2, 1, 32, 2), false, true, DatumType::F32, DatumType::F32)?;
-            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 5, 64, 2), false, true, DatumType::F16, DatumType::F16)?;
-            mlx_duration += run_mmm_test_case::<MlxGemm>((3, 8, 64, 200), false, true, DatumType::F16, DatumType::F16)?;
-            mlx_duration += run_mmm_test_case::<MlxGemm>((10, 25, 512, 320), false, true, DatumType::F16, DatumType::F16)?;
-        }
-
-        println!("Various matrice' sizes: Mlx duration: {:}. Ggml duration: {}\n", mlx_duration.as_millis(), ggml_duration.as_millis());       
-        Ok(())
-    }
-
     #[test]
     fn test_mat_vec() -> TractResult<()> {
        // f32_f32
@@ -376,75 +344,6 @@ mod tests {
         run_mmm_test_case::<GgmlGemm>((1, 1, 2, 1), false, true, DatumType::F16, DatumType::F16)?;
         run_mmm_test_case::<GgmlGemm>((1, 4, 61, 2), false, true, DatumType::F16, DatumType::F16)?;
         run_mmm_test_case::<GgmlGemm>((2, 16, 128, 9), false, true, DatumType::F16, DatumType::F16)?;
-        Ok(())
-    }
-
-    #[test]
-    fn test_matvec_ggml_vs_mlx() -> TractResult<()> {
-        let n_iter = 50;
-        run_mmm_test_case::<GgmlGemm>((1, 8, 32, 3), false, true, DatumType::F32, DatumType::F32)?;
-        run_mmm_test_case::<GgmlGemm>((1, 1, 32, 2), false, true, DatumType::F32, DatumType::F16)?;
-        run_mmm_test_case::<GgmlGemm>((2, 2, 128, 8), false, true, DatumType::F32, DatumType::F16)?;
-        run_mmm_test_case::<GgmlGemm>((1, 4, 32, 2), false, true, DatumType::F32, DatumType::F16)?;
-        run_mmm_test_case::<GgmlGemm>((1, 1, 2, 1), false, true, DatumType::F16, DatumType::F16)?;
-
-        let mut ggml_duration = Duration::default();
-        for _ in 0..n_iter {
-            // f32_f32
-            ggml_duration += run_mmm_test_case::<GgmlGemm>((1, 8, 32, 3), false, true, DatumType::F32, DatumType::F32)?;
-            ggml_duration += run_mmm_test_case::<GgmlGemm>((1, 4, 61, 2), false, true, DatumType::F32, DatumType::F32)?;
-            ggml_duration += run_mmm_test_case::<GgmlGemm>((2, 4, 128, 8), false, true, DatumType::F32, DatumType::F32)?;
-
-            // f16_f32_1row
-            ggml_duration += run_mmm_test_case::<GgmlGemm>((1, 1, 32, 2), false, true, DatumType::F32, DatumType::F16)?;
-            ggml_duration += run_mmm_test_case::<GgmlGemm>((1, 3, 62, 2), false, true, DatumType::F32, DatumType::F16)?;
-            ggml_duration += run_mmm_test_case::<GgmlGemm>((1, 3, 2, 9), false, true, DatumType::F32, DatumType::F16)?;
-
-            // f16_f32_L4
-            ggml_duration += run_mmm_test_case::<GgmlGemm>((2, 2, 128, 8), false, true, DatumType::F32, DatumType::F16)?;
-            ggml_duration += run_mmm_test_case::<GgmlGemm>((4, 4, 156, 30), false, true, DatumType::F32, DatumType::F16)?;
-
-            // f16_f32
-            ggml_duration += run_mmm_test_case::<GgmlGemm>((1, 4, 32, 2), false, true, DatumType::F32, DatumType::F16)?;
-            ggml_duration += run_mmm_test_case::<GgmlGemm>((1, 4, 61, 2), false, true, DatumType::F32, DatumType::F16)?;
-            ggml_duration += run_mmm_test_case::<GgmlGemm>((4, 4, 128, 7), false, true, DatumType::F32, DatumType::F16)?;
-
-            // f16_f16
-            ggml_duration += run_mmm_test_case::<GgmlGemm>((1, 1, 2, 1), false, true, DatumType::F16, DatumType::F16)?;
-            ggml_duration += run_mmm_test_case::<GgmlGemm>((1, 4, 61, 2), false, true, DatumType::F16, DatumType::F16)?;
-            ggml_duration += run_mmm_test_case::<GgmlGemm>((2, 16, 128, 9), false, true, DatumType::F16, DatumType::F16)?;
-        }
-
-        println!("Mlx monzbi");
-        run_mmm_test_case::<MlxGemm>((1, 8, 32, 3), false, true, DatumType::F32, DatumType::F32)?;
-        run_mmm_test_case::<MlxGemm>((2, 2, 128, 8), false, true, DatumType::F16, DatumType::F16)?;
-
-        let mut mlx_duration = Duration::default();
-        for _ in 0..n_iter {
-            // f32
-            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 8, 32, 3), false, true, DatumType::F32, DatumType::F32)?;
-            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 4, 61, 2), false, true, DatumType::F32, DatumType::F32)?;
-            mlx_duration += run_mmm_test_case::<MlxGemm>((2, 4, 128, 8), false, true, DatumType::F32, DatumType::F32)?;
-
-            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 1, 32, 2), false, true, DatumType::F16, DatumType::F16)?;
-            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 3, 62, 2), false, true, DatumType::F16, DatumType::F16)?;
-            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 3, 2, 9), false, true, DatumType::F16, DatumType::F16)?;
-            
-            // f16
-            mlx_duration += run_mmm_test_case::<MlxGemm>((2, 2, 128, 8), false, true, DatumType::F16, DatumType::F16)?;
-            mlx_duration += run_mmm_test_case::<MlxGemm>((4, 4, 156, 30), false, true, DatumType::F16, DatumType::F16)?;
-
-            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 4, 32, 2), false, true, DatumType::F16, DatumType::F16)?;
-            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 4, 61, 2), false, true, DatumType::F16, DatumType::F16)?;
-            mlx_duration += run_mmm_test_case::<MlxGemm>((4, 4, 128, 7), false, true, DatumType::F16, DatumType::F16)?;
-
-            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 1, 2, 1), false, true, DatumType::F16, DatumType::F16)?;
-            mlx_duration += run_mmm_test_case::<MlxGemm>((1, 4, 61, 2), false, true, DatumType::F16, DatumType::F16)?;
-            mlx_duration += run_mmm_test_case::<MlxGemm>((2, 16, 128, 9), false, true, DatumType::F16, DatumType::F16)?;
-        }
-
-        println!("Various matrice' sizes: Mlx duration: {:}. Ggml duration: {}\n", mlx_duration.as_millis(), ggml_duration.as_millis());       
-     
         Ok(())
     }
 }
