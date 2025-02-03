@@ -70,14 +70,17 @@ impl GemmKernel for GgmlGemm {
 
         ensure!(!transpose_a && transpose_b);
 
+        // Kernel output is transposed so we switch the inputs 
+
         let a_el_size = dts[0].size_of();
-        let b_el_size = dts[1].size_of();
         let a_strides = [
             (batch * m * k * a_el_size) as u64,
             (m * k * a_el_size) as u64,
             (k * a_el_size) as u64,
             a_el_size as u64,
         ];
+
+        let b_el_size = dts[1].size_of();
         let b_strides = [
             (batch * n * k * b_el_size) as u64,
             (n * k * b_el_size) as u64,
@@ -130,6 +133,7 @@ fn mv_kernel_name_and_dispatch_params(
                 Ok(("kernel_mul_mv_f16_f32".to_string(), (nth0, nth1, 4)))
             }
         } else {
+            // Never used in practice since we upcast input[0] to f32
             ensure!(dts[1] == DatumType::F16);
             Ok(("kernel_mul_mv_f16_f16".to_string(), (nth0, nth1, 4)))
         }

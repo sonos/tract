@@ -380,6 +380,11 @@ fn convert_matmul_to_metal(
                 inputs[0] = target.wire_node(perm_a_name, perm_a_op, &[inputs[0]])?[0];
             }
 
+            if input_facts[0].datum_type == DatumType::F16 {
+                let in_cast_op = ops::MetalCast::new(DatumType::F32).unwrap();
+                inputs[0] = target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[inputs[0]])?[0];
+            }
+
             if !op.transpose_b {
                 let rank = input_facts[1].rank();
                 let perm_b_op: Box<dyn TypedOp> =
@@ -403,7 +408,7 @@ fn convert_matmul_to_metal(
             "Matmul output type cannot be casted to expected type"
         );
         let cast_op = ops::MetalCast::new(model.node_output_facts(node.id)?[0].datum_type).unwrap();
-        matmul_output = target.wire_node(node.name.clone() + ".cast", cast_op, &matmul_output)?
+        matmul_output = target.wire_node(node.name.clone() + ".out_cast", cast_op, &matmul_output)?
     }
     Ok(matmul_output)
 }
