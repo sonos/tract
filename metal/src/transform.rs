@@ -382,7 +382,8 @@ fn convert_matmul_to_metal(
 
             if input_facts[0].datum_type == DatumType::F16 {
                 let in_cast_op = ops::MetalCast::new(DatumType::F32).unwrap();
-                inputs[0] = target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[inputs[0]])?[0];
+                inputs[0] =
+                    target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[inputs[0]])?[0];
             }
 
             if !op.transpose_b {
@@ -399,26 +400,22 @@ fn convert_matmul_to_metal(
         }
     };
 
-    let new_in_facts = [
-        target.outlet_fact(inputs[0])?, 
-        target.outlet_fact(inputs[1])?
-    ];
-    
+    let new_in_facts = [target.outlet_fact(inputs[0])?, target.outlet_fact(inputs[1])?];
+
     let out_fact = &matmul.output_facts(&new_in_facts)?[0];
-    let out_dt = out_fact.to_metal_fact()
-        .map(|f| f.datum_type)
-        .unwrap_or(out_fact.datum_type);
-    
+    let out_dt = out_fact.to_metal_fact().map(|f| f.datum_type).unwrap_or(out_fact.datum_type);
+
     let mut matmul_output = target.wire_node(node.name.clone(), matmul, inputs)?;
     let expected_dt = model.node_output_facts(node.id)?[0].datum_type;
-    
+
     if out_dt != expected_dt {
         ensure!(
             ops::MetalCast::is_supported_dt(out_dt),
             "Matmul output type cannot be casted to expected type"
         );
         let cast_op = ops::MetalCast::new(model.node_output_facts(node.id)?[0].datum_type).unwrap();
-        matmul_output = target.wire_node(node.name.clone() + ".out_cast", cast_op, &matmul_output)?
+        matmul_output =
+            target.wire_node(node.name.clone() + ".out_cast", cast_op, &matmul_output)?
     }
     Ok(matmul_output)
 }

@@ -48,52 +48,52 @@ pub fn ggml_matmul(
     });
 }
 
-// pub fn tract_with_packing(
-//     crit: &mut BenchmarkGroup<WallTime>,
-//     batch: usize,
-//     m: usize,
-//     k: usize,
-//     n: usize,
-//     dt: DatumType,
-// ) {
-//     use tract_linalg::frame::mmm::FusedSpec;
-//     let a = Tensor::zero_dt(dt, &[batch, m, k]).unwrap();
-//     let b = Tensor::zero_dt(dt, &[batch, k, n]).unwrap();
-//     let mut c = Tensor::zero_dt(dt, &[m, n]).unwrap();
-//
-//     // mk,kn -> mn
-//     unsafe {
-//         let mmm = tract_linalg::ops().mmm(dt, Some(m), Some(k), Some(n)).unwrap();
-//
-//         let c_storage = mmm.c_view(0, 1);
-//
-//         let mut scratch = mmm.allocate_scratch_space();
-//
-//         let (packer_a, packer_b) = mmm.packings()[0];
-//
-//         crit.bench_function(&format!("tract_with_packing_{:?}", dt), |be| {
-//             let packed_a = packer_a.prepare_tensor(&a, 1, 0).unwrap();
-//             let packed_b = packer_b.prepare_tensor(&b, 0, 1).unwrap();
-//
-//             be.iter(|| {
-//                 mmm.run_with_scratch_space(
-//                     m,
-//                     n,
-//                     &mut *scratch,
-//                     &[
-//                         FusedSpec::AddMatMul {
-//                             packing: 0,
-//                             a: packed_a.as_ref(),
-//                             b: packed_b.as_ref(),
-//                         },
-//                         FusedSpec::Store(c_storage.wrap(&mut c.view_mut())),
-//                     ],
-//                 )
-//                 .unwrap()
-//             });
-//         });
-//     }
-// }
+pub fn tract_with_packing(
+    crit: &mut BenchmarkGroup<WallTime>,
+    batch: usize,
+    m: usize,
+    k: usize,
+    n: usize,
+    dt: DatumType,
+) {
+    use tract_linalg::frame::mmm::FusedSpec;
+    let a = Tensor::zero_dt(dt, &[batch, m, k]).unwrap();
+    let b = Tensor::zero_dt(dt, &[batch, k, n]).unwrap();
+    let mut c = Tensor::zero_dt(dt, &[m, n]).unwrap();
+
+    // mk,kn -> mn
+    unsafe {
+        let mmm = tract_linalg::ops().mmm(dt, Some(m), Some(k), Some(n)).unwrap();
+
+        let c_storage = mmm.c_view(0, 1);
+
+        let mut scratch = mmm.allocate_scratch_space();
+
+        let (packer_a, packer_b) = mmm.packings()[0];
+
+        crit.bench_function(&format!("tract_with_packing_{:?}", dt), |be| {
+            let packed_a = packer_a.prepare_tensor(&a, 1, 0).unwrap();
+            let packed_b = packer_b.prepare_tensor(&b, 0, 1).unwrap();
+
+            be.iter(|| {
+                mmm.run_with_scratch_space(
+                    m,
+                    n,
+                    &mut *scratch,
+                    &[
+                        FusedSpec::AddMatMul {
+                            packing: 0,
+                            a: packed_a.as_ref(),
+                            b: packed_b.as_ref(),
+                        },
+                        FusedSpec::Store(c_storage.wrap(&mut c.view_mut())),
+                    ],
+                )
+                .unwrap()
+            });
+        });
+    }
+}
 
 pub fn metal_gemm<K: GemmKernel>(
     crit: &mut BenchmarkGroup<WallTime>,
@@ -146,13 +146,13 @@ fn matmul(c: &mut Criterion, b: usize, m: usize, k: usize, n: usize) {
     // ggml_matmul(&mut c, m, k, n, f32::datum_type());
 
     for dt in [f32::datum_type(), f16::datum_type()] {
-        // metal_gemm::<BasicMatMul>(&mut c, b, m, k, n, dt, false);
-        // metal_gemm::<MpsMatMul>(&mut c, b, m, k, n, dt, false);
+        metal_gemm::<BasicMatMul>(&mut c, b, m, k, n, dt, false);
+        metal_gemm::<MpsMatMul>(&mut c, b, m, k, n, dt, false);
         metal_gemm::<MlxGemm>(&mut c, b, m, k, n, dt, false);
-        // metal_gemm::<MfaGemm>(&mut c, b, m, k, n, dt, false);
+        metal_gemm::<MfaGemm>(&mut c, b, m, k, n, dt, false);
         metal_gemm::<GgmlGemm>(&mut c, b, m, k, n, dt, true);
     }
-    //ggml_matmul(&mut c, m, k, n, f16::datum_type());
+    // ggml_matmul(&mut c, m, k, n, f16::datum_type());
     // tract_with_packing(&mut c, b, m, k, n, f32::datum_type());
     //tract_with_packing(&mut c, b, m, k, n, f16::datum_type());
     c.finish();
@@ -160,26 +160,26 @@ fn matmul(c: &mut Criterion, b: usize, m: usize, k: usize, n: usize) {
 
 fn tinyllama(c: &mut Criterion) {
     let shapes = vec![
-        //(32, 1, 25, 32),
-        //(1, 32003, 2048, 1),
-        //(1, 1, 2048, 32003),
-        //(1, 32003, 2048, 6),
-        (1, 1, 32, 32),
-        (1, 1, 4, 4),
-        (1, 1, 4096, 4096),
-        (1, 1, 2048, 2048),
-        (1, 1, 1024, 1024),
-        (1, 1, 128, 128),
-        (1, 1, 64, 3),
-        (1, 1, 64, 1),
-        (1, 1, 5632, 2048),
-        (1, 1, 3, 64),
-        (1, 1, 64, 13),
-        (1, 1, 12, 64),
-        (1, 1, 2048, 5632),
+        (32, 1, 25, 32),
+        (1, 32003, 2048, 1),
         (1, 1, 2048, 32003),
-        (1, 1, 2048, 2048),
-        (1, 1, 2048, 256),
+        //(1, 32003, 2048, 6),
+        //(1, 1, 32, 32),
+        //(1, 1, 4, 4),
+        //(1, 1, 4096, 4096),
+        //(1, 1, 2048, 2048),
+        //(1, 1, 1024, 1024),
+        //(1, 1, 128, 128),
+        //(1, 1, 64, 3),
+        //(1, 1, 64, 1),
+        //(1, 1, 5632, 2048),
+        //(1, 1, 3, 64),
+        //(1, 1, 64, 13),
+        //(1, 1, 12, 64),
+        //(1, 1, 2048, 5632),
+        //(1, 1, 2048, 32003),
+        //(1, 1, 2048, 2048),
+        //(1, 1, 2048, 256),
     ];
     for (b, m, k, n) in shapes {
         matmul(c, b, m, k, n);

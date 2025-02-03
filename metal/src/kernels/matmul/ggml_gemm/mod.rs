@@ -70,7 +70,7 @@ impl GemmKernel for GgmlGemm {
 
         ensure!(!transpose_a && transpose_b);
 
-        // Kernel output is transposed so we switch the inputs 
+        // Kernel output is transposed so we switch the inputs
         let a_el_size = dts[0].size_of();
         let a_strides = [
             (batch * m * k * a_el_size) as u64,
@@ -164,10 +164,10 @@ fn dispatch_metal_ggml_gemv(
         encoder.set_buffer(2, Some(a_buffer), a_offset as NSUInteger);
         encoder.set_buffer(3, Some(output), output_offset as NSUInteger);
 
-        let ny = (params.m as u64 + nrows - 1) / nrows;
+        let ny = (params.m as u64).div_ceil(nrows);
         let grid_size = MTLSize {
             width: params.n as u64,
-            height: ny as u64,
+            height: ny,
             depth: /* batch_size_out */ params.batch as u64,
         };
         let group_size = MTLSize { width: nth0, height: nth1, depth: 1 };
