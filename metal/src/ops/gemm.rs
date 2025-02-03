@@ -45,7 +45,11 @@ impl<K: GemmKernel> MetalGemm<K> {
         };
         ensure!(a.rank() == b.rank());
         ensure!(a.rank() >= 2);
-
+        ensure!(
+            a.shape[a.rank() - 2 + !self.transpose_a() as usize]
+                == b.shape[b.rank() - 2 + self.transpose_b() as usize]
+        );
+        
         self.kernel.output_facts(a, b)
     }
 }

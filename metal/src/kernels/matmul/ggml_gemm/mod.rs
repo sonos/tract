@@ -71,7 +71,6 @@ impl GemmKernel for GgmlGemm {
         ensure!(!transpose_a && transpose_b);
 
         // Kernel output is transposed so we switch the inputs 
-
         let a_el_size = dts[0].size_of();
         let a_strides = [
             (batch * m * k * a_el_size) as u64,
@@ -194,7 +193,6 @@ fn dispatch_metal_ggml_gemm(
 ) -> Result<()> {
     ensure!(matches!(dts[1], DatumType::F32 | DatumType::F16) && dts[0] == DatumType::F32);
 
-    // GGML transposes the output, so we invert the arguments
     let i1_tname = MetalTensor::tname(dts[1])?;
     let i2_tname = MetalTensor::tname(dts[0])?;
 
