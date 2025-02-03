@@ -203,7 +203,7 @@ fn dispatch_metal_ggml_gemm(
     let command_buffer = context.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_bytes(0, size_of::<GgmlParams>() as u64, &params as *const _ as *const _);
+        encoder.set_bytes(0, std::mem::size_of::<GgmlParams>() as u64, &params as *const _ as *const _);
         encoder.set_buffer(1, Some(b_buffer), b_offset as NSUInteger);
         encoder.set_buffer(2, Some(a_buffer), a_offset as NSUInteger);
         encoder.set_buffer(3, Some(output), output_offset as NSUInteger);
