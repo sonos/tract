@@ -399,10 +399,20 @@ fn convert_matmul_to_metal(
         }
     };
 
-    let out_dt = matmul.output_facts(&model.node_input_facts(node.id)?)?[0].datum_type;
+    let new_in_facts = [
+        target.outlet_fact(inputs[0])?, 
+        target.outlet_fact(inputs[1])?
+    ];
+    
+    let out_fact = &matmul.output_facts(&new_in_facts)?[0];
+    let out_dt = out_fact.to_metal_fact()
+        .map(|f| f.datum_type)
+        .unwrap_or(out_fact.datum_type);
+    
     let mut matmul_output = target.wire_node(node.name.clone(), matmul, inputs)?;
-
-    if out_dt != model.node_output_facts(node.id)?[0].datum_type {
+    let expected_dt = model.node_output_facts(node.id)?[0].datum_type;
+    
+    if out_dt != expected_dt {
         ensure!(
             ops::MetalCast::is_supported_dt(out_dt),
             "Matmul output type cannot be casted to expected type"
