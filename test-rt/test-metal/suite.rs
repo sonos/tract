@@ -15,6 +15,8 @@ fn mk_suite() -> infra::TestSuite {
     onnx.ignore(&ignore_onnx);
 
     let mut unit = suite_unit::suite().unwrap().clone();
+    unit.ignore_case(&ignore_unit);
+
     unit.get_sub_mut("bin_einsum").add_arbitrary::<BinEinsumProblem>(
         "proptest",
         BinEinsumProblemParams {
@@ -27,15 +29,13 @@ fn mk_suite() -> infra::TestSuite {
         ConvProblemParams { no_batch: true, ..ConvProblemParams::default() },
     );
 
-    unit.ignore_case(&ignore_unit);
-
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
 }
 
-fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
-    case.is::<BinEinsumProblem>()
-        || case.is::<ConvProblem>()
-        || (t[0] == "conv_f32" && t[1] == "bug_metal_0")
+fn ignore_unit(t: &[String], _case: &dyn Test) -> bool {
+    (t[0] == "bin_einsum" && t[1] == "proptest")
+    || (t[0] == "conv_f32" && t[1] == "proptest")
+    || (t[0] == "conv_f32" && t[1] == "bug_metal_0")
 }
 
 fn ignore_onnx(t: &[String]) -> bool {
