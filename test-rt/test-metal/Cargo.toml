@@ -6,7 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-paste = "1.0.5"
 
 [build-dependencies]
 home.workspace = true
@@ -17,6 +16,7 @@ tract-core.workspace = true
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
 tract-onnx-opl.workspace = true
+paste.workspace = true
 
 [dev-dependencies]
 home.workspace = true
@@ -29,3 +29,4 @@ tract-onnx-opl.workspace = true
 infra = { path = "../infra" }
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
+paste.workspace = true

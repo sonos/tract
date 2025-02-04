@@ -47,7 +47,7 @@ macro_rules! metal_test_suite {
                     &RT
                 }
 
-                include!(concat!(env!("OUT_DIR"), "/tests/tests.rs"));
+                include!(concat!(env!("OUT_DIR"), "/tests/",  stringify!([<$gemm_impl:lower>]), ".rs"));
             }
         }
     };
@@ -55,13 +55,15 @@ macro_rules! metal_test_suite {
 
 macro_rules! metal_runtime {
     ($gemm_impl: ident) => {
-        metal_test_suite!(metal_phase_0_einsum, 0, false, $gemm_impl);
-        metal_test_suite!(metal_phase_1_pre_translate, 1, false,$gemm_impl);
         metal_test_suite!(metal_phase_2_translate, 2, false, $gemm_impl);
         metal_test_suite!(metal_phase_3_post_translate, 3, false, $gemm_impl);
         metal_test_suite!(optimized_metal, usize::MAX, true, $gemm_impl);
     };
 }
+
+// Common transform
+metal_test_suite!(metal_phase_0_einsum, 0, false, Mlx);
+metal_test_suite!(metal_phase_1_pre_translate, 1, false, Mlx);
 
 metal_runtime!(Mlx);
 metal_runtime!(Mfa);
