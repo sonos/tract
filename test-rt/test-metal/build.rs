@@ -3,7 +3,21 @@ mod suite;
 
 fn main() {
     suite::suite().test_runtime(
-        "tests",
+        "mlx",
+        "suite::suite()",
+        "runtime()",
+        "Approximation::Approximate",
+    );
+
+    suite::suite().test_runtime(
+        "mfa",
+        "suite::suite()",
+        "runtime()",
+        "Approximation::Approximate",
+    );
+
+    suite::suite().test_runtime(
+        "mps",
         "suite::suite()",
         "runtime()",
         "Approximation::Approximate",
