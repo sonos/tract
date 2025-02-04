@@ -6,7 +6,7 @@ use tract_ndarray::Array1;
 use crate::{
     internal::*,
     ops::{
-        array::{Gather, GatherElements, Topk},
+        array::{Gather, Topk},
         math::shift_left,
     },
 };
@@ -33,12 +33,27 @@ fn shift_right_zero_and_1(input: TValue, shift_value: TValue) -> TractResult<TVa
     let input = input.to_array_view::<i32>()?;
     let shift_value = shift_value.to_array_view::<i32>()?;
     let out_shape = crate::broadcast::multi_broadcast(&[input.shape(), shift_value.shape()])?;
-    let mut out = Tensor::zero_dt(DatumType::I32, &out_shape)?;
+    let mut out = unsafe { Tensor::uninitialized_dt(DatumType::I32, &out_shape)? };
     crate::ndarray::Zip::from(out.to_array_view_mut::<i32>()?)
         .and_broadcast(input)
         .and_broadcast(shift_value)
         .for_each(|c, a, b| *c = a.checked_shr(*b as u32).unwrap_or(0i32) & 1i32);
     Ok(out.into_tvalue())
+}
+
+fn gather_all_elements(centroids: &Tensor, indices: &Tensor) -> TractResult<Tensor> {
+    let &[_, _, vlen] = centroids.shape() else { bail!("wrong centroids shape") };
+    let &[b, n_indices_x, n_indices_y] = indices.shape() else {
+        bail!("wrong indice shape {:?}", indices.shape())
+    };
+    let mut out = unsafe {
+        Tensor::uninitialized_dt(centroids.datum_type(), &[b, n_indices_x * n_indices_y, vlen])?
+    };
+    indices.to_array_view::<i32>()?.iter().enumerate().for_each(|(idx, idx_val)| {
+        let idx_val = *idx_val as usize;
+        out.assign_slice(idx..idx + 1, centroids, idx_val..(idx_val + 1), 1).unwrap();
+    });
+    Ok(out)
 }
 
 impl VPTQGemm {
@@ -57,14 +72,14 @@ impl VPTQGemm {
         pre_shift_pack_tensor_shape.push(1);
 
         let mut out = shift_right_zero_and_1(
-            pack_tensor.clone().into_shape(&pre_shift_pack_tensor_shape)?.into(),
+            pack_tensor.into_shape(&pre_shift_pack_tensor_shape)?.into(),
             wf.into(),
         )?;
 
         let mut post_shift_pack_tensor_shape = pack_tensor_shape.clone();
         let pval = post_shift_pack_tensor_shape.pop().unwrap();
         post_shift_pack_tensor_shape.push(32 * pval);
-        out = out.into_tensor().clone().into_shape(&post_shift_pack_tensor_shape)?.into_tvalue();
+        out = out.into_tensor().into_shape(&post_shift_pack_tensor_shape)?.into_tvalue();
 
         let pad_size = (pack_tensor_shape.last().unwrap_or(&0) * 32) % (index_bits * num_elements);
         if pad_size > 0 {
@@ -89,7 +104,7 @@ impl VPTQGemm {
         let axis = out.rank() - 1;
         out = out
             .into_tensor()
-            .into_array::<i32>()?
+            .to_array_view_mut::<i32>()?
             .sum_axis(tract_ndarray::Axis(axis))
             .into_tvalue();
 
@@ -112,33 +127,17 @@ impl VPTQGemm {
         indices: Tensor,
         group_size: usize,
     ) -> TractResult<Tensor> {
-        /// TODO: instead use ndarray for indices to use views transform (--)
         let mut indices = indices.clone();
         let [num_codebooks, num_centroids, vector_len] = *centroids.shape() else {
             unimplemented!("unexected centroid shape ?")
         };
 
         if self.is_indice_packed {
-            // unimplemented!("unpacking indices not implemented yet !");
             let index_bits = (num_centroids as f32).log2().ceil() as usize;
             indices = self.eval_unpack_index_tensor(indices, index_bits, group_size)?;
         }
 
-        let mut vsh = indices.shape().to_vec();
-        indices.insert_axis(3)?;
-        vsh.push(vector_len);
-        indices = indices.broadcast_to_shape(&vsh)?; // NOTE: costly in tract (applied in memory but not in ndarray)
-        let intermediate_volume = indices.shape()[1..3].iter().product();
-        indices = indices.into_shape(&[num_codebooks, intermediate_volume, vector_len])?;
-
-        let gather1 = GatherElements { axis: 1 };
-        // selected_centroids = torch.gather(centroids, 1, indices)
-        let selected_centroids = gather1
-            .eval(tvec!(centroids.into(), indices.into()))?
-            .pop()
-            .context("apply gather to get selected main centroids")
-            .unwrap()
-            .into_tensor();
+        let selected_centroids = gather_all_elements(&centroids, &indices)?;
 
         let remain = selected_centroids.volume() / (num_codebooks * group_size * vector_len);
 
@@ -223,6 +222,7 @@ impl EvalOp for VPTQGemm {
 
         let mut qweight =
             self.eval_extract_from_vector_quant(centroids, indices, self.group_size)?;
+        dbg!(&qweight);
         if enable_outlier {
             // same as centroids to qweights except for outlier
             let outlier_qweight = self.eval_extract_from_vector_quant(
@@ -266,8 +266,8 @@ impl EvalOp for VPTQGemm {
         let data_type = *fdtypes.iter().next().unwrap();
 
         if enable_norm {
-            qweight = (qweight.into_array::<f32>()? * weight_scale.into_array::<f32>()?
-                + weight_bias.into_array::<f32>()?)
+            qweight = (qweight.into_array::<f32>()? * weight_scale.to_array_view::<f32>()?
+                + weight_bias.to_array_view::<f32>()?)
             .into_tensor();
         }
         // NOTE: next steps is fast matmul equivalent of {
@@ -280,9 +280,9 @@ impl EvalOp for VPTQGemm {
 
         let &n = qweight.shape().last().unwrap();
 
-        let (m, k, out_shape) = match ishape {
-            &[m, k] => (m, k, vec![m, n]),
-            &[b, m, k] => (m, k, vec![b, m, n]),
+        let (m, k, out_shape) = match *ishape {
+            [m, k] => (m, k, vec![m, n]),
+            [b, m, k] => (m, k, vec![b, m, n]),
             _ => {
                 bail!("unexpected rank {:?}", ishape.len())
             }
