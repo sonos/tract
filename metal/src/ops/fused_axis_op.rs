@@ -22,7 +22,7 @@ impl<O: MetalEvalOp + TypedOp> Op for MetalFusedAxisOp<O> {
         for (idx, axis_ops) in self.grouped_axis_ops.iter().enumerate() {
             if !axis_ops.is_empty() {
                 info.push(format!(
-                    "input #{idx}: {}",
+                    "Fused axis Op on Input #{idx}: {}",
                     axis_ops
                         .iter()
                         .map(|axis_op| Ok(format!(
