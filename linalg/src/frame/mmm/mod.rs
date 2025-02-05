@@ -7,7 +7,7 @@ pub(crate) mod fuse;
 pub(crate) mod input_store;
 pub(crate) mod kernel;
 #[macro_use]
-pub mod panel_extract;
+pub(crate) mod panel_extract;
 mod scratch;
 mod storage;
 
@@ -25,6 +25,7 @@ pub use cost_model::*;
 pub use fuse::*;
 pub use input_store::*;
 pub use kernel::*;
+pub use panel_extract::*;
 pub use scratch::*;
 pub use storage::*;
 
