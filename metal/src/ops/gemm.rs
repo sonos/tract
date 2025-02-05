@@ -69,7 +69,7 @@ impl<K: GemmKernel + 'static> MetalEvalOp for MetalGemm<K> {
         let b = b_opaque
             .to_metal_tensor()
             .with_context(|| anyhow!("B tensor is not a metal tensor {:?}", b_opaque))?;
-        let c_dt = a.datum_type();
+        let c_dt = self.kernel.matmul.output_dt(a.datum_type(), b.datum_type())?;
         let c_shape = self.kernel.output_shape(a.shape(), b.shape());
         let c = crate::ops::make_tensor_for_node(session, node_id, c_dt, &c_shape)?;
         self.kernel.dispatch_eval(context, a, b, &c)?;

@@ -36,10 +36,10 @@ impl GemmKernel for GgmlGemm {
     fn is_supported_dts(&self, dts: &[DatumType]) -> TractResult<bool> {
         ensure!(dts.len() == 2);
 
-        if dts[0] == DatumType::F32 {
-            Ok(dts[1] == DatumType::F32)
+        if dts[1] == DatumType::F32 {
+            Ok(dts[0] == DatumType::F32)
         } else {
-            Ok(dts[0] == DatumType::F16 && matches!(dts[1], DatumType::F32 | DatumType::F16))
+            Ok(dts[1] == DatumType::F16 && matches!(dts[0], DatumType::F32 | DatumType::F16))
         }
     }
 
