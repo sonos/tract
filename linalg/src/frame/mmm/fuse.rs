@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::ops::Deref;
 
-use super::pack::PackedFormat;
+use crate::frame::PackedFormat;
 use crate::BinOp;
 
 use super::{MMMInputValue, OutputStore, OutputStoreKer};

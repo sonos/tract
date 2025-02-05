@@ -7,11 +7,15 @@ pub mod unicast;
 #[macro_use]
 pub mod by_scalar;
 #[macro_use]
+pub mod kit;
+#[macro_use]
+pub mod leaky_relu;
+#[macro_use]
 pub mod lut;
 #[macro_use]
 pub mod mmm;
 #[macro_use]
-pub mod leaky_relu;
+pub mod pack;
 #[macro_use]
 pub mod reduce;
 #[macro_use]
@@ -20,8 +24,9 @@ pub mod sigmoid;
 pub mod tanh;
 pub mod element_wise_helper;
 
-pub use mmm::pack::PackedFormat;
-pub use mmm::pack::PackingWriter;
+pub use pack::PackedFormat;
+pub use pack::PackingWriter;
 
 pub use self::element_wise::{ElementWise, ElementWiseImpl};
+pub use self::kit::Kit;
 pub use self::mmm::MatMatMul;

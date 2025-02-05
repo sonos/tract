@@ -6,7 +6,7 @@ use tract_data::internal::*;
 
 use crate::mmm::{EagerPackedInput, MMMInputValue, PackedOpaqueFact};
 
-use super::MMMInputFormat;
+use crate::MMMInputFormat;
 
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct PackedFormat {

@@ -1,10 +1,11 @@
 use crate::frame::block_quant::PackedBlockQuantFormat;
-use crate::frame::mmm::*;
-use pack::PackedFormat;
+use crate::frame::mmm::tests::display_error;
+use crate::frame::mmm::MatMatMul;
+use crate::frame::PackedFormat;
+use crate::mmm::{AsInputValue, FusedKerSpec, FusedSpec, MatMatMulKer, OutputStoreKer};
 use proptest::collection::vec;
 use proptest::prelude::*;
 use std::fmt::Debug;
-use tests::display_error;
 use tract_data::internal::*;
 
 #[macro_export]
