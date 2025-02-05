@@ -1,6 +1,8 @@
 use crate::fact::MetalTypedFactExt;
 use crate::kernels::array::RotateHalf;
-use crate::kernels::matmul::{GemmKernel, MetalGemmImplKind, MfaGemm, MlxGemm, MpsMatMul};
+use crate::kernels::matmul::{
+    GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm, MpsMatMul,
+};
 use crate::kernels::nn::{
     ApplyRope, NewGelu, Reducer, RmsNorm, ScaledMaskedSoftmax, Silu, Softmax,
 };
@@ -42,6 +44,7 @@ impl MetalGemmImplKind {
             Self::Mlx => "mlx",
             Self::Mps => "mps",
             Self::Mfa => "mfa",
+            Self::Ggml => "ggml",
         }
     }
 }
@@ -257,11 +260,11 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         let translatable = can_translate_to_metal_op(source, node, self.gemm_impl)?;
 
         if translatable {
-            let gpu_inputs =
+            let mut gpu_inputs =
                 self.sync_inputs_if_required(target, node, mapping, MetalSyncKind::ToGpu)?;
 
             let outlet_ids: TVec<OutletId> = if let Some(op) = node.op_as::<BasicMatMul>() {
-                convert_matmul_to_metal(source, node, target, &gpu_inputs, op, self.gemm_impl)?
+                convert_matmul_to_metal(source, node, target, &mut gpu_inputs, op, self.gemm_impl)?
             } else {
                 let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<ElementWiseOp>() {
                     Box::new(map_element_wise_ops_to_metal(op).unwrap())
@@ -339,6 +342,7 @@ fn check_matmul_in_dts(gemm_impl: MetalGemmImplKind, dts: &[DatumType]) -> bool 
         MetalGemmImplKind::Mlx => MlxGemm.is_supported_dts(dts),
         MetalGemmImplKind::Mps => MpsMatMul.is_supported_dts(dts),
         MetalGemmImplKind::Mfa => MfaGemm.is_supported_dts(dts),
+        MetalGemmImplKind::Ggml => MfaGemm.is_supported_dts(dts),
     };
     is_supported.unwrap_or(false)
 }
@@ -347,7 +351,7 @@ fn convert_matmul_to_metal(
     model: &TypedModel,
     node: &TypedNode,
     target: &mut TypedModel,
-    inputs: &[OutletId],
+    inputs: &mut [OutletId],
     op: &BasicMatMul,
     gemm_impl: MetalGemmImplKind,
 ) -> TractResult<TVec<OutletId>> {
@@ -361,18 +365,57 @@ fn convert_matmul_to_metal(
         MetalGemmImplKind::Mfa => {
             Box::new(ops::MetalGemm::<MfaGemm>::new(op.transpose_a, op.transpose_b))
         }
+        MetalGemmImplKind::Ggml => {
+            let input_facts: tract_smallvec::SmallVec<[&TypedFact; 4]> =
+                model.node_input_facts(node.id)?;
+
+            if op.transpose_a {
+                let rank = input_facts[0].rank();
+                let perm_a_op: Box<dyn TypedOp> =
+                    Box::new(ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
+                        rank - 2,
+                        rank - 1,
+                    )));
+                let perm_a_name = node.name.clone() + ".perm_a";
+                inputs[0] = target.wire_node(perm_a_name, perm_a_op, &[inputs[0]])?[0];
+            }
+
+            if input_facts[0].datum_type == DatumType::F16 {
+                let in_cast_op = ops::MetalCast::new(DatumType::F32).unwrap();
+                inputs[0] =
+                    target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[inputs[0]])?[0];
+            }
+
+            if !op.transpose_b {
+                let rank = input_facts[1].rank();
+                let perm_b_op: Box<dyn TypedOp> =
+                    Box::new(ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
+                        rank - 2,
+                        rank - 1,
+                    )));
+                let perm_b_name = node.name.clone() + ".perm_b";
+                inputs[1] = target.wire_node(perm_b_name, perm_b_op, &[inputs[1]])?[0];
+            }
+            Box::new(ops::MetalGemm::<GgmlGemm>::new(false, true))
+        }
     };
 
-    let out_dt = matmul.output_facts(&model.node_input_facts(node.id)?)?[0].datum_type;
-    let mut matmul_output = target.wire_node(node.name.clone(), matmul, inputs)?;
+    let new_in_facts = [target.outlet_fact(inputs[0])?, target.outlet_fact(inputs[1])?];
 
-    if out_dt != model.node_output_facts(node.id)?[0].datum_type {
+    let out_fact = &matmul.output_facts(&new_in_facts)?[0];
+    let out_dt = out_fact.to_metal_fact().map(|f| f.datum_type).unwrap_or(out_fact.datum_type);
+
+    let mut matmul_output = target.wire_node(node.name.clone(), matmul, inputs)?;
+    let expected_dt = model.node_output_facts(node.id)?[0].datum_type;
+
+    if out_dt != expected_dt {
         ensure!(
             ops::MetalCast::is_supported_dt(out_dt),
             "Matmul output type cannot be casted to expected type"
         );
         let cast_op = ops::MetalCast::new(model.node_output_facts(node.id)?[0].datum_type).unwrap();
-        matmul_output = target.wire_node(node.name.clone() + ".cast", cast_op, &matmul_output)?
+        matmul_output =
+            target.wire_node(node.name.clone() + ".out_cast", cast_op, &matmul_output)?
     }
     Ok(matmul_output)
 }
