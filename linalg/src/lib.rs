@@ -32,7 +32,6 @@ pub mod arm64;
 
 #[cfg(target_arch = "aarch64")]
 pub use arm64::has_fp16;
-use tract_itertools::Itertools;
 
 #[cfg(not(target_arch = "aarch64"))]
 pub fn has_fp16() -> bool {
@@ -112,8 +111,7 @@ impl Ops {
         self.mmm_kits
             .iter()
             .filter(|kit| kit.weight == w)
-            .sorted_by_key(|kit| kit.generic_fallback as usize)
-            .next()
+            .min_by_key(|kit| kit.generic_fallback as usize)
             .unwrap()
             .static_packer
             .clone()
