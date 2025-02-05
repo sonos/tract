@@ -597,20 +597,21 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         Some(("kernels", _)) => {
             println!("{}", White.bold().paint("# Matrix multiplication"));
             for m in tract_linalg::ops().mmm_impls() {
-                println!("{}", Green.paint(format!(" * {}", m.name())));
+                let (label_color, packing_color) =
+                    if m.generic_fallback() { (Default, DarkGray) } else { (Yellow, White) };
+                println!("{}", label_color.paint(format!(" * {}", m.name())));
                 for packings in m.packings() {
-                    println!("   - {:?} • {:?}", packings.0, packings.1);
+                    println!(
+                        "{}",
+                        packing_color.paint(format!("   - {:?} • {:?}", packings.0, packings.1))
+                    );
                 }
             }
             println!("{}", White.bold().paint("# MatMul kits"));
             for m in tract_linalg::ops().mmm_kits() {
-                let label = format!("{:?}•{:?}•{:?}", m.weight, m.accumulator, m.activation);
-                println!(
-                    " * {} ({})",
-                    if m.generic_fallback { DarkGray.paint(label) } else { Green.paint(label) },
-                    m.static_packer,
-                );
-                for item in &m.items {
+                let label = format!(" * {:?} ⮕  {:?}", m.weight, m.static_packer,);
+                println!("{}", Green.paint(label));
+                for item in &m.mmms {
                     println!(
                         "   - {} {:?}•{:?} {}",
                         item.mmm.name(),
