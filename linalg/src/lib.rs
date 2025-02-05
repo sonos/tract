@@ -1,4 +1,4 @@
-#![allow(clippy::missing_safety_doc)]
+#![allow(clippy::mising_safety_doc)]
 #![allow(clippy::redundant_closure_call)]
 #![allow(clippy::len_zero)]
 #![allow(clippy::excessive_precision)]
@@ -24,10 +24,10 @@ pub mod multithread;
 use frame::by_scalar::ByScalarKer;
 use frame::element_wise::ElementWiseKer;
 use frame::mmm::panel_extract::PanelExtractor;
-use frame::mmm::{MMMInputFormat, MMMKit, WeightType};
+use frame::mmm::{MMMInputFormat, WeightType};
 use frame::reduce::{MapReduceKer, ReduceKer};
 use frame::unicast::UnicastKer;
-use frame::{reduce, MatMatMul};
+use frame::{reduce, Kit, MatMatMul};
 pub use generic::{ScaleShiftAndRound, Scaler};
 use lazy_static::lazy_static;
 use tract_data::internal::TensorView;
@@ -66,7 +66,7 @@ type MMVImpl = Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMu
 pub struct Ops {
     mmm_impls: Vec<Box<dyn MatMatMul>>,
     panel_extractors: Vec<PanelExtractor>,
-    mmm_kits: Vec<MMMKit>,
+    mmm_kits: Vec<Kit>,
     // default_kit: Box<dyn Fn(WeightType) -> Box<dyn MMMInputFormat>>,
     mmm_f64: MMMImpl,
     mmv_f64: MMVImpl,
@@ -111,7 +111,7 @@ impl Ops {
         &self.mmm_impls
     }
 
-    pub fn mmm_kits(&self) -> &[MMMKit] {
+    pub fn mmm_kits(&self) -> &[Kit] {
         &self.mmm_kits
     }
 

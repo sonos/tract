@@ -5,17 +5,17 @@ mod by_scalar;
 mod leaky_relu;
 mod max;
 pub mod panel_extract;
-mod unicast;
 mod sum;
+mod unicast;
 pub use by_scalar::*;
 pub use leaky_relu::*;
 pub use max::*;
-pub use unicast::*;
 pub use sum::*;
+pub use unicast::*;
 
 use crate::frame::block_quant::PackedBlockQuantFormat;
 use crate::frame::block_quant::Q4_0;
-use crate::mmm::MMMKit;
+use crate::frame::Kit;
 use crate::Ops;
 
 const FP16: fn() -> bool = crate::arm64::has_fp16;
@@ -38,10 +38,10 @@ MMMExternKernel! { arm64fp16_mmm_f16_64x1_gen<f16>(64, 1)@(16, 16) where(FP16)
 pub fn plug(ops: &mut Ops) {
     panel_extract::plug(ops);
     ops.mmm_kits.push(
-        MMMKit::new_for_mmm(arm64fp16_mmm_f16_64x1_gen.mmm(), 0)
+        Kit::new_for_mmm(arm64fp16_mmm_f16_64x1_gen.mmm(), 0)
             .with_native(arm64fp16_mmm_f16_64x3_gen.mmm(), 0),
     );
-    ops.mmm_kits.push(MMMKit::new_for_mmm(arm64fp16_mmm_f16_64x1_gen.mmm(), 1).with_extracting(
+    ops.mmm_kits.push(Kit::new_for_mmm(arm64fp16_mmm_f16_64x1_gen.mmm(), 1).with_extracting(
         arm64fp16_mmm_f16_64x3_gen.mmm(),
         0,
         packed_64_q40_to_f16.clone(),
