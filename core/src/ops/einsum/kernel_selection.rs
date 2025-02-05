@@ -28,7 +28,7 @@ pub fn wire_packing(
 
     if a_fact.konst.is_some() && op.n.as_i64().is_none() {
         return wire_for_variable_n(patch, prefix, op, operands[0], operands[1])
-            .context("In wire_linear");
+            .context("wire_for_variable_n");
     }
 
     // "simple" kernel selection
@@ -112,7 +112,11 @@ pub fn wire_for_variable_n(
                 && kit.activation == activation
         })
         .min_by_key(|kit| kit.generic_fallback as usize)
-        .with_context(|| format!("No kit found for pre-packed {a:?}"))?;
+        .with_context(|| {
+            format!(
+                "No kit found for pre-packed w:{a_konst:?} prepack:{prepack:?} acc:{accumulator:?} act:{activation:?}"
+            )
+        })?;
     if a_konst.datum_type().is_number() {
         let packed_a = kit.static_packer.prepare_tensor(a_konst, op.a_k(), op.a_m())?;
         let name = patch.node(a.node).name.clone();
