@@ -1,11 +1,11 @@
 use super::*;
-use crate::frame::PackedFormat;
-use crate::frame::mmm::Packing;
+use crate::pack::{PackedFormat, Packing};
 use crate::Ops;
 use tract_data::internal::*;
 
 pub fn plug(ops: &mut Ops) {
-    ops.panel_extractors.extend([packed_32_q40_to_f32.clone(), packed_32_f16_to_f32.clone()]);
+    ops.panel_extractors
+        .extend([packed_32_q40_to_f32.clone(), packed_32_f16_to_f32.clone()]);
 }
 
 panel_extractor!(kernel_packed_32_q40_to_f32 as packed_32_q40_to_f32(

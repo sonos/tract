@@ -2,6 +2,7 @@ use crate::matmul::{BasicMatMul, GemmImpl, GemmKernel, MfaGemm, MlxGemm, MpsMatM
 use criterion::measurement::WallTime;
 use criterion::*;
 use ggml::Context;
+use tract_linalg::mmm::AsInputValue;
 use tract_metal::kernels::matmul;
 // use ggml;
 use tract_core::internal::*;
@@ -55,7 +56,7 @@ pub fn tract_with_packing(
     n: usize,
     dt: DatumType,
 ) {
-    use tract_linalg::frame::mmm::FusedSpec;
+    use tract_linalg::mmm::FusedSpec;
     let a = Tensor::zero_dt(dt, &[batch, m, k]).unwrap();
     let b = Tensor::zero_dt(dt, &[batch, k, n]).unwrap();
     let mut c = Tensor::zero_dt(dt, &[m, n]).unwrap();
@@ -68,7 +69,7 @@ pub fn tract_with_packing(
 
         let mut scratch = mmm.allocate_scratch_space();
 
-        let (packer_a, packer_b) = mmm.packings()[0];
+        let (packer_a, packer_b) = &mmm.packings()[0];
 
         crit.bench_function(&format!("tract_with_packing_{:?}", dt), |be| {
             let packed_a = packer_a.prepare_tensor(&a, 1, 0).unwrap();
@@ -82,8 +83,8 @@ pub fn tract_with_packing(
                     &[
                         FusedSpec::AddMatMul {
                             packing: 0,
-                            a: packed_a.as_ref(),
-                            b: packed_b.as_ref(),
+                            a: AsInputValue::Borrowed(packed_a.as_ref()),
+                            b: AsInputValue::Borrowed(packed_b.as_ref()),
                         },
                         FusedSpec::Store(c_storage.wrap(&mut c.view_mut())),
                     ],

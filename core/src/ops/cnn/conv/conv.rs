@@ -29,8 +29,8 @@ use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
 use crate::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
 
-use tract_linalg::frame::PackedFormat;
 use tract_linalg::mmm::MatMatMul;
+use tract_linalg::pack::PackedFormat;
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct Conv {

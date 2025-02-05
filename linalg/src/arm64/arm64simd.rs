@@ -1,18 +1,21 @@
 mod by_scalar;
 mod leaky_relu;
 mod max;
-mod unicast;
 mod softmax;
 mod sum;
-
-use crate::{frame::PackedFormat, mmm::MMMKit, Ops};
+mod unicast;
 
 pub use by_scalar::*;
 pub use leaky_relu::arm64simd_leaky_relu_f32_8n;
 pub use max::arm64simd_max_f32_16n;
-pub use unicast::*;
 pub use softmax::arm64simd_softmax2_fastcompact_f32_16n;
 pub use sum::arm64simd_sum_f32_16n;
+pub use unicast::*;
+
+use crate::kit::Kit;
+use crate::pack::{PackedFormat, Packing};
+use crate::Ops;
+use tract_data::internal::*;
 
 MMMExternKernel!(arm64simd_mmm_f32_8x8_a55 <f32>(8,  8)@(16, 16));
 MMMExternKernel!(arm64simd_mmm_f32_12x8_a55<f32>(12, 8)@(16, 16));
@@ -49,7 +52,8 @@ pub fn plug(ops: &mut Ops) {
     panel_extract::plug(ops);
     */
     ops.mmm_kits.push(
-        MMMKit::new_for_mmm(arm64simd_mmm_f32_64x1_gen.mmm(), 0)
+        Kit::new(f32::datum_type(), &f32::packing(64).align(16))
+            .with_native(arm64simd_mmm_f32_64x1_gen.mmm(), 0),
     );
 }
 

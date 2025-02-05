@@ -19,7 +19,7 @@ pub mod optimize;
 mod proptest;
 
 pub use as_matmul::{rewrite_einsums_as_matmul, BasicMatMul};
-use tract_linalg::frame::block_quant::BlockQuantFact;
+use tract_linalg::block_quant::BlockQuantFact;
 use tract_linalg::mmm::PackedOpaqueFact;
 
 pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<[TDim]>> {

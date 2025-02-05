@@ -1,4 +1,4 @@
-use tract_linalg::frame::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
+use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
 
 use crate::internal::*;
 use crate::ops::einsum::optimize::{ensure_mkn_axes, AxesOrPatch};
@@ -41,10 +41,7 @@ fn block_quant_einsum_weights(
             model,
             node,
             &[node.inputs[1], node.inputs[0]],
-            EinSum {
-                axes: new_axes,
-                ..op.clone()
-            },
+            EinSum { axes: new_axes, ..op.clone() },
         )?));
     }
     if a.konst.is_none() || a.rank() != 2 {
@@ -56,10 +53,8 @@ fn block_quant_einsum_weights(
     };
     if op.a_m() == 1 && op.a_k() == 0 {
         let mut patch = TypedModelPatch::default();
-        let konst = patch.add_const(
-            &model.node(node.inputs[0].node).name,
-            a.clone().move_axis(1, 0)?,
-        )?;
+        let konst =
+            patch.add_const(&model.node(node.inputs[0].node).name, a.clone().move_axis(1, 0)?)?;
         let axes = op
             .op
             .axes
@@ -67,14 +62,7 @@ fn block_quant_einsum_weights(
             .with_extra_axis_occurency(op.k_axis, InOut::In(0), 2)?
             .remove_axis_occurency(InOut::In(0), 0)?;
         let tap = patch.tap_model(model, node.inputs[1])?;
-        let output = patch.wire_node(
-            prefix,
-            EinSum {
-                axes,
-                ..op.op.clone()
-            },
-            &[konst, tap],
-        )?;
+        let output = patch.wire_node(prefix, EinSum { axes, ..op.op.clone() }, &[konst, tap])?;
         patch.shunt_outside(model, node.id.into(), output[0])?;
         return Ok(Some(patch));
     }
@@ -86,14 +74,8 @@ fn block_quant_einsum_weights(
         format.quant_f32(a.cast_to::<f32>()?.as_slice::<f32>()?)?
     };
     let name = &model.node(node.inputs[0].node).name;
-    let fact = BlockQuantFact {
-        format: Box::new(format),
-        shape: a.shape().into(),
-    };
-    let value = BlockQuantValue {
-        fact: fact.clone(),
-        value: weights,
-    };
+    let fact = BlockQuantFact { format: Box::new(format), shape: a.shape().into() };
+    let value = BlockQuantValue { fact: fact.clone(), value: weights };
     let weights = patch.wire_node(
         format!("{name}.bq"),
         Const::new_with_opaque_fact(rctensor0(Opaque(Arc::new(value))), Box::new(fact)),

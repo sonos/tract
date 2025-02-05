@@ -1,8 +1,8 @@
 #![allow(clippy::type_complexity)]
 use tract_itertools::Itertools;
-use tract_linalg::frame::PackedFormat;
-use tract_linalg::mmm::panel_extract::PanelExtractor;
-use tract_linalg::mmm::{KitDatumType, MMMInputValue, MatMatMul, WeightType};
+use tract_linalg::kit::{KitDatumType, WeightType};
+use tract_linalg::mmm::{MMMInputValue, MatMatMul, PanelExtractor};
+use tract_linalg::pack::PackedFormat;
 
 use crate::internal::*;
 use crate::ops::matmul::pack::OptMatMulPack;
@@ -28,17 +28,12 @@ pub fn wire_packing(
 
     if a_fact.konst.is_some() && op.n.as_i64().is_none() {
         return wire_for_variable_n(patch, prefix, op, operands[0], operands[1])
-            .context("In wire_linear");
+            .context("wire_for_variable_n");
     }
 
     // "simple" kernel selection
     let mmm = tract_linalg::ops()
-        .mmm(
-            op.operating_dt,
-            op.m.to_usize().ok(),
-            op.k.to_usize().ok(),
-            op.n.to_usize().ok(),
-        )
+        .mmm(op.operating_dt, op.m.to_usize().ok(), op.k.to_usize().ok(), op.n.to_usize().ok())
         .unwrap();
     let mode_picker = ModePicker::Single;
     let (packing, pa, pb) = mmm
@@ -46,11 +41,7 @@ pub fn wire_packing(
         .iter()
         .enumerate()
         .filter_map(|(ix, p)| {
-            Some((
-                ix,
-                p.0.downcast_ref::<PackedFormat>()?,
-                p.1.downcast_ref::<PackedFormat>()?,
-            ))
+            Some((ix, p.0.downcast_ref::<PackedFormat>()?, p.1.downcast_ref::<PackedFormat>()?))
         })
         .find(|(_ix, pa, pb)| pa.dt == a_dt.unquantized() && pb.dt == b_dt.unquantized())
         .with_context(|| format!("No packing for {mmm:?} with inputs {a_dt:?} and {b_dt:?}"))?;
@@ -117,15 +108,16 @@ pub fn wire_for_variable_n(
             prepack
                 .map(|pre| kit.static_packer.same_as(pre.format()))
                 .unwrap_or_else(|| kit.weight == WeightType::from(a_konst.datum_type()))
-                && kit.accumulator == accumulator
-                && kit.activation == activation
+                && kit.can_do_mmm(accumulator, activation)
         })
         .min_by_key(|kit| kit.generic_fallback as usize)
-        .with_context(|| format!("No kit found for pre-packed {a:?}"))?;
+        .with_context(|| {
+            format!(
+                "No kit found for pre-packed w:{a_konst:?} prepack:{prepack:?} acc:{accumulator:?} act:{activation:?}"
+            )
+        })?;
     if a_konst.datum_type().is_number() {
-        let packed_a = kit
-            .static_packer
-            .prepare_tensor(a_konst, op.a_k(), op.a_m())?;
+        let packed_a = kit.static_packer.prepare_tensor(a_konst, op.a_k(), op.a_m())?;
         let name = patch.node(a.node).name.clone();
         a = patch.add_const(name, tensor0(Opaque::from(packed_a)))?;
     }
@@ -135,11 +127,7 @@ pub fn wire_for_variable_n(
     let packers = configs
         .iter()
         .map(|conf| {
-            conf.mmm.packings()[conf.packing]
-                .1
-                .downcast_ref::<PackedFormat>()
-                .unwrap()
-                .clone()
+            conf.mmm.packings()[conf.packing].1.downcast_ref::<PackedFormat>().unwrap().clone()
         })
         .collect_vec();
     let pb = patch.wire_node(
@@ -158,13 +146,7 @@ pub fn wire_for_variable_n(
         pb,
         configs
             .iter()
-            .map(|cf| {
-                (
-                    cf.mmm.clone(),
-                    cf.packing,
-                    cf.weight_panel_extractor.clone(),
-                )
-            })
+            .map(|cf| (cf.mmm.clone(), cf.packing, cf.weight_panel_extractor.clone()))
             .collect_vec(),
         ModePicker::VecVsMat,
     ))

@@ -11,7 +11,9 @@ pub mod unicast;
 
 use tract_data::prelude::DatumType;
 
-use crate::{BinOp, ByScalarKer, LinalgRegistry, UnicastKer};
+use crate::by_scalar::ByScalarKer;
+use crate::unicast::UnicastKer;
+use crate::{BinOp, LinalgRegistry};
 
 pub use self::by_scalar::{HMulByScalar8, SMulByScalar4};
 pub use self::erf::SErf4;

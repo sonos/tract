@@ -1,8 +1,8 @@
 use criterion::*;
 use tract_data::prelude::*;
 use tract_linalg::element_wise::ElementWiseKer;
-use tract_linalg::frame::reduce::{MapReduceKer, ReduceKer};
 use tract_linalg::generic::reduce::softmax_l2::SSoftMaxL2;
+use tract_linalg::reduce::{MapReduceKer, ReduceKer};
 
 #[inline(never)]
 fn loop1_f32_naive(slice: &mut [f32]) -> f32 {

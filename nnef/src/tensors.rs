@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 
 use byteorder::{ReadBytesExt, WriteBytesExt, LE};
 use tract_core::internal::*;
-use tract_linalg::frame::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
+use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
 
 const TRACT_ITEM_TYPE_VENDOR: u16 = ((b'T' as u16) << 8u16) | b'R' as u16;
 
@@ -59,10 +59,7 @@ impl Header {
 
 pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
     let header = Header::read(&mut reader)?;
-    let shape: TVec<usize> = header.dims[0..header.rank as usize]
-        .iter()
-        .map(|d| *d as _)
-        .collect();
+    let shape: TVec<usize> = header.dims[0..header.rank as usize].iter().map(|d| *d as _).collect();
     let len = shape.iter().product::<usize>();
 
     if header.item_type == 5 {
@@ -96,11 +93,7 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
     // quant infos are joined later from .quant file (
     //  see: ops/nnef/deser.rs
     // )
-    let dt = match (
-        header.item_type_vendor,
-        header.item_type,
-        header.bits_per_item,
-    ) {
+    let dt = match (header.item_type_vendor, header.item_type, header.bits_per_item) {
         // 0 - 0b0000 - float values in IEEE format, valid bits per item is 16, 32, 64
         (0, 0, 16) => DatumType::F16,
         (0, 0, 32) => DatumType::F32,
@@ -193,10 +186,7 @@ pub fn write_tensor(w: &mut impl Write, tensor: &Tensor) -> TractResult<()> {
     ensure!(tensor.datum_type() != TDim::datum_type());
     if tensor.datum_type() == Opaque::datum_type() {
         ensure!(tensor.rank() == 0);
-        if let Some(bqv) = tensor
-            .to_scalar::<Opaque>()?
-            .downcast_ref::<BlockQuantValue>()
-        {
+        if let Some(bqv) = tensor.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>() {
             return write_block_quant_value(w, bqv);
         }
     }
@@ -254,11 +244,8 @@ pub fn write_tensor(w: &mut impl Write, tensor: &Tensor) -> TractResult<()> {
 }
 
 fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Tensor> {
-    let format = if header.item_type == 0x2040 {
-        Q4_0
-    } else {
-        bail!("Unexpected block quant format")
-    };
+    let format =
+        if header.item_type == 0x2040 { Q4_0 } else { bail!("Unexpected block quant format") };
     ensure!(header.rank == 2);
     let shape: TVec<usize> = header.dims[0..2].iter().map(|x| (*x as usize)).collect();
     ensure!(shape.iter().product::<usize>() % format.block_len() == 0);
@@ -266,10 +253,7 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
     ensure!(expected_len == header.data_size_bytes as _);
     let mut blob = unsafe { Blob::new_for_size_and_align(expected_len, 128) };
     r.read_exact(&mut blob)?;
-    let fact = BlockQuantFact {
-        format: Box::new(format),
-        shape,
-    };
+    let fact = BlockQuantFact { format: Box::new(format), shape };
     let bqv = BlockQuantValue { value: blob, fact };
     let tensor = tensor0(Opaque(Arc::new(bqv)));
     Ok(tensor)
@@ -307,16 +291,8 @@ mod test {
     #[cfg(feature = "complex")]
     fn serde_tensor_complex_f32() -> TractResult<()> {
         let t = tensor2(&[
-            [
-                Complex::new(1.0f32, 2.0),
-                Complex::new(2.0, 1.0),
-                Complex::new(3.5, 2.4),
-            ],
-            [
-                Complex::new(3.0, 4.5),
-                Complex::new(3.0, 2.5),
-                Complex::new(1.5, 2.5),
-            ],
+            [Complex::new(1.0f32, 2.0), Complex::new(2.0, 1.0), Complex::new(3.5, 2.4)],
+            [Complex::new(3.0, 4.5), Complex::new(3.0, 2.5), Complex::new(1.5, 2.5)],
         ]);
         let mut buffer = Vec::<u8>::new();
         write_tensor(&mut buffer, &t)?;
@@ -329,16 +305,8 @@ mod test {
     #[cfg(feature = "complex")]
     fn serde_tensor_complex_f64() -> TractResult<()> {
         let t = tensor2(&[
-            [
-                Complex::new(1.0f64, 2.0),
-                Complex::new(2.0, 1.0),
-                Complex::new(3.5, 2.4),
-            ],
-            [
-                Complex::new(3.0, 4.5),
-                Complex::new(3.0, 2.5),
-                Complex::new(1.5, 2.5),
-            ],
+            [Complex::new(1.0f64, 2.0), Complex::new(2.0, 1.0), Complex::new(3.5, 2.4)],
+            [Complex::new(3.0, 4.5), Complex::new(3.0, 2.5), Complex::new(1.5, 2.5)],
         ]);
         let mut buffer = Vec::<u8>::new();
         write_tensor(&mut buffer, &t)?;
@@ -351,11 +319,7 @@ mod test {
     #[cfg(feature = "complex")]
     fn serde_tensor_complex_i32() -> TractResult<()> {
         let t = tensor2(&[
-            [
-                Complex::new(1i32, 2),
-                Complex::new(2, 1),
-                Complex::new(3, 2),
-            ],
+            [Complex::new(1i32, 2), Complex::new(2, 1), Complex::new(3, 2)],
             [Complex::new(3, 4), Complex::new(3, 2), Complex::new(1, 2)],
         ]);
         let mut buffer = Vec::<u8>::new();
@@ -369,11 +333,7 @@ mod test {
     #[cfg(feature = "complex")]
     fn serde_tensor_complex_i64() -> TractResult<()> {
         let t = tensor2(&[
-            [
-                Complex::new(1i64, 2),
-                Complex::new(2, 1),
-                Complex::new(3, 2),
-            ],
+            [Complex::new(1i64, 2), Complex::new(2, 1), Complex::new(3, 2)],
             [Complex::new(3, 4), Complex::new(3, 2), Complex::new(1, 2)],
         ]);
         let mut buffer = Vec::<u8>::new();

@@ -6,7 +6,7 @@ use crate::optim::OptimizerSession;
 use crate::plan::{FrozenSimpleState, SimplePlan, SimpleState};
 use crate::transform::ModelTransform;
 use tract_data::TooEarly;
-use tract_linalg::frame::block_quant::BlockQuantValue;
+use tract_linalg::block_quant::BlockQuantValue;
 use tract_num_traits::Zero;
 
 /// A model with completely determined types and shapes.
@@ -29,9 +29,7 @@ pub type RunnableModel<F, O, M> = SimplePlan<F, O, M>;
 
 impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
     fn is_source(op: &Box<dyn TypedOp>) -> bool {
-        op.as_op()
-            .downcast_ref::<ops::source::TypedSource>()
-            .is_some()
+        op.as_op().downcast_ref::<ops::source::TypedSource>().is_some()
     }
 
     fn create_dummy(&self) -> Box<dyn TypedOp> {
@@ -83,11 +81,8 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                             .into_iter()
                             .enumerate()
                             .map(|(ix, o)| {
-                                let name = if ix == 0 {
-                                    name.clone()
-                                } else {
-                                    format!("{name}.{ix}")
-                                };
+                                let name =
+                                    if ix == 0 { name.clone() } else { format!("{name}.{ix}") };
                                 self.add_const(name, o)
                             })
                             .collect::<TractResult<TVec<OutletId>>>();
@@ -151,8 +146,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                     .map(|id| id.into());
             }
         }
-        self.add_node(name, crate::ops::konst::Const::new(v), tvec!(fact))
-            .map(|id| id.into())
+        self.add_node(name, crate::ops::konst::Const::new(v), tvec!(fact)).map(|id| id.into())
     }
 }
 
@@ -209,11 +203,7 @@ impl TypedModel {
         for node in &self.nodes {
             for (ix, output) in node.outputs.iter().enumerate() {
                 output.fact.consistent().with_context(|| {
-                    format!(
-                        "Inconsistent fact {:?}: {:?}",
-                        OutletId::new(node.id, ix),
-                        output.fact
-                    )
+                    format!("Inconsistent fact {:?}: {:?}", OutletId::new(node.id, ix), output.fact)
                 })?
             }
         }
@@ -233,9 +223,7 @@ impl TypedModel {
 
     /// Perform declutter passes on the network.
     pub fn declutter(&mut self) -> TractResult<()> {
-        crate::optim::Optimizer::declutter()
-            .session()
-            .optimize(self)
+        crate::optim::Optimizer::declutter().session().optimize(self)
     }
 
     /// Perform optimization passes on the model, using a given optimizer session.
@@ -273,14 +261,9 @@ impl TypedModel {
                 && inputs.iter().all(|i| i.konst.is_some())
                 && outputs.iter().any(|o| o.konst.is_none())
             {
-                let inputs_ref = inputs
-                    .iter()
-                    .map(|f| f.konst.clone().unwrap().into_tvalue())
-                    .collect();
-                match node
-                    .op
-                    .eval_with_session(&SessionState::default(), inputs_ref)
-                {
+                let inputs_ref =
+                    inputs.iter().map(|f| f.konst.clone().unwrap().into_tvalue()).collect();
+                match node.op.eval_with_session(&SessionState::default(), inputs_ref) {
                     Ok(res) => {
                         drop(inputs);
                         drop(outputs);
@@ -312,9 +295,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Sym
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         target.check_consistency()?;
-        let outlets = node
-            .op
-            .concretize_dims(source, node, target, mapping, self)?;
+        let outlets = node.op.concretize_dims(source, node, target, mapping, self)?;
         for &outlet in &outlets {
             let fact = &mut target.nodes[outlet.node].outputs[outlet.slot].fact;
             if fact.shape.volume().is_zero() {
