@@ -16,7 +16,7 @@ use tract_core::ops::nn::{DataFormat, Softmax, SoftmaxExp};
 use tract_itertools::Itertools;
 
 use tract_core::ops;
-use tract_linalg::frame::block_quant::BlockQuantValue;
+use tract_linalg::block_quant::BlockQuantValue;
 
 use crate::deser::{ModelBuilder, ResolvedInvocation};
 

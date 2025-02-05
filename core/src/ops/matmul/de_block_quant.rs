@@ -1,4 +1,4 @@
-use tract_linalg::frame::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
+use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
 
 use crate::internal::*;
 use crate::ops::einsum::optimize::{ensure_mkn_axes, AxesOrPatch};

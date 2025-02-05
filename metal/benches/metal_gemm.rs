@@ -3,9 +3,9 @@ use criterion::measurement::WallTime;
 use criterion::*;
 use ggml::Context;
 use kernels::matmul::GgmlGemm;
-use tract_metal::kernels::matmul;
-// use ggml;
 use tract_core::internal::*;
+use tract_linalg::mmm::AsInputValue;
+use tract_metal::kernels::matmul;
 use tract_metal::*;
 
 pub fn ggml_matmul(
@@ -56,20 +56,22 @@ pub fn tract_with_packing(
     n: usize,
     dt: DatumType,
 ) {
-    use tract_linalg::frame::mmm::FusedSpec;
+    use tract_linalg::mmm::FusedSpec;
     let a = Tensor::zero_dt(dt, &[batch, m, k]).unwrap();
     let b = Tensor::zero_dt(dt, &[batch, k, n]).unwrap();
     let mut c = Tensor::zero_dt(dt, &[m, n]).unwrap();
 
     // mk,kn -> mn
     unsafe {
-        let mmm = tract_linalg::ops().mmm(dt, Some(m), Some(k), Some(n)).unwrap();
+        let mmm = tract_linalg::ops()
+            .mmm(dt, Some(m), Some(k), Some(n))
+            .unwrap();
 
         let c_storage = mmm.c_view(0, 1);
 
         let mut scratch = mmm.allocate_scratch_space();
 
-        let (packer_a, packer_b) = mmm.packings()[0];
+        let (packer_a, packer_b) = &mmm.packings()[0];
 
         crit.bench_function(&format!("tract_with_packing_{:?}", dt), |be| {
             let packed_a = packer_a.prepare_tensor(&a, 1, 0).unwrap();
@@ -83,8 +85,8 @@ pub fn tract_with_packing(
                     &[
                         FusedSpec::AddMatMul {
                             packing: 0,
-                            a: packed_a.as_ref(),
-                            b: packed_b.as_ref(),
+                            a: AsInputValue::Borrowed(packed_a.as_ref()),
+                            b: AsInputValue::Borrowed(packed_b.as_ref()),
                         },
                         FusedSpec::Store(c_storage.wrap(&mut c.view_mut())),
                     ],
@@ -105,7 +107,10 @@ pub fn metal_gemm<K: GemmKernel>(
     is_ggml: bool,
 ) {
     let context = MetalContext::new();
-    context.shared_context().load_library(LibraryName::MfaLib).unwrap();
+    context
+        .shared_context()
+        .load_library(LibraryName::MfaLib)
+        .unwrap();
 
     let a = Tensor::zero_dt(dt, &[batch, m, k]).unwrap();
     let b = if is_ggml {
@@ -117,11 +122,15 @@ pub fn metal_gemm<K: GemmKernel>(
     let metal_a = a.into_metal().unwrap();
     let metal_b = b.into_metal().unwrap();
     // Warmup
-    let _ = GemmImpl::<MfaGemm>::default().eval(&context, &metal_a, &metal_b).unwrap();
+    let _ = GemmImpl::<MfaGemm>::default()
+        .eval(&context, &metal_a, &metal_b)
+        .unwrap();
 
     crit.bench_function(&format!("tract_metal_gemm_{}_{:?}", K::name(), dt), |be| {
         be.iter(|| {
-            let _ = GemmImpl::<K>::new(false, is_ggml).eval(&context, &metal_a, &metal_b).unwrap();
+            let _ = GemmImpl::<K>::new(false, is_ggml)
+                .eval(&context, &metal_a, &metal_b)
+                .unwrap();
         });
     });
 }

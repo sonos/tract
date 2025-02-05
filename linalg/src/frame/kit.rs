@@ -2,11 +2,11 @@ use std::fmt::Debug;
 
 use tract_data::prelude::DatumType;
 
-use crate::frame::block_quant::{BlockQuant, PackedBlockQuantFormat};
+use crate::block_quant::{BlockQuant, PackedBlockQuantFormat};
 
-use super::pack::PackedFormat;
-use crate::frame::mmm::panel_extract::PanelExtractor;
-use crate::{MMMInputFormat, MatMatMul};
+use crate::mmm::panel_extract::PanelExtractor;
+use crate::mmm::{MMMInputFormat, MatMatMul};
+use crate::pack::PackedFormat;
 
 // final hypothesis
 // * A is const weight. either a DT, or a blockquant

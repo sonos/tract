@@ -1,5 +1,5 @@
-use tract_linalg::frame::{MatMatMul, PackedFormat, PackingWriter};
-use tract_linalg::mmm::{EagerPackedInput, MMMInputValue, PackedOpaqueFact};
+use tract_linalg::mmm::{EagerPackedInput, MMMInputValue, MatMatMul, PackedOpaqueFact};
+use tract_linalg::pack::{PackedFormat, PackingWriter};
 
 use crate::internal::*;
 use ndarray::prelude::*;
@@ -396,7 +396,7 @@ impl Patcher {
     unsafe fn padded_2d_invalid_x_loop<T: Copy + Datum>(
         count: usize,
         pad_value: T,
-        writer: &mut tract_linalg::frame::pack::KOutWriter<T>,
+        writer: &mut tract_linalg::pack::KOutWriter<T>,
     ) {
         for _ in 0..count {
             writer.write(pad_value);
@@ -409,7 +409,7 @@ impl Patcher {
         x_max: isize,
         x_stride_ptr: isize,
         iptr: *const T,
-        writer: &mut tract_linalg::frame::pack::KOutWriter<T>,
+        writer: &mut tract_linalg::pack::KOutWriter<T>,
     ) {
         for x in x_min..x_max {
             writer.write(*iptr.offset(x * x_stride_ptr));

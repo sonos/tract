@@ -13,9 +13,9 @@ pub use max::*;
 pub use sum::*;
 pub use unicast::*;
 
-use crate::frame::block_quant::PackedBlockQuantFormat;
-use crate::frame::block_quant::Q4_0;
-use crate::frame::Kit;
+use crate::block_quant::PackedBlockQuantFormat;
+use crate::block_quant::Q4_0;
+use crate::kit::Kit;
 use crate::Ops;
 
 const FP16: fn() -> bool = crate::arm64::has_fp16;

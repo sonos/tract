@@ -255,7 +255,7 @@ mod tests {
     use num_traits::Zero;
     use tract_data::internal::tract_ndarray::Array2;
 
-    use crate::frame::PackedFormat;
+    use crate::pack::PackedFormat;
 
     use super::*;
 

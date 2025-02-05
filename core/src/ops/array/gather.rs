@@ -1,7 +1,7 @@
 use crate::internal::*;
 use crate::ops::einsum::block_quant_aware_input_shape;
 use ndarray::*;
-use tract_linalg::frame::block_quant::BlockQuantValue;
+use tract_linalg::block_quant::BlockQuantValue;
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct Gather {

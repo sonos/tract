@@ -18,16 +18,9 @@ extern crate proptest;
 include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 
 #[macro_use]
-pub mod frame;
+mod frame;
 pub mod generic;
 pub mod multithread;
-use frame::by_scalar::ByScalarKer;
-use frame::element_wise::ElementWiseKer;
-use frame::mmm::panel_extract::PanelExtractor;
-use frame::mmm::{MMMInputFormat, WeightType};
-use frame::reduce::{MapReduceKer, ReduceKer};
-use frame::unicast::UnicastKer;
-use frame::{reduce, Kit, MatMatMul};
 pub use generic::{ScaleShiftAndRound, Scaler};
 use lazy_static::lazy_static;
 use tract_data::internal::TensorView;
@@ -52,7 +45,7 @@ pub mod arm32;
 #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
 pub mod wasm;
 
-pub use self::frame::{element_wise, lut, mmm};
+pub use self::frame::*;
 
 use tract_data::prelude::*;
 
@@ -64,9 +57,9 @@ type MMVImpl = Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMu
 
 #[allow(clippy::type_complexity)]
 pub struct Ops {
-    mmm_impls: Vec<Box<dyn MatMatMul>>,
-    panel_extractors: Vec<PanelExtractor>,
-    mmm_kits: Vec<Kit>,
+    mmm_impls: Vec<Box<dyn mmm::MatMatMul>>,
+    panel_extractors: Vec<mmm::panel_extract::PanelExtractor>,
+    mmm_kits: Vec<kit::Kit>,
     // default_kit: Box<dyn Fn(WeightType) -> Box<dyn MMMInputFormat>>,
     mmm_f64: MMMImpl,
     mmv_f64: MMVImpl,
@@ -107,15 +100,15 @@ pub struct Ops {
 }
 
 impl Ops {
-    pub fn mmm_impls(&self) -> &[Box<dyn MatMatMul>] {
+    pub fn mmm_impls(&self) -> &[Box<dyn mmm::MatMatMul>] {
         &self.mmm_impls
     }
 
-    pub fn mmm_kits(&self) -> &[Kit] {
+    pub fn mmm_kits(&self) -> &[kit::Kit] {
         &self.mmm_kits
     }
 
-    pub fn kit_input_format(&self, w: WeightType) -> Box<dyn MMMInputFormat> {
+    pub fn kit_input_format(&self, w: kit::WeightType) -> Box<dyn mmm::MMMInputFormat> {
         self.mmm_kits
             .iter()
             .filter(|kit| kit.weight == w)
@@ -126,7 +119,7 @@ impl Ops {
             .clone()
     }
 
-    pub fn panel_extractors(&self) -> &[PanelExtractor] {
+    pub fn panel_extractors(&self) -> &[mmm::panel_extract::PanelExtractor] {
         &self.panel_extractors
     }
 
@@ -152,6 +145,8 @@ impl Ops {
 
 pub fn generic() -> Ops {
     use crate::generic::mmm::*;
+    use element_wise::ElementWiseKer;
+    use reduce::{MapReduceKer, ReduceKer};
     let mut ops = Ops {
         mmm_impls: vec![generic_f32_4x4.mmm(), generic_f32_4x1.mmm()],
         mmm_kits: vec![],

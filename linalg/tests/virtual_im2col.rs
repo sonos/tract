@@ -5,10 +5,10 @@ use proptest::arbitrary::Arbitrary;
 use proptest::prelude::*;
 use proptest::strategy::{BoxedStrategy, Strategy};
 use tract_data::internal::*;
-use tract_linalg::frame::mmm::FusedSpec;
+use tract_linalg::mmm::FusedSpec;
 // use tract_linalg::frame::mmm::{VirtualInput, VirtualInputSpec};
-use tract_linalg::frame::{PackedFormat, PackingWriter};
 use tract_linalg::mmm::{AsInputValue, MMMInputFormat, MMMInputValue};
+use tract_linalg::pack::{PackedFormat, PackingWriter};
 use DatumType::F32;
 
 proptest::proptest! {
