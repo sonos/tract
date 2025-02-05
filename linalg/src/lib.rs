@@ -58,7 +58,7 @@ type MMVImpl = Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMu
 #[allow(clippy::type_complexity)]
 pub struct Ops {
     mmm_impls: Vec<Box<dyn mmm::MatMatMul>>,
-    panel_extractors: Vec<mmm::panel_extract::PanelExtractor>,
+    panel_extractors: Vec<mmm::PanelExtractor>,
     mmm_kits: Vec<kit::Kit>,
     // default_kit: Box<dyn Fn(WeightType) -> Box<dyn MMMInputFormat>>,
     mmm_f64: MMMImpl,
