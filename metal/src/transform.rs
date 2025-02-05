@@ -342,7 +342,7 @@ fn check_matmul_in_dts(gemm_impl: MetalGemmImplKind, dts: &[DatumType]) -> bool 
         MetalGemmImplKind::Mlx => MlxGemm.is_supported_dts(dts),
         MetalGemmImplKind::Mps => MpsMatMul.is_supported_dts(dts),
         MetalGemmImplKind::Mfa => MfaGemm.is_supported_dts(dts),
-        MetalGemmImplKind::Ggml => MfaGemm.is_supported_dts(dts),
+        MetalGemmImplKind::Ggml => GgmlGemm.is_supported_dts(dts),
     };
     is_supported.unwrap_or(false)
 }
