@@ -13,8 +13,9 @@ pub use sum::arm64simd_sum_f32_16n;
 pub use unicast::*;
 
 use crate::kit::Kit;
-use crate::pack::PackedFormat;
+use crate::pack::{PackedFormat, Packing};
 use crate::Ops;
+use tract_data::internal::*;
 
 MMMExternKernel!(arm64simd_mmm_f32_8x8_a55 <f32>(8,  8)@(16, 16));
 MMMExternKernel!(arm64simd_mmm_f32_12x8_a55<f32>(12, 8)@(16, 16));
@@ -50,7 +51,10 @@ pub fn plug(ops: &mut Ops) {
     /*
     panel_extract::plug(ops);
     */
-    ops.mmm_kits.push(Kit::new_for_mmm(arm64simd_mmm_f32_64x1_gen.mmm(), 0));
+    ops.mmm_kits.push(
+        Kit::new(f32::datum_type(), &f32::packing(64).align(16))
+            .with_native(arm64simd_mmm_f32_64x1_gen.mmm(), 0),
+    );
 }
 
 tanh_impl!(f32, arm64simd_tanh_f32_4n, 4, 4, true);

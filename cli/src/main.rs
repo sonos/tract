@@ -12,7 +12,7 @@ use tract_itertools::Itertools;
 use tract_core::internal::*;
 use tract_hir::internal::*;
 
-use nu_ansi_term::Color::*;
+use nu_ansi_term::Color::{self, *};
 use tract_libcli::annotations::Annotations;
 use tract_libcli::display_params::DisplayParams;
 use tract_libcli::model::Model;
@@ -35,6 +35,7 @@ mod tensor;
 mod utils;
 
 use params::*;
+use tract_linalg::pack::PackedFormat;
 
 readings_probe::instrumented_allocator!();
 
@@ -596,31 +597,44 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         }
         Some(("kernels", _)) => {
             println!("{}", White.bold().paint("# Matrix multiplication"));
+            fn color(title: bool, generic: bool) -> Color {
+                let base = (255 - generic as usize * 64) as u8;
+                let i = if title { base } else { base / 2 + base / 4 };
+                Rgb(i, i, i)
+            }
             for m in tract_linalg::ops().mmm_impls() {
-                let (label_color, packing_color) =
-                    if m.generic_fallback() { (Default, DarkGray) } else { (Yellow, White) };
-                println!("{}", label_color.paint(format!(" * {}", m.name())));
+                println!("{}", color(true, m.generic_fallback()).paint(format!(" * {}", m.name())));
                 for packings in m.packings() {
                     println!(
                         "{}",
-                        packing_color.paint(format!("   - {:?} • {:?}", packings.0, packings.1))
+                        color(false, m.generic_fallback())
+                            .paint(format!("   - {:?} • {:?}", packings.0, packings.1))
                     );
                 }
             }
             println!("{}", White.bold().paint("# MatMul kits"));
             for m in tract_linalg::ops().mmm_kits() {
                 let label = format!(" * {:?} ⮕  {:?}", m.weight, m.static_packer,);
-                println!("{}", Green.paint(label));
+                println!("{}", color(true, m.generic_fallback).paint(label));
                 for item in &m.mmms {
                     println!(
-                        "   - {} {:?}•{:?} {}",
-                        item.mmm.name(),
-                        item.mmm.packings()[item.packing].0,
-                        item.mmm.packings()[item.packing].1,
-                        item.weight_panel_extractor
-                            .as_ref()
-                            .map(|pe| format!("[using {}]", pe.name))
-                            .unwrap_or_default()
+                        "{}",
+                        color(false, m.generic_fallback).paint(format!(
+                            "   - mmm Σ:{:?} B:{} by {}/{} ( {:?}•{:?} ) {}",
+                            item.mmm.internal_type(),
+                            item.b_packing()
+                                .downcast_ref::<PackedFormat>()
+                                .map(|pf| format!("{:?}", pf.dt))
+                                .unwrap_or("???".to_string()),
+                            item.mmm.name(),
+                            item.packing,
+                            item.mmm.packings()[item.packing].0,
+                            item.mmm.packings()[item.packing].1,
+                            item.weight_panel_extractor
+                                .as_ref()
+                                .map(|pe| format!("[using {} on weights]", pe.name))
+                                .unwrap_or_default()
+                        ))
                     );
                 }
             }

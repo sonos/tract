@@ -108,8 +108,7 @@ pub fn wire_for_variable_n(
             prepack
                 .map(|pre| kit.static_packer.same_as(pre.format()))
                 .unwrap_or_else(|| kit.weight == WeightType::from(a_konst.datum_type()))
-                && kit.accumulator == accumulator
-                && kit.activation == activation
+                && kit.can_do_mmm(accumulator, activation)
         })
         .min_by_key(|kit| kit.generic_fallback as usize)
         .with_context(|| {

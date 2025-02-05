@@ -7,12 +7,6 @@ use crate::block_quant::{BlockQuant, PackedBlockQuantFormat};
 use crate::mmm::{MMMInputFormat, MatMatMul, PanelExtractor};
 use crate::pack::PackedFormat;
 
-// final hypothesis
-// * A is const weight. either a DT, or a blockquant
-// * m, k are constant, n is an undetermined TDim
-//
-// for now (?) acc.dt == B.dt == C.dt
-
 #[derive(Clone)]
 pub enum WeightType {
     Plain(DatumType),
@@ -74,11 +68,6 @@ impl Debug for WeightType {
     }
 }
 
-// pub enum PackedWeightType {
-//     Plain(PackedFormat),
-//     BlockQuant(PackedBlockQuantFormat),
-// }
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum KitDatumType {
     F16,
@@ -113,13 +102,15 @@ impl From<Box<dyn MMMInputFormat>> for KitDatumType {
     }
 }
 
+pub enum KitRequirement {
+    MMM { accumulator: KitDatumType, activation: KitDatumType },
+}
+
 #[derive(Debug)]
 pub struct Kit {
     pub weight: WeightType,
-    pub accumulator: KitDatumType,
-    pub activation: KitDatumType,
     pub static_packer: Box<dyn MMMInputFormat>,
-    pub items: Vec<MMMKitItem>,
+    pub mmms: Vec<MMMKitItem>,
     pub generic_fallback: bool,
 }
 
@@ -131,32 +122,13 @@ pub struct MMMKitItem {
 }
 
 impl Kit {
-    pub(crate) fn new_for_mmm(mmm: Box<dyn MatMatMul>, packing: usize) -> Kit {
-        let static_packer = mmm.packings()[packing].0.clone();
-        Self::new(
-            static_packer.clone(),
-            mmm.internal_type(),
-            &*mmm.packings()[packing].1,
-            &*static_packer,
-        )
-        .with_native(mmm, packing)
-    }
-
-    pub(crate) fn new(
-        weight: impl Into<WeightType>,
-        accumulator: impl Into<KitDatumType>,
-        activation: impl Into<KitDatumType>,
-        static_packer: &dyn MMMInputFormat,
-    ) -> Kit {
-        let (weight, accumulator, activation) =
-            (weight.into(), accumulator.into(), activation.into());
+    pub(crate) fn new(weight: impl Into<WeightType>, static_packer: &dyn MMMInputFormat) -> Kit {
+        let weight = weight.into();
         let kit = Kit {
             weight,
-            accumulator,
-            activation,
-            static_packer: dyn_clone::clone_box(static_packer),
-            items: vec![],
             generic_fallback: false,
+            static_packer: dyn_clone::clone_box(static_packer),
+            mmms: vec![],
         };
         match &kit.weight {
             WeightType::Plain(p) => {
@@ -181,20 +153,7 @@ impl Kit {
         packing: usize,
         weight_panel_extractor: Option<PanelExtractor>,
     ) -> Self {
-        debug_assert!(
-            self.accumulator == mmm.internal_type().into(),
-            "Accumulator mismatch {self:?} {mmm:?}/{packing} {:?}",
-            mmm.packings()[packing].0
-        );
-        debug_assert!(
-            mmm.packings()[packing]
-                .1
-                .downcast_ref::<PackedFormat>()
-                .is_some_and(|pf| KitDatumType::from(pf.dt) == self.activation),
-            "Activation packed dt mismatch {self:?} {:?}",
-            mmm.packings()[packing].1
-        );
-        self.items.push(MMMKitItem { mmm, packing, weight_panel_extractor });
+        self.mmms.push(MMMKitItem { mmm, packing, weight_panel_extractor });
         self
     }
 
@@ -231,21 +190,39 @@ impl Kit {
         Self { generic_fallback, ..self }
     }
 
-    pub fn name(&self) -> &str {
-        self.items[0].mmm.name()
+    pub fn name(&self) -> String {
+        self.static_packer.to_string()
+    }
+
+    pub fn can_do_mmm(&self, accumulator: KitDatumType, activation: KitDatumType) -> bool {
+        self.mmms.iter().any(|mmm| {
+            mmm.accumulator() == accumulator
+                && mmm
+                    .b_packing()
+                    .downcast_ref::<PackedFormat>()
+                    .is_some_and(|pf| KitDatumType::from(pf.dt) == activation)
+        })
     }
 
     pub fn item_for_mv(&self) -> &MMMKitItem {
-        self.items.iter().min_by_key(|item| item.n()).unwrap()
+        self.mmms.iter().min_by_key(|item| item.n()).unwrap()
     }
 
     pub fn item_for_squarish(&self) -> &MMMKitItem {
-        self.items.iter().max_by_key(|item| item.n()).unwrap()
+        self.mmms.iter().max_by_key(|item| item.n()).unwrap()
     }
 }
 
 impl MMMKitItem {
     pub fn n(&self) -> usize {
         self.mmm.packings()[self.packing].1.r()
+    }
+
+    pub fn accumulator(&self) -> KitDatumType {
+        self.mmm.internal_type().into()
+    }
+
+    pub fn b_packing(&self) -> &dyn MMMInputFormat {
+        &*self.mmm.packings()[self.packing].1
     }
 }
