@@ -1,6 +1,6 @@
 use dyn_clone::clone_box;
 use tract_linalg::block_quant::BlockQuantValue;
-use tract_linalg::mmm::WeightType;
+use tract_linalg::kit::WeightType;
 
 use crate::internal::*;
 use crate::ops::array::Gather;
