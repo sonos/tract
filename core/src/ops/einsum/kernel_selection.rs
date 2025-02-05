@@ -1,7 +1,6 @@
 #![allow(clippy::type_complexity)]
 use tract_itertools::Itertools;
-use tract_linalg::mmm::panel_extract::PanelExtractor;
-use tract_linalg::mmm::{KitDatumType, MMMInputValue, MatMatMul, WeightType};
+use tract_linalg::mmm::{KitDatumType, MMMInputValue, MatMatMul, PanelExtractor, WeightType};
 use tract_linalg::pack::PackedFormat;
 
 use crate::internal::*;

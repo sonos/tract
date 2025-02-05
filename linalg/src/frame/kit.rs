@@ -4,8 +4,7 @@ use tract_data::prelude::DatumType;
 
 use crate::block_quant::{BlockQuant, PackedBlockQuantFormat};
 
-use crate::mmm::panel_extract::PanelExtractor;
-use crate::mmm::{MMMInputFormat, MatMatMul};
+use crate::mmm::{MMMInputFormat, MatMatMul, PanelExtractor};
 use crate::pack::PackedFormat;
 
 // final hypothesis

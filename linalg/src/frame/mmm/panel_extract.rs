@@ -96,11 +96,11 @@ macro_rules! panel_extractor {
      ) => {
         paste! {
             lazy_static::lazy_static! {
-                pub static ref $id: $crate::frame::mmm::panel_extract::PanelExtractor = {
+                pub static ref $id: $crate::mmm::PanelExtractor = {
                     use $crate::mmm::MMMInputFormat;
                     let (from, to) = ($from, $to);
                     assert!(from.r() == to.r());
-                    let mut it = $crate::frame::mmm::panel_extract::PanelExtractor {
+                    let mut it = $crate::mmm::PanelExtractor {
                         name: stringify!($id).to_string(),
                         from,
                         to,
