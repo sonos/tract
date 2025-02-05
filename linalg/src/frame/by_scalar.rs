@@ -1,11 +1,10 @@
-use std::{fmt::Debug, marker::PhantomData};
+use std::fmt::Debug;
+use std::marker::PhantomData;
 
-use tract_data::{TractResult, internal::TensorView};
-
-use crate::{LADatum, element_wise::ElementWiseKer, LinalgFn};
-
-use super::{ElementWise, element_wise_helper::map_slice_with_alignment};
-
+use crate::element_wise::{ElementWise, ElementWiseKer};
+use crate::element_wise_helper::map_slice_with_alignment;
+use crate::{LADatum, LinalgFn};
+use tract_data::internal::*;
 
 /// Generic implementation struct that unify all by scalar kernels.
 /// A by scalar operation is an ElementWise operation with a scalar paramerer.
@@ -31,10 +30,9 @@ where
     }
 }
 
-
 pub trait ByScalarKer<T>: ElementWiseKer<T, T>
 where
-    T: LADatum
+    T: LADatum,
 {
     fn bin() -> Box<LinalgFn> {
         Box::new(|a: &mut TensorView, b: &TensorView| {
@@ -54,7 +52,6 @@ macro_rules! by_scalar_impl_wrap {
         }
     };
 }
-
 
 #[cfg(test)]
 #[macro_use]

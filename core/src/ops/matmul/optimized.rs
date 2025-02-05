@@ -5,11 +5,11 @@ use crate::ops::nn::LeakyRelu;
 use ndarray::*;
 use tract_itertools::Itertools;
 
-use tract_linalg::frame::PackedFormat;
 use tract_linalg::mmm::panel_extract::{PanelExtractInput, PanelExtractor};
 use tract_linalg::mmm::{
     AsInputValue, EagerPackedInput, FusedSpec, MMMInputValue, MatMatMul, OutputStoreSpec,
 };
+use tract_linalg::pack::PackedFormat;
 use tract_linalg::{BinOp, Scaler};
 use tract_smallvec::ToSmallVec;
 

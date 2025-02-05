@@ -16,7 +16,7 @@ use tract_core::ops::konst::Const;
 use tract_core::ops::nn::DataFormat;
 use tract_core::ops::nn::SoftmaxExp;
 use tract_core::tract_data::itertools::Itertools;
-use tract_linalg::frame::block_quant::BlockQuantFact;
+use tract_linalg::block_quant::BlockQuantFact;
 
 pub fn source(
     ast: &mut IntoAst,

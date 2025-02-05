@@ -12,8 +12,8 @@ pub use softmax::arm64simd_softmax2_fastcompact_f32_16n;
 pub use sum::arm64simd_sum_f32_16n;
 pub use unicast::*;
 
-use crate::frame::PackedFormat;
-use crate::mmm::Kit;
+use crate::kit::Kit;
+use crate::pack::PackedFormat;
 use crate::Ops;
 
 MMMExternKernel!(arm64simd_mmm_f32_8x8_a55 <f32>(8,  8)@(16, 16));

@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Display};
 
 use super::{EagerPackedInput, MMMInputFormat, MMMInputValue};
-use crate::frame::PackedFormat;
+use crate::pack::PackedFormat;
 
 type Kernel = unsafe fn(input: *const u8, output: *mut u8, k: usize);
 

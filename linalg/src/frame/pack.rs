@@ -4,9 +4,7 @@ use std::marker::PhantomData;
 use std::ops::Range;
 use tract_data::internal::*;
 
-use crate::mmm::{EagerPackedInput, MMMInputValue, PackedOpaqueFact};
-
-use crate::MMMInputFormat;
+use crate::mmm::{EagerPackedInput, MMMInputFormat, MMMInputValue, PackedOpaqueFact};
 
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct PackedFormat {

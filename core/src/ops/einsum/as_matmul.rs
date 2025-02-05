@@ -1,5 +1,5 @@
 use tract_data::itertools::Itertools;
-use tract_linalg::frame::block_quant::{BlockQuantFact, BlockQuantValue};
+use tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue};
 use tract_linalg::Scaler;
 use tract_ndarray::Ix2;
 use tract_num_traits::One;
