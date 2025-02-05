@@ -1,7 +1,7 @@
 use crate::block_quant::*;
 use crate::kit::Kit;
 use crate::mmm::MatMatMulKer;
-use crate::pack::PackedFormat;
+use crate::pack::{PackedFormat, Packing};
 use crate::Ops;
 use panel_extract::packed_32_f16_to_f32;
 use panel_extract::packed_32_q40_to_f32;
@@ -49,22 +49,22 @@ MMMExternKernel! { avx2_mmm_i32_8x8<i32>(8,8)@(32,4) where(AVX2)
 pub fn plug(ops: &mut Ops) {
     if fma_mmm_f32_32x1.is_supported_here() {
         ops.mmm_kits.push(
-            Kit::new_for_mmm(fma_mmm_f32_32x1.mmm(), 0).with_native(fma_mmm_f32_32x3.mmm(), 0),
+            Kit::new(f32::datum_type(), &f32::packing(32).align(32))
+                .with_native(fma_mmm_f32_32x1.mmm(), 0)
+                .with_native(fma_mmm_f32_32x3.mmm(), 0),
         );
-        ops.mmm_kits
-            .push(Kit::new_for_mmm(fma_mmm_f32_32x1.mmm(), 1).with_extracting(
-                fma_mmm_f32_32x3.mmm(),
-                0,
-                packed_32_q40_to_f32.clone(),
-            ));
-        ops.mmm_kits
-            .push(Kit::new_for_mmm(fma_mmm_f32_32x1.mmm(), 2).with_extracting(
-                fma_mmm_f32_32x3.mmm(),
-                1,
-                packed_32_q40_to_f32.clone(),
-            ));
         ops.mmm_kits.push(
-            Kit::new(F16, F32, F16, &PackedFormat::new(F16, 32, 32))
+            Kit::new(Q4_0, &pq40_r32())
+                .with_native(fma_mmm_f32_32x1.mmm(), 1)
+                .with_extracting(fma_mmm_f32_32x3.mmm(), 0, packed_32_q40_to_f32.clone()),
+        );
+        ops.mmm_kits.push(
+            Kit::new(Q4_0, &pq40_r32())
+                .with_native(fma_mmm_f32_32x1.mmm(), 2)
+                .with_extracting(fma_mmm_f32_32x3.mmm(), 1, packed_32_q40_to_f32.clone()),
+        );
+        ops.mmm_kits.push(
+            Kit::new(F16, &PackedFormat::new(F16, 32, 32))
                 .with_native(fma_mmm_f32_32x1.mmm(), 3)
                 .with_extracting(fma_mmm_f32_32x3.mmm(), 1, packed_32_f16_to_f32.clone()),
         );
