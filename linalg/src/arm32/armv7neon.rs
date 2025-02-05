@@ -1,5 +1,5 @@
-use crate::frame::mmm::{MMMKit, Packing};
-use crate::frame::PackedFormat;
+use crate::kit::Kit;
+use crate::pack::{PackedFormat, Packing};
 use crate::DatumType::*;
 use crate::Ops;
 
@@ -28,11 +28,17 @@ MMMExternKernel!(armv7neon_mmm_i32_32x1<i32>(32, 1)@(32, 4) where(NEON)
 
 pub fn plug(ops: &mut Ops) {
     ops.mmm_kits.push(
-        MMMKit::new(F32, F32, F32, &f32::packing(8))
+        Kit::new(F32, F32, F32, &f32::packing(8))
             .with_native(armv7neon_mmm_f32_8x6_generic.mmm(), 0)
             .with_native(armv7neon_mmm_f32_8x1_generic.mmm(), 0),
     );
 }
 
-sigmoid_impl!(f32, armv7neon_sigmoid_f32_4n, 4, 4, crate::arm32::has_neon());
+sigmoid_impl!(
+    f32,
+    armv7neon_sigmoid_f32_4n,
+    4,
+    4,
+    crate::arm32::has_neon()
+);
 tanh_impl!(f32, armv7neon_tanh_f32_4n, 4, 4, crate::arm32::has_neon());
