@@ -1,4 +1,4 @@
-#![allow(clippy::mising_safety_doc)]
+#![allow(clippy::missing_safety_doc)]
 #![allow(clippy::redundant_closure_call)]
 #![allow(clippy::len_zero)]
 #![allow(clippy::excessive_precision)]
