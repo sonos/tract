@@ -8,6 +8,7 @@ use tract_data::prelude::*;
 use super::*;
 use crate::frame::block_quant::{BlockQuant, NibbleReader, PackedBlockQuantFormat, Q4_0};
 use crate::frame::mmm::*;
+use crate::kit::Kit;
 use crate::{LADatum, Ops};
 
 macro_rules! scalar {

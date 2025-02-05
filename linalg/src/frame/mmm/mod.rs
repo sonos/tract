@@ -20,7 +20,6 @@ use rayon::prelude::*;
 use std::fmt::Debug;
 use tract_data::internal::*;
 
-pub use crate::frame::kit::*;
 pub use cost_model::*;
 pub use fuse::*;
 pub use input_store::*;
