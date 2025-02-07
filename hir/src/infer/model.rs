@@ -109,7 +109,10 @@ impl InferenceModelExt for InferenceModel {
                 mapping: &HashMap<OutletId, OutletId>,
             ) -> TractResult<TVec<OutletId>> {
                 if node.op.is_stateless()
-                    && source.node_output_facts(node.id)?.iter().all(|f| f.value.is_concrete())
+                    && source
+                        .node_output_facts(node.id)?
+                        .iter()
+                        .all(|f| f.value.is_concrete())
                 {
                     (0..node.outputs.len())
                         .map(|ix| {
@@ -151,7 +154,9 @@ impl InferenceModelExt for InferenceModel {
 
 impl SpecialOps<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
     fn is_source(op: &Box<dyn InferenceOp>) -> bool {
-        op.as_op().downcast_ref::<crate::ops::source::Source>().is_some()
+        op.as_op()
+            .downcast_ref::<crate::ops::source::Source>()
+            .is_some()
     }
 
     fn create_dummy(&self) -> Box<dyn InferenceOp> {
@@ -169,14 +174,21 @@ impl SpecialOps<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let op = op.into();
-        let output_facts: TVec<InferenceFact> =
-            (0..op.nboutputs()?).map(|_| InferenceFact::default()).collect();
+        let output_facts: TVec<InferenceFact> = (0..op.nboutputs()?)
+            .map(|_| InferenceFact::default())
+            .collect();
         let id = self.add_node(name, op, output_facts)?;
         inputs
             .iter()
             .enumerate()
             .try_for_each(|(ix, i)| self.add_edge(*i, InletId::new(id, ix)))?;
-        Ok(self.node(id).outputs.iter().enumerate().map(|(ix, _)| OutletId::new(id, ix)).collect())
+        Ok(self
+            .node(id)
+            .outputs
+            .iter()
+            .enumerate()
+            .map(|(ix, _)| OutletId::new(id, ix))
+            .collect())
     }
 
     fn add_const(
@@ -194,7 +206,7 @@ impl SpecialOps<InferenceFact, Box<dyn InferenceOp>> for InferenceModel {
         }
         let name = name.into();
         let fact = TypedFact::from(v.clone());
-        self.add_node(name, crate::ops::konst::Const::new(v), tvec!(fact.into()))
+        self.add_node(name, crate::ops::konst::Const::new(v)?, tvec!(fact.into()))
             .map(|id| id.into())
     }
 }

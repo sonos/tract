@@ -2,8 +2,8 @@ use log::*;
 use prost::Message;
 use std::path::PathBuf;
 use tract_hir::internal::*;
-use tract_onnx::pb::TensorProto;
 use tract_onnx::data_resolver::FopenDataResolver;
+use tract_onnx::pb::TensorProto;
 use tract_onnx::tensor::load_tensor;
 
 use infra::{Test, TestStatus, TestSuite};
@@ -52,12 +52,18 @@ impl Test for OnnxTestCase {
             onnx = onnx.with_ignore_output_types(true);
         }
 
-        trace!("Proto Model:\n{:#?}", onnx.proto_model_for_path(&model_file));
+        trace!(
+            "Proto Model:\n{:#?}",
+            onnx.proto_model_for_path(&model_file)
+        );
         for d in std::fs::read_dir(&self.path)? {
             let mut model = onnx.model_for_path(&model_file)?;
             let d = d?;
             if d.metadata().unwrap().is_dir()
-                && d.file_name().to_str().unwrap().starts_with("test_data_set_")
+                && d.file_name()
+                    .to_str()
+                    .unwrap()
+                    .starts_with("test_data_set_")
             {
                 let data_path = d.path();
                 let mut inputs = load_half_dataset("input", &data_path);
@@ -73,7 +79,7 @@ impl Test for OnnxTestCase {
                             model.node_mut(outlet.node).op =
                                 Box::new(tract_hir::ops::konst::Const::new(
                                     inputs[ix].clone().into_arc_tensor(),
-                                ));
+                                )?);
                         }
                     }
                     model.set_input_outlets(&actual_inputs)?;
@@ -183,7 +189,10 @@ fn full() -> TestSuite {
             .filter(|s| s.trim().len() > 1 && s.trim().as_bytes()[0] != b'#')
             .map(|s| {
                 let mut splits = s.split_whitespace();
-                (splits.next().unwrap().to_string(), splits.map(|s| s.to_string()).collect())
+                (
+                    splits.next().unwrap().to_string(),
+                    splits.map(|s| s.to_string()).collect(),
+                )
             })
             .collect();
 
@@ -203,17 +212,24 @@ fn full() -> TestSuite {
                 .collect();
             let mut units = TestSuite::default();
             for t in &tests {
-                let details = working_list.iter().find(|pair| &pair.0 == t).map(|pair| &*pair.1);
+                let details = working_list
+                    .iter()
+                    .find(|pair| &pair.0 == t)
+                    .map(|pair| &*pair.1);
                 let ignored = details.is_none()
                     || details.unwrap().iter().any(|s| {
                         s.strip_prefix("since:")
                             .map(|since| since.parse::<usize>().unwrap() > opset)
                             .unwrap_or(false)
                     });
-                let ignore_output_shapes =
-                    details.unwrap_or_default().iter().any(|s| s == "onnx-ignore-output-shape");
-                let ignore_output_type =
-                    details.unwrap_or_default().iter().any(|s| s == "onnx-ignore-output-type");
+                let ignore_output_shapes = details
+                    .unwrap_or_default()
+                    .iter()
+                    .any(|s| s == "onnx-ignore-output-shape");
+                let ignore_output_type = details
+                    .unwrap_or_default()
+                    .iter()
+                    .any(|s| s == "onnx-ignore-output-type");
                 let input = details
                     .unwrap_or_default()
                     .iter()
@@ -227,7 +243,11 @@ fn full() -> TestSuite {
                         ignore_output_shapes,
                         input,
                     },
-                    if ignored { TestStatus::Ignored } else { TestStatus::OK },
+                    if ignored {
+                        TestStatus::Ignored
+                    } else {
+                        TestStatus::OK
+                    },
                 );
             }
             tags.add(identifier, units);
@@ -247,7 +267,14 @@ pub fn load_half_dataset(prefix: &str, path: &std::path::Path) -> TVec<Tensor> {
     let len = std::fs::read_dir(path)
         .map_err(|e| format!("accessing {path:?}, {e:?}"))
         .unwrap()
-        .filter(|d| d.as_ref().unwrap().file_name().to_str().unwrap().starts_with(prefix))
+        .filter(|d| {
+            d.as_ref()
+                .unwrap()
+                .file_name()
+                .to_str()
+                .unwrap()
+                .starts_with(prefix)
+        })
         .count();
     for i in 0..len {
         let filename = path.join(format!("{prefix}_{i}.pb"));

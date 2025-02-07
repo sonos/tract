@@ -22,7 +22,9 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Concat", concat);
     reg.insert("ConstantLike", constant_like);
     reg.insert("ConstantOfShape", constant_of_shape);
-    reg.insert("Expand", |_, _| Ok((expand(array::MultiBroadcastTo), vec![])));
+    reg.insert("Expand", |_, _| {
+        Ok((expand(array::MultiBroadcastTo), vec![]))
+    });
     reg.insert("EyeLike", eye_like);
     reg.insert("Flatten", flatten);
     reg.insert("Gather", gather);
@@ -32,12 +34,16 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("OneHot", one_hot::one_hot);
     reg.insert("Range", |_, _| Ok((expand(array::Range), vec![])));
     reg.insert("Pad", pad::pad);
-    reg.insert("Reshape", |_, _| Ok((expand(array::Reshape::default()), vec![])));
+    reg.insert("Reshape", |_, _| {
+        Ok((expand(array::Reshape::default()), vec![]))
+    });
     reg.insert("Scatter", scatter_elements);
     reg.insert("ScatterElements", scatter_elements);
     reg.insert("ScatterND", |_, _| Ok((Box::new(array::ScatterNd), vec![])));
     reg.insert("Shape", shape::shape);
-    reg.insert("Size", |_, _| Ok((expand(array::Size::new(DatumType::TDim)), vec![])));
+    reg.insert("Size", |_, _| {
+        Ok((expand(array::Size::new(DatumType::TDim)), vec![]))
+    });
     reg.insert("Slice", slice::slice);
     reg.insert("Split", split::split);
     reg.insert("Squeeze", squeeze::squeeze);
@@ -71,9 +77,11 @@ pub fn constant_like(
     if node.input.len() == 0 {
         let dt = node.get_attr_opt("dtype")?.unwrap_or(DatumType::F32);
         let shape: Vec<usize> = node.get_attr_vec("shape")?;
-        let tensor =
-            tensor0(value).cast_to_dt(dt)?.broadcast_scalar_to_shape(&shape)?.into_arc_tensor();
-        Ok((Box::new(tract_hir::ops::konst::Const::new(tensor)), vec![]))
+        let tensor = tensor0(value)
+            .cast_to_dt(dt)?
+            .broadcast_scalar_to_shape(&shape)?
+            .into_arc_tensor();
+        Ok((Box::new(tract_hir::ops::konst::Const::new(tensor)?), vec![]))
     } else {
         Ok((Box::new(array::ConstantLike::new(value)), vec![]))
     }
@@ -150,5 +158,8 @@ pub fn transpose(
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let perm = node.get_attr_opt_vec("perm")?;
-    Ok((expand(array::PermuteAxes::new(perm.map(|t| t.into()))), vec![]))
+    Ok((
+        expand(array::PermuteAxes::new(perm.map(|t| t.into()))),
+        vec![],
+    ))
 }

@@ -27,7 +27,10 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
         Ok((Box::<tract_hir::ops::identity::Identity>::default(), vec![]))
     });
     reg.insert("Resize", resize::resize);
-    reg.insert("NonMaxSuppression", non_max_suppression::non_max_suppression);
+    reg.insert(
+        "NonMaxSuppression",
+        non_max_suppression::non_max_suppression,
+    );
     reg.insert("Multinomial", multinomial::multinomial);
     array::register_all_ops(reg);
     cast::register_all_ops(reg);
@@ -57,5 +60,8 @@ fn konst(
     } else {
         bail!("Could not extract value out of Constant node")
     };
-    Ok((Box::new(tract_hir::ops::konst::Const::new(value.into_arc_tensor())), vec![]))
+    Ok((
+        Box::new(tract_hir::ops::konst::Const::new(value.into_arc_tensor())?),
+        vec![],
+    ))
 }
