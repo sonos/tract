@@ -98,8 +98,8 @@ where
         .collect::<TVec<T>>())
 }
 
-pub fn is_q4_0(fact: TypedFact) -> bool {
-    fact.opaque_fact.is_some_and(|of| {
+pub fn is_q4_0(fact: &TypedFact) -> bool {
+    fact.opaque_fact.as_ref().is_some_and(|of| {
         of.downcast_ref::<BlockQuantFact>().map(|bqf| bqf.format.same_as(&Q4_0)).unwrap_or(false)
     })
 }

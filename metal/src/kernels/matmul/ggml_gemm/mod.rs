@@ -37,7 +37,7 @@ impl GemmKernel for GgmlGemm {
     fn is_supported_dts(&self, facts: &[TypedFact]) -> TractResult<bool> {
         ensure!(facts.len() == 2);
 
-        if is_q4_0(facts[1].clone()) {
+        if is_q4_0(&facts[1]) {
             Ok(matches!(facts[0].datum_type, DatumType::F16 | DatumType::F32))
         } else if facts[1].datum_type == DatumType::F32 {
             Ok(facts[0].datum_type == DatumType::F32)
