@@ -14,11 +14,20 @@ fn pulsify(
 ) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
-    let stream = fact.stream.unwrap();
+    let stream = fact.stream.with_context(|| {
+        format!(
+            "Unexpected streamless fact in pulsify {node}\ninput:{:?}",
+            target.outlet_fact(input).unwrap()
+        )
+    })?;
     if op.axis == stream.axis {
         let skip = op.start.to_usize()?;
         let take = (op.end.clone() - &op.start).to_dim();
-        let op = PulsedAxisSlice { axis: op.axis, skip, take };
+        let op = PulsedAxisSlice {
+            axis: op.axis,
+            skip,
+            take,
+        };
         Ok(Some(target.wire_node(&*node.name, op, &[input])?))
     } else {
         Ok(None)
@@ -32,15 +41,16 @@ pub struct PulsedAxisSlice {
     pub take: TDim,
 }
 
-
-
 impl Op for PulsedAxisSlice {
     fn name(&self) -> Cow<str> {
         "PulsedAxisSlice".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("axis:{}, skip:{} take:{}", self.axis, self.skip, self.take)])
+        Ok(vec![format!(
+            "axis:{}, skip:{} take:{}",
+            self.axis, self.skip, self.take
+        )])
     }
 
     not_a_typed_op!();

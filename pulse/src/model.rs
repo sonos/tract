@@ -179,6 +179,17 @@ impl
         }
         log::debug!("Pulsifying node {node}");
 
+        if !source
+            .node_input_facts(node.id)?
+            .iter()
+            .any(|f| f.shape.iter().any(|d| d.symbols().contains(&self.0)))
+        {
+            let pulse_op = NonPulsingWrappingOp(node.op.clone());
+            let inputs: TVec<OutletId> = node.inputs.iter().map(|i| mapping[i]).collect();
+            log::debug!("Pulsified node {node} with NonPulsingWrappingOp");
+            return target.wire_node(&node.name, pulse_op, &inputs);
+        }
+
         if let Some(pulsified) =
             OpPulsifier::pulsify(source, node, target, mapping, &self.0, &self.1)?
         {

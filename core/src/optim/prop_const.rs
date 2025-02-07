@@ -1,6 +1,7 @@
 use tract_data::TooEarly;
 
 use crate::internal::*;
+use crate::ops::array::Slice;
 use crate::ops::dummy::Dummy;
 use crate::ops::konst::Const;
 use crate::ops::source::TypedSource;
@@ -33,7 +34,14 @@ impl super::TypedPass for PropConst {
                 && !node.op_is::<Dummy>()
                 && !node.op_is::<TypedSource>()
                 && node.op.is_stateless()
-                && inputs.iter().all(|i| i.konst.is_some())
+                && inputs.iter().zip(&node.inputs).all(|(fact, outlet)| {
+                    fact.konst.is_some()
+                        && (model.node(outlet.node).outputs[outlet.slot]
+                            .successors
+                            .len()
+                            == 1
+                            || node.op_is::<Slice>())
+                })
             {
                 let inputs = inputs
                     .iter()
