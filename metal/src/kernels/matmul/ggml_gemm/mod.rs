@@ -6,7 +6,7 @@ use anyhow::{ensure, Result};
 use metal::{Buffer, MTLSize, NSUInteger};
 use std::fmt;
 use tract_core::internal::*;
-use tract_core::tract_linalg::frame::block_quant::{BlockQuant, Q4_0};
+use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 use DatumType::{F16, F32};
 
 #[derive(Debug)]

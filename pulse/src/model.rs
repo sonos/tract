@@ -134,7 +134,7 @@ impl SpecialOps<PulsedFact, Box<dyn PulsedOp>> for PulsedModel {
         let v = v.into_arc_tensor();
         for node in &self.nodes {
             if let Some(op) = node.op_as::<Const>() {
-                if op.0 == v {
+                if op.val() == &v {
                     return Ok(node.id.into());
                 }
             }

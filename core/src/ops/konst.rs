@@ -28,6 +28,14 @@ impl Const {
         ensure!(fact.is_some() == tensor.datum_type().is_opaque());
         Ok(Const(tensor, fact))
     }
+
+    pub fn val(&self) -> &Arc<Tensor> {
+        &self.0
+    }
+
+    pub fn opaque_fact(&self) -> Option<&dyn OpaqueFact> {
+        self.1.as_deref()
+    }
 }
 
 impl Op for Const {
