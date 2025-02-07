@@ -279,7 +279,7 @@ impl TypedOp for BasicMatMul {
         let [a, b] = inputs else {
             bail!("Expects 2 inputs");
         };
-        if a.datum_type.is_number() {
+        if a.datum_type.is_number() && b.datum_type.is_number(){
             ensure!(a.rank() == b.rank());
             ensure!(a.rank() >= 2);
             ensure!(
@@ -313,9 +313,32 @@ impl TypedOp for BasicMatMul {
                 .quantize_output
                 .unwrap_or(b.datum_type)
                 .fact(self.output_shape(&a_shape, &b.shape))))
+        } else if let Some(opf) = inputs[1]
+        .opaque_fact
+        .as_ref()
+        .and_then(|of| of.downcast_ref::<BlockQuantFact>())
+        .or_else(|| {
+            inputs[1]
+                .konst
+                .as_ref()
+                .and_then(|k| k.to_scalar::<Opaque>().ok())
+                .and_then(|o| o.downcast_ref::<BlockQuantValue>())
+                .map(|v| &v.fact)
+        })
+        {
+            let b_shape: ShapeFact = b
+                .shape
+                .iter()
+                .cloned()
+                .chain(opf.shape.iter().map(|d| d.to_dim()))
+                .collect();
+            Ok(tvec!(self
+                .quantize_output
+                .unwrap_or(a.datum_type)
+                .fact(self.output_shape(&a.shape, &b_shape))))
         } else {
-            todo!()
-        }
+                todo!()
+            }
     }
 
     as_op!();
