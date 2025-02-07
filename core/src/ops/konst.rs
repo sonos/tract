@@ -7,7 +7,7 @@ use crate::ops::array::Gather;
 use crate::ops::einsum::EinSum;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub struct Const(pub Arc<Tensor>, pub Option<Box<dyn OpaqueFact>>);
+pub struct Const(Arc<Tensor>, Option<Box<dyn OpaqueFact>>);
 
 impl Const {
     pub fn new(tensor: Arc<Tensor>) -> TractResult<Const> {

@@ -28,7 +28,8 @@ pub fn source(
             return Ok(Some(invocation("external", &[], &[("shape", ints(shape))])));
         } else if op.fact.datum_type.is_quantized() {
             if let Some(qp) = QuantFormat::from_dt(node.outputs[0].fact.datum_type) {
-                ast.quantization.insert(Identifier(node.name.to_string()), qp);
+                ast.quantization
+                    .insert(Identifier(node.name.to_string()), qp);
             }
             return Ok(Some(invocation("external", &[], &[("shape", ints(shape))])));
         }
@@ -41,18 +42,28 @@ pub fn basic_matmul(
     node: &TypedNode,
     op: &BasicMatMul,
 ) -> TractResult<Option<Arc<RValue>>> {
-    let inputs = node.inputs.iter().map(|i| (*ast.mapping[i]).clone()).collect_vec();
+    let inputs = node
+        .inputs
+        .iter()
+        .map(|i| (*ast.mapping[i]).clone())
+        .collect_vec();
     if op.transpose_c {
         Ok(Some(invocation(
             "matmul",
             &[Arc::new(inputs[1].clone()), Arc::new(inputs[0].clone())],
-            &[("transposeA", logical(!op.transpose_b)), ("transposeB", logical(!op.transpose_a))],
+            &[
+                ("transposeA", logical(!op.transpose_b)),
+                ("transposeB", logical(!op.transpose_a)),
+            ],
         )))
     } else {
         Ok(Some(invocation(
             "matmul",
             &[Arc::new(inputs[0].clone()), Arc::new(inputs[1].clone())],
-            &[("transposeA", logical(op.transpose_a)), ("transposeB", logical(op.transpose_b))],
+            &[
+                ("transposeA", logical(op.transpose_a)),
+                ("transposeB", logical(op.transpose_b)),
+            ],
         )))
     }
 }
@@ -71,7 +82,11 @@ pub fn comp(
     op: &ops::logic::Comp,
 ) -> TractResult<Option<Arc<RValue>>> {
     use ops::logic::Comp::*;
-    let inputs = node.inputs.iter().map(|i| Arc::clone(&ast.mapping[i])).collect_vec();
+    let inputs = node
+        .inputs
+        .iter()
+        .map(|i| Arc::clone(&ast.mapping[i]))
+        .collect_vec();
     let name = match *op {
         Eq => "eq",
         NE => "ne",
@@ -93,7 +108,11 @@ pub fn concat(
         .iter()
         .map(|i| Ok(ast.mapping[i].as_ref().clone()))
         .collect::<TractResult<TVec<RValue>>>()?;
-    Ok(Some(invocation("concat", &[array(&wires).into()], &[("axis", numeric(op.axis))])))
+    Ok(Some(invocation(
+        "concat",
+        &[array(&wires).into()],
+        &[("axis", numeric(op.axis))],
+    )))
 }
 
 pub fn slice(
@@ -127,7 +146,11 @@ pub fn tile(
     op: &ops::array::Tile,
 ) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
-    Ok(Some(invocation("tile", &[wire], &[("repeats", tdims(&op.multipliers))])))
+    Ok(Some(invocation(
+        "tile",
+        &[wire],
+        &[("repeats", tdims(&op.multipliers))],
+    )))
 }
 
 pub fn dyn_tile(
@@ -137,7 +160,11 @@ pub fn dyn_tile(
 ) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
     let multiplier = ast.mapping[&node.inputs[1]].clone();
-    Ok(Some(invocation("tile", &[wire], &[("repeats", (*multiplier).clone())])))
+    Ok(Some(invocation(
+        "tile",
+        &[wire],
+        &[("repeats", (*multiplier).clone())],
+    )))
 }
 
 pub fn pad_mode(mode: &ops::array::PadMode, dt: DatumType) -> TractResult<(&str, Option<RValue>)> {
@@ -163,7 +190,12 @@ pub fn pad(
 ) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
     let dt = ast.model.outlet_fact(node.inputs[0])?.datum_type;
-    let padding = array(op.pads.iter().map(|pair| ints(&[pair.0, pair.1])).collect::<TVec<_>>());
+    let padding = array(
+        op.pads
+            .iter()
+            .map(|pair| ints(&[pair.0, pair.1]))
+            .collect::<TVec<_>>(),
+    );
     let mut params = tvec!(("padding", padding));
     let (border, value) = pad_mode(&op.mode, dt)?;
     params.push(("border", string(border)));
@@ -207,7 +239,9 @@ pub fn make_conv_named_args<'a>(
     adjustments: Option<&[usize]>,
 ) -> TractResult<TVec<(&'a str, RValue)>> {
     use tract_core::ops::cnn::PaddingSpec;
-    let output_shape = pool_spec.data_format.shape(node.outputs[0].fact.shape.to_tvec())?;
+    let output_shape = pool_spec
+        .data_format
+        .shape(node.outputs[0].fact.shape.to_tvec())?;
     let padding = match &pool_spec.padding {
         PaddingSpec::ExplicitOnnxPool(bef, after, _) | PaddingSpec::Explicit(bef, after) => array(
             bef.iter()
@@ -218,7 +252,9 @@ pub fn make_conv_named_args<'a>(
         PaddingSpec::SameUpper => array(&[]),
         PaddingSpec::SameLower => bail!("Unsupported padding scheme"),
         PaddingSpec::Valid => array(
-            (0..pool_spec.rank()).map(|_| tuple_2(numeric(0), numeric(0))).collect::<Vec<_>>(),
+            (0..pool_spec.rank())
+                .map(|_| tuple_2(numeric(0), numeric(0)))
+                .collect::<Vec<_>>(),
         ),
     };
     let mut named_args = tvec![
@@ -294,7 +330,14 @@ pub fn deconv(
     node: &TypedNode,
     op: &ops::cnn::deconv::Deconv,
 ) -> TractResult<Option<Arc<RValue>>> {
-    conv_or_deconv(ast, node, &op.pool_spec, op.group, true, Some(&op.adjustments))
+    conv_or_deconv(
+        ast,
+        node,
+        &op.pool_spec,
+        op.group,
+        true,
+        Some(&op.adjustments),
+    )
 }
 
 fn cnn_pool_fragment(
@@ -313,8 +356,13 @@ fn cnn_pool_fragment(
     }
 
     let mut body = vec![];
-    let mut fragment =
-        ast.framework.stdlib.iter().find(|f| f.decl.id.0 == op_name).unwrap().clone();
+    let mut fragment = ast
+        .framework
+        .stdlib
+        .iter()
+        .find(|f| f.decl.id.0 == op_name)
+        .unwrap()
+        .clone();
     fragment.decl.id = fragment_name.clone();
 
     let mut wire = ident("input").into();
@@ -362,9 +410,11 @@ fn cnn_pool(
         ),
         PaddingSpec::SameUpper => None,
         PaddingSpec::SameLower => bail!("Unsupported padding scheme"),
-        PaddingSpec::Valid => {
-            Some((0..pool_spec.rank()).map(|_| tuple_2(numeric(0), numeric(0))).collect::<Vec<_>>())
-        }
+        PaddingSpec::Valid => Some(
+            (0..pool_spec.rank())
+                .map(|_| tuple_2(numeric(0), numeric(0)))
+                .collect::<Vec<_>>(),
+        ),
     };
     let mut size = tvec!(1, 1);
     size.extend(pool_spec.kernel_shape.iter().cloned());
@@ -373,8 +423,10 @@ fn cnn_pool(
     let mut dilations = tvec!(1, 1);
     dilations.extend(pool_spec.dilations().iter().cloned());
     let padding = if let Some(pad) = padding {
-        let mut full_padding =
-            vec![tuple_2(numeric(0), numeric(0)), tuple_2(numeric(0), numeric(0))];
+        let mut full_padding = vec![
+            tuple_2(numeric(0), numeric(0)),
+            tuple_2(numeric(0), numeric(0)),
+        ];
         full_padding.extend(pad.iter().cloned());
         array(full_padding)
     } else {
@@ -408,7 +460,13 @@ pub fn sum_pool(
     node: &TypedNode,
     op: &ops::cnn::SumPool,
 ) -> TractResult<Option<Arc<RValue>>> {
-    cnn_pool(ast, node, "box", &op.pool_spec, Some(("normalize", logical(op.normalize))))
+    cnn_pool(
+        ast,
+        node,
+        "box",
+        &op.pool_spec,
+        Some(("normalize", logical(op.normalize))),
+    )
 }
 
 pub fn ser_axis_op(op: &ops::change_axes::AxisOp, wire: Arc<RValue>, rank: usize) -> Arc<RValue> {
@@ -470,17 +528,29 @@ pub fn select(
 ) -> TractResult<Option<Arc<RValue>>> {
     Ok(Some(invocation(
         "select",
-        &node.inputs.iter().map(|o| ast.mapping[o].clone()).collect::<TVec<_>>(),
+        &node
+            .inputs
+            .iter()
+            .map(|o| ast.mapping[o].clone())
+            .collect::<TVec<_>>(),
         &[],
     )))
 }
 
 pub fn leaky_relu(ast: &mut IntoAst, node: &TypedNode) -> TractResult<Option<Arc<RValue>>> {
-    let op = node.op_as::<ops::element_wise::ElementWiseOp>().context("Wrong op")?;
-    let op = op.0.downcast_ref::<ops::nn::LeakyRelu>().context("Wrong op")?;
+    let op = node
+        .op_as::<ops::element_wise::ElementWiseOp>()
+        .context("Wrong op")?;
+    let op =
+        op.0.downcast_ref::<ops::nn::LeakyRelu>()
+            .context("Wrong op")?;
     Ok(Some(invocation(
         "leaky_relu",
-        &node.inputs.iter().map(|o| ast.mapping[o].clone()).collect::<TVec<_>>(),
+        &node
+            .inputs
+            .iter()
+            .map(|o| ast.mapping[o].clone())
+            .collect::<TVec<_>>(),
         &[("alpha", RValue::Literal(op.alpha.into()))],
     )))
 }
@@ -497,7 +567,10 @@ pub fn softmax(
     Ok(Some(invocation(
         "softmax",
         &[ast.mapping[&node.inputs[0]].clone()],
-        &[("axes", RValue::Literal(crate::ast::Literal::Array(litteral_axes)))],
+        &[(
+            "axes",
+            RValue::Literal(crate::ast::Literal::Array(litteral_axes)),
+        )],
     )))
 }
 
@@ -511,7 +584,10 @@ pub fn rewrite_block_quant_const_to_scalar(
     let fact = &node.outputs[0].fact;
     if fact.shape.len() == 0
         || fact.datum_type.is_integer()
-        || !fact.opaque_fact.as_ref().is_some_and(|of| of.is::<BlockQuantFact>())
+        || !fact
+            .opaque_fact
+            .as_ref()
+            .is_some_and(|of| of.is::<BlockQuantFact>())
     {
         return Ok(None);
     };
@@ -523,7 +599,7 @@ pub fn rewrite_block_quant_const_to_scalar(
     new_fact.konst = Some(new_tensor.clone());
     let mut output = patch.wire_node(
         prefix,
-        Const::new_with_opaque_fact(new_tensor, fact.opaque_fact.clone().unwrap()),
+        Const::new_with_opt_opaque_fact(new_tensor, fact.opaque_fact.clone())?,
         &[],
     )?;
     output = patch.wire_node(format!("{prefix}.lock"), PinConst, &output)?;
@@ -550,12 +626,18 @@ pub fn rewrite_matmul_to_same_rank(
     let mut patch = TypedModelPatch::default();
     let mut inputs = patch.taps(model, &node.inputs)?;
     for i in a_rank..a_rank.max(b_rank) {
-        inputs[0] =
-            patch.wire_node(format!("{prefix}.extra_a_axis.{i}"), AxisOp::Add(0), &[inputs[0]])?[0];
+        inputs[0] = patch.wire_node(
+            format!("{prefix}.extra_a_axis.{i}"),
+            AxisOp::Add(0),
+            &[inputs[0]],
+        )?[0];
     }
     for i in b_rank..a_rank.max(b_rank) {
-        inputs[1] =
-            patch.wire_node(format!("{prefix}.extra_b_axis.{i}"), AxisOp::Add(0), &[inputs[1]])?[1];
+        inputs[1] = patch.wire_node(
+            format!("{prefix}.extra_b_axis.{i}"),
+            AxisOp::Add(0),
+            &[inputs[1]],
+        )?[1];
     }
     let result = patch.wire_node(prefix, *op, &inputs)?[0];
     patch.shunt_outside(model, node.id.into(), result)?;
@@ -583,7 +665,11 @@ pub fn rewrite_consistent_quantized_conv(
                         .as_ref()
                         .unwrap()
                         .cast_to_scalar::<i32>()?,
-                    scale: facts[4 + 2 * ix].konst.as_ref().unwrap().cast_to_scalar::<f32>()?,
+                    scale: facts[4 + 2 * ix]
+                        .konst
+                        .as_ref()
+                        .unwrap()
+                        .cast_to_scalar::<f32>()?,
                 });
                 wire[ix] =
                     patch.wire_node(format!("{name}.cast_to_q_{ix}"), cast(dt), &[wire[ix]])?[0];
@@ -609,7 +695,10 @@ pub fn rewrite_kernel_conv_in_oihw(
         name,
         conv.kernel_fmt,
         conv.group,
-        Box::new(Conv { kernel_fmt: KernelFormat::OIHW, ..conv.clone() }),
+        Box::new(Conv {
+            kernel_fmt: KernelFormat::OIHW,
+            ..conv.clone()
+        }),
     )
 }
 
@@ -626,7 +715,10 @@ pub fn rewrite_kernel_deconv_in_oihw(
         name,
         conv.kernel_format,
         conv.group,
-        Box::new(Deconv { kernel_format: KernelFormat::OIHW, ..conv.clone() }),
+        Box::new(Deconv {
+            kernel_format: KernelFormat::OIHW,
+            ..conv.clone()
+        }),
     )
 }
 
