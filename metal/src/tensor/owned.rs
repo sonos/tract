@@ -138,18 +138,22 @@ impl OwnedMetalTensor {
                 tensor_view.datum_type(),
             );
 
-            let data_bytes = if tensor_view.datum_type() == DatumType::Opaque {
-                &tensor_view
-                    .tensor
-                    .to_scalar::<Opaque>()
-                    .map(|od| od.downcast_ref::<BlockQuantValue>().unwrap())?
-                    .value
+            if tensor_view.datum_type() == DatumType::Opaque {
+                let mut q4_blob = tensor_view
+                                    .tensor
+                                    .to_scalar::<Opaque>()
+                                    .map(|od| od.downcast_ref::<BlockQuantValue>().unwrap())?
+                                    .value.clone();
+                crate::utils::tract_to_gguf_q4_0_packing(&mut q4_blob)?;
+                
+                let buffer = ctxt.buffer_from_slice(&q4_blob);
+                Ok(OwnedMetalTensor { inner: m_value, metal: buffer })
             } else {
-                tensor_view.tensor.as_bytes()
-            };
+                let tensor_data = tensor_view.tensor.as_bytes();
 
-            let buffer = ctxt.buffer_from_slice(data_bytes);
-            Ok(OwnedMetalTensor { inner: m_value, metal: buffer })
+                let buffer = ctxt.buffer_from_slice(tensor_data);
+                Ok(OwnedMetalTensor { inner: m_value, metal: buffer })
+            }
         })
     }
 
