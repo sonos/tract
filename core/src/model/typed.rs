@@ -29,7 +29,9 @@ pub type RunnableModel<F, O, M> = SimplePlan<F, O, M>;
 
 impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
     fn is_source(op: &Box<dyn TypedOp>) -> bool {
-        op.as_op().downcast_ref::<ops::source::TypedSource>().is_some()
+        op.as_op()
+            .downcast_ref::<ops::source::TypedSource>()
+            .is_some()
     }
 
     fn create_dummy(&self) -> Box<dyn TypedOp> {
@@ -64,6 +66,11 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                 .map(|o| self.outlet_fact(*o).cloned())
                 .collect::<TractResult<TVec<_>>>()?;
 
+            let input_facts: TVec<_> = input_facts.iter().collect();
+            let mut output_facts = op
+                .output_facts(&input_facts)
+                .with_context(|| format!("in output_facts invocation for {name}: {}", op.name()))?;
+
             if op.is_stateless() && input_facts.len() > 0 {
                 if let Some(tensors) = input_facts
                     .iter()
@@ -81,19 +88,27 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                             .into_iter()
                             .enumerate()
                             .map(|(ix, o)| {
-                                let name =
-                                    if ix == 0 { name.clone() } else { format!("{name}.{ix}") };
-                                self.add_const(name, o)
+                                let name = if ix == 0 {
+                                    name.clone()
+                                } else {
+                                    format!("{name}.{ix}")
+                                };
+                                self.wire_node(
+                                    name.clone(),
+                                    Const::new_with_opt_opaque_fact(
+                                        o.into_tensor().into(),
+                                        output_facts[ix].opaque_fact.clone(),
+                                    )?,
+                                    &[],
+                                )
+                                .with_context(|| format!("Eager const-folding {name}"))
+                                .map(|vec| vec[0])
                             })
                             .collect::<TractResult<TVec<OutletId>>>();
                     }
                 }
             }
 
-            let input_facts: TVec<_> = input_facts.iter().collect();
-            let mut output_facts = op
-                .output_facts(&input_facts)
-                .with_context(|| format!("in output_facts invocation for {name}: {}", op.name()))?;
             for fact in &mut output_facts {
                 if fact.konst.is_none() && fact.shape.is_concrete() && fact.shape.volume().is_zero()
                 {
@@ -140,13 +155,14 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                 return self
                     .add_node(
                         name,
-                        crate::ops::konst::Const::new_with_opaque_fact(v, opaque),
+                        crate::ops::konst::Const::new_with_opaque_fact(v, opaque)?,
                         tvec!(fact),
                     )
                     .map(|id| id.into());
             }
         }
-        self.add_node(name, crate::ops::konst::Const::new(v), tvec!(fact)).map(|id| id.into())
+        self.add_node(name, crate::ops::konst::Const::new(v)?, tvec!(fact))
+            .map(|id| id.into())
     }
 }
 
@@ -203,7 +219,11 @@ impl TypedModel {
         for node in &self.nodes {
             for (ix, output) in node.outputs.iter().enumerate() {
                 output.fact.consistent().with_context(|| {
-                    format!("Inconsistent fact {:?}: {:?}", OutletId::new(node.id, ix), output.fact)
+                    format!(
+                        "Inconsistent fact {:?}: {:?}",
+                        OutletId::new(node.id, ix),
+                        output.fact
+                    )
                 })?
             }
         }
@@ -223,7 +243,9 @@ impl TypedModel {
 
     /// Perform declutter passes on the network.
     pub fn declutter(&mut self) -> TractResult<()> {
-        crate::optim::Optimizer::declutter().session().optimize(self)
+        crate::optim::Optimizer::declutter()
+            .session()
+            .optimize(self)
     }
 
     /// Perform optimization passes on the model, using a given optimizer session.
@@ -261,9 +283,14 @@ impl TypedModel {
                 && inputs.iter().all(|i| i.konst.is_some())
                 && outputs.iter().any(|o| o.konst.is_none())
             {
-                let inputs_ref =
-                    inputs.iter().map(|f| f.konst.clone().unwrap().into_tvalue()).collect();
-                match node.op.eval_with_session(&SessionState::default(), inputs_ref) {
+                let inputs_ref = inputs
+                    .iter()
+                    .map(|f| f.konst.clone().unwrap().into_tvalue())
+                    .collect();
+                match node
+                    .op
+                    .eval_with_session(&SessionState::default(), inputs_ref)
+                {
                     Ok(res) => {
                         drop(inputs);
                         drop(outputs);
@@ -295,7 +322,9 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Sym
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         target.check_consistency()?;
-        let outlets = node.op.concretize_dims(source, node, target, mapping, self)?;
+        let outlets = node
+            .op
+            .concretize_dims(source, node, target, mapping, self)?;
         for &outlet in &outlets {
             let fact = &mut target.nodes[outlet.node].outputs[outlet.slot].fact;
             if fact.shape.volume().is_zero() {
