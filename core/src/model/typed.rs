@@ -77,7 +77,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                     .map(|f| {
                         f.konst
                             .as_ref()
-                            .filter(|k| k.volume() < 16)
+                            .filter(|k| k.volume() < 16 && !k.datum_type().is_opaque())
                             .cloned()
                             .map(|t| t.into_tvalue())
                     })
