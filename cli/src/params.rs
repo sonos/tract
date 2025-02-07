@@ -869,16 +869,16 @@ impl Parameters {
                 for node in m.eval_order()? {
                     let node = m.node_mut(node);
                     if let Some(op) = node.op_as_mut::<Const>() {
-                        if op.0.datum_type() == DatumType::TDim { {
+                        if op.val().datum_type() == DatumType::TDim { {
                             // get inner value to Arc<Tensor>
-                            let mut constant = op.0.as_ref().clone();
+                            let mut constant:Tensor = (**op.val()).clone();
                             // Generally a shape or hyperparam
                             constant
                                 .as_slice_mut::<TDim>()?
                                 .iter_mut()
                                 .for_each(|x| *x = x.eval(&values));
 
-                            op.0 = constant.into_arc_tensor();
+                            *op = Const::new(constant.into_arc_tensor())?;
                         }
                         }
                     }

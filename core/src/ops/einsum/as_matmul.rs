@@ -73,7 +73,10 @@ fn einsum_rules(
     // terrible hack to maintain opaque fact through eager propatagation of constant through the
     // axes transformation
     if let Some(op) = patch.node_mut(wire[0].node).op_as_mut::<Const>() {
-        op.1.clone_from(&model.outlet_fact(node.inputs[0])?.opaque_fact);
+        *op = Const::new_with_opt_opaque_fact(
+            op.val().clone(),
+            model.outlet_fact(node.inputs[0])?.opaque_fact.clone(),
+        )?;
     }
     patch
         .outlet_fact_mut(wire[0])?

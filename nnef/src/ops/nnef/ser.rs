@@ -73,7 +73,7 @@ pub fn konst(
     node: &TypedNode,
     op: &ops::konst::Const,
 ) -> TractResult<Option<Arc<RValue>>> {
-    Ok(Some(ast.konst(&node.name, &op.0)?))
+    Ok(Some(ast.konst(&node.name, op.val())?))
 }
 
 pub fn comp(
@@ -595,7 +595,7 @@ pub fn rewrite_block_quant_const_to_scalar(
     let mut patch = TypedModelPatch::default();
     let mut new_fact = fact.clone();
     new_fact.shape = ShapeFact::scalar();
-    let new_tensor = op.0.to_scalar_tensor()?.into_arc_tensor();
+    let new_tensor = op.val().to_scalar_tensor()?.into_arc_tensor();
     new_fact.konst = Some(new_tensor.clone());
     let mut output = patch.wire_node(
         prefix,
