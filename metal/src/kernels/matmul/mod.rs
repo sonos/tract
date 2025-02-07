@@ -154,7 +154,6 @@ pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync 
 
     fn is_supported_dts(&self, facts: &[TypedFact]) -> TractResult<bool> {
         ensure!(facts.len() == 2);
-        ensure!(facts.iter().all(|f| f.datum_type != DatumType::Opaque));
         Ok(matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16)
             && facts[0].datum_type == facts[1].datum_type)
     }
@@ -315,6 +314,8 @@ mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use tract_core::ops::einsum::BasicMatMul;
+    use tract_core::tract_data::itertools::Itertools;
+    use tract_core::tract_linalg::frame::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
 
     pub(crate) fn run_mmm_test_case<K: GemmKernel>(
         (batch, m, k, n): (usize, usize, usize, usize),
@@ -618,6 +619,46 @@ mod tests {
         fn mmm_mlx_prop_f16(pb in any::<MmmProblem<MlxGemm, f16>>()) {
             prop_assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
         }
+
+        #[test]
+        fn mmm_ggml_prop_f32(pb in <MmmProblem<GgmlGemm, f32>>::arbitrary_with(
+            MmmProblemParams {
+                force_k_as_inner_axis: true,
+                q4_0_weights: false,
+            }
+        )) {
+            let output = pb.run().unwrap();
+            let _ = output.close_enough(&pb.reference().unwrap(), Approximation::Approximate);
+        }
+
+        #[test]
+        fn mmm_ggml_prop_f16(pb in <MmmProblem<GgmlGemm, f16>>::arbitrary_with(
+            MmmProblemParams {
+                force_k_as_inner_axis: true,
+                q4_0_weights: false,
+            }
+        )) {
+            let output = pb.run().unwrap();
+            let _ = output.close_enough(&pb.reference().unwrap(), Approximation::SuperApproximate);
+        }
+
+        #[test]
+        fn mmm_ggml_prop_q4(pb in <MmmProblem<GgmlGemm, f32>>::arbitrary_with(
+            MmmProblemParams {
+                force_k_as_inner_axis: true,
+                q4_0_weights: true,
+            }
+        )) {
+            let output = pb.run().unwrap();
+            let _ = output.close_enough(&pb.reference().unwrap(), Approximation::SuperApproximate
+        );
+        }
+    }
+
+    #[derive(Default, Debug, Clone)]
+    pub struct MmmProblemParams {
+        pub force_k_as_inner_axis: bool,
+        pub q4_0_weights: bool,
     }
 
     #[derive(Debug, new)]
@@ -634,6 +675,7 @@ mod tests {
         pub transpose_lhs: bool,
         pub rhs: Vec<F>,
         pub transpose_rhs: bool,
+        pub q4_0: bool,
         pub _phantom: std::marker::PhantomData<K>,
     }
 
@@ -643,15 +685,18 @@ mod tests {
         F: Datum + Float,
         usize: AsPrimitive<F>,
     {
-        type Parameters = ();
+        type Parameters = MmmProblemParams;
         type Strategy = BoxedStrategy<Self>;
 
-        fn arbitrary_with(_: ()) -> Self::Strategy {
-            (1usize..10, 1usize..20, 1usize..20, 1usize..20)
-                .prop_flat_map(|(b, m, k, n)| {
+        fn arbitrary_with(params: MmmProblemParams) -> Self::Strategy {
+            (1usize..4, 1usize..128, 1usize..512, 1usize..128)
+                .prop_flat_map(move |(b, m, mut k, n)| {
+                    if params.q4_0_weights { k = k.div_ceil(32) * 32 };
+
                     let lhs_len = b * m * k;
                     let rhs_len = b * k * n;
-                    let datum = (0usize..10).prop_map(|x| x.as_());
+
+                    let datum = (0usize..10).prop_map(move |x| x.as_() / (b * m * k * n).as_());
                     (
                         Just(b),
                         Just(m),
@@ -663,16 +708,20 @@ mod tests {
                         proptest::bool::ANY,
                     )
                 })
-                .prop_map(|(b, m, k, n, lhs, transpose_lhs, rhs, transpose_rhs)| Self {
-                    b,
-                    m,
-                    k,
-                    n,
-                    lhs,
-                    transpose_lhs,
-                    rhs,
-                    transpose_rhs,
-                    _phantom: std::marker::PhantomData,
+                .prop_map(move |(b, m, k, n, lhs, mut transpose_lhs, rhs, mut transpose_rhs)| {
+                    if params.force_k_as_inner_axis{ (transpose_lhs, transpose_rhs) = (false, true); }
+                    Self {
+                        b,
+                        m,
+                        k,
+                        n,
+                        lhs,
+                        transpose_lhs,
+                        rhs,
+                        transpose_rhs,
+                        q4_0: params.q4_0_weights,
+                        _phantom: std::marker::PhantomData,
+                        }
                 })
                 .boxed()
         }
@@ -684,7 +733,7 @@ mod tests {
         F: Datum + Float + std::ops::AddAssign,
         usize: AsPrimitive<F>,
     {
-        pub fn reference(&self) -> Result<Vec<F>> {
+        pub fn reference(&self) -> Result<Tensor> {
             let matmul = BasicMatMul {
                 transpose_a: self.transpose_lhs,
                 transpose_b: self.transpose_rhs,
@@ -705,10 +754,10 @@ mod tests {
 
             let output = matmul.eval(tvec![lhs_tensor.into_tvalue(), rhs_tensor.into_tvalue()])?;
 
-            Ok(output[0].clone().into_tensor().as_slice::<F>()?.to_vec())
+            Ok(output[0].clone().into_tensor())
         }
 
-        pub fn run(&self) -> Result<Vec<F>> {
+        pub fn run(&self) -> Result<Tensor> {
             objc::rc::autoreleasepool(|| {
                 crate::METAL_CONTEXT.with_borrow(|context| {
                     let lhs = if self.transpose_lhs {
@@ -717,15 +766,28 @@ mod tests {
                         Tensor::from_shape(&[self.b, self.m, self.k], &self.lhs)?.into_metal()?
                     };
                     let rhs = if self.transpose_rhs {
-                        Tensor::from_shape(&[self.b, self.n, self.k], &self.rhs)?.into_metal()?
+                        if !self.q4_0 {
+                            Tensor::from_shape(&[self.b, self.n, self.k], &self.rhs)?
+                        }
+                        else {
+                            dbg!(&self.rhs);
+                            let mut b_quant = Q4_0.quant_f32(&self.rhs.clone().into_iter().map(|x| x.to_f32().unwrap()).collect_vec())?;
+
+                            crate::utils::tract_to_gguf_q4_0_packing(&mut b_quant)?;
+
+                            tensor0(Opaque(Arc::new(BlockQuantValue {
+                                fact: BlockQuantFact { format: Box::new(Q4_0), shape: tvec![self.b, self.n, self.k] },
+                                value: b_quant,
+                            })))
+                        }
                     } else {
-                        Tensor::from_shape(&[self.b, self.k, self.n], &self.rhs)?.into_metal()?
-                    };
+                        Tensor::from_shape(&[self.b, self.k, self.n], &self.rhs)?
+                    }.into_metal()?;
 
                     let matmul = GemmImpl::<K>::new(self.transpose_lhs, self.transpose_rhs);
 
                     let c = matmul.eval(context, &lhs, &rhs)?;
-                    Ok(c.to_cpu()?.as_slice::<F>()?.to_vec())
+                    Ok(c.to_cpu()?)
                 })
             })
         }
