@@ -193,13 +193,14 @@ fn can_translate_to_metal_op(
     node: &TypedNode,
     gemm_impl: MetalGemmImplKind,
 ) -> TractResult<bool> {
-    let input_dts = source
-        .node_input_facts(node.id)?
+    let input_facts = source.node_input_facts(node.id)?.iter().map(|f| (*f).clone()).collect_vec();
+    let input_dts = input_facts
         .iter()
         .map(|f| f.as_metal_fact().map(|f| f.datum_type).unwrap_or(f.datum_type))
         .collect_vec();
 
-    let in_dts_metal_compatible = input_dts.iter().all(|dt| MetalTensor::is_supported_dt(*dt));
+    let in_dts_metal_compatible =
+        input_facts.iter().all(|fact| MetalTensor::is_supported_dt(fact.datum_type));
 
     Ok(in_dts_metal_compatible
         && (node
@@ -211,7 +212,7 @@ fn can_translate_to_metal_op(
             || node.op_as::<BasicMatMul>().is_some_and(|op| {
                 !op.transpose_c
                     && op.quantize_output.is_none()
-                    && check_matmul_in_dts(gemm_impl, &input_dts)
+                    && check_matmul_in_dts(gemm_impl, &input_facts)
             })
             || node
                 .op_as::<Const>()
@@ -337,12 +338,12 @@ macro_rules! map_element_wise_ops {
     };
 }
 
-fn check_matmul_in_dts(gemm_impl: MetalGemmImplKind, dts: &[DatumType]) -> bool {
+fn check_matmul_in_dts(gemm_impl: MetalGemmImplKind, in_facts: &[TypedFact]) -> bool {
     let is_supported = match gemm_impl {
-        MetalGemmImplKind::Mlx => MlxGemm.is_supported_dts(dts),
-        MetalGemmImplKind::Mps => MpsMatMul.is_supported_dts(dts),
-        MetalGemmImplKind::Mfa => MfaGemm.is_supported_dts(dts),
-        MetalGemmImplKind::Ggml => GgmlGemm.is_supported_dts(dts),
+        MetalGemmImplKind::Mlx => MlxGemm.is_supported_dts(in_facts),
+        MetalGemmImplKind::Mps => MpsMatMul.is_supported_dts(in_facts),
+        MetalGemmImplKind::Mfa => MfaGemm.is_supported_dts(in_facts),
+        MetalGemmImplKind::Ggml => GgmlGemm.is_supported_dts(in_facts),
     };
     is_supported.unwrap_or(false)
 }

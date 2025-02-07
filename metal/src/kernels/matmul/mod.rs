@@ -12,6 +12,7 @@ pub use mlx_gemm::MlxGemm;
 pub use mmm_tile_8x8::{metal_mmm_tile_8x8, mmm_tile_8x8};
 pub use mps::MpsMatMul;
 
+use crate::utils::resolve_tensor_shape;
 use crate::{MetalContext, MetalTensor};
 use metal::Buffer;
 use num_traits::One;
@@ -28,7 +29,7 @@ pub enum MetalGemmImplKind {
 
 impl Default for MetalGemmImplKind {
     fn default() -> Self {
-        Self::Mlx
+        Self::Ggml
     }
 }
 
@@ -151,9 +152,11 @@ impl GemmDispatchParams {
 pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync {
     fn name() -> &'static str;
 
-    fn is_supported_dts(&self, dts: &[DatumType]) -> TractResult<bool> {
-        ensure!(dts.len() == 2);
-        Ok(matches!(dts[0], DatumType::F32 | DatumType::F16) && dts[0] == dts[1])
+    fn is_supported_dts(&self, facts: &[TypedFact]) -> TractResult<bool> {
+        ensure!(facts.len() == 2);
+        ensure!(facts.iter().all(|f| f.datum_type != DatumType::Opaque));
+        Ok(matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16)
+            && facts[0].datum_type == facts[1].datum_type)
     }
 
     fn output_dt(&self, a_dt: DatumType, b_dt: DatumType) -> TractResult<DatumType> {
@@ -205,14 +208,18 @@ impl<M: GemmKernel> GemmImpl<M> {
         output
     }
 
-    pub fn output_facts(&self, a: &TypedFact, b: &TypedFact) -> TractResult<TVec<TypedFact>> {
-        let out_shape = self.output_shape(&a.shape, &b.shape).to_vec();
-        let out_dt = self.matmul.output_dt(a.datum_type().unwrap(), b.datum_type().unwrap())?;
+    pub fn output_facts(
+        &self,
+        shape: &[TDim],
+        a_dt: DatumType,
+        b_dt: DatumType,
+    ) -> TractResult<TVec<TypedFact>> {
+        let out_dt = self.matmul.output_dt(a_dt, b_dt)?;
         if out_dt == DatumType::F32 {
-            Ok(tvec!(f32::fact(out_shape)))
+            Ok(tvec!(f32::fact(shape)))
         } else {
             ensure!(out_dt == DatumType::F16);
-            Ok(tvec!(f16::fact(out_shape)))
+            Ok(tvec!(f16::fact(shape)))
         }
     }
 
@@ -223,7 +230,7 @@ impl<M: GemmKernel> GemmImpl<M> {
         b: &MetalTensor,
     ) -> TractResult<MetalTensor> {
         let c_dt = self.matmul.output_dt(a.datum_type(), b.datum_type())?;
-        let c_shape = self.output_shape(a.shape(), b.shape());
+        let c_shape = self.output_shape(a.shape(), &resolve_tensor_shape(b));
         let c = unsafe { MetalTensor::uninitialized_dt(c_dt, &c_shape)? };
 
         self.dispatch_eval(context, a, b, &c)?;
@@ -241,8 +248,8 @@ impl<M: GemmKernel> GemmImpl<M> {
         a.retain_until_completion();
         b.retain_until_completion();
         c.retain_until_completion();
-
-        ensure!(c.shape() == self.output_shape(a.shape(), b.shape()).as_slice());
+        let b_shape = resolve_tensor_shape(b);
+        ensure!(c.shape() == self.output_shape(a.shape(), &b_shape).as_slice());
 
         if c.shape().iter().product::<usize>() == 0 {
             return Ok(());
@@ -254,7 +261,7 @@ impl<M: GemmKernel> GemmImpl<M> {
             a.shape(),
             self.transpose_a,
             b.metal_offset(),
-            b.shape(),
+            &b_shape,
             self.transpose_b,
             c.metal_offset(),
             c.shape(),
