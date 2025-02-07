@@ -4,6 +4,7 @@ use metal::Buffer;
 use num_traits::AsPrimitive;
 use std::fmt::Display;
 use tract_core::internal::*;
+use tract_linalg::frame::block_quant::BlockQuantValue;
 
 #[derive(Debug, Clone, Hash)]
 pub enum MValue {
@@ -129,14 +130,25 @@ impl OwnedMetalTensor {
     /// Create a owned metal tensor from a cpu tensor.
     pub fn from_tensor<T: Into<MValue>>(tensor: T) -> Result<Self> {
         crate::METAL_CONTEXT.with_borrow(|ctxt| {
-            let m_value = tensor.into();
+            let m_value: MValue = tensor.into();
             let tensor_view = m_value.view();
             ensure!(
                 MetalTensor::is_supported_dt(tensor_view.datum_type()),
                 "Tensor of {:?} is not copied. No Metal buffer can be allocated for it.",
                 tensor_view.datum_type(),
             );
-            let buffer = ctxt.buffer_from_slice(tensor_view.tensor.as_bytes());
+
+            let data_bytes = if tensor_view.datum_type() == DatumType::Opaque {
+                &tensor_view
+                    .tensor
+                    .to_scalar::<Opaque>()
+                    .map(|od| od.downcast_ref::<BlockQuantValue>().unwrap())?
+                    .value
+            } else {
+                tensor_view.tensor.as_bytes()
+            };
+
+            let buffer = ctxt.buffer_from_slice(data_bytes);
             Ok(OwnedMetalTensor { inner: m_value, metal: buffer })
         })
     }
