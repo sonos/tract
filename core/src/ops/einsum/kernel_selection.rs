@@ -126,11 +126,21 @@ pub fn wire_for_variable_n(
             )
         })?;
     if a_konst.datum_type().is_number() {
-        let packed_a = kit
+        let packer: PackedFormat = kit
             .static_packer
-            .prepare_tensor(a_konst, op.a_k(), op.a_m())?;
-        let name = patch.node(a.node).name.clone();
-        a = patch.add_const(name, tensor0(Opaque::from(packed_a)))?;
+            .downcast_ref()
+            .cloned()
+            .context("Unexpected packer")?;
+        a = patch.wire_node(
+            format!("{prefix}.pack_a"),
+            OptMatMulPack {
+                k_axis: op.a_k(),
+                mn_axis: op.a_m(),
+                packers: vec![packer],
+                mode_picker: ModePicker::Single,
+            },
+            &[a],
+        )?[0];
     }
 
     let configs = [kit.item_for_mv(), kit.item_for_squarish()];
