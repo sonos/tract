@@ -222,7 +222,6 @@ impl EvalOp for VPTQGemm {
 
         let mut qweight =
             self.eval_extract_from_vector_quant(centroids, indices, self.group_size)?;
-        dbg!(&qweight);
         if enable_outlier {
             // same as centroids to qweights except for outlier
             let outlier_qweight = self.eval_extract_from_vector_quant(
