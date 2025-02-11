@@ -143,7 +143,11 @@ impl std::fmt::Display for Blob {
             self.len(),
             self.layout.align(),
             String::from_utf8(
-                self.iter().take(20).copied().flat_map(std::ascii::escape_default).collect::<Vec<u8>>()
+                self.iter()
+                    .take(20)
+                    .copied()
+                    .flat_map(std::ascii::escape_default)
+                    .collect::<Vec<u8>>()
             )
             .unwrap(),
             if self.len() >= 20 { "[...]" } else { "" }

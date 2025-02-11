@@ -33,11 +33,39 @@ impl MMMInputFormat for PackedFormat {
     }
 
     fn same_as(&self, other: &dyn MMMInputFormat) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|other| self == other)
+        other
+            .downcast_ref::<Self>()
+            .is_some_and(|other| self == other)
     }
 
     fn mem_size(&self, k: TDim, mn: TDim) -> TDim {
         self.len(k, mn) * self.dt.size_of()
+    }
+
+    fn extract_at_mn_f16(
+        &self,
+        data: &EagerPackedInput,
+        mn: usize,
+        slice: &mut [f16],
+    ) -> TractResult<()> {
+        ensure!(data.format().same_as(self));
+        ensure!(self.len(data.k(), data.mn()) * self.dt.size_of() == data.packed.len());
+        unsafe {
+            let ptr = data.packed.as_ptr().add(
+                (self.single_panel_len(data.k()) * mn / self.r + mn % self.r) * self.dt.size_of(),
+            );
+            for i in 0..data.k() {
+                let ptr = ptr.add(i * self.dt.size_of() * self.r);
+                slice[i] = if self.dt == f16::datum_type() {
+                    *(ptr as *const f16)
+                } else if self.dt == f32::datum_type() {
+                    f16::from_f32(*(ptr as *const f32))
+                } else {
+                    bail!("Unexpected DT {:?}", self.dt)
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -59,16 +87,27 @@ impl Debug for PackedFormat {
 
 impl PackedFormat {
     pub const fn new(dt: DatumType, nr: usize, alignment_bytes: usize) -> PackedFormat {
-        PackedFormat { dt, r: nr, alignment_bytes, end_padding_record: 1 }
+        PackedFormat {
+            dt,
+            r: nr,
+            alignment_bytes,
+            end_padding_record: 1,
+        }
     }
 
     pub const fn with_end_padding_record(self, end_padding_record: usize) -> Self {
-        PackedFormat { end_padding_record, ..self }
+        PackedFormat {
+            end_padding_record,
+            ..self
+        }
     }
 
     #[inline]
     pub fn align(self, alignment: usize) -> Self {
-        Self { alignment_bytes: alignment, ..self }
+        Self {
+            alignment_bytes: alignment,
+            ..self
+        }
     }
 
     #[inline]
@@ -133,7 +172,11 @@ impl PackedFormat {
                 0..mn
             ));
             Ok(Box::new(EagerPackedInput {
-                fact: PackedOpaqueFact { format: Box::new(self.clone()), mn, k },
+                fact: PackedOpaqueFact {
+                    format: Box::new(self.clone()),
+                    mn,
+                    k,
+                },
                 packed: packed.into(),
                 panel_bytes,
             }))
@@ -175,7 +218,11 @@ impl PackedFormat {
                 0..mn
             ));
             Ok(Box::new(EagerPackedInput {
-                fact: PackedOpaqueFact { format: Box::new(self.clone()), mn, k },
+                fact: PackedOpaqueFact {
+                    format: Box::new(self.clone()),
+                    mn,
+                    k,
+                },
                 packed: packed.into(),
                 panel_bytes,
             }))
@@ -333,7 +380,10 @@ where
     T: Copy + std::fmt::Debug,
 {
     pub fn new(ptr: *mut T) -> KOutSinglePanelWriter<'p, T> {
-        KOutSinglePanelWriter { ptr, _phantom: PhantomData }
+        KOutSinglePanelWriter {
+            ptr,
+            _phantom: PhantomData,
+        }
     }
 }
 
@@ -384,7 +434,11 @@ where
             panels,
             panel_width,
             last_panel_width,
-            remain: if panels > 1 { panel_width } else { last_panel_width },
+            remain: if panels > 1 {
+                panel_width
+            } else {
+                last_panel_width
+            },
             current_panel: 0,
             next_panel: (panel_len - panel_width) as isize,
             next_lane: (panel_width - last_panel_width) as isize
@@ -460,7 +514,11 @@ where
             panel_width,
             last_panel_width,
             remain_on_k: k,
-            remain_on_mn: if panels == 1 { last_panel_width } else { panel_width },
+            remain_on_mn: if panels == 1 {
+                last_panel_width
+            } else {
+                panel_width
+            },
             current_panel: 0,
             next_mn_offset: 1 - (k * panel_width) as isize,
             next_panel_offset: panel_len as isize - (k * panel_width + panel_width - 1) as isize,
@@ -559,7 +617,11 @@ mod test {
 
     impl PackProblem {
         fn input(&self) -> Array2<u32> {
-            let shape = if self.is_a { (self.mn, self.k) } else { (self.k, self.mn) };
+            let shape = if self.is_a {
+                (self.mn, self.k)
+            } else {
+                (self.k, self.mn)
+            };
             let data = (0..(self.k * self.mn) as u32).collect();
             Array2::from_shape_vec(shape, data).unwrap()
         }
@@ -583,7 +645,11 @@ mod test {
                     self.mn_range.clone(),
                 )
             };
-            output.into_array::<u32>().unwrap().into_shape_with_order((panels, panel_len)).unwrap()
+            output
+                .into_array::<u32>()
+                .unwrap()
+                .into_shape_with_order((panels, panel_len))
+                .unwrap()
         }
 
         fn reference(&self) -> Array2<u32> {
@@ -616,7 +682,9 @@ mod test {
             let mut packer = self.packer();
             let mut reference = self.reference();
             let valid = self.valid();
-            Zip::from(&mut packer).and(&valid).for_each(|p, v| *p = if *v { *p } else { -1 as _ });
+            Zip::from(&mut packer)
+                .and(&valid)
+                .for_each(|p, v| *p = if *v { *p } else { -1 as _ });
             Zip::from(&mut reference)
                 .and(&valid)
                 .for_each(|p, v| *p = if *v { *p } else { -1 as _ });
@@ -637,15 +705,17 @@ mod test {
                         1usize..5,
                     )
                 })
-                .prop_map(|((is_a, r, k, mn), k_range, mn_range, align_panel)| PackProblem {
-                    k,
-                    mn,
-                    is_a,
-                    r,
-                    k_range,
-                    mn_range,
-                    align_panel,
-                })
+                .prop_map(
+                    |((is_a, r, k, mn), k_range, mn_range, align_panel)| PackProblem {
+                        k,
+                        mn,
+                        is_a,
+                        r,
+                        k_range,
+                        mn_range,
+                        align_panel,
+                    },
+                )
                 .boxed()
         }
     }
