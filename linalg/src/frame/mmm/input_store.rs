@@ -128,7 +128,7 @@ impl MMMInputValue for EagerPackedInput {
     fn extract_at_mn_f16(&self, mn: usize, slice: &mut [f16]) -> TractResult<()> {
         ensure!(slice.len() == self.k());
         ensure!(mn < self.mn());
-        self.fact.format.extract_at_mn_f16(&self, mn, slice)
+        self.fact.format.extract_at_mn_f16(self, mn, slice)
     }
 }
 
