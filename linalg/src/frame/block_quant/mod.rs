@@ -155,6 +155,20 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
         panel: usize,
         scratch: *mut u8,
     ) -> TractResult<()>;
+
+    fn extract_at_mn_f16(
+        &self,
+        value: &EagerPackedInput,
+        mn: usize,
+        target: &mut [f16],
+    ) -> TractResult<()>;
+
+    fn extract_at_mn_f32(
+        &self,
+        value: &EagerPackedInput,
+        mn: usize,
+        target: &mut [f32],
+    ) -> TractResult<()>;
 }
 
 dyn_clone::clone_trait_object!(BlockQuant);
@@ -269,5 +283,14 @@ impl MMMInputFormat for PackedBlockQuantFormat {
 
     fn same_as(&self, other: &dyn MMMInputFormat) -> bool {
         other.downcast_ref::<Self>().is_some_and(|other| self == other)
+    }
+
+    fn extract_at_mn_f16(
+        &self,
+        data: &EagerPackedInput,
+        mn: usize,
+        slice: &mut [f16],
+    ) -> TractResult<()> {
+        self.bq.extract_at_mn_f16(data, mn, slice)
     }
 }

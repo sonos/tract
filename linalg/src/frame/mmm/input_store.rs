@@ -18,7 +18,14 @@ pub trait MMMInputFormat: Downcast + Debug + DynHash + DynClone + Send + Sync + 
     fn k_alignment(&self) -> usize;
     fn same_as(&self, other: &dyn MMMInputFormat) -> bool;
     fn mem_size(&self, k: TDim, mn: TDim) -> TDim;
+    fn extract_at_mn_f16(
+        &self,
+        data: &EagerPackedInput,
+        mn: usize,
+        slice: &mut [f16],
+    ) -> TractResult<()>;
 }
+
 dyn_clone::clone_trait_object!(MMMInputFormat);
 impl_downcast!(MMMInputFormat);
 dyn_hash::hash_trait_object!(MMMInputFormat);
@@ -34,6 +41,8 @@ pub trait MMMInputValue: DynClone + Debug + DynHash + Send + Sync + Display + Do
     fn k(&self) -> usize;
     fn opaque_fact(&self) -> &dyn OpaqueFact;
     fn same_as(&self, other: &dyn MMMInputValue) -> bool;
+
+    fn extract_at_mn_f16(&self, mn: usize, slice: &mut [f16]) -> TractResult<()>;
 }
 dyn_clone::clone_trait_object!(MMMInputValue);
 impl_downcast!(MMMInputValue);
@@ -115,6 +124,11 @@ impl MMMInputValue for EagerPackedInput {
                 && self.packed == other.packed
                 && self.panel_bytes == other.panel_bytes
         })
+    }
+    fn extract_at_mn_f16(&self, mn: usize, slice: &mut [f16]) -> TractResult<()> {
+        ensure!(slice.len() == self.k());
+        ensure!(mn < self.mn());
+        self.fact.format.extract_at_mn_f16(&self, mn, slice)
     }
 }
 

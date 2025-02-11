@@ -30,11 +30,22 @@ impl MMMInputFormat for LazyIm2colParams {
     }
 
     fn same_as(&self, other: &dyn MMMInputFormat) -> bool {
-        other.downcast_ref::<Self>().is_some_and(|other| self == other)
+        other
+            .downcast_ref::<Self>()
+            .is_some_and(|other| self == other)
     }
 
     fn mem_size(&self, k: TDim, mn: TDim) -> TDim {
         k * mn * self.packer.dt.size_of()
+    }
+
+    fn extract_at_mn_f16(
+        &self,
+        _data: &tract_linalg::mmm::EagerPackedInput,
+        _mn: usize,
+        _slice: &mut [f16],
+    ) -> TractResult<()> {
+        unimplemented!()
     }
 }
 
@@ -79,8 +90,10 @@ impl EvalOp for LazyIm2Col {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let tensor = args_1!(inputs);
-        let input: Box<dyn MMMInputValue> =
-            Box::new(LazyIm2colInput { tensor, im2col: self.params.clone() });
+        let input: Box<dyn MMMInputValue> = Box::new(LazyIm2colInput {
+            tensor,
+            im2col: self.params.clone(),
+        });
         let input = Opaque(Arc::new(input));
         Ok(tvec!(tensor2(&[[input]]).into_tvalue()))
     }
@@ -339,11 +352,17 @@ impl LazyIm2colInput {
 impl MMMInputValue for LazyIm2colInput {
     fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
         let k = self.im2col.k_byte_offsets.len();
-        Some(self.im2col.packer.single_panel_layout(k, self.tensor.datum_type().size_of()))
+        Some(
+            self.im2col
+                .packer
+                .single_panel_layout(k, self.tensor.datum_type().size_of()),
+        )
     }
 
     fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> TractResult<*const u8> {
-        Ok(dispatch_copy!(Self::do_panel(self.tensor.datum_type())(self, i, buffer)))
+        Ok(dispatch_copy!(Self::do_panel(self.tensor.datum_type())(
+            self, i, buffer
+        )))
     }
 
     fn k(&self) -> usize {
@@ -367,6 +386,9 @@ impl MMMInputValue for LazyIm2colInput {
             o.tensor == self.tensor && (&*o.im2col as &dyn MMMInputFormat).same_as(&*self.im2col)
         })
     }
+    fn extract_at_mn_f16(&self, _mn: usize, _slice: &mut [f16]) -> TractResult<()> {
+        unimplemented!()
+    }
 }
 
 impl LazyIm2colInput {
@@ -379,7 +401,10 @@ impl LazyIm2colInput {
         let k_range = 0..k as isize;
         let packed = buffer.unwrap();
         if mn_range.len() == r && mn_start % r == 0 {
-            let mut writer = self.im2col.packer.write_single_panel_with_k_outer(packed as *mut T);
+            let mut writer = self
+                .im2col
+                .packer
+                .write_single_panel_with_k_outer(packed as *mut T);
             self.write(&mut writer, k_range, mn_range);
         } else {
             let mut writer = self.im2col.packer.write_with_k_outer(

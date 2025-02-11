@@ -2,6 +2,7 @@ use crate::internal::*;
 use crate::ops::einsum::block_quant_aware_input_shape;
 use ndarray::*;
 use tract_linalg::block_quant::BlockQuantValue;
+use tract_linalg::mmm::MMMInputValue;
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct Gather {
@@ -68,6 +69,26 @@ impl Gather {
         }
         Ok(output)
     }
+
+    fn eval_input_store_to_f16(
+        &self,
+        data: &dyn MMMInputValue,
+        indices: &TValue,
+    ) -> TractResult<Tensor> {
+        ensure!(self.axis == 0);
+        dbg!(data);
+        let data_shape = &[data.mn(), data.k()];
+        let output_shape = &*self.compute_output_shape(data_shape, indices.shape())?;
+        let mut output = unsafe { Tensor::uninitialized::<f16>(output_shape)? };
+        let indices_slice = indices.as_slice::<i64>()?;
+        let vector_len = data_shape[1];
+        let output_slice = output.as_slice_mut::<f16>()?;
+        for (pos, m) in indices_slice.iter().enumerate() {
+            let slice = &mut output_slice[pos * vector_len..][..vector_len];
+            data.extract_at_mn_f16(*m as usize, slice)?;
+        }
+        Ok(output)
+    }
 }
 
 impl TypedOp for Gather {
@@ -126,12 +147,14 @@ impl EvalOp for Gather {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices) = args_2!(inputs);
-        let result = if data.datum_type().is_opaque() {
-            let data = data
-                .to_scalar::<Opaque>()?
-                .downcast_ref::<BlockQuantValue>()
-                .context("Expected a BlockQuantValue")?;
-            self.eval_bq_to_f16(data, &indices)?
+        let result = if let Ok(opaque) = data.to_scalar::<Opaque>() {
+            if let Some(data) = opaque.downcast_ref::<BlockQuantValue>() {
+                self.eval_bq_to_f16(data, &indices)?
+            } else if let Some(data) = opaque.downcast_ref::<Box<dyn MMMInputValue>>() {
+                self.eval_input_store_to_f16(&**data, &indices)?
+            } else {
+                bail!("Can't use Gather on {:?} input", data);
+            }
         } else {
             dispatch_datum_by_size!(Self::eval_t(data.datum_type())(self, data, &indices))?
         };

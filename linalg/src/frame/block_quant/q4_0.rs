@@ -37,7 +37,11 @@ impl<const QK: usize> BaseQ4_0<QK> {
             }
         }
         let scale: T = max / (-8f32).as_();
-        let r_scale = if scale.is_zero() { T::zero() } else { scale.recip() };
+        let r_scale = if scale.is_zero() {
+            T::zero()
+        } else {
+            scale.recip()
+        };
         writer.write_f16(scale.as_());
 
         for x in block {
@@ -73,7 +77,10 @@ impl<const QK: usize> BaseQ4_0<QK> {
     {
         let pbqf: &PackedBlockQuantFormat =
             value.fact.format.downcast_ref().with_context(|| {
-                format!("Expecing PackedBlockQuantFormat, found {:?}", value.fact.format)
+                format!(
+                    "Expecing PackedBlockQuantFormat, found {:?}",
+                    value.fact.format
+                )
             })?;
         ensure!(pbqf.r == target.r);
         ensure!(value.fact.k % self.block_len() == 0);
@@ -88,7 +95,10 @@ impl<const QK: usize> BaseQ4_0<QK> {
         let mut weights = vec![0i8; pbqf.r];
         let panel_block_bytes = target.r * self.block_bytes();
         let (scale_offset, weights_offset) = if pbqf.scales_at_end {
-            (panel_block_bytes - target.r * f16::datum_type().size_of(), 0)
+            (
+                panel_block_bytes - target.r * f16::datum_type().size_of(),
+                0,
+            )
         } else {
             (0, target.r * f16::datum_type().size_of())
         };
@@ -105,6 +115,63 @@ impl<const QK: usize> BaseQ4_0<QK> {
                 }
                 for (w, s) in weights.iter().zip(scales.iter()) {
                     *scratch.next().unwrap() = *s * (*w - 8).as_();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn extract_at_mn_t<T: Float + Debug + 'static>(
+        &self,
+        value: &EagerPackedInput,
+        mn: usize,
+        target: &mut [T],
+    ) -> TractResult<()>
+    where
+        f16: AsPrimitive<T>,
+        i8: AsPrimitive<T>,
+    {
+        let pbqf: &PackedBlockQuantFormat =
+            value.fact.format.downcast_ref().with_context(|| {
+                format!(
+                    "Expecing PackedBlockQuantFormat, found {:?}",
+                    value.fact.format
+                )
+            })?;
+        ensure!(value.fact.k % self.block_len() == 0);
+        ensure!(pbqf.bq.same_as(self));
+        ensure!(mn < value.fact.mn);
+        ensure!(value.fact.k == target.len());
+        let blocks_for_k = value.fact.k / self.block_len();
+        let row_bytes = blocks_for_k * self.block_bytes();
+        let panel = mn / pbqf.r;
+        ensure!(value.packed.len() == value.fact.mn.next_multiple_of(pbqf.r) * row_bytes);
+        let value = &value.packed[panel * pbqf.r * row_bytes..];
+        let mut target = target.iter_mut();
+        let zipped_order = zipped_order(pbqf.r, pbqf.zip)
+            .iter()
+            .position(|x| *x == mn % pbqf.r)
+            .unwrap();
+
+        let panel_block_bytes = pbqf.r * self.block_bytes();
+        let (scale_offset, weights_offset) = if pbqf.scales_at_end {
+            (panel_block_bytes - pbqf.r * f16::datum_type().size_of(), 0)
+        } else {
+            (0, pbqf.r * f16::datum_type().size_of())
+        };
+        unsafe {
+            for block in 0..blocks_for_k {
+                let block = value.as_ptr().add(block * panel_block_bytes);
+                let scale = *((block.add(scale_offset) as *const f16).add(mn % pbqf.r));
+                let scale: T = scale.as_();
+                for i in 0..self.block_len() {
+                    let byte = *block.add(weights_offset + i * pbqf.r / 2 + zipped_order / 2);
+                    let nib = if zipped_order % 2 == 0 {
+                        byte & 0x0F
+                    } else {
+                        byte >> 4
+                    };
+                    *target.next().unwrap() = scale * ((nib as i8) - 8).as_();
                 }
             }
         }
@@ -129,7 +196,10 @@ fn zipped_order(r: usize, zip: usize) -> Vec<usize> {
 
 impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
     fn same_as(&self, other: &dyn BlockQuant) -> bool {
-        other.downcast_ref::<Self>().map(|other| other == self).unwrap_or(false)
+        other
+            .downcast_ref::<Self>()
+            .map(|other| other == self)
+            .unwrap_or(false)
     }
 
     fn block_len(&self) -> usize {
@@ -195,7 +265,11 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
             let mut readers = (0..r)
                 .map(|r| {
                     // manage partial panel
-                    let offset = if r * row_bytes < input.len() { r * row_bytes } else { 0 };
+                    let offset = if r * row_bytes < input.len() {
+                        r * row_bytes
+                    } else {
+                        0
+                    };
                     NibbleReader::for_slice(&input[offset..])
                 })
                 .collect_vec();
@@ -240,7 +314,27 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
         panel: usize,
         scratch: *mut u8,
     ) -> TractResult<()> {
-        dispatch_floatlike!(Self::extract_panel_t(target.dt)(self, value, target, panel, scratch))
+        dispatch_floatlike!(Self::extract_panel_t(target.dt)(
+            self, value, target, panel, scratch
+        ))
+    }
+
+    fn extract_at_mn_f16(
+        &self,
+        value: &EagerPackedInput,
+        mn: usize,
+        target: &mut [f16],
+    ) -> TractResult<()> {
+        self.extract_at_mn_t(value, mn, target)
+    }
+
+    fn extract_at_mn_f32(
+        &self,
+        value: &EagerPackedInput,
+        mn: usize,
+        target: &mut [f32],
+    ) -> TractResult<()> {
+        self.extract_at_mn_t(value, mn, target)
     }
 }
 
@@ -326,11 +420,14 @@ mod tests {
 
     #[test]
     fn extract_q40f32_pos() {
-        let data = (1..).map(|i| ((i % 14) - 6) as f32).take(5 * Q4_0.block_len()).collect_vec();
+        let data = (1..)
+            .map(|i| ((i % 14) - 6) as f32)
+            .take(5 * Q4_0.block_len())
+            .collect_vec();
         test_extract_f32(Q4_0, &data);
     }
 
-    fn test_packing(
+    fn test_pack_then_extract_panel(
         q: impl BlockQuant,
         k: usize,
         m: usize,
@@ -341,8 +438,9 @@ mod tests {
         let weights_orig =
             Array2::from_shape_fn((m, k), |(m, k)| ((m * 31 + k * 17) % 20) as f32 - 10.)
                 .into_tensor();
-        let weights_f32 =
-            q.dequant_f32(&q.quant_f32(weights_orig.as_slice::<f32>()?)?)?.into_shape(&[m, k])?;
+        let weights_f32 = q
+            .dequant_f32(&q.quant_f32(weights_orig.as_slice::<f32>()?)?)?
+            .into_shape(&[m, k])?;
         let packer = PackedFormat::new(f32::datum_type(), r, 128);
         let packed_f32 = packer.pack_tensor(&weights_f32, 1, 0)?;
 
@@ -367,17 +465,66 @@ mod tests {
     }
 
     #[test]
-    fn packing() -> TractResult<()> {
-        test_packing(BaseQ4_0::<2>, 4, 4, 2, 0, false)
+    fn pack_then_extract_panel() -> TractResult<()> {
+        test_pack_then_extract_panel(BaseQ4_0::<2>, 4, 4, 2, 0, false)
     }
 
     #[test]
-    fn packing_with_zip() -> TractResult<()> {
-        test_packing(BaseQ4_0::<2>, 2, 8, 8, 4, false)
+    fn pack_then_extract_panel_with_zip() -> TractResult<()> {
+        test_pack_then_extract_panel(BaseQ4_0::<2>, 2, 8, 8, 4, false)
     }
 
     #[test]
-    fn packing_with_scales_at_end() -> TractResult<()> {
-        test_packing(BaseQ4_0::<2>, 2, 4, 4, 0, true)
+    fn pack_then_extract_panel_with_scales_at_end() -> TractResult<()> {
+        test_pack_then_extract_panel(BaseQ4_0::<2>, 2, 4, 4, 0, true)
+    }
+
+    fn test_pack_then_extract_row(
+        q: impl BlockQuant,
+        k: usize,
+        m: usize,
+        r: usize,
+        zip: usize,
+        scales_at_end: bool,
+    ) -> TractResult<()> {
+        let weights_orig =
+            Array2::from_shape_fn((m, k), |(m, k)| ((m * 31 + k * 17) % 20) as f32 - 10.)
+                .into_tensor();
+        let weights_f32 = q
+            .dequant_f32(&q.quant_f32(weights_orig.as_slice::<f32>()?)?)?
+            .into_shape(&[m, k])?;
+        let packer = PackedFormat::new(f32::datum_type(), r, 128);
+        let packed_f32 = packer.pack_tensor(&weights_f32, 1, 0)?;
+
+        let q4 = q.quant_f32(weights_f32.as_slice::<f32>()?)?;
+        let packed_q4 = q.pack(&q4, k, r, zip, scales_at_end)?;
+
+        for row in 0..packed_f32.mn() {
+            unsafe {
+                let panel_f32 = packed_f32.panel_bytes(row / r, None)?;
+                let panel_f32 = std::slice::from_raw_parts(panel_f32 as *const f32, k * r);
+                let row_f32 = (0..k).map(|ix| panel_f32[row % r + r * ix]).collect_vec();
+
+                let mut q4 = vec![0f32; k];
+                q.extract_at_mn_f32(&packed_q4, row, &mut q4)?;
+                assert_eq!(q4, row_f32);
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn pack_then_extract_row() -> TractResult<()> {
+        test_pack_then_extract_row(BaseQ4_0::<2>, 4, 4, 2, 0, false)
+    }
+
+    #[test]
+    fn pack_then_extract_row_with_zip() -> TractResult<()> {
+        test_pack_then_extract_row(BaseQ4_0::<2>, 2, 8, 8, 4, false)
+    }
+
+    #[test]
+    fn pack_then_extract_row_with_scales_at_end() -> TractResult<()> {
+        test_pack_then_extract_row(BaseQ4_0::<2>, 2, 4, 4, 0, true)
     }
 }
