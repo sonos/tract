@@ -1,6 +1,8 @@
 use dyn_clone::clone_box;
+use tract_itertools::Itertools;
 use tract_linalg::block_quant::BlockQuantValue;
 use tract_linalg::kit::WeightType;
+use tract_linalg::pack::PackedFormat;
 
 use crate::internal::*;
 use crate::ops::array::Gather;
@@ -80,10 +82,7 @@ impl TypedOp for Const {
         let mut new_tensor = self.0.clone().into_tensor();
         if change.change_tensor(&mut new_tensor, false).is_ok() {
             Ok(Some(AxisChangeConsequence {
-                substitute_op: Some(Box::new(Const(
-                    new_tensor.into_arc_tensor(),
-                    self.1.clone(),
-                ))),
+                substitute_op: Some(Box::new(Const(new_tensor.into_arc_tensor(), self.1.clone()))),
                 wire_changes: tvec!((io, change.clone())),
             }))
         } else {
@@ -92,10 +91,7 @@ impl TypedOp for Const {
     }
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        Ok(tvec!((
-            Cost::Params(self.0.datum_type().unquantized()),
-            self.0.len().into()
-        )))
+        Ok(tvec!((Cost::Params(self.0.datum_type().unquantized()), self.0.len().into())))
     }
 
     fn concretize_dims(
@@ -124,14 +120,11 @@ impl TypedOp for Const {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let looks_like_weights = (self.0.datum_type().is_number() && self.0.rank() == 2)
-            || (self
-                .0
-                .to_scalar::<Opaque>()
-                .is_ok_and(|opaque| opaque.is::<BlockQuantValue>()));
+            || (self.0.to_scalar::<Opaque>().is_ok_and(|opaque| opaque.is::<BlockQuantValue>()));
         if !looks_like_weights {
             return Ok(None);
         }
-        let mut have_abstract_einsum = false;
+        let mut matmuls = vec![];
         for succ in &node.outputs[0].successors {
             let snode = model.node(succ.node);
             if let Some(gather) = snode.op_as::<Gather>() {
@@ -139,6 +132,7 @@ impl TypedOp for Const {
                     return Ok(None);
                 }
             } else if let Some(einsum) = snode.op_as::<EinSum>() {
+                let mut abstract_n = false;
                 if succ.slot != 0 || snode.inputs.len() != 2 {
                     return Ok(None);
                 }
@@ -162,30 +156,47 @@ impl TypedOp for Const {
                         && axis.inputs[0].len() == 0
                         && axis.inputs[1].len() == 1
                         && axis.outputs[0].len() == 1
-                        && snode.outputs[0].fact.shape[axis.outputs[0][0]]
-                            .as_i64()
-                            .is_none()
+                        && snode.outputs[0].fact.shape[axis.outputs[0][0]].as_i64().is_none()
                     {
-                        have_abstract_einsum = true;
+                        abstract_n = true;
                     }
                 }
+                let act_outlet = snode.inputs[1 - succ.slot];
+                let act_dt = model.outlet_fact(act_outlet)?.datum_type;
+                matmuls.push((einsum.operating_dt, act_dt, abstract_n));
             } else {
                 return Ok(None);
             }
         }
-        if node.outputs[0].successors.len() > 1 || have_abstract_einsum {
-            let weight = self
-                .0
-                .to_scalar::<Opaque>()
-                .ok()
-                .and_then(|a| a.downcast_ref::<BlockQuantValue>());
+        if node.outputs[0].successors.len() > 1
+            || matmuls.iter().any(|(_acc_dt, _act_dt, abstract_n)| *abstract_n)
+        {
+            let weight =
+                self.0.to_scalar::<Opaque>().ok().and_then(|a| a.downcast_ref::<BlockQuantValue>());
             let weight_type = if let Some(a_payload) = weight {
                 WeightType::BlockQuant(a_payload.fact.format.clone())
             } else {
                 WeightType::Plain(self.0.datum_type())
             };
-            let format = tract_linalg::ops().kit_input_format(weight_type);
-            let packed = format.prepare_tensor(&self.0, 1, 0)?;
+            let choice = tract_linalg::ops()
+                .mmm_kits()
+                .iter()
+                .filter(|kit| {
+                    kit.weight == weight_type
+                        && matmuls.iter().all(|&(acc, act, _abstract_n)| {
+                            kit.mmms.iter().any(|mmm| {
+                                mmm.mmm.internal_type() == acc
+                                    && mmm
+                                        .b_packing()
+                                        .downcast_ref::<PackedFormat>()
+                                        .is_some_and(|pf| pf.dt == act)
+                            })
+                        })
+                })
+                .sorted_by_key(|kit| kit.generic_fallback)
+                .next()
+                .unwrap();
+            let packed = choice.static_packer.prepare_tensor(&self.0, 1, 0)?;
             let fact = clone_box(packed.opaque_fact());
             let opaque = Opaque(Arc::new(packed));
             let konst = Const(rctensor0(opaque), Some(fact));
