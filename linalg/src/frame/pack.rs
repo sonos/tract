@@ -54,9 +54,9 @@ impl MMMInputFormat for PackedFormat {
             let ptr = data.packed.as_ptr().add(
                 (self.single_panel_len(data.k()) * mn / self.r + mn % self.r) * self.dt.size_of(),
             );
-            for i in 0..data.k() {
+            for (i, slot) in slice.iter_mut().enumerate() {
                 let ptr = ptr.add(i * self.dt.size_of() * self.r);
-                slice[i] = if self.dt == f16::datum_type() {
+                *slot = if self.dt == f16::datum_type() {
                     *(ptr as *const f16)
                 } else if self.dt == f32::datum_type() {
                     f16::from_f32(*(ptr as *const f32))
