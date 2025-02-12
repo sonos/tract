@@ -188,18 +188,33 @@ impl Reducer {
 
         // use tract-optimized path only when single reuction axis and is at end
         if axes.len() > 1 || axes[0] != input.rank() - 1 {
+            let mut operative_axes = vec![];
+            let mut operative_shape: Vec<usize> = vec![];
+            for (ix, dim) in input.shape().iter().enumerate() {
+                // axis is reduced, but is not the first of a series of reduced axes
+                if ix > 0 && axes.contains(&ix) && axes.contains(&(ix - 1)) {
+                    *operative_shape.last_mut().unwrap() *= *dim;
+                } else if axes.contains(&ix) {
+                    operative_axes.push(operative_shape.len());
+                    operative_shape.push(*dim);
+                } else {
+                    operative_shape.push(*dim);
+                }
+            }
             let mut output = input
                 .to_array_view_unchecked::<T>()
-                .sum_axis(Axis(*axes.iter().max().unwrap()));
+                .into_shape_with_order(operative_shape)
+                .unwrap()
+                .sum_axis(Axis(*operative_axes.iter().max().unwrap()));
 
-            for axis in axes.iter().sorted().rev().skip(1) {
+            for axis in operative_axes.iter().rev().skip(1) {
                 output = output.sum_axis(Axis(*axis));
             }
 
             let mut output = output.into_tensor();
 
-            for axis in axes.iter().sorted() {
-                output.insert_axis(*axis).unwrap();
+            for &axis in axes {
+                output.insert_axis(axis).unwrap();
             }
 
             output
