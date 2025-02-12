@@ -3,6 +3,7 @@
 #![allow(clippy::blocks_in_conditions)]
 
 use super::array::MultiBroadcastTo;
+use super::binary::TypedBinOp;
 use crate::internal::*;
 use crate::ops::quant::scale_by;
 use num_traits::bounds::Bounded;
@@ -66,7 +67,6 @@ where
 {
     *c = (b.as_() - a.as_() + zp as i16).clamp_cast()
 }
-
 
 bin_to_super_type!(mul, Mul,
                    cost: |dt| tvec!((Cost::FMA(dt), 1)),
@@ -331,10 +331,14 @@ fn declutter_mul(
     if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
         let var_fact = model.outlet_fact(uniform.var)?;
         if uniform.uni.cast_to_scalar::<f64>()? == 0.0 {
-            let shapes =
-                model.node_input_facts(node.id)?.iter().map(|f| &f.shape).collect::<TVec<_>>();
-            let shape: ShapeFact =
-                crate::broadcast::multi_broadcast(&shapes).context("Failed to broadcast")?.into();
+            let shapes = model
+                .node_input_facts(node.id)?
+                .iter()
+                .map(|f| &f.shape)
+                .collect::<TVec<_>>();
+            let shape: ShapeFact = crate::broadcast::multi_broadcast(&shapes)
+                .context("Failed to broadcast")?
+                .into();
             return Ok(Some(TypedModelPatch::rewire(
                 model,
                 &[],
@@ -384,7 +388,49 @@ fn declutter_mul(
             }
         }
     }
+    if let Some(patch) = declutter_mul_const_mul_const(model, node)? {
+        return Ok(Some(patch));
+    }
     Ok(None)
+}
+
+fn declutter_mul_const_mul_const(
+    model: &TypedModel,
+    node: &TypedNode,
+) -> TractResult<Option<TypedModelPatch>> {
+    let input_fact = model.node_input_facts(node.id)?;
+    let Some(const_slot) = input_fact.iter().position(|f| f.konst.is_some()) else {
+        return Ok(None);
+    };
+    let prec = model.node(node.inputs[1 - const_slot].node);
+    let Some(prec_mul) = prec.op_as::<TypedBinOp>() else {
+        return Ok(None);
+    };
+    if prec.outputs[0].successors.len() > 1 {
+        return Ok(None);
+    };
+    if !prec_mul.0.is::<Mul>() {
+        return Ok(None);
+    }
+    let prec_input_facts = model.node_input_facts(prec.id)?;
+    let Some(prec_konst_slot) = prec_input_facts.iter().position(|f| f.konst.is_some()) else {
+        return Ok(None);
+    };
+
+    let mut patch = TypedModelPatch::default();
+    let scalar_tap = patch.tap_model(model, node.inputs[const_slot])?;
+    let konst_tap = patch.tap_model(model, prec.inputs[prec_konst_slot])?;
+    // todo: extend to anything broadcast compatible
+    if !patch.outlet_fact(scalar_tap)?.shape.volume().is_one()
+        && !patch.outlet_fact(konst_tap)?.shape.volume().is_one()
+    {
+        return Ok(None);
+    }
+    let input_tap = patch.tap_model(model, prec.inputs[1 - prec_konst_slot])?;
+    let new_k = patch.wire_node(&prec.name, mul(), &[scalar_tap, konst_tap])?;
+    let wire = patch.wire_node(&node.name, mul(), &[new_k[0], input_tap])?;
+    patch.shunt_outside(model, node.id.into(), wire[0])?;
+    Ok(Some(patch))
 }
 
 fn declutter_div(
@@ -396,7 +442,10 @@ fn declutter_div(
         let dt = q.datum_type;
         if let Some(q) = &q.uniform {
             if let Ok(integer) = q.cast_to_scalar::<i64>() {
-                if tensor0(integer).cast_to_dt(dt)?.close_enough(q, false).is_ok()
+                if tensor0(integer)
+                    .cast_to_dt(dt)?
+                    .close_enough(q, false)
+                    .is_ok()
                     && dt.is_integer()
                     && q.cast_to_scalar::<i64>()?.count_ones() == 1
                 {
