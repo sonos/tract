@@ -378,7 +378,6 @@ fn convert_matmul_to_metal(
             if !GgmlGemm.is_supported_dts(&[input_facts[0].clone(), input_facts[1].clone()]).unwrap_or(false) && 
                 GgmlGemm.is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()]).unwrap_or(false)
             {
-                println!("Swap inputs");
                 input_facts.swap(0, 1);
                 inputs.swap(0, 1);
                 swap_inputs = true;
@@ -405,7 +404,7 @@ fn convert_matmul_to_metal(
             }
 
             if !op.transpose_b {
-                assert!(input_facts[b_pos].datum_type != DatumType::Opaque, "Cannot transpose Opaque tensor 1 ");
+                assert!(input_facts[b_pos].datum_type != DatumType::Opaque, "Cannot transpose Opaque tensor");
 
                 let rank = input_facts[b_pos].rank();
                 let perm_b_op= ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
@@ -494,8 +493,14 @@ fn convert_const(op: &Const) -> TractResult<Const> {
         crate::utils::tract_to_gguf_q4_0_packing(&mut (curr_bqv.value))?;
 
         let bqv = BlockQuantValue { value: curr_bqv.clone().value, fact: curr_bqv.clone().fact };
+        let tensor = if op.0.rank() == 0 {
+            tensor0(Opaque(Arc::new(bqv)))
+        } else {
+            tensor1(&[Opaque(Arc::new(bqv))])
+        };
+
         (
-            tensor1(&[Opaque(Arc::new(bqv))]).into_arc_tensor(),
+            tensor.into_arc_tensor(),
             MetalFact::from_cpu(Arc::clone(&op.0).into())?,
         )
     } else {
