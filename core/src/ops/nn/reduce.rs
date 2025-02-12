@@ -407,57 +407,14 @@ impl TypedOp for Reduce {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if self.reducer == Reducer::Sum {
-            let Some(prec) = model.single_prec(node.id)? else {
-                return Ok(None);
-            };
-            let Some(prec_ew) = prec.op_as::<ElementWiseOp>() else {
-                return Ok(None);
-            };
-            if !prec_ew.0.is::<Square>() {
-                return Ok(None);
-            }
-            if node.outputs.len() != 1 || node.outputs[0].successors.len() != 1 {
-                return Ok(None);
-            }
-            let our_inlet = node.outputs[0].successors[0];
-            let succ = model.node(our_inlet.node);
-            let Some(succ_bin) = succ.op_as::<TypedBinOp>() else {
-                return Ok(None);
-            };
-            if !succ_bin.0.is::<Mul>() {
-                return Ok(None);
-            }
-            let other = succ.inputs[1 - our_inlet.slot];
-            let Some(other_konst) = model.outlet_fact(other)?.uniform.as_ref() else {
-                return Ok(None);
-            };
-            let norm: TDim = self
-                .axes
-                .iter()
-                .map(|&ax| &prec.outputs[0].fact.shape[ax])
-                .product();
-            let Some(norm) = norm.as_i64() else {
-                return Ok(None);
-            };
-            if norm == 0 {
-                return Ok(None);
-            }
-            let norm = tensor0((norm as f32).recip());
-            if other_konst
-                .close_enough(&norm, Approximation::Close)
-                .is_ok()
-            {
-                let mut patch = TypedModelPatch::default();
-                let wire = patch.tap_model(model, prec.inputs[0])?;
-                let wire = patch.wire_node(
-                    &node.name,
-                    Reduce::new(self.axes.clone(), Reducer::MeanOfSquares),
-                    &[wire],
-                )?[0];
-                patch.shunt_outside(model, succ.id.into(), wire)?;
-                return Ok(Some(patch));
-            }
+        if let Some(patch) = self.declutter_mean_of_square(model, node)? {
+            return Ok(Some(patch));
+        }
+        if let Some(patch) = self.declutter_scalar_mul_then_sum(model, node)? {
+            return Ok(Some(patch));
+        }
+        if let Some(patch) = self.declutter_reduce_reduce(model, node)? {
+            return Ok(Some(patch));
         }
         Ok(None)
     }
@@ -514,6 +471,137 @@ impl TypedOp for Reduce {
     }
 
     as_op!();
+}
+
+impl Reduce {
+    fn declutter_reduce_reduce(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let Some(prec) = model.single_prec(node.id)? else {
+            return Ok(None);
+        };
+        let Some(prec_reduce) = prec.op_as::<Self>() else {
+            return Ok(None);
+        };
+        use Reducer::*;
+        if prec_reduce.reducer != self.reducer || ![Sum, Prod, Min, Max].contains(&self.reducer) {
+            return Ok(None);
+        }
+        let mut patch = TypedModelPatch::default();
+        let wire = patch.tap_model(model, prec.inputs[0])?;
+        let wire = patch.wire_node(
+            &node.name,
+            Self {
+                reducer: self.reducer,
+                axes: prec_reduce
+                    .axes
+                    .iter()
+                    .chain(self.axes.iter())
+                    .copied()
+                    .sorted()
+                    .dedup()
+                    .collect(),
+            },
+            &[wire],
+        )?;
+        patch.shunt_outside(model, node.id.into(), wire[0])?;
+        Ok(Some(patch))
+    }
+
+    fn declutter_scalar_mul_then_sum(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if self.reducer == Reducer::Sum {
+            let Some(prec) = model.single_prec(node.id)? else {
+                return Ok(None);
+            };
+            let Some(prec_bin) = prec.op_as::<TypedBinOp>() else {
+                return Ok(None);
+            };
+            if !prec_bin.0.is::<Mul>() {
+                return Ok(None);
+            }
+            let mul_input_fact = model.node_input_facts(prec.id)?;
+            let Some(scalar_slot) = mul_input_fact
+                .iter()
+                .position(|f| f.konst.as_ref().is_some_and(|k| k.volume() == 1))
+            else {
+                return Ok(None);
+            };
+            let mut patch = TypedModelPatch::default();
+            let scalar = patch.tap_model(model, prec.inputs[scalar_slot])?;
+            let wire = patch.tap_model(model, prec.inputs[1 - scalar_slot])?;
+            let wire = patch.wire_node(&node.name, self.clone(), &[wire])?[0];
+            let wire = patch.wire_node(&prec.name, prec_bin.clone(), &[wire, scalar])?[0];
+            patch.shunt_outside(model, node.id.into(), wire)?;
+            return Ok(Some(patch));
+        }
+        Ok(None)
+    }
+
+    fn declutter_mean_of_square(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if self.reducer == Reducer::Sum {
+            let Some(prec) = model.single_prec(node.id)? else {
+                return Ok(None);
+            };
+            let Some(prec_ew) = prec.op_as::<ElementWiseOp>() else {
+                return Ok(None);
+            };
+            if !prec_ew.0.is::<Square>() {
+                return Ok(None);
+            }
+            if node.outputs.len() != 1 || node.outputs[0].successors.len() != 1 {
+                return Ok(None);
+            }
+            let our_inlet = node.outputs[0].successors[0];
+            let succ = model.node(our_inlet.node);
+            let Some(succ_bin) = succ.op_as::<TypedBinOp>() else {
+                return Ok(None);
+            };
+            if !succ_bin.0.is::<Mul>() {
+                return Ok(None);
+            }
+            let other = succ.inputs[1 - our_inlet.slot];
+            let Some(other_konst) = model.outlet_fact(other)?.uniform.as_ref() else {
+                return Ok(None);
+            };
+            let norm: TDim = self
+                .axes
+                .iter()
+                .map(|&ax| &prec.outputs[0].fact.shape[ax])
+                .product();
+            let Some(norm) = norm.as_i64() else {
+                return Ok(None);
+            };
+            if norm == 0 {
+                return Ok(None);
+            }
+            let norm = tensor0((norm as f32).recip());
+            if other_konst
+                .close_enough(&norm, Approximation::Close)
+                .is_ok()
+            {
+                let mut patch = TypedModelPatch::default();
+                let wire = patch.tap_model(model, prec.inputs[0])?;
+                let wire = patch.wire_node(
+                    &node.name,
+                    Reduce::new(self.axes.clone(), Reducer::MeanOfSquares),
+                    &[wire],
+                )?[0];
+                patch.shunt_outside(model, succ.id.into(), wire)?;
+                return Ok(Some(patch));
+            }
+        }
+        Ok(None)
+    }
 }
 
 pub fn expand_mean_of_squares(
