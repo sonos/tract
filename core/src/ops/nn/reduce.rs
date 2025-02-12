@@ -2,9 +2,9 @@ use crate::internal::Axis;
 use crate::internal::*;
 use crate::ops::binary::TypedBinOp;
 use crate::ops::cast::{cast, wire_cast};
+use crate::ops::change_axes::wire_with_rank_broadcast;
 use crate::ops::element_wise::ElementWiseOp;
 use crate::ops::math::{div, mul, square, Mul, Square};
-use crate::ops::change_axes::wire_with_rank_broadcast;
 use std::convert::TryFrom;
 use std::iter::Sum;
 use std::mem::transmute;
@@ -73,13 +73,41 @@ impl Reducer {
         unsafe {
             let mut t = match self {
                 ArgMax(last) => {
-                    r!(Self::reduce_t(dt)(self, axes, &output_shape, input, argmax_t, *last))
+                    r!(Self::reduce_t(dt)(
+                        self,
+                        axes,
+                        &output_shape,
+                        input,
+                        argmax_t,
+                        *last
+                    ))
                 }
                 ArgMin(last) => {
-                    r!(Self::reduce_t(dt)(self, axes, &output_shape, input, argmin_t, *last))
+                    r!(Self::reduce_t(dt)(
+                        self,
+                        axes,
+                        &output_shape,
+                        input,
+                        argmin_t,
+                        *last
+                    ))
                 }
-                Min => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, min_t, ())),
-                Max => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, max_t, ())),
+                Min => r!(Self::reduce_t(dt)(
+                    self,
+                    axes,
+                    &output_shape,
+                    input,
+                    min_t,
+                    ()
+                )),
+                Max => r!(Self::reduce_t(dt)(
+                    self,
+                    axes,
+                    &output_shape,
+                    input,
+                    max_t,
+                    ()
+                )),
                 Prod => {
                     r!(Self::reduce_t(dt)(self, axes, &output_shape, input, prod_t, ()); Self::reduce_t(self, axes, &output_shape, input, q_prod_t, (zp, scale)))
                 }
@@ -129,7 +157,13 @@ impl Reducer {
                 .slice()
                 .iter()
                 .enumerate()
-                .map(|(ax, &d)| if axes.contains(&ax) { (..).into() } else { d.into() })
+                .map(|(ax, &d)| {
+                    if axes.contains(&ax) {
+                        (..).into()
+                    } else {
+                        d.into()
+                    }
+                })
                 .collect();
             let slice_info = SliceInfo::<_, IxDyn, IxDyn>::try_from(slice_spec).unwrap();
             let slice = input.slice(&slice_info);
@@ -152,61 +186,93 @@ impl Reducer {
             return input.to_owned();
         }
 
-        let mut output: Option<ArrayD<T>> = None;
-        for axis in axes.iter().copied() {
-            let input_view = output
-                .as_ref()
-                .map(|o| o.view())
-                .unwrap_or_else(|| input.to_array_view_unchecked::<T>());
+        // use tract-optimized path only when single reuction axis and is at end
+        if axes.len() > 1 || axes[0] != input.rank() - 1 {
+            let mut output = input
+                .to_array_view_unchecked::<T>()
+                .sum_axis(Axis(*axes.iter().max().unwrap()));
 
-            // Create array that will contain intermidiate result
-            let reduced_dim = input_view.shape()[axis];
-            let input_stride = input_view.strides()[axis] as usize;
-            let output_shape = input_view
-                .shape()
-                .iter()
-                .enumerate()
-                .map(|(idx, dim)| if idx != axis { *dim } else { 1 })
-                .collect_vec();
+            for axis in axes.iter().sorted().rev().skip(1) {
+                output = output.sum_axis(Axis(*axis));
+            }
 
-            output = Some(ArrayD::from_shape_fn(output_shape.clone(), |coords| {
-                let mut view = input_view.view();
-                for ix in 0..output_shape.len() {
-                    if ix != axis {
-                        view.collapse_axis(Axis(ix), coords[ix]);
+            let mut output = output.into_tensor();
+
+            for axis in axes.iter().sorted() {
+                output.insert_axis(*axis).unwrap();
+            }
+
+            output
+        } else {
+            let mut output: Option<ArrayD<T>> = None;
+            for axis in axes.iter().copied() {
+                let input_view = output
+                    .as_ref()
+                    .map(|o| o.view())
+                    .unwrap_or_else(|| input.to_array_view_unchecked::<T>());
+
+                // Create array that will contain intermidiate result
+                let reduced_dim = input_view.shape()[axis];
+                let input_stride = input_view.strides()[axis] as usize;
+                let output_shape = input_view
+                    .shape()
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, dim)| if idx != axis { *dim } else { 1 })
+                    .collect_vec();
+
+                output = Some(ArrayD::from_shape_fn(output_shape.clone(), |coords| {
+                    let mut view = input_view.view();
+                    for ix in 0..output_shape.len() {
+                        if ix != axis {
+                            view.collapse_axis(Axis(ix), coords[ix]);
+                        }
                     }
-                }
 
-                if let Some(slice) = view.as_slice() {
-                    if T::datum_type() == f16::datum_type() {
-                        let slice: &[f16] = unsafe { std::mem::transmute(slice) };
-                        (tract_linalg::ops().sum_f16)().run_with_params(slice, ()).unwrap().as_()
-                    } else if T::datum_type() == f32::datum_type() {
-                        let slice: &[f32] = unsafe { std::mem::transmute(slice) };
-                        (tract_linalg::ops().sum_f32)().run_with_params(slice, ()).unwrap().as_()
+                    if let Some(slice) = view.as_slice() {
+                        if T::datum_type() == f16::datum_type() {
+                            let slice: &[f16] = unsafe { std::mem::transmute(slice) };
+                            (tract_linalg::ops().sum_f16)()
+                                .run_with_params(slice, ())
+                                .unwrap()
+                                .as_()
+                        } else if T::datum_type() == f32::datum_type() {
+                            let slice: &[f32] = unsafe { std::mem::transmute(slice) };
+                            (tract_linalg::ops().sum_f32)()
+                                .run_with_params(slice, ())
+                                .unwrap()
+                                .as_()
+                        } else {
+                            slice.iter().cloned().sum::<T>()
+                        }
                     } else {
-                        slice.iter().cloned().sum::<T>()
+                        dbg!("ndarary code");
+                        let first: *const T = &input_view[coords];
+                        let mut sum = T::zero();
+                        for i in 0..reduced_dim {
+                            sum = sum + *(first.add(i * input_stride));
+                        }
+                        sum
                     }
-                } else {
-                    let first: *const T = &input_view[coords];
-                    let mut sum = T::zero();
-                    for i in 0..reduced_dim {
-                        sum = sum + *(first.add(i * input_stride));
-                    }
-                    sum
-                }
-            }));
+                }));
+            }
+            output.unwrap().into_tensor()
         }
-        output.unwrap().into_tensor()
     }
 
     fn mean_of_squares(&self, axis: &[usize], input: &Tensor) -> TractResult<Tensor> {
         let dt = input.datum_type();
         let mut input = input.cast_to::<f32>()?.into_owned();
-        input.as_slice_mut::<f32>()?.iter_mut().for_each(|x| *x = *x * *x);
+        input
+            .as_slice_mut::<f32>()?
+            .iter_mut()
+            .for_each(|x| *x = *x * *x);
         let mut output = unsafe { self.sum::<f32>(axis, &input) };
         let norm = output.len() as f32 / input.len() as f32;
-        output.as_slice_mut::<f32>()?.iter_mut().for_each(|x| *x *= norm);
+        output
+            .as_slice_mut::<f32>()?
+            .iter_mut()
+            .for_each(|x| *x *= norm);
         Ok(output.cast_to_dt(dt)?.into_owned())
     }
 }
@@ -218,10 +284,13 @@ where
     v.iter()
         .copied()
         .enumerate()
-        .fold(
-            (0usize, T::min_value()),
-            |acc, v| if v.1 > acc.1 || (last && acc.1 == v.1) { v } else { acc },
-        )
+        .fold((0usize, T::min_value()), |acc, v| {
+            if v.1 > acc.1 || (last && acc.1 == v.1) {
+                v
+            } else {
+                acc
+            }
+        })
         .0 as i64
 }
 
@@ -232,10 +301,13 @@ where
     v.iter()
         .copied()
         .enumerate()
-        .fold(
-            (0usize, T::max_value()),
-            |acc, v| if v.1 < acc.1 || (last && acc.1 == v.1) { v } else { acc },
-        )
+        .fold((0usize, T::max_value()), |acc, v| {
+            if v.1 < acc.1 || (last && acc.1 == v.1) {
+                v
+            } else {
+                acc
+            }
+        })
         .0 as i64
 }
 
@@ -336,8 +408,12 @@ impl TypedOp for Reduce {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if self.reducer == Reducer::Sum {
-            let Some(prec) = model.single_prec(node.id)? else { return Ok(None) };
-            let Some(prec_ew) = prec.op_as::<ElementWiseOp>() else { return Ok(None) };
+            let Some(prec) = model.single_prec(node.id)? else {
+                return Ok(None);
+            };
+            let Some(prec_ew) = prec.op_as::<ElementWiseOp>() else {
+                return Ok(None);
+            };
             if !prec_ew.0.is::<Square>() {
                 return Ok(None);
             }
@@ -346,7 +422,9 @@ impl TypedOp for Reduce {
             }
             let our_inlet = node.outputs[0].successors[0];
             let succ = model.node(our_inlet.node);
-            let Some(succ_bin) = succ.op_as::<TypedBinOp>() else { return Ok(None) };
+            let Some(succ_bin) = succ.op_as::<TypedBinOp>() else {
+                return Ok(None);
+            };
             if !succ_bin.0.is::<Mul>() {
                 return Ok(None);
             }
@@ -354,13 +432,22 @@ impl TypedOp for Reduce {
             let Some(other_konst) = model.outlet_fact(other)?.uniform.as_ref() else {
                 return Ok(None);
             };
-            let norm: TDim = self.axes.iter().map(|&ax| &prec.outputs[0].fact.shape[ax]).product();
-            let Some(norm) = norm.as_i64() else { return Ok(None) };
+            let norm: TDim = self
+                .axes
+                .iter()
+                .map(|&ax| &prec.outputs[0].fact.shape[ax])
+                .product();
+            let Some(norm) = norm.as_i64() else {
+                return Ok(None);
+            };
             if norm == 0 {
                 return Ok(None);
             }
             let norm = tensor0((norm as f32).recip());
-            if other_konst.close_enough(&norm, Approximation::Close).is_ok() {
+            if other_konst
+                .close_enough(&norm, Approximation::Close)
+                .is_ok()
+            {
                 let mut patch = TypedModelPatch::default();
                 let wire = patch.tap_model(model, prec.inputs[0])?;
                 let wire = patch.wire_node(
@@ -391,9 +478,11 @@ impl TypedOp for Reduce {
                             .output(0, ix),
                     )
                 } else {
-                    tvec!(Axis::new(letters.next().unwrap(), inputs.len(), outputs.len())
-                        .input(0, ix)
-                        .output(0, ix))
+                    tvec!(
+                        Axis::new(letters.next().unwrap(), inputs.len(), outputs.len())
+                            .input(0, ix)
+                            .output(0, ix)
+                    )
                 }
                 .into_iter()
             })
@@ -417,7 +506,10 @@ impl TypedOp for Reduce {
             }
         }
         axes.sort();
-        let op = Some(Box::new(Self { axes, ..self.clone() }) as _);
+        let op = Some(Box::new(Self {
+            axes,
+            ..self.clone()
+        }) as _);
         Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
     }
 
