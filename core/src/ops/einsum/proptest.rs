@@ -121,7 +121,7 @@ impl BinEinsumProblem {
         model = model.into_decluttered()?;
         let expected = model.clone().into_runnable()?.run(inputs.clone())?.remove(0);
         let optimised = model.clone().into_optimized()?;
-        dbg!(&optimised);
+        //dbg!(&optimised);
         let found = optimised.into_runnable()?.run(inputs.clone())?.remove(0);
         found.close_enough(&expected, Approximation::Close)
     }

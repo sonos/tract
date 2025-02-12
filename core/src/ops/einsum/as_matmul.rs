@@ -220,7 +220,19 @@ impl EvalOp for BasicMatMul {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
-        let output_shape = self.output_shape(a.shape(), b.shape());
+        let a_shape = a.view()
+                        .tensor
+                        .to_scalar::<Opaque>()
+                        .map(|od| {
+                            od.downcast_ref::<BlockQuantValue>()
+                                .map(|bqv| {
+                                    a.shape().iter().cloned().chain(bqv.fact.shape.iter().map(|d| *d)).collect_vec()
+                                })
+                                .unwrap_or(a.shape().to_vec())
+                        })
+                        .unwrap_or(a.shape().to_vec());
+
+        let output_shape = self.output_shape(&a_shape, b.shape());
         if let Some(qp) = self.quantize_output {
             let mut acc = Tensor::zero_dt(i32::datum_type(), &output_shape)?;
             let mut a_i32 = a.cast_to::<i32>()?.into_owned();
@@ -235,7 +247,7 @@ impl EvalOp for BasicMatMul {
             unsafe { c.set_datum_type(qp) };
             Ok(tvec!(c.into_tvalue()))
         } else {
-            let mut c = Tensor::zero_dt(a.datum_type(), &output_shape)?;
+            let mut c = Tensor::zero_dt(b.datum_type(), &output_shape)?;
             dispatch_floatlike!(Self::mm(c.datum_type())(self, &mut c, &a, &b))?;
             Ok(tvec!(c.into_tvalue()))
         }

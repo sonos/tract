@@ -11,6 +11,7 @@ pub mod conv_f32;
 pub mod conv_q;
 pub mod deconv;
 pub mod downsample;
+pub mod matmul_q40;
 pub mod q_binary;
 pub mod q_elmwise;
 pub mod q_flavours;
@@ -24,6 +25,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("conv_q", conv_q::suite()?);
     suite.add("deconv", deconv::suite()?);
     suite.add("downsample", downsample::suite()?);
+    suite.add("matmul_q40", matmul_q40::suite()?);
     suite.add("q_flavours", q_flavours::suite()?);
     suite.add("slice", slice::suite()?);
     suite.add("q_binary", q_binary::suite()?);

@@ -19,6 +19,8 @@ use crate::ops::matmul::quant::{
 };
 use crate::ops::nn::{Reduce, Reducer};
 
+
+#[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum AxesOrPatch<'a> {
@@ -27,6 +29,7 @@ pub enum AxesOrPatch<'a> {
     NotAMatMul(Vec<&'a Axis>),
 }
 
+#[derive(Debug)]
 pub struct EinSumAnnotatedAsMatMul<'a> {
     pub op: &'a EinSum,
     pub m_axis: &'a Axis,
