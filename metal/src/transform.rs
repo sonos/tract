@@ -344,9 +344,9 @@ fn check_matmul_in_dts(gemm_impl: MetalGemmImplKind, in_facts: &[TypedFact]) -> 
         MetalGemmImplKind::Mlx => MlxGemm.is_supported_dts(in_facts),
         MetalGemmImplKind::Mps => MpsMatMul.is_supported_dts(in_facts),
         MetalGemmImplKind::Mfa => MfaGemm.is_supported_dts(in_facts),
-        MetalGemmImplKind::Ggml => Ok(GgmlGemm.is_supported_dts(in_facts).unwrap_or(false) || GgmlGemm.is_supported_dts(&[in_facts[1].clone(), in_facts[0].clone()]).unwrap_or(false)),
+        MetalGemmImplKind::Ggml => GgmlGemm.is_supported_dts(in_facts) || GgmlGemm.is_supported_dts(&[in_facts[1].clone(), in_facts[0].clone()]),
     };
-    is_supported.unwrap_or(false)
+    is_supported
 }
 
 fn convert_matmul_to_metal(
@@ -375,8 +375,8 @@ fn convert_matmul_to_metal(
                 model.node_input_facts(node.id)?;
 
             let mut swap_inputs = false;
-            if !GgmlGemm.is_supported_dts(&[input_facts[0].clone(), input_facts[1].clone()]).unwrap_or(false) && 
-                GgmlGemm.is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()]).unwrap_or(false)
+            if !GgmlGemm.is_supported_dts(&[input_facts[0].clone(), input_facts[1].clone()]) && 
+                GgmlGemm.is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()])
             {
                 input_facts.swap(0, 1);
                 inputs.swap(0, 1);
