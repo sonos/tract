@@ -76,7 +76,6 @@ impl Gather {
         indices: &TValue,
     ) -> TractResult<Tensor> {
         ensure!(self.axis == 0);
-        dbg!(data);
         let data_shape = &[data.mn(), data.k()];
         let output_shape = &*self.compute_output_shape(data_shape, indices.shape())?;
         let mut output = unsafe { Tensor::uninitialized::<f16>(output_shape)? };

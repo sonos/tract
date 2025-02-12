@@ -85,7 +85,9 @@ unsafe fn add_mat_mul_pq40<const MR: usize, const NR: usize, TB, TI>(
         scales.iter_mut().for_each(|x| *x = pa.read_f16().as_());
         for ik in 0..32 {
             let mut a: [TI; MR] = [TI::zero(); MR];
-            a.iter_mut().zip(&scales).for_each(|(x, s)| *x = *s * (pa.read_i4() - 8).as_());
+            a.iter_mut()
+                .zip(&scales)
+                .for_each(|(x, s)| *x = *s * (pa.read_i4() - 8).as_());
             let b = std::slice::from_raw_parts(b.add(NR * (ik + 32 * bk)), NR);
             for i in 0..MR {
                 for j in 0..NR {
@@ -345,7 +347,9 @@ fn pq40_r4_se() -> PackedBlockQuantFormat {
 }
 
 // f16 kernels
-MMMRustKernel!(kernel::<f16, 4, 4> => generic_f16_4x4<f16>(4,4) store(f32, f64));
+MMMRustKernel!(kernel::<f16, 4, 4> => generic_f16_4x4<f16>(4,4)
+    packing[1] = f32f32 => |k| k.with_packing(f32::packing(4), f32::packing(4));
+    store(f32, f64));
 MMMRustKernel! {kernel::<f16, 4, 1> => generic_f16_4x1<f16>(4,1)
     packing[1] = f32f32 => |k| k.with_packing(f32::packing(4), f32::packing(1));
     packing[2] = q40f16 => |k| k.with_packing_a(pq40_r4());
@@ -397,23 +401,24 @@ pub fn plug(ops: &mut Ops) {
         Kit::new(F32, &f32::packing(4))
             .with_native(generic_f32_4x1.mmm(), 0)
             .with_native(generic_f32_4x4.mmm(), 0)
+            .with_native(generic_f16_4x1.mmm(), 1)
+            .with_native(generic_f16_4x4.mmm(), 1)
             .with_generic_fallback(true),
     );
     ops.mmm_kits.push(
         Kit::new(Q4_0, &pq40_r4())
+            .with_native(generic_f32_4x1.mmm(), 2)
             .with_native(generic_f32_4x1.mmm(), 4)
-            .with_generic_fallback(true),
-    );
-    ops.mmm_kits.push(
-        Kit::new(F32, &f32::packing(4))
-            .with_native(generic_f32_4x1.mmm(), 0)
-            .with_native(generic_f32_4x4.mmm(), 0)
+            .with_native(generic_f16_4x1.mmm(), 2)
+            .with_native(generic_f16_4x1.mmm(), 4)
             .with_generic_fallback(true),
     );
     ops.mmm_kits.push(
         Kit::new(F16, &f16::packing(4))
             .with_native(generic_f32_4x1.mmm(), 1)
             .with_native(generic_f32_4x4.mmm(), 1)
+            .with_native(generic_f16_4x1.mmm(), 0)
+            .with_native(generic_f16_4x4.mmm(), 0)
             .with_generic_fallback(true),
     );
 }
