@@ -221,7 +221,6 @@ impl PackedBlockQuantFormat {
         PackedBlockQuantFormat { bq: clone_box(bq), r, zip, scales_at_end }
     }
 
-    #[cfg(test)]
     pub fn simulate_precision_loss(
         &self,
         tensor: Tensor,
