@@ -1,5 +1,5 @@
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
-use crate::utils::is_q4_0;
+use crate::utils::as_q40_fact;
 use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
@@ -34,17 +34,12 @@ impl GemmKernel for GgmlGemm {
         "ggml"
     }
 
-    fn is_supported_dts(&self, facts: &[TypedFact]) -> TractResult<bool> {
-        ensure!(facts.len() == 2);
+    fn is_supported_dts(&self, facts: &[TypedFact]) -> bool {
+        assert!(facts.len() == 2, "Ggml: Expected 2 inputs for Matmul");
 
-        if is_q4_0(&facts[1]) {
-            Ok(matches!(facts[0].datum_type, DatumType::F16 | DatumType::F32))
-        } else if facts[1].datum_type == DatumType::F32 {
-            Ok(facts[0].datum_type == DatumType::F32)
-        } else {
-            Ok(facts[1].datum_type == DatumType::F16
-                && matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16))
-        }
+        (as_q40_fact(&facts[1]).is_some() && matches!(facts[0].datum_type, DatumType::F16 | DatumType::F32)) ||
+        ((facts[1].datum_type == DatumType::F32) && (facts[0].datum_type == DatumType::F32)) ||
+        ((facts[1].datum_type == DatumType::F16) && matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16))
     }
 
     fn output_dt(&self, _a_dt: DatumType, _b_dt: DatumType) -> TractResult<DatumType> {
