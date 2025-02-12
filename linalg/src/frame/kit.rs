@@ -103,7 +103,10 @@ impl From<Box<dyn MMMInputFormat>> for KitDatumType {
 }
 
 pub enum KitRequirement {
-    MMM { accumulator: KitDatumType, activation: KitDatumType },
+    MMM {
+        accumulator: KitDatumType,
+        activation: KitDatumType,
+    },
 }
 
 #[derive(Debug)]
@@ -133,7 +136,9 @@ impl Kit {
         match &kit.weight {
             WeightType::Plain(p) => {
                 debug_assert!(
-                    kit.static_packer.downcast_ref::<PackedFormat>().is_some_and(|pf| pf.dt == *p),
+                    kit.static_packer
+                        .downcast_ref::<PackedFormat>()
+                        .is_some_and(|pf| pf.dt == *p),
                     "Static packer not compatible with weight format {kit:?}"
                 )
             }
@@ -153,7 +158,11 @@ impl Kit {
         packing: usize,
         weight_panel_extractor: Option<PanelExtractor>,
     ) -> Self {
-        self.mmms.push(MMMKitItem { mmm, packing, weight_panel_extractor });
+        self.mmms.push(MMMKitItem {
+            mmm,
+            packing,
+            weight_panel_extractor,
+        });
         self
     }
 
@@ -187,29 +196,28 @@ impl Kit {
     }
 
     pub(crate) fn with_generic_fallback(self, generic_fallback: bool) -> Self {
-        Self { generic_fallback, ..self }
+        Self {
+            generic_fallback,
+            ..self
+        }
     }
 
     pub fn name(&self) -> String {
         self.static_packer.to_string()
     }
 
-    pub fn can_do_mmm(&self, accumulator: KitDatumType, activation: KitDatumType) -> bool {
-        self.mmms.iter().any(|mmm| {
+    pub fn mmm_for(
+        &self,
+        accumulator: KitDatumType,
+        activation: KitDatumType,
+    ) -> impl Iterator<Item = &MMMKitItem> {
+        self.mmms.iter().filter(move |mmm| {
             mmm.accumulator() == accumulator
                 && mmm
                     .b_packing()
                     .downcast_ref::<PackedFormat>()
                     .is_some_and(|pf| KitDatumType::from(pf.dt) == activation)
         })
-    }
-
-    pub fn item_for_mv(&self) -> &MMMKitItem {
-        self.mmms.iter().min_by_key(|item| item.n()).unwrap()
-    }
-
-    pub fn item_for_squarish(&self) -> &MMMKitItem {
-        self.mmms.iter().max_by_key(|item| item.n()).unwrap()
     }
 }
 

@@ -93,7 +93,9 @@ pub fn wire_for_variable_n(
 )> {
     let accumulator = if op.operating_dt.is_integer() {
         KitDatumType::I32
-    } else if op.operating_dt == f16::datum_type() && tract_linalg::has_fp16() {
+    } else if op.operating_dt == f16::datum_type()
+    /* && tract_linalg::has_fp16() */
+    {
         KitDatumType::F16
     } else {
         KitDatumType::F32
@@ -117,7 +119,7 @@ pub fn wire_for_variable_n(
             prepack
                 .map(|pre| kit.static_packer.same_as(pre.format()))
                 .unwrap_or_else(|| kit.weight == WeightType::from(a_konst.datum_type()))
-                && kit.can_do_mmm(accumulator, activation)
+                && kit.mmm_for(accumulator, activation).next().is_some()
         })
         .min_by_key(|kit| kit.generic_fallback as usize)
         .with_context(|| {
@@ -143,13 +145,19 @@ pub fn wire_for_variable_n(
         )?[0];
     }
 
-    let configs = [kit.item_for_mv(), kit.item_for_squarish()];
+    let configs = [
+        kit.mmm_for(accumulator, activation)
+            .min_by_key(|k| k.n())
+            .unwrap(),
+        kit.mmm_for(accumulator, activation)
+            .max_by_key(|k| k.n())
+            .unwrap(),
+    ];
 
     let packers = configs
         .iter()
         .map(|conf| {
-            conf.mmm.packings()[conf.packing]
-                .1
+            conf.b_packing()
                 .downcast_ref::<PackedFormat>()
                 .unwrap()
                 .clone()

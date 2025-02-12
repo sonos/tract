@@ -37,7 +37,11 @@ impl ProtoFusedSpec {
     pub fn format(&self, mmm: &dyn MatMatMul, mode: usize) -> String {
         use ProtoFusedSpec::*;
         match self {
-            AddMatMul { geo, packings: packing, .. } => {
+            AddMatMul {
+                geo,
+                packings: packing,
+                ..
+            } => {
                 let (a, b) = &mmm.packings()[packing[mode].0];
                 format!("matmul(k={}, {a:?}•{b:?})", geo.k)
             }
@@ -61,17 +65,24 @@ impl ProtoFusedSpec {
         mode: usize,
     ) -> FusedSpec<'t> {
         let fs = match self {
-            ProtoFusedSpec::AddMatMul { geo, a, b, packings } => {
+            ProtoFusedSpec::AddMatMul {
+                geo,
+                a,
+                b,
+                packings,
+            } => {
                 let mut a = inputs[*a].view();
                 let mut b = inputs[*b].view();
                 unsafe {
-                    geo.c_to_a_axis_mapping.translate_view(output_coords, &mut a);
+                    geo.c_to_a_axis_mapping
+                        .translate_view(output_coords, &mut a);
                 }
                 let a = a.as_slice::<Opaque>().unwrap()[0]
                     .downcast_ref::<Box<dyn MMMInputValue>>()
                     .unwrap();
                 unsafe {
-                    geo.c_to_b_axis_mapping.translate_view(output_coords, &mut b);
+                    geo.c_to_b_axis_mapping
+                        .translate_view(output_coords, &mut b);
                 }
                 let b = b.as_slice::<Opaque>().unwrap()[0]
                     .downcast_ref::<Box<dyn MMMInputValue>>()
@@ -153,8 +164,12 @@ impl ProtoFusedSpec {
                 let b = b.as_slice_unchecked::<Opaque>().get_unchecked(0);
                 debug_assert!(a.is::<Box<dyn MMMInputValue>>());
                 debug_assert!(b.is::<Box<dyn MMMInputValue>>());
-                let a = a.downcast_ref::<Box<dyn MMMInputValue>>().unwrap_unchecked();
-                let b = b.downcast_ref::<Box<dyn MMMInputValue>>().unwrap_unchecked();
+                let a = a
+                    .downcast_ref::<Box<dyn MMMInputValue>>()
+                    .unwrap_unchecked();
+                let b = b
+                    .downcast_ref::<Box<dyn MMMInputValue>>()
+                    .unwrap_unchecked();
                 #[cfg(debug_assertions)]
                 {
                     let (a_packing, b_packing) = &_mmm.packings()[packings[mode].0];
@@ -315,7 +330,10 @@ impl Op for OptMatMul {
         for (mode, mmm) in self.mmm.iter().enumerate() {
             infos.push(format!(
                 "Ops: {}",
-                self.micro_ops.iter().map(|o| o.format(&**mmm, mode)).join(" >>> ")
+                self.micro_ops
+                    .iter()
+                    .map(|o| o.format(&**mmm, mode))
+                    .join(" >>> ")
             ));
         }
         Ok(infos)
@@ -340,7 +358,10 @@ impl EvalOp for OptMatMul {
             let mode = self.mode_picker.pick(c_shape[self.c_n_axis])?;
             let mmm = &*self.mmm[mode];
             let mut cell = session.cached_mmm_scratch_space.borrow_mut();
-            if !cell.as_ref().is_some_and(|scratch| mmm.can_use_scratch_space(&**scratch)) {
+            if !cell
+                .as_ref()
+                .is_some_and(|scratch| mmm.can_use_scratch_space(&**scratch))
+            {
                 *cell = None
             }
             let scratch = cell.get_or_insert_with(|| mmm.allocate_scratch_space());
@@ -405,19 +426,19 @@ impl TypedOp for OptMatMul {
                 *sums.entry(cost).or_default() += count;
             }
         }
-        let loops =
-            self.c_fact
-                .shape
-                .iter()
-                .enumerate()
-                .map(|(ix, d)| {
-                    if ix == self.c_m_axis || ix == self.c_n_axis {
-                        1.to_dim()
-                    } else {
-                        d.clone()
-                    }
-                })
-                .product::<TDim>();
+        let loops = self
+            .c_fact
+            .shape
+            .iter()
+            .enumerate()
+            .map(|(ix, d)| {
+                if ix == self.c_m_axis || ix == self.c_n_axis {
+                    1.to_dim()
+                } else {
+                    d.clone()
+                }
+            })
+            .product::<TDim>();
         for s in &mut sums.values_mut() {
             *s *= &loops;
         }
@@ -436,8 +457,11 @@ impl TypedOp for OptMatMul {
         let mut patch = TypedModelPatch::new(format!("fusing {succ}"));
 
         if let Some(op) = succ.op_as::<ops::binary::TypedBinOp>() {
-            let mut binop =
-                if let Some(op) = op.0.as_linalg_binop() { op } else { return Ok(None) };
+            let mut binop = if let Some(op) = op.0.as_linalg_binop() {
+                op
+            } else {
+                return Ok(None);
+            };
             let flipped = succ.inputs[0].node == node.id;
             if flipped {
                 binop = binop.flip();
@@ -446,8 +470,11 @@ impl TypedOp for OptMatMul {
             return self.fuse_binary(model, node, patch, other_outlet, binop);
         }
         if let Some(op) = succ.op_as::<ops::binary::OptBinByScalar>() {
-            let mut binop =
-                if let Some(op) = op.binop.as_linalg_binop() { op } else { return Ok(None) };
+            let mut binop = if let Some(op) = op.binop.as_linalg_binop() {
+                op
+            } else {
+                return Ok(None);
+            };
             let flipped = succ.inputs[0].node == node.id;
             if flipped {
                 binop = binop.flip();
@@ -456,7 +483,10 @@ impl TypedOp for OptMatMul {
             return self.fuse_binary(model, node, patch, other_outlet, binop);
         }
 
-        if let Some(op) = succ.op_as::<ops::element_wise::ElementWiseOp>().map(|ew| ew.0.as_ref()) {
+        if let Some(op) = succ
+            .op_as::<ops::element_wise::ElementWiseOp>()
+            .map(|ew| ew.0.as_ref())
+        {
             if let Some(op) = op.downcast_ref::<ops::math::QScale>() {
                 return self.fuse_op(
                     model,
@@ -476,7 +506,9 @@ impl TypedOp for OptMatMul {
                 }
                 let alpha = patch.add_const(
                     node.name.to_string() + ".alpha",
-                    tensor0(op.alpha).cast_to_dt(self.mmm[0].internal_type())?.into_owned(),
+                    tensor0(op.alpha)
+                        .cast_to_dt(self.mmm[0].internal_type())?
+                        .into_owned(),
                 )?;
                 return self.fuse_op(
                     model,
@@ -493,14 +525,20 @@ impl TypedOp for OptMatMul {
                 && self.c_fact.datum_type == i32::datum_type()
             {
                 if let Some(ProtoFusedSpec::Store(stores)) = self.micro_ops.last() {
-                    if stores.iter().any(|s| matches!(s, OutputStoreSpec::Strides { .. })) {
+                    if stores
+                        .iter()
+                        .any(|s| matches!(s, OutputStoreSpec::Strides { .. }))
+                    {
                         return Ok(None);
                     }
                     let c_fact = cast_to.fact(self.c_fact.shape.clone());
                     let mut patch = TypedModelPatch::fuse_with_next(
                         model,
                         node,
-                        Self { c_fact, ..self.clone() },
+                        Self {
+                            c_fact,
+                            ..self.clone()
+                        },
                     )?;
                     patch.dont_apply_twice = Some(format!("Fuse {succ} into {node}"));
                     return Ok(Some(patch));
@@ -540,7 +578,11 @@ impl TypedOp for OptMatMul {
                             &bin.name,
                             &mut patch,
                             op.clone(),
-                            &if flipped { [output, cst] } else { [cst, output] },
+                            &if flipped {
+                                [output, cst]
+                            } else {
+                                [cst, output]
+                            },
                         )?;
                         let wire = patch.wire_node(&succ.name, succ.op.clone(), &wire)?[0];
                         patch.shunt_outside(model, bin.id.into(), wire)?;
@@ -569,13 +611,20 @@ impl TypedOp for OptMatMul {
                         model,
                         node,
                         patch,
-                        vec![ProtoFusedSpec::AddUnicast(other_storage, node.inputs.len(), mapping)],
+                        vec![ProtoFusedSpec::AddUnicast(
+                            other_storage,
+                            node.inputs.len(),
+                            mapping,
+                        )],
                         &[other_input],
                     );
                 }
             } else {
-                let mut binop =
-                    if let Some(op) = op.binop.as_linalg_binop() { op } else { return Ok(None) };
+                let mut binop = if let Some(op) = op.binop.as_linalg_binop() {
+                    op
+                } else {
+                    return Ok(None);
+                };
                 let flipped = succ.inputs[0].node == node.id;
                 if flipped {
                     binop = binop.flip();
@@ -619,15 +668,13 @@ impl OptMatMul {
     fn guess_k(&self) -> Option<TDim> {
         self.micro_ops
             .iter()
-            .find_map(
-                |o| {
-                    if let ProtoFusedSpec::AddMatMul { geo, .. } = o {
-                        Some(geo)
-                    } else {
-                        None
-                    }
-                },
-            )
+            .find_map(|o| {
+                if let ProtoFusedSpec::AddMatMul { geo, .. } = o {
+                    Some(geo)
+                } else {
+                    None
+                }
+            })
             .map(|geo| geo.k.clone())
     }
 
