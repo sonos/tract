@@ -131,7 +131,7 @@ pub fn tract_to_gguf_q4_0_packing(data: &mut Blob) -> TractResult<()> {
         let second_part: &mut [u8; 8] = &mut [0; 8];
         second_part.clone_from_slice(&nibbles[8..]);
         for i in (0..16).rev() {
-            let lsb = if i % 2 == 0 { nibbles[i / 2] & 0x0F } else { nibbles[i / 2] & 0xF0 >> 4 };
+            let lsb = if i % 2 == 0 { nibbles[i / 2] & 0x0F } else { (nibbles[i / 2] & 0xF0) >> 4 };
             let msb = if i % 2 == 0 {
                 (second_part[i / 2] & 0x0F) << 4
             } else {
