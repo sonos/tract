@@ -98,7 +98,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
             let input_facts: TVec<_> = input_facts.iter().collect();
             let mut output_facts = op
                 .output_facts(&input_facts)
-                .with_context(|| format!("in output_facts invocation for {name}: {}", op.name()))?;
+                .with_context(|| format!("in output_facts invocation for {name}: {} with inputs {:?}", op.name(), &input_facts))?;
             for fact in &mut output_facts {
                 if fact.konst.is_none() && fact.shape.is_concrete() && fact.shape.volume().is_zero()
                 {
