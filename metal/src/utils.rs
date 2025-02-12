@@ -2,7 +2,6 @@ use crate::fact::{MetalFact, MetalOrigin, MetalTypedFactExt};
 use crate::MetalTensor;
 use num_traits::{AsPrimitive, Zero};
 use tract_core::internal::*;
-use tract_data::itertools::Itertools;
 use tract_linalg::frame::block_quant::{BlockQuantFact, BlockQuantValue, Q4_0};
 
 #[macro_export]
@@ -98,24 +97,31 @@ where
         .collect::<TVec<T>>())
 }
 
-pub fn is_q4_0(fact: &TypedFact) -> bool {
-    fact.opaque_fact.as_ref().is_some_and(|of| {
-        of.downcast_ref::<BlockQuantFact>().map(|bqf| bqf.format.same_as(&Q4_0)).unwrap_or(false)
+pub fn as_q40_fact(fact: &TypedFact) -> Option<BlockQuantFact> {
+    fact.opaque_fact
+    .as_ref()
+    .and_then(|of| of.downcast_ref::<BlockQuantFact>())
+    .map(|bqf| { if bqf.format.same_as(&Q4_0) { Some(bqf.clone()) } else { None }}).flatten()
+    .or_else(|| {
+        fact
+            .konst
+            .as_ref()
+            .and_then(|k| k.to_scalar::<Opaque>().ok())
+            .and_then(|o| o.downcast_ref::<BlockQuantValue>())
+            .map(|v| &v.fact)
+            .map(|bqf| { if bqf.format.same_as(&Q4_0) { Some(bqf.clone()) } else { None }}).flatten()
     })
 }
 
-pub fn resolve_tensor_shape(a: &MetalTensor) -> Vec<usize> {
+pub fn as_q40_tensor(a: &MetalTensor) -> Option<BlockQuantValue> {
     a.view()
         .tensor
         .to_scalar::<Opaque>()
+        .ok()
         .map(|od| {
             od.downcast_ref::<BlockQuantValue>()
-                .map(|bqv| {
-                    a.shape().iter().cloned().chain(bqv.fact.shape.iter().map(|d| *d)).collect_vec()
-                })
-                .unwrap_or(a.shape().to_vec())
-        })
-        .unwrap_or(a.shape().to_vec())
+            .map(|bqf| { if bqf.fact.format.same_as(&Q4_0) { Some(bqf.clone()) } else { None }}).flatten()
+        }).flatten()
 }
 
 pub fn tract_to_gguf_q4_0_packing(data: &mut Blob) -> TractResult<()> {

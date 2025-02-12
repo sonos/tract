@@ -1,11 +1,10 @@
 use crate::kernels::matmul::{GemmImpl, GemmKernel};
 use crate::ops::MetalEvalOp;
 
-use crate::utils::resolve_tensor_shape;
+use crate::utils::{as_q40_fact, as_q40_tensor};
 use crate::{MetalContext, MetalTensorExt};
 use anyhow::{bail, ensure};
 use tract_core::internal::*;
-use tract_core::tract_linalg::frame::block_quant::{BlockQuantFact, BlockQuantValue};
 
 #[derive(Debug, Default, Clone)]
 pub struct MetalGemm<K: GemmKernel> {
@@ -55,36 +54,14 @@ impl<K: GemmKernel> MetalGemm<K> {
             );
             let out_shape = self.kernel.output_shape(&a.shape, &b.shape);
             Ok(self.kernel.output_facts(&out_shape, a.datum_type, b.datum_type)?)
-        } else if let Some(opf) = inputs[0]
-            .opaque_fact
-            .as_ref()
-            .and_then(|of| of.downcast_ref::<BlockQuantFact>())
-            .or_else(|| {
-                inputs[0]
-                    .konst
-                    .as_ref()
-                    .and_then(|k| k.to_scalar::<Opaque>().ok())
-                    .and_then(|o| o.downcast_ref::<BlockQuantValue>())
-                    .map(|v| &v.fact)
-            })
+        } else if let Some(opf) = as_q40_fact(inputs[0])
         {
             let a_shape: ShapeFact =
                 a.shape.iter().cloned().chain(opf.shape.iter().map(|d| d.to_dim())).collect();
 
             let out_shape = self.kernel.output_shape(&a_shape, &b.shape);
             Ok(self.kernel.output_facts(&out_shape, a.datum_type, b.datum_type)?)
-        } else if let Some(opf) = inputs[1]
-            .opaque_fact
-            .as_ref()
-            .and_then(|of| of.downcast_ref::<BlockQuantFact>())
-            .or_else(|| {
-                inputs[1]
-                    .konst
-                    .as_ref()
-                    .and_then(|k| k.to_scalar::<Opaque>().ok())
-                    .and_then(|o| o.downcast_ref::<BlockQuantValue>())
-                    .map(|v| &v.fact)
-            })
+        } else if let Some(opf) = as_q40_fact(inputs[1])
         {
             let b_shape: ShapeFact =
                 b.shape.iter().cloned().chain(opf.shape.iter().map(|d| d.to_dim())).collect();
@@ -110,9 +87,14 @@ impl<K: GemmKernel + 'static> MetalEvalOp for MetalGemm<K> {
         let b = b_opaque
             .to_metal_tensor()
             .with_context(|| anyhow!("B tensor is not a metal tensor {:?}", b_opaque))?;
-        let c_dt = self.kernel.matmul.output_dt(a.datum_type(), b.datum_type())?;
+        
+        let b_shape = as_q40_tensor(&b).map(|bqv| {
+            b.shape().iter().cloned().chain(bqv.fact.shape.iter().map(|d| *d)).collect()
+        })
+        .unwrap_or(b.shape().to_vec());
 
-        let c_shape = self.kernel.output_shape(a.shape(), &resolve_tensor_shape(&b));
+        let c_dt = self.kernel.matmul.output_dt(a.datum_type(), b.datum_type())?;
+        let c_shape = self.kernel.output_shape(a.shape(), &b_shape);
         let c = crate::ops::make_tensor_for_node(session, node_id, c_dt, &c_shape)?;
         self.kernel.dispatch_eval(context, a, b, &c)?;
         Ok(tvec![c.into_opaque_tensor().into_tvalue()])

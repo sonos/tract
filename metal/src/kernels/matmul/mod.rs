@@ -12,7 +12,7 @@ pub use mlx_gemm::MlxGemm;
 pub use mmm_tile_8x8::{metal_mmm_tile_8x8, mmm_tile_8x8};
 pub use ggml_gemm::GgmlGemm;
 
-use crate::utils::resolve_tensor_shape;
+use crate::utils::as_q40_tensor;
 use crate::{MetalContext, MetalTensor};
 use metal::Buffer;
 use num_traits::One;
@@ -151,10 +151,10 @@ impl GemmDispatchParams {
 pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync {
     fn name() -> &'static str;
 
-    fn is_supported_dts(&self, facts: &[TypedFact]) -> TractResult<bool> {
-        ensure!(facts.len() == 2);
-        Ok(matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16)
-            && facts[0].datum_type == facts[1].datum_type)
+    fn is_supported_dts(&self, facts: &[TypedFact]) -> bool {
+        assert!(facts.len() == 2, "Expected 2 inputs for matmul");
+        matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16)
+            && facts[0].datum_type == facts[1].datum_type
     }
 
     fn output_dt(&self, a_dt: DatumType, b_dt: DatumType) -> TractResult<DatumType> {
@@ -227,8 +227,13 @@ impl<M: GemmKernel> GemmImpl<M> {
         a: &MetalTensor,
         b: &MetalTensor,
     ) -> TractResult<MetalTensor> {
+        let b_shape = as_q40_tensor(&b).map(|bqv| {
+            b.shape().iter().cloned().chain(bqv.fact.shape.iter().map(|d| *d)).collect()
+        })
+        .unwrap_or(b.shape().to_vec());
+
         let c_dt = self.matmul.output_dt(a.datum_type(), b.datum_type())?;
-        let c_shape = self.output_shape(a.shape(), &resolve_tensor_shape(b));
+        let c_shape = self.output_shape(a.shape(), &b_shape);
         let c = unsafe { MetalTensor::uninitialized_dt(c_dt, &c_shape)? };
 
         self.dispatch_eval(context, a, b, &c)?;
@@ -246,7 +251,12 @@ impl<M: GemmKernel> GemmImpl<M> {
         a.retain_until_completion();
         b.retain_until_completion();
         c.retain_until_completion();
-        let b_shape = resolve_tensor_shape(b);
+
+        let b_shape = as_q40_tensor(&b).map(|bqv| {
+            b.shape().iter().cloned().chain(bqv.fact.shape.iter().map(|d| *d)).collect()
+        })
+        .unwrap_or(b.shape().to_vec());
+    
         ensure!(c.shape() == self.output_shape(a.shape(), &b_shape).as_slice());
 
         if c.shape().iter().product::<usize>() == 0 {
