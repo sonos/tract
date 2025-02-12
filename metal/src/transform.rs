@@ -27,6 +27,7 @@ use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
 use tract_core::ops::nn::{Reduce, Softmax as CoreSoftmax};
+use tract_core::tract_linalg::frame::block_quant::BlockQuantValue;
 use tract_core::transform::ModelTransform;
 use tract_itertools::Itertools;
 
@@ -343,7 +344,7 @@ fn check_matmul_in_dts(gemm_impl: MetalGemmImplKind, in_facts: &[TypedFact]) -> 
         MetalGemmImplKind::Mlx => MlxGemm.is_supported_dts(in_facts),
         MetalGemmImplKind::Mps => MpsMatMul.is_supported_dts(in_facts),
         MetalGemmImplKind::Mfa => MfaGemm.is_supported_dts(in_facts),
-        MetalGemmImplKind::Ggml => GgmlGemm.is_supported_dts(in_facts),
+        MetalGemmImplKind::Ggml => Ok(GgmlGemm.is_supported_dts(in_facts).unwrap_or(false) || GgmlGemm.is_supported_dts(&[in_facts[1].clone(), in_facts[0].clone()]).unwrap_or(false)),
     };
     is_supported.unwrap_or(false)
 }
@@ -356,29 +357,45 @@ fn convert_matmul_to_metal(
     op: &BasicMatMul,
     gemm_impl: MetalGemmImplKind,
 ) -> TractResult<TVec<OutletId>> {
-    let matmul: Box<dyn TypedOp> = match gemm_impl {
+    let mut matmul_output = match gemm_impl {
         MetalGemmImplKind::Mlx => {
-            Box::new(ops::MetalGemm::<MlxGemm>::new(op.transpose_a, op.transpose_b))
+            let op = ops::MetalGemm::<MlxGemm>::new(op.transpose_a, op.transpose_b);
+            target.wire_node(node.name.clone(), op, inputs)?
         }
         MetalGemmImplKind::Mps => {
-            Box::new(ops::MetalGemm::<MpsMatMul>::new(op.transpose_a, op.transpose_b))
+            let op = ops::MetalGemm::<MpsMatMul>::new(op.transpose_a, op.transpose_b);
+            target.wire_node(node.name.clone(), op, inputs)?
         }
         MetalGemmImplKind::Mfa => {
-            Box::new(ops::MetalGemm::<MfaGemm>::new(op.transpose_a, op.transpose_b))
+            let op = ops::MetalGemm::<MfaGemm>::new(op.transpose_a, op.transpose_b);
+            target.wire_node(node.name.clone(), op, inputs)?
         }
         MetalGemmImplKind::Ggml => {
-            let input_facts: tract_smallvec::SmallVec<[&TypedFact; 4]> =
+            let mut input_facts: tract_smallvec::SmallVec<[&TypedFact; 4]> =
                 model.node_input_facts(node.id)?;
 
+            let mut swap_inputs = false;
+            if !GgmlGemm.is_supported_dts(&[input_facts[0].clone(), input_facts[1].clone()]).unwrap_or(false) && 
+                GgmlGemm.is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()]).unwrap_or(false)
+            {
+                println!("Swap inputs");
+                input_facts.swap(0, 1);
+                inputs.swap(0, 1);
+                swap_inputs = true;
+            }
+
+            let a_pos = swap_inputs as usize;
+            let b_pos = 1 - swap_inputs as usize;
             if op.transpose_a {
-                let rank = input_facts[0].rank();
-                let perm_a_op: Box<dyn TypedOp> =
-                    Box::new(ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
+                assert!(input_facts[a_pos].datum_type != DatumType::Opaque, "Cannot transpose Opaque tensor");
+
+                let rank = input_facts[a_pos].rank();
+                let perm_a_op = ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
                         rank - 2,
                         rank - 1,
-                    )));
+                    ));
                 let perm_a_name = node.name.clone() + ".perm_a";
-                inputs[0] = target.wire_node(perm_a_name, perm_a_op, &[inputs[0]])?[0];
+                inputs[a_pos] = target.wire_node(perm_a_name, perm_a_op, &[inputs[a_pos]])?[0];
             }
 
             if input_facts[0].datum_type == DatumType::F16 {
@@ -388,25 +405,36 @@ fn convert_matmul_to_metal(
             }
 
             if !op.transpose_b {
-                let rank = input_facts[1].rank();
-                let perm_b_op: Box<dyn TypedOp> =
-                    Box::new(ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
+                assert!(input_facts[b_pos].datum_type != DatumType::Opaque, "Cannot transpose Opaque tensor 1 ");
+
+                let rank = input_facts[b_pos].rank();
+                let perm_b_op= ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
                         rank - 2,
                         rank - 1,
-                    )));
+                    ));
                 let perm_b_name = node.name.clone() + ".perm_b";
-                inputs[1] = target.wire_node(perm_b_name, perm_b_op, &[inputs[1]])?[0];
+                inputs[b_pos] = target.wire_node(perm_b_name, perm_b_op, &[inputs[b_pos]])?[0];
             }
-            Box::new(ops::MetalGemm::<GgmlGemm>::new(false, true))
+            let op = ops::MetalGemm::<GgmlGemm>::new(false, true);
+            let mut matmul_output = target.wire_node(node.name.clone(), op, inputs)?;
+
+            if swap_inputs {
+                let out_fact = target.outlet_fact(matmul_output[0])?;
+                let rank = &out_fact.opaque_fact.clone().map(|fact| fact.clarify_dt_shape().unwrap().1.len()).unwrap();
+
+                let perm_out_op = ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
+                    rank - 2,
+                    rank - 1,
+                ));
+                matmul_output = target.wire_node(node.name.clone() + ".perm_out", perm_out_op, &matmul_output)?;
+            }
+            matmul_output
         }
     };
 
-    let new_in_facts = [target.outlet_fact(inputs[0])?, target.outlet_fact(inputs[1])?];
-
-    let out_fact = &matmul.output_facts(&new_in_facts)?[0];
+    let out_fact = target.outlet_fact(matmul_output[0])?;
     let out_dt = out_fact.to_metal_fact().map(|f| f.datum_type).unwrap_or(out_fact.datum_type);
 
-    let mut matmul_output = target.wire_node(node.name.clone(), matmul, inputs)?;
     let expected_dt = model.node_output_facts(node.id)?[0].datum_type;
 
     if out_dt != expected_dt {
@@ -446,8 +474,34 @@ fn convert_logic_ops_to_metal(op: &Comp) -> ops::MetalBinOp {
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {
-    let metal_fact = MetalFact::from_cpu(Arc::clone(&op.0).into())?;
-    let metal_const = op.0.clone().into_metal()?.into_opaque_tensor().into_arc_tensor();
+    let (tensor, metal_fact) = if op
+        .0
+        .clone()
+        .view()
+        .tensor
+        .to_scalar::<Opaque>()
+        .is_ok_and(|of| of.downcast_ref::<BlockQuantValue>().is_some())
+    {
+        let mut curr_bqv =
+            op.0.clone()
+                .view()
+                .tensor
+                .to_scalar::<Opaque>()?
+                .downcast_ref::<BlockQuantValue>()
+                .unwrap()
+                .clone();
+
+        crate::utils::tract_to_gguf_q4_0_packing(&mut (curr_bqv.value))?;
+
+        let bqv = BlockQuantValue { value: curr_bqv.clone().value, fact: curr_bqv.clone().fact };
+        (
+            tensor1(&[Opaque(Arc::new(bqv))]).into_arc_tensor(),
+            MetalFact::from_cpu(Arc::clone(&op.0).into())?,
+        )
+    } else {
+        (op.0.clone(), MetalFact::from_cpu(Arc::clone(&op.0).into())?)
+    };
+    let metal_const = tensor.into_metal()?.into_opaque_tensor().into_arc_tensor();
     Ok(Const::new_with_opaque_fact(metal_const, Box::new(metal_fact)))
 }
 
