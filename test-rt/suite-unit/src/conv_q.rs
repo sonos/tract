@@ -59,8 +59,16 @@ pub fn q_params(
             } else {
                 (0..20i32).boxed()
             };
-            let x0 = if idt.is_signed() { -10i32..10i32 } else { 0..20 };
-            let y0 = if odt.is_signed() { -10i32..10i32 } else { 0..20 };
+            let x0 = if idt.is_signed() {
+                -10i32..10i32
+            } else {
+                0..20
+            };
+            let y0 = if odt.is_signed() {
+                -10i32..10i32
+            } else {
+                0..20
+            };
             let k_scale_len = if per_channel { co } else { 1 };
             let k_scale = vec(-3..3i32, k_scale_len..=k_scale_len);
             (Just(per_channel), k0, x0, y0, k_scale, -3..3i32, -3..3i32)
@@ -71,7 +79,11 @@ pub fn q_params(
                 tensor0(x0),
                 tensor0(2f32.powi(x_scale)),
                 tensor0(k0),
-                if per_channel { tensor1(&k_scale_values) } else { tensor0(k_scale_values[0]) },
+                if per_channel {
+                    tensor1(&k_scale_values)
+                } else {
+                    tensor0(k_scale_values[0])
+                },
                 tensor0(y0),
                 tensor0(2f32.powi(y_scale)),
             ]
@@ -118,19 +130,59 @@ impl QConvProblem {
         let kdt = self.kernel.datum_type();
         let idt = self.data.datum_type();
         let odt = self.raw_output_dt;
-        assert!(k0 <= kdt.unquantized().max_value().cast_to_scalar::<i32>().unwrap());
-        assert!(k0 >= kdt.unquantized().min_value().cast_to_scalar::<i32>().unwrap());
-        assert!(x0 <= idt.unquantized().max_value().cast_to_scalar::<i32>().unwrap());
-        assert!(x0 >= idt.unquantized().min_value().cast_to_scalar::<i32>().unwrap());
-        assert!(y0 <= odt.unquantized().max_value().cast_to_scalar::<i32>().unwrap());
-        assert!(y0 >= odt.unquantized().min_value().cast_to_scalar::<i32>().unwrap());
+        assert!(
+            k0 <= kdt
+                .unquantized()
+                .max_value()
+                .cast_to_scalar::<i32>()
+                .unwrap()
+        );
+        assert!(
+            k0 >= kdt
+                .unquantized()
+                .min_value()
+                .cast_to_scalar::<i32>()
+                .unwrap()
+        );
+        assert!(
+            x0 <= idt
+                .unquantized()
+                .max_value()
+                .cast_to_scalar::<i32>()
+                .unwrap()
+        );
+        assert!(
+            x0 >= idt
+                .unquantized()
+                .min_value()
+                .cast_to_scalar::<i32>()
+                .unwrap()
+        );
+        assert!(
+            y0 <= odt
+                .unquantized()
+                .max_value()
+                .cast_to_scalar::<i32>()
+                .unwrap()
+        );
+        assert!(
+            y0 >= odt
+                .unquantized()
+                .min_value()
+                .cast_to_scalar::<i32>()
+                .unwrap()
+        );
         let shape_out: TVec<usize> = izip!(self.shape_in.hw_dims(), self.geo_ker())
             .map(|(i, k)| (*i + 1).saturating_sub(*k))
             .collect();
         let shape_out = self
             .shape_in
             .fmt
-            .from_n_c_hw(self.shape_in.n().cloned().unwrap_or(1), co_per_g * self.group, shape_out)
+            .from_n_c_hw(
+                self.shape_in.n().cloned().unwrap_or(1),
+                co_per_g * self.group,
+                shape_out,
+            )
             .unwrap();
         // a is the kernel, it can be quantized per O axis
         let k_scale = if self.qp[3].len() == 1 {
@@ -152,8 +204,9 @@ impl QConvProblem {
                     }
                     output_coords.insert(shape_out.c_axis(), 0);
                     for geo_ker in tract_ndarray::indices(self.geo_ker()) {
-                        let mut input_coords: TVec<usize> =
-                            izip!(geo_out.slice(), geo_ker.slice()).map(|(a, b)| a + b).collect();
+                        let mut input_coords: TVec<usize> = izip!(geo_out.slice(), geo_ker.slice())
+                            .map(|(a, b)| a + b)
+                            .collect();
                         if self.shape_in.fmt.has_n() {
                             input_coords.insert(0, n);
                         }
@@ -192,16 +245,30 @@ impl QConvProblem {
             temp += &bias.clone().into_shape_with_order(shape).unwrap();
         }
         let cdt = self.output_dt();
-        temp.axis_iter_mut(Axis(shape_out.c_axis())).zip(k_scale).for_each(
-            |(mut view, k_scale)| {
+        temp.axis_iter_mut(Axis(shape_out.c_axis()))
+            .zip(k_scale)
+            .for_each(|(mut view, k_scale)| {
                 view.mapv_inplace(|i| {
                     (round_ties_to_even(i as f32 / y_scale * k_scale * x_scale) as i32 + y0)
-                        .max(cdt.unquantized().min_value().cast_to_scalar::<i32>().unwrap())
-                        .min(cdt.unquantized().max_value().cast_to_scalar::<i32>().unwrap())
+                        .max(
+                            cdt.unquantized()
+                                .min_value()
+                                .cast_to_scalar::<i32>()
+                                .unwrap(),
+                        )
+                        .min(
+                            cdt.unquantized()
+                                .max_value()
+                                .cast_to_scalar::<i32>()
+                                .unwrap(),
+                        )
                 });
-            },
-        );
-        let mut tensor = temp.into_tensor().cast_to_dt(cdt.unquantized()).unwrap().into_owned();
+            });
+        let mut tensor = temp
+            .into_tensor()
+            .cast_to_dt(cdt.unquantized())
+            .unwrap()
+            .into_owned();
         unsafe { tensor.set_datum_type(cdt) };
         tensor
     }
@@ -268,13 +335,21 @@ impl Test for QConvProblem {
     ) -> infra::TestResult {
         let reference = self.reference();
         let mut model = self.tract().context("Building model")?;
-        model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
+        model
+            .properties
+            .insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
         let model = runtime.prepare(model).context("Preparing model")?;
         let idt = self.data.datum_type().quantize(QParams::ZpScale {
             zero_point: self.qp[0].cast_to_scalar()?,
             scale: *self.qp[1].to_scalar()?,
         });
-        let data = self.data.clone().into_tensor().cast_to_dt(idt)?.into_owned().into_tvalue();
+        let data = self
+            .data
+            .clone()
+            .into_tensor()
+            .cast_to_dt(idt)?
+            .into_owned()
+            .into_tvalue();
         let output = model.run(tvec!(data))?.remove(0);
         eprintln!("reference: {reference:?}\noutput   : {output:?}");
         output.close_enough(&reference, approx)
@@ -296,7 +371,11 @@ impl Arbitrary for QConvProblem {
             geo_rank.prop_flat_map(crate::shapes),
             prop_oneof![Just(DatumType::I8), Just(DatumType::U8)],
             prop_oneof![Just(DatumType::I8), Just(DatumType::U8)],
-            prop_oneof![Just(DatumType::I8), Just(DatumType::U8), Just(DatumType::I32)],
+            prop_oneof![
+                Just(DatumType::I8),
+                Just(DatumType::U8),
+                Just(DatumType::I32)
+            ],
         )
             .prop_flat_map(
                 move |(
@@ -342,7 +421,13 @@ impl Arbitrary for QConvProblem {
                             arr1(b.cast_to::<i32>().unwrap().as_slice::<i32>().unwrap())
                         }),
                     );
-                    (Just((kf, shape_in, co0 * group, group, odt)), data_in, kernel, bias, qp)
+                    (
+                        Just((kf, shape_in, co0 * group, group, odt)),
+                        data_in,
+                        kernel,
+                        bias,
+                        qp,
+                    )
                 },
             )
             .prop_map(
@@ -365,7 +450,14 @@ impl Arbitrary for QConvProblem {
 }
 
 fn qp_noop_i8() -> [Tensor; 6] {
-    [tensor0(0i32), tensor0(1f32), tensor0(0i32), tensor0(1f32), tensor0(0i32), tensor0(1f32)]
+    [
+        tensor0(0i32),
+        tensor0(1f32),
+        tensor0(0i32),
+        tensor0(1f32),
+        tensor0(0i32),
+        tensor0(1f32),
+    ]
 }
 
 pub fn suite() -> TractResult<TestSuite> {
@@ -1250,6 +1342,25 @@ pub fn suite() -> TractResult<TestSuite> {
             kernel: Tensor::zero::<i8>(&[2, 1, 1]).unwrap(),
             bias: None,
             data: Tensor::zero::<i8>(&[2, 1, 2]).unwrap(),
+            qp,
+            raw_output_dt: DatumType::I8,
+        },
+    );
+
+    let mut qp = qp_noop_i8();
+    qp[1] = tensor1(&[0.5f32]);
+    qp[3] = tensor1(&[1f32; 18]);
+    qp[5] = tensor1(&[0.5f32]);
+    suite.add(
+        "timeout_0",
+        QConvProblem {
+            shape_in: HWC.from_n_c_hw(1, 3, [1]).unwrap(),
+            co: 18,
+            kernel_format: OIHW,
+            group: 3,
+            kernel: Tensor::zero::<i8>(&[18, 1, 1]).unwrap(),
+            bias: None,
+            data: Tensor::zero::<i8>(&[1, 3]).unwrap(),
             qp,
             raw_output_dt: DatumType::I8,
         },
