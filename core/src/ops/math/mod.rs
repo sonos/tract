@@ -398,8 +398,8 @@ fn declutter_mul_const_mul_const(
     model: &TypedModel,
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
-    let input_fact = model.node_input_facts(node.id)?;
-    let Some(const_slot) = input_fact.iter().position(|f| f.konst.is_some()) else {
+    let input_facts = model.node_input_facts(node.id)?;
+    let Some(const_slot) = input_facts.iter().position(|f| f.konst.is_some()) else {
         return Ok(None);
     };
     let prec = model.node(node.inputs[1 - const_slot].node);
@@ -413,22 +413,30 @@ fn declutter_mul_const_mul_const(
         return Ok(None);
     }
     let prec_input_facts = model.node_input_facts(prec.id)?;
-    let Some(prec_konst_slot) = prec_input_facts.iter().position(|f| f.konst.is_some()) else {
+    let Some(prec_const_slot) = prec_input_facts.iter().position(|f| f.konst.is_some()) else {
         return Ok(None);
     };
 
-    let mut patch = TypedModelPatch::default();
-    let scalar_tap = patch.tap_model(model, node.inputs[const_slot])?;
-    let konst_tap = patch.tap_model(model, prec.inputs[prec_konst_slot])?;
+    let const_fact = model.outlet_fact(node.inputs[const_slot])?;
+    let prec_const_fact = model.outlet_fact(prec.inputs[prec_const_slot])?;
     // todo: extend to anything broadcast compatible
-    if !patch.outlet_fact(scalar_tap)?.shape.volume().is_one()
-        && !patch.outlet_fact(konst_tap)?.shape.volume().is_one()
-    {
+    if !const_fact.shape.volume().is_one() && !prec_const_fact.shape.volume().is_one() {
         return Ok(None);
     }
-    let input_tap = patch.tap_model(model, prec.inputs[1 - prec_konst_slot])?;
-    let new_k = patch.wire_node(&prec.name, mul(), &[scalar_tap, konst_tap])?;
-    let wire = patch.wire_node(&node.name, mul(), &[new_k[0], input_tap])?;
+    if !const_fact.datum_type.is_float() {
+        return Ok(None);
+    }
+    let result = mul()
+        .eval(tvec!(
+            const_fact.konst.clone().unwrap().into_tvalue(),
+            prec_const_fact.konst.clone().unwrap().into_tvalue()
+        ))?
+        .remove(0)
+        .into_arc_tensor();
+    let mut patch = TypedModelPatch::default();
+    let konst = patch.add_const(&prec.name, result)?;
+    let input_tap = patch.tap_model(model, prec.inputs[1 - prec_const_slot])?;
+    let wire = patch.wire_node(&node.name, mul(), &[konst, input_tap])?;
     patch.shunt_outside(model, node.id.into(), wire[0])?;
     Ok(Some(patch))
 }
