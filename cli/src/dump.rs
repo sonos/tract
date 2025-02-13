@@ -6,7 +6,7 @@ use fs_err as fs;
 use nu_ansi_term::Color::*;
 #[allow(unused_imports)]
 use nu_ansi_term::Style;
-use tract_core::ops::matmul::optimized::OptMatMul;
+use tract_core::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
 use tract_core::ops::matmul::pack::DynPackedOpaqueFact;
 use tract_hir::internal::*;
 use tract_itertools::Itertools;
@@ -360,6 +360,26 @@ pub fn mm_report(
     {
         let (m, k, n) = (op.m(), op.guess_k().unwrap_or(TDim::Val(0)), op.n());
         let facts = model.node_input_facts(node.id)?;
+        let packings = op
+            .micro_ops
+            .iter()
+            .find_map(|mo| {
+                if let ProtoFusedSpec::AddMatMul { packings, .. } = mo {
+                    Some(packings.clone())
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        let panel_extractor = packings
+            .iter()
+            .map(|(_, repack)| {
+                repack
+                    .as_ref()
+                    .map(|rp| rp.to_string())
+                    .unwrap_or("Ø".to_string())
+            })
+            .join(", ");
         let (pack_a, pack_b) = facts
             .iter()
             .take(2)
@@ -378,7 +398,6 @@ pub fn mm_report(
             })
             .collect_tuple()
             .unwrap();
-        let mmm = op.mmm.iter().map(|m| format!("{m:?}")).join(", ");
         let iters = op
             .c_fact
             .shape
@@ -387,6 +406,7 @@ pub fn mm_report(
             .filter(|(ix, _dim)| *ix != op.c_m_axis && *ix != op.c_n_axis)
             .map(|(_ix, d)| d)
             .product::<TDim>();
+        let mmm = op.mmm.iter().map(|m| format!("{m:?}")).join(", ");
         *configs
             .entry((
                 m,
@@ -396,6 +416,7 @@ pub fn mm_report(
                 facts[0].konst.is_some(),
                 mmm,
                 pack_a,
+                panel_extractor,
                 pack_b,
             ))
             .or_default() += 1;
@@ -403,18 +424,19 @@ pub fn mm_report(
 
     let mmm_width = configs.keys().map(|cf| cf.5.len()).max().unwrap_or(0);
     let pa_width = configs.keys().map(|cf| cf.6.len()).max().unwrap_or(0);
-    let pb_width = configs.keys().map(|cf| cf.7.len()).max().unwrap_or(0);
+    let panel_width = configs.keys().map(|cf| cf.7.len()).max().unwrap_or(0);
+    let pb_width = configs.keys().map(|cf| cf.8.len()).max().unwrap_or(0);
     println!(
-        "| count |     |     m |     k |     n | iters | {:^mmm_width$} | {:^pa_width$} | {:^pb_width$} |",
-        "kernels", "packing a", "packing b",
+        "| count |     |     m |     k |     n | iters | {:^mmm_width$} | {:^pa_width$} | {:^panel_width$} | {:^pb_width$} |",
+        "kernels", "packing a", "panel", "packing b",
     );
     for (config, count) in configs
         .iter()
         .sorted_by_key(|(conf, count)| (-(**count as isize), -(conf.0.as_i64().unwrap_or(0))))
     {
-        let (m, k, n, iters, w, mmm, pa, pb) = config;
+        let (m, k, n, iters, w, mmm, pa, panel, pb) = config;
         println!(
-            "| {count:>5} | {} | {:>5} | {:>5} | {:>5} | {:>5} | {mmm:^mmm_width$} | {pa:^pa_width$} | {pb:^pb_width$} |",
+            "| {count:>5} | {} | {:>5} | {:>5} | {:>5} | {:>5} | {mmm:^mmm_width$} | {pa:^pa_width$} | {panel:^panel_width$} | {pb:^pb_width$} |",
             if *w { "   " } else { "X•Y" },
             m.to_string(),
             k.to_string(),
