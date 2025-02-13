@@ -286,17 +286,15 @@ where
                     if TI::datum_type().is_float() {
                         match packing {
                             0 => add_mat_mul::<MR, NR, TI, TI, TI>(pa, pb, k, &mut ab),
-                            1 if TI::is::<f32>() => {
-                                add_mat_mul::<MR, NR, TI, f16, f16>(pa, pb, k, &mut ab)
-                            }
-                            1 if TI::is::<f16>() => {
-                                add_mat_mul::<MR, NR, TI, f32, f32>(pa, pb, k, &mut ab)
-                            }
-                            2 => add_mat_mul_pq40::<MR, NR, f16, TI>(pa, pb, k, &mut ab),
-                            3 => add_mat_mul_pq40_scales_at_end::<MR, NR, f16, TI>(
+                            1 => add_mat_mul::<MR, NR, TI, f16, f16>(pa, pb, k, &mut ab),
+                            2 => add_mat_mul::<MR, NR, TI, f32, f32>(pa, pb, k, &mut ab),
+                            3 => add_mat_mul::<MR, NR, TI, f16, f32>(pa, pb, k, &mut ab),
+                            4 => add_mat_mul::<MR, NR, TI, f32, f16>(pa, pb, k, &mut ab),
+                            5 => add_mat_mul_pq40::<MR, NR, f16, TI>(pa, pb, k, &mut ab),
+                            6 => add_mat_mul_pq40_scales_at_end::<MR, NR, f16, TI>(
                                 pa, pb, k, &mut ab,
                             ),
-                            4 => add_mat_mul_pq40::<MR, NR, f32, TI>(pa, pb, k, &mut ab),
+                            7 => add_mat_mul_pq40::<MR, NR, f32, TI>(pa, pb, k, &mut ab),
                             _ => unreachable!(),
                         }
                     } else if TI::datum_type() == i32::datum_type() {
@@ -348,26 +346,46 @@ fn pq40_r4_se() -> PackedBlockQuantFormat {
 
 // f16 kernels
 MMMRustKernel!(kernel::<f16, 4, 4> => generic_f16_4x4<f16>(4,4)
-    packing[1] = f32f32 => |k| k.with_packing(f32::packing(4), f32::packing(4));
-    store(f32, f64));
+    packing[1] = f16f16bis => |k| k.with_packing(f16::packing(4), f16::packing(4));
+    packing[2] = f32f32 => |k| k.with_packing(f32::packing(4), f32::packing(4));
+    packing[3] = f16f32 => |k| k.with_packing(f16::packing(4), f32::packing(4));
+    packing[4] = f32f16 => |k| k.with_packing(f32::packing(4), f16::packing(4));
+    packing[5] = q40f16 => |k| k.with_packing(pq40_r4(), f16::packing(4));
+    packing[6] = q40f16se => |k| k.with_packing(pq40_r4_se(), f16::packing(4));
+    packing[7] = q40f32 => |k| k.with_packing(pq40_r4(), f32::packing(4));
+    store(f32, f64)
+);
+
 MMMRustKernel! {kernel::<f16, 4, 1> => generic_f16_4x1<f16>(4,1)
-    packing[1] = f32f32 => |k| k.with_packing(f32::packing(4), f32::packing(1));
-    packing[2] = q40f16 => |k| k.with_packing_a(pq40_r4());
-    packing[3] = q40f16se => |k| k.with_packing_a(pq40_r4_se());
-    packing[4] = q40f32 => |k| k.with_packing(pq40_r4(), f32::packing(1));
+    packing[1] = f16f16bis => |k| k.with_packing(f16::packing(4), f16::packing(1));
+    packing[2] = f32f32 => |k| k.with_packing(f32::packing(4), f32::packing(1));
+    packing[3] = f16f32 => |k| k.with_packing(f16::packing(4), f32::packing(1));
+    packing[4] = f32f16 => |k| k.with_packing(f32::packing(4), f16::packing(1));
+    packing[5] = q40f16 => |k| k.with_packing(pq40_r4(), f16::packing(1));
+    packing[6] = q40f16se => |k| k.with_packing(pq40_r4_se(), f16::packing(1));
+    packing[7] = q40f32 => |k| k.with_packing(pq40_r4(), f32::packing(1));
     store(f32, f64)
 }
 
 // f32 kernels
 MMMRustKernel!(kernel::<f32, 4, 4> => generic_f32_4x4<f32>(4,4)
     packing[1] = f16f16 => |k| k.with_packing(f16::packing(4), f16::packing(4));
+    packing[2] = f32f32bis => |k| k.with_packing(f32::packing(4), f32::packing(4));
+    packing[3] = f16f32 => |k| k.with_packing(f16::packing(4), f32::packing(4));
+    packing[4] = f32f16 => |k| k.with_packing(f32::packing(4), f16::packing(4));
+    packing[5] = q40f16 => |k| k.with_packing(pq40_r4(), f16::packing(4));
+    packing[6] = q40f16se => |k| k.with_packing(pq40_r4_se(), f16::packing(4));
+    packing[7] = q40f32 => |k| k.with_packing(pq40_r4(), f32::packing(4));
     store(f16, f64)
 );
 MMMRustKernel! {kernel::<f32, 4, 1> => generic_f32_4x1<f32>(4,1)
     packing[1] = f16f16 => |k| k.with_packing(f16::packing(4), f16::packing(1));
-    packing[2] = q40f16 => |k| k.with_packing(pq40_r4(), f16::packing(1));
-    packing[3] = q40f16se => |k| k.with_packing(pq40_r4_se(), f16::packing(1));
-    packing[4] = q40f32 => |k| k.with_packing_a(pq40_r4());
+    packing[2] = f32f32bis => |k| k.with_packing(f32::packing(4), f32::packing(1));
+    packing[3] = f16f32 => |k| k.with_packing(f16::packing(4), f32::packing(1));
+    packing[4] = f32f16 => |k| k.with_packing(f32::packing(4), f16::packing(1));
+    packing[5] = q40f16 => |k| k.with_packing(pq40_r4(), f16::packing(1));
+    packing[6] = q40f16se => |k| k.with_packing(pq40_r4_se(), f16::packing(1));
+    packing[7] = q40f32 => |k| k.with_packing(pq40_r4(), f32::packing(1));
     store(f16, f64)
 }
 
@@ -399,26 +417,38 @@ MMMRustKernel! {kernel::<i32, 3, 2> => generic_i32_3x2<i32>(3,2)
 pub fn plug(ops: &mut Ops) {
     ops.mmm_kits.push(
         Kit::new(F32, &f32::packing(4))
-            .with_native(generic_f32_4x1.mmm(), 0)
-            .with_native(generic_f32_4x4.mmm(), 0)
-            .with_native(generic_f16_4x1.mmm(), 1)
-            .with_native(generic_f16_4x4.mmm(), 1)
+            .with_native(generic_f32_4x1.mmm(), 2)
+            .with_native(generic_f32_4x1.mmm(), 4)
+            .with_native(generic_f32_4x4.mmm(), 2)
+            .with_native(generic_f32_4x4.mmm(), 4)
+            .with_native(generic_f16_4x1.mmm(), 2)
+            .with_native(generic_f16_4x1.mmm(), 4)
+            .with_native(generic_f16_4x4.mmm(), 2)
+            .with_native(generic_f16_4x4.mmm(), 4)
             .with_generic_fallback(true),
     );
     ops.mmm_kits.push(
         Kit::new(Q4_0, &pq40_r4())
-            .with_native(generic_f32_4x1.mmm(), 2)
-            .with_native(generic_f32_4x1.mmm(), 4)
-            .with_native(generic_f16_4x1.mmm(), 2)
-            .with_native(generic_f16_4x1.mmm(), 4)
+            .with_native(generic_f32_4x1.mmm(), 5)
+            .with_native(generic_f32_4x1.mmm(), 7)
+            .with_native(generic_f32_4x4.mmm(), 5)
+            .with_native(generic_f32_4x4.mmm(), 7)
+            .with_native(generic_f16_4x1.mmm(), 5)
+            .with_native(generic_f16_4x1.mmm(), 7)
+            .with_native(generic_f16_4x4.mmm(), 5)
+            .with_native(generic_f16_4x4.mmm(), 7)
             .with_generic_fallback(true),
     );
     ops.mmm_kits.push(
         Kit::new(F16, &f16::packing(4))
             .with_native(generic_f32_4x1.mmm(), 1)
+            .with_native(generic_f32_4x1.mmm(), 3)
             .with_native(generic_f32_4x4.mmm(), 1)
-            .with_native(generic_f16_4x1.mmm(), 0)
-            .with_native(generic_f16_4x4.mmm(), 0)
+            .with_native(generic_f32_4x4.mmm(), 3)
+            .with_native(generic_f16_4x1.mmm(), 1)
+            .with_native(generic_f16_4x1.mmm(), 3)
+            .with_native(generic_f16_4x4.mmm(), 1)
+            .with_native(generic_f16_4x4.mmm(), 3)
             .with_generic_fallback(true),
     );
 }
