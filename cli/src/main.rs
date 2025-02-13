@@ -173,9 +173,24 @@ fn main() -> TractResult<()> {
                 .possible_values(STAGES)
                 .help("Loading pipeline stage to compare with"),
         )
-        .arg(Arg::new("tf").long("tf").takes_value(false).help("Compare against tensorflow"))
-        .arg(Arg::new("twice").long("twice").takes_value(false).help("Run twice and compare"))
-        .arg(Arg::new("npz").long("npz").takes_value(true).help("NPZ file to compare against"))
+        .arg(
+            Arg::new("tf")
+                .long("tf")
+                .takes_value(false)
+                .help("Compare against tensorflow"),
+        )
+        .arg(
+            Arg::new("twice")
+                .long("twice")
+                .takes_value(false)
+                .help("Run twice and compare"),
+        )
+        .arg(
+            Arg::new("npz")
+                .long("npz")
+                .takes_value(true)
+                .help("NPZ file to compare against"),
+        )
         .arg(
             Arg::new("pbdir")
                 .long("pbdir")
@@ -234,7 +249,11 @@ fn main() -> TractResult<()> {
                 .takes_value(true)
                 .help("Save the output tensor into a folder of nnef .dat files"),
         )
-        .arg(Arg::new("steps").long("steps").help("Show all inputs and outputs"))
+        .arg(
+            Arg::new("steps")
+                .long("steps")
+                .help("Show all inputs and outputs"),
+        )
         .arg(
             Arg::new("save-steps")
                 .long("save-steps")
@@ -269,8 +288,14 @@ fn main() -> TractResult<()> {
         let file = fs::File::create("readings.out").unwrap();
         let mut probe = Probe::new(file).unwrap();
         probe.register_i64("progress").unwrap();
-        let heartbeat = matches.value_of("readings-heartbeat").unwrap().parse::<f32>().unwrap();
-        probe.spawn_heartbeat(std::time::Duration::from_secs_f32(heartbeat / 1000.0)).unwrap();
+        let heartbeat = matches
+            .value_of("readings-heartbeat")
+            .unwrap()
+            .parse::<f32>()
+            .unwrap();
+        probe
+            .spawn_heartbeat(std::time::Duration::from_secs_f32(heartbeat / 1000.0))
+            .unwrap();
         Some(probe)
     } else {
         None
@@ -288,7 +313,9 @@ fn main() -> TractResult<()> {
 
     let env = env_logger::Env::default().filter_or("TRACT_LOG", "warn");
 
-    env_logger::Builder::from_env(env).format_timestamp_nanos().init();
+    env_logger::Builder::from_env(env)
+        .format_timestamp_nanos()
+        .init();
     info_usage("init", probe.as_ref());
 
     let res = if matches.is_present("metal-gpu-trace") {
@@ -296,10 +323,16 @@ fn main() -> TractResult<()> {
         {
             let gpu_trace_path =
                 std::path::Path::new(matches.value_of("metal-gpu-trace").unwrap()).to_path_buf();
-            ensure!(gpu_trace_path.is_absolute(), "Metal GPU trace file has to be absolute");
+            ensure!(
+                gpu_trace_path.is_absolute(),
+                "Metal GPU trace file has to be absolute"
+            );
             ensure!(
                 !gpu_trace_path.exists(),
-                format!("Given Metal GPU trace file {:?} already exists.", gpu_trace_path)
+                format!(
+                    "Given Metal GPU trace file {:?} already exists.",
+                    gpu_trace_path
+                )
             );
             log::info!("Capturing Metal GPU trace at : {:?}", gpu_trace_path);
             std::env::set_var("METAL_CAPTURE_ENABLED", "1");
@@ -536,35 +569,90 @@ fn output_options(command: clap::Command) -> clap::Command {
             arg!(--"opt-ram-order" "dump nodes in RAM optimising order"),
             arg!(-q --quiet "don't dump"),
         ])
-        .arg(Arg::new("debug-op").long("debug-op").help("show debug dump for each op"))
-        .arg(Arg::new("node-id").long("node-id").takes_value(true).help("Select a node to dump"))
+        .arg(
+            Arg::new("debug-op")
+                .long("debug-op")
+                .help("show debug dump for each op"),
+        )
+        .arg(
+            Arg::new("node-id")
+                .long("node-id")
+                .takes_value(true)
+                .help("Select a node to dump"),
+        )
         .arg(
             Arg::new("successors")
                 .long("successors")
                 .takes_value(true)
                 .help("Show successors of node"),
         )
-        .arg(Arg::new("op-name").long("op-name").takes_value(true).help("Select one op to dump"))
+        .arg(
+            Arg::new("op-name")
+                .long("op-name")
+                .takes_value(true)
+                .help("Select one op to dump"),
+        )
         .arg(
             Arg::new("node-name")
                 .long("node-name")
                 .takes_value(true)
                 .help("Select one node to dump"),
         )
-        .arg(Arg::new("const").long("const").help("also display consts nodes"))
-        .arg(Arg::new("info").long("info").help("show op inner information"))
-        .arg(Arg::new("io-long").long("io-long").help("show full i/o information"))
-        .arg(Arg::new("io-none").long("io-none").help("hide i/o information"))
-        .arg(Arg::new("json").long("json").help("dump performance info as json"))
-        .arg(Arg::new("outlet-labels").long("outlet-labels").help("display outlet labels"))
-        .arg(Arg::new("cost").long("cost").help("Include const information"))
+        .arg(
+            Arg::new("const")
+                .long("const")
+                .help("also display consts nodes"),
+        )
+        .arg(
+            Arg::new("info")
+                .long("info")
+                .help("show op inner information"),
+        )
+        .arg(
+            Arg::new("io-long")
+                .long("io-long")
+                .help("show full i/o information"),
+        )
+        .arg(
+            Arg::new("io-none")
+                .long("io-none")
+                .help("hide i/o information"),
+        )
+        .arg(
+            Arg::new("json")
+                .long("json")
+                .help("dump performance info as json"),
+        )
+        .arg(
+            Arg::new("mm")
+                .long("mm")
+                .help("display Matrix Multiplication report"),
+        )
+        .arg(
+            Arg::new("outlet-labels")
+                .long("outlet-labels")
+                .help("display outlet labels"),
+        )
+        .arg(
+            Arg::new("cost")
+                .long("cost")
+                .help("Include const information"),
+        )
         .arg(
             Arg::new("tmp_mem_usage")
                 .long("tmp-mem-usage")
                 .help("Include temporary memory usage information"),
         )
-        .arg(Arg::new("profile").long("profile").help("Include results for profile run"))
-        .arg(Arg::new("folded").long("folded").help("Don't display submodel informations"))
+        .arg(
+            Arg::new("profile")
+                .long("profile")
+                .help("Include results for profile run"),
+        )
+        .arg(
+            Arg::new("folded")
+                .long("folded")
+                .help("Don't display submodel informations"),
+        )
         .arg(
             Arg::new("invariants")
                 .takes_value(false)
@@ -603,7 +691,10 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                 Rgb(i, i, i)
             }
             for m in tract_linalg::ops().mmm_impls() {
-                println!("{}", color(true, m.generic_fallback()).paint(format!(" * {}", m.name())));
+                println!(
+                    "{}",
+                    color(true, m.generic_fallback()).paint(format!(" * {}", m.name()))
+                );
                 for packings in m.packings() {
                     println!(
                         "{}",
@@ -675,14 +766,24 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
 
     if let Some(threads) = matches.value_of("threads") {
         let threads: usize = threads.parse()?;
-        let threads = if threads == 0 { num_cpus::get_physical() } else { threads };
+        let threads = if threads == 0 {
+            num_cpus::get_physical()
+        } else {
+            threads
+        };
         multithread::set_default_executor(multithread::Executor::multithread(threads));
     }
 
     match matches.subcommand() {
         Some(("bench", m)) => {
             need_optimisations = true;
-            bench::handle(&params, &matches, m, &params::bench_limits_from_clap(m)?, probe)
+            bench::handle(
+                &params,
+                &matches,
+                m,
+                &params::bench_limits_from_clap(m)?,
+                probe,
+            )
         }
 
         Some(("criterion", m)) => {
@@ -690,9 +791,12 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             bench::criterion(&params, &matches, m)
         }
 
-        Some(("compare", m)) => {
-            compare::handle(&mut params, &matches, m, display_params_from_clap(&matches, m)?)
-        }
+        Some(("compare", m)) => compare::handle(
+            &mut params,
+            &matches,
+            m,
+            display_params_from_clap(&matches, m)?,
+        ),
 
         Some(("run", m)) => run::handle(&params, &matches, m),
 
@@ -730,9 +834,14 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
     }?;
 
     if need_optimisations {
-        let style = nu_ansi_term::Style::new().fg(nu_ansi_term::Color::Red).bold();
+        let style = nu_ansi_term::Style::new()
+            .fg(nu_ansi_term::Color::Red)
+            .bold();
         if !matches.is_present("optimize") {
-            warn!("{}", style.paint("Profiling an un-optimized network. Consider adding -O."));
+            warn!(
+                "{}",
+                style.paint("Profiling an un-optimized network. Consider adding -O.")
+            );
         }
         if cfg!(debug_assertions) {
             warn!("{}", style.paint("Profiling a debug build of tract!"));

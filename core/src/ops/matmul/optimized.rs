@@ -664,8 +664,9 @@ impl OptMatMul {
         it.update_trivial_path();
         Ok(it)
     }
-    // for cost and info
-    fn guess_k(&self) -> Option<TDim> {
+
+    // for auditing only (may return None if no AddMatMul is found)
+    pub fn guess_k(&self) -> Option<TDim> {
         self.micro_ops
             .iter()
             .find_map(|o| {
@@ -676,6 +677,14 @@ impl OptMatMul {
                 }
             })
             .map(|geo| geo.k.clone())
+    }
+
+    pub fn m(&self) -> &TDim {
+        &self.c_fact.shape[self.c_m_axis]
+    }
+
+    pub fn n(&self) -> &TDim {
+        &self.c_fact.shape[self.c_n_axis]
     }
 
     fn update_trivial_path(&mut self) {
