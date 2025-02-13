@@ -53,6 +53,7 @@ impl GemmKernel for MpsMatMul {
             transpose_b,
             b_offset,
             c_offset,
+            ..
         } = params;
 
         let dt = dts[0];

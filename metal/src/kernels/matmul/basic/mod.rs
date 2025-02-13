@@ -34,6 +34,7 @@ impl GemmKernel for BasicMatMul {
             transpose_b,
             b_offset,
             c_offset,
+            ..
         } = params;
 
         ensure!(

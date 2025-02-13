@@ -44,6 +44,7 @@ pub struct GemmDispatchParams {
     pub a_offset: usize,
     pub transpose_b: bool,
     pub b_offset: usize,
+    pub q40_b: bool,
     pub c_offset: usize,
 }
 
@@ -57,6 +58,7 @@ impl GemmDispatchParams {
         b_offset: usize,
         b_shape: &[usize],
         transpose_b: bool,
+        q40_b: bool,
         c_offset: usize,
         c_shape: &[usize],
     ) -> TractResult<Vec<GemmDispatchParams>> {
@@ -87,6 +89,7 @@ impl GemmDispatchParams {
                 a_offset,
                 transpose_b,
                 b_offset,
+                q40_b,
                 c_offset,
             }]),
             // bkm, 1kn -> bmn
@@ -103,6 +106,7 @@ impl GemmDispatchParams {
                     a_offset: a_offset + a_batch_idx * m * k * dts[0].size_of(),
                     transpose_b,
                     b_offset,
+                    q40_b,
                     c_offset: c_offset + a_batch_idx * m * n * dts[2].size_of(),
                 })
                 .collect()),
@@ -122,6 +126,7 @@ impl GemmDispatchParams {
                     a_offset,
                     transpose_b,
                     b_offset: b_offset + b_batch_idx * n * k * dts[1].size_of(),
+                    q40_b,
                     c_offset: c_offset + b_batch_idx * m * n * dts[2].size_of(),
                 })
                 .collect()),
@@ -142,6 +147,7 @@ impl GemmDispatchParams {
                     a_offset,
                     transpose_b,
                     b_offset,
+                    q40_b,
                     c_offset,
                 }])
             }
@@ -272,6 +278,7 @@ impl<M: GemmKernel> GemmImpl<M> {
             b.metal_offset(),
             &b_shape,
             self.transpose_b,
+            as_q40_tensor(&b).is_some(),
             c.metal_offset(),
             c.shape(),
         )?;
@@ -412,6 +419,7 @@ mod tests {
                 0,
                 &[1, k, n],
                 false,
+                false,
                 0,
                 &[1, m, n],
             )?,
@@ -425,6 +433,7 @@ mod tests {
                 a_offset: 0,
                 transpose_b: false,
                 b_offset: 0,
+                q40_b: false,
                 c_offset: 0,
             }]
         );
@@ -437,6 +446,7 @@ mod tests {
                 false,
                 0,
                 &[10, k, n],
+                false,
                 false,
                 0,
                 &[10, m, n],
@@ -451,6 +461,7 @@ mod tests {
                 a_offset: 0,
                 transpose_b: false,
                 b_offset: 0,
+                q40_b: false,
                 c_offset: 0,
             }]
         );
@@ -463,6 +474,7 @@ mod tests {
                 false,
                 0,
                 &[2, k, n],
+                false,
                 false,
                 10,
                 &[2, m, n],
@@ -478,6 +490,7 @@ mod tests {
                     a_offset: 0,
                     transpose_b: false,
                     b_offset: 0,
+                    q40_b: false,
                     c_offset: 10,
                 },
                 GemmDispatchParams {
@@ -490,6 +503,7 @@ mod tests {
                     a_offset: 0,
                     transpose_b: false,
                     b_offset: 1 * n * k * dt.size_of(),
+                    q40_b: false,
                     c_offset: 10 + m * n * dt.size_of(),
                 }
             ]
@@ -504,6 +518,7 @@ mod tests {
                 0,
                 &[2, k, n],
                 false,
+                false,
                 100,
                 &[2, m, n],
             )?,
@@ -517,6 +532,7 @@ mod tests {
                 a_offset: 0,
                 transpose_b: false,
                 b_offset: 0,
+                q40_b: false,
                 c_offset: 100,
             }]
         );
@@ -529,6 +545,7 @@ mod tests {
                 true,
                 0,
                 &[1, k, n],
+                false,
                 false,
                 100,
                 &[2, m, n],
@@ -544,6 +561,7 @@ mod tests {
                     a_offset: 0,
                     transpose_b: false,
                     b_offset: 0,
+                    q40_b: false,
                     c_offset: 100,
                 },
                 GemmDispatchParams {
@@ -556,6 +574,7 @@ mod tests {
                     a_offset: 1 * m * k * dt.size_of(),
                     transpose_b: false,
                     b_offset: 0,
+                    q40_b: false,
                     c_offset: 100 + 1 * m * n * dt.size_of(),
                 }
             ]
@@ -570,6 +589,7 @@ mod tests {
                 10,
                 &[1, k, n],
                 false,
+                false,
                 0,
                 &[10, m, n],
             )?,
@@ -583,6 +603,7 @@ mod tests {
                 a_offset: 0,
                 transpose_b: false,
                 b_offset: 10,
+                q40_b: false,
                 c_offset: 0,
             }]
         );
