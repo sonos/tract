@@ -245,6 +245,8 @@ impl MetalContext {
     pub fn wait_until_completed(&self) -> Result<()> {
         let Some(command_buffer) = self.command_buffer.borrow().to_owned() else { return Ok(()) };
 
+        command_buffer.encoder().end_encoding();
+
         match command_buffer.status() {
             metal::MTLCommandBufferStatus::Committed
             | metal::MTLCommandBufferStatus::Scheduled
@@ -255,9 +257,9 @@ impl MetalContext {
         }
         let command_buffer_id = self.command_buffer_id.load(Ordering::Relaxed);
         command_buffer.commit();
-        log::trace!("Command buffer {:?} commit", command_buffer_id);
+        log::info!("Command buffer {:?} commit", command_buffer_id);
         command_buffer.wait_until_completed();
-        log::trace!("Command buffer {:?} has completed (Blocking call)", command_buffer_id);
+        log::info!("Command buffer {:?} has completed (Blocking call)", command_buffer_id);
 
         // Clear local retained values used by the command buffer
         self.retained_tensors.borrow_mut().clear();

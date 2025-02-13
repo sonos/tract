@@ -1,6 +1,5 @@
 use metal::{
-    Buffer, CommandBuffer, ComputeCommandEncoderRef, ComputePassDescriptor, CounterSampleBuffer,
-    CounterSampleBufferDescriptor, Device, MTLResourceOptions, NSRange,
+    Buffer, CommandBuffer, ComputeCommandEncoder, ComputeCommandEncoderRef, ComputePassDescriptor, CounterSampleBuffer, CounterSampleBufferDescriptor, Device, MTLResourceOptions, NSRange
 };
 use std::cell::RefCell;
 use std::ops::{Deref, DerefMut};
@@ -121,6 +120,7 @@ impl MetalProfiler {
 #[derive(Debug, Clone)]
 pub struct TCommandBuffer {
     inner: CommandBuffer,
+    encoder: ComputeCommandEncoder,
     profiler: Option<Rc<RefCell<MetalProfiler>>>,
 }
 
@@ -129,7 +129,12 @@ impl TCommandBuffer {
         command_buffer: CommandBuffer,
         profiler: Option<Rc<RefCell<MetalProfiler>>>,
     ) -> Self {
-        TCommandBuffer { inner: command_buffer, profiler }
+        let encoder = command_buffer.new_compute_command_encoder().to_owned();
+        TCommandBuffer { inner: command_buffer, encoder, profiler: None }
+    }
+
+    pub fn encoder(&self) -> &ComputeCommandEncoder {
+        &self.encoder
     }
 
     pub fn encode<EncodeCallback>(&self, encode_cb: EncodeCallback)
@@ -154,8 +159,8 @@ impl TCommandBuffer {
             );
             blit_encoder.end_encoding();
         } else {
-            let encoder = self.inner.new_compute_command_encoder();
-            encode_cb(encoder);
+            //let encoder = self.inner.new_compute_command_encoder();
+            encode_cb(&self.encoder);
         };
     }
 }

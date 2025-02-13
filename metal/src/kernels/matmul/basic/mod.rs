@@ -140,7 +140,7 @@ impl BasicMatMul {
             encoder.use_resource(rhs_buffer, metal::MTLResourceUsage::Read);
             encoder.use_resource(output, metal::MTLResourceUsage::Write);
             encoder.dispatch_thread_groups(grid_size, group_size);
-            encoder.end_encoding();
+            
         });
         Ok(())
     }
@@ -187,7 +187,7 @@ impl BasicMatMul {
             encoder.use_resource(rhs_buffer, metal::MTLResourceUsage::Read);
             encoder.use_resource(output, metal::MTLResourceUsage::Write);
             encoder.dispatch_thread_groups(grid_size, group_size);
-            encoder.end_encoding();
+            
         });
         Ok(())
     }
