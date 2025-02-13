@@ -97,11 +97,11 @@ where
         .collect::<TVec<T>>())
 }
 
-pub fn as_q40_fact(fact: &TypedFact) -> Option<BlockQuantFact> {
+pub fn as_q40_fact(fact: &TypedFact) -> Option<&BlockQuantFact> {
     fact.opaque_fact
     .as_ref()
     .and_then(|of| of.downcast_ref::<BlockQuantFact>())
-    .map(|bqf| { if bqf.format.same_as(&Q4_0) { Some(bqf.clone()) } else { None }}).flatten()
+    .map(|bqf| { if bqf.format.same_as(&Q4_0) { Some(bqf) } else { None }}).flatten()
     .or_else(|| {
         fact
             .konst
@@ -109,18 +109,18 @@ pub fn as_q40_fact(fact: &TypedFact) -> Option<BlockQuantFact> {
             .and_then(|k| k.to_scalar::<Opaque>().ok())
             .and_then(|o| o.downcast_ref::<BlockQuantValue>())
             .map(|v| &v.fact)
-            .map(|bqf| { if bqf.format.same_as(&Q4_0) { Some(bqf.clone()) } else { None }}).flatten()
+            .map(|bqf| { if bqf.format.same_as(&Q4_0) { Some(bqf) } else { None }}).flatten()
     })
 }
 
-pub fn as_q40_tensor(a: &MetalTensor) -> Option<BlockQuantValue> {
+pub fn as_q40_tensor(a: &MetalTensor) -> Option<&BlockQuantValue> {
     a.view()
         .tensor
         .to_scalar::<Opaque>()
         .ok()
         .map(|od| {
             od.downcast_ref::<BlockQuantValue>()
-            .map(|bqf| { if bqf.fact.format.same_as(&Q4_0) { Some(bqf.clone()) } else { None }}).flatten()
+            .map(|bqf| { if bqf.fact.format.same_as(&Q4_0) { Some(bqf) } else { None }}).flatten()
         }).flatten()
 }
 
