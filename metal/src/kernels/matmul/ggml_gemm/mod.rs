@@ -64,12 +64,12 @@ impl GemmKernel for GgmlGemm {
             a_offset,
             transpose_b,
             b_offset,
+            q40_b,
             c_offset,
         } = params;
 
         ensure!(!transpose_a && transpose_b);
 
-        // Kernel output is transposed so we switch the inputs
         let a_el_size = dts[0].size_of();
         let a_strides = [
             (batch * m * k * a_el_size) as u64,
@@ -78,8 +78,7 @@ impl GemmKernel for GgmlGemm {
             a_el_size as u64,
         ];
 
-        let b_strides = if dts[1] == DatumType::Opaque {
-            // Assume Opaque == Q4. TODO
+        let b_strides = if q40_b {
             let b_el_size = 18;
             [
                 (batch * n * (k / 32) * b_el_size) as u64,
@@ -110,11 +109,11 @@ impl GemmKernel for GgmlGemm {
 
         if (dts[0] == DatumType::F32) && (k % 32 == 0) && (k >= 64) && (m > 4) {
             dispatch_metal_ggml_gemm(
-                context, dts, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer, c_offset,
+                context, dts, q40_b, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer, c_offset,
             )?;
         } else {
             dispatch_metal_ggml_gemv(
-                context, dts, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer, c_offset,
+                context, dts, q40_b, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer, c_offset,
             )?;
         }
 
@@ -124,6 +123,7 @@ impl GemmKernel for GgmlGemm {
 
 fn mv_kernel_name_and_dispatch_params(
     dts: &[DatumType],
+    q40_b: bool,
     params: &GgmlParams,
 ) -> Result<(String, (u64, u64, u64))> {
     let (nth0, nth1, nrows): (u64, u64, u64) = (32, 1, 1);
@@ -146,7 +146,7 @@ fn mv_kernel_name_and_dispatch_params(
             Ok(("kernel_mul_mv_f16_f16".to_string(), (nth0, nth1, 4)))
         }
     } else {
-        ensure!((dts[1] == DatumType::Opaque) && (dts[0] == DatumType::F32));
+        ensure!((q40_b) && (dts[0] == DatumType::F32));
         Ok(("kernel_mul_mv_q4_0_f32".to_string(), (8, 8, 1)))
     }
 }
@@ -155,6 +155,7 @@ fn mv_kernel_name_and_dispatch_params(
 fn dispatch_metal_ggml_gemv(
     context: &MetalContext,
     dts: [DatumType; 3],
+    q40_b: bool,
     params: GgmlParams,
     a_offset: usize,
     a_buffer: &Buffer,
@@ -163,7 +164,7 @@ fn dispatch_metal_ggml_gemv(
     output: &Buffer,
     output_offset: usize,
 ) -> Result<()> {
-    let (name, (nth0, nth1, nrows)) = mv_kernel_name_and_dispatch_params(&dts, &params)?;
+    let (name, (nth0, nth1, nrows)) = mv_kernel_name_and_dispatch_params(&dts, q40_b, &params)?;
     //dbg!(&name);
 
     let pipeline = context.shared_context().load_pipeline(LibraryName::Ggml, &name)?;
@@ -180,7 +181,7 @@ fn dispatch_metal_ggml_gemv(
         encoder.set_buffer(2, Some(a_buffer), a_offset as NSUInteger);
         encoder.set_buffer(3, Some(output), output_offset as NSUInteger);
 
-        let grid_size = if dts[1] != DatumType::Opaque {
+        let grid_size = if !q40_b {
             MTLSize {
                 width: params.n as u64,
                 height: (params.m as u64).div_ceil(nrows),
@@ -206,6 +207,7 @@ fn dispatch_metal_ggml_gemv(
 fn dispatch_metal_ggml_gemm(
     context: &MetalContext,
     dts: [DatumType; 3],
+    q40_b: bool,
     params: GgmlParams,
     a_offset: usize,
     a_buffer: &Buffer,
@@ -214,16 +216,15 @@ fn dispatch_metal_ggml_gemm(
     output: &Buffer,
     output_offset: usize,
 ) -> Result<()> {
-    // Warning: currently assuming opaque == q4_0,
     ensure!(
-        matches!(dts[1], DatumType::F32 | DatumType::F16 | DatumType::Opaque)
+        (matches!(dts[1], DatumType::F32 | DatumType::F16) || q40_b)
             && dts[0] == DatumType::F32
     );
 
     let mut i1_tname = MetalTensor::tname(dts[1])?;
     let i2_tname = MetalTensor::tname(dts[0])?;
 
-    if i1_tname == "opaque" {
+    if q40_b {
         i1_tname = "q4_0";
     }
     let name = format!("kernel_mul_mm_{i1_tname}_{i2_tname}");
