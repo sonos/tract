@@ -3,15 +3,20 @@ use crate::plan_options::plan_options_from_subcommand;
 use crate::tensor::run_params_from_subcommand;
 use crate::Parameters;
 use fs_err as fs;
+use nu_ansi_term::Color::*;
 #[allow(unused_imports)]
 use nu_ansi_term::Style;
+use tract_core::ops::matmul::optimized::OptMatMul;
+use tract_core::ops::matmul::pack::DynPackedOpaqueFact;
 use tract_hir::internal::*;
+use tract_itertools::Itertools;
 use tract_libcli::annotations::*;
 use tract_libcli::display_params::*;
 use tract_libcli::model::Model;
 use tract_libcli::profile::BenchLimits;
 use tract_libcli::tensor::retrieve_or_make_inputs;
 use tract_libcli::terminal;
+use tract_linalg::mmm::PackedOpaqueFact;
 
 #[allow(unused_variables)]
 pub fn annotate_with_graph_def(
@@ -78,11 +83,12 @@ fn annotate_with_onnx_model(
 
     let bold = Style::new().bold();
     for gnode in model_proto.graph.as_ref().unwrap().node.iter() {
-        if let Some(id) = model
-            .node_id_by_name(&gnode.name)
-            .ok()
-            .or_else(|| gnode.output.first().and_then(|n| model.node_id_by_name(n).ok()))
-        {
+        if let Some(id) = model.node_id_by_name(&gnode.name).ok().or_else(|| {
+            gnode
+                .output
+                .first()
+                .and_then(|n| model.node_id_by_name(n).ok())
+        }) {
             let mut v = vec![];
             for a in gnode.attribute.iter() {
                 let value = if let Some(t) = &a.t {
@@ -187,7 +193,12 @@ pub fn handle(
         for (name, expected) in asserts {
             let count = crate::utils::count_op(model, name)?;
             if count != *expected {
-                bail!("Wrong number of {} operators: expected {}, got {}", name, expected, count);
+                bail!(
+                    "Wrong number of {} operators: expected {}, got {}",
+                    name,
+                    expected,
+                    count
+                );
             }
         }
     }
@@ -262,7 +273,9 @@ pub fn handle(
         if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
             rename_outputs(&mut typed, sub_matches)?;
             let file = fs::File::create(path)?;
-            tflite.write(&typed, file).context("Writing model to tflite")?;
+            tflite
+                .write(&typed, file)
+                .context("Writing model to tflite")?;
         } else {
             bail!("Only typed model can be dumped")
         }
@@ -275,14 +288,20 @@ pub fn handle(
 
     if options.cost {
         let total = annotations.tags.values().sum::<NodeTags>();
-        let assert =
-            sub_matches.value_of("assert-cost").map(crate::cost::parse_costs).transpose()?;
+        let assert = sub_matches
+            .value_of("assert-cost")
+            .map(crate::cost::parse_costs)
+            .transpose()?;
         if let Some(assert) = assert {
             let assert: HashMap<Cost, TDim> =
                 assert.iter().map(|(c, n)| (*c, n.to_dim())).collect();
             let total = total.cost.iter().cloned().collect::<HashMap<_, _>>();
             if assert != total {
-                bail!("Cost assertion not met: expected {:?} got {:?}", assert, total);
+                bail!(
+                    "Cost assertion not met: expected {:?} got {:?}",
+                    assert,
+                    total
+                );
             }
         }
     }
@@ -293,6 +312,10 @@ pub fn handle(
     } else {
         terminal::render(model, &annotations, options)?;
         terminal::render_summaries(model, &annotations, options)?;
+    }
+
+    if options.mm {
+        mm_report(params, options, matches, sub_matches)?;
     }
 
     Ok(())
@@ -308,6 +331,96 @@ fn rename_outputs(typed: &mut TypedModel, sub_matches: &clap::ArgMatches) -> Tra
             )?;
             typed.outputs[ix] = output[0];
         }
+    }
+    Ok(())
+}
+pub fn mm_report(
+    params: &Parameters,
+    _options: &DisplayParams,
+    _matches: &clap::ArgMatches,
+    _sub_matches: &clap::ArgMatches,
+) -> TractResult<()> {
+    println!("{}", White.bold().paint("# Matrix multiplication"));
+    let Some(model) = params.tract_model.downcast_ref::<TypedModel>() else {
+        println!("Only available on TypedModel");
+        return Ok(());
+    };
+    let count = model
+        .nodes
+        .iter()
+        .filter(|n| n.op_is::<OptMatMul>())
+        .count();
+    println!("* {count} matrix multiplications");
+    let mut configs: HashMap<_, usize> = HashMap::new();
+
+    for (node, op) in model
+        .nodes
+        .iter()
+        .filter_map(|n| n.op_as::<OptMatMul>().map(|m| (n, m)))
+    {
+        let (m, k, n) = (op.m(), op.guess_k().unwrap_or(TDim::Val(0)), op.n());
+        let facts = model.node_input_facts(node.id)?;
+        let (pack_a, pack_b) = facts
+            .iter()
+            .take(2)
+            .map(|fact| {
+                fact.opaque_fact
+                    .as_ref()
+                    .and_then(|of| {
+                        of.downcast_ref::<DynPackedOpaqueFact>()
+                            .map(|of| of.packers.iter().map(|m| format!("{m}")).join(", "))
+                            .or_else(|| {
+                                of.downcast_ref::<PackedOpaqueFact>()
+                                    .map(|pof| format!("{}", pof.format))
+                            })
+                    })
+                    .unwrap_or(String::new())
+            })
+            .collect_tuple()
+            .unwrap();
+        let mmm = op.mmm.iter().map(|m| format!("{m:?}")).join(", ");
+        let iters = op
+            .c_fact
+            .shape
+            .iter()
+            .enumerate()
+            .filter(|(ix, _dim)| *ix != op.c_m_axis && *ix != op.c_n_axis)
+            .map(|(_ix, d)| d)
+            .product::<TDim>();
+        *configs
+            .entry((
+                m,
+                k,
+                n,
+                iters,
+                facts[0].konst.is_some(),
+                mmm,
+                pack_a,
+                pack_b,
+            ))
+            .or_default() += 1;
+    }
+
+    let mmm_width = configs.keys().map(|cf| cf.5.len()).max().unwrap_or(0);
+    let pa_width = configs.keys().map(|cf| cf.6.len()).max().unwrap_or(0);
+    let pb_width = configs.keys().map(|cf| cf.7.len()).max().unwrap_or(0);
+    println!(
+        "| count |     |     m |     k |     n | iters | {:^mmm_width$} | {:^pa_width$} | {:^pb_width$} |",
+        "kernels", "packing a", "packing b",
+    );
+    for (config, count) in configs
+        .iter()
+        .sorted_by_key(|(conf, count)| (-(**count as isize), -(conf.0.as_i64().unwrap_or(0))))
+    {
+        let (m, k, n, iters, w, mmm, pa, pb) = config;
+        println!(
+            "| {count:>5} | {} | {:>5} | {:>5} | {:>5} | {:>5} | {mmm:^mmm_width$} | {pa:^pa_width$} | {pb:^pb_width$} |",
+            if *w { "   " } else { "X•Y" },
+            m.to_string(),
+            k.to_string(),
+            n.to_string(),
+            iters.to_string()
+        );
     }
     Ok(())
 }
