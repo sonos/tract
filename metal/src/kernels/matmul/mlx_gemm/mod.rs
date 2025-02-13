@@ -260,7 +260,7 @@ pub fn dispatch_metal_mlx_gemv(
         encoder.use_resource(b_buffer, metal::MTLResourceUsage::Read);
         encoder.use_resource(output, metal::MTLResourceUsage::Write);
         encoder.dispatch_thread_groups(grid_size, group_size);
-        encoder.end_encoding();
+        
     });
     Ok(())
 }
@@ -409,7 +409,7 @@ pub fn dispatch_metal_mlx_gemm(
         encoder.use_resource(rhs_buffer, metal::MTLResourceUsage::Read);
         encoder.use_resource(output, metal::MTLResourceUsage::Write);
         encoder.dispatch_thread_groups(grid_size, group_size);
-        encoder.end_encoding();
+        
     });
     if debug {
         context.wait_until_completed()?;

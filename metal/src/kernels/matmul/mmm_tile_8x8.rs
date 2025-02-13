@@ -67,7 +67,7 @@ pub fn metal_mmm_tile_8x8(
         };
         let group_size = MTLSize { width: 32, height: 2, depth: 1 };
         encoder.dispatch_thread_groups(grid_size, group_size);
-        encoder.end_encoding();
+        
     });
     Ok(())
 }

@@ -84,7 +84,7 @@ impl Reducer {
             let group_size =
                 MTLSize { width: usize::min(32, input_shape_nd3[1]) as _, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid_size, group_size);
-            encoder.end_encoding();
+            
         });
         Ok(())
     }
