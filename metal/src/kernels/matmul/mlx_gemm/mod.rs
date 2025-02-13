@@ -73,6 +73,7 @@ impl GemmKernel for MlxGemm {
             transpose_b,
             b_offset,
             c_offset,
+            ..
         } = params;
 
         let a_strides = if transpose_a {
