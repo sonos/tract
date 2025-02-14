@@ -1,10 +1,10 @@
+use crate::utils::as_q40_tensor;
 use crate::MetalTensor;
 use anyhow::Result;
 use metal::Buffer;
 use num_traits::AsPrimitive;
 use std::fmt::Display;
 use tract_core::internal::*;
-use tract_linalg::frame::block_quant::BlockQuantValue;
 
 #[derive(Debug, Clone, Hash)]
 pub enum MValue {
@@ -138,15 +138,9 @@ impl OwnedMetalTensor {
                 tensor_view.datum_type(),
             );
 
-            let data_bytes = if tensor_view.datum_type() == DatumType::Opaque {
-                &tensor_view
-                    .tensor
-                    .to_scalar::<Opaque>()
-                    .map(|od| od.downcast_ref::<BlockQuantValue>().unwrap())?
-                    .value
-            } else {
-                tensor_view.tensor.as_bytes()
-            };
+            let data_bytes = as_q40_tensor(tensor_view.tensor)
+                .map(|bqv| bqv.value.as_bytes())
+                .unwrap_or(tensor_view.tensor.as_bytes());
 
             let buffer = ctxt.buffer_from_slice(data_bytes);
             Ok(OwnedMetalTensor { inner: m_value, metal: buffer })
