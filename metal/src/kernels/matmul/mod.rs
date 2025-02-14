@@ -234,7 +234,7 @@ impl<M: GemmKernel> GemmImpl<M> {
         a: &MetalTensor,
         b: &MetalTensor,
     ) -> TractResult<MetalTensor> {
-        let b_shape = as_q40_tensor(&b)
+        let b_shape = as_q40_tensor(b.view().tensor)
             .map(|bqv| b.shape().iter().cloned().chain(bqv.fact.shape.iter().map(|d| *d)).collect())
             .unwrap_or(b.shape().to_vec());
 
@@ -258,7 +258,8 @@ impl<M: GemmKernel> GemmImpl<M> {
         b.retain_until_completion();
         c.retain_until_completion();
 
-        let b_shape = as_q40_tensor(&b)
+        let q40_b = as_q40_tensor(b.view().tensor);
+        let b_shape = q40_b
             .map(|bqv| b.shape().iter().cloned().chain(bqv.fact.shape.iter().map(|d| *d)).collect())
             .unwrap_or(b.shape().to_vec());
 
@@ -276,7 +277,7 @@ impl<M: GemmKernel> GemmImpl<M> {
             b.metal_offset(),
             &b_shape,
             self.transpose_b,
-            as_q40_tensor(&b).is_some(),
+            q40_b.is_some(),
             c.metal_offset(),
             c.shape(),
         )?;

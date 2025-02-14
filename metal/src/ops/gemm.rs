@@ -86,7 +86,7 @@ impl<K: GemmKernel + 'static> MetalEvalOp for MetalGemm<K> {
             .to_metal_tensor()
             .with_context(|| anyhow!("B tensor is not a metal tensor {:?}", b_opaque))?;
 
-        let b_shape = as_q40_tensor(&b)
+        let b_shape = as_q40_tensor(b.view().tensor)
             .map(|bqv| b.shape().iter().cloned().chain(bqv.fact.shape.iter().map(|d| *d)).collect())
             .unwrap_or(b.shape().to_vec());
 

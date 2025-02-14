@@ -14,7 +14,7 @@ use crate::rewrite_rules::{
     BasicSilu,
 };
 use crate::tensor::MetalTensorExt;
-use crate::utils::as_q40_fact;
+use crate::utils::{as_q40_fact, as_q40_tensor};
 use crate::{IntoMetal, MetalFact, MetalTensor};
 use std::borrow::Cow;
 use std::fmt::Debug;
@@ -485,16 +485,7 @@ fn convert_logic_ops_to_metal(op: &Comp) -> ops::MetalBinOp {
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {
-    let (tensor, metal_fact) = if let Some(curr_bqv) = op
-        .0
-        .view()
-        .tensor
-        .to_scalar::<Opaque>()
-        .ok()
-        .and_then(|of| of.downcast_ref::<BlockQuantValue>())
-        .map(|bqv| if bqv.fact.format.same_as(&Q4_0) { Some(bqv) } else { None })
-        .flatten()
-    {   
+    let (tensor, metal_fact) = if let Some(curr_bqv) = as_q40_tensor(op.0.view().tensor) {
         let mut bqv = curr_bqv.clone();
         crate::utils::tract_to_gguf_q4_0_packing(&mut (bqv.value))?;
 
