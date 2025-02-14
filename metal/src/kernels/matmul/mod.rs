@@ -233,10 +233,9 @@ impl<M: GemmKernel> GemmImpl<M> {
         a: &MetalTensor,
         b: &MetalTensor,
     ) -> TractResult<MetalTensor> {
-        let b_shape = as_q40_tensor(&b).map(|bqv| {
-            b.shape().iter().cloned().chain(bqv.fact.shape.iter().map(|d| *d)).collect()
-        })
-        .unwrap_or(b.shape().to_vec());
+        let b_shape = as_q40_tensor(&b)
+            .map(|bqv| b.shape().iter().cloned().chain(bqv.fact.shape.iter().map(|d| *d)).collect())
+            .unwrap_or(b.shape().to_vec());
 
         let c_dt = self.matmul.output_dt(a.datum_type(), b.datum_type())?;
         let c_shape = self.output_shape(a.shape(), &b_shape);
@@ -258,11 +257,10 @@ impl<M: GemmKernel> GemmImpl<M> {
         b.retain_until_completion();
         c.retain_until_completion();
 
-        let b_shape = as_q40_tensor(&b).map(|bqv| {
-            b.shape().iter().cloned().chain(bqv.fact.shape.iter().map(|d| *d)).collect()
-        })
-        .unwrap_or(b.shape().to_vec());
-    
+        let b_shape = as_q40_tensor(&b)
+            .map(|bqv| b.shape().iter().cloned().chain(bqv.fact.shape.iter().map(|d| *d)).collect())
+            .unwrap_or(b.shape().to_vec());
+
         ensure!(c.shape() == self.output_shape(a.shape(), &b_shape).as_slice());
 
         if c.shape().iter().product::<usize>() == 0 {
@@ -721,7 +719,7 @@ mod tests {
                     let lhs_data: Vec<F> = (0..b * m * k)  // Create a vector with 10 elements
                     .map(|_| F::from(rng.gen_range(0.0..1.0)).unwrap()) // Generate a random float in [0.0, 1.0)
                     .collect();
-                    
+
                     let rhs_data: Vec<F> = (0..b * n * k)  // Create a vector with 10 elements
                     .map(|_| F::from(rng.gen_range(0.0..1.0)).unwrap()) // Generate a random float in [0.0, 1.0)
                     .collect();

@@ -37,9 +37,11 @@ impl GemmKernel for GgmlGemm {
     fn is_supported_dts(&self, facts: &[TypedFact]) -> bool {
         assert!(facts.len() == 2, "Ggml: Expected 2 inputs for Matmul");
 
-        (as_q40_fact(&facts[1]).is_some() && matches!(facts[0].datum_type, DatumType::F16 | DatumType::F32)) ||
-        ((facts[1].datum_type == DatumType::F32) && (facts[0].datum_type == DatumType::F32)) ||
-        ((facts[1].datum_type == DatumType::F16) && matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16))
+        (as_q40_fact(&facts[1]).is_some()
+            && matches!(facts[0].datum_type, DatumType::F16 | DatumType::F32))
+            || ((facts[1].datum_type == DatumType::F32) && (facts[0].datum_type == DatumType::F32))
+            || ((facts[1].datum_type == DatumType::F16)
+                && matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16))
     }
 
     fn output_dt(&self, _a_dt: DatumType, _b_dt: DatumType) -> TractResult<DatumType> {
@@ -109,11 +111,13 @@ impl GemmKernel for GgmlGemm {
 
         if (dts[0] == DatumType::F32) && (k % 32 == 0) && (k >= 64) && (m > 4) {
             dispatch_metal_ggml_gemm(
-                context, dts, q40_b, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer, c_offset,
+                context, dts, q40_b, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer,
+                c_offset,
             )?;
         } else {
             dispatch_metal_ggml_gemv(
-                context, dts, q40_b, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer, c_offset,
+                context, dts, q40_b, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer,
+                c_offset,
             )?;
         }
 
@@ -217,8 +221,7 @@ fn dispatch_metal_ggml_gemm(
     output_offset: usize,
 ) -> Result<()> {
     ensure!(
-        (matches!(dts[1], DatumType::F32 | DatumType::F16) || q40_b)
-            && dts[0] == DatumType::F32
+        (matches!(dts[1], DatumType::F32 | DatumType::F16) || q40_b) && dts[0] == DatumType::F32
     );
 
     let mut i1_tname = MetalTensor::tname(dts[1])?;
