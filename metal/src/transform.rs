@@ -26,7 +26,7 @@ use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
 use tract_core::ops::nn::{Reduce, Softmax as CoreSoftmax};
-use tract_core::tract_linalg::frame::block_quant::{BlockQuantValue, Q4_0};
+use tract_core::tract_linalg::frame::block_quant::BlockQuantValue;
 use tract_core::transform::ModelTransform;
 use tract_itertools::Itertools;
 
@@ -338,15 +338,14 @@ macro_rules! map_element_wise_ops {
 }
 
 fn check_matmul_in_dts(gemm_impl: MetalGemmImplKind, in_facts: &[TypedFact]) -> bool {
-    let is_supported = match gemm_impl {
+    match gemm_impl {
         MetalGemmImplKind::Mlx => MlxGemm.is_supported_dts(in_facts),
         MetalGemmImplKind::Mfa => MfaGemm.is_supported_dts(in_facts),
         MetalGemmImplKind::Ggml => {
             GgmlGemm.is_supported_dts(in_facts)
                 || GgmlGemm.is_supported_dts(&[in_facts[1].clone(), in_facts[0].clone()])
         }
-    };
-    is_supported
+    }
 }
 
 fn convert_matmul_to_metal(
@@ -382,7 +381,7 @@ fn convert_matmul_to_metal(
             let a_pos = swap_inputs as usize;
             let b_pos = 1 - swap_inputs as usize;
             if op.transpose_a {
-                assert!(!as_q40_fact(input_facts[a_pos]).is_some(), "Cannot transpose Q40 tensor");
+                assert!(as_q40_fact(input_facts[b_pos]).is_none(), "Cannot transpose Q40 tensor");
 
                 let rank = input_facts[a_pos].rank();
                 let perm_a_op = ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
@@ -400,7 +399,7 @@ fn convert_matmul_to_metal(
             }
 
             if !op.transpose_b {
-                assert!(!as_q40_fact(input_facts[b_pos]).is_some(), "Cannot transpose Q40 tensor");
+                assert!(as_q40_fact(input_facts[b_pos]).is_none(), "Cannot transpose Q40 tensor");
 
                 let rank = input_facts[b_pos].rank();
                 let perm_b_op = ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(

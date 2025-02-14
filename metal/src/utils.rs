@@ -1,5 +1,4 @@
 use crate::fact::{MetalFact, MetalOrigin, MetalTypedFactExt};
-use crate::MetalTensor;
 use num_traits::{AsPrimitive, Zero};
 use tract_core::internal::*;
 use tract_linalg::frame::block_quant::{BlockQuantFact, BlockQuantValue, Q4_0};
@@ -101,28 +100,27 @@ pub fn as_q40_fact(fact: &TypedFact) -> Option<&BlockQuantFact> {
     fact.opaque_fact
         .as_ref()
         .and_then(|of| of.downcast_ref::<BlockQuantFact>())
-        .map(|bqf| if bqf.format.same_as(&Q4_0) { Some(bqf) } else { None })
-        .flatten()
+        .and_then(|bqf| if bqf.format.same_as(&Q4_0) { Some(bqf) } else { None })
         .or_else(|| {
             fact.konst
                 .as_ref()
                 .and_then(|k| k.to_scalar::<Opaque>().ok())
                 .and_then(|o| o.downcast_ref::<BlockQuantValue>())
                 .map(|v| &v.fact)
-                .map(|bqf| if bqf.format.same_as(&Q4_0) { Some(bqf) } else { None })
-                .flatten()
+                .and_then(|bqf| if bqf.format.same_as(&Q4_0) { Some(bqf) } else { None })
         })
 }
 
 pub fn as_q40_tensor(a: &Tensor) -> Option<&BlockQuantValue> {
-    a.to_scalar::<Opaque>()
-        .ok()
-        .map(|od| {
-            od.downcast_ref::<BlockQuantValue>()
-                .map(|bqv| if bqv.fact.format.same_as(&Q4_0) { Some(bqv) } else { None })
-                .flatten()
+    a.to_scalar::<Opaque>().ok().and_then(|od| {
+        od.downcast_ref::<BlockQuantValue>().and_then(|bqv| {
+            if bqv.fact.format.same_as(&Q4_0) {
+                Some(bqv)
+            } else {
+                None
+            }
         })
-        .flatten()
+    })
 }
 
 pub fn tract_to_gguf_q4_0_packing(data: &mut Blob) -> TractResult<()> {
