@@ -114,10 +114,8 @@ pub fn as_q40_fact(fact: &TypedFact) -> Option<&BlockQuantFact> {
         })
 }
 
-pub fn as_q40_tensor(a: &MetalTensor) -> Option<&BlockQuantValue> {
-    a.view()
-        .tensor
-        .to_scalar::<Opaque>()
+pub fn as_q40_tensor(a: &Tensor) -> Option<&BlockQuantValue> {
+    a.to_scalar::<Opaque>()
         .ok()
         .map(|od| {
             od.downcast_ref::<BlockQuantValue>()
