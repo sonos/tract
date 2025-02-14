@@ -1,5 +1,6 @@
 use crate::block_quant::*;
 use crate::kit::Kit;
+use crate::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::mmm::MatMatMulKer;
 use crate::pack::{PackedFormat, Packing};
 use crate::Ops;
@@ -10,12 +11,12 @@ use DatumType::*;
 
 use super::*;
 
-MMMExternKernel!(fma_mmm_f32_8x8 <f32>(8, 8)@(32,4) where(FMA));
-MMMExternKernel!(fma_mmm_f32_16x6<f32>(16,6)@(32,4) where(FMA));
-MMMExternKernel!(fma_mmm_f32_16x5<f32>(16,5)@(32,4) where(FMA));
-MMMExternKernel!(fma_mmm_f32_24x4<f32>(24,4)@(32,4) where(FMA));
-MMMExternKernel!(fma_mmm_f32_40x2<f32>(40,2)@(32,4) where(FMA));
-MMMExternKernel!(fma_mmm_f32_64x1<f32>(64,1)@(32,4) where(FMA));
+MMMExternKernel!(fma_mmm_f32_8x8 <f32>(8, 8)@(32,4) where(FMA) quality(ManuallyOptimized));
+MMMExternKernel!(fma_mmm_f32_16x6<f32>(16,6)@(32,4) where(FMA) quality(ManuallyOptimized));
+MMMExternKernel!(fma_mmm_f32_16x5<f32>(16,5)@(32,4) where(FMA) quality(ManuallyOptimized));
+MMMExternKernel!(fma_mmm_f32_24x4<f32>(24,4)@(32,4) where(FMA) quality(ManuallyOptimized));
+MMMExternKernel!(fma_mmm_f32_40x2<f32>(40,2)@(32,4) where(FMA) quality(ManuallyOptimized));
+MMMExternKernel!(fma_mmm_f32_64x1<f32>(64,1)@(32,4) where(FMA) quality(ManuallyOptimized));
 
 pub fn pq40_r32() -> PackedBlockQuantFormat {
     PackedBlockQuantFormat::new(&Q4_0, 32, 16, false)
@@ -24,25 +25,28 @@ MMMExternKernel! {fma_mmm_f32_32x1<f32>(32,1)@(32,4) where(FMA)
     packing[1] = q40f32 => |k| k.with_packing_a(pq40_r32());
     packing[2] = q40f16 => |k| k.with_packing(pq40_r32(), PackedFormat::new(F16, 1, 2));
     packing[3] = f16f16 => |k| k.with_packing(PackedFormat::new(F16, 32, 32), PackedFormat::new(F16, 1, 2));
+    quality(ManuallyOptimized)
     store(f16)
 }
 MMMExternKernel!(fma_mmm_f32_32x3<f32>(32,3)@(32,4) where(FMA)
  packing[1] = f32f16 => |k| k.with_packing(f32::packing(32).align(32), f16::packing(3));
+ quality(ManuallyOptimized)
  store(f16)
 );
 
-MMMExternKernel!(avx512_mmm_f32_128x1<f32>(128, 1)@(64,4) where (AVX512F));
-MMMExternKernel!(avx512_mmm_f32_16x1 <f32>( 16, 1)@(64,4) where (AVX512F));
-MMMExternKernel!(avx512_mmm_f32_16x12<f32>( 16,12)@(64,4) where (AVX512F));
-MMMExternKernel!(avx512_mmm_f32_16x8 <f32>( 16, 8)@(64,4) where (AVX512F));
-MMMExternKernel!(avx512_mmm_f32_32x6 <f32>( 32, 6)@(64,4) where (AVX512F));
-MMMExternKernel!(avx512_mmm_f32_32x5 <f32>( 32, 5)@(64,4) where (AVX512F));
-MMMExternKernel!(avx512_mmm_f32_48x4 <f32>( 48, 4)@(64,4) where (AVX512F));
-MMMExternKernel!(avx512_mmm_f32_64x3 <f32>( 64, 3)@(64,4) where (AVX512F));
-MMMExternKernel!(avx512_mmm_f32_80x2 <f32>( 80, 2)@(64,4) where (AVX512F));
+MMMExternKernel!(avx512_mmm_f32_128x1<f32>(128, 1)@(64,4) where (AVX512F) quality(ManuallyOptimized));
+MMMExternKernel!(avx512_mmm_f32_16x1 <f32>( 16, 1)@(64,4) where (AVX512F) quality(ManuallyOptimized));
+MMMExternKernel!(avx512_mmm_f32_16x12<f32>( 16,12)@(64,4) where (AVX512F) quality(ManuallyOptimized));
+MMMExternKernel!(avx512_mmm_f32_16x8 <f32>( 16, 8)@(64,4) where (AVX512F) quality(ManuallyOptimized));
+MMMExternKernel!(avx512_mmm_f32_32x6 <f32>( 32, 6)@(64,4) where (AVX512F) quality(ManuallyOptimized));
+MMMExternKernel!(avx512_mmm_f32_32x5 <f32>( 32, 5)@(64,4) where (AVX512F) quality(ManuallyOptimized));
+MMMExternKernel!(avx512_mmm_f32_48x4 <f32>( 48, 4)@(64,4) where (AVX512F) quality(ManuallyOptimized));
+MMMExternKernel!(avx512_mmm_f32_64x3 <f32>( 64, 3)@(64,4) where (AVX512F) quality(ManuallyOptimized));
+MMMExternKernel!(avx512_mmm_f32_80x2 <f32>( 80, 2)@(64,4) where (AVX512F) quality(ManuallyOptimized));
 
 MMMExternKernel! { avx2_mmm_i32_8x8<i32>(8,8)@(32,4) where(AVX2)
     packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 8,32), PackedFormat::new(DatumType::I8, 8, 4));
+    quality(ManuallyOptimized)
     store(i8)
 }
 

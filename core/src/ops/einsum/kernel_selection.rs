@@ -121,7 +121,7 @@ pub fn wire_for_variable_n(
                 .unwrap_or_else(|| kit.weight == WeightType::from(a_konst.datum_type()))
                 && kit.mmm_for(accumulator, activation).next().is_some()
         })
-        .min_by_key(|kit| kit.generic_fallback as usize)
+        .min_by_key(|kit| kit.quality().cost())
         .with_context(|| {
             format!(
                 "No kit found for pre-packed w:{a_konst:?} prepack:{prepack:?} acc:{accumulator:?} act:{activation:?}"

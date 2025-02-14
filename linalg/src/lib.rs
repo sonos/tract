@@ -111,7 +111,7 @@ impl Ops {
         self.mmm_kits
             .iter()
             .filter(|kit| kit.weight == w)
-            .min_by_key(|kit| kit.generic_fallback as usize)
+            .min_by_key(|kit| kit.quality().cost())
             .unwrap()
             .static_packer
             .clone()
@@ -130,12 +130,26 @@ impl Ops {
     ) -> Option<Box<dyn mmm::MatMatMul>> {
         use DatumType::*;
         match accumulator {
-            F64 => Some(if n == Some(1) { (self.mmv_f64)(m, k) } else { (self.mmm_f64)(m, k, n) }),
-            F32 => Some(if n == Some(1) { (self.mmv_f32)(m, k) } else { (self.mmm_f32)(m, k, n) }),
-            F16 => Some(if n == Some(1) { (self.mmv_f16)(m, k) } else { (self.mmm_f16)(m, k, n) }),
-            I32 => {
-                Some(if n == Some(1) { (self.qmmv_i32)(m, k) } else { (self.qmmm_i32)(m, k, n) })
-            }
+            F64 => Some(if n == Some(1) {
+                (self.mmv_f64)(m, k)
+            } else {
+                (self.mmm_f64)(m, k, n)
+            }),
+            F32 => Some(if n == Some(1) {
+                (self.mmv_f32)(m, k)
+            } else {
+                (self.mmm_f32)(m, k, n)
+            }),
+            F16 => Some(if n == Some(1) {
+                (self.mmv_f16)(m, k)
+            } else {
+                (self.mmm_f16)(m, k, n)
+            }),
+            I32 => Some(if n == Some(1) {
+                (self.qmmv_i32)(m, k)
+            } else {
+                (self.qmmm_i32)(m, k, n)
+            }),
             _ => None,
         }
     }
@@ -146,7 +160,7 @@ pub fn generic() -> Ops {
     use element_wise::ElementWiseKer;
     use reduce::{MapReduceKer, ReduceKer};
     let mut ops = Ops {
-        mmm_impls: vec![generic_f32_4x4.mmm(), generic_f32_4x1.mmm()],
+        mmm_impls: vec![],
         mmm_kits: vec![],
         panel_extractors: vec![],
         mmm_f64: Box::new(|_, _, _| generic_f64_4x4.mmm()),

@@ -210,7 +210,7 @@ impl TypedOp for Const {
                             })
                         })
                 })
-                .sorted_by_key(|kit| kit.generic_fallback)
+                .sorted_by_key(|kit| kit.quality().cost())
                 .next()
                 .unwrap();
             let packed = choice.static_packer.prepare_tensor(&self.0, 1, 0)?;

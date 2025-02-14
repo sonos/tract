@@ -13,7 +13,7 @@ pub trait MatMatMulKer: Clone + Debug + Send + Sync + 'static {
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;
 
-    fn generic_callback(&self) -> bool;
+    fn quality(&self) -> ImplementationQuality;
 
     #[allow(clippy::type_complexity)]
     fn packings(&self) -> &[(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)];
@@ -36,7 +36,7 @@ type Kernel<Acc> = unsafe fn(&[FusedKerSpec<Acc>]) -> isize;
 pub struct DynKernel<const MR: usize, const NR: usize, Acc: LADatum> {
     pub name: String,
     pub kernel: Kernel<Acc>,
-    pub generic_fallback: bool,
+    pub quality: ImplementationQuality,
     pub packings: Vec<(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)>,
     pub stores: Vec<DatumType>,
     pub supported_predicate: fn() -> bool,
@@ -49,11 +49,12 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
         kernel: Kernel<Acc>,
         packing_a: PackedFormat,
         packing_b: PackedFormat,
+        quality: ImplementationQuality,
     ) -> Self {
         let kernel = DynKernel {
             name: name.to_string(),
             kernel,
-            generic_fallback: false,
+            quality,
             packings: vec![],
             stores: vec![Acc::datum_type()],
             supported_predicate: || true,
@@ -78,11 +79,19 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
     }
 
     pub fn regular_pack_a(&self) -> PackedFormat {
-        *self.packings[0].0.clone().downcast::<PackedFormat>().unwrap()
+        *self.packings[0]
+            .0
+            .clone()
+            .downcast::<PackedFormat>()
+            .unwrap()
     }
 
     pub fn regular_pack_b(&self) -> PackedFormat {
-        *self.packings[0].1.clone().downcast::<PackedFormat>().unwrap()
+        *self.packings[0]
+            .1
+            .clone()
+            .downcast::<PackedFormat>()
+            .unwrap()
     }
 
     pub fn with_can_fuse(self, can_fuse: fn(&FusedSpec) -> bool) -> Self {
@@ -119,8 +128,8 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> MatMatMulKer for DynKernel<
         NR
     }
 
-    fn generic_callback(&self) -> bool {
-        self.generic_fallback
+    fn quality(&self) -> ImplementationQuality {
+        self.quality
     }
 
     fn is_supported_here(&self) -> bool {

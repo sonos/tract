@@ -5,6 +5,7 @@ macro_rules! MMMExternKernel {
             $(where($where:expr))?
             $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
+            $(quality($quality:expr))?
             $(store($($store:ty),*))?
      ) => {
         paste! {
@@ -26,6 +27,7 @@ macro_rules! MMMExternKernel {
                 $(where($where))?
                 $(can_fuse($can_fuse))?
                 $(packing[$pnum] = $pid => $packing;)*
+                $(quality($quality))?
                 $(store($($store),*))?
             );
         }
@@ -38,6 +40,7 @@ macro_rules! MMMRustKernel {
             $(where($where:expr))?
             $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
+            $(quality($quality:expr))?
             $(store($($store:ty),*))?
      ) => {
         paste! {
@@ -56,6 +59,7 @@ macro_rules! MMMRustKernel {
                 $(where($where))?
                 $(can_fuse($can_fuse))?
                 $(packing[$pnum] = $pid => $packing;)*
+                $(quality($quality))?
                 $(store($($store),*))?
             );
         }
@@ -71,6 +75,7 @@ macro_rules! MMMKernel {
             $(where($where:expr))?
             $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
+            $(quality($quality:expr))?
             $(store($($store:ty),*))?
      ) => {
         paste! {
@@ -87,7 +92,7 @@ macro_rules! MMMKernel {
                         packing_b = packing_b.align($align_b);
                     )?
                     #[allow(unused_mut)]
-                    let mut k = DynKernel::<$mr, $nr, $ti>::new(stringify!($id), $func, packing_a, packing_b);
+                    let mut k = DynKernel::<$mr, $nr, $ti>::new(stringify!($id), $func, packing_a, packing_b, $crate::frame::mmm::ImplementationQuality::Dreadful);
                     $(k = k.with_platform_condition($where);)?
                     $(
                         assert!(k.packings.len() == $pnum);
@@ -98,7 +103,7 @@ macro_rules! MMMKernel {
                         k.stores.push(<$store>::datum_type());
                     )*)?
                     $(k.can_fuse = $can_fuse;)?
-                    $(k.generic_fallback = $generic;)?
+                    $(k.quality = $quality;)?
                     k
                 };
             }
