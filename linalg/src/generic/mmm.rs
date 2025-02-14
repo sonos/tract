@@ -10,7 +10,7 @@ use crate::frame::block_quant::{BlockQuant, NibbleReader, PackedBlockQuantFormat
 use crate::frame::mmm::*;
 use crate::kit::Kit;
 use crate::pack::Packing;
-use crate::{LADatum, Ops};
+use crate::{has_fp16, LADatum, Ops};
 
 macro_rules! scalar {
     ($ab: expr, $m: expr, $f: expr) => {
@@ -353,6 +353,7 @@ MMMRustKernel!(kernel::<f16, 4, 4> => generic_f16_4x4<f16>(4,4)
     packing[5] = q40f16 => |k| k.with_packing(pq40_r4(), f16::packing(4));
     packing[6] = q40f16se => |k| k.with_packing(pq40_r4_se(), f16::packing(4));
     packing[7] = q40f32 => |k| k.with_packing(pq40_r4(), f32::packing(4));
+    quality(if has_fp16() { ImplementationQuality::Generic } else { ImplementationQuality::Dreadful })
     store(f32, f64)
 );
 
@@ -364,6 +365,7 @@ MMMRustKernel! {kernel::<f16, 4, 1> => generic_f16_4x1<f16>(4,1)
     packing[5] = q40f16 => |k| k.with_packing(pq40_r4(), f16::packing(1));
     packing[6] = q40f16se => |k| k.with_packing(pq40_r4_se(), f16::packing(1));
     packing[7] = q40f32 => |k| k.with_packing(pq40_r4(), f32::packing(1));
+    quality(if has_fp16() { ImplementationQuality::Generic } else { ImplementationQuality::Dreadful })
     store(f32, f64)
 }
 
@@ -376,6 +378,7 @@ MMMRustKernel!(kernel::<f32, 4, 4> => generic_f32_4x4<f32>(4,4)
     packing[5] = q40f16 => |k| k.with_packing(pq40_r4(), f16::packing(4));
     packing[6] = q40f16se => |k| k.with_packing(pq40_r4_se(), f16::packing(4));
     packing[7] = q40f32 => |k| k.with_packing(pq40_r4(), f32::packing(4));
+    quality(ImplementationQuality::Generic)
     store(f16, f64)
 );
 MMMRustKernel! {kernel::<f32, 4, 1> => generic_f32_4x1<f32>(4,1)
@@ -386,21 +389,28 @@ MMMRustKernel! {kernel::<f32, 4, 1> => generic_f32_4x1<f32>(4,1)
     packing[5] = q40f16 => |k| k.with_packing(pq40_r4(), f16::packing(1));
     packing[6] = q40f16se => |k| k.with_packing(pq40_r4_se(), f16::packing(1));
     packing[7] = q40f32 => |k| k.with_packing(pq40_r4(), f32::packing(1));
+    quality(ImplementationQuality::Generic)
     store(f16, f64)
 }
 
 // f64 kernels
-MMMRustKernel!(kernel::<f64, 4, 4> => generic_f64_4x4<f64>(4,4) store(f16, f32));
-MMMRustKernel!(kernel::<f64, 4, 1> => generic_f64_4x1<f64>(4,1) store(f16, f32));
+MMMRustKernel!(kernel::<f64, 4, 4> => generic_f64_4x4<f64>(4,4)
+    quality(ImplementationQuality::Generic)
+    store(f16, f32));
+MMMRustKernel!(kernel::<f64, 4, 1> => generic_f64_4x1<f64>(4,1)
+    quality(ImplementationQuality::Generic)
+    store(f16, f32));
 
 // I32 kernels
 MMMRustKernel! {kernel::<i32, 4, 4> => generic_i32_4x4<i32>(4,4)
     packing[1] = i8i8 => |k| k.with_packing(i8::packing(4), i8::packing(4));
+    quality(ImplementationQuality::Generic)
     store(i8)
 }
 
 MMMRustKernel! {kernel::<i32, 4, 1> => generic_i32_4x1<i32>(4,1)
     packing[1] = i8i8 => |k| k.with_packing(i8::packing(4), i8::packing(1));
+    quality(ImplementationQuality::Generic)
     store(i8)
 }
 
@@ -415,6 +425,14 @@ MMMRustKernel! {kernel::<i32, 3, 2> => generic_i32_3x2<i32>(3,2)
 }
 
 pub fn plug(ops: &mut Ops) {
+    ops.mmm_impls.push(generic_f16_4x4.mmm());
+    ops.mmm_impls.push(generic_f16_4x1.mmm());
+    ops.mmm_impls.push(generic_f32_4x4.mmm());
+    ops.mmm_impls.push(generic_f32_4x1.mmm());
+    ops.mmm_impls.push(generic_f64_4x4.mmm());
+    ops.mmm_impls.push(generic_f64_4x1.mmm());
+    ops.mmm_impls.push(generic_i32_4x4.mmm());
+    ops.mmm_impls.push(generic_i32_4x1.mmm());
     ops.mmm_kits.push(
         Kit::new(F32, &f32::packing(4))
             .with_native(generic_f32_4x1.mmm(), 2)
@@ -424,8 +442,7 @@ pub fn plug(ops: &mut Ops) {
             .with_native(generic_f16_4x1.mmm(), 2)
             .with_native(generic_f16_4x1.mmm(), 4)
             .with_native(generic_f16_4x4.mmm(), 2)
-            .with_native(generic_f16_4x4.mmm(), 4)
-            .with_generic_fallback(true),
+            .with_native(generic_f16_4x4.mmm(), 4),
     );
     ops.mmm_kits.push(
         Kit::new(Q4_0, &pq40_r4())
@@ -436,8 +453,7 @@ pub fn plug(ops: &mut Ops) {
             .with_native(generic_f16_4x1.mmm(), 5)
             .with_native(generic_f16_4x1.mmm(), 7)
             .with_native(generic_f16_4x4.mmm(), 5)
-            .with_native(generic_f16_4x4.mmm(), 7)
-            .with_generic_fallback(true),
+            .with_native(generic_f16_4x4.mmm(), 7),
     );
     ops.mmm_kits.push(
         Kit::new(F16, &f16::packing(4))
@@ -448,8 +464,7 @@ pub fn plug(ops: &mut Ops) {
             .with_native(generic_f16_4x1.mmm(), 1)
             .with_native(generic_f16_4x1.mmm(), 3)
             .with_native(generic_f16_4x4.mmm(), 1)
-            .with_native(generic_f16_4x4.mmm(), 3)
-            .with_generic_fallback(true),
+            .with_native(generic_f16_4x4.mmm(), 3),
     );
 }
 

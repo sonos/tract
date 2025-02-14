@@ -7,6 +7,8 @@ use crate::block_quant::{BlockQuant, PackedBlockQuantFormat};
 use crate::mmm::{MMMInputFormat, MatMatMul, PanelExtractor};
 use crate::pack::PackedFormat;
 
+use super::mmm::ImplementationQuality;
+
 #[derive(Clone)]
 pub enum WeightType {
     Plain(DatumType),
@@ -114,7 +116,6 @@ pub struct Kit {
     pub weight: WeightType,
     pub static_packer: Box<dyn MMMInputFormat>,
     pub mmms: Vec<MMMKitItem>,
-    pub generic_fallback: bool,
 }
 
 #[derive(Debug)]
@@ -129,7 +130,6 @@ impl Kit {
         let weight = weight.into();
         let kit = Kit {
             weight,
-            generic_fallback: false,
             static_packer: dyn_clone::clone_box(static_packer),
             mmms: vec![],
         };
@@ -195,13 +195,6 @@ impl Kit {
         self.add_item(mmm, packing, Some(weight_panel_extractor))
     }
 
-    pub(crate) fn with_generic_fallback(self, generic_fallback: bool) -> Self {
-        Self {
-            generic_fallback,
-            ..self
-        }
-    }
-
     pub fn name(&self) -> String {
         self.static_packer.to_string()
     }
@@ -218,6 +211,14 @@ impl Kit {
                     .downcast_ref::<PackedFormat>()
                     .is_some_and(|pf| KitDatumType::from(pf.dt) == activation)
         })
+    }
+
+    pub fn quality(&self) -> ImplementationQuality {
+        self.mmms
+            .iter()
+            .map(|m| m.mmm.quality())
+            .max_by_key(|q| q.cost())
+            .unwrap()
     }
 }
 

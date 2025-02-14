@@ -12,7 +12,7 @@ use tract_itertools::Itertools;
 use tract_core::internal::*;
 use tract_hir::internal::*;
 
-use nu_ansi_term::Color::{self, *};
+use nu_ansi_term::Color::*;
 use tract_libcli::annotations::Annotations;
 use tract_libcli::display_params::DisplayParams;
 use tract_libcli::model::Model;
@@ -38,6 +38,8 @@ use params::*;
 use tract_linalg::pack::PackedFormat;
 
 readings_probe::instrumented_allocator!();
+
+pub const QUALITY_COLORS: [nu_ansi_term::Color; 5] = [LightRed, Yellow, White, Green, LightGreen];
 
 fn info_usage(stage: &str, probe: Option<&Probe>) {
     if let Some(mon) = probe {
@@ -685,32 +687,23 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         }
         Some(("kernels", _)) => {
             println!("{}", White.bold().paint("# Matrix multiplication"));
-            fn color(title: bool, generic: bool) -> Color {
-                let base = (255 - generic as usize * 64) as u8;
-                let i = if title { base } else { base / 2 + base / 4 };
-                Rgb(i, i, i)
-            }
             for m in tract_linalg::ops().mmm_impls() {
                 println!(
                     "{}",
-                    color(true, m.generic_fallback()).paint(format!(" * {}", m.name()))
+                    QUALITY_COLORS[usize::from(m.quality())].paint(m.name()),
                 );
                 for packings in m.packings() {
-                    println!(
-                        "{}",
-                        color(false, m.generic_fallback())
-                            .paint(format!("   - {:?} • {:?}", packings.0, packings.1))
-                    );
+                    println!("   - {:?} • {:?}", packings.0, packings.1);
                 }
             }
             println!("{}", White.bold().paint("# MatMul kits"));
             for m in tract_linalg::ops().mmm_kits() {
                 let label = format!(" * {:?} ⮕  {:?}", m.weight, m.static_packer,);
-                println!("{}", color(true, m.generic_fallback).paint(label));
+                println!("{}", label);
                 for item in &m.mmms {
                     println!(
                         "{}",
-                        color(false, m.generic_fallback).paint(format!(
+                        QUALITY_COLORS[usize::from(item.mmm.quality())].paint(format!(
                             "   - mmm Σ:{:?} B:{} by {}/{} ( {:?}•{:?} ) {}",
                             item.mmm.internal_type(),
                             item.b_packing()
