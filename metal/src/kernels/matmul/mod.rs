@@ -219,12 +219,8 @@ impl<M: GemmKernel> GemmImpl<M> {
         b_dt: DatumType,
     ) -> TractResult<TVec<TypedFact>> {
         let out_dt = self.matmul.output_dt(a_dt, b_dt)?;
-        if out_dt == DatumType::F32 {
-            Ok(tvec!(f32::fact(shape)))
-        } else {
-            ensure!(out_dt == DatumType::F16);
-            Ok(tvec!(f16::fact(shape)))
-        }
+        ensure!([DatumType::F16, DatumType::F32].contains(&out_dt));
+        Ok(tvec!(out_dt.fact(shape)))
     }
 
     pub fn eval(
@@ -326,6 +322,7 @@ mod tests {
     use derive_new::new;
     use num_traits::AsPrimitive;
     use num_traits::Float;
+    use proptest::collection::vec;
     use proptest::prelude::*;
     use tract_core::ops::einsum::BasicMatMul;
     use tract_core::tract_data::itertools::Itertools;
@@ -716,22 +713,17 @@ mod tests {
                         k = k.div_ceil(32) * 32
                     };
 
-                    let mut rng = rand::thread_rng();
-                    let lhs_data: Vec<F> = (0..b * m * k)  // Create a vector with 10 elements
-                    .map(|_| F::from(rng.gen_range(0.0..1.0)).unwrap()) // Generate a random float in [0.0, 1.0)
-                    .collect();
-
-                    let rhs_data: Vec<F> = (0..b * n * k)  // Create a vector with 10 elements
-                    .map(|_| F::from(rng.gen_range(0.0..1.0)).unwrap()) // Generate a random float in [0.0, 1.0)
-                    .collect();
+                    let lhs_len = b * m * k;
+                    let rhs_len = b * n * k;
+                    let datum = (0usize..100).prop_map(|x| x.as_());
                     (
                         Just(b),
                         Just(m),
                         Just(k),
                         Just(n),
-                        Just(lhs_data),
+                        vec(datum.clone(), lhs_len..=lhs_len),
                         proptest::bool::ANY,
-                        Just(rhs_data),
+                        vec(datum, rhs_len..=rhs_len),
                         proptest::bool::ANY,
                     )
                 })

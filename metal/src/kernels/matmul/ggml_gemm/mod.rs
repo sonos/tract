@@ -6,6 +6,7 @@ use anyhow::{ensure, Result};
 use metal::{Buffer, MTLSize, NSUInteger};
 use std::fmt;
 use tract_core::internal::*;
+use DatumType::{F16, F32};
 
 #[derive(Debug)]
 #[repr(C)]
@@ -37,15 +38,17 @@ impl GemmKernel for GgmlGemm {
     fn is_supported_dts(&self, facts: &[TypedFact]) -> bool {
         assert!(facts.len() == 2, "Ggml: Expected 2 inputs for Matmul");
 
-        (as_q40_fact(&facts[1]).is_some()
-            && matches!(facts[0].datum_type, DatumType::F16 | DatumType::F32))
-            || ((facts[1].datum_type == DatumType::F32) && (facts[0].datum_type == DatumType::F32))
-            || ((facts[1].datum_type == DatumType::F16)
-                && matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16))
+        let regular_types_support = matches!(
+            (facts[0].datum_type, facts[1].datum_type),
+            (F32, F32) | (F16, F16) | (F16, F32)
+        );
+
+        regular_types_support
+            || (as_q40_fact(&facts[1]).is_some() && matches!(facts[0].datum_type, F16 | F32))
     }
 
     fn output_dt(&self, _a_dt: DatumType, _b_dt: DatumType) -> TractResult<DatumType> {
-        Ok(DatumType::F32)
+        Ok(F32)
     }
 
     fn dispatch_eval(
@@ -109,7 +112,7 @@ impl GemmKernel for GgmlGemm {
             batch_broadcast_ratio: 1,
         };
 
-        if (dts[0] == DatumType::F32) && (k % 32 == 0) && (k >= 64) && (m > 4) {
+        if (dts[0] == F32) && (k % 32 == 0) && (k >= 64) && (m > 4) {
             dispatch_metal_ggml_gemm(
                 context, dts, q40_b, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer,
                 c_offset,
@@ -132,11 +135,11 @@ fn mv_kernel_name_and_dispatch_params(
 ) -> Result<(String, (u64, u64, u64))> {
     let (nth0, nth1, nrows): (u64, u64, u64) = (32, 1, 1);
 
-    if dts[1] == DatumType::F32 {
-        ensure!(dts[0] == DatumType::F32);
+    if dts[1] == F32 {
+        ensure!(dts[0] == F32);
         Ok(("kernel_mul_mv_f32_f32".to_string(), (nth0, nth1, 4)))
-    } else if dts[1] == DatumType::F16 {
-        if dts[0] == DatumType::F32 {
+    } else if dts[1] == F16 {
+        if dts[0] == F32 {
             if (params.m * params.batch) < 4 {
                 Ok(("kernel_mul_mv_f16_f32_1row".to_string(), (nth0, nth1, nrows)))
             } else if (params.k >= 128) && (params.k % 4 == 0) && (params.n >= 8) {
@@ -146,11 +149,11 @@ fn mv_kernel_name_and_dispatch_params(
             }
         } else {
             // Never used in practice since we upcast input[0] to f32
-            ensure!(dts[1] == DatumType::F16);
+            ensure!(dts[1] == F16);
             Ok(("kernel_mul_mv_f16_f16".to_string(), (nth0, nth1, 4)))
         }
     } else {
-        ensure!((q40_b) && (dts[0] == DatumType::F32));
+        ensure!((q40_b) && (dts[0] == F32));
         Ok(("kernel_mul_mv_q4_0_f32".to_string(), (8, 8, 1)))
     }
 }
@@ -220,9 +223,7 @@ fn dispatch_metal_ggml_gemm(
     output: &Buffer,
     output_offset: usize,
 ) -> Result<()> {
-    ensure!(
-        (matches!(dts[1], DatumType::F32 | DatumType::F16) || q40_b) && dts[0] == DatumType::F32
-    );
+    ensure!((matches!(dts[1], F32 | F16) || q40_b) && dts[0] == F32);
 
     let mut i1_tname = MetalTensor::tname(dts[1])?;
     let i2_tname = MetalTensor::tname(dts[0])?;
@@ -280,63 +281,39 @@ mod tests {
 
     #[test]
     fn test_mat_mul() -> TractResult<()> {
-        run_mmm_test_case::<GgmlGemm>((1, 5, 64, 2), false, true, DatumType::F32, DatumType::F32)?;
-        run_mmm_test_case::<GgmlGemm>((2, 1, 32, 2), false, true, DatumType::F32, DatumType::F32)?;
-        run_mmm_test_case::<GgmlGemm>((1, 5, 64, 2), false, true, DatumType::F32, DatumType::F16)?;
-        run_mmm_test_case::<GgmlGemm>(
-            (3, 8, 64, 200),
-            false,
-            true,
-            DatumType::F32,
-            DatumType::F16,
-        )?;
-        run_mmm_test_case::<GgmlGemm>(
-            (10, 25, 512, 320),
-            false,
-            true,
-            DatumType::F32,
-            DatumType::F16,
-        )?;
+        run_mmm_test_case::<GgmlGemm>((1, 5, 64, 2), false, true, F32, F32)?;
+        run_mmm_test_case::<GgmlGemm>((2, 1, 32, 2), false, true, F32, F32)?;
+        run_mmm_test_case::<GgmlGemm>((1, 5, 64, 2), false, true, F32, F16)?;
+        run_mmm_test_case::<GgmlGemm>((3, 8, 64, 200), false, true, F32, F16)?;
+        run_mmm_test_case::<GgmlGemm>((10, 25, 512, 320), false, true, F32, F16)?;
         Ok(())
     }
 
     #[test]
     fn test_mat_vec() -> TractResult<()> {
         // f32_f32
-        run_mmm_test_case::<GgmlGemm>((1, 8, 32, 3), false, true, DatumType::F32, DatumType::F32)?;
-        run_mmm_test_case::<GgmlGemm>((1, 4, 61, 2), false, true, DatumType::F32, DatumType::F32)?;
-        run_mmm_test_case::<GgmlGemm>((2, 4, 128, 8), false, true, DatumType::F32, DatumType::F32)?;
+        run_mmm_test_case::<GgmlGemm>((1, 8, 32, 3), false, true, F32, F32)?;
+        run_mmm_test_case::<GgmlGemm>((1, 4, 61, 2), false, true, F32, F32)?;
+        run_mmm_test_case::<GgmlGemm>((2, 4, 128, 8), false, true, F32, F32)?;
 
         // f16_f32_1row
-        run_mmm_test_case::<GgmlGemm>((1, 1, 32, 2), false, true, DatumType::F32, DatumType::F16)?;
-        run_mmm_test_case::<GgmlGemm>((1, 3, 62, 2), false, true, DatumType::F32, DatumType::F16)?;
-        run_mmm_test_case::<GgmlGemm>((1, 3, 2, 9), false, true, DatumType::F32, DatumType::F16)?;
+        run_mmm_test_case::<GgmlGemm>((1, 1, 32, 2), false, true, F32, F16)?;
+        run_mmm_test_case::<GgmlGemm>((1, 3, 62, 2), false, true, F32, F16)?;
+        run_mmm_test_case::<GgmlGemm>((1, 3, 2, 9), false, true, F32, F16)?;
 
         // f16_f32_L4
-        run_mmm_test_case::<GgmlGemm>((2, 2, 128, 8), false, true, DatumType::F32, DatumType::F16)?;
-        run_mmm_test_case::<GgmlGemm>(
-            (4, 4, 156, 30),
-            false,
-            true,
-            DatumType::F32,
-            DatumType::F16,
-        )?;
+        run_mmm_test_case::<GgmlGemm>((2, 2, 128, 8), false, true, F32, F16)?;
+        run_mmm_test_case::<GgmlGemm>((4, 4, 156, 30), false, true, F32, F16)?;
 
         // f16_f32
-        run_mmm_test_case::<GgmlGemm>((1, 4, 32, 2), false, true, DatumType::F32, DatumType::F16)?;
-        run_mmm_test_case::<GgmlGemm>((1, 4, 61, 2), false, true, DatumType::F32, DatumType::F16)?;
-        run_mmm_test_case::<GgmlGemm>((4, 4, 128, 7), false, true, DatumType::F32, DatumType::F16)?;
+        run_mmm_test_case::<GgmlGemm>((1, 4, 32, 2), false, true, F32, F16)?;
+        run_mmm_test_case::<GgmlGemm>((1, 4, 61, 2), false, true, F32, F16)?;
+        run_mmm_test_case::<GgmlGemm>((4, 4, 128, 7), false, true, F32, F16)?;
 
         // f16_f16
-        run_mmm_test_case::<GgmlGemm>((1, 1, 2, 1), false, true, DatumType::F16, DatumType::F16)?;
-        run_mmm_test_case::<GgmlGemm>((1, 4, 61, 2), false, true, DatumType::F16, DatumType::F16)?;
-        run_mmm_test_case::<GgmlGemm>(
-            (2, 16, 128, 9),
-            false,
-            true,
-            DatumType::F16,
-            DatumType::F16,
-        )?;
+        run_mmm_test_case::<GgmlGemm>((1, 1, 2, 1), false, true, F16, F16)?;
+        run_mmm_test_case::<GgmlGemm>((1, 4, 61, 2), false, true, F16, F16)?;
+        run_mmm_test_case::<GgmlGemm>((2, 16, 128, 9), false, true, F16, F16)?;
         Ok(())
     }
 
