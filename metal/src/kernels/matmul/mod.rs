@@ -235,7 +235,7 @@ impl<M: GemmKernel> GemmImpl<M> {
         b: &MetalTensor,
     ) -> TractResult<MetalTensor> {
         let b_shape = as_q40_tensor(b.view().tensor)
-            .map(|bqv| b.shape().iter().cloned().chain(bqv.fact.shape.iter().map(|d| *d)).collect())
+            .map(|bqv| b.shape().iter().cloned().chain(bqv.fact.shape.iter().copied()).collect())
             .unwrap_or(b.shape().to_vec());
 
         let c_dt = self.matmul.output_dt(a.datum_type(), b.datum_type())?;
@@ -260,7 +260,7 @@ impl<M: GemmKernel> GemmImpl<M> {
 
         let q40_b = as_q40_tensor(b.view().tensor);
         let b_shape = q40_b
-            .map(|bqv| b.shape().iter().cloned().chain(bqv.fact.shape.iter().map(|d| *d)).collect())
+            .map(|bqv| b.shape().iter().cloned().chain(bqv.fact.shape.iter().copied()).collect())
             .unwrap_or(b.shape().to_vec());
 
         ensure!(c.shape() == self.output_shape(a.shape(), &b_shape).as_slice());
