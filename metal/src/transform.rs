@@ -14,6 +14,7 @@ use crate::rewrite_rules::{
     BasicSilu,
 };
 use crate::tensor::MetalTensorExt;
+use crate::utils::as_q40_fact;
 use crate::{IntoMetal, MetalFact, MetalTensor};
 use std::borrow::Cow;
 use std::fmt::Debug;
@@ -27,7 +28,7 @@ use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
 use tract_core::ops::nn::{Reduce, Softmax as CoreSoftmax};
-use tract_core::tract_linalg::frame::block_quant::BlockQuantValue;
+use tract_core::tract_linalg::frame::block_quant::{BlockQuantValue, Q4_0};
 use tract_core::transform::ModelTransform;
 use tract_itertools::Itertools;
 
@@ -344,7 +345,10 @@ fn check_matmul_in_dts(gemm_impl: MetalGemmImplKind, in_facts: &[TypedFact]) -> 
         MetalGemmImplKind::Mlx => MlxGemm.is_supported_dts(in_facts),
         MetalGemmImplKind::Mps => MpsMatMul.is_supported_dts(in_facts),
         MetalGemmImplKind::Mfa => MfaGemm.is_supported_dts(in_facts),
-        MetalGemmImplKind::Ggml => GgmlGemm.is_supported_dts(in_facts) || GgmlGemm.is_supported_dts(&[in_facts[1].clone(), in_facts[0].clone()]),
+        MetalGemmImplKind::Ggml => {
+            GgmlGemm.is_supported_dts(in_facts)
+                || GgmlGemm.is_supported_dts(&[in_facts[1].clone(), in_facts[0].clone()])
+        }
     };
     is_supported
 }
@@ -375,8 +379,8 @@ fn convert_matmul_to_metal(
                 model.node_input_facts(node.id)?;
 
             let mut swap_inputs = false;
-            if !GgmlGemm.is_supported_dts(&[input_facts[0].clone(), input_facts[1].clone()]) && 
-                GgmlGemm.is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()])
+            if !GgmlGemm.is_supported_dts(&[input_facts[0].clone(), input_facts[1].clone()])
+                && GgmlGemm.is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()])
             {
                 input_facts.swap(0, 1);
                 inputs.swap(0, 1);
@@ -386,13 +390,13 @@ fn convert_matmul_to_metal(
             let a_pos = swap_inputs as usize;
             let b_pos = 1 - swap_inputs as usize;
             if op.transpose_a {
-                assert!(input_facts[a_pos].datum_type != DatumType::Opaque, "Cannot transpose Opaque tensor");
+                assert!(!as_q40_fact(input_facts[a_pos]).is_some(), "Cannot transpose Q40 tensor");
 
                 let rank = input_facts[a_pos].rank();
                 let perm_a_op = ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
-                        rank - 2,
-                        rank - 1,
-                    ));
+                    rank - 2,
+                    rank - 1,
+                ));
                 let perm_a_name = node.name.clone() + ".perm_a";
                 inputs[a_pos] = target.wire_node(perm_a_name, perm_a_op, &[inputs[a_pos]])?[0];
             }
@@ -404,13 +408,13 @@ fn convert_matmul_to_metal(
             }
 
             if !op.transpose_b {
-                assert!(input_facts[b_pos].datum_type != DatumType::Opaque, "Cannot transpose Opaque tensor");
+                assert!(!as_q40_fact(input_facts[b_pos]).is_some(), "Cannot transpose Q40 tensor");
 
                 let rank = input_facts[b_pos].rank();
-                let perm_b_op= ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
-                        rank - 2,
-                        rank - 1,
-                    ));
+                let perm_b_op = ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
+                    rank - 2,
+                    rank - 1,
+                ));
                 let perm_b_name = node.name.clone() + ".perm_b";
                 inputs[b_pos] = target.wire_node(perm_b_name, perm_b_op, &[inputs[b_pos]])?[0];
             }
@@ -419,13 +423,21 @@ fn convert_matmul_to_metal(
 
             if swap_inputs {
                 let out_fact = target.outlet_fact(matmul_output[0])?;
-                let rank = &out_fact.opaque_fact.clone().map(|fact| fact.clarify_dt_shape().unwrap().1.len()).unwrap();
+                let rank = &out_fact
+                    .opaque_fact
+                    .clone()
+                    .map(|fact| fact.clarify_dt_shape().unwrap().1.len())
+                    .unwrap();
 
                 let perm_out_op = ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
                     rank - 2,
                     rank - 1,
                 ));
-                matmul_output = target.wire_node(node.name.clone() + ".perm_out", perm_out_op, &matmul_output)?;
+                matmul_output = target.wire_node(
+                    node.name.clone() + ".perm_out",
+                    perm_out_op,
+                    &matmul_output,
+                )?;
             }
             matmul_output
         }
@@ -473,34 +485,22 @@ fn convert_logic_ops_to_metal(op: &Comp) -> ops::MetalBinOp {
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {
-    let (tensor, metal_fact) = if op
+    let (tensor, metal_fact) = if let Some(curr_bqv) = op
         .0
-        .clone()
         .view()
         .tensor
         .to_scalar::<Opaque>()
-        .is_ok_and(|of| of.downcast_ref::<BlockQuantValue>().is_some())
-    {
-        let mut curr_bqv =
-            op.0.clone()
-                .view()
-                .tensor
-                .to_scalar::<Opaque>()?
-                .downcast_ref::<BlockQuantValue>()
-                .unwrap()
-                .clone();
+        .ok()
+        .and_then(|of| of.downcast_ref::<BlockQuantValue>())
+        .map(|bqv| if bqv.fact.format.same_as(&Q4_0) { Some(bqv) } else { None })
+        .flatten()
+    {   
+        let mut bqv = curr_bqv.clone();
+        crate::utils::tract_to_gguf_q4_0_packing(&mut (bqv.value))?;
 
-        crate::utils::tract_to_gguf_q4_0_packing(&mut (curr_bqv.value))?;
-
-        let bqv = BlockQuantValue { value: curr_bqv.clone().value, fact: curr_bqv.clone().fact };
-        let tensor = if op.0.rank() == 0 {
-            tensor0(Opaque(Arc::new(bqv)))
-        } else {
-            tensor1(&[Opaque(Arc::new(bqv))])
-        };
-
+        let bqv = BlockQuantValue { value: bqv.value, fact: bqv.fact };
         (
-            tensor.into_arc_tensor(),
+            tensor0(Opaque(Arc::new(bqv))).broadcast_into_rank(op.0.rank())?.into_arc_tensor(),
             MetalFact::from_cpu(Arc::clone(&op.0).into())?,
         )
     } else {
