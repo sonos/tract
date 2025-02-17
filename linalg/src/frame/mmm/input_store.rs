@@ -7,6 +7,8 @@ use std::hash::Hash;
 use std::sync::Arc;
 use tract_data::internal::*;
 
+use crate::kit::WeightType;
+
 pub trait MMMInputFormat: Downcast + Debug + DynHash + DynClone + Send + Sync + Display {
     fn prepare_tensor(
         &self,
@@ -14,6 +16,7 @@ pub trait MMMInputFormat: Downcast + Debug + DynHash + DynClone + Send + Sync + 
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>>;
+    fn precursor(&self) -> WeightType;
     fn r(&self) -> usize;
     fn k_alignment(&self) -> usize;
     fn same_as(&self, other: &dyn MMMInputFormat) -> bool;
@@ -29,6 +32,13 @@ pub trait MMMInputFormat: Downcast + Debug + DynHash + DynClone + Send + Sync + 
 dyn_clone::clone_trait_object!(MMMInputFormat);
 impl_downcast!(MMMInputFormat);
 dyn_hash::hash_trait_object!(MMMInputFormat);
+
+impl Eq for &dyn MMMInputFormat {}
+impl PartialEq for &dyn MMMInputFormat {
+    fn eq(&self, other: &Self) -> bool {
+        self.same_as(*other)
+    }
+}
 
 pub trait MMMInputValue: DynClone + Debug + DynHash + Send + Sync + Display + Downcast {
     fn format(&self) -> &dyn MMMInputFormat;

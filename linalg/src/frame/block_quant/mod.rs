@@ -22,6 +22,8 @@ pub use value::{BlockQuantFact, BlockQuantValue, PackedBlockQuantFact};
 use crate::mmm::{EagerPackedInput, MMMInputFormat};
 use crate::pack::PackedFormat;
 
+use super::kit::WeightType;
+
 pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downcast {
     fn same_as(&self, other: &dyn BlockQuant) -> bool;
 
@@ -267,6 +269,10 @@ impl MMMInputFormat for PackedBlockQuantFormat {
         ensure!(k_axis == 1);
         let quant = t.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>().unwrap();
         Ok(Box::new(self.pack(&quant.value, quant.fact.shape[k_axis])?))
+    }
+
+    fn precursor(&self) -> WeightType {
+        WeightType::BlockQuant(self.bq.clone())
     }
 
     fn k_alignment(&self) -> usize {

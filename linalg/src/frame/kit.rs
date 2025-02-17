@@ -1,5 +1,4 @@
 use std::fmt::Debug;
-
 use tract_data::prelude::DatumType;
 
 use crate::block_quant::{BlockQuant, PackedBlockQuantFormat};
@@ -70,10 +69,20 @@ impl Debug for WeightType {
     }
 }
 
+impl WeightType {
+    pub fn as_dt(&self) -> Option<DatumType> {
+        match self {
+            WeightType::Plain(dt) => Some(*dt),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum KitDatumType {
     F16,
     F32,
+    F64,
     I32,
 }
 
@@ -82,8 +91,9 @@ impl From<DatumType> for KitDatumType {
         match value {
             DatumType::F16 => KitDatumType::F16,
             DatumType::F32 => KitDatumType::F32,
+            DatumType::F64 => KitDatumType::F64,
             DatumType::I32 => KitDatumType::I32,
-            _ => panic!(),
+            _ => panic!("Can not make a KitDatumType our of {value:?}"),
         }
     }
 }

@@ -23,10 +23,3 @@ pub mod sigmoid;
 #[macro_use]
 pub mod tanh;
 pub mod element_wise_helper;
-
-// pub use pack::PackedFormat;
-// pub use pack::PackingWriter;
-
-// pub use self::element_wise::{ElementWise, ElementWiseImpl};
-// pub use self::kit::Kit;
-// pub use self::mmm::MatMatMul;

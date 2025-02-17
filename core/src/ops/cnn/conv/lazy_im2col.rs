@@ -1,6 +1,7 @@
 use crate::internal::*;
 use std::fmt::{Debug, Display};
 use std::ops::Range;
+use tract_linalg::kit::WeightType;
 use tract_linalg::mmm::{MMMInputFormat, MMMInputValue};
 use tract_linalg::pack::{PackedFormat, PackingWriter};
 
@@ -14,6 +15,10 @@ pub struct LazyIm2colParams {
 impl MMMInputFormat for LazyIm2colParams {
     fn r(&self) -> usize {
         self.packer.r
+    }
+
+    fn precursor(&self) -> WeightType {
+        self.packer.precursor()
     }
 
     fn prepare_tensor(

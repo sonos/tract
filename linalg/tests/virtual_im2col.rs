@@ -5,6 +5,7 @@ use proptest::arbitrary::Arbitrary;
 use proptest::prelude::*;
 use proptest::strategy::{BoxedStrategy, Strategy};
 use tract_data::internal::*;
+use tract_linalg::kit::WeightType;
 use tract_linalg::mmm::FusedSpec;
 use tract_linalg::mmm::{AsInputValue, EagerPackedInput, MMMInputFormat, MMMInputValue};
 use tract_linalg::pack::{PackedFormat, PackingWriter};
@@ -283,6 +284,10 @@ impl MMMInputFormat for EagerIm2colSpec {
         todo!();
     }
 
+    fn precursor(&self) -> WeightType {
+        WeightType::Plain(f32::datum_type())
+    }
+
     fn k_alignment(&self) -> usize {
         1
     }
@@ -430,6 +435,10 @@ impl MMMInputFormat for LazyIm2colSpec {
         _mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>> {
         todo!();
+    }
+
+    fn precursor(&self) -> WeightType {
+        WeightType::Plain(f32::datum_type())
     }
 
     fn k_alignment(&self) -> usize {
