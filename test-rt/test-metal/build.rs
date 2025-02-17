@@ -15,4 +15,11 @@ fn main() {
         "runtime()",
         "Approximation::Approximate",
     );
+
+    suite::suite().test_runtime(
+        "ggml",
+        "suite::suite()",
+        "runtime()",
+        "Approximation::Approximate",
+    );
 }
