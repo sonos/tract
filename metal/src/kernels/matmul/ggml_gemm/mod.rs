@@ -4,6 +4,7 @@ use crate::MetalTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
 use metal::{Buffer, MTLSize, NSUInteger};
+use tract_core::tract_linalg::frame::block_quant::{BlockQuant, Q4_0};
 use std::fmt;
 use tract_core::internal::*;
 use DatumType::{F16, F32};
@@ -29,43 +30,25 @@ struct GgmlGemmParams {
 
 impl From<GemmDispatchParams> for GgmlGemmParams {
     fn from(params: GemmDispatchParams) -> Self {
+        assert!(params.a_strides.len() == 3 && params.b_strides.len() == 3);
         let a_el_size = params.dts[0].size_of();
-        let a_strides = [
-            (params.batch * params.m * params.k * a_el_size) as u64,
-            (params.m * params.k * a_el_size) as u64,
-            (params.k * a_el_size) as u64,
-            a_el_size as u64,
-        ];
 
-        let b_strides = if params.q40_b {
-            let b_el_size = 18;
-            [
-                (params.batch * params.n * (params.k / 32) * b_el_size) as u64,
-                (params.n * (params.k / 32) * b_el_size) as u64,
-                (b_el_size * (params.k / 32)) as u64,
-                b_el_size as u64,
-            ]
-        } else {
-            let b_el_size = params.dts[1].size_of();
-            [
-                (params.batch * params.n * params.k * b_el_size) as u64,
-                (params.n * params.k * b_el_size) as u64,
-                (b_el_size * params.k) as u64,
-                b_el_size as u64,
-            ]
-        };
+        let b_el_size = if params.q40_b { Q4_0.block_bytes() } else { params.dts[1].size_of() };
+        let mut b_strides = params.b_strides;
+        if params.q40_b { b_strides[0] /= 32; b_strides[1] /= 32};
 
+        // Kernel produced transposed output so we swap the inputs
         GgmlGemmParams {
             ne00: params.k as i32,
             ne02: params.batch as i32,
-            nb01: b_strides[2],
-            nb02: b_strides[1],
-            nb03: b_strides[0],
+            nb01: (b_strides[1] as usize * b_el_size) as u64,
+            nb02: (b_strides[0] as usize * b_el_size) as u64,
+            nb03: (b_strides[0] as usize * params.batch * b_el_size) as u64,
             ne12: params.batch as i32,
-            nb10: a_strides[3],
-            nb11: a_strides[2],
-            nb12: a_strides[1],
-            nb13: a_strides[0],
+            nb10: (params.a_strides[2] as usize * a_el_size) as u64,
+            nb11: (params.a_strides[1] as usize * a_el_size) as u64,
+            nb12: (params.a_strides[0] as usize * a_el_size) as u64,
+            nb13: (params.a_strides[0] as usize * params.batch * a_el_size) as u64,
             ne0: params.n as i32,
             ne1: params.m as i32,
             r2:  1,
@@ -99,47 +82,29 @@ struct GgmlGemvParams {
 
 impl From<GemmDispatchParams> for GgmlGemvParams {
     fn from(params: GemmDispatchParams) -> Self {
+        assert!(params.a_strides.len() == 3 && params.b_strides.len() == 3);
         let a_el_size = params.dts[0].size_of();
-        let a_strides = [
-            (params.batch * params.m * params.k * a_el_size) as u64,
-            (params.m * params.k * a_el_size) as u64,
-            (params.k * a_el_size) as u64,
-            a_el_size as u64,
-        ];
+        
+        let b_el_size = if params.q40_b { 18 } else { params.dts[1].size_of() };
+        let mut b_strides = params.b_strides;
+        if params.q40_b { b_strides[0] /= 32; b_strides[1] /= 32};
 
-        let b_strides = if params.q40_b {
-            let b_el_size = 18;
-            [
-                (params.batch * params.n * (params.k / 32) * b_el_size) as u64,
-                (params.n * (params.k / 32) * b_el_size) as u64,
-                (b_el_size * (params.k / 32)) as u64,
-                b_el_size as u64,
-            ]
-        } else {
-            let b_el_size = params.dts[1].size_of();
-            [
-                (params.batch * params.n * params.k * b_el_size) as u64,
-                (params.n * params.k * b_el_size) as u64,
-                (b_el_size * params.k) as u64,
-                b_el_size as u64,
-            ]
-        };
-
+        // Kernel produced transposed output so we swap the inputs
         GgmlGemvParams {
             ne00: params.k as i32,
             ne01: params.n as i32,
             ne02: params.batch as i32,
-            nb00: b_strides[3],
-            nb01: b_strides[2],
-            nb02: b_strides[1],
-            nb03: b_strides[0],
+            nb00: (b_strides[2] as usize * b_el_size) as u64,
+            nb01: (b_strides[1] as usize * b_el_size) as u64,
+            nb02: (b_strides[0] as usize * b_el_size) as u64,
+            nb03: (b_strides[0] as usize * params.batch * b_el_size) as u64,
             ne10: params.k as i32, 
             ne11: params.m as i32,
             ne12: params.batch as i32,
-            nb10: a_strides[3],
-            nb11: a_strides[2],
-            nb12: a_strides[1],
-            nb13: a_strides[0],
+            nb10: (params.a_strides[2] as usize * a_el_size) as u64,
+            nb11: (params.a_strides[1] as usize * a_el_size) as u64,
+            nb12: (params.a_strides[0] as usize * a_el_size) as u64,
+            nb13: (params.a_strides[0] as usize * params.batch * a_el_size) as u64,
             ne0: params.n as i32,
             ne1: params.m as i32,
             r2:  1,
@@ -256,11 +221,11 @@ fn dispatch_metal_ggml_gemv(
     output_offset: usize,
 ) -> Result<()> {
     let (name, (nth0, nth1, nrows)) = mv_kernel_name_and_dispatch_params(&params)?;
-    dbg!(&name);
+    //dbg!(&name);
 
     let pipeline = context.shared_context().load_pipeline(LibraryName::Ggml, &name)?;
-
-    let ggml_params: GgmlGemvParams = params.into();
+    
+    let ggml_params: GgmlGemvParams = params.clone().into();
     let command_buffer = context.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
@@ -269,6 +234,8 @@ fn dispatch_metal_ggml_gemv(
             std::mem::size_of::<GgmlGemvParams>() as u64,
             &ggml_params as *const _ as *const _,
         );
+
+        // Kernel produced transposed output so we swap the inputs
         encoder.set_buffer(1, Some(b_buffer), b_offset as NSUInteger);
         encoder.set_buffer(2, Some(a_buffer), a_offset as NSUInteger);
         encoder.set_buffer(3, Some(output), output_offset as NSUInteger);
@@ -321,10 +288,10 @@ fn dispatch_metal_ggml_gemm(
         i1_tname = "q4_0";
     }
     let name = format!("kernel_mul_mm_{i1_tname}_{i2_tname}");
-    dbg!(&name);
+    //dbg!(&name);
     let pipeline = context.shared_context().load_pipeline(LibraryName::Ggml, &name)?;
 
-    let ggml_params: GgmlGemmParams = params.into();
+    let ggml_params: GgmlGemmParams = params.clone().into();
     let command_buffer = context.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
@@ -333,6 +300,8 @@ fn dispatch_metal_ggml_gemm(
             std::mem::size_of::<GgmlGemmParams>() as u64,
             &ggml_params as *const _ as *const _,
         );
+
+        // Kernel produced transposed output so we swap the inputs
         encoder.set_buffer(1, Some(b_buffer), b_offset as NSUInteger);
         encoder.set_buffer(2, Some(a_buffer), a_offset as NSUInteger);
         encoder.set_buffer(3, Some(output), output_offset as NSUInteger);

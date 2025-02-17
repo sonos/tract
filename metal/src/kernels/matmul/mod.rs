@@ -32,7 +32,7 @@ impl Default for MetalGemmImplKind {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct GemmDispatchParams {
     pub dts: [DatumType; 3],
     pub batch: usize,
@@ -45,6 +45,8 @@ pub struct GemmDispatchParams {
     pub b_offset: usize,
     pub q40_b: bool,
     pub c_offset: usize,
+    pub a_strides: TVec<isize>,
+    pub b_strides: TVec<isize>
 }
 
 impl GemmDispatchParams {
@@ -75,6 +77,18 @@ impl GemmDispatchParams {
         let n = c_shape[rank - 1];
         let k = a_shape[a_shape.len() - 2 + !transpose_a as usize];
 
+        let batch = if a_batch == b_batch { a_batch } else { 1 };
+        let a_strides = if transpose_a {
+            natural_strides(&[batch, k, m])
+        } else {
+            natural_strides(&[batch, m, k])
+        };
+        let b_strides = if transpose_b {
+            natural_strides(&[batch, n, k])
+        } else {
+            natural_strides(&[batch, k, n])
+        };
+
         match (a_batch, b_batch) {
             // bmk, 1kn -> bmn
             // bmk, 1nk -> bmn
@@ -90,6 +104,8 @@ impl GemmDispatchParams {
                 b_offset,
                 q40_b,
                 c_offset,
+                a_strides,
+                b_strides
             }]),
             // bkm, 1kn -> bmn
             // bkm, 1nk -> bmn
@@ -107,6 +123,8 @@ impl GemmDispatchParams {
                     b_offset,
                     q40_b,
                     c_offset: c_offset + a_batch_idx * m * n * dts[2].size_of(),
+                    a_strides: a_strides.clone(),
+                    b_strides: b_strides.clone()
                 })
                 .collect()),
             // 1mk, bkn -> bmn
@@ -127,6 +145,8 @@ impl GemmDispatchParams {
                     b_offset: b_offset + b_batch_idx * n * k * dts[1].size_of(),
                     q40_b,
                     c_offset: c_offset + b_batch_idx * m * n * dts[2].size_of(),
+                    a_strides: a_strides.clone(),
+                    b_strides: b_strides.clone()
                 })
                 .collect()),
             // bmk, bkn -> bmn
@@ -148,6 +168,8 @@ impl GemmDispatchParams {
                     b_offset,
                     q40_b,
                     c_offset,
+                    a_strides,
+                    b_strides
                 }])
             }
         }
@@ -281,7 +303,7 @@ impl<M: GemmKernel> GemmImpl<M> {
             self.matmul
                 .dispatch_eval(
                     context,
-                    d,
+                    d.clone(),
                     a.metal(),
                     b.metal(),
                     c.metal(),
@@ -429,6 +451,8 @@ mod tests {
                 b_offset: 0,
                 q40_b: false,
                 c_offset: 0,
+                a_strides: natural_strides(&[1, m, k]),
+                b_strides: natural_strides(&[1, k, n])
             }]
         );
 
@@ -457,6 +481,8 @@ mod tests {
                 b_offset: 0,
                 q40_b: false,
                 c_offset: 0,
+                a_strides: natural_strides(&[10, m, k]),
+                b_strides: natural_strides(&[10, k, n])
             }]
         );
 
@@ -486,6 +512,8 @@ mod tests {
                     b_offset: 0,
                     q40_b: false,
                     c_offset: 10,
+                    a_strides: natural_strides(&[1, m, k]),
+                    b_strides: natural_strides(&[1, k, n])
                 },
                 GemmDispatchParams {
                     dts: [dt; 3],
@@ -499,6 +527,8 @@ mod tests {
                     b_offset: 1 * n * k * dt.size_of(),
                     q40_b: false,
                     c_offset: 10 + m * n * dt.size_of(),
+                    a_strides: natural_strides(&[1, m, k]),
+                    b_strides: natural_strides(&[1, k, n])
                 }
             ]
         );
@@ -528,6 +558,8 @@ mod tests {
                 b_offset: 0,
                 q40_b: false,
                 c_offset: 100,
+                a_strides: natural_strides(&[2, k, m]),
+                b_strides: natural_strides(&[2, k, n])
             }]
         );
 
@@ -557,6 +589,8 @@ mod tests {
                     b_offset: 0,
                     q40_b: false,
                     c_offset: 100,
+                    a_strides: natural_strides(&[1, k, m]),
+                    b_strides: natural_strides(&[1, k, n])
                 },
                 GemmDispatchParams {
                     dts: [dt; 3],
@@ -570,6 +604,8 @@ mod tests {
                     b_offset: 0,
                     q40_b: false,
                     c_offset: 100 + 1 * m * n * dt.size_of(),
+                    a_strides: natural_strides(&[1, k, m]),
+                    b_strides: natural_strides(&[1, k, n])
                 }
             ]
         );
@@ -599,6 +635,8 @@ mod tests {
                 b_offset: 10,
                 q40_b: false,
                 c_offset: 0,
+                a_strides: natural_strides(&[1, m, k]),
+                b_strides: natural_strides(&[1, k, n])
             }]
         );
 
