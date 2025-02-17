@@ -73,19 +73,10 @@ impl GemmKernel for MlxGemm {
             transpose_b,
             b_offset,
             c_offset,
+            a_strides,
+            b_strides,
             ..
         } = params;
-
-        let a_strides = if transpose_a {
-            natural_strides(&[batch, k, m])
-        } else {
-            natural_strides(&[batch, m, k])
-        };
-        let b_strides = if transpose_b {
-            natural_strides(&[batch, n, k])
-        } else {
-            natural_strides(&[batch, k, n])
-        };
 
         ensure!(
             matches!(dts[0], DatumType::F32 | DatumType::F16),
