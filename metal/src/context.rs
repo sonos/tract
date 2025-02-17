@@ -229,7 +229,10 @@ impl MetalContext {
     }
 
     pub fn buffer_from_slice<T>(&self, data: &[T]) -> Buffer {
-        let size = core::mem::size_of_val(data) as NSUInteger;
+        let mut size = core::mem::size_of_val(data) as NSUInteger;
+        if size == 0 {
+            size += 1;
+        }
         self.device().new_buffer_with_bytes_no_copy(
             data.as_ptr() as *const core::ffi::c_void,
             size,
@@ -240,6 +243,10 @@ impl MetalContext {
 
     pub fn buffer_from_slice_mut<T>(&self, data: &mut [T]) -> Buffer {
         let size = core::mem::size_of_val(data) as NSUInteger;
+        let mut size = core::mem::size_of_val(data) as NSUInteger;
+        if size == 0 {
+            size += 1;
+        }
         self.device().new_buffer_with_bytes_no_copy(
             data.as_ptr() as *const core::ffi::c_void,
             size,
