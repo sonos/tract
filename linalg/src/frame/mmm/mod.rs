@@ -60,7 +60,6 @@ impl ImplementationQuality {
     pub fn cost(&self) -> usize {
         ImplementationQuality::best_to_worst()
             .iter()
-            .rev()
             .position(|x| x == self)
             .unwrap()
     }

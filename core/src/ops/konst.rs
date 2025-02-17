@@ -1,8 +1,6 @@
 use dyn_clone::clone_box;
-use tract_itertools::Itertools;
 use tract_linalg::block_quant::BlockQuantValue;
 use tract_linalg::kit::WeightType;
-use tract_linalg::pack::PackedFormat;
 
 use crate::internal::*;
 use crate::ops::array::Gather;
@@ -195,25 +193,28 @@ impl TypedOp for Const {
                 WeightType::Plain(self.0.datum_type())
             };
 
-            let choice = tract_linalg::ops()
-                .mmm_kits()
-                .iter()
-                .filter(|kit| {
-                    kit.weight == weight_type
-                        && matmuls.iter().all(|&(acc, act, _abstract_n)| {
-                            kit.mmms.iter().any(|mmm| {
-                                mmm.mmm.internal_type() == acc
-                                    && mmm
-                                        .b_packing()
-                                        .downcast_ref::<PackedFormat>()
-                                        .is_some_and(|pf| pf.dt == act)
-                            })
+            let ops = tract_linalg::ops();
+            let choice = ops
+                .all_possible_packing(weight_type.clone())
+                .filter_map(|format| {
+                    matmuls
+                        .iter()
+                        .filter_map(|(acc, act, _)| {
+                            ops.filter_impls(format, (*acc).into(), (*act).into())
+                                .map(|(mmm, _, pa, pe, _)| {
+                                    (pa, mmm.quality().cost() * 2 + pe.is_some() as usize)
+                                })
+                                .min_by_key(|&(_, score)| score)
                         })
+                        .max_by_key(|triple| triple.1)
                 })
-                .sorted_by_key(|kit| kit.quality().cost())
-                .next()
-                .unwrap();
-            let packed = choice.static_packer.prepare_tensor(&self.0, 1, 0)?;
+                .min_by_key(|triple| triple.1)
+                .context("Failed to find a compatible matmul")?;
+
+            let packed = choice
+                .0
+                .prepare_tensor(&self.0, 1, 0)
+                .context("in prepare_tensor")?;
             let fact = clone_box(packed.opaque_fact());
             let opaque = Opaque(Arc::new(packed));
             let konst = Const(rctensor0(opaque), Some(fact));

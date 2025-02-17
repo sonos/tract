@@ -6,6 +6,8 @@ use tract_data::internal::*;
 
 use crate::mmm::{EagerPackedInput, MMMInputFormat, MMMInputValue, PackedOpaqueFact};
 
+use super::kit::WeightType;
+
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct PackedFormat {
     pub dt: DatumType,
@@ -22,6 +24,10 @@ impl MMMInputFormat for PackedFormat {
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>> {
         PackedFormat::pack_tensor(self, t, k_axis, mn_axis)
+    }
+
+    fn precursor(&self) -> WeightType {
+        WeightType::Plain(self.dt)
     }
 
     fn r(&self) -> usize {

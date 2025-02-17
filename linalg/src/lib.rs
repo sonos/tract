@@ -22,7 +22,9 @@ mod frame;
 pub mod generic;
 pub mod multithread;
 pub use generic::{ScaleShiftAndRound, Scaler};
+use kit::{KitDatumType, WeightType};
 use lazy_static::lazy_static;
+use mmm::{MMMInputFormat, MatMatMul, PanelExtractor};
 use tract_data::internal::TensorView;
 #[cfg(target_arch = "x86_64")]
 pub mod x86_64_fma;
@@ -115,6 +117,74 @@ impl Ops {
             .unwrap()
             .static_packer
             .clone()
+    }
+
+    pub fn all_possible_packing(
+        &self,
+        weight_type: impl Into<WeightType>,
+    ) -> impl Iterator<Item = &dyn MMMInputFormat> {
+        let weight_type = weight_type.into();
+        self.mmm_impls
+            .iter()
+            .flat_map(|m| m.packings())
+            .map(|p| &*p.0)
+            .flat_map(move |p| {
+                let mut packs: Vec<&dyn MMMInputFormat> = vec![];
+                if p.precursor() == weight_type {
+                    packs.push(p)
+                };
+                for pe in &self.panel_extractors {
+                    if pe.from.precursor() == weight_type && pe.to.same_as(p) {
+                        packs.push(&*pe.from);
+                    }
+                }
+                packs.into_iter()
+            })
+            .collect::<HashSet<_>>()
+            .into_iter()
+    }
+
+    pub fn filter_impls<'o>(
+        &'o self,
+        weight: &'o dyn MMMInputFormat,
+        acc: KitDatumType,
+        act: KitDatumType,
+    ) -> impl Iterator<
+        Item = (
+            &'o dyn MatMatMul,
+            usize,
+            &'o dyn MMMInputFormat,
+            Option<&'o PanelExtractor>,
+            &'o dyn MMMInputFormat,
+        ),
+    > {
+        self.mmm_impls
+            .iter()
+            .filter(move |mmm| KitDatumType::from(mmm.internal_type()) == acc)
+            .flat_map(|mmm| {
+                mmm.packings()
+                    .iter()
+                    .enumerate()
+                    .map(|(pack_ix, (a, b))| (&**mmm, pack_ix, &**a, &**b))
+            })
+            .filter_map(|(mmm, ix, a, b)| {
+                if a.same_as(weight) {
+                    Some((mmm, ix, a, None, b))
+                } else if let Some(pe) = self
+                    .panel_extractors
+                    .iter()
+                    .find(|pe| pe.from.same_as(weight) && pe.to.same_as(&*a))
+                {
+                    Some((mmm, ix, a, Some(pe), b))
+                } else {
+                    None
+                }
+            })
+            .filter(move |(_mmm, _ix, _a, _pe, b)| {
+                b.precursor()
+                    .as_dt()
+                    .is_some_and(|dt| KitDatumType::from(dt) == act)
+            })
     }
 
     pub fn panel_extractors(&self) -> &[mmm::panel_extract::PanelExtractor] {
@@ -285,7 +355,7 @@ pub fn ops() -> &'static Ops {
 }
 
 use num_traits::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::ops::*;
 use std::sync::Mutex;
