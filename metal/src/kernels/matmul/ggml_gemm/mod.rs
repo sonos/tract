@@ -10,15 +10,142 @@ use DatumType::{F16, F32};
 
 #[derive(Debug)]
 #[repr(C)]
-struct GgmlParams {
-    batch: i32,
-    m: i32,
-    k: i32,
-    n: i32,
-    a_strides: [u64; 4],
-    b_strides: [u64; 4],
-    channel_broadcast_ratio: i32,
-    batch_broadcast_ratio: i32,
+struct GgmlGemmParams {
+    ne00: i32,
+    ne02: i32,
+    nb01: u64,
+    nb02: u64,
+    nb03: u64,
+    ne12: i32,
+    nb10: u64,
+    nb11: u64,
+    nb12: u64,
+    nb13: u64,
+    ne0:  i32,
+    ne1:  i32,
+    r2:   i16,
+    r3:   i16,
+}
+
+impl From<GemmDispatchParams> for GgmlGemmParams {
+    fn from(params: GemmDispatchParams) -> Self {
+        let a_el_size = params.dts[0].size_of();
+        let a_strides = [
+            (params.batch * params.m * params.k * a_el_size) as u64,
+            (params.m * params.k * a_el_size) as u64,
+            (params.k * a_el_size) as u64,
+            a_el_size as u64,
+        ];
+
+        let b_strides = if params.q40_b {
+            let b_el_size = 18;
+            [
+                (params.batch * params.n * (params.k / 32) * b_el_size) as u64,
+                (params.n * (params.k / 32) * b_el_size) as u64,
+                (b_el_size * (params.k / 32)) as u64,
+                b_el_size as u64,
+            ]
+        } else {
+            let b_el_size = params.dts[1].size_of();
+            [
+                (params.batch * params.n * params.k * b_el_size) as u64,
+                (params.n * params.k * b_el_size) as u64,
+                (b_el_size * params.k) as u64,
+                b_el_size as u64,
+            ]
+        };
+
+        GgmlGemmParams {
+            ne00: params.k as i32,
+            ne02: params.batch as i32,
+            nb01: b_strides[2],
+            nb02: b_strides[1],
+            nb03: b_strides[0],
+            ne12: params.batch as i32,
+            nb10: a_strides[3],
+            nb11: a_strides[2],
+            nb12: a_strides[1],
+            nb13: a_strides[0],
+            ne0: params.n as i32,
+            ne1: params.m as i32,
+            r2:  1,
+            r3:  1,
+        }
+    }
+}
+
+#[derive(Debug)]
+#[repr(C)]
+struct GgmlGemvParams {
+    ne00: i32,
+    ne01: i32,
+    ne02: i32,
+    nb00: u64,
+    nb01: u64,
+    nb02: u64,
+    nb03: u64,
+    ne10: i32,
+    ne11: i32,
+    ne12: i32,
+    nb10: u64,
+    nb11: u64,
+    nb12: u64,
+    nb13: u64,
+    ne0:  i32,
+    ne1:  i32,
+    r2:   i16,
+    r3:   i16,
+}
+
+impl From<GemmDispatchParams> for GgmlGemvParams {
+    fn from(params: GemmDispatchParams) -> Self {
+        let a_el_size = params.dts[0].size_of();
+        let a_strides = [
+            (params.batch * params.m * params.k * a_el_size) as u64,
+            (params.m * params.k * a_el_size) as u64,
+            (params.k * a_el_size) as u64,
+            a_el_size as u64,
+        ];
+
+        let b_strides = if params.q40_b {
+            let b_el_size = 18;
+            [
+                (params.batch * params.n * (params.k / 32) * b_el_size) as u64,
+                (params.n * (params.k / 32) * b_el_size) as u64,
+                (b_el_size * (params.k / 32)) as u64,
+                b_el_size as u64,
+            ]
+        } else {
+            let b_el_size = params.dts[1].size_of();
+            [
+                (params.batch * params.n * params.k * b_el_size) as u64,
+                (params.n * params.k * b_el_size) as u64,
+                (b_el_size * params.k) as u64,
+                b_el_size as u64,
+            ]
+        };
+
+        GgmlGemvParams {
+            ne00: params.k as i32,
+            ne01: params.n as i32,
+            ne02: params.batch as i32,
+            nb00: b_strides[3],
+            nb01: b_strides[2],
+            nb02: b_strides[1],
+            nb03: b_strides[0],
+            ne10: params.k as i32, 
+            ne11: params.m as i32,
+            ne12: params.batch as i32,
+            nb10: a_strides[3],
+            nb11: a_strides[2],
+            nb12: a_strides[1],
+            nb13: a_strides[0],
+            ne0: params.n as i32,
+            ne1: params.m as i32,
+            r2:  1,
+            r3:  1,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -61,65 +188,26 @@ impl GemmKernel for GgmlGemm {
     ) -> TractResult<()> {
         let GemmDispatchParams {
             dts,
-            batch,
             m,
             k,
-            n,
             transpose_a,
             a_offset,
             transpose_b,
             b_offset,
-            q40_b,
             c_offset,
+            ..
         } = params;
 
         ensure!(!transpose_a && transpose_b);
 
-        let a_el_size = dts[0].size_of();
-        let a_strides = [
-            (batch * m * k * a_el_size) as u64,
-            (m * k * a_el_size) as u64,
-            (k * a_el_size) as u64,
-            a_el_size as u64,
-        ];
-
-        let b_strides = if q40_b {
-            let b_el_size = 18;
-            [
-                (batch * n * (k / 32) * b_el_size) as u64,
-                (n * (k / 32) * b_el_size) as u64,
-                (b_el_size * (k / 32)) as u64,
-                b_el_size as u64,
-            ]
-        } else {
-            let b_el_size = dts[1].size_of();
-            [
-                (batch * n * k * b_el_size) as u64,
-                (n * k * b_el_size) as u64,
-                (b_el_size * k) as u64,
-                b_el_size as u64,
-            ]
-        };
-
-        let params = GgmlParams {
-            batch: batch as i32,
-            m: m as i32,
-            k: k as i32,
-            n: n as i32,
-            a_strides,
-            b_strides,
-            channel_broadcast_ratio: 1,
-            batch_broadcast_ratio: 1,
-        };
-
         if (dts[0] == F32) && (k % 32 == 0) && (k >= 64) && (m > 4) {
             dispatch_metal_ggml_gemm(
-                context, dts, q40_b, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer,
+                context,params, a_offset, a_buffer, b_offset, b_buffer, c_buffer,
                 c_offset,
             )?;
         } else {
             dispatch_metal_ggml_gemv(
-                context, dts, q40_b, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer,
+                context, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer,
                 c_offset,
             )?;
         }
@@ -129,17 +217,15 @@ impl GemmKernel for GgmlGemm {
 }
 
 fn mv_kernel_name_and_dispatch_params(
-    dts: &[DatumType],
-    q40_b: bool,
-    params: &GgmlParams,
+    params: &GemmDispatchParams,
 ) -> Result<(String, (u64, u64, u64))> {
     let (nth0, nth1, nrows): (u64, u64, u64) = (32, 1, 1);
 
-    if dts[1] == F32 {
-        ensure!(dts[0] == F32);
+    if params.dts[1] == F32 {
+        ensure!(params.dts[0] == F32);
         Ok(("kernel_mul_mv_f32_f32".to_string(), (nth0, nth1, 4)))
-    } else if dts[1] == F16 {
-        if dts[0] == F32 {
+    } else if params.dts[1] == F16 {
+        if params.dts[0] == F32 {
             if (params.m * params.batch) < 4 {
                 Ok(("kernel_mul_mv_f16_f32_1row".to_string(), (nth0, nth1, nrows)))
             } else if (params.k >= 128) && (params.k % 4 == 0) && (params.n >= 8) {
@@ -149,11 +235,11 @@ fn mv_kernel_name_and_dispatch_params(
             }
         } else {
             // Never used in practice since we upcast input[0] to f32
-            ensure!(dts[1] == F16);
+            ensure!(params.dts[1] == F16);
             Ok(("kernel_mul_mv_f16_f16".to_string(), (nth0, nth1, 4)))
         }
     } else {
-        ensure!((q40_b) && (dts[0] == F32));
+        ensure!((params.q40_b) && (params.dts[0] == F32));
         Ok(("kernel_mul_mv_q4_0_f32".to_string(), (8, 8, 1)))
     }
 }
@@ -161,9 +247,7 @@ fn mv_kernel_name_and_dispatch_params(
 #[allow(clippy::too_many_arguments)]
 fn dispatch_metal_ggml_gemv(
     context: &MetalContext,
-    dts: [DatumType; 3],
-    q40_b: bool,
-    params: GgmlParams,
+    params: GemmDispatchParams,
     a_offset: usize,
     a_buffer: &Buffer,
     b_offset: usize,
@@ -171,24 +255,25 @@ fn dispatch_metal_ggml_gemv(
     output: &Buffer,
     output_offset: usize,
 ) -> Result<()> {
-    let (name, (nth0, nth1, nrows)) = mv_kernel_name_and_dispatch_params(&dts, q40_b, &params)?;
-    //dbg!(&name);
+    let (name, (nth0, nth1, nrows)) = mv_kernel_name_and_dispatch_params(&params)?;
+    dbg!(&name);
 
     let pipeline = context.shared_context().load_pipeline(LibraryName::Ggml, &name)?;
 
+    let ggml_params: GgmlGemvParams = params.into();
     let command_buffer = context.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
         encoder.set_bytes(
             0,
-            std::mem::size_of::<GgmlParams>() as u64,
-            &params as *const _ as *const _,
+            std::mem::size_of::<GgmlGemvParams>() as u64,
+            &ggml_params as *const _ as *const _,
         );
         encoder.set_buffer(1, Some(b_buffer), b_offset as NSUInteger);
         encoder.set_buffer(2, Some(a_buffer), a_offset as NSUInteger);
         encoder.set_buffer(3, Some(output), output_offset as NSUInteger);
 
-        let grid_size = if !q40_b {
+        let grid_size = if !params.q40_b {
             MTLSize {
                 width: params.n as u64,
                 height: (params.m as u64).div_ceil(nrows),
@@ -213,9 +298,7 @@ fn dispatch_metal_ggml_gemv(
 #[allow(clippy::too_many_arguments)]
 fn dispatch_metal_ggml_gemm(
     context: &MetalContext,
-    dts: [DatumType; 3],
-    q40_b: bool,
-    params: GgmlParams,
+    params: GemmDispatchParams,
     a_offset: usize,
     a_buffer: &Buffer,
     b_offset: usize,
@@ -223,6 +306,12 @@ fn dispatch_metal_ggml_gemm(
     output: &Buffer,
     output_offset: usize,
 ) -> Result<()> {
+    let GemmDispatchParams {
+        dts,
+        q40_b,
+        ..
+    } = params;
+
     ensure!((matches!(dts[1], F32 | F16) || q40_b) && dts[0] == F32);
 
     let mut i1_tname = MetalTensor::tname(dts[1])?;
@@ -232,16 +321,17 @@ fn dispatch_metal_ggml_gemm(
         i1_tname = "q4_0";
     }
     let name = format!("kernel_mul_mm_{i1_tname}_{i2_tname}");
-    //dbg!(&name);
+    dbg!(&name);
     let pipeline = context.shared_context().load_pipeline(LibraryName::Ggml, &name)?;
 
+    let ggml_params: GgmlGemmParams = params.into();
     let command_buffer = context.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
         encoder.set_bytes(
             0,
-            std::mem::size_of::<GgmlParams>() as u64,
-            &params as *const _ as *const _,
+            std::mem::size_of::<GgmlGemmParams>() as u64,
+            &ggml_params as *const _ as *const _,
         );
         encoder.set_buffer(1, Some(b_buffer), b_offset as NSUInteger);
         encoder.set_buffer(2, Some(a_buffer), a_offset as NSUInteger);
@@ -282,7 +372,7 @@ mod tests {
     #[test]
     fn test_mat_mul() -> TractResult<()> {
         run_mmm_test_case::<GgmlGemm>((1, 5, 64, 2), false, true, F32, F32)?;
-        run_mmm_test_case::<GgmlGemm>((2, 1, 32, 2), false, true, F32, F32)?;
+        run_mmm_test_case::<GgmlGemm>((2, 8, 64, 2), false, true, F32, F32)?;
         run_mmm_test_case::<GgmlGemm>((1, 5, 64, 2), false, true, F32, F16)?;
         run_mmm_test_case::<GgmlGemm>((3, 8, 64, 200), false, true, F32, F16)?;
         run_mmm_test_case::<GgmlGemm>((10, 25, 512, 320), false, true, F32, F16)?;

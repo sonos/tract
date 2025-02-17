@@ -319,7 +319,6 @@ mod tests {
     use crate::kernels::matmul::GemmImpl;
     use crate::IntoMetal;
     use anyhow::Result;
-    use derive_new::new;
     use num_traits::AsPrimitive;
     use num_traits::Float;
     use proptest::collection::vec;
@@ -679,7 +678,7 @@ mod tests {
         pub q4_0_weights: bool,
     }
 
-    #[derive(Debug, new)]
+    #[derive(Debug)]
     pub struct MmmProblem<K: GemmKernel, F: Datum + Float>
     where
         F: Datum + Float,
