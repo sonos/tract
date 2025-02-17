@@ -156,7 +156,7 @@ liquid-derive = "=0.26.8"
 log = "0.4.14"
 maplit = "1.0.2"
 memmap2 = "0.9"
-metal = { version = "0.30.0", features = ["mps"] }
+metal = { version = "0.30.0" }
 ndarray = "0.16"
 ndarray-npy = { version = "0.9.1", features = [ "compressed_npz" ] }
 nom = "7.0.0"

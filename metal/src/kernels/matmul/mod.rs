@@ -2,13 +2,11 @@ mod basic;
 mod mfa;
 mod mlx_gemm;
 mod mmm_tile_8x8;
-pub mod mps;
 
 pub use basic::BasicMatMul;
 pub use mfa::MfaGemm;
 pub use mlx_gemm::MlxGemm;
 pub use mmm_tile_8x8::{metal_mmm_tile_8x8, mmm_tile_8x8};
-pub use mps::MpsMatMul;
 
 use crate::{MetalContext, MetalTensor};
 use metal::Buffer;
@@ -19,7 +17,6 @@ use tract_core::internal::*;
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum MetalGemmImplKind {
     Mlx,
-    Mps,
     Mfa,
 }
 
@@ -552,16 +549,6 @@ mod tests {
 
         #[test]
         fn mmm_mfa_prop_f16(pb in any::<MmmProblem<MfaGemm, f16>>()) {
-            prop_assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
-        }
-
-        #[test]
-        fn mmm_mps_prop_f32(pb in any::<MmmProblem<MpsMatMul, f32>>()) {
-            prop_assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
-        }
-
-        #[test]
-        fn mmm_mps_prop_f16(pb in any::<MmmProblem<MpsMatMul, f16>>()) {
             prop_assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
         }
 

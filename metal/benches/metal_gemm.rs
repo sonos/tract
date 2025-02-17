@@ -1,4 +1,4 @@
-use crate::matmul::{BasicMatMul, GemmImpl, GemmKernel, MfaGemm, MlxGemm, MpsMatMul};
+use crate::matmul::{BasicMatMul, GemmImpl, GemmKernel, MfaGemm, MlxGemm};
 use criterion::measurement::WallTime;
 use criterion::*;
 use ggml::Context;
@@ -140,7 +140,6 @@ fn matmul(c: &mut Criterion, b: usize, m: usize, k: usize, n: usize) {
 
     for dt in [f32::datum_type(), f16::datum_type()] {
         metal_gemm::<BasicMatMul>(&mut c, b, m, k, n, dt);
-        metal_gemm::<MpsMatMul>(&mut c, b, m, k, n, dt);
         metal_gemm::<MlxGemm>(&mut c, b, m, k, n, dt);
         metal_gemm::<MfaGemm>(&mut c, b, m, k, n, dt);
     }
