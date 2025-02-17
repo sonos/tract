@@ -1,6 +1,6 @@
 use crate::fact::MetalTypedFactExt;
 use crate::kernels::array::RotateHalf;
-use crate::kernels::matmul::{GemmKernel, MetalGemmImplKind, MfaGemm, MlxGemm, MpsMatMul};
+use crate::kernels::matmul::{GemmKernel, MetalGemmImplKind, MfaGemm, MlxGemm};
 use crate::kernels::nn::{
     ApplyRope, NewGelu, Reducer, RmsNorm, ScaledMaskedSoftmax, Silu, Softmax,
 };
@@ -30,7 +30,7 @@ use tract_itertools::Itertools;
 
 impl MetalGemmImplKind {
     pub fn variants() -> Vec<MetalGemmImplKind> {
-        vec![Self::Mlx, Self::Mfa, Self::Mps]
+        vec![Self::Mlx, Self::Mfa]
     }
 
     pub fn variants_str() -> Vec<&'static str> {
@@ -40,7 +40,6 @@ impl MetalGemmImplKind {
     pub fn to_str(&self) -> &'static str {
         match self {
             Self::Mlx => "mlx",
-            Self::Mps => "mps",
             Self::Mfa => "mfa",
         }
     }
@@ -337,7 +336,6 @@ macro_rules! map_element_wise_ops {
 fn check_matmul_in_dts(gemm_impl: MetalGemmImplKind, dts: &[DatumType]) -> bool {
     let is_supported = match gemm_impl {
         MetalGemmImplKind::Mlx => MlxGemm.is_supported_dts(dts),
-        MetalGemmImplKind::Mps => MpsMatMul.is_supported_dts(dts),
         MetalGemmImplKind::Mfa => MfaGemm.is_supported_dts(dts),
     };
     is_supported.unwrap_or(false)
@@ -354,9 +352,6 @@ fn convert_matmul_to_metal(
     let matmul: Box<dyn TypedOp> = match gemm_impl {
         MetalGemmImplKind::Mlx => {
             Box::new(ops::MetalGemm::<MlxGemm>::new(op.transpose_a, op.transpose_b))
-        }
-        MetalGemmImplKind::Mps => {
-            Box::new(ops::MetalGemm::<MpsMatMul>::new(op.transpose_a, op.transpose_b))
         }
         MetalGemmImplKind::Mfa => {
             Box::new(ops::MetalGemm::<MfaGemm>::new(op.transpose_a, op.transpose_b))
