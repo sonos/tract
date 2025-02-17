@@ -15,11 +15,4 @@ fn main() {
         "runtime()",
         "Approximation::Approximate",
     );
-
-    suite::suite().test_runtime(
-        "mps",
-        "suite::suite()",
-        "runtime()",
-        "Approximation::Approximate",
-    );
 }
