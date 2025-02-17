@@ -153,6 +153,7 @@ impl GemmKernel for GgmlGemm {
     ) -> TractResult<()> {
         let GemmDispatchParams {
             dts,
+            batch,
             m,
             k,
             transpose_a,
@@ -160,12 +161,13 @@ impl GemmKernel for GgmlGemm {
             transpose_b,
             b_offset,
             c_offset,
+            q40_b,
             ..
         } = params;
 
         ensure!(!transpose_a && transpose_b);
 
-        if (dts[0] == F32) && (k % 32 == 0) && (k >= 64) && (m > 4) {
+        if (dts[0] == F32) && (k % 32 == 0) && (k >= 64) && ((m > 4) || (q40_b && batch > 1)) {
             dispatch_metal_ggml_gemm(
                 context,params, a_offset, a_buffer, b_offset, b_buffer, c_buffer,
                 c_offset,
@@ -184,24 +186,22 @@ impl GemmKernel for GgmlGemm {
 fn mv_kernel_name_and_dispatch_params(
     params: &GemmDispatchParams,
 ) -> Result<(String, (u64, u64, u64))> {
-    let (nth0, nth1, nrows): (u64, u64, u64) = (32, 1, 1);
-
     if params.dts[1] == F32 {
         ensure!(params.dts[0] == F32);
-        Ok(("kernel_mul_mv_f32_f32".to_string(), (nth0, nth1, 4)))
+        Ok(("kernel_mul_mv_f32_f32".to_string(), (32, 1, 4)))
     } else if params.dts[1] == F16 {
         if params.dts[0] == F32 {
             if (params.m * params.batch) < 4 {
-                Ok(("kernel_mul_mv_f16_f32_1row".to_string(), (nth0, nth1, nrows)))
+                Ok(("kernel_mul_mv_f16_f32_1row".to_string(), (32, 1, 1)))
             } else if (params.k >= 128) && (params.k % 4 == 0) && (params.n >= 8) {
-                Ok(("kernel_mul_mv_f16_f32_l4".to_string(), (nth0, nth1, params.m as u64)))
+                Ok(("kernel_mul_mv_f16_f32_l4".to_string(), (32, 1, params.m as u64)))
             } else {
-                Ok(("kernel_mul_mv_f16_f32".to_string(), (nth0, nth1, 4)))
+                Ok(("kernel_mul_mv_f16_f32".to_string(), (32, 1, 4)))
             }
         } else {
             // Never used in practice since we upcast input[0] to f32
-            ensure!(params.dts[1] == F16);
-            Ok(("kernel_mul_mv_f16_f16".to_string(), (nth0, nth1, 4)))
+            ensure!(params.dts[0] == F16);
+            Ok(("kernel_mul_mv_f16_f16".to_string(), (32, 1, 4)))
         }
     } else {
         ensure!((params.q40_b) && (params.dts[0] == F32));
@@ -222,7 +222,6 @@ fn dispatch_metal_ggml_gemv(
 ) -> Result<()> {
     let (name, (nth0, nth1, nrows)) = mv_kernel_name_and_dispatch_params(&params)?;
     //dbg!(&name);
-
     let pipeline = context.shared_context().load_pipeline(LibraryName::Ggml, &name)?;
     
     let ggml_params: GgmlGemvParams = params.clone().into();
@@ -281,12 +280,9 @@ fn dispatch_metal_ggml_gemm(
 
     ensure!((matches!(dts[1], F32 | F16) || q40_b) && dts[0] == F32);
 
-    let mut i1_tname = MetalTensor::tname(dts[1])?;
+    let i1_tname = if !q40_b { MetalTensor::tname(dts[1])? } else { "q4_0" };
     let i2_tname = MetalTensor::tname(dts[0])?;
 
-    if q40_b {
-        i1_tname = "q4_0";
-    }
     let name = format!("kernel_mul_mm_{i1_tname}_{i2_tname}");
     //dbg!(&name);
     let pipeline = context.shared_context().load_pipeline(LibraryName::Ggml, &name)?;
@@ -307,8 +303,8 @@ fn dispatch_metal_ggml_gemm(
         encoder.set_buffer(3, Some(output), output_offset as NSUInteger);
 
         let grid_size = MTLSize {
-            width: ((params.m + 31) / 32) as u64,
-            height: ((params.n + 63) / 64) as u64,
+            width: (params.m as u64).div_ceil(32),
+            height: (params.n as u64).div_ceil(64),
             depth: /* batch_size_out */ params.batch as u64,
         };
         let group_size = MTLSize { width: 128, height: 1, depth: 1 };

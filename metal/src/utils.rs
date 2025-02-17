@@ -1,6 +1,7 @@
 use crate::fact::{MetalFact, MetalOrigin, MetalTypedFactExt};
 use num_traits::{AsPrimitive, Zero};
 use tract_core::internal::*;
+use tract_core::tract_linalg::frame::block_quant::BlockQuant;
 use tract_linalg::frame::block_quant::{BlockQuantFact, BlockQuantValue, Q4_0};
 
 #[macro_export]
@@ -124,7 +125,7 @@ pub fn as_q40_tensor(a: &Tensor) -> Option<&BlockQuantValue> {
 }
 
 pub fn tract_to_gguf_q4_0_packing(data: &mut Blob) -> TractResult<()> {
-    let block_size = 18;
+    let block_size = Q4_0.block_bytes();
     ensure!(data.layout().size() % block_size == 0);
 
     let n_block = data.layout().size() / block_size;
