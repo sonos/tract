@@ -34,8 +34,7 @@ fn mk_suite() -> infra::TestSuite {
 
 fn ignore_unit(t: &[String], _case: &dyn Test) -> bool {
     (t[0] == "bin_einsum" && t[1] == "proptest")
-    || (t[0] == "conv_f32" && t[1] == "proptest")
-    || (t[0] == "conv_f32" && t[1] == "bug_metal_0")
+        || (t[0] == "conv_f32" && (t[1] == "proptest" || t[1] == "bug_metal_0"))
 }
 
 fn ignore_onnx(t: &[String]) -> bool {
