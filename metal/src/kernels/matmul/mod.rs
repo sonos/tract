@@ -648,26 +648,29 @@ mod tests {
         Ok(())
     }
 
-    proptest::proptest! {
+    proptest::proptest! {    
         #[test]
         fn mmm_mfa_prop_f32(pb in any::<MmmProblem<MfaGemm, f32>>()) {
-            prop_assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
+            let output = pb.run().unwrap();
+            prop_assert!(output.close_enough(&pb.reference().unwrap(), Approximation::Exact).is_ok())
         }
 
         #[test]
         fn mmm_mfa_prop_f16(pb in any::<MmmProblem<MfaGemm, f16>>()) {
-            prop_assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
+            let output = pb.run().unwrap();
+            prop_assert!(output.close_enough(&pb.reference().unwrap(), Approximation::Approximate).is_ok())
         }
 
         #[test]
         fn mmm_mlx_prop_f32(pb in any::<MmmProblem<MlxGemm, f32>>()) {
-            prop_assert_eq!(pb.run().unwrap(), pb.reference().unwrap())
+            let output = pb.run().unwrap();
+            prop_assert!(output.close_enough(&pb.reference().unwrap(), Approximation::Approximate).is_ok())
         }
 
         #[test]
         fn mmm_mlx_prop_f16(pb in any::<MmmProblem<MlxGemm, f16>>()) {
             let output = pb.run().unwrap();
-            let _ = output.close_enough(&pb.reference().unwrap(), Approximation::Approximate);
+            prop_assert!(output.close_enough(&pb.reference().unwrap(), Approximation::VeryApproximate).is_ok())
         }
 
         #[test]
@@ -678,7 +681,7 @@ mod tests {
             }
         )) {
             let output = pb.run().unwrap();
-            let _ = output.close_enough(&pb.reference().unwrap(), Approximation::Approximate);
+            prop_assert!(output.close_enough(&pb.reference().unwrap(), Approximation::Approximate).is_ok())
         }
 
         #[test]
@@ -689,7 +692,7 @@ mod tests {
             }
         )) {
             let output = pb.run().unwrap();
-            let _ = output.close_enough(&pb.reference().unwrap(), Approximation::Approximate);
+            prop_assert!(output.close_enough(&pb.reference().unwrap(), Approximation::VeryApproximate).is_ok())
         }
 
         #[test]
@@ -700,8 +703,7 @@ mod tests {
             }
         )) {
             let output = pb.run().unwrap();
-            let _ = output.close_enough(&pb.reference().unwrap(), Approximation::Approximate
-        );
+            prop_assert!(output.close_enough(&pb.reference().unwrap(), Approximation::Approximate).is_ok())
         }
     }
 
@@ -715,7 +717,7 @@ mod tests {
     pub struct MmmProblem<K: GemmKernel, F: Datum + Float>
     where
         F: Datum + Float,
-        usize: AsPrimitive<F>,
+        f32: AsPrimitive<F>,
     {
         pub b: usize,
         pub m: usize,
@@ -733,7 +735,7 @@ mod tests {
     where
         K: GemmKernel,
         F: Datum + Float,
-        usize: AsPrimitive<F>,
+        f32: AsPrimitive<F>,
     {
         type Parameters = MmmProblemParams;
         type Strategy = BoxedStrategy<Self>;
@@ -747,7 +749,7 @@ mod tests {
 
                     let lhs_len = b * m * k;
                     let rhs_len = b * n * k;
-                    let datum = (0usize..100).prop_map(|x| x.as_());
+                    let datum = (0f32..1f32).prop_map(|x| x.as_());
                     (
                         Just(b),
                         Just(m),
@@ -784,7 +786,7 @@ mod tests {
     where
         K: GemmKernel,
         F: Datum + Float + std::ops::AddAssign,
-        usize: AsPrimitive<F>,
+        f32: AsPrimitive<F>,
     {
         pub fn reference(&self) -> Result<Tensor> {
             let matmul = BasicMatMul {
@@ -799,12 +801,13 @@ mod tests {
             } else {
                 Tensor::from_shape(&[self.b, self.m, self.k], &self.lhs)?
             };
-            let rhs_tensor = if self.transpose_rhs {
+            let mut rhs_tensor = if self.transpose_rhs {
                 Tensor::from_shape(&[self.b, self.n, self.k], &self.rhs)?
             } else {
                 Tensor::from_shape(&[self.b, self.k, self.n], &self.rhs)?
             };
-
+            
+            if self.q4_0 { rhs_tensor = Q4_0.simulate_precision_loss(rhs_tensor, 2)? }; 
             let output = matmul.eval(tvec![lhs_tensor.into_tvalue(), rhs_tensor.into_tvalue()])?;
 
             Ok(output[0].clone().into_tensor())

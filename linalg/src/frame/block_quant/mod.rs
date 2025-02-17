@@ -115,6 +115,37 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
         block[offset % len]
     }
 
+    fn simulate_precision_loss(
+        &self,
+        mut tensor: Tensor,
+        block_axis: usize,
+    ) -> TractResult<Tensor> {
+        ensure!(block_axis == tensor.rank() - 1);
+        ensure!(tensor.shape()[block_axis] % self.block_len() == 0);
+        let mut scratch = vec![0u8; self.block_bytes()];
+        if tensor.datum_type() == f32::datum_type() {
+            for block in tensor
+                .as_slice_mut::<f32>()?
+                .chunks_mut(self.block_len())
+            {
+                self.quant_block_f32(block, &mut scratch);
+                self.dequant_block_f32(&scratch, block);
+            }
+            Ok(tensor)
+        } else if tensor.datum_type() == f16::datum_type() {
+            for block in tensor
+                .as_slice_mut::<f16>()?
+                .chunks_mut(self.block_len())
+            {
+                self.quant_block_f16(block, &mut scratch);
+                self.dequant_block_f16(&scratch, block);
+            }
+            Ok(tensor)
+        } else {
+            todo!()
+        }
+    }
+    
     fn pack(
         &self,
         input: &[u8],
@@ -189,33 +220,10 @@ impl PackedBlockQuantFormat {
     #[cfg(test)]
     pub fn simulate_precision_loss(
         &self,
-        mut tensor: Tensor,
+        tensor: Tensor,
         block_axis: usize,
     ) -> TractResult<Tensor> {
-        ensure!(block_axis == tensor.rank() - 1);
-        ensure!(tensor.shape()[block_axis] % self.bq.block_len() == 0);
-        let mut scratch = vec![0u8; self.bq.block_bytes()];
-        if tensor.datum_type() == f32::datum_type() {
-            for block in tensor
-                .as_slice_mut::<f32>()?
-                .chunks_mut(self.bq.block_len())
-            {
-                self.bq.quant_block_f32(block, &mut scratch);
-                self.bq.dequant_block_f32(&scratch, block);
-            }
-            Ok(tensor)
-        } else if tensor.datum_type() == f16::datum_type() {
-            for block in tensor
-                .as_slice_mut::<f16>()?
-                .chunks_mut(self.bq.block_len())
-            {
-                self.bq.quant_block_f16(block, &mut scratch);
-                self.bq.dequant_block_f16(&scratch, block);
-            }
-            Ok(tensor)
-        } else {
-            todo!()
-        }
+        self.bq.simulate_precision_loss(tensor, block_axis)
     }
 
     pub fn pack(&self, input: &[u8], k: usize) -> TractResult<EagerPackedInput> {
