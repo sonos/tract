@@ -210,7 +210,6 @@ impl MetalContext {
     }
 
     pub fn buffer_from_slice_mut<T>(&self, data: &mut [T]) -> Buffer {
-        let size = core::mem::size_of_val(data) as NSUInteger;
         let mut size = core::mem::size_of_val(data) as NSUInteger;
         if size == 0 {
             size += 1;
