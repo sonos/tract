@@ -67,4 +67,3 @@ metal_test_suite!(metal_phase_1_pre_translate, 1, false, Mlx);
 
 metal_runtime!(Mlx);
 metal_runtime!(Mfa);
-metal_runtime!(Mps);
