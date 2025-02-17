@@ -1,6 +1,6 @@
 use crate::fact::MetalTypedFactExt;
 use crate::kernels::array::RotateHalf;
-use crate::kernels::matmul::{GemmKernel, MetalGemmImplKind, MfaGemm, MlxGemm, GgmlGemm};
+use crate::kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm};
 use crate::kernels::nn::{
     ApplyRope, NewGelu, Reducer, RmsNorm, ScaledMaskedSoftmax, Silu, Softmax,
 };

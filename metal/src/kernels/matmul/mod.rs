@@ -44,7 +44,7 @@ pub struct GemmDispatchParams {
     pub q40_b: bool,
     pub c_offset: usize,
     pub a_strides: TVec<isize>,
-    pub b_strides: TVec<isize>
+    pub b_strides: TVec<isize>,
 }
 
 impl GemmDispatchParams {
@@ -103,7 +103,7 @@ impl GemmDispatchParams {
                 q40_b,
                 c_offset,
                 a_strides,
-                b_strides
+                b_strides,
             }]),
             // bkm, 1kn -> bmn
             // bkm, 1nk -> bmn
@@ -122,7 +122,7 @@ impl GemmDispatchParams {
                     q40_b,
                     c_offset: c_offset + a_batch_idx * m * n * dts[2].size_of(),
                     a_strides: a_strides.clone(),
-                    b_strides: b_strides.clone()
+                    b_strides: b_strides.clone(),
                 })
                 .collect()),
             // 1mk, bkn -> bmn
@@ -144,7 +144,7 @@ impl GemmDispatchParams {
                     q40_b,
                     c_offset: c_offset + b_batch_idx * m * n * dts[2].size_of(),
                     a_strides: a_strides.clone(),
-                    b_strides: b_strides.clone()
+                    b_strides: b_strides.clone(),
                 })
                 .collect()),
             // bmk, bkn -> bmn
@@ -167,7 +167,7 @@ impl GemmDispatchParams {
                     q40_b,
                     c_offset,
                     a_strides,
-                    b_strides
+                    b_strides,
                 }])
             }
         }
@@ -646,7 +646,7 @@ mod tests {
         Ok(())
     }
 
-    proptest::proptest! {    
+    proptest::proptest! {
         #[test]
         fn mmm_mfa_prop_f32(pb in any::<MmmProblem<MfaGemm, f32>>()) {
             let output = pb.run().unwrap();
@@ -804,8 +804,10 @@ mod tests {
             } else {
                 Tensor::from_shape(&[self.b, self.k, self.n], &self.rhs)?
             };
-            
-            if self.q4_0 { rhs_tensor = Q4_0.simulate_precision_loss(rhs_tensor, 2)? }; 
+
+            if self.q4_0 {
+                rhs_tensor = Q4_0.simulate_precision_loss(rhs_tensor, 2)?
+            };
             let output = matmul.eval(tvec![lhs_tensor.into_tvalue(), rhs_tensor.into_tvalue()])?;
 
             Ok(output[0].clone().into_tensor())
