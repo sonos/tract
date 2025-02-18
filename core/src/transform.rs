@@ -60,8 +60,7 @@ pub fn build_float_translator<T1: Datum + Float, T2: Datum + Float>(
 pub trait ModelTransform: Debug {
     fn name(&self) -> Cow<str>;
     fn transform(&self, model: &mut TypedModel) -> TractResult<()>;
-    fn transform_into(&self, model: &TypedModel) -> TractResult<TypedModel> {
-        let mut model = model.clone();
+    fn transform_into(&self, mut model: TypedModel) -> TractResult<TypedModel> {
         self.transform(&mut model)?;
         Ok(model)
     }
