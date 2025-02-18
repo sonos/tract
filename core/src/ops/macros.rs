@@ -173,6 +173,30 @@ macro_rules! args_8 {
     }};
 }
 
+#[allow(unused_macros)]
+#[macro_export]
+macro_rules! args_9 {
+    ($inputs:expr) => {{
+        let mut inputs = $inputs;
+        if inputs.len() != 9 {
+            $crate::internal::bail!("Expected 9 arg, got {:?}", inputs)
+        }
+        inputs.reverse();
+        let result = (
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+            inputs.pop().unwrap(),
+        );
+        result
+    }};
+}
+
 #[macro_export]
 macro_rules! impl_op_same_as {
     () => {
@@ -233,4 +257,3 @@ macro_rules! trivial_op_state_freeeze {
         }
     };
 }
-

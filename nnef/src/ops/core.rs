@@ -27,6 +27,7 @@ mod store;
 mod submodel;
 mod topk;
 mod trilu;
+mod vptq;
 
 pub fn register(registry: &mut Registry) {
     registry.register_unit_element_wise("tract_core_round_even", &ops::math::RoundHalfToEven {});
@@ -67,4 +68,5 @@ pub fn register(registry: &mut Registry) {
     range::register(registry);
     topk::register(registry);
     trilu::register(registry);
+    vptq::register(registry);
 }
