@@ -12,7 +12,7 @@ keywords = [ "TensorFlow", "NeuralNetworks", "Metal" ]
 categories = [ "science" ]
 autobenches = false
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.77"
 
 [badges]
 maintenance = { status = "actively-developed" }

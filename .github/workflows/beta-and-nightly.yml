@@ -52,7 +52,7 @@ jobs:
   warnings:
     strategy:
       matrix:
-        rust: [ 1.75.0, beta ]
+        rust: [ 1.77.0, beta ]
         os: [ ubuntu-latest, macOS-latest ]
       fail-fast: false
     runs-on: ${{ matrix.os }}

@@ -14,7 +14,7 @@ jobs:
     strategy:
       matrix:
         os: [ ubuntu-latest, macOS-latest ]
-        rust: [ 1.75.0 ]
+        rust: [ 1.77.0 ]
       fail-fast: false
 
     runs-on: ${{matrix.os}}
