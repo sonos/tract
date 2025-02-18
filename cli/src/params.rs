@@ -754,7 +754,7 @@ impl Parameters {
                 {
                     stage!("metal", typed_model -> typed_model, |m:TypedModel| {
                         tract_metal::transform::MetalTransform::default()
-                            .transform_into(&m)
+                            .transform_into(m)
                     });
                 }
                 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
@@ -768,7 +768,7 @@ impl Parameters {
             for transform in transform {
                 stage!(transform, typed_model -> typed_model, |m:TypedModel| {
                     let transform = tract_core::transform::get_transform(transform).with_context(|| format!("Could not find transform named {}", transform))?;
-                    transform.transform_into(&m)
+                    transform.transform_into(m)
                 });
                 stage!(&format!("{}-declutter", transform), typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
             }
