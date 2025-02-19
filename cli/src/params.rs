@@ -8,6 +8,7 @@ use std::str::FromStr;
 use tract_core::internal::*;
 use tract_core::model::TypedModel;
 use tract_core::ops::konst::Const;
+use tract_core::ops::matmul::optimized::OptMatMul;
 #[allow(unused_imports)]
 use tract_core::transform::ModelTransform;
 use tract_hir::internal::*;
@@ -856,6 +857,17 @@ impl Parameters {
                 opt = opt.stopping_at(steps.parse()?);
             }
             opt.optimize(&mut m)?;
+            if let Ok(max) = matches.value_of_t("assert-maximal-mm-quality-cost") {
+                for node in &m.nodes {
+                    if let Some(op) = node.op_as::<OptMatMul>() {
+                        for imp in op.mmm.iter() {
+                            if imp.quality().cost() > max {
+                                bail!("Node {node} uses {imp:?} of quality {:?}.", imp.quality())
+                            }
+                        }
+                    }
+                }
+            }
             Ok(m)
         });
         Ok((typed_model.clone().unwrap(), pulsed_model, reference_model))
