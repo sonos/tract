@@ -70,6 +70,11 @@ pub(crate) fn optimize(
         return Ok(None);
     }
 
+    let input_facts = model.node_input_facts(node.id)?;
+    if node.inputs.len() == 2 && input_facts[1].konst.is_some() {
+        return Ok(Some(transpose(op, model, node)?));
+    }
+
     let annotated = match ensure_mkn_axes(op, model, node)? {
         AxesOrPatch::Annotated(op) => op,
         AxesOrPatch::Patch(p) => return Ok(Some(p)),
@@ -80,6 +85,17 @@ pub(crate) fn optimize(
     } else {
         dequant(model, node, annotated).context("Dequantize")
     }
+}
+
+fn transpose(op: &EinSum, model: &TypedModel, node: &TypedNode) -> TractResult<TypedModelPatch> {
+    let mut patch = TypedModelPatch::default();
+    let mut taps = patch.taps(model, &node.inputs)?;
+    taps.swap(0, 1);
+    let mut op = op.clone();
+    op.axes.iter_all_axes_mut().for_each(|axis| axis.inputs.swap(0, 1));
+    let wire = patch.wire_node(&node.name, op, &taps)?[0];
+    patch.shunt_outside(model, node.id.into(), wire)?;
+    Ok(patch)
 }
 
 pub(crate) fn ensure_mkn_axes<'a>(
@@ -345,29 +361,14 @@ fn optimized_mat_mul(
 ) -> TractResult<Option<TypedModelPatch>> {
     let input_facts = model.node_input_facts(node.id)?;
     let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
-    let must_transpose = match (op.m.as_i64(), op.n.as_i64()) {
-        (Some(m), Some(n)) => m < n,
-        (None, Some(n)) => n >= 8,
-        _ => false,
-    };
+    let must_transpose = input_facts[0].konst.is_none()
+        && match (op.m.as_i64(), op.n.as_i64()) {
+            (Some(m), Some(n)) => m < n,
+            (None, Some(n)) => n >= 8,
+            _ => false,
+        };
     if must_transpose {
-        let expr = op
-            .op
-            .axes
-            .iter_all_axes()
-            .map(|axis| {
-                let mut axis = axis.clone();
-                axis.inputs.swap(0, 1);
-                axis
-            })
-            .collect::<TVec<Axis>>();
-        return TypedModelPatch::replace_single_op(
-            model,
-            node,
-            &[node.inputs[1], node.inputs[0]],
-            EinSum { axes: AxesMapping::new(node.inputs.len(), 1, expr)?, ..op.op.clone() },
-        )
-        .map(Some);
+        return Ok(Some(transpose(op, model, node)?));
     }
 
     let mut patch = TypedModelPatch::new("Einsum to OptMatMul");

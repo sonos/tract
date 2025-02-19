@@ -138,6 +138,10 @@ impl AxesMapping {
         self.axes.iter()
     }
 
+    pub fn iter_all_axes_mut(&mut self) -> impl Iterator<Item = &mut Axis> {
+        self.axes.iter_mut()
+    }
+
     pub fn input_count(&self) -> usize {
         self.input_count
     }

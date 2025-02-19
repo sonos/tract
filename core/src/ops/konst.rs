@@ -133,17 +133,19 @@ impl TypedOp for Const {
                 }
             } else if let Some(einsum) = snode.op_as::<EinSum>() {
                 let mut ns = HashSet::<TDim>::new();
-                let (const_slot, var_slot) = (succ.slot, 1 - succ.slot);
-                let m_axis = einsum.axes.axis((InOut::In(const_slot), 0))?;
-                if m_axis.inputs[const_slot].len() != 1
-                    || m_axis.inputs[var_slot].len() != 0
+                if succ.slot != 0 {
+                    return Ok(None);
+                }
+                let m_axis = einsum.axes.axis((InOut::In(0), 0))?;
+                if m_axis.inputs[0].len() != 1
+                    || m_axis.inputs[1].len() != 0
                     || m_axis.outputs[0].len() != 1
                 {
                     return Ok(None);
                 }
-                let k_axis = einsum.axes.axis((InOut::In(const_slot), 1))?;
-                if k_axis.inputs[const_slot].len() != 1
-                    || k_axis.inputs[var_slot].len() != 1
+                let k_axis = einsum.axes.axis((InOut::In(0), 1))?;
+                if k_axis.inputs[0].len() != 1
+                    || k_axis.inputs[1].len() != 1
                     || k_axis.outputs[0].len() != 0
                 {
                     return Ok(None);
@@ -151,14 +153,14 @@ impl TypedOp for Const {
                 for axis in einsum.axes.iter_all_axes() {
                     if axis != k_axis
                         && axis != m_axis
-                        && axis.inputs[const_slot].len() == 0
-                        && axis.inputs[var_slot].len() == 1
+                        && axis.inputs[0].len() == 0
+                        && axis.inputs[1].len() == 1
                         && axis.outputs[0].len() == 1
                     {
                         ns.insert(snode.outputs[0].fact.shape[axis.outputs[0][0]].clone());
                     }
                 }
-                let act_outlet = snode.inputs[var_slot];
+                let act_outlet = snode.inputs[1];
                 let act_dt = model.outlet_fact(act_outlet)?.datum_type;
                 matmuls.push((einsum.operating_dt, act_dt, ns));
             } else {
