@@ -169,7 +169,7 @@ impl TypedOp for Const {
         }
         if node.outputs[0].successors.len() > 1
             || matmuls.iter().any(|(_acc_dt, _act_dt, ns)| {
-                ns.len() > 1 || ns.iter().any(|d| !d.as_i64().is_some())
+                ns.len() > 1 || ns.iter().any(|d| d.as_i64().is_none())
             })
         {
             let weight =
