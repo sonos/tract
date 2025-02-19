@@ -82,10 +82,7 @@ impl TypedOp for Const {
         let mut new_tensor = self.0.clone().into_tensor();
         if change.change_tensor(&mut new_tensor, false).is_ok() {
             Ok(Some(AxisChangeConsequence {
-                substitute_op: Some(Box::new(Const(
-                    new_tensor.into_arc_tensor(),
-                    self.1.clone(),
-                ))),
+                substitute_op: Some(Box::new(Const(new_tensor.into_arc_tensor(), self.1.clone()))),
                 wire_changes: tvec!((io, change.clone())),
             }))
         } else {
@@ -94,10 +91,7 @@ impl TypedOp for Const {
     }
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        Ok(tvec!((
-            Cost::Params(self.0.datum_type().unquantized()),
-            self.0.len().into()
-        )))
+        Ok(tvec!((Cost::Params(self.0.datum_type().unquantized()), self.0.len().into())))
     }
 
     fn concretize_dims(
@@ -126,10 +120,7 @@ impl TypedOp for Const {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let looks_like_weights = (self.0.datum_type().is_number() && self.0.rank() == 2)
-            || (self
-                .0
-                .to_scalar::<Opaque>()
-                .is_ok_and(|opaque| opaque.is::<BlockQuantValue>()));
+            || (self.0.to_scalar::<Opaque>().is_ok_and(|opaque| opaque.is::<BlockQuantValue>()));
         if !looks_like_weights {
             return Ok(None);
         }
@@ -179,11 +170,8 @@ impl TypedOp for Const {
                 ns.len() > 1 || ns.iter().any(|d| !d.as_i64().is_some())
             })
         {
-            let weight = self
-                .0
-                .to_scalar::<Opaque>()
-                .ok()
-                .and_then(|a| a.downcast_ref::<BlockQuantValue>());
+            let weight =
+                self.0.to_scalar::<Opaque>().ok().and_then(|a| a.downcast_ref::<BlockQuantValue>());
             let weight_type = if let Some(a_payload) = weight {
                 WeightType::BlockQuant(a_payload.fact.format.clone())
             } else {
@@ -199,7 +187,8 @@ impl TypedOp for Const {
                         .map(|(acc, act, n)| {
                             let mut cost = 0;
                             // need mmv
-                            if n.iter().any(|n| n.as_i64().is_none_or(|n| n == 1)) {
+                            // if n.iter().any(|n| n.as_i64().is_none_or(|n| n == 1)) {
+                            if n.iter().any(|n| n.as_i64().map(|n| n == 1).unwrap_or(true)) {
                                 cost += ops
                                     .filter_impls(*format, (*acc).into(), (*act).into())
                                     .map(|(mmm, _, _, pe, _)| {
@@ -211,7 +200,8 @@ impl TypedOp for Const {
                                     .unwrap_or(usize::MAX / 2);
                             };
                             // nned mmm
-                            if n.iter().any(|n| n.as_i64().is_none_or(|n| n > 1)) {
+                            // if n.iter().any(|n| n.as_i64().is_none_or(|n| n > 1)) {
+                            if n.iter().any(|n| n.as_i64().map(|n| n > 1).unwrap_or(true)) {
                                 cost += ops
                                     .filter_impls(*format, (*acc).into(), (*act).into())
                                     .map(|(mmm, _, _, pe, _)| {
@@ -228,9 +218,7 @@ impl TypedOp for Const {
                 })
                 .unwrap();
 
-            let packed = choice
-                .prepare_tensor(&self.0, 1, 0)
-                .context("in prepare_tensor")?;
+            let packed = choice.prepare_tensor(&self.0, 1, 0).context("in prepare_tensor")?;
             let fact = clone_box(packed.opaque_fact());
             let opaque = Opaque(Arc::new(packed));
             let konst = Const(rctensor0(opaque), Some(fact));
@@ -242,10 +230,7 @@ impl TypedOp for Const {
                 taps[succ.slot] = konst[0];
                 let new_op: Box<dyn TypedOp> = if let Some(gather) = succ_node.op_as::<Gather>() {
                     let output_type = succ_node.outputs[0].fact.datum_type;
-                    Box::new(Gather {
-                        axis: gather.axis,
-                        output_type: Some(output_type),
-                    })
+                    Box::new(Gather { axis: gather.axis, output_type: Some(output_type) })
                 } else {
                     succ_node.op.clone()
                 };
