@@ -126,7 +126,7 @@ impl TypedOp for Gather {
                 inputs[0].datum_type
             );
         } else {
-            ensure!(inputs[0].datum_type.is_number(),
+            ensure!(!inputs[0].datum_type.is_opaque(),
                 "Gather applied to compressed data requires an explicit datum_type attribute for its output");
         }
         ensure!(inputs[1].datum_type == i64::datum_type());
