@@ -79,19 +79,11 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
     }
 
     pub fn regular_pack_a(&self) -> PackedFormat {
-        *self.packings[0]
-            .0
-            .clone()
-            .downcast::<PackedFormat>()
-            .unwrap()
+        *self.packings[0].0.clone().downcast::<PackedFormat>().unwrap()
     }
 
     pub fn regular_pack_b(&self) -> PackedFormat {
-        *self.packings[0]
-            .1
-            .clone()
-            .downcast::<PackedFormat>()
-            .unwrap()
+        *self.packings[0].1.clone().downcast::<PackedFormat>().unwrap()
     }
 
     pub fn with_can_fuse(self, can_fuse: fn(&FusedSpec) -> bool) -> Self {

@@ -26,25 +26,12 @@ impl Ord for QParams {
         match (self, other) {
             (MinMax { .. }, ZpScale { .. }) => std::cmp::Ordering::Less,
             (ZpScale { .. }, MinMax { .. }) => std::cmp::Ordering::Greater,
+            (MinMax { min: min1, max: max1 }, MinMax { min: min2, max: max2 }) => {
+                min1.total_cmp(min2).then_with(|| max1.total_cmp(max2))
+            }
             (
-                MinMax {
-                    min: min1,
-                    max: max1,
-                },
-                MinMax {
-                    min: min2,
-                    max: max2,
-                },
-            ) => min1.total_cmp(min2).then_with(|| max1.total_cmp(max2)),
-            (
-                Self::ZpScale {
-                    zero_point: zp1,
-                    scale: s1,
-                },
-                Self::ZpScale {
-                    zero_point: zp2,
-                    scale: s2,
-                },
+                Self::ZpScale { zero_point: zp1, scale: s1 },
+                Self::ZpScale { zero_point: zp2, scale: s2 },
             ) => zp1.cmp(zp2).then_with(|| s1.total_cmp(s2)),
         }
     }
@@ -58,10 +45,7 @@ impl PartialOrd for QParams {
 
 impl Default for QParams {
     fn default() -> Self {
-        QParams::ZpScale {
-            zero_point: 0,
-            scale: 1.,
-        }
+        QParams::ZpScale { zero_point: 0, scale: 1. }
     }
 }
 
@@ -169,11 +153,7 @@ impl DatumType {
                 .collect();
         }
         if self.is_float() {
-            [F16, F32, F64]
-                .iter()
-                .filter(|s| s.size_of() >= self.size_of())
-                .copied()
-                .collect()
+            [F16, F32, F64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
         } else if self.is_signed() {
             [I8, I16, I32, I64, TDim]
                 .iter()
@@ -181,11 +161,7 @@ impl DatumType {
                 .copied()
                 .collect()
         } else {
-            [U8, U16, U32, U64]
-                .iter()
-                .filter(|s| s.size_of() >= self.size_of())
-                .copied()
-                .collect()
+            [U8, U16, U32, U64].iter().filter(|s| s.size_of() >= self.size_of()).copied().collect()
         }
     }
 
@@ -254,18 +230,12 @@ impl DatumType {
 
     #[cfg(feature = "complex")]
     pub fn is_complex_float(&self) -> bool {
-        matches!(
-            self,
-            DatumType::ComplexF16 | DatumType::ComplexF32 | DatumType::ComplexF64
-        )
+        matches!(self, DatumType::ComplexF16 | DatumType::ComplexF32 | DatumType::ComplexF64)
     }
 
     #[cfg(feature = "complex")]
     pub fn is_complex_signed(&self) -> bool {
-        matches!(
-            self,
-            DatumType::ComplexI16 | DatumType::ComplexI32 | DatumType::ComplexI64
-        )
+        matches!(self, DatumType::ComplexI16 | DatumType::ComplexI32 | DatumType::ComplexI64)
     }
 
     #[cfg(feature = "complex")]
@@ -430,20 +400,11 @@ impl std::str::FromStr for DatumType {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Ok((z, s)) = scan_fmt!(s, "QU8(Z:{d} S:{f})", i32, f32) {
-            Ok(DatumType::QU8(QParams::ZpScale {
-                zero_point: z,
-                scale: s,
-            }))
+            Ok(DatumType::QU8(QParams::ZpScale { zero_point: z, scale: s }))
         } else if let Ok((z, s)) = scan_fmt!(s, "QI8(Z:{d} S:{f})", i32, f32) {
-            Ok(DatumType::QI8(QParams::ZpScale {
-                zero_point: z,
-                scale: s,
-            }))
+            Ok(DatumType::QI8(QParams::ZpScale { zero_point: z, scale: s }))
         } else if let Ok((z, s)) = scan_fmt!(s, "QI32(Z:{d} S:{f})", i32, f32) {
-            Ok(DatumType::QI32(QParams::ZpScale {
-                zero_point: z,
-                scale: s,
-            }))
+            Ok(DatumType::QI32(QParams::ZpScale { zero_point: z, scale: s }))
         } else {
             match s {
                 "I8" | "i8" => Ok(DatumType::I8),
@@ -488,11 +449,7 @@ pub fn round_ties_to_even(x: f32) -> f32 {
         return x;
     }
     let s = u >> 31;
-    let y = if s == 1 {
-        x - TOINT + TOINT
-    } else {
-        x + TOINT - TOINT
-    };
+    let y = if s == 1 { x - TOINT + TOINT } else { x + TOINT - TOINT };
     if y == 0.0 {
         if s == 1 {
             -0f32
@@ -628,10 +585,7 @@ mod tests {
     fn test_parse_qu8() {
         assert_eq!(
             "QU8(Z:128 S:0.01)".parse::<DatumType>().unwrap(),
-            DatumType::QU8(QParams::ZpScale {
-                zero_point: 128,
-                scale: 0.01
-            })
+            DatumType::QU8(QParams::ZpScale { zero_point: 128, scale: 0.01 })
         );
     }
 }

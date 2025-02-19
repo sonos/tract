@@ -34,13 +34,7 @@ macro_rules! rule_ensure {
 }
 
 fn next_node<'a>(model: &'a TypedModel, node: &TypedNode) -> Option<&'a TypedNode> {
-    if node
-        .outputs
-        .iter()
-        .map(|of| of.successors.len())
-        .sum::<usize>()
-        != 1
-    {
+    if node.outputs.iter().map(|of| of.successors.len()).sum::<usize>() != 1 {
         return None;
     }
     let succ = node.outputs[0].successors[0];
@@ -122,9 +116,7 @@ fn matches_single_input_const(model: &TypedModel, node: &TypedNode, konst: f32) 
         return false;
     };
 
-    in_const
-        .close_enough(&tensor0(konst), Approximation::Approximate)
-        .is_ok()
+    in_const.close_enough(&tensor0(konst), Approximation::Approximate).is_ok()
 }
 
 fn find_succ_add_with_const<'a>(

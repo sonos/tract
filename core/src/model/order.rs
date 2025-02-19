@@ -39,11 +39,8 @@ where
         let mut pending = BitSet::with_capacity(nodes.len());
         while let Some((current_node, current_input)) = current_stack.pop() {
             let deps_from_inputs = nodes[current_node].inputs.len();
-            let all_deps_count = deps_from_inputs
-                + more_dependencies
-                    .iter()
-                    .filter(|a| a.0 == current_node)
-                    .count();
+            let all_deps_count =
+                deps_from_inputs + more_dependencies.iter().filter(|a| a.0 == current_node).count();
             if model_inputs.contains(&current_node) || current_input == all_deps_count {
                 order.push(current_node);
                 done.insert(current_node);
@@ -54,12 +51,7 @@ where
                     .iter()
                     .filter(|n| nodes[n.node].inputs.len() > 0)
                     .map(|n| n.node)
-                    .chain(
-                        more_dependencies
-                            .iter()
-                            .filter(|a| a.0 == current_node)
-                            .map(|n| n.1),
-                    )
+                    .chain(more_dependencies.iter().filter(|a| a.0 == current_node).map(|n| n.1))
                     .chain(
                         nodes[current_node]
                             .inputs
@@ -253,10 +245,8 @@ where
     }
 
     while !model_outputs.iter().all(|o| done.done.contains(*o)) {
-        let next = if let Some(next) = done
-            .candidates
-            .iter()
-            .find(|n| dfs.ups[*n].iter().all(|n| done.done.contains(*n)))
+        let next = if let Some(next) =
+            done.candidates.iter().find(|n| dfs.ups[*n].iter().all(|n| done.done.contains(*n)))
         {
             next
         } else if let Some(next) = done.best_upstream_starter(&dfs) {
@@ -287,10 +277,7 @@ mod tests {
         let add = model.wire_node("add", math::add(), &[a, b]).unwrap()[0];
         model.auto_outputs().unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(a.node, b.node, add.node));
-        assert_eq!(
-            model.eval_order_opt_ram().unwrap(),
-            vec!(a.node, b.node, add.node)
-        );
+        assert_eq!(model.eval_order_opt_ram().unwrap(), vec!(a.node, b.node, add.node));
     }
 
     #[test]
@@ -318,18 +305,12 @@ mod tests {
         std::thread::spawn(move || {
             rx.send(cloned.eval_order()).unwrap();
         });
-        assert!(tx
-            .recv_timeout(std::time::Duration::from_secs(1))
-            .unwrap()
-            .is_err());
+        assert!(tx.recv_timeout(std::time::Duration::from_secs(1)).unwrap().is_err());
         let (rx, tx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             rx.send(model.eval_order_opt_ram()).unwrap();
         });
-        assert!(tx
-            .recv_timeout(std::time::Duration::from_secs(1))
-            .unwrap()
-            .is_err());
+        assert!(tx.recv_timeout(std::time::Duration::from_secs(1)).unwrap().is_err());
     }
 
     #[test]

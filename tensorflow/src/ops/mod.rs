@@ -26,13 +26,9 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     vars::register_all_ops(reg);
     reg.insert("Cast", cast);
     reg.insert("Const", konst);
-    reg.insert("Identity", |_, _| {
-        Ok(Box::new(tract_hir::ops::identity::Identity))
-    });
+    reg.insert("Identity", |_, _| Ok(Box::new(tract_hir::ops::identity::Identity)));
     reg.insert("NoOp", |_, _| Ok(Box::new(Noop)));
-    reg.insert("Placeholder", |_, _| {
-        Ok(Box::new(tract_hir::ops::source::Source::new()))
-    });
+    reg.insert("Placeholder", |_, _| Ok(Box::new(tract_hir::ops::source::Source::new())));
 }
 
 fn cast(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
@@ -45,11 +41,7 @@ fn konst(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn Inference
     let mat = node.get_attr_tensor("value")?;
 
     if mat.datum_type() != dtype {
-        bail!(
-            "Const node {:?} doesn't have the expected {:?} type.",
-            mat,
-            dtype
-        );
+        bail!("Const node {:?} doesn't have the expected {:?} type.", mat, dtype);
     }
 
     Ok(Box::new(tract_hir::ops::konst::Const::new(mat.into())?))

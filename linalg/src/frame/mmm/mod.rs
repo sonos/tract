@@ -48,20 +48,11 @@ pub enum ImplementationQuality {
 impl ImplementationQuality {
     pub fn best_to_worst() -> &'static [ImplementationQuality] {
         use ImplementationQuality::*;
-        &[
-            ManuallyOptimized,
-            TargetOptimized,
-            RustOptimized,
-            Generic,
-            Dreadful,
-        ]
+        &[ManuallyOptimized, TargetOptimized, RustOptimized, Generic, Dreadful]
     }
 
     pub fn cost(&self) -> usize {
-        ImplementationQuality::best_to_worst()
-            .iter()
-            .position(|x| x == self)
-            .unwrap()
+        ImplementationQuality::best_to_worst().iter().position(|x| x == self).unwrap()
     }
 }
 
@@ -157,12 +148,7 @@ impl<K: MatMatMulKer> MatMatMul for K {
     }
 
     unsafe fn c_view(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec {
-        OutputStoreSpec::View {
-            m_axis,
-            n_axis,
-            mr: self.mr(),
-            nr: self.nr(),
-        }
+        OutputStoreSpec::View { m_axis, n_axis, mr: self.mr(), nr: self.nr() }
     }
 
     unsafe fn c_from_data_and_strides(
@@ -255,14 +241,12 @@ unsafe fn run_with_scratch_space_col_outer<K: MatMatMulKer>(
             Ok(())
         }
         Executor::MultiThread(pool) => pool.install(|| {
-            (0..n.div_ceil(ker.nr()))
-                .into_par_iter()
-                .try_for_each(|ib| {
-                    for ia in 0..m.divceil(ker.mr()) {
-                        scratch.run(ker, non_linear, ia, ib)?;
-                    }
-                    Ok(())
-                })
+            (0..n.div_ceil(ker.nr())).into_par_iter().try_for_each(|ib| {
+                for ia in 0..m.divceil(ker.mr()) {
+                    scratch.run(ker, non_linear, ia, ib)?;
+                }
+                Ok(())
+            })
         }),
     }
 }
@@ -285,14 +269,12 @@ unsafe fn run_with_scratch_space_row_outer<K: MatMatMulKer>(
         }
         Executor::MultiThread(pool) => pool.install(|| {
             pool.install(|| {
-                (0..m.div_ceil(ker.mr()))
-                    .into_par_iter()
-                    .try_for_each(|ia| {
-                        for ib in 0..n.divceil(ker.nr()) {
-                            scratch.run(ker, non_linear, ia, ib)?;
-                        }
-                        Ok(())
-                    })
+                (0..m.div_ceil(ker.mr())).into_par_iter().try_for_each(|ia| {
+                    for ib in 0..n.divceil(ker.nr()) {
+                        scratch.run(ker, non_linear, ia, ib)?;
+                    }
+                    Ok(())
+                })
             })
         }),
     }
