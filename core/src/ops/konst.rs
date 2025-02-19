@@ -162,7 +162,7 @@ impl TypedOp for Const {
                 }
                 let act_outlet = snode.inputs[1];
                 let act_dt = model.outlet_fact(act_outlet)?.datum_type;
-                matmuls.push((einsum.operating_dt, act_dt, ns));
+                matmuls.push((einsum.acceptable_accumulators(), act_dt, ns));
             } else {
                 return Ok(None);
             }
@@ -192,10 +192,9 @@ impl TypedOp for Const {
                             // if n.iter().any(|n| n.as_i64().is_none_or(|n| n == 1)) {
                             if n.iter().any(|n| n.as_i64().map(|n| n == 1).unwrap_or(true)) {
                                 cost += ops
-                                    .filter_impls(*format, (*acc).into(), (*act).into())
+                                    .filter_impls(*format, &*acc, *act)
                                     .map(|(mmm, _, _, pe, _)| {
-                                        mmm.quality().cost() * 1000
-                                            + mmm.nr() * 10
+                                        mmm.quality().cost() * 1000 + mmm.nr() * 10 - mmm.mr() * 10
                                             + pe.is_some() as usize
                                     })
                                     .min()
@@ -205,9 +204,11 @@ impl TypedOp for Const {
                             // if n.iter().any(|n| n.as_i64().is_none_or(|n| n > 1)) {
                             if n.iter().any(|n| n.as_i64().map(|n| n > 1).unwrap_or(true)) {
                                 cost += ops
-                                    .filter_impls(*format, (*acc).into(), (*act).into())
+                                    .filter_impls(*format, &*acc, *act)
                                     .map(|(mmm, _, _, pe, _)| {
-                                        1_000_000 + mmm.quality().cost() * 1000 - mmm.nr() * 10
+                                        1_000_000 + mmm.quality().cost() * 1000
+                                            - mmm.nr() * 10
+                                            - mmm.mr() * 10
                                             + pe.is_some() as usize
                                     })
                                     .min()

@@ -1,6 +1,5 @@
 #![allow(clippy::type_complexity)]
 use tract_itertools::Itertools;
-use tract_linalg::kit::KitDatumType;
 use tract_linalg::mmm::{MMMInputFormat, MMMInputValue, MatMatMul, PanelExtractor};
 use tract_linalg::pack::PackedFormat;
 
@@ -83,13 +82,6 @@ pub fn wire_prepacked(
     ModePicker,
 )> {
     ensure!(patch.outlet_fact(a)?.konst.is_some());
-    let accumulator = if op.operating_dt.is_integer() {
-        KitDatumType::I32
-    } else if op.operating_dt == f16::datum_type() && tract_linalg::has_fp16() {
-        KitDatumType::F16
-    } else {
-        KitDatumType::F32
-    };
     let b_dt = patch.outlet_fact(b)?.datum_type;
 
     let a_konst = patch.outlet_fact(a)?.konst.as_ref().unwrap();
@@ -103,7 +95,7 @@ pub fn wire_prepacked(
     let mmms = tract_linalg::ops()
         .mmm_impls()
         .iter()
-        .filter(|mmm| KitDatumType::from(mmm.internal_type()) == accumulator)
+        .filter(|mmm| op.acceptable_accumulators().contains(&mmm.internal_type()))
         .flat_map(move |mmm| {
             mmm.packings().iter().enumerate().map(|(ix, p)| (mmm.clone(), ix, &p.0, &p.1))
         })

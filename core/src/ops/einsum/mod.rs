@@ -217,6 +217,16 @@ impl EinSum {
         }
         Ok(None)
     }
+
+    pub fn acceptable_accumulators(&self) -> TVec<DatumType> {
+        if self.operating_dt.is_integer() {
+            tvec!(i32::datum_type())
+        } else if self.operating_dt == f16::datum_type() {
+            tvec!(f16::datum_type(), f32::datum_type())
+        } else {
+            tvec!(self.operating_dt)
+        }
+    }
 }
 
 impl Debug for EinSum {

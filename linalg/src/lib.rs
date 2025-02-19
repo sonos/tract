@@ -22,7 +22,7 @@ mod frame;
 pub mod generic;
 pub mod multithread;
 pub use generic::{ScaleShiftAndRound, Scaler};
-use kit::{KitDatumType, WeightType};
+use kit::WeightType;
 use lazy_static::lazy_static;
 use mmm::{MMMInputFormat, MatMatMul, PanelExtractor};
 use tract_data::internal::TensorView;
@@ -148,8 +148,8 @@ impl Ops {
     pub fn filter_impls<'o>(
         &'o self,
         weight: &'o dyn MMMInputFormat,
-        acc: KitDatumType,
-        act: KitDatumType,
+        acc: &[DatumType],
+        act: DatumType,
     ) -> impl Iterator<
         Item = (
             &'o dyn MatMatMul,
@@ -159,9 +159,10 @@ impl Ops {
             &'o dyn MMMInputFormat,
         ),
     > {
+        let acc = acc.to_vec();
         self.mmm_impls
             .iter()
-            .filter(move |mmm| KitDatumType::from(mmm.internal_type()) == acc)
+            .filter(move |mmm| acc.contains(&mmm.internal_type()))
             .flat_map(|mmm| {
                 mmm.packings()
                     .iter()
@@ -179,7 +180,7 @@ impl Ops {
                 }
             })
             .filter(move |(_mmm, _ix, _a, _pe, b)| {
-                b.precursor().as_dt().is_some_and(|dt| KitDatumType::from(dt) == act)
+                b.precursor().as_dt().is_some_and(|dt| dt == act)
             })
     }
 
