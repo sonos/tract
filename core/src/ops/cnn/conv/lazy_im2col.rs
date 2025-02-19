@@ -52,6 +52,14 @@ impl MMMInputFormat for LazyIm2colParams {
     ) -> TractResult<()> {
         unimplemented!()
     }
+    fn extract_at_mn_f32(
+        &self,
+        _data: &tract_linalg::mmm::EagerPackedInput,
+        _mn: usize,
+        _slice: &mut [f32],
+    ) -> TractResult<()> {
+        unimplemented!()
+    }
 }
 
 impl Display for LazyIm2colParams {
@@ -392,6 +400,9 @@ impl MMMInputValue for LazyIm2colInput {
         })
     }
     fn extract_at_mn_f16(&self, _mn: usize, _slice: &mut [f16]) -> TractResult<()> {
+        unimplemented!()
+    }
+    fn extract_at_mn_f32(&self, _mn: usize, _slice: &mut [f32]) -> TractResult<()> {
         unimplemented!()
     }
 }

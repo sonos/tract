@@ -3,6 +3,7 @@ use crate::internal::*;
 use bit_set::BitSet;
 use std::collections::VecDeque;
 use std::fmt::{Debug, Display};
+use tract_itertools::Itertools;
 
 /// Find an evaluation order for a model, using its default inputs and outputs
 /// as boundaries.
@@ -11,8 +12,8 @@ where
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
-    let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
-    let targets = model.output_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
+    let inputs = model.input_outlets()?.iter().map(|n| n.node).collect_vec();
+    let targets = model.output_outlets()?.iter().map(|n| n.node).collect_vec();
     eval_order_for_nodes(model.nodes(), &inputs, &targets, &[])
 }
 
@@ -38,8 +39,11 @@ where
         let mut pending = BitSet::with_capacity(nodes.len());
         while let Some((current_node, current_input)) = current_stack.pop() {
             let deps_from_inputs = nodes[current_node].inputs.len();
-            let all_deps_count =
-                deps_from_inputs + more_dependencies.iter().filter(|a| a.0 == current_node).count();
+            let all_deps_count = deps_from_inputs
+                + more_dependencies
+                    .iter()
+                    .filter(|a| a.0 == current_node)
+                    .count();
             if model_inputs.contains(&current_node) || current_input == all_deps_count {
                 order.push(current_node);
                 done.insert(current_node);
@@ -50,7 +54,12 @@ where
                     .iter()
                     .filter(|n| nodes[n.node].inputs.len() > 0)
                     .map(|n| n.node)
-                    .chain(more_dependencies.iter().filter(|a| a.0 == current_node).map(|n| n.1))
+                    .chain(
+                        more_dependencies
+                            .iter()
+                            .filter(|a| a.0 == current_node)
+                            .map(|n| n.1),
+                    )
                     .chain(
                         nodes[current_node]
                             .inputs
@@ -82,28 +91,34 @@ where
     Ok(order)
 }
 
-pub fn build_flush_list<F, O, Flushable>(model: &Graph<F, O>, order: &[usize], outputs: &[OutletId], flushable: Flushable) -> Vec<TVec<usize>> 
+pub fn build_flush_list<F, O, Flushable>(
+    model: &Graph<F, O>,
+    order: &[usize],
+    outputs: &[OutletId],
+    flushable: Flushable,
+) -> Vec<TVec<usize>>
 where
     F: Fact + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static, 
-    Flushable: Fn(&Node<F, O>) -> bool {
-        let mut values_needed_until_step = vec![0; model.nodes().len()];
-        for (step, node) in order.iter().enumerate() {
-            for i in &model.node(*node).inputs {
-                values_needed_until_step[i.node] = step;
-            }
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    Flushable: Fn(&Node<F, O>) -> bool,
+{
+    let mut values_needed_until_step = vec![0; model.nodes().len()];
+    for (step, node) in order.iter().enumerate() {
+        for i in &model.node(*node).inputs {
+            values_needed_until_step[i.node] = step;
         }
-        for o in outputs.iter() {
-            values_needed_until_step[o.node] = order.len();
-        }
-        let mut flush_lists: Vec<TVec<usize>> = vec![tvec!(); order.len() + 1];
+    }
+    for o in outputs.iter() {
+        values_needed_until_step[o.node] = order.len();
+    }
+    let mut flush_lists: Vec<TVec<usize>> = vec![tvec!(); order.len() + 1];
 
-        for (node, &flush_at) in values_needed_until_step.iter().enumerate() {
-            if flush_at != 0 && (flushable)(model.node(node)) {
-                flush_lists[flush_at].push(node)
-            }
+    for (node, &flush_at) in values_needed_until_step.iter().enumerate() {
+        if flush_at != 0 && (flushable)(model.node(node)) {
+            flush_lists[flush_at].push(node)
         }
-        flush_lists
+    }
+    flush_lists
 }
 
 /// Find an evaluation order for a list of model trying to minimize memory occupation.
@@ -112,8 +127,8 @@ where
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
-    let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
-    let targets = model.output_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
+    let inputs = model.input_outlets()?.iter().map(|n| n.node).collect_vec();
+    let targets = model.output_outlets()?.iter().map(|n| n.node).collect_vec();
     eval_order_opt_ram_for_nodes(model.nodes(), &inputs, &targets, &[])
 }
 
@@ -238,8 +253,10 @@ where
     }
 
     while !model_outputs.iter().all(|o| done.done.contains(*o)) {
-        let next = if let Some(next) =
-            done.candidates.iter().find(|n| dfs.ups[*n].iter().all(|n| done.done.contains(*n)))
+        let next = if let Some(next) = done
+            .candidates
+            .iter()
+            .find(|n| dfs.ups[*n].iter().all(|n| done.done.contains(*n)))
         {
             next
         } else if let Some(next) = done.best_upstream_starter(&dfs) {
@@ -270,7 +287,10 @@ mod tests {
         let add = model.wire_node("add", math::add(), &[a, b]).unwrap()[0];
         model.auto_outputs().unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(a.node, b.node, add.node));
-        assert_eq!(model.eval_order_opt_ram().unwrap(), vec!(a.node, b.node, add.node));
+        assert_eq!(
+            model.eval_order_opt_ram().unwrap(),
+            vec!(a.node, b.node, add.node)
+        );
     }
 
     #[test]
@@ -298,12 +318,18 @@ mod tests {
         std::thread::spawn(move || {
             rx.send(cloned.eval_order()).unwrap();
         });
-        assert!(tx.recv_timeout(std::time::Duration::from_secs(1)).unwrap().is_err());
+        assert!(tx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .unwrap()
+            .is_err());
         let (rx, tx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             rx.send(model.eval_order_opt_ram()).unwrap();
         });
-        assert!(tx.recv_timeout(std::time::Duration::from_secs(1)).unwrap().is_err());
+        assert!(tx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .unwrap()
+            .is_err());
     }
 
     #[test]

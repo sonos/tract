@@ -299,4 +299,13 @@ impl MMMInputFormat for PackedBlockQuantFormat {
     ) -> TractResult<()> {
         self.bq.extract_at_mn_f16(data, mn, slice)
     }
+
+    fn extract_at_mn_f32(
+        &self,
+        data: &EagerPackedInput,
+        mn: usize,
+        slice: &mut [f32],
+    ) -> TractResult<()> {
+        self.bq.extract_at_mn_f32(data, mn, slice)
+    }
 }

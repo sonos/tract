@@ -83,6 +83,9 @@ impl MMMInputValue for PanelExtractInput {
     fn extract_at_mn_f16(&self, mn: usize, slice: &mut [f16]) -> TractResult<()> {
         self.data.extract_at_mn_f16(mn, slice)
     }
+    fn extract_at_mn_f32(&self, mn: usize, slice: &mut [f32]) -> TractResult<()> {
+        self.data.extract_at_mn_f32(mn, slice)
+    }
 }
 
 impl Display for PanelExtractInput {
