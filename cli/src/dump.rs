@@ -83,12 +83,11 @@ fn annotate_with_onnx_model(
 
     let bold = Style::new().bold();
     for gnode in model_proto.graph.as_ref().unwrap().node.iter() {
-        if let Some(id) = model.node_id_by_name(&gnode.name).ok().or_else(|| {
-            gnode
-                .output
-                .first()
-                .and_then(|n| model.node_id_by_name(n).ok())
-        }) {
+        if let Some(id) = model
+            .node_id_by_name(&gnode.name)
+            .ok()
+            .or_else(|| gnode.output.first().and_then(|n| model.node_id_by_name(n).ok()))
+        {
             let mut v = vec![];
             for a in gnode.attribute.iter() {
                 let value = if let Some(t) = &a.t {
@@ -193,12 +192,7 @@ pub fn handle(
         for (name, expected) in asserts {
             let count = crate::utils::count_op(model, name)?;
             if count != *expected {
-                bail!(
-                    "Wrong number of {} operators: expected {}, got {}",
-                    name,
-                    expected,
-                    count
-                );
+                bail!("Wrong number of {} operators: expected {}, got {}", name, expected, count);
             }
         }
     }
@@ -273,9 +267,7 @@ pub fn handle(
         if let Some(mut typed) = model.downcast_ref::<TypedModel>().cloned() {
             rename_outputs(&mut typed, sub_matches)?;
             let file = fs::File::create(path)?;
-            tflite
-                .write(&typed, file)
-                .context("Writing model to tflite")?;
+            tflite.write(&typed, file).context("Writing model to tflite")?;
         } else {
             bail!("Only typed model can be dumped")
         }
@@ -288,20 +280,14 @@ pub fn handle(
 
     if options.cost {
         let total = annotations.tags.values().sum::<NodeTags>();
-        let assert = sub_matches
-            .value_of("assert-cost")
-            .map(crate::cost::parse_costs)
-            .transpose()?;
+        let assert =
+            sub_matches.value_of("assert-cost").map(crate::cost::parse_costs).transpose()?;
         if let Some(assert) = assert {
             let assert: HashMap<Cost, TDim> =
                 assert.iter().map(|(c, n)| (*c, n.to_dim())).collect();
             let total = total.cost.iter().cloned().collect::<HashMap<_, _>>();
             if assert != total {
-                bail!(
-                    "Cost assertion not met: expected {:?} got {:?}",
-                    assert,
-                    total
-                );
+                bail!("Cost assertion not met: expected {:?} got {:?}", assert, total);
             }
         }
     }
@@ -345,19 +331,11 @@ pub fn mm_report(
         println!("Only available on TypedModel");
         return Ok(());
     };
-    let count = model
-        .nodes
-        .iter()
-        .filter(|n| n.op_is::<OptMatMul>())
-        .count();
+    let count = model.nodes.iter().filter(|n| n.op_is::<OptMatMul>()).count();
     println!("* {count} matrix multiplications");
     let mut configs: HashMap<_, usize> = HashMap::new();
 
-    for (node, op) in model
-        .nodes
-        .iter()
-        .filter_map(|n| n.op_as::<OptMatMul>().map(|m| (n, m)))
-    {
+    for (node, op) in model.nodes.iter().filter_map(|n| n.op_as::<OptMatMul>().map(|m| (n, m))) {
         let (m, k, n) = (op.m(), op.guess_k().unwrap_or(TDim::Val(0)), op.n());
         let facts = model.node_input_facts(node.id)?;
         let packings = op
@@ -373,12 +351,7 @@ pub fn mm_report(
             .unwrap();
         let panel_extractor = packings
             .iter()
-            .map(|(_, repack)| {
-                repack
-                    .as_ref()
-                    .map(|rp| rp.to_string())
-                    .unwrap_or("Ø".to_string())
-            })
+            .map(|(_, repack)| repack.as_ref().map(|rp| rp.to_string()).unwrap_or("Ø".to_string()))
             .join(", ");
         let (pack_a, pack_b) = facts
             .iter()
@@ -394,7 +367,7 @@ pub fn mm_report(
                                     .map(|pof| format!("{}", pof.format))
                             })
                     })
-                    .unwrap_or(String::new())
+                    .unwrap_or_default()
             })
             .collect_tuple()
             .unwrap();
@@ -408,17 +381,7 @@ pub fn mm_report(
             .product::<TDim>();
         let mmm = op.mmm.iter().map(|m| format!("{m:?}")).join(", ");
         *configs
-            .entry((
-                m,
-                k,
-                n,
-                iters,
-                facts[0].konst.is_some(),
-                mmm,
-                pack_a,
-                panel_extractor,
-                pack_b,
-            ))
+            .entry((m, k, n, iters, facts[0].konst.is_some(), mmm, pack_a, panel_extractor, pack_b))
             .or_default() += 1;
     }
 

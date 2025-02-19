@@ -113,14 +113,12 @@ pub fn wire_prepacked(
             } else if let Some(pre) = prepack {
                 if pre.format().same_as(&**pa) {
                     Some((mmm, packing, None))
-                } else if let Some(pe) = tract_linalg::ops()
-                    .panel_extractors()
-                    .iter()
-                    .find(|pe| pre.format().same_as(&*pe.from) && pe.to.same_as(&**pa))
-                {
-                    Some((mmm, packing, Some(pe)))
                 } else {
-                    None
+                    tract_linalg::ops()
+                        .panel_extractors()
+                        .iter()
+                        .find(|pe| pre.format().same_as(&*pe.from) && pe.to.same_as(&**pa))
+                        .map(|pe| (mmm, packing, Some(pe)))
                 }
             } else if pa.precursor() == a_konst.datum_type().into() {
                 Some((mmm, packing, None))

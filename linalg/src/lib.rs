@@ -171,20 +171,15 @@ impl Ops {
             .filter_map(|(mmm, ix, a, b)| {
                 if a.same_as(weight) {
                     Some((mmm, ix, a, None, b))
-                } else if let Some(pe) = self
-                    .panel_extractors
-                    .iter()
-                    .find(|pe| pe.from.same_as(weight) && pe.to.same_as(&*a))
-                {
-                    Some((mmm, ix, a, Some(pe), b))
                 } else {
-                    None
+                    self.panel_extractors
+                        .iter()
+                        .find(|pe| pe.from.same_as(weight) && pe.to.same_as(a))
+                        .map(|pe| (mmm, ix, a, Some(pe), b))
                 }
             })
             .filter(move |(_mmm, _ix, _a, _pe, b)| {
-                b.precursor()
-                    .as_dt()
-                    .is_some_and(|dt| KitDatumType::from(dt) == act)
+                b.precursor().as_dt().is_some_and(|dt| KitDatumType::from(dt) == act)
             })
     }
 
@@ -201,26 +196,12 @@ impl Ops {
     ) -> Option<Box<dyn mmm::MatMatMul>> {
         use DatumType::*;
         match accumulator {
-            F64 => Some(if n == Some(1) {
-                (self.mmv_f64)(m, k)
-            } else {
-                (self.mmm_f64)(m, k, n)
-            }),
-            F32 => Some(if n == Some(1) {
-                (self.mmv_f32)(m, k)
-            } else {
-                (self.mmm_f32)(m, k, n)
-            }),
-            F16 => Some(if n == Some(1) {
-                (self.mmv_f16)(m, k)
-            } else {
-                (self.mmm_f16)(m, k, n)
-            }),
-            I32 => Some(if n == Some(1) {
-                (self.qmmv_i32)(m, k)
-            } else {
-                (self.qmmm_i32)(m, k, n)
-            }),
+            F64 => Some(if n == Some(1) { (self.mmv_f64)(m, k) } else { (self.mmm_f64)(m, k, n) }),
+            F32 => Some(if n == Some(1) { (self.mmv_f32)(m, k) } else { (self.mmm_f32)(m, k, n) }),
+            F16 => Some(if n == Some(1) { (self.mmv_f16)(m, k) } else { (self.mmm_f16)(m, k, n) }),
+            I32 => {
+                Some(if n == Some(1) { (self.qmmv_i32)(m, k) } else { (self.qmmm_i32)(m, k, n) })
+            }
             _ => None,
         }
     }
