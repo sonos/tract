@@ -33,12 +33,7 @@ pub fn wire_packing(
 
     // "simple" kernel selection
     let mmm = tract_linalg::ops()
-        .mmm(
-            op.operating_dt,
-            op.m.to_usize().ok(),
-            op.k.to_usize().ok(),
-            op.n.to_usize().ok(),
-        )
+        .mmm(op.operating_dt, op.m.to_usize().ok(), op.k.to_usize().ok(), op.n.to_usize().ok())
         .unwrap();
     let mode_picker = ModePicker::Single;
     let (packing, pa, pb) = mmm
@@ -46,11 +41,7 @@ pub fn wire_packing(
         .iter()
         .enumerate()
         .filter_map(|(ix, p)| {
-            Some((
-                ix,
-                p.0.downcast_ref::<PackedFormat>()?,
-                p.1.downcast_ref::<PackedFormat>()?,
-            ))
+            Some((ix, p.0.downcast_ref::<PackedFormat>()?, p.1.downcast_ref::<PackedFormat>()?))
         })
         .find(|(_ix, pa, pb)| pa.dt == a_dt.unquantized() && pb.dt == b_dt.unquantized())
         .with_context(|| format!("No packing for {mmm:?} with inputs {a_dt:?} and {b_dt:?}"))?;
@@ -114,10 +105,7 @@ pub fn wire_prepacked(
         .iter()
         .filter(|mmm| KitDatumType::from(mmm.internal_type()) == accumulator)
         .flat_map(move |mmm| {
-            mmm.packings()
-                .iter()
-                .enumerate()
-                .map(|(ix, p)| (mmm.clone(), ix, &p.0, &p.1))
+            mmm.packings().iter().enumerate().map(|(ix, p)| (mmm.clone(), ix, &p.0, &p.1))
         })
         .filter_map(|(mmm, packing, pa, pb)| {
             if pb.precursor().as_dt().is_some_and(|dt| dt != b_dt) {
@@ -144,8 +132,9 @@ pub fn wire_prepacked(
 
     let mmv = mmms
         .iter()
-        .filter(|(mmm, _packing, _pe)| mmm.nr() == 1)
-        .min_by_key(|(mmm, _packing, pe)| mmm.quality().cost() * 2 + pe.is_some() as usize)
+        .min_by_key(|(mmm, _packing, pe)| {
+            mmm.quality().cost() * 10000 + 100 * mmm.nr() + pe.is_some() as usize
+        })
         .unwrap();
     let mmm = mmms
         .iter()
@@ -162,11 +151,7 @@ pub fn wire_prepacked(
     let b_packers = configs
         .iter()
         .map(|(mmm, packing, _pe)| {
-            mmm.packings()[*packing]
-                .1
-                .downcast_ref::<PackedFormat>()
-                .unwrap()
-                .clone()
+            mmm.packings()[*packing].1.downcast_ref::<PackedFormat>().unwrap().clone()
         })
         .collect_vec();
     let pb = patch.wire_node(
