@@ -159,6 +159,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"threads" [THREADS] "Setup a thread pool for computing. 0 will guess the number of physical cores"))
 
         .arg(arg!(-O --optimize "Optimize before running"))
+        .arg(arg!(--"assert-maximal-mm-quality-cost" <MAX> "Maximum value for quality category (0=assembly, 4=dreadful rust code)"))
         .arg(arg!(--pulse [PULSE] "Translate to pulse network"))
 
         .arg(arg!(--"machine-friendly" "Machine friendly output"))
