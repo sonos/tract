@@ -58,7 +58,7 @@ impl MMMInputFormat for PackedFormat {
         ensure!(self.len(data.k(), data.mn()) * self.dt.size_of() == data.packed.len());
         unsafe {
             let ptr = data.packed.as_ptr().add(
-                (self.single_panel_len(data.k()) * mn / self.r + mn % self.r) * self.dt.size_of(),
+                (self.single_panel_len(data.k()) * (mn / self.r) + mn % self.r) * self.dt.size_of(),
             );
             for (i, slot) in slice.iter_mut().enumerate() {
                 let ptr = ptr.add(i * self.dt.size_of() * self.r);
@@ -66,6 +66,32 @@ impl MMMInputFormat for PackedFormat {
                     *(ptr as *const f16)
                 } else if self.dt == f32::datum_type() {
                     f16::from_f32(*(ptr as *const f32))
+                } else {
+                    bail!("Unexpected DT {:?}", self.dt)
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn extract_at_mn_f32(
+        &self,
+        data: &EagerPackedInput,
+        mn: usize,
+        slice: &mut [f32],
+    ) -> TractResult<()> {
+        ensure!(data.format().same_as(self));
+        ensure!(self.len(data.k(), data.mn()) * self.dt.size_of() == data.packed.len());
+        unsafe {
+            let ptr = data.packed.as_ptr().add(
+                (self.single_panel_len(data.k()) * (mn / self.r) + mn % self.r) * self.dt.size_of(),
+            );
+            for (i, slot) in slice.iter_mut().enumerate() {
+                let ptr = ptr.add(i * self.dt.size_of() * self.r);
+                *slot = if self.dt == f16::datum_type() {
+                    (*(ptr as *const f16)).to_f32()
+                } else if self.dt == f32::datum_type() {
+                    *(ptr as *const f32)
                 } else {
                     bail!("Unexpected DT {:?}", self.dt)
                 }

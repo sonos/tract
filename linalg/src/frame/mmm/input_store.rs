@@ -27,6 +27,12 @@ pub trait MMMInputFormat: Downcast + Debug + DynHash + DynClone + Send + Sync + 
         mn: usize,
         slice: &mut [f16],
     ) -> TractResult<()>;
+    fn extract_at_mn_f32(
+        &self,
+        data: &EagerPackedInput,
+        mn: usize,
+        slice: &mut [f32],
+    ) -> TractResult<()>;
 }
 
 dyn_clone::clone_trait_object!(MMMInputFormat);
@@ -53,6 +59,7 @@ pub trait MMMInputValue: DynClone + Debug + DynHash + Send + Sync + Display + Do
     fn same_as(&self, other: &dyn MMMInputValue) -> bool;
 
     fn extract_at_mn_f16(&self, mn: usize, slice: &mut [f16]) -> TractResult<()>;
+    fn extract_at_mn_f32(&self, mn: usize, slice: &mut [f32]) -> TractResult<()>;
 }
 dyn_clone::clone_trait_object!(MMMInputValue);
 impl_downcast!(MMMInputValue);
@@ -139,6 +146,11 @@ impl MMMInputValue for EagerPackedInput {
         ensure!(slice.len() == self.k());
         ensure!(mn < self.mn());
         self.fact.format.extract_at_mn_f16(self, mn, slice)
+    }
+    fn extract_at_mn_f32(&self, mn: usize, slice: &mut [f32]) -> TractResult<()> {
+        ensure!(slice.len() == self.k());
+        ensure!(mn < self.mn());
+        self.fact.format.extract_at_mn_f32(self, mn, slice)
     }
 }
 
