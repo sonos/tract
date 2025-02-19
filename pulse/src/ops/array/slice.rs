@@ -23,11 +23,7 @@ fn pulsify(
     if op.axis == stream.axis {
         let skip = op.start.to_usize()?;
         let take = (op.end.clone() - &op.start).to_dim();
-        let op = PulsedAxisSlice {
-            axis: op.axis,
-            skip,
-            take,
-        };
+        let op = PulsedAxisSlice { axis: op.axis, skip, take };
         Ok(Some(target.wire_node(&*node.name, op, &[input])?))
     } else {
         Ok(None)
@@ -47,10 +43,7 @@ impl Op for PulsedAxisSlice {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!(
-            "axis:{}, skip:{} take:{}",
-            self.axis, self.skip, self.take
-        )])
+        Ok(vec![format!("axis:{}, skip:{} take:{}", self.axis, self.skip, self.take)])
     }
 
     not_a_typed_op!();

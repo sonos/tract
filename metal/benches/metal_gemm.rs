@@ -63,9 +63,7 @@ pub fn tract_with_packing(
 
     // mk,kn -> mn
     unsafe {
-        let mmm = tract_linalg::ops()
-            .mmm(dt, Some(m), Some(k), Some(n))
-            .unwrap();
+        let mmm = tract_linalg::ops().mmm(dt, Some(m), Some(k), Some(n)).unwrap();
 
         let c_storage = mmm.c_view(0, 1);
 
@@ -107,10 +105,7 @@ pub fn metal_gemm<K: GemmKernel>(
     is_ggml: bool,
 ) {
     let context = MetalContext::new();
-    context
-        .shared_context()
-        .load_library(LibraryName::MfaLib)
-        .unwrap();
+    context.shared_context().load_library(LibraryName::MfaLib).unwrap();
 
     let a = Tensor::zero_dt(dt, &[batch, m, k]).unwrap();
     let b = if is_ggml {
@@ -122,15 +117,11 @@ pub fn metal_gemm<K: GemmKernel>(
     let metal_a = a.into_metal().unwrap();
     let metal_b = b.into_metal().unwrap();
     // Warmup
-    let _ = GemmImpl::<MfaGemm>::default()
-        .eval(&context, &metal_a, &metal_b)
-        .unwrap();
+    let _ = GemmImpl::<MfaGemm>::default().eval(&context, &metal_a, &metal_b).unwrap();
 
     crit.bench_function(&format!("tract_metal_gemm_{}_{:?}", K::name(), dt), |be| {
         be.iter(|| {
-            let _ = GemmImpl::<K>::new(false, is_ggml)
-                .eval(&context, &metal_a, &metal_b)
-                .unwrap();
+            let _ = GemmImpl::<K>::new(false, is_ggml).eval(&context, &metal_a, &metal_b).unwrap();
         });
     });
 }

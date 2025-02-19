@@ -18,16 +18,14 @@ fn has_neon_cpuinfo() -> std::io::Result<bool> {
 }
 
 fn cpu_part() -> Option<usize> {
-    fs::read_to_string("/proc/cpuinfo")
-        .ok()
-        .and_then(|cpuinfo| {
-            cpuinfo
-                .lines()
-                .find(|line| line.starts_with("CPU part"))
-                .and_then(|s| s.trim().split_whitespace().last())
-                .and_then(|s| s.strip_prefix("0x"))
-                .and_then(|s| usize::from_str_radix(s, 16).ok())
-        })
+    fs::read_to_string("/proc/cpuinfo").ok().and_then(|cpuinfo| {
+        cpuinfo
+            .lines()
+            .find(|line| line.starts_with("CPU part"))
+            .and_then(|s| s.trim().split_whitespace().last())
+            .and_then(|s| s.strip_prefix("0x"))
+            .and_then(|s| usize::from_str_radix(s, 16).ok())
+    })
 }
 
 fn has_neon() -> bool {
@@ -45,8 +43,7 @@ pub fn plug(ops: &mut Ops) {
         let cpu = cpu_part().unwrap_or(0);
 
         fn prefer_8x4(_m: Option<usize>, _k: Option<usize>, n: Option<usize>) -> bool {
-            n.map(|n| n % 4 == 0 && n % 6 != 0 && n <= 12)
-                .unwrap_or(false)
+            n.map(|n| n % 4 == 0 && n % 6 != 0 && n <= 12).unwrap_or(false)
         }
 
         let cost_managed_impls = vec![

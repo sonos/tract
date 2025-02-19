@@ -25,12 +25,10 @@ pub fn rewire_metal_sync(
     };
     rule_ensure!(sync_cpu_prec_op.kind == MetalSyncKind::ToCpu);
 
-    let patch = TypedModelPatch::rewire(
-        model,
-        &sync_cpu_prec.inputs,
-        &[node.id.into()],
-        &|_p, xs| Ok(xs.into()),
-    )?;
+    let patch =
+        TypedModelPatch::rewire(model, &sync_cpu_prec.inputs, &[node.id.into()], &|_p, xs| {
+            Ok(xs.into())
+        })?;
     Ok(Some(patch))
 }
 

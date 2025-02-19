@@ -36,17 +36,12 @@ impl super::TypedPass for PropConst {
                 && node.op.is_stateless()
                 && inputs.iter().zip(&node.inputs).all(|(fact, outlet)| {
                     fact.konst.is_some()
-                        && (model.node(outlet.node).outputs[outlet.slot]
-                            .successors
-                            .len()
-                            == 1
+                        && (model.node(outlet.node).outputs[outlet.slot].successors.len() == 1
                             || node.op_is::<Slice>())
                 })
             {
-                let inputs = inputs
-                    .iter()
-                    .map(|f| f.konst.clone().unwrap().into_tvalue())
-                    .collect();
+                let inputs =
+                    inputs.iter().map(|f| f.konst.clone().unwrap().into_tvalue()).collect();
                 match node.op.eval_with_session(&SessionState::default(), inputs) {
                     Ok(mut res) => {
                         self.0 = node.id;
@@ -58,9 +53,8 @@ impl super::TypedPass for PropConst {
                             if succ.inputs.len() > 1 || !succ.op.is_stateless() {
                                 break;
                             }
-                            let Ok(succ_res) = succ
-                                .op
-                                .eval_with_session(&SessionState::default(), res.clone())
+                            let Ok(succ_res) =
+                                succ.op.eval_with_session(&SessionState::default(), res.clone())
                             else {
                                 break;
                             };
@@ -69,10 +63,8 @@ impl super::TypedPass for PropConst {
                         }
                         let mut patch = TypedModelPatch::default();
                         for (ix, output) in res.into_iter().enumerate() {
-                            let opaque_fact = model
-                                .outlet_fact(OutletId::new(node.id, ix))?
-                                .opaque_fact
-                                .clone();
+                            let opaque_fact =
+                                model.outlet_fact(OutletId::new(node.id, ix))?.opaque_fact.clone();
 
                             let name = if ix > 0 {
                                 format!("{}.{ix}", node.name)

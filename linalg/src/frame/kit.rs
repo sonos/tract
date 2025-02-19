@@ -115,10 +115,7 @@ impl From<Box<dyn MMMInputFormat>> for KitDatumType {
 }
 
 pub enum KitRequirement {
-    MMM {
-        accumulator: KitDatumType,
-        activation: KitDatumType,
-    },
+    MMM { accumulator: KitDatumType, activation: KitDatumType },
 }
 
 #[derive(Debug)]
@@ -138,17 +135,11 @@ pub struct MMMKitItem {
 impl Kit {
     pub(crate) fn new(weight: impl Into<WeightType>, static_packer: &dyn MMMInputFormat) -> Kit {
         let weight = weight.into();
-        let kit = Kit {
-            weight,
-            static_packer: dyn_clone::clone_box(static_packer),
-            mmms: vec![],
-        };
+        let kit = Kit { weight, static_packer: dyn_clone::clone_box(static_packer), mmms: vec![] };
         match &kit.weight {
             WeightType::Plain(p) => {
                 debug_assert!(
-                    kit.static_packer
-                        .downcast_ref::<PackedFormat>()
-                        .is_some_and(|pf| pf.dt == *p),
+                    kit.static_packer.downcast_ref::<PackedFormat>().is_some_and(|pf| pf.dt == *p),
                     "Static packer not compatible with weight format {kit:?}"
                 )
             }
@@ -168,11 +159,7 @@ impl Kit {
         packing: usize,
         weight_panel_extractor: Option<PanelExtractor>,
     ) -> Self {
-        self.mmms.push(MMMKitItem {
-            mmm,
-            packing,
-            weight_panel_extractor,
-        });
+        self.mmms.push(MMMKitItem { mmm, packing, weight_panel_extractor });
         self
     }
 
@@ -224,11 +211,7 @@ impl Kit {
     }
 
     pub fn quality(&self) -> ImplementationQuality {
-        self.mmms
-            .iter()
-            .map(|m| m.mmm.quality())
-            .max_by_key(|q| q.cost())
-            .unwrap()
+        self.mmms.iter().map(|m| m.mmm.quality()).max_by_key(|q| q.cost()).unwrap()
     }
 }
 

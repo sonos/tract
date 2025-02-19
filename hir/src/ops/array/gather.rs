@@ -10,11 +10,7 @@ pub struct Gather {
 
 impl Gather {
     pub fn to_type_op(&self, input_rank: usize) -> tract_core::ops::array::Gather {
-        let axis = if self.axis < 0 {
-            self.axis + input_rank as i64
-        } else {
-            self.axis
-        } as usize;
+        let axis = if self.axis < 0 { self.axis + input_rank as i64 } else { self.axis } as usize;
         tract_core::ops::array::Gather::new(axis)
     }
 }
@@ -49,22 +45,14 @@ impl Expansion for Gather {
         check_input_arity(inputs, 2)?;
         check_output_arity(outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(
-            inputs[0].rank.bex() - 1 + inputs[1].rank.bex(),
-            outputs[0].rank.bex(),
-        )?;
-        s.given_2(
-            &inputs[0].shape,
-            &inputs[1].shape,
-            move |s, input_shape, indices_shape| {
-                let rank = input_shape.len();
-                let output_shape = self
-                    .to_type_op(rank)
-                    .compute_output_shape(&input_shape, &indices_shape)?;
-                s.equals(&outputs[0].shape, output_shape)?;
-                Ok(())
-            },
-        )?;
+        s.equals(inputs[0].rank.bex() - 1 + inputs[1].rank.bex(), outputs[0].rank.bex())?;
+        s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, input_shape, indices_shape| {
+            let rank = input_shape.len();
+            let output_shape =
+                self.to_type_op(rank).compute_output_shape(&input_shape, &indices_shape)?;
+            s.equals(&outputs[0].shape, output_shape)?;
+            Ok(())
+        })?;
         Ok(())
     }
 }

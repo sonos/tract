@@ -40,10 +40,7 @@ impl TypedPass for ChangeAxes {
             }
             for suggestion in node.op.suggested_axis_changes()? {
                 let outlet = suggestion.0.as_outlet(node);
-                let change = AxisChange {
-                    outlet,
-                    op: suggestion.1,
-                };
+                let change = AxisChange { outlet, op: suggestion.1 };
                 if self.0.insert(change.clone()) {
                     if let Some((patch, _)) =
                         change_axes(model, &change, &interfaces, &[], &mut explored).with_context(
@@ -58,10 +55,8 @@ impl TypedPass for ChangeAxes {
             for (slot, fact) in node.outputs.iter().enumerate() {
                 for (ix, dim) in fact.fact.shape.iter().enumerate() {
                     if dim.is_one() {
-                        let change = AxisChange {
-                            outlet: OutletId::new(node.id, slot),
-                            op: AxisOp::Rm(ix),
-                        };
+                        let change =
+                            AxisChange { outlet: OutletId::new(node.id, slot), op: AxisOp::Rm(ix) };
                         if self.0.insert(change.clone()) {
                             if let Some((patch, _)) =
                                 change_axes(model, &change, &interfaces, &[], &mut explored)
@@ -105,11 +100,7 @@ pub fn change_axes(
     let mut todo_changes = vec![(change.clone(), None)];
     let mut changed_wires: HashMap<TVec<OutletId>, AxisOp> = HashMap::new();
     let bound_outlets = |o: OutletId| -> TVec<OutletId> {
-        bounds
-            .iter()
-            .find(|b| b.contains(&o))
-            .cloned()
-            .unwrap_or_else(|| tvec!(o))
+        bounds.iter().find(|b| b.contains(&o)).cloned().unwrap_or_else(|| tvec!(o))
     };
     changed_wires.insert(bound_outlets(change.outlet), change.op.clone());
     let mut changed_ops: HashMap<usize, Box<dyn TypedOp>> = HashMap::new();
@@ -121,10 +112,7 @@ pub fn change_axes(
         let outlet_group = bound_outlets(change.outlet);
         for &outlet in &outlet_group {
             if locked.contains(&outlet) {
-                debug!(
-                    "    Change {:?} blocked by locked interface {:?}",
-                    change, outlet
-                );
+                debug!("    Change {:?} blocked by locked interface {:?}", change, outlet);
                 return Ok(None);
             }
             let mut interfaces: Vec<(usize, InOut)> = vec![(outlet.node, InOut::Out(outlet.slot))];
@@ -143,11 +131,7 @@ pub fn change_axes(
                         // FIXME Einsum can swallow any combination of axis change on all interfaces
                         op
                     } else {
-                        debug!(
-                            "  Change {:?} blocked: revisiting {}",
-                            change,
-                            model.node(node_id)
-                        );
+                        debug!("  Change {:?} blocked: revisiting {}", change, model.node(node_id));
                         return Ok(None);
                     }
                 } else {
@@ -160,10 +144,7 @@ pub fn change_axes(
                     debug!("    Propagation of {:?} blocked by {}", change, node);
                     return Ok(None);
                 }
-                let AxisChangeConsequence {
-                    substitute_op,
-                    wire_changes,
-                } = more.unwrap();
+                let AxisChangeConsequence { substitute_op, wire_changes } = more.unwrap();
                 trace!("    Change {:?} enters {} from {:?}", change.op, node, io);
                 trace!("       propagates as {:?}", wire_changes);
                 if let Some(op) = substitute_op {
@@ -194,13 +175,8 @@ pub fn change_axes(
                                 outlet_group
                             );
                             entry.insert(op.clone());
-                            todo_changes.push((
-                                AxisChange {
-                                    outlet: outlet_group[0],
-                                    op,
-                                },
-                                Some(node_id),
-                            ));
+                            todo_changes
+                                .push((AxisChange { outlet: outlet_group[0], op }, Some(node_id)));
                         }
                         Entry::Occupied(previous) => {
                             if *previous.get() == op {
@@ -243,12 +219,8 @@ pub fn change_axes(
                     rewired_scalar_input.get(&InletId::new(node_id, slot))
                 {
                     let const_node = model.node(outlet.node);
-                    let mut value = const_node
-                        .op_as::<Const>()
-                        .unwrap()
-                        .val()
-                        .clone()
-                        .into_tensor();
+                    let mut value =
+                        const_node.op_as::<Const>().unwrap().val().clone().into_tensor();
                     alteration.change_tensor(&mut value, false)?;
                     let name = model.unique_name(&const_node.name);
                     patch.add_const(name, value)?
@@ -259,15 +231,11 @@ pub fn change_axes(
                 };
                 inputs.push(tgt);
             }
-            let op: Box<dyn TypedOp> = changed_ops
-                .get(&node_id)
-                .cloned()
-                .unwrap_or_else(|| node.op.clone());
+            let op: Box<dyn TypedOp> =
+                changed_ops.get(&node_id).cloned().unwrap_or_else(|| node.op.clone());
             let new_wires = patch.wire_node(&node.name, op, &inputs)?;
             if new_wires.len() == 1
-                && patch
-                    .node(new_wires[0].node)
-                    .op_is::<crate::ops::source::TypedSource>()
+                && patch.node(new_wires[0].node).op_is::<crate::ops::source::TypedSource>()
             {
                 patch.inputs.insert(new_wires[0].node, node_id);
             }

@@ -137,12 +137,7 @@ where
         deps: &[(usize, usize)],
         options: &PlanOptions,
     ) -> TractResult<SimplePlan<F, O, M>> {
-        let inputs = model
-            .borrow()
-            .input_outlets()?
-            .iter()
-            .map(|n| n.node)
-            .collect::<Vec<usize>>();
+        let inputs = model.borrow().input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
         let outputs_nodes = outputs.iter().map(|n| n.node).collect::<Vec<usize>>();
         let mut order = if options.skip_order_opt_ram {
             eval_order_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes, deps)?
@@ -215,13 +210,8 @@ where
         let session = SessionState::default();
         let model = plan.borrow().model();
         let states: Vec<Option<Box<dyn OpState>>> = vec![None; model.nodes.len()];
-        let mut state = SimpleState {
-            plan,
-            states,
-            session_state: session,
-            values,
-            _phantom: PhantomData,
-        };
+        let mut state =
+            SimpleState { plan, states, session_state: session, values, _phantom: PhantomData };
         state.populate_consts();
         state.reset_op_states()?;
         Ok(state)
@@ -253,18 +243,10 @@ where
 
     /// Reset op inner state.
     pub fn reset_op_states(&mut self) -> TractResult<()> {
-        let &mut SimpleState {
-            ref plan,
-            ref mut session_state,
-            ref mut states,
-            ..
-        } = self;
+        let &mut SimpleState { ref plan, ref mut session_state, ref mut states, .. } = self;
         for (ix, n) in plan.borrow().model().nodes().iter().enumerate() {
-            states[ix] = if n.op().is_stateless() {
-                None
-            } else {
-                n.op().state(session_state, ix)?
-            };
+            states[ix] =
+                if n.op().is_stateless() { None } else { n.op().state(session_state, ix)? };
         }
         Ok(())
     }
@@ -460,10 +442,7 @@ where
                 state.resolved_symbols.set(&sym, v.to_i64().unwrap());
             }
             if state.scenario.is_none() {
-                state.scenario = sym
-                    .scope()
-                    .unwrap()
-                    .guess_scenario(&state.resolved_symbols)?;
+                state.scenario = sym.scope().unwrap().guess_scenario(&state.resolved_symbols)?;
             }
         }
         Ok(())
@@ -475,13 +454,7 @@ where
             .input_outlets()?
             .get(input)
             .with_context(|| format!("Invalid input id for model ({input})."))?;
-        if let Ok(fact) = self
-            .plan
-            .borrow()
-            .model()
-            .outlet_fact(outlet)?
-            .to_typed_fact()
-        {
+        if let Ok(fact) = self.plan.borrow().model().outlet_fact(outlet)?.to_typed_fact() {
             for (expected, provided) in fact.shape.iter().zip(t.shape()) {
                 Self::resolve(&mut self.session_state, expected, *provided as i64)?;
             }
@@ -516,11 +489,7 @@ where
     }
 
     pub fn outputs(&mut self) -> TractResult<TVec<TValue>> {
-        let SimpleState {
-            ref plan,
-            ref mut values,
-            ..
-        } = self;
+        let SimpleState { ref plan, ref mut values, .. } = self;
         let mut v = tvec![];
         for o in plan.borrow().outputs.iter() {
             let vs = values[o.node].as_mut().ok_or_else(|| {
@@ -544,11 +513,7 @@ where
     }
 
     pub fn prepare_inputs(&self, node: usize) -> TractResult<TVec<TValue>> {
-        let SimpleState {
-            ref plan,
-            ref values,
-            ..
-        } = self;
+        let SimpleState { ref plan, ref values, .. } = self;
         let plan = plan.borrow();
         let nodes = plan.model().nodes();
         let node = &nodes[node];
@@ -573,13 +538,8 @@ where
         node: usize,
         inputs: TVec<TValue>,
     ) -> TractResult<()> {
-        let SimpleState {
-            ref plan,
-            ref mut session_state,
-            ref mut values,
-            ref mut states,
-            ..
-        } = self;
+        let SimpleState { ref plan, ref mut session_state, ref mut values, ref mut states, .. } =
+            self;
         let plan = plan.borrow();
         let nodes = plan.model().nodes();
         let node = &nodes[node];
@@ -591,11 +551,8 @@ where
     pub fn compute_recursively(&mut self, node: usize) -> TractResult<&[TValue]> {
         let values = {
             #[allow(clippy::needless_collect)] // clippy bug ?
-            let precs: Vec<usize> = self.model().nodes()[node]
-                .inputs
-                .iter()
-                .map(|i| i.node)
-                .collect();
+            let precs: Vec<usize> =
+                self.model().nodes()[node].inputs.iter().map(|i| i.node).collect();
             for i in precs.into_iter() {
                 if self.values[i].is_none() {
                     let _ = self.compute_recursively(i)?;
@@ -608,12 +565,7 @@ where
                     inputs.push(self.values[i.node].as_ref().unwrap()[i.slot].clone())
                 }
             }
-            let Self {
-                ref mut states,
-                ref mut session_state,
-                ref plan,
-                ..
-            } = self;
+            let Self { ref mut states, ref mut session_state, ref plan, .. } = self;
             eval(
                 session_state,
                 states[node].as_deref_mut(),
@@ -659,19 +611,14 @@ where
             resolved_symbols: self.session_state.resolved_symbols.clone(),
             scenario: self.session_state.scenario,
             tensors: self.session_state.tensors.clone(),
-            states: self
-                .states
-                .iter()
-                .map(|s| s.as_ref().map(|s| s.freeze()))
-                .collect(),
+            states: self.states.iter().map(|s| s.as_ref().map(|s| s.freeze())).collect(),
             values: self
                 .values
                 .iter()
                 .enumerate()
                 .map(|(ix, t)| {
                     if self.model().nodes[ix].op_is::<Const>() {
-                        t.as_ref()
-                            .map(|t| t.iter().map(|t| t.clone().into_tensor()).collect())
+                        t.as_ref().map(|t| t.iter().map(|t| t.clone().into_tensor()).collect())
                     } else {
                         None
                     }
@@ -731,29 +678,18 @@ where
         let mut state = SimpleState {
             plan: self.plan.clone(),
             session_state: SessionState {
-                inputs: self
-                    .inputs
-                    .iter()
-                    .map(|(ix, t)| (*ix, t.clone().into_tvalue()))
-                    .collect(),
+                inputs: self.inputs.iter().map(|(ix, t)| (*ix, t.clone().into_tvalue())).collect(),
                 resolved_symbols: self.resolved_symbols.clone(),
                 scenario: self.scenario,
                 tensors: self.tensors.clone(),
                 cached_mmm_scratch_space: None.into(),
                 scratch_extensions: anymap3::Map::new(),
             },
-            states: self
-                .states
-                .iter()
-                .map(|s| s.as_ref().map(|s| s.unfreeze()))
-                .collect(),
+            states: self.states.iter().map(|s| s.as_ref().map(|s| s.unfreeze())).collect(),
             values: self
                 .values
                 .iter()
-                .map(|t| {
-                    t.as_ref()
-                        .map(|t| t.iter().map(|t| t.clone().into_tvalue()).collect())
-                })
+                .map(|t| t.as_ref().map(|t| t.iter().map(|t| t.clone().into_tvalue()).collect()))
                 .collect(),
             _phantom: PhantomData,
         };

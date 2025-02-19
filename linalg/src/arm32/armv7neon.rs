@@ -49,11 +49,5 @@ pub fn plug(ops: &mut Ops) {
     );
 }
 
-sigmoid_impl!(
-    f32,
-    armv7neon_sigmoid_f32_4n,
-    4,
-    4,
-    crate::arm32::has_neon()
-);
+sigmoid_impl!(f32, armv7neon_sigmoid_f32_4n, 4, 4, crate::arm32::has_neon());
 tanh_impl!(f32, armv7neon_tanh_f32_4n, 4, 4, crate::arm32::has_neon());

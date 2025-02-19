@@ -85,9 +85,7 @@ unsafe fn add_mat_mul_pq40<const MR: usize, const NR: usize, TB, TI>(
         scales.iter_mut().for_each(|x| *x = pa.read_f16().as_());
         for ik in 0..32 {
             let mut a: [TI; MR] = [TI::zero(); MR];
-            a.iter_mut()
-                .zip(&scales)
-                .for_each(|(x, s)| *x = *s * (pa.read_i4() - 8).as_());
+            a.iter_mut().zip(&scales).for_each(|(x, s)| *x = *s * (pa.read_i4() - 8).as_());
             let b = std::slice::from_raw_parts(b.add(NR * (ik + 32 * bk)), NR);
             for i in 0..MR {
                 for j in 0..NR {
