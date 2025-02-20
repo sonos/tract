@@ -124,7 +124,7 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
         let weight_type = if let Some(a_payload) = bqv {
             WeightType::BlockQuant(a_payload.fact.format.clone())
         } else {
-            WeightType::Plain(input_facts[0].datum_type)
+            input_facts[0].datum_type.into()
         };
         let weight_shape = block_quant_aware_input_shape(&input_facts[0])?;
         let m = weight_shape[m_axis.inputs[0][0]].to_usize()?;
@@ -204,6 +204,7 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
                 return mmm.packings()[0].0.clone();
             }
         }
+        dbg!(self);
         clone_box(
             tract_linalg::ops()
                 .all_possible_packing(self.weight_type.clone())
