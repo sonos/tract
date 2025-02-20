@@ -356,7 +356,7 @@ impl ResolvedInvocation<'_> {
     where
         T: CoerceFrom<Value>,
     {
-        let rv = self.named_arg(name)?;
+        let Some(rv) = self.get_named_arg(name) else { return Ok(None) };
         let v = rv
             .resolve(builder, &[])
             .with_context(|| format!("Resolving argument `{name}' ({rv:?})"))?;
