@@ -1,12 +1,11 @@
-use std::collections::HashSet;
-
 use dyn_clone::clone_box;
 use tract_linalg::block_quant::BlockQuantValue;
-use tract_linalg::kit::WeightType;
 
 use crate::internal::*;
 use crate::ops::array::Gather;
 use crate::ops::einsum::EinSum;
+
+use super::einsum::optimize::EinSumAnnotatedAsLinear;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Const(Arc<Tensor>, Option<Box<dyn OpaqueFact>>);
@@ -132,116 +131,49 @@ impl TypedOp for Const {
                     return Ok(None);
                 }
             } else if let Some(einsum) = snode.op_as::<EinSum>() {
-                let mut ns = HashSet::<TDim>::new();
-                if succ.slot != 0 {
+                if let Some(linear) = EinSumAnnotatedAsLinear::from(model, snode, einsum)? {
+                    matmuls.push(linear);
+                } else {
                     return Ok(None);
                 }
-                let m_axis = einsum.axes.axis((InOut::In(0), 0))?;
-                if m_axis.inputs[0].len() != 1
-                    || m_axis.inputs[1].len() != 0
-                    || m_axis.outputs[0].len() != 1
-                {
-                    return Ok(None);
-                }
-                let k_axis = einsum.axes.axis((InOut::In(0), 1))?;
-                if k_axis.inputs[0].len() != 1
-                    || k_axis.inputs[1].len() != 1
-                    || k_axis.outputs[0].len() != 0
-                {
-                    return Ok(None);
-                }
-                for axis in einsum.axes.iter_all_axes() {
-                    if axis != k_axis
-                        && axis != m_axis
-                        && axis.inputs[0].len() == 0
-                        && axis.inputs[1].len() == 1
-                        && axis.outputs[0].len() == 1
-                    {
-                        ns.insert(snode.outputs[0].fact.shape[axis.outputs[0][0]].clone());
-                    }
-                }
-                let act_outlet = snode.inputs[1];
-                let act_dt = model.outlet_fact(act_outlet)?.datum_type;
-                matmuls.push((einsum.acceptable_accumulators(), act_dt, ns));
             } else {
                 return Ok(None);
             }
         }
-        if node.outputs[0].successors.len() > 1
-            || matmuls.iter().any(|(_acc_dt, _act_dt, ns)| {
-                ns.len() > 1 || ns.iter().any(|d| d.as_i64().is_none())
-            })
+
+        let ops = tract_linalg::ops();
+        let choice = if matmuls.len() == 1
+            && matmuls[0].ns.iter().cloned().product::<TDim>().as_i64().is_some()
         {
-            let weight =
-                self.0.to_scalar::<Opaque>().ok().and_then(|a| a.downcast_ref::<BlockQuantValue>());
-            let weight_type = if let Some(a_payload) = weight {
-                WeightType::BlockQuant(a_payload.fact.format.clone())
-            } else {
-                WeightType::Plain(self.0.datum_type())
-            };
-
-            let ops = tract_linalg::ops();
-            let choice = ops
-                .all_possible_packing(weight_type.clone())
+            dbg!(&matmuls[0]);
+            todo!()
+        } else {
+            ops.all_possible_packing(matmuls[0].weight_type.clone())
                 .min_by_key(|format| {
-                    matmuls
-                        .iter()
-                        .map(|(acc, act, n)| {
-                            let mut cost = 0;
-                            // need mmv
-                            // if n.iter().any(|n| n.as_i64().is_none_or(|n| n == 1)) {
-                            if n.iter().any(|n| n.as_i64().map(|n| n == 1).unwrap_or(true)) {
-                                cost += ops
-                                    .filter_impls(*format, &*acc, *act)
-                                    .map(|(mmm, _, _, pe, _)| {
-                                        mmm.quality().cost() * 1000 + mmm.nr() * 10 - mmm.mr() * 10
-                                            + pe.is_some() as usize
-                                    })
-                                    .min()
-                                    .unwrap_or(usize::MAX / 2);
-                            };
-                            // nned mmm
-                            // if n.iter().any(|n| n.as_i64().is_none_or(|n| n > 1)) {
-                            if n.iter().any(|n| n.as_i64().map(|n| n > 1).unwrap_or(true)) {
-                                cost += ops
-                                    .filter_impls(*format, &*acc, *act)
-                                    .map(|(mmm, _, _, pe, _)| {
-                                        1_000_000 + mmm.quality().cost() * 1000
-                                            - mmm.nr() * 10
-                                            - mmm.mr() * 10
-                                            + pe.is_some() as usize
-                                    })
-                                    .min()
-                                    .unwrap_or(usize::MAX / 2);
-                            };
-                            cost
-                        })
-                        .max()
-                        .unwrap()
+                    matmuls.iter().map(|linear| linear.cost_for_weights(&**format)).max().unwrap()
                 })
-                .unwrap();
+                .unwrap()
+        };
 
-            let packed = choice.prepare_tensor(&self.0, 1, 0).context("in prepare_tensor")?;
-            let fact = clone_box(packed.opaque_fact());
-            let opaque = Opaque(Arc::new(packed));
-            let konst = Const(rctensor0(opaque), Some(fact));
-            let mut patch = TypedModelPatch::new(format!("Versatile packing {node}"));
-            let konst = patch.wire_node(&node.name, konst, &[])?;
-            for succ in &node.outputs[0].successors {
-                let succ_node = model.node(succ.node);
-                let mut taps = patch.taps(model, &succ_node.inputs)?;
-                taps[succ.slot] = konst[0];
-                let new_op: Box<dyn TypedOp> = if let Some(gather) = succ_node.op_as::<Gather>() {
-                    let output_type = succ_node.outputs[0].fact.datum_type;
-                    Box::new(Gather { axis: gather.axis, output_type: Some(output_type) })
-                } else {
-                    succ_node.op.clone()
-                };
-                let replacement = patch.wire_node(&succ_node.name, new_op, &taps)?;
-                patch.shunt_outside(model, succ.node.into(), replacement[0])?;
-            }
-            return Ok(Some(patch));
+        let packed = choice.prepare_tensor(&self.0, 1, 0).context("in prepare_tensor")?;
+        let fact = clone_box(packed.opaque_fact());
+        let opaque = Opaque(Arc::new(packed));
+        let konst = Const(rctensor0(opaque), Some(fact));
+        let mut patch = TypedModelPatch::new(format!("Packing {node} as {choice:?}"));
+        let konst = patch.wire_node(&node.name, konst, &[])?;
+        for succ in &node.outputs[0].successors {
+            let succ_node = model.node(succ.node);
+            let mut taps = patch.taps(model, &succ_node.inputs)?;
+            taps[succ.slot] = konst[0];
+            let new_op: Box<dyn TypedOp> = if let Some(gather) = succ_node.op_as::<Gather>() {
+                let output_type = succ_node.outputs[0].fact.datum_type;
+                Box::new(Gather { axis: gather.axis, output_type: Some(output_type) })
+            } else {
+                succ_node.op.clone()
+            };
+            let replacement = patch.wire_node(&succ_node.name, new_op, &taps)?;
+            patch.shunt_outside(model, succ.node.into(), replacement[0])?;
         }
-        Ok(None)
+        Ok(Some(patch))
     }
 }
