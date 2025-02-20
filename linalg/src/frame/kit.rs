@@ -20,7 +20,9 @@ impl From<DatumType> for WeightType {
             DatumType::F16 => WeightType::Plain(DatumType::F16),
             DatumType::F32 => WeightType::Plain(DatumType::F32),
             DatumType::I32 => WeightType::Plain(DatumType::I32),
-            _ => panic!(),
+            DatumType::I8 | DatumType::QI8(_) => WeightType::Plain(DatumType::I8),
+            DatumType::U8 | DatumType::QU8(_) => WeightType::Plain(DatumType::U8),
+            _ => panic!("Can't build a WeightType from {value:?}"),
         }
     }
 }

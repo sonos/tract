@@ -141,7 +141,9 @@ impl TypedOp for Const {
                 return Ok(None);
             }
         }
-
+        if matmuls.len() == 0 {
+            return Ok(None);
+        }
         let ops = tract_linalg::ops();
         let (choice,) = matmuls
             .iter()

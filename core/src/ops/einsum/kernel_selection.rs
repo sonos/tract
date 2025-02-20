@@ -82,7 +82,7 @@ pub fn wire_prepacked(
     ModePicker,
 )> {
     ensure!(patch.outlet_fact(a)?.konst.is_some());
-    let b_dt = patch.outlet_fact(b)?.datum_type;
+    let b_dt = patch.outlet_fact(b)?.datum_type.unquantized();
 
     let a_konst = patch.outlet_fact(a)?.konst.as_ref().unwrap();
     // preemptive packing ?
@@ -91,6 +91,8 @@ pub fn wire_prepacked(
         .ok()
         .and_then(|opaq| opaq.0.downcast_ref::<Box<dyn MMMInputValue>>());
     ensure!(prepack.is_some());
+    let prepack = prepack.unwrap();
+    dbg!(prepack);
 
     let mmms = tract_linalg::ops()
         .mmm_impls()
@@ -102,20 +104,14 @@ pub fn wire_prepacked(
         .filter_map(|(mmm, packing, pa, pb)| {
             if pb.precursor().as_dt().is_some_and(|dt| dt != b_dt) {
                 None
-            } else if let Some(pre) = prepack {
-                if pre.format().same_as(&**pa) {
-                    Some((mmm, packing, None))
-                } else {
-                    tract_linalg::ops()
-                        .panel_extractors()
-                        .iter()
-                        .find(|pe| pre.format().same_as(&*pe.from) && pe.to.same_as(&**pa))
-                        .map(|pe| (mmm, packing, Some(pe)))
-                }
-            } else if pa.precursor() == a_konst.datum_type().into() {
+            } else if prepack.format().same_as(&**pa) {
                 Some((mmm, packing, None))
             } else {
-                None
+                tract_linalg::ops()
+                    .panel_extractors()
+                    .iter()
+                    .find(|pe| prepack.format().same_as(&*pe.from) && pe.to.same_as(&**pa))
+                    .map(|pe| (mmm, packing, Some(pe)))
             }
         })
         .collect_vec();
