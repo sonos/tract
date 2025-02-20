@@ -126,7 +126,7 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
         } else {
             input_facts[0].datum_type.into()
         };
-        let weight_shape = block_quant_aware_input_shape(&input_facts[0])?;
+        let weight_shape = block_quant_aware_input_shape(input_facts[0])?;
         let m = weight_shape[m_axis.inputs[0][0]].to_usize()?;
         let k = weight_shape[k_axis.inputs[0][0]].to_usize()?;
         Ok(Some(EinSumAnnotatedAsLinear {
@@ -172,7 +172,7 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
         let mut cost = 0;
         if self.need_mmv() {
             cost += ops
-                .filter_impls(format, &*acc, self.act_dt)
+                .filter_impls(format, &acc, self.act_dt)
                 .map(|(mmm, _, _, pe, _)| {
                     mmm.quality().cost() * 1000 + mmm.nr() * 10 - mmm.mr() * 10
                         + pe.is_some() as usize
@@ -182,7 +182,7 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
         };
         if self.need_mmm() {
             cost += ops
-                .filter_impls(format, &*acc, self.act_dt)
+                .filter_impls(format, &acc, self.act_dt)
                 .map(|(mmm, _, _, pe, _)| {
                     1_000_000 + mmm.quality().cost() * 1000 - mmm.nr() * 10 - mmm.mr() * 10
                         + pe.is_some() as usize
@@ -197,7 +197,7 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
         if self.act_dt == self.acceptable_accumulators()[0]
             && self.weight_type == self.act_dt.into()
         {
-            if let Some(n) = self.ns.iter().cloned().product::<TDim>().to_usize().ok() {
+            if let Ok(n) = self.ns.iter().cloned().product::<TDim>().to_usize() {
                 let mmm = tract_linalg::ops()
                     .mmm(self.acceptable_accumulators()[0], Some(self.m), Some(self.k), Some(n))
                     .unwrap();
