@@ -1,4 +1,5 @@
 use dyn_clone::clone_box;
+use tract_itertools::Itertools;
 use tract_linalg::block_quant::BlockQuantValue;
 
 use crate::internal::*;
@@ -142,18 +143,24 @@ impl TypedOp for Const {
         }
 
         let ops = tract_linalg::ops();
-        let choice = if matmuls.len() == 1
-            && matmuls[0].ns.iter().cloned().product::<TDim>().as_i64().is_some()
-        {
-            dbg!(&matmuls[0]);
-            todo!()
-        } else {
-            ops.all_possible_packing(matmuls[0].weight_type.clone())
-                .min_by_key(|format| {
-                    matmuls.iter().map(|linear| linear.cost_for_weights(&**format)).max().unwrap()
-                })
-                .unwrap()
-        };
+        let (choice,) = matmuls
+            .iter()
+            .map(|mm| mm.preferred_packing())
+            .dedup_by(|a, b| a.same_as(&**b))
+            .collect_tuple::<(_,)>()
+            .unwrap_or_else(|| {
+                let it = ops
+                    .all_possible_packing(matmuls[0].weight_type.clone())
+                    .min_by_key(|format| {
+                        matmuls
+                            .iter()
+                            .map(|linear| linear.cost_for_weights(&**format))
+                            .max()
+                            .unwrap()
+                    })
+                    .unwrap();
+                (clone_box(it),)
+            });
 
         let packed = choice.prepare_tensor(&self.0, 1, 0).context("in prepare_tensor")?;
         let fact = clone_box(packed.opaque_fact());

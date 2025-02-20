@@ -1,5 +1,6 @@
 use std::ops::Deref;
 
+use dyn_clone::clone_box;
 use kernel_selection::wire_packing;
 use tract_itertools::{izip, multiunzip};
 use tract_linalg::block_quant::BlockQuantValue;
@@ -190,6 +191,25 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
                 .unwrap_or(usize::MAX / 2);
         };
         cost
+    }
+
+    pub fn preferred_packing(&self) -> Box<dyn MMMInputFormat> {
+        if self.act_dt == self.acceptable_accumulators()[0]
+            && self.weight_type == self.act_dt.into()
+        {
+            if let Some(n) = self.ns.iter().cloned().product::<TDim>().to_usize().ok() {
+                let mmm = tract_linalg::ops()
+                    .mmm(self.acceptable_accumulators()[0], Some(self.m), Some(self.k), Some(n))
+                    .unwrap();
+                return mmm.packings()[0].0.clone();
+            }
+        }
+        clone_box(
+            tract_linalg::ops()
+                .all_possible_packing(self.weight_type.clone())
+                .min_by_key(|p| self.cost_for_weights(&**p))
+                .unwrap(),
+        )
     }
 }
 
