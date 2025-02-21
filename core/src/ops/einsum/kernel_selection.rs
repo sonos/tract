@@ -92,7 +92,6 @@ pub fn wire_prepacked(
         .and_then(|opaq| opaq.0.downcast_ref::<Box<dyn MMMInputValue>>());
     ensure!(prepack.is_some());
     let prepack = prepack.unwrap();
-    dbg!(prepack);
 
     let mmms = tract_linalg::ops()
         .mmm_impls()
