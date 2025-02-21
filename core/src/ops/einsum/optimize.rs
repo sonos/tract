@@ -82,6 +82,9 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
         node: &'a TypedNode,
         op: &'a EinSum,
     ) -> TractResult<Option<Self>> {
+        if node.inputs.len() != 2 {
+            return Ok(None);
+        }
         let input_facts = model.node_input_facts(node.id)?;
         if input_facts[0].konst.is_none() {
             return Ok(None);
