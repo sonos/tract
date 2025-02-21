@@ -177,7 +177,7 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
             cost += ops
                 .filter_impls(format, &acc, self.act_dt)
                 .map(|(mmm, _, _, pe, _)| {
-                    mmm.quality().cost() * 1000 + mmm.nr() * 10 - mmm.mr() * 10
+                    1_000_000 + mmm.quality().cost() * 1000 + mmm.nr() * 10 - mmm.mr() * 10
                         + pe.is_some() as usize
                 })
                 .min()
