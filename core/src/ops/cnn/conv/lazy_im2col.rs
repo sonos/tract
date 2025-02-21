@@ -1,9 +1,9 @@
 use crate::internal::*;
 use std::fmt::{Debug, Display};
 use std::ops::Range;
-use tract_linalg::kit::WeightType;
 use tract_linalg::mmm::{MMMInputFormat, MMMInputValue};
 use tract_linalg::pack::{PackedFormat, PackingWriter};
+use tract_linalg::WeightType;
 
 #[derive(Clone, Debug, Hash, PartialEq)]
 pub struct LazyIm2colParams {

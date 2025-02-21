@@ -13,10 +13,8 @@ pub use sum::arm64simd_sum_f32_16n;
 pub use unicast::*;
 
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
-use crate::kit::Kit;
-use crate::pack::{PackedFormat, Packing};
+use crate::pack::PackedFormat;
 use crate::Ops;
-use tract_data::internal::*;
 
 MMMExternKernel!(arm64simd_mmm_f32_8x8_a55 <f32>(8,  8)@(16, 16) quality(ManuallyOptimized));
 MMMExternKernel!(arm64simd_mmm_f32_12x8_a55<f32>(12, 8)@(16, 16) quality(ManuallyOptimized));
@@ -51,13 +49,24 @@ MMMExternKernel!(arm64simd_mmm_i32_64x1<i32>(64, 1)@(16, 1)
 );
 
 pub fn plug(ops: &mut Ops) {
-    /*
-    panel_extract::plug(ops);
-    */
-    ops.mmm_kits.push(
-        Kit::new(f32::datum_type(), &f32::packing(64).align(16))
-            .with_native(arm64simd_mmm_f32_64x1_gen.mmm(), 0),
-    );
+    ops.mmm_impls.extend([
+        arm64simd_mmm_f32_12x8_gen.mmm(),
+        arm64simd_mmm_f32_12x8_a53.mmm(),
+        arm64simd_mmm_f32_12x8_a55.mmm(),
+        arm64simd_mmm_f32_8x8_gen.mmm(),
+        arm64simd_mmm_f32_8x8_a53.mmm(),
+        arm64simd_mmm_f32_8x8_a55.mmm(),
+        arm64simd_mmm_f32_16x4_gen.mmm(),
+        arm64simd_mmm_f32_16x4_a53.mmm(),
+        arm64simd_mmm_f32_16x4_a55.mmm(),
+        arm64simd_mmm_f32_24x4_gen.mmm(),
+        arm64simd_mmm_f32_24x4_a53.mmm(),
+        arm64simd_mmm_f32_24x4_a55.mmm(),
+        arm64simd_mmm_f32_64x1_gen.mmm(),
+        arm64simd_mmm_f32_64x1_a53.mmm(),
+        arm64simd_mmm_i32_8x8.mmm(),
+        arm64simd_mmm_i32_64x1.mmm(),
+    ]);
 }
 
 tanh_impl!(f32, arm64simd_tanh_f32_4n, 4, 4, true);

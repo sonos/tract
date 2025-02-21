@@ -2,12 +2,11 @@
 pub mod block_quant;
 #[macro_use]
 pub mod element_wise;
+pub mod element_wise_helper;
 #[macro_use]
 pub mod unicast;
 #[macro_use]
 pub mod by_scalar;
-#[macro_use]
-pub mod kit;
 #[macro_use]
 pub mod leaky_relu;
 #[macro_use]
@@ -22,4 +21,5 @@ pub mod reduce;
 pub mod sigmoid;
 #[macro_use]
 pub mod tanh;
-pub mod element_wise_helper;
+#[macro_use]
+pub mod weights;

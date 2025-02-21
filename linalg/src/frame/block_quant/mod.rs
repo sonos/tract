@@ -22,7 +22,7 @@ pub use value::{BlockQuantFact, BlockQuantValue, PackedBlockQuantFact};
 use crate::mmm::{EagerPackedInput, MMMInputFormat};
 use crate::pack::PackedFormat;
 
-use super::kit::WeightType;
+use crate::WeightType;
 
 pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downcast {
     fn same_as(&self, other: &dyn BlockQuant) -> bool;

@@ -274,24 +274,6 @@ pub(crate) fn register_all_by_scalar(registry: &mut LinalgRegistry) {
 
 pub fn plug(ops: &mut Ops) {
     arm64simd::plug(ops);
-    ops.mmm_impls.extend([
-        arm64simd_mmm_f32_12x8_gen.mmm(),
-        arm64simd_mmm_f32_12x8_a53.mmm(),
-        arm64simd_mmm_f32_12x8_a55.mmm(),
-        arm64simd_mmm_f32_8x8_gen.mmm(),
-        arm64simd_mmm_f32_8x8_a53.mmm(),
-        arm64simd_mmm_f32_8x8_a55.mmm(),
-        arm64simd_mmm_f32_16x4_gen.mmm(),
-        arm64simd_mmm_f32_16x4_a53.mmm(),
-        arm64simd_mmm_f32_16x4_a55.mmm(),
-        arm64simd_mmm_f32_24x4_gen.mmm(),
-        arm64simd_mmm_f32_24x4_a53.mmm(),
-        arm64simd_mmm_f32_24x4_a55.mmm(),
-        arm64simd_mmm_f32_64x1_gen.mmm(),
-        arm64simd_mmm_f32_64x1_a53.mmm(),
-        arm64simd_mmm_i32_8x8.mmm(),
-        arm64simd_mmm_i32_64x1.mmm(),
-    ]);
 
     #[cfg(not(feature = "no_fp16"))]
     if has_fp16() {

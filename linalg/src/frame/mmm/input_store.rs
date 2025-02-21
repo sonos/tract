@@ -7,7 +7,7 @@ use std::hash::Hash;
 use std::sync::Arc;
 use tract_data::internal::*;
 
-use crate::kit::WeightType;
+use crate::WeightType;
 
 pub trait MMMInputFormat: Downcast + Debug + DynHash + DynClone + Send + Sync + Display {
     fn prepare_tensor(

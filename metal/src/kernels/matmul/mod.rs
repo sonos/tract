@@ -340,7 +340,7 @@ mod tests {
     use proptest::prelude::*;
     use tract_core::ops::einsum::BasicMatMul;
     use tract_core::tract_data::itertools::Itertools;
-    use tract_core::tract_linalg::frame::block_quant::{
+    use tract_core::tract_linalg::block_quant::{
         BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0,
     };
 

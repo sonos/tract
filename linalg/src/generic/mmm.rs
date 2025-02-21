@@ -2,14 +2,11 @@
 use num_traits::AsPrimitive;
 
 use tract_data::prelude::f16;
-use tract_data::prelude::DatumType::*;
 use tract_data::prelude::*;
 
 use super::*;
 use crate::frame::block_quant::{BlockQuant, NibbleReader, PackedBlockQuantFormat, Q4_0};
 use crate::frame::mmm::*;
-use crate::kit::Kit;
-use crate::pack::Packing;
 use crate::{has_fp16, LADatum, Ops};
 
 macro_rules! scalar {
@@ -431,39 +428,6 @@ pub fn plug(ops: &mut Ops) {
     ops.mmm_impls.push(generic_f64_4x1.mmm());
     ops.mmm_impls.push(generic_i32_4x4.mmm());
     ops.mmm_impls.push(generic_i32_4x1.mmm());
-    ops.mmm_kits.push(
-        Kit::new(F32, &f32::packing(4))
-            .with_native(generic_f32_4x1.mmm(), 2)
-            .with_native(generic_f32_4x1.mmm(), 4)
-            .with_native(generic_f32_4x4.mmm(), 2)
-            .with_native(generic_f32_4x4.mmm(), 4)
-            .with_native(generic_f16_4x1.mmm(), 2)
-            .with_native(generic_f16_4x1.mmm(), 4)
-            .with_native(generic_f16_4x4.mmm(), 2)
-            .with_native(generic_f16_4x4.mmm(), 4),
-    );
-    ops.mmm_kits.push(
-        Kit::new(Q4_0, &pq40_r4())
-            .with_native(generic_f32_4x1.mmm(), 5)
-            .with_native(generic_f32_4x1.mmm(), 7)
-            .with_native(generic_f32_4x4.mmm(), 5)
-            .with_native(generic_f32_4x4.mmm(), 7)
-            .with_native(generic_f16_4x1.mmm(), 5)
-            .with_native(generic_f16_4x1.mmm(), 7)
-            .with_native(generic_f16_4x4.mmm(), 5)
-            .with_native(generic_f16_4x4.mmm(), 7),
-    );
-    ops.mmm_kits.push(
-        Kit::new(F16, &f16::packing(4))
-            .with_native(generic_f32_4x1.mmm(), 1)
-            .with_native(generic_f32_4x1.mmm(), 3)
-            .with_native(generic_f32_4x4.mmm(), 1)
-            .with_native(generic_f32_4x4.mmm(), 3)
-            .with_native(generic_f16_4x1.mmm(), 1)
-            .with_native(generic_f16_4x1.mmm(), 3)
-            .with_native(generic_f16_4x4.mmm(), 1)
-            .with_native(generic_f16_4x4.mmm(), 3),
-    );
 }
 
 #[cfg(test)]
