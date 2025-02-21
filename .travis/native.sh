@@ -9,7 +9,6 @@ fi
 
 rustup update
 
-cargo clean
 cargo update
 cargo check --all-targets --workspace --exclude test-tflite --exclude test-metal --exclude tract-metal
 

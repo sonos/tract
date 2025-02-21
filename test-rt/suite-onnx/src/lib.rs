@@ -2,8 +2,8 @@ use log::*;
 use prost::Message;
 use std::path::PathBuf;
 use tract_hir::internal::*;
-use tract_onnx::pb::TensorProto;
 use tract_onnx::data_resolver::FopenDataResolver;
+use tract_onnx::pb::TensorProto;
 use tract_onnx::tensor::load_tensor;
 
 use infra::{Test, TestStatus, TestSuite};
@@ -73,7 +73,7 @@ impl Test for OnnxTestCase {
                             model.node_mut(outlet.node).op =
                                 Box::new(tract_hir::ops::konst::Const::new(
                                     inputs[ix].clone().into_arc_tensor(),
-                                ));
+                                )?);
                         }
                     }
                     model.set_input_outlets(&actual_inputs)?;

@@ -1,16 +1,15 @@
+use tract_core::ops::array::Gather;
+
 use crate::infer::*;
 use crate::internal::*;
 
 #[derive(Debug, Clone, new, Default, Hash)]
 pub struct ArrayFeatureExtractor;
 
-
-
 impl Expansion for ArrayFeatureExtractor {
     fn name(&self) -> Cow<str> {
         "ArrayFeatureExtractor".into()
     }
-
 
     fn wire(
         &self,
@@ -19,7 +18,7 @@ impl Expansion for ArrayFeatureExtractor {
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
         let last_axis = model.outlet_fact(inputs[0])?.rank() - 1;
-        let gather_op = tract_core::ops::array::Gather { axis: last_axis };
+        let gather_op = Gather { axis: last_axis, output_type: None };
 
         model.wire_node(prefix, gather_op, inputs)
     }

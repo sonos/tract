@@ -36,16 +36,6 @@ fn has_neon() -> bool {
 }
 
 pub fn plug(ops: &mut Ops) {
-    let impls = vec![
-        armv7neon_mmm_f32_8x4_cortexa7.mmm(),
-        armv7neon_mmm_f32_8x6_cortexa7.mmm(),
-        armv7neon_mmm_f32_8x4_cortexa9.mmm(),
-        armv7neon_mmm_f32_8x6_cortexa9.mmm(),
-        armv7neon_mmm_f32_8x4_generic.mmm(),
-        armv7neon_mmm_f32_8x6_generic.mmm(),
-        crate::generic::mmm::generic_f32_4x4.mmm(),
-    ];
-    ops.mmm_impls = impls.clone();
     if has_neon() {
         log::info!("armv7neon activated (smmm, ssigmoid), stanh)");
         armv7neon::plug(ops);
@@ -56,6 +46,15 @@ pub fn plug(ops: &mut Ops) {
             n.map(|n| n % 4 == 0 && n % 6 != 0 && n <= 12).unwrap_or(false)
         }
 
+        let cost_managed_impls = vec![
+            armv7neon_mmm_f32_8x4_cortexa7.mmm(),
+            armv7neon_mmm_f32_8x6_cortexa7.mmm(),
+            armv7neon_mmm_f32_8x4_cortexa9.mmm(),
+            armv7neon_mmm_f32_8x6_cortexa9.mmm(),
+            armv7neon_mmm_f32_8x4_generic.mmm(),
+            armv7neon_mmm_f32_8x6_generic.mmm(),
+            crate::generic::mmm::generic_f32_4x4.mmm(),
+        ];
         ops.mmv_f32 = match cpu {
             0xc07 => Box::new(|_, _| armv7neon::armv7neon_mmm_f32_32x1_cortexa7.mmm()),
             0xc09 => Box::new(|_, _| armv7neon::armv7neon_mmm_f32_32x1_cortexa9.mmm()),
@@ -65,11 +64,11 @@ pub fn plug(ops: &mut Ops) {
         ops.mmm_f32 = match cpu {
             0xc07 => {
                 let model = cortex_a7::model();
-                Box::new(move |m, k, n| model.pick(&impls, m, k, n))
+                Box::new(move |m, k, n| model.pick(&cost_managed_impls, m, k, n))
             }
             0xc09 => {
                 let model = cortex_a9::model();
-                Box::new(move |m, k, n| model.pick(&impls, m, k, n))
+                Box::new(move |m, k, n| model.pick(&cost_managed_impls, m, k, n))
             }
             _ => Box::new(|m, k, n| {
                 if prefer_8x4(m, k, n) {
@@ -84,8 +83,7 @@ pub fn plug(ops: &mut Ops) {
         ops.sigmoid_f32 = Box::new(|| armv7neon_sigmoid_f32_4n::ew());
         ops.tanh_f32 = Box::new(|| armv7neon_tanh_f32_4n::ew());
     } else {
-        log::info!("armvfpv2 activated for smmm");
-        ops.mmm_f32 = Box::new(|_, _, _| armvfpv2::armvfpv2_mmm_f32_4x4.mmm());
+        armvfpv2::plug(ops);
     }
 }
 

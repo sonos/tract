@@ -72,8 +72,12 @@ pub fn as_scaled_masked_softmax_rule(
     rule_ensure!(matches!(dt, DatumType::F32 | DatumType::F16));
 
     // Identify Add operator (Mask)
-    let Some(add_prev) = previous_node(model, node) else { return Ok(None) };
-    let Some(add_prev_op) = add_prev.op_as::<TypedBinOp>() else { return Ok(None) };
+    let Some(add_prev) = previous_node(model, node) else {
+        return Ok(None);
+    };
+    let Some(add_prev_op) = add_prev.op_as::<TypedBinOp>() else {
+        return Ok(None);
+    };
     rule_ensure!(add_prev_op.0.is::<Add>());
 
     let mut in_add = previous_nodes(model, add_prev);
@@ -88,13 +92,15 @@ pub fn as_scaled_masked_softmax_rule(
         (right, add_prev.inputs[0])
     };
 
-    let Some(scale_op) = scale_node.op_as::<TypedBinOp>() else { return Ok(None) };
+    let Some(scale_op) = scale_node.op_as::<TypedBinOp>() else {
+        return Ok(None);
+    };
     rule_ensure!(scale_op.0.is::<Mul>());
 
     // Retrieve Scale
     let mul_consts = collect_node_const_inputs(model, scale_node);
     rule_ensure!(mul_consts.len() == 1);
-    let scale = mul_consts[0].0.clone();
+    let scale = mul_consts[0].val().clone();
 
     rule_ensure!(scale.len() == 1);
     rule_ensure!(scale.datum_type() == dt);

@@ -1,8 +1,9 @@
 use crate::internal::*;
 use std::fmt::{Debug, Display};
 use std::ops::Range;
-use tract_linalg::frame::{PackedFormat, PackingWriter};
 use tract_linalg::mmm::{MMMInputFormat, MMMInputValue};
+use tract_linalg::pack::{PackedFormat, PackingWriter};
+use tract_linalg::WeightType;
 
 #[derive(Clone, Debug, Hash, PartialEq)]
 pub struct LazyIm2colParams {
@@ -14,6 +15,10 @@ pub struct LazyIm2colParams {
 impl MMMInputFormat for LazyIm2colParams {
     fn r(&self) -> usize {
         self.packer.r
+    }
+
+    fn precursor(&self) -> WeightType {
+        self.packer.precursor()
     }
 
     fn prepare_tensor(
@@ -35,6 +40,23 @@ impl MMMInputFormat for LazyIm2colParams {
 
     fn mem_size(&self, k: TDim, mn: TDim) -> TDim {
         k * mn * self.packer.dt.size_of()
+    }
+
+    fn extract_at_mn_f16(
+        &self,
+        _data: &tract_linalg::mmm::EagerPackedInput,
+        _mn: usize,
+        _slice: &mut [f16],
+    ) -> TractResult<()> {
+        unimplemented!()
+    }
+    fn extract_at_mn_f32(
+        &self,
+        _data: &tract_linalg::mmm::EagerPackedInput,
+        _mn: usize,
+        _slice: &mut [f32],
+    ) -> TractResult<()> {
+        unimplemented!()
     }
 }
 
@@ -366,6 +388,12 @@ impl MMMInputValue for LazyIm2colInput {
         other.downcast_ref::<Self>().is_some_and(|o| {
             o.tensor == self.tensor && (&*o.im2col as &dyn MMMInputFormat).same_as(&*self.im2col)
         })
+    }
+    fn extract_at_mn_f16(&self, _mn: usize, _slice: &mut [f16]) -> TractResult<()> {
+        unimplemented!()
+    }
+    fn extract_at_mn_f32(&self, _mn: usize, _slice: &mut [f32]) -> TractResult<()> {
+        unimplemented!()
     }
 }
 

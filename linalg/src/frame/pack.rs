@@ -4,9 +4,9 @@ use std::marker::PhantomData;
 use std::ops::Range;
 use tract_data::internal::*;
 
-use crate::mmm::{EagerPackedInput, MMMInputValue, PackedOpaqueFact};
+use crate::mmm::{EagerPackedInput, MMMInputFormat, MMMInputValue, PackedOpaqueFact};
 
-use super::MMMInputFormat;
+use crate::WeightType;
 
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct PackedFormat {
@@ -26,6 +26,10 @@ impl MMMInputFormat for PackedFormat {
         PackedFormat::pack_tensor(self, t, k_axis, mn_axis)
     }
 
+    fn precursor(&self) -> WeightType {
+        WeightType::Plain(self.dt)
+    }
+
     fn r(&self) -> usize {
         self.r
     }
@@ -40,6 +44,58 @@ impl MMMInputFormat for PackedFormat {
 
     fn mem_size(&self, k: TDim, mn: TDim) -> TDim {
         self.len(k, mn) * self.dt.size_of()
+    }
+
+    fn extract_at_mn_f16(
+        &self,
+        data: &EagerPackedInput,
+        mn: usize,
+        slice: &mut [f16],
+    ) -> TractResult<()> {
+        ensure!(data.format().same_as(self));
+        ensure!(self.len(data.k(), data.mn()) * self.dt.size_of() == data.packed.len());
+        unsafe {
+            let ptr = data.packed.as_ptr().add(
+                (self.single_panel_len(data.k()) * (mn / self.r) + mn % self.r) * self.dt.size_of(),
+            );
+            for (i, slot) in slice.iter_mut().enumerate() {
+                let ptr = ptr.add(i * self.dt.size_of() * self.r);
+                *slot = if self.dt == f16::datum_type() {
+                    *(ptr as *const f16)
+                } else if self.dt == f32::datum_type() {
+                    f16::from_f32(*(ptr as *const f32))
+                } else {
+                    bail!("Unexpected DT {:?}", self.dt)
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn extract_at_mn_f32(
+        &self,
+        data: &EagerPackedInput,
+        mn: usize,
+        slice: &mut [f32],
+    ) -> TractResult<()> {
+        ensure!(data.format().same_as(self));
+        ensure!(self.len(data.k(), data.mn()) * self.dt.size_of() == data.packed.len());
+        unsafe {
+            let ptr = data.packed.as_ptr().add(
+                (self.single_panel_len(data.k()) * (mn / self.r) + mn % self.r) * self.dt.size_of(),
+            );
+            for (i, slot) in slice.iter_mut().enumerate() {
+                let ptr = ptr.add(i * self.dt.size_of() * self.r);
+                *slot = if self.dt == f16::datum_type() {
+                    (*(ptr as *const f16)).to_f32()
+                } else if self.dt == f32::datum_type() {
+                    *(ptr as *const f32)
+                } else {
+                    bail!("Unexpected DT {:?}", self.dt)
+                }
+            }
+        }
+        Ok(())
     }
 }
 

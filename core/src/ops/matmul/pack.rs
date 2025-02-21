@@ -1,7 +1,7 @@
 use crate::axes::Axis;
 use crate::internal::*;
 use ndarray::*;
-use tract_linalg::frame::PackedFormat;
+use tract_linalg::pack::PackedFormat;
 
 use super::ModePicker;
 

@@ -1,9 +1,8 @@
 extern crate criterion;
 use criterion::*;
 use tract_data::internal::*;
-use tract_linalg::frame::mmm::FusedSpec;
+use tract_linalg::mmm::{AsInputValue, FusedSpec};
 
-use tract_linalg::mmm::AsInputValue;
 use DatumType::F32;
 
 fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)) {

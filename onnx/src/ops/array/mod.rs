@@ -73,7 +73,7 @@ pub fn constant_like(
         let shape: Vec<usize> = node.get_attr_vec("shape")?;
         let tensor =
             tensor0(value).cast_to_dt(dt)?.broadcast_scalar_to_shape(&shape)?.into_arc_tensor();
-        Ok((Box::new(tract_hir::ops::konst::Const::new(tensor)), vec![]))
+        Ok((Box::new(tract_hir::ops::konst::Const::new(tensor)?), vec![]))
     } else {
         Ok((Box::new(array::ConstantLike::new(value)), vec![]))
     }

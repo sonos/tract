@@ -8,6 +8,7 @@ use std::str::FromStr;
 use tract_core::internal::*;
 use tract_core::model::TypedModel;
 use tract_core::ops::konst::Const;
+use tract_core::ops::matmul::optimized::OptMatMul;
 #[allow(unused_imports)]
 use tract_core::transform::ModelTransform;
 use tract_hir::internal::*;
@@ -789,16 +790,16 @@ impl Parameters {
                 for node in m.eval_order()? {
                     let node = m.node_mut(node);
                     if let Some(op) = node.op_as_mut::<Const>() {
-                        if op.0.datum_type() == DatumType::TDim { {
+                        if op.val().datum_type() == DatumType::TDim { {
                             // get inner value to Arc<Tensor>
-                            let mut constant = op.0.as_ref().clone();
+                            let mut constant:Tensor = (**op.val()).clone();
                             // Generally a shape or hyperparam
                             constant
                                 .as_slice_mut::<TDim>()?
                                 .iter_mut()
                                 .for_each(|x| *x = x.eval(&values));
 
-                            op.0 = constant.into_arc_tensor();
+                            *op = Const::new(constant.into_arc_tensor())?;
                         }
                         }
                     }
@@ -856,6 +857,17 @@ impl Parameters {
                 opt = opt.stopping_at(steps.parse()?);
             }
             opt.optimize(&mut m)?;
+            if let Ok(max) = matches.value_of_t("assert-maximal-mm-quality-cost") {
+                for node in &m.nodes {
+                    if let Some(op) = node.op_as::<OptMatMul>() {
+                        for imp in op.mmm.iter() {
+                            if imp.quality().cost() > max {
+                                bail!("Node {node} uses {imp:?} of quality {:?}.", imp.quality())
+                            }
+                        }
+                    }
+                }
+            }
             Ok(m)
         });
         Ok((typed_model.clone().unwrap(), pulsed_model, reference_model))
@@ -959,7 +971,7 @@ impl Parameters {
                         raw_model.outlet_typedfact(id.into())?,
                         value
                     );
-                    let op = Box::new(Const::new(value.clone().into_arc_tensor()));
+                    let op = Box::new(Const::new(value.clone().into_arc_tensor())?);
                     if let Some(inf) = raw_model.downcast_mut::<InferenceModel>() {
                         inf.inputs.retain(|i| i.node != id);
                         inf.nodes[id].op = op;
@@ -1113,6 +1125,7 @@ pub fn display_params_from_clap(
         },
         info: matches.is_present("info"),
         json: matches.is_present("json"),
+        mm: matches.is_present("mm"),
         has_accelerator: root_matches.is_present("metal"),
     })
 }

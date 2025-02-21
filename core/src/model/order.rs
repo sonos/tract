@@ -3,6 +3,7 @@ use crate::internal::*;
 use bit_set::BitSet;
 use std::collections::VecDeque;
 use std::fmt::{Debug, Display};
+use tract_itertools::Itertools;
 
 /// Find an evaluation order for a model, using its default inputs and outputs
 /// as boundaries.
@@ -11,8 +12,8 @@ where
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
-    let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
-    let targets = model.output_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
+    let inputs = model.input_outlets()?.iter().map(|n| n.node).collect_vec();
+    let targets = model.output_outlets()?.iter().map(|n| n.node).collect_vec();
     eval_order_for_nodes(model.nodes(), &inputs, &targets, &[])
 }
 
@@ -82,28 +83,34 @@ where
     Ok(order)
 }
 
-pub fn build_flush_list<F, O, Flushable>(model: &Graph<F, O>, order: &[usize], outputs: &[OutletId], flushable: Flushable) -> Vec<TVec<usize>> 
+pub fn build_flush_list<F, O, Flushable>(
+    model: &Graph<F, O>,
+    order: &[usize],
+    outputs: &[OutletId],
+    flushable: Flushable,
+) -> Vec<TVec<usize>>
 where
     F: Fact + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static, 
-    Flushable: Fn(&Node<F, O>) -> bool {
-        let mut values_needed_until_step = vec![0; model.nodes().len()];
-        for (step, node) in order.iter().enumerate() {
-            for i in &model.node(*node).inputs {
-                values_needed_until_step[i.node] = step;
-            }
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    Flushable: Fn(&Node<F, O>) -> bool,
+{
+    let mut values_needed_until_step = vec![0; model.nodes().len()];
+    for (step, node) in order.iter().enumerate() {
+        for i in &model.node(*node).inputs {
+            values_needed_until_step[i.node] = step;
         }
-        for o in outputs.iter() {
-            values_needed_until_step[o.node] = order.len();
-        }
-        let mut flush_lists: Vec<TVec<usize>> = vec![tvec!(); order.len() + 1];
+    }
+    for o in outputs.iter() {
+        values_needed_until_step[o.node] = order.len();
+    }
+    let mut flush_lists: Vec<TVec<usize>> = vec![tvec!(); order.len() + 1];
 
-        for (node, &flush_at) in values_needed_until_step.iter().enumerate() {
-            if flush_at != 0 && (flushable)(model.node(node)) {
-                flush_lists[flush_at].push(node)
-            }
+    for (node, &flush_at) in values_needed_until_step.iter().enumerate() {
+        if flush_at != 0 && (flushable)(model.node(node)) {
+            flush_lists[flush_at].push(node)
         }
-        flush_lists
+    }
+    flush_lists
 }
 
 /// Find an evaluation order for a list of model trying to minimize memory occupation.
@@ -112,8 +119,8 @@ where
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
-    let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
-    let targets = model.output_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
+    let inputs = model.input_outlets()?.iter().map(|n| n.node).collect_vec();
+    let targets = model.output_outlets()?.iter().map(|n| n.node).collect_vec();
     eval_order_opt_ram_for_nodes(model.nodes(), &inputs, &targets, &[])
 }
 

@@ -16,7 +16,7 @@ use tract_core::ops::nn::{DataFormat, Softmax, SoftmaxExp};
 use tract_itertools::Itertools;
 
 use tract_core::ops;
-use tract_linalg::frame::block_quant::BlockQuantValue;
+use tract_linalg::block_quant::BlockQuantValue;
 
 use crate::deser::{ModelBuilder, ResolvedInvocation};
 
@@ -104,7 +104,7 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
         tensor.to_scalar::<Opaque>().ok().and_then(|o| o.downcast_ref::<BlockQuantValue>())
     {
         let fact = Box::new(bqv.fact.clone());
-        builder.wire(Const::new_with_opaque_fact(tensor, fact), &[])
+        builder.wire(Const::new_with_opaque_fact(tensor, fact)?, &[])
     } else {
         ensure!(
             tensor.shape() == &*shape,
@@ -113,7 +113,7 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
             tensor.shape(),
             shape
         );
-        builder.wire(Const::new(tensor), &[])
+        builder.wire(Const::new(tensor)?, &[])
     }
 }
 
@@ -191,8 +191,8 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
     let strides: TVec<isize> =
         invocation.named_arg_as(builder, "stride").unwrap_or_else(|_| tvec!(1; axes.len()));
     for (ix, axis) in axes.into_iter().enumerate() {
-        let axis_len =
-            builder.wire_as_outlets(Const::new(rctensor0(input_fact.shape[axis].clone())), &[])?[0];
+        let axis_len = builder
+            .wire_as_outlets(Const::new(rctensor0(input_fact.shape[axis].clone()))?, &[])?[0];
         let b = builder.wire_as_outlets(
             tract_core::ops::array::Slice { axis: 0, start: ix.into(), end: ix.to_dim() + 1 },
             &[begins],
@@ -204,7 +204,7 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
             if let Ok(i) = k.cast_to_scalar::<i64>() {
                 if i < 0 {
                     b = builder.wire_as_outlets(
-                        Const::new(rctensor0(input_fact.shape[axis].clone() + i)),
+                        Const::new(rctensor0(input_fact.shape[axis].clone() + i))?,
                         &[],
                     )?[0];
                 }
@@ -223,7 +223,7 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
             if let Ok(i) = k.cast_to_scalar::<i64>() {
                 if i <= 0 {
                     e = builder.wire_as_outlets(
-                        Const::new(rctensor0(input_fact.shape[axis].clone() + i)),
+                        Const::new(rctensor0(input_fact.shape[axis].clone() + i))?,
                         &[],
                     )?[0];
                 }
@@ -611,7 +611,7 @@ pub fn reduce(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let cardinality = builder.wire_as_outlets(
         ops::konst::Const::new(
             tensor0(cardinality).broadcast_into_rank(fact.rank())?.into_arc_tensor(),
-        ),
+        )?,
         &[],
     )?;
     let cardinality =

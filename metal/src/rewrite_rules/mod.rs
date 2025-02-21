@@ -109,8 +109,12 @@ fn matches_single_input_const(model: &TypedModel, node: &TypedNode, konst: f32) 
     if consts.len() != 1 {
         return false;
     }
-    let Ok(in_const) = consts[0].0.cast_to_dt(DatumType::F32) else { return false };
-    let Ok(in_const) = in_const.to_scalar_tensor() else { return false };
+    let Ok(in_const) = consts[0].val().cast_to_dt(DatumType::F32) else {
+        return false;
+    };
+    let Ok(in_const) = in_const.to_scalar_tensor() else {
+        return false;
+    };
 
     in_const.close_enough(&tensor0(konst), Approximation::Approximate).is_ok()
 }

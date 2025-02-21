@@ -131,10 +131,10 @@ impl<T1: Datum + Float, T2: Datum + Float>
             let new_op = if let Some(source) = node.op_as::<TypedSource>() {
                 Box::new(TypedSource::new(fact_float_precision_conversion::<T1, T2>(&source.fact)))
             } else if let Some(konst) = node.op_as::<Const>() {
-                if konst.0.datum_type() == T1::datum_type() {
+                if konst.val().datum_type() == T1::datum_type() {
                     let wire = target.add_const(
                         format!("{}.{:?}", node.name, T1::datum_type()),
-                        konst.0.clone(),
+                        konst.val().clone(),
                     )?;
                     return target.wire_node(&node.name, cast(T2::datum_type()), &[wire]);
                 } else {

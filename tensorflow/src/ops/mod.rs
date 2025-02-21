@@ -44,13 +44,11 @@ fn konst(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn Inference
         bail!("Const node {:?} doesn't have the expected {:?} type.", mat, dtype);
     }
 
-    Ok(Box::new(tract_hir::ops::konst::Const::new(mat.into())))
+    Ok(Box::new(tract_hir::ops::konst::Const::new(mat.into())?))
 }
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct Noop;
-
-
 
 impl Op for Noop {
     fn name(&self) -> Cow<str> {

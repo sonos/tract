@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 
 use byteorder::{ReadBytesExt, WriteBytesExt, LE};
 use tract_core::internal::*;
-use tract_linalg::frame::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
+use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
 
 const TRACT_ITEM_TYPE_VENDOR: u16 = ((b'T' as u16) << 8u16) | b'R' as u16;
 

@@ -1,4 +1,4 @@
-use tract_linalg::frame::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
+use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
 
 use crate::internal::*;
 use crate::ops::einsum::optimize::{ensure_mkn_axes, AxesOrPatch};
@@ -78,7 +78,7 @@ fn block_quant_einsum_weights(
     let value = BlockQuantValue { fact: fact.clone(), value: weights };
     let weights = patch.wire_node(
         format!("{name}.bq"),
-        Const::new_with_opaque_fact(rctensor0(Opaque(Arc::new(value))), Box::new(fact)),
+        Const::new_with_opaque_fact(rctensor0(Opaque(Arc::new(value))), Box::new(fact))?,
         &[],
     )?;
     let tap = patch.tap_model(model, node.inputs[1])?;

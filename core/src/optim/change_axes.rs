@@ -91,7 +91,7 @@ pub fn change_axes(
     if model
         .node(change.outlet.node)
         .op_as::<Const>()
-        .is_some_and(|c| c.0.volume() == 1 && c.0.datum_type() != Opaque::datum_type())
+        .is_some_and(|c| c.val().volume() == 1 && c.val().datum_type() != Opaque::datum_type())
     {
         debug!("  Not considering change from const {:?}", change);
         return Ok(None);
@@ -159,7 +159,7 @@ pub fn change_axes(
                         if model
                             .node(outlet.node)
                             .op_as::<Const>()
-                            .is_some_and(|k| k.0.volume() == 1)
+                            .is_some_and(|k| k.val().volume() == 1)
                         {
                             rewired_scalar_input.insert(InletId::new(node.id, inlet), (outlet, op));
                             continue;
@@ -219,7 +219,8 @@ pub fn change_axes(
                     rewired_scalar_input.get(&InletId::new(node_id, slot))
                 {
                     let const_node = model.node(outlet.node);
-                    let mut value = const_node.op_as::<Const>().unwrap().0.clone().into_tensor();
+                    let mut value =
+                        const_node.op_as::<Const>().unwrap().val().clone().into_tensor();
                     alteration.change_tensor(&mut value, false)?;
                     let name = model.unique_name(&const_node.name);
                     patch.add_const(name, value)?

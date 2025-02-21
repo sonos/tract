@@ -14,7 +14,7 @@ pub mod arm64fp16;
 pub use arm64fp16::*;
 
 use crate::f16;
-use crate::{Ops, LinalgRegistry, DatumType, BinOp};
+use crate::{BinOp, DatumType, LinalgRegistry, Ops};
 
 use crate::frame::by_scalar::ByScalarKer;
 use crate::frame::element_wise::ElementWiseKer;
@@ -214,56 +214,66 @@ impl Kind {
     }
 }
 
-pub(crate)fn register_all_unicast(registry: &mut LinalgRegistry) {
-    registry.insert((BinOp::Mul, DatumType::F32),Box::new(|| arm64simd_unicast_mul_f32_16n::bin()));
-    registry.insert((BinOp::Mul, DatumType::F16),Box::new(|| arm64fp16_unicast_mul_f16_32n::bin()));
-    registry.insert((BinOp::Add, DatumType::F32),Box::new(|| arm64simd_unicast_add_f32_16n::bin()));
-    registry.insert((BinOp::Add, DatumType::F16),Box::new(|| arm64fp16_unicast_add_f16_32n::bin()));
-    registry.insert((BinOp::Sub, DatumType::F32),Box::new(|| arm64simd_unicast_sub_f32_16n::bin()));
-    registry.insert((BinOp::Sub, DatumType::F16),Box::new(|| arm64fp16_unicast_sub_f16_32n::bin()));
-    registry.insert((BinOp::SubF, DatumType::F32),Box::new(|| arm64simd_unicast_subf_f32_16n::bin()));
-    registry.insert((BinOp::SubF, DatumType::F16),Box::new(|| arm64fp16_unicast_subf_f16_32n::bin()));
-    registry.insert((BinOp::Min, DatumType::F32),Box::new(|| arm64simd_unicast_min_f32_16n::bin()));
-    registry.insert((BinOp::Min, DatumType::F16),Box::new(|| arm64fp16_unicast_min_f16_32n::bin()));
-    registry.insert((BinOp::Max, DatumType::F32),Box::new(|| arm64simd_unicast_max_f32_16n::bin()));
-    registry.insert((BinOp::Max, DatumType::F16),Box::new(|| arm64fp16_unicast_max_f16_32n::bin()));
+pub(crate) fn register_all_unicast(registry: &mut LinalgRegistry) {
+    registry
+        .insert((BinOp::Mul, DatumType::F32), Box::new(|| arm64simd_unicast_mul_f32_16n::bin()));
+    registry
+        .insert((BinOp::Mul, DatumType::F16), Box::new(|| arm64fp16_unicast_mul_f16_32n::bin()));
+    registry
+        .insert((BinOp::Add, DatumType::F32), Box::new(|| arm64simd_unicast_add_f32_16n::bin()));
+    registry
+        .insert((BinOp::Add, DatumType::F16), Box::new(|| arm64fp16_unicast_add_f16_32n::bin()));
+    registry
+        .insert((BinOp::Sub, DatumType::F32), Box::new(|| arm64simd_unicast_sub_f32_16n::bin()));
+    registry
+        .insert((BinOp::Sub, DatumType::F16), Box::new(|| arm64fp16_unicast_sub_f16_32n::bin()));
+    registry
+        .insert((BinOp::SubF, DatumType::F32), Box::new(|| arm64simd_unicast_subf_f32_16n::bin()));
+    registry
+        .insert((BinOp::SubF, DatumType::F16), Box::new(|| arm64fp16_unicast_subf_f16_32n::bin()));
+    registry
+        .insert((BinOp::Min, DatumType::F32), Box::new(|| arm64simd_unicast_min_f32_16n::bin()));
+    registry
+        .insert((BinOp::Min, DatumType::F16), Box::new(|| arm64fp16_unicast_min_f16_32n::bin()));
+    registry
+        .insert((BinOp::Max, DatumType::F32), Box::new(|| arm64simd_unicast_max_f32_16n::bin()));
+    registry
+        .insert((BinOp::Max, DatumType::F16), Box::new(|| arm64fp16_unicast_max_f16_32n::bin()));
 }
 
-pub(crate)fn register_all_by_scalar(registry: &mut LinalgRegistry) {
-    registry.insert((BinOp::Mul, DatumType::F32),Box::new(|| arm64simd_mul_by_scalar_f32_16n::bin()));
-    registry.insert((BinOp::Mul, DatumType::F16),Box::new(|| arm64fp16_mul_by_scalar_f16_32n::bin()));
-    registry.insert((BinOp::Add, DatumType::F32),Box::new(|| arm64simd_add_by_scalar_f32_16n::bin()));
-    registry.insert((BinOp::Add, DatumType::F16),Box::new(|| arm64fp16_add_by_scalar_f16_32n::bin()));
-    registry.insert((BinOp::Sub, DatumType::F32),Box::new(|| arm64simd_sub_by_scalar_f32_16n::bin()));
-    registry.insert((BinOp::Sub, DatumType::F16),Box::new(|| arm64fp16_sub_by_scalar_f16_32n::bin()));
-    registry.insert((BinOp::SubF, DatumType::F32),Box::new(|| arm64simd_subf_by_scalar_f32_16n::bin()));
-    registry.insert((BinOp::SubF, DatumType::F16),Box::new(|| arm64fp16_subf_by_scalar_f16_32n::bin()));
-    registry.insert((BinOp::Min, DatumType::F32),Box::new(|| arm64simd_min_by_scalar_f32_16n::bin()));
-    registry.insert((BinOp::Min, DatumType::F16),Box::new(|| arm64fp16_min_by_scalar_f16_32n::bin()));
-    registry.insert((BinOp::Max, DatumType::F32),Box::new(|| arm64simd_max_by_scalar_f32_16n::bin()));
-    registry.insert((BinOp::Max, DatumType::F16),Box::new(|| arm64fp16_max_by_scalar_f16_32n::bin()));
+pub(crate) fn register_all_by_scalar(registry: &mut LinalgRegistry) {
+    registry
+        .insert((BinOp::Mul, DatumType::F32), Box::new(|| arm64simd_mul_by_scalar_f32_16n::bin()));
+    registry
+        .insert((BinOp::Mul, DatumType::F16), Box::new(|| arm64fp16_mul_by_scalar_f16_32n::bin()));
+    registry
+        .insert((BinOp::Add, DatumType::F32), Box::new(|| arm64simd_add_by_scalar_f32_16n::bin()));
+    registry
+        .insert((BinOp::Add, DatumType::F16), Box::new(|| arm64fp16_add_by_scalar_f16_32n::bin()));
+    registry
+        .insert((BinOp::Sub, DatumType::F32), Box::new(|| arm64simd_sub_by_scalar_f32_16n::bin()));
+    registry
+        .insert((BinOp::Sub, DatumType::F16), Box::new(|| arm64fp16_sub_by_scalar_f16_32n::bin()));
+    registry.insert(
+        (BinOp::SubF, DatumType::F32),
+        Box::new(|| arm64simd_subf_by_scalar_f32_16n::bin()),
+    );
+    registry.insert(
+        (BinOp::SubF, DatumType::F16),
+        Box::new(|| arm64fp16_subf_by_scalar_f16_32n::bin()),
+    );
+    registry
+        .insert((BinOp::Min, DatumType::F32), Box::new(|| arm64simd_min_by_scalar_f32_16n::bin()));
+    registry
+        .insert((BinOp::Min, DatumType::F16), Box::new(|| arm64fp16_min_by_scalar_f16_32n::bin()));
+    registry
+        .insert((BinOp::Max, DatumType::F32), Box::new(|| arm64simd_max_by_scalar_f32_16n::bin()));
+    registry
+        .insert((BinOp::Max, DatumType::F16), Box::new(|| arm64fp16_max_by_scalar_f16_32n::bin()));
 }
 
 pub fn plug(ops: &mut Ops) {
     arm64simd::plug(ops);
-    ops.mmm_impls.extend([
-        arm64simd_mmm_f32_12x8_gen.mmm(),
-        arm64simd_mmm_f32_12x8_a53.mmm(),
-        arm64simd_mmm_f32_12x8_a55.mmm(),
-        arm64simd_mmm_f32_8x8_gen.mmm(),
-        arm64simd_mmm_f32_8x8_a53.mmm(),
-        arm64simd_mmm_f32_8x8_a55.mmm(),
-        arm64simd_mmm_f32_16x4_gen.mmm(),
-        arm64simd_mmm_f32_16x4_a53.mmm(),
-        arm64simd_mmm_f32_16x4_a55.mmm(),
-        arm64simd_mmm_f32_24x4_gen.mmm(),
-        arm64simd_mmm_f32_24x4_a53.mmm(),
-        arm64simd_mmm_f32_24x4_a55.mmm(),
-        arm64simd_mmm_f32_64x1_gen.mmm(),
-        arm64simd_mmm_f32_64x1_a53.mmm(),
-        arm64simd_mmm_i32_8x8.mmm(),
-        arm64simd_mmm_i32_64x1.mmm(),
-    ]);
 
     #[cfg(not(feature = "no_fp16"))]
     if has_fp16() {
@@ -356,14 +366,6 @@ pub fn plug(ops: &mut Ops) {
     }
     #[cfg(any(target_os = "macos", all(target_os = "ios", feature = "apple-amx-ios")))]
     {
-        if has_amx() {
-            log::info!("AMX optimisation activated");
-            ops.mmm_f16 = Box::new(|_, _, _| apple_amx::apple_amx_mmm_f16_64x32.mmm());
-            ops.mmm_f32 = Box::new(|_, _, _| apple_amx::apple_amx_mmm_f32_32x32.mmm());
-            ops.mmv_f16 = Box::new(|_, _| apple_amx::apple_amx_mmm_f16_64x1.mmm());
-            ops.mmv_f32 = Box::new(|_, _| apple_amx::apple_amx_mmm_f32_32x1.mmm());
-        } else {
-            log::info!("No AMX optimisation");
-        }
+        apple_amx::plug(ops);
     }
 }

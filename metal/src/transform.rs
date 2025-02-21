@@ -26,7 +26,7 @@ use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
 use tract_core::ops::nn::{Reduce, Softmax as CoreSoftmax};
-use tract_core::tract_linalg::frame::block_quant::BlockQuantValue;
+use tract_core::tract_linalg::block_quant::BlockQuantValue;
 use tract_core::transform::ModelTransform;
 use tract_itertools::Itertools;
 
@@ -215,7 +215,7 @@ fn can_translate_to_metal_op(
             })
             || node
                 .op_as::<Const>()
-                .is_some_and(|op| MetalTensor::is_supported_dt(op.0.datum_type()))
+                .is_some_and(|op| MetalTensor::is_supported_dt(op.val().datum_type()))
             || node.op_as::<Cast>().is_some_and(|op| {
                 ops::MetalCast::is_supported_dt(input_dts[0])
                     && ops::MetalCast::new(op.to).is_some()
@@ -476,20 +476,20 @@ fn convert_logic_ops_to_metal(op: &Comp) -> ops::MetalBinOp {
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {
-    let (tensor, metal_fact) = if let Some(curr_bqv) = as_q40_tensor(op.0.view().tensor) {
+    let (tensor, metal_fact) = if let Some(curr_bqv) = as_q40_tensor(op.val().view().tensor) {
         let mut bqv = curr_bqv.clone();
         crate::utils::tract_to_gguf_q4_0_packing(&mut (bqv.value))?;
 
         let bqv = BlockQuantValue { value: bqv.value, fact: bqv.fact };
         (
-            tensor0(Opaque(Arc::new(bqv))).broadcast_into_rank(op.0.rank())?.into_arc_tensor(),
-            MetalFact::from_cpu(Arc::clone(&op.0).into())?,
+            tensor0(Opaque(Arc::new(bqv))).broadcast_into_rank(op.val().rank())?.into_arc_tensor(),
+            MetalFact::from_cpu(Arc::clone(op.val()).into())?,
         )
     } else {
-        (op.0.clone(), MetalFact::from_cpu(Arc::clone(&op.0).into())?)
+        (op.val().clone(), MetalFact::from_cpu(Arc::clone(op.val()).into())?)
     };
     let metal_const = tensor.into_metal()?.into_opaque_tensor().into_arc_tensor();
-    Ok(Const::new_with_opaque_fact(metal_const, Box::new(metal_fact)))
+    Const::new_with_opaque_fact(metal_const, Box::new(metal_fact))
 }
 
 fn map_element_wise_ops_to_metal(op: &ElementWiseOp) -> Option<ops::MetalElementWiseOp> {

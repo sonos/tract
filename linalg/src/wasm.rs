@@ -8,11 +8,11 @@
 /// > cargo test --target=wasm32-wasi
 /// ```
 use crate::mmm::FusedKerSpec;
+use crate::mmm::ImplementationQuality;
 use crate::{Ops, Scaler};
 
 pub fn plug(ops: &mut Ops) {
-    let impls = vec![wasm_f32_4x4.mmm()];
-    ops.mmm_impls = impls.clone();
+    ops.mmm_impls.push(wasm_f32_4x4.mmm());
     ops.mmm_f32 = Box::new(|_m, _k, _n| wasm_f32_4x4.mmm());
 }
 
@@ -288,4 +288,4 @@ unsafe fn kernel_f32_4x4(mut pnl: *const FusedKerSpec<f32>) -> isize {
     0
 }
 
-MMMRustKernel!(kernel_f32_4x4 => wasm_f32_4x4<f32>(4,4)@(4,4));
+MMMRustKernel!(kernel_f32_4x4 => wasm_f32_4x4<f32>(4,4)@(4,4) quality(ImplementationQuality::TargetOptimized));

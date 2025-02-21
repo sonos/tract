@@ -43,7 +43,7 @@ nnef=llm/$generation/$id/$id.nnef.tgz
 
 $CACHE_FILE $nnef
 
-$TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O --readings dump -q
+$TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O --readings  --assert-maximal-mm-quality-cost 0 dump -q
 if [ -e $MODELS/$nnef ]
 then
     size=$(stat -c %s $MODELS/$nnef)

@@ -227,7 +227,7 @@ where
     fn populate_consts(&mut self) {
         for node in &self.plan.borrow().model().nodes {
             if let Some(k) = node.op_as::<Const>() {
-                self.values[node.id] = Some(tvec!(k.0.clone().into_tvalue()));
+                self.values[node.id] = Some(tvec!(k.val().clone().into_tvalue()));
             }
         }
     }

@@ -1,8 +1,8 @@
 use crate::fact::{MetalFact, MetalOrigin, MetalTypedFactExt};
 use num_traits::{AsPrimitive, Zero};
 use tract_core::internal::*;
-use tract_core::tract_linalg::frame::block_quant::BlockQuant;
-use tract_linalg::frame::block_quant::{BlockQuantFact, BlockQuantValue, Q4_0};
+use tract_core::tract_linalg::block_quant::BlockQuant;
+use tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue, Q4_0};
 
 #[macro_export]
 macro_rules! impl_eval_op_for_metal_op {

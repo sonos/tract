@@ -5,10 +5,10 @@ use proptest::arbitrary::Arbitrary;
 use proptest::prelude::*;
 use proptest::strategy::{BoxedStrategy, Strategy};
 use tract_data::internal::*;
-use tract_linalg::frame::mmm::FusedSpec;
-// use tract_linalg::frame::mmm::{VirtualInput, VirtualInputSpec};
-use tract_linalg::frame::{PackedFormat, PackingWriter};
-use tract_linalg::mmm::{AsInputValue, MMMInputFormat, MMMInputValue};
+use tract_linalg::mmm::FusedSpec;
+use tract_linalg::mmm::{AsInputValue, EagerPackedInput, MMMInputFormat, MMMInputValue};
+use tract_linalg::pack::{PackedFormat, PackingWriter};
+use tract_linalg::WeightType;
 use DatumType::F32;
 
 proptest::proptest! {
@@ -257,6 +257,10 @@ impl MMMInputFormat for EagerIm2colSpec {
         todo!();
     }
 
+    fn precursor(&self) -> WeightType {
+        WeightType::Plain(f32::datum_type())
+    }
+
     fn k_alignment(&self) -> usize {
         1
     }
@@ -271,6 +275,24 @@ impl MMMInputFormat for EagerIm2colSpec {
 
     fn mem_size(&self, _k: TDim, _mn: TDim) -> TDim {
         unimplemented!()
+    }
+
+    fn extract_at_mn_f16(
+        &self,
+        _data: &EagerPackedInput,
+        _mn: usize,
+        _slice: &mut [f16],
+    ) -> TractResult<()> {
+        todo!();
+    }
+
+    fn extract_at_mn_f32(
+        &self,
+        _data: &EagerPackedInput,
+        _mn: usize,
+        _slice: &mut [f32],
+    ) -> TractResult<()> {
+        todo!();
     }
 }
 
@@ -334,6 +356,14 @@ impl MMMInputValue for EagerIm2col {
     fn same_as(&self, _other: &dyn MMMInputValue) -> bool {
         unimplemented!()
     }
+
+    fn extract_at_mn_f16(&self, _mn: usize, _slice: &mut [f16]) -> TractResult<()> {
+        unimplemented!()
+    }
+
+    fn extract_at_mn_f32(&self, _mn: usize, _slice: &mut [f32]) -> TractResult<()> {
+        unimplemented!()
+    }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -391,6 +421,10 @@ impl MMMInputFormat for LazyIm2colSpec {
         todo!();
     }
 
+    fn precursor(&self) -> WeightType {
+        WeightType::Plain(f32::datum_type())
+    }
+
     fn k_alignment(&self) -> usize {
         1
     }
@@ -405,6 +439,24 @@ impl MMMInputFormat for LazyIm2colSpec {
 
     fn mem_size(&self, _k: TDim, _mn: TDim) -> TDim {
         unimplemented!()
+    }
+
+    fn extract_at_mn_f16(
+        &self,
+        _data: &EagerPackedInput,
+        _mn: usize,
+        _slice: &mut [f16],
+    ) -> TractResult<()> {
+        todo!();
+    }
+
+    fn extract_at_mn_f32(
+        &self,
+        _data: &EagerPackedInput,
+        _mn: usize,
+        _slice: &mut [f32],
+    ) -> TractResult<()> {
+        todo!();
     }
 }
 
@@ -473,6 +525,14 @@ impl MMMInputValue for LazyIm2col {
     }
 
     fn same_as(&self, _other: &dyn MMMInputValue) -> bool {
+        unimplemented!()
+    }
+
+    fn extract_at_mn_f16(&self, _mn: usize, _slice: &mut [f16]) -> TractResult<()> {
+        unimplemented!()
+    }
+
+    fn extract_at_mn_f32(&self, _mn: usize, _slice: &mut [f32]) -> TractResult<()> {
         unimplemented!()
     }
 }

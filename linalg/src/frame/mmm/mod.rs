@@ -6,10 +6,8 @@ pub mod cost_model;
 pub(crate) mod fuse;
 pub(crate) mod input_store;
 pub(crate) mod kernel;
-pub mod kit;
-pub mod pack;
 #[macro_use]
-pub mod panel_extract;
+pub(crate) mod panel_extract;
 mod scratch;
 mod storage;
 
@@ -19,6 +17,7 @@ pub mod tests;
 
 use crate::multithread::Executor;
 use rayon::prelude::*;
+use std::cmp::Ordering;
 use std::fmt::Debug;
 use tract_data::internal::*;
 
@@ -26,18 +25,55 @@ pub use cost_model::*;
 pub use fuse::*;
 pub use input_store::*;
 pub use kernel::*;
-pub use kit::*;
+pub use panel_extract::*;
 pub use scratch::*;
 pub use storage::*;
 
-pub use pack::Packing;
-
 pub fn no_prefetch(_ptr: *const u8, _len: usize) {}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum ImplementationQuality {
+    /// Individual operations are emulated by individual conversion (f16->f32->f16)
+    Dreadful,
+    /// Rust scalar operation (with whatever optimisation the compiler manages)
+    Generic,
+    /// Implicit vectorization (e.g. Rust code, some unrolled loops, explicit template instantiations for small constant)
+    RustOptimized,
+    /// Explicit vectorization (e.g. intrinsics vector code)
+    TargetOptimized,
+    /// Hand optimized (assembly)
+    ManuallyOptimized,
+}
+
+impl ImplementationQuality {
+    pub fn best_to_worst() -> &'static [ImplementationQuality] {
+        use ImplementationQuality::*;
+        &[ManuallyOptimized, TargetOptimized, RustOptimized, Generic, Dreadful]
+    }
+
+    pub fn cost(&self) -> usize {
+        ImplementationQuality::best_to_worst().iter().position(|x| x == self).unwrap()
+    }
+}
+
+impl PartialOrd for ImplementationQuality {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(usize::from(*self).cmp(&usize::from(*other)))
+    }
+}
+
+impl From<ImplementationQuality> for usize {
+    fn from(value: ImplementationQuality) -> Self {
+        value.cost()
+    }
+}
 
 pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
     fn name(&self) -> &str;
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;
+
+    fn quality(&self) -> ImplementationQuality;
 
     #[allow(clippy::type_complexity)]
     fn packings(&self) -> &[(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)];
@@ -93,6 +129,10 @@ impl<K: MatMatMulKer> MatMatMul for K {
     }
     fn nr(&self) -> usize {
         self.nr()
+    }
+
+    fn quality(&self) -> ImplementationQuality {
+        MatMatMulKer::quality(self)
     }
 
     fn packings(&self) -> &[(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)] {

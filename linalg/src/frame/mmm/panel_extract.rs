@@ -1,7 +1,8 @@
 use std::fmt::{Debug, Display};
+use tract_data::internal::*;
 
-use super::pack::PackedFormat;
 use super::{EagerPackedInput, MMMInputFormat, MMMInputValue};
+use crate::pack::PackedFormat;
 
 type Kernel = unsafe fn(input: *const u8, output: *mut u8, k: usize);
 
@@ -50,7 +51,7 @@ impl MMMInputValue for PanelExtractInput {
     fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
         Some(self.format.to.single_panel_layout(self.data.k(), self.format.to.dt.size_of()))
     }
-    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> tract_data::TractResult<*const u8> {
+    fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> TractResult<*const u8> {
         let scratch = buffer.unwrap();
         unsafe {
             let source = self.data.packed.as_ptr().add(self.data.panel_bytes * i);
@@ -67,13 +68,19 @@ impl MMMInputValue for PanelExtractInput {
     fn format(&self) -> &dyn MMMInputFormat {
         &self.format.to
     }
-    fn opaque_fact(&self) -> &dyn tract_data::internal::OpaqueFact {
+    fn opaque_fact(&self) -> &dyn OpaqueFact {
         self.data.opaque_fact()
     }
     fn same_as(&self, other: &dyn MMMInputValue) -> bool {
         other
             .downcast_ref::<Self>()
             .is_some_and(|o| o.format == self.format && o.data.same_as(&self.data))
+    }
+    fn extract_at_mn_f16(&self, mn: usize, slice: &mut [f16]) -> TractResult<()> {
+        self.data.extract_at_mn_f16(mn, slice)
+    }
+    fn extract_at_mn_f32(&self, mn: usize, slice: &mut [f32]) -> TractResult<()> {
+        self.data.extract_at_mn_f32(mn, slice)
     }
 }
 
@@ -96,11 +103,11 @@ macro_rules! panel_extractor {
      ) => {
         paste! {
             lazy_static::lazy_static! {
-                pub static ref $id: $crate::frame::mmm::panel_extract::PanelExtractor = {
+                pub static ref $id: $crate::mmm::PanelExtractor = {
                     use $crate::mmm::MMMInputFormat;
                     let (from, to) = ($from, $to);
                     assert!(from.r() == to.r());
-                    let mut it = $crate::frame::mmm::panel_extract::PanelExtractor {
+                    let mut it = $crate::mmm::PanelExtractor {
                         name: stringify!($id).to_string(),
                         from,
                         to,

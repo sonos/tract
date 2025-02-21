@@ -6,7 +6,7 @@ use crate::optim::OptimizerSession;
 use crate::plan::{FrozenSimpleState, SimplePlan, SimpleState};
 use crate::transform::ModelTransform;
 use tract_data::TooEarly;
-use tract_linalg::frame::block_quant::BlockQuantValue;
+use tract_linalg::block_quant::BlockQuantValue;
 use tract_num_traits::Zero;
 
 /// A model with completely determined types and shapes.
@@ -64,13 +64,18 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                 .map(|o| self.outlet_fact(*o).cloned())
                 .collect::<TractResult<TVec<_>>>()?;
 
+            let input_facts: TVec<_> = input_facts.iter().collect();
+            let mut output_facts = op
+                .output_facts(&input_facts)
+                .with_context(|| format!("in output_facts invocation for {name}: {}", op.name()))?;
+
             if op.is_stateless() && input_facts.len() > 0 {
                 if let Some(tensors) = input_facts
                     .iter()
                     .map(|f| {
                         f.konst
                             .as_ref()
-                            .filter(|k| k.volume() < 16)
+                            .filter(|k| k.volume() < 16 && !k.datum_type().is_opaque())
                             .cloned()
                             .map(|t| t.into_tvalue())
                     })
@@ -83,17 +88,22 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                             .map(|(ix, o)| {
                                 let name =
                                     if ix == 0 { name.clone() } else { format!("{name}.{ix}") };
-                                self.add_const(name, o)
+                                self.wire_node(
+                                    name.clone(),
+                                    Const::new_with_opt_opaque_fact(
+                                        o.into_tensor().into(),
+                                        output_facts[ix].opaque_fact.clone(),
+                                    )?,
+                                    &[],
+                                )
+                                .with_context(|| format!("Eager const-folding {name}"))
+                                .map(|vec| vec[0])
                             })
                             .collect::<TractResult<TVec<OutletId>>>();
                     }
                 }
             }
 
-            let input_facts: TVec<_> = input_facts.iter().collect();
-            let mut output_facts = op
-                .output_facts(&input_facts)
-                .with_context(|| format!("in output_facts invocation for {name}: {}", op.name()))?;
             for fact in &mut output_facts {
                 if fact.konst.is_none() && fact.shape.is_concrete() && fact.shape.volume().is_zero()
                 {
@@ -140,13 +150,13 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                 return self
                     .add_node(
                         name,
-                        crate::ops::konst::Const::new_with_opaque_fact(v, opaque),
+                        crate::ops::konst::Const::new_with_opaque_fact(v, opaque)?,
                         tvec!(fact),
                     )
                     .map(|id| id.into());
             }
         }
-        self.add_node(name, crate::ops::konst::Const::new(v), tvec!(fact)).map(|id| id.into())
+        self.add_node(name, crate::ops::konst::Const::new(v)?, tvec!(fact)).map(|id| id.into())
     }
 }
 
