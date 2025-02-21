@@ -35,10 +35,12 @@ mod tensor;
 mod utils;
 
 use params::*;
+use tract_linalg::block_quant::Q4_0;
+use tract_linalg::WeightType;
 
 readings_probe::instrumented_allocator!();
 
-pub const QUALITY_COLORS: [nu_ansi_term::Color; 5] = [LightRed, Yellow, White, Green, LightGreen];
+pub const QUALITY_COLORS: [nu_ansi_term::Color; 5] = [LightGreen, Green, White, Yellow, LightRed];
 
 fn info_usage(stage: &str, probe: Option<&Probe>) {
     if let Some(mon) = probe {
@@ -599,41 +601,58 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             return Ok(());
         }
         Some(("kernels", _)) => {
-            println!("{}", White.bold().paint("# Matrix multiplication"));
+            println!("");
+            println!("{}", White.bold().paint("# By implementation"));
+            println!("");
             for m in tract_linalg::ops().mmm_impls() {
-                println!("{}", QUALITY_COLORS[usize::from(m.quality())].paint(m.name()),);
+                println!("{}", QUALITY_COLORS[m.quality().cost()].paint(m.name()),);
                 for packings in m.packings() {
                     println!("   - {:?} • {:?}", packings.0, packings.1);
                 }
             }
-            println!("{}", White.bold().paint("# MatMul kits"));
-            /*
-            for m in tract_linalg::ops().mmm_kits() {
-                let label = format!(" * {:?} ⮕  {:?}", m.weight, m.static_packer,);
-                println!("{}", label);
-                for item in &m.mmms {
-                    println!(
-                        "{}",
-                        QUALITY_COLORS[usize::from(item.mmm.quality())].paint(format!(
-                            "   - mmm Σ:{:?} B:{} by {}/{} ( {:?}•{:?} ) {}",
-                            item.mmm.internal_type(),
-                            item.b_packing()
-                                .downcast_ref::<PackedFormat>()
-                                .map(|pf| format!("{:?}", pf.dt))
-                                .unwrap_or("???".to_string()),
-                            item.mmm.name(),
-                            item.packing,
-                            item.mmm.packings()[item.packing].0,
-                            item.mmm.packings()[item.packing].1,
-                            item.weight_panel_extractor
-                                .as_ref()
-                                .map(|pe| format!("[using {} on weights]", pe.name))
-                                .unwrap_or_default()
-                        ))
-                    );
+            println!("");
+            println!("{}", White.bold().paint("# By weights"));
+            println!("");
+            for w in [
+                WeightType::Plain(f16::datum_type()),
+                WeightType::Plain(f32::datum_type()),
+                WeightType::Plain(f64::datum_type()),
+                WeightType::Plain(i8::datum_type()),
+                WeightType::from(Q4_0),
+            ] {
+                println!("{}", White.bold().paint(format!("{w:?}")));
+                for packing in tract_linalg::ops()
+                    .all_possible_packing(w)
+                    .sorted_by_key(|f| format!("{f:?}"))
+                    .dedup()
+                {
+                    println!("  * {packing:?}");
+                    for mmm in tract_linalg::ops().mmm_impls() {
+                        for (ix, p) in mmm.packings().iter().enumerate() {
+                            if p.0.same_as(packing) {
+                                println!(
+                                    "    - {} ({ix}) {:?} {:?}",
+                                    QUALITY_COLORS[mmm.quality().cost()].paint(mmm.name()),
+                                    p.0,
+                                    p.1
+                                );
+                            } else if let Some(pe) = tract_linalg::ops()
+                                .panel_extractors()
+                                .iter()
+                                .find(|pe| pe.from.same_as(packing) && p.0.same_as(&pe.to))
+                            {
+                                println!(
+                                    "    - {} ({ix}) {:?} {:?} using {}",
+                                    QUALITY_COLORS[mmm.quality().cost()].paint(mmm.name()),
+                                    p.0,
+                                    p.1,
+                                    pe.name
+                                );
+                            }
+                        }
+                    }
                 }
             }
-            */
             return Ok(());
         }
         _ => (),
