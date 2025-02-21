@@ -41,11 +41,7 @@ impl Gather {
             let mut icoords: TVec<usize> = ocoords[0..self.axis].into();
             let kcoords = &ocoords[self.axis..][..indices.ndim()];
             let k = indices[kcoords];
-            let k = if k < 0 {
-                k + data_view.shape()[self.axis] as i64
-            } else {
-                k
-            } as usize;
+            let k = if k < 0 { k + data_view.shape()[self.axis] as i64 } else { k } as usize;
             icoords.push(k);
             icoords.extend(ocoords[self.axis + indices.ndim()..].iter().copied());
             output_view[ocoords] = data_view.get(&*icoords).context("Invalid gather")?.clone();
@@ -81,13 +77,11 @@ impl TypedOp for Gather {
         ensure!(inputs[1].datum_type == i64::datum_type());
         if inputs[0].datum_type.is_opaque() {
             let data_shape = block_quant_aware_input_shape(inputs[0])?;
-            Ok(tvec!(f16::fact(
-                &*self.compute_output_shape(&data_shape, &inputs[1].shape)?
-            )))
+            Ok(tvec!(f16::fact(&*self.compute_output_shape(&data_shape, &inputs[1].shape)?)))
         } else {
-            Ok(tvec!(inputs[0].datum_type.fact(
-                &*self.compute_output_shape(&inputs[0].shape, &inputs[1].shape)?
-            )))
+            Ok(tvec!(inputs[0]
+                .datum_type
+                .fact(&*self.compute_output_shape(&inputs[0].shape, &inputs[1].shape)?)))
         }
     }
 
@@ -155,9 +149,8 @@ mod tests {
         let gatherer = Gather::new(0);
         for idx in 2..3 {
             let index = Tensor::from(arr0(idx));
-            let outputs = gatherer
-                .eval(tvec![data.clone().into_tvalue(), index.into_tvalue()])
-                .unwrap();
+            let outputs =
+                gatherer.eval(tvec![data.clone().into_tvalue(), index.into_tvalue()]).unwrap();
             let output = &outputs[0];
             assert_eq!(output.shape().len(), 0);
             assert_eq!(*output.to_scalar::<i64>().unwrap(), idx + 1);

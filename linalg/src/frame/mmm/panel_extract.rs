@@ -48,11 +48,7 @@ pub struct PanelExtractInput {
 
 impl MMMInputValue for PanelExtractInput {
     fn scratch_panel_buffer_layout(&self) -> Option<std::alloc::Layout> {
-        Some(
-            self.format
-                .to
-                .single_panel_layout(self.data.k(), self.format.to.dt.size_of()),
-        )
+        Some(self.format.to.single_panel_layout(self.data.k(), self.format.to.dt.size_of()))
     }
     fn panel_bytes(&self, i: usize, buffer: Option<*mut u8>) -> tract_data::TractResult<*const u8> {
         let scratch = buffer.unwrap();
@@ -238,8 +234,7 @@ pub mod test {
             from.bq.quant_f16(weights.as_slice::<f16>()?)?
         };
         let packed_block_quant =
-            from.bq
-                .pack(&block_quant, k, from.r, from.zip, from.scales_at_end)?;
+            from.bq.pack(&block_quant, k, from.r, from.zip, from.scales_at_end)?;
 
         let mut reference_panel = Tensor::zero_dt(to.dt, &[k, from.r])?;
         let mut tested_panel = Tensor::zero_dt(to.dt, &[k, from.r])?;
@@ -253,10 +248,8 @@ pub mod test {
                     reference_panel.as_bytes_mut().as_mut_ptr(),
                 )?;
 
-                let source = packed_block_quant
-                    .packed
-                    .as_ptr()
-                    .add(packed_block_quant.panel_bytes * panel);
+                let source =
+                    packed_block_quant.packed.as_ptr().add(packed_block_quant.panel_bytes * panel);
                 (extractor.kernel)(source, tested_panel.as_bytes_mut().as_mut_ptr(), k);
             }
             compare_panels(&tested_panel, &reference_panel, from.r, k);

@@ -162,9 +162,7 @@ impl MMMKit {
         match &kit.weight {
             WeightType::Plain(p) => {
                 debug_assert!(
-                    kit.static_packer
-                        .downcast_ref::<PackedFormat>()
-                        .is_some_and(|pf| pf.dt == *p),
+                    kit.static_packer.downcast_ref::<PackedFormat>().is_some_and(|pf| pf.dt == *p),
                     "Static packer not compatible with weight format {kit:?}"
                 )
             }
@@ -197,11 +195,7 @@ impl MMMKit {
             "Activation packed dt mismatch {self:?} {:?}",
             mmm.packings()[packing].1
         );
-        self.items.push(MMMKitItem {
-            mmm,
-            packing,
-            weight_panel_extractor,
-        });
+        self.items.push(MMMKitItem { mmm, packing, weight_panel_extractor });
         self
     }
 
@@ -235,10 +229,7 @@ impl MMMKit {
     }
 
     pub(crate) fn with_generic_fallback(self, generic_fallback: bool) -> Self {
-        Self {
-            generic_fallback,
-            ..self
-        }
+        Self { generic_fallback, ..self }
     }
 
     pub fn name(&self) -> &str {

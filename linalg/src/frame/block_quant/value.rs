@@ -40,9 +40,7 @@ pub struct BlockQuantValue {
 
 impl OpaquePayload for BlockQuantValue {
     fn same_as(&self, other: &dyn OpaquePayload) -> bool {
-        other
-            .downcast_ref::<Self>()
-            .is_some_and(|o| o.fact == self.fact && o.value == self.value)
+        other.downcast_ref::<Self>().is_some_and(|o| o.fact == self.fact && o.value == self.value)
     }
 }
 

@@ -1032,24 +1032,30 @@ impl Parameters {
         }
 
         let keep_last = matches.is_present("keep-last");
-        Self::pipeline(matches, probe, raw_model, tf_model_extensions, need_reference_model, keep_last).map(
-            |(tract_model, pulsed_model, reference_model)| {
-                info!("Model ready");
-                info_usage("model ready", probe);
-                Parameters {
-                    graph,
-                    pulsed_model,
-                    tract_model,
-                    reference_model,
-                    tf_model,
-                    tensors_values,
-                    assertions,
-                    machine_friendly: matches.is_present("machine-friendly"),
-                    allow_random_input,
-                    allow_float_casts,
-                }
-            },
-            )
+        Self::pipeline(
+            matches,
+            probe,
+            raw_model,
+            tf_model_extensions,
+            need_reference_model,
+            keep_last,
+        )
+        .map(|(tract_model, pulsed_model, reference_model)| {
+            info!("Model ready");
+            info_usage("model ready", probe);
+            Parameters {
+                graph,
+                pulsed_model,
+                tract_model,
+                reference_model,
+                tf_model,
+                tensors_values,
+                assertions,
+                machine_friendly: matches.is_present("machine-friendly"),
+                allow_random_input,
+                allow_float_casts,
+            }
+        })
     }
 }
 
@@ -1076,7 +1082,7 @@ pub fn bench_limits_from_clap(matches: &clap::ArgMatches) -> TractResult<BenchLi
 pub fn display_params_from_clap(
     root_matches: &clap::ArgMatches,
     matches: &clap::ArgMatches,
-    ) -> TractResult<DisplayParams> {
+) -> TractResult<DisplayParams> {
     Ok(DisplayParams {
         konst: matches.is_present("const"),
         cost: matches.is_present("cost"),
@@ -1107,7 +1113,7 @@ pub fn display_params_from_clap(
         },
         info: matches.is_present("info"),
         json: matches.is_present("json"),
-        has_accelerator: root_matches.is_present("metal")
+        has_accelerator: root_matches.is_present("metal"),
     })
 }
 
@@ -1136,7 +1142,9 @@ impl Assertions {
             });
         let allow_missing_outputs = sub.is_present("allow-missing-outputs");
         let approximation = if let Some(custom) = sub.value_of("approx-custom") {
-            let Some((atol, rtol, approx)) = custom.split(",").collect_tuple() else { bail!("Can't parse approx custom. It should look like 0.001,0.002,0.003") };
+            let Some((atol, rtol, approx)) = custom.split(",").collect_tuple() else {
+                bail!("Can't parse approx custom. It should look like 0.001,0.002,0.003")
+            };
             Approximation::Custom(atol.parse()?, rtol.parse()?, approx.parse()?)
         } else {
             match sub.value_of("approx").unwrap() {

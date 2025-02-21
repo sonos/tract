@@ -124,19 +124,13 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
         ensure!(tensor.shape()[block_axis] % self.block_len() == 0);
         let mut scratch = vec![0u8; self.block_bytes()];
         if tensor.datum_type() == f32::datum_type() {
-            for block in tensor
-                .as_slice_mut::<f32>()?
-                .chunks_mut(self.block_len())
-            {
+            for block in tensor.as_slice_mut::<f32>()?.chunks_mut(self.block_len()) {
                 self.quant_block_f32(block, &mut scratch);
                 self.dequant_block_f32(&scratch, block);
             }
             Ok(tensor)
         } else if tensor.datum_type() == f16::datum_type() {
-            for block in tensor
-                .as_slice_mut::<f16>()?
-                .chunks_mut(self.block_len())
-            {
+            for block in tensor.as_slice_mut::<f16>()?.chunks_mut(self.block_len()) {
                 self.quant_block_f16(block, &mut scratch);
                 self.dequant_block_f16(&scratch, block);
             }
@@ -145,7 +139,7 @@ pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downc
             todo!()
         }
     }
-    
+
     fn pack(
         &self,
         input: &[u8],
@@ -209,12 +203,7 @@ impl Debug for PackedBlockQuantFormat {
 
 impl PackedBlockQuantFormat {
     pub fn new(bq: &dyn BlockQuant, r: usize, zip: usize, scales_at_end: bool) -> Self {
-        PackedBlockQuantFormat {
-            bq: clone_box(bq),
-            r,
-            zip,
-            scales_at_end,
-        }
+        PackedBlockQuantFormat { bq: clone_box(bq), r, zip, scales_at_end }
     }
 
     #[cfg(test)]
@@ -257,19 +246,13 @@ impl MMMInputFormat for PackedBlockQuantFormat {
             };
             Cow::Owned(tensor0(Opaque(Arc::new(BlockQuantValue {
                 value: quant,
-                fact: BlockQuantFact {
-                    format: self.bq.clone(),
-                    shape: tvec!(m, k),
-                },
+                fact: BlockQuantFact { format: self.bq.clone(), shape: tvec!(m, k) },
             }))))
         } else {
             Cow::Borrowed(t)
         };
         ensure!(k_axis == 1);
-        let quant = t
-            .to_scalar::<Opaque>()?
-            .downcast_ref::<BlockQuantValue>()
-            .unwrap();
+        let quant = t.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>().unwrap();
         Ok(Box::new(self.pack(&quant.value, quant.fact.shape[k_axis])?))
     }
 
@@ -286,8 +269,6 @@ impl MMMInputFormat for PackedBlockQuantFormat {
     }
 
     fn same_as(&self, other: &dyn MMMInputFormat) -> bool {
-        other
-            .downcast_ref::<Self>()
-            .is_some_and(|other| self == other)
+        other.downcast_ref::<Self>().is_some_and(|other| self == other)
     }
 }

@@ -73,41 +73,13 @@ impl Reducer {
         unsafe {
             let mut t = match self {
                 ArgMax(last) => {
-                    r!(Self::reduce_t(dt)(
-                        self,
-                        axes,
-                        &output_shape,
-                        input,
-                        argmax_t,
-                        *last
-                    ))
+                    r!(Self::reduce_t(dt)(self, axes, &output_shape, input, argmax_t, *last))
                 }
                 ArgMin(last) => {
-                    r!(Self::reduce_t(dt)(
-                        self,
-                        axes,
-                        &output_shape,
-                        input,
-                        argmin_t,
-                        *last
-                    ))
+                    r!(Self::reduce_t(dt)(self, axes, &output_shape, input, argmin_t, *last))
                 }
-                Min => r!(Self::reduce_t(dt)(
-                    self,
-                    axes,
-                    &output_shape,
-                    input,
-                    min_t,
-                    ()
-                )),
-                Max => r!(Self::reduce_t(dt)(
-                    self,
-                    axes,
-                    &output_shape,
-                    input,
-                    max_t,
-                    ()
-                )),
+                Min => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, min_t, ())),
+                Max => r!(Self::reduce_t(dt)(self, axes, &output_shape, input, max_t, ())),
                 Prod => {
                     r!(Self::reduce_t(dt)(self, axes, &output_shape, input, prod_t, ()); Self::reduce_t(self, axes, &output_shape, input, q_prod_t, (zp, scale)))
                 }
@@ -157,13 +129,7 @@ impl Reducer {
                 .slice()
                 .iter()
                 .enumerate()
-                .map(|(ax, &d)| {
-                    if axes.contains(&ax) {
-                        (..).into()
-                    } else {
-                        d.into()
-                    }
-                })
+                .map(|(ax, &d)| if axes.contains(&ax) { (..).into() } else { d.into() })
                 .collect();
             let slice_info = SliceInfo::<_, IxDyn, IxDyn>::try_from(slice_spec).unwrap();
             let slice = input.slice(&slice_info);
@@ -278,16 +244,10 @@ impl Reducer {
     fn mean_of_squares(&self, axis: &[usize], input: &Tensor) -> TractResult<Tensor> {
         let dt = input.datum_type();
         let mut input = input.cast_to::<f32>()?.into_owned();
-        input
-            .as_slice_mut::<f32>()?
-            .iter_mut()
-            .for_each(|x| *x = *x * *x);
+        input.as_slice_mut::<f32>()?.iter_mut().for_each(|x| *x = *x * *x);
         let mut output = unsafe { self.sum::<f32>(axis, &input) };
         let norm = output.len() as f32 / input.len() as f32;
-        output
-            .as_slice_mut::<f32>()?
-            .iter_mut()
-            .for_each(|x| *x *= norm);
+        output.as_slice_mut::<f32>()?.iter_mut().for_each(|x| *x *= norm);
         Ok(output.cast_to_dt(dt)?.into_owned())
     }
 }
@@ -299,13 +259,16 @@ where
     v.iter()
         .copied()
         .enumerate()
-        .fold((0usize, T::min_value()), |acc, v| {
-            if v.1 > acc.1 || (last && acc.1 == v.1) {
-                v
-            } else {
-                acc
-            }
-        })
+        .fold(
+            (0usize, T::min_value()),
+            |acc, v| {
+                if v.1 > acc.1 || (last && acc.1 == v.1) {
+                    v
+                } else {
+                    acc
+                }
+            },
+        )
         .0 as i64
 }
 
@@ -316,13 +279,16 @@ where
     v.iter()
         .copied()
         .enumerate()
-        .fold((0usize, T::max_value()), |acc, v| {
-            if v.1 < acc.1 || (last && acc.1 == v.1) {
-                v
-            } else {
-                acc
-            }
-        })
+        .fold(
+            (0usize, T::max_value()),
+            |acc, v| {
+                if v.1 < acc.1 || (last && acc.1 == v.1) {
+                    v
+                } else {
+                    acc
+                }
+            },
+        )
         .0 as i64
 }
 
@@ -450,11 +416,9 @@ impl TypedOp for Reduce {
                             .output(0, ix),
                     )
                 } else {
-                    tvec!(
-                        Axis::new(letters.next().unwrap(), inputs.len(), outputs.len())
-                            .input(0, ix)
-                            .output(0, ix)
-                    )
+                    tvec!(Axis::new(letters.next().unwrap(), inputs.len(), outputs.len())
+                        .input(0, ix)
+                        .output(0, ix))
                 }
                 .into_iter()
             })
@@ -478,10 +442,7 @@ impl TypedOp for Reduce {
             }
         }
         axes.sort();
-        let op = Some(Box::new(Self {
-            axes,
-            ..self.clone()
-        }) as _);
+        let op = Some(Box::new(Self { axes, ..self.clone() }) as _);
         Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
     }
 
@@ -588,11 +549,7 @@ impl Reduce {
             let Some(other_konst) = model.outlet_fact(other)?.uniform.as_ref() else {
                 return Ok(None);
             };
-            let norm: TDim = self
-                .axes
-                .iter()
-                .map(|&ax| &prec.outputs[0].fact.shape[ax])
-                .product();
+            let norm: TDim = self.axes.iter().map(|&ax| &prec.outputs[0].fact.shape[ax]).product();
             let Some(norm) = norm.as_i64() else {
                 return Ok(None);
             };
@@ -600,10 +557,7 @@ impl Reduce {
                 return Ok(None);
             }
             let norm = tensor0((norm as f32).recip());
-            if other_konst
-                .close_enough(&norm, Approximation::Close)
-                .is_ok()
-            {
+            if other_konst.close_enough(&norm, Approximation::Close).is_ok() {
                 let mut patch = TypedModelPatch::default();
                 let wire = patch.tap_model(model, prec.inputs[0])?;
                 let wire = patch.wire_node(
@@ -648,11 +602,8 @@ pub fn expand_mean_of_squares(
             .map(|(_ix, dim)| dim)
             .product::<TDim>();
         let card = patch.add_const(format!("{name}.card"), tensor0(card))?;
-        let card = patch.wire_node(
-            format!("{name}.card_to_f32"),
-            cast(f32::datum_type()),
-            &[card],
-        )?;
+        let card =
+            patch.wire_node(format!("{name}.card_to_f32"), cast(f32::datum_type()), &[card])?;
 
         wire = wire_with_rank_broadcast(
             format!("{name}.norm"),

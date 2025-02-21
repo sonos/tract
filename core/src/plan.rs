@@ -10,7 +10,7 @@ use crate::model::{Fact, Graph, OutletId};
 use crate::ops::konst::Const;
 use crate::ops::FrozenOpState;
 
-use self::order::{eval_order_for_nodes, eval_order_opt_ram_for_nodes, build_flush_list};
+use self::order::{build_flush_list, eval_order_for_nodes, eval_order_opt_ram_for_nodes};
 
 #[derive(Clone, Debug, Default)]
 pub struct PlanOptions {
@@ -31,7 +31,6 @@ pub struct SessionState {
 }
 
 impl Default for SessionState {
-
     fn default() -> Self {
         SessionState {
             inputs: HashMap::default(),
@@ -56,7 +55,6 @@ impl Clone for SessionState {
         }
     }
 }
-
 
 pub trait SessionStateHandler: Send + Sync + Debug {
     fn before_plan_eval(&self, session_state: &mut SessionState) -> TractResult<()>;
@@ -116,7 +114,10 @@ where
         Self::build(model, outputs, &[], &PlanOptions::default())
     }
 
-    pub fn with_session_handler<H: SessionStateHandler + 'static>(mut self, session_handler: H) -> Self {
+    pub fn with_session_handler<H: SessionStateHandler + 'static>(
+        mut self,
+        session_handler: H,
+    ) -> Self {
         self.session_handler = Some(Arc::new(session_handler));
         self
     }
@@ -144,7 +145,8 @@ where
             eval_order_opt_ram_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes, deps)?
         };
         order.retain(|node| !model.borrow().node(*node).op_is::<Const>());
-        let flush_lists = build_flush_list(model.borrow(), &order, outputs, |n| !n.op_is::<Const>());
+        let flush_lists =
+            build_flush_list(model.borrow(), &order, outputs, |n| !n.op_is::<Const>());
 
         #[allow(clippy::mutable_key_type)]
         let mut symbols: std::collections::HashSet<Symbol> = Default::default();
@@ -221,7 +223,7 @@ where
 
         Ok(state)
     }
-    
+
     fn populate_consts(&mut self) {
         for node in &self.plan.borrow().model().nodes {
             if let Some(k) = node.op_as::<Const>() {
