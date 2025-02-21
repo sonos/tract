@@ -4,8 +4,8 @@ use dyn_clone::clone_box;
 use kernel_selection::wire_packing;
 use tract_itertools::{izip, multiunzip};
 use tract_linalg::block_quant::BlockQuantValue;
-use tract_linalg::kit::WeightType;
 use tract_linalg::mmm::MMMInputFormat;
+use tract_linalg::WeightType;
 
 use super::*;
 use crate::ops::cast::cast;

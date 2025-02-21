@@ -35,7 +35,6 @@ mod tensor;
 mod utils;
 
 use params::*;
-use tract_linalg::pack::PackedFormat;
 
 readings_probe::instrumented_allocator!();
 
@@ -608,6 +607,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                 }
             }
             println!("{}", White.bold().paint("# MatMul kits"));
+            /*
             for m in tract_linalg::ops().mmm_kits() {
                 let label = format!(" * {:?} ⮕  {:?}", m.weight, m.static_packer,);
                 println!("{}", label);
@@ -633,6 +633,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                     );
                 }
             }
+            */
             return Ok(());
         }
         _ => (),

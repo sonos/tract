@@ -1,4 +1,3 @@
-use panel_extract::packed_64_q40_to_f16;
 use tract_data::half::f16;
 
 mod by_scalar;
@@ -11,14 +10,11 @@ pub use by_scalar::*;
 pub use leaky_relu::*;
 pub use max::*;
 pub use sum::*;
-use tract_data::prelude::Datum;
 pub use unicast::*;
 
 use crate::block_quant::PackedBlockQuantFormat;
 use crate::block_quant::Q4_0;
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
-use crate::kit::Kit;
-use crate::pack::Packing;
 use crate::Ops;
 
 const FP16: fn() -> bool = crate::arm64::has_fp16;
@@ -52,16 +48,6 @@ pub fn plug(ops: &mut Ops) {
         arm64fp16_mmm_f16_32x6_gen.mmm(),
         arm64fp16_mmm_f16_64x1_gen.mmm(),
     ]);
-    ops.mmm_kits.push(
-        Kit::new(f16::datum_type(), &f16::packing(64).align(16))
-            .with_native(arm64fp16_mmm_f16_64x1_gen.mmm(), 0)
-            .with_native(arm64fp16_mmm_f16_64x3_gen.mmm(), 0),
-    );
-    ops.mmm_kits.push(
-        Kit::new(Q4_0, &PackedBlockQuantFormat::new(&Q4_0, 64, 16, true))
-            .with_native(arm64fp16_mmm_f16_64x1_gen.mmm(), 1)
-            .with_extracting(arm64fp16_mmm_f16_64x3_gen.mmm(), 0, packed_64_q40_to_f16.clone()),
-    );
 }
 
 tanh_impl!(f16, arm64fp16_tanh_f16_8n, 8, 8, crate::arm64::has_fp16());

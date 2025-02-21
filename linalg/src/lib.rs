@@ -21,8 +21,8 @@ include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 mod frame;
 pub mod generic;
 pub mod multithread;
+pub use frame::weights::WeightType;
 pub use generic::{ScaleShiftAndRound, Scaler};
-use kit::WeightType;
 use lazy_static::lazy_static;
 use mmm::{MMMInputFormat, MatMatMul, PanelExtractor};
 use tract_data::internal::TensorView;
@@ -61,8 +61,7 @@ type MMVImpl = Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMu
 pub struct Ops {
     mmm_impls: Vec<Box<dyn mmm::MatMatMul>>,
     panel_extractors: Vec<mmm::PanelExtractor>,
-    mmm_kits: Vec<kit::Kit>,
-    // default_kit: Box<dyn Fn(WeightType) -> Box<dyn MMMInputFormat>>,
+
     mmm_f64: MMMImpl,
     mmv_f64: MMVImpl,
 
@@ -104,20 +103,6 @@ pub struct Ops {
 impl Ops {
     pub fn mmm_impls(&self) -> &[Box<dyn mmm::MatMatMul>] {
         &self.mmm_impls
-    }
-
-    pub fn mmm_kits(&self) -> &[kit::Kit] {
-        &self.mmm_kits
-    }
-
-    pub fn kit_input_format(&self, w: kit::WeightType) -> Box<dyn mmm::MMMInputFormat> {
-        self.mmm_kits
-            .iter()
-            .filter(|kit| kit.weight == w)
-            .min_by_key(|kit| kit.quality().cost())
-            .unwrap()
-            .static_packer
-            .clone()
     }
 
     pub fn all_possible_packing(
@@ -214,7 +199,6 @@ pub fn generic() -> Ops {
     use reduce::{MapReduceKer, ReduceKer};
     let mut ops = Ops {
         mmm_impls: vec![],
-        mmm_kits: vec![],
         panel_extractors: vec![],
         mmm_f64: Box::new(|_, _, _| generic_f64_4x4.mmm()),
         mmv_f64: Box::new(|_, _| generic_f64_4x1.mmm()),

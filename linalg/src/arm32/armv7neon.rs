@@ -1,7 +1,5 @@
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
-use crate::kit::Kit;
-use crate::pack::{PackedFormat, Packing};
-use crate::DatumType::*;
+use crate::pack::PackedFormat;
 use crate::Ops;
 
 const NEON: fn() -> bool = || crate::arm32::has_neon();
@@ -42,11 +40,6 @@ pub fn plug(ops: &mut Ops) {
         armv7neon_mmm_f32_32x1_cortexa9.mmm(),
         armv7neon_mmm_f32_32x1_generic.mmm(),
     ]);
-    ops.mmm_kits.push(
-        Kit::new(F32, &f32::packing(8))
-            .with_native(armv7neon_mmm_f32_8x6_generic.mmm(), 0)
-            .with_native(armv7neon_mmm_f32_8x1_generic.mmm(), 0),
-    );
 }
 
 sigmoid_impl!(f32, armv7neon_sigmoid_f32_4n, 4, 4, crate::arm32::has_neon());
