@@ -207,7 +207,6 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
                 return mmm.packings()[0].0.clone();
             }
         }
-        dbg!(self);
         clone_box(
             tract_linalg::ops()
                 .all_possible_packing(self.weight_type.clone())
