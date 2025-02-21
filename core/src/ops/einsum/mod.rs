@@ -19,7 +19,7 @@ pub mod optimize;
 mod proptest;
 
 pub use as_matmul::{rewrite_einsums_as_matmul, BasicMatMul};
-use tract_linalg::block_quant::BlockQuantFact;
+use tract_linalg::block_quant::{BlockQuantFact, PackedBlockQuantFact};
 use tract_linalg::mmm::PackedOpaqueFact;
 
 pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<[TDim]>> {
@@ -299,7 +299,11 @@ impl TypedOp for EinSum {
         let mut axes = self.axes.clone();
         for (slot, i) in inputs.iter().enumerate() {
             if i.datum_type.is_opaque()
-                && i.opaque_fact.as_ref().is_some_and(|of| of.is::<BlockQuantFact>())
+                && (i.opaque_fact.as_ref().is_some_and(|of| {
+                    of.is::<BlockQuantFact>()
+                        || of.is::<PackedOpaqueFact>()
+                        || of.is::<PackedBlockQuantFact>()
+                }))
             {
                 axes = axes
                     .remove_axis_occurency(InOut::In(slot), i.rank())?
