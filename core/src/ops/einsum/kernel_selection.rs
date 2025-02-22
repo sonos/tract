@@ -1,4 +1,5 @@
 #![allow(clippy::type_complexity)]
+use dyn_clone::clone_box;
 use tract_itertools::Itertools;
 use tract_linalg::mmm::{MMMInputFormat, MMMInputValue, MatMatMul, PanelExtractor};
 use tract_linalg::pack::PackedFormat;
@@ -30,20 +31,28 @@ pub fn wire_packing(
             .context("wire_prepacked");
     }
 
-    // "simple" kernel selection
-    let mmm = tract_linalg::ops()
-        .mmm(op.operating_dt, op.m.to_usize().ok(), op.k.to_usize().ok(), op.n.to_usize().ok())
-        .unwrap();
-    let mode_picker = ModePicker::Single;
-    let (packing, pa, pb) = mmm
-        .packings()
-        .iter()
-        .enumerate()
-        .filter_map(|(ix, p)| {
-            Some((ix, p.0.downcast_ref::<PackedFormat>()?, p.1.downcast_ref::<PackedFormat>()?))
+    let acc = if op.operating_dt.is::<f16>() && !tract_linalg::has_fp16() {
+        f32::datum_type()
+    } else {
+        op.operating_dt
+    };
+
+    let (mmm, packing, pa, pb) = tract_linalg::ops()
+        .all_mmm_and_packings()
+        .filter(|(m, _, a, b)| {
+            m.internal_type() == acc
+                && a.precursor() == a_dt.into()
+                && b.precursor() == b_dt.into()
+                && a.is::<PackedFormat>()
+                && b.is::<PackedFormat>()
         })
-        .find(|(_ix, pa, pb)| pa.dt == a_dt.unquantized() && pb.dt == b_dt.unquantized())
-        .with_context(|| format!("No packing for {mmm:?} with inputs {a_dt:?} and {b_dt:?}"))?;
+        .min_by_key(|(mmm, _ix, _a, _b)| 10_000_000 + mmm.quality().cost() - mmm.mr() * mmm.nr())
+        .unwrap();
+
+    let pa = pa.downcast_ref::<PackedFormat>().unwrap();
+    let pb = pb.downcast_ref::<PackedFormat>().unwrap();
+
+    let mode_picker = ModePicker::Single;
     let pa = patch.wire_node(
         format!("{prefix}.pack_a"),
         OptMatMulPack {
@@ -66,7 +75,7 @@ pub fn wire_packing(
         &[operands[1]],
     )?[0];
 
-    Ok((pa, pb, vec![(mmm, packing, None)], mode_picker))
+    Ok((pa, pb, vec![(clone_box(mmm), packing, None)], mode_picker))
 }
 
 pub fn wire_prepacked(

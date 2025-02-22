@@ -105,6 +105,15 @@ impl Ops {
         &self.mmm_impls
     }
 
+    pub fn all_mmm_and_packings<'o>(
+        &'o self,
+    ) -> impl Iterator<Item = (&'o dyn MatMatMul, usize, &'o dyn MMMInputFormat, &'o dyn MMMInputFormat)>
+    {
+        self.mmm_impls.iter().flat_map(|mmm| {
+            mmm.packings().iter().enumerate().map(|(pack_ix, (a, b))| (&**mmm, pack_ix, &**a, &**b))
+        })
+    }
+
     pub fn all_possible_packing(
         &self,
         weight_type: impl Into<WeightType>,
