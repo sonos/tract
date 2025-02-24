@@ -32,7 +32,7 @@ use tract_itertools::Itertools;
 
 impl MetalGemmImplKind {
     pub fn variants() -> Vec<MetalGemmImplKind> {
-        vec![Self::Mlx, Self::Mfa]
+        vec![Self::Mlx, Self::Mfa, Self::Ggml]
     }
 
     pub fn variants_str() -> Vec<&'static str> {
