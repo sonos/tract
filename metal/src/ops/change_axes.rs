@@ -1,4 +1,4 @@
-use crate::kernels::array::{Memcpy, PermuteAxes};
+use crate::kernels::array::PermuteAxes;
 use crate::ops::MetalEvalOp;
 use crate::{MetalContext, MetalTensorExt};
 use std::fmt::Debug;
