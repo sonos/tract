@@ -86,7 +86,7 @@ impl MetalEvalOp for MetalAxisOp {
     ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs).into_tensor();
         let input = opaque.to_metal_tensor()?;
-        let new_shape = match &self.0 {
+        let output = match &self.0 {
             AxisOp::Move(from, to) => {
                 let mut permutation: Vec<usize> = (0..input.rank()).collect();
                 permutation.remove(*from);
@@ -98,29 +98,22 @@ impl MetalEvalOp for MetalAxisOp {
                     &PermuteAxes::output_shape(input.shape(), &permutation)?,
                 )?;
                 PermuteAxes.dispatch_eval(context, input, &permutation, &output)?;
-                return Ok(tvec!(output.into_opaque_tensor().into_tvalue()));
+                output
             }
             AxisOp::Reshape(skip, from, to) => {
                 let from = from.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
                 let to = to.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
                 let mut shape: TVec<usize> = input.shape().into();
                 AxisOp::Reshape(*skip, from, to).change_shape_array(&mut shape, false)?;
-                shape
+                input.reshaped(shape)?
             }
             _ => {
                 let mut shape: TVec<usize> = input.shape().into();
                 self.0.change_shape_array(&mut shape, false)?;
-                shape
+                input.reshaped(shape)?
             }
         };
-
-        // TODO: avoid copy because of memory pool integration
-        // Perform copy because of memory pool integration
-        let output =
-            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &new_shape)?;
-
-        Memcpy.dispatch_eval(context, input, 0, &output)?;
-        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+        Ok(tvec!(output.into_opaque_tensor().into()))
     }
 }
 
