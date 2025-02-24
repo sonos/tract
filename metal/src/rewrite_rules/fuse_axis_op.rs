@@ -1,4 +1,4 @@
-use crate::kernels::matmul::{MfaGemm, MlxGemm};
+use crate::kernels::matmul::{GgmlGemm, MfaGemm, MlxGemm};
 use crate::ops::{MetalAxisOp, MetalFusedAxisOp};
 use crate::rewrite_rules::{next_node, previous_node, previous_nodes};
 use crate::rule_ensure;
@@ -96,6 +96,7 @@ pub fn fuse_axis_op(
         crate::ops::MetalBinOp,
         crate::ops::MetalGemm<MlxGemm>,
         crate::ops::MetalGemm<MfaGemm>,
+        crate::ops::MetalGemm<GgmlGemm>,
         crate::ops::MetalMultiBroadcastTo,
         crate::ops::MetalElementWiseOp,
         crate::ops::MetalRmsNorm,
