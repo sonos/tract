@@ -74,7 +74,7 @@ impl MetalTransform {
             return Ok(());
         }
 
-        Rewriter::default()
+        let mut rewriter = Rewriter::default()
             .with_rule_for("as-rms-norm", rewrite_rules::as_rms_norm_rule)
             .with_rule_for("remove_rms_norm_cast", rewrite_rules::remove_rms_norm_cast)
             .with_rule_for("as-silu", rewrite_rules::as_silu_rule)
@@ -82,8 +82,13 @@ impl MetalTransform {
             .with_rule_for("as-rotate-half", rewrite_rules::as_rotate_half_rule)
             .with_rule_for("as-apply-rope", rewrite_rules::as_apply_rope_rule)
             .with_rule_for("as-scaled-masked-softmax", rewrite_rules::as_scaled_masked_softmax_rule)
-            .with_rule_for("untranspose-matmul-output", rewrite_rules::untranspose_matmul_output)
-            .rewrite(&(), model)?;
+            .with_rule_for("untranspose-matmul-output", rewrite_rules::untranspose_matmul_output);
+
+        if self.gemm_impl == MetalGemmImplKind::Ggml {
+            rewriter = rewriter
+                .with_rule_for("remove-matmul-broadcast", rewrite_rules::remove_matmul_broadcast)
+        }
+        rewriter.rewrite(&(), model)?;
 
         if stop_at_phase == 1 {
             return Ok(());
