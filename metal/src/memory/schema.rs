@@ -322,3 +322,169 @@ impl MetalMemSchema {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::MetalTransform;
+    use tract_core::transform::ModelTransform;
+
+    #[test]
+    fn test_lifetime_is_disjoint() {
+        let l1 = Lifetime { start: 0, end: 5 };
+        let l2 = Lifetime { start: 5, end: 10 };
+        let l3 = Lifetime { start: 3, end: 7 };
+
+        assert!(l1.is_disjoint(&l2));
+        assert!(l2.is_disjoint(&l1));
+        assert!(!l1.is_disjoint(&l3));
+        assert!(!l3.is_disjoint(&l2));
+    }
+
+    #[test]
+    fn test_lifetime_is_alive_at_step() {
+        let lifetime = Lifetime { start: 5, end: 10 };
+
+        assert!(!lifetime.is_alive_at_step(4));
+        assert!(lifetime.is_alive_at_step(5));
+        assert!(lifetime.is_alive_at_step(7));
+        assert!(lifetime.is_alive_at_step(9));
+        assert!(!lifetime.is_alive_at_step(10));
+    }
+
+    #[test]
+    fn test_empty_lifetime() {
+        let lifetime = Lifetime { start: 5, end: 5 };
+        assert!(lifetime.is_empty());
+        assert_eq!(lifetime.len(), 0);
+    }
+
+    #[test]
+    fn test_node_mem_req_basic() {
+        let req =
+            NodeMemReq { node: 1, lifetime: Lifetime { start: 0, end: 5 }, mem_size: 1000.into() };
+
+        assert_eq!(req.node, 1);
+        assert_eq!(req.lifetime.start, 0);
+        assert_eq!(req.lifetime.end, 5);
+        assert_eq!(req.mem_size.to_i64().unwrap(), 1000);
+    }
+
+    #[test]
+    fn test_partition_has_no_conflict() {
+        let node1 =
+            NodeMemReq { node: 1, lifetime: Lifetime { start: 0, end: 5 }, mem_size: 1000.into() };
+
+        let partition = Partition { nodes: vec![node1] };
+
+        assert!(partition.has_no_conflict_with_lifetime(&Lifetime { start: 5, end: 10 }));
+        assert!(!partition.has_no_conflict_with_lifetime(&Lifetime { start: 3, end: 7 }));
+    }
+
+    #[test]
+    fn test_partition_find_node() {
+        let node1 =
+            NodeMemReq { node: 1, lifetime: Lifetime { start: 0, end: 5 }, mem_size: 1000.into() };
+
+        let node2 =
+            NodeMemReq { node: 2, lifetime: Lifetime { start: 5, end: 10 }, mem_size: 2000.into() };
+
+        let partition = Partition { nodes: vec![node1.clone(), node2.clone()] };
+
+        assert_eq!(partition.find_node_alive_at_step(3), Some(&node1));
+        assert_eq!(partition.find_node_alive_at_step(7), Some(&node2));
+        assert_eq!(partition.find_node_alive_at_step(10), None);
+    }
+
+    #[test]
+    fn test_build_schema_from_model() -> TractResult<()> {
+        const EXPECTED_PEAK_SIZE: i64 = 192;
+        const EXPECTED_USAGE: f32 = 1.0;
+
+        // Build a simple model
+        let symbol_values = SymbolValues::default();
+        let mut model = TypedModel::default();
+
+        let x = model.add_source("x", f32::fact([1, 1, 4, 6]))?;
+        let y_0 = model.wire_node(
+            "y.0",
+            AxisOp::Reshape(
+                2,
+                tvec![4.into(), 6.into()],
+                tvec![2.into(), 2.into(), 3.into(), 2.into()],
+            ),
+            &[x],
+        )?[0];
+        let y_1 = model.wire_node("y.1", AxisOp::Move(3, 1), &[y_0])?[0];
+
+        let y_2 = model.wire_node("y.2", AxisOp::Move(5, 2), &[y_1])?[0];
+
+        let y_3_0 = model.wire_node("y.3.0", AxisOp::Rm(3), &[y_2])?[0];
+
+        let _y_3_1 = model.wire_node(
+            "y.3.1",
+            AxisOp::Reshape(1, tvec![2.into(), 2.into()], tvec![4.into()]),
+            &[y_3_0],
+        )?[0];
+
+        model.auto_outputs()?;
+
+        let model = MetalTransform::default().transform_into(model)?;
+
+        // Get execution order (excluding constants)
+        let order = model.eval_order()?;
+
+        // Build memory schema with empty symbol values (since we don't use any)
+        let schema = MetalMemSchema::build(&model, &order, &symbol_values)?;
+
+        // Verify number of nodes
+        assert!(schema.model_num_nodes > 1, "Schema should contain at least 2 nodes");
+
+        // Verify number of partitions
+        assert!(schema.by_partition.len() > 1, "Schema should contain at least 2 partitions");
+
+        // Verify steps
+        assert_eq!(schema.by_steps.len(), order.len());
+        for step in 0..schema.by_steps.len() {
+            for partition in schema.by_partition.iter() {
+                let partition_size = partition.eval_size_to_i64(&symbol_values)?;
+
+                // No empty partition
+                assert!(!partition.nodes.is_empty());
+
+                if let Some(this) = partition.find_node_alive_at_step(step) {
+                    // Node memory requirement should be <= the partition size
+                    let node_size = this.mem_size.eval_to_i64(&symbol_values)?;
+                    assert!(node_size <= partition_size);
+                    assert!(node_size > 0);
+
+                    // All nodes should have a valid lifetime
+                    assert!(this.lifetime.start < this.lifetime.end);
+
+                    // No other node in the partition should be alive at this step
+                    for other in partition.nodes.iter().filter(|it| it.node != this.node) {
+                        assert!(!other.lifetime.is_alive_at_step(step) && other.lifetime.is_disjoint(&this.lifetime),
+                            "Lifetime conflict @ step {}\n{:?}\n{:?}", step, this, other);
+                    }
+
+                    // This node should not be alive in another partition at the same step
+                    for p in schema.by_partition.iter().filter(|it| it != &partition) {
+                        if let Some(other) = p.find_node_alive_at_step(step) {
+                            assert!(other.node != this.node);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Verify schema usage
+        let usage = schema.eval_usage(&symbol_values)?;
+        assert!(usage >= EXPECTED_USAGE, "Usage {}, expected >= {}", usage, EXPECTED_USAGE);
+
+        // Verify peak memory size
+        let peak_memory_size = schema.eval_peak_memory_size(&symbol_values)?;
+        assert_eq!(peak_memory_size, EXPECTED_PEAK_SIZE, "Peak memory size mismatch");
+
+        Ok(())
+    }
+}
