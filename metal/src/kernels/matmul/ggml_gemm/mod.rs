@@ -43,18 +43,18 @@ impl From<GemmDispatchParams> for GgmlGemmParams {
         // Kernel produced transposed output so we swap the inputs
         GgmlGemmParams {
             ne00: params.k as i32,
-            ne02: params.batch as i32,
+            ne02: params.batches.1 as i32,
             nb01: (b_strides[1] as usize * b_el_size) as u64,
             nb02: (b_strides[0] as usize * b_el_size) as u64,
-            nb03: (b_strides[0] as usize * params.batch * b_el_size) as u64,
-            ne12: params.batch as i32,
+            nb03: (b_strides[0] as usize * params.batches.1 * b_el_size) as u64,
+            ne12: params.batches.0 as i32,
             nb10: (params.a_strides[2] as usize * a_el_size) as u64,
             nb11: (params.a_strides[1] as usize * a_el_size) as u64,
             nb12: (params.a_strides[0] as usize * a_el_size) as u64,
-            nb13: (params.a_strides[0] as usize * params.batch * a_el_size) as u64,
+            nb13: (params.a_strides[0] as usize * params.batches.0 * a_el_size) as u64,
             ne0: params.n as i32,
             ne1: params.m as i32,
-            r2: 1,
+            r2: (params.batches.0 / params.batches.1) as i16,
             r3: 1,
         }
     }
@@ -88,32 +88,32 @@ impl From<GemmDispatchParams> for GgmlGemvParams {
         assert!(params.a_strides.len() == 3 && params.b_strides.len() == 3);
         let a_el_size = params.dts[0].size_of();
 
-        let b_el_size = if params.q40_b { 18 } else { params.dts[1].size_of() };
+        let b_el_size = if params.q40_b { Q4_0.block_bytes() } else { params.dts[1].size_of() };
         let mut b_strides = params.b_strides;
         if params.q40_b {
-            b_strides[0] /= 32;
-            b_strides[1] /= 32
+            b_strides[0] /= Q4_0.block_len() as isize;
+            b_strides[1] /= Q4_0.block_len() as isize;
         };
 
         // Kernel produced transposed output so we swap the inputs
         GgmlGemvParams {
             ne00: params.k as i32,
             ne01: params.n as i32,
-            ne02: params.batch as i32,
+            ne02: params.batches.1 as i32,
             nb00: (b_strides[2] as usize * b_el_size) as u64,
             nb01: (b_strides[1] as usize * b_el_size) as u64,
             nb02: (b_strides[0] as usize * b_el_size) as u64,
-            nb03: (b_strides[0] as usize * params.batch * b_el_size) as u64,
+            nb03: (b_strides[0] as usize * params.batches.1 * b_el_size) as u64,
             ne10: params.k as i32,
             ne11: params.m as i32,
-            ne12: params.batch as i32,
+            ne12: params.batches.0 as i32,
             nb10: (params.a_strides[2] as usize * a_el_size) as u64,
             nb11: (params.a_strides[1] as usize * a_el_size) as u64,
             nb12: (params.a_strides[0] as usize * a_el_size) as u64,
-            nb13: (params.a_strides[0] as usize * params.batch * a_el_size) as u64,
+            nb13: (params.a_strides[0] as usize * params.batches.0 * a_el_size) as u64,
             ne0: params.n as i32,
             ne1: params.m as i32,
-            r2: 1,
+            r2: (params.batches.0 / params.batches.1) as i16,
             r3: 1,
         }
     }
@@ -131,6 +131,10 @@ impl fmt::Display for GgmlGemm {
 impl GemmKernel for GgmlGemm {
     fn name() -> &'static str {
         "ggml"
+    }
+
+    fn supports_broadcast() -> bool {
+        true
     }
 
     fn is_supported_dts(&self, facts: &[TypedFact]) -> bool {
@@ -159,7 +163,7 @@ impl GemmKernel for GgmlGemm {
     ) -> TractResult<()> {
         let GemmDispatchParams {
             dts,
-            batch,
+            batches,
             m,
             k,
             transpose_a,
@@ -173,7 +177,7 @@ impl GemmKernel for GgmlGemm {
 
         ensure!(!transpose_a && transpose_b);
 
-        if (dts[0] == F32) && (k % 32 == 0) && (k >= 64) && ((m > 4) || (q40_b && batch > 1)) {
+        if (dts[0] == F32) && (k % 32 == 0) && (k >= 64) && ((m > 4) || (q40_b && batches.0 > 1)) {
             dispatch_metal_ggml_gemm(
                 context, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer, c_offset,
             )?;
@@ -195,7 +199,7 @@ fn mv_kernel_name_and_dispatch_params(
         Ok(("kernel_mul_mv_f32_f32".to_string(), (32, 1, 4)))
     } else if params.dts[1] == F16 {
         if params.dts[0] == F32 {
-            if (params.m * params.batch) < 4 {
+            if (params.m * params.batches.0) < 4 {
                 Ok(("kernel_mul_mv_f16_f32_1row".to_string(), (32, 1, 1)))
             } else if (params.k >= 128) && (params.k % 4 == 0) && (params.n >= 8) {
                 Ok(("kernel_mul_mv_f16_f32_l4".to_string(), (32, 1, params.m as u64)))
@@ -247,13 +251,13 @@ fn dispatch_metal_ggml_gemv(
             MTLSize {
                 width: params.n as u64,
                 height: (params.m as u64).div_ceil(nrows),
-                depth: /* batch_size_out */ params.batch as u64,
+                depth: /* batch_size_out */ params.batches.0 as u64,
             }
         } else {
             MTLSize {
                 width: (params.n as u64).div_ceil(8),
                 height: params.m as u64,
-                depth: /* batch_size_out */ params.batch as u64,
+                depth: /* batch_size_out */ params.batches.0 as u64,
             }
         };
         let group_size = MTLSize { width: nth0, height: nth1, depth: 1 };
@@ -305,7 +309,7 @@ fn dispatch_metal_ggml_gemm(
         let grid_size = MTLSize {
             width: (params.m as u64).div_ceil(32),
             height: (params.n as u64).div_ceil(64),
-            depth: /* batch_size_out */ params.batch as u64,
+            depth: /* batch_size_out */ params.batches.0 as u64,
         };
         let group_size = MTLSize { width: 128, height: 1, depth: 1 };
 
