@@ -34,7 +34,8 @@ impl Default for MetalGemmImplKind {
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct GemmDispatchParams {
     pub dts: [DatumType; 3],
-    pub batches: (usize, usize),
+    pub a_batch: usize,
+    pub b_batch: usize,
     pub m: usize,
     pub k: usize,
     pub n: usize,
@@ -100,7 +101,8 @@ impl GemmDispatchParams {
             // bmk, 1nk -> bmn
             (a_batch, 1) if a_batch != 1 && !transpose_a => Ok(vec![GemmDispatchParams {
                 dts,
-                batches: (1, 1),
+                a_batch: 1,
+                b_batch: 1,
                 m: m * a_batch,
                 n,
                 k,
@@ -119,7 +121,8 @@ impl GemmDispatchParams {
             (a_batch, 1) if a_batch != 1 => Ok((0..a_batch)
                 .map(|a_batch_idx| GemmDispatchParams {
                     dts,
-                    batches: (1, 1),
+                    a_batch: 1,
+                    b_batch: 1,
                     m,
                     n,
                     k,
@@ -141,7 +144,8 @@ impl GemmDispatchParams {
             (1, b_batch) if b_batch != 1 => Ok((0..b_batch)
                 .map(|b_batch_idx| GemmDispatchParams {
                     dts,
-                    batches: (1, 1),
+                    a_batch: 1,
+                    b_batch: 1,
                     m,
                     n,
                     k,
@@ -159,7 +163,8 @@ impl GemmDispatchParams {
                 if M::supports_broadcast() {
                     Ok(vec![GemmDispatchParams {
                         dts,
-                        batches: (a_batch, b_batch),
+                        a_batch,
+                        b_batch,
                         m,
                         n,
                         k,
@@ -172,8 +177,7 @@ impl GemmDispatchParams {
                         a_strides,
                         b_strides,
                     }])
-                }
-                else {
+                } else {
                     ensure!(a_batch == b_batch);
                     // bmk, bkn -> bmn
                     // bkm, bkn -> bmn
@@ -181,7 +185,8 @@ impl GemmDispatchParams {
                     // bkm, bnk -> bmn
                     Ok(vec![GemmDispatchParams {
                         dts,
-                        batches: (a_batch, b_batch),
+                        a_batch,
+                        b_batch,
                         m,
                         n,
                         k,
@@ -464,7 +469,8 @@ mod tests {
             )?,
             vec![GemmDispatchParams {
                 dts: [dt; 3],
-                batches: (1, 1),
+                a_batch: 1,
+                b_batch: 1,
                 m,
                 n,
                 k,
@@ -494,7 +500,8 @@ mod tests {
             )?,
             vec![GemmDispatchParams {
                 dts: [dt; 3],
-                batches: (10, 10),
+                a_batch: 10,
+                b_batch: 10,
                 m,
                 n,
                 k,
@@ -525,7 +532,8 @@ mod tests {
             vec![
                 GemmDispatchParams {
                     dts: [dt; 3],
-                    batches: (1, 1),
+                    a_batch: 1,
+                    b_batch: 1,
                     m,
                     n,
                     k,
@@ -540,7 +548,8 @@ mod tests {
                 },
                 GemmDispatchParams {
                     dts: [dt; 3],
-                    batches: (1, 1),
+                    a_batch: 1,
+                    b_batch: 1,
                     m,
                     n,
                     k,
@@ -571,7 +580,8 @@ mod tests {
             )?,
             vec![GemmDispatchParams {
                 dts: [dt; 3],
-                batches: (2, 2),
+                a_batch: 2,
+                b_batch: 2,
                 m,
                 n,
                 k,
@@ -602,7 +612,8 @@ mod tests {
             vec![
                 GemmDispatchParams {
                     dts: [dt; 3],
-                    batches: (1, 1),
+                    a_batch: 1,
+                    b_batch: 1,
                     m,
                     n,
                     k,
@@ -617,7 +628,8 @@ mod tests {
                 },
                 GemmDispatchParams {
                     dts: [dt; 3],
-                    batches: (1, 1),
+                    a_batch: 1,
+                    b_batch: 1,
                     m,
                     n,
                     k,
@@ -648,7 +660,8 @@ mod tests {
             )?,
             vec![GemmDispatchParams {
                 dts: [dt; 3],
-                batches: (1, 1),
+                a_batch: 1,
+                b_batch: 1,
                 m: 10 * m,
                 n,
                 k,
@@ -678,7 +691,8 @@ mod tests {
             )?,
             vec![GemmDispatchParams {
                 dts: [dt; 3],
-                batches: (4, 2),
+                a_batch: 4,
+                b_batch: 2,
                 m,
                 n,
                 k,

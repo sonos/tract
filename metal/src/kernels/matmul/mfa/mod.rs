@@ -30,7 +30,7 @@ impl GemmKernel for MfaGemm {
     ) -> TractResult<()> {
         let GemmDispatchParams {
             dts,
-            batches,
+            a_batch,
             m,
             k,
             n,
@@ -60,7 +60,7 @@ impl GemmKernel for MfaGemm {
         dispatch_metal_mfa_gemm(
             context,
             dts[0],
-            (batches.0, m, n, k),
+            (a_batch, m, n, k),
             unsafe { std::mem::transmute::<&[isize], &[usize]>(a_strides.as_slice()) },
             a_offset,
             a_buffer,
