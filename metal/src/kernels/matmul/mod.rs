@@ -9,7 +9,7 @@ pub use ggml_gemm::GgmlGemm;
 pub use mfa::MfaGemm;
 pub use mlx_gemm::MlxGemm;
 pub use mmm_tile_8x8::{metal_mmm_tile_8x8, mmm_tile_8x8};
-use tract_core::tract_linalg::frame::block_quant::{BlockQuant, Q4_0};
+use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 
 use crate::utils::as_q40_tensor;
 use crate::{MetalContext, MetalTensor};
@@ -155,10 +155,6 @@ impl GemmDispatchParams {
                     b_strides: b_strides.clone(),
                 })
                 .collect()),
-            // bmk, bkn -> bmn
-            // bkm, bkn -> bmn
-            // bmk, bnk -> bmn
-            // bkm, bnk -> bmn
             (a_batch, b_batch) => {
                 if M::supports_broadcast() {
                     Ok(vec![GemmDispatchParams {
@@ -177,10 +173,12 @@ impl GemmDispatchParams {
                         b_strides,
                     }])
                 }
-                // Handle broadcast in framework
                 else {
                     ensure!(a_batch == b_batch);
-
+                    // bmk, bkn -> bmn
+                    // bkm, bkn -> bmn
+                    // bmk, bnk -> bmn
+                    // bkm, bnk -> bmn
                     Ok(vec![GemmDispatchParams {
                         dts,
                         batches: (a_batch, b_batch),
