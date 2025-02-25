@@ -381,7 +381,7 @@ mod tests {
         Ok(())
     }
 
-    fn reference(a: Tensor, b: Tensor) -> TractResult<Tensor>{
+    fn reference(a: Tensor, b: Tensor) -> TractResult<Tensor> {
         let batch = b.shape()[0];
         let batch_ratio = a.shape()[0] / batch;
         let matmul = BasicMatMul {
@@ -397,7 +397,7 @@ mod tests {
         let mut rhs = model.add_source("rhs", TypedFact::shape_and_dt_of(&b))?;
 
         if b.datum_type() == DatumType::F16 {
-            rhs = model.wire_node("cast", Cast{ to: DatumType::F32}, &[rhs])?[0];
+            rhs = model.wire_node("cast", Cast { to: DatumType::F32 }, &[rhs])?[0];
         }
         if batch_ratio > 1 {
             let add_axis_out = model.wire_node("add_axis", AxisOp::Add(1), &[rhs])?[0];
@@ -423,18 +423,24 @@ mod tests {
 
         model.set_output_outlets(&output)?;
         model = model.into_decluttered()?;
-        let mut output = DefaultRuntime
-            .prepare(model)?
-            .run(tvec!(a.into_tvalue(), b.into_tvalue()))?;
+        let mut output =
+            DefaultRuntime.prepare(model)?.run(tvec!(a.into_tvalue(), b.into_tvalue()))?;
         Ok(output.remove(0).into_tensor())
     }
 
-    fn run_ggml_mat_mul_test<F: Datum + Float>(batch: usize, broadcast_ratio: usize, m: usize, k: usize, n: usize, q40: bool) -> TractResult<()> 
-    where f32: From<F>
+    fn run_ggml_mat_mul_test<F: Datum + Float>(
+        batch: usize,
+        broadcast_ratio: usize,
+        m: usize,
+        k: usize,
+        n: usize,
+        q40: bool,
+    ) -> TractResult<()>
+    where
+        f32: From<F>,
     {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
-                
                 let a_shape = [batch * broadcast_ratio, m, k];
                 let b_shape = [batch, n, k];
 
@@ -451,7 +457,8 @@ mod tests {
                 let (ref_b, metal_b) = if q40 {
                     ensure!(TypeId::of::<F>() == TypeId::of::<f32>());
                     let b_data: Vec<f32> = b_data.into_iter().map(|x| x.into()).collect();
-                    let b_tensor = Q4_0.simulate_precision_loss(Tensor::from_shape(&b_shape, &b_data)?, 2)?;
+                    let b_tensor =
+                        Q4_0.simulate_precision_loss(Tensor::from_shape(&b_shape, &b_data)?, 2)?;
                     ensure!(k % 32 == 0);
                     let mut b_quant = Q4_0.quant_f32(&b_data)?;
                     crate::utils::tract_to_gguf_q4_0_packing(&mut b_quant)?;
@@ -461,8 +468,7 @@ mod tests {
                         value: b_quant,
                     })));
                     (b_tensor, b_q4_0_tensor)
-                }
-                else {
+                } else {
                     let b_tensor = Tensor::from_shape(&b_shape, &b_data)?;
                     (b_tensor.clone(), b_tensor)
                 };
@@ -481,17 +487,17 @@ mod tests {
 
     #[test]
     fn test_broadcast() -> TractResult<()> {
-        run_ggml_mat_mul_test::<f32>(2,2, 1, 8, 4, false)?;
+        run_ggml_mat_mul_test::<f32>(2, 2, 1, 8, 4, false)?;
         run_ggml_mat_mul_test::<f32>(6, 3, 26, 22, 1, false)?;
         run_ggml_mat_mul_test::<f16>(1, 2, 1, 64, 10, false)?;
-        run_ggml_mat_mul_test::<f16>(2,2, 1, 128, 8, false)?;
+        run_ggml_mat_mul_test::<f16>(2, 2, 1, 128, 8, false)?;
         run_ggml_mat_mul_test::<f16>(4, 4, 6, 64, 10, false)?;
         Ok(())
     }
 
     #[test]
     fn test_q4() -> TractResult<()> {
-        run_ggml_mat_mul_test::<f32>(32,1, 1, 32, 32, true)?;
+        run_ggml_mat_mul_test::<f32>(32, 1, 1, 32, 32, true)?;
         run_ggml_mat_mul_test::<f32>(1, 1, 32003, 2048, 1, true)?;
         run_ggml_mat_mul_test::<f32>(4, 1, 1, 2048, 32003, true)?;
         run_ggml_mat_mul_test::<f32>(1, 1, 1, 32, 32, true)?;
