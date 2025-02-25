@@ -64,7 +64,7 @@ impl GemmKernel for MlxGemm {
     ) -> TractResult<()> {
         let GemmDispatchParams {
             dts,
-            batch,
+            batches,
             m,
             k,
             n,
@@ -91,11 +91,12 @@ impl GemmKernel for MlxGemm {
             dts[2]
         );
 
+        ensure!(batches.0 == batches.1);
         if m == 1 || n == 1 {
             dispatch_metal_mlx_gemv(
                 context,
                 dts[0],
-                (batch, m, n, k),
+                (batches.0, m, n, k),
                 unsafe { std::mem::transmute::<&[isize], &[usize]>(a_strides.as_slice()) },
                 a_offset,
                 a_buffer,
@@ -111,7 +112,7 @@ impl GemmKernel for MlxGemm {
             dispatch_metal_mlx_gemm(
                 context,
                 dts[0],
-                (batch, m, n, k),
+                (batches.0, m, n, k),
                 unsafe { std::mem::transmute::<&[isize], &[usize]>(a_strides.as_slice()) },
                 a_offset,
                 a_buffer,
