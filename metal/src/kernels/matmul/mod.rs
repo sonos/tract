@@ -279,7 +279,7 @@ impl<M: GemmKernel> GemmImpl<M> {
             return Ok(());
         }
 
-        let dispatches = GemmDispatchParams::compute_dispatches_params(
+        let dispatches = GemmDispatchParams::compute_dispatches_params::<M>(
             [a.datum_type(), b.datum_type(), c.datum_type()],
             a.metal_offset(),
             a.shape(),
