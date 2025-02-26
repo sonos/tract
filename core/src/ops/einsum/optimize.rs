@@ -91,20 +91,17 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
         }
         let mut n_axes = vec![];
         let mut ns = Vec::<&'a TDim>::new();
-        let m_axis = op.axes.axis((InOut::In(0), 0))?;
-        if m_axis.inputs[0].len() != 1
-            || m_axis.inputs[1].len() != 0
-            || m_axis.outputs[0].len() != 1
-        {
+
+        let Some(m_axis) = op.axes.iter_all_axes().find(|axis| {
+            axis.inputs[0].len() == 1 && axis.inputs[1].len() == 0 && axis.outputs[0].len() == 1
+        }) else {
             return Ok(None);
-        }
-        let k_axis = op.axes.axis((InOut::In(0), 1))?;
-        if k_axis.inputs[0].len() != 1
-            || k_axis.inputs[1].len() != 1
-            || k_axis.outputs[0].len() != 0
-        {
+        };
+        let Some(k_axis) = op.axes.iter_all_axes().find(|axis| {
+            axis.inputs[0].len() == 1 && axis.inputs[1].len() == 1 && axis.outputs[0].len() == 0
+        }) else {
             return Ok(None);
-        }
+        };
         for axis in op.axes.iter_all_axes() {
             if axis != k_axis
                 && axis != m_axis
