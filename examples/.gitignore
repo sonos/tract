@@ -1,0 +1,3 @@
+*.onnx
+*.nnef.tgz
+*.tar.gz
