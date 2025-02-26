@@ -144,6 +144,14 @@ impl TypedOp for Const {
         if matmuls.len() == 0 {
             return Ok(None);
         }
+
+        ensure!(matmuls.iter().map(|linear| linear.m_axis.inputs[0][0]).all_equal());
+        ensure!(matmuls.iter().map(|linear| linear.k_axis.inputs[0][0]).all_equal());
+
+        let m_axis = matmuls[0].m_axis.inputs[0][0];
+        let k_axis = matmuls[0].k_axis.inputs[0][0];
+        let must_swap = m_axis == 1;
+
         let ops = tract_linalg::ops();
         let (choice,) = matmuls
             .iter()
@@ -164,7 +172,7 @@ impl TypedOp for Const {
                 (clone_box(it),)
             });
 
-        let packed = choice.prepare_tensor(&self.0, 1, 0).context("in prepare_tensor")?;
+        let packed = choice.prepare_tensor(&self.0, k_axis, m_axis).context("in prepare_tensor")?;
         let fact = clone_box(packed.opaque_fact());
         let opaque = Opaque(Arc::new(packed));
         let konst = Const(rctensor0(opaque), Some(fact));
@@ -177,8 +185,16 @@ impl TypedOp for Const {
             let new_op: Box<dyn TypedOp> = if let Some(gather) = succ_node.op_as::<Gather>() {
                 let output_type = succ_node.outputs[0].fact.datum_type;
                 Box::new(Gather { axis: gather.axis, output_type: Some(output_type) })
+            } else if let Some(linear) = succ_node.op_as::<EinSum>() {
+                let mut op = linear.clone();
+                if must_swap {
+                    op.axes
+                        .iter_all_axes_mut()
+                        .for_each(|axes| axes.inputs[0].iter_mut().for_each(|pos| *pos = 1 - *pos));
+                }
+                Box::new(op)
             } else {
-                succ_node.op.clone()
+                bail!("Unexpected op")
             };
             let replacement = patch.wire_node(&succ_node.name, new_op, &taps)?;
             patch.shunt_outside(model, succ.node.into(), replacement[0])?;
