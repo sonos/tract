@@ -289,4 +289,11 @@ impl TypedOp for OptScan {
         let outputs: TVec<_> = outputs.into_iter().map(|(_slot, v)| v).collect();
         Ok(outputs)
     }
+
+    fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(Cow<str>, TDim)> {
+        vec![(
+            "loop".into(),
+            super::iteration_count(&self.input_mapping, inputs).unwrap_or_else(|| 1.to_dim()),
+        )]
+    }
 }
