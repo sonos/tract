@@ -33,11 +33,9 @@ jobs:
     needs: what-to-run
     strategy:
       matrix:
-        os: ${{fromJson(needs.what-to-run.set-matrix.outputs.os)}}
+        os: ${{fromJson(needs.what-to-run.outputs.os)}}
         rust: [ 1.75.0 ]
       fail-fast: false
-
-#     if: github.event.workflow_dispatch || github.event.schedule || matrix.os == "ubuntu-latest"
 
     runs-on: ${{matrix.os}}
     permissions:
