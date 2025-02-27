@@ -4,6 +4,7 @@ on:
   pull_request:
   schedule:
     - cron:  '0 5 * * *'
+  workflow_dispatch:
 
 env:
   CARGO_INCREMENTAL: false
@@ -81,6 +82,8 @@ jobs:
         platform:
           - aarch64-apple-ios
           - aarch64-apple-darwin
+
+    if: github.event.workflow_dispatch || github.event.schedule
 
     runs-on: macOS-latest
     permissions:
