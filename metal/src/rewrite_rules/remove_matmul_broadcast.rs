@@ -13,8 +13,8 @@ pub fn remove_matmul_broadcast(
     _op: &MultiBroadcastTo,
 ) -> TractResult<Option<TypedModelPatch>> {
     // Search Pattern: AddAxis(2) -> MultiBroadcastTo -> Reshape(1, (a, b), (a * b)) -> Move(0, 1) (optional) -> BasicMatmul
-    let Some(add_axis_node) = previous_node(model, node)
-    .filter(|n| n.op_as::<AxisOp>() == Some(&AxisOp::Add(2)))
+    let Some(add_axis_node) =
+        previous_node(model, node).filter(|n| n.op_as::<AxisOp>() == Some(&AxisOp::Add(2)))
     else {
         return Ok(None);
     };
@@ -22,28 +22,34 @@ pub fn remove_matmul_broadcast(
     ensure!(node.outputs[0].successors.len() == 1);
 
     let node_out_shape = node.outputs[0].fact.shape.dims();
-    let reshape_expected = AxisOp::Reshape(1, tvec![node_out_shape[1].clone(), node_out_shape[2].clone()], 
-                                                tvec![node_out_shape[1].clone() * node_out_shape[2].clone()]);
+    let reshape_expected = AxisOp::Reshape(
+        1,
+        tvec![node_out_shape[1].clone(), node_out_shape[2].clone()],
+        tvec![node_out_shape[1].clone() * node_out_shape[2].clone()],
+    );
 
-    let Some(reshape_node) = next_node(model, node)
-        .filter(|n| n.op_as::<AxisOp>() == Some(&reshape_expected))
+    let Some(reshape_node) =
+        next_node(model, node).filter(|n| n.op_as::<AxisOp>() == Some(&reshape_expected))
     else {
         return Ok(None);
     };
 
     let mut patch = TypedModelPatch::default();
     let inputs = patch.taps(model, &add_axis_node.inputs)?;
-    
+
     // Check if optional Move before matmul is present
     let reshape_out_shape = reshape_node.outputs[0].fact.shape.dims();
     let (mm_node, new_mm_input, prev_node_id) = match next_node(model, reshape_node) {
         Some(n) if n.op_is::<BasicMatMul>() => (n, inputs[0], reshape_node.id),
-        Some(n) if n.op_as::<AxisOp>() == Some(&AxisOp::Move(0, 1))
-            && reshape_out_shape[0] == TDim::Val(1)
-            && next_node(model, n).is_some_and(|m| m.op_is::<BasicMatMul>()) => {
-                let swap_input = patch.wire_node(format!("{node_name}.reshape"), AxisOp::Move(0, 1), &inputs)?[0];
-                (next_node(model, n).unwrap(), swap_input, n.id)
-            }
+        Some(n)
+            if n.op_as::<AxisOp>() == Some(&AxisOp::Move(0, 1))
+                && reshape_out_shape[0] == TDim::Val(1)
+                && next_node(model, n).is_some_and(|m| m.op_is::<BasicMatMul>()) =>
+        {
+            let swap_input =
+                patch.wire_node(format!("{node_name}.reshape"), AxisOp::Move(0, 1), &inputs)?[0];
+            (next_node(model, n).unwrap(), swap_input, n.id)
+        }
         _ => return Ok(None),
     };
 

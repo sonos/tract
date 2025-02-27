@@ -65,7 +65,6 @@ impl GemmKernel for MlxGemm {
         let GemmDispatchParams {
             dts,
             a_batch,
-            b_batch,
             m,
             k,
             n,
@@ -92,7 +91,6 @@ impl GemmKernel for MlxGemm {
             dts[2]
         );
 
-        ensure!(a_batch == b_batch);
         if m == 1 || n == 1 {
             dispatch_metal_mlx_gemv(
                 context,
