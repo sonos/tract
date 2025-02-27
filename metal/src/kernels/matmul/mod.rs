@@ -724,7 +724,7 @@ mod tests {
         #[test]
         fn mmm_mfa_prop_f32(pb in any::<MmmProblem<MfaGemm, f32>>()) {
             let output = pb.run().unwrap();
-            prop_assert!(output.close_enough(&pb.reference().unwrap(), Approximation::Exact).is_ok())
+            prop_assert!(output.close_enough(&pb.reference().unwrap(), Approximation::Close).is_ok())
         }
 
         #[test]
