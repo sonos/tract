@@ -11,10 +11,28 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
 
 jobs:
+  what-to-run:
+    runs-on: ubuntu-latest
+    outputs:
+      os: ${{steps.set-matrix.outputs.os}}
+
+    steps:
+      - id: set-matrix
+        env: MACOS=$(github.event.workflow_dispatch || github.event.schedule || matrix.os == "ubuntu-latest")
+        run: |
+          if [ "$MACOS" == "true" ]
+          then
+            echo 'os=["ubuntu-latest", "macos-latest"]' >> $GITHUB_OUTPUT
+          else
+            echo 'os=["ubuntu-latest"]' >> $GITHUB_OUTPUT
+          fi
+    
+
   unix:
     strategy:
+      needs: what-to-run
       matrix:
-        os: [ ubuntu-latest, macOS-latest ]
+        os: ${{fromJson(what-to-run.set-matrix.outputs.os)}}
         rust: [ 1.75.0 ]
       fail-fast: false
 
