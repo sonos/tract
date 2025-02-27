@@ -11,6 +11,24 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
 
 jobs:
+  what-to-run:
+    runs-on: ubuntu-latest
+    outputs:
+      os: ${{steps.set-matrix.outputs.os}}
+
+    steps:
+      - id: set-matrix
+        env:
+          MACOS: $((github.event.workflow_dispatch || github.event.schedule ))
+        run: |
+          if [ "$MACOS" == "true" ]
+          then
+            echo 'os=["ubuntu-latest", "macos-latest"]' >> $GITHUB_OUTPUT
+          else
+            echo ::notice::Skipping macOS checks on PR and commit. Dispatch workflow manually if needed.
+            echo 'os=["ubuntu-latest"]' >> $GITHUB_OUTPUT
+          fi
+    
   linux:
     strategy:
       matrix:
@@ -58,7 +76,6 @@ jobs:
         rust: [ 1.75.0, beta ]
         os: [ ubuntu-latest, macOS-latest ]
       fail-fast: false
-#    if: github.event.workflow_dispatch || github.event.schedule || matrix.os == "ubuntu-latest"
     runs-on: ${{ matrix.os }}
     env:
       RUSTFLAGS: "-D warnings"
@@ -73,12 +90,12 @@ jobs:
       run: cargo check -p test-tflite
 
   cargo-clippy:
+    needs: what-to-run
     strategy:
       matrix:
-        os: [ ubuntu-latest, macOS-latest ]
+        os: ${{fromJson(needs.what-to-run.outputs.os)}}
         rust: [ stable, beta, nightly ]
       fail-fast: false
-#    if: github.event.workflow_dispatch || github.event.schedule || matrix.os == "ubuntu-latest"
     runs-on: ${{ matrix.os }}
     env:
       RUST_VERSION: ${{matrix.rust}}
