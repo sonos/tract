@@ -23,6 +23,7 @@ env_logger.workspace = true
 flate2.workspace = true
 fs-err.workspace = true
 lazy_static.workspace = true
+litemap.workspace = true
 log.workspace = true
 ndarray-npy.workspace = true
 nu-ansi-term.workspace = true
@@ -46,6 +47,7 @@ tract-pulse-opl = { workspace = true, optional = true }
 tract-onnx = { workspace = true, optional = true }
 tract-tensorflow = { workspace = true, optional = true }
 tract-tflite = { workspace = true, optional = true }
+zerofrom.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 tract-metal.workspace = true
