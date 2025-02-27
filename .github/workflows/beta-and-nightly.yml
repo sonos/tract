@@ -58,7 +58,7 @@ jobs:
         rust: [ 1.75.0, beta ]
         os: [ ubuntu-latest, macOS-latest ]
       fail-fast: false
-    if: github.event.workflow_dispatch || github.event.schedule || matrix.os == "ubuntu-latest"
+#    if: github.event.workflow_dispatch || github.event.schedule || matrix.os == "ubuntu-latest"
     runs-on: ${{ matrix.os }}
     env:
       RUSTFLAGS: "-D warnings"
@@ -78,7 +78,7 @@ jobs:
         os: [ ubuntu-latest, macOS-latest ]
         rust: [ stable, beta, nightly ]
       fail-fast: false
-    if: github.event.workflow_dispatch || github.event.schedule || matrix.os == "ubuntu-latest"
+#    if: github.event.workflow_dispatch || github.event.schedule || matrix.os == "ubuntu-latest"
     runs-on: ${{ matrix.os }}
     env:
       RUST_VERSION: ${{matrix.rust}}

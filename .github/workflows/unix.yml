@@ -18,7 +18,8 @@ jobs:
 
     steps:
       - id: set-matrix
-        env: MACOS=$(github.event.workflow_dispatch || github.event.schedule || matrix.os == "ubuntu-latest")
+        env:
+          MACOS: $((github.event.workflow_dispatch || github.event.schedule || matrix.os == "ubuntu-latest"))
         run: |
           if [ "$MACOS" == "true" ]
           then
@@ -29,14 +30,14 @@ jobs:
     
 
   unix:
+    needs: what-to-run
     strategy:
-      needs: what-to-run
       matrix:
-        os: ${{fromJson(what-to-run.set-matrix.outputs.os)}}
+        os: ${{fromJson(needs.what-to-run.set-matrix.outputs.os)}}
         rust: [ 1.75.0 ]
       fail-fast: false
 
-    if: github.event.workflow_dispatch || github.event.schedule || matrix.os == "ubuntu-latest"
+#     if: github.event.workflow_dispatch || github.event.schedule || matrix.os == "ubuntu-latest"
 
     runs-on: ${{matrix.os}}
     permissions:
