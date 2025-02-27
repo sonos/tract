@@ -19,12 +19,13 @@ jobs:
     steps:
       - id: set-matrix
         env:
-          MACOS: $((github.event.workflow_dispatch || github.event.schedule || matrix.os == "ubuntu-latest"))
+          MACOS: $((github.event.workflow_dispatch || github.event.schedule ))
         run: |
           if [ "$MACOS" == "true" ]
           then
             echo 'os=["ubuntu-latest", "macos-latest"]' >> $GITHUB_OUTPUT
           else
+            echo ::notice::Skipping macOS checks on PR and commit. Dispatch workflow manually if needed.
             echo 'os=["ubuntu-latest"]' >> $GITHUB_OUTPUT
           fi
     
