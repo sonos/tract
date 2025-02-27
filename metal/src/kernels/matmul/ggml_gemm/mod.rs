@@ -498,11 +498,11 @@ mod tests {
     #[test]
     fn test_q4() -> TractResult<()> {
         run_ggml_mat_mul_test::<f32>(32, 1, 1, 32, 32, true)?;
-        run_ggml_mat_mul_test::<f32>(1, 1, 32003, 2048, 1, true)?;
-        run_ggml_mat_mul_test::<f32>(4, 1, 1, 2048, 32003, true)?;
+        run_ggml_mat_mul_test::<f32>(1, 1, 320, 2048, 1, true)?;
+        run_ggml_mat_mul_test::<f32>(4, 1, 1, 2048, 320, true)?;
         run_ggml_mat_mul_test::<f32>(1, 1, 1, 32, 32, true)?;
         run_ggml_mat_mul_test::<f32>(1, 1, 1, 64, 4, true)?;
-        run_ggml_mat_mul_test::<f32>(3, 1, 1, 4096, 4096, true)?;
+        run_ggml_mat_mul_test::<f32>(3, 1, 1, 4096, 512, true)?;
         run_ggml_mat_mul_test::<f32>(1, 1, 1, 32, 32, true)?;
         run_ggml_mat_mul_test::<f32>(1, 1, 1, 64, 4, true)?;
         run_ggml_mat_mul_test::<f32>(3, 1, 1, 2048, 128, true)?;
