@@ -405,7 +405,7 @@ mod tests {
         q: OutletId,
         k: OutletId,
         v: OutletId,
-    ) -> TractResult<OutletId> {
+    ) -> TractResult<TVec<OutletId>> {
         let name = name.to_string();
 
         // Reshape Q
@@ -540,7 +540,7 @@ mod tests {
                 head_dim.clone(),
            ], q_shape),
             &[output],
-        )?[0];
+        )?;
         Ok(output_reshaped)
     }
 
@@ -569,9 +569,9 @@ mod tests {
         let k = model.add_source("k", k_fact)?;
         let v = model.add_source("v", v_fact)?;
 
-        let output = wire_sdpa_layer(&mut model, "0", q, k, v)?;
+        let outputs = wire_sdpa_layer(&mut model, "0", q, k, v)?;
 
-        model.set_output_outlets(&[output])?;
+        model.set_output_outlets(&outputs)?;
 
         // Transform model for Metal execution
         let model = MetalTransform::default().transform_into(model)?;
