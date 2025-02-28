@@ -93,45 +93,63 @@ pub fn wire_prepacked(
     ensure!(prepack.is_some());
     let prepack = prepack.unwrap();
 
-    let mmms = tract_linalg::ops()
-        .mmm_impls()
-        .iter()
-        .filter(|mmm| op.acceptable_accumulators().contains(&mmm.internal_type()))
-        .flat_map(move |mmm| {
-            mmm.packings().iter().enumerate().map(|(ix, p)| (mmm.clone(), ix, &p.0, &p.1))
-        })
-        .filter_map(|(mmm, packing, pa, pb)| {
-            if pb.precursor().as_dt().is_some_and(|dt| dt != b_dt) {
-                None
-            } else if prepack.format().same_as(&**pa) {
-                Some((mmm, packing, None))
-            } else {
-                tract_linalg::ops()
-                    .panel_extractors()
-                    .iter()
-                    .find(|pe| prepack.format().same_as(&*pe.from) && pe.to.same_as(&**pa))
-                    .map(|pe| (mmm, packing, Some(pe)))
-            }
-        })
-        .collect_vec();
+    let (mode_picker, configs) = if let Some(mmm) =
+        op.n.as_i64()
+            .and_then(|n| {
+                tract_linalg::ops().mmm(
+                    op.operating_dt,
+                    Some(prepack.mn()),
+                    Some(prepack.k()),
+                    Some(n as usize),
+                )
+            })
+            .filter(|mmm| mmm.packings()[0].0.same_as(prepack.format()))
+    {
+        (ModePicker::Single, vec![(mmm, 0, None)])
+    } else {
+        let mmms = tract_linalg::ops()
+            .mmm_impls()
+            .iter()
+            .filter(|mmm| op.acceptable_accumulators().contains(&mmm.internal_type()))
+            .flat_map(move |mmm| {
+                mmm.packings().iter().enumerate().map(|(ix, p)| (mmm.clone(), ix, &p.0, &p.1))
+            })
+            .filter_map(|(mmm, packing, pa, pb)| {
+                if pb.precursor().as_dt().is_some_and(|dt| dt != b_dt) {
+                    None
+                } else if prepack.format().same_as(&**pa) {
+                    Some((mmm, packing, None))
+                } else {
+                    tract_linalg::ops()
+                        .panel_extractors()
+                        .iter()
+                        .find(|pe| prepack.format().same_as(&*pe.from) && pe.to.same_as(&**pa))
+                        .map(|pe| (mmm, packing, Some(pe)))
+                }
+            })
+            .collect_vec();
 
-    let mmv = mmms
-        .iter()
-        .min_by_key(|(mmm, _packing, pe)| {
-            mmm.quality().cost() * 10000 + 100 * mmm.nr() + pe.is_some() as usize
-        })
-        .unwrap();
-    let mmm = mmms
-        .iter()
-        .min_by_key(|(mmm, _packing, pe)| {
-            1_000_000 + mmm.quality().cost() * 10000 + pe.is_some() as usize - mmm.nr() * 100
-        })
-        .unwrap();
+        let mmv = mmms
+            .iter()
+            .min_by_key(|(mmm, _packing, pe)| {
+                mmm.quality().cost() * 10000 + 100 * mmm.nr() + pe.is_some() as usize
+            })
+            .unwrap();
+        let mmm = mmms
+            .iter()
+            .min_by_key(|(mmm, _packing, pe)| {
+                1_000_000 + mmm.quality().cost() * 10000 + pe.is_some() as usize - mmm.nr() * 100
+            })
+            .unwrap();
 
-    let configs = [mmv, mmm]
-        .iter()
-        .map(|(mmm, packing, pe)| (mmm.clone(), *packing, pe.cloned()))
-        .collect_vec();
+        (
+            ModePicker::VecVsMat,
+            [mmv, mmm]
+                .iter()
+                .map(|(mmm, packing, pe)| (mmm.clone(), *packing, pe.cloned()))
+                .collect_vec(),
+        )
+    };
 
     let b_packers = configs
         .iter()
@@ -145,10 +163,10 @@ pub fn wire_prepacked(
             k_axis: op.b_k(),
             mn_axis: op.b_n(),
             packers: b_packers,
-            mode_picker: ModePicker::VecVsMat,
+            mode_picker: mode_picker.clone(),
         },
         &[b],
     )?[0];
 
-    Ok((a, pb, configs, ModePicker::VecVsMat))
+    Ok((a, pb, configs, mode_picker))
 }
