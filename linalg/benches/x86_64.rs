@@ -81,7 +81,7 @@ unsafe fn packed_packed_1x12(f: Option<&str>) {
     if std::is_x86_feature_detected!("avx512f") {
         kloop!(f, "1x12x1", (16 * 1 * 12), "1x12/packed_packed_loop1/avx-512.tmpli", 16, 1, "avx512");
     }
-    println!("");
+    println!();
 }
 
 unsafe fn packed_packed_1x8(f: Option<&str>) {
@@ -91,7 +91,7 @@ unsafe fn packed_packed_1x8(f: Option<&str>) {
     if std::is_x86_feature_detected!("avx512f") {
         kloop!(f, "1x8x1", (16 * 1 * 8), "8x8/packed_packed_loop1/avx-512.tmpli", 16, 1, "avx512");
     }
-    println!("");
+    println!();
 }
 
 unsafe fn packed_packed_2x6(f: Option<&str>) {
@@ -176,7 +176,7 @@ unsafe fn packed_packed_8x1(f: Option<&str>) {
         kloop!(f, "8x1x1", (16 * 8 * 1), "8x1/packed_packed_loop1/avx-512.tmpli", 16, 1, "avx512");
         kloop!(f, "8x1x2", (16 * 8 * 1), "8x1/packed_packed_loop1/avx-512-unroll.tmpli", 16, 2, "avx512");
     }
-    println!("");
+    println!();
 }
 
 unsafe fn packed_packed_6x1(f: Option<&str>) {
@@ -187,7 +187,7 @@ unsafe fn packed_packed_6x1(f: Option<&str>) {
         kloop!(f, "6x1x1", (16 * 6 * 1), "6x1/packed_packed_loop1/avx-512.tmpli", 16, 1, "avx512");
         kloop!(f, "6x1x2", (16 * 6 * 1), "6x1/packed_packed_loop1/avx-512-unroll.tmpli", 16, 2, "avx512");
     }
-    println!("");
+    println!();
 }
 
 unsafe fn packed_packed_7x1(f: Option<&str>) {
@@ -196,7 +196,7 @@ unsafe fn packed_packed_7x1(f: Option<&str>) {
         kloop!(f, "7x1x1", (16 * 7 * 1), "7x1/packed_packed_loop1/avx-512.tmpli", 16, 1, "avx512");
         kloop!(f, "7x1x2", (16 * 7 * 1), "7x1/packed_packed_loop1/avx-512-unroll.tmpli", 16, 2, "avx512");
     }
-    println!("");
+    println!();
 }
 
 unsafe fn packed_packed_1x1(f: Option<&str>) {
@@ -207,7 +207,7 @@ unsafe fn packed_packed_1x1(f: Option<&str>) {
         kloop!(f, "1x1x8", (16 * 1 * 1), "1x1/packed_packed_loop1/unroll-8.tmpli", 16, 8, "avx512");
         kloop!(f, "1x1x16", (16 * 1 * 1), "1x1/packed_packed_loop1/unroll-16.tmpli", 16, 16, "avx512");
     }
-    println!("");
+    println!();
 }
 
 unsafe fn packed_packed_10x1(f: Option<&str>) {
@@ -218,7 +218,7 @@ unsafe fn packed_packed_10x1(f: Option<&str>) {
         kloop!(f, "10x1x1", (16 * 10 * 1), "10x1/packed_packed_loop1/avx-512.tmpli", 16, 1, "avx512");
         kloop!(f, "10x1x2", (16 * 10 * 1), "10x1/packed_packed_loop1/avx-512-unroll.tmpli", 16, 2, "avx512");
     }
-    println!("");
+    println!();
 }
 
 fn main() {

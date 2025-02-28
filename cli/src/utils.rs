@@ -100,7 +100,7 @@ pub fn clarify_tvalues(values: &TVec<TValue>) -> TractResult<TVec<TValue>> {
             Ok(t.to_scalar::<Opaque>()?
                 .clarify_to_tensor()?
                 .map(|ot| ot.into_tvalue())
-                .unwrap_or(t.clone()))
+                .unwrap_or_else(|| t.clone()))
         })
         .collect()
 }
