@@ -601,18 +601,18 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             return Ok(());
         }
         Some(("kernels", _)) => {
-            println!("");
+            println!();
             println!("{}", White.bold().paint("# By implementation"));
-            println!("");
+            println!();
             for m in tract_linalg::ops().mmm_impls() {
                 println!("{}", QUALITY_COLORS[m.quality().cost()].paint(m.name()),);
                 for packings in m.packings() {
                     println!("   - {:?} • {:?}", packings.0, packings.1);
                 }
             }
-            println!("");
+            println!();
             println!("{}", White.bold().paint("# By weights"));
-            println!("");
+            println!();
             for w in [
                 WeightType::Plain(f16::datum_type()),
                 WeightType::Plain(f32::datum_type()),
