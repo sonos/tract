@@ -95,7 +95,7 @@ fn default_idle_sleep_secs() -> usize {
 }
 
 fn default_timeout_runtime_secs() -> usize {
-    300
+    60 * 20
 }
 
 fn deser_region<'de, D>(d: D) -> Result<Region, D::Error>
