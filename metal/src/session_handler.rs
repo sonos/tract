@@ -5,7 +5,7 @@ use tract_core::internal::*;
 
 #[derive(Debug, Clone)]
 pub struct MetalSessionHandler {
-    mem_schema: MetalMemSchema,
+    pub mem_schema: MetalMemSchema,
 }
 
 impl MetalSessionHandler {
