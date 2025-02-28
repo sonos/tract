@@ -366,7 +366,7 @@ where
                             dbg!(&e);
                         }
                         Ok(obtained) => {
-                            let clear_obtained = crate::utils::clarify_tvalues(&obtained);
+                            let clear_obtained = crate::utils::clarify_tvalues(&obtained)?;
                             tested = Some(obtained);
                             if let Some(reference) = &reference {
                                 if reference.len() != clear_obtained.len() {

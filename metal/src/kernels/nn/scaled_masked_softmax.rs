@@ -114,7 +114,10 @@ mod tests {
                     .clone()
                     .into_tensor();
                 let metal_output = ScaledMaskedSoftmax.eval(context, &a, &scale, &mask)?;
-                cpu_output.close_enough(&metal_output.to_cpu()?, Approximation::Approximate)?;
+                cpu_output.close_enough(
+                    &metal_output.to_cpu()?.into_tensor(),
+                    Approximation::Approximate,
+                )?;
                 Ok(())
             })
         })
@@ -142,7 +145,10 @@ mod tests {
                     .clone()
                     .into_tensor();
                 let metal_output = ScaledMaskedSoftmax.eval(context, &a, &scale, &mask)?;
-                cpu_output.close_enough(&metal_output.to_cpu()?, Approximation::Approximate)?;
+                cpu_output.close_enough(
+                    &metal_output.to_cpu()?.into_tensor(),
+                    Approximation::Approximate,
+                )?;
                 Ok(())
             })
         })
@@ -240,7 +246,7 @@ mod tests {
                         Tensor::from_shape(self.mask_shape.as_slice(), &self.mask)?.into_metal()?;
                     let scale: Arc<_> = tensor0::<F>(0.125f32.as_()).into();
                     let metal_output = ScaledMaskedSoftmax.eval(context, &a, &scale, &mask)?;
-                    metal_output.to_cpu()
+                    Ok(metal_output.to_cpu()?.into_tensor())
                 })
             })
         }

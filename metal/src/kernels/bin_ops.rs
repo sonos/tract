@@ -297,8 +297,12 @@ mod tests {
                 )?
                 .into_metal()?;
                 let output = op.eval(context, &a, &b)?;
-                let ref_output = reference::<F, bool>(&a.to_cpu()?, &b.to_cpu()?, cab)?;
-                assert_eq!(ref_output, output.to_cpu()?);
+                let ref_output = reference::<F, bool>(
+                    &a.to_cpu()?.into_tensor(),
+                    &b.to_cpu()?.into_tensor(),
+                    cab,
+                )?;
+                assert_eq!(ref_output, output.to_cpu()?.into_tensor());
                 Ok(())
             })
         })
@@ -324,8 +328,9 @@ mod tests {
                 )?
                 .into_metal()?;
                 let output = op.eval(context, &a, &b)?;
-                let ref_output = reference::<F, F>(&a.to_cpu()?, &b.to_cpu()?, cab)?;
-                assert_eq!(ref_output, output.to_cpu()?);
+                let ref_output =
+                    reference::<F, F>(&a.to_cpu()?.into_tensor(), &b.to_cpu()?.into_tensor(), cab)?;
+                assert_eq!(ref_output, output.to_cpu()?.into_tensor());
                 Ok(())
             })
         })
@@ -455,7 +460,7 @@ mod tests {
                     let lhs = self.lhs.clone().into_metal()?;
                     let rhs = self.rhs.clone().into_metal()?;
                     let c = BinOps::Mul.eval(context, &lhs, &rhs)?;
-                    c.to_cpu()
+                    Ok(c.to_cpu()?.into_tensor())
                 })
             })
         }

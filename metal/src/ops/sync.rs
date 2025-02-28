@@ -50,15 +50,19 @@ impl MetalEvalOp for MetalSync {
         let input = args_1!(inputs);
         match self.kind {
             MetalSyncKind::ToCpu => {
-                let tvalue = input
-                    .to_metal_tensor()
-                    .and_then(|t| t.to_cpu())
-                    .map(|t| t.into())
+                let metal_tensor = input.to_metal_tensor()?;
+
+                let tensor = metal_tensor
+                    .to_cpu()
                     .with_context(|| anyhow!("Error while syncing metal tensor to cpu"))?;
-                Ok(tvec![tvalue])
+                Ok(tvec![tensor.into_tvalue()])
             }
             MetalSyncKind::ToGpu => {
-                let metal_input = input.into_tensor().into_metal()?;
+                let metal_input = if let Some(t) = input.as_arc_tensor() {
+                    Arc::clone(t).into_metal()?
+                } else {
+                    input.into_tensor().into_metal()?
+                };
                 Ok(tvec![metal_input.into_opaque_tensor().into()])
             }
         }
