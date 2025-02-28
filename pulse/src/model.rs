@@ -166,6 +166,10 @@ impl
             .node_input_facts(node.id)?
             .iter()
             .any(|f| f.shape.iter().any(|d| d.symbols().contains(&self.0)))
+            && !node
+                .outputs
+                .iter()
+                .any(|o| o.fact.shape.iter().any(|d| d.symbols().contains(&self.0)))
         {
             let pulse_op = NonPulsingWrappingOp(node.op.clone());
             let inputs: TVec<OutletId> = node.inputs.iter().map(|i| mapping[i]).collect();
