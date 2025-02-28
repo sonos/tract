@@ -407,50 +407,48 @@ mod tests {
         v: OutletId,
     ) -> TractResult<OutletId> {
         let name = name.to_string();
+
         // Reshape Q
         let q_shape = model.outlet_fact(q)?.shape.to_tvec();
-        let head_dim = q_shape[3].to_i64()?;
+        let embed_dim: TDim = q_shape[1].clone();
+        let head_dim: TDim = q_shape[3].clone();
+        let batch: TDim = q_shape[0].clone();
+        let seq_len: TDim = q_shape[2].clone();
+        ensure!(batch.to_i64()? == 1, "Input 'q' shape is {:?} (expect batch = 1)", q_shape);
         ensure!(q_shape.len() == 4, "Input 'q' shape is {:?} (expect 4D)", q_shape);
-        let reshape_q = tvec![
-            q_shape[1].clone(),
-            q_shape[0].clone(),
-            q_shape[2].clone(),
-            head_dim.into(),
-        ];
         let q_reshaped = model.wire_node(
             format!("q_reshape_{}", name),
-            AxisOp::Reshape(0, q_shape.clone(), reshape_q.clone()),
+            AxisOp::Reshape(
+                0,
+                q_shape.clone(),
+                tvec![
+                    embed_dim.clone(),
+                    batch.clone(),
+                    seq_len.clone(),
+                    head_dim.clone(),
+                ]
+            ),
             &[q],
         )?[0];
 
         // Reshape K
         let k_shape = model.outlet_fact(k)?.shape.to_tvec();
         ensure!(k_shape.len() == 4, "Input 'k' shape is {:?} (expect 4D)", k_shape);
-        let reshape_k = tvec![
-            k_shape[1].clone(),
-            k_shape[0].clone(),
-            k_shape[2].clone(),
-            head_dim.into()
-        ];
+        let seq_plus_prompt_len: TDim = k_shape[2].clone();
+
         let k_reshaped = model.wire_node(
             format!("k_reshape_{}", name),
-            AxisOp::Reshape(0, k_shape, reshape_k),
+            AxisOp::Reshape(
+                0,
+                k_shape.clone(),
+                tvec![
+                    embed_dim.clone(),
+                    batch.clone(),
+                    seq_plus_prompt_len.clone(),
+                    head_dim.clone(),
+                ]
+            ),
             &[k],
-        )?[0];
-
-        // Reshape V
-        let v_shape = model.outlet_fact(v)?.shape.to_tvec();
-        ensure!(v_shape.len() == 4, "Input 'v' shape is {:?} (expect 4D)", v_shape);
-        let reshape_v = tvec![
-            v_shape[1].clone(),
-            v_shape[0].clone(),
-            v_shape[2].clone(),
-            head_dim.into()
-        ];
-        let v_reshaped = model.wire_node(
-            format!("v_reshape_{}", name),
-            AxisOp::Reshape(0, v_shape, reshape_v),
-            &[v],
         )?[0];
 
         // Compute Q * K^T
@@ -465,19 +463,38 @@ mod tests {
             &[q_reshaped, k_reshaped],
         )?[0];
 
+        let qk_squeezed = model.wire_node(
+            format!("qk_squeezed_{}", name),
+            AxisOp::Reshape(
+                0,
+                tvec![
+                    embed_dim.clone(),
+                    batch.clone(),
+                    seq_len.clone(),
+                    seq_plus_prompt_len.clone(),
+                ],
+                tvec![
+                    embed_dim.clone(),
+                    seq_len.clone(),
+                    seq_plus_prompt_len.clone(),
+                ],
+            ),
+            &[qk],
+        )?[0];
+
         // Scale factor for attention
         let scale = model.add_const(
             format!("scale_{}", name),
-            tensor4(&[[[[1.0f32 / (head_dim as f32).sqrt()]]]])
+            tensor3(&[[[1.0f32 / (head_dim.to_i64()? as f32).sqrt()]]])
         )?;
         let qk_scaled = model.wire_node(
             format!("qk_scaled_{}", name),
             mul(),
-            &[qk, scale],
+            &[qk_squeezed, scale],
         )?[0];
 
         // Mask QK
-        let mask = model.add_const("mask", tensor4(&[[[[1.0f32]]]]))?;
+        let mask = model.add_const("mask", tensor3(&[[[1.0f32]]]))?;
         let qk_scaled_masked = model.wire_node(
             format!("qk_scaled_masked_{}", name),
             add(),
@@ -488,7 +505,18 @@ mod tests {
         let attention = model.wire_node(
             format!("attention_weights_{}", name),
             Softmax::new(tvec![2], None, SoftmaxExp::Libc),
-            &[qk_scaled_masked],//&[qk],//
+            &[qk_scaled_masked],
+        )?[0];
+
+        // Reshape V
+        let v_reshaped = model.wire_node(
+            format!("v_reshape_{}", name),
+            AxisOp::Reshape(0, k_shape, tvec![
+                embed_dim.clone(),
+                seq_plus_prompt_len.clone(),
+                head_dim.clone(),
+           ]),
+            &[v],
         )?[0];
 
         // Multiply with V
@@ -506,7 +534,11 @@ mod tests {
         // Reshape output
         let output_reshaped = model.wire_node(
             format!("output_reshape_{}", name),
-            AxisOp::Reshape(0, reshape_q, q_shape),
+            AxisOp::Reshape(0, tvec![
+                embed_dim.clone(),
+                seq_len.clone(),
+                head_dim.clone(),
+           ], q_shape),
             &[output],
         )?[0];
         Ok(output_reshaped)
@@ -514,24 +546,27 @@ mod tests {
 
     #[test]
     fn test_build_schema_from_model() -> TractResult<()> {
-        const EXPECTED_PEAK_SIZE: i64 = 139264;
-        const EXPECTED_USAGE: f32 = 0.708;
+        const EXPECTED_PEAK_SIZE: i64 = 83072;
+        const EXPECTED_USAGE: f32 = 0.533;
 
         // Build a model with Scaled Dot-Product Attention (SDPA) layers
         let symbol_values = SymbolValues::default();
         let mut model = TypedModel::default();
 
         // Input shapes for Q, K, V
+        let s = 1;
+        let p = 8;
         let batch = 1;
         let embed_dim = 32;
-        let seq_len = 8;
         let head_dim = 64;
-        let input_fact = f32::fact([batch, embed_dim, seq_len, head_dim]);
+        let q_fact = f32::fact([batch, embed_dim, s, head_dim]);
+        let k_fact = f32::fact([batch, embed_dim, s + p, head_dim]);
+        let v_fact = k_fact.clone();
 
         // Create inputs for Q, K, V
-        let q = model.add_source("q", input_fact.clone())?;
-        let k = model.add_source("k", input_fact.clone())?;
-        let v = model.add_source("v", input_fact.clone())?;
+        let q = model.add_source("q", q_fact)?;
+        let k = model.add_source("k", k_fact)?;
+        let v = model.add_source("v", v_fact)?;
 
         let output = wire_sdpa_layer(&mut model, "0", q, k, v)?;
 
