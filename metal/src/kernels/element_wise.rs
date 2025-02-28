@@ -253,8 +253,10 @@ mod tests {
                 )?
                 .into_metal()?;
                 let output = op.eval(context, &a)?;
-                let ref_output = reference::<F>(&a.to_cpu()?, ca)?;
-                assert!(ref_output.close_enough(&output.to_cpu()?, Approximation::Close).is_ok());
+                let ref_output = reference::<F>(&a.to_cpu()?.into_tensor(), ca)?;
+                assert!(ref_output
+                    .close_enough(&output.to_cpu()?.into_tensor(), Approximation::Close)
+                    .is_ok());
                 Ok(())
             })
         })

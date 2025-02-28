@@ -34,6 +34,13 @@ impl TValue {
     pub fn from_const(t: Arc<Tensor>) -> Self {
         Const(t)
     }
+
+    pub fn as_arc_tensor(&self) -> Option<&Arc<Tensor>> {
+        match self {
+            Const(t) => Some(t),
+            Var(_) => None,
+        }
+    }
 }
 
 impl From<Tensor> for TValue {

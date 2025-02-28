@@ -174,13 +174,17 @@ impl MetalTensor {
 
     /// Synchronize the Metal Tensor by completing all current
     /// commands on GPU and returns the inner tensor.
-    pub fn to_cpu(&self) -> Result<Tensor> {
+    pub fn to_cpu(&self) -> Result<Arc<Tensor>> {
         crate::METAL_CONTEXT
-            .with_borrow(|context| -> Result<Tensor> {
+            .with_borrow(|context| -> Result<Arc<Tensor>> {
                 context.wait_until_completed()?;
                 Ok(match self {
-                    Self::Owned(o) => o.inner.clone().into_tensor(),
-                    Self::ArenaView(v) => v.clone().into_tensor(),
+                    Self::Owned(o) => o
+                        .inner
+                        .as_arc_tensor()
+                        .map(|t| t.clone())
+                        .unwrap_or_else(|| o.inner.clone().into_tensor().into_arc_tensor()),
+                    Self::ArenaView(v) => v.clone().into_tensor().into(),
                 })
             })
             .with_context(|| anyhow!("Error while synchronize metal tensor to its cpu counterpart"))
@@ -243,8 +247,8 @@ impl OpaquePayload for MetalTensor {
             .is_some_and(|other| self.metal().gpu_address() == other.metal().gpu_address())
     }
 
-    fn clarify_to_tensor(&self) -> Option<Result<Tensor>> {
-        Some(self.to_cpu())
+    fn clarify_to_tensor(&self) -> TractResult<Option<Arc<Tensor>>> {
+        Ok(Some(self.to_cpu()?))
     }
 }
 

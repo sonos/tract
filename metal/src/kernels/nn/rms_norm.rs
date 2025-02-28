@@ -115,7 +115,7 @@ mod tests {
                 let metal_output = RmsNorm.eval(context, &a, axis, &eps)?;
 
                 cpu_output
-                    .close_enough(&metal_output.to_cpu()?, Approximation::Approximate)
+                    .close_enough(&metal_output.to_cpu()?.into_tensor(), Approximation::Approximate)
                     .with_context(|| {
                         anyhow!(
                             "Input: {:?}, scale: {:?} Cpu: {:?}, Metal: {:?}",
@@ -225,7 +225,7 @@ mod tests {
                 crate::METAL_CONTEXT.with_borrow(|context| {
                     let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_metal()?;
                     let metal_output = RmsNorm.eval(context, &a, self.axis, &self.eps)?;
-                    metal_output.to_cpu()
+                    Ok(metal_output.to_cpu()?.into_tensor())
                 })
             })
         }
