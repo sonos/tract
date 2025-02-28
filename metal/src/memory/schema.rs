@@ -546,21 +546,22 @@ mod tests {
 
     #[test]
     fn test_build_schema_from_model() -> TractResult<()> {
+        // Given
+        const EMBED_DIM: i64 = 32;
+        const HEAD_DIM: i64 = 64;
+        const SEQUENCE_LENGTH: i64 = 1;
+        const PAST_SEQUENCE_LENGTH: i64 = 8;
         const EXPECTED_PEAK_SIZE: i64 = 83072;
         const EXPECTED_USAGE: f32 = 0.533;
 
         // Build a model with Scaled Dot-Product Attention (SDPA) layers
-        let symbol_values = SymbolValues::default();
         let mut model = TypedModel::default();
 
         // Input shapes for Q, K, V
-        let s = 1;
-        let p = 8;
-        let batch = 1;
-        let embed_dim = 32;
-        let head_dim = 64;
-        let q_fact = f32::fact([batch, embed_dim, s, head_dim]);
-        let k_fact = f32::fact([batch, embed_dim, s + p, head_dim]);
+        let s = TDim::Sym(model.sym("S"));
+        let p = TDim::Sym(model.sym("P"));
+        let q_fact = f32::fact(tvec![1.into(), EMBED_DIM.into(), s.clone(), HEAD_DIM.into()]);
+        let k_fact = f32::fact(tvec![1.into(), EMBED_DIM.into(), s + p, HEAD_DIM.into()]);
         let v_fact = k_fact.clone();
 
         // Create inputs for Q, K, V
@@ -577,6 +578,11 @@ mod tests {
 
         // Get execution order
         let order = model.eval_order()?;
+
+        // Hint symbol values
+        let mut symbol_values = SymbolValues::default();
+        symbol_values.set(&model.symbols.get("S").context("Missing symbol S")?, SEQUENCE_LENGTH);
+        symbol_values.set(&model.symbols.get("P").context("Missing symbol P")?, PAST_SEQUENCE_LENGTH);
 
         // Build memory schema
         let schema = MetalMemSchema::build(&model, &order, &symbol_values)?;
