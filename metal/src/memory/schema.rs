@@ -328,6 +328,9 @@ mod tests {
     use super::*;
     use crate::MetalTransform;
     use tract_core::transform::ModelTransform;
+    use tract_core::ops::math::{add, mul};
+    use tract_core::ops::nn::{Softmax, SoftmaxExp};
+    use tract_core::ops::einsum::BasicMatMul;
 
     #[test]
     fn test_lifetime_is_disjoint() {
@@ -396,45 +399,151 @@ mod tests {
         assert_eq!(partition.find_node_alive_at_step(10), None);
     }
 
+    fn wire_sdpa_layer(
+        model: &mut TypedModel,
+        name: impl ToString,
+        q: OutletId,
+        k: OutletId,
+        v: OutletId,
+    ) -> TractResult<OutletId> {
+        let name = name.to_string();
+        // Reshape Q
+        let q_shape = model.outlet_fact(q)?.shape.to_tvec();
+        let head_dim = q_shape[3].to_i64()?;
+        ensure!(q_shape.len() == 4, "Input 'q' shape is {:?} (expect 4D)", q_shape);
+        let reshape_q = tvec![
+            q_shape[1].clone(),
+            q_shape[0].clone(),
+            q_shape[2].clone(),
+            head_dim.into(),
+        ];
+        let q_reshaped = model.wire_node(
+            format!("q_reshape_{}", name),
+            AxisOp::Reshape(0, q_shape.clone(), reshape_q.clone()),
+            &[q],
+        )?[0];
+
+        // Reshape K
+        let k_shape = model.outlet_fact(k)?.shape.to_tvec();
+        ensure!(k_shape.len() == 4, "Input 'k' shape is {:?} (expect 4D)", k_shape);
+        let reshape_k = tvec![
+            k_shape[1].clone(),
+            k_shape[0].clone(),
+            k_shape[2].clone(),
+            head_dim.into()
+        ];
+        let k_reshaped = model.wire_node(
+            format!("k_reshape_{}", name),
+            AxisOp::Reshape(0, k_shape, reshape_k),
+            &[k],
+        )?[0];
+
+        // Reshape V
+        let v_shape = model.outlet_fact(v)?.shape.to_tvec();
+        ensure!(v_shape.len() == 4, "Input 'v' shape is {:?} (expect 4D)", v_shape);
+        let reshape_v = tvec![
+            v_shape[1].clone(),
+            v_shape[0].clone(),
+            v_shape[2].clone(),
+            head_dim.into()
+        ];
+        let v_reshaped = model.wire_node(
+            format!("v_reshape_{}", name),
+            AxisOp::Reshape(0, v_shape, reshape_v),
+            &[v],
+        )?[0];
+
+        // Compute Q * K^T
+        let qk = model.wire_node(
+            format!("qk_{}", name),
+            BasicMatMul {
+                transpose_a: false,
+                transpose_b: true,
+                transpose_c: false,
+                quantize_output: None,
+            },
+            &[q_reshaped, k_reshaped],
+        )?[0];
+
+        // Scale factor for attention
+        let scale = model.add_const(
+            format!("scale_{}", name),
+            tensor4(&[[[[1.0f32 / (head_dim as f32).sqrt()]]]])
+        )?;
+        let qk_scaled = model.wire_node(
+            format!("qk_scaled_{}", name),
+            mul(),
+            &[qk, scale],
+        )?[0];
+
+        // Mask QK
+        let mask = model.add_const("mask", tensor4(&[[[[1.0f32]]]]))?;
+        let qk_scaled_masked = model.wire_node(
+            format!("qk_scaled_masked_{}", name),
+            add(),
+            &[qk_scaled, mask],
+        )?[0];
+
+        // Apply softmax
+        let attention = model.wire_node(
+            format!("attention_weights_{}", name),
+            Softmax::new(tvec![2], None, SoftmaxExp::Libc),
+            &[qk_scaled_masked],//&[qk],//
+        )?[0];
+
+        // Multiply with V
+        let output = model.wire_node(
+            format!("attention_output_{}", name),
+            BasicMatMul {
+                transpose_a: false,
+                transpose_b: false,
+                transpose_c: false,
+                quantize_output: None,
+            },
+            &[attention, v_reshaped],
+        )?[0];
+
+        // Reshape output
+        let output_reshaped = model.wire_node(
+            format!("output_reshape_{}", name),
+            AxisOp::Reshape(0, reshape_q, q_shape),
+            &[output],
+        )?[0];
+        Ok(output_reshaped)
+    }
+
     #[test]
     fn test_build_schema_from_model() -> TractResult<()> {
-        const EXPECTED_PEAK_SIZE: i64 = 192;
-        const EXPECTED_USAGE: f32 = 1.0;
+        const EXPECTED_PEAK_SIZE: i64 = 139264;
+        const EXPECTED_USAGE: f32 = 0.708;
 
-        // Build a simple model
+        // Build a model with Scaled Dot-Product Attention (SDPA) layers
         let symbol_values = SymbolValues::default();
         let mut model = TypedModel::default();
 
-        let x = model.add_source("x", f32::fact([1, 1, 4, 6]))?;
-        let y_0 = model.wire_node(
-            "y.0",
-            AxisOp::Reshape(
-                2,
-                tvec![4.into(), 6.into()],
-                tvec![2.into(), 2.into(), 3.into(), 2.into()],
-            ),
-            &[x],
-        )?[0];
-        let y_1 = model.wire_node("y.1", AxisOp::Move(3, 1), &[y_0])?[0];
+        // Input shapes for Q, K, V
+        let batch = 1;
+        let embed_dim = 32;
+        let seq_len = 8;
+        let head_dim = 64;
+        let input_fact = f32::fact([batch, embed_dim, seq_len, head_dim]);
 
-        let y_2 = model.wire_node("y.2", AxisOp::Move(5, 2), &[y_1])?[0];
+        // Create inputs for Q, K, V
+        let q = model.add_source("q", input_fact.clone())?;
+        let k = model.add_source("k", input_fact.clone())?;
+        let v = model.add_source("v", input_fact.clone())?;
 
-        let y_3_0 = model.wire_node("y.3.0", AxisOp::Rm(3), &[y_2])?[0];
+        let output = wire_sdpa_layer(&mut model, "0", q, k, v)?;
 
-        let _y_3_1 = model.wire_node(
-            "y.3.1",
-            AxisOp::Reshape(1, tvec![2.into(), 2.into()], tvec![4.into()]),
-            &[y_3_0],
-        )?[0];
+        model.set_output_outlets(&[output])?;
 
-        model.auto_outputs()?;
-
+        // Transform model for Metal execution
         let model = MetalTransform::default().transform_into(model)?;
 
-        // Get execution order (excluding constants)
+        // Get execution order
         let order = model.eval_order()?;
 
-        // Build memory schema with empty symbol values (since we don't use any)
+        // Build memory schema
         let schema = MetalMemSchema::build(&model, &order, &symbol_values)?;
 
         // Verify number of nodes
