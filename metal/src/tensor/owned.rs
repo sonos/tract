@@ -71,6 +71,14 @@ impl MValue {
         }
     }
 
+    pub fn as_arc_tensor(&self) -> Option<&Arc<Tensor>> {
+        match self {
+            MValue::Const(t) => Some(t),
+            MValue::Var(t) => Some(t),
+            MValue::Reshaped { .. } => None,
+        }
+    }
+
     /// Reshaped tensor with given shape and strides, no consistency check.
     pub unsafe fn reshaped_with_geometry_unchecked(
         &self,

@@ -129,10 +129,10 @@ mod tests {
                 )?
                 .into_metal()?;
 
-                let cpu_output = tract_reducer.reduce(&[axis], &a.to_cpu()?)?;
+                let cpu_output = tract_reducer.reduce(&[axis], &a.to_cpu()?.into_tensor())?;
                 let metal_output = reducer.eval(context, &a, axis)?;
                 cpu_output
-                    .close_enough(&metal_output.to_cpu()?, Approximation::Approximate)
+                    .close_enough(&metal_output.to_cpu()?.into_tensor(), Approximation::Approximate)
                     .with_context(|| {
                         anyhow!(
                             "A: {:?}, scale: {:?} Cpu: {:?}, Metal: {:?}",
@@ -364,7 +364,7 @@ mod tests {
                 crate::METAL_CONTEXT.with_borrow(|context| {
                     let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_metal()?;
                     let metal_output = self.op.eval(context, &a, self.axis)?;
-                    Ok(metal_output.to_cpu()?)
+                    Ok(metal_output.to_cpu()?.into_tensor())
                 })
             })
         }

@@ -147,7 +147,7 @@ mod tests {
                     axis,
                     &inputs.iter().map(|it| it.to_cpu()).collect::<Result<Vec<_>>>()?,
                 )?;
-                assert_eq!(ref_output, output.to_cpu()?);
+                assert_eq!(ref_output, output.to_cpu()?.into_tensor());
                 Ok(())
             })
         })

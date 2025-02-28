@@ -137,7 +137,7 @@ mod tests {
                 let metal_output = ApplyRope.eval(context, &metal_a, &metal_cos, &metal_sin)?;
 
                 cpu_output
-                    .close_enough(&metal_output.to_cpu()?, Approximation::Approximate)
+                    .close_enough(&metal_output.to_cpu()?.into_tensor(), Approximation::Approximate)
                     .with_context(|| {
                         anyhow!(
                             "Input: {:?} Cpu: {:?}, Metal: {:?}",

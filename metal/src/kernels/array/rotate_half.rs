@@ -111,7 +111,7 @@ mod tests {
                 let metal_output = RotateHalf.eval(context, &metal_a)?;
 
                 cpu_output
-                    .close_enough(&metal_output.to_cpu()?, Approximation::Exact)
+                    .close_enough(&metal_output.to_cpu()?.into_tensor(), Approximation::Exact)
                     .with_context(|| {
                         anyhow!(
                             "Input: {:?} Cpu: {:?}, Metal: {:?}",

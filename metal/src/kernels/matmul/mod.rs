@@ -926,7 +926,7 @@ mod tests {
                     let matmul = GemmImpl::<K>::new(self.transpose_lhs, self.transpose_rhs);
 
                     let c = matmul.eval(context, &lhs, &rhs)?;
-                    Ok(c.to_cpu()?)
+                    Ok(c.to_cpu()?.into_tensor())
                 })
             })
         }

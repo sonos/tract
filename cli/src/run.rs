@@ -176,7 +176,7 @@ fn run_regular(
                         }
                     }
                     let r = tract_core::plan::eval(session_state, state, node, input)?;
-                    let clarified_r = crate::utils::clarify_tvalues(&r);
+                    let clarified_r = crate::utils::clarify_tvalues(&r)?;
 
                     if steps {
                         for (ix, o) in clarified_r.iter().enumerate() {
