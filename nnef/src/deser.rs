@@ -117,6 +117,7 @@ impl<'mb> ModelBuilder<'mb> {
         Ok(())
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn into_typed_model(mut self) -> Result<TypedModel, (TypedModel, TractError)> {
         match self.translate().context("In ModelBuilder::translate") {
             Ok(()) => Ok(self.model),
