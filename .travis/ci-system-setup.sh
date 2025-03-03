@@ -25,7 +25,7 @@ then
         PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"
         export PYTHON_BIN_PATH=python3
     else
-        sudo apt-get install -y llvm python3 python3-numpy jshon
+        sudo apt-get install -y llvm python3 python3-numpy jshon wget curl
     fi
     touch .setup-done
 fi
