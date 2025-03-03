@@ -5,8 +5,6 @@ set -ex
 ROOT=$(dirname $(dirname $(realpath $0)))
 . $ROOT/.travis/ci-system-setup.sh
 
-PATH=$PATH:$HOME/.cargo/bin
-
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
 which cargo-dinghy || ( mkdir -p /tmp/cargo-dinghy
 

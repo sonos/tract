@@ -4,7 +4,6 @@
 
 if [ -n "$CI" -a ! -e ".setup-done" ]
 then
-
     if [ `uname` = "Darwin" ]
     then
         sysctl -n machdep.cpu.brand_string
@@ -13,6 +12,7 @@ then
         PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"
         export PYTHON_BIN_PATH=python3
     else
+        sudo apt-get update
         sudo apt-get install -y llvm python3 python3-numpy jshon wget curl
     fi
 
