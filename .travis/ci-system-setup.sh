@@ -4,6 +4,18 @@
 
 if [ -n "$CI" -a ! -e ".setup-done" ]
 then
+
+    if [ `uname` = "Darwin" ]
+    then
+        sysctl -n machdep.cpu.brand_string
+        python3 --version
+        brew install coreutils numpy python-setuptools jshon
+        PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"
+        export PYTHON_BIN_PATH=python3
+    else
+        sudo apt-get install -y llvm python3 python3-numpy jshon wget curl
+    fi
+
     if [ -z "$RUST_VERSION" ]
     then
         export RUST_VERSION=1.75.0
@@ -17,16 +29,6 @@ then
     rustup default $RUST_VERSION
     export RUSTUP_TOOLCHAIN=$RUST_VERSION
 
-    if [ `uname` = "Darwin" ]
-    then
-        sysctl -n machdep.cpu.brand_string
-        python3 --version
-        brew install coreutils numpy python-setuptools jshon
-        PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"
-        export PYTHON_BIN_PATH=python3
-    else
-        sudo apt-get install -y llvm python3 python3-numpy jshon wget curl
-    fi
     touch .setup-done
 fi
 
