@@ -1,30 +1,7 @@
 #!/bin/sh
 
-set -ex
-
-export DEBIAN_FRONTEND=noninteractive
-export RUSTUP_TOOLCHAIN=1.75.0
-
-if [ `whoami` != "root" ]
-then
-    SUDO=sudo
-fi
-
-if [ `uname` = "Linux" ]
-then
-    $SUDO rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list
-    $SUDO apt-get update
-    if [ -z "$TRAVIS" -a -z "$GITHUB_WORKFLOW" ]
-    then
-        $SUDO apt-get -y upgrade
-        $SUDO apt-get install -y --no-install-recommends unzip wget curl python awscli build-essential sudo
-    fi
-else
-    sysctl -n machdep.cpu.brand_string
-    brew install coreutils
-fi
-
 ROOT=$(dirname $(dirname $(realpath $0)))
+. $ROOT/.travis/ci-system-setup.sh
 
 PATH=$PATH:$HOME/.cargo/bin
 
