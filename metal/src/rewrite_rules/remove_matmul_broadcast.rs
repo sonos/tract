@@ -1,4 +1,6 @@
 use crate::rewrite_rules::next_node;
+use crate::transform::resolve_gemm_impl;
+use crate::{MetalGemmImplKind, MetalTransform};
 use tract_core::internal::*;
 use tract_core::ops::array::MultiBroadcastTo;
 use tract_core::ops::einsum::BasicMatMul;
@@ -6,7 +8,7 @@ use tract_core::ops::einsum::BasicMatMul;
 use super::previous_node;
 
 pub fn remove_matmul_broadcast(
-    _ctx: &(),
+    ctx: &MetalTransform,
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,
@@ -52,6 +54,12 @@ pub fn remove_matmul_broadcast(
         }
         _ => return Ok(None),
     };
+
+    // Only Ggml kernels have internal broadcasting
+    let in_facts = model.node_input_facts(mm_node.id)?;
+    if resolve_gemm_impl(ctx.gemm_impl, in_facts)? != MetalGemmImplKind::Ggml {
+        return Ok(None);
+    }
 
     let mut matmul_inputs = patch.taps(model, &mm_node.inputs)?;
     for (idx, o) in mm_node.inputs.iter().enumerate() {
