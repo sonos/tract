@@ -2,15 +2,12 @@ use std::borrow::Borrow;
 use std::fmt::Debug;
 
 use crate::internal::*;
-use crate::ops::array::Slice;
 use crate::tract_data::itertools::Itertools;
 
 mod eval;
 
 #[cfg(feature = "blas")]
 pub mod as_blas;
-use super::array::TypedConcat;
-use super::math::add;
 mod as_matmul;
 pub mod kernel_selection;
 pub mod optimize;
@@ -128,94 +125,6 @@ impl EinSum {
         }
         patch.shunt_outside(model, node.id.into(), wire[0])?;
         Ok(Some(patch))
-    }
-
-    #[allow(clippy::comparison_chain)]
-    fn declutter_after_concat(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        if self.q_params.is_some() {
-            // FIXME
-            return Ok(None);
-        }
-        'outer: for (slot, input) in node.inputs.iter().enumerate() {
-            let precursor = model.node(input.node);
-            if let Some(concat) = precursor.op_as::<TypedConcat>() {
-                let offsets = concat.offsets(&model.node_input_facts(precursor.id)?)?;
-                let axis_info = self.axes.axis((InOut::In(slot), concat.axis))?;
-                // only split if axis is a summing axis
-                if axis_info.outputs[0].len() > 0 {
-                    continue;
-                }
-                let mut patch = TypedModelPatch::new(format!(
-                    "Split Einsum for concat on axis {}",
-                    axis_info.repr
-                ));
-                // inputs[einsum_input_slot][concated_slice]. concated_slice = 0 for broadcast
-                let mut inputs: TVec<TVec<OutletId>> = tvec!();
-                for (slot, input) in node.inputs.iter().enumerate() {
-                    let tap = patch.tap_model(model, *input)?;
-                    if axis_info.inputs[slot].len() > 1 {
-                        continue 'outer;
-                    } else if axis_info.inputs[slot].len() == 1 {
-                        let mut slices = tvec!();
-                        for (start, end) in offsets.iter().cloned().tuple_windows() {
-                            let wire = patch.wire_node(
-                                format!(
-                                    "{}.concat-einsum-slice-{}.{}.{}..{}",
-                                    node.name, axis_info.repr, slot, start, end
-                                ),
-                                Slice { axis: axis_info.inputs[slot][0], start, end },
-                                &[tap],
-                            )?;
-                            slices.push(wire[0]);
-                        }
-                        inputs.push(slices);
-                    } else {
-                        inputs.push(tvec!(tap)); // broadcast
-                    };
-                }
-                let mut einsums = tvec!();
-                for (ix, (start, end)) in offsets.iter().tuple_windows().enumerate() {
-                    let mut einsum_inputs = tvec!();
-                    for input_ix in 0..node.inputs.len() {
-                        einsum_inputs
-                            .push(inputs[input_ix].get(ix).cloned().unwrap_or(inputs[input_ix][0]));
-                    }
-                    let einsum = patch.wire_node(
-                        format!(
-                            "{}.concat-einsum-{}.{}..{}",
-                            node.name, axis_info.repr, start, end
-                        ),
-                        self.clone(),
-                        &einsum_inputs,
-                    )?[0];
-                    einsums.push(einsum);
-                }
-                let wire = if let Some(axis) = axis_info.outputs[0].first().cloned() {
-                    patch.wire_node(
-                        format!("{}.concat-einsum-{}.concat", node.name, axis_info.repr),
-                        TypedConcat { axis },
-                        &einsums,
-                    )?[0]
-                } else {
-                    let mut wire = einsums[0];
-                    for ix in 1..einsums.len() {
-                        wire = patch.wire_node(
-                            format!("{}.concat-einsum-{}.add-{}", node.name, axis_info.repr, ix),
-                            add(),
-                            &[wire, einsums[ix]],
-                        )?[0]
-                    }
-                    wire
-                };
-                patch.shunt_outside(model, node.id.into(), wire)?;
-                return Ok(Some(patch));
-            }
-        }
-        Ok(None)
     }
 
     pub fn acceptable_accumulators(&self) -> TVec<DatumType> {
@@ -386,14 +295,6 @@ impl TypedOp for EinSum {
             substitute_op: Some(Box::new(EinSum { axes, ..self.clone() })),
             wire_changes: tvec!((io, change.clone())),
         }))
-    }
-
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        self.declutter_after_concat(model, node)
     }
 
     fn codegen(
