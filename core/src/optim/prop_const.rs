@@ -37,7 +37,9 @@ impl super::TypedPass for PropConst {
                 && inputs.iter().zip(&node.inputs).all(|(fact, outlet)| {
                     fact.konst.is_some()
                         && (model.node(outlet.node).outputs[outlet.slot].successors.len() == 1
-                            || node.op_is::<Slice>())
+                            || node.op_is::<Slice>()
+                            || (fact.datum_type.is_number()
+                                && fact.shape.volume().as_i64().is_some_and(|d| d < 1024)))
                 })
             {
                 let inputs =
