@@ -4,6 +4,7 @@ use std::fmt::Debug;
 use tract_itertools::Itertools;
 
 pub mod change_axes;
+mod concat_then_einsum;
 mod op_optim;
 mod prop_const;
 mod push_split_down;
@@ -61,6 +62,7 @@ impl Optimizer {
             Box::new(OpOptim("declutter", TypedOp::declutter_with_session, 0)),
             Box::new(PushSliceUp),
             Box::new(PushSplitDown),
+            Box::<concat_then_einsum::ConcatThenEinsum>::default(),
             Box::<ChangeAxes>::default(),
         ])
     }
