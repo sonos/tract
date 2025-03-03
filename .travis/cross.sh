@@ -1,5 +1,7 @@
 #!/bin/sh
 
+set -ex
+
 ROOT=$(dirname $(dirname $(realpath $0)))
 . $ROOT/.travis/ci-system-setup.sh
 
