@@ -25,7 +25,7 @@ impl Runtime for MetalTestRuntime {
     }
 
     fn prepare(&self, mut model: TypedModel) -> TractResult<Box<dyn Runnable>> {
-        tract_metal::transform::MetalTransform { gemm_impl: self.gemm_impl }
+        tract_metal::transform::MetalTransform { gemm_impl: Some(self.gemm_impl) }
             .transform_up_to_phase(&mut model, self.phase)?;
         if self.optimize {
             model = model.into_optimized()?;

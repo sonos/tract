@@ -1,5 +1,5 @@
 use crate::rewrite_rules::{collect_node_const_inputs, next_node, previous_node};
-use crate::rule_ensure;
+use crate::{rule_ensure, MetalTransform};
 use std::sync::Arc;
 use tract_core::internal::*;
 use tract_core::ops::binary::{BinMiniOp, TypedBinOp};
@@ -53,7 +53,7 @@ impl TypedOp for BasicRmsNorm {
 
 /// Search pattern => A = A * RSQRT(MEAN_OF_SQUARES(A) + EPS)
 pub fn as_rms_norm_rule(
-    _ctx: &(),
+    _ctx: &MetalTransform,
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,
@@ -115,7 +115,7 @@ pub fn as_rms_norm_rule(
 
 /// Search pattern => A = CAST(RMS_NORM(CAST(A, F32)), F16)
 pub fn remove_rms_norm_cast(
-    _ctx: &(),
+    _ctx: &MetalTransform,
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,

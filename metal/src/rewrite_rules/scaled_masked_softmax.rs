@@ -1,5 +1,5 @@
 use crate::rewrite_rules::{collect_node_const_inputs, previous_node, previous_nodes};
-use crate::rule_ensure;
+use crate::{rule_ensure, MetalTransform};
 use tract_core::ops::binary::TypedBinOp;
 
 use std::sync::Arc;
@@ -58,7 +58,7 @@ impl TypedOp for BasicScaledMaskedSoftmax {
 
 /// Search pattern => A = SOFTMAX(A * SCALE + MASK, AXIS=2)
 pub fn as_scaled_masked_softmax_rule(
-    _ctx: &(),
+    _ctx: &MetalTransform,
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,

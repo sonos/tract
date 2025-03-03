@@ -1,6 +1,7 @@
 use crate::rewrite_rules::next_node;
 use crate::rewrite_rules::*;
 use crate::rule_ensure;
+use crate::MetalTransform;
 use tract_core::internal::*;
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::element_wise::ElementWiseOp;
@@ -53,7 +54,7 @@ impl TypedOp for BasicNewGelu {
 
 /// Search pattern => NEW_GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)));
 pub fn as_new_gelu_rule(
-    _ctx: &(),
+    _ctx: &MetalTransform,
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,
