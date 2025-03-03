@@ -8,8 +8,8 @@ ROOT=$(dirname $(dirname $(realpath $0)))
 PATH=$PATH:$HOME/.cargo/bin
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
-
 which cargo-dinghy || ( mkdir -p /tmp/cargo-dinghy
+
 if [ `arch` = x86_64 -o `arch` = i386 -o `arch` = arm64 ]
 then
      cd /tmp/cargo-dinghy
@@ -27,6 +27,11 @@ else
     cargo install cargo-dinghy
 fi
 )
+
+if [ `whoami` != "root" ]
+then
+    SUDO=sudo
+fi
 
 case "$PLATFORM" in
     "raspbian")
