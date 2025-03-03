@@ -14,6 +14,8 @@ impl super::TypedPass for ConcatThenEinsum {
         self.0 = 0;
         Ok(())
     }
+
+    #[allow(clippy::comparison_chain)]
     fn next(
         &mut self,
         _session: &mut OptimizerSession,
@@ -110,6 +112,6 @@ impl super::TypedPass for ConcatThenEinsum {
                 return Ok(Some(patch));
             }
         }
-        return Ok(None);
+        Ok(None)
     }
 }
