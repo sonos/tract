@@ -70,6 +70,7 @@ impl Nnef {
         self.allow_extended_identifier_syntax = allow_extended_identifier_syntax;
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn translate(
         &self,
         proto_model: &ProtoModel,

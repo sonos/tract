@@ -161,7 +161,7 @@ impl EvalOp for Im2Col {
 
             // in the loop, we have normalized the input so that N is
             // always here, and output so that N and G are there.
-            if !geometry.pool.output_shape.shape.iter().any(|d| *d == 0) {
+            if !geometry.pool.output_shape.shape.contains(&0) {
                 for i in 0..*geometry.input_shape_with_n.n().unwrap_or(&1) {
                     let input = input.view_at_prefix(&[i])?;
                     for g in 0..self.group {
