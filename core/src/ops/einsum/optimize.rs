@@ -204,6 +204,18 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
                 return mmm.packings()[0].0.clone();
             }
         }
+        if self.act_dt.is_integer() && self.weight_type == self.act_dt.into() {
+            if let Ok(n) = self.ns.iter().cloned().product::<TDim>().to_usize() {
+                let mmm = tract_linalg::ops()
+                    .mmm(i32::datum_type(), Some(self.m), Some(self.k), Some(n))
+                    .unwrap();
+                if let Some(packing) =
+                    mmm.packings().iter().find(|(a, _)| a.precursor() == self.weight_type)
+                {
+                    return packing.0.clone();
+                }
+            }
+        }
         clone_box(
             tract_linalg::ops()
                 .all_possible_packing(self.weight_type.clone())
