@@ -181,8 +181,7 @@ impl MetalTensor {
                 Ok(match self {
                     Self::Owned(o) => o
                         .inner
-                        .as_arc_tensor()
-                        .map(|t| t.clone())
+                        .as_arc_tensor().cloned()
                         .unwrap_or_else(|| o.inner.clone().into_tensor().into_arc_tensor()),
                     Self::ArenaView(v) => v.clone().into_tensor().into(),
                 })
