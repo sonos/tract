@@ -260,8 +260,8 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
                     scales.iter().for_each(|s| writer.write_f16(*s))
                 }
                 for pos in 0..self.block_len() {
-                    for &row in &order {  
-                        let ggml_idx = (self.block_len() / 2) * (pos % 2) + (pos / 2);
+                    for &row in &order {
+                        let ggml_idx = pos / (self.block_len() / 2) + (2 * pos) % self.block_len();
                         let nib = temp_nibbles[row][ggml_idx];
                         writer.write_i4(nib);
                     }
