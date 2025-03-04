@@ -26,7 +26,6 @@ use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
 use tract_core::ops::nn::{Reduce, Softmax as CoreSoftmax};
-use tract_core::tract_linalg::block_quant::BlockQuantValue;
 use tract_core::transform::ModelTransform;
 use tract_itertools::Itertools;
 

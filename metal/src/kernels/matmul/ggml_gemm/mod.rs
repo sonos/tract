@@ -459,13 +459,11 @@ mod tests {
                     let b_data: Vec<f32> = b_data.into_iter().map(|x| x.into()).collect();
                     let b_tensor =
                         Q4_0.simulate_precision_loss(Tensor::from_shape(&b_shape, &b_data)?, 2)?;
+                    
                     ensure!(k % 32 == 0);
-                    let mut b_quant = Q4_0.quant_f32(&b_data)?;
-                    crate::utils::tract_to_gguf_q4_0_packing(&mut b_quant)?;
-
                     let b_q4_0_tensor = tensor0(Opaque(Arc::new(BlockQuantValue {
                         fact: BlockQuantFact { format: Box::new(Q4_0), shape: tvec![batch, n, k] },
-                        value: b_quant,
+                        value: Q4_0.quant_f32(&b_data)?,
                     })));
                     (b_tensor, b_q4_0_tensor)
                 } else {

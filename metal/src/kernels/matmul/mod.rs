@@ -899,7 +899,7 @@ mod tests {
                         if !self.q4_0 {
                             Tensor::from_shape(&[self.b, self.n, self.k], &self.rhs)?
                         } else {
-                            let mut b_quant = Q4_0.quant_f32(
+                            let b_quant = Q4_0.quant_f32(
                                 &self
                                     .rhs
                                     .clone()
@@ -907,8 +907,6 @@ mod tests {
                                     .map(|x| x.to_f32().unwrap())
                                     .collect_vec(),
                             )?;
-
-                            crate::utils::tract_to_gguf_q4_0_packing(&mut b_quant)?;
 
                             tensor0(Opaque(Arc::new(BlockQuantValue {
                                 fact: BlockQuantFact {
