@@ -40,8 +40,10 @@ impl<const QK: usize> BaseQ4_0<QK> {
         let r_scale = if scale.is_zero() { T::zero() } else { scale.recip() };
         writer.write_f16(scale.as_());
 
-        for x in block {
-            let i: i8 = (*x * r_scale + (8.5f32).as_()).as_();
+        for idx in 0..block.len() {
+            // Quant block in GGML nibble order
+            let ggml_idx = (block.len() / 2) * (1 - idx % 2) + (idx / 2);
+            let i: i8 = (block[ggml_idx] * r_scale + (8.5f32).as_()).as_();
             writer.write_i4(i.min(15));
         }
     }
@@ -55,8 +57,9 @@ impl<const QK: usize> BaseQ4_0<QK> {
         assert!(block.len() == self.block_len());
         let mut nibbles = NibbleReader::for_slice(quant);
         let d: T = nibbles.read_f16().as_();
-        for x in block {
-            *x = (nibbles.read_i4() - 8).as_() * d;
+        for idx in 0..block.len() {
+            let ggml_idx = (block.len() / 2) * (1 - idx % 2) + (idx / 2);
+            block[ggml_idx]= (nibbles.read_i4() - 8).as_() * d;
         }
     }
 
@@ -247,16 +250,19 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
                     NibbleReader::for_slice(&input[offset..])
                 })
                 .collect_vec();
+            let mut temp_nibbles = vec![vec![0i8; self.block_len()]; r];
             for _ in 0..blocks_for_k {
-                for (ix, reader) in readers.iter_mut().enumerate() {
-                    scales[ix] = reader.read_f16();
+                for (row, reader) in readers.iter_mut().enumerate() {
+                    scales[row] = reader.read_f16();
+                    temp_nibbles[row] = (0..self.block_len()).map(|_| reader.read_i4()).collect_vec();
                 }
                 if !scales_at_end {
                     scales.iter().for_each(|s| writer.write_f16(*s))
                 }
-                for _ in 0..self.block_len() {
-                    for &ix in &order {
-                        let nib = readers[ix].read_i4();
+                for pos in 0..self.block_len() {
+                    for &row in &order {  
+                        let ggml_idx = (self.block_len() / 2) * (1 - pos % 2) + (pos / 2);
+                        let nib = temp_nibbles[row][ggml_idx];
                         writer.write_i4(nib);
                     }
                 }
