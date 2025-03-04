@@ -93,7 +93,7 @@ pub fn wire_prepacked(
     ensure!(prepack.is_some());
     let prepack = prepack.unwrap();
 
-    let (mode_picker, configs) = if let Some(mmm) =
+    let (mode_picker, configs) = if let Some((mmm, pack)) =
         op.n.as_i64()
             .and_then(|n| {
                 tract_linalg::ops().mmm(
@@ -103,9 +103,14 @@ pub fn wire_prepacked(
                     Some(n as usize),
                 )
             })
-            .filter(|mmm| mmm.packings()[0].0.same_as(prepack.format()))
-    {
-        (ModePicker::Single, vec![(mmm, 0, None)])
+            .and_then(|mmm| {
+                mmm.packings()
+                    .iter()
+                    .enumerate()
+                    .find(|(_, (a, _b))| a.same_as(prepack.format()))
+                    .map(|(ix, _)| (mmm.clone(), ix))
+            }) {
+        (ModePicker::Single, vec![(mmm, pack, None)])
     } else {
         let mmms = tract_linalg::ops()
             .mmm_impls()
