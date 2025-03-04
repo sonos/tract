@@ -243,6 +243,31 @@ pub fn write_tensor(w: &mut impl Write, tensor: &Tensor) -> TractResult<()> {
     Ok(())
 }
 
+pub fn tract_to_gguf_q4_0_packing(data: &mut Blob) -> TractResult<()> {
+    let block_size = Q4_0.block_bytes();
+    ensure!(data.layout().size() % block_size == 0);
+
+    let n_block = data.layout().size() / block_size;
+    let data_bytes = data.as_bytes_mut();
+
+    for b in 0..n_block {
+        let offset = b * block_size + 2;
+        let nibbles = &mut data_bytes[offset..offset + 16];
+        let second_part: &mut [u8; 8] = &mut [0; 8];
+        second_part.clone_from_slice(&nibbles[8..]);
+        for i in (0..16).rev() {
+            let lsb = if i % 2 == 0 { nibbles[i / 2] & 0x0F } else { (nibbles[i / 2] & 0xF0) >> 4 };
+            let msb = if i % 2 == 0 {
+                (second_part[i / 2] & 0x0F) << 4
+            } else {
+                second_part[i / 2] & 0xF0
+            };
+            nibbles[i] = msb | lsb;
+        }
+    }
+    Ok(())
+}
+
 fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Tensor> {
     let format =
         if header.item_type == 0x2040 { Q4_0 } else { bail!("Unexpected block quant format") };
@@ -253,6 +278,7 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
     ensure!(expected_len == header.data_size_bytes as _);
     let mut blob = unsafe { Blob::new_for_size_and_align(expected_len, 128) };
     r.read_exact(&mut blob)?;
+    tract_to_gguf_q4_0_packing(&mut blob)?;
     let fact = BlockQuantFact { format: Box::new(format), shape };
     let bqv = BlockQuantValue { value: blob, fact };
     let tensor = tensor0(Opaque(Arc::new(bqv)));
