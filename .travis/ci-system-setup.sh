@@ -2,7 +2,7 @@
 
 [ -d $ROOT/.travis ] || exit 1 "\$ROOT not set correctly '$ROOT'"
 
-if [ -n "$CI" -a ! -e ".setup-done" ]
+if [ -n "$CI" -a ! -e /tmp/ci-setup-done ]
 then
     if [ `uname` = "Darwin" ]
     then
@@ -29,7 +29,7 @@ then
     rustup default $RUST_VERSION
     export RUSTUP_TOOLCHAIN=$RUST_VERSION
 
-    touch .setup-done
+    touch /tmp/ci-setup-done
 fi
 
 S3=https://s3.amazonaws.com/tract-ci-builds/tests

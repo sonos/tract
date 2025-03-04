@@ -88,8 +88,8 @@ case "$PLATFORM" in
     "aarch64-unknown-linux-gnu-stretch" | "armv7-unknown-linux-gnueabihf-stretch" )
         INNER_PLATFORM=${PLATFORM%-stretch}
         (cd .travis/docker-debian-stretch; docker build --tag debian-stretch .)
-        rm .setup-done
         docker run -v `pwd`:/tract -w /tract \
+            -e CI=$CI \
             -e SKIP_QEMU_TEST=skip \
             -e PLATFORM=$INNER_PLATFORM debian-stretch \
             ./.travis/cross.sh
