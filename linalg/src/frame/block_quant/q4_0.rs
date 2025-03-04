@@ -42,7 +42,7 @@ impl<const QK: usize> BaseQ4_0<QK> {
 
         for idx in 0..block.len() {
             // Quant block in GGML nibble order
-            let ggml_idx = (block.len() / 2) * (1 - idx % 2) + (idx / 2);
+            let ggml_idx = (block.len() / 2) * (idx % 2) + (idx / 2);
             let i: i8 = (block[ggml_idx] * r_scale + (8.5f32).as_()).as_();
             writer.write_i4(i.min(15));
         }
@@ -58,7 +58,7 @@ impl<const QK: usize> BaseQ4_0<QK> {
         let mut nibbles = NibbleReader::for_slice(quant);
         let d: T = nibbles.read_f16().as_();
         for idx in 0..block.len() {
-            let ggml_idx = (block.len() / 2) * (1 - idx % 2) + (idx / 2);
+            let ggml_idx = (block.len() / 2) * (idx % 2) + (idx / 2);
             block[ggml_idx]= (nibbles.read_i4() - 8).as_() * d;
         }
     }
@@ -261,7 +261,7 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
                 }
                 for pos in 0..self.block_len() {
                     for &row in &order {  
-                        let ggml_idx = (self.block_len() / 2) * (1 - pos % 2) + (pos / 2);
+                        let ggml_idx = (self.block_len() / 2) * (pos % 2) + (pos / 2);
                         let nib = temp_nibbles[row][ggml_idx];
                         writer.write_i4(nib);
                     }
