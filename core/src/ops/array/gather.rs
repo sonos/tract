@@ -61,7 +61,7 @@ impl Gather {
         ensure!(data.fact.shape.len() == 2);
         let data_shape = &data.fact.shape;
         let output_shape = &*self.compute_output_shape(data_shape, indices.shape())?;
-        let mut output = unsafe { Tensor::uninitialized::<f16>(output_shape)? };
+        let mut output = unsafe { Tensor::uninitialized::<F>(output_shape)? };
         let indices_slice = indices.as_slice::<i64>()?;
         let vector_len = data_shape[1];
         if F::datum_type() == f16::datum_type() {
