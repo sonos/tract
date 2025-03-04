@@ -97,7 +97,7 @@ pub fn clarify_tvalues(values: &TVec<TValue>) -> TractResult<TVec<TValue>> {
     values
         .iter()
         .map(|t| {
-            if t.datum_type().is_opaque() {
+            if t.datum_type().is_opaque() && t.volume() == 1 {
                 if let Some(clarified) = t.to_scalar::<Opaque>()?.clarify_to_tensor()? {
                     return Ok(clarified.into_tvalue());
                 }
