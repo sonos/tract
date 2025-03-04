@@ -26,11 +26,6 @@ else
 fi
 )
 
-if [ `whoami` != "root" ]
-then
-    SUDO=sudo
-fi
-
 case "$PLATFORM" in
     "raspbian")
         [ -e $HOME/cached/raspitools ] || git clone --depth 1 https://github.com/raspberrypi/tools $HOME/cached/raspitools
