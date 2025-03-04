@@ -7,11 +7,11 @@ use crate::optim::OptimizerSession;
 use tract_itertools::Itertools;
 
 #[derive(Clone, Debug, Default)]
-pub struct ConcatThenEinsum(usize);
+pub struct ConcatThenEinsum(Option<InletId>);
 
 impl super::TypedPass for ConcatThenEinsum {
     fn reset(&mut self) -> TractResult<()> {
-        self.0 = 0;
+        self.0 = Default::default();
         Ok(())
     }
 
@@ -21,15 +21,24 @@ impl super::TypedPass for ConcatThenEinsum {
         _session: &mut OptimizerSession,
         model: &TypedModel,
     ) -> TractResult<Option<TypedModelPatch>> {
-        'outer: while self.0 < model.nodes.len() {
-            let concat_node = model.node(self.0);
-            self.0 += 1;
-            if concat_node.outputs.len() != 1 || concat_node.outputs[0].successors.len() != 1 {
-                continue;
-            }
-            let InletId { node: einsum_node_id, slot: einsum_slot } =
-                concat_node.outputs[0].successors[0];
-            let einsum_node = &model.nodes[einsum_node_id];
+        'outer: loop {
+            self.0 = if let Some(previous) = self.0 {
+                if let Some(next) = next_inlet(model, &previous) {
+                    Some(next)
+                } else {
+                    return Ok(None);
+                }
+            } else if let Some(first) =
+                model.nodes.iter().find(|n| n.inputs.len() > 0).map(|n| InletId::new(n.id, 0))
+            {
+                Some(first)
+            } else {
+                return Ok(None);
+            };
+            let inlet = self.0.unwrap();
+            let outlet = model.nodes[inlet.node].inputs[inlet.slot];
+            let concat_node = model.node(outlet.node);
+            let einsum_node = &model.nodes[inlet.node];
             if einsum_node.inputs.len() != 2 {
                 // should we try and apply this on quantized einsums ?
                 continue;
@@ -38,7 +47,7 @@ impl super::TypedPass for ConcatThenEinsum {
                 (concat_node.op_as::<TypedConcat>(), einsum_node.op_as::<EinSum>())
             {
                 let offsets = concat.offsets(&model.node_input_facts(concat_node.id)?)?;
-                let axis_info = einsum.axes.axis((InOut::In(einsum_slot), concat.axis))?;
+                let axis_info = einsum.axes.axis((InOut::In(inlet.slot), concat.axis))?;
                 // only split if axis is a summing axis
                 if axis_info.outputs[0].len() > 0 {
                     continue;
@@ -112,6 +121,16 @@ impl super::TypedPass for ConcatThenEinsum {
                 return Ok(Some(patch));
             }
         }
-        Ok(None)
+    }
+}
+
+fn next_inlet(model: &TypedModel, inlet: &InletId) -> Option<InletId> {
+    if inlet.slot + 1 < model.nodes[inlet.node].inputs.len() {
+        Some(InletId::new(inlet.node, inlet.slot + 1))
+    } else {
+        model.nodes[inlet.node + 1..]
+            .iter()
+            .find(|n| n.inputs.len() > 0)
+            .map(|n| InletId::new(n.id, 0))
     }
 }
