@@ -481,9 +481,13 @@ fn convert_logic_ops_to_metal(op: &Comp) -> ops::MetalBinOp {
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {
-    let (tensor, metal_fact) = 
-        (op.val().clone(), MetalFact::from_cpu(Arc::clone(op.val()).into())?);
-    let metal_const = tensor.into_metal()?.into_opaque_tensor().into_arc_tensor();
+    let metal_fact = if let Some(curr_bqv) = as_q40_tensor(op.val().view().tensor) {
+        let typed_fact: TypedFact = Arc::clone(op.val()).into();
+        MetalFact::from_cpu(typed_fact.with_opaque_fact(curr_bqv.fact.clone()))?
+    } else {
+        MetalFact::from_cpu(Arc::clone(op.val()).into())?
+    };
+    let metal_const = op.val().clone().into_metal()?.into_opaque_tensor().into_arc_tensor();
     Const::new_with_opaque_fact(metal_const, Box::new(metal_fact))
 }
 
