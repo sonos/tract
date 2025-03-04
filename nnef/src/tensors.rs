@@ -138,7 +138,9 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
         (TRACT_ITEM_TYPE_VENDOR, 4, 64) => DatumType::ComplexI32,
         #[cfg(feature = "complex")]
         (TRACT_ITEM_TYPE_VENDOR, 4, 128) => DatumType::ComplexI64,
-        (TRACT_ITEM_TYPE_VENDOR, it, _) if ((it & 0x2000) == 0x2000) || ((it & 0x3000) == 0x3000) => {
+        (TRACT_ITEM_TYPE_VENDOR, it, _)
+            if ((it & 0x2000) == 0x2000) || ((it & 0x3000) == 0x3000) =>
+        {
             return read_block_quant_value(&mut reader, &header);
         }
         _ => bail!(
@@ -269,8 +271,11 @@ pub fn tract_to_gguf_q4_0_packing(data: &mut Blob) -> TractResult<()> {
 }
 
 fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Tensor> {
-    let format =
-        if matches!(header.item_type, 0x2040 | 0x3040){ Q4_0 } else { bail!("Unexpected block quant format") };
+    let format = if matches!(header.item_type, 0x2040 | 0x3040) {
+        Q4_0
+    } else {
+        bail!("Unexpected block quant format")
+    };
     ensure!(header.rank == 2);
     let shape: TVec<usize> = header.dims[0..2].iter().map(|x| (*x as usize)).collect();
     ensure!(shape.iter().product::<usize>() % format.block_len() == 0);

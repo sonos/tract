@@ -59,7 +59,7 @@ impl<const QK: usize> BaseQ4_0<QK> {
         let d: T = nibbles.read_f16().as_();
         for idx in 0..block.len() {
             let ggml_idx = (block.len() / 2) * (idx % 2) + (idx / 2);
-            block[ggml_idx]= (nibbles.read_i4() - 8).as_() * d;
+            block[ggml_idx] = (nibbles.read_i4() - 8).as_() * d;
         }
     }
 
@@ -254,7 +254,8 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
             for _ in 0..blocks_for_k {
                 for (row, reader) in readers.iter_mut().enumerate() {
                     scales[row] = reader.read_f16();
-                    temp_nibbles[row] = (0..self.block_len()).map(|_| reader.read_i4()).collect_vec();
+                    temp_nibbles[row] =
+                        (0..self.block_len()).map(|_| reader.read_i4()).collect_vec();
                 }
                 if !scales_at_end {
                     scales.iter().for_each(|s| writer.write_f16(*s))
