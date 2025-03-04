@@ -32,7 +32,7 @@ jobs:
           - wasm32-unknown-unknown
           - wasm32-wasi
 
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
