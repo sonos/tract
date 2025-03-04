@@ -18,7 +18,7 @@ then
         export PYTHON_BIN_PATH=python3
     else
         $SUDO apt-get update
-        $SUDO apt-get install -y llvm python3 python3-numpy jshon wget curl build-essential awscli sudo 
+        $SUDO apt-get install -y llvm python3 python3-numpy jshon wget curl build-essential awscli sudo jshon
     fi
 
     if [ -z "$RUST_VERSION" ]
