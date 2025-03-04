@@ -138,7 +138,7 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
         (TRACT_ITEM_TYPE_VENDOR, 4, 64) => DatumType::ComplexI32,
         #[cfg(feature = "complex")]
         (TRACT_ITEM_TYPE_VENDOR, 4, 128) => DatumType::ComplexI64,
-        (TRACT_ITEM_TYPE_VENDOR, it, _) if (it & 0x2000) == 0x2000 => {
+        (TRACT_ITEM_TYPE_VENDOR, it, _) if ((it & 0x2000) == 0x2000) || ((it & 0x3000) == 0x3000) => {
             return read_block_quant_value(&mut reader, &header);
         }
         _ => bail!(
@@ -270,7 +270,7 @@ pub fn tract_to_gguf_q4_0_packing(data: &mut Blob) -> TractResult<()> {
 
 fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Tensor> {
     let format =
-        if header.item_type == 0x2040 { Q4_0 } else { bail!("Unexpected block quant format") };
+        if matches!(header.item_type, 0x2040 | 0x3040){ Q4_0 } else { bail!("Unexpected block quant format") };
     ensure!(header.rank == 2);
     let shape: TVec<usize> = header.dims[0..2].iter().map(|x| (*x as usize)).collect();
     ensure!(shape.iter().product::<usize>() % format.block_len() == 0);
@@ -278,7 +278,9 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
     ensure!(expected_len == header.data_size_bytes as _);
     let mut blob = unsafe { Blob::new_for_size_and_align(expected_len, 128) };
     r.read_exact(&mut blob)?;
-    tract_to_gguf_q4_0_packing(&mut blob)?;
+    if header.item_type == 0x2040 {
+        tract_to_gguf_q4_0_packing(&mut blob)?;
+    }
     let fact = BlockQuantFact { format: Box::new(format), shape };
     let bqv = BlockQuantValue { value: blob, fact };
     let tensor = tensor0(Opaque(Arc::new(bqv)));
@@ -297,10 +299,12 @@ fn write_block_quant_value(w: &mut impl Write, value: &BlockQuantValue) -> Tract
     header.bits_per_item = u32::MAX;
     header.data_size_bytes = value.value.len() as _;
     header.item_type_vendor = TRACT_ITEM_TYPE_VENDOR;
-    // 0x2040 2 is for GGML formats, 0 for Q formats then 4 and 0
-    header.item_type = 0x2040;
+    // 0x3040 3 is for GGML formats, 0 for Q formats then 4 and 0
+    header.item_type = 0x3040;
     header.write(w)?;
-    w.write_all(value.value.as_bytes())?;
+    let mut rewritten_value = value.value.clone();
+    tract_to_gguf_q4_0_packing(&mut rewritten_value)?;
+    w.write_all(rewritten_value.as_bytes())?;
     Ok(())
 }
 
