@@ -2,6 +2,11 @@
 
 [ -d $ROOT/.travis ] || exit 1 "\$ROOT not set correctly '$ROOT'"
 
+if [ `whoami` != "root" ]
+then
+    SUDO=sudo
+fi
+
 if [ -n "$CI" -a ! -e /tmp/ci-setup-done ]
 then
     if [ `uname` = "Darwin" ]
@@ -12,8 +17,8 @@ then
         PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"
         export PYTHON_BIN_PATH=python3
     else
-        sudo apt-get update
-        sudo apt-get install -y llvm python3 python3-numpy jshon wget curl
+        $SUDO apt-get update
+        $SUDO apt-get install -y llvm python3 python3-numpy jshon wget curl
     fi
 
     if [ -z "$RUST_VERSION" ]
