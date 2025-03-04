@@ -1,4 +1,5 @@
 #!/bin/sh
+set -e
 
 [ -d $ROOT/.travis ] || exit 1 "\$ROOT not set correctly '$ROOT'"
 
@@ -18,7 +19,8 @@ then
         export PYTHON_BIN_PATH=python3
     else
         $SUDO apt-get update
-        $SUDO apt-get install -y llvm python3 python3-numpy jshon wget curl build-essential awscli sudo jshon
+        $SUDO apt-get install -y llvm python3 python3-numpy jshon wget curl build-essential sudo jshon
+        aws --version || $SUDO apt-get install -y awscli
     fi
 
     if [ -z "$RUST_VERSION" ]
