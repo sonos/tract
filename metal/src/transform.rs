@@ -16,8 +16,8 @@ use crate::utils::as_q40_fact;
 use crate::{IntoMetal, MetalFact, MetalTensor};
 use std::borrow::Cow;
 use std::fmt::Debug;
-use tract_core::dyn_clone::clone_box;
 use std::str::FromStr;
+use tract_core::dyn_clone::clone_box;
 use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
 use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
@@ -357,27 +357,23 @@ fn check_matmul_in_dts(in_facts: &[TypedFact]) -> bool {
         || GgmlGemm.is_supported_dts(&[in_facts[1].clone(), in_facts[0].clone()])
 }
 
-fn is_ggml_matvec(facts: TVec<&TypedFact>, transpose_b: bool) -> bool {
-    // TODO: Find better heuristic
-    let b_shape = as_q40_fact(&facts[1])
-        .map(|fact| fact.shape.clone().to_vec())
-        .unwrap_or(facts[1].shape.as_concrete().unwrap_or(&[0, 0]).to_vec());
-    let k = b_shape[b_shape.len() - 1 - !transpose_b as usize].to_i64().unwrap_or(0);
-    let m = b_shape[b_shape.len() - 1 - transpose_b as usize].to_i64().unwrap_or(0);
+fn is_input_broadcast(facts: TVec<&TypedFact>) -> bool {
+    let b_shape = as_q40_fact(facts[1])
+        .map(|fact| fact.shape[0])
+        .unwrap_or(facts[1].shape[0].to_i64().unwrap_or(0) as usize);
 
-    facts[0].datum_type == DatumType::F32 && !((k % 32 == 0) && (k >= 64) && (m > 4))
+    b_shape != facts[0].shape[0].to_i64().unwrap_or(0) as usize
 }
 
 pub fn resolve_gemm_impl(
     gemm_impl: Option<MetalGemmImplKind>,
-    op: &BasicMatMul,
     input_facts: TVec<&TypedFact>,
 ) -> TractResult<MetalGemmImplKind> {
     if let Some(gemm) = gemm_impl {
         Ok(gemm)
     } else if as_q40_fact(input_facts[0]).is_some()
         || as_q40_fact(input_facts[1]).is_some()
-        || is_ggml_matvec(input_facts, op.transpose_b)
+        || is_input_broadcast(input_facts)
     {
         Ok(MetalGemmImplKind::Ggml)
     } else {
@@ -395,8 +391,7 @@ fn convert_matmul_to_metal(
 ) -> TractResult<TVec<OutletId>> {
     let mut input_facts = model.node_input_facts(node.id)?;
 
-    let gemm_impl = resolve_gemm_impl(gemm_impl, op, input_facts.clone())?;
-    let mut matmul_output = match gemm_impl {
+    let mut matmul_output = match resolve_gemm_impl(gemm_impl, input_facts.clone())? {
         MetalGemmImplKind::Mlx => {
             let op = ops::MetalGemm::<MlxGemm>::new(op.transpose_a, op.transpose_b);
             target.wire_node(node.name.clone(), op, inputs)?
@@ -514,10 +509,9 @@ fn convert_logic_ops_to_metal(op: &Comp) -> ops::MetalBinOp {
 
 fn convert_const(op: &Const) -> TractResult<Const> {
     let typed_fact: TypedFact = Arc::clone(op.val()).into();
-    let metal_fact = if let Some(of) = op.opaque_fact(){
+    let metal_fact = if let Some(of) = op.opaque_fact() {
         MetalFact::from_cpu(typed_fact.with_opaque_fact(clone_box(of)))?
-    }
-    else {
+    } else {
         MetalFact::from_cpu(typed_fact)?
     };
 
