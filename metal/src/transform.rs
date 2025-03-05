@@ -12,10 +12,11 @@ use crate::rewrite_rules::{
     BasicSilu,
 };
 use crate::tensor::MetalTensorExt;
-use crate::utils::{as_q40_fact, as_q40_tensor};
+use crate::utils::as_q40_fact;
 use crate::{IntoMetal, MetalFact, MetalTensor};
 use std::borrow::Cow;
 use std::fmt::Debug;
+use tract_core::dyn_clone::clone_box;
 use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
 use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
@@ -480,12 +481,14 @@ fn convert_logic_ops_to_metal(op: &Comp) -> ops::MetalBinOp {
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {
-    let metal_fact = if let Some(curr_bqv) = as_q40_tensor(op.val().view().tensor) {
-        let typed_fact: TypedFact = Arc::clone(op.val()).into();
-        MetalFact::from_cpu(typed_fact.with_opaque_fact(curr_bqv.fact.clone()))?
-    } else {
-        MetalFact::from_cpu(Arc::clone(op.val()).into())?
+    let typed_fact: TypedFact = Arc::clone(op.val()).into();
+    let metal_fact = if let Some(of) = op.opaque_fact(){
+        MetalFact::from_cpu(typed_fact.with_opaque_fact(clone_box(of)))?
+    }
+    else {
+        MetalFact::from_cpu(typed_fact)?
     };
+
     let metal_const = op.val().clone().into_metal()?.into_opaque_tensor().into_arc_tensor();
     Const::new_with_opaque_fact(metal_const, Box::new(metal_fact))
 }
