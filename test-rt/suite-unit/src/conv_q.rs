@@ -429,6 +429,29 @@ pub fn suite() -> TractResult<TestSuite> {
             raw_output_dt: DatumType::I8,
         },
     );
+    suite.add(
+        "trivial_4",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 2, [1]).unwrap(),
+            co: 8,
+            kernel_format: OIHW,
+            group: 1,
+            data: tensor2(&[[0i8], [1i8]]),
+            kernel: tensor3(&[
+                [[0], [0]],
+                [[0], [0]],
+                [[0], [0]],
+                [[0], [0]],
+                [[0], [0]],
+                [[0], [0]],
+                [[0], [0]],
+                [[0], [1i8]],
+            ]),
+            bias: None,
+            qp: qp_noop_i8(),
+            raw_output_dt: DatumType::I8,
+        },
+    );
     let mut qp = qp_noop_i8();
     qp[0] = tensor0(-2i32);
     qp[3] = tensor1(&[1f32, 0.5]);
