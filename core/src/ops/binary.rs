@@ -266,7 +266,7 @@ impl TypedOp for TypedBinOp {
                 node.inputs.clone()
             };
             let actual_linalg_op =
-                if must_swap_inputs { linalg_bin_op.flip() } else { linalg_bin_op.clone() };
+                if must_swap_inputs { linalg_bin_op.flip() } else { linalg_bin_op };
             let actual_core_op = core_op_for_linalg_op(&actual_linalg_op);
 
             let dt = model.node_input_facts(node.id)?[0].datum_type;
