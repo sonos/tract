@@ -1,6 +1,5 @@
 use super::*;
-use crate::frame::PackedFormat;
-use crate::frame::mmm::Packing;
+use crate::pack::{PackedFormat, Packing};
 use crate::Ops;
 use tract_data::internal::*;
 

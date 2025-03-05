@@ -358,7 +358,7 @@ Windows ABI:
 
     {% for vec in (0..3) %}
         {% for row in (0..7) %}
-            vextractps  dword ptr [r8], xmm{{vec}}, {{row}}
+            pextrw      word ptr [r8], xmm{{vec}}, {{row}}
             add         r8, rsi
         {% endfor %}
     {% endfor %}

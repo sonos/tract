@@ -1,6 +1,6 @@
 //! `Tensor` is the main data container for tract
-use crate::internal::*;
 use crate::dim::TDim;
+use crate::internal::*;
 use crate::tensor::Tensor;
 use crate::TVec;
 use half::f16;

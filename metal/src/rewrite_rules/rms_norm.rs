@@ -1,5 +1,5 @@
 use crate::rewrite_rules::{collect_node_const_inputs, next_node, previous_node};
-use crate::rule_ensure;
+use crate::{rule_ensure, MetalTransform};
 use std::sync::Arc;
 use tract_core::internal::*;
 use tract_core::ops::binary::{BinMiniOp, TypedBinOp};
@@ -53,7 +53,7 @@ impl TypedOp for BasicRmsNorm {
 
 /// Search pattern => A = A * RSQRT(MEAN_OF_SQUARES(A) + EPS)
 pub fn as_rms_norm_rule(
-    _ctx: &(),
+    _ctx: &MetalTransform,
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,
@@ -70,25 +70,37 @@ pub fn as_rms_norm_rule(
     rule_ensure!(matches!(dt, DatumType::F32 | DatumType::F16));
 
     // Identify Add operator
-    let Some(add_succ) = next_node(model, node) else { return Ok(None) };
-    let Some(add_succ_op) = add_succ.op_as::<TypedBinOp>() else { return Ok(None) };
+    let Some(add_succ) = next_node(model, node) else {
+        return Ok(None);
+    };
+    let Some(add_succ_op) = add_succ.op_as::<TypedBinOp>() else {
+        return Ok(None);
+    };
     rule_ensure!(add_succ_op.0.is::<Add>());
 
     // Retrieve epsilon
     let add_consts = collect_node_const_inputs(model, add_succ);
     rule_ensure!(add_consts.len() == 1);
-    let eps = add_consts[0].0.clone();
+    let eps = add_consts[0].val().clone();
     rule_ensure!(eps.len() == 1);
     rule_ensure!(eps.datum_type() == dt);
 
     // Identify Rsqrt
-    let Some(rsqrt_succ) = next_node(model, add_succ) else { return Ok(None) };
-    let Some(rsqrt_succ_op) = rsqrt_succ.op_as::<ElementWiseOp>() else { return Ok(None) };
+    let Some(rsqrt_succ) = next_node(model, add_succ) else {
+        return Ok(None);
+    };
+    let Some(rsqrt_succ_op) = rsqrt_succ.op_as::<ElementWiseOp>() else {
+        return Ok(None);
+    };
     rule_ensure!(rsqrt_succ_op.0.is::<Rsqrt>());
 
     // Identify Mul
-    let Some(mul_succ) = next_node(model, rsqrt_succ) else { return Ok(None) };
-    let Some(mul_succ_op) = mul_succ.op_as::<TypedBinOp>() else { return Ok(None) };
+    let Some(mul_succ) = next_node(model, rsqrt_succ) else {
+        return Ok(None);
+    };
+    let Some(mul_succ_op) = mul_succ.op_as::<TypedBinOp>() else {
+        return Ok(None);
+    };
     rule_ensure!(mul_succ_op.0.is::<Mul>());
     rule_ensure!(mul_succ.inputs.contains(&node.inputs[0]));
 
@@ -103,7 +115,7 @@ pub fn as_rms_norm_rule(
 
 /// Search pattern => A = CAST(RMS_NORM(CAST(A, F32)), F16)
 pub fn remove_rms_norm_cast(
-    _ctx: &(),
+    _ctx: &MetalTransform,
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,

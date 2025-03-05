@@ -117,12 +117,12 @@ impl SpecialOps<PulsedFact, Box<dyn PulsedOp>> for PulsedModel {
         let v = v.into_arc_tensor();
         for node in &self.nodes {
             if let Some(op) = node.op_as::<Const>() {
-                if op.0 == v {
+                if op.val() == &v {
                     return Ok(node.id.into());
                 }
             }
         }
-        let op = NonPulsingWrappingOp(Box::new(Const::new(v)));
+        let op = NonPulsingWrappingOp(Box::new(Const::new(v)?));
         Ok(self.wire_node(name, op, &[])?[0])
     }
 }
@@ -161,6 +161,21 @@ impl
             .unwrap());
         }
         log::debug!("Pulsifying node {node}");
+
+        if !source
+            .node_input_facts(node.id)?
+            .iter()
+            .any(|f| f.shape.iter().any(|d| d.symbols().contains(&self.0)))
+            && !node
+                .outputs
+                .iter()
+                .any(|o| o.fact.shape.iter().any(|d| d.symbols().contains(&self.0)))
+        {
+            let pulse_op = NonPulsingWrappingOp(node.op.clone());
+            let inputs: TVec<OutletId> = node.inputs.iter().map(|i| mapping[i]).collect();
+            log::debug!("Pulsified node {node} with NonPulsingWrappingOp");
+            return target.wire_node(&node.name, pulse_op, &inputs);
+        }
 
         if let Some(pulsified) =
             OpPulsifier::pulsify(source, node, target, mapping, &self.0, &self.1)?

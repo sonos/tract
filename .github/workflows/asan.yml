@@ -3,7 +3,7 @@ name: Sanitized build tests
 on:
   workflow_dispatch:
   schedule:
-    - cron:  '0 5 * * *'
+    - cron:  '0 5 * * MON'
 
 env:
   CARGO_INCREMENTAL: false

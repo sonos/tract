@@ -1,11 +1,13 @@
 use crate::internal::*;
 use crate::ops::einsum::block_quant_aware_input_shape;
 use ndarray::*;
-use tract_linalg::frame::block_quant::BlockQuantValue;
+use tract_linalg::block_quant::BlockQuantValue;
+use tract_linalg::mmm::MMMInputValue;
 
-#[derive(Debug, Clone, new, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct Gather {
     pub axis: usize,
+    pub output_type: Option<DatumType>,
 }
 
 impl Op for Gather {
@@ -17,6 +19,10 @@ impl Op for Gather {
 }
 
 impl Gather {
+    pub fn new(axis: usize) -> Gather {
+        Gather { axis, output_type: None }
+    }
+
     pub fn compute_output_shape<D: DimLike>(
         &self,
         input_shape: &[D],
@@ -41,11 +47,7 @@ impl Gather {
             let mut icoords: TVec<usize> = ocoords[0..self.axis].into();
             let kcoords = &ocoords[self.axis..][..indices.ndim()];
             let k = indices[kcoords];
-            let k = if k < 0 {
-                k + data_view.shape()[self.axis] as i64
-            } else {
-                k
-            } as usize;
+            let k = if k < 0 { k + data_view.shape()[self.axis] as i64 } else { k } as usize;
             icoords.push(k);
             icoords.extend(ocoords[self.axis + indices.ndim()..].iter().copied());
             output_view[ocoords] = data_view.get(&*icoords).context("Invalid gather")?.clone();
@@ -54,20 +56,58 @@ impl Gather {
         Ok(output)
     }
 
-    fn eval_bq_to_f16(&self, data: &BlockQuantValue, indices: &TValue) -> TractResult<Tensor> {
+    fn eval_bq<F: Datum>(&self, data: &BlockQuantValue, indices: &TValue) -> TractResult<Tensor> {
         ensure!(self.axis == 0);
         ensure!(data.fact.shape.len() == 2);
         let data_shape = &data.fact.shape;
         let output_shape = &*self.compute_output_shape(data_shape, indices.shape())?;
-        let mut output = unsafe { Tensor::uninitialized::<f16>(output_shape)? };
+        let mut output = unsafe { Tensor::uninitialized::<F>(output_shape)? };
         let indices_slice = indices.as_slice::<i64>()?;
         let vector_len = data_shape[1];
-        let output_slice = output.as_slice_mut::<f16>()?;
-        for (pos, ix) in indices_slice.iter().enumerate() {
-            let slice = &mut output_slice[pos * vector_len..][..vector_len];
-            for (i, slot) in slice.iter_mut().enumerate() {
-                let offset = data_shape[1] * *ix as usize + i;
-                *slot = data.fact.format.extract_at_offset_f16(&data.value, offset)
+        if F::datum_type() == f16::datum_type() {
+            let output_slice = output.as_slice_mut::<f16>()?;
+            for (pos, ix) in indices_slice.iter().enumerate() {
+                let slice = &mut output_slice[pos * vector_len..][..vector_len];
+                for (i, slot) in slice.iter_mut().enumerate() {
+                    let offset = data_shape[1] * *ix as usize + i;
+                    *slot = data.fact.format.extract_at_offset_f16(&data.value, offset)
+                }
+            }
+        } else {
+            let output_slice = output.as_slice_mut::<f32>()?;
+            for (pos, ix) in indices_slice.iter().enumerate() {
+                let slice = &mut output_slice[pos * vector_len..][..vector_len];
+                for (i, slot) in slice.iter_mut().enumerate() {
+                    let offset = data_shape[1] * *ix as usize + i;
+                    *slot = data.fact.format.extract_at_offset_f32(&data.value, offset)
+                }
+            }
+        }
+        Ok(output)
+    }
+
+    fn eval_input_store<F: Datum>(
+        &self,
+        data: &dyn MMMInputValue,
+        indices: &TValue,
+    ) -> TractResult<Tensor> {
+        ensure!(self.axis == 0);
+        let data_shape = &[data.mn(), data.k()];
+        let output_shape = &*self.compute_output_shape(data_shape, indices.shape())?;
+        let mut output = unsafe { Tensor::uninitialized::<F>(output_shape)? };
+        let indices_slice = indices.as_slice::<i64>()?;
+        let vector_len = data_shape[1];
+        if F::datum_type() == f16::datum_type() {
+            let output_slice = output.as_slice_mut::<f16>()?;
+            for (pos, m) in indices_slice.iter().enumerate() {
+                let slice = &mut output_slice[pos * vector_len..][..vector_len];
+                data.extract_at_mn_f16(*m as usize, slice)?;
+            }
+        } else {
+            let output_slice = output.as_slice_mut::<f32>()?;
+            for (pos, m) in indices_slice.iter().enumerate() {
+                let slice = &mut output_slice[pos * vector_len..][..vector_len];
+                data.extract_at_mn_f32(*m as usize, slice)?;
             }
         }
         Ok(output)
@@ -78,16 +118,28 @@ impl TypedOp for Gather {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        if let Some(dt) = self.output_type {
+            ensure!(
+                inputs[0].datum_type.is_opaque() || inputs[0].datum_type == dt,
+                "Inconsistent datum_type in Gather: attribute is {:?}, but inputs[0] is {:?}",
+                dt,
+                inputs[0].datum_type
+            );
+        } else {
+            ensure!(!inputs[0].datum_type.is_opaque(),
+                "Gather applied to compressed data requires an explicit datum_type attribute for its output");
+        }
         ensure!(inputs[1].datum_type == i64::datum_type());
         if inputs[0].datum_type.is_opaque() {
             let data_shape = block_quant_aware_input_shape(inputs[0])?;
-            Ok(tvec!(f16::fact(
-                &*self.compute_output_shape(&data_shape, &inputs[1].shape)?
-            )))
+            Ok(tvec!(self
+                .output_type
+                .unwrap()
+                .fact(&*self.compute_output_shape(&data_shape, &inputs[1].shape)?)))
         } else {
-            Ok(tvec!(inputs[0].datum_type.fact(
-                &*self.compute_output_shape(&inputs[0].shape, &inputs[1].shape)?
-            )))
+            Ok(tvec!(inputs[0]
+                .datum_type
+                .fact(&*self.compute_output_shape(&inputs[0].shape, &inputs[1].shape)?)))
         }
     }
 
@@ -132,12 +184,15 @@ impl EvalOp for Gather {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices) = args_2!(inputs);
-        let result = if data.datum_type().is_opaque() {
-            let data = data
-                .to_scalar::<Opaque>()?
-                .downcast_ref::<BlockQuantValue>()
-                .context("Expected a BlockQuantValue")?;
-            self.eval_bq_to_f16(data, &indices)?
+        let result = if let Ok(opaque) = data.to_scalar::<Opaque>() {
+            let dt = self.output_type.unwrap();
+            if let Some(data) = opaque.downcast_ref::<BlockQuantValue>() {
+                dispatch_floatlike!(Self::eval_bq(dt)(self, data, &indices))?
+            } else if let Some(data) = opaque.downcast_ref::<Box<dyn MMMInputValue>>() {
+                dispatch_floatlike!(Self::eval_input_store(dt)(self, &**data, &indices))?
+            } else {
+                bail!("Can't use Gather on {:?} input", data);
+            }
         } else {
             dispatch_datum_by_size!(Self::eval_t(data.datum_type())(self, data, &indices))?
         };
@@ -155,9 +210,8 @@ mod tests {
         let gatherer = Gather::new(0);
         for idx in 2..3 {
             let index = Tensor::from(arr0(idx));
-            let outputs = gatherer
-                .eval(tvec![data.clone().into_tvalue(), index.into_tvalue()])
-                .unwrap();
+            let outputs =
+                gatherer.eval(tvec![data.clone().into_tvalue(), index.into_tvalue()]).unwrap();
             let output = &outputs[0];
             assert_eq!(output.shape().len(), 0);
             assert_eq!(*output.to_scalar::<i64>().unwrap(), idx + 1);

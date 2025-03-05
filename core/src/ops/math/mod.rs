@@ -331,14 +331,10 @@ fn declutter_mul(
     if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
         let var_fact = model.outlet_fact(uniform.var)?;
         if uniform.uni.cast_to_scalar::<f64>()? == 0.0 {
-            let shapes = model
-                .node_input_facts(node.id)?
-                .iter()
-                .map(|f| &f.shape)
-                .collect::<TVec<_>>();
-            let shape: ShapeFact = crate::broadcast::multi_broadcast(&shapes)
-                .context("Failed to broadcast")?
-                .into();
+            let shapes =
+                model.node_input_facts(node.id)?.iter().map(|f| &f.shape).collect::<TVec<_>>();
+            let shape: ShapeFact =
+                crate::broadcast::multi_broadcast(&shapes).context("Failed to broadcast")?.into();
             return Ok(Some(TypedModelPatch::rewire(
                 model,
                 &[],
@@ -450,10 +446,7 @@ fn declutter_div(
         let dt = q.datum_type;
         if let Some(q) = &q.uniform {
             if let Ok(integer) = q.cast_to_scalar::<i64>() {
-                if tensor0(integer)
-                    .cast_to_dt(dt)?
-                    .close_enough(q, false)
-                    .is_ok()
+                if tensor0(integer).cast_to_dt(dt)?.close_enough(q, false).is_ok()
                     && dt.is_integer()
                     && q.cast_to_scalar::<i64>()?.count_ones() == 1
                 {

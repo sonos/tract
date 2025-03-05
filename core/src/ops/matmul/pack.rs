@@ -1,7 +1,7 @@
 use crate::axes::Axis;
 use crate::internal::*;
 use ndarray::*;
-use tract_linalg::frame::PackedFormat;
+use tract_linalg::pack::PackedFormat;
 
 use super::ModePicker;
 
@@ -19,10 +19,7 @@ impl Op for OptMatMulPack {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!(
-            "{:?}. k axis: {}, mn axis: {}",
-            self.packers, self.k_axis, self.mn_axis
-        )])
+        Ok(vec![format!("{:?}. k axis: {}, mn axis: {}", self.packers, self.k_axis, self.mn_axis)])
     }
 
     op_as_typed_op!();
@@ -47,11 +44,7 @@ impl TypedOp for OptMatMulPack {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let k = inputs[0].shape[self.k_axis].clone();
         let mn = inputs[0].shape[self.mn_axis].clone();
-        let opaque_fact = DynPackedOpaqueFact {
-            k,
-            mn,
-            packers: self.packers.clone(),
-        };
+        let opaque_fact = DynPackedOpaqueFact { k, mn, packers: self.packers.clone() };
         Ok(tvec!(Opaque::datum_type()
             .fact(self.output_shape(&inputs[0].shape))
             .with_opaque_fact(opaque_fact)))
@@ -85,9 +78,7 @@ impl OptMatMulPack {
             let output_shape: TVec<usize> = self.output_shape(input.shape());
             let stores = if output_shape.iter().all(|d| *d == 1) {
                 tensor0::<Opaque>(
-                    packer
-                        .pack_tensor_view(&input.view(), self.k_axis, self.mn_axis)?
-                        .into(),
+                    packer.pack_tensor_view(&input.view(), self.k_axis, self.mn_axis)?.into(),
                 )
                 .into_shape(&output_shape)?
             } else {

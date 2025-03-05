@@ -7,6 +7,8 @@ use std::hash::Hash;
 use std::sync::Arc;
 use tract_data::internal::*;
 
+use crate::WeightType;
+
 pub trait MMMInputFormat: Downcast + Debug + DynHash + DynClone + Send + Sync + Display {
     fn prepare_tensor(
         &self,
@@ -14,14 +16,35 @@ pub trait MMMInputFormat: Downcast + Debug + DynHash + DynClone + Send + Sync + 
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>>;
+    fn precursor(&self) -> WeightType;
     fn r(&self) -> usize;
     fn k_alignment(&self) -> usize;
     fn same_as(&self, other: &dyn MMMInputFormat) -> bool;
     fn mem_size(&self, k: TDim, mn: TDim) -> TDim;
+    fn extract_at_mn_f16(
+        &self,
+        data: &EagerPackedInput,
+        mn: usize,
+        slice: &mut [f16],
+    ) -> TractResult<()>;
+    fn extract_at_mn_f32(
+        &self,
+        data: &EagerPackedInput,
+        mn: usize,
+        slice: &mut [f32],
+    ) -> TractResult<()>;
 }
+
 dyn_clone::clone_trait_object!(MMMInputFormat);
 impl_downcast!(MMMInputFormat);
 dyn_hash::hash_trait_object!(MMMInputFormat);
+
+impl Eq for &dyn MMMInputFormat {}
+impl PartialEq for &dyn MMMInputFormat {
+    fn eq(&self, other: &Self) -> bool {
+        self.same_as(*other)
+    }
+}
 
 pub trait MMMInputValue: DynClone + Debug + DynHash + Send + Sync + Display + Downcast {
     fn format(&self) -> &dyn MMMInputFormat;
@@ -34,6 +57,9 @@ pub trait MMMInputValue: DynClone + Debug + DynHash + Send + Sync + Display + Do
     fn k(&self) -> usize;
     fn opaque_fact(&self) -> &dyn OpaqueFact;
     fn same_as(&self, other: &dyn MMMInputValue) -> bool;
+
+    fn extract_at_mn_f16(&self, mn: usize, slice: &mut [f16]) -> TractResult<()>;
+    fn extract_at_mn_f32(&self, mn: usize, slice: &mut [f32]) -> TractResult<()>;
 }
 dyn_clone::clone_trait_object!(MMMInputValue);
 impl_downcast!(MMMInputValue);
@@ -63,11 +89,7 @@ pub struct PackedOpaqueFact {
 
 impl Display for PackedOpaqueFact {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Eager {} tensor (mn={} k={})",
-            self.format, self.mn, self.k
-        )
+        write!(f, "Eager {} tensor (mn={} k={})", self.format, self.mn, self.k)
     }
 }
 
@@ -119,6 +141,16 @@ impl MMMInputValue for EagerPackedInput {
                 && self.packed == other.packed
                 && self.panel_bytes == other.panel_bytes
         })
+    }
+    fn extract_at_mn_f16(&self, mn: usize, slice: &mut [f16]) -> TractResult<()> {
+        ensure!(slice.len() == self.k());
+        ensure!(mn < self.mn());
+        self.fact.format.extract_at_mn_f16(self, mn, slice)
+    }
+    fn extract_at_mn_f32(&self, mn: usize, slice: &mut [f32]) -> TractResult<()> {
+        ensure!(slice.len() == self.k());
+        ensure!(mn < self.mn());
+        self.fact.format.extract_at_mn_f32(self, mn, slice)
     }
 }
 

@@ -6,7 +6,7 @@ use anyhow::{ensure, Result};
 use metal::{Buffer, MTLSize, NSUInteger};
 use std::fmt;
 use tract_core::internal::*;
-use tract_core::tract_linalg::frame::block_quant::{BlockQuant, Q4_0};
+use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 use DatumType::{F16, F32};
 
 #[derive(Debug)]
@@ -43,18 +43,18 @@ impl From<GemmDispatchParams> for GgmlGemmParams {
         // Kernel produced transposed output so we swap the inputs
         GgmlGemmParams {
             ne00: params.k as i32,
-            ne02: params.batch as i32,
+            ne02: params.b_batch as i32,
             nb01: (b_strides[1] as usize * b_el_size) as u64,
             nb02: (b_strides[0] as usize * b_el_size) as u64,
-            nb03: (b_strides[0] as usize * params.batch * b_el_size) as u64,
-            ne12: params.batch as i32,
+            nb03: (b_strides[0] as usize * params.b_batch * b_el_size) as u64,
+            ne12: params.a_batch as i32,
             nb10: (params.a_strides[2] as usize * a_el_size) as u64,
             nb11: (params.a_strides[1] as usize * a_el_size) as u64,
             nb12: (params.a_strides[0] as usize * a_el_size) as u64,
-            nb13: (params.a_strides[0] as usize * params.batch * a_el_size) as u64,
+            nb13: (params.a_strides[0] as usize * params.a_batch * a_el_size) as u64,
             ne0: params.n as i32,
             ne1: params.m as i32,
-            r2: 1,
+            r2: (params.a_batch / params.b_batch) as i16,
             r3: 1,
         }
     }
@@ -88,32 +88,32 @@ impl From<GemmDispatchParams> for GgmlGemvParams {
         assert!(params.a_strides.len() == 3 && params.b_strides.len() == 3);
         let a_el_size = params.dts[0].size_of();
 
-        let b_el_size = if params.q40_b { 18 } else { params.dts[1].size_of() };
+        let b_el_size = if params.q40_b { Q4_0.block_bytes() } else { params.dts[1].size_of() };
         let mut b_strides = params.b_strides;
         if params.q40_b {
-            b_strides[0] /= 32;
-            b_strides[1] /= 32
+            b_strides[0] /= Q4_0.block_len() as isize;
+            b_strides[1] /= Q4_0.block_len() as isize;
         };
 
         // Kernel produced transposed output so we swap the inputs
         GgmlGemvParams {
             ne00: params.k as i32,
             ne01: params.n as i32,
-            ne02: params.batch as i32,
+            ne02: params.b_batch as i32,
             nb00: (b_strides[2] as usize * b_el_size) as u64,
             nb01: (b_strides[1] as usize * b_el_size) as u64,
             nb02: (b_strides[0] as usize * b_el_size) as u64,
-            nb03: (b_strides[0] as usize * params.batch * b_el_size) as u64,
+            nb03: (b_strides[0] as usize * params.b_batch * b_el_size) as u64,
             ne10: params.k as i32,
             ne11: params.m as i32,
-            ne12: params.batch as i32,
+            ne12: params.a_batch as i32,
             nb10: (params.a_strides[2] as usize * a_el_size) as u64,
             nb11: (params.a_strides[1] as usize * a_el_size) as u64,
             nb12: (params.a_strides[0] as usize * a_el_size) as u64,
-            nb13: (params.a_strides[0] as usize * params.batch * a_el_size) as u64,
+            nb13: (params.a_strides[0] as usize * params.a_batch * a_el_size) as u64,
             ne0: params.n as i32,
             ne1: params.m as i32,
-            r2: 1,
+            r2: (params.a_batch / params.b_batch) as i16,
             r3: 1,
         }
     }
@@ -131,6 +131,10 @@ impl fmt::Display for GgmlGemm {
 impl GemmKernel for GgmlGemm {
     fn name() -> &'static str {
         "ggml"
+    }
+
+    fn supports_broadcast() -> bool {
+        true
     }
 
     fn is_supported_dts(&self, facts: &[TypedFact]) -> bool {
@@ -159,7 +163,7 @@ impl GemmKernel for GgmlGemm {
     ) -> TractResult<()> {
         let GemmDispatchParams {
             dts,
-            batch,
+            a_batch,
             m,
             k,
             transpose_a,
@@ -173,7 +177,7 @@ impl GemmKernel for GgmlGemm {
 
         ensure!(!transpose_a && transpose_b);
 
-        if (dts[0] == F32) && (k % 32 == 0) && (k >= 64) && ((m > 4) || (q40_b && batch > 1)) {
+        if (dts[0] == F32) && (k % 32 == 0) && (k >= 64) && ((m > 4) || (q40_b && a_batch > 1)) {
             dispatch_metal_ggml_gemm(
                 context, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer, c_offset,
             )?;
@@ -195,7 +199,7 @@ fn mv_kernel_name_and_dispatch_params(
         Ok(("kernel_mul_mv_f32_f32".to_string(), (32, 1, 4)))
     } else if params.dts[1] == F16 {
         if params.dts[0] == F32 {
-            if (params.m * params.batch) < 4 {
+            if (params.m * params.a_batch) < 4 {
                 Ok(("kernel_mul_mv_f16_f32_1row".to_string(), (32, 1, 1)))
             } else if (params.k >= 128) && (params.k % 4 == 0) && (params.n >= 8) {
                 Ok(("kernel_mul_mv_f16_f32_l4".to_string(), (32, 1, params.m as u64)))
@@ -247,13 +251,13 @@ fn dispatch_metal_ggml_gemv(
             MTLSize {
                 width: params.n as u64,
                 height: (params.m as u64).div_ceil(nrows),
-                depth: /* batch_size_out */ params.batch as u64,
+                depth: /* batch_size_out */ params.a_batch as u64,
             }
         } else {
             MTLSize {
                 width: (params.n as u64).div_ceil(8),
                 height: params.m as u64,
-                depth: /* batch_size_out */ params.batch as u64,
+                depth: /* batch_size_out */ params.a_batch as u64,
             }
         };
         let group_size = MTLSize { width: nth0, height: nth1, depth: 1 };
@@ -305,7 +309,7 @@ fn dispatch_metal_ggml_gemm(
         let grid_size = MTLSize {
             width: (params.m as u64).div_ceil(32),
             height: (params.n as u64).div_ceil(64),
-            depth: /* batch_size_out */ params.batch as u64,
+            depth: /* batch_size_out */ params.a_batch as u64,
         };
         let group_size = MTLSize { width: 128, height: 1, depth: 1 };
 
@@ -319,8 +323,13 @@ fn dispatch_metal_ggml_gemm(
 
 #[cfg(test)]
 mod tests {
+    use std::any::TypeId;
+
+    use num_traits::Float;
+    use tract_core::ops::array::MultiBroadcastTo;
+    use tract_core::ops::cast::Cast;
     use tract_core::ops::einsum::BasicMatMul;
-    use tract_linalg::frame::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
+    use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
 
     use super::*;
     use crate::kernels::matmul::tests::run_mmm_test_case;
@@ -372,63 +381,132 @@ mod tests {
         Ok(())
     }
 
-    fn run_mat_mul_q4_test(batch: usize, m: usize, k: usize, n: usize) -> TractResult<()> {
+    fn reference(a: Tensor, b: Tensor) -> TractResult<Tensor> {
+        let batch = b.shape()[0];
+        let batch_ratio = a.shape()[0] / batch;
+        let matmul = BasicMatMul {
+            transpose_a: false,
+            transpose_b: true,
+            transpose_c: false,
+            quantize_output: None,
+        };
+
+        let mut model = TypedModel::default();
+
+        let lhs = model.add_source("lhs", TypedFact::shape_and_dt_of(&a))?;
+        let mut rhs = model.add_source("rhs", TypedFact::shape_and_dt_of(&b))?;
+
+        if b.datum_type() == DatumType::F16 {
+            rhs = model.wire_node("cast", Cast { to: DatumType::F32 }, &[rhs])?[0];
+        }
+        if batch_ratio > 1 {
+            let add_axis_out = model.wire_node("add_axis", AxisOp::Add(1), &[rhs])?[0];
+            let mut broadcast_shape = b.shape().to_vec();
+
+            broadcast_shape.insert(1, batch_ratio);
+            let broadcast_out = model.wire_node(
+                "broadcast",
+                MultiBroadcastTo { shape: ShapeFact::from_dims(broadcast_shape) },
+                &[add_axis_out],
+            )?[0];
+            rhs = model.wire_node(
+                "reshape",
+                AxisOp::Reshape(
+                    0,
+                    tvec![batch.into(), batch_ratio.into()],
+                    tvec![(batch * batch_ratio).into()],
+                ),
+                &[broadcast_out],
+            )?[0]
+        }
+        let output = model.wire_node("matmul", matmul, &[lhs, rhs])?;
+
+        model.set_output_outlets(&output)?;
+        model = model.into_decluttered()?;
+        let mut output =
+            DefaultRuntime.prepare(model)?.run(tvec!(a.into_tvalue(), b.into_tvalue()))?;
+        Ok(output.remove(0).into_tensor())
+    }
+
+    fn run_ggml_mat_mul_test<F: Datum + Float>(
+        batch: usize,
+        broadcast_ratio: usize,
+        m: usize,
+        k: usize,
+        n: usize,
+        q40: bool,
+    ) -> TractResult<()>
+    where
+        f32: From<F>,
+    {
         objc::rc::autoreleasepool(|| {
             crate::METAL_CONTEXT.with_borrow(|context| {
-                ensure!(k % 32 == 0);
-                let a_shape = [batch, m, k];
+                let a_shape = [batch * broadcast_ratio, m, k];
                 let b_shape = [batch, n, k];
 
-                let a_data = (0..batch * k * m)
-                    .map(|f| f as f32 / (batch * m * k) as f32)
+                let a_data = (0..batch * broadcast_ratio * k * m)
+                    .map(|f| f as f32 / (batch * broadcast_ratio * m * k) as f32)
                     .collect::<Vec<_>>();
 
                 let a = Tensor::from_shape(&a_shape, &a_data)?;
 
                 let b_data = (0..batch * n * k)
-                    .map(|f| f as f32 / (batch * n * k) as f32)
+                    .map(|f| F::from(f).unwrap() / F::from(batch * n * k).unwrap())
                     .collect::<Vec<_>>();
 
-                let mut b_quant = Q4_0.quant_f32(&b_data)?;
+                let (ref_b, metal_b) = if q40 {
+                    ensure!(TypeId::of::<F>() == TypeId::of::<f32>());
+                    let b_data: Vec<f32> = b_data.into_iter().map(|x| x.into()).collect();
+                    let b_tensor =
+                        Q4_0.simulate_precision_loss(Tensor::from_shape(&b_shape, &b_data)?, 2)?;
 
-                let b_tensor = Tensor::from_shape(&b_shape, &b_data)?;
-
-                crate::utils::tract_to_gguf_q4_0_packing(&mut b_quant)?;
-
-                let b_q4_0_tensor = tensor0(Opaque(Arc::new(BlockQuantValue {
-                    fact: BlockQuantFact { format: Box::new(Q4_0), shape: tvec![batch, n, k] },
-                    value: b_quant,
-                })));
+                    ensure!(k % 32 == 0);
+                    let b_q4_0_tensor = tensor0(Opaque(Arc::new(BlockQuantValue {
+                        fact: BlockQuantFact { format: Box::new(Q4_0), shape: tvec![batch, n, k] },
+                        value: Q4_0.quant_f32(&b_data)?,
+                    })));
+                    (b_tensor, b_q4_0_tensor)
+                } else {
+                    let b_tensor = Tensor::from_shape(&b_shape, &b_data)?;
+                    (b_tensor.clone(), b_tensor)
+                };
 
                 let metal_output = GemmImpl::<GgmlGemm>::new(false, true).eval(
                     context,
                     &a.clone().into_metal()?,
-                    &b_q4_0_tensor.clone().into_metal()?,
+                    &metal_b.clone().into_metal()?,
                 )?;
-
-                let matmul = BasicMatMul {
-                    transpose_a: false,
-                    transpose_b: true,
-                    transpose_c: false,
-                    quantize_output: None,
-                };
-
-                let output = args_1!(matmul.eval(tvec![a.into_tvalue(), b_tensor.into_tvalue()])?);
-                metal_output.to_cpu()?.close_enough(&output, Approximation::SuperApproximate)?;
+                let output = reference(a, ref_b)?;
+                metal_output.to_cpu()?.close_enough(&output, Approximation::Approximate)?;
                 Ok(())
             })
         })
     }
 
     #[test]
-    fn test_q4() -> TractResult<()> {
-        run_mat_mul_q4_test(32, 1, 32, 32)?;
-        run_mat_mul_q4_test(1, 32003, 2048, 1)?;
-        run_mat_mul_q4_test(4, 1, 2048, 32003)?;
-        run_mat_mul_q4_test(1, 1, 32, 32)?;
-        run_mat_mul_q4_test(1, 1, 64, 4)?;
-        run_mat_mul_q4_test(3, 1, 4096, 4096)?;
+    fn test_broadcast() -> TractResult<()> {
+        run_ggml_mat_mul_test::<f32>(2, 2, 1, 8, 4, false)?;
+        run_ggml_mat_mul_test::<f32>(6, 3, 26, 22, 1, false)?;
+        run_ggml_mat_mul_test::<f16>(1, 2, 1, 64, 10, false)?;
+        run_ggml_mat_mul_test::<f16>(2, 2, 1, 128, 8, false)?;
+        run_ggml_mat_mul_test::<f16>(4, 4, 6, 64, 10, false)?;
+        Ok(())
+    }
 
+    #[test]
+    fn test_q4() -> TractResult<()> {
+        run_ggml_mat_mul_test::<f32>(32, 1, 1, 32, 32, true)?;
+        run_ggml_mat_mul_test::<f32>(1, 1, 320, 2048, 1, true)?;
+        run_ggml_mat_mul_test::<f32>(4, 1, 1, 2048, 320, true)?;
+        run_ggml_mat_mul_test::<f32>(1, 1, 1, 32, 32, true)?;
+        run_ggml_mat_mul_test::<f32>(1, 1, 1, 64, 4, true)?;
+        run_ggml_mat_mul_test::<f32>(3, 1, 1, 4096, 512, true)?;
+        run_ggml_mat_mul_test::<f32>(1, 1, 1, 32, 32, true)?;
+        run_ggml_mat_mul_test::<f32>(1, 1, 1, 64, 4, true)?;
+        run_ggml_mat_mul_test::<f32>(3, 1, 1, 2048, 128, true)?;
+        run_ggml_mat_mul_test::<f32>(1, 3, 1, 32, 32, true)?;
+        run_ggml_mat_mul_test::<f32>(4, 2, 1, 64, 4, true)?;
+        run_ggml_mat_mul_test::<f32>(3, 2, 1, 512, 256, true)?;
         Ok(())
     }
 }

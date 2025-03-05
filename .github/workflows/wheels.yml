@@ -2,7 +2,7 @@ name: Python wheels
 
 on:
   schedule:
-    - cron:  '0 3 * * *'
+    - cron:  '0 3 * * MON'
   release:
   workflow_dispatch:
     inputs:
@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-20.04, windows-2019, macos-14]
+        os: [ubuntu-22.04, windows-2019, macos-14]
 
     steps:
       - uses: actions/checkout@v4

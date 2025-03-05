@@ -6,6 +6,7 @@ use tract_data::itertools::izip;
 use tract_itertools::Itertools;
 use tract_linalg::{BinOp, LinalgFn};
 
+use super::math::{Add, Max, Min, Mul, Sub};
 use super::{cast::cast, math::SubF};
 
 pub trait BinMiniOp: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast {
@@ -227,26 +228,19 @@ impl TypedOp for TypedBinOp {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if let Some(linalg_bin_op) = self.0.as_linalg_binop() {
-            let (operand_1, operand_2, should_swap, op) =
-                if let &[a, b] = &*model.node_input_facts(node.id)? {
-                    let num_elements_1 = a.shape.iter().product::<TDim>();
-                    let num_elements_2 = b.shape.iter().product::<TDim>();
-                    let operand_1_should_be_broadcast =
-                        (num_elements_1 - num_elements_2).prove_strict_negative();
-
-                    let is_sub = linalg_bin_op == BinOp::Sub;
-                    if operand_1_should_be_broadcast & is_sub {
-                        let sub_flipped: Box<dyn BinMiniOp> = Box::new(SubF {});
-                        (b, a, true, sub_flipped)
-                    } else {
-                        (a, b, false, self.0.clone())
-                    }
-                } else {
-                    unreachable!("TypedBinOp has two inputs.")
-                };
+            let input_facts = model.node_input_facts(node.id)?;
+            let must_swap_inputs =
+                input_facts.iter().collect_tuple().is_some_and(|(a_fact, b_fact)| {
+                    (a_fact.shape.volume() - b_fact.shape.volume()).prove_strict_negative()
+                });
+            let (operand_1, operand_2) = if must_swap_inputs {
+                (input_facts[1], input_facts[0])
+            } else {
+                (input_facts[0], input_facts[1])
+            };
 
             let (by_scalar_should_be_efficient, unicast_should_be_efficient) =
-                find_most_efficient_config(model, node, should_swap)?;
+                find_most_efficient_config(model, node, must_swap_inputs)?;
 
             // Check if op is quantized
             let c_dt = self.output_datum_type(operand_1.datum_type, operand_2.datum_type)?;
@@ -264,17 +258,20 @@ impl TypedOp for TypedBinOp {
                 (c_shape.to_vec() == operand_1.shape.to_vec()) && (c_dt == operand_1.datum_type);
 
             // Swap input if required
-            let inputs = if should_swap {
+            let inputs = if must_swap_inputs {
                 let mut swap_input = node.inputs.clone();
                 swap_input.swap(0, 1);
                 swap_input
             } else {
                 node.inputs.clone()
             };
+            let actual_linalg_op =
+                if must_swap_inputs { linalg_bin_op.flip() } else { linalg_bin_op };
+            let actual_core_op = core_op_for_linalg_op(&actual_linalg_op);
 
-            let dt = model.node_input_facts(node.id)?[0].datum_type().unwrap();
+            let dt = model.node_input_facts(node.id)?[0].datum_type;
             if by_scalar_should_be_efficient & can_eval_in_a & !op_is_quant {
-                let Some(func) = tract_linalg::bin_by_scalar(dt, linalg_bin_op) else {
+                let Some(func) = tract_linalg::bin_by_scalar(dt, actual_linalg_op) else {
                     return Ok(None);
                 };
                 let eval_fn = Arc::from(func);
@@ -283,14 +280,14 @@ impl TypedOp for TypedBinOp {
                         model,
                         node,
                         &inputs,
-                        OptBinByScalar { binop: op, eval_fn },
+                        OptBinByScalar { binop: actual_core_op, eval_fn },
                     )?
                     .with_context("ByScalar"),
                 ));
             }
 
             if unicast_should_be_efficient & can_eval_in_a & !op_is_quant {
-                let Some(func) = tract_linalg::bin_unicast(dt, linalg_bin_op) else {
+                let Some(func) = tract_linalg::bin_unicast(dt, actual_linalg_op) else {
                     return Ok(None);
                 };
                 let eval_fn = Arc::from(func);
@@ -299,7 +296,7 @@ impl TypedOp for TypedBinOp {
                         model,
                         node,
                         &inputs,
-                        OptBinUnicast { binop: op, eval_fn },
+                        OptBinUnicast { binop: actual_core_op, eval_fn },
                     )?
                     .with_context("Unicast"),
                 ));
@@ -311,6 +308,16 @@ impl TypedOp for TypedBinOp {
     as_op!();
 }
 
+fn core_op_for_linalg_op(linalg: &BinOp) -> Box<dyn BinMiniOp> {
+    match linalg {
+        BinOp::Min => Box::new(Min),
+        BinOp::Max => Box::new(Max),
+        BinOp::Add => Box::new(Add),
+        BinOp::Mul => Box::new(Mul),
+        BinOp::Sub => Box::new(Sub),
+        BinOp::SubF => Box::new(SubF),
+    }
+}
 fn declutter_broadcasting_operand_1(
     model: &TypedModel,
     node: &TypedNode,

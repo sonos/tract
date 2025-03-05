@@ -5,8 +5,8 @@ macro_rules! MMMExternKernel {
             $(where($where:expr))?
             $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
+            $(quality($quality:expr))?
             $(store($($store:ty),*))?
-            $(tweak($tweak: expr))*
      ) => {
         paste! {
             mod [<sys_ $func>] {
@@ -27,6 +27,7 @@ macro_rules! MMMExternKernel {
                 $(where($where))?
                 $(can_fuse($can_fuse))?
                 $(packing[$pnum] = $pid => $packing;)*
+                $(quality($quality))?
                 $(store($($store),*))?
             );
         }
@@ -39,8 +40,8 @@ macro_rules! MMMRustKernel {
             $(where($where:expr))?
             $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
+            $(quality($quality:expr))?
             $(store($($store:ty),*))?
-            $(tweak($tweak: expr))*
      ) => {
         paste! {
             mod [<sys_ $id>] {
@@ -54,9 +55,11 @@ macro_rules! MMMRustKernel {
             }
             MMMKernel!([<sys_$id>]::rusty as $id<$ti>($mr, $nr)
                 $(@($align_a, $align_b))?
+                generic(true)
                 $(where($where))?
                 $(can_fuse($can_fuse))?
                 $(packing[$pnum] = $pid => $packing;)*
+                $(quality($quality))?
                 $(store($($store),*))?
             );
         }
@@ -68,11 +71,12 @@ macro_rules! MMMKernel {
             $func: path as
             $id:ident<$ti:ident>($mr: expr, $nr: expr)
             $(@($align_a:expr, $align_b:expr))?
+            $(generic($generic:expr))?
             $(where($where:expr))?
             $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
+            $(quality($quality:expr))?
             $(store($($store:ty),*))?
-            $(tweak($tweak: expr))*
      ) => {
         paste! {
             lazy_static::lazy_static! {
@@ -80,7 +84,7 @@ macro_rules! MMMKernel {
                     use $crate::mmm::DynKernel;
                     #[allow(unused_imports)]
                     use tract_data::prelude::*;
-                    use $crate::frame::mmm::Packing;
+                    use $crate::pack::Packing;
                     #[allow(unused_mut)]
                     let (mut packing_a, mut packing_b) = ($ti::packing($mr), $ti::packing($nr));
                     $(
@@ -88,7 +92,7 @@ macro_rules! MMMKernel {
                         packing_b = packing_b.align($align_b);
                     )?
                     #[allow(unused_mut)]
-                    let mut k = DynKernel::<$mr, $nr, $ti>::new(stringify!($id), $func, packing_a, packing_b);
+                    let mut k = DynKernel::<$mr, $nr, $ti>::new(stringify!($id), $func, packing_a, packing_b, $crate::frame::mmm::ImplementationQuality::Dreadful);
                     $(k = k.with_platform_condition($where);)?
                     $(
                         assert!(k.packings.len() == $pnum);
@@ -99,7 +103,7 @@ macro_rules! MMMKernel {
                         k.stores.push(<$store>::datum_type());
                     )*)?
                     $(k.can_fuse = $can_fuse;)?
-                    $($tweak(&mut k);)*
+                    $(k.quality = $quality;)?
                     k
                 };
             }

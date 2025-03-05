@@ -1,5 +1,5 @@
 use crate::rewrite_rules::{previous_node, previous_nodes, single_prev_node_as, BasicRotateHalf};
-use crate::rule_ensure;
+use crate::{rule_ensure, MetalTransform};
 use tract_core::internal::*;
 use tract_core::ops::binary::BinMiniOp;
 use tract_core::ops::binary::TypedBinOp;
@@ -49,7 +49,7 @@ impl TypedOp for BasicApplyRope {
 /// Search pattern:
 /// Y = X * Cos + RotateHalf(X) * Sin
 pub fn as_apply_rope_rule(
-    _ctx: &(),
+    _ctx: &MetalTransform,
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,

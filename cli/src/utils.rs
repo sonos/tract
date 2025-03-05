@@ -93,18 +93,18 @@ pub fn check_inferred(got: &[InferenceFact], expected: &[InferenceFact]) -> Trac
     Ok(())
 }
 
-pub fn clarify_tvalues(values: &TVec<TValue>) -> TVec<TValue> {
+pub fn clarify_tvalues(values: &TVec<TValue>) -> TractResult<TVec<TValue>> {
     values
         .iter()
         .map(|t| {
-            t.to_scalar::<Opaque>()
-                .and_then(|ot| ot.clarify_to_tensor().transpose())
-                .ok()
-                .flatten()
-                .map(|ot| ot.into_tvalue())
-                .unwrap_or(t.clone())
+            if t.datum_type().is_opaque() && t.volume() == 1 {
+                if let Some(clarified) = t.to_scalar::<Opaque>()?.clarify_to_tensor()? {
+                    return Ok(clarified.into_tvalue());
+                }
+            }
+            Ok(t.clone())
         })
-        .collect::<TVec<_>>()
+        .collect()
 }
 
 pub fn clarify_typed_fact<'a>(fact: impl Into<Cow<'a, TypedFact>>) -> Cow<'a, TypedFact> {

@@ -165,7 +165,7 @@ impl Scan {
                     let src = op.body.inputs[slot];
                     op.body.inputs.remove(slot);
                     op.body.nodes[src.node].inputs.clear();
-                    op.body.nodes[src.node].op = Box::new(Const::new(konst.clone()));
+                    op.body.nodes[src.node].op = Box::new(Const::new(konst.clone())?);
                     op.input_mapping.remove(slot);
                     let mut inputs = node.inputs.clone();
                     inputs.remove(slot);
@@ -601,7 +601,7 @@ impl Scan {
                 &change,
                 if locked_interface { &locked_outlets } else { &[] },
                 &self.body_bounds()?,
-                &mut explored
+                &mut explored,
             )? {
             changes
         } else {

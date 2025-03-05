@@ -4,6 +4,7 @@ on:
   pull_request:
   schedule:
     - cron:  '0 5 * * *'
+  workflow_dispatch:
 
 env:
   CARGO_INCREMENTAL: false
@@ -31,7 +32,7 @@ jobs:
           - wasm32-unknown-unknown
           - wasm32-wasi
 
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
@@ -81,6 +82,8 @@ jobs:
         platform:
           - aarch64-apple-ios
           - aarch64-apple-darwin
+
+    if: github.event.workflow_dispatch || github.event.schedule
 
     runs-on: macOS-latest
     permissions:

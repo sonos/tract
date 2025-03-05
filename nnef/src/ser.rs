@@ -3,7 +3,7 @@ use crate::internal::*;
 use tract_core::ndarray::ArrayViewD;
 use tract_core::ndarray::Axis;
 use tract_itertools::Itertools;
-use tract_linalg::frame::block_quant::BlockQuantValue;
+use tract_linalg::block_quant::BlockQuantValue;
 
 pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
     model.prop_consts()?;
@@ -17,10 +17,7 @@ pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
             "rewrite_matmul_to_same_rank",
             crate::ops::nnef::ser::rewrite_matmul_to_same_rank,
         )
-        .with_rule_for(
-            "rewrite_conv_with_n_axis",
-            tract_core::ops::cnn::rewrite_conv_with_n_axis,
-        )
+        .with_rule_for("rewrite_conv_with_n_axis", tract_core::ops::cnn::rewrite_conv_with_n_axis)
         .with_rule_for(
             "rewrite_deconv_with_n_axis",
             tract_core::ops::cnn::rewrite_deconv_with_n_axis,
@@ -37,10 +34,7 @@ pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
             "rewrite_consistent_quantized_conv",
             crate::ops::nnef::ser::rewrite_consistent_quantized_conv,
         )
-        .with_rule_for(
-            "expand_mean_of_square",
-            tract_core::ops::nn::expand_mean_of_squares,
-        )
+        .with_rule_for("expand_mean_of_square", tract_core::ops::nn::expand_mean_of_squares)
         .rewrite(&(), model)
 }
 
@@ -49,9 +43,7 @@ pub fn to_proto_model(framework: &Nnef, model: &TypedModel) -> TractResult<Proto
     rewrite_model(&mut fixed_model)?;
     let mut into_ast = IntoAst::new(framework, &fixed_model);
     into_ast.translate().context("Translating model to AST")?;
-    into_ast
-        .into_proto_model()
-        .context("Translating AST to proto model")
+    into_ast.into_proto_model().context("Translating AST to proto model")
 }
 
 pub fn to_fragment_def(
@@ -105,10 +97,7 @@ impl<'a> IntoAst<'a> {
 
     fn ensure_registry(&mut self, id: &Identifier) -> TractResult<()> {
         if !self.framework.registries.iter().any(|r| &r.id == id) {
-            bail!(
-                "Registry {} required, consider allowing it on the NNEF framework.",
-                id.0
-            );
+            bail!("Registry {} required, consider allowing it on the NNEF framework.", id.0);
         }
         if !self.registries.iter().any(|r| r == id) {
             self.registries.push(id.clone());
@@ -155,18 +144,8 @@ impl<'a> IntoAst<'a> {
                 value: t.clone(),
             })
         }
-        let IntoAst {
-            body,
-            mut parameters,
-            results,
-            ..
-        } = self;
-        parameters.extend(
-            tensor_params
-                .iter()
-                .map(|rtp| rtp.parameter_id.clone())
-                .sorted(),
-        );
+        let IntoAst { body, mut parameters, results, .. } = self;
+        parameters.extend(tensor_params.iter().map(|rtp| rtp.parameter_id.clone()).sorted());
         let body = body
             .into_iter()
             .filter(|assign| match &assign.left {
@@ -185,10 +164,7 @@ impl<'a> IntoAst<'a> {
                         .collect(),
                     results: results
                         .into_iter()
-                        .map(|s| Result_ {
-                            id: s,
-                            spec: TypeName::Scalar.tensor(),
-                        })
+                        .map(|s| Result_ { id: s, spec: TypeName::Scalar.tensor() })
                         .collect(),
                 },
                 body: Some(body),
@@ -208,9 +184,7 @@ impl<'a> IntoAst<'a> {
         let version = env!("CARGO_PKG_VERSION");
         properties.push(tuple_2(
             string("tract_nnef_ser_version"),
-            self.konst("tract_nnef_ser_version", &rctensor0(version.to_string()))?
-                .as_ref()
-                .clone(),
+            self.konst("tract_nnef_ser_version", &rctensor0(version.to_string()))?.as_ref().clone(),
         ));
         properties.push(tuple_2(
             string("tract_nnef_format_version"),
@@ -219,14 +193,7 @@ impl<'a> IntoAst<'a> {
                 .clone(),
         ));
         let properties: Assignment = assignment("properties", Arc::new(array(properties)));
-        let IntoAst {
-            mut fragments,
-            body,
-            tensors,
-            parameters,
-            results,
-            ..
-        } = self;
+        let IntoAst { mut fragments, body, tensors, parameters, results, .. } = self;
         let mut extension = vec![];
         self.registries.sort();
         for reg in self.registries {
@@ -264,24 +231,10 @@ impl<'a> IntoAst<'a> {
             version: "1.0".into(),
             extension,
             fragments: fragments.into_values().collect(),
-            graph_def: GraphDef {
-                id: Identifier("network".into()),
-                parameters,
-                results,
-                body,
-            },
+            graph_def: GraphDef { id: Identifier("network".into()), parameters, results, body },
         };
-        let quantization = if self.quantization.len() > 0 {
-            Some(self.quantization)
-        } else {
-            None
-        };
-        Ok(ProtoModel {
-            doc,
-            tensors,
-            quantization,
-            resources: self.resources,
-        })
+        let quantization = if self.quantization.len() > 0 { Some(self.quantization) } else { None };
+        Ok(ProtoModel { doc, tensors, quantization, resources: self.resources })
     }
 
     fn node(&mut self, node: &TypedNode) -> TractResult<TVec<Arc<RValue>>> {
@@ -305,10 +258,7 @@ impl<'a> IntoAst<'a> {
                 if node.outputs.len() > 1 {
                     self.body.push(Assignment {
                         left: LValue::Tuple(
-                            names
-                                .iter()
-                                .map(|n| LValue::Identifier(n.clone()))
-                                .collect(),
+                            names.iter().map(|n| LValue::Identifier(n.clone())).collect(),
                         ),
                         right: outputs.as_ref().clone(),
                     });
@@ -418,21 +368,18 @@ impl<'a> IntoAst<'a> {
         }
         if !force_variable && tensor.len() <= 8 {
             if tensor.datum_type() == String::datum_type() {
-                return Ok(
-                    Self::dump_rec_tensor(&tensor.to_array_view::<String>()?, |f| string(f)).into(),
-                );
+                return Ok(Self::dump_rec_tensor(&tensor.to_array_view::<String>()?, |f| {
+                    string(f)
+                })
+                .into());
             } else if tensor.datum_type() == DatumType::F32 {
                 return Ok(
-                    Self::dump_rec_tensor(&tensor.to_array_view::<f32>()?, |f| numeric(f)).into(),
+                    Self::dump_rec_tensor(&tensor.to_array_view::<f32>()?, |f| numeric(f)).into()
                 );
             } else if have_tract_core && tensor.datum_type() == DatumType::F16 {
                 let array =
                     Self::dump_rec_tensor(&tensor.to_array_view::<f16>()?, |f| numeric(f)).into();
-                return Ok(invocation(
-                    "tract_core_cast",
-                    &[array],
-                    &[("to", string("f16"))],
-                ));
+                return Ok(invocation("tract_core_cast", &[array], &[("to", string("f16"))]));
             } else if have_tract_core && tensor.datum_type().is_integer() {
                 if let Ok(value) = tensor.cast_to::<i64>() {
                     let value =
@@ -440,11 +387,7 @@ impl<'a> IntoAst<'a> {
                             numeric(i)
                         });
                     let to = string(format!("{:?}", tensor.datum_type()).to_lowercase());
-                    return Ok(invocation(
-                        "tract_core_cast",
-                        &[value.into()],
-                        &[("to", to)],
-                    ));
+                    return Ok(invocation("tract_core_cast", &[value.into()], &[("to", to)]));
                 }
             };
         }
@@ -459,10 +402,7 @@ impl<'a> IntoAst<'a> {
         self.tensors.insert(name.clone(), tensor.clone());
         let id = self.scoped_id(&name);
         let shape = if tensor.datum_type().is_opaque() {
-            if let Some(bqv) = tensor
-                .to_scalar::<Opaque>()?
-                .downcast_ref::<BlockQuantValue>()
-            {
+            if let Some(bqv) = tensor.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>() {
                 &bqv.fact.shape
             } else {
                 bail!("Unexpected opaque tensor in serialization {tensor:?}");
@@ -498,19 +438,11 @@ impl<'a> IntoAst<'a> {
 }
 
 pub fn assignment(name: impl AsRef<str>, right: Arc<RValue>) -> Assignment {
-    Assignment {
-        left: LValue::Identifier(name.as_ref().into()),
-        right: right.as_ref().to_owned(),
-    }
+    Assignment { left: LValue::Identifier(name.as_ref().into()), right: right.as_ref().to_owned() }
 }
 
 pub fn ints(shape: &[usize]) -> RValue {
-    RValue::Array(
-        shape
-            .iter()
-            .map(|s| RValue::Literal(Literal::Numeric(s.to_string())))
-            .collect(),
-    )
+    RValue::Array(shape.iter().map(|s| RValue::Literal(Literal::Numeric(s.to_string()))).collect())
 }
 
 pub fn tdims(shape: &[TDim]) -> RValue {
@@ -579,10 +511,7 @@ pub fn numeric<D: std::fmt::Debug>(num: D) -> RValue {
 }
 
 pub fn named_arg(id: &str, rv: RValue) -> Argument {
-    Argument {
-        id: Some(id.into()),
-        rvalue: rv,
-    }
+    Argument { id: Some(id.into()), rvalue: rv }
 }
 
 pub fn invocation(
@@ -592,16 +521,9 @@ pub fn invocation(
 ) -> Arc<RValue> {
     let arguments = positional
         .iter()
-        .map(|rv| Argument {
-            id: None,
-            rvalue: rv.as_ref().clone(),
-        })
+        .map(|rv| Argument { id: None, rvalue: rv.as_ref().clone() })
         .chain(named.iter().map(|(n, v)| named_arg(n, v.clone())))
         .collect();
-    RValue::Invocation(Invocation {
-        id: id.as_ref().into(),
-        generic_type_name: None,
-        arguments,
-    })
-    .into()
+    RValue::Invocation(Invocation { id: id.as_ref().into(), generic_type_name: None, arguments })
+        .into()
 }

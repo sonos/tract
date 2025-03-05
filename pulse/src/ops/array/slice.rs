@@ -14,7 +14,12 @@ fn pulsify(
 ) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
-    let stream = fact.stream.unwrap();
+    let stream = fact.stream.with_context(|| {
+        format!(
+            "Unexpected streamless fact in pulsify {node}\ninput:{:?}",
+            target.outlet_fact(input).unwrap()
+        )
+    })?;
     if op.axis == stream.axis {
         let skip = op.start.to_usize()?;
         let take = (op.end.clone() - &op.start).to_dim();
@@ -31,8 +36,6 @@ pub struct PulsedAxisSlice {
     pub skip: usize,
     pub take: TDim,
 }
-
-
 
 impl Op for PulsedAxisSlice {
     fn name(&self) -> Cow<str> {

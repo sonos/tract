@@ -5,11 +5,11 @@ use crate::ops::nn::LeakyRelu;
 use ndarray::*;
 use tract_itertools::Itertools;
 
-use tract_linalg::frame::PackedFormat;
-use tract_linalg::mmm::panel_extract::{PanelExtractInput, PanelExtractor};
 use tract_linalg::mmm::{
     AsInputValue, EagerPackedInput, FusedSpec, MMMInputValue, MatMatMul, OutputStoreSpec,
+    PanelExtractInput, PanelExtractor,
 };
+use tract_linalg::pack::PackedFormat;
 use tract_linalg::{BinOp, Scaler};
 use tract_smallvec::ToSmallVec;
 
@@ -90,6 +90,8 @@ impl ProtoFusedSpec {
                     b_packing.same_as(b.format())
                         || (b_packing.is::<PackedFormat>() && b_packing.r() == b.format().r())
                 );
+                debug_assert!(pa.k().to_dim() == geo.k);
+                debug_assert!(b.k().to_dim() == geo.k);
                 FusedSpec::AddMatMul {
                     a: pa,
                     b: AsInputValue::Borrowed(&**b),
@@ -436,8 +438,11 @@ impl TypedOp for OptMatMul {
         let mut patch = TypedModelPatch::new(format!("fusing {succ}"));
 
         if let Some(op) = succ.op_as::<ops::binary::TypedBinOp>() {
-            let mut binop =
-                if let Some(op) = op.0.as_linalg_binop() { op } else { return Ok(None) };
+            let mut binop = if let Some(op) = op.0.as_linalg_binop() {
+                op
+            } else {
+                return Ok(None);
+            };
             let flipped = succ.inputs[0].node == node.id;
             if flipped {
                 binop = binop.flip();
@@ -446,8 +451,11 @@ impl TypedOp for OptMatMul {
             return self.fuse_binary(model, node, patch, other_outlet, binop);
         }
         if let Some(op) = succ.op_as::<ops::binary::OptBinByScalar>() {
-            let mut binop =
-                if let Some(op) = op.binop.as_linalg_binop() { op } else { return Ok(None) };
+            let mut binop = if let Some(op) = op.binop.as_linalg_binop() {
+                op
+            } else {
+                return Ok(None);
+            };
             let flipped = succ.inputs[0].node == node.id;
             if flipped {
                 binop = binop.flip();
@@ -574,8 +582,11 @@ impl TypedOp for OptMatMul {
                     );
                 }
             } else {
-                let mut binop =
-                    if let Some(op) = op.binop.as_linalg_binop() { op } else { return Ok(None) };
+                let mut binop = if let Some(op) = op.binop.as_linalg_binop() {
+                    op
+                } else {
+                    return Ok(None);
+                };
                 let flipped = succ.inputs[0].node == node.id;
                 if flipped {
                     binop = binop.flip();
@@ -615,8 +626,9 @@ impl OptMatMul {
         it.update_trivial_path();
         Ok(it)
     }
-    // for cost and info
-    fn guess_k(&self) -> Option<TDim> {
+
+    // for auditing only (may return None if no AddMatMul is found)
+    pub fn guess_k(&self) -> Option<TDim> {
         self.micro_ops
             .iter()
             .find_map(
@@ -629,6 +641,14 @@ impl OptMatMul {
                 },
             )
             .map(|geo| geo.k.clone())
+    }
+
+    pub fn m(&self) -> &TDim {
+        &self.c_fact.shape[self.c_m_axis]
+    }
+
+    pub fn n(&self) -> &TDim {
+        &self.c_fact.shape[self.c_n_axis]
     }
 
     fn update_trivial_path(&mut self) {

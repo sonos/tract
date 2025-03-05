@@ -111,8 +111,9 @@ mod tests {
                     BasicNewGelu.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
                 let metal_output = new_gelu.eval(context, &a)?;
 
-                cpu_output.close_enough(&metal_output.to_cpu()?, appriximate).with_context(
-                    || {
+                cpu_output
+                    .close_enough(&metal_output.to_cpu()?.into_tensor(), appriximate)
+                    .with_context(|| {
                         anyhow!(
                             "Input: {:?}, scale: {:?} Cpu: {:?}, Metal: {:?}",
                             a.to_cpu().and_then(|it| it.dump(true)),
@@ -120,8 +121,7 @@ mod tests {
                             cpu_output.dump(true),
                             metal_output.to_cpu().and_then(|it| it.dump(true))
                         )
-                    },
-                )?;
+                    })?;
                 Ok(())
             })
         })
@@ -261,7 +261,7 @@ mod tests {
                 crate::METAL_CONTEXT.with_borrow(|context| {
                     let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_metal()?;
                     let metal_output = NewGelu::accurate().eval(context, &a)?;
-                    metal_output.to_cpu()
+                    Ok(metal_output.to_cpu()?.into_tensor())
                 })
             })
         }

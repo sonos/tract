@@ -11,8 +11,8 @@ use downcast_rs::{impl_downcast, Downcast};
 use dyn_hash::DynHash;
 
 pub trait OpaquePayload: DynHash + Send + Sync + Debug + Display + Downcast {
-    fn clarify_to_tensor(&self) -> Option<TractResult<Tensor>> {
-        None
+    fn clarify_to_tensor(&self) -> TractResult<Option<Arc<Tensor>>> {
+        Ok(None)
     }
 
     fn same_as(&self, other: &dyn OpaquePayload) -> bool;

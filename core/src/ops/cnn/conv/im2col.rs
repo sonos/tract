@@ -1,5 +1,5 @@
-use tract_linalg::frame::{MatMatMul, PackedFormat, PackingWriter};
-use tract_linalg::mmm::{EagerPackedInput, MMMInputValue, PackedOpaqueFact};
+use tract_linalg::mmm::{EagerPackedInput, MMMInputValue, MatMatMul, PackedOpaqueFact};
+use tract_linalg::pack::{PackedFormat, PackingWriter};
 
 use crate::internal::*;
 use ndarray::prelude::*;
@@ -55,10 +55,7 @@ impl GeometryBound<SymbolicGeometry, ConcreteGeometry> {
 impl ResolveTo<ConcreteGeometry> for SymbolicGeometry {
     type Param = [usize];
     fn resolve(&self, input_full_shape: &[usize]) -> TractResult<ConcreteGeometry> {
-        let pool = self
-            .pool_geometry
-            .to_concrete(input_full_shape)?
-            .into_owned();
+        let pool = self.pool_geometry.to_concrete(input_full_shape)?.into_owned();
         let patcher = if !pool.patch.padded && pool.patch.rank() == 2 {
             Patcher::Valid2d
         } else if pool.patch.rank() == 2 {
@@ -112,20 +109,11 @@ impl Im2Col {
             .clone();
 
         let pool_geometry = pool_spec.compute_geo(input_full_shape)?;
-        let geometry: GeometryBound<_, _> = SymbolicGeometry {
-            group,
-            pool_spec: pool_spec.clone(),
-            pool_geometry,
-            b_pack,
-            k,
-        }
-        .into();
+        let geometry: GeometryBound<_, _> =
+            SymbolicGeometry { group, pool_spec: pool_spec.clone(), pool_geometry, b_pack, k }
+                .into();
         let geometry = geometry.optimize_if(input_full_shape.as_concrete())?;
-        Ok(Im2Col {
-            pool_spec,
-            group,
-            geometry,
-        })
+        Ok(Im2Col { pool_spec, group, geometry })
     }
 
     // packed shape is Batch,Group
@@ -162,11 +150,7 @@ impl EvalOp for Im2Col {
         let geometry = self.geometry.to_concrete(inputs[0].shape())?;
         unsafe {
             let mut input = inputs.remove(0).into_tensor();
-            let pad_value: Option<&Tensor> = if inputs.len() > 0 {
-                Some(&inputs[0])
-            } else {
-                None
-            };
+            let pad_value: Option<&Tensor> = if inputs.len() > 0 { Some(&inputs[0]) } else { None };
             let mut output = Tensor::uninitialized::<Opaque>(&geometry.packed_shape)?;
             if !self.pool_spec.data_format.has_n() {
                 input.insert_axis(0)?;
@@ -177,7 +161,7 @@ impl EvalOp for Im2Col {
 
             // in the loop, we have normalized the input so that N is
             // always here, and output so that N and G are there.
-            if !geometry.pool.output_shape.shape.iter().any(|d| *d == 0) {
+            if !geometry.pool.output_shape.shape.contains(&0) {
                 for i in 0..*geometry.input_shape_with_n.n().unwrap_or(&1) {
                     let input = input.view_at_prefix(&[i])?;
                     for g in 0..self.group {
@@ -216,14 +200,8 @@ impl TypedOp for Im2Col {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let input_shape = self
-            .pool_spec
-            .data_format
-            .shape(inputs[0].shape.to_tvec())?;
-        Ok(tvec!(Opaque::fact(&[
-            input_shape.n().cloned().unwrap_or(1.into()),
-            self.group.into()
-        ])))
+        let input_shape = self.pool_spec.data_format.shape(inputs[0].shape.to_tvec())?;
+        Ok(tvec!(Opaque::fact(&[input_shape.n().cloned().unwrap_or(1.into()), self.group.into()])))
     }
 
     fn declutter(
@@ -233,11 +211,7 @@ impl TypedOp for Im2Col {
     ) -> TractResult<Option<TypedModelPatch>> {
         let input_fact = model.outlet_fact(node.inputs[0])?;
         if node.inputs.len() == 2
-            && model
-                .outlet_fact(node.inputs[1])?
-                .konst
-                .as_ref()
-                .and_then(|t| t.as_uniform())
+            && model.outlet_fact(node.inputs[1])?.konst.as_ref().and_then(|t| t.as_uniform())
                 == Some(Tensor::zero_scalar_dt(input_fact.datum_type)?)
         {
             Ok(Some(
@@ -332,9 +306,7 @@ impl Patcher {
             let c_stride = *geometry.input_shape_with_n.c_stride() as isize;
             let pack = pack.as_slice_mut_unchecked::<T>();
             let mut writer =
-                geometry
-                    .b_pack
-                    .write_with_k_outer(pack.as_mut_ptr(), geometry.k, geometry.n);
+                geometry.b_pack.write_with_k_outer(pack.as_mut_ptr(), geometry.k, geometry.n);
             let iptr = input.as_ptr_unchecked::<T>();
             let iptr = iptr.add(g * geometry.ci_per_group * geometry.input_shape_with_n.c_stride());
             for ci in 0..geometry.ci_per_group {
@@ -371,39 +343,23 @@ impl Patcher {
             let input_width = shape.hw_dims()[1] as isize;
             let kernel_len = geometry.pool.patch.standard_layout_data_field.len();
             let mut writer =
-                geometry
-                    .b_pack
-                    .write_with_k_outer(pack.as_mut_ptr(), geometry.k, geometry.n);
+                geometry.b_pack.write_with_k_outer(pack.as_mut_ptr(), geometry.k, geometry.n);
             let iptr = input.as_ptr_unchecked::<T>();
             let iptr = iptr.add(g * geometry.ci_per_group * shape.c_stride());
             let output_width = *geometry.pool.patch.output_shape.get_unchecked(1);
             for ci in 0..geometry.ci_per_group {
                 let iptr = iptr.offset(ci as isize * c_stride_ptr);
                 for kitem in 0..kernel_len {
-                    let dy = *geometry
-                        .pool
-                        .patch
-                        .data_field
-                        .as_ptr()
-                        .offset(kitem as isize * 2);
-                    let dx = *geometry
-                        .pool
-                        .patch
-                        .data_field
-                        .as_ptr()
-                        .offset(1 + kitem as isize * 2);
-                    let valid_x_start = Integer::div_ceil(&-dx, &x_stride)
-                        .max(0)
-                        .min(output_width as _);
+                    let dy = *geometry.pool.patch.data_field.as_ptr().offset(kitem as isize * 2);
+                    let dx =
+                        *geometry.pool.patch.data_field.as_ptr().offset(1 + kitem as isize * 2);
+                    let valid_x_start =
+                        Integer::div_ceil(&-dx, &x_stride).max(0).min(output_width as _);
                     let valid_x_end =
                         Integer::div_ceil(&(input_width - dx), &x_stride).min(output_width as _);
 
                     let iptr = iptr.offset(
-                        *geometry
-                            .pool
-                            .patch
-                            .standard_layout_data_field
-                            .get_unchecked(kitem),
+                        *geometry.pool.patch.standard_layout_data_field.get_unchecked(kitem),
                     );
                     for yo in 0..*geometry.pool.patch.output_shape.get_unchecked(0) {
                         let y = yo as isize * y_stride + dy;
@@ -440,7 +396,7 @@ impl Patcher {
     unsafe fn padded_2d_invalid_x_loop<T: Copy + Datum>(
         count: usize,
         pad_value: T,
-        writer: &mut tract_linalg::frame::mmm::pack::KOutWriter<T>,
+        writer: &mut tract_linalg::pack::KOutWriter<T>,
     ) {
         for _ in 0..count {
             writer.write(pad_value);
@@ -453,7 +409,7 @@ impl Patcher {
         x_max: isize,
         x_stride_ptr: isize,
         iptr: *const T,
-        writer: &mut tract_linalg::frame::mmm::pack::KOutWriter<T>,
+        writer: &mut tract_linalg::pack::KOutWriter<T>,
     ) {
         for x in x_min..x_max {
             writer.write(*iptr.offset(x * x_stride_ptr));
@@ -476,9 +432,7 @@ impl Patcher {
             let x_stride_ptr = x_stride * *shape.w_stride() as isize;
             let c_stride_ptr = *shape.c_stride() as isize;
             let mut writer =
-                geometry
-                    .b_pack
-                    .write_with_k_outer(pack.as_mut_ptr(), geometry.k, geometry.n);
+                geometry.b_pack.write_with_k_outer(pack.as_mut_ptr(), geometry.k, geometry.n);
             let iptr = input.as_ptr_unchecked::<T>();
             let iptr = iptr.add(g * geometry.ci_per_group * shape.c_stride());
             for ci in 0..geometry.ci_per_group {

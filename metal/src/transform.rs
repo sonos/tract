@@ -12,10 +12,12 @@ use crate::rewrite_rules::{
     BasicSilu,
 };
 use crate::tensor::MetalTensorExt;
-use crate::utils::{as_q40_fact, as_q40_tensor};
+use crate::utils::as_q40_fact;
 use crate::{IntoMetal, MetalFact, MetalTensor};
 use std::borrow::Cow;
 use std::fmt::Debug;
+use std::str::FromStr;
+use tract_core::dyn_clone::clone_box;
 use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
 use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
@@ -26,13 +28,12 @@ use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
 use tract_core::ops::nn::{Reduce, Softmax as CoreSoftmax};
-use tract_core::tract_linalg::frame::block_quant::BlockQuantValue;
 use tract_core::transform::ModelTransform;
 use tract_itertools::Itertools;
 
 impl MetalGemmImplKind {
     pub fn variants() -> Vec<MetalGemmImplKind> {
-        vec![Self::Mlx, Self::Mfa]
+        vec![Self::Mlx, Self::Mfa, Self::Ggml]
     }
 
     pub fn variants_str() -> Vec<&'static str> {
@@ -50,7 +51,7 @@ impl MetalGemmImplKind {
 
 #[derive(Debug, Default)]
 pub struct MetalTransform {
-    pub gemm_impl: MetalGemmImplKind,
+    pub gemm_impl: Option<MetalGemmImplKind>,
 }
 
 impl ModelTransform for MetalTransform {
@@ -60,6 +61,20 @@ impl ModelTransform for MetalTransform {
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         self.transform_up_to_phase(model, usize::MAX)
+    }
+}
+
+impl FromStr for MetalTransform {
+    type Err = TractError;
+    fn from_str(str: &str) -> TractResult<Self> {
+        let gemm_impl = match str {
+            "mlx" => Some(MetalGemmImplKind::Mlx),
+            "ggml" => Some(MetalGemmImplKind::Ggml),
+            "mfa" => Some(MetalGemmImplKind::Mfa),
+            "" => None,
+            _ => bail!("Unknown backend"),
+        };
+        Ok(MetalTransform { gemm_impl })
     }
 }
 
@@ -74,7 +89,7 @@ impl MetalTransform {
             return Ok(());
         }
 
-        Rewriter::default()
+        Rewriter::<MetalTransform>::default()
             .with_rule_for("as-rms-norm", rewrite_rules::as_rms_norm_rule)
             .with_rule_for("remove_rms_norm_cast", rewrite_rules::remove_rms_norm_cast)
             .with_rule_for("as-silu", rewrite_rules::as_silu_rule)
@@ -83,7 +98,11 @@ impl MetalTransform {
             .with_rule_for("as-apply-rope", rewrite_rules::as_apply_rope_rule)
             .with_rule_for("as-scaled-masked-softmax", rewrite_rules::as_scaled_masked_softmax_rule)
             .with_rule_for("untranspose-matmul-output", rewrite_rules::untranspose_matmul_output)
-            .rewrite(&(), model)?;
+            .with_rule_for(
+                "remove-ggml-broadcast-pre-matmul",
+                rewrite_rules::remove_ggml_broadcast_pre_matmul,
+            )
+            .rewrite(self, model)?;
 
         if stop_at_phase == 1 {
             return Ok(());
@@ -187,11 +206,7 @@ impl MetalTransform {
     }
 }
 
-fn can_translate_to_metal_op(
-    source: &TypedModel,
-    node: &TypedNode,
-    gemm_impl: MetalGemmImplKind,
-) -> TractResult<bool> {
+fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResult<bool> {
     let input_facts = source.node_input_facts(node.id)?.iter().map(|f| (*f).clone()).collect_vec();
     let input_dts = input_facts
         .iter()
@@ -209,13 +224,11 @@ fn can_translate_to_metal_op(
             || node.op_is::<Comp>()
             || node.op_is::<MultiBroadcastTo>()
             || node.op_as::<BasicMatMul>().is_some_and(|op| {
-                !op.transpose_c
-                    && op.quantize_output.is_none()
-                    && check_matmul_in_dts(gemm_impl, &input_facts)
+                !op.transpose_c && op.quantize_output.is_none() && check_matmul_in_dts(&input_facts)
             })
             || node
                 .op_as::<Const>()
-                .is_some_and(|op| MetalTensor::is_supported_dt(op.0.datum_type()))
+                .is_some_and(|op| MetalTensor::is_supported_dt(op.val().datum_type()))
             || node.op_as::<Cast>().is_some_and(|op| {
                 ops::MetalCast::is_supported_dt(input_dts[0])
                     && ops::MetalCast::new(op.to).is_some()
@@ -257,7 +270,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        let translatable = can_translate_to_metal_op(source, node, self.gemm_impl)?;
+        let translatable = can_translate_to_metal_op(source, node)?;
 
         if translatable {
             let mut gpu_inputs =
@@ -337,14 +350,34 @@ macro_rules! map_element_wise_ops {
     };
 }
 
-fn check_matmul_in_dts(gemm_impl: MetalGemmImplKind, in_facts: &[TypedFact]) -> bool {
-    match gemm_impl {
-        MetalGemmImplKind::Mlx => MlxGemm.is_supported_dts(in_facts),
-        MetalGemmImplKind::Mfa => MfaGemm.is_supported_dts(in_facts),
-        MetalGemmImplKind::Ggml => {
-            GgmlGemm.is_supported_dts(in_facts)
-                || GgmlGemm.is_supported_dts(&[in_facts[1].clone(), in_facts[0].clone()])
-        }
+fn check_matmul_in_dts(in_facts: &[TypedFact]) -> bool {
+    MlxGemm.is_supported_dts(in_facts)
+        || MfaGemm.is_supported_dts(in_facts)
+        || GgmlGemm.is_supported_dts(in_facts)
+        || GgmlGemm.is_supported_dts(&[in_facts[1].clone(), in_facts[0].clone()])
+}
+
+fn is_input_broadcast(facts: TVec<&TypedFact>) -> bool {
+    let b_shape = as_q40_fact(facts[1])
+        .map(|fact| fact.shape[0])
+        .unwrap_or(facts[1].shape[0].to_i64().unwrap_or(0) as usize);
+
+    b_shape != facts[0].shape[0].to_i64().unwrap_or(0) as usize
+}
+
+pub fn resolve_gemm_impl(
+    gemm_impl: Option<MetalGemmImplKind>,
+    input_facts: TVec<&TypedFact>,
+) -> TractResult<MetalGemmImplKind> {
+    if let Some(gemm) = gemm_impl {
+        Ok(gemm)
+    } else if as_q40_fact(input_facts[0]).is_some()
+        || as_q40_fact(input_facts[1]).is_some()
+        || is_input_broadcast(input_facts)
+    {
+        Ok(MetalGemmImplKind::Ggml)
+    } else {
+        Ok(MetalGemmImplKind::Mlx)
     }
 }
 
@@ -354,9 +387,11 @@ fn convert_matmul_to_metal(
     target: &mut TypedModel,
     inputs: &mut [OutletId],
     op: &BasicMatMul,
-    gemm_impl: MetalGemmImplKind,
+    gemm_impl: Option<MetalGemmImplKind>,
 ) -> TractResult<TVec<OutletId>> {
-    let mut matmul_output = match gemm_impl {
+    let mut input_facts = model.node_input_facts(node.id)?;
+
+    let mut matmul_output = match resolve_gemm_impl(gemm_impl, input_facts.clone())? {
         MetalGemmImplKind::Mlx => {
             let op = ops::MetalGemm::<MlxGemm>::new(op.transpose_a, op.transpose_b);
             target.wire_node(node.name.clone(), op, inputs)?
@@ -366,9 +401,6 @@ fn convert_matmul_to_metal(
             target.wire_node(node.name.clone(), op, inputs)?
         }
         MetalGemmImplKind::Ggml => {
-            let mut input_facts: tract_smallvec::SmallVec<[&TypedFact; 4]> =
-                model.node_input_facts(node.id)?;
-
             let mut swap_inputs = false;
             if !GgmlGemm.is_supported_dts(&[input_facts[0].clone(), input_facts[1].clone()])
                 && GgmlGemm.is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()])
@@ -381,7 +413,7 @@ fn convert_matmul_to_metal(
             let a_pos = swap_inputs as usize;
             let b_pos = 1 - swap_inputs as usize;
             if op.transpose_a {
-                assert!(as_q40_fact(input_facts[b_pos]).is_none(), "Cannot transpose Q40 tensor");
+                ensure!(as_q40_fact(input_facts[b_pos]).is_none(), "Cannot transpose Q40 tensor");
 
                 let rank = input_facts[a_pos].rank();
                 let perm_a_op = ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
@@ -399,7 +431,7 @@ fn convert_matmul_to_metal(
             }
 
             if !op.transpose_b {
-                assert!(as_q40_fact(input_facts[b_pos]).is_none(), "Cannot transpose Q40 tensor");
+                ensure!(as_q40_fact(input_facts[b_pos]).is_none(), "Cannot transpose Q40 tensor");
 
                 let rank = input_facts[b_pos].rank();
                 let perm_b_op = ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
@@ -476,20 +508,15 @@ fn convert_logic_ops_to_metal(op: &Comp) -> ops::MetalBinOp {
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {
-    let (tensor, metal_fact) = if let Some(curr_bqv) = as_q40_tensor(op.0.view().tensor) {
-        let mut bqv = curr_bqv.clone();
-        crate::utils::tract_to_gguf_q4_0_packing(&mut (bqv.value))?;
-
-        let bqv = BlockQuantValue { value: bqv.value, fact: bqv.fact };
-        (
-            tensor0(Opaque(Arc::new(bqv))).broadcast_into_rank(op.0.rank())?.into_arc_tensor(),
-            MetalFact::from_cpu(Arc::clone(&op.0).into())?,
-        )
+    let typed_fact: TypedFact = Arc::clone(op.val()).into();
+    let metal_fact = if let Some(of) = op.opaque_fact() {
+        MetalFact::from_cpu(typed_fact.with_opaque_fact(clone_box(of)))?
     } else {
-        (op.0.clone(), MetalFact::from_cpu(Arc::clone(&op.0).into())?)
+        MetalFact::from_cpu(typed_fact)?
     };
-    let metal_const = tensor.into_metal()?.into_opaque_tensor().into_arc_tensor();
-    Ok(Const::new_with_opaque_fact(metal_const, Box::new(metal_fact)))
+
+    let metal_const = op.val().clone().into_metal()?.into_opaque_tensor().into_arc_tensor();
+    Const::new_with_opaque_fact(metal_const, Box::new(metal_fact))
 }
 
 fn map_element_wise_ops_to_metal(op: &ElementWiseOp) -> Option<ops::MetalElementWiseOp> {

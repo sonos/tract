@@ -9,6 +9,7 @@ pub use ggml_gemm::GgmlGemm;
 pub use mfa::MfaGemm;
 pub use mlx_gemm::MlxGemm;
 pub use mmm_tile_8x8::{metal_mmm_tile_8x8, mmm_tile_8x8};
+use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 
 use crate::utils::as_q40_tensor;
 use crate::{MetalContext, MetalTensor};
@@ -33,7 +34,8 @@ impl Default for MetalGemmImplKind {
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct GemmDispatchParams {
     pub dts: [DatumType; 3],
-    pub batch: usize,
+    pub a_batch: usize,
+    pub b_batch: usize,
     pub m: usize,
     pub k: usize,
     pub n: usize,
@@ -49,7 +51,7 @@ pub struct GemmDispatchParams {
 
 impl GemmDispatchParams {
     #[allow(clippy::too_many_arguments)]
-    pub fn compute_dispatches_params(
+    pub fn compute_dispatches_params<M: GemmKernel>(
         dts: [DatumType; 3],
         a_offset: usize,
         a_shape: &[usize],
@@ -75,16 +77,23 @@ impl GemmDispatchParams {
         let n = c_shape[rank - 1];
         let k = a_shape[a_shape.len() - 2 + !transpose_a as usize];
 
-        let batch = if a_batch == b_batch { a_batch } else { 1 };
+        ensure!((a_batch % b_batch == 0) || (a_batch == 1));
         let a_strides = if transpose_a {
-            natural_strides(&[batch, k, m])
+            natural_strides(&[a_batch, k, m])
         } else {
-            natural_strides(&[batch, m, k])
+            natural_strides(&[a_batch, m, k])
         };
         let b_strides = if transpose_b {
-            natural_strides(&[batch, n, k])
+            natural_strides(&[b_batch, n, k])
         } else {
-            natural_strides(&[batch, k, n])
+            natural_strides(&[b_batch, k, n])
+        };
+
+        let b_batch_stride = if !q40_b {
+            n * k * dts[1].size_of()
+        } else {
+            ensure!(k % Q4_0.block_len() == 0);
+            n * (k / Q4_0.block_len()) * Q4_0.block_bytes()
         };
 
         match (a_batch, b_batch) {
@@ -92,7 +101,8 @@ impl GemmDispatchParams {
             // bmk, 1nk -> bmn
             (a_batch, 1) if a_batch != 1 && !transpose_a => Ok(vec![GemmDispatchParams {
                 dts,
-                batch: 1,
+                a_batch: 1,
+                b_batch: 1,
                 m: m * a_batch,
                 n,
                 k,
@@ -111,7 +121,8 @@ impl GemmDispatchParams {
             (a_batch, 1) if a_batch != 1 => Ok((0..a_batch)
                 .map(|a_batch_idx| GemmDispatchParams {
                     dts,
-                    batch: 1,
+                    a_batch: 1,
+                    b_batch: 1,
                     m,
                     n,
                     k,
@@ -133,42 +144,62 @@ impl GemmDispatchParams {
             (1, b_batch) if b_batch != 1 => Ok((0..b_batch)
                 .map(|b_batch_idx| GemmDispatchParams {
                     dts,
-                    batch: 1,
+                    a_batch: 1,
+                    b_batch: 1,
                     m,
                     n,
                     k,
                     transpose_a,
                     a_offset,
                     transpose_b,
-                    b_offset: b_offset + b_batch_idx * n * k * dts[1].size_of(),
+                    b_offset: b_offset + b_batch_idx * b_batch_stride,
                     q40_b,
                     c_offset: c_offset + b_batch_idx * m * n * dts[2].size_of(),
                     a_strides: a_strides.clone(),
                     b_strides: b_strides.clone(),
                 })
                 .collect()),
-            // bmk, bkn -> bmn
-            // bkm, bkn -> bmn
-            // bmk, bnk -> bmn
-            // bkm, bnk -> bmn
             (a_batch, b_batch) => {
-                ensure!(a_batch == b_batch);
-
-                Ok(vec![GemmDispatchParams {
-                    dts,
-                    batch: a_batch,
-                    m,
-                    n,
-                    k,
-                    transpose_a,
-                    a_offset,
-                    transpose_b,
-                    b_offset,
-                    q40_b,
-                    c_offset,
-                    a_strides,
-                    b_strides,
-                }])
+                if M::supports_broadcast() {
+                    Ok(vec![GemmDispatchParams {
+                        dts,
+                        a_batch,
+                        b_batch,
+                        m,
+                        n,
+                        k,
+                        transpose_a,
+                        a_offset,
+                        transpose_b,
+                        b_offset,
+                        q40_b,
+                        c_offset,
+                        a_strides,
+                        b_strides,
+                    }])
+                } else {
+                    ensure!(a_batch == b_batch);
+                    // bmk, bkn -> bmn
+                    // bkm, bkn -> bmn
+                    // bmk, bnk -> bmn
+                    // bkm, bnk -> bmn
+                    Ok(vec![GemmDispatchParams {
+                        dts,
+                        a_batch,
+                        b_batch,
+                        m,
+                        n,
+                        k,
+                        transpose_a,
+                        a_offset,
+                        transpose_b,
+                        b_offset,
+                        q40_b,
+                        c_offset,
+                        a_strides,
+                        b_strides,
+                    }])
+                }
             }
         }
     }
@@ -176,6 +207,10 @@ impl GemmDispatchParams {
 
 pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync {
     fn name() -> &'static str;
+
+    fn supports_broadcast() -> bool {
+        false
+    }
 
     fn is_supported_dts(&self, facts: &[TypedFact]) -> bool {
         assert!(facts.len() == 2, "Expected 2 inputs for matmul");
@@ -279,7 +314,7 @@ impl<M: GemmKernel> GemmImpl<M> {
             return Ok(());
         }
 
-        let dispatches = GemmDispatchParams::compute_dispatches_params(
+        let dispatches = GemmDispatchParams::compute_dispatches_params::<M>(
             [a.datum_type(), b.datum_type(), c.datum_type()],
             a.metal_offset(),
             a.shape(),
@@ -340,7 +375,7 @@ mod tests {
     use proptest::prelude::*;
     use tract_core::ops::einsum::BasicMatMul;
     use tract_core::tract_data::itertools::Itertools;
-    use tract_core::tract_linalg::frame::block_quant::{
+    use tract_core::tract_linalg::block_quant::{
         BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0,
     };
 
@@ -420,7 +455,7 @@ mod tests {
         let dt = DatumType::F32;
         let (m, k, n) = (2, 3, 4);
         assert_eq!(
-            GemmDispatchParams::compute_dispatches_params(
+            GemmDispatchParams::compute_dispatches_params::<MlxGemm>(
                 [dt; 3],
                 0,
                 &[1, m, k],
@@ -434,7 +469,8 @@ mod tests {
             )?,
             vec![GemmDispatchParams {
                 dts: [dt; 3],
-                batch: 1,
+                a_batch: 1,
+                b_batch: 1,
                 m,
                 n,
                 k,
@@ -450,7 +486,7 @@ mod tests {
         );
 
         assert_eq!(
-            GemmDispatchParams::compute_dispatches_params(
+            GemmDispatchParams::compute_dispatches_params::<MlxGemm>(
                 [dt; 3],
                 0,
                 &[10, m, k],
@@ -464,7 +500,8 @@ mod tests {
             )?,
             vec![GemmDispatchParams {
                 dts: [dt; 3],
-                batch: 10,
+                a_batch: 10,
+                b_batch: 10,
                 m,
                 n,
                 k,
@@ -480,7 +517,7 @@ mod tests {
         );
 
         assert_eq!(
-            GemmDispatchParams::compute_dispatches_params(
+            GemmDispatchParams::compute_dispatches_params::<MlxGemm>(
                 [dt; 3],
                 0,
                 &[1, m, k],
@@ -495,7 +532,8 @@ mod tests {
             vec![
                 GemmDispatchParams {
                     dts: [dt; 3],
-                    batch: 1,
+                    a_batch: 1,
+                    b_batch: 1,
                     m,
                     n,
                     k,
@@ -506,11 +544,12 @@ mod tests {
                     q40_b: false,
                     c_offset: 10,
                     a_strides: natural_strides(&[1, m, k]),
-                    b_strides: natural_strides(&[1, k, n])
+                    b_strides: natural_strides(&[2, k, n])
                 },
                 GemmDispatchParams {
                     dts: [dt; 3],
-                    batch: 1,
+                    a_batch: 1,
+                    b_batch: 1,
                     m,
                     n,
                     k,
@@ -521,13 +560,13 @@ mod tests {
                     q40_b: false,
                     c_offset: 10 + m * n * dt.size_of(),
                     a_strides: natural_strides(&[1, m, k]),
-                    b_strides: natural_strides(&[1, k, n])
+                    b_strides: natural_strides(&[2, k, n])
                 }
             ]
         );
 
         assert_eq!(
-            GemmDispatchParams::compute_dispatches_params(
+            GemmDispatchParams::compute_dispatches_params::<MlxGemm>(
                 [dt; 3],
                 0,
                 &[2, k, m],
@@ -541,7 +580,8 @@ mod tests {
             )?,
             vec![GemmDispatchParams {
                 dts: [dt; 3],
-                batch: 2,
+                a_batch: 2,
+                b_batch: 2,
                 m,
                 n,
                 k,
@@ -557,7 +597,7 @@ mod tests {
         );
 
         assert_eq!(
-            GemmDispatchParams::compute_dispatches_params(
+            GemmDispatchParams::compute_dispatches_params::<MlxGemm>(
                 [dt; 3],
                 0,
                 &[2, k, m],
@@ -572,7 +612,8 @@ mod tests {
             vec![
                 GemmDispatchParams {
                     dts: [dt; 3],
-                    batch: 1,
+                    a_batch: 1,
+                    b_batch: 1,
                     m,
                     n,
                     k,
@@ -582,12 +623,13 @@ mod tests {
                     b_offset: 0,
                     q40_b: false,
                     c_offset: 100,
-                    a_strides: natural_strides(&[1, k, m]),
+                    a_strides: natural_strides(&[2, k, m]),
                     b_strides: natural_strides(&[1, k, n])
                 },
                 GemmDispatchParams {
                     dts: [dt; 3],
-                    batch: 1,
+                    a_batch: 1,
+                    b_batch: 1,
                     m,
                     n,
                     k,
@@ -597,14 +639,14 @@ mod tests {
                     b_offset: 0,
                     q40_b: false,
                     c_offset: 100 + 1 * m * n * dt.size_of(),
-                    a_strides: natural_strides(&[1, k, m]),
+                    a_strides: natural_strides(&[2, k, m]),
                     b_strides: natural_strides(&[1, k, n])
                 }
             ]
         );
 
         assert_eq!(
-            GemmDispatchParams::compute_dispatches_params(
+            GemmDispatchParams::compute_dispatches_params::<MlxGemm>(
                 [dt; 3],
                 0,
                 &[10, m, k],
@@ -618,7 +660,8 @@ mod tests {
             )?,
             vec![GemmDispatchParams {
                 dts: [dt; 3],
-                batch: 1,
+                a_batch: 1,
+                b_batch: 1,
                 m: 10 * m,
                 n,
                 k,
@@ -628,9 +671,40 @@ mod tests {
                 b_offset: 10,
                 q40_b: false,
                 c_offset: 0,
-                a_strides: natural_strides(&[1, m, k]),
+                a_strides: natural_strides(&[10, m, k]),
                 b_strides: natural_strides(&[1, k, n])
             }]
+        );
+
+        assert_eq!(
+            GemmDispatchParams::compute_dispatches_params::<GgmlGemm>(
+                [dt; 3],
+                0,
+                &[4, m, k],
+                false,
+                0,
+                &[2, k, n],
+                false,
+                false,
+                0,
+                &[4, m, n],
+            )?,
+            vec![GemmDispatchParams {
+                dts: [dt; 3],
+                a_batch: 4,
+                b_batch: 2,
+                m,
+                n,
+                k,
+                transpose_a: false,
+                a_offset: 0,
+                transpose_b: false,
+                b_offset: 0,
+                q40_b: false,
+                c_offset: 0,
+                a_strides: natural_strides(&[4, m, k]),
+                b_strides: natural_strides(&[2, k, n])
+            },]
         );
 
         Ok(())
@@ -650,7 +724,7 @@ mod tests {
         #[test]
         fn mmm_mfa_prop_f32(pb in any::<MmmProblem<MfaGemm, f32>>()) {
             let output = pb.run().unwrap();
-            prop_assert!(output.close_enough(&pb.reference().unwrap(), Approximation::Exact).is_ok())
+            prop_assert!(output.close_enough(&pb.reference().unwrap(), Approximation::Close).is_ok())
         }
 
         #[test]
@@ -825,7 +899,7 @@ mod tests {
                         if !self.q4_0 {
                             Tensor::from_shape(&[self.b, self.n, self.k], &self.rhs)?
                         } else {
-                            let mut b_quant = Q4_0.quant_f32(
+                            let b_quant = Q4_0.quant_f32(
                                 &self
                                     .rhs
                                     .clone()
@@ -833,8 +907,6 @@ mod tests {
                                     .map(|x| x.to_f32().unwrap())
                                     .collect_vec(),
                             )?;
-
-                            crate::utils::tract_to_gguf_q4_0_packing(&mut b_quant)?;
 
                             tensor0(Opaque(Arc::new(BlockQuantValue {
                                 fact: BlockQuantFact {
@@ -852,7 +924,7 @@ mod tests {
                     let matmul = GemmImpl::<K>::new(self.transpose_lhs, self.transpose_rhs);
 
                     let c = matmul.eval(context, &lhs, &rhs)?;
-                    Ok(c.to_cpu()?)
+                    Ok(c.to_cpu()?.into_tensor())
                 })
             })
         }

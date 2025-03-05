@@ -1,6 +1,6 @@
 [package]
 name = "tract"
-version = "0.21.10-pre"
+version = "0.21.11-pre"
 authors = [ "Romain Liautaud <romain.liautaud@snips.ai>", "Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT OR Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -23,6 +23,7 @@ env_logger.workspace = true
 flate2.workspace = true
 fs-err.workspace = true
 lazy_static.workspace = true
+litemap.workspace = true
 log.workspace = true
 ndarray-npy.workspace = true
 nu-ansi-term.workspace = true
@@ -46,6 +47,7 @@ tract-pulse-opl = { workspace = true, optional = true }
 tract-onnx = { workspace = true, optional = true }
 tract-tensorflow = { workspace = true, optional = true }
 tract-tflite = { workspace = true, optional = true }
+zerofrom.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 tract-metal.workspace = true

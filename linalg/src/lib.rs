@@ -18,18 +18,13 @@ extern crate proptest;
 include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 
 #[macro_use]
-pub mod frame;
+mod frame;
 pub mod generic;
 pub mod multithread;
-use frame::by_scalar::ByScalarKer;
-use frame::element_wise::ElementWiseKer;
-use frame::mmm::panel_extract::PanelExtractor;
-use frame::mmm::{MMMInputFormat, MMMKit, WeightType};
-use frame::reduce::{MapReduceKer, ReduceKer};
-use frame::unicast::UnicastKer;
-use frame::{reduce, MatMatMul};
+pub use frame::weights::WeightType;
 pub use generic::{ScaleShiftAndRound, Scaler};
 use lazy_static::lazy_static;
+use mmm::{MMMInputFormat, MatMatMul, PanelExtractor};
 use tract_data::internal::TensorView;
 #[cfg(target_arch = "x86_64")]
 pub mod x86_64_fma;
@@ -52,7 +47,7 @@ pub mod arm32;
 #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
 pub mod wasm;
 
-pub use self::frame::{element_wise, lut, mmm};
+pub use self::frame::*;
 
 use tract_data::prelude::*;
 
@@ -64,10 +59,9 @@ type MMVImpl = Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMu
 
 #[allow(clippy::type_complexity)]
 pub struct Ops {
-    mmm_impls: Vec<Box<dyn MatMatMul>>,
-    panel_extractors: Vec<PanelExtractor>,
-    mmm_kits: Vec<MMMKit>,
-    // default_kit: Box<dyn Fn(WeightType) -> Box<dyn MMMInputFormat>>,
+    mmm_impls: Vec<Box<dyn mmm::MatMatMul>>,
+    panel_extractors: Vec<mmm::PanelExtractor>,
+
     mmm_f64: MMMImpl,
     mmv_f64: MMVImpl,
 
@@ -107,26 +101,75 @@ pub struct Ops {
 }
 
 impl Ops {
-    pub fn mmm_impls(&self) -> &[Box<dyn MatMatMul>] {
+    pub fn mmm_impls(&self) -> &[Box<dyn mmm::MatMatMul>] {
         &self.mmm_impls
     }
 
-    pub fn mmm_kits(&self) -> &[MMMKit] {
-        &self.mmm_kits
-    }
-
-    pub fn kit_input_format(&self, w: WeightType) -> Box<dyn MMMInputFormat> {
-        self.mmm_kits
+    pub fn all_possible_packing(
+        &self,
+        weight_type: impl Into<WeightType>,
+    ) -> impl Iterator<Item = &dyn MMMInputFormat> {
+        let weight_type = weight_type.into();
+        self.mmm_impls
             .iter()
-            .filter(|kit| kit.weight == w)
-            .sorted_by_key(|kit| kit.generic_fallback as usize)
-            .next()
-            .unwrap()
-            .static_packer
-            .clone()
+            .flat_map(|m| m.packings())
+            .map(|p| &*p.0)
+            .flat_map(move |p| {
+                let mut packs: Vec<&dyn MMMInputFormat> = vec![];
+                if p.precursor() == weight_type {
+                    packs.push(p)
+                };
+                for pe in &self.panel_extractors {
+                    if pe.from.precursor() == weight_type && pe.to.same_as(p) {
+                        packs.push(&*pe.from);
+                    }
+                }
+                packs.into_iter()
+            })
+            .sorted_by_key(|p| p.to_string())
+            .dedup()
     }
 
-    pub fn panel_extractors(&self) -> &[PanelExtractor] {
+    pub fn filter_impls<'o>(
+        &'o self,
+        weight: &'o dyn MMMInputFormat,
+        acc: &[DatumType],
+        act: DatumType,
+    ) -> impl Iterator<
+        Item = (
+            &'o dyn MatMatMul,
+            usize,
+            &'o dyn MMMInputFormat,
+            Option<&'o PanelExtractor>,
+            &'o dyn MMMInputFormat,
+        ),
+    > {
+        let acc = acc.to_vec();
+        self.mmm_impls
+            .iter()
+            .filter(move |mmm| acc.contains(&mmm.internal_type()))
+            .flat_map(|mmm| {
+                mmm.packings()
+                    .iter()
+                    .enumerate()
+                    .map(|(pack_ix, (a, b))| (&**mmm, pack_ix, &**a, &**b))
+            })
+            .filter_map(|(mmm, ix, a, b)| {
+                if a.same_as(weight) {
+                    Some((mmm, ix, a, None, b))
+                } else {
+                    self.panel_extractors
+                        .iter()
+                        .find(|pe| pe.from.same_as(weight) && pe.to.same_as(a))
+                        .map(|pe| (mmm, ix, a, Some(pe), b))
+                }
+            })
+            .filter(move |(_mmm, _ix, _a, _pe, b)| {
+                b.precursor().as_dt().is_some_and(|dt| dt == act)
+            })
+    }
+
+    pub fn panel_extractors(&self) -> &[mmm::panel_extract::PanelExtractor] {
         &self.panel_extractors
     }
 
@@ -139,26 +182,12 @@ impl Ops {
     ) -> Option<Box<dyn mmm::MatMatMul>> {
         use DatumType::*;
         match accumulator {
-            F64 => Some(if n == Some(1) {
-                (self.mmv_f64)(m, k)
-            } else {
-                (self.mmm_f64)(m, k, n)
-            }),
-            F32 => Some(if n == Some(1) {
-                (self.mmv_f32)(m, k)
-            } else {
-                (self.mmm_f32)(m, k, n)
-            }),
-            F16 => Some(if n == Some(1) {
-                (self.mmv_f16)(m, k)
-            } else {
-                (self.mmm_f16)(m, k, n)
-            }),
-            I32 => Some(if n == Some(1) {
-                (self.qmmv_i32)(m, k)
-            } else {
-                (self.qmmm_i32)(m, k, n)
-            }),
+            F64 => Some(if n == Some(1) { (self.mmv_f64)(m, k) } else { (self.mmm_f64)(m, k, n) }),
+            F32 => Some(if n == Some(1) { (self.mmv_f32)(m, k) } else { (self.mmm_f32)(m, k, n) }),
+            F16 => Some(if n == Some(1) { (self.mmv_f16)(m, k) } else { (self.mmm_f16)(m, k, n) }),
+            I32 => {
+                Some(if n == Some(1) { (self.qmmv_i32)(m, k) } else { (self.qmmm_i32)(m, k, n) })
+            }
             _ => None,
         }
     }
@@ -166,9 +195,10 @@ impl Ops {
 
 pub fn generic() -> Ops {
     use crate::generic::mmm::*;
+    use element_wise::ElementWiseKer;
+    use reduce::{MapReduceKer, ReduceKer};
     let mut ops = Ops {
-        mmm_impls: vec![generic_f32_4x4.mmm(), generic_f32_4x1.mmm()],
-        mmm_kits: vec![],
+        mmm_impls: vec![],
         panel_extractors: vec![],
         mmm_f64: Box::new(|_, _, _| generic_f64_4x4.mmm()),
         mmv_f64: Box::new(|_, _| generic_f64_4x1.mmm()),

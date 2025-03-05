@@ -1,5 +1,18 @@
 # Unreleased
 
+# 0.21.10 - 2025-02-21
+* WIP llm testability (--approx-custom)
+* [metal] ggml-ported kernels
+* WIP einsum-to-matmul testability
+* optimisation around reduce<sum> impacting some modern/exotic normalisation layers
+* WIP towards better handling of shared weights (e.g. embeddings duplication)
+
+# 0.21.9 - 2025-01-08
+* [metal] experimental profile
+* [cpu] new versatile (mmm/mmmv) kernels combinations for various architectures
+* [metal] scaled-masked-softmax detector and impl
+
+
 # 0.21.8 - 2024-12-05
 * [linalg, compression] introduce mmm kits
 * [linalg] (wip) rework f16 on non-f16 machines

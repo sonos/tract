@@ -1,5 +1,6 @@
 use crate::rewrite_rules::next_node;
 use crate::rule_ensure;
+use crate::MetalTransform;
 use tract_core::internal::*;
 use tract_core::ops::binary::BinMiniOp;
 use tract_core::ops::binary::TypedBinOp;
@@ -44,7 +45,7 @@ impl TypedOp for BasicSilu {
 
 /// Search pattern => A = A * SIGMOID(A)
 pub fn as_silu_rule(
-    _ctx: &(),
+    _ctx: &MetalTransform,
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,

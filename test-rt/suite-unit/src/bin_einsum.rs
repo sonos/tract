@@ -286,8 +286,7 @@ impl BinEinsumProblem {
         });
         if let Some(unicast_const) = self.unicast_add_constant.clone() {
             output + unicast_const.into_array::<Acc>().unwrap()
-        }
-        else {
+        } else {
             output
         }
     }

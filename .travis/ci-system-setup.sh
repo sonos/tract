@@ -1,9 +1,28 @@
 #!/bin/sh
+set -e
 
 [ -d $ROOT/.travis ] || exit 1 "\$ROOT not set correctly '$ROOT'"
 
-if [ -n "$CI" -a ! -e ".setup-done" ]
+if [ `whoami` != "root" ]
 then
+    SUDO=sudo
+fi
+
+if [ -n "$CI" -a ! -e /tmp/ci-setup-done ]
+then
+    if [ `uname` = "Darwin" ]
+    then
+        sysctl -n machdep.cpu.brand_string
+        python3 --version
+        brew install coreutils numpy python-setuptools jshon
+        PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"
+        export PYTHON_BIN_PATH=python3
+    else
+        $SUDO apt-get update
+        $SUDO apt-get install -y llvm python3 python3-numpy jshon wget curl build-essential sudo jshon
+        aws --version || $SUDO apt-get install -y awscli
+    fi
+
     if [ -z "$RUST_VERSION" ]
     then
         export RUST_VERSION=1.75.0
@@ -17,17 +36,7 @@ then
     rustup default $RUST_VERSION
     export RUSTUP_TOOLCHAIN=$RUST_VERSION
 
-    if [ `uname` = "Darwin" ]
-    then
-        sysctl -n machdep.cpu.brand_string
-        python3 --version
-        brew install coreutils numpy python-setuptools jshon
-        PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"
-        export PYTHON_BIN_PATH=python3
-    else
-        sudo apt-get install -y llvm python3 python3-numpy jshon
-    fi
-    touch .setup-done
+    touch /tmp/ci-setup-done
 fi
 
 S3=https://s3.amazonaws.com/tract-ci-builds/tests

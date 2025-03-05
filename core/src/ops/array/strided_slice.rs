@@ -115,21 +115,11 @@ impl StridedSlice {
             begin = None;
         }
 
-        let mut begin = begin.unwrap_or_else(|| {
-            if stride > 0 {
-                0.to_dim()
-            } else {
-                dim.clone() - 1
-            }
-        });
+        let mut begin =
+            begin.unwrap_or_else(|| if stride > 0 { 0.to_dim() } else { dim.clone() - 1 });
         if begin.to_isize().map(|b| b < 0).unwrap_or(false) {
             if stride < 0 {
-                return Ok(Dim {
-                    begin: 0.to_dim(),
-                    end: 0.to_dim(),
-                    stride,
-                    shrink: false,
-                });
+                return Ok(Dim { begin: 0.to_dim(), end: 0.to_dim(), stride, shrink: false });
             } else {
                 begin = 0.to_dim();
             }
@@ -137,33 +127,17 @@ impl StridedSlice {
         if let (Ok(b), Ok(d)) = (begin.to_isize(), dim.to_isize()) {
             if b > d - 1 {
                 if stride > 0 {
-                    return Ok(Dim {
-                        begin: 0.to_dim(),
-                        end: 0.to_dim(),
-                        stride,
-                        shrink: false,
-                    });
+                    return Ok(Dim { begin: 0.to_dim(), end: 0.to_dim(), stride, shrink: false });
                 } else {
                     begin = (d - 1).to_dim()
                 }
             }
         }
 
-        let mut end = end.unwrap_or_else(|| {
-            if stride > 0 {
-                dim.clone()
-            } else {
-                (-1).to_dim()
-            }
-        });
+        let mut end = end.unwrap_or_else(|| if stride > 0 { dim.clone() } else { (-1).to_dim() });
         if end.to_isize().map(|e| e < 0).unwrap_or(false) {
             if stride > 0 {
-                return Ok(Dim {
-                    begin: 0.to_dim(),
-                    end: 0.to_dim(),
-                    stride,
-                    shrink: false,
-                });
+                return Ok(Dim { begin: 0.to_dim(), end: 0.to_dim(), stride, shrink: false });
             } else {
                 end = (-1).to_dim();
             }
@@ -173,21 +147,11 @@ impl StridedSlice {
                 if stride > 0 {
                     end = d.to_dim()
                 } else {
-                    return Ok(Dim {
-                        begin: 0.to_dim(),
-                        end: 0.to_dim(),
-                        stride,
-                        shrink: false,
-                    });
+                    return Ok(Dim { begin: 0.to_dim(), end: 0.to_dim(), stride, shrink: false });
                 }
             }
         }
-        Ok(Dim {
-            begin,
-            end,
-            stride,
-            shrink: false,
-        })
+        Ok(Dim { begin, end, stride, shrink: false })
     }
 
     fn wire(
@@ -384,36 +348,24 @@ mod tests {
     #[test]
     fn numpy_pos_stride() {
         // [0,1,2,3][::2] => [0, 2]
-        assert_eq!(
-            apply(&[0, 1, 2, 3], None, None, Some(2)),
-            tensor1(&[0, 2]).into()
-        );
+        assert_eq!(apply(&[0, 1, 2, 3], None, None, Some(2)), tensor1(&[0, 2]).into());
     }
 
     #[test]
     fn numpy_neg_stride() {
         // [0,1,2,3][::-2] => [3, 1]
-        assert_eq!(
-            apply(&[0, 1, 2, 3], None, None, Some(-2)),
-            tensor1(&[3, 1]).into()
-        );
+        assert_eq!(apply(&[0, 1, 2, 3], None, None, Some(-2)), tensor1(&[3, 1]).into());
     }
 
     #[test]
     fn numpy_neg_stride_with_start_even() {
         // [0,1,2,3][-1::-2] => [3, 1]
-        assert_eq!(
-            apply(&[0, 1, 2, 3], Some(-1), None, Some(-2)),
-            tensor1(&[3, 1]).into()
-        );
+        assert_eq!(apply(&[0, 1, 2, 3], Some(-1), None, Some(-2)), tensor1(&[3, 1]).into());
     }
 
     #[test]
     fn numpy_neg_stride_with_start_odd() {
         // [0,1,2,3][-1::-2] => [3, 1]
-        assert_eq!(
-            apply(&[0, 1, 2, 3, 4], Some(-1), None, Some(-2)),
-            tensor1(&[4, 2, 0]).into()
-        );
+        assert_eq!(apply(&[0, 1, 2, 3, 4], Some(-1), None, Some(-2)), tensor1(&[4, 2, 0]).into());
     }
 }

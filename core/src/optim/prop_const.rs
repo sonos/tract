@@ -1,6 +1,7 @@
 use tract_data::TooEarly;
 
 use crate::internal::*;
+use crate::ops::array::Slice;
 use crate::ops::dummy::Dummy;
 use crate::ops::konst::Const;
 use crate::ops::source::TypedSource;
@@ -23,7 +24,8 @@ impl super::TypedPass for PropConst {
             if node.op_is::<Const>() && node.outputs[0].fact.konst.is_none() {
                 self.0 = node.id;
                 let mut patch = TypedModelPatch::default();
-                let wire = patch.add_const(&node.name, node.op_as::<Const>().unwrap().0.clone())?;
+                let wire =
+                    patch.add_const(&node.name, node.op_as::<Const>().unwrap().val().clone())?;
                 patch.shunt_outside(model, node.id.into(), wire)?;
                 return Ok(Some(patch));
             }
@@ -32,7 +34,13 @@ impl super::TypedPass for PropConst {
                 && !node.op_is::<Dummy>()
                 && !node.op_is::<TypedSource>()
                 && node.op.is_stateless()
-                && inputs.iter().all(|i| i.konst.is_some())
+                && inputs.iter().zip(&node.inputs).all(|(fact, outlet)| {
+                    fact.konst.is_some()
+                        && (model.node(outlet.node).outputs[outlet.slot].successors.len() == 1
+                            || node.op_is::<Slice>()
+                            || (fact.datum_type.is_number()
+                                && fact.shape.volume().as_i64().is_some_and(|d| d < 1024)))
+                })
             {
                 let inputs =
                     inputs.iter().map(|f| f.konst.clone().unwrap().into_tvalue()).collect();
@@ -41,7 +49,9 @@ impl super::TypedPass for PropConst {
                         self.0 = node.id;
                         let mut node = node;
                         loop {
-                            let Some(succ) = model.single_succ(node.id)? else { break };
+                            let Some(succ) = model.single_succ(node.id)? else {
+                                break;
+                            };
                             if succ.inputs.len() > 1 || !succ.op.is_stateless() {
                                 break;
                             }
@@ -55,7 +65,8 @@ impl super::TypedPass for PropConst {
                         }
                         let mut patch = TypedModelPatch::default();
                         for (ix, output) in res.into_iter().enumerate() {
-                            let opaque_fact = model.outlet_fact(OutletId::new(node.id, ix))?.opaque_fact.clone();
+                            let opaque_fact =
+                                model.outlet_fact(OutletId::new(node.id, ix))?.opaque_fact.clone();
 
                             let name = if ix > 0 {
                                 format!("{}.{ix}", node.name)
@@ -63,10 +74,13 @@ impl super::TypedPass for PropConst {
                                 node.name.clone()
                             };
                             let wire = patch.wire_node(
-                                    name,
-                                    Const(output.into_arc_tensor(), opaque_fact),
-                                    &[],
-                                )?[0];
+                                name,
+                                Const::new_with_opt_opaque_fact(
+                                    output.into_arc_tensor(),
+                                    opaque_fact,
+                                )?,
+                                &[],
+                            )?[0];
                             patch.shunt_outside(model, (node.id, ix).into(), wire)?;
                         }
                         self.0 = node.id;

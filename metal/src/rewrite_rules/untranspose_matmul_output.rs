@@ -1,10 +1,10 @@
-use crate::rule_ensure;
+use crate::{rule_ensure, MetalTransform};
 use tract_core::internal::*;
 use tract_core::ops::einsum::BasicMatMul;
 
 /// Rewrite BasicMatMul { .. transpose_c: true } to BasicMatMul { .. transpose_c: false}
 pub fn untranspose_matmul_output(
-    _ctx: &(),
+    _ctx: &MetalTransform,
     model: &TypedModel,
     node: &TypedNode,
     _node_name: &str,

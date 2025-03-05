@@ -35,8 +35,12 @@ mod tensor;
 mod utils;
 
 use params::*;
+use tract_linalg::block_quant::Q4_0;
+use tract_linalg::WeightType;
 
 readings_probe::instrumented_allocator!();
+
+pub const QUALITY_COLORS: [nu_ansi_term::Color; 5] = [LightGreen, Green, White, Yellow, LightRed];
 
 fn info_usage(stage: &str, probe: Option<&Probe>) {
     if let Some(mon) = probe {
@@ -135,7 +139,7 @@ fn main() -> TractResult<()> {
 
         .arg(Arg::new("f32-to-f16").long("f32-to-f16").alias("half-floats").long_help("Convert the decluttered network from f32 to f16"))
         .arg(arg!(--"f16-to-f32" "Convert the decluttered network from f16 to f32"))
-        .arg(arg!(--"metal" "Convert metal compatible operator in the decluttered network. Only available on MacOS and iOS"))
+        .arg(arg!(--"metal" [matmul_backend] "Convert metal compatible operator in the decluttered network. Only available on MacOS and iOS. Available MM backends: mlx, ggml, mfa, auto (default)"))
         .arg(Arg::new("metal-gpu-trace").long("metal-gpu-trace").takes_value(true).help("Capture Metal GPU trace at given path. Only available on MacOS and iOS"))
         .arg(Arg::new("metal-mem-arena").long("metal-mem-arena").takes_value(true).help("Analyze Metal memory schema utilization. Only available on MacOS and iOS"))
         .arg(Arg::new("transform").short('t').long("transform").multiple_occurrences(true).takes_value(true).help("Apply a built-in transformation to the model"))
@@ -157,6 +161,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"threads" [THREADS] "Setup a thread pool for computing. 0 will guess the number of physical cores"))
 
         .arg(arg!(-O --optimize "Optimize before running"))
+        .arg(arg!(--"assert-maximal-mm-quality-cost" [MAX] "Maximum value for quality category (0=assembly, 4=dreadful rust code)"))
         .arg(arg!(--pulse [PULSE] "Translate to pulse network"))
 
         .arg(arg!(--"machine-friendly" "Machine friendly output"))
@@ -556,6 +561,7 @@ fn output_options(command: clap::Command) -> clap::Command {
         .arg(Arg::new("io-long").long("io-long").help("show full i/o information"))
         .arg(Arg::new("io-none").long("io-none").help("hide i/o information"))
         .arg(Arg::new("json").long("json").help("dump performance info as json"))
+        .arg(Arg::new("mm").long("mm").help("display Matrix Multiplication report"))
         .arg(Arg::new("outlet-labels").long("outlet-labels").help("display outlet labels"))
         .arg(Arg::new("cost").long("cost").help("Include const information"))
         .arg(
@@ -596,32 +602,56 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             return Ok(());
         }
         Some(("kernels", _)) => {
-            println!("{}", White.bold().paint("# Matrix multiplication"));
+            println!();
+            println!("{}", White.bold().paint("# By implementation"));
+            println!();
             for m in tract_linalg::ops().mmm_impls() {
-                println!("{}", Green.paint(format!(" * {}", m.name())));
+                println!("{}", QUALITY_COLORS[m.quality().cost()].paint(m.name()),);
                 for packings in m.packings() {
                     println!("   - {:?} • {:?}", packings.0, packings.1);
                 }
             }
-            println!("{}", White.bold().paint("# MatMul kits"));
-            for m in tract_linalg::ops().mmm_kits() {
-                let label = format!("{:?}•{:?}•{:?}", m.weight, m.accumulator, m.activation);
-                println!(" * {} ({})",
-                    if m.generic_fallback {
-                        DarkGray.paint(label)
-                    } else {
-                        Green.paint(label)
-                    },
-                    m.static_packer,
-                );
-                for item in &m.items {
-                    println!(
-                        "   - {} {:?}•{:?} {}",
-                        item.mmm.name(),
-                        item.mmm.packings()[item.packing].0,
-                        item.mmm.packings()[item.packing].1,
-                        item.weight_panel_extractor.as_ref().map(|pe| format!("[using {}]", pe.name)).unwrap_or_default()
-                    );
+            println!();
+            println!("{}", White.bold().paint("# By weights"));
+            println!();
+            for w in [
+                WeightType::Plain(f16::datum_type()),
+                WeightType::Plain(f32::datum_type()),
+                WeightType::Plain(f64::datum_type()),
+                WeightType::Plain(i8::datum_type()),
+                WeightType::from(Q4_0),
+            ] {
+                println!("{}", White.bold().paint(format!("{w:?}")));
+                for packing in tract_linalg::ops()
+                    .all_possible_packing(w)
+                    .sorted_by_key(|f| format!("{f:?}"))
+                    .dedup()
+                {
+                    println!("  * {packing:?}");
+                    for mmm in tract_linalg::ops().mmm_impls() {
+                        for (ix, p) in mmm.packings().iter().enumerate() {
+                            if p.0.same_as(packing) {
+                                println!(
+                                    "    - {} ({ix}) {:?} {:?}",
+                                    QUALITY_COLORS[mmm.quality().cost()].paint(mmm.name()),
+                                    p.0,
+                                    p.1
+                                );
+                            } else if let Some(pe) = tract_linalg::ops()
+                                .panel_extractors()
+                                .iter()
+                                .find(|pe| pe.from.same_as(packing) && p.0.same_as(&pe.to))
+                            {
+                                println!(
+                                    "    - {} ({ix}) {:?} {:?} using {}",
+                                    QUALITY_COLORS[mmm.quality().cost()].paint(mmm.name()),
+                                    p.0,
+                                    p.1,
+                                    pe.name
+                                );
+                            }
+                        }
+                    }
                 }
             }
             return Ok(());

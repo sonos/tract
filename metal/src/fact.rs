@@ -23,11 +23,17 @@ pub struct MetalFact {
 impl MetalFact {
     pub fn new(origin: MetalOrigin, fact: TypedFact) -> TractResult<Self> {
         ensure!(fact.as_metal_fact().is_none());
-        Ok(Self { origin, fact })
+        let mut fact_wo_cst = fact.clone();
+        fact_wo_cst.konst = None;
+        fact_wo_cst.uniform = None;
+        Ok(Self { origin, fact: fact_wo_cst })
     }
 
     pub fn from_cpu(fact: TypedFact) -> TractResult<Self> {
-        Self::new(MetalOrigin::FromCpu, fact)
+        let mut fact_wo_cst = fact.clone();
+        fact_wo_cst.konst = None;
+        fact_wo_cst.uniform = None;
+        Self::new(MetalOrigin::FromCpu, fact_wo_cst)
     }
 
     pub fn is_from_gpu(&self) -> bool {

@@ -1,8 +1,7 @@
 #![allow(dead_code)]
 use criterion::*;
 use tract_data::internal::*;
-use tract_linalg::frame::mmm::{FusedSpec, MMMInputValue};
-use tract_linalg::frame::MatMatMul;
+use tract_linalg::mmm::{FusedSpec, MMMInputValue, MatMatMul};
 
 use tract_linalg::mmm::AsInputValue;
 use DatumType::*;

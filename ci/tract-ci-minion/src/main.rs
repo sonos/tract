@@ -13,10 +13,9 @@ use std::io::Write;
 use std::net::TcpStream;
 use std::os::unix::prelude::CommandExt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicI32;
 use std::time::Duration;
 use wait_timeout::ChildExt;
-
-use std::sync::atomic::AtomicI32;
 
 lazy_static::lazy_static! {
     static ref CHILD: std::sync::Arc<AtomicI32> = std::sync::Arc::new(AtomicI32::new(0));
@@ -44,6 +43,8 @@ struct Config {
     idle_sleep_secs: usize,
     #[serde(default)]
     env: HashMap<String, String>,
+    #[serde(default = "default_timeout_runtime_secs")]
+    timeout_runtime_secs: usize,
 }
 
 #[derive(Deserialize, Debug)]
@@ -91,6 +92,10 @@ fn default_products() -> String {
 
 fn default_idle_sleep_secs() -> usize {
     5 * 60
+}
+
+fn default_timeout_runtime_secs() -> usize {
+    300
 }
 
 fn deser_region<'de, D>(d: D) -> Result<Region, D::Error>
@@ -176,7 +181,7 @@ fn run_task(task_name: &str) -> Result<()> {
         .arg("-c")
         .arg("./entrypoint.sh 2> stderr.log > stdout.log");
     log::info!("Running {:?}", cmd);
-    let status = cmd.status()?;
+    let status = cmd.spawn()?.wait_timeout(Duration::from_secs(config.timeout_runtime_secs as _));
     log::info!("Script ran: {:?}", status);
     for log in &["stderr.log", "stdout.log"] {
         let local_path = task_dir.join(task_name).join(log);

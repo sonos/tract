@@ -11,7 +11,7 @@ pub struct Gather {
 impl Gather {
     pub fn to_type_op(&self, input_rank: usize) -> tract_core::ops::array::Gather {
         let axis = if self.axis < 0 { self.axis + input_rank as i64 } else { self.axis } as usize;
-        tract_core::ops::array::Gather { axis }
+        tract_core::ops::array::Gather::new(axis)
     }
 }
 

@@ -271,7 +271,7 @@ pub trait TypedOp:
 
     /// Nested model multipliers, with label (for profiling).
     #[allow(unused_variables)]
-    fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(Cow<str>, f64)> {
+    fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(Cow<str>, TDim)> {
         vec![]
     }
 }

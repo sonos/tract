@@ -1,5 +1,5 @@
 use crate::rewrite_rules::{previous_node, previous_nodes};
-use crate::rule_ensure;
+use crate::{rule_ensure, MetalTransform};
 use tract_core::internal::*;
 use tract_core::ops::array::{Slice, TypedConcat};
 use tract_core::ops::element_wise::ElementWiseOp;
@@ -48,7 +48,7 @@ impl TypedOp for BasicRotateHalf {
 /// Search pattern:
 /// Y = Concat(Neg(Slice(X, X.shape[-1]/2.., -1)), Slice(X, ..X.shape[-1]/2, -1))
 pub fn as_rotate_half_rule(
-    _ctx: &(),
+    _ctx: &MetalTransform,
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,

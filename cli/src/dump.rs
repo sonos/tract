@@ -3,15 +3,21 @@ use crate::plan_options::plan_options_from_subcommand;
 use crate::tensor::run_params_from_subcommand;
 use crate::Parameters;
 use fs_err as fs;
+use nu_ansi_term::Color::*;
 #[allow(unused_imports)]
 use nu_ansi_term::Style;
+use tract_core::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
+use tract_core::ops::matmul::pack::DynPackedOpaqueFact;
+use tract_core::ops::scan::OptScan;
 use tract_hir::internal::*;
+use tract_itertools::Itertools;
 use tract_libcli::annotations::*;
 use tract_libcli::display_params::*;
 use tract_libcli::model::Model;
 use tract_libcli::profile::BenchLimits;
 use tract_libcli::tensor::retrieve_or_make_inputs;
 use tract_libcli::terminal;
+use tract_linalg::mmm::PackedOpaqueFact;
 
 #[allow(unused_variables)]
 pub fn annotate_with_graph_def(
@@ -295,6 +301,10 @@ pub fn handle(
         terminal::render_summaries(model, &annotations, options)?;
     }
 
+    if options.mm {
+        mm_report(params, options, matches, sub_matches)?;
+    }
+
     Ok(())
 }
 
@@ -308,6 +318,123 @@ fn rename_outputs(typed: &mut TypedModel, sub_matches: &clap::ArgMatches) -> Tra
             )?;
             typed.outputs[ix] = output[0];
         }
+    }
+    Ok(())
+}
+pub fn mm_report(
+    params: &Parameters,
+    _options: &DisplayParams,
+    _matches: &clap::ArgMatches,
+    _sub_matches: &clap::ArgMatches,
+) -> TractResult<()> {
+    println!("{}", White.bold().paint("# Matrix multiplication"));
+    let Some(model) = params.tract_model.downcast_ref::<TypedModel>() else {
+        println!("Only available on TypedModel");
+        return Ok(());
+    };
+    let count = model.nodes.iter().filter(|n| n.op_is::<OptMatMul>()).count();
+    println!("* {count} matrix multiplications");
+
+    type Config = (TDim, TDim, TDim, TDim, bool, String, String, String, String);
+    let mut configs: HashMap<Config, usize> = HashMap::new();
+
+    fn scan_model(
+        model: &TypedModel,
+        configs: &mut HashMap<Config, usize>,
+        mult: &TDim,
+    ) -> TractResult<()> {
+        for (node, op) in model.nodes.iter().filter_map(|n| n.op_as::<OptMatMul>().map(|m| (n, m)))
+        {
+            let (m, k, n) = (op.m().clone(), op.guess_k().unwrap_or(TDim::Val(0)), op.n().clone());
+            let facts = model.node_input_facts(node.id)?;
+            let packings = op
+                .micro_ops
+                .iter()
+                .find_map(|mo| {
+                    if let ProtoFusedSpec::AddMatMul { packings, .. } = mo {
+                        Some(packings.clone())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
+            let panel_extractor = packings
+                .iter()
+                .map(|(_, repack)| {
+                    repack.as_ref().map(|rp| rp.to_string()).unwrap_or("Ø".to_string())
+                })
+                .join(", ");
+            let (pack_a, pack_b) = facts
+                .iter()
+                .take(2)
+                .map(|fact| {
+                    fact.opaque_fact
+                        .as_ref()
+                        .and_then(|of| {
+                            of.downcast_ref::<DynPackedOpaqueFact>()
+                                .map(|of| of.packers.iter().map(|m| format!("{m}")).join(", "))
+                                .or_else(|| {
+                                    of.downcast_ref::<PackedOpaqueFact>()
+                                        .map(|pof| format!("{}", pof.format))
+                                })
+                        })
+                        .unwrap_or_default()
+                })
+                .collect_tuple()
+                .unwrap();
+            let iters = op
+                .c_fact
+                .shape
+                .iter()
+                .enumerate()
+                .filter(|(ix, _dim)| *ix != op.c_m_axis && *ix != op.c_n_axis)
+                .map(|(_ix, d)| d)
+                .product::<TDim>();
+            let mmm = op.mmm.iter().map(|m| format!("{m:?}")).join(", ");
+            *configs
+                .entry((
+                    m,
+                    k,
+                    n,
+                    iters * mult,
+                    facts[0].konst.is_some(),
+                    mmm,
+                    pack_a,
+                    panel_extractor,
+                    pack_b,
+                ))
+                .or_default() += 1;
+        }
+        for (node, op) in model.nodes.iter().filter_map(|n| n.op_as::<OptScan>().map(|o| (n, o))) {
+            let inputs = model.node_input_facts(node.id)?;
+            let iters = &op.nested_model_multipliers(&inputs)[0].1;
+            scan_model(op.plan.model(), configs, &(mult.clone() * iters))?;
+        }
+        Ok(())
+    }
+    scan_model(model, &mut configs, &1.to_dim())?;
+
+    let mmm_width = configs.keys().map(|cf| cf.5.len()).max().unwrap_or(0);
+    let pa_width = configs.keys().map(|cf| cf.6.len()).max().unwrap_or(0);
+    let panel_width = configs.keys().map(|cf| cf.7.len()).max().unwrap_or(0);
+    let pb_width = configs.keys().map(|cf| cf.8.len()).max().unwrap_or(0);
+    println!(
+        "| count |     |     m |     k |     n | iters | {:^mmm_width$} | {:^pa_width$} | {:^panel_width$} | {:^pb_width$} |",
+        "kernels", "packing a", "panel", "packing b",
+    );
+    for (config, count) in configs
+        .iter()
+        .sorted_by_key(|(conf, count)| (-(**count as isize), -(conf.0.as_i64().unwrap_or(0))))
+    {
+        let (m, k, n, iters, w, mmm, pa, panel, pb) = config;
+        println!(
+            "| {count:>5} | {} | {:>5} | {:>5} | {:>5} | {:>5} | {mmm:^mmm_width$} | {pa:^pa_width$} | {panel:^panel_width$} | {pb:^pb_width$} |",
+            if *w { "   " } else { "X•Y" },
+            m.to_string(),
+            k.to_string(),
+            n.to_string(),
+            iters.to_string()
+        );
     }
     Ok(())
 }

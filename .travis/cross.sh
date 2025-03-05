@@ -2,35 +2,12 @@
 
 set -ex
 
-export DEBIAN_FRONTEND=noninteractive
-export RUSTUP_TOOLCHAIN=1.75.0
-
-if [ `whoami` != "root" ]
-then
-    SUDO=sudo
-fi
-
-if [ `uname` = "Linux" ]
-then
-    $SUDO rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list
-    $SUDO apt-get update
-    if [ -z "$TRAVIS" -a -z "$GITHUB_WORKFLOW" ]
-    then
-        $SUDO apt-get -y upgrade
-        $SUDO apt-get install -y --no-install-recommends unzip wget curl python awscli build-essential sudo
-    fi
-else
-    sysctl -n machdep.cpu.brand_string
-    brew install coreutils
-fi
-
 ROOT=$(dirname $(dirname $(realpath $0)))
-
-PATH=$PATH:$HOME/.cargo/bin
+. $ROOT/.travis/ci-system-setup.sh
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
-
 which cargo-dinghy || ( mkdir -p /tmp/cargo-dinghy
+
 if [ `arch` = x86_64 -o `arch` = i386 -o `arch` = arm64 ]
 then
      cd /tmp/cargo-dinghy
@@ -107,6 +84,7 @@ case "$PLATFORM" in
         INNER_PLATFORM=${PLATFORM%-stretch}
         (cd .travis/docker-debian-stretch; docker build --tag debian-stretch .)
         docker run -v `pwd`:/tract -w /tract \
+            -e CI=$CI \
             -e SKIP_QEMU_TEST=skip \
             -e PLATFORM=$INNER_PLATFORM debian-stretch \
             ./.travis/cross.sh
