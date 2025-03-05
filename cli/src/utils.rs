@@ -135,9 +135,11 @@ pub fn count_op(model: &dyn Model, name: &str) -> TractResult<usize> {
         .sum())
 }
 
-pub fn metal_memory_schema(model: &TypedModel, options: &PlanOptions, path: impl AsRef<std::path::Path>) -> TractResult<()> {
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    {
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+pub mod check_mem_arena {
+    use tract_hir::internal::*;
+
+    pub fn verify_size_and_usage(model: &TypedModel, options: &PlanOptions, path: impl AsRef<std::path::Path>) -> TractResult<()> {
         log::info!("Analyzing Metal memory schema utilization...");
         const SCHEMA_HINT_S: i64 = 1024;
         const SCHEMA_HINT_P: i64 = 0;
@@ -213,9 +215,5 @@ pub fn metal_memory_schema(model: &TypedModel, options: &PlanOptions, path: impl
         std::fs::write(path.as_ref(), result).expect("Unable to write file");
 
         Ok(())
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-    {
-        bail!("Metal schema check on non-Metal device")
     }
 }

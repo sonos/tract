@@ -141,7 +141,6 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"f16-to-f32" "Convert the decluttered network from f16 to f32"))
         .arg(arg!(--"metal" [matmul_backend] "Convert metal compatible operator in the decluttered network. Only available on MacOS and iOS. Available MM backends: mlx, ggml, mfa, auto (default)"))
         .arg(Arg::new("metal-gpu-trace").long("metal-gpu-trace").takes_value(true).help("Capture Metal GPU trace at given path. Only available on MacOS and iOS"))
-        .arg(Arg::new("metal-mem-arena").long("metal-mem-arena").takes_value(true).help("Analyze Metal memory schema utilization. Only available on MacOS and iOS"))
         .arg(Arg::new("transform").short('t').long("transform").multiple_occurrences(true).takes_value(true).help("Apply a built-in transformation to the model"))
         .arg(Arg::new("set").long("set").multiple_occurrences(true).takes_value(true)
              .long_help("Set a symbol to a concrete value after decluttering"))
@@ -355,6 +354,12 @@ fn dump_subcommand<'a>() -> clap::Command<'a> {
             .long("assert-cost")
             .help("Checks computed against the provided value (form: \"FMA(F32)=2060448 DIV(F32)=24576\")")
             )
+        .arg(
+            Arg::new("check-mem-arena")
+            .takes_value(true)
+            .long("check-mem-arena")
+            .help("Checks arena memory size and usage. Only available on MacOS and iOS")
+        )
         .arg(
             Arg::new("nnef-override-output-name")
             .takes_value(true)
@@ -693,17 +698,6 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         let threads: usize = threads.parse()?;
         let threads = if threads == 0 { num_cpus::get_physical() } else { threads };
         multithread::set_default_executor(multithread::Executor::multithread(threads));
-    }
-
-    if matches.is_present("metal-mem-arena") {
-        let plan_options = crate::plan_options::plan_options_from_subcommand(&matches)?;
-        let model = params
-            .tract_model
-            .downcast_ref::<TypedModel>()
-            .context("Can only profile typed models")?;
-        let json_path =
-            std::path::Path::new(matches.value_of("metal-mem-arena").unwrap()).to_path_buf();
-        crate::utils::metal_memory_schema(&model, &plan_options, json_path)?;
     }
 
     match matches.subcommand() {
