@@ -70,7 +70,7 @@ impl MetalTransform {
             Some("ggml") => Some(MetalGemmImplKind::Ggml),
             Some("mfa") => Some(MetalGemmImplKind::Mfa),
             None => None,
-            _ => bail!("Unknown backend")
+            _ => bail!("Unknown backend"),
         };
         Ok(MetalTransform { gemm_impl })
     }
@@ -94,7 +94,10 @@ impl MetalTransform {
             .with_rule_for("as-apply-rope", rewrite_rules::as_apply_rope_rule)
             .with_rule_for("as-scaled-masked-softmax", rewrite_rules::as_scaled_masked_softmax_rule)
             .with_rule_for("untranspose-matmul-output", rewrite_rules::untranspose_matmul_output)
-            .with_rule_for("remove-matmul-broadcast-for-ggml", rewrite_rules::remove_matmul_broadcast)
+            .with_rule_for(
+                "remove-matmul-broadcast-for-ggml",
+                rewrite_rules::remove_matmul_broadcast,
+            )
             .rewrite(&self, model)?;
 
         if stop_at_phase == 1 {
@@ -199,10 +202,7 @@ impl MetalTransform {
     }
 }
 
-fn can_translate_to_metal_op(
-    source: &TypedModel,
-    node: &TypedNode,
-) -> TractResult<bool> {
+fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResult<bool> {
     let input_facts = source.node_input_facts(node.id)?.iter().map(|f| (*f).clone()).collect_vec();
     let input_dts = input_facts
         .iter()
@@ -220,9 +220,7 @@ fn can_translate_to_metal_op(
             || node.op_is::<Comp>()
             || node.op_is::<MultiBroadcastTo>()
             || node.op_as::<BasicMatMul>().is_some_and(|op| {
-                !op.transpose_c
-                    && op.quantize_output.is_none()
-                    && check_matmul_in_dts(&input_facts)
+                !op.transpose_c && op.quantize_output.is_none() && check_matmul_in_dts(&input_facts)
             })
             || node
                 .op_as::<Const>()
@@ -350,20 +348,36 @@ macro_rules! map_element_wise_ops {
 
 fn check_matmul_in_dts(in_facts: &[TypedFact]) -> bool {
     MlxGemm.is_supported_dts(in_facts)
-    || MfaGemm.is_supported_dts(in_facts)
-    || GgmlGemm.is_supported_dts(in_facts)
-    || GgmlGemm.is_supported_dts(&[in_facts[1].clone(), in_facts[0].clone()])
+        || MfaGemm.is_supported_dts(in_facts)
+        || GgmlGemm.is_supported_dts(in_facts)
+        || GgmlGemm.is_supported_dts(&[in_facts[1].clone(), in_facts[0].clone()])
 }
 
-pub fn resolve_gemm_impl(gemm_impl: Option<MetalGemmImplKind>, input_facts: TVec<&TypedFact>) -> TractResult<MetalGemmImplKind> {
+fn is_ggml_matvec(facts: TVec<&TypedFact>, transpose_b: bool) -> bool {
+    // Heuristic is not perfect since if B shape contains TDims, this will return true 
+    let b_shape = as_q40_fact(&facts[1])
+        .map(|fact| fact.shape.clone().to_vec())
+        .unwrap_or(facts[1].shape.as_concrete().unwrap_or(&[0, 0]).to_vec());
+    let k = b_shape[b_shape.len() - 1 - !transpose_b as usize].to_i64().unwrap_or(0);
+    let m = b_shape[b_shape.len() - 1 - transpose_b as usize].to_i64().unwrap_or(0);
+
+    facts[0].datum_type == DatumType::F32 && !((k % 32 == 0) && (k >= 64) && (m > 4))
+}
+
+pub fn resolve_gemm_impl(
+    gemm_impl: Option<MetalGemmImplKind>,
+    op: &BasicMatMul,
+    input_facts: TVec<&TypedFact>,
+) -> TractResult<MetalGemmImplKind> {
     if let Some(gemm) = gemm_impl {
         Ok(gemm)
-    }
-    else {
-        if as_q40_fact(input_facts[0]).is_some() || as_q40_fact(input_facts[1]).is_some() {
+    } else {
+        if as_q40_fact(input_facts[0]).is_some()
+            || as_q40_fact(input_facts[1]).is_some()
+            || is_ggml_matvec(input_facts, op.transpose_b)
+        {
             Ok(MetalGemmImplKind::Ggml)
-        }
-        else {
+        } else {
             Ok(MetalGemmImplKind::Mlx)
         }
     }
@@ -377,11 +391,9 @@ fn convert_matmul_to_metal(
     op: &BasicMatMul,
     gemm_impl: Option<MetalGemmImplKind>,
 ) -> TractResult<TVec<OutletId>> {
-    let mut input_facts=
-    model.node_input_facts(node.id)?;
+    let mut input_facts = model.node_input_facts(node.id)?;
 
-    let gemm_impl = resolve_gemm_impl(gemm_impl, input_facts.clone())?;
-    println!("Resolved MM Implem for node {}: {:?}", node.id, gemm_impl);
+    let gemm_impl = resolve_gemm_impl(gemm_impl, op, input_facts.clone())?;
     let mut matmul_output = match gemm_impl {
         MetalGemmImplKind::Mlx => {
             let op = ops::MetalGemm::<MlxGemm>::new(op.transpose_a, op.transpose_b);

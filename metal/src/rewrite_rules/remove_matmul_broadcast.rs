@@ -1,6 +1,6 @@
 use crate::rewrite_rules::next_node;
 use crate::transform::resolve_gemm_impl;
-use crate::{MetalGemmImplKind, MetalTransform};
+use crate::{rule_ensure, MetalGemmImplKind, MetalTransform};
 use tract_core::internal::*;
 use tract_core::ops::array::MultiBroadcastTo;
 use tract_core::ops::einsum::BasicMatMul;
@@ -20,8 +20,8 @@ pub fn remove_matmul_broadcast(
     else {
         return Ok(None);
     };
-    ensure!(add_axis_node.outputs[0].successors.len() == 1);
-    ensure!(node.outputs[0].successors.len() == 1);
+    rule_ensure!(add_axis_node.outputs[0].successors.len() == 1);
+    rule_ensure!(node.outputs[0].successors.len() == 1);
 
     let node_out_shape = node.outputs[0].fact.shape.dims();
     let reshape_expected = AxisOp::Reshape(
@@ -54,10 +54,11 @@ pub fn remove_matmul_broadcast(
         }
         _ => return Ok(None),
     };
-
     // Only Ggml kernels have internal broadcasting
     let in_facts = model.node_input_facts(mm_node.id)?;
-    if resolve_gemm_impl(ctx.gemm_impl, in_facts)? != MetalGemmImplKind::Ggml {
+    if resolve_gemm_impl(ctx.gemm_impl, mm_node.op_as::<BasicMatMul>().unwrap(), in_facts)?
+        != MetalGemmImplKind::Ggml
+    {
         return Ok(None);
     }
 
