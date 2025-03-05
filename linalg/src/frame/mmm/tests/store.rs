@@ -6,6 +6,7 @@ use crate::LADatum;
 use num_traits::Bounded;
 use tract_data::internal::*;
 use tract_itertools::Itertools;
+use tract_ndarray::Axis;
 
 #[macro_export]
 macro_rules! mmm_store_test {
@@ -14,17 +15,22 @@ macro_rules! mmm_store_test {
             mod [<store_$tc>] {
                 #[allow(unused_imports)]
                 use tract_data::prelude::f16;
+                use $crate::frame::mmm::tests::store::StoreLayout;
 
                 #[test] fn store_zeros() {
                     $crate::frame::mmm::tests::store::store_zeros::<_,$tc,_>($ker);
                 }
 
                 #[test] fn store_col_major() {
-                    $crate::frame::mmm::tests::store::store_pattern::<_,$tc,_>($ker, false);
+                    $crate::frame::mmm::tests::store::store_pattern::<_,$tc,_>($ker, StoreLayout::ColMajor);
                 }
 
                 #[test] fn store_row_major() {
-                    $crate::frame::mmm::tests::store::store_pattern::<_,$tc,_>($ker, true);
+                    $crate::frame::mmm::tests::store::store_pattern::<_,$tc,_>($ker, StoreLayout::RowMajor);
+                }
+
+                #[test] fn store_arbitrary() {
+                    $crate::frame::mmm::tests::store::store_pattern::<_,$tc,_>($ker, StoreLayout::Arbitrary);
                 }
             }
         }
@@ -59,7 +65,13 @@ where
     assert_eq!(v, expected);
 }
 
-pub fn store_pattern<K, TC, TI>(ker: &K, row_major: bool)
+pub enum StoreLayout {
+    ColMajor,
+    RowMajor,
+    Arbitrary,
+}
+
+pub fn store_pattern<K, TC, TI>(ker: &K, layout: StoreLayout)
 where
     K: MatMatMulKer<Acc = TI>,
     TC: LADatum,
@@ -68,29 +80,30 @@ where
     if !ker.is_supported_here() {
         return;
     }
-    let len = ker.mr() * ker.nr();
-    let pattern = tensor1(&(0..).take(len).collect_vec())
+    let (mr, nr) = (ker.mr(), ker.nr());
+    let pattern = tensor1(&(0..).take(mr * nr).collect_vec())
         .cast_to::<TI>()
         .unwrap()
         .into_owned()
-        .into_shape(&[ker.mr(), ker.nr()])
+        .into_shape(&[mr, nr])
         .unwrap();
     let pattern_col_major = pattern.clone().permute_axes(&[1, 0]).unwrap();
-    let mut result = tensor0(TC::max_value()).broadcast_to_shape(&[len]).unwrap();
     let size_of_tc = std::mem::size_of::<TC>();
-    let (row_byte_stride, col_byte_stride) = if row_major {
-        ((size_of_tc * ker.nr()) as isize, size_of_tc as isize)
-    } else {
-        (size_of_tc as isize, (size_of_tc * ker.mr()) as isize)
+    let (row_stride, col_stride, result_size) = match layout {
+        StoreLayout::RowMajor => (nr, 1, mr * nr),
+        StoreLayout::ColMajor => (1, mr, mr * nr),
+        // like row major, but storing every other third column
+        StoreLayout::Arbitrary => (nr * 3, 3, mr * nr * 3),
     };
+    let mut result = tensor0(TC::max_value()).broadcast_to_shape(&[result_size]).unwrap();
     let non_linear = tvec![
         unsafe {
             FusedKerSpec::LoadTile(pattern_col_major.as_ptr_unchecked(), pattern.as_ptr_unchecked())
         },
         FusedKerSpec::Store(OutputStoreKer {
             ptr: result.as_bytes_mut().as_mut_ptr(),
-            row_byte_stride,
-            col_byte_stride,
+            row_byte_stride: (size_of_tc * row_stride) as isize,
+            col_byte_stride: (size_of_tc * col_stride) as isize,
             item_size: size_of_tc,
         }),
         FusedKerSpec::Done
@@ -98,10 +111,19 @@ where
     let err = ker.kernel(&non_linear);
     assert_eq!(err, 0);
     let expected = pattern.cast_to::<TC>().unwrap().into_owned();
-    if !row_major {
-        result =
-            result.into_shape(&[ker.nr(), ker.mr()]).unwrap().permute_axes(&[1, 0]).unwrap();
-    }
+    let result = match layout {
+        StoreLayout::RowMajor => result,
+        StoreLayout::ColMajor => {
+            result.into_shape(&[ker.nr(), ker.mr()]).unwrap().permute_axes(&[1, 0]).unwrap()
+        }
+        StoreLayout::Arbitrary => result
+            .into_array::<TC>()
+            .unwrap()
+            .into_shape_with_order((mr, nr, 3))
+            .unwrap()
+            .index_axis_move(Axis(2), 0)
+            .into_tensor(),
+    };
     let expected = expected.as_slice::<TC>().unwrap();
     let result = result.as_slice::<TC>().unwrap();
     display_error(result, expected, ker.mr(), ker.nr());
