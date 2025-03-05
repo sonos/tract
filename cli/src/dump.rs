@@ -172,6 +172,27 @@ pub fn handle(
         annotations.track_axes(model, &hints)?;
     }
 
+    if sub_matches.is_present("check-mem-arena") {
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        {
+            crate::utils::check_mem_arena::verify_size_and_usage(
+                params
+                    .tract_model
+                    .downcast_ref::<TypedModel>()
+                    .context("Check memory arena requires a typed model")?,
+                &plan_options_from_subcommand(sub_matches)?,
+                std::path::Path::new(sub_matches
+                    .value_of("check-mem-arena")
+                    .ok_or(anyhow!("check-mem-arena requires path to JSON file"))?)
+                    .to_path_buf(),
+            )?;
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+        {
+            bail!("Check memory arena requires MacOS / iOS device");
+        }
+    }
+
     if sub_matches.is_present("tmp_mem_usage") {
         let plan_options = plan_options_from_subcommand(sub_matches)?;
         annotations.track_tmp_memory_usage(
