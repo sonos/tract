@@ -20,12 +20,14 @@ use crate::ops::matmul::quant::{
 use crate::ops::nn::{Reduce, Reducer};
 
 #[allow(clippy::large_enum_variant)]
+#[derive(Debug)]
 pub enum AxesOrPatch<'a> {
     Annotated(EinSumAnnotatedAsMatMul<'a>),
     Patch(TypedModelPatch),
     NotAMatMul(Vec<&'a Axis>),
 }
 
+#[derive(Debug)]
 pub struct EinSumAnnotatedAsMatMul<'a> {
     pub op: &'a EinSum,
     pub m_axis: &'a Axis,
@@ -331,7 +333,7 @@ pub(crate) fn ensure_mkn_axes<'a>(
         })
         .max_by_key(|a| output_shape[a.outputs[0][0]].as_i64().unwrap_or(i64::MAX));
     let Some(m_axis) = m_axis else {
-        return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(op, model, node, false, &[k_axis])?));
+        return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(op, model, node, false)?));
     };
 
     let n_axis = op
@@ -345,13 +347,7 @@ pub(crate) fn ensure_mkn_axes<'a>(
         })
         .max_by_key(|a| output_shape[a.outputs[0][0]].as_i64().unwrap_or(i64::MAX));
     let Some(n_axis) = n_axis else {
-        return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(
-            op,
-            model,
-            node,
-            true,
-            &[k_axis, m_axis],
-        )?));
+        return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(op, model, node, true)?));
     };
     for axis in op.axes.iter_all_axes() {
         let one = TDim::one();
@@ -397,63 +393,22 @@ pub(super) fn inject_m_or_n_axis(
     model: &TypedModel,
     node: &TypedNode,
     is_n: bool,
-    exclude: &[&Axis],
 ) -> TractResult<TypedModelPatch> {
-    let input_facts = model.node_input_facts(node.id)?;
-    let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
     let input_to_fix = is_n as usize;
     let label = if is_n { "n" } else { "m" };
-    let quasi_m_or_n_axis = op.axes.iter_all_axes().filter(|a| !exclude.contains(a)).find(|a| {
-        (a.inputs[1 - input_to_fix].len() == 0
-            || input_shapes[1 - input_to_fix][a.inputs[1 - input_to_fix][0]].is_one())
-            && (a.inputs[input_to_fix].len() == 1 || a.outputs[0].len() == 1)
-    });
     let name = &node.name;
     let mut patch = TypedModelPatch::new("Injecting m or n axis");
     let mut wire = patch.taps(model, &node.inputs)?;
-    if let Some(axis) = quasi_m_or_n_axis {
-        if axis.inputs[input_to_fix].len() == 1 {
-            let new_axes =
-                op.axes.clone().with_extra_axis('$', InOut::Out(0), 0)?.linking(axis.repr, '$')?;
-            wire = patch.wire_node(
-                format!("{name}.einsum"),
-                EinSum { axes: new_axes, ..op.clone() },
-                &wire,
-            )?;
-            wire = patch.wire_node(&node.name, AxisOp::Rm(0), &wire)?;
-        } else {
-            let new_axes = op
-                .axes
-                .clone()
-                .with_extra_axis('$', InOut::In(input_to_fix), 0)?
-                .linking(axis.repr, '$')?;
-            wire[input_to_fix] = patch.wire_node(
-                format!("{name}.add_{label}"),
-                AxisOp::Add(0),
-                &[wire[input_to_fix]],
-            )?[0];
-            wire = patch.wire_node(&node.name, EinSum { axes: new_axes, ..op.clone() }, &wire)?;
-        }
-    } else {
-        let repr = op.axes.available_label();
-        let new_axes = op
-            .axes
-            .clone()
-            .with_extra_axis(repr, InOut::In(input_to_fix), 0)?
-            .with_extra_axis('$', InOut::Out(0), 0)?
-            .linking(repr, '$')?;
-        wire[input_to_fix] = patch.wire_node(
-            format!("{name}.add_{label}"),
-            AxisOp::Add(0),
-            &[wire[input_to_fix]],
-        )?[0];
-        wire = patch.wire_node(
-            format!("{name}.einsum"),
-            EinSum { axes: new_axes, ..op.clone() },
-            &wire,
-        )?;
-        wire = patch.wire_node(&node.name, AxisOp::Rm(0), &wire)?;
-    }
+    let repr = op.axes.available_label();
+    let new_axes = op
+        .axes
+        .clone()
+        .with_extra_axis(repr, InOut::In(input_to_fix), 0)?
+        .with_extra_axis_occurency(repr, InOut::Out(0), 0)?;
+    wire[input_to_fix] =
+        patch.wire_node(format!("{name}.add_{label}"), AxisOp::Add(0), &[wire[input_to_fix]])?[0];
+    wire = patch.wire_node(name, EinSum { axes: new_axes, ..op.clone() }, &wire)?;
+    wire = patch.wire_node(&node.name, AxisOp::Rm(0), &wire)?;
     patch.shunt_outside(model, node.id.into(), wire[0])?;
     Ok(patch)
 }
