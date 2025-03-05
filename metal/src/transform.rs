@@ -17,6 +17,7 @@ use crate::{IntoMetal, MetalFact, MetalTensor};
 use std::borrow::Cow;
 use std::fmt::Debug;
 use tract_core::dyn_clone::clone_box;
+use std::str::FromStr;
 use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
 use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
@@ -63,18 +64,21 @@ impl ModelTransform for MetalTransform {
     }
 }
 
-impl MetalTransform {
-    pub fn from_str(str: Option<&str>) -> TractResult<Self> {
+impl FromStr for MetalTransform {
+    type Err = TractError;
+    fn from_str(str: &str) -> TractResult<Self> {
         let gemm_impl = match str {
-            Some("mlx") => Some(MetalGemmImplKind::Mlx),
-            Some("ggml") => Some(MetalGemmImplKind::Ggml),
-            Some("mfa") => Some(MetalGemmImplKind::Mfa),
-            None => None,
+            "mlx" => Some(MetalGemmImplKind::Mlx),
+            "ggml" => Some(MetalGemmImplKind::Ggml),
+            "mfa" => Some(MetalGemmImplKind::Mfa),
+            "" => None,
             _ => bail!("Unknown backend"),
         };
         Ok(MetalTransform { gemm_impl })
     }
+}
 
+impl MetalTransform {
     pub fn transform_up_to_phase(
         &self,
         model: &mut TypedModel,
@@ -98,7 +102,7 @@ impl MetalTransform {
                 "remove-matmul-broadcast-for-ggml",
                 rewrite_rules::remove_matmul_broadcast,
             )
-            .rewrite(&self, model)?;
+            .rewrite(self, model)?;
 
         if stop_at_phase == 1 {
             return Ok(());
@@ -354,7 +358,7 @@ fn check_matmul_in_dts(in_facts: &[TypedFact]) -> bool {
 }
 
 fn is_ggml_matvec(facts: TVec<&TypedFact>, transpose_b: bool) -> bool {
-    // Heuristic is not perfect since if B shape contains TDims, this will return true 
+    // TODO: Find better heuristic
     let b_shape = as_q40_fact(&facts[1])
         .map(|fact| fact.shape.clone().to_vec())
         .unwrap_or(facts[1].shape.as_concrete().unwrap_or(&[0, 0]).to_vec());
@@ -371,15 +375,13 @@ pub fn resolve_gemm_impl(
 ) -> TractResult<MetalGemmImplKind> {
     if let Some(gemm) = gemm_impl {
         Ok(gemm)
+    } else if as_q40_fact(input_facts[0]).is_some()
+        || as_q40_fact(input_facts[1]).is_some()
+        || is_ggml_matvec(input_facts, op.transpose_b)
+    {
+        Ok(MetalGemmImplKind::Ggml)
     } else {
-        if as_q40_fact(input_facts[0]).is_some()
-            || as_q40_fact(input_facts[1]).is_some()
-            || is_ggml_matvec(input_facts, op.transpose_b)
-        {
-            Ok(MetalGemmImplKind::Ggml)
-        } else {
-            Ok(MetalGemmImplKind::Mlx)
-        }
+        Ok(MetalGemmImplKind::Mlx)
     }
 }
 
