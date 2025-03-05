@@ -31,25 +31,28 @@ pub fn wire_packing(
     }
 
     // "simple" kernel selection
-    let mmm = tract_linalg::ops()
-        .mmm(op.operating_dt, op.m.to_usize().ok(), op.k.to_usize().ok(), op.n.to_usize().ok())
-        .unwrap();
-    let mode_picker = ModePicker::Single;
-    let (packing, pa, pb) = mmm
-        .packings()
+    let (mmm, p, pa, pb) = tract_linalg::ops()
+        .mmm_impls()
         .iter()
-        .enumerate()
-        .filter_map(|(ix, p)| {
-            Some((ix, p.0.downcast_ref::<PackedFormat>()?, p.1.downcast_ref::<PackedFormat>()?))
+        .filter(|mmm| op.acceptable_accumulators().contains(&mmm.internal_type()))
+        .flat_map(move |mmm| {
+            mmm.packings().iter().enumerate().map(|(ix, p)| (mmm.clone(), ix, &p.0, &p.1))
         })
-        .find(|(_ix, pa, pb)| pa.dt == a_dt.unquantized() && pb.dt == b_dt.unquantized())
-        .with_context(|| format!("No packing for {mmm:?} with inputs {a_dt:?} and {b_dt:?}"))?;
+        .filter(|(_, _, pa, pb)| {
+            pa.precursor().as_dt().is_some_and(|dt| dt == a_dt)
+                && pb.precursor().as_dt().is_some_and(|dt| dt == b_dt)
+        })
+        .min_by_key(|(mmm, _, _, _)| {
+            1_000_000_000 + mmm.quality().cost() * 10_000 - mmm.mr() * mmm.nr()
+        })
+        .unwrap();
+
     let pa = patch.wire_node(
         format!("{prefix}.pack_a"),
         OptMatMulPack {
             k_axis: op.a_k(),
             mn_axis: op.a_m(),
-            packers: vec![pa.clone()],
+            packers: vec![pa.downcast_ref::<PackedFormat>().unwrap().clone()],
             mode_picker: ModePicker::Single,
         },
         &[operands[0]],
@@ -60,13 +63,13 @@ pub fn wire_packing(
         OptMatMulPack {
             k_axis: op.b_k(),
             mn_axis: op.b_n(),
-            packers: vec![pb.clone()],
+            packers: vec![pb.downcast_ref::<PackedFormat>().unwrap().clone()],
             mode_picker: ModePicker::Single,
         },
         &[operands[1]],
     )?[0];
 
-    Ok((pa, pb, vec![(mmm, packing, None)], mode_picker))
+    Ok((pa, pb, vec![(mmm, p, None)], ModePicker::Single))
 }
 
 pub fn wire_prepacked(

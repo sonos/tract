@@ -1,3 +1,4 @@
+use std::fmt::Formatter;
 use std::ops::Deref;
 
 use dyn_clone::clone_box;
@@ -53,6 +54,23 @@ impl EinSumAnnotatedAsMatMul<'_> {
     }
     pub fn c_n(&self) -> usize {
         self.n_axis.outputs[0][0]
+    }
+}
+
+impl Debug for EinSumAnnotatedAsMatMul<'_> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "EinsumAsMatMul: {} {:?} m: {}={}; k: {}={}; n: {}={}",
+            self.op.axes,
+            self.op.operating_dt,
+            self.m_axis.repr,
+            self.m,
+            self.k_axis.repr,
+            self.k,
+            self.n_axis.repr,
+            self.n
+        )
     }
 }
 
