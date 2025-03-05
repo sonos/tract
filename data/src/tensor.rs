@@ -1392,7 +1392,7 @@ impl Tensor {
                 }
                 return t;
             }
-            if it.strides().iter().all(|&s| s > 0) {
+            if it.strides().iter().all(|&s| s > 0) && it.as_slice_memory_order().is_some() {
                 let mut len_and_strides: TVec<(usize, usize)> = tvec!();
                 for (len, stride) in itertools::izip!(it.shape(), it.strides(), t.strides())
                     .sorted_by_key(|(_, src, _)| *src)
