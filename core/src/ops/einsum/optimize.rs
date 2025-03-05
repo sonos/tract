@@ -27,7 +27,6 @@ pub enum AxesOrPatch<'a> {
     NotAMatMul(Vec<&'a Axis>),
 }
 
-#[derive(Debug)]
 pub struct EinSumAnnotatedAsMatMul<'a> {
     pub op: &'a EinSum,
     pub m_axis: &'a Axis,
