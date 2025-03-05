@@ -6,7 +6,7 @@ use tract_core::ops::einsum::BasicMatMul;
 
 use super::previous_node;
 
-pub fn remove_matmul_broadcast(
+pub fn remove_ggml_broadcast_pre_matmul(
     ctx: &MetalTransform,
     model: &TypedModel,
     node: &TypedNode,
@@ -55,10 +55,11 @@ pub fn remove_matmul_broadcast(
     };
 
     // Only Ggml kernels have internal broadcasting
-    if let Some(gemm_impl) = ctx.gemm_impl {
-        if gemm_impl != MetalGemmImplKind::Ggml {
-            return Ok(None);
-        }
+    let in_facts = model.node_input_facts(mm_node.id)?;
+    match ctx.gemm_impl {
+        Some(MetalGemmImplKind::Ggml) => {},
+        None if in_facts[0].datum_type != DatumType::F32 => return Ok(None),
+        _ => return Ok(None)
     }
 
     let mut matmul_inputs = patch.taps(model, &mm_node.inputs)?;

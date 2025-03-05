@@ -99,8 +99,8 @@ impl MetalTransform {
             .with_rule_for("as-scaled-masked-softmax", rewrite_rules::as_scaled_masked_softmax_rule)
             .with_rule_for("untranspose-matmul-output", rewrite_rules::untranspose_matmul_output)
             .with_rule_for(
-                "remove-matmul-broadcast-for-ggml",
-                rewrite_rules::remove_matmul_broadcast,
+                "remove-ggml-broadcast-pre-matmul",
+                rewrite_rules::remove_ggml_broadcast_pre_matmul,
             )
             .rewrite(self, model)?;
 
