@@ -39,8 +39,8 @@ pub fn wire_packing(
             mmm.packings().iter().enumerate().map(|(ix, p)| (mmm.clone(), ix, &p.0, &p.1))
         })
         .filter(|(_, _, pa, pb)| {
-            pa.precursor().as_dt().is_some_and(|dt| dt == a_dt)
-                && pb.precursor().as_dt().is_some_and(|dt| dt == b_dt)
+            pa.precursor().as_dt().is_some_and(|dt| dt == a_dt.unquantized())
+                && pb.precursor().as_dt().is_some_and(|dt| dt == b_dt.unquantized())
         })
         .min_by_key(|(mmm, _, _, _)| {
             1_000_000_000 + mmm.quality().cost() * 10_000 - mmm.mr() * mmm.nr()
