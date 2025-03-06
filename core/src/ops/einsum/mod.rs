@@ -10,6 +10,7 @@ mod eval;
 pub mod as_blas;
 mod as_matmul;
 pub mod kernel_selection;
+pub mod linear;
 pub mod optimize;
 
 #[cfg(test)]
