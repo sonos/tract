@@ -116,10 +116,8 @@
 .store:
     ldp         x5, x6, [x0, #8]                // c base ptr, rsc
 
-/*
     cmp         x6, #4
     beq         .store_strides_contig
-*/
 
     {% for reg in (24..31) %}
         {% for lane in (0..3) %}
