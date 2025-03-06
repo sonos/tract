@@ -3,6 +3,7 @@ use tract_linalg::block_quant::BlockQuantValue;
 use tract_linalg::mmm::MMMInputFormat;
 use tract_linalg::WeightType;
 
+use super::as_matmul::EinSumAnnotatedAsMatMul;
 use super::{block_quant_aware_input_shape, EinSum};
 
 #[derive(Debug, Clone, Hash)]
@@ -10,10 +11,10 @@ pub struct LinearEinsum {
     pub op: EinSum,
     pub m_axis: char,
     pub k_axis: char,
-    pub n_axes: Vec<char>,
+    pub n_axis: char,
     pub m: usize,
     pub k: usize,
-    pub ns: Vec<TDim>,
+    pub n: TDim,
     pub act_dt: DatumType,
     pub weight_type: WeightType,
 }
@@ -27,37 +28,17 @@ impl Op for LinearEinsum {
 }
 
 impl LinearEinsum {
-    pub fn from(model: &TypedModel, node: &TypedNode, op: &EinSum) -> TractResult<Option<Self>> {
+    pub fn from(
+        model: &TypedModel,
+        node: &TypedNode,
+        op: &EinSumAnnotatedAsMatMul,
+    ) -> TractResult<Option<Self>> {
         if node.inputs.len() != 2 {
             return Ok(None);
         }
         let input_facts = model.node_input_facts(node.id)?;
         if input_facts[0].konst.is_none() {
             return Ok(None);
-        }
-        let mut n_axes = vec![];
-        let mut ns = Vec::<TDim>::new();
-
-        let Some(m_axis) = op.axes.iter_all_axes().find(|axis| {
-            axis.inputs[0].len() == 1 && axis.inputs[1].len() == 0 && axis.outputs[0].len() == 1
-        }) else {
-            return Ok(None);
-        };
-        let Some(k_axis) = op.axes.iter_all_axes().find(|axis| {
-            axis.inputs[0].len() == 1 && axis.inputs[1].len() == 1 && axis.outputs[0].len() == 0
-        }) else {
-            return Ok(None);
-        };
-        for axis in op.axes.iter_all_axes() {
-            if axis != k_axis
-                && axis != m_axis
-                && axis.inputs[0].len() == 0
-                && axis.inputs[1].len() == 1
-                && axis.outputs[0].len() == 1
-            {
-                n_axes.push(axis.repr);
-                ns.push(node.outputs[0].fact.shape[axis.outputs[0][0]].clone());
-            }
         }
         let act_dt = input_facts[1].datum_type;
         let bqv = input_facts[0]
@@ -73,16 +54,16 @@ impl LinearEinsum {
             input_facts[0].datum_type.into()
         };
         let weight_shape = block_quant_aware_input_shape(input_facts[0])?;
-        let m = weight_shape[m_axis.inputs[0][0]].to_usize()?;
-        let k = weight_shape[k_axis.inputs[0][0]].to_usize()?;
+        let m = weight_shape[op.m_axis.inputs[0][0]].to_usize()?;
+        let k = weight_shape[op.k_axis.inputs[0][0]].to_usize()?;
         Ok(Some(LinearEinsum {
-            op: op.clone(),
-            m_axis: m_axis.repr,
-            k_axis: k_axis.repr,
-            n_axes,
+            op: op.op.clone(),
+            m_axis: op.m_axis.repr,
+            k_axis: op.k_axis.repr,
+            n_axis: op.n_axis.repr,
             m,
             k,
-            ns,
+            n: op.n.clone(),
             act_dt,
             weight_type,
         }))
@@ -117,11 +98,11 @@ impl LinearEinsum {
     }
 
     pub fn need_mmv(&self) -> bool {
-        self.ns.iter().any(|n| n.as_i64().map(|n| n == 1).unwrap_or(true))
+        !self.n.as_i64().is_some_and(|n| n > 1)
     }
 
     pub fn need_mmm(&self) -> bool {
-        self.ns.iter().any(|n| n.as_i64().map(|n| n > 1).unwrap_or(true))
+        !self.n.as_i64().is_some_and(|n| n == 1)
     }
 
     pub fn cost_for_weights(&self, format: &dyn MMMInputFormat) -> usize {
@@ -155,7 +136,7 @@ impl LinearEinsum {
         if self.act_dt == self.op.acceptable_accumulators()[0]
             && self.weight_type == self.act_dt.into()
         {
-            if let Ok(n) = self.ns.iter().cloned().product::<TDim>().to_usize() {
+            if let Ok(n) = self.n.to_usize() {
                 let mmm = tract_linalg::ops()
                     .mmm(self.op.acceptable_accumulators()[0], Some(self.m), Some(self.k), Some(n))
                     .unwrap();
@@ -163,7 +144,7 @@ impl LinearEinsum {
             }
         }
         if self.act_dt.is_integer() && self.weight_type == self.act_dt.into() {
-            if let Ok(n) = self.ns.iter().cloned().product::<TDim>().to_usize() {
+            if let Ok(n) = self.n.to_usize() {
                 let mmm = tract_linalg::ops()
                     .mmm(i32::datum_type(), Some(self.m), Some(self.k), Some(n))
                     .unwrap();

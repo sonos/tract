@@ -1,3 +1,7 @@
+use std::fmt::{Debug, Formatter};
+use std::ops::Deref;
+
+use crate::internal::*;
 use tract_data::itertools::Itertools;
 use tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue};
 use tract_linalg::Scaler;
@@ -6,8 +10,62 @@ use tract_num_traits::One;
 
 use super::optimize::*;
 use super::EinSum;
-use crate::internal::*;
 use crate::ops::konst::Const;
+
+pub struct EinSumAnnotatedAsMatMul<'a> {
+    pub op: &'a EinSum,
+    pub m_axis: &'a Axis,
+    pub k_axis: &'a Axis,
+    pub n_axis: &'a Axis,
+    pub m: TDim,
+    pub k: TDim,
+    pub n: TDim,
+}
+
+impl EinSumAnnotatedAsMatMul<'_> {
+    pub fn a_m(&self) -> usize {
+        self.m_axis.inputs[0][0]
+    }
+    pub fn a_k(&self) -> usize {
+        self.k_axis.inputs[0][0]
+    }
+    pub fn b_k(&self) -> usize {
+        self.k_axis.inputs[1][0]
+    }
+    pub fn b_n(&self) -> usize {
+        self.n_axis.inputs[1][0]
+    }
+    pub fn c_m(&self) -> usize {
+        self.m_axis.outputs[0][0]
+    }
+    pub fn c_n(&self) -> usize {
+        self.n_axis.outputs[0][0]
+    }
+}
+
+impl Debug for EinSumAnnotatedAsMatMul<'_> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "EinsumAsMatMul: {} {:?} m: {}={}; k: {}={}; n: {}={}",
+            self.op.axes,
+            self.op.operating_dt,
+            self.m_axis.repr,
+            self.m,
+            self.k_axis.repr,
+            self.k,
+            self.n_axis.repr,
+            self.n
+        )
+    }
+}
+
+impl Deref for EinSumAnnotatedAsMatMul<'_> {
+    type Target = EinSum;
+    fn deref(&self) -> &Self::Target {
+        self.op
+    }
+}
 
 pub fn rewrite_einsums_as_matmul(model: &mut TypedModel) -> TractResult<()> {
     let rules = Rewriter::default().with_rule_for::<EinSum>("einsum-to-matmul", einsum_rules);

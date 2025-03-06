@@ -1,6 +1,4 @@
-use std::fmt::Formatter;
-use std::ops::Deref;
-
+use as_matmul::EinSumAnnotatedAsMatMul;
 use kernel_selection::wire_packing;
 use linear::LinearEinsum;
 use tract_itertools::{izip, multiunzip};
@@ -22,61 +20,6 @@ pub enum AxesOrPatch<'a> {
     Annotated(EinSumAnnotatedAsMatMul<'a>),
     Patch(TypedModelPatch),
     NotAMatMul(Vec<&'a Axis>),
-}
-
-pub struct EinSumAnnotatedAsMatMul<'a> {
-    pub op: &'a EinSum,
-    pub m_axis: &'a Axis,
-    pub k_axis: &'a Axis,
-    pub n_axis: &'a Axis,
-    pub m: TDim,
-    pub k: TDim,
-    pub n: TDim,
-}
-
-impl EinSumAnnotatedAsMatMul<'_> {
-    pub fn a_m(&self) -> usize {
-        self.m_axis.inputs[0][0]
-    }
-    pub fn a_k(&self) -> usize {
-        self.k_axis.inputs[0][0]
-    }
-    pub fn b_k(&self) -> usize {
-        self.k_axis.inputs[1][0]
-    }
-    pub fn b_n(&self) -> usize {
-        self.n_axis.inputs[1][0]
-    }
-    pub fn c_m(&self) -> usize {
-        self.m_axis.outputs[0][0]
-    }
-    pub fn c_n(&self) -> usize {
-        self.n_axis.outputs[0][0]
-    }
-}
-
-impl Debug for EinSumAnnotatedAsMatMul<'_> {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "EinsumAsMatMul: {} {:?} m: {}={}; k: {}={}; n: {}={}",
-            self.op.axes,
-            self.op.operating_dt,
-            self.m_axis.repr,
-            self.m,
-            self.k_axis.repr,
-            self.k,
-            self.n_axis.repr,
-            self.n
-        )
-    }
-}
-
-impl Deref for EinSumAnnotatedAsMatMul<'_> {
-    type Target = EinSum;
-    fn deref(&self) -> &Self::Target {
-        self.op
-    }
 }
 
 pub(crate) fn optimize(
@@ -104,7 +47,7 @@ pub(crate) fn optimize(
         return dequant(model, node, annotated).context("Dequantize");
     }
 
-    if let Some(linear) = LinearEinsum::from(model, node, op)? {
+    if let Some(linear) = LinearEinsum::from(model, node, &annotated)? {
         return TypedModelPatch::replace_single_op(model, node, &node.inputs, linear).map(Some);
     }
 

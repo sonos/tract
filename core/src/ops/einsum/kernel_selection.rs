@@ -7,7 +7,7 @@ use crate::internal::*;
 use crate::ops::matmul::pack::OptMatMulPack;
 use crate::ops::matmul::ModePicker;
 
-use super::optimize::EinSumAnnotatedAsMatMul;
+use super::as_matmul::EinSumAnnotatedAsMatMul;
 
 pub fn wire_packing(
     patch: &mut TypedModelPatch,
