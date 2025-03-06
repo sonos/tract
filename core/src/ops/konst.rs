@@ -4,9 +4,7 @@ use tract_linalg::block_quant::BlockQuantValue;
 
 use crate::internal::*;
 use crate::ops::array::Gather;
-use crate::ops::einsum::EinSum;
-
-use super::einsum::optimize::EinSumAnnotatedAsLinear;
+use crate::ops::einsum::linear::LinearEinsum;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Const(Arc<Tensor>, Option<Box<dyn OpaqueFact>>);
@@ -131,12 +129,8 @@ impl TypedOp for Const {
                 if succ.slot != 0 || gather.axis != 0 {
                     return Ok(None);
                 }
-            } else if let Some(einsum) = snode.op_as::<EinSum>() {
-                if let Some(linear) = EinSumAnnotatedAsLinear::from(model, snode, einsum)? {
-                    matmuls.push(linear);
-                } else {
-                    return Ok(None);
-                }
+            } else if let Some(linear) = snode.op_as::<LinearEinsum>() {
+                matmuls.push(linear);
             } else {
                 return Ok(None);
             }
@@ -145,12 +139,12 @@ impl TypedOp for Const {
             return Ok(None);
         }
 
-        ensure!(matmuls.iter().map(|linear| linear.m_axis.inputs[0][0]).all_equal());
-        ensure!(matmuls.iter().map(|linear| linear.k_axis.inputs[0][0]).all_equal());
+        ensure!(matmuls.iter().map(|linear| linear.weight_m_axis()).all_equal());
+        ensure!(matmuls.iter().map(|linear| linear.weight_k_axis()).all_equal());
 
-        let m_axis = matmuls[0].m_axis.inputs[0][0];
-        let k_axis = matmuls[0].k_axis.inputs[0][0];
-        let must_swap = m_axis == 1;
+        let m_axis = matmuls[0].weight_m_axis();
+        let k_axis = matmuls[0].weight_k_axis();
+        let must_transpose_weights = m_axis == 1;
 
         let ops = tract_linalg::ops();
         let (choice,) = matmuls
@@ -185,12 +179,10 @@ impl TypedOp for Const {
             let new_op: Box<dyn TypedOp> = if let Some(gather) = succ_node.op_as::<Gather>() {
                 let output_type = succ_node.outputs[0].fact.datum_type;
                 Box::new(Gather { axis: gather.axis, output_type: Some(output_type) })
-            } else if let Some(linear) = succ_node.op_as::<EinSum>() {
+            } else if let Some(linear) = succ_node.op_as::<LinearEinsum>() {
                 let mut op = linear.clone();
-                if must_swap {
-                    op.axes
-                        .iter_all_axes_mut()
-                        .for_each(|axes| axes.inputs[0].iter_mut().for_each(|pos| *pos = 1 - *pos));
+                if must_transpose_weights {
+                    op.transpose_weights();
                 }
                 Box::new(op)
             } else {

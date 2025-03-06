@@ -6,7 +6,7 @@ use crate::block_quant::{BlockQuant, PackedBlockQuantFormat};
 use crate::mmm::MMMInputFormat;
 use crate::pack::PackedFormat;
 
-#[derive(Clone)]
+#[derive(Clone, Hash)]
 pub enum WeightType {
     Plain(DatumType),
     BlockQuant(Box<dyn BlockQuant>),

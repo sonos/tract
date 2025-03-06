@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use crate::internal::*;
 use tract_linalg::block_quant::BlockQuantValue;
 use tract_linalg::mmm::MMMInputFormat;
@@ -7,25 +5,29 @@ use tract_linalg::WeightType;
 
 use super::{block_quant_aware_input_shape, EinSum};
 
-#[derive(Debug)]
-pub struct EinSumAnnotatedAsLinear<'a> {
-    pub op: &'a EinSum,
-    pub m_axis: &'a Axis,
-    pub k_axis: &'a Axis,
-    pub n_axes: Vec<&'a Axis>,
+#[derive(Debug, Clone, Hash)]
+pub struct LinearEinsum {
+    pub op: EinSum,
+    pub m_axis: char,
+    pub k_axis: char,
+    pub n_axes: Vec<char>,
     pub m: usize,
     pub k: usize,
-    pub ns: Vec<&'a TDim>,
+    pub ns: Vec<TDim>,
     pub act_dt: DatumType,
     pub weight_type: WeightType,
 }
 
-impl<'a> EinSumAnnotatedAsLinear<'a> {
-    pub fn from(
-        model: &'a TypedModel,
-        node: &'a TypedNode,
-        op: &'a EinSum,
-    ) -> TractResult<Option<Self>> {
+impl Op for LinearEinsum {
+    fn name(&self) -> Cow<str> {
+        "LinearEinsum".into()
+    }
+
+    op_as_typed_op!();
+}
+
+impl LinearEinsum {
+    pub fn from(model: &TypedModel, node: &TypedNode, op: &EinSum) -> TractResult<Option<Self>> {
         if node.inputs.len() != 2 {
             return Ok(None);
         }
@@ -34,7 +36,7 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
             return Ok(None);
         }
         let mut n_axes = vec![];
-        let mut ns = Vec::<&'a TDim>::new();
+        let mut ns = Vec::<TDim>::new();
 
         let Some(m_axis) = op.axes.iter_all_axes().find(|axis| {
             axis.inputs[0].len() == 1 && axis.inputs[1].len() == 0 && axis.outputs[0].len() == 1
@@ -53,8 +55,8 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
                 && axis.inputs[1].len() == 1
                 && axis.outputs[0].len() == 1
             {
-                n_axes.push(axis);
-                ns.push(&node.outputs[0].fact.shape[axis.outputs[0][0]]);
+                n_axes.push(axis.repr);
+                ns.push(node.outputs[0].fact.shape[axis.outputs[0][0]].clone());
             }
         }
         let act_dt = input_facts[1].datum_type;
@@ -73,10 +75,10 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
         let weight_shape = block_quant_aware_input_shape(input_facts[0])?;
         let m = weight_shape[m_axis.inputs[0][0]].to_usize()?;
         let k = weight_shape[k_axis.inputs[0][0]].to_usize()?;
-        Ok(Some(EinSumAnnotatedAsLinear {
-            op,
-            m_axis,
-            k_axis,
+        Ok(Some(LinearEinsum {
+            op: op.clone(),
+            m_axis: m_axis.repr,
+            k_axis: k_axis.repr,
             n_axes,
             m,
             k,
@@ -86,20 +88,32 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
         }))
     }
 
+    pub fn m_axis(&self) -> &Axis {
+        self.op.axes.axis(self.m_axis).unwrap()
+    }
+
+    pub fn k_axis(&self) -> &Axis {
+        self.op.axes.axis(self.k_axis).unwrap()
+    }
+
+    pub fn n_axis(&self) -> &Axis {
+        self.op.axes.axis(self.k_axis).unwrap()
+    }
+
     pub fn weight_m_axis(&self) -> usize {
-        self.m_axis.inputs[0][0]
+        self.m_axis().inputs[0][0]
     }
 
     pub fn weight_k_axis(&self) -> usize {
-        self.k_axis.inputs[0][0]
+        self.k_axis().inputs[0][0]
     }
 
     pub fn input_k_axis(&self) -> usize {
-        self.k_axis.inputs[1][0]
+        self.k_axis().inputs[1][0]
     }
 
     pub fn output_m_axis(&self) -> usize {
-        self.m_axis.outputs[0][0]
+        self.m_axis().outputs[0][0]
     }
 
     pub fn need_mmv(&self) -> bool {
@@ -138,12 +152,12 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
     }
 
     pub fn preferred_packing(&self) -> Box<dyn MMMInputFormat> {
-        if self.act_dt == self.acceptable_accumulators()[0]
+        if self.act_dt == self.op.acceptable_accumulators()[0]
             && self.weight_type == self.act_dt.into()
         {
             if let Ok(n) = self.ns.iter().cloned().product::<TDim>().to_usize() {
                 let mmm = tract_linalg::ops()
-                    .mmm(self.acceptable_accumulators()[0], Some(self.m), Some(self.k), Some(n))
+                    .mmm(self.op.acceptable_accumulators()[0], Some(self.m), Some(self.k), Some(n))
                     .unwrap();
                 return mmm.packings()[0].0.clone();
             }
@@ -167,11 +181,28 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
                 .unwrap(),
         )
     }
+
+    pub fn transpose_weights(&mut self) {
+        self.op
+            .axes
+            .iter_all_axes_mut()
+            .for_each(|axes| axes.inputs[0].iter_mut().for_each(|pos| *pos = 1 - *pos));
+    }
 }
 
-impl Deref for EinSumAnnotatedAsLinear<'_> {
-    type Target = EinSum;
-    fn deref(&self) -> &Self::Target {
-        self.op
+impl EvalOp for LinearEinsum {
+    fn is_stateless(&self) -> bool {
+        true
     }
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        self.op.eval(inputs)
+    }
+}
+
+impl TypedOp for LinearEinsum {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        self.op.output_facts(inputs)
+    }
+
+    as_op!();
 }

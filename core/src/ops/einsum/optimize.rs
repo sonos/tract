@@ -2,6 +2,7 @@ use std::fmt::Formatter;
 use std::ops::Deref;
 
 use kernel_selection::wire_packing;
+use linear::LinearEinsum;
 use tract_itertools::{izip, multiunzip};
 
 use super::*;
@@ -89,8 +90,8 @@ pub(crate) fn optimize(
         return Ok(None);
     }
 
-    let input_facts = model.node_input_facts(node.id)?;
-    if node.inputs.len() == 2 && input_facts[1].konst.is_some() {
+    let facts = model.node_input_facts(node.id)?;
+    if node.inputs.len() == 2 && facts[1].konst.is_some() {
         return Ok(Some(transpose(op, model, node)?));
     }
 
@@ -99,11 +100,15 @@ pub(crate) fn optimize(
         AxesOrPatch::Patch(p) => return Ok(Some(p)),
         AxesOrPatch::NotAMatMul(_) => return Ok(None),
     };
-    if op.q_params.is_none() {
-        optimized_mat_mul(model, node, &annotated).context("Translating to OptMatMul")
-    } else {
-        dequant(model, node, annotated).context("Dequantize")
+    if op.q_params.is_some() {
+        return dequant(model, node, annotated).context("Dequantize");
     }
+
+    if let Some(linear) = LinearEinsum::from(model, node, op)? {
+        return TypedModelPatch::replace_single_op(model, node, &node.inputs, linear).map(Some);
+    }
+
+    Ok(None)
 }
 
 fn transpose(op: &EinSum, model: &TypedModel, node: &TypedNode) -> TractResult<TypedModelPatch> {
@@ -326,7 +331,7 @@ fn dequant(
     Ok(Some(patch))
 }
 
-fn optimized_mat_mul(
+fn optimize_mat_mul(
     model: &TypedModel,
     node: &TypedNode,
     op: &EinSumAnnotatedAsMatMul,
