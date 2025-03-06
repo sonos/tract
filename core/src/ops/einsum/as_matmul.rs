@@ -12,58 +12,71 @@ use super::optimize::*;
 use super::EinSum;
 use crate::ops::konst::Const;
 
-pub struct EinSumAnnotatedAsMatMul<'a> {
-    pub op: &'a EinSum,
-    pub m_axis: &'a Axis,
-    pub k_axis: &'a Axis,
-    pub n_axis: &'a Axis,
+#[derive(Clone, Hash)]
+pub struct EinSumAnnotatedAsMatMul {
+    pub op: EinSum,
+    pub m_axis: char,
+    pub k_axis: char,
+    pub n_axis: char,
     pub m: TDim,
     pub k: TDim,
     pub n: TDim,
 }
 
-impl EinSumAnnotatedAsMatMul<'_> {
+impl EinSumAnnotatedAsMatMul {
+    pub fn m_axis(&self) -> &Axis {
+        self.op.axes.axis(self.m_axis).unwrap()
+    }
+
+    pub fn k_axis(&self) -> &Axis {
+        self.op.axes.axis(self.k_axis).unwrap()
+    }
+
+    pub fn n_axis(&self) -> &Axis {
+        self.op.axes.axis(self.n_axis).unwrap()
+    }
+
     pub fn a_m(&self) -> usize {
-        self.m_axis.inputs[0][0]
+        self.m_axis().inputs[0][0]
     }
     pub fn a_k(&self) -> usize {
-        self.k_axis.inputs[0][0]
+        self.k_axis().inputs[0][0]
     }
     pub fn b_k(&self) -> usize {
-        self.k_axis.inputs[1][0]
+        self.k_axis().inputs[1][0]
     }
     pub fn b_n(&self) -> usize {
-        self.n_axis.inputs[1][0]
+        self.n_axis().inputs[1][0]
     }
     pub fn c_m(&self) -> usize {
-        self.m_axis.outputs[0][0]
+        self.m_axis().outputs[0][0]
     }
     pub fn c_n(&self) -> usize {
-        self.n_axis.outputs[0][0]
+        self.n_axis().outputs[0][0]
     }
 }
 
-impl Debug for EinSumAnnotatedAsMatMul<'_> {
+impl Debug for EinSumAnnotatedAsMatMul {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(
             f,
             "EinsumAsMatMul: {} {:?} m: {}={}; k: {}={}; n: {}={}",
             self.op.axes,
             self.op.operating_dt,
-            self.m_axis.repr,
+            self.m_axis,
             self.m,
-            self.k_axis.repr,
+            self.k_axis,
             self.k,
-            self.n_axis.repr,
+            self.n_axis,
             self.n
         )
     }
 }
 
-impl Deref for EinSumAnnotatedAsMatMul<'_> {
+impl Deref for EinSumAnnotatedAsMatMul {
     type Target = EinSum;
     fn deref(&self) -> &Self::Target {
-        self.op
+        &self.op
     }
 }
 
@@ -91,29 +104,30 @@ fn einsum_rules(
     {
         return Ok(None);
     }
-    let op = match ensure_mkn_axes(op, model, node).context("Figuring out m, k and n axes")? {
-        AxesOrPatch::Annotated(op) => op,
-        AxesOrPatch::Patch(p) => return Ok(Some(p)),
-        AxesOrPatch::NotAMatMul(axes) => {
-            bail!(
-                "{} is not a matmul because of axis {}",
-                op.axes,
-                axes.iter().map(|a| a.repr).join(", ")
-            )
-        }
-    };
-    let prefix: String = op
+    let einsum_mm =
+        match ensure_mkn_axes(op, model, node).context("Figuring out m, k and n axes")? {
+            AxesOrPatch::Annotated(op) => op,
+            AxesOrPatch::Patch(p) => return Ok(Some(p)),
+            AxesOrPatch::NotAMatMul(axes) => {
+                bail!(
+                    "{} is not a matmul because of axis {}",
+                    op.axes,
+                    axes.iter().map(|a| a.repr).join(", ")
+                )
+            }
+        };
+    let prefix: String = einsum_mm
         .axes
         .iter_all_axes()
-        .filter(|a| ![op.m_axis, op.k_axis, op.n_axis].contains(a))
+        .filter(|a| ![einsum_mm.m_axis, einsum_mm.k_axis, einsum_mm.n_axis].contains(&a.repr))
         .map(|a| a.repr)
         .collect();
     let mut patch = TypedModelPatch::default();
     let inputs = patch.taps(model, &node.inputs)?;
     let mut wire = tvec!(inputs[0], inputs[1]);
 
-    let (m, k, n) = (op.m_axis.repr, op.k_axis.repr, op.n_axis.repr);
-    let a_order_es: String = op.axes.axes(InOut::In(0)).map(|a| a.repr).collect();
+    let (m, k, n) = (einsum_mm.m_axis, einsum_mm.k_axis, einsum_mm.n_axis);
+    let a_order_es: String = einsum_mm.axes.axes(InOut::In(0)).map(|a| a.repr).collect();
     let a_order_mm = format!("{prefix}{m}{k}");
     let a_order_mm_t = format!("{prefix}{k}{m}");
     let a_transform = format!("{}->{}", a_order_es, a_order_mm)
@@ -142,7 +156,7 @@ fn einsum_rules(
         .clone_from(&model.outlet_fact(node.inputs[0])?.opaque_fact);
     // end of hack
 
-    let b_order_es: String = op.axes.axes(InOut::In(1)).map(|a| a.repr).collect();
+    let b_order_es: String = einsum_mm.axes.axes(InOut::In(1)).map(|a| a.repr).collect();
     let b_order_mm = format!("{prefix}{k}{n}");
     let b_order_mm_t = format!("{prefix}{n}{k}");
     let b_transform = format!("{}->{}", b_order_es, b_order_mm)
@@ -158,7 +172,7 @@ fn einsum_rules(
         wire[1] = patch.wire_node(&name, op, &[wire[1]])?[0];
     }
 
-    let c_order_es: String = op.axes.axes(InOut::Out(0)).map(|a| a.repr).collect();
+    let c_order_es: String = einsum_mm.axes.axes(InOut::Out(0)).map(|a| a.repr).collect();
     let c_order_mm = format!("{prefix}{m}{n}");
     let c_order_mm_t = format!("{prefix}{n}{m}");
     let c_transform = format!("{}->{}", c_order_mm, c_order_es)
@@ -169,7 +183,7 @@ fn einsum_rules(
         .translate_to_axis_ops()?;
     let transpose_c = c_transform.len() > c_transform_t.len();
     let c_transform = if transpose_c { c_transform_t } else { c_transform };
-    let quantize_output = if let Some(qp) = op.q_params {
+    let quantize_output = if let Some(qp) = einsum_mm.q_params {
         let qparams: Vec<&Tensor> = inputs[3..9]
             .iter()
             .map(|f| {

@@ -139,10 +139,10 @@ impl TypedOp for Const {
             return Ok(None);
         }
 
-        ensure!(matmuls.iter().map(|linear| linear.weight_m_axis()).all_equal());
+        ensure!(matmuls.iter().map(|linear| linear.weight_mn_axis()).all_equal());
         ensure!(matmuls.iter().map(|linear| linear.weight_k_axis()).all_equal());
 
-        let m_axis = matmuls[0].weight_m_axis();
+        let m_axis = matmuls[0].weight_mn_axis();
         let k_axis = matmuls[0].weight_k_axis();
         let must_transpose_weights = m_axis == 1;
 

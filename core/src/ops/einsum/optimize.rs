@@ -17,7 +17,7 @@ use crate::ops::nn::{Reduce, Reducer};
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum AxesOrPatch<'a> {
-    Annotated(EinSumAnnotatedAsMatMul<'a>),
+    Annotated(EinSumAnnotatedAsMatMul),
     Patch(TypedModelPatch),
     NotAMatMul(Vec<&'a Axis>),
 }
@@ -47,8 +47,8 @@ pub(crate) fn optimize(
         return dequant(model, node, annotated).context("Dequantize");
     }
 
-    if let Some(linear) = LinearEinsum::from(model, node, &annotated)? {
-        return TypedModelPatch::replace_single_op(model, node, &node.inputs, linear).map(Some);
+    if let Some(linear) = LinearEinsum::replace(model, node, &annotated)? {
+        return Ok(Some(linear));
     }
 
     Ok(None)
@@ -137,7 +137,15 @@ pub(crate) fn ensure_mkn_axes<'a>(
     let m = input_shapes[0][m_axis.inputs[0][0]].clone();
     let k = input_shapes[0][k_axis.inputs[0][0]].clone();
     let n = input_shapes[1][n_axis.inputs[1][0]].clone();
-    Ok(AxesOrPatch::Annotated(EinSumAnnotatedAsMatMul { op, m_axis, k_axis, n_axis, m, k, n }))
+    Ok(AxesOrPatch::Annotated(EinSumAnnotatedAsMatMul {
+        op: op.clone(),
+        m_axis: m_axis.repr,
+        k_axis: k_axis.repr,
+        n_axis: n_axis.repr,
+        m,
+        k,
+        n,
+    }))
 }
 
 pub(super) fn inject_k_axis(
@@ -245,12 +253,12 @@ fn dequant(
     let b_i32 = patch.wire_node(format!("{name}.b_as_i32"), cast(i32::datum_type()), &[b])?[0];
     let sum_a = patch.wire_node(
         format!("{name}.sum_a"),
-        Reduce::new(tvec!(op.k_axis.inputs[0][0]), Reducer::Sum),
+        Reduce::new(tvec!(op.a_k()), Reducer::Sum),
         &[a_i32],
     )?;
     let sum_b = patch.wire_node(
         format!("{name}.sum_b"),
-        Reduce::new(tvec!(op.k_axis.inputs[1][0]), Reducer::Sum),
+        Reduce::new(tvec!(op.b_k()), Reducer::Sum),
         &[b_i32],
     )?;
 
@@ -266,9 +274,17 @@ fn dequant(
 
     output = patch.wire_node(format!("{name}.add_bias"), add(), &[output[0], bias[0]])?;
 
-    let k = model.outlet_fact(node.inputs[0])?.shape[op.k_axis.inputs[0][0]].clone();
-    let output = compensate_zero_points(&mut patch, name, output[0], k, a0, b0, sum_a[0], sum_b[0])
-        .context("Zero point compensation")?;
+    let output = compensate_zero_points(
+        &mut patch,
+        name,
+        output[0],
+        op.k.clone(),
+        a0,
+        b0,
+        sum_a[0],
+        sum_b[0],
+    )
+    .context("Zero point compensation")?;
     let output = requant(&mut patch, name, output, op.q_params.unwrap(), abc_scale, c0)?;
     patch.shunt_outside(model, node.id.into(), output)?;
     Ok(Some(patch))
@@ -307,7 +323,7 @@ fn optimize_mat_mul(
         .op
         .axes
         .iter_all_axes()
-        .filter(|&axis| ![op.m_axis, op.k_axis, op.n_axis].contains(&axis))
+        .filter(|&axis| ![op.m_axis, op.k_axis, op.n_axis].contains(&axis.repr))
     {
         if let (&[c], &[a]) = (&*axis.outputs[0], &*axis.inputs[0]) {
             if input_shapes[0][a] != 1.to_dim() {
