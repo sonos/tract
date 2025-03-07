@@ -22,21 +22,32 @@ impl super::TypedPass for PushSliceUp {
                 continue;
             }
             for axis in 0..node.outputs[0].fact.rank() {
-                // if let Some(succ) = model.single_succ(n)? {
-                //     // FIXME this avoid slice ping pong but misses slice stack simplification
-                //     if node.op_is::<Slice>() {
-                //         continue;
-                //     }
-                //     let Some(slice) = succ.op_as::<Slice>() else { continue };
-                //     if slice.axis != axis {
-                //         continue;
-                //     }
-                //     let Some((mut patch, splits) = op_slice_to_slice_op(model, node, axis, &[slice.start, slice.end])? else { continue };
-                //     panic!()
+                if let Some(succ) = model.single_succ(n)? {
+                    // FIXME this avoid slice ping pong but misses slice stack simplification
+                    if node.op_is::<Slice>() {
+                        continue;
+                    }
+                    let Some(slice) = succ.op_as::<Slice>() else { continue };
+                    if slice.axis != axis {
+                        continue;
+                    }
+                    let boundaries = tvec!(slice.start.clone(), slice.end.clone());
+                    let Some((mut patch, splits)) =
+                        op_slices_to_slice_op(model, node, axis, &boundaries)?
+                    else {
+                        continue;
+                    };
+                    // ignore first split (0..start)
+                    let wire = splits[1];
+                    patch.shunt_outside(model, succ.id.into(), wire)?;
 
-                //     return Ok(Some(patch));
-                // } else
-                if let Some(boundaries) = should_slice_output(model, node, axis, &eval_order)? {
+                    return Ok(Some(patch));
+                // handle multiple slicing successors in fan-out fashion (think LSTM post linear op)
+                // limited to concrete interger slicing boundaries for ordering
+                // (it may actually work with generic TDim with ordering)
+                } else if let Some(boundaries) =
+                    should_slice_output(model, node, axis, &eval_order)?
+                {
                     let boundaries_dim: TVec<TDim> =
                         boundaries.iter().map(|d| d.to_dim()).collect();
                     let Some((mut patch, splits)) =
