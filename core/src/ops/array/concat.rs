@@ -115,8 +115,8 @@ impl TypedOp for TypedConcat {
         prefix: &str,
         inputs: &[OutletId],
         output_axis: usize,
-        start: usize,
-        end: usize,
+        start: &TDim,
+        end: &TDim,
     ) -> TractResult<Option<TVec<OutletId>>> {
         if output_axis != self.axis {
             return Ok(Some(patch.wire_node(prefix, self.clone(), inputs)?));
@@ -126,21 +126,20 @@ impl TypedOp for TypedConcat {
         let offsets = self.offsets(&facts)?;
         std::mem::drop(facts);
         for (ix, (slice_start, slice_end)) in offsets.iter().tuple_windows().enumerate() {
-            if let (Ok(slice_start), Ok(slice_end)) = (slice_start.to_usize(), slice_end.to_usize())
+            if (start.clone() - slice_start).prove_positive_or_zero()
+                && (slice_end.clone() - end).prove_positive_or_zero()
             {
-                if slice_start <= start && end <= slice_end {
-                    return patch
-                        .wire_node(
-                            format!("{prefix}.slice-{output_axis}.{start}..{end}"),
-                            Slice {
-                                axis: output_axis,
-                                start: (start - slice_start).to_dim(),
-                                end: (end - slice_start).to_dim(),
-                            },
-                            &[inputs[ix]],
-                        )
-                        .map(Some);
-                }
+                return patch
+                    .wire_node(
+                        format!("{prefix}.slice-{output_axis}.{start}..{end}"),
+                        Slice {
+                            axis: output_axis,
+                            start: (start.clone() - slice_start),
+                            end: (end.clone() - slice_start),
+                        },
+                        &[inputs[ix]],
+                    )
+                    .map(Some);
             }
         }
         Ok(None)

@@ -17,64 +17,47 @@ impl super::TypedPass for PushSliceUp {
     ) -> TractResult<Option<TypedModelPatch>> {
         let eval_order = model.eval_order()?;
         for &n in &eval_order {
-            let (ifacts, ofacts) = model.node_facts(n)?;
-            if ofacts.len() != 1 {
+            let node = model.node(n);
+            if model.node(n).outputs.len() != 1 {
                 continue;
             }
-            let node = model.node(n);
-            let invariants = node
-                .op
-                .axes_mapping(&ifacts, &ofacts)
-                .with_context(|| format!("Mapping axes for {node}"))?;
-            'axis: for axis in 0..ofacts[0].rank() {
-                if let Some(boundaries) = should_slice_output(model, node, axis, &eval_order)? {
-                    let mut splits = tvec!();
-                    let mut patch = TypedModelPatch::new(format!("Slice {node} by {boundaries:?}"));
-                    let inputs = patch.taps(model, &node.inputs)?;
-                    let mut start = 0;
-                    let axis_info = invariants.axis((InOut::Out(0), axis)).unwrap();
-                    for end in &boundaries {
-                        let mut wires = tvec!();
-                        for input_ix in 0..inputs.len() {
-                            let mut wire = inputs[input_ix];
-                            if let &[input_axis] = &*axis_info.inputs[input_ix] {
-                                // dont propagate slice up if input looks like a broadcasting input
-                                if !patch.outlet_fact(wire)?.shape[input_axis].is_one() {
-                                    wire = patch.wire_node(
-                                        format!(
-                                            "{}.split-{}-over-{}.{}..{}.slice",
-                                            &node.name, input_ix, input_axis, start, end
-                                        ),
-                                        Slice {
-                                            axis: input_axis,
-                                            start: start.to_dim(),
-                                            end: end.to_dim(),
-                                        },
-                                        &[wire],
-                                    )?[0];
-                                }
-                            }
-                            wires.push(wire);
-                        }
-                        let Some(wire) = node
-                            .op
-                            .slice(
-                                &mut patch,
-                                model,
-                                node,
-                                &format!("{}.split-over-{}.{}..{}", &node.name, axis, start, end),
-                                &wires,
-                                axis,
-                                start,
-                                *end,
-                            )
-                            .with_context(|| format!("Calling slice on {node}"))?
-                        else {
-                            continue 'axis;
-                        };
-                        splits.push(wire[0]);
-                        start = *end;
+            for axis in 0..node.outputs[0].fact.rank() {
+                if let Some(succ) = model.single_succ(n)? {
+                    let Some(slice) = succ.op_as::<Slice>() else { continue };
+                    if slice.axis != axis {
+                        continue;
                     }
+                    if let Some(me) = node.op_as::<Slice>() {
+                        let my_len = &node.outputs[0].fact.shape[me.axis];
+                        let slice_len = &succ.outputs[0].fact.shape[slice.axis];
+                        if !(my_len.clone() - slice_len).prove_strict_positive() {
+                            continue;
+                        }
+                    }
+                    let boundaries = tvec!(slice.start.clone(), slice.end.clone());
+                    let Some((mut patch, splits)) =
+                        op_slices_to_slice_op(model, node, axis, &boundaries)?
+                    else {
+                        continue;
+                    };
+                    // ignore first split (0..start)
+                    let wire = splits[1];
+                    patch.shunt_outside(model, succ.id.into(), wire)?;
+
+                    return Ok(Some(patch));
+                // handle multiple slicing successors in fan-out fashion (think LSTM post linear op)
+                // limited to concrete interger slicing boundaries for ordering
+                // (it may actually work with generic TDim with ordering)
+                } else if let Some(boundaries) =
+                    should_slice_output(model, node, axis, &eval_order)?
+                {
+                    let boundaries_dim: TVec<TDim> =
+                        boundaries.iter().map(|d| d.to_dim()).collect();
+                    let Some((mut patch, splits)) =
+                        op_slices_to_slice_op(model, node, axis, &boundaries_dim)?
+                    else {
+                        continue;
+                    };
                     rewire_sliced_outputs(model, node, axis, &mut patch, &boundaries, &splits)
                         .context("Rewiring sliced outputs")?;
                     return Ok(Some(patch));
@@ -83,6 +66,64 @@ impl super::TypedPass for PushSliceUp {
         }
         Ok(None)
     }
+}
+
+fn op_slices_to_slice_op(
+    model: &TypedModel,
+    node: &TypedNode,
+    axis: usize,
+    boundaries: &[TDim],
+) -> TractResult<Option<(TypedModelPatch, TVec<OutletId>)>> {
+    let (ifacts, ofacts) = model.node_facts(node.id)?;
+    let invariants = node
+        .op
+        .axes_mapping(&ifacts, &ofacts)
+        .with_context(|| format!("Mapping axes for {node}"))?;
+    let mut splits = tvec!();
+    let mut patch = TypedModelPatch::new(format!("Slice {node} by {boundaries:?}"));
+    let inputs = patch.taps(model, &node.inputs)?;
+    let zero = 0.to_dim();
+    let mut start = &zero;
+    let axis_info = invariants.axis((InOut::Out(0), axis)).unwrap();
+    for end in boundaries {
+        let mut wires = tvec!();
+        for input_ix in 0..inputs.len() {
+            let mut wire = inputs[input_ix];
+            if let &[input_axis] = &*axis_info.inputs[input_ix] {
+                // dont propagate slice up if input looks like a broadcasting input
+                if !patch.outlet_fact(wire)?.shape[input_axis].is_one() {
+                    wire = patch.wire_node(
+                        format!(
+                            "{}.split-{}-over-{}.{}..{}.slice",
+                            &node.name, input_ix, input_axis, start, end
+                        ),
+                        Slice { axis: input_axis, start: start.to_dim(), end: end.to_dim() },
+                        &[wire],
+                    )?[0];
+                }
+            }
+            wires.push(wire);
+        }
+        let Some(wire) = node
+            .op
+            .slice(
+                &mut patch,
+                model,
+                node,
+                &format!("{}.split-over-{}.{}..{}", &node.name, axis, start, end),
+                &wires,
+                axis,
+                start,
+                end,
+            )
+            .with_context(|| format!("Calling slice on {node}"))?
+        else {
+            return Ok(None);
+        };
+        splits.push(wire[0]);
+        start = end;
+    }
+    Ok(Some((patch, splits)))
 }
 
 fn should_slice_output(

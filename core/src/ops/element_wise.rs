@@ -138,13 +138,13 @@ impl TypedOp for ElementWiseOp {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if let Some(prec) = model.single_prec(node.id)? {
-            if prec.op_is::<AxisOp>() || prec.op_is::<IntoShape>()  {
+            if prec.op_is::<AxisOp>() || prec.op_is::<IntoShape>() {
                 let mut patch = TypedModelPatch::default();
                 let mut wire = tvec!(patch.tap_model(model, prec.inputs[0])?);
                 wire = patch.wire_node(&node.name, &node.op, &wire)?;
                 wire = patch.wire_node(&prec.name, &prec.op, &wire)?;
                 patch.shunt_outside(model, node.id.into(), wire[0])?;
-                return Ok(Some(patch))
+                return Ok(Some(patch));
             }
         }
         self.0.declutter(model, node)
@@ -181,6 +181,20 @@ impl TypedOp for ElementWiseOp {
         } else {
             Ok(None)
         }
+    }
+
+    fn slice(
+        &self,
+        patch: &mut TypedModelPatch,
+        _model: &TypedModel,
+        node: &TypedNode,
+        _prefix: &str,
+        inputs: &[OutletId],
+        _output_axis: usize,
+        _start: &TDim,
+        _end: &TDim,
+    ) -> TractResult<Option<TVec<OutletId>>> {
+        patch.wire_node(&node.name, &node.op, inputs).map(Some)
     }
 
     as_op!();

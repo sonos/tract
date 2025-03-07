@@ -12,6 +12,7 @@ pub use softmax::arm64simd_softmax2_fastcompact_f32_16n;
 pub use sum::arm64simd_sum_f32_16n;
 pub use unicast::*;
 
+use crate::block_quant::{PackedBlockQuantFormat, Q4_0};
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::pack::PackedFormat;
 use crate::Ops;
@@ -34,7 +35,11 @@ MMMExternKernel!(arm64simd_mmm_f32_8x8_gen <f32>(8,  8)@(16, 16) quality(Manuall
 MMMExternKernel!(arm64simd_mmm_f32_12x8_gen<f32>(12, 8)@(16, 16) quality(ManuallyOptimized));
 MMMExternKernel!(arm64simd_mmm_f32_64x1_gen<f32>(64, 1)@(16, 16) quality(ManuallyOptimized));
 
-MMMExternKernel!(arm64simd_mmm_f32_32x1_gen<f32>(32, 1)@(16, 16));
+MMMExternKernel!(arm64simd_mmm_f32_32x1_gen<f32>(32, 1)@(16, 16)
+    packing[1] = q40f16z16se => |k| k.with_packing(PackedBlockQuantFormat::new(&Q4_0, 32, 16, true), f16::packing(1));
+    packing[2] = q40f32z16se => |k| k.with_packing(PackedBlockQuantFormat::new(&Q4_0, 32, 16, true), f32::packing(1));
+    quality(ManuallyOptimized)
+);
 
 MMMExternKernel!(arm64simd_mmm_i32_8x8<i32>(8, 8)@(16, 16)
    packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 8, 16), PackedFormat::new(DatumType::I8, 8, 16));
@@ -62,6 +67,7 @@ pub fn plug(ops: &mut Ops) {
         arm64simd_mmm_f32_24x4_gen.mmm(),
         arm64simd_mmm_f32_24x4_a53.mmm(),
         arm64simd_mmm_f32_24x4_a55.mmm(),
+        arm64simd_mmm_f32_32x1_gen.mmm(),
         arm64simd_mmm_f32_64x1_gen.mmm(),
         arm64simd_mmm_f32_64x1_a53.mmm(),
         arm64simd_mmm_i32_8x8.mmm(),
