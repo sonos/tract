@@ -253,11 +253,17 @@ impl TypedOp for EinSum {
         node: &TypedNode,
         prefix: &str,
         inputs: &[OutletId],
-        _output_axis: usize,
+        output_axis: usize,
         _start: &TDim,
         _end: &TDim,
     ) -> TractResult<Option<TVec<OutletId>>> {
-        if model.node_input_facts(node.id)?.iter().any(|f| f.datum_type.is_opaque()) {
+        let facts = model.node_input_facts(node.id)?;
+        let axis = self.axes.axis((InOut::Out(0), output_axis))?;
+        if facts
+            .iter()
+            .enumerate()
+            .any(|(slot, fact)| axis.inputs[slot].len() > 0 && fact.datum_type.is_opaque())
+        {
             Ok(None)
         } else {
             patch.wire_node(prefix, self.clone(), inputs).map(Some)
