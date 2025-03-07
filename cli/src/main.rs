@@ -22,6 +22,8 @@ use fs_err as fs;
 use readings_probe::*;
 
 mod bench;
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+mod check_mem_arena;
 mod compare;
 mod cost;
 mod dump;
@@ -354,6 +356,12 @@ fn dump_subcommand<'a>() -> clap::Command<'a> {
             .long("assert-cost")
             .help("Checks computed against the provided value (form: \"FMA(F32)=2060448 DIV(F32)=24576\")")
             )
+        .arg(
+            Arg::new("check-mem-arena")
+            .takes_value(true)
+            .long("check-mem-arena")
+            .help("Checks arena memory size and usage. Only available on MacOS and iOS")
+        )
         .arg(
             Arg::new("nnef-override-output-name")
             .takes_value(true)
