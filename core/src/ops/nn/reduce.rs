@@ -446,6 +446,23 @@ impl TypedOp for Reduce {
         Ok(Some(AxisChangeConsequence::new(model, node, op, change)))
     }
 
+    fn slice(
+        &self,
+        patch: &mut TypedModelPatch,
+        _model: &TypedModel,
+        node: &TypedNode,
+        _prefix: &str,
+        inputs: &[OutletId],
+        output_axis: usize,
+        _start: &TDim,
+        _end: &TDim,
+    ) -> TractResult<Option<TVec<OutletId>>> {
+        if self.axes.contains(&output_axis) {
+            return Ok(None);
+        }
+        patch.wire_node(&node.name, &node.op, inputs).map(Some)
+    }
+
     as_op!();
 }
 
