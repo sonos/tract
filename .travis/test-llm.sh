@@ -38,6 +38,7 @@ then
     fi
 fi
 
+set -x
 
 nnef=llm/$generation/$id/$id.nnef.tgz
 
