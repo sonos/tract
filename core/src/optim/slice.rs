@@ -99,7 +99,7 @@ fn op_slices_to_slice_op(
                 &format!("{}.split-over-{}.{}..{}", &node.name, axis, start, end),
                 &wires,
                 axis,
-                &start,
+                start,
                 end,
             )
             .with_context(|| format!("Calling slice on {node}"))?
