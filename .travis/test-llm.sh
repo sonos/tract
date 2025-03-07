@@ -38,7 +38,6 @@ then
     fi
 fi
 
-set -x
 
 nnef=llm/$generation/$id/$id.nnef.tgz
 
@@ -49,7 +48,7 @@ if [ -e $MODELS/$nnef ]
 then
     size=$(stat -c %s $MODELS/$nnef)
 else
-    size=$(curl -I $MODELS/$nnef | grep Content-Length | cut -d " " -f 2)
+    size=$(curl -s -I $MODELS/$nnef | grep Content-Length | cut -d " " -f 2 | tr -cd 0123456789)
 fi
 
 alloc_max=$(cat readings.out | tail -n +2 | awk '{print $10-$11}' | sort -n | tail -1)
