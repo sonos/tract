@@ -221,8 +221,8 @@ pub trait TypedOp:
         prefix: &str,
         inputs: &[OutletId],
         output_axis: usize,
-        start: usize,
-        end: usize,
+        start: &TDim,
+        end: &TDim,
     ) -> TractResult<Option<TVec<OutletId>>> {
         Ok(None)
     }

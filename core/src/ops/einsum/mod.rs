@@ -254,8 +254,8 @@ impl TypedOp for EinSum {
         prefix: &str,
         inputs: &[OutletId],
         _output_axis: usize,
-        _start: usize,
-        _end: usize,
+        _start: &TDim,
+        _end: &TDim,
     ) -> TractResult<Option<TVec<OutletId>>> {
         if model.node_input_facts(node.id)?.iter().any(|f| f.datum_type.is_opaque()) {
             Ok(None)

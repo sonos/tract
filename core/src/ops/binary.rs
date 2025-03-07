@@ -193,8 +193,8 @@ impl TypedOp for TypedBinOp {
         prefix: &str,
         inputs: &[OutletId],
         _output_axis: usize,
-        _start: usize,
-        _end: usize,
+        _start: &TDim,
+        _end: &TDim,
     ) -> TractResult<Option<TVec<OutletId>>> {
         Ok(Some(patch.wire_node(prefix, self.clone(), inputs)?))
     }
