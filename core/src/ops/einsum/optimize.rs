@@ -509,13 +509,14 @@ fn optimized_mat_mul(
 ) -> TractResult<Option<TypedModelPatch>> {
     let input_facts = model.node_input_facts(node.id)?;
     let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
-    let must_transpose = (input_facts[1].konst.is_some()
-        && input_facts[1].opaque_fact.as_ref().is_some_and(|of| of.is::<BlockQuantFact>()))
-        || match (op.m.as_i64(), op.n.as_i64()) {
-            (Some(m), Some(n)) => m < n,
-            (None, Some(n)) => n >= 8,
-            _ => false,
-        };
+    let must_transpose = input_facts[0].datum_type.is_number()
+        && ((input_facts[1].konst.is_some()
+            && input_facts[1].opaque_fact.as_ref().is_some_and(|of| of.is::<BlockQuantFact>()))
+            || match (op.m.as_i64(), op.n.as_i64()) {
+                (Some(m), Some(n)) => m < n,
+                (None, Some(n)) => n >= 8,
+                _ => false,
+            });
     if must_transpose {
         return Ok(Some(transpose(op, model, node)?));
     }
