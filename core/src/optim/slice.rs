@@ -23,13 +23,16 @@ impl super::TypedPass for PushSliceUp {
             }
             for axis in 0..node.outputs[0].fact.rank() {
                 if let Some(succ) = model.single_succ(n)? {
-                    // FIXME this avoid slice ping pong but misses slice stack simplification
-                    if node.op_is::<Slice>() {
-                        continue;
-                    }
                     let Some(slice) = succ.op_as::<Slice>() else { continue };
                     if slice.axis != axis {
                         continue;
+                    }
+                    if let Some(me) = node.op_as::<Slice>() {
+                        let my_len = &node.outputs[0].fact.shape[me.axis];
+                        let slice_len = &succ.outputs[0].fact.shape[slice.axis];
+                        if !(my_len.clone() - slice_len).prove_strict_positive() {
+                            continue;
+                        }
                     }
                     let boundaries = tvec!(slice.start.clone(), slice.end.clone());
                     let Some((mut patch, splits)) =
