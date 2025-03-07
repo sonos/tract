@@ -751,6 +751,26 @@ impl TypedOp for AxisOp {
         target.wire_node(&node.name, op, &[mapping[&node.inputs[0]]])
     }
 
+    fn slice(
+        &self,
+        patch: &mut TypedModelPatch,
+        _model: &TypedModel,
+        node: &TypedNode,
+        _prefix: &str,
+        inputs: &[OutletId],
+        output_axis: usize,
+        _start: &TDim,
+        _end: &TDim,
+    ) -> TractResult<Option<TVec<OutletId>>> {
+        // is this test really useful ? or axis mapping preempt this ?
+        if let Reshape(pos, _from, to) = self {
+            if output_axis >= *pos && output_axis < pos + to.len() {
+                return Ok(None);
+            }
+        }
+        patch.wire_node(&node.name, &node.op, inputs).map(Some)
+    }
+
     fn codegen(
         &self,
         model: &TypedModel,
