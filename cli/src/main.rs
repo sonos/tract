@@ -22,6 +22,8 @@ use fs_err as fs;
 use readings_probe::*;
 
 mod bench;
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+mod check_mem_arena;
 mod compare;
 mod cost;
 mod dump;

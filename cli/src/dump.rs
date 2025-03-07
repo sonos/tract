@@ -175,7 +175,7 @@ pub fn handle(
     if sub_matches.is_present("check-mem-arena") {
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
-            crate::utils::check_mem_arena::verify_size_and_usage(
+            crate::check_mem_arena::verify_size_and_usage(
                 params
                     .tract_model
                     .downcast_ref::<TypedModel>()
