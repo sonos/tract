@@ -91,11 +91,7 @@ pub fn verify_size_and_usage(
     symbol_values.set(&sequence_length, SCHEMA_HINT_S);
     symbol_values.set(&past_sequence_length, SCHEMA_HINT_P);
 
-    let schema = tract_metal::memory::MetalMemSchema::build(
-        model,
-        order,
-        &symbol_values,
-    )?;
+    let schema = MetalMemSchema::build(model, order, &symbol_values)?;
 
     let metrics = MemArenaMetrics::from_schema(&schema)?;
 
