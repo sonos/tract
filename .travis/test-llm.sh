@@ -43,10 +43,21 @@ nnef=llm/$generation/$id/$id.nnef.tgz
 
 $CACHE_FILE $nnef
 
-$TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O --readings  --assert-maximal-mm-quality-cost 0 dump -q
+if [ `uname` = "Darwin" ]
+then
+    gstat=gstat
+    tract_args="--metal"
+    dump_args="--check-mem-arena metal-memory-schema.json"
+else
+    gstat=stat
+    tract_args=""
+    dump_args=""
+fi
+
+$TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O --readings $tract_args --assert-maximal-mm-quality-cost 0 dump $dump_args -q
 if [ -e $MODELS/$nnef ]
 then
-    size=$(stat -c %s $MODELS/$nnef)
+    size=$($gstat -c %s $MODELS/$nnef)
 else
     size=$(curl -I $MODELS/$nnef | grep Content-Length | cut -d " " -f 2)
 fi
@@ -116,7 +127,7 @@ do
     esac
 
 
-    $TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O run \
+    $TRACT_RUN -v --nnef-tract-core $MODELS/$nnef $tract_args -O run \
         --input-from-npz $MODELS/$npz \
         --assert-output-bundle $MODELS/$npz \
         $approx --allow-float-casts
