@@ -10,6 +10,7 @@ use tract_metal::MetalGemmImplKind;
 
 #[path = "../suite.rs"]
 mod suite;
+mod transpose;
 
 #[derive(Debug)]
 struct MetalTestRuntime {
