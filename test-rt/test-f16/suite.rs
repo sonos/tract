@@ -1,4 +1,5 @@
 use infra::Test;
+use suite_unit::bin_einsum::{BinEinsumProblem, BinEinsumProblemParams};
 use suite_unit::conv_q::{QConvProblem, QConvProblemParams};
 
 pub fn suite() -> &'static infra::TestSuite {
@@ -13,6 +14,10 @@ fn mk_suite() -> infra::TestSuite {
     let mut onnx = suite_onnx::suite().clone();
     onnx.ignore(&ignore_onnx);
     let mut unit = suite_unit::suite().unwrap().clone();
+    unit.get_sub_mut("bin_einsum").add_arbitrary::<BinEinsumProblem>(
+        "proptest",
+        BinEinsumProblemParams { max_dims: 7, ..Default::default() },
+    );
     unit.ignore_case(&ignore_unit);
     unit.get_sub_mut("conv_q").add_arbitrary_with_filter::<QConvProblem>(
         "proptest",
