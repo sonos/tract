@@ -211,7 +211,7 @@ impl Resize {
             }
         }
         bail!(
-            "Neither shape not scale makes sense: input_shape: {:?}, scale: {:?}, sizes: {:?}",
+            "Neither sizes nor scales makes sense: input_shape: {:?}, scale: {:?}, sizes: {:?}",
             input_shape,
             input_scale,
             input_sizes,
