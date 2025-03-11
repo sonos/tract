@@ -58,8 +58,8 @@ pub fn remove_ggml_broadcast_pre_matmul(
     let in_facts = model.node_input_facts(mm_node.id)?;
     match ctx.gemm_impl {
         Some(MetalGemmImplKind::Ggml) => {},
-        None if in_facts[0].datum_type != DatumType::F32 => return Ok(None),
-        _ => {}
+        None => if in_facts[0].datum_type != DatumType::F32 { return Ok(None) },
+        _ => return Ok(None)
     }
 
     let mut matmul_inputs = patch.taps(model, &mm_node.inputs)?;
