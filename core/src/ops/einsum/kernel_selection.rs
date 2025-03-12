@@ -30,25 +30,18 @@ pub fn wire_packing(
             .context("wire_prepacked");
     }
     let ops = tract_linalg::ops();
-    let old = || {
-        let Some(m) = op.m.as_i64() else { return None };
-        let Some(k) = op.k.as_i64() else { return None };
-        let Some(n) = op.n.as_i64() else { return None };
-        ops.mmm(
+    let old = || -> Option<_> {
+        let mmm = ops.mmm(
             op.acceptable_accumulators()[0],
-            Some(m as usize),
-            Some(k as usize),
-            Some(n as usize),
-        )
-        .and_then(|mmm| {
-            mmm.packings()
-                .iter()
-                .enumerate()
-                .find(|(_, (pa, pb))| {
-                    pa.precursor() == a_dt.into() && pb.precursor() == b_dt.into()
-                })
-                .map(|(p, (pa, pb))| (mmm.clone(), p, pa.clone(), pb.clone()))
-        })
+            Some(op.m.as_i64()? as usize),
+            Some(op.k.as_i64()? as usize),
+            Some(op.n.as_i64()? as usize),
+        )?;
+        mmm.packings()
+            .iter()
+            .enumerate()
+            .find(|(_, (pa, pb))| pa.precursor() == a_dt.into() && pb.precursor() == b_dt.into())
+            .map(|(p, (pa, pb))| (mmm.clone(), p, pa.clone(), pb.clone()))
     };
 
     let (mmm, p, pa, pb):(Box<dyn MatMatMul>, usize, Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>) =
