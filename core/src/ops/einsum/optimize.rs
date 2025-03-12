@@ -261,11 +261,14 @@ pub(crate) fn optimize(
     {
         return Ok(None);
     }
-
+    /*
     let input_facts = model.node_input_facts(node.id)?;
-    if node.inputs.len() == 2 && input_facts[1].konst.is_some() {
+    if node.inputs.len() == 2
+        && (input_facts[1].konst.is_some() && input_facts[1].datum_type.is_opaque())
+    {
         return Ok(Some(transpose(op, model, node)?));
     }
+    */
 
     let annotated = match ensure_mkn_axes(op, model, node)? {
         AxesOrPatch::Annotated(op) => op,
@@ -506,12 +509,14 @@ fn optimized_mat_mul(
 ) -> TractResult<Option<TypedModelPatch>> {
     let input_facts = model.node_input_facts(node.id)?;
     let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
-    let must_transpose = input_facts[0].konst.is_none()
-        && match (op.m.as_i64(), op.n.as_i64()) {
-            (Some(m), Some(n)) => m < n,
-            (None, Some(n)) => n >= 8,
-            _ => false,
-        };
+    let must_transpose = input_facts[0].datum_type.is_number()
+        && ((input_facts[1].konst.is_some()
+            && input_facts[1].opaque_fact.as_ref().is_some_and(|of| of.is::<BlockQuantFact>()))
+            || match (op.m.as_i64(), op.n.as_i64()) {
+                (Some(m), Some(n)) => m < n,
+                (None, Some(n)) => n >= 8,
+                _ => false,
+            });
     if must_transpose {
         return Ok(Some(transpose(op, model, node)?));
     }
