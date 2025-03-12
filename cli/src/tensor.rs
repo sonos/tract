@@ -30,6 +30,7 @@ pub fn run_params_from_subcommand(
         params.allow_float_casts || sub_matches.is_present("allow-float-casts");
 
     let mut symbols = SymbolValues::default();
+
     if let Some(pp) = sub_matches.value_of("pp") {
         let value: i64 =
             pp.parse().with_context(|| format!("Can not parse symbol value in --pp {pp}"))?;
@@ -42,6 +43,21 @@ pub fn run_params_from_subcommand(
         }
         symbols.set(&p, 0);
         symbols.set(&s, value);
+        allow_random_input = true
+    }
+
+    if let Some(tg) = sub_matches.value_of("tg") {
+        let value: i64 =
+            tg.parse().with_context(|| format!("Can not parse symbol value in --tg {tg}"))?;
+        let Some(typed_model) = params.tract_model.downcast_ref::<TypedModel>() else {
+            bail!("TG mode can only be used with a TypedModel");
+        };
+        let (b, s, p) = crate::llm::figure_out_b_s_p(typed_model)?;
+        if let Some(b) = b {
+            symbols.set(&b, 1);
+        }
+        symbols.set(&p, value - 1);
+        symbols.set(&s, 1);
         allow_random_input = true
     }
 
