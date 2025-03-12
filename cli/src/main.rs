@@ -509,6 +509,7 @@ fn run_options(command: clap::Command) -> clap::Command {
                 ),
                 )
         .arg(arg!(--pp [pp] "Random input for LLM-like prompt processing"))
+        .arg(arg!(--tg [tg] "Random input for LLM-like text generation"))
         .arg(Arg::new("skip-order-opt-ram")
             .long("skip-order-opt-ram")
             .help("Plan node evaluation order without RAM optimisation"),
