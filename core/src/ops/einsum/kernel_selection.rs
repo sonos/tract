@@ -30,12 +30,31 @@ pub fn wire_packing(
             .context("wire_prepacked");
     }
     let ops = tract_linalg::ops();
+    let old = || {
+        let Some(m) = op.m.as_i64() else { return None };
+        let Some(k) = op.k.as_i64() else { return None };
+        let Some(n) = op.n.as_i64() else { return None };
+        ops.mmm(
+            op.acceptable_accumulators()[0],
+            Some(m as usize),
+            Some(k as usize),
+            Some(n as usize),
+        )
+        .and_then(|mmm| {
+            mmm.packings()
+                .iter()
+                .enumerate()
+                .find(|(_, (pa, pb))| {
+                    pa.precursor() == a_dt.into() && pb.precursor() == b_dt.into()
+                })
+                .map(|(p, (pa, pb))| (mmm.clone(), p, pa.clone(), pb.clone()))
+        })
+    };
+
     let (mmm, p, pa, pb):(Box<dyn MatMatMul>, usize, Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>) =
     // "simple" kernel selection
-    if let (Some(m), Some(k), Some(n)) = (op.m.as_i64(), op.k.as_i64(), op.n.as_i64()) {
-        let mmm = ops.mmm(op.acceptable_accumulators()[0], Some(m as usize), Some(k as usize), Some(n as usize)).unwrap();
-        let (p, (pa, pb)) = mmm.packings().iter().enumerate().find(|(_, (pa, pb))| pa.precursor()==a_dt.into() && pb.precursor()==b_dt.into()).unwrap();
-        (mmm.clone(), p, pa.clone(), pb.clone())
+    if let Some(old) = old() {
+        old
     } else {
         tract_linalg::ops()
         .mmm_impls()
