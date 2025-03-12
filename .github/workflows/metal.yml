@@ -24,7 +24,6 @@ jobs:
     - run: cargo test -p tract-onnx
     - run: cargo test -p tract-onnx-opl
     - run: cargo test -p tract-metal
-    - run: cargo test -p tract-onnx-core 
     - run: cargo test -p test-onnx-core
     - run: cargo test -p test-unit-core
-    - run: cargo test -p tract-metal
+    - run: cargo test -p test-metal
