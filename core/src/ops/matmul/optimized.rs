@@ -90,8 +90,8 @@ impl ProtoFusedSpec {
                     b_packing.same_as(b.format())
                         || (b_packing.is::<PackedFormat>() && b_packing.r() == b.format().r())
                 );
-                debug_assert!(pa.k().to_dim() == geo.k);
-                debug_assert!(b.k().to_dim() == geo.k);
+                debug_assert!(pa.k().to_dim().compatible_with(&geo.k.to_dim()));
+                debug_assert!(b.k().to_dim().compatible_with(&geo.k.to_dim()));
                 FusedSpec::AddMatMul {
                     a: pa,
                     b: AsInputValue::Borrowed(&**b),

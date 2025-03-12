@@ -25,7 +25,7 @@ mod bench;
 mod compare;
 mod cost;
 mod dump;
-mod errors {}
+mod llm;
 mod params;
 mod plan_options;
 mod run;
@@ -508,6 +508,7 @@ fn run_options(command: clap::Command) -> clap::Command {
                 "Path to a directory containing input tensors in NNEF format (.dat files). This sets tensor values.",
                 ),
                 )
+        .arg(arg!(--pp [pp] "Random input for LLM-like prompt processing"))
         .arg(Arg::new("skip-order-opt-ram")
             .long("skip-order-opt-ram")
             .help("Plan node evaluation order without RAM optimisation"),
