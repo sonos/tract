@@ -29,14 +29,20 @@ pub fn wire_packing(
         return wire_prepacked(patch, prefix, op, operands[0], operands[1])
             .context("wire_prepacked");
     }
-
+    let ops = tract_linalg::ops();
+    let (mmm, p, pa, pb):(Box<dyn MatMatMul>, usize, Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>) =
     // "simple" kernel selection
-    let (mmm, p, pa, pb) = tract_linalg::ops()
+    if let (Some(m), Some(k), Some(n)) = (op.m.as_i64(), op.k.as_i64(), op.n.as_i64()) {
+        let mmm = ops.mmm(op.acceptable_accumulators()[0], Some(m as usize), Some(k as usize), Some(n as usize)).unwrap();
+        let (p, (pa, pb)) = mmm.packings().iter().enumerate().find(|(_, (pa, pb))| pa.precursor()==a_dt.into() && pb.precursor()==b_dt.into()).unwrap();
+        (mmm.clone(), p, pa.clone(), pb.clone())
+    } else {
+        tract_linalg::ops()
         .mmm_impls()
         .iter()
         .filter(|mmm| op.acceptable_accumulators().contains(&mmm.internal_type()))
         .flat_map(move |mmm| {
-            mmm.packings().iter().enumerate().map(|(ix, p)| (mmm.clone(), ix, &p.0, &p.1))
+            mmm.packings().iter().enumerate().map(|(ix, p)| (mmm.clone(), ix, p.0.clone(), p.1.clone()))
         })
         .filter(|(_, _, pa, pb)| {
             pa.precursor().as_dt().is_some_and(|dt| dt == a_dt.unquantized())
@@ -45,7 +51,8 @@ pub fn wire_packing(
         .min_by_key(|(mmm, _, _, _)| {
             1_000_000_000 + mmm.quality().cost() * 10_000 - mmm.mr() * mmm.nr()
         })
-        .unwrap();
+        .unwrap()
+    };
 
     let pa = patch.wire_node(
         format!("{prefix}.pack_a"),
