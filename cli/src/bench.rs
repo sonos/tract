@@ -41,7 +41,7 @@ pub fn handle(
     limits.warmup(model, &inputs)?;
 
     let mut state = {
-        if matches.is_present("metal"){
+        if matches.is_present("metal") {
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             {
                 let mut plan = SimplePlan::new_with_options(model, &plan_options)?;
@@ -59,9 +59,7 @@ pub fn handle(
             {
                 bail!("Metal bench called on non-Metal model");
             }
-        }
-        else
-        {
+        } else {
             let plan = SimplePlan::new_with_options(model, &plan_options)?;
             SimpleState::new(Arc::new(plan))?
         }
@@ -88,6 +86,12 @@ pub fn handle(
         println!("real: {}", dur.as_secs_f64());
     } else {
         println!("Bench ran {} times, {}.", iters, terminal::dur_avg(dur));
+    }
+
+    if let Some(pp) = sub_matches.value_of("pp") {
+        let pp = pp.parse::<usize>()?;
+        let tokens = pp as f64 / dur.as_secs_f64();
+        println!("PP{pp}: {tokens:.1} tokens/sec");
     }
 
     Ok(())
