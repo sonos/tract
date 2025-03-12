@@ -1,0 +1,30 @@
+name: Metal tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron:  '0 3 * * *'
+
+
+env:
+  CARGO_INCREMENTAL: false
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
+
+jobs:
+  metal:
+    runs-on: macOS-arm64-metal
+
+    steps:
+    - uses: actions/checkout@v4
+      run: cargo check --workspace --exclude test-blas
+    - run: cargo test -p tract-linalg
+    - run: cargo test -p tract-core
+    - run: cargo test -p tract-nnef
+    - run: cargo test -p tract-onnx
+    - run: cargo test -p tract-onnx-opl
+    - run: cargo test -p tract-metal
+    - run: cargo test -p tract-onnx-core 
+    - run: cargo test -p test-onnx-core
+    - run: cargo test -p test-unit-core
+    - run: cargo test -p tract-metal
