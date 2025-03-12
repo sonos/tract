@@ -61,13 +61,17 @@ impl<O: MetalEvalOp + TypedOp> MetalEvalOp for MetalFusedAxisOp<O> {
                 let reshaped_input = axis_ops.iter().try_fold(
                     m_input.clone(),
                     |t, axis_op| -> TractResult<MetalTensor> {
-                        let new_shape = match &axis_op.0 {
-                            AxisOp::Move(..) => bail!(
-                                "Cannot fused {:?} with metal op {:?}",
-                                &axis_op.0,
-                                self.op.name()
-                            ),
-                            AxisOp::Reshape(skip, from, to) => {
+                        let (new_shape, strides) = match &axis_op.0 {
+                            AxisOp::Move(from, to) => {
+                                let mut shape: TVec<usize> = t.shape().into();
+                                axis_op.0.change_shape_array(&mut shape, false)?;
+                                let mut strides = t.strides().to_vec();
+                                strides.swap(*from, *to);
+                                (shape, strides)
+                            },
+                            AxisOp::Reshape(at, from, to) => {
+                                let strides = t.strides().to_vec();
+                                ensure!(strides.is_sorted_by(|a, b| a >= b));
                                 let from = from
                                     .iter()
                                     .map(|d| d.eval(&session.resolved_symbols))
@@ -75,17 +79,29 @@ impl<O: MetalEvalOp + TypedOp> MetalEvalOp for MetalFusedAxisOp<O> {
                                 let to =
                                     to.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
                                 let mut shape: TVec<usize> = t.shape().into();
-                                AxisOp::Reshape(*skip, from, to)
+                                AxisOp::Reshape(*at, from, to)
                                     .change_shape_array(&mut shape, false)?;
-                                shape
+                                
+                                (shape.clone(), Tensor::natural_strides(&shape).to_vec())
                             }
-                            AxisOp::Add(_) | AxisOp::Rm(_) => {
+                            AxisOp::Add(ax) => {
                                 let mut shape: TVec<usize> = t.shape().into();
                                 axis_op.0.change_shape_array(&mut shape, false)?;
-                                shape
+
+                                let mut strides = t.strides().to_vec();
+                                let new_stride = strides.get((*ax as isize - 1).max(0) as usize).unwrap_or(&1);
+                                strides.insert(*ax, *new_stride);
+                                (shape, strides)
+                            }
+                            AxisOp::Rm(ax) => {
+                                let mut shape: TVec<usize> = t.shape().into();
+                                axis_op.0.change_shape_array(&mut shape, false)?;
+                                let mut strides = t.strides().to_vec();
+                                strides.remove(*ax);
+                                (shape, strides)
                             }
                         };
-                        t.reshaped(new_shape)
+                        t.reshaped(new_shape, strides)
                     },
                 )?;
 

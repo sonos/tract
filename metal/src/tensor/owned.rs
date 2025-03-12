@@ -51,17 +51,18 @@ impl MValue {
     }
 
     /// Reshaped tensor with given shape.
-    pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> Result<Self> {
+    pub fn reshaped(&self, shape: impl Into<TVec<usize>>, strides: impl Into<TVec<isize>>) -> Result<Self> {
         let shape = shape.into();
         if self.len() != shape.iter().product::<usize>() {
             bail!("Invalid reshape {:?} to {:?}", self.shape(), shape);
         }
+
         if shape.as_slice() != self.shape() {
             match &self {
                 MValue::Const(t) | MValue::Var(t) | MValue::Reshaped { t, .. } => {
                     Ok(Self::Reshaped {
                         t: Arc::clone(t),
-                        strides: Tensor::natural_strides(&shape),
+                        strides: strides.into(),
                         shape,
                     })
                 }
@@ -193,8 +194,8 @@ impl OwnedMetalTensor {
 
     /// Reshaped tensor with given shape.
     #[inline]
-    pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> Result<Self> {
-        Ok(Self { inner: self.inner.reshaped(shape)?, metal: self.metal.clone() })
+    pub fn reshaped(&self, shape: impl Into<TVec<usize>>, strides: impl Into<TVec<isize>>) -> Result<Self> {
+        Ok(Self { inner: self.inner.reshaped(shape, strides)?, metal: self.metal.clone() })
     }
 
     /// Reshaped tensor with given shape and strides, no consistency check.
