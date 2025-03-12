@@ -13,7 +13,8 @@ env:
 
 jobs:
   metal:
-    runs-on: macOS-arm64-metal
+#    runs-on: macOS-arm64-metal
+    runs-on: macOS
 
     steps:
     - uses: actions/checkout@v4
