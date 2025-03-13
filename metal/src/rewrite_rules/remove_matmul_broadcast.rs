@@ -54,13 +54,12 @@ pub fn remove_ggml_broadcast_pre_matmul(
         _ => return Ok(None),
     };
 
-    // Only Ggml kernels have internal broadcasting. If no kernel impl is specified,
-    // Ggml kernels will be used if and only activations are F32
+    // Only Ggml kernels have internal broadcasting
     let in_facts = model.node_input_facts(mm_node.id)?;
-    if ctx.gemm_impl != Some(MetalGemmImplKind::Ggml)
-        && (ctx.gemm_impl.is_some() || in_facts[0].datum_type != DatumType::F32)
-    {
-        return Ok(None);
+    match ctx.gemm_impl {
+        Some(MetalGemmImplKind::Ggml) => {}
+        None if in_facts[0].datum_type != DatumType::F32 => return Ok(None),
+        _ => {}
     }
 
     let mut matmul_inputs = patch.taps(model, &mm_node.inputs)?;

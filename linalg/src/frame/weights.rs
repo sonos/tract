@@ -17,7 +17,6 @@ impl From<DatumType> for WeightType {
         match value {
             DatumType::F16 => WeightType::Plain(DatumType::F16),
             DatumType::F32 => WeightType::Plain(DatumType::F32),
-            DatumType::F64 => WeightType::Plain(DatumType::F64),
             DatumType::I32 => WeightType::Plain(DatumType::I32),
             DatumType::I8 | DatumType::QI8(_) => WeightType::Plain(DatumType::I8),
             DatumType::U8 | DatumType::QU8(_) => WeightType::Plain(DatumType::U8),
