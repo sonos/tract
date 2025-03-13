@@ -262,8 +262,9 @@ fn main() -> TractResult<()> {
     let run = assertions_options(run);
     app = app.subcommand(run);
 
-    let optimize = clap::Command::new("optimize").about("Optimize the graph");
-    app = app.subcommand(output_options(optimize));
+    let llm_bench =
+        clap::Command::new("llm-bench").long_about("llamas.cpp-style bench (tg128 and pp512)");
+    app = app.subcommand(llm_bench);
 
     let stream_check = clap::Command::new("stream-check")
         .long_about("Compare output of streamed and regular exec");
@@ -749,6 +750,11 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                 &params::bench_limits_from_clap(m)?,
                 inner,
             )
+        }
+
+        Some(("llm-bench", m)) => {
+            need_optimisations = true;
+            llm::handle(&params, &matches, m, &params::bench_limits_from_clap(m)?, probe)
         }
 
         Some((s, _)) => bail!("Unknown subcommand {}.", s),
