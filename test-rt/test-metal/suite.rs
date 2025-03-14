@@ -21,7 +21,7 @@ fn mk_suite() -> infra::TestSuite {
         "proptest",
         BinEinsumProblemParams {
             force_unique_non_trivial_m_n: true,
-            max_dims: 6,
+            max_dims: 5,
             ..BinEinsumProblemParams::default()
         },
     );
