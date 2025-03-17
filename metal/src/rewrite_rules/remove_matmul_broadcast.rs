@@ -57,7 +57,7 @@ pub fn remove_ggml_broadcast_pre_matmul(
     // Only Ggml kernels have internal broadcasting
     let in_facts = model.node_input_facts(mm_node.id)?;
     match ctx.gemm_impl {
-        Some(MetalGemmImplKind::Ggml) => {},
+        Some(MetalGemmImplKind::Ggml) => {}
         None if in_facts[0].datum_type != DatumType::F32 => return Ok(None),
         _ => {}
     }
