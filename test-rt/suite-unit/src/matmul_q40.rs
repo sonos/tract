@@ -1,4 +1,4 @@
-use std::{fmt, ops::Mul};
+use std::fmt;
 
 use infra::{Test, TestResult, TestSuite};
 use proptest::prelude::*;
@@ -7,11 +7,10 @@ use tract_core::internal::*;
 use tract_core::ndarray::Ix2;
 use tract_core::ops::array::{Pad, PadMode};
 use tract_core::ops::konst::Const;
-use tract_core::tract_linalg::frame::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
-use tract_ndarray::{ArrayD, Axis, Dimension};
+use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
+use tract_ndarray::{ArrayD, Axis};
 
 use tract_core::ops::einsum::EinSum;
-use tract_num_traits::{One, Zero};
 
 #[derive(Debug, Clone, Default)]
 pub struct MatmulQ40ProblemParams {
@@ -88,7 +87,7 @@ impl MatmulQ40Problem {
 
         let opaque_a = tensor0(Opaque(Arc::new(bqv))).into_arc_tensor();
 
-        let a = model.wire_node("a", Const::new_with_opaque_fact(opaque_a, Box::new(bqf)), &[])?[0];
+        let a = model.wire_node("a", Const::new_with_opaque_fact(opaque_a, Box::new(bqf))?, &[])?[0];
         let b = model.add_source("b", TypedFact::shape_and_dt_of(&self.b))?;
         
         let k = self.b.shape()[1];
