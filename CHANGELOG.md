@@ -1,5 +1,12 @@
 # Unreleased
 
+* [cli] augment audit capabilities for mm implementation choices
+* revisit matmul kernel selection
+* improve gather with compressed inputs
+* revisit slice bubbling up to unlock optimisations
+* fix a bug around flipping substractions
+* support for left q40 input in arm64 f32 accumulating kernels (unlocks q40f32 compression on arm64)
+
 # 0.21.10 - 2025-02-21
 * WIP llm testability (--approx-custom)
 * [metal] ggml-ported kernels
