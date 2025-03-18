@@ -23,7 +23,7 @@ use readings_probe::*;
 
 mod bench;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
-mod check_mem_arena;
+mod memory_arena;
 mod compare;
 mod cost;
 mod dump;
@@ -357,10 +357,10 @@ fn dump_subcommand<'a>() -> clap::Command<'a> {
             .help("Checks computed against the provided value (form: \"FMA(F32)=2060448 DIV(F32)=24576\")")
             )
         .arg(
-            Arg::new("check-mem-arena")
+            Arg::new("memory-arena")
             .takes_value(true)
-            .long("check-mem-arena")
-            .help("Checks arena memory size and usage. Only available on MacOS and iOS")
+            .long("memory-arena")
+            .help("Dump arena memory statistics to a JSON file (MacOS / iOS only)")
         )
         .arg(
             Arg::new("nnef-override-output-name")

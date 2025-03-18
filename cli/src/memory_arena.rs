@@ -67,7 +67,7 @@ impl MemArenaMetrics {
     }
 }
 
-pub fn verify_size_and_usage(
+pub fn dump_metrics(
     model: &TypedModel,
     options: &PlanOptions,
     path: impl AsRef<std::path::Path>
