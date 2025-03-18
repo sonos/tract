@@ -276,17 +276,20 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
     } else {
         bail!("Unexpected block quant format")
     };
-    ensure!(header.rank == 2);
-    let shape: TVec<usize> = header.dims[0..2].iter().map(|x| (*x as usize)).collect();
-    ensure!(shape.iter().product::<usize>() % format.block_len() == 0);
-    let expected_len = shape.iter().product::<usize>() / format.block_len() * format.block_bytes();
+    ensure!(header.rank >= 2);
+    let shape: TVec<_> =
+        header.dims.iter().take(header.rank as usize).map(|d| *d as usize).collect();
+    let q_m = shape[0];
+    let q_k = shape.iter().skip(1).product::<usize>();
+    ensure!(q_k % format.block_len() == 0);
+    let expected_len = (q_m * q_k) / format.block_len() * format.block_bytes();
     ensure!(expected_len == header.data_size_bytes as _);
     let mut blob = unsafe { Blob::new_for_size_and_align(expected_len, 128) };
     r.read_exact(&mut blob)?;
     if header.item_type == 0x2040 {
         tract_to_gguf_q4_0_packing(&mut blob)?;
     }
-    let fact = BlockQuantFact { format: Box::new(format), shape };
+    let fact = BlockQuantFact::new(Box::new(format), shape);
     let bqv = BlockQuantValue { value: blob, fact };
     let tensor = tensor0(Opaque(Arc::new(bqv)));
     Ok(tensor)
@@ -295,12 +298,12 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
 #[allow(clippy::field_reassign_with_default)]
 fn write_block_quant_value(w: &mut impl Write, value: &BlockQuantValue) -> TractResult<()> {
     ensure!(value.fact.format.same_as(&Q4_0));
-    ensure!(value.fact.shape.len() == 2);
 
     let mut header = Header::default();
-    header.rank = 2;
-    header.dims[0] = value.fact.shape[0].to_usize()? as _;
-    header.dims[1] = value.fact.shape[1].to_usize()? as _;
+    header.rank = value.fact.shape().len() as u32;
+    for (h, v) in header.dims.iter_mut().zip(value.fact.shape().iter()) {
+        *h = *v as u32;
+    }
     header.bits_per_item = u32::MAX;
     header.data_size_bytes = value.value.len() as _;
     header.item_type_vendor = TRACT_ITEM_TYPE_VENDOR;

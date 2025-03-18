@@ -359,7 +359,7 @@ fn check_matmul_in_dts(in_facts: &[TypedFact]) -> bool {
 
 fn is_input_broadcast(facts: TVec<&TypedFact>) -> bool {
     let b_shape = as_q40_fact(facts[1])
-        .map(|fact| fact.shape[0])
+        .map(|fact| fact.shape()[0])
         .unwrap_or(facts[1].shape[0].to_i64().unwrap_or(0) as usize);
 
     b_shape != facts[0].shape[0].to_i64().unwrap_or(0) as usize

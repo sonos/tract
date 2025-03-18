@@ -272,7 +272,7 @@ impl TypedOp for BasicMatMul {
             })
         {
             let a_shape: ShapeFact =
-                a.shape.iter().cloned().chain(opf.shape.iter().map(|d| d.to_dim())).collect();
+                a.shape.iter().cloned().chain(opf.shape().iter().map(|d| d.to_dim())).collect();
             Ok(tvec!(self
                 .quantize_output
                 .unwrap_or(b.datum_type)
@@ -291,7 +291,7 @@ impl TypedOp for BasicMatMul {
             })
         {
             let b_shape: ShapeFact =
-                b.shape.iter().cloned().chain(opf.shape.iter().map(|d| d.to_dim())).collect();
+                b.shape.iter().cloned().chain(opf.shape().iter().map(|d| d.to_dim())).collect();
             Ok(tvec!(self
                 .quantize_output
                 .unwrap_or(a.datum_type)

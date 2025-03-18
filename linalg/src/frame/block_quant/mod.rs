@@ -261,14 +261,14 @@ impl MMMInputFormat for PackedBlockQuantFormat {
             };
             Cow::Owned(tensor0(Opaque(Arc::new(BlockQuantValue {
                 value: quant,
-                fact: BlockQuantFact { format: self.bq.clone(), shape: tvec!(m, k) },
+                fact: BlockQuantFact::new(self.bq.clone(), tvec!(m, k)),
             }))))
         } else {
             Cow::Borrowed(t)
         };
         ensure!(k_axis == 1);
         let quant = t.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>().unwrap();
-        Ok(Box::new(self.pack(&quant.value, quant.fact.shape[k_axis])?))
+        Ok(Box::new(self.pack(&quant.value, quant.fact.k())?))
     }
 
     fn precursor(&self) -> WeightType {

@@ -58,8 +58,8 @@ impl Gather {
 
     fn eval_bq<F: Datum>(&self, data: &BlockQuantValue, indices: &TValue) -> TractResult<Tensor> {
         ensure!(self.axis == 0);
-        ensure!(data.fact.shape.len() == 2);
-        let data_shape = &data.fact.shape;
+        ensure!(data.fact.shape().len() == 2);
+        let data_shape = &data.fact.shape();
         let output_shape = &*self.compute_output_shape(data_shape, indices.shape())?;
         let mut output = unsafe { Tensor::uninitialized::<F>(output_shape)? };
         let indices_slice = indices.as_slice::<i64>()?;

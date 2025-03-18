@@ -74,7 +74,7 @@ fn block_quant_einsum_weights(
         format.quant_f32(a.cast_to::<f32>()?.as_slice::<f32>()?)?
     };
     let name = &model.node(node.inputs[0].node).name;
-    let fact = BlockQuantFact { format: Box::new(format), shape: a.shape().into() };
+    let fact = BlockQuantFact::new(Box::new(format), a.shape().into());
     let value = BlockQuantValue { fact: fact.clone(), value: weights };
     let weights = patch.wire_node(
         format!("{name}.bq"),
