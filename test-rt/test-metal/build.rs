@@ -14,4 +14,6 @@ fn main() {
         "runtime()",
         "Approximation::Approximate",
     );
+
+    ggml_suite::suite().test_runtime("none", "ggml_suite::suite()", "runtime()", "Approximation::Approximate");
 }
