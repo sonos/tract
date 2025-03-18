@@ -135,6 +135,9 @@ fn should_slice_output(
     if node.outputs[0].successors.len() == 0 {
         return Ok(None);
     }
+    if node.op_is::<Slice>() {
+        return Ok(None);
+    }
     let slicers: TVec<usize> = node.outputs[0]
         .successors
         .iter()

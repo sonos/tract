@@ -1,0 +1,14 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+graph network(input) -> (o00, o01, o10, o11)
+{
+    input = tract_core_external(shape = [2, 2], datum_type = 'f32');
+    o0 = slice(input, axes = [0], begin = [0], end = [1], stride = [1]);
+    o1 = slice(input, axes = [0], begin = [1], end = [2], stride = [1]);
+    o00 = slice(o0, axes = [1], begin = [0], end = [1], stride = [1]);
+    o01 = slice(o0, axes = [1], begin = [1], end = [2], stride = [1]);
+    o10 = slice(o1, axes = [1], begin = [0], end = [1], stride = [1]);
+    o11 = slice(o1, axes = [1], begin = [1], end = [2], stride = [1]);
+}
