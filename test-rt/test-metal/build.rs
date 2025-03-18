@@ -1,7 +1,7 @@
-#[path = "suite.rs"]
-mod suite;
 #[path = "ggml_suite.rs"]
 mod ggml_suite;
+#[path = "suite.rs"]
+mod suite;
 
 fn main() {
     suite::suite().test_runtime("mlx", "suite::suite()", "runtime()", "Approximation::Approximate");
@@ -15,5 +15,10 @@ fn main() {
         "Approximation::Approximate",
     );
 
-    ggml_suite::suite().test_runtime("none", "ggml_suite::suite()", "runtime()", "Approximation::Approximate");
+    ggml_suite::suite().test_runtime(
+        "none",
+        "ggml_suite::suite()",
+        "runtime()",
+        "Approximation::Approximate",
+    );
 }

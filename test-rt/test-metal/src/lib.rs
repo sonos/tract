@@ -8,10 +8,10 @@ use paste::paste;
 use tract_core::runtime::Runtime;
 use tract_metal::MetalGemmImplKind;
 
-#[path = "../suite.rs"]
-mod suite;
 #[path = "../ggml_suite.rs"]
 mod ggml_suite;
+#[path = "../suite.rs"]
+mod suite;
 
 #[derive(Debug)]
 struct MetalTestRuntime {
