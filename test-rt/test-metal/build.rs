@@ -1,14 +1,16 @@
 #[path = "suite.rs"]
 mod suite;
+#[path = "ggml_suite.rs"]
+mod ggml_suite;
 
 fn main() {
     suite::suite().test_runtime("mlx", "suite::suite()", "runtime()", "Approximation::Approximate");
 
     suite::suite().test_runtime("mfa", "suite::suite()", "runtime()", "Approximation::Approximate");
 
-    suite::suite().test_runtime(
+    ggml_suite::suite().test_runtime(
         "ggml",
-        "suite::suite()",
+        "ggml_suite::suite()",
         "runtime()",
         "Approximation::Approximate",
     );

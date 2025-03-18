@@ -166,9 +166,16 @@ pub fn suite() -> TractResult<TestSuite> {
         weights_in_b: false,
     });
 
-    suite.add("minimal_matvec_bis", MatmulQ40Problem {
+    suite.add("minimal_matvec_weights_in_b_0", MatmulQ40Problem {
         a: tensor2(&[[0f32, 1f32]]),
         b: tensor2(&[[0f32, 1f32]]),
+        weights_in_b: true,
+    });
+
+    //  a:1,1,F32 0 b:1,1,F32 0
+    suite.add("minimal_matvec_weights_in_b_1", MatmulQ40Problem {
+        a: tensor2(&[[0f32]]),
+        b: tensor2(&[[0f32]]),
         weights_in_b: true,
     });
     Ok(suite)

@@ -10,6 +10,8 @@ use tract_metal::MetalGemmImplKind;
 
 #[path = "../suite.rs"]
 mod suite;
+#[path = "../ggml_suite.rs"]
+mod ggml_suite;
 
 #[derive(Debug)]
 struct MetalTestRuntime {
