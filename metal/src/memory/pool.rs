@@ -55,6 +55,33 @@ impl MetalMemoryPool {
             .unwrap_or_else(|| unsafe { Tensor::uninitialized_dt(dt, shape)?.into_metal() })
     }
 
+    pub fn tensor_for_node_with_strides(
+        &self,
+        node_id: usize,
+        dt: DatumType,
+        shape: &[usize],
+        strides: &[isize],
+    ) -> Result<MetalTensor> {
+        ensure!(!self.node_seen.borrow().contains(&node_id), "Tensor for node {:?} was already requested. Maybe the memory pool was not reset properly.", node_id);
+        let alignment = dt.alignment();
+        (self.alignment % alignment == 0)
+            .then(|| self.resolved_schema.offsets_by_node[node_id])
+            .flatten()
+            .map(|offset| {
+                // self.node_seen.borrow_mut().insert(node_id);
+                Ok(MetalArenaView {
+                    arena: Arc::clone(&self.storage),
+                    dt,
+                    len: shape.iter().product(),
+                    shape: shape.into(),
+                    strides: strides.into(),
+                    offset_bytes: offset,
+                }
+                .into())
+            })
+            .unwrap_or_else(|| unsafe { Tensor::uninitialized_dt(dt, shape)?.into_metal()?.restrided(strides) })
+    }
+
     pub fn reset(&self) {
         self.node_seen.borrow_mut().clear();
     }

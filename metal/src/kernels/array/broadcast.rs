@@ -67,7 +67,8 @@ impl MultiBroadcast {
 
         let mut input_shape = vec![1; output.rank() - input.rank()];
         input_shape.extend(input.shape());
-        let input_strides = Tensor::natural_strides(&input_shape);
+        let mut input_strides = vec![input.strides()[0]; output.rank() - input.rank()];
+        input_strides.extend(input.strides());
 
         let broadcast_kind = BroadcastKind::from_rank(output.rank()).with_context(|| {
             anyhow!(
