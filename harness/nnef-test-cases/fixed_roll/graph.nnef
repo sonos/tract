@@ -1,0 +1,14 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+graph network(input_0) -> (output_0)
+{
+    input_0 = tract_core_external(shape = [1, 2, 3], datum_type = 'f32');
+    output_0_roll_l0_p1 = slice(input_0, axes = [1], begin = [1], end = [2], stride = [1]);
+    output_0_roll_l0_p2 = slice(input_0, axes = [1], begin = [0], end = [1], stride = [1]);
+    output_0_roll_0 = concat([output_0_roll_l0_p1, output_0_roll_l0_p2], axis = 1);
+    output_0_roll_l1_p1 = slice(output_0_roll_0, axes = [2], begin = [2], end = [3], stride = [1]);
+    output_0_roll_l1_p2 = slice(output_0_roll_0, axes = [2], begin = [0], end = [2], stride = [1]);
+    output_0 = concat([output_0_roll_l1_p1, output_0_roll_l1_p2], axis = 2);
+}
