@@ -9,10 +9,10 @@ use tract_core::runtime::Runtime;
 use tract_core::tract_data::itertools::Itertools;
 use tract_metal::MetalGemmImplKind;
 
-#[path = "../suite.rs"]
-mod suite;
 #[path = "../ggml_suite.rs"]
 mod ggml_suite;
+#[path = "../suite.rs"]
+mod suite;
 
 #[derive(Debug)]
 struct MetalTestTransformState {
@@ -84,7 +84,7 @@ struct MetalTestRuntime {
     name: &'static str,
     phase: usize,
     optimize: bool,
-    gemm_impl: MetalGemmImplKind,
+    gemm_impl: Option<MetalGemmImplKind>,
     transpose_inputs: bool,
     use_arena: bool,
 }
@@ -137,7 +137,7 @@ impl Runtime for MetalTestRuntime {
             }
         }
 
-        tract_metal::transform::MetalTransform { gemm_impl: Some(self.gemm_impl) }
+        tract_metal::transform::MetalTransform { gemm_impl: self.gemm_impl }
             .transform_up_to_phase(&mut model, self.phase)?;
         if self.optimize {
             model = model.into_optimized()?;
@@ -178,7 +178,7 @@ macro_rules! metal_test_suite {
 }
 
 macro_rules! metal_runtime {
-    ($gemm_impl: ident) => {
+    ($gemm_impl: expr) => {
         metal_test_suite!(metal_phase_2_translate, 2, false, $gemm_impl, false, false);
         metal_test_suite!(metal_phase_3_post_translate, 3, false, $gemm_impl, false, false);
         metal_test_suite!(optimized_metal, usize::MAX, true, $gemm_impl, false, false);
@@ -186,10 +186,15 @@ macro_rules! metal_runtime {
     };
 }
 
-// Common transform
-metal_test_suite!(metal_phase_0_einsum, 0, false, Mlx, false, false);
-metal_test_suite!(metal_phase_1_pre_translate, 1, false, Mlx, false, false);
+static MLX: Option<MetalGemmImplKind> = Some(MetalGemmImplKind::Mlx);
+static MFA: Option<MetalGemmImplKind> = Some(MetalGemmImplKind::Mfa);
+static GGML: Option<MetalGemmImplKind> = Some(MetalGemmImplKind::Ggml);
 
-metal_runtime!(Mlx);
-metal_runtime!(Mfa);
-metal_runtime!(Ggml);
+// Common transform
+metal_test_suite!(metal_phase_0_einsum, 0, false, MLX);
+metal_test_suite!(metal_phase_1_pre_translate, 1, false, MLX);
+
+metal_runtime!(None);
+metal_runtime!(MLX);
+metal_runtime!(MFA);
+metal_runtime!(GGML);

@@ -220,17 +220,22 @@ impl EvalOp for BasicMatMul {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
-        let a_shape = a.view()
-                        .tensor
-                        .to_scalar::<Opaque>()
-                        .map(|od| {
-                            od.downcast_ref::<BlockQuantValue>()
-                                .map(|bqv| {
-                                    a.shape().iter().cloned().chain(bqv.fact.shape.iter().map(|d| *d)).collect_vec()
-                                })
-                                .unwrap_or(a.shape().to_vec())
-                        })
-                        .unwrap_or(a.shape().to_vec());
+        let a_shape = a
+            .view()
+            .tensor
+            .to_scalar::<Opaque>()
+            .map(|od| {
+                od.downcast_ref::<BlockQuantValue>()
+                    .map(|bqv| {
+                        a.shape()
+                            .iter()
+                            .cloned()
+                            .chain(bqv.fact.shape().iter().map(|d| *d))
+                            .collect_vec()
+                    })
+                    .unwrap_or(a.shape().to_vec())
+            })
+            .unwrap_or(a.shape().to_vec());
 
         let output_shape = self.output_shape(&a_shape, b.shape());
         if let Some(qp) = self.quantize_output {
