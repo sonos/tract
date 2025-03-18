@@ -551,8 +551,8 @@ mod tests {
         const HEAD_DIM: i64 = 64;
         const SEQUENCE_LENGTH: i64 = 1;
         const PAST_SEQUENCE_LENGTH: i64 = 8;
-        const EXPECTED_PEAK_SIZE: i64 = 83072;
-        const EXPECTED_USAGE: f32 = 0.533;
+        const EXPECTED_PEAK_SIZE: i64 = 9344;
+        const EXPECTED_USAGE: f32 = 0.57;
 
         // Build a model with Scaled Dot-Product Attention (SDPA) layers
         let mut model = TypedModel::default();
@@ -570,6 +570,7 @@ mod tests {
         let v = model.add_source("v", v_fact)?;
 
         let outputs = wire_sdpa_layer(&mut model, "0", q, k, v)?;
+        let outputs = wire_sdpa_layer(&mut model, "1", outputs[0], k, v)?;
 
         model.set_output_outlets(&outputs)?;
 
