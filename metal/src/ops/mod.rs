@@ -107,5 +107,5 @@ pub fn make_tensor_for_node_with_strides(
 ) -> TractResult<MetalTensor> {
     crate::session_handler::get_metal_mem_pool(session)
         .map(|mem| mem.tensor_for_node_with_strides(node_id, dt, shape, strides))
-        .unwrap_or_else(|| unsafe { MetalTensor::uninitialized_dt(dt, shape) })
+        .unwrap_or_else(|| unsafe { MetalTensor::uninitialized_dt(dt, shape)?.restrided(strides) })
 }

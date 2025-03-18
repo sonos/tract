@@ -1,3 +1,4 @@
+use crate::utils::check_strides_validity;
 use crate::MetalContext;
 use metal::Buffer;
 use metal::MTLResourceOptions;
@@ -137,6 +138,8 @@ impl MetalArenaView {
 
     pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> TractResult<Self> {
         let strides = strides.into();
+        check_strides_validity(self.shape().into(), strides.clone())?;
+
         if strides.as_slice() != self.strides() {
             Ok(Self {
                 arena: Arc::clone(&self.arena),

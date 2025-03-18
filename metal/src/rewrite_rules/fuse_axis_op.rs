@@ -19,8 +19,6 @@ pub fn collect_chain_of_axis_ops<'a>(
         let Some(axis_op) = cursor.op_as::<MetalAxisOp>().filter(|o| is_supported_axis_op(o)) else {
             break;
         };
-        //let in_facts: &TypedFact = model.node_input_facts(cursor.id)?[0];
-        //check_stride_compatibility(in_facts, &acc_axis_ops);
         head_of_chain = cursor;
 
         let Some(prev_node) = previous_node(model, cursor) else {
