@@ -1,6 +1,6 @@
 
 use tract_hir::internal::*;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use tract_metal::memory::MetalMemSchema;
 
@@ -26,13 +26,13 @@ impl MemArenaUsage {
 struct MemArenaMetrics {
     memory_size: String,
     size_by_partition: Vec<String>,
-    pp: HashMap<i64, MemArenaUsage>,
-    tg: HashMap<i64, MemArenaUsage>,
+    pp: BTreeMap<i64, MemArenaUsage>,
+    tg: BTreeMap<i64, MemArenaUsage>,
 }
 
 impl MemArenaMetrics {
     pub fn from_schema(schema: &MetalMemSchema) -> TractResult<Self> {
-        log::info!("Analyzing Metal memory schema utilization...");
+        log::info!("Analyzing memory arena utilization...");
         const MAX_GEN_TOKENS: i64 = 2048;
         const MAX_PROMPT_TOKENS: i64 = 2048;
 
@@ -47,7 +47,7 @@ impl MemArenaMetrics {
         let sequence_length =  symbol_scope.sym("S");
         let past_sequence_length = symbol_scope.sym("P");
 
-        let mut pp = HashMap::new();
+        let mut pp = BTreeMap::new();
         for s in (STEP_TOKENS..MAX_PROMPT_TOKENS+1).step_by(STEP_TOKENS as usize) {
             log::info!("Prompt processing: P: 0, S: {}", s);
             let symbol_values = SymbolValues::default()
@@ -55,7 +55,7 @@ impl MemArenaMetrics {
                 .with(&past_sequence_length, 0);
             pp.insert(s, MemArenaUsage::eval_from_schema(&schema, &symbol_values)?);
         }
-        let mut tg = HashMap::new();
+        let mut tg = BTreeMap::new();
         for p in (0..MAX_GEN_TOKENS+1).step_by(STEP_TOKENS as usize) {
             log::info!("Token generation: P: {}, S: 1", p);
             let symbol_values = SymbolValues::default()
@@ -92,6 +92,9 @@ pub fn dump_metrics(
     symbol_values.set(&past_sequence_length, SCHEMA_HINT_P);
 
     let schema = MetalMemSchema::build(model, order, &symbol_values)?;
+
+    println!("resolved_memory_size: {}", schema.eval_memory_size(&symbol_values)?);
+    println!("Schema:\n{}", schema);
 
     let metrics = MemArenaMetrics::from_schema(&schema)?;
 
