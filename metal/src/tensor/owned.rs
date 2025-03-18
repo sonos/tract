@@ -1,4 +1,4 @@
-use crate::utils::as_q40_tensor;
+use crate::utils::{as_q40_tensor, check_strides_validity};
 use crate::MetalTensor;
 use anyhow::Result;
 use metal::Buffer;
@@ -74,12 +74,10 @@ impl MValue {
 
     pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> Result<Self> {
         let strides = strides.into();
-        //if self.len() != shape.iter().product::<usize>() {
-        //    bail!("Invalid reshape {:?} to {:?}", self.shape(), shape);
-        //}
+        check_strides_validity(self.shape().into(), strides.clone())?;
+
         match &self {
                 MValue::Const(t) | MValue::Var(t) => {
-                    dbg!(&strides);
                     Ok(Self::Reshaped {
                         t: Arc::clone(t),
                         strides,

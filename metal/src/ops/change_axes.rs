@@ -94,10 +94,7 @@ impl MetalEvalOp for MetalAxisOp {
                 permutation.insert(*to, *from);
                 let out_shape = PermuteAxes::output_shape(input.shape(), &permutation)?;
                 
-                let output =
-                    crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &out_shape)?;
-                
-                if self.1 && !matches!(input, MetalTensor::Owned(_)) && !matches!(output, MetalTensor::Owned(_)){
+                if self.1 && !matches!(input, MetalTensor::Owned(_)){
                     let mut out_strides: TVec<isize> = input.strides().to_smallvec();
                     let removed_stride = out_strides.remove(*from);
                     out_strides.insert(*to, removed_stride);
@@ -109,9 +106,8 @@ impl MetalEvalOp for MetalAxisOp {
                         &out_strides
                     )?;
 
-                    if output.metal_offset::<usize>() != input.metal_offset::<usize>() {
-                        bail!("Error here");
-                    }
+                    ensure!(matches!(output, MetalTensor::ArenaView(_)) && (output.metal_offset::<usize>() == input.metal_offset::<usize>()),
+                            "Attempt to fuse MoveAxis Op with incompatible I/O");
 
                     return Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
                 } else {
