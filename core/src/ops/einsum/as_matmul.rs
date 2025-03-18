@@ -230,7 +230,7 @@ impl EvalOp for BasicMatMul {
                         a.shape()
                             .iter()
                             .cloned()
-                            .chain(bqv.fact.shape().iter().map(|d| *d))
+                            .chain(bqv.fact.shape().iter().copied())
                             .collect_vec()
                     })
                     .unwrap_or(a.shape().to_vec())
