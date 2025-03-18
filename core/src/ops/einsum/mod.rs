@@ -28,7 +28,7 @@ pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<[TDim]
     };
     let inner_shape: Cow<[usize]> = if let Some(bqf) = opaque_fact.downcast_ref::<BlockQuantFact>()
     {
-        Cow::Borrowed(&*bqf.shape)
+        Cow::Borrowed(bqf.shape())
     // } else if let Some(pbqf) = opaque_fact.downcast_ref::<PackedBlockQuantFact>() {
     //     &pbqf.shape
     } else if let Some(pof) = opaque_fact.downcast_ref::<PackedOpaqueFact>() {

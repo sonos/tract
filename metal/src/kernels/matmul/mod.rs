@@ -280,7 +280,7 @@ impl<M: GemmKernel> GemmImpl<M> {
         b: &MetalTensor,
     ) -> TractResult<MetalTensor> {
         let b_shape = as_q40_tensor(b.view().tensor)
-            .map(|bqv| b.shape().iter().cloned().chain(bqv.fact.shape.iter().copied()).collect())
+            .map(|bqv| b.shape().iter().cloned().chain(bqv.fact.shape().iter().copied()).collect())
             .unwrap_or(b.shape().to_vec());
 
         let c_dt = self.matmul.output_dt(a.datum_type(), b.datum_type())?;
@@ -305,7 +305,7 @@ impl<M: GemmKernel> GemmImpl<M> {
 
         let q40_b = as_q40_tensor(b.view().tensor);
         let b_shape = q40_b
-            .map(|bqv| b.shape().iter().cloned().chain(bqv.fact.shape.iter().copied()).collect())
+            .map(|bqv| b.shape().iter().cloned().chain(bqv.fact.shape().iter().copied()).collect())
             .unwrap_or(b.shape().to_vec());
 
         ensure!(c.shape() == self.output_shape(a.shape(), &b_shape).as_slice());
@@ -909,10 +909,10 @@ mod tests {
                             )?;
 
                             tensor0(Opaque(Arc::new(BlockQuantValue {
-                                fact: BlockQuantFact {
-                                    format: Box::new(Q4_0),
-                                    shape: tvec![self.b, self.n, self.k],
-                                },
+                                fact: BlockQuantFact::new(
+                                    Box::new(Q4_0),
+                                    tvec![self.b, self.n, self.k],
+                                ),
                                 value: b_quant,
                             })))
                         }

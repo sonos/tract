@@ -6,7 +6,24 @@ use tract_data::TVec;
 #[derive(Clone, Hash)]
 pub struct BlockQuantFact {
     pub format: Box<dyn BlockQuant>,
-    pub shape: TVec<usize>,
+    shape: TVec<usize>,
+}
+impl BlockQuantFact {
+    pub fn new(format: Box<dyn BlockQuant>, shape: TVec<usize>) -> Self {
+        Self { format, shape }
+    }
+
+    pub fn m(&self) -> usize {
+        self.shape[0]
+    }
+
+    pub fn k(&self) -> usize {
+        self.shape.iter().skip(1).product()
+    }
+
+    pub fn shape(&self) -> &[usize] {
+        &self.shape
+    }
 }
 
 impl std::fmt::Debug for BlockQuantFact {

@@ -9,6 +9,7 @@ use tract_core::ops::cast::cast;
 use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PoolSpec;
+use tract_core::ops::einsum::block_quant_aware_input_shape;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
 use tract_core::ops::math::min;
@@ -419,10 +420,11 @@ pub fn conv_or_deconv(
     bias = builder.model.wire_node(format!("{name}.cast_bias"), cast(bias_dt), &[bias])?[0];
 
     let mut inputs = tvec!(input, kernel, bias);
+    let kernel_shape: ShapeFact = block_quant_aware_input_shape(&kernel_fact)?.iter().collect();
     let (group, pool_spec) = read_conv_parameters(
         builder,
         invocation,
-        kernel_fact.shape.as_concrete().context("Except fixed kernel shape")?,
+        kernel_shape.as_concrete().context("Except fixed kernel shape")?,
         &input_fact,
     )?;
 
