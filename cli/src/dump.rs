@@ -172,24 +172,24 @@ pub fn handle(
         annotations.track_axes(model, &hints)?;
     }
 
-    if sub_matches.is_present("check-mem-arena") {
+    if sub_matches.is_present("memory-arena") {
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
-            crate::check_mem_arena::verify_size_and_usage(
+            crate::memory_arena::dump_metrics(
                 params
                     .tract_model
                     .downcast_ref::<TypedModel>()
                     .context("Check memory arena requires a typed model")?,
                 &plan_options_from_subcommand(sub_matches)?,
                 std::path::Path::new(sub_matches
-                    .value_of("check-mem-arena")
-                    .ok_or(anyhow!("check-mem-arena requires path to JSON file"))?)
+                    .value_of("memory-arena")
+                    .ok_or(anyhow!("Path to JSON file required"))?)
                     .to_path_buf(),
             )?;
         }
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
-            bail!("Check memory arena requires MacOS / iOS device");
+            bail!("Memory arena is only enabled for MacOS / iOS devices");
         }
     }
 
