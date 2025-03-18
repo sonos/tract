@@ -1,18 +1,19 @@
 use crate::kernels::array::{Memcpy, PermuteAxes};
 use crate::ops::MetalEvalOp;
-use crate::{MetalContext, MetalTensorExt};
+use crate::{MetalContext, MetalTensor, MetalTensorExt};
 use std::fmt::Debug;
+use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 use tract_itertools::Itertools;
 
 #[derive(Clone, Hash, PartialEq)]
 #[allow(clippy::large_enum_variant)] // FIXME ?
 #[allow(clippy::derived_hash_with_manual_eq)] // FIXME. this one may be pretty bad. how about a.canonical() == b.canonical() ? need proper canonicalizeation of Reshape
-pub struct MetalAxisOp(pub AxisOp);
+pub struct MetalAxisOp(pub AxisOp, pub bool);
 
 impl MetalAxisOp {
     pub fn from_tract_core(op: AxisOp) -> Self {
-        Self(op)
+        Self(op, false)
     }
 
     pub fn from_tract_core_with_fact(op: AxisOp, fact: &TypedFact) -> Self {
@@ -25,19 +26,19 @@ impl MetalAxisOp {
                             from,
                             tvec![dims[from].clone(), dims[to].clone()],
                             tvec![dims[to].clone(), dims[from].clone()],
-                        ))
+                        ), false)
                     } else {
                         Self(AxisOp::Reshape(
                             to,
                             tvec![dims[to].clone(), dims[from].clone()],
                             tvec![dims[from].clone(), dims[to].clone()],
-                        ))
+                        ), false)
                     }
                 } else {
-                    Self(op)
+                    Self(op, false)
                 }
             }
-            _ => Self(op),
+            _ => Self(op, false),
         }
     }
 }
@@ -48,7 +49,7 @@ impl Debug for MetalAxisOp {
             AxisOp::Add(a) => write!(f, "MetalAdd({a})"),
             AxisOp::Rm(a) => write!(f, "MetalRm({a})"),
             AxisOp::Move(from, to) => {
-                write!(f, "MetalMove({from}, {to})")
+                write!(f, "MetalMove({from}, {to}), Fuse_move: {}", self.1)
             }
             AxisOp::Reshape(at, from, to) => {
                 write!(
@@ -91,14 +92,39 @@ impl MetalEvalOp for MetalAxisOp {
                 let mut permutation: Vec<usize> = (0..input.rank()).collect();
                 permutation.remove(*from);
                 permutation.insert(*to, *from);
-                let output = crate::ops::make_tensor_for_node(
-                    session,
-                    node_id,
-                    input.datum_type(),
-                    &PermuteAxes::output_shape(input.shape(), &permutation)?,
-                )?;
-                PermuteAxes.dispatch_eval(context, input, &permutation, &output)?;
-                return Ok(tvec!(output.into_opaque_tensor().into_tvalue()));
+                let out_shape = PermuteAxes::output_shape(input.shape(), &permutation)?;
+                
+                let output =
+                    crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &out_shape)?;
+                
+                if self.1 && !matches!(input, MetalTensor::Owned(_)) && !matches!(output, MetalTensor::Owned(_)){
+                    let mut out_strides: TVec<isize> = input.strides().to_smallvec();
+                    let removed_stride = out_strides.remove(*from);
+                    out_strides.insert(*to, removed_stride);
+                    let output = crate::ops::make_tensor_for_node_with_strides(
+                        session,
+                        node_id,
+                        input.datum_type(),
+                        &out_shape,
+                        &out_strides
+                    )?;
+
+                    if output.metal_offset::<usize>() != input.metal_offset::<usize>() {
+                        bail!("Error here");
+                    }
+
+                    return Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+                } else {
+                    let output = crate::ops::make_tensor_for_node(
+                        session,
+                        node_id,
+                        input.datum_type(),
+                        &out_shape
+                    )?;
+
+                    PermuteAxes.dispatch_eval(context, input, &permutation, &output)?;
+                    return Ok(tvec!(output.into_opaque_tensor().into_tvalue()));
+                }
             }
             AxisOp::Reshape(skip, from, to) => {
                 let from = from.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
@@ -114,12 +140,11 @@ impl MetalEvalOp for MetalAxisOp {
             }
         };
 
-        // TODO: avoid copy because of memory pool integration
-        // Perform copy because of memory pool integration
         let output =
             crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &new_shape)?;
-
-        Memcpy.dispatch_eval(context, input, 0, &output)?;
+        if matches!(input, MetalTensor::Owned(_)) || matches!(output, MetalTensor::Owned(_)) || (output.metal_offset::<usize>() != input.metal_offset::<usize>()) {
+            Memcpy.dispatch_eval(context, input, 0, &output)?;
+        }
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }
@@ -150,12 +175,12 @@ impl TypedOp for MetalAxisOp {
         mapping: &HashMap<OutletId, OutletId>,
         values: &SymbolValues,
     ) -> TractResult<TVec<OutletId>> {
-        let op = if let MetalAxisOp(AxisOp::Reshape(axis, from, to)) = self {
+        let op = if let MetalAxisOp(AxisOp::Reshape(axis, from, to), false) = self {
             MetalAxisOp(AxisOp::Reshape(
                 *axis,
                 from.iter().map(|d| d.eval(values)).collect(),
                 to.iter().map(|d| d.eval(values)).collect(),
-            ))
+            ), false)
         } else {
             self.clone()
         };

@@ -115,7 +115,7 @@ impl MetalArenaView {
     }
 
     /// Reshaped tensor with given shape.
-    pub fn reshaped(&self, shape: impl Into<TVec<usize>>, strides: impl Into<TVec<isize>>) -> TractResult<Self> {
+    pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> TractResult<Self> {
         let shape = shape.into();
         if self.len() != shape.iter().product::<usize>() {
             bail!("Invalid reshape {:?} to {:?}", self.shape(), shape);
@@ -126,8 +126,24 @@ impl MetalArenaView {
                 arena: Arc::clone(&self.arena),
                 dt: self.dt,
                 len: self.len,
-                strides: strides.into(),
+                strides: Tensor::natural_strides(&shape),
                 shape,
+                offset_bytes: self.offset_bytes,
+            })
+        } else {
+            Ok(self.clone())
+        }
+    }
+
+    pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> TractResult<Self> {
+        let strides = strides.into();
+        if strides.as_slice() != self.strides() {
+            Ok(Self {
+                arena: Arc::clone(&self.arena),
+                dt: self.dt,
+                len: self.len,
+                strides: strides,
+                shape: self.shape.clone(),
                 offset_bytes: self.offset_bytes,
             })
         } else {

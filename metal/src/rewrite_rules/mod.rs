@@ -13,7 +13,7 @@ use tract_core::internal::*;
 use tract_core::ops::konst::Const;
 
 pub use apply_rope::{as_apply_rope_rule, BasicApplyRope};
-pub use fuse_axis_op::fuse_axis_op;
+pub use fuse_axis_op::{fuse_axis_op, fuse_move_axis};
 pub use new_gelu::{as_new_gelu_rule, BasicNewGelu};
 pub use remove_matmul_broadcast::remove_ggml_broadcast_pre_matmul;
 pub use rewire_metal_sync::{rewire_metal_sync, rewire_metal_sync_after_const};

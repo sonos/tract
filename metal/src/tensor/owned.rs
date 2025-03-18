@@ -51,7 +51,7 @@ impl MValue {
     }
 
     /// Reshaped tensor with given shape.
-    pub fn reshaped(&self, shape: impl Into<TVec<usize>>, strides: impl Into<TVec<isize>>) -> Result<Self> {
+    pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> Result<Self> {
         let shape = shape.into();
         if self.len() != shape.iter().product::<usize>() {
             bail!("Invalid reshape {:?} to {:?}", self.shape(), shape);
@@ -62,7 +62,7 @@ impl MValue {
                 MValue::Const(t) | MValue::Var(t) | MValue::Reshaped { t, .. } => {
                     Ok(Self::Reshaped {
                         t: Arc::clone(t),
-                        strides: strides.into(),
+                        strides: Tensor::natural_strides(&shape),
                         shape,
                     })
                 }
@@ -70,6 +70,35 @@ impl MValue {
         } else {
             Ok(self.clone())
         }
+    }
+
+    pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> Result<Self> {
+        let strides = strides.into();
+        //if self.len() != shape.iter().product::<usize>() {
+        //    bail!("Invalid reshape {:?} to {:?}", self.shape(), shape);
+        //}
+        match &self {
+                MValue::Const(t) | MValue::Var(t) => {
+                    dbg!(&strides);
+                    Ok(Self::Reshaped {
+                        t: Arc::clone(t),
+                        strides,
+                        shape: t.shape().into(),
+                    })
+                },
+                MValue::Reshaped { t, strides: old_strides, .. } => {
+                    dbg!(&strides, &old_strides);
+                    if &strides != old_strides {
+                        Ok(Self::Reshaped {
+                            t: Arc::clone(t),
+                            strides: strides,
+                            shape: t.shape().into(),
+                        })
+                    } else {
+                        Ok(self.clone())
+                    }
+                }
+            }
     }
 
     pub fn as_arc_tensor(&self) -> Option<&Arc<Tensor>> {
@@ -194,8 +223,14 @@ impl OwnedMetalTensor {
 
     /// Reshaped tensor with given shape.
     #[inline]
-    pub fn reshaped(&self, shape: impl Into<TVec<usize>>, strides: impl Into<TVec<isize>>) -> Result<Self> {
-        Ok(Self { inner: self.inner.reshaped(shape, strides)?, metal: self.metal.clone() })
+    pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> Result<Self> {
+        Ok(Self { inner: self.inner.reshaped(shape)?, metal: self.metal.clone() })
+    }
+
+    /// Restrided tensor with given shape.
+    #[inline]
+    pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> Result<Self> {
+        Ok(Self { inner: self.inner.restrided(strides)?, metal: self.metal.clone() })
     }
 
     /// Reshaped tensor with given shape and strides, no consistency check.

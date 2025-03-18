@@ -149,10 +149,17 @@ impl MetalTensor {
     }
 
     /// Reshaped tensor with given shape.
-    pub fn reshaped(&self, shape: impl Into<TVec<usize>>, strides: impl Into<TVec<isize>>) -> Result<Self> {
+    pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> Result<Self> {
         match self {
-            Self::Owned(t) => Ok(Self::Owned(t.reshaped(shape, strides)?)),
-            Self::ArenaView(t) => Ok(Self::ArenaView(t.reshaped(shape, strides)?)),
+            Self::Owned(t) => Ok(Self::Owned(t.reshaped(shape)?)),
+            Self::ArenaView(t) => Ok(Self::ArenaView(t.reshaped(shape)?)),
+        }
+    }
+    
+    pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> Result<Self> {
+        match self {
+            Self::Owned(t) => Ok(Self::Owned(t.restrided(strides)?)),
+            Self::ArenaView(t) => Ok(Self::ArenaView(t.restrided(strides)?)),
         }
     }
 

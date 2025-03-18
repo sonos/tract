@@ -120,7 +120,8 @@ impl MetalTransform {
                 "rewire-metal-sync-after-const",
                 rewrite_rules::rewire_metal_sync_after_const,
             )
-            .with_rule_for("fuse_axis_op", rewrite_rules::fuse_axis_op)
+            //.with_rule_for("fuse_axis_op", rewrite_rules::fuse_axis_op)
+            .with_rule_for("fuse_move_axis", rewrite_rules::fuse_move_axis)
             .rewrite(&(), model)?;
         Ok(())
     }

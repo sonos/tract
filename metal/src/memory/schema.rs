@@ -1,5 +1,5 @@
 use crate::fact::MetalTypedFactExt;
-use crate::ops::MetalSyncKind;
+use crate::ops::{MetalAxisOp, MetalSyncKind};
 use std::fmt;
 use std::fmt::Debug;
 use tract_core::internal::*;
@@ -249,7 +249,12 @@ impl fmt::Display for MetalMemSchema {
         Ok(())
     }
 }
-
+fn previous_node<'a>(model: &'a TypedModel, node: &TypedNode) -> Option<&'a TypedNode> {
+    if node.inputs.len() != 1 {
+        return None;
+    }
+    Some(&model.nodes()[node.inputs[0].node])
+}
 impl MetalMemSchema {
     /// Resolve Memory schema with given symbols.
     pub fn resolve(&self, symbols: &SymbolValues) -> TractResult<MetalResolvedMemSchema> {
@@ -267,27 +272,43 @@ impl MetalMemSchema {
         order: &[usize],
         hint: &SymbolValues,
     ) -> TractResult<MetalMemSchema> {
-        let mut nodes_mem_req = eval_metal_mem_req_for_nodes(model, order)?;
+        let nodes_mem_req = eval_metal_mem_req_for_nodes(model, order)?;
 
         let hinted_mem_size = nodes_mem_req
             .iter()
             .map(|node_mem| Ok((node_mem.node, node_mem.mem_size.eval_to_i64(hint)?)))
             .collect::<TractResult<HashMap<usize, i64>>>()?;
 
-        nodes_mem_req.sort_by(|lhs, rhs| {
-            let lhs_hint_mem_size = hinted_mem_size.get(&lhs.node);
-            let rhs_hint_mem_size = hinted_mem_size.get(&rhs.node);
-
-            lhs.lifetime
-                .end
-                .cmp(&rhs.lifetime.end)
-                .reverse()
-                .then(lhs.lifetime.len().cmp(&rhs.lifetime.len()).reverse())
-                .then(lhs_hint_mem_size.cmp(&rhs_hint_mem_size).reverse())
-        });
+        //nodes_mem_req.sort_by(|lhs, rhs| {
+        //    let lhs_hint_mem_size = hinted_mem_size.get(&lhs.node);
+        //    let rhs_hint_mem_size = hinted_mem_size.get(&rhs.node);
+//
+        //    lhs.lifetime
+        //        .end
+        //        .cmp(&rhs.lifetime.end)
+        //        .reverse()
+        //        .then(lhs.lifetime.len().cmp(&rhs.lifetime.len()).reverse())
+        //        .then(lhs_hint_mem_size.cmp(&rhs_hint_mem_size).reverse())
+        //});
 
         let mut partitions: Vec<Partition> = vec![];
-        for node_mem in nodes_mem_req {
+        for node_mem in nodes_mem_req.clone() {
+            if model.node(node_mem.node).op_as::<MetalAxisOp>()
+            .is_some_and(|ax_op| matches!(ax_op.0, AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Reshape(..)) || ax_op.1) {
+                let prev_node = previous_node(model, model.node(node_mem.node)).with_context(|| format!("Expected one input for axis op"))?;
+                let mut prev_partition =  None;
+                for part in partitions.iter_mut() {
+                    let nodes: Vec<_> = part.nodes.iter().map(|n_mem| n_mem.node).collect();
+                    if nodes.contains(&prev_node.id) {
+                        prev_partition = Some(part);
+                    }
+                }
+                if prev_partition.is_some(){
+                    prev_partition.unwrap().nodes.push(node_mem.clone());
+                    println!("Node {} is in-place", node_mem.node);
+                    continue;
+                }
+            }
             // Find partitions where node lifetime is disjoint from existing.
             let mut available = partitions
                 .iter_mut()

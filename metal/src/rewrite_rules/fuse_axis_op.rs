@@ -4,8 +4,8 @@ use crate::rewrite_rules::{next_node, previous_node, previous_nodes};
 use crate::rule_ensure;
 use tract_core::internal::*;
 
-fn is_suppored_axis_op(op: &MetalAxisOp) -> bool {
-    matches!(op.0, AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Reshape(..))
+fn is_supported_axis_op(op: &MetalAxisOp) -> bool {
+    matches!(op.0, AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Reshape(..) | AxisOp::Move(..))
 }
 
 pub fn collect_chain_of_axis_ops<'a>(
@@ -16,10 +16,11 @@ pub fn collect_chain_of_axis_ops<'a>(
     let mut head_of_chain = node;
     let mut acc_axis_ops = tvec![];
     loop {
-        let Some(axis_op) = cursor.op_as::<MetalAxisOp>().filter(|o| is_suppored_axis_op(o)) else {
+        let Some(axis_op) = cursor.op_as::<MetalAxisOp>().filter(|o| is_supported_axis_op(o)) else {
             break;
         };
-
+        //let in_facts: &TypedFact = model.node_input_facts(cursor.id)?[0];
+        //check_stride_compatibility(in_facts, &acc_axis_ops);
         head_of_chain = cursor;
 
         let Some(prev_node) = previous_node(model, cursor) else {
@@ -55,7 +56,7 @@ pub fn fuse_axis_op(
     _axis_node_name: &str,
     axis_op: &MetalAxisOp,
 ) -> TractResult<Option<TypedModelPatch>> {
-    rule_ensure!(is_suppored_axis_op(axis_op));
+    rule_ensure!(is_supported_axis_op(axis_op));
 
     let Some(node) = next_node(model, axis_node) else { return Ok(None) };
 
@@ -125,4 +126,47 @@ pub fn fuse_axis_op(
     } else {
         Ok(None)
     }
+}
+
+fn can_fuse_with_move(op: &MetalAxisOp) -> bool {
+    matches!(op.0, AxisOp::Add(_) | AxisOp::Rm(_))
+}
+
+pub fn fuse_move_axis(
+    _ctx: &(),
+    model: &TypedModel,
+    axis_node: &TypedNode,
+    _axis_node_name: &str,
+    axis_op: &MetalAxisOp,
+) -> TractResult<Option<TypedModelPatch>> {
+    rule_ensure!(matches!(axis_op.0, AxisOp::Move(..)) && !axis_op.1);
+    
+    let Some(node) = next_node(model, axis_node) else { return Ok(None) };
+    let mut cursor = node;
+
+    loop {
+        let Some(_) = cursor.op_as::<MetalAxisOp>().filter(|o| can_fuse_with_move(o)) else {
+            break;
+        };
+        let Some(node) = next_node(model, cursor) else { break; };
+        cursor = node;
+    }
+
+    if node.op_is::<crate::ops::MetalGemm<MlxGemm>>() || 
+        node.op_is::<crate::ops::MetalGemm<GgmlGemm>>() || 
+        node.op_is::<crate::ops::MetalGemm<MfaGemm>>() || 
+        node.op_is::<crate::ops::MetalSync>() || 
+        node.op_is::<crate::ops::MetalElementWiseOp>() || 
+        node.op_is::<crate::ops::MetalBinOp>() ||
+        // Op reshaping to Dim3 
+        node.op_is::<crate::ops::MetalSoftmax>() ||
+        node.op_is::<crate::ops::MetalReduce>() ||
+        node.op_is::<crate::ops::MetalRmsNorm>() ||
+        node.op_is::<MetalAxisOp>() {
+            return Ok(None)
+    }
+
+    let new_op = MetalAxisOp(axis_op.0.clone(), true);
+    let patch = TypedModelPatch::replace_single_op(model, axis_node, &axis_node.inputs, new_op)?;
+    Ok(Some(patch))
 }
