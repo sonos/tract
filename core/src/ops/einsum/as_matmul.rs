@@ -226,7 +226,7 @@ impl EvalOp for BasicMatMul {
                         .map(|od| {
                             od.downcast_ref::<BlockQuantValue>()
                                 .map(|bqv| {
-                                    a.shape().iter().cloned().chain(bqv.fact.shape.iter().map(|d| *d)).collect_vec()
+                                    a.shape().iter().cloned().chain(bqv.fact.shape.iter().copied()).collect_vec()
                                 })
                                 .unwrap_or(a.shape().to_vec())
                         })
