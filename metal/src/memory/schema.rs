@@ -305,7 +305,6 @@ impl MetalMemSchema {
                 }
                 if prev_partition.is_some(){
                     prev_partition.unwrap().nodes.push(node_mem.clone());
-                    println!("Node {} is in-place", node_mem.node);
                     continue;
                 }
             }
