@@ -6,6 +6,7 @@ use tract_metal::memory::MetalMemSchema;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct MemArenaUsage {
+    arena_memory_size: i64,
     peak_memory_size: i64,
     peak_memory_usage: f32,
 }
@@ -16,6 +17,7 @@ impl MemArenaUsage {
         symbol_values: &SymbolValues
     ) -> TractResult<Self> {
         Ok(Self {
+            arena_memory_size: schema.eval_memory_size(&symbol_values)?,
             peak_memory_size: schema.eval_peak_memory_size(&symbol_values)?,
             peak_memory_usage: schema.eval_usage(&symbol_values)?,
         })
@@ -28,6 +30,8 @@ struct MemArenaMetrics {
     size_by_partition: Vec<String>,
     pp: BTreeMap<i64, MemArenaUsage>,
     tg: BTreeMap<i64, MemArenaUsage>,
+    max_memory_size: i64,
+    aggregate_usage: f32,
 }
 
 impl MemArenaMetrics {
@@ -48,12 +52,19 @@ impl MemArenaMetrics {
         let past_sequence_length = symbol_scope.sym("P");
 
         let mut pp = BTreeMap::new();
+        let mut max_memory_size: i64 = 0;
+        let mut sum_size: i64 = 0;
+        let mut sum_used: i64 = 0;
         for s in (STEP_TOKENS..MAX_PROMPT_TOKENS+1).step_by(STEP_TOKENS as usize) {
             log::info!("Prompt processing: P: 0, S: {}", s);
             let symbol_values = SymbolValues::default()
                 .with(&sequence_length, s)
                 .with(&past_sequence_length, 0);
-            pp.insert(s, MemArenaUsage::eval_from_schema(&schema, &symbol_values)?);
+            let usage = MemArenaUsage::eval_from_schema(&schema, &symbol_values)?;
+            max_memory_size = max_memory_size.max(usage.arena_memory_size);
+            sum_size += usage.arena_memory_size;
+            sum_used += usage.peak_memory_size;
+            pp.insert(s, usage);
         }
         let mut tg = BTreeMap::new();
         for p in (0..MAX_GEN_TOKENS+1).step_by(STEP_TOKENS as usize) {
@@ -61,9 +72,15 @@ impl MemArenaMetrics {
             let symbol_values = SymbolValues::default()
                 .with(&sequence_length, 1)
                 .with(&past_sequence_length, p);
-            tg.insert(p, MemArenaUsage::eval_from_schema(&schema, &symbol_values)?);
+            let usage = MemArenaUsage::eval_from_schema(&schema, &symbol_values)?;
+            max_memory_size = max_memory_size.max(usage.arena_memory_size);
+            sum_size += usage.arena_memory_size;
+            sum_used += usage.peak_memory_size;
+            tg.insert(p, usage);
         }
-        Ok(Self { memory_size, size_by_partition, pp, tg })
+
+        let aggregate_usage = ((sum_used * 100 / sum_size) as f32) / 100.0;
+        Ok(Self { memory_size, size_by_partition, pp, tg, max_memory_size, aggregate_usage })
     }
 }
 
