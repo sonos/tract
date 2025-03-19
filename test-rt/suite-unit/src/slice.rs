@@ -72,5 +72,14 @@ pub fn suite() -> TractResult<TestSuite> {
             op: Slice { axis: 0, start: 0.to_dim(), end: 3.to_dim() },
         },
     );
+
+    suite.add(
+        "empty_0",
+        SliceProblem {
+            input_shape: vec![2],
+            op: Slice { axis: 0, start: 0.to_dim(), end: 1.to_dim() },
+        },
+    );
+
     Ok(suite)
 }
