@@ -84,6 +84,7 @@ impl ApplyRope {
             encoder.set_slice(4, input.shape());
             encoder.set_slice(5, input.strides());
             encoder.set_slice(6, &cos_sin_strides);
+            encoder.set_slice(7, output.strides());
 
             let mut grid_size = utils::build_metal_size_for_shape(input.shape());
             grid_size.width /= 2;
