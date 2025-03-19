@@ -191,8 +191,8 @@ pub fn fuse_move_axis(
     // GGML MM only supports discontiguous data on activations
     if cursor.op_is::<crate::ops::MetalGemm<GgmlGemm>>() && 
     (model.node_output_facts(prev_node.id)?[0] == model.node_input_facts(cursor.id)?[1]){
-        println!("GGML MoveAxis is {:?}. With input: {:?}", axis_op, model.node_input_facts(axis_node.id)?);
-        println!("GGML inputs: {:?}", model.node_input_facts(cursor.id)?);
+        //println!("GGML MoveAxis is {:?}. With input: {:?}", axis_op, model.node_input_facts(axis_node.id)?);
+        //println!("GGML inputs: {:?}", model.node_input_facts(cursor.id)?);
         return Ok(None)
     }
 
