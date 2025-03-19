@@ -141,27 +141,36 @@ pub fn fuse_move_axis(
     
     let Some(node) = next_node(model, axis_node) else { return Ok(None) };
     let mut cursor = node;
-
+    let mut prev_node = axis_node;
     loop {
         let Some(_) = cursor.op_as::<MetalAxisOp>().filter(|o| can_fuse_with_move(o)) else {
             break;
         };
         let Some(node) = next_node(model, cursor) else { break; };
+        prev_node = cursor;
         cursor = node;
     }
 
-    if node.op_is::<crate::ops::MetalGemm<MlxGemm>>() || 
-        node.op_is::<crate::ops::MetalGemm<GgmlGemm>>() || 
-        node.op_is::<crate::ops::MetalGemm<MfaGemm>>() || 
-        node.op_is::<crate::ops::MetalSync>() || 
-        node.op_is::<crate::ops::MetalElementWiseOp>() || 
-        node.op_is::<crate::ops::MetalBinOp>() ||
+    if cursor.op_is::<crate::ops::MetalGemm<MlxGemm>>() || 
+        cursor.op_is::<crate::ops::MetalGemm<MfaGemm>>() ||
+        cursor.op_is::<crate::ops::MetalSync>() || 
+        cursor.op_is::<crate::ops::MetalElementWiseOp>() || 
+        cursor.op_is::<crate::ops::MetalBinOp>() ||
         // Op reshaping to Dim3 
-        node.op_is::<crate::ops::MetalSoftmax>() ||
-        node.op_is::<crate::ops::MetalReduce>() ||
-        node.op_is::<crate::ops::MetalRmsNorm>() ||
-        node.op_is::<MetalAxisOp>() {
+        cursor.op_is::<crate::ops::MetalSoftmax>() ||
+        cursor.op_is::<crate::ops::MetalReduce>() ||
+        cursor.op_is::<crate::ops::MetalRmsNorm>() ||
+        cursor.op_is::<MetalAxisOp>() {
+            println!("Can't fuse MoveAxis because of {:?}", cursor.op());
             return Ok(None)
+    }
+
+    // GGML MM only supports discontiguous data on activations
+    if cursor.op_is::<crate::ops::MetalGemm<GgmlGemm>>() && 
+    (model.node_output_facts(prev_node.id)?[0] == model.node_input_facts(cursor.id)?[1]){
+        println!("GGML MoveAxis is {:?}. With input: {:?}", axis_op, model.node_input_facts(axis_node.id)?);
+        println!("GGML inputs: {:?}", model.node_input_facts(cursor.id)?);
+        return Ok(None)
     }
 
     let new_op = MetalAxisOp(axis_op.0.clone(), true);
