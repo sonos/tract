@@ -134,13 +134,36 @@ pub fn fuse_move_axis(
     _ctx: &(),
     model: &TypedModel,
     axis_node: &TypedNode,
-    _axis_node_name: &str,
+    axis_node_name: &str,
     axis_op: &MetalAxisOp,
 ) -> TractResult<Option<TypedModelPatch>> {
     rule_ensure!(matches!(axis_op.0, AxisOp::Move(..)) && !axis_op.1);
     
-    let Some(node) = next_node(model, axis_node) else { return Ok(None) };
-    let mut cursor = node;
+    let Some(mut cursor) = next_node(model, axis_node) else { return Ok(None) };
+
+    // Fuse consecutive MoveAxis if possible 
+    if let (AxisOp::Move(from_1, to_1), AxisOp::Move(from_2, to_2)) = (axis_op.0.clone(),
+        cursor.op_as::<MetalAxisOp>().map(|ax_op| ax_op.0.clone()).unwrap_or(AxisOp::Add(0))) {
+        let mut patch = TypedModelPatch::default();
+
+        let new_op = if to_1 == to_2 {
+            MetalAxisOp(AxisOp::Move(from_1, from_2), false)
+        }
+        else if to_1 == from_2 {
+            MetalAxisOp(AxisOp::Move(from_1, to_2), false)
+        }
+        else {
+            println!("Can't fuse MoveAxis {:?} because of other MoveAxis {:?}", axis_op.0, cursor.op());
+            return Ok(None)
+        };
+
+        let input = patch.taps(model, &axis_node.inputs)?;
+        let out = patch.wire_node(
+            format!("{axis_node_name}.fused_move_axis"), new_op, &input)?;
+        patch.shunt_outside(model, cursor.id.into(), out[0])?;
+        return Ok(Some(patch))
+    }
+
     let mut prev_node = axis_node;
     loop {
         let Some(_) = cursor.op_as::<MetalAxisOp>().filter(|o| can_fuse_with_move(o)) else {
@@ -161,7 +184,7 @@ pub fn fuse_move_axis(
         cursor.op_is::<crate::ops::MetalReduce>() ||
         cursor.op_is::<crate::ops::MetalRmsNorm>() ||
         cursor.op_is::<MetalAxisOp>() {
-            println!("Can't fuse MoveAxis because of {:?}", cursor.op());
+            println!("Can't fuse MoveAxis {:?} because of {:?}", axis_op.0, cursor.op());
             return Ok(None)
     }
 
