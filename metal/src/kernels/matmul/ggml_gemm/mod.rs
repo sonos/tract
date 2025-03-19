@@ -176,7 +176,6 @@ impl GemmKernel for GgmlGemm {
         } = params;
 
         ensure!(!transpose_a && transpose_b);
-
         if (dts[0] == F32) && (k % 32 == 0) && (k >= 64) && ((m > 4) || (q40_b && a_batch > 1)) {
             dispatch_metal_ggml_gemm(
                 context, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer, c_offset,

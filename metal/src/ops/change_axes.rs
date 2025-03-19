@@ -87,7 +87,34 @@ impl MetalEvalOp for MetalAxisOp {
     ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs).into_tensor();
         let input = opaque.to_metal_tensor()?;
-        let new_shape = match &self.0 {
+        let shape = input.shape();
+        let new_op = match self.0 {
+            AxisOp::Move(from, to) if from.abs_diff(to) == 1 => {
+                let dims = shape;
+                if [&dims[from], &dims[to]].contains(&&1usize.into()) {
+                    if from < to {
+                        //println!("Replace Move with Reshape on the fly");
+                        Self(AxisOp::Reshape(
+                            from,
+                            tvec![dims[from].clone().into(), dims[to].clone().into()],
+                            tvec![dims[to].clone().into(), dims[from].clone().into()],
+                        ), false)
+                    } else {
+                        //println!("Replace Move with Reshape on the fly");
+                        Self(AxisOp::Reshape(
+                            to,
+                            tvec![dims[to].clone().into(), dims[from].clone().into()],
+                            tvec![dims[from].clone().into(), dims[to].clone().into()],
+                        ), false)
+                    }
+                } else {
+                    Self(self.0.clone(), self.1)
+                }
+            }
+            _ => Self(self.0.clone(), self.1),
+        };
+
+        let new_shape = match &new_op.0 {
             AxisOp::Move(from, to) => {
                 let mut permutation: Vec<usize> = (0..input.rank()).collect();
                 permutation.remove(*from);
