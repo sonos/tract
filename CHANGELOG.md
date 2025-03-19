@@ -1,5 +1,7 @@
 # Unreleased
 
+# 0.21.11 - 2025-03-19
+
 * [cli] augment audit capabilities for mm implementation choices
 * revisit matmul kernel selection
 * improve gather with compressed inputs

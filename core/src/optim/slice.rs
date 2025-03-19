@@ -1,3 +1,5 @@
+use tract_itertools::Itertools;
+
 use crate::internal::*;
 use crate::ops::array::Slice;
 use crate::optim::OptimizerSession;
@@ -24,6 +26,7 @@ impl super::TypedPass for PushSliceUp {
             for axis in 0..node.outputs[0].fact.rank() {
                 if let Some(succ) = model.single_succ(n)? {
                     let Some(slice) = succ.op_as::<Slice>() else { continue };
+                    let full_len = &node.outputs[0].fact.shape[axis];
                     if slice.axis != axis {
                         continue;
                     }
@@ -34,12 +37,14 @@ impl super::TypedPass for PushSliceUp {
                             continue;
                         }
                     }
-                    let boundaries = tvec!(slice.start.clone(), slice.end.clone());
+                    let boundaries =
+                        tvec!(0.to_dim(), slice.start.clone(), slice.end.clone(), full_len.clone());
                     let Some((mut patch, splits)) =
                         op_slices_to_slice_op(model, node, axis, &boundaries)?
                     else {
                         continue;
                     };
+                    ensure!(splits.len() == 3);
                     // ignore first split (0..start)
                     let wire = splits[1];
                     patch.shunt_outside(model, succ.id.into(), wire)?;
@@ -58,6 +63,7 @@ impl super::TypedPass for PushSliceUp {
                     else {
                         continue;
                     };
+                    ensure!(splits.len() == boundaries.len() - 1);
                     rewire_sliced_outputs(model, node, axis, &mut patch, &boundaries, &splits)
                         .context("Rewiring sliced outputs")?;
                     return Ok(Some(patch));
@@ -82,10 +88,11 @@ fn op_slices_to_slice_op(
     let mut splits = tvec!();
     let mut patch = TypedModelPatch::new(format!("Slice {node} by {boundaries:?}"));
     let inputs = patch.taps(model, &node.inputs)?;
-    let zero = 0.to_dim();
-    let mut start = &zero;
+    let len = &node.outputs[0].fact.shape[axis];
+    ensure!(boundaries[0] == 0.to_dim());
+    ensure!(boundaries.last().as_ref().unwrap() == &len);
     let axis_info = invariants.axis((InOut::Out(0), axis)).unwrap();
-    for end in boundaries {
+    for (start, end) in boundaries.iter().tuple_windows() {
         let mut wires = tvec!();
         for input_ix in 0..inputs.len() {
             let mut wire = inputs[input_ix];
@@ -121,7 +128,6 @@ fn op_slices_to_slice_op(
             return Ok(None);
         };
         splits.push(wire[0]);
-        start = end;
     }
     Ok(Some((patch, splits)))
 }
@@ -187,10 +193,9 @@ fn should_slice_output(
         return Ok(None);
     };
     boundaries.push(end);
-    boundaries.retain(|x| *x > 0);
     boundaries.sort();
     boundaries.dedup();
-    if boundaries.len() == 0 || (boundaries.len() == 1 && boundaries[0] == end) {
+    if boundaries.len() == 2 {
         Ok(None)
     } else {
         Ok(Some(boundaries))
@@ -211,6 +216,10 @@ pub fn rewire_sliced_outputs(
         splits,
     )?[0];
     patch.shunt_outside(model, node.id.into(), full)?;
+    let zero = patch.add_const(
+        format!("{}.zero", node.name),
+        Tensor::zero_scalar_dt(node.outputs[0].fact.datum_type)?,
+    )?;
     for (ix, succ) in node.outputs[0].successors.iter().enumerate() {
         if let Some(slice) =
             model.node(succ.node).op_as::<Slice>().filter(|slice| slice.axis == axis)
@@ -218,8 +227,9 @@ pub fn rewire_sliced_outputs(
             // example: boundaries: 2, 3, wanted: 0..2 -> [0]
             let slices: TVec<OutletId> = boundaries
                 .iter()
+                .tuple_windows()
                 .zip(splits.iter())
-                .filter_map(|(up, split)| {
+                .filter_map(|((_down, up), split)| {
                     if *up > slice.start.to_usize().unwrap() && *up <= slice.end.to_usize().unwrap()
                     {
                         Some(*split)
@@ -228,7 +238,15 @@ pub fn rewire_sliced_outputs(
                     }
                 })
                 .collect();
-            let wire = if slices.len() > 1 {
+            let wire = if slices.len() == 0 {
+                let mut empty_shape = node.outputs[0].fact.shape.clone();
+                empty_shape.set(axis, 0.to_dim());
+                patch.wire_node(
+                    format!("{}.concat-m{}..{}..{}", node.name, ix, slice.start, slice.end),
+                    crate::ops::array::MultiBroadcastTo::new(empty_shape),
+                    &[zero],
+                )?[0]
+            } else if slices.len() > 1 {
                 patch.wire_node(
                     format!("{}.concat-m{}..{}..{}", node.name, ix, slice.start, slice.end),
                     crate::ops::array::TypedConcat::new(axis),
