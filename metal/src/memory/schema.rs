@@ -277,13 +277,7 @@ impl MetalMemSchema {
         nodes_mem_req.sort_by(|lhs, rhs| {
             let lhs_hint_mem_size = hinted_mem_size.get(&lhs.node);
             let rhs_hint_mem_size = hinted_mem_size.get(&rhs.node);
-
-            lhs.lifetime
-                .end
-                .cmp(&rhs.lifetime.end)
-                .reverse()
-                .then(lhs.lifetime.len().cmp(&rhs.lifetime.len()).reverse())
-                .then(lhs_hint_mem_size.cmp(&rhs_hint_mem_size).reverse())
+            lhs_hint_mem_size.cmp(&rhs_hint_mem_size).reverse()
         });
 
         let mut partitions: Vec<Partition> = vec![];
@@ -552,7 +546,7 @@ mod tests {
         const SEQUENCE_LENGTH: i64 = 1;
         const PAST_SEQUENCE_LENGTH: i64 = 8;
         const EXPECTED_PEAK_SIZE: i64 = 9344;
-        const EXPECTED_USAGE: f32 = 0.57;
+        const EXPECTED_USAGE: f32 = 0.89;
 
         // Build a model with Scaled Dot-Product Attention (SDPA) layers
         let mut model = TypedModel::default();

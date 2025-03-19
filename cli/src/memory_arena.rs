@@ -79,7 +79,7 @@ impl MemArenaMetrics {
             tg.insert(p, usage);
         }
 
-        let aggregate_usage = ((sum_used * 100 / sum_size) as f32) / 100.0;
+        let aggregate_usage = ((sum_used * 100 / sum_size.max(1)) as f32) / 100.0;
         Ok(Self { memory_size, size_by_partition, pp, tg, max_memory_size, aggregate_usage })
     }
 }
