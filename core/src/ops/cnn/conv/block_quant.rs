@@ -1,4 +1,4 @@
-use tract_linalg::block_quant::BlockQuantFact;
+use tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue};
 
 use crate::internal::*;
 
@@ -28,7 +28,17 @@ impl EvalOp for BlockQuantIntoShape {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        Ok(inputs)
+        let mut input = args_1!(inputs).into_tensor();
+        for o in input.as_slice_mut::<Opaque>()? {
+            let old =
+                o.0.downcast_ref::<BlockQuantValue>().context("Expects only BlockQuantValues")?;
+            let new = BlockQuantValue {
+                value: old.value.clone(),
+                fact: BlockQuantFact::new(old.fact.format.clone(), self.shape.clone()),
+            };
+            *o = Opaque(Arc::new(new))
+        }
+        Ok(tvec!(input.into_tvalue()))
     }
 }
 
