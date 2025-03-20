@@ -104,12 +104,6 @@ struct MetalTestTransformState {
 
 impl State for MetalTestTransformState {
     fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let session_handler =
-        tract_metal::MetalSessionHandler::from_plan(self.state.plan(), &self.state.session_state.resolved_symbols)?;
-
-        let plan = self.state.plan().clone().with_session_handler(session_handler);
-        let mut state = TypedSimpleState::new(Arc::new(plan))?;
-
         let inputs= inputs.into_iter().map(|input| {
             let input = input.into_tensor();
             let rank = input.rank();
