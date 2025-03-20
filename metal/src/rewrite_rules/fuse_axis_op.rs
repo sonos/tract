@@ -16,7 +16,8 @@ pub fn collect_chain_of_axis_ops<'a>(
     let mut acc_axis_ops = tvec![];
 
     // Allow MoveAxis at end of chain
-    let Some(axis_op) = node.op_as::<MetalAxisOp>().filter(|o| is_supported_axis_op(o) || (matches!(o.0, AxisOp::Move(..)) && can_fuse_with_move(model, node).is_ok_and(|res| res))) else {
+    let Some(axis_op) = node.op_as::<MetalAxisOp>().filter(|o| is_supported_axis_op(o) 
+    || (matches!(o.0, AxisOp::Move(..)) && can_fuse_with_move(model, node))) else {
         return Ok(None)
     };
     let mut head_of_chain = node;
@@ -127,7 +128,7 @@ pub fn fuse_axis_op(
     if let Some(op) = node.op_as::<crate::ops::MetalAxisOp>() {
         rule_ensure!(matches!(op.0, AxisOp::Move(..)));
 
-        if grouped_axis_ops[0].is_empty() || can_fuse_with_move(model, &node)? { return Ok(None) }
+        if grouped_axis_ops[0].is_empty() || can_fuse_with_move(model, &node) { return Ok(None) }
 
         let out = patch.wire_node(
             format!("{node_name}.fused_axis_op"),
@@ -144,19 +145,14 @@ pub fn fuse_axis_op(
 fn can_fuse_with_move(
     model: &TypedModel,
     axis_node: &TypedNode,
-) -> TractResult<bool> {
-    let Some(cursor) = next_node(model, axis_node) else { return Ok(false) };
-    
-    if (cursor.op_is::<crate::ops::MetalGemm<GgmlGemm>>() && 
-        (model.node_output_facts(axis_node.id)?[0] == model.node_input_facts(cursor.id)?[0])) ||
-        cursor.op_is::<crate::ops::MetalConcat>() ||
-        cursor.op_is::<crate::ops::MetalApplyRope>() ||
-        cursor.op_is::<crate::ops::MetalScaledMaskedSoftmax>() ||
-        cursor.op_is::<crate::ops::MetalSlice>() {
+) -> bool {
+    next_node(model, axis_node).is_some_and(|node|
+    node.op_is::<crate::ops::MetalConcat>() ||
+        node.op_is::<crate::ops::MetalApplyRope>() ||
+        node.op_is::<crate::ops::MetalScaledMaskedSoftmax>() ||
+        node.op_is::<crate::ops::MetalSlice>()
+    )
 
-            return Ok(true)
-    }
-    Ok(false)
 }
 
 pub fn fuse_move_axis(
@@ -168,9 +164,12 @@ pub fn fuse_move_axis(
 ) -> TractResult<Option<TypedModelPatch>> {
     rule_ensure!(matches!(axis_op.0, AxisOp::Move(..)));
     
-    let Some(cursor) = next_node(model, axis_node) else { return Ok(None) };
+    if model.node_input_facts(axis_node.id)?[0] == model.node_output_facts(axis_node.id)?[0] {
+        return TypedModelPatch::shunt_one_op(model, axis_node)
+    }
 
     // Fuse consecutive MoveAxis if possible 
+    let Some(cursor) = next_node(model, axis_node) else { return Ok(None) };
     if let (AxisOp::Move(from_1, to_1), AxisOp::Move(from_2, to_2)) = (axis_op.0.clone(),
         cursor.op_as::<MetalAxisOp>().map(|ax_op| ax_op.0.clone()).unwrap_or(AxisOp::Add(0))) {
         let max_rank = [from_1, from_2, to_1, to_2].iter().max().unwrap() + 1;
@@ -181,12 +180,26 @@ pub fn fuse_move_axis(
         let new_axis_ops = perm_to_ops(&perm);
         if new_axis_ops.len() == 1 {
             let mut patch = TypedModelPatch::default();
-            let input = patch.taps(model, &axis_node.inputs)?;
+            let inputs = patch.taps(model, &axis_node.inputs)?;
             let out = patch.wire_node(
-                format!("{axis_node_name}.fused_move_axis"), MetalAxisOp(new_axis_ops[0].clone()), &input)?;
+                format!("{axis_node_name}.fused_move_axis"), MetalAxisOp(new_axis_ops[0].clone()), &inputs)?;
             patch.shunt_outside(model, cursor.id.into(), out[0])?;
             return Ok(Some(patch)) 
         }
+    }
+
+    // Add(x) -> Move(x, y)
+    let Some(cursor) = previous_node(model, axis_node) else { return Ok(None) };
+    if let (AxisOp::Move(from_1, to_1), AxisOp::Add(ax)) = (axis_op.0.clone(),
+        cursor.op_as::<MetalAxisOp>().map(|ax_op| ax_op.0.clone()).unwrap_or(AxisOp::Rm(0))) {
+            if ax == from_1 {
+            let mut patch = TypedModelPatch::default();
+            let inputs = patch.taps(model, &cursor.inputs)?;
+            let out = patch.wire_node(
+                cursor.name.clone(), MetalAxisOp(AxisOp::Add(to_1)), &inputs)?;
+            patch.shunt_outside(model, axis_node.id.into(), out[0])?;
+            return Ok(Some(patch)) 
+            }
     }
     Ok(None)
 }
