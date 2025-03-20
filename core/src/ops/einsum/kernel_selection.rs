@@ -25,7 +25,9 @@ pub fn wire_packing(
     let a_dt = a_fact.datum_type;
     let b_dt = b_fact.datum_type;
 
-    if a_fact.konst.is_some() && a_fact.datum_type.is_opaque() {
+    if a_fact.konst.is_some_and(|k| {
+        k.to_scalar::<Opaque>().ok().is_some_and(|o| o.0.is::<Box<dyn MMMInputValue>>())
+    }) {
         return wire_prepacked(patch, prefix, op, operands[0], operands[1])
             .context("wire_prepacked");
     }
