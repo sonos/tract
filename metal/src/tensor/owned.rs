@@ -81,16 +81,15 @@ impl MValue {
                     Ok(Self::Reshaped {
                         t: Arc::clone(t),
                         strides,
-                        shape: t.shape().into(),
+                        shape: self.shape().into(),
                     })
                 },
                 MValue::Reshaped { t, strides: old_strides, .. } => {
-                    dbg!(&strides, &old_strides);
                     if &strides != old_strides {
                         Ok(Self::Reshaped {
                             t: Arc::clone(t),
                             strides: strides,
-                            shape: t.shape().into(),
+                            shape: self.shape().into(),
                         })
                     } else {
                         Ok(self.clone())

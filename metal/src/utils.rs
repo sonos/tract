@@ -129,7 +129,7 @@ pub fn check_strides_validity(shape: TVec<usize>, strides: TVec<isize>) -> Tract
 
     let mut prev_stride = 1;
     for (dim, stride) in zipped_shape_strides {
-        ensure!(stride == prev_stride, "Invalid strides");
+        ensure!((stride == prev_stride) || (dim == 1), "Invalid strides");
         prev_stride *= dim as isize;
     }
     Ok(())

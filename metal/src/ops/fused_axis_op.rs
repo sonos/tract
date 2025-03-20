@@ -2,6 +2,7 @@ use crate::ops::{MetalAxisOp, MetalEvalOp, MetalOpState};
 use crate::tensor::MetalTensorExt;
 use crate::{MetalContext, MetalTensor};
 use derive_new::new;
+use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 
 #[derive(Clone, Debug, new, Hash)]
@@ -62,11 +63,6 @@ impl<O: MetalEvalOp + TypedOp> MetalEvalOp for MetalFusedAxisOp<O> {
                     m_input.clone(),
                     |t, axis_op| -> TractResult<MetalTensor> {
                         let new_shape = match &axis_op.0 {
-                            AxisOp::Move(..) => {
-                                let mut shape: TVec<usize> = t.shape().into();
-                                axis_op.0.change_shape_array(&mut shape, false)?;
-                                shape
-                            },
                             AxisOp::Reshape(at, from, to) => {
                                 let from = from
                                     .iter()
@@ -80,21 +76,23 @@ impl<O: MetalEvalOp + TypedOp> MetalEvalOp for MetalFusedAxisOp<O> {
                                 
                                 shape.clone()
                             }
-                            AxisOp::Add(_) => {
-                                let mut shape: TVec<usize> = t.shape().into();
-                                axis_op.0.change_shape_array(&mut shape, false)?;
-                                shape
-                            }
-                            AxisOp::Rm(_) => {
+                            _ => {
                                 let mut shape: TVec<usize> = t.shape().into();
                                 axis_op.0.change_shape_array(&mut shape, false)?;
                                 shape
                             }
                         };
-                        t.reshaped(new_shape)
+                        if let AxisOp::Move(from, to) = axis_op.0 {
+                            let mut out_strides: TVec<isize> = t.strides().to_smallvec();
+                            let removed_stride = out_strides.remove(from);
+                            out_strides.insert(to, removed_stride);
+                            let tmp_t = t.reshaped(new_shape)?;
+                            tmp_t.restrided(out_strides)
+                        } else {
+                            t.reshaped(new_shape)
+                        }
                     },
                 )?;
-
                 Ok(reshaped_input.into_opaque_tensor().into())
             })
             .collect::<TractResult<TVec<_>>>()?;
