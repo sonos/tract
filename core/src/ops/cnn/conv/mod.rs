@@ -5,11 +5,25 @@ mod im2col;
 mod lazy_im2col;
 mod q_sum_b;
 
+use tract_linalg::block_quant::BlockQuantFact;
+
 use crate::internal::*;
 
+pub use self::conv::Conv;
 pub use self::im2col::Im2Col;
 pub(crate) use self::q_sum_b::QSumB;
-pub use self::conv::Conv;
+
+fn block_quant_aware_weight_shape(weights: &TypedFact) -> TractResult<Cow<ShapeFact>> {
+    if weights.datum_type.is_number() {
+        Ok(Cow::Borrowed(&weights.shape))
+    } else if let Some(bqf) =
+        weights.opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
+    {
+        Ok(Cow::Owned(bqf.shape().into()))
+    } else {
+        todo!("Weights are expected to be numbers of BlockQuant");
+    }
+}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
 pub enum KernelFormat {

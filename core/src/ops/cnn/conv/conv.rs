@@ -1,4 +1,8 @@
+use dyn_clone::clone_box;
 use tract_data::itertools::izip;
+use tract_itertools::Itertools;
+use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue};
+use tract_linalg::WeightType;
 use tract_num_traits::Zero;
 
 use crate::internal::*;
@@ -13,6 +17,7 @@ use crate::ops::cnn::conv::lazy_im2col::LazyIm2colParams;
 use crate::ops::cnn::wire_reshape_bias_for_bin;
 use crate::ops::cnn::PaddingSpec::*;
 use crate::ops::einsum::EinSum;
+use crate::ops::konst::Const;
 use crate::ops::math::{add, div, mul, sub};
 use crate::ops::math::{Add, Div, Mul, Sub};
 use crate::ops::matmul::optimized::AddMatMulGeometry;
@@ -24,12 +29,12 @@ use crate::ops::nn::Reduce;
 
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
-use crate::ops::cnn::conv::KernelFormat;
+use crate::ops::cnn::conv::{block_quant_aware_weight_shape, KernelFormat};
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
 use crate::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
 
-use tract_linalg::mmm::MatMatMul;
+use tract_linalg::mmm::{MMMInputFormat, MatMatMul};
 use tract_linalg::pack::PackedFormat;
 
 #[derive(Debug, Clone, new, Hash)]
@@ -60,34 +65,61 @@ impl Conv {
         mut kernel: OutletId,
     ) -> TractResult<TVec<OutletId>> {
         let fact = model.outlet_fact(kernel)?;
-        for (ix, op) in self
-            .kernel_fmt
-            .kernel_as_group_o_ihw_ops(&fact.shape, self.group)
-            .into_iter()
-            .enumerate()
-        {
-            kernel = model.wire_node(format!("{name}.prep_kernel.{ix}"), op, &[kernel])?[0];
+        if fact.datum_type.is_opaque() {
+            Ok(tvec!(kernel))
+        } else {
+            for (ix, op) in self
+                .kernel_fmt
+                .kernel_as_group_o_ihw_ops(&fact.shape, self.group)
+                .into_iter()
+                .enumerate()
+            {
+                kernel = model.wire_node(format!("{name}.prep_kernel.{ix}"), op, &[kernel])?[0];
+            }
+            Ok(tvec!(kernel))
         }
-        Ok(tvec!(kernel))
     }
 
     fn wire_pack_g_o_ihw(
         &self,
         model: &mut TypedModel,
         name: &str,
-        format: PackedFormat,
+        format: &dyn MMMInputFormat,
         kernel: OutletId,
     ) -> TractResult<OutletId> {
-        Ok(model.wire_node(
-            format!("{name}.prep_kernel.pack"),
-            OptMatMulPack {
-                packers: vec![format],
-                k_axis: 2,
-                mn_axis: 1,
-                mode_picker: ModePicker::Single,
-            },
-            &[kernel],
-        )?[0])
+        let fact = model.outlet_fact(kernel)?;
+        if fact.datum_type.is_opaque() {
+            let value = model
+                .outlet_fact(kernel)?
+                .konst
+                .as_ref()
+                .context("Expects only constant to be block quantized")?;
+
+            let packed = format.prepare_tensor(value, 1, 0)?;
+            let fact = clone_box(packed.opaque_fact());
+            let packed = Opaque(Arc::new(packed));
+            model
+                .wire_node(
+                    format!("{name}.prep_kernel.pack"),
+                    Const::new_with_opaque_fact(rctensor1(&[packed]), fact)?,
+                    &[],
+                )
+                .map(|tv| tv[0])
+        } else {
+            let format = format
+                .downcast_ref::<PackedFormat>()
+                .context("Expect regular packing for numeric weights")?;
+            Ok(model.wire_node(
+                format!("{name}.prep_kernel.pack"),
+                OptMatMulPack {
+                    packers: vec![format.clone()],
+                    k_axis: 2,
+                    mn_axis: 1,
+                    mode_picker: ModePicker::Single,
+                },
+                &[kernel],
+            )?[0])
+        }
     }
 
     // group,bias
@@ -133,10 +165,11 @@ impl Conv {
         wire_ensure_q8_flavour(model, name, &mut kernel, "k", &mut k0, i8::datum_type())?;
         wire_ensure_q8_flavour(model, name, &mut x, "x", &mut x0, i8::datum_type())?;
 
+        let a_fact = model.outlet_fact(kernel)?.clone();
         let b_fact = model.outlet_fact(x)?.clone();
 
-        let (_, _, k, n, mmm) = self.compute_geo(&b_fact)?;
-        let packing = 1; // FIXME
+        let (geo, m, k, n) = self.compute_geo(&b_fact)?;
+        let (mmm, packing) = self.choose_impl(&b_fact, &a_fact, m, k, &n)?;
         let output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
 
         if !model.outlet_fact(k_scale)?.shape.volume().is_one() {
@@ -155,7 +188,14 @@ impl Conv {
 
         let im2col = model.wire_node(
             format!("{name}.im2col"),
-            Im2Col::new(self.pool_spec.clone(), self.group, k, &b_fact.shape, mmm.clone())?,
+            Im2Col::new(
+                self.pool_spec.clone(),
+                self.group,
+                k,
+                &b_fact.shape,
+                mmm.clone(),
+                packing,
+            )?,
             &[x, x0],
         )?[0];
 
@@ -258,21 +298,30 @@ impl Conv {
         name: &str,
         wire: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let &[x, _kernel, bias] = wire else { bail!("Wrong number of inputs") };
+        let &[x, w, bias] = wire else { bail!("Wrong number of inputs") };
         let x_fact = model.outlet_fact(x)?.clone();
-        let b_dt = x_fact.datum_type;
+        let w_fact = model.outlet_fact(w)?.clone();
         let c_dt = crate::ops::matmul::output_type(x_fact.datum_type);
 
-        let (_, _, k, _, mmm) = self.compute_geo(&x_fact)?;
+        let (_, m, k, n) = self.compute_geo(&x_fact)?;
+        let (mmm, packing) = self.choose_impl(&x_fact, &w_fact, m, k, &n)?;
         let geo_output_shape = self.pool_spec.output_shape(&x_fact.shape)?;
         let (mmm_output_shape, c_axis, h_axis) = self.mmm_output_shape(&geo_output_shape)?;
 
-        let padding = model.add_const(format!("{name}.b0"), Tensor::zero_scalar_dt(b_dt)?)?;
+        let padding =
+            model.add_const(format!("{name}.b0"), Tensor::zero_scalar_dt(x_fact.datum_type)?)?;
 
         let mut wire: TVec<_> = wire.into();
         wire[0] = model.wire_node(
             format!("{name}.im2col"),
-            Im2Col::new(self.pool_spec.clone(), self.group, k, &x_fact.shape, mmm.clone())?,
+            Im2Col::new(
+                self.pool_spec.clone(),
+                self.group,
+                k,
+                &x_fact.shape,
+                mmm.clone(),
+                packing,
+            )?,
             &[wire[0], padding],
         )?[0];
 
@@ -286,7 +335,7 @@ impl Conv {
                 g_o_ihw[0],
                 bias,
                 mmm,
-                0,
+                packing,
                 c_dt,
                 mmm_output_shape.clone().into(),
                 k.to_usize().unwrap(),
@@ -364,8 +413,9 @@ impl Conv {
     ) -> TractResult<TVec<OutletId>> {
         let &[mut x, kernel, bias] = wire else { bail!("Wrong number of inputs") };
         let mut x_fact = model.outlet_fact(x)?.clone();
-        let (geo, m, k, n, mmm) = self.compute_geo(&x_fact)?;
-        let packing = 0;
+        let w_fact = model.outlet_fact(kernel)?.clone();
+        let (geo, m, k, n) = self.compute_geo(&x_fact)?;
+        let (mmm, packing) = self.choose_impl(&x_fact, &w_fact, m, k, &n)?;
         debug!("{name} as lazy_im2col: m={m} k={k} n={n} {mmm:?}");
         let input_shape = x_fact.shape.as_concrete().unwrap().to_vec();
         let mut geo = geo.to_concrete(&input_shape)?.into_owned();
@@ -448,10 +498,7 @@ impl Conv {
     fn compute_geo(
         &self,
         input_fact: &TypedFact,
-    ) -> TractResult<(PoolGeometry, usize, usize, TDim, Box<dyn MatMatMul>)> {
-        let b_dt = input_fact.datum_type;
-        let acc = if b_dt.is_float() { b_dt } else { i32::datum_type() };
-
+    ) -> TractResult<(PoolGeometry, usize, usize, TDim)> {
         let geo = self.pool_spec.compute_geo(&input_fact.shape)?;
 
         trace!("output channels: {:?}", self.output_channels());
@@ -460,12 +507,50 @@ impl Conv {
             / self.group;
         let n: TDim =
             self.pool_spec.output_shape(&input_fact.shape)?.hw_dims().iter().cloned().product();
+        Ok((geo, m, k, n))
+    }
 
-        let mmm = tract_linalg::ops()
-            .mmm(acc, Some(m), Some(k), n.to_usize().ok())
-            .with_context(|| format!("No multiplier for {acc:?}, {m}x{k}x{n}",))?;
+    fn choose_impl(
+        &self,
+        input_fact: &TypedFact,
+        weight_fact: &TypedFact,
+        m: usize,
+        k: usize,
+        n: &TDim,
+    ) -> TractResult<(Box<dyn MatMatMul>, usize)> {
+        let w_dt = weight_fact.datum_type;
+        let x_dt = input_fact.datum_type;
 
-        Ok((geo, m, k, n, mmm))
+        let acc = if x_dt.is_float() { x_dt } else { i32::datum_type() };
+        if w_dt.is_opaque() {
+            let bqf = weight_fact
+                .opaque_fact
+                .as_ref()
+                .and_then(|of| of.downcast_ref::<BlockQuantFact>())
+                .unwrap();
+            let weight_type = WeightType::BlockQuant(bqf.format.clone());
+            tract_linalg::ops()
+                .mmm_impls()
+                .iter()
+                .filter(|mmm| mmm.internal_type() == acc)
+                .flat_map(|mmm| {
+                    mmm.packings().iter().enumerate().map(move |(ix, p)| (mmm, ix, &p.0, &p.1))
+                })
+                .filter(|(mmm, _, pa, pb)| {
+                    pb.precursor() == x_dt.into() && pa.precursor() == weight_type
+                })
+                .map(|(mmm, p, _, _)| (mmm.clone(), p))
+                .min_by_key(|(mmm, _)| {
+                    mmm.quality().cost() as isize * 1000 - (mmm.mr() * mmm.nr()) as isize
+                })
+                .context("Not matmul found")
+        } else {
+            let mmm = tract_linalg::ops()
+                .mmm(acc, Some(m), Some(k), n.to_usize().ok())
+                .with_context(|| format!("No multiplier for {acc:?}, {m}x{k}x{n}",))?;
+            todo!();
+            Ok((mmm, 0))
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -485,13 +570,9 @@ impl Conv {
         c_n_axis: usize,
     ) -> TractResult<TVec<OutletId>> {
         ensure!(model.outlet_fact(bias)?.datum_type == mmm.internal_type());
-        let a_pack = mmm.packings()[packing]
-            .0
-            .downcast_ref::<PackedFormat>()
-            .context("Conv expects wights in regular packed format")?
-            .clone();
+        let a_pack = &mmm.packings()[packing].0;
         let packed_ker = self
-            .wire_pack_g_o_ihw(model, name, a_pack, g_o_ihw)
+            .wire_pack_g_o_ihw(model, name, &**a_pack, g_o_ihw)
             .context("in kernel_as_packed_as")?;
         let (mut c_to_a_axis_mapping, mut c_to_b_axis_mapping) = (tvec!(), tvec!());
 
@@ -840,6 +921,10 @@ impl TypedOp for Conv {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(self.q_params.is_some() || inputs[0].datum_type.is_float());
         let q_inputs = if self.q_params.is_some() { 6 } else { 0 };
+        ensure!(
+            inputs[1].datum_type.is_number()
+                || (self.kernel_fmt == KernelFormat::OIHW && self.group == 1)
+        );
         if inputs.len() != 3 + q_inputs {
             bail!("Wrong number of inputs: expected {} got {}", 3 + q_inputs, inputs.len());
         }
@@ -852,7 +937,8 @@ impl TypedOp for Conv {
             ensure!(inputs[7].datum_type == i32::datum_type());
             ensure!(inputs[8].datum_type.is_float());
         }
-        ensure!(self.pool_spec.rank() + 2 == inputs[1].rank());
+        let weight_shape = block_quant_aware_weight_shape(inputs[1])?;
+        ensure!(self.pool_spec.rank() + 2 == weight_shape.len());
         if self.pool_spec.data_format.shape(&*inputs[0].shape)?.c()
             != &self.input_channels().to_dim()
         {
@@ -880,7 +966,7 @@ impl TypedOp for Conv {
             fact.datum_type = dt;
         } else {
             ensure!(
-                inputs[0].datum_type == inputs[1].datum_type,
+                inputs[1].datum_type.is_opaque() || inputs[0].datum_type == inputs[1].datum_type,
                 "Convolution input, weights and bias must have the same type, got {inputs:?}",
             )
         }
@@ -1043,6 +1129,9 @@ impl TypedOp for Conv {
             }));
         }
         // geo axis manips
+        if model.node_input_facts(node.id)?[1].datum_type.is_opaque() {
+            return Ok(None);
+        }
         use AxisOp::*;
         let h_axis = shape.h_axis();
         let hw_axes = shape.hw_axes();

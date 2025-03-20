@@ -101,8 +101,9 @@ impl Im2Col {
         k: usize,
         input_full_shape: &ShapeFact,
         mmm: Box<dyn MatMatMul>,
+        packing: usize,
     ) -> TractResult<Im2Col> {
-        let b_pack = mmm.packings()[0]
+        let b_pack = mmm.packings()[packing]
             .1
             .downcast_ref::<PackedFormat>()
             .context("Im2Col expects regular packed format")?
