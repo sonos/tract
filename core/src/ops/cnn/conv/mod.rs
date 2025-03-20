@@ -1,4 +1,5 @@
 #[allow(clippy::module_inception)]
+mod block_quant;
 mod conv;
 mod depth_wise;
 mod im2col;
