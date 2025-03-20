@@ -1,6 +1,5 @@
-use dyn_clone::clone_box;
 use tract_data::itertools::izip;
-use tract_linalg::block_quant::BlockQuantFact;
+use tract_linalg::block_quant::{BlockQuantFact, PackedBlockQuantFormat};
 use tract_linalg::WeightType;
 use tract_num_traits::Zero;
 
@@ -16,12 +15,11 @@ use crate::ops::cnn::conv::lazy_im2col::LazyIm2colParams;
 use crate::ops::cnn::wire_reshape_bias_for_bin;
 use crate::ops::cnn::PaddingSpec::*;
 use crate::ops::einsum::EinSum;
-use crate::ops::konst::Const;
 use crate::ops::math::{add, div, mul, sub};
 use crate::ops::math::{Add, Div, Mul, Sub};
 use crate::ops::matmul::optimized::AddMatMulGeometry;
 use crate::ops::matmul::optimized::MapOutputAxisToInput;
-use crate::ops::matmul::pack::OptMatMulPack;
+use crate::ops::matmul::pack::{OptMatMulPack, OptSimpleMatMulPack};
 use crate::ops::matmul::quant::wire_ensure_q8_flavour;
 use crate::ops::matmul::ModePicker;
 use crate::ops::nn::Reduce;
@@ -65,6 +63,8 @@ impl Conv {
     ) -> TractResult<TVec<OutletId>> {
         let fact = model.outlet_fact(kernel)?;
         if fact.datum_type.is_opaque() {
+            ensure!(self.group == 1 && self.kernel_fmt == KernelFormat::OIHW && fact.rank() == 0);
+            kernel = model.wire_node(format!("{name}.prep_kernel"), AxisOp::Add(0), &[kernel])?[0];
             Ok(tvec!(kernel))
         } else {
             for (ix, op) in self
@@ -87,28 +87,30 @@ impl Conv {
         kernel: OutletId,
     ) -> TractResult<OutletId> {
         let fact = model.outlet_fact(kernel)?;
-        if fact.datum_type.is_opaque() {
-            let value = model
+        let wire = if fact.datum_type.is_opaque() {
+            let fact = model
                 .outlet_fact(kernel)?
-                .konst
+                .opaque_fact
                 .as_ref()
-                .context("Expects only constant to be block quantized")?;
-
-            let packed = format.prepare_tensor(value, 1, 0)?;
-            let fact = clone_box(packed.opaque_fact());
-            let packed = Opaque(Arc::new(packed));
-            model
-                .wire_node(
-                    format!("{name}.prep_kernel.pack"),
-                    Const::new_with_opaque_fact(rctensor1(&[packed]), fact)?,
-                    &[],
-                )
-                .map(|tv| tv[0])
+                .and_then(|of| of.downcast_ref::<BlockQuantFact>())
+                .context("Only manage BlockQuant")?;
+            model.wire_node(
+                format!("{name}.prep_kernel.pack"),
+                OptSimpleMatMulPack {
+                    packed_format: format
+                        .downcast_ref::<PackedBlockQuantFormat>()
+                        .context("Expect a block quant format")?
+                        .clone(),
+                    k: fact.k(),
+                    m: fact.m(),
+                },
+                &[kernel],
+            )?
         } else {
             let format = format
                 .downcast_ref::<PackedFormat>()
                 .context("Expect regular packing for numeric weights")?;
-            Ok(model.wire_node(
+            model.wire_node(
                 format!("{name}.prep_kernel.pack"),
                 OptMatMulPack {
                     packers: vec![format.clone()],
@@ -117,8 +119,9 @@ impl Conv {
                     mode_picker: ModePicker::Single,
                 },
                 &[kernel],
-            )?[0])
-        }
+            )?
+        };
+        Ok(wire[0])
     }
 
     // group,bias

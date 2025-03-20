@@ -991,7 +991,11 @@ impl EvalOp for IntoShape {
 
 impl TypedOp for IntoShape {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(inputs[0].datum_type.fact(&self.dims)))
+        let mut fact = inputs[0].datum_type.fact(&self.dims);
+        if let Some(of) = &inputs[0].opaque_fact {
+            fact = fact.with_opaque_fact(of.clone());
+        }
+        Ok(tvec!(fact))
     }
 
     fn declutter(

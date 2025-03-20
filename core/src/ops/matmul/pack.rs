@@ -1,6 +1,8 @@
 use crate::axes::Axis;
 use crate::internal::*;
 use ndarray::*;
+use tract_linalg::block_quant::{BlockQuantValue, PackedBlockQuantFact, PackedBlockQuantFormat};
+use tract_linalg::mmm::MMMInputValue;
 use tract_linalg::pack::PackedFormat;
 
 use super::ModePicker;
@@ -136,4 +138,62 @@ impl OpaqueFact for DynPackedOpaqueFact {
     fn same_as(&self, other: &dyn OpaqueFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| o == self)
     }
+}
+
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub struct OptSimpleMatMulPack {
+    pub(crate) packed_format: PackedBlockQuantFormat,
+    pub(crate) k: usize,
+    pub(crate) m: usize,
+}
+
+impl Op for OptSimpleMatMulPack {
+    fn name(&self) -> Cow<str> {
+        "OptSimpleMatMulPack".into()
+    }
+    op_as_typed_op!();
+}
+
+impl EvalOp for OptSimpleMatMulPack {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(None)
+    }
+
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let input = args_1!(inputs);
+        let mut output = tensor1(
+            &input
+                .as_slice::<Opaque>()?
+                .iter()
+                .map(|i| {
+                    let i = i.downcast_ref::<BlockQuantValue>().unwrap();
+                    let iv: Box<dyn MMMInputValue> =
+                        Box::new(self.packed_format.pack(&i.value, i.fact.k())?);
+                    Ok(Opaque(Arc::new(iv)))
+                })
+                .collect::<TractResult<Vec<_>>>()?,
+        );
+        output.set_shape(input.shape())?;
+        Ok(tvec!(output.into_tvalue()))
+    }
+}
+
+impl TypedOp for OptSimpleMatMulPack {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        let fact = Opaque::fact(inputs[0].shape.clone()).with_opaque_fact(PackedBlockQuantFact {
+            format: self.packed_format.clone(),
+            shape: tvec!(self.m, self.k),
+        });
+        Ok(tvec!(fact))
+    }
+
+    as_op!();
 }
