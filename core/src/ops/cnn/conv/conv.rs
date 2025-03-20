@@ -1,7 +1,6 @@
 use dyn_clone::clone_box;
 use tract_data::itertools::izip;
-use tract_itertools::Itertools;
-use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue};
+use tract_linalg::block_quant::BlockQuantFact;
 use tract_linalg::WeightType;
 use tract_num_traits::Zero;
 
@@ -168,7 +167,7 @@ impl Conv {
         let a_fact = model.outlet_fact(kernel)?.clone();
         let b_fact = model.outlet_fact(x)?.clone();
 
-        let (geo, m, k, n) = self.compute_geo(&b_fact)?;
+        let (_geo, m, k, n) = self.compute_geo(&b_fact)?;
         let (mmm, packing) = self.choose_impl(&b_fact, &a_fact, m, k, &n)?;
         let output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
 
@@ -536,20 +535,27 @@ impl Conv {
                 .flat_map(|mmm| {
                     mmm.packings().iter().enumerate().map(move |(ix, p)| (mmm, ix, &p.0, &p.1))
                 })
-                .filter(|(mmm, _, pa, pb)| {
+                .filter(|(_, _, pa, pb)| {
                     pb.precursor() == x_dt.into() && pa.precursor() == weight_type
                 })
                 .map(|(mmm, p, _, _)| (mmm.clone(), p))
                 .min_by_key(|(mmm, _)| {
                     mmm.quality().cost() as isize * 1000 - (mmm.mr() * mmm.nr()) as isize
                 })
-                .context("Not matmul found")
+                .context("Not matmu found")
         } else {
             let mmm = tract_linalg::ops()
                 .mmm(acc, Some(m), Some(k), n.to_usize().ok())
-                .with_context(|| format!("No multiplier for {acc:?}, {m}x{k}x{n}",))?;
-            todo!();
-            Ok((mmm, 0))
+                .context("No matmul found")?;
+            let packing = mmm
+                .packings()
+                .iter()
+                .position(|p| {
+                    p.0.precursor() == w_dt.unquantized().into()
+                        && p.1.precursor() == x_dt.unquantized().into()
+                })
+                .context("No packing found")?;
+            Ok((mmm, packing))
         }
     }
 
