@@ -10,6 +10,7 @@ use crate::ops::array::Pad;
 use crate::ops::array::PadMode;
 use crate::ops::binary::TypedBinOp;
 use crate::ops::cast::cast;
+use crate::ops::cnn::conv::block_quant::BlockQuantIntoShape;
 use crate::ops::cnn::conv::lazy_im2col::LazyIm2Col;
 use crate::ops::cnn::conv::lazy_im2col::LazyIm2colParams;
 use crate::ops::cnn::wire_reshape_bias_for_bin;
@@ -64,7 +65,19 @@ impl Conv {
         let fact = model.outlet_fact(kernel)?;
         if fact.datum_type.is_opaque() {
             ensure!(self.group == 1 && self.kernel_fmt == KernelFormat::OIHW && fact.rank() == 0);
-            kernel = model.wire_node(format!("{name}.prep_kernel"), AxisOp::Add(0), &[kernel])?[0];
+            kernel =
+                model.wire_node(format!("{name}.prep_kernel.g"), AxisOp::Add(0), &[kernel])?[0];
+            kernel = model.wire_node(
+                format!("{name}.prep_kernel.ihw"),
+                BlockQuantIntoShape {
+                    shape: tvec!(
+                        self.output_channels() / self.group,
+                        self.input_channels()
+                            * self.pool_spec.kernel_shape.iter().product::<usize>(),
+                    ),
+                },
+                &[kernel],
+            )?[0];
             Ok(tvec!(kernel))
         } else {
             for (ix, op) in self
