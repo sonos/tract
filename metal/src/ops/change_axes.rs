@@ -124,9 +124,9 @@ impl MetalEvalOp for MetalAxisOp {
                         &out_shape
                     )?;
 
-                    //println!("Copying for node {}: {:?}", node_id, self);
-                    PermuteAxes.dispatch_eval(context, input, &permutation, &output)?;
-                    return Ok(tvec!(output.into_opaque_tensor().into_tvalue()));
+                //println!("Copying for node {}: {:?}", node_id, self);
+                PermuteAxes.dispatch_eval(context, input, &permutation, &output)?;
+                return Ok(tvec!(output.into_opaque_tensor().into_tvalue()));
             }
             AxisOp::Reshape(skip, from, to) => {
                 let from = from.iter().map(|d| d.eval(&session.resolved_symbols)).collect();

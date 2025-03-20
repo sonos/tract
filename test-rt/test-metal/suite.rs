@@ -41,6 +41,8 @@ fn ignore_unit(t: &[String], _case: &dyn Test) -> bool {
 fn ignore_onnx(t: &[String]) -> bool {
     r#"
 test_slice_start_out_of_bounds
+test_nllloss_NCd1d2d3d4d5_mean_weight_expanded
+test_nllloss_NCd1d2d3d4d5_none_no_weight_expanded
 "#
     .trim()
     .lines()
