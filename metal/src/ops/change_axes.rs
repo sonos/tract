@@ -101,13 +101,12 @@ impl MetalEvalOp for MetalAxisOp {
                 let mut permutation: Vec<usize> = (0..input.rank()).collect();
                 permutation.remove(*from);
                 permutation.insert(*to, *from);
-                let out_shape = PermuteAxes::output_shape(input.shape(), &permutation)?;
 
                 let output = crate::ops::make_tensor_for_node(
                     session,
                     node_id,
                     input.datum_type(),
-                    &out_shape,
+                    &PermuteAxes::output_shape(input.shape(), &permutation)?,
                 )?;
                 PermuteAxes.dispatch_eval(context, input, &permutation, &output)?;
                 return Ok(tvec!(output.into_opaque_tensor().into_tvalue()));
@@ -126,8 +125,11 @@ impl MetalEvalOp for MetalAxisOp {
             }
         };
 
+        // TODO: avoid copy because of memory pool integration
+        // Perform copy because of memory pool integration
         let output =
             crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &new_shape)?;
+
         Memcpy.dispatch_eval(context, input, 0, &output)?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }

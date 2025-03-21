@@ -63,7 +63,7 @@ impl<O: MetalEvalOp + TypedOp> MetalEvalOp for MetalFusedAxisOp<O> {
                     m_input.clone(),
                     |t, axis_op| -> TractResult<MetalTensor> {
                         let new_shape = match &axis_op.0 {
-                            AxisOp::Reshape(at, from, to) => {
+                            AxisOp::Reshape(skip, from, to) => {
                                 let from = from
                                     .iter()
                                     .map(|d| d.eval(&session.resolved_symbols))
@@ -71,12 +71,11 @@ impl<O: MetalEvalOp + TypedOp> MetalEvalOp for MetalFusedAxisOp<O> {
                                 let to =
                                     to.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
                                 let mut shape: TVec<usize> = t.shape().into();
-                                AxisOp::Reshape(*at, from, to)
+                                AxisOp::Reshape(*skip, from, to)
                                     .change_shape_array(&mut shape, false)?;
-
-                                shape.clone()
+                                shape
                             }
-                            _ => {
+                            AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Move(..) => {
                                 let mut shape: TVec<usize> = t.shape().into();
                                 axis_op.0.change_shape_array(&mut shape, false)?;
                                 shape
@@ -93,6 +92,7 @@ impl<O: MetalEvalOp + TypedOp> MetalEvalOp for MetalFusedAxisOp<O> {
                         }
                     },
                 )?;
+
                 Ok(reshaped_input.into_opaque_tensor().into())
             })
             .collect::<TractResult<TVec<_>>>()?;

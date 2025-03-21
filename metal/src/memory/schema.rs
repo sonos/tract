@@ -249,6 +249,7 @@ impl fmt::Display for MetalMemSchema {
         Ok(())
     }
 }
+
 impl MetalMemSchema {
     /// Resolve Memory schema with given symbols.
     pub fn resolve(&self, symbols: &SymbolValues) -> TractResult<MetalResolvedMemSchema> {
@@ -276,7 +277,7 @@ impl MetalMemSchema {
         nodes_mem_req.sort_by(|lhs, rhs| {
             let lhs_hint_mem_size = hinted_mem_size.get(&lhs.node);
             let rhs_hint_mem_size = hinted_mem_size.get(&rhs.node);
-        
+
             lhs.lifetime
                 .end
                 .cmp(&rhs.lifetime.end)
@@ -286,7 +287,7 @@ impl MetalMemSchema {
         });
 
         let mut partitions: Vec<Partition> = vec![];
-        for node_mem in nodes_mem_req.clone() {
+        for node_mem in nodes_mem_req {
             // Find partitions where node lifetime is disjoint from existing.
             let mut available = partitions
                 .iter_mut()

@@ -32,7 +32,7 @@ impl State for MetalTestTransformState {
         } else {
             self.state.clone()
         };
-        dbg!(state.model());
+
         if self.transpose_inputs {
             let inputs = inputs
                 .into_iter()
@@ -45,18 +45,17 @@ impl State for MetalTestTransformState {
                 .collect::<TractResult<TVec<TValue>>>()?;
 
             state
-            .run(inputs)?
-            .into_iter()
-            .map(|t| {
-                let t = t.into_tensor();
-                let rank = t.rank();
-                let perms = (0..rank).rev().collect_vec();
-                Ok(t.permute_axes(&perms)?.into_tvalue())
-            })
-            .collect()
+                .run(inputs)?
+                .into_iter()
+                .map(|t| {
+                    let t = t.into_tensor();
+                    let rank = t.rank();
+                    let perms = (0..rank).rev().collect_vec();
+                    Ok(t.permute_axes(&perms)?.into_tvalue())
+                })
+                .collect()
         } else {
-            state
-            .run(inputs)
+            state.run(inputs)
         }
     }
 }
