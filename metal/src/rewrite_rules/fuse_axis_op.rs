@@ -122,6 +122,7 @@ pub fn fuse_axis_op(
 
     // Handle AxisOp::Move operator.
     if let Some(op) = node.op_as::<crate::ops::MetalAxisOp>() {
+        // Early quit if MoveAxis will be fused in next calls to rule 
         if matches!(op.0, AxisOp::Move(..))
             && (!grouped_axis_ops[0].is_empty() && !can_fuse_move(model, node))
         {
