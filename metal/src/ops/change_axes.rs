@@ -123,8 +123,6 @@ impl MetalEvalOp for MetalAxisOp {
                         input.datum_type(),
                         &out_shape
                     )?;
-
-                //println!("Copying for node {}: {:?}", node_id, self);
                 PermuteAxes.dispatch_eval(context, input, &permutation, &output)?;
                 return Ok(tvec!(output.into_opaque_tensor().into_tvalue()));
             }
@@ -144,9 +142,9 @@ impl MetalEvalOp for MetalAxisOp {
 
         let output =
             crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &new_shape)?;
-        //println!("Copying for node {}: {:?}", node_id, self);
-        Memcpy.dispatch_eval(context, input, 0, &output)?;
-
+        if !matches!(input, crate::MetalTensor::ArenaView(..)) || !matches!(output, crate::MetalTensor::ArenaView(..)) || (input.metal_offset::<usize>() != output.metal_offset::<usize>()){
+            Memcpy.dispatch_eval(context, input, 0, &output)?;
+        }
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }
