@@ -1,3 +1,4 @@
+use crate::fact::MetalTypedFactExt;
 use crate::kernels::matmul::{GgmlGemm, MfaGemm, MlxGemm};
 use crate::ops::{MetalAxisOp, MetalFusedAxisOp};
 use crate::rewrite_rules::{next_node, previous_node, previous_nodes};
@@ -144,8 +145,25 @@ pub fn fuse_move_axis(
 ) -> TractResult<Option<TypedModelPatch>> {
     rule_ensure!(matches!(axis_op.0, AxisOp::Move(..)));
 
-    if model.node_input_facts(axis_node.id)?[0] == model.node_output_facts(axis_node.id)?[0] {
-        return TypedModelPatch::shunt_one_op(model, axis_node);
+    let in_fact = model.node_input_facts(axis_node.id)?[0];
+    let in_shape = in_fact.as_metal_fact().map(|mf|mf.shape.clone())
+    .unwrap_or(in_fact.shape.clone());
+
+    let out_fact = model.node_output_facts(axis_node.id)?[0];
+    let out_shape = out_fact.as_metal_fact().map(|mf|mf.shape.clone())
+    .unwrap_or(out_fact.shape.clone());
+
+    // Checks if MoveAxis has no impact on shape + layout
+    if in_shape == out_shape {
+        if let (Some(in_strides),  AxisOp::Move(from, to))= (in_shape.as_concrete().map(Tensor::natural_strides), axis_op.0.clone())
+        {   
+            let mut out_strides = in_strides.clone();
+            let remove_stride = out_strides.remove(from);
+            out_strides.insert(to, remove_stride);
+            if in_strides == out_strides {
+                return TypedModelPatch::shunt_one_op(model, axis_node);
+            }
+        }
     }
 
     // Fuse consecutive MoveAxis if possible
