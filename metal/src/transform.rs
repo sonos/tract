@@ -113,9 +113,9 @@ impl MetalTransform {
         if stop_at_phase == 2 {
             return Ok(());
         }
-        Rewriter::default()    
-        .with_rule_for("fuse_move_axis", rewrite_rules::fuse_move_axis)
-        .rewrite(&(), model)?;
+        Rewriter::default()
+            .with_rule_for("fuse_move_axis", rewrite_rules::fuse_move_axis)
+            .rewrite(&(), model)?;
         Rewriter::default()
             .with_rule_for("rewire-metal-sync", rewrite_rules::rewire_metal_sync)
             .with_rule_for(

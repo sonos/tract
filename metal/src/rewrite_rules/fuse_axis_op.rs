@@ -9,45 +9,40 @@ fn is_supported_axis_op(op: &MetalAxisOp) -> bool {
     matches!(op.0, AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Reshape(..))
 }
 
+fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
+    next_node(model, axis_node).is_some_and(|node| {
+        node.op_is::<crate::ops::MetalConcat>()
+            || node.op_is::<crate::ops::MetalApplyRope>()
+            || node.op_is::<crate::ops::MetalScaledMaskedSoftmax>()
+            || node.op_is::<crate::ops::MetalSlice>()
+    })
+}
+
 pub fn collect_chain_of_axis_ops<'a>(
     model: &'a TypedModel,
-    node: &'a TypedNode,
+    mut cursor: &'a TypedNode,
 ) -> TractResult<Option<(TVec<MetalAxisOp>, &'a TypedNode)>> {
     let mut acc_axis_ops = tvec![];
+    let mut head_of_chain = cursor;
 
-    // Allow MoveAxis at end of chain
-    let Some(axis_op) = node.op_as::<MetalAxisOp>().filter(|o| is_supported_axis_op(o) 
-    || (matches!(o.0, AxisOp::Move(..)) && can_fuse_with_move(model, node))) else {
-        return Ok(None)
-    };
-    let mut head_of_chain = node;
-
-    let Some(prev_node) = previous_node(model, node) else {
-        return Ok(None)
-    };
-
-    acc_axis_ops.push(axis_op.clone());
-    let mut cursor = prev_node;
-
-    loop {
-        let Some(axis_op) = cursor.op_as::<MetalAxisOp>().filter(|o| is_supported_axis_op(o)) else {
-            break;
-        };
+    while let Some(axis_op) = cursor.op_as::<MetalAxisOp>().filter(|o| {
+        is_supported_axis_op(o) || (matches!(o.0, AxisOp::Move(..)) && can_fuse_move(model, cursor))
+    }) {
+        acc_axis_ops.push(axis_op.clone());
         head_of_chain = cursor;
 
-        let Some(prev_node) = previous_node(model, cursor) else {
+        if let Some(prev) = previous_node(model, cursor) {
+            cursor = prev;
+        } else {
             break;
-        };
-
-        acc_axis_ops.push(axis_op.clone());
-        cursor = prev_node;
+        }
     }
 
-    if acc_axis_ops.is_empty() {
-        Ok(None)
+    Ok(if acc_axis_ops.is_empty() {
+        None
     } else {
-        Ok(Some((acc_axis_ops.into_iter().rev().collect(), head_of_chain)))
-    }
+        Some((acc_axis_ops.into_iter().rev().collect(), head_of_chain))
+    })
 }
 
 #[macro_export]
@@ -69,10 +64,9 @@ pub fn fuse_axis_op(
     axis_op: &MetalAxisOp,
 ) -> TractResult<Option<TypedModelPatch>> {
     rule_ensure!(is_supported_axis_op(axis_op) || matches!(axis_op.0, AxisOp::Move(..)));
+
     let Some(node) = next_node(model, axis_node) else { return Ok(None) };
-
     let node_name = &node.name;
-
     let in_nodes = previous_nodes(model, node);
 
     let mut grouped_axis_ops = tvec![];
@@ -126,33 +120,19 @@ pub fn fuse_axis_op(
 
     // Handle AxisOp::Move operator.
     if let Some(op) = node.op_as::<crate::ops::MetalAxisOp>() {
-        rule_ensure!(matches!(op.0, AxisOp::Move(..)));
-
-        if grouped_axis_ops[0].is_empty() || can_fuse_with_move(model, &node) { return Ok(None) }
-
-        let out = patch.wire_node(
-            format!("{node_name}.fused_axis_op"),
-            MetalFusedAxisOp { grouped_axis_ops, op: op.clone() },
-            &tap_inputs,
-        )?;
-        patch.shunt_outside(model, node.id.into(), out[0])?;
-        Ok(Some(patch))
-    } else {
-        Ok(None)
+        if matches!(op.0, AxisOp::Move(..))
+            && (!grouped_axis_ops[0].is_empty() && !can_fuse_move(model, node))
+        {
+            let out = patch.wire_node(
+                format!("{node_name}.fused_axis_op"),
+                MetalFusedAxisOp { grouped_axis_ops, op: op.clone() },
+                &tap_inputs,
+            )?;
+            patch.shunt_outside(model, node.id.into(), out[0])?;
+            return Ok(Some(patch));
+        }
     }
-}
-
-fn can_fuse_with_move(
-    model: &TypedModel,
-    axis_node: &TypedNode,
-) -> bool {
-    next_node(model, axis_node).is_some_and(|node|
-    node.op_is::<crate::ops::MetalConcat>() ||
-        node.op_is::<crate::ops::MetalApplyRope>() ||
-        node.op_is::<crate::ops::MetalScaledMaskedSoftmax>() ||
-        node.op_is::<crate::ops::MetalSlice>()
-    )
-
+    Ok(None)
 }
 
 pub fn fuse_move_axis(
@@ -163,15 +143,17 @@ pub fn fuse_move_axis(
     axis_op: &MetalAxisOp,
 ) -> TractResult<Option<TypedModelPatch>> {
     rule_ensure!(matches!(axis_op.0, AxisOp::Move(..)));
-    
+
     if model.node_input_facts(axis_node.id)?[0] == model.node_output_facts(axis_node.id)?[0] {
-        return TypedModelPatch::shunt_one_op(model, axis_node)
+        return TypedModelPatch::shunt_one_op(model, axis_node);
     }
 
-    // Fuse consecutive MoveAxis if possible 
+    // Fuse consecutive MoveAxis if possible
     let Some(cursor) = next_node(model, axis_node) else { return Ok(None) };
-    if let (AxisOp::Move(from_1, to_1), AxisOp::Move(from_2, to_2)) = (axis_op.0.clone(),
-        cursor.op_as::<MetalAxisOp>().map(|ax_op| ax_op.0.clone()).unwrap_or(AxisOp::Add(0))) {
+    if let (AxisOp::Move(from_1, to_1), AxisOp::Move(from_2, to_2)) = (
+        axis_op.0.clone(),
+        cursor.op_as::<MetalAxisOp>().map(|ax_op| ax_op.0.clone()).unwrap_or(AxisOp::Add(0)),
+    ) {
         let max_rank = [from_1, from_2, to_1, to_2].iter().max().unwrap() + 1;
         let mut perm: TVec<usize> = (0..max_rank).collect_vec().into();
 
@@ -182,24 +164,29 @@ pub fn fuse_move_axis(
             let mut patch = TypedModelPatch::default();
             let inputs = patch.taps(model, &axis_node.inputs)?;
             let out = patch.wire_node(
-                format!("{axis_node_name}.fused_move_axis"), MetalAxisOp(new_axis_ops[0].clone()), &inputs)?;
+                format!("{axis_node_name}.fused_move_axis"),
+                MetalAxisOp(new_axis_ops[0].clone()),
+                &inputs,
+            )?;
             patch.shunt_outside(model, cursor.id.into(), out[0])?;
-            return Ok(Some(patch)) 
+            return Ok(Some(patch));
         }
     }
 
     // Add(x) -> Move(x, y)
     let Some(cursor) = previous_node(model, axis_node) else { return Ok(None) };
-    if let (AxisOp::Move(from_1, to_1), AxisOp::Add(ax)) = (axis_op.0.clone(),
-        cursor.op_as::<MetalAxisOp>().map(|ax_op| ax_op.0.clone()).unwrap_or(AxisOp::Rm(0))) {
-            if ax == from_1 {
+    if let (AxisOp::Move(from_1, to_1), AxisOp::Add(ax)) = (
+        axis_op.0.clone(),
+        cursor.op_as::<MetalAxisOp>().map(|ax_op| ax_op.0.clone()).unwrap_or(AxisOp::Rm(0)),
+    ) {
+        if ax == from_1 {
             let mut patch = TypedModelPatch::default();
             let inputs = patch.taps(model, &cursor.inputs)?;
-            let out = patch.wire_node(
-                cursor.name.clone(), MetalAxisOp(AxisOp::Add(to_1)), &inputs)?;
+            let out =
+                patch.wire_node(cursor.name.clone(), MetalAxisOp(AxisOp::Add(to_1)), &inputs)?;
             patch.shunt_outside(model, axis_node.id.into(), out[0])?;
-            return Ok(Some(patch)) 
-            }
+            return Ok(Some(patch));
+        }
     }
     Ok(None)
 }

@@ -145,7 +145,7 @@ impl MetalArenaView {
                 arena: Arc::clone(&self.arena),
                 dt: self.dt,
                 len: self.len,
-                strides: strides,
+                strides,
                 shape: self.shape.clone(),
                 offset_bytes: self.offset_bytes,
             })

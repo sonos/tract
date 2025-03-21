@@ -79,7 +79,9 @@ impl MetalMemoryPool {
                 }
                 .into())
             })
-            .unwrap_or_else(|| unsafe { Tensor::uninitialized_dt(dt, shape)?.into_metal()?.restrided(strides) })
+            .unwrap_or_else(|| unsafe {
+                Tensor::uninitialized_dt(dt, shape)?.into_metal()?.restrided(strides)
+            })
     }
 
     pub fn reset(&self) {

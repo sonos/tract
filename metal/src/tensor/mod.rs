@@ -155,7 +155,7 @@ impl MetalTensor {
             Self::ArenaView(t) => Ok(Self::ArenaView(t.reshaped(shape)?)),
         }
     }
-    
+
     pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> Result<Self> {
         match self {
             Self::Owned(t) => Ok(Self::Owned(t.restrided(strides)?)),

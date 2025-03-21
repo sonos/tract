@@ -73,7 +73,7 @@ impl<O: MetalEvalOp + TypedOp> MetalEvalOp for MetalFusedAxisOp<O> {
                                 let mut shape: TVec<usize> = t.shape().into();
                                 AxisOp::Reshape(*at, from, to)
                                     .change_shape_array(&mut shape, false)?;
-                                
+
                                 shape.clone()
                             }
                             _ => {
