@@ -121,7 +121,6 @@ impl MetalArenaView {
         if self.len() != shape.iter().product::<usize>() {
             bail!("Invalid reshape {:?} to {:?}", self.shape(), shape);
         }
-
         if shape.as_slice() != self.shape() {
             Ok(Self {
                 arena: Arc::clone(&self.arena),

@@ -397,9 +397,9 @@ template<typename T>
       device void *output_b [[buffer(3)]],                        
       constant const size_t * shape [[buffer(4)]],
       constant const size_t * strides [[buffer(5)]],
-      constant const size_t * cos_sin_strides [[buffer(6)]],    
-      constant const size_t * out_strides [[buffer(7)]],             
-      uint2 tpig[[thread_position_in_grid]]                   
+      constant const size_t * cos_sin_strides [[buffer(6)]],
+      constant const size_t * out_strides [[buffer(7)]],
+      uint2 tpig[[thread_position_in_grid]]
 ) {
   device const T *input = (device const T *)input_b;
   device const T *cos = (device const T *)cos_b;
@@ -419,7 +419,7 @@ template<typename T>
   auto rot_cos_sin_idx = indices_to_idx_2(rotated_tpig, cos_sin_strides);
 
   output[out_idx] = input[idx] * cos[cos_sin_idx] - input[rot_idx] * sin[cos_sin_idx];
-  output[out_rot_idx] = input[rot_idx] * cos[rot_cos_sin_idx] 
+  output[out_rot_idx] = input[rot_idx] * cos[rot_cos_sin_idx]
           + input[idx] * sin[rot_cos_sin_idx];
 }
 
@@ -431,9 +431,9 @@ template<typename T>
       device void *output_b [[buffer(3)]],                        
       constant const size_t * shape [[buffer(4)]],
       constant const size_t * strides [[buffer(5)]],
-      constant const size_t * cos_sin_strides [[buffer(6)]],    
-      constant const size_t * out_strides [[buffer(7)]],              
-      uint3 tpig[[thread_position_in_grid]]                   
+      constant const size_t * cos_sin_strides [[buffer(6)]],
+      constant const size_t * out_strides [[buffer(7)]],
+      uint3 tpig[[thread_position_in_grid]]
 ) {
   device const T *input = (device const T *)input_b;
   device const T *cos = (device const T *)cos_b;
@@ -453,7 +453,7 @@ template<typename T>
   auto rot_cos_sin_idx = indices_to_idx_3(rotated_tpig, cos_sin_strides);
 
   output[out_idx] = input[idx] * cos[cos_sin_idx] - input[rot_idx] * sin[cos_sin_idx];
-  output[out_rot_idx] = input[rot_idx] * cos[rot_cos_sin_idx] 
+  output[out_rot_idx] = input[rot_idx] * cos[rot_cos_sin_idx]
           + input[idx] * sin[rot_cos_sin_idx];
 }
 
@@ -465,9 +465,9 @@ template<typename T>
       device void *output_b [[buffer(3)]],                        
       constant const size_t * shape [[buffer(4)]],
       constant const size_t * strides [[buffer(5)]],
-      constant const size_t * cos_sin_strides [[buffer(6)]],    
-      constant const size_t * out_strides [[buffer(7)]],              
-      uint3 tpig[[thread_position_in_grid]]                   
+      constant const size_t * cos_sin_strides [[buffer(6)]],
+      constant const size_t * out_strides [[buffer(7)]],
+      uint3 tpig[[thread_position_in_grid]]
 ) {
   device const T *input = (device const T *)input_b;
   device const T *cos = (device const T *)cos_b;
@@ -487,7 +487,7 @@ template<typename T>
   auto rot_cos_sin_idx = indices_to_idx_4(rotated_tpig, shape, cos_sin_strides);
 
   output[out_idx] = input[idx] * cos[cos_sin_idx] - input[rot_idx] * sin[cos_sin_idx];
-  output[out_rot_idx] = input[rot_idx] * cos[rot_cos_sin_idx] 
+  output[out_rot_idx] = input[rot_idx] * cos[rot_cos_sin_idx]
           + input[idx] * sin[rot_cos_sin_idx];
 }
 

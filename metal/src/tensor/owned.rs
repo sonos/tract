@@ -56,7 +56,6 @@ impl MValue {
         if self.len() != shape.iter().product::<usize>() {
             bail!("Invalid reshape {:?} to {:?}", self.shape(), shape);
         }
-
         if shape.as_slice() != self.shape() {
             match &self {
                 MValue::Const(t) | MValue::Var(t) | MValue::Reshaped { t, .. } => {
@@ -216,7 +215,7 @@ impl OwnedMetalTensor {
         Ok(Self { inner: self.inner.reshaped(shape)?, metal: self.metal.clone() })
     }
 
-    /// Restrided tensor with given shape.
+    /// Change tensor stride.
     #[inline]
     pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> Result<Self> {
         Ok(Self { inner: self.inner.restrided(strides)?, metal: self.metal.clone() })
