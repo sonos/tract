@@ -10,7 +10,7 @@ use crate::ops::array::Pad;
 use crate::ops::array::PadMode;
 use crate::ops::binary::TypedBinOp;
 use crate::ops::cast::cast;
-use crate::ops::cnn::conv::block_quant::BlockQuantIntoShape;
+use crate::ops::cnn::conv::block_quant::{BlockQuantIntoShape, SplitGroupBlockQuant};
 use crate::ops::cnn::conv::lazy_im2col::LazyIm2Col;
 use crate::ops::cnn::conv::lazy_im2col::LazyIm2colParams;
 use crate::ops::cnn::wire_reshape_bias_for_bin;
@@ -64,15 +64,18 @@ impl Conv {
     ) -> TractResult<TVec<OutletId>> {
         let fact = model.outlet_fact(kernel)?;
         if fact.datum_type.is_opaque() {
-            ensure!(self.group == 1 && self.kernel_fmt == KernelFormat::OIHW && fact.rank() == 0);
-            kernel =
-                model.wire_node(format!("{name}.prep_kernel.g"), AxisOp::Add(0), &[kernel])?[0];
+            ensure!(self.kernel_fmt == KernelFormat::OIHW && fact.rank() == 0);
+            kernel = model.wire_node(
+                format!("{name}.prep_kernel.g"),
+                SplitGroupBlockQuant { group: self.group },
+                &[kernel],
+            )?[0];
             kernel = model.wire_node(
                 format!("{name}.prep_kernel.ihw"),
                 BlockQuantIntoShape {
                     shape: tvec!(
                         self.output_channels() / self.group,
-                        self.input_channels()
+                        self.input_channels() / self.group
                             * self.pool_spec.kernel_shape.iter().product::<usize>(),
                     ),
                 },
@@ -943,10 +946,7 @@ impl TypedOp for Conv {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(self.q_params.is_some() || inputs[0].datum_type.is_float());
         let q_inputs = if self.q_params.is_some() { 6 } else { 0 };
-        ensure!(
-            inputs[1].datum_type.is_number()
-                || (self.kernel_fmt == KernelFormat::OIHW && self.group == 1)
-        );
+        ensure!(inputs[1].datum_type.is_number() || self.kernel_fmt == KernelFormat::OIHW);
         if inputs.len() != 3 + q_inputs {
             bail!("Wrong number of inputs: expected {} got {}", 3 + q_inputs, inputs.len());
         }

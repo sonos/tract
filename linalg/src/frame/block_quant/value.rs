@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use super::{BlockQuant, PackedBlockQuantFormat};
 use tract_data::internal::*;
 use tract_data::TVec;
@@ -53,6 +55,22 @@ impl PartialEq for BlockQuantFact {
 pub struct BlockQuantValue {
     pub fact: BlockQuantFact,
     pub value: Blob,
+}
+
+impl BlockQuantValue {
+    pub fn split_rows(&self, range: Range<usize>) -> TractResult<BlockQuantValue> {
+        let row_bytes =
+            self.fact.k() / self.fact.format.block_len() * self.fact.format.block_bytes();
+        let mut value =
+            unsafe { Blob::new_for_size_and_align(range.len() * row_bytes, vector_size()) };
+        value.copy_from_slice(&self.value[range.start * row_bytes..][..range.len() * row_bytes]);
+        let mut shape = self.fact.shape.clone();
+        shape[0] = range.len();
+        Ok(BlockQuantValue {
+            fact: BlockQuantFact { format: self.fact.format.clone(), shape },
+            value,
+        })
+    }
 }
 
 impl OpaquePayload for BlockQuantValue {
