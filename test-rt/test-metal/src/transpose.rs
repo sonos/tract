@@ -27,7 +27,7 @@ impl Runtime for MetalTestTransposeRuntime {
     fn prepare(&self, mut model: TypedModel) -> TractResult<Box<dyn Runnable>> {
         for ix in 0..model.inputs.len() {
             let input = model.input_outlets()?[ix];
-            let in_fact =  model.outlet_fact(input)?;
+            let in_fact = model.outlet_fact(input)?;
             let rank = in_fact.rank();
             let shape = in_fact.shape.dims().into_iter().rev().collect::<TVec<_>>();
             let fact = in_fact.datum_type.fact(shape);
@@ -91,11 +91,9 @@ macro_rules! metal_runtime {
     };
 }
 
-
 metal_runtime!(Mlx);
 metal_runtime!(Mfa);
 metal_runtime!(Ggml);
-
 
 #[derive(Debug)]
 struct MetalTestTransformState {
@@ -104,19 +102,26 @@ struct MetalTestTransformState {
 
 impl State for MetalTestTransformState {
     fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let inputs= inputs.into_iter().map(|input| {
-            let input = input.into_tensor();
-            let rank = input.rank();
-            let perms = (0..rank).rev().collect_vec();
-            Ok(input.permute_axes(&perms)?.into_tvalue())
-        }).collect::<TractResult<TVec<TValue>>>()?;
+        let inputs = inputs
+            .into_iter()
+            .map(|input| {
+                let input = input.into_tensor();
+                let rank = input.rank();
+                let perms = (0..rank).rev().collect_vec();
+                Ok(input.permute_axes(&perms)?.into_tvalue())
+            })
+            .collect::<TractResult<TVec<TValue>>>()?;
 
-        self.state.run(inputs)?.into_iter().map(|t| {
-            let t = t.into_tensor();
-            let rank = t.rank();
-            let perms = (0..rank).rev().collect_vec();
-            Ok(t.permute_axes(&perms)?.into_tvalue())
-        }).collect()
+        self.state
+            .run(inputs)?
+            .into_iter()
+            .map(|t| {
+                let t = t.into_tensor();
+                let rank = t.rank();
+                let perms = (0..rank).rev().collect_vec();
+                Ok(t.permute_axes(&perms)?.into_tvalue())
+            })
+            .collect()
     }
 }
 
@@ -127,6 +132,8 @@ struct MetalTestTransformRunnable {
 
 impl Runnable for MetalTestTransformRunnable {
     fn spawn(&self) -> TractResult<Box<dyn State>> {
-        Ok(Box::new(MetalTestTransformState { state: TypedSimpleState::new(self.runnable.clone())? }))
+        Ok(Box::new(MetalTestTransformState {
+            state: TypedSimpleState::new(self.runnable.clone())?,
+        }))
     }
 }

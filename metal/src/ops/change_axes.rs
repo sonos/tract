@@ -15,10 +15,9 @@ impl MetalAxisOp {
         Self(op)
     }
 
-    pub fn from_tract_core_with_fact(op: AxisOp, fact: &TypedFact) -> Self {
+    fn simplify_axis_op(op: AxisOp, dims: &[TDim]) -> Self {
         match op {
             AxisOp::Move(from, to) if from.abs_diff(to) == 1 => {
-                let dims = fact.shape.dims();
                 if [&dims[from], &dims[to]].contains(&&1usize.into()) {
                     if from < to {
                         Self(AxisOp::Reshape(
@@ -39,6 +38,11 @@ impl MetalAxisOp {
             }
             _ => Self(op),
         }
+    }
+
+    pub fn from_tract_core_with_fact(op: AxisOp, fact: &TypedFact) -> Self {
+        let dims = fact.shape.dims();
+        Self::simplify_axis_op(op, dims)
     }
 }
 
@@ -87,42 +91,24 @@ impl MetalEvalOp for MetalAxisOp {
         let opaque = args_1!(inputs).into_tensor();
         let input = opaque.to_metal_tensor()?;
         let shape = input.shape();
-        let new_op = match self.0 {
-            AxisOp::Move(from, to) if from.abs_diff(to) == 1 => {
-                let dims = shape;
-                if [&dims[from], &dims[to]].contains(&&1usize.into()) {
-                    if from < to {
-                        Self(AxisOp::Reshape(
-                            from,
-                            tvec![dims[from].clone().into(), dims[to].clone().into()],
-                            tvec![dims[to].clone().into(), dims[from].clone().into()],
-                        ))
-                    } else {
-                        Self(AxisOp::Reshape(
-                            to,
-                            tvec![dims[to].clone().into(), dims[from].clone().into()],
-                            tvec![dims[from].clone().into(), dims[to].clone().into()],
-                        ))
-                    }
-                } else {
-                    Self(self.0.clone())
-                }
-            }
-            _ => Self(self.0.clone()),
-        };
+
+        // Try simplifying op once symbols are resolved
+        let new_op =
+            Self::simplify_axis_op(self.0.clone(), &shape.iter().map(|s| s.into()).collect_vec());
+
         let new_shape = match &new_op.0 {
             AxisOp::Move(from, to) => {
                 let mut permutation: Vec<usize> = (0..input.rank()).collect();
                 permutation.remove(*from);
                 permutation.insert(*to, *from);
                 let out_shape = PermuteAxes::output_shape(input.shape(), &permutation)?;
-                
+
                 let output = crate::ops::make_tensor_for_node(
-                        session,
-                        node_id,
-                        input.datum_type(),
-                        &out_shape
-                    )?;
+                    session,
+                    node_id,
+                    input.datum_type(),
+                    &out_shape,
+                )?;
                 PermuteAxes.dispatch_eval(context, input, &permutation, &output)?;
                 return Ok(tvec!(output.into_opaque_tensor().into_tvalue()));
             }
@@ -142,7 +128,12 @@ impl MetalEvalOp for MetalAxisOp {
 
         let output =
             crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &new_shape)?;
-        if !matches!(input, crate::MetalTensor::ArenaView(..)) || !matches!(output, crate::MetalTensor::ArenaView(..)) || (input.metal_offset::<usize>() != output.metal_offset::<usize>()){
+
+        // Don't copy if op if I/O pointers refers same arena offset
+        if !matches!(input, crate::MetalTensor::ArenaView(..))
+            || !matches!(output, crate::MetalTensor::ArenaView(..))
+            || (input.metal_offset::<usize>() != output.metal_offset::<usize>())
+        {
             Memcpy.dispatch_eval(context, input, 0, &output)?;
         }
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))

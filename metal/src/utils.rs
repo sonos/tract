@@ -124,7 +124,7 @@ pub fn as_q40_tensor(a: &Tensor) -> Option<&BlockQuantValue> {
 }
 
 pub fn check_strides_validity(shape: TVec<usize>, strides: TVec<isize>) -> TractResult<()> {
-    let mut zipped_shape_strides: Vec<_> = shape.into_iter().zip(strides.into_iter()).collect();
+    let mut zipped_shape_strides: Vec<_> = shape.into_iter().zip(strides).collect();
     zipped_shape_strides.sort_by_key(|&(_, stride)| stride);
 
     let mut prev_stride = 1;

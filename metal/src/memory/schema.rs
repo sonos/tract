@@ -282,7 +282,7 @@ impl MetalMemSchema {
         //nodes_mem_req.sort_by(|lhs, rhs| {
         //    let lhs_hint_mem_size = hinted_mem_size.get(&lhs.node);
         //    let rhs_hint_mem_size = hinted_mem_size.get(&rhs.node);
-//
+        //
         //    lhs.lifetime
         //        .end
         //        .cmp(&rhs.lifetime.end)
@@ -293,21 +293,26 @@ impl MetalMemSchema {
 
         let mut partitions: Vec<Partition> = vec![];
         for node_mem in nodes_mem_req.clone() {
-            if model.node(node_mem.node).op_as::<MetalAxisOp>()
-            .is_some_and(|ax_op| matches!(ax_op.0, AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Reshape(..))) || 
-            model.node(node_mem.node).op_is::<MetalFusedAxisOp<MetalAxisOp>>()
-            {   
-                let prev_node = previous_node(model, model.node(node_mem.node)).with_context(|| format!("Expected one input for axis op"))?;
-                let mut prev_partition =  None;
+            if model.node(node_mem.node).op_as::<MetalAxisOp>().is_some_and(|ax_op| {
+                matches!(ax_op.0, AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Reshape(..))
+            }) || model.node(node_mem.node).op_is::<MetalFusedAxisOp<MetalAxisOp>>()
+            {
+                let prev_node = previous_node(model, model.node(node_mem.node))
+                    .with_context(|| "Expected one input for axis op".to_string())?;
+                let mut prev_partition = None;
                 for part in partitions.iter_mut() {
                     let nodes: Vec<_> = part.nodes.iter().map(|n_mem| n_mem.node).collect();
                     if nodes.contains(&prev_node.id) {
                         prev_partition = Some(part);
                     }
                 }
-                if prev_partition.is_some(){
-                    println!("Node {}: {:?} will be in place", node_mem.node, model.node(node_mem.node).op());
-                    prev_partition.unwrap().nodes.push(node_mem.clone());
+                if let Some(prev_part) = prev_partition {
+                    println!(
+                        "Node {}: {:?} will be in place",
+                        node_mem.node,
+                        model.node(node_mem.node).op()
+                    );
+                    prev_part.nodes.push(node_mem.clone());
                     continue;
                 }
             }

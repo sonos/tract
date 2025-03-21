@@ -77,25 +77,17 @@ impl MValue {
         check_strides_validity(self.shape().into(), strides.clone())?;
 
         match &self {
-                MValue::Const(t) | MValue::Var(t) => {
-                    Ok(Self::Reshaped {
-                        t: Arc::clone(t),
-                        strides,
-                        shape: self.shape().into(),
-                    })
-                },
-                MValue::Reshaped { t, strides: old_strides, .. } => {
-                    if &strides != old_strides {
-                        Ok(Self::Reshaped {
-                            t: Arc::clone(t),
-                            strides: strides,
-                            shape: self.shape().into(),
-                        })
-                    } else {
-                        Ok(self.clone())
-                    }
+            MValue::Const(t) | MValue::Var(t) => {
+                Ok(Self::Reshaped { t: Arc::clone(t), strides, shape: self.shape().into() })
+            }
+            MValue::Reshaped { t, strides: old_strides, .. } => {
+                if &strides != old_strides {
+                    Ok(Self::Reshaped { t: Arc::clone(t), strides, shape: self.shape().into() })
+                } else {
+                    Ok(self.clone())
                 }
             }
+        }
     }
 
     pub fn as_arc_tensor(&self) -> Option<&Arc<Tensor>> {
