@@ -112,7 +112,7 @@ impl TypedOp for SplitGroupBlockQuant {
         let mut shape: TVec<usize> = bqf.shape().into();
         shape[0] /= self.group;
         let opaque_fact = BlockQuantFact::new(bqf.format.clone(), shape);
-        let fact = Opaque::fact(&[self.group]).with_opaque_fact(opaque_fact);
+        let fact = Opaque::fact([self.group]).with_opaque_fact(opaque_fact);
         Ok(tvec!(fact))
     }
     as_op!();
