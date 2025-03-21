@@ -128,14 +128,7 @@ impl MetalEvalOp for MetalAxisOp {
 
         let output =
             crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &new_shape)?;
-
-        // Don't copy if op if I/O pointers refers same arena offset
-        if !matches!(input, crate::MetalTensor::ArenaView(..))
-            || !matches!(output, crate::MetalTensor::ArenaView(..))
-            || (input.metal_offset::<usize>() != output.metal_offset::<usize>())
-        {
-            Memcpy.dispatch_eval(context, input, 0, &output)?;
-        }
+        Memcpy.dispatch_eval(context, input, 0, &output)?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }
