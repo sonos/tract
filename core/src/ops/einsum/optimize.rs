@@ -19,8 +19,9 @@ use crate::ops::matmul::quant::{
 };
 use crate::ops::nn::{Reduce, Reducer};
 
-#[allow(clippy::large_enum_variant)]
+
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum AxesOrPatch<'a> {
     Annotated(EinSumAnnotatedAsMatMul<'a>),
     Patch(TypedModelPatch),
