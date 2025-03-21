@@ -462,7 +462,7 @@ mod tests {
 
                     ensure!(k % 32 == 0);
                     let b_q4_0_tensor = tensor0(Opaque(Arc::new(BlockQuantValue {
-                        fact: BlockQuantFact { format: Box::new(Q4_0), shape: tvec![batch, n, k] },
+                        fact: BlockQuantFact::new(Box::new(Q4_0), tvec![batch, n, k]),
                         value: Q4_0.quant_f32(&b_data)?,
                     })));
                     (b_tensor, b_q4_0_tensor)
