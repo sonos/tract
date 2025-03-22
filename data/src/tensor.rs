@@ -732,6 +732,7 @@ impl Tensor {
         self.assign_slice_from_resolved(range, src, src_range, axis);
     }
 
+    #[allow(clippy::ptr_eq)]
     unsafe fn assign_slice_from_resolved(
         &mut self,
         range: std::ops::Range<usize>,
