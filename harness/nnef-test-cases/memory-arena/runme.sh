@@ -1,6 +1,6 @@
 #!/bin/sh
 
-if [ `uname` = "Darwin" ] && ! grep -q "(Virtual)" <<< "$(sysctl -n machdep.cpu.brand_string)"
+if [ `uname` = "Darwin" ] && ! ( sysctl -n machdep.cpu.brand_string | grep -q "(Virtual)" )
 then
 
   ROOT=$(dirname $(realpath $0))/../../..
