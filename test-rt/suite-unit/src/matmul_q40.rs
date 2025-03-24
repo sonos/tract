@@ -163,7 +163,7 @@ pub fn suite() -> TractResult<TestSuite> {
 
     suite.add_arbitrary::<MatmulQ40Problem>(
         "proptest_weights_in_b",
-        MatmulQ40ProblemParams { weights_in_b: true, ..MatmulQ40ProblemParams::default() },
+        MatmulQ40ProblemParams { weights_in_b: true },
     );
 
     suite.add(
