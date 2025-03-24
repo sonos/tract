@@ -130,7 +130,7 @@ impl TCommandBuffer {
         profiler: Option<Rc<RefCell<MetalProfiler>>>,
     ) -> Self {
         let encoder = command_buffer.new_compute_command_encoder().to_owned();
-        TCommandBuffer { inner: command_buffer, encoder, profiler: None }
+        TCommandBuffer { inner: command_buffer, encoder, profiler }
     }
 
     pub fn encoder(&self) -> &ComputeCommandEncoder {

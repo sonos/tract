@@ -263,7 +263,6 @@ fn dispatch_metal_ggml_gemv(
         let group_size = MTLSize { width: nth0, height: nth1, depth: 1 };
 
         encoder.dispatch_thread_groups(grid_size, group_size);
-        encoder.end_encoding();
     });
 
     Ok(())
@@ -315,7 +314,6 @@ fn dispatch_metal_ggml_gemm(
 
         encoder.set_threadgroup_memory_length(0, 8192);
         encoder.dispatch_thread_groups(grid_size, group_size);
-        encoder.end_encoding();
     });
 
     Ok(())
