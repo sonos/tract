@@ -397,11 +397,12 @@ pub fn render_summaries(
     if options.profile {
         let summary = annotations.profile_summary.as_ref().unwrap();
 
+        let have_accel_profiling = annotations.tags.iter().any(|(_, tag)| tag.accelerator_profile.is_some());
         println!(
             "{}{}{}",
             White.bold().paint(format!("{:<43}", "Most time consuming operations")),
             White.bold().paint(format!("{:<17}", "CPU")),
-            White.bold().paint(if options.has_accelerator { "Accelerator" } else { "" }),
+            White.bold().paint(if have_accel_profiling { "Accelerator" } else { "" }),
         );
 
         for (op, (cpu_dur, accel_dur, n)) in annotations
@@ -425,7 +426,7 @@ pub fn render_summaries(
                     ),
                 )
             })
-            .sorted_by_key(|(_, d)| if options.has_accelerator { d.1 } else { d.0 })
+            .sorted_by_key(|(_, d)| if have_accel_profiling { d.1 } else { d.0 })
             .rev()
         {
             println!(
@@ -433,7 +434,7 @@ pub fn render_summaries(
                 Blue.bold().paint(format!("{op:22}")),
                 n,
                 dur_avg_ratio(cpu_dur, summary.sum),
-                if options.has_accelerator {
+                if have_accel_profiling {
                     dur_avg_ratio(accel_dur, summary.accel_sum)
                 } else {
                     "".to_string()
@@ -465,7 +466,7 @@ pub fn render_summaries(
                 .sum::<NodeTags>();
 
             let profiler =
-                if !options.has_accelerator { sum.profile } else { sum.accelerator_profile };
+                if !have_accel_profiling { sum.profile } else { sum.accelerator_profile };
             if profiler.unwrap_or_default().as_secs_f64() / summary.entire.as_secs_f64() < 0.01 {
                 continue;
             }
@@ -482,7 +483,7 @@ pub fn render_summaries(
             dur_avg_ratio(summary.entire - summary.sum.min(summary.entire), summary.entire)
         );
 
-        if options.has_accelerator {
+        if have_accel_profiling {
             println!(
                 "(Total CPU Op time - Total Accelerator Op time): {}",
                 dur_avg_ratio(summary.sum - summary.accel_sum.min(summary.sum), summary.entire)

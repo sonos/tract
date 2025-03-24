@@ -1125,8 +1125,7 @@ pub fn display_params_from_clap(
         },
         info: matches.is_present("info"),
         json: matches.is_present("json"),
-        mm: matches.is_present("mm"),
-        has_accelerator: root_matches.is_present("metal"),
+        mm: matches.is_present("mm")
     })
 }
 
