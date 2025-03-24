@@ -26,7 +26,7 @@ pub struct MatmulQ40Problem {
 
 impl std::fmt::Debug for MatmulQ40Problem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "a:{:?} b:{:?}", self.a, self.b)
+        write!(f, "a:{:?} b:{:?} weights_in_b:{:?}", self.a, self.b, self.weights_in_b)
     }
 }
 
@@ -103,7 +103,6 @@ impl MatmulQ40Problem {
         )?;
 
         model.set_output_outlets(&output)?;
-
         //let test = model.node_by_name("einsum")?.op.as_op().downcast_ref::<EinSum>().unwrap();
 
         //let test1 = model.node_by_name("einsum")?.op.as_op().downcast_ref::<EinSum>().unwrap();
@@ -124,7 +123,6 @@ impl MatmulQ40Problem {
             (a_view, b_view) = (b_view, a_view);
         }
         let c = a_view.into_dimensionality::<Ix2>()?.dot(&b_view.into_dimensionality::<Ix2>()?.t());
-
         Ok(c.into_tensor())
     }
 }
@@ -194,5 +192,15 @@ pub fn suite() -> TractResult<TestSuite> {
         "minimal_matvec_weights_in_b_1",
         MatmulQ40Problem { a: tensor2(&[[0f32]]), b: tensor2(&[[0f32]]), weights_in_b: true },
     );
+
+    suite.add(
+        "minimal_matvec_weights_in_b_2",
+        MatmulQ40Problem {
+            a: tensor2(&[[0f32], [0f32]]),
+            b: tensor2(&[[0f32]]),
+            weights_in_b: true,
+        },
+    );
+
     Ok(suite)
 }
