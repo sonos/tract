@@ -152,7 +152,7 @@ impl Runtime for MetalTestRuntime {
 }
 
 macro_rules! metal_test_suite {
-    ($id: ident, $phase: expr, $optimize: expr, $gemm_impl: ident, $transpose_inputs: ident, $use_arena: ident) => {
+    ($id: ident, $phase: expr, $optimize: expr, $gemm_impl: expr, $transpose_inputs: ident, $use_arena: ident) => {
         paste! {
             mod [<$id _ $gemm_impl:lower>] {
                 use super::*;
@@ -163,7 +163,7 @@ macro_rules! metal_test_suite {
                             name: stringify!([<$id _ $gemm_impl:lower>]),
                             phase: $phase,
                             optimize: $optimize,
-                            gemm_impl: MetalGemmImplKind::$gemm_impl,
+                            gemm_impl: $gemm_impl,
                             transpose_inputs: $transpose_inputs,
                             use_arena: $use_arena,
                         };
@@ -191,8 +191,8 @@ static MFA: Option<MetalGemmImplKind> = Some(MetalGemmImplKind::Mfa);
 static GGML: Option<MetalGemmImplKind> = Some(MetalGemmImplKind::Ggml);
 
 // Common transform
-metal_test_suite!(metal_phase_0_einsum, 0, false, MLX);
-metal_test_suite!(metal_phase_1_pre_translate, 1, false, MLX);
+metal_test_suite!(metal_phase_0_einsum, 0, false, MLX, false, false);
+metal_test_suite!(metal_phase_1_pre_translate, 1, false, MLX, false, false);
 
 metal_runtime!(None);
 metal_runtime!(MLX);
