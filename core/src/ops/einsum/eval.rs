@@ -2,6 +2,7 @@ use super::AxesMapping;
 use crate::internal::*;
 use ndarray::{ArrayViewD, Zip};
 use tract_data::itertools::Itertools;
+use tract_linalg::block_quant::BlockQuantValue;
 use tract_ndarray::{Axis, Dimension};
 use tract_num_traits::{One, Zero};
 
@@ -30,6 +31,20 @@ pub fn eval_t<Acc: Datum + Zero + One>(
     expr: &AxesMapping,
     inputs: TVec<TValue>,
 ) -> TractResult<Tensor> {
+    let inputs = inputs.into_iter().map(|i| if i.datum_type().is_number() { Ok(i) } else {
+        let bqvs = i.as_slice::<Opaque>()?.iter().map(|o| o.downcast_ref::<BlockQuantValue>()).collect::<Option<Vec<&BlockQuantValue>>>().context("Numbers and BlockQuantValues are the only supported input for unoptimized einsum")?;
+        let mut unpacked:Vec<Tensor> = if Acc::is::<f16>() {
+             bqvs.iter().map(|bqv| bqv.fact.format.dequant_f16(&bqv.value)).collect::<TractResult<_>>()?
+         } else if Acc::is::<f32>() {
+             bqvs.iter().map(|bqv| bqv.fact.format.dequant_f32(&bqv.value)).collect::<TractResult<_>>()?
+         } else {
+             bail!("Only f32 and f16 accumulators are compatible with BlockQuantValue inputs");
+         }    ;
+         unpacked.iter_mut().try_for_each(|t| t.insert_axis(0))?;
+         let stacked = Tensor::stack_tensors(0, &unpacked)?;
+         let shape = i.shape().iter().chain(unpacked[0].shape().iter()).copied().collect_vec();
+         Ok(stacked.into_shape(&shape)?.into_tvalue())
+    } ).collect::<TractResult<Vec<TValue>>>()?;
     let shapes: TVec<_> = inputs
         .iter()
         .map(|t| {
