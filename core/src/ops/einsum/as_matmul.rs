@@ -229,7 +229,7 @@ impl EvalOp for BasicMatMul {
         };
         let inputs = dequant_inputs(c_dt, inputs)?;
 
-        let output_shape = self.output_shape(&inputs[0].shape(), &inputs[1].shape());
+        let output_shape = self.output_shape(inputs[0].shape(), inputs[1].shape());
 
         if let Some(qp) = self.quantize_output {
             let mut acc = Tensor::zero_dt(i32::datum_type(), &output_shape)?;
@@ -264,8 +264,8 @@ impl TypedOp for BasicMatMul {
         let [a, b] = inputs else {
             bail!("Expects 2 inputs");
         };
-        let a_shape = block_quant_aware_input_shape(&inputs[0])?;
-        let b_shape = block_quant_aware_input_shape(&inputs[1])?;
+        let a_shape = block_quant_aware_input_shape(inputs[0])?;
+        let b_shape = block_quant_aware_input_shape(inputs[1])?;
         let dt = self.quantize_output.unwrap_or(if a.datum_type.is_number() {
             a.datum_type
         } else {

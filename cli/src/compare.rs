@@ -195,7 +195,7 @@ pub fn handle_pbdir(
         let tensor = tract_onnx::tensor::proto_from_reader(file)?;
         let name = tensor.name.to_string();
         let value: Tensor = load_tensor(&FopenDataResolver, &tensor, None)?;
-        values.insert(name, vec!(Ok(value.into_tvalue())));
+        values.insert(name, vec![Ok(value.into_tvalue())]);
     }
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
         cumulative,
@@ -358,7 +358,7 @@ where
                     tags.labels.push(Red.paint("Unimplemented").to_string());
                     failing.insert(node.id);
                 } else {
-                    log::info!("{}", format!("Running {node}"));
+                    log::info!("Running {node}");
                     let obtained = tract_core::plan::eval(session_state, state, node, input);
                     match obtained {
                         Err(e) => {
