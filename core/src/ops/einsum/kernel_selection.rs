@@ -97,7 +97,6 @@ pub fn wire_prepacked(
         .and_then(|opaq| opaq.0.downcast_ref::<Box<dyn MMMInputValue>>());
     ensure!(prepack.is_some());
     let prepack = prepack.unwrap();
-
     let (mode_picker, configs) = if let Some((mmm, pack)) =
         op.n.as_i64()
             .and_then(|n| {
@@ -138,7 +137,6 @@ pub fn wire_prepacked(
                 }
             })
             .collect_vec();
-
         let mmv = mmms
             .iter()
             .min_by_key(|(mmm, _packing, pe)| {
