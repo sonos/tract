@@ -310,9 +310,7 @@ fn write_block_quant_value(w: &mut impl Write, value: &BlockQuantValue) -> Tract
     // 0x3040 3 is for GGML formats, 0 for Q formats then 4 and 0
     header.item_type = 0x3040;
     header.write(w)?;
-    let mut rewritten_value = value.value.clone();
-    tract_to_gguf_q4_0_packing(&mut rewritten_value)?;
-    w.write_all(rewritten_value.as_bytes())?;
+    w.write_all(&value.value)?;
     Ok(())
 }
 
