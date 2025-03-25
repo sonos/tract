@@ -27,15 +27,12 @@ pub fn output_shape<D: DimLike>(
         .collect())
 }
 
-pub fn eval_t<Acc: Datum + Zero + One>(
-    expr: &AxesMapping,
-    inputs: TVec<TValue>,
-) -> TractResult<Tensor> {
-    let inputs = inputs.into_iter().map(|i| if i.datum_type().is_number() { Ok(i) } else {
+pub fn dequant_inputs(acc: DatumType, input: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    input.into_iter().map(|i| if i.datum_type().is_number() { Ok(i) } else {
         let bqvs = i.as_slice::<Opaque>()?.iter().map(|o| o.downcast_ref::<BlockQuantValue>()).collect::<Option<Vec<&BlockQuantValue>>>().context("Numbers and BlockQuantValues are the only supported input for unoptimized einsum")?;
-        let mut unpacked:Vec<Tensor> = if Acc::is::<f16>() {
+        let mut unpacked:Vec<Tensor> = if acc.is::<f16>() {
              bqvs.iter().map(|bqv| bqv.fact.format.dequant_f16(&bqv.value)).collect::<TractResult<_>>()?
-         } else if Acc::is::<f32>() {
+         } else if acc.is::<f32>() {
              bqvs.iter().map(|bqv| bqv.fact.format.dequant_f32(&bqv.value)).collect::<TractResult<_>>()?
          } else {
              bail!("Only f32 and f16 accumulators are compatible with BlockQuantValue inputs");
@@ -44,7 +41,13 @@ pub fn eval_t<Acc: Datum + Zero + One>(
          let stacked = Tensor::stack_tensors(0, &unpacked)?;
          let shape = i.shape().iter().copied().chain([bqvs[0].fact.m(), bqvs[0].fact.k()]).collect_vec();
          Ok(stacked.into_shape(&shape)?.into_tvalue())
-    } ).collect::<TractResult<Vec<TValue>>>()?;
+    } ).collect::<TractResult<TVec<TValue>>>()
+}
+pub fn eval_t<Acc: Datum + Zero + One>(
+    expr: &AxesMapping,
+    inputs: TVec<TValue>,
+) -> TractResult<Tensor> {
+    let inputs = dequant_inputs(Acc::datum_type(), inputs)?;
     let shapes: TVec<_> = inputs
         .iter()
         .map(|t| {
