@@ -393,6 +393,10 @@ impl DatumType {
             _ => panic!("No max value for datum type {self:?}"),
         }
     }
+
+    pub fn is<D: Datum>(&self) -> bool {
+        *self == D::datum_type()
+    }
 }
 
 impl std::str::FromStr for DatumType {

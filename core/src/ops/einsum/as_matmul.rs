@@ -1,12 +1,13 @@
 use tract_data::itertools::Itertools;
-use tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue};
 use tract_linalg::Scaler;
 use tract_ndarray::Ix2;
 use tract_num_traits::One;
 
+use super::eval::dequant_inputs;
 use super::optimize::*;
 use super::EinSum;
 use crate::internal::*;
+use crate::ops::einsum::block_quant_aware_input_shape;
 use crate::ops::konst::Const;
 
 pub fn rewrite_einsums_as_matmul(model: &mut TypedModel) -> TractResult<()> {
@@ -219,41 +220,40 @@ impl EvalOp for BasicMatMul {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let (a, b) = args_2!(inputs);
-        let a_shape = a
-            .view()
-            .tensor
-            .to_scalar::<Opaque>()
-            .map(|od| {
-                od.downcast_ref::<BlockQuantValue>()
-                    .map(|bqv| {
-                        a.shape()
-                            .iter()
-                            .cloned()
-                            .chain(bqv.fact.shape().iter().copied())
-                            .collect_vec()
-                    })
-                    .unwrap_or(a.shape().to_vec())
-            })
-            .unwrap_or(a.shape().to_vec());
+        let c_dt = if inputs[0].datum_type().is_number() {
+            inputs[0].datum_type()
+        } else if inputs[1].datum_type().is_number() {
+            inputs[1].datum_type()
+        } else {
+            f32::datum_type()
+        };
+        let inputs = dequant_inputs(c_dt, inputs)?;
 
-        let output_shape = self.output_shape(&a_shape, b.shape());
+        let output_shape = self.output_shape(&inputs[0].shape(), &inputs[1].shape());
+
         if let Some(qp) = self.quantize_output {
             let mut acc = Tensor::zero_dt(i32::datum_type(), &output_shape)?;
-            let mut a_i32 = a.cast_to::<i32>()?.into_owned();
-            a_i32.as_slice_mut::<i32>()?.iter_mut().for_each(|x| *x -= a.datum_type().zp_scale().0);
-            let mut b_i32 = b.cast_to::<i32>()?.into_owned();
-            b_i32.as_slice_mut::<i32>()?.iter_mut().for_each(|x| *x -= b.datum_type().zp_scale().0);
+            let mut a_i32 = inputs[0].cast_to::<i32>()?.into_owned();
+            a_i32
+                .as_slice_mut::<i32>()?
+                .iter_mut()
+                .for_each(|x| *x -= inputs[0].datum_type().zp_scale().0);
+            let mut b_i32 = inputs[1].cast_to::<i32>()?.into_owned();
+            b_i32
+                .as_slice_mut::<i32>()?
+                .iter_mut()
+                .for_each(|x| *x -= inputs[1].datum_type().zp_scale().0);
             self.mm::<i32>(&mut acc, &a_i32, &b_i32)?;
-            let scale = a.datum_type().zp_scale().1 * b.datum_type().zp_scale().1 / qp.zp_scale().1;
+            let scale = inputs[0].datum_type().zp_scale().1 * inputs[1].datum_type().zp_scale().1
+                / qp.zp_scale().1;
             let scaler = Scaler::new(scale, tract_linalg::mmm::RoundingPolicy::Even);
             acc.to_array_view_mut::<i32>()?.iter_mut().for_each(|x| *x = *x * scaler);
             let mut c: Tensor = acc.cast_to_dt(qp.unquantized())?.into_owned();
             unsafe { c.set_datum_type(qp) };
             Ok(tvec!(c.into_tvalue()))
         } else {
-            let mut c = Tensor::zero_dt(b.datum_type(), &output_shape)?;
-            dispatch_floatlike!(Self::mm(c.datum_type())(self, &mut c, &a, &b))?;
+            let mut c = Tensor::zero_dt(c_dt, &output_shape)?;
+            dispatch_floatlike!(Self::mm(c_dt)(self, &mut c, &inputs[0], &inputs[1]))?;
             Ok(tvec!(c.into_tvalue()))
         }
     }
@@ -264,58 +264,14 @@ impl TypedOp for BasicMatMul {
         let [a, b] = inputs else {
             bail!("Expects 2 inputs");
         };
-        if a.datum_type.is_number() && b.datum_type.is_number() {
-            ensure!(a.rank() == b.rank());
-            ensure!(a.rank() >= 2);
-            ensure!(
-                a.shape[a.rank() - 2 + !self.transpose_a as usize]
-                    == b.shape[b.rank() - 2 + self.transpose_b as usize]
-            );
-            Ok(tvec!(self
-                .quantize_output
-                .unwrap_or(a.datum_type)
-                .fact(self.output_shape(&a.shape, &b.shape))))
-        } else if let Some(opf) = inputs[0]
-            .opaque_fact
-            .as_ref()
-            .and_then(|of| of.downcast_ref::<BlockQuantFact>())
-            .or_else(|| {
-                inputs[0]
-                    .konst
-                    .as_ref()
-                    .and_then(|k| k.to_scalar::<Opaque>().ok())
-                    .and_then(|o| o.downcast_ref::<BlockQuantValue>())
-                    .map(|v| &v.fact)
-            })
-        {
-            let a_shape: ShapeFact =
-                a.shape.iter().cloned().chain(opf.shape().iter().map(|d| d.to_dim())).collect();
-            Ok(tvec!(self
-                .quantize_output
-                .unwrap_or(b.datum_type)
-                .fact(self.output_shape(&a_shape, &b.shape))))
-        } else if let Some(opf) = inputs[1]
-            .opaque_fact
-            .as_ref()
-            .and_then(|of| of.downcast_ref::<BlockQuantFact>())
-            .or_else(|| {
-                inputs[1]
-                    .konst
-                    .as_ref()
-                    .and_then(|k| k.to_scalar::<Opaque>().ok())
-                    .and_then(|o| o.downcast_ref::<BlockQuantValue>())
-                    .map(|v| &v.fact)
-            })
-        {
-            let b_shape: ShapeFact =
-                b.shape.iter().cloned().chain(opf.shape().iter().map(|d| d.to_dim())).collect();
-            Ok(tvec!(self
-                .quantize_output
-                .unwrap_or(a.datum_type)
-                .fact(self.output_shape(&a.shape, &b_shape))))
+        let a_shape = block_quant_aware_input_shape(&inputs[0])?;
+        let b_shape = block_quant_aware_input_shape(&inputs[1])?;
+        let dt = self.quantize_output.unwrap_or(if a.datum_type.is_number() {
+            a.datum_type
         } else {
-            todo!()
-        }
+            b.datum_type
+        });
+        Ok(tvec!(dt.fact(self.output_shape(&a_shape, &b_shape))))
     }
 
     as_op!();
