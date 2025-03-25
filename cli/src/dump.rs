@@ -181,10 +181,11 @@ pub fn handle(
                     .downcast_ref::<TypedModel>()
                     .context("Check memory arena requires a typed model")?,
                 &plan_options_from_subcommand(sub_matches)?,
-                std::path::Path::new(sub_matches
-                    .value_of("memory-arena")
-                    .ok_or(anyhow!("Path to JSON file required"))?)
-                    .to_path_buf(),
+                std::path::Path::new(
+                    sub_matches
+                        .value_of("memory-arena")
+                        .ok_or(anyhow!("Path to JSON file required"))?,
+                ),
             )?;
         }
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]

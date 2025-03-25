@@ -14,12 +14,12 @@ struct MemArenaUsage {
 impl MemArenaUsage {
     pub fn eval_from_schema(
         schema: &MetalMemSchema,
-        symbol_values: &SymbolValues
+        symbol_values: &SymbolValues,
     ) -> TractResult<Self> {
         Ok(Self {
-            arena_memory_size: schema.eval_memory_size(&symbol_values)?,
-            peak_memory_size: schema.eval_peak_memory_size(&symbol_values)?,
-            peak_memory_usage: schema.eval_usage(&symbol_values)?,
+            arena_memory_size: schema.eval_memory_size(symbol_values)?,
+            peak_memory_size: schema.eval_peak_memory_size(symbol_values)?,
+            peak_memory_usage: schema.eval_usage(symbol_values)?,
         })
     }
 }
@@ -60,7 +60,7 @@ impl MemArenaMetrics {
             let symbol_values = SymbolValues::default()
                 .with(&sequence_length, s)
                 .with(&past_sequence_length, 0);
-            let usage = MemArenaUsage::eval_from_schema(&schema, &symbol_values)?;
+            let usage = MemArenaUsage::eval_from_schema(schema, &symbol_values)?;
             max_memory_size = max_memory_size.max(usage.arena_memory_size);
             sum_size += usage.arena_memory_size;
             sum_used += usage.peak_memory_size;
@@ -72,7 +72,7 @@ impl MemArenaMetrics {
             let symbol_values = SymbolValues::default()
                 .with(&sequence_length, 1)
                 .with(&past_sequence_length, p);
-            let usage = MemArenaUsage::eval_from_schema(&schema, &symbol_values)?;
+            let usage = MemArenaUsage::eval_from_schema(schema, &symbol_values)?;
             max_memory_size = max_memory_size.max(usage.arena_memory_size);
             sum_size += usage.arena_memory_size;
             sum_used += usage.peak_memory_size;
