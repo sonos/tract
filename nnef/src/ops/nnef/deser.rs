@@ -632,8 +632,19 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let a_dt = builder.model.outlet_fact(a)?.datum_type;
     let b_dt = builder.model.outlet_fact(b)?.datum_type;
     let name = &*invocation.invocation.id.0;
-    ensure!(!a_dt.is_opaque());
     let a_rank = builder.model.outlet_fact(a)?.rank();
+    let b_rank = builder.model.outlet_fact(b)?.rank();
+    if a_dt.is_opaque() {
+        ensure!(builder.model.outlet_fact(a)?.shape.volume().is_one());
+        ensure!(builder.model.outlet_fact(a)?.opaque_fact.is_some());
+        let a_rank =
+            tract_core::ops::einsum::block_quant_aware_input_shape(builder.model.outlet_fact(b)?)?
+                .len();
+        ensure!(a_rank == b_rank);
+        let axes = AxesMapping::for_numpy_matmul(b_rank, false, b_trans, false)?;
+        return builder
+            .wire(ops::einsum::EinSum { axes, operating_dt: b_dt, q_params: None }, &[a, b]);
+    }
     if b_dt.is_opaque() {
         ensure!(builder.model.outlet_fact(b)?.shape.volume().is_one());
         ensure!(builder.model.outlet_fact(b)?.opaque_fact.is_some());
@@ -645,7 +656,6 @@ pub fn matmul(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
         return builder
             .wire(ops::einsum::EinSum { axes, operating_dt: a_dt, q_params: None }, &[b, a]);
     }
-    let b_rank = builder.model.outlet_fact(b)?.rank();
     ensure!(a_rank == b_rank);
     let c_rank = a_rank.max(b_rank);
     let mut axes = AxesMapping::for_numpy_matmul(c_rank, a_trans, b_trans, false)?;
