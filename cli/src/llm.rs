@@ -2,7 +2,7 @@ use crate::bench::{bench, make_state};
 use crate::Parameters;
 use readings_probe::Probe;
 use std::collections::HashSet;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tract_hir::internal::*;
 use tract_libcli::profile::BenchLimits;
 
@@ -89,17 +89,20 @@ pub fn bench_tg(
     }
 
     run_params.symbols.set(&s, 1);
-    let start = Instant::now();
-    for t in 0..tg - 1 {
+    let mut tot_dur = Duration::default();
+
+    for t in 0..tg {
         if let Some(p) = probe {
             p.log_event(&format!("Starting token {t}"))?;
         }
         run_params.symbols.set(&p, t as i64);
         let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
-        state.run(inputs.clone())?;
+
+        let start = Instant::now();
+        state.run(inputs)?;
+        tot_dur += start.elapsed();
     }
-    let dur = start.elapsed();
-    let tokens = tg as f64 / dur.as_secs_f64();
+    let tokens = tg as f64 / tot_dur.as_secs_f64();
     println!("TG{tg}: {tokens:.1} tokens/sec");
     Ok(())
 }
