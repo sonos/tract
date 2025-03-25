@@ -97,23 +97,24 @@ pub fn wire_prepacked(
         .and_then(|opaq| opaq.0.downcast_ref::<Box<dyn MMMInputValue>>());
     ensure!(prepack.is_some());
     let prepack = prepack.unwrap();
-    let (mode_picker, configs) = if let Some((mmm, pack)) =
-        op.n.as_i64()
-            .and_then(|n| {
-                tract_linalg::ops().mmm(
-                    op.operating_dt,
-                    Some(prepack.mn()),
-                    Some(prepack.k()),
-                    Some(n as usize),
-                )
-            })
-            .and_then(|mmm| {
-                mmm.packings()
-                    .iter()
-                    .enumerate()
-                    .find(|(_, (a, _b))| a.same_as(prepack.format()))
-                    .map(|(ix, _)| (mmm.clone(), ix))
-            }) {
+    let (mode_picker, configs) = if let Some((mmm, pack)) = op
+        .n
+        .as_i64()
+        .and_then(|n| {
+            tract_linalg::ops().mmm(
+                op.operating_dt,
+                Some(prepack.mn()),
+                Some(prepack.k()),
+                Some(n as usize),
+            )
+        })
+        .and_then(|mmm| {
+            mmm.packings()
+                .iter()
+                .enumerate()
+                .find(|(_, (a, pb))| a.same_as(prepack.format()) && pb.precursor() == b_dt.into())
+                .map(|(ix, _)| (mmm.clone(), ix))
+        }) {
         (ModePicker::Single, vec![(mmm, pack, None)])
     } else {
         let mmms = tract_linalg::ops()
