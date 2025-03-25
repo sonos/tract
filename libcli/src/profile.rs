@@ -166,12 +166,14 @@ pub fn rec_profiler_metal(
     inputs: &TVec<TValue>,
     prefix: &[(usize, String)],
 ) -> TractResult<(TVec<TValue>, Duration)> {
-    tract_metal::METAL_CONTEXT.with_borrow(|ctxt| {
-        let (mut cpu_start, mut gpu_start): (u64, u64) = (0, 0);
-        ctxt.device().sample_timestamps(&mut cpu_start, &mut gpu_start);
+    // Metal profiler is broken, only profile CPU
 
-        let n_nodes = state.plan().model().nodes_len();
-        let (result, eval_dur, profiler) = ctxt.profile(n_nodes, || {
+    //tract_metal::METAL_CONTEXT.with_borrow(|ctxt| {
+    //    let (mut cpu_start, mut gpu_start): (u64, u64) = (0, 0);
+    //    ctxt.device().sample_timestamps(&mut cpu_start, &mut gpu_start);
+//
+    //    let n_nodes = state.plan().model().nodes_len();
+    //    let (result, eval_dur, profiler) = ctxt.profile(n_nodes, || {
             let profile_start = crate::time::now();
             let r = state.run_plan_with_eval(
                 inputs.clone(),
@@ -193,21 +195,21 @@ pub fn rec_profiler_metal(
             )?;
 
             Ok((r, profile_start.elapsed()))
-        })?;
-
-        let (mut cpu_end, mut gpu_end): (u64, u64) = (0, 0);
-        ctxt.device().sample_timestamps(&mut cpu_end, &mut gpu_end);
-
-        profiler.iter().enumerate().for_each(|(node_id, duration)| {
-            let node_id = NodeQId(prefix.into(), node_id);
-            *dg.node_mut(node_id).accelerator_profile.get_or_insert(Duration::default()) +=
-                Duration::from_nanos(tract_metal::utils::rescale_gpu_duration(
-                    *duration, cpu_start, cpu_end, gpu_start, gpu_end,
-                ));
-        });
-
-        Ok((result, eval_dur))
-    })
+    //    })?;
+//
+    //    let (mut cpu_end, mut gpu_end): (u64, u64) = (0, 0);
+    //    ctxt.device().sample_timestamps(&mut cpu_end, &mut gpu_end);
+//
+    //    profiler.iter().enumerate().for_each(|(node_id, duration)| {
+    //        let node_id = NodeQId(prefix.into(), node_id);
+    //        *dg.node_mut(node_id).accelerator_profile.get_or_insert(Duration::default()) +=
+    //            Duration::from_nanos(tract_metal::utils::rescale_gpu_duration(
+    //                *duration, cpu_start, cpu_end, gpu_start, gpu_end,
+    //            ));
+    //    });
+//
+    //    Ok((result, eval_dur))
+    //})
 }
 
 #[allow(clippy::too_many_arguments)]
