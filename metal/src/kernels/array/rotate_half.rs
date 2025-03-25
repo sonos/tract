@@ -76,7 +76,6 @@ impl RotateHalf {
             let group_size = utils::build_metal_size_with_ones();
 
             encoder.dispatch_thread_groups(grid_size, group_size);
-            
         });
         Ok(())
     }

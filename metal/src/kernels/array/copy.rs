@@ -71,7 +71,6 @@ impl Memcpy {
             let grid_size = MTLSize { width: output.len() as NSUInteger, height: 1, depth: 1 };
             let group_size = MTLSize { width: 1, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid_size, group_size);
-            
         });
         Ok(())
     }

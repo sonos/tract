@@ -91,7 +91,6 @@ impl ApplyRope {
 
             let group_size = metal::MTLSize { width: 32 as _, height: 32 as _, depth: 1 as _ };
             encoder.dispatch_threads(grid_size, group_size);
-            
         });
         Ok(())
     }
