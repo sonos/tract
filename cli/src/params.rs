@@ -1125,7 +1125,7 @@ pub fn display_params_from_clap(
         },
         info: matches.is_present("info"),
         json: matches.is_present("json"),
-        mm: matches.is_present("mm")
+        mm: matches.is_present("mm"),
     })
 }
 
