@@ -43,21 +43,13 @@ pub fn dequant_inputs(acc: DatumType, input: TVec<TValue>) -> TractResult<TVec<T
          Ok(stacked.into_shape(&shape)?.into_tvalue())
     } ).collect::<TractResult<TVec<TValue>>>()
 }
+
 pub fn eval_t<Acc: Datum + Zero + One>(
     expr: &AxesMapping,
     inputs: TVec<TValue>,
 ) -> TractResult<Tensor> {
     let inputs = dequant_inputs(Acc::datum_type(), inputs)?;
-    let shapes: TVec<_> = inputs
-        .iter()
-        .map(|t| {
-            if t.datum_type() == Opaque::datum_type() {
-                bail!("Unoptimized einsum execution with BlockQuantized input is not implemented.");
-            } else {
-                Ok(t.shape())
-            }
-        })
-        .collect::<TractResult<_>>()?;
+    let shapes: TVec<_> = inputs.iter().map(|t| t.shape()).collect();
     let output_shape = output_shape(expr, &shapes)?;
     let inputs: TVec<Cow<Tensor>> =
         inputs.iter().map(|t| t.cast_to::<Acc>()).collect::<TractResult<_>>()?;
