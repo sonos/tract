@@ -36,7 +36,7 @@ pub fn handle(
     probe: Option<&Probe>,
 ) -> TractResult<()> {
     bench_pp(params, matches, sub_matches, limits, 512, probe)?;
-    bench_tg(params, matches, sub_matches, 128, probe)?;
+    bench_tg(params, matches, sub_matches, limits, 128, probe)?;
     Ok(())
 }
 
@@ -61,6 +61,11 @@ pub fn bench_pp(
     }
 
     run_params.symbols.set(&p, 0);
+    // Warmup 
+    run_params.symbols.set(&s, 6);
+    let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
+    limits.warmup(model, &inputs)?;
+
     run_params.symbols.set(&s, pp as i64);
     let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
     let (_, dur) = bench(&mut state, inputs, limits, probe)?;
@@ -73,6 +78,7 @@ pub fn bench_tg(
     params: &Parameters,
     matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
+    limits: &BenchLimits,
     tg: usize,
     probe: Option<&Probe>,
 ) -> TractResult<()> {
@@ -89,8 +95,12 @@ pub fn bench_tg(
     }
 
     run_params.symbols.set(&s, 1);
-    let mut tot_dur = Duration::default();
+    // Warmup 
+    run_params.symbols.set(&p, 1);
+    let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
+    limits.warmup(model, &inputs)?;
 
+    let mut tot_dur = Duration::default();
     for t in 0..tg {
         if let Some(p) = probe {
             p.log_event(&format!("Starting token {t}"))?;
