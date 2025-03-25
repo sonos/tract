@@ -128,7 +128,7 @@ pub fn handle(
             .context("Can only profile typed models")?;
         let inputs = retrieve_or_make_inputs(model, &run_params)?;
 
-        // Metal Profiling is broken, just run standrad profiling
+        // Metal Profiling is broken, just run standard profiling
 
         //if matches.is_present("metal") {
         //    #[cfg(any(target_os = "macos", target_os = "ios"))]

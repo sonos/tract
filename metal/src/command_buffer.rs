@@ -1,5 +1,6 @@
 use metal::{
-    Buffer, CommandBuffer, ComputeCommandEncoder, ComputeCommandEncoderRef, ComputePassDescriptor, CounterSampleBuffer, CounterSampleBufferDescriptor, Device, MTLResourceOptions, NSRange
+    Buffer, CommandBuffer, ComputeCommandEncoder, ComputeCommandEncoderRef, ComputePassDescriptor,
+    CounterSampleBuffer, CounterSampleBufferDescriptor, Device, MTLResourceOptions, NSRange,
 };
 use std::cell::RefCell;
 use std::ops::{Deref, DerefMut};
@@ -159,7 +160,6 @@ impl TCommandBuffer {
             );
             blit_encoder.end_encoding();
         } else {
-            //let encoder = self.inner.new_compute_command_encoder();
             encode_cb(&self.encoder);
         };
     }

@@ -321,10 +321,10 @@ impl MetalMemSchema {
 mod tests {
     use super::*;
     use crate::MetalTransform;
-    use tract_core::transform::ModelTransform;
+    use tract_core::ops::einsum::BasicMatMul;
     use tract_core::ops::math::{add, mul};
     use tract_core::ops::nn::{Softmax, SoftmaxExp};
-    use tract_core::ops::einsum::BasicMatMul;
+    use tract_core::transform::ModelTransform;
 
     #[test]
     fn test_lifetime_is_disjoint() {
@@ -415,12 +415,7 @@ mod tests {
             AxisOp::Reshape(
                 0,
                 q_shape.clone(),
-                tvec![
-                    embed_dim.clone(),
-                    batch.clone(),
-                    seq_len.clone(),
-                    head_dim.clone(),
-                ]
+                tvec![embed_dim.clone(), batch.clone(), seq_len.clone(), head_dim.clone(),],
             ),
             &[q],
         )?[0];
@@ -440,7 +435,7 @@ mod tests {
                     batch.clone(),
                     seq_plus_prompt_len.clone(),
                     head_dim.clone(),
-                ]
+                ],
             ),
             &[k],
         )?[0];
@@ -467,11 +462,7 @@ mod tests {
                     seq_len.clone(),
                     seq_plus_prompt_len.clone(),
                 ],
-                tvec![
-                    embed_dim.clone(),
-                    seq_len.clone(),
-                    seq_plus_prompt_len.clone(),
-                ],
+                tvec![embed_dim.clone(), seq_len.clone(), seq_plus_prompt_len.clone(),],
             ),
             &[qk],
         )?[0];
@@ -479,21 +470,15 @@ mod tests {
         // Scale factor for attention
         let scale = model.add_const(
             format!("scale_{}", name),
-            tensor3(&[[[1.0f32 / (head_dim.to_i64()? as f32).sqrt()]]])
+            tensor3(&[[[1.0f32 / (head_dim.to_i64()? as f32).sqrt()]]]),
         )?;
-        let qk_scaled = model.wire_node(
-            format!("qk_scaled_{}", name),
-            mul(),
-            &[qk_squeezed, scale],
-        )?[0];
+        let qk_scaled =
+            model.wire_node(format!("qk_scaled_{}", name), mul(), &[qk_squeezed, scale])?[0];
 
         // Mask QK
         let mask = model.add_const("mask", tensor3(&[[[1.0f32]]]))?;
-        let qk_scaled_masked = model.wire_node(
-            format!("qk_scaled_masked_{}", name),
-            add(),
-            &[qk_scaled, mask],
-        )?[0];
+        let qk_scaled_masked =
+            model.wire_node(format!("qk_scaled_masked_{}", name), add(), &[qk_scaled, mask])?[0];
 
         // Apply softmax
         let attention = model.wire_node(
@@ -505,11 +490,11 @@ mod tests {
         // Reshape V
         let v_reshaped = model.wire_node(
             format!("v_reshape_{}", name),
-            AxisOp::Reshape(0, k_shape, tvec![
-                embed_dim.clone(),
-                seq_plus_prompt_len.clone(),
-                head_dim.clone(),
-           ]),
+            AxisOp::Reshape(
+                0,
+                k_shape,
+                tvec![embed_dim.clone(), seq_plus_prompt_len.clone(), head_dim.clone(),],
+            ),
             &[v],
         )?[0];
 
@@ -528,11 +513,11 @@ mod tests {
         // Reshape output
         let output_reshaped = model.wire_node(
             format!("output_reshape_{}", name),
-            AxisOp::Reshape(0, tvec![
-                embed_dim.clone(),
-                seq_len.clone(),
-                head_dim.clone(),
-           ], q_shape),
+            AxisOp::Reshape(
+                0,
+                tvec![embed_dim.clone(), seq_len.clone(), head_dim.clone(),],
+                q_shape,
+            ),
             &[output],
         )?;
         Ok(output_reshaped)
@@ -577,7 +562,8 @@ mod tests {
         // Hint symbol values
         let mut symbol_values = SymbolValues::default();
         symbol_values.set(&model.symbols.get("S").context("Missing symbol S")?, SEQUENCE_LENGTH);
-        symbol_values.set(&model.symbols.get("P").context("Missing symbol P")?, PAST_SEQUENCE_LENGTH);
+        symbol_values
+            .set(&model.symbols.get("P").context("Missing symbol P")?, PAST_SEQUENCE_LENGTH);
 
         // Build memory schema
         let schema = MetalMemSchema::build(&model, &order, &symbol_values)?;
@@ -608,8 +594,14 @@ mod tests {
 
                     // No other node in the partition should be alive at this step
                     for other in partition.nodes.iter().filter(|it| it.node != this.node) {
-                        assert!(!other.lifetime.is_alive_at_step(step) && other.lifetime.is_disjoint(&this.lifetime),
-                            "Lifetime conflict @ step {}\n{:?}\n{:?}", step, this, other);
+                        assert!(
+                            !other.lifetime.is_alive_at_step(step)
+                                && other.lifetime.is_disjoint(&this.lifetime),
+                            "Lifetime conflict @ step {}\n{:?}\n{:?}",
+                            step,
+                            this,
+                            other
+                        );
                     }
 
                     // This node should not be alive in another partition at the same step
