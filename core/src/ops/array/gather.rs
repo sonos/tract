@@ -4,7 +4,7 @@ use ndarray::*;
 use tract_linalg::block_quant::BlockQuantValue;
 use tract_linalg::mmm::MMMInputValue;
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq)]
 pub struct Gather {
     pub axis: usize,
     pub output_type: Option<DatumType>,
@@ -16,6 +16,7 @@ impl Op for Gather {
     }
 
     op_as_typed_op!();
+    impl_op_same_as!();
 }
 
 impl Gather {
