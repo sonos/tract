@@ -30,6 +30,7 @@ pub(crate) fn make_state<'m>(
     matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> TractResult<TypedSimpleState<&'m TypedModel, Arc<TypedRunnableModel<&'m TypedModel>>>> {
+    #[allow(unused_mut)]
     let mut plan_options = crate::plan_options::plan_options_from_subcommand(sub_matches)?;
     let model =
         params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
@@ -39,20 +40,15 @@ pub(crate) fn make_state<'m>(
             plan_options.skip_order_opt_ram = true;
             let mut plan = SimplePlan::new_with_options(model, &plan_options)?;
             let mut symbol_values = SymbolValues::default();
-            let sequence_length = model
-                .symbols
-                .get("S")
-                .context("Could not find symbol S in model")?;
-            let past_sequence_length = model
-                .symbols
-                .get("P")
-                .context("Could not find symbol P in model")?;
+            let sequence_length =
+                model.symbols.get("S").context("Could not find symbol S in model")?;
+            let past_sequence_length =
+                model.symbols.get("P").context("Could not find symbol P in model")?;
 
             symbol_values.set(&sequence_length, 1024);
             symbol_values.set(&past_sequence_length, 0);
-            let session_handler = tract_metal::MetalSessionHandler::from_plan(
-                &plan,
-                &symbol_values)?;
+            let session_handler =
+                tract_metal::MetalSessionHandler::from_plan(&plan, &symbol_values)?;
 
             plan = plan.with_session_handler(session_handler);
             Ok(SimpleState::new(Arc::new(plan))?)
