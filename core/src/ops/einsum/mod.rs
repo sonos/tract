@@ -322,7 +322,18 @@ impl TypedOp for EinSum {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        optimize::optimize(self, model, node)
+        optimize::optimize(self, model, node).with_context(|| {
+            format!(
+                "axes: {} — inputs: {}",
+                self.axes,
+                model
+                    .node_input_facts(node.id)
+                    .unwrap()
+                    .iter()
+                    .map(|f| format!("{f:?}"))
+                    .join(" • ")
+            )
+        })
     }
 
     as_op!();

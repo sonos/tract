@@ -24,7 +24,7 @@ use crate::ops::nn::{Reduce, Reducer};
 pub enum AxesOrPatch<'a> {
     Annotated(EinSumAnnotatedAsMatMul<'a>),
     Patch(TypedModelPatch),
-    NotAMatMul(Vec<&'a Axis>),
+    NotAMatMul(&'static str, Vec<&'a Axis>),
 }
 
 pub struct EinSumAnnotatedAsMatMul<'a> {
@@ -294,7 +294,7 @@ pub(crate) fn optimize(
     let annotated = match ensure_mkn_axes(op, model, node)? {
         AxesOrPatch::Annotated(op) => op,
         AxesOrPatch::Patch(p) => return Ok(Some(p)),
-        AxesOrPatch::NotAMatMul(_) => return Ok(None),
+        AxesOrPatch::NotAMatMul(_, _) => return Ok(None),
     };
     if op.q_params.is_none() {
         optimized_mat_mul(model, node, &annotated).context("Translating to OptMatMul")
@@ -338,7 +338,10 @@ pub(crate) fn ensure_mkn_axes<'a>(
 
     let k_axis = if non_trivial_k_axis.len() > 1 {
         // TODO: handle case where multiple consecutive k in the same order in both input.
-        bail!("Multiple k-axis candidate found");
+        return Ok(AxesOrPatch::NotAMatMul(
+            "multiple k-axis candidate found",
+            non_trivial_k_axis.into_iter().cloned().collect_vec(),
+        ));
     } else {
         non_trivial_k_axis.first().copied().or_else(|| k_axes.first()).copied()
     };
@@ -390,7 +393,10 @@ pub(crate) fn ensure_mkn_axes<'a>(
             axis.inputs[1].first().map(|pos| &input_shapes[1][*pos]).unwrap_or(&one) != &one;
         let in_out = axis.outputs[0].first().map(|pos| &output_shape[*pos]).unwrap_or(&one) != &one;
         if (in_left ^ in_right) && !in_out {
-            return Ok(AxesOrPatch::NotAMatMul(vec![axis]));
+            return Ok(AxesOrPatch::NotAMatMul(
+                "non trivial single-side disappearing axis",
+                vec![axis],
+            ));
         }
     }
     let m = input_shapes[0][m_axis.inputs[0][0]].clone();
