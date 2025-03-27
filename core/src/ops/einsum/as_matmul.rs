@@ -37,12 +37,8 @@ fn einsum_rules(
     let op = match ensure_mkn_axes(op, model, node).context("Figuring out m, k and n axes")? {
         AxesOrPatch::Annotated(op) => op,
         AxesOrPatch::Patch(p) => return Ok(Some(p)),
-        AxesOrPatch::NotAMatMul(axes) => {
-            bail!(
-                "{} is not a matmul because of axis {}",
-                op.axes,
-                axes.iter().map(|a| a.repr).join(", ")
-            )
+        AxesOrPatch::NotAMatMul(s, axes) => {
+            bail!("{} is not a matmul: {s} ({})", op.axes, axes.iter().map(|a| a.repr).join(", "))
         }
     };
     let prefix: String = op

@@ -6,6 +6,7 @@ use fs_err as fs;
 use nu_ansi_term::Color::*;
 #[allow(unused_imports)]
 use nu_ansi_term::Style;
+use tract_core::ops::einsum::EinSum;
 use tract_core::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
 use tract_core::ops::matmul::pack::DynPackedOpaqueFact;
 use tract_core::ops::scan::OptScan;
@@ -357,14 +358,29 @@ pub fn mm_report(
     let count = model.nodes.iter().filter(|n| n.op_is::<OptMatMul>()).count();
     println!("* {count} matrix multiplications");
 
-    type Config = (TDim, TDim, TDim, TDim, bool, String, String, String, String);
-    let mut configs: HashMap<Config, usize> = HashMap::new();
+    type EinsumConf<'m> = (String, String);
+    type MatMulConf = (TDim, TDim, TDim, TDim, bool, String, String, String, String);
 
-    fn scan_model(
-        model: &TypedModel,
-        configs: &mut HashMap<Config, usize>,
+    let mut einsums = HashMap::<EinsumConf, TDim>::new();
+    let mut opt_mat_muls = HashMap::<MatMulConf, TDim>::new();
+
+    fn scan_model<'m>(
+        model: &'m TypedModel,
+        einsums: &mut HashMap<EinsumConf<'m>, TDim>,
+        opt_mat_muls: &mut HashMap<MatMulConf, TDim>,
         mult: &TDim,
     ) -> TractResult<()> {
+        for (n, op) in model.nodes.iter().filter_map(|n| n.op_as::<EinSum>().map(|m| (n, m))) {
+            let it = (
+                op.axes.to_string(),
+                model
+                    .node_input_facts(n.id)?
+                    .iter()
+                    .map(|f| format!("{:?}", f.without_value()))
+                    .join(" • "),
+            );
+            *einsums.entry(it).or_default() += mult;
+        }
         for (node, op) in model.nodes.iter().filter_map(|n| n.op_as::<OptMatMul>().map(|m| (n, m)))
         {
             let (m, k, n) = (op.m().clone(), op.guess_k().unwrap_or(TDim::Val(0)), op.n().clone());
@@ -413,7 +429,7 @@ pub fn mm_report(
                 .map(|(_ix, d)| d)
                 .product::<TDim>();
             let mmm = op.mmm.iter().map(|m| format!("{m:?}")).join(", ");
-            *configs
+            *opt_mat_muls
                 .entry((
                     m,
                     k,
@@ -425,38 +441,49 @@ pub fn mm_report(
                     panel_extractor,
                     pack_b,
                 ))
-                .or_default() += 1;
+                .or_default() += mult;
         }
         for (node, op) in model.nodes.iter().filter_map(|n| n.op_as::<OptScan>().map(|o| (n, o))) {
             let inputs = model.node_input_facts(node.id)?;
             let iters = &op.nested_model_multipliers(&inputs)[0].1;
-            scan_model(op.plan.model(), configs, &(mult.clone() * iters))?;
+            scan_model(op.plan.model(), einsums, opt_mat_muls, &(mult.clone() * iters))?;
         }
         Ok(())
     }
-    scan_model(model, &mut configs, &1.to_dim())?;
+    scan_model(model, &mut einsums, &mut opt_mat_muls, &1.to_dim())?;
 
-    let mmm_width = configs.keys().map(|cf| cf.5.len()).max().unwrap_or(0);
-    let pa_width = configs.keys().map(|cf| cf.6.len()).max().unwrap_or(0);
-    let panel_width = configs.keys().map(|cf| cf.7.len()).max().unwrap_or(0);
-    let pb_width = configs.keys().map(|cf| cf.8.len()).max().unwrap_or(0);
+    let mmm_width = opt_mat_muls.keys().map(|cf| cf.5.len()).max().unwrap_or(0);
+    let pa_width = opt_mat_muls.keys().map(|cf| cf.6.len()).max().unwrap_or(0);
+    let panel_width = opt_mat_muls.keys().map(|cf| cf.7.len()).max().unwrap_or(0);
+    let pb_width = opt_mat_muls.keys().map(|cf| cf.8.len()).max().unwrap_or(0);
     println!(
         "| count |     |     m |     k |     n | iters | {:^mmm_width$} | {:^pa_width$} | {:^panel_width$} | {:^pb_width$} |",
         "kernels", "packing a", "panel", "packing b",
     );
-    for (config, count) in configs
-        .iter()
-        .sorted_by_key(|(conf, count)| (-(**count as isize), -(conf.0.as_i64().unwrap_or(0))))
-    {
+    for (config, count) in opt_mat_muls.iter().sorted_by_key(|(conf, count)| {
+        (-(count.to_isize().unwrap_or_default()), -(conf.0.as_i64().unwrap_or(0)))
+    }) {
         let (m, k, n, iters, w, mmm, pa, panel, pb) = config;
         println!(
-            "| {count:>5} | {} | {:>5} | {:>5} | {:>5} | {:>5} | {mmm:^mmm_width$} | {pa:^pa_width$} | {panel:^panel_width$} | {pb:^pb_width$} |",
+            "| {:>5} | {} | {:>5} | {:>5} | {:>5} | {:>5} | {mmm:^mmm_width$} | {pa:^pa_width$} | {panel:^panel_width$} | {pb:^pb_width$} |",
+            count.to_string(),
             if *w { "   " } else { "X•Y" },
             m.to_string(),
             k.to_string(),
             n.to_string(),
             iters.to_string()
         );
+    }
+    if einsums.len() > 0 {
+        println!("{}", Red.bold().paint("# 💩💩💩 Unoptimized Einsums 💩💩💩"));
+        for ((axes, facts), count) in
+            einsums.iter().sorted_by_key(|(_conf, count)| (-count.as_i64().unwrap_or_default()))
+        {
+            println!(
+                "{}",
+                Red.bold().paint(format!("| {:>5} | {axes:^20} | {facts} |", count.to_string(),))
+            )
+        }
     }
     Ok(())
 }
