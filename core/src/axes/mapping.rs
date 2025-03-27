@@ -281,7 +281,11 @@ impl AxesMapping {
     }
 
     pub fn available_label(&self) -> char {
-        ('a'..).find(|c| self.iter_all_axes().all(|axis| axis.repr != *c)).unwrap()
+        self.available_labels().next().unwrap()
+    }
+
+    pub fn available_labels(&self) -> impl Iterator<Item = char> + '_ {
+        ('a'..).filter(|c| self.iter_all_axes().all(|axis| axis.repr != *c))
     }
 
     pub fn is_element_wise_unary(&self) -> bool {

@@ -21,6 +21,21 @@ impl InOut {
             InOut::Out(ix) => OutletId::new(node.id, *ix),
         }
     }
+
+    pub fn is_input(&self) -> bool {
+        matches!(self, InOut::In(_))
+    }
+
+    pub fn is_output(&self) -> bool {
+        matches!(self, InOut::Out(_))
+    }
+
+    pub fn slot(&self) -> usize {
+        match self {
+            InOut::Out(o) => *o,
+            InOut::In(i) => *i,
+        }
+    }
 }
 
 #[derive(Clone, Hash, Eq)]
