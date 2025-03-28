@@ -69,6 +69,11 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                 .output_facts(&input_facts)
                 .with_context(|| format!("in output_facts invocation for {name}: {}", op.name()))?;
 
+            #[cfg(all(debug_assertions, feature = "paranoid_assertions"))]
+            for o in &output_facts {
+                o.consistent()?;
+            }
+
             if op.is_stateless() && input_facts.len() > 0 {
                 if let Some(tensors) = input_facts
                     .iter()

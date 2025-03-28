@@ -290,7 +290,7 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
         tract_to_gguf_q4_0_packing(&mut blob)?;
     }
     let fact = BlockQuantFact::new(Box::new(format), shape);
-    let bqv = BlockQuantValue { value: blob, fact };
+    let bqv = BlockQuantValue { value: Arc::new(blob), fact };
     let tensor = tensor0(Opaque(Arc::new(bqv)));
     Ok(tensor)
 }

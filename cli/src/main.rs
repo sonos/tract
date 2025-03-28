@@ -58,7 +58,7 @@ fn info_usage(stage: &str, probe: Option<&Probe>) {
             usage.virtual_size,
             usage.resident_size,
             usage.resident_size_max,
-            allocated - freeed
+            allocated.saturating_sub(freeed),
         );
     }
 }

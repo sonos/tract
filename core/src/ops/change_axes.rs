@@ -5,6 +5,7 @@ use crate::internal::*;
 use crate::model::{TypedModel, TypedNode};
 use crate::ops::identity::Identity;
 use tract_itertools::Itertools;
+use tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue};
 use tract_ndarray::{ArrayViewD, ArrayViewMutD};
 use AxisOp::*;
 
@@ -368,18 +369,28 @@ impl AxisOp {
     }
 
     pub fn change_tensor(&self, tensor: &mut Tensor, broadcasting: bool) -> TractResult<()> {
+        if self.required_rank() > tensor.rank() && tensor.datum_type().is_opaque() {
+            let inner_change = self.trim_left(tensor.rank())?;
+            for opaque in tensor.as_slice_mut::<Opaque>()? {
+                if let Some(bqv) = opaque.downcast_ref::<BlockQuantValue>() {
+                    let mut new_shape: TVec<usize> = bqv.fact.shape().into();
+                    inner_change.change_shape_array(&mut new_shape, false)?;
+                    let new_bqv = BlockQuantValue {
+                        value: Arc::clone(&bqv.value),
+                        fact: BlockQuantFact::new(bqv.fact.format.clone(), new_shape),
+                    };
+                    *opaque = Opaque(Arc::new(new_bqv));
+                } else {
+                    bail!("Can't apply {self:?} to opaque tensor {tensor:?}");
+                }
+            }
+            return Ok(());
+        }
+        ensure!(self.required_rank() <= tensor.rank());
         match self.canonical().as_ref() {
-            Add(ix) => {
-                ensure!(*ix <= tensor.rank());
-                tensor.insert_axis(*ix)
-            }
-            Rm(ix) => {
-                ensure!(*ix < tensor.rank());
-                tensor.remove_axis(*ix)
-            }
+            Add(ix) => tensor.insert_axis(*ix),
+            Rm(ix) => tensor.remove_axis(*ix),
             Move(from, to) => {
-                ensure!(*from < tensor.rank());
-                ensure!(*to < tensor.rank());
                 let mut tmp = tensor.clone().move_axis(*from, *to)?;
                 std::mem::swap(tensor, &mut tmp);
                 Ok(())
@@ -510,6 +521,28 @@ impl AxisOp {
         let op = Self::Reshape(axis, tvec!(dim.clone(), next_dim.clone()), tvec!(dim * next_dim));
         model.wire_node(name.to_string(), op, &[outlet])
     }
+
+    #[inline]
+    pub fn required_rank(&self) -> usize {
+        match self {
+            Rm(r) => r + 1,
+            Add(a) => *a,
+            Reshape(at, from, _to) => at + from.len(),
+            Move(from, to) => *from.max(to),
+        }
+    }
+
+    pub fn trim_left(&self, prefix: usize) -> TractResult<AxisOp> {
+        Ok(match self {
+            Rm(r) if *r >= prefix => Rm(r - prefix),
+            Add(a) if *a >= prefix => Add(a - prefix),
+            Reshape(at, from, to) if *at >= prefix => {
+                Reshape(at - prefix, from.clone(), to.clone())
+            }
+            Move(from, to) if *from >= prefix && *to >= prefix => Move(from - prefix, to - prefix),
+            _ => bail!("Can no trim left {self:?} by {prefix}"),
+        })
+    }
 }
 
 pub fn wire_rank_broadcast(
@@ -627,9 +660,26 @@ impl TypedOp for AxisOp {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        if self.required_rank() > inputs[0].rank() {
+            if let Some(bqf) =
+                inputs[0].opaque_fact().and_then(|of| of.downcast_ref::<BlockQuantFact>())
+            {
+                let mut new_inner_shape: TVec<usize> = bqf.shape().into();
+                self.trim_left(inputs[0].rank())?
+                    .change_shape_array(&mut new_inner_shape, false)?;
+                let new_bqf = BlockQuantFact::new(bqf.format.clone(), new_inner_shape);
+                let mut new_fact = Opaque::fact(inputs[0].shape.clone()).with_opaque_fact(new_bqf);
+                if let Some(k) = &inputs[0].konst {
+                    let mut new = k.clone().into_tensor(); // cloning bqv is cheap
+                    self.change_tensor(&mut new, false)?;
+                    new_fact.konst = Some(new.into());
+                }
+                dbg!(&new_fact);
+                return Ok(tvec!(new_fact));
+            }
+        }
         let mut shape = inputs[0].shape.clone();
-        self.change_shape(&mut shape, false)
-            .with_context(|| format!("Applying {self:?} to {:?}", inputs[0]))?;
+        self.change_shape(&mut shape, false)?;
         let mut fact = inputs[0].datum_type.fact(shape);
         fact.opaque_fact.clone_from(&inputs[0].opaque_fact);
         Ok(tvec!(fact))

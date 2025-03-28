@@ -558,7 +558,7 @@ fn optimized_mat_mul(
 
     if input_facts[0].konst.is_some()
         && (input_facts[0].datum_type.is_number()
-            || input_facts[0].opaque_fact.as_ref().is_some_and(|of| of.is::<BlockQuantFact>()))
+            || input_facts[0].opaque_fact().is_some_and(|of| of.is::<BlockQuantFact>()))
     {
         return Ok(None);
     }

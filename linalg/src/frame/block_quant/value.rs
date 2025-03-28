@@ -1,4 +1,5 @@
 use std::ops::Range;
+use std::sync::Arc;
 
 use super::{BlockQuant, PackedBlockQuantFormat};
 use tract_data::internal::*;
@@ -54,7 +55,7 @@ impl PartialEq for BlockQuantFact {
 #[derive(Clone, Hash)]
 pub struct BlockQuantValue {
     pub fact: BlockQuantFact,
-    pub value: Blob,
+    pub value: Arc<Blob>,
 }
 
 impl BlockQuantValue {
@@ -68,7 +69,7 @@ impl BlockQuantValue {
         shape[0] = range.len();
         Ok(BlockQuantValue {
             fact: BlockQuantFact { format: self.fact.format.clone(), shape },
-            value,
+            value: Arc::new(value),
         })
     }
 }

@@ -75,7 +75,7 @@ fn block_quant_einsum_weights(
     };
     let name = &model.node(node.inputs[0].node).name;
     let fact = BlockQuantFact::new(Box::new(format), a.shape().into());
-    let value = BlockQuantValue { fact: fact.clone(), value: weights };
+    let value = BlockQuantValue { fact: fact.clone(), value: Arc::new(weights) };
     let weights = patch.wire_node(
         format!("{name}.bq"),
         Const::new_with_opaque_fact(rctensor0(Opaque(Arc::new(value))), Box::new(fact))?,

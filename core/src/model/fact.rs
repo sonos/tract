@@ -2,6 +2,7 @@
 use crate::internal::*;
 use downcast_rs::Downcast;
 use std::fmt;
+use tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue};
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct ShapeFact {
@@ -236,7 +237,7 @@ impl TypedFact {
 
     pub fn mem_size(&self) -> TDim {
         self.shape.volume() * self.datum_type.size_of()
-            + self.opaque_fact.as_ref().map(|it| it.mem_size()).unwrap_or(0.into())
+            + self.opaque_fact().map(|it| it.mem_size()).unwrap_or(0.into())
     }
 
     pub fn dt_scalar(datum_type: DatumType) -> TypedFact {
@@ -280,9 +281,17 @@ impl TypedFact {
 
     pub fn consistent(&self) -> TractResult<()> {
         self.shape.consistent()?;
+        ensure!(self.datum_type.is_opaque() == self.opaque_fact.is_some());
         if let Some(k) = &self.konst {
             if !self.matches(k.as_ref(), None)? {
                 bail!("fact says {}, constant is {:?}", self.format_dt_shape_nocheck(), k);
+            }
+            if let Some(bqf) = self.opaque_fact().and_then(|of| of.downcast_ref::<BlockQuantFact>())
+            {
+                for o in k.as_slice::<Opaque>().unwrap() {
+                    ensure!(o.is::<BlockQuantValue>());
+                    ensure!(o.downcast_ref::<BlockQuantValue>().unwrap().fact == *bqf);
+                }
             }
         }
         if let Some(u) = &self.uniform {
@@ -312,6 +321,10 @@ impl TypedFact {
     pub fn with_opaque_fact<O: Into<Box<dyn OpaqueFact>>>(mut self, opaque_fact: O) -> Self {
         self.opaque_fact = Some(opaque_fact.into());
         self
+    }
+
+    pub fn opaque_fact(&self) -> Option<&dyn OpaqueFact> {
+        self.opaque_fact.as_deref()
     }
 }
 
@@ -364,10 +377,9 @@ impl Fact for TypedFact {
             self.datum_type == other.datum_type
                 && self.shape.compatible_with(&other.shape)
                 && self
-                    .opaque_fact
-                    .as_ref()
-                    .zip(other.opaque_fact.as_ref())
-                    .map(|(a, b)| a.compatible_with(&**b))
+                    .opaque_fact()
+                    .zip(other.opaque_fact())
+                    .map(|(a, b)| a.compatible_with(b))
                     .unwrap_or(true)
         } else {
             false

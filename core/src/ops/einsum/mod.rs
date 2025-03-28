@@ -23,7 +23,7 @@ pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<[TDim]
     if !fact.datum_type.is_opaque() {
         return Ok(Cow::Borrowed(&*fact.shape));
     }
-    let Some(opaque_fact) = fact.opaque_fact.as_ref() else {
+    let Some(opaque_fact) = fact.opaque_fact() else {
         bail!("Datum fact is opaque, but no opaque fact was found.")
     };
     let inner_shape: Cow<[usize]> = if let Some(bqf) = opaque_fact.downcast_ref::<BlockQuantFact>()
@@ -208,7 +208,7 @@ impl TypedOp for EinSum {
         let mut axes = self.axes.clone();
         for (slot, i) in inputs.iter().enumerate() {
             if i.datum_type.is_opaque()
-                && (i.opaque_fact.as_ref().is_some_and(|of| {
+                && (i.opaque_fact().is_some_and(|of| {
                     of.is::<BlockQuantFact>()
                         || of.is::<PackedOpaqueFact>()
                         || of.is::<PackedBlockQuantFact>()
