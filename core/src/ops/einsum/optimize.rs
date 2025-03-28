@@ -19,7 +19,6 @@ use crate::ops::matmul::quant::{
 };
 use crate::ops::nn::{Reduce, Reducer};
 
-
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum AxesOrPatch<'a> {
@@ -52,10 +51,10 @@ impl EinSumAnnotatedAsMatMul<'_> {
         self.n_axis.inputs[1][0]
     }
     pub fn c_m(&self) -> usize {
-        self.m_axis.outputs[0][0]
+        self.m_axis.outputs[0].get(0).unwrap_or(&self.a_m()).clone()
     }
     pub fn c_n(&self) -> usize {
-        self.n_axis.outputs[0][0]
+        self.n_axis.outputs[0].get(0).unwrap_or(&self.b_n()).clone()
     }
 }
 
@@ -303,7 +302,7 @@ pub(crate) fn ensure_mkn_axes<'a>(
         .axes
         .iter_all_axes()
         // Filter possible candidates (should be one time in each inputs but not in output)
-        .filter(|a| a.inputs[0].len() == 1 && a.inputs[1].len() == 1 && a.outputs[0].len() == 0)
+        .filter(|a| a.inputs[0].len() == 1 && a.inputs[1].len() == 1 && a.outputs[0].is_empty())
         .collect();
 
     let non_trivial_k_axis = k_axes
@@ -328,10 +327,11 @@ pub(crate) fn ensure_mkn_axes<'a>(
         .iter_all_axes()
         .filter(|a| {
             a.inputs[0].len() == 1
-                && (a.inputs[1].len() == 0 || input_shapes[1][a.inputs[1][0]].is_one())
-                && a.outputs[0].len() == 1
+                && (a.inputs[1].is_empty() || input_shapes[1][a.inputs[1][0]].is_one())
+                && (a.outputs[0].len() == 1
+                    || (input_shapes[0][a.inputs[0][0]].is_one() && a.inputs[1].is_empty()))
         })
-        .max_by_key(|a| output_shape[a.outputs[0][0]].as_i64().unwrap_or(i64::MAX));
+        .max_by_key(|a| input_shapes[0][a.inputs[0][0]].as_i64().unwrap_or(i64::MAX));
     let Some(m_axis) = m_axis else {
         return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(op, model, node, false)?));
     };
@@ -340,12 +340,12 @@ pub(crate) fn ensure_mkn_axes<'a>(
         .axes
         .iter_all_axes()
         .filter(|a| {
-            (a.inputs[0].len() == 0 || input_shapes[0][a.inputs[0][0]].is_one())
+            (a.inputs[0].is_empty() || input_shapes[0][a.inputs[0][0]].is_one())
                 && a.inputs[1].len() == 1
                 && a.outputs[0].len() == 1
                 && *a != m_axis
         })
-        .max_by_key(|a| output_shape[a.outputs[0][0]].as_i64().unwrap_or(i64::MAX));
+        .max_by_key(|a| input_shapes[1][a.inputs[1][0]].as_i64().unwrap_or(i64::MAX));
     let Some(n_axis) = n_axis else {
         return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(op, model, node, true)?));
     };

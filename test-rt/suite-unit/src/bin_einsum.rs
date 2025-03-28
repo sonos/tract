@@ -383,6 +383,18 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
 
+    suite.add(
+        "supp_axis_bug_0",
+        BinEinsumProblem {
+            expr: "bmk, abkn->bn".parse().unwrap(),
+            a: Tensor::zero::<f32>(&[32, 1, 25]).unwrap(),
+            b: Tensor::zero::<f32>(&[1, 32, 25, 64]).unwrap(),
+            a_constant: false,
+            b_constant: false,
+            unicast_add_constant: None,
+        },
+    );
+
     // TODO: fix ensure_mkn() to handle multiple n axes
     //suite.add(
     //    "multiple_n_axes",
