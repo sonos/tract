@@ -238,7 +238,9 @@ impl TypedModel {
 
     /// Perform optimization passes on the model, using a given optimizer session.
     pub fn optimize_with_session(&mut self, session: &mut OptimizerSession) -> TractResult<()> {
-        session.optimize(self)
+        session.optimize(self)?;
+        self.properties.insert("tract_stage".to_string(), rctensor0("optimized".to_string()));
+        Ok(())
     }
 
     pub fn concretize_dims(&self, values: &SymbolValues) -> TractResult<TypedModel> {
