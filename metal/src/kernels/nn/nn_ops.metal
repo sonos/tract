@@ -163,30 +163,47 @@ template<typename F>
                 device void *output_b,
                 constant const size_t shape[3], 
                 constant const size_t strides[3],
-                uint3  tgpig[[threadgroup_position_in_grid]],
-                uint  tiisg[[thread_index_in_simdgroup]],
-                uint  tpsg[[threads_per_simdgroup]]
+                threadgroup float * shmem_f32 [[threadgroup(0)]],
+                uint   tgpig[[threadgroup_position_in_grid]],
+                ushort tpitg[[thread_position_in_threadgroup]],
+                ushort sgitg[[simdgroup_index_in_threadgroup]],
+                ushort tiisg[[thread_index_in_simdgroup]],
+                ushort   ntg[[threads_per_threadgroup]]
                 ) {
-
+    if (sgitg == 0) {
+        shmem_f32[tiisg] = 0.0f;
+    }
     device const F* input = (device const F*) input_b;
     F eps = ((constant F *)eps_b)[0];
     device F * output = (device F*) output_b;
 
     size_t dim = shape[1];
 
-    size_t base_idx = tgpig.x * strides[2] 
-            + tgpig.z * strides[0];
+    size_t base_idx = (tgpig % shape[2]) * strides[2] + (tgpig / shape[2]) * strides[0];
 
     float partial_acc = 0.0;
-    for (size_t i = tiisg; i < dim; i += tpsg) {
+    for (size_t i = tpitg; i < dim; i += ntg) {
         float el = static_cast<float>(input[base_idx + i * strides[1]]);
         partial_acc += el * el;
     }
-    float mean_of_squares = simd_sum(partial_acc) / static_cast<float>(dim);
+
+    partial_acc = simd_sum(partial_acc);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    if (tiisg == 0) {
+        shmem_f32[sgitg] = partial_acc;
+    }
+
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    partial_acc = shmem_f32[tiisg];
+    partial_acc = simd_sum(partial_acc);
+
+    float mean_of_squares = partial_acc / dim;
 
     F norm = static_cast<F>(metal::rsqrt(mean_of_squares + static_cast<float>(eps)));
 
-    for (size_t i = tiisg; i < dim; i += tpsg) {
+    for (size_t i = tpitg; i < dim; i += ntg) {
         auto idx = base_idx + i * strides[1];
         output[idx] = input[idx] * norm;
     }

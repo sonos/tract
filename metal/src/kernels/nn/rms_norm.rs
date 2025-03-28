@@ -105,7 +105,17 @@ impl RmsNorm {
             let pipeline = context
                 .shared_context()
                 .load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type(), false)?)?;
+            
+            let iter_dim = shape_nd3[1];
 
+            let mut nthreads = 32;
+            let limit = iter_dim.min(pipeline.max_total_threads_per_threadgroup() as usize);
+
+            while nthreads < limit {
+                nthreads *= 2;
+            }
+
+            nthreads = nthreads.min(iter_dim);
             let command_buffer = context.command_buffer();
             command_buffer.encode(|encoder| {
                 encoder.set_compute_pipeline_state(&pipeline);
@@ -114,10 +124,11 @@ impl RmsNorm {
                 encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
                 encoder.set_slice(3, &shape_nd3);
                 encoder.set_slice(4, &strides_nd3);
+                encoder.set_threadgroup_memory_length(0, 32 * size_of::<f32>() as u64);
                 let grid_size =
-                    MTLSize { width: shape_nd3[2] as _, height: 1, depth: shape_nd3[0] as _ };
+                    MTLSize { width: (shape_nd3[2] * shape_nd3[0]) as _, height: 1, depth: 1 };
                 let group_size =
-                    MTLSize { width: usize::min(32, shape_nd3[1]) as _, height: 1, depth: 1 };
+                    MTLSize { width: nthreads as _, height: 1, depth: 1 };
 
                 encoder.dispatch_thread_groups(grid_size, group_size);
             });
