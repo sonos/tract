@@ -192,11 +192,61 @@ template<typename F>
     }
 }
 
+template<typename F, typename F4>  
+[[kernel]] void rms_norm_nd2_l4(
+        device const char *input_b,
+        constant char * eps_b,
+        device char *output_b,
+        constant const size_t & n,
+        constant const size_t & n_div_4, 
+        constant const size_t & outer_stride,
+        threadgroup float * shmem_f32 [[threadgroup(0)]],
+        uint   tgpig[[threadgroup_position_in_grid]],
+        ushort tpitg[[thread_position_in_threadgroup]],
+        ushort sgitg[[simdgroup_index_in_threadgroup]],
+        ushort tiisg[[thread_index_in_simdgroup]],
+        ushort   ntg[[threads_per_threadgroup]]) {
+    if (sgitg == 0) {
+        shmem_f32[tiisg] = 0.0f;
+    }
+
+    device const F4 * x = (device const F4 *) (input_b + tgpig*outer_stride);
+    F eps = ((constant F *)eps_b)[0];
+    float sumf = 0.0f;
+
+    // parallel sum
+    for (size_t i = tpitg; i < n_div_4; i += ntg) {
+        sumf += dot(x[i], x[i]);
+    }
+    sumf = simd_sum(sumf);
+
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    if (tiisg == 0) {
+        shmem_f32[sgitg] = sumf;
+    }
+
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    sumf = shmem_f32[tiisg];
+    sumf = simd_sum(sumf);
+
+    const float mean  = sumf/n;
+    const F scale = 1.0f/sqrt(mean + eps);
+
+    device F4 * y = (device F4 *) output_b + tgpig * n_div_4;
+    for (size_t i = tpitg; i < n_div_4; i += ntg) {
+        y[i] = x[i] * scale;
+    }
+}
+
 typedef decltype(rms_norm_nd3<float>) rms_norm_nd3_t;
+typedef decltype(rms_norm_nd2_l4<float, float4>) rms_norm_nd2_l4_t;
 
 template [[host_name("nn_ops::rms_norm_nd3_f32")]] [[kernel]] rms_norm_nd3_t rms_norm_nd3<float>;
 template [[host_name("nn_ops::rms_norm_nd3_f16")]] [[kernel]] rms_norm_nd3_t rms_norm_nd3<half>;
-
+template [[host_name("nn_ops::rms_norm_nd2_l4_f32")]] [[kernel]] rms_norm_nd2_l4_t rms_norm_nd2_l4<float, float4>;
+template [[host_name("nn_ops::rms_norm_nd2_l4_f16")]] [[kernel]] rms_norm_nd2_l4_t rms_norm_nd2_l4<half, half4>;
 
 struct Sigmoid {
   template <typename T>
