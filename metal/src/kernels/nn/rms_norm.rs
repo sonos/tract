@@ -79,20 +79,20 @@ impl RmsNorm {
                 encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
                 encoder.set_bytes(
                     3,
-                    size_of::<usize>() as u64,
+                    std::mem::size_of::<usize>() as u64,
                     &iter_dim as *const usize as *const _,
                 );
                 encoder.set_bytes(
                     4,
-                    size_of::<usize>() as u64,
+                    std::mem::size_of::<usize>() as u64,
                     &iter_dim_div_4 as *const usize as *const _,
                 );
                 encoder.set_bytes(
                     5,
-                    size_of::<usize>() as u64,
+                    std::mem::size_of::<usize>() as u64,
                     &outer_stride as *const usize as *const _,
                 );
-                encoder.set_threadgroup_memory_length(0, 32 * size_of::<f32>() as u64);
+                encoder.set_threadgroup_memory_length(0, 32 * std::mem::size_of::<f32>() as u64);
                 let grid_size = MTLSize { width: shape_nd2[0] as _, height: 1, depth: 1 };
                 let group_size = MTLSize { width: nthreads as _, height: 1, depth: 1 };
 
@@ -124,7 +124,7 @@ impl RmsNorm {
                 encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
                 encoder.set_slice(3, &shape_nd3);
                 encoder.set_slice(4, &strides_nd3);
-                encoder.set_threadgroup_memory_length(0, 32 * size_of::<f32>() as u64);
+                encoder.set_threadgroup_memory_length(0, 32 * std::mem::size_of::<f32>() as u64);
                 let grid_size =
                     MTLSize { width: (shape_nd3[2] * shape_nd3[0]) as _, height: 1, depth: 1 };
                 let group_size = MTLSize { width: nthreads as _, height: 1, depth: 1 };
