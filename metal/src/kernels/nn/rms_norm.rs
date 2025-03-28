@@ -13,10 +13,14 @@ impl RmsNorm {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
-    pub fn kernel_name(&self, dt: DatumType) -> Result<String> {
+    pub fn kernel_name(&self, dt: DatumType, is_l4: bool) -> Result<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal rms  op", dt);
         let tname = MetalTensor::tname(dt)?;
-        Ok(format!("nn_ops::rms_norm_nd3_{tname}"))
+        if !is_l4 {
+            Ok(format!("nn_ops::rms_norm_nd3_{tname}"))
+        } else {
+            Ok(format!("nn_ops::rms_norm_nd2_l4_{tname}"))
+        }
     }
 
     pub fn eval(
@@ -46,29 +50,77 @@ impl RmsNorm {
         ensure!(output.shape() == input.shape());
         ensure!(output.datum_type() == input.datum_type());
 
-        let shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
-        let strides_nd3 = Tensor::natural_strides(&shape_nd3);
+        if (axis == (input.rank() - 1)) && (input.shape()[axis] % 4 == 0) {
+            let shape = input.shape();
+            let shape_nd2 = tvec![shape[..axis].iter().product::<usize>(), shape[axis]];
 
-        let pipeline = context
-            .shared_context()
-            .load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
+            let pipeline = context
+                .shared_context()
+                .load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type(), true)?)?;
 
-        let command_buffer = context.command_buffer();
-        command_buffer.encode(|encoder| {
-            encoder.set_compute_pipeline_state(&pipeline);
-            encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
-            encoder.set_tensor(1, eps);
-            encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
-            encoder.set_slice(3, &shape_nd3);
-            encoder.set_slice(4, &strides_nd3);
+            let iter_dim = shape_nd2[1];
+            let outer_stride = iter_dim * input.datum_type().size_of();
 
-            let grid_size =
-                MTLSize { width: shape_nd3[2] as _, height: 1, depth: shape_nd3[0] as _ };
-            let group_size =
-                MTLSize { width: usize::min(32, shape_nd3[1]) as _, height: 1, depth: 1 };
+            let mut nthreads = 32;
+            let limit = iter_dim.min(pipeline.max_total_threads_per_threadgroup() as usize);
 
-            encoder.dispatch_thread_groups(grid_size, group_size);
-        });
+            while nthreads < limit {
+                nthreads *= 2;
+            }
+
+            nthreads = nthreads.min(iter_dim);
+
+            let command_buffer = context.command_buffer();
+            command_buffer.encode(|encoder| {
+                encoder.set_compute_pipeline_state(&pipeline);
+                encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+                encoder.set_tensor(1, eps);
+                encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
+                encoder.set_bytes(
+                    3,
+                    size_of::<usize>() as u64,
+                    &iter_dim as *const usize as *const _,
+                );
+                encoder.set_bytes(
+                    4,
+                    size_of::<usize>() as u64,
+                    &(iter_dim / 4) as *const usize as *const _,
+                );
+                encoder.set_bytes(
+                    5,
+                    size_of::<usize>() as u64,
+                    &outer_stride as *const usize as *const _,
+                );
+                encoder.set_threadgroup_memory_length(0, 32 * size_of::<f32>() as u64);
+                let grid_size = MTLSize { width: shape_nd2[0] as _, height: 1, depth: 1 };
+                let group_size = MTLSize { width: nthreads as _, height: 1, depth: 1 };
+
+                encoder.dispatch_thread_groups(grid_size, group_size);
+            });
+        } else {
+            let shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
+            let strides_nd3 = Tensor::natural_strides(&shape_nd3);
+
+            let pipeline = context
+                .shared_context()
+                .load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type(), false)?)?;
+
+            let command_buffer = context.command_buffer();
+            command_buffer.encode(|encoder| {
+                encoder.set_compute_pipeline_state(&pipeline);
+                encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+                encoder.set_tensor(1, eps);
+                encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
+                encoder.set_slice(3, &shape_nd3);
+                encoder.set_slice(4, &strides_nd3);
+                let grid_size =
+                    MTLSize { width: shape_nd3[2] as _, height: 1, depth: shape_nd3[0] as _ };
+                let group_size =
+                    MTLSize { width: usize::min(32, shape_nd3[1]) as _, height: 1, depth: 1 };
+
+                encoder.dispatch_thread_groups(grid_size, group_size);
+            });
+        }
         Ok(())
     }
 }
