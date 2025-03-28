@@ -358,7 +358,7 @@ pub fn mm_report(
     let count = model.nodes.iter().filter(|n| n.op_is::<OptMatMul>()).count();
     println!("* {count} matrix multiplications");
 
-    type EinsumConf<'m> = (String, String);
+    type EinsumConf<'m> = (String, String, String);
     type MatMulConf = (TDim, TDim, TDim, TDim, bool, String, String, String, String);
 
     let mut einsums = HashMap::<EinsumConf, TDim>::new();
@@ -375,6 +375,11 @@ pub fn mm_report(
                 op.axes.to_string(),
                 model
                     .node_input_facts(n.id)?
+                    .iter()
+                    .map(|f| format!("{:?}", f.without_value()))
+                    .join(" • "),
+                model
+                    .node_output_facts(n.id)?
                     .iter()
                     .map(|f| format!("{:?}", f.without_value()))
                     .join(" • "),
@@ -476,12 +481,15 @@ pub fn mm_report(
     }
     if einsums.len() > 0 {
         println!("{}", Red.bold().paint("# 💩💩💩 Unoptimized Einsums 💩💩💩"));
-        for ((axes, facts), count) in
+        for ((axes, ifacts, ofacts), count) in
             einsums.iter().sorted_by_key(|(_conf, count)| (-count.as_i64().unwrap_or_default()))
         {
             println!(
                 "{}",
-                Red.bold().paint(format!("| {:>5} | {axes:^20} | {facts} |", count.to_string(),))
+                Red.bold().paint(format!(
+                    "| {:>5} | {axes:^20} | {ifacts} => {ofacts}",
+                    count.to_string(),
+                ))
             )
         }
     }
