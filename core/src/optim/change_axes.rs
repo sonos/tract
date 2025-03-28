@@ -233,7 +233,9 @@ pub fn change_axes(
             }
             let op: Box<dyn TypedOp> =
                 changed_ops.get(&node_id).cloned().unwrap_or_else(|| node.op.clone());
-            let new_wires = patch.wire_node(&node.name, op, &inputs)?;
+            let new_wires = patch
+                .wire_node(&node.name, op.clone(), &inputs)
+                .with_context(|| format!("wriring changed_op {op:?}"))?;
             if new_wires.len() == 1
                 && patch.node(new_wires[0].node).op_is::<crate::ops::source::TypedSource>()
             {

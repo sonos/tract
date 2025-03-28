@@ -18,7 +18,7 @@ fn block_quant_aware_weight_shape(weights: &TypedFact) -> TractResult<Cow<ShapeF
     if weights.datum_type.is_number() {
         Ok(Cow::Borrowed(&weights.shape))
     } else if let Some(bqf) =
-        weights.opaque_fact.as_ref().and_then(|of| of.downcast_ref::<BlockQuantFact>())
+        weights.opaque_fact().and_then(|of| of.downcast_ref::<BlockQuantFact>())
     {
         Ok(Cow::Owned(bqf.shape().into()))
     } else {

@@ -77,7 +77,7 @@ impl MatmulQ40Problem {
         let quant_a = Q4_0.quant_f32(padded_a.as_slice::<f32>()?)?;
 
         let bqf = BlockQuantFact::new(Box::new(Q4_0), padded_a.shape().into());
-        let bqv = BlockQuantValue { value: quant_a, fact: bqf.clone() };
+        let bqv = BlockQuantValue { value: Arc::new(quant_a), fact: bqf.clone() };
 
         let opaque_a = tensor0(Opaque(Arc::new(bqv))).into_arc_tensor();
 

@@ -259,7 +259,7 @@ impl MMMInputFormat for PackedBlockQuantFormat {
                 todo!()
             };
             Cow::Owned(tensor0(Opaque(Arc::new(BlockQuantValue {
-                value: quant,
+                value: Arc::new(quant),
                 fact: BlockQuantFact::new(self.bq.clone(), tvec!(m, k)),
             }))))
         } else {

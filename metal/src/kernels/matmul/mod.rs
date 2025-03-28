@@ -913,7 +913,7 @@ mod tests {
                                     Box::new(Q4_0),
                                     tvec![self.b, self.n, self.k],
                                 ),
-                                value: b_quant,
+                                value: Arc::new(b_quant),
                             })))
                         }
                     } else {
