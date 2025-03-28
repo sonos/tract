@@ -59,16 +59,17 @@ impl RmsNorm {
                 .load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type(), true)?)?;
 
             let iter_dim = shape_nd2[1];
+            let iter_dim_div_4 = iter_dim / 4;
             let outer_stride = iter_dim * input.datum_type().size_of();
 
             let mut nthreads = 32;
-            let limit = iter_dim.min(pipeline.max_total_threads_per_threadgroup() as usize);
+            let limit = iter_dim_div_4.min(pipeline.max_total_threads_per_threadgroup() as usize);
 
             while nthreads < limit {
                 nthreads *= 2;
             }
 
-            nthreads = nthreads.min(iter_dim);
+            nthreads = nthreads.min(iter_dim_div_4);
 
             let command_buffer = context.command_buffer();
             command_buffer.encode(|encoder| {
@@ -84,7 +85,7 @@ impl RmsNorm {
                 encoder.set_bytes(
                     4,
                     size_of::<usize>() as u64,
-                    &(iter_dim / 4) as *const usize as *const _,
+                    &iter_dim_div_4 as *const usize as *const _,
                 );
                 encoder.set_bytes(
                     5,
