@@ -857,6 +857,7 @@ impl Parameters {
                 opt = opt.stopping_at(steps.parse()?);
             }
             opt.optimize(&mut m)?;
+            m.properties.insert("tract_stage".to_string(), rctensor0("optimized".to_string()));
             if let Ok(max) = matches.value_of_t("assert-maximal-mm-quality-cost") {
                 for node in &m.nodes {
                     if let Some(op) = node.op_as::<OptMatMul>() {

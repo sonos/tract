@@ -316,6 +316,21 @@ pub fn handle(
         }
     }
 
+    if model
+        .properties()
+        .get("tract_stage")
+        .and_then(|t| t.to_scalar::<String>().ok())
+        .is_some_and(|s| s == "optimized")
+    {
+        for n in 0..model.nodes_len() {
+            if model.node_op_name(n) == "EinSum" {
+                let tags = annotations.tags.entry(NodeQId(tvec!(), n)).or_default();
+                tags.style = Some(Red.bold());
+                tags.labels.push("⚠️⚠️⚠️ EinSum in optimised model".to_string());
+            }
+        }
+    }
+
     if options.json {
         let export = tract_libcli::export::GraphPerfInfo::from(model, &annotations);
         serde_json::to_writer(std::io::stdout(), &export)?;
