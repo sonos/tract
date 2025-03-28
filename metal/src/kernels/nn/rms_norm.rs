@@ -105,7 +105,7 @@ impl RmsNorm {
             let pipeline = context
                 .shared_context()
                 .load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type(), false)?)?;
-            
+
             let iter_dim = shape_nd3[1];
 
             let mut nthreads = 32;
@@ -127,8 +127,7 @@ impl RmsNorm {
                 encoder.set_threadgroup_memory_length(0, 32 * size_of::<f32>() as u64);
                 let grid_size =
                     MTLSize { width: (shape_nd3[2] * shape_nd3[0]) as _, height: 1, depth: 1 };
-                let group_size =
-                    MTLSize { width: nthreads as _, height: 1, depth: 1 };
+                let group_size = MTLSize { width: nthreads as _, height: 1, depth: 1 };
 
                 encoder.dispatch_thread_groups(grid_size, group_size);
             });
