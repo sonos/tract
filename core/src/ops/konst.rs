@@ -1,6 +1,7 @@
 use dyn_clone::clone_box;
 use tract_itertools::Itertools;
 use tract_linalg::block_quant::BlockQuantValue;
+use tract_linalg::mmm::MMMInputValue;
 
 use crate::internal::*;
 use crate::ops::array::Gather;
@@ -131,7 +132,7 @@ impl TypedOp for Const {
 
         let m_axis = matmuls[0].m_axis.inputs[0][0];
         let k_axis = matmuls[0].k_axis.inputs[0][0];
-        let must_swap = m_axis == 1;
+        let must_swap = m_axis > k_axis;
 
         let ops = tract_linalg::ops();
         let (choice,) = matmuls
@@ -154,9 +155,13 @@ impl TypedOp for Const {
             });
 
         let packed = choice.prepare_tensor(&self.0, k_axis, m_axis).context("in prepare_tensor")?;
-        let fact = clone_box(packed.opaque_fact());
-        let opaque = Opaque(Arc::new(packed));
-        let konst = Const(rctensor0(opaque), Some(fact));
+        let fact = clone_box(
+            packed.as_slice::<Opaque>()?[0]
+                .downcast_ref::<Box<dyn MMMInputValue>>()
+                .unwrap()
+                .opaque_fact(),
+        );
+        let konst = Const(packed.into_arc_tensor(), Some(fact));
         let mut patch = TypedModelPatch::new(format!("Packing {node} as {choice:?}"));
         let konst = patch.wire_node(&node.name, konst, &[])?;
         for succ in &node.outputs[0].successors {
@@ -169,9 +174,17 @@ impl TypedOp for Const {
             } else if let Some(linear) = succ_node.op_as::<EinSum>() {
                 let mut op = linear.clone();
                 if must_swap {
-                    op.axes
-                        .iter_all_axes_mut()
-                        .for_each(|axes| axes.inputs[0].iter_mut().for_each(|pos| *pos = 1 - *pos));
+                    op.axes.iter_all_axes_mut().for_each(|axes| {
+                        axes.inputs[0].iter_mut().for_each(|pos| {
+                            *pos = if *pos == k_axis {
+                                m_axis
+                            } else if *pos == m_axis {
+                                k_axis
+                            } else {
+                                *pos
+                            }
+                        })
+                    });
                 }
                 Box::new(op)
             } else {

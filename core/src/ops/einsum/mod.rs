@@ -66,8 +66,10 @@ impl EinSum {
         ensure!(inputs.len() == self.axes.input_count());
         let shapes: TVec<Cow<[TDim]>> = inputs
             .iter()
-            .map(|t| block_quant_aware_input_shape(t.borrow()))
+            .map(|t| block_quant_aware_input_shape(dbg!(t.borrow())))
             .collect::<TractResult<_>>()?;
+        dbg!(&shapes.iter().map(|ds| ds.iter().join(",")).join(" • "));
+        dbg!(self);
         ensure!(shapes
             .iter()
             .enumerate()
@@ -177,6 +179,7 @@ impl EvalOp for EinSum {
 
 impl TypedOp for EinSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        dbg!(inputs);
         let shapes = self.actual_input_shapes_from_facts(inputs)?;
         for i in 0..inputs.len() {
             ensure!(shapes[i].len() == self.axes.rank(InOut::In(i)));

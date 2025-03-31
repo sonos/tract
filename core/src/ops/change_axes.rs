@@ -674,7 +674,6 @@ impl TypedOp for AxisOp {
                     self.change_tensor(&mut new, false)?;
                     new_fact.konst = Some(new.into());
                 }
-                dbg!(&new_fact);
                 return Ok(tvec!(new_fact));
             }
         }

@@ -21,12 +21,7 @@ impl MMMInputFormat for LazyIm2colParams {
         self.packer.precursor()
     }
 
-    fn prepare_tensor(
-        &self,
-        _t: &Tensor,
-        _k_axis: usize,
-        _mn_axis: usize,
-    ) -> TractResult<Box<dyn MMMInputValue>> {
+    fn prepare_tensor(&self, _t: &Tensor, _k_axis: usize, _mn_axis: usize) -> TractResult<Tensor> {
         bail!("Unexpected call to prepare_tensor on LazyIm2Col")
     }
 

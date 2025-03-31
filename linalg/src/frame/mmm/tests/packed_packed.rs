@@ -1,6 +1,8 @@
 use crate::block_quant::PackedBlockQuantFormat;
 use crate::mmm::tests::display_error;
-use crate::mmm::{AsInputValue, FusedKerSpec, FusedSpec, MatMatMul, MatMatMulKer, OutputStoreKer};
+use crate::mmm::{
+    AsInputValue, FusedKerSpec, FusedSpec, MMMInputValue, MatMatMul, MatMatMulKer, OutputStoreKer,
+};
 use crate::pack::PackedFormat;
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -315,8 +317,16 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
         let k_aligned = k.next_multiple_of(pack_a.k_alignment());
 
         let (a, b) = self.padded_inputs()?;
-        let pa = pack_a.prepare_tensor(&a, 1, 0)?;
-        let pb = pack_b.prepare_tensor(&b, 0, 1)?;
+        let pa = pack_a
+            .prepare_tensor(&a, 1, 0)?
+            .to_scalar::<Opaque>()?
+            .downcast_ref::<Box<dyn MMMInputValue>>()
+            .unwrap();
+        let pb = pack_b
+            .prepare_tensor(&b, 0, 1)?
+            .to_scalar::<Opaque>()?
+            .downcast_ref::<Box<dyn MMMInputValue>>()
+            .unwrap();
 
         let mut v = unsafe { Tensor::uninitialized_dt(self.ker.internal_type(), &[m, n])? };
         let item_size = self.ker.internal_type().size_of();
@@ -326,8 +336,8 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
                 let c = self.ker.c_view(0, 1).wrap(&v.view_mut());
                 let ops = tvec!(
                     FusedSpec::AddMatMul {
-                        a: AsInputValue::Owned(pa),
-                        b: AsInputValue::Owned(pb),
+                        a: AsInputValue::Borrowed(&*pa),
+                        b: AsInputValue::Borrowed(&*pb),
                         packing: self.packing
                     },
                     FusedSpec::Store(c)
