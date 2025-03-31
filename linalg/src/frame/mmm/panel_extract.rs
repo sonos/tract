@@ -190,6 +190,8 @@ pub mod test {
                 .cast_to_dt(from.dt)?
                 .into_owned();
         let packed_orig = from.prepare_tensor(&weights_orig, 1, 0)?;
+        let packed_orig =
+            packed_orig.to_scalar::<Opaque>()?.downcast_ref::<Box<dyn MMMInputValue>>().unwrap();
         let packed_orig = packed_orig.downcast_ref::<EagerPackedInput>().unwrap();
 
         for panel in 0..panels {

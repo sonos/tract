@@ -24,6 +24,8 @@ use crate::pack::PackedFormat;
 
 use crate::WeightType;
 
+use super::mmm::MMMInputValue;
+
 pub trait BlockQuant: Debug + Display + Send + Sync + DynClone + DynHash + Downcast {
     fn same_as(&self, other: &dyn BlockQuant) -> bool;
 
@@ -235,12 +237,7 @@ impl PackedBlockQuantFormat {
 }
 
 impl MMMInputFormat for PackedBlockQuantFormat {
-    fn prepare_tensor(
-        &self,
-        t: &Tensor,
-        k_axis: usize,
-        mn_axis: usize,
-    ) -> TractResult<Box<dyn crate::mmm::MMMInputValue>> {
+    fn prepare_tensor(&self, t: &Tensor, k_axis: usize, mn_axis: usize) -> TractResult<Tensor> {
         // this code path is essentially there for test scenarios
         let t = if t.datum_type().is_number() {
             let k = t.shape()[k_axis];
@@ -265,9 +262,16 @@ impl MMMInputFormat for PackedBlockQuantFormat {
         } else {
             Cow::Borrowed(t)
         };
-        ensure!(k_axis == 1);
-        let quant = t.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>().unwrap();
-        Ok(Box::new(self.pack(&quant.value, quant.fact.k())?))
+        let packed = t
+            .as_slice::<Opaque>()?
+            .iter()
+            .map(|o| {
+                let bqv = o.downcast_ref::<BlockQuantValue>().unwrap();
+                let packed = self.pack(&bqv.value, bqv.fact.k())?;
+                Ok(Opaque(Arc::new(Box::new(packed) as Box<dyn MMMInputValue>)))
+            })
+            .collect::<TractResult<Vec<Opaque>>>()?;
+        tensor1(&packed).into_shape(&t.shape())
     }
 
     fn precursor(&self) -> WeightType {

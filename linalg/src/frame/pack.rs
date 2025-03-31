@@ -2,6 +2,7 @@ use std::alloc::Layout;
 use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 use std::ops::Range;
+use std::sync::Arc;
 use tract_data::internal::*;
 
 use crate::mmm::{EagerPackedInput, MMMInputFormat, MMMInputValue, PackedOpaqueFact};
@@ -17,13 +18,9 @@ pub struct PackedFormat {
 }
 
 impl MMMInputFormat for PackedFormat {
-    fn prepare_tensor(
-        &self,
-        t: &Tensor,
-        k_axis: usize,
-        mn_axis: usize,
-    ) -> TractResult<Box<dyn MMMInputValue>> {
-        PackedFormat::pack_tensor(self, t, k_axis, mn_axis)
+    fn prepare_tensor(&self, t: &Tensor, k_axis: usize, mn_axis: usize) -> TractResult<Tensor> {
+        let packed = PackedFormat::pack_tensor(self, t, k_axis, mn_axis)?;
+        Ok(tensor0(Opaque(Arc::new(packed))))
     }
 
     fn precursor(&self) -> WeightType {

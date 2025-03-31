@@ -10,12 +10,7 @@ use tract_data::internal::*;
 use crate::WeightType;
 
 pub trait MMMInputFormat: Downcast + Debug + DynHash + DynClone + Send + Sync + Display {
-    fn prepare_tensor(
-        &self,
-        t: &Tensor,
-        k_axis: usize,
-        mn_axis: usize,
-    ) -> TractResult<Box<dyn MMMInputValue>>;
+    fn prepare_tensor(&self, t: &Tensor, k_axis: usize, mn_axis: usize) -> TractResult<Tensor>;
     fn precursor(&self) -> WeightType;
     fn r(&self) -> usize;
     fn k_alignment(&self) -> usize;
