@@ -51,10 +51,10 @@ impl EinSumAnnotatedAsMatMul<'_> {
         self.n_axis.inputs[1][0]
     }
     pub fn c_m(&self) -> usize {
-        self.m_axis.outputs[0].get(0).unwrap_or(&self.a_m()).clone()
+        *self.m_axis.outputs[0].first().unwrap_or(&self.a_m())
     }
     pub fn c_n(&self) -> usize {
-        self.n_axis.outputs[0].get(0).unwrap_or(&self.b_n()).clone()
+        *self.n_axis.outputs[0].first().unwrap_or(&self.b_n())
     }
 }
 
