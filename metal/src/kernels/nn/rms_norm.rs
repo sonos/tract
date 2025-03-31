@@ -65,11 +65,9 @@ impl RmsNorm {
             let mut nthreads = 32;
             let limit = iter_dim_div_4.min(pipeline.max_total_threads_per_threadgroup() as usize);
 
-            while nthreads < limit {
+            while (nthreads * 2) < limit {
                 nthreads *= 2;
             }
-
-            nthreads = nthreads.min(iter_dim_div_4);
 
             let command_buffer = context.command_buffer();
             command_buffer.encode(|encoder| {
@@ -110,12 +108,10 @@ impl RmsNorm {
 
             let mut nthreads = 32;
             let limit = iter_dim.min(pipeline.max_total_threads_per_threadgroup() as usize);
-
-            while nthreads < limit {
+            while (nthreads * 2)< limit {
                 nthreads *= 2;
             }
 
-            nthreads = nthreads.min(iter_dim);
             let command_buffer = context.command_buffer();
             command_buffer.encode(|encoder| {
                 encoder.set_compute_pipeline_state(&pipeline);
@@ -252,11 +248,13 @@ mod tests {
             (0usize..3, 0usize..3)
                 .prop_flat_map(|(left, right)| {
                     let axis = left;
-                    let shape_len = usize::min(left + right + 1, 4);
-                    let shape = 1usize..10;
-                    (vec(shape, shape_len..=shape_len), Just(axis))
+                    let shape_len = usize::min(left + right, 4);
+                    let iter_ax_dim = 1usize..1024;
+                    let other_dim = 1usize..10;
+                    (iter_ax_dim, vec(other_dim, shape_len..=shape_len), Just(axis))
                 })
-                .prop_map(|(shape, axis)| {
+                .prop_map(|(iter_dim, mut shape, axis)| {
+                    shape.insert(axis, iter_dim);
                     let input = (0..shape.iter().product::<usize>())
                         .map(|f| f.as_() / 1000.as_())
                         .collect::<Vec<_>>();
