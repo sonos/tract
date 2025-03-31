@@ -68,7 +68,7 @@ impl RmsNorm {
             while (nthreads * 2) < limit {
                 nthreads *= 2;
             }
-
+            nthreads = nthreads.min(iter_dim_div_4);
             let command_buffer = context.command_buffer();
             command_buffer.encode(|encoder| {
                 encoder.set_compute_pipeline_state(&pipeline);
@@ -108,7 +108,7 @@ impl RmsNorm {
 
             let mut nthreads = 32;
             let limit = iter_dim.min(pipeline.max_total_threads_per_threadgroup() as usize);
-            while (nthreads * 2)< limit {
+            while (nthreads * 2) < limit {
                 nthreads *= 2;
             }
 

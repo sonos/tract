@@ -233,7 +233,8 @@ template<typename F, typename F4>
 
     // parallel sum
     for (size_t i = tpitg; i < n_div_4; i += ntg) {
-        sumf += dot(x[i], x[i]);
+        float4 el = static_cast<float4>(x[i]);
+        sumf += dot(el, el);
     }
     sumf = simd_sum(sumf);
 
@@ -249,7 +250,7 @@ template<typename F, typename F4>
     sumf = simd_sum(sumf);
 
     const float mean  = sumf/n;
-    const F scale = 1.0f/sqrt(mean + eps);
+    const float scale = 1.0f/sqrt(mean + eps);
 
     device F4 * y = (device F4 *) output_b + tgpig * n_div_4;
     for (size_t i = tpitg; i < n_div_4; i += ntg) {
