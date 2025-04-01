@@ -185,31 +185,36 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
         self.ns.iter().any(|n| n.as_i64().map(|n| n > 1).unwrap_or(true))
     }
 
-    pub fn cost_for_weights(&self, format: &dyn MMMInputFormat) -> usize {
-        let ops = tract_linalg::ops();
+    pub fn cost_for_weights(&self, format: &dyn MMMInputFormat) -> Option<usize> {
         let acc = self.op.acceptable_accumulators();
+        let able = tract_linalg::ops()
+            .filter_impls(format, &acc, self.act_dt, self.op.operating_dt)
+            .collect_vec();
+        if able.len() == 0 {
+            return None;
+        }
         let mut cost = 0;
         if self.need_mmv() {
-            cost += ops
-                .filter_impls(format, &acc, self.act_dt)
+            cost += able
+                .iter()
                 .map(|(mmm, _, _, pe, _)| {
                     1_000_000 + mmm.quality().cost() * 1000 + mmm.nr() * 10 - mmm.mr() * 10
                         + pe.is_some() as usize
                 })
                 .min()
-                .unwrap_or(usize::MAX / 2);
+                .unwrap();
         };
         if self.need_mmm() {
-            cost += ops
-                .filter_impls(format, &acc, self.act_dt)
+            cost += able
+                .iter()
                 .map(|(mmm, _, _, pe, _)| {
                     1_000_000 + mmm.quality().cost() * 1000 - mmm.nr() * 10 - mmm.mr() * 10
                         + pe.is_some() as usize
                 })
                 .min()
-                .unwrap_or(usize::MAX / 2);
+                .unwrap();
         };
-        cost
+        Some(cost)
     }
 
     pub fn preferred_packing(&self) -> Box<dyn MMMInputFormat> {
@@ -238,8 +243,10 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
         clone_box(
             tract_linalg::ops()
                 .all_possible_packing(self.weight_type.clone())
-                .min_by_key(|p| self.cost_for_weights(&**p))
-                .unwrap(),
+                .filter_map(|p| self.cost_for_weights(&*p).map(|cost| (p, cost)))
+                .min_by_key(|(_p, cost)| *cost)
+                .unwrap()
+                .0,
         )
     }
 }

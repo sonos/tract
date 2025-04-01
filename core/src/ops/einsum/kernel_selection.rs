@@ -36,7 +36,10 @@ pub fn wire_packing(
     let (mmm, p, pa, pb) = tract_linalg::ops()
         .mmm_impls()
         .iter()
-        .filter(|mmm| op.acceptable_accumulators().contains(&mmm.internal_type()))
+        .filter(|mmm| {
+            op.acceptable_accumulators().contains(&mmm.internal_type())
+                && mmm.stores().contains(&op.operating_dt.unquantized())
+        })
         .flat_map(move |mmm| {
             mmm.packings().iter().enumerate().map(|(ix, p)| (mmm.clone(), ix, &p.0, &p.1))
         })
@@ -120,7 +123,10 @@ pub fn wire_prepacked(
         let mmms = tract_linalg::ops()
             .mmm_impls()
             .iter()
-            .filter(|mmm| op.acceptable_accumulators().contains(&mmm.internal_type()))
+            .filter(|mmm| {
+                op.acceptable_accumulators().contains(&mmm.internal_type())
+                    && mmm.stores().contains(&op.operating_dt.unquantized())
+            })
             .flat_map(move |mmm| {
                 mmm.packings().iter().enumerate().map(|(ix, p)| (mmm.clone(), ix, &p.0, &p.1))
             })
@@ -138,6 +144,12 @@ pub fn wire_prepacked(
                 }
             })
             .collect_vec();
+        ensure!(
+            !mmms.is_empty(),
+            "No kernel found for {op:?} on {:?} {:?}",
+            patch.outlet_fact(a)?,
+            patch.outlet_fact(b)?
+        );
         let mmv = mmms
             .iter()
             .min_by_key(|(mmm, _packing, pe)| {

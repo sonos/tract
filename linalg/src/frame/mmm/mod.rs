@@ -17,6 +17,7 @@ pub mod tests;
 
 use crate::multithread::Executor;
 use rayon::prelude::*;
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt::Debug;
 use tract_data::internal::*;
@@ -89,6 +90,8 @@ pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
     ) -> OutputStoreSpec;
 
     fn can_fuse(&self, spec: &FusedSpec) -> bool;
+
+    fn stores(&self) -> Cow<[DatumType]>;
 
     unsafe fn run(&self, m: usize, n: usize, non_linear: &[FusedSpec]) -> TractResult<()> {
         let mut scratch = self.allocate_scratch_space();
@@ -163,6 +166,10 @@ impl<K: MatMatMulKer> MatMatMul for K {
             mr: self.mr(),
             nr: self.nr(),
         }
+    }
+
+    fn stores(&self) -> Cow<[DatumType]> {
+        self.stores()
     }
 
     unsafe fn allocate_scratch_space(&self) -> Box<dyn ScratchSpace> {

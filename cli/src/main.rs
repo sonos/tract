@@ -22,12 +22,12 @@ use fs_err as fs;
 use readings_probe::*;
 
 mod bench;
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-mod memory_arena;
 mod compare;
 mod cost;
 mod dump;
 mod llm;
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+mod memory_arena;
 mod params;
 mod plan_options;
 mod run;
@@ -616,7 +616,11 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             println!("{}", White.bold().paint("# By implementation"));
             println!();
             for m in tract_linalg::ops().mmm_impls() {
-                println!("{}", QUALITY_COLORS[m.quality().cost()].paint(m.name()),);
+                println!(
+                    "{} -> {:?}",
+                    QUALITY_COLORS[m.quality().cost()].paint(m.name()),
+                    m.stores()
+                );
                 for packings in m.packings() {
                     println!("   - {:?} • {:?}", packings.0, packings.1);
                 }
