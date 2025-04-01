@@ -8,6 +8,7 @@ use crate::deser::Value;
 
 use tract_core::dyn_clone::clone_box;
 use tract_core::ops::binary::*;
+use tract_core::transform::ModelTransform;
 
 pub type ToTract = fn(&mut ModelBuilder, &ResolvedInvocation) -> TractResult<Value>;
 pub type FromTract =
@@ -15,6 +16,10 @@ pub type FromTract =
 pub type FromTractWithOp<O> =
     fn(&mut IntoAst, node: &TypedNode, op: &O) -> TractResult<Option<Arc<RValue>>>;
 pub type BinOp = (Identifier, Box<dyn BinMiniOp>);
+pub type GetTransform = Box<dyn Fn(&str) -> TractResult<Option<Box<dyn ModelTransform>>>
+          + Send
+          + Sync,
+>;
 pub type Extension = Box<
     dyn Fn(&mut crate::deser::ModelBuilder, &Identifier, &str) -> TractResult<ControlFlow<(), ()>>
         + Send
@@ -49,6 +54,7 @@ pub struct Registry {
     pub element_wise_ops: Vec<(Identifier, TypeId, FromTract, Vec<ast::Parameter>, ToTract)>,
     pub binary_ops: Vec<BinOp>,
     pub from_tract: HashMap<TypeId, FromTract>,
+    pub transforms: GetTransform,
     pub extensions: Vec<Extension>,
 }
 
@@ -64,6 +70,7 @@ impl Registry {
             unit_element_wise_ops: Default::default(),
             element_wise_ops: Default::default(),
             binary_ops: Default::default(),
+            transforms: Box::new(|_| Ok(None)),
             extensions: Default::default(),
         }
     }

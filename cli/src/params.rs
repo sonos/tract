@@ -766,12 +766,12 @@ impl Parameters {
         }
 
         if let Some(transform) = matches.values_of("transform") {
-            for transform in transform {
-                stage!(transform, typed_model -> typed_model, |m:TypedModel| {
-                    let transform = tract_core::transform::get_transform(transform).with_context(|| format!("Could not find transform named {}", transform))?;
+            for spec in transform {
+                let transform = super::nnef(matches).get_transform(spec)?.with_context(|| format!("Could not find transform named {}", spec))?;
+                stage!(&transform.name(), typed_model -> typed_model, |m:TypedModel| {
                     transform.transform_into(m)
                 });
-                stage!(&format!("{}-declutter", transform), typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
+                stage!(&format!("{}-declutter", transform.name()), typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
             }
         }
         if let Some(set) = matches.values_of("set") {
