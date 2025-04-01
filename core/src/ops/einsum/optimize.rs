@@ -322,17 +322,23 @@ pub(crate) fn ensure_mkn_axes<'a>(
         return Ok(AxesOrPatch::Patch(inject_k_axis(op, model, node)?));
     };
 
-    let mut possible_m_axes: Vec<_> = op.axes.iter_all_axes().filter(|a| {
-        a.inputs[0].len() == 1
-            && (a.inputs[1].is_empty() || input_shapes[1][a.inputs[1][0]].is_one())
-            && (a.outputs[0].len() == 1 || (input_shapes[0][a.inputs[0][0]].is_one() && a.inputs[1].is_empty()))
-    }).collect();
-    
+    let mut possible_m_axes: Vec<_> = op
+        .axes
+        .iter_all_axes()
+        .filter(|a| {
+            a.inputs[0].len() == 1
+                && (a.inputs[1].is_empty() || input_shapes[1][a.inputs[1][0]].is_one())
+                && (a.outputs[0].len() == 1
+                    || (input_shapes[0][a.inputs[0][0]].is_one() && a.inputs[1].is_empty()))
+        })
+        .collect();
+
     if possible_m_axes.iter().any(|a| !a.outputs[0].is_empty()) {
         possible_m_axes.retain(|a| !a.outputs[0].is_empty());
     }
-    
-    let m_axis = possible_m_axes.into_iter().max_by_key(|a| input_shapes[0][a.inputs[0][0]].as_i64());
+
+    let m_axis =
+        possible_m_axes.into_iter().max_by_key(|a| input_shapes[0][a.inputs[0][0]].as_i64());
 
     let Some(m_axis) = m_axis else {
         return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(op, model, node, false)?));
