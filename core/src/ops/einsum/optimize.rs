@@ -332,7 +332,8 @@ pub(crate) fn ensure_mkn_axes<'a>(
                     || (input_shapes[0][a.inputs[0][0]].is_one() && a.inputs[1].is_empty()))
         })
         .collect();
-
+    
+    // Prioritize obvious m-axes
     if possible_m_axes.iter().any(|a| !a.outputs[0].is_empty()) {
         possible_m_axes.retain(|a| !a.outputs[0].is_empty());
     }
