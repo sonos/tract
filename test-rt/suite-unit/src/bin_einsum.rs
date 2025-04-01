@@ -395,6 +395,18 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
 
+    suite.add(
+        "m_axis_select_bug_0",
+        BinEinsumProblem {
+            expr: "wmkx,wknx->xmnw".parse().unwrap(),
+            a: tensor4(&[[[[0f32, 0f32], [0f32, -1f32]]]]),
+            b: tensor4(&[[[[0f32, 0f32]], [[0f32, 1f32]]]]),
+            a_constant: false,
+            b_constant: false,
+            unicast_add_constant: None,
+        },
+    );
+
     // TODO: fix ensure_mkn() to handle multiple n axes
     //suite.add(
     //    "multiple_n_axes",
