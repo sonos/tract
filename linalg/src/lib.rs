@@ -135,6 +135,7 @@ impl Ops {
         weight: &'o dyn MMMInputFormat,
         acc: &[DatumType],
         act: DatumType,
+        store: DatumType,
     ) -> impl Iterator<
         Item = (
             &'o dyn MatMatMul,
@@ -147,7 +148,7 @@ impl Ops {
         let acc = acc.to_vec();
         self.mmm_impls
             .iter()
-            .filter(move |mmm| acc.contains(&mmm.internal_type()))
+            .filter(move |mmm| acc.contains(&mmm.internal_type()) && mmm.stores().contains(&store))
             .flat_map(|mmm| {
                 mmm.packings()
                     .iter()
