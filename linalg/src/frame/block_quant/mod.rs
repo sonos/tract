@@ -247,7 +247,7 @@ impl MMMInputFormat for PackedBlockQuantFormat {
                 Ok(Opaque(Arc::new(Box::new(packed) as Box<dyn MMMInputValue>)))
             })
             .collect::<TractResult<Vec<Opaque>>>()?;
-        tensor1(&packed).into_shape(&t.shape())
+        tensor1(&packed).into_shape(t.shape())
     }
 
     fn prepare_one(
