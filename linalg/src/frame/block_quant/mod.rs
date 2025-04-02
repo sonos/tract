@@ -237,7 +237,25 @@ impl PackedBlockQuantFormat {
 }
 
 impl MMMInputFormat for PackedBlockQuantFormat {
-    fn prepare_tensor(&self, t: &Tensor, k_axis: usize, mn_axis: usize) -> TractResult<Tensor> {
+    fn prepare_tensor(&self, t: &Tensor, _k_axis: usize, _mn_axis: usize) -> TractResult<Tensor> {
+        let packed = t
+            .as_slice::<Opaque>()?
+            .iter()
+            .map(|o| {
+                let bqv = o.downcast_ref::<BlockQuantValue>().unwrap();
+                let packed = self.pack(&bqv.value, bqv.fact.k())?;
+                Ok(Opaque(Arc::new(Box::new(packed) as Box<dyn MMMInputValue>)))
+            })
+            .collect::<TractResult<Vec<Opaque>>>()?;
+        tensor1(&packed).into_shape(&t.shape())
+    }
+
+    fn prepare_one(
+        &self,
+        t: &Tensor,
+        k_axis: usize,
+        mn_axis: usize,
+    ) -> TractResult<Box<dyn MMMInputValue>> {
         // this code path is essentially there for test scenarios
         let t = if t.datum_type().is_number() {
             let k = t.shape()[k_axis];
@@ -262,16 +280,11 @@ impl MMMInputFormat for PackedBlockQuantFormat {
         } else {
             Cow::Borrowed(t)
         };
-        let packed = t
-            .as_slice::<Opaque>()?
-            .iter()
-            .map(|o| {
-                let bqv = o.downcast_ref::<BlockQuantValue>().unwrap();
-                let packed = self.pack(&bqv.value, bqv.fact.k())?;
-                Ok(Opaque(Arc::new(Box::new(packed) as Box<dyn MMMInputValue>)))
-            })
-            .collect::<TractResult<Vec<Opaque>>>()?;
-        tensor1(&packed).into_shape(&t.shape())
+        ensure!(mn_axis == 0);
+        ensure!(k_axis == 1);
+        let bqv = t.to_scalar::<Opaque>()?.downcast_ref::<BlockQuantValue>().unwrap();
+        let packed = self.pack(&bqv.value, bqv.fact.k())?;
+        Ok(Box::new(packed))
     }
 
     fn precursor(&self) -> WeightType {

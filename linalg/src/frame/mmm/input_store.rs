@@ -11,6 +11,12 @@ use crate::WeightType;
 
 pub trait MMMInputFormat: Downcast + Debug + DynHash + DynClone + Send + Sync + Display {
     fn prepare_tensor(&self, t: &Tensor, k_axis: usize, mn_axis: usize) -> TractResult<Tensor>;
+    fn prepare_one(
+        &self,
+        t: &Tensor,
+        k_axis: usize,
+        mn_axis: usize,
+    ) -> TractResult<Box<dyn MMMInputValue>>;
     fn precursor(&self) -> WeightType;
     fn r(&self) -> usize;
     fn k_alignment(&self) -> usize;
@@ -78,7 +84,7 @@ impl OpaquePayload for Box<dyn MMMInputValue> {
 #[derive(Clone, Hash, Debug)]
 pub struct PackedOpaqueFact {
     pub format: Box<dyn MMMInputFormat>,
-    pub mn: usize,
+    pub mn: TDim,
     pub k: usize,
 }
 
@@ -90,7 +96,7 @@ impl Display for PackedOpaqueFact {
 
 impl OpaqueFact for PackedOpaqueFact {
     fn mem_size(&self) -> TDim {
-        self.format.mem_size(self.k.to_dim(), self.mn.to_dim())
+        self.format.mem_size(self.k.to_dim(), self.mn.clone())
     }
 
     fn same_as(&self, other: &dyn OpaqueFact) -> bool {
@@ -109,6 +115,7 @@ pub struct EagerPackedInput {
     pub fact: PackedOpaqueFact,
     pub packed: Arc<Blob>,
     pub panel_bytes: usize,
+    pub mn: usize,
 }
 
 impl MMMInputValue for EagerPackedInput {
@@ -122,7 +129,7 @@ impl MMMInputValue for EagerPackedInput {
         self.fact.k
     }
     fn mn(&self) -> usize {
-        self.fact.mn
+        self.mn
     }
     fn format(&self) -> &dyn MMMInputFormat {
         &*self.fact.format

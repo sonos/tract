@@ -152,7 +152,7 @@ impl ConvProblem {
         let output = Tensor::zero::<f32>(&internal_output_shape)?;
         let reshaped_filters = self.filters.clone().into_shape(&[k, m])?;
         let (a_pack, b_pack) = &mmm.packings()[0];
-        let a = a_pack.prepare_tensor(&reshaped_filters, 0, 1)?;
+        let a = a_pack.prepare_one(&reshaped_filters, 0, 1)?;
         unsafe {
             let im2col: Box<dyn MMMInputValue> = if self.lazy_im2col {
                 LazyIm2colSpec {
@@ -248,12 +248,7 @@ impl Display for EagerIm2colSpec {
 }
 
 impl MMMInputFormat for EagerIm2colSpec {
-    fn prepare_tensor(
-        &self,
-        _t: &Tensor,
-        _k_axis: usize,
-        _mn_axis: usize,
-    ) -> TractResult<Box<dyn MMMInputValue>> {
+    fn prepare_tensor(&self, _t: &Tensor, _k_axis: usize, _mn_axis: usize) -> TractResult<Tensor> {
         todo!();
     }
 
@@ -293,6 +288,15 @@ impl MMMInputFormat for EagerIm2colSpec {
         _slice: &mut [f32],
     ) -> TractResult<()> {
         todo!();
+    }
+
+    fn prepare_one(
+        &self,
+        _t: &Tensor,
+        _k_axis: usize,
+        _mn_axis: usize,
+    ) -> TractResult<Box<dyn MMMInputValue>> {
+        todo!()
     }
 }
 
@@ -412,7 +416,10 @@ impl Display for LazyIm2colSpec {
 }
 
 impl MMMInputFormat for LazyIm2colSpec {
-    fn prepare_tensor(
+    fn prepare_tensor(&self, _t: &Tensor, _k_axis: usize, _mn_axis: usize) -> TractResult<Tensor> {
+        todo!();
+    }
+    fn prepare_one(
         &self,
         _t: &Tensor,
         _k_axis: usize,

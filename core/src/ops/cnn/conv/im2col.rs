@@ -183,10 +183,11 @@ impl EvalOp for Im2Col {
                             fact: PackedOpaqueFact {
                                 format: Box::new(geometry.b_pack.clone()),
                                 k: geometry.k,
-                                mn: geometry.n,
+                                mn: geometry.n.to_dim(),
                             },
                             packed: data.into_blob()?.into(),
                             panel_bytes,
+                            mn: geometry.n,
                         });
                         output_view[[i, g]] = input.into();
                     }
@@ -202,7 +203,15 @@ impl TypedOp for Im2Col {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let input_shape = self.pool_spec.data_format.shape(inputs[0].shape.to_tvec())?;
-        Ok(tvec!(Opaque::fact(&[input_shape.n().cloned().unwrap_or(1.into()), self.group.into()])))
+        let output_shape = self.pool_spec.output_shape(&inputs[0].shape)?;
+        let mn = output_shape.hw_dims().iter().product::<TDim>();
+        let pof = PackedOpaqueFact {
+            format: Box::new(self.geometry.b_pack().clone()),
+            k: self.geometry.k(),
+            mn,
+        };
+        Ok(tvec!(Opaque::fact(&[input_shape.n().cloned().unwrap_or(1.into()), self.group.into()])
+            .with_opaque_fact(pof)))
     }
 
     fn declutter(
