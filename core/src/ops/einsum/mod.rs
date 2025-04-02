@@ -34,11 +34,7 @@ pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<[TDim]
     //     &pbqf.shape
     } else if let Some(pof) = opaque_fact.downcast_ref::<PackedOpaqueFact>() {
         Ok(Cow::Owned(
-            fact.shape
-                .iter()
-                .cloned()
-                .chain([pof.mn.clone(), pof.k.to_dim()].into_iter())
-                .collect_vec(),
+            fact.shape.iter().cloned().chain([pof.mn.clone(), pof.k.to_dim()]).collect_vec(),
         ))
     } else {
         bail!("Unsupported opaque fact {opaque_fact:?}")
