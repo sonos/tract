@@ -96,6 +96,31 @@ impl TypedOp for Const {
         target.wire_node(&node.name, op, &[])
     }
 
+    fn change_axes(
+        &self,
+        _model: &TypedModel,
+        _node: &TypedNode,
+        io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        anyhow::ensure!(io == InOut::Out(0));
+        let mut new_tensor = self.0.clone().into_tensor();
+        if change.change_tensor(&mut new_tensor, false).is_ok() {
+            let mut sub = Const(new_tensor.into_arc_tensor(), None);
+            if self.1.is_some() {
+                let my_fact = self.output_facts(&[])?;
+                let changed_fact = change.output_facts(&[&my_fact[0]])?;
+                sub.1 = changed_fact[0].opaque_fact.clone();
+            }
+            Ok(Some(AxisChangeConsequence {
+                substitute_op: Some(Box::new(sub)),
+                wire_changes: tvec!((io, change.clone())),
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
     fn codegen(
         &self,
         model: &TypedModel,
