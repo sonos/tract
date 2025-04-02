@@ -66,10 +66,8 @@ impl EinSum {
         ensure!(inputs.len() == self.axes.input_count());
         let shapes: TVec<Cow<[TDim]>> = inputs
             .iter()
-            .map(|t| block_quant_aware_input_shape(dbg!(t.borrow())))
+            .map(|t| block_quant_aware_input_shape(t.borrow()))
             .collect::<TractResult<_>>()?;
-        dbg!(&shapes.iter().map(|ds| ds.iter().join(",")).join(" • "));
-        dbg!(self);
         ensure!(shapes
             .iter()
             .enumerate()
@@ -179,7 +177,6 @@ impl EvalOp for EinSum {
 
 impl TypedOp for EinSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        dbg!(inputs);
         let shapes = self.actual_input_shapes_from_facts(inputs)?;
         for i in 0..inputs.len() {
             ensure!(shapes[i].len() == self.axes.rank(InOut::In(i)));
@@ -308,17 +305,17 @@ impl TypedOp for EinSum {
         }))
     }
 
-    fn declutter_with_session(
-        &self,
-        session: &mut crate::optim::OptimizerSession,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        if let Some(patch) = declutter_reshape_folding_input_axis(self, session, model, node)? {
-            return Ok(Some(patch));
-        }
-        return Ok(None);
-    }
+    //     fn declutter_with_session(
+    //         &self,
+    //         session: &mut crate::optim::OptimizerSession,
+    //         model: &TypedModel,
+    //         node: &TypedNode,
+    //     ) -> TractResult<Option<TypedModelPatch>> {
+    //         // if let Some(patch) = declutter_reshape_folding_input_axis(self, session, model, node)? {
+    //         //     return Ok(Some(patch));
+    //         // }
+    //         return Ok(None);
+    //     }
 
     fn codegen(
         &self,
@@ -342,66 +339,66 @@ impl TypedOp for EinSum {
     as_op!();
 }
 
-fn declutter_reshape_folding_input_axis(
-    op: &EinSum,
-    _session: &mut crate::optim::OptimizerSession,
-    model: &TypedModel,
-    node: &TypedNode,
-) -> TractResult<Option<TypedModelPatch>> {
-    for (slot, prec) in node.inputs.iter().map(|n| model.node(n.node)).enumerate() {
-        let Some(AxisOp::Reshape(at, ref from, ref to)) = prec.op_as() else { continue };
-        if to.len() > 1 {
-            continue;
-        }
-        let mut axes = op.axes.clone();
-        let extra_labels = axes.available_labels().take(from.len() - 1).collect_vec();
-        // add a temporary input to axes to hold the extra axes
-        let extra_input = node.inputs.len();
-        axes = axes.with_extra_input(extra_input)?;
-        for label in &extra_labels {
-            axes = axes.with_extra_axis(*label, InOut::In(extra_input), 0)?;
-        }
-        let folded_axis = op.axes.axis((InOut::In(slot), *at))?;
-        if folded_axis.outputs[0].len() > 1 {
-            return Ok(None);
-        };
-        let mut patch = TypedModelPatch::default();
-        let mut taps = patch.taps(model, &node.inputs)?;
-        for (input, tap) in taps.iter_mut().enumerate() {
-            if folded_axis.inputs[input].len() == 0 {
-                continue;
-            };
-            if folded_axis.inputs[input].len() > 1 {
-                return Ok(None);
-            };
-            let pos = folded_axis.inputs[input][0];
-            for label in &extra_labels {
-                axes = axes.with_extra_axis_occurency(*label, InOut::In(input), pos)?;
-            }
-            *tap = patch.wire_node(
-                format!("{}.reshape_folded_input_{}", node.name, input),
-                AxisOp::Reshape(pos, to.clone(), from.clone()),
-                &[*tap],
-            )?[0];
-        }
-        if folded_axis.outputs[0].len() == 1 {
-            let pos = folded_axis.outputs[0][0];
-            for label in &extra_labels {
-                axes = axes.with_extra_axis_occurency(*label, InOut::Out(0), pos)?;
-            }
-        }
-        axes = axes.remove_slot(InOut::In(extra_input))?;
-        let mut wire = patch.wire_node(&node.name, EinSum { axes, ..op.clone() }, &taps)?;
-        if folded_axis.outputs[0].len() == 1 {
-            let pos = folded_axis.outputs[0][0];
-            wire = patch.wire_node(
-                format!("{}.reshape_folded_output", node.name),
-                AxisOp::Reshape(pos, from.clone(), to.clone()),
-                &wire,
-            )?;
-        }
-        patch.shunt_outside(model, node.id.into(), wire[0])?;
-        return Ok(Some(patch));
-    }
-    return Ok(None);
-}
+// fn declutter_reshape_folding_input_axis(
+//     op: &EinSum,
+//     _session: &mut crate::optim::OptimizerSession,
+//     model: &TypedModel,
+//     node: &TypedNode,
+// ) -> TractResult<Option<TypedModelPatch>> {
+//     for (slot, prec) in node.inputs.iter().map(|n| model.node(n.node)).enumerate() {
+//         let Some(AxisOp::Reshape(at, ref from, ref to)) = prec.op_as() else { continue };
+//         if to.len() > 1 {
+//             continue;
+//         }
+//         let mut axes = op.axes.clone();
+//         let extra_labels = axes.available_labels().take(from.len() - 1).collect_vec();
+//         // add a temporary input to axes to hold the extra axes
+//         let extra_input = node.inputs.len();
+//         axes = axes.with_extra_input(extra_input)?;
+//         for label in &extra_labels {
+//             axes = axes.with_extra_axis(*label, InOut::In(extra_input), 0)?;
+//         }
+//         let folded_axis = op.axes.axis((InOut::In(slot), *at))?;
+//         if folded_axis.outputs[0].len() > 1 {
+//             return Ok(None);
+//         };
+//         let mut patch = TypedModelPatch::default();
+//         let mut taps = patch.taps(model, &node.inputs)?;
+//         for (input, tap) in taps.iter_mut().enumerate() {
+//             if folded_axis.inputs[input].len() == 0 {
+//                 continue;
+//             };
+//             if folded_axis.inputs[input].len() > 1 {
+//                 return Ok(None);
+//             };
+//             let pos = folded_axis.inputs[input][0];
+//             for label in &extra_labels {
+//                 axes = axes.with_extra_axis_occurency(*label, InOut::In(input), pos)?;
+//             }
+//             *tap = patch.wire_node(
+//                 format!("{}.reshape_folded_input_{}", node.name, input),
+//                 AxisOp::Reshape(pos, to.clone(), from.clone()),
+//                 &[*tap],
+//             )?[0];
+//         }
+//         if folded_axis.outputs[0].len() == 1 {
+//             let pos = folded_axis.outputs[0][0];
+//             for label in &extra_labels {
+//                 axes = axes.with_extra_axis_occurency(*label, InOut::Out(0), pos)?;
+//             }
+//         }
+//         axes = axes.remove_slot(InOut::In(extra_input))?;
+//         let mut wire = patch.wire_node(&node.name, EinSum { axes, ..op.clone() }, &taps)?;
+//         if folded_axis.outputs[0].len() == 1 {
+//             let pos = folded_axis.outputs[0][0];
+//             wire = patch.wire_node(
+//                 format!("{}.reshape_folded_output", node.name),
+//                 AxisOp::Reshape(pos, from.clone(), to.clone()),
+//                 &wire,
+//             )?;
+//         }
+//         patch.shunt_outside(model, node.id.into(), wire[0])?;
+//         return Ok(Some(patch));
+//     }
+//     return Ok(None);
+// }
