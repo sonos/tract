@@ -141,7 +141,8 @@ fn main() -> TractResult<()> {
 
         .arg(Arg::new("f32-to-f16").long("f32-to-f16").alias("half-floats").long_help("Convert the decluttered network from f32 to f16"))
         .arg(arg!(--"f16-to-f32" "Convert the decluttered network from f16 to f32"))
-        .arg(arg!(--"metal" [matmul_backend] "Convert metal compatible operator in the decluttered network. Only available on MacOS and iOS. Available MM backends: mlx, ggml, mfa, auto (default)"))
+        .arg(arg!(--"metal").long_help("Convert supported operators to Metal GPU equivalent. Only available on MacOS and iOS"))
+        .arg(Arg::new("force-metal-backend").long("force-metal-backend").takes_value(true).long_help("Force specific implementations for MM kernels. Possible values: mlx, ggml, mfa. Backend is dynamically selected if option is not present"))
         .arg(Arg::new("metal-gpu-trace").long("metal-gpu-trace").takes_value(true).help("Capture Metal GPU trace at given path. Only available on MacOS and iOS"))
         .arg(Arg::new("transform").short('t').long("transform").multiple_occurrences(true).takes_value(true).help("Apply a built-in transformation to the model"))
         .arg(Arg::new("set").long("set").multiple_occurrences(true).takes_value(true)
