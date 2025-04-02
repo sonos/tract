@@ -243,7 +243,7 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
         clone_box(
             tract_linalg::ops()
                 .all_possible_packing(self.weight_type.clone())
-                .filter_map(|p| self.cost_for_weights(&*p).map(|cost| (p, cost)))
+                .filter_map(|p| self.cost_for_weights(p).map(|cost| (p, cost)))
                 .min_by_key(|(_p, cost)| *cost)
                 .unwrap()
                 .0,
