@@ -317,16 +317,8 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
         let k_aligned = k.next_multiple_of(pack_a.k_alignment());
 
         let (a, b) = self.padded_inputs()?;
-        let pa = pack_a
-            .prepare_tensor(&a, 1, 0)?
-            .to_scalar::<Opaque>()?
-            .downcast_ref::<Box<dyn MMMInputValue>>()
-            .unwrap();
-        let pb = pack_b
-            .prepare_tensor(&b, 0, 1)?
-            .to_scalar::<Opaque>()?
-            .downcast_ref::<Box<dyn MMMInputValue>>()
-            .unwrap();
+        let pa = pack_a.prepare_one(&a, 1, 0)?;
+        let pb = pack_b.prepare_one(&b, 0, 1)?;
 
         let mut v = unsafe { Tensor::uninitialized_dt(self.ker.internal_type(), &[m, n])? };
         let item_size = self.ker.internal_type().size_of();

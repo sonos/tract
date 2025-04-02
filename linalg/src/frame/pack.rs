@@ -23,6 +23,15 @@ impl MMMInputFormat for PackedFormat {
         Ok(tensor0(Opaque(Arc::new(packed))))
     }
 
+    fn prepare_one(
+        &self,
+        t: &Tensor,
+        k_axis: usize,
+        mn_axis: usize,
+    ) -> TractResult<Box<dyn MMMInputValue>> {
+        PackedFormat::pack_tensor(self, t, k_axis, mn_axis)
+    }
+
     fn precursor(&self) -> WeightType {
         WeightType::Plain(self.dt)
     }
@@ -188,9 +197,10 @@ impl PackedFormat {
                 0..mn
             ));
             Ok(Box::new(EagerPackedInput {
-                fact: PackedOpaqueFact { format: Box::new(self.clone()), mn, k },
+                fact: PackedOpaqueFact { format: Box::new(self.clone()), mn: mn.to_dim(), k },
                 packed: packed.into(),
                 panel_bytes,
+                mn,
             }))
         }
     }
@@ -230,9 +240,10 @@ impl PackedFormat {
                 0..mn
             ));
             Ok(Box::new(EagerPackedInput {
-                fact: PackedOpaqueFact { format: Box::new(self.clone()), mn, k },
+                fact: PackedOpaqueFact { format: Box::new(self.clone()), mn: mn.to_dim(), k },
                 packed: packed.into(),
                 panel_bytes,
+                mn,
             }))
         }
     }

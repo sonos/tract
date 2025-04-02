@@ -130,12 +130,11 @@ impl<const QK: usize> BaseQ4_0<QK> {
             })?;
         ensure!(value.fact.k % self.block_len() == 0);
         ensure!(pbqf.bq.same_as(self));
-        ensure!(mn < value.fact.mn);
+        ensure!(value.fact.mn.to_usize().ok().map(|it| mn < it).unwrap_or(true));
         ensure!(value.fact.k == target.len());
         let blocks_for_k = value.fact.k / self.block_len();
         let row_bytes = blocks_for_k * self.block_bytes();
         let panel = mn / pbqf.r;
-        ensure!(value.packed.len() == value.fact.mn.next_multiple_of(pbqf.r) * row_bytes);
         let value = &value.packed[panel * pbqf.r * row_bytes..];
         let mut target = target.iter_mut();
         let zipped_order =
@@ -280,11 +279,12 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
                     zip,
                     scales_at_end,
                 }),
-                mn: m,
+                mn: m.to_dim(),
                 k,
             },
             packed: blob.into(),
             panel_bytes,
+            mn: m,
         })
     }
 

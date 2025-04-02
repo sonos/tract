@@ -82,8 +82,8 @@ pub fn mat_mat_with_mm(
     let a = Tensor::zero_dt(dt, &[m, k]).unwrap();
     let b = Tensor::zero_dt(dt, &[k, n]).unwrap();
     let packing = &mmm.packings()[0];
-    let pa = packing.0.prepare_tensor(&a, 1, 0).unwrap();
-    let pb = packing.1.prepare_tensor(&b, 0, 1).unwrap();
+    let pa = packing.0.prepare_one(&a, 1, 0).unwrap();
+    let pb = packing.1.prepare_one(&b, 0, 1).unwrap();
     unsafe {
         run(m, k, n, be, mmm, &*pa, &*pb, cold);
     }

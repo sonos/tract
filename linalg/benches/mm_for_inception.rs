@@ -11,8 +11,8 @@ fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize))
         let a = Tensor::zero::<f32>(&[m, k]).unwrap();
         let b = Tensor::zero::<f32>(&[k, n]).unwrap();
         let packing = &mmm.packings()[0];
-        let pa = packing.0.prepare_tensor(&a, 1, 0).unwrap();
-        let pb = packing.1.prepare_tensor(&b, 0, 1).unwrap();
+        let pa = packing.0.prepare_one(&a, 1, 0).unwrap();
+        let pb = packing.1.prepare_one(&b, 0, 1).unwrap();
 
         let mut c = Tensor::zero::<f32>(&[m, n]).unwrap();
         be.iter(move || {
