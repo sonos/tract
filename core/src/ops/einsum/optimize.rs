@@ -82,7 +82,6 @@ impl Deref for EinSumAnnotatedAsMatMul<'_> {
     }
 }
 
-#[derive(Debug)]
 pub struct EinSumAnnotatedAsLinear<'a> {
     pub op: &'a EinSum,
     pub m_axis: &'a Axis,
@@ -93,6 +92,24 @@ pub struct EinSumAnnotatedAsLinear<'a> {
     pub ns: Vec<&'a TDim>,
     pub act_dt: DatumType,
     pub weight_type: WeightType,
+}
+
+impl Debug for EinSumAnnotatedAsLinear<'_> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "EinsumAsLinear: {} w:{:?} acc:{:?} m: {}={}; k: {}={}; n: {}={}",
+            self.op.axes,
+            self.weight_type,
+            self.op.operating_dt,
+            self.m_axis.repr,
+            self.m,
+            self.k_axis.repr,
+            self.k,
+            self.n_axes.iter().map(|ax| ax.repr).join(","),
+            self.ns.iter().map(|d| d.to_string()).join("•"),
+        )
+    }
 }
 
 impl<'a> EinSumAnnotatedAsLinear<'a> {
@@ -178,7 +195,7 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
     }
 
     pub fn need_mmv(&self) -> bool {
-        self.ns.iter().any(|n| n.as_i64().map(|n| n == 1).unwrap_or(true))
+        self.ns.is_empty() || self.ns.iter().any(|n| n.as_i64().map(|n| n == 1).unwrap_or(true))
     }
 
     pub fn need_mmm(&self) -> bool {
