@@ -1,6 +1,6 @@
 //! Extended dimension support
 use crate::internal::*;
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use std::fmt;
 use std::ops;
 
@@ -51,6 +51,7 @@ pub trait DimLike:
     + std::iter::Sum
     + std::iter::Product
     + ToDim
+    + One
 {
     fn maybe_div(&self, other: &Self) -> TractResult<(Self, u64)>;
 
@@ -73,9 +74,6 @@ pub trait DimLike:
     fn to_i32(&self) -> TractResult<i32> {
         self.to_i64().map(|d| d as i32)
     }
-
-    /// do not use num_traits::Mul as it implies a regular Mul
-    fn one() -> Self;
 
     /// Substitute as many symbols as possible in the dim value.
     fn eval(&self, values: &SymbolValues) -> Self;
@@ -148,10 +146,6 @@ impl DimLike for TDim {
         TDim::to_i64(self)
     }
 
-    fn one() -> Self {
-        Self::from(1)
-    }
-
     fn eval(&self, values: &SymbolValues) -> Self {
         self.eval(values)
     }
@@ -203,10 +197,6 @@ impl DimLike for usize {
 
     fn to_i64(&self) -> TractResult<i64> {
         Ok(*self as i64)
-    }
-
-    fn one() -> usize {
-        1
     }
 
     fn eval(&self, _values: &SymbolValues) -> Self {

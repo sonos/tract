@@ -1,8 +1,6 @@
 use crate::block_quant::PackedBlockQuantFormat;
 use crate::mmm::tests::display_error;
-use crate::mmm::{
-    AsInputValue, FusedKerSpec, FusedSpec, MMMInputValue, MatMatMul, MatMatMulKer, OutputStoreKer,
-};
+use crate::mmm::{AsInputValue, FusedKerSpec, FusedSpec, MatMatMul, MatMatMulKer, OutputStoreKer};
 use crate::pack::PackedFormat;
 use proptest::collection::vec;
 use proptest::prelude::*;
