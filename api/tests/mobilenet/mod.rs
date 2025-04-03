@@ -289,12 +289,12 @@ fn test_transform_registry() -> anyhow::Result<()> {
     model.declutter()?;
 
     // Convert model to half
-    nnef.transform_model("f32-to-f16", &mut model)?;
+    nnef.transform_model(&mut model, "f32-to-f16")?;
     assert_eq!(model.input_fact(0)?.to_string(), "1,3,224,224,F16");
     assert_eq!(model.output_fact(0)?.to_string(), "1,1000,F16");
 
     // Convert back to f32
-    nnef.transform_model("f16-to-f32", &mut model)?;
+    nnef.transform_model(&mut model, "f16-to-f32")?;
     assert_eq!(model.input_fact(0)?.to_string(), "1,3,224,224,F32");
     assert_eq!(model.output_fact(0)?.to_string(), "1,1000,F32");
     Ok(())

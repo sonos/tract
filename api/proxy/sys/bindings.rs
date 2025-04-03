@@ -3557,8 +3557,8 @@ unsafe extern "C" {
 unsafe extern "C" {
     pub fn tract_nnef_transform_model(
         nnef: *const TractNnef,
-        transform_spec: *const ::std::os::raw::c_char,
         model: *mut TractModel,
+        transform_spec: *const ::std::os::raw::c_char,
     ) -> TRACT_RESULT;
 }
 unsafe extern "C" {

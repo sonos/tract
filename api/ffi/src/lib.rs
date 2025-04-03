@@ -125,7 +125,7 @@ pub unsafe extern "C" fn tract_nnef_transform_model(
     wrap(|| unsafe {
         check_not_null!(nnef, model, transform_spec);
         let transform_spec = CStr::from_ptr(transform_spec).to_str()?;
-        (*nnef).0.transform_model(transform_spec, &mut (*model).0).with_context(|| format!("performing transform {transform_spec:?}"))?;
+        (*nnef).0.transform_model(&mut (*model).0, transform_spec).with_context(|| format!("performing transform {transform_spec:?}"))?;
         Ok(())
     })
 }

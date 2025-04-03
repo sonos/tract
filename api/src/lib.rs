@@ -17,7 +17,7 @@ pub trait NnefInterface: Sized {
     fn model_for_path(&self, path: impl AsRef<Path>) -> Result<Self::Model>;
 
     /// Transform model according to transform spec
-    fn transform_model(&self, transform_spec: &str, model: &mut Self::Model) -> Result<()>;
+    fn transform_model(&self, model: &mut Self::Model, transform_spec: &str) -> Result<()>;
 
     /// Allow the framework to use tract_core extensions instead of a stricter NNEF definition.
     fn enable_tract_core(&mut self) -> Result<()>;
