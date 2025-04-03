@@ -203,3 +203,18 @@ def test_profile():
     if "secs_per_iter" in profile["nodes"][0]:
         assert profile["nodes"][0]["secs_per_iter"] >= 0
     assert next(filter(lambda node: "cost" in node and "FMA(F32)" in node["cost"], profile["nodes"]), None) != None
+
+def test_transform_registry():
+    nnef = tract.nnef().with_tract_core()
+    model = nnef.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")
+    model.declutter()
+
+    #Convert model to half
+    nnef.transform_model(model, "f32-to-f16")
+    assert str(model.input_fact(0)) == "1,3,224,224,F16"
+    assert str(model.output_fact(0)) == "1,1000,F16"
+    
+    # Convert back to f32 
+    nnef.transform_model(model, "f16-to-f32")
+    assert str(model.input_fact(0)) == "1,3,224,224,F32"
+    assert str(model.output_fact(0)) == "1,1000,F32"

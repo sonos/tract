@@ -16,11 +16,17 @@ pub trait NnefInterface: Sized {
     /// * `path` can point to a directory, a `tar` file or a `tar.gz` file.
     fn model_for_path(&self, path: impl AsRef<Path>) -> Result<Self::Model>;
 
+    /// Transform model according to transform spec
+    fn transform_model(&self, transform_spec: &str, model: &mut Self::Model) -> Result<()>;
+
     /// Allow the framework to use tract_core extensions instead of a stricter NNEF definition.
     fn enable_tract_core(&mut self) -> Result<()>;
 
     /// Allow the framework to use tract_extra extensions.
     fn enable_tract_extra(&mut self) -> Result<()>;
+
+    /// Allow the framework to use tract_transformers extensions to support stateful streaming operation.
+    fn enable_tract_transformers(&mut self) -> Result<()>;
 
     /// Allow the framework to use tract_onnx extensions to support operators in ONNX that are
     /// absent from NNEF.
@@ -44,6 +50,12 @@ pub trait NnefInterface: Sized {
     /// Convenience function, similar with enable_tract_core but allowing method chaining.
     fn with_tract_extra(mut self) -> Result<Self> {
         self.enable_tract_extra()?;
+        Ok(self)
+    }
+
+    /// Convenience function, similar with enable_tract_transformers but allowing method chaining.
+    fn with_tract_transformers(mut self) -> Result<Self> {
+        self.enable_tract_transformers()?;
         Ok(self)
     }
 
