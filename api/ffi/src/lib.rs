@@ -117,6 +117,20 @@ pub unsafe extern "C" fn tract_nnef_create(nnef: *mut *mut TractNnef) -> TRACT_R
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn tract_nnef_transform_model(
+    nnef: *const TractNnef,
+    transform_spec: *const c_char,
+    model: * mut TractModel,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(nnef, model, transform_spec);
+        let transform_spec = CStr::from_ptr(transform_spec).to_str()?;
+        (*nnef).0.transform_model(transform_spec, &mut (*model).0).with_context(|| format!("performing transform {transform_spec:?}"))?;
+        Ok(())
+    })
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn tract_nnef_enable_tract_core(nnef: *mut TractNnef) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(nnef);
@@ -129,6 +143,14 @@ pub unsafe extern "C" fn tract_nnef_enable_tract_extra(nnef: *mut TractNnef) -> 
     wrap(|| unsafe {
         check_not_null!(nnef);
         (*nnef).0.enable_tract_extra()
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tract_nnef_enable_tract_transformers(nnef: *mut TractNnef) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(nnef);
+        (*nnef).0.enable_tract_transformers()
     })
 }
 

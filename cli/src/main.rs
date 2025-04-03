@@ -158,6 +158,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"nnef-tract-onnx" "Allow usage of tract-onnx extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-pulse" "Allow usage of tract-pulse extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-extra" "Allow usage of tract-extra extension in NNEF dump and load"))
+        .arg(arg!(--"nnef-tract-transformers" "Allow usage of tract-transformers extension in NNEF dump and load"))
         .arg(arg!(--"nnef-extended-identifier" "Allow usage of the i\"...\" syntax to escape identifier names"))
 
         .arg(arg!(--"threads" [THREADS] "Setup a thread pool for computing. 0 will guess the number of physical cores"))
@@ -817,6 +818,17 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
         #[cfg(not(feature = "extra"))]
         {
             panic!("tract is build without tract-extra support")
+        }
+    }
+    if matches.is_present("nnef-tract-transformers") {
+        #[cfg(feature = "transformers")]
+        {
+            use tract_transformers::WithTractTransformers;
+            fw = fw.with_tract_transformers();
+        }
+        #[cfg(not(feature = "transformers"))]
+        {
+            panic!("tract is build without tract-transformers support")
         }
     }
     if matches.is_present("nnef-tract-core") {

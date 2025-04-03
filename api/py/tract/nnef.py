@@ -48,6 +48,18 @@ class Nnef:
         check(lib.tract_nnef_model_for_path(self.ptr, path, byref(model)))
         return Model(model)
 
+    def transform_model(self, model: Model, transform_spec: str) -> None:
+        """
+        Apply a transform to a model. Fails if transform_spec has not been registered.
+        Transform is in-place
+        """
+        self._valid()
+        model._valid()
+        if not isinstance(model, Model):
+            raise TractError("Expected a Model, called with " + model);
+        transform_spec = transform_spec.encode("utf-8")
+        check(lib.tract_nnef_transform_model(self.ptr, transform_spec, model.ptr))
+
     def with_tract_core(self) -> "Nnef":
         """
         Enable tract-opl extensions to NNEF to covers tract-core operator set
@@ -62,6 +74,14 @@ class Nnef:
         """
         self._valid()
         check(lib.tract_nnef_enable_tract_extra(self.ptr))
+        return self
+
+    def with_tract_transformers(self) -> "Nnef":
+        """
+        Enable tract-transformers extensions to NNEF.
+        """
+        self._valid()
+        check(lib.tract_nnef_enable_tract_transformers(self.ptr))
         return self
 
     def with_onnx(self) -> "Nnef":
