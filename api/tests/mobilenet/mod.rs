@@ -279,3 +279,23 @@ fn test_profile() -> anyhow::Result<()> {
     assert!(nodes.iter().find_map(|n| n.get("secs_per_iter").and_then(|c| c.as_f64())).is_some());
     Ok(())
 }
+
+#[test]
+fn test_transform_registry() -> anyhow::Result<()> {
+    ensure_models()?;
+
+    let nnef = nnef()?.with_tract_core()?;
+    let mut model = nnef.model_for_path("mobilenet_v2_1.0.onnx.nnef.tgz")?;
+    model.declutter()?;
+
+    // Convert model to half
+    nnef.transform_model("f32-to-f16", &mut model)?;
+    assert_eq!(model.input_fact(0)?.to_string(), "1,3,224,224,F16");
+    assert_eq!(model.output_fact(0)?.to_string(), "1,1000,F16");
+
+    // Convert back to f32
+    nnef.transform_model("f16-to-f32", &mut model)?;
+    assert_eq!(model.input_fact(0)?.to_string(), "1,3,224,224,F32");
+    assert_eq!(model.output_fact(0)?.to_string(), "1,1000,F32");
+    Ok(())
+}
