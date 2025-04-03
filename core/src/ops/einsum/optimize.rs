@@ -365,8 +365,9 @@ pub(crate) fn ensure_mkn_axes<'a>(
         possible_m_axes.retain(|a| !a.outputs[0].is_empty());
     }
 
-    let m_axis =
-        possible_m_axes.into_iter().max_by_key(|a| input_shapes[0][a.inputs[0][0]].as_i64());
+    let m_axis = possible_m_axes
+        .into_iter()
+        .max_by_key(|a| input_shapes[0][a.inputs[0][0]].as_i64().unwrap_or(i64::MAX));
 
     let Some(m_axis) = m_axis else {
         return Ok(AxesOrPatch::Patch(inject_m_or_n_axis(op, model, node, false)?));
