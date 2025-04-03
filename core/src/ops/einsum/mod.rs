@@ -16,6 +16,7 @@ pub mod optimize;
 mod proptest;
 
 pub use as_matmul::{rewrite_einsums_as_matmul, BasicMatMul};
+use num_traits::One;
 use tract_linalg::block_quant::{BlockQuantFact, PackedBlockQuantFact};
 use tract_linalg::mmm::PackedOpaqueFact;
 

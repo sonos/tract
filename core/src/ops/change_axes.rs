@@ -4,6 +4,7 @@ use std::fmt::Debug;
 use crate::internal::*;
 use crate::model::{TypedModel, TypedNode};
 use crate::ops::identity::Identity;
+use num_traits::One;
 use tract_itertools::Itertools;
 use tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue};
 use tract_ndarray::{ArrayViewD, ArrayViewMutD};
