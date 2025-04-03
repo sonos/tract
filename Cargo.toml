@@ -18,6 +18,7 @@ members = [
     "cli",
     "metal",
     "extra",
+    "transformers",
 
     "metal",
 
@@ -76,6 +77,7 @@ default-members = [
     "libcli",
     "cli",
     "extra",
+    "transformers",
 
     "api",
     "api/rs",
@@ -213,6 +215,7 @@ tract-pulse-opl = { version = "0.21.12-pre", path = 'pulse-opl' }
 tract-pulse = { version = "0.21.12-pre", path = 'pulse' }
 tract-tensorflow = { version = "0.21.12-pre", path = 'tensorflow' }
 tract-tflite = { version = "0.21.12-pre", path = 'tflite' }
+tract-transformers = { version = "0.21.12-pre", path = 'transformers' }
 tract-rs = { version = "0.21.12-pre", path = 'api/rs' }
 tract-proxy = { version = "0.21.12-pre", path = 'api/proxy' }
 tract-proxy-sys = { version = "0.21.12-pre", path = 'api/proxy/sys' }

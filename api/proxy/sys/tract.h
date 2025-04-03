@@ -90,9 +90,15 @@ void tract_free_cstring(char *ptr);
  */
 enum TRACT_RESULT tract_nnef_create(struct TractNnef **nnef);
 
+enum TRACT_RESULT tract_nnef_transform_model(const struct TractNnef *nnef,
+                                             const char *transform_spec,
+                                             struct TractModel *model);
+
 enum TRACT_RESULT tract_nnef_enable_tract_core(struct TractNnef *nnef);
 
 enum TRACT_RESULT tract_nnef_enable_tract_extra(struct TractNnef *nnef);
+
+enum TRACT_RESULT tract_nnef_enable_tract_transformers(struct TractNnef *nnef);
 
 enum TRACT_RESULT tract_nnef_enable_onnx(struct TractNnef *nnef);
 
@@ -331,7 +337,7 @@ enum TRACT_RESULT tract_model_set_output_names(struct TractModel *model,
  * Give value one or more symbols used in the model.
  *
  * * symbols is an array of `nb_symbols` pointers to null-terminated UTF-8 string for the symbols
- * names to substitue
+ *   names to substitue
  * * values is an array of `nb_symbols` integer values
  */
 enum TRACT_RESULT tract_model_concretize_symbols(struct TractModel *model,
