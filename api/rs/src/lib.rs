@@ -43,8 +43,8 @@ impl NnefInterface for Nnef {
         self.0.model_for_path(path).map(Model)
     }
 
-    fn transform_model(&self, transform_spec: &str, model: &mut Self::Model) -> Result<()> {
-        if let Some(transform) = dbg!(self.0.get_transform(transform_spec)?) {
+    fn transform_model(&self, model: &mut Self::Model, transform_spec: &str) -> Result<()> {
+        if let Some(transform) = self.0.get_transform(transform_spec)? {
             transform.transform(&mut model.0)?;
         }
         Ok(())
@@ -254,7 +254,7 @@ impl ModelInterface for Model {
 
     fn transform(&mut self, transform: &str) -> Result<()> {
         let transform = tract_onnx::tract_core::transform::get_transform(transform)
-            .with_context(|| format!("transorm `{transform}' could not be found"))?;
+            .with_context(|| format!("transform `{transform}' could not be found"))?;
         transform.transform(&mut self.0)
     }
 
