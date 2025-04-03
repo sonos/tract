@@ -47,15 +47,16 @@ pub fn remove_ggml_broadcast_pre_matmul(
         axis_op_chain.push(node.op_as::<AxisOp>().unwrap());
         running_node = node;
     }
-    
+
     rule_ensure!(next_node(model, running_node).is_some_and(|node| node.op_is::<BasicMatMul>()));
 
     if let Some(mm_node) = next_node(model, running_node) {
         let mut new_mm_input = inputs[0];
-        if (axis_op_chain == tvec![&AxisOp::Move(0,1)] && reshape_out_shape[0] == TDim::Val(1)) || 
-            axis_op_chain == tvec![&AxisOp::Rm(0), &AxisOp::Add(1)] {
-                new_mm_input =
-                    patch.wire_node(format!("{node_name}.reshape"), AxisOp::Move(0, 1), &inputs)?[0];
+        if (axis_op_chain == tvec![&AxisOp::Move(0, 1)] && reshape_out_shape[0] == TDim::Val(1))
+            || axis_op_chain == tvec![&AxisOp::Rm(0), &AxisOp::Add(1)]
+        {
+            new_mm_input =
+                patch.wire_node(format!("{node_name}.reshape"), AxisOp::Move(0, 1), &inputs)?[0];
         }
 
         // Only Ggml kernels have internal broadcasting. If no kernel impl is specified,
@@ -76,7 +77,7 @@ pub fn remove_ggml_broadcast_pre_matmul(
 
         let out = patch.wire_node(&mm_node.name, &mm_node.op, &matmul_inputs)?;
         patch.shunt_outside(model, mm_node.id.into(), out[0])?;
-        return Ok(Some(patch))
+        return Ok(Some(patch));
     }
     Ok(None)
 }
