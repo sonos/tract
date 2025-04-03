@@ -365,7 +365,7 @@ fn is_input_broadcast(facts: TVec<&TypedFact>) -> bool {
         facts[1].shape.iter().product::<TDim>()
     } else {
         let rank = facts[1].rank();
-        facts[1].shape[.. rank - 2].iter().product::<TDim>()
+        facts[1].shape[..rank - 2].iter().product::<TDim>()
     };
 
     let a_rank = facts[0].rank();
