@@ -361,11 +361,17 @@ fn check_matmul_in_dts(in_facts: &[TypedFact]) -> bool {
 }
 
 fn is_input_broadcast(facts: TVec<&TypedFact>) -> bool {
-    let b_shape = as_q40_fact(facts[1])
-        .map(|fact| fact.shape()[0])
-        .unwrap_or(facts[1].shape[0].to_i64().unwrap_or(0) as usize);
+    let b_batch_size = if as_q40_fact(facts[1]).is_some() {
+        facts[1].shape.iter().product::<TDim>()
+    } else {
+        let rank = facts[1].rank();
+        facts[1].shape[.. rank - 2].iter().product::<TDim>()
+    };
 
-    b_shape != facts[0].shape[0].to_i64().unwrap_or(0) as usize
+    let a_rank = facts[0].rank();
+    let a_batch_size = facts[0].shape[..(a_rank - 2)].iter().product::<TDim>();
+
+    (a_batch_size.gcd() % b_batch_size.gcd()) == 0
 }
 
 pub fn resolve_gemm_impl(
