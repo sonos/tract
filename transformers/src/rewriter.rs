@@ -20,3 +20,34 @@ impl ModelTransform for RmsNormTransform {
         .rewrite(&(), model)
     }
 }
+
+#[derive(Debug, Default)]
+pub struct ApplyRopeTransform;
+
+impl ModelTransform for ApplyRopeTransform {
+    fn name(&self) -> Cow<str> {
+        "apply-rope-transform".into()
+    }
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        Rewriter::default()
+        .with_rule_for("as-rotate-half", rewrite_rules::as_rotate_half_rule)
+        .with_rule_for("as-apply-rope", rewrite_rules::as_apply_rope_rule)
+        .rewrite(&(), model)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct SiluTransform;
+
+impl ModelTransform for SiluTransform {
+    fn name(&self) -> Cow<str> {
+        "silu-transform".into()
+    }
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        Rewriter::default()
+        .with_rule_for("as-silu", rewrite_rules::as_silu_rule)
+        .rewrite(&(), model)
+    }
+}
