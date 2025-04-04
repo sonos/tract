@@ -1,5 +1,4 @@
 mod rewriter;
-mod rewrite_rules;
 pub mod ops;
 use rewriter::*;
 use tract_nnef::internal::*;
@@ -10,6 +9,8 @@ pub fn get_transform(name: &str) -> Option<Box<dyn ModelTransform>> {
         "as-rms-norm" => Some(Box::new(RmsNormTransform)),
         "as-apply-rope" => Some(Box::new(ApplyRopeTransform)),
         "as-silu" => Some(Box::new(SiluTransform)),
+        "as-scaled-masked-softmax" => Some(Box::new(ScaledMaskedSoftmaxTransform)),
+        "as-new-gelu" => Some(Box::new(NewGeluTransform)),
         _ => None,
     }
 }
@@ -43,6 +44,7 @@ pub fn tract_transformers_registry() -> Registry {
         .with_doc("for transformer networks.")
         .with_doc("")
         .with_doc("Add `extension tract_transformers` to `graph.nnef`");
+
     register(&mut reg);
     reg
 }

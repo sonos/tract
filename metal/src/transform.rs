@@ -7,8 +7,9 @@ use crate::kernels::nn::{
 use crate::ops::{self, MetalSync, MetalSyncKind};
 
 use crate::rewrite_rules;
-use crate::rewrite_rules::{ BasicNewGelu, BasicScaledMaskedSoftmax};
 
+use tract_transformers::ops::new_gelu::BasicNewGelu;
+use tract_transformers::ops::scaled_masked_softmax::BasicScaledMaskedSoftmax;
 use tract_transformers::ops::rms_norm::BasicRmsNorm;
 use tract_transformers::ops::apply_rope::{ BasicApplyRope, BasicRotateHalf};
 use tract_transformers::ops::silu::BasicSilu;
@@ -91,8 +92,6 @@ impl MetalTransform {
         }
 
         Rewriter::<MetalTransform>::default()
-            .with_rule_for("as-new-gelu", rewrite_rules::as_new_gelu_rule)
-            .with_rule_for("as-scaled-masked-softmax", rewrite_rules::as_scaled_masked_softmax_rule)
             .with_rule_for("untranspose-matmul-output", rewrite_rules::untranspose_matmul_output)
             .with_rule_for(
                 "remove-ggml-broadcast-pre-matmul",
