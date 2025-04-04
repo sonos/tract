@@ -1,13 +1,15 @@
 mod rewriter;
 mod rewrite_rules;
 pub mod ops;
-use rewriter::RmsNormTransform;
+use rewriter::*;
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::transform::ModelTransform;
 
 pub fn get_transform(name: &str) -> Option<Box<dyn ModelTransform>> {
     match name {
         "as-rms-norm" => Some(Box::new(RmsNormTransform)),
+        "as-apply-rope" => Some(Box::new(ApplyRopeTransform)),
+        "as-silu" => Some(Box::new(SiluTransform)),
         _ => None,
     }
 }
