@@ -1,25 +1,22 @@
-mod apply_rope;
-mod fuse_axis_op;
-mod new_gelu;
-mod remove_matmul_broadcast;
-mod rewire_metal_sync;
-mod rotate_half;
-mod scaled_masked_softmax;
-mod silu;
-mod untranspose_matmul_output;
+//mod apply_rope;
+//mod new_gelu;
+mod rms_norm_rule;
+//mod rotate_half;
+//mod scaled_masked_softmax;
+//mod silu;
+//mod untranspose_matmul_output;
 
+use tract_nnef::tract_core;
 use tract_core::internal::*;
 use tract_core::ops::konst::Const;
 
-pub use apply_rope::{as_apply_rope_rule, BasicApplyRope};
-pub use fuse_axis_op::{fuse_axis_op, fuse_move_axis};
-pub use new_gelu::{as_new_gelu_rule, BasicNewGelu};
-pub use remove_matmul_broadcast::remove_ggml_broadcast_pre_matmul;
-pub use rewire_metal_sync::{rewire_metal_sync, rewire_metal_sync_after_const};
-pub use rotate_half::{as_rotate_half_rule, BasicRotateHalf};
-pub use scaled_masked_softmax::{as_scaled_masked_softmax_rule, BasicScaledMaskedSoftmax};
-pub use silu::{as_silu_rule, BasicSilu};
-pub use untranspose_matmul_output::untranspose_matmul_output;
+//pub use apply_rope::{as_apply_rope_rule, BasicApplyRope};
+//pub use new_gelu::{as_new_gelu_rule, BasicNewGelu};
+pub use rms_norm_rule::{as_rms_norm_rule, remove_rms_norm_cast};
+//pub use rotate_half::{as_rotate_half_rule, BasicRotateHalf};
+//pub use scaled_masked_softmax::{as_scaled_masked_softmax_rule, BasicScaledMaskedSoftmax};
+//pub use silu::{as_silu_rule, BasicSilu};
+//pub use untranspose_matmul_output::untranspose_matmul_output;
 
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::math::{Add, Mul};
