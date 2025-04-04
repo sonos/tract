@@ -1,12 +1,11 @@
-use crate::rewrite_rules::{collect_node_const_inputs, previous_node, previous_nodes};
-use crate::{rule_ensure, MetalTransform};
-use tract_core::ops::binary::TypedBinOp;
+use tract_nnef::tract_core::internal::*;
+use tract_nnef::tract_core::ops::binary::{BinMiniOp, TypedBinOp};
+use tract_nnef::tract_core::ops::math::{Add, Mul};
+use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp};
 
-use std::sync::Arc;
-use tract_core::internal::*;
-use tract_core::ops::binary::BinMiniOp;
-use tract_core::ops::math::{Add, Mul};
-use tract_core::ops::nn::{Softmax, SoftmaxExp};
+use crate::rule_ensure;
+
+use super::{previous_node, previous_nodes, collect_node_const_inputs};
 
 /// A = SOFTMAX(INPUT * SCALE + MASK, AXIS=2)
 /// Only input of rank of 3 is supported.
@@ -58,7 +57,7 @@ impl TypedOp for BasicScaledMaskedSoftmax {
 
 /// Search pattern => A = SOFTMAX(A * SCALE + MASK, AXIS=2)
 pub fn as_scaled_masked_softmax_rule(
-    _ctx: &MetalTransform,
+    _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,

@@ -1,8 +1,6 @@
 mod fuse_axis_op;
-mod new_gelu;
 mod remove_matmul_broadcast;
 mod rewire_metal_sync;
-mod scaled_masked_softmax;
 mod silu;
 mod untranspose_matmul_output;
 
@@ -10,10 +8,8 @@ use tract_core::internal::*;
 use tract_core::ops::konst::Const;
 
 pub use fuse_axis_op::{fuse_axis_op, fuse_move_axis};
-pub use new_gelu::{as_new_gelu_rule, BasicNewGelu};
 pub use remove_matmul_broadcast::remove_ggml_broadcast_pre_matmul;
 pub use rewire_metal_sync::{rewire_metal_sync, rewire_metal_sync_after_const};
-pub use scaled_masked_softmax::{as_scaled_masked_softmax_rule, BasicScaledMaskedSoftmax};
 pub use silu::{as_silu_rule, BasicSilu};
 pub use untranspose_matmul_output::untranspose_matmul_output;
 
