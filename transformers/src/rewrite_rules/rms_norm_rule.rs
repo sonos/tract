@@ -1,59 +1,17 @@
+use tract_nnef::tract_core;
+use crate::ops::rms_norm::BasicRmsNorm;
 use crate::rewrite_rules::{collect_node_const_inputs, next_node, previous_node};
-use crate::{rule_ensure, MetalTransform};
-use std::sync::Arc;
+use crate::rule_ensure;
 use tract_core::internal::*;
-use tract_core::ops::binary::{BinMiniOp, TypedBinOp};
+use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::cast::Cast;
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::math::{Add, Mul, Rsqrt};
 use tract_core::ops::nn::{Reduce, Reducer};
 
-#[derive(Clone, Debug, Hash)]
-pub struct BasicRmsNorm {
-    pub axis: usize,
-    pub eps: Arc<Tensor>,
-}
-
-impl Op for BasicRmsNorm {
-    fn name(&self) -> Cow<str> {
-        "BasicRmsNorm".to_string().into()
-    }
-    fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("axis: {:?}, eps: {:?}", self.axis, self.eps)])
-    }
-    op_as_typed_op!();
-}
-
-impl EvalOp for BasicRmsNorm {
-    fn is_stateless(&self) -> bool {
-        true
-    }
-
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let input = args_1!(inputs);
-        let dt = input.datum_type();
-        let a1 = Reducer::MeanOfSquares.reduce(&[self.axis], &input)?;
-        let mut a2 = Add.eval(a1.into_tvalue(), self.eps.clone().into_tvalue(), dt)?;
-        Rsqrt {}.eval_in_place(&mut a2, None)?;
-        let a3 = Mul.eval(a2.into_tvalue(), input.clone(), dt)?;
-
-        Ok(tvec![a3.into()])
-    }
-}
-
-impl TypedOp for BasicRmsNorm {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let dt = inputs[0].datum_type;
-        let fact = dt.fact(inputs[0].shape.clone());
-        Ok(tvec!(fact))
-    }
-
-    as_op!();
-}
-
 /// Search pattern => A = A * RSQRT(MEAN_OF_SQUARES(A) + EPS)
 pub fn as_rms_norm_rule(
-    _ctx: &MetalTransform,
+    _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,
@@ -115,7 +73,7 @@ pub fn as_rms_norm_rule(
 
 /// Search pattern => A = CAST(RMS_NORM(CAST(A, F32)), F16)
 pub fn remove_rms_norm_cast(
-    _ctx: &MetalTransform,
+    _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,

@@ -29,6 +29,7 @@ paste.workspace = true
 objc = { version = "0.2.7" }
 num-traits.workspace = true
 tract-core.workspace = true
+tract-transformers.workspace = true
 
 [features]
 default = [ ]

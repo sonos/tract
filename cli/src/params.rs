@@ -749,6 +749,17 @@ impl Parameters {
                 tract_core::floats::FloatPrecisionTranslator::<f16, f32>::default().translate_model(&m)
             });
         }
+
+        if let Some(transform) = matches.values_of("transform") {
+            for spec in transform {
+                let transform = super::nnef(matches).get_transform(spec)?.with_context(|| format!("Could not find transform named {}", spec))?;
+                stage!(&transform.name(), typed_model -> typed_model, |m:TypedModel| {
+                    transform.transform_into(m)
+                });
+                stage!(&format!("{}-declutter", transform.name()), typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
+            }
+        }
+
         {
             if matches.is_present("metal") {
                 #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -765,15 +776,6 @@ impl Parameters {
             }
         }
 
-        if let Some(transform) = matches.values_of("transform") {
-            for spec in transform {
-                let transform = super::nnef(matches).get_transform(spec)?.with_context(|| format!("Could not find transform named {}", spec))?;
-                stage!(&transform.name(), typed_model -> typed_model, |m:TypedModel| {
-                    transform.transform_into(m)
-                });
-                stage!(&format!("{}-declutter", transform.name()), typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
-            }
-        }
         if let Some(set) = matches.values_of("set") {
             let mut values = SymbolValues::default();
             for set in set {
