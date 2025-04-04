@@ -1,9 +1,10 @@
 //mod apply_rope;
 //mod new_gelu;
-mod rms_norm_rule;
+mod as_rms_norm;
+mod as_apply_rope;
 //mod rotate_half;
 //mod scaled_masked_softmax;
-//mod silu;
+mod as_silu;
 //mod untranspose_matmul_output;
 
 use tract_nnef::tract_core;
@@ -12,10 +13,10 @@ use tract_core::ops::konst::Const;
 
 //pub use apply_rope::{as_apply_rope_rule, BasicApplyRope};
 //pub use new_gelu::{as_new_gelu_rule, BasicNewGelu};
-pub use rms_norm_rule::{as_rms_norm_rule, remove_rms_norm_cast};
-//pub use rotate_half::{as_rotate_half_rule, BasicRotateHalf};
+pub use as_rms_norm::{as_rms_norm_rule, remove_rms_norm_cast};
+pub use as_apply_rope::{as_rotate_half_rule, as_apply_rope_rule};
 //pub use scaled_masked_softmax::{as_scaled_masked_softmax_rule, BasicScaledMaskedSoftmax};
-//pub use silu::{as_silu_rule, BasicSilu};
+pub use as_silu::as_silu_rule;
 //pub use untranspose_matmul_output::untranspose_matmul_output;
 
 use tract_core::ops::binary::TypedBinOp;

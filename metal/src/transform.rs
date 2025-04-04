@@ -7,12 +7,11 @@ use crate::kernels::nn::{
 use crate::ops::{self, MetalSync, MetalSyncKind};
 
 use crate::rewrite_rules;
-use crate::rewrite_rules::{
-    BasicApplyRope, BasicNewGelu, BasicRotateHalf, BasicScaledMaskedSoftmax,
-    BasicSilu,
-};
+use crate::rewrite_rules::{ BasicNewGelu, BasicScaledMaskedSoftmax};
 
 use tract_transformers::ops::rms_norm::BasicRmsNorm;
+use tract_transformers::ops::apply_rope::{ BasicApplyRope, BasicRotateHalf};
+use tract_transformers::ops::silu::BasicSilu;
 use crate::tensor::MetalTensorExt;
 use crate::utils::as_q40_fact;
 use crate::{IntoMetal, MetalFact, MetalTensor};
@@ -92,10 +91,7 @@ impl MetalTransform {
         }
 
         Rewriter::<MetalTransform>::default()
-            .with_rule_for("as-silu", rewrite_rules::as_silu_rule)
             .with_rule_for("as-new-gelu", rewrite_rules::as_new_gelu_rule)
-            .with_rule_for("as-rotate-half", rewrite_rules::as_rotate_half_rule)
-            .with_rule_for("as-apply-rope", rewrite_rules::as_apply_rope_rule)
             .with_rule_for("as-scaled-masked-softmax", rewrite_rules::as_scaled_masked_softmax_rule)
             .with_rule_for("untranspose-matmul-output", rewrite_rules::untranspose_matmul_output)
             .with_rule_for(
@@ -218,6 +214,7 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
 
     let in_dts_metal_compatible =
         input_facts.iter().all(|fact| MetalTensor::is_supported_dt(fact.datum_type));
+
     Ok(in_dts_metal_compatible
         && (node
             .op_as::<ElementWiseOp>()
@@ -249,9 +246,9 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
             || node
                 .op_as::<BasicScaledMaskedSoftmax>()
                 .is_some_and(|_| ScaledMaskedSoftmax::is_supported_dt(input_dts[0]))
-            || dbg!(node
-                .op_as::<BasicRmsNorm>())
-                .is_some_and(|_| dbg!(RmsNorm::is_supported_dt(input_dts[0])))
+            || node
+                .op_as::<BasicRmsNorm>()
+                .is_some_and(|_| RmsNorm::is_supported_dt(input_dts[0]))
             || node
                 .op_as::<BasicRotateHalf>()
                 .is_some_and(|_| RotateHalf::is_supported_dt(input_dts[0]))
@@ -274,7 +271,6 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
     ) -> TractResult<TVec<OutletId>> {
         let translatable = can_translate_to_metal_op(source, node)?;
 
-        dbg!(&node.op);
         if translatable {
             let mut gpu_inputs =
                 self.sync_inputs_if_required(target, node, mapping, MetalSyncKind::ToGpu)?;
