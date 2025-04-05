@@ -36,7 +36,7 @@ impl MetalMemoryPool {
         shape: &[usize],
     ) -> Result<MetalTensor> {
         ensure!(!self.node_seen.borrow().contains(&node_id), "Tensor for node {:?} was already requested. Maybe the memory pool was not reset properly.", node_id);
-        let alignment = dt.alignment();
+        let alignment = vector_size();
         (self.alignment % alignment == 0)
             .then(|| self.resolved_schema.offsets_by_node[node_id])
             .flatten()
