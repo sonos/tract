@@ -349,15 +349,6 @@ impl DatumType {
         dispatch_datum!(std::mem::size_of(self)())
     }
 
-    #[inline]
-    pub fn alignment(&self) -> usize {
-        if self.is_copy() {
-            self.size_of()
-        } else {
-            std::mem::size_of::<usize>()
-        }
-    }
-
     pub fn min_value(&self) -> Tensor {
         match self {
             DatumType::QU8(_)

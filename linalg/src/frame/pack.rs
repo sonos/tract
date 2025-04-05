@@ -598,7 +598,7 @@ pub trait Packing {
 
 impl<D: Datum> Packing for D {
     fn packing(r: usize) -> PackedFormat {
-        PackedFormat::new(Self::datum_type(), r, Self::datum_type().alignment())
+        PackedFormat::new(Self::datum_type(), r, vector_size())
     }
 }
 

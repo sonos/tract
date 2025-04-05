@@ -173,16 +173,6 @@ pub fn vector_size() -> usize {
 }
 
 impl Tensor {
-    #[allow(unreachable_code, unexpected_cfgs)]
-    #[inline]
-    pub fn default_alignment(dt: DatumType, shape: &[usize]) -> usize {
-        if shape.len() == 0 {
-            dt.alignment()
-        } else {
-            vector_size()
-        }
-    }
-
     /// Create an uninitialized tensor (dt as type paramater).
     #[inline]
     pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> TractResult<Tensor> {
@@ -192,7 +182,7 @@ impl Tensor {
     /// Create an uninitialized tensor (dt as regular parameter).
     #[inline]
     pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> TractResult<Tensor> {
-        Self::uninitialized_aligned_dt(dt, shape, Self::default_alignment(dt, shape))
+        Self::uninitialized_aligned_dt(dt, shape, vector_size())
     }
 
     /// Create an uninitialized tensor with a given alignment (in bytes).
@@ -310,7 +300,7 @@ impl Tensor {
     }
 
     pub fn zero_dt(dt: DatumType, shape: &[usize]) -> TractResult<Tensor> {
-        Tensor::zero_aligned_dt(dt, shape, Self::default_alignment(dt, shape))
+        Tensor::zero_aligned_dt(dt, shape, vector_size())
     }
 
     pub fn fill_t<T: Datum + Clone>(&mut self, value: T) -> TractResult<()> {
@@ -364,7 +354,7 @@ impl Tensor {
     /// The data is copied and aligned to size of T.
     pub fn from_shape<T: Datum + Copy>(shape: &[usize], data: &[T]) -> TractResult<Tensor> {
         let dt = T::datum_type();
-        Self::from_shape_align(shape, data, dt.alignment())
+        Self::from_shape_align(shape, data, vector_size())
     }
 
     /// Create a tensor with a given shape and a slice of elements.
@@ -408,7 +398,7 @@ impl Tensor {
         shape: &[usize],
         content: &[u8],
     ) -> TractResult<Tensor> {
-        Self::from_raw_dt_align(dt, shape, content, dt.alignment())
+        Self::from_raw_dt_align(dt, shape, content, vector_size())
     }
 
     pub unsafe fn from_raw_dt_align(
@@ -1549,20 +1539,12 @@ impl Tensor {
     pub fn to_aligned_default(&self) -> TractResult<Self> {
         if self.dt.is_copy() {
             unsafe {
-                let mut t = Self::uninitialized_aligned_dt(
-                    self.dt,
-                    &self.shape,
-                    Self::default_alignment(self.dt, &self.shape),
-                )?;
+                let mut t = Self::uninitialized_dt(self.dt, &self.shape)?;
                 t.as_bytes_mut().copy_from_slice(self.as_bytes());
                 Ok(t)
             }
         } else {
-            let mut t = Self::zero_aligned_dt(
-                self.dt,
-                &self.shape,
-                Self::default_alignment(self.dt, &self.shape),
-            )?;
+            let mut t = Self::zero_dt(self.dt, &self.shape)?;
             if self.dt == String::datum_type() {
                 t.as_slice_mut::<String>()?.clone_from_slice(self.as_slice()?);
             } else if self.dt == Blob::datum_type() {
