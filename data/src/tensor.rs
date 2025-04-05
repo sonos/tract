@@ -353,7 +353,6 @@ impl Tensor {
     /// Create a tensor with a given shape and a slice of elements.
     /// The data is copied and aligned to size of T.
     pub fn from_shape<T: Datum + Copy>(shape: &[usize], data: &[T]) -> TractResult<Tensor> {
-        let dt = T::datum_type();
         Self::from_shape_align(shape, data, vector_size())
     }
 
