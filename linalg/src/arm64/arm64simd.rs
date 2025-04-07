@@ -39,6 +39,7 @@ MMMExternKernel!(arm64simd_mmm_f32_32x1_gen<f32>(32, 1)@(16, 16)
     packing[1] = q40f16z16se => |k| k.with_packing(PackedBlockQuantFormat::new(&Q4_0, 32, 16, true), f16::packing(1));
     packing[2] = q40f32z16se => |k| k.with_packing(PackedBlockQuantFormat::new(&Q4_0, 32, 16, true), f32::packing(1));
     quality(ManuallyOptimized)
+    store(f16)
 );
 
 MMMExternKernel!(arm64simd_mmm_i32_8x8<i32>(8, 8)@(16, 16)
