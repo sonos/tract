@@ -258,6 +258,10 @@
 
 .store:
     ldp         x5, x6, [x0, #8]                // c base ptr, rsc
+    ldp         x7, x8, [x0, #24]               // csc, item_size
+
+    cmp         x8, #2
+    beq         .store_f16
 
     cmp         x6, #4
     beq         .store_strides_contig
@@ -273,6 +277,30 @@
 
     {% for reg in (24..31) %}
         st1 { v{{reg}}.4s }, [ x5 ], #16
+    {% endfor %}
+    b           .non_linear_loop
+
+.store_f16:
+    {% for reg in (0..3) %}
+        fcvtn  v{{reg}}.4h, v{{reg|times:2|plus:24}}.4s
+        fcvtn2 v{{reg}}.8h, v{{reg|times:2|plus:25}}.4s
+    {% endfor %}
+
+    cmp         x6, #2
+    beq         .store_strides_contig_f16
+
+    {% for reg in (0..3) %}
+        {% for lane in (0..7) %}
+            st1 { v{{reg}}.h }[{{lane}}], [ x5 ], x6
+        {% endfor %}
+    {% endfor %}
+
+    b           .non_linear_loop
+
+.store_strides_contig_f16:
+
+    {% for reg in (0..3) %}
+        st1 { v{{reg}}.8h }, [ x5 ], #16
     {% endfor %}
     b           .non_linear_loop
 
