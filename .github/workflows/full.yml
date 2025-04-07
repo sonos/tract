@@ -1,7 +1,6 @@
 name: Full test harness
 
 on:
-#  pull_request:
   schedule:
     - cron:  '0 3 * * *'
   workflow_dispatch:
@@ -22,7 +21,6 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Configure AWS Credentials
-      # if: github.repository == 'sonos/tract'
       continue-on-error: true
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -57,7 +55,6 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Configure AWS Credentials
-      # if: github.repository == 'sonos/tract'
       continue-on-error: true
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -93,7 +90,6 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Configure AWS Credentials
-      # if: github.repository == 'sonos/tract'
       continue-on-error: true
       uses: aws-actions/configure-aws-credentials@v4
       with:

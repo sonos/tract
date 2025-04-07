@@ -1,7 +1,6 @@
 name: Examples
 
 on:
-  pull_request:
   schedule:
     - cron:  '0 3 * * *'
   workflow_dispatch:
