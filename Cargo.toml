@@ -16,6 +16,7 @@ members = [
     "onnx",
     "libcli",
     "cli",
+    "gpu",
     "metal",
     "extra",
     "transformers",
@@ -203,6 +204,7 @@ tract-api = { version = "0.21.13-pre", path = 'api' }
 tract-core = { version = "0.21.13-pre", path = 'core' }
 tract-data = { version = "0.21.13-pre", path = 'data' }
 tract-extra = { version = "0.21.13-pre", path = 'extra' }
+tract-gpu = { version = "0.21.13-pre", path = 'gpu' }
 tract-hir = { version = "0.21.13-pre", path = 'hir' }
 tract-libcli = { version = "0.21.13-pre", path = 'libcli' }
 tract-linalg = { version = "0.21.13-pre", path = 'linalg' }

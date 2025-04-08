@@ -43,9 +43,9 @@ impl ScaledMaskedSoftmax {
         mask: &MetalTensor,
         output: &MetalTensor,
     ) -> Result<()> {
-        input.retained_until_completion();
-        mask.retained_until_completion();
-        output.retained_until_completion();
+        input.retain_until_completion();
+        mask.retain_until_completion();
+        output.retain_until_completion();
 
         ensure!(output.shape() == input.shape());
         ensure!(mask.rank() == 3 && input.rank() == 3);

@@ -38,8 +38,8 @@ impl Softmax {
         axis: usize,
         output: &MetalTensor,
     ) -> Result<()> {
-        input.retained_until_completion();
-        output.retained_until_completion();
+        input.retain_until_completion();
+        output.retain_until_completion();
 
         ensure!(output.shape() == input.shape());
         ensure!(output.datum_type() == input.datum_type());

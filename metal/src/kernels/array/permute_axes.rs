@@ -75,7 +75,7 @@ impl PermuteAxes {
         output: &MetalTensor,
     ) -> Result<()> {
         input.retain_until_completion();
-        output.retained_until_completion();
+        output.retain_until_completion();
 
         // Validate give axes permutation
         let mut usage_counts = vec![0; input.rank()];

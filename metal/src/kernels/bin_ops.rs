@@ -159,7 +159,7 @@ impl BinOps {
     ) -> Result<()> {
         lhs.retain_until_completion();
         rhs.retain_until_completion();
-        output.retained_until_completion();
+        output.retain_until_completion();
 
         let out_shape = output.shape();
 
