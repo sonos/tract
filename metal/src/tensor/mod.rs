@@ -168,12 +168,6 @@ impl MetalTensor {
         crate::METAL_CONTEXT.with_borrow(|ctxt| ctxt.retain_tensor(self));
     }
 
-    #[inline]
-    pub fn retained_until_completion(&self) -> &Self {
-        self.retain_until_completion();
-        self
-    }
-
     /// Convert Metal tensor to Opaque Tensor.
     pub fn into_opaque_tensor(self) -> Tensor {
         tensor0::<Opaque>(self.into())
