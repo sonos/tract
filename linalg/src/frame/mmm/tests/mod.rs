@@ -71,16 +71,17 @@ macro_rules! test_mmm_kernel_i32 {
 pub fn display_error<TC: LADatum>(v: &[TC], expected: &[TC], m: usize, n: usize) {
     if v != expected {
         for ixm in 0..m {
+            print!("|");
             for ixn in 0..n {
                 use nu_ansi_term::Color::*;
                 let f = v[ixm * n + ixn];
                 let e = expected[ixm * n + ixn];
-                let color = if f != e { Red } else { Green };
-                print!("{} ", color.paint(format!("{:4}", f)));
+                let color = if f != e { Red.bold() } else { Green.into() };
+                print!("{}|", color.paint(format!("{:5}", f)));
             }
-            print!("      ");
+            print!("  #  ");
             for ixn in 0..n {
-                print!("{:4} ", expected[ixm * n + ixn]);
+                print!("{:5} ", expected[ixm * n + ixn]);
             }
             println!();
         }

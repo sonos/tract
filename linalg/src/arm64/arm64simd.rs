@@ -1,6 +1,7 @@
 mod by_scalar;
 mod leaky_relu;
 mod max;
+mod panel_extract;
 mod softmax;
 mod sum;
 mod unicast;
@@ -35,9 +36,13 @@ MMMExternKernel!(arm64simd_mmm_f32_8x8_gen <f32>(8,  8)@(16, 16) quality(Manuall
 MMMExternKernel!(arm64simd_mmm_f32_12x8_gen<f32>(12, 8)@(16, 16) quality(ManuallyOptimized));
 MMMExternKernel!(arm64simd_mmm_f32_64x1_gen<f32>(64, 1)@(16, 16) quality(ManuallyOptimized));
 
+fn q40p32z16se() -> PackedBlockQuantFormat {
+    PackedBlockQuantFormat::new(&Q4_0, 32, 16, true)
+}
+
 MMMExternKernel!(arm64simd_mmm_f32_32x1_gen<f32>(32, 1)@(16, 16)
-    packing[1] = q40f16z16se => |k| k.with_packing(PackedBlockQuantFormat::new(&Q4_0, 32, 16, true), f16::packing(1));
-    packing[2] = q40f32z16se => |k| k.with_packing(PackedBlockQuantFormat::new(&Q4_0, 32, 16, true), f32::packing(1));
+    packing[1] = q40f16 => |k| k.with_packing(q40p32z16se(), f16::packing(1));
+    packing[2] = q40f32 => |k| k.with_packing(q40p32z16se(), f32::packing(1));
     packing[3] = f16f16 => |k| k.with_packing(f16::packing(32), f16::packing(1));
     packing[4] = f32f16 => |k| k.with_packing(f32::packing(32), f16::packing(1));
     packing[5] = f16f32 => |k| k.with_packing(f16::packing(32), f32::packing(1));
@@ -86,6 +91,7 @@ pub fn plug(ops: &mut Ops) {
         arm64simd_mmm_i32_8x8.mmm(),
         arm64simd_mmm_i32_64x1.mmm(),
     ]);
+    panel_extract::plug(ops);
 }
 
 tanh_impl!(f32, arm64simd_tanh_f32_4n, 4, 4, true);
