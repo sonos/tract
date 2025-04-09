@@ -107,6 +107,7 @@ macro_rules! panel_extractor {
                     use $crate::mmm::MMMInputFormat;
                     let (from, to) = ($from, $to);
                     assert!(from.r() == to.r());
+                    #[allow(unused_mut)]
                     let mut it = $crate::mmm::PanelExtractor {
                         name: stringify!($id).to_string(),
                         from,
