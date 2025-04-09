@@ -46,6 +46,7 @@ MMMExternKernel!(arm64simd_mmm_f32_32x1_gen<f32>(32, 1)@(16, 16)
 );
 
 MMMExternKernel!(arm64simd_mmm_f32_32x3_gen<f32>(32, 3)@(16, 16)
+    packing[1] = f32f16 => |k| k.with_packing(f32::packing(32), f16::packing(3));
     quality(ManuallyOptimized)
     store(f16)
 );
