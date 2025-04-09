@@ -45,6 +45,11 @@ MMMExternKernel!(arm64simd_mmm_f32_32x1_gen<f32>(32, 1)@(16, 16)
     store(f16)
 );
 
+MMMExternKernel!(arm64simd_mmm_f32_32x3_gen<f32>(32, 3)@(16, 16)
+    quality(ManuallyOptimized)
+    store(f16)
+);
+
 MMMExternKernel!(arm64simd_mmm_i32_8x8<i32>(8, 8)@(16, 16)
    packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 8, 16), PackedFormat::new(DatumType::I8, 8, 16));
    quality(ManuallyOptimized)
@@ -72,6 +77,7 @@ pub fn plug(ops: &mut Ops) {
         arm64simd_mmm_f32_24x4_a53.mmm(),
         arm64simd_mmm_f32_24x4_a55.mmm(),
         arm64simd_mmm_f32_32x1_gen.mmm(),
+        arm64simd_mmm_f32_32x3_gen.mmm(),
         arm64simd_mmm_f32_64x1_gen.mmm(),
         arm64simd_mmm_f32_64x1_a53.mmm(),
         arm64simd_mmm_i32_8x8.mmm(),

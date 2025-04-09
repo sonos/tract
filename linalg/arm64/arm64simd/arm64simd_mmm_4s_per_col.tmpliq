@@ -10,6 +10,9 @@
 
 {%if cols == "1" %}
         ld1         {v0.s}[0], [ x2 ]
+{% elsif cols == "3" %}
+        ld1         {v0.d}[0], [ x2 ], #8
+        ld1         {v0.s}[2], [ x2 ]
 {% else %}
     {% for reg in (1..loads) %}
         ldr         q{{reg |minus:1}}, [ x2 ], #16
