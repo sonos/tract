@@ -16,6 +16,7 @@ mod storage;
 pub mod tests;
 
 use crate::multithread::Executor;
+#[cfg(feature = "multithread-mm")]
 use rayon::prelude::*;
 use std::borrow::Cow;
 use std::cmp::Ordering;
@@ -223,6 +224,7 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
             }
             Ok(())
         }
+        #[cfg(feature = "multithread-mm")]
         Executor::MultiThread(pool) => pool.install(|| {
             (0..m.div_ceil(ker.mr()))
                 .into_par_iter()
@@ -247,6 +249,7 @@ unsafe fn run_with_scratch_space_col_outer<K: MatMatMulKer>(
             }
             Ok(())
         }
+        #[cfg(feature = "multithread-mm")]
         Executor::MultiThread(pool) => pool.install(|| {
             (0..n.div_ceil(ker.nr())).into_par_iter().try_for_each(|ib| {
                 for ia in 0..m.divceil(ker.mr()) {
@@ -274,6 +277,7 @@ unsafe fn run_with_scratch_space_row_outer<K: MatMatMulKer>(
             }
             Ok(())
         }
+        #[cfg(feature = "multithread-mm")]
         Executor::MultiThread(pool) => pool.install(|| {
             pool.install(|| {
                 (0..m.div_ceil(ker.mr())).into_par_iter().try_for_each(|ia| {

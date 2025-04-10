@@ -23,7 +23,7 @@ lazy_static.workspace = true
 log.workspace = true
 num-traits.workspace = true
 paste.workspace = true
-rayon.workspace = true
+rayon = { workspace = true, optional = true }
 scan_fmt.workspace = true
 tract-data.workspace = true
 
@@ -61,7 +61,8 @@ proptest = { version = "1.0.0", default-features = false, features = ["std", "bi
 # preferred.
 no_fp16 = []
 apple-amx-ios = []
-default = []
+default = [ ]
+multithread-mm = [ "rayon" ]
 complex = [ "tract-data/complex" ]
 
 [[bench]]

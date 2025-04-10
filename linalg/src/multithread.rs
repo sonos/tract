@@ -1,20 +1,25 @@
 use std::cell::RefCell;
+#[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
 
+#[cfg(feature = "multithread-mm")]
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
 #[derive(Debug, Clone, Default)]
 pub enum Executor {
     #[default]
     SingleThread,
+    #[cfg(feature = "multithread-mm")]
     MultiThread(Arc<ThreadPool>),
 }
 
 impl Executor {
+    #[cfg(feature = "multithread-mm")]
     pub fn multithread(n: usize) -> Executor {
         Executor::multithread_with_name(n, "tract-default")
     }
 
+    #[cfg(feature = "multithread-mm")]
     pub fn multithread_with_name(n: usize, name: &str) -> Executor {
         let name = name.to_string();
         let pool = ThreadPoolBuilder::new()

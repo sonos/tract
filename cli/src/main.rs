@@ -706,10 +706,15 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
 
     let mut need_optimisations = false;
 
+    #[cfg(feature = "multithread-mm")]
     if let Some(threads) = matches.value_of("threads") {
         let threads: usize = threads.parse()?;
         let threads = if threads == 0 { num_cpus::get_physical() } else { threads };
         multithread::set_default_executor(multithread::Executor::multithread(threads));
+    }
+    #[cfg(not(feature = "multithread-mm"))]
+    if let Some(_) = matches.value_of("threads") {
+        bail!("tract is compiled without multithread support")
     }
 
     match matches.subcommand() {
