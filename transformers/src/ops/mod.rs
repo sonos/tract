@@ -2,14 +2,14 @@ pub mod rms_norm;
 pub mod apply_rope;
 pub mod silu;
 pub mod scaled_masked_softmax;
-pub mod gelu_fast_approx;
+pub mod gelu_approx;
 
 use tract_nnef::tract_core;
 use tract_core::internal::*;
 use tract_core::ops::konst::Const;
 
 //pub use apply_rope::{as_apply_rope_rule, BasicApplyRope};
-pub use gelu_fast_approx::as_new_gelu_rule;
+pub use gelu_approx::as_gelu_approx_rule;
 pub use rms_norm::{as_rms_norm_rule, remove_rms_norm_cast};
 pub use apply_rope::{as_rotate_half_rule, as_apply_rope_rule};
 pub use scaled_masked_softmax::as_scaled_masked_softmax_rule;

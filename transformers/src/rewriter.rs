@@ -15,7 +15,7 @@ impl ModelTransform for RmsNormTransform {
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         Rewriter::default()
-        .with_rule_for("as-rms-norm", ops::as_rms_norm_rule)
+        .with_rule_for("detect-rms-norm", ops::as_rms_norm_rule)
         .with_rule_for("remove_rms_norm_cast", ops::remove_rms_norm_cast)
         .rewrite(&(), model)
     }
@@ -31,8 +31,8 @@ impl ModelTransform for ApplyRopeTransform {
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         Rewriter::default()
-        .with_rule_for("as-rotate-half", ops::as_rotate_half_rule)
-        .with_rule_for("as-apply-rope", ops::as_apply_rope_rule)
+        .with_rule_for("detect-rotate-half", ops::as_rotate_half_rule)
+        .with_rule_for("detect-apply-rope", ops::as_apply_rope_rule)
         .rewrite(&(), model)
     }
 }
@@ -47,7 +47,7 @@ impl ModelTransform for SiluTransform {
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         Rewriter::default()
-        .with_rule_for("as-silu", ops::as_silu_rule)
+        .with_rule_for("detect-silu", ops::as_silu_rule)
         .rewrite(&(), model)
     }
 }
@@ -57,27 +57,49 @@ pub struct ScaledMaskedSoftmaxTransform;
 
 impl ModelTransform for ScaledMaskedSoftmaxTransform {
     fn name(&self) -> Cow<str> {
-        "silu-transform".into()
+        "scaled-masked-softmax-transform".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         Rewriter::default()
-        .with_rule_for("as-scaled-masked-softmax", ops::as_scaled_masked_softmax_rule)
+        .with_rule_for("detect-scaled-masked-softmax", ops::as_scaled_masked_softmax_rule)
         .rewrite(&(), model)
     }
 }
 
 #[derive(Debug, Default)]
-pub struct GeluFastApproxTransform;
+pub struct GeluTransform;
 
-impl ModelTransform for GeluFastApproxTransform {
+impl ModelTransform for GeluTransform {
     fn name(&self) -> Cow<str> {
-        "silu-transform".into()
+        "gelu-fast-approx-transform".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         Rewriter::default()
-        .with_rule_for("as-new-gelu", ops::as_new_gelu_rule)
+        .with_rule_for("detect-gelu-approx", ops::as_gelu_approx_rule)
+        .rewrite(&(), model)
+    }
+}
+
+// TODO: This is why Transform shoudl be renamed to Remodel
+#[derive(Debug, Default)]
+pub struct TransformersTransform;
+
+impl ModelTransform for TransformersTransform {
+    fn name(&self) -> Cow<str> {
+        "transformers-transform".into()
+    }
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        Rewriter::default()
+        .with_rule_for("detect-rms-norm", ops::as_rms_norm_rule)
+        .with_rule_for("remove_rms_norm_cast", ops::remove_rms_norm_cast)
+        .with_rule_for("detect-rotate-half", ops::as_rotate_half_rule)
+        .with_rule_for("detect-apply-rope", ops::as_apply_rope_rule)
+        .with_rule_for("detect-scaled-masked-softmax", ops::as_scaled_masked_softmax_rule)
+        .with_rule_for("detect-silu", ops::as_silu_rule)
+        .with_rule_for("detect-gelu-approx", ops::as_gelu_approx_rule)
         .rewrite(&(), model)
     }
 }
