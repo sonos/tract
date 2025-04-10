@@ -10,7 +10,8 @@ pub fn get_transform(name: &str) -> Option<Box<dyn ModelTransform>> {
         "detect-apply-rope" => Some(Box::new(ApplyRopeTransform)),
         "detect-silu" => Some(Box::new(SiluTransform)),
         "detect-scaled-masked-softmax" => Some(Box::new(ScaledMaskedSoftmaxTransform)),
-        "detect-new-gelu" => Some(Box::new(GeluFastApproxTransform)),
+        "detect-gelu-approx" => Some(Box::new(GeluTransform)),
+        "transformers-detect-all" => Some(Box::new(TransformersTransform)),
         _ => None,
     }
 }
@@ -20,7 +21,7 @@ pub fn register(registry: &mut Registry) {
 
     ops::rms_norm::register(registry);
     ops::silu::register(registry);
-    ops::gelu_fast_approx::register(registry);
+    ops::gelu_approx::register(registry);
     ops::apply_rope::register(registry);
     ops::scaled_masked_softmax::register(registry);
 }

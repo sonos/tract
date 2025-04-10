@@ -1,5 +1,5 @@
 pub mod apply_rope;
-pub mod new_gelu;
+pub mod gelu_approx;
 pub mod reduce;
 pub mod rms_norm;
 pub mod scaled_masked_softmax;
@@ -7,7 +7,7 @@ pub mod silu;
 pub mod softmax;
 
 pub use apply_rope::ApplyRope;
-pub use new_gelu::GeluFastApprox;
+pub use gelu_approx::GeluApprox;
 pub use reduce::Reducer;
 pub use rms_norm::RmsNorm;
 pub use scaled_masked_softmax::ScaledMaskedSoftmax;
