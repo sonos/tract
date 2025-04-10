@@ -8,11 +8,6 @@ use crate::ops::{self, MetalSync, MetalSyncKind};
 
 use crate::rewrite_rules;
 
-use tract_transformers::ops::gelu_approx::BasicGeluApprox;
-use tract_transformers::ops::scaled_masked_softmax::BasicScaledMaskedSoftmax;
-use tract_transformers::ops::rms_norm::BasicRmsNorm;
-use tract_transformers::ops::apply_rope::{ BasicApplyRope, BasicRotateHalf};
-use tract_transformers::ops::silu::BasicSilu;
 use crate::tensor::MetalTensorExt;
 use crate::utils::as_q40_fact;
 use crate::{IntoMetal, MetalFact, MetalTensor};
@@ -32,6 +27,11 @@ use tract_core::ops::logic::Comp;
 use tract_core::ops::nn::{Reduce, Softmax as CoreSoftmax};
 use tract_core::transform::ModelTransform;
 use tract_itertools::Itertools;
+use tract_transformers::ops::apply_rope::{BasicApplyRope, BasicRotateHalf};
+use tract_transformers::ops::gelu_approx::BasicGeluApprox;
+use tract_transformers::ops::rms_norm::BasicRmsNorm;
+use tract_transformers::ops::scaled_masked_softmax::BasicScaledMaskedSoftmax;
+use tract_transformers::ops::silu::BasicSilu;
 
 impl MetalGemmImplKind {
     pub fn variants() -> Vec<MetalGemmImplKind> {

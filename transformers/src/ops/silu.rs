@@ -12,9 +12,7 @@ pub fn register(registry: &mut Registry) {
     registry.register_dumper(ser_silu);
     registry.register_primitive(
         "tract_transformers_silu",
-        &[
-            TypeName::Scalar.tensor().named("input"),
-        ],
+        &[TypeName::Scalar.tensor().named("input")],
         &[("output", TypeName::Scalar.tensor())],
         de_silu,
     );
@@ -31,11 +29,7 @@ fn ser_silu(
     _op: &BasicSilu,
 ) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
-    Ok(Some(invocation(
-        "tract_transformers_silu",
-        &[input],
-        &[]
-    )))
+    Ok(Some(invocation("tract_transformers_silu", &[input], &[])))
 }
 
 #[derive(Clone, Debug, Hash)]

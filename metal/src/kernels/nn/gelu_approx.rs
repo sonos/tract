@@ -70,7 +70,6 @@ impl GeluApprox {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tract_transformers::ops::gelu_approx::BasicGeluApprox;
     use crate::IntoMetal;
     use derive_new::new;
     use num_traits::AsPrimitive;
@@ -78,6 +77,7 @@ mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use tract_core::internal::Tensor;
+    use tract_transformers::ops::gelu_approx::BasicGeluApprox;
 
     fn test_case<F>(
         gelu_approx: GeluApprox,
@@ -106,8 +106,10 @@ mod tests {
                 )?
                 .into_metal()?;
 
-                let cpu_output =
-                    BasicGeluApprox::default().eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
+                let cpu_output = BasicGeluApprox::default()
+                    .eval(tvec![a.to_cpu()?.into_tvalue()])?[0]
+                    .clone()
+                    .into_tensor();
                 let metal_output = gelu_approx.eval(context, &a)?;
 
                 cpu_output
@@ -250,7 +252,8 @@ mod tests {
         pub fn reference(&self) -> Result<Tensor> {
             let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?;
 
-            let cpu_output = BasicGeluApprox::default().eval(tvec![a.into_tvalue()])?[0].clone().into_tensor();
+            let cpu_output =
+                BasicGeluApprox::default().eval(tvec![a.into_tvalue()])?[0].clone().into_tensor();
 
             Ok(cpu_output)
         }

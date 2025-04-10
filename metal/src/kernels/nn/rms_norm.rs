@@ -135,7 +135,6 @@ impl RmsNorm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tract_transformers::ops::rms_norm::BasicRmsNorm;
     use crate::IntoMetal;
     use derive_new::new;
     use num_traits::AsPrimitive;
@@ -143,6 +142,7 @@ mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use tract_core::internal::Tensor;
+    use tract_transformers::ops::rms_norm::BasicRmsNorm;
 
     fn test_case<F>(shape: &[usize], axis: usize, offset: f32, scale: f32) -> Result<()>
     where
