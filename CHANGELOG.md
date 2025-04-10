@@ -1,5 +1,16 @@
 # Unreleased
 
+# 0.21.12 - 2025-04-10
+
+* multithread matmul is feature gated now ("multithread-mm" on linal)
+* full hand made arm64 f32-accumulator matmul kit
+* more auditing improvment around einsum and its matmul translations
+* bugfix in matmul translation and gather
+* more test-rt-level coverage of low-level matmuls (metal and cpu)
+* memory arena improvements (metal)
+* q40 for convolution weights
+
+
 # 0.21.11 - 2025-03-19
 
 * [cli] augment audit capabilities for mm implementation choices
