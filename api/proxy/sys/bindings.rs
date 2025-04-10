@@ -196,12 +196,19 @@ pub const SIG_ATOMIC_MIN: i32 = -2147483648;
 pub const SIG_ATOMIC_MAX: u32 = 2147483647;
 pub const __API_TO_BE_DEPRECATED: u32 = 100000;
 pub const __API_TO_BE_DEPRECATED_MACOS: u32 = 100000;
+pub const __API_TO_BE_DEPRECATED_MACOSAPPLICATIONEXTENSION: u32 = 100000;
 pub const __API_TO_BE_DEPRECATED_IOS: u32 = 100000;
+pub const __API_TO_BE_DEPRECATED_IOSAPPLICATIONEXTENSION: u32 = 100000;
 pub const __API_TO_BE_DEPRECATED_MACCATALYST: u32 = 100000;
+pub const __API_TO_BE_DEPRECATED_MACCATALYSTAPPLICATIONEXTENSION: u32 = 100000;
 pub const __API_TO_BE_DEPRECATED_WATCHOS: u32 = 100000;
+pub const __API_TO_BE_DEPRECATED_WATCHOSAPPLICATIONEXTENSION: u32 = 100000;
 pub const __API_TO_BE_DEPRECATED_TVOS: u32 = 100000;
+pub const __API_TO_BE_DEPRECATED_TVOSAPPLICATIONEXTENSION: u32 = 100000;
 pub const __API_TO_BE_DEPRECATED_DRIVERKIT: u32 = 100000;
 pub const __API_TO_BE_DEPRECATED_VISIONOS: u32 = 100000;
+pub const __API_TO_BE_DEPRECATED_VISIONOSAPPLICATIONEXTENSION: u32 = 100000;
+pub const __API_TO_BE_DEPRECATED_KERNELKIT: u32 = 100000;
 pub const __MAC_10_0: u32 = 1000;
 pub const __MAC_10_1: u32 = 1010;
 pub const __MAC_10_2: u32 = 1020;
@@ -257,15 +264,20 @@ pub const __MAC_13_3: u32 = 130300;
 pub const __MAC_13_4: u32 = 130400;
 pub const __MAC_13_5: u32 = 130500;
 pub const __MAC_13_6: u32 = 130600;
+pub const __MAC_13_7: u32 = 130700;
 pub const __MAC_14_0: u32 = 140000;
 pub const __MAC_14_1: u32 = 140100;
 pub const __MAC_14_2: u32 = 140200;
 pub const __MAC_14_3: u32 = 140300;
 pub const __MAC_14_4: u32 = 140400;
 pub const __MAC_14_5: u32 = 140500;
+pub const __MAC_14_6: u32 = 140600;
+pub const __MAC_14_7: u32 = 140700;
 pub const __MAC_15_0: u32 = 150000;
 pub const __MAC_15_1: u32 = 150100;
 pub const __MAC_15_2: u32 = 150200;
+pub const __MAC_15_3: u32 = 150300;
+pub const __MAC_15_4: u32 = 150400;
 pub const __IPHONE_2_0: u32 = 20000;
 pub const __IPHONE_2_1: u32 = 20100;
 pub const __IPHONE_2_2: u32 = 20200;
@@ -345,9 +357,13 @@ pub const __IPHONE_17_2: u32 = 170200;
 pub const __IPHONE_17_3: u32 = 170300;
 pub const __IPHONE_17_4: u32 = 170400;
 pub const __IPHONE_17_5: u32 = 170500;
+pub const __IPHONE_17_6: u32 = 170600;
+pub const __IPHONE_17_7: u32 = 170700;
 pub const __IPHONE_18_0: u32 = 180000;
 pub const __IPHONE_18_1: u32 = 180100;
 pub const __IPHONE_18_2: u32 = 180200;
+pub const __IPHONE_18_3: u32 = 180300;
+pub const __IPHONE_18_4: u32 = 180400;
 pub const __WATCHOS_1_0: u32 = 10000;
 pub const __WATCHOS_2_0: u32 = 20000;
 pub const __WATCHOS_2_1: u32 = 20100;
@@ -395,9 +411,13 @@ pub const __WATCHOS_10_2: u32 = 100200;
 pub const __WATCHOS_10_3: u32 = 100300;
 pub const __WATCHOS_10_4: u32 = 100400;
 pub const __WATCHOS_10_5: u32 = 100500;
+pub const __WATCHOS_10_6: u32 = 100600;
+pub const __WATCHOS_10_7: u32 = 100700;
 pub const __WATCHOS_11_0: u32 = 110000;
 pub const __WATCHOS_11_1: u32 = 110100;
 pub const __WATCHOS_11_2: u32 = 110200;
+pub const __WATCHOS_11_3: u32 = 110300;
+pub const __WATCHOS_11_4: u32 = 110400;
 pub const __TVOS_9_0: u32 = 90000;
 pub const __TVOS_9_1: u32 = 90100;
 pub const __TVOS_9_2: u32 = 90200;
@@ -446,9 +466,12 @@ pub const __TVOS_17_2: u32 = 170200;
 pub const __TVOS_17_3: u32 = 170300;
 pub const __TVOS_17_4: u32 = 170400;
 pub const __TVOS_17_5: u32 = 170500;
+pub const __TVOS_17_6: u32 = 170600;
 pub const __TVOS_18_0: u32 = 180000;
 pub const __TVOS_18_1: u32 = 180100;
 pub const __TVOS_18_2: u32 = 180200;
+pub const __TVOS_18_3: u32 = 180300;
+pub const __TVOS_18_4: u32 = 180400;
 pub const __BRIDGEOS_2_0: u32 = 20000;
 pub const __BRIDGEOS_3_0: u32 = 30000;
 pub const __BRIDGEOS_3_1: u32 = 30100;
@@ -475,9 +498,12 @@ pub const __BRIDGEOS_8_2: u32 = 80200;
 pub const __BRIDGEOS_8_3: u32 = 80300;
 pub const __BRIDGEOS_8_4: u32 = 80400;
 pub const __BRIDGEOS_8_5: u32 = 80500;
+pub const __BRIDGEOS_8_6: u32 = 80600;
 pub const __BRIDGEOS_9_0: u32 = 90000;
 pub const __BRIDGEOS_9_1: u32 = 90100;
 pub const __BRIDGEOS_9_2: u32 = 90200;
+pub const __BRIDGEOS_9_3: u32 = 90300;
+pub const __BRIDGEOS_9_4: u32 = 90400;
 pub const __DRIVERKIT_19_0: u32 = 190000;
 pub const __DRIVERKIT_20_0: u32 = 200000;
 pub const __DRIVERKIT_21_0: u32 = 210000;
@@ -491,15 +517,21 @@ pub const __DRIVERKIT_23_2: u32 = 230200;
 pub const __DRIVERKIT_23_3: u32 = 230300;
 pub const __DRIVERKIT_23_4: u32 = 230400;
 pub const __DRIVERKIT_23_5: u32 = 230500;
+pub const __DRIVERKIT_23_6: u32 = 230600;
 pub const __DRIVERKIT_24_0: u32 = 240000;
 pub const __DRIVERKIT_24_1: u32 = 240100;
 pub const __DRIVERKIT_24_2: u32 = 240200;
+pub const __DRIVERKIT_24_3: u32 = 240300;
+pub const __DRIVERKIT_24_4: u32 = 240400;
 pub const __VISIONOS_1_0: u32 = 10000;
 pub const __VISIONOS_1_1: u32 = 10100;
 pub const __VISIONOS_1_2: u32 = 10200;
+pub const __VISIONOS_1_3: u32 = 10300;
 pub const __VISIONOS_2_0: u32 = 20000;
 pub const __VISIONOS_2_1: u32 = 20100;
 pub const __VISIONOS_2_2: u32 = 20200;
+pub const __VISIONOS_2_3: u32 = 20300;
+pub const __VISIONOS_2_4: u32 = 20400;
 pub const MAC_OS_X_VERSION_10_0: u32 = 1000;
 pub const MAC_OS_X_VERSION_10_1: u32 = 1010;
 pub const MAC_OS_X_VERSION_10_2: u32 = 1020;
@@ -555,16 +587,24 @@ pub const MAC_OS_VERSION_13_3: u32 = 130300;
 pub const MAC_OS_VERSION_13_4: u32 = 130400;
 pub const MAC_OS_VERSION_13_5: u32 = 130500;
 pub const MAC_OS_VERSION_13_6: u32 = 130600;
+pub const MAC_OS_VERSION_13_7: u32 = 130700;
 pub const MAC_OS_VERSION_14_0: u32 = 140000;
 pub const MAC_OS_VERSION_14_1: u32 = 140100;
 pub const MAC_OS_VERSION_14_2: u32 = 140200;
 pub const MAC_OS_VERSION_14_3: u32 = 140300;
 pub const MAC_OS_VERSION_14_4: u32 = 140400;
 pub const MAC_OS_VERSION_14_5: u32 = 140500;
+pub const MAC_OS_VERSION_14_6: u32 = 140600;
+pub const MAC_OS_VERSION_14_7: u32 = 140700;
 pub const MAC_OS_VERSION_15_0: u32 = 150000;
 pub const MAC_OS_VERSION_15_1: u32 = 150100;
 pub const MAC_OS_VERSION_15_2: u32 = 150200;
-pub const __MAC_OS_X_VERSION_MAX_ALLOWED: u32 = 150200;
+pub const MAC_OS_VERSION_15_3: u32 = 150300;
+pub const MAC_OS_VERSION_15_4: u32 = 150400;
+pub const __AVAILABILITY_VERSIONS_VERSION_HASH: u32 = 93585900;
+pub const __AVAILABILITY_VERSIONS_VERSION_STRING: &[u8; 6] = b"Local\0";
+pub const __AVAILABILITY_FILE: &[u8; 23] = b"AvailabilityVersions.h\0";
+pub const __MAC_OS_X_VERSION_MAX_ALLOWED: u32 = 150400;
 pub const __ENABLE_LEGACY_MAC_AVAILABILITY: u32 = 1;
 pub const __DARWIN_WCHAR_MIN: i32 = -2147483648;
 pub const _FORTIFY_SOURCE: u32 = 2;
@@ -755,6 +795,7 @@ pub const IOPOL_VFS_IGNORE_PERMISSIONS_OFF: u32 = 0;
 pub const IOPOL_VFS_IGNORE_PERMISSIONS_ON: u32 = 1;
 pub const IOPOL_VFS_SKIP_MTIME_UPDATE_OFF: u32 = 0;
 pub const IOPOL_VFS_SKIP_MTIME_UPDATE_ON: u32 = 1;
+pub const IOPOL_VFS_SKIP_MTIME_UPDATE_IGNORE: u32 = 2;
 pub const IOPOL_VFS_ALLOW_LOW_SPACE_WRITES_OFF: u32 = 0;
 pub const IOPOL_VFS_ALLOW_LOW_SPACE_WRITES_ON: u32 = 1;
 pub const IOPOL_VFS_DISALLOW_RW_FOR_O_EVTONLY_DEFAULT: u32 = 0;
@@ -819,15 +860,23 @@ pub union __mbstate_t {
     pub __mbstate8: [::std::os::raw::c_char; 128usize],
     pub _mbstateL: ::std::os::raw::c_longlong,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __mbstate_t"][::std::mem::size_of::<__mbstate_t>() - 128usize];
-    ["Alignment of __mbstate_t"][::std::mem::align_of::<__mbstate_t>() - 8usize];
-    ["Offset of field: __mbstate_t::__mbstate8"]
-        [::std::mem::offset_of!(__mbstate_t, __mbstate8) - 0usize];
-    ["Offset of field: __mbstate_t::_mbstateL"]
-        [::std::mem::offset_of!(__mbstate_t, _mbstateL) - 0usize];
-};
+#[test]
+fn bindgen_test_layout___mbstate_t() {
+    const UNINIT: ::std::mem::MaybeUninit<__mbstate_t> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<__mbstate_t>(), 128usize, "Size of __mbstate_t");
+    assert_eq!(::std::mem::align_of::<__mbstate_t>(), 8usize, "Alignment of __mbstate_t");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__mbstate8) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __mbstate_t::__mbstate8"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr)._mbstateL) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __mbstate_t::_mbstateL"
+    );
+}
 pub type __darwin_mbstate_t = __mbstate_t;
 pub type __darwin_ptrdiff_t = ::std::os::raw::c_long;
 pub type __darwin_size_t = ::std::os::raw::c_ulong;
@@ -866,151 +915,293 @@ pub struct __darwin_pthread_handler_rec {
     pub __arg: *mut ::std::os::raw::c_void,
     pub __next: *mut __darwin_pthread_handler_rec,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __darwin_pthread_handler_rec"]
-        [::std::mem::size_of::<__darwin_pthread_handler_rec>() - 24usize];
-    ["Alignment of __darwin_pthread_handler_rec"]
-        [::std::mem::align_of::<__darwin_pthread_handler_rec>() - 8usize];
-    ["Offset of field: __darwin_pthread_handler_rec::__routine"]
-        [::std::mem::offset_of!(__darwin_pthread_handler_rec, __routine) - 0usize];
-    ["Offset of field: __darwin_pthread_handler_rec::__arg"]
-        [::std::mem::offset_of!(__darwin_pthread_handler_rec, __arg) - 8usize];
-    ["Offset of field: __darwin_pthread_handler_rec::__next"]
-        [::std::mem::offset_of!(__darwin_pthread_handler_rec, __next) - 16usize];
-};
+#[test]
+fn bindgen_test_layout___darwin_pthread_handler_rec() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_pthread_handler_rec> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_pthread_handler_rec>(),
+        24usize,
+        "Size of __darwin_pthread_handler_rec"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_pthread_handler_rec>(),
+        8usize,
+        "Alignment of __darwin_pthread_handler_rec"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__routine) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_pthread_handler_rec::__routine"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__arg) as usize - ptr as usize },
+        8usize,
+        "Offset of field: __darwin_pthread_handler_rec::__arg"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__next) as usize - ptr as usize },
+        16usize,
+        "Offset of field: __darwin_pthread_handler_rec::__next"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct _opaque_pthread_attr_t {
     pub __sig: ::std::os::raw::c_long,
     pub __opaque: [::std::os::raw::c_char; 56usize],
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of _opaque_pthread_attr_t"][::std::mem::size_of::<_opaque_pthread_attr_t>() - 64usize];
-    ["Alignment of _opaque_pthread_attr_t"]
-        [::std::mem::align_of::<_opaque_pthread_attr_t>() - 8usize];
-    ["Offset of field: _opaque_pthread_attr_t::__sig"]
-        [::std::mem::offset_of!(_opaque_pthread_attr_t, __sig) - 0usize];
-    ["Offset of field: _opaque_pthread_attr_t::__opaque"]
-        [::std::mem::offset_of!(_opaque_pthread_attr_t, __opaque) - 8usize];
-};
+#[test]
+fn bindgen_test_layout__opaque_pthread_attr_t() {
+    const UNINIT: ::std::mem::MaybeUninit<_opaque_pthread_attr_t> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<_opaque_pthread_attr_t>(),
+        64usize,
+        "Size of _opaque_pthread_attr_t"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<_opaque_pthread_attr_t>(),
+        8usize,
+        "Alignment of _opaque_pthread_attr_t"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__sig) as usize - ptr as usize },
+        0usize,
+        "Offset of field: _opaque_pthread_attr_t::__sig"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__opaque) as usize - ptr as usize },
+        8usize,
+        "Offset of field: _opaque_pthread_attr_t::__opaque"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct _opaque_pthread_cond_t {
     pub __sig: ::std::os::raw::c_long,
     pub __opaque: [::std::os::raw::c_char; 40usize],
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of _opaque_pthread_cond_t"][::std::mem::size_of::<_opaque_pthread_cond_t>() - 48usize];
-    ["Alignment of _opaque_pthread_cond_t"]
-        [::std::mem::align_of::<_opaque_pthread_cond_t>() - 8usize];
-    ["Offset of field: _opaque_pthread_cond_t::__sig"]
-        [::std::mem::offset_of!(_opaque_pthread_cond_t, __sig) - 0usize];
-    ["Offset of field: _opaque_pthread_cond_t::__opaque"]
-        [::std::mem::offset_of!(_opaque_pthread_cond_t, __opaque) - 8usize];
-};
+#[test]
+fn bindgen_test_layout__opaque_pthread_cond_t() {
+    const UNINIT: ::std::mem::MaybeUninit<_opaque_pthread_cond_t> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<_opaque_pthread_cond_t>(),
+        48usize,
+        "Size of _opaque_pthread_cond_t"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<_opaque_pthread_cond_t>(),
+        8usize,
+        "Alignment of _opaque_pthread_cond_t"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__sig) as usize - ptr as usize },
+        0usize,
+        "Offset of field: _opaque_pthread_cond_t::__sig"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__opaque) as usize - ptr as usize },
+        8usize,
+        "Offset of field: _opaque_pthread_cond_t::__opaque"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct _opaque_pthread_condattr_t {
     pub __sig: ::std::os::raw::c_long,
     pub __opaque: [::std::os::raw::c_char; 8usize],
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of _opaque_pthread_condattr_t"]
-        [::std::mem::size_of::<_opaque_pthread_condattr_t>() - 16usize];
-    ["Alignment of _opaque_pthread_condattr_t"]
-        [::std::mem::align_of::<_opaque_pthread_condattr_t>() - 8usize];
-    ["Offset of field: _opaque_pthread_condattr_t::__sig"]
-        [::std::mem::offset_of!(_opaque_pthread_condattr_t, __sig) - 0usize];
-    ["Offset of field: _opaque_pthread_condattr_t::__opaque"]
-        [::std::mem::offset_of!(_opaque_pthread_condattr_t, __opaque) - 8usize];
-};
+#[test]
+fn bindgen_test_layout__opaque_pthread_condattr_t() {
+    const UNINIT: ::std::mem::MaybeUninit<_opaque_pthread_condattr_t> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<_opaque_pthread_condattr_t>(),
+        16usize,
+        "Size of _opaque_pthread_condattr_t"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<_opaque_pthread_condattr_t>(),
+        8usize,
+        "Alignment of _opaque_pthread_condattr_t"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__sig) as usize - ptr as usize },
+        0usize,
+        "Offset of field: _opaque_pthread_condattr_t::__sig"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__opaque) as usize - ptr as usize },
+        8usize,
+        "Offset of field: _opaque_pthread_condattr_t::__opaque"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct _opaque_pthread_mutex_t {
     pub __sig: ::std::os::raw::c_long,
     pub __opaque: [::std::os::raw::c_char; 56usize],
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of _opaque_pthread_mutex_t"][::std::mem::size_of::<_opaque_pthread_mutex_t>() - 64usize];
-    ["Alignment of _opaque_pthread_mutex_t"]
-        [::std::mem::align_of::<_opaque_pthread_mutex_t>() - 8usize];
-    ["Offset of field: _opaque_pthread_mutex_t::__sig"]
-        [::std::mem::offset_of!(_opaque_pthread_mutex_t, __sig) - 0usize];
-    ["Offset of field: _opaque_pthread_mutex_t::__opaque"]
-        [::std::mem::offset_of!(_opaque_pthread_mutex_t, __opaque) - 8usize];
-};
+#[test]
+fn bindgen_test_layout__opaque_pthread_mutex_t() {
+    const UNINIT: ::std::mem::MaybeUninit<_opaque_pthread_mutex_t> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<_opaque_pthread_mutex_t>(),
+        64usize,
+        "Size of _opaque_pthread_mutex_t"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<_opaque_pthread_mutex_t>(),
+        8usize,
+        "Alignment of _opaque_pthread_mutex_t"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__sig) as usize - ptr as usize },
+        0usize,
+        "Offset of field: _opaque_pthread_mutex_t::__sig"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__opaque) as usize - ptr as usize },
+        8usize,
+        "Offset of field: _opaque_pthread_mutex_t::__opaque"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct _opaque_pthread_mutexattr_t {
     pub __sig: ::std::os::raw::c_long,
     pub __opaque: [::std::os::raw::c_char; 8usize],
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of _opaque_pthread_mutexattr_t"]
-        [::std::mem::size_of::<_opaque_pthread_mutexattr_t>() - 16usize];
-    ["Alignment of _opaque_pthread_mutexattr_t"]
-        [::std::mem::align_of::<_opaque_pthread_mutexattr_t>() - 8usize];
-    ["Offset of field: _opaque_pthread_mutexattr_t::__sig"]
-        [::std::mem::offset_of!(_opaque_pthread_mutexattr_t, __sig) - 0usize];
-    ["Offset of field: _opaque_pthread_mutexattr_t::__opaque"]
-        [::std::mem::offset_of!(_opaque_pthread_mutexattr_t, __opaque) - 8usize];
-};
+#[test]
+fn bindgen_test_layout__opaque_pthread_mutexattr_t() {
+    const UNINIT: ::std::mem::MaybeUninit<_opaque_pthread_mutexattr_t> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<_opaque_pthread_mutexattr_t>(),
+        16usize,
+        "Size of _opaque_pthread_mutexattr_t"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<_opaque_pthread_mutexattr_t>(),
+        8usize,
+        "Alignment of _opaque_pthread_mutexattr_t"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__sig) as usize - ptr as usize },
+        0usize,
+        "Offset of field: _opaque_pthread_mutexattr_t::__sig"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__opaque) as usize - ptr as usize },
+        8usize,
+        "Offset of field: _opaque_pthread_mutexattr_t::__opaque"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct _opaque_pthread_once_t {
     pub __sig: ::std::os::raw::c_long,
     pub __opaque: [::std::os::raw::c_char; 8usize],
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of _opaque_pthread_once_t"][::std::mem::size_of::<_opaque_pthread_once_t>() - 16usize];
-    ["Alignment of _opaque_pthread_once_t"]
-        [::std::mem::align_of::<_opaque_pthread_once_t>() - 8usize];
-    ["Offset of field: _opaque_pthread_once_t::__sig"]
-        [::std::mem::offset_of!(_opaque_pthread_once_t, __sig) - 0usize];
-    ["Offset of field: _opaque_pthread_once_t::__opaque"]
-        [::std::mem::offset_of!(_opaque_pthread_once_t, __opaque) - 8usize];
-};
+#[test]
+fn bindgen_test_layout__opaque_pthread_once_t() {
+    const UNINIT: ::std::mem::MaybeUninit<_opaque_pthread_once_t> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<_opaque_pthread_once_t>(),
+        16usize,
+        "Size of _opaque_pthread_once_t"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<_opaque_pthread_once_t>(),
+        8usize,
+        "Alignment of _opaque_pthread_once_t"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__sig) as usize - ptr as usize },
+        0usize,
+        "Offset of field: _opaque_pthread_once_t::__sig"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__opaque) as usize - ptr as usize },
+        8usize,
+        "Offset of field: _opaque_pthread_once_t::__opaque"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct _opaque_pthread_rwlock_t {
     pub __sig: ::std::os::raw::c_long,
     pub __opaque: [::std::os::raw::c_char; 192usize],
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of _opaque_pthread_rwlock_t"]
-        [::std::mem::size_of::<_opaque_pthread_rwlock_t>() - 200usize];
-    ["Alignment of _opaque_pthread_rwlock_t"]
-        [::std::mem::align_of::<_opaque_pthread_rwlock_t>() - 8usize];
-    ["Offset of field: _opaque_pthread_rwlock_t::__sig"]
-        [::std::mem::offset_of!(_opaque_pthread_rwlock_t, __sig) - 0usize];
-    ["Offset of field: _opaque_pthread_rwlock_t::__opaque"]
-        [::std::mem::offset_of!(_opaque_pthread_rwlock_t, __opaque) - 8usize];
-};
+#[test]
+fn bindgen_test_layout__opaque_pthread_rwlock_t() {
+    const UNINIT: ::std::mem::MaybeUninit<_opaque_pthread_rwlock_t> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<_opaque_pthread_rwlock_t>(),
+        200usize,
+        "Size of _opaque_pthread_rwlock_t"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<_opaque_pthread_rwlock_t>(),
+        8usize,
+        "Alignment of _opaque_pthread_rwlock_t"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__sig) as usize - ptr as usize },
+        0usize,
+        "Offset of field: _opaque_pthread_rwlock_t::__sig"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__opaque) as usize - ptr as usize },
+        8usize,
+        "Offset of field: _opaque_pthread_rwlock_t::__opaque"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct _opaque_pthread_rwlockattr_t {
     pub __sig: ::std::os::raw::c_long,
     pub __opaque: [::std::os::raw::c_char; 16usize],
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of _opaque_pthread_rwlockattr_t"]
-        [::std::mem::size_of::<_opaque_pthread_rwlockattr_t>() - 24usize];
-    ["Alignment of _opaque_pthread_rwlockattr_t"]
-        [::std::mem::align_of::<_opaque_pthread_rwlockattr_t>() - 8usize];
-    ["Offset of field: _opaque_pthread_rwlockattr_t::__sig"]
-        [::std::mem::offset_of!(_opaque_pthread_rwlockattr_t, __sig) - 0usize];
-    ["Offset of field: _opaque_pthread_rwlockattr_t::__opaque"]
-        [::std::mem::offset_of!(_opaque_pthread_rwlockattr_t, __opaque) - 8usize];
-};
+#[test]
+fn bindgen_test_layout__opaque_pthread_rwlockattr_t() {
+    const UNINIT: ::std::mem::MaybeUninit<_opaque_pthread_rwlockattr_t> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<_opaque_pthread_rwlockattr_t>(),
+        24usize,
+        "Size of _opaque_pthread_rwlockattr_t"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<_opaque_pthread_rwlockattr_t>(),
+        8usize,
+        "Alignment of _opaque_pthread_rwlockattr_t"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__sig) as usize - ptr as usize },
+        0usize,
+        "Offset of field: _opaque_pthread_rwlockattr_t::__sig"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__opaque) as usize - ptr as usize },
+        8usize,
+        "Offset of field: _opaque_pthread_rwlockattr_t::__opaque"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct _opaque_pthread_t {
@@ -1018,17 +1209,32 @@ pub struct _opaque_pthread_t {
     pub __cleanup_stack: *mut __darwin_pthread_handler_rec,
     pub __opaque: [::std::os::raw::c_char; 8176usize],
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of _opaque_pthread_t"][::std::mem::size_of::<_opaque_pthread_t>() - 8192usize];
-    ["Alignment of _opaque_pthread_t"][::std::mem::align_of::<_opaque_pthread_t>() - 8usize];
-    ["Offset of field: _opaque_pthread_t::__sig"]
-        [::std::mem::offset_of!(_opaque_pthread_t, __sig) - 0usize];
-    ["Offset of field: _opaque_pthread_t::__cleanup_stack"]
-        [::std::mem::offset_of!(_opaque_pthread_t, __cleanup_stack) - 8usize];
-    ["Offset of field: _opaque_pthread_t::__opaque"]
-        [::std::mem::offset_of!(_opaque_pthread_t, __opaque) - 16usize];
-};
+#[test]
+fn bindgen_test_layout__opaque_pthread_t() {
+    const UNINIT: ::std::mem::MaybeUninit<_opaque_pthread_t> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<_opaque_pthread_t>(), 8192usize, "Size of _opaque_pthread_t");
+    assert_eq!(
+        ::std::mem::align_of::<_opaque_pthread_t>(),
+        8usize,
+        "Alignment of _opaque_pthread_t"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__sig) as usize - ptr as usize },
+        0usize,
+        "Offset of field: _opaque_pthread_t::__sig"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__cleanup_stack) as usize - ptr as usize },
+        8usize,
+        "Offset of field: _opaque_pthread_t::__cleanup_stack"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__opaque) as usize - ptr as usize },
+        16usize,
+        "Offset of field: _opaque_pthread_t::__opaque"
+    );
+}
 pub type __darwin_pthread_attr_t = _opaque_pthread_attr_t;
 pub type __darwin_pthread_cond_t = _opaque_pthread_cond_t;
 pub type __darwin_pthread_condattr_t = _opaque_pthread_condattr_t;
@@ -1071,19 +1277,37 @@ pub struct __darwin_arm_exception_state {
     pub __fsr: __uint32_t,
     pub __far: __uint32_t,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __darwin_arm_exception_state"]
-        [::std::mem::size_of::<__darwin_arm_exception_state>() - 12usize];
-    ["Alignment of __darwin_arm_exception_state"]
-        [::std::mem::align_of::<__darwin_arm_exception_state>() - 4usize];
-    ["Offset of field: __darwin_arm_exception_state::__exception"]
-        [::std::mem::offset_of!(__darwin_arm_exception_state, __exception) - 0usize];
-    ["Offset of field: __darwin_arm_exception_state::__fsr"]
-        [::std::mem::offset_of!(__darwin_arm_exception_state, __fsr) - 4usize];
-    ["Offset of field: __darwin_arm_exception_state::__far"]
-        [::std::mem::offset_of!(__darwin_arm_exception_state, __far) - 8usize];
-};
+#[test]
+fn bindgen_test_layout___darwin_arm_exception_state() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_arm_exception_state> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_arm_exception_state>(),
+        12usize,
+        "Size of __darwin_arm_exception_state"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_arm_exception_state>(),
+        4usize,
+        "Alignment of __darwin_arm_exception_state"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__exception) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_arm_exception_state::__exception"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__fsr) as usize - ptr as usize },
+        4usize,
+        "Offset of field: __darwin_arm_exception_state::__fsr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__far) as usize - ptr as usize },
+        8usize,
+        "Offset of field: __darwin_arm_exception_state::__far"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __darwin_arm_exception_state64 {
@@ -1091,36 +1315,69 @@ pub struct __darwin_arm_exception_state64 {
     pub __esr: __uint32_t,
     pub __exception: __uint32_t,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __darwin_arm_exception_state64"]
-        [::std::mem::size_of::<__darwin_arm_exception_state64>() - 16usize];
-    ["Alignment of __darwin_arm_exception_state64"]
-        [::std::mem::align_of::<__darwin_arm_exception_state64>() - 8usize];
-    ["Offset of field: __darwin_arm_exception_state64::__far"]
-        [::std::mem::offset_of!(__darwin_arm_exception_state64, __far) - 0usize];
-    ["Offset of field: __darwin_arm_exception_state64::__esr"]
-        [::std::mem::offset_of!(__darwin_arm_exception_state64, __esr) - 8usize];
-    ["Offset of field: __darwin_arm_exception_state64::__exception"]
-        [::std::mem::offset_of!(__darwin_arm_exception_state64, __exception) - 12usize];
-};
+#[test]
+fn bindgen_test_layout___darwin_arm_exception_state64() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_arm_exception_state64> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_arm_exception_state64>(),
+        16usize,
+        "Size of __darwin_arm_exception_state64"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_arm_exception_state64>(),
+        8usize,
+        "Alignment of __darwin_arm_exception_state64"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__far) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_arm_exception_state64::__far"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__esr) as usize - ptr as usize },
+        8usize,
+        "Offset of field: __darwin_arm_exception_state64::__esr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__exception) as usize - ptr as usize },
+        12usize,
+        "Offset of field: __darwin_arm_exception_state64::__exception"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __darwin_arm_exception_state64_v2 {
     pub __far: __uint64_t,
     pub __esr: __uint64_t,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __darwin_arm_exception_state64_v2"]
-        [::std::mem::size_of::<__darwin_arm_exception_state64_v2>() - 16usize];
-    ["Alignment of __darwin_arm_exception_state64_v2"]
-        [::std::mem::align_of::<__darwin_arm_exception_state64_v2>() - 8usize];
-    ["Offset of field: __darwin_arm_exception_state64_v2::__far"]
-        [::std::mem::offset_of!(__darwin_arm_exception_state64_v2, __far) - 0usize];
-    ["Offset of field: __darwin_arm_exception_state64_v2::__esr"]
-        [::std::mem::offset_of!(__darwin_arm_exception_state64_v2, __esr) - 8usize];
-};
+#[test]
+fn bindgen_test_layout___darwin_arm_exception_state64_v2() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_arm_exception_state64_v2> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_arm_exception_state64_v2>(),
+        16usize,
+        "Size of __darwin_arm_exception_state64_v2"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_arm_exception_state64_v2>(),
+        8usize,
+        "Alignment of __darwin_arm_exception_state64_v2"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__far) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_arm_exception_state64_v2::__far"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__esr) as usize - ptr as usize },
+        8usize,
+        "Offset of field: __darwin_arm_exception_state64_v2::__esr"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __darwin_arm_thread_state {
@@ -1130,23 +1387,47 @@ pub struct __darwin_arm_thread_state {
     pub __pc: __uint32_t,
     pub __cpsr: __uint32_t,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __darwin_arm_thread_state"]
-        [::std::mem::size_of::<__darwin_arm_thread_state>() - 68usize];
-    ["Alignment of __darwin_arm_thread_state"]
-        [::std::mem::align_of::<__darwin_arm_thread_state>() - 4usize];
-    ["Offset of field: __darwin_arm_thread_state::__r"]
-        [::std::mem::offset_of!(__darwin_arm_thread_state, __r) - 0usize];
-    ["Offset of field: __darwin_arm_thread_state::__sp"]
-        [::std::mem::offset_of!(__darwin_arm_thread_state, __sp) - 52usize];
-    ["Offset of field: __darwin_arm_thread_state::__lr"]
-        [::std::mem::offset_of!(__darwin_arm_thread_state, __lr) - 56usize];
-    ["Offset of field: __darwin_arm_thread_state::__pc"]
-        [::std::mem::offset_of!(__darwin_arm_thread_state, __pc) - 60usize];
-    ["Offset of field: __darwin_arm_thread_state::__cpsr"]
-        [::std::mem::offset_of!(__darwin_arm_thread_state, __cpsr) - 64usize];
-};
+#[test]
+fn bindgen_test_layout___darwin_arm_thread_state() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_arm_thread_state> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_arm_thread_state>(),
+        68usize,
+        "Size of __darwin_arm_thread_state"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_arm_thread_state>(),
+        4usize,
+        "Alignment of __darwin_arm_thread_state"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__r) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_arm_thread_state::__r"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__sp) as usize - ptr as usize },
+        52usize,
+        "Offset of field: __darwin_arm_thread_state::__sp"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__lr) as usize - ptr as usize },
+        56usize,
+        "Offset of field: __darwin_arm_thread_state::__lr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__pc) as usize - ptr as usize },
+        60usize,
+        "Offset of field: __darwin_arm_thread_state::__pc"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__cpsr) as usize - ptr as usize },
+        64usize,
+        "Offset of field: __darwin_arm_thread_state::__cpsr"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __darwin_arm_thread_state64 {
@@ -1158,43 +1439,89 @@ pub struct __darwin_arm_thread_state64 {
     pub __cpsr: __uint32_t,
     pub __pad: __uint32_t,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __darwin_arm_thread_state64"]
-        [::std::mem::size_of::<__darwin_arm_thread_state64>() - 272usize];
-    ["Alignment of __darwin_arm_thread_state64"]
-        [::std::mem::align_of::<__darwin_arm_thread_state64>() - 8usize];
-    ["Offset of field: __darwin_arm_thread_state64::__x"]
-        [::std::mem::offset_of!(__darwin_arm_thread_state64, __x) - 0usize];
-    ["Offset of field: __darwin_arm_thread_state64::__fp"]
-        [::std::mem::offset_of!(__darwin_arm_thread_state64, __fp) - 232usize];
-    ["Offset of field: __darwin_arm_thread_state64::__lr"]
-        [::std::mem::offset_of!(__darwin_arm_thread_state64, __lr) - 240usize];
-    ["Offset of field: __darwin_arm_thread_state64::__sp"]
-        [::std::mem::offset_of!(__darwin_arm_thread_state64, __sp) - 248usize];
-    ["Offset of field: __darwin_arm_thread_state64::__pc"]
-        [::std::mem::offset_of!(__darwin_arm_thread_state64, __pc) - 256usize];
-    ["Offset of field: __darwin_arm_thread_state64::__cpsr"]
-        [::std::mem::offset_of!(__darwin_arm_thread_state64, __cpsr) - 264usize];
-    ["Offset of field: __darwin_arm_thread_state64::__pad"]
-        [::std::mem::offset_of!(__darwin_arm_thread_state64, __pad) - 268usize];
-};
+#[test]
+fn bindgen_test_layout___darwin_arm_thread_state64() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_arm_thread_state64> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_arm_thread_state64>(),
+        272usize,
+        "Size of __darwin_arm_thread_state64"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_arm_thread_state64>(),
+        8usize,
+        "Alignment of __darwin_arm_thread_state64"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__x) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_arm_thread_state64::__x"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__fp) as usize - ptr as usize },
+        232usize,
+        "Offset of field: __darwin_arm_thread_state64::__fp"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__lr) as usize - ptr as usize },
+        240usize,
+        "Offset of field: __darwin_arm_thread_state64::__lr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__sp) as usize - ptr as usize },
+        248usize,
+        "Offset of field: __darwin_arm_thread_state64::__sp"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__pc) as usize - ptr as usize },
+        256usize,
+        "Offset of field: __darwin_arm_thread_state64::__pc"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__cpsr) as usize - ptr as usize },
+        264usize,
+        "Offset of field: __darwin_arm_thread_state64::__cpsr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__pad) as usize - ptr as usize },
+        268usize,
+        "Offset of field: __darwin_arm_thread_state64::__pad"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __darwin_arm_vfp_state {
     pub __r: [__uint32_t; 64usize],
     pub __fpscr: __uint32_t,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __darwin_arm_vfp_state"][::std::mem::size_of::<__darwin_arm_vfp_state>() - 260usize];
-    ["Alignment of __darwin_arm_vfp_state"]
-        [::std::mem::align_of::<__darwin_arm_vfp_state>() - 4usize];
-    ["Offset of field: __darwin_arm_vfp_state::__r"]
-        [::std::mem::offset_of!(__darwin_arm_vfp_state, __r) - 0usize];
-    ["Offset of field: __darwin_arm_vfp_state::__fpscr"]
-        [::std::mem::offset_of!(__darwin_arm_vfp_state, __fpscr) - 256usize];
-};
+#[test]
+fn bindgen_test_layout___darwin_arm_vfp_state() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_arm_vfp_state> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_arm_vfp_state>(),
+        260usize,
+        "Size of __darwin_arm_vfp_state"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_arm_vfp_state>(),
+        4usize,
+        "Alignment of __darwin_arm_vfp_state"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__r) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_arm_vfp_state::__r"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__fpscr) as usize - ptr as usize },
+        256usize,
+        "Offset of field: __darwin_arm_vfp_state::__fpscr"
+    );
+}
 #[repr(C)]
 #[repr(align(16))]
 #[derive(Debug, Copy, Clone)]
@@ -1203,19 +1530,37 @@ pub struct __darwin_arm_neon_state64 {
     pub __fpsr: __uint32_t,
     pub __fpcr: __uint32_t,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __darwin_arm_neon_state64"]
-        [::std::mem::size_of::<__darwin_arm_neon_state64>() - 528usize];
-    ["Alignment of __darwin_arm_neon_state64"]
-        [::std::mem::align_of::<__darwin_arm_neon_state64>() - 16usize];
-    ["Offset of field: __darwin_arm_neon_state64::__v"]
-        [::std::mem::offset_of!(__darwin_arm_neon_state64, __v) - 0usize];
-    ["Offset of field: __darwin_arm_neon_state64::__fpsr"]
-        [::std::mem::offset_of!(__darwin_arm_neon_state64, __fpsr) - 512usize];
-    ["Offset of field: __darwin_arm_neon_state64::__fpcr"]
-        [::std::mem::offset_of!(__darwin_arm_neon_state64, __fpcr) - 516usize];
-};
+#[test]
+fn bindgen_test_layout___darwin_arm_neon_state64() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_arm_neon_state64> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_arm_neon_state64>(),
+        528usize,
+        "Size of __darwin_arm_neon_state64"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_arm_neon_state64>(),
+        16usize,
+        "Alignment of __darwin_arm_neon_state64"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__v) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_arm_neon_state64::__v"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__fpsr) as usize - ptr as usize },
+        512usize,
+        "Offset of field: __darwin_arm_neon_state64::__fpsr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__fpcr) as usize - ptr as usize },
+        516usize,
+        "Offset of field: __darwin_arm_neon_state64::__fpcr"
+    );
+}
 #[repr(C)]
 #[repr(align(16))]
 #[derive(Debug, Copy, Clone)]
@@ -1224,31 +1569,204 @@ pub struct __darwin_arm_neon_state {
     pub __fpsr: __uint32_t,
     pub __fpcr: __uint32_t,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __darwin_arm_neon_state"]
-        [::std::mem::size_of::<__darwin_arm_neon_state>() - 272usize];
-    ["Alignment of __darwin_arm_neon_state"]
-        [::std::mem::align_of::<__darwin_arm_neon_state>() - 16usize];
-    ["Offset of field: __darwin_arm_neon_state::__v"]
-        [::std::mem::offset_of!(__darwin_arm_neon_state, __v) - 0usize];
-    ["Offset of field: __darwin_arm_neon_state::__fpsr"]
-        [::std::mem::offset_of!(__darwin_arm_neon_state, __fpsr) - 256usize];
-    ["Offset of field: __darwin_arm_neon_state::__fpcr"]
-        [::std::mem::offset_of!(__darwin_arm_neon_state, __fpcr) - 260usize];
-};
+#[test]
+fn bindgen_test_layout___darwin_arm_neon_state() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_arm_neon_state> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_arm_neon_state>(),
+        272usize,
+        "Size of __darwin_arm_neon_state"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_arm_neon_state>(),
+        16usize,
+        "Alignment of __darwin_arm_neon_state"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__v) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_arm_neon_state::__v"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__fpsr) as usize - ptr as usize },
+        256usize,
+        "Offset of field: __darwin_arm_neon_state::__fpsr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__fpcr) as usize - ptr as usize },
+        260usize,
+        "Offset of field: __darwin_arm_neon_state::__fpcr"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __arm_pagein_state {
     pub __pagein_error: ::std::os::raw::c_int,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __arm_pagein_state"][::std::mem::size_of::<__arm_pagein_state>() - 4usize];
-    ["Alignment of __arm_pagein_state"][::std::mem::align_of::<__arm_pagein_state>() - 4usize];
-    ["Offset of field: __arm_pagein_state::__pagein_error"]
-        [::std::mem::offset_of!(__arm_pagein_state, __pagein_error) - 0usize];
-};
+#[test]
+fn bindgen_test_layout___arm_pagein_state() {
+    const UNINIT: ::std::mem::MaybeUninit<__arm_pagein_state> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<__arm_pagein_state>(), 4usize, "Size of __arm_pagein_state");
+    assert_eq!(
+        ::std::mem::align_of::<__arm_pagein_state>(),
+        4usize,
+        "Alignment of __arm_pagein_state"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__pagein_error) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __arm_pagein_state::__pagein_error"
+    );
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct __darwin_arm_sme_state {
+    pub __svcr: __uint64_t,
+    pub __tpidr2_el0: __uint64_t,
+    pub __svl_b: __uint16_t,
+}
+#[test]
+fn bindgen_test_layout___darwin_arm_sme_state() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_arm_sme_state> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_arm_sme_state>(),
+        24usize,
+        "Size of __darwin_arm_sme_state"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_arm_sme_state>(),
+        8usize,
+        "Alignment of __darwin_arm_sme_state"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__svcr) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_arm_sme_state::__svcr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__tpidr2_el0) as usize - ptr as usize },
+        8usize,
+        "Offset of field: __darwin_arm_sme_state::__tpidr2_el0"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__svl_b) as usize - ptr as usize },
+        16usize,
+        "Offset of field: __darwin_arm_sme_state::__svl_b"
+    );
+}
+#[repr(C)]
+#[repr(align(4))]
+#[derive(Debug, Copy, Clone)]
+pub struct __darwin_arm_sve_z_state {
+    pub __z: [[::std::os::raw::c_char; 256usize]; 16usize],
+}
+#[test]
+fn bindgen_test_layout___darwin_arm_sve_z_state() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_arm_sve_z_state> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_arm_sve_z_state>(),
+        4096usize,
+        "Size of __darwin_arm_sve_z_state"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_arm_sve_z_state>(),
+        4usize,
+        "Alignment of __darwin_arm_sve_z_state"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__z) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_arm_sve_z_state::__z"
+    );
+}
+#[repr(C)]
+#[repr(align(4))]
+#[derive(Debug, Copy, Clone)]
+pub struct __darwin_arm_sve_p_state {
+    pub __p: [[::std::os::raw::c_char; 32usize]; 16usize],
+}
+#[test]
+fn bindgen_test_layout___darwin_arm_sve_p_state() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_arm_sve_p_state> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_arm_sve_p_state>(),
+        512usize,
+        "Size of __darwin_arm_sve_p_state"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_arm_sve_p_state>(),
+        4usize,
+        "Alignment of __darwin_arm_sve_p_state"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__p) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_arm_sve_p_state::__p"
+    );
+}
+#[repr(C)]
+#[repr(align(4))]
+#[derive(Debug, Copy, Clone)]
+pub struct __darwin_arm_sme_za_state {
+    pub __za: [::std::os::raw::c_char; 4096usize],
+}
+#[test]
+fn bindgen_test_layout___darwin_arm_sme_za_state() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_arm_sme_za_state> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_arm_sme_za_state>(),
+        4096usize,
+        "Size of __darwin_arm_sme_za_state"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_arm_sme_za_state>(),
+        4usize,
+        "Alignment of __darwin_arm_sme_za_state"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__za) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_arm_sme_za_state::__za"
+    );
+}
+#[repr(C)]
+#[repr(align(4))]
+#[derive(Debug, Copy, Clone)]
+pub struct __darwin_arm_sme2_state {
+    pub __zt0: [::std::os::raw::c_char; 64usize],
+}
+#[test]
+fn bindgen_test_layout___darwin_arm_sme2_state() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_arm_sme2_state> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_arm_sme2_state>(),
+        64usize,
+        "Size of __darwin_arm_sme2_state"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_arm_sme2_state>(),
+        4usize,
+        "Alignment of __darwin_arm_sme2_state"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__zt0) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_arm_sme2_state::__zt0"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __arm_legacy_debug_state {
@@ -1257,21 +1775,42 @@ pub struct __arm_legacy_debug_state {
     pub __wvr: [__uint32_t; 16usize],
     pub __wcr: [__uint32_t; 16usize],
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __arm_legacy_debug_state"]
-        [::std::mem::size_of::<__arm_legacy_debug_state>() - 256usize];
-    ["Alignment of __arm_legacy_debug_state"]
-        [::std::mem::align_of::<__arm_legacy_debug_state>() - 4usize];
-    ["Offset of field: __arm_legacy_debug_state::__bvr"]
-        [::std::mem::offset_of!(__arm_legacy_debug_state, __bvr) - 0usize];
-    ["Offset of field: __arm_legacy_debug_state::__bcr"]
-        [::std::mem::offset_of!(__arm_legacy_debug_state, __bcr) - 64usize];
-    ["Offset of field: __arm_legacy_debug_state::__wvr"]
-        [::std::mem::offset_of!(__arm_legacy_debug_state, __wvr) - 128usize];
-    ["Offset of field: __arm_legacy_debug_state::__wcr"]
-        [::std::mem::offset_of!(__arm_legacy_debug_state, __wcr) - 192usize];
-};
+#[test]
+fn bindgen_test_layout___arm_legacy_debug_state() {
+    const UNINIT: ::std::mem::MaybeUninit<__arm_legacy_debug_state> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__arm_legacy_debug_state>(),
+        256usize,
+        "Size of __arm_legacy_debug_state"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__arm_legacy_debug_state>(),
+        4usize,
+        "Alignment of __arm_legacy_debug_state"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__bvr) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __arm_legacy_debug_state::__bvr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__bcr) as usize - ptr as usize },
+        64usize,
+        "Offset of field: __arm_legacy_debug_state::__bcr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__wvr) as usize - ptr as usize },
+        128usize,
+        "Offset of field: __arm_legacy_debug_state::__wvr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__wcr) as usize - ptr as usize },
+        192usize,
+        "Offset of field: __arm_legacy_debug_state::__wcr"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __darwin_arm_debug_state32 {
@@ -1281,23 +1820,47 @@ pub struct __darwin_arm_debug_state32 {
     pub __wcr: [__uint32_t; 16usize],
     pub __mdscr_el1: __uint64_t,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __darwin_arm_debug_state32"]
-        [::std::mem::size_of::<__darwin_arm_debug_state32>() - 264usize];
-    ["Alignment of __darwin_arm_debug_state32"]
-        [::std::mem::align_of::<__darwin_arm_debug_state32>() - 8usize];
-    ["Offset of field: __darwin_arm_debug_state32::__bvr"]
-        [::std::mem::offset_of!(__darwin_arm_debug_state32, __bvr) - 0usize];
-    ["Offset of field: __darwin_arm_debug_state32::__bcr"]
-        [::std::mem::offset_of!(__darwin_arm_debug_state32, __bcr) - 64usize];
-    ["Offset of field: __darwin_arm_debug_state32::__wvr"]
-        [::std::mem::offset_of!(__darwin_arm_debug_state32, __wvr) - 128usize];
-    ["Offset of field: __darwin_arm_debug_state32::__wcr"]
-        [::std::mem::offset_of!(__darwin_arm_debug_state32, __wcr) - 192usize];
-    ["Offset of field: __darwin_arm_debug_state32::__mdscr_el1"]
-        [::std::mem::offset_of!(__darwin_arm_debug_state32, __mdscr_el1) - 256usize];
-};
+#[test]
+fn bindgen_test_layout___darwin_arm_debug_state32() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_arm_debug_state32> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_arm_debug_state32>(),
+        264usize,
+        "Size of __darwin_arm_debug_state32"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_arm_debug_state32>(),
+        8usize,
+        "Alignment of __darwin_arm_debug_state32"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__bvr) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_arm_debug_state32::__bvr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__bcr) as usize - ptr as usize },
+        64usize,
+        "Offset of field: __darwin_arm_debug_state32::__bcr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__wvr) as usize - ptr as usize },
+        128usize,
+        "Offset of field: __darwin_arm_debug_state32::__wvr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__wcr) as usize - ptr as usize },
+        192usize,
+        "Offset of field: __darwin_arm_debug_state32::__wcr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__mdscr_el1) as usize - ptr as usize },
+        256usize,
+        "Offset of field: __darwin_arm_debug_state32::__mdscr_el1"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __darwin_arm_debug_state64 {
@@ -1307,37 +1870,73 @@ pub struct __darwin_arm_debug_state64 {
     pub __wcr: [__uint64_t; 16usize],
     pub __mdscr_el1: __uint64_t,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __darwin_arm_debug_state64"]
-        [::std::mem::size_of::<__darwin_arm_debug_state64>() - 520usize];
-    ["Alignment of __darwin_arm_debug_state64"]
-        [::std::mem::align_of::<__darwin_arm_debug_state64>() - 8usize];
-    ["Offset of field: __darwin_arm_debug_state64::__bvr"]
-        [::std::mem::offset_of!(__darwin_arm_debug_state64, __bvr) - 0usize];
-    ["Offset of field: __darwin_arm_debug_state64::__bcr"]
-        [::std::mem::offset_of!(__darwin_arm_debug_state64, __bcr) - 128usize];
-    ["Offset of field: __darwin_arm_debug_state64::__wvr"]
-        [::std::mem::offset_of!(__darwin_arm_debug_state64, __wvr) - 256usize];
-    ["Offset of field: __darwin_arm_debug_state64::__wcr"]
-        [::std::mem::offset_of!(__darwin_arm_debug_state64, __wcr) - 384usize];
-    ["Offset of field: __darwin_arm_debug_state64::__mdscr_el1"]
-        [::std::mem::offset_of!(__darwin_arm_debug_state64, __mdscr_el1) - 512usize];
-};
+#[test]
+fn bindgen_test_layout___darwin_arm_debug_state64() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_arm_debug_state64> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_arm_debug_state64>(),
+        520usize,
+        "Size of __darwin_arm_debug_state64"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_arm_debug_state64>(),
+        8usize,
+        "Alignment of __darwin_arm_debug_state64"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__bvr) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_arm_debug_state64::__bvr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__bcr) as usize - ptr as usize },
+        128usize,
+        "Offset of field: __darwin_arm_debug_state64::__bcr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__wvr) as usize - ptr as usize },
+        256usize,
+        "Offset of field: __darwin_arm_debug_state64::__wvr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__wcr) as usize - ptr as usize },
+        384usize,
+        "Offset of field: __darwin_arm_debug_state64::__wcr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__mdscr_el1) as usize - ptr as usize },
+        512usize,
+        "Offset of field: __darwin_arm_debug_state64::__mdscr_el1"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __darwin_arm_cpmu_state64 {
     pub __ctrs: [__uint64_t; 16usize],
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __darwin_arm_cpmu_state64"]
-        [::std::mem::size_of::<__darwin_arm_cpmu_state64>() - 128usize];
-    ["Alignment of __darwin_arm_cpmu_state64"]
-        [::std::mem::align_of::<__darwin_arm_cpmu_state64>() - 8usize];
-    ["Offset of field: __darwin_arm_cpmu_state64::__ctrs"]
-        [::std::mem::offset_of!(__darwin_arm_cpmu_state64, __ctrs) - 0usize];
-};
+#[test]
+fn bindgen_test_layout___darwin_arm_cpmu_state64() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_arm_cpmu_state64> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_arm_cpmu_state64>(),
+        128usize,
+        "Size of __darwin_arm_cpmu_state64"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_arm_cpmu_state64>(),
+        8usize,
+        "Alignment of __darwin_arm_cpmu_state64"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__ctrs) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_arm_cpmu_state64::__ctrs"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __darwin_mcontext32 {
@@ -1345,17 +1944,36 @@ pub struct __darwin_mcontext32 {
     pub __ss: __darwin_arm_thread_state,
     pub __fs: __darwin_arm_vfp_state,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __darwin_mcontext32"][::std::mem::size_of::<__darwin_mcontext32>() - 340usize];
-    ["Alignment of __darwin_mcontext32"][::std::mem::align_of::<__darwin_mcontext32>() - 4usize];
-    ["Offset of field: __darwin_mcontext32::__es"]
-        [::std::mem::offset_of!(__darwin_mcontext32, __es) - 0usize];
-    ["Offset of field: __darwin_mcontext32::__ss"]
-        [::std::mem::offset_of!(__darwin_mcontext32, __ss) - 12usize];
-    ["Offset of field: __darwin_mcontext32::__fs"]
-        [::std::mem::offset_of!(__darwin_mcontext32, __fs) - 80usize];
-};
+#[test]
+fn bindgen_test_layout___darwin_mcontext32() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_mcontext32> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_mcontext32>(),
+        340usize,
+        "Size of __darwin_mcontext32"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_mcontext32>(),
+        4usize,
+        "Alignment of __darwin_mcontext32"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__es) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_mcontext32::__es"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__ss) as usize - ptr as usize },
+        12usize,
+        "Offset of field: __darwin_mcontext32::__ss"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__fs) as usize - ptr as usize },
+        80usize,
+        "Offset of field: __darwin_mcontext32::__fs"
+    );
+}
 #[repr(C)]
 #[repr(align(16))]
 #[derive(Debug, Copy, Clone)]
@@ -1364,17 +1982,36 @@ pub struct __darwin_mcontext64 {
     pub __ss: __darwin_arm_thread_state64,
     pub __ns: __darwin_arm_neon_state64,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __darwin_mcontext64"][::std::mem::size_of::<__darwin_mcontext64>() - 816usize];
-    ["Alignment of __darwin_mcontext64"][::std::mem::align_of::<__darwin_mcontext64>() - 16usize];
-    ["Offset of field: __darwin_mcontext64::__es"]
-        [::std::mem::offset_of!(__darwin_mcontext64, __es) - 0usize];
-    ["Offset of field: __darwin_mcontext64::__ss"]
-        [::std::mem::offset_of!(__darwin_mcontext64, __ss) - 16usize];
-    ["Offset of field: __darwin_mcontext64::__ns"]
-        [::std::mem::offset_of!(__darwin_mcontext64, __ns) - 288usize];
-};
+#[test]
+fn bindgen_test_layout___darwin_mcontext64() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_mcontext64> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_mcontext64>(),
+        816usize,
+        "Size of __darwin_mcontext64"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_mcontext64>(),
+        16usize,
+        "Alignment of __darwin_mcontext64"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__es) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_mcontext64::__es"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__ss) as usize - ptr as usize },
+        16usize,
+        "Offset of field: __darwin_mcontext64::__ss"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__ns) as usize - ptr as usize },
+        288usize,
+        "Offset of field: __darwin_mcontext64::__ns"
+    );
+}
 pub type mcontext_t = *mut __darwin_mcontext64;
 pub type pthread_attr_t = __darwin_pthread_attr_t;
 #[repr(C)]
@@ -1384,17 +2021,36 @@ pub struct __darwin_sigaltstack {
     pub ss_size: __darwin_size_t,
     pub ss_flags: ::std::os::raw::c_int,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __darwin_sigaltstack"][::std::mem::size_of::<__darwin_sigaltstack>() - 24usize];
-    ["Alignment of __darwin_sigaltstack"][::std::mem::align_of::<__darwin_sigaltstack>() - 8usize];
-    ["Offset of field: __darwin_sigaltstack::ss_sp"]
-        [::std::mem::offset_of!(__darwin_sigaltstack, ss_sp) - 0usize];
-    ["Offset of field: __darwin_sigaltstack::ss_size"]
-        [::std::mem::offset_of!(__darwin_sigaltstack, ss_size) - 8usize];
-    ["Offset of field: __darwin_sigaltstack::ss_flags"]
-        [::std::mem::offset_of!(__darwin_sigaltstack, ss_flags) - 16usize];
-};
+#[test]
+fn bindgen_test_layout___darwin_sigaltstack() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_sigaltstack> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<__darwin_sigaltstack>(),
+        24usize,
+        "Size of __darwin_sigaltstack"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_sigaltstack>(),
+        8usize,
+        "Alignment of __darwin_sigaltstack"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ss_sp) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_sigaltstack::ss_sp"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ss_size) as usize - ptr as usize },
+        8usize,
+        "Offset of field: __darwin_sigaltstack::ss_size"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ss_flags) as usize - ptr as usize },
+        16usize,
+        "Offset of field: __darwin_sigaltstack::ss_flags"
+    );
+}
 pub type stack_t = __darwin_sigaltstack;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -1406,23 +2062,47 @@ pub struct __darwin_ucontext {
     pub uc_mcsize: __darwin_size_t,
     pub uc_mcontext: *mut __darwin_mcontext64,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __darwin_ucontext"][::std::mem::size_of::<__darwin_ucontext>() - 56usize];
-    ["Alignment of __darwin_ucontext"][::std::mem::align_of::<__darwin_ucontext>() - 8usize];
-    ["Offset of field: __darwin_ucontext::uc_onstack"]
-        [::std::mem::offset_of!(__darwin_ucontext, uc_onstack) - 0usize];
-    ["Offset of field: __darwin_ucontext::uc_sigmask"]
-        [::std::mem::offset_of!(__darwin_ucontext, uc_sigmask) - 4usize];
-    ["Offset of field: __darwin_ucontext::uc_stack"]
-        [::std::mem::offset_of!(__darwin_ucontext, uc_stack) - 8usize];
-    ["Offset of field: __darwin_ucontext::uc_link"]
-        [::std::mem::offset_of!(__darwin_ucontext, uc_link) - 32usize];
-    ["Offset of field: __darwin_ucontext::uc_mcsize"]
-        [::std::mem::offset_of!(__darwin_ucontext, uc_mcsize) - 40usize];
-    ["Offset of field: __darwin_ucontext::uc_mcontext"]
-        [::std::mem::offset_of!(__darwin_ucontext, uc_mcontext) - 48usize];
-};
+#[test]
+fn bindgen_test_layout___darwin_ucontext() {
+    const UNINIT: ::std::mem::MaybeUninit<__darwin_ucontext> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<__darwin_ucontext>(), 56usize, "Size of __darwin_ucontext");
+    assert_eq!(
+        ::std::mem::align_of::<__darwin_ucontext>(),
+        8usize,
+        "Alignment of __darwin_ucontext"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).uc_onstack) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __darwin_ucontext::uc_onstack"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).uc_sigmask) as usize - ptr as usize },
+        4usize,
+        "Offset of field: __darwin_ucontext::uc_sigmask"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).uc_stack) as usize - ptr as usize },
+        8usize,
+        "Offset of field: __darwin_ucontext::uc_stack"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).uc_link) as usize - ptr as usize },
+        32usize,
+        "Offset of field: __darwin_ucontext::uc_link"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).uc_mcsize) as usize - ptr as usize },
+        40usize,
+        "Offset of field: __darwin_ucontext::uc_mcsize"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).uc_mcontext) as usize - ptr as usize },
+        48usize,
+        "Offset of field: __darwin_ucontext::uc_mcontext"
+    );
+}
 pub type ucontext_t = __darwin_ucontext;
 pub type sigset_t = __darwin_sigset_t;
 pub type uid_t = __darwin_uid_t;
@@ -1432,13 +2112,23 @@ pub union sigval {
     pub sival_int: ::std::os::raw::c_int,
     pub sival_ptr: *mut ::std::os::raw::c_void,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of sigval"][::std::mem::size_of::<sigval>() - 8usize];
-    ["Alignment of sigval"][::std::mem::align_of::<sigval>() - 8usize];
-    ["Offset of field: sigval::sival_int"][::std::mem::offset_of!(sigval, sival_int) - 0usize];
-    ["Offset of field: sigval::sival_ptr"][::std::mem::offset_of!(sigval, sival_ptr) - 0usize];
-};
+#[test]
+fn bindgen_test_layout_sigval() {
+    const UNINIT: ::std::mem::MaybeUninit<sigval> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<sigval>(), 8usize, "Size of sigval");
+    assert_eq!(::std::mem::align_of::<sigval>(), 8usize, "Alignment of sigval");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).sival_int) as usize - ptr as usize },
+        0usize,
+        "Offset of field: sigval::sival_int"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).sival_ptr) as usize - ptr as usize },
+        0usize,
+        "Offset of field: sigval::sival_ptr"
+    );
+}
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct sigevent {
@@ -1448,21 +2138,38 @@ pub struct sigevent {
     pub sigev_notify_function: ::std::option::Option<unsafe extern "C" fn(arg1: sigval)>,
     pub sigev_notify_attributes: *mut pthread_attr_t,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of sigevent"][::std::mem::size_of::<sigevent>() - 32usize];
-    ["Alignment of sigevent"][::std::mem::align_of::<sigevent>() - 8usize];
-    ["Offset of field: sigevent::sigev_notify"]
-        [::std::mem::offset_of!(sigevent, sigev_notify) - 0usize];
-    ["Offset of field: sigevent::sigev_signo"]
-        [::std::mem::offset_of!(sigevent, sigev_signo) - 4usize];
-    ["Offset of field: sigevent::sigev_value"]
-        [::std::mem::offset_of!(sigevent, sigev_value) - 8usize];
-    ["Offset of field: sigevent::sigev_notify_function"]
-        [::std::mem::offset_of!(sigevent, sigev_notify_function) - 16usize];
-    ["Offset of field: sigevent::sigev_notify_attributes"]
-        [::std::mem::offset_of!(sigevent, sigev_notify_attributes) - 24usize];
-};
+#[test]
+fn bindgen_test_layout_sigevent() {
+    const UNINIT: ::std::mem::MaybeUninit<sigevent> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<sigevent>(), 32usize, "Size of sigevent");
+    assert_eq!(::std::mem::align_of::<sigevent>(), 8usize, "Alignment of sigevent");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).sigev_notify) as usize - ptr as usize },
+        0usize,
+        "Offset of field: sigevent::sigev_notify"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).sigev_signo) as usize - ptr as usize },
+        4usize,
+        "Offset of field: sigevent::sigev_signo"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).sigev_value) as usize - ptr as usize },
+        8usize,
+        "Offset of field: sigevent::sigev_value"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).sigev_notify_function) as usize - ptr as usize },
+        16usize,
+        "Offset of field: sigevent::sigev_notify_function"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).sigev_notify_attributes) as usize - ptr as usize },
+        24usize,
+        "Offset of field: sigevent::sigev_notify_attributes"
+    );
+}
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct __siginfo {
@@ -1477,22 +2184,63 @@ pub struct __siginfo {
     pub si_band: ::std::os::raw::c_long,
     pub __pad: [::std::os::raw::c_ulong; 7usize],
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __siginfo"][::std::mem::size_of::<__siginfo>() - 104usize];
-    ["Alignment of __siginfo"][::std::mem::align_of::<__siginfo>() - 8usize];
-    ["Offset of field: __siginfo::si_signo"][::std::mem::offset_of!(__siginfo, si_signo) - 0usize];
-    ["Offset of field: __siginfo::si_errno"][::std::mem::offset_of!(__siginfo, si_errno) - 4usize];
-    ["Offset of field: __siginfo::si_code"][::std::mem::offset_of!(__siginfo, si_code) - 8usize];
-    ["Offset of field: __siginfo::si_pid"][::std::mem::offset_of!(__siginfo, si_pid) - 12usize];
-    ["Offset of field: __siginfo::si_uid"][::std::mem::offset_of!(__siginfo, si_uid) - 16usize];
-    ["Offset of field: __siginfo::si_status"]
-        [::std::mem::offset_of!(__siginfo, si_status) - 20usize];
-    ["Offset of field: __siginfo::si_addr"][::std::mem::offset_of!(__siginfo, si_addr) - 24usize];
-    ["Offset of field: __siginfo::si_value"][::std::mem::offset_of!(__siginfo, si_value) - 32usize];
-    ["Offset of field: __siginfo::si_band"][::std::mem::offset_of!(__siginfo, si_band) - 40usize];
-    ["Offset of field: __siginfo::__pad"][::std::mem::offset_of!(__siginfo, __pad) - 48usize];
-};
+#[test]
+fn bindgen_test_layout___siginfo() {
+    const UNINIT: ::std::mem::MaybeUninit<__siginfo> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<__siginfo>(), 104usize, "Size of __siginfo");
+    assert_eq!(::std::mem::align_of::<__siginfo>(), 8usize, "Alignment of __siginfo");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).si_signo) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __siginfo::si_signo"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).si_errno) as usize - ptr as usize },
+        4usize,
+        "Offset of field: __siginfo::si_errno"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).si_code) as usize - ptr as usize },
+        8usize,
+        "Offset of field: __siginfo::si_code"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).si_pid) as usize - ptr as usize },
+        12usize,
+        "Offset of field: __siginfo::si_pid"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).si_uid) as usize - ptr as usize },
+        16usize,
+        "Offset of field: __siginfo::si_uid"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).si_status) as usize - ptr as usize },
+        20usize,
+        "Offset of field: __siginfo::si_status"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).si_addr) as usize - ptr as usize },
+        24usize,
+        "Offset of field: __siginfo::si_addr"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).si_value) as usize - ptr as usize },
+        32usize,
+        "Offset of field: __siginfo::si_value"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).si_band) as usize - ptr as usize },
+        40usize,
+        "Offset of field: __siginfo::si_band"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__pad) as usize - ptr as usize },
+        48usize,
+        "Offset of field: __siginfo::__pad"
+    );
+}
 pub type siginfo_t = __siginfo;
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -1506,15 +2254,23 @@ pub union __sigaction_u {
         ),
     >,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __sigaction_u"][::std::mem::size_of::<__sigaction_u>() - 8usize];
-    ["Alignment of __sigaction_u"][::std::mem::align_of::<__sigaction_u>() - 8usize];
-    ["Offset of field: __sigaction_u::__sa_handler"]
-        [::std::mem::offset_of!(__sigaction_u, __sa_handler) - 0usize];
-    ["Offset of field: __sigaction_u::__sa_sigaction"]
-        [::std::mem::offset_of!(__sigaction_u, __sa_sigaction) - 0usize];
-};
+#[test]
+fn bindgen_test_layout___sigaction_u() {
+    const UNINIT: ::std::mem::MaybeUninit<__sigaction_u> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<__sigaction_u>(), 8usize, "Size of __sigaction_u");
+    assert_eq!(::std::mem::align_of::<__sigaction_u>(), 8usize, "Alignment of __sigaction_u");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__sa_handler) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __sigaction_u::__sa_handler"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__sa_sigaction) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __sigaction_u::__sa_sigaction"
+    );
+}
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct __sigaction {
@@ -1531,19 +2287,33 @@ pub struct __sigaction {
     pub sa_mask: sigset_t,
     pub sa_flags: ::std::os::raw::c_int,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of __sigaction"][::std::mem::size_of::<__sigaction>() - 24usize];
-    ["Alignment of __sigaction"][::std::mem::align_of::<__sigaction>() - 8usize];
-    ["Offset of field: __sigaction::__sigaction_u"]
-        [::std::mem::offset_of!(__sigaction, __sigaction_u) - 0usize];
-    ["Offset of field: __sigaction::sa_tramp"]
-        [::std::mem::offset_of!(__sigaction, sa_tramp) - 8usize];
-    ["Offset of field: __sigaction::sa_mask"]
-        [::std::mem::offset_of!(__sigaction, sa_mask) - 16usize];
-    ["Offset of field: __sigaction::sa_flags"]
-        [::std::mem::offset_of!(__sigaction, sa_flags) - 20usize];
-};
+#[test]
+fn bindgen_test_layout___sigaction() {
+    const UNINIT: ::std::mem::MaybeUninit<__sigaction> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<__sigaction>(), 24usize, "Size of __sigaction");
+    assert_eq!(::std::mem::align_of::<__sigaction>(), 8usize, "Alignment of __sigaction");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__sigaction_u) as usize - ptr as usize },
+        0usize,
+        "Offset of field: __sigaction::__sigaction_u"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).sa_tramp) as usize - ptr as usize },
+        8usize,
+        "Offset of field: __sigaction::sa_tramp"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).sa_mask) as usize - ptr as usize },
+        16usize,
+        "Offset of field: __sigaction::sa_mask"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).sa_flags) as usize - ptr as usize },
+        20usize,
+        "Offset of field: __sigaction::sa_flags"
+    );
+}
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct sigaction {
@@ -1551,15 +2321,28 @@ pub struct sigaction {
     pub sa_mask: sigset_t,
     pub sa_flags: ::std::os::raw::c_int,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of sigaction"][::std::mem::size_of::<sigaction>() - 16usize];
-    ["Alignment of sigaction"][::std::mem::align_of::<sigaction>() - 8usize];
-    ["Offset of field: sigaction::__sigaction_u"]
-        [::std::mem::offset_of!(sigaction, __sigaction_u) - 0usize];
-    ["Offset of field: sigaction::sa_mask"][::std::mem::offset_of!(sigaction, sa_mask) - 8usize];
-    ["Offset of field: sigaction::sa_flags"][::std::mem::offset_of!(sigaction, sa_flags) - 12usize];
-};
+#[test]
+fn bindgen_test_layout_sigaction() {
+    const UNINIT: ::std::mem::MaybeUninit<sigaction> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<sigaction>(), 16usize, "Size of sigaction");
+    assert_eq!(::std::mem::align_of::<sigaction>(), 8usize, "Alignment of sigaction");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).__sigaction_u) as usize - ptr as usize },
+        0usize,
+        "Offset of field: sigaction::__sigaction_u"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).sa_mask) as usize - ptr as usize },
+        8usize,
+        "Offset of field: sigaction::sa_mask"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).sa_flags) as usize - ptr as usize },
+        12usize,
+        "Offset of field: sigaction::sa_flags"
+    );
+}
 pub type sig_t = ::std::option::Option<unsafe extern "C" fn(arg1: ::std::os::raw::c_int)>;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -1568,29 +2351,52 @@ pub struct sigvec {
     pub sv_mask: ::std::os::raw::c_int,
     pub sv_flags: ::std::os::raw::c_int,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of sigvec"][::std::mem::size_of::<sigvec>() - 16usize];
-    ["Alignment of sigvec"][::std::mem::align_of::<sigvec>() - 8usize];
-    ["Offset of field: sigvec::sv_handler"][::std::mem::offset_of!(sigvec, sv_handler) - 0usize];
-    ["Offset of field: sigvec::sv_mask"][::std::mem::offset_of!(sigvec, sv_mask) - 8usize];
-    ["Offset of field: sigvec::sv_flags"][::std::mem::offset_of!(sigvec, sv_flags) - 12usize];
-};
+#[test]
+fn bindgen_test_layout_sigvec() {
+    const UNINIT: ::std::mem::MaybeUninit<sigvec> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<sigvec>(), 16usize, "Size of sigvec");
+    assert_eq!(::std::mem::align_of::<sigvec>(), 8usize, "Alignment of sigvec");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).sv_handler) as usize - ptr as usize },
+        0usize,
+        "Offset of field: sigvec::sv_handler"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).sv_mask) as usize - ptr as usize },
+        8usize,
+        "Offset of field: sigvec::sv_mask"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).sv_flags) as usize - ptr as usize },
+        12usize,
+        "Offset of field: sigvec::sv_flags"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct sigstack {
     pub ss_sp: *mut ::std::os::raw::c_char,
     pub ss_onstack: ::std::os::raw::c_int,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of sigstack"][::std::mem::size_of::<sigstack>() - 16usize];
-    ["Alignment of sigstack"][::std::mem::align_of::<sigstack>() - 8usize];
-    ["Offset of field: sigstack::ss_sp"][::std::mem::offset_of!(sigstack, ss_sp) - 0usize];
-    ["Offset of field: sigstack::ss_onstack"]
-        [::std::mem::offset_of!(sigstack, ss_onstack) - 8usize];
-};
-unsafe extern "C" {
+#[test]
+fn bindgen_test_layout_sigstack() {
+    const UNINIT: ::std::mem::MaybeUninit<sigstack> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<sigstack>(), 16usize, "Size of sigstack");
+    assert_eq!(::std::mem::align_of::<sigstack>(), 8usize, "Alignment of sigstack");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ss_sp) as usize - ptr as usize },
+        0usize,
+        "Offset of field: sigstack::ss_sp"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ss_onstack) as usize - ptr as usize },
+        8usize,
+        "Offset of field: sigstack::ss_onstack"
+    );
+}
+extern "C" {
     pub fn signal(
         arg1: ::std::os::raw::c_int,
         arg2: ::std::option::Option<unsafe extern "C" fn(arg1: ::std::os::raw::c_int)>,
@@ -1607,13 +2413,23 @@ pub struct timeval {
     pub tv_sec: __darwin_time_t,
     pub tv_usec: __darwin_suseconds_t,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of timeval"][::std::mem::size_of::<timeval>() - 16usize];
-    ["Alignment of timeval"][::std::mem::align_of::<timeval>() - 8usize];
-    ["Offset of field: timeval::tv_sec"][::std::mem::offset_of!(timeval, tv_sec) - 0usize];
-    ["Offset of field: timeval::tv_usec"][::std::mem::offset_of!(timeval, tv_usec) - 8usize];
-};
+#[test]
+fn bindgen_test_layout_timeval() {
+    const UNINIT: ::std::mem::MaybeUninit<timeval> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<timeval>(), 16usize, "Size of timeval");
+    assert_eq!(::std::mem::align_of::<timeval>(), 8usize, "Alignment of timeval");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).tv_sec) as usize - ptr as usize },
+        0usize,
+        "Offset of field: timeval::tv_sec"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).tv_usec) as usize - ptr as usize },
+        8usize,
+        "Offset of field: timeval::tv_usec"
+    );
+}
 pub type rlim_t = __uint64_t;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -1635,28 +2451,93 @@ pub struct rusage {
     pub ru_nvcsw: ::std::os::raw::c_long,
     pub ru_nivcsw: ::std::os::raw::c_long,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of rusage"][::std::mem::size_of::<rusage>() - 144usize];
-    ["Alignment of rusage"][::std::mem::align_of::<rusage>() - 8usize];
-    ["Offset of field: rusage::ru_utime"][::std::mem::offset_of!(rusage, ru_utime) - 0usize];
-    ["Offset of field: rusage::ru_stime"][::std::mem::offset_of!(rusage, ru_stime) - 16usize];
-    ["Offset of field: rusage::ru_maxrss"][::std::mem::offset_of!(rusage, ru_maxrss) - 32usize];
-    ["Offset of field: rusage::ru_ixrss"][::std::mem::offset_of!(rusage, ru_ixrss) - 40usize];
-    ["Offset of field: rusage::ru_idrss"][::std::mem::offset_of!(rusage, ru_idrss) - 48usize];
-    ["Offset of field: rusage::ru_isrss"][::std::mem::offset_of!(rusage, ru_isrss) - 56usize];
-    ["Offset of field: rusage::ru_minflt"][::std::mem::offset_of!(rusage, ru_minflt) - 64usize];
-    ["Offset of field: rusage::ru_majflt"][::std::mem::offset_of!(rusage, ru_majflt) - 72usize];
-    ["Offset of field: rusage::ru_nswap"][::std::mem::offset_of!(rusage, ru_nswap) - 80usize];
-    ["Offset of field: rusage::ru_inblock"][::std::mem::offset_of!(rusage, ru_inblock) - 88usize];
-    ["Offset of field: rusage::ru_oublock"][::std::mem::offset_of!(rusage, ru_oublock) - 96usize];
-    ["Offset of field: rusage::ru_msgsnd"][::std::mem::offset_of!(rusage, ru_msgsnd) - 104usize];
-    ["Offset of field: rusage::ru_msgrcv"][::std::mem::offset_of!(rusage, ru_msgrcv) - 112usize];
-    ["Offset of field: rusage::ru_nsignals"]
-        [::std::mem::offset_of!(rusage, ru_nsignals) - 120usize];
-    ["Offset of field: rusage::ru_nvcsw"][::std::mem::offset_of!(rusage, ru_nvcsw) - 128usize];
-    ["Offset of field: rusage::ru_nivcsw"][::std::mem::offset_of!(rusage, ru_nivcsw) - 136usize];
-};
+#[test]
+fn bindgen_test_layout_rusage() {
+    const UNINIT: ::std::mem::MaybeUninit<rusage> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<rusage>(), 144usize, "Size of rusage");
+    assert_eq!(::std::mem::align_of::<rusage>(), 8usize, "Alignment of rusage");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ru_utime) as usize - ptr as usize },
+        0usize,
+        "Offset of field: rusage::ru_utime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ru_stime) as usize - ptr as usize },
+        16usize,
+        "Offset of field: rusage::ru_stime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ru_maxrss) as usize - ptr as usize },
+        32usize,
+        "Offset of field: rusage::ru_maxrss"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ru_ixrss) as usize - ptr as usize },
+        40usize,
+        "Offset of field: rusage::ru_ixrss"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ru_idrss) as usize - ptr as usize },
+        48usize,
+        "Offset of field: rusage::ru_idrss"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ru_isrss) as usize - ptr as usize },
+        56usize,
+        "Offset of field: rusage::ru_isrss"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ru_minflt) as usize - ptr as usize },
+        64usize,
+        "Offset of field: rusage::ru_minflt"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ru_majflt) as usize - ptr as usize },
+        72usize,
+        "Offset of field: rusage::ru_majflt"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ru_nswap) as usize - ptr as usize },
+        80usize,
+        "Offset of field: rusage::ru_nswap"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ru_inblock) as usize - ptr as usize },
+        88usize,
+        "Offset of field: rusage::ru_inblock"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ru_oublock) as usize - ptr as usize },
+        96usize,
+        "Offset of field: rusage::ru_oublock"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ru_msgsnd) as usize - ptr as usize },
+        104usize,
+        "Offset of field: rusage::ru_msgsnd"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ru_msgrcv) as usize - ptr as usize },
+        112usize,
+        "Offset of field: rusage::ru_msgrcv"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ru_nsignals) as usize - ptr as usize },
+        120usize,
+        "Offset of field: rusage::ru_nsignals"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ru_nvcsw) as usize - ptr as usize },
+        128usize,
+        "Offset of field: rusage::ru_nvcsw"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ru_nivcsw) as usize - ptr as usize },
+        136usize,
+        "Offset of field: rusage::ru_nivcsw"
+    );
+}
 pub type rusage_info_t = *mut ::std::os::raw::c_void;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -1673,33 +2554,68 @@ pub struct rusage_info_v0 {
     pub ri_proc_start_abstime: u64,
     pub ri_proc_exit_abstime: u64,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of rusage_info_v0"][::std::mem::size_of::<rusage_info_v0>() - 96usize];
-    ["Alignment of rusage_info_v0"][::std::mem::align_of::<rusage_info_v0>() - 8usize];
-    ["Offset of field: rusage_info_v0::ri_uuid"]
-        [::std::mem::offset_of!(rusage_info_v0, ri_uuid) - 0usize];
-    ["Offset of field: rusage_info_v0::ri_user_time"]
-        [::std::mem::offset_of!(rusage_info_v0, ri_user_time) - 16usize];
-    ["Offset of field: rusage_info_v0::ri_system_time"]
-        [::std::mem::offset_of!(rusage_info_v0, ri_system_time) - 24usize];
-    ["Offset of field: rusage_info_v0::ri_pkg_idle_wkups"]
-        [::std::mem::offset_of!(rusage_info_v0, ri_pkg_idle_wkups) - 32usize];
-    ["Offset of field: rusage_info_v0::ri_interrupt_wkups"]
-        [::std::mem::offset_of!(rusage_info_v0, ri_interrupt_wkups) - 40usize];
-    ["Offset of field: rusage_info_v0::ri_pageins"]
-        [::std::mem::offset_of!(rusage_info_v0, ri_pageins) - 48usize];
-    ["Offset of field: rusage_info_v0::ri_wired_size"]
-        [::std::mem::offset_of!(rusage_info_v0, ri_wired_size) - 56usize];
-    ["Offset of field: rusage_info_v0::ri_resident_size"]
-        [::std::mem::offset_of!(rusage_info_v0, ri_resident_size) - 64usize];
-    ["Offset of field: rusage_info_v0::ri_phys_footprint"]
-        [::std::mem::offset_of!(rusage_info_v0, ri_phys_footprint) - 72usize];
-    ["Offset of field: rusage_info_v0::ri_proc_start_abstime"]
-        [::std::mem::offset_of!(rusage_info_v0, ri_proc_start_abstime) - 80usize];
-    ["Offset of field: rusage_info_v0::ri_proc_exit_abstime"]
-        [::std::mem::offset_of!(rusage_info_v0, ri_proc_exit_abstime) - 88usize];
-};
+#[test]
+fn bindgen_test_layout_rusage_info_v0() {
+    const UNINIT: ::std::mem::MaybeUninit<rusage_info_v0> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<rusage_info_v0>(), 96usize, "Size of rusage_info_v0");
+    assert_eq!(::std::mem::align_of::<rusage_info_v0>(), 8usize, "Alignment of rusage_info_v0");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_uuid) as usize - ptr as usize },
+        0usize,
+        "Offset of field: rusage_info_v0::ri_uuid"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_user_time) as usize - ptr as usize },
+        16usize,
+        "Offset of field: rusage_info_v0::ri_user_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_system_time) as usize - ptr as usize },
+        24usize,
+        "Offset of field: rusage_info_v0::ri_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_pkg_idle_wkups) as usize - ptr as usize },
+        32usize,
+        "Offset of field: rusage_info_v0::ri_pkg_idle_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_interrupt_wkups) as usize - ptr as usize },
+        40usize,
+        "Offset of field: rusage_info_v0::ri_interrupt_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_pageins) as usize - ptr as usize },
+        48usize,
+        "Offset of field: rusage_info_v0::ri_pageins"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_wired_size) as usize - ptr as usize },
+        56usize,
+        "Offset of field: rusage_info_v0::ri_wired_size"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_resident_size) as usize - ptr as usize },
+        64usize,
+        "Offset of field: rusage_info_v0::ri_resident_size"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_phys_footprint) as usize - ptr as usize },
+        72usize,
+        "Offset of field: rusage_info_v0::ri_phys_footprint"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_proc_start_abstime) as usize - ptr as usize },
+        80usize,
+        "Offset of field: rusage_info_v0::ri_proc_start_abstime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_proc_exit_abstime) as usize - ptr as usize },
+        88usize,
+        "Offset of field: rusage_info_v0::ri_proc_exit_abstime"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rusage_info_v1 {
@@ -1721,45 +2637,98 @@ pub struct rusage_info_v1 {
     pub ri_child_pageins: u64,
     pub ri_child_elapsed_abstime: u64,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of rusage_info_v1"][::std::mem::size_of::<rusage_info_v1>() - 144usize];
-    ["Alignment of rusage_info_v1"][::std::mem::align_of::<rusage_info_v1>() - 8usize];
-    ["Offset of field: rusage_info_v1::ri_uuid"]
-        [::std::mem::offset_of!(rusage_info_v1, ri_uuid) - 0usize];
-    ["Offset of field: rusage_info_v1::ri_user_time"]
-        [::std::mem::offset_of!(rusage_info_v1, ri_user_time) - 16usize];
-    ["Offset of field: rusage_info_v1::ri_system_time"]
-        [::std::mem::offset_of!(rusage_info_v1, ri_system_time) - 24usize];
-    ["Offset of field: rusage_info_v1::ri_pkg_idle_wkups"]
-        [::std::mem::offset_of!(rusage_info_v1, ri_pkg_idle_wkups) - 32usize];
-    ["Offset of field: rusage_info_v1::ri_interrupt_wkups"]
-        [::std::mem::offset_of!(rusage_info_v1, ri_interrupt_wkups) - 40usize];
-    ["Offset of field: rusage_info_v1::ri_pageins"]
-        [::std::mem::offset_of!(rusage_info_v1, ri_pageins) - 48usize];
-    ["Offset of field: rusage_info_v1::ri_wired_size"]
-        [::std::mem::offset_of!(rusage_info_v1, ri_wired_size) - 56usize];
-    ["Offset of field: rusage_info_v1::ri_resident_size"]
-        [::std::mem::offset_of!(rusage_info_v1, ri_resident_size) - 64usize];
-    ["Offset of field: rusage_info_v1::ri_phys_footprint"]
-        [::std::mem::offset_of!(rusage_info_v1, ri_phys_footprint) - 72usize];
-    ["Offset of field: rusage_info_v1::ri_proc_start_abstime"]
-        [::std::mem::offset_of!(rusage_info_v1, ri_proc_start_abstime) - 80usize];
-    ["Offset of field: rusage_info_v1::ri_proc_exit_abstime"]
-        [::std::mem::offset_of!(rusage_info_v1, ri_proc_exit_abstime) - 88usize];
-    ["Offset of field: rusage_info_v1::ri_child_user_time"]
-        [::std::mem::offset_of!(rusage_info_v1, ri_child_user_time) - 96usize];
-    ["Offset of field: rusage_info_v1::ri_child_system_time"]
-        [::std::mem::offset_of!(rusage_info_v1, ri_child_system_time) - 104usize];
-    ["Offset of field: rusage_info_v1::ri_child_pkg_idle_wkups"]
-        [::std::mem::offset_of!(rusage_info_v1, ri_child_pkg_idle_wkups) - 112usize];
-    ["Offset of field: rusage_info_v1::ri_child_interrupt_wkups"]
-        [::std::mem::offset_of!(rusage_info_v1, ri_child_interrupt_wkups) - 120usize];
-    ["Offset of field: rusage_info_v1::ri_child_pageins"]
-        [::std::mem::offset_of!(rusage_info_v1, ri_child_pageins) - 128usize];
-    ["Offset of field: rusage_info_v1::ri_child_elapsed_abstime"]
-        [::std::mem::offset_of!(rusage_info_v1, ri_child_elapsed_abstime) - 136usize];
-};
+#[test]
+fn bindgen_test_layout_rusage_info_v1() {
+    const UNINIT: ::std::mem::MaybeUninit<rusage_info_v1> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<rusage_info_v1>(), 144usize, "Size of rusage_info_v1");
+    assert_eq!(::std::mem::align_of::<rusage_info_v1>(), 8usize, "Alignment of rusage_info_v1");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_uuid) as usize - ptr as usize },
+        0usize,
+        "Offset of field: rusage_info_v1::ri_uuid"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_user_time) as usize - ptr as usize },
+        16usize,
+        "Offset of field: rusage_info_v1::ri_user_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_system_time) as usize - ptr as usize },
+        24usize,
+        "Offset of field: rusage_info_v1::ri_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_pkg_idle_wkups) as usize - ptr as usize },
+        32usize,
+        "Offset of field: rusage_info_v1::ri_pkg_idle_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_interrupt_wkups) as usize - ptr as usize },
+        40usize,
+        "Offset of field: rusage_info_v1::ri_interrupt_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_pageins) as usize - ptr as usize },
+        48usize,
+        "Offset of field: rusage_info_v1::ri_pageins"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_wired_size) as usize - ptr as usize },
+        56usize,
+        "Offset of field: rusage_info_v1::ri_wired_size"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_resident_size) as usize - ptr as usize },
+        64usize,
+        "Offset of field: rusage_info_v1::ri_resident_size"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_phys_footprint) as usize - ptr as usize },
+        72usize,
+        "Offset of field: rusage_info_v1::ri_phys_footprint"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_proc_start_abstime) as usize - ptr as usize },
+        80usize,
+        "Offset of field: rusage_info_v1::ri_proc_start_abstime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_proc_exit_abstime) as usize - ptr as usize },
+        88usize,
+        "Offset of field: rusage_info_v1::ri_proc_exit_abstime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_user_time) as usize - ptr as usize },
+        96usize,
+        "Offset of field: rusage_info_v1::ri_child_user_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_system_time) as usize - ptr as usize },
+        104usize,
+        "Offset of field: rusage_info_v1::ri_child_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_pkg_idle_wkups) as usize - ptr as usize },
+        112usize,
+        "Offset of field: rusage_info_v1::ri_child_pkg_idle_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_interrupt_wkups) as usize - ptr as usize },
+        120usize,
+        "Offset of field: rusage_info_v1::ri_child_interrupt_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_pageins) as usize - ptr as usize },
+        128usize,
+        "Offset of field: rusage_info_v1::ri_child_pageins"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_elapsed_abstime) as usize - ptr as usize },
+        136usize,
+        "Offset of field: rusage_info_v1::ri_child_elapsed_abstime"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rusage_info_v2 {
@@ -1783,49 +2752,108 @@ pub struct rusage_info_v2 {
     pub ri_diskio_bytesread: u64,
     pub ri_diskio_byteswritten: u64,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of rusage_info_v2"][::std::mem::size_of::<rusage_info_v2>() - 160usize];
-    ["Alignment of rusage_info_v2"][::std::mem::align_of::<rusage_info_v2>() - 8usize];
-    ["Offset of field: rusage_info_v2::ri_uuid"]
-        [::std::mem::offset_of!(rusage_info_v2, ri_uuid) - 0usize];
-    ["Offset of field: rusage_info_v2::ri_user_time"]
-        [::std::mem::offset_of!(rusage_info_v2, ri_user_time) - 16usize];
-    ["Offset of field: rusage_info_v2::ri_system_time"]
-        [::std::mem::offset_of!(rusage_info_v2, ri_system_time) - 24usize];
-    ["Offset of field: rusage_info_v2::ri_pkg_idle_wkups"]
-        [::std::mem::offset_of!(rusage_info_v2, ri_pkg_idle_wkups) - 32usize];
-    ["Offset of field: rusage_info_v2::ri_interrupt_wkups"]
-        [::std::mem::offset_of!(rusage_info_v2, ri_interrupt_wkups) - 40usize];
-    ["Offset of field: rusage_info_v2::ri_pageins"]
-        [::std::mem::offset_of!(rusage_info_v2, ri_pageins) - 48usize];
-    ["Offset of field: rusage_info_v2::ri_wired_size"]
-        [::std::mem::offset_of!(rusage_info_v2, ri_wired_size) - 56usize];
-    ["Offset of field: rusage_info_v2::ri_resident_size"]
-        [::std::mem::offset_of!(rusage_info_v2, ri_resident_size) - 64usize];
-    ["Offset of field: rusage_info_v2::ri_phys_footprint"]
-        [::std::mem::offset_of!(rusage_info_v2, ri_phys_footprint) - 72usize];
-    ["Offset of field: rusage_info_v2::ri_proc_start_abstime"]
-        [::std::mem::offset_of!(rusage_info_v2, ri_proc_start_abstime) - 80usize];
-    ["Offset of field: rusage_info_v2::ri_proc_exit_abstime"]
-        [::std::mem::offset_of!(rusage_info_v2, ri_proc_exit_abstime) - 88usize];
-    ["Offset of field: rusage_info_v2::ri_child_user_time"]
-        [::std::mem::offset_of!(rusage_info_v2, ri_child_user_time) - 96usize];
-    ["Offset of field: rusage_info_v2::ri_child_system_time"]
-        [::std::mem::offset_of!(rusage_info_v2, ri_child_system_time) - 104usize];
-    ["Offset of field: rusage_info_v2::ri_child_pkg_idle_wkups"]
-        [::std::mem::offset_of!(rusage_info_v2, ri_child_pkg_idle_wkups) - 112usize];
-    ["Offset of field: rusage_info_v2::ri_child_interrupt_wkups"]
-        [::std::mem::offset_of!(rusage_info_v2, ri_child_interrupt_wkups) - 120usize];
-    ["Offset of field: rusage_info_v2::ri_child_pageins"]
-        [::std::mem::offset_of!(rusage_info_v2, ri_child_pageins) - 128usize];
-    ["Offset of field: rusage_info_v2::ri_child_elapsed_abstime"]
-        [::std::mem::offset_of!(rusage_info_v2, ri_child_elapsed_abstime) - 136usize];
-    ["Offset of field: rusage_info_v2::ri_diskio_bytesread"]
-        [::std::mem::offset_of!(rusage_info_v2, ri_diskio_bytesread) - 144usize];
-    ["Offset of field: rusage_info_v2::ri_diskio_byteswritten"]
-        [::std::mem::offset_of!(rusage_info_v2, ri_diskio_byteswritten) - 152usize];
-};
+#[test]
+fn bindgen_test_layout_rusage_info_v2() {
+    const UNINIT: ::std::mem::MaybeUninit<rusage_info_v2> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<rusage_info_v2>(), 160usize, "Size of rusage_info_v2");
+    assert_eq!(::std::mem::align_of::<rusage_info_v2>(), 8usize, "Alignment of rusage_info_v2");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_uuid) as usize - ptr as usize },
+        0usize,
+        "Offset of field: rusage_info_v2::ri_uuid"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_user_time) as usize - ptr as usize },
+        16usize,
+        "Offset of field: rusage_info_v2::ri_user_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_system_time) as usize - ptr as usize },
+        24usize,
+        "Offset of field: rusage_info_v2::ri_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_pkg_idle_wkups) as usize - ptr as usize },
+        32usize,
+        "Offset of field: rusage_info_v2::ri_pkg_idle_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_interrupt_wkups) as usize - ptr as usize },
+        40usize,
+        "Offset of field: rusage_info_v2::ri_interrupt_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_pageins) as usize - ptr as usize },
+        48usize,
+        "Offset of field: rusage_info_v2::ri_pageins"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_wired_size) as usize - ptr as usize },
+        56usize,
+        "Offset of field: rusage_info_v2::ri_wired_size"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_resident_size) as usize - ptr as usize },
+        64usize,
+        "Offset of field: rusage_info_v2::ri_resident_size"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_phys_footprint) as usize - ptr as usize },
+        72usize,
+        "Offset of field: rusage_info_v2::ri_phys_footprint"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_proc_start_abstime) as usize - ptr as usize },
+        80usize,
+        "Offset of field: rusage_info_v2::ri_proc_start_abstime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_proc_exit_abstime) as usize - ptr as usize },
+        88usize,
+        "Offset of field: rusage_info_v2::ri_proc_exit_abstime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_user_time) as usize - ptr as usize },
+        96usize,
+        "Offset of field: rusage_info_v2::ri_child_user_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_system_time) as usize - ptr as usize },
+        104usize,
+        "Offset of field: rusage_info_v2::ri_child_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_pkg_idle_wkups) as usize - ptr as usize },
+        112usize,
+        "Offset of field: rusage_info_v2::ri_child_pkg_idle_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_interrupt_wkups) as usize - ptr as usize },
+        120usize,
+        "Offset of field: rusage_info_v2::ri_child_interrupt_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_pageins) as usize - ptr as usize },
+        128usize,
+        "Offset of field: rusage_info_v2::ri_child_pageins"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_elapsed_abstime) as usize - ptr as usize },
+        136usize,
+        "Offset of field: rusage_info_v2::ri_child_elapsed_abstime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_diskio_bytesread) as usize - ptr as usize },
+        144usize,
+        "Offset of field: rusage_info_v2::ri_diskio_bytesread"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_diskio_byteswritten) as usize - ptr as usize },
+        152usize,
+        "Offset of field: rusage_info_v2::ri_diskio_byteswritten"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rusage_info_v3 {
@@ -1858,67 +2886,157 @@ pub struct rusage_info_v3 {
     pub ri_billed_system_time: u64,
     pub ri_serviced_system_time: u64,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of rusage_info_v3"][::std::mem::size_of::<rusage_info_v3>() - 232usize];
-    ["Alignment of rusage_info_v3"][::std::mem::align_of::<rusage_info_v3>() - 8usize];
-    ["Offset of field: rusage_info_v3::ri_uuid"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_uuid) - 0usize];
-    ["Offset of field: rusage_info_v3::ri_user_time"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_user_time) - 16usize];
-    ["Offset of field: rusage_info_v3::ri_system_time"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_system_time) - 24usize];
-    ["Offset of field: rusage_info_v3::ri_pkg_idle_wkups"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_pkg_idle_wkups) - 32usize];
-    ["Offset of field: rusage_info_v3::ri_interrupt_wkups"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_interrupt_wkups) - 40usize];
-    ["Offset of field: rusage_info_v3::ri_pageins"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_pageins) - 48usize];
-    ["Offset of field: rusage_info_v3::ri_wired_size"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_wired_size) - 56usize];
-    ["Offset of field: rusage_info_v3::ri_resident_size"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_resident_size) - 64usize];
-    ["Offset of field: rusage_info_v3::ri_phys_footprint"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_phys_footprint) - 72usize];
-    ["Offset of field: rusage_info_v3::ri_proc_start_abstime"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_proc_start_abstime) - 80usize];
-    ["Offset of field: rusage_info_v3::ri_proc_exit_abstime"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_proc_exit_abstime) - 88usize];
-    ["Offset of field: rusage_info_v3::ri_child_user_time"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_child_user_time) - 96usize];
-    ["Offset of field: rusage_info_v3::ri_child_system_time"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_child_system_time) - 104usize];
-    ["Offset of field: rusage_info_v3::ri_child_pkg_idle_wkups"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_child_pkg_idle_wkups) - 112usize];
-    ["Offset of field: rusage_info_v3::ri_child_interrupt_wkups"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_child_interrupt_wkups) - 120usize];
-    ["Offset of field: rusage_info_v3::ri_child_pageins"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_child_pageins) - 128usize];
-    ["Offset of field: rusage_info_v3::ri_child_elapsed_abstime"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_child_elapsed_abstime) - 136usize];
-    ["Offset of field: rusage_info_v3::ri_diskio_bytesread"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_diskio_bytesread) - 144usize];
-    ["Offset of field: rusage_info_v3::ri_diskio_byteswritten"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_diskio_byteswritten) - 152usize];
-    ["Offset of field: rusage_info_v3::ri_cpu_time_qos_default"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_cpu_time_qos_default) - 160usize];
-    ["Offset of field: rusage_info_v3::ri_cpu_time_qos_maintenance"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_cpu_time_qos_maintenance) - 168usize];
-    ["Offset of field: rusage_info_v3::ri_cpu_time_qos_background"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_cpu_time_qos_background) - 176usize];
-    ["Offset of field: rusage_info_v3::ri_cpu_time_qos_utility"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_cpu_time_qos_utility) - 184usize];
-    ["Offset of field: rusage_info_v3::ri_cpu_time_qos_legacy"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_cpu_time_qos_legacy) - 192usize];
-    ["Offset of field: rusage_info_v3::ri_cpu_time_qos_user_initiated"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_cpu_time_qos_user_initiated) - 200usize];
-    ["Offset of field: rusage_info_v3::ri_cpu_time_qos_user_interactive"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_cpu_time_qos_user_interactive) - 208usize];
-    ["Offset of field: rusage_info_v3::ri_billed_system_time"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_billed_system_time) - 216usize];
-    ["Offset of field: rusage_info_v3::ri_serviced_system_time"]
-        [::std::mem::offset_of!(rusage_info_v3, ri_serviced_system_time) - 224usize];
-};
+#[test]
+fn bindgen_test_layout_rusage_info_v3() {
+    const UNINIT: ::std::mem::MaybeUninit<rusage_info_v3> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<rusage_info_v3>(), 232usize, "Size of rusage_info_v3");
+    assert_eq!(::std::mem::align_of::<rusage_info_v3>(), 8usize, "Alignment of rusage_info_v3");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_uuid) as usize - ptr as usize },
+        0usize,
+        "Offset of field: rusage_info_v3::ri_uuid"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_user_time) as usize - ptr as usize },
+        16usize,
+        "Offset of field: rusage_info_v3::ri_user_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_system_time) as usize - ptr as usize },
+        24usize,
+        "Offset of field: rusage_info_v3::ri_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_pkg_idle_wkups) as usize - ptr as usize },
+        32usize,
+        "Offset of field: rusage_info_v3::ri_pkg_idle_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_interrupt_wkups) as usize - ptr as usize },
+        40usize,
+        "Offset of field: rusage_info_v3::ri_interrupt_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_pageins) as usize - ptr as usize },
+        48usize,
+        "Offset of field: rusage_info_v3::ri_pageins"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_wired_size) as usize - ptr as usize },
+        56usize,
+        "Offset of field: rusage_info_v3::ri_wired_size"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_resident_size) as usize - ptr as usize },
+        64usize,
+        "Offset of field: rusage_info_v3::ri_resident_size"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_phys_footprint) as usize - ptr as usize },
+        72usize,
+        "Offset of field: rusage_info_v3::ri_phys_footprint"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_proc_start_abstime) as usize - ptr as usize },
+        80usize,
+        "Offset of field: rusage_info_v3::ri_proc_start_abstime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_proc_exit_abstime) as usize - ptr as usize },
+        88usize,
+        "Offset of field: rusage_info_v3::ri_proc_exit_abstime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_user_time) as usize - ptr as usize },
+        96usize,
+        "Offset of field: rusage_info_v3::ri_child_user_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_system_time) as usize - ptr as usize },
+        104usize,
+        "Offset of field: rusage_info_v3::ri_child_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_pkg_idle_wkups) as usize - ptr as usize },
+        112usize,
+        "Offset of field: rusage_info_v3::ri_child_pkg_idle_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_interrupt_wkups) as usize - ptr as usize },
+        120usize,
+        "Offset of field: rusage_info_v3::ri_child_interrupt_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_pageins) as usize - ptr as usize },
+        128usize,
+        "Offset of field: rusage_info_v3::ri_child_pageins"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_elapsed_abstime) as usize - ptr as usize },
+        136usize,
+        "Offset of field: rusage_info_v3::ri_child_elapsed_abstime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_diskio_bytesread) as usize - ptr as usize },
+        144usize,
+        "Offset of field: rusage_info_v3::ri_diskio_bytesread"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_diskio_byteswritten) as usize - ptr as usize },
+        152usize,
+        "Offset of field: rusage_info_v3::ri_diskio_byteswritten"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_default) as usize - ptr as usize },
+        160usize,
+        "Offset of field: rusage_info_v3::ri_cpu_time_qos_default"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_maintenance) as usize - ptr as usize },
+        168usize,
+        "Offset of field: rusage_info_v3::ri_cpu_time_qos_maintenance"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_background) as usize - ptr as usize },
+        176usize,
+        "Offset of field: rusage_info_v3::ri_cpu_time_qos_background"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_utility) as usize - ptr as usize },
+        184usize,
+        "Offset of field: rusage_info_v3::ri_cpu_time_qos_utility"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_legacy) as usize - ptr as usize },
+        192usize,
+        "Offset of field: rusage_info_v3::ri_cpu_time_qos_legacy"
+    );
+    assert_eq!(
+        unsafe {
+            ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_user_initiated) as usize - ptr as usize
+        },
+        200usize,
+        "Offset of field: rusage_info_v3::ri_cpu_time_qos_user_initiated"
+    );
+    assert_eq!(
+        unsafe {
+            ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_user_interactive) as usize - ptr as usize
+        },
+        208usize,
+        "Offset of field: rusage_info_v3::ri_cpu_time_qos_user_interactive"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_billed_system_time) as usize - ptr as usize },
+        216usize,
+        "Offset of field: rusage_info_v3::ri_billed_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_serviced_system_time) as usize - ptr as usize },
+        224usize,
+        "Offset of field: rusage_info_v3::ri_serviced_system_time"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rusage_info_v4 {
@@ -1959,83 +3077,201 @@ pub struct rusage_info_v4 {
     pub ri_interval_max_phys_footprint: u64,
     pub ri_runnable_time: u64,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of rusage_info_v4"][::std::mem::size_of::<rusage_info_v4>() - 296usize];
-    ["Alignment of rusage_info_v4"][::std::mem::align_of::<rusage_info_v4>() - 8usize];
-    ["Offset of field: rusage_info_v4::ri_uuid"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_uuid) - 0usize];
-    ["Offset of field: rusage_info_v4::ri_user_time"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_user_time) - 16usize];
-    ["Offset of field: rusage_info_v4::ri_system_time"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_system_time) - 24usize];
-    ["Offset of field: rusage_info_v4::ri_pkg_idle_wkups"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_pkg_idle_wkups) - 32usize];
-    ["Offset of field: rusage_info_v4::ri_interrupt_wkups"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_interrupt_wkups) - 40usize];
-    ["Offset of field: rusage_info_v4::ri_pageins"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_pageins) - 48usize];
-    ["Offset of field: rusage_info_v4::ri_wired_size"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_wired_size) - 56usize];
-    ["Offset of field: rusage_info_v4::ri_resident_size"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_resident_size) - 64usize];
-    ["Offset of field: rusage_info_v4::ri_phys_footprint"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_phys_footprint) - 72usize];
-    ["Offset of field: rusage_info_v4::ri_proc_start_abstime"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_proc_start_abstime) - 80usize];
-    ["Offset of field: rusage_info_v4::ri_proc_exit_abstime"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_proc_exit_abstime) - 88usize];
-    ["Offset of field: rusage_info_v4::ri_child_user_time"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_child_user_time) - 96usize];
-    ["Offset of field: rusage_info_v4::ri_child_system_time"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_child_system_time) - 104usize];
-    ["Offset of field: rusage_info_v4::ri_child_pkg_idle_wkups"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_child_pkg_idle_wkups) - 112usize];
-    ["Offset of field: rusage_info_v4::ri_child_interrupt_wkups"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_child_interrupt_wkups) - 120usize];
-    ["Offset of field: rusage_info_v4::ri_child_pageins"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_child_pageins) - 128usize];
-    ["Offset of field: rusage_info_v4::ri_child_elapsed_abstime"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_child_elapsed_abstime) - 136usize];
-    ["Offset of field: rusage_info_v4::ri_diskio_bytesread"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_diskio_bytesread) - 144usize];
-    ["Offset of field: rusage_info_v4::ri_diskio_byteswritten"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_diskio_byteswritten) - 152usize];
-    ["Offset of field: rusage_info_v4::ri_cpu_time_qos_default"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_cpu_time_qos_default) - 160usize];
-    ["Offset of field: rusage_info_v4::ri_cpu_time_qos_maintenance"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_cpu_time_qos_maintenance) - 168usize];
-    ["Offset of field: rusage_info_v4::ri_cpu_time_qos_background"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_cpu_time_qos_background) - 176usize];
-    ["Offset of field: rusage_info_v4::ri_cpu_time_qos_utility"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_cpu_time_qos_utility) - 184usize];
-    ["Offset of field: rusage_info_v4::ri_cpu_time_qos_legacy"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_cpu_time_qos_legacy) - 192usize];
-    ["Offset of field: rusage_info_v4::ri_cpu_time_qos_user_initiated"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_cpu_time_qos_user_initiated) - 200usize];
-    ["Offset of field: rusage_info_v4::ri_cpu_time_qos_user_interactive"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_cpu_time_qos_user_interactive) - 208usize];
-    ["Offset of field: rusage_info_v4::ri_billed_system_time"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_billed_system_time) - 216usize];
-    ["Offset of field: rusage_info_v4::ri_serviced_system_time"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_serviced_system_time) - 224usize];
-    ["Offset of field: rusage_info_v4::ri_logical_writes"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_logical_writes) - 232usize];
-    ["Offset of field: rusage_info_v4::ri_lifetime_max_phys_footprint"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_lifetime_max_phys_footprint) - 240usize];
-    ["Offset of field: rusage_info_v4::ri_instructions"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_instructions) - 248usize];
-    ["Offset of field: rusage_info_v4::ri_cycles"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_cycles) - 256usize];
-    ["Offset of field: rusage_info_v4::ri_billed_energy"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_billed_energy) - 264usize];
-    ["Offset of field: rusage_info_v4::ri_serviced_energy"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_serviced_energy) - 272usize];
-    ["Offset of field: rusage_info_v4::ri_interval_max_phys_footprint"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_interval_max_phys_footprint) - 280usize];
-    ["Offset of field: rusage_info_v4::ri_runnable_time"]
-        [::std::mem::offset_of!(rusage_info_v4, ri_runnable_time) - 288usize];
-};
+#[test]
+fn bindgen_test_layout_rusage_info_v4() {
+    const UNINIT: ::std::mem::MaybeUninit<rusage_info_v4> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<rusage_info_v4>(), 296usize, "Size of rusage_info_v4");
+    assert_eq!(::std::mem::align_of::<rusage_info_v4>(), 8usize, "Alignment of rusage_info_v4");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_uuid) as usize - ptr as usize },
+        0usize,
+        "Offset of field: rusage_info_v4::ri_uuid"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_user_time) as usize - ptr as usize },
+        16usize,
+        "Offset of field: rusage_info_v4::ri_user_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_system_time) as usize - ptr as usize },
+        24usize,
+        "Offset of field: rusage_info_v4::ri_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_pkg_idle_wkups) as usize - ptr as usize },
+        32usize,
+        "Offset of field: rusage_info_v4::ri_pkg_idle_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_interrupt_wkups) as usize - ptr as usize },
+        40usize,
+        "Offset of field: rusage_info_v4::ri_interrupt_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_pageins) as usize - ptr as usize },
+        48usize,
+        "Offset of field: rusage_info_v4::ri_pageins"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_wired_size) as usize - ptr as usize },
+        56usize,
+        "Offset of field: rusage_info_v4::ri_wired_size"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_resident_size) as usize - ptr as usize },
+        64usize,
+        "Offset of field: rusage_info_v4::ri_resident_size"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_phys_footprint) as usize - ptr as usize },
+        72usize,
+        "Offset of field: rusage_info_v4::ri_phys_footprint"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_proc_start_abstime) as usize - ptr as usize },
+        80usize,
+        "Offset of field: rusage_info_v4::ri_proc_start_abstime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_proc_exit_abstime) as usize - ptr as usize },
+        88usize,
+        "Offset of field: rusage_info_v4::ri_proc_exit_abstime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_user_time) as usize - ptr as usize },
+        96usize,
+        "Offset of field: rusage_info_v4::ri_child_user_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_system_time) as usize - ptr as usize },
+        104usize,
+        "Offset of field: rusage_info_v4::ri_child_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_pkg_idle_wkups) as usize - ptr as usize },
+        112usize,
+        "Offset of field: rusage_info_v4::ri_child_pkg_idle_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_interrupt_wkups) as usize - ptr as usize },
+        120usize,
+        "Offset of field: rusage_info_v4::ri_child_interrupt_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_pageins) as usize - ptr as usize },
+        128usize,
+        "Offset of field: rusage_info_v4::ri_child_pageins"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_elapsed_abstime) as usize - ptr as usize },
+        136usize,
+        "Offset of field: rusage_info_v4::ri_child_elapsed_abstime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_diskio_bytesread) as usize - ptr as usize },
+        144usize,
+        "Offset of field: rusage_info_v4::ri_diskio_bytesread"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_diskio_byteswritten) as usize - ptr as usize },
+        152usize,
+        "Offset of field: rusage_info_v4::ri_diskio_byteswritten"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_default) as usize - ptr as usize },
+        160usize,
+        "Offset of field: rusage_info_v4::ri_cpu_time_qos_default"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_maintenance) as usize - ptr as usize },
+        168usize,
+        "Offset of field: rusage_info_v4::ri_cpu_time_qos_maintenance"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_background) as usize - ptr as usize },
+        176usize,
+        "Offset of field: rusage_info_v4::ri_cpu_time_qos_background"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_utility) as usize - ptr as usize },
+        184usize,
+        "Offset of field: rusage_info_v4::ri_cpu_time_qos_utility"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_legacy) as usize - ptr as usize },
+        192usize,
+        "Offset of field: rusage_info_v4::ri_cpu_time_qos_legacy"
+    );
+    assert_eq!(
+        unsafe {
+            ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_user_initiated) as usize - ptr as usize
+        },
+        200usize,
+        "Offset of field: rusage_info_v4::ri_cpu_time_qos_user_initiated"
+    );
+    assert_eq!(
+        unsafe {
+            ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_user_interactive) as usize - ptr as usize
+        },
+        208usize,
+        "Offset of field: rusage_info_v4::ri_cpu_time_qos_user_interactive"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_billed_system_time) as usize - ptr as usize },
+        216usize,
+        "Offset of field: rusage_info_v4::ri_billed_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_serviced_system_time) as usize - ptr as usize },
+        224usize,
+        "Offset of field: rusage_info_v4::ri_serviced_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_logical_writes) as usize - ptr as usize },
+        232usize,
+        "Offset of field: rusage_info_v4::ri_logical_writes"
+    );
+    assert_eq!(
+        unsafe {
+            ::std::ptr::addr_of!((*ptr).ri_lifetime_max_phys_footprint) as usize - ptr as usize
+        },
+        240usize,
+        "Offset of field: rusage_info_v4::ri_lifetime_max_phys_footprint"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_instructions) as usize - ptr as usize },
+        248usize,
+        "Offset of field: rusage_info_v4::ri_instructions"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cycles) as usize - ptr as usize },
+        256usize,
+        "Offset of field: rusage_info_v4::ri_cycles"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_billed_energy) as usize - ptr as usize },
+        264usize,
+        "Offset of field: rusage_info_v4::ri_billed_energy"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_serviced_energy) as usize - ptr as usize },
+        272usize,
+        "Offset of field: rusage_info_v4::ri_serviced_energy"
+    );
+    assert_eq!(
+        unsafe {
+            ::std::ptr::addr_of!((*ptr).ri_interval_max_phys_footprint) as usize - ptr as usize
+        },
+        280usize,
+        "Offset of field: rusage_info_v4::ri_interval_max_phys_footprint"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_runnable_time) as usize - ptr as usize },
+        288usize,
+        "Offset of field: rusage_info_v4::ri_runnable_time"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rusage_info_v5 {
@@ -2077,85 +3313,206 @@ pub struct rusage_info_v5 {
     pub ri_runnable_time: u64,
     pub ri_flags: u64,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of rusage_info_v5"][::std::mem::size_of::<rusage_info_v5>() - 304usize];
-    ["Alignment of rusage_info_v5"][::std::mem::align_of::<rusage_info_v5>() - 8usize];
-    ["Offset of field: rusage_info_v5::ri_uuid"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_uuid) - 0usize];
-    ["Offset of field: rusage_info_v5::ri_user_time"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_user_time) - 16usize];
-    ["Offset of field: rusage_info_v5::ri_system_time"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_system_time) - 24usize];
-    ["Offset of field: rusage_info_v5::ri_pkg_idle_wkups"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_pkg_idle_wkups) - 32usize];
-    ["Offset of field: rusage_info_v5::ri_interrupt_wkups"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_interrupt_wkups) - 40usize];
-    ["Offset of field: rusage_info_v5::ri_pageins"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_pageins) - 48usize];
-    ["Offset of field: rusage_info_v5::ri_wired_size"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_wired_size) - 56usize];
-    ["Offset of field: rusage_info_v5::ri_resident_size"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_resident_size) - 64usize];
-    ["Offset of field: rusage_info_v5::ri_phys_footprint"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_phys_footprint) - 72usize];
-    ["Offset of field: rusage_info_v5::ri_proc_start_abstime"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_proc_start_abstime) - 80usize];
-    ["Offset of field: rusage_info_v5::ri_proc_exit_abstime"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_proc_exit_abstime) - 88usize];
-    ["Offset of field: rusage_info_v5::ri_child_user_time"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_child_user_time) - 96usize];
-    ["Offset of field: rusage_info_v5::ri_child_system_time"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_child_system_time) - 104usize];
-    ["Offset of field: rusage_info_v5::ri_child_pkg_idle_wkups"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_child_pkg_idle_wkups) - 112usize];
-    ["Offset of field: rusage_info_v5::ri_child_interrupt_wkups"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_child_interrupt_wkups) - 120usize];
-    ["Offset of field: rusage_info_v5::ri_child_pageins"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_child_pageins) - 128usize];
-    ["Offset of field: rusage_info_v5::ri_child_elapsed_abstime"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_child_elapsed_abstime) - 136usize];
-    ["Offset of field: rusage_info_v5::ri_diskio_bytesread"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_diskio_bytesread) - 144usize];
-    ["Offset of field: rusage_info_v5::ri_diskio_byteswritten"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_diskio_byteswritten) - 152usize];
-    ["Offset of field: rusage_info_v5::ri_cpu_time_qos_default"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_cpu_time_qos_default) - 160usize];
-    ["Offset of field: rusage_info_v5::ri_cpu_time_qos_maintenance"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_cpu_time_qos_maintenance) - 168usize];
-    ["Offset of field: rusage_info_v5::ri_cpu_time_qos_background"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_cpu_time_qos_background) - 176usize];
-    ["Offset of field: rusage_info_v5::ri_cpu_time_qos_utility"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_cpu_time_qos_utility) - 184usize];
-    ["Offset of field: rusage_info_v5::ri_cpu_time_qos_legacy"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_cpu_time_qos_legacy) - 192usize];
-    ["Offset of field: rusage_info_v5::ri_cpu_time_qos_user_initiated"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_cpu_time_qos_user_initiated) - 200usize];
-    ["Offset of field: rusage_info_v5::ri_cpu_time_qos_user_interactive"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_cpu_time_qos_user_interactive) - 208usize];
-    ["Offset of field: rusage_info_v5::ri_billed_system_time"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_billed_system_time) - 216usize];
-    ["Offset of field: rusage_info_v5::ri_serviced_system_time"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_serviced_system_time) - 224usize];
-    ["Offset of field: rusage_info_v5::ri_logical_writes"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_logical_writes) - 232usize];
-    ["Offset of field: rusage_info_v5::ri_lifetime_max_phys_footprint"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_lifetime_max_phys_footprint) - 240usize];
-    ["Offset of field: rusage_info_v5::ri_instructions"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_instructions) - 248usize];
-    ["Offset of field: rusage_info_v5::ri_cycles"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_cycles) - 256usize];
-    ["Offset of field: rusage_info_v5::ri_billed_energy"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_billed_energy) - 264usize];
-    ["Offset of field: rusage_info_v5::ri_serviced_energy"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_serviced_energy) - 272usize];
-    ["Offset of field: rusage_info_v5::ri_interval_max_phys_footprint"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_interval_max_phys_footprint) - 280usize];
-    ["Offset of field: rusage_info_v5::ri_runnable_time"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_runnable_time) - 288usize];
-    ["Offset of field: rusage_info_v5::ri_flags"]
-        [::std::mem::offset_of!(rusage_info_v5, ri_flags) - 296usize];
-};
+#[test]
+fn bindgen_test_layout_rusage_info_v5() {
+    const UNINIT: ::std::mem::MaybeUninit<rusage_info_v5> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<rusage_info_v5>(), 304usize, "Size of rusage_info_v5");
+    assert_eq!(::std::mem::align_of::<rusage_info_v5>(), 8usize, "Alignment of rusage_info_v5");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_uuid) as usize - ptr as usize },
+        0usize,
+        "Offset of field: rusage_info_v5::ri_uuid"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_user_time) as usize - ptr as usize },
+        16usize,
+        "Offset of field: rusage_info_v5::ri_user_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_system_time) as usize - ptr as usize },
+        24usize,
+        "Offset of field: rusage_info_v5::ri_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_pkg_idle_wkups) as usize - ptr as usize },
+        32usize,
+        "Offset of field: rusage_info_v5::ri_pkg_idle_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_interrupt_wkups) as usize - ptr as usize },
+        40usize,
+        "Offset of field: rusage_info_v5::ri_interrupt_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_pageins) as usize - ptr as usize },
+        48usize,
+        "Offset of field: rusage_info_v5::ri_pageins"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_wired_size) as usize - ptr as usize },
+        56usize,
+        "Offset of field: rusage_info_v5::ri_wired_size"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_resident_size) as usize - ptr as usize },
+        64usize,
+        "Offset of field: rusage_info_v5::ri_resident_size"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_phys_footprint) as usize - ptr as usize },
+        72usize,
+        "Offset of field: rusage_info_v5::ri_phys_footprint"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_proc_start_abstime) as usize - ptr as usize },
+        80usize,
+        "Offset of field: rusage_info_v5::ri_proc_start_abstime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_proc_exit_abstime) as usize - ptr as usize },
+        88usize,
+        "Offset of field: rusage_info_v5::ri_proc_exit_abstime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_user_time) as usize - ptr as usize },
+        96usize,
+        "Offset of field: rusage_info_v5::ri_child_user_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_system_time) as usize - ptr as usize },
+        104usize,
+        "Offset of field: rusage_info_v5::ri_child_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_pkg_idle_wkups) as usize - ptr as usize },
+        112usize,
+        "Offset of field: rusage_info_v5::ri_child_pkg_idle_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_interrupt_wkups) as usize - ptr as usize },
+        120usize,
+        "Offset of field: rusage_info_v5::ri_child_interrupt_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_pageins) as usize - ptr as usize },
+        128usize,
+        "Offset of field: rusage_info_v5::ri_child_pageins"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_elapsed_abstime) as usize - ptr as usize },
+        136usize,
+        "Offset of field: rusage_info_v5::ri_child_elapsed_abstime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_diskio_bytesread) as usize - ptr as usize },
+        144usize,
+        "Offset of field: rusage_info_v5::ri_diskio_bytesread"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_diskio_byteswritten) as usize - ptr as usize },
+        152usize,
+        "Offset of field: rusage_info_v5::ri_diskio_byteswritten"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_default) as usize - ptr as usize },
+        160usize,
+        "Offset of field: rusage_info_v5::ri_cpu_time_qos_default"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_maintenance) as usize - ptr as usize },
+        168usize,
+        "Offset of field: rusage_info_v5::ri_cpu_time_qos_maintenance"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_background) as usize - ptr as usize },
+        176usize,
+        "Offset of field: rusage_info_v5::ri_cpu_time_qos_background"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_utility) as usize - ptr as usize },
+        184usize,
+        "Offset of field: rusage_info_v5::ri_cpu_time_qos_utility"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_legacy) as usize - ptr as usize },
+        192usize,
+        "Offset of field: rusage_info_v5::ri_cpu_time_qos_legacy"
+    );
+    assert_eq!(
+        unsafe {
+            ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_user_initiated) as usize - ptr as usize
+        },
+        200usize,
+        "Offset of field: rusage_info_v5::ri_cpu_time_qos_user_initiated"
+    );
+    assert_eq!(
+        unsafe {
+            ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_user_interactive) as usize - ptr as usize
+        },
+        208usize,
+        "Offset of field: rusage_info_v5::ri_cpu_time_qos_user_interactive"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_billed_system_time) as usize - ptr as usize },
+        216usize,
+        "Offset of field: rusage_info_v5::ri_billed_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_serviced_system_time) as usize - ptr as usize },
+        224usize,
+        "Offset of field: rusage_info_v5::ri_serviced_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_logical_writes) as usize - ptr as usize },
+        232usize,
+        "Offset of field: rusage_info_v5::ri_logical_writes"
+    );
+    assert_eq!(
+        unsafe {
+            ::std::ptr::addr_of!((*ptr).ri_lifetime_max_phys_footprint) as usize - ptr as usize
+        },
+        240usize,
+        "Offset of field: rusage_info_v5::ri_lifetime_max_phys_footprint"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_instructions) as usize - ptr as usize },
+        248usize,
+        "Offset of field: rusage_info_v5::ri_instructions"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cycles) as usize - ptr as usize },
+        256usize,
+        "Offset of field: rusage_info_v5::ri_cycles"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_billed_energy) as usize - ptr as usize },
+        264usize,
+        "Offset of field: rusage_info_v5::ri_billed_energy"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_serviced_energy) as usize - ptr as usize },
+        272usize,
+        "Offset of field: rusage_info_v5::ri_serviced_energy"
+    );
+    assert_eq!(
+        unsafe {
+            ::std::ptr::addr_of!((*ptr).ri_interval_max_phys_footprint) as usize - ptr as usize
+        },
+        280usize,
+        "Offset of field: rusage_info_v5::ri_interval_max_phys_footprint"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_runnable_time) as usize - ptr as usize },
+        288usize,
+        "Offset of field: rusage_info_v5::ri_runnable_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_flags) as usize - ptr as usize },
+        296usize,
+        "Offset of field: rusage_info_v5::ri_flags"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rusage_info_v6 {
@@ -2209,109 +3566,270 @@ pub struct rusage_info_v6 {
     pub ri_interval_max_neural_footprint: u64,
     pub ri_reserved: [u64; 9usize],
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of rusage_info_v6"][::std::mem::size_of::<rusage_info_v6>() - 464usize];
-    ["Alignment of rusage_info_v6"][::std::mem::align_of::<rusage_info_v6>() - 8usize];
-    ["Offset of field: rusage_info_v6::ri_uuid"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_uuid) - 0usize];
-    ["Offset of field: rusage_info_v6::ri_user_time"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_user_time) - 16usize];
-    ["Offset of field: rusage_info_v6::ri_system_time"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_system_time) - 24usize];
-    ["Offset of field: rusage_info_v6::ri_pkg_idle_wkups"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_pkg_idle_wkups) - 32usize];
-    ["Offset of field: rusage_info_v6::ri_interrupt_wkups"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_interrupt_wkups) - 40usize];
-    ["Offset of field: rusage_info_v6::ri_pageins"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_pageins) - 48usize];
-    ["Offset of field: rusage_info_v6::ri_wired_size"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_wired_size) - 56usize];
-    ["Offset of field: rusage_info_v6::ri_resident_size"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_resident_size) - 64usize];
-    ["Offset of field: rusage_info_v6::ri_phys_footprint"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_phys_footprint) - 72usize];
-    ["Offset of field: rusage_info_v6::ri_proc_start_abstime"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_proc_start_abstime) - 80usize];
-    ["Offset of field: rusage_info_v6::ri_proc_exit_abstime"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_proc_exit_abstime) - 88usize];
-    ["Offset of field: rusage_info_v6::ri_child_user_time"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_child_user_time) - 96usize];
-    ["Offset of field: rusage_info_v6::ri_child_system_time"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_child_system_time) - 104usize];
-    ["Offset of field: rusage_info_v6::ri_child_pkg_idle_wkups"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_child_pkg_idle_wkups) - 112usize];
-    ["Offset of field: rusage_info_v6::ri_child_interrupt_wkups"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_child_interrupt_wkups) - 120usize];
-    ["Offset of field: rusage_info_v6::ri_child_pageins"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_child_pageins) - 128usize];
-    ["Offset of field: rusage_info_v6::ri_child_elapsed_abstime"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_child_elapsed_abstime) - 136usize];
-    ["Offset of field: rusage_info_v6::ri_diskio_bytesread"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_diskio_bytesread) - 144usize];
-    ["Offset of field: rusage_info_v6::ri_diskio_byteswritten"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_diskio_byteswritten) - 152usize];
-    ["Offset of field: rusage_info_v6::ri_cpu_time_qos_default"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_cpu_time_qos_default) - 160usize];
-    ["Offset of field: rusage_info_v6::ri_cpu_time_qos_maintenance"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_cpu_time_qos_maintenance) - 168usize];
-    ["Offset of field: rusage_info_v6::ri_cpu_time_qos_background"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_cpu_time_qos_background) - 176usize];
-    ["Offset of field: rusage_info_v6::ri_cpu_time_qos_utility"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_cpu_time_qos_utility) - 184usize];
-    ["Offset of field: rusage_info_v6::ri_cpu_time_qos_legacy"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_cpu_time_qos_legacy) - 192usize];
-    ["Offset of field: rusage_info_v6::ri_cpu_time_qos_user_initiated"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_cpu_time_qos_user_initiated) - 200usize];
-    ["Offset of field: rusage_info_v6::ri_cpu_time_qos_user_interactive"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_cpu_time_qos_user_interactive) - 208usize];
-    ["Offset of field: rusage_info_v6::ri_billed_system_time"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_billed_system_time) - 216usize];
-    ["Offset of field: rusage_info_v6::ri_serviced_system_time"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_serviced_system_time) - 224usize];
-    ["Offset of field: rusage_info_v6::ri_logical_writes"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_logical_writes) - 232usize];
-    ["Offset of field: rusage_info_v6::ri_lifetime_max_phys_footprint"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_lifetime_max_phys_footprint) - 240usize];
-    ["Offset of field: rusage_info_v6::ri_instructions"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_instructions) - 248usize];
-    ["Offset of field: rusage_info_v6::ri_cycles"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_cycles) - 256usize];
-    ["Offset of field: rusage_info_v6::ri_billed_energy"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_billed_energy) - 264usize];
-    ["Offset of field: rusage_info_v6::ri_serviced_energy"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_serviced_energy) - 272usize];
-    ["Offset of field: rusage_info_v6::ri_interval_max_phys_footprint"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_interval_max_phys_footprint) - 280usize];
-    ["Offset of field: rusage_info_v6::ri_runnable_time"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_runnable_time) - 288usize];
-    ["Offset of field: rusage_info_v6::ri_flags"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_flags) - 296usize];
-    ["Offset of field: rusage_info_v6::ri_user_ptime"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_user_ptime) - 304usize];
-    ["Offset of field: rusage_info_v6::ri_system_ptime"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_system_ptime) - 312usize];
-    ["Offset of field: rusage_info_v6::ri_pinstructions"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_pinstructions) - 320usize];
-    ["Offset of field: rusage_info_v6::ri_pcycles"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_pcycles) - 328usize];
-    ["Offset of field: rusage_info_v6::ri_energy_nj"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_energy_nj) - 336usize];
-    ["Offset of field: rusage_info_v6::ri_penergy_nj"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_penergy_nj) - 344usize];
-    ["Offset of field: rusage_info_v6::ri_secure_time_in_system"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_secure_time_in_system) - 352usize];
-    ["Offset of field: rusage_info_v6::ri_secure_ptime_in_system"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_secure_ptime_in_system) - 360usize];
-    ["Offset of field: rusage_info_v6::ri_neural_footprint"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_neural_footprint) - 368usize];
-    ["Offset of field: rusage_info_v6::ri_lifetime_max_neural_footprint"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_lifetime_max_neural_footprint) - 376usize];
-    ["Offset of field: rusage_info_v6::ri_interval_max_neural_footprint"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_interval_max_neural_footprint) - 384usize];
-    ["Offset of field: rusage_info_v6::ri_reserved"]
-        [::std::mem::offset_of!(rusage_info_v6, ri_reserved) - 392usize];
-};
+#[test]
+fn bindgen_test_layout_rusage_info_v6() {
+    const UNINIT: ::std::mem::MaybeUninit<rusage_info_v6> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<rusage_info_v6>(), 464usize, "Size of rusage_info_v6");
+    assert_eq!(::std::mem::align_of::<rusage_info_v6>(), 8usize, "Alignment of rusage_info_v6");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_uuid) as usize - ptr as usize },
+        0usize,
+        "Offset of field: rusage_info_v6::ri_uuid"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_user_time) as usize - ptr as usize },
+        16usize,
+        "Offset of field: rusage_info_v6::ri_user_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_system_time) as usize - ptr as usize },
+        24usize,
+        "Offset of field: rusage_info_v6::ri_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_pkg_idle_wkups) as usize - ptr as usize },
+        32usize,
+        "Offset of field: rusage_info_v6::ri_pkg_idle_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_interrupt_wkups) as usize - ptr as usize },
+        40usize,
+        "Offset of field: rusage_info_v6::ri_interrupt_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_pageins) as usize - ptr as usize },
+        48usize,
+        "Offset of field: rusage_info_v6::ri_pageins"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_wired_size) as usize - ptr as usize },
+        56usize,
+        "Offset of field: rusage_info_v6::ri_wired_size"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_resident_size) as usize - ptr as usize },
+        64usize,
+        "Offset of field: rusage_info_v6::ri_resident_size"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_phys_footprint) as usize - ptr as usize },
+        72usize,
+        "Offset of field: rusage_info_v6::ri_phys_footprint"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_proc_start_abstime) as usize - ptr as usize },
+        80usize,
+        "Offset of field: rusage_info_v6::ri_proc_start_abstime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_proc_exit_abstime) as usize - ptr as usize },
+        88usize,
+        "Offset of field: rusage_info_v6::ri_proc_exit_abstime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_user_time) as usize - ptr as usize },
+        96usize,
+        "Offset of field: rusage_info_v6::ri_child_user_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_system_time) as usize - ptr as usize },
+        104usize,
+        "Offset of field: rusage_info_v6::ri_child_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_pkg_idle_wkups) as usize - ptr as usize },
+        112usize,
+        "Offset of field: rusage_info_v6::ri_child_pkg_idle_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_interrupt_wkups) as usize - ptr as usize },
+        120usize,
+        "Offset of field: rusage_info_v6::ri_child_interrupt_wkups"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_pageins) as usize - ptr as usize },
+        128usize,
+        "Offset of field: rusage_info_v6::ri_child_pageins"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_child_elapsed_abstime) as usize - ptr as usize },
+        136usize,
+        "Offset of field: rusage_info_v6::ri_child_elapsed_abstime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_diskio_bytesread) as usize - ptr as usize },
+        144usize,
+        "Offset of field: rusage_info_v6::ri_diskio_bytesread"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_diskio_byteswritten) as usize - ptr as usize },
+        152usize,
+        "Offset of field: rusage_info_v6::ri_diskio_byteswritten"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_default) as usize - ptr as usize },
+        160usize,
+        "Offset of field: rusage_info_v6::ri_cpu_time_qos_default"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_maintenance) as usize - ptr as usize },
+        168usize,
+        "Offset of field: rusage_info_v6::ri_cpu_time_qos_maintenance"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_background) as usize - ptr as usize },
+        176usize,
+        "Offset of field: rusage_info_v6::ri_cpu_time_qos_background"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_utility) as usize - ptr as usize },
+        184usize,
+        "Offset of field: rusage_info_v6::ri_cpu_time_qos_utility"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_legacy) as usize - ptr as usize },
+        192usize,
+        "Offset of field: rusage_info_v6::ri_cpu_time_qos_legacy"
+    );
+    assert_eq!(
+        unsafe {
+            ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_user_initiated) as usize - ptr as usize
+        },
+        200usize,
+        "Offset of field: rusage_info_v6::ri_cpu_time_qos_user_initiated"
+    );
+    assert_eq!(
+        unsafe {
+            ::std::ptr::addr_of!((*ptr).ri_cpu_time_qos_user_interactive) as usize - ptr as usize
+        },
+        208usize,
+        "Offset of field: rusage_info_v6::ri_cpu_time_qos_user_interactive"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_billed_system_time) as usize - ptr as usize },
+        216usize,
+        "Offset of field: rusage_info_v6::ri_billed_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_serviced_system_time) as usize - ptr as usize },
+        224usize,
+        "Offset of field: rusage_info_v6::ri_serviced_system_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_logical_writes) as usize - ptr as usize },
+        232usize,
+        "Offset of field: rusage_info_v6::ri_logical_writes"
+    );
+    assert_eq!(
+        unsafe {
+            ::std::ptr::addr_of!((*ptr).ri_lifetime_max_phys_footprint) as usize - ptr as usize
+        },
+        240usize,
+        "Offset of field: rusage_info_v6::ri_lifetime_max_phys_footprint"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_instructions) as usize - ptr as usize },
+        248usize,
+        "Offset of field: rusage_info_v6::ri_instructions"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_cycles) as usize - ptr as usize },
+        256usize,
+        "Offset of field: rusage_info_v6::ri_cycles"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_billed_energy) as usize - ptr as usize },
+        264usize,
+        "Offset of field: rusage_info_v6::ri_billed_energy"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_serviced_energy) as usize - ptr as usize },
+        272usize,
+        "Offset of field: rusage_info_v6::ri_serviced_energy"
+    );
+    assert_eq!(
+        unsafe {
+            ::std::ptr::addr_of!((*ptr).ri_interval_max_phys_footprint) as usize - ptr as usize
+        },
+        280usize,
+        "Offset of field: rusage_info_v6::ri_interval_max_phys_footprint"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_runnable_time) as usize - ptr as usize },
+        288usize,
+        "Offset of field: rusage_info_v6::ri_runnable_time"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_flags) as usize - ptr as usize },
+        296usize,
+        "Offset of field: rusage_info_v6::ri_flags"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_user_ptime) as usize - ptr as usize },
+        304usize,
+        "Offset of field: rusage_info_v6::ri_user_ptime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_system_ptime) as usize - ptr as usize },
+        312usize,
+        "Offset of field: rusage_info_v6::ri_system_ptime"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_pinstructions) as usize - ptr as usize },
+        320usize,
+        "Offset of field: rusage_info_v6::ri_pinstructions"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_pcycles) as usize - ptr as usize },
+        328usize,
+        "Offset of field: rusage_info_v6::ri_pcycles"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_energy_nj) as usize - ptr as usize },
+        336usize,
+        "Offset of field: rusage_info_v6::ri_energy_nj"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_penergy_nj) as usize - ptr as usize },
+        344usize,
+        "Offset of field: rusage_info_v6::ri_penergy_nj"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_secure_time_in_system) as usize - ptr as usize },
+        352usize,
+        "Offset of field: rusage_info_v6::ri_secure_time_in_system"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_secure_ptime_in_system) as usize - ptr as usize },
+        360usize,
+        "Offset of field: rusage_info_v6::ri_secure_ptime_in_system"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_neural_footprint) as usize - ptr as usize },
+        368usize,
+        "Offset of field: rusage_info_v6::ri_neural_footprint"
+    );
+    assert_eq!(
+        unsafe {
+            ::std::ptr::addr_of!((*ptr).ri_lifetime_max_neural_footprint) as usize - ptr as usize
+        },
+        376usize,
+        "Offset of field: rusage_info_v6::ri_lifetime_max_neural_footprint"
+    );
+    assert_eq!(
+        unsafe {
+            ::std::ptr::addr_of!((*ptr).ri_interval_max_neural_footprint) as usize - ptr as usize
+        },
+        384usize,
+        "Offset of field: rusage_info_v6::ri_interval_max_neural_footprint"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).ri_reserved) as usize - ptr as usize },
+        392usize,
+        "Offset of field: rusage_info_v6::ri_reserved"
+    );
+}
 pub type rusage_info_current = rusage_info_v6;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -2319,60 +3837,85 @@ pub struct rlimit {
     pub rlim_cur: rlim_t,
     pub rlim_max: rlim_t,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of rlimit"][::std::mem::size_of::<rlimit>() - 16usize];
-    ["Alignment of rlimit"][::std::mem::align_of::<rlimit>() - 8usize];
-    ["Offset of field: rlimit::rlim_cur"][::std::mem::offset_of!(rlimit, rlim_cur) - 0usize];
-    ["Offset of field: rlimit::rlim_max"][::std::mem::offset_of!(rlimit, rlim_max) - 8usize];
-};
+#[test]
+fn bindgen_test_layout_rlimit() {
+    const UNINIT: ::std::mem::MaybeUninit<rlimit> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<rlimit>(), 16usize, "Size of rlimit");
+    assert_eq!(::std::mem::align_of::<rlimit>(), 8usize, "Alignment of rlimit");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).rlim_cur) as usize - ptr as usize },
+        0usize,
+        "Offset of field: rlimit::rlim_cur"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).rlim_max) as usize - ptr as usize },
+        8usize,
+        "Offset of field: rlimit::rlim_max"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct proc_rlimit_control_wakeupmon {
     pub wm_flags: u32,
     pub wm_rate: i32,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of proc_rlimit_control_wakeupmon"]
-        [::std::mem::size_of::<proc_rlimit_control_wakeupmon>() - 8usize];
-    ["Alignment of proc_rlimit_control_wakeupmon"]
-        [::std::mem::align_of::<proc_rlimit_control_wakeupmon>() - 4usize];
-    ["Offset of field: proc_rlimit_control_wakeupmon::wm_flags"]
-        [::std::mem::offset_of!(proc_rlimit_control_wakeupmon, wm_flags) - 0usize];
-    ["Offset of field: proc_rlimit_control_wakeupmon::wm_rate"]
-        [::std::mem::offset_of!(proc_rlimit_control_wakeupmon, wm_rate) - 4usize];
-};
-unsafe extern "C" {
+#[test]
+fn bindgen_test_layout_proc_rlimit_control_wakeupmon() {
+    const UNINIT: ::std::mem::MaybeUninit<proc_rlimit_control_wakeupmon> =
+        ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::std::mem::size_of::<proc_rlimit_control_wakeupmon>(),
+        8usize,
+        "Size of proc_rlimit_control_wakeupmon"
+    );
+    assert_eq!(
+        ::std::mem::align_of::<proc_rlimit_control_wakeupmon>(),
+        4usize,
+        "Alignment of proc_rlimit_control_wakeupmon"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).wm_flags) as usize - ptr as usize },
+        0usize,
+        "Offset of field: proc_rlimit_control_wakeupmon::wm_flags"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).wm_rate) as usize - ptr as usize },
+        4usize,
+        "Offset of field: proc_rlimit_control_wakeupmon::wm_rate"
+    );
+}
+extern "C" {
     pub fn getpriority(arg1: ::std::os::raw::c_int, arg2: id_t) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn getiopolicy_np(
         arg1: ::std::os::raw::c_int,
         arg2: ::std::os::raw::c_int,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn getrlimit(arg1: ::std::os::raw::c_int, arg2: *mut rlimit) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn getrusage(arg1: ::std::os::raw::c_int, arg2: *mut rusage) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn setpriority(
         arg1: ::std::os::raw::c_int,
         arg2: id_t,
         arg3: ::std::os::raw::c_int,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn setiopolicy_np(
         arg1: ::std::os::raw::c_int,
         arg2: ::std::os::raw::c_int,
         arg3: ::std::os::raw::c_int,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn setrlimit(arg1: ::std::os::raw::c_int, arg2: *const rlimit) -> ::std::os::raw::c_int;
 }
 #[repr(C)]
@@ -2389,11 +3932,15 @@ pub struct wait__bindgen_ty_1 {
     pub _bitfield_align_1: [u16; 0],
     pub _bitfield_1: __BindgenBitfieldUnit<[u8; 4usize]>,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of wait__bindgen_ty_1"][::std::mem::size_of::<wait__bindgen_ty_1>() - 4usize];
-    ["Alignment of wait__bindgen_ty_1"][::std::mem::align_of::<wait__bindgen_ty_1>() - 4usize];
-};
+#[test]
+fn bindgen_test_layout_wait__bindgen_ty_1() {
+    assert_eq!(::std::mem::size_of::<wait__bindgen_ty_1>(), 4usize, "Size of wait__bindgen_ty_1");
+    assert_eq!(
+        ::std::mem::align_of::<wait__bindgen_ty_1>(),
+        4usize,
+        "Alignment of wait__bindgen_ty_1"
+    );
+}
 impl wait__bindgen_ty_1 {
     #[inline]
     pub fn w_Termsig(&self) -> ::std::os::raw::c_uint {
@@ -2561,11 +4108,15 @@ pub struct wait__bindgen_ty_2 {
     pub _bitfield_align_1: [u16; 0],
     pub _bitfield_1: __BindgenBitfieldUnit<[u8; 4usize]>,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of wait__bindgen_ty_2"][::std::mem::size_of::<wait__bindgen_ty_2>() - 4usize];
-    ["Alignment of wait__bindgen_ty_2"][::std::mem::align_of::<wait__bindgen_ty_2>() - 4usize];
-};
+#[test]
+fn bindgen_test_layout_wait__bindgen_ty_2() {
+    assert_eq!(::std::mem::size_of::<wait__bindgen_ty_2>(), 4usize, "Size of wait__bindgen_ty_2");
+    assert_eq!(
+        ::std::mem::align_of::<wait__bindgen_ty_2>(),
+        4usize,
+        "Alignment of wait__bindgen_ty_2"
+    );
+}
 impl wait__bindgen_ty_2 {
     #[inline]
     pub fn w_Stopval(&self) -> ::std::os::raw::c_uint {
@@ -2688,25 +4239,39 @@ impl wait__bindgen_ty_2 {
         __bindgen_bitfield_unit
     }
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of wait"][::std::mem::size_of::<wait>() - 4usize];
-    ["Alignment of wait"][::std::mem::align_of::<wait>() - 4usize];
-    ["Offset of field: wait::w_status"][::std::mem::offset_of!(wait, w_status) - 0usize];
-    ["Offset of field: wait::w_T"][::std::mem::offset_of!(wait, w_T) - 0usize];
-    ["Offset of field: wait::w_S"][::std::mem::offset_of!(wait, w_S) - 0usize];
-};
-unsafe extern "C" {
+#[test]
+fn bindgen_test_layout_wait() {
+    const UNINIT: ::std::mem::MaybeUninit<wait> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<wait>(), 4usize, "Size of wait");
+    assert_eq!(::std::mem::align_of::<wait>(), 4usize, "Alignment of wait");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).w_status) as usize - ptr as usize },
+        0usize,
+        "Offset of field: wait::w_status"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).w_T) as usize - ptr as usize },
+        0usize,
+        "Offset of field: wait::w_T"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).w_S) as usize - ptr as usize },
+        0usize,
+        "Offset of field: wait::w_S"
+    );
+}
+extern "C" {
     pub fn wait(arg1: *mut ::std::os::raw::c_int) -> pid_t;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn waitpid(
         arg1: pid_t,
         arg2: *mut ::std::os::raw::c_int,
         arg3: ::std::os::raw::c_int,
     ) -> pid_t;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn waitid(
         arg1: idtype_t,
         arg2: id_t,
@@ -2714,14 +4279,14 @@ unsafe extern "C" {
         arg4: ::std::os::raw::c_int,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn wait3(
         arg1: *mut ::std::os::raw::c_int,
         arg2: ::std::os::raw::c_int,
         arg3: *mut rusage,
     ) -> pid_t;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn wait4(
         arg1: pid_t,
         arg2: *mut ::std::os::raw::c_int,
@@ -2729,8 +4294,8 @@ unsafe extern "C" {
         arg4: *mut rusage,
     ) -> pid_t;
 }
-unsafe extern "C" {
-    pub fn alloca(arg1: ::std::os::raw::c_ulong) -> *mut ::std::os::raw::c_void;
+extern "C" {
+    pub fn alloca(__size: ::std::os::raw::c_ulong) -> *mut ::std::os::raw::c_void;
 }
 pub type ct_rune_t = __darwin_ct_rune_t;
 pub type rune_t = __darwin_rune_t;
@@ -2741,80 +4306,110 @@ pub struct div_t {
     pub quot: ::std::os::raw::c_int,
     pub rem: ::std::os::raw::c_int,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of div_t"][::std::mem::size_of::<div_t>() - 8usize];
-    ["Alignment of div_t"][::std::mem::align_of::<div_t>() - 4usize];
-    ["Offset of field: div_t::quot"][::std::mem::offset_of!(div_t, quot) - 0usize];
-    ["Offset of field: div_t::rem"][::std::mem::offset_of!(div_t, rem) - 4usize];
-};
+#[test]
+fn bindgen_test_layout_div_t() {
+    const UNINIT: ::std::mem::MaybeUninit<div_t> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<div_t>(), 8usize, "Size of div_t");
+    assert_eq!(::std::mem::align_of::<div_t>(), 4usize, "Alignment of div_t");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).quot) as usize - ptr as usize },
+        0usize,
+        "Offset of field: div_t::quot"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).rem) as usize - ptr as usize },
+        4usize,
+        "Offset of field: div_t::rem"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct ldiv_t {
     pub quot: ::std::os::raw::c_long,
     pub rem: ::std::os::raw::c_long,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of ldiv_t"][::std::mem::size_of::<ldiv_t>() - 16usize];
-    ["Alignment of ldiv_t"][::std::mem::align_of::<ldiv_t>() - 8usize];
-    ["Offset of field: ldiv_t::quot"][::std::mem::offset_of!(ldiv_t, quot) - 0usize];
-    ["Offset of field: ldiv_t::rem"][::std::mem::offset_of!(ldiv_t, rem) - 8usize];
-};
+#[test]
+fn bindgen_test_layout_ldiv_t() {
+    const UNINIT: ::std::mem::MaybeUninit<ldiv_t> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<ldiv_t>(), 16usize, "Size of ldiv_t");
+    assert_eq!(::std::mem::align_of::<ldiv_t>(), 8usize, "Alignment of ldiv_t");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).quot) as usize - ptr as usize },
+        0usize,
+        "Offset of field: ldiv_t::quot"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).rem) as usize - ptr as usize },
+        8usize,
+        "Offset of field: ldiv_t::rem"
+    );
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct lldiv_t {
     pub quot: ::std::os::raw::c_longlong,
     pub rem: ::std::os::raw::c_longlong,
 }
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of lldiv_t"][::std::mem::size_of::<lldiv_t>() - 16usize];
-    ["Alignment of lldiv_t"][::std::mem::align_of::<lldiv_t>() - 8usize];
-    ["Offset of field: lldiv_t::quot"][::std::mem::offset_of!(lldiv_t, quot) - 0usize];
-    ["Offset of field: lldiv_t::rem"][::std::mem::offset_of!(lldiv_t, rem) - 8usize];
-};
-unsafe extern "C" {
+#[test]
+fn bindgen_test_layout_lldiv_t() {
+    const UNINIT: ::std::mem::MaybeUninit<lldiv_t> = ::std::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(::std::mem::size_of::<lldiv_t>(), 16usize, "Size of lldiv_t");
+    assert_eq!(::std::mem::align_of::<lldiv_t>(), 8usize, "Alignment of lldiv_t");
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).quot) as usize - ptr as usize },
+        0usize,
+        "Offset of field: lldiv_t::quot"
+    );
+    assert_eq!(
+        unsafe { ::std::ptr::addr_of!((*ptr).rem) as usize - ptr as usize },
+        8usize,
+        "Offset of field: lldiv_t::rem"
+    );
+}
+extern "C" {
     pub static mut __mb_cur_max: ::std::os::raw::c_int;
 }
 pub type malloc_type_id_t = ::std::os::raw::c_ulonglong;
-unsafe extern "C" {
+extern "C" {
     pub fn malloc_type_malloc(
         size: usize,
         type_id: malloc_type_id_t,
     ) -> *mut ::std::os::raw::c_void;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn malloc_type_calloc(
         count: usize,
         size: usize,
         type_id: malloc_type_id_t,
     ) -> *mut ::std::os::raw::c_void;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn malloc_type_free(ptr: *mut ::std::os::raw::c_void, type_id: malloc_type_id_t);
 }
-unsafe extern "C" {
+extern "C" {
     pub fn malloc_type_realloc(
         ptr: *mut ::std::os::raw::c_void,
         size: usize,
         type_id: malloc_type_id_t,
     ) -> *mut ::std::os::raw::c_void;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn malloc_type_valloc(
         size: usize,
         type_id: malloc_type_id_t,
     ) -> *mut ::std::os::raw::c_void;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn malloc_type_aligned_alloc(
         alignment: usize,
         size: usize,
         type_id: malloc_type_id_t,
     ) -> *mut ::std::os::raw::c_void;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn malloc_type_posix_memalign(
         memptr: *mut *mut ::std::os::raw::c_void,
         alignment: usize,
@@ -2828,14 +4423,14 @@ pub struct _malloc_zone_t {
     _unused: [u8; 0],
 }
 pub type malloc_zone_t = _malloc_zone_t;
-unsafe extern "C" {
+extern "C" {
     pub fn malloc_type_zone_malloc(
         zone: *mut malloc_zone_t,
         size: usize,
         type_id: malloc_type_id_t,
     ) -> *mut ::std::os::raw::c_void;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn malloc_type_zone_calloc(
         zone: *mut malloc_zone_t,
         count: usize,
@@ -2843,14 +4438,14 @@ unsafe extern "C" {
         type_id: malloc_type_id_t,
     ) -> *mut ::std::os::raw::c_void;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn malloc_type_zone_free(
         zone: *mut malloc_zone_t,
         ptr: *mut ::std::os::raw::c_void,
         type_id: malloc_type_id_t,
     );
 }
-unsafe extern "C" {
+extern "C" {
     pub fn malloc_type_zone_realloc(
         zone: *mut malloc_zone_t,
         ptr: *mut ::std::os::raw::c_void,
@@ -2858,14 +4453,14 @@ unsafe extern "C" {
         type_id: malloc_type_id_t,
     ) -> *mut ::std::os::raw::c_void;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn malloc_type_zone_valloc(
         zone: *mut malloc_zone_t,
         size: usize,
         type_id: malloc_type_id_t,
     ) -> *mut ::std::os::raw::c_void;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn malloc_type_zone_memalign(
         zone: *mut malloc_zone_t,
         alignment: usize,
@@ -2873,73 +4468,73 @@ unsafe extern "C" {
         type_id: malloc_type_id_t,
     ) -> *mut ::std::os::raw::c_void;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn malloc(__size: ::std::os::raw::c_ulong) -> *mut ::std::os::raw::c_void;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn calloc(
         __count: ::std::os::raw::c_ulong,
         __size: ::std::os::raw::c_ulong,
     ) -> *mut ::std::os::raw::c_void;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn free(arg1: *mut ::std::os::raw::c_void);
 }
-unsafe extern "C" {
+extern "C" {
     pub fn realloc(
         __ptr: *mut ::std::os::raw::c_void,
         __size: ::std::os::raw::c_ulong,
     ) -> *mut ::std::os::raw::c_void;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn reallocf(
         __ptr: *mut ::std::os::raw::c_void,
         __size: usize,
     ) -> *mut ::std::os::raw::c_void;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn valloc(__size: usize) -> *mut ::std::os::raw::c_void;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn aligned_alloc(
         __alignment: ::std::os::raw::c_ulong,
         __size: ::std::os::raw::c_ulong,
     ) -> *mut ::std::os::raw::c_void;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn posix_memalign(
         __memptr: *mut *mut ::std::os::raw::c_void,
         __alignment: usize,
         __size: usize,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn abort() -> !;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn abs(arg1: ::std::os::raw::c_int) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn atexit(arg1: ::std::option::Option<unsafe extern "C" fn()>) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn at_quick_exit(
         arg1: ::std::option::Option<unsafe extern "C" fn()>,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn atof(arg1: *const ::std::os::raw::c_char) -> f64;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn atoi(arg1: *const ::std::os::raw::c_char) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn atol(arg1: *const ::std::os::raw::c_char) -> ::std::os::raw::c_long;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn atoll(arg1: *const ::std::os::raw::c_char) -> ::std::os::raw::c_longlong;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn bsearch(
         __key: *const ::std::os::raw::c_void,
         __base: *const ::std::os::raw::c_void,
@@ -2953,41 +4548,41 @@ unsafe extern "C" {
         >,
     ) -> *mut ::std::os::raw::c_void;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn div(arg1: ::std::os::raw::c_int, arg2: ::std::os::raw::c_int) -> div_t;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn exit(arg1: ::std::os::raw::c_int) -> !;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn getenv(arg1: *const ::std::os::raw::c_char) -> *mut ::std::os::raw::c_char;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn labs(arg1: ::std::os::raw::c_long) -> ::std::os::raw::c_long;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn ldiv(arg1: ::std::os::raw::c_long, arg2: ::std::os::raw::c_long) -> ldiv_t;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn llabs(arg1: ::std::os::raw::c_longlong) -> ::std::os::raw::c_longlong;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn lldiv(arg1: ::std::os::raw::c_longlong, arg2: ::std::os::raw::c_longlong) -> lldiv_t;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn mblen(__s: *const ::std::os::raw::c_char, __n: usize) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
-    pub fn mbstowcs(arg1: *mut wchar_t, arg2: *const ::std::os::raw::c_char, arg3: usize) -> usize;
+extern "C" {
+    pub fn mbstowcs(arg1: *mut wchar_t, arg2: *const ::std::os::raw::c_char, __n: usize) -> usize;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn mbtowc(
         arg1: *mut wchar_t,
         arg2: *const ::std::os::raw::c_char,
-        arg3: usize,
+        __n: usize,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn qsort(
         __base: *mut ::std::os::raw::c_void,
         __nel: usize,
@@ -3000,80 +4595,80 @@ unsafe extern "C" {
         >,
     );
 }
-unsafe extern "C" {
+extern "C" {
     pub fn quick_exit(arg1: ::std::os::raw::c_int) -> !;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn rand() -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn srand(arg1: ::std::os::raw::c_uint);
 }
-unsafe extern "C" {
+extern "C" {
     pub fn strtod(
         arg1: *const ::std::os::raw::c_char,
         arg2: *mut *mut ::std::os::raw::c_char,
     ) -> f64;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn strtof(
         arg1: *const ::std::os::raw::c_char,
         arg2: *mut *mut ::std::os::raw::c_char,
     ) -> f32;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn strtol(
         __str: *const ::std::os::raw::c_char,
         __endptr: *mut *mut ::std::os::raw::c_char,
         __base: ::std::os::raw::c_int,
     ) -> ::std::os::raw::c_long;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn strtold(
         arg1: *const ::std::os::raw::c_char,
         arg2: *mut *mut ::std::os::raw::c_char,
     ) -> f64;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn strtoll(
         __str: *const ::std::os::raw::c_char,
         __endptr: *mut *mut ::std::os::raw::c_char,
         __base: ::std::os::raw::c_int,
     ) -> ::std::os::raw::c_longlong;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn strtoul(
         __str: *const ::std::os::raw::c_char,
         __endptr: *mut *mut ::std::os::raw::c_char,
         __base: ::std::os::raw::c_int,
     ) -> ::std::os::raw::c_ulong;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn strtoull(
         __str: *const ::std::os::raw::c_char,
         __endptr: *mut *mut ::std::os::raw::c_char,
         __base: ::std::os::raw::c_int,
     ) -> ::std::os::raw::c_ulonglong;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn system(arg1: *const ::std::os::raw::c_char) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
-    pub fn wcstombs(arg1: *mut ::std::os::raw::c_char, arg2: *const wchar_t, arg3: usize) -> usize;
+extern "C" {
+    pub fn wcstombs(arg1: *mut ::std::os::raw::c_char, arg2: *const wchar_t, __n: usize) -> usize;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn wctomb(arg1: *mut ::std::os::raw::c_char, arg2: wchar_t) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn _Exit(arg1: ::std::os::raw::c_int) -> !;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn a64l(arg1: *const ::std::os::raw::c_char) -> ::std::os::raw::c_long;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn drand48() -> f64;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn ecvt(
         arg1: f64,
         arg2: ::std::os::raw::c_int,
@@ -3081,10 +4676,10 @@ unsafe extern "C" {
         arg4: *mut ::std::os::raw::c_int,
     ) -> *mut ::std::os::raw::c_char;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn erand48(arg1: *mut ::std::os::raw::c_ushort) -> f64;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn fcvt(
         arg1: f64,
         arg2: ::std::os::raw::c_int,
@@ -3092,132 +4687,135 @@ unsafe extern "C" {
         arg4: *mut ::std::os::raw::c_int,
     ) -> *mut ::std::os::raw::c_char;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn gcvt(
         arg1: f64,
         arg2: ::std::os::raw::c_int,
         arg3: *mut ::std::os::raw::c_char,
     ) -> *mut ::std::os::raw::c_char;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn getsubopt(
         arg1: *mut *mut ::std::os::raw::c_char,
         arg2: *const *mut ::std::os::raw::c_char,
         arg3: *mut *mut ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn grantpt(arg1: ::std::os::raw::c_int) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn initstate(
         arg1: ::std::os::raw::c_uint,
         arg2: *mut ::std::os::raw::c_char,
-        arg3: usize,
+        __size: usize,
     ) -> *mut ::std::os::raw::c_char;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn jrand48(arg1: *mut ::std::os::raw::c_ushort) -> ::std::os::raw::c_long;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn l64a(arg1: ::std::os::raw::c_long) -> *mut ::std::os::raw::c_char;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn lcong48(arg1: *mut ::std::os::raw::c_ushort);
 }
-unsafe extern "C" {
+extern "C" {
     pub fn lrand48() -> ::std::os::raw::c_long;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn mktemp(arg1: *mut ::std::os::raw::c_char) -> *mut ::std::os::raw::c_char;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn mkstemp(arg1: *mut ::std::os::raw::c_char) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn mrand48() -> ::std::os::raw::c_long;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn nrand48(arg1: *mut ::std::os::raw::c_ushort) -> ::std::os::raw::c_long;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn posix_openpt(arg1: ::std::os::raw::c_int) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn ptsname(arg1: ::std::os::raw::c_int) -> *mut ::std::os::raw::c_char;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn ptsname_r(
         fildes: ::std::os::raw::c_int,
         buffer: *mut ::std::os::raw::c_char,
         buflen: usize,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn putenv(arg1: *mut ::std::os::raw::c_char) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn random() -> ::std::os::raw::c_long;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn rand_r(arg1: *mut ::std::os::raw::c_uint) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     #[link_name = "\u{1}_realpath$DARWIN_EXTSN"]
     pub fn realpath(
         arg1: *const ::std::os::raw::c_char,
         arg2: *mut ::std::os::raw::c_char,
     ) -> *mut ::std::os::raw::c_char;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn seed48(arg1: *mut ::std::os::raw::c_ushort) -> *mut ::std::os::raw::c_ushort;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn setenv(
         __name: *const ::std::os::raw::c_char,
         __value: *const ::std::os::raw::c_char,
         __overwrite: ::std::os::raw::c_int,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn setkey(arg1: *const ::std::os::raw::c_char);
 }
-unsafe extern "C" {
+extern "C" {
     pub fn setstate(arg1: *const ::std::os::raw::c_char) -> *mut ::std::os::raw::c_char;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn srand48(arg1: ::std::os::raw::c_long);
 }
-unsafe extern "C" {
+extern "C" {
     pub fn srandom(arg1: ::std::os::raw::c_uint);
 }
-unsafe extern "C" {
+extern "C" {
     pub fn unlockpt(arg1: ::std::os::raw::c_int) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn unsetenv(arg1: *const ::std::os::raw::c_char) -> ::std::os::raw::c_int;
 }
 pub type dev_t = __darwin_dev_t;
 pub type mode_t = __darwin_mode_t;
-unsafe extern "C" {
+extern "C" {
     pub fn arc4random() -> u32;
 }
-unsafe extern "C" {
-    pub fn arc4random_addrandom(arg1: *mut ::std::os::raw::c_uchar, arg2: ::std::os::raw::c_int);
+extern "C" {
+    pub fn arc4random_addrandom(
+        arg1: *mut ::std::os::raw::c_uchar,
+        __datlen: ::std::os::raw::c_int,
+    );
 }
-unsafe extern "C" {
+extern "C" {
     pub fn arc4random_buf(__buf: *mut ::std::os::raw::c_void, __nbytes: usize);
 }
-unsafe extern "C" {
+extern "C" {
     pub fn arc4random_stir();
 }
-unsafe extern "C" {
+extern "C" {
     pub fn arc4random_uniform(__upper_bound: u32) -> u32;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn atexit_b(arg1: *mut ::std::os::raw::c_void) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn bsearch_b(
         __key: *const ::std::os::raw::c_void,
         __base: *const ::std::os::raw::c_void,
@@ -3226,75 +4824,75 @@ unsafe extern "C" {
         __compar: *mut ::std::os::raw::c_void,
     ) -> *mut ::std::os::raw::c_void;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn cgetcap(
         arg1: *mut ::std::os::raw::c_char,
         arg2: *const ::std::os::raw::c_char,
         arg3: ::std::os::raw::c_int,
     ) -> *mut ::std::os::raw::c_char;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn cgetclose() -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn cgetent(
         arg1: *mut *mut ::std::os::raw::c_char,
         arg2: *mut *mut ::std::os::raw::c_char,
         arg3: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn cgetfirst(
         arg1: *mut *mut ::std::os::raw::c_char,
         arg2: *mut *mut ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn cgetmatch(
         arg1: *const ::std::os::raw::c_char,
         arg2: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn cgetnext(
         arg1: *mut *mut ::std::os::raw::c_char,
         arg2: *mut *mut ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn cgetnum(
         arg1: *mut ::std::os::raw::c_char,
         arg2: *const ::std::os::raw::c_char,
         arg3: *mut ::std::os::raw::c_long,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn cgetset(arg1: *const ::std::os::raw::c_char) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn cgetstr(
         arg1: *mut ::std::os::raw::c_char,
         arg2: *const ::std::os::raw::c_char,
         arg3: *mut *mut ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn cgetustr(
         arg1: *mut ::std::os::raw::c_char,
         arg2: *const ::std::os::raw::c_char,
         arg3: *mut *mut ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn daemon(
         arg1: ::std::os::raw::c_int,
         arg2: ::std::os::raw::c_int,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn devname(arg1: dev_t, arg2: mode_t) -> *mut ::std::os::raw::c_char;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn devname_r(
         arg1: dev_t,
         arg2: mode_t,
@@ -3302,22 +4900,22 @@ unsafe extern "C" {
         len: ::std::os::raw::c_int,
     ) -> *mut ::std::os::raw::c_char;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn getbsize(
         arg1: *mut ::std::os::raw::c_int,
         arg2: *mut ::std::os::raw::c_long,
     ) -> *mut ::std::os::raw::c_char;
 }
-unsafe extern "C" {
-    pub fn getloadavg(arg1: *mut f64, arg2: ::std::os::raw::c_int) -> ::std::os::raw::c_int;
+extern "C" {
+    pub fn getloadavg(arg1: *mut f64, __nelem: ::std::os::raw::c_int) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn getprogname() -> *const ::std::os::raw::c_char;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn setprogname(arg1: *const ::std::os::raw::c_char);
 }
-unsafe extern "C" {
+extern "C" {
     pub fn heapsort(
         __base: *mut ::std::os::raw::c_void,
         __nel: usize,
@@ -3330,7 +4928,7 @@ unsafe extern "C" {
         >,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn heapsort_b(
         __base: *mut ::std::os::raw::c_void,
         __nel: usize,
@@ -3338,7 +4936,7 @@ unsafe extern "C" {
         __compar: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn mergesort(
         __base: *mut ::std::os::raw::c_void,
         __nel: usize,
@@ -3351,7 +4949,7 @@ unsafe extern "C" {
         >,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn mergesort_b(
         __base: *mut ::std::os::raw::c_void,
         __nel: usize,
@@ -3359,7 +4957,7 @@ unsafe extern "C" {
         __compar: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn psort(
         __base: *mut ::std::os::raw::c_void,
         __nel: usize,
@@ -3372,7 +4970,7 @@ unsafe extern "C" {
         >,
     );
 }
-unsafe extern "C" {
+extern "C" {
     pub fn psort_b(
         __base: *mut ::std::os::raw::c_void,
         __nel: usize,
@@ -3380,7 +4978,7 @@ unsafe extern "C" {
         __compar: *mut ::std::os::raw::c_void,
     );
 }
-unsafe extern "C" {
+extern "C" {
     pub fn psort_r(
         __base: *mut ::std::os::raw::c_void,
         __nel: usize,
@@ -3395,7 +4993,7 @@ unsafe extern "C" {
         >,
     );
 }
-unsafe extern "C" {
+extern "C" {
     pub fn qsort_b(
         __base: *mut ::std::os::raw::c_void,
         __nel: usize,
@@ -3403,7 +5001,7 @@ unsafe extern "C" {
         __compar: *mut ::std::os::raw::c_void,
     );
 }
-unsafe extern "C" {
+extern "C" {
     pub fn qsort_r(
         __base: *mut ::std::os::raw::c_void,
         __nel: usize,
@@ -3418,7 +5016,7 @@ unsafe extern "C" {
         >,
     );
 }
-unsafe extern "C" {
+extern "C" {
     pub fn radixsort(
         __base: *mut *const ::std::os::raw::c_uchar,
         __nel: ::std::os::raw::c_int,
@@ -3426,10 +5024,10 @@ unsafe extern "C" {
         __endbyte: ::std::os::raw::c_uint,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn rpmatch(arg1: *const ::std::os::raw::c_char) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn sradixsort(
         __base: *mut *const ::std::os::raw::c_uchar,
         __nel: ::std::os::raw::c_int,
@@ -3437,13 +5035,13 @@ unsafe extern "C" {
         __endbyte: ::std::os::raw::c_uint,
     ) -> ::std::os::raw::c_int;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn sranddev();
 }
-unsafe extern "C" {
+extern "C" {
     pub fn srandomdev();
 }
-unsafe extern "C" {
+extern "C" {
     pub fn strtonum(
         __numstr: *const ::std::os::raw::c_char,
         __minval: ::std::os::raw::c_longlong,
@@ -3451,21 +5049,21 @@ unsafe extern "C" {
         __errstrp: *mut *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_longlong;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn strtoq(
         __str: *const ::std::os::raw::c_char,
         __endptr: *mut *mut ::std::os::raw::c_char,
         __base: ::std::os::raw::c_int,
     ) -> ::std::os::raw::c_longlong;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn strtouq(
         __str: *const ::std::os::raw::c_char,
         __endptr: *mut *mut ::std::os::raw::c_char,
         __base: ::std::os::raw::c_int,
     ) -> ::std::os::raw::c_ulonglong;
 }
-unsafe extern "C" {
+extern "C" {
     pub static mut suboptarg: *mut ::std::os::raw::c_char;
 }
 pub const DatumType_TRACT_DATUM_TYPE_BOOL: DatumType = 1;
@@ -3538,52 +5136,52 @@ pub struct TractState {
 pub struct TractValue {
     _unused: [u8; 0],
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Retrieve the last error that happened in this thread. A function encountered an error if\n its return type is of type `TRACT_RESULT` and it returned `TRACT_RESULT_KO`.\n\n # Return value\n  It returns a pointer to a null-terminated UTF-8 string that will contain the error description.\n  Rust side keeps ownership of the buffer. It will be valid as long as no other tract calls is\n  performed by the thread.\n  If no error occured, null is returned."]
     pub fn tract_get_last_error() -> *const ::std::os::raw::c_char;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Returns a pointer to a static buffer containing a null-terminated version string.\n\n The returned pointer must not be freed."]
     pub fn tract_version() -> *const ::std::os::raw::c_char;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Frees a string allocated by libtract."]
     pub fn tract_free_cstring(ptr: *mut ::std::os::raw::c_char);
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Creates an instance of an NNEF framework and parser that can be used to load and dump NNEF models.\n\n The returned object should be destroyed with `tract_nnef_destroy` once the model\n has been loaded."]
     pub fn tract_nnef_create(nnef: *mut *mut TractNnef) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn tract_nnef_transform_model(
         nnef: *const TractNnef,
         model: *mut TractModel,
         transform_spec: *const ::std::os::raw::c_char,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn tract_nnef_enable_tract_core(nnef: *mut TractNnef) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn tract_nnef_enable_tract_extra(nnef: *mut TractNnef) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn tract_nnef_enable_tract_transformers(nnef: *mut TractNnef) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn tract_nnef_enable_onnx(nnef: *mut TractNnef) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn tract_nnef_enable_pulse(nnef: *mut TractNnef) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn tract_nnef_enable_extended_identifier_syntax(nnef: *mut TractNnef) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Destroy the NNEF parser. It is safe to detroy the NNEF parser once the model had been loaded."]
     pub fn tract_nnef_destroy(nnef: *mut *mut TractNnef) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Parse and load an NNEF model as a tract TypedModel.\n\n `path` is a null-terminated utf-8 string pointer. It can be an archive (tar or tar.gz file) or a\n directory."]
     pub fn tract_nnef_model_for_path(
         nnef: *const TractNnef,
@@ -3591,7 +5189,7 @@ unsafe extern "C" {
         model: *mut *mut TractModel,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Dump a TypedModel as a NNEF tar file.\n\n `path` is a null-terminated utf-8 string pointer to the `.tar` file to be created.\n\n This function creates a plain, non-compressed, archive."]
     pub fn tract_nnef_write_model_to_tar(
         nnef: *const TractNnef,
@@ -3599,7 +5197,7 @@ unsafe extern "C" {
         model: *const TractModel,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Dump a TypedModel as a NNEF .tar.gz file.\n\n `path` is a null-terminated utf-8 string pointer to the `.tar.gz` file to be created."]
     pub fn tract_nnef_write_model_to_tar_gz(
         nnef: *const TractNnef,
@@ -3607,7 +5205,7 @@ unsafe extern "C" {
         model: *const TractModel,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Dump a TypedModel as a NNEF directory.\n\n `path` is a null-terminated utf-8 string pointer to the directory to be created.\n\n This function creates a plain, non-compressed, archive."]
     pub fn tract_nnef_write_model_to_dir(
         nnef: *const TractNnef,
@@ -3615,15 +5213,15 @@ unsafe extern "C" {
         model: *const TractModel,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Creates an instance of an ONNX framework and parser that can be used to load models.\n\n The returned object should be destroyed with `tract_nnef_destroy` once the model\n has been loaded."]
     pub fn tract_onnx_create(onnx: *mut *mut TractOnnx) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Destroy the NNEF parser. It is safe to detroy the NNEF parser once the model had been loaded."]
     pub fn tract_onnx_destroy(onnx: *mut *mut TractOnnx) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Parse and load an ONNX model as a tract InferenceModel.\n\n `path` is a null-terminated utf-8 string pointer. It must point to a `.onnx` model file."]
     pub fn tract_onnx_model_for_path(
         onnx: *const TractOnnx,
@@ -3631,21 +5229,21 @@ unsafe extern "C" {
         model: *mut *mut TractInferenceModel,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Query an InferenceModel input counts."]
     pub fn tract_inference_model_input_count(
         model: *const TractInferenceModel,
         inputs: *mut usize,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Query an InferenceModel output counts."]
     pub fn tract_inference_model_output_count(
         model: *const TractInferenceModel,
         outputs: *mut usize,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Query the name of a model input.\n\n The returned name must be freed by the caller using tract_free_cstring."]
     pub fn tract_inference_model_input_name(
         model: *const TractInferenceModel,
@@ -3653,7 +5251,7 @@ unsafe extern "C" {
         name: *mut *mut ::std::os::raw::c_char,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Query the name of a model output.\n\n The returned name must be freed by the caller using tract_free_cstring."]
     pub fn tract_inference_model_output_name(
         model: *const TractInferenceModel,
@@ -3661,14 +5259,14 @@ unsafe extern "C" {
         name: *mut *mut i8,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn tract_inference_model_input_fact(
         model: *const TractInferenceModel,
         input_id: usize,
         fact: *mut *mut TractInferenceFact,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Set an input fact of an InferenceModel.\n\n The `fact` argument is only borrowed by this function, it still must be destroyed.\n `fact` can be set to NULL to erase the current output fact of the model."]
     pub fn tract_inference_model_set_input_fact(
         model: *mut TractInferenceModel,
@@ -3676,7 +5274,7 @@ unsafe extern "C" {
         fact: *const TractInferenceFact,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Change the model outputs nodes (by name).\n\n `names` is an array containing `len` pointers to null terminated strings."]
     pub fn tract_inference_model_set_output_names(
         model: *mut TractInferenceModel,
@@ -3684,7 +5282,7 @@ unsafe extern "C" {
         names: *const *const ::std::os::raw::c_char,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Query an output fact for an InferenceModel.\n\n The return model must be freed using `tract_inference_fact_destroy`."]
     pub fn tract_inference_model_output_fact(
         model: *const TractInferenceModel,
@@ -3692,7 +5290,7 @@ unsafe extern "C" {
         fact: *mut *mut TractInferenceFact,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Set an output fact of an InferenceModel.\n\n The `fact` argument is only borrowed by this function, it still must be destroyed.\n `fact` can be set to NULL to erase the current output fact of the model."]
     pub fn tract_inference_model_set_output_fact(
         model: *mut TractInferenceModel,
@@ -3700,37 +5298,37 @@ unsafe extern "C" {
         fact: *const TractInferenceFact,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Analyse an InferencedModel in-place."]
     pub fn tract_inference_model_analyse(model: *mut TractInferenceModel) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Convenience function to obtain an optimized TypedModel from an InferenceModel.\n\n This function takes ownership of the InferenceModel `model` whether it succeeds\n or not. `tract_inference_model_destroy` must not be used on `model`.\n\n On the other hand, caller will be owning the newly created `optimized` model."]
     pub fn tract_inference_model_into_optimized(
         model: *mut *mut TractInferenceModel,
         optimized: *mut *mut TractModel,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Transform a fully analysed InferenceModel to a TypedModel.\n\n This function takes ownership of the InferenceModel `model` whether it succeeds\n or not. `tract_inference_model_destroy` must not be used on `model`.\n\n On the other hand, caller will be owning the newly created `optimized` model."]
     pub fn tract_inference_model_into_typed(
         model: *mut *mut TractInferenceModel,
         typed: *mut *mut TractModel,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Destroy an InferenceModel."]
     pub fn tract_inference_model_destroy(model: *mut *mut TractInferenceModel) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Query an InferenceModel input counts."]
     pub fn tract_model_input_count(model: *const TractModel, inputs: *mut usize) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Query an InferenceModel output counts."]
     pub fn tract_model_output_count(model: *const TractModel, outputs: *mut usize) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Query the name of a model input.\n\n The returned name must be freed by the caller using tract_free_cstring."]
     pub fn tract_model_input_name(
         model: *const TractModel,
@@ -3738,7 +5336,7 @@ unsafe extern "C" {
         name: *mut *mut ::std::os::raw::c_char,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Query the input fact of a model.\n\n Thre returned fact must be freed with tract_fact_destroy."]
     pub fn tract_model_input_fact(
         model: *const TractModel,
@@ -3746,7 +5344,7 @@ unsafe extern "C" {
         fact: *mut *mut TractFact,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Query the name of a model output.\n\n The returned name must be freed by the caller using tract_free_cstring."]
     pub fn tract_model_output_name(
         model: *const TractModel,
@@ -3754,7 +5352,7 @@ unsafe extern "C" {
         name: *mut *mut ::std::os::raw::c_char,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Query the output fact of a model.\n\n Thre returned fact must be freed with tract_fact_destroy."]
     pub fn tract_model_output_fact(
         model: *const TractModel,
@@ -3762,7 +5360,7 @@ unsafe extern "C" {
         fact: *mut *mut TractFact,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Change the model outputs nodes (by name).\n\n `names` is an array containing `len` pointers to null terminated strings."]
     pub fn tract_model_set_output_names(
         model: *mut TractModel,
@@ -3770,7 +5368,7 @@ unsafe extern "C" {
         names: *const *const ::std::os::raw::c_char,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Give value one or more symbols used in the model.\n\n * symbols is an array of `nb_symbols` pointers to null-terminated UTF-8 string for the symbols\n   names to substitue\n * values is an array of `nb_symbols` integer values"]
     pub fn tract_model_concretize_symbols(
         model: *mut TractModel,
@@ -3779,7 +5377,7 @@ unsafe extern "C" {
         values: *const i64,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Pulsify the model\n\n * stream_symbol is the name of the stream symbol\n * pulse expression is a dim to use as the pulse size (like \"8\", \"P\" or \"3*p\")."]
     pub fn tract_model_pulse_simple(
         model: *mut *mut TractModel,
@@ -3787,19 +5385,19 @@ unsafe extern "C" {
         pulse_expr: *const i8,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Apply a transform to the model."]
     pub fn tract_model_transform(model: *mut TractModel, transform: *const i8) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Declutter a TypedModel in-place."]
     pub fn tract_model_declutter(model: *mut TractModel) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Optimize a TypedModel in-place."]
     pub fn tract_model_optimize(model: *mut TractModel) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Perform a profile of the model using the provided inputs."]
     pub fn tract_model_profile_json(
         model: *mut TractModel,
@@ -3807,25 +5405,25 @@ unsafe extern "C" {
         json: *mut *mut i8,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Convert a TypedModel into a TypedRunnableModel.\n\n This function transfers ownership of the `model` argument to the newly-created `runnable` model.\n\n Runnable are reference counted. When done, it should be released with `tract_runnable_release`."]
     pub fn tract_model_into_runnable(
         model: *mut *mut TractModel,
         runnable: *mut *mut TractRunnable,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Query the number of properties in a model."]
     pub fn tract_model_property_count(model: *const TractModel, count: *mut usize) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Query the properties names of a model.\n\n The \"names\" array should be big enough to fit `tract_model_property_count` string pointers.\n\n Each name will have to be freed using `tract_free_cstring`."]
     pub fn tract_model_property_names(
         model: *const TractModel,
         names: *mut *mut i8,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Query a property value in a model."]
     pub fn tract_model_property(
         model: *const TractModel,
@@ -3833,18 +5431,18 @@ unsafe extern "C" {
         value: *mut *mut TractValue,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Destroy a TypedModel."]
     pub fn tract_model_destroy(model: *mut *mut TractModel) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Spawn a session state from a runnable model.\n\n This function does not take ownership of the `runnable` object, it can be used again to spawn\n other state instances. The runnable object is internally reference counted, it will be\n kept alive as long as any associated `State` exists (or as long as the `runnable` is not\n explicitely release with `tract_runnable_release`).\n\n `state` is a newly-created object. It should ultimately be detroyed with `tract_state_destroy`."]
     pub fn tract_runnable_spawn_state(
         runnable: *mut TractRunnable,
         state: *mut *mut TractState,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Convenience function to run a stateless model.\n\n `inputs` is a pointer to an pre-existing array of input TractValue. Its length *must* be equal\n to the number of inputs of the models. The function does not take ownership of the input\n values.\n `outputs` is a pointer to a pre-existing array of TractValue pointers that will be overwritten\n with pointers to outputs values. These values are under the responsiblity of the caller, it\n will have to release them with `tract_value_destroy`."]
     pub fn tract_runnable_run(
         runnable: *mut TractRunnable,
@@ -3852,24 +5450,24 @@ unsafe extern "C" {
         outputs: *mut *mut TractValue,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Query a Runnable input counts."]
     pub fn tract_runnable_input_count(
         model: *const TractRunnable,
         inputs: *mut usize,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Query an Runnable output counts."]
     pub fn tract_runnable_output_count(
         model: *const TractRunnable,
         outputs: *mut usize,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn tract_runnable_release(runnable: *mut *mut TractRunnable) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Create a TractValue (aka tensor) from caller data and metadata.\n\n This call copies the data into tract space. All the pointers only need to be alive for the\n duration of the call.\n\n rank is the number of dimensions of the tensor (i.e. the length of the shape vector).\n\n The returned value must be destroyed by `tract_value_destroy`."]
     pub fn tract_value_from_bytes(
         datum_type: DatumType,
@@ -3879,11 +5477,11 @@ unsafe extern "C" {
         value: *mut *mut TractValue,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Destroy a value."]
     pub fn tract_value_destroy(value: *mut *mut TractValue) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Inspect part of a value. Except `value`, all argument pointers can be null if only some specific bits\n are required."]
     pub fn tract_value_as_bytes(
         value: *mut TractValue,
@@ -3893,7 +5491,7 @@ unsafe extern "C" {
         data: *mut *const ::std::os::raw::c_void,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Run a turn on a model state\n\n `inputs` is a pointer to an pre-existing array of input TractValue. Its length *must* be equal\n to the number of inputs of the models. The function does not take ownership of the input\n values.\n `outputs` is a pointer to a pre-existing array of TractValue pointers that will be overwritten\n with pointers to outputs values. These values are under the responsiblity of the caller, it\n will have to release them with `tract_value_destroy`."]
     pub fn tract_state_run(
         state: *mut TractState,
@@ -3901,18 +5499,18 @@ unsafe extern "C" {
         outputs: *mut *mut TractValue,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Query a State input counts."]
     pub fn tract_state_input_count(state: *const TractState, inputs: *mut usize) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Query an State output counts."]
     pub fn tract_state_output_count(state: *const TractState, outputs: *mut usize) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn tract_state_destroy(state: *mut *mut TractState) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Parse a fact specification string into an Fact.\n\n The returned fact must be free with `tract_fact_destroy`."]
     pub fn tract_fact_parse(
         model: *mut TractModel,
@@ -3920,17 +5518,17 @@ unsafe extern "C" {
         fact: *mut *mut TractFact,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Write a fact as its specification string.\n\n The returned string must be freed by the caller using tract_free_cstring."]
     pub fn tract_fact_dump(
         fact: *const TractFact,
         spec: *mut *mut ::std::os::raw::c_char,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     pub fn tract_fact_destroy(fact: *mut *mut TractFact) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Parse a fact specification string into an InferenceFact.\n\n The returned fact must be free with `tract_inference_fact_destroy`."]
     pub fn tract_inference_fact_parse(
         model: *mut TractInferenceModel,
@@ -3938,18 +5536,18 @@ unsafe extern "C" {
         fact: *mut *mut TractInferenceFact,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Creates an empty inference fact.\n\n The returned fact must be freed by the caller using tract_inference_fact_destroy"]
     pub fn tract_inference_fact_empty(fact: *mut *mut TractInferenceFact) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Write an inference fact as its specification string.\n\n The returned string must be freed by the caller using tract_free_cstring."]
     pub fn tract_inference_fact_dump(
         fact: *const TractInferenceFact,
         spec: *mut *mut ::std::os::raw::c_char,
     ) -> TRACT_RESULT;
 }
-unsafe extern "C" {
+extern "C" {
     #[doc = " Destroy a fact."]
     pub fn tract_inference_fact_destroy(fact: *mut *mut TractInferenceFact) -> TRACT_RESULT;
 }
