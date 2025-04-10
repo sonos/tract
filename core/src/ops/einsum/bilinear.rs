@@ -30,7 +30,7 @@ impl<'m> BilinearEinSum<'m> {
         }
         let relevant = |axis: &Axis, slot: usize| {
             axis.inputs[slot]
-                .get(0)
+                .first()
                 .map(|pos| &input_facts[slot].shape[*pos])
                 .is_some_and(|d| !d.is_one())
         };
