@@ -86,7 +86,7 @@ pub trait NnefInterface: Sized {
     ///
     /// This function creates a plain, non-compressed, archive.
     ///
-    /// `path` is the archive name 
+    /// `path` is the archive name
     fn write_model_to_tar(&self, path: impl AsRef<Path>, model: &Self::Model) -> Result<()>;
     fn write_model_to_tar_gz(&self, path: impl AsRef<Path>, model: &Self::Model) -> Result<()>;
 }
