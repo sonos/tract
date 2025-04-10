@@ -53,7 +53,3 @@ pub fn tract_transformers_registry() -> Registry {
     register(&mut reg);
     reg
 }
-
-pub fn register_pulsifiers() {
-    let _ = tract_transformers_registry();
-}
