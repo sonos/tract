@@ -135,7 +135,7 @@ impl RmsNorm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rewrite_rules::BasicRmsNorm;
+    use tract_transformers::ops::rms_norm::BasicRmsNorm;
     use crate::IntoMetal;
     use derive_new::new;
     use num_traits::AsPrimitive;

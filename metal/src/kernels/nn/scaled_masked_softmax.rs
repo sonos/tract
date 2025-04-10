@@ -81,7 +81,7 @@ impl ScaledMaskedSoftmax {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rewrite_rules::BasicScaledMaskedSoftmax;
+    use tract_transformers::ops::scaled_masked_softmax::BasicScaledMaskedSoftmax;
     use crate::IntoMetal;
     use derive_new::new;
     use num_traits::AsPrimitive;

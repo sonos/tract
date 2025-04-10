@@ -84,7 +84,7 @@ impl RotateHalf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rewrite_rules::BasicRotateHalf;
+    use tract_transformers::ops::apply_rope::BasicRotateHalf;
     use crate::IntoMetal;
     use num_traits::AsPrimitive;
     use tract_core::internal::Tensor;

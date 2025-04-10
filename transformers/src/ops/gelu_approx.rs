@@ -39,7 +39,7 @@ fn ser_gelu_approx(
     )))
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Default,Clone, Debug, Hash)]
 /// NEW_GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)));
 pub struct BasicGeluApprox {
     pub fast_impl: bool,
