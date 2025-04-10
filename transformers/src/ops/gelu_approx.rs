@@ -25,17 +25,21 @@ fn de_gelu_approx(
     invocation: &ResolvedInvocation,
 ) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
-    let fast_impl = invocation.named_arg_as(builder, "fast")?;
+    let fast_impl = invocation.named_arg_as(builder, "fast_impl")?;
     builder.wire(BasicGeluApprox { fast_impl }, &[input])
 }
 
 fn ser_gelu_approx(
     ast: &mut IntoAst,
     node: &TypedNode,
-    _op: &BasicGeluApprox,
+    op: &BasicGeluApprox,
 ) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
-    Ok(Some(invocation("tract_transformers_gelu_approx", &[input], &[])))
+    Ok(Some(invocation(
+        "tract_transformers_gelu_approx",
+        &[input],
+        &[("fast_impl", logical(op.fast_impl))],
+    )))
 }
 
 #[derive(Default, Clone, Debug, Hash)]
