@@ -5,11 +5,11 @@ use metal::MTLSize;
 use tract_core::internal::*;
 
 #[derive(Debug, Clone, Default, Copy, PartialEq, Eq, Hash)]
-pub struct NewGelu {
+pub struct GeluFastApprox {
     pub fast_impl: bool,
 }
 
-impl NewGelu {
+impl GeluFastApprox {
     pub fn fast() -> Self {
         Self { fast_impl: true }
     }
@@ -70,7 +70,7 @@ impl NewGelu {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rewrite_rules::BasicNewGelu;
+    use crate::rewrite_rules::BasicGeluFastApprox;
     use crate::IntoMetal;
     use derive_new::new;
     use num_traits::AsPrimitive;
@@ -80,7 +80,7 @@ mod tests {
     use tract_core::internal::Tensor;
 
     fn test_case<F>(
-        new_gelu: NewGelu,
+        new_gelu: GeluFastApprox,
         shape: &[usize],
         offset: f32,
         scale: f32,
@@ -107,7 +107,7 @@ mod tests {
                 .into_metal()?;
 
                 let cpu_output =
-                    BasicNewGelu.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
+                    BasicGeluFastApprox.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
                 let metal_output = new_gelu.eval(context, &a)?;
 
                 cpu_output
@@ -129,21 +129,21 @@ mod tests {
     #[test]
     fn test_new_gelu() -> Result<()> {
         test_case::<f32>(
-            NewGelu::accurate(),
+            GeluFastApprox::accurate(),
             &[4, 4],
             -0.0,
             1.0 / 100.0,
             Approximation::Approximate,
         )?;
         test_case::<f32>(
-            NewGelu::accurate(),
+            GeluFastApprox::accurate(),
             &[4, 4],
             -6.0,
             1.0 / 1000.0,
             Approximation::Approximate,
         )?;
         test_case::<f16>(
-            NewGelu::accurate(),
+            GeluFastApprox::accurate(),
             &[4, 4],
             -6.0,
             1.0 / 1000.0,
@@ -154,21 +154,21 @@ mod tests {
     #[test]
     fn test_new_gelu_fast() -> Result<()> {
         test_case::<f32>(
-            NewGelu::fast(),
+            GeluFastApprox::fast(),
             &[4, 4],
             -0.0,
             1.0 / 100.0,
             Approximation::SuperApproximate,
         )?;
         test_case::<f32>(
-            NewGelu::fast(),
+            GeluFastApprox::fast(),
             &[4, 4],
             -6.0,
             1.0 / 1000.0,
             Approximation::SuperApproximate,
         )?;
         test_case::<f16>(
-            NewGelu::fast(),
+            GeluFastApprox::fast(),
             &[4, 4],
             -6.0,
             1.0 / 1000.0,
@@ -179,8 +179,8 @@ mod tests {
 
     proptest::proptest! {
         #[test]
-        fn new_gelu_prop_f32(pb in any::<NewGeluProblem<f32>>()) {
-            fn run(pb: NewGeluProblem<f32>) -> TractResult<()> {
+        fn new_gelu_prop_f32(pb in any::<GeluFastApproxProblem<f32>>()) {
+            fn run(pb: GeluFastApproxProblem<f32>) -> TractResult<()> {
                 let out = pb.run()?;
                 let reference = pb.reference()?;
 
@@ -191,8 +191,8 @@ mod tests {
         }
 
         #[test]
-        fn new_gelu_prop_f16(pb in any::<NewGeluProblem<f16>>()) {
-            fn run(pb: NewGeluProblem<f16>) -> TractResult<()> {
+        fn new_gelu_prop_f16(pb in any::<GeluFastApproxProblem<f16>>()) {
+            fn run(pb: GeluFastApproxProblem<f16>) -> TractResult<()> {
                 let out = pb.run()?;
                 let reference = pb.reference()?;
 
@@ -205,7 +205,7 @@ mod tests {
     }
 
     #[derive(Debug, new)]
-    pub struct NewGeluProblem<F: Datum + Float>
+    pub struct GeluFastApproxProblem<F: Datum + Float>
     where
         F: Datum + Float,
         usize: AsPrimitive<F>,
@@ -215,7 +215,7 @@ mod tests {
         pub input: Vec<F>,
     }
 
-    impl<F> Arbitrary for NewGeluProblem<F>
+    impl<F> Arbitrary for GeluFastApproxProblem<F>
     where
         F: Datum + Float,
         usize: AsPrimitive<F>,
@@ -241,7 +241,7 @@ mod tests {
         }
     }
 
-    impl<F> NewGeluProblem<F>
+    impl<F> GeluFastApproxProblem<F>
     where
         F: Datum + Float + std::ops::AddAssign,
         usize: AsPrimitive<F>,
@@ -250,7 +250,7 @@ mod tests {
         pub fn reference(&self) -> Result<Tensor> {
             let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?;
 
-            let cpu_output = BasicNewGelu.eval(tvec![a.into_tvalue()])?[0].clone().into_tensor();
+            let cpu_output = BasicGeluFastApprox.eval(tvec![a.into_tvalue()])?[0].clone().into_tensor();
 
             Ok(cpu_output)
         }
@@ -259,7 +259,7 @@ mod tests {
             objc::rc::autoreleasepool(|| {
                 crate::METAL_CONTEXT.with_borrow(|context| {
                     let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_metal()?;
-                    let metal_output = NewGelu::accurate().eval(context, &a)?;
+                    let metal_output = GeluFastApprox::accurate().eval(context, &a)?;
                     Ok(metal_output.to_cpu()?.into_tensor())
                 })
             })

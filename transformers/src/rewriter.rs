@@ -68,9 +68,9 @@ impl ModelTransform for ScaledMaskedSoftmaxTransform {
 }
 
 #[derive(Debug, Default)]
-pub struct NewGeluTransform;
+pub struct GeluFastApproxTransform;
 
-impl ModelTransform for NewGeluTransform {
+impl ModelTransform for GeluFastApproxTransform {
     fn name(&self) -> Cow<str> {
         "silu-transform".into()
     }

@@ -10,24 +10,40 @@ use crate::rule_ensure;
 use super::{previous_node, next_node, collect_node_const_inputs};
 
 pub fn register(registry: &mut Registry) {
+    registry.register_dumper(ser_rms_norm);
     registry.register_primitive(
         "tract_transformers_rms_norm",
         &[
             TypeName::Scalar.tensor().named("input"),
             TypeName::Integer.named("axis"),
-            TypeName::Scalar.tensor().named("eps"),
+            TypeName::Scalar.named("eps").default(1e-6f32),
         ],
         &[("output", TypeName::Scalar.tensor())],
-        rms_norm,
+        de_rms_norm,
     );
 }
 
-// Check with Kali!
-pub fn rms_norm(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+fn de_rms_norm(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let axis: usize = invocation.named_arg_as(builder, "axis")?;
     let eps = invocation.named_arg_as(builder, "eps")?;
     builder.wire(BasicRmsNorm { axis, eps }, &[input])
+}
+
+fn ser_rms_norm(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &BasicRmsNorm,
+) -> TractResult<Option<Arc<RValue>>> {
+    let input = ast.mapping[&node.inputs[0]].clone();
+    Ok(Some(invocation(
+        "tract_transformers_rms_norm",
+        &[input],
+        &[
+            ("axis", numeric(op.axis)),
+            ("eps", numeric(op.eps.cast_to_scalar::<f32>()?)),
+        ],
+    )))
 }
 
 #[derive(Clone, Debug, Hash)]

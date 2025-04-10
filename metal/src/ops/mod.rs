@@ -26,7 +26,7 @@ pub use concat::MetalConcat;
 pub use element_wise::MetalElementWiseOp;
 pub use fused_axis_op::MetalFusedAxisOp;
 pub use gemm::MetalGemm;
-pub use new_gelu::MetalNewGelu;
+pub use new_gelu::MetalGeluFastApprox;
 pub use reduce::MetalReduce;
 pub use rms_norm::MetalRmsNorm;
 pub use rotate_half::MetalRotateHalf;

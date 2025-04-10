@@ -2,13 +2,13 @@ use crate::fact::MetalTypedFactExt;
 use crate::kernels::array::RotateHalf;
 use crate::kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm};
 use crate::kernels::nn::{
-    ApplyRope, NewGelu, Reducer, RmsNorm, ScaledMaskedSoftmax, Silu, Softmax,
+    ApplyRope, GeluFastApprox, Reducer, RmsNorm, ScaledMaskedSoftmax, Silu, Softmax,
 };
 use crate::ops::{self, MetalSync, MetalSyncKind};
 
 use crate::rewrite_rules;
 
-use tract_transformers::ops::new_gelu::BasicNewGelu;
+use tract_transformers::ops::gelu_fast_approx::BasicGeluFastApprox;
 use tract_transformers::ops::scaled_masked_softmax::BasicScaledMaskedSoftmax;
 use tract_transformers::ops::rms_norm::BasicRmsNorm;
 use tract_transformers::ops::apply_rope::{ BasicApplyRope, BasicRotateHalf};
@@ -256,8 +256,8 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
                 .is_some_and(|_| ApplyRope::is_supported_dt(input_dts[0]))
             || node.op_as::<BasicSilu>().is_some_and(|_| Silu::is_supported_dt(input_dts[0]))
             || node
-                .op_as::<BasicNewGelu>()
-                .is_some_and(|_| NewGelu::is_supported_dt(input_dts[0]))))
+                .op_as::<BasicGeluFastApprox>()
+                .is_some_and(|_| GeluFastApprox::is_supported_dt(input_dts[0]))))
 }
 
 impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for MetalTransform {
@@ -310,8 +310,8 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                     Box::new(ops::MetalApplyRope)
                 } else if let Some(_op) = node.op_as::<BasicSilu>() {
                     Box::new(ops::MetalSilu)
-                } else if let Some(_op) = node.op_as::<BasicNewGelu>() {
-                    Box::new(ops::MetalNewGelu)
+                } else if let Some(_op) = node.op_as::<BasicGeluFastApprox>() {
+                    Box::new(ops::MetalGeluFastApprox)
                 } else {
                     bail!("Failed to translate a supported Metal Op")
                 };

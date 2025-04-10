@@ -1,5 +1,4 @@
-use tract_nnef::tract_core;
-use tract_core::internal::*;
+use tract_nnef::internal::*;
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::math::{Mul, Pow, Tanh};
@@ -8,18 +7,48 @@ use crate::rule_ensure;
 
 use super::{ next_node, find_succ_add_with, find_succ_mul_with_const, find_succ_add_with_const, matches_single_input_const };
 
+pub fn register(registry: &mut Registry) {
+    registry.register_dumper(ser_gelu_fast_approx);
+    registry.register_primitive(
+        "tract_transformers_gelu_fast_approx",
+        &[
+            TypeName::Scalar.tensor().named("input"),
+        ],
+        &[("output", TypeName::Scalar.tensor())],
+        de_gelu_fast_approx,
+    );
+}
+
+fn de_gelu_fast_approx(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+    let input = invocation.named_arg_as(builder, "input")?;
+    builder.wire(BasicGeluFastApprox, &[input])
+}
+
+fn ser_gelu_fast_approx(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    _op: &BasicGeluFastApprox,
+) -> TractResult<Option<Arc<RValue>>> {
+    let input = ast.mapping[&node.inputs[0]].clone();
+    Ok(Some(invocation(
+        "tract_transformers_gelu_fast_approx",
+        &[input],
+        &[]
+    )))
+}
+
 #[derive(Clone, Debug, Hash)]
 /// NEW_GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)));
-pub struct BasicNewGelu;
+pub struct BasicGeluFastApprox;
 
-impl Op for BasicNewGelu {
+impl Op for BasicGeluFastApprox {
     fn name(&self) -> Cow<str> {
-        "BasicNewGelu".to_string().into()
+        "BasicGeluFastApprox".to_string().into()
     }
     op_as_typed_op!();
 }
 
-impl EvalOp for BasicNewGelu {
+impl EvalOp for BasicGeluFastApprox {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -43,7 +72,7 @@ impl EvalOp for BasicNewGelu {
     }
 }
 
-impl TypedOp for BasicNewGelu {
+impl TypedOp for BasicGeluFastApprox {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let dt = inputs[0].datum_type;
         let fact = dt.fact(inputs[0].shape.clone());
@@ -139,7 +168,7 @@ pub fn as_new_gelu_rule(
     };
 
     let out =
-        patch.wire_node(format!("{node_name}.new_gelu"), BasicNewGelu, &[new_gelu_input[0]])?;
+        patch.wire_node(format!("{node_name}.new_gelu"), BasicGeluFastApprox, &[new_gelu_input[0]])?;
     patch.shunt_outside(model, last_node_id.into(), out[0])?;
     Ok(Some(patch))
 }
