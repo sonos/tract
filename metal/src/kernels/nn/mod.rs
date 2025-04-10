@@ -7,7 +7,7 @@ pub mod silu;
 pub mod softmax;
 
 pub use apply_rope::ApplyRope;
-pub use new_gelu::NewGelu;
+pub use new_gelu::GeluFastApprox;
 pub use reduce::Reducer;
 pub use rms_norm::RmsNorm;
 pub use scaled_masked_softmax::ScaledMaskedSoftmax;

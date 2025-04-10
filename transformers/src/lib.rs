@@ -6,11 +6,11 @@ use tract_nnef::tract_core::transform::ModelTransform;
 
 pub fn get_transform(name: &str) -> Option<Box<dyn ModelTransform>> {
     match name {
-        "as-rms-norm" => Some(Box::new(RmsNormTransform)),
-        "as-apply-rope" => Some(Box::new(ApplyRopeTransform)),
-        "as-silu" => Some(Box::new(SiluTransform)),
-        "as-scaled-masked-softmax" => Some(Box::new(ScaledMaskedSoftmaxTransform)),
-        "as-new-gelu" => Some(Box::new(NewGeluTransform)),
+        "detect-rms-norm" => Some(Box::new(RmsNormTransform)),
+        "detect-apply-rope" => Some(Box::new(ApplyRopeTransform)),
+        "detect-silu" => Some(Box::new(SiluTransform)),
+        "detect-scaled-masked-softmax" => Some(Box::new(ScaledMaskedSoftmaxTransform)),
+        "detect-new-gelu" => Some(Box::new(GeluFastApproxTransform)),
         _ => None,
     }
 }
@@ -19,6 +19,10 @@ pub fn register(registry: &mut Registry) {
     registry.transforms = Box::new(|s| Ok(get_transform(s)));
 
     ops::rms_norm::register(registry);
+    ops::silu::register(registry);
+    ops::gelu_fast_approx::register(registry);
+    ops::apply_rope::register(registry);
+    ops::scaled_masked_softmax::register(registry);
 }
 
 pub trait WithTractTransformers {

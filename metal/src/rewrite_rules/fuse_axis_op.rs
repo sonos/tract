@@ -109,7 +109,7 @@ pub fn fuse_axis_op(
         crate::ops::MetalElementWiseOp,
         crate::ops::MetalRmsNorm,
         crate::ops::MetalSilu,
-        crate::ops::MetalNewGelu,
+        crate::ops::MetalGeluFastApprox,
         crate::ops::MetalSoftmax,
         crate::ops::MetalRotateHalf,
         crate::ops::MetalApplyRope,
