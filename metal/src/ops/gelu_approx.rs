@@ -1,10 +1,9 @@
 use crate::kernels::nn::GeluApprox;
 use crate::ops::MetalEvalOp;
 use crate::{MetalContext, MetalTensorExt};
-use derive_new::new;
 use tract_core::internal::*;
 
-#[derive(Clone, Debug, new, Hash)]
+#[derive(Clone, Debug, Default, Hash)]
 pub struct MetalGeluApprox {
     pub fast_impl: bool,
 }

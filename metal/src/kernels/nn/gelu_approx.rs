@@ -10,6 +10,14 @@ pub struct GeluApprox {
 }
 
 impl GeluApprox {
+    pub fn fast() -> Self {
+        Self { fast_impl: true }
+    }
+
+    pub fn accurate() -> Self {
+        Self { fast_impl: false }
+    }
+
     pub fn is_supported_dt(dt: DatumType) -> bool {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
@@ -62,7 +70,7 @@ impl GeluApprox {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rewrite_rules::BasicGeluApprox;
+    use tract_transformers::ops::gelu_approx::BasicGeluApprox;
     use crate::IntoMetal;
     use derive_new::new;
     use num_traits::AsPrimitive;
@@ -99,7 +107,7 @@ mod tests {
                 .into_metal()?;
 
                 let cpu_output =
-                    BasicGeluApprox.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
+                    BasicGeluApprox::default().eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
                 let metal_output = gelu_approx.eval(context, &a)?;
 
                 cpu_output
@@ -242,7 +250,7 @@ mod tests {
         pub fn reference(&self) -> Result<Tensor> {
             let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?;
 
-            let cpu_output = BasicGeluApprox.eval(tvec![a.into_tvalue()])?[0].clone().into_tensor();
+            let cpu_output = BasicGeluApprox::default().eval(tvec![a.into_tvalue()])?[0].clone().into_tensor();
 
             Ok(cpu_output)
         }
