@@ -25,7 +25,7 @@ pub trait NnefInterface: Sized {
     /// Allow the framework to use tract_extra extensions.
     fn enable_tract_extra(&mut self) -> Result<()>;
 
-    /// Allow the framework to use tract_transformers extensions to support stateful streaming operation.
+    /// Allow the framework to use tract_transformers extensions to support common transformer operators.
     fn enable_tract_transformers(&mut self) -> Result<()>;
 
     /// Allow the framework to use tract_onnx extensions to support operators in ONNX that are
