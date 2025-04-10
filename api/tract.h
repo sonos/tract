@@ -91,8 +91,8 @@ void tract_free_cstring(char *ptr);
 enum TRACT_RESULT tract_nnef_create(struct TractNnef **nnef);
 
 enum TRACT_RESULT tract_nnef_transform_model(const struct TractNnef *nnef,
-                                             const char *transform_spec,
-                                             struct TractModel *model);
+                                             struct TractModel *model,
+                                             const char *transform_spec);
 
 enum TRACT_RESULT tract_nnef_enable_tract_core(struct TractNnef *nnef);
 
