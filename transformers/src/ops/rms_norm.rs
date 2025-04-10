@@ -7,7 +7,7 @@ use tract_nnef::tract_core::ops::nn::{Reduce, Reducer};
 
 use crate::rule_ensure;
 
-use super::{previous_node, next_node, collect_node_const_inputs};
+use super::{collect_node_const_inputs, next_node, previous_node};
 
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(ser_rms_norm);
@@ -39,10 +39,7 @@ fn ser_rms_norm(
     Ok(Some(invocation(
         "tract_transformers_rms_norm",
         &[input],
-        &[
-            ("axis", numeric(op.axis)),
-            ("eps", numeric(op.eps.cast_to_scalar::<f32>()?)),
-        ],
+        &[("axis", numeric(op.axis)), ("eps", numeric(op.eps.cast_to_scalar::<f32>()?))],
     )))
 }
 

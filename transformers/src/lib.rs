@@ -1,5 +1,5 @@
-mod rewriter;
 pub mod ops;
+mod rewriter;
 use rewriter::*;
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::transform::ModelTransform;
@@ -15,7 +15,7 @@ pub fn get_transform(name: &str) -> Option<Box<dyn ModelTransform>> {
         _ => None,
     }
 }
- 
+
 pub fn register(registry: &mut Registry) {
     registry.transforms = Box::new(|s| Ok(get_transform(s)));
 

@@ -5,22 +5,22 @@ use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp};
 
 use crate::rule_ensure;
 
-use super::{previous_node, previous_nodes, collect_node_const_inputs};
+use super::{collect_node_const_inputs, previous_node, previous_nodes};
 
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(ser_scaled_masked_softmax);
     registry.register_primitive(
         "tract_transformers_scaled_masked_softmax",
-        &[
-            TypeName::Scalar.tensor().named("input"),
-            TypeName::Scalar.named("scale"),
-        ],
+        &[TypeName::Scalar.tensor().named("input"), TypeName::Scalar.named("scale")],
         &[("output", TypeName::Scalar.tensor())],
         de_scaled_masked_softmax,
     );
 }
 
-fn de_scaled_masked_softmax(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+fn de_scaled_masked_softmax(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let scale = invocation.named_arg_as(builder, "scale")?;
     builder.wire(BasicScaledMaskedSoftmax { scale }, &[input])
@@ -35,9 +35,7 @@ fn ser_scaled_masked_softmax(
     Ok(Some(invocation(
         "tract_transformers_scaled_masked_softmax",
         &[input],
-        &[
-            ("scale", numeric(op.scale.cast_to_scalar::<f32>()?)),
-        ]
+        &[("scale", numeric(op.scale.cast_to_scalar::<f32>()?))],
     )))
 }
 

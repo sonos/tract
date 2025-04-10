@@ -81,7 +81,6 @@ impl ScaledMaskedSoftmax {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tract_transformers::ops::scaled_masked_softmax::BasicScaledMaskedSoftmax;
     use crate::IntoMetal;
     use derive_new::new;
     use num_traits::AsPrimitive;
@@ -90,6 +89,7 @@ mod tests {
     use proptest::prelude::*;
     use proptest::strategy::Strategy;
     use tract_core::internal::Tensor;
+    use tract_transformers::ops::scaled_masked_softmax::BasicScaledMaskedSoftmax;
 
     #[test]
     fn test_scaled_masked_softmax_f32() -> Result<()> {

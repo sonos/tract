@@ -1,9 +1,9 @@
 use tract_nnef::internal::*;
-use tract_nnef::tract_core::ops::binary::BinMiniOp;
-use tract_nnef::tract_core::ops::math::{Add, Mul, Neg};
 use tract_nnef::tract_core::ops::array::{Slice, TypedConcat};
+use tract_nnef::tract_core::ops::binary::BinMiniOp;
 use tract_nnef::tract_core::ops::binary::TypedBinOp;
 use tract_nnef::tract_core::ops::element_wise::ElementWiseOp;
+use tract_nnef::tract_core::ops::math::{Add, Mul, Neg};
 
 use super::{previous_node, previous_nodes, single_prev_node_as};
 use crate::rule_ensure;
@@ -22,7 +22,10 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-fn de_apply_rope(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+fn de_apply_rope(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let cos = invocation.named_arg_as(builder, "cos")?;
     let sin = invocation.named_arg_as(builder, "sin")?;
@@ -37,11 +40,7 @@ fn ser_apply_rope(
     let input = ast.mapping[&node.inputs[0]].clone();
     let cos: Arc<RValue> = ast.mapping[&node.inputs[1]].clone();
     let sin: Arc<RValue> = ast.mapping[&node.inputs[2]].clone();
-    Ok(Some(invocation(
-        "tract_transformers_apply_rope",
-        &[input, cos, sin],
-        &[]
-    )))
+    Ok(Some(invocation("tract_transformers_apply_rope", &[input, cos, sin], &[])))
 }
 
 #[derive(Clone, Debug, Hash)]
@@ -252,9 +251,9 @@ pub fn as_apply_rope_rule(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tract_nnef::tract_core::ops::math::Neg;
     use tract_num_traits::AsPrimitive;
     use tract_num_traits::Zero;
-    use tract_nnef::tract_core::ops::math::Neg;
 
     fn run_test_case<F: Datum + Zero + Copy>(a_shape: &[usize]) -> TractResult<()>
     where
