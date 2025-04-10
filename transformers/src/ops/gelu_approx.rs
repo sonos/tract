@@ -8,30 +8,30 @@ use crate::rule_ensure;
 use super::{ next_node, find_succ_add_with, find_succ_mul_with_const, find_succ_add_with_const, matches_single_input_const };
 
 pub fn register(registry: &mut Registry) {
-    registry.register_dumper(ser_gelu_fast_approx);
+    registry.register_dumper(ser_gelu_approx);
     registry.register_primitive(
-        "tract_transformers_gelu_fast_approx",
+        "tract_transformers_gelu_approx",
         &[
             TypeName::Scalar.tensor().named("input"),
         ],
         &[("output", TypeName::Scalar.tensor())],
-        de_gelu_fast_approx,
+        de_gelu_approx,
     );
 }
 
-fn de_gelu_fast_approx(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+fn de_gelu_approx(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
-    builder.wire(BasicGeluFastApprox, &[input])
+    builder.wire(BasicGeluApprox, &[input])
 }
 
-fn ser_gelu_fast_approx(
+fn ser_gelu_approx(
     ast: &mut IntoAst,
     node: &TypedNode,
-    _op: &BasicGeluFastApprox,
+    _op: &BasicGeluApprox,
 ) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
     Ok(Some(invocation(
-        "tract_transformers_gelu_fast_approx",
+        "tract_transformers_gelu_approx",
         &[input],
         &[]
     )))
@@ -39,16 +39,16 @@ fn ser_gelu_fast_approx(
 
 #[derive(Clone, Debug, Hash)]
 /// NEW_GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)));
-pub struct BasicGeluFastApprox;
+pub struct BasicGeluApprox;
 
-impl Op for BasicGeluFastApprox {
+impl Op for BasicGeluApprox {
     fn name(&self) -> Cow<str> {
-        "BasicGeluFastApprox".to_string().into()
+        "BasicGeluApprox".to_string().into()
     }
     op_as_typed_op!();
 }
 
-impl EvalOp for BasicGeluFastApprox {
+impl EvalOp for BasicGeluApprox {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -61,18 +61,18 @@ impl EvalOp for BasicGeluFastApprox {
 
         let sqrt_2_over_pi = (2.0 / std::f32::consts::PI).sqrt();
 
-        let new_gelu_f32_data = a_f32
+        let gelu_approx_f32_data = a_f32
             .as_slice::<f32>()?
             .iter()
             .map(|x| 0.5 * x * (1.0 + f32::tanh(sqrt_2_over_pi * (x + 0.044715 * x.powi(3)))))
             .collect::<Vec<_>>();
 
-        let new_gelu_f32 = Tensor::from_shape(input.shape(), &new_gelu_f32_data)?;
-        Ok(tvec![new_gelu_f32.cast_to_dt(dt)?.into_owned().into_tvalue()])
+        let gelu_approx_f32 = Tensor::from_shape(input.shape(), &gelu_approx_f32_data)?;
+        Ok(tvec![gelu_approx_f32.cast_to_dt(dt)?.into_owned().into_tvalue()])
     }
 }
 
-impl TypedOp for BasicGeluFastApprox {
+impl TypedOp for BasicGeluApprox {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let dt = inputs[0].datum_type;
         let fact = dt.fact(inputs[0].shape.clone());
@@ -83,7 +83,7 @@ impl TypedOp for BasicGeluFastApprox {
 }
 
 /// Search pattern => NEW_GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)));
-pub fn as_new_gelu_rule(
+pub fn as_gelu_approx_rule(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
@@ -101,7 +101,7 @@ pub fn as_new_gelu_rule(
     rule_ensure!(matches!(dt, DatumType::F32 | DatumType::F16));
 
     let mut patch = TypedModelPatch::default();
-    let new_gelu_input = patch.taps(model, &pow_node.inputs)?;
+    let gelu_approx_input = patch.taps(model, &pow_node.inputs)?;
 
     rule_ensure!(matches_single_input_const(model, pow_node, 3.0));
 
@@ -168,7 +168,7 @@ pub fn as_new_gelu_rule(
     };
 
     let out =
-        patch.wire_node(format!("{node_name}.new_gelu"), BasicGeluFastApprox, &[new_gelu_input[0]])?;
+        patch.wire_node(format!("{node_name}.gelu_approx"), BasicGeluApprox, &[gelu_approx_input[0]])?;
     patch.shunt_outside(model, last_node_id.into(), out[0])?;
     Ok(Some(patch))
 }
