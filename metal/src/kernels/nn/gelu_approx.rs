@@ -10,14 +10,6 @@ pub struct GeluApprox {
 }
 
 impl GeluApprox {
-    pub fn fast() -> Self {
-        Self { fast_impl: true }
-    }
-
-    pub fn accurate() -> Self {
-        Self { fast_impl: false }
-    }
-
     pub fn is_supported_dt(dt: DatumType) -> bool {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }

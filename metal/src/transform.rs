@@ -310,8 +310,8 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                     Box::new(ops::MetalApplyRope)
                 } else if let Some(_op) = node.op_as::<BasicSilu>() {
                     Box::new(ops::MetalSilu)
-                } else if let Some(_op) = node.op_as::<BasicGeluApprox>() {
-                    Box::new(ops::MetalGeluApprox)
+                } else if let Some(op) = node.op_as::<BasicGeluApprox>() {
+                    Box::new(ops::MetalGeluApprox { fast_impl: op.fast_impl })
                 } else {
                     bail!("Failed to translate a supported Metal Op")
                 };
