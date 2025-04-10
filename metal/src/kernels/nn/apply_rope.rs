@@ -99,7 +99,7 @@ impl ApplyRope {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rewrite_rules::BasicApplyRope;
+    use tract_transformers::ops::apply_rope::BasicApplyRope;
     use crate::IntoMetal;
     use tract_core::internal::Tensor;
 
