@@ -99,9 +99,9 @@ impl ApplyRope {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tract_transformers::ops::apply_rope::BasicApplyRope;
     use crate::IntoMetal;
     use tract_core::internal::Tensor;
+    use tract_transformers::ops::apply_rope::BasicApplyRope;
 
     fn run_test_case(shape: &[usize]) -> Result<()> {
         objc::rc::autoreleasepool(|| {
