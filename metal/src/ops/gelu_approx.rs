@@ -34,7 +34,7 @@ impl MetalEvalOp for MetalGeluApprox {
             input_metal.datum_type(),
             input_metal.shape(),
         )?;
-        GeluApprox{ fast_impl: self.fast_impl }.dispatch_eval(context, input_metal, &output)?;
+        GeluApprox { fast_impl: self.fast_impl }.dispatch_eval(context, input_metal, &output)?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }

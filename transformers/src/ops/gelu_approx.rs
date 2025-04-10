@@ -1,26 +1,29 @@
-use tract_nnef::internal::*;
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::math::{Mul, Pow, Tanh};
+use tract_nnef::internal::*;
 
 use crate::rule_ensure;
 
-use super::{ next_node, find_succ_add_with, find_succ_mul_with_const, find_succ_add_with_const, matches_single_input_const };
+use super::{
+    find_succ_add_with, find_succ_add_with_const, find_succ_mul_with_const,
+    matches_single_input_const, next_node,
+};
 
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(ser_gelu_approx);
     registry.register_primitive(
         "tract_transformers_gelu_approx",
-        &[
-            TypeName::Scalar.tensor().named("input"),
-            TypeName::Logical.named("fast_impl"),
-        ],
+        &[TypeName::Scalar.tensor().named("input"), TypeName::Logical.named("fast_impl")],
         &[("output", TypeName::Scalar.tensor())],
         de_gelu_approx,
     );
 }
 
-fn de_gelu_approx(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+fn de_gelu_approx(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let fast_impl = invocation.named_arg_as(builder, "fast")?;
     builder.wire(BasicGeluApprox { fast_impl }, &[input])
@@ -32,14 +35,10 @@ fn ser_gelu_approx(
     _op: &BasicGeluApprox,
 ) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
-    Ok(Some(invocation(
-        "tract_transformers_gelu_approx",
-        &[input],
-        &[]
-    )))
+    Ok(Some(invocation("tract_transformers_gelu_approx", &[input], &[])))
 }
 
-#[derive(Default,Clone, Debug, Hash)]
+#[derive(Default, Clone, Debug, Hash)]
 /// NEW_GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)));
 pub struct BasicGeluApprox {
     pub fast_impl: bool,
@@ -69,7 +68,7 @@ impl EvalOp for BasicGeluApprox {
 
         let sqrt_2_over_pi = (2.0 / std::f32::consts::PI).sqrt();
 
-        let gelu_approx_f32_data =  if self.fast_impl {
+        let gelu_approx_f32_data = if self.fast_impl {
             a_f32
                 .as_slice::<f32>()?
                 .iter()
@@ -77,10 +76,10 @@ impl EvalOp for BasicGeluApprox {
                 .collect::<Vec<_>>()
         } else {
             a_f32
-            .as_slice::<f32>()?
-            .iter()
-            .map(|x| 0.5 * x * (1.0 + f32::tanh(sqrt_2_over_pi * (x + 0.044715 * x.powi(3)))))
-            .collect::<Vec<_>>()
+                .as_slice::<f32>()?
+                .iter()
+                .map(|x| 0.5 * x * (1.0 + f32::tanh(sqrt_2_over_pi * (x + 0.044715 * x.powi(3)))))
+                .collect::<Vec<_>>()
         };
         let gelu_approx_f32 = Tensor::from_shape(input.shape(), &gelu_approx_f32_data)?;
         Ok(tvec![gelu_approx_f32.cast_to_dt(dt)?.into_owned().into_tvalue()])
@@ -118,7 +117,10 @@ pub fn as_gelu_approx_rule(
     let mut patch = TypedModelPatch::default();
     let gelu_approx_input = patch.taps(model, &pow_node.inputs)?;
 
-    rule_ensure!(matches_single_input_const(model, pow_node, 3.0) || matches_single_input_const(model, pow_node, 2.0));
+    rule_ensure!(
+        matches_single_input_const(model, pow_node, 3.0)
+            || matches_single_input_const(model, pow_node, 2.0)
+    );
     let fast_impl = matches_single_input_const(model, pow_node, 2.0);
 
     // 0.044715 * x^N
@@ -183,8 +185,11 @@ pub fn as_gelu_approx_rule(
         mul_succ.id
     };
 
-    let out =
-        patch.wire_node(format!("{node_name}.gelu_approx"), BasicGeluApprox { fast_impl }, &[gelu_approx_input[0]])?;
+    let out = patch.wire_node(
+        format!("{node_name}.gelu_approx"),
+        BasicGeluApprox { fast_impl },
+        &[gelu_approx_input[0]],
+    )?;
     patch.shunt_outside(model, last_node_id.into(), out[0])?;
     Ok(Some(patch))
 }
