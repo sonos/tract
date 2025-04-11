@@ -13,15 +13,11 @@ pub struct MetalArenaStorage {
 }
 
 impl MetalArenaStorage {
-    pub fn with_capacity(
-        context: &MetalContext,
-        capacity: usize,
-        alignment: usize,
-    ) -> TractResult<Self> {
+    pub fn with_capacity(context: &MetalContext, capacity: usize) -> TractResult<Self> {
         let tensor = unsafe {
-            Tensor::uninitialized_aligned_dt(DatumType::U8, &[capacity], alignment).with_context(
-                || anyhow!("Error while allocating a tensor of {:?} bytes", capacity),
-            )?
+            Tensor::uninitialized_dt(DatumType::U8, &[capacity]).with_context(|| {
+                anyhow!("Error while allocating a tensor of {:?} bytes", capacity)
+            })?
         };
         let buffer = context.device().new_buffer_with_bytes_no_copy(
             tensor.as_bytes().as_ptr() as *const core::ffi::c_void,

@@ -9,7 +9,6 @@ use tract_core::internal::*;
 #[derive(Debug)]
 pub struct MetalMemoryPool {
     storage: Arc<MetalArenaStorage>,
-    alignment: usize,
     resolved_schema: MetalResolvedMemSchema,
     node_seen: RefCell<HashSet<usize>>,
 }
@@ -19,14 +18,10 @@ impl MetalMemoryPool {
         context: &MetalContext,
         resolved_schema: MetalResolvedMemSchema,
     ) -> Result<Self> {
-        let alignment = std::mem::size_of::<usize>();
-        let storage = Arc::new(MetalArenaStorage::with_capacity(
-            context,
-            resolved_schema.memory_size,
-            alignment,
-        )?);
+        let storage =
+            Arc::new(MetalArenaStorage::with_capacity(context, resolved_schema.memory_size)?);
 
-        Ok(Self { storage, alignment, resolved_schema, node_seen: RefCell::new(HashSet::new()) })
+        Ok(Self { storage, resolved_schema, node_seen: RefCell::new(HashSet::new()) })
     }
 
     pub fn tensor_for_node(
@@ -36,10 +31,7 @@ impl MetalMemoryPool {
         shape: &[usize],
     ) -> Result<MetalTensor> {
         ensure!(!self.node_seen.borrow().contains(&node_id), "Tensor for node {:?} was already requested. Maybe the memory pool was not reset properly.", node_id);
-        let alignment = vector_size();
-        (self.alignment % alignment == 0)
-            .then(|| self.resolved_schema.offsets_by_node[node_id])
-            .flatten()
+        self.resolved_schema.offsets_by_node[node_id]
             .map(|offset| {
                 // self.node_seen.borrow_mut().insert(node_id);
                 Ok(MetalArenaView {
