@@ -72,19 +72,14 @@ impl EvalOp for BasicGeluApprox {
 
         let sqrt_2_over_pi = (2.0 / std::f32::consts::PI).sqrt();
 
-        let gelu_approx_f32_data = if self.fast_impl {
+        let pow = if self.fast_impl { 2 } else { 3 }; 
+        let gelu_approx_f32_data =
             a_f32
                 .as_slice::<f32>()?
                 .iter()
-                .map(|x| 0.5 * x * (1.0 + f32::tanh(sqrt_2_over_pi * (x + 0.044715 * x.powi(2)))))
-                .collect::<Vec<_>>()
-        } else {
-            a_f32
-                .as_slice::<f32>()?
-                .iter()
-                .map(|x| 0.5 * x * (1.0 + f32::tanh(sqrt_2_over_pi * (x + 0.044715 * x.powi(3)))))
-                .collect::<Vec<_>>()
-        };
+                .map(|x| 0.5 * x * (1.0 + f32::tanh(sqrt_2_over_pi * (x + 0.044715 * x.powi(pow)))))
+                .collect::<Vec<_>>();
+
         let gelu_approx_f32 = Tensor::from_shape(input.shape(), &gelu_approx_f32_data)?;
         Ok(tvec![gelu_approx_f32.cast_to_dt(dt)?.into_owned().into_tvalue()])
     }
