@@ -18,6 +18,7 @@ pub mod q_elmwise;
 pub mod q_flavours;
 pub mod q_helpers;
 pub mod slice;
+pub mod silu;
 pub mod rms_norm;
 
 pub fn suite() -> TractResult<TestSuite> {
@@ -30,6 +31,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("matmul_q40", matmul_q40::suite()?);
     suite.add("q_flavours", q_flavours::suite()?);
     suite.add("rms_norm", rms_norm::suite()?);
+    suite.add("silu", silu::suite()?);
     suite.add("slice", slice::suite()?);
     suite.add("q_binary", q_binary::suite()?);
     suite.add("q_elmwise", q_elmwise::suite()?);
