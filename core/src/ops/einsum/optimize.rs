@@ -1,6 +1,7 @@
 use std::fmt::Formatter;
 use std::ops::Deref;
 
+use bilinear::BilinearEinSum;
 use dyn_clone::clone_box;
 use kernel_selection::wire_packing;
 use tract_itertools::{izip, multiunzip};
@@ -86,10 +87,10 @@ pub struct EinSumAnnotatedAsLinear<'a> {
     pub op: &'a EinSum,
     pub m_axis: &'a Axis,
     pub k_axis: &'a Axis,
-    pub n_axes: Vec<&'a Axis>,
+    pub n_axis: &'a Axis,
     pub m: usize,
     pub k: usize,
-    pub ns: Vec<&'a TDim>,
+    pub n: TDim,
     pub act_dt: DatumType,
     pub weight_type: WeightType,
 }
@@ -106,8 +107,8 @@ impl Debug for EinSumAnnotatedAsLinear<'_> {
             self.m,
             self.k_axis.repr,
             self.k,
-            self.n_axes.iter().map(|ax| ax.repr).join(","),
-            self.ns.iter().map(|d| d.to_string()).join("•"),
+            self.n_axis.repr,
+            self.n,
         )
     }
 }
@@ -130,6 +131,11 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
 
         let Some(m_axis) = op.axes.iter_all_axes().find(|axis| {
             axis.inputs[0].len() == 1 && axis.inputs[1].len() == 0 && axis.outputs[0].len() == 1
+        }) else {
+            return Ok(None);
+        };
+        let Some(n_axis) = op.axes.iter_all_axes().find(|axis| {
+            axis.inputs[1].len() == 1 && axis.inputs[0].len() == 0 && axis.outputs[0].len() == 1
         }) else {
             return Ok(None);
         };
@@ -165,14 +171,15 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
         let weight_shape = block_quant_aware_input_shape(input_facts[0])?;
         let m = weight_shape[m_axis.inputs[0][0]].to_usize()?;
         let k = weight_shape[k_axis.inputs[0][0]].to_usize()?;
+        let n = input_facts[1].shape[n_axis.inputs[1][0]].clone();
         Ok(Some(EinSumAnnotatedAsLinear {
             op,
             m_axis,
             k_axis,
-            n_axes,
+            n_axis,
             m,
             k,
-            ns,
+            n,
             act_dt,
             weight_type,
         }))
@@ -195,11 +202,11 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
     }
 
     pub fn need_mmv(&self) -> bool {
-        self.ns.is_empty() || self.ns.iter().any(|n| n.as_i64().map(|n| n == 1).unwrap_or(true))
+        self.n.as_i64().is_none() || self.n.is_one()
     }
 
     pub fn need_mmm(&self) -> bool {
-        self.ns.iter().any(|n| n.as_i64().map(|n| n > 1).unwrap_or(true))
+        !self.n.is_one()
     }
 
     pub fn cost_for_weights(&self, format: &dyn MMMInputFormat) -> Option<usize> {
@@ -238,7 +245,7 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
         if self.act_dt == self.acceptable_accumulators()[0]
             && self.weight_type == self.act_dt.into()
         {
-            if let Ok(n) = self.ns.iter().cloned().product::<TDim>().to_usize() {
+            if let Ok(n) = self.n.to_usize() {
                 let mmm = tract_linalg::ops()
                     .mmm(self.acceptable_accumulators()[0], Some(self.m), Some(self.k), Some(n))
                     .unwrap();
@@ -246,7 +253,7 @@ impl<'a> EinSumAnnotatedAsLinear<'a> {
             }
         }
         if self.act_dt.is_integer() && self.weight_type == self.act_dt.into() {
-            if let Ok(n) = self.ns.iter().cloned().product::<TDim>().to_usize() {
+            if let Ok(n) = self.n.to_usize() {
                 let mmm = tract_linalg::ops()
                     .mmm(i32::datum_type(), Some(self.m), Some(self.k), Some(n))
                     .unwrap();
@@ -299,7 +306,7 @@ pub(crate) fn optimize(
     if op.q_params.is_none() {
         optimized_mat_mul(model, node, &annotated).context("Translating to OptMatMul")
     } else {
-        dequant(model, node, annotated).context("Dequantize")
+        dequant(model, node).context("Dequantize")
     }
 }
 
@@ -466,13 +473,14 @@ fn wire_axes_fix(
     Ok(outlet)
 }
 
-fn dequant(
-    model: &TypedModel,
-    node: &TypedNode,
-    op: EinSumAnnotatedAsMatMul,
-) -> TractResult<Option<TypedModelPatch>> {
+fn dequant(model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
     let name = &node.name;
     let mut patch = TypedModelPatch::new("Dequantizing einsum");
+
+    let Ok(bi) = BilinearEinSum::from_einsum(model, node) else { return Ok(None) };
+    let op = bi.op;
+    let [k_axis] = &*bi.k_axes else { return Ok(None) };
+    let k_axis = op.axes.axis(*k_axis)?;
 
     let mut taps = patch.taps(model, &node.inputs)?;
     for ab in [0, 1] {
@@ -511,12 +519,12 @@ fn dequant(
     let b_i32 = patch.wire_node(format!("{name}.b_as_i32"), cast(i32::datum_type()), &[b])?[0];
     let sum_a = patch.wire_node(
         format!("{name}.sum_a"),
-        Reduce::new(tvec!(op.k_axis.inputs[0][0]), Reducer::Sum),
+        Reduce::new(tvec!(k_axis.inputs[0][0]), Reducer::Sum),
         &[a_i32],
     )?;
     let sum_b = patch.wire_node(
         format!("{name}.sum_b"),
-        Reduce::new(tvec!(op.k_axis.inputs[1][0]), Reducer::Sum),
+        Reduce::new(tvec!(k_axis.inputs[1][0]), Reducer::Sum),
         &[b_i32],
     )?;
 
@@ -532,7 +540,7 @@ fn dequant(
 
     output = patch.wire_node(format!("{name}.add_bias"), add(), &[output[0], bias[0]])?;
 
-    let k = model.outlet_fact(node.inputs[0])?.shape[op.k_axis.inputs[0][0]].clone();
+    let k = model.outlet_fact(node.inputs[0])?.shape[k_axis.inputs[0][0]].clone();
     let output = compensate_zero_points(&mut patch, name, output[0], k, a0, b0, sum_a[0], sum_b[0])
         .context("Zero point compensation")?;
     let output = requant(&mut patch, name, output, op.q_params.unwrap(), abc_scale, c0)?;

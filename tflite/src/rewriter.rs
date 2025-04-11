@@ -2,14 +2,14 @@ use tract_core::internal::*;
 use tract_core::ops::array::{Pad, PadMode};
 use tract_core::ops::cnn::{rewrite_conv_with_n_axis, KernelFormat, MaxPool, PoolSpec, SumPool};
 use tract_core::ops::cnn::{Conv, PaddingSpec};
-use tract_core::ops::einsum::BasicMatMul;
+use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::math::Recip;
 use tract_core::ops::nn::{expand_mean_of_squares, DataFormat, Softmax};
 use tract_core::tract_data::itertools::Itertools;
 
 pub fn rewrite_for_tflite(model: &mut TypedModel) -> TractResult<()> {
-    tract_core::ops::einsum::rewrite_einsums_as_matmul(model)?;
+    tract_core::ops::einsum::prefix_matmul::rewrite_einsum_to_prefix_matmul(model)?;
     Rewriter::default()
         .with_rule_for("trivial_axes_around_matmul", trivial_axes_around_matmul)
         .with_rule_for("kernel_in_ohwi", kernel_in_ohwi)
@@ -33,7 +33,7 @@ fn trivial_axes_around_matmul(
     model: &TypedModel,
     node: &TypedNode,
     name: &str,
-    conv: &BasicMatMul,
+    conv: &PrefixMatMul,
 ) -> TractResult<Option<TypedModelPatch>> {
     let facts = model.node_input_facts(node.id)?;
     let rank = facts[0].rank();

@@ -7,7 +7,7 @@ use tract_linalg::block_quant::BlockQuantValue;
 
 pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
     model.prop_consts()?;
-    tract_core::ops::einsum::rewrite_einsums_as_matmul(model)?;
+    tract_core::ops::einsum::prefix_matmul::rewrite_einsum_to_prefix_matmul(model)?;
     Rewriter::default()
         .with_rule_for(
             "rewrite_block_quant_const_to_scalar",
