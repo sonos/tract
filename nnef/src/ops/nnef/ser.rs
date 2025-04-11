@@ -10,7 +10,7 @@ use tract_core::ops::cnn::Deconv;
 use tract_core::ops::cnn::KernelFormat;
 use tract_core::ops::cnn::PoolSpec;
 use tract_core::ops::einsum::block_quant_aware_input_shape;
-use tract_core::ops::einsum::BasicMatMul;
+use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
 use tract_core::ops::identity::PinConst;
 use tract_core::ops::konst::Const;
 use tract_core::ops::nn::DataFormat;
@@ -39,7 +39,7 @@ pub fn source(
 pub fn basic_matmul(
     ast: &mut IntoAst,
     node: &TypedNode,
-    op: &BasicMatMul,
+    op: &PrefixMatMul,
 ) -> TractResult<Option<Arc<RValue>>> {
     let inputs = node.inputs.iter().map(|i| (*ast.mapping[i]).clone()).collect_vec();
     if op.transpose_c {
@@ -540,7 +540,7 @@ pub fn rewrite_matmul_to_same_rank(
     model: &TypedModel,
     node: &TypedNode,
     prefix: &str,
-    op: &BasicMatMul,
+    op: &PrefixMatMul,
 ) -> TractResult<Option<TypedModelPatch>> {
     let a_rank = block_quant_aware_input_shape(model.outlet_fact(node.inputs[0])?)?.len();
     let b_rank = block_quant_aware_input_shape(model.outlet_fact(node.inputs[1])?)?.len();
