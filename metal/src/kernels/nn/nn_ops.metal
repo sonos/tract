@@ -281,7 +281,7 @@ template<typename T>
    device const T *input = (device const T *)input_b;
    device T *output = (device T *)output_b;
 
-   output[tpig] = Sigmoid()(input[tpig]) * input[tpig];
+   output[tpig] = Sigmoid()(static_cast<float>(input[tpig])) * input[tpig];
 }
 
 typedef decltype(silu<float>) silu_t;
