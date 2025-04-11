@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use infra::Test;
 use infra::TestResult;
 use infra::TestSuite;
@@ -6,22 +8,23 @@ use proptest::collection::vec;
 use tract_core::internal::*;
 use tract_core::ndarray::ArrayD;
 use tract_core::num_traits::Float;
-use tract_transformers::ops::silu::BasicSilu;
+use tract_transformers::ops::gelu_approx::BasicGeluApprox;
 
 use crate::tensor;
 
 #[derive(Debug, Clone)]
-pub struct SiluProblem<F>
+pub struct GeluApproxProblem<F>
 where F: Datum + Float
 {
     input: ArrayD<F>,
+    fast_impl: bool
 }
 
-impl<F> Arbitrary for SiluProblem<F>
+impl<F> Arbitrary for GeluApproxProblem<F>
 where F: Datum + Float
 {
     type Parameters = ();
-    type Strategy = BoxedStrategy<SiluProblem<F>>;
+    type Strategy = BoxedStrategy<GeluApproxProblem<F>>;
 
     fn arbitrary_with(_params: Self::Parameters) -> Self::Strategy {
         (0usize..5)
@@ -30,16 +33,16 @@ where F: Datum + Float
                     vec(other_dim, rank..=rank)
                 })
                 .prop_flat_map(|shape| {
-                    tensor::<F>(&shape)
-                    .prop_map(| input | {
-                        Self { input }
+                    (tensor::<F>(&shape), any::<bool>())
+                    .prop_map(move | (input, fast_impl) | {
+                        Self { input, fast_impl }
                     })
                 })
                 .boxed()
     }
 }
 
-impl<F> SiluProblem<F>
+impl<F> GeluApproxProblem<F>
 where F: Datum + Float,
       f32: From<F>
 {
@@ -48,7 +51,7 @@ where F: Datum + Float,
         let input = self.input.clone().into_tensor();
         let input = model.add_source("input", TypedFact::shape_and_dt_of(&input))?;
 
-        let output = model.wire_node("silu", BasicSilu, &[input])?;
+        let output = model.wire_node("gelu", BasicGeluApprox { fast_impl: self.fast_impl }, &[input])?;
         model.set_output_outlets(&output)?;
 
         model = model.into_decluttered()?;
@@ -57,11 +60,16 @@ where F: Datum + Float,
 
     fn reference(&self) -> ArrayD<F> {
         let input = &self.input;
-        input.mapv(|x| F::from(f32::from(x) / (1.0 + f32::from(-x).exp())).unwrap())
+        //0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)));
+        input.mapv(|x| {
+            let x_f32 = f32::from(x);
+            let pow = if self.fast_impl { 2 } else { 3 };
+            F::from(0.5 * x_f32 * (1. + ((2./PI).sqrt() * (x_f32 + 0.044715 * x_f32.powi(pow))).tanh())).unwrap()
+        } )
     }   
 }
 
-impl<F> Test for SiluProblem<F> 
+impl<F> Test for GeluApproxProblem<F> 
 where F: Datum + Float,
       f32: From<F>
 {
@@ -87,8 +95,8 @@ where F: Datum + Float,
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
 
-    suite.add_arbitrary::<SiluProblem<f32>>("proptest_f32", ());
-    suite.add_arbitrary::<SiluProblem<f16>>("proptest_f16", ());
+    suite.add_arbitrary::<GeluApproxProblem<f32>>("proptest_f32", ());
+    suite.add_arbitrary::<GeluApproxProblem<f16>>("proptest_f16", ());
 
     Ok(suite)
 }
