@@ -412,7 +412,7 @@ constant float GELU_COEF_A     = 0.044715f;
 constant float SQRT_2_OVER_PI  = 0.79788456080286535587989211986876f;
 
 template<typename F>  
-[[kernel]] void new_gelu(
+[[kernel]] void gelu_approx(
                 device const void *input_b,
                 device void *output_b,
                 uint tpig[[thread_position_in_grid]]
@@ -428,13 +428,13 @@ template<typename F>
     output[tpig] = static_cast<F>(output_f32);
 }
 
-typedef decltype(new_gelu<float>) new_gelu_t;
+typedef decltype(gelu_approx<float>) gelu_approx_t;
 
-template [[host_name("nn_ops::new_gelu_f32")]] [[kernel]] new_gelu_t new_gelu<float>;
-template [[host_name("nn_ops::new_gelu_f16")]] [[kernel]] new_gelu_t new_gelu<half>;
+template [[host_name("nn_ops::gelu_approx_f32")]] [[kernel]] gelu_approx_t gelu_approx<float>;
+template [[host_name("nn_ops::gelu_approx_f16")]] [[kernel]] gelu_approx_t gelu_approx<half>;
 
 template<typename F>  
-[[kernel]] void new_gelu_fast(
+[[kernel]] void gelu_approx_fast(
                 device const void *input_b,
                 device void *output_b,
                 uint tpig[[thread_position_in_grid]]
@@ -450,10 +450,10 @@ template<typename F>
     output[tpig] = static_cast<F>(output_f32);
 }
 
-typedef decltype(new_gelu_fast<float>) new_gelu_fast_t;
+typedef decltype(gelu_approx_fast<float>) gelu_approx_fast_t;
 
-template [[host_name("nn_ops::new_gelu_fast_f32")]] [[kernel]] new_gelu_fast_t new_gelu_fast<float>;
-template [[host_name("nn_ops::new_gelu_fast_f16")]] [[kernel]] new_gelu_fast_t new_gelu_fast<half>;
+template [[host_name("nn_ops::gelu_approx_fast_f32")]] [[kernel]] gelu_approx_fast_t gelu_approx_fast<float>;
+template [[host_name("nn_ops::gelu_approx_fast_f16")]] [[kernel]] gelu_approx_fast_t gelu_approx_fast<half>;
 
 
 

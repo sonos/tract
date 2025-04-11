@@ -25,6 +25,7 @@ tract-onnx.workspace = true
 tract-extra.workspace = true
 tract-pulse.workspace = true
 tract-libcli.workspace = true
+tract-transformers.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]

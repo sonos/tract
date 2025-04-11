@@ -1,23 +1,24 @@
-use crate::kernels::nn::NewGelu;
+use crate::kernels::nn::GeluApprox;
 use crate::ops::MetalEvalOp;
 use crate::{MetalContext, MetalTensorExt};
-use derive_new::new;
 use tract_core::internal::*;
 
-#[derive(Clone, Debug, new, Hash)]
-pub struct MetalNewGelu;
+#[derive(Clone, Debug, Default, Hash)]
+pub struct MetalGeluApprox {
+    pub fast_impl: bool,
+}
 
-impl Op for MetalNewGelu {
+impl Op for MetalGeluApprox {
     fn name(&self) -> Cow<str> {
-        "MetalNewGelu".into()
+        "MetalGeluApprox".into()
     }
 
     op_as_typed_op!();
 }
 
-crate::impl_eval_op_for_metal_op!(MetalNewGelu);
+crate::impl_eval_op_for_metal_op!(MetalGeluApprox);
 
-impl MetalEvalOp for MetalNewGelu {
+impl MetalEvalOp for MetalGeluApprox {
     fn metal_eval(
         &self,
         context: &MetalContext,
@@ -33,12 +34,12 @@ impl MetalEvalOp for MetalNewGelu {
             input_metal.datum_type(),
             input_metal.shape(),
         )?;
-        NewGelu::accurate().dispatch_eval(context, input_metal, &output)?;
+        GeluApprox { fast_impl: self.fast_impl }.dispatch_eval(context, input_metal, &output)?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }
 
-impl TypedOp for MetalNewGelu {
+impl TypedOp for MetalGeluApprox {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         crate::utils::metal_facts_from_gpu(inputs, |facts| {
             let dt = facts[0].datum_type;

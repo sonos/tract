@@ -1,24 +1,65 @@
-use crate::rewrite_rules::next_node;
-use crate::rewrite_rules::*;
-use crate::rule_ensure;
-use crate::MetalTransform;
-use tract_core::internal::*;
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::math::{Mul, Pow, Tanh};
+use tract_nnef::internal::*;
 
-#[derive(Clone, Debug, Hash)]
+use crate::rule_ensure;
+
+use super::{
+    find_succ_add_with, find_succ_add_with_const, find_succ_mul_with_const,
+    matches_single_input_const, next_node,
+};
+
+pub fn register(registry: &mut Registry) {
+    registry.register_dumper(ser_gelu_approx);
+    registry.register_primitive(
+        "tract_transformers_gelu_approx",
+        &[TypeName::Scalar.tensor().named("input"), TypeName::Logical.named("fast_impl")],
+        &[("output", TypeName::Scalar.tensor())],
+        de_gelu_approx,
+    );
+}
+
+fn de_gelu_approx(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<Value> {
+    let input = invocation.named_arg_as(builder, "input")?;
+    let fast_impl = invocation.named_arg_as(builder, "fast_impl")?;
+    builder.wire(BasicGeluApprox { fast_impl }, &[input])
+}
+
+fn ser_gelu_approx(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &BasicGeluApprox,
+) -> TractResult<Option<Arc<RValue>>> {
+    let input = ast.mapping[&node.inputs[0]].clone();
+    Ok(Some(invocation(
+        "tract_transformers_gelu_approx",
+        &[input],
+        &[("fast_impl", logical(op.fast_impl))],
+    )))
+}
+
+#[derive(Default, Clone, Debug, Hash)]
 /// NEW_GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)));
-pub struct BasicNewGelu;
+pub struct BasicGeluApprox {
+    pub fast_impl: bool,
+}
 
-impl Op for BasicNewGelu {
+impl Op for BasicGeluApprox {
     fn name(&self) -> Cow<str> {
-        "BasicNewGelu".to_string().into()
+        if self.fast_impl {
+            "BasicGeluApproxFast".to_string().into()
+        } else {
+            "BasicGeluApprox".to_string().into()
+        }
     }
     op_as_typed_op!();
 }
 
-impl EvalOp for BasicNewGelu {
+impl EvalOp for BasicGeluApprox {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -31,18 +72,25 @@ impl EvalOp for BasicNewGelu {
 
         let sqrt_2_over_pi = (2.0 / std::f32::consts::PI).sqrt();
 
-        let new_gelu_f32_data = a_f32
-            .as_slice::<f32>()?
-            .iter()
-            .map(|x| 0.5 * x * (1.0 + f32::tanh(sqrt_2_over_pi * (x + 0.044715 * x.powi(3)))))
-            .collect::<Vec<_>>();
-
-        let new_gelu_f32 = Tensor::from_shape(input.shape(), &new_gelu_f32_data)?;
-        Ok(tvec![new_gelu_f32.cast_to_dt(dt)?.into_owned().into_tvalue()])
+        let gelu_approx_f32_data = if self.fast_impl {
+            a_f32
+                .as_slice::<f32>()?
+                .iter()
+                .map(|x| 0.5 * x * (1.0 + f32::tanh(sqrt_2_over_pi * (x + 0.044715 * x.powi(2)))))
+                .collect::<Vec<_>>()
+        } else {
+            a_f32
+                .as_slice::<f32>()?
+                .iter()
+                .map(|x| 0.5 * x * (1.0 + f32::tanh(sqrt_2_over_pi * (x + 0.044715 * x.powi(3)))))
+                .collect::<Vec<_>>()
+        };
+        let gelu_approx_f32 = Tensor::from_shape(input.shape(), &gelu_approx_f32_data)?;
+        Ok(tvec![gelu_approx_f32.cast_to_dt(dt)?.into_owned().into_tvalue()])
     }
 }
 
-impl TypedOp for BasicNewGelu {
+impl TypedOp for BasicGeluApprox {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let dt = inputs[0].datum_type;
         let fact = dt.fact(inputs[0].shape.clone());
@@ -52,9 +100,9 @@ impl TypedOp for BasicNewGelu {
     as_op!();
 }
 
-/// Search pattern => NEW_GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)));
-pub fn as_new_gelu_rule(
-    _ctx: &MetalTransform,
+/// Search pattern => NEW_GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^N))); N ϵ {2, 3}
+pub fn as_gelu_approx_rule(
+    _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,
@@ -71,21 +119,25 @@ pub fn as_new_gelu_rule(
     rule_ensure!(matches!(dt, DatumType::F32 | DatumType::F16));
 
     let mut patch = TypedModelPatch::default();
-    let new_gelu_input = patch.taps(model, &pow_node.inputs)?;
+    let gelu_approx_input = patch.taps(model, &pow_node.inputs)?;
 
-    rule_ensure!(matches_single_input_const(model, pow_node, 3.0));
+    rule_ensure!(
+        matches_single_input_const(model, pow_node, 3.0)
+            || matches_single_input_const(model, pow_node, 2.0)
+    );
+    let fast_impl = matches_single_input_const(model, pow_node, 2.0);
 
-    // 0.044715 * x^3
+    // 0.044715 * x^N
     let Some(mul_coef_a) = find_succ_mul_with_const(model, pow_node, 0.044715) else {
         return Ok(None);
     };
 
-    // x + 0.044715 * x^3
+    // x + 0.044715 * x^N
     let Some(x_plus_mul_coef_a) = find_succ_add_with(model, mul_coef_a, &pow_node.inputs[0]) else {
         return Ok(None);
     };
 
-    // sqrt(2/pi) * (x + 0.044715 * x^3)
+    // sqrt(2/pi) * (x + 0.044715 * x^N)
     let sqrt_2_over_pi = (2.0 / std::f32::consts::PI).sqrt();
     let Some(mul_sqrt_2_over_pi) =
         find_succ_mul_with_const(model, x_plus_mul_coef_a, sqrt_2_over_pi)
@@ -93,12 +145,12 @@ pub fn as_new_gelu_rule(
         return Ok(None);
     };
 
-    // tanh(sqrt(2/pi) * (x + 0.044715 * x^3))
+    // tanh(sqrt(2/pi) * (x + 0.044715 * x^N))
     let Some(tanh_succ) = next_node(model, mul_sqrt_2_over_pi) else { return Ok(None) };
     let Some(tanh_succ_op) = tanh_succ.op_as::<ElementWiseOp>() else { return Ok(None) };
     rule_ensure!(tanh_succ_op.0.is::<Tanh>());
 
-    // 1.0 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3))
+    // 1.0 + tanh(sqrt(2/pi) * (x + 0.044715 * x^N)) N ϵ {2, 3}
     let Some(tanh_plus_1) = find_succ_add_with_const(model, tanh_succ, 1.0) else {
         return Ok(None);
     };
@@ -109,17 +161,17 @@ pub fn as_new_gelu_rule(
     rule_ensure!(mul_succ_op.0.is::<Mul>());
 
     // Search first
-    // tmp = x * (1.0 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+    // tmp = x * (1.0 + tanh(sqrt(2/pi) * (x + 0.044715 * x^N)))
     // out = 0.5 * tmp
     let last_node_id = if mul_succ.inputs.contains(&pow_node.inputs[0]) {
-        // 0.5 * x * (1.0 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+        // 0.5 * x * (1.0 + tanh(sqrt(2/pi) * (x + 0.044715 * x^N)))
         let Some(last_mul_with_0_5) = find_succ_mul_with_const(model, mul_succ, 0.5) else {
             return Ok(None);
         };
         last_mul_with_0_5.id
     } else {
         // tmp = 0.5 * x
-        // out = tmp * (1.0 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+        // out = tmp * (1.0 + tanh(sqrt(2/pi) * (x + 0.044715 * x^N))) N ϵ {2, 3}
         let Some(x_mul_0_5) = mul_succ
             .inputs
             .iter()
@@ -137,8 +189,11 @@ pub fn as_new_gelu_rule(
         mul_succ.id
     };
 
-    let out =
-        patch.wire_node(format!("{node_name}.new_gelu"), BasicNewGelu, &[new_gelu_input[0]])?;
+    let out = patch.wire_node(
+        format!("{node_name}.gelu_approx"),
+        BasicGeluApprox { fast_impl },
+        &[gelu_approx_input[0]],
+    )?;
     patch.shunt_outside(model, last_node_id.into(), out[0])?;
     Ok(Some(patch))
 }

@@ -1,12 +1,47 @@
-use crate::rewrite_rules::{collect_node_const_inputs, next_node, previous_node};
-use crate::{rule_ensure, MetalTransform};
-use std::sync::Arc;
-use tract_core::internal::*;
-use tract_core::ops::binary::{BinMiniOp, TypedBinOp};
-use tract_core::ops::cast::Cast;
-use tract_core::ops::element_wise::ElementWiseOp;
-use tract_core::ops::math::{Add, Mul, Rsqrt};
-use tract_core::ops::nn::{Reduce, Reducer};
+use tract_nnef::internal::*;
+use tract_nnef::tract_core::ops::binary::{BinMiniOp, TypedBinOp};
+use tract_nnef::tract_core::ops::cast::Cast;
+use tract_nnef::tract_core::ops::element_wise::ElementWiseOp;
+use tract_nnef::tract_core::ops::math::{Add, Mul, Rsqrt};
+use tract_nnef::tract_core::ops::nn::{Reduce, Reducer};
+
+use crate::rule_ensure;
+
+use super::{collect_node_const_inputs, next_node, previous_node};
+
+pub fn register(registry: &mut Registry) {
+    registry.register_dumper(ser_rms_norm);
+    registry.register_primitive(
+        "tract_transformers_rms_norm",
+        &[
+            TypeName::Scalar.tensor().named("input"),
+            TypeName::Integer.named("axis"),
+            TypeName::Scalar.named("eps").default(1e-6f32),
+        ],
+        &[("output", TypeName::Scalar.tensor())],
+        de_rms_norm,
+    );
+}
+
+fn de_rms_norm(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+    let input = invocation.named_arg_as(builder, "input")?;
+    let axis: usize = invocation.named_arg_as(builder, "axis")?;
+    let eps = invocation.named_arg_as(builder, "eps")?;
+    builder.wire(BasicRmsNorm { axis, eps }, &[input])
+}
+
+fn ser_rms_norm(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &BasicRmsNorm,
+) -> TractResult<Option<Arc<RValue>>> {
+    let input = ast.mapping[&node.inputs[0]].clone();
+    Ok(Some(invocation(
+        "tract_transformers_rms_norm",
+        &[input],
+        &[("axis", numeric(op.axis)), ("eps", numeric(op.eps.cast_to_scalar::<f32>()?))],
+    )))
+}
 
 #[derive(Clone, Debug, Hash)]
 pub struct BasicRmsNorm {
@@ -53,7 +88,7 @@ impl TypedOp for BasicRmsNorm {
 
 /// Search pattern => A = A * RSQRT(MEAN_OF_SQUARES(A) + EPS)
 pub fn as_rms_norm_rule(
-    _ctx: &MetalTransform,
+    _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,
@@ -115,7 +150,7 @@ pub fn as_rms_norm_rule(
 
 /// Search pattern => A = CAST(RMS_NORM(CAST(A, F32)), F16)
 pub fn remove_rms_norm_cast(
-    _ctx: &MetalTransform,
+    _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,

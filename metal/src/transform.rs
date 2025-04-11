@@ -2,15 +2,12 @@ use crate::fact::MetalTypedFactExt;
 use crate::kernels::array::RotateHalf;
 use crate::kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm};
 use crate::kernels::nn::{
-    ApplyRope, NewGelu, Reducer, RmsNorm, ScaledMaskedSoftmax, Silu, Softmax,
+    ApplyRope, GeluApprox, Reducer, RmsNorm, ScaledMaskedSoftmax, Silu, Softmax,
 };
 use crate::ops::{self, MetalSync, MetalSyncKind};
 
 use crate::rewrite_rules;
-use crate::rewrite_rules::{
-    BasicApplyRope, BasicNewGelu, BasicRmsNorm, BasicRotateHalf, BasicScaledMaskedSoftmax,
-    BasicSilu,
-};
+
 use crate::tensor::MetalTensorExt;
 use crate::utils::as_q40_fact;
 use crate::{IntoMetal, MetalFact, MetalTensor};
@@ -30,6 +27,11 @@ use tract_core::ops::logic::Comp;
 use tract_core::ops::nn::{Reduce, Softmax as CoreSoftmax};
 use tract_core::transform::ModelTransform;
 use tract_itertools::Itertools;
+use tract_transformers::ops::apply_rope::{BasicApplyRope, BasicRotateHalf};
+use tract_transformers::ops::gelu_approx::BasicGeluApprox;
+use tract_transformers::ops::rms_norm::BasicRmsNorm;
+use tract_transformers::ops::scaled_masked_softmax::BasicScaledMaskedSoftmax;
+use tract_transformers::ops::silu::BasicSilu;
 
 impl MetalGemmImplKind {
     pub fn variants() -> Vec<MetalGemmImplKind> {
@@ -90,13 +92,6 @@ impl MetalTransform {
         }
 
         Rewriter::<MetalTransform>::default()
-            .with_rule_for("as-rms-norm", rewrite_rules::as_rms_norm_rule)
-            .with_rule_for("remove_rms_norm_cast", rewrite_rules::remove_rms_norm_cast)
-            .with_rule_for("as-silu", rewrite_rules::as_silu_rule)
-            .with_rule_for("as-new-gelu", rewrite_rules::as_new_gelu_rule)
-            .with_rule_for("as-rotate-half", rewrite_rules::as_rotate_half_rule)
-            .with_rule_for("as-apply-rope", rewrite_rules::as_apply_rope_rule)
-            .with_rule_for("as-scaled-masked-softmax", rewrite_rules::as_scaled_masked_softmax_rule)
             .with_rule_for("untranspose-matmul-output", rewrite_rules::untranspose_matmul_output)
             .with_rule_for(
                 "remove-ggml-broadcast-pre-matmul",
@@ -261,8 +256,8 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
                 .is_some_and(|_| ApplyRope::is_supported_dt(input_dts[0]))
             || node.op_as::<BasicSilu>().is_some_and(|_| Silu::is_supported_dt(input_dts[0]))
             || node
-                .op_as::<BasicNewGelu>()
-                .is_some_and(|_| NewGelu::is_supported_dt(input_dts[0]))))
+                .op_as::<BasicGeluApprox>()
+                .is_some_and(|_| GeluApprox::is_supported_dt(input_dts[0]))))
 }
 
 impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for MetalTransform {
@@ -315,8 +310,8 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                     Box::new(ops::MetalApplyRope)
                 } else if let Some(_op) = node.op_as::<BasicSilu>() {
                     Box::new(ops::MetalSilu)
-                } else if let Some(_op) = node.op_as::<BasicNewGelu>() {
-                    Box::new(ops::MetalNewGelu)
+                } else if let Some(op) = node.op_as::<BasicGeluApprox>() {
+                    Box::new(ops::MetalGeluApprox { fast_impl: op.fast_impl })
                 } else {
                     bail!("Failed to translate a supported Metal Op")
                 };

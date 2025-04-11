@@ -5,6 +5,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use ndarray::{Data, Dimension, RawData};
 use tract_extra::WithTractExtra;
+use tract_transformers::WithTractTransformers;
 use tract_libcli::annotations::Annotations;
 use tract_libcli::profile::BenchLimits;
 use tract_nnef::internal::parse_tdim;
@@ -42,6 +43,13 @@ impl NnefInterface for Nnef {
         self.0.model_for_path(path).map(Model)
     }
 
+    fn transform_model(&self, model: &mut Self::Model, transform_spec: &str) -> Result<()> {
+        if let Some(transform) = self.0.get_transform(transform_spec)? {
+            transform.transform(&mut model.0)?;
+        }
+        Ok(())
+    }
+
     fn enable_tract_core(&mut self) -> Result<()> {
         self.0.enable_tract_core();
         Ok(())
@@ -49,6 +57,11 @@ impl NnefInterface for Nnef {
 
     fn enable_tract_extra(&mut self) -> Result<()> {
         self.0.enable_tract_extra();
+        Ok(())
+    }
+
+    fn enable_tract_transformers(&mut self) -> Result<()> {
+        self.0.enable_tract_transformers();
         Ok(())
     }
 
@@ -241,7 +254,7 @@ impl ModelInterface for Model {
 
     fn transform(&mut self, transform: &str) -> Result<()> {
         let transform = tract_onnx::tract_core::transform::get_transform(transform)
-            .with_context(|| format!("transorm `{transform}' could not be found"))?;
+            .with_context(|| format!("transform `{transform}' could not be found"))?;
         transform.transform(&mut self.0)
     }
 

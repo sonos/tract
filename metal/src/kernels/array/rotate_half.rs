@@ -84,10 +84,10 @@ impl RotateHalf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rewrite_rules::BasicRotateHalf;
     use crate::IntoMetal;
     use num_traits::AsPrimitive;
     use tract_core::internal::Tensor;
+    use tract_transformers::ops::apply_rope::BasicRotateHalf;
 
     fn run_test_case<F>(shape: &[usize]) -> Result<()>
     where

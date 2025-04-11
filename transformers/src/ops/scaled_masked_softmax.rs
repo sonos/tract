@@ -1,12 +1,43 @@
-use crate::rewrite_rules::{collect_node_const_inputs, previous_node, previous_nodes};
-use crate::{rule_ensure, MetalTransform};
-use tract_core::ops::binary::TypedBinOp;
+use tract_nnef::internal::*;
+use tract_nnef::tract_core::ops::binary::{BinMiniOp, TypedBinOp};
+use tract_nnef::tract_core::ops::math::{Add, Mul};
+use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp};
 
-use std::sync::Arc;
-use tract_core::internal::*;
-use tract_core::ops::binary::BinMiniOp;
-use tract_core::ops::math::{Add, Mul};
-use tract_core::ops::nn::{Softmax, SoftmaxExp};
+use crate::rule_ensure;
+
+use super::{collect_node_const_inputs, previous_node, previous_nodes};
+
+pub fn register(registry: &mut Registry) {
+    registry.register_dumper(ser_scaled_masked_softmax);
+    registry.register_primitive(
+        "tract_transformers_scaled_masked_softmax",
+        &[TypeName::Scalar.tensor().named("input"), TypeName::Scalar.named("scale")],
+        &[("output", TypeName::Scalar.tensor())],
+        de_scaled_masked_softmax,
+    );
+}
+
+fn de_scaled_masked_softmax(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<Value> {
+    let input = invocation.named_arg_as(builder, "input")?;
+    let scale = invocation.named_arg_as(builder, "scale")?;
+    builder.wire(BasicScaledMaskedSoftmax { scale }, &[input])
+}
+
+fn ser_scaled_masked_softmax(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &BasicScaledMaskedSoftmax,
+) -> TractResult<Option<Arc<RValue>>> {
+    let input = ast.mapping[&node.inputs[0]].clone();
+    Ok(Some(invocation(
+        "tract_transformers_scaled_masked_softmax",
+        &[input],
+        &[("scale", numeric(op.scale.cast_to_scalar::<f32>()?))],
+    )))
+}
 
 /// A = SOFTMAX(INPUT * SCALE + MASK, AXIS=2)
 /// Only input of rank of 3 is supported.
@@ -58,7 +89,7 @@ impl TypedOp for BasicScaledMaskedSoftmax {
 
 /// Search pattern => A = SOFTMAX(A * SCALE + MASK, AXIS=2)
 pub fn as_scaled_masked_softmax_rule(
-    _ctx: &MetalTransform,
+    _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,
