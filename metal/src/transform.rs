@@ -23,7 +23,7 @@ use tract_core::internal::*;
 use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
 use tract_core::ops::binary::{BinMiniOp, TypedBinOp};
 use tract_core::ops::cast::Cast;
-use tract_core::ops::einsum::{rewrite_einsums_as_matmul, BasicMatMul};
+use tract_core::ops::einsum::prefix_matmul::{rewrite_einsum_to_prefix_matmul, PrefixMatMul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
@@ -84,7 +84,7 @@ impl MetalTransform {
         model: &mut TypedModel,
         stop_at_phase: usize,
     ) -> TractResult<()> {
-        rewrite_einsums_as_matmul(model)?;
+        rewrite_einsum_to_prefix_matmul(model)?;
         if stop_at_phase == 0 {
             return Ok(());
         }
@@ -226,7 +226,7 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
             || node.op_as::<TypedBinOp>().is_some_and(|op| map_bin_ops_to_metal(&op.0).is_some())
             || node.op_is::<Comp>()
             || node.op_is::<MultiBroadcastTo>()
-            || node.op_as::<BasicMatMul>().is_some_and(|op| {
+            || node.op_as::<PrefixMatMul>().is_some_and(|op| {
                 !op.transpose_c && op.quantize_output.is_none() && check_matmul_in_dts(&input_facts)
             })
             || node
@@ -279,7 +279,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             let mut gpu_inputs =
                 self.sync_inputs_if_required(target, node, mapping, MetalSyncKind::ToGpu)?;
 
-            let outlet_ids: TVec<OutletId> = if let Some(op) = node.op_as::<BasicMatMul>() {
+            let outlet_ids: TVec<OutletId> = if let Some(op) = node.op_as::<PrefixMatMul>() {
                 convert_matmul_to_metal(source, node, target, &mut gpu_inputs, op, self.gemm_impl)?
             } else {
                 let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<ElementWiseOp>() {
@@ -401,7 +401,7 @@ fn convert_matmul_to_metal(
     node: &TypedNode,
     target: &mut TypedModel,
     inputs: &mut [OutletId],
-    op: &BasicMatMul,
+    op: &PrefixMatMul,
     gemm_impl: Option<MetalGemmImplKind>,
 ) -> TractResult<TVec<OutletId>> {
     let mut input_facts = model.node_input_facts(node.id)?;

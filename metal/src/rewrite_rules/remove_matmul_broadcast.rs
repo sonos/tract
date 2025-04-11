@@ -2,7 +2,7 @@ use crate::rewrite_rules::next_node;
 use crate::{rule_ensure, MetalGemmImplKind, MetalTransform};
 use tract_core::internal::*;
 use tract_core::ops::array::MultiBroadcastTo;
-use tract_core::ops::einsum::BasicMatMul;
+use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
 
 use super::previous_node;
 
@@ -48,7 +48,7 @@ pub fn remove_ggml_broadcast_pre_matmul(
         running_node = node;
     }
 
-    rule_ensure!(next_node(model, running_node).is_some_and(|node| node.op_is::<BasicMatMul>()));
+    rule_ensure!(next_node(model, running_node).is_some_and(|node| node.op_is::<PrefixMatMul>()));
 
     if let Some(mm_node) = next_node(model, running_node) {
         let mut new_mm_input = inputs[0];
