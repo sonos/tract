@@ -13,6 +13,7 @@ lazy_static.workspace = true
 regex.workspace = true
 infra = { path = "../infra" }
 tract-core.workspace = true
+tract-transformers.workspace = true
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
 tract-onnx-opl.workspace = true
@@ -23,6 +24,7 @@ regex.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 tract-core.workspace = true
+tract-transformers.workspace = true
 tract-nnef.workspace = true
 tract-onnx-opl.workspace = true
 infra = { path = "../infra" }

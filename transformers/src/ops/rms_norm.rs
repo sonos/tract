@@ -67,8 +67,9 @@ impl EvalOp for BasicRmsNorm {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let dt = input.datum_type();
+        let eps = self.eps.cast_to_dt(dt)?.into_owned();
         let a1 = Reducer::MeanOfSquares.reduce(&[self.axis], &input)?;
-        let mut a2 = Add.eval(a1.into_tvalue(), self.eps.clone().into_tvalue(), dt)?;
+        let mut a2 = Add.eval(a1.into_tvalue(), eps.into_tvalue(), dt)?;
         Rsqrt {}.eval_in_place(&mut a2, None)?;
         let a3 = Mul.eval(a2.into_tvalue(), input.clone(), dt)?;
 

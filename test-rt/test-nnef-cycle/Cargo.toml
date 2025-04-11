@@ -12,6 +12,7 @@ lazy_static.workspace = true
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
 tract-core.workspace = true
+tract-transformers.workspace = true
 
 [dev-dependencies]
 infra = { path = "../infra" }
@@ -21,5 +22,6 @@ log.workspace = true
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
 tract-core.workspace = true
+tract-transformers.workspace = true
 tract-onnx-opl.workspace = true
 tract-nnef.workspace = true
