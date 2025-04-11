@@ -38,13 +38,10 @@ fn plug_avx512f(_ops: &mut Ops) {}
 pub fn plug(ops: &mut Ops) {
     mmm::plug(ops);
     if is_x86_feature_detected!("avx2") {
-        mmm::plug_avx2(ops);
         plug_avx2(ops);
         if is_x86_feature_detected!("fma") {
-            mmm::plug_fma(ops);
             plug_fma(ops);
             if is_x86_feature_detected!("avx512f") {
-                mmm::plug_avx512f(ops);
                 plug_avx512f(ops);
             }
         }
