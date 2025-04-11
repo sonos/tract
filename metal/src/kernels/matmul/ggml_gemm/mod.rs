@@ -326,7 +326,7 @@ mod tests {
     use num_traits::Float;
     use tract_core::ops::array::MultiBroadcastTo;
     use tract_core::ops::cast::Cast;
-    use tract_core::ops::einsum::BasicMatMul;
+    use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
     use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
 
     use super::*;
@@ -382,7 +382,7 @@ mod tests {
     fn reference(a: Tensor, b: Tensor) -> TractResult<Tensor> {
         let batch = b.shape()[0];
         let batch_ratio = a.shape()[0] / batch;
-        let matmul = BasicMatMul {
+        let matmul = PrefixMatMul {
             transpose_a: false,
             transpose_b: true,
             transpose_c: false,

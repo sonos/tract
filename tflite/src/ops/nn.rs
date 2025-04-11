@@ -1,9 +1,9 @@
 use tract_core::internal::*;
 use tract_core::ops as core;
 use tract_core::ops::cast::wire_cast;
-use tract_core::ops::change_axes::wire_with_rank_broadcast;
 use tract_core::ops::cast::Cast;
-use tract_core::ops::einsum::BasicMatMul;
+use tract_core::ops::change_axes::wire_with_rank_broadcast;
+use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
 use tract_core::ops::einsum::EinSum;
 use tract_core::ops::math::add;
 use tract_core::ops::nn::Softmax;
@@ -201,7 +201,7 @@ fn ser_matmul(
     builder: &mut SubgraphBuilder,
     model: &TypedModel,
     node: &TypedNode,
-    op: &BasicMatMul,
+    op: &PrefixMatMul,
 ) -> TractResult<()> {
     let mut inputs =
         [builder.map_outlet(model, node.inputs[0])?, builder.map_outlet(model, node.inputs[1])?];

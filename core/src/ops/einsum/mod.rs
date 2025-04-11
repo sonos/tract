@@ -8,15 +8,14 @@ mod eval;
 
 #[cfg(feature = "blas")]
 pub mod as_blas;
-mod as_matmul;
 pub mod bilinear;
 pub mod kernel_selection;
 pub mod optimize;
+pub mod prefix_matmul;
 
 #[cfg(test)]
 mod proptest;
 
-pub use as_matmul::{rewrite_einsums_as_matmul, BasicMatMul};
 use num_traits::One;
 use tract_linalg::block_quant::{BlockQuantFact, PackedBlockQuantFact};
 use tract_linalg::mmm::PackedOpaqueFact;

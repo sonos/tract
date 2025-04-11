@@ -373,7 +373,7 @@ mod tests {
     use num_traits::Float;
     use proptest::collection::vec;
     use proptest::prelude::*;
-    use tract_core::ops::einsum::BasicMatMul;
+    use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
     use tract_core::tract_data::itertools::Itertools;
     use tract_core::tract_linalg::block_quant::{
         BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0,
@@ -428,7 +428,7 @@ mod tests {
                     &b.clone().into_metal()?,
                 )?;
 
-                let matmul = BasicMatMul {
+                let matmul = PrefixMatMul {
                     transpose_a,
                     transpose_b,
                     transpose_c: false,
@@ -861,7 +861,7 @@ mod tests {
         f32: AsPrimitive<F>,
     {
         pub fn reference(&self) -> Result<Tensor> {
-            let matmul = BasicMatMul {
+            let matmul = PrefixMatMul {
                 transpose_a: self.transpose_lhs,
                 transpose_b: self.transpose_rhs,
                 transpose_c: false,

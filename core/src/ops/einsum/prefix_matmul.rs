@@ -10,12 +10,12 @@ use crate::internal::*;
 use crate::ops::einsum::block_quant_aware_input_shape;
 use crate::ops::konst::Const;
 
-pub fn rewrite_einsums_as_matmul(model: &mut TypedModel) -> TractResult<()> {
-    let rules = Rewriter::default().with_rule_for::<EinSum>("einsum-to-matmul", einsum_rules);
+pub fn rewrite_einsum_to_prefix_matmul(model: &mut TypedModel) -> TractResult<()> {
+    let rules = Rewriter::default().with_rule_for::<EinSum>("einsum-to-prefix-matmul", rule);
     rules.rewrite(&(), model)
 }
 
-fn einsum_rules(
+fn rule(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
@@ -128,7 +128,7 @@ fn einsum_rules(
     };
     wire = patch.wire_node(
         node_name,
-        BasicMatMul { transpose_a, transpose_b, transpose_c, quantize_output },
+        PrefixMatMul { transpose_a, transpose_b, transpose_c, quantize_output },
         &wire,
     )?;
 
@@ -140,14 +140,14 @@ fn einsum_rules(
 }
 
 #[derive(Clone, Debug, Copy, Default)]
-pub struct BasicMatMul {
+pub struct PrefixMatMul {
     pub transpose_a: bool,
     pub transpose_b: bool,
     pub transpose_c: bool,
     pub quantize_output: Option<DatumType>,
 }
 
-impl BasicMatMul {
+impl PrefixMatMul {
     fn output_shape<D: DimLike + One>(&self, a: &[D], b: &[D]) -> TVec<D> {
         let rank = a.len();
         let mut output: TVec<D> = (0..rank - 2)
@@ -195,9 +195,9 @@ impl BasicMatMul {
     }
 }
 
-impl Op for BasicMatMul {
+impl Op for PrefixMatMul {
     fn name(&self) -> Cow<str> {
-        "MatMul".into()
+        "PrefixMatMul".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -210,7 +210,7 @@ impl Op for BasicMatMul {
     op_as_typed_op!();
 }
 
-impl EvalOp for BasicMatMul {
+impl EvalOp for PrefixMatMul {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -255,7 +255,7 @@ impl EvalOp for BasicMatMul {
     }
 }
 
-impl TypedOp for BasicMatMul {
+impl TypedOp for PrefixMatMul {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let [a, b] = inputs else {
             bail!("Expects 2 inputs");
@@ -383,7 +383,7 @@ mod test {
             let inputs = tvec!(a, b);
             let reference =
                 TypedRunnableModel::new(&model).unwrap().run(inputs.clone()).unwrap().remove(0);
-            rewrite_einsums_as_matmul(&mut model)?;
+            rewrite_einsum_to_prefix_matmul(&mut model)?;
             assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
             let test = TypedRunnableModel::new(&model).unwrap().run(inputs).unwrap().remove(0);
             reference.close_enough(&test, true).unwrap();
@@ -515,7 +515,7 @@ mod test {
         ];
         let wire = model.wire_node("einsum", op.clone(), &inputs)?;
         model.set_output_outlets(&wire)?;
-        rewrite_einsums_as_matmul(&mut model)?;
+        rewrite_einsum_to_prefix_matmul(&mut model)?;
         assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
         Ok(())
     }
