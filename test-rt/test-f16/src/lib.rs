@@ -85,6 +85,7 @@ mod nnef_f16 {
     use tract_core::model::translator::Translate;
     use tract_nnef::internal::Nnef;
     use tract_onnx_opl::WithOnnx;
+    use tract_transformers::WithTractTransformers;
 
     struct NnefF16(Nnef);
 
@@ -116,7 +117,7 @@ mod nnef_f16 {
 
     fn runtime() -> &'static NnefF16 {
         lazy_static::lazy_static! {
-            static ref RT: NnefF16 = NnefF16(tract_nnef::nnef().with_onnx());
+            static ref RT: NnefF16 = NnefF16(tract_nnef::nnef().with_onnx().with_tract_transformers());
         };
         &RT
     }

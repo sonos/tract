@@ -43,6 +43,8 @@ mod nnef_predump {
 }
 
 mod nnef_cycle {
+    use tract_transformers::WithTractTransformers;
+
     use super::*;
 
     struct NnefCyclingRuntime(Nnef);
@@ -72,7 +74,7 @@ mod nnef_cycle {
 
     fn runtime() -> &'static NnefCyclingRuntime {
         lazy_static::lazy_static! {
-            static ref RT: NnefCyclingRuntime = NnefCyclingRuntime(tract_nnef::nnef().with_onnx());
+            static ref RT: NnefCyclingRuntime = NnefCyclingRuntime(tract_nnef::nnef().with_onnx().with_tract_transformers());
         };
         &RT
     }
