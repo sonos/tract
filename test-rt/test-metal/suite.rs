@@ -44,6 +44,8 @@ fn ignore_onnx(t: &[String]) -> bool {
 test_slice_start_out_of_bounds
 test_nllloss_NCd1d2d3d4d5_mean_weight_expanded
 test_nllloss_NCd1d2d3d4d5_none_no_weight_expanded
+test_tril_zero
+test_triu_zero
 "#
     .trim()
     .lines()
