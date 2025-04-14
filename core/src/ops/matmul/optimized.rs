@@ -3,6 +3,7 @@ use crate::ops::cast::cast;
 use crate::ops::change_axes::wire_with_rank_broadcast;
 use crate::ops::nn::LeakyRelu;
 use ndarray::*;
+use num_traits::One;
 use tract_itertools::Itertools;
 
 use tract_linalg::mmm::{
@@ -147,8 +148,6 @@ impl ProtoFusedSpec {
                 debug_assert!(inputs.get(*b).is_some());
                 let a = inputs.get_unchecked(*a);
                 let b = inputs.get_unchecked(*b);
-                dbg!(&self);
-                dbg!(a, b);
                 debug_assert!(a.datum_type().is_opaque());
                 debug_assert!(a.len() == 1);
                 debug_assert!(b.datum_type().is_opaque());
@@ -250,8 +249,12 @@ impl ProtoFusedSpec {
                 for oss in oss {
                     match oss {
                         OutputStoreSpec::View { m_axis, n_axis, .. } => {
-                            *m_axis -= (*m_axis > axis) as usize;
-                            *n_axis -= (*n_axis > axis) as usize;
+                            if let Some(m) = m_axis {
+                                *m -= (*m > axis) as usize
+                            };
+                            if let Some(n) = n_axis {
+                                *n -= (*n > axis) as usize
+                            }
                         }
                         OutputStoreSpec::Strides { .. } => {}
                     }
@@ -293,8 +296,8 @@ pub struct OptMatMul {
     pub micro_ops: Vec<ProtoFusedSpec>,
     pub mmm: Vec<Box<dyn MatMatMul>>,
     pub mode_picker: ModePicker,
-    pub c_m_axis: usize,
-    pub c_n_axis: usize,
+    pub c_m_axis: Option<usize>,
+    pub c_n_axis: Option<usize>,
     pub trivial_packing: bool,
     pub trivial_path: bool,
 }
@@ -305,10 +308,10 @@ impl Op for OptMatMul {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        let m = &self.c_fact.shape[self.c_m_axis];
-        let n = &self.c_fact.shape[self.c_n_axis];
+        let m = self.c_m_axis.map(|ix| &self.c_fact.shape[ix]).unwrap_or(&TDim::Val(1));
+        let n = self.c_n_axis.map(|ix| &self.c_fact.shape[ix]).unwrap_or(&TDim::Val(1));
         let mut infos = vec![format!(
-            "c_shape:{:?}, c_m_axis:{} c_n_axis:{} m:{} n:{}",
+            "c_shape:{:?}, c_m_axis:{:?} c_n_axis:{:?} m:{} n:{}",
             self.c_fact, self.c_m_axis, self.c_n_axis, m, n,
         )];
         if let Some(k) = self.guess_k() {
@@ -341,34 +344,32 @@ impl EvalOp for OptMatMul {
         unsafe {
             let c_shape = self.c_fact.shape.eval_to_usize(&session.resolved_symbols)?;
             let mut c = Tensor::uninitialized_dt(self.c_fact.datum_type, &c_shape)?;
-            let mode = self.mode_picker.pick(c_shape[self.c_n_axis])?;
+            let m = self.c_m_axis.map(|c_m| c.shape()[c_m]).unwrap_or(1);
+            let n = self.c_n_axis.map(|c_n| c.shape()[c_n]).unwrap_or(1);
+            let mode = self.mode_picker.pick(n)?;
             let mmm = &*self.mmm[mode];
             let mut cell = session.cached_mmm_scratch_space.borrow_mut();
             if !cell.as_ref().is_some_and(|scratch| mmm.can_use_scratch_space(&**scratch)) {
                 *cell = None
             }
             let scratch = cell.get_or_insert_with(|| mmm.allocate_scratch_space());
-
             if self.trivial_path {
                 let uops: Vec<FusedSpec> = self
                     .micro_ops
                     .iter()
                     .map(|o| o.resolve_trivial(&inputs, &mut c, mmm, mode))
                     .collect();
-                mmm.run_with_scratch_space(
-                    *c_shape.get_unchecked(self.c_m_axis),
-                    *c_shape.get_unchecked(self.c_n_axis),
-                    scratch.as_mut(),
-                    &uops,
-                )?;
+                mmm.run_with_scratch_space(m, n, scratch.as_mut(), &uops)?;
                 Ok(tvec!(c.into_tvalue()))
             } else {
                 let mut uops = vec![FusedSpec::ShiftLeft(0); self.micro_ops.len()];
                 let mut looping_shape: TVec<usize> = c_shape.to_smallvec();
-                looping_shape[self.c_m_axis] = 1;
-                looping_shape[self.c_n_axis] = 1;
-                let m = c_shape[self.c_m_axis];
-                let n = c_shape[self.c_n_axis];
+                if let Some(ax) = self.c_m_axis {
+                    looping_shape[ax] = 1;
+                }
+                if let Some(ax) = self.c_n_axis {
+                    looping_shape[ax] = 1;
+                }
                 for c_coords in indices(&*looping_shape) {
                     for ix in 0..self.micro_ops.len() {
                         *uops.get_unchecked_mut(ix) = self.micro_ops.get_unchecked(ix).resolve(
@@ -379,8 +380,6 @@ impl EvalOp for OptMatMul {
                             mode,
                         );
                     }
-                    println!("XXXXX {c_coords:?} m:{m} n:{n}");
-                    println!(" {uops:?}");
                     mmm.run_with_scratch_space(m, n, scratch.as_mut(), &uops)
                         .context("In mmm.run_with_scratch_space")?;
                 }
@@ -392,8 +391,8 @@ impl EvalOp for OptMatMul {
 
 impl TypedOp for OptMatMul {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        ensure!(self.c_m_axis < self.c_fact.rank());
-        ensure!(self.c_n_axis < self.c_fact.rank());
+        ensure!(self.c_m_axis.map(|ax| ax < self.c_fact.rank()).unwrap_or(true));
+        ensure!(self.c_n_axis.map(|ax| ax < self.c_fact.rank()).unwrap_or(true));
         ensure!(self.trivial_path == self.can_use_trivial_path());
         ensure!(self.mmm.iter().map(|mmm| mmm.internal_type()).all_equal());
         for op in &self.micro_ops {
@@ -404,26 +403,24 @@ impl TypedOp for OptMatMul {
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let mut sums = HashMap::new();
-        let m = &self.c_fact.shape[self.c_m_axis];
-        let n = &self.c_fact.shape[self.c_n_axis];
         for op in &self.micro_ops {
-            for (cost, count) in op.cost(m, n, self.mmm[0].internal_type()) {
+            for (cost, count) in op.cost(self.m(), self.n(), self.mmm[0].internal_type()) {
                 *sums.entry(cost).or_default() += count;
             }
         }
-        let loops =
-            self.c_fact
-                .shape
-                .iter()
-                .enumerate()
-                .map(|(ix, d)| {
-                    if ix == self.c_m_axis || ix == self.c_n_axis {
-                        1.to_dim()
-                    } else {
-                        d.clone()
-                    }
-                })
-                .product::<TDim>();
+        let loops = self
+            .c_fact
+            .shape
+            .iter()
+            .enumerate()
+            .map(|(ix, d)| {
+                if Some(ix) == self.c_m_axis || Some(ix) == self.c_n_axis {
+                    1.to_dim()
+                } else {
+                    d.clone()
+                }
+            })
+            .product::<TDim>();
         for s in &mut sums.values_mut() {
             *s *= &loops;
         }
@@ -520,13 +517,17 @@ impl TypedOp for OptMatMul {
             }
         }
         if let Some(AxisOp::Rm(axis)) = succ.op_as::<ops::AxisOp>() {
-            if *axis == self.c_m_axis || *axis == self.c_n_axis {
+            if Some(*axis) == self.c_m_axis || Some(*axis) == self.c_n_axis {
                 return Ok(None);
             }
             let mut new_op = self.clone();
             new_op.c_fact.shape.remove_axis(*axis)?;
-            new_op.c_m_axis -= (new_op.c_m_axis > *axis) as usize;
-            new_op.c_n_axis -= (new_op.c_n_axis > *axis) as usize;
+            if let Some(c_m_axis) = &mut new_op.c_m_axis {
+                *c_m_axis -= (*c_m_axis > *axis) as usize;
+            }
+            if let Some(c_n_axis) = &mut new_op.c_n_axis {
+                *c_n_axis -= (*c_n_axis > *axis) as usize;
+            }
             for uop in &mut new_op.micro_ops {
                 uop.rm_c_axis(*axis);
             }
@@ -610,13 +611,17 @@ impl OptMatMul {
         mmm: Vec<Box<dyn MatMatMul>>,
         mode_picker: ModePicker,
         c_fact: TypedFact,
-        c_m_axis: usize,
-        c_n_axis: usize,
+        c_m_axis: Option<usize>,
+        c_n_axis: Option<usize>,
         micro_ops: Vec<ProtoFusedSpec>,
         trivial_packing: bool,
     ) -> TractResult<Self> {
-        ensure!(c_m_axis < c_fact.rank());
-        ensure!(c_n_axis < c_fact.rank());
+        if let Some(m) = c_m_axis {
+            ensure!(m < c_fact.rank());
+        }
+        if let Some(n) = c_n_axis {
+            ensure!(n < c_fact.rank());
+        }
         let mut it = OptMatMul {
             mmm,
             mode_picker,
@@ -647,12 +652,14 @@ impl OptMatMul {
             .map(|geo| geo.k.clone())
     }
 
+    #[inline]
     pub fn m(&self) -> &TDim {
-        &self.c_fact.shape[self.c_m_axis]
+        self.c_m_axis.map(|ax| &self.c_fact.shape[ax]).unwrap_or(&TDim::Val(1))
     }
 
+    #[inline]
     pub fn n(&self) -> &TDim {
-        &self.c_fact.shape[self.c_n_axis]
+        self.c_n_axis.map(|ax| &self.c_fact.shape[ax]).unwrap_or(&TDim::Val(1))
     }
 
     fn update_trivial_path(&mut self) {
@@ -661,12 +668,9 @@ impl OptMatMul {
 
     fn can_use_trivial_path(&self) -> bool {
         self.c_fact.shape.is_concrete()
-            && self
-                .c_fact
-                .shape
-                .iter()
-                .enumerate()
-                .all(|(ax, dim)| ax == self.c_m_axis || ax == self.c_n_axis || dim.is_one())
+            && self.c_fact.shape.iter().enumerate().all(|(ax, dim)| {
+                Some(ax) == self.c_m_axis || Some(ax) == self.c_n_axis || dim.is_one()
+            })
             && self.trivial_packing
             && self.micro_ops.iter().all(|o| o.is_trivial())
     }
@@ -721,9 +725,9 @@ impl OptMatMul {
             );
         }
         let other_shape = fact.shape.to_owned();
-        if other_shape[self.c_m_axis] == self.c_fact.shape[self.c_m_axis]
-            && other_shape[self.c_m_axis] == other_shape.volume()
-        {
+        if self.c_m_axis.is_some_and(|ax| {
+            other_shape[ax] == self.c_fact.shape[ax] && other_shape[ax] == other_shape.volume()
+        }) {
             return self.fuse_op(
                 model,
                 node,
@@ -731,14 +735,14 @@ impl OptMatMul {
                 vec![ProtoFusedSpec::BinPerRow(
                     value,
                     binop,
-                    MapOutputAxisToInput(tvec!((self.c_m_axis, self.c_m_axis))),
+                    MapOutputAxisToInput(tvec!((self.c_m_axis.unwrap(), self.c_m_axis.unwrap()))),
                 )],
                 &additional_input,
             );
         }
-        if other_shape[self.c_n_axis] == self.c_fact.shape[self.c_n_axis]
-            && other_shape[self.c_n_axis] == other_shape.volume()
-        {
+        if self.c_n_axis.is_some_and(|ax| {
+            other_shape[ax] == self.c_fact.shape[ax] && other_shape[ax] == other_shape.volume()
+        }) {
             return self.fuse_op(
                 model,
                 node,
@@ -746,7 +750,7 @@ impl OptMatMul {
                 vec![ProtoFusedSpec::BinPerCol(
                     value,
                     binop,
-                    MapOutputAxisToInput(tvec!((self.c_n_axis, self.c_n_axis))),
+                    MapOutputAxisToInput(tvec!((self.c_n_axis.unwrap(), self.c_n_axis.unwrap()))),
                 )],
                 &additional_input,
             );

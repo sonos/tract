@@ -40,11 +40,11 @@ pub mod prelude {
 pub mod internal {
     pub use crate::datum::ClampCast;
     pub use crate::dim::{parse_tdim, solve_for, DimLike};
-    pub use crate::opaque::{ OpaquePayload, OpaqueFact };
+    pub use crate::opaque::{OpaqueFact, OpaquePayload};
     pub use crate::prelude::*;
+    pub use crate::tensor::vector_size;
     pub use crate::tensor::view::TensorView;
     pub use crate::tensor::Approximation;
-    pub use crate::tensor::vector_size;
     pub use anyhow::{anyhow, bail, ensure, format_err, Context as TractErrorContext};
     pub use ndarray as tract_ndarray;
     pub use num_integer;

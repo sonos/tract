@@ -167,7 +167,7 @@ impl ConvProblem {
                 }
                 .wrap(&self.input.view())
             };
-            let c_store = mmm.c_view(0, 1).wrap(&output.view());
+            let c_store = mmm.c_view(Some(0), Some(1)).wrap(&output.view());
             mmm.run(
                 m,
                 n,

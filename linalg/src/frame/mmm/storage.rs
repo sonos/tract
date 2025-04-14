@@ -3,7 +3,7 @@ use tract_data::internal::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum OutputStoreSpec {
-    View { m_axis: usize, n_axis: usize, mr: usize, nr: usize },
+    View { m_axis: Option<usize>, n_axis: Option<usize>, mr: usize, nr: usize },
     Strides { row_byte_stride: isize, col_byte_stride: isize, mr: usize, nr: usize },
 }
 
@@ -44,8 +44,10 @@ impl OutputStoreSpec {
         match self {
             OutputStoreSpec::View { m_axis, n_axis, mr, nr, .. } => {
                 let tensor_strides = tensor.strides();
-                let row_item_stride = *tensor_strides.get_unchecked(*m_axis);
-                let col_item_stride = *tensor_strides.get_unchecked(*n_axis);
+                let row_item_stride =
+                    m_axis.map(|ax| *tensor_strides.get_unchecked(ax)).unwrap_or(0);
+                let col_item_stride =
+                    n_axis.map(|ax| *tensor_strides.get_unchecked(ax)).unwrap_or(0);
                 let row_byte_stride = row_item_stride * size_of;
                 let col_byte_stride = col_item_stride * size_of;
                 (*mr, *nr, row_byte_stride, col_byte_stride)

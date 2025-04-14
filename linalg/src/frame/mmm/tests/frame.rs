@@ -87,7 +87,7 @@ where
     usize: AsPrimitive<TI>,
 {
     if !ker.is_supported_here() {
-        return Ok(())
+        return Ok(());
     };
     crate::setup_test_logger();
 
@@ -221,7 +221,8 @@ where
 {
     let d = (0..m * n).map(|i| i.as_()).collect::<Vec<TI>>();
     let d = tensor1(&d).into_shape(&[m, n])?;
-    let store_spec = OutputStoreSpec::View { m_axis: 0, n_axis: 1, mr: ker.mr(), nr: ker.nr() };
+    let store_spec =
+        OutputStoreSpec::View { m_axis: Some(0), n_axis: Some(1), mr: ker.mr(), nr: ker.nr() };
     let view_d = d.to_array_view::<TI>()?.into_dimensionality()?;
     fused_ops::<K, TA, TB, TC, TI, _>(
         ker,

@@ -227,7 +227,6 @@ impl Reducer {
                             slice.iter().cloned().sum::<T>()
                         }
                     } else {
-                        dbg!("ndarary code");
                         let first: *const T = &input_view[coords];
                         let mut sum = T::zero();
                         for i in 0..reduced_dim {

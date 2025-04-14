@@ -619,15 +619,17 @@ impl Conv {
             wires.push(bias);
             ops.push(fused);
         }
-        ops.push(ProtoFusedSpec::Store(vec![unsafe { mmm.c_view(c_m_axis, c_n_axis) }]));
+        ops.push(ProtoFusedSpec::Store(vec![unsafe {
+            mmm.c_view(Some(c_m_axis), Some(c_n_axis))
+        }]));
         model.wire_node(
             format!("{name}.matmatmul"),
             OptMatMul::new(
                 vec![mmm],
                 ModePicker::Single,
                 c_datum_type.fact(mmm_output_shape),
-                c_m_axis,
-                c_n_axis,
+                Some(c_m_axis),
+                Some(c_n_axis),
                 ops,
                 packing == 0 && self.group == 1,
             )?,
