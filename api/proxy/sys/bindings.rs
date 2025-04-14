@@ -5156,7 +5156,7 @@ extern "C" {
     pub fn tract_nnef_transform_model(
         nnef: *const TractNnef,
         model: *mut TractModel,
-        transform_spec: *const ::std::os::raw::c_char,
+        transform_spec: *const i8,
     ) -> TRACT_RESULT;
 }
 extern "C" {

@@ -58,7 +58,7 @@ class Nnef:
         if not isinstance(model, Model):
             raise TractError("Expected a Model, called with " + model);
         transform_spec = transform_spec.encode("utf-8")
-        check(lib.tract_nnef_transform_model(self.ptr, transform_spec, model.ptr))
+        check(lib.tract_nnef_transform_model(self.ptr, model.ptr, transform_spec))
 
     def with_tract_core(self) -> "Nnef":
         """
