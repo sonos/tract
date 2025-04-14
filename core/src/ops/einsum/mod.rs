@@ -8,10 +8,8 @@ mod eval;
 
 #[cfg(feature = "blas")]
 pub mod as_blas;
-pub mod bilinear;
 pub mod einsum_matmul;
 pub mod kernel_selection;
-// pub mod optimize;
 pub mod prefix_matmul;
 
 #[cfg(test)]

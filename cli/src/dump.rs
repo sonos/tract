@@ -445,7 +445,7 @@ pub fn mm_report(
                 .shape
                 .iter()
                 .enumerate()
-                .filter(|(ix, _dim)| *ix != op.c_m_axis && *ix != op.c_n_axis)
+                .filter(|(ix, _dim)| Some(*ix) != op.c_m_axis && Some(*ix) != op.c_n_axis)
                 .map(|(_ix, d)| d)
                 .product::<TDim>();
             let mmm = op.mmm.iter().map(|m| format!("{m:?}")).join(", ");

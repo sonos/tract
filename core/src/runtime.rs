@@ -27,7 +27,7 @@ impl Runtime for DefaultRuntime {
     }
 
     fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
-        Ok(Box::new(Arc::new(dbg!(model.into_optimized())?.into_runnable()?)))
+        Ok(Box::new(Arc::new(model.into_optimized()?.into_runnable()?)))
     }
 }
 

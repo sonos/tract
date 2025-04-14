@@ -82,7 +82,7 @@ pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
 
     fn internal_type(&self) -> DatumType;
 
-    unsafe fn c_view(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec;
+    unsafe fn c_view(&self, m_axis: Option<usize>, n_axis: Option<usize>) -> OutputStoreSpec;
     unsafe fn c_from_data_and_strides(
         &self,
         item_size: usize,
@@ -151,7 +151,7 @@ impl<K: MatMatMulKer> MatMatMul for K {
         self.can_fuse(spec)
     }
 
-    unsafe fn c_view(&self, m_axis: usize, n_axis: usize) -> OutputStoreSpec {
+    unsafe fn c_view(&self, m_axis: Option<usize>, n_axis: Option<usize>) -> OutputStoreSpec {
         OutputStoreSpec::View { m_axis, n_axis, mr: self.mr(), nr: self.nr() }
     }
 
