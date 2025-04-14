@@ -3,8 +3,8 @@ use core::f32;
 use infra::Test;
 use infra::TestResult;
 use infra::TestSuite;
-use proptest::prelude::*;
 use proptest::collection::vec;
+use proptest::prelude::*;
 use tract_core::internal::*;
 use tract_core::ndarray::ArrayD;
 use tract_core::num_traits::Float;
@@ -14,15 +14,17 @@ use crate::tensor;
 
 #[derive(Debug, Clone)]
 pub struct ScaledMaskedSoftmaxProblem<F>
-where F: Datum + Float
+where
+    F: Datum + Float,
 {
     input: ArrayD<F>,
     mask: ArrayD<F>,
-    scale: F
+    scale: F,
 }
 
 impl<F> Arbitrary for ScaledMaskedSoftmaxProblem<F>
-where F: Datum + Float
+where
+    F: Datum + Float,
 {
     type Parameters = ();
     type Strategy = BoxedStrategy<ScaledMaskedSoftmaxProblem<F>>;
@@ -31,30 +33,42 @@ where F: Datum + Float
         // ScaledMaskSoftmax assumes rank 3 for mask and input
         let dim = 1usize..5;
         vec(dim.clone(), 3..=3)
-            .prop_flat_map(| shape| {
-                (tensor::<F>(&shape),
-                    tensor::<f32>(&shape),
-                    any::<f32>())
-                .prop_map(| (input, mask, scale) | {
-                    let mask = mask.mapv(|x| if x >= 0. { F::from(0).unwrap() } else { F::from(f32::NEG_INFINITY).unwrap()});
-                    Self { input, mask, scale: F::from(scale).unwrap() }
-                })
+            .prop_flat_map(|shape| {
+                (tensor::<F>(&shape), tensor::<f32>(&shape), any::<f32>()).prop_map(
+                    |(input, mask, scale)| {
+                        let mask = mask.mapv(|x| {
+                            if x >= 0. {
+                                F::from(0).unwrap()
+                            } else {
+                                F::from(f32::NEG_INFINITY).unwrap()
+                            }
+                        });
+                        Self { input, mask, scale: F::from(scale).unwrap() }
+                    },
+                )
             })
             .boxed()
     }
 }
 
 impl<F> ScaledMaskedSoftmaxProblem<F>
-where F: Datum + Float,
-      f32: From<F>
+where
+    F: Datum + Float,
+    f32: From<F>,
 {
     fn tract(&self) -> TractResult<TypedModel> {
         let mut model = TypedModel::default();
-        
-        let input = model.add_source("input", TypedFact::shape_and_dt_of(&self.input.clone().into_tensor()))?;
-        let mask = model.add_source("mask", TypedFact::shape_and_dt_of(&self.mask.clone().into_tensor()))?;
 
-        let output = model.wire_node("apply_rope", BasicScaledMaskedSoftmax { scale: tensor0(self.scale).into_arc_tensor() }, &[input, mask])?;
+        let input = model
+            .add_source("input", TypedFact::shape_and_dt_of(&self.input.clone().into_tensor()))?;
+        let mask = model
+            .add_source("mask", TypedFact::shape_and_dt_of(&self.mask.clone().into_tensor()))?;
+
+        let output = model.wire_node(
+            "scaled_masked_softmax",
+            BasicScaledMaskedSoftmax { scale: tensor0(self.scale).into_arc_tensor() },
+            &[input, mask],
+        )?;
         model.set_output_outlets(&output)?;
 
         model = model.into_decluttered()?;
@@ -64,8 +78,9 @@ where F: Datum + Float,
     fn softmax(input: &ArrayD<F>, axis: usize) -> ArrayD<F> {
         let axis = tract_ndarray::Axis(axis);
 
-        let max_per_axis = input
-            .map_axis(axis, |lane| lane.fold(F::from(f32::NEG_INFINITY).unwrap(), |a, &b| a.max(b.into())));
+        let max_per_axis = input.map_axis(axis, |lane| {
+            lane.fold(F::from(f32::NEG_INFINITY).unwrap(), |a, &b| a.max(b.into()))
+        });
 
         let shifted = input - &max_per_axis.insert_axis(axis);
         let exp = shifted.mapv(F::exp);
@@ -82,12 +97,13 @@ where F: Datum + Float,
         let masked_input = scaled_input + mask;
 
         Self::softmax(&masked_input, self.input.shape().len() - 1)
-    }   
+    }
 }
 
-impl<F> Test for ScaledMaskedSoftmaxProblem<F> 
-where F: Datum + Float,
-      f32: From<F>
+impl<F> Test for ScaledMaskedSoftmaxProblem<F>
+where
+    F: Datum + Float,
+    f32: From<F>,
 {
     fn run_with_approx(
         &self,
@@ -101,7 +117,9 @@ where F: Datum + Float,
 
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
 
-        let mut output = runtime.prepare(model)?.run(tvec![self.input.clone().into_tvalue(), self.mask.clone().into_tvalue()])?;
+        let mut output = runtime
+            .prepare(model)?
+            .run(tvec![self.input.clone().into_tvalue(), self.mask.clone().into_tvalue()])?;
         let output = output.remove(0).into_tensor();
 
         dbg!(&reference, &output);

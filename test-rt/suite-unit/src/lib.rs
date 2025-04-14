@@ -7,22 +7,22 @@ use tract_core::ops::cnn::*;
 use tract_core::ops::nn::*;
 use tract_ndarray::*;
 
+pub mod apply_rope;
 pub mod bin_einsum;
 pub mod conv_f32;
 pub mod conv_q;
 pub mod deconv;
 pub mod downsample;
+pub mod gelu_approx;
 pub mod matmul_q40;
 pub mod q_binary;
 pub mod q_elmwise;
 pub mod q_flavours;
 pub mod q_helpers;
-pub mod slice;
-pub mod silu;
-pub mod gelu_approx;
-pub mod scaled_masked_softmax;
 pub mod rms_norm;
-pub mod apply_rope;
+pub mod scaled_masked_softmax;
+pub mod silu;
+pub mod slice;
 
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite: TestSuite = Default::default();
@@ -44,7 +44,9 @@ pub fn suite() -> TractResult<TestSuite> {
     Ok(suite)
 }
 
-pub fn tensor<'a, F: Datum + Float>(shape: impl IntoIterator<Item = &'a usize>) -> BoxedStrategy<ArrayD<F>> {
+pub fn tensor<'a, F: Datum + Float>(
+    shape: impl IntoIterator<Item = &'a usize>,
+) -> BoxedStrategy<ArrayD<F>> {
     let shape = shape.into_iter().copied().collect::<Vec<_>>();
     let len = shape.iter().product::<usize>();
     vec((-10i8..=10i8).prop_map(|i| F::from(i).unwrap()), len..=len)

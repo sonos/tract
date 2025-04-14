@@ -3,8 +3,8 @@ use std::f32::consts::PI;
 use infra::Test;
 use infra::TestResult;
 use infra::TestSuite;
-use proptest::prelude::*;
 use proptest::collection::vec;
+use proptest::prelude::*;
 use tract_core::internal::*;
 use tract_core::ndarray::ArrayD;
 use tract_core::num_traits::Float;
@@ -14,44 +14,46 @@ use crate::tensor;
 
 #[derive(Debug, Clone)]
 pub struct GeluApproxProblem<F>
-where F: Datum + Float
+where
+    F: Datum + Float,
 {
     input: ArrayD<F>,
-    fast_impl: bool
+    fast_impl: bool,
 }
 
 impl<F> Arbitrary for GeluApproxProblem<F>
-where F: Datum + Float
+where
+    F: Datum + Float,
 {
     type Parameters = ();
     type Strategy = BoxedStrategy<GeluApproxProblem<F>>;
 
     fn arbitrary_with(_params: Self::Parameters) -> Self::Strategy {
         (0usize..5)
-                .prop_flat_map(|rank| {
-                    let other_dim = 1usize..10;
-                    vec(other_dim, rank..=rank)
-                })
-                .prop_flat_map(|shape| {
-                    (tensor::<F>(&shape), any::<bool>())
-                    .prop_map(move | (input, fast_impl) | {
-                        Self { input, fast_impl }
-                    })
-                })
-                .boxed()
+            .prop_flat_map(|rank| {
+                let other_dim = 1usize..10;
+                vec(other_dim, rank..=rank)
+            })
+            .prop_flat_map(|shape| {
+                (tensor::<F>(&shape), any::<bool>())
+                    .prop_map(move |(input, fast_impl)| Self { input, fast_impl })
+            })
+            .boxed()
     }
 }
 
 impl<F> GeluApproxProblem<F>
-where F: Datum + Float,
-      f32: From<F>
+where
+    F: Datum + Float,
+    f32: From<F>,
 {
     fn tract(&self) -> TractResult<TypedModel> {
         let mut model = TypedModel::default();
         let input = self.input.clone().into_tensor();
         let input = model.add_source("input", TypedFact::shape_and_dt_of(&input))?;
 
-        let output = model.wire_node("gelu", BasicGeluApprox { fast_impl: self.fast_impl }, &[input])?;
+        let output =
+            model.wire_node("gelu", BasicGeluApprox { fast_impl: self.fast_impl }, &[input])?;
         model.set_output_outlets(&output)?;
 
         model = model.into_decluttered()?;
@@ -64,14 +66,19 @@ where F: Datum + Float,
         input.mapv(|x| {
             let x_f32 = f32::from(x);
             let pow = if self.fast_impl { 2 } else { 3 };
-            F::from(0.5 * x_f32 * (1. + ((2./PI).sqrt() * (x_f32 + 0.044715 * x_f32.powi(pow))).tanh())).unwrap()
-        } )
-    }   
+            F::from(
+                0.5 * x_f32
+                    * (1. + ((2. / PI).sqrt() * (x_f32 + 0.044715 * x_f32.powi(pow))).tanh()),
+            )
+            .unwrap()
+        })
+    }
 }
 
-impl<F> Test for GeluApproxProblem<F> 
-where F: Datum + Float,
-      f32: From<F>
+impl<F> Test for GeluApproxProblem<F>
+where
+    F: Datum + Float,
+    f32: From<F>,
 {
     fn run_with_approx(
         &self,
