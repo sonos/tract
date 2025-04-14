@@ -21,6 +21,7 @@ pub mod slice;
 pub mod silu;
 pub mod gelu_approx;
 pub mod rms_norm;
+pub mod apply_rope;
 
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite: TestSuite = Default::default();
@@ -32,6 +33,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("matmul_q40", matmul_q40::suite()?);
     suite.add("q_flavours", q_flavours::suite()?);
     suite.add("rms_norm", rms_norm::suite()?);
+    suite.add("apply_rope", apply_rope::suite()?);
     suite.add("gelu_approx", gelu_approx::suite()?);
     suite.add("silu", silu::suite()?);
     suite.add("slice", slice::suite()?);
