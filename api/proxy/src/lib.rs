@@ -66,7 +66,8 @@ impl NnefInterface for Nnef {
     }
 
     fn transform_model(&self, model: &mut Self::Model, transform_spec: &str) -> Result<()> {
-        check!(sys::tract_nnef_transform_model(self.0, model.0, transform_spec.as_ptr() as *const i8))
+        let t = CString::new(transform_spec)?;
+        check!(sys::tract_nnef_transform_model(self.0, model.0, t.as_ptr()))
     }
 
     fn enable_tract_core(&mut self) -> Result<()> {

@@ -120,7 +120,7 @@ pub unsafe extern "C" fn tract_nnef_create(nnef: *mut *mut TractNnef) -> TRACT_R
 pub unsafe extern "C" fn tract_nnef_transform_model(
     nnef: *const TractNnef,
     model: * mut TractModel,
-    transform_spec: *const c_char,
+    transform_spec: *const i8,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(nnef, model, transform_spec);
