@@ -91,9 +91,7 @@ where
             .insert_axis(tract_ndarray::Axis(self.axis));
         let broadcasted_norm = norm.broadcast(a.raw_dim()).unwrap();
 
-        let res = a / broadcasted_norm;
-
-        res
+        a / broadcasted_norm
     }
 }
 
