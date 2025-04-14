@@ -9,8 +9,9 @@ mod eval;
 #[cfg(feature = "blas")]
 pub mod as_blas;
 pub mod bilinear;
+pub mod einsum_matmul;
 pub mod kernel_selection;
-pub mod optimize;
+// pub mod optimize;
 pub mod prefix_matmul;
 
 #[cfg(test)]
@@ -42,7 +43,7 @@ pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<[TDim]
     }
 }
 
-#[derive(Clone, Hash)]
+#[derive(Clone, Hash, PartialEq)]
 pub struct EinSum {
     pub axes: AxesMapping,
     pub operating_dt: DatumType,
@@ -323,18 +324,12 @@ impl TypedOp for EinSum {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        optimize::optimize(self, model, node).with_context(|| {
-            format!(
-                "axes: {} — inputs: {}",
-                self.axes,
-                model
-                    .node_input_facts(node.id)
-                    .unwrap()
-                    .iter()
-                    .map(|f| format!("{f:?}"))
-                    .join(" • ")
-            )
-        })
+        if (self.q_params.is_none() && node.inputs.len() != 2)
+            || (self.q_params.is_some() && node.inputs.len() != 9)
+        {
+            return Ok(None);
+        }
+        einsum_matmul::detect_rule(&(), model, node, &node.name, self)
     }
 
     as_op!();

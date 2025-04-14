@@ -3,16 +3,15 @@ use tract_linalg::Scaler;
 use tract_ndarray::Ix2;
 use tract_num_traits::One;
 
+use super::einsum_matmul::EinSumMatMul;
 use super::eval::dequant_inputs;
-use super::optimize::*;
-use super::EinSum;
 use crate::internal::*;
 use crate::ops::einsum::block_quant_aware_input_shape;
 use crate::ops::konst::Const;
 
 pub fn rewrite_einsum_to_prefix_matmul(model: &mut TypedModel) -> TractResult<()> {
-    let rules = Rewriter::default().with_rule_for::<EinSum>("einsum-to-prefix-matmul", rule);
-    rules.rewrite(&(), model)
+    super::einsum_matmul::detect_all(model)?;
+    Rewriter::default().with_rule_for("einsum-to-prefix-matmul", rule).rewrite(&(), model)
 }
 
 fn rule(
@@ -20,7 +19,7 @@ fn rule(
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,
-    op: &EinSum,
+    op: &EinSumMatMul,
 ) -> TractResult<Option<TypedModelPatch>> {
     // F: 2 inputs
     // Q: 9 inputs
@@ -34,24 +33,17 @@ fn rule(
     {
         return Ok(None);
     }
-    let op = match ensure_mkn_axes(op, model, node).context("Figuring out m, k and n axes")? {
-        AxesOrPatch::Annotated(op) => op,
-        AxesOrPatch::Patch(p) => return Ok(Some(p)),
-        AxesOrPatch::NotAMatMul(s, axes) => {
-            bail!("{} is not a matmul: {s} ({})", op.axes, axes.iter().map(|a| a.repr).join(", "))
-        }
-    };
     let prefix: String = op
         .axes
         .iter_all_axes()
-        .filter(|a| ![op.m_axis, op.k_axis, op.n_axis].contains(a))
+        .filter(|a| ![op.m_axis, op.k_axis, op.n_axis].contains(&a.repr))
         .map(|a| a.repr)
         .collect();
     let mut patch = TypedModelPatch::default();
     let inputs = patch.taps(model, &node.inputs)?;
     let mut wire = tvec!(inputs[0], inputs[1]);
 
-    let (m, k, n) = (op.m_axis.repr, op.k_axis.repr, op.n_axis.repr);
+    let (m, k, n) = (op.m_axis, op.k_axis, op.n_axis);
     let a_order_es: String = op.axes.axes(InOut::In(0)).map(|a| a.repr).collect();
     let a_order_mm = format!("{prefix}{m}{k}");
     let a_order_mm_t = format!("{prefix}{k}{m}");
@@ -275,6 +267,8 @@ impl TypedOp for PrefixMatMul {
 
 #[cfg(test)]
 mod test {
+    use crate::ops::einsum::EinSum;
+
     use super::*;
     use proptest::collection::vec;
     use proptest::prelude::*;
