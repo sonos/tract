@@ -84,9 +84,9 @@ where F: Datum + Float + FromPrimitive,
 
         let norm = mean_square.mapv(|ms| (ms + self.eps).sqrt()).insert_axis(tract_ndarray::Axis(self.axis));
         let broadcasted_norm = norm.broadcast(a.raw_dim()).unwrap();
-        //dbg!(a.shape(), variances.shape());
+
         let res = a / broadcasted_norm;
-       //dbg!(res.shape());
+
        res
     }   
 }
