@@ -79,7 +79,7 @@ where
         let axis = tract_ndarray::Axis(axis);
 
         let max_per_axis = input.map_axis(axis, |lane| {
-            lane.fold(F::from(f32::NEG_INFINITY).unwrap(), |a, &b| a.max(b.into()))
+            lane.fold(F::from(f32::NEG_INFINITY).unwrap(), |a, &b| a.max(b))
         });
 
         let shifted = input - &max_per_axis.insert_axis(axis);
