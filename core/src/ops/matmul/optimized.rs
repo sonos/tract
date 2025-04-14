@@ -147,6 +147,8 @@ impl ProtoFusedSpec {
                 debug_assert!(inputs.get(*b).is_some());
                 let a = inputs.get_unchecked(*a);
                 let b = inputs.get_unchecked(*b);
+                dbg!(&self);
+                dbg!(a, b);
                 debug_assert!(a.datum_type().is_opaque());
                 debug_assert!(a.len() == 1);
                 debug_assert!(b.datum_type().is_opaque());
@@ -377,6 +379,8 @@ impl EvalOp for OptMatMul {
                             mode,
                         );
                     }
+                    println!("XXXXX {c_coords:?} m:{m} n:{n}");
+                    println!(" {uops:?}");
                     mmm.run_with_scratch_space(m, n, scratch.as_mut(), &uops)
                         .context("In mmm.run_with_scratch_space")?;
                 }
