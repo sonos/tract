@@ -20,6 +20,7 @@ pub mod q_helpers;
 pub mod slice;
 pub mod silu;
 pub mod gelu_approx;
+pub mod scaled_masked_softmax;
 pub mod rms_norm;
 pub mod apply_rope;
 
@@ -35,6 +36,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("rms_norm", rms_norm::suite()?);
     suite.add("apply_rope", apply_rope::suite()?);
     suite.add("gelu_approx", gelu_approx::suite()?);
+    suite.add("scaled_masked_softmax", scaled_masked_softmax::suite()?);
     suite.add("silu", silu::suite()?);
     suite.add("slice", slice::suite()?);
     suite.add("q_binary", q_binary::suite()?);

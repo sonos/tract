@@ -64,7 +64,8 @@ impl EvalOp for BasicScaledMaskedSoftmax {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, mask) = args_2!(inputs);
         let dt = input.datum_type();
-        let scaled_input = Mul.eval(input, self.scale.clone().into_tvalue(), dt)?;
+        let scale = self.scale.cast_to_dt(dt)?.into_owned();
+        let scaled_input = Mul.eval(input, scale.into_tvalue(), dt)?;
         let masked_input = Add.eval(scaled_input.into(), mask, dt)?;
         let softmax = Softmax::new(tvec![2], None, SoftmaxExp::Libc)
             .eval(tvec![masked_input.into()])?[0]
