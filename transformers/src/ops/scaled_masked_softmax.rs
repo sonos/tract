@@ -11,7 +11,9 @@ pub fn register(registry: &mut Registry) {
     registry.register_dumper(ser_scaled_masked_softmax);
     registry.register_primitive(
         "tract_transformers_scaled_masked_softmax",
-        &[TypeName::Scalar.tensor().named("input"), TypeName::Scalar.named("scale")],
+        &[TypeName::Scalar.tensor().named("input"),
+                  TypeName::Scalar.tensor().named("mask"),
+                  TypeName::Scalar.named("scale")],
         &[("output", TypeName::Scalar.tensor())],
         de_scaled_masked_softmax,
     );
@@ -22,8 +24,9 @@ fn de_scaled_masked_softmax(
     invocation: &ResolvedInvocation,
 ) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
+    let mask = invocation.named_arg_as(builder, "mask")?;
     let scale = invocation.named_arg_as(builder, "scale")?;
-    builder.wire(BasicScaledMaskedSoftmax { scale }, &[input])
+    builder.wire(BasicScaledMaskedSoftmax { scale }, &[input, mask])
 }
 
 fn ser_scaled_masked_softmax(
@@ -32,9 +35,10 @@ fn ser_scaled_masked_softmax(
     op: &BasicScaledMaskedSoftmax,
 ) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
+    let mask = ast.mapping[&node.inputs[1]].clone();
     Ok(Some(invocation(
         "tract_transformers_scaled_masked_softmax",
-        &[input],
+        &[input, mask],
         &[("scale", numeric(op.scale.cast_to_scalar::<f32>()?))],
     )))
 }
