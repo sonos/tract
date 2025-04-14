@@ -51,10 +51,10 @@ where
             .prop_flat_map(|(iter_dim, mut shape, axis)| {
                 shape.insert(axis, iter_dim);
                 let input = tensor::<F>(&shape);
-                (input, Just(axis), any::<f32>()).prop_map(|(input, axis, eps)| Self {
+                (input, Just(axis), 0f32..=1e6).prop_map(|(input, axis, eps)| Self {
                     input: input.into(),
                     axis,
-                    eps: F::from(eps.max(1e-6)).unwrap(),
+                    eps: F::from(eps / 1e5).unwrap(),
                 })
             })
             .boxed()

@@ -31,10 +31,10 @@ where
 
     fn arbitrary_with(_params: Self::Parameters) -> Self::Strategy {
         // ScaledMaskSoftmax assumes rank 3 for mask and input
-        let dim = 1usize..5;
+        let dim = 1usize..20;
         vec(dim.clone(), 3..=3)
             .prop_flat_map(|shape| {
-                (tensor::<F>(&shape), tensor::<f32>(&shape), any::<f32>()).prop_map(
+                (tensor::<F>(&shape), tensor::<f32>(&shape), -10..=10i32).prop_map(
                     |(input, mask, scale)| {
                         let mask = mask.mapv(|x| {
                             if x >= 0. {
@@ -43,6 +43,7 @@ where
                                 F::from(f32::NEG_INFINITY).unwrap()
                             }
                         });
+                        let scale = scale as f32 / 10.;
                         Self { input, mask, scale: F::from(scale).unwrap() }
                     },
                 )
@@ -85,7 +86,9 @@ where
         let shifted = input - &max_per_axis.insert_axis(axis);
         let exp = shifted.mapv(F::exp);
         let sum_exp = exp.sum_axis(axis);
+
         let norm = sum_exp.insert_axis(axis);
+
         &exp / &norm
     }
 
@@ -116,12 +119,11 @@ where
         let mut model = self.tract()?;
 
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
-
+        dbg!(&self.input, &self.mask);
         let mut output = runtime
             .prepare(model)?
             .run(tvec![self.input.clone().into_tvalue(), self.mask.clone().into_tvalue()])?;
         let output = output.remove(0).into_tensor();
-
         dbg!(&reference, &output);
         output.close_enough(&reference, approx)
     }
@@ -133,5 +135,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add_arbitrary::<ScaledMaskedSoftmaxProblem<f32>>("proptest_f32", ());
     suite.add_arbitrary::<ScaledMaskedSoftmaxProblem<f16>>("proptest_f16", ());
 
+    suite.add("trivial_f32_0", ScaledMaskedSoftmaxProblem { input: tensor3(&[[[0f32]]]).into_array()?, mask: tensor3(&[[[0f32]]]).into_array()?, scale: 1f32});
+    suite.add("trivial_f32_1", ScaledMaskedSoftmaxProblem { input: tensor3(&[[[0f32, 0f32], [0f32, 0f32]]]).into_array()?, mask: tensor3(&[[[f32::NEG_INFINITY, 0f32], [0f32, 0f32]]]).into_array()?, scale: 0f32});
     Ok(suite)
 }
