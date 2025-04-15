@@ -1,5 +1,6 @@
 use crate::internal::*;
 use crate::ops::einsum::block_quant_aware_input_shape;
+use crate::ops::matmul::pack::OptSimpleMatMulPack;
 use ndarray::*;
 use tract_linalg::block_quant::BlockQuantValue;
 use tract_linalg::mmm::MMMInputValue;
@@ -170,6 +171,21 @@ impl TypedOp for Gather {
                     },
                     &[wire],
                 )?[0];
+                patch.shunt_outside(model, node.id.into(), wire)?;
+                return Ok(Some(patch));
+            }
+        }
+        if input_fact.konst.is_some() {
+            // look for a OptSimpleMatMulPack *sibling*
+            if let Some(sibling) = model
+                .outlet_successors(node.inputs[0])
+                .iter()
+                .find(|o| o.node != node.id && model.node(o.node).op_is::<OptSimpleMatMulPack>())
+            {
+                let mut patch = TypedModelPatch::default();
+                let mut taps = patch.taps(model, &node.inputs)?;
+                taps[0] = patch.tap_model(model, sibling.node.into())?;
+                let wire = patch.wire_node(&node.name, self.clone(), &taps)?[0];
                 patch.shunt_outside(model, node.id.into(), wire)?;
                 return Ok(Some(patch));
             }
