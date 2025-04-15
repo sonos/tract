@@ -18,7 +18,7 @@ then
   nnef="llm/$generation/$id/$id.nnef.tgz"
   $CACHE_FILE $nnef
 
-  $TRACT_RUN -v --nnef-tract-core --metal ggml $MODELS/$nnef dump --set S=1024 --set P=0 --memory-arena found.json
+  $TRACT_RUN -v --nnef-tract-core --metal $MODELS/$nnef dump --set S=1024 --set P=0 --memory-arena found.json
 
   diff -u expected.json found.json
 else
