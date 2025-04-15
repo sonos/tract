@@ -135,7 +135,21 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add_arbitrary::<ScaledMaskedSoftmaxProblem<f32>>("proptest_f32", ());
     suite.add_arbitrary::<ScaledMaskedSoftmaxProblem<f16>>("proptest_f16", ());
 
-    suite.add("trivial_f32_0", ScaledMaskedSoftmaxProblem { input: tensor3(&[[[0f32]]]).into_array()?, mask: tensor3(&[[[0f32]]]).into_array()?, scale: 1f32});
-    suite.add("trivial_f32_1", ScaledMaskedSoftmaxProblem { input: tensor3(&[[[0f32, 0f32], [0f32, 0f32]]]).into_array()?, mask: tensor3(&[[[f32::NEG_INFINITY, 0f32], [0f32, 0f32]]]).into_array()?, scale: 0f32});
+    suite.add(
+        "trivial_f32_0",
+        ScaledMaskedSoftmaxProblem {
+            input: tensor3(&[[[0f32]]]).into_array()?,
+            mask: tensor3(&[[[0f32]]]).into_array()?,
+            scale: 1f32,
+        },
+    );
+    suite.add(
+        "trivial_f32_1",
+        ScaledMaskedSoftmaxProblem {
+            input: tensor3(&[[[0f32, 0f32], [0f32, 0f32]]]).into_array()?,
+            mask: tensor3(&[[[f32::NEG_INFINITY, 0f32], [0f32, 0f32]]]).into_array()?,
+            scale: 0f32,
+        },
+    );
     Ok(suite)
 }
