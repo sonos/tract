@@ -30,8 +30,10 @@ pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<[TDim]
         Ok(Cow::Owned(
             fact.shape.iter().cloned().chain(bqf.shape().iter().map(|d| d.to_dim())).collect_vec(),
         ))
-    // } else if let Some(pbqf) = opaque_fact.downcast_ref::<PackedBlockQuantFact>() {
-    //     &pbqf.shape
+    } else if let Some(pof) = opaque_fact.downcast_ref::<PackedBlockQuantFact>() {
+        Ok(Cow::Owned(
+            fact.shape.iter().cloned().chain(pof.shape.iter().map(|i| i.to_dim())).collect_vec(),
+        ))
     } else if let Some(pof) = opaque_fact.downcast_ref::<PackedOpaqueFact>() {
         Ok(Cow::Owned(
             fact.shape.iter().cloned().chain([pof.mn.clone(), pof.k.to_dim()]).collect_vec(),
