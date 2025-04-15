@@ -31,7 +31,7 @@ fn mat_vec_mul(c: &mut Criterion) {
                                     b: AsInputValue::Borrowed(&*pb),
                                     packing: 0,
                                 },
-                                FusedSpec::Store(mmm.c_view(0, 0).wrap(&c.view_mut())),
+                                FusedSpec::Store(mmm.c_view(Some(0), Some(0)).wrap(&c.view_mut())),
                             ],
                         )
                     });
