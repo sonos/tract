@@ -124,7 +124,7 @@ pub unsafe extern "C" fn tract_nnef_transform_model(
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(nnef, model, transform_spec);
-        let transform_spec = CStr::from_ptr(transform_spec).to_str()?;
+        let transform_spec = CStr::from_ptr(transform_spec as _).to_str()?;
         (*nnef).0.transform_model(&mut (*model).0, transform_spec).with_context(|| format!("performing transform {transform_spec:?}"))?;
         Ok(())
     })
@@ -1088,7 +1088,7 @@ pub unsafe extern "C" fn tract_inference_fact_parse(
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(model, spec, fact);
-        let spec = CStr::from_ptr(spec as _).to_str()?;
+        let spec = CStr::from_ptr(spec).to_str()?;
         let f: tract_rs::InferenceFact = spec.as_fact(&mut (*model).0)?.as_ref().clone();
         *fact = Box::into_raw(Box::new(TractInferenceFact(f)));
         Ok(())
