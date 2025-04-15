@@ -119,12 +119,12 @@ where
         let mut model = self.tract()?;
 
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
-        dbg!(&self.input, &self.mask);
+        //dbg!(&self.input, &self.mask);
         let mut output = runtime
             .prepare(model)?
             .run(tvec![self.input.clone().into_tvalue(), self.mask.clone().into_tvalue()])?;
         let output = output.remove(0).into_tensor();
-        dbg!(&reference, &output);
+        //dbg!(&reference, &output);
         output.close_enough(&reference, approx)
     }
 }
