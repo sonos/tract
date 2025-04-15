@@ -15,6 +15,7 @@ use crate::ops::matmul::pack::{OptMatMulPack, OptSimpleMatMulPack};
 use crate::ops::matmul::quant::{
     combine_scales, compensate_zero_points, requant, wire_ensure_q8_flavour,
 };
+use crate::ops::matmul::ModePicker;
 use crate::ops::nn::{Reduce, Reducer};
 
 pub fn detect_all(model: &mut TypedModel) -> TractResult<()> {
@@ -448,7 +449,7 @@ fn optimized_mat_mul(
         if let Some(pf) = a_static_pack.downcast_ref::<PackedFormat>() {
             Box::new(OptMatMulPack {
                 packers: vec![pf.clone()],
-                mode_picker: mode_picker.clone(),
+                mode_picker: ModePicker::Single,
                 k_axis: op.a_k(),
                 mn_axis: op.a_m(),
             })
