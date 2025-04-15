@@ -713,7 +713,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         multithread::set_default_executor(multithread::Executor::multithread(threads));
     }
     #[cfg(not(feature = "multithread-mm"))]
-    if let Some(_) = matches.value_of("threads") {
+    if matches.value_of("threads").is_some() {
         bail!("tract is compiled without multithread support")
     }
 

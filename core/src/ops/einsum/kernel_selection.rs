@@ -52,8 +52,8 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
         index.entry(key).or_default().push((m, p, pe));
     }
     let (mmv, mmm) = index
-        .iter()
-        .map(|(_name, kit)| {
+        .values()
+        .map(|kit| {
             let best_for_mmv =
                 kit.iter().max_by_key(|(m, _, pe)| (m.nr() == 1, pe.is_none())).unwrap();
             let best_for_mmm = kit.iter().max_by_key(|(m, _, _)| m.nr()).unwrap();
@@ -61,10 +61,10 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
         })
         .max_by_key(|(mmv, mmm)| (mmv.2.is_none(), mmm.0.mr()))
         .unwrap();
-    return Ok((
+    Ok((
         ModePicker::VecVsMat,
         vec![(mmv.0.clone(), *mmv.1, mmv.2.clone()), (mmm.0.clone(), *mmm.1, mmm.2.clone())],
-    ));
+    ))
 }
 
 pub fn list_impls(
