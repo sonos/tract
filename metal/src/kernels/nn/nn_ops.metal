@@ -353,6 +353,7 @@ template<typename F>
                 constant const size_t shape[3], 
                 constant const size_t strides[3],
                 constant const size_t mask_strides[3],
+                constant const size_t out_strides[3],
                 uint3  tgpig[[threadgroup_position_in_grid]],
                 uint  tiisg[[thread_index_in_simdgroup]],
                 uint  tpsg[[threads_per_simdgroup]]
@@ -371,13 +372,16 @@ template<typename F>
     size_t mask_base_idx = tgpig.y * mask_strides[1] 
             + tgpig.z * mask_strides[0];
 
+    size_t base_out_idx = tgpig.y * out_strides[1] 
+            + tgpig.z * out_strides[0];
     // Get max value on softmax reduce_dim after applying scale and mask
     float partial_max = -INFINITY;
     for (size_t i = tiisg; i < reduce_dim; i += tpsg) {
         auto idx = base_idx + i * strides[2];
+        auto out_idx = base_out_idx + i * out_strides[2];
         auto mask_idx = mask_base_idx + i * mask_strides[2];
-        output[idx] = input[idx] * scale + mask[mask_idx];
-        float el = static_cast<float>(output[idx]);
+        output[out_idx] = input[idx] * scale + mask[mask_idx];
+        float el = static_cast<float>(output[out_idx]);
         partial_max = max(partial_max, el);
     }
 
@@ -386,8 +390,8 @@ template<typename F>
    // Compute Sum(exp(x - max))
    float partial_norm = 0;
    for (size_t i = tiisg; i < reduce_dim; i += tpsg) {
-       auto idx = base_idx + i * strides[2];
-       float el = static_cast<float>(output[idx]);
+       auto out_idx = base_out_idx + i * out_strides[2];
+       float el = static_cast<float>(output[out_idx]);
        float exp_el = fast::exp(el - axis_max);
        partial_norm += exp_el;
    }
@@ -396,10 +400,10 @@ template<typename F>
    float inv_axis_norm = 1.0 / axis_norm;
 
    for (size_t i = tiisg; i < reduce_dim; i += tpsg) {
-       auto idx = base_idx + i * strides[2];
-       float el = static_cast<float>(output[idx]);
+       auto out_idx = base_out_idx + i * out_strides[2];
+       float el = static_cast<float>(output[out_idx]);
        float exp_el = fast::exp(el - axis_max);
-       output[idx] = static_cast<F>(exp_el * inv_axis_norm);
+       output[out_idx] = static_cast<F>(exp_el * inv_axis_norm);
    }
 }
 
