@@ -185,6 +185,9 @@ pub(crate) fn detect_rule(
     _name: &str,
     op: &EinSum,
 ) -> TractResult<Option<TypedModelPatch>> {
+    if node.inputs.len() != 2 && node.inputs.len() != 9 {
+        return Ok(None);
+    }
     let input_facts = model.node_input_facts(node.id)?;
     let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
     let output_shape = super::eval::output_shape(&op.axes, &input_shapes)?;
@@ -438,9 +441,10 @@ fn optimized_mat_mul(
     let taps = patch.taps(model, &node.inputs)?;
     let name = &node.name;
 
+    // Strategy is either one impl, or two impl with the same packing for A
+    let (mmm, pack, pe) = &impls[0];
+    let a_static_pack = if let Some(pe) = pe { &pe.from } else { &mmm.packings()[*pack].0 };
     let pack_a: Box<dyn TypedOp> = if input_facts[0].konst.is_some() {
-        let (mmm, pack, pe) = &impls[0];
-        let a_static_pack = if let Some(pe) = pe { &pe.from } else { &mmm.packings()[*pack].0 };
         if let Some(pf) = a_static_pack.downcast_ref::<PackedFormat>() {
             Box::new(OptMatMulPack {
                 packers: vec![pf.clone()],
@@ -463,8 +467,13 @@ fn optimized_mat_mul(
         Box::new(OptMatMulPack {
             packers: impls
                 .iter()
-                .map(|(mmm, p, _)| {
-                    mmm.packings()[*p].0.downcast_ref::<PackedFormat>().unwrap().clone()
+                .map(|(mmm, p, pe)| {
+                    pe.as_ref()
+                        .map(|pe| &pe.from)
+                        .unwrap_or(&mmm.packings()[*p].0)
+                        .downcast_ref::<PackedFormat>()
+                        .unwrap()
+                        .clone()
                 })
                 .collect(),
             mode_picker: mode_picker.clone(),
@@ -520,8 +529,10 @@ fn optimized_mat_mul(
     };
     let (mmms, packings, extractor): (Vec<_>, Vec<_>, Vec<_>) = multiunzip(impls);
     let outputs = mmms.iter().map(|mmm| unsafe { mmm.c_view(op.c_m(), op.c_n()) }).collect();
-    let trivial_packing =
-        mmms.len() == 1 && packings[0] == 0 && input_facts[0].opaque_fact.is_none();
+    let trivial_packing = mmms.len() == 1
+        && packings[0] == 0
+        && extractor[0].is_none()
+        && input_facts[0].opaque_fact.is_none();
     let opt = OptMatMul::new(
         mmms,
         mode_picker,

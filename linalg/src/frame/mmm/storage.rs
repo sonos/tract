@@ -113,7 +113,6 @@ impl OutputStore {
             self.panel_row_byte_stride as usize * down
                 + self.panel_col_byte_stride as usize * right,
         );
-        println!("{right},{down} ... {width},{height}, {dst:?}");
         for y in 0..height as isize {
             for x in 0..width as isize {
                 let value = tile.offset(y + x * self.mr as isize);

@@ -3,7 +3,6 @@ use crate::ops::cast::cast;
 use crate::ops::change_axes::wire_with_rank_broadcast;
 use crate::ops::nn::LeakyRelu;
 use ndarray::*;
-use num_traits::One;
 use tract_itertools::Itertools;
 
 use tract_linalg::mmm::{
@@ -158,6 +157,8 @@ impl ProtoFusedSpec {
                 debug_assert!(b.is::<Box<dyn MMMInputValue>>());
                 let a = a.downcast_ref::<Box<dyn MMMInputValue>>().unwrap_unchecked();
                 let b = b.downcast_ref::<Box<dyn MMMInputValue>>().unwrap_unchecked();
+                debug_assert!(packings.len() == 1);
+                debug_assert!(packings[0].1.is_none()); // no panel extraction
                 #[cfg(debug_assertions)]
                 {
                     let (a_packing, b_packing) = &_mmm.packings()[packings[mode].0];
