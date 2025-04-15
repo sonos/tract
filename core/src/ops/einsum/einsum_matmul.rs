@@ -59,10 +59,10 @@ impl EinSumMatMul {
         self.n_axis().inputs[1][0]
     }
     pub fn c_m(&self) -> Option<usize> {
-        self.m_axis().outputs[0].get(0).cloned()
+        self.m_axis().outputs[0].first().cloned()
     }
     pub fn c_n(&self) -> Option<usize> {
-        self.n_axis().outputs[0].get(0).cloned()
+        self.n_axis().outputs[0].first().cloned()
     }
 
     fn new(
