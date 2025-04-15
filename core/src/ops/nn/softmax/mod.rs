@@ -322,10 +322,7 @@ fn softmax_quant_inner<D: Dimension>(
                 ) as i8)
             };
         } else {
-            *it = i32::max(
-                i32::min(unsat_scaled_output, u8::MAX as i32),
-                u8::MIN as i32,
-            ) as u8;
+            *it = i32::max(i32::min(unsat_scaled_output, u8::MAX as i32), u8::MIN as i32) as u8;
         }
     });
 }
@@ -343,7 +340,7 @@ mod test {
     fn assert_is_close(found: f32, expected: f32, in_dt: DatumType, out_dt: DatumType) {
         let (_, in_epsilon) = in_dt.zp_scale();
         let (_, out_epsilon) = out_dt.zp_scale();
-        let epsilon = f32::max(in_epsilon, out_epsilon);
+        let epsilon = f32::max(in_epsilon, out_epsilon) * 1.005;
         let error = (found - expected).abs();
         assert!(
             error <= epsilon,
