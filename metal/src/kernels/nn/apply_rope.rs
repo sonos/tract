@@ -59,6 +59,7 @@ impl ApplyRope {
         output.retain_until_completion();
 
         ensure!(input.rank() >= 2 && input.rank() <= 4);
+        ensure!(cos.rank() <= input.rank());
 
         let (cos, sin) = if cos.rank() != input.rank() {
             let padded_shape = [&tvec![1; input.rank() - cos.rank()], cos.shape()].concat();
