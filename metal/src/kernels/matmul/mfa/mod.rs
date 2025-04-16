@@ -250,7 +250,7 @@ pub fn dispatch_metal_mfa_gemm(
 mod tests {
     use super::*;
     use crate::kernels::matmul::GemmImpl;
-    use crate::{IntoMetal, MetalTensor};
+    use tract_gpu::tensor::{IntoGpu, GpuTensor};
 
     #[test]
     fn test_mfa_gemm() -> Result<()> {
@@ -261,12 +261,12 @@ mod tests {
                     &[b, m, k],
                     &(0..b * m * k).map(|f| f as f32).collect::<Vec<_>>(),
                 )?
-                .into_metal()?;
+                .into_gpu()?;
                 let b = Tensor::from_shape(
                     &[b, k, n],
                     &(0..b * n * k).map(|f| f as f32).collect::<Vec<_>>(),
                 )?
-                .into_metal()?;
+                .into_gpu()?;
 
                 let c = GemmImpl::<MfaGemm>::default().eval(context, &a, &b)?;
 
@@ -279,11 +279,11 @@ mod tests {
                 assert!(c.close_enough(&expected_c, Approximation::Close).is_ok());
 
                 let (b, m, n, k) = (2, 2, 4, 3);
-                let a = MetalTensor::from_shape(
+                let a = GpuTensor::from_shape(
                     &[b, m, k],
                     &(0..b * m * k).map(|f| f as f32).collect::<Vec<_>>(),
                 )?;
-                let b = MetalTensor::from_shape(
+                let b = GpuTensor::from_shape(
                     &[b, k, n],
                     &(0..b * n * k).map(|f| f as f32).collect::<Vec<_>>(),
                 )?;

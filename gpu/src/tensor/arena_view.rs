@@ -1,38 +1,33 @@
-use crate::utils::check_strides_validity;
-use crate::MetalContext;
-use metal::Buffer;
-use metal::MTLResourceOptions;
 use num_traits::AsPrimitive;
 use std::fmt::Display;
 use tract_core::internal::*;
 
+use crate::context::{DeviceBuffer, GpuContext};
+use crate::utils::check_strides_validity;
+
 #[derive(Debug, Clone)]
-pub struct MetalArenaStorage {
+pub struct DeviceArenaStorage {
     tensor: Tensor,
-    metal: Buffer,
+    buffer: Box<dyn DeviceBuffer>,
 }
 
-impl MetalArenaStorage {
+impl DeviceArenaStorage {
     pub fn with_capacity(context: &MetalContext, capacity: usize) -> TractResult<Self> {
         let tensor = unsafe {
             Tensor::uninitialized_dt(DatumType::U8, &[capacity]).with_context(|| {
                 anyhow!("Error while allocating a tensor of {:?} bytes", capacity)
             })?
         };
-        let buffer = context.device().new_buffer_with_bytes_no_copy(
-            tensor.as_bytes().as_ptr() as *const core::ffi::c_void,
-            capacity as _,
-            MTLResourceOptions::StorageModeShared,
-            None,
-        );
-        Ok(MetalArenaStorage { tensor, metal: buffer })
+        let buffer = context.buffer_from_slice(tensor.as_bytes());
+    
+        Ok(DeviceArenaStorage { tensor, buffer })
     }
 }
 
-impl MetalArenaStorage {
-    /// Get underlying inner metal buffer.
-    pub fn metal(&self) -> &Buffer {
-        &self.metal
+impl DeviceArenaStorage {
+    /// Get underlying inner device buffer.
+    pub fn device_buffer(&self) -> &Box<dyn DeviceBuffer> {
+        &self.buffer
     }
 
     pub fn tensor(&self) -> &Tensor {
@@ -40,7 +35,7 @@ impl MetalArenaStorage {
     }
 }
 
-impl Hash for MetalArenaStorage {
+impl Hash for DeviceArenaStorage {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.tensor.hash(state)
@@ -48,8 +43,8 @@ impl Hash for MetalArenaStorage {
 }
 
 #[derive(Debug, Clone, Hash)]
-pub struct MetalArenaView {
-    pub(crate) arena: Arc<MetalArenaStorage>,
+pub struct DeviceArenaView {
+    pub(crate) arena: Arc<DeviceArenaStorage>,
     pub(crate) dt: DatumType,
     pub(crate) len: usize,
     pub(crate) shape: TVec<usize>,
@@ -57,7 +52,7 @@ pub struct MetalArenaView {
     pub(crate) offset_bytes: usize,
 }
 
-impl MetalArenaView {
+impl DeviceArenaView {
     #[inline]
     pub fn shape(&self) -> &[usize] {
         self.shape.as_slice()
@@ -74,13 +69,17 @@ impl MetalArenaView {
         self.strides.as_slice()
     }
 
-    /// Get underlying inner metal buffer.
-    pub fn metal(&self) -> &Buffer {
-        self.arena.metal()
+    /// Get underlying inner device buffer.
+    pub fn device_buffer(&self) -> &Box<dyn DeviceBuffer> {
+        self.arena.device_buffer()
     }
 
-    /// Get underlying inner metal buffer offset
-    pub fn metal_offset<I: Copy + 'static>(&self) -> I
+    pub fn device_buffer_address(&self) -> usize {
+        self.arena.device_buffer().address()
+    }
+
+    /// Get underlying inner device buffer offset
+    pub fn buffer_offset<I: Copy + 'static>(&self) -> I
     where
         usize: AsPrimitive<I>,
     {
@@ -150,19 +149,19 @@ impl MetalArenaView {
     }
 }
 
-impl Display for MetalArenaView {
+impl Display for DeviceArenaView {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let content =
             self.clone().into_tensor().dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
-        write!(f, "MetalArenaView: {{ {content} }}")
+        write!(f, "DeviceArenaView: {{ {content} }}")
     }
 }
 
-impl IntoTensor for MetalArenaView {
+impl IntoTensor for DeviceArenaView {
     fn into_tensor(self) -> Tensor {
         unsafe {
             Tensor::from_raw_dt(self.dt, &self.shape, self.as_bytes())
-                .expect("Could not transform a MetalArenaView to tensor")
+                .expect("Could not transform a DeviceArenaView to tensor")
         }
     }
 }

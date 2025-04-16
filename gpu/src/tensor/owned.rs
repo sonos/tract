@@ -1,7 +1,7 @@
+use crate::context::{with_borrowed_gpu_context, DeviceBuffer};
 use crate::utils::{as_q40_tensor, check_strides_validity};
-use crate::MetalTensor;
+use crate::tensor::GpuTensor;
 use anyhow::Result;
-use metal::Buffer;
 use num_traits::AsPrimitive;
 use std::fmt::Display;
 use tract_core::internal::*;
@@ -118,7 +118,7 @@ impl IntoTensor for MValue {
             Self::Const(t) => Arc::try_unwrap(t).unwrap_or_else(|t| (*t).clone()),
             Self::Reshaped { t, shape, strides: _ } => {
                 let mut t = Arc::try_unwrap(t).unwrap_or_else(|t| (*t).clone());
-                t.set_shape(&shape).expect("Could not apply shape to reshaped metal tensor");
+                t.set_shape(&shape).expect("Could not apply shape to reshaped GPU tensor");
                 t
             }
         }
@@ -137,30 +137,30 @@ impl From<Arc<Tensor>> for MValue {
     }
 }
 
-/// This struct represents a owned metal tensor that can be accessed from the
-/// GPU and the CPU. Metal's MTLResourceStorageModeShared is used.
+/// This struct represents a owned tensor that can be accessed from the
+/// GPU and the CPU.
 #[derive(Debug, Clone)]
-pub struct OwnedMetalTensor {
+pub struct OwnedDeviceTensor {
     pub inner: MValue,
-    pub metal: Buffer,
+    pub device_buffer: Box<dyn DeviceBuffer>,
 }
 
-impl Hash for OwnedMetalTensor {
+impl Hash for OwnedDeviceTensor {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.inner.hash(state)
     }
 }
 
-impl OwnedMetalTensor {
-    /// Create a owned metal tensor from a cpu tensor.
+impl OwnedDeviceTensor {
+    /// Create a owned gpu tensor from a cpu tensor.
     pub fn from_tensor<T: Into<MValue>>(tensor: T) -> Result<Self> {
-        crate::METAL_CONTEXT.with_borrow(|ctxt| {
+        with_borrowed_gpu_context(|ctxt| {
             let m_value: MValue = tensor.into();
             let tensor_view = m_value.view();
             ensure!(
-                MetalTensor::is_supported_dt(tensor_view.datum_type()),
-                "Tensor of {:?} is not copied. No Metal buffer can be allocated for it.",
+                GpuTensor::is_supported_dt(tensor_view.datum_type()),
+                "Tensor of {:?} is not copied. No GPU buffer can be allocated for it.",
                 tensor_view.datum_type(),
             );
 
@@ -168,8 +168,8 @@ impl OwnedMetalTensor {
                 .map(|bqv| bqv.value.as_bytes())
                 .unwrap_or(tensor_view.tensor.as_bytes());
 
-            let buffer = ctxt.buffer_from_slice(data_bytes);
-            Ok(OwnedMetalTensor { inner: m_value, metal: buffer })
+            let device_buffer = ctxt.buffer_from_slice(data_bytes);
+            Ok(OwnedDeviceTensor { inner: m_value, device_buffer })
         })
     }
 
@@ -194,31 +194,36 @@ impl OwnedMetalTensor {
         }
     }
 
-    /// Get underlying inner metal buffer.
+    /// Get underlying inner device buffer.
     #[inline]
-    pub fn metal(&self) -> &Buffer {
-        &self.metal
+    pub fn device_buffer(&self) -> &Box<dyn DeviceBuffer> {
+        &self.device_buffer
     }
 
-    /// Get underlying inner metal buffer offset
+    pub fn device_buffer_address(&self) -> usize {
+        self.device_buffer.address()
+    }
+
+    /// Get underlying inner buffer offset
     #[inline]
-    pub fn metal_offset<I: Copy + 'static>(&self) -> I
+    pub fn buffer_offset<I: Copy + 'static>(&self) -> I
     where
         usize: AsPrimitive<I>,
     {
+        // No offset for non-arena tensor
         0usize.as_()
     }
 
     /// Reshaped tensor with given shape.
     #[inline]
     pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> Result<Self> {
-        Ok(Self { inner: self.inner.reshaped(shape)?, metal: self.metal.clone() })
+        Ok(Self { inner: self.inner.reshaped(shape)?, device_buffer: self.device_buffer.clone() })
     }
 
     /// Change tensor stride.
     #[inline]
     pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> Result<Self> {
-        Ok(Self { inner: self.inner.restrided(strides)?, metal: self.metal.clone() })
+        Ok(Self { inner: self.inner.restrided(strides)?, device_buffer: self.device_buffer.clone() })
     }
 
     /// Reshaped tensor with given shape and strides, no consistency check.
@@ -230,7 +235,7 @@ impl OwnedMetalTensor {
     ) -> Self {
         Self {
             inner: self.inner.reshaped_with_geometry_unchecked(shape, strides),
-            metal: self.metal.clone(),
+            device_buffer: self.device_buffer.clone(),
         }
     }
 
@@ -240,16 +245,16 @@ impl OwnedMetalTensor {
     }
 }
 
-impl Display for OwnedMetalTensor {
+impl Display for OwnedDeviceTensor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.inner {
             MValue::Const(t) | MValue::Var(t) => {
                 let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
-                write!(f, "Metal {{ {content} }}")
+                write!(f, "Host {{ {content} }}")
             }
             MValue::Reshaped { t, shape, strides: _ } => {
                 let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
-                write!(f, "Metal reshaped: {:?} - {{ {content} }}", shape)
+                write!(f, "Device reshaped: {:?} - {{ {content} }}", shape)
             }
         }
     }

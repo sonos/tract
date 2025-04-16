@@ -1,6 +1,7 @@
 use crate::kernels;
 use crate::ops::MetalEvalOp;
-use crate::{MetalContext, MetalTensorExt};
+use crate::MetalContext;
+use tract_gpu::tensor::GpuTensorExt;
 use tract_core::internal::*;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -38,7 +39,7 @@ impl MetalEvalOp for MetalCast {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs);
-        let input = opaque.to_metal_tensor()?;
+        let input = opaque.to_gpu_tensor()?;
         if input.datum_type() == self.to {
             Ok(tvec!(opaque))
         } else {

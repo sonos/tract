@@ -1,10 +1,10 @@
-use crate::fact::MetalTypedFactExt;
 use crate::kernels::matmul::{GgmlGemm, MfaGemm, MlxGemm};
 use crate::ops::{MetalAxisOp, MetalFusedAxisOp};
 use crate::rewrite_rules::{next_node, previous_node, previous_nodes};
 use crate::rule_ensure;
 use tract_core::internal::*;
 use tract_core::tract_data::itertools::Itertools;
+use tract_gpu::fact::GpuTypedFactExt;
 
 fn is_supported_axis_op(op: &MetalAxisOp) -> bool {
     matches!(op.0, AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Reshape(..))
@@ -149,11 +149,11 @@ pub fn fuse_move_axis(
 
     let in_fact = model.node_input_facts(axis_node.id)?[0];
     let in_shape =
-        in_fact.as_metal_fact().map(|mf| mf.shape.clone()).unwrap_or(in_fact.shape.clone());
+        in_fact.as_gpu_fact().map(|mf| mf.shape.clone()).unwrap_or(in_fact.shape.clone());
 
     let out_fact = model.node_output_facts(axis_node.id)?[0];
     let out_shape =
-        out_fact.as_metal_fact().map(|mf| mf.shape.clone()).unwrap_or(out_fact.shape.clone());
+        out_fact.as_gpu_fact().map(|mf| mf.shape.clone()).unwrap_or(out_fact.shape.clone());
 
     // Checks if MoveAxis has no impact on shape + layout
     if in_shape == out_shape {

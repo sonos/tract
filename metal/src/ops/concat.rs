@@ -1,6 +1,7 @@
 use crate::kernels::array::Concat;
 use crate::ops::MetalEvalOp;
-use crate::{MetalContext, MetalTensorExt};
+use crate::MetalContext;
+use tract_gpu::tensor::GpuTensorExt;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::array::TypedConcat;
@@ -54,7 +55,7 @@ impl MetalEvalOp for MetalConcat {
     ) -> TractResult<TVec<TValue>> {
         let inputs = opaque_inputs
             .iter()
-            .map(|it| it.to_metal_tensor())
+            .map(|it| it.to_gpu_tensor())
             .collect::<TractResult<TVec<_>>>()?;
 
         let mut output_shape = inputs[0].shape().to_vec();

@@ -1,6 +1,6 @@
 use super::BroadcastKind;
 use crate::encoder::EncoderExt;
-use crate::MetalTensor;
+use tract_gpu::tensor::GpuTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::bail;
 use anyhow::{ensure, Result};
@@ -73,7 +73,7 @@ impl BinOps {
     pub fn all_functions() -> Vec<String> {
         Self::ALL
             .into_iter()
-            .flat_map(|op| MetalTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt)))
+            .flat_map(|op| GpuTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt)))
             .flat_map(|(op, dt)| BroadcastKind::ALL.into_iter().map(move |b| (op, dt, b)))
             .flat_map(|(op, dt, b)| op.kernel_name(dt, b).into_iter())
             .collect()
@@ -113,7 +113,7 @@ impl BinOps {
     pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> Result<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal binary ops", dt);
 
-        let tname = MetalTensor::tname(dt)?;
+        let tname = GpuTensor::tname(dt)?;
 
         let kname = match self {
             Self::Mul => "mul",
@@ -139,12 +139,12 @@ impl BinOps {
     pub fn eval(
         &self,
         context: &MetalContext,
-        lhs: &MetalTensor,
-        rhs: &MetalTensor,
-    ) -> TractResult<MetalTensor> {
+        lhs: &GpuTensor,
+        rhs: &GpuTensor,
+    ) -> TractResult<GpuTensor> {
         let out_shape = self.output_shape(lhs.shape(), rhs.shape())?;
         let out_dt = self.output_datum_type(lhs.datum_type(), rhs.datum_type())?;
-        let output = unsafe { MetalTensor::uninitialized_dt(out_dt, &out_shape)? };
+        let output = unsafe { GpuTensor::uninitialized_dt(out_dt, &out_shape)? };
         self.dispatch_eval(context, lhs, rhs, &output)?;
         context.wait_until_completed()?;
         Ok(output)
@@ -153,13 +153,13 @@ impl BinOps {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        lhs: &MetalTensor,
-        rhs: &MetalTensor,
-        output: &MetalTensor,
+        lhs: &GpuTensor,
+        rhs: &GpuTensor,
+        output: &GpuTensor,
     ) -> Result<()> {
-        lhs.retain_until_completion();
-        rhs.retain_until_completion();
-        output.retain_until_completion();
+        context.retain_tensor(lhs);
+        context.retain_tensor(rhs);
+        context.retain_tensor(output);
 
         let out_shape = output.shape();
 
@@ -251,7 +251,7 @@ impl BinOps {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::IntoMetal;
+    use tract_gpu::tensor::IntoGpu;
     use derive_new::new;
     use num_traits::AsPrimitive;
     use num_traits::Zero;
@@ -288,12 +288,12 @@ mod tests {
 
                 let a =
                     Tensor::from_shape(a_shape, &(0..a_len).map(|f| f as f32).collect::<Vec<_>>())?
-                        .into_metal()?;
+                        .into_gpu()?;
                 let b = Tensor::from_shape(
                     b_shape,
                     &(0..b_len).rev().map(|f| f as f32).collect::<Vec<_>>(),
                 )?
-                .into_metal()?;
+                .into_gpu()?;
                 let output = op.eval(context, &a, &b)?;
                 let ref_output = reference::<F, bool>(
                     &a.to_cpu()?.into_tensor(),
@@ -319,12 +319,12 @@ mod tests {
 
                 let a =
                     Tensor::from_shape(a_shape, &(0..a_len).map(|f| f as f32).collect::<Vec<_>>())?
-                        .into_metal()?;
+                        .into_gpu()?;
                 let b = Tensor::from_shape(
                     b_shape,
                     &(0..b_len).rev().map(|f| f as f32).collect::<Vec<_>>(),
                 )?
-                .into_metal()?;
+                .into_gpu()?;
                 let output = op.eval(context, &a, &b)?;
                 let ref_output =
                     reference::<F, F>(&a.to_cpu()?.into_tensor(), &b.to_cpu()?.into_tensor(), cab)?;
@@ -455,8 +455,8 @@ mod tests {
         pub fn run(&self) -> Result<Tensor> {
             objc::rc::autoreleasepool(|| {
                 crate::METAL_CONTEXT.with_borrow(|context| {
-                    let lhs = self.lhs.clone().into_metal()?;
-                    let rhs = self.rhs.clone().into_metal()?;
+                    let lhs = self.lhs.clone().into_gpu()?;
+                    let rhs = self.rhs.clone().into_gpu()?;
                     let c = BinOps::Mul.eval(context, &lhs, &rhs)?;
                     Ok(c.to_cpu()?.into_tensor())
                 })

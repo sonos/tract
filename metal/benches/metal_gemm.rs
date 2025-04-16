@@ -114,8 +114,8 @@ pub fn metal_gemm<K: GemmKernel>(
         Tensor::zero_dt(dt, &[batch, k, n]).unwrap()
     };
 
-    let metal_a = a.into_metal().unwrap();
-    let metal_b = b.into_metal().unwrap();
+    let metal_a = a.into_gpu().unwrap();
+    let metal_b = b.into_gpu().unwrap();
     // Warmup
     let _ = GemmImpl::<MfaGemm>::default().eval(&context, &metal_a, &metal_b).unwrap();
 
@@ -131,8 +131,8 @@ pub fn metal_tile_8x8(crit: &mut BenchmarkGroup<WallTime>, dim: usize, dt: Datum
     crit.bench_function(&format!("tract_metal_mmm_tile_8x8_{:?}", dt), |be| {
         let a = Tensor::zero_dt(dt, &[dim, dim]).unwrap();
         let b = Tensor::zero_dt(dt, &[dim, dim]).unwrap();
-        let metal_a = a.into_metal().unwrap();
-        let metal_b = b.into_metal().unwrap();
+        let metal_a = a.into_gpu().unwrap();
+        let metal_b = b.into_gpu().unwrap();
 
         be.iter(|| {
             let _ = matmul::mmm_tile_8x8(&context, &metal_a, &metal_b).unwrap();

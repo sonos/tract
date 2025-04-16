@@ -1,6 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
-use crate::MetalTensor;
+use tract_gpu::tensor::GpuTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::Result;
 use std::fmt;
@@ -35,7 +35,7 @@ impl PermuteAxes {
 
     pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> Result<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal permute axes  op", dt);
-        let tname = MetalTensor::tname(dt)?;
+        let tname = GpuTensor::tname(dt)?;
         let broadcast_name = broadcast_kind.to_func_part();
         Ok(format!("array_ops::copy_{broadcast_name}_{tname}"))
     }
@@ -53,11 +53,11 @@ impl PermuteAxes {
     pub fn eval(
         &self,
         context: &MetalContext,
-        input: &MetalTensor,
+        input: &GpuTensor,
         axes: &[usize],
-    ) -> Result<MetalTensor> {
+    ) -> Result<GpuTensor> {
         let output = unsafe {
-            MetalTensor::uninitialized_dt(
+            GpuTensor::uninitialized_dt(
                 input.datum_type(),
                 &Self::output_shape(input.shape(), axes)?,
             )?
@@ -70,12 +70,12 @@ impl PermuteAxes {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        input: &MetalTensor,
+        input: &GpuTensor,
         axes: &[usize],
-        output: &MetalTensor,
+        output: &GpuTensor,
     ) -> Result<()> {
-        input.retain_until_completion();
-        output.retain_until_completion();
+        context.retain_tensor(input);
+        context.retain_tensor(output);
 
         // Validate give axes permutation
         let mut usage_counts = vec![0; input.rank()];
@@ -131,11 +131,11 @@ impl PermuteAxes {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::IntoMetal;
 
     use num_traits::Zero;
 
     use tract_core::internal::Tensor;
+    use tract_gpu::tensor::IntoGpu;
 
     fn run_test_case<F: Datum + Zero + Copy>(shape: &[usize], axes: &[usize]) -> Result<()> {
         objc::rc::autoreleasepool(|| {
@@ -143,7 +143,7 @@ mod tests {
                 let a_len = shape.iter().product::<usize>();
                 let a_data = (0..a_len).map(|f| f as f32).collect::<Vec<_>>();
 
-                let a = Tensor::from_shape(shape, &a_data)?.into_metal()?;
+                let a = Tensor::from_shape(shape, &a_data)?.into_gpu()?;
 
                 let output = PermuteAxes.eval(context, &a, axes)?;
                 let ref_output = a.to_cpu()?.into_tensor().permute_axes(axes)?;

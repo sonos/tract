@@ -1,6 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
-use crate::MetalTensor;
+use tract_gpu::tensor::GpuTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
 use std::fmt;
@@ -22,7 +22,7 @@ impl ApplyRope {
 
     pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> Result<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal apply rope", dt);
-        let tname = MetalTensor::tname(dt)?;
+        let tname = GpuTensor::tname(dt)?;
         let broadcast_name = broadcast_kind.to_func_part();
         Ok(format!("nn_ops::apply_rope_{broadcast_name}_{tname}"))
     }
@@ -30,11 +30,11 @@ impl ApplyRope {
     pub fn eval(
         &self,
         context: &MetalContext,
-        input: &MetalTensor,
-        cos: &MetalTensor,
-        sin: &MetalTensor,
-    ) -> Result<MetalTensor> {
-        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), input.shape())? };
+        input: &GpuTensor,
+        cos: &GpuTensor,
+        sin: &GpuTensor,
+    ) -> Result<GpuTensor> {
+        let output = unsafe { GpuTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(context, input, cos, sin, &output)?;
         context.wait_until_completed()?;
         Ok(output)
@@ -43,20 +43,20 @@ impl ApplyRope {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        input: &MetalTensor,
-        cos: &MetalTensor,
-        sin: &MetalTensor,
-        output: &MetalTensor,
+        input: &GpuTensor,
+        cos: &GpuTensor,
+        sin: &GpuTensor,
+        output: &GpuTensor,
     ) -> Result<()> {
         ensure!(input.datum_type() == cos.datum_type());
         ensure!(input.datum_type() == sin.datum_type());
 
         ensure!(cos.shape() == sin.shape());
 
-        input.retain_until_completion();
-        cos.retain_until_completion();
-        sin.retain_until_completion();
-        output.retain_until_completion();
+        context.retain_tensor(input);
+        context.retain_tensor(cos);
+        context.retain_tensor(sin);
+        context.retain_tensor(output);
 
         ensure!(input.rank() >= 2 && input.rank() <= 4);
         ensure!(cos.rank() <= input.rank());
@@ -104,7 +104,7 @@ impl ApplyRope {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::IntoMetal;
+    use tract_gpu::tensor::IntoGpu;
     use tract_core::internal::Tensor;
     use tract_transformers::ops::apply_rope;
 
@@ -128,9 +128,9 @@ mod tests {
                     &(0..len).map(|f| (f as f32).sin()).collect::<Vec<_>>(),
                 )?;
 
-                let metal_a = a.clone().into_metal()?;
-                let metal_sin = sin.clone().into_metal()?;
-                let metal_cos = cos.clone().into_metal()?;
+                let metal_a = a.clone().into_gpu()?;
+                let metal_sin = sin.clone().into_gpu()?;
+                let metal_cos = cos.clone().into_gpu()?;
 
                 let cpu_output = apply_rope::ApplyRope.eval(tvec![
                     a.clone().into(),

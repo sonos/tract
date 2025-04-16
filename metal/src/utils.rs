@@ -1,6 +1,10 @@
-use crate::fact::{MetalFact, MetalOrigin, MetalTypedFactExt};
+use crate::context::MetalBuffer;
+use downcast_rs::Downcast;
+use metal::Buffer;
 use num_traits::{AsPrimitive, Zero};
 use tract_core::internal::*;
+use tract_gpu::context::DeviceBuffer;
+use tract_gpu::fact::{GpuFact, GpuOrigin, GpuTypedFactExt};
 use tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue, Q4_0};
 
 #[macro_export]
@@ -30,12 +34,12 @@ pub fn metal_facts_from_gpu(
     if facts.iter().all(|it| it.datum_type == DatumType::Opaque) {
         let metal_facts = facts
             .iter()
-            .map(|it| it.to_metal_fact().map(|it| it.as_ref()))
+            .map(|it| it.to_gpu_fact().map(|it| it.as_ref()))
             .collect::<TractResult<TVec<_>>>()?;
         let output_facts = (resolve_facts)(metal_facts.as_slice())?;
         Ok(output_facts
             .into_iter()
-            .map(|it| Ok(MetalFact::new(MetalOrigin::FromGpu, it)?.into_opaque_fact()))
+            .map(|it| Ok(GpuFact::new(GpuOrigin::Device, it)?.into_opaque_fact()))
             .collect::<TractResult<_>>()?)
     } else if facts.iter().all(|it| it.datum_type != DatumType::Opaque) {
         (resolve_facts)(facts)
@@ -54,7 +58,7 @@ pub fn metal_facts<'a, 'b: 'a, T>(
     if facts.iter().all(|it| it.datum_type == DatumType::Opaque) {
         let metal_facts = facts
             .iter()
-            .map(|it| it.to_metal_fact().map(|it| it.as_ref()))
+            .map(|it| it.to_gpu_fact().map(|it| it.as_ref()))
             .collect::<TractResult<TVec<_>>>()?;
         (map_facts)(metal_facts.as_slice())
     } else if facts.iter().all(|it| it.datum_type != DatumType::Opaque) {
@@ -72,7 +76,7 @@ pub fn metal_fact<'a, T: 'a>(
     map_fact: impl Fn(&'a TypedFact) -> TractResult<T>,
 ) -> TractResult<T> {
     if fact.datum_type == DatumType::Opaque {
-        (map_fact)(fact.to_metal_fact()?)
+        (map_fact)(fact.to_gpu_fact()?)
     } else {
         (map_fact)(fact)
     }
@@ -121,6 +125,10 @@ pub fn as_q40_tensor(a: &Tensor) -> Option<&BlockQuantValue> {
             }
         })
     })
+}
+
+pub fn as_metal_buffer(device_buffer: &Box<dyn DeviceBuffer>) -> Option<&Buffer> {
+    device_buffer.as_any().downcast_ref::<MetalBuffer>().and_then(|mb| Some(&mb.inner))
 }
 
 pub fn check_strides_validity(shape: TVec<usize>, strides: TVec<isize>) -> TractResult<()> {

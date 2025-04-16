@@ -1,9 +1,12 @@
 use crate::command_buffer::{MetalProfiler, TCommandBuffer};
 use crate::func_constants::ConstantValues;
 use crate::kernels::{LibraryContent, LibraryName};
-use crate::tensor::MetalTensor;
+
+use tract_gpu::tensor::GpuTensor;
 use metal::NSUInteger;
+use tract_gpu::context::{DeviceBuffer, GpuContext};
 use std::cell::RefCell;
+use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -164,7 +167,7 @@ pub struct MetalContext {
     command_queue: CommandQueue,
     command_buffer: RefCell<Option<TCommandBuffer>>,
     command_buffer_id: AtomicUsize,
-    retained_tensors: RefCell<Vec<MetalTensor>>,
+    retained_tensors: RefCell<Vec<GpuTensor>>,
     profiler: RefCell<Option<Rc<RefCell<MetalProfiler>>>>,
 }
 
@@ -210,7 +213,7 @@ impl MetalContext {
         )
     }
 
-    pub fn retain_tensor(&self, tensor: &MetalTensor) {
+    pub fn retain_tensor(&self, tensor: &GpuTensor) {
         self.retained_tensors.borrow_mut().push(tensor.clone());
     }
 
@@ -329,6 +332,50 @@ impl Drop for MetalContext {
         }
         command_buffer.commit();
         command_buffer.wait_until_completed();
+    }
+}
+
+#[derive(Clone)]
+pub struct MetalBuffer {
+    pub inner: Buffer
+}
+
+impl Deref for MetalBuffer {
+    type Target = Buffer;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl DerefMut for MetalBuffer {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+impl DeviceBuffer for MetalBuffer {
+    fn address(&self) -> usize {
+        self.inner.gpu_address() as usize
+    }
+}
+
+impl GpuContext for MetalContext {
+    fn buffer_from_slice(&self, tensor: &[u8]) -> Box<dyn tract_gpu::context::DeviceBuffer> {
+        let mut size = core::mem::size_of_val(tensor) as NSUInteger;
+        if size == 0 {
+            size += 1;
+        }
+        Box::new(MetalBuffer { inner: self.device().new_buffer_with_bytes_no_copy(
+            tensor.as_ptr() as *const core::ffi::c_void,
+            size,
+            MTLResourceOptions::StorageModeShared,
+            None,
+        )}
+    )
+    }
+
+    fn synchronize(&self) -> TractResult<()> {
+        self.wait_until_completed()
     }
 }
 

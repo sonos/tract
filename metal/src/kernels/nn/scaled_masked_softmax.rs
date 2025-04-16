@@ -1,5 +1,6 @@
 use crate::encoder::EncoderExt;
-use crate::{LibraryName, MetalContext, MetalTensor};
+use crate::{LibraryName, MetalContext};
+use tract_gpu::tensor::GpuTensor;
 use anyhow::Result;
 use metal::MTLSize;
 use tract_core::internal::*;
@@ -18,18 +19,18 @@ impl ScaledMaskedSoftmax {
             "Unsupport dt {:?} for metal scaled masked softmax  op",
             dt
         );
-        let tname = MetalTensor::tname(dt)?;
+        let tname = GpuTensor::tname(dt)?;
         Ok(format!("nn_ops::scaled_masked_softmax_nd3_{tname}"))
     }
 
     pub fn eval(
         &self,
         context: &MetalContext,
-        input: &MetalTensor,
+        input: &GpuTensor,
         scale: &Tensor,
-        mask: &MetalTensor,
-    ) -> Result<MetalTensor> {
-        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), input.shape())? };
+        mask: &GpuTensor,
+    ) -> Result<GpuTensor> {
+        let output = unsafe { GpuTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(context, input, scale, mask, &output)?;
         context.wait_until_completed()?;
         Ok(output)
@@ -38,14 +39,14 @@ impl ScaledMaskedSoftmax {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        input: &MetalTensor,
+        input: &GpuTensor,
         scale: &Tensor,
-        mask: &MetalTensor,
-        output: &MetalTensor,
+        mask: &GpuTensor,
+        output: &GpuTensor,
     ) -> Result<()> {
-        input.retain_until_completion();
-        mask.retain_until_completion();
-        output.retain_until_completion();
+        context.retain_tensor(input);
+        context.retain_tensor(mask);
+        context.retain_tensor(output);
 
         ensure!(output.shape() == input.shape());
         ensure!(mask.rank() == 3 && input.rank() == 3);
@@ -81,7 +82,7 @@ impl ScaledMaskedSoftmax {
 
 #[cfg(test)]
 mod tests {
-    use crate::IntoMetal;
+    use tract_gpu::tensor::IntoGpu;
 
     use super::*;
     use derive_new::new;
@@ -100,13 +101,13 @@ mod tests {
                 let m = 4;
                 let n = 4;
                 let scale: Arc<_> = tensor0(0.125f32).into();
-                let mask = Tensor::from_shape(&[1, m, n], &vec![-1000f32; m * n])?.into_metal()?;
+                let mask = Tensor::from_shape(&[1, m, n], &vec![-1000f32; m * n])?.into_gpu()?;
 
                 let a = Tensor::from_shape(
                     &[1, m, n],
                     &(0..m * n).map(|f| f as f32).collect::<Vec<_>>(),
                 )?
-                .into_metal()?;
+                .into_gpu()?;
 
                 let cpu = scaled_masked_softmax::ScaledMaskedSoftmax { scale: scale.clone() };
 
@@ -131,13 +132,13 @@ mod tests {
                 let m = 4;
                 let n = 1024;
                 let scale: Arc<_> = tensor0(0.125f32).into();
-                let mask = Tensor::from_shape(&[1, m, n], &vec![-1000f32; m * n])?.into_metal()?;
+                let mask = Tensor::from_shape(&[1, m, n], &vec![-1000f32; m * n])?.into_gpu()?;
 
                 let a = Tensor::from_shape(
                     &[1, m, n],
                     &(0..m * n).map(|f| f as f32).collect::<Vec<_>>(),
                 )?
-                .into_metal()?;
+                .into_gpu()?;
 
                 let cpu = scaled_masked_softmax::ScaledMaskedSoftmax { scale: scale.clone() };
 
@@ -242,9 +243,9 @@ mod tests {
         pub fn run(&self) -> Result<Tensor> {
             objc::rc::autoreleasepool(|| {
                 crate::METAL_CONTEXT.with_borrow(|context| {
-                    let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_metal()?;
+                    let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_gpu()?;
                     let mask =
-                        Tensor::from_shape(self.mask_shape.as_slice(), &self.mask)?.into_metal()?;
+                        Tensor::from_shape(self.mask_shape.as_slice(), &self.mask)?.into_gpu()?;
                     let scale: Arc<_> = tensor0::<F>(0.125f32.as_()).into();
                     let metal_output = ScaledMaskedSoftmax.eval(context, &a, &scale, &mask)?;
                     Ok(metal_output.to_cpu()?.into_tensor())

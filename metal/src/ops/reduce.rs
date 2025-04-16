@@ -1,6 +1,7 @@
 use crate::kernels::nn::Reducer;
 use crate::ops::MetalEvalOp;
-use crate::{MetalContext, MetalTensorExt};
+use crate::MetalContext;
+use tract_gpu::tensor::GpuTensorExt;
 use tract_core::internal::*;
 use tract_core::ops::nn as core_ops_nn;
 use tract_itertools::Itertools;
@@ -51,7 +52,7 @@ impl MetalEvalOp for MetalReduce {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs);
-        let input = opaque.to_metal_tensor()?;
+        let input = opaque.to_gpu_tensor()?;
         let mut output_shape = input.shape().to_vec();
         output_shape[self.axes[0]] = 1;
         let output =

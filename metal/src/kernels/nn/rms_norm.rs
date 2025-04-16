@@ -1,6 +1,7 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::utils;
-use crate::{LibraryName, MetalContext, MetalTensor};
+use crate::{LibraryName, MetalContext};
+use tract_gpu::tensor::GpuTensor;
 use anyhow::Result;
 use metal::MTLSize;
 use tract_core::internal::*;
@@ -15,7 +16,7 @@ impl RmsNorm {
 
     pub fn kernel_name(&self, dt: DatumType, is_l4: bool) -> Result<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal rms  op", dt);
-        let tname = MetalTensor::tname(dt)?;
+        let tname = GpuTensor::tname(dt)?;
         if !is_l4 {
             Ok(format!("nn_ops::rms_norm_nd3_{tname}"))
         } else {
@@ -26,11 +27,11 @@ impl RmsNorm {
     pub fn eval(
         &self,
         context: &MetalContext,
-        input: &MetalTensor,
+        input: &GpuTensor,
         axis: usize,
         eps: &Tensor,
-    ) -> Result<MetalTensor> {
-        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), input.shape())? };
+    ) -> Result<GpuTensor> {
+        let output = unsafe { GpuTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(context, input, axis, eps, &output)?;
         context.wait_until_completed()?;
         Ok(output)
@@ -39,13 +40,13 @@ impl RmsNorm {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        input: &MetalTensor,
+        input: &GpuTensor,
         axis: usize,
         eps: &Tensor,
-        output: &MetalTensor,
+        output: &GpuTensor,
     ) -> Result<()> {
-        input.retain_until_completion();
-        output.retain_until_completion();
+        context.retain_tensor(input);
+        context.retain_tensor(output);
 
         ensure!(output.shape() == input.shape());
         ensure!(output.datum_type() == input.datum_type());
@@ -134,7 +135,7 @@ impl RmsNorm {
 
 #[cfg(test)]
 mod tests {
-    use crate::IntoMetal;
+    use tract_gpu::tensor::IntoGpu;
 
     use super::*;
     use derive_new::new;
@@ -164,7 +165,7 @@ mod tests {
                         })
                         .collect::<Vec<_>>(),
                 )?
-                .into_metal()?;
+                .into_gpu()?;
 
                 let eps = Arc::new(tensor0(0.0001f32.as_()));
                 let cpu_rms = rms_norm::RmsNorm { axis, eps: Arc::clone(&eps) };
@@ -284,7 +285,7 @@ mod tests {
         pub fn run(&self) -> Result<Tensor> {
             objc::rc::autoreleasepool(|| {
                 crate::METAL_CONTEXT.with_borrow(|context| {
-                    let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_metal()?;
+                    let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_gpu()?;
                     let metal_output = RmsNorm.eval(context, &a, self.axis, &self.eps)?;
                     Ok(metal_output.to_cpu()?.into_tensor())
                 })

@@ -1,6 +1,7 @@
 pub use crate::kernels::BinOps;
 use crate::ops::MetalEvalOp;
-use crate::{MetalContext, MetalTensorExt};
+use crate::MetalContext;
+use tract_gpu::tensor::GpuTensorExt;
 use tract_core::internal::*;
 
 #[derive(Debug, Clone)]
@@ -52,8 +53,8 @@ impl MetalEvalOp for MetalBinOp {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (opaque_a, opaque_b) = args_2!(inputs);
-        let a = opaque_a.to_metal_tensor()?;
-        let b = opaque_b.to_metal_tensor()?;
+        let a = opaque_a.to_gpu_tensor()?;
+        let b = opaque_b.to_gpu_tensor()?;
         let out_shape = self.0.output_shape(a.shape(), b.shape())?;
         let out_dt = self.0.output_datum_type(a.datum_type(), b.datum_type())?;
         let output = crate::ops::make_tensor_for_node(session, node_id, out_dt, &out_shape)?;

@@ -1,5 +1,6 @@
 use crate::encoder::EncoderExt;
-use crate::MetalTensor;
+
+use tract_gpu::tensor::GpuTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::Result;
 use derive_new::new;
@@ -41,18 +42,18 @@ impl Cast {
             from_dt
         );
         ensure!(Self::is_supported_dt(to_dt), "Unsupported to_dt {:?} for metal cast  op", to_dt);
-        let from_tname = MetalTensor::tname(from_dt)?;
-        let to_tname = MetalTensor::tname(to_dt)?;
+        let from_tname = GpuTensor::tname(from_dt)?;
+        let to_tname = GpuTensor::tname(to_dt)?;
         Ok(format!("array_ops::cast_{from_tname}_{to_tname}"))
     }
 
     pub fn eval(
         &self,
         context: &MetalContext,
-        input: &MetalTensor,
+        input: &GpuTensor,
         to_dt: DatumType,
-    ) -> Result<MetalTensor> {
-        let output = unsafe { MetalTensor::uninitialized_dt(to_dt, input.shape())? };
+    ) -> Result<GpuTensor> {
+        let output = unsafe { GpuTensor::uninitialized_dt(to_dt, input.shape())? };
         self.dispatch_eval(context, input, &output)?;
         context.wait_until_completed()?;
         Ok(output)
@@ -61,11 +62,11 @@ impl Cast {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        input: &MetalTensor,
-        output: &MetalTensor,
+        input: &GpuTensor,
+        output: &GpuTensor,
     ) -> Result<()> {
-        input.retain_until_completion();
-        output.retain_until_completion();
+        context.retain_tensor(input);
+        context.retain_tensor(output);
         ensure!(
             input.shape() == output.shape(),
             "Cast I/O don't have the same shape in: {:?}, out: {:?}",

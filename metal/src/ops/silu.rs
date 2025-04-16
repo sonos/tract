@@ -1,6 +1,7 @@
 use crate::kernels::nn::Silu;
 use crate::ops::MetalEvalOp;
-use crate::{MetalContext, MetalTensorExt};
+use crate::MetalContext;
+use tract_gpu::tensor::GpuTensorExt;
 use derive_new::new;
 use tract_core::internal::*;
 
@@ -26,7 +27,7 @@ impl MetalEvalOp for MetalSilu {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs);
-        let input = opaque.to_metal_tensor()?;
+        let input = opaque.to_gpu_tensor()?;
         let output =
             crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
         Silu.dispatch_eval(context, input, &output)?;

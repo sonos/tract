@@ -11,8 +11,9 @@ pub use mlx_gemm::MlxGemm;
 pub use mmm_tile_8x8::{metal_mmm_tile_8x8, mmm_tile_8x8};
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 
-use crate::utils::as_q40_tensor;
-use crate::{MetalContext, MetalTensor};
+use crate::utils::{as_metal_buffer, as_q40_tensor};
+use crate::MetalContext;
+use tract_gpu::tensor::GpuTensor;
 use metal::Buffer;
 use num_traits::One;
 use std::fmt;
@@ -276,16 +277,16 @@ impl<M: GemmKernel> GemmImpl<M> {
     pub fn eval(
         &self,
         context: &MetalContext,
-        a: &MetalTensor,
-        b: &MetalTensor,
-    ) -> TractResult<MetalTensor> {
+        a: &GpuTensor,
+        b: &GpuTensor,
+    ) -> TractResult<GpuTensor> {
         let b_shape = as_q40_tensor(b.view().tensor)
             .map(|bqv| b.shape().iter().cloned().chain(bqv.fact.shape().iter().copied()).collect())
             .unwrap_or(b.shape().to_vec());
 
         let c_dt = self.matmul.output_dt(a.datum_type(), b.datum_type())?;
         let c_shape = self.output_shape(a.shape(), &b_shape);
-        let c = unsafe { MetalTensor::uninitialized_dt(c_dt, &c_shape)? };
+        let c = unsafe { GpuTensor::uninitialized_dt(c_dt, &c_shape)? };
 
         self.dispatch_eval(context, a, b, &c)?;
         context.wait_until_completed()?;
@@ -295,13 +296,13 @@ impl<M: GemmKernel> GemmImpl<M> {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        a: &MetalTensor,
-        b: &MetalTensor,
-        c: &MetalTensor,
+        a: &GpuTensor,
+        b: &GpuTensor,
+        c: &GpuTensor,
     ) -> TractResult<()> {
-        a.retain_until_completion();
-        b.retain_until_completion();
-        c.retain_until_completion();
+        context.retain_tensor(a);
+        context.retain_tensor(b);
+        context.retain_tensor(c);
 
         let q40_b = as_q40_tensor(b.view().tensor);
         let b_shape = q40_b
@@ -316,25 +317,30 @@ impl<M: GemmKernel> GemmImpl<M> {
 
         let dispatches = GemmDispatchParams::compute_dispatches_params::<M>(
             [a.datum_type(), b.datum_type(), c.datum_type()],
-            a.metal_offset(),
+            a.buffer_offset(),
             a.shape(),
             self.transpose_a,
-            b.metal_offset(),
+            b.buffer_offset(),
             &b_shape,
             self.transpose_b,
             q40_b.is_some(),
-            c.metal_offset(),
+            c.buffer_offset(),
             c.shape(),
         )?;
 
+        let a_buff = as_metal_buffer(a.device_buffer());
+        let b_buff = as_metal_buffer(b.device_buffer());
+        let c_buff = as_metal_buffer(c.device_buffer());
+
+        ensure!(a_buff.is_some() && b_buff.is_some() && c_buff.is_some(), "Executing Metal Op with Non-Metal Tensors");
         for d in dispatches {
             self.matmul
                 .dispatch_eval(
                     context,
                     d.clone(),
-                    a.metal(),
-                    b.metal(),
-                    c.metal(),
+                    a_buff.unwrap(),
+                    b_buff.unwrap(),
+                    c_buff.unwrap(),
                 )
                 .with_context(|| {
                     anyhow!(
@@ -367,7 +373,7 @@ fn squeeze_batch_axes(s: &[usize]) -> TractResult<TVec<usize>> {
 mod tests {
     use super::*;
     use crate::kernels::matmul::GemmImpl;
-    use crate::IntoMetal;
+    use tract_gpu::tensor::IntoGpu;
     use anyhow::Result;
     use num_traits::AsPrimitive;
     use num_traits::Float;
@@ -424,8 +430,8 @@ mod tests {
 
                 let metal_output = GemmImpl::<K>::new(transpose_a, transpose_b).eval(
                     context,
-                    &a.clone().into_metal()?,
-                    &b.clone().into_metal()?,
+                    &a.clone().into_gpu()?,
+                    &b.clone().into_gpu()?,
                 )?;
 
                 let matmul = PrefixMatMul {
@@ -891,9 +897,9 @@ mod tests {
             objc::rc::autoreleasepool(|| {
                 crate::METAL_CONTEXT.with_borrow(|context| {
                     let lhs = if self.transpose_lhs {
-                        Tensor::from_shape(&[self.b, self.k, self.m], &self.lhs)?.into_metal()?
+                        Tensor::from_shape(&[self.b, self.k, self.m], &self.lhs)?.into_gpu()?
                     } else {
-                        Tensor::from_shape(&[self.b, self.m, self.k], &self.lhs)?.into_metal()?
+                        Tensor::from_shape(&[self.b, self.m, self.k], &self.lhs)?.into_gpu()?
                     };
                     let rhs = if self.transpose_rhs {
                         if !self.q4_0 {
@@ -919,7 +925,7 @@ mod tests {
                     } else {
                         Tensor::from_shape(&[self.b, self.k, self.n], &self.rhs)?
                     }
-                    .into_metal()?;
+                    .into_gpu()?;
 
                     let matmul = GemmImpl::<K>::new(self.transpose_lhs, self.transpose_rhs);
 

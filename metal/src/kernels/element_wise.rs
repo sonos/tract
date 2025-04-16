@@ -1,5 +1,5 @@
 use crate::encoder::EncoderExt;
-use crate::MetalTensor;
+use tract_gpu::tensor::GpuTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::bail;
 use anyhow::Result;
@@ -80,7 +80,7 @@ impl ElementWiseOps {
     pub fn all_functions() -> Vec<String> {
         Self::ALL
             .into_iter()
-            .flat_map(|op| MetalTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt)))
+            .flat_map(|op| GpuTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt)))
             .flat_map(|(op, dt)| op.kernel_name(dt, false).into_iter())
             .collect()
     }
@@ -139,7 +139,7 @@ impl ElementWiseOps {
 
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal element wise ops", dt);
 
-        let tname = MetalTensor::tname(dt)?;
+        let tname = GpuTensor::tname(dt)?;
 
         let kname = match self {
             Self::Abs => "abs",
@@ -180,11 +180,11 @@ impl ElementWiseOps {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        input: &MetalTensor,
-        output: &MetalTensor,
+        input: &GpuTensor,
+        output: &GpuTensor,
     ) -> Result<()> {
-        input.retain_until_completion();
-        output.retain_until_completion();
+        context.retain_tensor(input);
+        context.retain_tensor(output);
 
         ensure!(output.shape() == input.shape() && output.datum_type() == input.datum_type());
 
@@ -205,8 +205,8 @@ impl ElementWiseOps {
         Ok(())
     }
 
-    pub fn eval(&self, context: &MetalContext, a: &MetalTensor) -> Result<MetalTensor> {
-        let output = unsafe { MetalTensor::uninitialized_dt(a.datum_type(), a.shape())? };
+    pub fn eval(&self, context: &MetalContext, a: &GpuTensor) -> Result<GpuTensor> {
+        let output = unsafe { GpuTensor::uninitialized_dt(a.datum_type(), a.shape())? };
         self.dispatch_eval(context, a, &output)?;
         context.wait_until_completed()?;
         Ok(output)
@@ -216,7 +216,7 @@ impl ElementWiseOps {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::IntoMetal;
+    use tract_gpu::tensor::IntoGpu;
     use num_traits::Zero;
     use rand::Rng;
 
@@ -250,7 +250,7 @@ mod tests {
                         })
                         .collect::<Vec<_>>(),
                 )?
-                .into_metal()?;
+                .into_gpu()?;
                 let output = op.eval(context, &a)?;
                 let ref_output = reference::<F>(&a.to_cpu()?.into_tensor(), ca)?;
                 assert!(ref_output

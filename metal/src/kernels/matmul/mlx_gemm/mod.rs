@@ -1,5 +1,5 @@
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
-use crate::MetalTensor;
+use tract_gpu::tensor::GpuTensor;
 use crate::{ConstantValues, LibraryName, MetalContext, Value};
 use anyhow::{ensure, Result};
 use metal::{Buffer, MTLSize, NSUInteger};
@@ -201,7 +201,7 @@ pub fn dispatch_metal_mlx_gemv(
 
     let t_mat = if mv_trans { "t_" } else { "" };
 
-    let tname = MetalTensor::tname(dt)?;
+    let tname = GpuTensor::tname(dt)?;
     let name = format!("gemv_{t_mat}{tname}_bm{bm}_bn{bn}_sm{sm}_sn{sn}_tm{tm}_tn{tn}_nc0_axpby0");
     let pipeline = context.shared_context().load_pipeline(LibraryName::MlxGemv, &name)?;
 
@@ -421,7 +421,7 @@ pub fn kernel_name_gemm(dt: DatumType, transpose_a: bool, transpose_b: bool) -> 
     let t_a = if transpose_a { "t" } else { "n" };
     let t_b = if transpose_b { "t" } else { "n" };
 
-    let tname = MetalTensor::tname(dt)?;
+    let tname = GpuTensor::tname(dt)?;
     Ok(format!("gemm_{t_a}{t_b}_{tname}_{tname}_32_32_16_2_2"))
 }
 
@@ -430,7 +430,7 @@ mod tests {
     use super::*;
     use crate::kernels::matmul::tests::run_mmm_test_case;
     use crate::kernels::matmul::GemmImpl;
-    use crate::{IntoMetal, MetalTensor};
+    use tract_gpu::tensor::{IntoGpu, GpuTensor};
 
     #[test]
     fn test_mlx_gemv_compilation() -> Result<()> {
@@ -448,12 +448,12 @@ mod tests {
                     &[b, m, k],
                     &(0..b * m * k).map(|_f| 1.0 as f32).collect::<Vec<_>>(),
                 )?
-                .into_metal()?;
+                .into_gpu()?;
                 let b = Tensor::from_shape(
                     &[b, k, n],
                     &(0..b * n * k).map(|_f| 1.0 as f32).collect::<Vec<_>>(),
                 )?
-                .into_metal()?;
+                .into_gpu()?;
 
                 let c = GemmImpl::<MlxGemm>::default().eval(context, &a, &b)?;
 
@@ -464,11 +464,11 @@ mod tests {
                 assert!(c.close_enough(&expected_c, Approximation::Approximate).is_ok());
 
                 let (b, m, n, k) = (2, 2, 4, 3);
-                let a = MetalTensor::from_shape(
+                let a = GpuTensor::from_shape(
                     &[b, m, k],
                     &(0..b * m * k).map(|f| f as f32).collect::<Vec<_>>(),
                 )?;
-                let b = MetalTensor::from_shape(
+                let b = GpuTensor::from_shape(
                     &[b, k, n],
                     &(0..b * n * k).map(|f| f as f32).collect::<Vec<_>>(),
                 )?;

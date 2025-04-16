@@ -1,13 +1,15 @@
-use crate::MetalTensor;
+use tract_gpu::tensor::GpuTensor;
 use metal::{ComputeCommandEncoderRef, MTLResourceUsage};
 use tract_core::internal::*;
 
+use crate::utils::as_metal_buffer;
+
 pub trait EncoderExt {
-    fn set_metal_tensor(&self, idx: u64, t: &MetalTensor, usage: MTLResourceUsage);
+    fn set_metal_tensor(&self, idx: u64, t: &GpuTensor, usage: MTLResourceUsage);
     fn set_metal_tensor_with_offset(
         &self,
         idx: u64,
-        t: &MetalTensor,
+        t: &GpuTensor,
         offset: u64,
         usage: MTLResourceUsage,
     );
@@ -16,20 +18,22 @@ pub trait EncoderExt {
 }
 
 impl EncoderExt for &ComputeCommandEncoderRef {
-    fn set_metal_tensor(&self, idx: u64, t: &MetalTensor, usage: MTLResourceUsage) {
-        self.set_buffer(idx, Some(t.metal()), t.metal_offset());
-        self.use_resource(t.metal(), usage);
+    fn set_metal_tensor(&self, idx: u64, t: &GpuTensor, usage: MTLResourceUsage) {
+        let buffer = as_metal_buffer(t.device_buffer()).unwrap();
+        self.set_buffer(idx, Some(buffer), t.buffer_offset());
+        self.use_resource(buffer, usage);
     }
 
     fn set_metal_tensor_with_offset(
         &self,
         idx: u64,
-        t: &MetalTensor,
+        t: &GpuTensor,
         offset: u64,
         usage: MTLResourceUsage,
     ) {
-        self.set_buffer(idx, Some(t.metal()), t.metal_offset::<u64>() + offset);
-        self.use_resource(t.metal(), usage);
+        let buffer = as_metal_buffer(t.device_buffer()).unwrap();
+        self.set_buffer(idx, Some(buffer), t.buffer_offset::<u64>() + offset);
+        self.use_resource(buffer, usage);
     }
 
     fn set_tensor(&self, idx: u64, t: &Tensor) {

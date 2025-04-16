@@ -1,28 +1,28 @@
 use std::fmt;
 use tract_core::internal::*;
 
-/// Origin of the metal tensor
+/// Origin of the GPU tensor
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum MetalOrigin {
-    /// Metal tensor outputted by a GPU operator
-    /// Can be either: Owned or ArenaView
+pub enum GpuOrigin {
+    /// GPU tensor outputted by a GPU operator
+    /// Can be either: Host or ArenaView
     /// Note: Tensors marked as FromGPU are from asynchronous operations.
-    FromGpu,
-    /// Metal tensor built from a CPU tensor (CPU op output or Const)
-    /// Can be only Owned Metal tensor.
+    Device,
+    /// GPU tensor built from a CPU tensor (CPU op output or Const)
+    /// Can be only Host GPU tensor.
     /// Note: Tensors marked as FromCPU are from synchronous operations.
-    FromCpu,
+    Host,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub struct MetalFact {
-    pub origin: MetalOrigin,
+pub struct GpuFact {
+    pub origin: GpuOrigin,
     pub fact: TypedFact,
 }
 
-impl MetalFact {
-    pub fn new(origin: MetalOrigin, fact: TypedFact) -> TractResult<Self> {
-        ensure!(fact.as_metal_fact().is_none());
+impl GpuFact {
+    pub fn new(origin: GpuOrigin, fact: TypedFact) -> TractResult<Self> {
+        ensure!(fact.as_gpu_fact().is_none());
         let mut fact_wo_cst = fact.clone();
         if fact.opaque_fact.is_some() {
             fact_wo_cst.konst = None;
@@ -32,15 +32,15 @@ impl MetalFact {
     }
 
     pub fn from_cpu(fact: TypedFact) -> TractResult<Self> {
-        Self::new(MetalOrigin::FromCpu, fact)
+        Self::new(GpuOrigin::Host, fact)
     }
 
     pub fn is_from_gpu(&self) -> bool {
-        matches!(self.origin, MetalOrigin::FromGpu)
+        matches!(self.origin, GpuOrigin::Device)
     }
 
     pub fn is_from_cpu(&self) -> bool {
-        matches!(self.origin, MetalOrigin::FromCpu)
+        matches!(self.origin, GpuOrigin::Host)
     }
 
     pub fn into_typed_fact(self) -> TypedFact {
@@ -52,7 +52,7 @@ impl MetalFact {
     }
 }
 
-impl OpaqueFact for MetalFact {
+impl OpaqueFact for GpuFact {
     fn clarify_dt_shape(&self) -> Option<(DatumType, &[usize])> {
         self.fact.shape.as_concrete().map(|s| (self.fact.datum_type, s))
     }
@@ -68,44 +68,44 @@ impl OpaqueFact for MetalFact {
     }
 }
 
-impl fmt::Debug for MetalFact {
+impl fmt::Debug for GpuFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self.origin {
-            MetalOrigin::FromCpu => write!(fmt, "Metal,FromCpu({:?})", self.fact),
-            MetalOrigin::FromGpu => write!(fmt, "Metal,FromGpu({:?})", self.fact),
+            GpuOrigin::Host => write!(fmt, "Host({:?})", self.fact),
+            GpuOrigin::Device => write!(fmt, "Device({:?})", self.fact),
         }
     }
 }
 
-pub trait MetalTypedFactExt {
-    fn to_metal_fact(&self) -> TractResult<&MetalFact>;
-    fn as_metal_fact(&self) -> Option<&MetalFact>;
+pub trait GpuTypedFactExt {
+    fn to_gpu_fact(&self) -> TractResult<&GpuFact>;
+    fn as_gpu_fact(&self) -> Option<&GpuFact>;
 }
 
-impl MetalTypedFactExt for TypedFact {
-    fn to_metal_fact(&self) -> TractResult<&MetalFact> {
+impl GpuTypedFactExt for TypedFact {
+    fn to_gpu_fact(&self) -> TractResult<&GpuFact> {
         ensure!(
             self.datum_type == DatumType::Opaque,
-            "Cannot retrieve MetalFact from a non Opaque Tensor"
+            "Cannot retrieve GpuFact from a non Opaque Tensor"
         );
         self.opaque_fact
             .as_ref()
-            .and_then(|m| m.downcast_ref::<MetalFact>())
-            .ok_or_else(|| anyhow!("MetalFact not found in Opaque Tensor"))
+            .and_then(|m| m.downcast_ref::<GpuFact>())
+            .ok_or_else(|| anyhow!("GpuFact not found in Opaque Tensor"))
     }
-    fn as_metal_fact(&self) -> Option<&MetalFact> {
-        self.opaque_fact.as_ref().and_then(|m| m.downcast_ref::<MetalFact>())
+    fn as_gpu_fact(&self) -> Option<&GpuFact> {
+        self.opaque_fact.as_ref().and_then(|m| m.downcast_ref::<GpuFact>())
     }
 }
 
-impl std::ops::Deref for MetalFact {
+impl std::ops::Deref for GpuFact {
     type Target = TypedFact;
     fn deref(&self) -> &Self::Target {
         &self.fact
     }
 }
 
-impl std::convert::AsRef<TypedFact> for MetalFact {
+impl std::convert::AsRef<TypedFact> for GpuFact {
     fn as_ref(&self) -> &TypedFact {
         &self.fact
     }

@@ -1,25 +1,27 @@
-use crate::memory::MetalResolvedMemSchema;
-use crate::tensor::{MetalArenaStorage, MetalArenaView};
-use crate::{IntoMetal, MetalContext, MetalTensor};
+use crate::context::GpuContext;
+use crate::memory::DeviceResolvedMemSchema;
+use crate::tensor::IntoGpu;
+use crate::tensor::{DeviceArenaStorage, DeviceArenaView};
+use crate::tensor::GpuTensor;
 use anyhow::Result;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use tract_core::internal::*;
 
 #[derive(Debug)]
-pub struct MetalMemoryPool {
-    storage: Arc<MetalArenaStorage>,
-    resolved_schema: MetalResolvedMemSchema,
+pub struct DeviceMemoryPool {
+    storage: Arc<DeviceArenaStorage>,
+    resolved_schema: DeviceResolvedMemSchema,
     node_seen: RefCell<HashSet<usize>>,
 }
 
-impl MetalMemoryPool {
+impl DeviceMemoryPool {
     pub fn from_schema(
-        context: &MetalContext,
-        resolved_schema: MetalResolvedMemSchema,
+        context: &impl GpuContext,
+        resolved_schema: DeviceResolvedMemSchema,
     ) -> Result<Self> {
         let storage =
-            Arc::new(MetalArenaStorage::with_capacity(context, resolved_schema.memory_size)?);
+            Arc::new(DeviceArenaStorage::with_capacity(context, resolved_schema.memory_size)?);
 
         Ok(Self { storage, resolved_schema, node_seen: RefCell::new(HashSet::new()) })
     }
@@ -29,12 +31,12 @@ impl MetalMemoryPool {
         node_id: usize,
         dt: DatumType,
         shape: &[usize],
-    ) -> Result<MetalTensor> {
+    ) -> Result<GpuTensor> {
         ensure!(!self.node_seen.borrow().contains(&node_id), "Tensor for node {:?} was already requested. Maybe the memory pool was not reset properly.", node_id);
         self.resolved_schema.offsets_by_node[node_id]
             .map(|offset| {
                 // self.node_seen.borrow_mut().insert(node_id);
-                Ok(MetalArenaView {
+                Ok(DeviceArenaView {
                     arena: Arc::clone(&self.storage),
                     dt,
                     len: shape.iter().product(),
@@ -44,7 +46,7 @@ impl MetalMemoryPool {
                 }
                 .into())
             })
-            .unwrap_or_else(|| unsafe { Tensor::uninitialized_dt(dt, shape)?.into_metal() })
+            .unwrap_or_else(|| unsafe { Tensor::uninitialized_dt(dt, shape)?.into_gpu() })
     }
 
     pub fn reset(&self) {

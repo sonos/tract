@@ -1,14 +1,20 @@
-use crate::fact::MetalTypedFactExt;
-use crate::kernels;
-use kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm};
-
+use tract_gpu::fact::GpuTypedFactExt;
+use crate::kernels::array::RotateHalf;
+use crate::kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm};
+use crate::kernels::nn::{
+    ApplyRope, NewGelu, Reducer, RmsNorm, ScaledMaskedSoftmax, Silu, Softmax,
+};
 use crate::ops::{self, MetalSync, MetalSyncKind};
 
 use crate::rewrite_rules;
-
-use crate::tensor::MetalTensorExt;
+use crate::rewrite_rules::{
+    BasicApplyRope, BasicNewGelu, BasicRmsNorm, BasicRotateHalf, BasicScaledMaskedSoftmax,
+    BasicSilu,
+};
+use tract_gpu::tensor::{IntoGpu, GpuTensorExt};
 use crate::utils::as_q40_fact;
-use crate::{IntoMetal, MetalFact, MetalTensor};
+use tract_gpu::fact::GpuFact;
+use tract_gpu::tensor::GpuTensor;
 use std::borrow::Cow;
 use std::fmt::Debug;
 use std::str::FromStr;
@@ -132,7 +138,7 @@ impl MetalTransform {
         for (i_idx, i) in node.inputs.iter().enumerate() {
             let in_fact = model.outlet_fact_mut(mapping[i])?;
             match sync_kind {
-                MetalSyncKind::ToCpu if in_fact.as_metal_fact().is_some() => {
+                MetalSyncKind::ToHost if in_fact.as_gpu_fact().is_some() => {
                     mapped_inputs.push(
                         model.wire_node(
                             format!("{}.to-cpu-{i_idx}", node.name),
@@ -141,12 +147,12 @@ impl MetalTransform {
                         )?[0],
                     );
                 }
-                MetalSyncKind::ToGpu if in_fact.as_metal_fact().is_none() => {
+                MetalSyncKind::ToDevice if in_fact.as_gpu_fact().is_none() => {
                     if let Some(ref konst) = in_fact.konst {
-                        if konst.as_metal_tensor().is_none() {
+                        if konst.as_gpu_tensor().is_none() {
                             let konst_metal =
-                                konst.as_ref().clone().into_metal()?.into_opaque_tensor();
-                            let metal_fact = MetalFact::from_cpu(in_fact.clone())?;
+                                konst.as_ref().clone().into_gpu()?.into_opaque_tensor();
+                            let metal_fact = GpuFact::from_cpu(in_fact.clone())?;
 
                             *in_fact = TypedFact::dt_scalar(DatumType::Opaque)
                                 .with_opaque_fact(metal_fact);
@@ -187,10 +193,10 @@ impl MetalTransform {
         for (o_idx, o) in target_node_outlet_ids.into_iter().enumerate() {
             // Add MetalSync op for model output
             let is_src_output = src.outputs.contains(&OutletId::new(node.id, o_idx));
-            if target.outlet_fact(o)?.as_metal_fact().is_some() && is_src_output {
+            if target.outlet_fact(o)?.as_gpu_fact().is_some() && is_src_output {
                 let sync_output = target.wire_node(
                     format!("{}.to-cpu-{o_idx}-out", node.name),
-                    MetalSync::new(MetalSyncKind::ToCpu),
+                    MetalSync::new(MetalSyncKind::ToHost),
                     &[o],
                 )?[0];
                 outputs.push(sync_output);
@@ -206,11 +212,11 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
     let input_facts = source.node_input_facts(node.id)?.iter().map(|f| (*f).clone()).collect_vec();
     let input_dts = input_facts
         .iter()
-        .map(|f| f.as_metal_fact().map(|f| f.datum_type).unwrap_or(f.datum_type))
+        .map(|f| f.as_gpu_fact().map(|f| f.datum_type).unwrap_or(f.datum_type))
         .collect_vec();
 
     let in_dts_metal_compatible =
-        input_facts.iter().all(|fact| MetalTensor::is_supported_dt(fact.datum_type));
+        input_facts.iter().all(|fact| GpuTensor::is_supported_dt(fact.datum_type));
 
     Ok(in_dts_metal_compatible
         && (node
@@ -224,7 +230,7 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
             })
             || node
                 .op_as::<Const>()
-                .is_some_and(|op| MetalTensor::is_supported_dt(op.val().datum_type()))
+                .is_some_and(|op| GpuTensor::is_supported_dt(op.val().datum_type()))
             || node.op_as::<Cast>().is_some_and(|op| {
                 ops::MetalCast::is_supported_dt(input_dts[0])
                     && ops::MetalCast::new(op.to).is_some()
@@ -270,7 +276,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
 
         if translatable {
             let mut gpu_inputs =
-                self.sync_inputs_if_required(target, node, mapping, MetalSyncKind::ToGpu)?;
+                self.sync_inputs_if_required(target, node, mapping, MetalSyncKind::ToDevice)?;
 
             let outlet_ids: TVec<OutletId> = if let Some(op) = node.op_as::<PrefixMatMul>() {
                 convert_matmul_to_metal(source, node, target, &mut gpu_inputs, op, self.gemm_impl)?
@@ -318,7 +324,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             self.sync_model_outputs_if_required(source, node, target, outlet_ids)
         } else {
             let cpu_inputs =
-                self.sync_inputs_if_required(target, node, mapping, MetalSyncKind::ToCpu)?;
+                self.sync_inputs_if_required(target, node, mapping, MetalSyncKind::ToHost)?;
             target.wire_node(&node.name, node.op.clone(), &cpu_inputs)
         }
     }
@@ -475,7 +481,7 @@ fn convert_matmul_to_metal(
     };
 
     let out_fact = target.outlet_fact(matmul_output[0])?;
-    let out_dt = out_fact.to_metal_fact().map(|f| f.datum_type).unwrap_or(out_fact.datum_type);
+    let out_dt = out_fact.to_gpu_fact().map(|f| f.datum_type).unwrap_or(out_fact.datum_type);
 
     let expected_dt = model.node_output_facts(node.id)?[0].datum_type;
 
@@ -518,12 +524,12 @@ fn convert_logic_ops_to_metal(op: &Comp) -> ops::MetalBinOp {
 fn convert_const(op: &Const) -> TractResult<Const> {
     let typed_fact: TypedFact = Arc::clone(op.val()).into();
     let metal_fact = if let Some(of) = op.opaque_fact() {
-        MetalFact::from_cpu(typed_fact.with_opaque_fact(clone_box(of)))?
+        GpuFact::from_cpu(typed_fact.with_opaque_fact(clone_box(of)))?
     } else {
-        MetalFact::from_cpu(typed_fact)?
+        GpuFact::from_cpu(typed_fact)?
     };
 
-    let metal_const = op.val().clone().into_metal()?.into_opaque_tensor().into_arc_tensor();
+    let metal_const = op.val().clone().into_gpu()?.into_opaque_tensor().into_arc_tensor();
     Const::new_with_opaque_fact(metal_const, Box::new(metal_fact))
 }
 

@@ -1,6 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
-use crate::MetalTensor;
+use tract_gpu::tensor::GpuTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
 use std::fmt;
@@ -36,17 +36,17 @@ impl Concat {
 
     pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> Result<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal concat  op", dt);
-        let tname = MetalTensor::tname(dt)?;
+        let tname = GpuTensor::tname(dt)?;
         let broadcast_name = broadcast_kind.to_func_part();
         Ok(format!("array_ops::copy_{broadcast_name}_{tname}"))
     }
 
-    pub fn eval(&self, context: &MetalContext, inputs: &[&MetalTensor]) -> Result<MetalTensor> {
+    pub fn eval(&self, context: &MetalContext, inputs: &[&GpuTensor]) -> Result<GpuTensor> {
         ensure!(!inputs.is_empty());
         let mut output_shape = inputs[0].shape().to_vec();
         output_shape[self.axis] = inputs.iter().map(|it| it.shape()[self.axis]).sum();
         let output =
-            unsafe { MetalTensor::uninitialized_dt(inputs[0].datum_type(), &output_shape)? };
+            unsafe { GpuTensor::uninitialized_dt(inputs[0].datum_type(), &output_shape)? };
 
         self.dispatch_eval(context, inputs, &output)?;
         context.wait_until_completed()?;
@@ -56,12 +56,12 @@ impl Concat {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        inputs: &[&MetalTensor],
-        output: &MetalTensor,
+        inputs: &[&GpuTensor],
+        output: &GpuTensor,
     ) -> Result<()> {
         ensure!(!inputs.is_empty());
 
-        output.retain_until_completion();
+        context.retain_tensor(output);
 
         let output_shape = output.shape();
         let output_strides = output.strides();
@@ -95,7 +95,7 @@ impl Concat {
             if input.len() == 0 {
                 continue;
             }
-            input.retain_until_completion();
+            context.retain_tensor(input);
             let i_strides = input.strides();
             let i_shape = input.shape();
 
@@ -124,7 +124,7 @@ impl Concat {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::IntoMetal;
+    use tract_gpu::tensor::IntoGpu;
     use tract_itertools::Itertools;
 
     use num_traits::Zero;
@@ -138,7 +138,7 @@ mod tests {
                 for shape in shapes {
                     let len = shape.iter().product::<usize>();
                     let data = (0..len).map(|f| f as f32).collect::<Vec<_>>();
-                    inputs.push(Tensor::from_shape(shape, &data)?.into_metal()?);
+                    inputs.push(Tensor::from_shape(shape, &data)?.into_gpu()?);
                 }
 
                 let output = Concat { axis }.eval(context, &inputs.iter().collect_vec())?;
