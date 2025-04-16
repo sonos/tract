@@ -369,7 +369,7 @@ pub(super) fn regroup_k_axes(
         &wires,
     )?[0];
     patch.shunt_outside(model, node.id.into(), wire)?;
-    return Ok(Some(patch));
+    Ok(Some(patch))
 }
 
 pub(super) fn inject_m_or_n_axis(

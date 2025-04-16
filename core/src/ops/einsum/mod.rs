@@ -316,7 +316,7 @@ impl TypedOp for EinSum {
         if let Some(patch) = declutter_reshape_folding_input_axis(self, session, model, node)? {
             return Ok(Some(patch));
         }
-        return Ok(None);
+        Ok(None)
     }
 
     fn codegen(
@@ -396,5 +396,5 @@ fn declutter_reshape_folding_input_axis(
         patch.shunt_outside(model, node.id.into(), wire[0])?;
         return Ok(Some(patch));
     }
-    return Ok(None);
+    Ok(None)
 }
