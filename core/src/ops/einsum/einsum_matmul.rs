@@ -186,7 +186,7 @@ pub(crate) fn detect_rule(
     _name: &str,
     op: &EinSum,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if node.inputs.len() != 2 && node.inputs.len() != 9 {
+    if node.inputs.len() != (2 + op.q_params.is_some() as usize * 7) {
         return Ok(None);
     }
     let input_facts = model.node_input_facts(node.id)?;
@@ -204,17 +204,13 @@ pub(crate) fn detect_rule(
         .filter(|a| {
             !input_shapes[0][a.inputs[0][0]].is_one() || !input_shapes[1][a.inputs[1][0]].is_one()
         })
+        .copied()
         .collect::<TVec<_>>();
 
     let k_axis = if non_trivial_k_axis.len() > 1 {
-        return Ok(None);
-        // TODO: handle case where multiple consecutive k in the same order in both input.
-        // return Ok(AxesOrPatch::NotAMatMul(
-        //     "multiple k-axis candidate found",
-        //     non_trivial_k_axis.into_iter().cloned().collect_vec(),
-        // ));
+        return regroup_k_axes(op, model, node, non_trivial_k_axis);
     } else {
-        non_trivial_k_axis.first().copied().or_else(|| k_axes.first()).copied()
+        non_trivial_k_axis.first().or_else(|| k_axes.first()).copied()
     };
     let Some(k_axis) = k_axis else { return inject_k_axis(op, model, node).map(Some) };
 
@@ -302,6 +298,78 @@ pub(super) fn inject_k_axis(
     wire = patch.wire_node(&node.name, EinSum { axes: new_axes, ..op.clone() }, &wire)?;
     patch.shunt_outside(model, node.id.into(), wire[0])?;
     Ok(patch)
+}
+
+pub(super) fn regroup_k_axes(
+    op: &EinSum,
+    model: &TypedModel,
+    node: &TypedNode,
+    mut k_axes: TVec<&Axis>,
+) -> TractResult<Option<TypedModelPatch>> {
+    let input_facts = model.node_input_facts(node.id)?;
+    let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
+    let contig_in_a = k_axes
+        .iter()
+        .map(|axis| axis.inputs[0][0])
+        .sorted()
+        .tuple_windows()
+        .all(|(a, b)| a + 1 == b);
+    if contig_in_a {
+        k_axes.sort_by_key(|ax| ax.inputs[0][0]);
+    } else {
+        k_axes.sort_by_key(|ax| ax.inputs[1][0]);
+    }
+    let k_dims: TVec<_> =
+        k_axes.iter().map(|ax| input_shapes[0][ax.inputs[0][0]].clone()).collect();
+    let k: TDim = k_dims.iter().product();
+    let mut patch = TypedModelPatch::default();
+    let mut wires = patch.taps(model, &node.inputs)?;
+    let mut exprs: Vec<String> =
+        (0..2).map(|slot| op.axes.axes(InOut::In(slot)).map(|ax| ax.repr).join("")).collect();
+    for slot in 0..2 {
+        if k_axes.iter().map(|ax| ax.inputs[slot][0]).tuple_windows().any(|(a, b)| a + 1 != b) {
+            let after = op
+                .axes
+                .axes(InOut::In(slot))
+                .filter(|ax| !k_axes.contains(ax))
+                .chain(k_axes.iter().copied())
+                .map(|ax| ax.repr)
+                .join("");
+            let transpose =
+                AxesMapping::from_strs(&[&exprs[slot]], &[&after])?.translate_to_axis_ops()?;
+            for (ix, op) in transpose.into_iter().enumerate() {
+                wires[slot] = patch.wire_node(
+                    format!("{}.transpose_input_{}.{}", &node.name, slot, ix),
+                    op,
+                    &[wires[slot]],
+                )?[0];
+            }
+            exprs[slot] = after;
+        }
+        let pos = exprs[slot].chars().position(|c| k_axes[0].repr == c).unwrap();
+        wires[slot] = patch.wire_node(
+            format!("{}.fold_k_in_input_{}", &node.name, slot),
+            AxisOp::Reshape(pos, k_dims.clone(), tvec!(k.clone())),
+            &[wires[slot]],
+        )?[0];
+        exprs[slot] =
+            exprs[slot].chars().filter(|c| !k_axes.iter().any(|k| k.repr == *c)).collect();
+        exprs[slot].insert(pos, k_axes[0].repr);
+    }
+    let old = op.axes.to_string();
+    let (iexpr, oexpr) = old.split_once("->").unwrap();
+    let mut expr: String = exprs.iter().join(",");
+    if node.inputs.len() > 2 {
+        expr = expr + "," + &iexpr.split(",").skip(2).join(",");
+    }
+    expr = expr + "->" + oexpr;
+    let wire = patch.wire_node(
+        &node.name,
+        EinSum { axes: expr.parse().unwrap(), ..op.clone() },
+        &wires,
+    )?[0];
+    patch.shunt_outside(model, node.id.into(), wire)?;
+    return Ok(Some(patch));
 }
 
 pub(super) fn inject_m_or_n_axis(
