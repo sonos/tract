@@ -25,7 +25,7 @@ pub use change_axes::MetalAxisOp;
 pub use concat::MetalConcat;
 pub use element_wise::MetalElementWiseOp;
 pub use fused_axis_op::MetalFusedAxisOp;
-pub use gelu_approximate::MetalGeluApprox;
+pub use gelu_approximate::MetalGeluApproximate;
 pub use gemm::MetalGemm;
 pub use reduce::MetalReduce;
 pub use rms_norm::MetalRmsNorm;

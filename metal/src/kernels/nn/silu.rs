@@ -31,8 +31,8 @@ impl Silu {
         input: &MetalTensor,
         output: &MetalTensor,
     ) -> Result<()> {
-        context.retain_tensor(input);
-        context.retain_tensor(output);
+        input.retain_until_completion();
+        output.retain_until_completion();
 
         ensure!(output.shape() == input.shape());
         ensure!(output.datum_type() == input.datum_type());
