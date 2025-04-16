@@ -196,24 +196,12 @@ impl MetalContext {
         &self.shared
     }
 
-    pub fn buffer_from_slice<T>(&self, data: &[T]) -> Buffer {
-        let mut size = core::mem::size_of_val(data) as NSUInteger;
-        if size == 0 {
-            size += 1;
-        }
-        self.device().new_buffer_with_bytes_no_copy(
-            data.as_ptr() as *const core::ffi::c_void,
-            size,
-            MTLResourceOptions::StorageModeShared,
-            None,
-        )
-    }
+    pub fn buffer_from_slice(&self, data: &[u8]) -> Buffer {
+        static ZERO: [u8; 1] = [0];
+        // Handle empty data
+        let data = if data.len() == 0 { &ZERO } else { data };
 
-    pub fn buffer_from_slice_mut<T>(&self, data: &mut [T]) -> Buffer {
-        let mut size = core::mem::size_of_val(data) as NSUInteger;
-        if size == 0 {
-            size += 1;
-        }
+        let size = core::mem::size_of_val(data) as NSUInteger;
         self.device().new_buffer_with_bytes_no_copy(
             data.as_ptr() as *const core::ffi::c_void,
             size,
@@ -341,5 +329,20 @@ impl Drop for MetalContext {
         }
         command_buffer.commit();
         command_buffer.wait_until_completed();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tract_core::prelude::{Tensor, TractResult};
+
+    use crate::IntoMetal;
+
+    #[test]
+    fn test_alloc_zero() -> TractResult<()>{
+        objc::rc::autoreleasepool(|| {
+            Tensor::from_shape::<f32>(&[0], &[])?.into_metal()?;
+            Ok(())
+        })
     }
 }
