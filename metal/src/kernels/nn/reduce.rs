@@ -1,6 +1,7 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::utils;
-use crate::{LibraryName, MetalContext, MetalTensor};
+use crate::{LibraryName, MetalContext};
+use tract_gpu::tensor::GpuTensor;
 use anyhow::Result;
 use metal::MTLSize;
 use tract_core::internal::*;
@@ -24,7 +25,7 @@ impl Reducer {
 
     pub fn kernel_name(&self, dt: DatumType) -> Result<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal reduce  op", dt);
-        let tname = MetalTensor::tname(dt)?;
+        let tname = GpuTensor::tname(dt)?;
         let op = match self {
             Self::MeanOfSquares => "mean_of_squares",
             Self::Sum => "sum",
@@ -38,12 +39,12 @@ impl Reducer {
     pub fn eval(
         &self,
         context: &MetalContext,
-        input: &MetalTensor,
+        input: &GpuTensor,
         axis: usize,
-    ) -> Result<MetalTensor> {
+    ) -> Result<GpuTensor> {
         let mut o_shape = input.shape().to_vec();
         o_shape[axis] = 1;
-        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), &o_shape)? };
+        let output = unsafe { GpuTensor::uninitialized_dt(input.datum_type(), &o_shape)? };
         self.dispatch_eval(context, input, axis, &output)?;
         context.wait_until_completed()?;
         Ok(output)
@@ -52,12 +53,12 @@ impl Reducer {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        input: &MetalTensor,
+        input: &GpuTensor,
         axis: usize,
-        output: &MetalTensor,
+        output: &GpuTensor,
     ) -> Result<()> {
-        input.retain_until_completion();
-        output.retain_until_completion();
+        context.retain_tensor(input);
+        context.retain_tensor(output);
 
         ensure!(output.datum_type() == input.datum_type());
         ensure!(output.shape()[axis] == 1);
@@ -92,7 +93,7 @@ impl Reducer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::IntoMetal;
+    use tract_gpu::tensor::IntoGpu;
     use derive_new::new;
     use num_traits::AsPrimitive;
     use num_traits::Float;
@@ -126,7 +127,7 @@ mod tests {
                         })
                         .collect::<Vec<_>>(),
                 )?
-                .into_metal()?;
+                .into_gpu()?;
 
                 let cpu_output = tract_reducer.reduce(&[axis], &a.to_cpu()?.into_tensor())?;
                 let metal_output = reducer.eval(context, &a, axis)?;
@@ -361,7 +362,7 @@ mod tests {
         pub fn run(&self) -> Result<Tensor> {
             objc::rc::autoreleasepool(|| {
                 crate::METAL_CONTEXT.with_borrow(|context| {
-                    let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_metal()?;
+                    let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_gpu()?;
                     let metal_output = self.op.eval(context, &a, self.axis)?;
                     Ok(metal_output.to_cpu()?.into_tensor())
                 })

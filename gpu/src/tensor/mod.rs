@@ -4,23 +4,23 @@ mod owned;
 pub use arena_view::*;
 pub use owned::*;
 
-use crate::IntoMetal;
 use anyhow::{Context, Result};
-use metal::Buffer;
 use num_traits::AsPrimitive;
 use std::fmt::Display;
 use tract_core::internal::*;
 use tract_data::itertools::Itertools;
 
-/// This struct represents a metal tensor that can be either a owned tensor
+use crate::context::{with_borrowed_gpu_context, DeviceBuffer};
+
+/// This struct represents a GPU tensor that can be either a owned tensor
 /// or an arena view.
 #[derive(Debug, Clone, Hash)]
-pub enum MetalTensor {
-    Owned(OwnedMetalTensor),
-    ArenaView(MetalArenaView),
+pub enum GpuTensor {
+    Owned(OwnedDeviceTensor),
+    ArenaView(DeviceArenaView),
 }
 
-impl MetalTensor {
+impl GpuTensor {
     pub const SUPPORTED_DT: [DatumType; 12] = [
         DatumType::Bool,
         DatumType::F32,
@@ -50,22 +50,22 @@ impl MetalTensor {
             DatumType::I64 => "i64",
             DatumType::Bool => "bool",
             DatumType::Opaque => "opaque",
-            _ => bail!("Unsupport dt {:?} for metal kernel function", dt),
+            _ => bail!("Unsupport dt {:?} for GPU Tensor", dt),
         })
     }
 
-    /// Create an uninitialized MetalTensor
-    pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> Result<MetalTensor> {
-        Tensor::uninitialized_dt(dt, shape)?.into_metal()
+    /// Create an uninitialized GpuTensor
+    pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> Result<GpuTensor> {
+        Tensor::uninitialized_dt(dt, shape)?.into_gpu()
     }
 
-    pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> Result<MetalTensor> {
+    pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> Result<GpuTensor> {
         Self::uninitialized_dt(T::datum_type(), shape)
     }
 
-    // Create a metal tensor with a given shape and a slice of elements. The data is copied and aligned to size of T.
-    pub fn from_shape<T: Copy + Datum>(shape: &[usize], data: &[T]) -> Result<MetalTensor> {
-        Tensor::from_shape(shape, data)?.into_metal()
+    // Create a gpu tensor with a given shape and a slice of elements. The data is copied and aligned to size of T.
+    pub fn from_shape<T: Copy + Datum>(shape: &[usize], data: &[T]) -> Result<GpuTensor> {
+        Tensor::from_shape(shape, data)?.into_gpu()
     }
 
     pub fn is_supported_dt(dt: DatumType) -> bool {
@@ -76,7 +76,7 @@ impl MetalTensor {
     #[inline]
     pub fn datum_type(&self) -> DatumType {
         match self {
-            Self::Owned(OwnedMetalTensor { inner, .. }) => inner.datum_type(),
+            Self::Owned(OwnedDeviceTensor { inner, .. }) => inner.datum_type(),
             Self::ArenaView(view) => view.datum_type(),
         }
     }
@@ -115,25 +115,32 @@ impl MetalTensor {
         }
     }
 
-    /// Get underlying inner metal buffer.
-    pub fn metal(&self) -> &Buffer {
+    /// Get underlying inner buffer.
+    pub fn device_buffer(&self) -> &Box<dyn DeviceBuffer> {
         match self {
-            Self::Owned(t) => t.metal(),
-            Self::ArenaView(t) => t.metal(),
+            Self::Owned(t) => t.device_buffer(),
+            Self::ArenaView(t) => t.device_buffer(),
         }
     }
 
-    /// Get underlying inner metal buffer offset
-    pub fn metal_offset<I: Copy + 'static>(&self) -> I
+    /// Get underlying inner buffer offset
+    pub fn buffer_offset<I: Copy + 'static>(&self) -> I
     where
         usize: AsPrimitive<I>,
     {
         match self {
-            Self::Owned(t) => t.metal_offset(),
-            Self::ArenaView(t) => t.metal_offset(),
+            Self::Owned(t) => t.buffer_offset(),
+            Self::ArenaView(t) => t.buffer_offset(),
         }
     }
 
+    pub fn device_buffer_address(&self) -> usize {
+        match self {
+            Self::Owned(t) => t.device_buffer_address(),
+            Self::ArenaView(t) => t.device_buffer_address(),
+        }
+    }
+    
     /// Get underlying inner tensor view.
     #[inline]
     pub fn view(&self) -> TensorView {
@@ -163,22 +170,16 @@ impl MetalTensor {
         }
     }
 
-    #[inline]
-    pub fn retain_until_completion(&self) {
-        crate::METAL_CONTEXT.with_borrow(|ctxt| ctxt.retain_tensor(self));
-    }
-
-    /// Convert Metal tensor to Opaque Tensor.
+    /// Convert GPU tensor to Opaque Tensor.
     pub fn into_opaque_tensor(self) -> Tensor {
         tensor0::<Opaque>(self.into())
     }
 
-    /// Synchronize the Metal Tensor by completing all current
+    /// Synchronize the GPU Tensor by completing all current
     /// commands on GPU and returns the inner tensor.
     pub fn to_cpu(&self) -> Result<Arc<Tensor>> {
-        crate::METAL_CONTEXT
-            .with_borrow(|context| -> Result<Arc<Tensor>> {
-                context.wait_until_completed()?;
+        with_borrowed_gpu_context(|context| -> Result<Arc<Tensor>> {
+                context.synchronize()?;
                 Ok(match self {
                     Self::Owned(o) => o
                         .inner
@@ -188,21 +189,21 @@ impl MetalTensor {
                     Self::ArenaView(v) => v.clone().into_tensor().into(),
                 })
             })
-            .with_context(|| anyhow!("Error while synchronize metal tensor to its cpu counterpart"))
+            .with_context(|| anyhow!("Error while synchronize gpu tensor to its cpu counterpart"))
     }
 }
 
-impl Display for MetalTensor {
+impl Display for GpuTensor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Owned(o) => match &o.inner {
                 MValue::Const(t) | MValue::Var(t) => {
                     let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
-                    write!(f, "Metal,Owned: {{ {content} }}")
+                    write!(f, "Owned: {{ {content} }}")
                 }
                 MValue::Reshaped { t, shape, .. } => {
                     let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
-                    write!(f, "Metal,Owned,Reshaped: {:?} - {{ {content} }}", shape)
+                    write!(f, "Owned,Reshaped: {:?} - {{ {content} }}", shape)
                 }
             },
             Self::ArenaView(v) => {
@@ -211,41 +212,45 @@ impl Display for MetalTensor {
                     .into_tensor()
                     .dump(false)
                     .unwrap_or_else(|e| format!("Error : {e:?}"));
-                write!(f, "Metal,ArenaView: {{ {content} }}")
+                write!(f, "ArenaView: {{ {content} }}")
             }
         }
     }
 }
 
-impl IntoMetal<MetalTensor> for Tensor {
-    fn into_metal(self) -> Result<MetalTensor> {
-        Ok(MetalTensor::Owned(OwnedMetalTensor::from_tensor(self)?))
+pub trait IntoGpu<T> {
+    fn into_gpu(self) -> Result<T>;
+}
+
+impl IntoGpu<GpuTensor> for Tensor {
+    fn into_gpu(self) -> Result<GpuTensor> {
+        Ok(GpuTensor::Owned(OwnedDeviceTensor::from_tensor(self)?))
     }
 }
 
-impl IntoMetal<MetalTensor> for Arc<Tensor> {
-    fn into_metal(self) -> Result<MetalTensor> {
-        Ok(MetalTensor::Owned(OwnedMetalTensor::from_tensor(self)?))
+impl IntoGpu<GpuTensor> for Arc<Tensor> {
+    fn into_gpu(self) -> Result<GpuTensor> {
+        Ok(GpuTensor::Owned(OwnedDeviceTensor::from_tensor(self)?))
     }
 }
 
-impl From<MetalTensor> for Opaque {
-    fn from(value: MetalTensor) -> Self {
+impl From<GpuTensor> for Opaque {
+    fn from(value: GpuTensor) -> Self {
         Opaque(Arc::new(value))
     }
 }
 
-impl From<MetalArenaView> for MetalTensor {
-    fn from(view: MetalArenaView) -> Self {
+impl From<DeviceArenaView> for GpuTensor {
+    fn from(view: DeviceArenaView) -> Self {
         Self::ArenaView(view)
     }
 }
 
-impl OpaquePayload for MetalTensor {
+impl OpaquePayload for GpuTensor {
     fn same_as(&self, other: &dyn OpaquePayload) -> bool {
         other
             .downcast_ref::<Self>()
-            .is_some_and(|other| self.metal().gpu_address() == other.metal().gpu_address())
+            .is_some_and(|other| self.device_buffer_address() == other.device_buffer_address())
     }
 
     fn clarify_to_tensor(&self) -> TractResult<Option<Arc<Tensor>>> {
@@ -253,36 +258,36 @@ impl OpaquePayload for MetalTensor {
     }
 }
 
-pub trait MetalTensorExt {
-    fn to_metal_tensor(&self) -> Result<&MetalTensor>;
-    fn as_metal_tensor(&self) -> Option<&MetalTensor>;
-    fn to_metal_tensor_mut(&mut self) -> Result<&mut MetalTensor>;
-    fn as_metal_tensor_mut(&mut self) -> Option<&mut MetalTensor>;
+pub trait GpuTensorExt {
+    fn to_gpu_tensor(&self) -> Result<&GpuTensor>;
+    fn as_gpu_tensor(&self) -> Option<&GpuTensor>;
+    fn to_gpu_tensor_mut(&mut self) -> Result<&mut GpuTensor>;
+    fn as_gpu_tensor_mut(&mut self) -> Option<&mut GpuTensor>;
 }
 
-impl MetalTensorExt for Tensor {
-    fn to_metal_tensor_mut(&mut self) -> Result<&mut MetalTensor> {
+impl GpuTensorExt for Tensor {
+    fn to_gpu_tensor_mut(&mut self) -> Result<&mut GpuTensor> {
         let opaque = self.to_scalar_mut::<Opaque>()?;
-        opaque.downcast_mut::<MetalTensor>().ok_or_else(|| {
-            anyhow::anyhow!("Could convert opaque tensor to mutable reference on a metal tensor")
+        opaque.downcast_mut::<GpuTensor>().ok_or_else(|| {
+            anyhow::anyhow!("Could convert opaque tensor to mutable reference on a gpu tensor")
         })
     }
 
-    fn as_metal_tensor_mut(&mut self) -> Option<&mut MetalTensor> {
+    fn as_gpu_tensor_mut(&mut self) -> Option<&mut GpuTensor> {
         let opaque = self.to_scalar_mut::<Opaque>().ok()?;
-        opaque.downcast_mut::<MetalTensor>()
+        opaque.downcast_mut::<GpuTensor>()
     }
 
-    fn to_metal_tensor(&self) -> Result<&MetalTensor> {
+    fn to_gpu_tensor(&self) -> Result<&GpuTensor> {
         let opaque = self.to_scalar::<Opaque>()?;
-        opaque.downcast_ref::<MetalTensor>().ok_or_else(|| {
-            anyhow::anyhow!("Could convert opaque tensor to reference on a metal tensor")
+        opaque.downcast_ref::<GpuTensor>().ok_or_else(|| {
+            anyhow::anyhow!("Could convert opaque tensor to reference on a gpu tensor")
         })
     }
 
-    fn as_metal_tensor(&self) -> Option<&MetalTensor> {
+    fn as_gpu_tensor(&self) -> Option<&GpuTensor> {
         let opaque = self.to_scalar::<Opaque>().ok()?;
-        opaque.downcast_ref::<MetalTensor>()
+        opaque.downcast_ref::<GpuTensor>()
     }
 }
 
@@ -291,8 +296,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_metal_tensor() -> Result<()> {
-        let a = MetalTensor::from_shape(&[1], &[0f32])?;
+    fn test_gpu_tensor() -> Result<()> {
+        let a = GpuTensor::from_shape(&[1], &[0f32])?;
         assert_eq!(a.to_cpu()?.as_slice::<f32>()?, &[0.0]);
         Ok(())
     }

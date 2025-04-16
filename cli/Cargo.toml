@@ -52,6 +52,7 @@ zerofrom.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 tract-metal.workspace = true
+tract-gpu.workspace = true
 
 
 [features]

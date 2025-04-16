@@ -1,16 +1,17 @@
-use crate::fact::MetalTypedFactExt;
+use tract_gpu::fact::GpuTypedFactExt;
 pub use crate::kernels::BinOps;
 use crate::ops::MetalEvalOp;
-use crate::tensor::MetalTensorExt;
-use crate::{IntoMetal, MetalContext, MetalFact};
+use tract_gpu::tensor::{GpuTensorExt, IntoGpu};
+use crate::MetalContext;
+use tract_gpu::fact::GpuFact;
 use derive_new::new;
 use std::fmt;
 use tract_core::internal::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MetalSyncKind {
-    ToCpu,
-    ToGpu,
+    ToHost,
+    ToDevice,
 }
 
 impl fmt::Display for MetalSyncKind {
@@ -49,19 +50,19 @@ impl MetalEvalOp for MetalSync {
     ) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         match self.kind {
-            MetalSyncKind::ToCpu => {
-                let metal_tensor = input.to_metal_tensor()?;
+            MetalSyncKind::ToHost => {
+                let metal_tensor = input.to_gpu_tensor()?;
 
                 let tensor = metal_tensor
                     .to_cpu()
                     .with_context(|| anyhow!("Error while syncing metal tensor to cpu"))?;
                 Ok(tvec![tensor.into_tvalue()])
             }
-            MetalSyncKind::ToGpu => {
+            MetalSyncKind::ToDevice => {
                 let metal_input = if let Some(t) = input.as_arc_tensor() {
-                    Arc::clone(t).into_metal()?
+                    Arc::clone(t).into_gpu()?
                 } else {
-                    input.into_tensor().into_metal()?
+                    input.into_tensor().into_gpu()?
                 };
                 Ok(tvec![metal_input.into_opaque_tensor().into()])
             }
@@ -73,16 +74,16 @@ impl TypedOp for MetalSync {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let input = inputs[0];
         match self.kind {
-            MetalSyncKind::ToCpu => Ok(tvec![input
-                .to_metal_fact()
+            MetalSyncKind::ToHost => Ok(tvec![input
+                .to_gpu_fact()
                 .with_context(|| anyhow!(
                     "Cannot sync to CPU a tensor without metal fact as metadata in its TypedFact"
                 ))?
                 .clone()
                 .into_typed_fact()]),
-            MetalSyncKind::ToGpu => {
+            MetalSyncKind::ToDevice => {
                 ensure!(input.datum_type != DatumType::Opaque, "Cannot sync Opaque Tensor to GPU");
-                Ok(tvec![MetalFact::from_cpu(input.clone())?.into_opaque_fact()])
+                Ok(tvec![GpuFact::from_cpu(input.clone())?.into_opaque_fact()])
             }
         }
     }

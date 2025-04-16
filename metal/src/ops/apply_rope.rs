@@ -1,6 +1,6 @@
 use crate::kernels::nn::ApplyRope;
 use crate::ops::MetalEvalOp;
-use crate::tensor::MetalTensorExt;
+use tract_gpu::tensor::GpuTensorExt;
 use crate::MetalContext;
 use derive_new::new;
 use tract_core::internal::*;
@@ -25,9 +25,9 @@ impl MetalEvalOp for MetalApplyRope {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (opaque_input, opaque_cos, opaque_sin) = args_3!(inputs);
-        let input = opaque_input.to_metal_tensor()?;
-        let cos = opaque_cos.to_metal_tensor()?;
-        let sin = opaque_sin.to_metal_tensor()?;
+        let input = opaque_input.to_gpu_tensor()?;
+        let cos = opaque_cos.to_gpu_tensor()?;
+        let sin = opaque_sin.to_gpu_tensor()?;
         let output =
             crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
         ApplyRope.dispatch_eval(context, input, cos, sin, &output)?;

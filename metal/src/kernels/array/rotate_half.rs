@@ -1,6 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::utils;
-use crate::MetalTensor;
+use tract_gpu::tensor::GpuTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
 use metal::MTLSize;
@@ -31,12 +31,12 @@ impl RotateHalf {
 
     pub fn kernel_name(&self, dt: DatumType) -> Result<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal rotate half  op", dt);
-        let tname = MetalTensor::tname(dt)?;
+        let tname = GpuTensor::tname(dt)?;
         Ok(format!("array_ops::rotate_half_nd2_{tname}"))
     }
 
-    pub fn eval(&self, context: &MetalContext, input: &MetalTensor) -> Result<MetalTensor> {
-        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), input.shape())? };
+    pub fn eval(&self, context: &MetalContext, input: &GpuTensor) -> Result<GpuTensor> {
+        let output = unsafe { GpuTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(context, input, &output)?;
         context.wait_until_completed()?;
         Ok(output)
@@ -45,11 +45,11 @@ impl RotateHalf {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        input: &MetalTensor,
-        output: &MetalTensor,
+        input: &GpuTensor,
+        output: &GpuTensor,
     ) -> Result<()> {
-        input.retain_until_completion();
-        output.retain_until_completion();
+        context.retain_tensor(input);
+        context.retain_tensor(output);
 
         let shape_nd2 = utils::reshape_to_rank_2(input.shape(), input.rank() - 1);
         ensure!(
@@ -84,7 +84,7 @@ impl RotateHalf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::IntoMetal;
+    use tract_gpu::tensor::IntoGpu;
     use num_traits::AsPrimitive;
     use tract_core::internal::Tensor;
     use tract_transformers::ops::apply_rope;
@@ -103,7 +103,7 @@ mod tests {
                     &(0..len).map(|f| -> F { f.as_() }).collect::<Vec<_>>(),
                 )?;
 
-                let metal_a = a.clone().into_metal()?;
+                let metal_a = a.clone().into_gpu()?;
 
                 let cpu_output =
                 apply_rope::RotateHalf.eval(tvec![a.clone().into()])?[0].clone().into_tensor();

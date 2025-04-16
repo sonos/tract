@@ -1,6 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::func_constants::{ConstantValues, Value};
-use crate::MetalTensor;
+use tract_gpu::tensor::GpuTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
 use metal::{MTLSize, NSUInteger};
@@ -8,15 +8,15 @@ use tract_core::internal::DatumType;
 
 pub fn mmm_tile_8x8(
     context: &MetalContext,
-    lhs: &MetalTensor,
-    rhs: &MetalTensor,
-) -> Result<MetalTensor> {
+    lhs: &GpuTensor,
+    rhs: &GpuTensor,
+) -> Result<GpuTensor> {
     ensure!(lhs.rank() == 2 && rhs.rank() == 2);
     ensure!(lhs.datum_type() == rhs.datum_type());
     ensure!(lhs.datum_type() == DatumType::F32);
 
-    lhs.retain_until_completion();
-    rhs.retain_until_completion();
+    context.retain_tensor(lhs);
+    context.retain_tensor(rhs);
 
     let m = lhs.shape()[0];
     let n = rhs.shape()[1];
@@ -27,8 +27,8 @@ pub fn mmm_tile_8x8(
     let o_dt = lhs.datum_type();
     let o_shape = &[m, m];
 
-    let output = unsafe { MetalTensor::uninitialized_dt(o_dt, o_shape)? };
-    output.retain_until_completion();
+    let output = unsafe { GpuTensor::uninitialized_dt(o_dt, o_shape)? };
+    context.retain_tensor(&output);
 
     metal_mmm_tile_8x8(context, m, lhs, rhs, &output)?;
     context.wait_until_completed()?;
@@ -40,9 +40,9 @@ pub fn mmm_tile_8x8(
 pub fn metal_mmm_tile_8x8(
     context: &MetalContext,
     dim: usize,
-    lhs: &MetalTensor,
-    rhs: &MetalTensor,
-    output: &MetalTensor,
+    lhs: &GpuTensor,
+    rhs: &GpuTensor,
+    output: &GpuTensor,
 ) -> Result<()> {
     ensure!(dim % 8 == 0, "Dim must be a multiple of 8");
 
@@ -74,7 +74,7 @@ pub fn metal_mmm_tile_8x8(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::IntoMetal;
+    use tract_gpu::tensor::IntoGpu;
     use tract_core::internal::Tensor;
 
     #[test]
@@ -99,10 +99,10 @@ mod tests {
 
                 let a =
                     Tensor::from_shape(&[n, n], &(0..n * n).map(|_f| 1_f32).collect::<Vec<_>>())?
-                        .into_metal()?;
+                        .into_gpu()?;
                 let b =
                     Tensor::from_shape(&[n, n], &(0..n * n).map(|_f| 1_f32).collect::<Vec<_>>())?
-                        .into_metal()?;
+                        .into_gpu()?;
                 let start = std::time::Instant::now();
                 let num_iter = 100;
                 for _ in 0..num_iter {

@@ -2,7 +2,8 @@ use crate::kernels::matmul::{GemmImpl, GemmKernel};
 use crate::ops::MetalEvalOp;
 
 use crate::utils::{as_q40_fact, as_q40_tensor};
-use crate::{MetalContext, MetalTensorExt};
+use crate::MetalContext;
+use tract_gpu::tensor::GpuTensorExt;
 use anyhow::{bail, ensure};
 use tract_core::internal::*;
 
@@ -80,10 +81,10 @@ impl<K: GemmKernel + 'static> MetalEvalOp for MetalGemm<K> {
     ) -> TractResult<TVec<TValue>> {
         let (a_opaque, b_opaque) = args_2!(inputs);
         let a = a_opaque
-            .to_metal_tensor()
+            .to_gpu_tensor()
             .with_context(|| anyhow!("A tensor is not a metal tensor: {:?}", a_opaque))?;
         let b = b_opaque
-            .to_metal_tensor()
+            .to_gpu_tensor()
             .with_context(|| anyhow!("B tensor is not a metal tensor {:?}", b_opaque))?;
 
         let b_shape = as_q40_tensor(b.view().tensor)

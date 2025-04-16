@@ -1,6 +1,6 @@
 use crate::kernels::nn::ScaledMaskedSoftmax;
 use crate::ops::MetalEvalOp;
-use crate::tensor::MetalTensorExt;
+use tract_gpu::tensor::GpuTensorExt;
 use crate::MetalContext;
 use derive_new::new;
 use tract_core::internal::*;
@@ -29,8 +29,8 @@ impl MetalEvalOp for MetalScaledMaskedSoftmax {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (opaque_input, opaque_mask) = args_2!(inputs);
-        let input = opaque_input.to_metal_tensor()?;
-        let mask = opaque_mask.to_metal_tensor()?;
+        let input = opaque_input.to_gpu_tensor()?;
+        let mask = opaque_mask.to_gpu_tensor()?;
         let output =
             crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
         ScaledMaskedSoftmax.dispatch_eval(context, input, &self.scale, mask, &output)?;

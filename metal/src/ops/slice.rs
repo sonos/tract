@@ -1,6 +1,7 @@
 use crate::kernels;
 use crate::ops::MetalEvalOp;
-use crate::{MetalContext, MetalTensorExt};
+use crate::MetalContext;
+use tract_gpu::tensor::GpuTensorExt;
 use tract_core::internal::*;
 use tract_core::ops::array::Slice;
 
@@ -52,7 +53,7 @@ impl MetalEvalOp for MetalSlice {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs);
-        let input = opaque.to_metal_tensor()?;
+        let input = opaque.to_gpu_tensor()?;
 
         let start = self.0.start.eval(&session.resolved_symbols).to_usize()?;
         let end = self.0.end.eval(&session.resolved_symbols).to_usize()?;
@@ -116,7 +117,7 @@ impl TypedOp for MetalSlice {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::IntoMetal;
+    use tract_gpu::tensor::IntoGpu;
     use tract_core::internal::Tensor;
 
     fn run_test(shape: &[usize], slice: Slice) -> TractResult<()> {
@@ -133,7 +134,7 @@ mod tests {
                     .eval_with_session(&SessionState::default(), tvec![a.clone().into_tvalue()])?;
 
                 let metal_slice = MetalSlice::from_tract_core(slice);
-                let a_metal = a.clone().into_metal()?.into_opaque_tensor().into_tvalue();
+                let a_metal = a.clone().into_gpu()?.into_opaque_tensor().into_tvalue();
                 let mut session_state = SessionState::default();
                 let mut metal_slice_state = metal_slice.state(&mut session_state, 0)?.unwrap();
                 let metal_output =
@@ -141,7 +142,7 @@ mod tests {
                 context.wait_until_completed()?;
 
                 cpu_output[0].close_enough(
-                    &metal_output[0].to_metal_tensor()?.to_cpu()?.into_tensor(),
+                    &metal_output[0].to_gpu_tensor()?.to_cpu()?.into_tensor(),
                     Approximation::Approximate,
                 )?;
                 Ok(())

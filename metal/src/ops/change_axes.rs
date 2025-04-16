@@ -1,6 +1,7 @@
 use crate::kernels::array::{Memcpy, PermuteAxes};
 use crate::ops::MetalEvalOp;
-use crate::{MetalContext, MetalTensorExt};
+use crate::MetalContext;
+use tract_gpu::tensor::GpuTensorExt;
 use std::fmt::Debug;
 use tract_core::internal::*;
 use tract_itertools::Itertools;
@@ -89,7 +90,7 @@ impl MetalEvalOp for MetalAxisOp {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs).into_tensor();
-        let input = opaque.to_metal_tensor()?;
+        let input = opaque.to_gpu_tensor()?;
         let shape = input.shape();
 
         // Try simplifying op once symbols are resolved

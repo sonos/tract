@@ -1,5 +1,6 @@
 use crate::encoder::EncoderExt;
-use crate::{LibraryName, MetalContext, MetalTensor};
+use crate::{LibraryName, MetalContext};
+use tract_gpu::tensor::GpuTensor;
 use anyhow::Result;
 use metal::MTLSize;
 use tract_core::internal::*;
@@ -24,7 +25,7 @@ impl GeluApproximate {
 
     pub fn kernel_name(&self, dt: DatumType) -> Result<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal gelu  op", dt);
-        let tname = MetalTensor::tname(dt)?;
+        let tname = GpuTensor::tname(dt)?;
         if self.fast_impl {
             Ok(format!("nn_ops::gelu_approx_fast_{tname}"))
         } else {
@@ -32,8 +33,8 @@ impl GeluApproximate {
         }
     }
 
-    pub fn eval(&self, context: &MetalContext, input: &MetalTensor) -> Result<MetalTensor> {
-        let output = unsafe { MetalTensor::uninitialized_dt(input.datum_type(), input.shape())? };
+    pub fn eval(&self, context: &MetalContext, input: &GpuTensor) -> Result<GpuTensor> {
+        let output = unsafe { GpuTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(context, input, &output)?;
         context.wait_until_completed()?;
         Ok(output)
@@ -42,11 +43,11 @@ impl GeluApproximate {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        input: &MetalTensor,
-        output: &MetalTensor,
+        input: &GpuTensor,
+        output: &GpuTensor,
     ) -> Result<()> {
-        input.retain_until_completion();
-        output.retain_until_completion();
+        context.retain_tensor(input);
+        context.retain_tensor(output);
 
         ensure!(output.shape() == input.shape());
         ensure!(output.datum_type() == input.datum_type());
@@ -70,7 +71,7 @@ impl GeluApproximate {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::IntoMetal;
+    use tract_gpu::tensor::IntoGpu;
     use derive_new::new;
     use num_traits::AsPrimitive;
     use num_traits::Float;
@@ -104,7 +105,7 @@ mod tests {
                         })
                         .collect::<Vec<_>>(),
                 )?
-                .into_metal()?;
+                .into_gpu()?;
 
                 let cpu_output = gelu_approximate::GeluApproximate::default()
                     .eval(tvec![a.to_cpu()?.into_tvalue()])?[0]

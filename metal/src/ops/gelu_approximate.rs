@@ -1,6 +1,8 @@
 use crate::kernels::nn::GeluApproximate;
 use crate::ops::MetalEvalOp;
-use crate::{MetalContext, MetalTensorExt};
+use crate::MetalContext;
+use tract_gpu::tensor::GpuTensorExt;
+use derive_new::new;
 use tract_core::internal::*;
 
 #[derive(Clone, Debug, Default, Hash)]
@@ -27,7 +29,7 @@ impl MetalEvalOp for MetalGeluApproximate {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
-        let input_metal = input.to_metal_tensor()?;
+        let input_metal = input.to_gpu_tensor()?;
         let output = crate::ops::make_tensor_for_node(
             session,
             node_id,

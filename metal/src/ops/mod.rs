@@ -36,7 +36,8 @@ pub use slice::MetalSlice;
 pub use softmax::MetalSoftmax;
 pub use sync::{MetalSync, MetalSyncKind};
 
-use crate::{MetalContext, MetalTensor};
+use tract_gpu::tensor::GpuTensor;
+use crate::MetalContext;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::OpStateFreeze;
@@ -92,8 +93,8 @@ pub fn make_tensor_for_node(
     node_id: usize,
     dt: DatumType,
     shape: &[usize],
-) -> TractResult<MetalTensor> {
+) -> TractResult<GpuTensor> {
     crate::session_handler::get_metal_mem_pool(session)
         .map(|mem| mem.tensor_for_node(node_id, dt, shape))
-        .unwrap_or_else(|| unsafe { MetalTensor::uninitialized_dt(dt, shape) })
+        .unwrap_or_else(|| unsafe { GpuTensor::uninitialized_dt(dt, shape) })
 }

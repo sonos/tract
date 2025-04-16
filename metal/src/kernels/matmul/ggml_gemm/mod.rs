@@ -1,6 +1,6 @@
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
 use crate::utils::as_q40_fact;
-use crate::MetalTensor;
+use tract_gpu::tensor::GpuTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
 use metal::{Buffer, MTLSize, NSUInteger};
@@ -283,8 +283,8 @@ fn dispatch_metal_ggml_gemm(
 
     ensure!((matches!(dts[1], F32 | F16) || q40_b) && dts[0] == F32);
 
-    let i1_tname = if !q40_b { MetalTensor::tname(dts[1])? } else { "q4_0" };
-    let i2_tname = MetalTensor::tname(dts[0])?;
+    let i1_tname = if !q40_b { GpuTensor::tname(dts[1])? } else { "q4_0" };
+    let i2_tname = GpuTensor::tname(dts[0])?;
 
     let name = format!("kernel_mul_mm_{i1_tname}_{i2_tname}");
     //dbg!(&name);
@@ -332,7 +332,7 @@ mod tests {
     use super::*;
     use crate::kernels::matmul::tests::run_mmm_test_case;
     use crate::kernels::matmul::GemmImpl;
-    use crate::IntoMetal;
+    use tract_gpu::tensor::IntoGpu;
 
     #[test]
     fn test_ggml_compilation() -> Result<()> {
@@ -471,8 +471,8 @@ mod tests {
 
                 let metal_output = GemmImpl::<GgmlGemm>::new(false, true).eval(
                     context,
-                    &a.clone().into_metal()?,
-                    &metal_b.clone().into_metal()?,
+                    &a.clone().into_gpu()?,
+                    &metal_b.clone().into_gpu()?,
                 )?;
                 let output = reference(a, ref_b)?;
                 metal_output.to_cpu()?.close_enough(&output, Approximation::Approximate)?;
