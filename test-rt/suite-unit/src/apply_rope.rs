@@ -7,7 +7,7 @@ use tract_core::internal::*;
 use tract_core::ndarray::concatenate;
 use tract_core::ndarray::ArrayD;
 use tract_core::num_traits::Float;
-use tract_transformers::ops::apply_rope::BasicApplyRope;
+use tract_transformers::ops::apply_rope::ApplyRope;
 
 use crate::tensor;
 
@@ -62,7 +62,7 @@ where
         let sin =
             model.add_source("sin", TypedFact::shape_and_dt_of(&self.sin.clone().into_tensor()))?;
 
-        let output = model.wire_node("apply_rope", BasicApplyRope, &[input, cos, sin])?;
+        let output = model.wire_node("apply_rope", ApplyRope, &[input, cos, sin])?;
         model.set_output_outlets(&output)?;
 
         model = model.into_decluttered()?;

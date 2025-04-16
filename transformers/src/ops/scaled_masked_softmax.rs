@@ -26,13 +26,13 @@ fn de_scaled_masked_softmax(
     let input = invocation.named_arg_as(builder, "input")?;
     let mask = invocation.named_arg_as(builder, "mask")?;
     let scale = invocation.named_arg_as(builder, "scale")?;
-    builder.wire(BasicScaledMaskedSoftmax { scale }, &[input, mask])
+    builder.wire(ScaledMaskedSoftmax { scale }, &[input, mask])
 }
 
 fn ser_scaled_masked_softmax(
     ast: &mut IntoAst,
     node: &TypedNode,
-    op: &BasicScaledMaskedSoftmax,
+    op: &ScaledMaskedSoftmax,
 ) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
     let mask = ast.mapping[&node.inputs[1]].clone();
@@ -46,13 +46,13 @@ fn ser_scaled_masked_softmax(
 /// A = SOFTMAX(INPUT * SCALE + MASK, AXIS=2)
 /// Only input of rank of 3 is supported.
 #[derive(Clone, Debug, Hash)]
-pub struct BasicScaledMaskedSoftmax {
+pub struct ScaledMaskedSoftmax {
     pub scale: Arc<Tensor>,
 }
 
-impl Op for BasicScaledMaskedSoftmax {
+impl Op for ScaledMaskedSoftmax {
     fn name(&self) -> Cow<str> {
-        "BasicScaledMaskedSoftmax".to_string().into()
+        "ScaledMaskedSoftmax".to_string().into()
     }
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("scale: {:?}", self.scale)])
@@ -60,7 +60,7 @@ impl Op for BasicScaledMaskedSoftmax {
     op_as_typed_op!();
 }
 
-impl EvalOp for BasicScaledMaskedSoftmax {
+impl EvalOp for ScaledMaskedSoftmax {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -78,7 +78,7 @@ impl EvalOp for BasicScaledMaskedSoftmax {
     }
 }
 
-impl TypedOp for BasicScaledMaskedSoftmax {
+impl TypedOp for ScaledMaskedSoftmax {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs.len() == 2);
         let (input, mask) = (inputs[0], inputs[1]);
@@ -151,7 +151,7 @@ pub fn as_scaled_masked_softmax_rule(
 
     let out = patch.wire_node(
         format!("{node_name}.scaled_masked_softmax"),
-        BasicScaledMaskedSoftmax { scale },
+        ScaledMaskedSoftmax { scale },
         &[input, mask],
     )?;
 

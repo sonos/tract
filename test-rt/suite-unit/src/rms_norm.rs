@@ -9,7 +9,7 @@ use tract_core::internal::*;
 use tract_core::ndarray::ArrayD;
 use tract_core::num_traits::Float;
 use tract_core::num_traits::FromPrimitive;
-use tract_transformers::ops::rms_norm::BasicRmsNorm;
+use tract_transformers::ops::rms_norm::RmsNorm;
 
 use crate::tensor;
 
@@ -71,7 +71,7 @@ where
 
         let output = model.wire_node(
             "rms_norm",
-            BasicRmsNorm { axis: self.axis, eps: tensor0(self.eps).into_arc_tensor() },
+            RmsNorm { axis: self.axis, eps: tensor0(self.eps).into_arc_tensor() },
             &[input],
         )?;
         model.set_output_outlets(&output)?;

@@ -8,7 +8,7 @@ use proptest::prelude::*;
 use tract_core::internal::*;
 use tract_core::ndarray::ArrayD;
 use tract_core::num_traits::Float;
-use tract_transformers::ops::scaled_masked_softmax::BasicScaledMaskedSoftmax;
+use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
 
 use crate::tensor;
 
@@ -67,7 +67,7 @@ where
 
         let output = model.wire_node(
             "scaled_masked_softmax",
-            BasicScaledMaskedSoftmax { scale: tensor0(self.scale).into_arc_tensor() },
+            ScaledMaskedSoftmax { scale: tensor0(self.scale).into_arc_tensor() },
             &[input, mask],
         )?;
         model.set_output_outlets(&output)?;

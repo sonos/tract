@@ -1,7 +1,6 @@
 mod fuse_axis_op;
 mod remove_matmul_broadcast;
 mod rewire_metal_sync;
-mod silu;
 mod untranspose_matmul_output;
 
 use tract_core::internal::*;
@@ -9,7 +8,6 @@ use tract_core::internal::*;
 pub use fuse_axis_op::{fuse_axis_op, fuse_move_axis};
 pub use remove_matmul_broadcast::remove_ggml_broadcast_pre_matmul;
 pub use rewire_metal_sync::{rewire_metal_sync, rewire_metal_sync_after_const};
-pub use silu::{as_silu_rule, BasicSilu};
 pub use untranspose_matmul_output::untranspose_matmul_output;
 
 #[macro_export]

@@ -26,13 +26,13 @@ fn de_gelu_approx(
 ) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let fast_impl = invocation.named_arg_as(builder, "fast_impl")?;
-    builder.wire(BasicGeluApprox { fast_impl }, &[input])
+    builder.wire(GeluApproximate { fast_impl }, &[input])
 }
 
 fn ser_gelu_approx(
     ast: &mut IntoAst,
     node: &TypedNode,
-    op: &BasicGeluApprox,
+    op: &GeluApproximate,
 ) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
     Ok(Some(invocation(
@@ -44,22 +44,22 @@ fn ser_gelu_approx(
 
 #[derive(Default, Clone, Debug, Hash)]
 /// NEW_GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)));
-pub struct BasicGeluApprox {
+pub struct GeluApproximate {
     pub fast_impl: bool,
 }
 
-impl Op for BasicGeluApprox {
+impl Op for GeluApproximate {
     fn name(&self) -> Cow<str> {
         if self.fast_impl {
-            "BasicGeluApproxFast".to_string().into()
+            "GeluApproximateFast".to_string().into()
         } else {
-            "BasicGeluApprox".to_string().into()
+            "GeluApproximate".to_string().into()
         }
     }
     op_as_typed_op!();
 }
 
-impl EvalOp for BasicGeluApprox {
+impl EvalOp for GeluApproximate {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -85,7 +85,7 @@ impl EvalOp for BasicGeluApprox {
     }
 }
 
-impl TypedOp for BasicGeluApprox {
+impl TypedOp for GeluApproximate {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let dt = inputs[0].datum_type;
         let fact = dt.fact(inputs[0].shape.clone());
@@ -186,7 +186,7 @@ pub fn as_gelu_approx_rule(
 
     let out = patch.wire_node(
         format!("{node_name}.gelu_approx"),
-        BasicGeluApprox { fast_impl },
+        GeluApproximate { fast_impl },
         &[gelu_approx_input[0]],
     )?;
     patch.shunt_outside(model, last_node_id.into(), out[0])?;

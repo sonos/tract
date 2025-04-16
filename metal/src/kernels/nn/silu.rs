@@ -31,8 +31,8 @@ impl Silu {
         input: &MetalTensor,
         output: &MetalTensor,
     ) -> Result<()> {
-        input.retain_until_completion();
-        output.retained_until_completion();
+        context.retain_tensor(input);
+        context.retain_tensor(output);
 
         ensure!(output.shape() == input.shape());
         ensure!(output.datum_type() == input.datum_type());
@@ -56,15 +56,16 @@ impl Silu {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::rewrite_rules::BasicSilu;
     use crate::IntoMetal;
+
+    use super::*;
     use derive_new::new;
     use num_traits::AsPrimitive;
     use num_traits::Float;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use tract_core::internal::Tensor;
+    use tract_transformers::ops::silu;
 
     fn test_case<F>(
         shape: &[usize],
@@ -93,7 +94,7 @@ mod tests {
                 .into_metal()?;
 
                 let cpu_output =
-                    BasicSilu.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
+                    silu::Silu.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
                 let metal_output = Silu.eval(context, &a)?;
 
                 cpu_output
@@ -192,7 +193,7 @@ mod tests {
         pub fn reference(&self) -> Result<Tensor> {
             let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?;
 
-            let cpu_output = BasicSilu.eval(tvec![a.into_tvalue()])?[0].clone().into_tensor();
+            let cpu_output = silu::Silu.eval(tvec![a.into_tvalue()])?[0].clone().into_tensor();
 
             Ok(cpu_output)
         }

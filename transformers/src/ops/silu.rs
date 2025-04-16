@@ -20,29 +20,29 @@ pub fn register(registry: &mut Registry) {
 
 fn de_silu(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
-    builder.wire(BasicSilu, &[input])
+    builder.wire(Silu, &[input])
 }
 
 fn ser_silu(
     ast: &mut IntoAst,
     node: &TypedNode,
-    _op: &BasicSilu,
+    _op: &Silu,
 ) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
     Ok(Some(invocation("tract_transformers_silu", &[input], &[])))
 }
 
 #[derive(Clone, Debug, Hash)]
-pub struct BasicSilu;
+pub struct Silu;
 
-impl Op for BasicSilu {
+impl Op for Silu {
     fn name(&self) -> Cow<str> {
-        "BasicSilu".to_string().into()
+        "Silu".to_string().into()
     }
     op_as_typed_op!();
 }
 
-impl EvalOp for BasicSilu {
+impl EvalOp for Silu {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -57,7 +57,7 @@ impl EvalOp for BasicSilu {
     }
 }
 
-impl TypedOp for BasicSilu {
+impl TypedOp for Silu {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let dt = inputs[0].datum_type;
         let fact = dt.fact(inputs[0].shape.clone());
@@ -93,7 +93,7 @@ pub fn as_silu_rule(
     rule_ensure!(mul_succ_op.0.is::<Mul>());
     rule_ensure!(mul_succ.inputs.contains(&node.inputs[0]));
 
-    let out = patch.wire_node(format!("{node_name}.silu"), BasicSilu, &silu_input)?;
+    let out = patch.wire_node(format!("{node_name}.silu"), Silu, &silu_input)?;
 
     patch.shunt_outside(model, mul_succ.id.into(), out[0])?;
 

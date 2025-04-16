@@ -29,13 +29,13 @@ fn de_apply_rope(
     let input = invocation.named_arg_as(builder, "input")?;
     let cos = invocation.named_arg_as(builder, "cos")?;
     let sin = invocation.named_arg_as(builder, "sin")?;
-    builder.wire(BasicApplyRope, &[input, cos, sin])
+    builder.wire(ApplyRope, &[input, cos, sin])
 }
 
 fn ser_apply_rope(
     ast: &mut IntoAst,
     node: &TypedNode,
-    _op: &BasicApplyRope,
+    _op: &ApplyRope,
 ) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
     let cos: Arc<RValue> = ast.mapping[&node.inputs[1]].clone();
@@ -44,16 +44,16 @@ fn ser_apply_rope(
 }
 
 #[derive(Clone, Debug, Hash)]
-pub struct BasicRotateHalf;
+pub struct RotateHalf;
 
-impl Op for BasicRotateHalf {
+impl Op for RotateHalf {
     fn name(&self) -> Cow<str> {
-        "BasicRotateHalf".to_string().into()
+        "RotateHalf".to_string().into()
     }
     op_as_typed_op!();
 }
 
-impl EvalOp for BasicRotateHalf {
+impl EvalOp for RotateHalf {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -64,7 +64,7 @@ impl EvalOp for BasicRotateHalf {
         let mut tensor = Tensor::zero_dt(input.datum_type(), &shape)?;
 
         let axis = shape.len() - 1;
-        ensure!(shape[axis] % 2 == 0, "BasicRotateHalf possible only if the most inner dimension of the shape {:?} is divible by 2", shape);
+        ensure!(shape[axis] % 2 == 0, "RotateHalf possible only if the most inner dimension of the shape {:?} is divible by 2", shape);
         let half = shape[axis] / 2;
         unsafe { tensor.assign_slice_unchecked(0..half, &input, half.., axis) };
         Neg {}.eval_in_place(&mut tensor, None)?;
@@ -73,7 +73,7 @@ impl EvalOp for BasicRotateHalf {
     }
 }
 
-impl TypedOp for BasicRotateHalf {
+impl TypedOp for RotateHalf {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let dt = inputs[0].datum_type;
         let fact = dt.fact(inputs[0].shape.clone());
@@ -138,36 +138,36 @@ pub fn as_rotate_half_rule(
         )?;
     }
 
-    let out = patch.wire_node(format!("{node_name}.rotate_half"), BasicRotateHalf, &inputs)?;
+    let out = patch.wire_node(format!("{node_name}.rotate_half"), RotateHalf, &inputs)?;
     patch.shunt_outside(model, node.id.into(), out[0])?;
 
     Ok(Some(patch))
 }
 
 #[derive(Clone, Debug, Hash)]
-pub struct BasicApplyRope;
+pub struct ApplyRope;
 
-impl BasicApplyRope {
+impl ApplyRope {
     pub fn is_supported_dt(dt: DatumType) -> bool {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 }
 
-impl Op for BasicApplyRope {
+impl Op for ApplyRope {
     fn name(&self) -> Cow<str> {
-        "BasicApplyRope".to_string().into()
+        "ApplyRope".to_string().into()
     }
     op_as_typed_op!();
 }
 
-impl EvalOp for BasicApplyRope {
+impl EvalOp for ApplyRope {
     fn is_stateless(&self) -> bool {
         true
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, cos, sin) = args_3!(inputs);
-        let rotated_input = args_1!(BasicRotateHalf.eval(tvec![input.clone()])?);
+        let rotated_input = args_1!(RotateHalf.eval(tvec![input.clone()])?);
         let mul_with_cos = Mul.eval(input.clone(), cos, input.datum_type())?;
         let mul_with_sin = Mul.eval(rotated_input, sin, input.datum_type())?;
         let output = Add.eval(mul_with_cos.into(), mul_with_sin.into(), input.datum_type())?;
@@ -175,7 +175,7 @@ impl EvalOp for BasicApplyRope {
     }
 }
 
-impl TypedOp for BasicApplyRope {
+impl TypedOp for ApplyRope {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let dt = inputs[0].datum_type;
         let fact = dt.fact(inputs[0].shape.clone());
@@ -208,7 +208,7 @@ pub fn as_apply_rope_rule(
     rule_ensure!(sin_mul_op.0.is::<Mul>());
 
     let Some((rotate_half_in_idx, rotate_half)) =
-        single_prev_node_as::<BasicRotateHalf>(model, sin_mul)
+        single_prev_node_as::<RotateHalf>(model, sin_mul)
     else {
         return Ok(None);
     };
@@ -234,16 +234,16 @@ pub fn as_apply_rope_rule(
 
     let sin = sin_mul.inputs[1 - rotate_half_in_idx];
 
-    rule_ensure!(BasicApplyRope::is_supported_dt(model.outlet_fact(apply_rope_in)?.datum_type));
-    rule_ensure!(BasicApplyRope::is_supported_dt(model.outlet_fact(cos)?.datum_type));
-    rule_ensure!(BasicApplyRope::is_supported_dt(model.outlet_fact(sin)?.datum_type));
+    rule_ensure!(ApplyRope::is_supported_dt(model.outlet_fact(apply_rope_in)?.datum_type));
+    rule_ensure!(ApplyRope::is_supported_dt(model.outlet_fact(cos)?.datum_type));
+    rule_ensure!(ApplyRope::is_supported_dt(model.outlet_fact(sin)?.datum_type));
 
     let mut patch = TypedModelPatch::default();
     let input = patch.tap_model(model, apply_rope_in)?;
     let cos = patch.tap_model(model, cos)?;
     let sin = patch.tap_model(model, sin)?;
     let out =
-        patch.wire_node(format!("{node_name}.apply_rope"), BasicApplyRope, &[input, cos, sin])?;
+        patch.wire_node(format!("{node_name}.apply_rope"), ApplyRope, &[input, cos, sin])?;
     patch.shunt_outside(model, node.id.into(), out[0])?;
     Ok(Some(patch))
 }
@@ -261,8 +261,8 @@ mod tests {
     {
         let a_len = a_shape.iter().product::<usize>();
         let input = Tensor::from_shape(a_shape, &(0..a_len).map(|f| f.as_()).collect::<Vec<F>>())?;
-        let rotated = BasicRotateHalf.eval(tvec![input.clone().into()])?;
-        let mut back = args_1!(BasicRotateHalf.eval(rotated)?).into_tensor();
+        let rotated = RotateHalf.eval(tvec![input.clone().into()])?;
+        let mut back = args_1!(RotateHalf.eval(rotated)?).into_tensor();
         Neg {}.eval_in_place(&mut back, None)?;
         back.close_enough(&input, Approximation::Close)?;
         Ok(())

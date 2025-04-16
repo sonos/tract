@@ -8,7 +8,7 @@ use proptest::prelude::*;
 use tract_core::internal::*;
 use tract_core::ndarray::ArrayD;
 use tract_core::num_traits::Float;
-use tract_transformers::ops::gelu_approx::BasicGeluApprox;
+use tract_transformers::ops::gelu_approximate::GeluApproximate;
 
 use crate::tensor;
 
@@ -53,7 +53,7 @@ where
         let input = model.add_source("input", TypedFact::shape_and_dt_of(&input))?;
 
         let output =
-            model.wire_node("gelu", BasicGeluApprox { fast_impl: self.fast_impl }, &[input])?;
+            model.wire_node("gelu", GeluApproximate { fast_impl: self.fast_impl }, &[input])?;
         model.set_output_outlets(&output)?;
 
         model = model.into_decluttered()?;
