@@ -1,16 +1,10 @@
 use tract_gpu::fact::GpuTypedFactExt;
-use crate::kernels::array::RotateHalf;
+use tract_gpu::sync::{GpuSync, GpuSyncKind};
 use crate::kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm};
-use crate::kernels::nn::{
-    ApplyRope, NewGelu, Reducer, RmsNorm, ScaledMaskedSoftmax, Silu, Softmax,
-};
-use crate::ops::{self, MetalSync, MetalSyncKind};
+
+use crate::{kernels, ops};
 
 use crate::rewrite_rules;
-use crate::rewrite_rules::{
-    BasicApplyRope, BasicNewGelu, BasicRmsNorm, BasicRotateHalf, BasicScaledMaskedSoftmax,
-    BasicSilu,
-};
 use tract_gpu::tensor::{IntoGpu, GpuTensorExt};
 use crate::utils::as_q40_fact;
 use tract_gpu::fact::GpuFact;
@@ -132,22 +126,22 @@ impl MetalTransform {
         model: &mut TypedModel,
         node: &TypedNode,
         mapping: &HashMap<OutletId, OutletId>,
-        sync_kind: MetalSyncKind,
+        sync_kind: GpuSyncKind,
     ) -> TractResult<TVec<OutletId>> {
         let mut mapped_inputs = tvec![];
         for (i_idx, i) in node.inputs.iter().enumerate() {
             let in_fact = model.outlet_fact_mut(mapping[i])?;
             match sync_kind {
-                MetalSyncKind::ToHost if in_fact.as_gpu_fact().is_some() => {
+                GpuSyncKind::ToHost if in_fact.as_gpu_fact().is_some() => {
                     mapped_inputs.push(
                         model.wire_node(
                             format!("{}.to-cpu-{i_idx}", node.name),
-                            MetalSync::new(sync_kind),
+                            GpuSync::new(sync_kind),
                             &[mapping[i]],
                         )?[0],
                     );
                 }
-                MetalSyncKind::ToDevice if in_fact.as_gpu_fact().is_none() => {
+                GpuSyncKind::ToDevice if in_fact.as_gpu_fact().is_none() => {
                     if let Some(ref konst) = in_fact.konst {
                         if konst.as_gpu_tensor().is_none() {
                             let konst_metal =
@@ -171,7 +165,7 @@ impl MetalTransform {
                     mapped_inputs.push(
                         model.wire_node(
                             format!("{}.to-gpu-{i_idx}", node.name),
-                            MetalSync::new(sync_kind),
+                            GpuSync::new(sync_kind),
                             &[mapping[i]],
                         )?[0],
                     );
@@ -191,12 +185,12 @@ impl MetalTransform {
     ) -> TractResult<TVec<OutletId>> {
         let mut outputs = tvec![];
         for (o_idx, o) in target_node_outlet_ids.into_iter().enumerate() {
-            // Add MetalSync op for model output
+            // Add GpuSync op for model output
             let is_src_output = src.outputs.contains(&OutletId::new(node.id, o_idx));
             if target.outlet_fact(o)?.as_gpu_fact().is_some() && is_src_output {
                 let sync_output = target.wire_node(
                     format!("{}.to-cpu-{o_idx}-out", node.name),
-                    MetalSync::new(MetalSyncKind::ToHost),
+                    GpuSync::new(GpuSyncKind::ToHost),
                     &[o],
                 )?[0];
                 outputs.push(sync_output);
@@ -276,7 +270,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
 
         if translatable {
             let mut gpu_inputs =
-                self.sync_inputs_if_required(target, node, mapping, MetalSyncKind::ToDevice)?;
+                self.sync_inputs_if_required(target, node, mapping, GpuSyncKind::ToDevice)?;
 
             let outlet_ids: TVec<OutletId> = if let Some(op) = node.op_as::<PrefixMatMul>() {
                 convert_matmul_to_metal(source, node, target, &mut gpu_inputs, op, self.gemm_impl)?
@@ -324,7 +318,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             self.sync_model_outputs_if_required(source, node, target, outlet_ids)
         } else {
             let cpu_inputs =
-                self.sync_inputs_if_required(target, node, mapping, MetalSyncKind::ToHost)?;
+                self.sync_inputs_if_required(target, node, mapping, GpuSyncKind::ToHost)?;
             target.wire_node(&node.name, node.op.clone(), &cpu_inputs)
         }
     }

@@ -15,7 +15,6 @@ pub mod scaled_masked_softmax;
 pub mod silu;
 pub mod slice;
 pub mod softmax;
-pub mod sync;
 
 pub use apply_rope::MetalApplyRope;
 pub use binary::MetalBinOp;
@@ -34,7 +33,6 @@ pub use scaled_masked_softmax::MetalScaledMaskedSoftmax;
 pub use silu::MetalSilu;
 pub use slice::MetalSlice;
 pub use softmax::MetalSoftmax;
-pub use sync::{MetalSync, MetalSyncKind};
 
 use tract_gpu::tensor::GpuTensor;
 use crate::MetalContext;

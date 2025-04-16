@@ -1,4 +1,4 @@
-use crate::ops::{MetalSync, MetalSyncKind};
+use tract_gpu::sync::{GpuSync, GpuSyncKind};
 use crate::rewrite_rules::{next_node, previous_node};
 use crate::rule_ensure;
 use tract_core::internal::*;
@@ -6,25 +6,26 @@ use tract_core::ops::konst::Const;
 use tract_core::tract_linalg::block_quant::BlockQuantValue;
 use tract_gpu::tensor::GpuTensorExt;
 
+// TODO: Move to GPU
 pub fn rewire_metal_sync(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
     _node_name: &str,
-    op: &MetalSync,
+    op: &GpuSync,
 ) -> TractResult<Option<TypedModelPatch>> {
     // Search pattern => ToCPU => ToGPU
 
-    rule_ensure!(op.kind == MetalSyncKind::ToDevice);
+    rule_ensure!(op.kind == GpuSyncKind::ToDevice);
 
     // Identify precessor ToHost
     let Some(sync_cpu_prec) = previous_node(model, node) else {
         return Ok(None);
     };
-    let Some(sync_cpu_prec_op) = sync_cpu_prec.op_as::<MetalSync>() else {
+    let Some(sync_cpu_prec_op) = sync_cpu_prec.op_as::<GpuSync>() else {
         return Ok(None);
     };
-    rule_ensure!(sync_cpu_prec_op.kind == MetalSyncKind::ToHost);
+    rule_ensure!(sync_cpu_prec_op.kind == GpuSyncKind::ToHost);
 
     let patch =
         TypedModelPatch::rewire(model, &sync_cpu_prec.inputs, &[node.id.into()], &|_p, xs| {
@@ -51,10 +52,10 @@ pub fn rewire_metal_sync_after_const(
     let Some(sync_cpu) = next_node(model, node) else {
         return Ok(None);
     };
-    let Some(sync_cpu_op) = sync_cpu.op_as::<MetalSync>() else {
+    let Some(sync_cpu_op) = sync_cpu.op_as::<GpuSync>() else {
         return Ok(None);
     };
-    rule_ensure!(sync_cpu_op.kind == MetalSyncKind::ToHost);
+    rule_ensure!(sync_cpu_op.kind == GpuSyncKind::ToHost);
 
     let mut opaque_fact: Option<Box<dyn OpaqueFact>> = None;
     if let Some(of) = cpu_const

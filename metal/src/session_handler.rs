@@ -50,7 +50,7 @@ pub fn get_metal_mem_pool(session: &SessionState) -> Option<&DeviceMemoryPool> {
 mod tests {
     use super::*;
     use crate::MetalTransform;
-    use tract_core::ops::einsum::BasicMatMul;
+    use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
     use tract_core::ops::math::{add, mul};
     use tract_core::ops::nn::{Softmax, SoftmaxExp};
     use tract_core::transform::ModelTransform;
@@ -105,7 +105,7 @@ mod tests {
         // Compute Q * K^T
         let qk = model.wire_node(
             format!("qk_{}", name),
-            BasicMatMul {
+            PrefixMatMul {
                 transpose_a: false,
                 transpose_b: true,
                 transpose_c: false,
@@ -163,7 +163,7 @@ mod tests {
         // Multiply with V
         let output = model.wire_node(
             format!("attention_output_{}", name),
-            BasicMatMul {
+            PrefixMatMul {
                 transpose_a: false,
                 transpose_b: false,
                 transpose_c: false,
