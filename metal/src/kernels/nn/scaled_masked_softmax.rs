@@ -43,9 +43,9 @@ impl ScaledMaskedSoftmax {
         mask: &MetalTensor,
         output: &MetalTensor,
     ) -> Result<()> {
-        context.retain_tensor(input);
-        context.retain_tensor(mask);
-        context.retain_tensor(output);
+        input.retained_until_completion();
+        mask.retained_until_completion();
+        output.retained_until_completion();
 
         ensure!(output.shape() == input.shape());
         ensure!(mask.rank() == 3 && input.rank() == 3);
@@ -70,6 +70,7 @@ impl ScaledMaskedSoftmax {
             encoder.set_slice(4, shape);
             encoder.set_slice(5, strides);
             encoder.set_slice(6, &mask_strides_nd3);
+            encoder.set_slice(7, output.strides());
             let grid_size = MTLSize { width: 1 as _, height: shape[1] as _, depth: shape[0] as _ };
             let group_size = MTLSize { width: usize::min(32, shape[2]) as _, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid_size, group_size);

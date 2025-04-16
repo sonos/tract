@@ -4,21 +4,21 @@ use crate::{MetalContext, MetalTensorExt};
 use tract_core::internal::*;
 
 #[derive(Clone, Debug, Default, Hash)]
-pub struct MetalGeluApprox {
+pub struct MetalGeluApproximate {
     pub fast_impl: bool,
 }
 
-impl Op for MetalGeluApprox {
+impl Op for MetalGeluApproximate {
     fn name(&self) -> Cow<str> {
-        "MetalGeluApprox".into()
+        "MetalGeluApproximate".into()
     }
 
     op_as_typed_op!();
 }
 
-crate::impl_eval_op_for_metal_op!(MetalGeluApprox);
+crate::impl_eval_op_for_metal_op!(MetalGeluApproximate);
 
-impl MetalEvalOp for MetalGeluApprox {
+impl MetalEvalOp for MetalGeluApproximate {
     fn metal_eval(
         &self,
         context: &MetalContext,
@@ -39,7 +39,7 @@ impl MetalEvalOp for MetalGeluApprox {
     }
 }
 
-impl TypedOp for MetalGeluApprox {
+impl TypedOp for MetalGeluApproximate {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         crate::utils::metal_facts_from_gpu(inputs, |facts| {
             let dt = facts[0].datum_type;
