@@ -2,7 +2,6 @@ use crate::kernels::nn::GeluApproximate;
 use crate::ops::MetalEvalOp;
 use crate::MetalContext;
 use tract_gpu::tensor::GpuTensorExt;
-use derive_new::new;
 use tract_core::internal::*;
 
 #[derive(Clone, Debug, Default, Hash)]

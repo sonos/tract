@@ -1,6 +1,7 @@
 pub mod context;
 pub mod tensor;
 pub mod memory;
+pub mod sync;
 pub mod utils;
 pub mod fact;
 

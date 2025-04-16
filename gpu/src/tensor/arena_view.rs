@@ -12,7 +12,7 @@ pub struct DeviceArenaStorage {
 }
 
 impl DeviceArenaStorage {
-    pub fn with_capacity(context: &MetalContext, capacity: usize) -> TractResult<Self> {
+    pub fn with_capacity(context: &impl GpuContext, capacity: usize) -> TractResult<Self> {
         let tensor = unsafe {
             Tensor::uninitialized_dt(DatumType::U8, &[capacity]).with_context(|| {
                 anyhow!("Error while allocating a tensor of {:?} bytes", capacity)

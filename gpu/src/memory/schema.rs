@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use tract_core::internal::*;
 
 use crate::fact::GpuTypedFactExt;
+use crate::sync::{GpuSync, GpuSyncKind};
 
 /// Requirement for node outputs from a memory perspective.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -61,9 +62,8 @@ pub fn eval_device_mem_req_for_nodes(
 
         let cpu_sync_in_next_nodes = next_nodes(model, node).is_some_and(|nodes| {
             nodes.iter().any(|it| {
-                true
-                //it.op_as::<crate::ops::MetalSync>()
-                //    .is_some_and(|op| op.kind == MetalSyncKind::ToHost)
+                it.op_as::<GpuSync>()
+                    .is_some_and(|op| op.kind == GpuSyncKind::ToHost)
             })
         });
 

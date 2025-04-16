@@ -262,7 +262,7 @@ mod tests {
         pub fn run(&self) -> Result<Tensor> {
             objc::rc::autoreleasepool(|| {
                 crate::METAL_CONTEXT.with_borrow(|context| {
-                    let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_metal()?;
+                    let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_gpu()?;
                     let metal_output = GeluApproximate::accurate().eval(context, &a)?;
                     Ok(metal_output.to_cpu()?.into_tensor())
                 })
