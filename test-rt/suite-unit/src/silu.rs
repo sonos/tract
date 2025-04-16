@@ -6,7 +6,7 @@ use proptest::prelude::*;
 use tract_core::internal::*;
 use tract_core::ndarray::ArrayD;
 use tract_core::num_traits::Float;
-use tract_transformers::ops::silu::BasicSilu;
+use tract_transformers::ops::silu::Silu;
 
 use crate::tensor;
 
@@ -46,7 +46,7 @@ where
         let input = self.input.clone().into_tensor();
         let input = model.add_source("input", TypedFact::shape_and_dt_of(&input))?;
 
-        let output = model.wire_node("silu", BasicSilu, &[input])?;
+        let output = model.wire_node("silu", Silu, &[input])?;
         model.set_output_outlets(&output)?;
 
         model = model.into_decluttered()?;

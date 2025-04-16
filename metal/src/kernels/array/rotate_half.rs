@@ -87,7 +87,7 @@ mod tests {
     use crate::IntoMetal;
     use num_traits::AsPrimitive;
     use tract_core::internal::Tensor;
-    use tract_transformers::ops::apply_rope::BasicRotateHalf;
+    use tract_transformers::ops::apply_rope;
 
     fn run_test_case<F>(shape: &[usize]) -> Result<()>
     where
@@ -106,7 +106,7 @@ mod tests {
                 let metal_a = a.clone().into_metal()?;
 
                 let cpu_output =
-                    BasicRotateHalf.eval(tvec![a.clone().into()])?[0].clone().into_tensor();
+                apply_rope::RotateHalf.eval(tvec![a.clone().into()])?[0].clone().into_tensor();
                 let metal_output = RotateHalf.eval(context, &metal_a)?;
 
                 cpu_output

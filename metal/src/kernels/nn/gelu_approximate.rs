@@ -5,11 +5,11 @@ use metal::MTLSize;
 use tract_core::internal::*;
 
 #[derive(Debug, Clone, Default, Copy, PartialEq, Eq, Hash)]
-pub struct GeluApprox {
+pub struct GeluApproximate {
     pub fast_impl: bool,
 }
 
-impl GeluApprox {
+impl GeluApproximate {
     pub fn fast() -> Self {
         Self { fast_impl: true }
     }
@@ -77,10 +77,10 @@ mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use tract_core::internal::Tensor;
-    use tract_transformers::ops::gelu_approx::BasicGeluApprox;
+    use tract_transformers::ops::gelu_approximate;
 
     fn test_case<F>(
-        gelu_approx: GeluApprox,
+        gelu_approx: GeluApproximate,
         shape: &[usize],
         offset: f32,
         scale: f32,
@@ -106,7 +106,7 @@ mod tests {
                 )?
                 .into_metal()?;
 
-                let cpu_output = BasicGeluApprox::default()
+                let cpu_output = gelu_approximate::GeluApproximate::default()
                     .eval(tvec![a.to_cpu()?.into_tvalue()])?[0]
                     .clone()
                     .into_tensor();
@@ -131,21 +131,21 @@ mod tests {
     #[test]
     fn test_gelu_approx() -> Result<()> {
         test_case::<f32>(
-            GeluApprox::accurate(),
+            GeluApproximate::accurate(),
             &[4, 4],
             -0.0,
             1.0 / 100.0,
             Approximation::Approximate,
         )?;
         test_case::<f32>(
-            GeluApprox::accurate(),
+            GeluApproximate::accurate(),
             &[4, 4],
             -6.0,
             1.0 / 1000.0,
             Approximation::Approximate,
         )?;
         test_case::<f16>(
-            GeluApprox::accurate(),
+            GeluApproximate::accurate(),
             &[4, 4],
             -6.0,
             1.0 / 1000.0,
@@ -156,21 +156,21 @@ mod tests {
     #[test]
     fn test_gelu_approx_fast() -> Result<()> {
         test_case::<f32>(
-            GeluApprox::fast(),
+            GeluApproximate::fast(),
             &[4, 4],
             -0.0,
             1.0 / 100.0,
             Approximation::SuperApproximate,
         )?;
         test_case::<f32>(
-            GeluApprox::fast(),
+            GeluApproximate::fast(),
             &[4, 4],
             -6.0,
             1.0 / 1000.0,
             Approximation::SuperApproximate,
         )?;
         test_case::<f16>(
-            GeluApprox::fast(),
+            GeluApproximate::fast(),
             &[4, 4],
             -6.0,
             1.0 / 1000.0,
@@ -253,7 +253,7 @@ mod tests {
             let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?;
 
             let cpu_output =
-                BasicGeluApprox::default().eval(tvec![a.into_tvalue()])?[0].clone().into_tensor();
+            gelu_approximate::GeluApproximate::default().eval(tvec![a.into_tvalue()])?[0].clone().into_tensor();
 
             Ok(cpu_output)
         }
@@ -262,7 +262,7 @@ mod tests {
             objc::rc::autoreleasepool(|| {
                 crate::METAL_CONTEXT.with_borrow(|context| {
                     let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_metal()?;
-                    let metal_output = GeluApprox::accurate().eval(context, &a)?;
+                    let metal_output = GeluApproximate::accurate().eval(context, &a)?;
                     Ok(metal_output.to_cpu()?.into_tensor())
                 })
             })

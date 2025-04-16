@@ -27,13 +27,13 @@ fn de_rms_norm(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
     let input = invocation.named_arg_as(builder, "input")?;
     let axis: usize = invocation.named_arg_as(builder, "axis")?;
     let eps = invocation.named_arg_as(builder, "eps")?;
-    builder.wire(BasicRmsNorm { axis, eps }, &[input])
+    builder.wire(RmsNorm { axis, eps }, &[input])
 }
 
 fn ser_rms_norm(
     ast: &mut IntoAst,
     node: &TypedNode,
-    op: &BasicRmsNorm,
+    op: &RmsNorm,
 ) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
     Ok(Some(invocation(
@@ -44,14 +44,14 @@ fn ser_rms_norm(
 }
 
 #[derive(Clone, Debug, Hash)]
-pub struct BasicRmsNorm {
+pub struct RmsNorm {
     pub axis: usize,
     pub eps: Arc<Tensor>,
 }
 
-impl Op for BasicRmsNorm {
+impl Op for RmsNorm {
     fn name(&self) -> Cow<str> {
-        "BasicRmsNorm".to_string().into()
+        "RmsNorm".to_string().into()
     }
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!("axis: {:?}, eps: {:?}", self.axis, self.eps)])
@@ -59,7 +59,7 @@ impl Op for BasicRmsNorm {
     op_as_typed_op!();
 }
 
-impl EvalOp for BasicRmsNorm {
+impl EvalOp for RmsNorm {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -77,7 +77,7 @@ impl EvalOp for BasicRmsNorm {
     }
 }
 
-impl TypedOp for BasicRmsNorm {
+impl TypedOp for RmsNorm {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let dt = inputs[0].datum_type;
         let fact = dt.fact(inputs[0].shape.clone());
@@ -143,7 +143,7 @@ pub fn as_rms_norm_rule(
     let mut patch = TypedModelPatch::default();
     let rsm_input = patch.taps(model, &node.inputs)?;
     let out =
-        patch.wire_node(format!("{node_name}.rms_norm"), BasicRmsNorm { axis, eps }, &rsm_input)?;
+        patch.wire_node(format!("{node_name}.rms_norm"), RmsNorm { axis, eps }, &rsm_input)?;
 
     patch.shunt_outside(model, mul_succ.id.into(), out[0])?;
     Ok(Some(patch))
@@ -155,7 +155,7 @@ pub fn remove_rms_norm_cast(
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,
-    op: &BasicRmsNorm,
+    op: &RmsNorm,
 ) -> TractResult<Option<TypedModelPatch>> {
     // Identify Cast from F16 To F32
     let Some(cast_in_node) = previous_node(model, node)
@@ -183,7 +183,7 @@ pub fn remove_rms_norm_cast(
     let rsm_input = patch.taps(model, &cast_in_node.inputs)?;
     let out = patch.wire_node(
         format!("{node_name}.without-cast"),
-        BasicRmsNorm { axis: op.axis, eps },
+        RmsNorm { axis: op.axis, eps },
         &rsm_input,
     )?;
     patch.shunt_outside(model, cast_out_node.id.into(), out[0])?;

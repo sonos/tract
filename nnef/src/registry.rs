@@ -50,11 +50,11 @@ pub struct Registry {
     pub aliases: Vec<Identifier>,
     pub fragments: HashMap<Identifier, FragmentDef>,
     pub primitives: HashMap<Identifier, PrimitiveDecl>,
+    pub transforms: GetTransform,
     pub unit_element_wise_ops: Vec<(Identifier, Box<dyn ElementWiseMiniOp>)>,
     pub element_wise_ops: Vec<(Identifier, TypeId, FromTract, Vec<ast::Parameter>, ToTract)>,
     pub binary_ops: Vec<BinOp>,
     pub from_tract: HashMap<TypeId, FromTract>,
-    pub transforms: GetTransform,
     pub extensions: Vec<Extension>,
 }
 

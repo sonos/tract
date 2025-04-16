@@ -1,4 +1,4 @@
-use crate::kernels::nn::GeluApprox;
+use crate::kernels::nn::GeluApproximate;
 use crate::ops::MetalEvalOp;
 use crate::{MetalContext, MetalTensorExt};
 use tract_core::internal::*;
@@ -34,7 +34,7 @@ impl MetalEvalOp for MetalGeluApprox {
             input_metal.datum_type(),
             input_metal.shape(),
         )?;
-        GeluApprox { fast_impl: self.fast_impl }.dispatch_eval(context, input_metal, &output)?;
+        GeluApproximate { fast_impl: self.fast_impl }.dispatch_eval(context, input_metal, &output)?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }

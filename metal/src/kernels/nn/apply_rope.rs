@@ -109,7 +109,7 @@ mod tests {
     use super::*;
     use crate::IntoMetal;
     use tract_core::internal::Tensor;
-    use tract_transformers::ops::apply_rope::BasicApplyRope;
+    use tract_transformers::ops::apply_rope;
 
     fn run_test_case(shape: &[usize]) -> Result<()> {
         objc::rc::autoreleasepool(|| {
@@ -135,7 +135,7 @@ mod tests {
                 let metal_sin = sin.clone().into_metal()?;
                 let metal_cos = cos.clone().into_metal()?;
 
-                let cpu_output = BasicApplyRope.eval(tvec![
+                let cpu_output = apply_rope::ApplyRope.eval(tvec![
                     a.clone().into(),
                     cos.clone().into(),
                     sin.clone().into(),

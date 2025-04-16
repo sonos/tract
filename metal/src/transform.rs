@@ -1,9 +1,7 @@
 use crate::fact::MetalTypedFactExt;
-use crate::kernels::array::RotateHalf;
-use crate::kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm};
-use crate::kernels::nn::{
-    ApplyRope, GeluApprox, Reducer, RmsNorm, ScaledMaskedSoftmax, Silu, Softmax,
-};
+use crate::kernels;
+use kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm};
+
 use crate::ops::{self, MetalSync, MetalSyncKind};
 
 use crate::rewrite_rules;
@@ -27,11 +25,11 @@ use tract_core::ops::logic::Comp;
 use tract_core::ops::nn::{Reduce, Softmax as CoreSoftmax};
 use tract_core::transform::ModelTransform;
 use tract_itertools::Itertools;
-use tract_transformers::ops::apply_rope::{BasicApplyRope, BasicRotateHalf};
-use tract_transformers::ops::gelu_approx::BasicGeluApprox;
-use tract_transformers::ops::rms_norm::BasicRmsNorm;
-use tract_transformers::ops::scaled_masked_softmax::BasicScaledMaskedSoftmax;
-use tract_transformers::ops::silu::BasicSilu;
+use tract_transformers::ops::apply_rope::{ApplyRope, RotateHalf};
+use tract_transformers::ops::gelu_approximate::GeluApproximate;
+use tract_transformers::ops::rms_norm::RmsNorm;
+use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
+use tract_transformers::ops::silu::Silu;
 
 impl MetalGemmImplKind {
     pub fn variants() -> Vec<MetalGemmImplKind> {
@@ -235,29 +233,29 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
             || node.op_is::<Slice>()
             || node.op_is::<TypedConcat>()
             || node.op_as::<Reduce>().is_some_and(|op| {
-                Reducer::is_supported_dt(input_dts[0])
+                kernels::nn::Reducer::is_supported_dt(input_dts[0])
                     && ops::MetalReduce::from_tract_core(op).is_ok()
             })
             || node.op_as::<CoreSoftmax>().is_some_and(|op| {
-                Softmax::is_supported_dt(input_dts[0])
+                kernels::nn::Softmax::is_supported_dt(input_dts[0])
                     && ops::MetalSoftmax::from_tract_core(op).is_ok()
             })
             || node
-                .op_as::<BasicScaledMaskedSoftmax>()
-                .is_some_and(|_| ScaledMaskedSoftmax::is_supported_dt(input_dts[0]))
+                .op_as::<ScaledMaskedSoftmax>()
+                .is_some_and(|_| kernels::nn::ScaledMaskedSoftmax::is_supported_dt(input_dts[0]))
             || node
-                .op_as::<BasicRmsNorm>()
-                .is_some_and(|_| RmsNorm::is_supported_dt(input_dts[0]))
+                .op_as::<RmsNorm>()
+                .is_some_and(|_| kernels::nn::RmsNorm::is_supported_dt(input_dts[0]))
             || node
-                .op_as::<BasicRotateHalf>()
-                .is_some_and(|_| RotateHalf::is_supported_dt(input_dts[0]))
+                .op_as::<RotateHalf>()
+                .is_some_and(|_| kernels::array::RotateHalf::is_supported_dt(input_dts[0]))
             || node
-                .op_as::<BasicApplyRope>()
-                .is_some_and(|_| ApplyRope::is_supported_dt(input_dts[0]))
-            || node.op_as::<BasicSilu>().is_some_and(|_| Silu::is_supported_dt(input_dts[0]))
+                .op_as::<ApplyRope>()
+                .is_some_and(|_| kernels::nn::ApplyRope::is_supported_dt(input_dts[0]))
+            || node.op_as::<Silu>().is_some_and(|_| kernels::nn::Silu::is_supported_dt(input_dts[0]))
             || node
-                .op_as::<BasicGeluApprox>()
-                .is_some_and(|_| GeluApprox::is_supported_dt(input_dts[0]))))
+                .op_as::<GeluApproximate>()
+                .is_some_and(|_| kernels::nn::GeluApproximate::is_supported_dt(input_dts[0]))))
 }
 
 impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for MetalTransform {
@@ -300,17 +298,17 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                     Box::new(ops::MetalReduce::from_tract_core(op).unwrap())
                 } else if let Some(op) = node.op_as::<CoreSoftmax>() {
                     Box::new(ops::MetalSoftmax::from_tract_core(op).unwrap())
-                } else if let Some(op) = node.op_as::<BasicScaledMaskedSoftmax>() {
+                } else if let Some(op) = node.op_as::<ScaledMaskedSoftmax>() {
                     Box::new(ops::MetalScaledMaskedSoftmax { scale: op.scale.clone() })
-                } else if let Some(op) = node.op_as::<BasicRmsNorm>() {
+                } else if let Some(op) = node.op_as::<RmsNorm>() {
                     Box::new(ops::MetalRmsNorm::new(op.axis, op.eps.clone()))
-                } else if let Some(_op) = node.op_as::<BasicRotateHalf>() {
+                } else if let Some(_op) = node.op_as::<RotateHalf>() {
                     Box::new(ops::MetalRotateHalf)
-                } else if let Some(_op) = node.op_as::<BasicApplyRope>() {
+                } else if let Some(_op) = node.op_as::<ApplyRope>() {
                     Box::new(ops::MetalApplyRope)
-                } else if let Some(_op) = node.op_as::<BasicSilu>() {
+                } else if let Some(_op) = node.op_as::<Silu>() {
                     Box::new(ops::MetalSilu)
-                } else if let Some(op) = node.op_as::<BasicGeluApprox>() {
+                } else if let Some(op) = node.op_as::<GeluApproximate>() {
                     Box::new(ops::MetalGeluApprox { fast_impl: op.fast_impl })
                 } else {
                     bail!("Failed to translate a supported Metal Op")

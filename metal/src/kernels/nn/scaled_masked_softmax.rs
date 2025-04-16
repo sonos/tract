@@ -43,9 +43,9 @@ impl ScaledMaskedSoftmax {
         mask: &MetalTensor,
         output: &MetalTensor,
     ) -> Result<()> {
-        input.retained_until_completion();
-        mask.retained_until_completion();
-        output.retained_until_completion();
+        context.retain_tensor(input);
+        context.retain_tensor(mask);
+        context.retain_tensor(output);
 
         ensure!(output.shape() == input.shape());
         ensure!(mask.rank() == 3 && input.rank() == 3);
@@ -70,8 +70,6 @@ impl ScaledMaskedSoftmax {
             encoder.set_slice(4, shape);
             encoder.set_slice(5, strides);
             encoder.set_slice(6, &mask_strides_nd3);
-            encoder.set_slice(7, output.strides());
-
             let grid_size = MTLSize { width: 1 as _, height: shape[1] as _, depth: shape[0] as _ };
             let group_size = MTLSize { width: usize::min(32, shape[2]) as _, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid_size, group_size);
@@ -82,8 +80,9 @@ impl ScaledMaskedSoftmax {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::IntoMetal;
+
+    use super::*;
     use derive_new::new;
     use num_traits::AsPrimitive;
     use num_traits::Float;
@@ -91,7 +90,7 @@ mod tests {
     use proptest::prelude::*;
     use proptest::strategy::Strategy;
     use tract_core::internal::Tensor;
-    use tract_transformers::ops::scaled_masked_softmax::BasicScaledMaskedSoftmax;
+    use tract_transformers::ops::scaled_masked_softmax;
 
     #[test]
     fn test_scaled_masked_softmax_f32() -> Result<()> {
@@ -108,7 +107,7 @@ mod tests {
                 )?
                 .into_metal()?;
 
-                let cpu = BasicScaledMaskedSoftmax { scale: scale.clone() };
+                let cpu = scaled_masked_softmax::ScaledMaskedSoftmax { scale: scale.clone() };
 
                 let cpu_output = cpu
                     .eval(tvec![a.to_cpu()?.into_tvalue(), mask.to_cpu()?.into_tvalue()])?[0]
@@ -139,7 +138,7 @@ mod tests {
                 )?
                 .into_metal()?;
 
-                let cpu = BasicScaledMaskedSoftmax { scale: scale.clone() };
+                let cpu = scaled_masked_softmax::ScaledMaskedSoftmax { scale: scale.clone() };
 
                 let cpu_output = cpu
                     .eval(tvec![a.to_cpu()?.into_tvalue(), mask.to_cpu()?.into_tvalue()])?[0]
@@ -232,7 +231,7 @@ mod tests {
             let mask = Tensor::from_shape(self.mask_shape.as_slice(), &self.mask)?;
             let scale: Arc<_> = tensor0::<F>(0.125f32.as_()).into();
 
-            let cpu_output = BasicScaledMaskedSoftmax { scale }
+            let cpu_output = scaled_masked_softmax::ScaledMaskedSoftmax { scale }
                 .eval(tvec![a.into_tvalue(), mask.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();

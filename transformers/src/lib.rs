@@ -21,7 +21,7 @@ pub fn register(registry: &mut Registry) {
 
     ops::rms_norm::register(registry);
     ops::silu::register(registry);
-    ops::gelu_approx::register(registry);
+    ops::gelu_approximate::register(registry);
     ops::apply_rope::register(registry);
     ops::scaled_masked_softmax::register(registry);
 }
