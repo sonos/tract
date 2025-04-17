@@ -13,7 +13,7 @@ pub mod conv_f32;
 pub mod conv_q;
 pub mod deconv;
 pub mod downsample;
-pub mod gelu_approx;
+pub mod gelu_approximate;
 pub mod matmul_q40;
 pub mod q_binary;
 pub mod q_elmwise;
@@ -35,7 +35,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("q_flavours", q_flavours::suite()?);
     suite.add("rms_norm", rms_norm::suite()?);
     suite.add("apply_rope", apply_rope::suite()?);
-    suite.add("gelu_approx", gelu_approx::suite()?);
+    suite.add("gelu_approximate", gelu_approximate::suite()?);
     suite.add("scaled_masked_softmax", scaled_masked_softmax::suite()?);
     suite.add("silu", silu::suite()?);
     suite.add("slice", slice::suite()?);
