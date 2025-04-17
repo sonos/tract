@@ -13,7 +13,7 @@ use tract_transformers::ops::gelu_approximate::GeluApproximate;
 use crate::tensor;
 
 #[derive(Debug, Clone)]
-pub struct GeluApproxProblem<F>
+pub struct GeluApproximateProblem<F>
 where
     F: Datum + Float,
 {
@@ -21,12 +21,12 @@ where
     fast_impl: bool,
 }
 
-impl<F> Arbitrary for GeluApproxProblem<F>
+impl<F> Arbitrary for GeluApproximateProblem<F>
 where
     F: Datum + Float,
 {
     type Parameters = ();
-    type Strategy = BoxedStrategy<GeluApproxProblem<F>>;
+    type Strategy = BoxedStrategy<GeluApproximateProblem<F>>;
 
     fn arbitrary_with(_params: Self::Parameters) -> Self::Strategy {
         (0usize..5)
@@ -42,7 +42,7 @@ where
     }
 }
 
-impl<F> GeluApproxProblem<F>
+impl<F> GeluApproximateProblem<F>
 where
     F: Datum + Float,
     f32: From<F>,
@@ -75,7 +75,7 @@ where
     }
 }
 
-impl<F> Test for GeluApproxProblem<F>
+impl<F> Test for GeluApproximateProblem<F>
 where
     F: Datum + Float,
     f32: From<F>,
@@ -102,8 +102,8 @@ where
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
 
-    suite.add_arbitrary::<GeluApproxProblem<f32>>("proptest_f32", ());
-    suite.add_arbitrary::<GeluApproxProblem<f16>>("proptest_f16", ());
+    suite.add_arbitrary::<GeluApproximateProblem<f32>>("proptest_f32", ());
+    suite.add_arbitrary::<GeluApproximateProblem<f16>>("proptest_f16", ());
 
     Ok(suite)
 }
