@@ -15,8 +15,7 @@ fi
 echo TRACT_RUN=$TRACT_RUN
 model=$1
 q=$2
-generation=current
-
+generation=501
 
 case $model in
     OpenELM-270M) id=apple--OpenELM-270M-$q;;
