@@ -15,6 +15,9 @@ panel_extractor!(kernel_packed_64_q40_to_f16 as packed_64_q40_to_f16(
 
 #[target_feature(enable = "fp16")]
 unsafe fn kernel_packed_64_q40_to_f16(input: *const u8, output: *mut u8, k: usize) {
+    if k == 0 {
+        return;
+    }
     let lookup_table: [u8; 16] = [
         0xc8, 0xc7, 0xc6, 0xc5, 0xc4, 0xc2, 0xc0, 0xbc, 0x00, 0x3c, 0x40, 0x42, 0x44, 0x45, 0x46,
         0x47,
