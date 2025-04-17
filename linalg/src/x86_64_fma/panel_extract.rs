@@ -19,6 +19,9 @@ panel_extractor!(kernel_packed_32_f16_to_f32 as packed_32_f16_to_f32(
 
 #[target_feature(enable = "avx2")]
 unsafe fn kernel_packed_32_q40_to_f32(input: *const u8, output: *mut u8, k: usize) {
+    if k == 0 {
+        return;
+    }
     debug_assert!(k % 32 == 0);
     debug_assert!(output as usize % 32 == 0);
     std::arch::asm!("
@@ -94,6 +97,9 @@ unsafe fn kernel_packed_32_q40_to_f32(input: *const u8, output: *mut u8, k: usiz
 
 #[target_feature(enable = "avx2")]
 unsafe fn kernel_packed_32_f16_to_f32(input: *const u8, output: *mut u8, k: usize) {
+    if k == 0 {
+        return;
+    }
     debug_assert!(output as usize % 32 == 0);
     std::arch::asm!("
     2:
