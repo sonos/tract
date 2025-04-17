@@ -162,7 +162,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
     [
         "apply_rope",
         "deconv",
-        "gelu_approx",
+        "gelu_approximate",
         "q_flavours",
         "q_binary",
         "q_elmwise",
