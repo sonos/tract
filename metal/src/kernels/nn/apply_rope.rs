@@ -61,12 +61,8 @@ impl ApplyRope {
         ensure!(input.rank() >= 2 && input.rank() <= 4);
         ensure!(cos.rank() <= input.rank());
 
-        let (cos, sin) = if cos.rank() != input.rank() {
-            let padded_shape = [&tvec![1; input.rank() - cos.rank()], cos.shape()].concat();
-            (&cos.reshaped(padded_shape.clone())?, &sin.reshaped(padded_shape)?)
-        } else {
-            (cos, sin)
-        };
+        let padded_shape = [&tvec![1; input.rank() - cos.rank()], cos.shape()].concat();
+        let (padded_cos, padded_sin) = (cos.reshaped(padded_shape.clone())?, sin.reshaped(padded_shape)?);
 
         ensure!(
             input.shape()[input.rank() - 1] % 2 == 0,
@@ -75,7 +71,7 @@ impl ApplyRope {
         );
 
         let cos_sin_strides =
-            crate::utils::compute_broadcast_strides::<usize>(cos.shape(), cos.strides())?;
+            crate::utils::compute_broadcast_strides::<usize>(padded_cos.shape(), padded_sin.strides())?;
 
         let broadcast_kind = BroadcastKind::from_rank(input.rank())
             .with_context(|| anyhow!("Unsupported rank for ApplyRope op: {:?}", input.shape(),))?;
@@ -87,8 +83,8 @@ impl ApplyRope {
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
             encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
-            encoder.set_metal_tensor(1, cos, metal::MTLResourceUsage::Read);
-            encoder.set_metal_tensor(2, sin, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(1, &padded_cos, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(2, &padded_sin, metal::MTLResourceUsage::Read);
             encoder.set_metal_tensor(3, output, metal::MTLResourceUsage::Write);
             encoder.set_slice(4, input.shape());
             encoder.set_slice(5, input.strides());
