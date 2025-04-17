@@ -21,7 +21,7 @@ use tract_ndarray::prelude::*;
 use tract_pulse::internal::*;
 
 mod conv_plus_conv;
-//mod deconv;
+mod deconv;
 mod delay_plus_downsample;
 mod delay_plus_pool;
 mod einsum;
