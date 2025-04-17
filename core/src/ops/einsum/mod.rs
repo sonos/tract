@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 use std::fmt::Debug;
 
 use crate::internal::*;
+use crate::ops::array::MultiBroadcastTo;
 use crate::tract_data::itertools::Itertools;
 
 mod eval;
@@ -316,6 +317,9 @@ impl TypedOp for EinSum {
         if let Some(patch) = declutter_reshape_folding_input_axis(self, session, model, node)? {
             return Ok(Some(patch));
         }
+        if let Some(patch) = declutter_broadcast(self, session, model, node)? {
+            return Ok(Some(patch));
+        }
         Ok(None)
     }
 
@@ -395,6 +399,26 @@ fn declutter_reshape_folding_input_axis(
         }
         patch.shunt_outside(model, node.id.into(), wire[0])?;
         return Ok(Some(patch));
+    }
+    Ok(None)
+}
+
+fn declutter_broadcast(
+    op: &EinSum,
+    _session: &mut crate::optim::OptimizerSession,
+    model: &TypedModel,
+    node: &TypedNode,
+) -> TractResult<Option<TypedModelPatch>> {
+    for (ix, outlet) in node.inputs.iter().enumerate() {
+        let prec = model.node(outlet.node);
+        if prec.op_is::<MultiBroadcastTo>() && prec.outputs[0].successors.len() == 1 {
+            let mut patch = TypedModelPatch::default();
+            let mut wires = patch.taps(model, &node.inputs)?;
+            wires[ix] = patch.tap_model(model, prec.inputs[0])?;
+            let wire = patch.wire_node(&node.name, op.clone(), &wires)?[0];
+            patch.shunt_outside(model, node.id.into(), wire)?;
+            return Ok(Some(patch));
+        }
     }
     Ok(None)
 }
