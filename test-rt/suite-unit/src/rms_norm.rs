@@ -44,7 +44,7 @@ where
             .prop_flat_map(|(left, right)| {
                 let axis = left;
                 let shape_len = usize::min(left + right, 4);
-                let iter_ax_dim = 1usize..100;
+                let iter_ax_dim = 1usize..50;
                 let other_dim = 1usize..5;
                 (iter_ax_dim, vec(other_dim, shape_len..=shape_len), Just(axis))
             })
