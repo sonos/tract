@@ -126,6 +126,16 @@ macro_rules! panel_extractor {
             mod [<test_$id>] {
                 use super::$id;
                 #[test]
+                fn repack_0block_1panel() {
+                    $crate::frame::mmm::panel_extract::test::test_packing(&$id, 0, 1).unwrap();
+                }
+
+                #[test]
+                fn repack_1block_0panel() {
+                    $crate::frame::mmm::panel_extract::test::test_packing(&$id, 1, 0).unwrap();
+                }
+
+                #[test]
                 fn repack_1block_1panel() {
                     $crate::frame::mmm::panel_extract::test::test_packing(&$id, 1, 1).unwrap();
                 }
