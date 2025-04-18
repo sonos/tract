@@ -1,7 +1,7 @@
 #![allow(clippy::type_complexity)]
 use tract_itertools::Itertools;
 use tract_linalg::block_quant::BlockQuantFact;
-use tract_linalg::mmm::{MMMInputFormat, MatMatMul, PanelExtractor};
+use tract_linalg::mmm::{ImplementationQuality, MMMInputFormat, MatMatMul, PanelExtractor};
 use tract_linalg::WeightType;
 
 use crate::internal::*;
@@ -24,7 +24,9 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
                 Some(k as usize),
                 Some(n as usize),
             ) {
-                return Ok((ModePicker::Single, vec![(mmm, 0, None)]));
+                if mmm.quality() == ImplementationQuality::ManuallyOptimized {
+                    return Ok((ModePicker::Single, vec![(mmm, 0, None)]));
+                }
             }
         };
     }
