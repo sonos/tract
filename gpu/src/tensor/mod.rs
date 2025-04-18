@@ -178,8 +178,7 @@ impl DeviceTensor {
     /// Synchronize the GPU Tensor by completing all current
     /// commands on GPU and returns the inner tensor.
     pub fn to_cpu(&self) -> Result<Arc<Tensor>> {
-        let gpu_context = get_device()?;
-        gpu_context.synchronize()?;
+        get_device()?.synchronize()?;
 
         Ok(match self {
             Self::Owned(o) => o

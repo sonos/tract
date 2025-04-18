@@ -12,13 +12,13 @@ pub struct DeviceArenaStorage {
 }
 
 impl DeviceArenaStorage {
-    pub fn with_capacity(context: Box<dyn GpuDevice>, capacity: usize) -> TractResult<Self> {
+    pub fn with_capacity(device: Box<dyn GpuDevice>, capacity: usize) -> TractResult<Self> {
         let tensor = unsafe {
             Tensor::uninitialized_dt(DatumType::U8, &[capacity]).with_context(|| {
                 anyhow!("Error while allocating a tensor of {:?} bytes", capacity)
             })?
         };
-        let buffer = context.buffer_from_slice(tensor.as_bytes());
+        let buffer = device.buffer_from_slice(tensor.as_bytes());
 
         Ok(DeviceArenaStorage { tensor, buffer })
     }

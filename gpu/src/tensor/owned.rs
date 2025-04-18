@@ -148,7 +148,6 @@ impl Hash for OwnedDeviceTensor {
 impl OwnedDeviceTensor {
     /// Create a owned gpu tensor from a cpu tensor.
     pub fn from_tensor<T: Into<MValue>>(tensor: T) -> Result<Self> {
-        let gpu_context = get_device()?;
         let m_value: MValue = tensor.into();
         let tensor_view = m_value.view();
         ensure!(
@@ -161,7 +160,7 @@ impl OwnedDeviceTensor {
             .map(|bqv| bqv.value.as_bytes())
             .unwrap_or(tensor_view.tensor.as_bytes());
 
-        let device_buffer = gpu_context.buffer_from_slice(data_bytes);
+        let device_buffer = get_device()?.buffer_from_slice(data_bytes);
 
         Ok(OwnedDeviceTensor { inner: m_value, device_buffer })
     }
