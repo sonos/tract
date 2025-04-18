@@ -87,7 +87,7 @@ impl TypedOp for RmsNorm {
 }
 
 /// Search pattern => A = A * RSQRT(MEAN_OF_SQUARES(A) + EPS)
-pub fn as_rms_norm_rule(
+pub fn rms_norm_rule(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
