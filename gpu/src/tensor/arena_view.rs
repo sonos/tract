@@ -2,7 +2,7 @@ use num_traits::AsPrimitive;
 use std::fmt::Display;
 use tract_core::internal::*;
 
-use crate::context::{DeviceBuffer, GpuDevice};
+use crate::device::{DeviceBuffer, GpuDevice};
 use crate::utils::check_strides_validity;
 
 #[derive(Debug, Clone)]

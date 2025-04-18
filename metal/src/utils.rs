@@ -2,7 +2,7 @@ use crate::context::MetalBuffer;
 use metal::Buffer;
 use num_traits::{AsPrimitive, Zero};
 use tract_core::internal::*;
-use tract_gpu::context::DeviceBuffer;
+use tract_gpu::device::DeviceBuffer;
 use tract_gpu::fact::{GpuFact, GpuTensorOrigin, GpuTypedFactExt};
 use tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue, Q4_0};
 

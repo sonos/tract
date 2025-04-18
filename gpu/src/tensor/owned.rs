@@ -1,4 +1,4 @@
-use crate::context::{get_device, DeviceBuffer};
+use crate::device::{get_device, DeviceBuffer};
 use crate::tensor::DeviceTensor;
 use crate::utils::{as_q40_tensor, check_strides_validity};
 use anyhow::Result;

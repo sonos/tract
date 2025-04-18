@@ -10,7 +10,7 @@ use std::fmt::Display;
 use tract_core::internal::*;
 use tract_data::itertools::Itertools;
 
-use crate::context::{get_device, DeviceBuffer};
+use crate::device::{get_device, DeviceBuffer};
 
 /// This struct represents a GPU tensor that can be either a owned tensor
 /// or an arena view.
