@@ -12,8 +12,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
 
 jobs:
-  metal:
-#    runs-on: macOS-arm64-metal
+  unit:
     runs-on: macOS
 
     steps:
@@ -28,3 +27,37 @@ jobs:
     - run: cargo test -p test-onnx-core
     - run: cargo test -p test-unit-core
     - run: cargo test -p test-metal
+
+  build-cli: 
+    name: Build tract on macos (with metal)
+    runs-on: macOS
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo build -p tract --release --no-default-features
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tract-cli-macOS-metal
+          path: ./target/release/tract
+
+  example:
+    name: metal / ${{ matrix.model }} / ${{ matrix.q }}
+    needs: [ cli ]
+    runs-on: macOS
+    strategy:
+      matrix:
+        model: [ OpenELM-270M, OpenELM-1_1B, TinyLlama_v1.1, llama-3.2 ]
+        q: [ f16f16, f32f32, q40f16, q40f32, q40ef16, q40ef32 ]
+      fail-fast: false
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/download-artifact@v4.1.7
+      with:
+        pattern: tract-cli-macOS-metal
+
+    - name: Download and run
+      run: |
+        chmod +x tract-cli-${{matrix.os}}/tract
+        export TRACT_RUN=""$GITHUB_WORKSPACE/tract-cli-macOS-metal/tract --metal"
+        .travis/test-llm.sh ${{matrix.model}} ${{matrix.q}}
