@@ -11,7 +11,6 @@ pub mod rewrite_rules;
 pub mod transform;
 pub mod utils;
 
-use std::sync::Arc;
 use anyhow::{anyhow, Result};
 pub use crate::context::{MetalContext, METAL_CONTEXT};
 use crate::func_constants::{ConstantValues, Value};
@@ -23,11 +22,12 @@ use objc::runtime::{objc_autoreleasePoolPush, objc_autoreleasePoolPop};
 
 use context::MetalDevice;
 
-pub(crate) fn get_metal_device() -> Result<Arc<MetalDevice>>
+pub(crate) fn get_metal_device() -> Result<Box<MetalDevice>>
 {
     let gpu_device = tract_gpu::context::get_device()?;
 
-    Arc::downcast::<MetalDevice>(gpu_device).map_err(|_| anyhow!("GPU Device is not a Metal Device"))
+    gpu_device.downcast::<MetalDevice>()
+        .map_err(|_| anyhow!("GPU Device is not a Metal Device"))
 }
 
 // Copied code from objc crate to avoid closures

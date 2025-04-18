@@ -6,6 +6,7 @@ use crate::kernels::{LibraryContent, LibraryName};
 use tract_gpu::tensor::DeviceTensor;
 use metal::NSUInteger;
 use tract_gpu::context::{DeviceBuffer, GpuDevice};
+
 use std::cell::RefCell;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
@@ -166,7 +167,7 @@ impl MetalDevice {
     }
     
     pub fn register() -> Result<()> {
-        tract_gpu::context::set_context(Arc::new(metal_device()))
+        tract_gpu::context::set_context(Box::new(metal_device()))
     }
 }
 
