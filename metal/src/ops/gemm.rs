@@ -1,11 +1,11 @@
 use crate::kernels::matmul::{GemmImpl, GemmKernel};
 use crate::ops::MetalEvalOp;
 
-use tract_gpu::utils::{as_q40_fact, as_q40_tensor};
 use crate::MetalContext;
 use anyhow::{bail, ensure};
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
+use tract_gpu::utils::{as_q40_fact, as_q40_tensor};
 
 #[derive(Debug, Default, Clone)]
 pub struct MetalGemm<K: GemmKernel> {

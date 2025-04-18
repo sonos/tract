@@ -1,16 +1,16 @@
 use crate::rewrite_rules::{next_node, previous_node};
 use crate::rule_ensure;
+use crate::sync::{GpuSync, GpuSyncKind};
+use crate::tensor::DeviceTensorExt;
 use tract_core::internal::*;
 use tract_core::ops::konst::Const;
 use tract_core::tract_linalg::block_quant::BlockQuantValue;
-use crate::sync::{GpuSync, GpuSyncKind};
-use crate::tensor::DeviceTensorExt;
 
 pub fn rewire_syncs(model: &mut TypedModel) -> TractResult<()> {
     Rewriter::default()
-    .with_rule_for("remove-back-and-forth-sync", rewire_back_and_forth_sync)
-    .with_rule_for("remove-sync-after-const", rewire_sync_after_const)
-    .rewrite(&(), model)
+        .with_rule_for("remove-back-and-forth-sync", rewire_back_and_forth_sync)
+        .with_rule_for("remove-sync-after-const", rewire_sync_after_const)
+        .rewrite(&(), model)
 }
 
 pub fn rewire_back_and_forth_sync(

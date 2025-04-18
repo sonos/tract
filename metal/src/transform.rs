@@ -1,11 +1,10 @@
 use crate::kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm};
-use tract_gpu::fact::GpuTypedFactExt;
-use tract_gpu::sync::{GpuSync, GpuSyncKind};
-use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use crate::{kernels, ops};
+use tract_gpu::fact::GpuTypedFactExt;
+use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
+use tract_gpu::sync::{GpuSync, GpuSyncKind};
 
 use crate::rewrite_rules;
-use tract_gpu::utils::as_q40_fact;
 use std::borrow::Cow;
 use std::fmt::Debug;
 use std::str::FromStr;
@@ -24,6 +23,7 @@ use tract_core::transform::ModelTransform;
 use tract_gpu::fact::GpuFact;
 use tract_gpu::tensor::DeviceTensor;
 use tract_gpu::tensor::{DeviceTensorExt, IntoGpu};
+use tract_gpu::utils::as_q40_fact;
 use tract_itertools::Itertools;
 use tract_transformers::ops::apply_rope::{ApplyRope, RotateHalf};
 use tract_transformers::ops::gelu_approximate::GeluApproximate;

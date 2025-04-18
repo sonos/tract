@@ -11,7 +11,6 @@ pub use mlx_gemm::MlxGemm;
 pub use mmm_tile_8x8::{metal_mmm_tile_8x8, mmm_tile_8x8};
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 
-use tract_gpu::utils::as_q40_tensor;
 use crate::utils::as_metal_buffer;
 use crate::MetalContext;
 use metal::Buffer;
@@ -19,6 +18,7 @@ use num_traits::One;
 use std::fmt;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
+use tract_gpu::utils::as_q40_tensor;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum MetalGemmImplKind {
