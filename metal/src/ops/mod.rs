@@ -34,7 +34,9 @@ pub use silu::MetalSilu;
 pub use slice::MetalSlice;
 pub use softmax::MetalSoftmax;
 
-use tract_gpu::tensor::GpuTensor;
+use crate::autorelease_pool_init;
+use crate::context::MetalDevice;
+use tract_gpu::tensor::DeviceTensor;
 use crate::MetalContext;
 use derive_new::new;
 use tract_core::internal::*;
@@ -75,13 +77,13 @@ impl<O: MetalEvalOp> OpState for MetalOpState<O> {
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                if let Some(profiler) = context.profiler() {
-                    profiler.borrow_mut().add_node_entry(self.node_id);
-                };
-                self.op.metal_eval(context, self.node_id, session, inputs)
-            })
+        MetalDevice::register()?;
+        let _ = autorelease_pool_init();
+        crate::METAL_CONTEXT.with_borrow(|context| {
+            if let Some(profiler) = context.profiler() {
+                profiler.borrow_mut().add_node_entry(self.node_id);
+            };
+            self.op.metal_eval(context, self.node_id, session, inputs)
         })
     }
 }
@@ -91,8 +93,8 @@ pub fn make_tensor_for_node(
     node_id: usize,
     dt: DatumType,
     shape: &[usize],
-) -> TractResult<GpuTensor> {
-    crate::session_handler::get_metal_mem_pool(session)
+) -> TractResult<DeviceTensor> {
+    tract_gpu::session_handler::get_metal_mem_pool(session)
         .map(|mem| mem.tensor_for_node(node_id, dt, shape))
-        .unwrap_or_else(|| unsafe { GpuTensor::uninitialized_dt(dt, shape) })
+        .unwrap_or_else(|| unsafe { DeviceTensor::uninitialized_dt(dt, shape) })
 }

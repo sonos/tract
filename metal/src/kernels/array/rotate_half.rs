@@ -1,6 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::utils;
-use tract_gpu::tensor::GpuTensor;
+use tract_gpu::tensor::DeviceTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
 use metal::MTLSize;
@@ -31,12 +31,12 @@ impl RotateHalf {
 
     pub fn kernel_name(&self, dt: DatumType) -> Result<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal rotate half  op", dt);
-        let tname = GpuTensor::tname(dt)?;
+        let tname = DeviceTensor::tname(dt)?;
         Ok(format!("array_ops::rotate_half_nd2_{tname}"))
     }
 
-    pub fn eval(&self, context: &MetalContext, input: &GpuTensor) -> Result<GpuTensor> {
-        let output = unsafe { GpuTensor::uninitialized_dt(input.datum_type(), input.shape())? };
+    pub fn eval(&self, context: &MetalContext, input: &DeviceTensor) -> Result<DeviceTensor> {
+        let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(context, input, &output)?;
         context.wait_until_completed()?;
         Ok(output)
@@ -45,8 +45,8 @@ impl RotateHalf {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        input: &GpuTensor,
-        output: &GpuTensor,
+        input: &DeviceTensor,
+        output: &DeviceTensor,
     ) -> Result<()> {
         context.retain_tensor(input);
         context.retain_tensor(output);
@@ -62,7 +62,7 @@ impl RotateHalf {
         let kernel_name = self.kernel_name(input.datum_type())?;
 
         let pipeline =
-            context.shared_context().load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
+            context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
         let command_buffer = context.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
@@ -83,6 +83,9 @@ impl RotateHalf {
 
 #[cfg(test)]
 mod tests {
+    use crate::autorelease_pool_init;
+    use crate::context::MetalDevice;
+
     use super::*;
     use tract_gpu::tensor::IntoGpu;
     use num_traits::AsPrimitive;
@@ -94,33 +97,33 @@ mod tests {
         F: Copy + 'static + Datum,
         usize: AsPrimitive<F>,
     {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let len = shape.iter().product::<usize>();
+        MetalDevice::register()?;
+        let _ = autorelease_pool_init();
+        crate::METAL_CONTEXT.with_borrow(|context| {
+            let len = shape.iter().product::<usize>();
 
-                let a = Tensor::from_shape(
-                    shape,
-                    &(0..len).map(|f| -> F { f.as_() }).collect::<Vec<_>>(),
-                )?;
+            let a = Tensor::from_shape(
+                shape,
+                &(0..len).map(|f| -> F { f.as_() }).collect::<Vec<_>>(),
+            )?;
 
-                let metal_a = a.clone().into_gpu()?;
+            let metal_a = a.clone().into_gpu()?;
 
-                let cpu_output =
-                apply_rope::RotateHalf.eval(tvec![a.clone().into()])?[0].clone().into_tensor();
-                let metal_output = RotateHalf.eval(context, &metal_a)?;
+            let cpu_output =
+            apply_rope::RotateHalf.eval(tvec![a.clone().into()])?[0].clone().into_tensor();
+            let metal_output = RotateHalf.eval(context, &metal_a)?;
 
-                cpu_output
-                    .close_enough(&metal_output.to_cpu()?.into_tensor(), Approximation::Exact)
-                    .with_context(|| {
-                        anyhow!(
-                            "Input: {:?} Cpu: {:?}, Metal: {:?}",
-                            a.dump(true),
-                            cpu_output.dump(true),
-                            metal_output.to_cpu().and_then(|it| it.dump(true))
-                        )
-                    })?;
-                Ok(())
-            })
+            cpu_output
+                .close_enough(&metal_output.to_cpu()?.into_tensor(), Approximation::Exact)
+                .with_context(|| {
+                    anyhow!(
+                        "Input: {:?} Cpu: {:?}, Metal: {:?}",
+                        a.dump(true),
+                        cpu_output.dump(true),
+                        metal_output.to_cpu().and_then(|it| it.dump(true))
+                    )
+                })?;
+            Ok(())
         })
     }
 

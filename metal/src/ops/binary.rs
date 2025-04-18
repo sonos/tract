@@ -1,7 +1,7 @@
 pub use crate::kernels::BinOps;
 use crate::ops::MetalEvalOp;
 use crate::MetalContext;
-use tract_gpu::tensor::GpuTensorExt;
+use tract_gpu::tensor::DeviceTensorExt;
 use tract_core::internal::*;
 
 #[derive(Debug, Clone)]

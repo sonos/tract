@@ -1,8 +1,8 @@
-use crate::context::GpuContext;
+use crate::context::GpuDevice;
 use crate::memory::DeviceResolvedMemSchema;
 use crate::tensor::IntoGpu;
 use crate::tensor::{DeviceArenaStorage, DeviceArenaView};
-use crate::tensor::GpuTensor;
+use crate::tensor::DeviceTensor;
 use anyhow::Result;
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -17,7 +17,7 @@ pub struct DeviceMemoryPool {
 
 impl DeviceMemoryPool {
     pub fn from_schema(
-        context: &impl GpuContext,
+        context: Arc<dyn GpuDevice>,
         resolved_schema: DeviceResolvedMemSchema,
     ) -> Result<Self> {
         let storage =
@@ -31,7 +31,7 @@ impl DeviceMemoryPool {
         node_id: usize,
         dt: DatumType,
         shape: &[usize],
-    ) -> Result<GpuTensor> {
+    ) -> Result<DeviceTensor> {
         ensure!(!self.node_seen.borrow().contains(&node_id), "Tensor for node {:?} was already requested. Maybe the memory pool was not reset properly.", node_id);
         self.resolved_schema.offsets_by_node[node_id]
             .map(|offset| {

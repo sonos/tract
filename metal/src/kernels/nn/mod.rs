@@ -21,17 +21,17 @@ pub fn all_functions() -> Vec<String> {
     functions.extend(
         Reducer::ALL
             .into_iter()
-            .flat_map(|op| tract_gpu::tensor::GpuTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt)))
+            .flat_map(|op| tract_gpu::tensor::DeviceTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt)))
             .flat_map(|(op, dt)| op.kernel_name(dt).into_iter()),
     );
     functions.extend(
-        tract_gpu::tensor::GpuTensor::SUPPORTED_DT
+        tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
             .into_iter()
             .flat_map(|dt| Softmax.kernel_name(dt).into_iter()),
     );
 
     functions.extend(
-        tract_gpu::tensor::GpuTensor::SUPPORTED_DT
+        tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
             .into_iter()
             .flat_map(|dt| ScaledMaskedSoftmax.kernel_name(dt).into_iter()),
     );

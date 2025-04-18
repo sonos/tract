@@ -4,7 +4,7 @@ use crate::rule_ensure;
 use tract_core::internal::*;
 use tract_core::ops::konst::Const;
 use tract_core::tract_linalg::block_quant::BlockQuantValue;
-use tract_gpu::tensor::GpuTensorExt;
+use tract_gpu::tensor::DeviceTensorExt;
 
 // TODO: Move to GPU
 pub fn rewire_metal_sync(

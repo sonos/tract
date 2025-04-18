@@ -1,7 +1,7 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::utils;
 use crate::{LibraryName, MetalContext};
-use tract_gpu::tensor::GpuTensor;
+use tract_gpu::tensor::DeviceTensor;
 use anyhow::Result;
 use metal::MTLSize;
 use tract_core::internal::*;
@@ -25,7 +25,7 @@ impl Reducer {
 
     pub fn kernel_name(&self, dt: DatumType) -> Result<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal reduce  op", dt);
-        let tname = GpuTensor::tname(dt)?;
+        let tname = DeviceTensor::tname(dt)?;
         let op = match self {
             Self::MeanOfSquares => "mean_of_squares",
             Self::Sum => "sum",
@@ -39,12 +39,12 @@ impl Reducer {
     pub fn eval(
         &self,
         context: &MetalContext,
-        input: &GpuTensor,
+        input: &DeviceTensor,
         axis: usize,
-    ) -> Result<GpuTensor> {
+    ) -> Result<DeviceTensor> {
         let mut o_shape = input.shape().to_vec();
         o_shape[axis] = 1;
-        let output = unsafe { GpuTensor::uninitialized_dt(input.datum_type(), &o_shape)? };
+        let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), &o_shape)? };
         self.dispatch_eval(context, input, axis, &output)?;
         context.wait_until_completed()?;
         Ok(output)
@@ -53,9 +53,9 @@ impl Reducer {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        input: &GpuTensor,
+        input: &DeviceTensor,
         axis: usize,
-        output: &GpuTensor,
+        output: &DeviceTensor,
     ) -> Result<()> {
         context.retain_tensor(input);
         context.retain_tensor(output);
@@ -69,7 +69,6 @@ impl Reducer {
         let output_strides_nd3 = Tensor::natural_strides(&output_shape_nd3);
 
         let pipeline = context
-            .shared_context()
             .load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
 
         let command_buffer = context.command_buffer();
@@ -93,6 +92,8 @@ impl Reducer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::autorelease_pool_init;
+    use crate::context::MetalDevice;
     use tract_gpu::tensor::IntoGpu;
     use derive_new::new;
     use num_traits::AsPrimitive;
@@ -114,36 +115,36 @@ mod tests {
         usize: AsPrimitive<f32>,
         f32: AsPrimitive<F>,
     {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let len = shape.iter().product::<usize>();
+        MetalDevice::register()?;
+        let _ = autorelease_pool_init();
+        crate::METAL_CONTEXT.with_borrow(|context| {
+            let len = shape.iter().product::<usize>();
 
-                let a = Tensor::from_shape(
-                    shape,
-                    &(0..len)
-                        .map(|f| -> F {
-                            let v: f32 = f.as_();
-                            (v * scale).as_()
-                        })
-                        .collect::<Vec<_>>(),
-                )?
-                .into_gpu()?;
+            let a = Tensor::from_shape(
+                shape,
+                &(0..len)
+                    .map(|f| -> F {
+                        let v: f32 = f.as_();
+                        (v * scale).as_()
+                    })
+                    .collect::<Vec<_>>(),
+            )?
+            .into_gpu()?;
 
-                let cpu_output = tract_reducer.reduce(&[axis], &a.to_cpu()?.into_tensor())?;
-                let metal_output = reducer.eval(context, &a, axis)?;
-                cpu_output
-                    .close_enough(&metal_output.to_cpu()?.into_tensor(), Approximation::Approximate)
-                    .with_context(|| {
-                        anyhow!(
-                            "A: {:?}, scale: {:?} Cpu: {:?}, Metal: {:?}",
-                            a.to_cpu().and_then(|it| it.dump(true)),
-                            scale,
-                            cpu_output.dump(true),
-                            metal_output.to_cpu().and_then(|it| it.dump(true))
-                        )
-                    })?;
-                Ok(())
-            })
+            let cpu_output = tract_reducer.reduce(&[axis], &a.to_cpu()?.into_tensor())?;
+            let metal_output = reducer.eval(context, &a, axis)?;
+            cpu_output
+                .close_enough(&metal_output.to_cpu()?.into_tensor(), Approximation::Approximate)
+                .with_context(|| {
+                    anyhow!(
+                        "A: {:?}, scale: {:?} Cpu: {:?}, Metal: {:?}",
+                        a.to_cpu().and_then(|it| it.dump(true)),
+                        scale,
+                        cpu_output.dump(true),
+                        metal_output.to_cpu().and_then(|it| it.dump(true))
+                    )
+                })?;
+            Ok(())
         })
     }
 
@@ -360,12 +361,12 @@ mod tests {
         }
 
         pub fn run(&self) -> Result<Tensor> {
-            objc::rc::autoreleasepool(|| {
-                crate::METAL_CONTEXT.with_borrow(|context| {
-                    let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_gpu()?;
-                    let metal_output = self.op.eval(context, &a, self.axis)?;
-                    Ok(metal_output.to_cpu()?.into_tensor())
-                })
+            MetalDevice::register()?;
+            let _ = autorelease_pool_init();
+            crate::METAL_CONTEXT.with_borrow(|context| {
+                let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_gpu()?;
+                let metal_output = self.op.eval(context, &a, self.axis)?;
+                Ok(metal_output.to_cpu()?.into_tensor())
             })
         }
     }

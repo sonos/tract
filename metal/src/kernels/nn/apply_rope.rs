@@ -1,6 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
-use tract_gpu::tensor::GpuTensor;
+use tract_gpu::tensor::DeviceTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
 use std::fmt;
@@ -22,7 +22,7 @@ impl ApplyRope {
 
     pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> Result<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal apply rope", dt);
-        let tname = GpuTensor::tname(dt)?;
+        let tname = DeviceTensor::tname(dt)?;
         let broadcast_name = broadcast_kind.to_func_part();
         Ok(format!("nn_ops::apply_rope_{broadcast_name}_{tname}"))
     }
@@ -30,11 +30,11 @@ impl ApplyRope {
     pub fn eval(
         &self,
         context: &MetalContext,
-        input: &GpuTensor,
-        cos: &GpuTensor,
-        sin: &GpuTensor,
-    ) -> Result<GpuTensor> {
-        let output = unsafe { GpuTensor::uninitialized_dt(input.datum_type(), input.shape())? };
+        input: &DeviceTensor,
+        cos: &DeviceTensor,
+        sin: &DeviceTensor,
+    ) -> Result<DeviceTensor> {
+        let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(context, input, cos, sin, &output)?;
         context.wait_until_completed()?;
         Ok(output)
@@ -43,10 +43,10 @@ impl ApplyRope {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        input: &GpuTensor,
-        cos: &GpuTensor,
-        sin: &GpuTensor,
-        output: &GpuTensor,
+        input: &DeviceTensor,
+        cos: &DeviceTensor,
+        sin: &DeviceTensor,
+        output: &DeviceTensor,
     ) -> Result<()> {
         ensure!(input.datum_type() == cos.datum_type());
         ensure!(input.datum_type() == sin.datum_type());
@@ -78,7 +78,7 @@ impl ApplyRope {
 
         let kernel_name = self.kernel_name(input.datum_type(), broadcast_kind)?;
 
-        let pipeline = context.shared_context().load_pipeline(LibraryName::NNOps, &kernel_name)?;
+        let pipeline = context.load_pipeline(LibraryName::NNOps, &kernel_name)?;
         let command_buffer = context.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
@@ -103,56 +103,58 @@ impl ApplyRope {
 
 #[cfg(test)]
 mod tests {
+    use crate::autorelease_pool_init;
+    use crate::context::MetalDevice;
     use super::*;
     use tract_gpu::tensor::IntoGpu;
     use tract_core::internal::Tensor;
     use tract_transformers::ops::apply_rope;
 
     fn run_test_case(shape: &[usize]) -> Result<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let len = shape.iter().product::<usize>();
+        MetalDevice::register()?;
+        let _ = autorelease_pool_init();
+        crate::METAL_CONTEXT.with_borrow(|context| {
+            let len = shape.iter().product::<usize>();
 
-                let a = Tensor::from_shape(
-                    shape,
-                    &(0..len).map(|f| f as f32 / 1000.0).collect::<Vec<_>>(),
-                )?;
+            let a = Tensor::from_shape(
+                shape,
+                &(0..len).map(|f| f as f32 / 1000.0).collect::<Vec<_>>(),
+            )?;
 
-                let cos = Tensor::from_shape(
-                    shape,
-                    &(0..len).map(|f| (f as f32).cos()).collect::<Vec<_>>(),
-                )?;
+            let cos = Tensor::from_shape(
+                shape,
+                &(0..len).map(|f| (f as f32).cos()).collect::<Vec<_>>(),
+            )?;
 
-                let sin = Tensor::from_shape(
-                    shape,
-                    &(0..len).map(|f| (f as f32).sin()).collect::<Vec<_>>(),
-                )?;
+            let sin = Tensor::from_shape(
+                shape,
+                &(0..len).map(|f| (f as f32).sin()).collect::<Vec<_>>(),
+            )?;
 
-                let metal_a = a.clone().into_gpu()?;
-                let metal_sin = sin.clone().into_gpu()?;
-                let metal_cos = cos.clone().into_gpu()?;
+            let metal_a = a.clone().into_gpu()?;
+            let metal_sin = sin.clone().into_gpu()?;
+            let metal_cos = cos.clone().into_gpu()?;
 
-                let cpu_output = apply_rope::ApplyRope.eval(tvec![
-                    a.clone().into(),
-                    cos.clone().into(),
-                    sin.clone().into(),
-                ])?[0]
-                    .clone()
-                    .into_tensor();
-                let metal_output = ApplyRope.eval(context, &metal_a, &metal_cos, &metal_sin)?;
+            let cpu_output = apply_rope::ApplyRope.eval(tvec![
+                a.clone().into(),
+                cos.clone().into(),
+                sin.clone().into(),
+            ])?[0]
+                .clone()
+                .into_tensor();
+            let metal_output = ApplyRope.eval(context, &metal_a, &metal_cos, &metal_sin)?;
 
-                cpu_output
-                    .close_enough(&metal_output.to_cpu()?.into_tensor(), Approximation::Approximate)
-                    .with_context(|| {
-                        anyhow!(
-                            "Input: {:?} Cpu: {:?}, Metal: {:?}",
-                            a.dump(true),
-                            cpu_output.dump(true),
-                            metal_output.to_cpu().and_then(|it| it.dump(true))
-                        )
-                    })?;
-                Ok(())
-            })
+            cpu_output
+                .close_enough(&metal_output.to_cpu()?.into_tensor(), Approximation::Approximate)
+                .with_context(|| {
+                    anyhow!(
+                        "Input: {:?} Cpu: {:?}, Metal: {:?}",
+                        a.dump(true),
+                        cpu_output.dump(true),
+                        metal_output.to_cpu().and_then(|it| it.dump(true))
+                    )
+                })?;
+            Ok(())
         })
     }
 

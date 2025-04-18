@@ -1,7 +1,7 @@
 use crate::kernels::nn::RmsNorm;
 use crate::ops::MetalEvalOp;
 use crate::MetalContext;
-use tract_gpu::tensor::GpuTensorExt;
+use tract_gpu::tensor::DeviceTensorExt;
 use derive_new::new;
 use std::sync::Arc;
 use tract_core::internal::*;

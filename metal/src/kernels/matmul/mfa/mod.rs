@@ -175,10 +175,10 @@ pub fn dispatch_metal_mfa_gemm(
         _ => bail!("MFA GEMM only support F32 or F16 tensors"),
     };
 
-    let pipeline = context.shared_context().load_pipeline_with_constants(
+    let pipeline = context.load_pipeline_with_constants(
         LibraryName::MfaLib,
         name,
-        constants,
+        constants
     )?;
     let m_group = m_simd * m_splits;
     let n_group = n_simd * n_splits;
@@ -247,60 +247,63 @@ pub fn dispatch_metal_mfa_gemm(
 }
 
 #[cfg(test)]
-mod tests {
+mod tests { 
+    use crate::autorelease_pool_init;
+    use crate::context::MetalDevice;
+
     use super::*;
     use crate::kernels::matmul::GemmImpl;
-    use tract_gpu::tensor::{IntoGpu, GpuTensor};
+    use tract_gpu::tensor::{IntoGpu, DeviceTensor};
 
     #[test]
     fn test_mfa_gemm() -> Result<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let (b, m, n, k) = (1, 2, 4, 3);
-                let a = Tensor::from_shape(
-                    &[b, m, k],
-                    &(0..b * m * k).map(|f| f as f32).collect::<Vec<_>>(),
-                )?
-                .into_gpu()?;
-                let b = Tensor::from_shape(
-                    &[b, k, n],
-                    &(0..b * n * k).map(|f| f as f32).collect::<Vec<_>>(),
-                )?
-                .into_gpu()?;
+        MetalDevice::register()?;
+        let _ = autorelease_pool_init();
+        crate::METAL_CONTEXT.with_borrow(|context| {
+            let (b, m, n, k) = (1, 2, 4, 3);
+            let a = Tensor::from_shape(
+                &[b, m, k],
+                &(0..b * m * k).map(|f| f as f32).collect::<Vec<_>>(),
+            )?
+            .into_gpu()?;
+            let b = Tensor::from_shape(
+                &[b, k, n],
+                &(0..b * n * k).map(|f| f as f32).collect::<Vec<_>>(),
+            )?
+            .into_gpu()?;
 
-                let c = GemmImpl::<MfaGemm>::default().eval(context, &a, &b)?;
+            let c = GemmImpl::<MfaGemm>::default().eval(context, &a, &b)?;
 
-                let expected_c = Tensor::from_shape(
-                    &[1, 2, 4],
-                    &[20.0, 23.0, 26.0, 29.0, 56.0, 68.0, 80.0, 92.0],
-                )?;
+            let expected_c = Tensor::from_shape(
+                &[1, 2, 4],
+                &[20.0, 23.0, 26.0, 29.0, 56.0, 68.0, 80.0, 92.0],
+            )?;
 
-                let c = c.to_cpu()?;
-                assert!(c.close_enough(&expected_c, Approximation::Close).is_ok());
+            let c = c.to_cpu()?;
+            assert!(c.close_enough(&expected_c, Approximation::Close).is_ok());
 
-                let (b, m, n, k) = (2, 2, 4, 3);
-                let a = GpuTensor::from_shape(
-                    &[b, m, k],
-                    &(0..b * m * k).map(|f| f as f32).collect::<Vec<_>>(),
-                )?;
-                let b = GpuTensor::from_shape(
-                    &[b, k, n],
-                    &(0..b * n * k).map(|f| f as f32).collect::<Vec<_>>(),
-                )?;
+            let (b, m, n, k) = (2, 2, 4, 3);
+            let a = DeviceTensor::from_shape(
+                &[b, m, k],
+                &(0..b * m * k).map(|f| f as f32).collect::<Vec<_>>(),
+            )?;
+            let b = DeviceTensor::from_shape(
+                &[b, k, n],
+                &(0..b * n * k).map(|f| f as f32).collect::<Vec<_>>(),
+            )?;
 
-                let c = GemmImpl::<MfaGemm>::default().eval(context, &a, &b)?;
+            let c = GemmImpl::<MfaGemm>::default().eval(context, &a, &b)?;
 
-                let expected_c = Tensor::from_shape(
-                    &[2, 2, 4],
-                    &[
-                        20.0, 23.0, 26.0, 29.0, 56.0, 68.0, 80.0, 92.0, 344.0, 365.0, 386.0, 407.0,
-                        488.0, 518.0, 548.0, 578.0,
-                    ],
-                )?;
+            let expected_c = Tensor::from_shape(
+                &[2, 2, 4],
+                &[
+                    20.0, 23.0, 26.0, 29.0, 56.0, 68.0, 80.0, 92.0, 344.0, 365.0, 386.0, 407.0,
+                    488.0, 518.0, 548.0, 578.0,
+                ],
+            )?;
 
-                assert!(c.to_cpu()?.close_enough(&expected_c, Approximation::Close).is_ok());
-                Ok(())
-            })
+            assert!(c.to_cpu()?.close_enough(&expected_c, Approximation::Close).is_ok());
+            Ok(())
         })
     }
 }

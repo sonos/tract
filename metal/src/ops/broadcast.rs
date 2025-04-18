@@ -1,6 +1,6 @@
 use crate::ops::MetalEvalOp;
 use crate::{kernels, MetalContext};
-use tract_gpu::tensor::GpuTensorExt;
+use tract_gpu::tensor::DeviceTensorExt;
 use derive_new::new;
 use std::fmt::Debug;
 use tract_core::internal::*;

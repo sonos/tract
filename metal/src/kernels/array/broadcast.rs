@@ -1,7 +1,7 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
 
-use tract_gpu::tensor::GpuTensor;
+use tract_gpu::tensor::DeviceTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
 use std::fmt;
@@ -35,7 +35,7 @@ impl MultiBroadcast {
 
     pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> Result<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal broadcast  op", dt);
-        let tname = GpuTensor::tname(dt)?;
+        let tname = DeviceTensor::tname(dt)?;
         let broadcast_name = broadcast_kind.to_func_part();
         Ok(format!("array_ops::copy_{broadcast_name}_{tname}"))
     }
@@ -43,11 +43,11 @@ impl MultiBroadcast {
     pub fn eval(
         &self,
         context: &MetalContext,
-        input: &GpuTensor,
+        input: &DeviceTensor,
         input_offset: usize,
         output_shape: &[usize],
-    ) -> Result<GpuTensor> {
-        let output = unsafe { GpuTensor::uninitialized_dt(input.datum_type(), output_shape)? };
+    ) -> Result<DeviceTensor> {
+        let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), output_shape)? };
         self.dispatch_eval(context, input, input_offset, &output)?;
         context.wait_until_completed()?;
         Ok(output)
@@ -56,9 +56,9 @@ impl MultiBroadcast {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        input: &GpuTensor,
+        input: &DeviceTensor,
         input_offset: usize,
-        output: &GpuTensor,
+        output: &DeviceTensor,
     ) -> Result<()> {
         context.retain_tensor(input);
         context.retain_tensor(output);
@@ -87,7 +87,7 @@ impl MultiBroadcast {
         )?;
 
         let pipeline =
-            context.shared_context().load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
+            context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
         let command_buffer = context.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);

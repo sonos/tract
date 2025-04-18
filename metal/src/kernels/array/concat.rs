@@ -1,6 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
-use tract_gpu::tensor::GpuTensor;
+use tract_gpu::tensor::DeviceTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
 use std::fmt;
@@ -36,17 +36,17 @@ impl Concat {
 
     pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> Result<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal concat  op", dt);
-        let tname = GpuTensor::tname(dt)?;
+        let tname = DeviceTensor::tname(dt)?;
         let broadcast_name = broadcast_kind.to_func_part();
         Ok(format!("array_ops::copy_{broadcast_name}_{tname}"))
     }
 
-    pub fn eval(&self, context: &MetalContext, inputs: &[&GpuTensor]) -> Result<GpuTensor> {
+    pub fn eval(&self, context: &MetalContext, inputs: &[&DeviceTensor]) -> Result<DeviceTensor> {
         ensure!(!inputs.is_empty());
         let mut output_shape = inputs[0].shape().to_vec();
         output_shape[self.axis] = inputs.iter().map(|it| it.shape()[self.axis]).sum();
         let output =
-            unsafe { GpuTensor::uninitialized_dt(inputs[0].datum_type(), &output_shape)? };
+            unsafe { DeviceTensor::uninitialized_dt(inputs[0].datum_type(), &output_shape)? };
 
         self.dispatch_eval(context, inputs, &output)?;
         context.wait_until_completed()?;
@@ -56,8 +56,8 @@ impl Concat {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        inputs: &[&GpuTensor],
-        output: &GpuTensor,
+        inputs: &[&DeviceTensor],
+        output: &DeviceTensor,
     ) -> Result<()> {
         ensure!(!inputs.is_empty());
 
@@ -88,7 +88,7 @@ impl Concat {
 
         let kernel_name = self.kernel_name(output.datum_type(), broadcast_kind)?;
         let pipeline =
-            context.shared_context().load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
+            context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
         let command_buffer = context.command_buffer();
 
         for (input, offset) in inputs.iter().zip(offsets.into_iter()) {
@@ -123,6 +123,9 @@ impl Concat {
 
 #[cfg(test)]
 mod tests {
+    use crate::autorelease_pool_init;
+    use crate::context::MetalDevice;
+
     use super::*;
     use tract_gpu::tensor::IntoGpu;
     use tract_itertools::Itertools;
@@ -132,23 +135,23 @@ mod tests {
     use tract_core::internal::Tensor;
 
     fn run_test_case<F: Datum + Zero + Copy>(shapes: &[&[usize]], axis: usize) -> Result<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let mut inputs = tvec![];
-                for shape in shapes {
-                    let len = shape.iter().product::<usize>();
-                    let data = (0..len).map(|f| f as f32).collect::<Vec<_>>();
-                    inputs.push(Tensor::from_shape(shape, &data)?.into_gpu()?);
-                }
+        MetalDevice::register()?;
+        let _ = autorelease_pool_init();
+        crate::METAL_CONTEXT.with_borrow(|context| {
+            let mut inputs = tvec![];
+            for shape in shapes {
+                let len = shape.iter().product::<usize>();
+                let data = (0..len).map(|f| f as f32).collect::<Vec<_>>();
+                inputs.push(Tensor::from_shape(shape, &data)?.into_gpu()?);
+            }
 
-                let output = Concat { axis }.eval(context, &inputs.iter().collect_vec())?;
-                let ref_output = Tensor::stack_tensors(
-                    axis,
-                    &inputs.iter().map(|it| it.to_cpu()).collect::<Result<Vec<_>>>()?,
-                )?;
-                assert_eq!(ref_output, output.to_cpu()?.into_tensor());
-                Ok(())
-            })
+            let output = Concat { axis }.eval(context, &inputs.iter().collect_vec())?;
+            let ref_output = Tensor::stack_tensors(
+                axis,
+                &inputs.iter().map(|it| it.to_cpu()).collect::<Result<Vec<_>>>()?,
+            )?;
+            assert_eq!(ref_output, output.to_cpu()?.into_tensor());
+            Ok(())
         })
     }
 

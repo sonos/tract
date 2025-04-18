@@ -1,5 +1,5 @@
 use crate::encoder::EncoderExt;
-use tract_gpu::tensor::GpuTensor;
+use tract_gpu::tensor::DeviceTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::bail;
 use anyhow::Result;
@@ -80,7 +80,7 @@ impl ElementWiseOps {
     pub fn all_functions() -> Vec<String> {
         Self::ALL
             .into_iter()
-            .flat_map(|op| GpuTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt)))
+            .flat_map(|op| DeviceTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt)))
             .flat_map(|(op, dt)| op.kernel_name(dt, false).into_iter())
             .collect()
     }
@@ -139,7 +139,7 @@ impl ElementWiseOps {
 
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal element wise ops", dt);
 
-        let tname = GpuTensor::tname(dt)?;
+        let tname = DeviceTensor::tname(dt)?;
 
         let kname = match self {
             Self::Abs => "abs",
@@ -180,8 +180,8 @@ impl ElementWiseOps {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        input: &GpuTensor,
-        output: &GpuTensor,
+        input: &DeviceTensor,
+        output: &DeviceTensor,
     ) -> Result<()> {
         context.retain_tensor(input);
         context.retain_tensor(output);
@@ -191,7 +191,7 @@ impl ElementWiseOps {
         let kernel_name = self.kernel_name(input.datum_type(), false)?;
 
         let pipeline =
-            context.shared_context().load_pipeline(LibraryName::ElementWiseOps, &kernel_name)?;
+            context.load_pipeline(LibraryName::ElementWiseOps, &kernel_name)?;
         let command_buffer = context.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
@@ -205,8 +205,8 @@ impl ElementWiseOps {
         Ok(())
     }
 
-    pub fn eval(&self, context: &MetalContext, a: &GpuTensor) -> Result<GpuTensor> {
-        let output = unsafe { GpuTensor::uninitialized_dt(a.datum_type(), a.shape())? };
+    pub fn eval(&self, context: &MetalContext, a: &DeviceTensor) -> Result<DeviceTensor> {
+        let output = unsafe { DeviceTensor::uninitialized_dt(a.datum_type(), a.shape())? };
         self.dispatch_eval(context, a, &output)?;
         context.wait_until_completed()?;
         Ok(output)
@@ -215,6 +215,9 @@ impl ElementWiseOps {
 
 #[cfg(test)]
 mod tests {
+    use crate::autorelease_pool_init;
+    use crate::context::MetalDevice;
+
     use super::*;
     use tract_gpu::tensor::IntoGpu;
     use num_traits::Zero;
@@ -234,31 +237,32 @@ mod tests {
         neg: bool,
         ca: impl Fn(&mut F, &F),
     ) -> Result<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let a_len = a_shape.iter().product::<usize>();
-                let mut rng = rand::thread_rng();
-                let a = Tensor::from_shape(
-                    a_shape,
-                    &(0..a_len)
-                        .map(|_f| {
-                            if neg {
-                                rng.gen_range(-10.0f32..10.0)
-                            } else {
-                                rng.gen_range(0.0f32..10.0)
-                            }
-                        })
-                        .collect::<Vec<_>>(),
-                )?
-                .into_gpu()?;
-                let output = op.eval(context, &a)?;
-                let ref_output = reference::<F>(&a.to_cpu()?.into_tensor(), ca)?;
-                assert!(ref_output
-                    .close_enough(&output.to_cpu()?.into_tensor(), Approximation::Close)
-                    .is_ok());
-                Ok(())
-            })
+        MetalDevice::register()?;
+        let _ = autorelease_pool_init();
+        crate::METAL_CONTEXT.with_borrow(|context| {
+            let a_len = a_shape.iter().product::<usize>();
+            let mut rng = rand::thread_rng();
+            let a = Tensor::from_shape(
+                a_shape,
+                &(0..a_len)
+                    .map(|_f| {
+                        if neg {
+                            rng.gen_range(-10.0f32..10.0)
+                        } else {
+                            rng.gen_range(0.0f32..10.0)
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            )?
+            .into_gpu()?;
+            let output = op.eval(context, &a)?;
+            let ref_output = reference::<F>(&a.to_cpu()?.into_tensor(), ca)?;
+            assert!(ref_output
+                .close_enough(&output.to_cpu()?.into_tensor(), Approximation::Close)
+                .is_ok());
+            Ok(())
         })
+
     }
 
     #[test]

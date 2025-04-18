@@ -1,5 +1,5 @@
 use crate::encoder::EncoderExt;
-use tract_gpu::tensor::GpuTensor;
+use tract_gpu::tensor::DeviceTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::Result;
 use derive_new::new;
@@ -36,16 +36,16 @@ impl Memcpy {
 
     pub fn kernel_name(&self, dt: DatumType) -> Result<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal copy  op", dt);
-        let tname = GpuTensor::tname(dt)?;
+        let tname = DeviceTensor::tname(dt)?;
         Ok(format!("array_ops::copy_unicast_{tname}"))
     }
 
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        input: &GpuTensor,
+        input: &DeviceTensor,
         input_offset: usize,
-        output: &GpuTensor,
+        output: &DeviceTensor,
     ) -> Result<()> {
         ensure!(input_offset % input.datum_type().size_of() == 0);
         ensure!(output.len() <= input.len() - input_offset);
@@ -56,7 +56,7 @@ impl Memcpy {
         let kernel_name = self.kernel_name(input.datum_type())?;
 
         let pipeline =
-            context.shared_context().load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
+            context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
         let command_buffer = context.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
@@ -78,11 +78,11 @@ impl Memcpy {
     pub fn eval(
         &self,
         context: &MetalContext,
-        input: &GpuTensor,
+        input: &DeviceTensor,
         input_offset: usize,
         output_shape: &[usize],
-    ) -> Result<GpuTensor> {
-        let output = unsafe { GpuTensor::uninitialized_dt(input.datum_type(), output_shape)? };
+    ) -> Result<DeviceTensor> {
+        let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), output_shape)? };
         self.dispatch_eval(context, input, input_offset, &output)?;
         context.wait_until_completed()?;
         Ok(output)

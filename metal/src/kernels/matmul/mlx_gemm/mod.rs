@@ -1,5 +1,5 @@
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
-use tract_gpu::tensor::GpuTensor;
+use tract_gpu::tensor::DeviceTensor;
 use crate::{ConstantValues, LibraryName, MetalContext, Value};
 use anyhow::{ensure, Result};
 use metal::{Buffer, MTLSize, NSUInteger};
@@ -24,20 +24,6 @@ struct MlxGemmParams {
     swizzle_log: i32,
     gemm_k_iterations_aligned: i32,
     batch_ndim: i32,
-}
-
-#[derive(Debug, Default)]
-#[repr(C)]
-#[allow(non_snake_case)]
-struct GEMMDebug {
-    TM_stride: i32,
-    TN_stride: i32,
-    WM: i32,
-    WN: i32,
-    TM: i32,
-    TN: i32,
-    num_threads_in_simd: i32,
-    num_simd_group: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -201,9 +187,9 @@ pub fn dispatch_metal_mlx_gemv(
 
     let t_mat = if mv_trans { "t_" } else { "" };
 
-    let tname = GpuTensor::tname(dt)?;
+    let tname = DeviceTensor::tname(dt)?;
     let name = format!("gemv_{t_mat}{tname}_bm{bm}_bn{bn}_sm{sm}_sn{sn}_tm{tm}_tn{tn}_nc0_axpby0");
-    let pipeline = context.shared_context().load_pipeline(LibraryName::MlxGemv, &name)?;
+    let pipeline = context.load_pipeline(LibraryName::MlxGemv, &name)?;
 
     let command_buffer = context.command_buffer();
     command_buffer.encode(|encoder| {
@@ -358,10 +344,10 @@ pub fn dispatch_metal_mlx_gemm(
 
     let name = kernel_name_gemm(dt, a_trans, b_trans)?;
 
-    let pipeline = context.shared_context().load_pipeline_with_constants(
+    let pipeline = context.load_pipeline_with_constants(
         LibraryName::MlxGemm,
         &name,
-        constants,
+        constants
     )?;
 
     let command_buffer = context.command_buffer();
@@ -386,18 +372,6 @@ pub fn dispatch_metal_mlx_gemm(
             batch_strides.as_ptr() as *const c_void,
         );
 
-        let gemm_debug = Box::<GEMMDebug>::default();
-        if debug {
-            let gemm_debug_size = core::mem::size_of_val(&gemm_debug) as NSUInteger;
-            let gemm_debug_buffer = context.device().new_buffer_with_bytes_no_copy(
-                gemm_debug.as_ref() as *const GEMMDebug as *const core::ffi::c_void,
-                gemm_debug_size,
-                metal::MTLResourceOptions::StorageModeShared,
-                None,
-            );
-            encoder.set_buffer(16, Some(&gemm_debug_buffer), 0);
-        }
-
         let grid_size = MTLSize {
             width: tn as u64,
             height: tm as u64,
@@ -421,71 +395,74 @@ pub fn kernel_name_gemm(dt: DatumType, transpose_a: bool, transpose_b: bool) -> 
     let t_a = if transpose_a { "t" } else { "n" };
     let t_b = if transpose_b { "t" } else { "n" };
 
-    let tname = GpuTensor::tname(dt)?;
+    let tname = DeviceTensor::tname(dt)?;
     Ok(format!("gemm_{t_a}{t_b}_{tname}_{tname}_32_32_16_2_2"))
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::autorelease_pool_init;
+    use crate::context::MetalDevice;
+
     use super::*;
     use crate::kernels::matmul::tests::run_mmm_test_case;
     use crate::kernels::matmul::GemmImpl;
-    use tract_gpu::tensor::{IntoGpu, GpuTensor};
+    use tract_gpu::tensor::{IntoGpu, DeviceTensor};
 
     #[test]
     fn test_mlx_gemv_compilation() -> Result<()> {
         crate::METAL_CONTEXT
-            .with_borrow(|context| context.shared_context().load_library(LibraryName::MlxGemv))?;
+            .with_borrow(|context| context.load_library(LibraryName::MlxGemv))?;
         Ok(())
     }
 
     #[test]
     fn test_mlx_gemm() -> Result<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let (b, m, n, k) = (10, 32, 32, 16);
-                let a = Tensor::from_shape(
-                    &[b, m, k],
-                    &(0..b * m * k).map(|_f| 1.0 as f32).collect::<Vec<_>>(),
-                )?
-                .into_gpu()?;
-                let b = Tensor::from_shape(
-                    &[b, k, n],
-                    &(0..b * n * k).map(|_f| 1.0 as f32).collect::<Vec<_>>(),
-                )?
-                .into_gpu()?;
+        MetalDevice::register()?;
+        let _ = autorelease_pool_init();
+        crate::METAL_CONTEXT.with_borrow(|context| {
+            let (b, m, n, k) = (10, 32, 32, 16);
+            let a = Tensor::from_shape(
+                &[b, m, k],
+                &(0..b * m * k).map(|_f| 1.0 as f32).collect::<Vec<_>>(),
+            )?
+            .into_gpu()?;
+            let b = Tensor::from_shape(
+                &[b, k, n],
+                &(0..b * n * k).map(|_f| 1.0 as f32).collect::<Vec<_>>(),
+            )?
+            .into_gpu()?;
 
-                let c = GemmImpl::<MlxGemm>::default().eval(context, &a, &b)?;
+            let c = GemmImpl::<MlxGemm>::default().eval(context, &a, &b)?;
 
-                let expected_c = Tensor::from_shape(&[10, 32, 32], &vec![16.0; 10 * 32 * 32])?;
+            let expected_c = Tensor::from_shape(&[10, 32, 32], &vec![16.0; 10 * 32 * 32])?;
 
-                let c = c.to_cpu()?;
-                c.close_enough(&expected_c, Approximation::Approximate)?;
-                assert!(c.close_enough(&expected_c, Approximation::Approximate).is_ok());
+            let c = c.to_cpu()?;
+            c.close_enough(&expected_c, Approximation::Approximate)?;
+            assert!(c.close_enough(&expected_c, Approximation::Approximate).is_ok());
 
-                let (b, m, n, k) = (2, 2, 4, 3);
-                let a = GpuTensor::from_shape(
-                    &[b, m, k],
-                    &(0..b * m * k).map(|f| f as f32).collect::<Vec<_>>(),
-                )?;
-                let b = GpuTensor::from_shape(
-                    &[b, k, n],
-                    &(0..b * n * k).map(|f| f as f32).collect::<Vec<_>>(),
-                )?;
+            let (b, m, n, k) = (2, 2, 4, 3);
+            let a = DeviceTensor::from_shape(
+                &[b, m, k],
+                &(0..b * m * k).map(|f| f as f32).collect::<Vec<_>>(),
+            )?;
+            let b = DeviceTensor::from_shape(
+                &[b, k, n],
+                &(0..b * n * k).map(|f| f as f32).collect::<Vec<_>>(),
+            )?;
 
-                let c = GemmImpl::<MlxGemm>::default().eval(context, &a, &b)?;
+            let c = GemmImpl::<MlxGemm>::default().eval(context, &a, &b)?;
 
-                let expected_c = Tensor::from_shape(
-                    &[2, 2, 4],
-                    &[
-                        20.0, 23.0, 26.0, 29.0, 56.0, 68.0, 80.0, 92.0, 344.0, 365.0, 386.0, 407.0,
-                        488.0, 518.0, 548.0, 578.0,
-                    ],
-                )?;
+            let expected_c = Tensor::from_shape(
+                &[2, 2, 4],
+                &[
+                    20.0, 23.0, 26.0, 29.0, 56.0, 68.0, 80.0, 92.0, 344.0, 365.0, 386.0, 407.0,
+                    488.0, 518.0, 548.0, 578.0,
+                ],
+            )?;
 
-                assert!(c.to_cpu()?.close_enough(&expected_c, Approximation::Approximate).is_ok());
-                Ok(())
-            })
+            assert!(c.to_cpu()?.close_enough(&expected_c, Approximation::Approximate).is_ok());
+            Ok(())
         })
     }
 

@@ -765,7 +765,7 @@ impl Parameters {
             if matches.is_present("metal") {
                 #[cfg(any(target_os = "macos", target_os = "ios"))]
                 {   
-                    tract_gpu::context::set_context(MetalContext::new())?;
+                    MetalContext::register()?;
 
                     stage!("metal", typed_model -> typed_model, |m:TypedModel| {
                         tract_metal::transform::MetalTransform::from_str(matches.value_of("force-metal-backend").unwrap_or(""))?

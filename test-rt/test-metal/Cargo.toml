@@ -25,6 +25,7 @@ lazy_static.workspace = true
 log.workspace = true
 tract-core.workspace = true
 tract-metal.workspace = true
+tract-gpu.workspace = true
 tract-onnx-opl.workspace = true
 infra = { path = "../infra" }
 suite-onnx = { path = "../suite-onnx" }
