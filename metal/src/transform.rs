@@ -5,7 +5,7 @@ use tract_gpu::sync::{GpuSync, GpuSyncKind};
 use crate::{kernels, ops};
 
 use crate::rewrite_rules;
-use crate::utils::as_q40_fact;
+use tract_gpu::utils::as_q40_fact;
 use std::borrow::Cow;
 use std::fmt::Debug;
 use std::str::FromStr;

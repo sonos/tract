@@ -140,7 +140,7 @@ impl TypedOp for MetalAxisOp {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_facts_from_gpu(inputs, |facts| self.0.output_facts(facts))
+        tract_gpu::utils::gpu_facts_from_gpu(inputs, |facts| self.0.output_facts(facts))
             .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
     }
 
@@ -149,8 +149,8 @@ impl TypedOp for MetalAxisOp {
         inputs: &[&TypedFact],
         outputs: &[&TypedFact],
     ) -> TractResult<AxesMapping> {
-        let ref_inputs = crate::utils::metal_facts(inputs, |facts| Ok(facts.to_vec()))?;
-        let ref_outputs = crate::utils::metal_facts(outputs, |facts| Ok(facts.to_vec()))?;
+        let ref_inputs = tract_gpu::utils::gpu_facts(inputs, |facts| Ok(facts.to_vec()))?;
+        let ref_outputs = tract_gpu::utils::gpu_facts(outputs, |facts| Ok(facts.to_vec()))?;
         self.0.axes_mapping(&ref_inputs, &ref_outputs)
     }
 

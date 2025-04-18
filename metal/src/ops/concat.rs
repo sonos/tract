@@ -74,7 +74,7 @@ impl TypedOp for MetalConcat {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_facts_from_gpu(inputs, |facts| {
+        tract_gpu::utils::gpu_facts_from_gpu(inputs, |facts| {
             let mut fact = facts[0].without_value();
             for input in facts {
                 if input.rank() != fact.rank()

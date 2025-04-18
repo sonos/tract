@@ -1,7 +1,7 @@
 use crate::kernels::matmul::{GemmImpl, GemmKernel};
 use crate::ops::MetalEvalOp;
 
-use crate::utils::{as_q40_fact, as_q40_tensor};
+use tract_gpu::utils::{as_q40_fact, as_q40_tensor};
 use crate::MetalContext;
 use anyhow::{bail, ensure};
 use tract_core::internal::*;
@@ -116,14 +116,14 @@ impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
 
 impl<K: GemmKernel + 'static> TypedOp for MetalGemm<K> {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_facts_from_gpu(inputs, |input_facts| {
+        tract_gpu::utils::gpu_facts_from_gpu(inputs, |input_facts| {
             self.resolve_output_facts(input_facts)
         })
         .with_context(|| anyhow::anyhow!("Error while computing output facts for {}", self.name()))
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        crate::utils::metal_facts(inputs, |input_facts| {
+        tract_gpu::utils::gpu_facts(inputs, |input_facts| {
             let fma = self
                 .kernel
                 .output_shape(&input_facts[0].shape, &input_facts[1].shape)

@@ -90,7 +90,7 @@ impl MetalEvalOp for MetalSlice {
 
 impl TypedOp for MetalSlice {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_facts_from_gpu(inputs, |facts| self.0.output_facts(facts))
+        tract_gpu::utils::gpu_facts_from_gpu(inputs, |facts| self.0.output_facts(facts))
             .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
     }
 

@@ -71,7 +71,7 @@ impl ApplyRope {
             input.shape()
         );
 
-        let cos_sin_strides = crate::utils::compute_broadcast_strides::<usize>(
+        let cos_sin_strides = tract_gpu::utils::compute_broadcast_strides::<usize>(
             padded_cos.shape(),
             padded_sin.strides(),
         )?;

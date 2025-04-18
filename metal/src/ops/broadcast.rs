@@ -40,7 +40,7 @@ impl MetalEvalOp for MetalMultiBroadcastTo {
 
 impl TypedOp for MetalMultiBroadcastTo {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_facts_from_gpu(inputs, |facts| {
+        tract_gpu::utils::gpu_facts_from_gpu(inputs, |facts| {
             let mut fact = facts[0].datum_type.fact(self.shape.clone());
             fact.uniform.clone_from(&inputs[0].uniform);
             Ok(tvec!(fact))

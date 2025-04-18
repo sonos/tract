@@ -55,7 +55,7 @@ impl ScaledMaskedSoftmax {
         let shape = input.shape();
         let strides = input.strides();
         let mask_strides_nd3 =
-            crate::utils::compute_broadcast_strides::<usize>(mask.shape(), mask.strides())?;
+            tract_gpu::utils::compute_broadcast_strides::<usize>(mask.shape(), mask.strides())?;
 
         let pipeline =
             context.load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
