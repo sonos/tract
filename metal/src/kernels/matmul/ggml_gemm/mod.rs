@@ -1,12 +1,12 @@
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
 use crate::utils::as_q40_fact;
-use tract_gpu::tensor::DeviceTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
 use metal::{Buffer, MTLSize, NSUInteger};
 use std::fmt;
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
+use tract_gpu::tensor::DeviceTensor;
 use DatumType::{F16, F32};
 
 #[derive(Debug)]
@@ -339,8 +339,7 @@ mod tests {
 
     #[test]
     fn test_ggml_compilation() -> Result<()> {
-        crate::METAL_CONTEXT
-            .with_borrow(|context| context.load_library(LibraryName::Ggml))?;
+        crate::METAL_CONTEXT.with_borrow(|context| context.load_library(LibraryName::Ggml))?;
         Ok(())
     }
 

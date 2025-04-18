@@ -1,10 +1,10 @@
 use crate::kernels::nn::Softmax;
 use crate::ops::MetalEvalOp;
 use crate::MetalContext;
-use tract_gpu::tensor::DeviceTensorExt;
 use std::fmt::Debug;
 use tract_core::internal::*;
 use tract_core::ops::nn as core_ops_nn;
+use tract_gpu::tensor::DeviceTensorExt;
 
 #[derive(Debug, Clone, Hash, Default)]
 pub struct MetalSoftmax {

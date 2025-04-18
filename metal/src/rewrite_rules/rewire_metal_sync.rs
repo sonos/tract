@@ -1,9 +1,9 @@
-use tract_gpu::sync::{GpuSync, GpuSyncKind};
 use crate::rewrite_rules::{next_node, previous_node};
 use crate::rule_ensure;
 use tract_core::internal::*;
 use tract_core::ops::konst::Const;
 use tract_core::tract_linalg::block_quant::BlockQuantValue;
+use tract_gpu::sync::{GpuSync, GpuSyncKind};
 use tract_gpu::tensor::DeviceTensorExt;
 
 // TODO: Move to GPU

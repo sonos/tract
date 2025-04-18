@@ -1,8 +1,8 @@
 pub use crate::kernels::BinOps;
 use crate::ops::MetalEvalOp;
 use crate::MetalContext;
-use tract_gpu::tensor::DeviceTensorExt;
 use tract_core::internal::*;
+use tract_gpu::tensor::DeviceTensorExt;
 
 #[derive(Debug, Clone)]
 pub struct MetalBinOp(pub BinOps);

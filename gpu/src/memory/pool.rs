@@ -1,8 +1,8 @@
 use crate::context::GpuDevice;
 use crate::memory::DeviceResolvedMemSchema;
+use crate::tensor::DeviceTensor;
 use crate::tensor::IntoGpu;
 use crate::tensor::{DeviceArenaStorage, DeviceArenaView};
-use crate::tensor::DeviceTensor;
 use anyhow::Result;
 use std::cell::RefCell;
 use std::collections::HashSet;

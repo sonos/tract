@@ -1,10 +1,10 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
-use tract_gpu::tensor::DeviceTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
 use std::fmt;
 use tract_core::internal::*;
+use tract_gpu::tensor::DeviceTensor;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ApplyRope;
@@ -62,7 +62,8 @@ impl ApplyRope {
         ensure!(cos.rank() <= input.rank());
 
         let padded_shape = [&tvec![1; input.rank() - cos.rank()], cos.shape()].concat();
-        let (padded_cos, padded_sin) = (cos.reshaped(padded_shape.clone())?, sin.reshaped(padded_shape)?);
+        let (padded_cos, padded_sin) =
+            (cos.reshaped(padded_shape.clone())?, sin.reshaped(padded_shape)?);
 
         ensure!(
             input.shape()[input.rank() - 1] % 2 == 0,
@@ -70,8 +71,10 @@ impl ApplyRope {
             input.shape()
         );
 
-        let cos_sin_strides =
-            crate::utils::compute_broadcast_strides::<usize>(padded_cos.shape(), padded_sin.strides())?;
+        let cos_sin_strides = crate::utils::compute_broadcast_strides::<usize>(
+            padded_cos.shape(),
+            padded_sin.strides(),
+        )?;
 
         let broadcast_kind = BroadcastKind::from_rank(input.rank())
             .with_context(|| anyhow!("Unsupported rank for ApplyRope op: {:?}", input.shape(),))?;
@@ -103,11 +106,11 @@ impl ApplyRope {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::autorelease_pool_init;
     use crate::context::MetalDevice;
-    use super::*;
-    use tract_gpu::tensor::IntoGpu;
     use tract_core::internal::Tensor;
+    use tract_gpu::tensor::IntoGpu;
     use tract_transformers::ops::apply_rope;
 
     fn run_test_case(shape: &[usize]) -> Result<()> {
@@ -121,15 +124,11 @@ mod tests {
                 &(0..len).map(|f| f as f32 / 1000.0).collect::<Vec<_>>(),
             )?;
 
-            let cos = Tensor::from_shape(
-                shape,
-                &(0..len).map(|f| (f as f32).cos()).collect::<Vec<_>>(),
-            )?;
+            let cos =
+                Tensor::from_shape(shape, &(0..len).map(|f| (f as f32).cos()).collect::<Vec<_>>())?;
 
-            let sin = Tensor::from_shape(
-                shape,
-                &(0..len).map(|f| (f as f32).sin()).collect::<Vec<_>>(),
-            )?;
+            let sin =
+                Tensor::from_shape(shape, &(0..len).map(|f| (f as f32).sin()).collect::<Vec<_>>())?;
 
             let metal_a = a.clone().into_gpu()?;
             let metal_sin = sin.clone().into_gpu()?;

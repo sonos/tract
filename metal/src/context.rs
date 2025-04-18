@@ -3,9 +3,9 @@ use crate::func_constants::ConstantValues;
 use crate::get_metal_device;
 use crate::kernels::{LibraryContent, LibraryName};
 
-use tract_gpu::tensor::DeviceTensor;
 use metal::NSUInteger;
 use tract_gpu::context::{DeviceBuffer, GpuDevice};
+use tract_gpu::tensor::DeviceTensor;
 
 use std::cell::RefCell;
 use std::ops::{Deref, DerefMut};
@@ -165,7 +165,7 @@ impl MetalDevice {
     ) -> Result<ComputePipelineState> {
         self.load_pipeline_with_constants(library_name, func_name, None)
     }
-    
+
     pub fn register() -> Result<()> {
         tract_gpu::context::set_context(Box::new(metal_device()))
     }
@@ -231,7 +231,7 @@ impl MetalContext {
         let command_buffer = self
             .command_buffer
             .borrow_mut()
-            .get_or_insert_with(|| {                
+            .get_or_insert_with(|| {
                 let command_buffer = TCommandBuffer::new(
                     self.command_queue.new_command_buffer().to_owned(),
                     self.profiler.borrow().clone(),
@@ -307,9 +307,7 @@ impl MetalContext {
         self.wait_until_completed()?;
 
         let device: &Device = &metal_device().device;
-        assert!(
-            device.supports_counter_sampling(metal::MTLCounterSamplingPoint::AtStageBoundary)
-        );
+        assert!(device.supports_counter_sampling(metal::MTLCounterSamplingPoint::AtStageBoundary));
 
         let profiler = Rc::new(RefCell::new(MetalProfiler::new(device.to_owned(), num_nodes)));
 
@@ -344,7 +342,7 @@ impl Drop for MetalContext {
 
 #[derive(Clone)]
 pub struct MetalBuffer {
-    pub inner: Buffer
+    pub inner: Buffer,
 }
 
 impl Deref for MetalBuffer {
@@ -377,21 +375,20 @@ impl GpuDevice for MetalDevice {
         let data = if data.len() == 0 { &ZERO } else { data };
 
         let size = core::mem::size_of_val(data) as NSUInteger;
-        Box::new(MetalBuffer { inner: self.device.new_buffer_with_bytes_no_copy(
-            data.as_ptr() as *const core::ffi::c_void,
-            size,
-            MTLResourceOptions::StorageModeShared,
-            None,
-        )}
-    )}
-
-    fn synchronize(&self) -> TractResult<()> {
-        METAL_CONTEXT.with_borrow(|ctxt| {
-            ctxt.wait_until_completed()
+        Box::new(MetalBuffer {
+            inner: self.device.new_buffer_with_bytes_no_copy(
+                data.as_ptr() as *const core::ffi::c_void,
+                size,
+                MTLResourceOptions::StorageModeShared,
+                None,
+            ),
         })
     }
-}
 
+    fn synchronize(&self) -> TractResult<()> {
+        METAL_CONTEXT.with_borrow(|ctxt| ctxt.wait_until_completed())
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -405,7 +402,7 @@ mod tests {
     use tract_gpu::tensor::IntoGpu;
 
     #[test]
-    fn test_alloc_zero() -> TractResult<()>{
+    fn test_alloc_zero() -> TractResult<()> {
         MetalDevice::register()?;
         let _ = autorelease_pool_init();
         Tensor::from_shape::<f32>(&[0], &[])?.into_gpu()?;

@@ -13,11 +13,11 @@ use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 
 use crate::utils::{as_metal_buffer, as_q40_tensor};
 use crate::MetalContext;
-use tract_gpu::tensor::DeviceTensor;
 use metal::Buffer;
 use num_traits::One;
 use std::fmt;
 use tract_core::internal::*;
+use tract_gpu::tensor::DeviceTensor;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum MetalGemmImplKind {
@@ -375,7 +375,6 @@ mod tests {
 
     use super::*;
     use crate::kernels::matmul::GemmImpl;
-    use tract_gpu::tensor::IntoGpu;
     use anyhow::Result;
     use num_traits::AsPrimitive;
     use num_traits::Float;
@@ -386,6 +385,7 @@ mod tests {
     use tract_core::tract_linalg::block_quant::{
         BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0,
     };
+    use tract_gpu::tensor::IntoGpu;
 
     pub(crate) fn run_mmm_test_case<K: GemmKernel>(
         (batch, m, k, n): (usize, usize, usize, usize),

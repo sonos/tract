@@ -140,7 +140,7 @@ impl DeviceTensor {
             Self::ArenaView(t) => t.device_buffer_address(),
         }
     }
-    
+
     /// Get underlying inner tensor view.
     #[inline]
     pub fn view(&self) -> TensorView {

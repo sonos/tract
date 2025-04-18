@@ -1,10 +1,10 @@
 use crate::kernels::array::Concat;
 use crate::ops::MetalEvalOp;
 use crate::MetalContext;
-use tract_gpu::tensor::DeviceTensorExt;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::array::TypedConcat;
+use tract_gpu::tensor::DeviceTensorExt;
 
 #[derive(new, Debug, Clone, Hash)]
 pub struct MetalConcat {
@@ -53,10 +53,8 @@ impl MetalEvalOp for MetalConcat {
         session: &mut SessionState,
         opaque_inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let inputs = opaque_inputs
-            .iter()
-            .map(|it| it.to_gpu_tensor())
-            .collect::<TractResult<TVec<_>>>()?;
+        let inputs =
+            opaque_inputs.iter().map(|it| it.to_gpu_tensor()).collect::<TractResult<TVec<_>>>()?;
 
         let mut output_shape = inputs[0].shape().to_vec();
         output_shape[self.axis()] = inputs.iter().map(|it| it.shape()[self.axis()]).sum();

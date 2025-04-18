@@ -1,9 +1,9 @@
 use crate::kernels::array::RotateHalf;
 use crate::ops::MetalEvalOp;
-use tract_gpu::tensor::DeviceTensorExt;
 use crate::MetalContext;
 use derive_new::new;
 use tract_core::internal::*;
+use tract_gpu::tensor::DeviceTensorExt;
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct MetalRotateHalf;

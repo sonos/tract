@@ -36,11 +36,11 @@ pub use softmax::MetalSoftmax;
 
 use crate::autorelease_pool_init;
 use crate::context::MetalDevice;
-use tract_gpu::tensor::DeviceTensor;
 use crate::MetalContext;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::OpStateFreeze;
+use tract_gpu::tensor::DeviceTensor;
 
 pub trait MetalEvalOp: EvalOp + Op + Clone {
     fn metal_eval(

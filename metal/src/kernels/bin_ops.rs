@@ -1,12 +1,12 @@
 use super::BroadcastKind;
 use crate::encoder::EncoderExt;
-use tract_gpu::tensor::DeviceTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::bail;
 use anyhow::{ensure, Result};
 use metal::{MTLSize, NSUInteger};
 use std::fmt;
 use tract_core::internal::*;
+use tract_gpu::tensor::DeviceTensor;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum BinOps {
@@ -142,7 +142,6 @@ impl BinOps {
         lhs: &DeviceTensor,
         rhs: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
-
         let out_shape = self.output_shape(lhs.shape(), rhs.shape())?;
         let out_dt = self.output_datum_type(lhs.datum_type(), rhs.datum_type())?;
         let output = unsafe { DeviceTensor::uninitialized_dt(out_dt, &out_shape)? };
@@ -193,9 +192,7 @@ impl BinOps {
         let kernel_name = self.kernel_name(lhs.datum_type(), broadcast_kind)?;
         match broadcast_kind {
             BroadcastKind::ByScalarLeft | BroadcastKind::ByScalarRight | BroadcastKind::Unicast => {
-
-                let pipeline =
-                    context.load_pipeline(LibraryName::BinOps, &kernel_name)?;
+                let pipeline = context.load_pipeline(LibraryName::BinOps, &kernel_name)?;
 
                 let command_buffer = context.command_buffer();
                 command_buffer.encode(|encoder| {
@@ -224,8 +221,7 @@ impl BinOps {
 
                 let output_shape = output.shape();
 
-                let pipeline =
-                    context.load_pipeline(LibraryName::BinOps, &kernel_name)?;
+                let pipeline = context.load_pipeline(LibraryName::BinOps, &kernel_name)?;
                 let command_buffer = context.command_buffer();
                 command_buffer.encode(|encoder| {
                     encoder.set_compute_pipeline_state(&pipeline);
@@ -259,12 +255,12 @@ mod tests {
     use crate::context::MetalDevice;
 
     use super::*;
-    use tract_gpu::tensor::IntoGpu;
     use derive_new::new;
     use num_traits::AsPrimitive;
     use num_traits::Zero;
     use proptest::collection::vec;
     use proptest::prelude::*;
+    use tract_gpu::tensor::IntoGpu;
 
     fn reference<FI: Datum, FO: Datum>(
         a: &Tensor,
@@ -295,20 +291,16 @@ mod tests {
             let a_len = a_shape.iter().product::<usize>();
             let b_len = b_shape.iter().product::<usize>();
 
-            let a =
-                Tensor::from_shape(a_shape, &(0..a_len).map(|f| f as f32).collect::<Vec<_>>())?
-                    .into_gpu()?;
+            let a = Tensor::from_shape(a_shape, &(0..a_len).map(|f| f as f32).collect::<Vec<_>>())?
+                .into_gpu()?;
             let b = Tensor::from_shape(
                 b_shape,
                 &(0..b_len).rev().map(|f| f as f32).collect::<Vec<_>>(),
             )?
             .into_gpu()?;
             let output = op.eval(context, &a, &b)?;
-            let ref_output = reference::<F, bool>(
-                &a.to_cpu()?.into_tensor(),
-                &b.to_cpu()?.into_tensor(),
-                cab,
-            )?;
+            let ref_output =
+                reference::<F, bool>(&a.to_cpu()?.into_tensor(), &b.to_cpu()?.into_tensor(), cab)?;
             assert_eq!(ref_output, output.to_cpu()?.into_tensor());
             Ok(())
         })
@@ -326,9 +318,8 @@ mod tests {
             let a_len = a_shape.iter().product::<usize>();
             let b_len = b_shape.iter().product::<usize>();
 
-            let a =
-                Tensor::from_shape(a_shape, &(0..a_len).map(|f| f as f32).collect::<Vec<_>>())?
-                    .into_gpu()?;
+            let a = Tensor::from_shape(a_shape, &(0..a_len).map(|f| f as f32).collect::<Vec<_>>())?
+                .into_gpu()?;
             let b = Tensor::from_shape(
                 b_shape,
                 &(0..b_len).rev().map(|f| f as f32).collect::<Vec<_>>(),

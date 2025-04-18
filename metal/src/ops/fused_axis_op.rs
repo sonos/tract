@@ -1,9 +1,9 @@
 use crate::ops::{MetalAxisOp, MetalEvalOp, MetalOpState};
-use tract_gpu::tensor::{DeviceTensorExt, DeviceTensor};
 use crate::MetalContext;
 use derive_new::new;
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
+use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt};
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct MetalFusedAxisOp<O: MetalEvalOp + TypedOp> {

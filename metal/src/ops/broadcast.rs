@@ -1,9 +1,9 @@
 use crate::ops::MetalEvalOp;
 use crate::{kernels, MetalContext};
-use tract_gpu::tensor::DeviceTensorExt;
 use derive_new::new;
 use std::fmt::Debug;
 use tract_core::internal::*;
+use tract_gpu::tensor::DeviceTensorExt;
 
 #[derive(Debug, Clone, new, Hash)]
 pub struct MetalMultiBroadcastTo {

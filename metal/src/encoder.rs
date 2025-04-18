@@ -1,6 +1,6 @@
-use tract_gpu::tensor::DeviceTensor;
 use metal::{ComputeCommandEncoderRef, MTLResourceUsage};
 use tract_core::internal::*;
+use tract_gpu::tensor::DeviceTensor;
 
 use crate::utils::as_metal_buffer;
 

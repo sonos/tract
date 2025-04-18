@@ -127,8 +127,7 @@ pub fn as_q40_tensor(a: &Tensor) -> Option<&BlockQuantValue> {
 }
 
 pub fn as_metal_buffer(device_buffer: &Box<dyn DeviceBuffer>) -> &Buffer {
-    if let Some(metal_buffer) = device_buffer
-        .downcast_ref::<MetalBuffer>() {
+    if let Some(metal_buffer) = device_buffer.downcast_ref::<MetalBuffer>() {
         metal_buffer
     } else {
         panic!("Non-Metal Buffer accessed during Metal execution")

@@ -175,11 +175,7 @@ pub fn dispatch_metal_mfa_gemm(
         _ => bail!("MFA GEMM only support F32 or F16 tensors"),
     };
 
-    let pipeline = context.load_pipeline_with_constants(
-        LibraryName::MfaLib,
-        name,
-        constants
-    )?;
+    let pipeline = context.load_pipeline_with_constants(LibraryName::MfaLib, name, constants)?;
     let m_group = m_simd * m_splits;
     let n_group = n_simd * n_splits;
 
@@ -247,13 +243,13 @@ pub fn dispatch_metal_mfa_gemm(
 }
 
 #[cfg(test)]
-mod tests { 
+mod tests {
     use crate::autorelease_pool_init;
     use crate::context::MetalDevice;
 
     use super::*;
     use crate::kernels::matmul::GemmImpl;
-    use tract_gpu::tensor::{IntoGpu, DeviceTensor};
+    use tract_gpu::tensor::{DeviceTensor, IntoGpu};
 
     #[test]
     fn test_mfa_gemm() -> Result<()> {
@@ -274,10 +270,8 @@ mod tests {
 
             let c = GemmImpl::<MfaGemm>::default().eval(context, &a, &b)?;
 
-            let expected_c = Tensor::from_shape(
-                &[1, 2, 4],
-                &[20.0, 23.0, 26.0, 29.0, 56.0, 68.0, 80.0, 92.0],
-            )?;
+            let expected_c =
+                Tensor::from_shape(&[1, 2, 4], &[20.0, 23.0, 26.0, 29.0, 56.0, 68.0, 80.0, 92.0])?;
 
             let c = c.to_cpu()?;
             assert!(c.close_enough(&expected_c, Approximation::Close).is_ok());

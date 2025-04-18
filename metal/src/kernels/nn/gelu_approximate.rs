@@ -1,9 +1,9 @@
 use crate::encoder::EncoderExt;
 use crate::{LibraryName, MetalContext};
-use tract_gpu::tensor::DeviceTensor;
 use anyhow::Result;
 use metal::MTLSize;
 use tract_core::internal::*;
+use tract_gpu::tensor::DeviceTensor;
 
 #[derive(Debug, Clone, Default, Copy, PartialEq, Eq, Hash)]
 pub struct GeluApproximate {
@@ -70,16 +70,16 @@ impl GeluApproximate {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::autorelease_pool_init;
     use crate::context::MetalDevice;
-    use super::*;
-    use tract_gpu::tensor::IntoGpu;
     use derive_new::new;
     use num_traits::AsPrimitive;
     use num_traits::Float;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use tract_core::internal::Tensor;
+    use tract_gpu::tensor::IntoGpu;
     use tract_transformers::ops::gelu_approximate;
 
     fn test_case<F>(
@@ -255,8 +255,10 @@ mod tests {
         pub fn reference(&self) -> Result<Tensor> {
             let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?;
 
-            let cpu_output =
-            gelu_approximate::GeluApproximate::default().eval(tvec![a.into_tvalue()])?[0].clone().into_tensor();
+            let cpu_output = gelu_approximate::GeluApproximate::default()
+                .eval(tvec![a.into_tvalue()])?[0]
+                .clone()
+                .into_tensor();
 
             Ok(cpu_output)
         }

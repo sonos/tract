@@ -1,10 +1,10 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::utils;
 use crate::{LibraryName, MetalContext};
-use tract_gpu::tensor::DeviceTensor;
 use anyhow::Result;
 use metal::MTLSize;
 use tract_core::internal::*;
+use tract_gpu::tensor::DeviceTensor;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Reducer {
@@ -68,8 +68,8 @@ impl Reducer {
         let output_shape_nd3 = utils::reshape_to_rank_3(output.shape(), axis);
         let output_strides_nd3 = Tensor::natural_strides(&output_shape_nd3);
 
-        let pipeline = context
-            .load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
+        let pipeline =
+            context.load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
 
         let command_buffer = context.command_buffer();
         command_buffer.encode(|encoder| {
@@ -94,7 +94,6 @@ mod tests {
     use super::*;
     use crate::autorelease_pool_init;
     use crate::context::MetalDevice;
-    use tract_gpu::tensor::IntoGpu;
     use derive_new::new;
     use num_traits::AsPrimitive;
     use num_traits::Float;
@@ -102,6 +101,7 @@ mod tests {
     use proptest::prelude::*;
     use tract_core::internal::Tensor;
     use tract_core::ops::nn::Reducer as TractReducer;
+    use tract_gpu::tensor::IntoGpu;
 
     fn test_case<F>(
         reducer: Reducer,
