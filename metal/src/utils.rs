@@ -3,7 +3,7 @@ use metal::Buffer;
 use num_traits::{AsPrimitive, Zero};
 use tract_core::internal::*;
 use tract_gpu::context::DeviceBuffer;
-use tract_gpu::fact::{GpuFact, GpuOrigin, GpuTypedFactExt};
+use tract_gpu::fact::{GpuFact, GpuTensorOrigin, GpuTypedFactExt};
 use tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue, Q4_0};
 
 #[macro_export]
@@ -38,7 +38,7 @@ pub fn metal_facts_from_gpu(
         let output_facts = (resolve_facts)(metal_facts.as_slice())?;
         Ok(output_facts
             .into_iter()
-            .map(|it| Ok(GpuFact::new(GpuOrigin::Device, it)?.into_opaque_fact()))
+            .map(|it| Ok(GpuFact::new(GpuTensorOrigin::Device, it)?.into_opaque_fact()))
             .collect::<TractResult<_>>()?)
     } else if facts.iter().all(|it| it.datum_type != DatumType::Opaque) {
         (resolve_facts)(facts)

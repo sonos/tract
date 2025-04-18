@@ -3,7 +3,7 @@ use tract_core::internal::*;
 
 /// Origin of the GPU tensor
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum GpuOrigin {
+pub enum GpuTensorOrigin {
     /// GPU tensor outputted by a GPU operator
     /// Can be either: Host or ArenaView
     /// Note: Tensors marked as FromGPU are from asynchronous operations.
@@ -16,12 +16,12 @@ pub enum GpuOrigin {
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct GpuFact {
-    pub origin: GpuOrigin,
+    pub origin: GpuTensorOrigin,
     pub fact: TypedFact,
 }
 
 impl GpuFact {
-    pub fn new(origin: GpuOrigin, fact: TypedFact) -> TractResult<Self> {
+    pub fn new(origin: GpuTensorOrigin, fact: TypedFact) -> TractResult<Self> {
         ensure!(fact.as_gpu_fact().is_none());
         let mut fact_wo_cst = fact.clone();
         if fact.opaque_fact.is_some() {
@@ -32,15 +32,15 @@ impl GpuFact {
     }
 
     pub fn from_cpu(fact: TypedFact) -> TractResult<Self> {
-        Self::new(GpuOrigin::Host, fact)
+        Self::new(GpuTensorOrigin::Host, fact)
     }
 
     pub fn is_from_gpu(&self) -> bool {
-        matches!(self.origin, GpuOrigin::Device)
+        matches!(self.origin, GpuTensorOrigin::Device)
     }
 
     pub fn is_from_cpu(&self) -> bool {
-        matches!(self.origin, GpuOrigin::Host)
+        matches!(self.origin, GpuTensorOrigin::Host)
     }
 
     pub fn into_typed_fact(self) -> TypedFact {
@@ -71,8 +71,8 @@ impl OpaqueFact for GpuFact {
 impl fmt::Debug for GpuFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self.origin {
-            GpuOrigin::Host => write!(fmt, "Host({:?})", self.fact),
-            GpuOrigin::Device => write!(fmt, "Device({:?})", self.fact),
+            GpuTensorOrigin::Host => write!(fmt, "Host({:?})", self.fact),
+            GpuTensorOrigin::Device => write!(fmt, "Device({:?})", self.fact),
         }
     }
 }
