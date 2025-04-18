@@ -332,15 +332,14 @@ impl<M: GemmKernel> GemmImpl<M> {
         let b_buff = as_metal_buffer(b.device_buffer());
         let c_buff = as_metal_buffer(c.device_buffer());
 
-        ensure!(a_buff.is_some() && b_buff.is_some() && c_buff.is_some(), "Executing Metal Op with Non-Metal Tensors");
         for d in dispatches {
             self.matmul
                 .dispatch_eval(
                     context,
                     d.clone(),
-                    a_buff.unwrap(),
-                    b_buff.unwrap(),
-                    c_buff.unwrap(),
+                    a_buff,
+                    b_buff,
+                    c_buff,
                 )
                 .with_context(|| {
                     anyhow!(

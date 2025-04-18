@@ -126,10 +126,13 @@ pub fn as_q40_tensor(a: &Tensor) -> Option<&BlockQuantValue> {
     })
 }
 
-pub fn as_metal_buffer(device_buffer: &Box<dyn DeviceBuffer>) -> Option<&Buffer> {
-    device_buffer
-    .downcast_ref::<MetalBuffer>()
-    .and_then(|mb| Some(&mb.inner))
+pub fn as_metal_buffer(device_buffer: &Box<dyn DeviceBuffer>) -> &Buffer {
+    if let Some(metal_buffer) = device_buffer
+        .downcast_ref::<MetalBuffer>() {
+        metal_buffer
+    } else {
+        panic!("Non-Metal Buffer accessed during Metal execution")
+    }
 }
 
 pub fn check_strides_validity(shape: TVec<usize>, strides: TVec<isize>) -> TractResult<()> {
