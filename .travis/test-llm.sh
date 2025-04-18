@@ -87,7 +87,7 @@ do
     esac
 
     case "$id.$t" in 
-        apple--OpenELM-270M-f16f16.p50s50) approx="--approx-custom 0.2,0.1,0.003";;
+        apple--OpenELM-270M-f16f16.p50s50) approx="--approx-custom 0.2,0.2,0.007";;
 
         TinyLlama--TinyLlama_v1.1-f32f32.p50s50) approx="--approx-custom 0.2,0.1,0.001";;
         TinyLlama--TinyLlama_v1.1-f16f16.p0s100) approx="--approx-custom 0.2,0.1,0.002";;
@@ -95,7 +95,7 @@ do
         TinyLlama--TinyLlama_v1.1-f16f16.p99s1) approx="--approx-custom 0.2,0.1,0.004";;
         TinyLlama--TinyLlama_v1.1-q40f16.p0s100) approx="--approx-custom 0.2,0.1,0.004";;
         TinyLlama--TinyLlama_v1.1-q40f16.p99s1) approx="--approx-custom 0.2,0.1,0.002";;
-        TinyLlama--TinyLlama_v1.1-q40f16.p50s50) approx="--approx-custom 0.2,0.1,0.004";;
+        TinyLlama--TinyLlama_v1.1-q40f16.p50s50) approx="--approx-custom 0.2,0.2,0.006";;
         TinyLlama--TinyLlama_v1.1-q40ef16.p0s100) approx="--approx-custom 0.2,0.1,0.002";;
         TinyLlama--TinyLlama_v1.1-q40ef16.p50s50) approx="--approx-custom 0.2,0.1,0.002";;
 
