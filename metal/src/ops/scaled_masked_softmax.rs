@@ -1,9 +1,9 @@
 use crate::kernels::nn::ScaledMaskedSoftmax;
 use crate::ops::MetalEvalOp;
-use tract_gpu::tensor::DeviceTensorExt;
 use crate::MetalContext;
 use derive_new::new;
 use tract_core::internal::*;
+use tract_gpu::tensor::DeviceTensorExt;
 
 /// A = SOFTMAX(INPUT * SCALE + MASK, AXIS=2)
 /// Only input of rank of 3 is supported

@@ -1,11 +1,11 @@
 use crate::encoder::EncoderExt;
-use tract_gpu::tensor::DeviceTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::bail;
 use anyhow::Result;
 use metal::{MTLSize, NSUInteger};
 use std::fmt;
 use tract_core::internal::*;
+use tract_gpu::tensor::DeviceTensor;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum ElementWiseOps {
@@ -190,8 +190,7 @@ impl ElementWiseOps {
 
         let kernel_name = self.kernel_name(input.datum_type(), false)?;
 
-        let pipeline =
-            context.load_pipeline(LibraryName::ElementWiseOps, &kernel_name)?;
+        let pipeline = context.load_pipeline(LibraryName::ElementWiseOps, &kernel_name)?;
         let command_buffer = context.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
@@ -219,9 +218,9 @@ mod tests {
     use crate::context::MetalDevice;
 
     use super::*;
-    use tract_gpu::tensor::IntoGpu;
     use num_traits::Zero;
     use rand::Rng;
+    use tract_gpu::tensor::IntoGpu;
 
     fn reference<F: Datum>(a: &Tensor, ca: impl Fn(&mut F, &F)) -> Result<Tensor> {
         let mut out = unsafe { Tensor::uninitialized_dt(a.datum_type(), a.shape())? };
@@ -262,7 +261,6 @@ mod tests {
                 .is_ok());
             Ok(())
         })
-
     }
 
     #[test]

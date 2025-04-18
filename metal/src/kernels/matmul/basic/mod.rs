@@ -119,8 +119,8 @@ impl BasicMatMul {
         output: &Buffer,
         output_offset: usize,
     ) -> Result<()> {
-        let pipeline = context
-            .load_pipeline(LibraryName::BasicMatMul, &Self::kernel_name(dt, true)?)?;
+        let pipeline =
+            context.load_pipeline(LibraryName::BasicMatMul, &Self::kernel_name(dt, true)?)?;
 
         let command_buffer = context.command_buffer();
         command_buffer.encode(|encoder| {
@@ -159,8 +159,8 @@ impl BasicMatMul {
         output: &Buffer,
         output_offset: usize,
     ) -> Result<()> {
-        let pipeline = context
-            .load_pipeline(LibraryName::BasicMatMul, &Self::kernel_name(dt, false)?)?;
+        let pipeline =
+            context.load_pipeline(LibraryName::BasicMatMul, &Self::kernel_name(dt, false)?)?;
 
         let command_buffer = context.command_buffer();
         command_buffer.encode(|encoder| {

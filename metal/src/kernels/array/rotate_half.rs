@@ -1,11 +1,11 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::utils;
-use tract_gpu::tensor::DeviceTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
 use metal::MTLSize;
 use std::fmt;
 use tract_core::internal::*;
+use tract_gpu::tensor::DeviceTensor;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RotateHalf;
@@ -61,8 +61,7 @@ impl RotateHalf {
 
         let kernel_name = self.kernel_name(input.datum_type())?;
 
-        let pipeline =
-            context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
+        let pipeline = context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
         let command_buffer = context.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
@@ -87,9 +86,9 @@ mod tests {
     use crate::context::MetalDevice;
 
     use super::*;
-    use tract_gpu::tensor::IntoGpu;
     use num_traits::AsPrimitive;
     use tract_core::internal::Tensor;
+    use tract_gpu::tensor::IntoGpu;
     use tract_transformers::ops::apply_rope;
 
     fn run_test_case<F>(shape: &[usize]) -> Result<()>
@@ -102,15 +101,13 @@ mod tests {
         crate::METAL_CONTEXT.with_borrow(|context| {
             let len = shape.iter().product::<usize>();
 
-            let a = Tensor::from_shape(
-                shape,
-                &(0..len).map(|f| -> F { f.as_() }).collect::<Vec<_>>(),
-            )?;
+            let a =
+                Tensor::from_shape(shape, &(0..len).map(|f| -> F { f.as_() }).collect::<Vec<_>>())?;
 
             let metal_a = a.clone().into_gpu()?;
 
             let cpu_output =
-            apply_rope::RotateHalf.eval(tvec![a.clone().into()])?[0].clone().into_tensor();
+                apply_rope::RotateHalf.eval(tvec![a.clone().into()])?[0].clone().into_tensor();
             let metal_output = RotateHalf.eval(context, &metal_a)?;
 
             cpu_output

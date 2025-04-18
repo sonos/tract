@@ -21,7 +21,9 @@ pub fn all_functions() -> Vec<String> {
     functions.extend(
         Reducer::ALL
             .into_iter()
-            .flat_map(|op| tract_gpu::tensor::DeviceTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt)))
+            .flat_map(|op| {
+                tract_gpu::tensor::DeviceTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt))
+            })
             .flat_map(|(op, dt)| op.kernel_name(dt).into_iter()),
     );
     functions.extend(

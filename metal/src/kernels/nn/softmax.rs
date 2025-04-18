@@ -1,10 +1,10 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::utils;
 use crate::{LibraryName, MetalContext};
-use tract_gpu::tensor::DeviceTensor;
 use anyhow::Result;
 use metal::MTLSize;
 use tract_core::internal::*;
+use tract_gpu::tensor::DeviceTensor;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Softmax;
@@ -48,8 +48,8 @@ impl Softmax {
         let shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
         let strides_nd3 = Tensor::natural_strides(&shape_nd3);
 
-        let pipeline = context
-            .load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
+        let pipeline =
+            context.load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
 
         let command_buffer = context.command_buffer();
         command_buffer.encode(|encoder| {
@@ -71,10 +71,9 @@ impl Softmax {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::autorelease_pool_init;
     use crate::context::MetalDevice;
-    use super::*;
-    use tract_gpu::tensor::IntoGpu;
     use derive_new::new;
     use num_traits::AsPrimitive;
     use num_traits::Float;
@@ -83,6 +82,7 @@ mod tests {
     use tract_core::internal::Tensor;
     use tract_core::ops::nn::Softmax as TractSoftmax;
     use tract_core::ops::nn::SoftmaxExp;
+    use tract_gpu::tensor::IntoGpu;
 
     #[test]
     fn test_softmax_f32() -> Result<()> {
@@ -93,23 +93,17 @@ mod tests {
             let k = 4;
             let axis = 1;
 
-            let a =
-                Tensor::from_shape(&[m, k], &(0..m * k).map(|f| f as f32).collect::<Vec<_>>())?
-                    .into_gpu()?;
+            let a = Tensor::from_shape(&[m, k], &(0..m * k).map(|f| f as f32).collect::<Vec<_>>())?
+                .into_gpu()?;
 
-            let cpu_softmax = TractSoftmax {
-                axes: tvec![axis],
-                quant_output_dt: None,
-                exp: SoftmaxExp::Libc,
-            };
+            let cpu_softmax =
+                TractSoftmax { axes: tvec![axis], quant_output_dt: None, exp: SoftmaxExp::Libc };
 
             let cpu_output =
                 cpu_softmax.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
             let metal_output = Softmax.eval(context, &a, axis)?;
-            cpu_output.close_enough(
-                &metal_output.to_cpu()?.into_tensor(),
-                Approximation::Approximate,
-            )?;
+            cpu_output
+                .close_enough(&metal_output.to_cpu()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
         })
     }
@@ -129,19 +123,14 @@ mod tests {
             )?
             .into_gpu()?;
 
-            let cpu_softmax = TractSoftmax {
-                axes: tvec![axis],
-                quant_output_dt: None,
-                exp: SoftmaxExp::Libc,
-            };
+            let cpu_softmax =
+                TractSoftmax { axes: tvec![axis], quant_output_dt: None, exp: SoftmaxExp::Libc };
 
             let cpu_output =
                 cpu_softmax.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
             let metal_output = Softmax.eval(context, &a, axis)?;
-            cpu_output.close_enough(
-                &metal_output.to_cpu()?.into_tensor(),
-                Approximation::Approximate,
-            )?;
+            cpu_output
+                .close_enough(&metal_output.to_cpu()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
         })
     }
@@ -161,19 +150,14 @@ mod tests {
             )?
             .into_gpu()?;
 
-            let cpu_softmax = TractSoftmax {
-                axes: tvec![axis],
-                quant_output_dt: None,
-                exp: SoftmaxExp::Libc,
-            };
+            let cpu_softmax =
+                TractSoftmax { axes: tvec![axis], quant_output_dt: None, exp: SoftmaxExp::Libc };
 
             let cpu_output =
                 cpu_softmax.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
             let metal_output = Softmax.eval(context, &a, axis)?;
-            cpu_output.close_enough(
-                &metal_output.to_cpu()?.into_tensor(),
-                Approximation::Approximate,
-            )?;
+            cpu_output
+                .close_enough(&metal_output.to_cpu()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
         })
     }
@@ -262,10 +246,10 @@ mod tests {
         pub fn run(&self) -> Result<Tensor> {
             MetalDevice::register()?;
             let _ = autorelease_pool_init();
-                crate::METAL_CONTEXT.with_borrow(|context| {
-                    let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_gpu()?;
-                    let metal_output = Softmax.eval(context, &a, self.axis)?;
-                    Ok(metal_output.to_cpu()?.into_tensor())
+            crate::METAL_CONTEXT.with_borrow(|context| {
+                let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_gpu()?;
+                let metal_output = Softmax.eval(context, &a, self.axis)?;
+                Ok(metal_output.to_cpu()?.into_tensor())
             })
         }
     }

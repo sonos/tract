@@ -1,10 +1,10 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
-use tract_gpu::tensor::DeviceTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
 use std::fmt;
 use tract_core::internal::*;
+use tract_gpu::tensor::DeviceTensor;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Concat {
@@ -87,8 +87,7 @@ impl Concat {
         })?;
 
         let kernel_name = self.kernel_name(output.datum_type(), broadcast_kind)?;
-        let pipeline =
-            context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
+        let pipeline = context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
         let command_buffer = context.command_buffer();
 
         for (input, offset) in inputs.iter().zip(offsets.into_iter()) {

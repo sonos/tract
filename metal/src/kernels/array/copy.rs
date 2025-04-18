@@ -1,11 +1,11 @@
 use crate::encoder::EncoderExt;
-use tract_gpu::tensor::DeviceTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::Result;
 use derive_new::new;
 use metal::{MTLSize, NSUInteger};
 use std::fmt;
 use tract_core::internal::*;
+use tract_gpu::tensor::DeviceTensor;
 
 #[derive(Debug, Clone, new, PartialEq, Eq, Hash)]
 pub struct Memcpy;
@@ -55,8 +55,7 @@ impl Memcpy {
 
         let kernel_name = self.kernel_name(input.datum_type())?;
 
-        let pipeline =
-            context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
+        let pipeline = context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
         let command_buffer = context.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);

@@ -1,10 +1,10 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
-use tract_gpu::tensor::DeviceTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::Result;
 use std::fmt;
 use tract_core::internal::*;
+use tract_gpu::tensor::DeviceTensor;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PermuteAxes;
@@ -108,8 +108,7 @@ impl PermuteAxes {
 
         let kernel_name = self.kernel_name(input.datum_type(), broadcast_kind)?;
 
-        let pipeline =
-            context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
+        let pipeline = context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
         let command_buffer = context.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);

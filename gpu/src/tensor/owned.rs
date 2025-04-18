@@ -1,6 +1,6 @@
 use crate::context::{get_device, DeviceBuffer};
-use crate::utils::{as_q40_tensor, check_strides_validity};
 use crate::tensor::DeviceTensor;
+use crate::utils::{as_q40_tensor, check_strides_validity};
 use anyhow::Result;
 use num_traits::AsPrimitive;
 use std::fmt::Display;
@@ -55,13 +55,11 @@ impl MValue {
         }
         if shape.as_slice() != self.shape() {
             match &self {
-                MValue::Natural(t) | MValue::Reshaped { t, .. } => {
-                    Ok(Self::Reshaped {
-                        t: Arc::clone(t),
-                        strides: Tensor::natural_strides(&shape),
-                        shape,
-                    })
-                }
+                MValue::Natural(t) | MValue::Reshaped { t, .. } => Ok(Self::Reshaped {
+                    t: Arc::clone(t),
+                    strides: Tensor::natural_strides(&shape),
+                    shape,
+                }),
             }
         } else {
             Ok(self.clone())
@@ -218,7 +216,10 @@ impl OwnedDeviceTensor {
     /// Change tensor stride.
     #[inline]
     pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> Result<Self> {
-        Ok(Self { inner: self.inner.restrided(strides)?, device_buffer: self.device_buffer.clone() })
+        Ok(Self {
+            inner: self.inner.restrided(strides)?,
+            device_buffer: self.device_buffer.clone(),
+        })
     }
 
     /// Reshaped tensor with given shape and strides, no consistency check.

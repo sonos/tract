@@ -19,7 +19,7 @@ impl DeviceArenaStorage {
             })?
         };
         let buffer = context.buffer_from_slice(tensor.as_bytes());
-    
+
         Ok(DeviceArenaStorage { tensor, buffer })
     }
 }

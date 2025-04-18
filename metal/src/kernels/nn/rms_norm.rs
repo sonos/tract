@@ -1,10 +1,10 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::utils;
 use crate::{LibraryName, MetalContext};
-use tract_gpu::tensor::DeviceTensor;
 use anyhow::Result;
 use metal::MTLSize;
 use tract_core::internal::*;
+use tract_gpu::tensor::DeviceTensor;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RmsNorm;

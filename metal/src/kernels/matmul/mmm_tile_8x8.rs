@@ -1,10 +1,10 @@
 use crate::encoder::EncoderExt;
 use crate::func_constants::{ConstantValues, Value};
-use tract_gpu::tensor::DeviceTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
 use metal::{MTLSize, NSUInteger};
 use tract_core::internal::DatumType;
+use tract_gpu::tensor::DeviceTensor;
 
 pub fn mmm_tile_8x8(
     context: &MetalContext,
@@ -47,11 +47,8 @@ pub fn metal_mmm_tile_8x8(
     ensure!(dim % 8 == 0, "Dim must be a multiple of 8");
 
     let constants = Some(ConstantValues::new(vec![(0, Value::USize(2)), (1, Value::USize(dim))]));
-    let pipeline = context.load_pipeline_with_constants(
-        LibraryName::MmmTile8x8,
-        "mmm_tile_8x8",
-        constants,
-    )?;
+    let pipeline =
+        context.load_pipeline_with_constants(LibraryName::MmmTile8x8, "mmm_tile_8x8", constants)?;
 
     let command_buffer = context.command_buffer();
     command_buffer.encode(|encoder| {
@@ -73,12 +70,12 @@ pub fn metal_mmm_tile_8x8(
 
 #[cfg(test)]
 mod tests {
-    use crate::{autorelease_pool_init, get_metal_device};
     use crate::context::MetalDevice;
+    use crate::{autorelease_pool_init, get_metal_device};
 
     use super::*;
-    use tract_gpu::tensor::IntoGpu;
     use tract_core::internal::Tensor;
+    use tract_gpu::tensor::IntoGpu;
 
     #[test]
     fn test_mmm_tile_8x8() -> Result<()> {
@@ -103,12 +100,10 @@ mod tests {
             let mut gpu_start = 0;
             metal_device.device().sample_timestamps(&mut cpu_start, &mut gpu_start);
 
-            let a =
-                Tensor::from_shape(&[n, n], &(0..n * n).map(|_f| 1_f32).collect::<Vec<_>>())?
-                    .into_gpu()?;
-            let b =
-                Tensor::from_shape(&[n, n], &(0..n * n).map(|_f| 1_f32).collect::<Vec<_>>())?
-                    .into_gpu()?;
+            let a = Tensor::from_shape(&[n, n], &(0..n * n).map(|_f| 1_f32).collect::<Vec<_>>())?
+                .into_gpu()?;
+            let b = Tensor::from_shape(&[n, n], &(0..n * n).map(|_f| 1_f32).collect::<Vec<_>>())?
+                .into_gpu()?;
             let start = std::time::Instant::now();
             let num_iter = 100;
             for _ in 0..num_iter {

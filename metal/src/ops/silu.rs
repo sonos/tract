@@ -1,9 +1,9 @@
 use crate::kernels::nn::Silu;
 use crate::ops::MetalEvalOp;
 use crate::MetalContext;
-use tract_gpu::tensor::DeviceTensorExt;
 use derive_new::new;
 use tract_core::internal::*;
+use tract_gpu::tensor::DeviceTensorExt;
 
 #[derive(Clone, Debug, new, Hash)]
 pub struct MetalSilu;

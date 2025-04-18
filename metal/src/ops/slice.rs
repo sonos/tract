@@ -1,9 +1,9 @@
 use crate::kernels;
 use crate::ops::MetalEvalOp;
 use crate::MetalContext;
-use tract_gpu::tensor::DeviceTensorExt;
 use tract_core::internal::*;
 use tract_core::ops::array::Slice;
+use tract_gpu::tensor::DeviceTensorExt;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct MetalSlice(Slice);
@@ -119,8 +119,8 @@ mod tests {
     use super::*;
     use crate::autorelease_pool_init;
     use crate::context::MetalDevice;
-    use tract_gpu::tensor::IntoGpu;
     use tract_core::internal::Tensor;
+    use tract_gpu::tensor::IntoGpu;
 
     fn run_test(shape: &[usize], slice: Slice) -> TractResult<()> {
         MetalDevice::register()?;

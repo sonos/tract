@@ -1,14 +1,11 @@
+use crate::kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm};
 use tract_gpu::fact::GpuTypedFactExt;
 use tract_gpu::sync::{GpuSync, GpuSyncKind};
-use crate::kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm};
 
 use crate::{kernels, ops};
 
 use crate::rewrite_rules;
-use tract_gpu::tensor::{IntoGpu, DeviceTensorExt};
 use crate::utils::as_q40_fact;
-use tract_gpu::fact::GpuFact;
-use tract_gpu::tensor::DeviceTensor;
 use std::borrow::Cow;
 use std::fmt::Debug;
 use std::str::FromStr;
@@ -24,6 +21,9 @@ use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
 use tract_core::ops::nn::{Reduce, Softmax as CoreSoftmax};
 use tract_core::transform::ModelTransform;
+use tract_gpu::fact::GpuFact;
+use tract_gpu::tensor::DeviceTensor;
+use tract_gpu::tensor::{DeviceTensorExt, IntoGpu};
 use tract_itertools::Itertools;
 use tract_transformers::ops::apply_rope::{ApplyRope, RotateHalf};
 use tract_transformers::ops::gelu_approximate::GeluApproximate;
@@ -252,7 +252,9 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
             || node
                 .op_as::<ApplyRope>()
                 .is_some_and(|_| kernels::nn::ApplyRope::is_supported_dt(input_dts[0]))
-            || node.op_as::<Silu>().is_some_and(|_| kernels::nn::Silu::is_supported_dt(input_dts[0]))
+            || node
+                .op_as::<Silu>()
+                .is_some_and(|_| kernels::nn::Silu::is_supported_dt(input_dts[0]))
             || node
                 .op_as::<GeluApproximate>()
                 .is_some_and(|_| kernels::nn::GeluApproximate::is_supported_dt(input_dts[0]))))

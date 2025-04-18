@@ -1,11 +1,11 @@
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
-use tract_gpu::tensor::DeviceTensor;
 use crate::{ConstantValues, LibraryName, MetalContext, Value};
 use anyhow::{ensure, Result};
 use metal::{Buffer, MTLSize, NSUInteger};
 use std::ffi::c_void;
 use std::fmt;
 use tract_core::internal::*;
+use tract_gpu::tensor::DeviceTensor;
 
 #[derive(Debug)]
 #[repr(C)]
@@ -344,11 +344,7 @@ pub fn dispatch_metal_mlx_gemm(
 
     let name = kernel_name_gemm(dt, a_trans, b_trans)?;
 
-    let pipeline = context.load_pipeline_with_constants(
-        LibraryName::MlxGemm,
-        &name,
-        constants
-    )?;
+    let pipeline = context.load_pipeline_with_constants(LibraryName::MlxGemm, &name, constants)?;
 
     let command_buffer = context.command_buffer();
     command_buffer.encode(|encoder| {
@@ -407,12 +403,11 @@ mod tests {
     use super::*;
     use crate::kernels::matmul::tests::run_mmm_test_case;
     use crate::kernels::matmul::GemmImpl;
-    use tract_gpu::tensor::{IntoGpu, DeviceTensor};
+    use tract_gpu::tensor::{DeviceTensor, IntoGpu};
 
     #[test]
     fn test_mlx_gemv_compilation() -> Result<()> {
-        crate::METAL_CONTEXT
-            .with_borrow(|context| context.load_library(LibraryName::MlxGemv))?;
+        crate::METAL_CONTEXT.with_borrow(|context| context.load_library(LibraryName::MlxGemv))?;
         Ok(())
     }
 

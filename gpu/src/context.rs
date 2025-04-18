@@ -40,7 +40,7 @@ impl_downcast!(DeviceBuffer);
 impl fmt::Debug for dyn DeviceBuffer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "DeviceBuffer: {:?}", self.info())
-    } 
+    }
 }
 
 pub trait CloneBuff {
@@ -70,20 +70,16 @@ pub fn set_context(new_context: Box<dyn GpuDevice>) -> Result<()> {
     Ok(())
 }
 
-pub fn get_device() -> Result<Box<dyn GpuDevice>, anyhow::Error>
-{   
+pub fn get_device() -> Result<Box<dyn GpuDevice>, anyhow::Error> {
     let guard = if let Some(guard) = GPU_DEVICE.read().ok() {
         guard
-    }else {
+    } else {
         bail!("Cannot read GPU Device")
     };
 
-    if let Some(gpu_ctxt) = guard
-        .as_ref()
-        {
-            Ok(gpu_ctxt.clone())
-        }
-        else {
-            bail!("GPU Device not initialized")
-        }
+    if let Some(gpu_ctxt) = guard.as_ref() {
+        Ok(gpu_ctxt.clone())
+    } else {
+        bail!("GPU Device not initialized")
+    }
 }
