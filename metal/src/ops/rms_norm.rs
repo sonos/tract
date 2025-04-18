@@ -43,7 +43,7 @@ impl MetalEvalOp for MetalRmsNorm {
 
 impl TypedOp for MetalRmsNorm {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_facts_from_gpu(inputs, |facts| {
+        tract_gpu::utils::gpu_facts_from_gpu(inputs, |facts| {
             let dt = facts[0].datum_type;
             let fact = dt.fact(facts[0].shape.clone());
             Ok(tvec!(fact))

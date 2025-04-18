@@ -53,7 +53,7 @@ impl MetalEvalOp for MetalCast {
 
 impl TypedOp for MetalCast {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_facts_from_gpu(inputs, |facts| {
+        tract_gpu::utils::gpu_facts_from_gpu(inputs, |facts| {
             Ok(tvec!(self.to.fact(facts[0].shape.clone())))
         })
         .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))

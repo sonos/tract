@@ -81,7 +81,7 @@ impl MultiBroadcast {
 
         let kernel_name = self.kernel_name(input.datum_type(), broadcast_kind)?;
 
-        let input_broadcast_strides = crate::utils::compute_broadcast_strides::<usize>(
+        let input_broadcast_strides = tract_gpu::utils::compute_broadcast_strides::<usize>(
             input_shape.as_slice(),
             input_strides.as_slice(),
         )?;

@@ -40,7 +40,7 @@ impl MetalEvalOp for MetalScaledMaskedSoftmax {
 
 impl TypedOp for MetalScaledMaskedSoftmax {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        crate::utils::metal_facts_from_gpu(inputs, |facts| {
+        tract_gpu::utils::gpu_facts_from_gpu(inputs, |facts| {
             ensure!(facts.len() == 2);
             let dt = facts[0].datum_type;
             ensure!(dt == facts[1].datum_type);

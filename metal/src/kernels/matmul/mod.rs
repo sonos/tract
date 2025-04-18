@@ -11,7 +11,8 @@ pub use mlx_gemm::MlxGemm;
 pub use mmm_tile_8x8::{metal_mmm_tile_8x8, mmm_tile_8x8};
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 
-use crate::utils::{as_metal_buffer, as_q40_tensor};
+use tract_gpu::utils::as_q40_tensor;
+use crate::utils::as_metal_buffer;
 use crate::MetalContext;
 use metal::Buffer;
 use num_traits::One;
