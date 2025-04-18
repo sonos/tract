@@ -1,5 +1,6 @@
 use crate::Parameters;
 use readings_probe::Probe;
+use tract_gpu::session_handler::DeviceSessionHandler;
 use std::time::{Duration, Instant};
 use tract_hir::internal::*;
 use tract_libcli::profile::BenchLimits;
@@ -48,7 +49,7 @@ pub(crate) fn make_state<'m>(
             symbol_values.set(&sequence_length, 1024);
             symbol_values.set(&past_sequence_length, 0);
             let session_handler =
-                tract_metal::DeviceSessionHandler::from_plan(&plan, &symbol_values)?;
+                DeviceSessionHandler::from_plan(&plan, &symbol_values)?;
 
             plan = plan.with_session_handler(session_handler);
             Ok(SimpleState::new(Arc::new(plan))?)

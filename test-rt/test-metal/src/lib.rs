@@ -7,6 +7,7 @@ use tract_core::internal::*;
 use paste::paste;
 use tract_core::runtime::Runtime;
 use tract_core::tract_data::itertools::Itertools;
+use tract_metal::context::MetalDevice;
 use tract_metal::MetalGemmImplKind;
 
 #[path = "../ggml_suite.rs"]
@@ -95,6 +96,7 @@ impl Runtime for MetalTestRuntime {
     }
 
     fn prepare(&self, mut model: TypedModel) -> TractResult<Box<dyn Runnable>> {
+        MetalDevice::register().unwrap();
         if self.transpose_inputs {
             for ix in 0..model.inputs.len() {
                 let input = model.input_outlets()?[ix];
