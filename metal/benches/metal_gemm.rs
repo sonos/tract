@@ -106,7 +106,7 @@ pub fn metal_gemm<K: GemmKernel>(
     is_ggml: bool,
 ) {
     let context = MetalContext::new();
-    context.shared_context().load_library(LibraryName::MfaLib).unwrap();
+    context.load_library(LibraryName::MfaLib).unwrap();
 
     let a = Tensor::zero_dt(dt, &[batch, m, k]).unwrap();
     let b = if is_ggml {

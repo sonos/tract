@@ -1,15 +1,34 @@
 use core::fmt;
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 
 use anyhow::{bail, Result};
 use downcast_rs::{impl_downcast, Downcast};
 
-pub trait GpuDevice: Send + Sync + Downcast + 'static {
+pub trait GpuDevice: Downcast + CloneDevice + Send + Sync {
     fn buffer_from_slice(&self, tensor: &[u8]) -> Box<dyn DeviceBuffer>;
     fn synchronize(&self) -> Result<()>;
 }
 
 impl_downcast!(GpuDevice);
+
+pub trait CloneDevice {
+    fn clone_device<'a>(&self) -> Box<dyn GpuDevice>;
+}
+
+impl<T> CloneDevice for T
+where
+    T: GpuDevice + Clone + 'static,
+{
+    fn clone_device(&self) -> Box<dyn GpuDevice> {
+        Box::new(self.clone())
+    }
+}
+
+impl Clone for Box<dyn GpuDevice> {
+    fn clone(&self) -> Self {
+        self.clone_device()
+    }
+}
 
 pub trait DeviceBuffer: CloneBuff + Downcast + Send + Sync {
     fn info(&self) -> String;
@@ -43,15 +62,15 @@ impl Clone for Box<dyn DeviceBuffer> {
     }
 }
 
-pub static GPU_DEVICE: RwLock<Option<Arc<dyn GpuDevice>>> = RwLock::new(None);
+pub static GPU_DEVICE: RwLock<Option<Box<dyn GpuDevice>>> = RwLock::new(None);
 
-pub fn set_context(new_context: Arc<dyn GpuDevice>) -> Result<()> {
+pub fn set_context(new_context: Box<dyn GpuDevice>) -> Result<()> {
     let mut device = GPU_DEVICE.write().unwrap();
     *device = Some(new_context);
     Ok(())
 }
 
-pub fn get_device() -> Result<Arc<dyn GpuDevice>, anyhow::Error>
+pub fn get_device() -> Result<Box<dyn GpuDevice>, anyhow::Error>
 {   
     let guard = if let Some(guard) = GPU_DEVICE.read().ok() {
         guard
@@ -61,8 +80,8 @@ pub fn get_device() -> Result<Arc<dyn GpuDevice>, anyhow::Error>
 
     if let Some(gpu_ctxt) = guard
         .as_ref()
-        .cloned() {
-            Ok(gpu_ctxt)
+        {
+            Ok(gpu_ctxt.clone())
         }
         else {
             bail!("GPU Device not initialized")

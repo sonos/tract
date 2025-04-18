@@ -17,7 +17,7 @@ pub struct DeviceMemoryPool {
 
 impl DeviceMemoryPool {
     pub fn from_schema(
-        context: Arc<dyn GpuDevice>,
+        context: Box<dyn GpuDevice>,
         resolved_schema: DeviceResolvedMemSchema,
     ) -> Result<Self> {
         let storage =
