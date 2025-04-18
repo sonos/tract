@@ -79,6 +79,21 @@ impl ModelTransform for GeluTransform {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct KeyValueCacheTransform;
+
+impl ModelTransform for KeyValueCacheTransform {
+    fn name(&self) -> Cow<str> {
+        "gelu-fast-approx-transform".into()
+    }
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        Rewriter::default()
+            .with_rule_for("detect-kv-cache", ops::dynamic_kv_cache_rule)
+            .rewrite(&(), model)
+    }
+}
+
 // TODO: This is why Transform shoudl be renamed to Remodel
 #[derive(Debug, Default)]
 pub struct TransformersTransform;
@@ -90,6 +105,7 @@ impl ModelTransform for TransformersTransform {
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         Rewriter::default()
+            .with_rule_for("detect-kv-cache", ops::dynamic_kv_cache_rule)
             .with_rule_for("detect-rms-norm", ops::as_rms_norm_rule)
             .with_rule_for("detect-rotate-half", ops::as_rotate_half_rule)
             .with_rule_for("detect-apply-rope", ops::as_apply_rope_rule)
