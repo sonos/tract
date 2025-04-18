@@ -11,6 +11,7 @@ pub fn get_transform(name: &str) -> Option<Box<dyn ModelTransform>> {
         "detect-silu" => Some(Box::new(SiluTransform)),
         "detect-scaled-masked-softmax" => Some(Box::new(ScaledMaskedSoftmaxTransform)),
         "detect-gelu-approx" => Some(Box::new(GeluTransform)),
+        "detect-kv-cache" => Some(Box::new(KeyValueCacheTransform)),
         "transformers-detect-all" => Some(Box::new(TransformersTransform)),
         _ => None,
     }
