@@ -3,18 +3,24 @@ use crate::rule_ensure;
 use tract_core::internal::*;
 use tract_core::ops::konst::Const;
 use tract_core::tract_linalg::block_quant::BlockQuantValue;
-use tract_gpu::sync::{GpuSync, GpuSyncKind};
-use tract_gpu::tensor::DeviceTensorExt;
+use crate::sync::{GpuSync, GpuSyncKind};
+use crate::tensor::DeviceTensorExt;
 
-// TODO: Move to GPU
-pub fn rewire_metal_sync(
+pub fn rewire_syncs(model: &mut TypedModel) -> TractResult<()> {
+    Rewriter::default()
+    .with_rule_for("remove-back-and-forth-sync", rewire_back_and_forth_sync)
+    .with_rule_for("remove-sync-after-const", rewire_sync_after_const)
+    .rewrite(&(), model)
+}
+
+pub fn rewire_back_and_forth_sync(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
     _node_name: &str,
     op: &GpuSync,
 ) -> TractResult<Option<TypedModelPatch>> {
-    // Search pattern => ToCPU => ToGPU
+    // Search pattern => ToHost => ToDevice
 
     rule_ensure!(op.kind == GpuSyncKind::ToDevice);
 
@@ -34,14 +40,14 @@ pub fn rewire_metal_sync(
     Ok(Some(patch))
 }
 
-pub fn rewire_metal_sync_after_const(
+pub fn rewire_sync_after_const(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,
     op: &Const,
 ) -> TractResult<Option<TypedModelPatch>> {
-    // Search pattern => Const => ToCPU
+    // Search pattern => Const => ToHost
 
     let Some(gpu_const) = op.val().as_gpu_tensor() else {
         return Ok(None);

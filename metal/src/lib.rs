@@ -24,7 +24,6 @@ use context::MetalDevice;
 
 pub(crate) fn get_metal_device() -> Result<Box<MetalDevice>> {
     let gpu_device = tract_gpu::device::get_device()?;
-
     gpu_device.downcast::<MetalDevice>().map_err(|_| anyhow!("GPU Device is not a Metal Device"))
 }
 

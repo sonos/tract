@@ -1,7 +1,7 @@
 use crate::kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm};
 use tract_gpu::fact::GpuTypedFactExt;
 use tract_gpu::sync::{GpuSync, GpuSyncKind};
-
+use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use crate::{kernels, ops};
 
 use crate::rewrite_rules;
@@ -109,15 +109,10 @@ impl MetalTransform {
 
         Rewriter::default()
             .with_rule_for("fuse_move_axis", rewrite_rules::fuse_move_axis)
-            .rewrite(&(), model)?;
-        Rewriter::default()
-            .with_rule_for("rewire-metal-sync", rewrite_rules::rewire_metal_sync)
-            .with_rule_for(
-                "rewire-metal-sync-after-const",
-                rewrite_rules::rewire_metal_sync_after_const,
-            )
             .with_rule_for("fuse_axis_op", rewrite_rules::fuse_axis_op)
             .rewrite(&(), model)?;
+
+        rewire_syncs(model)?;
         Ok(())
     }
 
