@@ -93,7 +93,7 @@ impl TypedOp for ScaledMaskedSoftmax {
 }
 
 /// Search pattern => A = SOFTMAX(A * SCALE + MASK, AXIS=2)
-pub fn as_scaled_masked_softmax_rule(
+pub fn scaled_masked_softmax_rule(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
