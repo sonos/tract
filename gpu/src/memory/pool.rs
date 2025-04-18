@@ -17,11 +17,11 @@ pub struct DeviceMemoryPool {
 
 impl DeviceMemoryPool {
     pub fn from_schema(
-        context: Box<dyn GpuDevice>,
+        device: Box<dyn GpuDevice>,
         resolved_schema: DeviceResolvedMemSchema,
     ) -> Result<Self> {
         let storage =
-            Arc::new(DeviceArenaStorage::with_capacity(context, resolved_schema.memory_size)?);
+            Arc::new(DeviceArenaStorage::with_capacity(device, resolved_schema.memory_size)?);
 
         Ok(Self { storage, resolved_schema, node_seen: RefCell::new(HashSet::new()) })
     }
