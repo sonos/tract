@@ -58,11 +58,6 @@ echo "      Alloc max to model size ratio: ${ratio}%."
 echo "  ###########################################"
 
 limit=125
-# not too sure why... 
-if [ "$id" = apple--OpenELM-270M-q40f32 ]
-then
-    limit=150
-fi
 
 if [ $ratio -gt $limit ]
 then
