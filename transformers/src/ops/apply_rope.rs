@@ -85,7 +85,7 @@ impl TypedOp for RotateHalf {
 
 /// Search pattern:
 /// Y = Concat(Neg(Slice(X, X.shape[-1]/2.., -1)), Slice(X, ..X.shape[-1]/2, -1))
-pub fn as_rotate_half_rule(
+pub fn rotate_half_rule(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
@@ -187,7 +187,7 @@ impl TypedOp for ApplyRope {
 
 /// Search pattern:
 /// Y = X * Cos + RotateHalf(X) * Sin
-pub fn as_apply_rope_rule(
+pub fn apply_rope_rule(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
