@@ -4,6 +4,7 @@ use criterion::*;
 use ggml::Context;
 use kernels::matmul::GgmlGemm;
 use tract_core::internal::*;
+use tract_gpu::tensor::IntoGpu;
 use tract_linalg::mmm::AsInputValue;
 use tract_metal::kernels::matmul;
 use tract_metal::*;

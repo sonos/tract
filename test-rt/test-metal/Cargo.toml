@@ -16,6 +16,7 @@ tract-core.workspace = true
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
 tract-onnx-opl.workspace = true
+tract-metal.workspace = true
 paste.workspace = true
 
 [dev-dependencies]

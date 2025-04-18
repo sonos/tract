@@ -1,7 +1,7 @@
 use fs_err as fs;
 use reqwest::Url;
 use scan_fmt::scan_fmt;
-use tract_metal::MetalContext;
+use tract_metal::context::MetalDevice;
 use std::io::Cursor;
 use std::io::Read;
 use std::path::PathBuf;
@@ -765,7 +765,7 @@ impl Parameters {
             if matches.is_present("metal") {
                 #[cfg(any(target_os = "macos", target_os = "ios"))]
                 {   
-                    MetalContext::register()?;
+                    MetalDevice::register()?;
 
                     stage!("metal", typed_model -> typed_model, |m:TypedModel| {
                         tract_metal::transform::MetalTransform::from_str(matches.value_of("force-metal-backend").unwrap_or(""))?
