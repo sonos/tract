@@ -196,7 +196,7 @@ impl Display for DeviceTensor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Owned(o) => match &o.inner {
-                MValue::Const(t) | MValue::Var(t) => {
+                MValue::Natural(t) => {
                     let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
                     write!(f, "Owned: {{ {content} }}")
                 }
