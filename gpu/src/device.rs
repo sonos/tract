@@ -1,21 +1,21 @@
 use core::fmt;
 use std::sync::RwLock;
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, Result};
 use downcast_rs::{impl_downcast, Downcast};
 
-pub trait GpuDevice: Downcast + CloneDevice + Send + Sync {
+pub trait GpuDevice: Downcast + ClonableDevice + Send + Sync {
     fn buffer_from_slice(&self, tensor: &[u8]) -> Box<dyn DeviceBuffer>;
     fn synchronize(&self) -> Result<()>;
 }
 
 impl_downcast!(GpuDevice);
 
-pub trait CloneDevice {
+pub trait ClonableDevice {
     fn clone_device<'a>(&self) -> Box<dyn GpuDevice>;
 }
 
-impl<T> CloneDevice for T
+impl<T> ClonableDevice for T
 where
     T: GpuDevice + Clone + 'static,
 {
@@ -30,7 +30,7 @@ impl Clone for Box<dyn GpuDevice> {
     }
 }
 
-pub trait DeviceBuffer: CloneBuff + Downcast + Send + Sync {
+pub trait DeviceBuffer: ClonableBuffer + Downcast + Send + Sync {
     fn info(&self) -> String;
     fn address(&self) -> usize;
 }
@@ -43,11 +43,11 @@ impl fmt::Debug for dyn DeviceBuffer {
     }
 }
 
-pub trait CloneBuff {
+pub trait ClonableBuffer {
     fn clone_buff<'a>(&self) -> Box<dyn DeviceBuffer>;
 }
 
-impl<T> CloneBuff for T
+impl<T> ClonableBuffer for T
 where
     T: DeviceBuffer + Clone + 'static,
 {
@@ -64,22 +64,13 @@ impl Clone for Box<dyn DeviceBuffer> {
 
 pub static GPU_DEVICE: RwLock<Option<Box<dyn GpuDevice>>> = RwLock::new(None);
 
-pub fn set_context(new_context: Box<dyn GpuDevice>) -> Result<()> {
+pub fn set_device(curr_device: Box<dyn GpuDevice>) -> Result<()> {
     let mut device = GPU_DEVICE.write().unwrap();
-    *device = Some(new_context);
+    *device = Some(curr_device);
     Ok(())
 }
 
-pub fn get_device() -> Result<Box<dyn GpuDevice>, anyhow::Error> {
-    let guard = if let Some(guard) = GPU_DEVICE.read().ok() {
-        guard
-    } else {
-        bail!("Cannot read GPU Device")
-    };
-
-    if let Some(gpu_ctxt) = guard.as_ref() {
-        Ok(gpu_ctxt.clone())
-    } else {
-        bail!("GPU Device not initialized")
-    }
+pub fn get_device() -> Result<Box<dyn GpuDevice>> {
+    let guard = GPU_DEVICE.read().map_err(|_| anyhow!("Cannot read GPU Device"))?;
+    guard.as_ref().cloned().ok_or_else(|| anyhow!("GPU Device not initialized"))
 }

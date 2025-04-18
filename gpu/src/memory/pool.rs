@@ -1,4 +1,4 @@
-use crate::context::GpuDevice;
+use crate::device::GpuDevice;
 use crate::memory::DeviceResolvedMemSchema;
 use crate::tensor::DeviceTensor;
 use crate::tensor::IntoGpu;

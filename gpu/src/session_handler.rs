@@ -1,4 +1,4 @@
-use crate::context::get_device;
+use crate::device::get_device;
 use crate::memory::DeviceMemSchema;
 use crate::memory::DeviceMemoryPool;
 use std::borrow::Borrow;

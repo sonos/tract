@@ -4,7 +4,7 @@ use crate::get_metal_device;
 use crate::kernels::{LibraryContent, LibraryName};
 
 use metal::NSUInteger;
-use tract_gpu::context::{DeviceBuffer, GpuDevice};
+use tract_gpu::device::{DeviceBuffer, GpuDevice};
 use tract_gpu::tensor::DeviceTensor;
 
 use std::cell::RefCell;
@@ -167,7 +167,7 @@ impl MetalDevice {
     }
 
     pub fn register() -> Result<()> {
-        tract_gpu::context::set_context(Box::new(metal_device()))
+        tract_gpu::device::set_device(Box::new(metal_device()))
     }
 }
 
@@ -369,7 +369,7 @@ impl DeviceBuffer for MetalBuffer {
 }
 
 impl GpuDevice for MetalDevice {
-    fn buffer_from_slice(&self, data: &[u8]) -> Box<dyn tract_gpu::context::DeviceBuffer> {
+    fn buffer_from_slice(&self, data: &[u8]) -> Box<dyn tract_gpu::device::DeviceBuffer> {
         static ZERO: [u8; 1] = [0];
         // Handle empty data
         let data = if data.len() == 0 { &ZERO } else { data };
