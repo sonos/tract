@@ -39,7 +39,7 @@ pub fn dequant_inputs(acc: DatumType, input: TVec<TValue>) -> TractResult<TVec<T
          }    ;
          unpacked.iter_mut().try_for_each(|t| t.insert_axis(0))?;
          let stacked = Tensor::stack_tensors(0, &unpacked)?;
-         let shape = i.shape().iter().copied().chain([bqvs[0].fact.m(), bqvs[0].fact.k()]).collect_vec();
+         let shape = i.shape().iter().chain(bqvs[0].fact.shape()).copied().collect_vec();
          Ok(stacked.into_shape(&shape)?.into_tvalue())
     } ).collect::<TractResult<TVec<TValue>>>()
 }

@@ -38,6 +38,9 @@ impl super::TypedPass for ConcatThenEinsum {
             let inlet = self.0.unwrap();
             let outlet = model.nodes[inlet.node].inputs[inlet.slot];
             let concat_node = model.node(outlet.node);
+            if model.outputs.contains(&concat_node.id.into()) {
+                continue;
+            }
             let einsum_node = &model.nodes[inlet.node];
             if einsum_node.inputs.len() != 2 {
                 // should we try and apply this on quantized einsums ?

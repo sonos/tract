@@ -157,7 +157,6 @@ impl PackedFormat {
 
     #[inline]
     pub fn single_panel_layout(&self, k: usize, item_size: usize) -> Layout {
-        assert!(k > 0);
         Layout::from_size_align(self.single_panel_len(k) * item_size, self.alignment()).unwrap()
     }
 
