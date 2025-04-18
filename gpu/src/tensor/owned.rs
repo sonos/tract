@@ -8,8 +8,7 @@ use tract_core::internal::*;
 
 #[derive(Debug, Clone, Hash)]
 pub enum MValue {
-    Const(Arc<Tensor>),
-    Var(Arc<Tensor>),
+    Natural(Arc<Tensor>),
     Reshaped { t: Arc<Tensor>, shape: TVec<usize>, strides: TVec<isize> },
 }
 
@@ -17,8 +16,7 @@ impl MValue {
     #[inline]
     pub fn view(&self) -> TensorView<'_> {
         match self {
-            Self::Const(t) => t.view(),
-            Self::Var(t) => t.view(),
+            Self::Natural(t) => t.view(),
             Self::Reshaped { t, shape, strides } => unsafe {
                 TensorView::from_bytes(t, 0, shape.as_slice(), strides.as_slice())
             },
@@ -29,8 +27,7 @@ impl MValue {
     #[inline]
     pub fn datum_type(&self) -> DatumType {
         match self {
-            Self::Const(t) => t.datum_type(),
-            Self::Var(t) => t.datum_type(),
+            Self::Natural(t) => t.datum_type(),
             Self::Reshaped { t, .. } => t.datum_type(),
         }
     }
@@ -38,7 +35,7 @@ impl MValue {
     #[inline]
     pub fn shape(&self) -> &[usize] {
         match self {
-            MValue::Const(t) | MValue::Var(t) => t.shape(),
+            MValue::Natural(t) => t.shape(),
             MValue::Reshaped { shape, .. } => shape,
         }
     }
@@ -58,7 +55,7 @@ impl MValue {
         }
         if shape.as_slice() != self.shape() {
             match &self {
-                MValue::Const(t) | MValue::Var(t) | MValue::Reshaped { t, .. } => {
+                MValue::Natural(t) | MValue::Reshaped { t, .. } => {
                     Ok(Self::Reshaped {
                         t: Arc::clone(t),
                         strides: Tensor::natural_strides(&shape),
@@ -76,7 +73,7 @@ impl MValue {
         check_strides_validity(self.shape().into(), strides.clone())?;
 
         match &self {
-            MValue::Const(t) | MValue::Var(t) => {
+            MValue::Natural(t) => {
                 Ok(Self::Reshaped { t: Arc::clone(t), strides, shape: self.shape().into() })
             }
             MValue::Reshaped { t, strides: old_strides, .. } => {
@@ -91,8 +88,7 @@ impl MValue {
 
     pub fn as_arc_tensor(&self) -> Option<&Arc<Tensor>> {
         match self {
-            MValue::Const(t) => Some(t),
-            MValue::Var(t) => Some(t),
+            MValue::Natural(t) => Some(t),
             MValue::Reshaped { .. } => None,
         }
     }
@@ -104,7 +100,7 @@ impl MValue {
         strides: impl Into<TVec<isize>>,
     ) -> Self {
         match self {
-            MValue::Const(t) | MValue::Var(t) | MValue::Reshaped { t, .. } => {
+            MValue::Natural(t) | MValue::Reshaped { t, .. } => {
                 MValue::Reshaped { t: Arc::clone(t), strides: strides.into(), shape: shape.into() }
             }
         }
@@ -114,8 +110,7 @@ impl MValue {
 impl IntoTensor for MValue {
     fn into_tensor(self) -> Tensor {
         match self {
-            Self::Var(t) => Arc::try_unwrap(t).unwrap_or_else(|t| (*t).clone()),
-            Self::Const(t) => Arc::try_unwrap(t).unwrap_or_else(|t| (*t).clone()),
+            Self::Natural(t) => Arc::try_unwrap(t).unwrap_or_else(|t| (*t).clone()),
             Self::Reshaped { t, shape, strides: _ } => {
                 let mut t = Arc::try_unwrap(t).unwrap_or_else(|t| (*t).clone());
                 t.set_shape(&shape).expect("Could not apply shape to reshaped GPU tensor");
@@ -127,13 +122,13 @@ impl IntoTensor for MValue {
 
 impl From<Tensor> for MValue {
     fn from(v: Tensor) -> Self {
-        Self::Var(Arc::new(v))
+        Self::Natural(Arc::new(v))
     }
 }
 
 impl From<Arc<Tensor>> for MValue {
     fn from(v: Arc<Tensor>) -> Self {
-        Self::Const(v)
+        Self::Natural(v)
     }
 }
 
@@ -189,7 +184,7 @@ impl OwnedDeviceTensor {
     #[inline]
     pub fn strides(&self) -> &[isize] {
         match &self.inner {
-            MValue::Const(t) | MValue::Var(t) => t.strides(),
+            MValue::Natural(t) => t.strides(),
             MValue::Reshaped { strides, .. } => strides,
         }
     }
@@ -248,7 +243,7 @@ impl OwnedDeviceTensor {
 impl Display for OwnedDeviceTensor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.inner {
-            MValue::Const(t) | MValue::Var(t) => {
+            MValue::Natural(t) => {
                 let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
                 write!(f, "Host {{ {content} }}")
             }
