@@ -96,7 +96,7 @@ impl TypedOp for GeluApproximate {
 }
 
 /// Search pattern => NEW_GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^N))); N ϵ {2, 3}
-pub fn as_gelu_approx_rule(
+pub fn gelu_approx_rule(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,

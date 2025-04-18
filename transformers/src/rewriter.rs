@@ -15,7 +15,7 @@ impl ModelTransform for RmsNormTransform {
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         Rewriter::default()
-            .with_rule_for("detect-rms-norm", ops::as_rms_norm_rule)
+            .with_rule_for("detect-rms-norm", ops::rms_norm_rule)
             .with_rule_for("remove_rms_norm_cast", ops::remove_rms_norm_cast)
             .rewrite(&(), model)
     }
@@ -31,8 +31,8 @@ impl ModelTransform for ApplyRopeTransform {
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         Rewriter::default()
-            .with_rule_for("detect-rotate-half", ops::as_rotate_half_rule)
-            .with_rule_for("detect-apply-rope", ops::as_apply_rope_rule)
+            .with_rule_for("detect-rotate-half", ops::rotate_half_rule)
+            .with_rule_for("detect-apply-rope", ops::apply_rope_rule)
             .rewrite(&(), model)
     }
 }
@@ -46,7 +46,7 @@ impl ModelTransform for SiluTransform {
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
-        Rewriter::default().with_rule_for("detect-silu", ops::as_silu_rule).rewrite(&(), model)
+        Rewriter::default().with_rule_for("detect-silu", ops::silu_rule).rewrite(&(), model)
     }
 }
 
@@ -60,7 +60,7 @@ impl ModelTransform for ScaledMaskedSoftmaxTransform {
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         Rewriter::default()
-            .with_rule_for("detect-scaled-masked-softmax", ops::as_scaled_masked_softmax_rule)
+            .with_rule_for("detect-scaled-masked-softmax", ops::scaled_masked_softmax_rule)
             .rewrite(&(), model)
     }
 }
@@ -75,7 +75,7 @@ impl ModelTransform for GeluTransform {
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         Rewriter::default()
-            .with_rule_for("detect-gelu-approx", ops::as_gelu_approx_rule)
+            .with_rule_for("detect-gelu-approx", ops::gelu_approx_rule)
             .rewrite(&(), model)
     }
 }
@@ -107,13 +107,13 @@ impl ModelTransform for TransformersTransform {
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         Rewriter::default()
             .with_rule_for("detect-kv-cache", ops::dynamic_kv_cache_rule)
-            .with_rule_for("detect-rms-norm", ops::as_rms_norm_rule)
+            .with_rule_for("detect-rms-norm", ops::rms_norm_rule)
             .with_rule_for("remove_rms_norm_cast", ops::remove_rms_norm_cast)
-            .with_rule_for("detect-rotate-half", ops::as_rotate_half_rule)
-            .with_rule_for("detect-apply-rope", ops::as_apply_rope_rule)
-            .with_rule_for("detect-scaled-masked-softmax", ops::as_scaled_masked_softmax_rule)
-            .with_rule_for("detect-silu", ops::as_silu_rule)
-            .with_rule_for("detect-gelu-approx", ops::as_gelu_approx_rule)
+            .with_rule_for("detect-rotate-half", ops::rotate_half_rule)
+            .with_rule_for("detect-apply-rope", ops::apply_rope_rule)
+            .with_rule_for("detect-scaled-masked-softmax", ops::scaled_masked_softmax_rule)
+            .with_rule_for("detect-silu", ops::silu_rule)
+            .with_rule_for("detect-gelu-approx", ops::gelu_approx_rule)
             .rewrite(&(), model)
     }
 }
