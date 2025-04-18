@@ -2,7 +2,7 @@
 use tract_hir::internal::*;
 use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
-use tract_metal::memory::MetalMemSchema;
+use tract_gpu::memory::DeviceMemSchema;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct MemArenaUsage {
@@ -13,7 +13,7 @@ struct MemArenaUsage {
 
 impl MemArenaUsage {
     pub fn eval_from_schema(
-        schema: &MetalMemSchema,
+        schema: &DeviceMemSchema,
         symbol_values: &SymbolValues,
     ) -> TractResult<Self> {
         Ok(Self {
@@ -35,7 +35,7 @@ struct MemArenaMetrics {
 }
 
 impl MemArenaMetrics {
-    pub fn from_schema(schema: &MetalMemSchema) -> TractResult<Self> {
+    pub fn from_schema(schema: &DeviceMemSchema) -> TractResult<Self> {
         log::info!("Analyzing memory arena utilization...");
         const MAX_GEN_TOKENS: i64 = 2048;
         const MAX_PROMPT_TOKENS: i64 = 2048;
@@ -108,7 +108,7 @@ pub fn dump_metrics(
     symbol_values.set(&sequence_length, SCHEMA_HINT_S);
     symbol_values.set(&past_sequence_length, SCHEMA_HINT_P);
 
-    let schema = MetalMemSchema::build(model, order, &symbol_values)?;
+    let schema = DeviceMemSchema::build(model, order, &symbol_values)?;
 
     println!("resolved_memory_size: {}", schema.eval_memory_size(&symbol_values)?);
     println!("Schema:\n{schema}");

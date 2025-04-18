@@ -1,6 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
-use tract_gpu::tensor::GpuTensor;
+use tract_gpu::tensor::DeviceTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::Result;
 use std::fmt;
@@ -35,7 +35,7 @@ impl PermuteAxes {
 
     pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> Result<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal permute axes  op", dt);
-        let tname = GpuTensor::tname(dt)?;
+        let tname = DeviceTensor::tname(dt)?;
         let broadcast_name = broadcast_kind.to_func_part();
         Ok(format!("array_ops::copy_{broadcast_name}_{tname}"))
     }
@@ -53,11 +53,11 @@ impl PermuteAxes {
     pub fn eval(
         &self,
         context: &MetalContext,
-        input: &GpuTensor,
+        input: &DeviceTensor,
         axes: &[usize],
-    ) -> Result<GpuTensor> {
+    ) -> Result<DeviceTensor> {
         let output = unsafe {
-            GpuTensor::uninitialized_dt(
+            DeviceTensor::uninitialized_dt(
                 input.datum_type(),
                 &Self::output_shape(input.shape(), axes)?,
             )?
@@ -70,9 +70,9 @@ impl PermuteAxes {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        input: &GpuTensor,
+        input: &DeviceTensor,
         axes: &[usize],
-        output: &GpuTensor,
+        output: &DeviceTensor,
     ) -> Result<()> {
         context.retain_tensor(input);
         context.retain_tensor(output);
@@ -109,7 +109,7 @@ impl PermuteAxes {
         let kernel_name = self.kernel_name(input.datum_type(), broadcast_kind)?;
 
         let pipeline =
-            context.shared_context().load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
+            context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
         let command_buffer = context.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
@@ -130,6 +130,9 @@ impl PermuteAxes {
 
 #[cfg(test)]
 mod tests {
+    use crate::autorelease_pool_init;
+    use crate::context::MetalDevice;
+
     use super::*;
 
     use num_traits::Zero;
@@ -138,18 +141,18 @@ mod tests {
     use tract_gpu::tensor::IntoGpu;
 
     fn run_test_case<F: Datum + Zero + Copy>(shape: &[usize], axes: &[usize]) -> Result<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let a_len = shape.iter().product::<usize>();
-                let a_data = (0..a_len).map(|f| f as f32).collect::<Vec<_>>();
+        MetalDevice::register()?;
+        let _ = autorelease_pool_init();
+        crate::METAL_CONTEXT.with_borrow(|context| {
+            let a_len = shape.iter().product::<usize>();
+            let a_data = (0..a_len).map(|f| f as f32).collect::<Vec<_>>();
 
-                let a = Tensor::from_shape(shape, &a_data)?.into_gpu()?;
+            let a = Tensor::from_shape(shape, &a_data)?.into_gpu()?;
 
-                let output = PermuteAxes.eval(context, &a, axes)?;
-                let ref_output = a.to_cpu()?.into_tensor().permute_axes(axes)?;
-                assert_eq!(ref_output, output.to_cpu()?.into_tensor());
-                Ok(())
-            })
+            let output = PermuteAxes.eval(context, &a, axes)?;
+            let ref_output = a.to_cpu()?.into_tensor().permute_axes(axes)?;
+            assert_eq!(ref_output, output.to_cpu()?.into_tensor());
+            Ok(())
         })
     }
 

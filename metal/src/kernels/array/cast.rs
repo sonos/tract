@@ -1,6 +1,6 @@
 use crate::encoder::EncoderExt;
 
-use tract_gpu::tensor::GpuTensor;
+use tract_gpu::tensor::DeviceTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::Result;
 use derive_new::new;
@@ -42,18 +42,18 @@ impl Cast {
             from_dt
         );
         ensure!(Self::is_supported_dt(to_dt), "Unsupported to_dt {:?} for metal cast  op", to_dt);
-        let from_tname = GpuTensor::tname(from_dt)?;
-        let to_tname = GpuTensor::tname(to_dt)?;
+        let from_tname = DeviceTensor::tname(from_dt)?;
+        let to_tname = DeviceTensor::tname(to_dt)?;
         Ok(format!("array_ops::cast_{from_tname}_{to_tname}"))
     }
 
     pub fn eval(
         &self,
         context: &MetalContext,
-        input: &GpuTensor,
+        input: &DeviceTensor,
         to_dt: DatumType,
-    ) -> Result<GpuTensor> {
-        let output = unsafe { GpuTensor::uninitialized_dt(to_dt, input.shape())? };
+    ) -> Result<DeviceTensor> {
+        let output = unsafe { DeviceTensor::uninitialized_dt(to_dt, input.shape())? };
         self.dispatch_eval(context, input, &output)?;
         context.wait_until_completed()?;
         Ok(output)
@@ -62,8 +62,8 @@ impl Cast {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        input: &GpuTensor,
-        output: &GpuTensor,
+        input: &DeviceTensor,
+        output: &DeviceTensor,
     ) -> Result<()> {
         context.retain_tensor(input);
         context.retain_tensor(output);
@@ -77,7 +77,7 @@ impl Cast {
         let kernel_name = self.kernel_name(input.datum_type(), output.datum_type())?;
 
         let pipeline =
-            context.shared_context().load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
+            context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
         let command_buffer = context.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);

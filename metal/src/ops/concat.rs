@@ -1,7 +1,7 @@
 use crate::kernels::array::Concat;
 use crate::ops::MetalEvalOp;
 use crate::MetalContext;
-use tract_gpu::tensor::GpuTensorExt;
+use tract_gpu::tensor::DeviceTensorExt;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::array::TypedConcat;

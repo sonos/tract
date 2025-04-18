@@ -1,7 +1,7 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::utils;
 use crate::{LibraryName, MetalContext};
-use tract_gpu::tensor::GpuTensor;
+use tract_gpu::tensor::DeviceTensor;
 use anyhow::Result;
 use metal::MTLSize;
 use tract_core::internal::*;
@@ -16,17 +16,17 @@ impl Softmax {
 
     pub fn kernel_name(&self, dt: DatumType) -> Result<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal softmax  op", dt);
-        let tname = GpuTensor::tname(dt)?;
+        let tname = DeviceTensor::tname(dt)?;
         Ok(format!("nn_ops::softmax_nd3_{tname}"))
     }
 
     pub fn eval(
         &self,
         context: &MetalContext,
-        input: &GpuTensor,
+        input: &DeviceTensor,
         axis: usize,
-    ) -> Result<GpuTensor> {
-        let output = unsafe { GpuTensor::uninitialized_dt(input.datum_type(), input.shape())? };
+    ) -> Result<DeviceTensor> {
+        let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(context, input, axis, &output)?;
         context.wait_until_completed()?;
         Ok(output)
@@ -35,9 +35,9 @@ impl Softmax {
     pub fn dispatch_eval(
         &self,
         context: &MetalContext,
-        input: &GpuTensor,
+        input: &DeviceTensor,
         axis: usize,
-        output: &GpuTensor,
+        output: &DeviceTensor,
     ) -> Result<()> {
         context.retain_tensor(input);
         context.retain_tensor(output);
@@ -49,7 +49,6 @@ impl Softmax {
         let strides_nd3 = Tensor::natural_strides(&shape_nd3);
 
         let pipeline = context
-            .shared_context()
             .load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
 
         let command_buffer = context.command_buffer();
@@ -72,6 +71,8 @@ impl Softmax {
 
 #[cfg(test)]
 mod tests {
+    use crate::autorelease_pool_init;
+    use crate::context::MetalDevice;
     use super::*;
     use tract_gpu::tensor::IntoGpu;
     use derive_new::new;
@@ -85,95 +86,95 @@ mod tests {
 
     #[test]
     fn test_softmax_f32() -> Result<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let m = 4;
-                let k = 4;
-                let axis = 1;
+        MetalDevice::register()?;
+        let _ = autorelease_pool_init();
+        crate::METAL_CONTEXT.with_borrow(|context| {
+            let m = 4;
+            let k = 4;
+            let axis = 1;
 
-                let a =
-                    Tensor::from_shape(&[m, k], &(0..m * k).map(|f| f as f32).collect::<Vec<_>>())?
-                        .into_gpu()?;
+            let a =
+                Tensor::from_shape(&[m, k], &(0..m * k).map(|f| f as f32).collect::<Vec<_>>())?
+                    .into_gpu()?;
 
-                let cpu_softmax = TractSoftmax {
-                    axes: tvec![axis],
-                    quant_output_dt: None,
-                    exp: SoftmaxExp::Libc,
-                };
+            let cpu_softmax = TractSoftmax {
+                axes: tvec![axis],
+                quant_output_dt: None,
+                exp: SoftmaxExp::Libc,
+            };
 
-                let cpu_output =
-                    cpu_softmax.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
-                let metal_output = Softmax.eval(context, &a, axis)?;
-                cpu_output.close_enough(
-                    &metal_output.to_cpu()?.into_tensor(),
-                    Approximation::Approximate,
-                )?;
-                Ok(())
-            })
+            let cpu_output =
+                cpu_softmax.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
+            let metal_output = Softmax.eval(context, &a, axis)?;
+            cpu_output.close_enough(
+                &metal_output.to_cpu()?.into_tensor(),
+                Approximation::Approximate,
+            )?;
+            Ok(())
         })
     }
 
     #[test]
     fn test_softmax_f32_2() -> Result<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let shape = [8, 4, 3];
-                let num_elements = shape.iter().product();
-                let axis = 0;
+        MetalDevice::register()?;
+        let _ = autorelease_pool_init();
+        crate::METAL_CONTEXT.with_borrow(|context| {
+            let shape = [8, 4, 3];
+            let num_elements = shape.iter().product();
+            let axis = 0;
 
-                let a = Tensor::from_shape(
-                    &shape,
-                    &(0..num_elements).map(|f| f as f32 / 1000.0).collect::<Vec<_>>(),
-                )?
-                .into_gpu()?;
+            let a = Tensor::from_shape(
+                &shape,
+                &(0..num_elements).map(|f| f as f32 / 1000.0).collect::<Vec<_>>(),
+            )?
+            .into_gpu()?;
 
-                let cpu_softmax = TractSoftmax {
-                    axes: tvec![axis],
-                    quant_output_dt: None,
-                    exp: SoftmaxExp::Libc,
-                };
+            let cpu_softmax = TractSoftmax {
+                axes: tvec![axis],
+                quant_output_dt: None,
+                exp: SoftmaxExp::Libc,
+            };
 
-                let cpu_output =
-                    cpu_softmax.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
-                let metal_output = Softmax.eval(context, &a, axis)?;
-                cpu_output.close_enough(
-                    &metal_output.to_cpu()?.into_tensor(),
-                    Approximation::Approximate,
-                )?;
-                Ok(())
-            })
+            let cpu_output =
+                cpu_softmax.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
+            let metal_output = Softmax.eval(context, &a, axis)?;
+            cpu_output.close_enough(
+                &metal_output.to_cpu()?.into_tensor(),
+                Approximation::Approximate,
+            )?;
+            Ok(())
         })
     }
 
     #[test]
     fn test_softmax_f16() -> Result<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let m = 4;
-                let k = 4;
-                let axis = 1;
+        MetalDevice::register()?;
+        let _ = autorelease_pool_init();
+        crate::METAL_CONTEXT.with_borrow(|context| {
+            let m = 4;
+            let k = 4;
+            let axis = 1;
 
-                let a = Tensor::from_shape(
-                    &[m, k],
-                    &(0..m * k).map(|f| -> f16 { f.as_() }).collect::<Vec<_>>(),
-                )?
-                .into_gpu()?;
+            let a = Tensor::from_shape(
+                &[m, k],
+                &(0..m * k).map(|f| -> f16 { f.as_() }).collect::<Vec<_>>(),
+            )?
+            .into_gpu()?;
 
-                let cpu_softmax = TractSoftmax {
-                    axes: tvec![axis],
-                    quant_output_dt: None,
-                    exp: SoftmaxExp::Libc,
-                };
+            let cpu_softmax = TractSoftmax {
+                axes: tvec![axis],
+                quant_output_dt: None,
+                exp: SoftmaxExp::Libc,
+            };
 
-                let cpu_output =
-                    cpu_softmax.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
-                let metal_output = Softmax.eval(context, &a, axis)?;
-                cpu_output.close_enough(
-                    &metal_output.to_cpu()?.into_tensor(),
-                    Approximation::Approximate,
-                )?;
-                Ok(())
-            })
+            let cpu_output =
+                cpu_softmax.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
+            let metal_output = Softmax.eval(context, &a, axis)?;
+            cpu_output.close_enough(
+                &metal_output.to_cpu()?.into_tensor(),
+                Approximation::Approximate,
+            )?;
+            Ok(())
         })
     }
 
@@ -259,12 +260,12 @@ mod tests {
         }
 
         pub fn run(&self) -> Result<Tensor> {
-            objc::rc::autoreleasepool(|| {
+            MetalDevice::register()?;
+            let _ = autorelease_pool_init();
                 crate::METAL_CONTEXT.with_borrow(|context| {
                     let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_gpu()?;
                     let metal_output = Softmax.eval(context, &a, self.axis)?;
                     Ok(metal_output.to_cpu()?.into_tensor())
-                })
             })
         }
     }

@@ -2,7 +2,7 @@ use num_traits::AsPrimitive;
 use std::fmt::Display;
 use tract_core::internal::*;
 
-use crate::context::{DeviceBuffer, GpuContext};
+use crate::context::{DeviceBuffer, GpuDevice};
 use crate::utils::check_strides_validity;
 
 #[derive(Debug, Clone)]
@@ -12,7 +12,7 @@ pub struct DeviceArenaStorage {
 }
 
 impl DeviceArenaStorage {
-    pub fn with_capacity(context: &impl GpuContext, capacity: usize) -> TractResult<Self> {
+    pub fn with_capacity(context: Arc<dyn GpuDevice>, capacity: usize) -> TractResult<Self> {
         let tensor = unsafe {
             Tensor::uninitialized_dt(DatumType::U8, &[capacity]).with_context(|| {
                 anyhow!("Error while allocating a tensor of {:?} bytes", capacity)

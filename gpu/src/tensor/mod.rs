@@ -4,23 +4,23 @@ mod owned;
 pub use arena_view::*;
 pub use owned::*;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use num_traits::AsPrimitive;
 use std::fmt::Display;
 use tract_core::internal::*;
 use tract_data::itertools::Itertools;
 
-use crate::context::{with_borrowed_gpu_context, DeviceBuffer};
+use crate::context::{get_device, DeviceBuffer};
 
 /// This struct represents a GPU tensor that can be either a owned tensor
 /// or an arena view.
 #[derive(Debug, Clone, Hash)]
-pub enum GpuTensor {
+pub enum DeviceTensor {
     Owned(OwnedDeviceTensor),
     ArenaView(DeviceArenaView),
 }
 
-impl GpuTensor {
+impl DeviceTensor {
     pub const SUPPORTED_DT: [DatumType; 12] = [
         DatumType::Bool,
         DatumType::F32,
@@ -54,17 +54,17 @@ impl GpuTensor {
         })
     }
 
-    /// Create an uninitialized GpuTensor
-    pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> Result<GpuTensor> {
+    /// Create an uninitialized DeviceTensor
+    pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> Result<DeviceTensor> {
         Tensor::uninitialized_dt(dt, shape)?.into_gpu()
     }
 
-    pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> Result<GpuTensor> {
+    pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> Result<DeviceTensor> {
         Self::uninitialized_dt(T::datum_type(), shape)
     }
 
     // Create a gpu tensor with a given shape and a slice of elements. The data is copied and aligned to size of T.
-    pub fn from_shape<T: Copy + Datum>(shape: &[usize], data: &[T]) -> Result<GpuTensor> {
+    pub fn from_shape<T: Copy + Datum>(shape: &[usize], data: &[T]) -> Result<DeviceTensor> {
         Tensor::from_shape(shape, data)?.into_gpu()
     }
 
@@ -178,22 +178,21 @@ impl GpuTensor {
     /// Synchronize the GPU Tensor by completing all current
     /// commands on GPU and returns the inner tensor.
     pub fn to_cpu(&self) -> Result<Arc<Tensor>> {
-        with_borrowed_gpu_context(|context| -> Result<Arc<Tensor>> {
-                context.synchronize()?;
-                Ok(match self {
-                    Self::Owned(o) => o
-                        .inner
-                        .as_arc_tensor()
-                        .cloned()
-                        .unwrap_or_else(|| o.inner.clone().into_tensor().into_arc_tensor()),
-                    Self::ArenaView(v) => v.clone().into_tensor().into(),
-                })
-            })
-            .with_context(|| anyhow!("Error while synchronize gpu tensor to its cpu counterpart"))
+        let gpu_context = get_device()?;
+        gpu_context.synchronize()?;
+
+        Ok(match self {
+            Self::Owned(o) => o
+                .inner
+                .as_arc_tensor()
+                .cloned()
+                .unwrap_or_else(|| o.inner.clone().into_tensor().into_arc_tensor()),
+            Self::ArenaView(v) => v.clone().into_tensor().into(),
+        })
     }
 }
 
-impl Display for GpuTensor {
+impl Display for DeviceTensor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Owned(o) => match &o.inner {
@@ -222,31 +221,31 @@ pub trait IntoGpu<T> {
     fn into_gpu(self) -> Result<T>;
 }
 
-impl IntoGpu<GpuTensor> for Tensor {
-    fn into_gpu(self) -> Result<GpuTensor> {
-        Ok(GpuTensor::Owned(OwnedDeviceTensor::from_tensor(self)?))
+impl IntoGpu<DeviceTensor> for Tensor {
+    fn into_gpu(self) -> Result<DeviceTensor> {
+        Ok(DeviceTensor::Owned(OwnedDeviceTensor::from_tensor(self)?))
     }
 }
 
-impl IntoGpu<GpuTensor> for Arc<Tensor> {
-    fn into_gpu(self) -> Result<GpuTensor> {
-        Ok(GpuTensor::Owned(OwnedDeviceTensor::from_tensor(self)?))
+impl IntoGpu<DeviceTensor> for Arc<Tensor> {
+    fn into_gpu(self) -> Result<DeviceTensor> {
+        Ok(DeviceTensor::Owned(OwnedDeviceTensor::from_tensor(self)?))
     }
 }
 
-impl From<GpuTensor> for Opaque {
-    fn from(value: GpuTensor) -> Self {
+impl From<DeviceTensor> for Opaque {
+    fn from(value: DeviceTensor) -> Self {
         Opaque(Arc::new(value))
     }
 }
 
-impl From<DeviceArenaView> for GpuTensor {
+impl From<DeviceArenaView> for DeviceTensor {
     fn from(view: DeviceArenaView) -> Self {
         Self::ArenaView(view)
     }
 }
 
-impl OpaquePayload for GpuTensor {
+impl OpaquePayload for DeviceTensor {
     fn same_as(&self, other: &dyn OpaquePayload) -> bool {
         other
             .downcast_ref::<Self>()
@@ -258,36 +257,36 @@ impl OpaquePayload for GpuTensor {
     }
 }
 
-pub trait GpuTensorExt {
-    fn to_gpu_tensor(&self) -> Result<&GpuTensor>;
-    fn as_gpu_tensor(&self) -> Option<&GpuTensor>;
-    fn to_gpu_tensor_mut(&mut self) -> Result<&mut GpuTensor>;
-    fn as_gpu_tensor_mut(&mut self) -> Option<&mut GpuTensor>;
+pub trait DeviceTensorExt {
+    fn to_gpu_tensor(&self) -> Result<&DeviceTensor>;
+    fn as_gpu_tensor(&self) -> Option<&DeviceTensor>;
+    fn to_gpu_tensor_mut(&mut self) -> Result<&mut DeviceTensor>;
+    fn as_gpu_tensor_mut(&mut self) -> Option<&mut DeviceTensor>;
 }
 
-impl GpuTensorExt for Tensor {
-    fn to_gpu_tensor_mut(&mut self) -> Result<&mut GpuTensor> {
+impl DeviceTensorExt for Tensor {
+    fn to_gpu_tensor_mut(&mut self) -> Result<&mut DeviceTensor> {
         let opaque = self.to_scalar_mut::<Opaque>()?;
-        opaque.downcast_mut::<GpuTensor>().ok_or_else(|| {
+        opaque.downcast_mut::<DeviceTensor>().ok_or_else(|| {
             anyhow::anyhow!("Could convert opaque tensor to mutable reference on a gpu tensor")
         })
     }
 
-    fn as_gpu_tensor_mut(&mut self) -> Option<&mut GpuTensor> {
+    fn as_gpu_tensor_mut(&mut self) -> Option<&mut DeviceTensor> {
         let opaque = self.to_scalar_mut::<Opaque>().ok()?;
-        opaque.downcast_mut::<GpuTensor>()
+        opaque.downcast_mut::<DeviceTensor>()
     }
 
-    fn to_gpu_tensor(&self) -> Result<&GpuTensor> {
+    fn to_gpu_tensor(&self) -> Result<&DeviceTensor> {
         let opaque = self.to_scalar::<Opaque>()?;
-        opaque.downcast_ref::<GpuTensor>().ok_or_else(|| {
+        opaque.downcast_ref::<DeviceTensor>().ok_or_else(|| {
             anyhow::anyhow!("Could convert opaque tensor to reference on a gpu tensor")
         })
     }
 
-    fn as_gpu_tensor(&self) -> Option<&GpuTensor> {
+    fn as_gpu_tensor(&self) -> Option<&DeviceTensor> {
         let opaque = self.to_scalar::<Opaque>().ok()?;
-        opaque.downcast_ref::<GpuTensor>()
+        opaque.downcast_ref::<DeviceTensor>()
     }
 }
 
@@ -297,7 +296,7 @@ mod tests {
 
     #[test]
     fn test_gpu_tensor() -> Result<()> {
-        let a = GpuTensor::from_shape(&[1], &[0f32])?;
+        let a = DeviceTensor::from_shape(&[1], &[0f32])?;
         assert_eq!(a.to_cpu()?.as_slice::<f32>()?, &[0.0]);
         Ok(())
     }

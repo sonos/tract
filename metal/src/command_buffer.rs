@@ -120,9 +120,9 @@ impl MetalProfiler {
 
 #[derive(Debug, Clone)]
 pub struct TCommandBuffer {
-    inner: CommandBuffer,
-    encoder: ComputeCommandEncoder,
-    profiler: Option<Rc<RefCell<MetalProfiler>>>,
+    pub inner: CommandBuffer,
+    pub encoder: ComputeCommandEncoder,
+    pub profiler: Option<Rc<RefCell<MetalProfiler>>>,
 }
 
 impl TCommandBuffer {
@@ -131,6 +131,7 @@ impl TCommandBuffer {
         profiler: Option<Rc<RefCell<MetalProfiler>>>,
     ) -> Self {
         let encoder = command_buffer.new_compute_command_encoder().to_owned();
+
         TCommandBuffer { inner: command_buffer, encoder, profiler }
     }
 

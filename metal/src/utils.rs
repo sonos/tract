@@ -1,5 +1,4 @@
 use crate::context::MetalBuffer;
-use downcast_rs::Downcast;
 use metal::Buffer;
 use num_traits::{AsPrimitive, Zero};
 use tract_core::internal::*;
@@ -128,7 +127,9 @@ pub fn as_q40_tensor(a: &Tensor) -> Option<&BlockQuantValue> {
 }
 
 pub fn as_metal_buffer(device_buffer: &Box<dyn DeviceBuffer>) -> Option<&Buffer> {
-    device_buffer.as_any().downcast_ref::<MetalBuffer>().and_then(|mb| Some(&mb.inner))
+    device_buffer
+    .downcast_ref::<MetalBuffer>()
+    .and_then(|mb| Some(&mb.inner))
 }
 
 pub fn check_strides_validity(shape: TVec<usize>, strides: TVec<isize>) -> TractResult<()> {

@@ -3,7 +3,7 @@ use crate::ops::MetalEvalOp;
 
 use crate::utils::{as_q40_fact, as_q40_tensor};
 use crate::MetalContext;
-use tract_gpu::tensor::GpuTensorExt;
+use tract_gpu::tensor::DeviceTensorExt;
 use anyhow::{bail, ensure};
 use tract_core::internal::*;
 

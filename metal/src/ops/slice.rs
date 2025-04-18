@@ -1,7 +1,7 @@
 use crate::kernels;
 use crate::ops::MetalEvalOp;
 use crate::MetalContext;
-use tract_gpu::tensor::GpuTensorExt;
+use tract_gpu::tensor::DeviceTensorExt;
 use tract_core::internal::*;
 use tract_core::ops::array::Slice;
 
@@ -117,36 +117,38 @@ impl TypedOp for MetalSlice {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::autorelease_pool_init;
+    use crate::context::MetalDevice;
     use tract_gpu::tensor::IntoGpu;
     use tract_core::internal::Tensor;
 
     fn run_test(shape: &[usize], slice: Slice) -> TractResult<()> {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let num_elements = shape.iter().product();
+        MetalDevice::register()?;
+        let _ = autorelease_pool_init();
+        crate::METAL_CONTEXT.with_borrow(|context| {
+            let num_elements = shape.iter().product();
 
-                let a = Tensor::from_shape(
-                    &shape,
-                    &(0..num_elements).map(|f| f as f32).collect::<Vec<_>>(),
-                )?;
+            let a = Tensor::from_shape(
+                &shape,
+                &(0..num_elements).map(|f| f as f32).collect::<Vec<_>>(),
+            )?;
 
-                let cpu_output = slice
-                    .eval_with_session(&SessionState::default(), tvec![a.clone().into_tvalue()])?;
+            let cpu_output = slice
+                .eval_with_session(&SessionState::default(), tvec![a.clone().into_tvalue()])?;
 
-                let metal_slice = MetalSlice::from_tract_core(slice);
-                let a_metal = a.clone().into_gpu()?.into_opaque_tensor().into_tvalue();
-                let mut session_state = SessionState::default();
-                let mut metal_slice_state = metal_slice.state(&mut session_state, 0)?.unwrap();
-                let metal_output =
-                    metal_slice_state.eval(&mut session_state, &metal_slice, tvec![a_metal])?;
-                context.wait_until_completed()?;
+            let metal_slice = MetalSlice::from_tract_core(slice);
+            let a_metal = a.clone().into_gpu()?.into_opaque_tensor().into_tvalue();
+            let mut session_state = SessionState::default();
+            let mut metal_slice_state = metal_slice.state(&mut session_state, 0)?.unwrap();
+            let metal_output =
+                metal_slice_state.eval(&mut session_state, &metal_slice, tvec![a_metal])?;
+            context.wait_until_completed()?;
 
-                cpu_output[0].close_enough(
-                    &metal_output[0].to_gpu_tensor()?.to_cpu()?.into_tensor(),
-                    Approximation::Approximate,
-                )?;
-                Ok(())
-            })
+            cpu_output[0].close_enough(
+                &metal_output[0].to_gpu_tensor()?.to_cpu()?.into_tensor(),
+                Approximation::Approximate,
+            )?;
+            Ok(())
         })
     }
 

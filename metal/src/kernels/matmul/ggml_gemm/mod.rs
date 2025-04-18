@@ -1,6 +1,6 @@
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
 use crate::utils::as_q40_fact;
-use tract_gpu::tensor::GpuTensor;
+use tract_gpu::tensor::DeviceTensor;
 use crate::{LibraryName, MetalContext};
 use anyhow::{ensure, Result};
 use metal::{Buffer, MTLSize, NSUInteger};
@@ -230,7 +230,7 @@ fn dispatch_metal_ggml_gemv(
 ) -> Result<()> {
     let (name, (nth0, nth1, nrows)) = mv_kernel_name_and_dispatch_params(&params)?;
     //dbg!(&name);
-    let pipeline = context.shared_context().load_pipeline(LibraryName::Ggml, &name)?;
+    let pipeline = context.load_pipeline(LibraryName::Ggml, &name)?;
 
     let ggml_params: GgmlGemvParams = params.clone().into();
     let command_buffer = context.command_buffer();
@@ -283,12 +283,12 @@ fn dispatch_metal_ggml_gemm(
 
     ensure!((matches!(dts[1], F32 | F16) || q40_b) && dts[0] == F32);
 
-    let i1_tname = if !q40_b { GpuTensor::tname(dts[1])? } else { "q4_0" };
-    let i2_tname = GpuTensor::tname(dts[0])?;
+    let i1_tname = if !q40_b { DeviceTensor::tname(dts[1])? } else { "q4_0" };
+    let i2_tname = DeviceTensor::tname(dts[0])?;
 
     let name = format!("kernel_mul_mm_{i1_tname}_{i2_tname}");
     //dbg!(&name);
-    let pipeline = context.shared_context().load_pipeline(LibraryName::Ggml, &name)?;
+    let pipeline = context.load_pipeline(LibraryName::Ggml, &name)?;
 
     let ggml_params: GgmlGemmParams = params.clone().into();
     let command_buffer = context.command_buffer();
@@ -321,6 +321,9 @@ fn dispatch_metal_ggml_gemm(
 
 #[cfg(test)]
 mod tests {
+    use crate::autorelease_pool_init;
+    use crate::context::MetalDevice;
+
     use std::any::TypeId;
 
     use num_traits::Float;
@@ -337,7 +340,7 @@ mod tests {
     #[test]
     fn test_ggml_compilation() -> Result<()> {
         crate::METAL_CONTEXT
-            .with_borrow(|context| context.shared_context().load_library(LibraryName::Ggml))?;
+            .with_borrow(|context| context.load_library(LibraryName::Ggml))?;
         Ok(())
     }
 
@@ -437,47 +440,47 @@ mod tests {
     where
         f32: From<F>,
     {
-        objc::rc::autoreleasepool(|| {
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let a_shape = [batch * broadcast_ratio, m, k];
-                let b_shape = [batch, n, k];
+        MetalDevice::register()?;
+        let _ = autorelease_pool_init();
+        crate::METAL_CONTEXT.with_borrow(|context| {
+            let a_shape = [batch * broadcast_ratio, m, k];
+            let b_shape = [batch, n, k];
 
-                let a_data = (0..batch * broadcast_ratio * k * m)
-                    .map(|f| f as f32 / (batch * broadcast_ratio * m * k) as f32)
-                    .collect::<Vec<_>>();
+            let a_data = (0..batch * broadcast_ratio * k * m)
+                .map(|f| f as f32 / (batch * broadcast_ratio * m * k) as f32)
+                .collect::<Vec<_>>();
 
-                let a = Tensor::from_shape(&a_shape, &a_data)?;
+            let a = Tensor::from_shape(&a_shape, &a_data)?;
 
-                let b_data = (0..batch * n * k)
-                    .map(|f| F::from(f).unwrap() / F::from(batch * n * k).unwrap())
-                    .collect::<Vec<_>>();
+            let b_data = (0..batch * n * k)
+                .map(|f| F::from(f).unwrap() / F::from(batch * n * k).unwrap())
+                .collect::<Vec<_>>();
 
-                let (ref_b, metal_b) = if q40 {
-                    ensure!(TypeId::of::<F>() == TypeId::of::<f32>());
-                    let b_data: Vec<f32> = b_data.into_iter().map(|x| x.into()).collect();
-                    let b_tensor =
-                        Q4_0.simulate_precision_loss(Tensor::from_shape(&b_shape, &b_data)?, 2)?;
+            let (ref_b, metal_b) = if q40 {
+                ensure!(TypeId::of::<F>() == TypeId::of::<f32>());
+                let b_data: Vec<f32> = b_data.into_iter().map(|x| x.into()).collect();
+                let b_tensor =
+                    Q4_0.simulate_precision_loss(Tensor::from_shape(&b_shape, &b_data)?, 2)?;
 
-                    ensure!(k % 32 == 0);
-                    let b_q4_0_tensor = tensor0(Opaque(Arc::new(BlockQuantValue {
-                        fact: BlockQuantFact::new(Box::new(Q4_0), tvec![batch, n, k]),
-                        value: Arc::new(Q4_0.quant_f32(&b_data)?),
-                    })));
-                    (b_tensor, b_q4_0_tensor)
-                } else {
-                    let b_tensor = Tensor::from_shape(&b_shape, &b_data)?;
-                    (b_tensor.clone(), b_tensor)
-                };
+                ensure!(k % 32 == 0);
+                let b_q4_0_tensor = tensor0(Opaque(Arc::new(BlockQuantValue {
+                    fact: BlockQuantFact::new(Box::new(Q4_0), tvec![batch, n, k]),
+                    value: Arc::new(Q4_0.quant_f32(&b_data)?),
+                })));
+                (b_tensor, b_q4_0_tensor)
+            } else {
+                let b_tensor = Tensor::from_shape(&b_shape, &b_data)?;
+                (b_tensor.clone(), b_tensor)
+            };
 
-                let metal_output = GemmImpl::<GgmlGemm>::new(false, true).eval(
-                    context,
-                    &a.clone().into_gpu()?,
-                    &metal_b.clone().into_gpu()?,
-                )?;
-                let output = reference(a, ref_b)?;
-                metal_output.to_cpu()?.close_enough(&output, Approximation::Approximate)?;
-                Ok(())
-            })
+            let metal_output = GemmImpl::<GgmlGemm>::new(false, true).eval(
+                context,
+                &a.clone().into_gpu()?,
+                &metal_b.clone().into_gpu()?,
+            )?;
+            let output = reference(a, ref_b)?;
+            metal_output.to_cpu()?.close_enough(&output, Approximation::Approximate)?;
+            Ok(())
         })
     }
 

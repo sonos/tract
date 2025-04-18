@@ -5,10 +5,10 @@ use crate::kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, M
 use crate::{kernels, ops};
 
 use crate::rewrite_rules;
-use tract_gpu::tensor::{IntoGpu, GpuTensorExt};
+use tract_gpu::tensor::{IntoGpu, DeviceTensorExt};
 use crate::utils::as_q40_fact;
 use tract_gpu::fact::GpuFact;
-use tract_gpu::tensor::GpuTensor;
+use tract_gpu::tensor::DeviceTensor;
 use std::borrow::Cow;
 use std::fmt::Debug;
 use std::str::FromStr;
@@ -210,7 +210,7 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
         .collect_vec();
 
     let in_dts_metal_compatible =
-        input_facts.iter().all(|fact| GpuTensor::is_supported_dt(fact.datum_type));
+        input_facts.iter().all(|fact| DeviceTensor::is_supported_dt(fact.datum_type));
 
     Ok(in_dts_metal_compatible
         && (node
@@ -224,7 +224,7 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
             })
             || node
                 .op_as::<Const>()
-                .is_some_and(|op| GpuTensor::is_supported_dt(op.val().datum_type()))
+                .is_some_and(|op| DeviceTensor::is_supported_dt(op.val().datum_type()))
             || node.op_as::<Cast>().is_some_and(|op| {
                 ops::MetalCast::is_supported_dt(input_dts[0])
                     && ops::MetalCast::new(op.to).is_some()

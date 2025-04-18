@@ -120,7 +120,6 @@ impl BasicMatMul {
         output_offset: usize,
     ) -> Result<()> {
         let pipeline = context
-            .shared_context()
             .load_pipeline(LibraryName::BasicMatMul, &Self::kernel_name(dt, true)?)?;
 
         let command_buffer = context.command_buffer();
@@ -161,7 +160,6 @@ impl BasicMatMul {
         output_offset: usize,
     ) -> Result<()> {
         let pipeline = context
-            .shared_context()
             .load_pipeline(LibraryName::BasicMatMul, &Self::kernel_name(dt, false)?)?;
 
         let command_buffer = context.command_buffer();

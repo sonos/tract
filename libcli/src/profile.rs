@@ -125,7 +125,7 @@ pub fn profile_metal(
     let state = TypedSimpleState::new_from_inputs(&plan, inputs.clone())?;
 
     let session_handler =
-        tract_metal::MetalSessionHandler::from_plan(&plan, &state.session_state.resolved_symbols)?;
+        tract_gpu::session_handler::DeviceSessionHandler::from_plan(&plan, &state.session_state.resolved_symbols)?;
 
     plan = plan.with_session_handler(session_handler);
 

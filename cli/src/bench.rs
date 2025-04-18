@@ -48,7 +48,7 @@ pub(crate) fn make_state<'m>(
             symbol_values.set(&sequence_length, 1024);
             symbol_values.set(&past_sequence_length, 0);
             let session_handler =
-                tract_metal::MetalSessionHandler::from_plan(&plan, &symbol_values)?;
+                tract_metal::DeviceSessionHandler::from_plan(&plan, &symbol_values)?;
 
             plan = plan.with_session_handler(session_handler);
             Ok(SimpleState::new(Arc::new(plan))?)

@@ -1,5 +1,5 @@
 use crate::fact::{GpuFact, GpuTypedFactExt};
-use crate::tensor::{GpuTensorExt, IntoGpu};
+use crate::tensor::{DeviceTensorExt, IntoGpu};
 use derive_new::new;
 use std::fmt;
 use tract_core::internal::*;

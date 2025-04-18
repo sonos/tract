@@ -1,21 +1,27 @@
 use core::fmt;
-use std::cell::RefCell;
+use std::sync::{Arc, RwLock};
 
-use tract_core::prelude::TractResult;
+use anyhow::{bail, Result};
+use downcast_rs::{impl_downcast, Downcast};
 
-pub trait GpuContext {
+pub trait GpuDevice: Send + Sync + Downcast + 'static {
     fn buffer_from_slice(&self, tensor: &[u8]) -> Box<dyn DeviceBuffer>;
-    fn synchronize(&self) -> TractResult<()>;
+    fn synchronize(&self) -> Result<()>;
 }
 
-pub trait DeviceBuffer: CloneBuff + Send + Sync {
+impl_downcast!(GpuDevice);
+
+pub trait DeviceBuffer: CloneBuff + Downcast + Send + Sync {
+    fn info(&self) -> String;
     fn address(&self) -> usize;
 }
 
-impl fmt::Debug for Box<dyn DeviceBuffer> {
+impl_downcast!(DeviceBuffer);
+
+impl fmt::Debug for dyn DeviceBuffer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "DeviceBuffer{:?}", self)
-    }
+        write!(f, "DeviceBuffer: {:?}", self.info())
+    } 
 }
 
 pub trait CloneBuff {
@@ -37,23 +43,28 @@ impl Clone for Box<dyn DeviceBuffer> {
     }
 }
 
-thread_local! {
-    pub static GPU_CONTEXT: RefCell<Option<Box<dyn GpuContext>>> = RefCell::new(None);
-}
+pub static GPU_DEVICE: RwLock<Option<Arc<dyn GpuDevice>>> = RwLock::new(None);
 
-pub fn set_context(new_context: impl GpuContext + 'static) -> TractResult<()> {
-    GPU_CONTEXT.replace(Some(Box::new(new_context)));
+pub fn set_context(new_context: Arc<dyn GpuDevice>) -> Result<()> {
+    let mut device = GPU_DEVICE.write().unwrap();
+    *device = Some(new_context);
     Ok(())
 }
 
-pub fn with_borrowed_gpu_context<F, R>(f: F) -> R 
-    where F: FnOnce(&Box<dyn GpuContext>) -> R,
-{
-    GPU_CONTEXT.with_borrow(|ctxt| 
-        if let Some(c) = ctxt {
-            f(c)
-        } else {
-            panic!("No GPU context has been set")
+pub fn get_device() -> Result<Arc<dyn GpuDevice>, anyhow::Error>
+{   
+    let guard = if let Some(guard) = GPU_DEVICE.read().ok() {
+        guard
+    }else {
+        bail!("Cannot read GPU Device")
+    };
+
+    if let Some(gpu_ctxt) = guard
+        .as_ref()
+        .cloned() {
+            Ok(gpu_ctxt)
         }
-    )
+        else {
+            bail!("GPU Device not initialized")
+        }
 }

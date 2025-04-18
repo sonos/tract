@@ -1,6 +1,6 @@
-use crate::context::{with_borrowed_gpu_context, DeviceBuffer};
+use crate::context::{get_device, DeviceBuffer};
 use crate::utils::{as_q40_tensor, check_strides_validity};
-use crate::tensor::GpuTensor;
+use crate::tensor::DeviceTensor;
 use anyhow::Result;
 use num_traits::AsPrimitive;
 use std::fmt::Display;
@@ -155,22 +155,22 @@ impl Hash for OwnedDeviceTensor {
 impl OwnedDeviceTensor {
     /// Create a owned gpu tensor from a cpu tensor.
     pub fn from_tensor<T: Into<MValue>>(tensor: T) -> Result<Self> {
-        with_borrowed_gpu_context(|ctxt| {
-            let m_value: MValue = tensor.into();
-            let tensor_view = m_value.view();
-            ensure!(
-                GpuTensor::is_supported_dt(tensor_view.datum_type()),
-                "Tensor of {:?} is not copied. No GPU buffer can be allocated for it.",
-                tensor_view.datum_type(),
-            );
+        let gpu_context = get_device()?;
+        let m_value: MValue = tensor.into();
+        let tensor_view = m_value.view();
+        ensure!(
+            DeviceTensor::is_supported_dt(tensor_view.datum_type()),
+            "Tensor of {:?} is not copied. No GPU buffer can be allocated for it.",
+            tensor_view.datum_type(),
+        );
 
-            let data_bytes = as_q40_tensor(tensor_view.tensor)
-                .map(|bqv| bqv.value.as_bytes())
-                .unwrap_or(tensor_view.tensor.as_bytes());
+        let data_bytes = as_q40_tensor(tensor_view.tensor)
+            .map(|bqv| bqv.value.as_bytes())
+            .unwrap_or(tensor_view.tensor.as_bytes());
 
-            let device_buffer = ctxt.buffer_from_slice(data_bytes);
-            Ok(OwnedDeviceTensor { inner: m_value, device_buffer })
-        })
+        let device_buffer = gpu_context.buffer_from_slice(data_bytes);
+
+        Ok(OwnedDeviceTensor { inner: m_value, device_buffer })
     }
 
     #[inline]
