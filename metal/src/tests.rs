@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
     use tract_core::internal::*;
-    use crate::context::MetalContext;
     use crate::utils::with_borrowed_metal_stream;
     use crate::MetalTransform;
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
@@ -13,7 +12,6 @@ mod tests {
 
     #[test]
     fn test_alloc_zero() -> TractResult<()> {
-        MetalContext::register()?;
         with_borrowed_metal_stream(|_| {
             Tensor::from_shape::<f32>(&[0], &[])?.into_device()
         })?;
@@ -180,7 +178,6 @@ mod tests {
 
         model.set_output_outlets(&outputs)?;
 
-        MetalContext::register()?;
         // Transform model for Metal execution
         let model = MetalTransform::default().transform_into(model)?;
 

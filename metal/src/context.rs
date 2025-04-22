@@ -30,7 +30,11 @@ thread_local! {
 fn metal_context() -> MetalContext {
     static INSTANCE: OnceLock<MetalContext> = OnceLock::new();
     INSTANCE
-        .get_or_init(|| MetalContext::new().expect("Could not create Metal context"))
+        .get_or_init(|| {
+            let ctxt = MetalContext::new().expect("Could not create Metal context");
+            tract_gpu::device::set_context(Box::new(ctxt.clone())).expect("Could not set Metal context");
+            ctxt
+            })
         .clone()
 }
 
@@ -164,10 +168,6 @@ impl MetalContext {
         func_name: &str,
     ) -> Result<ComputePipelineState> {
         self.load_pipeline_with_constants(library_name, func_name, None)
-    }
-
-    pub fn register() -> Result<()> {
-        tract_gpu::device::set_context(Box::new(metal_context()))
     }
 }
 

@@ -130,7 +130,6 @@ impl PermuteAxes {
 #[cfg(test)]
 mod tests {
     use crate::utils::with_borrowed_metal_stream;
-    use crate::context::MetalContext;
 
     use super::*;
 
@@ -140,7 +139,6 @@ mod tests {
     use tract_gpu::tensor::IntoDevice;
 
     fn run_test_case<F: Datum + Zero + Copy>(shape: &[usize], axes: &[usize]) -> Result<()> {
-        MetalContext::register()?;
         with_borrowed_metal_stream(|stream| {
             let a_len = shape.iter().product::<usize>();
             let a_data = (0..a_len).map(|f| f as f32).collect::<Vec<_>>();

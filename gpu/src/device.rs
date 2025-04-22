@@ -2,7 +2,7 @@ use core::fmt;
 use std::ffi::c_void;
 use std::sync::RwLock;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use downcast_rs::{impl_downcast, Downcast};
 
 pub trait DeviceContext: Downcast + ClonableDevice + Send + Sync {
@@ -67,8 +67,12 @@ pub static DEVICE_CONTEXT: RwLock<Option<Box<dyn DeviceContext>>> = RwLock::new(
 
 pub fn set_context(curr_context: Box<dyn DeviceContext>) -> Result<()> {
     let mut context = DEVICE_CONTEXT.write().unwrap();
-    *context = Some(curr_context);
-    Ok(())
+    if context.is_none() {
+        *context = Some(curr_context);
+        Ok(())
+    } else {
+        bail!("Context is already set")
+    }
 }
 
 pub fn get_context() -> Result<Box<dyn DeviceContext>> {

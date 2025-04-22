@@ -255,7 +255,6 @@ impl BinOps {
 
 #[cfg(test)]
 mod tests {
-    use crate::context::MetalContext;
     use crate::utils::with_borrowed_metal_stream;
 
     use super::*;
@@ -289,7 +288,6 @@ mod tests {
         b_shape: &[usize],
         cab: impl Fn(&mut bool, &F, &F),
     ) -> Result<()> {
-        MetalContext::register()?;
         with_borrowed_metal_stream(|stream| {
             let a_len = a_shape.iter().product::<usize>();
             let b_len = b_shape.iter().product::<usize>();
@@ -315,7 +313,6 @@ mod tests {
         b_shape: &[usize],
         cab: impl Fn(&mut F, &F, &F),
     ) -> Result<()> {
-        MetalContext::register()?;
         with_borrowed_metal_stream(|stream| {
             let a_len = a_shape.iter().product::<usize>();
             let b_len = b_shape.iter().product::<usize>();
@@ -455,7 +452,6 @@ mod tests {
         }
 
         pub fn run(&self) -> Result<Tensor> {
-            MetalContext::register()?;
             with_borrowed_metal_stream(|stream| {
                 let lhs = self.lhs.clone().into_device()?;
                 let rhs = self.rhs.clone().into_device()?;

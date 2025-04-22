@@ -82,7 +82,6 @@ impl ScaledMaskedSoftmax {
 #[cfg(test)]
 mod tests {
     use crate::utils::with_borrowed_metal_stream;
-    use crate::context::MetalContext;
     use tract_gpu::tensor::IntoDevice;
 
     use super::*;
@@ -97,7 +96,6 @@ mod tests {
 
     #[test]
     fn test_scaled_masked_softmax_f32() -> Result<()> {
-        MetalContext::register()?;
         with_borrowed_metal_stream(|stream| {
             let m = 4;
             let n = 4;
@@ -123,7 +121,6 @@ mod tests {
 
     #[test]
     fn test_scaled_masked_softmax_f32_2() -> Result<()> {
-        MetalContext::register()?;
         with_borrowed_metal_stream(|stream| {
             let m = 4;
             let n = 1024;
@@ -232,7 +229,6 @@ mod tests {
         }
 
         pub fn run(&self) -> Result<Tensor> {
-            MetalContext::register()?;
             with_borrowed_metal_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let mask =

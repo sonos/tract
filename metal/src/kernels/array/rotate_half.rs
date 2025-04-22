@@ -83,7 +83,6 @@ impl RotateHalf {
 #[cfg(test)]
 mod tests {
     use crate::utils::with_borrowed_metal_stream;
-    use crate::context::MetalContext;
 
     use super::*;
     use num_traits::AsPrimitive;
@@ -96,7 +95,6 @@ mod tests {
         F: Copy + 'static + Datum,
         usize: AsPrimitive<F>,
     {
-        MetalContext::register()?;
         with_borrowed_metal_stream(|stream| {
             let len = shape.iter().product::<usize>();
 

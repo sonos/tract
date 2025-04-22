@@ -34,7 +34,6 @@ pub use silu::MetalSilu;
 pub use slice::MetalSlice;
 pub use softmax::MetalSoftmax;
 
-use crate::context::MetalContext;
 use crate::utils::with_borrowed_metal_stream;
 use crate::MetalStream;
 use derive_new::new;
@@ -77,7 +76,6 @@ impl<O: MetalEvalOp> OpState for MetalOpState<O> {
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        MetalContext::register()?;
         with_borrowed_metal_stream(|stream| {
             if let Some(profiler) = stream.profiler() {
                 profiler.borrow_mut().add_node_entry(self.node_id);
