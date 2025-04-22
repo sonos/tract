@@ -12,7 +12,7 @@ pub use mmm_tile_8x8::{metal_mmm_tile_8x8, mmm_tile_8x8};
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 
 use crate::utils::as_metal_buffer;
-use crate::MetalContext;
+use crate::MetalStream;
 use metal::Buffer;
 use num_traits::One;
 use std::fmt;
@@ -228,7 +228,7 @@ pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync 
 
     fn dispatch_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         params: GemmDispatchParams,
         a_buffer: &Buffer,
         b_buffer: &Buffer,
@@ -277,7 +277,7 @@ impl<M: GemmKernel> GemmImpl<M> {
 
     pub fn eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         a: &DeviceTensor,
         b: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
@@ -296,7 +296,7 @@ impl<M: GemmKernel> GemmImpl<M> {
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         a: &DeviceTensor,
         b: &DeviceTensor,
         c: &DeviceTensor,
@@ -372,7 +372,7 @@ fn squeeze_batch_axes(s: &[usize]) -> TractResult<TVec<usize>> {
 #[cfg(test)]
 mod tests {
     use crate::autorelease_pool_init;
-    use crate::context::MetalDevice;
+    use crate::context::MetalContext;
 
     use super::*;
     use crate::kernels::matmul::GemmImpl;
@@ -386,7 +386,7 @@ mod tests {
     use tract_core::tract_linalg::block_quant::{
         BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0,
     };
-    use tract_gpu::tensor::IntoGpu;
+    use tract_gpu::tensor::IntoDevice;
 
     pub(crate) fn run_mmm_test_case<K: GemmKernel>(
         (batch, m, k, n): (usize, usize, usize, usize),
@@ -395,9 +395,9 @@ mod tests {
         a_dt: DatumType,
         b_dt: DatumType,
     ) -> TractResult<()> {
-        MetalDevice::register()?;
+        MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_CONTEXT.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|context| {
             let a_shape = if !transpose_a { [batch, m, k] } else { [batch, k, m] };
             let b_shape = if !transpose_b { [batch, k, n] } else { [batch, n, k] };
             let mut a = if a_dt == DatumType::F16 {
@@ -434,8 +434,8 @@ mod tests {
 
             let metal_output = GemmImpl::<K>::new(transpose_a, transpose_b).eval(
                 context,
-                &a.clone().into_gpu()?,
-                &b.clone().into_gpu()?,
+                &a.clone().into_device()?,
+                &b.clone().into_device()?,
             )?;
 
             let matmul = PrefixMatMul {
@@ -454,7 +454,7 @@ mod tests {
             }
 
             let output = args_1!(matmul.eval(tvec![a.into_tvalue(), b.into_tvalue()])?);
-            metal_output.to_cpu()?.close_enough(&output, Approximation::SuperApproximate)?;
+            metal_output.synchronize()?.close_enough(&output, Approximation::SuperApproximate)?;
             Ok(())
         })
     }
@@ -897,13 +897,13 @@ mod tests {
         }
 
         pub fn run(&self) -> Result<Tensor> {
-            MetalDevice::register()?;
+            MetalContext::register()?;
             let _ = autorelease_pool_init();
-            crate::METAL_CONTEXT.with_borrow(|context| {
+            crate::METAL_STREAM.with_borrow(|context| {
                 let lhs = if self.transpose_lhs {
-                    Tensor::from_shape(&[self.b, self.k, self.m], &self.lhs)?.into_gpu()?
+                    Tensor::from_shape(&[self.b, self.k, self.m], &self.lhs)?.into_device()?
                 } else {
-                    Tensor::from_shape(&[self.b, self.m, self.k], &self.lhs)?.into_gpu()?
+                    Tensor::from_shape(&[self.b, self.m, self.k], &self.lhs)?.into_device()?
                 };
                 let rhs = if self.transpose_rhs {
                     if !self.q4_0 {
@@ -929,12 +929,12 @@ mod tests {
                 } else {
                     Tensor::from_shape(&[self.b, self.k, self.n], &self.rhs)?
                 }
-                .into_gpu()?;
+                .into_device()?;
 
                 let matmul = GemmImpl::<K>::new(self.transpose_lhs, self.transpose_rhs);
 
                 let c = matmul.eval(context, &lhs, &rhs)?;
-                Ok(c.to_cpu()?.into_tensor())
+                Ok(c.synchronize()?.into_tensor())
             })
         }
     }

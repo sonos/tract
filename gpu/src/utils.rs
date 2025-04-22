@@ -4,19 +4,19 @@ use tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue, Q4_0};
 
 use crate::fact::*;
 
-pub fn gpu_facts_from_gpu(
+pub fn facts_to_device_facts(
     facts: &[&TypedFact],
     resolve_facts: impl Fn(&[&TypedFact]) -> TractResult<TVec<TypedFact>>,
 ) -> TractResult<TVec<TypedFact>> {
     if facts.iter().all(|it| it.datum_type == DatumType::Opaque) {
-        let gpu_facts = facts
+        let device_facts = facts
             .iter()
-            .map(|it| it.to_gpu_fact().map(|it| it.as_ref()))
+            .map(|it| it.to_device_fact().map(|it| it.as_ref()))
             .collect::<TractResult<TVec<_>>>()?;
-        let output_facts = (resolve_facts)(gpu_facts.as_slice())?;
+        let output_facts = (resolve_facts)(device_facts.as_slice())?;
         Ok(output_facts
             .into_iter()
-            .map(|it| Ok(GpuFact::new(GpuTensorOrigin::Device, it)?.into_opaque_fact()))
+            .map(|it| Ok(DeviceFact::new(DeviceTensorOrigin::Device, it)?.into_opaque_fact()))
             .collect::<TractResult<_>>()?)
     } else if facts.iter().all(|it| it.datum_type != DatumType::Opaque) {
         (resolve_facts)(facts)
@@ -28,16 +28,16 @@ pub fn gpu_facts_from_gpu(
     }
 }
 
-pub fn gpu_facts<'a, 'b: 'a, T>(
+pub fn get_device_facts<'a, 'b: 'a, T>(
     facts: &'a [&'b TypedFact],
     map_facts: impl Fn(&[&'b TypedFact]) -> TractResult<T>,
 ) -> TractResult<T> {
     if facts.iter().all(|it| it.datum_type == DatumType::Opaque) {
-        let gpu_facts = facts
+        let device_facts = facts
             .iter()
-            .map(|it| it.to_gpu_fact().map(|it| it.as_ref()))
+            .map(|it| it.to_device_fact().map(|it| it.as_ref()))
             .collect::<TractResult<TVec<_>>>()?;
-        (map_facts)(gpu_facts.as_slice())
+        (map_facts)(device_facts.as_slice())
     } else if facts.iter().all(|it| it.datum_type != DatumType::Opaque) {
         (map_facts)(facts)
     } else {
@@ -48,12 +48,12 @@ pub fn gpu_facts<'a, 'b: 'a, T>(
     }
 }
 
-pub fn gpu_fact<'a, T: 'a>(
+pub fn get_device_fact<'a, T: 'a>(
     fact: &'a TypedFact,
     map_fact: impl Fn(&'a TypedFact) -> TractResult<T>,
 ) -> TractResult<T> {
     if fact.datum_type == DatumType::Opaque {
-        (map_fact)(fact.to_gpu_fact()?)
+        (map_fact)(fact.to_device_fact()?)
     } else {
         (map_fact)(fact)
     }

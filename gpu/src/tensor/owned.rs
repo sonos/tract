@@ -3,16 +3,17 @@ use crate::tensor::DeviceTensor;
 use crate::utils::{as_q40_tensor, check_strides_validity};
 use anyhow::Result;
 use num_traits::AsPrimitive;
+use std::ffi::c_void;
 use std::fmt::Display;
 use tract_core::internal::*;
 
 #[derive(Debug, Clone, Hash)]
-pub enum MValue {
+pub enum GValue {
     Natural(Arc<Tensor>),
     Reshaped { t: Arc<Tensor>, shape: TVec<usize>, strides: TVec<isize> },
 }
 
-impl MValue {
+impl GValue {
     #[inline]
     pub fn view(&self) -> TensorView<'_> {
         match self {
@@ -35,8 +36,8 @@ impl MValue {
     #[inline]
     pub fn shape(&self) -> &[usize] {
         match self {
-            MValue::Natural(t) => t.shape(),
-            MValue::Reshaped { shape, .. } => shape,
+            GValue::Natural(t) => t.shape(),
+            GValue::Reshaped { shape, .. } => shape,
         }
     }
 
@@ -55,7 +56,7 @@ impl MValue {
         }
         if shape.as_slice() != self.shape() {
             match &self {
-                MValue::Natural(t) | MValue::Reshaped { t, .. } => Ok(Self::Reshaped {
+                GValue::Natural(t) | GValue::Reshaped { t, .. } => Ok(Self::Reshaped {
                     t: Arc::clone(t),
                     strides: Tensor::natural_strides(&shape),
                     shape,
@@ -71,10 +72,10 @@ impl MValue {
         check_strides_validity(self.shape().into(), strides.clone())?;
 
         match &self {
-            MValue::Natural(t) => {
+            GValue::Natural(t) => {
                 Ok(Self::Reshaped { t: Arc::clone(t), strides, shape: self.shape().into() })
             }
-            MValue::Reshaped { t, strides: old_strides, .. } => {
+            GValue::Reshaped { t, strides: old_strides, .. } => {
                 if &strides != old_strides {
                     Ok(Self::Reshaped { t: Arc::clone(t), strides, shape: self.shape().into() })
                 } else {
@@ -86,8 +87,8 @@ impl MValue {
 
     pub fn as_arc_tensor(&self) -> Option<&Arc<Tensor>> {
         match self {
-            MValue::Natural(t) => Some(t),
-            MValue::Reshaped { .. } => None,
+            GValue::Natural(t) => Some(t),
+            GValue::Reshaped { .. } => None,
         }
     }
 
@@ -98,14 +99,14 @@ impl MValue {
         strides: impl Into<TVec<isize>>,
     ) -> Self {
         match self {
-            MValue::Natural(t) | MValue::Reshaped { t, .. } => {
-                MValue::Reshaped { t: Arc::clone(t), strides: strides.into(), shape: shape.into() }
+            GValue::Natural(t) | GValue::Reshaped { t, .. } => {
+                GValue::Reshaped { t: Arc::clone(t), strides: strides.into(), shape: shape.into() }
             }
         }
     }
 }
 
-impl IntoTensor for MValue {
+impl IntoTensor for GValue {
     fn into_tensor(self) -> Tensor {
         match self {
             Self::Natural(t) => Arc::try_unwrap(t).unwrap_or_else(|t| (*t).clone()),
@@ -118,13 +119,13 @@ impl IntoTensor for MValue {
     }
 }
 
-impl From<Tensor> for MValue {
+impl From<Tensor> for GValue {
     fn from(v: Tensor) -> Self {
         Self::Natural(Arc::new(v))
     }
 }
 
-impl From<Arc<Tensor>> for MValue {
+impl From<Arc<Tensor>> for GValue {
     fn from(v: Arc<Tensor>) -> Self {
         Self::Natural(v)
     }
@@ -134,7 +135,7 @@ impl From<Arc<Tensor>> for MValue {
 /// GPU and the CPU.
 #[derive(Debug, Clone)]
 pub struct OwnedDeviceTensor {
-    pub inner: MValue,
+    pub inner: GValue,
     pub device_buffer: Box<dyn DeviceBuffer>,
 }
 
@@ -147,12 +148,12 @@ impl Hash for OwnedDeviceTensor {
 
 impl OwnedDeviceTensor {
     /// Create a owned gpu tensor from a cpu tensor.
-    pub fn from_tensor<T: Into<MValue>>(tensor: T) -> Result<Self> {
-        let m_value: MValue = tensor.into();
+    pub fn from_tensor<T: Into<GValue>>(tensor: T) -> Result<Self> {
+        let m_value: GValue = tensor.into();
         let tensor_view = m_value.view();
         ensure!(
             DeviceTensor::is_supported_dt(tensor_view.datum_type()),
-            "Tensor of {:?} is not copied. No GPU buffer can be allocated for it.",
+            "Tensor of {:?} is not copied. No device buffer can be allocated for it.",
             tensor_view.datum_type(),
         );
 
@@ -181,8 +182,8 @@ impl OwnedDeviceTensor {
     #[inline]
     pub fn strides(&self) -> &[isize] {
         match &self.inner {
-            MValue::Natural(t) => t.strides(),
-            MValue::Reshaped { strides, .. } => strides,
+            GValue::Natural(t) => t.strides(),
+            GValue::Reshaped { strides, .. } => strides,
         }
     }
 
@@ -192,8 +193,8 @@ impl OwnedDeviceTensor {
         &self.device_buffer
     }
 
-    pub fn device_buffer_address(&self) -> usize {
-        self.device_buffer.address()
+    pub fn device_buffer_address(&self) -> *const c_void {
+        self.device_buffer.ptr()
     }
 
     /// Get underlying inner buffer offset
@@ -243,11 +244,11 @@ impl OwnedDeviceTensor {
 impl Display for OwnedDeviceTensor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.inner {
-            MValue::Natural(t) => {
+            GValue::Natural(t) => {
                 let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
                 write!(f, "Host {{ {content} }}")
             }
-            MValue::Reshaped { t, shape, strides: _ } => {
+            GValue::Reshaped { t, shape, strides: _ } => {
                 let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
                 write!(f, "Device reshaped: {:?} - {{ {content} }}", shape)
             }

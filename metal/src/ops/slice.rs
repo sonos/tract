@@ -1,6 +1,6 @@
 use crate::kernels;
 use crate::ops::MetalEvalOp;
-use crate::MetalContext;
+use crate::MetalStream;
 use tract_core::internal::*;
 use tract_core::ops::array::Slice;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -47,13 +47,13 @@ crate::impl_eval_op_for_metal_op!(MetalSlice);
 impl MetalEvalOp for MetalSlice {
     fn metal_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs);
-        let input = opaque.to_gpu_tensor()?;
+        let input = opaque.to_device_tensor()?;
 
         let start = self.0.start.eval(&session.resolved_symbols).to_usize()?;
         let end = self.0.end.eval(&session.resolved_symbols).to_usize()?;
@@ -90,7 +90,7 @@ impl MetalEvalOp for MetalSlice {
 
 impl TypedOp for MetalSlice {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        tract_gpu::utils::gpu_facts_from_gpu(inputs, |facts| self.0.output_facts(facts))
+        tract_gpu::utils::facts_to_device_facts(inputs, |facts| self.0.output_facts(facts))
             .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
     }
 
@@ -118,14 +118,14 @@ impl TypedOp for MetalSlice {
 mod tests {
     use super::*;
     use crate::autorelease_pool_init;
-    use crate::context::MetalDevice;
+    use crate::context::MetalContext;
     use tract_core::internal::Tensor;
-    use tract_gpu::tensor::IntoGpu;
+    use tract_gpu::tensor::IntoDevice;
 
     fn run_test(shape: &[usize], slice: Slice) -> TractResult<()> {
-        MetalDevice::register()?;
+        MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_CONTEXT.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|context| {
             let num_elements = shape.iter().product();
 
             let a = Tensor::from_shape(
@@ -137,7 +137,7 @@ mod tests {
                 .eval_with_session(&SessionState::default(), tvec![a.clone().into_tvalue()])?;
 
             let metal_slice = MetalSlice::from_tract_core(slice);
-            let a_metal = a.clone().into_gpu()?.into_opaque_tensor().into_tvalue();
+            let a_metal = a.clone().into_device()?.into_opaque_tensor().into_tvalue();
             let mut session_state = SessionState::default();
             let mut metal_slice_state = metal_slice.state(&mut session_state, 0)?.unwrap();
             let metal_output =
@@ -145,7 +145,7 @@ mod tests {
             context.wait_until_completed()?;
 
             cpu_output[0].close_enough(
-                &metal_output[0].to_gpu_tensor()?.to_cpu()?.into_tensor(),
+                &metal_output[0].to_device_tensor()?.synchronize()?.into_tensor(),
                 Approximation::Approximate,
             )?;
             Ok(())

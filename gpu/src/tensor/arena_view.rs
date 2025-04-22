@@ -1,8 +1,9 @@
 use num_traits::AsPrimitive;
+use std::ffi::c_void;
 use std::fmt::Display;
 use tract_core::internal::*;
 
-use crate::device::{DeviceBuffer, GpuDevice};
+use crate::device::{DeviceBuffer, DeviceContext};
 use crate::utils::check_strides_validity;
 
 #[derive(Debug, Clone)]
@@ -12,7 +13,7 @@ pub struct DeviceArenaStorage {
 }
 
 impl DeviceArenaStorage {
-    pub fn with_capacity(device: Box<dyn GpuDevice>, capacity: usize) -> TractResult<Self> {
+    pub fn with_capacity(device: Box<dyn DeviceContext>, capacity: usize) -> TractResult<Self> {
         let tensor = unsafe {
             Tensor::uninitialized_dt(DatumType::U8, &[capacity]).with_context(|| {
                 anyhow!("Error while allocating a tensor of {:?} bytes", capacity)
@@ -74,8 +75,8 @@ impl DeviceArenaView {
         self.arena.device_buffer()
     }
 
-    pub fn device_buffer_address(&self) -> usize {
-        self.arena.device_buffer().address()
+    pub fn device_buffer_address(&self) -> *const c_void {
+        self.arena.device_buffer().ptr()
     }
 
     /// Get underlying inner device buffer offset

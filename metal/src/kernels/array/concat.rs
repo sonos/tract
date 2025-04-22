@@ -1,6 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
-use crate::{LibraryName, MetalContext};
+use crate::{LibraryName, MetalStream};
 use anyhow::{ensure, Result};
 use std::fmt;
 use tract_core::internal::*;
@@ -41,7 +41,7 @@ impl Concat {
         Ok(format!("array_ops::copy_{broadcast_name}_{tname}"))
     }
 
-    pub fn eval(&self, context: &MetalContext, inputs: &[&DeviceTensor]) -> Result<DeviceTensor> {
+    pub fn eval(&self, context: &MetalStream, inputs: &[&DeviceTensor]) -> Result<DeviceTensor> {
         ensure!(!inputs.is_empty());
         let mut output_shape = inputs[0].shape().to_vec();
         output_shape[self.axis] = inputs.iter().map(|it| it.shape()[self.axis]).sum();
@@ -55,7 +55,7 @@ impl Concat {
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         inputs: &[&DeviceTensor],
         output: &DeviceTensor,
     ) -> Result<()> {
@@ -123,10 +123,10 @@ impl Concat {
 #[cfg(test)]
 mod tests {
     use crate::autorelease_pool_init;
-    use crate::context::MetalDevice;
+    use crate::context::MetalContext;
 
     use super::*;
-    use tract_gpu::tensor::IntoGpu;
+    use tract_gpu::tensor::IntoDevice;
     use tract_itertools::Itertools;
 
     use num_traits::Zero;
@@ -134,22 +134,22 @@ mod tests {
     use tract_core::internal::Tensor;
 
     fn run_test_case<F: Datum + Zero + Copy>(shapes: &[&[usize]], axis: usize) -> Result<()> {
-        MetalDevice::register()?;
+        MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_CONTEXT.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|context| {
             let mut inputs = tvec![];
             for shape in shapes {
                 let len = shape.iter().product::<usize>();
                 let data = (0..len).map(|f| f as f32).collect::<Vec<_>>();
-                inputs.push(Tensor::from_shape(shape, &data)?.into_gpu()?);
+                inputs.push(Tensor::from_shape(shape, &data)?.into_device()?);
             }
 
             let output = Concat { axis }.eval(context, &inputs.iter().collect_vec())?;
             let ref_output = Tensor::stack_tensors(
                 axis,
-                &inputs.iter().map(|it| it.to_cpu()).collect::<Result<Vec<_>>>()?,
+                &inputs.iter().map(|it| it.synchronize()).collect::<Result<Vec<_>>>()?,
             )?;
-            assert_eq!(ref_output, output.to_cpu()?.into_tensor());
+            assert_eq!(ref_output, output.synchronize()?.into_tensor());
             Ok(())
         })
     }

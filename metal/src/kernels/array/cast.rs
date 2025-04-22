@@ -1,6 +1,6 @@
 use crate::encoder::EncoderExt;
 
-use crate::{LibraryName, MetalContext};
+use crate::{LibraryName, MetalStream};
 use anyhow::Result;
 use derive_new::new;
 use metal::{MTLSize, NSUInteger};
@@ -49,7 +49,7 @@ impl Cast {
 
     pub fn eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         input: &DeviceTensor,
         to_dt: DatumType,
     ) -> Result<DeviceTensor> {
@@ -61,7 +61,7 @@ impl Cast {
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         input: &DeviceTensor,
         output: &DeviceTensor,
     ) -> Result<()> {

@@ -1,6 +1,6 @@
 use crate::kernels::nn::ScaledMaskedSoftmax;
 use crate::ops::MetalEvalOp;
-use crate::MetalContext;
+use crate::MetalStream;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -23,14 +23,14 @@ impl Op for MetalScaledMaskedSoftmax {
 impl MetalEvalOp for MetalScaledMaskedSoftmax {
     fn metal_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (opaque_input, opaque_mask) = args_2!(inputs);
-        let input = opaque_input.to_gpu_tensor()?;
-        let mask = opaque_mask.to_gpu_tensor()?;
+        let input = opaque_input.to_device_tensor()?;
+        let mask = opaque_mask.to_device_tensor()?;
         let output =
             crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
         ScaledMaskedSoftmax.dispatch_eval(context, input, &self.scale, mask, &output)?;
@@ -40,7 +40,7 @@ impl MetalEvalOp for MetalScaledMaskedSoftmax {
 
 impl TypedOp for MetalScaledMaskedSoftmax {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        tract_gpu::utils::gpu_facts_from_gpu(inputs, |facts| {
+        tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
             ensure!(facts.len() == 2);
             let dt = facts[0].datum_type;
             ensure!(dt == facts[1].datum_type);

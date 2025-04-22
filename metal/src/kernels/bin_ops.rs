@@ -1,6 +1,6 @@
 use super::BroadcastKind;
 use crate::encoder::EncoderExt;
-use crate::{LibraryName, MetalContext};
+use crate::{LibraryName, MetalStream};
 use anyhow::bail;
 use anyhow::{ensure, Result};
 use metal::{MTLSize, NSUInteger};
@@ -138,7 +138,7 @@ impl BinOps {
 
     pub fn eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         lhs: &DeviceTensor,
         rhs: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
@@ -154,7 +154,7 @@ impl BinOps {
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         lhs: &DeviceTensor,
         rhs: &DeviceTensor,
         output: &DeviceTensor,
@@ -256,7 +256,7 @@ impl BinOps {
 #[cfg(test)]
 mod tests {
     use crate::autorelease_pool_init;
-    use crate::context::MetalDevice;
+    use crate::context::MetalContext;
 
     use super::*;
     use derive_new::new;
@@ -264,7 +264,7 @@ mod tests {
     use num_traits::Zero;
     use proptest::collection::vec;
     use proptest::prelude::*;
-    use tract_gpu::tensor::IntoGpu;
+    use tract_gpu::tensor::IntoDevice;
 
     fn reference<FI: Datum, FO: Datum>(
         a: &Tensor,
@@ -289,23 +289,23 @@ mod tests {
         b_shape: &[usize],
         cab: impl Fn(&mut bool, &F, &F),
     ) -> Result<()> {
-        MetalDevice::register()?;
+        MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_CONTEXT.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|context| {
             let a_len = a_shape.iter().product::<usize>();
             let b_len = b_shape.iter().product::<usize>();
 
             let a = Tensor::from_shape(a_shape, &(0..a_len).map(|f| f as f32).collect::<Vec<_>>())?
-                .into_gpu()?;
+                .into_device()?;
             let b = Tensor::from_shape(
                 b_shape,
                 &(0..b_len).rev().map(|f| f as f32).collect::<Vec<_>>(),
             )?
-            .into_gpu()?;
+            .into_device()?;
             let output = op.eval(context, &a, &b)?;
             let ref_output =
-                reference::<F, bool>(&a.to_cpu()?.into_tensor(), &b.to_cpu()?.into_tensor(), cab)?;
-            assert_eq!(ref_output, output.to_cpu()?.into_tensor());
+                reference::<F, bool>(&a.synchronize()?.into_tensor(), &b.synchronize()?.into_tensor(), cab)?;
+            assert_eq!(ref_output, output.synchronize()?.into_tensor());
             Ok(())
         })
     }
@@ -316,24 +316,24 @@ mod tests {
         b_shape: &[usize],
         cab: impl Fn(&mut F, &F, &F),
     ) -> Result<()> {
-        MetalDevice::register()?;
+        MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_CONTEXT.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|context| {
             let a_len = a_shape.iter().product::<usize>();
             let b_len = b_shape.iter().product::<usize>();
 
             let a = Tensor::from_shape(a_shape, &(0..a_len).map(|f| f as f32).collect::<Vec<_>>())?
-                .into_gpu()?;
+                .into_device()?;
             let b = Tensor::from_shape(
                 b_shape,
                 &(0..b_len).rev().map(|f| f as f32).collect::<Vec<_>>(),
             )?
-            .into_gpu()?;
+            .into_device()?;
             let output = op.eval(context, &a, &b)?;
 
             let ref_output =
-                reference::<F, F>(&a.to_cpu()?.into_tensor(), &b.to_cpu()?.into_tensor(), cab)?;
-            assert_eq!(ref_output, output.to_cpu()?.into_tensor());
+                reference::<F, F>(&a.synchronize()?.into_tensor(), &b.synchronize()?.into_tensor(), cab)?;
+            assert_eq!(ref_output, output.synchronize()?.into_tensor());
             Ok(())
         })
     }
@@ -457,13 +457,13 @@ mod tests {
         }
 
         pub fn run(&self) -> Result<Tensor> {
-            MetalDevice::register()?;
+            MetalContext::register()?;
             let _ = autorelease_pool_init();
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let lhs = self.lhs.clone().into_gpu()?;
-                let rhs = self.rhs.clone().into_gpu()?;
+            crate::METAL_STREAM.with_borrow(|context| {
+                let lhs = self.lhs.clone().into_device()?;
+                let rhs = self.rhs.clone().into_device()?;
                 let c = BinOps::Mul.eval(context, &lhs, &rhs)?;
-                Ok(c.to_cpu()?.into_tensor())
+                Ok(c.synchronize()?.into_tensor())
             })
         }
     }

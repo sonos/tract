@@ -4,10 +4,11 @@ use crate::get_metal_device;
 use crate::kernels::{LibraryContent, LibraryName};
 
 use metal::NSUInteger;
-use tract_gpu::device::{DeviceBuffer, GpuDevice};
+use tract_gpu::device::{DeviceBuffer, DeviceContext};
 use tract_gpu::tensor::DeviceTensor;
 
 use std::cell::RefCell;
+use std::ffi::c_void;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use std::rc::Rc;
@@ -24,18 +25,18 @@ use std::collections::HashMap;
 use tract_core::internal::*;
 
 thread_local! {
-    pub static METAL_CONTEXT: RefCell<MetalContext> = RefCell::new(MetalContext::new());
+    pub static METAL_STREAM: RefCell<MetalStream> = RefCell::new(MetalStream::new());
 }
 
-fn metal_device() -> MetalDevice {
-    static INSTANCE: OnceLock<MetalDevice> = OnceLock::new();
+fn metal_device() -> MetalContext {
+    static INSTANCE: OnceLock<MetalContext> = OnceLock::new();
     INSTANCE
-        .get_or_init(|| MetalDevice::new().expect("Could not create shared metal context"))
+        .get_or_init(|| MetalContext::new().expect("Could not create shared metal context"))
         .clone()
 }
 
 #[derive(Debug, Clone)]
-pub struct MetalDevice {
+pub struct MetalContext {
     device: Device,
     cache_libraries: Arc<RwLock<HashMap<LibraryName, Library>>>,
     #[allow(clippy::type_complexity)]
@@ -43,7 +44,7 @@ pub struct MetalDevice {
         Arc<RwLock<HashMap<(LibraryName, String, Option<ConstantValues>), ComputePipelineState>>>,
 }
 
-impl MetalDevice {
+impl MetalContext {
     pub fn new() -> Result<Self> {
         let device = Device::system_default()
             .with_context(|| "Could not find system default Metal device")?;
@@ -172,7 +173,7 @@ impl MetalDevice {
 }
 
 #[derive(Debug)]
-pub struct MetalContext {
+pub struct MetalStream {
     command_queue: CommandQueue,
     command_buffer: RefCell<Option<TCommandBuffer>>,
     command_buffer_id: AtomicUsize,
@@ -180,13 +181,13 @@ pub struct MetalContext {
     profiler: RefCell<Option<Rc<RefCell<MetalProfiler>>>>,
 }
 
-impl Default for MetalContext {
+impl Default for MetalStream {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl MetalContext {
+impl MetalStream {
     pub fn new() -> Self {
         let device = metal_device();
         let command_queue = device.device.new_command_queue();
@@ -323,7 +324,7 @@ impl MetalContext {
     }
 }
 
-impl Drop for MetalContext {
+impl Drop for MetalStream {
     fn drop(&mut self) {
         let Some(command_buffer) = self.command_buffer.borrow_mut().to_owned() else { return };
 
@@ -363,12 +364,12 @@ impl DeviceBuffer for MetalBuffer {
         format!("{:?}", self.inner)
     }
 
-    fn address(&self) -> usize {
-        self.inner.gpu_address() as usize
+    fn ptr(&self) -> *const c_void {
+        self.inner.gpu_address() as *const c_void
     }
 }
 
-impl GpuDevice for MetalDevice {
+impl DeviceContext for MetalContext {
     fn buffer_from_slice(&self, data: &[u8]) -> Box<dyn tract_gpu::device::DeviceBuffer> {
         static ZERO: [u8; 1] = [0];
         // Handle empty data
@@ -386,6 +387,6 @@ impl GpuDevice for MetalDevice {
     }
 
     fn synchronize(&self) -> TractResult<()> {
-        METAL_CONTEXT.with_borrow(|ctxt| ctxt.wait_until_completed())
+        METAL_STREAM.with_borrow(|ctxt| ctxt.wait_until_completed())
     }
 }

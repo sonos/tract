@@ -1,5 +1,5 @@
 use crate::encoder::EncoderExt;
-use crate::{LibraryName, MetalContext};
+use crate::{LibraryName, MetalStream};
 use anyhow::bail;
 use anyhow::Result;
 use metal::{MTLSize, NSUInteger};
@@ -179,7 +179,7 @@ impl ElementWiseOps {
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         input: &DeviceTensor,
         output: &DeviceTensor,
     ) -> Result<()> {
@@ -204,7 +204,7 @@ impl ElementWiseOps {
         Ok(())
     }
 
-    pub fn eval(&self, context: &MetalContext, a: &DeviceTensor) -> Result<DeviceTensor> {
+    pub fn eval(&self, context: &MetalStream, a: &DeviceTensor) -> Result<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(a.datum_type(), a.shape())? };
         self.dispatch_eval(context, a, &output)?;
         context.wait_until_completed()?;
@@ -215,12 +215,12 @@ impl ElementWiseOps {
 #[cfg(test)]
 mod tests {
     use crate::autorelease_pool_init;
-    use crate::context::MetalDevice;
+    use crate::context::MetalContext;
 
     use super::*;
     use num_traits::Zero;
     use rand::Rng;
-    use tract_gpu::tensor::IntoGpu;
+    use tract_gpu::tensor::IntoDevice;
 
     fn reference<F: Datum>(a: &Tensor, ca: impl Fn(&mut F, &F)) -> Result<Tensor> {
         let mut out = unsafe { Tensor::uninitialized_dt(a.datum_type(), a.shape())? };
@@ -236,9 +236,9 @@ mod tests {
         neg: bool,
         ca: impl Fn(&mut F, &F),
     ) -> Result<()> {
-        MetalDevice::register()?;
+        MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_CONTEXT.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|context| {
             let a_len = a_shape.iter().product::<usize>();
             let mut rng = rand::thread_rng();
             let a = Tensor::from_shape(
@@ -253,11 +253,11 @@ mod tests {
                     })
                     .collect::<Vec<_>>(),
             )?
-            .into_gpu()?;
+            .into_device()?;
             let output = op.eval(context, &a)?;
-            let ref_output = reference::<F>(&a.to_cpu()?.into_tensor(), ca)?;
+            let ref_output = reference::<F>(&a.synchronize()?.into_tensor(), ca)?;
             assert!(ref_output
-                .close_enough(&output.to_cpu()?.into_tensor(), Approximation::Close)
+                .close_enough(&output.synchronize()?.into_tensor(), Approximation::Close)
                 .is_ok());
             Ok(())
         })

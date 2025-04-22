@@ -1,5 +1,5 @@
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
-use crate::{LibraryName, MetalContext};
+use crate::{LibraryName, MetalStream};
 use anyhow::bail;
 use anyhow::Result;
 use derive_new::new;
@@ -17,7 +17,7 @@ impl GemmKernel for BasicMatMul {
 
     fn dispatch_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         params: GemmDispatchParams,
         a_buffer: &Buffer,
         b_buffer: &Buffer,
@@ -108,7 +108,7 @@ impl BasicMatMul {
 
     #[allow(clippy::too_many_arguments)]
     pub fn metal_mat_vec(
-        context: &MetalContext,
+        context: &MetalStream,
         dt: DatumType,
         m: usize,
         k: usize,
@@ -145,7 +145,7 @@ impl BasicMatMul {
 
     #[allow(clippy::too_many_arguments)]
     pub fn metal_mat_mul(
-        context: &MetalContext,
+        context: &MetalStream,
         dt: DatumType,
         m: usize,
         k: usize,

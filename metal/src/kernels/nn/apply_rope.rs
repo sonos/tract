@@ -1,6 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
-use crate::{LibraryName, MetalContext};
+use crate::{LibraryName, MetalStream};
 use anyhow::{ensure, Result};
 use std::fmt;
 use tract_core::internal::*;
@@ -29,7 +29,7 @@ impl ApplyRope {
 
     pub fn eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         input: &DeviceTensor,
         cos: &DeviceTensor,
         sin: &DeviceTensor,
@@ -42,7 +42,7 @@ impl ApplyRope {
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         input: &DeviceTensor,
         cos: &DeviceTensor,
         sin: &DeviceTensor,
@@ -108,15 +108,15 @@ impl ApplyRope {
 mod tests {
     use super::*;
     use crate::autorelease_pool_init;
-    use crate::context::MetalDevice;
+    use crate::context::MetalContext;
     use tract_core::internal::Tensor;
-    use tract_gpu::tensor::IntoGpu;
+    use tract_gpu::tensor::IntoDevice;
     use tract_transformers::ops::apply_rope;
 
     fn run_test_case(shape: &[usize]) -> Result<()> {
-        MetalDevice::register()?;
+        MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_CONTEXT.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|context| {
             let len = shape.iter().product::<usize>();
 
             let a = Tensor::from_shape(
@@ -130,9 +130,9 @@ mod tests {
             let sin =
                 Tensor::from_shape(shape, &(0..len).map(|f| (f as f32).sin()).collect::<Vec<_>>())?;
 
-            let metal_a = a.clone().into_gpu()?;
-            let metal_sin = sin.clone().into_gpu()?;
-            let metal_cos = cos.clone().into_gpu()?;
+            let metal_a = a.clone().into_device()?;
+            let metal_sin = sin.clone().into_device()?;
+            let metal_cos = cos.clone().into_device()?;
 
             let cpu_output = apply_rope::ApplyRope.eval(tvec![
                 a.clone().into(),
@@ -144,13 +144,13 @@ mod tests {
             let metal_output = ApplyRope.eval(context, &metal_a, &metal_cos, &metal_sin)?;
 
             cpu_output
-                .close_enough(&metal_output.to_cpu()?.into_tensor(), Approximation::Approximate)
+                .close_enough(&metal_output.synchronize()?.into_tensor(), Approximation::Approximate)
                 .with_context(|| {
                     anyhow!(
                         "Input: {:?} Cpu: {:?}, Metal: {:?}",
                         a.dump(true),
                         cpu_output.dump(true),
-                        metal_output.to_cpu().and_then(|it| it.dump(true))
+                        metal_output.synchronize().and_then(|it| it.dump(true))
                     )
                 })?;
             Ok(())

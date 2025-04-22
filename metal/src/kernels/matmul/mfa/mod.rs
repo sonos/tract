@@ -1,5 +1,5 @@
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
-use crate::{ConstantValues, LibraryName, MetalContext, Value};
+use crate::{ConstantValues, LibraryName, MetalStream, Value};
 use anyhow::{ensure, Result};
 use metal::{Buffer, MTLSize, NSUInteger};
 use std::ffi::c_void;
@@ -22,7 +22,7 @@ impl GemmKernel for MfaGemm {
 
     fn dispatch_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         params: GemmDispatchParams,
         a_buffer: &Buffer,
         b_buffer: &Buffer,
@@ -80,7 +80,7 @@ impl GemmKernel for MfaGemm {
 // From https://github.com/huggingface/candle/blob/main/candle-metal-kernels/src/lib.rs
 #[allow(clippy::too_many_arguments)]
 pub fn dispatch_metal_mfa_gemm(
-    context: &MetalContext,
+    context: &MetalStream,
     dt: DatumType,
     (b, m, n, k): (usize, usize, usize, usize),
     lhs_stride: &[usize],
@@ -245,35 +245,35 @@ pub fn dispatch_metal_mfa_gemm(
 #[cfg(test)]
 mod tests {
     use crate::autorelease_pool_init;
-    use crate::context::MetalDevice;
+    use crate::context::MetalContext;
 
     use super::*;
     use crate::kernels::matmul::GemmImpl;
-    use tract_gpu::tensor::{DeviceTensor, IntoGpu};
+    use tract_gpu::tensor::{DeviceTensor, IntoDevice};
 
     #[test]
     fn test_mfa_gemm() -> Result<()> {
-        MetalDevice::register()?;
+        MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_CONTEXT.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|context| {
             let (b, m, n, k) = (1, 2, 4, 3);
             let a = Tensor::from_shape(
                 &[b, m, k],
                 &(0..b * m * k).map(|f| f as f32).collect::<Vec<_>>(),
             )?
-            .into_gpu()?;
+            .into_device()?;
             let b = Tensor::from_shape(
                 &[b, k, n],
                 &(0..b * n * k).map(|f| f as f32).collect::<Vec<_>>(),
             )?
-            .into_gpu()?;
+            .into_device()?;
 
             let c = GemmImpl::<MfaGemm>::default().eval(context, &a, &b)?;
 
             let expected_c =
                 Tensor::from_shape(&[1, 2, 4], &[20.0, 23.0, 26.0, 29.0, 56.0, 68.0, 80.0, 92.0])?;
 
-            let c = c.to_cpu()?;
+            let c = c.synchronize()?;
             assert!(c.close_enough(&expected_c, Approximation::Close).is_ok());
 
             let (b, m, n, k) = (2, 2, 4, 3);
@@ -296,7 +296,7 @@ mod tests {
                 ],
             )?;
 
-            assert!(c.to_cpu()?.close_enough(&expected_c, Approximation::Close).is_ok());
+            assert!(c.synchronize()?.close_enough(&expected_c, Approximation::Close).is_ok());
             Ok(())
         })
     }

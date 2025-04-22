@@ -1,7 +1,7 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
 
-use crate::{LibraryName, MetalContext};
+use crate::{LibraryName, MetalStream};
 use anyhow::{ensure, Result};
 use std::fmt;
 use tract_core::internal::*;
@@ -42,7 +42,7 @@ impl MultiBroadcast {
 
     pub fn eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         input: &DeviceTensor,
         input_offset: usize,
         output_shape: &[usize],
@@ -55,7 +55,7 @@ impl MultiBroadcast {
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         input: &DeviceTensor,
         input_offset: usize,
         output: &DeviceTensor,

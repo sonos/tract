@@ -1,20 +1,20 @@
 #[cfg(test)]
 mod tests {
     use tract_core::internal::*;
-    use crate::context::MetalDevice;
+    use crate::context::MetalContext;
     use crate::{autorelease_pool_init, MetalTransform};
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
     use tract_core::ops::math::{add, mul};
     use tract_core::ops::nn::{Softmax, SoftmaxExp};
     use tract_core::transform::ModelTransform;
     use tract_gpu::memory::DeviceMemSchema;
-    use tract_gpu::tensor::IntoGpu;
+    use tract_gpu::tensor::IntoDevice;
 
     #[test]
     fn test_alloc_zero() -> TractResult<()> {
-        MetalDevice::register()?;
+        MetalContext::register()?;
         let _ = autorelease_pool_init();
-        Tensor::from_shape::<f32>(&[0], &[])?.into_gpu()?;
+        Tensor::from_shape::<f32>(&[0], &[])?.into_device()?;
         Ok(())
     }
 
@@ -178,7 +178,7 @@ mod tests {
 
         model.set_output_outlets(&outputs)?;
 
-        MetalDevice::register()?;
+        MetalContext::register()?;
         // Transform model for Metal execution
         let model = MetalTransform::default().transform_into(model)?;
 
