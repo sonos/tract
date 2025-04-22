@@ -41,7 +41,7 @@ jobs:
 
   example:
     name: metal / ${{ matrix.model }} / ${{ matrix.q }}
-    needs: [ cli ]
+    needs: [ build-cli ]
     runs-on: macOS
     strategy:
       matrix:
