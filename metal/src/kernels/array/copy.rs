@@ -1,6 +1,5 @@
 use crate::encoder::EncoderExt;
 use crate::{LibraryName, MetalStream};
-use anyhow::Result;
 use derive_new::new;
 use metal::{MTLSize, NSUInteger};
 use std::fmt;
@@ -34,7 +33,7 @@ impl Memcpy {
         )
     }
 
-    pub fn kernel_name(&self, dt: DatumType) -> Result<String> {
+    pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal copy  op", dt);
         let tname = DeviceTensor::tname(dt)?;
         Ok(format!("array_ops::copy_unicast_{tname}"))
@@ -46,7 +45,7 @@ impl Memcpy {
         input: &DeviceTensor,
         input_offset: usize,
         output: &DeviceTensor,
-    ) -> Result<()> {
+    ) -> TractResult<()> {
         ensure!(input_offset % input.datum_type().size_of() == 0);
         ensure!(output.len() <= input.len() - input_offset);
 
@@ -80,7 +79,7 @@ impl Memcpy {
         input: &DeviceTensor,
         input_offset: usize,
         output_shape: &[usize],
-    ) -> Result<DeviceTensor> {
+    ) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), output_shape)? };
         self.dispatch_eval(stream, input, input_offset, &output)?;
         stream.wait_until_completed()?;

@@ -3,7 +3,7 @@ use crate::memory::DeviceResolvedMemSchema;
 use crate::tensor::DeviceTensor;
 use crate::tensor::IntoDevice;
 use crate::tensor::{DeviceArenaStorage, DeviceArenaView};
-use anyhow::Result;
+
 use std::cell::RefCell;
 use std::collections::HashSet;
 use tract_core::internal::*;
@@ -19,7 +19,7 @@ impl DeviceMemoryPool {
     pub fn from_schema(
         device: Box<dyn DeviceContext>,
         resolved_schema: DeviceResolvedMemSchema,
-    ) -> Result<Self> {
+    ) -> TractResult<Self> {
         let storage =
             Arc::new(DeviceArenaStorage::with_capacity(device, resolved_schema.memory_size)?);
 
@@ -31,7 +31,7 @@ impl DeviceMemoryPool {
         node_id: usize,
         dt: DatumType,
         shape: &[usize],
-    ) -> Result<DeviceTensor> {
+    ) -> TractResult<DeviceTensor> {
         ensure!(!self.node_seen.borrow().contains(&node_id), "Tensor for node {:?} was already requested. Maybe the memory pool was not reset properly.", node_id);
         self.resolved_schema.offsets_by_node[node_id]
             .map(|offset| {

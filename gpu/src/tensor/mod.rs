@@ -4,7 +4,6 @@ mod owned;
 pub use arena_view::*;
 pub use owned::*;
 
-use anyhow::Result;
 use num_traits::AsPrimitive;
 use std::ffi::c_void;
 use std::fmt::Display;
@@ -56,16 +55,16 @@ impl DeviceTensor {
     }
 
     /// Create an uninitialized DeviceTensor
-    pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> Result<DeviceTensor> {
+    pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> TractResult<DeviceTensor> {
         Tensor::uninitialized_dt(dt, shape)?.into_device()
     }
 
-    pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> Result<DeviceTensor> {
+    pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> TractResult<DeviceTensor> {
         Self::uninitialized_dt(T::datum_type(), shape)
     }
 
     // Create a device tensor with a given shape and a slice of elements. The data is copied and aligned to size of T.
-    pub fn from_shape<T: Copy + Datum>(shape: &[usize], data: &[T]) -> Result<DeviceTensor> {
+    pub fn from_shape<T: Copy + Datum>(shape: &[usize], data: &[T]) -> TractResult<DeviceTensor> {
         Tensor::from_shape(shape, data)?.into_device()
     }
 
@@ -157,14 +156,14 @@ impl DeviceTensor {
     }
 
     /// Reshaped tensor with given shape.
-    pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> Result<Self> {
+    pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> TractResult<Self> {
         match self {
             Self::Owned(t) => Ok(Self::Owned(t.reshaped(shape)?)),
             Self::ArenaView(t) => Ok(Self::ArenaView(t.reshaped(shape)?)),
         }
     }
 
-    pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> Result<Self> {
+    pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> TractResult<Self> {
         match self {
             Self::Owned(t) => Ok(Self::Owned(t.restrided(strides)?)),
             Self::ArenaView(t) => Ok(Self::ArenaView(t.restrided(strides)?)),
@@ -178,7 +177,7 @@ impl DeviceTensor {
 
     /// Synchronize the GPU Tensor by completing all current
     /// commands on GPU and returns the inner tensor.
-    pub fn synchronize(&self) -> Result<Arc<Tensor>> {
+    pub fn synchronize(&self) -> TractResult<Arc<Tensor>> {
         get_context()?.synchronize()?;
 
         Ok(match self {
@@ -218,17 +217,17 @@ impl Display for DeviceTensor {
 }
 
 pub trait IntoDevice<T> {
-    fn into_device(self) -> Result<T>;
+    fn into_device(self) -> TractResult<T>;
 }
 
 impl IntoDevice<DeviceTensor> for Tensor {
-    fn into_device(self) -> Result<DeviceTensor> {
+    fn into_device(self) -> TractResult<DeviceTensor> {
         Ok(DeviceTensor::Owned(OwnedDeviceTensor::from_tensor(self)?))
     }
 }
 
 impl IntoDevice<DeviceTensor> for Arc<Tensor> {
-    fn into_device(self) -> Result<DeviceTensor> {
+    fn into_device(self) -> TractResult<DeviceTensor> {
         Ok(DeviceTensor::Owned(OwnedDeviceTensor::from_tensor(self)?))
     }
 }
@@ -258,14 +257,14 @@ impl OpaquePayload for DeviceTensor {
 }
 
 pub trait DeviceTensorExt {
-    fn to_device_tensor(&self) -> Result<&DeviceTensor>;
+    fn to_device_tensor(&self) -> TractResult<&DeviceTensor>;
     fn as_device_tensor(&self) -> Option<&DeviceTensor>;
-    fn to_device_tensor_mut(&mut self) -> Result<&mut DeviceTensor>;
+    fn to_device_tensor_mut(&mut self) -> TractResult<&mut DeviceTensor>;
     fn as_device_tensor_mut(&mut self) -> Option<&mut DeviceTensor>;
 }
 
 impl DeviceTensorExt for Tensor {
-    fn to_device_tensor_mut(&mut self) -> Result<&mut DeviceTensor> {
+    fn to_device_tensor_mut(&mut self) -> TractResult<&mut DeviceTensor> {
         let opaque = self.to_scalar_mut::<Opaque>()?;
         opaque.downcast_mut::<DeviceTensor>().ok_or_else(|| {
             anyhow::anyhow!("Could convert opaque tensor to mutable reference on a device tensor")
@@ -277,7 +276,7 @@ impl DeviceTensorExt for Tensor {
         opaque.downcast_mut::<DeviceTensor>()
     }
 
-    fn to_device_tensor(&self) -> Result<&DeviceTensor> {
+    fn to_device_tensor(&self) -> TractResult<&DeviceTensor> {
         let opaque = self.to_scalar::<Opaque>()?;
         opaque.downcast_ref::<DeviceTensor>().ok_or_else(|| {
             anyhow::anyhow!("Could convert opaque tensor to reference on a device tensor")
@@ -295,7 +294,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_device_tensor() -> Result<()> {
+    fn test_device_tensor() -> TractResult<()> {
         let a = DeviceTensor::from_shape(&[1], &[0f32])?;
         assert_eq!(a.synchronize()?.as_slice::<f32>()?, &[0.0]);
         Ok(())

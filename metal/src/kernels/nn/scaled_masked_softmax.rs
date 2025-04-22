@@ -1,6 +1,5 @@
 use crate::encoder::EncoderExt;
 use crate::{LibraryName, MetalStream};
-use anyhow::Result;
 use metal::MTLSize;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
@@ -13,7 +12,7 @@ impl ScaledMaskedSoftmax {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
-    pub fn kernel_name(&self, dt: DatumType) -> Result<String> {
+    pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
         ensure!(
             Self::is_supported_dt(dt),
             "Unsupport dt {:?} for metal scaled masked softmax  op",
@@ -29,7 +28,7 @@ impl ScaledMaskedSoftmax {
         input: &DeviceTensor,
         scale: &Tensor,
         mask: &DeviceTensor,
-    ) -> Result<DeviceTensor> {
+    ) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(stream, input, scale, mask, &output)?;
         stream.wait_until_completed()?;
@@ -43,7 +42,7 @@ impl ScaledMaskedSoftmax {
         scale: &Tensor,
         mask: &DeviceTensor,
         output: &DeviceTensor,
-    ) -> Result<()> {
+    ) -> TractResult<()> {
         stream.retain_tensor(input);
         stream.retain_tensor(mask);
         stream.retain_tensor(output);
@@ -95,7 +94,7 @@ mod tests {
     use tract_transformers::ops::scaled_masked_softmax;
 
     #[test]
-    fn test_scaled_masked_softmax_f32() -> Result<()> {
+    fn test_scaled_masked_softmax_f32() -> TractResult<()> {
         with_borrowed_metal_stream(|stream| {
             let m = 4;
             let n = 4;
@@ -120,7 +119,7 @@ mod tests {
     }
 
     #[test]
-    fn test_scaled_masked_softmax_f32_2() -> Result<()> {
+    fn test_scaled_masked_softmax_f32_2() -> TractResult<()> {
         with_borrowed_metal_stream(|stream| {
             let m = 4;
             let n = 1024;
@@ -216,7 +215,7 @@ mod tests {
         usize: AsPrimitive<F>,
         f32: AsPrimitive<F>,
     {
-        pub fn reference(&self) -> Result<Tensor> {
+        pub fn reference(&self) -> TractResult<Tensor> {
             let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?;
             let mask = Tensor::from_shape(self.mask_shape.as_slice(), &self.mask)?;
             let scale: Arc<_> = tensor0::<F>(0.125f32.as_()).into();
@@ -228,7 +227,7 @@ mod tests {
             Ok(cpu_output)
         }
 
-        pub fn run(&self) -> Result<Tensor> {
+        pub fn run(&self) -> TractResult<Tensor> {
             with_borrowed_metal_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let mask =

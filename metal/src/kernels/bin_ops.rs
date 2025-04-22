@@ -1,8 +1,7 @@
 use super::BroadcastKind;
 use crate::encoder::EncoderExt;
 use crate::{LibraryName, MetalStream};
-use anyhow::bail;
-use anyhow::{ensure, Result};
+use anyhow::{bail, ensure};
 use metal::{MTLSize, NSUInteger};
 use std::fmt;
 use tract_core::internal::*;
@@ -56,7 +55,7 @@ impl BinOps {
         Validation::Accurate
     }
 
-    pub fn output_datum_type(&self, a: DatumType, b: DatumType) -> Result<DatumType> {
+    pub fn output_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
         ensure!(a == b);
         if self.is_logic() {
             Ok(DatumType::Bool)
@@ -65,7 +64,7 @@ impl BinOps {
         }
     }
 
-    pub fn output_shape<D: DimLike>(&self, a: &[D], b: &[D]) -> Result<TVec<D>> {
+    pub fn output_shape<D: DimLike>(&self, a: &[D], b: &[D]) -> TractResult<TVec<D>> {
         tract_core::broadcast::multi_broadcast(&[a, b])
             .with_context(|| anyhow!("Error while broadcasting {:?} {:?}", a, b))
     }
@@ -110,7 +109,7 @@ impl BinOps {
         )
     }
 
-    pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> Result<String> {
+    pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal binary ops", dt);
 
         let tname = DeviceTensor::tname(dt)?;
@@ -158,7 +157,7 @@ impl BinOps {
         lhs: &DeviceTensor,
         rhs: &DeviceTensor,
         output: &DeviceTensor,
-    ) -> Result<()> {
+    ) -> TractResult<()> {
         stream.retain_tensor(lhs);
         stream.retain_tensor(rhs);
         stream.retain_tensor(output);
@@ -269,7 +268,7 @@ mod tests {
         a: &Tensor,
         b: &Tensor,
         cab: impl Fn(&mut FO, &FI, &FI),
-    ) -> Result<Tensor> {
+    ) -> TractResult<Tensor> {
         let out_shape = tract_core::broadcast::multi_broadcast(&[a.shape(), b.shape()])?;
         let mut out = unsafe { Tensor::uninitialized_dt(FO::datum_type(), &out_shape)? };
         let a_view = a.to_array_view::<FI>()?;
@@ -287,7 +286,7 @@ mod tests {
         a_shape: &[usize],
         b_shape: &[usize],
         cab: impl Fn(&mut bool, &F, &F),
-    ) -> Result<()> {
+    ) -> TractResult<()> {
         with_borrowed_metal_stream(|stream| {
             let a_len = a_shape.iter().product::<usize>();
             let b_len = b_shape.iter().product::<usize>();
@@ -312,7 +311,7 @@ mod tests {
         a_shape: &[usize],
         b_shape: &[usize],
         cab: impl Fn(&mut F, &F, &F),
-    ) -> Result<()> {
+    ) -> TractResult<()> {
         with_borrowed_metal_stream(|stream| {
             let a_len = a_shape.iter().product::<usize>();
             let b_len = b_shape.iter().product::<usize>();
@@ -334,14 +333,14 @@ mod tests {
     }
 
     #[test]
-    fn test_bin_ops_unicast() -> Result<()> {
+    fn test_bin_ops_unicast() -> TractResult<()> {
         run_test_case::<f32>(BinOps::Mul, &[4, 4], &[4, 4], |c, a, b| *c = *a * *b)?;
         run_test_case::<f32>(BinOps::Mul, &[2, 16], &[2, 16], |c, a, b| *c = *a * *b)?;
         Ok(())
     }
 
     #[test]
-    fn test_bin_ops_with_broadcast_nd2() -> Result<()> {
+    fn test_bin_ops_with_broadcast_nd2() -> TractResult<()> {
         run_test_case::<f32>(BinOps::Mul, &[4, 1], &[1, 20], |c, a, b| *c = *a * *b)?;
         run_test_case::<f32>(BinOps::Mul, &[1, 20], &[10, 20], |c, a, b| *c = *a * *b)?;
         run_test_case::<f32>(BinOps::Add, &[4, 1], &[4, 20], |c, a, b| *c = *a + *b)?;
@@ -353,7 +352,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bin_ops_with_broadcast_nd3() -> Result<()> {
+    fn test_bin_ops_with_broadcast_nd3() -> TractResult<()> {
         run_test_case::<f32>(BinOps::Mul, &[4, 1, 10], &[1, 20, 1], |c, a, b| *c = *a * *b)?;
         run_test_case::<f32>(BinOps::Mul, &[1, 20, 1], &[10, 20, 10], |c, a, b| *c = *a * *b)?;
         run_test_case::<f32>(BinOps::Add, &[4, 1, 10], &[1, 20, 1], |c, a, b| *c = *a + *b)?;
@@ -362,7 +361,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bin_ops_with_broadcast_nd4() -> Result<()> {
+    fn test_bin_ops_with_broadcast_nd4() -> TractResult<()> {
         run_test_case::<f32>(BinOps::Mul, &[4, 1, 10, 1], &[1, 20, 1, 5], |c, a, b| *c = *a * *b)?;
         run_test_case::<f32>(BinOps::Mul, &[1, 20, 1, 5], &[5, 20, 10, 5], |c, a, b| *c = *a * *b)?;
         run_test_case::<f32>(BinOps::Add, &[4, 1, 10, 1], &[1, 20, 1, 5], |c, a, b| *c = *a + *b)?;
@@ -371,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bin_ops_mul_by_scalar() -> Result<()> {
+    fn test_bin_ops_mul_by_scalar() -> TractResult<()> {
         run_test_case::<f32>(BinOps::Add, &[4, 4], &[1], |c, a, b| *c = *a + *b)?;
         run_test_case::<f32>(BinOps::Mul, &[4, 4], &[1], |c, a, b| *c = *a * *b)?;
         Ok(())
@@ -437,7 +436,7 @@ mod tests {
         F: Datum + Zero + Copy + std::ops::AddAssign + std::ops::Mul<Output = F>,
         usize: AsPrimitive<F>,
     {
-        pub fn reference(&self) -> Result<Tensor> {
+        pub fn reference(&self) -> TractResult<Tensor> {
             let out_shape =
                 tract_core::broadcast::multi_broadcast(&[self.lhs.shape(), self.rhs.shape()])?;
             let mut out = Tensor::zero_dt(F::datum_type(), &out_shape)?;
@@ -451,7 +450,7 @@ mod tests {
             Ok(out)
         }
 
-        pub fn run(&self) -> Result<Tensor> {
+        pub fn run(&self) -> TractResult<Tensor> {
             with_borrowed_metal_stream(|stream| {
                 let lhs = self.lhs.clone().into_device()?;
                 let rhs = self.rhs.clone().into_device()?;

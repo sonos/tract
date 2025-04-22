@@ -2,7 +2,7 @@ use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
 
 use crate::{LibraryName, MetalStream};
-use anyhow::{ensure, Result};
+use anyhow::ensure;
 use std::fmt;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
@@ -33,7 +33,7 @@ impl MultiBroadcast {
         )
     }
 
-    pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> Result<String> {
+    pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal broadcast  op", dt);
         let tname = DeviceTensor::tname(dt)?;
         let broadcast_name = broadcast_kind.to_func_part();
@@ -46,7 +46,7 @@ impl MultiBroadcast {
         input: &DeviceTensor,
         input_offset: usize,
         output_shape: &[usize],
-    ) -> Result<DeviceTensor> {
+    ) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), output_shape)? };
         self.dispatch_eval(stream, input, input_offset, &output)?;
         stream.wait_until_completed()?;
@@ -59,7 +59,7 @@ impl MultiBroadcast {
         input: &DeviceTensor,
         input_offset: usize,
         output: &DeviceTensor,
-    ) -> Result<()> {
+    ) -> TractResult<()> {
         stream.retain_tensor(input);
         stream.retain_tensor(output);
 

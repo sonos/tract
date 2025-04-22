@@ -1,7 +1,7 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
 use crate::{LibraryName, MetalStream};
-use anyhow::{ensure, Result};
+use anyhow::ensure;
 use std::fmt;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
@@ -34,14 +34,14 @@ impl Concat {
         )
     }
 
-    pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> Result<String> {
+    pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal concat  op", dt);
         let tname = DeviceTensor::tname(dt)?;
         let broadcast_name = broadcast_kind.to_func_part();
         Ok(format!("array_ops::copy_{broadcast_name}_{tname}"))
     }
 
-    pub fn eval(&self, stream: &MetalStream, inputs: &[&DeviceTensor]) -> Result<DeviceTensor> {
+    pub fn eval(&self, stream: &MetalStream, inputs: &[&DeviceTensor]) -> TractResult<DeviceTensor> {
         ensure!(!inputs.is_empty());
         let mut output_shape = inputs[0].shape().to_vec();
         output_shape[self.axis] = inputs.iter().map(|it| it.shape()[self.axis]).sum();
@@ -58,7 +58,7 @@ impl Concat {
         stream: &MetalStream,
         inputs: &[&DeviceTensor],
         output: &DeviceTensor,
-    ) -> Result<()> {
+    ) -> TractResult<()> {
         ensure!(!inputs.is_empty());
 
         stream.retain_tensor(output);
@@ -132,7 +132,7 @@ mod tests {
 
     use tract_core::internal::Tensor;
 
-    fn run_test_case<F: Datum + Zero + Copy>(shapes: &[&[usize]], axis: usize) -> Result<()> {
+    fn run_test_case<F: Datum + Zero + Copy>(shapes: &[&[usize]], axis: usize) -> TractResult<()> {
         with_borrowed_metal_stream(|stream| {
             let mut inputs = tvec![];
             for shape in shapes {
@@ -144,7 +144,7 @@ mod tests {
             let output = Concat { axis }.eval(stream, &inputs.iter().collect_vec())?;
             let ref_output = Tensor::stack_tensors(
                 axis,
-                &inputs.iter().map(|it| it.synchronize()).collect::<Result<Vec<_>>>()?,
+                &inputs.iter().map(|it| it.synchronize()).collect::<TractResult<Vec<_>>>()?,
             )?;
             assert_eq!(ref_output, output.synchronize()?.into_tensor());
             Ok(())
@@ -152,7 +152,7 @@ mod tests {
     }
 
     #[test]
-    fn test_concat() -> Result<()> {
+    fn test_concat() -> TractResult<()> {
         run_test_case::<f32>(&[&[3, 4], &[3, 4]], 0)?;
         run_test_case::<f32>(&[&[3, 4], &[3, 4]], 1)?;
         run_test_case::<f32>(&[&[1, 5, 4], &[2, 5, 4]], 0)?;

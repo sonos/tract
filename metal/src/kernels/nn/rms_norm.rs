@@ -1,7 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::utils;
 use crate::{LibraryName, MetalStream};
-use anyhow::Result;
 use metal::MTLSize;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
@@ -14,7 +13,7 @@ impl RmsNorm {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
-    pub fn kernel_name(&self, dt: DatumType, is_l4: bool) -> Result<String> {
+    pub fn kernel_name(&self, dt: DatumType, is_l4: bool) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal rms  op", dt);
         let tname = DeviceTensor::tname(dt)?;
         if !is_l4 {
@@ -30,7 +29,7 @@ impl RmsNorm {
         input: &DeviceTensor,
         axis: usize,
         eps: &Tensor,
-    ) -> Result<DeviceTensor> {
+    ) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(stream, input, axis, eps, &output)?;
         stream.wait_until_completed()?;
@@ -44,7 +43,7 @@ impl RmsNorm {
         axis: usize,
         eps: &Tensor,
         output: &DeviceTensor,
-    ) -> Result<()> {
+    ) -> TractResult<()> {
         stream.retain_tensor(input);
         stream.retain_tensor(output);
 
@@ -145,7 +144,7 @@ mod tests {
     use tract_core::internal::Tensor;
     use tract_transformers::ops::rms_norm;
 
-    fn test_case<F>(shape: &[usize], axis: usize, offset: f32, scale: f32) -> Result<()>
+    fn test_case<F>(shape: &[usize], axis: usize, offset: f32, scale: f32) -> TractResult<()>
     where
         F: Float + Datum,
         usize: AsPrimitive<f32>,
@@ -188,7 +187,7 @@ mod tests {
     }
 
     #[test]
-    fn test_rms() -> Result<()> {
+    fn test_rms() -> TractResult<()> {
         test_case::<f32>(&[4, 4], 1, -8.0, 1.0 / 100.0)?;
         test_case::<f16>(&[4, 4], 1, -8.0, 1.0 / 100.0)?;
         Ok(())
@@ -269,7 +268,7 @@ mod tests {
         usize: AsPrimitive<F>,
         f32: AsPrimitive<F>,
     {
-        pub fn reference(&self) -> Result<Tensor> {
+        pub fn reference(&self) -> TractResult<Tensor> {
             let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?;
 
             let cpu_rms = rms_norm::RmsNorm { axis: self.axis, eps: Arc::clone(&self.eps) };
@@ -279,7 +278,7 @@ mod tests {
             Ok(cpu_output)
         }
 
-        pub fn run(&self) -> Result<Tensor> {
+        pub fn run(&self) -> TractResult<Tensor> {
             with_borrowed_metal_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let metal_output = RmsNorm.eval(stream, &a, self.axis, &self.eps)?;

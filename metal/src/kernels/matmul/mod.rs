@@ -373,7 +373,6 @@ mod tests {
 
     use super::*;
     use crate::kernels::matmul::GemmImpl;
-    use anyhow::Result;
     use num_traits::AsPrimitive;
     use num_traits::Float;
     use proptest::collection::vec;
@@ -455,7 +454,7 @@ mod tests {
     }
 
     #[test]
-    fn test_gemm_dispatches_params() -> Result<()> {
+    fn test_gemm_dispatches_params() -> TractResult<()> {
         let dt = DatumType::F32;
         let (m, k, n) = (2, 3, 4);
         assert_eq!(
@@ -715,7 +714,7 @@ mod tests {
     }
 
     #[test]
-    fn test_squeeze_batch_axes() -> Result<()> {
+    fn test_squeeze_batch_axes() -> TractResult<()> {
         assert_eq!(squeeze_batch_axes(&[1, 2, 3, 4])?, tvec![2, 3, 4]);
         assert_eq!(squeeze_batch_axes(&[3, 2, 3, 4])?, tvec![6, 3, 4]);
         assert_eq!(squeeze_batch_axes(&[3, 1, 2, 3, 4])?, tvec![6, 3, 4]);
@@ -864,7 +863,7 @@ mod tests {
         F: Datum + Float + std::ops::AddAssign,
         f32: AsPrimitive<F>,
     {
-        pub fn reference(&self) -> Result<Tensor> {
+        pub fn reference(&self) -> TractResult<Tensor> {
             let matmul = PrefixMatMul {
                 transpose_a: self.transpose_lhs,
                 transpose_b: self.transpose_rhs,
@@ -891,7 +890,7 @@ mod tests {
             Ok(output[0].clone().into_tensor())
         }
 
-        pub fn run(&self) -> Result<Tensor> {
+        pub fn run(&self) -> TractResult<Tensor> {
             with_borrowed_metal_stream(|stream| {
                 let lhs = if self.transpose_lhs {
                     Tensor::from_shape(&[self.b, self.k, self.m], &self.lhs)?.into_device()?

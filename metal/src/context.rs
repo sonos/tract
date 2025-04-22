@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Context};
 use metal::{
     Buffer, CommandQueue, CompileOptions, ComputePipelineState, Device, Function,
     FunctionConstantValues, Library, MTLResourceOptions,
@@ -48,7 +48,7 @@ pub struct MetalContext {
 }
 
 impl MetalContext {
-    pub fn new() -> Result<Self> {
+    pub fn new() -> TractResult<Self> {
         let device = Device::system_default()
             .with_context(|| "Could not find system default Metal device")?;
 
@@ -65,7 +65,7 @@ impl MetalContext {
         &self.device
     }
 
-    pub fn preload_pipelines(&self) -> Result<()> {
+    pub fn preload_pipelines(&self) -> TractResult<()> {
         for ew_func in crate::kernels::ElementWiseOps::all_functions() {
             let _ = self.load_pipeline(LibraryName::ElementWiseOps, &ew_func);
         }
@@ -81,12 +81,12 @@ impl MetalContext {
         Ok(())
     }
 
-    pub fn flush_pipeline_cache(&self) -> Result<()> {
+    pub fn flush_pipeline_cache(&self) -> TractResult<()> {
         self.cache_pipelines.write().map_err(|e| anyhow!("{:?}", e))?.clear();
         Ok(())
     }
 
-    pub fn load_library(&self, name: LibraryName) -> Result<Library> {
+    pub fn load_library(&self, name: LibraryName) -> TractResult<Library> {
         {
             let cache_libraries = self.cache_libraries.read().map_err(|e| anyhow!("{:?}", e))?;
             if let Some(library) = cache_libraries.get(&name) {
@@ -119,7 +119,7 @@ impl MetalContext {
         library_name: LibraryName,
         func_name: &str,
         constants: Option<FunctionConstantValues>,
-    ) -> Result<Function> {
+    ) -> TractResult<Function> {
         let func = self
             .load_library(library_name)?
             .get_function(func_name, constants)
@@ -138,7 +138,7 @@ impl MetalContext {
         library_name: LibraryName,
         func_name: &str,
         constants: Option<ConstantValues>,
-    ) -> Result<ComputePipelineState> {
+    ) -> TractResult<ComputePipelineState> {
         let key = (library_name, func_name.to_string(), constants);
         {
             let cache_pipelines = self.cache_pipelines.read().map_err(|e| anyhow!("{:?}", e))?;
@@ -166,7 +166,7 @@ impl MetalContext {
         &self,
         library_name: LibraryName,
         func_name: &str,
-    ) -> Result<ComputePipelineState> {
+    ) -> TractResult<ComputePipelineState> {
         self.load_pipeline_with_constants(library_name, func_name, None)
     }
 }
@@ -223,7 +223,7 @@ impl MetalStream {
         }
     }
 
-    pub fn load_library(&self, name: LibraryName) -> Result<Library> {
+    pub fn load_library(&self, name: LibraryName) -> TractResult<Library> {
         self.context.load_library(name)
     }
 
@@ -231,7 +231,7 @@ impl MetalStream {
         &self,
         library_name: LibraryName,
         func_name: &str,
-    ) -> Result<ComputePipelineState> {
+    ) -> TractResult<ComputePipelineState> {
         self.context.load_pipeline(library_name, func_name)
     }
 
@@ -240,7 +240,7 @@ impl MetalStream {
         library_name: LibraryName,
         func_name: &str,
         constants: Option<ConstantValues>,
-    ) -> Result<ComputePipelineState> {
+    ) -> TractResult<ComputePipelineState> {
         self.context.load_pipeline_with_constants(library_name, func_name, constants)
     }
 
@@ -263,7 +263,7 @@ impl MetalStream {
         command_buffer
     }
 
-    pub fn wait_until_completed(&self) -> Result<()> {
+    pub fn wait_until_completed(&self) -> TractResult<()> {
         let Some(command_buffer) = self.command_buffer.borrow().to_owned() else { return Ok(()) };
 
         command_buffer.encoder().end_encoding();
@@ -289,10 +289,10 @@ impl MetalStream {
         Ok(())
     }
 
-    pub fn capture_trace<P, F>(&self, path: P, compute: F) -> Result<()>
+    pub fn capture_trace<P, F>(&self, path: P, compute: F) -> TractResult<()>
     where
         P: AsRef<Path>,
-        F: FnOnce(&Self) -> Result<()>,
+        F: FnOnce(&Self) -> TractResult<()>,
     {
         self.wait_until_completed()?;
 

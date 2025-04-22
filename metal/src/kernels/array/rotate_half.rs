@@ -1,7 +1,7 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::utils;
 use crate::{LibraryName, MetalStream};
-use anyhow::{ensure, Result};
+use anyhow::ensure;
 use metal::MTLSize;
 use std::fmt;
 use tract_core::internal::*;
@@ -29,13 +29,13 @@ impl RotateHalf {
         )
     }
 
-    pub fn kernel_name(&self, dt: DatumType) -> Result<String> {
+    pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal rotate half  op", dt);
         let tname = DeviceTensor::tname(dt)?;
         Ok(format!("array_ops::rotate_half_nd2_{tname}"))
     }
 
-    pub fn eval(&self, stream: &MetalStream, input: &DeviceTensor) -> Result<DeviceTensor> {
+    pub fn eval(&self, stream: &MetalStream, input: &DeviceTensor) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(stream, input, &output)?;
         stream.wait_until_completed()?;
@@ -47,7 +47,7 @@ impl RotateHalf {
         stream: &MetalStream,
         input: &DeviceTensor,
         output: &DeviceTensor,
-    ) -> Result<()> {
+    ) -> TractResult<()> {
         stream.retain_tensor(input);
         stream.retain_tensor(output);
 
@@ -90,7 +90,7 @@ mod tests {
     use tract_gpu::tensor::IntoDevice;
     use tract_transformers::ops::apply_rope;
 
-    fn run_test_case<F>(shape: &[usize]) -> Result<()>
+    fn run_test_case<F>(shape: &[usize]) -> TractResult<()>
     where
         F: Copy + 'static + Datum,
         usize: AsPrimitive<F>,

@@ -1,7 +1,6 @@
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
 use crate::{LibraryName, MetalStream};
 use anyhow::bail;
-use anyhow::Result;
 use derive_new::new;
 use metal::{Buffer, MTLSize, NSUInteger};
 use std::fmt;
@@ -88,7 +87,7 @@ impl fmt::Display for BasicMatMul {
 }
 
 impl BasicMatMul {
-    pub fn tname(dt: DatumType) -> Result<&'static str> {
+    pub fn tname(dt: DatumType) -> TractResult<&'static str> {
         let tname = match dt {
             DatumType::F32 => "f32",
             DatumType::F16 => "f16",
@@ -97,7 +96,7 @@ impl BasicMatMul {
         Ok(tname)
     }
 
-    pub fn kernel_name(dt: DatumType, mat_vec: bool) -> Result<String> {
+    pub fn kernel_name(dt: DatumType, mat_vec: bool) -> TractResult<String> {
         let tname = Self::tname(dt)?;
         if mat_vec {
             Ok(format!("matmul::basic_matvec_{tname}"))
@@ -118,7 +117,7 @@ impl BasicMatMul {
         rhs_offset: usize,
         output: &Buffer,
         output_offset: usize,
-    ) -> Result<()> {
+    ) -> TractResult<()> {
         let pipeline =
             stream.load_pipeline(LibraryName::BasicMatMul, &Self::kernel_name(dt, true)?)?;
 
@@ -158,7 +157,7 @@ impl BasicMatMul {
         rhs_transpose: bool,
         output: &Buffer,
         output_offset: usize,
-    ) -> Result<()> {
+    ) -> TractResult<()> {
         let pipeline =
             stream.load_pipeline(LibraryName::BasicMatMul, &Self::kernel_name(dt, false)?)?;
 

@@ -1,7 +1,6 @@
 use crate::encoder::EncoderExt;
 
 use crate::{LibraryName, MetalStream};
-use anyhow::Result;
 use derive_new::new;
 use metal::{MTLSize, NSUInteger};
 use std::fmt;
@@ -35,7 +34,7 @@ impl Cast {
         )
     }
 
-    pub fn kernel_name(&self, from_dt: DatumType, to_dt: DatumType) -> Result<String> {
+    pub fn kernel_name(&self, from_dt: DatumType, to_dt: DatumType) -> TractResult<String> {
         ensure!(
             Self::is_supported_dt(from_dt),
             "Unsupported from_dt {:?} for metal cast  op",
@@ -52,7 +51,7 @@ impl Cast {
         stream: &MetalStream,
         input: &DeviceTensor,
         to_dt: DatumType,
-    ) -> Result<DeviceTensor> {
+    ) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(to_dt, input.shape())? };
         self.dispatch_eval(stream, input, &output)?;
         stream.wait_until_completed()?;
@@ -64,7 +63,7 @@ impl Cast {
         stream: &MetalStream,
         input: &DeviceTensor,
         output: &DeviceTensor,
-    ) -> Result<()> {
+    ) -> TractResult<()> {
         stream.retain_tensor(input);
         stream.retain_tensor(output);
         ensure!(

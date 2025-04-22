@@ -1,7 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::utils;
 use crate::{LibraryName, MetalStream};
-use anyhow::Result;
 use metal::MTLSize;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
@@ -14,7 +13,7 @@ impl Softmax {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
-    pub fn kernel_name(&self, dt: DatumType) -> Result<String> {
+    pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal softmax  op", dt);
         let tname = DeviceTensor::tname(dt)?;
         Ok(format!("nn_ops::softmax_nd3_{tname}"))
@@ -25,7 +24,7 @@ impl Softmax {
         stream: &MetalStream,
         input: &DeviceTensor,
         axis: usize,
-    ) -> Result<DeviceTensor> {
+    ) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(stream, input, axis, &output)?;
         stream.wait_until_completed()?;
@@ -38,7 +37,7 @@ impl Softmax {
         input: &DeviceTensor,
         axis: usize,
         output: &DeviceTensor,
-    ) -> Result<()> {
+    ) -> TractResult<()> {
         stream.retain_tensor(input);
         stream.retain_tensor(output);
 
@@ -84,7 +83,7 @@ mod tests {
     use tract_gpu::tensor::IntoDevice;
 
     #[test]
-    fn test_softmax_f32() -> Result<()> {
+    fn test_softmax_f32() -> TractResult<()> {
         with_borrowed_metal_stream(|stream| {
             let m = 4;
             let k = 4;
@@ -106,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    fn test_softmax_f32_2() -> Result<()> {
+    fn test_softmax_f32_2() -> TractResult<()> {
         with_borrowed_metal_stream(|stream| {
             let shape = [8, 4, 3];
             let num_elements = shape.iter().product();
@@ -131,7 +130,7 @@ mod tests {
     }
 
     #[test]
-    fn test_softmax_f16() -> Result<()> {
+    fn test_softmax_f16() -> TractResult<()> {
         with_borrowed_metal_stream(|stream| {
             let m = 4;
             let k = 4;
@@ -224,7 +223,7 @@ mod tests {
         F: Datum + Float + std::ops::AddAssign,
         usize: AsPrimitive<F>,
     {
-        pub fn reference(&self) -> Result<Tensor> {
+        pub fn reference(&self) -> TractResult<Tensor> {
             let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?;
 
             let cpu_softmax = TractSoftmax {
@@ -236,7 +235,7 @@ mod tests {
             Ok(cpu_output)
         }
 
-        pub fn run(&self) -> Result<Tensor> {
+        pub fn run(&self) -> TractResult<Tensor> {
             with_borrowed_metal_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let metal_output = Softmax.eval(stream, &a, self.axis)?;
