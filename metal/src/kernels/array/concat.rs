@@ -122,7 +122,7 @@ impl Concat {
 
 #[cfg(test)]
 mod tests {
-    use crate::autorelease_pool_init;
+    use crate::utils::with_borrowed_metal_stream;
     use crate::context::MetalContext;
 
     use super::*;
@@ -135,8 +135,7 @@ mod tests {
 
     fn run_test_case<F: Datum + Zero + Copy>(shapes: &[&[usize]], axis: usize) -> Result<()> {
         MetalContext::register()?;
-        let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|stream| {
+        with_borrowed_metal_stream(|stream| {
             let mut inputs = tvec![];
             for shape in shapes {
                 let len = shape.iter().product::<usize>();

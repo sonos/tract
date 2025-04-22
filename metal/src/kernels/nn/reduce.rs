@@ -92,8 +92,8 @@ impl Reducer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::autorelease_pool_init;
     use crate::context::MetalContext;
+    use crate::utils::with_borrowed_metal_stream;
     use derive_new::new;
     use num_traits::AsPrimitive;
     use num_traits::Float;
@@ -116,8 +116,7 @@ mod tests {
         f32: AsPrimitive<F>,
     {
         MetalContext::register()?;
-        let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|stream| {
+        with_borrowed_metal_stream(|stream| {
             let len = shape.iter().product::<usize>();
 
             let a = Tensor::from_shape(
@@ -362,8 +361,7 @@ mod tests {
 
         pub fn run(&self) -> Result<Tensor> {
             MetalContext::register()?;
-            let _ = autorelease_pool_init();
-            crate::METAL_STREAM.with_borrow(|stream| {
+            with_borrowed_metal_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let metal_output = self.op.eval(stream, &a, self.axis)?;
                 Ok(metal_output.synchronize()?.into_tensor())

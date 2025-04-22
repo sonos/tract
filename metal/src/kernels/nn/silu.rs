@@ -57,7 +57,7 @@ impl Silu {
 
 #[cfg(test)]
 mod tests {
-    use crate::autorelease_pool_init;
+    use crate::utils::with_borrowed_metal_stream;
     use crate::context::MetalContext;
     use tract_gpu::tensor::IntoDevice;
 
@@ -82,8 +82,7 @@ mod tests {
         f32: AsPrimitive<F>,
     {
         MetalContext::register()?;
-        let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|stream| {
+        with_borrowed_metal_stream(|stream| {
             let len = shape.iter().product::<usize>();
 
             let a = Tensor::from_shape(
@@ -203,8 +202,7 @@ mod tests {
 
         pub fn run(&self) -> Result<Tensor> {
             MetalContext::register()?;
-            let _ = autorelease_pool_init();
-            crate::METAL_STREAM.with_borrow(|stream| {
+            with_borrowed_metal_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let metal_output = Silu.eval(stream, &a)?;
                 Ok(metal_output.synchronize()?.into_tensor())

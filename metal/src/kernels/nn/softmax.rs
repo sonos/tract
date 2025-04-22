@@ -72,7 +72,7 @@ impl Softmax {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::autorelease_pool_init;
+    use crate::utils::with_borrowed_metal_stream;
     use crate::context::MetalContext;
     use derive_new::new;
     use num_traits::AsPrimitive;
@@ -87,8 +87,7 @@ mod tests {
     #[test]
     fn test_softmax_f32() -> Result<()> {
         MetalContext::register()?;
-        let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|stream| {
+        with_borrowed_metal_stream(|stream| {
             let m = 4;
             let k = 4;
             let axis = 1;
@@ -111,8 +110,7 @@ mod tests {
     #[test]
     fn test_softmax_f32_2() -> Result<()> {
         MetalContext::register()?;
-        let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|stream| {
+        with_borrowed_metal_stream(|stream| {
             let shape = [8, 4, 3];
             let num_elements = shape.iter().product();
             let axis = 0;
@@ -138,8 +136,7 @@ mod tests {
     #[test]
     fn test_softmax_f16() -> Result<()> {
         MetalContext::register()?;
-        let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|stream| {
+        with_borrowed_metal_stream(|stream| {
             let m = 4;
             let k = 4;
             let axis = 1;
@@ -245,8 +242,7 @@ mod tests {
 
         pub fn run(&self) -> Result<Tensor> {
             MetalContext::register()?;
-            let _ = autorelease_pool_init();
-            crate::METAL_STREAM.with_borrow(|stream| {
+            with_borrowed_metal_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let metal_output = Softmax.eval(stream, &a, self.axis)?;
                 Ok(metal_output.synchronize()?.into_tensor())

@@ -171,6 +171,28 @@ impl MetalContext {
     }
 }
 
+impl DeviceContext for MetalContext {
+    fn buffer_from_slice(&self, data: &[u8]) -> Box<dyn tract_gpu::device::DeviceBuffer> {
+        static ZERO: [u8; 1] = [0];
+        // Handle empty data
+        let data = if data.len() == 0 { &ZERO } else { data };
+
+        let size = core::mem::size_of_val(data) as NSUInteger;
+        Box::new(MetalBuffer {
+            inner: self.device.new_buffer_with_bytes_no_copy(
+                data.as_ptr() as *const core::ffi::c_void,
+                size,
+                MTLResourceOptions::StorageModeShared,
+                None,
+            ),
+        })
+    }
+
+    fn synchronize(&self) -> TractResult<()> {
+        METAL_STREAM.with_borrow(|stream| stream.wait_until_completed())
+    }
+}
+
 #[derive(Debug)]
 pub struct MetalStream {
     context: MetalContext,
@@ -364,27 +386,5 @@ impl DeviceBuffer for MetalBuffer {
 
     fn ptr(&self) -> *const c_void {
         self.inner.gpu_address() as *const c_void
-    }
-}
-
-impl DeviceContext for MetalContext {
-    fn buffer_from_slice(&self, data: &[u8]) -> Box<dyn tract_gpu::device::DeviceBuffer> {
-        static ZERO: [u8; 1] = [0];
-        // Handle empty data
-        let data = if data.len() == 0 { &ZERO } else { data };
-
-        let size = core::mem::size_of_val(data) as NSUInteger;
-        Box::new(MetalBuffer {
-            inner: self.device.new_buffer_with_bytes_no_copy(
-                data.as_ptr() as *const core::ffi::c_void,
-                size,
-                MTLResourceOptions::StorageModeShared,
-                None,
-            ),
-        })
-    }
-
-    fn synchronize(&self) -> TractResult<()> {
-        METAL_STREAM.with_borrow(|stream| stream.wait_until_completed())
     }
 }

@@ -214,8 +214,8 @@ impl ElementWiseOps {
 
 #[cfg(test)]
 mod tests {
-    use crate::autorelease_pool_init;
     use crate::context::MetalContext;
+    use crate::utils::with_borrowed_metal_stream;
 
     use super::*;
     use num_traits::Zero;
@@ -237,8 +237,7 @@ mod tests {
         ca: impl Fn(&mut F, &F),
     ) -> Result<()> {
         MetalContext::register()?;
-        let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|stream| {
+        with_borrowed_metal_stream(|stream| {
             let a_len = a_shape.iter().product::<usize>();
             let mut rng = rand::thread_rng();
             let a = Tensor::from_shape(

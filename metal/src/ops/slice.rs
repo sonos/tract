@@ -117,15 +117,14 @@ impl TypedOp for MetalSlice {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::autorelease_pool_init;
     use crate::context::MetalContext;
+    use crate::utils::with_borrowed_metal_stream;
     use tract_core::internal::Tensor;
     use tract_gpu::tensor::IntoDevice;
 
     fn run_test(shape: &[usize], slice: Slice) -> TractResult<()> {
         MetalContext::register()?;
-        let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|stream| {
+        with_borrowed_metal_stream(|stream| {
             let num_elements = shape.iter().product();
 
             let a = Tensor::from_shape(
