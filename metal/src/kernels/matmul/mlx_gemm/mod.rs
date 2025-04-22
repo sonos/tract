@@ -398,7 +398,6 @@ pub fn kernel_name_gemm(dt: DatumType, transpose_a: bool, transpose_b: bool) -> 
 #[cfg(test)]
 mod tests {
     use crate::utils::with_borrowed_metal_stream;
-    use crate::context::MetalContext;
 
     use super::*;
     use crate::kernels::matmul::tests::run_mmm_test_case;
@@ -413,7 +412,6 @@ mod tests {
 
     #[test]
     fn test_mlx_gemm() -> Result<()> {
-        MetalContext::register()?;
         with_borrowed_metal_stream(|stream| {
             let (b, m, n, k) = (10, 32, 32, 16);
             let a = Tensor::from_shape(

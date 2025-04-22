@@ -107,14 +107,12 @@ impl ApplyRope {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context::MetalContext;
     use crate::utils::with_borrowed_metal_stream;
     use tract_core::internal::Tensor;
     use tract_gpu::tensor::IntoDevice;
     use tract_transformers::ops::apply_rope;
 
     fn run_test_case(shape: &[usize]) -> Result<()> {
-        MetalContext::register()?;
         with_borrowed_metal_stream(|stream| {
             let len = shape.iter().product::<usize>();
 

@@ -370,7 +370,6 @@ fn squeeze_batch_axes(s: &[usize]) -> TractResult<TVec<usize>> {
 #[cfg(test)]
 mod tests {
     use crate::utils::with_borrowed_metal_stream;
-    use crate::context::MetalContext;
 
     use super::*;
     use crate::kernels::matmul::GemmImpl;
@@ -393,7 +392,6 @@ mod tests {
         a_dt: DatumType,
         b_dt: DatumType,
     ) -> TractResult<()> {
-        MetalContext::register()?;
         with_borrowed_metal_stream(|stream| {
             let a_shape = if !transpose_a { [batch, m, k] } else { [batch, k, m] };
             let b_shape = if !transpose_b { [batch, k, n] } else { [batch, n, k] };
@@ -894,7 +892,6 @@ mod tests {
         }
 
         pub fn run(&self) -> Result<Tensor> {
-            MetalContext::register()?;
             with_borrowed_metal_stream(|stream| {
                 let lhs = if self.transpose_lhs {
                     Tensor::from_shape(&[self.b, self.k, self.m], &self.lhs)?.into_device()?

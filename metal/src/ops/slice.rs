@@ -117,13 +117,11 @@ impl TypedOp for MetalSlice {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context::MetalContext;
     use crate::utils::with_borrowed_metal_stream;
     use tract_core::internal::Tensor;
     use tract_gpu::tensor::IntoDevice;
 
     fn run_test(shape: &[usize], slice: Slice) -> TractResult<()> {
-        MetalContext::register()?;
         with_borrowed_metal_stream(|stream| {
             let num_elements = shape.iter().product();
 

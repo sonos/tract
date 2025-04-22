@@ -73,7 +73,6 @@ impl Softmax {
 mod tests {
     use super::*;
     use crate::utils::with_borrowed_metal_stream;
-    use crate::context::MetalContext;
     use derive_new::new;
     use num_traits::AsPrimitive;
     use num_traits::Float;
@@ -86,7 +85,6 @@ mod tests {
 
     #[test]
     fn test_softmax_f32() -> Result<()> {
-        MetalContext::register()?;
         with_borrowed_metal_stream(|stream| {
             let m = 4;
             let k = 4;
@@ -109,7 +107,6 @@ mod tests {
 
     #[test]
     fn test_softmax_f32_2() -> Result<()> {
-        MetalContext::register()?;
         with_borrowed_metal_stream(|stream| {
             let shape = [8, 4, 3];
             let num_elements = shape.iter().product();
@@ -135,7 +132,6 @@ mod tests {
 
     #[test]
     fn test_softmax_f16() -> Result<()> {
-        MetalContext::register()?;
         with_borrowed_metal_stream(|stream| {
             let m = 4;
             let k = 4;
@@ -241,7 +237,6 @@ mod tests {
         }
 
         pub fn run(&self) -> Result<Tensor> {
-            MetalContext::register()?;
             with_borrowed_metal_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let metal_output = Softmax.eval(stream, &a, self.axis)?;

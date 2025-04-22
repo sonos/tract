@@ -214,7 +214,6 @@ impl ElementWiseOps {
 
 #[cfg(test)]
 mod tests {
-    use crate::context::MetalContext;
     use crate::utils::with_borrowed_metal_stream;
 
     use super::*;
@@ -236,7 +235,6 @@ mod tests {
         neg: bool,
         ca: impl Fn(&mut F, &F),
     ) -> Result<()> {
-        MetalContext::register()?;
         with_borrowed_metal_stream(|stream| {
             let a_len = a_shape.iter().product::<usize>();
             let mut rng = rand::thread_rng();

@@ -123,7 +123,6 @@ impl Concat {
 #[cfg(test)]
 mod tests {
     use crate::utils::with_borrowed_metal_stream;
-    use crate::context::MetalContext;
 
     use super::*;
     use tract_gpu::tensor::IntoDevice;
@@ -134,7 +133,6 @@ mod tests {
     use tract_core::internal::Tensor;
 
     fn run_test_case<F: Datum + Zero + Copy>(shapes: &[&[usize]], axis: usize) -> Result<()> {
-        MetalContext::register()?;
         with_borrowed_metal_stream(|stream| {
             let mut inputs = tvec![];
             for shape in shapes {
