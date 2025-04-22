@@ -10,6 +10,7 @@ pub mod ops;
 pub mod rewrite_rules;
 pub mod transform;
 pub mod utils;
+mod tests;
 
 pub use crate::context::{MetalContext, METAL_CONTEXT};
 use crate::func_constants::{ConstantValues, Value};
