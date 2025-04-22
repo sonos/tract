@@ -43,9 +43,9 @@ S3=https://s3.amazonaws.com/tract-ci-builds/tests
 
 if  [ "$GITHUB_WORKFLOW" = "Metal tests" ]
 then
-    CACHE_FILE=$ROOT/.travis/cache_file.sh
-    MODELS=$HOME/.cache/models
-    CACHEDIR=$MODELS
+    export CACHE_FILE=$ROOT/.travis/cache_file.sh
+    export MODELS=$HOME/.cache/models
+    export CACHEDIR=$MODELS
     mkdir -p $MODELS
 elif [ -n "$CI" ]
 then
