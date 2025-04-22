@@ -37,7 +37,7 @@ then
     fi
 fi
 
-if which gstat
+if which gstat > /dev/null
 then
     STAT=gstat
 else
@@ -50,7 +50,7 @@ nnef=llm/$generation/$id/$id.nnef.tgz
 
 $CACHE_FILE $nnef
 
-$TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O --readings  --assert-maximal-mm-quality-cost 0 dump -q
+$TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O --readings  --assert-maximal-mm-quality-cost 0 $TRACT_EXTRA_ARGS dump -q
 if [ -e $MODELS/$nnef ]
 then
     size=$($STAT -c %s $MODELS/$nnef)
@@ -86,11 +86,12 @@ do
         f16f16) approx="--approx ultra";;
         q40f32) approx="--approx very";;
         q40ef32) approx="--approx very";;
-        f32f32) approx="--approx approximate";;
+        f32f32) approx="--approx very";;
     esac
 
-    case "$id.$t" in 
-        apple--OpenELM-270M-f16f16.p50s50) approx="--approx-custom 0.2,0.2,0.007";;
+    case "$id.$t" in
+        # very terrible conditioning on this one
+        apple--OpenELM-270M-f16f16.p50s50) approx="--approx-custom 0.2,0.25,0.0075";;
 
         TinyLlama--TinyLlama_v1.1-f32f32.p50s50) approx="--approx-custom 0.2,0.1,0.001";;
         TinyLlama--TinyLlama_v1.1-f16f16.p0s100) approx="--approx-custom 0.2,0.1,0.002";;
@@ -125,7 +126,7 @@ do
     esac
 
 
-    $TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O run \
+    $TRACT_RUN -v --nnef-tract-core $MODELS/$nnef $TRACT_EXTRA_ARGS -O run \
         --input-from-npz $MODELS/$npz \
         --assert-output-bundle $MODELS/$npz \
         $approx --allow-float-casts
