@@ -37,6 +37,13 @@ then
     fi
 fi
 
+if which gstat
+then
+    STAT=gstat
+else
+    STAT=stat
+fi
+
 set -x
 
 nnef=llm/$generation/$id/$id.nnef.tgz
@@ -46,7 +53,7 @@ $CACHE_FILE $nnef
 $TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O --readings  --assert-maximal-mm-quality-cost 0 dump -q
 if [ -e $MODELS/$nnef ]
 then
-    size=$(stat -c %s $MODELS/$nnef)
+    size=$($STAT -c %s $MODELS/$nnef)
 else
     size=$(curl -s -I $MODELS/$nnef | grep Content-Length | cut -d " " -f 2 | tr -cd 0123456789)
 fi
