@@ -6,7 +6,7 @@ set -o pipefail
 ROOT=$(dirname $(dirname $(realpath $0)))
 . $ROOT/.travis/ci-system-setup.sh
 
-if [ -z $TRACT_RUN ]
+if [ -z "$TRACT_RUN" ]
 then
     TRACT_RUN=$(cargo build --message-format json -p tract $CARGO_EXTRA --profile opt-no-lto --no-default-features | jq -r 'select(.target.name == "tract" and .executable).executable')
     export TRACT_RUN
