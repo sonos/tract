@@ -155,7 +155,7 @@ impl GemmKernel for GgmlGemm {
 
     fn dispatch_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         params: GemmDispatchParams,
         a_buffer: &Buffer,
         b_buffer: &Buffer,
@@ -179,11 +179,11 @@ impl GemmKernel for GgmlGemm {
 
         if (dts[0] == F32) && (k % 32 == 0) && (k >= 64) && ((m > 4) || (q40_b && a_batch > 1)) {
             dispatch_metal_ggml_gemm(
-                context, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer, c_offset,
+                stream, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer, c_offset,
             )?;
         } else {
             dispatch_metal_ggml_gemv(
-                context, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer, c_offset,
+                stream, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer, c_offset,
             )?;
         }
 
@@ -219,7 +219,7 @@ fn mv_kernel_name_and_dispatch_params(
 
 #[allow(clippy::too_many_arguments)]
 fn dispatch_metal_ggml_gemv(
-    context: &MetalStream,
+    stream: &MetalStream,
     params: GemmDispatchParams,
     a_offset: usize,
     a_buffer: &Buffer,
@@ -230,10 +230,10 @@ fn dispatch_metal_ggml_gemv(
 ) -> Result<()> {
     let (name, (nth0, nth1, nrows)) = mv_kernel_name_and_dispatch_params(&params)?;
     //dbg!(&name);
-    let pipeline = context.load_pipeline(LibraryName::Ggml, &name)?;
+    let pipeline = stream.load_pipeline(LibraryName::Ggml, &name)?;
 
     let ggml_params: GgmlGemvParams = params.clone().into();
-    let command_buffer = context.command_buffer();
+    let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
         encoder.set_bytes(
@@ -270,7 +270,7 @@ fn dispatch_metal_ggml_gemv(
 
 #[allow(clippy::too_many_arguments)]
 fn dispatch_metal_ggml_gemm(
-    context: &MetalStream,
+    stream: &MetalStream,
     params: GemmDispatchParams,
     a_offset: usize,
     a_buffer: &Buffer,
@@ -288,10 +288,10 @@ fn dispatch_metal_ggml_gemm(
 
     let name = format!("kernel_mul_mm_{i1_tname}_{i2_tname}");
     //dbg!(&name);
-    let pipeline = context.load_pipeline(LibraryName::Ggml, &name)?;
+    let pipeline = stream.load_pipeline(LibraryName::Ggml, &name)?;
 
     let ggml_params: GgmlGemmParams = params.clone().into();
-    let command_buffer = context.command_buffer();
+    let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
         encoder.set_bytes(
@@ -339,7 +339,7 @@ mod tests {
 
     #[test]
     fn test_ggml_compilation() -> Result<()> {
-        crate::METAL_STREAM.with_borrow(|context| context.load_library(LibraryName::Ggml))?;
+        crate::METAL_STREAM.with_borrow(|stream| stream.load_library(LibraryName::Ggml))?;
         Ok(())
     }
 
@@ -441,7 +441,7 @@ mod tests {
     {
         MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|stream| {
             let a_shape = [batch * broadcast_ratio, m, k];
             let b_shape = [batch, n, k];
 
@@ -473,7 +473,7 @@ mod tests {
             };
 
             let metal_output = GemmImpl::<GgmlGemm>::new(false, true).eval(
-                context,
+                stream,
                 &a.clone().into_device()?,
                 &metal_b.clone().into_device()?,
             )?;

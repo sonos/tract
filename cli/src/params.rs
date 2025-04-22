@@ -1,7 +1,7 @@
 use fs_err as fs;
 use reqwest::Url;
 use scan_fmt::scan_fmt;
-use tract_metal::context::MetalDevice;
+use tract_metal::stream::MetalDevice;
 use std::io::Cursor;
 use std::io::Read;
 use std::path::PathBuf;

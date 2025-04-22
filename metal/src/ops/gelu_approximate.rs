@@ -22,7 +22,7 @@ crate::impl_eval_op_for_metal_op!(MetalGeluApproximate);
 impl MetalEvalOp for MetalGeluApproximate {
     fn metal_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
@@ -36,7 +36,7 @@ impl MetalEvalOp for MetalGeluApproximate {
             input_metal.shape(),
         )?;
         GeluApproximate { fast_impl: self.fast_impl }.dispatch_eval(
-            context,
+            stream,
             input_metal,
             &output,
         )?;

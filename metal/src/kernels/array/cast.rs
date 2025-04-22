@@ -49,24 +49,24 @@ impl Cast {
 
     pub fn eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         input: &DeviceTensor,
         to_dt: DatumType,
     ) -> Result<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(to_dt, input.shape())? };
-        self.dispatch_eval(context, input, &output)?;
-        context.wait_until_completed()?;
+        self.dispatch_eval(stream, input, &output)?;
+        stream.wait_until_completed()?;
         Ok(output)
     }
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         input: &DeviceTensor,
         output: &DeviceTensor,
     ) -> Result<()> {
-        context.retain_tensor(input);
-        context.retain_tensor(output);
+        stream.retain_tensor(input);
+        stream.retain_tensor(output);
         ensure!(
             input.shape() == output.shape(),
             "Cast I/O don't have the same shape in: {:?}, out: {:?}",
@@ -76,8 +76,8 @@ impl Cast {
 
         let kernel_name = self.kernel_name(input.datum_type(), output.datum_type())?;
 
-        let pipeline = context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
-        let command_buffer = context.command_buffer();
+        let pipeline = stream.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
+        let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
             encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);

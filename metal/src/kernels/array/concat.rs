@@ -41,27 +41,27 @@ impl Concat {
         Ok(format!("array_ops::copy_{broadcast_name}_{tname}"))
     }
 
-    pub fn eval(&self, context: &MetalStream, inputs: &[&DeviceTensor]) -> Result<DeviceTensor> {
+    pub fn eval(&self, stream: &MetalStream, inputs: &[&DeviceTensor]) -> Result<DeviceTensor> {
         ensure!(!inputs.is_empty());
         let mut output_shape = inputs[0].shape().to_vec();
         output_shape[self.axis] = inputs.iter().map(|it| it.shape()[self.axis]).sum();
         let output =
             unsafe { DeviceTensor::uninitialized_dt(inputs[0].datum_type(), &output_shape)? };
 
-        self.dispatch_eval(context, inputs, &output)?;
-        context.wait_until_completed()?;
+        self.dispatch_eval(stream, inputs, &output)?;
+        stream.wait_until_completed()?;
         Ok(output)
     }
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         inputs: &[&DeviceTensor],
         output: &DeviceTensor,
     ) -> Result<()> {
         ensure!(!inputs.is_empty());
 
-        context.retain_tensor(output);
+        stream.retain_tensor(output);
 
         let output_shape = output.shape();
         let output_strides = output.strides();
@@ -87,14 +87,14 @@ impl Concat {
         })?;
 
         let kernel_name = self.kernel_name(output.datum_type(), broadcast_kind)?;
-        let pipeline = context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
-        let command_buffer = context.command_buffer();
+        let pipeline = stream.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
+        let command_buffer = stream.command_buffer();
 
         for (input, offset) in inputs.iter().zip(offsets.into_iter()) {
             if input.len() == 0 {
                 continue;
             }
-            context.retain_tensor(input);
+            stream.retain_tensor(input);
             let i_strides = input.strides();
             let i_shape = input.shape();
 
@@ -136,7 +136,7 @@ mod tests {
     fn run_test_case<F: Datum + Zero + Copy>(shapes: &[&[usize]], axis: usize) -> Result<()> {
         MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|stream| {
             let mut inputs = tvec![];
             for shape in shapes {
                 let len = shape.iter().product::<usize>();
@@ -144,7 +144,7 @@ mod tests {
                 inputs.push(Tensor::from_shape(shape, &data)?.into_device()?);
             }
 
-            let output = Concat { axis }.eval(context, &inputs.iter().collect_vec())?;
+            let output = Concat { axis }.eval(stream, &inputs.iter().collect_vec())?;
             let ref_output = Tensor::stack_tensors(
                 axis,
                 &inputs.iter().map(|it| it.synchronize()).collect::<Result<Vec<_>>>()?,

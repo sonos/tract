@@ -105,8 +105,8 @@ pub fn metal_gemm<K: GemmKernel>(
     dt: DatumType,
     is_ggml: bool,
 ) {
-    let context = MetalStream::new();
-    context.load_library(LibraryName::MfaLib).unwrap();
+    let stream = MetalStream::new();
+    stream.load_library(LibraryName::MfaLib).unwrap();
 
     let a = Tensor::zero_dt(dt, &[batch, m, k]).unwrap();
     let b = if is_ggml {
@@ -118,25 +118,11 @@ pub fn metal_gemm<K: GemmKernel>(
     let metal_a = a.into_device().unwrap();
     let metal_b = b.into_device().unwrap();
     // Warmup
-    let _ = GemmImpl::<MfaGemm>::default().eval(&context, &metal_a, &metal_b).unwrap();
+    let _ = GemmImpl::<MfaGemm>::default().eval(&stream, &metal_a, &metal_b).unwrap();
 
     crit.bench_function(&format!("tract_metal_gemm_{}_{:?}", K::name(), dt), |be| {
         be.iter(|| {
-            let _ = GemmImpl::<K>::new(false, is_ggml).eval(&context, &metal_a, &metal_b).unwrap();
-        });
-    });
-}
-
-pub fn metal_tile_8x8(crit: &mut BenchmarkGroup<WallTime>, dim: usize, dt: DatumType) {
-    let context = MetalStream::new();
-    crit.bench_function(&format!("tract_metal_mmm_tile_8x8_{:?}", dt), |be| {
-        let a = Tensor::zero_dt(dt, &[dim, dim]).unwrap();
-        let b = Tensor::zero_dt(dt, &[dim, dim]).unwrap();
-        let metal_a = a.into_device().unwrap();
-        let metal_b = b.into_device().unwrap();
-
-        be.iter(|| {
-            let _ = matmul::mmm_tile_8x8(&context, &metal_a, &metal_b).unwrap();
+            let _ = GemmImpl::<K>::new(false, is_ggml).eval(&stream, &metal_a, &metal_b).unwrap();
         });
     });
 }

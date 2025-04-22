@@ -35,21 +35,21 @@ impl RotateHalf {
         Ok(format!("array_ops::rotate_half_nd2_{tname}"))
     }
 
-    pub fn eval(&self, context: &MetalStream, input: &DeviceTensor) -> Result<DeviceTensor> {
+    pub fn eval(&self, stream: &MetalStream, input: &DeviceTensor) -> Result<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
-        self.dispatch_eval(context, input, &output)?;
-        context.wait_until_completed()?;
+        self.dispatch_eval(stream, input, &output)?;
+        stream.wait_until_completed()?;
         Ok(output)
     }
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         input: &DeviceTensor,
         output: &DeviceTensor,
     ) -> Result<()> {
-        context.retain_tensor(input);
-        context.retain_tensor(output);
+        stream.retain_tensor(input);
+        stream.retain_tensor(output);
 
         let shape_nd2 = utils::reshape_to_rank_2(input.shape(), input.rank() - 1);
         ensure!(
@@ -61,8 +61,8 @@ impl RotateHalf {
 
         let kernel_name = self.kernel_name(input.datum_type())?;
 
-        let pipeline = context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
-        let command_buffer = context.command_buffer();
+        let pipeline = stream.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
+        let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
             encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
@@ -98,7 +98,7 @@ mod tests {
     {
         MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|stream| {
             let len = shape.iter().product::<usize>();
 
             let a =
@@ -108,7 +108,7 @@ mod tests {
 
             let cpu_output =
                 apply_rope::RotateHalf.eval(tvec![a.clone().into()])?[0].clone().into_tensor();
-            let metal_output = RotateHalf.eval(context, &metal_a)?;
+            let metal_output = RotateHalf.eval(stream, &metal_a)?;
 
             cpu_output
                 .close_enough(&metal_output.synchronize()?.into_tensor(), Approximation::Exact)

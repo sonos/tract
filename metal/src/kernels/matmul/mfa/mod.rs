@@ -22,7 +22,7 @@ impl GemmKernel for MfaGemm {
 
     fn dispatch_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         params: GemmDispatchParams,
         a_buffer: &Buffer,
         b_buffer: &Buffer,
@@ -58,7 +58,7 @@ impl GemmKernel for MfaGemm {
         );
 
         dispatch_metal_mfa_gemm(
-            context,
+            stream,
             dts[0],
             (a_batch, m, n, k),
             unsafe { std::mem::transmute::<&[isize], &[usize]>(a_strides.as_slice()) },
@@ -80,7 +80,7 @@ impl GemmKernel for MfaGemm {
 // From https://github.com/huggingface/candle/blob/main/candle-metal-kernels/src/lib.rs
 #[allow(clippy::too_many_arguments)]
 pub fn dispatch_metal_mfa_gemm(
-    context: &MetalStream,
+    stream: &MetalStream,
     dt: DatumType,
     (b, m, n, k): (usize, usize, usize, usize),
     lhs_stride: &[usize],
@@ -175,7 +175,7 @@ pub fn dispatch_metal_mfa_gemm(
         _ => bail!("MFA GEMM only support F32 or F16 tensors"),
     };
 
-    let pipeline = context.load_pipeline_with_constants(LibraryName::MfaLib, name, constants)?;
+    let pipeline = stream.load_pipeline_with_constants(LibraryName::MfaLib, name, constants)?;
     let m_group = m_simd * m_splits;
     let n_group = n_simd * n_splits;
 
@@ -197,7 +197,7 @@ pub fn dispatch_metal_mfa_gemm(
 
     let block_bytes = block_elements * dt.size_of() as u16;
 
-    let command_buffer = context.command_buffer();
+    let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
         encoder.set_threadgroup_memory_length(0, block_bytes.into());
@@ -255,7 +255,7 @@ mod tests {
     fn test_mfa_gemm() -> Result<()> {
         MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|stream| {
             let (b, m, n, k) = (1, 2, 4, 3);
             let a = Tensor::from_shape(
                 &[b, m, k],
@@ -268,7 +268,7 @@ mod tests {
             )?
             .into_device()?;
 
-            let c = GemmImpl::<MfaGemm>::default().eval(context, &a, &b)?;
+            let c = GemmImpl::<MfaGemm>::default().eval(stream, &a, &b)?;
 
             let expected_c =
                 Tensor::from_shape(&[1, 2, 4], &[20.0, 23.0, 26.0, 29.0, 56.0, 68.0, 80.0, 92.0])?;
@@ -286,7 +286,7 @@ mod tests {
                 &(0..b * n * k).map(|f| f as f32).collect::<Vec<_>>(),
             )?;
 
-            let c = GemmImpl::<MfaGemm>::default().eval(context, &a, &b)?;
+            let c = GemmImpl::<MfaGemm>::default().eval(stream, &a, &b)?;
 
             let expected_c = Tensor::from_shape(
                 &[2, 2, 4],

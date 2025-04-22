@@ -42,26 +42,26 @@ impl MultiBroadcast {
 
     pub fn eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         input: &DeviceTensor,
         input_offset: usize,
         output_shape: &[usize],
     ) -> Result<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), output_shape)? };
-        self.dispatch_eval(context, input, input_offset, &output)?;
-        context.wait_until_completed()?;
+        self.dispatch_eval(stream, input, input_offset, &output)?;
+        stream.wait_until_completed()?;
         Ok(output)
     }
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         input: &DeviceTensor,
         input_offset: usize,
         output: &DeviceTensor,
     ) -> Result<()> {
-        context.retain_tensor(input);
-        context.retain_tensor(output);
+        stream.retain_tensor(input);
+        stream.retain_tensor(output);
 
         ensure!(input_offset % input.datum_type().size_of() == 0);
         ensure!(input.rank() <= output.rank(), "Input must have a rank lower or equal to output");
@@ -86,8 +86,8 @@ impl MultiBroadcast {
             input_strides.as_slice(),
         )?;
 
-        let pipeline = context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
-        let command_buffer = context.command_buffer();
+        let pipeline = stream.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
+        let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
             encoder.set_metal_tensor_with_offset(

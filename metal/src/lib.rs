@@ -16,17 +16,9 @@ pub use crate::context::{MetalStream, METAL_STREAM};
 use crate::func_constants::{ConstantValues, Value};
 pub use crate::kernels::{matmul::MetalGemmImplKind, LibraryContent, LibraryName};
 pub use crate::transform::MetalTransform;
-use anyhow::{anyhow, Result};
 
 use objc::runtime::{objc_autoreleasePoolPop, objc_autoreleasePoolPush};
 use std::os::raw::c_void;
-
-use context::MetalContext;
-
-pub(crate) fn get_metal_context() -> Result<Box<MetalContext>> {
-    let gpu_context = tract_gpu::device::get_context()?;
-    gpu_context.downcast::<MetalContext>().map_err(|_| anyhow!("GPU Device is not a Metal Device"))
-}
 
 // Copied code from objc crate to avoid closures
 struct AutoReleaseHelper {

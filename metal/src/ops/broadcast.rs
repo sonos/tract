@@ -23,7 +23,7 @@ crate::impl_eval_op_for_metal_op!(MetalMultiBroadcastTo);
 impl MetalEvalOp for MetalMultiBroadcastTo {
     fn metal_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
@@ -33,7 +33,7 @@ impl MetalEvalOp for MetalMultiBroadcastTo {
         let input = opaque.to_device_tensor()?;
         let output =
             crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &shape)?;
-        kernels::array::MultiBroadcast.dispatch_eval(context, input, 0, &output)?;
+        kernels::array::MultiBroadcast.dispatch_eval(stream, input, 0, &output)?;
         Ok(tvec![output.into_opaque_tensor().into_tvalue()])
     }
 }

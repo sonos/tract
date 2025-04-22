@@ -2,13 +2,11 @@ mod basic;
 mod ggml_gemm;
 mod mfa;
 mod mlx_gemm;
-mod mmm_tile_8x8;
 
 pub use basic::BasicMatMul;
 pub use ggml_gemm::GgmlGemm;
 pub use mfa::MfaGemm;
 pub use mlx_gemm::MlxGemm;
-pub use mmm_tile_8x8::{metal_mmm_tile_8x8, mmm_tile_8x8};
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 
 use crate::utils::as_metal_buffer;
@@ -228,7 +226,7 @@ pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync 
 
     fn dispatch_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         params: GemmDispatchParams,
         a_buffer: &Buffer,
         b_buffer: &Buffer,
@@ -277,7 +275,7 @@ impl<M: GemmKernel> GemmImpl<M> {
 
     pub fn eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         a: &DeviceTensor,
         b: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
@@ -289,21 +287,21 @@ impl<M: GemmKernel> GemmImpl<M> {
         let c_shape = self.output_shape(a.shape(), &b_shape);
         let c = unsafe { DeviceTensor::uninitialized_dt(c_dt, &c_shape)? };
 
-        self.dispatch_eval(context, a, b, &c)?;
-        context.wait_until_completed()?;
+        self.dispatch_eval(stream, a, b, &c)?;
+        stream.wait_until_completed()?;
         Ok(c)
     }
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         a: &DeviceTensor,
         b: &DeviceTensor,
         c: &DeviceTensor,
     ) -> TractResult<()> {
-        context.retain_tensor(a);
-        context.retain_tensor(b);
-        context.retain_tensor(c);
+        stream.retain_tensor(a);
+        stream.retain_tensor(b);
+        stream.retain_tensor(c);
 
         let q40_b = as_q40_tensor(b.view().tensor);
         let b_shape = q40_b
@@ -336,7 +334,7 @@ impl<M: GemmKernel> GemmImpl<M> {
         for d in dispatches {
             self.matmul
                 .dispatch_eval(
-                    context,
+                    stream,
                     d.clone(),
                     a_buff,
                     b_buff,
@@ -397,7 +395,7 @@ mod tests {
     ) -> TractResult<()> {
         MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|stream| {
             let a_shape = if !transpose_a { [batch, m, k] } else { [batch, k, m] };
             let b_shape = if !transpose_b { [batch, k, n] } else { [batch, n, k] };
             let mut a = if a_dt == DatumType::F16 {
@@ -433,7 +431,7 @@ mod tests {
             };
 
             let metal_output = GemmImpl::<K>::new(transpose_a, transpose_b).eval(
-                context,
+                stream,
                 &a.clone().into_device()?,
                 &b.clone().into_device()?,
             )?;
@@ -899,7 +897,7 @@ mod tests {
         pub fn run(&self) -> Result<Tensor> {
             MetalContext::register()?;
             let _ = autorelease_pool_init();
-            crate::METAL_STREAM.with_borrow(|context| {
+            crate::METAL_STREAM.with_borrow(|stream| {
                 let lhs = if self.transpose_lhs {
                     Tensor::from_shape(&[self.b, self.k, self.m], &self.lhs)?.into_device()?
                 } else {
@@ -933,7 +931,7 @@ mod tests {
 
                 let matmul = GemmImpl::<K>::new(self.transpose_lhs, self.transpose_rhs);
 
-                let c = matmul.eval(context, &lhs, &rhs)?;
+                let c = matmul.eval(stream, &lhs, &rhs)?;
                 Ok(c.synchronize()?.into_tensor())
             })
         }

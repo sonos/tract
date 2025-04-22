@@ -46,7 +46,7 @@ crate::impl_eval_op_for_metal_op!(MetalReduce);
 impl MetalEvalOp for MetalReduce {
     fn metal_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
@@ -58,7 +58,7 @@ impl MetalEvalOp for MetalReduce {
         let output =
             crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &output_shape)?;
 
-        self.reducer.dispatch_eval(context, input, self.axes[0], &output)?;
+        self.reducer.dispatch_eval(stream, input, self.axes[0], &output)?;
 
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }

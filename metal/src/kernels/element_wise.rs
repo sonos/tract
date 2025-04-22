@@ -179,19 +179,19 @@ impl ElementWiseOps {
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         input: &DeviceTensor,
         output: &DeviceTensor,
     ) -> Result<()> {
-        context.retain_tensor(input);
-        context.retain_tensor(output);
+        stream.retain_tensor(input);
+        stream.retain_tensor(output);
 
         ensure!(output.shape() == input.shape() && output.datum_type() == input.datum_type());
 
         let kernel_name = self.kernel_name(input.datum_type(), false)?;
 
-        let pipeline = context.load_pipeline(LibraryName::ElementWiseOps, &kernel_name)?;
-        let command_buffer = context.command_buffer();
+        let pipeline = stream.load_pipeline(LibraryName::ElementWiseOps, &kernel_name)?;
+        let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
             encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
@@ -204,10 +204,10 @@ impl ElementWiseOps {
         Ok(())
     }
 
-    pub fn eval(&self, context: &MetalStream, a: &DeviceTensor) -> Result<DeviceTensor> {
+    pub fn eval(&self, stream: &MetalStream, a: &DeviceTensor) -> Result<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(a.datum_type(), a.shape())? };
-        self.dispatch_eval(context, a, &output)?;
-        context.wait_until_completed()?;
+        self.dispatch_eval(stream, a, &output)?;
+        stream.wait_until_completed()?;
         Ok(output)
     }
 }
@@ -238,7 +238,7 @@ mod tests {
     ) -> Result<()> {
         MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|stream| {
             let a_len = a_shape.iter().product::<usize>();
             let mut rng = rand::thread_rng();
             let a = Tensor::from_shape(
@@ -254,7 +254,7 @@ mod tests {
                     .collect::<Vec<_>>(),
             )?
             .into_device()?;
-            let output = op.eval(context, &a)?;
+            let output = op.eval(stream, &a)?;
             let ref_output = reference::<F>(&a.synchronize()?.into_tensor(), ca)?;
             assert!(ref_output
                 .close_enough(&output.synchronize()?.into_tensor(), Approximation::Close)

@@ -74,7 +74,7 @@ impl<K: GemmKernel> MetalGemm<K> {
 impl<K: GemmKernel + 'static> MetalEvalOp for MetalGemm<K> {
     fn metal_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
@@ -94,7 +94,7 @@ impl<K: GemmKernel + 'static> MetalEvalOp for MetalGemm<K> {
         let c_dt = self.kernel.matmul.output_dt(a.datum_type(), b.datum_type())?;
         let c_shape = self.kernel.output_shape(a.shape(), &b_shape);
         let c = crate::ops::make_tensor_for_node(session, node_id, c_dt, &c_shape)?;
-        self.kernel.dispatch_eval(context, a, b, &c)?;
+        self.kernel.dispatch_eval(stream, a, b, &c)?;
         Ok(tvec![c.into_opaque_tensor().into_tvalue()])
     }
 }

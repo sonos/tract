@@ -29,7 +29,7 @@ crate::impl_eval_op_for_metal_op!(MetalElementWiseOp);
 impl MetalEvalOp for MetalElementWiseOp {
     fn metal_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
@@ -37,7 +37,7 @@ impl MetalEvalOp for MetalElementWiseOp {
         let opaque_a = args_1!(inputs);
         let a = opaque_a.to_device_tensor()?;
         let output = crate::ops::make_tensor_for_node(session, node_id, a.datum_type(), a.shape())?;
-        self.0.dispatch_eval(context, a, &output)?;
+        self.0.dispatch_eval(stream, a, &output)?;
         Ok(tvec![output.into_opaque_tensor().into_tvalue()])
     }
 }

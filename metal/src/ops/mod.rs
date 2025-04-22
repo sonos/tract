@@ -45,7 +45,7 @@ use tract_gpu::tensor::DeviceTensor;
 pub trait MetalEvalOp: EvalOp + Op + Clone {
     fn metal_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
@@ -79,11 +79,11 @@ impl<O: MetalEvalOp> OpState for MetalOpState<O> {
     ) -> TractResult<TVec<TValue>> {
         MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|context| {
-            if let Some(profiler) = context.profiler() {
+        crate::METAL_STREAM.with_borrow(|stream| {
+            if let Some(profiler) = stream.profiler() {
                 profiler.borrow_mut().add_node_entry(self.node_id);
             };
-            self.op.metal_eval(context, self.node_id, session, inputs)
+            self.op.metal_eval(stream, self.node_id, session, inputs)
         })
     }
 }

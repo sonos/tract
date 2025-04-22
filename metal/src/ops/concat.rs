@@ -48,7 +48,7 @@ crate::impl_eval_op_for_metal_op!(MetalConcat);
 impl MetalEvalOp for MetalConcat {
     fn metal_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         opaque_inputs: TVec<TValue>,
@@ -64,7 +64,7 @@ impl MetalEvalOp for MetalConcat {
             inputs[0].datum_type(),
             &output_shape,
         )?;
-        self.kernel.dispatch_eval(context, &inputs, &output)?;
+        self.kernel.dispatch_eval(stream, &inputs, &output)?;
 
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
