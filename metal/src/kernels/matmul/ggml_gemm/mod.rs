@@ -1,6 +1,6 @@
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
 use crate::{LibraryName, MetalStream};
-use anyhow::{ensure, Result};
+use anyhow::ensure;
 use metal::{Buffer, MTLSize, NSUInteger};
 use std::fmt;
 use tract_core::internal::*;
@@ -193,7 +193,7 @@ impl GemmKernel for GgmlGemm {
 
 fn mv_kernel_name_and_dispatch_params(
     params: &GemmDispatchParams,
-) -> Result<(String, (u64, u64, u64))> {
+) -> TractResult<(String, (u64, u64, u64))> {
     if params.dts[1] == F32 {
         ensure!(params.dts[0] == F32);
         Ok(("kernel_mul_mv_f32_f32".to_string(), (32, 1, 4)))
@@ -227,7 +227,7 @@ fn dispatch_metal_ggml_gemv(
     b_buffer: &Buffer,
     output: &Buffer,
     output_offset: usize,
-) -> Result<()> {
+) -> TractResult<()> {
     let (name, (nth0, nth1, nrows)) = mv_kernel_name_and_dispatch_params(&params)?;
     //dbg!(&name);
     let pipeline = stream.load_pipeline(LibraryName::Ggml, &name)?;
@@ -278,7 +278,7 @@ fn dispatch_metal_ggml_gemm(
     b_buffer: &Buffer,
     output: &Buffer,
     output_offset: usize,
-) -> Result<()> {
+) -> TractResult<()> {
     let GemmDispatchParams { dts, q40_b, .. } = params;
 
     ensure!((matches!(dts[1], F32 | F16) || q40_b) && dts[0] == F32);
@@ -337,7 +337,7 @@ mod tests {
     use tract_gpu::tensor::IntoDevice;
 
     #[test]
-    fn test_ggml_compilation() -> Result<()> {
+    fn test_ggml_compilation() -> TractResult<()> {
         crate::METAL_STREAM.with_borrow(|stream| stream.load_library(LibraryName::Ggml))?;
         Ok(())
     }

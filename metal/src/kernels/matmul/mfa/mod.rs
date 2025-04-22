@@ -1,6 +1,6 @@
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
 use crate::{ConstantValues, LibraryName, MetalStream, Value};
-use anyhow::{ensure, Result};
+use anyhow::ensure;
 use metal::{Buffer, MTLSize, NSUInteger};
 use std::ffi::c_void;
 use std::fmt;
@@ -93,7 +93,7 @@ pub fn dispatch_metal_mfa_gemm(
     rhs_transpose: bool,
     output: &Buffer,
     output_offset: usize,
-) -> Result<()> {
+) -> TractResult<()> {
     assert!(rhs_stride.len() >= 2);
     assert!(lhs_stride.len() >= 2);
     let rhs_m1 = rhs_stride[rhs_stride.len() - 1];
@@ -251,7 +251,7 @@ mod tests {
     use tract_gpu::tensor::{DeviceTensor, IntoDevice};
 
     #[test]
-    fn test_mfa_gemm() -> Result<()> {
+    fn test_mfa_gemm() -> TractResult<()> {
         with_borrowed_metal_stream(|stream| {
             let (b, m, n, k) = (1, 2, 4, 3);
             let a = Tensor::from_shape(

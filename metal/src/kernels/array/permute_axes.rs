@@ -1,7 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
 use crate::{LibraryName, MetalStream};
-use anyhow::Result;
 use std::fmt;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
@@ -33,7 +32,7 @@ impl PermuteAxes {
         )
     }
 
-    pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> Result<String> {
+    pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal permute axes  op", dt);
         let tname = DeviceTensor::tname(dt)?;
         let broadcast_name = broadcast_kind.to_func_part();
@@ -55,7 +54,7 @@ impl PermuteAxes {
         stream: &MetalStream,
         input: &DeviceTensor,
         axes: &[usize],
-    ) -> Result<DeviceTensor> {
+    ) -> TractResult<DeviceTensor> {
         let output = unsafe {
             DeviceTensor::uninitialized_dt(
                 input.datum_type(),
@@ -73,7 +72,7 @@ impl PermuteAxes {
         input: &DeviceTensor,
         axes: &[usize],
         output: &DeviceTensor,
-    ) -> Result<()> {
+    ) -> TractResult<()> {
         stream.retain_tensor(input);
         stream.retain_tensor(output);
 
@@ -138,7 +137,7 @@ mod tests {
     use tract_core::internal::Tensor;
     use tract_gpu::tensor::IntoDevice;
 
-    fn run_test_case<F: Datum + Zero + Copy>(shape: &[usize], axes: &[usize]) -> Result<()> {
+    fn run_test_case<F: Datum + Zero + Copy>(shape: &[usize], axes: &[usize]) -> TractResult<()> {
         with_borrowed_metal_stream(|stream| {
             let a_len = shape.iter().product::<usize>();
             let a_data = (0..a_len).map(|f| f as f32).collect::<Vec<_>>();
@@ -153,7 +152,7 @@ mod tests {
     }
 
     #[test]
-    fn test_permute_axes() -> Result<()> {
+    fn test_permute_axes() -> TractResult<()> {
         run_test_case::<f32>(&[3, 4], &[1, 0])?;
         run_test_case::<f32>(&[1, 2, 3, 4, 5], &[4, 1, 2, 3, 0])?;
         run_test_case::<f32>(&[1, 1, 2, 2, 3, 2], &[0, 3, 1, 2, 4, 5])?;

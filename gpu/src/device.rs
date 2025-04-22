@@ -2,12 +2,13 @@ use core::fmt;
 use std::ffi::c_void;
 use std::sync::RwLock;
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail};
 use downcast_rs::{impl_downcast, Downcast};
+use tract_core::prelude::TractResult;
 
 pub trait DeviceContext: Downcast + ClonableDevice + Send + Sync {
     fn buffer_from_slice(&self, tensor: &[u8]) -> Box<dyn DeviceBuffer>;
-    fn synchronize(&self) -> Result<()>;
+    fn synchronize(&self) -> TractResult<()>;
 }
 
 impl_downcast!(DeviceContext);
@@ -65,7 +66,7 @@ impl Clone for Box<dyn DeviceBuffer> {
 
 pub static DEVICE_CONTEXT: RwLock<Option<Box<dyn DeviceContext>>> = RwLock::new(None);
 
-pub fn set_context(curr_context: Box<dyn DeviceContext>) -> Result<()> {
+pub fn set_context(curr_context: Box<dyn DeviceContext>) -> TractResult<()> {
     let mut context = DEVICE_CONTEXT.write().unwrap();
     if context.is_none() {
         *context = Some(curr_context);
@@ -75,7 +76,7 @@ pub fn set_context(curr_context: Box<dyn DeviceContext>) -> Result<()> {
     }
 }
 
-pub fn get_context() -> Result<Box<dyn DeviceContext>> {
+pub fn get_context() -> TractResult<Box<dyn DeviceContext>> {
     let guard = DEVICE_CONTEXT.read().map_err(|_| anyhow!("Cannot read GPU Context"))?;
     guard.as_ref().cloned().ok_or_else(|| anyhow!("GPU Context not initialized"))
 }

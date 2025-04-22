@@ -1,7 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::utils;
 use crate::{LibraryName, MetalStream};
-use anyhow::Result;
 use metal::MTLSize;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
@@ -23,7 +22,7 @@ impl Reducer {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
-    pub fn kernel_name(&self, dt: DatumType) -> Result<String> {
+    pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal reduce  op", dt);
         let tname = DeviceTensor::tname(dt)?;
         let op = match self {
@@ -41,7 +40,7 @@ impl Reducer {
         stream: &MetalStream,
         input: &DeviceTensor,
         axis: usize,
-    ) -> Result<DeviceTensor> {
+    ) -> TractResult<DeviceTensor> {
         let mut o_shape = input.shape().to_vec();
         o_shape[axis] = 1;
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), &o_shape)? };
@@ -56,7 +55,7 @@ impl Reducer {
         input: &DeviceTensor,
         axis: usize,
         output: &DeviceTensor,
-    ) -> Result<()> {
+    ) -> TractResult<()> {
         stream.retain_tensor(input);
         stream.retain_tensor(output);
 
@@ -108,7 +107,7 @@ mod tests {
         shape: &[usize],
         axis: usize,
         scale: f32,
-    ) -> Result<()>
+    ) -> TractResult<()>
     where
         F: Float + Datum,
         usize: AsPrimitive<f32>,
@@ -146,7 +145,7 @@ mod tests {
     }
 
     #[test]
-    fn test_reduce_mean_of_squares() -> Result<()> {
+    fn test_reduce_mean_of_squares() -> TractResult<()> {
         test_case::<f32>(Reducer::MeanOfSquares, TractReducer::MeanOfSquares, &[4, 4], 1, 1.0)?;
         test_case::<f16>(
             Reducer::MeanOfSquares,
@@ -215,7 +214,7 @@ mod tests {
     }
 
     #[test]
-    fn test_reduce_sum() -> Result<()> {
+    fn test_reduce_sum() -> TractResult<()> {
         test_case::<f32>(Reducer::Sum, TractReducer::Sum, &[4, 4], 1, 1.0)?;
         test_case::<f16>(Reducer::Sum, TractReducer::Sum, &[4, 4], 1, 1.0 / 100.0)?;
         test_case::<f16>(Reducer::Sum, TractReducer::Sum, &[1, 10], 0, 1.0 / 100.0)?;
@@ -230,7 +229,7 @@ mod tests {
     }
 
     #[test]
-    fn test_reduce_prod() -> Result<()> {
+    fn test_reduce_prod() -> TractResult<()> {
         test_case::<f32>(Reducer::Prod, TractReducer::Prod, &[4, 4], 1, 1.0)?;
         test_case::<f16>(Reducer::Prod, TractReducer::Prod, &[4, 4], 1, 1.0 / 100.0)?;
         test_case::<f16>(Reducer::Prod, TractReducer::Prod, &[1, 10], 0, 1.0 / 100.0)?;
@@ -245,7 +244,7 @@ mod tests {
     }
 
     #[test]
-    fn test_reduce_max() -> Result<()> {
+    fn test_reduce_max() -> TractResult<()> {
         test_case::<f32>(Reducer::Max, TractReducer::Max, &[4, 4], 1, 1.0)?;
         test_case::<f16>(Reducer::Max, TractReducer::Max, &[4, 4], 1, 1.0 / 100.0)?;
         test_case::<f16>(Reducer::Max, TractReducer::Max, &[1, 10], 0, -1.0 / 100.0)?;
@@ -260,7 +259,7 @@ mod tests {
     }
 
     #[test]
-    fn test_reduce_min() -> Result<()> {
+    fn test_reduce_min() -> TractResult<()> {
         test_case::<f32>(Reducer::Min, TractReducer::Min, &[4, 4], 1, 1.0)?;
         test_case::<f16>(Reducer::Min, TractReducer::Min, &[4, 4], 1, 1.0 / 100.0)?;
         test_case::<f16>(Reducer::Min, TractReducer::Min, &[1, 10], 0, -1.0 / 100.0)?;
@@ -345,7 +344,7 @@ mod tests {
         F: Datum + Float + std::ops::AddAssign,
         usize: AsPrimitive<F>,
     {
-        pub fn reference(&self) -> Result<Tensor> {
+        pub fn reference(&self) -> TractResult<Tensor> {
             let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?;
             let cpu_output = match self.op {
                 Reducer::Sum => TractReducer::Sum.reduce(&[self.axis], &a)?,
@@ -357,7 +356,7 @@ mod tests {
             Ok(cpu_output)
         }
 
-        pub fn run(&self) -> Result<Tensor> {
+        pub fn run(&self) -> TractResult<Tensor> {
             with_borrowed_metal_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let metal_output = self.op.eval(stream, &a, self.axis)?;

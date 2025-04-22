@@ -1,7 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::{LibraryName, MetalStream};
 use anyhow::bail;
-use anyhow::Result;
 use metal::{MTLSize, NSUInteger};
 use std::fmt;
 use tract_core::internal::*;
@@ -132,7 +131,7 @@ impl ElementWiseOps {
         )
     }
 
-    pub fn kernel_name(&self, dt: DatumType, in_place: bool) -> Result<String> {
+    pub fn kernel_name(&self, dt: DatumType, in_place: bool) -> TractResult<String> {
         if self.float_only() && !matches!(dt, DatumType::F32 | DatumType::F16) {
             bail!("Unsupport dt for metal element wise ops: {:?}", self);
         }
@@ -182,7 +181,7 @@ impl ElementWiseOps {
         stream: &MetalStream,
         input: &DeviceTensor,
         output: &DeviceTensor,
-    ) -> Result<()> {
+    ) -> TractResult<()> {
         stream.retain_tensor(input);
         stream.retain_tensor(output);
 
@@ -204,7 +203,7 @@ impl ElementWiseOps {
         Ok(())
     }
 
-    pub fn eval(&self, stream: &MetalStream, a: &DeviceTensor) -> Result<DeviceTensor> {
+    pub fn eval(&self, stream: &MetalStream, a: &DeviceTensor) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(a.datum_type(), a.shape())? };
         self.dispatch_eval(stream, a, &output)?;
         stream.wait_until_completed()?;
@@ -221,7 +220,7 @@ mod tests {
     use rand::Rng;
     use tract_gpu::tensor::IntoDevice;
 
-    fn reference<F: Datum>(a: &Tensor, ca: impl Fn(&mut F, &F)) -> Result<Tensor> {
+    fn reference<F: Datum>(a: &Tensor, ca: impl Fn(&mut F, &F)) -> TractResult<Tensor> {
         let mut out = unsafe { Tensor::uninitialized_dt(a.datum_type(), a.shape())? };
         let a_view = a.to_array_view::<F>()?;
         let mut c = out.to_array_view_mut::<F>()?;
@@ -234,7 +233,7 @@ mod tests {
         a_shape: &[usize],
         neg: bool,
         ca: impl Fn(&mut F, &F),
-    ) -> Result<()> {
+    ) -> TractResult<()> {
         with_borrowed_metal_stream(|stream| {
             let a_len = a_shape.iter().product::<usize>();
             let mut rng = rand::thread_rng();
@@ -261,7 +260,7 @@ mod tests {
     }
 
     #[test]
-    fn test_element_wise() -> Result<()> {
+    fn test_element_wise() -> TractResult<()> {
         run_test_case::<f32>(ElementWiseOps::Abs, &[4, 4], true, |c, a| *c = a.abs())?;
         run_test_case::<f32>(ElementWiseOps::Ln, &[4, 4], false, |c, a| *c = a.ln())?;
 

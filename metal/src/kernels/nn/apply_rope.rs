@@ -1,7 +1,7 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
 use crate::{LibraryName, MetalStream};
-use anyhow::{ensure, Result};
+use anyhow::ensure;
 use std::fmt;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
@@ -20,7 +20,7 @@ impl ApplyRope {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
-    pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> Result<String> {
+    pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal apply rope", dt);
         let tname = DeviceTensor::tname(dt)?;
         let broadcast_name = broadcast_kind.to_func_part();
@@ -33,7 +33,7 @@ impl ApplyRope {
         input: &DeviceTensor,
         cos: &DeviceTensor,
         sin: &DeviceTensor,
-    ) -> Result<DeviceTensor> {
+    ) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(stream, input, cos, sin, &output)?;
         stream.wait_until_completed()?;
@@ -47,7 +47,7 @@ impl ApplyRope {
         cos: &DeviceTensor,
         sin: &DeviceTensor,
         output: &DeviceTensor,
-    ) -> Result<()> {
+    ) -> TractResult<()> {
         ensure!(input.datum_type() == cos.datum_type());
         ensure!(input.datum_type() == sin.datum_type());
 
@@ -112,7 +112,7 @@ mod tests {
     use tract_gpu::tensor::IntoDevice;
     use tract_transformers::ops::apply_rope;
 
-    fn run_test_case(shape: &[usize]) -> Result<()> {
+    fn run_test_case(shape: &[usize]) -> TractResult<()> {
         with_borrowed_metal_stream(|stream| {
             let len = shape.iter().product::<usize>();
 

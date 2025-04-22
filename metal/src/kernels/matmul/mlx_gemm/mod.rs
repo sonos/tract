@@ -1,6 +1,6 @@
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
 use crate::{ConstantValues, LibraryName, MetalStream, Value};
-use anyhow::{ensure, Result};
+use anyhow::ensure;
 use metal::{Buffer, MTLSize, NSUInteger};
 use std::ffi::c_void;
 use std::fmt;
@@ -131,7 +131,7 @@ pub fn dispatch_metal_mlx_gemv(
     b_trans: bool,
     output: &Buffer,
     output_offset: usize,
-) -> Result<()> {
+) -> TractResult<()> {
     ensure!(m == 1 || n == 1);
     ensure!(a_strides.len() >= 2 && b_strides.len() >= 2);
     ensure!(a_strides.len() >= 2);
@@ -267,7 +267,7 @@ pub fn dispatch_metal_mlx_gemm(
     output: &Buffer,
     output_offset: usize,
     debug: bool,
-) -> Result<()> {
+) -> TractResult<()> {
     ensure!(rhs_stride.len() >= 2);
     ensure!(lhs_stride.len() >= 2);
 
@@ -387,7 +387,7 @@ pub fn dispatch_metal_mlx_gemm(
     Ok(())
 }
 
-pub fn kernel_name_gemm(dt: DatumType, transpose_a: bool, transpose_b: bool) -> Result<String> {
+pub fn kernel_name_gemm(dt: DatumType, transpose_a: bool, transpose_b: bool) -> TractResult<String> {
     let t_a = if transpose_a { "t" } else { "n" };
     let t_b = if transpose_b { "t" } else { "n" };
 
@@ -405,13 +405,13 @@ mod tests {
     use tract_gpu::tensor::{DeviceTensor, IntoDevice};
 
     #[test]
-    fn test_mlx_gemv_compilation() -> Result<()> {
+    fn test_mlx_gemv_compilation() -> TractResult<()> {
         crate::METAL_STREAM.with_borrow(|stream| stream.load_library(LibraryName::MlxGemv))?;
         Ok(())
     }
 
     #[test]
-    fn test_mlx_gemm() -> Result<()> {
+    fn test_mlx_gemm() -> TractResult<()> {
         with_borrowed_metal_stream(|stream| {
             let (b, m, n, k) = (10, 32, 32, 16);
             let a = Tensor::from_shape(

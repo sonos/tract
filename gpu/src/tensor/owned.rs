@@ -1,7 +1,6 @@
 use crate::device::{get_context, DeviceBuffer};
 use crate::tensor::DeviceTensor;
 use crate::utils::{as_q40_tensor, check_strides_validity};
-use anyhow::Result;
 use num_traits::AsPrimitive;
 use std::ffi::c_void;
 use std::fmt::Display;
@@ -49,7 +48,7 @@ impl GValue {
     }
 
     /// Reshaped tensor with given shape.
-    pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> Result<Self> {
+    pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> TractResult<Self> {
         let shape = shape.into();
         if self.len() != shape.iter().product::<usize>() {
             bail!("Invalid reshape {:?} to {:?}", self.shape(), shape);
@@ -67,7 +66,7 @@ impl GValue {
         }
     }
 
-    pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> Result<Self> {
+    pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> TractResult<Self> {
         let strides = strides.into();
         check_strides_validity(self.shape().into(), strides.clone())?;
 
@@ -148,7 +147,7 @@ impl Hash for OwnedDeviceTensor {
 
 impl OwnedDeviceTensor {
     /// Create a owned gpu tensor from a cpu tensor.
-    pub fn from_tensor<T: Into<GValue>>(tensor: T) -> Result<Self> {
+    pub fn from_tensor<T: Into<GValue>>(tensor: T) -> TractResult<Self> {
         let m_value: GValue = tensor.into();
         let tensor_view = m_value.view();
         ensure!(
@@ -209,13 +208,13 @@ impl OwnedDeviceTensor {
 
     /// Reshaped tensor with given shape.
     #[inline]
-    pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> Result<Self> {
+    pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> TractResult<Self> {
         Ok(Self { inner: self.inner.reshaped(shape)?, device_buffer: self.device_buffer.clone() })
     }
 
     /// Change tensor stride.
     #[inline]
-    pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> Result<Self> {
+    pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> TractResult<Self> {
         Ok(Self {
             inner: self.inner.restrided(strides)?,
             device_buffer: self.device_buffer.clone(),

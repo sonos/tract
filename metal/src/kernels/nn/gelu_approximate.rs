@@ -1,6 +1,5 @@
 use crate::encoder::EncoderExt;
 use crate::{LibraryName, MetalStream};
-use anyhow::Result;
 use metal::MTLSize;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
@@ -23,7 +22,7 @@ impl GeluApproximate {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
-    pub fn kernel_name(&self, dt: DatumType) -> Result<String> {
+    pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal gelu  op", dt);
         let tname = DeviceTensor::tname(dt)?;
         if self.fast_impl {
@@ -33,7 +32,7 @@ impl GeluApproximate {
         }
     }
 
-    pub fn eval(&self, stream: &MetalStream, input: &DeviceTensor) -> Result<DeviceTensor> {
+    pub fn eval(&self, stream: &MetalStream, input: &DeviceTensor) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(stream, input, &output)?;
         stream.wait_until_completed()?;
@@ -45,7 +44,7 @@ impl GeluApproximate {
         stream: &MetalStream,
         input: &DeviceTensor,
         output: &DeviceTensor,
-    ) -> Result<()> {
+    ) -> TractResult<()> {
         stream.retain_tensor(input);
         stream.retain_tensor(output);
 
@@ -87,7 +86,7 @@ mod tests {
         offset: f32,
         scale: f32,
         appriximate: Approximation,
-    ) -> Result<()>
+    ) -> TractResult<()>
     where
         F: Float + Datum,
         usize: AsPrimitive<f32>,
@@ -129,7 +128,7 @@ mod tests {
     }
 
     #[test]
-    fn test_gelu_approx() -> Result<()> {
+    fn test_gelu_approx() -> TractResult<()> {
         test_case::<f32>(
             GeluApproximate::accurate(),
             &[4, 4],
@@ -154,7 +153,7 @@ mod tests {
         Ok(())
     }
     #[test]
-    fn test_gelu_approx_fast() -> Result<()> {
+    fn test_gelu_approx_fast() -> TractResult<()> {
         test_case::<f32>(
             GeluApproximate::fast(),
             &[4, 4],
@@ -249,7 +248,7 @@ mod tests {
         usize: AsPrimitive<F>,
         f32: AsPrimitive<F>,
     {
-        pub fn reference(&self) -> Result<Tensor> {
+        pub fn reference(&self) -> TractResult<Tensor> {
             let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?;
 
             let cpu_output = gelu_approximate::GeluApproximate::default()
@@ -260,7 +259,7 @@ mod tests {
             Ok(cpu_output)
         }
 
-        pub fn run(&self) -> Result<Tensor> {
+        pub fn run(&self) -> TractResult<Tensor> {
             with_borrowed_metal_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let metal_output = GeluApproximate::accurate().eval(stream, &a)?;
