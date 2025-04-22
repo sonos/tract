@@ -21,6 +21,7 @@ dyn-clone.workspace = true
 dyn-hash.workspace = true
 half.workspace = true
 itertools.workspace = true
+libm.workspace = true
 maplit.workspace = true
 ndarray.workspace = true
 nom.workspace = true
