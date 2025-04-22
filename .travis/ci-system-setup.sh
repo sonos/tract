@@ -45,6 +45,7 @@ if  [ "$GITHUB_WORKFLOW" = "Metal tests" ]
 then
     CACHE_FILE=$ROOT/.travis/cache_file.sh
     MODELS=$HOME/.cache/models
+    CACHEDIR=$MODELS
     mkdir -p $MODELS
 elif [ -n "$CI" ]
 then
