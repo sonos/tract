@@ -475,7 +475,7 @@ mod tests {
                 &metal_b.clone().into_device()?,
             )?;
             let output = reference(a, ref_b)?;
-            metal_output.synchronize()?.close_enough(&output, Approximation::Approximate)?;
+            metal_output.to_host()?.close_enough(&output, Approximation::Approximate)?;
             Ok(())
         })
     }

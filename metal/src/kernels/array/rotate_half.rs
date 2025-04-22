@@ -108,15 +108,15 @@ mod tests {
             let metal_output = RotateHalf.eval(stream, &metal_a)?;
 
             cpu_output
-                .close_enough(&metal_output.synchronize()?.into_tensor(), Approximation::Exact)
+                .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Exact)
                 .with_context(|| {
-                    anyhow!(
-                        "Input: {:?} Cpu: {:?}, Metal: {:?}",
-                        a.dump(true),
-                        cpu_output.dump(true),
-                        metal_output.synchronize().and_then(|it| it.dump(true))
-                    )
-                })?;
+                anyhow!(
+                    "Input: {:?} Cpu: {:?}, Metal: {:?}",
+                    a.dump(true),
+                    cpu_output.dump(true),
+                    metal_output.to_host().and_then(|it| it.dump(true))
+                )
+            })?;
             Ok(())
         })
     }

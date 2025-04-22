@@ -32,9 +32,10 @@ fn metal_context() -> MetalContext {
     INSTANCE
         .get_or_init(|| {
             let ctxt = MetalContext::new().expect("Could not create Metal context");
-            tract_gpu::device::set_context(Box::new(ctxt.clone())).expect("Could not set Metal context");
+            tract_gpu::device::set_context(Box::new(ctxt.clone()))
+                .expect("Could not set Metal context");
             ctxt
-            })
+        })
         .clone()
 }
 

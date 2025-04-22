@@ -61,13 +61,15 @@ pub fn eval_device_mem_req_for_nodes(
         let Ok(facts) = model.node_output_facts(node.id) else { return false };
 
         let cpu_sync_in_next_nodes = next_nodes(model, node).is_some_and(|nodes| {
-            nodes
-                .iter()
-                .any(|it| it.op_as::<DeviceSync>().is_some_and(|op| op.kind == DeviceSyncKind::ToHost))
+            nodes.iter().any(|it| {
+                it.op_as::<DeviceSync>().is_some_and(|op| op.kind == DeviceSyncKind::ToHost)
+            })
         });
 
         !cpu_sync_in_next_nodes
-            && facts.iter().any(|it| it.to_device_fact().map(|it| it.is_from_device()).unwrap_or(false))
+            && facts
+                .iter()
+                .any(|it| it.to_device_fact().map(|it| it.is_from_device()).unwrap_or(false))
     });
     let mut scoped_nodes = tvec![];
 

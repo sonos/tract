@@ -177,7 +177,7 @@ impl DeviceTensor {
 
     /// Synchronize the GPU Tensor by completing all current
     /// commands on GPU and returns the inner tensor.
-    pub fn synchronize(&self) -> TractResult<Arc<Tensor>> {
+    pub fn to_host(&self) -> TractResult<Arc<Tensor>> {
         get_context()?.synchronize()?;
 
         Ok(match self {
@@ -252,7 +252,7 @@ impl OpaquePayload for DeviceTensor {
     }
 
     fn clarify_to_tensor(&self) -> TractResult<Option<Arc<Tensor>>> {
-        Ok(Some(self.synchronize()?))
+        Ok(Some(self.to_host()?))
     }
 }
 
@@ -296,7 +296,7 @@ mod tests {
     #[test]
     fn test_device_tensor() -> TractResult<()> {
         let a = DeviceTensor::from_shape(&[1], &[0f32])?;
-        assert_eq!(a.synchronize()?.as_slice::<f32>()?, &[0.0]);
+        assert_eq!(a.to_host()?.as_slice::<f32>()?, &[0.0]);
         Ok(())
     }
 }

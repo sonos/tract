@@ -145,8 +145,8 @@ mod tests {
             let a = Tensor::from_shape(shape, &a_data)?.into_device()?;
 
             let output = PermuteAxes.eval(stream, &a, axes)?;
-            let ref_output = a.synchronize()?.into_tensor().permute_axes(axes)?;
-            assert_eq!(ref_output, output.synchronize()?.into_tensor());
+            let ref_output = a.to_host()?.into_tensor().permute_axes(axes)?;
+            assert_eq!(ref_output, output.to_host()?.into_tensor());
             Ok(())
         })
     }

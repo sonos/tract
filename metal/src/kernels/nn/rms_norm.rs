@@ -168,18 +168,18 @@ mod tests {
             let cpu_rms = rms_norm::RmsNorm { axis, eps: Arc::clone(&eps) };
 
             let cpu_output =
-                cpu_rms.eval(tvec![a.synchronize()?.into_tvalue()])?[0].clone().into_tensor();
+                cpu_rms.eval(tvec![a.to_host()?.into_tvalue()])?[0].clone().into_tensor();
             let metal_output = RmsNorm.eval(stream, &a, axis, &eps)?;
 
             cpu_output
-                .close_enough(&metal_output.synchronize()?.into_tensor(), Approximation::Approximate)
+                .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)
                 .with_context(|| {
                     anyhow!(
                         "Input: {:?}, scale: {:?} Cpu: {:?}, Metal: {:?}",
-                        a.synchronize().and_then(|it| it.dump(true)),
+                        a.to_host().and_then(|it| it.dump(true)),
                         scale,
                         cpu_output.dump(true),
-                        metal_output.synchronize().and_then(|it| it.dump(true))
+                        metal_output.to_host().and_then(|it| it.dump(true))
                     )
                 })?;
             Ok(())
@@ -282,7 +282,7 @@ mod tests {
             with_borrowed_metal_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let metal_output = RmsNorm.eval(stream, &a, self.axis, &self.eps)?;
-                Ok(metal_output.synchronize()?.into_tensor())
+                Ok(metal_output.to_host()?.into_tensor())
             })
         }
     }
