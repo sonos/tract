@@ -1,6 +1,32 @@
+use std::ffi::c_void;
+
 use crate::context::MetalBuffer;
+use crate::{MetalStream, METAL_STREAM};
 use metal::Buffer;
+use objc::runtime::{objc_autoreleasePoolPop, objc_autoreleasePoolPush};
 use tract_gpu::device::DeviceBuffer;
+
+// Copied code from objc crate to avoid closures
+struct AutoReleaseHelper {
+    context: *mut c_void,
+}
+
+impl AutoReleaseHelper {
+    unsafe fn new() -> Self {
+        AutoReleaseHelper { context: objc_autoreleasePoolPush() }
+    }
+}
+
+impl Drop for AutoReleaseHelper {
+    fn drop(&mut self) {
+        unsafe { objc_autoreleasePoolPop(self.context) }
+    }
+}
+
+pub fn with_borrowed_metal_stream<T, F: FnOnce(&MetalStream) -> T>(f: F) -> T {
+    let _context = unsafe { AutoReleaseHelper::new() };
+    METAL_STREAM.with_borrow(f)
+}
 
 #[macro_export]
 macro_rules! impl_eval_op_for_metal_op {

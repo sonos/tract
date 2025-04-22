@@ -2,7 +2,8 @@
 mod tests {
     use tract_core::internal::*;
     use crate::context::MetalContext;
-    use crate::{autorelease_pool_init, MetalTransform};
+    use crate::utils::with_borrowed_metal_stream;
+    use crate::MetalTransform;
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
     use tract_core::ops::math::{add, mul};
     use tract_core::ops::nn::{Softmax, SoftmaxExp};
@@ -13,8 +14,9 @@ mod tests {
     #[test]
     fn test_alloc_zero() -> TractResult<()> {
         MetalContext::register()?;
-        let _ = autorelease_pool_init();
-        Tensor::from_shape::<f32>(&[0], &[])?.into_device()?;
+        with_borrowed_metal_stream(|_| {
+            Tensor::from_shape::<f32>(&[0], &[])?.into_device()
+        })?;
         Ok(())
     }
 

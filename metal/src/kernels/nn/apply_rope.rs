@@ -107,16 +107,15 @@ impl ApplyRope {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::autorelease_pool_init;
     use crate::context::MetalContext;
+    use crate::utils::with_borrowed_metal_stream;
     use tract_core::internal::Tensor;
     use tract_gpu::tensor::IntoDevice;
     use tract_transformers::ops::apply_rope;
 
     fn run_test_case(shape: &[usize]) -> Result<()> {
         MetalContext::register()?;
-        let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|stream| {
+        with_borrowed_metal_stream(|stream| {
             let len = shape.iter().product::<usize>();
 
             let a = Tensor::from_shape(

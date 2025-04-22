@@ -81,7 +81,7 @@ impl ScaledMaskedSoftmax {
 
 #[cfg(test)]
 mod tests {
-    use crate::autorelease_pool_init;
+    use crate::utils::with_borrowed_metal_stream;
     use crate::context::MetalContext;
     use tract_gpu::tensor::IntoDevice;
 
@@ -98,8 +98,7 @@ mod tests {
     #[test]
     fn test_scaled_masked_softmax_f32() -> Result<()> {
         MetalContext::register()?;
-        let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|stream| {
+        with_borrowed_metal_stream(|stream| {
             let m = 4;
             let n = 4;
             let scale: Arc<_> = tensor0(0.125f32).into();
@@ -125,8 +124,7 @@ mod tests {
     #[test]
     fn test_scaled_masked_softmax_f32_2() -> Result<()> {
         MetalContext::register()?;
-        let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|stream| {
+        with_borrowed_metal_stream(|stream| {
             let m = 4;
             let n = 1024;
             let scale: Arc<_> = tensor0(0.125f32).into();
@@ -235,8 +233,7 @@ mod tests {
 
         pub fn run(&self) -> Result<Tensor> {
             MetalContext::register()?;
-            let _ = autorelease_pool_init();
-            crate::METAL_STREAM.with_borrow(|stream| {
+            with_borrowed_metal_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let mask =
                     Tensor::from_shape(self.mask_shape.as_slice(), &self.mask)?.into_device()?;

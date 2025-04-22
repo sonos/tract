@@ -397,7 +397,7 @@ pub fn kernel_name_gemm(dt: DatumType, transpose_a: bool, transpose_b: bool) -> 
 
 #[cfg(test)]
 mod tests {
-    use crate::autorelease_pool_init;
+    use crate::utils::with_borrowed_metal_stream;
     use crate::context::MetalContext;
 
     use super::*;
@@ -414,8 +414,7 @@ mod tests {
     #[test]
     fn test_mlx_gemm() -> Result<()> {
         MetalContext::register()?;
-        let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|stream| {
+        with_borrowed_metal_stream(|stream| {
             let (b, m, n, k) = (10, 32, 32, 16);
             let a = Tensor::from_shape(
                 &[b, m, k],

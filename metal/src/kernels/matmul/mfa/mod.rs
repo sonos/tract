@@ -244,7 +244,7 @@ pub fn dispatch_metal_mfa_gemm(
 
 #[cfg(test)]
 mod tests {
-    use crate::autorelease_pool_init;
+    use crate::utils::with_borrowed_metal_stream;
     use crate::context::MetalContext;
 
     use super::*;
@@ -254,8 +254,7 @@ mod tests {
     #[test]
     fn test_mfa_gemm() -> Result<()> {
         MetalContext::register()?;
-        let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|stream| {
+        with_borrowed_metal_stream(|stream| {
             let (b, m, n, k) = (1, 2, 4, 3);
             let a = Tensor::from_shape(
                 &[b, m, k],

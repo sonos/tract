@@ -129,7 +129,7 @@ impl PermuteAxes {
 
 #[cfg(test)]
 mod tests {
-    use crate::autorelease_pool_init;
+    use crate::utils::with_borrowed_metal_stream;
     use crate::context::MetalContext;
 
     use super::*;
@@ -141,8 +141,7 @@ mod tests {
 
     fn run_test_case<F: Datum + Zero + Copy>(shape: &[usize], axes: &[usize]) -> Result<()> {
         MetalContext::register()?;
-        let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|stream| {
+        with_borrowed_metal_stream(|stream| {
             let a_len = shape.iter().product::<usize>();
             let a_data = (0..a_len).map(|f| f as f32).collect::<Vec<_>>();
 

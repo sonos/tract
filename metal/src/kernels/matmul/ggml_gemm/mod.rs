@@ -321,7 +321,7 @@ fn dispatch_metal_ggml_gemm(
 
 #[cfg(test)]
 mod tests {
-    use crate::autorelease_pool_init;
+    use crate::utils::with_borrowed_metal_stream;
     use crate::context::MetalContext;
 
     use std::any::TypeId;
@@ -440,8 +440,7 @@ mod tests {
         f32: From<F>,
     {
         MetalContext::register()?;
-        let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|stream| {
+        with_borrowed_metal_stream(|stream| {
             let a_shape = [batch * broadcast_ratio, m, k];
             let b_shape = [batch, n, k];
 
