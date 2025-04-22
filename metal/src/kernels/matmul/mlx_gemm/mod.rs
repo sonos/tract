@@ -387,7 +387,11 @@ pub fn dispatch_metal_mlx_gemm(
     Ok(())
 }
 
-pub fn kernel_name_gemm(dt: DatumType, transpose_a: bool, transpose_b: bool) -> TractResult<String> {
+pub fn kernel_name_gemm(
+    dt: DatumType,
+    transpose_a: bool,
+    transpose_b: bool,
+) -> TractResult<String> {
     let t_a = if transpose_a { "t" } else { "n" };
     let t_b = if transpose_b { "t" } else { "n" };
 
@@ -429,7 +433,7 @@ mod tests {
 
             let expected_c = Tensor::from_shape(&[10, 32, 32], &vec![16.0; 10 * 32 * 32])?;
 
-            let c = c.synchronize()?;
+            let c = c.to_host()?;
             c.close_enough(&expected_c, Approximation::Approximate)?;
             assert!(c.close_enough(&expected_c, Approximation::Approximate).is_ok());
 
@@ -453,7 +457,7 @@ mod tests {
                 ],
             )?;
 
-            assert!(c.synchronize()?.close_enough(&expected_c, Approximation::Approximate).is_ok());
+            assert!(c.to_host()?.close_enough(&expected_c, Approximation::Approximate).is_ok());
             Ok(())
         })
     }

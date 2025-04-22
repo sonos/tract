@@ -251,9 +251,9 @@ mod tests {
             )?
             .into_device()?;
             let output = op.eval(stream, &a)?;
-            let ref_output = reference::<F>(&a.synchronize()?.into_tensor(), ca)?;
+            let ref_output = reference::<F>(&a.to_host()?.into_tensor(), ca)?;
             assert!(ref_output
-                .close_enough(&output.synchronize()?.into_tensor(), Approximation::Close)
+                .close_enough(&output.to_host()?.into_tensor(), Approximation::Close)
                 .is_ok());
             Ok(())
         })

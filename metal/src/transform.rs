@@ -270,7 +270,14 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 self.sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
 
             let outlet_ids: TVec<OutletId> = if let Some(op) = node.op_as::<PrefixMatMul>() {
-                convert_matmul_to_metal(source, node, target, &mut device_inputs, op, self.gemm_impl)?
+                convert_matmul_to_metal(
+                    source,
+                    node,
+                    target,
+                    &mut device_inputs,
+                    op,
+                    self.gemm_impl,
+                )?
             } else {
                 let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<ElementWiseOp>() {
                     Box::new(map_element_wise_ops_to_metal(op).unwrap())

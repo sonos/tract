@@ -127,17 +127,17 @@ mod tests {
             )?
             .into_device()?;
 
-            let cpu_output = tract_reducer.reduce(&[axis], &a.synchronize()?.into_tensor())?;
+            let cpu_output = tract_reducer.reduce(&[axis], &a.to_host()?.into_tensor())?;
             let metal_output = reducer.eval(stream, &a, axis)?;
             cpu_output
-                .close_enough(&metal_output.synchronize()?.into_tensor(), Approximation::Approximate)
+                .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)
                 .with_context(|| {
                     anyhow!(
                         "A: {:?}, scale: {:?} Cpu: {:?}, Metal: {:?}",
-                        a.synchronize().and_then(|it| it.dump(true)),
+                        a.to_host().and_then(|it| it.dump(true)),
                         scale,
                         cpu_output.dump(true),
-                        metal_output.synchronize().and_then(|it| it.dump(true))
+                        metal_output.to_host().and_then(|it| it.dump(true))
                     )
                 })?;
             Ok(())
@@ -360,7 +360,7 @@ mod tests {
             with_borrowed_metal_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let metal_output = self.op.eval(stream, &a, self.axis)?;
-                Ok(metal_output.synchronize()?.into_tensor())
+                Ok(metal_output.to_host()?.into_tensor())
             })
         }
     }

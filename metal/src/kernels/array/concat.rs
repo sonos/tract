@@ -41,7 +41,11 @@ impl Concat {
         Ok(format!("array_ops::copy_{broadcast_name}_{tname}"))
     }
 
-    pub fn eval(&self, stream: &MetalStream, inputs: &[&DeviceTensor]) -> TractResult<DeviceTensor> {
+    pub fn eval(
+        &self,
+        stream: &MetalStream,
+        inputs: &[&DeviceTensor],
+    ) -> TractResult<DeviceTensor> {
         ensure!(!inputs.is_empty());
         let mut output_shape = inputs[0].shape().to_vec();
         output_shape[self.axis] = inputs.iter().map(|it| it.shape()[self.axis]).sum();
@@ -144,9 +148,9 @@ mod tests {
             let output = Concat { axis }.eval(stream, &inputs.iter().collect_vec())?;
             let ref_output = Tensor::stack_tensors(
                 axis,
-                &inputs.iter().map(|it| it.synchronize()).collect::<TractResult<Vec<_>>>()?,
+                &inputs.iter().map(|it| it.to_host()).collect::<TractResult<Vec<_>>>()?,
             )?;
-            assert_eq!(ref_output, output.synchronize()?.into_tensor());
+            assert_eq!(ref_output, output.to_host()?.into_tensor());
             Ok(())
         })
     }

@@ -448,7 +448,7 @@ mod tests {
             }
 
             let output = args_1!(matmul.eval(tvec![a.into_tvalue(), b.into_tvalue()])?);
-            metal_output.synchronize()?.close_enough(&output, Approximation::SuperApproximate)?;
+            metal_output.to_host()?.close_enough(&output, Approximation::SuperApproximate)?;
             Ok(())
         })
     }
@@ -926,7 +926,7 @@ mod tests {
                 let matmul = GemmImpl::<K>::new(self.transpose_lhs, self.transpose_rhs);
 
                 let c = matmul.eval(stream, &lhs, &rhs)?;
-                Ok(c.synchronize()?.into_tensor())
+                Ok(c.to_host()?.into_tensor())
             })
         }
     }

@@ -141,13 +141,13 @@ mod tests {
             let metal_output = ApplyRope.eval(stream, &metal_a, &metal_cos, &metal_sin)?;
 
             cpu_output
-                .close_enough(&metal_output.synchronize()?.into_tensor(), Approximation::Approximate)
+                .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)
                 .with_context(|| {
                     anyhow!(
                         "Input: {:?} Cpu: {:?}, Metal: {:?}",
                         a.dump(true),
                         cpu_output.dump(true),
-                        metal_output.synchronize().and_then(|it| it.dump(true))
+                        metal_output.to_host().and_then(|it| it.dump(true))
                     )
                 })?;
             Ok(())

@@ -8,9 +8,9 @@ pub mod func_constants;
 pub mod kernels;
 pub mod ops;
 pub mod rewrite_rules;
+mod tests;
 pub mod transform;
 pub mod utils;
-mod tests;
 
 pub use crate::context::{MetalStream, METAL_STREAM};
 use crate::func_constants::{ConstantValues, Value};

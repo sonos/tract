@@ -52,7 +52,7 @@ pub fn rewire_sync_after_const(
     let Some(device_const) = op.val().as_device_tensor() else {
         return Ok(None);
     };
-    let cpu_const = device_const.synchronize()?;
+    let cpu_const = device_const.to_host()?;
 
     // Identify successor ToHost
     let Some(sync_cpu) = next_node(model, node) else {

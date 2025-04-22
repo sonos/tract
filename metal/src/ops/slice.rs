@@ -142,7 +142,7 @@ mod tests {
             stream.wait_until_completed()?;
 
             cpu_output[0].close_enough(
-                &metal_output[0].to_device_tensor()?.synchronize()?.into_tensor(),
+                &metal_output[0].to_device_tensor()?.to_host()?.into_tensor(),
                 Approximation::Approximate,
             )?;
             Ok(())

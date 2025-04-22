@@ -53,8 +53,10 @@ impl MetalEvalOp for MetalConcat {
         session: &mut SessionState,
         opaque_inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let inputs =
-            opaque_inputs.iter().map(|it| it.to_device_tensor()).collect::<TractResult<TVec<_>>>()?;
+        let inputs = opaque_inputs
+            .iter()
+            .map(|it| it.to_device_tensor())
+            .collect::<TractResult<TVec<_>>>()?;
 
         let mut output_shape = inputs[0].shape().to_vec();
         output_shape[self.axis()] = inputs.iter().map(|it| it.shape()[self.axis()]).sum();

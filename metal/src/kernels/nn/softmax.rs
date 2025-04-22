@@ -96,10 +96,10 @@ mod tests {
                 TractSoftmax { axes: tvec![axis], quant_output_dt: None, exp: SoftmaxExp::Libc };
 
             let cpu_output =
-                cpu_softmax.eval(tvec![a.synchronize()?.into_tvalue()])?[0].clone().into_tensor();
+                cpu_softmax.eval(tvec![a.to_host()?.into_tvalue()])?[0].clone().into_tensor();
             let metal_output = Softmax.eval(stream, &a, axis)?;
             cpu_output
-                .close_enough(&metal_output.synchronize()?.into_tensor(), Approximation::Approximate)?;
+                .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
         })
     }
@@ -121,10 +121,10 @@ mod tests {
                 TractSoftmax { axes: tvec![axis], quant_output_dt: None, exp: SoftmaxExp::Libc };
 
             let cpu_output =
-                cpu_softmax.eval(tvec![a.synchronize()?.into_tvalue()])?[0].clone().into_tensor();
+                cpu_softmax.eval(tvec![a.to_host()?.into_tvalue()])?[0].clone().into_tensor();
             let metal_output = Softmax.eval(stream, &a, axis)?;
             cpu_output
-                .close_enough(&metal_output.synchronize()?.into_tensor(), Approximation::Approximate)?;
+                .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
         })
     }
@@ -146,10 +146,10 @@ mod tests {
                 TractSoftmax { axes: tvec![axis], quant_output_dt: None, exp: SoftmaxExp::Libc };
 
             let cpu_output =
-                cpu_softmax.eval(tvec![a.synchronize()?.into_tvalue()])?[0].clone().into_tensor();
+                cpu_softmax.eval(tvec![a.to_host()?.into_tvalue()])?[0].clone().into_tensor();
             let metal_output = Softmax.eval(stream, &a, axis)?;
             cpu_output
-                .close_enough(&metal_output.synchronize()?.into_tensor(), Approximation::Approximate)?;
+                .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
         })
     }
@@ -239,7 +239,7 @@ mod tests {
             with_borrowed_metal_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let metal_output = Softmax.eval(stream, &a, self.axis)?;
-                Ok(metal_output.synchronize()?.into_tensor())
+                Ok(metal_output.to_host()?.into_tensor())
             })
         }
     }

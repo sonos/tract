@@ -270,7 +270,7 @@ mod tests {
             let expected_c =
                 Tensor::from_shape(&[1, 2, 4], &[20.0, 23.0, 26.0, 29.0, 56.0, 68.0, 80.0, 92.0])?;
 
-            let c = c.synchronize()?;
+            let c = c.to_host()?;
             assert!(c.close_enough(&expected_c, Approximation::Close).is_ok());
 
             let (b, m, n, k) = (2, 2, 4, 3);
@@ -293,7 +293,7 @@ mod tests {
                 ],
             )?;
 
-            assert!(c.synchronize()?.close_enough(&expected_c, Approximation::Close).is_ok());
+            assert!(c.to_host()?.close_enough(&expected_c, Approximation::Close).is_ok());
             Ok(())
         })
     }

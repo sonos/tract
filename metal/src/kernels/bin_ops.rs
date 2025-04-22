@@ -299,9 +299,12 @@ mod tests {
             )?
             .into_device()?;
             let output = op.eval(stream, &a, &b)?;
-            let ref_output =
-                reference::<F, bool>(&a.synchronize()?.into_tensor(), &b.synchronize()?.into_tensor(), cab)?;
-            assert_eq!(ref_output, output.synchronize()?.into_tensor());
+            let ref_output = reference::<F, bool>(
+                &a.to_host()?.into_tensor(),
+                &b.to_host()?.into_tensor(),
+                cab,
+            )?;
+            assert_eq!(ref_output, output.to_host()?.into_tensor());
             Ok(())
         })
     }
@@ -326,8 +329,8 @@ mod tests {
             let output = op.eval(stream, &a, &b)?;
 
             let ref_output =
-                reference::<F, F>(&a.synchronize()?.into_tensor(), &b.synchronize()?.into_tensor(), cab)?;
-            assert_eq!(ref_output, output.synchronize()?.into_tensor());
+                reference::<F, F>(&a.to_host()?.into_tensor(), &b.to_host()?.into_tensor(), cab)?;
+            assert_eq!(ref_output, output.to_host()?.into_tensor());
             Ok(())
         })
     }
@@ -455,7 +458,7 @@ mod tests {
                 let lhs = self.lhs.clone().into_device()?;
                 let rhs = self.rhs.clone().into_device()?;
                 let c = BinOps::Mul.eval(stream, &lhs, &rhs)?;
-                Ok(c.synchronize()?.into_tensor())
+                Ok(c.to_host()?.into_tensor())
             })
         }
     }

@@ -94,18 +94,18 @@ mod tests {
             .into_device()?;
 
             let cpu_output =
-                silu::Silu.eval(tvec![a.synchronize()?.into_tvalue()])?[0].clone().into_tensor();
+                silu::Silu.eval(tvec![a.to_host()?.into_tvalue()])?[0].clone().into_tensor();
             let metal_output = Silu.eval(stream, &a)?;
 
             cpu_output
-                .close_enough(&metal_output.synchronize()?.into_tensor(), appriximate)
+                .close_enough(&metal_output.to_host()?.into_tensor(), appriximate)
                 .with_context(|| {
                     anyhow!(
                         "Input: {:?}, scale: {:?} Cpu: {:?}, Metal: {:?}",
-                        a.synchronize().and_then(|it| it.dump(true)),
+                        a.to_host().and_then(|it| it.dump(true)),
                         scale,
                         cpu_output.dump(true),
-                        metal_output.synchronize().and_then(|it| it.dump(true))
+                        metal_output.to_host().and_then(|it| it.dump(true))
                     )
                 })?;
             Ok(())
@@ -201,7 +201,7 @@ mod tests {
             with_borrowed_metal_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let metal_output = Silu.eval(stream, &a)?;
-                Ok(metal_output.synchronize()?.into_tensor())
+                Ok(metal_output.to_host()?.into_tensor())
             })
         }
     }

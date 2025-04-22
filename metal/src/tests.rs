@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use tract_core::internal::*;
     use crate::utils::with_borrowed_metal_stream;
     use crate::MetalTransform;
+    use tract_core::internal::*;
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
     use tract_core::ops::math::{add, mul};
     use tract_core::ops::nn::{Softmax, SoftmaxExp};
@@ -12,9 +12,7 @@ mod tests {
 
     #[test]
     fn test_alloc_zero() -> TractResult<()> {
-        with_borrowed_metal_stream(|_| {
-            Tensor::from_shape::<f32>(&[0], &[])?.into_device()
-        })?;
+        with_borrowed_metal_stream(|_| Tensor::from_shape::<f32>(&[0], &[])?.into_device())?;
         Ok(())
     }
 

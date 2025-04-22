@@ -46,7 +46,7 @@ impl EvalOp for DeviceSync {
                 let device_tensor = input.to_device_tensor()?;
 
                 let tensor = device_tensor
-                    .synchronize()
+                    .to_host()
                     .with_context(|| anyhow!("Error while syncing device tensor to cpu"))?;
                 Ok(tvec![tensor.into_tvalue()])
             }
@@ -74,7 +74,10 @@ impl TypedOp for DeviceSync {
                 .clone()
                 .into_typed_fact()]),
             DeviceSyncKind::ToDevice => {
-                ensure!(input.datum_type != DatumType::Opaque, "Cannot sync Opaque Tensor to Device");
+                ensure!(
+                    input.datum_type != DatumType::Opaque,
+                    "Cannot sync Opaque Tensor to Device"
+                );
                 Ok(tvec![DeviceFact::from_cpu(input.clone())?.into_opaque_fact()])
             }
         }
