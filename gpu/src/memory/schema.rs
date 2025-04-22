@@ -2,8 +2,8 @@ use std::fmt;
 use std::fmt::Debug;
 use tract_core::internal::*;
 
-use crate::fact::GpuTypedFactExt;
-use crate::sync::{GpuSync, GpuSyncKind};
+use crate::fact::DeviceTypedFactExt;
+use crate::sync::{DeviceSync, DeviceSyncKind};
 
 /// Requirement for node outputs from a memory perspective.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -63,11 +63,11 @@ pub fn eval_device_mem_req_for_nodes(
         let cpu_sync_in_next_nodes = next_nodes(model, node).is_some_and(|nodes| {
             nodes
                 .iter()
-                .any(|it| it.op_as::<GpuSync>().is_some_and(|op| op.kind == GpuSyncKind::ToHost))
+                .any(|it| it.op_as::<DeviceSync>().is_some_and(|op| op.kind == DeviceSyncKind::ToHost))
         });
 
         !cpu_sync_in_next_nodes
-            && facts.iter().any(|it| it.to_gpu_fact().map(|it| it.is_from_gpu()).unwrap_or(false))
+            && facts.iter().any(|it| it.to_device_fact().map(|it| it.is_from_device()).unwrap_or(false))
     });
     let mut scoped_nodes = tvec![];
 
@@ -79,7 +79,7 @@ pub fn eval_device_mem_req_for_nodes(
             .find(|(_step, flush_list)| flush_list.contains(n))
             .map(|it| usize::min(it.0 + 1, order.len()));
 
-        // Ignore nodes that won't be flushed from gpu.
+        // Ignore nodes that won't be flushed from Device.
         let Some(lifetime_end) = lifetime_end else {
             continue;
         };
@@ -87,8 +87,8 @@ pub fn eval_device_mem_req_for_nodes(
         let out_device_tmp_facts = model
             .node_output_facts(*n)?
             .into_iter()
-            .flat_map(|it| it.to_gpu_fact().ok())
-            .filter(|it| it.is_from_gpu())
+            .flat_map(|it| it.to_device_fact().ok())
+            .filter(|it| it.is_from_device())
             .collect::<TVec<_>>();
 
         if out_device_tmp_facts.is_empty() {

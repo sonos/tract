@@ -1,6 +1,6 @@
 use crate::kernels::nn::ApplyRope;
 use crate::ops::MetalEvalOp;
-use crate::MetalContext;
+use crate::MetalStream;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -19,15 +19,15 @@ impl Op for MetalApplyRope {
 impl MetalEvalOp for MetalApplyRope {
     fn metal_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (opaque_input, opaque_cos, opaque_sin) = args_3!(inputs);
-        let input = opaque_input.to_gpu_tensor()?;
-        let cos = opaque_cos.to_gpu_tensor()?;
-        let sin = opaque_sin.to_gpu_tensor()?;
+        let input = opaque_input.to_device_tensor()?;
+        let cos = opaque_cos.to_device_tensor()?;
+        let sin = opaque_sin.to_device_tensor()?;
         let output =
             crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
         ApplyRope.dispatch_eval(context, input, cos, sin, &output)?;
@@ -37,7 +37,7 @@ impl MetalEvalOp for MetalApplyRope {
 
 impl TypedOp for MetalApplyRope {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        tract_gpu::utils::gpu_facts_from_gpu(inputs, |facts| {
+        tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
             let dt = facts[0].datum_type;
             let fact = dt.fact(facts[0].shape.clone());
             Ok(tvec!(fact))

@@ -1,5 +1,5 @@
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
-use crate::{LibraryName, MetalContext};
+use crate::{LibraryName, MetalStream};
 use anyhow::{ensure, Result};
 use metal::{Buffer, MTLSize, NSUInteger};
 use std::fmt;
@@ -155,7 +155,7 @@ impl GemmKernel for GgmlGemm {
 
     fn dispatch_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         params: GemmDispatchParams,
         a_buffer: &Buffer,
         b_buffer: &Buffer,
@@ -219,7 +219,7 @@ fn mv_kernel_name_and_dispatch_params(
 
 #[allow(clippy::too_many_arguments)]
 fn dispatch_metal_ggml_gemv(
-    context: &MetalContext,
+    context: &MetalStream,
     params: GemmDispatchParams,
     a_offset: usize,
     a_buffer: &Buffer,
@@ -270,7 +270,7 @@ fn dispatch_metal_ggml_gemv(
 
 #[allow(clippy::too_many_arguments)]
 fn dispatch_metal_ggml_gemm(
-    context: &MetalContext,
+    context: &MetalStream,
     params: GemmDispatchParams,
     a_offset: usize,
     a_buffer: &Buffer,
@@ -322,7 +322,7 @@ fn dispatch_metal_ggml_gemm(
 #[cfg(test)]
 mod tests {
     use crate::autorelease_pool_init;
-    use crate::context::MetalDevice;
+    use crate::context::MetalContext;
 
     use std::any::TypeId;
 
@@ -335,11 +335,11 @@ mod tests {
     use super::*;
     use crate::kernels::matmul::tests::run_mmm_test_case;
     use crate::kernels::matmul::GemmImpl;
-    use tract_gpu::tensor::IntoGpu;
+    use tract_gpu::tensor::IntoDevice;
 
     #[test]
     fn test_ggml_compilation() -> Result<()> {
-        crate::METAL_CONTEXT.with_borrow(|context| context.load_library(LibraryName::Ggml))?;
+        crate::METAL_STREAM.with_borrow(|context| context.load_library(LibraryName::Ggml))?;
         Ok(())
     }
 
@@ -439,9 +439,9 @@ mod tests {
     where
         f32: From<F>,
     {
-        MetalDevice::register()?;
+        MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_CONTEXT.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|context| {
             let a_shape = [batch * broadcast_ratio, m, k];
             let b_shape = [batch, n, k];
 
@@ -474,11 +474,11 @@ mod tests {
 
             let metal_output = GemmImpl::<GgmlGemm>::new(false, true).eval(
                 context,
-                &a.clone().into_gpu()?,
-                &metal_b.clone().into_gpu()?,
+                &a.clone().into_device()?,
+                &metal_b.clone().into_device()?,
             )?;
             let output = reference(a, ref_b)?;
-            metal_output.to_cpu()?.close_enough(&output, Approximation::Approximate)?;
+            metal_output.synchronize()?.close_enough(&output, Approximation::Approximate)?;
             Ok(())
         })
     }

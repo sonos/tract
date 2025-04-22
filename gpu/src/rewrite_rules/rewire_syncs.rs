@@ -1,6 +1,6 @@
 use crate::rewrite_rules::{next_node, previous_node};
 use crate::rule_ensure;
-use crate::sync::{GpuSync, GpuSyncKind};
+use crate::sync::{DeviceSync, DeviceSyncKind};
 use crate::tensor::DeviceTensorExt;
 use tract_core::internal::*;
 use tract_core::ops::konst::Const;
@@ -18,20 +18,20 @@ pub fn rewire_back_and_forth_sync(
     model: &TypedModel,
     node: &TypedNode,
     _node_name: &str,
-    op: &GpuSync,
+    op: &DeviceSync,
 ) -> TractResult<Option<TypedModelPatch>> {
     // Search pattern => ToHost => ToDevice
 
-    rule_ensure!(op.kind == GpuSyncKind::ToDevice);
+    rule_ensure!(op.kind == DeviceSyncKind::ToDevice);
 
     // Identify precessor ToHost
     let Some(sync_cpu_prec) = previous_node(model, node) else {
         return Ok(None);
     };
-    let Some(sync_cpu_prec_op) = sync_cpu_prec.op_as::<GpuSync>() else {
+    let Some(sync_cpu_prec_op) = sync_cpu_prec.op_as::<DeviceSync>() else {
         return Ok(None);
     };
-    rule_ensure!(sync_cpu_prec_op.kind == GpuSyncKind::ToHost);
+    rule_ensure!(sync_cpu_prec_op.kind == DeviceSyncKind::ToHost);
 
     let patch =
         TypedModelPatch::rewire(model, &sync_cpu_prec.inputs, &[node.id.into()], &|_p, xs| {
@@ -49,19 +49,19 @@ pub fn rewire_sync_after_const(
 ) -> TractResult<Option<TypedModelPatch>> {
     // Search pattern => Const => ToHost
 
-    let Some(gpu_const) = op.val().as_gpu_tensor() else {
+    let Some(device_const) = op.val().as_device_tensor() else {
         return Ok(None);
     };
-    let cpu_const = gpu_const.to_cpu()?;
+    let cpu_const = device_const.synchronize()?;
 
     // Identify successor ToHost
     let Some(sync_cpu) = next_node(model, node) else {
         return Ok(None);
     };
-    let Some(sync_cpu_op) = sync_cpu.op_as::<GpuSync>() else {
+    let Some(sync_cpu_op) = sync_cpu.op_as::<DeviceSync>() else {
         return Ok(None);
     };
-    rule_ensure!(sync_cpu_op.kind == GpuSyncKind::ToHost);
+    rule_ensure!(sync_cpu_op.kind == DeviceSyncKind::ToHost);
 
     let mut opaque_fact: Option<Box<dyn OpaqueFact>> = None;
     if let Some(of) = cpu_const

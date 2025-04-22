@@ -1,6 +1,6 @@
 use crate::kernels::nn::Softmax;
 use crate::ops::MetalEvalOp;
-use crate::MetalContext;
+use crate::MetalStream;
 use std::fmt::Debug;
 use tract_core::internal::*;
 use tract_core::ops::nn as core_ops_nn;
@@ -40,13 +40,13 @@ crate::impl_eval_op_for_metal_op!(MetalSoftmax);
 impl MetalEvalOp for MetalSoftmax {
     fn metal_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs);
-        let input = opaque.to_gpu_tensor()?;
+        let input = opaque.to_device_tensor()?;
         let output =
             crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
         Softmax.dispatch_eval(context, input, self.axes[0], &output)?;
@@ -57,7 +57,7 @@ impl MetalEvalOp for MetalSoftmax {
 
 impl TypedOp for MetalSoftmax {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        tract_gpu::utils::gpu_facts_from_gpu(inputs, |facts| {
+        tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
             let dt = facts[0].datum_type;
             let fact = dt.fact(facts[0].shape.clone());
             Ok(tvec!(fact))

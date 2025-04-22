@@ -1,7 +1,7 @@
-use crate::device::GpuDevice;
+use crate::device::DeviceContext;
 use crate::memory::DeviceResolvedMemSchema;
 use crate::tensor::DeviceTensor;
-use crate::tensor::IntoGpu;
+use crate::tensor::IntoDevice;
 use crate::tensor::{DeviceArenaStorage, DeviceArenaView};
 use anyhow::Result;
 use std::cell::RefCell;
@@ -17,7 +17,7 @@ pub struct DeviceMemoryPool {
 
 impl DeviceMemoryPool {
     pub fn from_schema(
-        device: Box<dyn GpuDevice>,
+        device: Box<dyn DeviceContext>,
         resolved_schema: DeviceResolvedMemSchema,
     ) -> Result<Self> {
         let storage =
@@ -46,7 +46,7 @@ impl DeviceMemoryPool {
                 }
                 .into())
             })
-            .unwrap_or_else(|| unsafe { Tensor::uninitialized_dt(dt, shape)?.into_gpu() })
+            .unwrap_or_else(|| unsafe { Tensor::uninitialized_dt(dt, shape)?.into_device() })
     }
 
     pub fn reset(&self) {

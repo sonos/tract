@@ -7,4 +7,4 @@ pub mod sync;
 pub mod tensor;
 pub mod utils;
 
-pub use crate::device::GPU_DEVICE;
+pub use crate::device::DEVICE_CONTEXT;

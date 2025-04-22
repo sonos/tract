@@ -1,5 +1,5 @@
 use crate::encoder::EncoderExt;
-use crate::{LibraryName, MetalContext};
+use crate::{LibraryName, MetalStream};
 use anyhow::Result;
 use metal::MTLSize;
 use tract_core::internal::*;
@@ -33,7 +33,7 @@ impl GeluApproximate {
         }
     }
 
-    pub fn eval(&self, context: &MetalContext, input: &DeviceTensor) -> Result<DeviceTensor> {
+    pub fn eval(&self, context: &MetalStream, input: &DeviceTensor) -> Result<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(context, input, &output)?;
         context.wait_until_completed()?;
@@ -42,7 +42,7 @@ impl GeluApproximate {
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         input: &DeviceTensor,
         output: &DeviceTensor,
     ) -> Result<()> {
@@ -72,14 +72,14 @@ impl GeluApproximate {
 mod tests {
     use super::*;
     use crate::autorelease_pool_init;
-    use crate::context::MetalDevice;
+    use crate::context::MetalContext;
     use derive_new::new;
     use num_traits::AsPrimitive;
     use num_traits::Float;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use tract_core::internal::Tensor;
-    use tract_gpu::tensor::IntoGpu;
+    use tract_gpu::tensor::IntoDevice;
     use tract_transformers::ops::gelu_approximate;
 
     fn test_case<F>(
@@ -94,9 +94,9 @@ mod tests {
         usize: AsPrimitive<f32>,
         f32: AsPrimitive<F>,
     {
-        MetalDevice::register()?;
+        MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_CONTEXT.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|context| {
             let len = shape.iter().product::<usize>();
 
             let a = Tensor::from_shape(
@@ -108,23 +108,23 @@ mod tests {
                     })
                     .collect::<Vec<_>>(),
             )?
-            .into_gpu()?;
+            .into_device()?;
 
             let cpu_output = gelu_approximate::GeluApproximate::default()
-                .eval(tvec![a.to_cpu()?.into_tvalue()])?[0]
+                .eval(tvec![a.synchronize()?.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
             let metal_output = gelu_approx.eval(context, &a)?;
 
             cpu_output
-                .close_enough(&metal_output.to_cpu()?.into_tensor(), appriximate)
+                .close_enough(&metal_output.synchronize()?.into_tensor(), appriximate)
                 .with_context(|| {
                     anyhow!(
                         "Input: {:?}, scale: {:?} Cpu: {:?}, Metal: {:?}",
-                        a.to_cpu().and_then(|it| it.dump(true)),
+                        a.synchronize().and_then(|it| it.dump(true)),
                         scale,
                         cpu_output.dump(true),
-                        metal_output.to_cpu().and_then(|it| it.dump(true))
+                        metal_output.synchronize().and_then(|it| it.dump(true))
                     )
                 })?;
             Ok(())
@@ -264,12 +264,12 @@ mod tests {
         }
 
         pub fn run(&self) -> Result<Tensor> {
-            MetalDevice::register()?;
+            MetalContext::register()?;
             autorelease_pool_init();
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_gpu()?;
+            crate::METAL_STREAM.with_borrow(|context| {
+                let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let metal_output = GeluApproximate::accurate().eval(context, &a)?;
-                Ok(metal_output.to_cpu()?.into_tensor())
+                Ok(metal_output.synchronize()?.into_tensor())
             })
         }
     }

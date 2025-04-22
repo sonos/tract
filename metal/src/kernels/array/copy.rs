@@ -1,5 +1,5 @@
 use crate::encoder::EncoderExt;
-use crate::{LibraryName, MetalContext};
+use crate::{LibraryName, MetalStream};
 use anyhow::Result;
 use derive_new::new;
 use metal::{MTLSize, NSUInteger};
@@ -42,7 +42,7 @@ impl Memcpy {
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         input: &DeviceTensor,
         input_offset: usize,
         output: &DeviceTensor,
@@ -76,7 +76,7 @@ impl Memcpy {
 
     pub fn eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         input: &DeviceTensor,
         input_offset: usize,
         output_shape: &[usize],

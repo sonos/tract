@@ -1,5 +1,5 @@
 use crate::encoder::EncoderExt;
-use crate::{LibraryName, MetalContext};
+use crate::{LibraryName, MetalStream};
 use anyhow::Result;
 use metal::MTLSize;
 use tract_core::internal::*;
@@ -25,7 +25,7 @@ impl ScaledMaskedSoftmax {
 
     pub fn eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         input: &DeviceTensor,
         scale: &Tensor,
         mask: &DeviceTensor,
@@ -38,7 +38,7 @@ impl ScaledMaskedSoftmax {
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         input: &DeviceTensor,
         scale: &Tensor,
         mask: &DeviceTensor,
@@ -82,8 +82,8 @@ impl ScaledMaskedSoftmax {
 #[cfg(test)]
 mod tests {
     use crate::autorelease_pool_init;
-    use crate::context::MetalDevice;
-    use tract_gpu::tensor::IntoGpu;
+    use crate::context::MetalContext;
+    use tract_gpu::tensor::IntoDevice;
 
     use super::*;
     use derive_new::new;
@@ -97,54 +97,54 @@ mod tests {
 
     #[test]
     fn test_scaled_masked_softmax_f32() -> Result<()> {
-        MetalDevice::register()?;
+        MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_CONTEXT.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|context| {
             let m = 4;
             let n = 4;
             let scale: Arc<_> = tensor0(0.125f32).into();
-            let mask = Tensor::from_shape(&[1, m, n], &vec![-1000f32; m * n])?.into_gpu()?;
+            let mask = Tensor::from_shape(&[1, m, n], &vec![-1000f32; m * n])?.into_device()?;
 
             let a =
                 Tensor::from_shape(&[1, m, n], &(0..m * n).map(|f| f as f32).collect::<Vec<_>>())?
-                    .into_gpu()?;
+                    .into_device()?;
 
             let cpu = scaled_masked_softmax::ScaledMaskedSoftmax { scale: scale.clone() };
 
             let cpu_output = cpu
-                .eval(tvec![a.to_cpu()?.into_tvalue(), mask.to_cpu()?.into_tvalue()])?[0]
+                .eval(tvec![a.synchronize()?.into_tvalue(), mask.synchronize()?.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
             let metal_output = ScaledMaskedSoftmax.eval(context, &a, &scale, &mask)?;
             cpu_output
-                .close_enough(&metal_output.to_cpu()?.into_tensor(), Approximation::Approximate)?;
+                .close_enough(&metal_output.synchronize()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
         })
     }
 
     #[test]
     fn test_scaled_masked_softmax_f32_2() -> Result<()> {
-        MetalDevice::register()?;
+        MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_CONTEXT.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|context| {
             let m = 4;
             let n = 1024;
             let scale: Arc<_> = tensor0(0.125f32).into();
-            let mask = Tensor::from_shape(&[1, m, n], &vec![-1000f32; m * n])?.into_gpu()?;
+            let mask = Tensor::from_shape(&[1, m, n], &vec![-1000f32; m * n])?.into_device()?;
 
             let a =
                 Tensor::from_shape(&[1, m, n], &(0..m * n).map(|f| f as f32).collect::<Vec<_>>())?
-                    .into_gpu()?;
+                    .into_device()?;
 
             let cpu = scaled_masked_softmax::ScaledMaskedSoftmax { scale: scale.clone() };
 
             let cpu_output = cpu
-                .eval(tvec![a.to_cpu()?.into_tvalue(), mask.to_cpu()?.into_tvalue()])?[0]
+                .eval(tvec![a.synchronize()?.into_tvalue(), mask.synchronize()?.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
             let metal_output = ScaledMaskedSoftmax.eval(context, &a, &scale, &mask)?;
             cpu_output
-                .close_enough(&metal_output.to_cpu()?.into_tensor(), Approximation::Approximate)?;
+                .close_enough(&metal_output.synchronize()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
         })
     }
@@ -234,15 +234,15 @@ mod tests {
         }
 
         pub fn run(&self) -> Result<Tensor> {
-            MetalDevice::register()?;
+            MetalContext::register()?;
             let _ = autorelease_pool_init();
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_gpu()?;
+            crate::METAL_STREAM.with_borrow(|context| {
+                let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let mask =
-                    Tensor::from_shape(self.mask_shape.as_slice(), &self.mask)?.into_gpu()?;
+                    Tensor::from_shape(self.mask_shape.as_slice(), &self.mask)?.into_device()?;
                 let scale: Arc<_> = tensor0::<F>(0.125f32.as_()).into();
                 let metal_output = ScaledMaskedSoftmax.eval(context, &a, &scale, &mask)?;
-                Ok(metal_output.to_cpu()?.into_tensor())
+                Ok(metal_output.synchronize()?.into_tensor())
             })
         }
     }

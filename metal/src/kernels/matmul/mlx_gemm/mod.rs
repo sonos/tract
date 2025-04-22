@@ -1,5 +1,5 @@
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
-use crate::{ConstantValues, LibraryName, MetalContext, Value};
+use crate::{ConstantValues, LibraryName, MetalStream, Value};
 use anyhow::{ensure, Result};
 use metal::{Buffer, MTLSize, NSUInteger};
 use std::ffi::c_void;
@@ -42,7 +42,7 @@ impl GemmKernel for MlxGemm {
 
     fn dispatch_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         params: GemmDispatchParams,
         a_buffer: &Buffer,
         b_buffer: &Buffer,
@@ -118,7 +118,7 @@ impl GemmKernel for MlxGemm {
 
 #[allow(clippy::too_many_arguments)]
 pub fn dispatch_metal_mlx_gemv(
-    context: &MetalContext,
+    context: &MetalStream,
     dt: DatumType,
     (b, m, n, k): (usize, usize, usize, usize),
     a_strides: &[usize],
@@ -253,7 +253,7 @@ pub fn dispatch_metal_mlx_gemv(
 // From https://github.com/huggingface/candle/blob/main/candle-metal-kernels/src/lib.rs
 #[allow(clippy::too_many_arguments)]
 pub fn dispatch_metal_mlx_gemm(
-    context: &MetalContext,
+    context: &MetalStream,
     dt: DatumType,
     (b, m, n, k): (usize, usize, usize, usize),
     lhs_stride: &[usize],
@@ -398,41 +398,41 @@ pub fn kernel_name_gemm(dt: DatumType, transpose_a: bool, transpose_b: bool) -> 
 #[cfg(test)]
 mod tests {
     use crate::autorelease_pool_init;
-    use crate::context::MetalDevice;
+    use crate::context::MetalContext;
 
     use super::*;
     use crate::kernels::matmul::tests::run_mmm_test_case;
     use crate::kernels::matmul::GemmImpl;
-    use tract_gpu::tensor::{DeviceTensor, IntoGpu};
+    use tract_gpu::tensor::{DeviceTensor, IntoDevice};
 
     #[test]
     fn test_mlx_gemv_compilation() -> Result<()> {
-        crate::METAL_CONTEXT.with_borrow(|context| context.load_library(LibraryName::MlxGemv))?;
+        crate::METAL_STREAM.with_borrow(|context| context.load_library(LibraryName::MlxGemv))?;
         Ok(())
     }
 
     #[test]
     fn test_mlx_gemm() -> Result<()> {
-        MetalDevice::register()?;
+        MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_CONTEXT.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|context| {
             let (b, m, n, k) = (10, 32, 32, 16);
             let a = Tensor::from_shape(
                 &[b, m, k],
                 &(0..b * m * k).map(|_f| 1.0 as f32).collect::<Vec<_>>(),
             )?
-            .into_gpu()?;
+            .into_device()?;
             let b = Tensor::from_shape(
                 &[b, k, n],
                 &(0..b * n * k).map(|_f| 1.0 as f32).collect::<Vec<_>>(),
             )?
-            .into_gpu()?;
+            .into_device()?;
 
             let c = GemmImpl::<MlxGemm>::default().eval(context, &a, &b)?;
 
             let expected_c = Tensor::from_shape(&[10, 32, 32], &vec![16.0; 10 * 32 * 32])?;
 
-            let c = c.to_cpu()?;
+            let c = c.synchronize()?;
             c.close_enough(&expected_c, Approximation::Approximate)?;
             assert!(c.close_enough(&expected_c, Approximation::Approximate).is_ok());
 
@@ -456,7 +456,7 @@ mod tests {
                 ],
             )?;
 
-            assert!(c.to_cpu()?.close_enough(&expected_c, Approximation::Approximate).is_ok());
+            assert!(c.synchronize()?.close_enough(&expected_c, Approximation::Approximate).is_ok());
             Ok(())
         })
     }

@@ -4,7 +4,7 @@ use criterion::*;
 use ggml::Context;
 use kernels::matmul::GgmlGemm;
 use tract_core::internal::*;
-use tract_gpu::tensor::IntoGpu;
+use tract_gpu::tensor::IntoDevice;
 use tract_linalg::mmm::AsInputValue;
 use tract_metal::kernels::matmul;
 use tract_metal::*;
@@ -105,7 +105,7 @@ pub fn metal_gemm<K: GemmKernel>(
     dt: DatumType,
     is_ggml: bool,
 ) {
-    let context = MetalContext::new();
+    let context = MetalStream::new();
     context.load_library(LibraryName::MfaLib).unwrap();
 
     let a = Tensor::zero_dt(dt, &[batch, m, k]).unwrap();
@@ -115,8 +115,8 @@ pub fn metal_gemm<K: GemmKernel>(
         Tensor::zero_dt(dt, &[batch, k, n]).unwrap()
     };
 
-    let metal_a = a.into_gpu().unwrap();
-    let metal_b = b.into_gpu().unwrap();
+    let metal_a = a.into_device().unwrap();
+    let metal_b = b.into_device().unwrap();
     // Warmup
     let _ = GemmImpl::<MfaGemm>::default().eval(&context, &metal_a, &metal_b).unwrap();
 
@@ -128,12 +128,12 @@ pub fn metal_gemm<K: GemmKernel>(
 }
 
 pub fn metal_tile_8x8(crit: &mut BenchmarkGroup<WallTime>, dim: usize, dt: DatumType) {
-    let context = MetalContext::new();
+    let context = MetalStream::new();
     crit.bench_function(&format!("tract_metal_mmm_tile_8x8_{:?}", dt), |be| {
         let a = Tensor::zero_dt(dt, &[dim, dim]).unwrap();
         let b = Tensor::zero_dt(dt, &[dim, dim]).unwrap();
-        let metal_a = a.into_gpu().unwrap();
-        let metal_b = b.into_gpu().unwrap();
+        let metal_a = a.into_device().unwrap();
+        let metal_b = b.into_device().unwrap();
 
         be.iter(|| {
             let _ = matmul::mmm_tile_8x8(&context, &metal_a, &metal_b).unwrap();

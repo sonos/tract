@@ -35,8 +35,8 @@ pub use slice::MetalSlice;
 pub use softmax::MetalSoftmax;
 
 use crate::autorelease_pool_init;
-use crate::context::MetalDevice;
-use crate::MetalContext;
+use crate::context::MetalContext;
+use crate::MetalStream;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::OpStateFreeze;
@@ -45,7 +45,7 @@ use tract_gpu::tensor::DeviceTensor;
 pub trait MetalEvalOp: EvalOp + Op + Clone {
     fn metal_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
@@ -77,9 +77,9 @@ impl<O: MetalEvalOp> OpState for MetalOpState<O> {
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        MetalDevice::register()?;
+        MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_CONTEXT.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|context| {
             if let Some(profiler) = context.profiler() {
                 profiler.borrow_mut().add_node_entry(self.node_id);
             };
@@ -94,7 +94,7 @@ pub fn make_tensor_for_node(
     dt: DatumType,
     shape: &[usize],
 ) -> TractResult<DeviceTensor> {
-    tract_gpu::session_handler::get_metal_mem_pool(session)
+    tract_gpu::session_handler::get_device_mem_pool(session)
         .map(|mem| mem.tensor_for_node(node_id, dt, shape))
         .unwrap_or_else(|| unsafe { DeviceTensor::uninitialized_dt(dt, shape) })
 }

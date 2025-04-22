@@ -1,13 +1,13 @@
 use crate::encoder::EncoderExt;
 use crate::func_constants::{ConstantValues, Value};
-use crate::{LibraryName, MetalContext};
+use crate::{LibraryName, MetalStream};
 use anyhow::{ensure, Result};
 use metal::{MTLSize, NSUInteger};
 use tract_core::internal::DatumType;
 use tract_gpu::tensor::DeviceTensor;
 
 pub fn mmm_tile_8x8(
-    context: &MetalContext,
+    context: &MetalStream,
     lhs: &DeviceTensor,
     rhs: &DeviceTensor,
 ) -> Result<DeviceTensor> {
@@ -38,7 +38,7 @@ pub fn mmm_tile_8x8(
 
 #[allow(clippy::too_many_arguments)]
 pub fn metal_mmm_tile_8x8(
-    context: &MetalContext,
+    context: &MetalStream,
     dim: usize,
     lhs: &DeviceTensor,
     rhs: &DeviceTensor,
@@ -70,20 +70,20 @@ pub fn metal_mmm_tile_8x8(
 
 #[cfg(test)]
 mod tests {
-    use crate::context::MetalDevice;
+    use crate::context::MetalContext;
     use crate::{autorelease_pool_init, get_metal_device};
 
     use super::*;
     use tract_core::internal::Tensor;
-    use tract_gpu::tensor::IntoGpu;
+    use tract_gpu::tensor::IntoDevice;
 
     #[test]
     fn test_mmm_tile_8x8() -> Result<()> {
-        MetalDevice::register()?;
+        MetalContext::register()?;
         let _ = autorelease_pool_init();
 
         let metal_device = get_metal_device()?;
-        crate::METAL_CONTEXT.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|context| {
             let n = 512;
 
             let constants =
@@ -101,9 +101,9 @@ mod tests {
             metal_device.device().sample_timestamps(&mut cpu_start, &mut gpu_start);
 
             let a = Tensor::from_shape(&[n, n], &(0..n * n).map(|_f| 1_f32).collect::<Vec<_>>())?
-                .into_gpu()?;
+                .into_device()?;
             let b = Tensor::from_shape(&[n, n], &(0..n * n).map(|_f| 1_f32).collect::<Vec<_>>())?
-                .into_gpu()?;
+                .into_device()?;
             let start = std::time::Instant::now();
             let num_iter = 100;
             for _ in 0..num_iter {

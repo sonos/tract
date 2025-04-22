@@ -1,6 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::utils;
-use crate::{LibraryName, MetalContext};
+use crate::{LibraryName, MetalStream};
 use anyhow::{ensure, Result};
 use metal::MTLSize;
 use std::fmt;
@@ -35,7 +35,7 @@ impl RotateHalf {
         Ok(format!("array_ops::rotate_half_nd2_{tname}"))
     }
 
-    pub fn eval(&self, context: &MetalContext, input: &DeviceTensor) -> Result<DeviceTensor> {
+    pub fn eval(&self, context: &MetalStream, input: &DeviceTensor) -> Result<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(context, input, &output)?;
         context.wait_until_completed()?;
@@ -44,7 +44,7 @@ impl RotateHalf {
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         input: &DeviceTensor,
         output: &DeviceTensor,
     ) -> Result<()> {
@@ -83,12 +83,12 @@ impl RotateHalf {
 #[cfg(test)]
 mod tests {
     use crate::autorelease_pool_init;
-    use crate::context::MetalDevice;
+    use crate::context::MetalContext;
 
     use super::*;
     use num_traits::AsPrimitive;
     use tract_core::internal::Tensor;
-    use tract_gpu::tensor::IntoGpu;
+    use tract_gpu::tensor::IntoDevice;
     use tract_transformers::ops::apply_rope;
 
     fn run_test_case<F>(shape: &[usize]) -> Result<()>
@@ -96,28 +96,28 @@ mod tests {
         F: Copy + 'static + Datum,
         usize: AsPrimitive<F>,
     {
-        MetalDevice::register()?;
+        MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_CONTEXT.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|context| {
             let len = shape.iter().product::<usize>();
 
             let a =
                 Tensor::from_shape(shape, &(0..len).map(|f| -> F { f.as_() }).collect::<Vec<_>>())?;
 
-            let metal_a = a.clone().into_gpu()?;
+            let metal_a = a.clone().into_device()?;
 
             let cpu_output =
                 apply_rope::RotateHalf.eval(tvec![a.clone().into()])?[0].clone().into_tensor();
             let metal_output = RotateHalf.eval(context, &metal_a)?;
 
             cpu_output
-                .close_enough(&metal_output.to_cpu()?.into_tensor(), Approximation::Exact)
+                .close_enough(&metal_output.synchronize()?.into_tensor(), Approximation::Exact)
                 .with_context(|| {
                     anyhow!(
                         "Input: {:?} Cpu: {:?}, Metal: {:?}",
                         a.dump(true),
                         cpu_output.dump(true),
-                        metal_output.to_cpu().and_then(|it| it.dump(true))
+                        metal_output.synchronize().and_then(|it| it.dump(true))
                     )
                 })?;
             Ok(())

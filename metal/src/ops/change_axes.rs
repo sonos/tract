@@ -1,6 +1,6 @@
 use crate::kernels::array::{Memcpy, PermuteAxes};
 use crate::ops::MetalEvalOp;
-use crate::MetalContext;
+use crate::MetalStream;
 use std::fmt::Debug;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -84,13 +84,13 @@ crate::impl_eval_op_for_metal_op!(MetalAxisOp);
 impl MetalEvalOp for MetalAxisOp {
     fn metal_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs).into_tensor();
-        let input = opaque.to_gpu_tensor()?;
+        let input = opaque.to_device_tensor()?;
         let shape = input.shape();
 
         // Try simplifying op once symbols are resolved
@@ -140,7 +140,7 @@ impl TypedOp for MetalAxisOp {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        tract_gpu::utils::gpu_facts_from_gpu(inputs, |facts| self.0.output_facts(facts))
+        tract_gpu::utils::facts_to_device_facts(inputs, |facts| self.0.output_facts(facts))
             .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
     }
 
@@ -149,8 +149,8 @@ impl TypedOp for MetalAxisOp {
         inputs: &[&TypedFact],
         outputs: &[&TypedFact],
     ) -> TractResult<AxesMapping> {
-        let ref_inputs = tract_gpu::utils::gpu_facts(inputs, |facts| Ok(facts.to_vec()))?;
-        let ref_outputs = tract_gpu::utils::gpu_facts(outputs, |facts| Ok(facts.to_vec()))?;
+        let ref_inputs = tract_gpu::utils::get_device_facts(inputs, |facts| Ok(facts.to_vec()))?;
+        let ref_outputs = tract_gpu::utils::get_device_facts(outputs, |facts| Ok(facts.to_vec()))?;
         self.0.axes_mapping(&ref_inputs, &ref_outputs)
     }
 

@@ -6,6 +6,7 @@ pub use owned::*;
 
 use anyhow::Result;
 use num_traits::AsPrimitive;
+use std::ffi::c_void;
 use std::fmt::Display;
 use tract_core::internal::*;
 use tract_data::itertools::Itertools;
@@ -56,16 +57,16 @@ impl DeviceTensor {
 
     /// Create an uninitialized DeviceTensor
     pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> Result<DeviceTensor> {
-        Tensor::uninitialized_dt(dt, shape)?.into_gpu()
+        Tensor::uninitialized_dt(dt, shape)?.into_device()
     }
 
     pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> Result<DeviceTensor> {
         Self::uninitialized_dt(T::datum_type(), shape)
     }
 
-    // Create a gpu tensor with a given shape and a slice of elements. The data is copied and aligned to size of T.
+    // Create a device tensor with a given shape and a slice of elements. The data is copied and aligned to size of T.
     pub fn from_shape<T: Copy + Datum>(shape: &[usize], data: &[T]) -> Result<DeviceTensor> {
-        Tensor::from_shape(shape, data)?.into_gpu()
+        Tensor::from_shape(shape, data)?.into_device()
     }
 
     pub fn is_supported_dt(dt: DatumType) -> bool {
@@ -134,7 +135,7 @@ impl DeviceTensor {
         }
     }
 
-    pub fn device_buffer_address(&self) -> usize {
+    pub fn device_buffer_address(&self) -> *const c_void {
         match self {
             Self::Owned(t) => t.device_buffer_address(),
             Self::ArenaView(t) => t.device_buffer_address(),
@@ -170,14 +171,14 @@ impl DeviceTensor {
         }
     }
 
-    /// Convert GPU tensor to Opaque Tensor.
+    /// Convert device tensor to Opaque Tensor.
     pub fn into_opaque_tensor(self) -> Tensor {
         tensor0::<Opaque>(self.into())
     }
 
     /// Synchronize the GPU Tensor by completing all current
     /// commands on GPU and returns the inner tensor.
-    pub fn to_cpu(&self) -> Result<Arc<Tensor>> {
+    pub fn synchronize(&self) -> Result<Arc<Tensor>> {
         get_device()?.synchronize()?;
 
         Ok(match self {
@@ -195,11 +196,11 @@ impl Display for DeviceTensor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Owned(o) => match &o.inner {
-                MValue::Natural(t) => {
+                GValue::Natural(t) => {
                     let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
                     write!(f, "Owned: {{ {content} }}")
                 }
-                MValue::Reshaped { t, shape, .. } => {
+                GValue::Reshaped { t, shape, .. } => {
                     let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
                     write!(f, "Owned,Reshaped: {:?} - {{ {content} }}", shape)
                 }
@@ -216,18 +217,18 @@ impl Display for DeviceTensor {
     }
 }
 
-pub trait IntoGpu<T> {
-    fn into_gpu(self) -> Result<T>;
+pub trait IntoDevice<T> {
+    fn into_device(self) -> Result<T>;
 }
 
-impl IntoGpu<DeviceTensor> for Tensor {
-    fn into_gpu(self) -> Result<DeviceTensor> {
+impl IntoDevice<DeviceTensor> for Tensor {
+    fn into_device(self) -> Result<DeviceTensor> {
         Ok(DeviceTensor::Owned(OwnedDeviceTensor::from_tensor(self)?))
     }
 }
 
-impl IntoGpu<DeviceTensor> for Arc<Tensor> {
-    fn into_gpu(self) -> Result<DeviceTensor> {
+impl IntoDevice<DeviceTensor> for Arc<Tensor> {
+    fn into_device(self) -> Result<DeviceTensor> {
         Ok(DeviceTensor::Owned(OwnedDeviceTensor::from_tensor(self)?))
     }
 }
@@ -252,38 +253,38 @@ impl OpaquePayload for DeviceTensor {
     }
 
     fn clarify_to_tensor(&self) -> TractResult<Option<Arc<Tensor>>> {
-        Ok(Some(self.to_cpu()?))
+        Ok(Some(self.synchronize()?))
     }
 }
 
 pub trait DeviceTensorExt {
-    fn to_gpu_tensor(&self) -> Result<&DeviceTensor>;
-    fn as_gpu_tensor(&self) -> Option<&DeviceTensor>;
-    fn to_gpu_tensor_mut(&mut self) -> Result<&mut DeviceTensor>;
-    fn as_gpu_tensor_mut(&mut self) -> Option<&mut DeviceTensor>;
+    fn to_device_tensor(&self) -> Result<&DeviceTensor>;
+    fn as_device_tensor(&self) -> Option<&DeviceTensor>;
+    fn to_device_tensor_mut(&mut self) -> Result<&mut DeviceTensor>;
+    fn as_device_tensor_mut(&mut self) -> Option<&mut DeviceTensor>;
 }
 
 impl DeviceTensorExt for Tensor {
-    fn to_gpu_tensor_mut(&mut self) -> Result<&mut DeviceTensor> {
+    fn to_device_tensor_mut(&mut self) -> Result<&mut DeviceTensor> {
         let opaque = self.to_scalar_mut::<Opaque>()?;
         opaque.downcast_mut::<DeviceTensor>().ok_or_else(|| {
-            anyhow::anyhow!("Could convert opaque tensor to mutable reference on a gpu tensor")
+            anyhow::anyhow!("Could convert opaque tensor to mutable reference on a device tensor")
         })
     }
 
-    fn as_gpu_tensor_mut(&mut self) -> Option<&mut DeviceTensor> {
+    fn as_device_tensor_mut(&mut self) -> Option<&mut DeviceTensor> {
         let opaque = self.to_scalar_mut::<Opaque>().ok()?;
         opaque.downcast_mut::<DeviceTensor>()
     }
 
-    fn to_gpu_tensor(&self) -> Result<&DeviceTensor> {
+    fn to_device_tensor(&self) -> Result<&DeviceTensor> {
         let opaque = self.to_scalar::<Opaque>()?;
         opaque.downcast_ref::<DeviceTensor>().ok_or_else(|| {
-            anyhow::anyhow!("Could convert opaque tensor to reference on a gpu tensor")
+            anyhow::anyhow!("Could convert opaque tensor to reference on a device tensor")
         })
     }
 
-    fn as_gpu_tensor(&self) -> Option<&DeviceTensor> {
+    fn as_device_tensor(&self) -> Option<&DeviceTensor> {
         let opaque = self.to_scalar::<Opaque>().ok()?;
         opaque.downcast_ref::<DeviceTensor>()
     }
@@ -294,9 +295,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_gpu_tensor() -> Result<()> {
+    fn test_device_tensor() -> Result<()> {
         let a = DeviceTensor::from_shape(&[1], &[0f32])?;
-        assert_eq!(a.to_cpu()?.as_slice::<f32>()?, &[0.0]);
+        assert_eq!(a.synchronize()?.as_slice::<f32>()?, &[0.0]);
         Ok(())
     }
 }

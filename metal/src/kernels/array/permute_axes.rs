@@ -1,6 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
-use crate::{LibraryName, MetalContext};
+use crate::{LibraryName, MetalStream};
 use anyhow::Result;
 use std::fmt;
 use tract_core::internal::*;
@@ -52,7 +52,7 @@ impl PermuteAxes {
 
     pub fn eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         input: &DeviceTensor,
         axes: &[usize],
     ) -> Result<DeviceTensor> {
@@ -69,7 +69,7 @@ impl PermuteAxes {
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         input: &DeviceTensor,
         axes: &[usize],
         output: &DeviceTensor,
@@ -130,27 +130,27 @@ impl PermuteAxes {
 #[cfg(test)]
 mod tests {
     use crate::autorelease_pool_init;
-    use crate::context::MetalDevice;
+    use crate::context::MetalContext;
 
     use super::*;
 
     use num_traits::Zero;
 
     use tract_core::internal::Tensor;
-    use tract_gpu::tensor::IntoGpu;
+    use tract_gpu::tensor::IntoDevice;
 
     fn run_test_case<F: Datum + Zero + Copy>(shape: &[usize], axes: &[usize]) -> Result<()> {
-        MetalDevice::register()?;
+        MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_CONTEXT.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|context| {
             let a_len = shape.iter().product::<usize>();
             let a_data = (0..a_len).map(|f| f as f32).collect::<Vec<_>>();
 
-            let a = Tensor::from_shape(shape, &a_data)?.into_gpu()?;
+            let a = Tensor::from_shape(shape, &a_data)?.into_device()?;
 
             let output = PermuteAxes.eval(context, &a, axes)?;
-            let ref_output = a.to_cpu()?.into_tensor().permute_axes(axes)?;
-            assert_eq!(ref_output, output.to_cpu()?.into_tensor());
+            let ref_output = a.synchronize()?.into_tensor().permute_axes(axes)?;
+            assert_eq!(ref_output, output.synchronize()?.into_tensor());
             Ok(())
         })
     }

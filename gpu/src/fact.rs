@@ -3,26 +3,26 @@ use tract_core::internal::*;
 
 /// Origin of the GPU tensor
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum GpuTensorOrigin {
-    /// GPU tensor outputted by a GPU operator
+pub enum DeviceTensorOrigin {
+    /// Tensor outputted by a device operator
     /// Can be either: Host or ArenaView
-    /// Note: Tensors marked as FromGPU are from asynchronous operations.
+    /// Note: Tensors marked as Device are from asynchronous operations.
     Device,
-    /// GPU tensor built from a CPU tensor (CPU op output or Const)
-    /// Can be only Host GPU tensor.
-    /// Note: Tensors marked as FromCPU are from synchronous operations.
+    /// Tensor built from a CPU tensor (CPU op output or Const)
+    /// Can be only Host tensor.
+    /// Note: Tensors marked as Host are from synchronous operations.
     Host,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub struct GpuFact {
-    pub origin: GpuTensorOrigin,
+pub struct DeviceFact {
+    pub origin: DeviceTensorOrigin,
     pub fact: TypedFact,
 }
 
-impl GpuFact {
-    pub fn new(origin: GpuTensorOrigin, fact: TypedFact) -> TractResult<Self> {
-        ensure!(fact.as_gpu_fact().is_none());
+impl DeviceFact {
+    pub fn new(origin: DeviceTensorOrigin, fact: TypedFact) -> TractResult<Self> {
+        ensure!(fact.as_device_fact().is_none());
         let mut fact_wo_cst = fact.clone();
         if fact.opaque_fact.is_some() {
             fact_wo_cst.konst = None;
@@ -32,15 +32,15 @@ impl GpuFact {
     }
 
     pub fn from_cpu(fact: TypedFact) -> TractResult<Self> {
-        Self::new(GpuTensorOrigin::Host, fact)
+        Self::new(DeviceTensorOrigin::Host, fact)
     }
 
-    pub fn is_from_gpu(&self) -> bool {
-        matches!(self.origin, GpuTensorOrigin::Device)
+    pub fn is_from_device(&self) -> bool {
+        matches!(self.origin, DeviceTensorOrigin::Device)
     }
 
-    pub fn is_from_cpu(&self) -> bool {
-        matches!(self.origin, GpuTensorOrigin::Host)
+    pub fn is_from_host(&self) -> bool {
+        matches!(self.origin, DeviceTensorOrigin::Host)
     }
 
     pub fn into_typed_fact(self) -> TypedFact {
@@ -52,7 +52,7 @@ impl GpuFact {
     }
 }
 
-impl OpaqueFact for GpuFact {
+impl OpaqueFact for DeviceFact {
     fn clarify_dt_shape(&self) -> Option<(DatumType, &[usize])> {
         self.fact.shape.as_concrete().map(|s| (self.fact.datum_type, s))
     }
@@ -68,44 +68,44 @@ impl OpaqueFact for GpuFact {
     }
 }
 
-impl fmt::Debug for GpuFact {
+impl fmt::Debug for DeviceFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self.origin {
-            GpuTensorOrigin::Host => write!(fmt, "Host({:?})", self.fact),
-            GpuTensorOrigin::Device => write!(fmt, "Device({:?})", self.fact),
+            DeviceTensorOrigin::Host => write!(fmt, "Host({:?})", self.fact),
+            DeviceTensorOrigin::Device => write!(fmt, "Device({:?})", self.fact),
         }
     }
 }
 
-pub trait GpuTypedFactExt {
-    fn to_gpu_fact(&self) -> TractResult<&GpuFact>;
-    fn as_gpu_fact(&self) -> Option<&GpuFact>;
+pub trait DeviceTypedFactExt {
+    fn to_device_fact(&self) -> TractResult<&DeviceFact>;
+    fn as_device_fact(&self) -> Option<&DeviceFact>;
 }
 
-impl GpuTypedFactExt for TypedFact {
-    fn to_gpu_fact(&self) -> TractResult<&GpuFact> {
+impl DeviceTypedFactExt for TypedFact {
+    fn to_device_fact(&self) -> TractResult<&DeviceFact> {
         ensure!(
             self.datum_type == DatumType::Opaque,
-            "Cannot retrieve GpuFact from a non Opaque Tensor"
+            "Cannot retrieve DeviceFact from a non Opaque Tensor"
         );
         self.opaque_fact
             .as_ref()
-            .and_then(|m| m.downcast_ref::<GpuFact>())
-            .ok_or_else(|| anyhow!("GpuFact not found in Opaque Tensor"))
+            .and_then(|m| m.downcast_ref::<DeviceFact>())
+            .ok_or_else(|| anyhow!("DeviceFact not found in Opaque Tensor"))
     }
-    fn as_gpu_fact(&self) -> Option<&GpuFact> {
-        self.opaque_fact.as_ref().and_then(|m| m.downcast_ref::<GpuFact>())
+    fn as_device_fact(&self) -> Option<&DeviceFact> {
+        self.opaque_fact.as_ref().and_then(|m| m.downcast_ref::<DeviceFact>())
     }
 }
 
-impl std::ops::Deref for GpuFact {
+impl std::ops::Deref for DeviceFact {
     type Target = TypedFact;
     fn deref(&self) -> &Self::Target {
         &self.fact
     }
 }
 
-impl std::convert::AsRef<TypedFact> for GpuFact {
+impl std::convert::AsRef<TypedFact> for DeviceFact {
     fn as_ref(&self) -> &TypedFact {
         &self.fact
     }

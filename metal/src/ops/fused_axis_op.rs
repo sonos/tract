@@ -1,5 +1,5 @@
 use crate::ops::{MetalAxisOp, MetalEvalOp, MetalOpState};
-use crate::MetalContext;
+use crate::MetalStream;
 use derive_new::new;
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
@@ -45,7 +45,7 @@ impl<O: MetalEvalOp + TypedOp> Op for MetalFusedAxisOp<O> {
 impl<O: MetalEvalOp + TypedOp> MetalEvalOp for MetalFusedAxisOp<O> {
     fn metal_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
@@ -58,7 +58,7 @@ impl<O: MetalEvalOp + TypedOp> MetalEvalOp for MetalFusedAxisOp<O> {
                 if axis_ops.is_empty() {
                     return Ok(input);
                 };
-                let m_input = input.to_gpu_tensor()?;
+                let m_input = input.to_device_tensor()?;
                 let reshaped_input = axis_ops.iter().try_fold(
                     m_input.clone(),
                     |t, axis_op| -> TractResult<DeviceTensor> {

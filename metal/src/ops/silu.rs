@@ -1,6 +1,6 @@
 use crate::kernels::nn::Silu;
 use crate::ops::MetalEvalOp;
-use crate::MetalContext;
+use crate::MetalStream;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -21,13 +21,13 @@ crate::impl_eval_op_for_metal_op!(MetalSilu);
 impl MetalEvalOp for MetalSilu {
     fn metal_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs);
-        let input = opaque.to_gpu_tensor()?;
+        let input = opaque.to_device_tensor()?;
         let output =
             crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
         Silu.dispatch_eval(context, input, &output)?;
@@ -37,7 +37,7 @@ impl MetalEvalOp for MetalSilu {
 
 impl TypedOp for MetalSilu {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        tract_gpu::utils::gpu_facts_from_gpu(inputs, |facts| {
+        tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
             let dt = facts[0].datum_type;
             let fact = dt.fact(facts[0].shape.clone());
             Ok(tvec!(fact))

@@ -1,6 +1,6 @@
 use crate::kernels::array::Concat;
 use crate::ops::MetalEvalOp;
-use crate::MetalContext;
+use crate::MetalStream;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::array::TypedConcat;
@@ -48,13 +48,13 @@ crate::impl_eval_op_for_metal_op!(MetalConcat);
 impl MetalEvalOp for MetalConcat {
     fn metal_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         opaque_inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let inputs =
-            opaque_inputs.iter().map(|it| it.to_gpu_tensor()).collect::<TractResult<TVec<_>>>()?;
+            opaque_inputs.iter().map(|it| it.to_device_tensor()).collect::<TractResult<TVec<_>>>()?;
 
         let mut output_shape = inputs[0].shape().to_vec();
         output_shape[self.axis()] = inputs.iter().map(|it| it.shape()[self.axis()]).sum();
@@ -74,7 +74,7 @@ impl TypedOp for MetalConcat {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        tract_gpu::utils::gpu_facts_from_gpu(inputs, |facts| {
+        tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
             let mut fact = facts[0].without_value();
             for input in facts {
                 if input.rank() != fact.rank()

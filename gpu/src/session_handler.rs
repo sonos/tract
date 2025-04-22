@@ -41,6 +41,6 @@ impl SessionStateHandler for DeviceSessionHandler {
     }
 }
 
-pub fn get_metal_mem_pool(session: &SessionState) -> Option<&DeviceMemoryPool> {
+pub fn get_device_mem_pool(session: &SessionState) -> Option<&DeviceMemoryPool> {
     session.scratch_extensions.get::<DeviceMemoryPool>()
 }

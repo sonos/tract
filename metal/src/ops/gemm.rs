@@ -1,7 +1,7 @@
 use crate::kernels::matmul::{GemmImpl, GemmKernel};
 use crate::ops::MetalEvalOp;
 
-use crate::MetalContext;
+use crate::MetalStream;
 use anyhow::{bail, ensure};
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -74,17 +74,17 @@ impl<K: GemmKernel> MetalGemm<K> {
 impl<K: GemmKernel + 'static> MetalEvalOp for MetalGemm<K> {
     fn metal_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (a_opaque, b_opaque) = args_2!(inputs);
         let a = a_opaque
-            .to_gpu_tensor()
+            .to_device_tensor()
             .with_context(|| anyhow!("A tensor is not a metal tensor: {:?}", a_opaque))?;
         let b = b_opaque
-            .to_gpu_tensor()
+            .to_device_tensor()
             .with_context(|| anyhow!("B tensor is not a metal tensor {:?}", b_opaque))?;
 
         let b_shape = as_q40_tensor(b.view().tensor)
@@ -116,14 +116,14 @@ impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
 
 impl<K: GemmKernel + 'static> TypedOp for MetalGemm<K> {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        tract_gpu::utils::gpu_facts_from_gpu(inputs, |input_facts| {
+        tract_gpu::utils::facts_to_device_facts(inputs, |input_facts| {
             self.resolve_output_facts(input_facts)
         })
         .with_context(|| anyhow::anyhow!("Error while computing output facts for {}", self.name()))
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        tract_gpu::utils::gpu_facts(inputs, |input_facts| {
+        tract_gpu::utils::get_device_facts(inputs, |input_facts| {
             let fma = self
                 .kernel
                 .output_shape(&input_facts[0].shape, &input_facts[1].shape)

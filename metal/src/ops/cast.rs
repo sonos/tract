@@ -1,6 +1,6 @@
 use crate::kernels;
 use crate::ops::MetalEvalOp;
-use crate::MetalContext;
+use crate::MetalStream;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 
@@ -33,13 +33,13 @@ crate::impl_eval_op_for_metal_op!(MetalCast);
 impl MetalEvalOp for MetalCast {
     fn metal_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs);
-        let input = opaque.to_gpu_tensor()?;
+        let input = opaque.to_device_tensor()?;
         if input.datum_type() == self.to {
             Ok(tvec!(opaque))
         } else {
@@ -53,7 +53,7 @@ impl MetalEvalOp for MetalCast {
 
 impl TypedOp for MetalCast {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        tract_gpu::utils::gpu_facts_from_gpu(inputs, |facts| {
+        tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
             Ok(tvec!(self.to.fact(facts[0].shape.clone())))
         })
         .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))

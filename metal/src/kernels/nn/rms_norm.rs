@@ -1,6 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::utils;
-use crate::{LibraryName, MetalContext};
+use crate::{LibraryName, MetalStream};
 use anyhow::Result;
 use metal::MTLSize;
 use tract_core::internal::*;
@@ -26,7 +26,7 @@ impl RmsNorm {
 
     pub fn eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         input: &DeviceTensor,
         axis: usize,
         eps: &Tensor,
@@ -39,7 +39,7 @@ impl RmsNorm {
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalContext,
+        context: &MetalStream,
         input: &DeviceTensor,
         axis: usize,
         eps: &Tensor,
@@ -134,8 +134,8 @@ impl RmsNorm {
 #[cfg(test)]
 mod tests {
     use crate::autorelease_pool_init;
-    use crate::context::MetalDevice;
-    use tract_gpu::tensor::IntoGpu;
+    use crate::context::MetalContext;
+    use tract_gpu::tensor::IntoDevice;
 
     use super::*;
     use derive_new::new;
@@ -152,9 +152,9 @@ mod tests {
         usize: AsPrimitive<f32>,
         f32: AsPrimitive<F>,
     {
-        MetalDevice::register()?;
+        MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_CONTEXT.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|context| {
             let len = shape.iter().product::<usize>();
 
             let a = Tensor::from_shape(
@@ -166,24 +166,24 @@ mod tests {
                     })
                     .collect::<Vec<_>>(),
             )?
-            .into_gpu()?;
+            .into_device()?;
 
             let eps = Arc::new(tensor0(0.0001f32.as_()));
             let cpu_rms = rms_norm::RmsNorm { axis, eps: Arc::clone(&eps) };
 
             let cpu_output =
-                cpu_rms.eval(tvec![a.to_cpu()?.into_tvalue()])?[0].clone().into_tensor();
+                cpu_rms.eval(tvec![a.synchronize()?.into_tvalue()])?[0].clone().into_tensor();
             let metal_output = RmsNorm.eval(context, &a, axis, &eps)?;
 
             cpu_output
-                .close_enough(&metal_output.to_cpu()?.into_tensor(), Approximation::Approximate)
+                .close_enough(&metal_output.synchronize()?.into_tensor(), Approximation::Approximate)
                 .with_context(|| {
                     anyhow!(
                         "Input: {:?}, scale: {:?} Cpu: {:?}, Metal: {:?}",
-                        a.to_cpu().and_then(|it| it.dump(true)),
+                        a.synchronize().and_then(|it| it.dump(true)),
                         scale,
                         cpu_output.dump(true),
-                        metal_output.to_cpu().and_then(|it| it.dump(true))
+                        metal_output.synchronize().and_then(|it| it.dump(true))
                     )
                 })?;
             Ok(())
@@ -283,12 +283,12 @@ mod tests {
         }
 
         pub fn run(&self) -> Result<Tensor> {
-            MetalDevice::register()?;
+            MetalContext::register()?;
             let _ = autorelease_pool_init();
-            crate::METAL_CONTEXT.with_borrow(|context| {
-                let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_gpu()?;
+            crate::METAL_STREAM.with_borrow(|context| {
+                let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let metal_output = RmsNorm.eval(context, &a, self.axis, &self.eps)?;
-                Ok(metal_output.to_cpu()?.into_tensor())
+                Ok(metal_output.synchronize()?.into_tensor())
             })
         }
     }
