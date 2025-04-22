@@ -1,6 +1,6 @@
 use crate::command_buffer::{MetalProfiler, TCommandBuffer};
 use crate::func_constants::ConstantValues;
-use crate::get_metal_device;
+use crate::get_metal_context;
 use crate::kernels::{LibraryContent, LibraryName};
 
 use metal::NSUInteger;
@@ -168,7 +168,7 @@ impl MetalContext {
     }
 
     pub fn register() -> Result<()> {
-        tract_gpu::device::set_device(Box::new(metal_device()))
+        tract_gpu::device::set_context(Box::new(metal_device()))
     }
 }
 
@@ -201,7 +201,7 @@ impl MetalStream {
     }
 
     pub fn load_library(&self, name: LibraryName) -> Result<Library> {
-        let metal_device = get_metal_device()?;
+        let metal_device = get_metal_context()?;
         metal_device.load_library(name)
     }
 
@@ -210,7 +210,7 @@ impl MetalStream {
         library_name: LibraryName,
         func_name: &str,
     ) -> Result<ComputePipelineState> {
-        let metal_device = get_metal_device()?;
+        let metal_device = get_metal_context()?;
         metal_device.load_pipeline(library_name, func_name)
     }
 
@@ -220,7 +220,7 @@ impl MetalStream {
         func_name: &str,
         constants: Option<ConstantValues>,
     ) -> Result<ComputePipelineState> {
-        let metal_device = get_metal_device()?;
+        let metal_device = get_metal_context()?;
         metal_device.load_pipeline_with_constants(library_name, func_name, constants)
     }
 

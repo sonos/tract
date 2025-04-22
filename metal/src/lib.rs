@@ -23,9 +23,9 @@ use std::os::raw::c_void;
 
 use context::MetalContext;
 
-pub(crate) fn get_metal_device() -> Result<Box<MetalContext>> {
-    let gpu_device = tract_gpu::device::get_device()?;
-    gpu_device.downcast::<MetalContext>().map_err(|_| anyhow!("GPU Device is not a Metal Device"))
+pub(crate) fn get_metal_context() -> Result<Box<MetalContext>> {
+    let gpu_context = tract_gpu::device::get_context()?;
+    gpu_context.downcast::<MetalContext>().map_err(|_| anyhow!("GPU Device is not a Metal Device"))
 }
 
 // Copied code from objc crate to avoid closures

@@ -11,7 +11,7 @@ use std::fmt::Display;
 use tract_core::internal::*;
 use tract_data::itertools::Itertools;
 
-use crate::device::{get_device, DeviceBuffer};
+use crate::device::{get_context, DeviceBuffer};
 
 /// This struct represents a GPU tensor that can be either a owned tensor
 /// or an arena view.
@@ -179,7 +179,7 @@ impl DeviceTensor {
     /// Synchronize the GPU Tensor by completing all current
     /// commands on GPU and returns the inner tensor.
     pub fn synchronize(&self) -> Result<Arc<Tensor>> {
-        get_device()?.synchronize()?;
+        get_context()?.synchronize()?;
 
         Ok(match self {
             Self::Owned(o) => o
