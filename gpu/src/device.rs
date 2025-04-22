@@ -65,13 +65,13 @@ impl Clone for Box<dyn DeviceBuffer> {
 
 pub static DEVICE_CONTEXT: RwLock<Option<Box<dyn DeviceContext>>> = RwLock::new(None);
 
-pub fn set_device(curr_device: Box<dyn DeviceContext>) -> Result<()> {
-    let mut device = DEVICE_CONTEXT.write().unwrap();
-    *device = Some(curr_device);
+pub fn set_context(curr_context: Box<dyn DeviceContext>) -> Result<()> {
+    let mut context = DEVICE_CONTEXT.write().unwrap();
+    *context = Some(curr_context);
     Ok(())
 }
 
-pub fn get_device() -> Result<Box<dyn DeviceContext>> {
-    let guard = DEVICE_CONTEXT.read().map_err(|_| anyhow!("Cannot read GPU Device"))?;
-    guard.as_ref().cloned().ok_or_else(|| anyhow!("GPU Device not initialized"))
+pub fn get_context() -> Result<Box<dyn DeviceContext>> {
+    let guard = DEVICE_CONTEXT.read().map_err(|_| anyhow!("Cannot read GPU Context"))?;
+    guard.as_ref().cloned().ok_or_else(|| anyhow!("GPU Context not initialized"))
 }

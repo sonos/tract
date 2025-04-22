@@ -71,7 +71,7 @@ pub fn metal_mmm_tile_8x8(
 #[cfg(test)]
 mod tests {
     use crate::context::MetalContext;
-    use crate::{autorelease_pool_init, get_metal_device};
+    use crate::{autorelease_pool_init, get_metal_context};
 
     use super::*;
     use tract_core::internal::Tensor;
@@ -82,7 +82,7 @@ mod tests {
         MetalContext::register()?;
         let _ = autorelease_pool_init();
 
-        let metal_device = get_metal_device()?;
+        let metal_device = get_metal_context()?;
         crate::METAL_STREAM.with_borrow(|context| {
             let n = 512;
 
