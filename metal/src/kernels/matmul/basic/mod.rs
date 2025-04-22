@@ -17,7 +17,7 @@ impl GemmKernel for BasicMatMul {
 
     fn dispatch_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         params: GemmDispatchParams,
         a_buffer: &Buffer,
         b_buffer: &Buffer,
@@ -57,11 +57,11 @@ impl GemmKernel for BasicMatMul {
             let c_offset = c_offset + b_idx * m * n * dt.size_of();
             if n == 1 && !transpose_a && !transpose_b {
                 Self::metal_mat_vec(
-                    context, dt, m, k, a_buffer, a_offset, b_buffer, b_offset, c_buffer, c_offset,
+                    stream, dt, m, k, a_buffer, a_offset, b_buffer, b_offset, c_buffer, c_offset,
                 )?;
             } else {
                 Self::metal_mat_mul(
-                    context,
+                    stream,
                     dt,
                     m,
                     k,
@@ -108,7 +108,7 @@ impl BasicMatMul {
 
     #[allow(clippy::too_many_arguments)]
     pub fn metal_mat_vec(
-        context: &MetalStream,
+        stream: &MetalStream,
         dt: DatumType,
         m: usize,
         k: usize,
@@ -120,9 +120,9 @@ impl BasicMatMul {
         output_offset: usize,
     ) -> Result<()> {
         let pipeline =
-            context.load_pipeline(LibraryName::BasicMatMul, &Self::kernel_name(dt, true)?)?;
+            stream.load_pipeline(LibraryName::BasicMatMul, &Self::kernel_name(dt, true)?)?;
 
-        let command_buffer = context.command_buffer();
+        let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
             encoder.set_buffer(0, Some(lhs_buffer), lhs_offset as _);
@@ -145,7 +145,7 @@ impl BasicMatMul {
 
     #[allow(clippy::too_many_arguments)]
     pub fn metal_mat_mul(
-        context: &MetalStream,
+        stream: &MetalStream,
         dt: DatumType,
         m: usize,
         k: usize,
@@ -160,9 +160,9 @@ impl BasicMatMul {
         output_offset: usize,
     ) -> Result<()> {
         let pipeline =
-            context.load_pipeline(LibraryName::BasicMatMul, &Self::kernel_name(dt, false)?)?;
+            stream.load_pipeline(LibraryName::BasicMatMul, &Self::kernel_name(dt, false)?)?;
 
-        let command_buffer = context.command_buffer();
+        let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
             encoder.set_buffer(0, Some(lhs_buffer), lhs_offset as _);

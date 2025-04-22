@@ -47,7 +47,7 @@ crate::impl_eval_op_for_metal_op!(MetalBinOp);
 impl MetalEvalOp for MetalBinOp {
     fn metal_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
@@ -59,7 +59,7 @@ impl MetalEvalOp for MetalBinOp {
         let out_dt = self.0.output_datum_type(a.datum_type(), b.datum_type())?;
         let output = crate::ops::make_tensor_for_node(session, node_id, out_dt, &out_shape)?;
         self.0
-            .dispatch_eval(context, a, b, &output)
+            .dispatch_eval(stream, a, b, &output)
             .with_context(|| "Error while dispatching eval for Metal Bin Op")?;
 
         ensure!(a.rank() == b.rank());

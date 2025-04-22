@@ -21,7 +21,7 @@ crate::impl_eval_op_for_metal_op!(MetalRotateHalf);
 impl MetalEvalOp for MetalRotateHalf {
     fn metal_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
@@ -30,7 +30,7 @@ impl MetalEvalOp for MetalRotateHalf {
         let input = opaque.to_device_tensor()?;
         let output =
             crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
-        RotateHalf.dispatch_eval(context, input, &output)?;
+        RotateHalf.dispatch_eval(stream, input, &output)?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }

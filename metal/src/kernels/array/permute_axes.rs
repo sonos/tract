@@ -52,7 +52,7 @@ impl PermuteAxes {
 
     pub fn eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         input: &DeviceTensor,
         axes: &[usize],
     ) -> Result<DeviceTensor> {
@@ -62,20 +62,20 @@ impl PermuteAxes {
                 &Self::output_shape(input.shape(), axes)?,
             )?
         };
-        self.dispatch_eval(context, input, axes, &output)?;
-        context.wait_until_completed()?;
+        self.dispatch_eval(stream, input, axes, &output)?;
+        stream.wait_until_completed()?;
         Ok(output)
     }
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         input: &DeviceTensor,
         axes: &[usize],
         output: &DeviceTensor,
     ) -> Result<()> {
-        context.retain_tensor(input);
-        context.retain_tensor(output);
+        stream.retain_tensor(input);
+        stream.retain_tensor(output);
 
         // Validate give axes permutation
         let mut usage_counts = vec![0; input.rank()];
@@ -108,8 +108,8 @@ impl PermuteAxes {
 
         let kernel_name = self.kernel_name(input.datum_type(), broadcast_kind)?;
 
-        let pipeline = context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
-        let command_buffer = context.command_buffer();
+        let pipeline = stream.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
+        let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
             encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
@@ -142,13 +142,13 @@ mod tests {
     fn run_test_case<F: Datum + Zero + Copy>(shape: &[usize], axes: &[usize]) -> Result<()> {
         MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|stream| {
             let a_len = shape.iter().product::<usize>();
             let a_data = (0..a_len).map(|f| f as f32).collect::<Vec<_>>();
 
             let a = Tensor::from_shape(shape, &a_data)?.into_device()?;
 
-            let output = PermuteAxes.eval(context, &a, axes)?;
+            let output = PermuteAxes.eval(stream, &a, axes)?;
             let ref_output = a.synchronize()?.into_tensor().permute_axes(axes)?;
             assert_eq!(ref_output, output.synchronize()?.into_tensor());
             Ok(())

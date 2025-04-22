@@ -33,7 +33,7 @@ crate::impl_eval_op_for_metal_op!(MetalCast);
 impl MetalEvalOp for MetalCast {
     fn metal_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
@@ -45,7 +45,7 @@ impl MetalEvalOp for MetalCast {
         } else {
             let output =
                 crate::ops::make_tensor_for_node(session, node_id, self.to, input.shape())?;
-            kernels::array::Cast.dispatch_eval(context, input, &output)?;
+            kernels::array::Cast.dispatch_eval(stream, input, &output)?;
             Ok(tvec![output.into_opaque_tensor().into_tvalue()])
         }
     }

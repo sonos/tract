@@ -45,7 +45,7 @@ impl<O: MetalEvalOp + TypedOp> Op for MetalFusedAxisOp<O> {
 impl<O: MetalEvalOp + TypedOp> MetalEvalOp for MetalFusedAxisOp<O> {
     fn metal_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
@@ -97,7 +97,7 @@ impl<O: MetalEvalOp + TypedOp> MetalEvalOp for MetalFusedAxisOp<O> {
             })
             .collect::<TractResult<TVec<_>>>()?;
         // Runner inner op
-        self.op.metal_eval(context, node_id, session, inputs)
+        self.op.metal_eval(stream, node_id, session, inputs)
     }
 }
 

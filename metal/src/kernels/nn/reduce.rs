@@ -38,27 +38,27 @@ impl Reducer {
 
     pub fn eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         input: &DeviceTensor,
         axis: usize,
     ) -> Result<DeviceTensor> {
         let mut o_shape = input.shape().to_vec();
         o_shape[axis] = 1;
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), &o_shape)? };
-        self.dispatch_eval(context, input, axis, &output)?;
-        context.wait_until_completed()?;
+        self.dispatch_eval(stream, input, axis, &output)?;
+        stream.wait_until_completed()?;
         Ok(output)
     }
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         input: &DeviceTensor,
         axis: usize,
         output: &DeviceTensor,
     ) -> Result<()> {
-        context.retain_tensor(input);
-        context.retain_tensor(output);
+        stream.retain_tensor(input);
+        stream.retain_tensor(output);
 
         ensure!(output.datum_type() == input.datum_type());
         ensure!(output.shape()[axis] == 1);
@@ -69,9 +69,9 @@ impl Reducer {
         let output_strides_nd3 = Tensor::natural_strides(&output_shape_nd3);
 
         let pipeline =
-            context.load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
+            stream.load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
 
-        let command_buffer = context.command_buffer();
+        let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
             encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
@@ -117,7 +117,7 @@ mod tests {
     {
         MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|stream| {
             let len = shape.iter().product::<usize>();
 
             let a = Tensor::from_shape(
@@ -132,7 +132,7 @@ mod tests {
             .into_device()?;
 
             let cpu_output = tract_reducer.reduce(&[axis], &a.synchronize()?.into_tensor())?;
-            let metal_output = reducer.eval(context, &a, axis)?;
+            let metal_output = reducer.eval(stream, &a, axis)?;
             cpu_output
                 .close_enough(&metal_output.synchronize()?.into_tensor(), Approximation::Approximate)
                 .with_context(|| {
@@ -363,9 +363,9 @@ mod tests {
         pub fn run(&self) -> Result<Tensor> {
             MetalContext::register()?;
             let _ = autorelease_pool_init();
-            crate::METAL_STREAM.with_borrow(|context| {
+            crate::METAL_STREAM.with_borrow(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
-                let metal_output = self.op.eval(context, &a, self.axis)?;
+                let metal_output = self.op.eval(stream, &a, self.axis)?;
                 Ok(metal_output.synchronize()?.into_tensor())
             })
         }

@@ -138,7 +138,7 @@ impl BinOps {
 
     pub fn eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         lhs: &DeviceTensor,
         rhs: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
@@ -146,22 +146,22 @@ impl BinOps {
         let out_dt = self.output_datum_type(lhs.datum_type(), rhs.datum_type())?;
         let output = unsafe { DeviceTensor::uninitialized_dt(out_dt, &out_shape)? };
 
-        self.dispatch_eval(context, lhs, rhs, &output)?;
+        self.dispatch_eval(stream, lhs, rhs, &output)?;
 
-        context.wait_until_completed()?;
+        stream.wait_until_completed()?;
         Ok(output)
     }
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         lhs: &DeviceTensor,
         rhs: &DeviceTensor,
         output: &DeviceTensor,
     ) -> Result<()> {
-        context.retain_tensor(lhs);
-        context.retain_tensor(rhs);
-        context.retain_tensor(output);
+        stream.retain_tensor(lhs);
+        stream.retain_tensor(rhs);
+        stream.retain_tensor(output);
 
         let out_shape = output.shape();
 
@@ -192,9 +192,9 @@ impl BinOps {
         let kernel_name = self.kernel_name(lhs.datum_type(), broadcast_kind)?;
         match broadcast_kind {
             BroadcastKind::ByScalarLeft | BroadcastKind::ByScalarRight | BroadcastKind::Unicast => {
-                let pipeline = context.load_pipeline(LibraryName::BinOps, &kernel_name)?;
+                let pipeline = stream.load_pipeline(LibraryName::BinOps, &kernel_name)?;
 
-                let command_buffer = context.command_buffer();
+                let command_buffer = stream.command_buffer();
                 command_buffer.encode(|encoder| {
                     encoder.set_compute_pipeline_state(&pipeline);
                     encoder.set_metal_tensor(0, lhs, metal::MTLResourceUsage::Read);
@@ -225,8 +225,8 @@ impl BinOps {
 
                 let output_shape = output.shape();
 
-                let pipeline = context.load_pipeline(LibraryName::BinOps, &kernel_name)?;
-                let command_buffer = context.command_buffer();
+                let pipeline = stream.load_pipeline(LibraryName::BinOps, &kernel_name)?;
+                let command_buffer = stream.command_buffer();
                 command_buffer.encode(|encoder| {
                     encoder.set_compute_pipeline_state(&pipeline);
                     encoder.set_metal_tensor(0, lhs, metal::MTLResourceUsage::Read);
@@ -291,7 +291,7 @@ mod tests {
     ) -> Result<()> {
         MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|stream| {
             let a_len = a_shape.iter().product::<usize>();
             let b_len = b_shape.iter().product::<usize>();
 
@@ -302,7 +302,7 @@ mod tests {
                 &(0..b_len).rev().map(|f| f as f32).collect::<Vec<_>>(),
             )?
             .into_device()?;
-            let output = op.eval(context, &a, &b)?;
+            let output = op.eval(stream, &a, &b)?;
             let ref_output =
                 reference::<F, bool>(&a.synchronize()?.into_tensor(), &b.synchronize()?.into_tensor(), cab)?;
             assert_eq!(ref_output, output.synchronize()?.into_tensor());
@@ -318,7 +318,7 @@ mod tests {
     ) -> Result<()> {
         MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|stream| {
             let a_len = a_shape.iter().product::<usize>();
             let b_len = b_shape.iter().product::<usize>();
 
@@ -329,7 +329,7 @@ mod tests {
                 &(0..b_len).rev().map(|f| f as f32).collect::<Vec<_>>(),
             )?
             .into_device()?;
-            let output = op.eval(context, &a, &b)?;
+            let output = op.eval(stream, &a, &b)?;
 
             let ref_output =
                 reference::<F, F>(&a.synchronize()?.into_tensor(), &b.synchronize()?.into_tensor(), cab)?;
@@ -459,10 +459,10 @@ mod tests {
         pub fn run(&self) -> Result<Tensor> {
             MetalContext::register()?;
             let _ = autorelease_pool_init();
-            crate::METAL_STREAM.with_borrow(|context| {
+            crate::METAL_STREAM.with_borrow(|stream| {
                 let lhs = self.lhs.clone().into_device()?;
                 let rhs = self.rhs.clone().into_device()?;
-                let c = BinOps::Mul.eval(context, &lhs, &rhs)?;
+                let c = BinOps::Mul.eval(stream, &lhs, &rhs)?;
                 Ok(c.synchronize()?.into_tensor())
             })
         }

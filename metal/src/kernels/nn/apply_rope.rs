@@ -29,20 +29,20 @@ impl ApplyRope {
 
     pub fn eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         input: &DeviceTensor,
         cos: &DeviceTensor,
         sin: &DeviceTensor,
     ) -> Result<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
-        self.dispatch_eval(context, input, cos, sin, &output)?;
-        context.wait_until_completed()?;
+        self.dispatch_eval(stream, input, cos, sin, &output)?;
+        stream.wait_until_completed()?;
         Ok(output)
     }
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         input: &DeviceTensor,
         cos: &DeviceTensor,
         sin: &DeviceTensor,
@@ -53,10 +53,10 @@ impl ApplyRope {
 
         ensure!(cos.shape() == sin.shape());
 
-        context.retain_tensor(input);
-        context.retain_tensor(cos);
-        context.retain_tensor(sin);
-        context.retain_tensor(output);
+        stream.retain_tensor(input);
+        stream.retain_tensor(cos);
+        stream.retain_tensor(sin);
+        stream.retain_tensor(output);
 
         ensure!(input.rank() >= 2 && input.rank() <= 4);
         ensure!(cos.rank() <= input.rank());
@@ -81,8 +81,8 @@ impl ApplyRope {
 
         let kernel_name = self.kernel_name(input.datum_type(), broadcast_kind)?;
 
-        let pipeline = context.load_pipeline(LibraryName::NNOps, &kernel_name)?;
-        let command_buffer = context.command_buffer();
+        let pipeline = stream.load_pipeline(LibraryName::NNOps, &kernel_name)?;
+        let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
             encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
@@ -116,7 +116,7 @@ mod tests {
     fn run_test_case(shape: &[usize]) -> Result<()> {
         MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|stream| {
             let len = shape.iter().product::<usize>();
 
             let a = Tensor::from_shape(
@@ -141,7 +141,7 @@ mod tests {
             ])?[0]
                 .clone()
                 .into_tensor();
-            let metal_output = ApplyRope.eval(context, &metal_a, &metal_cos, &metal_sin)?;
+            let metal_output = ApplyRope.eval(stream, &metal_a, &metal_cos, &metal_sin)?;
 
             cpu_output
                 .close_enough(&metal_output.synchronize()?.into_tensor(), Approximation::Approximate)

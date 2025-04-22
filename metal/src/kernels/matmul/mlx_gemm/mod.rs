@@ -42,7 +42,7 @@ impl GemmKernel for MlxGemm {
 
     fn dispatch_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         params: GemmDispatchParams,
         a_buffer: &Buffer,
         b_buffer: &Buffer,
@@ -79,7 +79,7 @@ impl GemmKernel for MlxGemm {
 
         if m == 1 || n == 1 {
             dispatch_metal_mlx_gemv(
-                context,
+                stream,
                 dts[0],
                 (a_batch, m, n, k),
                 unsafe { std::mem::transmute::<&[isize], &[usize]>(a_strides.as_slice()) },
@@ -95,7 +95,7 @@ impl GemmKernel for MlxGemm {
             )?;
         } else {
             dispatch_metal_mlx_gemm(
-                context,
+                stream,
                 dts[0],
                 (a_batch, m, n, k),
                 unsafe { std::mem::transmute::<&[isize], &[usize]>(a_strides.as_slice()) },
@@ -118,7 +118,7 @@ impl GemmKernel for MlxGemm {
 
 #[allow(clippy::too_many_arguments)]
 pub fn dispatch_metal_mlx_gemv(
-    context: &MetalStream,
+    stream: &MetalStream,
     dt: DatumType,
     (b, m, n, k): (usize, usize, usize, usize),
     a_strides: &[usize],
@@ -189,9 +189,9 @@ pub fn dispatch_metal_mlx_gemv(
 
     let tname = DeviceTensor::tname(dt)?;
     let name = format!("gemv_{t_mat}{tname}_bm{bm}_bn{bn}_sm{sm}_sn{sn}_tm{tm}_tn{tn}_nc0_axpby0");
-    let pipeline = context.load_pipeline(LibraryName::MlxGemv, &name)?;
+    let pipeline = stream.load_pipeline(LibraryName::MlxGemv, &name)?;
 
-    let command_buffer = context.command_buffer();
+    let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
         if is_b_matrix {
@@ -253,7 +253,7 @@ pub fn dispatch_metal_mlx_gemv(
 // From https://github.com/huggingface/candle/blob/main/candle-metal-kernels/src/lib.rs
 #[allow(clippy::too_many_arguments)]
 pub fn dispatch_metal_mlx_gemm(
-    context: &MetalStream,
+    stream: &MetalStream,
     dt: DatumType,
     (b, m, n, k): (usize, usize, usize, usize),
     lhs_stride: &[usize],
@@ -344,9 +344,9 @@ pub fn dispatch_metal_mlx_gemm(
 
     let name = kernel_name_gemm(dt, a_trans, b_trans)?;
 
-    let pipeline = context.load_pipeline_with_constants(LibraryName::MlxGemm, &name, constants)?;
+    let pipeline = stream.load_pipeline_with_constants(LibraryName::MlxGemm, &name, constants)?;
 
-    let command_buffer = context.command_buffer();
+    let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
         encoder.set_buffer(0, Some(lhs_buffer), lhs_offset as NSUInteger);
@@ -380,7 +380,7 @@ pub fn dispatch_metal_mlx_gemm(
         encoder.dispatch_thread_groups(grid_size, group_size);
     });
     if debug {
-        context.wait_until_completed()?;
+        stream.wait_until_completed()?;
         //log::debug!("{:#?}", gemm_debug);
     }
 
@@ -407,7 +407,7 @@ mod tests {
 
     #[test]
     fn test_mlx_gemv_compilation() -> Result<()> {
-        crate::METAL_STREAM.with_borrow(|context| context.load_library(LibraryName::MlxGemv))?;
+        crate::METAL_STREAM.with_borrow(|stream| stream.load_library(LibraryName::MlxGemv))?;
         Ok(())
     }
 
@@ -415,7 +415,7 @@ mod tests {
     fn test_mlx_gemm() -> Result<()> {
         MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|stream| {
             let (b, m, n, k) = (10, 32, 32, 16);
             let a = Tensor::from_shape(
                 &[b, m, k],
@@ -428,7 +428,7 @@ mod tests {
             )?
             .into_device()?;
 
-            let c = GemmImpl::<MlxGemm>::default().eval(context, &a, &b)?;
+            let c = GemmImpl::<MlxGemm>::default().eval(stream, &a, &b)?;
 
             let expected_c = Tensor::from_shape(&[10, 32, 32], &vec![16.0; 10 * 32 * 32])?;
 
@@ -446,7 +446,7 @@ mod tests {
                 &(0..b * n * k).map(|f| f as f32).collect::<Vec<_>>(),
             )?;
 
-            let c = GemmImpl::<MlxGemm>::default().eval(context, &a, &b)?;
+            let c = GemmImpl::<MlxGemm>::default().eval(stream, &a, &b)?;
 
             let expected_c = Tensor::from_shape(
                 &[2, 2, 4],

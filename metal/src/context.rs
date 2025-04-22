@@ -1,6 +1,5 @@
 use crate::command_buffer::{MetalProfiler, TCommandBuffer};
 use crate::func_constants::ConstantValues;
-use crate::get_metal_context;
 use crate::kernels::{LibraryContent, LibraryName};
 
 use metal::NSUInteger;
@@ -28,10 +27,10 @@ thread_local! {
     pub static METAL_STREAM: RefCell<MetalStream> = RefCell::new(MetalStream::new());
 }
 
-fn metal_device() -> MetalContext {
+fn metal_context() -> MetalContext {
     static INSTANCE: OnceLock<MetalContext> = OnceLock::new();
     INSTANCE
-        .get_or_init(|| MetalContext::new().expect("Could not create shared metal context"))
+        .get_or_init(|| MetalContext::new().expect("Could not create Metal context"))
         .clone()
 }
 
@@ -168,12 +167,13 @@ impl MetalContext {
     }
 
     pub fn register() -> Result<()> {
-        tract_gpu::device::set_context(Box::new(metal_device()))
+        tract_gpu::device::set_context(Box::new(metal_context()))
     }
 }
 
 #[derive(Debug)]
 pub struct MetalStream {
+    context: MetalContext,
     command_queue: CommandQueue,
     command_buffer: RefCell<Option<TCommandBuffer>>,
     command_buffer_id: AtomicUsize,
@@ -189,9 +189,10 @@ impl Default for MetalStream {
 
 impl MetalStream {
     pub fn new() -> Self {
-        let device = metal_device();
-        let command_queue = device.device.new_command_queue();
+        let context = metal_context();
+        let command_queue = context.device.new_command_queue();
         Self {
+            context,
             command_queue,
             command_buffer: RefCell::new(None),
             command_buffer_id: AtomicUsize::new(0),
@@ -201,8 +202,7 @@ impl MetalStream {
     }
 
     pub fn load_library(&self, name: LibraryName) -> Result<Library> {
-        let metal_device = get_metal_context()?;
-        metal_device.load_library(name)
+        self.context.load_library(name)
     }
 
     pub fn load_pipeline(
@@ -210,8 +210,7 @@ impl MetalStream {
         library_name: LibraryName,
         func_name: &str,
     ) -> Result<ComputePipelineState> {
-        let metal_device = get_metal_context()?;
-        metal_device.load_pipeline(library_name, func_name)
+        self.context.load_pipeline(library_name, func_name)
     }
 
     pub(crate) fn load_pipeline_with_constants(
@@ -220,8 +219,7 @@ impl MetalStream {
         func_name: &str,
         constants: Option<ConstantValues>,
     ) -> Result<ComputePipelineState> {
-        let metal_device = get_metal_context()?;
-        metal_device.load_pipeline_with_constants(library_name, func_name, constants)
+        self.context.load_pipeline_with_constants(library_name, func_name, constants)
     }
 
     pub fn retain_tensor(&self, tensor: &DeviceTensor) {
@@ -281,7 +279,7 @@ impl MetalStream {
         let capture = metal::CaptureManager::shared();
         let descriptor = metal::CaptureDescriptor::new();
         descriptor.set_destination(metal::MTLCaptureDestination::GpuTraceDocument);
-        descriptor.set_capture_device(&metal_device().device);
+        descriptor.set_capture_device(&metal_context().device);
         descriptor.set_output_url(path);
 
         capture.start_capture(&descriptor).map_err(|e| anyhow!("Error Metal Capture: {:?}", e))?;
@@ -307,7 +305,7 @@ impl MetalStream {
     {
         self.wait_until_completed()?;
 
-        let device: &Device = &metal_device().device;
+        let device: &Device = &metal_context().device;
         assert!(device.supports_counter_sampling(metal::MTLCounterSamplingPoint::AtStageBoundary));
 
         let profiler = Rc::new(RefCell::new(MetalProfiler::new(device.to_owned(), num_nodes)));
@@ -387,6 +385,6 @@ impl DeviceContext for MetalContext {
     }
 
     fn synchronize(&self) -> TractResult<()> {
-        METAL_STREAM.with_borrow(|ctxt| ctxt.wait_until_completed())
+        METAL_STREAM.with_borrow(|stream| stream.wait_until_completed())
     }
 }

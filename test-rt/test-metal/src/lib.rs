@@ -7,7 +7,7 @@ use tract_core::internal::*;
 use paste::paste;
 use tract_core::runtime::Runtime;
 use tract_core::tract_data::itertools::Itertools;
-use tract_metal::context::MetalDevice;
+use tract_metal::stream::MetalDevice;
 use tract_metal::MetalGemmImplKind;
 
 #[path = "../ggml_suite.rs"]

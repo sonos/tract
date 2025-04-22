@@ -84,7 +84,7 @@ crate::impl_eval_op_for_metal_op!(MetalAxisOp);
 impl MetalEvalOp for MetalAxisOp {
     fn metal_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
@@ -109,7 +109,7 @@ impl MetalEvalOp for MetalAxisOp {
                     input.datum_type(),
                     &PermuteAxes::output_shape(input.shape(), &permutation)?,
                 )?;
-                PermuteAxes.dispatch_eval(context, input, &permutation, &output)?;
+                PermuteAxes.dispatch_eval(stream, input, &permutation, &output)?;
                 return Ok(tvec!(output.into_opaque_tensor().into_tvalue()));
             }
             AxisOp::Reshape(skip, from, to) => {
@@ -131,7 +131,7 @@ impl MetalEvalOp for MetalAxisOp {
         let output =
             crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &new_shape)?;
 
-        Memcpy.dispatch_eval(context, input, 0, &output)?;
+        Memcpy.dispatch_eval(stream, input, 0, &output)?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }

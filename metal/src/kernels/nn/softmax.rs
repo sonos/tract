@@ -22,25 +22,25 @@ impl Softmax {
 
     pub fn eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         input: &DeviceTensor,
         axis: usize,
     ) -> Result<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
-        self.dispatch_eval(context, input, axis, &output)?;
-        context.wait_until_completed()?;
+        self.dispatch_eval(stream, input, axis, &output)?;
+        stream.wait_until_completed()?;
         Ok(output)
     }
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         input: &DeviceTensor,
         axis: usize,
         output: &DeviceTensor,
     ) -> Result<()> {
-        context.retain_tensor(input);
-        context.retain_tensor(output);
+        stream.retain_tensor(input);
+        stream.retain_tensor(output);
 
         ensure!(output.shape() == input.shape());
         ensure!(output.datum_type() == input.datum_type());
@@ -49,9 +49,9 @@ impl Softmax {
         let strides_nd3 = Tensor::natural_strides(&shape_nd3);
 
         let pipeline =
-            context.load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
+            stream.load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
 
-        let command_buffer = context.command_buffer();
+        let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
             encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
@@ -88,7 +88,7 @@ mod tests {
     fn test_softmax_f32() -> Result<()> {
         MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|stream| {
             let m = 4;
             let k = 4;
             let axis = 1;
@@ -101,7 +101,7 @@ mod tests {
 
             let cpu_output =
                 cpu_softmax.eval(tvec![a.synchronize()?.into_tvalue()])?[0].clone().into_tensor();
-            let metal_output = Softmax.eval(context, &a, axis)?;
+            let metal_output = Softmax.eval(stream, &a, axis)?;
             cpu_output
                 .close_enough(&metal_output.synchronize()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
@@ -112,7 +112,7 @@ mod tests {
     fn test_softmax_f32_2() -> Result<()> {
         MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|stream| {
             let shape = [8, 4, 3];
             let num_elements = shape.iter().product();
             let axis = 0;
@@ -128,7 +128,7 @@ mod tests {
 
             let cpu_output =
                 cpu_softmax.eval(tvec![a.synchronize()?.into_tvalue()])?[0].clone().into_tensor();
-            let metal_output = Softmax.eval(context, &a, axis)?;
+            let metal_output = Softmax.eval(stream, &a, axis)?;
             cpu_output
                 .close_enough(&metal_output.synchronize()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
@@ -139,7 +139,7 @@ mod tests {
     fn test_softmax_f16() -> Result<()> {
         MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|stream| {
             let m = 4;
             let k = 4;
             let axis = 1;
@@ -155,7 +155,7 @@ mod tests {
 
             let cpu_output =
                 cpu_softmax.eval(tvec![a.synchronize()?.into_tvalue()])?[0].clone().into_tensor();
-            let metal_output = Softmax.eval(context, &a, axis)?;
+            let metal_output = Softmax.eval(stream, &a, axis)?;
             cpu_output
                 .close_enough(&metal_output.synchronize()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
@@ -246,9 +246,9 @@ mod tests {
         pub fn run(&self) -> Result<Tensor> {
             MetalContext::register()?;
             let _ = autorelease_pool_init();
-            crate::METAL_STREAM.with_borrow(|context| {
+            crate::METAL_STREAM.with_borrow(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
-                let metal_output = Softmax.eval(context, &a, self.axis)?;
+                let metal_output = Softmax.eval(stream, &a, self.axis)?;
                 Ok(metal_output.synchronize()?.into_tensor())
             })
         }

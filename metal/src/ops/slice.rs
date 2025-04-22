@@ -47,7 +47,7 @@ crate::impl_eval_op_for_metal_op!(MetalSlice);
 impl MetalEvalOp for MetalSlice {
     fn metal_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         node_id: usize,
         session: &mut SessionState,
         inputs: TVec<TValue>,
@@ -82,7 +82,7 @@ impl MetalEvalOp for MetalSlice {
 
         // Perform slicing only if the output is not empty.
         if o_shape[axis] != 0 {
-            kernels::array::MultiBroadcast.dispatch_eval(context, input, offset, &output)?;
+            kernels::array::MultiBroadcast.dispatch_eval(stream, input, offset, &output)?;
         }
         Ok(tvec![output.into_opaque_tensor().into_tvalue()])
     }
@@ -125,7 +125,7 @@ mod tests {
     fn run_test(shape: &[usize], slice: Slice) -> TractResult<()> {
         MetalContext::register()?;
         let _ = autorelease_pool_init();
-        crate::METAL_STREAM.with_borrow(|context| {
+        crate::METAL_STREAM.with_borrow(|stream| {
             let num_elements = shape.iter().product();
 
             let a = Tensor::from_shape(
@@ -142,7 +142,7 @@ mod tests {
             let mut metal_slice_state = metal_slice.state(&mut session_state, 0)?.unwrap();
             let metal_output =
                 metal_slice_state.eval(&mut session_state, &metal_slice, tvec![a_metal])?;
-            context.wait_until_completed()?;
+            stream.wait_until_completed()?;
 
             cpu_output[0].close_enough(
                 &metal_output[0].to_device_tensor()?.synchronize()?.into_tensor(),

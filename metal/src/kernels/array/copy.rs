@@ -42,7 +42,7 @@ impl Memcpy {
 
     pub fn dispatch_eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         input: &DeviceTensor,
         input_offset: usize,
         output: &DeviceTensor,
@@ -50,13 +50,13 @@ impl Memcpy {
         ensure!(input_offset % input.datum_type().size_of() == 0);
         ensure!(output.len() <= input.len() - input_offset);
 
-        context.retain_tensor(input);
-        context.retain_tensor(output);
+        stream.retain_tensor(input);
+        stream.retain_tensor(output);
 
         let kernel_name = self.kernel_name(input.datum_type())?;
 
-        let pipeline = context.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
-        let command_buffer = context.command_buffer();
+        let pipeline = stream.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
+        let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
             encoder.set_metal_tensor_with_offset(
@@ -76,14 +76,14 @@ impl Memcpy {
 
     pub fn eval(
         &self,
-        context: &MetalStream,
+        stream: &MetalStream,
         input: &DeviceTensor,
         input_offset: usize,
         output_shape: &[usize],
     ) -> Result<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), output_shape)? };
-        self.dispatch_eval(context, input, input_offset, &output)?;
-        context.wait_until_completed()?;
+        self.dispatch_eval(stream, input, input_offset, &output)?;
+        stream.wait_until_completed()?;
         Ok(output)
     }
 }
