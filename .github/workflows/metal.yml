@@ -18,15 +18,15 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - run: cargo check --workspace --exclude test-blas
-    - run: cargo test -p tract-linalg
-    - run: cargo test -p tract-core
-    - run: cargo test -p tract-nnef
-    - run: cargo test -p tract-onnx
-    - run: cargo test -p tract-onnx-opl
-    - run: cargo test -p tract-metal
-    - run: cargo test -p test-onnx-core
-    - run: cargo test -p test-unit-core
-    - run: cargo test -p test-metal
+    - run: cargo test -q -p tract-linalg
+    - run: cargo test -q -p tract-core
+    - run: cargo test -q -p tract-nnef
+    - run: cargo test -q -p tract-onnx
+    - run: cargo test -q -p tract-onnx-opl
+    - run: cargo test -q -p tract-metal
+    - run: cargo test -q -p test-onnx-core
+    - run: cargo test -q -p test-unit-core
+    - run: cargo test -q -p test-metal
 
   build-cli: 
     name: Build tract on macos (with metal)
