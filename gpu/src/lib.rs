@@ -6,5 +6,3 @@ pub mod session_handler;
 pub mod sync;
 pub mod tensor;
 pub mod utils;
-
-pub use crate::device::DEVICE_CONTEXT;

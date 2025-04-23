@@ -1,4 +1,4 @@
-use metal::{ CommandBuffer, ComputeCommandEncoder, ComputeCommandEncoderRef };
+use metal::{CommandBuffer, ComputeCommandEncoder, ComputeCommandEncoderRef};
 use std::ops::{Deref, DerefMut};
 
 #[derive(Debug, Clone)]
@@ -8,9 +8,7 @@ pub struct TCommandBuffer {
 }
 
 impl TCommandBuffer {
-    pub fn new(
-        command_buffer: CommandBuffer
-    ) -> Self {
+    pub fn new(command_buffer: CommandBuffer) -> Self {
         let encoder = command_buffer.new_compute_command_encoder().to_owned();
 
         TCommandBuffer { inner: command_buffer, encoder }

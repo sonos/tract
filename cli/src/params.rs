@@ -765,7 +765,7 @@ impl Parameters {
                 #[cfg(any(target_os = "macos", target_os = "ios"))]
                 {
                     stage!("metal", typed_model -> typed_model, |m:TypedModel| {
-                        tract_metal::transform::MetalTransform::from_str(matches.value_of("force-metal-backend").unwrap_or(""))?
+                        tract_metal::MetalTransform::from_str(matches.value_of("force-metal-backend").unwrap_or(""))?
                             .transform_into(m)
                     });
                 }

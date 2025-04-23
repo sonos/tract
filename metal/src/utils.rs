@@ -55,16 +55,3 @@ pub fn as_metal_buffer(device_buffer: &Box<dyn DeviceBuffer>) -> &Buffer {
         panic!("Non-Metal Buffer accessed during Metal execution")
     }
 }
-
-pub fn rescale_gpu_duration(
-    pass_duration: u64,
-    cpu_start: u64,
-    cpu_end: u64,
-    gpu_start: u64,
-    gpu_end: u64,
-) -> u64 {
-    let cpu_time_span = cpu_end - cpu_start;
-    let gpu_time_span = gpu_end - gpu_start;
-
-    pass_duration * cpu_time_span / gpu_time_span
-}

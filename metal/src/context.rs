@@ -60,10 +60,6 @@ impl MetalContext {
         Ok(ctxt)
     }
 
-    pub fn device(&self) -> &Device {
-        &self.device
-    }
-
     pub fn preload_pipelines(&self) -> TractResult<()> {
         for ew_func in crate::kernels::ElementWiseOps::all_functions() {
             let _ = self.load_pipeline(LibraryName::ElementWiseOps, &ew_func);
@@ -77,11 +73,6 @@ impl MetalContext {
         for func in crate::kernels::nn::all_functions() {
             let _ = self.load_pipeline(LibraryName::NNOps, &func);
         }
-        Ok(())
-    }
-
-    pub fn flush_pipeline_cache(&self) -> TractResult<()> {
-        self.cache_pipelines.write().map_err(|e| anyhow!("{:?}", e))?.clear();
         Ok(())
     }
 
@@ -250,9 +241,8 @@ impl MetalStream {
             .command_buffer
             .borrow_mut()
             .get_or_insert_with(|| {
-                let command_buffer = TCommandBuffer::new(
-                    self.command_queue.new_command_buffer().to_owned()
-                );
+                let command_buffer =
+                    TCommandBuffer::new(self.command_queue.new_command_buffer().to_owned());
                 command_buffer
             })
             .to_owned();
