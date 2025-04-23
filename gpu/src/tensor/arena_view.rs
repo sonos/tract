@@ -36,7 +36,7 @@ impl DeviceArenaView {
     }
 
     /// Get underlying inner device buffer.
-    pub fn device_buffer(&self) -> &Box<dyn DeviceBuffer> {
+    pub fn device_buffer(&self) -> &dyn DeviceBuffer {
         self.arena.device_buffer()
     }
 

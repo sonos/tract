@@ -2,7 +2,7 @@ use metal::{ComputeCommandEncoderRef, MTLResourceUsage};
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::utils::as_metal_buffer;
+use crate::utils::get_metal_buffer;
 
 pub trait EncoderExt {
     fn set_metal_tensor(&self, idx: u64, t: &DeviceTensor, usage: MTLResourceUsage);
@@ -19,7 +19,7 @@ pub trait EncoderExt {
 
 impl EncoderExt for &ComputeCommandEncoderRef {
     fn set_metal_tensor(&self, idx: u64, t: &DeviceTensor, usage: MTLResourceUsage) {
-        let buffer = as_metal_buffer(t.device_buffer());
+        let buffer = get_metal_buffer(t);
         self.set_buffer(idx, Some(buffer), t.buffer_offset());
         self.use_resource(buffer, usage);
     }
@@ -31,7 +31,7 @@ impl EncoderExt for &ComputeCommandEncoderRef {
         offset: u64,
         usage: MTLResourceUsage,
     ) {
-        let buffer = as_metal_buffer(t.device_buffer());
+        let buffer = get_metal_buffer(t);
         self.set_buffer(idx, Some(buffer), t.buffer_offset::<u64>() + offset);
         self.use_resource(buffer, usage);
     }

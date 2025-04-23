@@ -1,6 +1,3 @@
-#![allow(clippy::missing_safety_doc)]
-#![allow(clippy::missing_transmute_annotations)]
-
 mod command_buffer;
 mod context;
 mod encoder;

@@ -9,7 +9,7 @@ pub use mfa::MfaGemm;
 pub use mlx_gemm::MlxGemm;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 
-use crate::utils::as_metal_buffer;
+use crate::utils::get_metal_buffer;
 use crate::MetalStream;
 use metal::Buffer;
 use num_traits::One;
@@ -327,9 +327,9 @@ impl<M: GemmKernel> GemmImpl<M> {
             c.shape(),
         )?;
 
-        let a_buff = as_metal_buffer(a.device_buffer());
-        let b_buff = as_metal_buffer(b.device_buffer());
-        let c_buff = as_metal_buffer(c.device_buffer());
+        let a_buff = get_metal_buffer(a);
+        let b_buff = get_metal_buffer(b);
+        let c_buff = get_metal_buffer(c);
 
         for d in dispatches {
             self.matmul

@@ -37,7 +37,7 @@ impl MultiBroadcast {
     pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal broadcast  op", dt);
         let tname = DeviceTensor::tname(dt)?;
-        let broadcast_name = broadcast_kind.to_func_part();
+        let broadcast_name = broadcast_kind.name();
         Ok(format!("array_ops::copy_{broadcast_name}_{tname}"))
     }
 

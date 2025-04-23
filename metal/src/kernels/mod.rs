@@ -89,7 +89,7 @@ impl BroadcastKind {
         }
     }
 
-    pub fn to_func_part(&self) -> &'static str {
+    pub fn name(&self) -> &'static str {
         match self {
             BroadcastKind::Unicast => "unicast",
             BroadcastKind::ByScalarLeft => "by_scalar_lhs",

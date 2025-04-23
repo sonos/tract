@@ -188,8 +188,8 @@ impl OwnedDeviceTensor {
 
     /// Get underlying inner device buffer.
     #[inline]
-    pub fn device_buffer(&self) -> &Box<dyn DeviceBuffer> {
-        &self.device_buffer
+    pub fn device_buffer(&self) -> &dyn DeviceBuffer {
+        &(*self.device_buffer)
     }
 
     pub fn device_buffer_ptr(&self) -> *const c_void {
