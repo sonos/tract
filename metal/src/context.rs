@@ -1,4 +1,4 @@
-use crate::command_buffer::{MetalProfiler, TCommandBuffer};
+use crate::command_buffer::TCommandBuffer;
 use crate::func_constants::ConstantValues;
 use crate::kernels::{LibraryContent, LibraryName};
 
@@ -10,10 +10,8 @@ use std::cell::RefCell;
 use std::ffi::c_void;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
-use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
-use std::time::Duration;
 
 use anyhow::{anyhow, Context};
 use metal::{
@@ -201,7 +199,6 @@ pub struct MetalStream {
     command_buffer: RefCell<Option<TCommandBuffer>>,
     command_buffer_id: AtomicUsize,
     retained_tensors: RefCell<Vec<DeviceTensor>>,
-    profiler: RefCell<Option<Rc<RefCell<MetalProfiler>>>>,
 }
 
 impl Default for MetalStream {
@@ -220,7 +217,6 @@ impl MetalStream {
             command_buffer: RefCell::new(None),
             command_buffer_id: AtomicUsize::new(0),
             retained_tensors: RefCell::new(vec![]),
-            profiler: RefCell::new(None),
         }
     }
 
@@ -255,8 +251,7 @@ impl MetalStream {
             .borrow_mut()
             .get_or_insert_with(|| {
                 let command_buffer = TCommandBuffer::new(
-                    self.command_queue.new_command_buffer().to_owned(),
-                    self.profiler.borrow().clone(),
+                    self.command_queue.new_command_buffer().to_owned()
                 );
                 command_buffer
             })
@@ -312,36 +307,6 @@ impl MetalStream {
         self.wait_until_completed()?;
         capture.stop_capture();
         Ok(())
-    }
-
-    pub fn profiler(&self) -> Option<Rc<RefCell<MetalProfiler>>> {
-        self.profiler.borrow().clone()
-    }
-
-    pub fn profile<EvalCallback>(
-        &self,
-        num_nodes: usize,
-        eval: EvalCallback,
-    ) -> TractResult<(TVec<TValue>, Duration, Vec<u64>)>
-    where
-        EvalCallback: FnOnce() -> TractResult<(TVec<TValue>, Duration)>,
-    {
-        self.wait_until_completed()?;
-
-        let device = &self.context.device;
-        assert!(device.supports_counter_sampling(metal::MTLCounterSamplingPoint::AtStageBoundary));
-
-        let profiler = Rc::new(RefCell::new(MetalProfiler::new(device.to_owned(), num_nodes)));
-
-        self.profiler.replace(Some(profiler.clone()));
-
-        let (output, eval_duration) = eval()?;
-        let profile_buffers = profiler.borrow_mut().get_profile_data();
-
-        self.profiler.replace(None);
-        self.wait_until_completed()?;
-
-        Ok((output, eval_duration, profile_buffers))
     }
 }
 

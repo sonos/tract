@@ -77,9 +77,6 @@ impl<O: MetalEvalOp> OpState for MetalOpState<O> {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         with_borrowed_metal_stream(|stream| {
-            if let Some(profiler) = stream.profiler() {
-                profiler.borrow_mut().add_node_entry(self.node_id);
-            };
             self.op.metal_eval(stream, self.node_id, session, inputs)
         })
     }
