@@ -3,49 +3,14 @@ use std::ffi::c_void;
 use std::fmt::Display;
 use tract_core::internal::*;
 
-use crate::device::{DeviceBuffer, DeviceContext};
+use crate::device::DeviceBuffer;
 use crate::utils::check_strides_validity;
 
-#[derive(Debug, Clone)]
-pub struct DeviceArenaStorage {
-    tensor: Tensor,
-    buffer: Box<dyn DeviceBuffer>,
-}
-
-impl DeviceArenaStorage {
-    pub fn with_capacity(device: Box<dyn DeviceContext>, capacity: usize) -> TractResult<Self> {
-        let tensor = unsafe {
-            Tensor::uninitialized_dt(DatumType::U8, &[capacity]).with_context(|| {
-                anyhow!("Error while allocating a tensor of {:?} bytes", capacity)
-            })?
-        };
-        let buffer = device.buffer_from_slice(tensor.as_bytes());
-
-        Ok(DeviceArenaStorage { tensor, buffer })
-    }
-}
-
-impl DeviceArenaStorage {
-    /// Get underlying inner device buffer.
-    pub fn device_buffer(&self) -> &Box<dyn DeviceBuffer> {
-        &self.buffer
-    }
-
-    pub fn tensor(&self) -> &Tensor {
-        &self.tensor
-    }
-}
-
-impl Hash for DeviceArenaStorage {
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.tensor.hash(state)
-    }
-}
+use super::OwnedDeviceTensor;
 
 #[derive(Debug, Clone, Hash)]
 pub struct DeviceArenaView {
-    pub(crate) arena: Arc<DeviceArenaStorage>,
+    pub(crate) arena: Arc<OwnedDeviceTensor>,
     pub(crate) dt: DatumType,
     pub(crate) len: usize,
     pub(crate) shape: TVec<usize>,
@@ -95,7 +60,7 @@ impl DeviceArenaView {
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        &self.arena.tensor().as_bytes()
+        &self.arena.inner.as_arc_tensor().unwrap().as_bytes()
             [self.offset_bytes..self.offset_bytes + self.len() * self.dt.size_of()]
     }
 
@@ -103,7 +68,7 @@ impl DeviceArenaView {
     pub fn view(&self) -> TensorView<'_> {
         unsafe {
             TensorView::from_bytes(
-                self.arena.tensor(),
+                self.arena.inner.as_arc_tensor().unwrap(),
                 self.offset_bytes as _,
                 self.shape.as_slice(),
                 self.strides.as_slice(),

@@ -1,8 +1,8 @@
-use crate::device::DeviceContext;
 use crate::memory::DeviceResolvedMemSchema;
+use crate::tensor::DeviceArenaView;
 use crate::tensor::DeviceTensor;
 use crate::tensor::IntoDevice;
-use crate::tensor::{DeviceArenaStorage, DeviceArenaView};
+use crate::tensor::OwnedDeviceTensor;
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -10,18 +10,24 @@ use tract_core::internal::*;
 
 #[derive(Debug)]
 pub struct DeviceMemoryPool {
-    storage: Arc<DeviceArenaStorage>,
+    storage: Arc<OwnedDeviceTensor>,
     resolved_schema: DeviceResolvedMemSchema,
     node_seen: RefCell<HashSet<usize>>,
 }
 
 impl DeviceMemoryPool {
-    pub fn from_schema(
-        device: Box<dyn DeviceContext>,
-        resolved_schema: DeviceResolvedMemSchema,
-    ) -> TractResult<Self> {
-        let storage =
-            Arc::new(DeviceArenaStorage::with_capacity(device, resolved_schema.memory_size)?);
+    pub fn from_schema(resolved_schema: DeviceResolvedMemSchema) -> TractResult<Self> {
+        let tensor = unsafe {
+            Tensor::uninitialized_dt(DatumType::U8, &[resolved_schema.memory_size]).with_context(
+                || {
+                    anyhow!(
+                        "Error while allocating a tensor of {:?} bytes",
+                        resolved_schema.memory_size
+                    )
+                },
+            )?
+        };
+        let storage = Arc::new(OwnedDeviceTensor::from_tensor(tensor)?);
 
         Ok(Self { storage, resolved_schema, node_seen: RefCell::new(HashSet::new()) })
     }
