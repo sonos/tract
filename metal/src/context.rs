@@ -25,7 +25,7 @@ thread_local! {
     pub static METAL_STREAM: RefCell<MetalStream> = RefCell::new(MetalStream::new());
 }
 
-fn metal_context() -> MetalContext {
+pub fn metal_context() -> MetalContext {
     static INSTANCE: OnceLock<MetalContext> = OnceLock::new();
     INSTANCE
         .get_or_init(|| {

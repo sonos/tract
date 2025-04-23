@@ -1,3 +1,4 @@
+use crate::context::metal_context;
 use crate::kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm};
 use crate::{kernels, ops};
 use tract_gpu::fact::DeviceTypedFactExt;
@@ -84,6 +85,9 @@ impl MetalTransform {
         model: &mut TypedModel,
         stop_at_phase: usize,
     ) -> TractResult<()> {
+        // Init Metal Context if not done previously
+        metal_context();
+
         rewrite_einsum_to_prefix_matmul(model)?;
         if stop_at_phase == 0 {
             return Ok(());
