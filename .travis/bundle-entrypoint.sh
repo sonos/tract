@@ -17,7 +17,7 @@ else
     TRACT=./target/release/tract
 fi
 
-CACHEDIR=${CACHEDIR:-$HOME/.cache}
+CACHEDIR=${CACHEDIR:-$HOME/.cache/tract-ci-minion-models}
 case $CACHEDIR in
     "http"*)
         wget $CACHEDIR/private/private-benches.sh
@@ -42,11 +42,13 @@ then
     cat sizes >> metrics
 fi
 
-
-if [ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor -a `cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor` = "userspace" ]
+if [ $(uname) = "Darwin" ]
 then
-        F=$(printf "%s\n" `cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies` | sort -n | tail -1)
-        echo $F > /sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed
+    if [ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor -a `cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor` = "userspace" ]
+    then
+            F=$(printf "%s\n" `cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies` | sort -n | tail -1)
+            echo $F > /sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed
+    fi
 fi
 
 net_bench() {
@@ -72,8 +74,6 @@ net_bench() {
         echo net.$net.active_at_$stage.$pb $(($a-$f)) >> metrics
     done
 }
-
-mem=$(free -m | grep Mem | awk '{ print $2 }')
 
 net_bench arm_ml_kws_cnn_m pass $CACHEDIR/ARM-ML-KWS-CNN-M.pb -i 49,10,f32 --partial --input-node Mfcc
 

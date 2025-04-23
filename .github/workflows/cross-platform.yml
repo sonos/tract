@@ -45,7 +45,6 @@ jobs:
       run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
     - name: Configure AWS Credentials
-      # if: github.repository == 'sonos/tract'
       continue-on-error: true
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -63,17 +62,11 @@ jobs:
           target
         key: ${{ runner.os }}-${{matrix.platform}}-${{steps.date.outputs.date}}
 
-          #     - name: "Setup sccache"
-          #       run: .travis/setup-sccache.sh
-
     - name: Cross script
       env:
         PLATFORM: ${{matrix.platform}}
         AWS_EC2_METADATA_DISABLED: true
       run: .travis/cross.sh
-
-        #     - name: Stop sccache server
-        #       run: sccache --stop-server || true
 
   apple:
     strategy:
@@ -116,13 +109,7 @@ jobs:
           target
         key: ${{ runner.os }}-${{matrix.platform}}-${{steps.date.outputs.date}}
 
-          #     - name: "Setup sccache"
-          #       run: .travis/setup-sccache.sh
-
     - name: Cross script
       env:
         PLATFORM: ${{matrix.platform}}
       run: .travis/cross.sh
-
-        #     - name: Stop sccache server
-        #       run: sccache --stop-server || true
