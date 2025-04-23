@@ -9,16 +9,8 @@ use tract_gpu::tensor::DeviceTensorExt;
 pub struct MetalSlice(Slice);
 
 impl MetalSlice {
-    // pub fn new(axis: usize, start: impl ToDim, end: impl ToDim) -> MetalSlice {
-    //     MetalSlice { axis, start: start.to_dim(), end: end.to_dim() }
-    // }
-
     pub fn from_tract_core(op: Slice) -> Self {
         Self(op)
-    }
-
-    pub fn suffix(&self, name: &str) -> String {
-        format!("{}.axis{}_{}_{}", name, self.0.axis, self.0.start, self.0.end)
     }
 }
 

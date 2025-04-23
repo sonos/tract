@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 pub mod array;
 mod bin_ops;
 mod element_wise;
@@ -11,20 +13,20 @@ pub use element_wise::ElementWiseOps;
 use tract_core::internal::*;
 
 #[cfg(target_os = "ios")]
-pub const METAL_FLASH_ATTENTION_LIB: &[u8] =
+const METAL_FLASH_ATTENTION_LIB: &[u8] =
     include_bytes!("matmul/mfa/libMetalFlashAttention-ios.metallib");
 #[cfg(target_os = "macos")]
-pub const METAL_FLASH_ATTENTION_LIB: &[u8] =
+const METAL_FLASH_ATTENTION_LIB: &[u8] =
     include_bytes!("matmul/mfa/libMetalFlashAttention-macos.metallib");
 
-pub const MLX_GEMM: &str = include_str!("matmul/mlx_gemm/mlx_gemm.metal");
-pub const MLX_GEMV: &str = include_str!("matmul/mlx_gemm/mlx_gemv.metal");
-pub const GGML: &str = include_str!("matmul/ggml_gemm/ggml_mm_mv.metal");
-pub const BASIC_MAT_MUL: &str = include_str!("matmul/basic/basic_mat_mul.metal");
-pub const ARRAY_OPS: &str = include_str!("array/array_ops.metal");
-pub const BIN_OPS: &str = include_str!("bin_ops.metal");
-pub const NN_OPS: &str = include_str!("nn/nn_ops.metal");
-pub const ELEMENT_WISE_OPS: &str = include_str!("element_wise.metal");
+const MLX_GEMM: &str = include_str!("matmul/mlx_gemm/mlx_gemm.metal");
+const MLX_GEMV: &str = include_str!("matmul/mlx_gemm/mlx_gemv.metal");
+const GGML: &str = include_str!("matmul/ggml_gemm/ggml_mm_mv.metal");
+const BASIC_MAT_MUL: &str = include_str!("matmul/basic/basic_mat_mul.metal");
+const ARRAY_OPS: &str = include_str!("array/array_ops.metal");
+const BIN_OPS: &str = include_str!("bin_ops.metal");
+const NN_OPS: &str = include_str!("nn/nn_ops.metal");
+const ELEMENT_WISE_OPS: &str = include_str!("element_wise.metal");
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LibraryContent<'a> {
