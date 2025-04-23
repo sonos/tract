@@ -2,12 +2,12 @@ use crate::matmul::{BasicMatMul, GemmImpl, GemmKernel, MfaGemm, MlxGemm};
 use criterion::measurement::WallTime;
 use criterion::*;
 use ggml::Context;
-use kernels::matmul::GgmlGemm;
 use tract_core::internal::*;
 use tract_gpu::tensor::IntoDevice;
 use tract_linalg::mmm::AsInputValue;
-use tract_metal::kernels::matmul;
-use tract_metal::*;
+use tract_metal::kernels::matmul::GgmlGemm;
+use tract_metal::kernels::{matmul, LibraryName};
+use tract_metal::MetalStream;
 
 pub fn ggml_matmul(
     crit: &mut BenchmarkGroup<WallTime>,
@@ -66,15 +66,15 @@ pub fn tract_with_packing(
     unsafe {
         let mmm = tract_linalg::ops().mmm(dt, Some(m), Some(k), Some(n)).unwrap();
 
-        let c_storage = mmm.c_view(0, 1);
+        let c_storage = mmm.c_view(Some(0), Some(1));
 
         let mut scratch = mmm.allocate_scratch_space();
 
         let (packer_a, packer_b) = &mmm.packings()[0];
 
         crit.bench_function(&format!("tract_with_packing_{:?}", dt), |be| {
-            let packed_a = packer_a.prepare_tensor(&a, 1, 0).unwrap();
-            let packed_b = packer_b.prepare_tensor(&b, 0, 1).unwrap();
+            let packed_a = packer_a.prepare_one(&a, 1, 0).unwrap();
+            let packed_b = packer_b.prepare_one(&b, 0, 1).unwrap();
 
             be.iter(|| {
                 mmm.run_with_scratch_space(
@@ -84,8 +84,8 @@ pub fn tract_with_packing(
                     &[
                         FusedSpec::AddMatMul {
                             packing: 0,
-                            a: AsInputValue::Borrowed(packed_a.as_ref()),
-                            b: AsInputValue::Borrowed(packed_b.as_ref()),
+                            a: AsInputValue::Borrowed(&(*packed_a)),
+                            b: AsInputValue::Borrowed(&(*packed_b)),
                         },
                         FusedSpec::Store(c_storage.wrap(&mut c.view_mut())),
                     ],
@@ -133,7 +133,7 @@ fn matmul(c: &mut Criterion, b: usize, m: usize, k: usize, n: usize) {
     // ggml_matmul(&mut c, m, k, n, f32::datum_type());
 
     for dt in [f32::datum_type(), f16::datum_type()] {
-        // metal_gemm::<BasicMatMul>(&mut c, b, m, k, n, dt, false);
+        metal_gemm::<BasicMatMul>(&mut c, b, m, k, n, dt, false);
         metal_gemm::<MlxGemm>(&mut c, b, m, k, n, dt, false);
         metal_gemm::<MfaGemm>(&mut c, b, m, k, n, dt, false);
         metal_gemm::<GgmlGemm>(&mut c, b, m, k, n, dt, true);
@@ -144,6 +144,7 @@ fn matmul(c: &mut Criterion, b: usize, m: usize, k: usize, n: usize) {
     c.finish();
 }
 
+#[allow(unused)]
 fn tinyllama(c: &mut Criterion) {
     let shapes = vec![
         (32, 1, 25, 32),
@@ -172,6 +173,7 @@ fn tinyllama(c: &mut Criterion) {
     }
 }
 
+#[allow(unused)]
 fn big(c: &mut Criterion) {
     matmul(c, 1, 2048, 2048, 1);
     matmul(c, 1, 1, 2048, 2048);
@@ -179,11 +181,13 @@ fn big(c: &mut Criterion) {
     matmul(c, 1, 4096, 4096, 4096);
 }
 
+#[allow(unused)]
 fn wavenet(c: &mut Criterion) {
     matmul(c, 1, 32, 32, 8);
     matmul(c, 1, 16, 60, 8);
 }
 
+#[allow(unused)]
 fn asr_15_m(c: &mut Criterion) {
     matmul(c, 1, 768, 200, 24);
     matmul(c, 1, 768, 2304, 24);
@@ -191,10 +195,12 @@ fn asr_15_m(c: &mut Criterion) {
     matmul(c, 1, 768, 384, 1);
 }
 
+#[allow(unused)]
 fn inception(c: &mut Criterion) {
     matmul(c, 1, 64, 288, 21609);
 }
 
+#[allow(unused)]
 fn whisper_base(c: &mut Criterion) {
     matmul(c, 1, 512, 512, 1500);
 }
