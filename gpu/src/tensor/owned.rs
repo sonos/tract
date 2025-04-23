@@ -192,7 +192,7 @@ impl OwnedDeviceTensor {
         &self.device_buffer
     }
 
-    pub fn device_buffer_address(&self) -> *const c_void {
+    pub fn device_buffer_ptr(&self) -> *const c_void {
         self.device_buffer.ptr()
     }
 
@@ -245,11 +245,11 @@ impl Display for OwnedDeviceTensor {
         match &self.inner {
             GValue::Natural(t) => {
                 let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
-                write!(f, "Host {{ {content} }}")
+                write!(f, "GPU {{ {content} }}")
             }
             GValue::Reshaped { t, shape, strides: _ } => {
                 let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
-                write!(f, "Device reshaped: {:?} - {{ {content} }}", shape)
+                write!(f, "GPU reshaped: {:?} - {{ {content} }}", shape)
             }
         }
     }

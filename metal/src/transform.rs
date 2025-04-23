@@ -141,7 +141,7 @@ impl MetalTransform {
                         if konst.as_device_tensor().is_none() {
                             let konst_metal =
                                 konst.as_ref().clone().into_device()?.into_opaque_tensor();
-                            let metal_fact = DeviceFact::from_cpu(in_fact.clone())?;
+                            let metal_fact = DeviceFact::from_host(in_fact.clone())?;
 
                             *in_fact = TypedFact::dt_scalar(DatumType::Opaque)
                                 .with_opaque_fact(metal_fact);
@@ -522,9 +522,9 @@ fn convert_logic_ops_to_metal(op: &Comp) -> ops::MetalBinOp {
 fn convert_const(op: &Const) -> TractResult<Const> {
     let typed_fact: TypedFact = Arc::clone(op.val()).into();
     let metal_fact = if let Some(of) = op.opaque_fact() {
-        DeviceFact::from_cpu(typed_fact.with_opaque_fact(clone_box(of)))?
+        DeviceFact::from_host(typed_fact.with_opaque_fact(clone_box(of)))?
     } else {
-        DeviceFact::from_cpu(typed_fact)?
+        DeviceFact::from_host(typed_fact)?
     };
 
     let metal_const = op.val().clone().into_device()?.into_opaque_tensor().into_arc_tensor();

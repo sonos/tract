@@ -1,6 +1,7 @@
-use crate::{rule_ensure, MetalTransform};
+use crate::MetalTransform;
 use tract_core::internal::*;
 use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+use tract_gpu::rule_ensure;
 
 /// Rewrite BasicMatMul { .. transpose_c: true } to BasicMatMul { .. transpose_c: false}
 pub fn untranspose_matmul_output(

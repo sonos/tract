@@ -316,8 +316,8 @@ fn main() -> TractResult<()> {
             std::env::set_var("METAL_CAPTURE_ENABLED", "1");
             std::env::set_var("METAL_DEVICE_WRAPPER_TYPE", "1");
             let probe_ref = probe.as_ref();
-            tract_metal::METAL_STREAM.with_borrow(move |context| {
-                context.capture_trace(gpu_trace_path, move |_ctxt| handle(matches, probe_ref))
+            tract_metal::METAL_STREAM.with_borrow(move |stream| {
+                stream.capture_trace(gpu_trace_path, move |_stream| handle(matches, probe_ref))
             })
         }
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]

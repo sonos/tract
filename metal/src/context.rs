@@ -302,7 +302,7 @@ impl MetalStream {
         let capture = metal::CaptureManager::shared();
         let descriptor = metal::CaptureDescriptor::new();
         descriptor.set_destination(metal::MTLCaptureDestination::GpuTraceDocument);
-        descriptor.set_capture_device(&metal_context().device);
+        descriptor.set_capture_device(&self.context.device);
         descriptor.set_output_url(path);
 
         capture.start_capture(&descriptor).map_err(|e| anyhow!("Error Metal Capture: {:?}", e))?;
@@ -328,7 +328,7 @@ impl MetalStream {
     {
         self.wait_until_completed()?;
 
-        let device: &Device = &metal_context().device;
+        let device = &self.context.device;
         assert!(device.supports_counter_sampling(metal::MTLCounterSamplingPoint::AtStageBoundary));
 
         let profiler = Rc::new(RefCell::new(MetalProfiler::new(device.to_owned(), num_nodes)));

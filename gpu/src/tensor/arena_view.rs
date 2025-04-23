@@ -75,7 +75,7 @@ impl DeviceArenaView {
         self.arena.device_buffer()
     }
 
-    pub fn device_buffer_address(&self) -> *const c_void {
+    pub fn device_buffer_ptr(&self) -> *const c_void {
         self.arena.device_buffer().ptr()
     }
 

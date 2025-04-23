@@ -1,6 +1,7 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::{utils, BroadcastKind};
 
+use crate::kernels::utils::compute_broadcast_strides;
 use crate::{LibraryName, MetalStream};
 use anyhow::ensure;
 use std::fmt;
@@ -81,10 +82,8 @@ impl MultiBroadcast {
 
         let kernel_name = self.kernel_name(input.datum_type(), broadcast_kind)?;
 
-        let input_broadcast_strides = tract_gpu::utils::compute_broadcast_strides::<usize>(
-            input_shape.as_slice(),
-            input_strides.as_slice(),
-        )?;
+        let input_broadcast_strides =
+            compute_broadcast_strides::<usize>(input_shape.as_slice(), input_strides.as_slice())?;
 
         let pipeline = stream.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
         let command_buffer = stream.command_buffer();

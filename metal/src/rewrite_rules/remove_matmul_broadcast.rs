@@ -1,8 +1,9 @@
 use crate::rewrite_rules::next_node;
-use crate::{rule_ensure, MetalGemmImplKind, MetalTransform};
+use crate::{MetalGemmImplKind, MetalTransform};
 use tract_core::internal::*;
 use tract_core::ops::array::MultiBroadcastTo;
 use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+use tract_gpu::rule_ensure;
 
 use super::previous_node;
 
