@@ -131,7 +131,7 @@ impl BinOps {
             Self::Or => "or",
         };
 
-        let kbroadcast_name = broadcast_kind.to_func_part();
+        let kbroadcast_name = broadcast_kind.name();
 
         Ok(format!("bin_ops::{kname}_{kbroadcast_name}_{tname}"))
     }

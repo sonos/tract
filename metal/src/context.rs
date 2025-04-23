@@ -165,7 +165,7 @@ impl DeviceContext for MetalContext {
     fn buffer_from_slice(&self, data: &[u8]) -> Box<dyn tract_gpu::device::DeviceBuffer> {
         static ZERO: [u8; 1] = [0];
         // Handle empty data
-        let data = if data.len() == 0 { &ZERO } else { data };
+        let data = if data.is_empty() { &ZERO } else { data };
 
         let size = core::mem::size_of_val(data) as NSUInteger;
         Box::new(MetalBuffer {

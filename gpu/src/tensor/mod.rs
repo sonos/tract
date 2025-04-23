@@ -1,3 +1,6 @@
+#![allow(clippy::missing_safety_doc)]
+#![allow(clippy::missing_transmute_annotations)]
+
 mod arena_view;
 mod owned;
 
@@ -116,7 +119,7 @@ impl DeviceTensor {
     }
 
     /// Get underlying inner buffer.
-    pub fn device_buffer(&self) -> &Box<dyn DeviceBuffer> {
+    pub fn device_buffer(&self) -> &dyn DeviceBuffer {
         match self {
             Self::Owned(t) => t.device_buffer(),
             Self::ArenaView(t) => t.device_buffer(),

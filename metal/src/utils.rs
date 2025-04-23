@@ -1,10 +1,12 @@
+#![allow(clippy::missing_safety_doc)]
+
 use std::ffi::c_void;
 
 use crate::context::MetalBuffer;
 use crate::{MetalStream, METAL_STREAM};
 use metal::Buffer;
 use objc::runtime::{objc_autoreleasePoolPop, objc_autoreleasePoolPush};
-use tract_gpu::device::DeviceBuffer;
+use tract_gpu::tensor::DeviceTensor;
 
 // Copied code from objc crate to avoid closures
 struct AutoReleaseHelper {
@@ -48,10 +50,11 @@ macro_rules! impl_eval_op_for_metal_op {
     };
 }
 
-pub fn as_metal_buffer(device_buffer: &Box<dyn DeviceBuffer>) -> &Buffer {
-    if let Some(metal_buffer) = device_buffer.downcast_ref::<MetalBuffer>() {
+pub fn get_metal_buffer(tensor: &DeviceTensor) -> &Buffer {
+    if let Some(metal_buffer) = tensor.device_buffer().downcast_ref::<MetalBuffer>() {
         &metal_buffer.inner
     } else {
         panic!("Non-Metal Buffer accessed during Metal execution")
     }
 }
+
