@@ -95,7 +95,6 @@ impl Runtime for MetalTestRuntime {
     }
 
     fn prepare(&self, mut model: TypedModel) -> TractResult<Box<dyn Runnable>> {
-        MetalDevice::register().unwrap();
         if self.transpose_inputs {
             for ix in 0..model.inputs.len() {
                 let input = model.input_outlets()?[ix];
