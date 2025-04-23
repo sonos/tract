@@ -20,12 +20,20 @@ echo "export DATE_ISO=$date_iso" >> $TASK_NAME/vars
 echo "export TIMESTAMP=$timestamp" >> $TASK_NAME/vars
 echo "export PLATFORM=$PLATFORM" >> $TASK_NAME/vars
 
+if which gstat > /dev/null
+then
+    STAT=gstat
+else
+    STAT=stat
+fi
+
 touch sizes
 for bin in example-tensorflow-mobilenet-v2 tract
 do
     if [ -e target/$RUSTC_TRIPLE/release/$bin ]
     then
-        binary_size_cli=$(stat -c "%s" target/$RUSTC_TRIPLE/release/$bin)
+
+        binary_size_cli=$($STAT -c "%s" target/$RUSTC_TRIPLE/release/$bin)
         token=$(echo $bin | tr '-' '_')
         if [ "$bin" = "tract" ]
         then
