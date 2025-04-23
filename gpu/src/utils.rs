@@ -1,4 +1,3 @@
-use num_traits::{AsPrimitive, Zero};
 use tract_core::internal::*;
 use tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue, Q4_0};
 
@@ -16,7 +15,7 @@ pub fn facts_to_device_facts(
         let output_facts = (resolve_facts)(device_facts.as_slice())?;
         Ok(output_facts
             .into_iter()
-            .map(|it| Ok(DeviceFact::new(DeviceTensorOrigin::Device, it)?.into_opaque_fact()))
+            .map(|it| Ok(DeviceFact::new(DeviceTensorOrigin::FromDevice, it)?.into_opaque_fact()))
             .collect::<TractResult<_>>()?)
     } else if facts.iter().all(|it| it.datum_type != DatumType::Opaque) {
         (resolve_facts)(facts)
@@ -57,24 +56,6 @@ pub fn get_device_fact<'a, T: 'a>(
     } else {
         (map_fact)(fact)
     }
-}
-
-pub fn compute_broadcast_strides<T: Zero + Copy + 'static>(
-    shape: &[usize],
-    strides: &[isize],
-) -> TractResult<TVec<T>>
-where
-    isize: AsPrimitive<T>,
-{
-    ensure!(
-        shape.len() == strides.len(),
-        "Mistmach between shape and strides length while computing broadcast strides"
-    );
-    Ok(strides
-        .iter()
-        .zip(shape)
-        .map(|(s, dim)| if *dim == 1 { T::zero() } else { s.as_() })
-        .collect::<TVec<T>>())
 }
 
 pub fn as_q40_fact(fact: &TypedFact) -> Option<&BlockQuantFact> {

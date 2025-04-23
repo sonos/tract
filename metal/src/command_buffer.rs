@@ -120,9 +120,9 @@ impl MetalProfiler {
 
 #[derive(Debug, Clone)]
 pub struct TCommandBuffer {
-    pub inner: CommandBuffer,
-    pub encoder: ComputeCommandEncoder,
-    pub profiler: Option<Rc<RefCell<MetalProfiler>>>,
+    inner: CommandBuffer,
+    encoder: ComputeCommandEncoder,
+    profiler: Option<Rc<RefCell<MetalProfiler>>>,
 }
 
 impl TCommandBuffer {

@@ -134,10 +134,10 @@ impl DeviceTensor {
         }
     }
 
-    pub fn device_buffer_address(&self) -> *const c_void {
+    pub fn device_buffer_ptr(&self) -> *const c_void {
         match self {
-            Self::Owned(t) => t.device_buffer_address(),
-            Self::ArenaView(t) => t.device_buffer_address(),
+            Self::Owned(t) => t.device_buffer_ptr(),
+            Self::ArenaView(t) => t.device_buffer_ptr(),
         }
     }
 
@@ -248,7 +248,7 @@ impl OpaquePayload for DeviceTensor {
     fn same_as(&self, other: &dyn OpaquePayload) -> bool {
         other
             .downcast_ref::<Self>()
-            .is_some_and(|other| self.device_buffer_address() == other.device_buffer_address())
+            .is_some_and(|other| self.device_buffer_ptr() == other.device_buffer_ptr())
     }
 
     fn clarify_to_tensor(&self) -> TractResult<Option<Arc<Tensor>>> {

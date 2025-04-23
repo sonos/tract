@@ -1,5 +1,6 @@
 use super::BroadcastKind;
 use crate::encoder::EncoderExt;
+use crate::kernels::utils::compute_broadcast_strides;
 use crate::{LibraryName, MetalStream};
 use anyhow::{bail, ensure};
 use metal::{MTLSize, NSUInteger};
@@ -212,15 +213,9 @@ impl BinOps {
             BroadcastKind::Nd2 | BroadcastKind::Nd3 | BroadcastKind::Nd4 | BroadcastKind::Nd5 => {
                 ensure!(lhs.rank() == rhs.rank());
 
-                let lhs_strides = tract_gpu::utils::compute_broadcast_strides::<usize>(
-                    lhs.shape(),
-                    lhs.strides(),
-                )?;
+                let lhs_strides = compute_broadcast_strides::<usize>(lhs.shape(), lhs.strides())?;
 
-                let rhs_strides = tract_gpu::utils::compute_broadcast_strides::<usize>(
-                    rhs.shape(),
-                    rhs.strides(),
-                )?;
+                let rhs_strides = compute_broadcast_strides::<usize>(rhs.shape(), rhs.strides())?;
 
                 let output_shape = output.shape();
 

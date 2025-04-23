@@ -5,13 +5,13 @@ use tract_core::internal::*;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DeviceTensorOrigin {
     /// Tensor outputted by a device operator
-    /// Can be either: Host or ArenaView
+    /// Can be either a Host or ArenaView tensor
     /// Note: Tensors marked as Device are from asynchronous operations.
-    Device,
+    FromDevice,
     /// Tensor built from a CPU tensor (CPU op output or Const)
     /// Can be only Host tensor.
     /// Note: Tensors marked as Host are from synchronous operations.
-    Host,
+    FromHost,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -31,16 +31,16 @@ impl DeviceFact {
         Ok(Self { origin, fact: fact_wo_cst })
     }
 
-    pub fn from_cpu(fact: TypedFact) -> TractResult<Self> {
-        Self::new(DeviceTensorOrigin::Host, fact)
+    pub fn from_host(fact: TypedFact) -> TractResult<Self> {
+        Self::new(DeviceTensorOrigin::FromHost, fact)
     }
 
     pub fn is_from_device(&self) -> bool {
-        matches!(self.origin, DeviceTensorOrigin::Device)
+        matches!(self.origin, DeviceTensorOrigin::FromDevice)
     }
 
     pub fn is_from_host(&self) -> bool {
-        matches!(self.origin, DeviceTensorOrigin::Host)
+        matches!(self.origin, DeviceTensorOrigin::FromHost)
     }
 
     pub fn into_typed_fact(self) -> TypedFact {
@@ -71,8 +71,8 @@ impl OpaqueFact for DeviceFact {
 impl fmt::Debug for DeviceFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self.origin {
-            DeviceTensorOrigin::Host => write!(fmt, "Host({:?})", self.fact),
-            DeviceTensorOrigin::Device => write!(fmt, "Device({:?})", self.fact),
+            DeviceTensorOrigin::FromHost => write!(fmt, "FromHost({:?})", self.fact),
+            DeviceTensorOrigin::FromDevice => write!(fmt, "FromDevice({:?})", self.fact),
         }
     }
 }

@@ -47,7 +47,7 @@ impl EvalOp for DeviceSync {
 
                 let tensor = device_tensor
                     .to_host()
-                    .with_context(|| anyhow!("Error while syncing device tensor to cpu"))?;
+                    .with_context(|| anyhow!("Error while syncing device tensor to host"))?;
                 Ok(tvec![tensor.into_tvalue()])
             }
             DeviceSyncKind::ToDevice => {
@@ -69,7 +69,7 @@ impl TypedOp for DeviceSync {
             DeviceSyncKind::ToHost => Ok(tvec![input
                 .to_device_fact()
                 .with_context(|| anyhow!(
-                    "Cannot sync to CPU a tensor without DeviceFact as metadata in its TypedFact"
+                    "Cannot sync to Host a tensor without DeviceFact as metadata in its TypedFact"
                 ))?
                 .clone()
                 .into_typed_fact()]),
@@ -78,7 +78,7 @@ impl TypedOp for DeviceSync {
                     input.datum_type != DatumType::Opaque,
                     "Cannot sync Opaque Tensor to Device"
                 );
-                Ok(tvec![DeviceFact::from_cpu(input.clone())?.into_opaque_fact()])
+                Ok(tvec![DeviceFact::from_host(input.clone())?.into_opaque_fact()])
             }
         }
     }

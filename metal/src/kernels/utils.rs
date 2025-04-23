@@ -1,4 +1,5 @@
-use tract_core::internal::{tvec, TVec};
+use num_traits::{AsPrimitive, Zero};
+use tract_core::internal::{ensure, tvec, TVec, TractResult};
 
 pub fn build_metal_size_for_shape(shape: &[usize]) -> metal::MTLSize {
     match shape.len() {
@@ -28,4 +29,22 @@ pub fn reshape_to_rank_3(shape: &[usize], axis: usize) -> TVec<usize> {
     let dim_axis_1 = shape[axis];
     let dim_axis_2 = shape[axis + 1..].iter().product::<usize>();
     tvec![dim_axis_0, dim_axis_1, dim_axis_2]
+}
+
+pub fn compute_broadcast_strides<T: Zero + Copy + 'static>(
+    shape: &[usize],
+    strides: &[isize],
+) -> TractResult<TVec<T>>
+where
+    isize: AsPrimitive<T>,
+{
+    ensure!(
+        shape.len() == strides.len(),
+        "Mistmach between shape and strides length while computing broadcast strides"
+    );
+    Ok(strides
+        .iter()
+        .zip(shape)
+        .map(|(s, dim)| if *dim == 1 { T::zero() } else { s.as_() })
+        .collect::<TVec<T>>())
 }

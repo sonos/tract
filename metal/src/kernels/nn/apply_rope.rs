@@ -1,4 +1,5 @@
 use crate::encoder::EncoderExt;
+use crate::kernels::utils::compute_broadcast_strides;
 use crate::kernels::{utils, BroadcastKind};
 use crate::{LibraryName, MetalStream};
 use anyhow::ensure;
@@ -71,10 +72,8 @@ impl ApplyRope {
             input.shape()
         );
 
-        let cos_sin_strides = tract_gpu::utils::compute_broadcast_strides::<usize>(
-            padded_cos.shape(),
-            padded_sin.strides(),
-        )?;
+        let cos_sin_strides =
+            compute_broadcast_strides::<usize>(padded_cos.shape(), padded_sin.strides())?;
 
         let broadcast_kind = BroadcastKind::from_rank(input.rank())
             .with_context(|| anyhow!("Unsupported rank for ApplyRope op: {:?}", input.shape(),))?;

@@ -1,10 +1,10 @@
 use crate::kernels::matmul::{GgmlGemm, MfaGemm, MlxGemm};
 use crate::ops::{MetalAxisOp, MetalFusedAxisOp};
 use crate::rewrite_rules::{next_node, previous_node, previous_nodes};
-use crate::rule_ensure;
 use tract_core::internal::*;
 use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::fact::DeviceTypedFactExt;
+use tract_gpu::rule_ensure;
 
 fn is_supported_axis_op(op: &MetalAxisOp) -> bool {
     matches!(op.0, AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Reshape(..))

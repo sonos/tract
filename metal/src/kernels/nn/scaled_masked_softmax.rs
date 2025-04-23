@@ -1,4 +1,5 @@
 use crate::encoder::EncoderExt;
+use crate::kernels::utils::compute_broadcast_strides;
 use crate::{LibraryName, MetalStream};
 use metal::MTLSize;
 use tract_core::internal::*;
@@ -53,8 +54,7 @@ impl ScaledMaskedSoftmax {
 
         let shape = input.shape();
         let strides = input.strides();
-        let mask_strides_nd3 =
-            tract_gpu::utils::compute_broadcast_strides::<usize>(mask.shape(), mask.strides())?;
+        let mask_strides_nd3 = compute_broadcast_strides::<usize>(mask.shape(), mask.strides())?;
 
         let pipeline =
             stream.load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
