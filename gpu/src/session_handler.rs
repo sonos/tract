@@ -1,4 +1,3 @@
-use crate::device::get_context;
 use crate::memory::DeviceMemSchema;
 use crate::memory::DeviceMemoryPool;
 use std::borrow::Borrow;
@@ -27,8 +26,7 @@ impl DeviceSessionHandler {
 impl SessionStateHandler for DeviceSessionHandler {
     fn before_plan_eval(&self, session_state: &mut SessionState) -> TractResult<()> {
         let resolved_mem_schema = self.mem_schema.resolve(&session_state.resolved_symbols)?;
-        let curr_device = get_context()?;
-        let memory_pool = DeviceMemoryPool::from_schema(curr_device, resolved_mem_schema)?;
+        let memory_pool = DeviceMemoryPool::from_schema(resolved_mem_schema)?;
 
         session_state.scratch_extensions.insert(memory_pool);
         ensure!(session_state.scratch_extensions.get::<DeviceMemoryPool>().is_some());
