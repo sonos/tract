@@ -25,6 +25,7 @@ case $CACHEDIR in
     ;;
     *) 
         [ -d $CACHEDIR ] || mkdir $CACHEDIR
+        PATH=$PATH:/usr/local/bin # for aws command on darwin
         aws s3 sync s3://tract-ci-builds/model $CACHEDIR
         (cd $CACHEDIR
             [ -d en_libri_real ] || tar zxf en_libri_real.tar.gz
