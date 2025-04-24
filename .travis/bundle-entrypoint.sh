@@ -92,12 +92,12 @@ llm_bench() {
     do
         pattern=$(echo $stage | sed 's/[_-]/./g')
         v=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 1 -d ' ')
-        echo net.$net.time_to_$stage.$pb $v >> metrics
+        echo llm.$net.time_to_$stage.$pb $v >> metrics
         v=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 4 -d ' ')
-        echo net.$net.rsz_at_$stage.$pb $v >> metrics
+        echo llm.$net.rsz_at_$stage.$pb $v >> metrics
         f=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 11 -d ' ')
         a=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 10 -d ' ')
-        echo net.$net.active_at_$stage.$pb $(($a-$f)) >> metrics
+        echo llm.$net.active_at_$stage.$pb $(($a-$f)) >> metrics
     done
 }
 
