@@ -75,6 +75,31 @@ net_bench() {
     done
 }
 
+llm_bench() {
+    net=$1
+    pb=$2
+    shift 2
+
+    $TRACT "$@" --nnef-tract-core --machine-friendly -O llm-bench $BENCH_OPTS > tract.out
+    cat tract.out
+    echo llm.$net.pp512.$pb $(cat tract.out | grep PP512 | cut -f 2 -d ' ') >> metrics
+    echo llm.$net.tg128.$pb $(cat tract.out | grep TG128 | cut -f 2 -d ' ') >> metrics
+
+    $TRACT "$@" --readings --readings-heartbeat 1000 --nnef-tract-core --machine-friendly -O llm-bench $BENCH_OPTS > /dev/null
+
+    for stage in model_ready before_optimize
+    do
+        pattern=$(echo $stage | sed 's/[_-]/./g')
+        v=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 1 -d ' ')
+        echo net.$net.time_to_$stage.$pb $v >> metrics
+        v=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 4 -d ' ')
+        echo net.$net.rsz_at_$stage.$pb $v >> metrics
+        f=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 11 -d ' ')
+        a=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 10 -d ' ')
+        echo net.$net.active_at_$stage.$pb $(($a-$f)) >> metrics
+    done
+}
+
 net_bench arm_ml_kws_cnn_m pass $CACHEDIR/ARM-ML-KWS-CNN-M.pb -i 49,10,f32 --partial --input-node Mfcc
 
 net_bench hey_snips_v1 400ms $CACHEDIR/hey_snips_v1.pb -i 80,40,f32
@@ -117,6 +142,19 @@ net_bench trunet pulse1_f32 $CACHEDIR/trunet_dummy.nnef.tgz --nnef-tract-core --
 net_bench trunet pulse1_f16 $CACHEDIR/trunet_dummy.nnef.tgz --nnef-tract-core --half-floats --pulse 1
 
 . $PRIVATE
+
+if [ $(uname) = "Darwin" ]
+then
+    for backend in cpu metal
+    do
+        case $backend in
+            cpu) extra="";;
+            metal) extra="--metal";;
+        esac
+        llm_bench llama-3_2-3B-q40ef32-516 $backend $CACHEDIR/Llama-3.2-3B-q40ef32.516.nnef.tgz $extra
+        llm_bench openelm-270M-q40ef16-516 $backend $CACHEDIR/OpenELM-270M-q40ef16.516.nnef.tgz $extra
+    done
+fi
 
 end=$(date +%s)
 
