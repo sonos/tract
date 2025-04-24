@@ -11,9 +11,11 @@ pub fn register(registry: &mut Registry) {
     registry.register_dumper(ser_scaled_masked_softmax);
     registry.register_primitive(
         "tract_transformers_scaled_masked_softmax",
-        &[TypeName::Scalar.tensor().named("input"),
-                  TypeName::Scalar.tensor().named("mask"),
-                  TypeName::Scalar.named("scale")],
+        &[
+            TypeName::Scalar.tensor().named("input"),
+            TypeName::Scalar.tensor().named("mask"),
+            TypeName::Scalar.named("scale"),
+        ],
         &[("output", TypeName::Scalar.tensor())],
         de_scaled_masked_softmax,
     );
