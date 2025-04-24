@@ -42,7 +42,7 @@ impl TypedOp for MetalApplyRope {
             let fact = dt.fact(facts[0].shape.clone());
             Ok(tvec!(fact))
         })
-        .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
+        .with_context(|| format!("Error while computing facts for {:?}", self.name()))
     }
 
     as_op!();

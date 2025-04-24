@@ -76,7 +76,7 @@ impl ApplyRope {
             compute_broadcast_strides::<usize>(padded_cos.shape(), padded_sin.strides())?;
 
         let broadcast_kind = BroadcastKind::from_rank(input.rank())
-            .with_context(|| anyhow!("Unsupported rank for ApplyRope op: {:?}", input.shape(),))?;
+            .with_context(|| format!("Unsupported rank for ApplyRope op: {:?}", input.shape(),))?;
 
         let kernel_name = self.kernel_name(input.datum_type(), broadcast_kind)?;
 
@@ -142,7 +142,7 @@ mod tests {
             cpu_output
                 .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)
                 .with_context(|| {
-                    anyhow!(
+                    format!(
                         "Input: {:?} Cpu: {:?}, Metal: {:?}",
                         a.dump(true),
                         cpu_output.dump(true),

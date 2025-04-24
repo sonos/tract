@@ -73,7 +73,7 @@ impl MultiBroadcast {
         input_strides.extend(input.strides());
 
         let broadcast_kind = BroadcastKind::from_rank(output.rank()).with_context(|| {
-            anyhow!(
+            format!(
                 "Unsupported broadcast for broadcast op: (in: {:?}, out: {:?})",
                 input.shape(),
                 output.shape(),

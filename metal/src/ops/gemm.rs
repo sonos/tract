@@ -82,10 +82,10 @@ impl<K: GemmKernel + 'static> MetalEvalOp for MetalGemm<K> {
         let (a_opaque, b_opaque) = args_2!(inputs);
         let a = a_opaque
             .to_device_tensor()
-            .with_context(|| anyhow!("A tensor is not a metal tensor: {:?}", a_opaque))?;
+            .with_context(|| format!("A tensor is not a metal tensor: {:?}", a_opaque))?;
         let b = b_opaque
             .to_device_tensor()
-            .with_context(|| anyhow!("B tensor is not a metal tensor {:?}", b_opaque))?;
+            .with_context(|| format!("B tensor is not a metal tensor {:?}", b_opaque))?;
 
         let b_shape = as_q40_tensor(b.view().tensor)
             .map(|bqv| b.shape().iter().cloned().chain(bqv.fact.shape().iter().copied()).collect())
@@ -119,7 +119,7 @@ impl<K: GemmKernel + 'static> TypedOp for MetalGemm<K> {
         tract_gpu::utils::facts_to_device_facts(inputs, |input_facts| {
             self.resolve_output_facts(input_facts)
         })
-        .with_context(|| anyhow::anyhow!("Error while computing output facts for {}", self.name()))
+        .with_context(|| format!("Error while computing output facts for {}", self.name()))
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -136,7 +136,7 @@ impl<K: GemmKernel + 'static> TypedOp for MetalGemm<K> {
                 Ok(tvec!((Cost::FMA(f32::datum_type()), fma)))
             }
         })
-        .with_context(|| anyhow::anyhow!("Error while computing cost for {:?}", self.name()))
+        .with_context(|| format!("Error while computing cost for {:?}", self.name()))
     }
 
     as_op!();

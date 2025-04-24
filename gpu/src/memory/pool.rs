@@ -20,7 +20,7 @@ impl DeviceMemoryPool {
         let tensor = unsafe {
             Tensor::uninitialized_dt(DatumType::U8, &[resolved_schema.memory_size]).with_context(
                 || {
-                    anyhow!(
+                    format!(
                         "Error while allocating a tensor of {:?} bytes",
                         resolved_schema.memory_size
                     )

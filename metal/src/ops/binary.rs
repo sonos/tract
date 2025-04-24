@@ -70,7 +70,7 @@ impl MetalEvalOp for MetalBinOp {
 impl TypedOp for MetalBinOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         tract_gpu::utils::facts_to_device_facts(inputs, |facts| self.resolve_output_facts(facts))
-            .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
+            .with_context(|| format!("Error while computing facts for {:?}", self.name()))
     }
 
     as_op!();

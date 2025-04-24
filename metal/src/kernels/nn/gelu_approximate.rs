@@ -115,7 +115,7 @@ mod tests {
             cpu_output
                 .close_enough(&metal_output.to_host()?.into_tensor(), appriximate)
                 .with_context(|| {
-                    anyhow!(
+                    format!(
                         "Input: {:?}, scale: {:?} Cpu: {:?}, Metal: {:?}",
                         a.to_host().and_then(|it| it.dump(true)),
                         scale,
@@ -186,7 +186,7 @@ mod tests {
                 let reference = pb.reference()?;
 
                 out.close_enough(&reference, Approximation::Approximate)
-                   .with_context(|| anyhow!("Cpu: {:?}, Metal: {:?}", reference.dump(true), out.dump(true)))
+                   .with_context(|| format!("Cpu: {:?}, Metal: {:?}", reference.dump(true), out.dump(true)))
             }
             run(pb).map_err(|e| TestCaseError::Fail(format!("{:?}", e).into()))?;
         }
@@ -198,7 +198,7 @@ mod tests {
                 let reference = pb.reference()?;
 
                 out.close_enough(&reference, Approximation::Approximate)
-                   .with_context(|| anyhow!("Cpu: {:?}, Metal: {:?}", reference.dump(true), out.dump(true)))
+                   .with_context(|| format!("Cpu: {:?}, Metal: {:?}", reference.dump(true), out.dump(true)))
             }
 
             run(pb).map_err(|e| TestCaseError::Fail(format!("{:?}", e).into()))?;

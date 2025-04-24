@@ -110,7 +110,7 @@ mod tests {
             cpu_output
                 .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Exact)
                 .with_context(|| {
-                anyhow!(
+                format!(
                     "Input: {:?} Cpu: {:?}, Metal: {:?}",
                     a.dump(true),
                     cpu_output.dump(true),

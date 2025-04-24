@@ -56,7 +56,7 @@ impl TypedOp for MetalCast {
         tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
             Ok(tvec!(self.to.fact(facts[0].shape.clone())))
         })
-        .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
+        .with_context(|| format!("Error while computing facts for {:?}", self.name()))
     }
 
     as_op!();

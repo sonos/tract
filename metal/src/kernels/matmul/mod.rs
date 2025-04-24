@@ -341,7 +341,7 @@ impl<M: GemmKernel> GemmImpl<M> {
                     c_buff,
                 )
                 .with_context(|| {
-                    anyhow!(
+                    format!(
                     "Error while performing MatMul with {:?} (a: {:?}), (b: {:?}) = (c: {:?}) for dispatch: {:?}",
                     self.matmul,
                     a.shape(),

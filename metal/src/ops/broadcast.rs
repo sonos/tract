@@ -45,7 +45,7 @@ impl TypedOp for MetalMultiBroadcastTo {
             fact.uniform.clone_from(&inputs[0].uniform);
             Ok(tvec!(fact))
         })
-        .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
+        .with_context(|| format!("Error while computing facts for {:?}", self.name()))
     }
 
     as_op!();
