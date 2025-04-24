@@ -68,8 +68,9 @@ impl TypedOp for DeviceSync {
         match self.kind {
             DeviceSyncKind::ToHost => Ok(tvec![input
                 .to_device_fact()
-                .with_context(|| "Cannot sync to Host a tensor without DeviceFact as metadata in its TypedFact"
-                )?
+                .with_context(|| {
+                    "Cannot sync to Host a tensor without DeviceFact as metadata in its TypedFact"
+                })?
                 .clone()
                 .into_typed_fact()]),
             DeviceSyncKind::ToDevice => {
