@@ -60,8 +60,8 @@ impl OpState for DynKeyValueCacheState {
 
 #[derive(Default, Clone, Debug)]
 pub struct DynKeyValueCache {
-    axis: usize,
-    symbols: [TDim; 2],
+    pub axis: usize,
+    pub symbols: [TDim; 2],
 }
 
 impl Op for DynKeyValueCache {
@@ -91,33 +91,22 @@ impl TypedOp for DynKeyValueCache {
         let input = inputs[0];
         let mut fact = input.without_value();
 
-        let dim = self.symbols[0].clone() + &self.symbols[1];
-        fact.shape.set(self.axis, dim);
-        dbg!(&fact);
+        fact.shape.set(self.axis, self.symbols.iter().sum());
         Ok(tvec!(fact))
     }
 
     as_op!();
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-struct FrozenDynKeyValueCacheState {
-    stored_kv_cache: Option<Arc<Tensor>>,
-}
-
 impl OpStateFreeze for DynKeyValueCacheState {
     fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenDynKeyValueCacheState {
-            stored_kv_cache: self.stored_kv_cache.as_ref().map(|t| t.clone().into_arc_tensor()),
-        })
+        Box::new(self.clone())
     }
 }
 
-impl FrozenOpState for FrozenDynKeyValueCacheState {
+impl FrozenOpState for DynKeyValueCacheState {
     fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(DynKeyValueCacheState {
-            stored_kv_cache: self.stored_kv_cache.as_ref().map(|t| t.clone().into_tensor()),
-        })
+        Box::new(self.clone())
     }
 }
 
