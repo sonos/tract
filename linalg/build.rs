@@ -316,7 +316,7 @@ fn load_partials(p: &path::Path, msvc: bool) -> liquid::partials::InMemorySource
         }
 
         let ext = f.path().extension().map(|s| s.to_string_lossy()).unwrap_or("".into());
-        let text = std::fs::read_to_string(f.path()).unwrap_or_else(|_| panic!("file {:?}", f));
+        let text = std::fs::read_to_string(f.path()).unwrap_or_else(|_| panic!("file {f:?}"));
         let text = match ext.as_ref() {
             "tmpli" => Some(text.replace("{{", "{").replace("}}", "}")),
             "tmpliq" => Some(text),

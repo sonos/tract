@@ -147,7 +147,7 @@ impl SymbolScope {
         let locked = self.0.lock();
         let locked = locked.borrow();
         if locked.scenarios.len() == 0 {
-            return Ok(None)
+            return Ok(None);
         }
         let mut maybe = None;
         for (ix, (_name, assertions)) in locked.scenarios.iter().enumerate() {
@@ -158,7 +158,7 @@ impl SymbolScope {
             } else if maybe.is_none() {
                 maybe = Some(ix);
             } else {
-                return Ok(None)
+                return Ok(None);
             }
         }
         if maybe.is_some() {
@@ -299,7 +299,7 @@ impl std::fmt::Display for Symbol {
             let lock = scope.0.lock();
             let lock = lock.borrow();
             if let Some(s) = lock.table.resolve(self.1) {
-                return write!(f, "{}", s);
+                return write!(f, "{s}");
             }
         }
         write!(f, "<Sym{}>", self.1.to_usize())

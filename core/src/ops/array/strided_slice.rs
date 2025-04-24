@@ -276,7 +276,7 @@ impl EvalOp for StridedSlice {
         let mut source = tvec!();
         for (ix, input) in inputs.iter().enumerate() {
             source.push(model.add_source(
-                format!("adhoc_input.{}", ix),
+                format!("adhoc_input.{ix}"),
                 input.clone().into_arc_tensor().into(),
             )?);
         }
@@ -291,7 +291,7 @@ impl TypedOp for StridedSlice {
         let mut model = TypedModel::default();
         let mut source = tvec!();
         for (ix, input) in inputs.iter().enumerate() {
-            source.push(model.add_source(format!("adhoc_input.{}", ix), (*input).clone())?);
+            source.push(model.add_source(format!("adhoc_input.{ix}"), (*input).clone())?);
         }
         let output = self.wire("adhoc", &mut model, &source)?;
         model.set_output_outlets(&output)?;

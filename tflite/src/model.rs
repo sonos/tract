@@ -96,7 +96,7 @@ impl Framework<TfliteProtoModel, TypedModel> for Tflite {
             for input in op.inputs().context("No input in Tflite  operator")? {
                 if let Entry::Vacant(slot) = mapping.entry(input) {
                     let (fact, name) = flat_tensor_to_tract_fact(&root, main, input)?;
-                    let value = fact.konst.with_context(|| format!("Error in TF file for operator {:?}. No prior computation nor constant for input {}", op, input))?;
+                    let value = fact.konst.with_context(|| format!("Error in TF file for operator {op:?}. No prior computation nor constant for input {input}"))?;
                     let konst = target.add_const(name, value)?;
                     slot.insert(konst);
                 }

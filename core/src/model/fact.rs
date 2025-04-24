@@ -426,13 +426,13 @@ impl fmt::Debug for TypedFact {
         write!(fmt, "{:?},{:?}", self.shape, self.datum_type)?;
         if self.datum_type.is_opaque() {
             if let Some(of) = &self.opaque_fact {
-                write!(fmt, " 🔍 {:?} ", of)?
+                write!(fmt, " 🔍 {of:?} ")?
             } else {
                 write!(fmt, " 🔍 <no opaque fact> ")?
             }
         }
         if let Some(k) = &self.konst {
-            write!(fmt, "🟰 {:?}", k)?
+            write!(fmt, "🟰 {k:?}")?
         }
         Ok(())
     }

@@ -157,7 +157,7 @@ fn main() -> Result<(), Error> {
     // uncomment below to save preview face
     // let test_save = bbox_vec[0].crop_bbox(&raw_image)?.save("test_crop.png");
     
-    println!("bboxes: {:?}", bbox_vec);
+    println!("bboxes: {bbox_vec:?}");
     
     Ok(())
 }

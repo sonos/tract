@@ -88,7 +88,7 @@ impl ParsingContext<'_> {
                 #[allow(irrefutable_let_patterns)]
                 let fact: InferenceFact = if let pb::type_proto::Value::TensorType(fact) = fact {
                     translate_inference_fact(&ctx, fact, true)
-                        .with_context(|| format!("translating to fact: {:?}", fact))?
+                        .with_context(|| format!("translating to fact: {fact:?}"))?
                 } else {
                     bail!("Can not parse tensor type");
                 };

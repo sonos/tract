@@ -752,7 +752,7 @@ impl Parameters {
 
         if let Some(transform) = matches.values_of("transform") {
             for spec in transform {
-                let transform = super::nnef(matches).get_transform(spec)?.with_context(|| format!("Could not find transform named {}", spec))?;
+                let transform = super::nnef(matches).get_transform(spec)?.with_context(|| format!("Could not find transform named {spec}"))?;
                 stage!(&transform.name(), typed_model -> typed_model, |m:TypedModel| {
                     transform.transform_into(m)
                 });

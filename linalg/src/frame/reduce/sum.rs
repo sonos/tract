@@ -41,10 +41,11 @@ pub mod test {
         };
     }
 
-    pub fn test_sum<K: ReduceKer<T>, T: LADatum + Float + Zero>(values: &[f32]) -> TestCaseResult
+    pub fn test_sum<K, T>(values: &[f32]) -> TestCaseResult
     where
+        K: ReduceKer<T>,
         f32: AsPrimitive<T>,
-        T: AsPrimitive<f32>,
+        T: LADatum + Float + Zero + AsPrimitive<f32>,
     {
         crate::setup_test_logger();
         let values: Vec<T> = values.iter().copied().map(|x| x.as_()).collect();

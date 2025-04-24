@@ -14,7 +14,7 @@ impl<const QK: usize> Debug for BaseQ4_0<QK> {
         if QK == 32 {
             write!(f, "Q4_0")
         } else {
-            write!(f, "BaseQ4_0<{}>", QK)
+            write!(f, "BaseQ4_0<{QK}>")
         }
     }
 }

@@ -248,7 +248,7 @@ impl<'f, 'b, 'mb> SubgraphBuilder<'f, 'b, 'mb> {
                     .outlet_labels
                     .get(&OutletId::new(node.id, slot))
                     .map(Cow::Borrowed)
-                    .unwrap_or_else(|| Cow::Owned(format!("outlet_{}_{}", node_id, slot)));
+                    .unwrap_or_else(|| Cow::Owned(format!("outlet_{node_id}_{slot}")));
                 let tensor = self.write_fact(name.as_str(), &output.fact)?;
                 let outlet = OutletId::new(node.id, slot);
                 self.outlets_to_tensors.insert(outlet, tensor);

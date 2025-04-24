@@ -44,7 +44,7 @@ impl TypedPass for ChangeAxes {
                 if self.0.insert(change.clone()) {
                     if let Some((patch, _)) =
                         change_axes(model, &change, &interfaces, &[], &mut explored).with_context(
-                            || format!("Making patch for {:?} from {}", change, node),
+                            || format!("Making patch for {change:?} from {node}"),
                         )?
                     {
                         self.1 = node.id;
@@ -61,7 +61,7 @@ impl TypedPass for ChangeAxes {
                             if let Some((patch, _)) =
                                 change_axes(model, &change, &interfaces, &[], &mut explored)
                                     .with_context(|| {
-                                        format!("Making patch for {:?} from {}", change, node)
+                                        format!("Making patch for {change:?} from {node}")
                                     })?
                             {
                                 self.1 = node.id;
