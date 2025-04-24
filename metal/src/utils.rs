@@ -57,4 +57,3 @@ pub fn get_metal_buffer(tensor: &DeviceTensor) -> &Buffer {
         panic!("Non-Metal Buffer accessed during Metal execution")
     }
 }
-
