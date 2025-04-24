@@ -148,8 +148,8 @@ impl Hash for OwnedDeviceTensor {
 impl OwnedDeviceTensor {
     /// Create a owned gpu tensor from a cpu tensor.
     pub fn from_tensor<T: Into<DValue>>(tensor: T) -> TractResult<Self> {
-        let m_value: DValue = tensor.into();
-        let tensor_view = m_value.view();
+        let d_value: DValue = tensor.into();
+        let tensor_view = d_value.view();
         ensure!(
             DeviceTensor::is_supported_dt(tensor_view.datum_type()),
             "Tensor of {:?} is not copied. No device buffer can be allocated for it.",
@@ -162,7 +162,7 @@ impl OwnedDeviceTensor {
 
         let device_buffer = get_context()?.buffer_from_slice(data_bytes);
 
-        Ok(OwnedDeviceTensor { inner: m_value, device_buffer })
+        Ok(OwnedDeviceTensor { inner: d_value, device_buffer })
     }
 
     #[inline]

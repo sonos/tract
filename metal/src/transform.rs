@@ -4,6 +4,7 @@ use crate::{kernels, ops};
 use tract_gpu::fact::DeviceTypedFactExt;
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::sync::{DeviceSync, DeviceSyncKind};
+use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
 
 use crate::rewrite_rules;
 use std::borrow::Cow;
@@ -231,6 +232,7 @@ fn can_translate_to_metal_op(source: &TypedModel, node: &TypedNode) -> TractResu
             || node.op_is::<AxisOp>()
             || node.op_is::<Slice>()
             || node.op_is::<TypedConcat>()
+            || node.op_is::<DynKeyValueCache>()
             || node.op_as::<Reduce>().is_some_and(|op| {
                 kernels::nn::Reducer::is_supported_dt(input_dts[0])
                     && ops::MetalReduce::from_tract_core(op).is_ok()
@@ -318,6 +320,8 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                     Box::new(ops::MetalSilu)
                 } else if let Some(op) = node.op_as::<GeluApproximate>() {
                     Box::new(ops::MetalGeluApproximate { fast_impl: op.fast_impl })
+                } else if let Some(op) = node.op_as::<DynKeyValueCache>() {
+                    Box::new(ops::MetalDynKVCache::from_tract_transformers(op))
                 } else {
                     bail!("Failed to translate a supported Metal Op")
                 };
