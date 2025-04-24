@@ -36,7 +36,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                 Ok(changed_edges) => {
                     for (edge, _fact) in changed_edges {
                         did_something = true;
-                        trace!("Changed edge: {:?}", edge);
+                        trace!("Changed edge: {edge:?}");
                         for dst in self.model.borrow().nodes()[edge.node].outputs[edge.slot]
                             .successors
                             .iter()
@@ -65,7 +65,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                     if !obstinate {
                         return Err(e);
                     }
-                    debug!("{:?}", e);
+                    debug!("{e:?}");
                     if first_error.is_none() {
                         first_error = Some(e);
                     }
@@ -114,10 +114,10 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                 };
                 if log_enabled!(log::Level::Trace) {
                     for (ix, i) in inputs.iter().enumerate() {
-                        trace!("  Input  #{}: {:?}", ix, i);
+                        trace!("  Input  #{ix}: {i:?}");
                     }
                     for (ix, o) in outputs.iter().enumerate() {
-                        trace!("  Output #{}: {:?}", ix, o);
+                        trace!("  Output #{ix}: {o:?}");
                     }
                 }
 
@@ -137,7 +137,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                     .with_context(|| format!("while unifying inputs of {node}"))?;
 
                 if &unified != old_fact {
-                    debug!("  Refined {:?}: {:?} -> {:?}", outlet, old_fact, unified);
+                    debug!("  Refined {outlet:?}: {old_fact:?} -> {unified:?}");
                     changed_edges.push((outlet, unified));
                 }
             }
@@ -148,7 +148,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
 
                 if &unified != old_fact {
                     let outlet = OutletId::new(node.id, ix);
-                    debug!("  Refined {:?}: {:?} -> {:?}", outlet, old_fact, unified);
+                    debug!("  Refined {outlet:?}: {old_fact:?} -> {unified:?}");
                     changed_edges.push((outlet, unified));
                 }
             }

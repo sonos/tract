@@ -102,7 +102,7 @@ impl Factoid for InferenceFact {
             value: self.value.unify(&other.value)?,
         };
 
-        trace!("Unifying {:?} with {:?} into {:?}.", self, other, tensor);
+        trace!("Unifying {self:?} with {other:?} into {tensor:?}.");
 
         Ok(tensor)
     }

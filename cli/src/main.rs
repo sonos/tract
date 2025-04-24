@@ -329,7 +329,7 @@ fn main() -> TractResult<()> {
     };
 
     if let Err(e) = res {
-        error!("{:?}", e);
+        error!("{e:?}");
         std::process::exit(1);
     }
 

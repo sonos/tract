@@ -274,7 +274,7 @@ lazy_static::lazy_static! {
 
 fn info_once(msg: String) {
     if MESSAGE_ONCE.lock().unwrap().insert(msg.clone()) {
-        info!("{}", msg);
+        info!("{msg}");
     }
 }
 

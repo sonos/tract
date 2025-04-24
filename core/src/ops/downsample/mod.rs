@@ -125,7 +125,7 @@ fn pull_downsample_up(
     if let Some(prec) = model.single_prec(down_node.id)? {
         let (input_facts, output_facts) = model.node_facts(prec.id)?;
         let axes_mapping = prec.op.axes_mapping(&input_facts, &output_facts)?;
-        debug!("Consider pull {:?} over {:?} (invariants: {:?})", down_op, prec, axes_mapping);
+        debug!("Consider pull {down_op:?} over {prec:?} (invariants: {axes_mapping:?})");
         if let Some(slice_op) = prec.op_as::<ops::array::Slice>() {
             if let Some(p) =
                 array::pull_downsample_over_slice(model, prec, slice_op, down_node, down_op)?

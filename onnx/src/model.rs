@@ -75,7 +75,7 @@ impl ParsingContext<'_> {
             })
             .collect::<TractResult<_>>()?;
         for (k, v) in initializers.iter().sorted_by_key(|kv| kv.0) {
-            trace!("Initializer: {} {:?}", k, v);
+            trace!("Initializer: {k} {v:?}");
         }
         let mut outlets_by_name = HashMap::<String, OutletId>::new();
         for input in graph.input.iter() {
@@ -98,7 +98,7 @@ impl ParsingContext<'_> {
             }
         }
         for output in graph.output.iter() {
-            trace!("Model output: {:?}", output);
+            trace!("Model output: {output:?}");
         }
         for (name, t) in initializers.into_iter().sorted_by_key(|kv| kv.0) {
             let id = model.add_const(name, t)?;
@@ -113,7 +113,7 @@ impl ParsingContext<'_> {
             } else {
                 format!("{}-{}", model.nodes().len(), pbnode.op_type)
             };
-            trace!("Creating node {}", name);
+            trace!("Creating node {name}");
             let facts = pbnode
                 .output
                 .iter()
@@ -250,11 +250,10 @@ impl Onnx {
             .unwrap_or(0);
         let graph =
             proto.graph.as_ref().ok_or_else(|| anyhow!("model proto does not contain a graph"))?;
-        debug!("ONNX operator set version: {:?}", onnx_operator_set_version);
+        debug!("ONNX operator set version: {onnx_operator_set_version:?}");
         if onnx_operator_set_version != 0 && !(9..19).contains(&onnx_operator_set_version) {
-            warn!("ONNX operator for your model is {}, tract is only tested against \
-                  operator set 9 to 18 (included). Your model may still work so this is not a hard fail.",
-                  onnx_operator_set_version);
+            warn!("ONNX operator for your model is {onnx_operator_set_version}, tract is only tested against \
+                  operator set 9 to 18 (included). Your model may still work so this is not a hard fail.");
         }
         let ctx = ParsingContext {
             framework: self,

@@ -41,7 +41,7 @@ impl Optimizer {
     pub fn add_pass(&mut self, idx: usize, pass: Box<dyn TypedPass>) {
         let num_pass = self.passes.len();
         if idx > num_pass {
-            log::warn!("Cannot add new pass {:?} at index {}. Optimizer currently as {} passes, pass will be added as the last pass.", pass, idx, num_pass);
+            log::warn!("Cannot add new pass {pass:?} at index {idx}. Optimizer currently as {num_pass} passes, pass will be added as the last pass.");
             self.passes.push(pass);
         } else {
             self.passes.insert(idx, pass);
@@ -166,7 +166,7 @@ impl OptimizerSession<'_> {
                 .context("Checking target model consistency before patching")?;
             if let Some(watchdog) = patch.dont_apply_twice.take() {
                 if self.seen.contains(&watchdog) {
-                    debug!("Loop detected: {} seen before", watchdog);
+                    debug!("Loop detected: {watchdog} seen before");
                     continue;
                 } else {
                     self.seen.insert(watchdog);

@@ -621,7 +621,7 @@ impl Parameters {
             "before-optimize"
         });
 
-        info!("Will stop at {}", stop_at);
+        info!("Will stop at {stop_at}");
 
         if stop_at == "load" {
             return Ok((raw_model.into(), None, None));
@@ -896,7 +896,7 @@ impl Parameters {
         let (mut graph, mut raw_model, tf_model_extensions) =
             Self::load_model(matches, probe, &filename, &tensors_values, symbols.clone())?;
 
-        info!("Model {:?} loaded", filename);
+        info!("Model {filename:?} loaded");
         info_usage("model loaded", probe);
 
         let (need_tensorflow_model, need_reference_model) = match matches.subcommand() {

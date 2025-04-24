@@ -242,10 +242,10 @@ impl OpState for State {
                 .flatten()
                 .collect();
 
-            trace!("iter_inputs #{}: {:?}", i, iter_inputs);
+            trace!("iter_inputs #{i}: {iter_inputs:?}");
             let iter_outputs =
                 model_state.run(iter_inputs).with_context(|| "Evaluating inner body")?;
-            trace!("iter_outputs #{}: {:?}", i, iter_outputs);
+            trace!("iter_outputs #{i}: {iter_outputs:?}");
 
             for (v, mapping) in iter_outputs.into_iter().zip(&op.output_mapping) {
                 if let Some((slot, info)) = mapping.scan {

@@ -27,7 +27,7 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
             }
         }
         let exp = exp.unwrap();
-        debug!("Output {}, expects {:?}", ix, exp);
+        debug!("Output {ix}, expects {exp:?}");
         let mut exp: TValue = exp.values.as_ref().with_context(|| {
             format!("Output {lookup_names:?}: found reference info without value: {exp:?}")
         })?[0]
@@ -59,12 +59,12 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
             .context(format!("Checking output {ix}"))
         {
             if error.is_some() {
-                error!("{:?}", e);
+                error!("{e:?}");
             } else {
                 error = Some(e);
             }
         } else {
-            info!("Checked output #{}, ok.", ix);
+            info!("Checked output #{ix}, ok.");
         }
     }
 

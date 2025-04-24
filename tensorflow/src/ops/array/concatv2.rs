@@ -33,7 +33,7 @@ impl Expansion for ConcatV2 {
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
         s.given(&inputs[n].value, move |s, axis| {
             let axis = *axis.to_scalar::<i32>()? as usize;
-            trace!("axis for ConcatV2: {}", axis);
+            trace!("axis for ConcatV2: {axis}");
             for d in 0..axis {
                 s.equals_all((0..n).map(|i| (&inputs[i].shape[d]).bex()).collect())?;
             }
@@ -41,7 +41,7 @@ impl Expansion for ConcatV2 {
                 s.equals(&inputs[0].shape[d], &outputs[0].shape[d])?;
             }
             s.given(&inputs[0].rank, move |s, rank| {
-                trace!("Given rank {}", rank);
+                trace!("Given rank {rank}");
                 for d in (axis + 1)..(rank as usize) {
                     s.equals(&inputs[0].shape[d], &outputs[0].shape[d])?;
                 }

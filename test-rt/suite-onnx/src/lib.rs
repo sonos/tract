@@ -38,7 +38,7 @@ impl Test for OnnxTestCase {
     ) -> TractResult<()> {
         setup_test_logger();
         let model_file = self.path.join("model.onnx");
-        info!("Loading {:?}", model_file);
+        info!("Loading {model_file:?}");
         let mut onnx = tract_onnx::onnx();
 
         // hack: some tests (test_nonmaxsuppression_*) include the output shapes in the onnx model
@@ -80,7 +80,7 @@ impl Test for OnnxTestCase {
                     inputs = actual_input_values;
                 }
                 info!("Analyse");
-                trace!("Model:\n{:#?}", model);
+                trace!("Model:\n{model:#?}");
                 model.analyse(false)?;
                 model = model.incorporate()?;
                 let model = model.into_typed()?.into_decluttered()?;
@@ -256,7 +256,7 @@ pub fn load_half_dataset(prefix: &str, path: &std::path::Path) -> TVec<Tensor> {
         let tensor = load_tensor(&FopenDataResolver, &tensor, None).unwrap();
         vec.push(tensor)
     }
-    debug!("{:?}: {:?}", path, vec);
+    debug!("{path:?}: {vec:?}");
     vec
 }
 
@@ -267,7 +267,7 @@ fn run_model(
     approx: Approximation,
 ) -> TractResult<()> {
     let expected = load_half_dataset("output", data_path);
-    trace!("Loaded output asserts: {:?}", expected);
+    trace!("Loaded output asserts: {expected:?}");
     let inputs = inputs.into_iter().map(|t| t.into_tvalue()).collect();
     let computed = model.run(inputs)?;
     if computed.len() != expected.len() {

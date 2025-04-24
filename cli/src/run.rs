@@ -34,7 +34,7 @@ fn npz_add_tensor(npz: &mut NpzWriter<File>, name: String, tensor: &Tensor) -> T
         DatumType::QI8(_) => npz.add_array(name, &tensor.to_array_view::<i8>()?)?,
         DatumType::QU8(_) => npz.add_array(name, &tensor.to_array_view::<u8>()?)?,
         DatumType::QI32(_) => npz.add_array(name, &tensor.to_array_view::<i32>()?)?,
-        _ => warn!("Not writing {}, {:?}, unsupported type", name, tensor),
+        _ => warn!("Not writing {name}, {tensor:?}, unsupported type"),
     }
 
     Ok(())
