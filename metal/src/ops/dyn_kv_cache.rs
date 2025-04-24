@@ -127,7 +127,6 @@ impl TypedOp for MetalDynKVCache {
         tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
             let mut fact = facts[0].without_value();
             fact.shape.set(self.axis(), self.symbols.iter().sum());
-            dbg!(&fact);
             Ok(tvec!(fact))
         })
         .with_context(|| format!("Error while computing facts for {:?}", self.name()))
