@@ -88,9 +88,12 @@ impl ModelTransform for KeyValueCacheTransform {
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
-        Rewriter::default()
-            .with_rule_for("detect-kv-cache", ops::dynamic_kv_cache_rule)
-            .rewrite(&(), model)
+        let inputs = model.inputs.clone();
+
+        for input in inputs {
+            ops::replace_kv_cache(model, input.node)?;
+        }
+        Ok(())
     }
 }
 
@@ -104,8 +107,9 @@ impl ModelTransform for TransformersTransform {
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        KeyValueCacheTransform.transform(model)?;
+
         Rewriter::default()
-            .with_rule_for("detect-kv-cache", ops::dynamic_kv_cache_rule)
             .with_rule_for("detect-rms-norm", ops::rms_norm_rule)
             .with_rule_for("detect-rotate-half", ops::rotate_half_rule)
             .with_rule_for("detect-apply-rope", ops::apply_rope_rule)

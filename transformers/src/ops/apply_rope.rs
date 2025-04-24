@@ -6,6 +6,7 @@ use tract_nnef::tract_core::ops::element_wise::ElementWiseOp;
 use tract_nnef::tract_core::ops::math::{Add, Mul, Neg};
 
 use super::{previous_node, previous_nodes, single_prev_node_as};
+use crate::ops::next_node;
 use crate::rule_ensure;
 
 pub fn register(registry: &mut Registry) {
@@ -213,6 +214,7 @@ pub fn apply_rope_rule(
         return Ok(None);
     };
 
+    //dbg!(&model.nodes());
     // If cos and rotate half don't share the same input, we check if they don't
     // input node that are the same.
     let (apply_rope_in, cos) = if !cos_mul.inputs.contains(&rotate_half.inputs[0]) {
@@ -232,6 +234,7 @@ pub fn apply_rope_rule(
         (apply_rope_in, cos)
     };
 
+    dbg!(next_node(model, node).unwrap());
     let sin = sin_mul.inputs[1 - rotate_half_in_idx];
 
     rule_ensure!(ApplyRope::is_supported_dt(model.outlet_fact(apply_rope_in)?.datum_type));
@@ -245,6 +248,7 @@ pub fn apply_rope_rule(
     let out =
         patch.wire_node(format!("{node_name}.apply_rope"), ApplyRope, &[input, cos, sin])?;
     patch.shunt_outside(model, node.id.into(), out[0])?;
+    //dbg!(&patch);
     Ok(Some(patch))
 }
 
