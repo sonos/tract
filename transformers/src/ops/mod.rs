@@ -11,7 +11,7 @@ use tract_nnef::tract_core;
 
 pub use apply_rope::{apply_rope_rule, rotate_half_rule};
 pub use gelu_approximate::gelu_approx_rule;
-pub use dyn_kv_cache::dynamic_kv_cache_rule;
+pub use dyn_kv_cache::replace_kv_cache;
 pub use rms_norm::rms_norm_rule;
 pub use scaled_masked_softmax::scaled_masked_softmax_rule;
 pub use silu::silu_rule;
