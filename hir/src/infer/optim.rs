@@ -20,7 +20,7 @@ impl IncorporatePass for IncorporateOps {
             for id in model.eval_order()? {
                 let reduced = {
                     let node = &model.nodes()[id];
-                    trace!("Incorporate {}", node);
+                    trace!("Incorporate {node}");
                     node.op
                         .incorporate(model, node)
                         .with_context(|| format!("{self:?} node {node}"))?
@@ -28,7 +28,7 @@ impl IncorporatePass for IncorporateOps {
                 if let Some(red) = reduced {
                     {
                         let node = &model.nodes()[id];
-                        debug!("Apply a model patch for {:?}: {}", self, node);
+                        debug!("Apply a model patch for {self:?}: {node}");
                     }
                     red.apply(model)?;
                     if cfg!(debug_assertions) {

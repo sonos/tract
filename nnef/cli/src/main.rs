@@ -17,7 +17,7 @@ fn main() {
     env_logger::Builder::from_env(env_logger::Env::default()).init();
 
     if let Err(e) = cli_args.run() {
-        log::error!("{:?}", e);
+        log::error!("{e:?}");
         std::process::exit(1)
     }
 }

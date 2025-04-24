@@ -92,14 +92,14 @@ mod tests {
             model.set_output_outlets(&down).unwrap();
             model
         };
-        trace!("{:#?}", model);
+        trace!("{model:#?}");
         prop_assert!(model.node(model.output_outlets().unwrap()[0].node).op_is::<Downsample>());
         let input = tensor1(&(0i32..len as _).collect::<Vec<_>>());
         let expected = SimplePlan::new(&model).unwrap().run(tvec!(input.clone().into())).unwrap();
 
         info!("Decluttering");
         model.declutter().unwrap();
-        trace!("{:#?}", model);
+        trace!("{model:#?}");
         let order = model.eval_order().unwrap();
         prop_assert!(
             model.node(order[1]).op_is::<Downsample>()

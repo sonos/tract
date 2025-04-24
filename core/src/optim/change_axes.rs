@@ -85,7 +85,7 @@ pub fn change_axes(
     explored: &mut HashSet<AxisChange>,
 ) -> TractResult<Option<(TypedModelPatch, TVec<(InOut, AxisOp)>)>> {
     if explored.contains(change) {
-        debug!("  Not considering change because deja vu {:?}", change);
+        debug!("  Not considering change because deja vu {change:?}");
         return Ok(None);
     }
     if model
@@ -93,10 +93,10 @@ pub fn change_axes(
         .op_as::<Const>()
         .is_some_and(|c| c.val().volume() == 1 && c.val().datum_type() != Opaque::datum_type())
     {
-        debug!("  Not considering change from const {:?}", change);
+        debug!("  Not considering change from const {change:?}");
         return Ok(None);
     }
-    debug!("  Considering change {:?}", change);
+    debug!("  Considering change {change:?}");
     let mut todo_changes = vec![(change.clone(), None)];
     let mut changed_wires: HashMap<TVec<OutletId>, AxisOp> = HashMap::new();
     let bound_outlets = |o: OutletId| -> TVec<OutletId> {
@@ -112,7 +112,7 @@ pub fn change_axes(
         let outlet_group = bound_outlets(change.outlet);
         for &outlet in &outlet_group {
             if locked.contains(&outlet) {
-                debug!("    Change {:?} blocked by locked interface {:?}", change, outlet);
+                debug!("    Change {change:?} blocked by locked interface {outlet:?}");
                 return Ok(None);
             }
             let mut interfaces: Vec<(usize, InOut)> = vec![(outlet.node, InOut::Out(outlet.slot))];
@@ -141,14 +141,14 @@ pub fn change_axes(
                     .change_axes(model, node, io, &change.op)
                     .with_context(|| format!("Propagating {change:?} to node {node}"))?;
                 if more.is_none() {
-                    debug!("    Propagation of {:?} blocked by {}", change, node);
+                    debug!("    Propagation of {change:?} blocked by {node}");
                     return Ok(None);
                 }
                 let AxisChangeConsequence { substitute_op, wire_changes } = more.unwrap();
                 trace!("    Change {:?} enters {} from {:?}", change.op, node, io);
-                trace!("       propagates as {:?}", wire_changes);
+                trace!("       propagates as {wire_changes:?}");
                 if let Some(op) = substitute_op {
-                    trace!("       replace op by {:?}", op);
+                    trace!("       replace op by {op:?}");
                     changed_ops.insert(node.id, op);
                 }
                 for (wire, op) in wire_changes.into_iter() {
@@ -169,10 +169,7 @@ pub fn change_axes(
                     match changed_wires.entry(outlet_group.clone()) {
                         Entry::Vacant(entry) => {
                             trace!(
-                                "         {:?} {:?} change on {:?} is new",
-                                wire,
-                                op,
-                                outlet_group
+                                "         {wire:?} {op:?} change on {outlet_group:?} is new"
                             );
                             entry.insert(op.clone());
                             todo_changes
@@ -181,18 +178,11 @@ pub fn change_axes(
                         Entry::Occupied(previous) => {
                             if *previous.get() == op {
                                 trace!(
-                                    "         {:?} {:?} change on {:?} already done",
-                                    wire,
-                                    op,
-                                    outlet_group
+                                    "         {wire:?} {op:?} change on {outlet_group:?} already done"
                                 );
                             } else {
                                 debug!(
-                                    "         {:?} {:?} change on {:?} conflicting with {:?}. Blocked.",
-                                    wire,
-                                    op,
-                                    outlet_group,
-                                    previous
+                                    "         {wire:?} {op:?} change on {outlet_group:?} conflicting with {previous:?}. Blocked."
                                     );
                                 return Ok(None);
                             }
@@ -202,7 +192,7 @@ pub fn change_axes(
             }
         }
     }
-    debug!("Translating {:?} to patch", change);
+    debug!("Translating {change:?} to patch");
     let mut patch = TypedModelPatch::new(format!("{change:?}"));
     let mut replaced_wires: HashMap<OutletId, OutletId> = HashMap::default();
     let nodes_to_replace = changed_wires
@@ -270,6 +260,6 @@ pub fn change_axes(
             interface_change.push((InOut::Out(ix), change.clone()));
         }
     }
-    debug!("Patch ready for {:?}", change);
+    debug!("Patch ready for {change:?}");
     Ok(Some((patch, interface_change)))
 }

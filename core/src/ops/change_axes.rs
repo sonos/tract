@@ -776,11 +776,7 @@ impl TypedOp for AxisOp {
                 return Ok(None);
             };
             trace!(
-                "  Change:{:?} self:{:?} -> change:{:?} op:{:?}",
-                change,
-                self,
-                new_change,
-                new_op
+                "  Change:{change:?} self:{self:?} -> change:{new_change:?} op:{new_op:?}"
             );
             let substitute_op: Box<dyn TypedOp> =
                 if let Some(o) = new_op { Box::new(o) as _ } else { Box::new(Identity) };

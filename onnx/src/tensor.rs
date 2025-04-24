@@ -96,7 +96,7 @@ fn get_external_resources(
 
     let p = PathBuf::from(path).join(location);
 
-    trace!("external file detected: {:?}, offset {:?}, length: {:?}", p, offset, length);
+    trace!("external file detected: {p:?}, offset {offset:?}, length: {length:?}");
     provider.read_bytes_from_path(&mut tensor_data, &p, offset, length)?;
     trace!("external file loaded");
     Ok(tensor_data)

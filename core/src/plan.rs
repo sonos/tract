@@ -319,10 +319,10 @@ where
 
             for (step, n) in plan.order.iter().enumerate() {
                 let node = model.node(*n);
-                trace!("Running step {}, node {}", step, node);
+                trace!("Running step {step}, node {node}");
                 let mut inputs: TVec<TValue> = tvec![];
                 for i in &node.inputs {
-                    trace!("  use input {:?}", i);
+                    trace!("  use input {i:?}");
                     let prec_node = model.node(i.node);
                     let prec = self.values[i.node].as_ref().ok_or_else(|| {
                         format_err!("Computing {}, precursor {} not done:", node, prec_node)

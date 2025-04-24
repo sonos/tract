@@ -361,7 +361,7 @@ impl<'rules> Solver<'rules> {
                     continue;
                 }
 
-                trace!("  Applying rule {:?}", rule);
+                trace!("  Applying rule {rule:?}");
                 let (step_used, mut step_added) = rule
                     .apply(&mut context)
                     .with_context(|| format!("Applying rule {rule:?}"))?;
@@ -381,7 +381,7 @@ impl<'rules> Solver<'rules> {
             }
         }
 
-        trace!("  Solver exiting {:?}", context);
+        trace!("  Solver exiting {context:?}");
         Ok((context.inputs, context.outputs))
     }
 

@@ -297,7 +297,7 @@ fn get_shape_path(shape: &ShapeFactoid, path: &[isize]) -> TractResult<Wrapped> 
 
 /// Returns the value at the given path (starting from a ValueFact).
 fn get_value_path(value: &ValueFact, path: &[isize]) -> TractResult<Wrapped> {
-    trace!("get_value_path path:{:?} value:{:?}", path, value);
+    trace!("get_value_path path:{path:?} value:{value:?}");
     // Return the whole tensor.
     if path == [-1] || path.is_empty() {
         return Ok(value.clone().wrap());
@@ -314,7 +314,7 @@ fn get_value_path(value: &ValueFact, path: &[isize]) -> TractResult<Wrapped> {
             }
         }
     };
-    trace!("returns: {:?}", returns);
+    trace!("returns: {returns:?}");
     returns
 }
 

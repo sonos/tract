@@ -84,10 +84,10 @@ impl<O: InferenceRulesOp + Op> InferenceOp for O {
         let outputs_proxy: TVec<TensorProxy> =
             (0..outputs.len()).map(|ix| TensorProxy::new(tvec!(1, ix as isize).into())).collect();
 
-        trace!("Building rules for {:?}", self);
+        trace!("Building rules for {self:?}");
         let mut solver = Solver::default();
         self.rules(&mut solver, &inputs_proxy, &outputs_proxy)?;
-        trace!("Applying rules for {:?}", self);
+        trace!("Applying rules for {self:?}");
         let (input, output) = solver.infer_facts((inputs, outputs))?;
         trace!("Solver done");
         Ok((input, output, observed.into_iter().cloned().collect()))

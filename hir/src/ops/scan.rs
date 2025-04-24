@@ -141,7 +141,7 @@ impl InferenceScan {
         let hidden_state_len = self.input_mapping.iter().filter(|m| m.is_state()).count();
         #[allow(clippy::needless_range_loop)]
         for state_ix in 0..hidden_state_len {
-            trace!("Unify hidden state #{}", state_ix);
+            trace!("Unify hidden state #{state_ix}");
             let inner_model_output_ix = self
                 .output_mapping
                 .iter()
