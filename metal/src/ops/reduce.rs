@@ -75,7 +75,7 @@ impl TypedOp for MetalReduce {
             let dt = facts[0].datum_type;
             Ok(tvec!(dt.fact(shape)))
         })
-        .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
+        .with_context(|| format!("Error while computing facts for {:?}", self.name()))
     }
 
     as_op!();

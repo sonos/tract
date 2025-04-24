@@ -141,7 +141,7 @@ impl TypedOp for MetalAxisOp {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         tract_gpu::utils::facts_to_device_facts(inputs, |facts| self.0.output_facts(facts))
-            .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
+            .with_context(|| format!("Error while computing facts for {:?}", self.name()))
     }
 
     fn axes_mapping(

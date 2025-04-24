@@ -67,7 +67,7 @@ impl BinOps {
 
     pub fn output_shape<D: DimLike>(&self, a: &[D], b: &[D]) -> TractResult<TVec<D>> {
         tract_core::broadcast::multi_broadcast(&[a, b])
-            .with_context(|| anyhow!("Error while broadcasting {:?} {:?}", a, b))
+            .with_context(|| format!("Error while broadcasting {:?} {:?}", a, b))
     }
 
     pub fn all_functions() -> Vec<String> {

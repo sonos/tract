@@ -90,7 +90,7 @@ impl MetalContext {
                 .new_library_with_data(lib_data)
                 .map_err(|e| anyhow!("{}", e))
                 .with_context(|| {
-                    anyhow!("Error while loading Metal library from data: {:?}", name)
+                    format!("Error while loading Metal library from data: {:?}", name)
                 })?,
             LibraryContent::Source(lib_source) => self
                 .device

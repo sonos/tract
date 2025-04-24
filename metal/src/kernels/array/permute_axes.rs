@@ -103,7 +103,7 @@ impl PermuteAxes {
         );
 
         let broadcast_kind = BroadcastKind::from_rank(input.rank())
-            .with_context(|| anyhow!("Unsupported rank {:?} for PermuteAxes", input.rank()))?;
+            .with_context(|| format!("Unsupported rank {:?} for PermuteAxes", input.rank()))?;
 
         let kernel_name = self.kernel_name(input.datum_type(), broadcast_kind)?;
 

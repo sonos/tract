@@ -94,6 +94,6 @@ impl TypedOp for MetalConcat {
             fact.shape.set(self.axis(), self.offsets(facts)?.pop().unwrap());
             Ok(tvec!(fact))
         })
-        .with_context(|| anyhow::anyhow!("Error while computing facts for {:?}", self.name()))
+        .with_context(|| format!("Error while computing facts for {:?}", self.name()))
     }
 }
