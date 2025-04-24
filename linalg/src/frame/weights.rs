@@ -64,8 +64,8 @@ impl<BQ: BlockQuant> From<BQ> for WeightType {
 impl Debug for WeightType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Plain(p) => write!(f, "{:?}", p),
-            Self::BlockQuant(bq) => write!(f, "{:?}", bq),
+            Self::Plain(p) => write!(f, "{p:?}"),
+            Self::BlockQuant(bq) => write!(f, "{bq:?}"),
         }
     }
 }

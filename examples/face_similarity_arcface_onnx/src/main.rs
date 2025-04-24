@@ -36,6 +36,6 @@ fn main() -> Result<(), Error> {
     let f2_embed = arcface_model.get_face_embedding(&f2_crop)?;
 
     let similarity = cosine_similarity(&f1_embed, &f2_embed);
-    println!("SIMILARITY {:#?}", similarity);
+    println!("SIMILARITY {similarity:#?}");
     Ok(())
 }

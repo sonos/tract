@@ -47,10 +47,10 @@ fn rule(
     let a_order_es: String = op.axes.axes(InOut::In(0)).map(|a| a.repr).collect();
     let a_order_mm = format!("{prefix}{m}{k}");
     let a_order_mm_t = format!("{prefix}{k}{m}");
-    let a_transform = format!("{}->{}", a_order_es, a_order_mm)
+    let a_transform = format!("{a_order_es}->{a_order_mm}")
         .parse::<AxesMapping>()?
         .translate_to_axis_ops()?;
-    let a_transform_t = format!("{}->{}", a_order_es, a_order_mm_t)
+    let a_transform_t = format!("{a_order_es}->{a_order_mm_t}")
         .parse::<AxesMapping>()?
         .translate_to_axis_ops()?;
     let transpose_a = a_transform.len() > a_transform_t.len();
@@ -76,10 +76,10 @@ fn rule(
     let b_order_es: String = op.axes.axes(InOut::In(1)).map(|a| a.repr).collect();
     let b_order_mm = format!("{prefix}{k}{n}");
     let b_order_mm_t = format!("{prefix}{n}{k}");
-    let b_transform = format!("{}->{}", b_order_es, b_order_mm)
+    let b_transform = format!("{b_order_es}->{b_order_mm}")
         .parse::<AxesMapping>()?
         .translate_to_axis_ops()?;
-    let b_transform_t = format!("{}->{}", b_order_es, b_order_mm_t)
+    let b_transform_t = format!("{b_order_es}->{b_order_mm_t}")
         .parse::<AxesMapping>()?
         .translate_to_axis_ops()?;
     let transpose_b = b_transform.len() > b_transform_t.len();
@@ -92,10 +92,10 @@ fn rule(
     let c_order_es: String = op.axes.axes(InOut::Out(0)).map(|a| a.repr).collect();
     let c_order_mm = format!("{prefix}{m}{n}");
     let c_order_mm_t = format!("{prefix}{n}{m}");
-    let c_transform = format!("{}->{}", c_order_mm, c_order_es)
+    let c_transform = format!("{c_order_mm}->{c_order_es}")
         .parse::<AxesMapping>()?
         .translate_to_axis_ops()?;
-    let c_transform_t = format!("{}->{}", c_order_mm_t, c_order_es)
+    let c_transform_t = format!("{c_order_mm_t}->{c_order_es}")
         .parse::<AxesMapping>()?
         .translate_to_axis_ops()?;
     let transpose_c = c_transform.len() > c_transform_t.len();

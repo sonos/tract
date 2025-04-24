@@ -373,7 +373,7 @@ where
                 && target.node(maybe).outputs.iter().all(|of| of.successors.is_empty())
             {
                 target.node_mut(maybe).op = target.create_dummy();
-                target.node_mut(maybe).name = format!("Dummy-node-{}", maybe);
+                target.node_mut(maybe).name = format!("Dummy-node-{maybe}");
                 target.node_mut(maybe).outputs.clear(); // necessary to drop facts and consts
                 let inputs = std::mem::take(&mut target.node_mut(maybe).inputs);
                 for &i in &inputs {

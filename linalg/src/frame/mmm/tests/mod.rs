@@ -77,7 +77,7 @@ pub fn display_error<TC: LADatum>(v: &[TC], expected: &[TC], m: usize, n: usize)
                 let f = v[ixm * n + ixn];
                 let e = expected[ixm * n + ixn];
                 let color = if f != e { Red.bold() } else { Green.into() };
-                print!("{}|", color.paint(format!("{:5}", f)));
+                print!("{}|", color.paint(format!("{f:5}")));
             }
             print!("  #  ");
             for ixn in 0..n {

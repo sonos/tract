@@ -89,7 +89,7 @@ impl super::TypedPass for PropConst {
                     Err(e) => {
                         if !e.root_cause().is::<TooEarly>() {
                             Err(e).with_context(|| {
-                                format!("Eager eval {} during optimisation", node)
+                                format!("Eager eval {node} during optimisation")
                             })?;
                         }
                     }

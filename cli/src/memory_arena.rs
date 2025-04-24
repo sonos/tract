@@ -111,7 +111,7 @@ pub fn dump_metrics(
     let schema = MetalMemSchema::build(model, order, &symbol_values)?;
 
     println!("resolved_memory_size: {}", schema.eval_memory_size(&symbol_values)?);
-    println!("Schema:\n{}", schema);
+    println!("Schema:\n{schema}");
 
     let metrics = MemArenaMetrics::from_schema(&schema)?;
 

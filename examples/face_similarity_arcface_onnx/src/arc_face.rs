@@ -19,7 +19,7 @@ impl ArcFace {
     ) -> Result<ArrayBase<OwnedRepr<f32>, tract_core::ndarray::Dim<[usize; 1]>>, Error> {
         let preprocess_image = preprocess_arcface(input_image, 112)?;
         let forward = self.model.run(tvec![preprocess_image.to_owned().into()])?;
-        println!("FORWARD {:?}", forward);
+        println!("FORWARD {forward:?}");
         let results = forward[0].to_array_view::<f32>()?.to_shape(512)?.to_owned();
         Ok(results)
     }
@@ -63,6 +63,6 @@ pub fn cosine_similarity(a: &Array1<f32>, b: &Array1<f32>) -> f32 {
     let dotprod = a.dot(b);
     let norm_a = a.dot(a).sqrt();
     let norm_b = b.dot(b).sqrt();
-    println!("dotprod {:?} norm_a {:?} norm_b {:?}", dotprod, norm_a, norm_b);
+    println!("dotprod {dotprod:?} norm_a {norm_a:?} norm_b {norm_b:?}");
     dotprod / (norm_a * norm_b)
 }
