@@ -23,11 +23,7 @@ fn de_silu(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tract
     builder.wire(Silu, &[input])
 }
 
-fn ser_silu(
-    ast: &mut IntoAst,
-    node: &TypedNode,
-    _op: &Silu,
-) -> TractResult<Option<Arc<RValue>>> {
+fn ser_silu(ast: &mut IntoAst, node: &TypedNode, _op: &Silu) -> TractResult<Option<Arc<RValue>>> {
     let input = ast.mapping[&node.inputs[0]].clone();
     Ok(Some(invocation("tract_transformers_silu", &[input], &[])))
 }
