@@ -6,7 +6,6 @@ use tract_nnef::tract_core::ops::element_wise::ElementWiseOp;
 use tract_nnef::tract_core::ops::math::{Add, Mul, Neg};
 
 use super::{previous_node, previous_nodes, single_prev_node_as};
-use crate::ops::next_node;
 use crate::rule_ensure;
 
 pub fn register(registry: &mut Registry) {
@@ -208,8 +207,7 @@ pub fn apply_rope_rule(
     let Some(sin_mul_op) = sin_mul.op_as::<TypedBinOp>() else { return Ok(None) };
     rule_ensure!(sin_mul_op.0.is::<Mul>());
 
-    let Some((rotate_half_in_idx, rotate_half)) =
-        single_prev_node_as::<RotateHalf>(model, sin_mul)
+    let Some((rotate_half_in_idx, rotate_half)) = single_prev_node_as::<RotateHalf>(model, sin_mul)
     else {
         return Ok(None);
     };
@@ -234,7 +232,6 @@ pub fn apply_rope_rule(
         (apply_rope_in, cos)
     };
 
-    dbg!(next_node(model, node).unwrap());
     let sin = sin_mul.inputs[1 - rotate_half_in_idx];
 
     rule_ensure!(ApplyRope::is_supported_dt(model.outlet_fact(apply_rope_in)?.datum_type));
@@ -245,8 +242,7 @@ pub fn apply_rope_rule(
     let input = patch.tap_model(model, apply_rope_in)?;
     let cos = patch.tap_model(model, cos)?;
     let sin = patch.tap_model(model, sin)?;
-    let out =
-        patch.wire_node(format!("{node_name}.apply_rope"), ApplyRope, &[input, cos, sin])?;
+    let out = patch.wire_node(format!("{node_name}.apply_rope"), ApplyRope, &[input, cos, sin])?;
     patch.shunt_outside(model, node.id.into(), out[0])?;
     //dbg!(&patch);
     Ok(Some(patch))
