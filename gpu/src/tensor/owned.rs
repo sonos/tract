@@ -7,12 +7,12 @@ use std::fmt::Display;
 use tract_core::internal::*;
 
 #[derive(Debug, Clone, Hash)]
-pub enum GValue {
+pub enum DValue {
     Natural(Arc<Tensor>),
     Reshaped { t: Arc<Tensor>, shape: TVec<usize>, strides: TVec<isize> },
 }
 
-impl GValue {
+impl DValue {
     #[inline]
     pub fn view(&self) -> TensorView<'_> {
         match self {
@@ -35,8 +35,8 @@ impl GValue {
     #[inline]
     pub fn shape(&self) -> &[usize] {
         match self {
-            GValue::Natural(t) => t.shape(),
-            GValue::Reshaped { shape, .. } => shape,
+            DValue::Natural(t) => t.shape(),
+            DValue::Reshaped { shape, .. } => shape,
         }
     }
 
@@ -55,7 +55,7 @@ impl GValue {
         }
         if shape.as_slice() != self.shape() {
             match &self {
-                GValue::Natural(t) | GValue::Reshaped { t, .. } => Ok(Self::Reshaped {
+                DValue::Natural(t) | DValue::Reshaped { t, .. } => Ok(Self::Reshaped {
                     t: Arc::clone(t),
                     strides: Tensor::natural_strides(&shape),
                     shape,
@@ -71,10 +71,10 @@ impl GValue {
         check_strides_validity(self.shape().into(), strides.clone())?;
 
         match &self {
-            GValue::Natural(t) => {
+            DValue::Natural(t) => {
                 Ok(Self::Reshaped { t: Arc::clone(t), strides, shape: self.shape().into() })
             }
-            GValue::Reshaped { t, strides: old_strides, .. } => {
+            DValue::Reshaped { t, strides: old_strides, .. } => {
                 if &strides != old_strides {
                     Ok(Self::Reshaped { t: Arc::clone(t), strides, shape: self.shape().into() })
                 } else {
@@ -86,8 +86,8 @@ impl GValue {
 
     pub fn as_arc_tensor(&self) -> Option<&Arc<Tensor>> {
         match self {
-            GValue::Natural(t) => Some(t),
-            GValue::Reshaped { .. } => None,
+            DValue::Natural(t) => Some(t),
+            DValue::Reshaped { .. } => None,
         }
     }
 
@@ -98,14 +98,14 @@ impl GValue {
         strides: impl Into<TVec<isize>>,
     ) -> Self {
         match self {
-            GValue::Natural(t) | GValue::Reshaped { t, .. } => {
-                GValue::Reshaped { t: Arc::clone(t), strides: strides.into(), shape: shape.into() }
+            DValue::Natural(t) | DValue::Reshaped { t, .. } => {
+                DValue::Reshaped { t: Arc::clone(t), strides: strides.into(), shape: shape.into() }
             }
         }
     }
 }
 
-impl IntoTensor for GValue {
+impl IntoTensor for DValue {
     fn into_tensor(self) -> Tensor {
         match self {
             Self::Natural(t) => Arc::try_unwrap(t).unwrap_or_else(|t| (*t).clone()),
@@ -118,13 +118,13 @@ impl IntoTensor for GValue {
     }
 }
 
-impl From<Tensor> for GValue {
+impl From<Tensor> for DValue {
     fn from(v: Tensor) -> Self {
         Self::Natural(Arc::new(v))
     }
 }
 
-impl From<Arc<Tensor>> for GValue {
+impl From<Arc<Tensor>> for DValue {
     fn from(v: Arc<Tensor>) -> Self {
         Self::Natural(v)
     }
@@ -134,7 +134,7 @@ impl From<Arc<Tensor>> for GValue {
 /// GPU and the CPU.
 #[derive(Debug, Clone)]
 pub struct OwnedDeviceTensor {
-    pub inner: GValue,
+    pub inner: DValue,
     pub device_buffer: Box<dyn DeviceBuffer>,
 }
 
@@ -147,8 +147,8 @@ impl Hash for OwnedDeviceTensor {
 
 impl OwnedDeviceTensor {
     /// Create a owned gpu tensor from a cpu tensor.
-    pub fn from_tensor<T: Into<GValue>>(tensor: T) -> TractResult<Self> {
-        let m_value: GValue = tensor.into();
+    pub fn from_tensor<T: Into<DValue>>(tensor: T) -> TractResult<Self> {
+        let m_value: DValue = tensor.into();
         let tensor_view = m_value.view();
         ensure!(
             DeviceTensor::is_supported_dt(tensor_view.datum_type()),
@@ -181,8 +181,8 @@ impl OwnedDeviceTensor {
     #[inline]
     pub fn strides(&self) -> &[isize] {
         match &self.inner {
-            GValue::Natural(t) => t.strides(),
-            GValue::Reshaped { strides, .. } => strides,
+            DValue::Natural(t) => t.strides(),
+            DValue::Reshaped { strides, .. } => strides,
         }
     }
 
@@ -243,11 +243,11 @@ impl OwnedDeviceTensor {
 impl Display for OwnedDeviceTensor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.inner {
-            GValue::Natural(t) => {
+            DValue::Natural(t) => {
                 let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
                 write!(f, "GPU {{ {content} }}")
             }
-            GValue::Reshaped { t, shape, strides: _ } => {
+            DValue::Reshaped { t, shape, strides: _ } => {
                 let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
                 write!(f, "GPU reshaped: {:?} - {{ {content} }}", shape)
             }

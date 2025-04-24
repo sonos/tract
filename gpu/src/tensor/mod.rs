@@ -198,11 +198,11 @@ impl Display for DeviceTensor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Owned(o) => match &o.inner {
-                GValue::Natural(t) => {
+                DValue::Natural(t) => {
                     let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
                     write!(f, "Owned: {{ {content} }}")
                 }
-                GValue::Reshaped { t, shape, .. } => {
+                DValue::Reshaped { t, shape, .. } => {
                     let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
                     write!(f, "Owned,Reshaped: {:?} - {{ {content} }}", shape)
                 }
