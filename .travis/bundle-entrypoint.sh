@@ -43,7 +43,7 @@ then
     cat sizes >> metrics
 fi
 
-if [ $(uname) = "Darwin" ]
+if [ $(uname) = "Linux" ]
 then
     if [ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor -a `cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor` = "userspace" ]
     then
@@ -153,6 +153,7 @@ then
             metal) extra="--metal";;
         esac
         llm_bench llama-3_2-3B-q40ef32-516 $backend $CACHEDIR/Llama-3.2-3B-q40ef32.516.nnef.tgz $extra
+        llm_bench llama-3_2-1B-q40ef32-516 $backend $CACHEDIR/Llama-3.2-1B-q40ef32.516.nnef.tgz $extra
         llm_bench openelm-270M-q40ef16-516 $backend $CACHEDIR/OpenELM-270M-q40ef16.516.nnef.tgz $extra
     done
 fi
