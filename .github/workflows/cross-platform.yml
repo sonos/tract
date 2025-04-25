@@ -95,17 +95,6 @@ jobs:
       id: date
       run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
-    - uses: actions/cache@v4
-      with:
-        path: |
-          ~/.rustup
-          ~/.cargo/registry
-          ~/.cargo/git
-          ~/.cache/sccache
-          .cached
-          target
-        key: ${{ runner.os }}-${{matrix.platform}}-${{steps.date.outputs.date}}
-
     - name: Cross script
       env:
         PLATFORM: ${{matrix.platform}}
