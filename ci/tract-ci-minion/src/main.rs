@@ -216,15 +216,15 @@ fn run_task(task_name: &str) -> Result<()> {
             let ts = &vars["TIMESTAMP"];
             for line in std::fs::read_to_string(metrics_files)?.lines() {
                 let mut tokens = line.split_whitespace();
-                writeln!(
-                    socket,
+                let graphite = format!(
                     "{}.{} {} {}",
                     prefix,
                     tokens.next().unwrap().replace("-", "_"),
                     tokens.next().unwrap(),
                     ts
-                )
-                .context("Writing to graphite socket")?;
+                );
+                log::trace!("Sending to graphite: {graphite}");
+                writeln!(socket, "{graphite}").context("Writing to graphite socket")?;
             }
         }
     }
