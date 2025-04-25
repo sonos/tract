@@ -61,19 +61,19 @@ net_bench() {
     v=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
     echo net.$net.evaltime.$pb $v >> metrics
 
-    $TRACT "$@" --readings --readings-heartbeat 1000 --machine-friendly -O bench --allow-random-input $BENCH_OPTS > tract.out
+    # $TRACT "$@" --readings --readings-heartbeat 1000 --machine-friendly -O bench --allow-random-input $BENCH_OPTS > tract.out
 
-    for stage in model_ready before_optimize
-    do
-        pattern=$(echo $stage | sed 's/[_-]/./g')
-        v=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 1 -d ' ')
-        echo net.$net.time_to_$stage.$pb $v >> metrics
-        v=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 4 -d ' ')
-        echo net.$net.rsz_at_$stage.$pb $v >> metrics
-        f=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 11 -d ' ')
-        a=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 10 -d ' ')
-        echo net.$net.active_at_$stage.$pb $(($a-$f)) >> metrics
-    done
+    # for stage in model_ready before_optimize
+    # do
+    #     pattern=$(echo $stage | sed 's/[_-]/./g')
+    #     v=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 1 -d ' ')
+    #     echo net.$net.time_to_$stage.$pb $v >> metrics
+    #     v=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 4 -d ' ')
+    #     echo net.$net.rsz_at_$stage.$pb $v >> metrics
+    #     f=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 11 -d ' ')
+    #     a=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 10 -d ' ')
+    #     echo net.$net.active_at_$stage.$pb $(($a-$f)) >> metrics
+    # done
 }
 
 llm_bench() {
