@@ -314,6 +314,7 @@ fn softmax_quant_inner<D: Dimension>(
 
         // Return the final result by clipping the computed value within its range
         // and casting it to u8 in any case.
+        #[allow(unknown_lints, unnecessary_transmutes)]
         if out_is_signed {
             *it = unsafe {
                 std::mem::transmute::<i8, u8>(i32::max(
