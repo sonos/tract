@@ -127,7 +127,7 @@ impl Partition {
     }
 
     pub fn size(&self) -> TDim {
-        TDim::Max(self.nodes.iter().map(|s| s.mem_size.clone()).collect())
+        TDim::Max(self.nodes.iter().map(|s| s.mem_size.clone()).collect()).simplify()
     }
 
     pub fn has_no_conflict_with_lifetime(&self, lifetime: &Lifetime) -> bool {
