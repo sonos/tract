@@ -25,7 +25,7 @@ then
 
     if [ -z "$RUST_VERSION" ]
     then
-        export RUST_VERSION=1.75.0
+        export RUST_VERSION=1.85.0
     fi
 
     which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
