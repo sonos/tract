@@ -95,10 +95,7 @@ impl MetalTransform {
 
         Rewriter::<MetalTransform>::default()
             .with_rule_for("untranspose-matmul-output", rewrite_rules::untranspose_matmul_output)
-            .with_rule_for(
-                "remove-ggml-broadcast-pre-matmul",
-                rewrite_rules::remove_ggml_broadcast_pre_matmul,
-            )
+            .with_rule_for("add-broadcast-pre-matmul", rewrite_rules::add_broadcast_pre_matmul)
             .rewrite(self, model)?;
 
         if stop_at_phase == 1 {
