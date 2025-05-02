@@ -78,7 +78,8 @@ impl Gather {
                     let block_id = offset / block_len;
                     data.fact.format.dequant_block_f16(
                         &data.value[block_id * block_bytes..][..block_bytes],
-                         &mut slice[i..i + block_len]);
+                        &mut slice[i..i + block_len],
+                    );
                 }
             }
         } else {
@@ -90,7 +91,8 @@ impl Gather {
                     let block_id = offset / block_len;
                     data.fact.format.dequant_block_f32(
                         &data.value[block_id * block_bytes..][..block_bytes],
-                         &mut slice[i..i + block_len]);
+                        &mut slice[i..i + block_len],
+                    );
                 }
             }
         }
