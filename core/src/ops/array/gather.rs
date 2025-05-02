@@ -66,22 +66,31 @@ impl Gather {
         let mut output = unsafe { Tensor::uninitialized::<F>(output_shape)? };
         let indices_slice = indices.as_slice::<i64>()?;
         let vector_len = data_shape[1];
+
+        let block_len = data.fact.format.block_len();
+        let block_bytes = data.fact.format.block_bytes();
         if F::datum_type() == f16::datum_type() {
             let output_slice = output.as_slice_mut::<f16>()?;
             for (pos, ix) in indices_slice.iter().enumerate() {
                 let slice = &mut output_slice[pos * vector_len..][..vector_len];
-                for (i, slot) in slice.iter_mut().enumerate() {
+                for i in (0..vector_len).step_by(block_len) {
                     let offset = data_shape[1] * *ix as usize + i;
-                    *slot = data.fact.format.extract_at_offset_f16(&data.value, offset)
+                    let block_id = offset / block_len;
+                    data.fact.format.dequant_block_f16(
+                        &data.value[block_id * block_bytes..][..block_bytes],
+                         &mut slice[i..i + block_len]);
                 }
             }
         } else {
             let output_slice = output.as_slice_mut::<f32>()?;
             for (pos, ix) in indices_slice.iter().enumerate() {
                 let slice = &mut output_slice[pos * vector_len..][..vector_len];
-                for (i, slot) in slice.iter_mut().enumerate() {
+                for i in (0..vector_len).step_by(block_len) {
                     let offset = data_shape[1] * *ix as usize + i;
-                    *slot = data.fact.format.extract_at_offset_f32(&data.value, offset)
+                    let block_id = offset / block_len;
+                    data.fact.format.dequant_block_f32(
+                        &data.value[block_id * block_bytes..][..block_bytes],
+                         &mut slice[i..i + block_len]);
                 }
             }
         }
