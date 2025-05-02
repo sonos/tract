@@ -16,7 +16,7 @@ impl MetalAxisOp {
         Self(op)
     }
 
-    fn simplify_axis_op(op: AxisOp, dims: &[TDim]) -> Self {
+    pub fn simplify_axis_op(op: AxisOp, dims: &[TDim]) -> Self {
         match op {
             AxisOp::Move(from, to) if from.abs_diff(to) == 1 => {
                 if [&dims[from], &dims[to]].contains(&&1usize.into()) {
@@ -36,7 +36,32 @@ impl MetalAxisOp {
                 } else {
                     Self(op)
                 }
-            }
+            },
+            AxisOp::Move(from, to) => {
+                if dims[from] == TDim::Val(1) {
+                    if from < to {
+                        let mut out_dims = dims[from..to + 1].to_vec();
+                        let tmp = out_dims.remove(0);
+                        out_dims.insert(out_dims.len(), tmp);
+
+                        Self(AxisOp::Reshape(
+                            from,
+                            dims[from..to + 1].into(),
+                            out_dims.into()
+                            )
+                        )
+                    } else {
+                        let mut out_dims = dims[to..from + 1].to_vec();
+                        let tmp = out_dims.remove(out_dims.len() - 1);
+                        out_dims.insert(0, tmp);
+
+                        Self(AxisOp::Reshape(
+                            to,
+                            dims[to..from + 1].into(),
+                            out_dims.into()))
+                    }
+                } else { Self(op) }
+            },
             _ => Self(op),
         }
     }
