@@ -169,6 +169,18 @@ pub fn fuse_move_axis(
         }
     }
 
+    // Reshape are always fusable. Change Move by Reshape if possible
+    if let AxisOp::Move(from, to) = axis_op.0.clone() {
+        if in_shape.dims()[from] == TDim::Val(1) {
+            let at = from.min(to);
+            let in_shape = if from < to { &in_shape[from..to + 1] } else { &in_shape[to..from + 1] }.into();
+            let out_shape = if from < to { &out_shape[from..to + 1] } else { &out_shape[to..from + 1] }.into();
+            
+            return Ok(Some(TypedModelPatch::replace_single_op(model, axis_node, &[axis_node.inputs[0]], 
+                MetalAxisOp(AxisOp::Reshape(at, in_shape, out_shape)))?))
+        }
+    }
+
     // Fuse consecutive MoveAxis if possible
     let Some(cursor) = next_node(model, axis_node) else { return Ok(None) };
     if let (AxisOp::Move(from_1, to_1), AxisOp::Move(from_2, to_2)) = (
