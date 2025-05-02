@@ -13,6 +13,7 @@ pub fn add_broadcast_pre_matmul(
 ) -> TractResult<Option<TypedModelPatch>> {
     let in_facts = model.node_input_facts(node.id)?;
     // GGML supports broadcast
+    rule_ensure!(in_facts[0].rank() > 2);
     rule_ensure!(
         !(ctx.gemm_impl == Some(MetalGemmImplKind::Ggml)
             || (ctx.gemm_impl.is_none() && in_facts[0].datum_type == DatumType::F32))
@@ -55,7 +56,8 @@ pub fn add_broadcast_pre_matmul(
 
     let brd_out = patch.wire_node(format!("{node_name}.broadcast"), brd, &[weights])?[0];
 
-    let mm_out = patch.wire_node(node_name, op.clone(), &[activ, brd_out])?[0];
+    let inputs = if activ_slot == 1 { [brd_out, activ] } else { [activ, brd_out] };
+    let mm_out = patch.wire_node(node_name, op.clone(), &inputs)?[0];
 
     patch.shunt_outside(model, node.id.into(), mm_out)?;
 
