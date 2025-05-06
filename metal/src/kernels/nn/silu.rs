@@ -12,10 +12,14 @@ impl Silu {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
-    pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
+    pub fn kernel_name(&self, dt: DatumType, n_elements: usize) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal silu  op", dt);
         let tname = DeviceTensor::tname(dt)?;
-        Ok(format!("nn_ops::silu_{tname}"))
+        if n_elements % 4 == 0 && tname == "f32" {
+            Ok(format!("silu_4_f32"))
+        } else {
+            Ok(format!("nn_ops::silu_{tname}"))
+        }
     }
 
     pub fn eval(&self, stream: &MetalStream, input: &DeviceTensor) -> TractResult<DeviceTensor> {
@@ -37,8 +41,10 @@ impl Silu {
         ensure!(output.shape() == input.shape());
         ensure!(output.datum_type() == input.datum_type());
 
-        let kernel_name = self.kernel_name(input.datum_type())?;
+        let n_el = output.len();
+        let kernel_name = self.kernel_name(input.datum_type(), n_el)?;
 
+        let n_threads = if n_el % 4 == 0 { n_el / 4 } else { n_el }; 
         let pipeline = stream.load_pipeline(LibraryName::NNOps, &kernel_name)?;
         let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
@@ -46,7 +52,7 @@ impl Silu {
             encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
             encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
 
-            let grid_size = MTLSize { width: output.len() as _, height: 1, depth: 1 };
+            let grid_size = MTLSize { width: n_threads as _, height: 1, depth: 1 };
             let group_size = MTLSize { width: 1, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid_size, group_size);
         });
