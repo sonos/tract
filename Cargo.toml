@@ -115,6 +115,7 @@ default-members = [
 
 [workspace.dependencies]
 accelerate-src = "0.3"
+adapter = "=0.3.0"
 ansi_term = "0.12.1"
 anstyle = "1.0.2"
 anstyle-parse = "0.2.1"
@@ -149,6 +150,12 @@ fs2 = "0.4.3"
 getrandom = "0.2"
 half = { version="=2.4.1", features = [ "std", "num-traits" ] }
 home = "=0.5.9"
+icu_collections = "=1.5.1"
+icu_normalizer = "=1.5.0"
+icu_normalizer_data = "=1.5.1"
+icu_properties = "=1.5.1"
+icu_properties_data = "=1.5.1"
+idna_adapter = "=1.2.0"
 image = "0.24.1"
 itertools = "0.12.1"
 lazy_static = "1.5.0"
@@ -172,6 +179,7 @@ num-traits = "0.2.14"
 num_cpus = "1"
 openblas-src = { version = "0.10", features = ["static"] }
 paste = "1.0.5"
+potential_utf = "=0.1.0"
 proptest = "1.0.0"
 prost = "0.11.0"
 prost-types = "0.11.0"
@@ -197,10 +205,13 @@ tensorflow = "0.17.0"
 tflitec = { git = "https://github.com/kali/tflitec-rs.git", rev="9ceb838" }
 time = "0.3.23"
 time-macros = "0.2.10"
+tinystr = "=0.8.0"
 tokenizers = "0.19"
 unicode-normalization = "0.1.19"
 walkdir = "2.3.2"
+writeable = "=0.6.0"
 zerofrom = "=0.1.5"
+zerotrie = "=0.2.1"
 tract-api = { version = "0.21.13-pre", path = 'api' }
 tract-core = { version = "0.21.13-pre", path = 'core' }
 tract-data = { version = "0.21.13-pre", path = 'data' }
