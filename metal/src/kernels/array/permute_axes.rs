@@ -107,18 +107,18 @@ impl PermuteAxes {
 
         let kernel_name = self.kernel_name(input.datum_type(), broadcast_kind)?;
 
+        let out_shape = output.shape();
         let pipeline = stream.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
         let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
             encoder.set_compute_pipeline_state(&pipeline);
             encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
-            encoder.set_slice(1, &new_strides);
+            encoder.set_slice(1,  &new_strides);
             encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
             encoder.set_slice(3, output.shape());
             encoder.set_slice(4, output.strides());
 
-            let grid_size = utils::build_metal_size_for_shape(output.shape());
-            let group_size = utils::build_metal_size_with_ones();
+            let (grid_size, group_size) = utils::build_metal_grid_and_groups_for_el_wise_op(out_shape, &pipeline);
 
             encoder.dispatch_thread_groups(grid_size, group_size);
         });

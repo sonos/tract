@@ -85,6 +85,7 @@ impl MultiBroadcast {
         let input_broadcast_strides =
             compute_broadcast_strides::<usize>(input_shape.as_slice(), input_strides.as_slice())?;
 
+        let out_shape = output.shape();
         let pipeline = stream.load_pipeline(LibraryName::ArrayOps, &kernel_name)?;
         let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
@@ -100,8 +101,7 @@ impl MultiBroadcast {
             encoder.set_slice(3, output.shape());
             encoder.set_slice(4, output.strides());
 
-            let grid_size = utils::build_metal_size_for_shape(output.shape());
-            let group_size = utils::build_metal_size_with_ones();
+            let (grid_size, group_size) = utils::build_metal_grid_and_groups_for_el_wise_op(out_shape, &pipeline);
 
             encoder.dispatch_thread_groups(grid_size, group_size);
         });

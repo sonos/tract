@@ -6,54 +6,29 @@
 using namespace metal;
 
 namespace utils {
-
-    METAL_FUNC uint indices_to_idx_1(uint index, constant const size_t strides[1]) {
-      return index * strides[0];
-    }
-
     METAL_FUNC uint indices_to_idx_2(uint2 indices, constant const size_t strides[2]) {
       return indices.x * strides[1] + indices.y * strides[0];
     }
 
-    METAL_FUNC uint indices_to_idx_3(uint3 indices, constant const size_t strides[3]) {
-      return indices.x * strides[2] + indices.y * strides[1] + indices.z * strides[0];
-    }
+    // Returns offset for iterating over most inner axis
+    METAL_FUNC uint indices_to_outer_idx(uint3 indices,
+                                  constant const size_t * shape, 
+                                  constant const size_t * strides,
+                                  size_t rank) {
+      if (rank == 1) {
+        return 0;
+      } else if (rank == 2) {
+        return indices.x * strides[0];
+      } else {
+        auto idx = indices.x * strides[rank - 2] + indices.y * strides[rank - 3];
 
-    METAL_FUNC uint indices_to_idx_4(uint3 indices,
-                                     constant const size_t shape[4], 
-                                     constant const size_t strides[4]) {
-      auto idx = indices.x * strides[3] + indices.y * strides[2];
-      idx += (indices.z % shape[1]) * strides[1];
-      indices.z /= shape[1];
-      idx += indices.z * strides[0];
-      return idx;
-    }
-
-    METAL_FUNC uint indices_to_idx_5(uint3 indices,
-                                     constant const size_t shape[5], 
-                                     constant const size_t strides[5]) {
-      auto idx = indices.x * strides[4] + indices.y * strides[3];
-      idx += (indices.z % shape[2]) * strides[2];
-      indices.z /= shape[2];
-      idx += (indices.z % shape[1]) * strides[1];
-      indices.z /= shape[1];
-      idx += indices.z * strides[0];
-      return idx;
-    }
-
-    METAL_FUNC uint indices_to_idx_6(uint3 indices,
-                                     constant const size_t shape[6], 
-                                     constant const size_t strides[6]) {
-      auto idx = indices.x * strides[5] + indices.y * strides[4];
-      idx += (indices.z % shape[3]) * strides[3];
-      indices.z /= shape[3];
-      idx += (indices.z % shape[2]) * strides[2];
-      indices.z /= shape[2];
-      idx += (indices.z % shape[1]) * strides[1];
-      indices.z /= shape[1];
-      idx += indices.z * strides[0];
-      return idx;
-    }
+        for (int32_t i = rank - 4; i >= 0; i--) {
+          idx += (indices.z % shape[i]) * strides[i];
+          indices.z /= shape[i];
+        }
+        return idx;
+      }
+      }
 }
 
 
@@ -101,12 +76,14 @@ template<typename T>  [[kernel]] void copy_nd1(
     device void *output_b [[buffer(2)]],                        
     constant const size_t * out_shape [[buffer(3)]],
     constant const size_t * out_strides [[buffer(4)]],             
-    uint tpig[[thread_position_in_grid]]                     
+    uint3   tgpig[[threadgroup_position_in_grid]],
+    ushort3 tpitg[[thread_position_in_threadgroup]],
+    ushort3   ntg[[threads_per_threadgroup]]                      
 ) {
   device const T *input = (device const T *)input_b;
   device T* output = (device T *) output_b;
-  auto idx = utils::indices_to_idx_1(tpig, input_strides);
-  auto out_idx = utils::indices_to_idx_1(tpig, out_strides);
+  auto idx = utils::indices_to_outer_idx(tgpig, out_shape, input_strides, 1);
+  auto out_idx = utils::indices_to_outer_idx(tgpig, out_shape, out_strides, 1);
   output[out_idx] = input[idx];
 }
 
@@ -119,14 +96,18 @@ template<typename T>
     device void *output_b [[buffer(2)]],                        
     constant const size_t * out_shape [[buffer(3)]],
     constant const size_t * out_strides [[buffer(4)]],              
-    uint2 tpig[[thread_position_in_grid]]                   
+    uint3   tgpig[[threadgroup_position_in_grid]],
+    ushort3 tpitg[[thread_position_in_threadgroup]],
+    ushort3   ntg[[threads_per_threadgroup]]                  
 ) {
   device const T *input = (device const T *)input_b;
   device T* output = (device T *) output_b;
 
-  auto idx = utils::indices_to_idx_2(tpig, input_strides);
-  auto out_idx = utils::indices_to_idx_2(tpig, out_strides);
-  output[out_idx] = input[idx];
+  auto idx = utils::indices_to_outer_idx(tgpig, out_shape, input_strides, 2);
+  auto out_idx = utils::indices_to_outer_idx(tgpig, out_shape, out_strides, 2);
+  for (size_t i = tpitg.x; i < out_shape[1]; i += ntg.x) {
+    output[out_idx + i] = input[idx + i * input_strides[1]];
+  }
 }
 
 typedef decltype(copy_nd2<float>) copy_nd2_t;
@@ -137,14 +118,20 @@ template<typename T>
     constant const size_t * input_strides [[buffer(1)]],         
     device void *output_b [[buffer(2)]],                        
     constant const size_t * out_shape [[buffer(3)]],  
-    constant const size_t * out_strides [[buffer(4)]],           
-    uint3 tpig[[thread_position_in_grid]]                        
+    constant const size_t * out_strides [[buffer(4)]],                
+    uint3   tgpig[[threadgroup_position_in_grid]],
+    ushort3 tpitg[[thread_position_in_threadgroup]],
+    ushort3   ntg[[threads_per_threadgroup]]                           
 ) {
   device const T *input = (device const T *)input_b;
   device T* output = (device T *) output_b;
-  auto idx = utils::indices_to_idx_3(tpig, input_strides);
-  auto out_idx = utils::indices_to_idx_3(tpig, out_strides);
-  output[out_idx] = input[idx];
+
+  
+  auto idx = utils::indices_to_outer_idx(tgpig, out_shape, input_strides, 3);
+  auto out_idx = utils::indices_to_outer_idx(tgpig, out_shape, out_strides, 3);
+  for (size_t i = tpitg.x; i < out_shape[2]; i += ntg.x) {
+    output[out_idx + i] = input[idx + i * input_strides[2]];
+  }
 }
 
 typedef decltype(copy_nd3<float>) copy_nd3_t;
@@ -156,13 +143,18 @@ template<typename T>
     device void *output_b [[buffer(2)]],                        
     constant const size_t * out_shape [[buffer(3)]],  
     constant const size_t * out_strides [[buffer(4)]],           
-    uint3 tpig[[thread_position_in_grid]]                     
+    uint3   tgpig[[threadgroup_position_in_grid]],
+    ushort3 tpitg[[thread_position_in_threadgroup]],
+    ushort3   ntg[[threads_per_threadgroup]]                       
 ) {
   device const T *input = (device const T *)input_b;
   device T* output = (device T *) output_b;
-  auto idx = utils::indices_to_idx_4(tpig, out_shape, input_strides);
-  auto out_idx = utils::indices_to_idx_4(tpig, out_shape, out_strides);
-  output[out_idx] = input[idx];
+
+  auto idx = utils::indices_to_outer_idx(tgpig, out_shape, input_strides, 4);
+  auto out_idx = utils::indices_to_outer_idx(tgpig, out_shape, out_strides, 4);
+  for (size_t i = tpitg.x; i < out_shape[3]; i += ntg.x) {
+    output[out_idx + i] = input[idx + i * input_strides[3]];
+  }
 }
 
 typedef decltype(copy_nd4<float>) copy_nd4_t;
@@ -174,13 +166,18 @@ template<typename T>
     device void *output_b [[buffer(2)]],                        
     constant const size_t * out_shape [[buffer(3)]],
     constant const size_t * out_strides [[buffer(4)]],              
-    uint3 tpig[[thread_position_in_grid]]                     
+    uint3   tgpig[[threadgroup_position_in_grid]],
+    ushort3 tpitg[[thread_position_in_threadgroup]],
+    ushort3   ntg[[threads_per_threadgroup]]               
 ) {
   device const T *input = (device const T *)input_b;
   device T* output = (device T *) output_b;
-  auto idx = utils::indices_to_idx_5(tpig, out_shape, input_strides);
-  auto out_idx = utils::indices_to_idx_5(tpig, out_shape, out_strides);
-  output[out_idx] = input[idx];
+
+  auto idx = utils::indices_to_outer_idx(tgpig, out_shape, input_strides, 5);
+  auto out_idx = utils::indices_to_outer_idx(tgpig, out_shape, out_strides, 5);
+  for (size_t i = tpitg.x; i < out_shape[4]; i += ntg.x) {
+    output[out_idx + i] = input[idx + i * input_strides[4]];
+  }
 }
 
 typedef decltype(copy_nd5<float>) copy_nd5_t;
@@ -191,14 +188,19 @@ template<typename T>
     constant const size_t * input_strides [[buffer(1)]],         
     device void *output_b [[buffer(2)]],                        
     constant const size_t * out_shape [[buffer(3)]],
-    constant const size_t * out_strides [[buffer(4)]],           
-    uint3 tpig[[thread_position_in_grid]]                     
+    constant const size_t * out_strides [[buffer(4)]],              
+    uint3   tgpig[[threadgroup_position_in_grid]],
+    ushort3 tpitg[[thread_position_in_threadgroup]],
+    ushort3   ntg[[threads_per_threadgroup]]                     
 ) {
   device const T *input = (device const T *)input_b;
   device T* output = (device T *) output_b;
-  auto idx = utils::indices_to_idx_6(tpig, out_shape, input_strides);
-  auto out_idx = utils::indices_to_idx_6(tpig, out_shape, out_strides);
-  output[out_idx] = input[idx];
+
+  auto idx = utils::indices_to_outer_idx(tgpig, out_shape, input_strides, 6);
+  auto out_idx = utils::indices_to_outer_idx(tgpig, out_shape, out_strides, 6);
+  for (size_t i = tpitg.x; i < out_shape[5]; i += ntg.x) {
+    output[out_idx + i] = input[idx + i * input_strides[5]];
+  }
 }
 
 typedef decltype(copy_nd6<float>) copy_nd6_t;
