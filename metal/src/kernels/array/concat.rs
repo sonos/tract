@@ -99,6 +99,7 @@ impl Concat {
                 continue;
             }
             stream.retain_tensor(input);
+
             let i_strides = input.strides();
             let i_shape = input.shape();
 
@@ -114,8 +115,8 @@ impl Concat {
                 );
                 encoder.set_slice(3, i_shape);
                 encoder.set_slice(4, output_strides);
-                let grid_size = utils::build_metal_size_for_shape(i_shape);
-                let group_size = utils::build_metal_size_with_ones();
+
+                let (grid_size, group_size) = utils::build_metal_grid_and_groups_for_el_wise_op(i_shape, &pipeline);
                 encoder.dispatch_thread_groups(grid_size, group_size);
             });
         }
@@ -150,17 +151,17 @@ mod tests {
                 axis,
                 &inputs.iter().map(|it| it.to_host()).collect::<TractResult<Vec<_>>>()?,
             )?;
-            assert_eq!(ref_output, output.to_host()?.into_tensor());
+            assert_eq!(output.to_host()?.into_tensor(), ref_output);
             Ok(())
         })
     }
 
     #[test]
     fn test_concat() -> TractResult<()> {
-        run_test_case::<f32>(&[&[3, 4], &[3, 4]], 0)?;
+        run_test_case::<f32>(&[&[1, 4], &[1, 4]], 0)?;
         run_test_case::<f32>(&[&[3, 4], &[3, 4]], 1)?;
         run_test_case::<f32>(&[&[1, 5, 4], &[2, 5, 4]], 0)?;
-        run_test_case::<f32>(&[&[3, 1, 8], &[3, 2, 8]], 1)?;
+        run_test_case::<f32>(&[&[3, 1, 4], &[3, 2, 4]], 1)?;
         run_test_case::<f32>(&[&[3, 5, 1], &[3, 5, 2]], 2)?;
         run_test_case::<f32>(&[&[1, 5, 4, 10], &[2, 5, 4, 10]], 0)?;
         run_test_case::<f32>(&[&[3, 1, 8, 10], &[3, 2, 8, 10]], 1)?;
