@@ -82,9 +82,9 @@ template<typename T>  [[kernel]] void copy_nd1(
 ) {
   device const T *input = (device const T *)input_b;
   device T* output = (device T *) output_b;
-  auto idx = utils::indices_to_outer_idx(tgpig, out_shape, input_strides, 1);
-  auto out_idx = utils::indices_to_outer_idx(tgpig, out_shape, out_strides, 1);
-  output[out_idx] = input[idx];
+  for (size_t i = tpitg.x; i < out_shape[0]; i += ntg.x) {
+    output[i] = input[i * input_strides[0]];
+  }
 }
 
 typedef decltype(copy_nd1<float>) copy_nd1_t;
