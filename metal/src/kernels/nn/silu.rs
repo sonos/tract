@@ -15,8 +15,8 @@ impl Silu {
     pub fn kernel_name(&self, dt: DatumType, n_elements: usize) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal silu  op", dt);
         let tname = DeviceTensor::tname(dt)?;
-        if n_elements % 4 == 0 && tname == "f32" {
-            Ok(format!("silu_4_f32"))
+        if n_elements % 4 == 0 {
+            Ok(format!("nn_ops::silu_4_{tname}"))
         } else {
             Ok(format!("nn_ops::silu_{tname}"))
         }
