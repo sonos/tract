@@ -286,16 +286,24 @@ template<typename T>
 
 typedef decltype(silu<float>) silu_t;
 
-kernel void silu_4_f32(
-        device const float4 * src0,
-        device       float4 * dst,
+template<typename T4>
+[[kernel]] void silu_4(
+        device const void * input_b,
+        device       void * output_b,
         uint tpig[[thread_position_in_grid]]) {
-    device const float4 & x = src0[tpig];
-    dst[tpig] = x / (1.0f + exp(-x));
+    device const T4 *input = (device const T4 *) input_b;
+    device T4 *output = (device T4 *) output_b;
+    auto x = input[tpig];
+    output[tpig] = x / (1.0f + exp(-x));
 }
+
+typedef decltype(silu_4<float4>) silu_4_t;
 
 template [[host_name("nn_ops::silu_f32")]] [[kernel]] silu_t silu<float>;
 template [[host_name("nn_ops::silu_f16")]] [[kernel]] silu_t silu<half>;
+
+template [[host_name("nn_ops::silu_4_f32")]] [[kernel]] silu_4_t silu_4<float4>;
+template [[host_name("nn_ops::silu_4_f16")]] [[kernel]] silu_4_t silu_4<half4>;
 
 template<typename F>  
 [[kernel]] void softmax_nd3(
