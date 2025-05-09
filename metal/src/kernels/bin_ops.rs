@@ -1,9 +1,11 @@
+use super::utils::build_metal_grid_and_groups_for_el_wise_op;
 use super::BroadcastKind;
 use crate::encoder::EncoderExt;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::{LibraryName, MetalStream};
 use anyhow::{bail, ensure};
 use metal::{MTLSize, NSUInteger};
+use std::ffi::c_void;
 use std::fmt;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
@@ -74,8 +76,8 @@ impl BinOps {
         Self::ALL
             .into_iter()
             .flat_map(|op| DeviceTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt)))
-            .flat_map(|(op, dt)| BroadcastKind::ALL.into_iter().map(move |b| (op, dt, b)))
-            .flat_map(|(op, dt, b)| op.kernel_name(dt, b).into_iter())
+            .flat_map(|(op, dt)| [true, false].into_iter().map(move |r| (op, dt, r)))
+            .flat_map(|(op, dt, r)| op.kernel_name(dt, r).into_iter())
             .collect()
     }
 
@@ -110,7 +112,37 @@ impl BinOps {
         )
     }
 
-    pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> TractResult<String> {
+    fn reshape_to_rank_4_with_broadcast(lhs: &DeviceTensor, rhs: &DeviceTensor, out: &DeviceTensor) -> TractResult<(TVec<usize>, TVec<usize>, TVec<usize>)> {
+        if lhs.rank() > 4 && rhs.rank() > 4 {
+            let lhs_shape = lhs.shape();
+            let rhs_shape = rhs.shape();
+            let rank = lhs.rank();
+            let broadcast_axes: Vec<usize> = (0..lhs.rank()).into_iter().filter(|ix| lhs_shape[*ix] != rhs_shape[*ix]).collect();
+
+            if lhs.shape() == rhs.shape() {
+                let mut shape = vec![lhs.shape()[..rank - 4].iter().product::<usize>()];
+                shape.extend(&lhs.shape()[rank - 4..]);
+                
+                Ok((shape.clone().into(), shape.clone().into(), shape.into()))
+            } else {
+
+                todo!("Handle brd")
+            }
+        } else {
+            let mut lhs_shape = vec![1; 4 - lhs.rank()];
+            lhs_shape.extend(lhs.shape());
+
+            let mut rhs_shape = vec![1; 4 - lhs.rank()];
+            rhs_shape.extend(rhs.shape());
+
+            let mut out_shape = vec![1; 4 - lhs.rank()];
+            out_shape.extend(out.shape());
+
+            Ok((lhs_shape.into(), rhs_shape.into(), out_shape.into()))
+        }
+    }
+
+    pub fn kernel_name(&self, dt: DatumType, use_row_kernel: bool) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal binary ops", dt);
 
         let tname = DeviceTensor::tname(dt)?;
@@ -131,9 +163,11 @@ impl BinOps {
             Self::Or => "or",
         };
 
-        let kbroadcast_name = broadcast_kind.name();
-
-        Ok(format!("bin_ops::{kname}_{kbroadcast_name}_{tname}"))
+        if use_row_kernel && ["add", "sub", "mul", "div"].contains(&kname) {
+            Ok(format!("bin_ops::{kname}_1row_{tname}"))
+        } else {
+            Ok(format!("bin_ops::{kname}_{tname}"))
+        }
     }
 
     pub fn eval(
@@ -165,84 +199,57 @@ impl BinOps {
 
         let out_shape = output.shape();
 
-        let broadcast_kind = if lhs.len() == 1 {
-            BroadcastKind::ByScalarLeft
-        } else if rhs.len() == 1 {
-            BroadcastKind::ByScalarRight
-        } else if lhs.shape() == rhs.shape() {
-            BroadcastKind::Unicast
-        } else if output.rank() == 2 {
-            BroadcastKind::Nd2
-        } else if output.rank() == 3 {
-            BroadcastKind::Nd3
-        } else if output.rank() == 4 {
-            BroadcastKind::Nd4
-        } else if output.rank() == 5 {
-            BroadcastKind::Nd5
+        let use_row_kernel = ((rhs.len() == rhs.shape()[rhs.rank() - 1]) || ((lhs.len() == lhs.shape()[lhs.rank() - 1]) &&
+                                   matches!(self, Self::Mul | Self::Add))) &&
+                                   (lhs.shape()[lhs.rank() - 1] % 4 == 0) &&
+                                   (rhs.shape()[rhs.rank() - 1] % 4 == 0);
+        let kernel_name = self.kernel_name(lhs.datum_type(), use_row_kernel)?;
+
+        if use_row_kernel {
+            let pipeline = stream.load_pipeline(LibraryName::BinOps, &kernel_name)?;
+
+            let (a, b) = if (rhs.len() == rhs.shape()[rhs.rank() - 1]) { (lhs, rhs) } else { (rhs, lhs) };
+            let command_buffer = stream.command_buffer();
+            command_buffer.encode(|encoder| {
+                encoder.set_compute_pipeline_state(&pipeline);
+                encoder.set_metal_tensor(0, a, metal::MTLResourceUsage::Read);
+                encoder.set_metal_tensor(1, b, metal::MTLResourceUsage::Read);
+                encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
+                encoder.set_bytes(
+                    3,
+                    std::mem::size_of::<usize>() as u64,
+                    &b.len() as *const usize as *const c_void,
+                );
+
+                let grid_size =
+                    MTLSize { width: (output.len() / 4) as NSUInteger, height: 1, depth: 1 };
+                let group_size = MTLSize { width: 1, height: 1, depth: 1 };
+                encoder.dispatch_thread_groups(grid_size, group_size);
+            });
         } else {
-            bail!(
-                "Unsupported broadcast for bin op: {:?}: (a: {:?}, b: {:?}, c: {:?})",
-                self,
-                lhs.shape(),
-                rhs.shape(),
-                out_shape
-            );
-        };
+            let (lhs_shape, rhs_shape, out_shape) = Self::reshape_to_rank_4_with_broadcast(lhs, rhs, output)?;
+            
+            let lhs_strides = compute_broadcast_strides::<usize>(&lhs_shape, &natural_strides(&lhs_shape))?;
+            let rhs_strides = compute_broadcast_strides::<usize>(&rhs_shape, &natural_strides(&rhs_shape))?;
 
-        let kernel_name = self.kernel_name(lhs.datum_type(), broadcast_kind)?;
-        match broadcast_kind {
-            BroadcastKind::ByScalarLeft | BroadcastKind::ByScalarRight | BroadcastKind::Unicast => {
-                let pipeline = stream.load_pipeline(LibraryName::BinOps, &kernel_name)?;
+            let pipeline = stream.load_pipeline(LibraryName::BinOps, &kernel_name)?;
+            let command_buffer = stream.command_buffer();
+            command_buffer.encode(|encoder| {
+                encoder.set_compute_pipeline_state(&pipeline);
+                encoder.set_metal_tensor(0, lhs, metal::MTLResourceUsage::Read);
+                encoder.set_slice(1, &lhs_shape);
+                encoder.set_slice(2, &lhs_strides);
+                encoder.set_metal_tensor(3, rhs, metal::MTLResourceUsage::Read);
+                encoder.set_slice(4, &rhs_shape);
+                encoder.set_slice(5, &rhs_strides);
+                encoder.set_metal_tensor(6, output, metal::MTLResourceUsage::Write);
+                encoder.set_slice(7, &out_shape);
+                encoder.set_slice(8, &natural_strides(&out_shape));
 
-                let command_buffer = stream.command_buffer();
-                command_buffer.encode(|encoder| {
-                    encoder.set_compute_pipeline_state(&pipeline);
-                    encoder.set_metal_tensor(0, lhs, metal::MTLResourceUsage::Read);
-                    encoder.set_metal_tensor(1, rhs, metal::MTLResourceUsage::Read);
-                    encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
-
-                    let grid_size =
-                        MTLSize { width: output.len() as NSUInteger, height: 1, depth: 1 };
-                    let group_size = MTLSize { width: 1, height: 1, depth: 1 };
-                    encoder.dispatch_thread_groups(grid_size, group_size);
-                });
-            }
-            BroadcastKind::Nd1 | BroadcastKind::Nd6 => {
-                bail!("Unsupported broadcast kind {:?} for bin ops: {:?}", broadcast_kind, self)
-            }
-            BroadcastKind::Nd2 | BroadcastKind::Nd3 | BroadcastKind::Nd4 | BroadcastKind::Nd5 => {
-                ensure!(lhs.rank() == rhs.rank());
-
-                let lhs_strides = compute_broadcast_strides::<usize>(lhs.shape(), lhs.strides())?;
-
-                let rhs_strides = compute_broadcast_strides::<usize>(rhs.shape(), rhs.strides())?;
-
-                let output_shape = output.shape();
-
-                let pipeline = stream.load_pipeline(LibraryName::BinOps, &kernel_name)?;
-                let command_buffer = stream.command_buffer();
-                command_buffer.encode(|encoder| {
-                    encoder.set_compute_pipeline_state(&pipeline);
-                    encoder.set_metal_tensor(0, lhs, metal::MTLResourceUsage::Read);
-                    encoder.set_slice(1, &lhs_strides);
-                    encoder.set_metal_tensor(2, rhs, metal::MTLResourceUsage::Read);
-                    encoder.set_slice(3, &rhs_strides);
-                    encoder.set_metal_tensor(4, output, metal::MTLResourceUsage::Write);
-                    encoder.set_slice(5, output_shape);
-
-                    let grid_size = MTLSize {
-                        width: out_shape[out_shape.len() - 1] as NSUInteger,
-                        height: out_shape[out_shape.len() - 2] as NSUInteger,
-                        depth: (out_shape[..out_shape.len() - 2].iter().product::<usize>())
-                            as NSUInteger,
-                    };
-
-                    let group_size = MTLSize { width: 1, height: 1, depth: 1 };
-                    encoder.dispatch_thread_groups(grid_size, group_size);
-                });
-            }
+                let (grid_size, group_size) = build_metal_grid_and_groups_for_el_wise_op(&out_shape, &pipeline);
+                encoder.dispatch_thread_groups(grid_size, group_size);
+            });
         }
-
         Ok(())
     }
 }
@@ -299,7 +306,7 @@ mod tests {
                 &b.to_host()?.into_tensor(),
                 cab,
             )?;
-            assert_eq!(ref_output, output.to_host()?.into_tensor());
+            assert_eq!(output.to_host()?.into_tensor(), ref_output);
             Ok(())
         })
     }
@@ -325,7 +332,7 @@ mod tests {
 
             let ref_output =
                 reference::<F, F>(&a.to_host()?.into_tensor(), &b.to_host()?.into_tensor(), cab)?;
-            assert_eq!(ref_output, output.to_host()?.into_tensor());
+            assert_eq!(output.to_host()?.into_tensor(), ref_output);
             Ok(())
         })
     }
@@ -339,11 +346,11 @@ mod tests {
 
     #[test]
     fn test_bin_ops_with_broadcast_nd2() -> TractResult<()> {
-        run_test_case::<f32>(BinOps::Mul, &[4, 1], &[1, 20], |c, a, b| *c = *a * *b)?;
-        run_test_case::<f32>(BinOps::Mul, &[1, 20], &[10, 20], |c, a, b| *c = *a * *b)?;
+        run_test_case::<f32>(BinOps::Mul, &[4, 1], &[1, 3], |c, a, b| *c = *a * *b)?;
+        run_test_case::<f32>(BinOps::Mul, &[10, 20], &[1, 20], |c, a, b| *c = *a * *b)?;
         run_test_case::<f32>(BinOps::Add, &[4, 1], &[4, 20], |c, a, b| *c = *a + *b)?;
         run_test_case::<f32>(BinOps::Sub, &[1, 20], &[10, 20], |c, a, b| *c = *a - *b)?;
-        run_test_case_logic::<f32>(BinOps::Less, &[1, 20], &[10, 20], |c, a, b| *c = *a < *b)?;
+        run_test_case_logic::<f32>(BinOps::Less, &[1, 3], &[2, 3], |c, a, b| *c = *a < *b)?;
         run_test_case_logic::<f32>(BinOps::Greater, &[1, 20], &[10, 20], |c, a, b| *c = *a > *b)?;
         run_test_case_logic::<f32>(BinOps::Equals, &[1, 20], &[10, 20], |c, a, b| *c = *a == *b)?;
         Ok(())

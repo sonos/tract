@@ -1,12 +1,13 @@
+use metal::{ComputePipelineState, MTLSize};
 use num_traits::{AsPrimitive, Zero};
 use tract_core::internal::{ensure, tvec, TVec, TractResult};
 
-pub fn build_metal_size_for_shape(shape: &[usize]) -> metal::MTLSize {
+pub fn build_metal_size_for_shape(shape: &[usize]) -> MTLSize {
     match shape.len() {
         0 => panic!("Unexpected empty shape while build grid size"),
-        1 => metal::MTLSize { width: shape[0] as _, height: 1, depth: 1 },
-        2 => metal::MTLSize { width: shape[1] as _, height: shape[0] as _, depth: 1 },
-        3.. => metal::MTLSize {
+        1 => MTLSize { width: shape[0] as _, height: 1, depth: 1 },
+        2 => MTLSize { width: shape[1] as _, height: shape[0] as _, depth: 1 },
+        3.. => MTLSize {
             width: shape[shape.len() - 1] as _,
             height: shape[shape.len() - 2] as _,
             depth: (shape[..shape.len() - 2].iter().product::<usize>()) as _,
@@ -14,8 +15,24 @@ pub fn build_metal_size_for_shape(shape: &[usize]) -> metal::MTLSize {
     }
 }
 
-pub fn build_metal_size_with_ones() -> metal::MTLSize {
-    metal::MTLSize { width: 1, height: 1, depth: 1 }
+pub fn build_metal_grid_and_groups_for_el_wise_op(shape: &[usize], pipeline: &ComputePipelineState) -> (MTLSize, MTLSize) {
+    let grid_size = match shape.len() {
+        0 => panic!("Unexpected empty shape while build grid size"),
+        1 => MTLSize { width: 1, height: 1, depth: 1 },
+        2 => MTLSize { width: shape[0] as _, height: 1, depth: 1 },
+        3 => MTLSize { width: shape[1] as _, height: shape[0] as _, depth: 1 },
+        4.. => MTLSize {
+            width: shape[shape.len() - 2] as _,
+            height: shape[shape.len() - 3] as _,
+            depth: (shape[..shape.len() - 3].iter().product::<usize>()) as _,
+        },
+    };
+
+    (grid_size, MTLSize { width: shape[shape.len() - 1].min(pipeline.max_total_threads_per_threadgroup() as usize) as _, height: 1, depth: 1 })
+}
+
+pub fn build_metal_size_with_ones() -> MTLSize {
+    MTLSize { width: 1, height: 1, depth: 1 }
 }
 
 pub fn reshape_to_rank_2(shape: &[usize], axis: usize) -> TVec<usize> {

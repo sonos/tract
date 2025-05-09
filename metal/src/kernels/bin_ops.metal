@@ -153,22 +153,27 @@ struct Pow {
     }
 };
 
-#define INSTANTIATE_BIN_OP(name, op, itname, itype, otype)                    \
-template [[host_name("bin_ops::" #name "_unicast_" #itname)]] [[kernel]]      \
-bin_op_unicast_t bin_op_unicast<itype, otype, op>;                            \
-template [[host_name("bin_ops::" #name "_by_scalar_rhs_" #itname)]]           \
-[[kernel]] bin_op_by_scalar_rhs_t bin_op_by_scalar_rhs<itype, otype, op>;     \
-template [[host_name("bin_ops::" #name "_by_scalar_lhs_" #itname)]]           \
-[[kernel]] bin_op_by_scalar_lhs_t bin_op_by_scalar_lhs<itype, otype, op>;     \
-template [[host_name("bin_ops::" #name "_nd2_" #itname)]]                     \
-[[kernel]] bin_op_nd2_t bin_op_nd2<itype, otype, op>;                         \
-template [[host_name("bin_ops::" #name "_nd3_" #itname)]]                     \
-[[kernel]] bin_op_nd3_t bin_op_nd3<itype, otype, op>;                         \
-template [[host_name("bin_ops::" #name "_nd4_" #itname)]]                     \
-[[kernel]] bin_op_nd4_t bin_op_nd4<itype, otype, op>;                         \
-template [[host_name("bin_ops::" #name "_nd5_" #itname)]]                     \
-[[kernel]] bin_op_nd5_t bin_op_nd5<itype, otype, op>;
+#define INSTANTIATE_1ROW_BIN_OP()                             \
+template [[host_name("bin_ops::add_1row_f32")]] [[kernel]]     \
+bin_op_1row_t bin_op_1row<float4, Add>;                         \
+template [[host_name("bin_ops::sub_1row_f32")]] [[kernel]]     \
+bin_op_1row_t bin_op_1row<float4, Sub>;                         \
+template [[host_name("bin_ops::div_1row_f32")]] [[kernel]]     \
+bin_op_1row_t bin_op_1row<float4, Div>;                         \
+template [[host_name("bin_ops::mul_1row_f32")]] [[kernel]]     \
+bin_op_1row_t bin_op_1row<float4, Mul>;                         \
+template [[host_name("bin_ops::add_1row_f16")]] [[kernel]]     \
+bin_op_1row_t bin_op_1row<half4, Add>;                         \
+template [[host_name("bin_ops::sub_1row_f16")]] [[kernel]]     \
+bin_op_1row_t bin_op_1row<half4, Sub>;                         \
+template [[host_name("bin_ops::dib_1row_f16")]] [[kernel]]     \
+bin_op_1row_t bin_op_1row<half4, Div>;                         \
+template [[host_name("bin_ops::mul_1row_f16")]] [[kernel]]     \
+bin_op_1row_t bin_op_1row<half4, Mul>;                         \
 
+#define INSTANTIATE_BIN_OP(name, op, itname, itype, otype)                    \
+template [[host_name("bin_ops::" #name "_" #itname)]] [[kernel]]      \
+bin_op_t bin_op<itype, otype, op>;                            \
 
 #define INSTANTIATE_FLOAT(name, op)                     \
 INSTANTIATE_BIN_OP(name, op, f32, float, float)         \
@@ -207,129 +212,49 @@ INSTANTIATE_FLOAT_BOOL(name, op)                         \
 INSTANTIATE_INTEGER_BOOL(name, op)                
 
 template<typename In, typename Out, typename Op>
-[[kernel]] void bin_op_unicast(device const void *lhs_b [[buffer(0)]],
-                               device const void *rhs_b [[buffer(1)]],
-                               device void *output_b [[buffer(2)]],
-                               uint tpig[[thread_position_in_grid]]) {
-    device const In * lhs = (device const In *)lhs_b;
-    device const In * rhs = (device const In *)rhs_b;
-    device  Out * output = (device  Out *)output_b;
-    output[tpig] = Op()(lhs[tpig], rhs[tpig]);
+[[kernel]] void bin_op(device const void *lhs_b [[buffer(0)]],
+                    constant const size_t * lhs_shape [[buffer(1)]],
+                    constant const size_t * lhs_strides [[buffer(2)]],
+                    device const void *rhs_b [[buffer(3)]],
+                    constant const size_t * rhs_shape [[buffer(4)]],
+                    constant const size_t * rhs_strides [[buffer(5)]],
+                    device void *output_b [[buffer(6)]],
+                    constant const size_t * out_shape [[buffer(7)]],
+                    constant const size_t * out_strides [[buffer(8)]],
+                    uint3   tgpig[[threadgroup_position_in_grid]],
+                    ushort3 tpitg[[thread_position_in_threadgroup]],
+                    ushort3   ntg[[threads_per_threadgroup]]) {
+        device const In * lhs = (device const In *)lhs_b;
+        device const In * rhs = (device const In *)rhs_b;
+        device  Out * output = (device Out *)output_b;
+
+        auto lhs_idx = tgpig.z * lhs_strides[0] + tgpig.y * lhs_strides[1] + tgpig.x * lhs_strides[2];
+        auto rhs_idx = tgpig.z * rhs_strides[0] + tgpig.y * rhs_strides[1] + tgpig.x * rhs_strides[2];
+        auto out_idx = tgpig.z * out_strides[0] + tgpig.y * out_strides[1] + tgpig.x * out_strides[2];
+
+        for (size_t i = tpitg.x; i < out_shape[3]; i += ntg.x) {
+            output[out_idx + i] = Op()(lhs[lhs_idx + i * lhs_strides[3]], rhs[rhs_idx + i * rhs_strides[3]]);
+        }
 }
 
-typedef decltype(bin_op_unicast<float, float, Mul>) bin_op_unicast_t;
+typedef decltype(bin_op<float, float, Mul>) bin_op_t;
 
-template<typename In, typename Out, typename Op>
-[[kernel]] void bin_op_by_scalar_rhs(device const void *lhs_b [[buffer(0)]],
-                                     device const void *rhs_b [[buffer(1)]],
-                                     device void *output_b [[buffer(2)]],
-                                     uint tpig[[thread_position_in_grid]]) {
-    device const In * lhs = (device const In *)lhs_b;
-    device const In * rhs = (device const In *)rhs_b;
-    device  Out * output = (device  Out *)output_b;
-    output[tpig] = Op()(lhs[tpig], rhs[0]);
+
+template<typename T4, typename Op>
+[[kernel]] void bin_op_1row(device const void *lhs_b [[buffer(0)]],
+                           device const void *rhs_b [[buffer(1)]],
+                           device void *output_b [[buffer(2)]],
+                           device const size_t & n [[buffer(3)]],
+                           uint tpig[[thread_position_in_grid]]) {
+    device const T4 * lhs = (device const T4 *)lhs_b;
+    device const T4 * rhs = (device const T4 *)rhs_b;
+    device  T4 * output = (device  T4 *)output_b;
+
+    const uint nb = n/4;
+    output[tpig] = Op()(lhs[tpig], rhs[tpig % nb]);
 }
 
-typedef decltype(bin_op_by_scalar_rhs<float, float, Mul>) bin_op_by_scalar_rhs_t;
-
-template<typename In, typename Out, typename Op>
-[[kernel]] void bin_op_by_scalar_lhs(device const void *lhs_b [[buffer(0)]],
-                                     device const void *rhs_b [[buffer(1)]],
-                                     device void *output_b [[buffer(2)]],
-                                     uint tpig[[thread_position_in_grid]]) {
-    device const In * lhs = (device const In *)lhs_b;
-    device const In * rhs = (device const In *)rhs_b;
-    device  Out * output = (device  Out *)output_b;
-    output[tpig] = Op()(lhs[0], rhs[tpig]);
-}
-
-typedef decltype(bin_op_by_scalar_lhs<float, float, Mul>) bin_op_by_scalar_lhs_t;
-
-template<typename In, typename Out, typename Op>
-[[kernel]] void bin_op_nd2(device const void *lhs_b [[buffer(0)]],
-                           constant const size_t * lhs_strides [[buffer(1)]],
-                           device const void *rhs_b [[buffer(2)]],
-                           constant const size_t * rhs_strides [[buffer(3)]],
-                           device void *output_b [[buffer(4)]],
-                           constant const size_t * out_shape [[buffer(5)]],
-                           uint2 tpig[[thread_position_in_grid]],
-                           uint2 grid_dim [[threads_per_grid]]) {
-    device const In * lhs = (device const In *)lhs_b;
-    device const In * rhs = (device const In *)rhs_b;
-    device  Out * output = (device  Out *)output_b;
-    auto lhs_idx = utils::indices_to_idx_2(tpig, lhs_strides);
-    auto rhs_idx = utils::indices_to_idx_2(tpig, rhs_strides);
-    auto out_idx = tpig.x + grid_dim.x * tpig.y;
-    output[out_idx] = Op()(lhs[lhs_idx], rhs[rhs_idx]);
-}
-
-typedef decltype(bin_op_nd2<float, float, Mul>) bin_op_nd2_t;
-
-template<typename In, typename Out, typename Op>
-[[kernel]] void bin_op_nd3(device const void *lhs_b [[buffer(0)]],
-                           constant const size_t * lhs_strides [[buffer(1)]],
-                           device const void *rhs_b [[buffer(2)]],
-                           constant const size_t * rhs_strides [[buffer(3)]],
-                           device void *output_b [[buffer(4)]],
-                           constant const size_t * out_shape [[buffer(5)]],
-                           uint3 tpig[[thread_position_in_grid]],
-                           uint3 grid_dim [[threads_per_grid]]) {
-    
-    device const In * lhs = (device const In *)lhs_b;
-    device const In * rhs = (device const In *)rhs_b;
-    device  Out * output = (device  Out *)output_b;
-    
-    auto lhs_idx = utils::indices_to_idx_3(tpig, lhs_strides);
-    auto rhs_idx = utils::indices_to_idx_3(tpig, rhs_strides);
-    auto out_idx = tpig.x + grid_dim.x * (tpig.y + grid_dim.y * tpig.z);
-    output[out_idx] = Op()(lhs[lhs_idx], rhs[rhs_idx]);
-}
-
-typedef decltype(bin_op_nd3<float, float, Mul>) bin_op_nd3_t;
-
-template<typename In, typename Out, typename Op>
-[[kernel]] void bin_op_nd4(device const void *lhs_b [[buffer(0)]],
-                           constant const size_t * lhs_strides [[buffer(1)]],
-                           device const void *rhs_b [[buffer(2)]],
-                           constant const size_t * rhs_strides [[buffer(3)]],
-                           device void *output_b [[buffer(4)]],
-                           constant const size_t * out_shape [[buffer(5)]],
-                           uint3 tpig[[thread_position_in_grid]],
-                           uint3 grid_dim [[threads_per_grid]]) {
-    
-    device const In * lhs = (device const In *)lhs_b;
-    device const In * rhs = (device const In *)rhs_b;
-    device  Out * output = (device  Out *)output_b;
-    
-    auto lhs_idx = utils::indices_to_idx_4(tpig, out_shape, lhs_strides);
-    auto rhs_idx = utils::indices_to_idx_4(tpig, out_shape, rhs_strides);
-    auto out_idx = tpig.x + grid_dim.x * (tpig.y + grid_dim.y * tpig.z);
-    output[out_idx] =  Op()(lhs[lhs_idx], rhs[rhs_idx]);
-}
-
-typedef decltype(bin_op_nd4<float, float, Mul>) bin_op_nd4_t;
-
-template<typename In, typename Out, typename Op>
-[[kernel]] void bin_op_nd5(device const void *lhs_b [[buffer(0)]],
-                           constant const size_t * lhs_strides [[buffer(1)]],
-                           device const void *rhs_b [[buffer(2)]],
-                           constant const size_t * rhs_strides [[buffer(3)]],
-                           device void *output_b [[buffer(4)]],
-                           constant const size_t * out_shape [[buffer(5)]],
-                           uint3 tpig[[thread_position_in_grid]],
-                           uint3 grid_dim [[threads_per_grid]]) {
-    
-    device const In * lhs = (device const In *)lhs_b;
-    device const In * rhs = (device const In *)rhs_b;
-    device  Out * output = (device  Out *)output_b;
-    
-    auto lhs_idx = utils::indices_to_idx_5(tpig, out_shape, lhs_strides);
-    auto rhs_idx = utils::indices_to_idx_5(tpig, out_shape, rhs_strides);
-    auto out_idx = tpig.x + grid_dim.x * (tpig.y + grid_dim.y * tpig.z);
-    output[out_idx] =  Op()(lhs[lhs_idx], rhs[rhs_idx]);
-}
-
-typedef decltype(bin_op_nd5<float, float, Mul>) bin_op_nd5_t;
+typedef decltype(bin_op_1row<float4, Mul>) bin_op_1row_t;
 
 INSTANTIATE_ALL_TYPES(mul, Mul)
 INSTANTIATE_ALL_TYPES(div, Div)
@@ -344,3 +269,5 @@ INSTANTIATE_ALL_TYPES_BOOL(equals, Equals)
 INSTANTIATE_ALL_TYPES_BOOL(not_equals, NotEquals)
 INSTANTIATE_BIN_OP(and, And, bool, bool, bool)
 INSTANTIATE_BIN_OP(or, Or, bool, bool, bool)
+
+INSTANTIATE_1ROW_BIN_OP()
