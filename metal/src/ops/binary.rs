@@ -62,7 +62,6 @@ impl MetalEvalOp for MetalBinOp {
             .dispatch_eval(stream, a, b, &output)
             .with_context(|| "Error while dispatching eval for Metal Bin Op")?;
 
-        ensure!(a.rank() == b.rank());
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }

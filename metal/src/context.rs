@@ -312,6 +312,8 @@ impl Drop for MetalStream {
             }
             _ => {}
         }
+
+        command_buffer.encoder().end_encoding();
         command_buffer.commit();
         command_buffer.wait_until_completed();
     }
