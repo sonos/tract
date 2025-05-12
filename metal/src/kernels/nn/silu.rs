@@ -12,10 +12,10 @@ impl Silu {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
-    pub fn kernel_name(&self, dt: DatumType, n_elements: usize) -> TractResult<String> {
+    pub fn kernel_name(&self, dt: DatumType, use_silu_4: bool) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal silu  op", dt);
         let tname = DeviceTensor::tname(dt)?;
-        if n_elements % 4 == 0 {
+        if use_silu_4 {
             Ok(format!("nn_ops::silu_4_{tname}"))
         } else {
             Ok(format!("nn_ops::silu_{tname}"))
@@ -42,9 +42,11 @@ impl Silu {
         ensure!(output.datum_type() == input.datum_type());
 
         let n_el = output.len();
-        let kernel_name = self.kernel_name(input.datum_type(), n_el)?;
 
-        let n_threads = if n_el % 4 == 0 { n_el / 4 } else { n_el }; 
+        let use_silu_4 = (n_el % 4 == 0) && (n_el as f32 > 2f32.powi(12));
+        let kernel_name = self.kernel_name(input.datum_type(), use_silu_4)?;
+
+        let n_threads = if use_silu_4 { n_el / 4 } else { n_el }; 
         let pipeline = stream.load_pipeline(LibraryName::NNOps, &kernel_name)?;
         let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
