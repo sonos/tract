@@ -4,10 +4,10 @@ use crate::encoder::EncoderExt;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::{LibraryName, MetalStream};
 use anyhow::{bail, ensure};
-use metal::{MTLSize, NSUInteger};
-use tract_core::internal::tract_smallvec::SmallVec;
+use metal::{Device, MTLSize, NSUInteger};
 use std::ffi::c_void;
 use std::fmt;
+use tract_core::internal::tract_smallvec::SmallVec;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
@@ -113,7 +113,11 @@ impl BinOps {
         )
     }
 
-    fn reshape_to_rank_4_with_broadcast(lhs: &DeviceTensor, rhs: &DeviceTensor, out: &DeviceTensor) -> TractResult<(TVec<usize>, TVec<usize>, TVec<usize>)> {
+    fn reshape_to_rank_4_with_broadcast(
+        lhs: &DeviceTensor,
+        rhs: &DeviceTensor,
+        out: &DeviceTensor,
+    ) -> TractResult<(TVec<usize>, TVec<usize>, TVec<usize>)> {
         let rank = lhs.rank();
 
         if rank <= 4 {
@@ -128,10 +132,13 @@ impl BinOps {
         if lhs.shape() == rhs.shape() {
             let mut shape = vec![lhs.shape()[..rank - 3].iter().product::<usize>()];
             shape.extend(&lhs.shape()[rank - 3..]);
-            
+
             Ok((shape.clone().into(), shape.clone().into(), shape.into()))
         } else {
-            let broadcast_axes: Vec<usize> = (0..lhs.rank()).into_iter().filter(|ix| lhs.shape()[*ix] != rhs.shape()[*ix]).collect();
+            let broadcast_axes: Vec<usize> = (0..lhs.rank())
+                .into_iter()
+                .filter(|ix| lhs.shape()[*ix] != rhs.shape()[*ix])
+                .collect();
 
             let mut segments = vec![];
             let mut current_segment = vec![0];
@@ -170,7 +177,18 @@ impl BinOps {
                 compute_shape(out.shape(), &reshaped_groups),
             ))
         }
+    }
 
+    fn can_use_row_kernel(&self, lhs: &DeviceTensor, rhs: &DeviceTensor) -> bool {
+        let compatible_op = matches!(self, Self::Mul | Self::Add | Self::Div | Self::Sub);
+        let rank = lhs.rank();
+
+        compatible_op
+            && (rank > 0)
+            && ((rhs.len() == rhs.shape()[rank - 1])
+                || ((lhs.len() == lhs.shape()[rank - 1]) && matches!(self, Self::Mul | Self::Add)))
+            && (lhs.shape()[rank - 1] % 4 == 0)
+            && (rhs.shape()[rank - 1] % 4 == 0)
     }
 
     pub fn kernel_name(&self, dt: DatumType, use_row_kernel: bool) -> TractResult<String> {
@@ -194,7 +212,7 @@ impl BinOps {
             Self::Or => "or",
         };
 
-        if use_row_kernel && ["add", "sub", "mul", "div"].contains(&kname) {
+        if use_row_kernel {
             Ok(format!("bin_ops::{kname}_1row_{tname}"))
         } else {
             Ok(format!("bin_ops::{kname}_{tname}"))
@@ -232,12 +250,7 @@ impl BinOps {
         let rank = lhs.rank();
         let out_shape = output.shape();
 
-        let use_row_kernel = if rank != 0 {
-                                    ((rhs.len() == rhs.shape()[rank - 1]) ||
-                                    ((lhs.len() == lhs.shape()[rank - 1]) && matches!(self, Self::Mul | Self::Add))) &&
-                                    (lhs.shape()[rank - 1] % 4 == 0) &&
-                                    (rhs.shape()[rank - 1] % 4 == 0)
-        } else { false };
+        let use_row_kernel = self.can_use_row_kernel(lhs, rhs);
 
         let kernel_name = self.kernel_name(lhs.datum_type(), use_row_kernel)?;
 
@@ -263,12 +276,15 @@ impl BinOps {
                 encoder.dispatch_thread_groups(grid_size, group_size);
             });
         } else {
+            let (lhs_shape, rhs_shape, out_shape) =
+                Self::reshape_to_rank_4_with_broadcast(lhs, rhs, output)?;
 
-            let (lhs_shape, rhs_shape, out_shape) = Self::reshape_to_rank_4_with_broadcast(lhs, rhs, output)?;
-
-            let lhs_strides = compute_broadcast_strides::<usize>(&lhs_shape, &natural_strides(&lhs_shape))?;
-            let rhs_strides = compute_broadcast_strides::<usize>(&rhs_shape, &natural_strides(&rhs_shape))?;
-            let out_strides = compute_broadcast_strides::<usize>(&out_shape, &natural_strides(&out_shape))?;
+            let lhs_strides =
+                compute_broadcast_strides::<usize>(&lhs_shape, &natural_strides(&lhs_shape))?;
+            let rhs_strides =
+                compute_broadcast_strides::<usize>(&rhs_shape, &natural_strides(&rhs_shape))?;
+            let out_strides =
+                compute_broadcast_strides::<usize>(&out_shape, &natural_strides(&out_shape))?;
 
             let pipeline = stream.load_pipeline(LibraryName::BinOps, &kernel_name)?;
             let command_buffer = stream.command_buffer();
@@ -284,7 +300,10 @@ impl BinOps {
                 encoder.set_slice(7, &out_shape);
                 encoder.set_slice(8, &out_strides);
 
-                let (grid_size, group_size) = build_metal_grid_and_groups_for_el_wise_op(&out_shape, &pipeline);
+                let (grid_size, group_size) = build_metal_grid_and_groups_for_el_wise_op(
+                    &out_shape,
+                    pipeline.max_total_threads_per_threadgroup() as _,
+                );
                 encoder.dispatch_thread_groups(grid_size, group_size);
             });
         }
@@ -384,11 +403,11 @@ mod tests {
 
     #[test]
     fn test_bin_ops_with_broadcast_nd2() -> TractResult<()> {
-        run_test_case::<f32>(BinOps::Mul, &[4, 1], &[1, 3], |c, a, b| *c = *a * *b)?;
-        run_test_case::<f32>(BinOps::Mul, &[10, 20], &[1, 20], |c, a, b| *c = *a * *b)?;
+        run_test_case::<f32>(BinOps::Mul, &[4, 1], &[1, 20], |c, a, b| *c = *a * *b)?;
+        run_test_case::<f32>(BinOps::Mul, &[1, 20], &[10, 20], |c, a, b| *c = *a * *b)?;
         run_test_case::<f32>(BinOps::Add, &[4, 1], &[4, 20], |c, a, b| *c = *a + *b)?;
         run_test_case::<f32>(BinOps::Sub, &[1, 20], &[10, 20], |c, a, b| *c = *a - *b)?;
-        run_test_case_logic::<f32>(BinOps::Less, &[1, 3], &[2, 3], |c, a, b| *c = *a < *b)?;
+        run_test_case_logic::<f32>(BinOps::Less, &[1, 20], &[10, 20], |c, a, b| *c = *a < *b)?;
         run_test_case_logic::<f32>(BinOps::Greater, &[1, 20], &[10, 20], |c, a, b| *c = *a > *b)?;
         run_test_case_logic::<f32>(BinOps::Equals, &[1, 20], &[10, 20], |c, a, b| *c = *a == *b)?;
         Ok(())

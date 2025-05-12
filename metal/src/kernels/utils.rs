@@ -15,7 +15,10 @@ pub fn build_metal_size_for_shape(shape: &[usize]) -> MTLSize {
     }
 }
 
-pub fn build_metal_grid_and_groups_for_el_wise_op(shape: &[usize], pipeline: &ComputePipelineState) -> (MTLSize, MTLSize) {
+pub fn build_metal_grid_and_groups_for_el_wise_op(
+    shape: &[usize],
+    max_thread: usize,
+) -> (MTLSize, MTLSize) {
     let grid_size = match shape.len() {
         0 => panic!("Unexpected empty shape while build grid size"),
         1 => MTLSize { width: 1, height: 1, depth: 1 },
@@ -28,7 +31,7 @@ pub fn build_metal_grid_and_groups_for_el_wise_op(shape: &[usize], pipeline: &Co
         },
     };
 
-    (grid_size, MTLSize { width: shape[shape.len() - 1].min(pipeline.max_total_threads_per_threadgroup() as usize) as _, height: 1, depth: 1 })
+    (grid_size, MTLSize { width: shape[shape.len() - 1].min(max_thread) as _, height: 1, depth: 1 })
 }
 
 pub fn build_metal_size_with_ones() -> MTLSize {

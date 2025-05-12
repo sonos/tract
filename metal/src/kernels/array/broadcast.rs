@@ -98,10 +98,13 @@ impl MultiBroadcast {
             );
             encoder.set_slice(1, &input_broadcast_strides);
             encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
-            encoder.set_slice(3, output.shape());
+            encoder.set_slice(3, out_shape);
             encoder.set_slice(4, output.strides());
 
-            let (grid_size, group_size) = utils::build_metal_grid_and_groups_for_el_wise_op(out_shape, &pipeline);
+            let (grid_size, group_size) = utils::build_metal_grid_and_groups_for_el_wise_op(
+                out_shape,
+                pipeline.max_total_threads_per_threadgroup() as _,
+            );
 
             encoder.dispatch_thread_groups(grid_size, group_size);
         });
