@@ -126,7 +126,6 @@ template<typename T>
   device const T *input = (device const T *)input_b;
   device T* output = (device T *) output_b;
 
-  
   auto idx = utils::indices_to_outer_idx(tgpig, out_shape, input_strides, 3);
   auto out_idx = utils::indices_to_outer_idx(tgpig, out_shape, out_strides, 3);
   for (size_t i = tpitg.x; i < out_shape[2]; i += ntg.x) {

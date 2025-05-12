@@ -46,7 +46,7 @@ impl Silu {
         let use_silu_4 = (n_el % 4 == 0) && (n_el as f32 > 2f32.powi(12));
         let kernel_name = self.kernel_name(input.datum_type(), use_silu_4)?;
 
-        let n_threads = if use_silu_4 { n_el / 4 } else { n_el }; 
+        let n_threads = if use_silu_4 { n_el / 4 } else { n_el };
         let pipeline = stream.load_pipeline(LibraryName::NNOps, &kernel_name)?;
         let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
