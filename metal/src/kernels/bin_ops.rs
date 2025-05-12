@@ -433,8 +433,8 @@ mod tests {
 
     #[test]
     fn test_bin_ops_mul_by_scalar() -> TractResult<()> {
-        run_test_case::<f32>(BinOps::Add, &[4, 4], &[1], |c, a, b| *c = *a + *b)?;
-        run_test_case::<f32>(BinOps::Mul, &[4, 4], &[1], |c, a, b| *c = *a * *b)?;
+        run_test_case::<f32>(BinOps::Add, &[4, 4], &[1, 1], |c, a, b| *c = *a + *b)?;
+        run_test_case::<f32>(BinOps::Mul, &[4, 4], &[1, 1], |c, a, b| *c = *a * *b)?;
         Ok(())
     }
 
