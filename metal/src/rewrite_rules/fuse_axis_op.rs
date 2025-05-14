@@ -172,8 +172,12 @@ pub fn fuse_move_axis(
     // Reshape are always fusable. Change Move by Reshape if possible
     let simpl_op = MetalAxisOp::simplify_axis_op(axis_op.0.clone(), in_shape.dims());
     if simpl_op != *axis_op {
-        return Ok(Some(TypedModelPatch::replace_single_op(model, axis_node, &[axis_node.inputs[0]], 
-            simpl_op)?))
+        return Ok(Some(TypedModelPatch::replace_single_op(
+            model,
+            axis_node,
+            &[axis_node.inputs[0]],
+            simpl_op,
+        )?));
     }
 
     // Fuse consecutive MoveAxis if possible
