@@ -111,7 +111,7 @@ impl MetalTransform {
         Rewriter::default()
             .with_rule_for("fuse_move_axis", rewrite_rules::fuse_move_axis)
             .rewrite(&(), model)?;
-        Rewriter::default() 
+        Rewriter::default()
             .with_rule_for("fuse_axis_op", rewrite_rules::fuse_axis_op)
             .rewrite(&(), model)?;
 

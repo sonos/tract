@@ -36,32 +36,21 @@ impl MetalAxisOp {
                 } else {
                     Self(op)
                 }
-            },
-            AxisOp::Move(from, to) => {
-                if dims[from] == TDim::Val(1) {
-                    if from < to {
-                        let mut out_dims = dims[from..to + 1].to_vec();
-                        let tmp = out_dims.remove(0);
-                        out_dims.insert(out_dims.len(), tmp);
+            }
+            AxisOp::Move(from, to) if dims[from] == TDim::Val(1) => {
+                let (start, end) = if from < to { (from, to) } else { (to, from) };
+                let mut out_dims = dims[start..=end].to_vec();
 
-                        Self(AxisOp::Reshape(
-                            from,
-                            dims[from..to + 1].into(),
-                            out_dims.into()
-                            )
-                        )
-                    } else {
-                        let mut out_dims = dims[to..from + 1].to_vec();
-                        let tmp = out_dims.remove(out_dims.len() - 1);
-                        out_dims.insert(0, tmp);
+                if from < to {
+                    let tmp = out_dims.remove(0);
+                    out_dims.push(tmp);
+                } else {
+                    let tmp = out_dims.pop().unwrap();
+                    out_dims.insert(0, tmp);
+                }
 
-                        Self(AxisOp::Reshape(
-                            to,
-                            dims[to..from + 1].into(),
-                            out_dims.into()))
-                    }
-                } else { Self(op) }
-            },
+                Self(AxisOp::Reshape(start, dims[start..=end].into(), out_dims.into()))
+            }
             _ => Self(op),
         }
     }
