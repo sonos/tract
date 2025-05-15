@@ -20,23 +20,41 @@ pub fn add_broadcast_pre_matmul(
     );
 
     // Detect broadcast
-    let b_batch_dims = in_facts[1].shape.dims()[..in_facts[0].rank() - 2].to_vec();
+    let a_shape = &in_facts[0].shape;
+    let b_shape = &in_facts[1].shape;
+    let a_rank = a_shape.rank();
+    
+    let a_batch = &a_shape[..a_rank - 2];
+    let b_batch = &b_shape[..a_rank - 2];
+    
+    // Remove from batch_dim array all symbolic dimensions also present in the other batch_dim array
+    // Symbolic Dimensions will be considered as 1 in gcd() so this allows identifying a 
+    // symbolic broadcast factor.
+    let a_batch_dims: Vec<_> = a_batch
+        .iter()
+        .filter(|tdim| !matches!(tdim, TDim::Sym(_)) || b_batch.contains(tdim))
+        .cloned()
+        .collect();
+    
+    let b_batch_dims: Vec<_> = b_batch
+    .iter()
+    .filter(|tdim| !matches!(tdim, TDim::Sym(_)) || a_batch.contains(tdim))
+    .cloned()
+    .collect();
 
-    let a_rank = in_facts[0].rank();
-    let mut a_batch_dims = in_facts[0].shape[..(a_rank - 2)].to_vec();
-
-    a_batch_dims.retain(|tdim| !matches!(tdim, TDim::Sym(_)) || b_batch_dims.contains(tdim));
-    let symb_in_a = a_batch_dims != in_facts[0].shape[..(a_rank - 2)].to_vec();
-    let symb_in_b = b_batch_dims != in_facts[1].shape[..(a_rank - 2)].to_vec();
-
+    let symb_in_a = a_batch_dims != a_batch;
+    let symb_in_b = b_batch_dims != b_batch;
+    
     let a_batch_size = a_batch_dims.iter().product::<TDim>().gcd();
     let b_batch_size = b_batch_dims.iter().product::<TDim>().gcd();
-
+    
     let (activ_slot, weight_slot) = if (a_batch_size % b_batch_size == 0)
         && ((a_batch_size != b_batch_size) || symb_in_a)
     {
         (0, 1)
-    } else if (b_batch_size % a_batch_size == 0) && ((a_batch_size != b_batch_size) || symb_in_b) {
+    } else if (b_batch_size % a_batch_size == 0)
+        && ((a_batch_size != b_batch_size) || symb_in_b)
+    {
         (1, 0)
     } else {
         return Ok(None);
