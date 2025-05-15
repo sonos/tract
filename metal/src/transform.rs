@@ -361,6 +361,7 @@ fn check_matmul_in_dts(in_facts: &[TypedFact]) -> bool {
 }
 
 fn is_input_broadcast(facts: TVec<&TypedFact>) -> bool {
+    // Assume weights are in second postion
     let b_batch_dims: Vec<TDim> = if as_q40_fact(facts[1]).is_some() {
         facts[1].shape.dims().to_vec()
     } else {
