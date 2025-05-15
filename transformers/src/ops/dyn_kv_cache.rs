@@ -10,10 +10,26 @@ use super::next_node;
 
 #[derive(Debug, Clone)]
 pub struct DynKeyValueCacheState {
+    pub io_name: String,
     pub stored_kv_cache: Option<Tensor>,
 }
 
 impl DynKeyValueCacheState {
+    pub fn load_from(&mut self, states: &mut HashMap<String, Tensor>) -> TractResult<()> {
+        if let Some(kv_cache) = states.remove(&self.io_name) {
+            self.stored_kv_cache = Some(kv_cache);
+            Ok(())
+        } else { bail!("KV cache input {} not found in given states", self.io_name) }
+    }
+
+    pub fn save_to(&mut self, states: &mut HashMap<String, Tensor>) -> TractResult<()> {
+        if let Some(kv_cache) = &self.stored_kv_cache {
+            states.insert(self.io_name.clone(), kv_cache.clone());
+            Ok(())
+        } else { bail!("KV cache {} was never initialized", self.io_name) }
+    }
+
+
     pub unsafe fn apply_delay_unchecked(
         &mut self,
         op: &DynKeyValueCache,
@@ -60,6 +76,7 @@ impl OpState for DynKeyValueCacheState {
 
 #[derive(Default, Clone, Debug)]
 pub struct DynKeyValueCache {
+    pub io_name: String,
     pub axis: usize,
     pub symbols: [TDim; 2],
 }
@@ -81,7 +98,7 @@ impl EvalOp for DynKeyValueCache {
         _session: &mut SessionState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(DynKeyValueCacheState { stored_kv_cache: None })))
+        Ok(Some(Box::new(DynKeyValueCacheState { io_name: self.io_name.clone(), stored_kv_cache: None })))
     }
 }
 
@@ -114,9 +131,10 @@ impl FrozenOpState for DynKeyValueCacheState {
 /// Return type is for using rule-ensure macro
 pub fn replace_kv_cache(target: &mut TypedModel, source_node_id: usize) -> TractResult<Option<()>> {
     assert!(target.node(source_node_id).op_is::<TypedSource>());
+    let source_name = target.node(source_node_id).name.clone();
+
     let (concat_node_id, non_source_input_id, axis, symbols) = {
         let source_node = target.node(source_node_id);
-
         let concat_node = if let Some(n_node) = next_node(target, source_node) {
             n_node
         } else {
@@ -160,7 +178,7 @@ pub fn replace_kv_cache(target: &mut TypedModel, source_node_id: usize) -> Tract
 
     {
         let concat_node = target.node_mut(concat_node_id);
-        concat_node.op = Box::new(DynKeyValueCache { axis, symbols });
+        concat_node.op = Box::new(DynKeyValueCache { io_name: source_name, axis, symbols });
         concat_node.inputs.retain(|input| input != &source_node_id.into());
     }
 
@@ -198,32 +216,45 @@ mod tests {
     ) -> TractResult<()>
     where
         usize: AsPrimitive<F>,
-    {
-        let mut state = DynKeyValueCacheState { stored_kv_cache: None };
-        let op = DynKeyValueCache { axis, symbols: [TDim::Val(0), TDim::Val(0)] };
+    {   
+        let op_name = "test".to_string();
+        let mut state = DynKeyValueCacheState { io_name: op_name.clone(), stored_kv_cache: None };
+        let op = DynKeyValueCache { io_name: op_name.clone(), axis, symbols: [TDim::Val(0), TDim::Val(0)] };
         let mut session_state = SessionState::default();
 
         let first_shape = &input_shapes[0];
         ensure!(input_shapes.iter().all(|shape| (shape.len() == first_shape.len())
             && (shape[..axis] == first_shape[..axis])
-            && (if dbg!(axis != (shape.len() - 1)) {
+            && (if axis != (shape.len() - 1) {
                 shape[(axis + 1)..] == first_shape[(axis + 1)..]
             } else {
                 true
             })));
-
-        let mut output = tensor0(0);
+        
         let mut inputs = tvec![];
+        
+        // Init state with first shape
+        let shape = input_shapes.to_vec().remove(0);
+        let len = shape.iter().product::<usize>();
+        let input = Tensor::from_shape(&shape, &(0..len).map(|f| f.as_()).collect::<Vec<F>>())?;
+        let mut hashmap = HashMap::new();
+        hashmap.insert(op_name.clone(), input.clone());
+        inputs.push(input.clone().into_tvalue());
+        state.load_from(&mut hashmap)?;
+
         for shape in input_shapes {
             let len = shape.iter().product::<usize>();
             let input = Tensor::from_shape(&shape, &(0..len).map(|f| f.as_()).collect::<Vec<F>>())?;
             inputs.push(input.clone().into_tvalue());
-            output = state.eval(&mut session_state, &op, tvec!(input.clone().into()))?[0]
+            state.eval(&mut session_state, &op, tvec!(input.clone().into()))?[0]
                 .clone()
                 .into_tensor();
         }
         let reference = &TypedConcat { axis }.eval(inputs)?[0];
 
+        state.save_to(&mut hashmap)?;
+
+        let output = hashmap.get(&op_name).unwrap();
         output.close_enough(&reference.clone().into_tensor(), Approximation::Close)?;
         Ok(())
     }
