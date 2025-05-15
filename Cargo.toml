@@ -212,29 +212,29 @@ walkdir = "2.3.2"
 writeable = "=0.6.0"
 zerofrom = "=0.1.5"
 zerotrie = "=0.2.1"
-tract-api = { version = "0.21.13-pre", path = 'api' }
-tract-core = { version = "0.21.13-pre", path = 'core' }
-tract-data = { version = "0.21.13-pre", path = 'data' }
-tract-extra = { version = "0.21.13-pre", path = 'extra' }
-tract-gpu = { version = "0.21.13-pre", path = 'gpu' }
-tract-hir = { version = "0.21.13-pre", path = 'hir' }
-tract-libcli = { version = "0.21.13-pre", path = 'libcli' }
-tract-linalg = { version = "0.21.13-pre", path = 'linalg' }
-tract-metal = { version = "0.21.13-pre", path = 'metal' }
-tract-nnef-resources = { version = "0.21.13-pre", path = 'nnef/nnef-resources' }
-tract-nnef = { version = "0.21.13-pre", path = 'nnef' }
-tract-onnx-opl = { version = "0.21.13-pre", path = 'onnx-opl' }
-tract-onnx = { version = "0.21.13-pre", path = 'onnx' }
-tract-pulse-opl = { version = "0.21.13-pre", path = 'pulse-opl' }
-tract-pulse = { version = "0.21.13-pre", path = 'pulse' }
-tract-tensorflow = { version = "0.21.13-pre", path = 'tensorflow' }
-tract-tflite = { version = "0.21.13-pre", path = 'tflite' }
-tract-transformers = { version = "0.21.13-pre", path = 'transformers' }
-tract-rs = { version = "0.21.13-pre", path = 'api/rs' }
-tract-proxy = { version = "0.21.13-pre", path = 'api/proxy' }
-tract-proxy-sys = { version = "0.21.13-pre", path = 'api/proxy/sys' }
-tract-ffi = { version = "0.21.13-pre" }
-tract = { version = "0.21.13-pre" }
+tract-api = { version = "0.21.14-pre", path = 'api' }
+tract-core = { version = "0.21.14-pre", path = 'core' }
+tract-data = { version = "0.21.14-pre", path = 'data' }
+tract-extra = { version = "0.21.14-pre", path = 'extra' }
+tract-gpu = { version = "0.21.14-pre", path = 'gpu' }
+tract-hir = { version = "0.21.14-pre", path = 'hir' }
+tract-libcli = { version = "0.21.14-pre", path = 'libcli' }
+tract-linalg = { version = "0.21.14-pre", path = 'linalg' }
+tract-metal = { version = "0.21.14-pre", path = 'metal' }
+tract-nnef-resources = { version = "0.21.14-pre", path = 'nnef/nnef-resources' }
+tract-nnef = { version = "0.21.14-pre", path = 'nnef' }
+tract-onnx-opl = { version = "0.21.14-pre", path = 'onnx-opl' }
+tract-onnx = { version = "0.21.14-pre", path = 'onnx' }
+tract-pulse-opl = { version = "0.21.14-pre", path = 'pulse-opl' }
+tract-pulse = { version = "0.21.14-pre", path = 'pulse' }
+tract-tensorflow = { version = "0.21.14-pre", path = 'tensorflow' }
+tract-tflite = { version = "0.21.14-pre", path = 'tflite' }
+tract-transformers = { version = "0.21.14-pre", path = 'transformers' }
+tract-rs = { version = "0.21.14-pre", path = 'api/rs' }
+tract-proxy = { version = "0.21.14-pre", path = 'api/proxy' }
+tract-proxy-sys = { version = "0.21.14-pre", path = 'api/proxy/sys' }
+tract-ffi = { version = "0.21.14-pre" }
+tract = { version = "0.21.14-pre" }
 
 
 [profile.opt-no-lto]
