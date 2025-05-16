@@ -67,6 +67,7 @@ pub fn eval_device_mem_req_for_nodes(
         });
 
         !cpu_sync_in_next_nodes
+            && !(node.op.name() == "MetalDynKVCache")
             && facts
                 .iter()
                 .any(|it| it.to_device_fact().map(|it| it.is_from_device()).unwrap_or(false))
@@ -75,12 +76,12 @@ pub fn eval_device_mem_req_for_nodes(
 
     for (step, n) in order.iter().enumerate() {
         let lifetime_start = step;
+
         let lifetime_end = flush_lists
             .iter()
             .enumerate()
             .find(|(_step, flush_list)| flush_list.contains(n))
             .map(|it| usize::min(it.0 + 1, order.len()));
-
         // Ignore nodes that won't be flushed from Device.
         let Some(lifetime_end) = lifetime_end else {
             continue;

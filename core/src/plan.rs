@@ -370,6 +370,7 @@ where
                     for (o, v) in node.outputs.iter().zip(vs.iter()) {
                         if let Ok(f) = o.fact.to_typed_fact() {
                             for (dim_abstract, dim_concrete) in f.shape.iter().zip(v.shape()) {
+                                
                                 Self::resolve(
                                     &mut self.session_state,
                                     dim_abstract,
@@ -422,8 +423,20 @@ where
             self.model().inputs.len(),
             inputs.len()
         );
+
         for (ix, t) in inputs.into_iter().enumerate() {
             self.set_input(ix, t)?
+        }
+
+        self.resolve_symbols_with_states()?;
+        Ok(())
+    }
+
+    fn resolve_symbols_with_states(&mut self) -> TractResult<()>{
+        for state in &self.states {
+            if let Some(s) = state {
+                s.try_resolve_symbol(&mut self.session_state.resolved_symbols)?;
+            }
         }
         Ok(())
     }
