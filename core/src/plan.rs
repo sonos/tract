@@ -433,10 +433,8 @@ where
     }
 
     fn resolve_symbols_with_states(&mut self) -> TractResult<()>{
-        for state in &self.states {
-            if let Some(s) = state {
-                s.try_resolve_symbol(&mut self.session_state.resolved_symbols)?;
-            }
+        for state in self.states.iter().flatten() {
+            state.try_resolve_symbol(&mut self.session_state.resolved_symbols)?;
         }
         Ok(())
     }
