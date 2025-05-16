@@ -15,5 +15,5 @@ colorous = "1.0.6"
 nu-ansi-term = "0.50"
 pbr = "1"
 readings-probe = "0.1.4"
-tract-linalg.workspace = true
-tract-data.workspace = true
+tract-linalg = { path = ".."}
+tract-data = { path = "../../data" }
