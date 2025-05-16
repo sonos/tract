@@ -135,10 +135,8 @@ impl BinOps {
 
             Ok((shape.clone().into(), shape.clone().into(), shape.into()))
         } else {
-            let broadcast_axes: Vec<usize> = (0..lhs.rank())
-                .into_iter()
-                .filter(|ix| lhs.shape()[*ix] != rhs.shape()[*ix])
-                .collect();
+            let broadcast_axes: Vec<usize> =
+                (0..lhs.rank()).filter(|ix| lhs.shape()[*ix] != rhs.shape()[*ix]).collect();
 
             let mut segments = vec![];
             let mut current_segment = vec![0];

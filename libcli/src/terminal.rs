@@ -128,7 +128,6 @@ fn render_node_prefixed(
     });
 
     // cost column
-    #[allow(clippy::manual_repeat_n)]
     let mut cost_column = if options.cost {
         Some(
             tags.cost
@@ -397,7 +396,8 @@ pub fn render_summaries(
     if options.profile {
         let summary = annotations.profile_summary.as_ref().unwrap();
 
-        let have_accel_profiling = annotations.tags.iter().any(|(_, tag)| tag.accelerator_profile.is_some());
+        let have_accel_profiling =
+            annotations.tags.iter().any(|(_, tag)| tag.accelerator_profile.is_some());
         println!(
             "{}{}{}",
             White.bold().paint(format!("{:<43}", "Most time consuming operations")),
