@@ -134,7 +134,7 @@ pub fn profile_metal(
     let mut entire = Duration::default();
     while iters < bench_limits.max_loops && entire < bench_limits.max_time {
         entire += rec_profiler_metal(&mut state, dg, inputs, &prefix)?.1;
-
+        state.reset_op_states()?;
         iters += 1;
     }
 
