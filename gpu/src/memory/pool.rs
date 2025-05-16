@@ -41,7 +41,6 @@ impl DeviceMemoryPool {
         ensure!(!self.node_seen.borrow().contains(&node_id), "Tensor for node {:?} was already requested. Maybe the memory pool was not reset properly.", node_id);
         self.resolved_schema.offsets_by_node[node_id]
             .map(|offset| {
-                // self.node_seen.borrow_mut().insert(node_id);
                 Ok(DeviceArenaView {
                     arena: Arc::clone(&self.storage),
                     dt,

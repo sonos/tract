@@ -79,6 +79,18 @@ pub trait OpStateFreeze {
 dyn_clone::clone_trait_object!(FrozenOpState);
 
 pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze + Downcast {
+    fn load_from(&mut self, _: &mut HashMap<String, Tensor>) -> TractResult<()> {
+        Ok(())
+    }
+
+    fn save_to(&mut self, _: &mut HashMap<String, Tensor>) -> TractResult<()> {
+        Ok(())
+    }
+
+    fn try_resolve_symbol(&self, _: &mut SymbolValues) -> TractResult<()> {
+        Ok(())
+    }
+
     fn eval(
         &mut self,
         session: &mut SessionState,
