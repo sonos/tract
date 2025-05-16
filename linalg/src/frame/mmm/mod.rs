@@ -76,6 +76,7 @@ pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
     fn nr(&self) -> usize;
 
     fn quality(&self) -> ImplementationQuality;
+    fn dynamic_boost(&self) -> isize;
 
     #[allow(clippy::type_complexity)]
     fn packings(&self) -> &[(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)];
@@ -137,6 +138,10 @@ impl<K: MatMatMulKer> MatMatMul for K {
 
     fn quality(&self) -> ImplementationQuality {
         MatMatMulKer::quality(self)
+    }
+
+    fn dynamic_boost(&self) -> isize {
+        MatMatMulKer::dynamic_boost(self)
     }
 
     fn packings(&self) -> &[(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)] {

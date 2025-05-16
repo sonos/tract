@@ -14,6 +14,7 @@ pub trait MatMatMulKer: Clone + Debug + Send + Sync + 'static {
     fn nr(&self) -> usize;
 
     fn quality(&self) -> ImplementationQuality;
+    fn dynamic_boost(&self) -> isize;
 
     #[allow(clippy::type_complexity)]
     fn packings(&self) -> &[(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)];
@@ -40,6 +41,7 @@ pub struct DynKernel<const MR: usize, const NR: usize, Acc: LADatum> {
     pub packings: Vec<(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)>,
     pub stores: Vec<DatumType>,
     pub supported_predicate: fn() -> bool,
+    pub boost: fn() -> isize,
     pub can_fuse: fn(&FusedSpec) -> bool,
 }
 
@@ -58,6 +60,7 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
             packings: vec![],
             stores: vec![Acc::datum_type()],
             supported_predicate: || true,
+            boost: || 0,
             can_fuse: |_| true,
         };
         kernel.with_packing(packing_a, packing_b)
@@ -65,6 +68,11 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
 
     pub fn with_platform_condition(mut self, f: fn() -> bool) -> Self {
         self.supported_predicate = f;
+        self
+    }
+
+    pub fn with_boost(mut self, f: fn() -> isize) -> Self {
+        self.boost = f;
         self
     }
 
@@ -143,5 +151,9 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> MatMatMulKer for DynKernel<
 
     fn stores(&self) -> Cow<[DatumType]> {
         Cow::Borrowed(&self.stores)
+    }
+
+    fn dynamic_boost(&self) -> isize {
+        (self.boost)()
     }
 }
