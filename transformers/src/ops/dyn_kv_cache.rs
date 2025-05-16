@@ -17,6 +17,10 @@ pub struct DynKeyValueCacheState {
 }
 
 impl DynKeyValueCacheState {
+    /// # Safety
+    ///
+    /// Input and Ouput tensors shape must be compatible with this operator, otherwise it could lead
+    /// to an undefined behaviour.
     pub unsafe fn apply_delay_unchecked(
         &mut self,
         op: &DynKeyValueCache,

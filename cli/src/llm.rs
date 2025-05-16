@@ -30,14 +30,14 @@ pub fn figure_out_b_s_p(model: &TypedModel) -> TractResult<(Option<Symbol>, Symb
             if let Some(dyn_kv_cache) = node.op_as::<DynKeyValueCache>() {
                 dyn_kv_cache.symbols.iter().for_each(|s| if let TDim::Sym(symb) = s {
                     symbols.insert(symb.clone());
-                } else { });
+                });
                 break;
             } else if let Some(dyn_kv_cache) = node.op_as::<tract_metal::ops::MetalDynKVCache>() {
                 dyn_kv_cache.symbols.iter().for_each(|s| if let TDim::Sym(symb) = s {
                     symbols.insert(symb.clone());
-                } else { });
+                });
                 break;
-            } else {}
+            }
         }
         symbols.difference(&tokens_symbols).cloned().collect::<HashSet<_>>()
     };
