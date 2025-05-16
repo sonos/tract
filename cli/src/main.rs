@@ -38,6 +38,7 @@ mod utils;
 
 use params::*;
 use tract_linalg::block_quant::Q4_0;
+use tract_linalg::mmm::MatMatMul;
 use tract_linalg::WeightType;
 
 readings_probe::instrumented_allocator!();
@@ -617,14 +618,21 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         }
         Some(("kernels", _)) => {
             println!();
+            fn colored_name(m: &dyn MatMatMul) -> String {
+                format!(
+                    "{} {}",
+                    QUALITY_COLORS[m.quality().cost()].paint(m.name()),
+                    match m.dynamic_boost().signum() {
+                        1 => Green.paint("●"),
+                        -1 => Red.paint("●"),
+                        _ => "-".to_string().into(),
+                    }
+                )
+            }
             println!("{}", White.bold().paint("# By implementation"));
             println!();
             for m in tract_linalg::ops().mmm_impls() {
-                println!(
-                    "{} -> {:?}",
-                    QUALITY_COLORS[m.quality().cost()].paint(m.name()),
-                    m.stores()
-                );
+                println!("{} -> {:?}", colored_name(&**m), m.stores());
                 for packings in m.packings() {
                     println!("   - {:?} • {:?}", packings.0, packings.1);
                 }
@@ -651,7 +659,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                             if p.0.same_as(packing) {
                                 println!(
                                     "    - {} ({ix}) {:?} {:?}",
-                                    QUALITY_COLORS[mmm.quality().cost()].paint(mmm.name()),
+                                    colored_name(&**mmm),
                                     p.0,
                                     p.1
                                 );
@@ -662,7 +670,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                             {
                                 println!(
                                     "    - {} ({ix}) {:?} {:?} using {}",
-                                    QUALITY_COLORS[mmm.quality().cost()].paint(mmm.name()),
+                                    colored_name(&**mmm),
                                     p.0,
                                     p.1,
                                     pe.name
