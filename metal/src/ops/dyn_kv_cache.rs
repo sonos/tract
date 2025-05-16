@@ -92,7 +92,7 @@ impl<O: MetalEvalOp> OpState for MetalDynKVCacheState<O> {
 #[derive(new, Debug, Clone, Hash)]
 pub struct MetalDynKVCache {
     io_name: String,
-    symbols: [TDim; 2],
+    pub symbols: [TDim; 2],
     kernel: Concat,
 }
 
