@@ -23,38 +23,36 @@ pub fn add_broadcast_pre_matmul(
     let a_shape = &in_facts[0].shape;
     let b_shape = &in_facts[1].shape;
     let a_rank = a_shape.rank();
-    
+
     let a_batch = &a_shape[..a_rank - 2];
     let b_batch = &b_shape[..a_rank - 2];
-    
+
     // Remove from batch_dim array all symbolic dimensions also present in the other batch_dim array
-    // Symbolic Dimensions will be considered as 1 in gcd() so this allows identifying a 
+    // Symbolic Dimensions will be considered as 1 in gcd() so this allows identifying a
     // symbolic broadcast factor.
     let a_batch_dims: Vec<_> = a_batch
         .iter()
         .filter(|tdim| !matches!(tdim, TDim::Sym(_)) || b_batch.contains(tdim))
         .cloned()
         .collect();
-    
+
     let b_batch_dims: Vec<_> = b_batch
-    .iter()
-    .filter(|tdim| !matches!(tdim, TDim::Sym(_)) || a_batch.contains(tdim))
-    .cloned()
-    .collect();
+        .iter()
+        .filter(|tdim| !matches!(tdim, TDim::Sym(_)) || a_batch.contains(tdim))
+        .cloned()
+        .collect();
 
     let symb_in_a = a_batch_dims != a_batch;
     let symb_in_b = b_batch_dims != b_batch;
-    
+
     let a_batch_size = a_batch_dims.iter().product::<TDim>().gcd();
     let b_batch_size = b_batch_dims.iter().product::<TDim>().gcd();
-    
+
     let (activ_slot, weight_slot) = if (a_batch_size % b_batch_size == 0)
         && ((a_batch_size != b_batch_size) || symb_in_a)
     {
         (0, 1)
-    } else if (b_batch_size % a_batch_size == 0)
-        && ((a_batch_size != b_batch_size) || symb_in_b)
-    {
+    } else if (b_batch_size % a_batch_size == 0) && ((a_batch_size != b_batch_size) || symb_in_b) {
         (1, 0)
     } else {
         return Ok(None);
@@ -75,7 +73,7 @@ pub fn add_broadcast_pre_matmul(
     let brd_out = patch.wire_node(format!("{node_name}.broadcast"), brd, &[weights])?[0];
 
     let inputs = if activ_slot == 1 { [brd_out, activ] } else { [activ, brd_out] };
-    let mm_out = patch.wire_node(node_name, op.clone(), &inputs)?[0];
+    let mm_out = patch.wire_node(node_name, *op, &inputs)?[0];
 
     patch.shunt_outside(model, node.id.into(), mm_out)?;
 

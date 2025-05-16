@@ -102,7 +102,7 @@ pub fn list_impls(
             mmm.packings().iter().enumerate().map(|(ix, p)| (mmm.clone(), ix, &p.0, &p.1))
         })
         .filter_map(|(m, p, pa, pb)| {
-            if !pb.precursor().as_dt().is_some_and(|dt| dt == b_dt.unquantized()) {
+            if pb.precursor().as_dt().is_none_or(|dt| dt != b_dt.unquantized()) {
                 return None;
             }
             if pa.precursor() == a_weight {
