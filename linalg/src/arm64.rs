@@ -30,6 +30,18 @@ const PART_A72: &str = "0xd08";
 const PART_A73: &str = "0xd09";
 #[allow(dead_code)]
 const PART_A75: &str = "0xd0a";
+#[allow(dead_code)]
+const PART_NEOVERSE_N1: &str = "0xd0c";
+#[allow(dead_code)]
+const PART_NEOVERSE_N2: &str = "0xd49";
+#[allow(dead_code)]
+const PART_NEOVERSE_N3: &str = "0xd8e";
+#[allow(dead_code)]
+const PART_NEOVERSE_V1: &str = "0xd40";
+#[allow(dead_code)]
+const PART_NEOVERSE_V2: &str = "0xd4f";
+#[allow(dead_code)]
+const PART_NEOVERSE_V3: &str = "0xd83";
 
 fn max_cpuid() -> std::io::Result<String> {
     let cpu_info = std::fs::read_to_string("/proc/cpuinfo")?;
@@ -157,6 +169,7 @@ pub unsafe fn mul_f16(a: f16, b: f16) -> f16 {
 enum Kind {
     Generic,
     AppleM,
+    Neoverse,
     CortexA53,
     CortexA55,
     CortexA72,
@@ -181,6 +194,8 @@ impl Kind {
                 Kind::CortexA73
             } else if kind.contains("a75") {
                 Kind::CortexA75
+            } else if kind.contains("neoverse") {
+                Kind::Neoverse
             } else if kind.contains("applem") {
                 Kind::AppleM
             } else {
@@ -206,6 +221,8 @@ impl Kind {
                 PART_A72 => Kind::CortexA72,
                 PART_A73 => Kind::CortexA73,
                 PART_A75 => Kind::CortexA75,
+                PART_NEOVERSE_N1 | PART_NEOVERSE_N2 | PART_NEOVERSE_N3 | PART_NEOVERSE_V1
+                | PART_NEOVERSE_V2 | PART_NEOVERSE_V3 => Kind::Neoverse,
                 _ => Kind::Generic,
             }
         };
