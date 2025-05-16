@@ -36,33 +36,39 @@ impl OpState for DynKeyValueCacheState {
         if let Some(kv_cache) = states.remove(&self.io_name) {
             self.stored_kv_cache = Some(kv_cache);
             Ok(())
-        } else { bail!("KV cache input {} not found in given states", self.io_name) }
+        } else {
+            bail!("KV cache input {} not found in given states", self.io_name)
+        }
     }
 
     fn save_to(&mut self, states: &mut HashMap<String, Tensor>) -> TractResult<()> {
         if let Some(kv_cache) = &self.stored_kv_cache {
             states.insert(self.io_name.clone(), kv_cache.clone());
             Ok(())
-        } else { bail!("KV cache {} was never initialized", self.io_name) }
+        } else {
+            bail!("KV cache {} was never initialized", self.io_name)
+        }
     }
 
     fn try_resolve_symbol(&self, resolved_symbols: &mut SymbolValues) -> TractResult<()> {
-        let unresolved = self.symbols.iter().filter_map(|symb| match symb {
-            TDim::Sym(s) if resolved_symbols.get(s).is_none() => Some(s),
-            _ => None,
-        }).collect_vec();
-        
+        let unresolved = self
+            .symbols
+            .iter()
+            .filter_map(|symb| match symb {
+                TDim::Sym(s) if resolved_symbols.get(s).is_none() => Some(s),
+                _ => None,
+            })
+            .collect_vec();
+
         if unresolved.is_empty() {
             return Ok(());
         }
-        
+
         ensure!(unresolved.len() == 1);
-        
-        let value = self.stored_kv_cache
-            .as_ref()
-            .map(|cache| cache.shape()[self.axis])
-            .unwrap_or(0);
-        
+
+        let value =
+            self.stored_kv_cache.as_ref().map(|cache| cache.shape()[self.axis]).unwrap_or(0);
+
         resolved_symbols.set(unresolved[0], value as i64);
         Ok(())
     }
@@ -120,7 +126,12 @@ impl EvalOp for DynKeyValueCache {
         _session: &mut SessionState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(DynKeyValueCacheState { io_name: self.io_name.clone(), axis: self.axis, symbols: self.symbols.clone(), stored_kv_cache: None })))
+        Ok(Some(Box::new(DynKeyValueCacheState {
+            io_name: self.io_name.clone(),
+            axis: self.axis,
+            symbols: self.symbols.clone(),
+            stored_kv_cache: None,
+        })))
     }
 }
 
@@ -238,10 +249,14 @@ mod tests {
     ) -> TractResult<()>
     where
         usize: AsPrimitive<F>,
-    {   
+    {
         let op_name = "test".to_string();
         let mut session_state = SessionState::default();
-        let op = DynKeyValueCache { io_name: op_name.clone(), axis, symbols: [TDim::Val(0), TDim::Val(0)] };
+        let op = DynKeyValueCache {
+            io_name: op_name.clone(),
+            axis,
+            symbols: [TDim::Val(0), TDim::Val(0)],
+        };
         let mut state = op.state(&mut session_state, 0)?.unwrap();
 
         let first_shape = &input_shapes[0];
@@ -252,9 +267,9 @@ mod tests {
             } else {
                 true
             })));
-        
+
         let mut inputs = tvec![];
-        
+
         // Init state with first shape
         let shape = input_shapes.to_vec().remove(0);
         let len = shape.iter().product::<usize>();
