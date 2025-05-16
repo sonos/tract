@@ -33,8 +33,11 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
 
     let mut impls = list_impls(model, node, op)?;
     ensure!(impls.len() > 0);
-    let wanted_quality = impls.iter().map(|(mmm, _, _)| mmm.quality().cost()).min().unwrap();
-    impls.retain(|(mmm, _, _)| mmm.quality().cost() == wanted_quality);
+    fn score(mmm: &dyn MatMatMul) -> isize {
+        -(mmm.quality().cost() as isize * 1000) + mmm.dynamic_boost()
+    }
+    let wanted_quality = impls.iter().map(|(mmm, _, _)| score(&**mmm)).max().unwrap();
+    impls.retain(|(mmm, _, _)| score(&**mmm) == wanted_quality);
     if impls.len() == 1 {
         return Ok((ModePicker::Single, impls));
     }

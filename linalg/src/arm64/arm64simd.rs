@@ -18,17 +18,35 @@ use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::pack::PackedFormat;
 use crate::Ops;
 
-MMMExternKernel!(arm64simd_mmm_f32_8x8_a55 <f32>(8,  8)@(16, 16) quality(ManuallyOptimized));
-MMMExternKernel!(arm64simd_mmm_f32_12x8_a55<f32>(12, 8)@(16, 16) quality(ManuallyOptimized));
-MMMExternKernel!(arm64simd_mmm_f32_16x4_a55<f32>(16, 4)@(16, 16) quality(ManuallyOptimized));
-MMMExternKernel!(arm64simd_mmm_f32_24x4_a55<f32>(24, 4)@(16, 16) quality(ManuallyOptimized));
-MMMExternKernel!(arm64simd_mmm_f32_64x1_a55<f32>(64, 1)@(16, 16) quality(ManuallyOptimized));
+use super::Kind;
 
-MMMExternKernel!(arm64simd_mmm_f32_16x4_a53<f32>(16, 4)@(16, 16) quality(ManuallyOptimized));
-MMMExternKernel!(arm64simd_mmm_f32_24x4_a53<f32>(24, 4)@(16, 16) quality(ManuallyOptimized));
-MMMExternKernel!(arm64simd_mmm_f32_8x8_a53 <f32>(8,  8)@(16, 16) quality(ManuallyOptimized));
-MMMExternKernel!(arm64simd_mmm_f32_12x8_a53<f32>(12, 8)@(16, 16) quality(ManuallyOptimized));
-MMMExternKernel!(arm64simd_mmm_f32_64x1_a53<f32>(64, 1)@(16, 16) quality(ManuallyOptimized));
+fn a55() -> isize {
+    if *super::KIND == Kind::CortexA55 {
+        1
+    } else {
+        -1
+    }
+}
+
+fn a53() -> isize {
+    if *super::KIND == Kind::CortexA53 {
+        1
+    } else {
+        -1
+    }
+}
+
+MMMExternKernel!(arm64simd_mmm_f32_8x8_a55 <f32>(8,  8)@(16, 16) quality(ManuallyOptimized) boost(a55));
+MMMExternKernel!(arm64simd_mmm_f32_12x8_a55<f32>(12, 8)@(16, 16) quality(ManuallyOptimized) boost(a55));
+MMMExternKernel!(arm64simd_mmm_f32_16x4_a55<f32>(16, 4)@(16, 16) quality(ManuallyOptimized) boost(a55));
+MMMExternKernel!(arm64simd_mmm_f32_24x4_a55<f32>(24, 4)@(16, 16) quality(ManuallyOptimized) boost(a55));
+MMMExternKernel!(arm64simd_mmm_f32_64x1_a55<f32>(64, 1)@(16, 16) quality(ManuallyOptimized) boost(a55));
+
+MMMExternKernel!(arm64simd_mmm_f32_16x4_a53<f32>(16, 4)@(16, 16) quality(ManuallyOptimized) boost(a53));
+MMMExternKernel!(arm64simd_mmm_f32_24x4_a53<f32>(24, 4)@(16, 16) quality(ManuallyOptimized) boost(a53));
+MMMExternKernel!(arm64simd_mmm_f32_8x8_a53 <f32>(8,  8)@(16, 16) quality(ManuallyOptimized) boost(a53));
+MMMExternKernel!(arm64simd_mmm_f32_12x8_a53<f32>(12, 8)@(16, 16) quality(ManuallyOptimized) boost(a53));
+MMMExternKernel!(arm64simd_mmm_f32_64x1_a53<f32>(64, 1)@(16, 16) quality(ManuallyOptimized) boost(a53));
 
 MMMExternKernel!(arm64simd_mmm_f32_16x4_gen<f32>(16, 4)@(16, 16) quality(ManuallyOptimized));
 MMMExternKernel!(arm64simd_mmm_f32_24x4_gen<f32>(24, 4)@(16, 16) quality(ManuallyOptimized));
