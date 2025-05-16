@@ -1,6 +1,7 @@
 use crate::bench::{bench, make_state};
 use crate::Parameters;
 use readings_probe::Probe;
+use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 use tract_hir::internal::*;
@@ -16,12 +17,31 @@ pub fn figure_out_b_s_p(model: &TypedModel) -> TractResult<(Option<Symbol>, Symb
         .position(|i| model.outlet_fact(*i).unwrap().datum_type.is_integer())
         .context("No token input found")?;
     let tokens_symbols = model.input_fact(token_input)?.shape.volume().symbols();
-    let kv_input = model
+    let kv_symbols = if let Some(kv_input) = model
         .inputs
         .iter()
-        .position(|i| model.outlet_fact(*i).unwrap().datum_type.is_float())
-        .context("No kv input found")?;
-    let kv_symbols = model.input_fact(kv_input)?.shape.volume().symbols();
+        .position(|i| model.outlet_fact(*i).unwrap().datum_type.is_float()) {
+            model.input_fact(kv_input)?.shape.volume().symbols()
+    } else {
+        // Look for KVCache Op
+        let mut symbols: HashSet<Symbol> = HashSet::new();
+        // TODO: C'est dégueulasse!
+        for node in model.nodes() {
+            if let Some(dyn_kv_cache) = node.op_as::<DynKeyValueCache>() {
+                dyn_kv_cache.symbols.iter().for_each(|s| if let TDim::Sym(symb) = s {
+                    symbols.insert(symb.clone());
+                } else { });
+                break;
+            } else if let Some(dyn_kv_cache) = node.op_as::<tract_metal::ops::MetalDynKVCache>() {
+                dyn_kv_cache.symbols.iter().for_each(|s| if let TDim::Sym(symb) = s {
+                    symbols.insert(symb.clone());
+                } else { });
+                break;
+            } else {}
+        }
+        symbols.difference(&tokens_symbols).cloned().collect::<HashSet<_>>()
+    };
+
     let b = tokens_symbols.intersection(&kv_symbols).cloned().collect::<HashSet<_>>();
     let s = tokens_symbols.difference(&b).cloned().collect::<HashSet<_>>();
     let p = kv_symbols.difference(&b).cloned().collect::<HashSet<_>>();
@@ -112,6 +132,7 @@ pub fn bench_tg(
         state.run(inputs)?;
         tot_dur += start.elapsed();
     }
+    state.reset_op_states()?;
     let tokens = tg as f64 / tot_dur.as_secs_f64();
     println!("TG{tg}: {tokens:.1} tokens/sec");
     Ok(())

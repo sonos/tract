@@ -81,6 +81,7 @@ pub(crate) fn bench<'m>(
             p.store(iters as _, std::sync::atomic::Ordering::Relaxed);
         }
         state.run(inputs.clone())?;
+        state.reset_op_states()?;
         iters += 1;
     }
     let dur = start.elapsed();
