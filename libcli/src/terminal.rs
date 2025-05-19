@@ -137,7 +137,7 @@ fn render_node_prefixed(
                     let value = render_tdim(&c.1);
                     let value_visible_len = c.1.to_string().len();
                     let padding = 24usize.saturating_sub(value_visible_len + key.len());
-                    key + &*std::iter::repeat(' ').take(padding).join("") + &value.to_string() + " "
+                    key + &*std::iter::repeat_n(' ', padding).join("") + &value.to_string() + " "
                 })
                 .peekable(),
         )
