@@ -84,7 +84,7 @@ pub struct KeyValueCacheTransform;
 
 impl ModelTransform for KeyValueCacheTransform {
     fn name(&self) -> Cow<str> {
-        "gelu-fast-approx-transform".into()
+        "dynamic-kv-cache-transform".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
