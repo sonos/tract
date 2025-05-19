@@ -1,4 +1,5 @@
 #![allow(clippy::len_zero)]
+#![allow(clippy::cloned_ref_to_slice_refs)]
 #[macro_use]
 extern crate log;
 
@@ -23,8 +24,8 @@ pub mod prelude {
 }
 
 pub mod internal {
-    pub use crate::ast::parse::parse_parameters;
     pub use crate::ast::dump_doc::DocDumper;
+    pub use crate::ast::parse::parse_parameters;
     pub use crate::ast::{
         param, FragmentDecl, FragmentDef, Identifier, Parameter, RValue, TypeName,
     };
@@ -33,7 +34,8 @@ pub mod internal {
     pub use crate::prelude::*;
     pub use crate::registry::*;
     pub use crate::resource::{
-        DatLoader, GraphNnefLoader, GraphQuantLoader, Resource, ResourceLoader, TypedModelResource, TypedModelLoader,
+        DatLoader, GraphNnefLoader, GraphQuantLoader, Resource, ResourceLoader, TypedModelLoader,
+        TypedModelResource,
     };
     pub use crate::ser::{invocation, logical, numeric, string, IntoAst};
     pub use std::any::TypeId;
