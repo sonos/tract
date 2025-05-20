@@ -5,9 +5,8 @@ use crate::MetalStream;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::OpStateFreeze;
-use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
-use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
+use tract_transformers::ops::dyn_kv_cache::{DynKeyValueCache, DynKeyValueCacheState};
 
 #[derive(Debug, Clone, new)]
 pub struct MetalDynKVCacheState<O: MetalEvalOp> {
@@ -31,30 +30,17 @@ impl<O: MetalEvalOp> FrozenOpState for MetalDynKVCacheState<O> {
 }
 
 impl<O: MetalEvalOp> OpState for MetalDynKVCacheState<O> {
-    fn load_from(&mut self, state: &mut SessionState, states: &HashMap<String, TValue>) -> TractResult<()> {
+    fn load_from(
+        &mut self,
+        state: &mut SessionState,
+        states: &HashMap<String, TValue>,
+    ) -> TractResult<()> {
         if let Some(kv_cache) = states.get(&self.io_name) {
             // KV Cache fact is always at index 0
-            let unresolved = self.input_facts[0].shape
-                .iter()
-                .filter_map(|symb| match symb {
-                    TDim::Sym(s) if state.resolved_symbols.get(s).is_none() => Some(s),
-                    _ => None,
-                })
-                .collect_vec();
+            DynKeyValueCacheState::resolve_symbols(state, self.input_facts[0].clone(), kv_cache)?;
 
-            if unresolved.is_empty() {
-                return Ok(());
-            }
-
-            ensure!(unresolved.len() == 1);
-            let sym = unresolved[0];
-
-            state.resolved_symbols.set(sym, kv_cache.len() as i64);
             self.kv_cache = Some(kv_cache.clone().into_tensor().into_device()?);
 
-            if state.scenario.is_none() {
-                state.scenario = sym.scope().unwrap().guess_scenario(&state.resolved_symbols)?;
-            }
             Ok(())
         } else {
             bail!("KV cache input {} not found in given states", self.io_name)
@@ -83,8 +69,6 @@ impl<O: MetalEvalOp> OpState for MetalDynKVCacheState<O> {
         ensure!(inputs.len() == 1);
         with_borrowed_metal_stream(|stream| {
             let inputs = if let Some(kv_cache) = &self.kv_cache {
-                dbg!("Ya du Cache");
-                dbg!(kv_cache);
                 tvec!(kv_cache.clone().into_opaque_tensor().into_tvalue(), inputs[0].clone())
             } else {
                 tvec!(inputs[0].clone())
@@ -167,13 +151,15 @@ impl MetalEvalOp for MetalDynKVCache {
             .collect::<TractResult<TVec<_>>>()?;
 
         let mut output_shape = inputs[0].shape().to_vec();
-        output_shape[self.axis()] = inputs.iter().map(|it| it.shape()[self.axis()]).sum();
+        output_shape[self.axis()] += inputs[1].shape()[self.axis()];
+
         let output = crate::ops::make_tensor_for_node(
             session,
             node_id,
             inputs[0].datum_type(),
             &output_shape,
         )?;
+        ensure!(matches!(output, DeviceTensor::Owned(_)));
 
         self.kernel.dispatch_eval(stream, &inputs, &output)?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
@@ -187,7 +173,11 @@ impl TypedOp for MetalDynKVCache {
         ensure!(inputs.len() == 1);
         tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
             let mut fact = facts[0].without_value();
-            fact.shape.set(self.axis(), self.input_facts[0].shape.dims()[self.axis()].clone() + self.input_facts[1].shape.dims()[self.axis()].clone());
+            fact.shape.set(
+                self.axis(),
+                self.input_facts[0].shape.dims()[self.axis()].clone()
+                    + self.input_facts[1].shape.dims()[self.axis()].clone(),
+            );
             Ok(tvec!(fact))
         })
         .with_context(|| format!("Error while computing facts for {:?}", self.name()))
@@ -216,21 +206,25 @@ mod tests {
 
             let mut model = TypedModel::default();
 
-            let symb_shape: TVec<TDim> = input_shapes[0]
-                .iter()
-                .enumerate()
-                .map(
-                    |(ix, dim)| {
-                        if ix == axis {
-                            TDim::Sym(model.sym("P"))
-                        } else {
-                            TDim::Val(*dim as _)
-                        }
-                    },
-                )
-                .collect_vec()
-                .into();
-            let source_shape = ShapeFact::from_dims(symb_shape.clone());
+            let make_shape =
+                |sym: &str| {
+                    input_shapes[0]
+                        .iter()
+                        .enumerate()
+                        .map(|(i, &dim)| {
+                            if i == axis {
+                                TDim::Sym(model.sym(sym))
+                            } else {
+                                TDim::Val(dim as _)
+                            }
+                        })
+                        .collect::<TVec<TDim>>()
+                };
+
+            let cache_shape = make_shape("P");
+            let input_shape = make_shape("S");
+
+            let source_shape = ShapeFact::from_dims(cache_shape.clone());
             let typed_fact = TypedFact {
                 datum_type: F::datum_type(),
                 shape: source_shape,
@@ -239,13 +233,12 @@ mod tests {
                 opaque_fact: None,
             };
 
-            let mut second_shape = symb_shape.clone();
-            second_shape[axis] = TDim::Sym(model.sym("S"));
-
             let op = DynKeyValueCache {
                 io_name: op_name.clone(),
-                input_facts: [TypedFact::dt_shape(DatumType::F32, symb_shape), 
-                              TypedFact::dt_shape(DatumType::F32, second_shape)],
+                input_facts: [
+                    TypedFact::dt_shape(F::datum_type(), cache_shape),
+                    TypedFact::dt_shape(F::datum_type(), input_shape),
+                ],
                 axis,
             };
 
@@ -274,12 +267,13 @@ mod tests {
 
                 state.run(tvec!(input.clone().into()))?;
             }
-            let reference = &TypedConcat { axis }.eval(inputs)?[0];
+            let mut kv_cache_state = state.states[2].clone().unwrap();
 
             let mut hashmap = HashMap::new();
-            let mut kv_cache_state = state.states[2].clone().unwrap();
             kv_cache_state.save_to(&mut hashmap)?;
             let output = hashmap.get(&op_name).unwrap();
+
+            let reference = &TypedConcat { axis }.eval(inputs)?[0];
             output.close_enough(&reference.clone().into_tensor(), Approximation::Close)?;
             Ok(())
         })

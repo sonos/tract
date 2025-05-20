@@ -34,6 +34,31 @@ impl DynKeyValueCacheState {
     }
 }
 
+impl DynKeyValueCacheState {
+    pub fn resolve_symbols(state: &mut SessionState, fact: TypedFact, input: &TValue) -> TractResult<()>{
+        let unresolved = fact
+            .shape
+            .iter()
+            .filter_map(|symb| match symb {
+                TDim::Sym(s) if state.resolved_symbols.get(s).is_none() => Some(s),
+                _ => None,
+            })
+            .collect_vec();
+
+        if unresolved.is_empty() {
+            return Ok(());
+        }
+
+        ensure!(unresolved.len() == 1);
+        let sym = unresolved[0];
+        state.resolved_symbols.set(unresolved[0], input.len() as i64);
+
+        if state.scenario.is_none() {
+            state.scenario = sym.scope().unwrap().guess_scenario(&state.resolved_symbols)?;
+        }
+        Ok(())
+    }
+}
 impl OpState for DynKeyValueCacheState {
     fn load_from(
         &mut self,
@@ -42,28 +67,9 @@ impl OpState for DynKeyValueCacheState {
     ) -> TractResult<()> {
         if let Some(kv_cache) = states.get(&self.io_name) {
             // KV Cache fact is always at index 0
-            let unresolved = self.input_facts[0]
-                .shape
-                .iter()
-                .filter_map(|symb| match symb {
-                    TDim::Sym(s) if state.resolved_symbols.get(s).is_none() => Some(s),
-                    _ => None,
-                })
-                .collect_vec();
-
-            if unresolved.is_empty() {
-                return Ok(());
-            }
-
-            ensure!(unresolved.len() == 1);
-            let sym = unresolved[0];
-
+            Self::resolve_symbols(state, self.input_facts[0].clone(), kv_cache)?;
             self.kv_cache = Some(kv_cache.clone().into_tensor());
-            state.resolved_symbols.set(unresolved[0], kv_cache.len() as i64);
 
-            if state.scenario.is_none() {
-                state.scenario = sym.scope().unwrap().guess_scenario(&state.resolved_symbols)?;
-            }
             Ok(())
         } else {
             bail!("KV cache input {} not found in given states", self.io_name)
