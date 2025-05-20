@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use crate::kernels::array::Concat;
 use crate::ops::MetalEvalOp;
 use crate::utils::with_borrowed_metal_stream;
@@ -118,15 +116,6 @@ impl MetalDynKVCache {
 
     pub fn axis(&self) -> usize {
         self.kernel.axis
-    }
-
-    pub fn symbols(&self) -> HashSet<Symbol> {
-        let mut symbols: HashSet<Symbol> = HashSet::new();
-        let all_dims = self.input_facts.iter().map(|fact| fact.shape.dims()).collect_vec().concat();
-                all_dims.iter().for_each(|s| if let TDim::Sym(symb) = s {
-                    symbols.insert(symb.clone());
-            });
-        symbols
     }
 }
 
