@@ -1,7 +1,6 @@
 use crate::bench::{bench, make_state};
 use crate::Parameters;
 use readings_probe::Probe;
-use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 use tract_hir::internal::*;
@@ -17,25 +16,26 @@ pub fn figure_out_b_s_p(model: &TypedModel) -> TractResult<(Option<Symbol>, Symb
         .position(|i| model.outlet_fact(*i).unwrap().datum_type.is_integer())
         .context("No token input found")?;
     let tokens_symbols = model.input_fact(token_input)?.shape.volume().symbols();
-    let kv_symbols = if let Some(kv_input) = model
-        .inputs
-        .iter()
-        .position(|i| model.outlet_fact(*i).unwrap().datum_type.is_float()) {
-            model.input_fact(kv_input)?.shape.volume().symbols()
+    let kv_symbols = if let Some(kv_input) =
+        model.inputs.iter().position(|i| model.outlet_fact(*i).unwrap().datum_type.is_float())
+    {
+        model.input_fact(kv_input)?.shape.volume().symbols()
     } else {
         // Look for KVCache Op
-        // TODO: C'est dégueulasse!
+        let mut dummy_session_state = SessionState::default();
         let mut symbols = HashSet::new();
-        for node in model.nodes() {
-            if let Some(dyn_kv_cache) = node.op_as::<DynKeyValueCache>() {
-                symbols = dyn_kv_cache.symbols();
-                break;
-            } else if let Some(dyn_kv_cache) = node.op_as::<tract_metal::ops::MetalDynKVCache>() {
-                symbols = dyn_kv_cache.symbols();
-                break;
+        for node in &model.nodes {
+            if let Some(state) = node.op.state(&mut dummy_session_state, 0)? {
+                if let Some(fact) = state.init_tensor_fact() {
+                    fact.shape.iter().for_each(|dim| {
+                        if let TDim::Sym(s) = dim {
+                            symbols.insert(s.clone());
+                        }
+                    });
+                }
             }
         }
-        symbols.difference(&tokens_symbols).cloned().collect::<HashSet<_>>()
+        symbols
     };
 
     let b = tokens_symbols.intersection(&kv_symbols).cloned().collect::<HashSet<_>>();
@@ -77,13 +77,17 @@ pub fn bench_pp(
     }
 
     run_params.symbols.set(&p, 0);
-    // Warmup 
+    // Warmup
     run_params.symbols.set(&s, 6);
-    let inputs = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?.0.remove(0);
+    let inputs = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?
+        .0
+        .remove(0);
     limits.warmup(model, &inputs)?;
 
     run_params.symbols.set(&s, pp as i64);
-    let inputs = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?.0.remove(0);
+    let inputs = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?
+        .0
+        .remove(0);
 
     let (_, dur) = bench(&mut state, inputs, limits, probe)?;
     let tokens = pp as f64 / dur.as_secs_f64();
@@ -112,9 +116,11 @@ pub fn bench_tg(
     }
 
     run_params.symbols.set(&s, 1);
-    // Warmup 
+    // Warmup
     run_params.symbols.set(&p, 1);
-    let inputs = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?.0.remove(0);
+    let inputs = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?
+        .0
+        .remove(0);
     limits.warmup(model, &inputs)?;
 
     let mut tot_dur = Duration::default();
@@ -123,7 +129,10 @@ pub fn bench_tg(
             p.log_event(&format!("Starting token {t}"))?;
         }
         run_params.symbols.set(&p, t as i64);
-        let inputs = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?.0.remove(0);
+        let inputs =
+            tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?
+                .0
+                .remove(0);
 
         let start = Instant::now();
         state.run(inputs)?;
