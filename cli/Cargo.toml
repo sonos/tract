@@ -44,7 +44,6 @@ serde_json.workspace = true
 tract-linalg.workspace = true
 tract-core.workspace = true
 tract-hir.workspace = true
-tract-metal.workspace = true
 tract-nnef.workspace = true
 tract-libcli.workspace = true
 tract-extra = { workspace = true, optional = true }

@@ -158,10 +158,10 @@ fn run_regular(
     dispatch_model!(tract, |m| {
         let plan = SimplePlan::new_with_options(m, &plan_options)?;
         let mut state = SimpleState::new(plan)?;
-        let inputs = tract_libcli::tensor::retrieve_or_make_inputs(tract, run_params)?;
+        let (sources, _) = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(tract, run_params)?;
         let mut results = tvec!(vec!(); state.model().outputs.len());
-        let multiturn = inputs.len() > 1;
-        for (turn, inputs) in inputs.into_iter().enumerate() {
+        let multiturn = sources.len() > 1;
+        for (turn, inputs) in sources.into_iter().enumerate() {
             let turn_results =
                 state.run_plan_with_eval(inputs, |session_state, state, node, input| {
                     if steps {
