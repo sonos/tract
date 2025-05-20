@@ -24,18 +24,14 @@ pub fn figure_out_b_s_p(model: &TypedModel) -> TractResult<(Option<Symbol>, Symb
             model.input_fact(kv_input)?.shape.volume().symbols()
     } else {
         // Look for KVCache Op
-        let mut symbols: HashSet<Symbol> = HashSet::new();
         // TODO: C'est dégueulasse!
+        let mut symbols = HashSet::new();
         for node in model.nodes() {
             if let Some(dyn_kv_cache) = node.op_as::<DynKeyValueCache>() {
-                dyn_kv_cache.symbols.iter().for_each(|s| if let TDim::Sym(symb) = s {
-                    symbols.insert(symb.clone());
-                });
+                symbols = dyn_kv_cache.symbols();
                 break;
             } else if let Some(dyn_kv_cache) = node.op_as::<tract_metal::ops::MetalDynKVCache>() {
-                dyn_kv_cache.symbols.iter().for_each(|s| if let TDim::Sym(symb) = s {
-                    symbols.insert(symb.clone());
-                });
+                symbols = dyn_kv_cache.symbols();
                 break;
             }
         }
@@ -83,11 +79,12 @@ pub fn bench_pp(
     run_params.symbols.set(&p, 0);
     // Warmup 
     run_params.symbols.set(&s, 6);
-    let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
+    let inputs = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?.0.remove(0);
     limits.warmup(model, &inputs)?;
 
     run_params.symbols.set(&s, pp as i64);
-    let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
+    let inputs = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?.0.remove(0);
+
     let (_, dur) = bench(&mut state, inputs, limits, probe)?;
     let tokens = pp as f64 / dur.as_secs_f64();
     println!("PP{pp}: {tokens:.1} tokens/sec");
@@ -117,7 +114,7 @@ pub fn bench_tg(
     run_params.symbols.set(&s, 1);
     // Warmup 
     run_params.symbols.set(&p, 1);
-    let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
+    let inputs = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?.0.remove(0);
     limits.warmup(model, &inputs)?;
 
     let mut tot_dur = Duration::default();
@@ -126,7 +123,7 @@ pub fn bench_tg(
             p.log_event(&format!("Starting token {t}"))?;
         }
         run_params.symbols.set(&p, t as i64);
-        let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
+        let inputs = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?.0.remove(0);
 
         let start = Instant::now();
         state.run(inputs)?;

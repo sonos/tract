@@ -20,8 +20,8 @@ pub fn criterion(
 
     let mut crit = criterion::Criterion::default();
     let mut group = crit.benchmark_group("net");
-    let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
-    group.bench_function("run", move |b| b.iter(|| state.run(inputs.clone())));
+    let (inputs, _) = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?;
+    group.bench_function("run", move |b| b.iter(|| state.run(inputs[0].clone())));
     Ok(())
 }
 
@@ -98,7 +98,7 @@ pub fn handle(
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
     let mut state = make_state(params, matches, sub_matches)?;
     let inputs =
-        tract_libcli::tensor::retrieve_or_make_inputs(state.model(), &run_params)?.remove(0);
+        tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(state.model(), &run_params)?.0.remove(0);
 
     limits.warmup(state.model(), &inputs)?;
     let (iters, dur) = bench(&mut state, inputs, limits, probe)?;
