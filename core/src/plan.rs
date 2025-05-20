@@ -253,25 +253,14 @@ where
     }
 
     pub fn init_states(&mut self, state_init_tensors: &HashMap<String, TValue>) -> TractResult<()> {
-        println!("There are {} op to init. Hashmap has {} entries", self.states.iter_mut()
-                                                          .filter_map(|state|
-                                                            if let Some(s) = state {
-                                                                if s.init_tensor_fact().is_some() { 
-                                                                    Some(s) 
-                                                                } else { 
-                                                                    None
-                                                                }
-                                                            } else { None }).collect_vec().len(), state_init_tensors.keys().len());
-        for state in self.states
-                                                          .iter_mut()
-                                                          .filter_map(|state|
-                                                            if let Some(s) = state {
-                                                                if s.init_tensor_fact().is_some() { 
-                                                                    Some(s) 
-                                                                } else { 
-                                                                    None
-                                                                }
-                                                            } else { None })
+        let states_to_init = self.states.iter_mut()
+        .filter_map(|state| state.as_mut().filter(|s| s.init_tensor_fact().is_some()))
+        .collect_vec();
+        ensure!(states_to_init.len() == state_init_tensors.keys().len(),
+                "There are {} op to init but Hashmap has {} entries",
+                states_to_init.len(),
+                state_init_tensors.keys().len());
+        for state in states_to_init
         {   
 
             state.load_from(&mut self.session_state, state_init_tensors)?;
