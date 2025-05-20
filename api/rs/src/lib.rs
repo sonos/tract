@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::path::Path;
 use std::sync::Arc;
@@ -5,6 +6,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use ndarray::{Data, Dimension, RawData};
 use tract_extra::WithTractExtra;
+use tract_nnef::tract_core::value::RunTensors;
 use tract_transformers::WithTractTransformers;
 use tract_libcli::annotations::Annotations;
 use tract_libcli::profile::BenchLimits;
@@ -288,7 +290,7 @@ impl ModelInterface for Model {
                 &BenchLimits::default(),
                 &mut annotations,
                 &PlanOptions::default(),
-                &inputs,
+                &RunTensors { sources: inputs, state_initializers: HashMap::new()},
                 None,
                 true
             )?;
