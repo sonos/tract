@@ -244,7 +244,7 @@ pub fn handle_with_model(
 
     let plan = SimplePlan::new(reference_model)?;
     let mut state = SimpleState::new(plan)?;
-    for inputs in tract_libcli::tensor::retrieve_or_make_inputs(reference_model, run_params)? {
+    for inputs in tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(reference_model, run_params)?.0 {
         state.run_plan_with_eval(inputs, |session, state, node, input| -> TractResult<_> {
             let result = tract_core::plan::eval(session, state, node, input)?;
             if node.outputs.len() == 1 {
@@ -299,7 +299,7 @@ where
     }
     let all_values: HashMap<String, &Vec<TractResult<TValue>>> =
         all_values.iter().map(|(k, v)| (canonic(k), v)).collect();
-    let model_inputs = tract_libcli::tensor::retrieve_or_make_inputs(tract, run_params)?;
+    let model_inputs = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(tract, run_params)?.0;
     for (turn, inputs) in model_inputs.into_iter().enumerate() {
         state.run_plan_with_eval(
             inputs,

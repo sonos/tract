@@ -4,6 +4,7 @@ use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 
 use multithread::Executor;
+use tract_data::itertools::Itertools;
 
 use crate::internal::*;
 use crate::model::{Fact, Graph, OutletId};
@@ -251,6 +252,33 @@ where
         Ok(())
     }
 
+    pub fn init_states(&mut self, state_init_tensors: &HashMap<String, TValue>) -> TractResult<()> {
+        println!("There are {} op to init. Hashmap has {} entries", self.states.iter_mut()
+                                                          .filter_map(|state|
+                                                            if let Some(s) = state {
+                                                                if s.init_tensor_fact().is_some() { 
+                                                                    Some(s) 
+                                                                } else { 
+                                                                    None
+                                                                }
+                                                            } else { None }).collect_vec().len(), state_init_tensors.keys().len());
+        for state in self.states
+                                                          .iter_mut()
+                                                          .filter_map(|state|
+                                                            if let Some(s) = state {
+                                                                if s.init_tensor_fact().is_some() { 
+                                                                    Some(s) 
+                                                                } else { 
+                                                                    None
+                                                                }
+                                                            } else { None })
+        {   
+
+            state.load_from(&mut self.session_state, state_init_tensors)?;
+        }
+        Ok(())
+    }
+
     pub fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.run_plan_with_eval(inputs, self::eval)
     }
@@ -426,15 +454,6 @@ where
 
         for (ix, t) in inputs.into_iter().enumerate() {
             self.set_input(ix, t)?
-        }
-
-        self.resolve_symbols_with_states()?;
-        Ok(())
-    }
-
-    fn resolve_symbols_with_states(&mut self) -> TractResult<()>{
-        for state in self.states.iter().flatten() {
-            state.try_resolve_symbol(&mut self.session_state.resolved_symbols)?;
         }
         Ok(())
     }

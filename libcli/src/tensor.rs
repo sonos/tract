@@ -285,10 +285,10 @@ pub struct RunParams {
     pub symbols: SymbolValues,
 }
 
-pub fn retrieve_or_make_inputs(
+pub fn retrieve_or_make_inputs_and_state_inits(
     tract: &dyn Model,
     params: &RunParams,
-) -> TractResult<Vec<TVec<TValue>>> {
+) -> TractResult<(Vec<TVec<TValue>>, HashMap<String, TValue>)> {
     let mut tmp: TVec<Vec<TValue>> = tvec![];
     for (ix, input) in tract.input_outlets().iter().enumerate() {
         let name = tract.node_name(input.node);
@@ -379,12 +379,30 @@ pub fn retrieve_or_make_inputs(
                 .by_name(name)
                 .or_else(|| params.tensors_values.by_input_ix(ix));
             fact.shape = fact.shape.iter().map(|dim| dim.eval(&params.symbols)).collect();
-            tmp.push(vec![crate::tensor::tensor_for_fact(&fact, None, tv)?.into()]);
+            tmp.push(vec![tensor_for_fact(&fact, None, tv)?.into()]);
         } else {
             bail!("Unmatched tensor {}. Fix the input or use \"--allow-random-input\" if this was intended", name);
         }
     }
-    Ok((0..tmp[0].len()).map(|turn| tmp.iter().map(|t| t[turn].clone()).collect()).collect())
+    let inputs = (0..tmp[0].len()).map(|turn| tmp.iter().map(|t| t[turn].clone()).collect()).collect();
+
+    let mut state_initializers: HashMap<String, TValue> = HashMap::new();
+    let mut dummy_session_state= SessionState::default();
+    for (id, state) in (0..tract.nodes_len())
+                                     .filter_map(|id| 
+                                        if let Some(s) = tract.node_op(id).state(&mut dummy_session_state, id).ok().flatten() {
+                                            Some((id, s))
+                                        } else { None })
+    {
+        if let Some(mut fact) = state.init_tensor_fact() {
+            if params.allow_random_input {
+                fact.shape = fact.shape.iter().map(|dim| dim.eval(&params.symbols)).collect();
+                dbg!(tract.node_name(id));
+                state_initializers.insert(tract.node_name(id).to_string(), tensor_for_fact(&fact, None, None)?.into());
+            }
+        }
+    }
+    Ok((inputs, state_initializers))
 }
 
 fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> TractResult<TVec<TValue>> {
