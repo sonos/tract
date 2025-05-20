@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use tract_nnef::internal::*;
 use tract_nnef::prelude::tract_itertools::Itertools;
 use tract_nnef::tract_core::ops::array::TypedConcat;
@@ -37,10 +35,15 @@ impl DynKeyValueCacheState {
 }
 
 impl OpState for DynKeyValueCacheState {
-    fn load_from(&mut self, state: &mut SessionState, states: &HashMap<String, TValue>) -> TractResult<()> {
+    fn load_from(
+        &mut self,
+        state: &mut SessionState,
+        states: &HashMap<String, TValue>,
+    ) -> TractResult<()> {
         if let Some(kv_cache) = states.get(&self.io_name) {
             // KV Cache fact is always at index 0
-            let unresolved = self.input_facts[0].shape
+            let unresolved = self.input_facts[0]
+                .shape
                 .iter()
                 .filter_map(|symb| match symb {
                     TDim::Sym(s) if state.resolved_symbols.get(s).is_none() => Some(s),
@@ -112,16 +115,6 @@ pub struct DynKeyValueCache {
     pub input_facts: [TypedFact; 2],
 }
 
-impl DynKeyValueCache {
-    pub fn symbols(&self) -> HashSet<Symbol> {
-    let mut symbols: HashSet<Symbol> = HashSet::new();
-        let all_dims = self.input_facts.iter().map(|fact| fact.shape.dims()).collect_vec().concat();
-            all_dims.iter().for_each(|s| if let TDim::Sym(symb) = s {
-                symbols.insert(symb.clone());
-        });
-    symbols
-}
-}
 impl Op for DynKeyValueCache {
     fn name(&self) -> Cow<str> {
         "DynamicKeyValueCache".to_string().into()
@@ -153,7 +146,11 @@ impl TypedOp for DynKeyValueCache {
         let input = inputs[0];
         let mut fact = input.without_value();
 
-        fact.shape.set(self.axis, self.input_facts[0].shape.dims()[self.axis].clone() + self.input_facts[0].shape.dims()[self.axis].clone());
+        fact.shape.set(
+            self.axis,
+            self.input_facts[0].shape.dims()[self.axis].clone()
+                + self.input_facts[0].shape.dims()[self.axis].clone(),
+        );
         Ok(tvec!(fact))
     }
 
@@ -175,16 +172,15 @@ impl FrozenOpState for DynKeyValueCacheState {
 /// Search pattern => Input -> Concat -> Output
 /// Return type is for using rule-ensure macro
 pub fn replace_kv_cache(target: &mut TypedModel, source_node_id: usize) -> TractResult<Option<()>> {
-    // TODO: Re-arrange this
     assert!(target.node(source_node_id).op_is::<TypedSource>());
     let (concat_node_id, non_source_input_id, axis, input_facts) = {
-        let source_node = target.node(source_node_id);
-        let concat_node = if let Some(n_node) = next_node(target, source_node) {
+        let concat_node = if let Some(n_node) = next_node(target, target.node(source_node_id)) {
             n_node
         } else {
             return Ok(None);
         };
 
+        // Check KV Cache Pattern
         rule_ensure!(
             concat_node.op_is::<TypedConcat>()
                 && concat_node.inputs.len() == 2
@@ -192,17 +188,10 @@ pub fn replace_kv_cache(target: &mut TypedModel, source_node_id: usize) -> Tract
                 && target.outputs.contains(&concat_node.id.into())
         );
 
-        let mut concat_in_shapes = target
-            .node_input_facts(concat_node.id)?
-            .iter()
-            .map(|fact| fact.shape.dims())
-            .collect_vec();
+        let concat_in_facts = target.node_input_facts(concat_node.id)?;
 
-
-        if concat_node.inputs[0].node != source_node_id {
-            concat_in_shapes.swap(0, 1);
-        }
-
+        // Check on shapes
+        let concat_in_shapes = [concat_in_facts[0].shape.dims(), concat_in_facts[1].shape.dims()];
         let rank = concat_in_shapes[0].len();
         let axes = (0..rank)
             .filter(|ax| concat_in_shapes[0][*ax] != concat_in_shapes[1][*ax])
@@ -215,30 +204,34 @@ pub fn replace_kv_cache(target: &mut TypedModel, source_node_id: usize) -> Tract
                 && matches!(concat_in_shapes[1][axis], TDim::Sym(_))
         );
 
-        let shapes = [TypedFact::dt_shape(DatumType::F32, concat_in_shapes[0]), 
-                                      TypedFact::dt_shape(DatumType::F32, concat_in_shapes[1])];
-
-        if let Some(non_source_input) = concat_node.inputs.iter().find(|o| o.node != source_node_id)
-        {
-            (concat_node.id, non_source_input.node, axis, shapes)
+        let mut facts = [concat_in_facts[0].clone(), concat_in_facts[1].clone()];
+        if concat_node.inputs[0].node == source_node_id {
+            (concat_node.id, concat_node.inputs[1].node, axis, facts)
+        } else if concat_node.inputs[1].node == source_node_id {
+            facts.swap(0, 1);
+            (concat_node.id, concat_node.inputs[0].node, axis, facts)
         } else {
             return Ok(None);
         }
     };
 
     {
+        // Replace Concat by KVCache
         let concat_node = target.node_mut(concat_node_id);
-        concat_node.op = Box::new(DynKeyValueCache { io_name: concat_node.name.to_string(), axis, input_facts });
+        concat_node.op =
+            Box::new(DynKeyValueCache { io_name: concat_node.name.to_string(), axis, input_facts });
         concat_node.inputs.retain(|input| input != &source_node_id.into());
     }
 
     {
+        // Replace Source by Dummy Op for it to be cleaned later
         let dummy_op = target.create_dummy();
         let source_node = target.node_mut(source_node_id);
         source_node.outputs[0].successors.clear();
         source_node.op = dummy_op;
     }
     {
+        // Non-source input is usually the second input of Concat. Rewire it to the only input of the new KVCache Op
         let non_source_input = target.node_mut(non_source_input_id);
         non_source_input.outputs.iter_mut().for_each(|output| {
             output.successors.iter_mut().for_each(|succ| {
@@ -248,6 +241,8 @@ pub fn replace_kv_cache(target: &mut TypedModel, source_node_id: usize) -> Tract
             })
         });
     }
+
+    // Clean model I/Os
     target.outputs.retain(|output| output.node != concat_node_id);
     target.inputs.retain(|input| input.node != source_node_id);
     target.outlet_labels.remove(&concat_node_id.into());
@@ -267,37 +262,6 @@ mod tests {
     where
         usize: AsPrimitive<F>,
     {
-        let op_name = "test".to_string();
-        let dummy_model = TypedModel::default();
-
-        let symb_shape: TVec<TDim> = input_shapes[0]
-            .iter()
-            .enumerate()
-            .map(
-                |(ix, dim)| {
-                    if ix == axis {
-                        TDim::Sym(dummy_model.sym("P"))
-                    } else {
-                        TDim::Val(*dim as _)
-                    }
-                },
-            )
-            .collect_vec()
-            .into();
-
-        let mut second_shape = symb_shape.clone();
-        second_shape[axis] = TDim::Sym(dummy_model.sym("S"));
-
-        let op = DynKeyValueCache {
-            io_name: op_name.clone(),
-            input_facts: [TypedFact::dt_shape(DatumType::F32, symb_shape), 
-                            TypedFact::dt_shape(DatumType::F32, second_shape)],
-            axis,
-        };
-        
-        let mut session_state = SessionState::default();
-        let mut state = op.state(&mut session_state, 0)?.unwrap();
-
         let first_shape = &input_shapes[0];
         ensure!(input_shapes.iter().all(|shape| (shape.len() == first_shape.len())
             && (shape[..axis] == first_shape[..axis])
@@ -307,15 +271,50 @@ mod tests {
                 true
             })));
 
+        let op_name = "test".to_string();
+        let dummy_model = TypedModel::default();
+
+        let make_shape =
+            |sym: &str| {
+                input_shapes[0]
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &dim)| {
+                        if i == axis {
+                            TDim::Sym(dummy_model.sym(sym))
+                        } else {
+                            TDim::Val(dim as _)
+                        }
+                    })
+                    .collect::<TVec<TDim>>()
+            };
+
+        let symb_shape = make_shape("P");
+        let second_shape = make_shape("S");
+
+        let op = DynKeyValueCache {
+            io_name: op_name.clone(),
+            input_facts: [
+                TypedFact::dt_shape(F::datum_type(), symb_shape),
+                TypedFact::dt_shape(F::datum_type(), second_shape),
+            ],
+            axis,
+        };
+
+        let mut session_state = SessionState::default();
+        let mut state = op.state(&mut session_state, 0)?.unwrap();
+
         let mut inputs = tvec![];
 
         // Init state with first shape
-        let shape = input_shapes.to_vec().remove(0);
+        let shape = &input_shapes[0];
         let len = shape.iter().product::<usize>();
-        let input = Tensor::from_shape(&shape, &(0..len).map(|f| f.as_()).collect::<Vec<F>>())?;
+        let input = Tensor::from_shape(shape, &(0..len).map(|f| f.as_()).collect::<Vec<F>>())?;
+        inputs.push(input.clone().into_tvalue());
+
         let mut hashmap = HashMap::new();
         hashmap.insert(op_name.clone(), input.clone().into_tvalue());
-        inputs.push(input.clone().into_tvalue());
+
         state.load_from(&mut session_state, &mut hashmap)?;
 
         for shape in input_shapes {
@@ -326,11 +325,10 @@ mod tests {
                 .clone()
                 .into_tensor();
         }
-        let reference = &TypedConcat { axis }.eval(inputs)?[0];
-
         state.save_to(&mut hashmap)?;
-
         let output = hashmap.get(&op_name).unwrap();
+
+        let reference = &TypedConcat { axis }.eval(inputs)?[0];
         output.close_enough(&reference.clone().into_tensor(), Approximation::Close)?;
         Ok(())
     }
