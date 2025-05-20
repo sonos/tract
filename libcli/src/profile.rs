@@ -128,8 +128,10 @@ pub fn profile_metal(
     let mut state = TypedSimpleState::new_from_inputs(&plan, inputs.sources.clone())?;
     state.init_states(&inputs.state_initializers)?;
 
-    let session_handler =
-        tract_gpu::session_handler::DeviceSessionHandler::from_plan(&plan, &state.session_state.resolved_symbols)?;
+    let session_handler = tract_gpu::session_handler::DeviceSessionHandler::from_plan(
+        &plan,
+        &state.session_state.resolved_symbols,
+    )?;
 
     plan = plan.with_session_handler(session_handler);
 
@@ -171,7 +173,6 @@ pub fn rec_profiler_metal(
     inputs: &TVec<TValue>,
     prefix: &[(usize, String)],
 ) -> TractResult<(TVec<TValue>, Duration)> {
-    
     let profile_start = crate::time::now();
     let r = state.run_plan_with_eval(
         inputs.clone(),
