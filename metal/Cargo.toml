@@ -11,7 +11,7 @@ repository = "https://github.com/snipsco/tract"
 keywords = [ "TensorFlow", "NeuralNetworks", "Metal" ]
 categories = [ "science" ]
 autobenches = false
-edition = "2021"
+edition = "2024"
 rust-version = "1.85"
 
 [badges]

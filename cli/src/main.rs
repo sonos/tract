@@ -295,7 +295,9 @@ fn main() -> TractResult<()> {
             2 => "cli=debug,tract=debug",
             _ => "cli=trace,tract=trace",
         };
-        ::std::env::set_var("TRACT_LOG", level);
+        unsafe {
+            std::env::set_var("TRACT_LOG", level);
+        }
     }
 
     let env = env_logger::Env::default().filter_or("TRACT_LOG", "warn");
@@ -690,7 +692,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
     let mut params = match builder_result {
         Ok(params) => params,
         Err(e) => {
-            if let Some(params::ModelBuildingError(ref broken_model, _)) = e.downcast_ref() {
+            if let Some(params::ModelBuildingError(broken_model, _)) = e.downcast_ref() {
                 let mut broken_model: Box<dyn Model> =
                     tract_hir::tract_core::dyn_clone::clone(broken_model);
                 let annotations = Annotations::from_model(broken_model.as_ref())?;

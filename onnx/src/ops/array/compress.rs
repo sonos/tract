@@ -22,18 +22,20 @@ impl Compress {
         output: &mut Tensor,
     ) {
         use tract_ndarray::*;
-        let input = input.to_array_view_unchecked::<T>();
+        let input = unsafe { input.to_array_view_unchecked::<T>() };
         if let Some(ax) = axis {
             for (ixo, ixi) in
                 conds.iter().enumerate().filter(|(_, c)| **c).map(|(ix, _)| ix).enumerate()
             {
-                output
-                    .to_array_view_mut_unchecked::<T>()
-                    .index_axis_mut(Axis(ax), ixo)
-                    .assign(&input.index_axis(Axis(ax), ixi));
+                unsafe {
+                    output
+                        .to_array_view_mut_unchecked::<T>()
+                        .index_axis_mut(Axis(ax), ixo)
+                        .assign(&input.index_axis(Axis(ax), ixi))
+                };
             }
         } else {
-            let output = output.as_slice_mut_unchecked::<T>();
+            let output = unsafe { output.as_slice_mut_unchecked::<T>() };
             let mut ix = 0;
             for (c, i) in conds.iter().zip(input.iter()) {
                 if *c {

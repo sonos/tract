@@ -13,24 +13,26 @@ pub fn non_zero(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     // symbol table is shared between all templates and models
     let x = ctx.template.symbols.new_with_prefix("x");
-    Ok((Box::new(NonZero(x)) as _, vec!()))
+    Ok((Box::new(NonZero(x)) as _, vec![]))
 }
 
 impl NonZero {
     unsafe fn eval_t<T: Datum + tract_num_traits::Zero>(input: &Tensor) -> TractResult<Tensor> {
-        let count = input.as_slice_unchecked::<T>().iter().filter(|d| !d.is_zero()).count();
-        let view = input.to_array_view_unchecked::<T>();
-        let mut output = Tensor::uninitialized::<i64>(&[input.rank(), count])?;
-        let mut view_mut: tract_ndarray::ArrayViewMut2<i64> =
-            output.to_array_view_mut_unchecked::<i64>().into_dimensionality().unwrap();
-        for (i, (coords, _)) in
-            view.indexed_iter().filter(|(_, value)| !value.is_zero()).enumerate()
-        {
-            view_mut
-                .index_axis_mut(tract_ndarray::Axis(1), i)
-                .assign(&coords.as_array_view().map(|d| *d as i64));
+        unsafe {
+            let count = input.as_slice_unchecked::<T>().iter().filter(|d| !d.is_zero()).count();
+            let view = input.to_array_view_unchecked::<T>();
+            let mut output = Tensor::uninitialized::<i64>(&[input.rank(), count])?;
+            let mut view_mut: tract_ndarray::ArrayViewMut2<i64> =
+                output.to_array_view_mut_unchecked::<i64>().into_dimensionality().unwrap();
+            for (i, (coords, _)) in
+                view.indexed_iter().filter(|(_, value)| !value.is_zero()).enumerate()
+            {
+                view_mut
+                    .index_axis_mut(tract_ndarray::Axis(1), i)
+                    .assign(&coords.as_array_view().map(|d| *d as i64));
+            }
+            Ok(output)
         }
-        Ok(output)
     }
 }
 

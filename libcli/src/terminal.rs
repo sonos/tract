@@ -104,7 +104,7 @@ fn render_node_prefixed(
         format!("{:>1$}", "", options.tmp_mem_usage as usize * mem_padding);
     let flops_column_pad = format!("{:>1$}", "", (options.profile && options.cost) as usize * 20);
 
-    if let Some(ref mut ds) = &mut drawing_state {
+    if let Some(ds) = &mut drawing_state {
         for l in ds.draw_node_vprefix(model, node_id, options)? {
             println!("{cost_column_pad}{profile_column_pad}{flops_column_pad}{tmp_mem_usage_column_pad}{prefix}{l} ");
         }
