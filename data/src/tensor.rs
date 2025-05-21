@@ -176,13 +176,13 @@ impl Tensor {
     /// Create an uninitialized tensor (dt as type paramater).
     #[inline]
     pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> TractResult<Tensor> {
-        Self::uninitialized_dt(T::datum_type(), shape)
+        unsafe { Self::uninitialized_dt(T::datum_type(), shape) }
     }
 
     /// Create an uninitialized tensor (dt as regular parameter).
     #[inline]
     pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> TractResult<Tensor> {
-        Self::uninitialized_aligned_dt(dt, shape, vector_size())
+        unsafe { Self::uninitialized_aligned_dt(dt, shape, vector_size()) }
     }
 
     /// Create an uninitialized tensor with a given alignment (in bytes).
@@ -191,7 +191,7 @@ impl Tensor {
         shape: &[usize],
         alignment: usize,
     ) -> TractResult<Tensor> {
-        Self::uninitialized_aligned_dt(T::datum_type(), shape, alignment)
+        unsafe { Self::uninitialized_aligned_dt(T::datum_type(), shape, alignment) }
     }
 
     /// Create an uninitialized tensor with a given alignment (in bytes).
@@ -201,7 +201,7 @@ impl Tensor {
         alignment: usize,
     ) -> TractResult<Tensor> {
         let bytes = shape.iter().cloned().product::<usize>() * dt.size_of();
-        let data = Blob::new_for_size_and_align(bytes, alignment);
+        let data = unsafe { Blob::new_for_size_and_align(bytes, alignment) };
         let mut tensor = Tensor { strides: tvec!(), dt, shape: shape.into(), data, len: 0 };
         if tensor.shape.len() == 0 {
             tensor.len = 1;
@@ -213,14 +213,18 @@ impl Tensor {
                 // assumes zero-initialized string and blob are valid
                 tensor.data.fill(0);
             } else if dt == TDim::datum_type() {
-                tensor
-                    .as_slice_mut_unchecked::<TDim>()
-                    .iter_mut()
-                    .for_each(|dim| std::ptr::write(dim, TDim::zero()))
+                unsafe {
+                    tensor
+                        .as_slice_mut_unchecked::<TDim>()
+                        .iter_mut()
+                        .for_each(|dim| std::ptr::write(dim, TDim::zero()))
+                }
             } else if dt == Opaque::datum_type() {
-                tensor.as_slice_mut_unchecked::<Opaque>().iter_mut().for_each(|p| {
-                    std::ptr::write(p, Opaque::default());
-                });
+                unsafe {
+                    tensor.as_slice_mut_unchecked::<Opaque>().iter_mut().for_each(|p| {
+                        std::ptr::write(p, Opaque::default());
+                    })
+                };
             } else if cfg!(debug_assertions) {
                 assert!(dt.is_copy());
                 if dt == DatumType::F32 {
@@ -381,7 +385,7 @@ impl Tensor {
     ///
     /// It copies the data, aligning it to the size of T.
     pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> TractResult<Tensor> {
-        Tensor::from_raw_dt(T::datum_type(), shape, content)
+        unsafe { Tensor::from_raw_dt(T::datum_type(), shape, content) }
     }
 
     pub unsafe fn from_raw_aligned<T: Datum>(
@@ -389,7 +393,7 @@ impl Tensor {
         content: &[u8],
         align: usize,
     ) -> TractResult<Tensor> {
-        Tensor::from_raw_dt_align(T::datum_type(), shape, content, align)
+        unsafe { Tensor::from_raw_dt_align(T::datum_type(), shape, content, align) }
     }
 
     pub unsafe fn from_raw_dt(
@@ -397,7 +401,7 @@ impl Tensor {
         shape: &[usize],
         content: &[u8],
     ) -> TractResult<Tensor> {
-        Self::from_raw_dt_align(dt, shape, content, vector_size())
+        unsafe { Self::from_raw_dt_align(dt, shape, content, vector_size()) }
     }
 
     pub unsafe fn from_raw_dt_align(
@@ -406,7 +410,7 @@ impl Tensor {
         content: &[u8],
         align: usize,
     ) -> TractResult<Tensor> {
-        let mut tensor = Tensor::uninitialized_aligned_dt(dt, shape, align)?;
+        let mut tensor = unsafe { Tensor::uninitialized_aligned_dt(dt, shape, align) }?;
         tensor.as_bytes_mut().copy_from_slice(content);
         Ok(tensor)
     }
@@ -415,12 +419,14 @@ impl Tensor {
         let bytes = if content.len() == 0 {
             &[]
         } else {
-            std::slice::from_raw_parts(
-                content.as_ptr() as *const u8,
-                content.len() * T::datum_type().size_of(),
-            )
+            unsafe {
+                std::slice::from_raw_parts(
+                    content.as_ptr() as *const u8,
+                    content.len() * T::datum_type().size_of(),
+                )
+            }
         };
-        Self::from_raw_dt_align(T::datum_type(), &[content.len()], bytes, align)
+        unsafe { Self::from_raw_dt_align(T::datum_type(), &[content.len()], bytes, align) }
     }
 
     /// Get the number of dimensions (or axes) of the tensor.
@@ -497,7 +503,7 @@ impl Tensor {
         unsafe {
             #[inline]
             unsafe fn permute<T: Datum>(axes: &[usize], input: Tensor) -> Tensor {
-                input.into_array_unchecked::<T>().permuted_axes(axes).into_tensor()
+                unsafe { input.into_array_unchecked::<T>().permuted_axes(axes).into_tensor() }
             }
             let dt = self.datum_type();
             let mut t = dispatch_datum_by_size!(permute(self.datum_type())(axes, self));
@@ -576,8 +582,10 @@ impl Tensor {
             bail!("broadcast_scalar_to_shape called on {:?}, which is not a salar", self);
         }
         unsafe fn make<T: Datum>(src: &Tensor, dst: &mut Tensor) {
-            let value: &T = src.to_scalar_unchecked::<T>();
-            dst.as_slice_mut_unchecked::<T>().iter_mut().for_each(|item| *item = value.clone());
+            unsafe {
+                let value: &T = src.to_scalar_unchecked::<T>();
+                dst.as_slice_mut_unchecked::<T>().iter_mut().for_each(|item| *item = value.clone())
+            };
         }
         unsafe {
             let mut t = Tensor::uninitialized_dt(self.datum_type(), shape)?;
@@ -622,11 +630,13 @@ impl Tensor {
             where
                 T: Datum + Copy,
             {
-                for ix in 0..input.len() {
-                    let value: T = input.as_slice_unchecked()[ix];
-                    output.as_slice_mut_unchecked::<T>()[ix * inner_len..(ix + 1) * inner_len]
-                        .iter_mut()
-                        .for_each(|item| *item = value);
+                unsafe {
+                    for ix in 0..input.len() {
+                        let value: T = input.as_slice_unchecked()[ix];
+                        output.as_slice_mut_unchecked::<T>()[ix * inner_len..(ix + 1) * inner_len]
+                            .iter_mut()
+                            .for_each(|item| *item = value);
+                    }
                 }
             }
             dispatch_copy_by_size!(splat(self.datum_type())(&self, &mut output, inner_len));
@@ -718,7 +728,7 @@ impl Tensor {
     ) {
         let range = self.clip_range_bounds(axis, range);
         let src_range = src.clip_range_bounds(axis, src_range);
-        self.assign_slice_from_resolved(range, src, src_range, axis);
+        unsafe { self.assign_slice_from_resolved(range, src, src_range, axis) };
     }
 
     #[allow(clippy::ptr_eq)]
@@ -729,44 +739,50 @@ impl Tensor {
         src_range: std::ops::Range<usize>,
         axis: usize,
     ) {
-        use ndarray::Slice;
-        unsafe fn assign_slice_t<T: Datum>(
-            to: &mut Tensor,
-            to_range: Range<usize>,
-            from: &Tensor,
-            from_range: Range<usize>,
-            axis: usize,
-        ) {
-            to.to_array_view_mut_unchecked::<T>()
-                .slice_axis_mut(Axis(axis), Slice::from(to_range))
-                .assign(
-                    &from
-                        .to_array_view_unchecked::<T>()
-                        .slice_axis(Axis(axis), Slice::from(from_range)),
-                )
-        }
-        if self.datum_type().is_copy() && self.shape[..axis].iter().all(|d| *d == 1) {
-            let stride = self.strides[axis] as usize * self.datum_type().size_of();
-            let dst_start = (stride * range.start) as isize;
-            let src_start = (stride * src_range.start) as isize;
-            let len = stride * range.len();
-            if len > 0 {
-                if self.data.as_ptr() != src.data.as_ptr() {
-                    std::ptr::copy_nonoverlapping(
-                        src.data.as_ptr().offset(src_start),
-                        self.data.as_mut_ptr().offset(dst_start),
-                        len,
-                    );
-                } else {
-                    std::ptr::copy(
-                        src.data.as_ptr().offset(src_start),
-                        self.data.as_mut_ptr().offset(dst_start),
-                        len,
-                    );
+        unsafe {
+            use ndarray::Slice;
+            unsafe fn assign_slice_t<T: Datum>(
+                to: &mut Tensor,
+                to_range: Range<usize>,
+                from: &Tensor,
+                from_range: Range<usize>,
+                axis: usize,
+            ) {
+                unsafe {
+                    to.to_array_view_mut_unchecked::<T>()
+                        .slice_axis_mut(Axis(axis), Slice::from(to_range))
+                        .assign(
+                            &from
+                                .to_array_view_unchecked::<T>()
+                                .slice_axis(Axis(axis), Slice::from(from_range)),
+                        )
                 }
             }
-        } else {
-            dispatch_datum!(assign_slice_t(self.datum_type())(self, range, src, src_range, axis));
+            if self.datum_type().is_copy() && self.shape[..axis].iter().all(|d| *d == 1) {
+                let stride = self.strides[axis] as usize * self.datum_type().size_of();
+                let dst_start = (stride * range.start) as isize;
+                let src_start = (stride * src_range.start) as isize;
+                let len = stride * range.len();
+                if len > 0 {
+                    if self.data.as_ptr() != src.data.as_ptr() {
+                        std::ptr::copy_nonoverlapping(
+                            src.data.as_ptr().offset(src_start),
+                            self.data.as_mut_ptr().offset(dst_start),
+                            len,
+                        );
+                    } else {
+                        std::ptr::copy(
+                            src.data.as_ptr().offset(src_start),
+                            self.data.as_mut_ptr().offset(dst_start),
+                            len,
+                        );
+                    }
+                }
+            } else {
+                dispatch_datum!(assign_slice_t(self.datum_type())(
+                    self, range, src, src_range, axis
+                ));
+            }
         }
     }
 
@@ -787,14 +803,16 @@ impl Tensor {
     /// `force_full` will force the tensor to be dump in full even if it is big.
     pub fn dump(&self, force_full: bool) -> TractResult<String> {
         unsafe fn dump_t<D: Datum>(tensor: &Tensor, n: usize) -> String {
-            if let Some(qp) = tensor.datum_type().qparams() {
-                let integers = tensor.cast_to::<i32>().unwrap();
-                integers.as_slice_unchecked::<i32>()[0..n]
-                    .iter()
-                    .map(|x| format!("[{}]({})", x, qp.dq(*x)))
-                    .join(", ")
-            } else {
-                tensor.as_slice_unchecked::<D>()[0..n].iter().join(", ")
+            unsafe {
+                if let Some(qp) = tensor.datum_type().qparams() {
+                    let integers = tensor.cast_to::<i32>().unwrap();
+                    integers.as_slice_unchecked::<i32>()[0..n]
+                        .iter()
+                        .map(|x| format!("[{}]({})", x, qp.dq(*x)))
+                        .join(", ")
+                } else {
+                    tensor.as_slice_unchecked::<D>()[0..n].iter().join(", ")
+                }
             }
         }
         unsafe {
@@ -870,7 +888,7 @@ impl Tensor {
 
     /// Transform the tensor into a `ndarray::Array`.
     pub unsafe fn into_array_unchecked<D: Datum>(self) -> ArrayD<D> {
-        self.to_array_view_unchecked::<D>().to_owned()
+        unsafe { self.to_array_view_unchecked::<D>().to_owned() }
     }
 
     fn check_for_access<D: Datum>(&self) -> TractResult<()> {
@@ -898,7 +916,7 @@ impl Tensor {
     /// Transform the data as a `ndarray::Array`.
     pub unsafe fn to_array_view_unchecked<D: Datum>(&self) -> ArrayViewD<D> {
         if self.len() != 0 {
-            ArrayViewD::from_shape_ptr(&*self.shape, self.data.as_ptr() as *const D)
+            unsafe { ArrayViewD::from_shape_ptr(&*self.shape, self.data.as_ptr() as *const D) }
         } else {
             ArrayViewD::from_shape(&*self.shape, &[]).unwrap()
         }
@@ -907,7 +925,7 @@ impl Tensor {
     /// Transform the data as a mutable `ndarray::Array`.
     pub unsafe fn to_array_view_mut_unchecked<D: Datum>(&mut self) -> ArrayViewMutD<D> {
         if self.len() != 0 {
-            ArrayViewMutD::from_shape_ptr(&*self.shape, self.data.as_mut_ptr() as *mut D)
+            unsafe { ArrayViewMutD::from_shape_ptr(&*self.shape, self.data.as_mut_ptr() as *mut D) }
         } else {
             ArrayViewMutD::from_shape(&*self.shape, &mut []).unwrap()
         }
@@ -959,7 +977,7 @@ impl Tensor {
         if self.data.len() == 0 {
             &[]
         } else {
-            std::slice::from_raw_parts::<D>(self.as_ptr_unchecked(), self.len())
+            unsafe { std::slice::from_raw_parts::<D>(self.as_ptr_unchecked(), self.len()) }
         }
     }
 
@@ -968,7 +986,7 @@ impl Tensor {
         if self.data.len() == 0 {
             &mut []
         } else {
-            std::slice::from_raw_parts_mut::<D>(self.as_ptr_mut_unchecked(), self.len())
+            unsafe { std::slice::from_raw_parts_mut::<D>(self.as_ptr_mut_unchecked(), self.len()) }
         }
     }
 
@@ -994,7 +1012,7 @@ impl Tensor {
 
     /// Access the data as a scalar.
     pub unsafe fn to_scalar_unchecked<D: Datum>(&self) -> &D {
-        &*(self.data.as_ptr() as *const D)
+        unsafe { &*(self.data.as_ptr() as *const D) }
     }
 
     /// Mutable access the data as a scalar.
@@ -1011,7 +1029,7 @@ impl Tensor {
 
     /// Mutable access the data as a scalar.
     pub unsafe fn to_scalar_mut_unchecked<D: Datum>(&mut self) -> &mut D {
-        &mut *(self.data.as_mut_ptr() as *mut D)
+        unsafe { &mut *(self.data.as_mut_ptr() as *mut D) }
     }
 
     pub fn as_bytes(&self) -> &[u8] {
@@ -1023,7 +1041,7 @@ impl Tensor {
     }
 
     unsafe fn is_uniform_t<T: Datum>(&self) -> bool {
-        let slice = self.as_slice_unchecked::<T>();
+        let slice = unsafe { self.as_slice_unchecked::<T>() };
         slice[1..].iter().all(|x| x == &slice[0])
     }
 
@@ -1035,7 +1053,7 @@ impl Tensor {
     }
 
     unsafe fn as_uniform_t<T: Datum>(&self) -> Tensor {
-        let v: T = self.as_slice_unchecked::<T>()[0].clone();
+        let v: T = unsafe { self.as_slice_unchecked::<T>() }[0].clone();
         litteral::tensor0(v)
     }
 
@@ -1066,42 +1084,50 @@ impl Tensor {
         &self,
         other: &mut Tensor,
     ) {
-        self.as_slice_unchecked::<Source>()
-            .iter()
-            .zip(other.as_slice_mut_unchecked::<Target>().iter_mut())
-            .for_each(|(s, d)| *d = s.as_());
+        unsafe {
+            self.as_slice_unchecked::<Source>()
+                .iter()
+                .zip(other.as_slice_mut_unchecked::<Target>().iter_mut())
+                .for_each(|(s, d)| *d = s.as_())
+        };
     }
 
     unsafe fn cast_number_to_bool<Source: Datum + num_traits::Zero>(&self, other: &mut Tensor) {
-        self.as_slice_unchecked::<Source>()
-            .iter()
-            .zip(other.as_slice_mut_unchecked::<bool>().iter_mut())
-            .for_each(|(s, d)| *d = !s.is_zero());
+        unsafe {
+            self.as_slice_unchecked::<Source>()
+                .iter()
+                .zip(other.as_slice_mut_unchecked::<bool>().iter_mut())
+                .for_each(|(s, d)| *d = !s.is_zero());
+        }
     }
 
     unsafe fn cast_from_string<Target: Datum + core::str::FromStr>(
         &self,
         other: &mut Tensor,
     ) -> TractResult<()> {
-        for (s, d) in self
-            .as_slice_unchecked::<String>()
-            .iter()
-            .zip(other.as_slice_mut_unchecked::<Target>().iter_mut())
-        {
-            *d = s
-                .parse()
-                .map_err(|_| format_err!("Can not parse as {:?}", Target::datum_type()))?;
+        unsafe {
+            for (s, d) in self
+                .as_slice_unchecked::<String>()
+                .iter()
+                .zip(other.as_slice_mut_unchecked::<Target>().iter_mut())
+            {
+                *d = s
+                    .parse()
+                    .map_err(|_| format_err!("Can not parse as {:?}", Target::datum_type()))?;
+            }
+            Ok(())
         }
-        Ok(())
     }
 
     unsafe fn cast_to_string<Source: Datum>(&self, other: &mut Tensor) {
-        for (s, d) in self
-            .as_slice_unchecked::<Source>()
-            .iter()
-            .zip(other.as_slice_mut_unchecked::<String>().iter_mut())
-        {
-            *d = s.to_string()
+        unsafe {
+            for (s, d) in self
+                .as_slice_unchecked::<Source>()
+                .iter()
+                .zip(other.as_slice_mut_unchecked::<String>().iter_mut())
+            {
+                *d = s.to_string()
+            }
         }
     }
 
@@ -1341,8 +1367,10 @@ impl Tensor {
             );
         }
         unsafe fn nth_t<T: Datum>(me: &Tensor, nth: usize, output: &mut Tensor) {
-            let value = me.as_slice_unchecked::<T>()[nth].clone();
-            output.as_slice_mut_unchecked::<T>()[0] = value;
+            unsafe {
+                let value = me.as_slice_unchecked::<T>()[nth].clone();
+                output.as_slice_mut_unchecked::<T>()[0] = value;
+            }
         }
         unsafe {
             let mut output = Tensor::uninitialized_dt(self.datum_type(), &[])?;
@@ -1354,7 +1382,7 @@ impl Tensor {
     /// Strict equality test on tensors.
     fn eq_dt(&self, other: &Tensor) -> TractResult<bool> {
         unsafe fn eq_t<D: Datum>(me: &Tensor, other: &Tensor) -> bool {
-            me.as_slice_unchecked::<D>() == other.as_slice_unchecked::<D>()
+            unsafe { me.as_slice_unchecked::<D>() == other.as_slice_unchecked::<D>() }
         }
 
         unsafe {
@@ -1480,7 +1508,7 @@ impl Tensor {
 
     #[inline]
     pub unsafe fn view_offsetting_unchecked(&self, coords: &[usize]) -> view::TensorView {
-        view::TensorView::offsetting_unchecked(self, coords)
+        unsafe { view::TensorView::offsetting_unchecked(self, coords) }
     }
 
     #[inline]
