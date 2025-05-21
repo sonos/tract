@@ -21,6 +21,10 @@ do
     echo ::group:: $ex
     echo $WHITE $ex $NC
     ( cd $ex ; sh ./ci.sh )
+    if [ -n "$CI" ]
+    then
+        cargo clean
+    fi
     echo ::endgroup::
 done
 
