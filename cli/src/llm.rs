@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use tract_core::value::RunTensors;
 use tract_hir::internal::*;
 use tract_libcli::profile::BenchLimits;
-use tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits;
+use tract_libcli::tensor::get_or_make_inputs_and_state_inits;
 
 pub fn figure_out_b_s_p(model: &TypedModel) -> TractResult<(Option<Symbol>, Symbol, Symbol)> {
     // expectations:
@@ -81,12 +81,11 @@ pub fn bench_pp(
     run_params.symbols.set(&p, 0);
     // Warmup
     run_params.symbols.set(&s, 6);
-    let inputs = retrieve_or_make_inputs_and_state_inits(model, &run_params)?.0.remove(0);
+    let inputs = get_or_make_inputs_and_state_inits(model, &run_params)?.0.remove(0);
     limits.warmup(model, &inputs)?;
-    
+
     run_params.symbols.set(&s, pp as i64);
-    let (mut sources, state_initializers) =
-        retrieve_or_make_inputs_and_state_inits(model, &run_params)?;
+    let (mut sources, state_initializers) = get_or_make_inputs_and_state_inits(model, &run_params)?;
     let inputs = RunTensors { sources: sources.remove(0), state_initializers };
 
     let (_, dur) = bench(&mut state, inputs, limits, probe)?;
@@ -118,7 +117,7 @@ pub fn bench_tg(
     run_params.symbols.set(&s, 1);
     // Warmup
     run_params.symbols.set(&p, 1);
-    let (mut inputs, state_inits) = retrieve_or_make_inputs_and_state_inits(model, &run_params)?;
+    let (mut inputs, state_inits) = get_or_make_inputs_and_state_inits(model, &run_params)?;
 
     let input = inputs.remove(0);
     state.init_states(&state_inits)?;

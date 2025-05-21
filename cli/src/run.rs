@@ -11,7 +11,7 @@ use tract_core::ops::cnn::conv::Im2Col;
 use tract_core::ops::matmul::pack::OptMatMulPack;
 use tract_core::tract_data::itertools::izip;
 use tract_hir::internal::*;
-use tract_libcli::tensor::{retrieve_or_make_inputs_and_state_inits, RunParams};
+use tract_libcli::tensor::{get_or_make_inputs_and_state_inits, RunParams};
 use tract_nnef::tensors::write_tensor;
 #[cfg(feature = "pulse")]
 use tract_pulse::internal::*;
@@ -156,8 +156,7 @@ fn run_regular(
         None
     };
     dispatch_model!(tract, |m| {
-        let (sources, state_initializers) =
-            retrieve_or_make_inputs_and_state_inits(tract, run_params)?;
+        let (sources, state_initializers) = get_or_make_inputs_and_state_inits(tract, run_params)?;
 
         let plan = SimplePlan::new_with_options(m, &plan_options)?;
         let mut state = SimpleState::new(plan)?;
