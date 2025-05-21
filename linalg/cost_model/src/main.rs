@@ -140,7 +140,7 @@ fn measure_add_mat_mul(bencher: &Bencher, mm: &dyn MatMatMul, m: usize, k: usize
                     .collect()
             },
             #[allow(unused_mut)] // not sure why the warning pops
-            |(scratch, _c, pa, pb, mut pc)| {
+            |(scratch, _c, pa, pb, pc)| {
                 mm.run_with_scratch_space(
                     m,
                     n,
@@ -151,7 +151,7 @@ fn measure_add_mat_mul(bencher: &Bencher, mm: &dyn MatMatMul, m: usize, k: usize
                             b: AsInputValue::Borrowed(&**pb),
                             packing: 0,
                         },
-                        FusedSpec::Store(pc),
+                        FusedSpec::Store(*pc),
                     ],
                 )
                 .unwrap();

@@ -46,8 +46,8 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFactoid]) -> TractResult<Option<
 
             match &shape[rank - i - 1] {
                 GenericFactoid::Any => unknown += 1,
-                GenericFactoid::Only(ref d) if d.is_one() => (),
-                GenericFactoid::Only(ref d) => {
+                GenericFactoid::Only(d) if d.is_one() => (),
+                GenericFactoid::Only(d) => {
                     if previous.is_some() && previous.as_ref() != Some(d) {
                         bail!(
                             "Invalid shape (broadcasting): {:?} is not compatible with {:?}.",
