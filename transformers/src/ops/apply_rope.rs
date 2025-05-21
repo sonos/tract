@@ -212,7 +212,6 @@ pub fn apply_rope_rule(
         return Ok(None);
     };
 
-    //dbg!(&model.nodes());
     // If cos and rotate half don't share the same input, we check if they don't
     // input node that are the same.
     let (apply_rope_in, cos) = if !cos_mul.inputs.contains(&rotate_half.inputs[0]) {
@@ -244,7 +243,7 @@ pub fn apply_rope_rule(
     let sin = patch.tap_model(model, sin)?;
     let out = patch.wire_node(format!("{node_name}.apply_rope"), ApplyRope, &[input, cos, sin])?;
     patch.shunt_outside(model, node.id.into(), out[0])?;
-    //dbg!(&patch);
+
     Ok(Some(patch))
 }
 

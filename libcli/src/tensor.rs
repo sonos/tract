@@ -5,7 +5,6 @@ use std::str::FromStr;
 use std::sync::Mutex;
 
 use crate::model::Model;
-use tract_core::tract_data::itertools::Itertools;
 use tract_hir::internal::*;
 use tract_num_traits::Zero;
 
@@ -400,38 +399,45 @@ fn get_or_make_tensor(
     Ok(())
 }
 
-#[allow(clippy::type_complexity)]
 pub fn get_or_make_inputs(
     tract: &dyn Model,
     params: &RunParams,
 ) -> TractResult<RunTensors> {
-    // Resolve source input
-    let mut tmp_inputs = tvec!();
+    // Resolve source inputs
+    let mut tmp_inputs = tvec![];
     for (ix, input) in tract.input_outlets().iter().enumerate() {
         let fact = tract.outlet_typedfact(*input)?;
         let name = tract.node_name(input.node);
         get_or_make_tensor(tract, params, fact, name, ix, &mut tmp_inputs)?;
     }
-    let sources: Vec<TVec<TValue>> = (0..tmp_inputs[0].1.len())
-        .map(|turn| tmp_inputs.iter().map(|t| t.1[turn].clone()).collect_vec().into())
-        .collect_vec();
 
-    // Resolve State initializers (KV Cache, ..)
-    let mut tmp_state_init = tvec!();
+    let n_turns = tmp_inputs.get(0).map_or(0, |t| t.1.len());
+    let sources = (0..n_turns)
+        .map(|i| tmp_inputs.iter().map(|t| t.1[i].clone()).collect::<TVec<_>>())
+        .collect::<Vec<_>>();
+
+    // Resolve state initializers (KV Cache, etc.)
     let mut dummy_session_state = SessionState::default();
-    for (id, state) in (0..tract.nodes_len()).filter_map(|id| {
-        tract.node_op(id).state(&mut dummy_session_state, id).ok().flatten().map(|s| (id, s))
-    }) {
-        if let Some(fact) = state.init_tensor_fact() {
-            let name = tract.node_name(id);
-            get_or_make_tensor(tract, params, fact, name, usize::MAX, &mut tmp_state_init)?;
-        }
-    }
-    let mut state_initializers = HashMap::new();
-    tmp_state_init.iter().for_each(|(name, state)| {
-        state_initializers.insert(name.to_string(), state[0].clone());
-    });
-    Ok(RunTensors { sources, state_initializers})
+    let state_initializers = (0..tract.nodes_len())
+        .filter_map(|id| {
+            tract.node_op(id).state(&mut dummy_session_state, id).ok().flatten().and_then(|state| {
+                state.init_tensor_fact().map(|fact| {
+                    let name = tract.node_name(id);
+                    (name.to_string(), fact)
+                })
+            })
+        })
+        .map(|(name, fact)| {
+            let mut tmp = tvec![];
+            get_or_make_tensor(tract, params, fact, &name, usize::MAX, &mut tmp)?;
+            Ok((name, tmp.remove(0).1.remove(0)))
+        })
+        .collect::<TractResult<HashMap<_, _>>>()?;
+
+    Ok(RunTensors {
+        sources,
+        state_initializers,
+    })
 }
 
 fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> TractResult<TVec<TValue>> {
