@@ -60,6 +60,7 @@ impl ProtoFusedSpec {
         mmm: &dyn MatMatMul,
         mode: usize,
     ) -> FusedSpec<'t> {
+        #[allow(clippy::let_and_return)]
         let fs = match self {
             ProtoFusedSpec::AddMatMul { geo, a, b, packings } => {
                 let mut a = inputs[*a].view();
@@ -141,6 +142,7 @@ impl ProtoFusedSpec {
         _mmm: &dyn MatMatMul,
         mode: usize,
     ) -> FusedSpec<'t> {
+        #[allow(clippy::let_and_return)]
         let fs = match self {
             ProtoFusedSpec::AddMatMul { a, b, packings, .. } => unsafe {
                 debug_assert!(inputs.get(*a).is_some());

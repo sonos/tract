@@ -112,11 +112,11 @@ impl PaddingSpec {
     ) -> ComputedPaddedDim<D> {
         match self {
             Valid => Self::valid(input, kernel, dilation, stride),
-            &Explicit(ref bef, ref aft) => {
+            Explicit(bef, aft) => {
                 Self::explicit(input, kernel, dilation, stride, bef[axis], aft[axis])
             }
-            &ExplicitOnnxPool(ref bef, ref aft, ceil_mode) => Self::explicit_onnx_pool(
-                input, kernel, dilation, stride, bef[axis], aft[axis], ceil_mode,
+            ExplicitOnnxPool(bef, aft, ceil_mode) => Self::explicit_onnx_pool(
+                input, kernel, dilation, stride, bef[axis], aft[axis], *ceil_mode,
             ),
             SameUpper => Self::same(input, kernel, dilation, stride, true),
             SameLower => Self::same(input, kernel, dilation, stride, false),
@@ -136,11 +136,11 @@ impl PaddingSpec {
             Valid => Self::valid_for_deconv(input, kernel, dilation, stride, adjustment),
             SameUpper => Self::same_for_deconv(input, kernel, dilation, stride, adjustment, true),
             SameLower => Self::same_for_deconv(input, kernel, dilation, stride, adjustment, false),
-            &Explicit(ref bef, ref aft) => Self::explicit_for_deconv(
+            Explicit(bef, aft) => Self::explicit_for_deconv(
                 input, kernel, dilation, stride, bef[axis], aft[axis], adjustment,
             ),
             // unreachable ?
-            &ExplicitOnnxPool(ref bef, ref aft, _ceil_mode) => Self::explicit_for_deconv(
+            ExplicitOnnxPool(bef, aft, _ceil_mode) => Self::explicit_for_deconv(
                 input, kernel, dilation, stride, bef[axis], aft[axis], adjustment,
             ),
         }
