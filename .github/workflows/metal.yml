@@ -35,7 +35,7 @@ jobs:
     runs-on: macOS
     steps:
       - uses: actions/checkout@v4
-      - run: cargo build -p tract --release --no-default-features
+      - run: cargo build -p tract --release
       - uses: actions/upload-artifact@v4
         with:
           name: tract-cli-macOS-metal
