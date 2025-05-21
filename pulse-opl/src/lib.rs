@@ -1,3 +1,4 @@
+#![allow(clippy::collapsible_if)]
 use tract_nnef::internal::*;
 
 pub mod concat;
@@ -17,7 +18,7 @@ pub mod prelude {
 
 pub mod ops {
     pub use super::deconv_delay::DeconvDelay;
-    pub use super::delay::{ Delay, DelayState };
+    pub use super::delay::{Delay, DelayState};
     pub use super::mask::PulseMask;
     pub use super::pad::PulsePad;
     pub use super::slice::PulsedAxisSlice;
@@ -45,7 +46,7 @@ pub fn tract_nnef_registry() -> Registry {
         .with_doc("for pulsified networks.")
         .with_doc("")
         .with_doc("Add `extension tract_pulse` to `graph.nnef`");
-        
+
     reg.aliases.push("pulse".into());
     delay::register(&mut reg);
     mask::register(&mut reg);

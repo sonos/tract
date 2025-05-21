@@ -1,5 +1,6 @@
 #![allow(clippy::len_zero)]
 #![allow(clippy::redundant_closure_call)]
+#![allow(clippy::collapsible_if)]
 #[macro_use]
 extern crate log;
 

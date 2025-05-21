@@ -1,3 +1,4 @@
+#![allow(clippy::collapsible_if)]
 #[macro_use]
 extern crate log;
 

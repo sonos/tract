@@ -1,3 +1,4 @@
+#![allow(clippy::collapsible_if)]
 use std::any::Any;
 use std::sync::RwLock;
 

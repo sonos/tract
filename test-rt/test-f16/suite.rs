@@ -29,6 +29,7 @@ fn mk_suite() -> infra::TestSuite {
 }
 
 fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
+    #[allow(clippy::collapsible_if)]
     if let Some(qcp) = case.downcast_ref::<QConvProblem>() {
         if !compatible_conv_q(qcp) {
             return true;
