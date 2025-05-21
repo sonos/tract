@@ -289,7 +289,7 @@ pub struct RunParams {
 fn get_or_make_tensor(
     model: &dyn Model,
     params: &RunParams,
-    mut fact: TypedFact,
+    fact: TypedFact,
     name: &str,
     input_idx: usize,
     target: &mut TVec<(String, Vec<TValue>)>,
@@ -386,6 +386,7 @@ fn get_or_make_tensor(
             .tensors_values
             .by_name(name)
             .or_else(|| params.tensors_values.by_input_ix(input_idx));
+        let mut fact = fact.clone();
         fact.shape = fact.shape.iter().map(|dim| dim.eval(&params.symbols)).collect();
         target.push((name.to_string(), vec![tensor_for_fact(&fact, None, tv)?.into()]));
     } else {
