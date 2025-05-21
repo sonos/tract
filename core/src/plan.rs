@@ -513,7 +513,7 @@ where
     }
 
     pub fn prepare_inputs(&self, node: usize) -> TractResult<TVec<TValue>> {
-        let &SimpleState { ref plan, ref values, .. } = self;
+        let SimpleState { plan, values, .. } = self;
         let plan = plan.borrow();
         let nodes = plan.model().nodes();
         let node = &nodes[node];
@@ -645,6 +645,7 @@ where
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     // eprint!("{node} {input:?}");
+    #[allow(clippy::let_and_return)]
     let r = match state {
         Some(ref mut state) => state.eval(session_state, node.op(), input),
         None => node.op().eval_with_session(session_state, input),
