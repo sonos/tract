@@ -244,7 +244,10 @@ pub fn handle_with_model(
 
     let plan = SimplePlan::new(reference_model)?;
     let mut state = SimpleState::new(plan)?;
-    for inputs in tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(reference_model, run_params)?.0 {
+    let (inputs, state_initializers) = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(reference_model, run_params)?;
+    state.init_states(&state_initializers)?;
+    for inputs in inputs
+    {
         state.run_plan_with_eval(inputs, |session, state, node, input| -> TractResult<_> {
             let result = tract_core::plan::eval(session, state, node, input)?;
             if node.outputs.len() == 1 {
@@ -260,6 +263,7 @@ pub fn handle_with_model(
             Ok(result)
         })?;
     }
+    state.reset_op_states()?;
     dispatch_model_no_pulse!(params.tract_model, |m| compare(
         cumulative,
         m,
@@ -299,7 +303,9 @@ where
     }
     let all_values: HashMap<String, &Vec<TractResult<TValue>>> =
         all_values.iter().map(|(k, v)| (canonic(k), v)).collect();
-    let model_inputs = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(tract, run_params)?.0;
+    let (model_inputs, state_initializers) =
+        tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(tract, run_params)?;
+    state.init_states(&state_initializers)?;
     for (turn, inputs) in model_inputs.into_iter().enumerate() {
         state.run_plan_with_eval(
             inputs,
@@ -416,7 +422,7 @@ where
             },
         )?;
     }
-
+    state.reset_op_states()?;
     for node in tract.nodes() {
         let color: nu_ansi_term::Style = if failing.contains(&node.id) {
             Red.into()
