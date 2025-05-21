@@ -91,7 +91,7 @@ pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze + Downcast {
         None
     }
 
-    fn init_with(&mut self, _: &mut SessionState, _input: &TValue) -> TractResult<()> {
+    fn resolve_symbols(&mut self, _: &mut SessionState) -> TractResult<()> {
         Ok(())
     }
 
