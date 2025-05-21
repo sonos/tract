@@ -262,8 +262,17 @@ where
                 state_init_tensors.keys().len());
         for state in states_to_init
         {   
-
             state.load_from(&mut self.session_state, state_init_tensors)?;
+        }
+        Ok(())
+    }
+
+    fn resolve_symbols_with_states(&mut self) -> TractResult<()> {
+        let states_with_init_fact = self.states.iter_mut()
+        .filter_map(|state| state.as_mut().filter(|s| s.init_tensor_fact().is_some()))
+        .collect_vec();
+        for state in states_with_init_fact {
+            state.resolve_symbols(&mut self.session_state)?;
         }
         Ok(())
     }
@@ -291,6 +300,7 @@ where
         E: Into<anyhow::Error> + Send + Sync + 'static,
     {
         self.set_inputs(inputs)?;
+        self.resolve_symbols_with_states()?;
         self.exec_plan_with_eval(eval)?;
         let outputs = self.outputs()?;
         self.reset_turn()?;

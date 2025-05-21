@@ -10,7 +10,7 @@ use super::next_node;
 
 #[derive(Debug, Clone)]
 pub struct DynKeyValueCacheState {
-    io_name: String,
+    io_name: [String; 2],
     input_facts: [TypedFact; 2],
     kv_cache: Option<Tensor>,
 }
@@ -35,12 +35,13 @@ impl DynKeyValueCacheState {
 }
 
 impl DynKeyValueCacheState {
-    pub fn resolve_symbols(state: &mut SessionState, fact: TypedFact, input: &TValue) -> TractResult<()>{
+    pub fn resolve_symbols(state: &mut SessionState, fact: TypedFact, concrete_shape: Option<&[usize]>) -> TractResult<()>{
         let unresolved = fact
             .shape
             .iter()
-            .filter_map(|symb| match symb {
-                TDim::Sym(s) if state.resolved_symbols.get(s).is_none() => Some(s),
+            .enumerate()
+            .filter_map(|(ax, symb)| match symb {
+                TDim::Sym(s) if state.resolved_symbols.get(s).is_none() => Some((ax, s)),
                 _ => None,
             })
             .collect_vec();
@@ -50,8 +51,12 @@ impl DynKeyValueCacheState {
         }
 
         ensure!(unresolved.len() == 1);
-        let sym = unresolved[0];
-        state.resolved_symbols.set(unresolved[0], input.len() as i64);
+        let (ax, sym) = unresolved[0];
+        if let Some(shape) = concrete_shape {
+            state.resolved_symbols.set(sym, shape[ax] as i64);
+        } else {
+            state.resolved_symbols.set(sym, 0);
+        }
 
         if state.scenario.is_none() {
             state.scenario = sym.scope().unwrap().guess_scenario(&state.resolved_symbols)?;
@@ -59,30 +64,40 @@ impl DynKeyValueCacheState {
         Ok(())
     }
 }
+
 impl OpState for DynKeyValueCacheState {
     fn load_from(
         &mut self,
         state: &mut SessionState,
         states: &HashMap<String, TValue>,
     ) -> TractResult<()> {
-        if let Some(kv_cache) = states.get(&self.io_name) {
+        if let Some(kv_cache) = states.get(&self.io_name[0]) {
             // KV Cache fact is always at index 0
-            Self::resolve_symbols(state, self.input_facts[0].clone(), kv_cache)?;
+            Self::resolve_symbols(state, self.input_facts[0].clone(), Some(kv_cache.shape()))?;
             self.kv_cache = Some(kv_cache.clone().into_tensor());
 
             Ok(())
         } else {
-            bail!("KV cache input {} not found in given states", self.io_name)
+            bail!("KV cache input {} not found in given states", self.io_name[0])
         }
     }
 
     fn save_to(&mut self, states: &mut HashMap<String, TValue>) -> TractResult<()> {
         if let Some(kv_cache) = &self.kv_cache {
-            states.insert(self.io_name.clone(), kv_cache.clone().into_tvalue());
+            states.insert(self.io_name[1].clone(), kv_cache.clone().into_tvalue());
             Ok(())
         } else {
-            bail!("KV cache {} was never initialized", self.io_name)
+            bail!("KV cache {} was never initialized", self.io_name[1])
         }
+    }
+
+    fn resolve_symbols(&mut self, state: &mut SessionState) -> TractResult<()> {
+        let shape = if let Some(kv_cache) = &self.kv_cache {
+           Some(kv_cache.shape())
+        } else {
+            None
+        };
+        Self::resolve_symbols(state, self.input_facts[0].clone(), shape)
     }
 
     fn eval(
@@ -116,7 +131,7 @@ impl OpState for DynKeyValueCacheState {
 
 #[derive(Clone, Debug)]
 pub struct DynKeyValueCache {
-    pub io_name: String,
+    pub io_name: [String; 2],
     pub axis: usize,
     pub input_facts: [TypedFact; 2],
 }
@@ -209,7 +224,6 @@ pub fn replace_kv_cache(target: &mut TypedModel, source_node_id: usize) -> Tract
             matches!(concat_in_shapes[0][axis], TDim::Sym(_))
                 && matches!(concat_in_shapes[1][axis], TDim::Sym(_))
         );
-
         let mut facts = [concat_in_facts[0].clone(), concat_in_facts[1].clone()];
         if concat_node.inputs[0].node == source_node_id {
             (concat_node.id, concat_node.inputs[1].node, axis, facts)
@@ -223,9 +237,11 @@ pub fn replace_kv_cache(target: &mut TypedModel, source_node_id: usize) -> Tract
 
     {
         // Replace Concat by KVCache
+        let name = target.node_names().collect_vec()[source_node_id].to_string();
         let concat_node = target.node_mut(concat_node_id);
         concat_node.op =
-            Box::new(DynKeyValueCache { io_name: concat_node.name.to_string(), axis, input_facts });
+            Box::new(DynKeyValueCache { io_name: [name.clone(), concat_node.name.to_string()], axis, input_facts });
+        concat_node.name = name;
         concat_node.inputs.retain(|input| input != &source_node_id.into());
     }
 
@@ -299,7 +315,7 @@ mod tests {
         let second_shape = make_shape("S");
 
         let op = DynKeyValueCache {
-            io_name: op_name.clone(),
+            io_name: [op_name.clone(), op_name.clone()],
             input_facts: [
                 TypedFact::dt_shape(F::datum_type(), symb_shape),
                 TypedFact::dt_shape(F::datum_type(), second_shape),

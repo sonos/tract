@@ -385,7 +385,7 @@ pub fn retrieve_or_make_inputs_and_state_inits(
         }
     }
     let inputs = (0..tmp[0].len()).map(|turn| tmp.iter().map(|t| t[turn].clone()).collect()).collect();
-
+    dbg!(&params.tensors_values);
     let mut state_initializers: HashMap<String, TValue> = HashMap::new();
     let mut dummy_session_state= SessionState::default();
     for (id, state) in (0..tract.nodes_len())
@@ -393,12 +393,35 @@ pub fn retrieve_or_make_inputs_and_state_inits(
                                         if let Some(s) = tract.node_op(id).state(&mut dummy_session_state, id).ok().flatten() {
                                             Some((id, s))
                                         } else { None })
-    {
+    {   
+        let name = tract.node_name(id).to_string();
         if let Some(mut fact) = state.init_tensor_fact() {
-            if params.allow_random_input {
+            if let Some(value) = params
+            .tensors_values
+            .by_name(&name)
+            .and_then(|t| t.values.clone())
+            {   
+                ensure!(value.len() == 1, "State initializers are only used for turn 0");
+                let mut tensor = value[0].clone().into_tensor();
+                if !tensor.datum_type().is_quantized()
+                    && fact.datum_type.is_quantized()
+                    && tensor.datum_type() == fact.datum_type.unquantized()
+                {
+                    unsafe { tensor.set_datum_type(fact.datum_type) };
+                }
+                if TypedFact::shape_and_dt_of(&tensor).compatible_with(&fact) {
+                    info!("Using fixed input for state called {}", name, );
+                    state_initializers.insert(name, tensor.into());
+                } else if fact.datum_type == f16::datum_type()
+                    && tensor.datum_type() == f32::datum_type()
+                    && params.allow_float_casts
+                {
+                    state_initializers.insert(name, tensor.cast_to::<f16>().unwrap().into_owned().into());
+                } 
+            }
+            else if params.allow_random_input {
                 fact.shape = fact.shape.iter().map(|dim| dim.eval(&params.symbols)).collect();
-                dbg!(tract.node_name(id));
-                state_initializers.insert(tract.node_name(id).to_string(), tensor_for_fact(&fact, None, None)?.into());
+                state_initializers.insert(name, tensor_for_fact(&fact, None, None)?.into());
             }
         }
     }
