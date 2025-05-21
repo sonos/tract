@@ -66,7 +66,7 @@ mod tflite_cycle {
                     let name = reloaded.node(old_source_outlet.node).name.clone();
                     let new_source = reloaded.add_source(&name, model.input_fact(i)?.clone())?;
                     let wire = reloaded.wire_node(
-                        format!("{}.qp", name),
+                        format!("{name}.qp"),
                         tract_core::ops::cast::cast(reloaded.input_fact(i)?.datum_type),
                         &[new_source],
                     )?[0];

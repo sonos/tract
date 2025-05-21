@@ -143,11 +143,13 @@ fn skip_onnx(t: &[String]) -> bool {
 }
 
 fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
+    #[allow(clippy::collapsible_if)]
     if let Some(cp) = case.downcast_ref::<ConvProblem>() {
         if !compatible_conv_f32(cp) {
             return true;
         }
     }
+    #[allow(clippy::collapsible_if)]
     if let Some(qcp) = case.downcast_ref::<QConvProblem>() {
         if !compatible_conv_q(qcp) {
             return true;
