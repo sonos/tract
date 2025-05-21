@@ -1,6 +1,7 @@
 use crate::bench::{bench, make_state};
 use crate::Parameters;
 use readings_probe::Probe;
+use tract_core::value::RunTensors;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 use tract_hir::internal::*;
@@ -85,9 +86,8 @@ pub fn bench_pp(
     limits.warmup(model, &inputs)?;
 
     run_params.symbols.set(&s, pp as i64);
-    let inputs = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?
-        .0
-        .remove(0);
+    let (mut sources, state_initializers) = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?;
+    let inputs = RunTensors { sources: sources.remove(0), state_initializers };
 
     let (_, dur) = bench(&mut state, inputs, limits, probe)?;
     let tokens = pp as f64 / dur.as_secs_f64();
@@ -121,21 +121,24 @@ pub fn bench_tg(
     let inputs = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?
         .0
         .remove(0);
+
     limits.warmup(model, &inputs)?;
+    state.reset_op_states()?;
 
     let mut tot_dur = Duration::default();
     for t in 0..tg {
         if let Some(p) = probe {
             p.log_event(&format!("Starting token {t}"))?;
         }
-        run_params.symbols.set(&p, t as i64);
-        let inputs =
-            tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?
-                .0
-                .remove(0);
 
+        run_params.symbols.set(&p, t as i64);
+        let (mut sources, state_initializers) =
+            tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?;
+        
+        state.init_states(&state_initializers)?;
+        let input= sources.remove(0);
         let start = Instant::now();
-        state.run(inputs)?;
+        state.run(input)?;
         tot_dur += start.elapsed();
     }
     state.reset_op_states()?;
