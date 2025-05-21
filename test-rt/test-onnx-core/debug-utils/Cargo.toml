@@ -2,7 +2,7 @@
 name = "debug-utils"
 version = "0.20.7-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
-edition = "2021"
+edition = "2024"
 
 [workspace]
 members = []
