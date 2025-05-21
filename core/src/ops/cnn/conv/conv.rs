@@ -839,7 +839,7 @@ impl Conv {
         }
 
         let mut patch = TypedModelPatch::default();
-        let [input, mut kernel, mut bias] = &*patch.taps(model, &node.inputs)? else {
+        let [input, mut kernel, mut bias] = *patch.taps(model, &node.inputs)? else {
             panic!("Expect three inputs");
         };
         let name = &node.name;
@@ -896,7 +896,7 @@ impl Conv {
         } else {
             return Ok(None);
         };
-        let wire = patch.wire_node(&node.name, self.clone(), &[*input, kernel, bias])?[0];
+        let wire = patch.wire_node(&node.name, self.clone(), &[input, kernel, bias])?[0];
         patch.shunt_outside(model, succ_outlet.node.into(), wire)?;
         Ok(Some(patch))
     }

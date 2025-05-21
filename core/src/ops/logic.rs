@@ -3,8 +3,8 @@
 
 mod comparison;
 mod ite;
-pub use ite::IfThenElse;
 pub use comparison::Comp;
+pub use ite::IfThenElse;
 
 use ndarray::*;
 
@@ -32,11 +32,13 @@ impl Iff {
         t: &Tensor,
         f: &Tensor,
     ) {
-        Zip::from(out.to_array_view_mut_unchecked::<T>())
-            .and_broadcast(cond)
-            .and_broadcast(t.to_array_view_unchecked::<T>())
-            .and_broadcast(f.to_array_view_unchecked::<T>())
-            .for_each(|r, c, t, f| *r = if *c { t.clone() } else { f.clone() })
+        unsafe {
+            Zip::from(out.to_array_view_mut_unchecked::<T>())
+                .and_broadcast(cond)
+                .and_broadcast(t.to_array_view_unchecked::<T>())
+                .and_broadcast(f.to_array_view_unchecked::<T>())
+                .for_each(|r, c, t, f| *r = if *c { t.clone() } else { f.clone() })
+        }
     }
 }
 

@@ -272,7 +272,7 @@ impl MapOutputAxisToInput {
     #[inline]
     unsafe fn translate_view(&self, output_coords: &[usize], v: &mut TensorView) {
         for &(out_axis, in_axis) in &self.0 {
-            v.offset_axis(in_axis, output_coords[out_axis] as isize)
+            unsafe { v.offset_axis(in_axis, output_coords[out_axis] as isize) }
         }
     }
 
