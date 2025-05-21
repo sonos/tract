@@ -37,7 +37,11 @@ impl<O: MetalEvalOp> OpState for MetalDynKVCacheState<O> {
     ) -> TractResult<()> {
         if let Some(kv_cache) = states.get(&self.io_name[0]) {
             // KV Cache fact is always at index 0
-            DynKeyValueCacheState::resolve_symbols(state, self.input_facts[0].clone(), Some(kv_cache.shape()))?;
+            DynKeyValueCacheState::resolve_symbols(
+                state,
+                self.input_facts[0].clone(),
+                Some(kv_cache.shape()),
+            )?;
 
             self.kv_cache = Some(kv_cache.clone().into_tensor().into_device()?);
 
@@ -61,11 +65,7 @@ impl<O: MetalEvalOp> OpState for MetalDynKVCacheState<O> {
     }
 
     fn resolve_symbols(&mut self, state: &mut SessionState) -> TractResult<()> {
-        let shape = if let Some(kv_cache) = &self.kv_cache {
-           Some(kv_cache.shape())
-        } else {
-            None
-        };
+        let shape = self.kv_cache.as_ref().map(|kv_cache| kv_cache.shape());
         DynKeyValueCacheState::resolve_symbols(state, self.input_facts[0].clone(), shape)
     }
 
