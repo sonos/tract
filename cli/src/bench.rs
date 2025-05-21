@@ -1,9 +1,10 @@
 use crate::Parameters;
 use readings_probe::Probe;
-use tract_core::value::RunTensors;
 use std::time::{Duration, Instant};
+use tract_core::value::RunTensors;
 use tract_hir::internal::*;
 use tract_libcli::profile::BenchLimits;
+use tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits;
 use tract_libcli::terminal;
 
 pub fn criterion(
@@ -21,14 +22,15 @@ pub fn criterion(
 
     let mut crit = criterion::Criterion::default();
     let mut group = crit.benchmark_group("net");
-    let (inputs, state_initializers) =
-        tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?;
-    
-    group.bench_function("run", move |b| b.iter(|| {
-        state.init_states(&state_initializers)?;
-        state.run(inputs[0].clone())?;
-        state.reset_op_states()
-    }));
+    let (inputs, state_initializers) = retrieve_or_make_inputs_and_state_inits(model, &run_params)?;
+
+    group.bench_function("run", move |b| {
+        b.iter(|| {
+            state.init_states(&state_initializers)?;
+            state.run(inputs[0].clone())?;
+            state.reset_op_states()
+        })
+    });
     Ok(())
 }
 
@@ -112,7 +114,7 @@ pub fn handle(
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
     let mut state = make_state(params, matches, sub_matches)?;
     let (mut sources, state_initializers) =
-        tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(state.model(), &run_params)?;
+        retrieve_or_make_inputs_and_state_inits(state.model(), &run_params)?;
 
     let inputs = RunTensors { sources: sources.remove(0), state_initializers };
     limits.warmup(state.model(), &inputs.sources)?;

@@ -253,24 +253,29 @@ where
     }
 
     pub fn init_states(&mut self, state_init_tensors: &HashMap<String, TValue>) -> TractResult<()> {
-        let states_to_init = self.states.iter_mut()
-        .filter_map(|state| state.as_mut().filter(|s| s.init_tensor_fact().is_some()))
-        .collect_vec();
-        ensure!(states_to_init.len() == state_init_tensors.keys().len(),
-                "There are {} op to init but Hashmap has {} entries",
-                states_to_init.len(),
-                state_init_tensors.keys().len());
-        for state in states_to_init
-        {   
+        let states_to_init = self
+            .states
+            .iter_mut()
+            .filter_map(|state| state.as_mut().filter(|s| s.init_tensor_fact().is_some()))
+            .collect_vec();
+        ensure!(
+            states_to_init.len() == state_init_tensors.keys().len(),
+            "There are {} op to init but Hashmap has {} entries",
+            states_to_init.len(),
+            state_init_tensors.keys().len()
+        );
+        for state in states_to_init {
             state.load_from(&mut self.session_state, state_init_tensors)?;
         }
         Ok(())
     }
 
     fn resolve_symbols_with_states(&mut self) -> TractResult<()> {
-        let states_with_init_fact = self.states.iter_mut()
-        .filter_map(|state| state.as_mut().filter(|s| s.init_tensor_fact().is_some()))
-        .collect_vec();
+        let states_with_init_fact = self
+            .states
+            .iter_mut()
+            .filter_map(|state| state.as_mut().filter(|s| s.init_tensor_fact().is_some()))
+            .collect_vec();
         for state in states_with_init_fact {
             state.resolve_symbols(&mut self.session_state)?;
         }
@@ -397,7 +402,6 @@ where
                     for (o, v) in node.outputs.iter().zip(vs.iter()) {
                         if let Ok(f) = o.fact.to_typed_fact() {
                             for (dim_abstract, dim_concrete) in f.shape.iter().zip(v.shape()) {
-                                
                                 Self::resolve(
                                     &mut self.session_state,
                                     dim_abstract,
