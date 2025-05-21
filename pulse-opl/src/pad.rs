@@ -69,8 +69,10 @@ pub(crate) unsafe fn fill_slice_constant<T: Datum + Copy>(
     axis: usize,
     range: std::ops::Range<usize>,
 ) {
-    let c = constant.to_scalar_unchecked::<T>();
-    data.to_array_view_mut_unchecked::<T>().slice_axis_mut(Axis(axis), range.into()).fill(*c);
+    unsafe {
+        let c = constant.to_scalar_unchecked::<T>();
+        data.to_array_view_mut_unchecked::<T>().slice_axis_mut(Axis(axis), range.into()).fill(*c);
+    }
 }
 
 unsafe fn fill_slice_with_frame<T: Datum + Copy>(
@@ -79,10 +81,12 @@ unsafe fn fill_slice_with_frame<T: Datum + Copy>(
     valid: &Tensor,
     range: std::ops::Range<usize>,
 ) {
-    let mut data = data.to_array_view_mut_unchecked::<T>();
-    let valid = valid.to_array_view_unchecked::<T>();
-    for i in range {
-        data.slice_axis_mut(Axis(axis), (i..i + 1).into()).assign(&valid);
+    unsafe {
+        let mut data = data.to_array_view_mut_unchecked::<T>();
+        let valid = valid.to_array_view_unchecked::<T>();
+        for i in range {
+            data.slice_axis_mut(Axis(axis), (i..i + 1).into()).assign(&valid);
+        }
     }
 }
 
@@ -108,7 +112,7 @@ impl OpState for PulsePadOpState {
 
 impl PulsePadOpState {
     unsafe fn save_frame<T: Datum + Copy>(&mut self, op: &PulsePad, input: &Tensor, frame: usize) {
-        let data = input.to_array_view_unchecked::<T>();
+        let data = unsafe { input.to_array_view_unchecked::<T>() };
         self.last_valid_frame =
             Some(data.index_axis(Axis(op.axis), frame).to_owned().into_tensor());
     }

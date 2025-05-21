@@ -116,7 +116,7 @@ impl Display for TreeEnsembleData {
 
 impl TreeEnsembleData {
     unsafe fn get_unchecked(&self, node: usize) -> TreeNode {
-        let row = &self.nodes.as_slice_unchecked::<u32>()[node * 5..][..5];
+        let row = &unsafe { self.nodes.as_slice_unchecked::<u32>() }[node * 5..][..5];
         if let Ok(cmp) = ((row[4] & 0xFF) as u8).try_into() {
             let feature_id = row[0];
             let true_id = row[1];
@@ -133,15 +133,17 @@ impl TreeEnsembleData {
     where
         T: AsPrimitive<f32>,
     {
-        let mut node_id = self.trees.as_slice_unchecked::<u32>()[tree] as usize;
-        loop {
-            let node = self.get_unchecked(node_id);
-            match node {
-                TreeNode::Branch(ref b) => {
-                    let feature = *input.uget(b.feature_id as usize);
-                    node_id = b.get_child_id(feature.as_());
+        unsafe {
+            let mut node_id = self.trees.as_slice_unchecked::<u32>()[tree] as usize;
+            loop {
+                let node = self.get_unchecked(node_id);
+                match node {
+                    TreeNode::Branch(ref b) => {
+                        let feature = *input.uget(b.feature_id as usize);
+                        node_id = b.get_child_id(feature.as_());
+                    }
+                    TreeNode::Leaf(l) => return l,
                 }
-                TreeNode::Leaf(l) => return l,
             }
         }
     }
@@ -156,18 +158,20 @@ impl TreeEnsembleData {
         A: AggregateFn,
         T: AsPrimitive<f32>,
     {
-        let leaf = self.get_leaf_unchecked(tree, input);
-        for leaf in self
-            .leaves
-            .to_array_view_unchecked::<u32>()
-            .outer_iter()
-            .skip(leaf.start_id)
-            .take(leaf.end_id - leaf.start_id)
-        {
-            let class_id = leaf[0] as usize;
-            let weight = f32::from_bits(leaf[1]);
-            let agg_fn = aggs.get_unchecked_mut(class_id);
-            agg_fn.aggregate(weight, output.uget_mut(class_id));
+        unsafe {
+            let leaf = self.get_leaf_unchecked(tree, input);
+            for leaf in self
+                .leaves
+                .to_array_view_unchecked::<u32>()
+                .outer_iter()
+                .skip(leaf.start_id)
+                .take(leaf.end_id - leaf.start_id)
+            {
+                let class_id = leaf[0] as usize;
+                let weight = f32::from_bits(leaf[1]);
+                let agg_fn = aggs.get_unchecked_mut(class_id);
+                agg_fn.aggregate(weight, output.uget_mut(class_id));
+            }
         }
     }
 }
@@ -308,11 +312,13 @@ impl TreeEnsemble {
         A: AggregateFn,
         T: AsPrimitive<f32>,
     {
-        for t in 0..self.data.trees.len() {
-            self.data.eval_unchecked(t, input, output, aggs)
-        }
-        for i in 0..self.n_classes {
-            aggs.get_unchecked_mut(i).post_aggregate(output.uget_mut(i));
+        unsafe {
+            for t in 0..self.data.trees.len() {
+                self.data.eval_unchecked(t, input, output, aggs)
+            }
+            for i in 0..self.n_classes {
+                aggs.get_unchecked_mut(i).post_aggregate(output.uget_mut(i));
+            }
         }
     }
 
