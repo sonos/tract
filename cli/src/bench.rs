@@ -1,5 +1,6 @@
 use crate::Parameters;
 use readings_probe::Probe;
+use tract_core::value::RunTensors;
 use std::time::{Duration, Instant};
 use tract_hir::internal::*;
 use tract_libcli::profile::BenchLimits;
@@ -20,8 +21,14 @@ pub fn criterion(
 
     let mut crit = criterion::Criterion::default();
     let mut group = crit.benchmark_group("net");
-    let (inputs, _) = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?;
-    group.bench_function("run", move |b| b.iter(|| state.run(inputs[0].clone())));
+    let (inputs, state_initializers) =
+        tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?;
+    
+    group.bench_function("run", move |b| b.iter(|| {
+        state.init_states(&state_initializers)?;
+        state.run(inputs[0].clone())?;
+        state.reset_op_states()
+    }));
     Ok(())
 }
 
@@ -65,26 +72,33 @@ pub(crate) fn make_state<'m>(
 
 pub(crate) fn bench<'m>(
     state: &mut TypedSimpleState<&'m TypedModel, Arc<TypedRunnableModel<&'m TypedModel>>>,
-    inputs: TVec<TValue>,
+    inputs: RunTensors,
     limits: &BenchLimits,
     probe: Option<&Probe>,
 ) -> TractResult<(usize, Duration)> {
+    state.reset_op_states()?;
+
     let mut iters = 0;
     let progress = probe.and_then(|m| m.get_i64("progress"));
     info!("Starting bench itself");
-    let start = Instant::now();
-    while iters < limits.max_loops && start.elapsed() < limits.max_time {
+    let mut dur = Duration::default();
+    while iters < limits.max_loops && dur < limits.max_time {
         if let Some(mon) = probe {
             let _ = mon.log_event(&format!("loop_{iters}"));
         }
         if let Some(p) = &progress {
             p.store(iters as _, std::sync::atomic::Ordering::Relaxed);
         }
-        state.run(inputs.clone())?;
+        state.init_states(&inputs.state_initializers)?;
+
+        let start = Instant::now();
+        state.run(inputs.sources.clone())?;
+        dur += start.elapsed();
+
         state.reset_op_states()?;
+
         iters += 1;
     }
-    let dur = start.elapsed();
     Ok((iters, Duration::from_secs_f64(dur.as_secs_f64() / iters as f64)))
 }
 
@@ -97,10 +111,11 @@ pub fn handle(
 ) -> TractResult<()> {
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
     let mut state = make_state(params, matches, sub_matches)?;
-    let inputs =
-        tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(state.model(), &run_params)?.0.remove(0);
+    let (mut sources, state_initializers) =
+        tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(state.model(), &run_params)?;
 
-    limits.warmup(state.model(), &inputs)?;
+    let inputs = RunTensors { sources: sources.remove(0), state_initializers };
+    limits.warmup(state.model(), &inputs.sources)?;
     let (iters, dur) = bench(&mut state, inputs, limits, probe)?;
 
     if params.machine_friendly {
