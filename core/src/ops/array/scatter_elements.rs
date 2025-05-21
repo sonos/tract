@@ -6,7 +6,6 @@ pub struct ScatterElements {
     pub axis: usize,
 }
 
-
 impl Op for ScatterElements {
     fn name(&self) -> Cow<str> {
         "ScatterElements".into()
@@ -22,8 +21,8 @@ impl ScatterElements {
         indices: &ArrayViewD<i64>,
         updates: TValue,
     ) -> TractResult<TValue> {
-        let mut data = data.into_tensor().into_array_unchecked::<T>();
-        let updates_view = updates.to_array_view_unchecked::<T>();
+        let mut data = unsafe { data.into_tensor().into_array_unchecked::<T>() };
+        let updates_view = unsafe { updates.to_array_view_unchecked::<T>() };
         for (mut coords, value) in updates_view.indexed_iter() {
             let index = indices[&coords];
             coords[self.axis] =
@@ -31,7 +30,7 @@ impl ScatterElements {
             data[coords] = value.clone()
         }
         let mut tensor = data.into_tensor();
-        tensor.set_datum_type(updates.datum_type());
+        unsafe { tensor.set_datum_type(updates.datum_type()) };
         Ok(tensor.into_tvalue())
     }
 }

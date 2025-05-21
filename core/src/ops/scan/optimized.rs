@@ -180,7 +180,8 @@ impl OpState for State {
     ) -> TractResult<TVec<TValue>> {
         let iters = self.iteration_count(&inputs);
 
-        let State { op, ref mut hidden_state, ref mut position, ref mut model_state } = self;
+        let &mut State { ref op, ref mut hidden_state, ref mut position, ref mut model_state } =
+            self;
 
         // initialize state at first pass, or when forced
         if op.reset_every_turn {

@@ -422,7 +422,7 @@ impl Patcher {
         writer: &mut tract_linalg::pack::KOutWriter<T>,
     ) {
         for x in x_min..x_max {
-            writer.write(*iptr.offset(x * x_stride_ptr));
+            writer.write(unsafe { *iptr.offset(x * x_stride_ptr) });
         }
     }
 

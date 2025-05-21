@@ -6,7 +6,6 @@ pub struct GatherElements {
     pub axis: usize,
 }
 
-
 impl Op for GatherElements {
     fn name(&self) -> Cow<str> {
         "GatherElements".into()
@@ -21,7 +20,7 @@ impl GatherElements {
         data: TValue,
         indices: &ArrayViewD<i64>,
     ) -> TractResult<TValue> {
-        let data_view = data.to_array_view_unchecked::<T>();
+        let data_view = unsafe { data.to_array_view_unchecked::<T>() };
         let output = ArrayD::<T>::from_shape_fn(indices.shape(), |mut coords| {
             let index = indices[&coords];
             coords[self.axis] =
@@ -30,7 +29,7 @@ impl GatherElements {
             data_view[coords].clone()
         });
         let mut tensor = output.into_tensor();
-        tensor.set_datum_type(data.datum_type());
+        unsafe { tensor.set_datum_type(data.datum_type()) };
         Ok(tensor.into_tvalue())
     }
 }

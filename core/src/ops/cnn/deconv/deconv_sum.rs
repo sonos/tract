@@ -332,7 +332,7 @@ macro_rules! impl_eval {
                     output: *mut T,
                     output_c_stride: isize,
                     add: impl Fn(T, T) -> T + Copy + 'static,
-                    ) {
+                    ) { unsafe {
                     let mut c = 0;
                     let mut right = temp;
                     let mut left = output;
@@ -378,7 +378,7 @@ macro_rules! impl_eval {
                         let ptr = output.offset(c as isize * output_c_stride);
                         *ptr = add(*ptr, value);
                     }
-                }
+                }}
 
                 pub fn [<main_loop_3d_ $suffix>]<T: Datum + Float>(
                     op: &DeconvSum,

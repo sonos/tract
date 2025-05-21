@@ -74,10 +74,10 @@ impl OneHot {
         input: &Tensor,
         output: &mut Tensor,
     ) -> TractResult<()> {
-        let on = self.on.to_scalar_unchecked::<T>();
+        let on = unsafe { self.on.to_scalar_unchecked::<T>() };
         let mut shape: TVec<usize> = input.shape().into();
         shape.insert(self.axis, self.dim);
-        let mut array = output.to_array_view_mut_unchecked::<T>();
+        let mut array = unsafe { output.to_array_view_mut_unchecked::<T>() };
         let input = input.cast_to::<i32>()?;
         let input = input.to_array_view::<i32>()?;
         for icoord in tract_ndarray::indices_of(&input) {

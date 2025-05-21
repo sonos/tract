@@ -6,8 +6,6 @@ pub struct GatherNd {
     pub batch_dims: usize,
 }
 
-
-
 impl GatherNd {
     fn compute_shape<D: DimLike>(
         &self,
@@ -40,14 +38,19 @@ impl GatherNd {
         let mut data_shape_op: TVec<usize> =
             data.shape().iter().skip(batch_dims).copied().collect();
         data_shape_op.insert(0, batch_size);
-        let reshaped_data =
-            data.to_array_view_unchecked::<T>().into_shape_with_order(&*data_shape_op).unwrap();
+        let reshaped_data = unsafe {
+            data.to_array_view_unchecked::<T>().into_shape_with_order(&*data_shape_op).unwrap()
+        };
 
         let mut output_shape_op: TVec<usize> =
             data.shape().iter().skip(n + batch_dims).copied().collect();
         output_shape_op.insert(0, batch_size * remaining);
-        let mut output =
-            output.to_array_view_mut_unchecked::<T>().into_shape_with_order(&*output_shape_op).unwrap();
+        let mut output = unsafe {
+            output
+                .to_array_view_mut_unchecked::<T>()
+                .into_shape_with_order(&*output_shape_op)
+                .unwrap()
+        };
 
         for b in 0..batch_size {
             let mut i = reshaped_data.view();

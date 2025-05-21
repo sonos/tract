@@ -4,8 +4,6 @@ use ndarray::*;
 #[derive(Debug, Clone, new, Hash)]
 pub struct ScatterNd;
 
-
-
 impl Op for ScatterNd {
     fn name(&self) -> Cow<str> {
         "ScatterNd".into()
@@ -21,8 +19,8 @@ impl ScatterNd {
         indices: &ArrayViewD<i64>,
         updates: TValue,
     ) -> TractResult<TValue> {
-        let mut data = data.into_tensor().into_array_unchecked::<T>();
-        let updates_view = updates.to_array_view_unchecked::<T>();
+        let mut data = unsafe { data.into_tensor().into_array_unchecked::<T>() };
+        let updates_view = unsafe { updates.to_array_view_unchecked::<T>() };
         for coords in tract_ndarray::indices(&indices.shape()[..indices.ndim() - 1]) {
             let mut indices_into_data = indices.view();
             let mut updates = updates_view.view();
@@ -38,7 +36,7 @@ impl ScatterNd {
             data.assign(&updates)
         }
         let mut tensor = data.into_tensor();
-        tensor.set_datum_type(updates.datum_type());
+        unsafe { tensor.set_datum_type(updates.datum_type()) };
         Ok(tensor.into_tvalue())
     }
 }

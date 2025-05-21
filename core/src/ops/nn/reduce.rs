@@ -123,7 +123,7 @@ impl Reducer {
         A: Copy,
     {
         use ndarray::*;
-        let input = input_tensor.to_array_view_unchecked::<T>();
+        let input = unsafe { input_tensor.to_array_view_unchecked::<T>() };
         let result = Array::from_shape_fn(output_shape, |coords| {
             let slice_spec: Vec<SliceInfoElem> = coords
                 .slice()
@@ -167,11 +167,13 @@ impl Reducer {
                     operative_shape.push(*dim);
                 }
             }
-            let mut output = input
-                .to_array_view_unchecked::<T>()
-                .into_shape_with_order(operative_shape)
-                .unwrap()
-                .sum_axis(Axis(*operative_axes.iter().max().unwrap()));
+            let mut output = unsafe {
+                input
+                    .to_array_view_unchecked::<T>()
+                    .into_shape_with_order(operative_shape)
+                    .unwrap()
+                    .sum_axis(Axis(*operative_axes.iter().max().unwrap()))
+            };
 
             for axis in operative_axes.iter().rev().skip(1) {
                 output = output.sum_axis(Axis(*axis));
@@ -190,7 +192,7 @@ impl Reducer {
                 let input_view = output
                     .as_ref()
                     .map(|o| o.view())
-                    .unwrap_or_else(|| input.to_array_view_unchecked::<T>());
+                    .unwrap_or_else(|| unsafe { input.to_array_view_unchecked::<T>() });
 
                 // Create array that will contain intermidiate result
                 let reduced_dim = input_view.shape()[axis];
@@ -230,7 +232,7 @@ impl Reducer {
                         let first: *const T = &input_view[coords];
                         let mut sum = T::zero();
                         for i in 0..reduced_dim {
-                            sum = sum + *(first.add(i * input_stride));
+                            sum = sum + unsafe { *(first.add(i * input_stride)) };
                         }
                         sum
                     }

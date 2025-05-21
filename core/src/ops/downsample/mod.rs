@@ -67,14 +67,16 @@ impl EvalOp for Downsample {
                     axis: usize,
                     slice: ndarray::Slice,
                 ) -> Tensor {
-                    let dt = t.datum_type();
-                    let mut t2 = t
-                        .to_array_view_unchecked::<T>()
-                        .slice_axis(Axis(axis), slice)
-                        .into_owned()
-                        .into_tensor();
-                    t2.set_datum_type(dt);
-                    t2
+                    unsafe {
+                        let dt = t.datum_type();
+                        let mut t2 = t
+                            .to_array_view_unchecked::<T>()
+                            .slice_axis(Axis(axis), slice)
+                            .into_owned()
+                            .into_tensor();
+                        t2.set_datum_type(dt);
+                        t2
+                    }
                 }
                 dispatch_datum_by_size!(do_slice(input.datum_type())(&*input, self.axis, slice))
             };

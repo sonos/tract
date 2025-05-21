@@ -489,7 +489,7 @@ where
     }
 
     pub fn outputs(&mut self) -> TractResult<TVec<TValue>> {
-        let SimpleState { ref plan, ref mut values, .. } = self;
+        let &mut SimpleState { ref plan, ref mut values, .. } = self;
         let mut v = tvec![];
         for o in plan.borrow().outputs.iter() {
             let vs = values[o.node].as_mut().ok_or_else(|| {
@@ -513,7 +513,7 @@ where
     }
 
     pub fn prepare_inputs(&self, node: usize) -> TractResult<TVec<TValue>> {
-        let SimpleState { ref plan, ref values, .. } = self;
+        let &SimpleState { ref plan, ref values, .. } = self;
         let plan = plan.borrow();
         let nodes = plan.model().nodes();
         let node = &nodes[node];
@@ -538,8 +538,13 @@ where
         node: usize,
         inputs: TVec<TValue>,
     ) -> TractResult<()> {
-        let SimpleState { ref plan, ref mut session_state, ref mut values, ref mut states, .. } =
-            self;
+        let &mut SimpleState {
+            ref plan,
+            ref mut session_state,
+            ref mut values,
+            ref mut states,
+            ..
+        } = self;
         let plan = plan.borrow();
         let nodes = plan.model().nodes();
         let node = &nodes[node];
@@ -565,7 +570,7 @@ where
                     inputs.push(self.values[i.node].as_ref().unwrap()[i.slot].clone())
                 }
             }
-            let Self { ref mut states, ref mut session_state, ref plan, .. } = self;
+            let &mut Self { ref mut states, ref mut session_state, ref plan, .. } = self;
             eval(
                 session_state,
                 states[node].as_deref_mut(),

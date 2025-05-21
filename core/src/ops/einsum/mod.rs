@@ -346,7 +346,7 @@ fn declutter_reshape_folding_input_axis(
     node: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
     for (slot, prec) in node.inputs.iter().map(|n| model.node(n.node)).enumerate() {
-        let Some(AxisOp::Reshape(at, ref from, ref to)) = prec.op_as() else { continue };
+        let Some(&AxisOp::Reshape(at, ref from, ref to)) = prec.op_as() else { continue };
         if to.len() > 1 {
             continue;
         }
@@ -358,7 +358,7 @@ fn declutter_reshape_folding_input_axis(
         for label in &extra_labels {
             axes = axes.with_extra_axis(*label, InOut::In(extra_input), 0)?;
         }
-        let folded_axis = op.axes.axis((InOut::In(slot), *at))?;
+        let folded_axis = op.axes.axis((InOut::In(slot), at))?;
         if folded_axis.outputs[0].len() > 1 {
             return Ok(None);
         };
