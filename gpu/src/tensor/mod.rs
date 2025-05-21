@@ -59,11 +59,11 @@ impl DeviceTensor {
 
     /// Create an uninitialized DeviceTensor
     pub unsafe fn uninitialized_dt(dt: DatumType, shape: &[usize]) -> TractResult<DeviceTensor> {
-        Tensor::uninitialized_dt(dt, shape)?.into_device()
+        unsafe { Tensor::uninitialized_dt(dt, shape) }?.into_device()
     }
 
     pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> TractResult<DeviceTensor> {
-        Self::uninitialized_dt(T::datum_type(), shape)
+        unsafe { Self::uninitialized_dt(T::datum_type(), shape) }
     }
 
     // Create a device tensor with a given shape and a slice of elements. The data is copied and aligned to size of T.

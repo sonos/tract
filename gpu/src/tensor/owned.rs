@@ -229,7 +229,7 @@ impl OwnedDeviceTensor {
         strides: impl Into<TVec<isize>>,
     ) -> Self {
         Self {
-            inner: self.inner.reshaped_with_geometry_unchecked(shape, strides),
+            inner: unsafe { self.inner.reshaped_with_geometry_unchecked(shape, strides) },
             device_buffer: self.device_buffer.clone(),
         }
     }
