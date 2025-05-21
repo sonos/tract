@@ -35,7 +35,11 @@ impl DynKeyValueCacheState {
 }
 
 impl DynKeyValueCacheState {
-    pub fn resolve_symbols(state: &mut SessionState, fact: TypedFact, concrete_shape: Option<&[usize]>) -> TractResult<()>{
+    pub fn resolve_symbols(
+        state: &mut SessionState,
+        fact: TypedFact,
+        concrete_shape: Option<&[usize]>,
+    ) -> TractResult<()> {
         let unresolved = fact
             .shape
             .iter()
@@ -92,11 +96,7 @@ impl OpState for DynKeyValueCacheState {
     }
 
     fn resolve_symbols(&mut self, state: &mut SessionState) -> TractResult<()> {
-        let shape = if let Some(kv_cache) = &self.kv_cache {
-           Some(kv_cache.shape())
-        } else {
-            None
-        };
+        let shape = self.kv_cache.as_ref().map(|kv_cache| kv_cache.shape());
         Self::resolve_symbols(state, self.input_facts[0].clone(), shape)
     }
 
@@ -239,8 +239,11 @@ pub fn replace_kv_cache(target: &mut TypedModel, source_node_id: usize) -> Tract
         // Replace Concat by KVCache
         let name = target.node_names().collect_vec()[source_node_id].to_string();
         let concat_node = target.node_mut(concat_node_id);
-        concat_node.op =
-            Box::new(DynKeyValueCache { io_name: [name.clone(), concat_node.name.to_string()], axis, input_facts });
+        concat_node.op = Box::new(DynKeyValueCache {
+            io_name: [name.clone(), concat_node.name.to_string()],
+            axis,
+            input_facts,
+        });
         concat_node.name = name;
         concat_node.inputs.retain(|input| input != &source_node_id.into());
     }

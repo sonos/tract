@@ -286,7 +286,14 @@ pub struct RunParams {
     pub symbols: SymbolValues,
 }
 
-fn get_or_make_tensor(model: &dyn Model, params: &RunParams, mut fact: TypedFact, name: &str, input_idx: usize, target: &mut TVec<(String, Vec<TValue>)>) -> TractResult<()> {
+fn get_or_make_tensor(
+    model: &dyn Model,
+    params: &RunParams,
+    mut fact: TypedFact,
+    name: &str,
+    input_idx: usize,
+    target: &mut TVec<(String, Vec<TValue>)>,
+) -> TractResult<()> {
     if let Some(mut value) = params
         .tensors_values
         .by_name(name)
@@ -308,12 +315,18 @@ fn get_or_make_tensor(model: &dyn Model, params: &RunParams, mut fact: TypedFact
         }
         if TypedFact::shape_and_dt_of(&value[0]).compatible_with(&fact) {
             info!("Using fixed input for input called {} ({} turn(s))", name, value.len());
-            target.push((name.to_string(), value.iter().map(|t| t.clone().into_tensor().into()).collect()));
+            target.push((
+                name.to_string(),
+                value.iter().map(|t| t.clone().into_tensor().into()).collect(),
+            ));
         } else if fact.datum_type == f16::datum_type()
             && value[0].datum_type() == f32::datum_type()
             && params.allow_float_casts
         {
-            target.push((name.to_string(), value.iter().map(|t| t.cast_to::<f16>().unwrap().into_owned().into()).collect()));
+            target.push((
+                name.to_string(),
+                value.iter().map(|t| t.cast_to::<f16>().unwrap().into_owned().into()).collect(),
+            ));
         } else if value.len() == 1 && model.properties().contains_key("pulse.delay") {
             let value = &value[0];
             let input_pulse_axis = model
@@ -342,8 +355,7 @@ fn get_or_make_tensor(model: &dyn Model, params: &RunParams, mut fact: TypedFact
             let needed_pulses = last_frame.divceil(output_pulse);
             let mut values = vec![];
             for ix in 0..needed_pulses {
-                let mut t =
-                    Tensor::zero_dt(fact.datum_type, fact.shape.as_concrete().unwrap())?;
+                let mut t = Tensor::zero_dt(fact.datum_type, fact.shape.as_concrete().unwrap())?;
                 let start = ix * input_pulse;
                 let end = (start + input_pulse).min(input_len);
                 if end > start {
@@ -357,7 +369,12 @@ fn get_or_make_tensor(model: &dyn Model, params: &RunParams, mut fact: TypedFact
             );
             target.push((name.to_string(), values));
         } else {
-            bail!("For input {}, can not reconcile model input fact {:?} with provided input {:?}", name, fact, value[0]);
+            bail!(
+                "For input {}, can not reconcile model input fact {:?} with provided input {:?}",
+                name,
+                fact,
+                value[0]
+            );
         };
     } else if fact.shape.is_concrete() && fact.shape.volume() == TDim::zero() {
         let shape = fact.shape.as_concrete().unwrap();
@@ -377,6 +394,7 @@ fn get_or_make_tensor(model: &dyn Model, params: &RunParams, mut fact: TypedFact
     Ok(())
 }
 
+#[allow(clippy::type_complexity)]
 pub fn get_or_make_inputs_and_state_inits(
     tract: &dyn Model,
     params: &RunParams,
@@ -387,21 +405,24 @@ pub fn get_or_make_inputs_and_state_inits(
         let name = tract.node_name(input.node);
         get_or_make_tensor(tract, params, fact, name, ix, &mut tmp_inputs)?;
     }
-    let inputs: Vec<TVec<TValue>> = (0..tmp_inputs[0].1.len()).map(|turn| tmp_inputs.iter().map(|t| t.1[turn].clone()).collect_vec().into()).collect_vec();
+    let inputs: Vec<TVec<TValue>> = (0..tmp_inputs[0].1.len())
+        .map(|turn| tmp_inputs.iter().map(|t| t.1[turn].clone()).collect_vec().into())
+        .collect_vec();
 
     let mut tmp_state_init = tvec!();
     let mut dummy_session_state = SessionState::default();
-    for (id, state) in (0..tract.nodes_len())
-                                     .filter_map(|id| 
-                                        tract.node_op(id).state(&mut dummy_session_state, id).ok().flatten().map(|s| (id, s)))
-    {
+    for (id, state) in (0..tract.nodes_len()).filter_map(|id| {
+        tract.node_op(id).state(&mut dummy_session_state, id).ok().flatten().map(|s| (id, s))
+    }) {
         if let Some(fact) = state.init_tensor_fact() {
             let name = tract.node_name(id);
             get_or_make_tensor(tract, params, fact, name, usize::MAX, &mut tmp_state_init)?;
         }
     }
     let mut state_initializers = HashMap::new();
-    tmp_state_init.iter().for_each(|(name, state)| { state_initializers.insert(name.to_string(), state[0].clone()); });
+    tmp_state_init.iter().for_each(|(name, state)| {
+        state_initializers.insert(name.to_string(), state[0].clone());
+    });
     Ok((inputs, state_initializers))
 }
 
