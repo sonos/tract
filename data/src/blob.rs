@@ -53,17 +53,17 @@ impl Hash for Blob {
 impl Blob {
     #[inline]
     pub unsafe fn new_for_size_and_align(size: usize, align: usize) -> Blob {
-        Self::for_layout(Layout::from_size_align_unchecked(size, align))
+        unsafe { Self::for_layout(Layout::from_size_align_unchecked(size, align)) }
     }
 
     #[inline]
     pub unsafe fn ensure_size_and_align(&mut self, size: usize, align: usize) {
         if size > self.layout.size() || align > self.layout.align() {
             if !self.data.is_null() {
-                std::alloc::dealloc(self.data as _, self.layout);
+                unsafe { std::alloc::dealloc(self.data as _, self.layout) };
             }
-            self.layout = Layout::from_size_align_unchecked(size, align);
-            self.data = std::alloc::alloc(self.layout);
+            self.layout = unsafe { Layout::from_size_align_unchecked(size, align) };
+            self.data = unsafe { std::alloc::alloc(self.layout) };
             assert!(!self.data.is_null());
         }
     }
