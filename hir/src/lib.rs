@@ -1,4 +1,5 @@
 #![allow(clippy::len_zero)]
+#![allow(clippy::collapsible_if)]
 #[macro_use]
 extern crate derive_new;
 #[macro_use]

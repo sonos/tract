@@ -1,3 +1,4 @@
+#![allow(clippy::collapsible_if)]
 use std::sync::RwLock;
 
 use crate::fact::StreamInfo;
