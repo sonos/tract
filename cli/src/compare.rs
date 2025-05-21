@@ -244,7 +244,7 @@ pub fn handle_with_model(
 
     let plan = SimplePlan::new(reference_model)?;
     let mut state = SimpleState::new(plan)?;
-    let inputs= get_or_make_inputs(reference_model, run_params)?;
+    let inputs = get_or_make_inputs(reference_model, run_params)?;
     state.init_states(&inputs.state_initializers)?;
     for inputs in inputs.sources {
         state.run_plan_with_eval(inputs, |session, state, node, input| -> TractResult<_> {

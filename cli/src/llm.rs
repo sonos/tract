@@ -26,14 +26,14 @@ pub fn figure_out_b_s_p(model: &TypedModel) -> TractResult<(Option<Symbol>, Symb
         let mut dummy_session_state = SessionState::default();
         let mut symbols = HashSet::new();
         for node in &model.nodes {
-            if let Some(state) = node.op.state(&mut dummy_session_state, 0)? {
-                if let Some(fact) = state.init_tensor_fact() {
-                    fact.shape.iter().for_each(|dim| {
-                        if let TDim::Sym(s) = dim {
-                            symbols.insert(s.clone());
-                        }
-                    });
-                }
+            if let Some(fact) = node
+                .op
+                .state(&mut dummy_session_state, 0)?
+                .map(|state| state.init_tensor_fact())
+                .flatten()
+            {
+                symbols = fact.shape.volume().symbols();
+                break;
             }
         }
         symbols
