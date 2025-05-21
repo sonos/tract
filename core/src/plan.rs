@@ -257,10 +257,11 @@ where
         let states_to_init = self
             .states
             .iter_mut()
-            .filter_map(|state| state.as_mut().filter(|s| s.init_tensor_fact().is_some()))
+            .filter_map(Option::as_mut)
+            .filter(|s| s.init_tensor_fact().is_some())
             .collect_vec();
         ensure!(
-            states_to_init.len() == state_init_tensors.keys().len(),
+            states_to_init.len() == state_init_tensors.len(),
             "There are {} op to init but Hashmap has {} entries",
             states_to_init.len(),
             state_init_tensors.keys().len()
@@ -272,12 +273,12 @@ where
     }
 
     fn resolve_symbols_with_states(&mut self) -> TractResult<()> {
-        let states_with_init_fact = self
+        for state in self
             .states
             .iter_mut()
-            .filter_map(|state| state.as_mut().filter(|s| s.init_tensor_fact().is_some()))
-            .collect_vec();
-        for state in states_with_init_fact {
+            .filter_map(Option::as_mut)
+            .filter(|s| s.init_tensor_fact().is_some())
+        {
             state.resolve_symbols(&mut self.session_state)?;
         }
         Ok(())
