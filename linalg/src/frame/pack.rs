@@ -256,7 +256,7 @@ impl PackedFormat {
     ) {
         let k = b.borrow().shape()[k_axis];
         let mn = b.borrow().shape()[mn_axis];
-        self.pack_segment(pb, b, k_axis, mn_axis, 0..k, 0..mn);
+        unsafe { self.pack_segment(pb, b, k_axis, mn_axis, 0..k, 0..mn) };
     }
 
 
@@ -271,7 +271,7 @@ impl PackedFormat {
         mn_stride: isize,
         k_range: Range<usize>,
         mn_range: Range<usize>,
-        ) {
+        ) { unsafe {
         if k_range.len() == 0 || mn_range.len() == 0 {
             return
         }
@@ -325,7 +325,7 @@ impl PackedFormat {
                 }
             }
         }
-    }
+    }}
 
     #[inline]
     pub unsafe fn pack_segment<'a, 'b>(
@@ -341,16 +341,18 @@ impl PackedFormat {
         let pb = pb.borrow_mut();
         let b = b.borrow();
         let dt = pb.datum_type();
-        dispatch_copy!(Self::pack_t(dt)(
-            self,
-            pb.as_ptr_mut_unchecked(),
-            b.as_ptr_unchecked(),
-            b.shape()[mn_axis],
-            b.strides()[k_axis],
-            b.strides()[mn_axis],
-            k_range,
-            mn_range
-        ));
+        unsafe {
+            dispatch_copy!(Self::pack_t(dt)(
+                self,
+                pb.as_ptr_mut_unchecked(),
+                b.as_ptr_unchecked(),
+                b.shape()[mn_axis],
+                b.strides()[k_axis],
+                b.strides()[mn_axis],
+                k_range,
+                mn_range
+            ));
+        }
     }
 
     pub fn write_with_k_outer<'p, T: Copy + Debug>(
@@ -573,20 +575,23 @@ unsafe fn pack_mn_major<Chunk: Copy>(
     mn_range_bytes: Range<usize>,
     k_range: Range<usize>,
 ) {
-    let mnr = std::mem::size_of::<Chunk>();
-    let full_panes = mn_range_bytes.len() / mnr;
-    let partial_pane = mn_range_bytes.len() % mnr;
-    for k in 0..k_range.len() {
-        let mut p_row = packed.add(k * mnr);
-        let mut b_row =
-            b.offset((k_range.start + k) as isize * k_stride_bytes + mn_range_bytes.start as isize);
-        for _ in 0..full_panes {
-            p_row.copy_from_nonoverlapping(b_row, mnr);
-            p_row = p_row.add(panel_len);
-            b_row = b_row.add(mnr);
-        }
-        if partial_pane > 0 {
-            p_row.copy_from_nonoverlapping(b_row, partial_pane);
+    unsafe {
+        let mnr = std::mem::size_of::<Chunk>();
+        let full_panes = mn_range_bytes.len() / mnr;
+        let partial_pane = mn_range_bytes.len() % mnr;
+        for k in 0..k_range.len() {
+            let mut p_row = packed.add(k * mnr);
+            let mut b_row = b.offset(
+                (k_range.start + k) as isize * k_stride_bytes + mn_range_bytes.start as isize,
+            );
+            for _ in 0..full_panes {
+                p_row.copy_from_nonoverlapping(b_row, mnr);
+                p_row = p_row.add(panel_len);
+                b_row = b_row.add(mnr);
+            }
+            if partial_pane > 0 {
+                p_row.copy_from_nonoverlapping(b_row, partial_pane);
+            }
         }
     }
 }

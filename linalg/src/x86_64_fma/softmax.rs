@@ -20,16 +20,17 @@ map_reduce_impl_wrap!(
 
 #[target_feature(enable = "avx,fma")]
 unsafe fn x86_64_fma_softmax2_fastcompact_f32_32n_run(buf: &mut [f32], max: f32) -> f32 {
-    let len = buf.len();
-    let ptr = buf.as_ptr();
-    let mut acc = 0f32;
-    const MLN2: f32 = 0.6931471805f32;
-    const A: f32 = 8388608.0f32;
-    const B: f32 = 1065353216.0f32;
-    const C: f32 = 60801.0f32;
-    const SLOPE: f32 = A / MLN2;
-    const OFFSET: f32 = B - C;
-    std::arch::asm!("
+    unsafe {
+        let len = buf.len();
+        let ptr = buf.as_ptr();
+        let mut acc = 0f32;
+        const MLN2: f32 = 0.6931471805f32;
+        const A: f32 = 8388608.0f32;
+        const B: f32 = 1065353216.0f32;
+        const C: f32 = 60801.0f32;
+        const SLOPE: f32 = A / MLN2;
+        const OFFSET: f32 = B - C;
+        std::arch::asm!("
             vbroadcastss ymm0, xmm0
             vmovaps ymm1, ymm0
             vmovaps ymm2, ymm0
@@ -94,22 +95,27 @@ unsafe fn x86_64_fma_softmax2_fastcompact_f32_32n_run(buf: &mut [f32], max: f32)
             vpermilps xmm1, xmm0, 1
             vaddps xmm0, xmm0, xmm1
             ",
-    len = inout(reg) len => _,
-    ptr = inout(reg) ptr => _,
-    inout("ymm0") acc,
-    out("ymm1") _, out("ymm2") _, out("ymm3") _,
-    out("ymm4") _, out("ymm5") _, out("ymm6") _, out("ymm7") _,
-    out("ymm8") _, out("ymm9") _, out("ymm10") _, out("ymm11") _,
-    out("ymm12") _,
-    inout("ymm13") max => _,
-    inout("ymm14") SLOPE => _,
-    inout("ymm15") OFFSET => _,
-    );
-    acc
+        len = inout(reg) len => _,
+        ptr = inout(reg) ptr => _,
+        inout("ymm0") acc,
+        out("ymm1") _, out("ymm2") _, out("ymm3") _,
+        out("ymm4") _, out("ymm5") _, out("ymm6") _, out("ymm7") _,
+        out("ymm8") _, out("ymm9") _, out("ymm10") _, out("ymm11") _,
+        out("ymm12") _,
+        inout("ymm13") max => _,
+        inout("ymm14") SLOPE => _,
+        inout("ymm15") OFFSET => _,
+        );
+        acc
+    }
 }
 
 #[cfg(test)]
 mod test_x86_64_fma_softmax2_fastcompact_f32_32n {
     use super::*;
-    crate::softmax_l2_frame_tests!(is_x86_feature_detected!("fma"), f32, x86_64_fma_softmax2_fastcompact_f32_32n);
+    crate::softmax_l2_frame_tests!(
+        is_x86_feature_detected!("fma"),
+        f32,
+        x86_64_fma_softmax2_fastcompact_f32_32n
+    );
 }

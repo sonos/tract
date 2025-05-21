@@ -13,9 +13,10 @@ ew_impl_wrap!(
 
 #[target_feature(enable = "avx")]
 unsafe fn x86_64_avx_f32_mul_by_scalar_32n_run(buf: &mut [f32], scalar: f32) {
-    let len = buf.len();
-    let ptr = buf.as_ptr();
-    std::arch::asm!("
+    unsafe {
+        let len = buf.len();
+        let ptr = buf.as_ptr();
+        std::arch::asm!("
             vbroadcastss ymm0, xmm0
             2:
                 vmovaps ymm4, [{ptr}]
@@ -34,11 +35,12 @@ unsafe fn x86_64_avx_f32_mul_by_scalar_32n_run(buf: &mut [f32], scalar: f32) {
                 sub {len}, 32
                 jnz 2b
             ",
-    len = inout(reg) len => _,
-    ptr = inout(reg) ptr => _,
-    in("xmm0") scalar,
-    out("ymm4") _, out("ymm5") _, out("ymm6") _, out("ymm7") _
-    );
+        len = inout(reg) len => _,
+        ptr = inout(reg) ptr => _,
+        in("xmm0") scalar,
+        out("ymm4") _, out("ymm5") _, out("ymm6") _, out("ymm7") _
+        );
+    }
 }
 
 #[cfg(test)]

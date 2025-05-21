@@ -19,12 +19,13 @@ panel_extractor!(kernel_packed_32_f16_to_f32 as packed_32_f16_to_f32(
 
 #[target_feature(enable = "avx2")]
 unsafe fn kernel_packed_32_q40_to_f32(input: *const u8, output: *mut u8, k: usize) {
-    if k == 0 {
-        return;
-    }
-    debug_assert!(k % 32 == 0);
-    debug_assert!(output as usize % 32 == 0);
-    std::arch::asm!("
+    unsafe {
+        if k == 0 {
+            return;
+        }
+        debug_assert!(k % 32 == 0);
+        debug_assert!(output as usize % 32 == 0);
+        std::arch::asm!("
     vbroadcastss    ymm14, dword ptr [{mask}]
     vbroadcastss    ymm13, dword ptr [{eight}]
 
@@ -82,26 +83,28 @@ unsafe fn kernel_packed_32_q40_to_f32(input: *const u8, output: *mut u8, k: usiz
         sub {k}, 32
         jnz 2b;
             ",
-    mask = in(reg) &0x0F0F0F0F,
-    eight = in(reg) &0x08,
-    k = inout(reg) k => _,
-    k2 = out(reg) _,
-    i = inout(reg) input => _,
-    o = inout(reg) output => _,
-    out("ymm0") _, out("ymm1") _, out("ymm2") _, out("ymm3") _,
-    out("ymm4") _, out("ymm5") _, out("ymm6") _, out("ymm7") _,
-    out("ymm8") _, out("ymm9") _, out("ymm10") _, out("ymm11") _,
-    out("ymm12") _, out("ymm13") _, out("ymm14") _, out("ymm15") _
-    );
+        mask = in(reg) &0x0F0F0F0F,
+        eight = in(reg) &0x08,
+        k = inout(reg) k => _,
+        k2 = out(reg) _,
+        i = inout(reg) input => _,
+        o = inout(reg) output => _,
+        out("ymm0") _, out("ymm1") _, out("ymm2") _, out("ymm3") _,
+        out("ymm4") _, out("ymm5") _, out("ymm6") _, out("ymm7") _,
+        out("ymm8") _, out("ymm9") _, out("ymm10") _, out("ymm11") _,
+        out("ymm12") _, out("ymm13") _, out("ymm14") _, out("ymm15") _
+        );
+    }
 }
 
 #[target_feature(enable = "avx2")]
 unsafe fn kernel_packed_32_f16_to_f32(input: *const u8, output: *mut u8, k: usize) {
-    if k == 0 {
-        return;
-    }
-    debug_assert!(output as usize % 32 == 0);
-    std::arch::asm!("
+    unsafe {
+        if k == 0 {
+            return;
+        }
+        debug_assert!(output as usize % 32 == 0);
+        std::arch::asm!("
     2:
         vmovaps         xmm4, [{i}]
         vmovaps         xmm5, [{i} + 16]
@@ -124,9 +127,10 @@ unsafe fn kernel_packed_32_f16_to_f32(input: *const u8, output: *mut u8, k: usiz
         sub {k}, 1
         jnz 2b;
             ",
-    k = inout(reg) k => _,
-    i = inout(reg) input => _,
-    o = inout(reg) output => _,
-    out("ymm4") _, out("ymm5") _, out("ymm6") _, out("ymm7") _,
-    );
+        k = inout(reg) k => _,
+        i = inout(reg) input => _,
+        o = inout(reg) output => _,
+        out("ymm4") _, out("ymm5") _, out("ymm6") _, out("ymm7") _,
+        );
+    }
 }

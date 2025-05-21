@@ -339,7 +339,7 @@ fn make_extern_kernel_decl_macro(out_dir: &path::Path, suffix: &str) {
     macro_rules! extern_kernel {
         (fn $name: ident($($par_name:ident : $par_type: ty ),*) -> $rv: ty) => {
             paste! {
-                extern "C" { pub fn [<$name _ _suffix>]($(par_name: $par_type),*) -> $rv; }
+                unsafe extern "C" { pub fn [<$name _ _suffix>]($(par_name: $par_type),*) -> $rv; }
                 pub use [<$name _ _suffix>] as $name;
             }
         }

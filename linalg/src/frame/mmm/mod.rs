@@ -96,8 +96,10 @@ pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
     fn stores(&self) -> Cow<[DatumType]>;
 
     unsafe fn run(&self, m: usize, n: usize, non_linear: &[FusedSpec]) -> TractResult<()> {
-        let mut scratch = self.allocate_scratch_space();
-        self.run_with_scratch_space(m, n, &mut *scratch, non_linear)
+        unsafe {
+            let mut scratch = self.allocate_scratch_space();
+            self.run_with_scratch_space(m, n, &mut *scratch, non_linear)
+        }
     }
 
     unsafe fn allocate_scratch_space(&self) -> Box<dyn ScratchSpace>;
@@ -193,24 +195,26 @@ impl<K: MatMatMulKer> MatMatMul for K {
         scratch: &mut dyn ScratchSpace,
         non_linear: &[FusedSpec],
     ) -> TractResult<()> {
-        let scratch = scratch
-            .downcast_mut::<ScratchSpaceImpl<K::Acc>>()
-            .context("Wrong scratch space type")?;
-        scratch.prepare(self, m, n, non_linear)?;
-        if n == 1 && self.nr() == 1 {
-            run_with_scratch_space_vec(self, m, scratch, non_linear)
-        } else {
-            let (mut prefer_col, mut prefer_row) = (0, 0);
-            for uop in non_linear.iter() {
-                if let Some(col) = uop.prefer_col_outer() {
-                    prefer_col = col as usize;
-                    prefer_row = (!col) as usize;
-                }
-            }
-            if prefer_col > prefer_row {
-                run_with_scratch_space_col_outer(self, m, n, scratch, non_linear)
+        unsafe {
+            let scratch = scratch
+                .downcast_mut::<ScratchSpaceImpl<K::Acc>>()
+                .context("Wrong scratch space type")?;
+            scratch.prepare(self, m, n, non_linear)?;
+            if n == 1 && self.nr() == 1 {
+                run_with_scratch_space_vec(self, m, scratch, non_linear)
             } else {
-                run_with_scratch_space_row_outer(self, m, n, scratch, non_linear)
+                let (mut prefer_col, mut prefer_row) = (0, 0);
+                for uop in non_linear.iter() {
+                    if let Some(col) = uop.prefer_col_outer() {
+                        prefer_col = col as usize;
+                        prefer_row = (!col) as usize;
+                    }
+                }
+                if prefer_col > prefer_row {
+                    run_with_scratch_space_col_outer(self, m, n, scratch, non_linear)
+                } else {
+                    run_with_scratch_space_row_outer(self, m, n, scratch, non_linear)
+                }
             }
         }
     }
@@ -222,19 +226,21 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
     scratch: &mut ScratchSpaceImpl<K::Acc>,
     non_linear: &[FusedSpec],
 ) -> TractResult<()> {
-    match crate::multithread::current_tract_executor() {
-        Executor::SingleThread => {
-            for ia in 0..m.divceil(ker.mr()) {
-                scratch.run(ker, non_linear, ia, 0)?;
+    unsafe {
+        match crate::multithread::current_tract_executor() {
+            Executor::SingleThread => {
+                for ia in 0..m.divceil(ker.mr()) {
+                    scratch.run(ker, non_linear, ia, 0)?;
+                }
+                Ok(())
             }
-            Ok(())
+            #[cfg(feature = "multithread-mm")]
+            Executor::MultiThread(pool) => pool.install(|| {
+                (0..m.div_ceil(ker.mr()))
+                    .into_par_iter()
+                    .try_for_each(|ia| scratch.run(ker, non_linear, ia, 0))
+            }),
         }
-        #[cfg(feature = "multithread-mm")]
-        Executor::MultiThread(pool) => pool.install(|| {
-            (0..m.div_ceil(ker.mr()))
-                .into_par_iter()
-                .try_for_each(|ia| scratch.run(ker, non_linear, ia, 0))
-        }),
     }
 }
 
@@ -245,24 +251,26 @@ unsafe fn run_with_scratch_space_col_outer<K: MatMatMulKer>(
     scratch: &mut ScratchSpaceImpl<K::Acc>,
     non_linear: &[FusedSpec],
 ) -> TractResult<()> {
-    match crate::multithread::current_tract_executor() {
-        Executor::SingleThread => {
-            for ib in 0..n.divceil(ker.nr()) {
-                for ia in 0..m.divceil(ker.mr()) {
-                    scratch.run(ker, non_linear, ia, ib)?;
-                }
-            }
-            Ok(())
-        }
-        #[cfg(feature = "multithread-mm")]
-        Executor::MultiThread(pool) => pool.install(|| {
-            (0..n.div_ceil(ker.nr())).into_par_iter().try_for_each(|ib| {
-                for ia in 0..m.divceil(ker.mr()) {
-                    scratch.run(ker, non_linear, ia, ib)?;
+    unsafe {
+        match crate::multithread::current_tract_executor() {
+            Executor::SingleThread => {
+                for ib in 0..n.divceil(ker.nr()) {
+                    for ia in 0..m.divceil(ker.mr()) {
+                        scratch.run(ker, non_linear, ia, ib)?;
+                    }
                 }
                 Ok(())
-            })
-        }),
+            }
+            #[cfg(feature = "multithread-mm")]
+            Executor::MultiThread(pool) => pool.install(|| {
+                (0..n.div_ceil(ker.nr())).into_par_iter().try_for_each(|ib| {
+                    for ia in 0..m.divceil(ker.mr()) {
+                        scratch.run(ker, non_linear, ia, ib)?;
+                    }
+                    Ok(())
+                })
+            }),
+        }
     }
 }
 
@@ -273,25 +281,27 @@ unsafe fn run_with_scratch_space_row_outer<K: MatMatMulKer>(
     scratch: &mut ScratchSpaceImpl<K::Acc>,
     non_linear: &[FusedSpec],
 ) -> TractResult<()> {
-    match crate::multithread::current_tract_executor() {
-        Executor::SingleThread => {
-            for ia in 0..m.divceil(ker.mr()) {
-                for ib in 0..n.divceil(ker.nr()) {
-                    scratch.run(ker, non_linear, ia, ib)?;
-                }
-            }
-            Ok(())
-        }
-        #[cfg(feature = "multithread-mm")]
-        Executor::MultiThread(pool) => pool.install(|| {
-            pool.install(|| {
-                (0..m.div_ceil(ker.mr())).into_par_iter().try_for_each(|ia| {
+    unsafe {
+        match crate::multithread::current_tract_executor() {
+            Executor::SingleThread => {
+                for ia in 0..m.divceil(ker.mr()) {
                     for ib in 0..n.divceil(ker.nr()) {
                         scratch.run(ker, non_linear, ia, ib)?;
                     }
-                    Ok(())
+                }
+                Ok(())
+            }
+            #[cfg(feature = "multithread-mm")]
+            Executor::MultiThread(pool) => pool.install(|| {
+                pool.install(|| {
+                    (0..m.div_ceil(ker.mr())).into_par_iter().try_for_each(|ia| {
+                        for ib in 0..n.divceil(ker.nr()) {
+                            scratch.run(ker, non_linear, ia, ib)?;
+                        }
+                        Ok(())
+                    })
                 })
-            })
-        }),
+            }),
+        }
     }
 }
