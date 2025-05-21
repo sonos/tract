@@ -1,10 +1,10 @@
 use crate::Parameters;
 use readings_probe::Probe;
 use std::time::{Duration, Instant};
-use tract_libcli::tensor::RunTensors;
 use tract_hir::internal::*;
 use tract_libcli::profile::BenchLimits;
 use tract_libcli::tensor::get_or_make_inputs;
+use tract_libcli::tensor::RunTensors;
 use tract_libcli::terminal;
 
 pub fn criterion(
@@ -113,8 +113,7 @@ pub fn handle(
 ) -> TractResult<()> {
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
     let mut state = make_state(params, matches, sub_matches)?;
-    let inputs =
-        get_or_make_inputs(state.model(), &run_params)?;
+    let inputs = get_or_make_inputs(state.model(), &run_params)?;
 
     limits.warmup(state.model(), &inputs)?;
     let (iters, dur) = bench(&mut state, inputs, limits, probe)?;
