@@ -1,11 +1,12 @@
 use crate::bench::{bench, make_state};
 use crate::Parameters;
 use readings_probe::Probe;
-use tract_core::value::RunTensors;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
+use tract_core::value::RunTensors;
 use tract_hir::internal::*;
 use tract_libcli::profile::BenchLimits;
+use tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits;
 
 pub fn figure_out_b_s_p(model: &TypedModel) -> TractResult<(Option<Symbol>, Symbol, Symbol)> {
     // expectations:
@@ -80,13 +81,12 @@ pub fn bench_pp(
     run_params.symbols.set(&p, 0);
     // Warmup
     run_params.symbols.set(&s, 6);
-    let inputs = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?
-        .0
-        .remove(0);
+    let inputs = retrieve_or_make_inputs_and_state_inits(model, &run_params)?.0.remove(0);
     limits.warmup(model, &inputs)?;
-
+    
     run_params.symbols.set(&s, pp as i64);
-    let (mut sources, state_initializers) = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?;
+    let (mut sources, state_initializers) =
+        retrieve_or_make_inputs_and_state_inits(model, &run_params)?;
     let inputs = RunTensors { sources: sources.remove(0), state_initializers };
 
     let (_, dur) = bench(&mut state, inputs, limits, probe)?;
@@ -118,11 +118,11 @@ pub fn bench_tg(
     run_params.symbols.set(&s, 1);
     // Warmup
     run_params.symbols.set(&p, 1);
-    let inputs = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?
-        .0
-        .remove(0);
+    let (mut inputs, state_inits) = retrieve_or_make_inputs_and_state_inits(model, &run_params)?;
 
-    limits.warmup(model, &inputs)?;
+    let input = inputs.remove(0);
+    state.init_states(&state_inits)?;
+    limits.warmup(model, &input)?;
     state.reset_op_states()?;
 
     let mut tot_dur = Duration::default();
@@ -130,15 +130,8 @@ pub fn bench_tg(
         if let Some(p) = probe {
             p.log_event(&format!("Starting token {t}"))?;
         }
-
-        run_params.symbols.set(&p, t as i64);
-        let (mut sources, state_initializers) =
-            tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(model, &run_params)?;
-        
-        state.init_states(&state_initializers)?;
-        let input= sources.remove(0);
         let start = Instant::now();
-        state.run(input)?;
+        state.run(input.clone())?;
         tot_dur += start.elapsed();
     }
     state.reset_op_states()?;
