@@ -117,7 +117,7 @@ pub fn handle(
         get_or_make_inputs_and_state_inits(state.model(), &run_params)?;
 
     let inputs = RunTensors { sources: sources.remove(0), state_initializers };
-    limits.warmup(state.model(), &inputs.sources)?;
+    limits.warmup(state.model(), &inputs)?;
     let (iters, dur) = bench(&mut state, inputs, limits, probe)?;
 
     if params.machine_friendly {
