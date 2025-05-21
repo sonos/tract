@@ -11,7 +11,7 @@ use tract_core::ops::cnn::conv::Im2Col;
 use tract_core::ops::matmul::pack::OptMatMulPack;
 use tract_core::tract_data::itertools::izip;
 use tract_hir::internal::*;
-use tract_libcli::tensor::{get_or_make_inputs_and_state_inits, RunParams};
+use tract_libcli::tensor::{get_or_make_inputs, RunParams};
 use tract_nnef::tensors::write_tensor;
 #[cfg(feature = "pulse")]
 use tract_pulse::internal::*;
@@ -156,15 +156,15 @@ fn run_regular(
         None
     };
     dispatch_model!(tract, |m| {
-        let (sources, state_initializers) = get_or_make_inputs_and_state_inits(tract, run_params)?;
+        let inputs = get_or_make_inputs(tract, run_params)?;
 
         let plan = SimplePlan::new_with_options(m, &plan_options)?;
         let mut state = SimpleState::new(plan)?;
-        state.init_states(&state_initializers)?;
+        state.init_states(&inputs.state_initializers)?;
 
         let mut results = tvec!(vec!(); state.model().outputs.len());
-        let multiturn = sources.len() > 1;
-        for (turn, inputs) in sources.into_iter().enumerate() {
+        let multiturn = inputs.sources.len() > 1;
+        for (turn, inputs) in inputs.sources.into_iter().enumerate() {
             let turn_results =
                 state.run_plan_with_eval(inputs, |session_state, state, node, input| {
                     if steps {

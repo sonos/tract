@@ -2,7 +2,7 @@ use tract_core::internal::*;
 use tract_core::num_traits::Zero;
 use tract_core::ops::scan::State;
 use tract_core::ops::submodel::TypedModelOpState;
-use tract_core::value::RunTensors;
+use crate::tensor::RunTensors;
 
 use crate::annotations::*;
 use crate::model::Model;
@@ -43,7 +43,7 @@ impl BenchLimits {
         let start_warmup = crate::time::now();
         debug!("Warming up before profiling...");
         while iters < max_loops && start_warmup.elapsed() < max_time {
-            state.run(inputs.sources.clone())?;
+            state.run(inputs.sources[0].clone())?;
             iters += 1;
         }
         debug!("Done warming up.");
@@ -79,7 +79,7 @@ pub fn profile(
         rec_profiler(
             &mut state,
             dg,
-            &inputs.sources,
+            &inputs.sources[0],
             custom_profiler.as_ref(),
             &prefix,
             None,
@@ -129,7 +129,7 @@ pub fn profile_metal(
     bench_limits.warmup(model, inputs)?;
 
     let mut plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
-    let state = TypedSimpleState::new_from_inputs(&plan, inputs.sources.clone())?;
+    let state = TypedSimpleState::new_from_inputs(&plan, inputs.sources[0].clone())?;
 
     let session_handler = tract_gpu::session_handler::DeviceSessionHandler::from_plan(
         &plan,
@@ -144,7 +144,7 @@ pub fn profile_metal(
     while iters < bench_limits.max_loops && dur < bench_limits.max_time {
         state.init_states(&inputs.state_initializers)?;
         let start = Instant::now();
-        rec_profiler_metal(&mut state, dg, &inputs.sources, &prefix)?;
+        rec_profiler_metal(&mut state, dg, &inputs.sources[0], &prefix)?;
         dur += start.elapsed();
         state.reset_op_states()?;
         iters += 1;
