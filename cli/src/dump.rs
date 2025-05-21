@@ -129,9 +129,10 @@ pub fn handle(
             .tract_model
             .downcast_ref::<TypedModel>()
             .context("Can only profile typed models")?;
-        let (sources, state_initializers) = retrieve_or_make_inputs_and_state_inits(model, &run_params)?;
+        let (sources, state_initializers) =
+            retrieve_or_make_inputs_and_state_inits(model, &run_params)?;
 
-        let run_tensors = RunTensors { sources: sources[0].clone(), state_initializers};
+        let run_tensors = RunTensors { sources: sources[0].clone(), state_initializers };
         if matches.is_present("metal") {
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             {
