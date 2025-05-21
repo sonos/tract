@@ -15,7 +15,7 @@ struct AutoReleaseHelper {
 
 impl AutoReleaseHelper {
     unsafe fn new() -> Self {
-        AutoReleaseHelper { context: objc_autoreleasePoolPush() }
+        AutoReleaseHelper { context: unsafe { objc_autoreleasePoolPush() } }
     }
 }
 

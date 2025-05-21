@@ -316,8 +316,10 @@ fn main() -> TractResult<()> {
                 format!("Given Metal GPU trace file {:?} already exists.", gpu_trace_path)
             );
             log::info!("Capturing Metal GPU trace at : {:?}", gpu_trace_path);
-            std::env::set_var("METAL_CAPTURE_ENABLED", "1");
-            std::env::set_var("METAL_DEVICE_WRAPPER_TYPE", "1");
+            unsafe {
+                std::env::set_var("METAL_CAPTURE_ENABLED", "1");
+                std::env::set_var("METAL_DEVICE_WRAPPER_TYPE", "1");
+            }
             let probe_ref = probe.as_ref();
             tract_metal::METAL_STREAM.with_borrow(move |stream| {
                 stream.capture_trace(gpu_trace_path, move |_stream| handle(matches, probe_ref))
