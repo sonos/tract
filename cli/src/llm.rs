@@ -81,7 +81,9 @@ pub fn bench_pp(
     run_params.symbols.set(&p, 0);
     // Warmup
     run_params.symbols.set(&s, 6);
-    let inputs = get_or_make_inputs_and_state_inits(model, &run_params)?.0.remove(0);
+
+    let (mut sources, state_initializers) = get_or_make_inputs_and_state_inits(model, &run_params)?;
+    let inputs = RunTensors { sources: sources.remove(0), state_initializers };
     limits.warmup(model, &inputs)?;
 
     run_params.symbols.set(&s, pp as i64);
@@ -117,13 +119,12 @@ pub fn bench_tg(
     run_params.symbols.set(&s, 1);
     // Warmup
     run_params.symbols.set(&p, 1);
-    let (mut inputs, state_inits) = get_or_make_inputs_and_state_inits(model, &run_params)?;
 
-    let input = inputs.remove(0);
-    state.init_states(&state_inits)?;
-    limits.warmup(model, &input)?;
-    state.reset_op_states()?;
+    let (mut inputs, state_initializers) = get_or_make_inputs_and_state_inits(model, &run_params)?;
+    let inputs = RunTensors { sources: inputs.remove(0), state_initializers };
+    limits.warmup(model, &inputs)?;
 
+    let input = inputs.sources;
     let mut tot_dur = Duration::default();
     for t in 0..tg {
         if let Some(p) = probe {

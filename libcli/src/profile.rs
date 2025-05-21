@@ -8,7 +8,7 @@ use crate::annotations::*;
 use crate::model::Model;
 use crate::tensor::make_inputs_for_model;
 use std::any::TypeId;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub struct BenchLimits {
     pub warmup_loops: usize,
@@ -29,7 +29,7 @@ impl Default for BenchLimits {
 }
 
 impl BenchLimits {
-    pub fn warmup(&self, model: &TypedModel, inputs: &TVec<TValue>) -> TractResult<()> {
+    pub fn warmup(&self, model: &TypedModel, inputs: &RunTensors) -> TractResult<()> {
         if self.warmup_time.is_zero() && self.warmup_loops.is_zero() {
             return Ok(());
         }
@@ -39,13 +39,16 @@ impl BenchLimits {
         let max_loops = if self.warmup_loops.is_zero() { usize::MAX } else { self.warmup_loops };
         let max_time = if self.warmup_time.is_zero() { Duration::MAX } else { self.warmup_time };
 
+        state.init_states(&inputs.state_initializers)?;
         let start_warmup = crate::time::now();
         debug!("Warming up before profiling...");
         while iters < max_loops && start_warmup.elapsed() < max_time {
-            state.run(inputs.clone())?;
+            state.run(inputs.sources.clone())?;
             iters += 1;
         }
         debug!("Done warming up.");
+
+        state.reset_op_states()?;
         Ok(())
     }
 }
@@ -63,16 +66,16 @@ pub fn profile(
     let mut iters = 0usize;
     let prefix = tvec!();
 
-    bench_limits.warmup(model, &inputs.sources)?;
+    bench_limits.warmup(model, &inputs)?;
 
     let plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
-    state.init_states(&inputs.state_initializers)?;
 
-    let start = crate::time::now();
+    let mut dur = Duration::default();
     let mut time_accounted_by_inner_nodes = Duration::default();
-    while iters < bench_limits.max_loops && start.elapsed() < bench_limits.max_time {
+    while iters < bench_limits.max_loops && dur < bench_limits.max_time {
         state.init_states(&inputs.state_initializers)?;
+        let start = Instant::now();
         rec_profiler(
             &mut state,
             dg,
@@ -83,17 +86,18 @@ pub fn profile(
             &mut time_accounted_by_inner_nodes,
             folded,
         )?;
+        dur += start.elapsed();
         state.reset_op_states()?;
         iters += 1;
     }
 
-    let entire = start.elapsed() - time_accounted_by_inner_nodes;
+    dur = dur - time_accounted_by_inner_nodes;
 
     info!("Running {} iterations max. for each node.", bench_limits.max_loops);
     info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
 
     let denum = (iters as f32).recip();
-    let entire = entire.mul_f32(denum);
+    let entire = dur.mul_f32(denum);
     for d in dg.tags.values_mut() {
         if let Some(d) = d.profile.as_mut() {
             *d = d.mul_f32(denum);
@@ -122,11 +126,10 @@ pub fn profile_metal(
     let mut iters = 0usize;
     let prefix = tvec!();
 
-    bench_limits.warmup(model, &inputs.sources)?;
+    bench_limits.warmup(model, &inputs)?;
 
     let mut plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
-    let mut state = TypedSimpleState::new_from_inputs(&plan, inputs.sources.clone())?;
-    state.init_states(&inputs.state_initializers)?;
+    let state = TypedSimpleState::new_from_inputs(&plan, inputs.sources.clone())?;
 
     let session_handler = tract_gpu::session_handler::DeviceSessionHandler::from_plan(
         &plan,
@@ -137,10 +140,12 @@ pub fn profile_metal(
 
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
 
-    let mut entire = Duration::default();
-    while iters < bench_limits.max_loops && entire < bench_limits.max_time {
+    let mut dur = Duration::default();
+    while iters < bench_limits.max_loops && dur < bench_limits.max_time {
         state.init_states(&inputs.state_initializers)?;
-        entire += rec_profiler_metal(&mut state, dg, &inputs.sources, &prefix)?.1;
+        let start = Instant::now();
+        rec_profiler_metal(&mut state, dg, &inputs.sources, &prefix)?;
+        dur += start.elapsed();
         state.reset_op_states()?;
         iters += 1;
     }
@@ -149,7 +154,7 @@ pub fn profile_metal(
     info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
 
     let denum = (iters as f32).recip();
-    let entire = entire.mul_f32(denum);
+    let entire = dur.mul_f32(denum);
     for d in dg.tags.values_mut() {
         if let Some(d) = d.profile.as_mut() {
             *d = d.mul_f32(denum);
@@ -172,8 +177,7 @@ pub fn rec_profiler_metal(
     dg: &mut Annotations,
     inputs: &TVec<TValue>,
     prefix: &[(usize, String)],
-) -> TractResult<(TVec<TValue>, Duration)> {
-    let profile_start = crate::time::now();
+) -> TractResult<TVec<TValue>> {
     let r = state.run_plan_with_eval(
         inputs.clone(),
         |session_state, mut node_state, node, input| {
@@ -193,7 +197,7 @@ pub fn rec_profiler_metal(
         },
     )?;
 
-    Ok((r, profile_start.elapsed()))
+    Ok(r)
 }
 
 #[allow(clippy::too_many_arguments)]
