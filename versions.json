@@ -20,6 +20,11 @@
     "aliases": []
   },
   {
+    "version": "0.21.branching",
+    "title": "0.21.branching",
+    "aliases": []
+  },
+  {
     "version": "0.21.dev",
     "title": "0.21.dev",
     "aliases": []
