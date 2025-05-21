@@ -1,5 +1,5 @@
-use tract_data::half::f16;
 use crate::num_traits::Zero;
+use tract_data::half::f16;
 
 reduce_impl_wrap!(
     f16,
@@ -14,10 +14,11 @@ reduce_impl_wrap!(
         assert!(buf.len() > 0);
         #[target_feature(enable = "fp16")]
         unsafe fn run(buf: &[f16]) -> f16 {
-            let len = buf.len();
-            let ptr = buf.as_ptr();
-            let mut out: u16;
-            std::arch::asm!("
+            unsafe {
+                let len = buf.len();
+                let ptr = buf.as_ptr();
+                let mut out: u16;
+                std::arch::asm!("
                 movi v0.8h, #0
                 movi v1.8h, #0
                 movi v2.8h, #0
@@ -43,7 +44,8 @@ reduce_impl_wrap!(
                 len = inout(reg) len => _,
                 out("s0") out, out("v1") _, out("v2") _, out("v3") _,
                 out("v4") _, out("v5") _, out("v6") _, out("v7") _,);
-            f16::from_bits(out)
+                f16::from_bits(out)
+            }
         }
         unsafe { run(buf) }
     },

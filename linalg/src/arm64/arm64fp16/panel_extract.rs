@@ -15,14 +15,15 @@ panel_extractor!(kernel_packed_64_q40_to_f16 as packed_64_q40_to_f16(
 
 #[target_feature(enable = "fp16")]
 unsafe fn kernel_packed_64_q40_to_f16(input: *const u8, output: *mut u8, k: usize) {
-    if k == 0 {
-        return;
-    }
-    let lookup_table: [u8; 16] = [
-        0xc8, 0xc7, 0xc6, 0xc5, 0xc4, 0xc2, 0xc0, 0xbc, 0x00, 0x3c, 0x40, 0x42, 0x44, 0x45, 0x46,
-        0x47,
-    ];
-    std::arch::asm!("
+    unsafe {
+        if k == 0 {
+            return;
+        }
+        let lookup_table: [u8; 16] = [
+            0xc8, 0xc7, 0xc6, 0xc5, 0xc4, 0xc2, 0xc0, 0xbc, 0x00, 0x3c, 0x40, 0x42, 0x44, 0x45,
+            0x46, 0x47,
+        ];
+        std::arch::asm!("
     ld1      {{v13.16b}}, [{lookup_table}]
     movi     v15.16b, 15
     eor      v12.16b, v12.16b, v12.16b
@@ -76,17 +77,18 @@ unsafe fn kernel_packed_64_q40_to_f16(input: *const u8, output: *mut u8, k: usiz
         subs    {k}, {k}, 32
         bne     2b
             ",
-    lookup_table = in(reg) &lookup_table,
-    k = inout(reg) k => _,
-    k2 = out(reg) _,
-    scales = out(reg) _,
-    i = inout(reg) input => _,
-    o = inout(reg) output => _,
-    out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-    out("v4") _, out("v5") _, out("v6") _, out("v7") _,
-    out("v8") _, out("v9") _, out("v10") _, out("v11") _,
-    out("v12") _, out("v13") _, out("v14") _, out("v15") _,
-    out("v16") _, out("v17") _, out("v18") _, out("v19") _,
-    out("v20") _, out("v21") _, out("v22") _, out("v23") _,
-    );
+        lookup_table = in(reg) &lookup_table,
+        k = inout(reg) k => _,
+        k2 = out(reg) _,
+        scales = out(reg) _,
+        i = inout(reg) input => _,
+        o = inout(reg) output => _,
+        out("v0") _, out("v1") _, out("v2") _, out("v3") _,
+        out("v4") _, out("v5") _, out("v6") _, out("v7") _,
+        out("v8") _, out("v9") _, out("v10") _, out("v11") _,
+        out("v12") _, out("v13") _, out("v14") _, out("v15") _,
+        out("v16") _, out("v17") _, out("v18") _, out("v19") _,
+        out("v20") _, out("v21") _, out("v22") _, out("v23") _,
+        );
+    }
 }

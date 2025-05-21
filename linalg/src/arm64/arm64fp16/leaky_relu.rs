@@ -12,9 +12,10 @@ ew_impl_wrap!(
         assert!(buf.len() > 0);
         #[target_feature(enable = "fp16")]
         unsafe fn run(buf: &mut [f16], alpha: f16) {
-            let len = buf.len();
-            let ptr = buf.as_ptr();
-            std::arch::asm!("
+            unsafe {
+                let len = buf.len();
+                let ptr = buf.as_ptr();
+                std::arch::asm!("
                     dup v0.8h, {alpha:v}.h[0]
                     dup v1.8h, {one:v}.h[0]
                     2:
@@ -31,17 +32,18 @@ ew_impl_wrap!(
                         subs {len}, {len}, 16
                         bne 2b
                 ",
-            one = in(vreg) f16::from_f32(1.0f32).to_bits(),
-            alpha = in(vreg) alpha.to_bits(),
-            len = inout(reg) len => _,
-            ptr = inout(reg) ptr => _,
-            out("v0") _,
-            out("v1") _,
-            out("q3") _,
-            out("q4") _,
-            out("q5") _,
-            out("q6") _,
-            );
+                one = in(vreg) f16::from_f32(1.0f32).to_bits(),
+                alpha = in(vreg) alpha.to_bits(),
+                len = inout(reg) len => _,
+                ptr = inout(reg) ptr => _,
+                out("v0") _,
+                out("v1") _,
+                out("q3") _,
+                out("q4") _,
+                out("q5") _,
+                out("q6") _,
+                );
+            }
         }
         unsafe { run(buf, alpha) }
     }
@@ -52,4 +54,3 @@ pub mod test_arm64simd_leaky_relu_f16_16n {
     use super::*;
     leaky_relu_frame_tests!(crate::arm64::has_fp16(), f16, arm64fp16_leaky_relu_f16_16n);
 }
-

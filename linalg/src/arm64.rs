@@ -82,7 +82,7 @@ fn apple_get_syscall(key: &str) -> String {
     use std::ffi::{c_char, c_void, CStr, CString};
     use std::ptr::null_mut;
 
-    extern "C" {
+    unsafe extern "C" {
         fn sysctlbyname(
             name: *const c_char,
             oldp: *mut c_void,
@@ -142,27 +142,31 @@ pub fn has_fp16() -> bool {
 #[target_feature(enable = "fp16")]
 #[inline]
 pub unsafe fn add_f16(a: f16, b: f16) -> f16 {
-    let result: u16;
-    std::arch::asm!(
+    unsafe {
+        let result: u16;
+        std::arch::asm!(
         "fadd {0:h}, {1:h}, {2:h}",
         lateout(vreg) result,
         in(vreg) a.to_bits(),
         in(vreg) b.to_bits(),
         options(pure, nomem, nostack, preserves_flags));
-    f16::from_bits(result)
+        f16::from_bits(result)
+    }
 }
 
 #[target_feature(enable = "fp16")]
 #[inline]
 pub unsafe fn mul_f16(a: f16, b: f16) -> f16 {
-    let result: u16;
-    std::arch::asm!(
+    unsafe {
+        let result: u16;
+        std::arch::asm!(
         "fmul {0:h}, {1:h}, {2:h}",
         lateout(vreg) result,
         in(vreg) a.to_bits(),
         in(vreg) b.to_bits(),
         options(pure, nomem, nostack, preserves_flags));
-    f16::from_bits(result)
+        f16::from_bits(result)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
