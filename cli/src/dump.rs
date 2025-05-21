@@ -10,14 +10,13 @@ use tract_core::ops::einsum::EinSum;
 use tract_core::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
 use tract_core::ops::matmul::pack::DynPackedOpaqueFact;
 use tract_core::ops::scan::OptScan;
-use tract_core::value::RunTensors;
 use tract_hir::internal::*;
 use tract_itertools::Itertools;
 use tract_libcli::annotations::*;
 use tract_libcli::display_params::*;
 use tract_libcli::model::Model;
 use tract_libcli::profile::BenchLimits;
-use tract_libcli::tensor::get_or_make_inputs_and_state_inits;
+use tract_libcli::tensor::get_or_make_inputs;
 use tract_libcli::terminal;
 use tract_linalg::mmm::PackedOpaqueFact;
 
@@ -128,9 +127,8 @@ pub fn handle(
             .tract_model
             .downcast_ref::<TypedModel>()
             .context("Can only profile typed models")?;
-        let (sources, state_initializers) = get_or_make_inputs_and_state_inits(model, &run_params)?;
+        let inputs = get_or_make_inputs(model, &run_params)?;
 
-        let run_tensors = RunTensors { sources: sources[0].clone(), state_initializers };
         if matches.is_present("metal") {
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             {
@@ -139,7 +137,7 @@ pub fn handle(
                     bench_limits,
                     &mut annotations,
                     &plan_options,
-                    &run_tensors,
+                    &inputs,
                 )?;
             }
             #[cfg(not(any(target_os = "macos", target_os = "ios")))]
@@ -152,7 +150,7 @@ pub fn handle(
                 bench_limits,
                 &mut annotations,
                 &plan_options,
-                &run_tensors,
+                &inputs,
                 None,
                 options.folded,
             )?;

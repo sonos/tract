@@ -286,6 +286,11 @@ pub struct RunParams {
     pub symbols: SymbolValues,
 }
 
+pub struct RunTensors {
+    pub sources: Vec<TVec<TValue>>,
+    pub state_initializers: HashMap<String, TValue>,
+}
+
 fn get_or_make_tensor(
     model: &dyn Model,
     params: &RunParams,
@@ -396,20 +401,22 @@ fn get_or_make_tensor(
 }
 
 #[allow(clippy::type_complexity)]
-pub fn get_or_make_inputs_and_state_inits(
+pub fn get_or_make_inputs(
     tract: &dyn Model,
     params: &RunParams,
-) -> TractResult<(Vec<TVec<TValue>>, HashMap<String, TValue>)> {
+) -> TractResult<RunTensors> {
+    // Resolve source input
     let mut tmp_inputs = tvec!();
     for (ix, input) in tract.input_outlets().iter().enumerate() {
         let fact = tract.outlet_typedfact(*input)?;
         let name = tract.node_name(input.node);
         get_or_make_tensor(tract, params, fact, name, ix, &mut tmp_inputs)?;
     }
-    let inputs: Vec<TVec<TValue>> = (0..tmp_inputs[0].1.len())
+    let sources: Vec<TVec<TValue>> = (0..tmp_inputs[0].1.len())
         .map(|turn| tmp_inputs.iter().map(|t| t.1[turn].clone()).collect_vec().into())
         .collect_vec();
 
+    // Resolve State initializers (KV Cache, ..)
     let mut tmp_state_init = tvec!();
     let mut dummy_session_state = SessionState::default();
     for (id, state) in (0..tract.nodes_len()).filter_map(|id| {
@@ -424,7 +431,7 @@ pub fn get_or_make_inputs_and_state_inits(
     tmp_state_init.iter().for_each(|(name, state)| {
         state_initializers.insert(name.to_string(), state[0].clone());
     });
-    Ok((inputs, state_initializers))
+    Ok(RunTensors { sources, state_initializers})
 }
 
 fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> TractResult<TVec<TValue>> {
