@@ -19,10 +19,11 @@ reduce_impl_wrap!(
 
 #[target_feature(enable = "avx")]
 unsafe fn x86_64_fma_max_f32_32n_run(buf: &[f32]) -> f32 {
-    let len = buf.len();
-    let ptr = buf.as_ptr();
-    let mut acc = f32::MIN;
-    std::arch::asm!("
+    unsafe {
+        let len = buf.len();
+        let ptr = buf.as_ptr();
+        let mut acc = f32::MIN;
+        std::arch::asm!("
             vbroadcastss ymm0, xmm0
             vmovaps ymm1, ymm0
             vmovaps ymm2, ymm0
@@ -49,13 +50,14 @@ unsafe fn x86_64_fma_max_f32_32n_run(buf: &[f32]) -> f32 {
             vpermilps xmm1, xmm0, 1             // second f32 to top
             vmaxps xmm0, xmm0, xmm1
             ",
-    len = inout(reg) len => _,
-    ptr = inout(reg) ptr => _,
-    inout("ymm0") acc,
-    out("ymm1") _, out("ymm2") _, out("ymm3") _,
-    out("ymm4") _, out("ymm5") _, out("ymm6") _, out("ymm7") _
-    );
-    acc
+        len = inout(reg) len => _,
+        ptr = inout(reg) ptr => _,
+        inout("ymm0") acc,
+        out("ymm1") _, out("ymm2") _, out("ymm3") _,
+        out("ymm4") _, out("ymm5") _, out("ymm6") _, out("ymm7") _
+        );
+        acc
+    }
 }
 
 #[cfg(test)]

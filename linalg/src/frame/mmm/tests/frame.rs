@@ -92,13 +92,14 @@ where
     crate::setup_test_logger();
 
     let mut found = Tensor::zero::<TC>(&[m, n])?;
-    let c_store = ker
-        .c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
-        .wrap(&found.view_mut());
+    let c_store = unsafe {
+        ker.c_from_data_and_strides(TC::datum_type().size_of(), n as isize, 1)
+            .wrap(&found.view_mut())
+    };
     let mut spec: TVec<FusedSpec> = spec.into();
     spec.push(FusedSpec::Store(c_store));
 
-    ker.run(m, n, &spec)?;
+    unsafe { ker.run(m, n, &spec) }?;
     let expected =
         tract_ndarray::prelude::Array2::from_shape_fn((m, n), |(r, c)| expect(r, c)).into_tensor();
     let err = found.close_enough(&expected, true);
@@ -122,13 +123,15 @@ where
     usize: AsPrimitive<TI>,
 {
     let bias = (0..m).map(|i| i.as_()).collect::<Vec<TI>>();
-    fused_ops::<K, TA, TB, TC, TI, _>(
-        ker,
-        m,
-        n,
-        &[FusedSpec::BinPerRow(tensor1(&bias).view(), BinOp::Add)],
-        |r, _| bias[r].as_(),
-    )
+    unsafe {
+        fused_ops::<K, TA, TB, TC, TI, _>(
+            ker,
+            m,
+            n,
+            &[FusedSpec::BinPerRow(tensor1(&bias).view(), BinOp::Add)],
+            |r, _| bias[r].as_(),
+        )
+    }
 }
 
 pub unsafe fn row_mul<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
@@ -145,16 +148,18 @@ where
     usize: AsPrimitive<TI>,
 {
     let bias = (0..m).map(|i| i.as_()).collect::<Vec<TI>>();
-    fused_ops::<K, TA, TB, TC, TI, _>(
-        ker,
-        m,
-        n,
-        &[
-            FusedSpec::BinScalar(&tensor0(1i32.as_()), BinOp::Add),
-            FusedSpec::BinPerRow(tensor1(&bias).view(), BinOp::Mul),
-        ],
-        |r, _| bias[r].as_(),
-    )
+    unsafe {
+        fused_ops::<K, TA, TB, TC, TI, _>(
+            ker,
+            m,
+            n,
+            &[
+                FusedSpec::BinScalar(&tensor0(1i32.as_()), BinOp::Add),
+                FusedSpec::BinPerRow(tensor1(&bias).view(), BinOp::Mul),
+            ],
+            |r, _| bias[r].as_(),
+        )
+    }
 }
 
 pub unsafe fn col_add<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
@@ -171,13 +176,15 @@ where
     usize: AsPrimitive<TI>,
 {
     let bias = (0..n).map(|i| i.as_()).collect::<Vec<TI>>();
-    fused_ops::<K, TA, TB, TC, TI, _>(
-        ker,
-        m,
-        n,
-        &[FusedSpec::BinPerCol(tensor1(&bias).view(), BinOp::Add)],
-        |_, c| bias[c].as_(),
-    )
+    unsafe {
+        fused_ops::<K, TA, TB, TC, TI, _>(
+            ker,
+            m,
+            n,
+            &[FusedSpec::BinPerCol(tensor1(&bias).view(), BinOp::Add)],
+            |_, c| bias[c].as_(),
+        )
+    }
 }
 
 pub unsafe fn col_mul<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
@@ -194,16 +201,18 @@ where
     usize: AsPrimitive<TI>,
 {
     let bias = (0..n).map(|i| i.as_()).collect::<Vec<TI>>();
-    fused_ops::<K, TA, TB, TC, TI, _>(
-        ker,
-        m,
-        n,
-        &[
-            FusedSpec::BinScalar(&tensor0(1i32.as_()), BinOp::Add),
-            FusedSpec::BinPerCol(tensor1(&bias).view(), BinOp::Mul),
-        ],
-        |_, c| bias[c].as_(),
-    )
+    unsafe {
+        fused_ops::<K, TA, TB, TC, TI, _>(
+            ker,
+            m,
+            n,
+            &[
+                FusedSpec::BinScalar(&tensor0(1i32.as_()), BinOp::Add),
+                FusedSpec::BinPerCol(tensor1(&bias).view(), BinOp::Mul),
+            ],
+            |_, c| bias[c].as_(),
+        )
+    }
 }
 
 pub unsafe fn add_d<K: MatMatMulKer<Acc = TI> + 'static, TA, TB, TC, TI>(
@@ -224,13 +233,15 @@ where
     let store_spec =
         OutputStoreSpec::View { m_axis: Some(0), n_axis: Some(1), mr: ker.mr(), nr: ker.nr() };
     let view_d = d.to_array_view::<TI>()?.into_dimensionality()?;
-    fused_ops::<K, TA, TB, TC, TI, _>(
-        ker,
-        m,
-        n,
-        &[FusedSpec::AddUnicast(store_spec.wrap(&d.view()))],
-        |r, c| view_d[(r, c)].as_(),
-    )
+    unsafe {
+        fused_ops::<K, TA, TB, TC, TI, _>(
+            ker,
+            m,
+            n,
+            &[FusedSpec::AddUnicast(store_spec.wrap(&d.view()))],
+            |r, c| view_d[(r, c)].as_(),
+        )
+    }
 }
 
 pub unsafe fn max<K: MatMatMulKer<Acc = TI>, TA, TB, TC, TI>(
@@ -247,13 +258,15 @@ where
     usize: AsPrimitive<TI>,
 {
     let five: TI = 5.as_();
-    fused_ops::<K, TA, TB, TC, TI, _>(
-        ker,
-        m,
-        n,
-        &[FusedSpec::BinScalar(&tensor0(five), BinOp::Max)],
-        |_, _| five.as_(),
-    )
+    unsafe {
+        fused_ops::<K, TA, TB, TC, TI, _>(
+            ker,
+            m,
+            n,
+            &[FusedSpec::BinScalar(&tensor0(five), BinOp::Max)],
+            |_, _| five.as_(),
+        )
+    }
 }
 
 pub unsafe fn min<K: MatMatMulKer<Acc = TI>, TA, TB, TC, TI>(
@@ -270,11 +283,13 @@ where
     usize: AsPrimitive<TI>,
 {
     let five: TI = 5.as_();
-    fused_ops::<K, TA, TB, TC, TI, _>(
-        ker,
-        m,
-        n,
-        &[FusedSpec::BinScalar(&tensor0(five), BinOp::Min)],
-        |_, _| TC::zero(),
-    )
+    unsafe {
+        fused_ops::<K, TA, TB, TC, TI, _>(
+            ker,
+            m,
+            n,
+            &[FusedSpec::BinScalar(&tensor0(five), BinOp::Min)],
+            |_, _| TC::zero(),
+        )
+    }
 }

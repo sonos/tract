@@ -42,7 +42,7 @@ unsafe fn run(
     b: &dyn MMMInputValue,
     cold: bool,
 ) {
-    let mut scratch = mmm.allocate_scratch_space();
+    let mut scratch = unsafe { mmm.allocate_scratch_space() };
     be.iter_custom(move |iters| {
         let mut dur = std::time::Duration::default();
         for _ in 0..iters {
@@ -50,17 +50,19 @@ unsafe fn run(
                 ruin_cache();
             }
             let instant = std::time::Instant::now();
-            mmm.run_with_scratch_space(
-                m,
-                n,
-                scratch.as_mut(),
-                &[FusedSpec::AddMatMul {
-                    a: AsInputValue::Borrowed(a),
-                    b: AsInputValue::Borrowed(b),
-                    packing: 0,
-                }],
-            )
-            .unwrap();
+            unsafe {
+                mmm.run_with_scratch_space(
+                    m,
+                    n,
+                    scratch.as_mut(),
+                    &[FusedSpec::AddMatMul {
+                        a: AsInputValue::Borrowed(a),
+                        b: AsInputValue::Borrowed(b),
+                        packing: 0,
+                    }],
+                )
+                .unwrap()
+            };
             let time = instant.elapsed();
             dur += time;
         }

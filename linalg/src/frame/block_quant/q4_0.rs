@@ -81,7 +81,8 @@ impl<const QK: usize> BaseQ4_0<QK> {
         ensure!(pbqf.r == target.r);
         ensure!(value.fact.k % self.block_len() == 0);
         ensure!(pbqf.bq.same_as(self));
-        let scratch = std::slice::from_raw_parts_mut(scratch as *mut T, value.fact.k * target.r);
+        let scratch =
+            unsafe { std::slice::from_raw_parts_mut(scratch as *mut T, value.fact.k * target.r) };
         let blocks_for_k = value.fact.k / self.block_len();
         let row_bytes = blocks_for_k * self.block_bytes();
         let input = &value.packed[panel * target.r * row_bytes..];
@@ -295,7 +296,11 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
         panel: usize,
         scratch: *mut u8,
     ) -> TractResult<()> {
-        dispatch_floatlike!(Self::extract_panel_t(target.dt)(self, value, target, panel, scratch))
+        unsafe {
+            dispatch_floatlike!(Self::extract_panel_t(target.dt)(
+                self, value, target, panel, scratch
+            ))
+        }
     }
 
     fn extract_at_mn_f16(

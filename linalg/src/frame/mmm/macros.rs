@@ -19,7 +19,7 @@ macro_rules! MMMExternKernel {
 
                 #[inline]
                 pub unsafe fn rusty(op: &[FusedKerSpec<$ti>]) -> isize {
-                    $func(op.as_ptr())
+                    unsafe { $func(op.as_ptr()) }
                 }
             }
 
@@ -52,7 +52,7 @@ macro_rules! MMMRustKernel {
                 use super::*;
                 #[inline]
                 pub unsafe fn rusty(op: &[FusedKerSpec<$ti>]) -> isize {
-                    $func(op.as_ptr())
+                    unsafe { $func(op.as_ptr()) }
                 }
             }
             MMMKernel!([<sys_$id>]::rusty as $id<$ti>($mr, $nr)
