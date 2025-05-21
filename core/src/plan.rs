@@ -221,6 +221,7 @@ where
     pub fn new_from_inputs(plan: P, inputs: TVec<TValue>) -> TractResult<SimpleState<F, O, M, P>> {
         let mut state = SimpleState::new(plan)?;
         state.set_inputs(inputs)?;
+        state.resolve_symbols_with_states()?;
 
         Ok(state)
     }

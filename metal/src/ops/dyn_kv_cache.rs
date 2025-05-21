@@ -85,9 +85,7 @@ impl<O: MetalEvalOp> OpState for MetalDynKVCacheState<O> {
 
             let res = self.op.metal_eval(stream, self.node_id, session, inputs)?;
             self.kv_cache = Some(res[0].to_device_tensor()?.clone());
-            if self.io_name[1] == "out_cache_value_13" {
-                dbg!(self.kv_cache.as_ref().unwrap().shape());
-            }
+
             Ok(res)
         })
     }
