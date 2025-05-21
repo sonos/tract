@@ -53,7 +53,7 @@ fn wrap<F: FnOnce() -> anyhow::Result<()>>(func: F) -> TRACT_RESULT {
 ///  Rust side keeps ownership of the buffer. It will be valid as long as no other tract calls is
 ///  performed by the thread.
 ///  If no error occured, null is returned.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn tract_get_last_error() -> *const std::ffi::c_char {
     LAST_ERROR.with(|msg| msg.borrow().as_ref().map(|s| s.as_ptr()).unwrap_or(std::ptr::null()))
 }
@@ -61,7 +61,7 @@ pub extern "C" fn tract_get_last_error() -> *const std::ffi::c_char {
 /// Returns a pointer to a static buffer containing a null-terminated version string.
 ///
 /// The returned pointer must not be freed.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn tract_version() -> *const std::ffi::c_char {
     unsafe {
         CStr::from_bytes_with_nul_unchecked(concat!(env!("CARGO_PKG_VERSION"), "\0").as_bytes())
@@ -70,7 +70,7 @@ pub extern "C" fn tract_version() -> *const std::ffi::c_char {
 }
 
 /// Frees a string allocated by libtract.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_free_cstring(ptr: *mut std::ffi::c_char) {
     unsafe {
         if !ptr.is_null() {
@@ -107,7 +107,7 @@ pub struct TractNnef(tract_rs::Nnef);
 ///
 /// The returned object should be destroyed with `tract_nnef_destroy` once the model
 /// has been loaded.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_nnef_create(nnef: *mut *mut TractNnef) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(nnef);
@@ -116,21 +116,24 @@ pub unsafe extern "C" fn tract_nnef_create(nnef: *mut *mut TractNnef) -> TRACT_R
     })
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_nnef_transform_model(
     nnef: *const TractNnef,
-    model: * mut TractModel,
+    model: *mut TractModel,
     transform_spec: *const i8,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(nnef, model, transform_spec);
         let transform_spec = CStr::from_ptr(transform_spec as _).to_str()?;
-        (*nnef).0.transform_model(&mut (*model).0, transform_spec).with_context(|| format!("performing transform {transform_spec:?}"))?;
+        (*nnef)
+            .0
+            .transform_model(&mut (*model).0, transform_spec)
+            .with_context(|| format!("performing transform {transform_spec:?}"))?;
         Ok(())
     })
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_nnef_enable_tract_core(nnef: *mut TractNnef) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(nnef);
@@ -138,7 +141,7 @@ pub unsafe extern "C" fn tract_nnef_enable_tract_core(nnef: *mut TractNnef) -> T
     })
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_nnef_enable_tract_extra(nnef: *mut TractNnef) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(nnef);
@@ -146,15 +149,17 @@ pub unsafe extern "C" fn tract_nnef_enable_tract_extra(nnef: *mut TractNnef) -> 
     })
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn tract_nnef_enable_tract_transformers(nnef: *mut TractNnef) -> TRACT_RESULT {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_nnef_enable_tract_transformers(
+    nnef: *mut TractNnef,
+) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(nnef);
         (*nnef).0.enable_tract_transformers()
     })
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_nnef_enable_onnx(nnef: *mut TractNnef) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(nnef);
@@ -162,7 +167,7 @@ pub unsafe extern "C" fn tract_nnef_enable_onnx(nnef: *mut TractNnef) -> TRACT_R
     })
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_nnef_enable_pulse(nnef: *mut TractNnef) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(nnef);
@@ -170,7 +175,7 @@ pub unsafe extern "C" fn tract_nnef_enable_pulse(nnef: *mut TractNnef) -> TRACT_
     })
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_nnef_enable_extended_identifier_syntax(
     nnef: *mut TractNnef,
 ) -> TRACT_RESULT {
@@ -181,7 +186,7 @@ pub unsafe extern "C" fn tract_nnef_enable_extended_identifier_syntax(
 }
 
 /// Destroy the NNEF parser. It is safe to detroy the NNEF parser once the model had been loaded.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_nnef_destroy(nnef: *mut *mut TractNnef) -> TRACT_RESULT {
     release!(nnef)
 }
@@ -190,7 +195,7 @@ pub unsafe extern "C" fn tract_nnef_destroy(nnef: *mut *mut TractNnef) -> TRACT_
 ///
 /// `path` is a null-terminated utf-8 string pointer. It can be an archive (tar or tar.gz file) or a
 /// directory.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_nnef_model_for_path(
     nnef: *const TractNnef,
     path: *const c_char,
@@ -213,7 +218,7 @@ pub unsafe extern "C" fn tract_nnef_model_for_path(
 /// `path` is a null-terminated utf-8 string pointer to the `.tar` file to be created.
 ///
 /// This function creates a plain, non-compressed, archive.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_nnef_write_model_to_tar(
     nnef: *const TractNnef,
     path: *const c_char,
@@ -230,7 +235,7 @@ pub unsafe extern "C" fn tract_nnef_write_model_to_tar(
 /// Dump a TypedModel as a NNEF .tar.gz file.
 ///
 /// `path` is a null-terminated utf-8 string pointer to the `.tar.gz` file to be created.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_nnef_write_model_to_tar_gz(
     nnef: *const TractNnef,
     path: *const c_char,
@@ -249,7 +254,7 @@ pub unsafe extern "C" fn tract_nnef_write_model_to_tar_gz(
 /// `path` is a null-terminated utf-8 string pointer to the directory to be created.
 ///
 /// This function creates a plain, non-compressed, archive.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_nnef_write_model_to_dir(
     nnef: *const TractNnef,
     path: *const c_char,
@@ -270,7 +275,7 @@ pub struct TractOnnx(tract_rs::Onnx);
 ///
 /// The returned object should be destroyed with `tract_nnef_destroy` once the model
 /// has been loaded.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_onnx_create(onnx: *mut *mut TractOnnx) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(onnx);
@@ -280,7 +285,7 @@ pub unsafe extern "C" fn tract_onnx_create(onnx: *mut *mut TractOnnx) -> TRACT_R
 }
 
 /// Destroy the NNEF parser. It is safe to detroy the NNEF parser once the model had been loaded.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_onnx_destroy(onnx: *mut *mut TractOnnx) -> TRACT_RESULT {
     release!(onnx)
 }
@@ -288,7 +293,7 @@ pub unsafe extern "C" fn tract_onnx_destroy(onnx: *mut *mut TractOnnx) -> TRACT_
 /// Parse and load an ONNX model as a tract InferenceModel.
 ///
 /// `path` is a null-terminated utf-8 string pointer. It must point to a `.onnx` model file.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_onnx_model_for_path(
     onnx: *const TractOnnx,
     path: *const c_char,
@@ -308,7 +313,7 @@ pub unsafe extern "C" fn tract_onnx_model_for_path(
 pub struct TractInferenceModel(tract_rs::InferenceModel);
 
 /// Query an InferenceModel input counts.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_inference_model_input_count(
     model: *const TractInferenceModel,
     inputs: *mut usize,
@@ -322,7 +327,7 @@ pub unsafe extern "C" fn tract_inference_model_input_count(
 }
 
 /// Query an InferenceModel output counts.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_inference_model_output_count(
     model: *const TractInferenceModel,
     outputs: *mut usize,
@@ -338,7 +343,7 @@ pub unsafe extern "C" fn tract_inference_model_output_count(
 /// Query the name of a model input.
 ///
 /// The returned name must be freed by the caller using tract_free_cstring.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_inference_model_input_name(
     model: *const TractInferenceModel,
     input: usize,
@@ -356,7 +361,7 @@ pub unsafe extern "C" fn tract_inference_model_input_name(
 /// Query the name of a model output.
 ///
 /// The returned name must be freed by the caller using tract_free_cstring.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_inference_model_output_name(
     model: *const TractInferenceModel,
     output: usize,
@@ -371,7 +376,7 @@ pub unsafe extern "C" fn tract_inference_model_output_name(
     })
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_inference_model_input_fact(
     model: *const TractInferenceModel,
     input_id: usize,
@@ -390,7 +395,7 @@ pub unsafe extern "C" fn tract_inference_model_input_fact(
 ///
 /// The `fact` argument is only borrowed by this function, it still must be destroyed.
 /// `fact` can be set to NULL to erase the current output fact of the model.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_inference_model_set_input_fact(
     model: *mut TractInferenceModel,
     input_id: usize,
@@ -407,7 +412,7 @@ pub unsafe extern "C" fn tract_inference_model_set_input_fact(
 /// Change the model outputs nodes (by name).
 ///
 /// `names` is an array containing `len` pointers to null terminated strings.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_inference_model_set_output_names(
     model: *mut TractInferenceModel,
     len: usize,
@@ -426,7 +431,7 @@ pub unsafe extern "C" fn tract_inference_model_set_output_names(
 /// Query an output fact for an InferenceModel.
 ///
 /// The return model must be freed using `tract_inference_fact_destroy`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_inference_model_output_fact(
     model: *const TractInferenceModel,
     output_id: usize,
@@ -445,7 +450,7 @@ pub unsafe extern "C" fn tract_inference_model_output_fact(
 ///
 /// The `fact` argument is only borrowed by this function, it still must be destroyed.
 /// `fact` can be set to NULL to erase the current output fact of the model.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_inference_model_set_output_fact(
     model: *mut TractInferenceModel,
     output_id: usize,
@@ -460,7 +465,7 @@ pub unsafe extern "C" fn tract_inference_model_set_output_fact(
 }
 
 /// Analyse an InferencedModel in-place.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_inference_model_analyse(
     model: *mut TractInferenceModel,
 ) -> TRACT_RESULT {
@@ -477,7 +482,7 @@ pub unsafe extern "C" fn tract_inference_model_analyse(
 /// or not. `tract_inference_model_destroy` must not be used on `model`.
 ///
 /// On the other hand, caller will be owning the newly created `optimized` model.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_inference_model_into_optimized(
     model: *mut *mut TractInferenceModel,
     optimized: *mut *mut TractModel,
@@ -499,7 +504,7 @@ pub unsafe extern "C" fn tract_inference_model_into_optimized(
 /// or not. `tract_inference_model_destroy` must not be used on `model`.
 ///
 /// On the other hand, caller will be owning the newly created `optimized` model.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_inference_model_into_typed(
     model: *mut *mut TractInferenceModel,
     typed: *mut *mut TractModel,
@@ -516,7 +521,7 @@ pub unsafe extern "C" fn tract_inference_model_into_typed(
 }
 
 /// Destroy an InferenceModel.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_inference_model_destroy(
     model: *mut *mut TractInferenceModel,
 ) -> TRACT_RESULT {
@@ -527,7 +532,7 @@ pub unsafe extern "C" fn tract_inference_model_destroy(
 pub struct TractModel(tract_rs::Model);
 
 /// Query an InferenceModel input counts.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_input_count(
     model: *const TractModel,
     inputs: *mut usize,
@@ -541,7 +546,7 @@ pub unsafe extern "C" fn tract_model_input_count(
 }
 
 /// Query an InferenceModel output counts.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_output_count(
     model: *const TractModel,
     outputs: *mut usize,
@@ -557,7 +562,7 @@ pub unsafe extern "C" fn tract_model_output_count(
 /// Query the name of a model input.
 ///
 /// The returned name must be freed by the caller using tract_free_cstring.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_input_name(
     model: *const TractModel,
     input: usize,
@@ -575,7 +580,7 @@ pub unsafe extern "C" fn tract_model_input_name(
 /// Query the input fact of a model.
 ///
 /// Thre returned fact must be freed with tract_fact_destroy.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_input_fact(
     model: *const TractModel,
     input_id: usize,
@@ -593,7 +598,7 @@ pub unsafe extern "C" fn tract_model_input_fact(
 /// Query the name of a model output.
 ///
 /// The returned name must be freed by the caller using tract_free_cstring.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_output_name(
     model: *const TractModel,
     output: usize,
@@ -611,7 +616,7 @@ pub unsafe extern "C" fn tract_model_output_name(
 /// Query the output fact of a model.
 ///
 /// Thre returned fact must be freed with tract_fact_destroy.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_output_fact(
     model: *const TractModel,
     input_id: usize,
@@ -629,7 +634,7 @@ pub unsafe extern "C" fn tract_model_output_fact(
 /// Change the model outputs nodes (by name).
 ///
 /// `names` is an array containing `len` pointers to null terminated strings.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_set_output_names(
     model: *mut TractModel,
     len: usize,
@@ -649,7 +654,7 @@ pub unsafe extern "C" fn tract_model_set_output_names(
 /// * symbols is an array of `nb_symbols` pointers to null-terminated UTF-8 string for the symbols
 ///   names to substitue
 /// * values is an array of `nb_symbols` integer values
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_concretize_symbols(
     model: *mut TractModel,
     nb_symbols: usize,
@@ -677,7 +682,7 @@ pub unsafe extern "C" fn tract_model_concretize_symbols(
 ///
 /// * stream_symbol is the name of the stream symbol
 /// * pulse expression is a dim to use as the pulse size (like "8", "P" or "3*p").
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_pulse_simple(
     model: *mut *mut TractModel,
     stream_symbol: *const i8,
@@ -697,7 +702,7 @@ pub unsafe extern "C" fn tract_model_pulse_simple(
 }
 
 /// Apply a transform to the model.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_transform(
     model: *mut TractModel,
     transform: *const i8,
@@ -712,7 +717,7 @@ pub unsafe extern "C" fn tract_model_transform(
 }
 
 /// Declutter a TypedModel in-place.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_declutter(model: *mut TractModel) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(model);
@@ -721,7 +726,7 @@ pub unsafe extern "C" fn tract_model_declutter(model: *mut TractModel) -> TRACT_
 }
 
 /// Optimize a TypedModel in-place.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_optimize(model: *mut TractModel) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(model);
@@ -730,7 +735,7 @@ pub unsafe extern "C" fn tract_model_optimize(model: *mut TractModel) -> TRACT_R
 }
 
 /// Perform a profile of the model using the provided inputs.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_profile_json(
     model: *mut TractModel,
     inputs: *mut *mut TractValue,
@@ -760,7 +765,7 @@ pub unsafe extern "C" fn tract_model_profile_json(
 /// This function transfers ownership of the `model` argument to the newly-created `runnable` model.
 ///
 /// Runnable are reference counted. When done, it should be released with `tract_runnable_release`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_into_runnable(
     model: *mut *mut TractModel,
     runnable: *mut *mut TractRunnable,
@@ -775,7 +780,7 @@ pub unsafe extern "C" fn tract_model_into_runnable(
 }
 
 /// Query the number of properties in a model.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_property_count(
     model: *const TractModel,
     count: *mut usize,
@@ -792,7 +797,7 @@ pub unsafe extern "C" fn tract_model_property_count(
 /// The "names" array should be big enough to fit `tract_model_property_count` string pointers.
 ///
 /// Each name will have to be freed using `tract_free_cstring`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_property_names(
     model: *const TractModel,
     names: *mut *mut i8,
@@ -807,7 +812,7 @@ pub unsafe extern "C" fn tract_model_property_names(
 }
 
 /// Query a property value in a model.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_property(
     model: *const TractModel,
     name: *const i8,
@@ -826,7 +831,7 @@ pub unsafe extern "C" fn tract_model_property(
 }
 
 /// Destroy a TypedModel.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_model_destroy(model: *mut *mut TractModel) -> TRACT_RESULT {
     release!(model)
 }
@@ -842,7 +847,7 @@ pub struct TractRunnable(tract_rs::Runnable);
 /// explicitely release with `tract_runnable_release`).
 ///
 /// `state` is a newly-created object. It should ultimately be detroyed with `tract_state_destroy`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_runnable_spawn_state(
     runnable: *mut TractRunnable,
     state: *mut *mut TractState,
@@ -864,7 +869,7 @@ pub unsafe extern "C" fn tract_runnable_spawn_state(
 /// `outputs` is a pointer to a pre-existing array of TractValue pointers that will be overwritten
 /// with pointers to outputs values. These values are under the responsiblity of the caller, it
 /// will have to release them with `tract_value_destroy`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_runnable_run(
     runnable: *mut TractRunnable,
     inputs: *mut *mut TractValue,
@@ -878,7 +883,7 @@ pub unsafe extern "C" fn tract_runnable_run(
 }
 
 /// Query a Runnable input counts.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_runnable_input_count(
     model: *const TractRunnable,
     inputs: *mut usize,
@@ -892,7 +897,7 @@ pub unsafe extern "C" fn tract_runnable_input_count(
 }
 
 /// Query an Runnable output counts.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_runnable_output_count(
     model: *const TractRunnable,
     outputs: *mut usize,
@@ -905,7 +910,7 @@ pub unsafe extern "C" fn tract_runnable_output_count(
     })
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_runnable_release(runnable: *mut *mut TractRunnable) -> TRACT_RESULT {
     release!(runnable)
 }
@@ -921,7 +926,7 @@ pub struct TractValue(tract_rs::Value);
 /// rank is the number of dimensions of the tensor (i.e. the length of the shape vector).
 ///
 /// The returned value must be destroyed by `tract_value_destroy`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_value_from_bytes(
     datum_type: DatumType,
     rank: usize,
@@ -942,14 +947,14 @@ pub unsafe extern "C" fn tract_value_from_bytes(
 }
 
 /// Destroy a value.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_value_destroy(value: *mut *mut TractValue) -> TRACT_RESULT {
     release!(value)
 }
 
 /// Inspect part of a value. Except `value`, all argument pointers can be null if only some specific bits
 /// are required.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_value_as_bytes(
     value: *mut TractValue,
     datum_type: *mut DatumType,
@@ -988,7 +993,7 @@ pub struct TractState(tract_rs::State);
 /// `outputs` is a pointer to a pre-existing array of TractValue pointers that will be overwritten
 /// with pointers to outputs values. These values are under the responsiblity of the caller, it
 /// will have to release them with `tract_value_destroy`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_run(
     state: *mut TractState,
     inputs: *mut *mut TractValue,
@@ -1001,7 +1006,7 @@ pub unsafe extern "C" fn tract_state_run(
 }
 
 /// Query a State input counts.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_input_count(
     state: *const TractState,
     inputs: *mut usize,
@@ -1015,7 +1020,7 @@ pub unsafe extern "C" fn tract_state_input_count(
 }
 
 /// Query an State output counts.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_output_count(
     state: *const TractState,
     outputs: *mut usize,
@@ -1028,7 +1033,7 @@ pub unsafe extern "C" fn tract_state_output_count(
     })
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_destroy(state: *mut *mut TractState) -> TRACT_RESULT {
     release!(state)
 }
@@ -1039,7 +1044,7 @@ pub struct TractFact(tract_rs::Fact);
 /// Parse a fact specification string into an Fact.
 ///
 /// The returned fact must be free with `tract_fact_destroy`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_fact_parse(
     model: *mut TractModel,
     spec: *const c_char,
@@ -1057,7 +1062,7 @@ pub unsafe extern "C" fn tract_fact_parse(
 /// Write a fact as its specification string.
 ///
 /// The returned string must be freed by the caller using tract_free_cstring.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_fact_dump(
     fact: *const TractFact,
     spec: *mut *mut c_char,
@@ -1069,7 +1074,7 @@ pub unsafe extern "C" fn tract_fact_dump(
     })
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_fact_destroy(fact: *mut *mut TractFact) -> TRACT_RESULT {
     release!(fact)
 }
@@ -1080,7 +1085,7 @@ pub struct TractInferenceFact(tract_rs::InferenceFact);
 /// Parse a fact specification string into an InferenceFact.
 ///
 /// The returned fact must be free with `tract_inference_fact_destroy`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_inference_fact_parse(
     model: *mut TractInferenceModel,
     spec: *const c_char,
@@ -1098,7 +1103,7 @@ pub unsafe extern "C" fn tract_inference_fact_parse(
 /// Creates an empty inference fact.
 ///
 /// The returned fact must be freed by the caller using tract_inference_fact_destroy
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_inference_fact_empty(
     fact: *mut *mut TractInferenceFact,
 ) -> TRACT_RESULT {
@@ -1112,7 +1117,7 @@ pub unsafe extern "C" fn tract_inference_fact_empty(
 /// Write an inference fact as its specification string.
 ///
 /// The returned string must be freed by the caller using tract_free_cstring.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_inference_fact_dump(
     fact: *const TractInferenceFact,
     spec: *mut *mut c_char,
@@ -1125,7 +1130,7 @@ pub unsafe extern "C" fn tract_inference_fact_dump(
 }
 
 /// Destroy a fact.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_inference_fact_destroy(
     fact: *mut *mut TractInferenceFact,
 ) -> TRACT_RESULT {
@@ -1141,13 +1146,15 @@ unsafe fn state_run(
     inputs: *mut *mut TractValue,
     outputs: *mut *mut TractValue,
 ) -> Result<()> {
-    let values: Vec<_> = std::slice::from_raw_parts(inputs, state.input_count()?)
-        .iter()
-        .map(|tv| (**tv).0.clone())
-        .collect();
-    let values = state.run(values)?;
-    for (i, value) in values.into_iter().enumerate() {
-        *(outputs.add(i)) = Box::into_raw(Box::new(TractValue(value)))
+    unsafe {
+        let values: Vec<_> = std::slice::from_raw_parts(inputs, state.input_count()?)
+            .iter()
+            .map(|tv| (**tv).0.clone())
+            .collect();
+        let values = state.run(values)?;
+        for (i, value) in values.into_iter().enumerate() {
+            *(outputs.add(i)) = Box::into_raw(Box::new(TractValue(value)))
+        }
+        Ok(())
     }
-    Ok(())
 }
