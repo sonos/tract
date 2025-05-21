@@ -17,7 +17,7 @@ use tract_libcli::annotations::*;
 use tract_libcli::display_params::*;
 use tract_libcli::model::Model;
 use tract_libcli::profile::BenchLimits;
-use tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits;
+use tract_libcli::tensor::get_or_make_inputs_and_state_inits;
 use tract_libcli::terminal;
 use tract_linalg::block_quant::PackedBlockQuantFact;
 use tract_linalg::mmm::PackedOpaqueFact;
@@ -129,8 +129,7 @@ pub fn handle(
             .tract_model
             .downcast_ref::<TypedModel>()
             .context("Can only profile typed models")?;
-        let (sources, state_initializers) =
-            retrieve_or_make_inputs_and_state_inits(model, &run_params)?;
+        let (sources, state_initializers) = get_or_make_inputs_and_state_inits(model, &run_params)?;
 
         let run_tensors = RunTensors { sources: sources[0].clone(), state_initializers };
         if matches.is_present("metal") {
