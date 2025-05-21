@@ -66,7 +66,7 @@ pub fn profile(
     let mut iters = 0usize;
     let prefix = tvec!();
 
-    bench_limits.warmup(model, &inputs)?;
+    bench_limits.warmup(model, inputs)?;
 
     let plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
@@ -91,7 +91,7 @@ pub fn profile(
         iters += 1;
     }
 
-    dur = dur - time_accounted_by_inner_nodes;
+    dur -= time_accounted_by_inner_nodes;
 
     info!("Running {} iterations max. for each node.", bench_limits.max_loops);
     info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
@@ -126,7 +126,7 @@ pub fn profile_metal(
     let mut iters = 0usize;
     let prefix = tvec!();
 
-    bench_limits.warmup(model, &inputs)?;
+    bench_limits.warmup(model, inputs)?;
 
     let mut plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
     let state = TypedSimpleState::new_from_inputs(&plan, inputs.sources.clone())?;
