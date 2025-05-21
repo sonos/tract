@@ -127,7 +127,7 @@ do
 
 
     $TRACT_RUN -v --nnef-tract-core --nnef-tract-transformers $MODELS/$nnef $TRACT_EXTRA_ARGS \
-        -O -t transformers-detect-all run \
+        -t transformers-detect-all -O run \
         --input-from-npz $MODELS/$npz \
         --assert-output-bundle $MODELS/$npz \
         $approx --allow-float-casts
