@@ -11,7 +11,7 @@ use tract_core::internal::*;
 use crate::dump::annotate_with_graph_def;
 use crate::*;
 use tract_libcli::display_params::DisplayParams;
-use tract_libcli::tensor::RunParams;
+use tract_libcli::tensor::{retrieve_or_make_inputs_and_state_inits, RunParams};
 
 pub fn handle(
     params: &mut Parameters,
@@ -244,10 +244,10 @@ pub fn handle_with_model(
 
     let plan = SimplePlan::new(reference_model)?;
     let mut state = SimpleState::new(plan)?;
-    let (inputs, state_initializers) = tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(reference_model, run_params)?;
+    let (inputs, state_initializers) =
+        retrieve_or_make_inputs_and_state_inits(reference_model, run_params)?;
     state.init_states(&state_initializers)?;
-    for inputs in inputs
-    {
+    for inputs in inputs {
         state.run_plan_with_eval(inputs, |session, state, node, input| -> TractResult<_> {
             let result = tract_core::plan::eval(session, state, node, input)?;
             if node.outputs.len() == 1 {
@@ -304,7 +304,7 @@ where
     let all_values: HashMap<String, &Vec<TractResult<TValue>>> =
         all_values.iter().map(|(k, v)| (canonic(k), v)).collect();
     let (model_inputs, state_initializers) =
-        tract_libcli::tensor::retrieve_or_make_inputs_and_state_inits(tract, run_params)?;
+        retrieve_or_make_inputs_and_state_inits(tract, run_params)?;
     state.init_states(&state_initializers)?;
     for (turn, inputs) in model_inputs.into_iter().enumerate() {
         state.run_plan_with_eval(

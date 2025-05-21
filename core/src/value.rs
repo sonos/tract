@@ -107,5 +107,5 @@ impl<D: ::ndarray::Dimension, T: Datum> IntoTValue for Array<T, D> {
 
 pub struct RunTensors {
     pub sources: TVec<TValue>,
-    pub state_initializers: HashMap<String, TValue>
+    pub state_initializers: HashMap<String, TValue>,
 }
