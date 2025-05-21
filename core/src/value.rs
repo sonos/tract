@@ -104,8 +104,3 @@ impl<D: ::ndarray::Dimension, T: Datum> IntoTValue for Array<T, D> {
         Tensor::from(self).into_tvalue()
     }
 }
-
-pub struct RunTensors {
-    pub sources: TVec<TValue>,
-    pub state_initializers: HashMap<String, TValue>,
-}
