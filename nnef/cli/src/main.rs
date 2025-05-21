@@ -13,7 +13,7 @@ fn main() {
         1 => "debug",
         _ => "trace",
     };
-    std::env::set_var("RUST_LOG", level);
+    unsafe { std::env::set_var("RUST_LOG", level) };
     env_logger::Builder::from_env(env_logger::Env::default()).init();
 
     if let Err(e) = cli_args.run() {

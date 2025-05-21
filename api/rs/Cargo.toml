@@ -8,7 +8,7 @@ repository = "https://github.com/sonos/tract"
 keywords = [ "NeuralNetworks" ]
 categories = [ "science" ]
 autobenches = false
-edition = "2021"
+edition = "2024"
 rust-version = "1.85"
 include = [ "Cargo.toml", "src/**/*.rs", "LICENSE*", "tests" ]
 
