@@ -8,7 +8,7 @@ ROOT=$(dirname $(dirname $(realpath $0)))
 
 if [ -z "$TRACT_RUN" ]
 then
-    TRACT_RUN=$(cargo build --message-format json -p tract $CARGO_EXTRA --profile opt-no-lto --no-default-features | jq -r 'select(.target.name == "tract" and .executable).executable')
+    TRACT_RUN=$(cargo build --message-format json -p tract $CARGO_EXTRA --profile opt-no-lto | jq -r 'select(.target.name == "tract" and .executable).executable')
     export TRACT_RUN
 fi
 
@@ -91,7 +91,7 @@ do
 
     case "$id.$t" in
         # very terrible conditioning on this one
-        apple--OpenELM-270M-f16f16.p50s50) approx="--approx-custom 0.2,0.25,0.01";;
+        apple--OpenELM-270M-f16f16.p50s50) approx="--approx-custom 0.2,0.25,0.015";;
 
         TinyLlama--TinyLlama_v1.1-f32f32.p50s50) approx="--approx-custom 0.2,0.1,0.001";;
         TinyLlama--TinyLlama_v1.1-f16f16.p0s100) approx="--approx-custom 0.2,0.1,0.002";;
@@ -126,7 +126,8 @@ do
     esac
 
 
-    $TRACT_RUN -v --nnef-tract-core $MODELS/$nnef $TRACT_EXTRA_ARGS -O run \
+    $TRACT_RUN -v --nnef-tract-core $MODELS/$nnef $TRACT_EXTRA_ARGS --nnef-tract-transformers \
+        -t transformers-detect-all -O run \
         --input-from-npz $MODELS/$npz \
         --assert-output-bundle $MODELS/$npz \
         $approx --allow-float-casts

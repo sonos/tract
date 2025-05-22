@@ -4,6 +4,7 @@ use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 
 use multithread::Executor;
+use tract_data::itertools::Itertools;
 
 use crate::internal::*;
 use crate::model::{Fact, Graph, OutletId};
@@ -220,6 +221,7 @@ where
     pub fn new_from_inputs(plan: P, inputs: TVec<TValue>) -> TractResult<SimpleState<F, O, M, P>> {
         let mut state = SimpleState::new(plan)?;
         state.set_inputs(inputs)?;
+        state.resolve_symbols_with_states()?;
 
         Ok(state)
     }
@@ -251,6 +253,37 @@ where
         Ok(())
     }
 
+    pub fn init_states(&mut self, state_init_tensors: &mut HashMap<String, TValue>) -> TractResult<()> {
+        let states_to_init = self
+            .states
+            .iter_mut()
+            .filter_map(Option::as_mut)
+            .filter(|s| s.init_tensor_fact().is_some())
+            .collect_vec();
+        ensure!(
+            states_to_init.len() == state_init_tensors.len(),
+            "There are {} op to init but Hashmap has {} entries",
+            states_to_init.len(),
+            state_init_tensors.keys().len()
+        );
+        for state in states_to_init {
+            state.load_from(&mut self.session_state, state_init_tensors)?;
+        }
+        Ok(())
+    }
+
+    fn resolve_symbols_with_states(&mut self) -> TractResult<()> {
+        for state in self
+            .states
+            .iter_mut()
+            .filter_map(Option::as_mut)
+            .filter(|s| s.init_tensor_fact().is_some())
+        {
+            state.resolve_symbols(&mut self.session_state)?;
+        }
+        Ok(())
+    }
+
     pub fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.run_plan_with_eval(inputs, self::eval)
     }
@@ -274,6 +307,7 @@ where
         E: Into<anyhow::Error> + Send + Sync + 'static,
     {
         self.set_inputs(inputs)?;
+        self.resolve_symbols_with_states()?;
         self.exec_plan_with_eval(eval)?;
         let outputs = self.outputs()?;
         self.reset_turn()?;
@@ -422,6 +456,7 @@ where
             self.model().inputs.len(),
             inputs.len()
         );
+
         for (ix, t) in inputs.into_iter().enumerate() {
             self.set_input(ix, t)?
         }

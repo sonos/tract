@@ -1,27 +1,50 @@
 use crate::Parameters;
 use readings_probe::Probe;
+use tract_libcli::model::Model;
 use std::time::{Duration, Instant};
 use tract_hir::internal::*;
 use tract_libcli::profile::BenchLimits;
+use tract_libcli::tensor::get_or_make_inputs;
+use tract_libcli::tensor::RunTensors;
 use tract_libcli::terminal;
+
+fn profile_single_turn<'m>(state: &mut TypedSimpleState<&'m TypedModel, Arc<TypedRunnableModel<&'m TypedModel>>>,
+                           inputs: &RunTensors) -> TractResult<Duration> {
+    
+    if state.model().properties().contains_key("pulse.delay") {
+        let start = Instant::now();
+        state.run(inputs.sources[0].clone())?;
+        Ok(start.elapsed())
+    } else {
+        state.init_states(&mut inputs.state_initializers.clone())?;
+        let start = Instant::now();
+        state.run(inputs.sources[0].clone())?;
+        let elapsed = start.elapsed();
+        state.reset_op_states()?;
+        Ok(elapsed)
+    }
+}
 
 pub fn criterion(
     params: &Parameters,
-    _matches: &clap::ArgMatches,
+    matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> TractResult<()> {
-    let plan_options = crate::plan_options::plan_options_from_subcommand(sub_matches)?;
-    let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
-
     let model =
         params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
-    let plan = SimplePlan::new_with_options(model, &plan_options)?;
-    let mut state = SimpleState::new(plan)?;
+    let mut state = make_state(params, matches, sub_matches)?;
 
     let mut crit = criterion::Criterion::default();
     let mut group = crit.benchmark_group("net");
-    let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
-    group.bench_function("run", move |b| b.iter(|| state.run(inputs.clone())));
+
+    let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
+    let inputs = get_or_make_inputs(model, &run_params)?;
+
+    group.bench_function("run", move |b| {
+        b.iter(|| {
+            profile_single_turn(&mut state, &inputs)
+        })
+    });
     Ok(())
 }
 
@@ -65,25 +88,26 @@ pub(crate) fn make_state<'m>(
 
 pub(crate) fn bench<'m>(
     state: &mut TypedSimpleState<&'m TypedModel, Arc<TypedRunnableModel<&'m TypedModel>>>,
-    inputs: TVec<TValue>,
+    inputs: RunTensors,
     limits: &BenchLimits,
     probe: Option<&Probe>,
 ) -> TractResult<(usize, Duration)> {
     let mut iters = 0;
     let progress = probe.and_then(|m| m.get_i64("progress"));
     info!("Starting bench itself");
-    let start = Instant::now();
-    while iters < limits.max_loops && start.elapsed() < limits.max_time {
+    let mut dur = Duration::default();
+    while iters < limits.max_loops && dur < limits.max_time {
         if let Some(mon) = probe {
             let _ = mon.log_event(&format!("loop_{iters}"));
         }
         if let Some(p) = &progress {
             p.store(iters as _, std::sync::atomic::Ordering::Relaxed);
         }
-        state.run(inputs.clone())?;
+
+        dur += profile_single_turn(state, &inputs)?;
+
         iters += 1;
     }
-    let dur = start.elapsed();
     Ok((iters, Duration::from_secs_f64(dur.as_secs_f64() / iters as f64)))
 }
 
@@ -96,8 +120,8 @@ pub fn handle(
 ) -> TractResult<()> {
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
     let mut state = make_state(params, matches, sub_matches)?;
-    let inputs =
-        tract_libcli::tensor::retrieve_or_make_inputs(state.model(), &run_params)?.remove(0);
+
+    let inputs = get_or_make_inputs(state.model(), &run_params)?;
 
     limits.warmup(state.model(), &inputs)?;
     let (iters, dur) = bench(&mut state, inputs, limits, probe)?;

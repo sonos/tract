@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::time::{Duration, Instant};
 use tract_hir::internal::*;
 use tract_libcli::profile::BenchLimits;
+use tract_libcli::tensor::get_or_make_inputs;
 
 pub fn figure_out_b_s_p(model: &TypedModel) -> TractResult<(Option<Symbol>, Symbol, Symbol)> {
     // expectations:
@@ -16,12 +17,27 @@ pub fn figure_out_b_s_p(model: &TypedModel) -> TractResult<(Option<Symbol>, Symb
         .position(|i| model.outlet_fact(*i).unwrap().datum_type.is_integer())
         .context("No token input found")?;
     let tokens_symbols = model.input_fact(token_input)?.shape.volume().symbols();
-    let kv_input = model
-        .inputs
-        .iter()
-        .position(|i| model.outlet_fact(*i).unwrap().datum_type.is_float())
-        .context("No kv input found")?;
-    let kv_symbols = model.input_fact(kv_input)?.shape.volume().symbols();
+    let kv_symbols = if let Some(kv_input) =
+        model.inputs.iter().position(|i| model.outlet_fact(*i).unwrap().datum_type.is_float())
+    {
+        model.input_fact(kv_input)?.shape.volume().symbols()
+    } else {
+        // Look for KVCache Op
+        let mut dummy_session_state = SessionState::default();
+        let mut symbols = HashSet::new();
+        for node in &model.nodes {
+            if let Some(fact) = node
+                .op
+                .state(&mut dummy_session_state, 0)?
+                .and_then(|state| state.init_tensor_fact())
+            {
+                symbols = fact.shape.volume().symbols();
+                break;
+            }
+        }
+        symbols
+    };
+
     let b = tokens_symbols.intersection(&kv_symbols).cloned().collect::<HashSet<_>>();
     let s = tokens_symbols.difference(&b).cloned().collect::<HashSet<_>>();
     let p = kv_symbols.difference(&b).cloned().collect::<HashSet<_>>();
@@ -61,13 +77,15 @@ pub fn bench_pp(
     }
 
     run_params.symbols.set(&p, 0);
-    // Warmup 
+    // Warmup
     run_params.symbols.set(&s, 6);
-    let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
+
+    let inputs = get_or_make_inputs(model, &run_params)?;
     limits.warmup(model, &inputs)?;
 
     run_params.symbols.set(&s, pp as i64);
-    let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
+    let inputs = get_or_make_inputs(model, &run_params)?;
+
     let (_, dur) = bench(&mut state, inputs, limits, probe)?;
     let tokens = pp as f64 / dur.as_secs_f64();
     println!("PP{pp}: {tokens:.1} tokens/sec");
@@ -95,9 +113,10 @@ pub fn bench_tg(
     }
 
     run_params.symbols.set(&s, 1);
-    // Warmup 
+    // Warmup
     run_params.symbols.set(&p, 1);
-    let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
+
+    let inputs = get_or_make_inputs(model, &run_params)?;
     limits.warmup(model, &inputs)?;
 
     let mut tot_dur = Duration::default();
@@ -105,13 +124,11 @@ pub fn bench_tg(
         if let Some(p) = probe {
             p.log_event(&format!("Starting token {t}"))?;
         }
-        run_params.symbols.set(&p, t as i64);
-        let inputs = tract_libcli::tensor::retrieve_or_make_inputs(model, &run_params)?.remove(0);
-
         let start = Instant::now();
-        state.run(inputs)?;
+        state.run(inputs.sources[0].clone())?;
         tot_dur += start.elapsed();
     }
+    state.reset_op_states()?;
     let tokens = tg as f64 / tot_dur.as_secs_f64();
     println!("TG{tg}: {tokens:.1} tokens/sec");
     Ok(())

@@ -1,4 +1,5 @@
 pub mod apply_rope;
+pub mod dyn_kv_cache;
 pub mod gelu_approximate;
 pub mod rms_norm;
 pub mod scaled_masked_softmax;
@@ -8,13 +9,12 @@ use tract_core::internal::*;
 use tract_core::ops::konst::Const;
 use tract_nnef::tract_core;
 
-//pub use apply_rope::{as_apply_rope_rule, ApplyRope};
-pub use apply_rope::{as_apply_rope_rule, as_rotate_half_rule};
-pub use gelu_approximate::as_gelu_approx_rule;
-pub use rms_norm::{as_rms_norm_rule, remove_rms_norm_cast};
-pub use scaled_masked_softmax::as_scaled_masked_softmax_rule;
-pub use silu::as_silu_rule;
-//pub use untranspose_matmul_output::untranspose_matmul_output;
+pub use apply_rope::{apply_rope_rule, rotate_half_rule};
+pub use dyn_kv_cache::replace_kv_cache;
+pub use gelu_approximate::gelu_approx_rule;
+pub use rms_norm::{remove_rms_norm_cast, rms_norm_rule};
+pub use scaled_masked_softmax::scaled_masked_softmax_rule;
+pub use silu::silu_rule;
 
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::math::{Add, Mul};

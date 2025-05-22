@@ -85,7 +85,7 @@ impl TypedOp for RotateHalf {
 
 /// Search pattern:
 /// Y = Concat(Neg(Slice(X, X.shape[-1]/2.., -1)), Slice(X, ..X.shape[-1]/2, -1))
-pub fn as_rotate_half_rule(
+pub fn rotate_half_rule(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
@@ -187,7 +187,7 @@ impl TypedOp for ApplyRope {
 
 /// Search pattern:
 /// Y = X * Cos + RotateHalf(X) * Sin
-pub fn as_apply_rope_rule(
+pub fn apply_rope_rule(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
@@ -207,8 +207,7 @@ pub fn as_apply_rope_rule(
     let Some(sin_mul_op) = sin_mul.op_as::<TypedBinOp>() else { return Ok(None) };
     rule_ensure!(sin_mul_op.0.is::<Mul>());
 
-    let Some((rotate_half_in_idx, rotate_half)) =
-        single_prev_node_as::<RotateHalf>(model, sin_mul)
+    let Some((rotate_half_in_idx, rotate_half)) = single_prev_node_as::<RotateHalf>(model, sin_mul)
     else {
         return Ok(None);
     };
@@ -242,9 +241,9 @@ pub fn as_apply_rope_rule(
     let input = patch.tap_model(model, apply_rope_in)?;
     let cos = patch.tap_model(model, cos)?;
     let sin = patch.tap_model(model, sin)?;
-    let out =
-        patch.wire_node(format!("{node_name}.apply_rope"), ApplyRope, &[input, cos, sin])?;
+    let out = patch.wire_node(format!("{node_name}.apply_rope"), ApplyRope, &[input, cos, sin])?;
     patch.shunt_outside(model, node.id.into(), out[0])?;
+
     Ok(Some(patch))
 }
 
