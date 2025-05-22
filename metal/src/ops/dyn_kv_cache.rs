@@ -33,7 +33,7 @@ impl<O: MetalEvalOp> OpState for MetalDynKVCacheState<O> {
     fn load_from(
         &mut self,
         state: &mut SessionState,
-        states: &mut HashMap<String, Tensor>,
+        states: &mut HashMap<String, TValue>,
     ) -> TractResult<()> {
         if let Some(kv_cache) = states.remove(&self.io_name[0]) {
             // KV Cache fact is always at index 0
@@ -42,16 +42,16 @@ impl<O: MetalEvalOp> OpState for MetalDynKVCacheState<O> {
                 self.input_facts[0].clone(),
                 Some(kv_cache.shape()),
             )?;
-            self.kv_cache = Some(kv_cache.into_device()?);
+            self.kv_cache = Some(kv_cache.into_tensor().into_device()?);
             Ok(())
         } else {
             bail!("KV cache input {} not found in given states", self.io_name[0])
         }
     }
 
-    fn save_to(&mut self, states: &mut HashMap<String, Tensor>) -> TractResult<()> {
+    fn save_to(&mut self, states: &mut HashMap<String, TValue>) -> TractResult<()> {
         if let Some(kv_cache) = &self.kv_cache {
-            states.insert(self.io_name[1].clone(), kv_cache.to_host()?.into_tensor());
+            states.insert(self.io_name[1].clone(), kv_cache.to_host()?.into_tensor().into_tvalue());
             Ok(())
         } else {
             bail!("KV cache {} was never initialized", self.io_name[1])

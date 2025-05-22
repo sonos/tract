@@ -253,7 +253,7 @@ where
         Ok(())
     }
 
-    pub fn init_states(&mut self, state_init_tensors: &mut HashMap<String, Tensor>) -> TractResult<()> {
+    pub fn init_states(&mut self, state_init_tensors: &mut HashMap<String, TValue>) -> TractResult<()> {
         let states_to_init = self
             .states
             .iter_mut()
