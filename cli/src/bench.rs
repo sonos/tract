@@ -26,7 +26,7 @@ pub fn criterion(
 
     group.bench_function("run", move |b| {
         b.iter(|| {
-            state.init_states(&inputs.state_initializers)?;
+            state.init_states(&mut inputs.state_initializers.clone())?;
             state.run(inputs.sources[0].clone())?;
             state.reset_op_states()
         })
@@ -91,7 +91,7 @@ pub(crate) fn bench<'m>(
         if let Some(p) = &progress {
             p.store(iters as _, std::sync::atomic::Ordering::Relaxed);
         }
-        state.init_states(&inputs.state_initializers)?;
+        state.init_states(&mut inputs.state_initializers.clone())?;
 
         let start = Instant::now();
         state.run(inputs.sources[0].clone())?;
