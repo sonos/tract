@@ -287,10 +287,10 @@ pub struct RunParams {
 
 pub struct RunTensors {
     pub sources: Vec<TVec<TValue>>,
-    pub state_initializers: HashMap<String, TValue>,
+    pub state_initializers: HashMap<String, Tensor>,
 }
 
-fn get_or_make_tensor(
+fn get_or_make_tensors(
     model: &dyn Model,
     params: &RunParams,
     fact: TypedFact,
@@ -408,7 +408,7 @@ pub fn get_or_make_inputs(
     for (ix, input) in tract.input_outlets().iter().enumerate() {
         let fact = tract.outlet_typedfact(*input)?;
         let name = tract.node_name(input.node);
-        get_or_make_tensor(tract, params, fact, name, ix, &mut tmp_inputs)?;
+        get_or_make_tensors(tract, params, fact, name, ix, &mut tmp_inputs)?;
     }
 
     let n_turns = tmp_inputs.get(0).map_or(0, |t| t.1.len());
@@ -429,8 +429,8 @@ pub fn get_or_make_inputs(
         })
         .map(|(name, fact)| {
             let mut tmp = tvec![];
-            get_or_make_tensor(tract, params, fact, &name, usize::MAX, &mut tmp)?;
-            Ok((name, tmp.remove(0).1.remove(0)))
+            get_or_make_tensors(tract, params, fact, &name, usize::MAX, &mut tmp)?;
+            Ok((name, tmp.remove(0).1.remove(0).into_tensor()))
         })
         .collect::<TractResult<HashMap<_, _>>>()?;
 

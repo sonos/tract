@@ -244,8 +244,8 @@ pub fn handle_with_model(
 
     let plan = SimplePlan::new(reference_model)?;
     let mut state = SimpleState::new(plan)?;
-    let inputs = get_or_make_inputs(reference_model, run_params)?;
-    state.init_states(&inputs.state_initializers)?;
+    let mut inputs = get_or_make_inputs(reference_model, run_params)?;
+    state.init_states(&mut inputs.state_initializers)?;
     for inputs in inputs.sources {
         state.run_plan_with_eval(inputs, |session, state, node, input| -> TractResult<_> {
             let result = tract_core::plan::eval(session, state, node, input)?;
@@ -302,8 +302,8 @@ where
     }
     let all_values: HashMap<String, &Vec<TractResult<TValue>>> =
         all_values.iter().map(|(k, v)| (canonic(k), v)).collect();
-    let inputs = get_or_make_inputs(tract, run_params)?;
-    state.init_states(&inputs.state_initializers)?;
+    let mut inputs = get_or_make_inputs(tract, run_params)?;
+    state.init_states(&mut inputs.state_initializers)?;
     for (turn, inputs) in inputs.sources.into_iter().enumerate() {
         state.run_plan_with_eval(
             inputs,
