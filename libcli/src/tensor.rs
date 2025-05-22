@@ -287,7 +287,7 @@ pub struct RunParams {
 
 pub struct RunTensors {
     pub sources: Vec<TVec<TValue>>,
-    pub state_initializers: HashMap<String, Tensor>,
+    pub state_initializers: HashMap<String, TValue>,
 }
 
 fn get_or_make_tensors(
@@ -430,7 +430,7 @@ pub fn get_or_make_inputs(
         .map(|(name, fact)| {
             let mut tmp = tvec![];
             get_or_make_tensors(tract, params, fact, &name, usize::MAX, &mut tmp)?;
-            Ok((name, tmp.remove(0).1.remove(0).into_tensor()))
+            Ok((name, tmp.remove(0).1.remove(0)))
         })
         .collect::<TractResult<HashMap<_, _>>>()?;
 
