@@ -29,8 +29,10 @@ impl DynKeyValueCacheState {
         let old_cache = self.kv_cache.as_mut().unwrap();
         let old_cache_len = old_cache.shape()[op.axis];
 
-        output.assign_slice_unchecked(..old_cache_len, old_cache, ..old_cache_len, op.axis);
-        output.assign_slice_unchecked(old_cache_len.., input, .., op.axis);
+        unsafe { 
+            output.assign_slice_unchecked(..old_cache_len, old_cache, ..old_cache_len, op.axis);
+            output.assign_slice_unchecked(old_cache_len.., input, .., op.axis);
+        }
     }
 }
 
