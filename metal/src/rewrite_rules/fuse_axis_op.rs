@@ -17,6 +17,7 @@ fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
             || node.op_is::<crate::ops::MetalScaledMaskedSoftmax>()
             || node.op_is::<crate::ops::MetalSlice>()
             || node.op_is::<crate::ops::MetalMultiBroadcastTo>()
+            || node.op_is::<crate::ops::MetalDynKVCache>()
     })
 }
 
