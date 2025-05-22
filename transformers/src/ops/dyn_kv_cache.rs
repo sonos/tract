@@ -75,7 +75,7 @@ impl OpState for DynKeyValueCacheState {
     fn load_from(
         &mut self,
         state: &mut SessionState,
-        states: &mut HashMap<String, Tensor>,
+        states: &mut HashMap<String, TValue>,
     ) -> TractResult<()> {
         if let Some(kv_cache) = states.remove(&self.io_name[0]) {
             // KV Cache fact is always at index 0
@@ -88,9 +88,9 @@ impl OpState for DynKeyValueCacheState {
         }
     }
 
-    fn save_to(&mut self, states: &mut HashMap<String, Tensor>) -> TractResult<()> {
+    fn save_to(&mut self, states: &mut HashMap<String, TValue>) -> TractResult<()> {
         if let Some(kv_cache) = &self.kv_cache {
-            states.insert(self.io_name[1].clone(), kv_cache.clone());
+            states.insert(self.io_name[1].clone(), kv_cache.clone().into_tvalue());
             Ok(())
         } else {
             bail!("KV cache {} was never initialized", self.io_name[1])
@@ -345,7 +345,7 @@ mod tests {
         inputs.push(input.clone().into_tvalue());
 
         let mut hashmap = HashMap::new();
-        hashmap.insert(op_name.clone(), input);
+        hashmap.insert(op_name.clone(), input.into());
 
         state.load_from(&mut session_state, &mut hashmap)?;
 
