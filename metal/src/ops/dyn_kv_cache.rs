@@ -33,27 +33,25 @@ impl<O: MetalEvalOp> OpState for MetalDynKVCacheState<O> {
     fn load_from(
         &mut self,
         state: &mut SessionState,
-        states: &HashMap<String, TValue>,
+        states: &mut HashMap<String, Tensor>,
     ) -> TractResult<()> {
-        if let Some(kv_cache) = states.get(&self.io_name[0]) {
+        if let Some(kv_cache) = states.remove(&self.io_name[0]) {
             // KV Cache fact is always at index 0
             DynKeyValueCacheState::resolve_symbols(
                 state,
                 self.input_facts[0].clone(),
                 Some(kv_cache.shape()),
             )?;
-
-            self.kv_cache = Some(kv_cache.clone().into_tensor().into_device()?);
-
+            self.kv_cache = Some(kv_cache.into_device()?);
             Ok(())
         } else {
             bail!("KV cache input {} not found in given states", self.io_name[0])
         }
     }
 
-    fn save_to(&mut self, states: &mut HashMap<String, TValue>) -> TractResult<()> {
+    fn save_to(&mut self, states: &mut HashMap<String, Tensor>) -> TractResult<()> {
         if let Some(kv_cache) = &self.kv_cache {
-            states.insert(self.io_name[1].clone(), kv_cache.to_host()?.into_tvalue());
+            states.insert(self.io_name[1].clone(), kv_cache.to_host()?.into_tensor());
             Ok(())
         } else {
             bail!("KV cache {} was never initialized", self.io_name[1])
@@ -77,14 +75,18 @@ impl<O: MetalEvalOp> OpState for MetalDynKVCacheState<O> {
     ) -> TractResult<TVec<TValue>> {
         ensure!(inputs.len() == 1);
         with_borrowed_metal_stream(|stream| {
-            let inputs = if let Some(kv_cache) = &self.kv_cache {
-                tvec!(kv_cache.clone().into_opaque_tensor().into_tvalue(), inputs[0].clone())
-            } else {
-                tvec!(inputs[0].clone())
-            };
+            let mut op_inputs = TVec::new();
 
-            let res = self.op.metal_eval(stream, self.node_id, session, inputs)?;
-            self.kv_cache = Some(res[0].to_device_tensor()?.clone());
+            if let Some(kv_cache) = self.kv_cache.take() {
+                op_inputs.push(kv_cache.into_opaque_tensor().into_tvalue());
+            }
+
+            op_inputs.push(inputs.into_iter().next().unwrap());
+
+            let res = self.op.metal_eval(stream, self.node_id, session, op_inputs)?;
+
+            let kv_tensor = res[0].to_device_tensor()?;
+            self.kv_cache = Some(kv_tensor.clone());
 
             Ok(res)
         })
