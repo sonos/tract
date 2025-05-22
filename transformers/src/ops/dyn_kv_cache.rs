@@ -1,8 +1,8 @@
 use tract_nnef::internal::*;
 use tract_nnef::prelude::tract_itertools::Itertools;
+use tract_nnef::tract_core::ops::OpStateFreeze;
 use tract_nnef::tract_core::ops::array::TypedConcat;
 use tract_nnef::tract_core::ops::source::TypedSource;
-use tract_nnef::tract_core::ops::OpStateFreeze;
 
 use crate::rule_ensure;
 
@@ -29,7 +29,7 @@ impl DynKeyValueCacheState {
         let old_cache = self.kv_cache.as_mut().unwrap();
         let old_cache_len = old_cache.shape()[op.axis];
 
-        unsafe { 
+        unsafe {
             output.assign_slice_unchecked(..old_cache_len, old_cache, ..old_cache_len, op.axis);
             output.assign_slice_unchecked(old_cache_len.., input, .., op.axis);
         }
@@ -98,7 +98,7 @@ impl OpState for DynKeyValueCacheState {
     }
 
     fn init_tensor_fact(&self) -> Option<TypedFact> {
-        Some(self.input_facts[0].clone())       
+        Some(self.input_facts[0].clone())
     }
 
     fn resolve_symbols(&mut self, state: &mut SessionState) -> TractResult<()> {
