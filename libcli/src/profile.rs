@@ -39,7 +39,7 @@ impl BenchLimits {
         let max_loops = if self.warmup_loops.is_zero() { usize::MAX } else { self.warmup_loops };
         let max_time = if self.warmup_time.is_zero() { Duration::MAX } else { self.warmup_time };
 
-        state.init_states(&inputs.state_initializers)?;
+        state.init_states(&mut inputs.state_initializers.clone())?;
         let start_warmup = crate::time::now();
         debug!("Warming up before profiling...");
         while iters < max_loops && start_warmup.elapsed() < max_time {
@@ -74,7 +74,7 @@ pub fn profile(
     let mut dur = Duration::default();
     let mut time_accounted_by_inner_nodes = Duration::default();
     while iters < bench_limits.max_loops && dur < bench_limits.max_time {
-        state.init_states(&inputs.state_initializers)?;
+        state.init_states(&mut inputs.state_initializers.clone())?;
         let start = Instant::now();
         rec_profiler(
             &mut state,
@@ -139,10 +139,9 @@ pub fn profile_metal(
     plan = plan.with_session_handler(session_handler);
 
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
-
     let mut dur = Duration::default();
     while iters < bench_limits.max_loops && dur < bench_limits.max_time {
-        state.init_states(&inputs.state_initializers)?;
+        state.init_states(&mut inputs.state_initializers.clone())?;
         let start = Instant::now();
         rec_profiler_metal(&mut state, dg, &inputs.sources[0], &prefix)?;
         dur += start.elapsed();
