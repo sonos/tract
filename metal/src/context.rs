@@ -13,7 +13,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use metal::{
     Buffer, CommandQueue, CompileOptions, ComputePipelineState, Device, Function,
     FunctionConstantValues, Library, MTLResourceOptions,
@@ -237,16 +237,12 @@ impl MetalStream {
     }
 
     pub fn command_buffer(&self) -> TCommandBuffer {
-        let command_buffer = self
-            .command_buffer
+        self.command_buffer
             .borrow_mut()
             .get_or_insert_with(|| {
-                let command_buffer =
-                    TCommandBuffer::new(self.command_queue.new_command_buffer().to_owned());
-                command_buffer
+                TCommandBuffer::new(self.command_queue.new_command_buffer().to_owned())
             })
-            .to_owned();
-        command_buffer
+            .to_owned()
     }
 
     pub fn wait_until_completed(&self) -> TractResult<()> {

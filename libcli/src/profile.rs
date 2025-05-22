@@ -34,7 +34,7 @@ impl BenchLimits {
             return Ok(());
         }
         let plan = TypedSimplePlan::new(model.clone())?;
-        let mut state: SimpleState<TypedFact, Box<dyn TypedOp + 'static>, Graph<TypedFact, Box<dyn TypedOp + 'static>>, Arc<SimplePlan<TypedFact, Box<dyn TypedOp + 'static>, Graph<TypedFact, Box<dyn TypedOp + 'static>>>>> = TypedSimpleState::new(Arc::new(plan))?;
+        let mut state = TypedSimpleState::new(Arc::new(plan))?;
         let mut iters = 0;
         let max_loops = if self.warmup_loops.is_zero() { usize::MAX } else { self.warmup_loops };
         let max_time = if self.warmup_time.is_zero() { Duration::MAX } else { self.warmup_time };

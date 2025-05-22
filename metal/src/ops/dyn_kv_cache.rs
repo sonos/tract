@@ -1,7 +1,7 @@
+use crate::MetalStream;
 use crate::kernels::array::Concat;
 use crate::ops::MetalEvalOp;
 use crate::utils::with_borrowed_metal_stream;
-use crate::MetalStream;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::OpStateFreeze;
@@ -223,11 +223,7 @@ mod tests {
                         .iter()
                         .enumerate()
                         .map(|(i, &dim)| {
-                            if i == axis {
-                                TDim::Sym(model.sym(sym))
-                            } else {
-                                TDim::Val(dim as _)
-                            }
+                            if i == axis { TDim::Sym(model.sym(sym)) } else { TDim::Val(dim as _) }
                         })
                         .collect::<TVec<TDim>>()
                 };
