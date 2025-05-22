@@ -34,21 +34,25 @@ impl BenchLimits {
             return Ok(());
         }
         let plan = TypedSimplePlan::new(model.clone())?;
-        let mut state = TypedSimpleState::new(Arc::new(plan))?;
+        let mut state: SimpleState<TypedFact, Box<dyn TypedOp + 'static>, Graph<TypedFact, Box<dyn TypedOp + 'static>>, Arc<SimplePlan<TypedFact, Box<dyn TypedOp + 'static>, Graph<TypedFact, Box<dyn TypedOp + 'static>>>>> = TypedSimpleState::new(Arc::new(plan))?;
         let mut iters = 0;
         let max_loops = if self.warmup_loops.is_zero() { usize::MAX } else { self.warmup_loops };
         let max_time = if self.warmup_time.is_zero() { Duration::MAX } else { self.warmup_time };
 
-        state.init_states(&mut inputs.state_initializers.clone())?;
-        let start_warmup = crate::time::now();
+        let start_warmup = Instant::now();
         debug!("Warming up before profiling...");
         while iters < max_loops && start_warmup.elapsed() < max_time {
-            state.run(inputs.sources[0].clone())?;
+            if state.model().properties().contains_key("pulse.delay") {
+                state.run(inputs.sources[0].clone())?;
+            } else {
+                state.init_states(&mut inputs.state_initializers.clone())?;
+                state.run(inputs.sources[0].clone())?;
+                state.reset_op_states()?
+            }
             iters += 1;
         }
         debug!("Done warming up.");
 
-        state.reset_op_states()?;
         Ok(())
     }
 }
@@ -74,7 +78,9 @@ pub fn profile(
     let mut dur = Duration::default();
     let mut time_accounted_by_inner_nodes = Duration::default();
     while iters < bench_limits.max_loops && dur < bench_limits.max_time {
-        state.init_states(&mut inputs.state_initializers.clone())?;
+        if !state.model().properties().contains_key("pulse.delay") {
+            state.init_states(&mut inputs.state_initializers.clone())?;
+        }
         let start = Instant::now();
         rec_profiler(
             &mut state,
@@ -87,7 +93,9 @@ pub fn profile(
             folded,
         )?;
         dur += start.elapsed();
-        state.reset_op_states()?;
+        if !state.model().properties().contains_key("pulse.delay") {   
+            state.reset_op_states()?;
+        }
         iters += 1;
     }
 
@@ -141,11 +149,15 @@ pub fn profile_metal(
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
     let mut dur = Duration::default();
     while iters < bench_limits.max_loops && dur < bench_limits.max_time {
-        state.init_states(&mut inputs.state_initializers.clone())?;
+        if !state.model().properties().contains_key("pulse.delay") {
+            state.init_states(&mut inputs.state_initializers.clone())?;
+        }
         let start = Instant::now();
         rec_profiler_metal(&mut state, dg, &inputs.sources[0], &prefix)?;
         dur += start.elapsed();
-        state.reset_op_states()?;
+        if !state.model().properties().contains_key("pulse.delay") {  
+            state.reset_op_states()?;
+        }
         iters += 1;
     }
 
