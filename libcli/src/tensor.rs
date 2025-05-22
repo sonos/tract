@@ -411,7 +411,7 @@ pub fn get_or_make_inputs(
         get_or_make_tensors(tract, params, fact, name, ix, &mut tmp_inputs)?;
     }
 
-    let n_turns = tmp_inputs.get(0).map_or(0, |t| t.1.len());
+    let n_turns = tmp_inputs.first().map_or(0, |t| t.1.len());
     let sources = (0..n_turns)
         .map(|i| tmp_inputs.iter().map(|t| t.1[i].clone()).collect::<TVec<_>>())
         .collect::<Vec<_>>();

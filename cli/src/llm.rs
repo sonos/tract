@@ -29,8 +29,7 @@ pub fn figure_out_b_s_p(model: &TypedModel) -> TractResult<(Option<Symbol>, Symb
             if let Some(fact) = node
                 .op
                 .state(&mut dummy_session_state, 0)?
-                .map(|state| state.init_tensor_fact())
-                .flatten()
+                .and_then(|state| state.init_tensor_fact())
             {
                 symbols = fact.shape.volume().symbols();
                 break;
