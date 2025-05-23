@@ -524,11 +524,12 @@ enum TRACT_RESULT tract_state_set_states(struct TractState *state,
 /**
  * Get Stateful Ops's current states.
  * Caller should free state_names pointers after use
+ * This also sets n_states to the real numbers of states
  */
 enum TRACT_RESULT tract_state_get_states(const struct TractState *state,
                                          char **state_names,
                                          struct TractValue **states,
-                                         uintptr_t n_states);
+                                         uintptr_t *n_states);
 
 /**
  * Parse a fact specification string into an Fact.
