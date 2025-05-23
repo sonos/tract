@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr, CString};
 use tract_api::{
     AsFact, DatumType, InferenceModelInterface, ModelInterface, NnefInterface, OnnxInterface,
@@ -739,10 +740,14 @@ pub unsafe extern "C" fn tract_model_optimize(model: *mut TractModel) -> TRACT_R
 pub unsafe extern "C" fn tract_model_profile_json(
     model: *mut TractModel,
     inputs: *mut *mut TractValue,
+    state_names: *const *const c_char,
+    states: *mut *mut TractValue,
+    n_states: usize,
     json: *mut *mut i8,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(model, json);
+
         let input: Option<Vec<Value>> = if !inputs.is_null() {
             let input_len = (*model).0.input_count()?;
             Some(
@@ -754,7 +759,23 @@ pub unsafe extern "C" fn tract_model_profile_json(
         } else {
             None
         };
-        let profile = (*model).0.profile_json(input)?;
+
+        let state_initializers = if !state_names.is_null() {
+            anyhow::ensure!(!states.is_null() && n_states != 0);
+            let hashmap = (0..n_states)
+                    .zip(std::slice::from_raw_parts(states, n_states).iter())
+                    .map(|(i, tv)| { 
+                        let c_str_p = *state_names.add(i);
+                        if c_str_p.is_null() {
+                            anyhow::bail!("No state_name for state {i}")
+                        }
+                        Ok((CStr::from_ptr(c_str_p).to_str().unwrap().to_owned(), 
+                                        (**tv).0.clone()))
+                    }).collect::<Result<HashMap<String, Value>>>()?;
+            Some(hashmap)
+        } else { None };
+
+        let profile = (*model).0.profile_json(input, state_initializers)?;
         *json = CString::new(profile)?.into_raw() as _;
         Ok(())
     })
