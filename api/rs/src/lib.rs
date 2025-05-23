@@ -269,14 +269,20 @@ impl ModelInterface for Model {
 
     fn cost_json(&self) -> Result<String> {
         let input: Option<Vec<Value>> = None;
-        self.profile_json(input)
+        self.profile_json(input, None::<HashMap<String, Value>>)
     }
 
-    fn profile_json<I, V, E>(&self, inputs: Option<I>) -> Result<String>
+    fn profile_json<I, IV, IE, SV, SE>(
+        &self,
+        inputs: Option<I>,
+        state_initializers: Option<HashMap<String, SV>>,
+    ) -> Result<String>
     where
-        I: IntoIterator<Item = V>,
-        V: TryInto<Self::Value, Error = E>,
-        E: Into<anyhow::Error> + Debug,
+        I: IntoIterator<Item = IV>,
+        IV: TryInto<Self::Value, Error = IE>,
+        IE: Into<anyhow::Error> + Debug,
+        SV: TryInto<Self::Value, Error = SE>,
+        SE: Into<anyhow::Error> + Debug,
     {
         let mut annotations = Annotations::from_model(&self.0)?;
         tract_libcli::profile::extract_costs(&mut annotations, &self.0, &SymbolValues::default())?;
@@ -285,12 +291,18 @@ impl ModelInterface for Model {
                 .into_iter()
                 .map(|v| Ok(v.try_into().unwrap().0))
                 .collect::<TractResult<TVec<_>>>()?;
+
+            let mut state_inits: HashMap<String, TValue> = HashMap::new();
+
+            if let Some(states) = state_initializers {
+                states.into_iter().for_each(|(name, v)| { state_inits.insert(name, v.try_into().unwrap().0);});
+            }
             tract_libcli::profile::profile(
                 &self.0,
                 &BenchLimits::default(),
                 &mut annotations,
                 &PlanOptions::default(),
-                &RunTensors { sources: vec![inputs], state_initializers: HashMap::new()},
+                &RunTensors { sources: vec![inputs], state_initializers: state_inits},
                 None,
                 true
             )?;
@@ -369,6 +381,26 @@ impl StateInterface for State {
             .collect::<Result<_>>()?;
         let outputs = self.0.run(inputs)?;
         Ok(outputs.into_iter().map(Value).collect())
+    }
+
+    fn set_states<I, V, E>(&mut self, state_inits: HashMap<String, I>) -> Result<()>
+    where
+        I: IntoIterator<Item = V>,
+        V: TryInto<Self::Value, Error = E>,
+        E: Into<anyhow::Error>
+    {
+        Ok(())
+    }
+    
+    fn get_states<I, V, E>(&self) -> Result<HashMap<String, I>>
+    where
+        I: IntoIterator<Item = V>,
+        V: TryInto<Self::Value, Error = E>,
+        E: Into<anyhow::Error>
+    {
+        let state = HashMap::new()
+
+        Ok(state)
     }
 }
 

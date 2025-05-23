@@ -375,6 +375,9 @@ enum TRACT_RESULT tract_model_optimize(struct TractModel *model);
  */
 enum TRACT_RESULT tract_model_profile_json(struct TractModel *model,
                                            struct TractValue **inputs,
+                                           const char *const *state_names,
+                                           struct TractValue **states,
+                                           uintptr_t n_states,
                                            int8_t **json);
 
 /**
