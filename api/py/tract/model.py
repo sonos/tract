@@ -238,6 +238,7 @@ class Model:
         state_values = []
         names_ptrs = None
         state_ptrs = None
+        n_states = 0
         if state_initializers != None:
             n_states = len(state_initializers)
             names_ptrs = (c_char_p * n_states)()
