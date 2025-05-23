@@ -12,7 +12,7 @@ use tract_transformers::ops::dyn_kv_cache::{DynKeyValueCache, DynKeyValueCacheSt
 pub struct MetalDynKVCacheState<O: MetalEvalOp> {
     node_id: usize,
     op: O,
-    io_name: [String; 2],
+    name: String,
     input_facts: [TypedFact; 2],
     kv_cache: Option<DeviceTensor>,
 }
@@ -35,7 +35,7 @@ impl<O: MetalEvalOp> OpState for MetalDynKVCacheState<O> {
         state: &mut SessionState,
         states: &mut HashMap<String, TValue>,
     ) -> TractResult<()> {
-        if let Some(kv_cache) = states.remove(&self.io_name[0]) {
+        if let Some(kv_cache) = states.remove(&self.name) {
             // KV Cache fact is always at index 0
             DynKeyValueCacheState::resolve_symbols(
                 state,
@@ -45,16 +45,16 @@ impl<O: MetalEvalOp> OpState for MetalDynKVCacheState<O> {
             self.kv_cache = Some(kv_cache.into_tensor().into_device()?);
             Ok(())
         } else {
-            bail!("KV cache input {} not found in given states", self.io_name[0])
+            bail!("KV cache input {} not found in given states", self.name)
         }
     }
 
     fn save_to(&self, states: &mut HashMap<String, TValue>) -> TractResult<()> {
         if let Some(kv_cache) = &self.kv_cache {
-            states.insert(self.io_name[0].clone(), kv_cache.to_host()?.into_tensor().into_tvalue());
+            states.insert(self.name.clone(), kv_cache.to_host()?.into_tensor().into_tvalue());
             Ok(())
         } else {
-            bail!("KV cache {} was never initialized", self.io_name[1])
+            bail!("KV cache {} was never initialized", self.name)
         }
     }
 
@@ -95,7 +95,7 @@ impl<O: MetalEvalOp> OpState for MetalDynKVCacheState<O> {
 
 #[derive(new, Debug, Clone, Hash)]
 pub struct MetalDynKVCache {
-    io_name: [String; 2],
+    name: String,
     input_facts: [TypedFact; 2],
     kernel: Concat,
 }
@@ -103,7 +103,7 @@ pub struct MetalDynKVCache {
 impl MetalDynKVCache {
     pub fn from_tract_transformers(op: &DynKeyValueCache) -> Self {
         Self {
-            io_name: op.io_name.clone(),
+            name: op.name.clone(),
             kernel: Concat { axis: op.axis },
             input_facts: op.input_facts.clone(),
         }
@@ -140,7 +140,7 @@ impl EvalOp for MetalDynKVCache {
         Ok(Some(Box::new(MetalDynKVCacheState::new(
             node_id,
             self.clone(),
-            self.io_name.clone(),
+            self.name.clone(),
             self.input_facts.clone(),
             None,
         ))))
@@ -241,7 +241,7 @@ mod tests {
             };
 
             let op = DynKeyValueCache {
-                io_name: [op_name.clone(), op_name.clone()],
+                name: op_name.clone(),
                 input_facts: [
                     TypedFact::dt_shape(F::datum_type(), cache_shape),
                     TypedFact::dt_shape(F::datum_type(), input_shape),
