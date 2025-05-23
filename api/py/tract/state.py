@@ -61,6 +61,53 @@ class State:
         frozen = c_void_p()
         check(lib.tract_state_freeze(self.ptr, byref(frozen)))
         return FrozenState(frozen)
+    
+    def set_states(self, states: Dict[str, Union[Value, numpy.ndarray]]):
+        """
+        Initialize Stateful Ops with given states
+        """
+        self._valid()
+
+        n_states = len(states)
+
+        names_str = []
+        state_values = []
+        names_ptrs = (c_char_p * n_states)()
+        state_ptrs = (c_void_p * n_states)()
+
+        for ix, (k, v) in enumerate(states.items()):
+            names_str.append(str(k).encode("utf-8"))
+            if isinstance(v, Value):
+                state_values.append(v)
+            elif isinstance(v, numpy.ndarray):
+                state_values.append(Value.from_numpy(v))
+            else:
+                raise TractError(f"State values must be of type tract.Value or numpy.Array, got {v}")
+
+            names_ptrs[ix] = names_str[ix]
+            state_ptrs[ix] = state_values[ix].ptr
+
+        check(lib.tract_state_set_states(self.ptr, names_ptrs, state_ptrs, n_states))
+
+    def get_states(self, n_states: int) -> Dict[str, Value]:
+        """
+        Get Stateful Ops' current states
+        """
+        self._valid()
+
+        names_ptrs = (POINTER(c_char_p) * n_states)()
+        state_ptrs = (c_void_p * n_states)()
+        check(lib.tract_state_get_states(self.ptr, names_ptrs, state_ptrs, n_states))
+
+        res = {}
+        for i in range(n_states):
+            key = string_at(names_ptrs[i]).decode("utf-8")
+            res[key] = Value(c_void_p(state_ptrs[i]))
+
+        for i in range(n_states):
+            lib.tract_free_cstring(names_ptrs[i])
+
+        return res
 
 class FrozenState:
     """

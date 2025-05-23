@@ -83,7 +83,7 @@ pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze + Downcast {
         Ok(())
     }
 
-    fn save_to(&mut self, _: &mut HashMap<String, TValue>) -> TractResult<()> {
+    fn save_to(&self, _: &mut HashMap<String, TValue>) -> TractResult<()> {
         Ok(())
     }
 

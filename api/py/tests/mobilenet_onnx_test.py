@@ -219,6 +219,30 @@ def test_transform_registry():
     assert str(model.input_fact(0)) == "1,3,224,224,F32"
     assert str(model.output_fact(0)) == "1,1000,F32"
 
+def test_state_init():
+    nnef = tract.nnef().with_tract_core().with_tract_transformers()
+    model = nnef.model_for_path("/Users/lchouraki/Documents/tract/.cached/llm/516/TinyLlama--TinyLlama_v1.1-q40ef16/TinyLlama--TinyLlama_v1.1-q40ef16.nnef.tgz")
+    model.declutter()
+
+    state_initializers = {}
+    for idx in range(1, model.input_count()):
+        tensor = numpy.random.rand(1, 4, 4, 64).astype(dtype="float32")
+        state_initializers[model.input_name(idx)] = tensor
+
+    # Do KV Cache optim
+    nnef.transform_model(model, "detect-kv-cache")
+    assert model.input_count() == 1
+
+    state = model.into_runnable().spawn_state()
+
+    state.set_states(state_initializers)
+    out_states = state.get_states(len(state_initializers))
+
+    for (k, v) in state_initializers.items():
+        assert numpy.all(out_states[k].to_numpy() == v)
+
+
+
 def test_profile_with_init_state():
     nnef = tract.nnef().with_tract_core().with_tract_transformers()
     model = nnef.model_for_path("/Users/lchouraki/Documents/tract/.cached/llm/516/TinyLlama--TinyLlama_v1.1-q40ef16/TinyLlama--TinyLlama_v1.1-q40ef16.nnef.tgz")

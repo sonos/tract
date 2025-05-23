@@ -49,9 +49,9 @@ impl<O: MetalEvalOp> OpState for MetalDynKVCacheState<O> {
         }
     }
 
-    fn save_to(&mut self, states: &mut HashMap<String, TValue>) -> TractResult<()> {
+    fn save_to(&self, states: &mut HashMap<String, TValue>) -> TractResult<()> {
         if let Some(kv_cache) = &self.kv_cache {
-            states.insert(self.io_name[1].clone(), kv_cache.to_host()?.into_tensor().into_tvalue());
+            states.insert(self.io_name[0].clone(), kv_cache.to_host()?.into_tensor().into_tvalue());
             Ok(())
         } else {
             bail!("KV cache {} was never initialized", self.io_name[1])
@@ -274,7 +274,7 @@ mod tests {
 
                 state.run(tvec!(input.clone().into()))?;
             }
-            let mut kv_cache_state = state.states[2].clone().unwrap();
+            let kv_cache_state = state.states[2].clone().unwrap();
 
             let mut hashmap = HashMap::new();
             kv_cache_state.save_to(&mut hashmap)?;
