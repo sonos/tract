@@ -421,10 +421,7 @@ pub fn get_or_make_inputs(
     let state_initializers = (0..tract.nodes_len())
         .filter_map(|id| {
             tract.node_op(id).state(&mut dummy_session_state, id).ok().flatten().and_then(|state| {
-                state.init_tensor_fact().map(|fact| {
-                    let name = tract.node_name(id);
-                    (name.to_string(), fact)
-                })
+                state.init_tensor_fact()
             })
         })
         .map(|(name, fact)| {

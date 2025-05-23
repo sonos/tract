@@ -89,22 +89,25 @@ class State:
 
         check(lib.tract_state_set_states(self.ptr, names_ptrs, state_ptrs, n_states))
 
-    def get_states(self, n_states: int) -> Dict[str, Value]:
+    def get_states(self) -> Dict[str, Value]:
         """
         Get Stateful Ops' current states
         """
         self._valid()
 
-        names_ptrs = (POINTER(c_char_p) * n_states)()
-        state_ptrs = (c_void_p * n_states)()
-        check(lib.tract_state_get_states(self.ptr, names_ptrs, state_ptrs, n_states))
+        n_states = c_size_t()
+        n_states.value = 256
+        names_ptrs = (POINTER(c_char_p) * n_states.value)()
+        state_ptrs = (c_void_p * n_states.value)()
+
+        check(lib.tract_state_get_states(self.ptr, names_ptrs, state_ptrs, byref(n_states)))
 
         res = {}
-        for i in range(n_states):
+        for i in range(n_states.value):
             key = string_at(names_ptrs[i]).decode("utf-8")
             res[key] = Value(c_void_p(state_ptrs[i]))
 
-        for i in range(n_states):
+        for i in range(len(names_ptrs)):
             lib.tract_free_cstring(names_ptrs[i])
 
         return res

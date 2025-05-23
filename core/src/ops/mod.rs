@@ -87,7 +87,7 @@ pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze + Downcast {
         Ok(())
     }
 
-    fn init_tensor_fact(&self) -> Option<TypedFact> {
+    fn init_tensor_fact(&self) -> Option<(String, TypedFact)> {
         None
     }
 

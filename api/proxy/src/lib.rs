@@ -543,20 +543,24 @@ impl StateInterface for State {
         Ok(())
     }
 
-    fn get_states(&self, n_states: usize) -> Result<HashMap<String, Self::Value>>
+    fn get_states(&self) -> Result<HashMap<String, Self::Value>>
     {
+        let mut n_states = 256;
+
         let mut nptrs: Vec<*mut c_char> = vec![null_mut(); n_states];
         let mut sptrs = vec![null_mut(); n_states];
-        check!(sys::tract_state_get_states(self.0, nptrs.as_mut_ptr(), sptrs.as_mut_ptr(), n_states))?;
+        check!(sys::tract_state_get_states(self.0, nptrs.as_mut_ptr(), sptrs.as_mut_ptr(), &mut n_states))?;
 
         unsafe {
-            nptrs.into_iter().zip(sptrs.into_iter())
+            let res = nptrs.iter().zip(sptrs.into_iter()).take(n_states)
                 .map(|(name, value)| {
-                    let s = CStr::from_ptr(name).to_str()?.to_owned();
-                    sys::tract_free_cstring(name);
+                    let s = CStr::from_ptr(*name).to_str()?.to_owned();
                     Ok((s, Value(value)))
                 })
-                .collect::<Result<HashMap<String, Value>>>()
+                .collect::<Result<HashMap<String, Value>>>();
+            
+            nptrs.into_iter().for_each(|name| sys::tract_free_cstring(name));
+            res
         }
     } 
 }

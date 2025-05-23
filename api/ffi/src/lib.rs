@@ -1089,18 +1089,21 @@ pub unsafe extern "C" fn tract_state_set_states(
 
 /// Get Stateful Ops's current states.
 /// Caller should free state_names pointers after use
+/// This also sets n_states to the real numbers of states
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_get_states(
     state: *const TractState,
     state_names: *mut *mut c_char,
     states: *mut *mut TractValue,
-    n_states: usize,
+    n_states: *mut usize,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         let state = &(*state).0;
     
-        let hashmap = state.get_states(n_states)?;
-        anyhow::ensure!(n_states == hashmap.len());
+        let hashmap = state.get_states()?;
+        // Check we won't overflow
+        anyhow::ensure!(hashmap.len() <= *n_states);
+        *n_states = hashmap.len();
 
         for (ix, (k, v)) in hashmap.into_iter().enumerate() {
             let c_key = CString::new(k)?;

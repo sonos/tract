@@ -226,7 +226,7 @@ pub trait StateInterface {
         V: TryInto<Self::Value, Error = E>,
         E: Into<anyhow::Error> + Debug;
 
-    fn get_states(&self, n_states: usize) -> Result<HashMap<String, Self::Value>>;
+    fn get_states(&self) -> Result<HashMap<String, Self::Value>>;
 }
 
 pub trait ValueInterface: Sized + Clone {

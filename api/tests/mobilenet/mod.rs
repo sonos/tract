@@ -318,7 +318,7 @@ fn test_state_init() -> anyhow::Result<()> {
     let mut state = model.into_runnable()?.spawn_state()?;
     state.set_states(state_initializers.clone())?;
 
-    let out_states = state.get_states(state_initializers.len())?;
+    let out_states = state.get_states()?;
     for (k, v) in state_initializers {
         if let Some(s) = out_states.get(&k) {
             assert_eq!(s.view::<f32>()?, v);

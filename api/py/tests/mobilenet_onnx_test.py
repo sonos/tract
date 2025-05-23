@@ -180,7 +180,7 @@ def test_cost():
     assert str(model.input_fact(0)) == "1,3,224,224,F32"
     model.declutter()
     model.optimize()
-    profile = model.profile_json(None)
+    profile = model.profile_json(None, None)
     profile = json.loads(profile)
     assert len(profile["nodes"]) > 10
     assert profile["nodes"][0]["node_name"] != ""
@@ -193,7 +193,7 @@ def test_profile():
     model.declutter()
     model.optimize()
     data = numpy.random.rand(1,3,224,224).astype(dtype="float32")
-    profile = model.profile_json([data])
+    profile = model.profile_json([data], None)
     profile = json.loads(profile)
     profiling_info = profile["profiling_info"]
     assert profiling_info["iterations"] >= 1
@@ -236,7 +236,7 @@ def test_state_init():
     state = model.into_runnable().spawn_state()
 
     state.set_states(state_initializers)
-    out_states = state.get_states(len(state_initializers))
+    out_states = state.get_states()
 
     for (k, v) in state_initializers.items():
         assert numpy.all(out_states[k].to_numpy() == v)

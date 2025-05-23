@@ -397,7 +397,7 @@ impl StateInterface for State {
         Ok(())
     }
     
-    fn get_states(&self, _: usize) -> Result<HashMap<String, Self::Value>>
+    fn get_states(&self) -> Result<HashMap<String, Self::Value>>
     {
         let mut states = HashMap::new();
         for state in self.0
