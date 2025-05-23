@@ -218,3 +218,22 @@ def test_transform_registry():
     nnef.transform_model(model, "f16-to-f32")
     assert str(model.input_fact(0)) == "1,3,224,224,F32"
     assert str(model.output_fact(0)) == "1,1000,F32"
+
+def test_profile_with_init_state():
+    nnef = tract.nnef().with_tract_core().with_tract_transformers()
+    model = nnef.model_for_path("/Users/lchouraki/Documents/tract/.cached/llm/516/TinyLlama--TinyLlama_v1.1-q40ef16/TinyLlama--TinyLlama_v1.1-q40ef16.nnef.tgz")
+    model.declutter()
+    model.optimize()
+
+    input = numpy.random.rand(1,1).astype(dtype="int64")
+    state_initializers = {}
+    for idx in range(1, model.input_count()):
+        tensor = numpy.random.rand(1, 4, 4, 64).astype(dtype="float32")
+        state_initializers[model.input_name(idx)] = tensor
+
+    # Do KV Cache optim
+    nnef.transform_model(model, "detect-kv-cache")
+    #model.optimize()
+    assert model.input_count() == 1
+
+    model.profile_json([input], state_initializers)

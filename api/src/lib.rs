@@ -1,5 +1,6 @@
 use anyhow::{ensure, Result};
 use boow::Bow;
+use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::path::Path;
 
@@ -173,11 +174,17 @@ pub trait ModelInterface: Sized {
 
     fn cost_json(&self) -> Result<String>;
 
-    fn profile_json<I, V, E>(&self, inputs: Option<I>) -> Result<String>
+    fn profile_json<I, IV, IE, SV, SE>(
+    &self,
+    inputs: Option<I>,
+    state_initializers: Option<HashMap<String, SV>>,
+    ) -> Result<String>
     where
-        I: IntoIterator<Item = V>,
-        V: TryInto<Self::Value, Error = E>,
-        E: Into<anyhow::Error> + Debug;
+        I: IntoIterator<Item = IV>,
+        IV: TryInto<Self::Value, Error = IE>,
+        IE: Into<anyhow::Error> + Debug,
+        SV: TryInto<Self::Value, Error = SE>,
+        SE: Into<anyhow::Error> + Debug;
 
     fn property_keys(&self) -> Result<Vec<String>>;
 

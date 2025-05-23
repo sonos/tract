@@ -271,7 +271,7 @@ fn test_profile() -> anyhow::Result<()> {
     model.declutter()?;
     model.optimize()?;
     let data = ndarray::ArrayD::<f32>::zeros(vec![1, 3, 224, 224]);
-    let profile = model.profile_json(Some([data]))?;
+    let profile = model.profile_json(Some([data]), None::<std::collections::HashMap<String, Value>>)?;
     let profile: serde_json::Value = serde_json::from_str(&profile)?;
     let profiling_info = profile["profiling_info"].as_object().unwrap();
     assert!(profiling_info["iterations"].as_i64().unwrap() >= 1);
@@ -297,5 +297,26 @@ fn test_transform_registry() -> anyhow::Result<()> {
     nnef.transform_model(&mut model, "f16-to-f32")?;
     assert_eq!(model.input_fact(0)?.to_string(), "1,3,224,224,F32");
     assert_eq!(model.output_fact(0)?.to_string(), "1,1000,F32");
+    Ok(())
+}
+
+#[test]
+fn test_profile_with_state_init() -> anyhow::Result<()> {
+    let nnef = nnef()?.with_tract_core()?.with_tract_transformers()?;
+    let mut model = nnef.model_for_path("/Users/lchouraki/Documents/tract/.cached/llm/516/TinyLlama--TinyLlama_v1.1-q40ef16/TinyLlama--TinyLlama_v1.1-q40ef16.nnef.tgz")?;
+    model.declutter()?;
+    let input = ndarray::ArrayD::<i64>::zeros(vec![1, 1]);
+    let mut state_initializers = std::collections::HashMap::new();
+    for idx in 1..model.input_count()? {
+        let tensor = ndarray::ArrayD::<f32>::zeros(vec![1, 4, 4, 64]);
+        state_initializers.insert(model.input_name(idx)?, tensor);
+    }
+    // Do KV Cache optim
+    nnef.transform_model(&mut model, "detect-kv-cache")?;
+    model.optimize()?;
+    assert_eq!(model.input_count()?, 1);
+
+    model.profile_json(Some([input]), Some(state_initializers))?;
+
     Ok(())
 }

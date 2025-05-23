@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::ffi::{CStr, CString};
+use std::os::raw::c_char;
 use std::path::Path;
 use std::ptr::{null, null_mut};
 
@@ -361,14 +363,20 @@ impl ModelInterface for Model {
 
     fn cost_json(&self) -> Result<String> {
         let input: Option<Vec<Value>> = None;
-        self.profile_json(input)
+        self.profile_json(input, None::<HashMap<String, Value>>)
     }
 
-    fn profile_json<I, V, E>(&self, inputs: Option<I>) -> Result<String>
+    fn profile_json<I, IV, IE, SV, SE>(
+    &self,
+    inputs: Option<I>,
+    state_initializers: Option<HashMap<String, SV>>,
+    ) -> Result<String>
     where
-        I: IntoIterator<Item = V>,
-        V: TryInto<Value, Error = E>,
-        E: Into<anyhow::Error>,
+        I: IntoIterator<Item = IV>,
+        IV: TryInto<Self::Value, Error = IE>,
+        IE: Into<anyhow::Error>,
+        SV: TryInto<Self::Value, Error = SE>,
+        SE: Into<anyhow::Error>,
     {
         let inputs = if let Some(inputs) = inputs {
             let inputs = inputs
@@ -384,7 +392,28 @@ impl ModelInterface for Model {
             inputs.as_ref().map(|is| is.iter().map(|v| v.0).collect());
         let mut json: *mut i8 = null_mut();
         let values = iptrs.as_mut().map(|it| it.as_mut_ptr()).unwrap_or(null_mut());
-        check!(sys::tract_model_profile_json(self.0, values, &mut json))?;
+
+        let (mut nptrs, mut sptrs, n_states) 
+        = if let Some(state_map) = state_initializers {
+            let mut key_ptrs: Vec<*const c_char> = Vec::with_capacity(state_map.len());
+            let mut value_ptrs = Vec::with_capacity(state_map.len());
+
+            let len = state_map.len();
+            for (k, v) in state_map {
+                let key = CString::new(k)?;
+                let val: Value = v.try_into().map_err(|e| e.into())?;
+                key_ptrs.push(key.as_ptr());
+                value_ptrs.push(val.0);
+            }
+
+            (Some(key_ptrs), Some(value_ptrs), len)
+        } else {
+            (None, None, 0)
+        };
+
+        let nptrs = nptrs.as_mut().map(|it| it.as_ptr()).unwrap_or(null_mut());
+        let sptrs = sptrs.as_mut().map(|it| it.as_mut_ptr()).unwrap_or(null_mut());
+        check!(sys::tract_model_profile_json(self.0, values, nptrs, sptrs, n_states, &mut json))?;
         anyhow::ensure!(!json.is_null());
         unsafe {
             let s = CStr::from_ptr(json).to_owned();
