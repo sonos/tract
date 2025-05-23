@@ -31,7 +31,7 @@ pub fn figure_out_b_s_p(model: &TypedModel) -> TractResult<(Option<Symbol>, Symb
                 .state(&mut dummy_session_state, 0)?
                 .and_then(|state| state.init_tensor_fact())
             {
-                symbols = fact.shape.volume().symbols();
+                symbols = fact.1.shape.volume().symbols();
                 break;
             }
         }
