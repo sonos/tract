@@ -741,7 +741,7 @@ pub unsafe extern "C" fn tract_model_profile_json(
     model: *mut TractModel,
     inputs: *mut *mut TractValue,
     state_names: *const *const c_char,
-    states: *mut *mut TractValue,
+    states: *const *const TractValue,
     n_states: usize,
     json: *mut *mut i8,
 ) -> TRACT_RESULT {
@@ -1057,6 +1057,58 @@ pub unsafe extern "C" fn tract_state_output_count(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_destroy(state: *mut *mut TractState) -> TRACT_RESULT {
     release!(state)
+}
+
+/// Initialize Stateful Ops with specified values
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_state_set_states(
+    state: *mut TractState,
+    state_names: *const *const c_char,
+    states: *const *const TractValue,
+    n_states: usize,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(state, state_names, states);
+        anyhow::ensure!(n_states != 0);
+        let state = &mut (*state).0;
+        
+        let state_initializers = (0..n_states)
+                .zip(std::slice::from_raw_parts(states, n_states).iter())
+                .map(|(i, tv)| { 
+                    let c_str_p = *state_names.add(i);
+                    if c_str_p.is_null() {
+                        anyhow::bail!("No state_name for state {i}")
+                    }
+                    Ok((CStr::from_ptr(c_str_p).to_str().unwrap().to_owned(), 
+                                    (**tv).0.clone()))
+                }).collect::<Result<HashMap<String, Value>>>()?;
+        state.set_states(state_initializers)?;
+        Ok(())
+    })
+}
+
+/// Get Stateful Ops's current states.
+/// Caller should free state_names pointers after use
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_state_get_states(
+    state: *const TractState,
+    state_names: *mut *mut c_char,
+    states: *mut *mut TractValue,
+    n_states: usize,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        let state = &(*state).0;
+    
+        let hashmap = state.get_states(n_states)?;
+        anyhow::ensure!(n_states == hashmap.len());
+
+        for (ix, (k, v)) in hashmap.into_iter().enumerate() {
+            let c_key = CString::new(k)?;
+            *state_names.add(ix) = c_key.into_raw(); 
+            *states.add(ix) = Box::into_raw(Box::new(TractValue(v)));
+        }
+        Ok(())
+    })
 }
 
 // FACT

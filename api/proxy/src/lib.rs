@@ -393,10 +393,10 @@ impl ModelInterface for Model {
         let mut json: *mut i8 = null_mut();
         let values = iptrs.as_mut().map(|it| it.as_mut_ptr()).unwrap_or(null_mut());
 
-        let (mut nptrs, mut sptrs, n_states) 
+        let (nptrs, sptrs, n_states) 
         = if let Some(state_map) = state_initializers {
-            let mut key_ptrs: Vec<*const c_char> = Vec::with_capacity(state_map.len());
-            let mut value_ptrs = Vec::with_capacity(state_map.len());
+            let mut key_ptrs: Vec<*const _> = Vec::with_capacity(state_map.len());
+            let mut value_ptrs: Vec<*const _> = Vec::with_capacity(state_map.len());
 
             let len = state_map.len();
             for (k, v) in state_map {
@@ -411,8 +411,8 @@ impl ModelInterface for Model {
             (None, None, 0)
         };
 
-        let nptrs = nptrs.as_mut().map(|it| it.as_ptr()).unwrap_or(null_mut());
-        let sptrs = sptrs.as_mut().map(|it| it.as_mut_ptr()).unwrap_or(null_mut());
+        let nptrs = nptrs.map(|it| it.as_ptr()).unwrap_or(null());
+        let sptrs = sptrs.map(|it| it.as_ptr()).unwrap_or(null());
         check!(sys::tract_model_profile_json(self.0, values, nptrs, sptrs, n_states, &mut json))?;
         anyhow::ensure!(!json.is_null());
         unsafe {
@@ -514,6 +514,51 @@ impl StateInterface for State {
         check!(sys::tract_state_output_count(self.0, &mut count))?;
         Ok(count)
     }
+
+    fn set_states<V, E>(&mut self, state_initializers: HashMap<String, V>) -> Result<()>
+    where
+        V: TryInto<Self::Value, Error = E>,
+        E: Into<anyhow::Error> 
+    {
+        let (mut nptrs, sptrs, n_states) 
+        = {
+            let mut key_ptrs: Vec<*const _> = Vec::with_capacity(state_initializers.len());
+            let mut value_ptrs: Vec<*const _> = Vec::with_capacity(state_initializers.len());
+
+            let len = state_initializers.len();
+            for (k, v) in state_initializers {
+                let key = CString::new(k)?;
+                let val: Value = v.try_into().map_err(|e| e.into())?;
+                key_ptrs.push(key.as_ptr());
+                value_ptrs.push(val.0);
+            }
+
+            (Some(key_ptrs), Some(value_ptrs), len)
+        };
+
+        let nptrs = nptrs.as_mut().map(|it| it.as_ptr()).unwrap_or(null());
+        let sptrs = sptrs.map(|it| it.as_ptr()).unwrap_or(null());
+        check!(sys::tract_state_set_states(self.0, nptrs, sptrs, n_states))?;
+
+        Ok(())
+    }
+
+    fn get_states(&self, n_states: usize) -> Result<HashMap<String, Self::Value>>
+    {
+        let mut nptrs: Vec<*mut c_char> = vec![null_mut(); n_states];
+        let mut sptrs = vec![null_mut(); n_states];
+        check!(sys::tract_state_get_states(self.0, nptrs.as_mut_ptr(), sptrs.as_mut_ptr(), n_states))?;
+
+        unsafe {
+            nptrs.into_iter().zip(sptrs.into_iter())
+                .map(|(name, value)| {
+                    let s = CStr::from_ptr(name).to_str()?.to_owned();
+                    sys::tract_free_cstring(name);
+                    Ok((s, Value(value)))
+                })
+                .collect::<Result<HashMap<String, Value>>>()
+        }
+    } 
 }
 
 // VALUE

@@ -177,7 +177,7 @@ class Model:
 
     def into_decluttered(self) -> "Model":
         """Convenience method performing `declutter()` and returning the model"""
-        self.declutter();
+        self.declutter()
         return self
 
     def into_optimized(self) -> "Model":
@@ -250,7 +250,7 @@ class Model:
                 elif isinstance(v, numpy.ndarray):
                     state_values.append(Value.from_numpy(v))
                 else:
-                    raise TractError(f"Inputs must be of type tract.Value or numpy.Array, got {v}")
+                    raise TractError(f"State values must be of type tract.Value or numpy.Array, got {v}")
 
                 names_ptrs[ix] = names_str[ix]
                 state_ptrs[ix] = state_values[ix].ptr

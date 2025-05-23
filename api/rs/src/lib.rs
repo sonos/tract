@@ -383,24 +383,37 @@ impl StateInterface for State {
         Ok(outputs.into_iter().map(Value).collect())
     }
 
-    fn set_states<I, V, E>(&mut self, state_inits: HashMap<String, I>) -> Result<()>
+    fn set_states<V, E>(&mut self, state_initializers: HashMap<String, V>) -> Result<()>
     where
-        I: IntoIterator<Item = V>,
         V: TryInto<Self::Value, Error = E>,
-        E: Into<anyhow::Error>
-    {
+        E: Into<anyhow::Error> + Debug
+    {   
+        let mut states: HashMap<String, TValue> = HashMap::new();
+        state_initializers.into_iter().for_each(|(name, v)| {
+            states.insert(name, v.try_into().unwrap().0);
+        });
+
+        self.0.init_states(&mut states)?;
         Ok(())
     }
     
-    fn get_states<I, V, E>(&self) -> Result<HashMap<String, I>>
-    where
-        I: IntoIterator<Item = V>,
-        V: TryInto<Self::Value, Error = E>,
-        E: Into<anyhow::Error>
+    fn get_states(&self, _: usize) -> Result<HashMap<String, Self::Value>>
     {
-        let state = HashMap::new()
+        let mut states = HashMap::new();
+        for state in self.0
+            .states
+            .iter()
+            .filter_map(Option::as_ref)
+            .filter(|s| s.init_tensor_fact().is_some())
+        {
+            state.save_to(&mut states)?;
+        }
 
-        Ok(state)
+        let mut res: HashMap<String, Value> = HashMap::new();
+        for (name, value) in states {
+            res.insert(name, Value(value));
+        }
+        Ok(res)
     }
 }
 

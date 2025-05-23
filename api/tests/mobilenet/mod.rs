@@ -301,10 +301,39 @@ fn test_transform_registry() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_state_init() -> anyhow::Result<()> {
+    let nnef = nnef()?.with_tract_core()?.with_tract_transformers()?;
+    let mut model = nnef.model_for_path("/Users/lchouraki/Documents/tract/.cached/llm/516/TinyLlama--TinyLlama_v1.1-q40ef16/TinyLlama--TinyLlama_v1.1-q40ef16.nnef.tgz")?;
+    model.declutter()?;
+
+    let mut state_initializers = std::collections::HashMap::new();
+    for idx in 1..model.input_count()? {
+        let tensor = ndarray::ArrayD::<f32>::zeros(vec![1, 4, 4, 64]);
+        state_initializers.insert(model.input_name(idx)?, tensor);
+    }
+    // Do KV Cache optim
+    nnef.transform_model(&mut model, "detect-kv-cache")?;
+    assert_eq!(model.input_count()?, 1);
+
+    let mut state = model.into_runnable()?.spawn_state()?;
+    state.set_states(state_initializers.clone())?;
+
+    let out_states = state.get_states(state_initializers.len())?;
+    for (k, v) in state_initializers {
+        if let Some(s) = out_states.get(&k) {
+            assert_eq!(s.view::<f32>()?, v);
+        } else { anyhow::bail!("State {k} was not found in outputted states")}
+    }
+    Ok(())
+}
+
+#[test]
 fn test_profile_with_state_init() -> anyhow::Result<()> {
     let nnef = nnef()?.with_tract_core()?.with_tract_transformers()?;
     let mut model = nnef.model_for_path("/Users/lchouraki/Documents/tract/.cached/llm/516/TinyLlama--TinyLlama_v1.1-q40ef16/TinyLlama--TinyLlama_v1.1-q40ef16.nnef.tgz")?;
     model.declutter()?;
+    model.optimize()?;
+
     let input = ndarray::ArrayD::<i64>::zeros(vec![1, 1]);
     let mut state_initializers = std::collections::HashMap::new();
     for idx in 1..model.input_count()? {
@@ -313,7 +342,6 @@ fn test_profile_with_state_init() -> anyhow::Result<()> {
     }
     // Do KV Cache optim
     nnef.transform_model(&mut model, "detect-kv-cache")?;
-    model.optimize()?;
     assert_eq!(model.input_count()?, 1);
 
     model.profile_json(Some([input]), Some(state_initializers))?;
