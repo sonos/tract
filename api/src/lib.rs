@@ -1,4 +1,4 @@
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use boow::Bow;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
@@ -175,9 +175,9 @@ pub trait ModelInterface: Sized {
     fn cost_json(&self) -> Result<String>;
 
     fn profile_json<I, IV, IE, SV, SE>(
-    &self,
-    inputs: Option<I>,
-    state_initializers: Option<HashMap<String, SV>>,
+        &self,
+        inputs: Option<I>,
+        state_initializers: Option<HashMap<String, SV>>,
     ) -> Result<String>
     where
         I: IntoIterator<Item = IV>,
@@ -220,6 +220,13 @@ pub trait StateInterface {
         I: IntoIterator<Item = V>,
         V: TryInto<Self::Value, Error = E>,
         E: Into<anyhow::Error>;
+
+    fn set_states<V, E>(&mut self, state_initializers: HashMap<String, V>) -> Result<()>
+    where
+        V: TryInto<Self::Value, Error = E>,
+        E: Into<anyhow::Error> + Debug;
+
+    fn get_states(&self, n_states: usize) -> Result<HashMap<String, Self::Value>>;
 }
 
 pub trait ValueInterface: Sized + Clone {

@@ -88,9 +88,9 @@ impl OpState for DynKeyValueCacheState {
         }
     }
 
-    fn save_to(&mut self, states: &mut HashMap<String, TValue>) -> TractResult<()> {
+    fn save_to(&self, states: &mut HashMap<String, TValue>) -> TractResult<()> {
         if let Some(kv_cache) = &self.kv_cache {
-            states.insert(self.io_name[1].clone(), kv_cache.clone().into_tvalue());
+            states.insert(self.io_name[0].clone(), kv_cache.clone().into_tvalue());
             Ok(())
         } else {
             bail!("KV cache {} was never initialized", self.io_name[1])
