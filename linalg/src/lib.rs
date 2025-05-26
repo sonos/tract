@@ -29,6 +29,8 @@ use tract_data::internal::TensorView;
 #[cfg(target_arch = "x86_64")]
 pub mod x86_64_fma;
 
+pub mod hwbench;
+
 #[cfg(target_arch = "aarch64")]
 pub mod arm64;
 

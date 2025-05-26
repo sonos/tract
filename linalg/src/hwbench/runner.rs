@@ -85,8 +85,8 @@ pub fn run_bench<T, F: FnMut() -> T>(mut f: F) -> f64 {
     let warmup = (0.3 / evaled) as usize;
     let iters = (0.3 / evaled) as usize;
     let chunks = 1000;
-    let chunk = (iters / chunks).max(50);
-    let chunks = (iters / chunk).max(50);
+    let chunk = (iters / chunks).max(25);
+    let chunks = (iters / chunk).max(25);
     let mut measures = vec![0.0; chunks];
     for _ in 0..warmup {
         black_box(f());
