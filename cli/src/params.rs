@@ -53,11 +53,7 @@ impl Location {
     }
 
     fn is_dir(&self) -> bool {
-        if let &Location::Fs(p) = &self {
-            p.is_dir()
-        } else {
-            false
-        }
+        if let &Location::Fs(p) = &self { p.is_dir() } else { false }
     }
 
     fn read(&self) -> TractResult<Box<dyn Read>> {
@@ -245,7 +241,11 @@ impl Parameters {
                         } else {
                             unreachable!();
                         };
-                        assert!(inv.id.0 == "external" || inv.id.0 == "tract_core_external", "invalid id: expected 'external' or 'tract_core_external' but found {:?}", inv.id);
+                        assert!(
+                            inv.id.0 == "external" || inv.id.0 == "tract_core_external",
+                            "invalid id: expected 'external' or 'tract_core_external' but found {:?}",
+                            inv.id
+                        );
                         assert!(
                             inv.arguments.len() <= 2,
                             "expected 1 argument but found {:?} for inv.arguments={:?}",
@@ -523,7 +523,9 @@ impl Parameters {
         }
 
         if let Some(bundle) = matches.values_of("input-bundle") {
-            warn!("Argument --input-bundle is deprecated and may be removed in a future release. Use --input-facts-from-bundle and/or --input-from-bundle instead.");
+            warn!(
+                "Argument --input-bundle is deprecated and may be removed in a future release. Use --input-facts-from-bundle and/or --input-from-bundle instead."
+            );
             for input in bundle {
                 for tv in Self::parse_npz(input, true, true)? {
                     result.add(tv);
@@ -752,7 +754,9 @@ impl Parameters {
 
         if let Some(transform) = matches.values_of("transform") {
             for spec in transform {
-                let transform = super::nnef(matches).get_transform(spec)?.with_context(|| format!("Could not find transform named {spec}"))?;
+                let transform = super::nnef(matches)
+                    .get_transform(spec)?
+                    .with_context(|| format!("Could not find transform named {spec}"))?;
                 stage!(&transform.name(), typed_model -> typed_model, |m:TypedModel| {
                     transform.transform_into(m)
                 });
@@ -1037,14 +1041,10 @@ impl Parameters {
             }
         }
 
-        let allow_random_input: bool = matches.is_present("allow-random-input");
-        if allow_random_input {
-            warn!("Argument --allow-random-input as global argument is deprecated and may be removed in a future release. Please move this argument to the right of the subcommand.");
-        }
-        let allow_float_casts = matches.is_present("allow-float-casts");
-        if allow_float_casts {
-            warn!("Argument --allow-float-casts as global argument is deprecated and may be removed in a future release. Please move this argument to the right of the subcommand.");
-        }
+        let (allow_random_input, allow_float_casts) = match matches.subcommand() {
+            None => (false, false),
+            Some((_, m)) => (m.is_present("allow-random-input"), m.is_present("allow-float-casts")),
+        };
 
         let keep_last = matches.is_present("keep-last");
         Self::pipeline(
