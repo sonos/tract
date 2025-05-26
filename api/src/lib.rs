@@ -210,6 +210,7 @@ pub trait RunnableInterface {
 }
 
 pub trait StateInterface {
+    type Fact: FactInterface;
     type Value: ValueInterface;
 
     fn input_count(&self) -> Result<usize>;
@@ -220,6 +221,8 @@ pub trait StateInterface {
         I: IntoIterator<Item = V>,
         V: TryInto<Self::Value, Error = E>,
         E: Into<anyhow::Error>;
+
+    fn get_states_facts(&self) -> Result<Vec<(String, Self::Fact)>>;
 
     fn set_states<V, E>(&mut self, state_initializers: HashMap<String, V>) -> Result<()>
     where

@@ -221,13 +221,8 @@ def test_transform_registry():
 
 def test_state_init():
     nnef = tract.nnef().with_tract_core().with_tract_transformers()
-    model = nnef.model_for_path("/Users/lchouraki/Documents/tract/.cached/llm/516/TinyLlama--TinyLlama_v1.1-q40ef16/TinyLlama--TinyLlama_v1.1-q40ef16.nnef.tgz")
+    model = nnef.model_for_path("/Users/lchouraki/Documents/tract/.cached/llm/516/TinyLlama--TinyLlama_v1.1-q40ef32/TinyLlama--TinyLlama_v1.1-q40ef32.nnef.tgz")
     model.declutter()
-
-    state_initializers = {}
-    for idx in range(1, model.input_count()):
-        tensor = numpy.random.rand(1, 4, 4, 64).astype(dtype="float32")
-        state_initializers[model.input_name(idx)] = tensor
 
     # Do KV Cache optim
     nnef.transform_model(model, "detect-kv-cache")
@@ -235,6 +230,16 @@ def test_state_init():
 
     state = model.into_runnable().spawn_state()
 
+    state_facts = state.get_states_facts()
+    state_initializers = {}
+    for name, fact in state_facts.items():
+        parts = str(fact).split(',')
+        dtype_str = parts.pop()
+        assert dtype_str == "F32"
+
+        dims = [int(p) if p.isdigit() else 4 for p in parts]
+
+        state_initializers[name] = numpy.zeros(dims, dtype=numpy.float32)
     state.set_states(state_initializers)
     out_states = state.get_states()
 
@@ -245,7 +250,7 @@ def test_state_init():
 
 def test_profile_with_init_state():
     nnef = tract.nnef().with_tract_core().with_tract_transformers()
-    model = nnef.model_for_path("/Users/lchouraki/Documents/tract/.cached/llm/516/TinyLlama--TinyLlama_v1.1-q40ef16/TinyLlama--TinyLlama_v1.1-q40ef16.nnef.tgz")
+    model = nnef.model_for_path("/Users/lchouraki/Documents/tract/.cached/llm/516/TinyLlama--TinyLlama_v1.1-q40ef32/TinyLlama--TinyLlama_v1.1-q40ef32.nnef.tgz")
     model.declutter()
     model.optimize()
 

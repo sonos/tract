@@ -300,22 +300,42 @@ fn test_transform_registry() -> anyhow::Result<()> {
     Ok(())
 }
 
+use std::collections::HashMap;
+
+fn state_init_from_facts(facts: Vec<(String, Fact)>, default_symbol_value: usize) -> HashMap<String, ndarray::ArrayD::<f32>> {
+    let mut state_initializers = std::collections::HashMap::new();
+    for (name, fact) in facts {
+        let fact = fact.to_string();
+        let mut parsed = fact.split(',').collect::<Vec<_>>();
+
+        let dt = parsed.pop().unwrap();
+        let dims = parsed.iter()
+        .map(|p| {
+            //Set symbols to 4
+            p.parse::<usize>().unwrap_or(default_symbol_value)
+        })
+        .collect::<Vec<usize>>();
+
+        assert_eq!(dt, "F32");
+        let tensor = ndarray::ArrayD::<f32>::zeros(dims);
+        state_initializers.insert(name, tensor);
+    }
+    state_initializers
+}
+
 #[test]
 fn test_state_init() -> anyhow::Result<()> {
     let nnef = nnef()?.with_tract_core()?.with_tract_transformers()?;
-    let mut model = nnef.model_for_path("/Users/lchouraki/Documents/tract/.cached/llm/516/TinyLlama--TinyLlama_v1.1-q40ef16/TinyLlama--TinyLlama_v1.1-q40ef16.nnef.tgz")?;
+    let mut model = nnef.model_for_path("/Users/lchouraki/Documents/tract/.cached/llm/516/TinyLlama--TinyLlama_v1.1-q40ef32/TinyLlama--TinyLlama_v1.1-q40ef32.nnef.tgz")?;
     model.declutter()?;
 
-    let mut state_initializers = std::collections::HashMap::new();
-    for idx in 1..model.input_count()? {
-        let tensor = ndarray::ArrayD::<f32>::zeros(vec![1, 4, 4, 64]);
-        state_initializers.insert(model.input_name(idx)?, tensor);
-    }
     // Do KV Cache optim
     nnef.transform_model(&mut model, "detect-kv-cache")?;
     assert_eq!(model.input_count()?, 1);
 
     let mut state = model.into_runnable()?.spawn_state()?;
+
+    let state_initializers = state_init_from_facts(state.get_states_facts()?, 4);
     state.set_states(state_initializers.clone())?;
 
     let out_states = state.get_states()?;
@@ -330,7 +350,7 @@ fn test_state_init() -> anyhow::Result<()> {
 #[test]
 fn test_profile_with_state_init() -> anyhow::Result<()> {
     let nnef = nnef()?.with_tract_core()?.with_tract_transformers()?;
-    let mut model = nnef.model_for_path("/Users/lchouraki/Documents/tract/.cached/llm/516/TinyLlama--TinyLlama_v1.1-q40ef16/TinyLlama--TinyLlama_v1.1-q40ef16.nnef.tgz")?;
+    let mut model = nnef.model_for_path("/Users/lchouraki/Documents/tract/.cached/llm/516/TinyLlama--TinyLlama_v1.1-q40ef32/TinyLlama--TinyLlama_v1.1-q40ef32.nnef.tgz")?;
     model.declutter()?;
     model.optimize()?;
 
@@ -343,7 +363,7 @@ fn test_profile_with_state_init() -> anyhow::Result<()> {
     // Do KV Cache optim
     nnef.transform_model(&mut model, "detect-kv-cache")?;
     assert_eq!(model.input_count()?, 1);
-
+    
     model.profile_json(Some([input]), Some(state_initializers))?;
 
     Ok(())

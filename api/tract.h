@@ -514,6 +514,14 @@ enum TRACT_RESULT tract_state_output_count(const struct TractState *state, uintp
 enum TRACT_RESULT tract_state_destroy(struct TractState **state);
 
 /**
+ * Get Stateful Ops's state facts
+ */
+enum TRACT_RESULT tract_state_get_states_facts(const struct TractState *state,
+                                               char **state_names,
+                                               struct TractFact **states,
+                                               uintptr_t *n_states);
+
+/**
  * Initialize Stateful Ops with specified values
  */
 enum TRACT_RESULT tract_state_set_states(struct TractState *state,
