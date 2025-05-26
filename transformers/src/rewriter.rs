@@ -16,7 +16,6 @@ impl ModelTransform for RmsNormTransform {
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         Rewriter::default()
             .with_rule_for("detect-rms-norm", ops::as_rms_norm_rule)
-            .with_rule_for("remove_rms_norm_cast", ops::remove_rms_norm_cast)
             .rewrite(&(), model)
     }
 }
@@ -92,7 +91,6 @@ impl ModelTransform for TransformersTransform {
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         Rewriter::default()
             .with_rule_for("detect-rms-norm", ops::as_rms_norm_rule)
-            .with_rule_for("remove_rms_norm_cast", ops::remove_rms_norm_cast)
             .with_rule_for("detect-rotate-half", ops::as_rotate_half_rule)
             .with_rule_for("detect-apply-rope", ops::as_apply_rope_rule)
             .with_rule_for("detect-scaled-masked-softmax", ops::as_scaled_masked_softmax_rule)
