@@ -8,13 +8,11 @@ use tract_core::internal::*;
 use tract_core::ops::konst::Const;
 use tract_nnef::tract_core;
 
-//pub use apply_rope::{as_apply_rope_rule, ApplyRope};
 pub use apply_rope::{as_apply_rope_rule, as_rotate_half_rule};
 pub use gelu_approximate::as_gelu_approx_rule;
 pub use rms_norm::as_rms_norm_rule;
 pub use scaled_masked_softmax::as_scaled_masked_softmax_rule;
 pub use silu::as_silu_rule;
-//pub use untranspose_matmul_output::untranspose_matmul_output;
 
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::math::{Add, Mul};
