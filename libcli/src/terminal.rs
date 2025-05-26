@@ -9,6 +9,7 @@ use nu_ansi_term::Color::*;
 #[allow(unused_imports)]
 use std::convert::TryFrom;
 use tract_core::internal::*;
+use tract_core::num_traits::AsPrimitive;
 use tract_itertools::Itertools;
 
 pub fn render(
@@ -83,6 +84,35 @@ fn render_prefixed(
     Ok(())
 }
 
+pub fn si_prefix(v: impl AsPrimitive<f64>, unit: &str) -> String {
+    radical_prefix(v, unit, 1000, "")
+}
+
+pub fn pow2_prefix(v: impl AsPrimitive<f64>, unit: &str) -> String {
+    radical_prefix(v, unit, 1024, "i")
+}
+
+pub fn radical_prefix(
+    v: impl AsPrimitive<f64>,
+    unit: &str,
+    radical: usize,
+    radical_prefix: &str,
+) -> String {
+    let v: f64 = v.as_();
+    let radical = radical as f64;
+    let radical3 = radical.powi(3);
+    let radical2 = radical.powi(2);
+    if v > radical3 {
+        format!("{:.3} G{}{}", v / radical3, radical_prefix, unit)
+    } else if v > 1e6 {
+        format!("{:.3} M{}{}", v / radical2, radical_prefix, unit)
+    } else if v > 1e3 {
+        format!("{:.3} k{}{}", v / radical, radical_prefix, unit)
+    } else {
+        format!("{v:.3}  {}", unit)
+    }
+}
+
 fn render_node_prefixed(
     model: &dyn Model,
     prefix: &str,
@@ -152,15 +182,7 @@ fn render_node_prefixed(
         let it = tags.cost.iter().map(move |c| {
             if c.0.is_compute() {
                 let flops = c.1.to_usize().unwrap_or(0) as f64 / timing;
-                let unpadded = if flops > 1e9 {
-                    format!("{:.3} GF/s", flops / 1e9)
-                } else if flops > 1e6 {
-                    format!("{:.3} MF/s", flops / 1e6)
-                } else if flops > 1e3 {
-                    format!("{:.3} kF/s", flops / 1e3)
-                } else {
-                    format!("{flops:.3}  F/s")
-                };
+                let unpadded = si_prefix(flops, "F/s");
                 format!("{:>1$} ", unpadded, 19)
             } else {
                 flops_column_pad.clone()
@@ -175,7 +197,7 @@ fn render_node_prefixed(
     let mut tmp_mem_usage_column = if options.tmp_mem_usage {
         let it = tags.tmp_mem_usage.iter().map(move |mem| {
             let unpadded = if let Ok(mem_size) = mem.to_usize() {
-                render_memory(mem_size)
+                pow2_prefix(mem_size, "B")
             } else {
                 format!("{mem:.3} B")
             };
@@ -383,7 +405,7 @@ pub fn render_summaries(
     if options.tmp_mem_usage {
         if let Some(summary) = &annotations.memory_summary {
             println!("{}", White.bold().paint("Memory summary"));
-            println!(" * Peak flushable memory: {}", render_memory(summary.max));
+            println!(" * Peak flushable memory: {}", pow2_prefix(summary.max, "B"));
         }
     }
     if options.cost {
@@ -510,22 +532,6 @@ pub fn dur_avg_ratio(measure: Duration, global: Duration) -> String {
             .bold()
             .paint(format!("{:>4.1}%", measure.as_secs_f64() / global.as_secs_f64() * 100.)),
     )
-}
-
-fn render_memory(mem_size: usize) -> String {
-    let kb = 1024.0;
-    let mb = kb * 1024.0;
-    let gb = mb * 1024.0;
-    let mem_size = mem_size as f32;
-    if mem_size > gb {
-        format!("{:.3} GB", mem_size / gb)
-    } else if mem_size > mb {
-        format!("{:.3} MB", mem_size / mb)
-    } else if mem_size > kb {
-        format!("{:.3} KB", mem_size / kb)
-    } else {
-        format!("{mem_size:.3} B")
-    }
 }
 
 fn render_tdim(d: &TDim) -> AnsiString<'static> {
