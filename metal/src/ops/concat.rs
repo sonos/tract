@@ -64,7 +64,11 @@ impl EvalOp for MetalConcat {
             inputs[0].datum_type(),
             &output_shape,
         )?;
-        with_borrowed_metal_stream(|stream| self.kernel.dispatch_eval(stream, &inputs, &output))?;
+
+        with_borrowed_metal_stream(|stream| {
+            self.kernel.dispatch_eval(stream, &inputs, &output)
+        })?;
+
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }
