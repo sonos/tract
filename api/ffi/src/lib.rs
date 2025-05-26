@@ -1059,6 +1059,31 @@ pub unsafe extern "C" fn tract_state_destroy(state: *mut *mut TractState) -> TRA
     release!(state)
 }
 
+/// Get Stateful Ops's state facts
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_state_get_states_facts(
+    state: *const TractState,
+    state_names: *mut *mut c_char,
+    states: *mut *mut TractFact,
+    n_states: *mut usize,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        let state = &(*state).0;
+    
+        let hashmap = state.get_states_facts()?;
+        // Check we won't overflow
+        anyhow::ensure!(hashmap.len() <= *n_states);
+        *n_states = hashmap.len();
+
+        for (ix, (k, v)) in hashmap.into_iter().enumerate() {
+            let c_key = CString::new(k)?;
+            *state_names.add(ix) = c_key.into_raw(); 
+            *states.add(ix) = Box::into_raw(Box::new(TractFact(v)));
+        }
+        Ok(())
+    })
+}
+
 /// Initialize Stateful Ops with specified values
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_set_states(

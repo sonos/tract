@@ -62,6 +62,29 @@ class State:
         check(lib.tract_state_freeze(self.ptr, byref(frozen)))
         return FrozenState(frozen)
     
+    def get_states_facts(self) -> Dict[str, Fact]:
+        """
+        Get Stateful Ops' state facts
+        """
+        self._valid()
+
+        n_states = c_size_t()
+        n_states.value = 256
+        names_ptrs = (POINTER(c_char_p) * n_states.value)()
+        fact_ptrs = (c_void_p * n_states.value)()
+
+        check(lib.tract_state_get_states_facts(self.ptr, names_ptrs, fact_ptrs, byref(n_states)))
+
+        res = {}
+        for i in range(n_states.value):
+            key = string_at(names_ptrs[i]).decode("utf-8")
+            res[key] = Fact(c_void_p(fact_ptrs[i]))
+
+        for i in range(len(names_ptrs)):
+            lib.tract_free_cstring(names_ptrs[i])
+
+        return res
+
     def set_states(self, states: Dict[str, Union[Value, numpy.ndarray]]):
         """
         Initialize Stateful Ops with given states

@@ -486,6 +486,8 @@ wrapper!(State, TractState, tract_state_destroy);
 
 impl StateInterface for State {
     type Value = Value;
+    type Fact = Fact;
+
     fn run<I, V, E>(&mut self, inputs: I) -> Result<Vec<Value>>
     where
         I: IntoIterator<Item = V>,
@@ -513,6 +515,26 @@ impl StateInterface for State {
         let mut count = 0;
         check!(sys::tract_state_output_count(self.0, &mut count))?;
         Ok(count)
+    }
+
+    fn get_states_facts(&self) -> Result<Vec<(String, Fact)>> {
+        let mut n_states = 256;
+
+        let mut nptrs: Vec<*mut c_char> = vec![null_mut(); n_states];
+        let mut fptrs = vec![null_mut(); n_states];
+        check!(sys::tract_state_get_states_facts(self.0, nptrs.as_mut_ptr(), fptrs.as_mut_ptr(), &mut n_states))?;
+
+        unsafe {
+            let res = nptrs.iter().zip(fptrs.into_iter()).take(n_states)
+                .map(|(name, value)| {
+                    let s = CStr::from_ptr(*name).to_str()?.to_owned();
+                    Ok((s, Fact(value)))
+                })
+                .collect::<Result<Vec<(String, Fact)>>>();
+            
+            nptrs.into_iter().for_each(|name| sys::tract_free_cstring(name));
+            res
+        }
     }
 
     fn set_states<V, E>(&mut self, state_initializers: HashMap<String, V>) -> Result<()>
