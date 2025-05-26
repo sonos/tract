@@ -67,7 +67,8 @@ impl MetalEvalOp for MetalConcat {
             &output_shape,
         )?;
         self.kernel.dispatch_eval(stream, &inputs, &output)?;
-
+        dbg!(&inputs[1].to_host()?);
+        dbg!(&output);
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }
