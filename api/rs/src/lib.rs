@@ -359,6 +359,7 @@ impl RunnableInterface for Runnable {
 pub struct State(TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>);
 
 impl StateInterface for State {
+    type Fact = Fact;
     type Value = Value;
 
     fn input_count(&self) -> Result<usize> {
@@ -381,6 +382,18 @@ impl StateInterface for State {
             .collect::<Result<_>>()?;
         let outputs = self.0.run(inputs)?;
         Ok(outputs.into_iter().map(Value).collect())
+    }
+
+    fn get_states_facts(&self) -> Result<Vec<(String, Fact)>> {
+        Ok(self.0
+            .states
+            .iter()
+            .filter_map(Option::as_ref)
+            .filter_map(|s| {
+                s.init_tensor_fact()
+                    .map(|(name, fact)| (name, Fact(fact)))
+            })
+            .collect::<Vec<(String, Fact)>>())
     }
 
     fn set_states<V, E>(&mut self, state_initializers: HashMap<String, V>) -> Result<()>

@@ -3916,6 +3916,15 @@ unsafe extern "C" {
     pub fn tract_state_destroy(state: *mut *mut TractState) -> TRACT_RESULT;
 }
 unsafe extern "C" {
+    #[doc = " Get Stateful Ops's state facts"]
+    pub fn tract_state_get_states_facts(
+        state: *const TractState,
+        state_names: *mut *mut ::std::os::raw::c_char,
+        states: *mut *mut TractFact,
+        n_states: *mut usize,
+    ) -> TRACT_RESULT;
+}
+unsafe extern "C" {
     #[doc = " Initialize Stateful Ops with specified values"]
     pub fn tract_state_set_states(
         state: *mut TractState,
