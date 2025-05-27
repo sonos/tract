@@ -1,4 +1,6 @@
 #![allow(clippy::type_complexity)]
+use std::collections::BTreeMap;
+
 use tract_itertools::Itertools;
 use tract_linalg::block_quant::BlockQuantFact;
 use tract_linalg::mmm::{ImplementationQuality, MMMInputFormat, MatMatMul, PanelExtractor};
@@ -51,12 +53,12 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
             impls.into_iter().max_by_key(|(m, _, pe)| (pe.is_none(), m.nr() * m.mr())).unwrap();
         return Ok((ModePicker::Single, vec![it]));
     }
-    let mut index = HashMap::<String, Vec<_>>::new();
+    let mut grouped_by_left_packing = BTreeMap::<String, Vec<_>>::new();
     for (m, p, pe) in &impls {
         let key = pe.as_ref().map(|pe| &pe.from).unwrap_or(&m.packings()[*p].0).to_string();
-        index.entry(key).or_default().push((m, p, pe));
+        grouped_by_left_packing.entry(key).or_default().push((m, p, pe));
     }
-    let (mmv, mmm) = index
+    let (mmv, mmm) = grouped_by_left_packing
         .values()
         .map(|kit| {
             let best_for_mmv =
@@ -64,7 +66,7 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
             let best_for_mmm = kit.iter().max_by_key(|(m, _, _)| m.nr()).unwrap();
             (best_for_mmv, best_for_mmm)
         })
-        .max_by_key(|(mmv, mmm)| (mmv.2.is_none(), mmm.0.mr()))
+        .max_by_key(|(mmv, mmm)| (mmv.2.is_none(), mmm.0.mr(), mmm.0.nr()))
         .unwrap();
     Ok((
         ModePicker::VecVsMat,
