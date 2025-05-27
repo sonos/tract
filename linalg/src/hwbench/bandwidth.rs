@@ -3,6 +3,7 @@ use tract_data::prelude::Blob;
 
 use super::runner;
 
+#[cfg(target_arch = "x86_64")]
 static mut HAS_AVX512: bool = false;
 
 #[cfg(target_arch = "x86_64")]
@@ -65,15 +66,41 @@ fn load_a_slice(slice: &mut [u8]) {
     }
 }
 
+#[cfg(target_arch = "arm")]
+#[inline]
+fn load_a_slice(slice: &mut [u8]) {
+    unsafe {
+        let mut ptr = slice.as_ptr();
+        let end = ptr.add(slice.len());
+        while ptr < end {
+            std::arch::asm!("
+                vldmia r1!, {{q0-q3}}
+                vldmia r1!, {{q4-q7}}
+                    ", inout("r1") ptr,
+            out("q0") _,
+            out("q1") _,
+            out("q2") _,
+            out("q3") _,
+            out("q4") _,
+            out("q5") _,
+            out("q6") _,
+            out("q7") _,
+            );
+        }
+    }
+}
+
 fn bandwidth_seq(slice_len: usize, threads: usize) -> f64 {
     #[cfg(target_arch = "x86_64")]
     unsafe {
         HAS_AVX512 = std::is_x86_feature_detected!("avx512f");
     }
-    let buffer = unsafe { Blob::new_for_size_and_align(slice_len, 256) };
     let b = (0..threads)
         .into_par_iter()
-        .map(|_| runner::run_bench(|| load_a_slice(&mut buffer)))
+        .map(|_| {
+            let mut buffer = unsafe { Blob::new_for_size_and_align(slice_len, 256) };
+            runner::run_bench(move || load_a_slice(&mut buffer))
+        })
         .sum::<f64>();
     (slice_len * threads) as f64 / b
 }
