@@ -19,7 +19,7 @@ use tract_libcli::profile::BenchLimits;
 use tract_libcli::tensor::retrieve_or_make_inputs;
 use tract_libcli::terminal;
 use tract_linalg::block_quant::PackedBlockQuantFact;
-use tract_linalg::mmm::{EagerPackedInput, PackedOpaqueFact};
+use tract_linalg::mmm::PackedOpaqueFact;
 
 #[allow(unused_variables)]
 pub fn annotate_with_graph_def(
