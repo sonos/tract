@@ -68,10 +68,14 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
         })
         .max_by_key(|(mmv, mmm)| (mmv.2.is_none(), mmm.0.mr(), mmm.0.nr()))
         .unwrap();
-    Ok((
-        ModePicker::VecVsMat,
-        vec![(mmv.0.clone(), *mmv.1, mmv.2.clone()), (mmm.0.clone(), *mmm.1, mmm.2.clone())],
-    ))
+    if mmm == mmv {
+        Ok((ModePicker::Single, vec![(mmv.0.clone(), *mmv.1, mmv.2.clone())]))
+    } else {
+        Ok((
+            ModePicker::VecVsMat,
+            vec![(mmv.0.clone(), *mmv.1, mmv.2.clone()), (mmm.0.clone(), *mmm.1, mmm.2.clone())],
+        ))
+    }
 }
 
 pub fn list_impls(
