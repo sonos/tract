@@ -18,7 +18,8 @@ use tract_libcli::model::Model;
 use tract_libcli::profile::BenchLimits;
 use tract_libcli::tensor::retrieve_or_make_inputs;
 use tract_libcli::terminal;
-use tract_linalg::mmm::PackedOpaqueFact;
+use tract_linalg::block_quant::PackedBlockQuantFact;
+use tract_linalg::mmm::{EagerPackedInput, PackedOpaqueFact};
 
 #[allow(unused_variables)]
 pub fn annotate_with_graph_def(
@@ -435,8 +436,13 @@ pub fn mm_report(
                                     of.downcast_ref::<PackedOpaqueFact>()
                                         .map(|pof| format!("{}", pof.format))
                                 })
+                                .or_else(|| {
+                                    of.downcast_ref::<PackedBlockQuantFact>()
+                                        .map(|pof| format!("{}", pof.format))
+                                })
                         })
-                        .unwrap_or_default()
+                        .unwrap_or_else(|| format!("{fact:?}"))
+                    //                        .unwrap_or_default()
                 })
                 .collect_tuple()
                 .unwrap();
