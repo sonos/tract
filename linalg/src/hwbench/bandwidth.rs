@@ -7,7 +7,7 @@ static mut HAS_AVX512: bool = false;
 
 #[cfg(target_arch = "x86_64")]
 #[inline]
-fn load_a_slice(slice: &[u8]) {
+fn load_a_slice(slice: &mut [u8]) {
     unsafe {
         let mut ptr = slice.as_ptr();
         let end = ptr.add(slice.len());
@@ -73,7 +73,7 @@ fn bandwidth_seq(slice_len: usize, threads: usize) -> f64 {
     let buffer = unsafe { Blob::new_for_size_and_align(slice_len, 256) };
     let b = (0..threads)
         .into_par_iter()
-        .map(|_| runner::run_bench(|| load_a_slice(&buffer)))
+        .map(|_| runner::run_bench(|| load_a_slice(&mut buffer)))
         .sum::<f64>();
     (slice_len * threads) as f64 / b
 }
