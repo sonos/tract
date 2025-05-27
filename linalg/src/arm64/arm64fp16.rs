@@ -41,10 +41,10 @@ pub fn plug(ops: &mut Ops) {
         arm64fp16_mmm_f16_16x8_a55.mmm(),
         arm64fp16_mmm_f16_16x8_gen.mmm(),
         arm64fp16_mmm_f16_32x4_a55.mmm(),
-        arm64fp16_mmm_f16_16x8_gen.mmm(),
+        arm64fp16_mmm_f16_32x4_gen.mmm(),
         arm64fp16_mmm_f16_128x1_a55.mmm(),
         arm64fp16_mmm_f16_128x1_gen.mmm(),
-        arm64fp16_mmm_f16_64x1_gen.mmm(),
+        arm64fp16_mmm_f16_64x3_gen.mmm(),
         arm64fp16_mmm_f16_32x6_gen.mmm(),
         arm64fp16_mmm_f16_64x1_gen.mmm(),
     ]);
