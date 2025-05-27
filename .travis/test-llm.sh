@@ -8,7 +8,7 @@ ROOT=$(dirname $(dirname $(realpath $0)))
 
 if [ -z "$TRACT_RUN" ]
 then
-    TRACT_RUN=$(cargo build --message-format json -p tract $CARGO_EXTRA --profile opt-no-lto | jq -r 'select(.target.name == "tract" and .executable).executable')
+    TRACT_RUN=$(cargo build --message-format json -p tract $CARGO_EXTRA --profile opt-no-lto --no-default-features --features transformers | jq -r 'select(.target.name == "tract" and .executable).executable')
     export TRACT_RUN
 fi
 
