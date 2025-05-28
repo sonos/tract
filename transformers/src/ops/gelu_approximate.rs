@@ -72,13 +72,12 @@ impl EvalOp for GeluApproximate {
 
         let sqrt_2_over_pi = (2.0 / std::f32::consts::PI).sqrt();
 
-        let pow = if self.fast_impl { 2 } else { 3 }; 
-        let gelu_approx_f32_data =
-            a_f32
-                .as_slice::<f32>()?
-                .iter()
-                .map(|x| 0.5 * x * (1.0 + f32::tanh(sqrt_2_over_pi * (x + 0.044715 * x.powi(pow)))))
-                .collect::<Vec<_>>();
+        let pow = if self.fast_impl { 2 } else { 3 };
+        let gelu_approx_f32_data = a_f32
+            .as_slice::<f32>()?
+            .iter()
+            .map(|x| 0.5 * x * (1.0 + f32::tanh(sqrt_2_over_pi * (x + 0.044715 * x.powi(pow)))))
+            .collect::<Vec<_>>();
 
         let gelu_approx_f32 = Tensor::from_shape(input.shape(), &gelu_approx_f32_data)?;
         Ok(tvec![gelu_approx_f32.cast_to_dt(dt)?.into_owned().into_tvalue()])
@@ -96,7 +95,7 @@ impl TypedOp for GeluApproximate {
 }
 
 /// Search pattern => NEW_GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^N))); N ϵ {2, 3}
-pub fn as_gelu_approx_rule(
+pub fn gelu_approx_rule(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,

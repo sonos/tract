@@ -16,7 +16,7 @@ use tract_libcli::annotations::*;
 use tract_libcli::display_params::*;
 use tract_libcli::model::Model;
 use tract_libcli::profile::BenchLimits;
-use tract_libcli::tensor::retrieve_or_make_inputs;
+use tract_libcli::tensor::get_or_make_inputs;
 use tract_libcli::terminal;
 use tract_linalg::block_quant::PackedBlockQuantFact;
 use tract_linalg::mmm::PackedOpaqueFact;
@@ -128,7 +128,7 @@ pub fn handle(
             .tract_model
             .downcast_ref::<TypedModel>()
             .context("Can only profile typed models")?;
-        let inputs = retrieve_or_make_inputs(model, &run_params)?;
+        let inputs = get_or_make_inputs(model, &run_params)?;
 
         if matches.is_present("metal") {
             #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -138,7 +138,7 @@ pub fn handle(
                     bench_limits,
                     &mut annotations,
                     &plan_options,
-                    &inputs[0],
+                    &inputs,
                 )?;
             }
             #[cfg(not(any(target_os = "macos", target_os = "ios")))]
@@ -151,7 +151,7 @@ pub fn handle(
                 bench_limits,
                 &mut annotations,
                 &plan_options,
-                &inputs[0],
+                &inputs,
                 None,
                 options.folded,
             )?;

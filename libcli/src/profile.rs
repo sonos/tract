@@ -2,12 +2,13 @@ use tract_core::internal::*;
 use tract_core::num_traits::Zero;
 use tract_core::ops::scan::State;
 use tract_core::ops::submodel::TypedModelOpState;
+use crate::tensor::RunTensors;
 
 use crate::annotations::*;
 use crate::model::Model;
 use crate::tensor::make_inputs_for_model;
 use std::any::TypeId;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub struct BenchLimits {
     pub warmup_loops: usize,
@@ -28,7 +29,7 @@ impl Default for BenchLimits {
 }
 
 impl BenchLimits {
-    pub fn warmup(&self, model: &TypedModel, inputs: &TVec<TValue>) -> TractResult<()> {
+    pub fn warmup(&self, model: &TypedModel, inputs: &RunTensors) -> TractResult<()> {
         if self.warmup_time.is_zero() && self.warmup_loops.is_zero() {
             return Ok(());
         }
@@ -38,13 +39,20 @@ impl BenchLimits {
         let max_loops = if self.warmup_loops.is_zero() { usize::MAX } else { self.warmup_loops };
         let max_time = if self.warmup_time.is_zero() { Duration::MAX } else { self.warmup_time };
 
-        let start_warmup = crate::time::now();
+        let start_warmup = Instant::now();
         debug!("Warming up before profiling...");
         while iters < max_loops && start_warmup.elapsed() < max_time {
-            state.run(inputs.clone())?;
+            if state.model().properties().contains_key("pulse.delay") {
+                state.run(inputs.sources[0].clone())?;
+            } else {
+                state.init_states(&mut inputs.state_initializers.clone())?;
+                state.run(inputs.sources[0].clone())?;
+                state.reset_op_states()?
+            }
             iters += 1;
         }
         debug!("Done warming up.");
+
         Ok(())
     }
 }
@@ -54,7 +62,7 @@ pub fn profile(
     bench_limits: &BenchLimits,
     dg: &mut Annotations,
     plan_options: &PlanOptions,
-    inputs: &TVec<TValue>,
+    inputs: &RunTensors,
     custom_profiler: Option<HashMap<TypeId, Profiler>>,
     folded: bool,
 ) -> TractResult<()> {
@@ -67,30 +75,37 @@ pub fn profile(
     let plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
 
-    let start = crate::time::now();
+    let mut dur = Duration::default();
     let mut time_accounted_by_inner_nodes = Duration::default();
-    while iters < bench_limits.max_loops && start.elapsed() < bench_limits.max_time {
+    while iters < bench_limits.max_loops && dur < bench_limits.max_time {
+        if !state.model().properties().contains_key("pulse.delay") {
+            state.init_states(&mut inputs.state_initializers.clone())?;
+        }
+        let start = Instant::now();
         rec_profiler(
             &mut state,
             dg,
-            inputs,
+            &inputs.sources[0],
             custom_profiler.as_ref(),
             &prefix,
             None,
             &mut time_accounted_by_inner_nodes,
             folded,
         )?;
-
+        dur += start.elapsed();
+        if !state.model().properties().contains_key("pulse.delay") {   
+            state.reset_op_states()?;
+        }
         iters += 1;
     }
 
-    let entire = start.elapsed() - time_accounted_by_inner_nodes;
+    dur -= time_accounted_by_inner_nodes;
 
     info!("Running {} iterations max. for each node.", bench_limits.max_loops);
     info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
 
     let denum = (iters as f32).recip();
-    let entire = entire.mul_f32(denum);
+    let entire = dur.mul_f32(denum);
     for d in dg.tags.values_mut() {
         if let Some(d) = d.profile.as_mut() {
             *d = d.mul_f32(denum);
@@ -113,7 +128,7 @@ pub fn profile_metal(
     bench_limits: &BenchLimits,
     dg: &mut Annotations,
     plan_options: &PlanOptions,
-    inputs: &TVec<TValue>,
+    inputs: &RunTensors,
 ) -> TractResult<()> {
     info!("Running entire network");
     let mut iters = 0usize;
@@ -122,19 +137,27 @@ pub fn profile_metal(
     bench_limits.warmup(model, inputs)?;
 
     let mut plan = TypedSimplePlan::new_with_options(model.clone(), plan_options)?;
-    let state = TypedSimpleState::new_from_inputs(&plan, inputs.clone())?;
+    let state = TypedSimpleState::new_from_inputs(&plan, inputs.sources[0].clone())?;
 
-    let session_handler =
-        tract_gpu::session_handler::DeviceSessionHandler::from_plan(&plan, &state.session_state.resolved_symbols)?;
+    let session_handler = tract_gpu::session_handler::DeviceSessionHandler::from_plan(
+        &plan,
+        &state.session_state.resolved_symbols,
+    )?;
 
     plan = plan.with_session_handler(session_handler);
 
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
-
-    let mut entire = Duration::default();
-    while iters < bench_limits.max_loops && entire < bench_limits.max_time {
-        entire += rec_profiler_metal(&mut state, dg, inputs, &prefix)?.1;
-
+    let mut dur = Duration::default();
+    while iters < bench_limits.max_loops && dur < bench_limits.max_time {
+        if !state.model().properties().contains_key("pulse.delay") {
+            state.init_states(&mut inputs.state_initializers.clone())?;
+        }
+        let start = Instant::now();
+        rec_profiler_metal(&mut state, dg, &inputs.sources[0], &prefix)?;
+        dur += start.elapsed();
+        if !state.model().properties().contains_key("pulse.delay") {  
+            state.reset_op_states()?;
+        }
         iters += 1;
     }
 
@@ -142,7 +165,7 @@ pub fn profile_metal(
     info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
 
     let denum = (iters as f32).recip();
-    let entire = entire.mul_f32(denum);
+    let entire = dur.mul_f32(denum);
     for d in dg.tags.values_mut() {
         if let Some(d) = d.profile.as_mut() {
             *d = d.mul_f32(denum);
@@ -165,8 +188,7 @@ pub fn rec_profiler_metal(
     dg: &mut Annotations,
     inputs: &TVec<TValue>,
     prefix: &[(usize, String)],
-) -> TractResult<(TVec<TValue>, Duration)> {
-    let profile_start = crate::time::now();
+) -> TractResult<TVec<TValue>> {
     let r = state.run_plan_with_eval(
         inputs.clone(),
         |session_state, mut node_state, node, input| {
@@ -186,7 +208,7 @@ pub fn rec_profiler_metal(
         },
     )?;
 
-    Ok((r, profile_start.elapsed()))
+    Ok(r)
 }
 
 #[allow(clippy::too_many_arguments)]

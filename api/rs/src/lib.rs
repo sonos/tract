@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::path::Path;
 use std::sync::Arc;
@@ -5,6 +6,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use ndarray::{Data, Dimension, RawData};
 use tract_extra::WithTractExtra;
+use tract_libcli::tensor::RunTensors;
 use tract_transformers::WithTractTransformers;
 use tract_libcli::annotations::Annotations;
 use tract_libcli::profile::BenchLimits;
@@ -267,14 +269,20 @@ impl ModelInterface for Model {
 
     fn cost_json(&self) -> Result<String> {
         let input: Option<Vec<Value>> = None;
-        self.profile_json(input)
+        self.profile_json(input, None::<HashMap<String, Value>>)
     }
 
-    fn profile_json<I, V, E>(&self, inputs: Option<I>) -> Result<String>
+    fn profile_json<I, IV, IE, SV, SE>(
+        &self,
+        inputs: Option<I>,
+        state_initializers: Option<HashMap<String, SV>>,
+    ) -> Result<String>
     where
-        I: IntoIterator<Item = V>,
-        V: TryInto<Self::Value, Error = E>,
-        E: Into<anyhow::Error> + Debug,
+        I: IntoIterator<Item = IV>,
+        IV: TryInto<Self::Value, Error = IE>,
+        IE: Into<anyhow::Error> + Debug,
+        SV: TryInto<Self::Value, Error = SE>,
+        SE: Into<anyhow::Error> + Debug,
     {
         let mut annotations = Annotations::from_model(&self.0)?;
         tract_libcli::profile::extract_costs(&mut annotations, &self.0, &SymbolValues::default())?;
@@ -283,12 +291,18 @@ impl ModelInterface for Model {
                 .into_iter()
                 .map(|v| Ok(v.try_into().unwrap().0))
                 .collect::<TractResult<TVec<_>>>()?;
+
+            let mut state_inits: HashMap<String, TValue> = HashMap::new();
+
+            if let Some(states) = state_initializers {
+                states.into_iter().for_each(|(name, v)| { state_inits.insert(name, v.try_into().unwrap().0);});
+            }
             tract_libcli::profile::profile(
                 &self.0,
                 &BenchLimits::default(),
                 &mut annotations,
                 &PlanOptions::default(),
-                &inputs,
+                &RunTensors { sources: vec![inputs], state_initializers: state_inits},
                 None,
                 true
             )?;
@@ -345,6 +359,7 @@ impl RunnableInterface for Runnable {
 pub struct State(TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>);
 
 impl StateInterface for State {
+    type Fact = Fact;
     type Value = Value;
 
     fn input_count(&self) -> Result<usize> {
@@ -367,6 +382,51 @@ impl StateInterface for State {
             .collect::<Result<_>>()?;
         let outputs = self.0.run(inputs)?;
         Ok(outputs.into_iter().map(Value).collect())
+    }
+
+    fn get_states_facts(&self) -> Result<Vec<(String, Fact)>> {
+        Ok(self.0
+            .states
+            .iter()
+            .filter_map(Option::as_ref)
+            .filter_map(|s| {
+                s.init_tensor_fact()
+                    .map(|(name, fact)| (name, Fact(fact)))
+            })
+            .collect::<Vec<(String, Fact)>>())
+    }
+
+    fn set_states<V, E>(&mut self, state_initializers: HashMap<String, V>) -> Result<()>
+    where
+        V: TryInto<Self::Value, Error = E>,
+        E: Into<anyhow::Error> + Debug
+    {   
+        let mut states: HashMap<String, TValue> = HashMap::new();
+        state_initializers.into_iter().for_each(|(name, v)| {
+            states.insert(name, v.try_into().unwrap().0);
+        });
+
+        self.0.init_states(&mut states)?;
+        Ok(())
+    }
+    
+    fn get_states(&self) -> Result<HashMap<String, Self::Value>>
+    {
+        let mut states = HashMap::new();
+        for state in self.0
+            .states
+            .iter()
+            .filter_map(Option::as_ref)
+            .filter(|s| s.init_tensor_fact().is_some())
+        {
+            state.save_to(&mut states)?;
+        }
+
+        let mut res: HashMap<String, Value> = HashMap::new();
+        for (name, value) in states {
+            res.insert(name, Value(value));
+        }
+        Ok(res)
     }
 }
 

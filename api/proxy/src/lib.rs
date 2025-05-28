@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::ffi::{CStr, CString};
+use std::os::raw::c_char;
 use std::path::Path;
 use std::ptr::{null, null_mut};
 
@@ -361,14 +363,20 @@ impl ModelInterface for Model {
 
     fn cost_json(&self) -> Result<String> {
         let input: Option<Vec<Value>> = None;
-        self.profile_json(input)
+        self.profile_json(input, None::<HashMap<String, Value>>)
     }
 
-    fn profile_json<I, V, E>(&self, inputs: Option<I>) -> Result<String>
+    fn profile_json<I, IV, IE, SV, SE>(
+    &self,
+    inputs: Option<I>,
+    state_initializers: Option<HashMap<String, SV>>,
+    ) -> Result<String>
     where
-        I: IntoIterator<Item = V>,
-        V: TryInto<Value, Error = E>,
-        E: Into<anyhow::Error>,
+        I: IntoIterator<Item = IV>,
+        IV: TryInto<Self::Value, Error = IE>,
+        IE: Into<anyhow::Error>,
+        SV: TryInto<Self::Value, Error = SE>,
+        SE: Into<anyhow::Error>,
     {
         let inputs = if let Some(inputs) = inputs {
             let inputs = inputs
@@ -384,7 +392,28 @@ impl ModelInterface for Model {
             inputs.as_ref().map(|is| is.iter().map(|v| v.0).collect());
         let mut json: *mut i8 = null_mut();
         let values = iptrs.as_mut().map(|it| it.as_mut_ptr()).unwrap_or(null_mut());
-        check!(sys::tract_model_profile_json(self.0, values, &mut json))?;
+
+        let (nptrs, sptrs, n_states) 
+        = if let Some(state_map) = state_initializers {
+            let mut key_ptrs: Vec<*const _> = Vec::with_capacity(state_map.len());
+            let mut value_ptrs: Vec<*const _> = Vec::with_capacity(state_map.len());
+
+            let len = state_map.len();
+            for (k, v) in state_map {
+                let key = CString::new(k)?;
+                let val: Value = v.try_into().map_err(|e| e.into())?;
+                key_ptrs.push(key.as_ptr());
+                value_ptrs.push(val.0);
+            }
+
+            (Some(key_ptrs), Some(value_ptrs), len)
+        } else {
+            (None, None, 0)
+        };
+
+        let nptrs = nptrs.map(|it| it.as_ptr()).unwrap_or(null());
+        let sptrs = sptrs.map(|it| it.as_ptr()).unwrap_or(null());
+        check!(sys::tract_model_profile_json(self.0, values, nptrs, sptrs, n_states, &mut json))?;
         anyhow::ensure!(!json.is_null());
         unsafe {
             let s = CStr::from_ptr(json).to_owned();
@@ -457,6 +486,8 @@ wrapper!(State, TractState, tract_state_destroy);
 
 impl StateInterface for State {
     type Value = Value;
+    type Fact = Fact;
+
     fn run<I, V, E>(&mut self, inputs: I) -> Result<Vec<Value>>
     where
         I: IntoIterator<Item = V>,
@@ -485,6 +516,75 @@ impl StateInterface for State {
         check!(sys::tract_state_output_count(self.0, &mut count))?;
         Ok(count)
     }
+
+    fn get_states_facts(&self) -> Result<Vec<(String, Fact)>> {
+        let mut n_states = 256;
+
+        let mut nptrs: Vec<*mut c_char> = vec![null_mut(); n_states];
+        let mut fptrs = vec![null_mut(); n_states];
+        check!(sys::tract_state_get_states_facts(self.0, nptrs.as_mut_ptr(), fptrs.as_mut_ptr(), &mut n_states))?;
+
+        unsafe {
+            let res = nptrs.iter().zip(fptrs.into_iter()).take(n_states)
+                .map(|(name, value)| {
+                    let s = CStr::from_ptr(*name).to_str()?.to_owned();
+                    Ok((s, Fact(value)))
+                })
+                .collect::<Result<Vec<(String, Fact)>>>();
+            
+            nptrs.into_iter().for_each(|name| sys::tract_free_cstring(name));
+            res
+        }
+    }
+
+    fn set_states<V, E>(&mut self, state_initializers: HashMap<String, V>) -> Result<()>
+    where
+        V: TryInto<Self::Value, Error = E>,
+        E: Into<anyhow::Error> 
+    {
+        let (mut nptrs, sptrs, n_states) 
+        = {
+            let mut key_ptrs: Vec<*const _> = Vec::with_capacity(state_initializers.len());
+            let mut value_ptrs: Vec<*const _> = Vec::with_capacity(state_initializers.len());
+
+            let len = state_initializers.len();
+            for (k, v) in state_initializers {
+                let key = CString::new(k)?;
+                let val: Value = v.try_into().map_err(|e| e.into())?;
+                key_ptrs.push(key.as_ptr());
+                value_ptrs.push(val.0);
+            }
+
+            (Some(key_ptrs), Some(value_ptrs), len)
+        };
+
+        let nptrs = nptrs.as_mut().map(|it| it.as_ptr()).unwrap_or(null());
+        let sptrs = sptrs.map(|it| it.as_ptr()).unwrap_or(null());
+        check!(sys::tract_state_set_states(self.0, nptrs, sptrs, n_states))?;
+
+        Ok(())
+    }
+
+    fn get_states(&self) -> Result<HashMap<String, Self::Value>>
+    {
+        let mut n_states = 256;
+
+        let mut nptrs: Vec<*mut c_char> = vec![null_mut(); n_states];
+        let mut sptrs = vec![null_mut(); n_states];
+        check!(sys::tract_state_get_states(self.0, nptrs.as_mut_ptr(), sptrs.as_mut_ptr(), &mut n_states))?;
+
+        unsafe {
+            let res = nptrs.iter().zip(sptrs.into_iter()).take(n_states)
+                .map(|(name, value)| {
+                    let s = CStr::from_ptr(*name).to_str()?.to_owned();
+                    Ok((s, Value(value)))
+                })
+                .collect::<Result<HashMap<String, Value>>>();
+            
+            nptrs.into_iter().for_each(|name| sys::tract_free_cstring(name));
+            res
+        }
+    } 
 }
 
 // VALUE
