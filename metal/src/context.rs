@@ -1,10 +1,12 @@
 use crate::command_buffer::TCommandBuffer;
 use crate::func_constants::ConstantValues;
 use crate::kernels::{LibraryContent, LibraryName};
+use crate::tensor::{MValue, MetalTensor};
 
 use metal::NSUInteger;
 use tract_gpu::device::{DeviceBuffer, DeviceContext};
-use tract_gpu::tensor::DeviceTensor;
+use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
+use tract_gpu::utils::as_q40_tensor;
 
 use std::cell::RefCell;
 use std::ffi::c_void;
@@ -159,27 +161,48 @@ impl MetalContext {
     ) -> TractResult<ComputePipelineState> {
         self.load_pipeline_with_constants(library_name, func_name, None)
     }
-}
 
-impl DeviceContext for MetalContext {
-    fn buffer_from_slice(&self, data: &[u8]) -> Box<dyn tract_gpu::device::DeviceBuffer> {
+    fn mvalue_to_tensor(&self, value: MValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {
+        let tensor_view = value.view();
+        ensure!(
+            DeviceTensor::is_supported_dt(tensor_view.datum_type()),
+            "Tensor of {:?} is not copied. No device buffer can be allocated for it.",
+            tensor_view.datum_type(),
+        );
+        let data_bytes = as_q40_tensor(tensor_view.tensor)
+            .map(|bqv| bqv.value.as_bytes())
+            .unwrap_or(tensor_view.tensor.as_bytes());
+
         static ZERO: [u8; 1] = [0];
         // Handle empty data
-        let data = if data.is_empty() { &ZERO } else { data };
+        let data = if data_bytes.is_empty() { &ZERO } else { data_bytes };
 
         let size = core::mem::size_of_val(data) as NSUInteger;
-        Box::new(MetalBuffer {
+        let device_buffer = MetalBuffer {
             inner: self.device.new_buffer_with_bytes_no_copy(
                 data.as_ptr() as *const core::ffi::c_void,
                 size,
                 MTLResourceOptions::StorageModeShared,
                 None,
             ),
-        })
+        };
+        Ok(Box::new(MetalTensor { inner: value, device_buffer }))
     }
+}
 
+impl DeviceContext for MetalContext {
     fn synchronize(&self) -> TractResult<()> {
         METAL_STREAM.with_borrow(|stream| stream.wait_until_completed())
+    }
+    
+    fn tensor_to_device(&self, tensor: Tensor) -> TractResult<Box<dyn OwnedDeviceTensor>> {
+        let m_value: MValue = tensor.into();
+        self.mvalue_to_tensor(m_value)
+    }
+    
+    fn arc_tensor_to_device(&self, tensor: Arc<Tensor>) -> TractResult<Box<dyn tract_gpu::tensor::OwnedDeviceTensor>> {
+        let m_value: MValue = tensor.into();
+        self.mvalue_to_tensor(m_value)
     }
 }
 
@@ -315,7 +338,7 @@ impl Drop for MetalStream {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct MetalBuffer {
     pub inner: Buffer,
 }

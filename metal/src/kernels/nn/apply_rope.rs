@@ -64,7 +64,7 @@ impl ApplyRope {
 
         let padded_shape = [&tvec![1; input.rank() - cos.rank()], cos.shape()].concat();
         let (padded_cos, padded_sin) =
-            (cos.reshaped(padded_shape.clone())?, sin.reshaped(padded_shape)?);
+            (cos.reshaped(padded_shape.clone().into())?, sin.reshaped(padded_shape.into())?);
 
         ensure!(
             input.shape()[input.rank() - 1] % 2 == 0,

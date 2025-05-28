@@ -10,7 +10,7 @@ use super::OwnedDeviceTensor;
 
 #[derive(Debug, Clone, Hash)]
 pub struct DeviceArenaView {
-    pub(crate) arena: Arc<OwnedDeviceTensor>,
+    pub(crate) arena: Arc<Box<dyn OwnedDeviceTensor>>,
     pub(crate) dt: DatumType,
     pub(crate) len: usize,
     pub(crate) shape: TVec<usize>,
@@ -60,7 +60,7 @@ impl DeviceArenaView {
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        &self.arena.inner.as_arc_tensor().unwrap().as_bytes()
+        &self.arena.as_arc_tensor().unwrap().as_bytes()
             [self.offset_bytes..self.offset_bytes + self.len() * self.dt.size_of()]
     }
 
@@ -68,7 +68,7 @@ impl DeviceArenaView {
     pub fn view(&self) -> TensorView<'_> {
         unsafe {
             TensorView::from_bytes(
-                self.arena.inner.as_arc_tensor().unwrap(),
+                &self.arena.as_arc_tensor().unwrap(),
                 self.offset_bytes as _,
                 self.shape.as_slice(),
                 self.strides.as_slice(),
