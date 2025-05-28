@@ -161,20 +161,26 @@ impl MetalContext {
     ) -> TractResult<ComputePipelineState> {
         self.load_pipeline_with_constants(library_name, func_name, None)
     }
+}
 
-    fn mvalue_to_tensor(&self, value: MValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {
-        let tensor_view = value.view();
+impl DeviceContext for MetalContext {
+    fn synchronize(&self) -> TractResult<()> {
+        METAL_STREAM.with_borrow(|stream| stream.wait_until_completed())
+    }
+    
+    fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {
+        let view = tensor.view();
         ensure!(
-            DeviceTensor::is_supported_dt(tensor_view.datum_type()),
+            DeviceTensor::is_supported_dt(view.datum_type()),
             "Tensor of {:?} is not copied. No device buffer can be allocated for it.",
-            tensor_view.datum_type(),
+            view.datum_type(),
         );
-        let data_bytes = as_q40_tensor(tensor_view.tensor)
+        let data_bytes = as_q40_tensor(view.tensor)
             .map(|bqv| bqv.value.as_bytes())
-            .unwrap_or(tensor_view.tensor.as_bytes());
+            .unwrap_or(view.tensor.as_bytes());
 
-        static ZERO: [u8; 1] = [0];
         // Handle empty data
+        static ZERO: [u8; 1] = [0];
         let data = if data_bytes.is_empty() { &ZERO } else { data_bytes };
 
         let size = core::mem::size_of_val(data) as NSUInteger;
@@ -186,23 +192,7 @@ impl MetalContext {
                 None,
             ),
         };
-        Ok(Box::new(MetalTensor { inner: value, device_buffer }))
-    }
-}
-
-impl DeviceContext for MetalContext {
-    fn synchronize(&self) -> TractResult<()> {
-        METAL_STREAM.with_borrow(|stream| stream.wait_until_completed())
-    }
-    
-    fn tensor_to_device(&self, tensor: Tensor) -> TractResult<Box<dyn OwnedDeviceTensor>> {
-        let m_value: MValue = tensor.into();
-        self.mvalue_to_tensor(m_value)
-    }
-    
-    fn arc_tensor_to_device(&self, tensor: Arc<Tensor>) -> TractResult<Box<dyn tract_gpu::tensor::OwnedDeviceTensor>> {
-        let m_value: MValue = tensor.into();
-        self.mvalue_to_tensor(m_value)
+        Ok(Box::new(MetalTensor { inner: MValue::Natural(tensor.into_arc_tensor()), device_buffer }))
     }
 }
 

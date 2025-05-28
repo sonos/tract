@@ -28,7 +28,7 @@ impl DeviceMemoryPool {
                 },
             )?
         };
-        let storage = Arc::new(get_context()?.tensor_to_device(tensor)?);
+        let storage = Arc::new(get_context()?.tensor_to_device(tensor.into())?);
 
         Ok(Self { storage, resolved_schema, node_seen: RefCell::new(HashSet::new()) })
     }
