@@ -212,13 +212,13 @@ pub trait IntoDevice<T> {
 
 impl IntoDevice<DeviceTensor> for Tensor {
     fn into_device(self) -> TractResult<DeviceTensor> {
-        Ok(DeviceTensor::Owned(get_context()?.tensor_to_device(self)?))
+        Ok(DeviceTensor::Owned(get_context()?.tensor_to_device(self.into_tvalue())?))
     }
 }
 
 impl IntoDevice<DeviceTensor> for Arc<Tensor> {
     fn into_device(self) -> TractResult<DeviceTensor> {
-        Ok(DeviceTensor::Owned(get_context()?.arc_tensor_to_device(self)?))
+        Ok(DeviceTensor::Owned(get_context()?.tensor_to_device(self.into_tvalue())?))
     }
 }
 
