@@ -1,17 +1,17 @@
 use core::fmt;
 use std::ffi::c_void;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use anyhow::{anyhow, bail};
 use downcast_rs::{Downcast, impl_downcast};
 use tract_core::dyn_clone;
-use tract_core::prelude::{Tensor, TractResult};
+use tract_core::prelude::TractResult;
+use tract_core::value::TValue;
 
 use crate::tensor::OwnedDeviceTensor;
 
 pub trait DeviceContext: Downcast + dyn_clone::DynClone + Send + Sync {
-    fn tensor_to_device(&self, tensor: Tensor) -> TractResult<Box<dyn OwnedDeviceTensor>>;
-    fn arc_tensor_to_device(&self, tensor: Arc<Tensor>) -> TractResult<Box<dyn OwnedDeviceTensor>>;
+    fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>>;
     fn synchronize(&self) -> TractResult<()>;
 }
 
