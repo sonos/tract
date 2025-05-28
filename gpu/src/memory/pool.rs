@@ -1,3 +1,4 @@
+use crate::device::get_context;
 use crate::memory::DeviceResolvedMemSchema;
 use crate::tensor::DeviceArenaView;
 use crate::tensor::DeviceTensor;
@@ -10,7 +11,7 @@ use tract_core::internal::*;
 
 #[derive(Debug)]
 pub struct DeviceMemoryPool {
-    storage: Arc<OwnedDeviceTensor>,
+    storage: Arc<Box<dyn OwnedDeviceTensor>>,
     resolved_schema: DeviceResolvedMemSchema,
     node_seen: RefCell<HashSet<usize>>,
 }
@@ -27,7 +28,7 @@ impl DeviceMemoryPool {
                 },
             )?
         };
-        let storage = Arc::new(OwnedDeviceTensor::from_tensor(tensor)?);
+        let storage = Arc::new(get_context()?.tensor_to_device(tensor)?);
 
         Ok(Self { storage, resolved_schema, node_seen: RefCell::new(HashSet::new()) })
     }

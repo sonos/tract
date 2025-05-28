@@ -3,6 +3,7 @@ mod context;
 mod encoder;
 mod func_constants;
 pub mod kernels;
+mod tensor;
 mod ops;
 mod rewrite_rules;
 mod tests;
