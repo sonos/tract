@@ -3,7 +3,7 @@ use std::ffi::c_void;
 use std::sync::Mutex;
 
 use anyhow::{anyhow, bail};
-use downcast_rs::{impl_downcast, Downcast};
+use downcast_rs::{Downcast, impl_downcast};
 use tract_core::dyn_clone;
 use tract_core::prelude::TractResult;
 

@@ -5,9 +5,9 @@ use ggml::Context;
 use tract_core::internal::*;
 use tract_gpu::tensor::IntoDevice;
 use tract_linalg::mmm::AsInputValue;
-use tract_metal::kernels::matmul::GgmlGemm;
-use tract_metal::kernels::{matmul, LibraryName};
 use tract_metal::MetalStream;
+use tract_metal::kernels::matmul::GgmlGemm;
+use tract_metal::kernels::{LibraryName, matmul};
 
 pub fn ggml_matmul(
     crit: &mut BenchmarkGroup<WallTime>,

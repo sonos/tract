@@ -14,9 +14,7 @@ impl ModelTransform for RmsNormTransform {
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
-        Rewriter::default()
-            .with_rule_for("detect-rms-norm", ops::rms_norm_rule)
-            .rewrite(&(), model)
+        Rewriter::default().with_rule_for("detect-rms-norm", ops::rms_norm_rule).rewrite(&(), model)
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::device::{get_context, DeviceBuffer};
+use crate::device::{DeviceBuffer, get_context};
 use crate::tensor::DeviceTensor;
 use crate::utils::{as_q40_tensor, check_strides_validity};
 use num_traits::AsPrimitive;

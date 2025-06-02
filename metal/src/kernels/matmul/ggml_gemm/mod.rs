@@ -1,5 +1,6 @@
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
 use crate::{LibraryName, MetalStream};
+use DatumType::{F16, F32};
 use anyhow::ensure;
 use metal::{Buffer, MTLSize, NSUInteger};
 use std::fmt;
@@ -7,7 +8,6 @@ use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 use tract_gpu::tensor::DeviceTensor;
 use tract_gpu::utils::as_q40_fact;
-use DatumType::{F16, F32};
 
 #[derive(Debug)]
 #[repr(C)]
@@ -332,8 +332,8 @@ mod tests {
     use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
 
     use super::*;
-    use crate::kernels::matmul::tests::run_mmm_test_case;
     use crate::kernels::matmul::GemmImpl;
+    use crate::kernels::matmul::tests::run_mmm_test_case;
     use tract_gpu::tensor::IntoDevice;
 
     #[test]

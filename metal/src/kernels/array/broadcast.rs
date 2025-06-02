@@ -1,5 +1,5 @@
 use crate::encoder::EncoderExt;
-use crate::kernels::{utils, BroadcastKind};
+use crate::kernels::{BroadcastKind, utils};
 
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::{LibraryName, MetalStream};

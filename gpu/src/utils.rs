@@ -75,13 +75,8 @@ pub fn as_q40_fact(fact: &TypedFact) -> Option<&BlockQuantFact> {
 
 pub fn as_q40_tensor(a: &Tensor) -> Option<&BlockQuantValue> {
     a.to_scalar::<Opaque>().ok().and_then(|od| {
-        od.downcast_ref::<BlockQuantValue>().and_then(|bqv| {
-            if bqv.fact.format.same_as(&Q4_0) {
-                Some(bqv)
-            } else {
-                None
-            }
-        })
+        od.downcast_ref::<BlockQuantValue>()
+            .and_then(|bqv| if bqv.fact.format.same_as(&Q4_0) { Some(bqv) } else { None })
     })
 }
 

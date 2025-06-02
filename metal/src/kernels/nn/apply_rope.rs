@@ -1,6 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::kernels::utils::compute_broadcast_strides;
-use crate::kernels::{utils, BroadcastKind};
+use crate::kernels::{BroadcastKind, utils};
 use crate::{LibraryName, MetalStream};
 use anyhow::ensure;
 use std::fmt;

@@ -105,22 +105,38 @@ pub fn dispatch_metal_mfa_gemm(
 
     if a_trans {
         // (k, m)
-        ensure!(lhs_m1 == 1 && lhs_m2 == m, "Invalid left matmul argument [{lhs_m2}, {lhs_m1}] != [{m}, 1], strides: {:?} {:?} dims: (m: {m}, n: {n}, k: {k})",
-            lhs_stride, rhs_stride);
+        ensure!(
+            lhs_m1 == 1 && lhs_m2 == m,
+            "Invalid left matmul argument [{lhs_m2}, {lhs_m1}] != [{m}, 1], strides: {:?} {:?} dims: (m: {m}, n: {n}, k: {k})",
+            lhs_stride,
+            rhs_stride
+        );
     } else {
         // (m, k)
-        ensure!(lhs_m1 == 1 && lhs_m2 == k, "Invalid left matmul argument [{lhs_m2}, {lhs_m1}] != [{k}, 1], strides: {:?} {:?} dims: (m: {m}, n: {n}, k: {k})",
-            lhs_stride, rhs_stride);
+        ensure!(
+            lhs_m1 == 1 && lhs_m2 == k,
+            "Invalid left matmul argument [{lhs_m2}, {lhs_m1}] != [{k}, 1], strides: {:?} {:?} dims: (m: {m}, n: {n}, k: {k})",
+            lhs_stride,
+            rhs_stride
+        );
     }
 
     if b_trans {
         // (n, k)
-        ensure!(rhs_m1 == 1 && rhs_m2 == k, "Invalid right matmul argument [{rhs_m2}, {rhs_m1}] != [{k}, 1], strides: {:?} {:?} dims: (m: {m}, n: {n}, k: {k})",
-            lhs_stride, rhs_stride);
+        ensure!(
+            rhs_m1 == 1 && rhs_m2 == k,
+            "Invalid right matmul argument [{rhs_m2}, {rhs_m1}] != [{k}, 1], strides: {:?} {:?} dims: (m: {m}, n: {n}, k: {k})",
+            lhs_stride,
+            rhs_stride
+        );
     } else {
         // (k, n)
-        ensure!(rhs_m1 == 1 && rhs_m2 == n, "Invalid right matmul argument [{rhs_m2}, {rhs_m1}] != [{n}, 1] {:?} {:?} dims: (m: {m}, n: {n}, k: {k})",
-            lhs_stride, rhs_stride);
+        ensure!(
+            rhs_m1 == 1 && rhs_m2 == n,
+            "Invalid right matmul argument [{rhs_m2}, {rhs_m1}] != [{n}, 1] {:?} {:?} dims: (m: {m}, n: {n}, k: {k})",
+            lhs_stride,
+            rhs_stride
+        );
     }
 
     let d_trans = false;

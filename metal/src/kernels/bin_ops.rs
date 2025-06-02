@@ -1,5 +1,5 @@
-use super::utils::build_metal_grid_and_groups_for_el_wise_op;
 use super::BroadcastKind;
+use super::utils::build_metal_grid_and_groups_for_el_wise_op;
 use crate::encoder::EncoderExt;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::{LibraryName, MetalStream};
@@ -61,11 +61,7 @@ impl BinOps {
 
     pub fn output_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
         ensure!(a == b);
-        if self.is_logic() {
-            Ok(DatumType::Bool)
-        } else {
-            Ok(a)
-        }
+        if self.is_logic() { Ok(DatumType::Bool) } else { Ok(a) }
     }
 
     pub fn output_shape<D: DimLike>(&self, a: &[D], b: &[D]) -> TractResult<TVec<D>> {

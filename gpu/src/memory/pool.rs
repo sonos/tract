@@ -38,7 +38,11 @@ impl DeviceMemoryPool {
         dt: DatumType,
         shape: &[usize],
     ) -> TractResult<DeviceTensor> {
-        ensure!(!self.node_seen.borrow().contains(&node_id), "Tensor for node {:?} was already requested. Maybe the memory pool was not reset properly.", node_id);
+        ensure!(
+            !self.node_seen.borrow().contains(&node_id),
+            "Tensor for node {:?} was already requested. Maybe the memory pool was not reset properly.",
+            node_id
+        );
         self.resolved_schema.offsets_by_node[node_id]
             .map(|offset| {
                 Ok(DeviceArenaView {
