@@ -68,7 +68,7 @@ impl DeviceArenaView {
     pub fn view(&self) -> TensorView<'_> {
         unsafe {
             TensorView::from_bytes(
-                &self.arena.as_arc_tensor().unwrap(),
+                self.arena.as_arc_tensor().unwrap(),
                 self.offset_bytes as _,
                 self.shape.as_slice(),
                 self.strides.as_slice(),

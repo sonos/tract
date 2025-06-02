@@ -1,8 +1,8 @@
+use std::fmt::Display;
 use tract_core::internal::*;
 use tract_gpu::device::DeviceBuffer;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::check_strides_validity;
-use std::fmt::Display;
 
 use crate::context::MetalBuffer;
 
@@ -167,31 +167,32 @@ impl OwnedDeviceTensor for MetalTensor {
     /// Reshaped tensor with given shape.
     #[inline]
     fn reshaped(&self, shape: TVec<usize>) -> TractResult<DeviceTensor> {
-        Ok(DeviceTensor::Owned(Box::new(Self { inner: self.inner.reshaped(shape)?, device_buffer: self.device_buffer.clone() })))
+        Ok(DeviceTensor::Owned(Box::new(Self {
+            inner: self.inner.reshaped(shape)?,
+            device_buffer: self.device_buffer.clone(),
+        })))
     }
 
     /// Change tensor stride.
     #[inline]
     fn restrided(&self, strides: TVec<isize>) -> TractResult<DeviceTensor> {
-        Ok(DeviceTensor::Owned(Box::new(
-            Self {
+        Ok(DeviceTensor::Owned(Box::new(Self {
             inner: self.inner.restrided(strides)?,
             device_buffer: self.device_buffer.clone(),
-        }))
-        )
+        })))
     }
 
     fn as_arc_tensor(&self) -> Option<&Arc<Tensor>> {
         self.inner.as_arc_tensor()
     }
-    
+
     fn to_host(&self) -> Arc<Tensor> {
         self.inner
-        .as_arc_tensor()
-        .cloned()
-        .unwrap_or_else(|| self.inner.clone().into_tensor().into_arc_tensor())
+            .as_arc_tensor()
+            .cloned()
+            .unwrap_or_else(|| self.inner.clone().into_tensor().into_arc_tensor())
     }
-    
+
     #[inline]
     fn view(&self) -> TensorView<'_> {
         self.inner.view()
