@@ -16,27 +16,6 @@ pub struct DynKeyValueCacheState {
 }
 
 impl DynKeyValueCacheState {
-    /// # Safety
-    ///
-    /// Input and Ouput tensors shape must be compatible with this operator, otherwise it could lead
-    /// to an undefined behaviour.
-    pub unsafe fn apply_delay_unchecked(
-        &mut self,
-        op: &DynKeyValueCache,
-        input: &Tensor,
-        output: &mut Tensor,
-    ) {
-        let old_cache = self.kv_cache.as_mut().unwrap();
-        let old_cache_len = old_cache.shape()[op.axis];
-
-        unsafe {
-            output.assign_slice_unchecked(..old_cache_len, old_cache, ..old_cache_len, op.axis);
-            output.assign_slice_unchecked(old_cache_len.., input, .., op.axis);
-        }
-    }
-}
-
-impl DynKeyValueCacheState {
     pub fn resolve_symbols(
         state: &mut SessionState,
         fact: TypedFact,
@@ -112,24 +91,18 @@ impl OpState for DynKeyValueCacheState {
         let input = args_1!(inputs);
         let op =
             op.downcast_ref::<DynKeyValueCache>().ok_or_else(|| format_err!("Wrong Op type"))?;
-
-        let input_num_tokens = input.shape()[op.axis];
-
         // build output
-        unsafe {
-            let output = if let Some(curr) = self.kv_cache.as_ref() {
-                let mut shape = curr.shape().to_owned();
-                shape[op.axis] += input_num_tokens;
-                let mut output = Tensor::uninitialized_dt(input.datum_type(), &shape)?;
-                self.apply_delay_unchecked(op, &input, &mut output);
-                output
-            } else {
-                input.into_tensor()
-            };
-            self.kv_cache = Some(output.clone());
 
-            Ok(tvec!(output.into()))
-        }
+        let output = if let Some(curr) = self.kv_cache.take() {
+            let out = 
+                TypedConcat { axis: op.axis }.eval(tvec![curr.into(), input])?.remove(0);
+            out.into_tensor()
+        } else {
+            input.into_tensor()
+        };
+        self.kv_cache = Some(output.clone());
+
+        Ok(tvec!(output.into()))
     }
 }
 
