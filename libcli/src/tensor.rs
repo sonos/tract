@@ -423,7 +423,7 @@ pub fn get_or_make_inputs(
             })
             .map(|fact| {
                 let mut tmp = tvec![];
-                get_or_make_tensors(tract, params, fact, &tract.node_op(id).name(), usize::MAX, &mut tmp)?;
+                get_or_make_tensors(tract, params, fact, &tract.node_name(id), usize::MAX, &mut tmp)?;
                 Ok(tmp.remove(0).remove(0))
             })
         })
