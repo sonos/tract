@@ -1,0 +1,32 @@
+[package]
+name = "tract-cuda"
+version = "0.21.14-pre"
+license = "MIT OR Apache-2.0"
+authors = [
+	"Louis Chouraki <louis.chouraki@sonos.com>",
+]
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
+repository = "https://github.com/snipsco/tract"
+keywords = [ "TensorFlow", "NeuralNetworks", "CUDA" ]
+categories = [ "science" ]
+autobenches = false
+edition = "2024"
+rust-version = "1.85"
+
+[badges]
+maintenance = { status = "actively-developed" }
+
+[dependencies]
+anyhow.workspace = true
+derive-new.workspace = true
+downcast-rs.workspace = true
+num-traits.workspace = true
+tract-core.workspace = true
+tract-transformers.workspace = true
+tract-gpu.workspace = true
+cust.workspace = true
+
+
+[dev-dependencies]
+proptest.workspace = true
+rand.workspace = true
