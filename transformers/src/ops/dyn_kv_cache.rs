@@ -75,30 +75,27 @@ impl OpState for DynKeyValueCacheState {
     fn load_from(
         &mut self,
         state: &mut SessionState,
-        states: &mut HashMap<String, TValue>,
+        states: &mut Vec<TValue>,
     ) -> TractResult<()> {
-        if let Some(kv_cache) = states.remove(&self.name) {
-            // KV Cache fact is always at index 0
-            Self::resolve_symbols(state, self.input_facts[0].clone(), Some(kv_cache.shape()))?;
-            self.kv_cache = Some(kv_cache.into_tensor());
+        let kv_cache_init = states.remove(0);
+        // KV Cache fact is always at index 0
+        Self::resolve_symbols(state, self.input_facts[0].clone(), Some(kv_cache_init.shape()))?;
+        self.kv_cache = Some(kv_cache_init.into_tensor());
 
-            Ok(())
-        } else {
-            bail!("KV cache input {} not found in given states", self.name)
-        }
+        Ok(())
     }
 
-    fn save_to(&self, states: &mut HashMap<String, TValue>) -> TractResult<()> {
+    fn save_to(&self, states: &mut Vec<TValue>) -> TractResult<()> {
         if let Some(kv_cache) = &self.kv_cache {
-            states.insert(self.name.clone(), kv_cache.clone().into_tvalue());
+            states.push(kv_cache.clone().into_tvalue());
             Ok(())
         } else {
             bail!("KV cache {} was never initialized", self.name)
         }
     }
 
-    fn init_tensor_fact(&self) -> Option<(String, TypedFact)> {
-        Some((self.name.clone(), self.input_facts[0].clone()))
+    fn init_tensor_fact(&self) -> Option<TypedFact> {
+        Some(self.input_facts[0].clone())
     }
 
     fn resolve_symbols(&mut self, state: &mut SessionState) -> TractResult<()> {
@@ -340,10 +337,9 @@ mod tests {
         let input = Tensor::from_shape(shape, &(0..len).map(|f| f.as_()).collect::<Vec<F>>())?;
         inputs.push(input.clone().into_tvalue());
 
-        let mut hashmap = HashMap::new();
-        hashmap.insert(op_name.clone(), input.into());
+        let mut state_initializers = vec![input.into()];
 
-        state.load_from(&mut session_state, &mut hashmap)?;
+        state.load_from(&mut session_state, &mut state_initializers)?;
 
         for shape in input_shapes {
             let len = shape.iter().product::<usize>();
@@ -353,8 +349,10 @@ mod tests {
                 .clone()
                 .into_tensor();
         }
-        state.save_to(&mut hashmap)?;
-        let output = hashmap.get(&op_name).unwrap();
+
+        let mut curr_states = vec![];
+        state.save_to(&mut curr_states)?;
+        let output = curr_states.remove(0);
 
         let reference = &TypedConcat { axis }.eval(inputs)?[0];
         output.close_enough(&reference.clone().into_tensor(), Approximation::Close)?;

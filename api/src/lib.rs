@@ -1,6 +1,5 @@
 use anyhow::{Result, ensure};
 use boow::Bow;
-use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::path::Path;
 
@@ -174,15 +173,16 @@ pub trait ModelInterface: Sized {
 
     fn cost_json(&self) -> Result<String>;
 
-    fn profile_json<I, IV, IE, SV, SE>(
+    fn profile_json<I, IV, IE, S, SV, SE>(
         &self,
         inputs: Option<I>,
-        state_initializers: Option<HashMap<String, SV>>,
+        state_initializers: Option<S>,
     ) -> Result<String>
     where
         I: IntoIterator<Item = IV>,
         IV: TryInto<Self::Value, Error = IE>,
         IE: Into<anyhow::Error> + Debug,
+        S: IntoIterator<Item = SV>,
         SV: TryInto<Self::Value, Error = SE>,
         SE: Into<anyhow::Error> + Debug;
 
@@ -222,14 +222,15 @@ pub trait StateInterface {
         V: TryInto<Self::Value, Error = E>,
         E: Into<anyhow::Error>;
 
-    fn get_states_facts(&self) -> Result<Vec<(String, Self::Fact)>>;
+    fn get_states_facts(&self) -> Result<Vec<Self::Fact>>;
 
-    fn set_states<V, E>(&mut self, state_initializers: HashMap<String, V>) -> Result<()>
+    fn set_states<I, V, E>(&mut self, state_initializers: I) -> Result<()>
     where
+        I: IntoIterator<Item = V>,
         V: TryInto<Self::Value, Error = E>,
         E: Into<anyhow::Error> + Debug;
 
-    fn get_states(&self) -> Result<HashMap<String, Self::Value>>;
+    fn get_states(&self) -> Result<Vec<Self::Value>>;
 }
 
 pub trait ValueInterface: Sized + Clone {

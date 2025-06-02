@@ -253,7 +253,7 @@ where
         Ok(())
     }
 
-    pub fn init_states(&mut self, state_init_tensors: &mut HashMap<String, TValue>) -> TractResult<()> {
+    pub fn init_states(&mut self, state_init_tensors: &mut Vec<TValue>) -> TractResult<()> {
         let states_to_init = self
             .states
             .iter_mut()
@@ -262,9 +262,9 @@ where
             .collect_vec();
         ensure!(
             states_to_init.len() == state_init_tensors.len(),
-            "There are {} op to init but Hashmap has {} entries",
+            "There are {} op to init but got {} tensors",
             states_to_init.len(),
-            state_init_tensors.keys().len()
+            state_init_tensors.len()
         );
         for state in states_to_init {
             state.load_from(&mut self.session_state, state_init_tensors)?;

@@ -271,7 +271,8 @@ fn test_profile() -> anyhow::Result<()> {
     model.declutter()?;
     model.optimize()?;
     let data = ndarray::ArrayD::<f32>::zeros(vec![1, 3, 224, 224]);
-    let profile = model.profile_json(Some([data]), None::<std::collections::HashMap<String, Value>>)?;
+    let states: Option<Vec<Value>> = None;
+    let profile = model.profile_json(Some([data]), states)?;
     let profile: serde_json::Value = serde_json::from_str(&profile)?;
     let profiling_info = profile["profiling_info"].as_object().unwrap();
     assert!(profiling_info["iterations"].as_i64().unwrap() >= 1);
@@ -300,9 +301,9 @@ fn test_transform_registry() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn state_init_from_facts(facts: Vec<(String, Fact)>, default_symbol_value: usize) -> std::collections::HashMap<String, ndarray::ArrayD::<f32>> {
-    let mut state_initializers = std::collections::HashMap::new();
-    for (name, fact) in facts {
+fn state_init_from_facts(facts: Vec<Fact>, default_symbol_value: usize) -> Vec<ndarray::ArrayD::<f32>> {
+    let mut state_initializers = vec![];
+    for fact in facts {
         let fact = fact.to_string();
         let mut parsed = fact.split(',').collect::<Vec<_>>();
 
@@ -316,7 +317,7 @@ fn state_init_from_facts(facts: Vec<(String, Fact)>, default_symbol_value: usize
 
         assert_eq!(dt, "F32");
         let tensor = ndarray::ArrayD::<f32>::zeros(dims);
-        state_initializers.insert(name, tensor);
+        state_initializers.push(tensor);
     }
     state_initializers
 }
@@ -325,7 +326,7 @@ fn state_init_from_facts(facts: Vec<(String, Fact)>, default_symbol_value: usize
 #[ignore = "Model need to be downloaded locally (use .travis/test-llm.sh)"]
 fn test_state_init() -> anyhow::Result<()> {
     let nnef = nnef()?.with_tract_core()?.with_tract_transformers()?;
-    let mut model = nnef.model_for_path("TinyLlama--TinyLlama_v1.1-q40ef32.nnef.tgz")?;
+    let mut model = nnef.model_for_path("/Users/lchouraki/Documents/tract/.cached/llm/516/TinyLlama--TinyLlama_v1.1-q40ef32/TinyLlama--TinyLlama_v1.1-q40ef32.nnef.tgz")?;
     model.declutter()?;
 
     // Do KV Cache optim
@@ -337,11 +338,10 @@ fn test_state_init() -> anyhow::Result<()> {
     let state_initializers = state_init_from_facts(state.get_states_facts()?, 4);
     state.set_states(state_initializers.clone())?;
 
-    let out_states = state.get_states()?;
-    for (k, v) in state_initializers {
-        if let Some(s) = out_states.get(&k) {
-            assert_eq!(s.view::<f32>()?, v);
-        } else { anyhow::bail!("State {k} was not found in outputted states")}
+    let mut out_states = state.get_states()?;
+    for v in state_initializers {
+        let s = out_states.remove(0);
+        assert_eq!(s.view::<f32>()?, v);
     }
     Ok(())
 }
@@ -350,15 +350,15 @@ fn test_state_init() -> anyhow::Result<()> {
 #[ignore = "Model need to be downloaded locally (use .travis/test-llm.sh)"]
 fn test_profile_with_state_init() -> anyhow::Result<()> {
     let nnef = nnef()?.with_tract_core()?.with_tract_transformers()?;
-    let mut model = nnef.model_for_path("TinyLlama--TinyLlama_v1.1-q40ef32.nnef.tgz")?;
+    let mut model = nnef.model_for_path("/Users/lchouraki/Documents/tract/.cached/llm/516/TinyLlama--TinyLlama_v1.1-q40ef32/TinyLlama--TinyLlama_v1.1-q40ef32.nnef.tgz")?;
     model.declutter()?;
     model.optimize()?;
 
     let input = ndarray::ArrayD::<i64>::zeros(vec![1, 1]);
-    let mut state_initializers = std::collections::HashMap::new();
-    for idx in 1..model.input_count()? {
+    let mut state_initializers = vec![];
+    for _ in 1..model.input_count()? {
         let tensor = ndarray::ArrayD::<f32>::zeros(vec![1, 4, 4, 64]);
-        state_initializers.insert(model.input_name(idx)?, tensor);
+        state_initializers.push(tensor);
     }
     // Do KV Cache optim
     nnef.transform_model(&mut model, "detect-kv-cache")?;

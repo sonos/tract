@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::path::Path;
 use std::sync::Arc;
@@ -6,10 +5,9 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use ndarray::{Data, Dimension, RawData};
 use tract_extra::WithTractExtra;
-use tract_libcli::tensor::RunTensors;
-use tract_transformers::WithTractTransformers;
 use tract_libcli::annotations::Annotations;
 use tract_libcli::profile::BenchLimits;
+use tract_libcli::tensor::RunTensors;
 use tract_nnef::internal::parse_tdim;
 use tract_nnef::prelude::{
     Framework, IntoTValue, SymbolValues, TValue, TVec, Tensor, TractResult, TypedFact, TypedModel,
@@ -17,9 +15,10 @@ use tract_nnef::prelude::{
 };
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
-use tract_pulse::model::{PulsedModel, PulsedModelExt};
-use tract_pulse::internal::PlanOptions;
 use tract_pulse::WithPulse;
+use tract_pulse::internal::PlanOptions;
+use tract_pulse::model::{PulsedModel, PulsedModelExt};
+use tract_transformers::WithTractTransformers;
 
 use tract_api::*;
 
@@ -269,18 +268,20 @@ impl ModelInterface for Model {
 
     fn cost_json(&self) -> Result<String> {
         let input: Option<Vec<Value>> = None;
-        self.profile_json(input, None::<HashMap<String, Value>>)
+        let states: Option<Vec<Value>> = None;
+        self.profile_json(input, states)
     }
 
-    fn profile_json<I, IV, IE, SV, SE>(
+    fn profile_json<I, IV, IE, S, SV, SE>(
         &self,
         inputs: Option<I>,
-        state_initializers: Option<HashMap<String, SV>>,
+        state_initializers: Option<S>,
     ) -> Result<String>
     where
         I: IntoIterator<Item = IV>,
         IV: TryInto<Self::Value, Error = IE>,
         IE: Into<anyhow::Error> + Debug,
+        S: IntoIterator<Item = SV>,
         SV: TryInto<Self::Value, Error = SE>,
         SE: Into<anyhow::Error> + Debug,
     {
@@ -292,19 +293,19 @@ impl ModelInterface for Model {
                 .map(|v| Ok(v.try_into().unwrap().0))
                 .collect::<TractResult<TVec<_>>>()?;
 
-            let mut state_inits: HashMap<String, TValue> = HashMap::new();
+            let mut state_inits: Vec<TValue> = vec![];
 
             if let Some(states) = state_initializers {
-                states.into_iter().for_each(|(name, v)| { state_inits.insert(name, v.try_into().unwrap().0);});
+                states.into_iter().for_each(|s| state_inits.push(s.try_into().unwrap().0));
             }
             tract_libcli::profile::profile(
                 &self.0,
                 &BenchLimits::default(),
                 &mut annotations,
                 &PlanOptions::default(),
-                &RunTensors { sources: vec![inputs], state_initializers: state_inits},
+                &RunTensors { sources: vec![inputs], state_initializers: state_inits },
                 None,
-                true
+                true,
             )?;
         };
         let export = tract_libcli::export::GraphPerfInfo::from(&self.0, &annotations);
@@ -384,36 +385,35 @@ impl StateInterface for State {
         Ok(outputs.into_iter().map(Value).collect())
     }
 
-    fn get_states_facts(&self) -> Result<Vec<(String, Fact)>> {
-        Ok(self.0
+    fn get_states_facts(&self) -> Result<Vec<Fact>> {
+        Ok(self
+            .0
             .states
             .iter()
             .filter_map(Option::as_ref)
-            .filter_map(|s| {
-                s.init_tensor_fact()
-                    .map(|(name, fact)| (name, Fact(fact)))
-            })
-            .collect::<Vec<(String, Fact)>>())
+            .filter_map(|s| s.init_tensor_fact().map(|fact| Fact(fact)))
+            .collect::<Vec<Fact>>())
     }
 
-    fn set_states<V, E>(&mut self, state_initializers: HashMap<String, V>) -> Result<()>
+    fn set_states<I, V, E>(&mut self, state_initializers: I) -> Result<()>
     where
+        I: IntoIterator<Item = V>,
         V: TryInto<Self::Value, Error = E>,
-        E: Into<anyhow::Error> + Debug
-    {   
-        let mut states: HashMap<String, TValue> = HashMap::new();
-        state_initializers.into_iter().for_each(|(name, v)| {
-            states.insert(name, v.try_into().unwrap().0);
+        E: Into<anyhow::Error> + Debug,
+    {
+        let mut states = vec![];
+        state_initializers.into_iter().for_each(|s| {
+            states.push(s.try_into().unwrap().0);
         });
 
         self.0.init_states(&mut states)?;
         Ok(())
     }
-    
-    fn get_states(&self) -> Result<HashMap<String, Self::Value>>
-    {
-        let mut states = HashMap::new();
-        for state in self.0
+
+    fn get_states(&self) -> Result<Vec<Self::Value>> {
+        let mut states = vec![];
+        for state in self
+            .0
             .states
             .iter()
             .filter_map(Option::as_ref)
@@ -422,9 +422,9 @@ impl StateInterface for State {
             state.save_to(&mut states)?;
         }
 
-        let mut res: HashMap<String, Value> = HashMap::new();
-        for (name, value) in states {
-            res.insert(name, Value(value));
+        let mut res = vec![];
+        for state in states {
+            res.push(Value(state));
         }
         Ok(res)
     }
@@ -523,8 +523,8 @@ anyhow::bail!("Unsupported type {}", std::any::type_name::<T>())
 */
 
 fn to_internal_dt(it: DatumType) -> tract_nnef::prelude::DatumType {
-    use tract_nnef::prelude::DatumType::*;
     use DatumType::*;
+    use tract_nnef::prelude::DatumType::*;
     match it {
         TRACT_DATUM_TYPE_BOOL => Bool,
         TRACT_DATUM_TYPE_U8 => U8,
@@ -554,8 +554,8 @@ fn to_internal_dt(it: DatumType) -> tract_nnef::prelude::DatumType {
 }
 
 fn from_internal_dt(it: tract_nnef::prelude::DatumType) -> Result<DatumType> {
-    use tract_nnef::prelude::DatumType::*;
     use DatumType::*;
+    use tract_nnef::prelude::DatumType::*;
     Ok(match it {
         Bool => TRACT_DATUM_TYPE_BOOL,
         U8 => TRACT_DATUM_TYPE_U8,

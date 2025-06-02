@@ -2,7 +2,6 @@
 
 use anyhow::{Context, Result};
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr, CString};
 use tract_api::{
     AsFact, DatumType, InferenceModelInterface, ModelInterface, NnefInterface, OnnxInterface,
@@ -740,7 +739,6 @@ pub unsafe extern "C" fn tract_model_optimize(model: *mut TractModel) -> TRACT_R
 pub unsafe extern "C" fn tract_model_profile_json(
     model: *mut TractModel,
     inputs: *mut *mut TractValue,
-    state_names: *const *const c_char,
     states: *const *const TractValue,
     n_states: usize,
     json: *mut *mut i8,
@@ -760,18 +758,12 @@ pub unsafe extern "C" fn tract_model_profile_json(
             None
         };
 
-        let state_initializers = if !state_names.is_null() {
-            anyhow::ensure!(!states.is_null() && n_states != 0);
-            let hashmap = (0..n_states)
-                    .zip(std::slice::from_raw_parts(states, n_states).iter())
-                    .map(|(i, tv)| { 
-                        let c_str_p = *state_names.add(i);
-                        if c_str_p.is_null() {
-                            anyhow::bail!("No state_name for state {i}")
-                        }
-                        Ok((CStr::from_ptr(c_str_p).to_str().unwrap().to_owned(), 
-                                        (**tv).0.clone()))
-                    }).collect::<Result<HashMap<String, Value>>>()?;
+        let state_initializers: Option<Vec<Value>> = if !states.is_null() {
+            anyhow::ensure!(n_states != 0);
+            let hashmap = std::slice::from_raw_parts(states, n_states).iter()
+                    .map(|tv| {
+                        (**tv).0.clone()
+                    }).collect();
             Some(hashmap)
         } else { None };
 
@@ -1063,22 +1055,19 @@ pub unsafe extern "C" fn tract_state_destroy(state: *mut *mut TractState) -> TRA
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_get_states_facts(
     state: *const TractState,
-    state_names: *mut *mut c_char,
     states: *mut *mut TractFact,
     n_states: *mut usize,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         let state = &(*state).0;
     
-        let hashmap = state.get_states_facts()?;
+        let state_vec = state.get_states_facts()?;
         // Check we won't overflow
-        anyhow::ensure!(hashmap.len() <= *n_states);
-        *n_states = hashmap.len();
+        anyhow::ensure!(state_vec.len() <= *n_states);
+        *n_states = state_vec.len();
 
-        for (ix, (k, v)) in hashmap.into_iter().enumerate() {
-            let c_key = CString::new(k)?;
-            *state_names.add(ix) = c_key.into_raw(); 
-            *states.add(ix) = Box::into_raw(Box::new(TractFact(v)));
+        for (ix, f) in state_vec.into_iter().enumerate() {
+            *states.add(ix) = Box::into_raw(Box::new(TractFact(f)));
         }
         Ok(())
     })
@@ -1088,52 +1077,41 @@ pub unsafe extern "C" fn tract_state_get_states_facts(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_set_states(
     state: *mut TractState,
-    state_names: *const *const c_char,
     states: *const *const TractValue,
     n_states: usize,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
-        check_not_null!(state, state_names, states);
+        check_not_null!(state, states);
         anyhow::ensure!(n_states != 0);
         let state = &mut (*state).0;
-        
-        let state_initializers = (0..n_states)
-                .zip(std::slice::from_raw_parts(states, n_states).iter())
-                .map(|(i, tv)| { 
-                    let c_str_p = *state_names.add(i);
-                    if c_str_p.is_null() {
-                        anyhow::bail!("No state_name for state {i}")
-                    }
-                    Ok((CStr::from_ptr(c_str_p).to_str().unwrap().to_owned(), 
-                                    (**tv).0.clone()))
-                }).collect::<Result<HashMap<String, Value>>>()?;
+
+        let state_initializers: Vec<Value> =
+        std::slice::from_raw_parts(states, n_states).iter()
+                    .map(|tv| {
+                        (**tv).0.clone()
+                    }).collect();
         state.set_states(state_initializers)?;
         Ok(())
     })
 }
 
 /// Get Stateful Ops's current states.
-/// Caller should free state_names pointers after use
-/// This also sets n_states to the real numbers of states
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_get_states(
     state: *const TractState,
-    state_names: *mut *mut c_char,
     states: *mut *mut TractValue,
     n_states: *mut usize,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         let state = &(*state).0;
     
-        let hashmap = state.get_states()?;
+        let state_vec = state.get_states()?;
         // Check we won't overflow
-        anyhow::ensure!(hashmap.len() <= *n_states);
-        *n_states = hashmap.len();
+        anyhow::ensure!(state_vec.len() <= *n_states);
+        *n_states = state_vec.len();
 
-        for (ix, (k, v)) in hashmap.into_iter().enumerate() {
-            let c_key = CString::new(k)?;
-            *state_names.add(ix) = c_key.into_raw(); 
-            *states.add(ix) = Box::into_raw(Box::new(TractValue(v)));
+        for (ix, s) in state_vec.into_iter().enumerate() {
+            *states.add(ix) = Box::into_raw(Box::new(TractValue(s)));
         }
         Ok(())
     })
