@@ -1,6 +1,4 @@
-use std::collections::HashMap;
 use std::ffi::{CStr, CString};
-use std::os::raw::c_char;
 use std::path::Path;
 use std::ptr::{null, null_mut};
 
@@ -363,18 +361,20 @@ impl ModelInterface for Model {
 
     fn cost_json(&self) -> Result<String> {
         let input: Option<Vec<Value>> = None;
-        self.profile_json(input, None::<HashMap<String, Value>>)
+        let states: Option<Vec<Value>> = None;
+        self.profile_json(input, states)
     }
 
-    fn profile_json<I, IV, IE, SV, SE>(
-    &self,
-    inputs: Option<I>,
-    state_initializers: Option<HashMap<String, SV>>,
+    fn profile_json<I, IV, IE, S, SV, SE>(
+        &self,
+        inputs: Option<I>,
+        state_initializers: Option<S>,
     ) -> Result<String>
     where
         I: IntoIterator<Item = IV>,
         IV: TryInto<Self::Value, Error = IE>,
         IE: Into<anyhow::Error>,
+        S: IntoIterator<Item = SV>,
         SV: TryInto<Self::Value, Error = SE>,
         SE: Into<anyhow::Error>,
     {
@@ -393,27 +393,23 @@ impl ModelInterface for Model {
         let mut json: *mut i8 = null_mut();
         let values = iptrs.as_mut().map(|it| it.as_mut_ptr()).unwrap_or(null_mut());
 
-        let (nptrs, sptrs, n_states) 
-        = if let Some(state_map) = state_initializers {
-            let mut key_ptrs: Vec<*const _> = Vec::with_capacity(state_map.len());
-            let mut value_ptrs: Vec<*const _> = Vec::with_capacity(state_map.len());
+        let (state_inits, n_states)
+        = if let Some(state_vec) = state_initializers {
+            let mut states: Vec<*const _> = vec![];
 
-            let len = state_map.len();
-            for (k, v) in state_map {
-                let key = CString::new(k)?;
+            for v in state_vec {
                 let val: Value = v.try_into().map_err(|e| e.into())?;
-                key_ptrs.push(key.as_ptr());
-                value_ptrs.push(val.0);
+                states.push(val.0);
             }
-
-            (Some(key_ptrs), Some(value_ptrs), len)
+            let len = states.len();
+            (Some(states), len)
         } else {
-            (None, None, 0)
+            (None, 0)
         };
 
-        let nptrs = nptrs.map(|it| it.as_ptr()).unwrap_or(null());
-        let sptrs = sptrs.map(|it| it.as_ptr()).unwrap_or(null());
-        check!(sys::tract_model_profile_json(self.0, values, nptrs, sptrs, n_states, &mut json))?;
+        let states =
+            state_inits.map(|is| is.as_ptr()).unwrap_or(null());
+        check!(sys::tract_model_profile_json(self.0, values, states, n_states, &mut json))?;
         anyhow::ensure!(!json.is_null());
         unsafe {
             let s = CStr::from_ptr(json).to_owned();
@@ -517,73 +513,60 @@ impl StateInterface for State {
         Ok(count)
     }
 
-    fn get_states_facts(&self) -> Result<Vec<(String, Fact)>> {
+    fn get_states_facts(&self) -> Result<Vec<Fact>> {
         let mut n_states = 256;
 
-        let mut nptrs: Vec<*mut c_char> = vec![null_mut(); n_states];
         let mut fptrs = vec![null_mut(); n_states];
-        check!(sys::tract_state_get_states_facts(self.0, nptrs.as_mut_ptr(), fptrs.as_mut_ptr(), &mut n_states))?;
+        check!(sys::tract_state_get_states_facts(self.0, fptrs.as_mut_ptr(), &mut n_states))?;
 
-        unsafe {
-            let res = nptrs.iter().zip(fptrs.into_iter()).take(n_states)
-                .map(|(name, value)| {
-                    let s = CStr::from_ptr(*name).to_str()?.to_owned();
-                    Ok((s, Fact(value)))
-                })
-                .collect::<Result<Vec<(String, Fact)>>>();
-            
-            nptrs.into_iter().for_each(|name| sys::tract_free_cstring(name));
-            res
-        }
+        let res = fptrs.into_iter().take(n_states)
+            .map(|value| {
+                Ok(Fact(value))
+            })
+            .collect::<Result<Vec<Fact>>>();
+
+        res
     }
 
-    fn set_states<V, E>(&mut self, state_initializers: HashMap<String, V>) -> Result<()>
+    fn set_states<I, V, E>(&mut self, state_initializers: I) -> Result<()>
     where
+        I: IntoIterator<Item = V>,
         V: TryInto<Self::Value, Error = E>,
-        E: Into<anyhow::Error> 
+        E: Into<anyhow::Error>
     {
-        let (mut nptrs, sptrs, n_states) 
+        let (sptrs, n_states) 
         = {
-            let mut key_ptrs: Vec<*const _> = Vec::with_capacity(state_initializers.len());
-            let mut value_ptrs: Vec<*const _> = Vec::with_capacity(state_initializers.len());
+            let mut states: Vec<*const _> = vec![];
 
-            let len = state_initializers.len();
-            for (k, v) in state_initializers {
-                let key = CString::new(k)?;
-                let val: Value = v.try_into().map_err(|e| e.into())?;
-                key_ptrs.push(key.as_ptr());
-                value_ptrs.push(val.0);
+            for s in state_initializers {
+                let val: Value = s.try_into().map_err(|e| e.into())?;
+                states.push(val.0);
             }
 
-            (Some(key_ptrs), Some(value_ptrs), len)
+            let len = states.len();
+            (Some(states), len)
         };
 
-        let nptrs = nptrs.as_mut().map(|it| it.as_ptr()).unwrap_or(null());
         let sptrs = sptrs.map(|it| it.as_ptr()).unwrap_or(null());
-        check!(sys::tract_state_set_states(self.0, nptrs, sptrs, n_states))?;
+        check!(sys::tract_state_set_states(self.0, sptrs, n_states))?;
 
         Ok(())
     }
 
-    fn get_states(&self) -> Result<HashMap<String, Self::Value>>
+    fn get_states(&self) -> Result<Vec<Self::Value>>
     {
         let mut n_states = 256;
 
-        let mut nptrs: Vec<*mut c_char> = vec![null_mut(); n_states];
         let mut sptrs = vec![null_mut(); n_states];
-        check!(sys::tract_state_get_states(self.0, nptrs.as_mut_ptr(), sptrs.as_mut_ptr(), &mut n_states))?;
+        check!(sys::tract_state_get_states(self.0, sptrs.as_mut_ptr(), &mut n_states))?;
 
-        unsafe {
-            let res = nptrs.iter().zip(sptrs.into_iter()).take(n_states)
-                .map(|(name, value)| {
-                    let s = CStr::from_ptr(*name).to_str()?.to_owned();
-                    Ok((s, Value(value)))
-                })
-                .collect::<Result<HashMap<String, Value>>>();
-            
-            nptrs.into_iter().for_each(|name| sys::tract_free_cstring(name));
-            res
-        }
+        let res = sptrs.into_iter().take(n_states)
+            .map(|value| {
+                Ok(Value(value))
+            })
+            .collect::<Result<Vec<Value>>>();
+
+        res
     } 
 }
 

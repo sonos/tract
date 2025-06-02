@@ -287,7 +287,7 @@ pub struct RunParams {
 
 pub struct RunTensors {
     pub sources: Vec<TVec<TValue>>,
-    pub state_initializers: HashMap<String, TValue>,
+    pub state_initializers: Vec<TValue>,
 }
 
 fn get_or_make_tensors(
@@ -296,7 +296,7 @@ fn get_or_make_tensors(
     fact: TypedFact,
     name: &str,
     input_idx: usize,
-    target: &mut TVec<(String, Vec<TValue>)>,
+    target: &mut TVec<Vec<TValue>>,
 ) -> TractResult<()> {
     if let Some(mut value) = params
         .tensors_values
@@ -319,18 +319,16 @@ fn get_or_make_tensors(
         }
         if TypedFact::shape_and_dt_of(&value[0]).compatible_with(&fact) {
             info!("Using fixed input for input called {} ({} turn(s))", name, value.len());
-            target.push((
-                name.to_string(),
+            target.push(
                 value.iter().map(|t| t.clone().into_tensor().into()).collect(),
-            ));
+            );
         } else if fact.datum_type == f16::datum_type()
             && value[0].datum_type() == f32::datum_type()
             && params.allow_float_casts
         {
-            target.push((
-                name.to_string(),
+            target.push(
                 value.iter().map(|t| t.cast_to::<f16>().unwrap().into_owned().into()).collect(),
-            ));
+            );
         } else if value.len() == 1 && model.properties().contains_key("pulse.delay") {
             let value = &value[0];
             let input_pulse_axis = model
@@ -371,7 +369,7 @@ fn get_or_make_tensors(
                 "Generated {} pulses of shape {:?} for input {}.",
                 needed_pulses, fact.shape, input_idx
             );
-            target.push((name.to_string(), values));
+            target.push(values);
         } else {
             bail!(
                 "For input {}, can not reconcile model input fact {:?} with provided input {:?}",
@@ -383,7 +381,7 @@ fn get_or_make_tensors(
     } else if fact.shape.is_concrete() && fact.shape.volume() == TDim::zero() {
         let shape = fact.shape.as_concrete().unwrap();
         let tensor = Tensor::zero_dt(fact.datum_type, shape)?;
-        target.push((name.to_string(), vec![tensor.into()]));
+        target.push(vec![tensor.into()]);
     } else if params.allow_random_input {
         info_once(format!("Using random input for input called {name:?}: {fact:?}"));
         let tv = params
@@ -392,7 +390,7 @@ fn get_or_make_tensors(
             .or_else(|| params.tensors_values.by_input_ix(input_idx));
         let mut fact = fact.clone();
         fact.shape = fact.shape.iter().map(|dim| dim.eval(&params.symbols)).collect();
-        target.push((name.to_string(), vec![tensor_for_fact(&fact, None, tv)?.into()]));
+        target.push(vec![tensor_for_fact(&fact, None, tv)?.into()]);
     } else {
         bail!("Unmatched tensor {}. Fix the input or use \"--allow-random-input\" if this was intended", name);
     }
@@ -411,9 +409,9 @@ pub fn get_or_make_inputs(
         get_or_make_tensors(tract, params, fact, name, ix, &mut tmp_inputs)?;
     }
 
-    let n_turns = tmp_inputs.first().map_or(0, |t| t.1.len());
+    let n_turns = tmp_inputs.first().map_or(0, |t| t.len());
     let sources = (0..n_turns)
-        .map(|i| tmp_inputs.iter().map(|t| t.1[i].clone()).collect::<TVec<_>>())
+        .map(|i| tmp_inputs.iter().map(|t| t[i].clone()).collect::<TVec<_>>())
         .collect::<Vec<_>>();
 
     // Resolve state initializers (KV Cache, etc.)
@@ -421,15 +419,15 @@ pub fn get_or_make_inputs(
     let state_initializers = (0..tract.nodes_len())
         .filter_map(|id| {
             tract.node_op(id).state(&mut dummy_session_state, id).ok().flatten().and_then(|state| {
-                state.init_tensor_fact()
+               state.init_tensor_fact()
+            })
+            .map(|fact| {
+                let mut tmp = tvec![];
+                get_or_make_tensors(tract, params, fact, &tract.node_op(id).name(), usize::MAX, &mut tmp)?;
+                Ok(tmp.remove(0).remove(0))
             })
         })
-        .map(|(name, fact)| {
-            let mut tmp = tvec![];
-            get_or_make_tensors(tract, params, fact, &name, usize::MAX, &mut tmp)?;
-            Ok((name, tmp.remove(0).1.remove(0)))
-        })
-        .collect::<TractResult<HashMap<_, _>>>()?;
+        .collect::<TractResult<Vec<_>>>()?;
 
     Ok(RunTensors {
         sources,

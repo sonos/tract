@@ -33,33 +33,30 @@ impl<O: MetalEvalOp> OpState for MetalDynKVCacheState<O> {
     fn load_from(
         &mut self,
         state: &mut SessionState,
-        states: &mut HashMap<String, TValue>,
+        states: &mut Vec<TValue>,
     ) -> TractResult<()> {
-        if let Some(kv_cache) = states.remove(&self.name) {
-            // KV Cache fact is always at index 0
-            DynKeyValueCacheState::resolve_symbols(
-                state,
-                self.input_facts[0].clone(),
-                Some(kv_cache.shape()),
-            )?;
-            self.kv_cache = Some(kv_cache.into_tensor().into_device()?);
-            Ok(())
-        } else {
-            bail!("KV cache input {} not found in given states", self.name)
-        }
+        let kv_cache = states.remove(0);
+        // KV Cache fact is always at index 0
+        DynKeyValueCacheState::resolve_symbols(
+            state,
+            self.input_facts[0].clone(),
+            Some(kv_cache.shape()),
+        )?;
+        self.kv_cache = Some(kv_cache.into_tensor().into_device()?);
+        Ok(())
     }
 
-    fn save_to(&self, states: &mut HashMap<String, TValue>) -> TractResult<()> {
+    fn save_to(&self, states: &mut Vec<TValue>) -> TractResult<()> {
         if let Some(kv_cache) = &self.kv_cache {
-            states.insert(self.name.clone(), kv_cache.to_host()?.into_tensor().into_tvalue());
+            states.push(kv_cache.to_host()?.into_tensor().into_tvalue());
             Ok(())
         } else {
             bail!("KV cache {} was never initialized", self.name)
         }
     }
 
-    fn init_tensor_fact(&self) -> Option<(String, TypedFact)> {
-        Some((self.name.clone(), self.input_facts[0].clone()))
+    fn init_tensor_fact(&self) -> Option<TypedFact> {
+        Some(self.input_facts[0].clone())
     }
 
     fn resolve_symbols(&mut self, state: &mut SessionState) -> TractResult<()> {
@@ -276,9 +273,9 @@ mod tests {
             }
             let kv_cache_state = state.states[2].clone().unwrap();
 
-            let mut hashmap = HashMap::new();
-            kv_cache_state.save_to(&mut hashmap)?;
-            let output = hashmap.get(&op_name).unwrap();
+            let mut curr_state = vec![];
+            kv_cache_state.save_to(&mut curr_state)?;
+            let output = curr_state.remove(0);
 
             let reference = &TypedConcat { axis }.eval(inputs)?[0];
             output.close_enough(&reference.clone().into_tensor(), Approximation::Close)?;

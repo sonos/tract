@@ -375,7 +375,6 @@ enum TRACT_RESULT tract_model_optimize(struct TractModel *model);
  */
 enum TRACT_RESULT tract_model_profile_json(struct TractModel *model,
                                            struct TractValue **inputs,
-                                           const char *const *state_names,
                                            const struct TractValue *const *states,
                                            uintptr_t n_states,
                                            int8_t **json);
@@ -517,7 +516,6 @@ enum TRACT_RESULT tract_state_destroy(struct TractState **state);
  * Get Stateful Ops's state facts
  */
 enum TRACT_RESULT tract_state_get_states_facts(const struct TractState *state,
-                                               char **state_names,
                                                struct TractFact **states,
                                                uintptr_t *n_states);
 
@@ -525,17 +523,13 @@ enum TRACT_RESULT tract_state_get_states_facts(const struct TractState *state,
  * Initialize Stateful Ops with specified values
  */
 enum TRACT_RESULT tract_state_set_states(struct TractState *state,
-                                         const char *const *state_names,
                                          const struct TractValue *const *states,
                                          uintptr_t n_states);
 
 /**
  * Get Stateful Ops's current states.
- * Caller should free state_names pointers after use
- * This also sets n_states to the real numbers of states
  */
 enum TRACT_RESULT tract_state_get_states(const struct TractState *state,
-                                         char **state_names,
                                          struct TractValue **states,
                                          uintptr_t *n_states);
 
