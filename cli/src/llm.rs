@@ -124,6 +124,10 @@ pub fn bench_tg(
         if let Some(p) = probe {
             p.log_event(&format!("Starting token {t}"))?;
         }
+
+        run_params.symbols.set(&p, t as i64);
+        let inputs = get_or_make_inputs(model, &run_params)?;
+
         let start = Instant::now();
         state.run(inputs.sources[0].clone())?;
         tot_dur += start.elapsed();

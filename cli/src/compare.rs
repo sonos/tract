@@ -246,8 +246,8 @@ pub fn handle_with_model(
     let mut state = SimpleState::new(plan)?;
     let mut inputs = get_or_make_inputs(reference_model, run_params)?;
     state.init_states(&mut inputs.state_initializers)?;
-    for inputs in inputs.sources {
-        state.run_plan_with_eval(inputs, |session, state, node, input| -> TractResult<_> {
+    for input in inputs.sources {
+        state.run_plan_with_eval(input, |session, state, node, input| -> TractResult<_> {
             let result = tract_core::plan::eval(session, state, node, input)?;
             if node.outputs.len() == 1 {
                 values.entry(node.name.clone()).or_default().push(Ok(result[0].clone()));
