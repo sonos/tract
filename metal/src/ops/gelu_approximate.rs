@@ -1,3 +1,4 @@
+use crate::MetalStream;
 use crate::kernels::nn::GeluApproximate;
 use crate::utils::with_borrowed_metal_stream;
 use tract_core::internal::*;
