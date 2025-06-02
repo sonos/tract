@@ -1,3 +1,4 @@
+use crate::MetalStream;
 pub use crate::kernels::BinOps;
 use crate::utils::with_borrowed_metal_stream;
 use tract_core::internal::*;
