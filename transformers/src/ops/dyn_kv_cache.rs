@@ -246,11 +246,7 @@ pub fn replace_kv_cache(target: &mut TypedModel, source_node_id: usize) -> Tract
         // Replace Concat by KVCache
         let name = target.node_names().collect_vec()[source_node_id].to_string();
         let concat_node = target.node_mut(concat_node_id);
-        concat_node.op = Box::new(DynKeyValueCache {
-            name: name.clone(),
-            axis,
-            input_facts,
-        });
+        concat_node.op = Box::new(DynKeyValueCache { name: name.clone(), axis, input_facts });
         concat_node.name = name;
         concat_node.inputs.retain(|input| input != &source_node_id.into());
     }

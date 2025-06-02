@@ -3,7 +3,7 @@
 use std::ffi::c_void;
 
 use crate::context::MetalBuffer;
-use crate::{MetalStream, METAL_STREAM};
+use crate::{METAL_STREAM, MetalStream};
 use metal::Buffer;
 use objc::runtime::{objc_autoreleasePoolPop, objc_autoreleasePoolPush};
 use tract_gpu::tensor::DeviceTensor;

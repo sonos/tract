@@ -64,7 +64,11 @@ impl EvalOp for RotateHalf {
         let mut tensor = Tensor::zero_dt(input.datum_type(), &shape)?;
 
         let axis = shape.len() - 1;
-        ensure!(shape[axis] % 2 == 0, "RotateHalf possible only if the most inner dimension of the shape {:?} is divible by 2", shape);
+        ensure!(
+            shape[axis] % 2 == 0,
+            "RotateHalf possible only if the most inner dimension of the shape {:?} is divible by 2",
+            shape
+        );
         let half = shape[axis] / 2;
         unsafe { tensor.assign_slice_unchecked(0..half, &input, half.., axis) };
         Neg {}.eval_in_place(&mut tensor, None)?;

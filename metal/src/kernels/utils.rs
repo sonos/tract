@@ -1,6 +1,6 @@
 use metal::{ComputePipelineState, MTLSize};
 use num_traits::{AsPrimitive, Zero};
-use tract_core::internal::{ensure, tvec, TVec, TractResult};
+use tract_core::internal::{TVec, TractResult, ensure, tvec};
 
 pub fn build_metal_size_for_shape(shape: &[usize]) -> MTLSize {
     match shape.len() {

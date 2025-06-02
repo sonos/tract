@@ -1,5 +1,5 @@
 use crate::encoder::EncoderExt;
-use crate::kernels::{utils, BroadcastKind};
+use crate::kernels::{BroadcastKind, utils};
 use crate::{LibraryName, MetalStream};
 use std::fmt;
 use tract_core::internal::*;
