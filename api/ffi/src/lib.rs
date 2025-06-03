@@ -1051,21 +1051,31 @@ pub unsafe extern "C" fn tract_state_destroy(state: *mut *mut TractState) -> TRA
     release!(state)
 }
 
+/// Get number of initializable stateful op
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_state_initializable_states_count(
+    state: *const TractState,
+    n_states: *mut usize,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(state, n_states);
+        let state = &(*state).0;
+        *n_states = state.initializable_states_count()?;
+        Ok(())
+    })
+}
+
 /// Get Stateful Ops's state facts
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_get_states_facts(
     state: *const TractState,
     states: *mut *mut TractFact,
-    n_states: *mut usize,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
+        check_not_null!(state, states);
         let state = &(*state).0;
     
         let state_vec = state.get_states_facts()?;
-        // Check we won't overflow
-        anyhow::ensure!(state_vec.len() <= *n_states);
-        *n_states = state_vec.len();
-
         for (ix, f) in state_vec.into_iter().enumerate() {
             *states.add(ix) = Box::into_raw(Box::new(TractFact(f)));
         }
@@ -1078,13 +1088,12 @@ pub unsafe extern "C" fn tract_state_get_states_facts(
 pub unsafe extern "C" fn tract_state_set_states(
     state: *mut TractState,
     states: *const *const TractValue,
-    n_states: usize,
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         check_not_null!(state, states);
-        anyhow::ensure!(n_states != 0);
         let state = &mut (*state).0;
 
+        let n_states = state.initializable_states_count()?;
         let state_initializers: Vec<Value> =
         std::slice::from_raw_parts(states, n_states).iter()
                     .map(|tv| {
@@ -1099,17 +1108,12 @@ pub unsafe extern "C" fn tract_state_set_states(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tract_state_get_states(
     state: *const TractState,
-    states: *mut *mut TractValue,
-    n_states: *mut usize,
+    states: *mut *mut TractValue
 ) -> TRACT_RESULT {
     wrap(|| unsafe {
         let state = &(*state).0;
     
         let state_vec = state.get_states()?;
-        // Check we won't overflow
-        anyhow::ensure!(state_vec.len() <= *n_states);
-        *n_states = state_vec.len();
-
         for (ix, s) in state_vec.into_iter().enumerate() {
             *states.add(ix) = Box::into_raw(Box::new(TractValue(s)));
         }

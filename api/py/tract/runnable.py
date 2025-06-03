@@ -3,7 +3,7 @@ from typing import Dict, List, Union # after ctypes so that Union is overriden
 import numpy
 from .value import Value
 from .state import State
-from .bindings import check, lib
+from .bindings import TractError, check, lib
 
 class Runnable:
     """

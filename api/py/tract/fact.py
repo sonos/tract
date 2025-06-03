@@ -1,5 +1,5 @@
 from ctypes import *
-from tract.bindings import check, lib
+from tract.bindings import TractError, check, lib
 
 class InferenceFact:
     """

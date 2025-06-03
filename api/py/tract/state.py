@@ -1,7 +1,7 @@
 import numpy
 from ctypes import *
 from typing import Dict, List, Union
-from .bindings import check, lib
+from .bindings import TractError, check, lib
 from .fact import Fact
 from .value import Value
 
@@ -62,44 +62,47 @@ class State:
         check(lib.tract_state_freeze(self.ptr, byref(frozen)))
         return FrozenState(frozen)
     
-    def get_states_facts(self) -> Dict[str, Fact]:
+    def initializable_states_count(self) -> int:
+        """
+        Get number of ops with an initializable state
+        """
+        self._valid()
+        n_states = c_size_t()
+        check(lib.tract_state_initializable_states_count(self.ptr, byref(n_states)))
+        return n_states.value
+
+    def get_states_facts(self) -> List[Fact]:
         """
         Get Stateful Ops' state facts
         """
         self._valid()
 
-        n_states = c_size_t()
-        n_states.value = 256
-        names_ptrs = (POINTER(c_char_p) * n_states.value)()
-        fact_ptrs = (c_void_p * n_states.value)()
+        n_states = self.initializable_states_count()
+        print(n_states)
+        fact_ptrs = (c_void_p * n_states)()
 
-        check(lib.tract_state_get_states_facts(self.ptr, names_ptrs, fact_ptrs, byref(n_states)))
+        check(lib.tract_state_get_states_facts(self.ptr, fact_ptrs))
 
-        res = {}
-        for i in range(n_states.value):
-            key = string_at(names_ptrs[i]).decode("utf-8")
-            res[key] = Fact(c_void_p(fact_ptrs[i]))
-
-        for i in range(len(names_ptrs)):
-            lib.tract_free_cstring(names_ptrs[i])
+        res = []
+        for i in range(n_states):
+            res.append(Fact(c_void_p(fact_ptrs[i])))
 
         return res
 
-    def set_states(self, states: Dict[str, Union[Value, numpy.ndarray]]):
+    def set_states(self, states: List[Union[Value, numpy.ndarray]]):
         """
         Initialize Stateful Ops with given states
         """
         self._valid()
 
         n_states = len(states)
+        if n_states != self.initializable_states_count():
+            raise TractError("Invalid number of entries in given state list")
 
-        names_str = []
         state_values = []
-        names_ptrs = (c_char_p * n_states)()
         state_ptrs = (c_void_p * n_states)()
 
-        for ix, (k, v) in enumerate(states.items()):
-            names_str.append(str(k).encode("utf-8"))
+        for ix, v in enumerate(states):
             if isinstance(v, Value):
                 state_values.append(v)
             elif isinstance(v, numpy.ndarray):
@@ -107,31 +110,24 @@ class State:
             else:
                 raise TractError(f"State values must be of type tract.Value or numpy.Array, got {v}")
 
-            names_ptrs[ix] = names_str[ix]
             state_ptrs[ix] = state_values[ix].ptr
 
-        check(lib.tract_state_set_states(self.ptr, names_ptrs, state_ptrs, n_states))
+        check(lib.tract_state_set_states(self.ptr, state_ptrs))
 
-    def get_states(self) -> Dict[str, Value]:
+    def get_states(self) -> List[Value]:
         """
         Get Stateful Ops' current states
         """
         self._valid()
 
-        n_states = c_size_t()
-        n_states.value = 256
-        names_ptrs = (POINTER(c_char_p) * n_states.value)()
-        state_ptrs = (c_void_p * n_states.value)()
+        n_states = self.initializable_states_count()
+        state_ptrs = (c_void_p * n_states)()
 
-        check(lib.tract_state_get_states(self.ptr, names_ptrs, state_ptrs, byref(n_states)))
+        check(lib.tract_state_get_states(self.ptr, state_ptrs))
 
-        res = {}
-        for i in range(n_states.value):
-            key = string_at(names_ptrs[i]).decode("utf-8")
-            res[key] = Value(c_void_p(state_ptrs[i]))
-
-        for i in range(len(names_ptrs)):
-            lib.tract_free_cstring(names_ptrs[i])
+        res = []
+        for i in range(n_states):
+            res.append(Value(c_void_p(state_ptrs[i])))
 
         return res
 
