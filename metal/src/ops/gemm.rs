@@ -1,7 +1,6 @@
 use crate::kernels::matmul::{GemmImpl, GemmKernel};
-use crate::ops::MetalEvalOp;
+use crate::utils::with_borrowed_metal_stream;
 
-use crate::MetalStream;
 use anyhow::{bail, ensure};
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -71,14 +70,17 @@ impl<K: GemmKernel> MetalGemm<K> {
         }
     }
 }
-impl<K: GemmKernel + 'static> MetalEvalOp for MetalGemm<K> {
-    fn metal_eval(
-        &self,
-        stream: &MetalStream,
-        node_id: usize,
-        session: &mut SessionState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval_with_session(
+            &self,
+            node_id: usize,
+            session: &SessionState,
+            inputs: TVec<TValue>,
+        ) -> TractResult<TVec<TValue>> { 
         let (a_opaque, b_opaque) = args_2!(inputs);
         let a = a_opaque
             .to_device_tensor()
@@ -93,24 +95,13 @@ impl<K: GemmKernel + 'static> MetalEvalOp for MetalGemm<K> {
 
         let c_dt = self.kernel.matmul.output_dt(a.datum_type(), b.datum_type())?;
         let c_shape = self.kernel.output_shape(a.shape(), &b_shape);
-        let c = crate::ops::make_tensor_for_node(session, node_id, c_dt, &c_shape)?;
-        self.kernel.dispatch_eval(stream, a, b, &c)?;
+        let c = tract_gpu::session_handler::make_tensor_for_node(session, node_id, c_dt, &c_shape)?;
+        
+        with_borrowed_metal_stream(|stream| {   
+            self.kernel.dispatch_eval(stream, a, b, &c)
+        })?;
+        
         Ok(tvec![c.into_opaque_tensor().into_tvalue()])
-    }
-}
-
-impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
-    fn is_stateless(&self) -> bool {
-        false
-    }
-
-    #[allow(unused_variables)]
-    fn state(
-        &self,
-        session: &mut tract_core::internal::SessionState,
-        node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(crate::ops::MetalOpState::new(node_id, self.clone()))))
     }
 }
 

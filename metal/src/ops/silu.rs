@@ -1,6 +1,5 @@
 use crate::kernels::nn::Silu;
-use crate::ops::MetalEvalOp;
-use crate::MetalStream;
+use crate::utils::with_borrowed_metal_stream;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -16,22 +15,25 @@ impl Op for MetalSilu {
     op_as_typed_op!();
 }
 
-crate::impl_eval_op_for_metal_op!(MetalSilu);
+impl EvalOp for MetalSilu {
+    fn is_stateless(&self) -> bool {
+        true
+    }
 
-impl MetalEvalOp for MetalSilu {
-    fn metal_eval(
-        &self,
-        stream: &MetalStream,
-        node_id: usize,
-        session: &mut SessionState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        let opaque = args_1!(inputs);
-        let input = opaque.to_device_tensor()?;
-        let output =
-            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
-        Silu.dispatch_eval(stream, input, &output)?;
-        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+    fn eval_with_session(
+            &self,
+            node_id: usize,
+            session: &SessionState,
+            inputs: TVec<TValue>,
+        ) -> TractResult<TVec<TValue>> {
+        with_borrowed_metal_stream(|stream| {
+            let opaque = args_1!(inputs);
+            let input = opaque.to_device_tensor()?;
+            let output =
+                tract_gpu::session_handler::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
+            Silu.dispatch_eval(stream, input, &output)?;
+            Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+        })
     }
 }
 

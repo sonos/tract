@@ -648,7 +648,7 @@ where
     #[allow(clippy::let_and_return)]
     let r = match state {
         Some(ref mut state) => state.eval(session_state, node.op(), input),
-        None => node.op().eval_with_session(session_state, input),
+        None => node.op().eval_with_session(node.id, session_state, input),
     }
     .with_context(|| format!("Evaluating {node}"));
     // eprintln!(" ==> {}", r.as_ref().unwrap()[0].dump(true)?);

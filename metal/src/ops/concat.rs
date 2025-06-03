@@ -1,6 +1,5 @@
 use crate::kernels::array::Concat;
-use crate::ops::MetalEvalOp;
-use crate::MetalStream;
+use crate::utils::with_borrowed_metal_stream;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::array::TypedConcat;
@@ -43,31 +42,33 @@ impl Op for MetalConcat {
     op_as_typed_op!();
 }
 
-crate::impl_eval_op_for_metal_op!(MetalConcat);
+impl EvalOp for MetalConcat {
+    fn is_stateless(&self) -> bool {
+        true
+    }
 
-impl MetalEvalOp for MetalConcat {
-    fn metal_eval(
-        &self,
-        stream: &MetalStream,
-        node_id: usize,
-        session: &mut SessionState,
-        opaque_inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        let inputs = opaque_inputs
-            .iter()
-            .map(|it| it.to_device_tensor())
-            .collect::<TractResult<TVec<_>>>()?;
+    fn eval_with_session(
+            &self,
+            node_id: usize,
+            session: &SessionState,
+            inputs: TVec<TValue>,
+        ) -> TractResult<TVec<TValue>> {
+        let inputs = inputs
+        .iter()
+        .map(|it| it.to_device_tensor())
+        .collect::<TractResult<TVec<_>>>()?;
 
         let mut output_shape = inputs[0].shape().to_vec();
         output_shape[self.axis()] = inputs.iter().map(|it| it.shape()[self.axis()]).sum();
-        let output = crate::ops::make_tensor_for_node(
+        let output = tract_gpu::session_handler::make_tensor_for_node(
             session,
             node_id,
             inputs[0].datum_type(),
             &output_shape,
         )?;
-        self.kernel.dispatch_eval(stream, &inputs, &output)?;
-
+        with_borrowed_metal_stream(|stream| {
+            self.kernel.dispatch_eval(stream, &inputs, &output)
+        })?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }

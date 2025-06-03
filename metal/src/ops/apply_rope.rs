@@ -1,6 +1,5 @@
 use crate::kernels::nn::ApplyRope;
-use crate::ops::MetalEvalOp;
-use crate::MetalStream;
+use crate::utils::with_borrowed_metal_stream;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -16,21 +15,27 @@ impl Op for MetalApplyRope {
     op_as_typed_op!();
 }
 
-impl MetalEvalOp for MetalApplyRope {
-    fn metal_eval(
-        &self,
-        stream: &MetalStream,
-        node_id: usize,
-        session: &mut SessionState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+impl EvalOp for MetalApplyRope {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval_with_session(
+            &self,
+            node_id: usize,
+            session: &SessionState,
+            inputs: TVec<TValue>,
+        ) -> TractResult<TVec<TValue>> {
         let (opaque_input, opaque_cos, opaque_sin) = args_3!(inputs);
         let input = opaque_input.to_device_tensor()?;
         let cos = opaque_cos.to_device_tensor()?;
         let sin = opaque_sin.to_device_tensor()?;
         let output =
-            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
-        ApplyRope.dispatch_eval(stream, input, cos, sin, &output)?;
+            tract_gpu::session_handler::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
+    
+        with_borrowed_metal_stream(|stream| {
+            ApplyRope.dispatch_eval(stream, input, cos, sin, &output)
+        })?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }
@@ -47,5 +52,3 @@ impl TypedOp for MetalApplyRope {
 
     as_op!();
 }
-
-crate::impl_eval_op_for_metal_op!(MetalApplyRope);

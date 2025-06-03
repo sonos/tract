@@ -1,6 +1,5 @@
 use crate::kernels;
-use crate::ops::MetalEvalOp;
-use crate::MetalStream;
+use crate::utils::with_borrowed_metal_stream;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 
@@ -28,24 +27,27 @@ impl Op for MetalCast {
     impl_op_same_as!();
 }
 
-crate::impl_eval_op_for_metal_op!(MetalCast);
+impl EvalOp for MetalCast {
+    fn is_stateless(&self) -> bool {
+        true
+    }
 
-impl MetalEvalOp for MetalCast {
-    fn metal_eval(
-        &self,
-        stream: &MetalStream,
-        node_id: usize,
-        session: &mut SessionState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval_with_session(
+            &self,
+            node_id: usize,
+            session: &SessionState,
+            inputs: TVec<TValue>,
+        ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs);
         let input = opaque.to_device_tensor()?;
         if input.datum_type() == self.to {
             Ok(tvec!(opaque))
         } else {
             let output =
-                crate::ops::make_tensor_for_node(session, node_id, self.to, input.shape())?;
-            kernels::array::Cast.dispatch_eval(stream, input, &output)?;
+                tract_gpu::session_handler::make_tensor_for_node(session, node_id, self.to, input.shape())?;
+            with_borrowed_metal_stream(|stream| {
+                kernels::array::Cast.dispatch_eval(stream, input, &output)
+            })?;
             Ok(tvec![output.into_opaque_tensor().into_tvalue()])
         }
     }

@@ -1,5 +1,6 @@
 use crate::memory::DeviceMemSchema;
 use crate::memory::DeviceMemoryPool;
+use crate::tensor::DeviceTensor;
 use std::borrow::Borrow;
 use tract_core::internal::*;
 
@@ -39,6 +40,13 @@ impl SessionStateHandler for DeviceSessionHandler {
     }
 }
 
-pub fn get_device_mem_pool(session: &SessionState) -> Option<&DeviceMemoryPool> {
+pub fn make_tensor_for_node(
+    session: &SessionState,
+    node_id: usize,
+    dt: DatumType,
+    shape: &[usize],
+) -> TractResult<DeviceTensor> {
     session.scratch_extensions.get::<DeviceMemoryPool>()
+        .map(|mem| mem.tensor_for_node(node_id, dt, shape))
+        .unwrap_or_else(|| unsafe { DeviceTensor::uninitialized_dt(dt, shape) })
 }

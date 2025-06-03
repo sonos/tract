@@ -46,6 +46,7 @@ impl EvalOp for Cast {
 
     fn eval_with_session(
         &self,
+        _node_id: usize,
         state: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
