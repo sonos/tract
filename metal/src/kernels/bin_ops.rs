@@ -135,8 +135,9 @@ impl BinOps {
 
             Ok((shape.clone().into(), shape.clone().into(), shape.into()))
         } else {
-            let broadcast_axes: Vec<usize> =
-                (0..lhs.rank()).filter(|ix| lhs.shape()[*ix] != rhs.shape()[*ix]).collect();
+            let broadcast_axes: Vec<usize> = (0..lhs.rank())
+                .filter(|ix| lhs.shape()[*ix] != rhs.shape()[*ix] || lhs.shape()[*ix] == 1)
+                .collect();
 
             let mut segments = vec![];
             let mut current_segment = vec![0];
@@ -158,7 +159,8 @@ impl BinOps {
             let mut group_idx = 0;
             for (_, segment) in segments {
                 reshaped_groups[group_idx].extend(segment);
-                group_idx = (group_idx + 1).min(3); // stay at 3 after last group
+                group_idx += 1;
+                ensure!(group_idx < 4, "Cannot reshape to rank 4");
             }
 
             fn compute_shape(shape: &[usize], groups: &[Vec<usize>]) -> TVec<usize> {
