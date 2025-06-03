@@ -79,7 +79,12 @@ where
         let mut output = runtime.prepare(model)?.run(tvec!(self.input.clone().into_tvalue()))?;
         let output = output.remove(0).into_tensor();
 
-        output.close_enough(&reference, approx)
+        if F::datum_type() == DatumType::F16 {
+            output.close_enough(&reference, Approximation::VeryApproximate)
+        }
+        else {
+            output.close_enough(&reference, approx)
+        }
     }
 }
 

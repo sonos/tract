@@ -85,7 +85,7 @@ mod tests {
         shape: &[usize],
         offset: f32,
         scale: f32,
-        appriximate: Approximation,
+        approximate: Approximation,
     ) -> TractResult<()>
     where
         F: Float + Datum,
@@ -113,7 +113,7 @@ mod tests {
             let metal_output = gelu_approx.eval(stream, &a)?;
 
             cpu_output
-                .close_enough(&metal_output.to_host()?.into_tensor(), appriximate)
+                .close_enough(&metal_output.to_host()?.into_tensor(), approximate)
                 .with_context(|| {
                     format!(
                         "Input: {:?}, scale: {:?} Cpu: {:?}, Metal: {:?}",
