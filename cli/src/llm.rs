@@ -126,10 +126,10 @@ pub fn bench_tg(
         }
 
         run_params.symbols.set(&p, t as i64);
-        let inputs = get_or_make_inputs(model, &run_params)?;
+        let mut inputs = get_or_make_inputs(model, &run_params)?;
 
         let start = Instant::now();
-        state.run(inputs.sources[0].clone())?;
+        state.run(inputs.sources.remove(0))?;
         tot_dur += start.elapsed();
     }
     state.reset_op_states()?;
