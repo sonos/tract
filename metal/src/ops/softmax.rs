@@ -1,6 +1,5 @@
 use crate::kernels::nn::Softmax;
-use crate::ops::MetalEvalOp;
-use crate::MetalStream;
+use crate::utils::with_borrowed_metal_stream;
 use std::fmt::Debug;
 use tract_core::internal::*;
 use tract_core::ops::nn as core_ops_nn;
@@ -35,23 +34,26 @@ impl Op for MetalSoftmax {
     op_as_typed_op!();
 }
 
-crate::impl_eval_op_for_metal_op!(MetalSoftmax);
+impl EvalOp for MetalSoftmax {
+    fn is_stateless(&self) -> bool {
+        true
+    }
 
-impl MetalEvalOp for MetalSoftmax {
-    fn metal_eval(
-        &self,
-        stream: &MetalStream,
-        node_id: usize,
-        session: &mut SessionState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        let opaque = args_1!(inputs);
-        let input = opaque.to_device_tensor()?;
-        let output =
-            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
-        Softmax.dispatch_eval(stream, input, self.axes[0], &output)?;
+    fn eval_with_session(
+            &self,
+            node_id: usize,
+            session: &SessionState,
+            inputs: TVec<TValue>,
+        ) -> TractResult<TVec<TValue>> {
+        with_borrowed_metal_stream(|stream| {
+            let opaque = args_1!(inputs);
+            let input = opaque.to_device_tensor()?;
+            let output =
+                tract_gpu::session_handler::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
+            Softmax.dispatch_eval(stream, input, self.axes[0], &output)?;
 
-        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+            Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
+        })
     }
 }
 

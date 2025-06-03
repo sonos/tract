@@ -1,6 +1,5 @@
 use crate::kernels::array::{Memcpy, PermuteAxes};
-use crate::ops::MetalEvalOp;
-use crate::MetalStream;
+use crate::utils::with_borrowed_metal_stream;
 use std::fmt::Debug;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -93,16 +92,17 @@ impl Op for MetalAxisOp {
     op_as_typed_op!();
 }
 
-crate::impl_eval_op_for_metal_op!(MetalAxisOp);
+impl EvalOp for MetalAxisOp {
+    fn is_stateless(&self) -> bool {
+        true
+    }
 
-impl MetalEvalOp for MetalAxisOp {
-    fn metal_eval(
-        &self,
-        stream: &MetalStream,
-        node_id: usize,
-        session: &mut SessionState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval_with_session(
+            &self,
+            node_id: usize,
+            session: &SessionState,
+            inputs: TVec<TValue>,
+        ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs).into_tensor();
         let input = opaque.to_device_tensor()?;
         let shape = input.shape();
@@ -117,13 +117,15 @@ impl MetalEvalOp for MetalAxisOp {
                 permutation.remove(*from);
                 permutation.insert(*to, *from);
 
-                let output = crate::ops::make_tensor_for_node(
+                let output = tract_gpu::session_handler::make_tensor_for_node(
                     session,
                     node_id,
                     input.datum_type(),
                     &PermuteAxes::output_shape(input.shape(), &permutation)?,
                 )?;
-                PermuteAxes.dispatch_eval(stream, input, &permutation, &output)?;
+                with_borrowed_metal_stream(|stream| {
+                    PermuteAxes.dispatch_eval(stream, input, &permutation, &output)
+                })?;
                 return Ok(tvec!(output.into_opaque_tensor().into_tvalue()));
             }
             AxisOp::Reshape(skip, from, to) => {
@@ -143,9 +145,10 @@ impl MetalEvalOp for MetalAxisOp {
         // TODO: avoid copy because of memory pool integration
         // Perform copy because of memory pool integration
         let output =
-            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &new_shape)?;
-
-        Memcpy.dispatch_eval(stream, input, 0, &output)?;
+            tract_gpu::session_handler::make_tensor_for_node(session, node_id, input.datum_type(), &new_shape)?;
+        with_borrowed_metal_stream(|stream| {
+            Memcpy.dispatch_eval(stream, input, 0, &output)
+        })?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }

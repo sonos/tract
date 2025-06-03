@@ -1,19 +1,18 @@
-use crate::ops::{MetalAxisOp, MetalEvalOp, MetalOpState};
-use crate::MetalStream;
+use crate::ops::MetalAxisOp;
 use derive_new::new;
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt};
 
 #[derive(Clone, Debug, new, Hash)]
-pub struct MetalFusedAxisOp<O: MetalEvalOp + TypedOp> {
+pub struct MetalFusedAxisOp<O: TypedOp> {
     /// List of axis ops to apply for each op inputs
     /// Length of the list is equal to number of inputs
     pub grouped_axis_ops: TVec<TVec<MetalAxisOp>>,
     pub op: O,
 }
 
-impl<O: MetalEvalOp + TypedOp> Op for MetalFusedAxisOp<O> {
+impl<O: TypedOp + Clone> Op for MetalFusedAxisOp<O> {
     fn name(&self) -> Cow<str> {
         self.op.name()
     }
@@ -42,14 +41,17 @@ impl<O: MetalEvalOp + TypedOp> Op for MetalFusedAxisOp<O> {
     op_as_typed_op!();
 }
 
-impl<O: MetalEvalOp + TypedOp> MetalEvalOp for MetalFusedAxisOp<O> {
-    fn metal_eval(
-        &self,
-        stream: &MetalStream,
-        node_id: usize,
-        session: &mut SessionState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+impl<O: TypedOp> EvalOp for MetalFusedAxisOp<O> {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval_with_session(
+            &self,
+            node_id: usize,
+            session: &SessionState,
+            inputs: TVec<TValue>,
+        ) -> TractResult<TVec<TValue>> {
         // Apply Axis Ops per input
         let inputs = inputs
             .into_iter()
@@ -97,11 +99,11 @@ impl<O: MetalEvalOp + TypedOp> MetalEvalOp for MetalFusedAxisOp<O> {
             })
             .collect::<TractResult<TVec<_>>>()?;
         // Runner inner op
-        self.op.metal_eval(stream, node_id, session, inputs)
+        self.op.eval_with_session(node_id, session, inputs)
     }
 }
 
-impl<O: MetalEvalOp + TypedOp> TypedOp for MetalFusedAxisOp<O> {
+impl<O: TypedOp + Clone> TypedOp for MetalFusedAxisOp<O> {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(
             inputs.len() == self.grouped_axis_ops.len(),
@@ -124,19 +126,4 @@ impl<O: MetalEvalOp + TypedOp> TypedOp for MetalFusedAxisOp<O> {
     }
 
     as_op!();
-}
-
-impl<O: MetalEvalOp + TypedOp> EvalOp for MetalFusedAxisOp<O> {
-    fn is_stateless(&self) -> bool {
-        false
-    }
-
-    #[allow(unused_variables)]
-    fn state(
-        &self,
-        session: &mut tract_core::internal::SessionState,
-        node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(MetalOpState::new(node_id, self.clone()))))
-    }
 }

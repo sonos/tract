@@ -1,6 +1,5 @@
 use crate::kernels;
-use crate::ops::MetalEvalOp;
-use crate::MetalStream;
+use crate::utils::with_borrowed_metal_stream;
 use tract_core::internal::*;
 use tract_core::ops::array::Slice;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -34,16 +33,17 @@ impl Op for MetalSlice {
     }
 }
 
-crate::impl_eval_op_for_metal_op!(MetalSlice);
+impl EvalOp for MetalSlice {
+    fn is_stateless(&self) -> bool {
+        true
+    }
 
-impl MetalEvalOp for MetalSlice {
-    fn metal_eval(
-        &self,
-        stream: &MetalStream,
-        node_id: usize,
-        session: &mut SessionState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval_with_session(
+            &self,
+            node_id: usize,
+            session: &SessionState,
+            inputs: TVec<TValue>,
+        ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs);
         let input = opaque.to_device_tensor()?;
 
@@ -70,11 +70,13 @@ impl MetalEvalOp for MetalSlice {
         let offset = (start * input_strides[axis] as usize) * input_dt.size_of();
 
         let output =
-            crate::ops::make_tensor_for_node(session, node_id, input.datum_type(), &o_shape)?;
+            tract_gpu::session_handler::make_tensor_for_node(session, node_id, input.datum_type(), &o_shape)?;
 
         // Perform slicing only if the output is not empty.
         if o_shape[axis] != 0 {
-            kernels::array::MultiBroadcast.dispatch_eval(stream, input, offset, &output)?;
+            with_borrowed_metal_stream(|stream| {
+                kernels::array::MultiBroadcast.dispatch_eval(stream, input, offset, &output)
+            })?;
         }
         Ok(tvec![output.into_opaque_tensor().into_tvalue()])
     }
@@ -123,7 +125,7 @@ mod tests {
             )?;
 
             let cpu_output = slice
-                .eval_with_session(&SessionState::default(), tvec![a.clone().into_tvalue()])?;
+                .eval(tvec![a.clone().into_tvalue()])?;
 
             let metal_slice = MetalSlice::from_tract_core(slice);
             let a_metal = a.clone().into_device()?.into_opaque_tensor().into_tvalue();

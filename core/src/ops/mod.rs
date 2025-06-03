@@ -98,6 +98,7 @@ pub trait EvalOp {
     #[allow(unused_variables)]
     fn eval_with_session(
         &self,
+        node_id: usize,
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
