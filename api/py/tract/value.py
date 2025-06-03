@@ -1,7 +1,7 @@
 import numpy
 from ctypes import *
 from typing import Dict, List, Union
-from tract.bindings import check, lib
+from tract.bindings import TractError, check, lib
 
 TRACT_DATUM_TYPE_BOOL = 0x01
 TRACT_DATUM_TYPE_U8 = 0x11

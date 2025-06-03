@@ -222,6 +222,8 @@ pub trait StateInterface {
         V: TryInto<Self::Value, Error = E>,
         E: Into<anyhow::Error>;
 
+    fn initializable_states_count(&self) -> Result<usize>;
+
     fn get_states_facts(&self) -> Result<Vec<Self::Fact>>;
 
     fn set_states<I, V, E>(&mut self, state_initializers: I) -> Result<()>

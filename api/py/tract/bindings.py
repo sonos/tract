@@ -1,6 +1,9 @@
 from ctypes import *
 from pathlib import Path
 
+class TractError(Exception):
+    pass
+
 if len(list(Path(__file__).parent.glob("*.so"))) > 0:
     dylib_path = list(Path(__file__).parent.glob("*.so"))[0]
 elif len(list(Path(__file__).parent.glob("*.pyd"))) > 0:
@@ -14,8 +17,7 @@ lib.tract_version.restype = c_char_p
 lib.tract_get_last_error.restype = c_char_p
 lib.tract_free_cstring.restype = None
 
-class TractError(Exception):
-    pass
+
 
 def check(err):
     if err != 0:

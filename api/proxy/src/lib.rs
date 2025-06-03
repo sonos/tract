@@ -393,8 +393,7 @@ impl ModelInterface for Model {
         let mut json: *mut i8 = null_mut();
         let values = iptrs.as_mut().map(|it| it.as_mut_ptr()).unwrap_or(null_mut());
 
-        let (state_inits, n_states)
-        = if let Some(state_vec) = state_initializers {
+        let (state_inits, n_states) = if let Some(state_vec) = state_initializers {
             let mut states: Vec<*const _> = vec![];
 
             for v in state_vec {
@@ -407,8 +406,7 @@ impl ModelInterface for Model {
             (None, 0)
         };
 
-        let states =
-            state_inits.map(|is| is.as_ptr()).unwrap_or(null());
+        let states = state_inits.map(|is| is.as_ptr()).unwrap_or(null());
         check!(sys::tract_model_profile_json(self.0, values, states, n_states, &mut json))?;
         anyhow::ensure!(!json.is_null());
         unsafe {
@@ -513,17 +511,19 @@ impl StateInterface for State {
         Ok(count)
     }
 
+    fn initializable_states_count(&self) -> Result<usize> {
+        let mut n_states = 0;
+        check!(sys::tract_state_initializable_states_count(self.0, &mut n_states))?;
+        Ok(n_states)
+    }
+
     fn get_states_facts(&self) -> Result<Vec<Fact>> {
-        let mut n_states = 256;
-
+        let n_states = self.initializable_states_count()?;
         let mut fptrs = vec![null_mut(); n_states];
-        check!(sys::tract_state_get_states_facts(self.0, fptrs.as_mut_ptr(), &mut n_states))?;
 
-        let res = fptrs.into_iter().take(n_states)
-            .map(|value| {
-                Ok(Fact(value))
-            })
-            .collect::<Result<Vec<Fact>>>();
+        check!(sys::tract_state_get_states_facts(self.0, fptrs.as_mut_ptr()))?;
+
+        let res = fptrs.into_iter().map(|value| Ok(Fact(value))).collect::<Result<Vec<Fact>>>();
 
         res
     }
@@ -532,10 +532,9 @@ impl StateInterface for State {
     where
         I: IntoIterator<Item = V>,
         V: TryInto<Self::Value, Error = E>,
-        E: Into<anyhow::Error>
+        E: Into<anyhow::Error>,
     {
-        let (sptrs, n_states) 
-        = {
+        let sptrs = {
             let mut states: Vec<*const _> = vec![];
 
             for s in state_initializers {
@@ -544,30 +543,30 @@ impl StateInterface for State {
             }
 
             let len = states.len();
-            (Some(states), len)
+            anyhow::ensure!(
+                len == self.initializable_states_count()?,
+                "Expected {} states, got {len}",
+                self.initializable_states_count()?
+            );
+            Some(states)
         };
 
         let sptrs = sptrs.map(|it| it.as_ptr()).unwrap_or(null());
-        check!(sys::tract_state_set_states(self.0, sptrs, n_states))?;
+        check!(sys::tract_state_set_states(self.0, sptrs))?;
 
         Ok(())
     }
 
-    fn get_states(&self) -> Result<Vec<Self::Value>>
-    {
-        let mut n_states = 256;
+    fn get_states(&self) -> Result<Vec<Self::Value>> {
+        let n_states = self.initializable_states_count()?;
 
         let mut sptrs = vec![null_mut(); n_states];
-        check!(sys::tract_state_get_states(self.0, sptrs.as_mut_ptr(), &mut n_states))?;
+        check!(sys::tract_state_get_states(self.0, sptrs.as_mut_ptr()))?;
 
-        let res = sptrs.into_iter().take(n_states)
-            .map(|value| {
-                Ok(Value(value))
-            })
-            .collect::<Result<Vec<Value>>>();
+        let res = sptrs.into_iter().map(|value| Ok(Value(value))).collect::<Result<Vec<Value>>>();
 
         res
-    } 
+    }
 }
 
 // VALUE

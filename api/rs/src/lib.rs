@@ -385,6 +385,16 @@ impl StateInterface for State {
         Ok(outputs.into_iter().map(Value).collect())
     }
 
+    fn initializable_states_count(&self) -> Result<usize> {
+        Ok(self
+            .0
+            .states
+            .iter()
+            .filter_map(Option::as_ref)
+            .filter(|s| s.init_tensor_fact().is_some())
+            .count())
+    }
+
     fn get_states_facts(&self) -> Result<Vec<Fact>> {
         Ok(self
             .0
