@@ -46,9 +46,9 @@ impl EvalOp for Silu {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let dt = input.datum_type();
-        let mut a = input.clone().into_tensor().cast_to_dt(DatumType::F32)?.into_owned();
+        let mut a = input.clone().into_tensor();
         Sigmoid {}.eval_in_place(&mut a, None)?;
-        let a3 = Mul.eval(input, a.cast_to_dt(dt)?.into_owned().into_tvalue(), dt)?;
+        let a3 = Mul.eval(input, a.into_tvalue(), dt)?;
         Ok(tvec![a3.into()])
     }
 }
