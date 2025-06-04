@@ -1,4 +1,3 @@
-use crate::MetalStream;
 pub use crate::kernels::ElementWiseOps;
 use crate::utils::with_borrowed_metal_stream;
 use tract_core::internal::*;
