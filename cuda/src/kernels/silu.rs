@@ -38,8 +38,8 @@ impl Silu {
         ensure!(output.datum_type() == input.datum_type());
 
         let module = Module::from_ptx(NN_OPS, &[])?;
-
         let kernel = module.get_function(self.kernel_name(input.datum_type())?)?;
+
         let len = input.len();
         let num_blocks = (len + 256 - 1) / 256;
         let stream = &stream.stream;
