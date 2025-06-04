@@ -1,8 +1,8 @@
 use tract_nnef::internal::*;
 use tract_nnef::prelude::tract_itertools::Itertools;
-use tract_nnef::tract_core::ops::OpStateFreeze;
 use tract_nnef::tract_core::ops::array::TypedConcat;
 use tract_nnef::tract_core::ops::source::TypedSource;
+use tract_nnef::tract_core::ops::OpStateFreeze;
 
 use crate::rule_ensure;
 
@@ -51,11 +51,7 @@ impl DynKeyValueCacheState {
 }
 
 impl OpState for DynKeyValueCacheState {
-    fn load_from(
-        &mut self,
-        state: &mut SessionState,
-        states: &mut Vec<TValue>,
-    ) -> TractResult<()> {
+    fn load_from(&mut self, state: &mut SessionState, states: &mut Vec<TValue>) -> TractResult<()> {
         let kv_cache_init = states.remove(0);
         // KV Cache fact is always at index 0
         Self::resolve_symbols(state, self.input_facts[0].clone(), Some(kv_cache_init.shape()))?;
@@ -94,8 +90,7 @@ impl OpState for DynKeyValueCacheState {
         // build output
 
         let output = if let Some(curr) = self.kv_cache.take() {
-            let out = 
-                TypedConcat { axis: op.axis }.eval(tvec![curr.into(), input])?.remove(0);
+            let out = TypedConcat { axis: op.axis }.eval(tvec![curr.into(), input])?.remove(0);
             out.into_tensor()
         } else {
             input.into_tensor()
@@ -117,6 +112,7 @@ impl Op for DynKeyValueCache {
     fn name(&self) -> Cow<str> {
         "DynamicKeyValueCache".to_string().into()
     }
+
     op_as_typed_op!();
 }
 
@@ -150,6 +146,17 @@ impl TypedOp for DynKeyValueCache {
                 + self.input_facts[0].shape.dims()[self.axis].clone(),
         );
         Ok(tvec!(fact))
+    }
+
+    fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let token_volume = self.input_facts[0]
+            .shape
+            .iter()
+            .enumerate()
+            .filter(|(axis, _d)| *axis != self.axis)
+            .map(|(_axis, d)| d)
+            .product::<TDim>();
+        Ok(tvec!((Cost::Custom(false, "KVCacheTokenValue".to_string()), token_volume)))
     }
 
     as_op!();
