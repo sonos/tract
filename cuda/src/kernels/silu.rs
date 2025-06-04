@@ -17,7 +17,7 @@ impl Silu {
 
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for Cuda silu op", dt);
-        Ok("silu".to_string())
+        Ok(format!("unary_{}_{}", "silu".to_string(), DeviceTensor::tname(dt)?))
     }
 
     pub fn eval(&self, stream: &CudaStream, input: &DeviceTensor) -> TractResult<DeviceTensor> {
@@ -37,17 +37,16 @@ impl Silu {
         ensure!(output.shape() == input.shape());
         ensure!(output.datum_type() == input.datum_type());
 
-
         let module = Module::from_ptx(NN_OPS, &[])?;
-        let kernel = module.get_function(self.kernel_name(input.datum_type())?)?;
 
+        let kernel = module.get_function(self.kernel_name(input.datum_type())?)?;
         let len = input.len();
         let num_blocks = (len + 256 - 1) / 256;
         let stream = &stream.stream;
 
         let i_buffer =input.device_buffer().downcast_ref::<CudaBuffer>().unwrap().inner.as_device_ptr();
         let o_buffer =output.device_buffer().downcast_ref::<CudaBuffer>().unwrap().inner.as_device_ptr();
-        
+
         unsafe {
             launch!(
                 // slices are passed as two parameters, the pointer and the length.
@@ -120,7 +119,7 @@ mod tests {
     #[test]
     fn test_silu() -> TractResult<()> {
         test_case::<f32>(&[4, 4], -0.0, 1.0 / 100.0, Approximation::Approximate)?;
-        test_case::<f16>(&[4, 4], -6.0, 1.0 / 1000.0, Approximation::SuperApproximate)?;
+        test_case::<f16>(&[4, 4], -6.0, 1.0 / 1000.0, Approximation::VeryApproximate)?;
         Ok(())
     }
 }
