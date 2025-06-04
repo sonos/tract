@@ -150,7 +150,7 @@ impl TypedOp for DynKeyValueCache {
     }
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let token_volume = self.input_facts[0]
+        let token_volume = self.past_sequence_fact
             .shape
             .iter()
             .enumerate()
