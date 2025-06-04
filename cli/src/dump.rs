@@ -309,7 +309,7 @@ pub fn handle(
             sub_matches.value_of("assert-cost").map(crate::cost::parse_costs).transpose()?;
         if let Some(assert) = assert {
             let assert: HashMap<Cost, TDim> =
-                assert.iter().map(|(c, n)| (*c, n.to_dim())).collect();
+                assert.iter().map(|(c, n)| (c.clone(), n.to_dim())).collect();
             let total = total.cost.iter().cloned().collect::<HashMap<_, _>>();
             if assert != total {
                 bail!("Cost assertion not met: expected {:?} got {:?}", assert, total);

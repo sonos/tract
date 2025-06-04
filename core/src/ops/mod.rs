@@ -50,12 +50,13 @@ pub enum Validation {
     Accurate,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[derive(Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum Cost {
     Div(DatumType),
     FMA(DatumType),
     Buffer(DatumType),
     Params(DatumType),
+    Custom(bool, String),
 }
 
 impl Cost {
@@ -64,6 +65,20 @@ impl Cost {
         match self {
             FMA(_) | Div(_) => true,
             Buffer(_) | Params(_) => false,
+            Custom(compute, _) => *compute,
+        }
+    }
+}
+
+impl std::fmt::Debug for Cost {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Cost::*;
+        match self {
+            Div(dt) => write!(f, "Div({dt:?})"),
+            FMA(dt) => write!(f, "FMA({dt:?})"),
+            Buffer(dt) => write!(f, "Buffer({dt:?})"),
+            Params(dt) => write!(f, "Params({dt:?})"),
+            Custom(_, name) => write!(f, "{name}"),
         }
     }
 }
