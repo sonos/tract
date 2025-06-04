@@ -1,7 +1,5 @@
-use crate::MetalStream;
 use crate::kernels::array::Concat;
-use crate::ops::MetalEvalOp;
-use crate::utils::with_borrowed_metal_stream;
+use crate::ops::MetalConcat;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::OpStateFreeze;
@@ -9,27 +7,26 @@ use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
 use tract_transformers::ops::dyn_kv_cache::{DynKeyValueCache, DynKeyValueCacheState};
 
 #[derive(Debug, Clone, new)]
-pub struct MetalDynKVCacheState<O: MetalEvalOp> {
+pub struct MetalDynKVCacheState{
     node_id: usize,
-    op: O,
     name: String,
     input_facts: [TypedFact; 2],
     kv_cache: Option<DeviceTensor>,
 }
 
-impl<O: MetalEvalOp> OpStateFreeze for MetalDynKVCacheState<O> {
+impl OpStateFreeze for MetalDynKVCacheState {
     fn freeze(&self) -> Box<(dyn FrozenOpState + 'static)> {
         Box::new(self.clone())
     }
 }
 
-impl<O: MetalEvalOp> FrozenOpState for MetalDynKVCacheState<O> {
+impl FrozenOpState for MetalDynKVCacheState {
     fn unfreeze(&self) -> Box<dyn OpState> {
         Box::new(self.clone())
     }
 }
 
-impl<O: MetalEvalOp> OpState for MetalDynKVCacheState<O> {
+impl OpState for MetalDynKVCacheState {
     fn load_from(
         &mut self,
         state: &mut SessionState,
@@ -67,26 +64,25 @@ impl<O: MetalEvalOp> OpState for MetalDynKVCacheState<O> {
     fn eval(
         &mut self,
         session: &mut SessionState,
-        _op: &dyn Op,
+        op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         ensure!(inputs.len() == 1);
-        with_borrowed_metal_stream(|stream| {
-            let mut op_inputs = TVec::new();
+        let mut op_inputs = TVec::new();
 
-            if let Some(kv_cache) = self.kv_cache.take() {
-                op_inputs.push(kv_cache.into_opaque_tensor().into_tvalue());
-            }
+        if let Some(kv_cache) = self.kv_cache.take() {
+            op_inputs.push(kv_cache.into_opaque_tensor().into_tvalue());
+        }
 
-            op_inputs.push(inputs.into_iter().next().unwrap());
+        op_inputs.push(inputs.into_iter().next().unwrap());
 
-            let res = self.op.metal_eval(stream, self.node_id, session, op_inputs)?;
+        let concat = &op.downcast_ref::<MetalDynKVCache>().ok_or_else(|| format_err!("Wrong Op type"))?.concat;
+        let res = concat.eval_with_session(self.node_id, session, op_inputs)?;
 
-            let kv_tensor = res[0].to_device_tensor()?;
-            self.kv_cache = Some(kv_tensor.clone());
+        let kv_tensor = res[0].to_device_tensor()?;
+        self.kv_cache = Some(kv_tensor.clone());
 
-            Ok(res)
-        })
+        Ok(res)
     }
 }
 
@@ -94,20 +90,20 @@ impl<O: MetalEvalOp> OpState for MetalDynKVCacheState<O> {
 pub struct MetalDynKVCache {
     name: String,
     input_facts: [TypedFact; 2],
-    kernel: Concat,
+    concat: MetalConcat,
 }
 
 impl MetalDynKVCache {
     pub fn from_tract_transformers(op: &DynKeyValueCache) -> Self {
         Self {
             name: op.name.clone(),
-            kernel: Concat { axis: op.axis },
+            concat: MetalConcat{ kernel: Concat { axis: op.axis } },
             input_facts: op.input_facts.clone(),
         }
     }
 
     pub fn axis(&self) -> usize {
-        self.kernel.axis
+        self.concat.kernel.axis
     }
 }
 
@@ -136,41 +132,10 @@ impl EvalOp for MetalDynKVCache {
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(MetalDynKVCacheState::new(
             node_id,
-            self.clone(),
             self.name.clone(),
             self.input_facts.clone(),
             None,
         ))))
-    }
-}
-
-impl MetalEvalOp for MetalDynKVCache {
-    fn metal_eval(
-        &self,
-        stream: &MetalStream,
-        node_id: usize,
-        session: &mut SessionState,
-        opaque_inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        ensure!(opaque_inputs.len() <= 2);
-        let inputs = opaque_inputs
-            .iter()
-            .map(|it| it.to_device_tensor())
-            .collect::<TractResult<TVec<_>>>()?;
-
-        let mut output_shape = inputs[0].shape().to_vec();
-        output_shape[self.axis()] = inputs.iter().map(|inp| inp.shape()[self.axis()]).sum();
-
-        let output = crate::ops::make_tensor_for_node(
-            session,
-            node_id,
-            inputs[0].datum_type(),
-            &output_shape,
-        )?;
-        ensure!(matches!(output, DeviceTensor::Owned(_)));
-
-        self.kernel.dispatch_eval(stream, &inputs, &output)?;
-        Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }
 
@@ -194,6 +159,7 @@ impl TypedOp for MetalDynKVCache {
 
 #[cfg(test)]
 mod tests {
+    use crate::utils::with_borrowed_metal_stream;
     use crate::MetalTransform;
 
     use super::*;

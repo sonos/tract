@@ -1,4 +1,3 @@
-use crate::MetalStream;
 use crate::kernels::array::{Memcpy, PermuteAxes};
 use crate::utils::with_borrowed_metal_stream;
 use std::fmt::Debug;
