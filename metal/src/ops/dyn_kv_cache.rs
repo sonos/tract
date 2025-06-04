@@ -10,7 +10,7 @@ use tract_transformers::ops::dyn_kv_cache::{DynKeyValueCache, DynKeyValueCacheSt
 pub struct MetalDynKVCacheState{
     node_id: usize,
     name: String,
-    input_facts: [TypedFact; 2],
+    past_sequence_fact: TypedFact,
     kv_cache: Option<DeviceTensor>,
 }
 
@@ -36,7 +36,7 @@ impl OpState for MetalDynKVCacheState {
         // KV Cache fact is always at index 0
         DynKeyValueCacheState::resolve_symbols(
             state,
-            self.input_facts[0].clone(),
+            self.past_sequence_fact.clone(),
             Some(kv_cache.shape()),
         )?;
         self.kv_cache = Some(kv_cache.into_tensor().into_device()?);
@@ -53,12 +53,12 @@ impl OpState for MetalDynKVCacheState {
     }
 
     fn init_tensor_fact(&self) -> Option<TypedFact> {
-        Some(self.input_facts[0].clone())
+        Some(self.past_sequence_fact.clone())
     }
 
     fn resolve_symbols(&mut self, state: &mut SessionState) -> TractResult<()> {
         let shape = self.kv_cache.as_ref().map(|kv_cache| kv_cache.shape());
-        DynKeyValueCacheState::resolve_symbols(state, self.input_facts[0].clone(), shape)
+        DynKeyValueCacheState::resolve_symbols(state, self.past_sequence_fact.clone(), shape)
     }
 
     fn eval(
@@ -89,7 +89,8 @@ impl OpState for MetalDynKVCacheState {
 #[derive(new, Debug, Clone, Hash)]
 pub struct MetalDynKVCache {
     name: String,
-    input_facts: [TypedFact; 2],
+    past_sequence_fact: TypedFact,
+    input_sequence_fact: TypedFact,
     concat: MetalConcat,
 }
 
@@ -98,7 +99,8 @@ impl MetalDynKVCache {
         Self {
             name: op.name.clone(),
             concat: MetalConcat{ kernel: Concat { axis: op.axis } },
-            input_facts: op.input_facts.clone(),
+            past_sequence_fact: op.past_sequence_fact.clone(),
+            input_sequence_fact: op.input_sequence_fact.clone(),
         }
     }
 
@@ -133,7 +135,7 @@ impl EvalOp for MetalDynKVCache {
         Ok(Some(Box::new(MetalDynKVCacheState::new(
             node_id,
             self.name.clone(),
-            self.input_facts.clone(),
+            self.past_sequence_fact.clone(),
             None,
         ))))
     }
@@ -148,8 +150,8 @@ impl TypedOp for MetalDynKVCache {
             let mut fact = facts[0].without_value();
             fact.shape.set(
                 self.axis(),
-                self.input_facts[0].shape.dims()[self.axis()].clone()
-                    + self.input_facts[1].shape.dims()[self.axis()].clone(),
+                self.past_sequence_fact.shape.dims()[self.axis()].clone()
+                    + self.input_sequence_fact.shape.dims()[self.axis()].clone(),
             );
             Ok(tvec!(fact))
         })
@@ -205,10 +207,8 @@ mod tests {
 
             let op = DynKeyValueCache {
                 name: op_name.clone(),
-                input_facts: [
-                    TypedFact::dt_shape(F::datum_type(), cache_shape),
-                    TypedFact::dt_shape(F::datum_type(), input_shape),
-                ],
+                past_sequence_fact: TypedFact::dt_shape(F::datum_type(), cache_shape),
+                input_sequence_fact: TypedFact::dt_shape(F::datum_type(), input_shape),
                 axis,
             };
 
