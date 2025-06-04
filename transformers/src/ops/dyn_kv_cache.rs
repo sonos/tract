@@ -11,7 +11,7 @@ use super::next_node;
 #[derive(Debug, Clone)]
 pub struct DynKeyValueCacheState {
     name: String,
-    input_facts: [TypedFact; 2],
+    past_sequence_fact: TypedFact,
     kv_cache: Option<Tensor>,
 }
 
@@ -54,7 +54,7 @@ impl OpState for DynKeyValueCacheState {
     fn load_from(&mut self, state: &mut SessionState, states: &mut Vec<TValue>) -> TractResult<()> {
         let kv_cache_init = states.remove(0);
         // KV Cache fact is always at index 0
-        Self::resolve_symbols(state, self.input_facts[0].clone(), Some(kv_cache_init.shape()))?;
+        Self::resolve_symbols(state, self.past_sequence_fact.clone(), Some(kv_cache_init.shape()))?;
         self.kv_cache = Some(kv_cache_init.into_tensor());
 
         Ok(())
@@ -70,12 +70,12 @@ impl OpState for DynKeyValueCacheState {
     }
 
     fn init_tensor_fact(&self) -> Option<TypedFact> {
-        Some(self.input_facts[0].clone())
+        Some(self.past_sequence_fact.clone())
     }
 
     fn resolve_symbols(&mut self, state: &mut SessionState) -> TractResult<()> {
         let shape = self.kv_cache.as_ref().map(|kv_cache| kv_cache.shape());
-        Self::resolve_symbols(state, self.input_facts[0].clone(), shape)
+        Self::resolve_symbols(state, self.past_sequence_fact.clone(), shape)
     }
 
     fn eval(
@@ -105,7 +105,8 @@ impl OpState for DynKeyValueCacheState {
 pub struct DynKeyValueCache {
     pub name: String,
     pub axis: usize,
-    pub input_facts: [TypedFact; 2],
+    pub past_sequence_fact: TypedFact,
+    pub input_sequence_fact: TypedFact,
 }
 
 impl Op for DynKeyValueCache {
@@ -128,7 +129,7 @@ impl EvalOp for DynKeyValueCache {
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(DynKeyValueCacheState {
             name: self.name.clone(),
-            input_facts: self.input_facts.clone(),
+            past_sequence_fact: self.past_sequence_fact.clone(),
             kv_cache: None,
         })))
     }
@@ -142,8 +143,8 @@ impl TypedOp for DynKeyValueCache {
 
         fact.shape.set(
             self.axis,
-            self.input_facts[0].shape.dims()[self.axis].clone()
-                + self.input_facts[0].shape.dims()[self.axis].clone(),
+            self.past_sequence_fact.shape.dims()[self.axis].clone()
+                + self.input_sequence_fact.shape.dims()[self.axis].clone(),
         );
         Ok(tvec!(fact))
     }
@@ -223,7 +224,7 @@ pub fn replace_kv_cache(target: &mut TypedModel, source_node_id: usize) -> Tract
         // Replace Concat by KVCache
         let name = target.node_names().collect_vec()[source_node_id].to_string();
         let concat_node = target.node_mut(concat_node_id);
-        concat_node.op = Box::new(DynKeyValueCache { name: name.clone(), axis, input_facts });
+        concat_node.op = Box::new(DynKeyValueCache { name: name.clone(), axis, past_sequence_fact: input_facts[0].clone(), input_sequence_fact: input_facts[1].clone() });
         concat_node.name = name;
         concat_node.inputs.retain(|input| input != &source_node_id.into());
     }
@@ -294,15 +295,13 @@ mod tests {
                     .collect::<TVec<TDim>>()
             };
 
-        let symb_shape = make_shape("P");
-        let second_shape = make_shape("S");
+        let past_shape = make_shape("P");
+        let input_shape = make_shape("S");
 
         let op = DynKeyValueCache {
             name: op_name.clone(),
-            input_facts: [
-                TypedFact::dt_shape(F::datum_type(), symb_shape),
-                TypedFact::dt_shape(F::datum_type(), second_shape),
-            ],
+            past_sequence_fact: TypedFact::dt_shape(F::datum_type(), past_shape),
+            input_sequence_fact: TypedFact::dt_shape(F::datum_type(), input_shape),
             axis,
         };
 
