@@ -53,13 +53,14 @@ members = [
     "test-rt/test-f16",
     "test-rt/test-blas",
     "test-rt/test-metal",
+    "test-rt/test-cuda",
     "test-rt/test-unit-core",
     "test-rt/test-onnx-core",
     "test-rt/test-nnef-cycle",
     "test-rt/test-tflite"
 ]
 
-# same, without metal, test-metal and test-tflite which are probelematic on specific targets
+# same, without metal, test-metal, cuda, test-cuda and test-tflite which are probelematic on specific targets
 default-members = [
     "data",
     "linalg",
