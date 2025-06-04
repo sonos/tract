@@ -156,7 +156,7 @@ impl TypedOp for DynKeyValueCache {
             .filter(|(axis, _d)| *axis != self.axis)
             .map(|(_axis, d)| d)
             .product::<TDim>();
-        Ok(tvec!((Cost::Custom(false, "KVCacheTokenValue".to_string()), token_volume)))
+        Ok(tvec!((Cost::Custom(false, "KVCacheValuesPerToken".to_string()), token_volume)))
     }
 
     as_op!();
