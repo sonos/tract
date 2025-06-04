@@ -125,14 +125,13 @@ mod tests {
             )?;
 
             let cpu_output = slice
-                .eval(tvec![a.clone().into_tvalue()])?;
+                .eval_with_session(0,&SessionState::default(), tvec![a.clone().into_tvalue()])?;
 
             let metal_slice = MetalSlice::from_tract_core(slice);
             let a_metal = a.clone().into_device()?.into_opaque_tensor().into_tvalue();
             let mut session_state = SessionState::default();
-            let mut metal_slice_state = metal_slice.state(&mut session_state, 0)?.unwrap();
             let metal_output =
-                metal_slice_state.eval(&mut session_state, &metal_slice, tvec![a_metal])?;
+                metal_slice.eval_with_session(0, &mut session_state,tvec![a_metal])?;
             stream.wait_until_completed()?;
 
             cpu_output[0].close_enough(
