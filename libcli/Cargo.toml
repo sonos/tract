@@ -32,9 +32,13 @@ tract-tflite.workspace = true
 tract-gpu = { workspace = true}
 tract-metal = { workspace = true }
 
+[target.'cfg(not(any(target_os = "macos", target_os = "ios")))'.dependencies]
+tract-cuda = { workspace = true, optional = true }
+tract-gpu = { workspace = true, optional = true }
+
 [features]
 # hir = ["tract-hir"]
 hir = []
 onnx = [ "tract-onnx" ]
 complex = [ "tract-core/complex" ]
-
+features = [ "tract-gpu", "tract-cuda" ]

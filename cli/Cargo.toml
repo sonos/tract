@@ -55,6 +55,10 @@ tract-tflite = { workspace = true, optional = true }
 tract-transformers = { workspace = true, optional = true }
 zerofrom.workspace = true
 
+[target.'cfg(not(any(target_os = "macos", target_os = "ios")))'.dependencies]
+tract-cuda = { workspace = true, optional = true }
+tract-gpu = { workspace = true, optional = true }
+
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 tract-metal.workspace = true
 tract-gpu.workspace = true
@@ -72,3 +76,4 @@ tflite = [ "tract-tflite" ]
 transformers = [ "tract-transformers" ]
 conform = [ "tract-tensorflow/conform"  ]
 multithread-mm = [ "tract-linalg/multithread-mm" ]
+cuda = ["tract-gpu", "tract-cuda"]
