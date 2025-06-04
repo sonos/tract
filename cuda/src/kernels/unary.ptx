@@ -10,12 +10,162 @@
 .target compute_89
 .address_size 64
 
-	// .globl	silu
+	// .globl	unary_abs_f32
 
-.visible .entry silu(
-	.param .u64 silu_param_0,
-	.param .u64 silu_param_1,
-	.param .u32 silu_param_2
+.visible .entry unary_abs_f32(
+	.param .u64 unary_abs_f32_param_0,
+	.param .u64 unary_abs_f32_param_1,
+	.param .u32 unary_abs_f32_param_2
+)
+{
+	.reg .pred 	%p<2>;
+	.reg .f32 	%f<3>;
+	.reg .b32 	%r<6>;
+	.reg .b64 	%rd<8>;
+
+
+	ld.param.u64 	%rd1, [unary_abs_f32_param_0];
+	ld.param.u64 	%rd2, [unary_abs_f32_param_1];
+	ld.param.u32 	%r2, [unary_abs_f32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB0_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.f32 	%f1, [%rd5];
+	abs.f32 	%f2, %f1;
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
+	st.global.f32 	[%rd7], %f2;
+
+$L__BB0_2:
+	ret;
+
+}
+	// .globl	unary_abs_f16
+.visible .entry unary_abs_f16(
+	.param .u64 unary_abs_f16_param_0,
+	.param .u64 unary_abs_f16_param_1,
+	.param .u32 unary_abs_f16_param_2
+)
+{
+	.reg .pred 	%p<2>;
+	.reg .b16 	%rs<3>;
+	.reg .b32 	%r<6>;
+	.reg .b64 	%rd<8>;
+
+
+	ld.param.u64 	%rd1, [unary_abs_f16_param_0];
+	ld.param.u64 	%rd2, [unary_abs_f16_param_1];
+	ld.param.u32 	%r2, [unary_abs_f16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB1_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rs2, [%rd5];
+	// begin inline asm
+	{abs.f16 %rs1,%rs2;
+}
+	// end inline asm
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
+	st.global.u16 	[%rd7], %rs1;
+
+$L__BB1_2:
+	ret;
+
+}
+	// .globl	unary_sqr_f32
+.visible .entry unary_sqr_f32(
+	.param .u64 unary_sqr_f32_param_0,
+	.param .u64 unary_sqr_f32_param_1,
+	.param .u32 unary_sqr_f32_param_2
+)
+{
+	.reg .pred 	%p<2>;
+	.reg .f32 	%f<3>;
+	.reg .b32 	%r<6>;
+	.reg .b64 	%rd<8>;
+
+
+	ld.param.u64 	%rd1, [unary_sqr_f32_param_0];
+	ld.param.u64 	%rd2, [unary_sqr_f32_param_1];
+	ld.param.u32 	%r2, [unary_sqr_f32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB2_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.f32 	%f1, [%rd5];
+	mul.f32 	%f2, %f1, %f1;
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
+	st.global.f32 	[%rd7], %f2;
+
+$L__BB2_2:
+	ret;
+
+}
+	// .globl	unary_sqr_f16
+.visible .entry unary_sqr_f16(
+	.param .u64 unary_sqr_f16_param_0,
+	.param .u64 unary_sqr_f16_param_1,
+	.param .u32 unary_sqr_f16_param_2
+)
+{
+	.reg .pred 	%p<2>;
+	.reg .b16 	%rs<4>;
+	.reg .b32 	%r<6>;
+	.reg .b64 	%rd<8>;
+
+
+	ld.param.u64 	%rd1, [unary_sqr_f16_param_0];
+	ld.param.u64 	%rd2, [unary_sqr_f16_param_1];
+	ld.param.u32 	%r2, [unary_sqr_f16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB3_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rs2, [%rd5];
+	// begin inline asm
+	{mul.f16 %rs1,%rs2,%rs2;
+}
+	// end inline asm
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
+	st.global.u16 	[%rd7], %rs1;
+
+$L__BB3_2:
+	ret;
+
+}
+	// .globl	unary_silu_f32
+.visible .entry unary_silu_f32(
+	.param .u64 unary_silu_f32_param_0,
+	.param .u64 unary_silu_f32_param_1,
+	.param .u32 unary_silu_f32_param_2
 )
 {
 	.reg .pred 	%p<2>;
@@ -24,15 +174,15 @@
 	.reg .b64 	%rd<8>;
 
 
-	ld.param.u64 	%rd1, [silu_param_0];
-	ld.param.u64 	%rd2, [silu_param_1];
-	ld.param.u32 	%r2, [silu_param_2];
-	mov.u32 	%r3, %ntid.x;
-	mov.u32 	%r4, %ctaid.x;
+	ld.param.u64 	%rd1, [unary_silu_f32_param_0];
+	ld.param.u64 	%rd2, [unary_silu_f32_param_1];
+	ld.param.u32 	%r2, [unary_silu_f32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
 	mov.u32 	%r5, %tid.x;
 	mad.lo.s32 	%r1, %r3, %r4, %r5;
 	setp.ge.s32 	%p1, %r1, %r2;
-	@%p1 bra 	$L__BB0_2;
+	@%p1 bra 	$L__BB4_2;
 
 	cvta.to.global.u64 	%rd3, %rd1;
 	mul.wide.s32 	%rd4, %r1, 4;
@@ -62,7 +212,147 @@
 	add.s64 	%rd7, %rd6, %rd4;
 	st.global.f32 	[%rd7], %f19;
 
-$L__BB0_2:
+$L__BB4_2:
+	ret;
+
+}
+	// .globl	unary_silu_f16
+.visible .entry unary_silu_f16(
+	.param .u64 unary_silu_f16_param_0,
+	.param .u64 unary_silu_f16_param_1,
+	.param .u32 unary_silu_f16_param_2
+)
+{
+	.reg .pred 	%p<4>;
+	.reg .b16 	%rs<27>;
+	.reg .f32 	%f<15>;
+	.reg .b32 	%r<6>;
+	.reg .b64 	%rd<10>;
+
+
+	ld.param.u64 	%rd2, [unary_silu_f16_param_0];
+	ld.param.u64 	%rd3, [unary_silu_f16_param_1];
+	ld.param.u32 	%r2, [unary_silu_f16_param_2];
+	mov.u32 	%r3, %ntid.x;
+	mov.u32 	%r4, %ctaid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r4, %r3, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB5_5;
+
+	cvta.to.global.u64 	%rd4, %rd2;
+	cvt.s64.s32 	%rd1, %r1;
+	mul.wide.s32 	%rd5, %r1, 2;
+	add.s64 	%rd6, %rd4, %rd5;
+	ld.global.u16 	%rs7, [%rd6];
+	mov.f32 	%f5, 0f3F800000;
+	// begin inline asm
+	{  cvt.rn.f16.f32 %rs5, %f5;}
+
+	// end inline asm
+	// begin inline asm
+	{neg.f16 %rs6,%rs7;
+}
+	// end inline asm
+	// begin inline asm
+	{.reg.b32         f, C, nZ;       
+ .reg.b16         h,r;            
+  mov.b16         h,%rs6;           
+  cvt.f32.f16     f,h;            
+  mov.b32         C, 0x3fb8aa3bU; 
+  mov.b32         nZ, 0x80000000U;
+  fma.rn.f32      f,f,C,nZ;       
+  ex2.approx.ftz.f32  f,f;        
+  cvt.rn.f16.f32      r,f;        
+{.reg.b16 spc, ulp, p;
+  mov.b16 spc,0X1F79U;
+  mov.b16 ulp,0x9400U;
+  set.eq.f16.f16 p,h, spc;
+  fma.rn.f16 r,p,ulp,r;
+}
+{.reg.b16 spc, ulp, p;
+  mov.b16 spc,0X25CFU;
+  mov.b16 ulp,0x9400U;
+  set.eq.f16.f16 p,h, spc;
+  fma.rn.f16 r,p,ulp,r;
+}
+{.reg.b16 spc, ulp, p;
+  mov.b16 spc,0XC13BU;
+  mov.b16 ulp,0x0400U;
+  set.eq.f16.f16 p,h, spc;
+  fma.rn.f16 r,p,ulp,r;
+}
+{.reg.b16 spc, ulp, p;
+  mov.b16 spc,0XC1EFU;
+  mov.b16 ulp,0x0200U;
+  set.eq.f16.f16 p,h, spc;
+  fma.rn.f16 r,p,ulp,r;
+}
+  mov.b16         %rs8,r;           
+}
+	// end inline asm
+	// begin inline asm
+	{add.f16 %rs10,%rs5,%rs8;
+}
+	// end inline asm
+	// begin inline asm
+	{  cvt.f32.f16 %f6, %rs7;}
+
+	// end inline asm
+	// begin inline asm
+	{  cvt.f32.f16 %f7, %rs10;}
+
+	// end inline asm
+	// begin inline asm
+	{rcp.approx.ftz.f32 %f8, %f7;
+}
+	// end inline asm
+	mul.f32 	%f10, %f6, %f8;
+	// begin inline asm
+	{  cvt.rn.f16.f32 %rs26, %f10;}
+
+	// end inline asm
+	// begin inline asm
+	{abs.f16 %rs16,%rs26;
+}
+	// end inline asm
+	mov.u16 	%rs20, 143;
+	// begin inline asm
+	{ .reg .pred __$temp3;
+  setp.lt.f16  __$temp3, %rs16, %rs20;
+  selp.u16 %rs18, 1, 0, __$temp3;}
+	// end inline asm
+	setp.eq.s16 	%p2, %rs18, 0;
+	@%p2 bra 	$L__BB5_4;
+
+	mov.f32 	%f11, 0f00000000;
+	// begin inline asm
+	{  cvt.rn.f16.f32 %rs21, %f11;}
+
+	// end inline asm
+	// begin inline asm
+	{ .reg .pred __$temp3;
+  setp.lt.f16  __$temp3, %rs21, %rs16;
+  selp.u16 %rs22, 1, 0, __$temp3;}
+	// end inline asm
+	setp.eq.s16 	%p3, %rs22, 0;
+	@%p3 bra 	$L__BB5_4;
+
+	neg.f32 	%f13, %f7;
+	fma.rn.f32 	%f14, %f13, %f10, %f6;
+	fma.rn.f32 	%f12, %f8, %f14, %f10;
+	// begin inline asm
+	{  cvt.rn.f16.f32 %rs26, %f12;}
+
+	// end inline asm
+
+$L__BB5_4:
+	cvta.to.global.u64 	%rd7, %rd3;
+	shl.b64 	%rd8, %rd1, 1;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u16 	[%rd9], %rs26;
+
+$L__BB5_5:
 	ret;
 
 }

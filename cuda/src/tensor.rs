@@ -91,7 +91,7 @@ impl OwnedDeviceTensor for CudaTensor {
     fn to_host(&self) -> Arc<Tensor> {
         let tensor = unsafe {
             let mut tensor = Tensor::uninitialized_dt(self.datum_type, &self.shape).unwrap();
-            assert!(dbg!(tensor.as_bytes_mut().len()) == dbg!(self.buffer.inner.len()));
+            assert!(tensor.as_bytes_mut().len() == self.buffer.inner.len());
 
             self.buffer.inner.copy_to(&mut tensor.as_bytes_mut()).unwrap();
             tensor
