@@ -1,4 +1,3 @@
-use crate::MetalStream;
 use crate::kernels::array::Concat;
 use crate::utils::with_borrowed_metal_stream;
 use derive_new::new;
