@@ -112,7 +112,7 @@ impl ModelTransform for TransformersTransform {
             .with_rule_for("detect-rotate-half", ops::rotate_half_rule)
             .with_rule_for("detect-apply-rope", ops::apply_rope_rule)
             .with_rule_for("detect-scaled-masked-softmax", ops::scaled_masked_softmax_rule)
-            .with_rule_for("detect-silu", ops::silu_rule)
+            //.with_rule_for("detect-silu", ops::silu_rule)
             .with_rule_for("detect-gelu-approx", ops::gelu_approx_rule)
             .rewrite(&(), model)
     }
