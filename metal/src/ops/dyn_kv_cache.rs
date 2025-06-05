@@ -11,19 +11,7 @@ pub struct MetalDynKVCacheState{
     node_id: usize,
     name: String,
     past_sequence_fact: TypedFact,
-    kv_cache: Option<DeviceTensor>,
-}
-
-impl OpStateFreeze for MetalDynKVCacheState {
-    fn freeze(&self) -> Box<(dyn FrozenOpState + 'static)> {
-        Box::new(self.clone())
-    }
-}
-
-impl FrozenOpState for MetalDynKVCacheState {
-    fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(self.clone())
-    }
+    kv_cache: Option<TValue>,
 }
 
 impl OpState for MetalDynKVCacheState {
@@ -39,13 +27,13 @@ impl OpState for MetalDynKVCacheState {
             self.past_sequence_fact.clone(),
             Some(kv_cache.shape()),
         )?;
-        self.kv_cache = Some(kv_cache.into_tensor().into_device()?);
+        self.kv_cache = Some(kv_cache.into_tensor().into_device()?.into_opaque_tensor().into_tvalue());
         Ok(())
     }
 
     fn save_to(&self, states: &mut Vec<TValue>) -> TractResult<()> {
         if let Some(kv_cache) = &self.kv_cache {
-            states.push(kv_cache.to_host()?.into_tensor().into_tvalue());
+            states.push(kv_cache.to_device_tensor()?.to_host()?.into_tensor().into_tvalue());
             Ok(())
         } else {
             bail!("KV cache {} was never initialized", self.name)
@@ -71,18 +59,47 @@ impl OpState for MetalDynKVCacheState {
         let mut op_inputs = TVec::new();
 
         if let Some(kv_cache) = self.kv_cache.take() {
-            op_inputs.push(kv_cache.into_opaque_tensor().into_tvalue());
+            op_inputs.push(kv_cache);
         }
 
         op_inputs.push(inputs.into_iter().next().unwrap());
 
         let concat = &op.downcast_ref::<MetalDynKVCache>().ok_or_else(|| format_err!("Wrong Op type"))?.concat;
-        let res = concat.eval_with_session(self.node_id, session, op_inputs)?;
+        let res = concat.eval_with_session(self.node_id, session, op_inputs)?.remove(0);
 
-        let kv_tensor = res[0].to_device_tensor()?;
-        self.kv_cache = Some(kv_tensor.clone());
+        self.kv_cache = Some(res.clone());
 
-        Ok(res)
+        Ok(tvec!(res))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FrozenMetalDynKVCacheState{
+    node_id: usize,
+    name: String,
+    past_sequence_fact: TypedFact,
+    kv_cache: Option<DeviceTensor>,
+}
+
+impl OpStateFreeze for MetalDynKVCacheState {
+    fn freeze(&self) -> Box<(dyn FrozenOpState + 'static)> {
+        Box::new(FrozenMetalDynKVCacheState {
+            node_id: self.node_id,
+            name: self.name.clone(),
+            past_sequence_fact: self.past_sequence_fact.clone(),
+            kv_cache: self.kv_cache.clone().map(|t| t.to_device_tensor().cloned().unwrap())
+        })
+    }
+}
+
+impl FrozenOpState for FrozenMetalDynKVCacheState {
+    fn unfreeze(&self) -> Box<dyn OpState> {
+        Box::new(MetalDynKVCacheState {
+            node_id: self.node_id,
+            name: self.name.clone(),
+            past_sequence_fact: self.past_sequence_fact.clone(),
+            kv_cache: self.kv_cache.clone().map(|t| t.into_opaque_tensor().into_tvalue())
+        })
     }
 }
 
