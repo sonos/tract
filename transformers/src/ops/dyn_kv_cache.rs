@@ -12,7 +12,7 @@ use super::next_node;
 pub struct DynKeyValueCacheState {
     name: String,
     past_sequence_fact: TypedFact,
-    kv_cache: Option<Tensor>,
+    kv_cache: Option<TValue>,
 }
 
 impl DynKeyValueCacheState {
@@ -55,14 +55,14 @@ impl OpState for DynKeyValueCacheState {
         let kv_cache_init = states.remove(0);
         // KV Cache fact is always at index 0
         Self::resolve_symbols(state, self.past_sequence_fact.clone(), Some(kv_cache_init.shape()))?;
-        self.kv_cache = Some(kv_cache_init.into_tensor());
+        self.kv_cache = Some(kv_cache_init);
 
         Ok(())
     }
 
     fn save_to(&self, states: &mut Vec<TValue>) -> TractResult<()> {
         if let Some(kv_cache) = &self.kv_cache {
-            states.push(kv_cache.clone().into_tvalue());
+            states.push(kv_cache.clone());
             Ok(())
         } else {
             bail!("KV cache {} was never initialized", self.name)
@@ -90,14 +90,13 @@ impl OpState for DynKeyValueCacheState {
         // build output
 
         let output = if let Some(curr) = self.kv_cache.take() {
-            let out = TypedConcat { axis: op.axis }.eval(tvec![curr.into(), input])?.remove(0);
-            out.into_tensor()
+            TypedConcat { axis: op.axis }.eval(tvec![curr, input])?.remove(0)
         } else {
-            input.into_tensor()
+            input
         };
         self.kv_cache = Some(output.clone());
 
-        Ok(tvec!(output.into()))
+        Ok(tvec!(output))
     }
 }
 
@@ -163,15 +162,30 @@ impl TypedOp for DynKeyValueCache {
     as_op!();
 }
 
+#[derive(Debug, Clone)]
+pub struct FrozenDynKeyValueCacheState {
+    name: String,
+    past_sequence_fact: TypedFact,
+    kv_cache: Option<Tensor>,
+}
+
 impl OpStateFreeze for DynKeyValueCacheState {
     fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(self.clone())
+        Box::new(FrozenDynKeyValueCacheState {
+            name: self.name.clone(),
+            past_sequence_fact: self.past_sequence_fact.clone(),
+            kv_cache: self.kv_cache.clone().map(|t| t.into_tensor())
+        })
     }
 }
 
-impl FrozenOpState for DynKeyValueCacheState {
+impl FrozenOpState for FrozenDynKeyValueCacheState {
     fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(self.clone())
+        Box::new(DynKeyValueCacheState {
+            name: self.name.clone(),
+            past_sequence_fact: self.past_sequence_fact.clone(),
+            kv_cache: self.kv_cache.clone().map(|t| t.into_tvalue())
+        })
     }
 }
 
