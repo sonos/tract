@@ -35,11 +35,11 @@ impl EvalOp for MetalSlice {
     }
 
     fn eval_with_session(
-            &self,
-            node_id: usize,
-            session: &SessionState,
-            inputs: TVec<TValue>,
-        ) -> TractResult<TVec<TValue>> {
+        &self,
+        node_id: usize,
+        session: &SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs);
         let input = opaque.to_device_tensor()?;
 
@@ -65,8 +65,12 @@ impl EvalOp for MetalSlice {
 
         let offset = (start * input_strides[axis] as usize) * input_dt.size_of();
 
-        let output =
-            tract_gpu::session_handler::make_tensor_for_node(session, node_id, input.datum_type(), &o_shape)?;
+        let output = tract_gpu::session_handler::make_tensor_for_node(
+            session,
+            node_id,
+            input.datum_type(),
+            &o_shape,
+        )?;
 
         // Perform slicing only if the output is not empty.
         if o_shape[axis] != 0 {
@@ -120,14 +124,17 @@ mod tests {
                 &(0..num_elements).map(|f| f as f32).collect::<Vec<_>>(),
             )?;
 
-            let cpu_output = slice
-                .eval_with_session(0,&SessionState::default(), tvec![a.clone().into_tvalue()])?;
+            let cpu_output = slice.eval_with_session(
+                0,
+                &SessionState::default(),
+                tvec![a.clone().into_tvalue()],
+            )?;
 
             let metal_slice = MetalSlice::from_tract_core(slice);
             let a_metal = a.clone().into_device()?.into_opaque_tensor().into_tvalue();
             let mut session_state = SessionState::default();
             let metal_output =
-                metal_slice.eval_with_session(0, &mut session_state,tvec![a_metal])?;
+                metal_slice.eval_with_session(0, &mut session_state, tvec![a_metal])?;
             stream.wait_until_completed()?;
 
             cpu_output[0].close_enough(

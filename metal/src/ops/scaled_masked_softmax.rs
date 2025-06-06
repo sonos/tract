@@ -25,17 +25,21 @@ impl EvalOp for MetalScaledMaskedSoftmax {
     }
 
     fn eval_with_session(
-            &self,
-            node_id: usize,
-            session: &SessionState,
-            inputs: TVec<TValue>,
-        ) -> TractResult<TVec<TValue>> {
+        &self,
+        node_id: usize,
+        session: &SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         with_borrowed_metal_stream(|stream| {
             let (opaque_input, opaque_mask) = args_2!(inputs);
             let input = opaque_input.to_device_tensor()?;
             let mask = opaque_mask.to_device_tensor()?;
-            let output =
-                tract_gpu::session_handler::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
+            let output = tract_gpu::session_handler::make_tensor_for_node(
+                session,
+                node_id,
+                input.datum_type(),
+                input.shape(),
+            )?;
             ScaledMaskedSoftmax.dispatch_eval(stream, input, &self.scale, mask, &output)?;
             Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
         })

@@ -22,11 +22,11 @@ impl EvalOp for MetalGeluApproximate {
     }
 
     fn eval_with_session(
-            &self,
-            node_id: usize,
-            session: &SessionState,
-            inputs: TVec<TValue>,
-        ) -> TractResult<TVec<TValue>> {
+        &self,
+        node_id: usize,
+        session: &SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         with_borrowed_metal_stream(|stream| {
             let input = args_1!(inputs);
             let input_metal = input.to_device_tensor()?;

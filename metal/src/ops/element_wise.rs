@@ -29,15 +29,20 @@ impl EvalOp for MetalElementWiseOp {
     }
 
     fn eval_with_session(
-            &self,
-            node_id: usize,
-            session: &SessionState,
-            inputs: TVec<TValue>,
-        ) -> TractResult<TVec<TValue>> {
+        &self,
+        node_id: usize,
+        session: &SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         with_borrowed_metal_stream(|stream| {
             let opaque_a = args_1!(inputs);
             let a = opaque_a.to_device_tensor()?;
-            let output = tract_gpu::session_handler::make_tensor_for_node(session, node_id, a.datum_type(), a.shape())?;
+            let output = tract_gpu::session_handler::make_tensor_for_node(
+                session,
+                node_id,
+                a.datum_type(),
+                a.shape(),
+            )?;
             self.0.dispatch_eval(stream, a, &output)?;
             Ok(tvec![output.into_opaque_tensor().into_tvalue()])
         })

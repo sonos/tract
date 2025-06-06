@@ -21,16 +21,20 @@ impl EvalOp for MetalSilu {
     }
 
     fn eval_with_session(
-            &self,
-            node_id: usize,
-            session: &SessionState,
-            inputs: TVec<TValue>,
-        ) -> TractResult<TVec<TValue>> {
+        &self,
+        node_id: usize,
+        session: &SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         with_borrowed_metal_stream(|stream| {
             let opaque = args_1!(inputs);
             let input = opaque.to_device_tensor()?;
-            let output =
-                tract_gpu::session_handler::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
+            let output = tract_gpu::session_handler::make_tensor_for_node(
+                session,
+                node_id,
+                input.datum_type(),
+                input.shape(),
+            )?;
             Silu.dispatch_eval(stream, input, &output)?;
             Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
         })

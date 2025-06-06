@@ -76,11 +76,11 @@ impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
     }
 
     fn eval_with_session(
-            &self,
-            node_id: usize,
-            session: &SessionState,
-            inputs: TVec<TValue>,
-        ) -> TractResult<TVec<TValue>> { 
+        &self,
+        node_id: usize,
+        session: &SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let (a_opaque, b_opaque) = args_2!(inputs);
         let a = a_opaque
             .to_device_tensor()
@@ -96,11 +96,9 @@ impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
         let c_dt = self.kernel.matmul.output_dt(a.datum_type(), b.datum_type())?;
         let c_shape = self.kernel.output_shape(a.shape(), &b_shape);
         let c = tract_gpu::session_handler::make_tensor_for_node(session, node_id, c_dt, &c_shape)?;
-        
-        with_borrowed_metal_stream(|stream| {   
-            self.kernel.dispatch_eval(stream, a, b, &c)
-        })?;
-        
+
+        with_borrowed_metal_stream(|stream| self.kernel.dispatch_eval(stream, a, b, &c))?;
+
         Ok(tvec![c.into_opaque_tensor().into_tvalue()])
     }
 }

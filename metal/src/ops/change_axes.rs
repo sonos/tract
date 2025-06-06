@@ -98,11 +98,11 @@ impl EvalOp for MetalAxisOp {
     }
 
     fn eval_with_session(
-            &self,
-            node_id: usize,
-            session: &SessionState,
-            inputs: TVec<TValue>,
-        ) -> TractResult<TVec<TValue>> {
+        &self,
+        node_id: usize,
+        session: &SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs).into_tensor();
         let input = opaque.to_device_tensor()?;
         let shape = input.shape();
@@ -144,11 +144,13 @@ impl EvalOp for MetalAxisOp {
 
         // TODO: avoid copy because of memory pool integration
         // Perform copy because of memory pool integration
-        let output =
-            tract_gpu::session_handler::make_tensor_for_node(session, node_id, input.datum_type(), &new_shape)?;
-        with_borrowed_metal_stream(|stream| {
-            Memcpy.dispatch_eval(stream, input, 0, &output)
-        })?;
+        let output = tract_gpu::session_handler::make_tensor_for_node(
+            session,
+            node_id,
+            input.datum_type(),
+            &new_shape,
+        )?;
+        with_borrowed_metal_stream(|stream| Memcpy.dispatch_eval(stream, input, 0, &output))?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }

@@ -21,18 +21,22 @@ impl EvalOp for MetalApplyRope {
     }
 
     fn eval_with_session(
-            &self,
-            node_id: usize,
-            session: &SessionState,
-            inputs: TVec<TValue>,
-        ) -> TractResult<TVec<TValue>> {
+        &self,
+        node_id: usize,
+        session: &SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let (opaque_input, opaque_cos, opaque_sin) = args_3!(inputs);
         let input = opaque_input.to_device_tensor()?;
         let cos = opaque_cos.to_device_tensor()?;
         let sin = opaque_sin.to_device_tensor()?;
-        let output =
-            tract_gpu::session_handler::make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
-    
+        let output = tract_gpu::session_handler::make_tensor_for_node(
+            session,
+            node_id,
+            input.datum_type(),
+            input.shape(),
+        )?;
+
         with_borrowed_metal_stream(|stream| {
             ApplyRope.dispatch_eval(stream, input, cos, sin, &output)
         })?;

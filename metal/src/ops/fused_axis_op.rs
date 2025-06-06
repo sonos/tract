@@ -47,11 +47,11 @@ impl<O: TypedOp> EvalOp for MetalFusedAxisOp<O> {
     }
 
     fn eval_with_session(
-            &self,
-            node_id: usize,
-            session: &SessionState,
-            inputs: TVec<TValue>,
-        ) -> TractResult<TVec<TValue>> {
+        &self,
+        node_id: usize,
+        session: &SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         // Apply Axis Ops per input
         let inputs = inputs
             .into_iter()

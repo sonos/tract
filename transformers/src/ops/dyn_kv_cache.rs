@@ -1,8 +1,8 @@
 use tract_nnef::internal::*;
 use tract_nnef::prelude::tract_itertools::Itertools;
+use tract_nnef::tract_core::ops::OpStateFreeze;
 use tract_nnef::tract_core::ops::array::TypedConcat;
 use tract_nnef::tract_core::ops::source::TypedSource;
-use tract_nnef::tract_core::ops::OpStateFreeze;
 
 use crate::rule_ensure;
 
@@ -149,7 +149,8 @@ impl TypedOp for DynKeyValueCache {
     }
 
     fn cost(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
-        let token_volume = self.past_sequence_fact
+        let token_volume = self
+            .past_sequence_fact
             .shape
             .iter()
             .enumerate()
@@ -174,7 +175,7 @@ impl OpStateFreeze for DynKeyValueCacheState {
         Box::new(FrozenDynKeyValueCacheState {
             name: self.name.clone(),
             past_sequence_fact: self.past_sequence_fact.clone(),
-            kv_cache: self.kv_cache.clone().map(|t| t.into_tensor())
+            kv_cache: self.kv_cache.clone().map(|t| t.into_tensor()),
         })
     }
 }
@@ -184,7 +185,7 @@ impl FrozenOpState for FrozenDynKeyValueCacheState {
         Box::new(DynKeyValueCacheState {
             name: self.name.clone(),
             past_sequence_fact: self.past_sequence_fact.clone(),
-            kv_cache: self.kv_cache.clone().map(|t| t.into_tvalue())
+            kv_cache: self.kv_cache.clone().map(|t| t.into_tvalue()),
         })
     }
 }
@@ -238,7 +239,12 @@ pub fn replace_kv_cache(target: &mut TypedModel, source_node_id: usize) -> Tract
         // Replace Concat by KVCache
         let name = target.node_names().collect_vec()[source_node_id].to_string();
         let concat_node = target.node_mut(concat_node_id);
-        concat_node.op = Box::new(DynKeyValueCache { name: name.clone(), axis, past_sequence_fact: input_facts[0].clone(), input_sequence_fact: input_facts[1].clone() });
+        concat_node.op = Box::new(DynKeyValueCache {
+            name: name.clone(),
+            axis,
+            past_sequence_fact: input_facts[0].clone(),
+            input_sequence_fact: input_facts[1].clone(),
+        });
         concat_node.name = name;
         concat_node.inputs.retain(|input| input != &source_node_id.into());
     }

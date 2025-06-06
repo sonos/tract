@@ -33,18 +33,22 @@ impl EvalOp for MetalCast {
     }
 
     fn eval_with_session(
-            &self,
-            node_id: usize,
-            session: &SessionState,
-            inputs: TVec<TValue>,
-        ) -> TractResult<TVec<TValue>> {
+        &self,
+        node_id: usize,
+        session: &SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs);
         let input = opaque.to_device_tensor()?;
         if input.datum_type() == self.to {
             Ok(tvec!(opaque))
         } else {
-            let output =
-                tract_gpu::session_handler::make_tensor_for_node(session, node_id, self.to, input.shape())?;
+            let output = tract_gpu::session_handler::make_tensor_for_node(
+                session,
+                node_id,
+                self.to,
+                input.shape(),
+            )?;
             with_borrowed_metal_stream(|stream| {
                 kernels::array::Cast.dispatch_eval(stream, input, &output)
             })?;
