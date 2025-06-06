@@ -35,12 +35,10 @@ pub struct CudaContext {
 
 impl CudaContext {
     pub fn new() -> TractResult<Self> {
-        let context = cust::quick_init()
-            .with_context(|| "Could not find system default Metal device")?;
+        let context =
+            cust::quick_init().with_context(|| "Could not find system default Metal device")?;
 
-        let ctxt = Self {
-            inner: context,
-        };
+        let ctxt = Self { inner: context };
         Ok(ctxt)
     }
 }
@@ -57,20 +55,25 @@ impl DeviceContext for CudaContext {
     fn synchronize(&self) -> TractResult<()> {
         CUDA_STREAM.with_borrow(|stream| stream.wait_until_completed())
     }
-    
+
     fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {
         let data = tensor.as_bytes();
         static ZERO: [u8; 1] = [0];
         // Handle empty data
         let data = if data.is_empty() { &ZERO } else { data };
 
-        Ok(Box::new(CudaTensor::from_bytes(data, tensor.datum_type(), tensor.shape(), tensor.strides())))
+        Ok(Box::new(CudaTensor::from_bytes(
+            data,
+            tensor.datum_type(),
+            tensor.shape(),
+            tensor.strides(),
+        )))
     }
 }
 
 #[derive(Debug)]
 pub struct CudaStream {
-    pub stream: Stream
+    pub stream: Stream,
 }
 
 impl Default for CudaStream {
@@ -81,9 +84,7 @@ impl Default for CudaStream {
 
 impl CudaStream {
     pub fn new() -> Self {
-        Self {
-            stream: Stream::new(StreamFlags::NON_BLOCKING, None).unwrap()
-        }
+        Self { stream: Stream::new(StreamFlags::NON_BLOCKING, None).unwrap() }
     }
 
     pub fn wait_until_completed(&self) -> TractResult<()> {

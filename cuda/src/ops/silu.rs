@@ -27,13 +27,12 @@ impl EvalOp for CudaSilu {
         CUDA_STREAM.with_borrow(|stream| {
             let opaque = args_1!(inputs);
             let input = opaque.to_device_tensor()?;
-            let output =
-                make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
+            let output = make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;
             Silu.dispatch_eval(stream, input, &output)?;
             Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
         })
     }
-    
+
     fn is_stateless(&self) -> bool {
         true
     }

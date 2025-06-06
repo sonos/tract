@@ -1,13 +1,13 @@
+use cust::memory::{CopyDestination, DeviceBuffer};
 use cust::util::SliceExt;
 use tract_core::internal::*;
-use cust::memory::{CopyDestination, DeviceBuffer};
 use tract_core::prelude::{DatumType, TVec};
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::check_strides_validity;
 
 #[derive(Debug, Clone)]
 pub struct CudaBuffer {
-    pub inner: Arc<DeviceBuffer<u8>>
+    pub inner: Arc<DeviceBuffer<u8>>,
 }
 
 impl tract_gpu::device::DeviceBuffer for CudaBuffer {
@@ -25,12 +25,12 @@ pub struct CudaTensor {
     buffer: CudaBuffer,
     datum_type: DatumType,
     shape: TVec<usize>,
-    strides: TVec<isize>
+    strides: TVec<isize>,
 }
 
 impl CudaTensor {
     pub fn from_bytes(data: &[u8], dt: DatumType, shape: &[usize], strides: &[isize]) -> Self {
-        let buffer = CudaBuffer{ inner: Arc::new(data.as_dbuf().unwrap()) };
+        let buffer = CudaBuffer { inner: Arc::new(data.as_dbuf().unwrap()) };
         CudaTensor { buffer, datum_type: dt, shape: shape.into(), strides: strides.into() }
     }
 }
@@ -53,13 +53,11 @@ impl OwnedDeviceTensor for CudaTensor {
             bail!("Invalid reshape {:?} to {:?}", self.shape(), shape);
         }
         if shape.as_slice() != self.shape() {
-            Ok(DeviceTensor::Owned(Box::new(
-                CudaTensor {
-                    strides: Tensor::natural_strides(&shape),
-                    shape,
-                    ..self.clone()
-                }
-            )))
+            Ok(DeviceTensor::Owned(Box::new(CudaTensor {
+                strides: Tensor::natural_strides(&shape),
+                shape,
+                ..self.clone()
+            })))
         } else {
             Ok(DeviceTensor::Owned(Box::new(self.clone())))
         }
@@ -68,12 +66,7 @@ impl OwnedDeviceTensor for CudaTensor {
     fn restrided(&self, strides: TVec<isize>) -> TractResult<DeviceTensor> {
         check_strides_validity(self.shape().into(), strides.clone())?;
         if strides.as_slice() != self.strides() {
-            Ok(DeviceTensor::Owned(Box::new(
-                CudaTensor {
-                    strides: strides,
-                    ..self.clone()
-                }
-            )))
+            Ok(DeviceTensor::Owned(Box::new(CudaTensor { strides, ..self.clone() })))
         } else {
             Ok(DeviceTensor::Owned(Box::new(self.clone())))
         }
