@@ -12,13 +12,16 @@ pub use element_wise::ElementWiseOps;
 
 use tract_core::internal::*;
 
-const METAL_FLASH_ATTENTION_LIB: &[u8] = &[];
 #[cfg(target_os = "ios")]
 const METAL_FLASH_ATTENTION_LIB: &[u8] =
     include_bytes!("matmul/mfa/libMetalFlashAttention-ios.metallib");
+
 #[cfg(target_os = "macos")]
 const METAL_FLASH_ATTENTION_LIB: &[u8] =
     include_bytes!("matmul/mfa/libMetalFlashAttention-macos.metallib");
+
+#[cfg(not(any(target_os = "ios", target_os = "macos")))]
+const METAL_FLASH_ATTENTION_LIB: &[u8] = &[];
 
 const MLX_GEMM: &str = include_str!("matmul/mlx_gemm/mlx_gemm.metal");
 const MLX_GEMV: &str = include_str!("matmul/mlx_gemm/mlx_gemv.metal");
