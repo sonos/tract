@@ -148,4 +148,12 @@ impl CudaStream {
     pub fn wait_until_completed(&self) -> TractResult<()> {
         self.stream.synchronize().map_err(|e| e.into())
     }
+
+    pub fn load_pipeline(
+        &self,
+        library_name: LibraryName,
+        func_name: String,
+    ) -> TractResult<Arc<Function<'static>>> {
+        cuda_context().load_pipeline(library_name, func_name)
+    }
 }
