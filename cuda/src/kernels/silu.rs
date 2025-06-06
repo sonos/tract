@@ -49,7 +49,6 @@ impl Silu {
 
         unsafe {
             launch!(
-                // slices are passed as two parameters, the pointer and the length.
                 kernel<<<num_blocks as u32, 256, 0, stream>>>(
                     i_buffer,
                     o_buffer,
