@@ -7,7 +7,7 @@ use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
 use tract_transformers::ops::dyn_kv_cache::{DynKeyValueCache, DynKeyValueCacheState};
 
 #[derive(Debug, Clone, new)]
-pub struct MetalDynKVCacheState{
+pub struct MetalDynKVCacheState {
     node_id: usize,
     name: String,
     past_sequence_fact: TypedFact,
@@ -15,11 +15,7 @@ pub struct MetalDynKVCacheState{
 }
 
 impl OpState for MetalDynKVCacheState {
-    fn load_from(
-        &mut self,
-        state: &mut SessionState,
-        states: &mut Vec<TValue>,
-    ) -> TractResult<()> {
+    fn load_from(&mut self, state: &mut SessionState, states: &mut Vec<TValue>) -> TractResult<()> {
         let kv_cache = states.remove(0);
         // KV Cache fact is always at index 0
         DynKeyValueCacheState::resolve_symbols(
@@ -27,7 +23,8 @@ impl OpState for MetalDynKVCacheState {
             self.past_sequence_fact.clone(),
             Some(kv_cache.shape()),
         )?;
-        self.kv_cache = Some(kv_cache.into_tensor().into_device()?.into_opaque_tensor().into_tvalue());
+        self.kv_cache =
+            Some(kv_cache.into_tensor().into_device()?.into_opaque_tensor().into_tvalue());
         Ok(())
     }
 
@@ -67,7 +64,10 @@ impl OpState for MetalDynKVCacheState {
 
         op_inputs.push(inputs.into_iter().next().unwrap());
 
-        let concat = &op.downcast_ref::<MetalDynKVCache>().ok_or_else(|| format_err!("Wrong Op type"))?.concat;
+        let concat = &op
+            .downcast_ref::<MetalDynKVCache>()
+            .ok_or_else(|| format_err!("Wrong Op type"))?
+            .concat;
         let res = concat.eval_with_session(self.node_id, session, op_inputs)?.remove(0);
 
         self.kv_cache = Some(res.clone());
@@ -77,7 +77,7 @@ impl OpState for MetalDynKVCacheState {
 }
 
 #[derive(Debug, Clone)]
-pub struct FrozenMetalDynKVCacheState{
+pub struct FrozenMetalDynKVCacheState {
     node_id: usize,
     name: String,
     past_sequence_fact: TypedFact,
@@ -90,7 +90,7 @@ impl OpStateFreeze for MetalDynKVCacheState {
             node_id: self.node_id,
             name: self.name.clone(),
             past_sequence_fact: self.past_sequence_fact.clone(),
-            kv_cache: self.kv_cache.clone().map(|t| t.to_device_tensor().cloned().unwrap())
+            kv_cache: self.kv_cache.clone().map(|t| t.to_device_tensor().cloned().unwrap()),
         })
     }
 }
@@ -101,7 +101,7 @@ impl FrozenOpState for FrozenMetalDynKVCacheState {
             node_id: self.node_id,
             name: self.name.clone(),
             past_sequence_fact: self.past_sequence_fact.clone(),
-            kv_cache: self.kv_cache.clone().map(|t| t.into_opaque_tensor().into_tvalue())
+            kv_cache: self.kv_cache.clone().map(|t| t.into_opaque_tensor().into_tvalue()),
         })
     }
 }
@@ -118,7 +118,7 @@ impl MetalDynKVCache {
     pub fn from_tract_transformers(op: &DynKeyValueCache) -> Self {
         Self {
             name: op.name.clone(),
-            concat: MetalConcat{ kernel: Concat { axis: op.axis } },
+            concat: MetalConcat { kernel: Concat { axis: op.axis } },
             past_sequence_fact: op.past_sequence_fact.clone(),
             input_sequence_fact: op.input_sequence_fact.clone(),
         }
@@ -181,8 +181,8 @@ impl TypedOp for MetalDynKVCache {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::with_borrowed_metal_stream;
     use crate::MetalTransform;
+    use crate::utils::with_borrowed_metal_stream;
 
     use super::*;
     use tract_core::ops::array::TypedConcat;

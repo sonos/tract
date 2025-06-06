@@ -48,15 +48,13 @@ impl EvalOp for MetalConcat {
     }
 
     fn eval_with_session(
-            &self,
-            node_id: usize,
-            session: &SessionState,
-            inputs: TVec<TValue>,
-        ) -> TractResult<TVec<TValue>> {
-        let inputs = inputs
-        .iter()
-        .map(|it| it.to_device_tensor())
-        .collect::<TractResult<TVec<_>>>()?;
+        &self,
+        node_id: usize,
+        session: &SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let inputs =
+            inputs.iter().map(|it| it.to_device_tensor()).collect::<TractResult<TVec<_>>>()?;
 
         let mut output_shape = inputs[0].shape().to_vec();
         output_shape[self.axis()] = inputs.iter().map(|it| it.shape()[self.axis()]).sum();
@@ -66,9 +64,7 @@ impl EvalOp for MetalConcat {
             inputs[0].datum_type(),
             &output_shape,
         )?;
-        with_borrowed_metal_stream(|stream| {
-            self.kernel.dispatch_eval(stream, &inputs, &output)
-        })?;
+        with_borrowed_metal_stream(|stream| self.kernel.dispatch_eval(stream, &inputs, &output))?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }

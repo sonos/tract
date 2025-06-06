@@ -47,17 +47,18 @@ impl EvalOp for MetalBinOp {
     }
 
     fn eval_with_session(
-            &self,
-            node_id: usize,
-            session: &SessionState,
-            inputs: TVec<TValue>,
-        ) -> TractResult<TVec<TValue>> {
+        &self,
+        node_id: usize,
+        session: &SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let (opaque_a, opaque_b) = args_2!(inputs);
         let a = opaque_a.to_device_tensor()?;
         let b = opaque_b.to_device_tensor()?;
         let out_shape = self.0.output_shape(a.shape(), b.shape())?;
         let out_dt = self.0.output_datum_type(a.datum_type(), b.datum_type())?;
-        let output = tract_gpu::session_handler::make_tensor_for_node(session, node_id, out_dt, &out_shape)?;
+        let output =
+            tract_gpu::session_handler::make_tensor_for_node(session, node_id, out_dt, &out_shape)?;
         with_borrowed_metal_stream(|stream| {
             self.0
                 .dispatch_eval(stream, a, b, &output)

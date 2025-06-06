@@ -1,5 +1,5 @@
-use crate::utils::with_borrowed_metal_stream;
 use crate::kernels;
+use crate::utils::with_borrowed_metal_stream;
 use derive_new::new;
 use std::fmt::Debug;
 use tract_core::internal::*;
@@ -18,24 +18,27 @@ impl Op for MetalMultiBroadcastTo {
     op_as_typed_op!();
 }
 
-
 impl EvalOp for MetalMultiBroadcastTo {
     fn is_stateless(&self) -> bool {
         true
     }
 
     fn eval_with_session(
-            &self,
-            node_id: usize,
-            session: &SessionState,
-            inputs: TVec<TValue>,
-        ) -> TractResult<TVec<TValue>> {
+        &self,
+        node_id: usize,
+        session: &SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         let opaque = args_1!(inputs);
         let shape = self.shape.eval_to_usize(&session.resolved_symbols)?;
         let input = opaque.to_device_tensor()?;
-        let output =
-            tract_gpu::session_handler::make_tensor_for_node(session, node_id, input.datum_type(), &shape)?;
-        
+        let output = tract_gpu::session_handler::make_tensor_for_node(
+            session,
+            node_id,
+            input.datum_type(),
+            &shape,
+        )?;
+
         with_borrowed_metal_stream(|stream| {
             kernels::array::MultiBroadcast.dispatch_eval(stream, input, 0, &output)
         })?;

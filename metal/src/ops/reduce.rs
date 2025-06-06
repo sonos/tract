@@ -46,18 +46,22 @@ impl EvalOp for MetalReduce {
     }
 
     fn eval_with_session(
-            &self,
-            node_id: usize,
-            session: &SessionState,
-            inputs: TVec<TValue>,
-        ) -> TractResult<TVec<TValue>> {
+        &self,
+        node_id: usize,
+        session: &SessionState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
         with_borrowed_metal_stream(|stream| {
             let opaque = args_1!(inputs);
             let input = opaque.to_device_tensor()?;
             let mut output_shape = input.shape().to_vec();
             output_shape[self.axes[0]] = 1;
-            let output =
-                tract_gpu::session_handler::make_tensor_for_node(session, node_id, input.datum_type(), &output_shape)?;
+            let output = tract_gpu::session_handler::make_tensor_for_node(
+                session,
+                node_id,
+                input.datum_type(),
+                &output_shape,
+            )?;
 
             self.reducer.dispatch_eval(stream, input, self.axes[0], &output)?;
 
