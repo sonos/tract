@@ -7,7 +7,7 @@
 //
 
 .version 8.7
-.target compute_89
+.target compute_75
 .address_size 64
 
 	// .globl	unary_abs_f32
