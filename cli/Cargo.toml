@@ -59,6 +59,10 @@ zerofrom.workspace = true
 tract-metal.workspace = true
 tract-gpu.workspace = true
 
+# Compile cuda and gpu if not on metal devices and "cuda" feature is enabled
+[target.'cfg(not(any(target_os = "macos", target_os = "ios")))'.dependencies]
+tract-cuda = { workspace = true, optional = true }
+tract-gpu = { workspace = true, optional = true }
 
 [features]
 default = ["onnx", "tf", "pulse", "pulse-opl", "tflite", "transformers", "extra"]
@@ -72,3 +76,4 @@ tflite = [ "tract-tflite" ]
 transformers = [ "tract-transformers" ]
 conform = [ "tract-tensorflow/conform"  ]
 multithread-mm = [ "tract-linalg/multithread-mm" ]
+cuda = ["tract-gpu", "tract-cuda"]
