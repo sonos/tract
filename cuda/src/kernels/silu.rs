@@ -2,7 +2,7 @@ use cust::launch;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::context::{cuda_context, CudaStream};
+use crate::context::{CudaStream, cuda_context};
 use crate::kernels::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -37,7 +37,8 @@ impl Silu {
         ensure!(output.datum_type() == input.datum_type());
 
         let context = cuda_context();
-        let func = context.load_pipeline(LibraryName::UnaryOps, self.kernel_name(input.datum_type())?)?;
+        let func =
+            context.load_pipeline(LibraryName::UnaryOps, self.kernel_name(input.datum_type())?)?;
 
         let len = input.len();
         let num_blocks = len.div_ceil(256);
@@ -94,17 +95,17 @@ mod tests {
 
             let cpu_output =
                 silu::Silu.eval(tvec![a.to_host()?.into_tvalue()])?[0].clone().into_tensor();
-            let metal_output = Silu.eval(stream, &a)?;
+            let cuda_output = Silu.eval(stream, &a)?;
 
             cpu_output
-                .close_enough(&metal_output.to_host()?.into_tensor(), appriximate)
+                .close_enough(&cuda_output.to_host()?.into_tensor(), appriximate)
                 .with_context(|| {
                     format!(
-                        "Input: {:?}, scale: {:?} Cpu: {:?}, Metal: {:?}",
+                        "Input: {:?}, scale: {:?} Cpu: {:?}, CUDA: {:?}",
                         a.to_host().and_then(|it| it.dump(true)),
                         scale,
                         cpu_output.dump(true),
-                        metal_output.to_host().and_then(|it| it.dump(true))
+                        cuda_output.to_host().and_then(|it| it.dump(true))
                     )
                 })?;
             Ok(())
