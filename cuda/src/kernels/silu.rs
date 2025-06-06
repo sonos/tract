@@ -17,9 +17,10 @@ impl Silu {
 
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for Cuda silu op", dt);
-        Ok(format!("unary_{}_{}", "silu".to_string(), DeviceTensor::tname(dt)?))
+        Ok(format!("unary_{}_{}", "silu", DeviceTensor::tname(dt)?))
     }
 
+    #[allow(unused)]
     pub fn eval(&self, stream: &CudaStream, input: &DeviceTensor) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(stream, input, &output)?;
@@ -41,11 +42,13 @@ impl Silu {
         let kernel = module.get_function(self.kernel_name(input.datum_type())?)?;
 
         let len = input.len();
-        let num_blocks = (len + 256 - 1) / 256;
+        let num_blocks = len.div_ceil(256);
         let stream = &stream.stream;
 
-        let i_buffer =input.device_buffer().downcast_ref::<CudaBuffer>().unwrap().inner.as_device_ptr();
-        let o_buffer =output.device_buffer().downcast_ref::<CudaBuffer>().unwrap().inner.as_device_ptr();
+        let i_buffer =
+            input.device_buffer().downcast_ref::<CudaBuffer>().unwrap().inner.as_device_ptr();
+        let o_buffer =
+            output.device_buffer().downcast_ref::<CudaBuffer>().unwrap().inner.as_device_ptr();
 
         unsafe {
             launch!(
@@ -68,7 +71,7 @@ mod tests {
     use tract_gpu::tensor::IntoDevice;
     use tract_transformers::ops::silu;
 
-    use crate::context::{cuda_context, CUDA_STREAM};
+    use crate::context::{CUDA_STREAM, cuda_context};
 
     fn test_case<F>(
         shape: &[usize],
@@ -80,7 +83,7 @@ mod tests {
         F: Float + Datum,
         usize: AsPrimitive<f32>,
         f32: AsPrimitive<F>,
-    {   
+    {
         cuda_context();
         CUDA_STREAM.with_borrow(|stream| {
             let len = shape.iter().product::<usize>();

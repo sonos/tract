@@ -145,10 +145,7 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
         input_facts.iter().all(|fact| DeviceTensor::is_supported_dt(fact.datum_type));
 
     Ok(in_dts_metal_compatible
-        && node
-            .op_as::<Silu>()
-            .is_some_and(|_| kernels::Silu::is_supported_dt(input_dts[0]))
-        )
+        && node.op_as::<Silu>().is_some_and(|_| kernels::Silu::is_supported_dt(input_dts[0])))
 }
 
 impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for CudaTransform {
@@ -166,10 +163,10 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 self.sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
 
             let op: Box<dyn TypedOp> = if let Some(_op) = node.op_as::<Silu>() {
-                    Box::new(ops::CudaSilu)
-                } else {
-                    bail!("Failed to translate a supported CUDA Op")
-                }; 
+                Box::new(ops::CudaSilu)
+            } else {
+                bail!("Failed to translate a supported CUDA Op")
+            };
             let outlet_ids = target.wire_node(node.name.clone(), op, &device_inputs)?;
             self.sync_model_outputs_if_required(source, node, target, outlet_ids)
         } else {
