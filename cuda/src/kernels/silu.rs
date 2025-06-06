@@ -1,9 +1,8 @@
 use cust::launch;
-use cust::module::Module;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::context::CudaStream;
+use crate::context::{cuda_context, CudaStream};
 use crate::kernels::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -37,8 +36,8 @@ impl Silu {
         ensure!(output.shape() == input.shape());
         ensure!(output.datum_type() == input.datum_type());
 
-        let module = Module::from_ptx(UNARY_OPS, &[])?;
-        let kernel = module.get_function(self.kernel_name(input.datum_type())?)?;
+        let context = cuda_context();
+        let func = context.load_pipeline(LibraryName::UnaryOps, self.kernel_name(input.datum_type())?)?;
 
         let len = input.len();
         let num_blocks = len.div_ceil(256);
@@ -46,7 +45,7 @@ impl Silu {
 
         unsafe {
             launch!(
-                kernel<<<num_blocks as u32, 256, 0, stream>>>(
+                func<<<num_blocks as u32, 256, 0, stream>>>(
                     get_cuda_ptr(input),
                     get_cuda_ptr(output),
                     input.len(),
