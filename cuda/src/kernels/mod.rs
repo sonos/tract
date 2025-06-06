@@ -5,7 +5,7 @@ use tract_gpu::tensor::DeviceTensor;
 
 use crate::tensor::CudaBuffer;
 
-const UNARY_OPS: &str = include_str!("unary.ptx");
+const UNARY_OPS: &str = include_str!("ptx/unary.ptx");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LibraryName {
