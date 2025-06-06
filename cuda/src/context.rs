@@ -5,6 +5,7 @@ use tract_gpu::tensor::OwnedDeviceTensor;
 
 use std::cell::RefCell;
 
+use std::ops::Deref;
 use std::sync::OnceLock;
 
 use tract_core::internal::*;
@@ -44,6 +45,14 @@ impl CudaContext {
     }
 }
 
+impl Deref for CudaContext {
+    type Target = Context;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
 impl DeviceContext for CudaContext {
     fn synchronize(&self) -> TractResult<()> {
         CUDA_STREAM.with_borrow(|stream| stream.wait_until_completed())
@@ -78,6 +87,6 @@ impl CudaStream {
     }
 
     pub fn wait_until_completed(&self) -> TractResult<()> {
-        Ok(self.stream.synchronize().unwrap())
+        self.stream.synchronize().map_err(|e| e.into())
     }
 }

@@ -3,7 +3,7 @@ use cust::module::Module;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::context::{CudaStream};
+use crate::context::CudaStream;
 use crate::kernels::NN_OPS;
 use crate::tensor::CudaBuffer;
 
