@@ -4,8 +4,7 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::CudaStream;
-use crate::kernels::NN_OPS;
-use crate::tensor::CudaBuffer;
+use crate::kernels::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Silu;
@@ -38,23 +37,18 @@ impl Silu {
         ensure!(output.shape() == input.shape());
         ensure!(output.datum_type() == input.datum_type());
 
-        let module = Module::from_ptx(NN_OPS, &[])?;
+        let module = Module::from_ptx(UNARY_OPS, &[])?;
         let kernel = module.get_function(self.kernel_name(input.datum_type())?)?;
 
         let len = input.len();
         let num_blocks = len.div_ceil(256);
         let stream = &stream.stream;
 
-        let i_buffer =
-            input.device_buffer().downcast_ref::<CudaBuffer>().unwrap().inner.as_device_ptr();
-        let o_buffer =
-            output.device_buffer().downcast_ref::<CudaBuffer>().unwrap().inner.as_device_ptr();
-
         unsafe {
             launch!(
                 kernel<<<num_blocks as u32, 256, 0, stream>>>(
-                    i_buffer,
-                    o_buffer,
+                    get_cuda_ptr(input),
+                    get_cuda_ptr(output),
                     input.len(),
                 )
             )?;

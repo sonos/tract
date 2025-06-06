@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use cust::memory::{CopyDestination, DeviceBuffer};
 use cust::util::SliceExt;
 use tract_core::internal::*;
@@ -17,6 +19,13 @@ impl tract_gpu::device::DeviceBuffer for CudaBuffer {
 
     fn ptr(&self) -> *const std::ffi::c_void {
         self.inner.as_device_ptr().as_ptr() as _
+    }
+}
+impl Deref for CudaBuffer {
+    type Target = Arc<DeviceBuffer<u8>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }
 
