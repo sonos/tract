@@ -19,7 +19,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - run: cargo check --workspace --exclude test-blas
+    - run: cargo check --workspace --exclude test-blas --exclude cuda --exclude test-cuda
     - run: cargo test -q -p tract-linalg
     - run: cargo test -q -p tract-core
     - run: cargo test -q -p tract-nnef
