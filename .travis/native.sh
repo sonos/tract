@@ -10,7 +10,7 @@ fi
 rustup update
 
 cargo update
-cargo check --all-targets --workspace --exclude test-tflite --exclude test-metal --exclude tract-metal
+cargo check --all-targets --workspace --exclude test-tflite --exclude test-metal --exclude tract-metal --exclude test-cuda --exclude tract-cuda
 
 ./.travis/onnx-tests.sh
 ./.travis/regular-tests.sh
@@ -31,6 +31,10 @@ then
     cargo test -p test-metal
 fi
 
+if nvcc -V >/dev/null 2>&1
+then
+    cargo test --features cuda -p test-cuda
+fi
 
 if [ -n "$CI" ]
 then
