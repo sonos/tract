@@ -17,7 +17,7 @@ pub struct CudaTransform;
 
 impl ModelTransform for CudaTransform {
     fn name(&self) -> Cow<str> {
-        "metal-transform".into()
+        "cuda-transform".into()
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
@@ -31,7 +31,7 @@ impl CudaTransform {
         model: &mut TypedModel,
         stop_at_phase: usize,
     ) -> TractResult<()> {
-        // Init Metal Context if not done previously
+        // Init CUDA Context if not done previously
         cuda_context();
 
         rewrite_einsum_to_prefix_matmul(model)?;
@@ -76,14 +76,14 @@ impl CudaTransform {
                 DeviceSyncKind::ToDevice if in_fact.as_device_fact().is_none() => {
                     if let Some(ref konst) = in_fact.konst {
                         if konst.as_device_tensor().is_none() {
-                            let konst_metal =
+                            let device_konst =
                                 konst.as_ref().clone().into_device()?.into_opaque_tensor();
-                            let metal_fact = DeviceFact::from_host(in_fact.clone())?;
+                            let device_fact = DeviceFact::from_host(in_fact.clone())?;
 
                             *in_fact = TypedFact::dt_scalar(DatumType::Opaque)
-                                .with_opaque_fact(metal_fact);
+                                .with_opaque_fact(device_fact);
 
-                            in_fact.konst = Some(Arc::new(konst_metal));
+                            in_fact.konst = Some(Arc::new(device_konst));
                             mapped_inputs.push(mapping[i]);
                             continue;
                         }
@@ -141,10 +141,10 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
         .map(|f| f.as_device_fact().map(|f| f.datum_type).unwrap_or(f.datum_type))
         .collect_vec();
 
-    let in_dts_metal_compatible =
+    let in_dts_compatible =
         input_facts.iter().all(|fact| DeviceTensor::is_supported_dt(fact.datum_type));
 
-    Ok(in_dts_metal_compatible
+    Ok(in_dts_compatible
         && node.op_as::<Silu>().is_some_and(|_| kernels::Silu::is_supported_dt(input_dts[0])))
 }
 
