@@ -45,7 +45,10 @@ impl OpState for MetalDynKVCacheState {
     }
 
     fn resolve_symbols(&mut self, state: &mut SessionState) -> TractResult<()> {
-        let shape = self.kv_cache.as_ref().map(|kv_cache| kv_cache.shape());
+        let shape = self
+            .kv_cache
+            .as_ref()
+            .map(|kv_cache| kv_cache.to_device_tensor().expect("Expected Metal Tensor").shape());
         DynKeyValueCacheState::resolve_symbols(state, self.past_sequence_fact.clone(), shape)
     }
 

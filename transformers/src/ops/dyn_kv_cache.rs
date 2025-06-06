@@ -38,6 +38,7 @@ impl DynKeyValueCacheState {
         ensure!(unresolved.len() == 1);
         let (ax, sym) = unresolved[0];
         if let Some(shape) = concrete_shape {
+            ensure!(ax < shape.len());
             state.resolved_symbols.set(sym, shape[ax] as i64);
         } else {
             state.resolved_symbols.set(sym, 0);
