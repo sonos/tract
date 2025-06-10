@@ -110,7 +110,7 @@ pub struct DynKeyValueCache {
 }
 
 impl Op for DynKeyValueCache {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DynamicKeyValueCache".to_string().into()
     }
 

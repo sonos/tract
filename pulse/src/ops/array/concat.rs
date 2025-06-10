@@ -94,7 +94,7 @@ pub struct PulsedSameAxisConcat {
 }
 
 impl Op for PulsedSameAxisConcat {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "PulsedSameAxisConcat".into()
     }
 

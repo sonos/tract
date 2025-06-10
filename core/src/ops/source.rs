@@ -27,7 +27,7 @@ pub struct TypedSource {
 
 
 impl Op for TypedSource {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Source".into()
     }
     op_as_typed_op!();

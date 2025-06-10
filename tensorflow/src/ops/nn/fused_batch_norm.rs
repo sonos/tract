@@ -15,7 +15,7 @@ struct FusedBatchNorm {
 }
 
 impl Expansion for FusedBatchNorm {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "FusedBatchNorm".into()
     }
 

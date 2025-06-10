@@ -16,7 +16,7 @@ use tract_data::TooEarly;
 use Comp::*;
 
 impl Op for Comp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         match *self {
             Eq => "==",
             NE => "!=",

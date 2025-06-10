@@ -12,7 +12,7 @@ pub struct GatherV2;
 
 
 impl Expansion for GatherV2 {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "GatherV2".into()
     }
 

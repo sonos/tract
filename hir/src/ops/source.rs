@@ -9,7 +9,7 @@ pub struct Source;
 
 
 impl Op for Source {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Source".into()
     }
 

@@ -2,7 +2,6 @@ use tract_ndarray::Dimension;
 
 use crate::transform::ModelTransform;
 use crate::{broadcast, internal::*};
-use std::borrow::Cow;
 use std::fmt::Debug;
 
 use super::prefix_matmul::{rewrite_einsum_to_prefix_matmul, PrefixMatMul};
@@ -11,7 +10,7 @@ use super::prefix_matmul::{rewrite_einsum_to_prefix_matmul, PrefixMatMul};
 pub struct AsBlas;
 
 impl ModelTransform for AsBlas {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "as-blas".into()
     }
 
@@ -47,7 +46,7 @@ fn matmul_to_sgemm(
 pub struct SGemm {}
 
 impl Op for SGemm {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "SGemm".into()
     }
 

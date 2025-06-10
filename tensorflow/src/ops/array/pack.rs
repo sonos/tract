@@ -21,7 +21,7 @@ pub struct Pack {
 
 
 impl Expansion for Pack {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Pack".into()
     }
 

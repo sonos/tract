@@ -38,7 +38,7 @@ impl FakeQuantWithMinMaxVars {
 }
 
 impl Expansion for FakeQuantWithMinMaxVars {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "FakeQuantWithMinMaxVars".into()
     }
 

@@ -26,7 +26,7 @@ impl MatMulInference {
 }
 
 impl Expansion for MatMulInference {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MatMulInference".into()
     }
 

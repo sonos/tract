@@ -47,7 +47,7 @@ fn ser_apply_rope(
 pub struct RotateHalf;
 
 impl Op for RotateHalf {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "RotateHalf".to_string().into()
     }
     op_as_typed_op!();
@@ -158,7 +158,7 @@ impl ApplyRope {
 }
 
 impl Op for ApplyRope {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "ApplyRope".to_string().into()
     }
     op_as_typed_op!();

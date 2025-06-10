@@ -49,7 +49,7 @@ pub struct GeluApproximate {
 }
 
 impl Op for GeluApproximate {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         if self.fast_impl {
             "GeluApproximateFast".to_string().into()
         } else {

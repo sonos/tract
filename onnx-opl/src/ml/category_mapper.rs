@@ -42,7 +42,7 @@ impl DirectLookup {
 }
 
 impl Op for DirectLookup {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DirectLookup".into()
     }
 
@@ -156,7 +156,7 @@ impl Hash for ReverseLookup {
 }
 
 impl Op for ReverseLookup {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "ReverseLookup".into()
     }
 

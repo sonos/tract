@@ -5,7 +5,7 @@ use crate::internal::*;
 pub struct Reshape {}
 
 impl Expansion for Reshape {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Reshape".into()
     }
 

@@ -65,7 +65,7 @@ pub struct VariableV2 {
 
 
 impl Op for VariableV2 {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "VariableV2".into()
     }
 
@@ -140,7 +140,7 @@ pub struct Assign {
 
 
 impl Op for Assign {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Assign".into()
     }
 

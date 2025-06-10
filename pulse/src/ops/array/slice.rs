@@ -38,7 +38,7 @@ pub struct PulsedAxisSlice {
 }
 
 impl Op for PulsedAxisSlice {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "PulsedAxisSlice".into()
     }
 

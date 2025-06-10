@@ -7,7 +7,7 @@ use crate::internal::*;
 pub struct GlobalAvgPool;
 
 impl Expansion for GlobalAvgPool {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "GlobalAvgPool".into()
     }
 
@@ -54,7 +54,7 @@ impl Expansion for GlobalAvgPool {
 pub struct GlobalLpPool(usize);
 
 impl Expansion for GlobalLpPool {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("GlobalL{}Pool", self.0).into()
     }
 
@@ -138,7 +138,7 @@ impl Expansion for GlobalLpPool {
 pub struct GlobalMaxPool;
 
 impl Expansion for GlobalMaxPool {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "GlobalMaxPool".into()
     }
 

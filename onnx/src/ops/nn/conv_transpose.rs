@@ -44,7 +44,7 @@ pub struct ConvTranspose {
 }
 
 impl Expansion for ConvTranspose {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "ConvTranspose".into()
     }
 

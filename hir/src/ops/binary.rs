@@ -11,7 +11,7 @@ use tract_core::ops::binary::BinMiniOp;
 pub struct InferenceBinOp(pub Box<dyn BinMiniOp>);
 
 impl Expansion for InferenceBinOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         self.0.name().into()
     }
 
@@ -109,7 +109,7 @@ impl Nary {
 }
 
 impl Op for Nary {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("{}Nary", self.0.name()).into()
     }
 

@@ -23,7 +23,7 @@ impl MetalSoftmax {
 }
 
 impl Op for MetalSoftmax {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MetalSoftmax".into()
     }
 

@@ -32,7 +32,7 @@ fn ser_silu(ast: &mut IntoAst, node: &TypedNode, _op: &Silu) -> TractResult<Opti
 pub struct Silu;
 
 impl Op for Silu {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Silu".to_string().into()
     }
     op_as_typed_op!();

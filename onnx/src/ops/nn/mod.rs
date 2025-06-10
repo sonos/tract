@@ -326,7 +326,7 @@ pub fn parametric_softplus(
 struct Prelu;
 
 impl Expansion for Prelu {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Prelu".into()
     }
 

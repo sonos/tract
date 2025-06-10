@@ -19,7 +19,7 @@ impl MetalCast {
 }
 
 impl Op for MetalCast {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MetalCast".into()
     }
 

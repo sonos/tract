@@ -81,7 +81,7 @@ impl Debug for MetalAxisOp {
 }
 
 impl Op for MetalAxisOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("Metal{}", self.0.name()).into()
     }
 

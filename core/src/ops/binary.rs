@@ -93,7 +93,7 @@ downcast_rs::impl_downcast!(BinMiniOp);
 pub struct TypedBinOp(pub Box<dyn BinMiniOp>, pub Option<DatumType>);
 
 impl Op for TypedBinOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         self.0.name().into()
     }
 
@@ -462,7 +462,7 @@ impl OptBinByScalar {
 }
 
 impl Op for OptBinByScalar {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("Opt{}ByScalar", self.binop.name()).into()
     }
 
@@ -590,7 +590,7 @@ impl OptBinUnicast {
 }
 
 impl Op for OptBinUnicast {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("Opt{}Unicast", self.binop.name()).into()
     }
 

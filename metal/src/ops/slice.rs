@@ -14,7 +14,7 @@ impl MetalSlice {
 }
 
 impl Op for MetalSlice {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MetalSlice".into()
     }
 

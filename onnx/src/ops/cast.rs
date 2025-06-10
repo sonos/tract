@@ -88,7 +88,7 @@ fn cast_like(
 pub struct CastLike;
 
 impl Expansion for CastLike {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "CastLike".into()
     }
 

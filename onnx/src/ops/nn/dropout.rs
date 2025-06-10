@@ -17,7 +17,7 @@ pub struct Dropout {
 
 
 impl Op for Dropout {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Dropout".into()
     }
 

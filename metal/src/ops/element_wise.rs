@@ -7,7 +7,7 @@ use tract_gpu::tensor::DeviceTensorExt;
 pub struct MetalElementWiseOp(pub ElementWiseOps);
 
 impl Op for MetalElementWiseOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("Metal{}", self.0.name()).into()
     }
 

@@ -21,7 +21,7 @@ mod nnef_predump {
     }
 
     impl Runtime for NnefPredumpRuntime {
-        fn name(&self) -> Cow<str> {
+        fn name(&self) -> StaticName {
             "nnef_predump".into()
         }
 
@@ -56,7 +56,7 @@ mod nnef_cycle {
     }
 
     impl Runtime for NnefCyclingRuntime {
-        fn name(&self) -> Cow<str> {
+        fn name(&self) -> StaticName {
             "nnef_cycle".into()
         }
 

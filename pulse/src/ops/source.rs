@@ -23,7 +23,7 @@ pub struct PulsedSource(pub PulsedFact);
 
 
 impl Op for PulsedSource {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "PulsedSource".into()
     }
     not_a_typed_op!();

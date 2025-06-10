@@ -36,7 +36,7 @@ struct ReduceSum13 {
 
 
 impl Expansion for ReduceSum13 {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Reduce13".into()
     }
 

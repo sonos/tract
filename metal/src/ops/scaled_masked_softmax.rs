@@ -12,7 +12,7 @@ pub struct MetalScaledMaskedSoftmax {
 }
 
 impl Op for MetalScaledMaskedSoftmax {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MetalScaledMaskedSoftmax".into()
     }
 

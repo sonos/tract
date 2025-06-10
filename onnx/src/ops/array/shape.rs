@@ -40,7 +40,7 @@ impl Shape {
 }
 
 impl Expansion for Shape {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Shape".into()
     }
 

@@ -18,7 +18,7 @@ impl<K: GemmKernel> MetalGemm<K> {
 }
 
 impl<K: GemmKernel + 'static> Op for MetalGemm<K> {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("Metal{}", self.kernel).into()
     }
 

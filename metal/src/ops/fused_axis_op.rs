@@ -13,7 +13,7 @@ pub struct MetalFusedAxisOp<O: TypedOp> {
 }
 
 impl<O: TypedOp + Clone> Op for MetalFusedAxisOp<O> {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         self.op.name()
     }
 

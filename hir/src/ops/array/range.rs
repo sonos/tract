@@ -6,7 +6,7 @@ use crate::internal::*;
 pub struct Range;
 
 impl Expansion for Range {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Range".into()
     }
 

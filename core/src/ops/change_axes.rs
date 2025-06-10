@@ -609,7 +609,7 @@ impl AxisChangeConsequence {
 }
 
 impl Op for AxisOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         match self {
             Add(_) => "AddAxis".into(),
             Rm(_) => "RmAxis".into(),
@@ -1029,7 +1029,7 @@ pub struct IntoShape {
 }
 
 impl Op for IntoShape {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "IntoShape".into()
     }
 

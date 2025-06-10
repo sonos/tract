@@ -64,7 +64,7 @@ pub struct If {
 }
 
 impl Op for If {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "If".into()
     }
 

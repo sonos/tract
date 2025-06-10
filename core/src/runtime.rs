@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use crate::internal::*;
 
 pub trait Runtime: Debug {
-    fn name(&self) -> Cow<str>;
+    fn name(&self) -> StaticName;
     fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>>;
 }
 
@@ -22,7 +22,7 @@ pub trait State {
 pub struct DefaultRuntime;
 
 impl Runtime for DefaultRuntime {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         Cow::Borrowed("default")
     }
 

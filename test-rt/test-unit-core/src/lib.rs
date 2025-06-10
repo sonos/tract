@@ -12,7 +12,7 @@ mod raw {
     pub struct RawRuntime;
 
     impl Runtime for RawRuntime {
-        fn name(&self) -> Cow<str> {
+        fn name(&self) -> StaticName {
             Cow::Borrowed("raw")
         }
         fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {
@@ -34,7 +34,7 @@ mod decluttered {
     pub struct DeclutteredRuntime;
 
     impl Runtime for DeclutteredRuntime {
-        fn name(&self) -> Cow<str> {
+        fn name(&self) -> StaticName {
             Cow::Borrowed("decluttered")
         }
         fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {

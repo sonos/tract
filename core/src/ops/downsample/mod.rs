@@ -36,7 +36,7 @@ impl Downsample {
 }
 
 impl Op for Downsample {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Downsample".into()
     }
 

@@ -23,7 +23,7 @@ impl TypedConcat {
 }
 
 impl Op for TypedConcat {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Concat".into()
     }
 

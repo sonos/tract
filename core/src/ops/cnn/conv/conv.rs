@@ -903,7 +903,7 @@ impl Conv {
 }
 
 impl Op for Conv {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Conv".into()
     }
 

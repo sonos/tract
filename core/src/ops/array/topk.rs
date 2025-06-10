@@ -13,7 +13,7 @@ pub struct Topk {
 }
 
 impl Op for Topk {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Topk".into()
     }
 

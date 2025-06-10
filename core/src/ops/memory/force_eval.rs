@@ -12,7 +12,7 @@ impl ForceEval {
 }
 
 impl Op for ForceEval {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "ForceEval".into()
     }
 

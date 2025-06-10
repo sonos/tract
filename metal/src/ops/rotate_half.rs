@@ -8,7 +8,7 @@ use tract_gpu::tensor::DeviceTensorExt;
 pub struct MetalRotateHalf;
 
 impl Op for MetalRotateHalf {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MetalRotateHalf".into()
     }
 

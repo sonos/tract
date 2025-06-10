@@ -30,7 +30,7 @@ pub struct DeconvSum {
 }
 
 impl Op for DeconvSum {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DeconvSum".into()
     }
 

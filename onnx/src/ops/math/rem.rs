@@ -19,7 +19,7 @@ pub fn rem(
 pub struct RemInt;
 
 impl Expansion for RemInt {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Remint".into()
     }
 

@@ -20,7 +20,7 @@ impl UnimplementedOp {
 }
 
 impl Op for UnimplementedOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("Unimplemented({})", self.name).into()
     }
 

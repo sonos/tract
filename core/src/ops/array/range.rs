@@ -12,7 +12,7 @@ pub struct Range {
 }
 
 impl Op for Range {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Range".into()
     }
 

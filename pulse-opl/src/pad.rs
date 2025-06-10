@@ -222,7 +222,7 @@ pub struct PulsePad {
 }
 
 impl Op for PulsePad {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "PulsePad".into()
     }
 

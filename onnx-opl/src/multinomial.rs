@@ -86,7 +86,7 @@ impl Multinomial {
 }
 
 impl Op for Multinomial {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Multinomial".into()
     }
 

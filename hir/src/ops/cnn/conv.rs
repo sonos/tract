@@ -104,7 +104,7 @@ impl Conv {
 }
 
 impl Expansion for Conv {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "ConvHir".into()
     }
 

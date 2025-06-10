@@ -11,7 +11,7 @@ pub struct QSumB {
 }
 
 impl Op for QSumB {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "QSumB".into()
     }
 

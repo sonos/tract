@@ -11,7 +11,7 @@ pub struct MetalMultiBroadcastTo {
 }
 
 impl Op for MetalMultiBroadcastTo {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MetalMultiBroadcastTo".into()
     }
 

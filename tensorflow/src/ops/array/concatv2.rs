@@ -13,7 +13,7 @@ pub struct ConcatV2;
 
 
 impl Expansion for ConcatV2 {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "ConcatV2".into()
     }
 

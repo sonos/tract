@@ -245,7 +245,7 @@ pub struct TreeEnsembleClassifier {
 }
 
 impl Expansion for TreeEnsembleClassifier {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "TreeEnsembleClassifier".into()
     }
 

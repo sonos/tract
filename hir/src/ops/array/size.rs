@@ -8,7 +8,7 @@ pub struct Size {
 
 
 impl Expansion for Size {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Size".into()
     }
 

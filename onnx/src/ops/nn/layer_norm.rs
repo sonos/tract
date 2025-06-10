@@ -34,7 +34,7 @@ pub struct LayerNorm {
 }
 
 impl Expansion for LayerNorm {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "LayerNorm".into()
     }
 

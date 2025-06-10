@@ -36,7 +36,7 @@ impl Lrn {
 }
 
 impl Op for Lrn {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Lrn".into()
     }
 

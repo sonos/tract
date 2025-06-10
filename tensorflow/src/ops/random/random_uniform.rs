@@ -31,7 +31,7 @@ pub struct RandomUniform {
 
 
 impl Op for RandomUniform {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "RandomUniform".into()
     }
 
@@ -115,7 +115,7 @@ pub struct TypedRandomUniform {
 
 
 impl Op for TypedRandomUniform {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "TypedRandomUniform".into()
     }
 
@@ -192,7 +192,7 @@ impl RandomUniformInt {
 }
 
 impl Op for RandomUniformInt {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "RandomUniformInt".into()
     }
 

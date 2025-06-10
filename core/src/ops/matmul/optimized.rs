@@ -306,7 +306,7 @@ pub struct OptMatMul {
 }
 
 impl Op for OptMatMul {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "OptMatMul".into()
     }
 

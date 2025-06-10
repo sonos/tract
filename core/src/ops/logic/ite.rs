@@ -9,7 +9,7 @@ pub struct IfThenElse {
 }
 
 impl Op for IfThenElse {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "IfThenElse".into()
     }
 

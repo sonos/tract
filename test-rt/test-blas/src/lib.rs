@@ -17,7 +17,7 @@ mod as_blas {
     pub struct AsBlasRuntime;
 
     impl Runtime for AsBlasRuntime {
-        fn name(&self) -> Cow<str> {
+        fn name(&self) -> StaticName {
             Cow::Borrowed("as_blas")
         }
         fn prepare(&self, mut model: TypedModel) -> TractResult<Box<dyn Runnable>> {

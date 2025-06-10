@@ -23,7 +23,7 @@ pub struct LoopGate(LoopGateRole);
 
 
 impl Op for LoopGate {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("{:?}", self.0).into()
     }
 
@@ -72,7 +72,7 @@ pub struct NextIteration {
 
 
 impl Op for NextIteration {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("{:?}({})", self.role, self.name).into()
     }
 

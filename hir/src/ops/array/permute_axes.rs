@@ -32,7 +32,7 @@ impl PermuteAxes {
 }
 
 impl Expansion for PermuteAxes {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "PermuteAxes".into()
     }
 

@@ -12,7 +12,7 @@ impl Load {
 }
 
 impl Op for Load {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Load".into()
     }
 

@@ -93,7 +93,7 @@ impl<T1: Datum + Float, T2: Datum + Float> std::fmt::Debug for FloatPrecisionTra
 }
 
 impl<T1: Datum + Float, T2: Datum + Float> ModelTransform for FloatPrecisionTranslator<T1, T2> {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("{:?}-to-{:?}", T1::datum_type(), T2::datum_type()).into()
     }
 

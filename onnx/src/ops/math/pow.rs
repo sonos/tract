@@ -15,7 +15,7 @@ pub struct Pow;
 
 
 impl Expansion for Pow {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Pow".into()
     }
 

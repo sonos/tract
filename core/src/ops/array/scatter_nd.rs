@@ -5,7 +5,7 @@ use ndarray::*;
 pub struct ScatterNd;
 
 impl Op for ScatterNd {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "ScatterNd".into()
     }
 

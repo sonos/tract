@@ -17,7 +17,7 @@ pub struct EinSum {
 }
 
 impl Expansion for EinSum {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "EinSum".into()
     }
 

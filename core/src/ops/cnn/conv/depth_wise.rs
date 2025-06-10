@@ -12,7 +12,7 @@ pub struct DepthWise {
 }
 
 impl Op for DepthWise {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DepthWiseConv".into()
     }
 

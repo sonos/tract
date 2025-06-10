@@ -26,7 +26,7 @@ impl_downcast!(sync Resource);
 
 pub trait ResourceLoader: Send + Sync {
     /// Name of the resource loader.
-    fn name(&self) -> Cow<str>;
+    fn name(&self) -> StaticName;
     /// Try to load a resource give a path and its corresponding reader.
     /// None is returned if the path is not accepted by this loader.
     fn try_load(
@@ -50,7 +50,7 @@ impl Resource for Document {}
 pub struct GraphNnefLoader;
 
 impl ResourceLoader for GraphNnefLoader {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "GraphNnefLoader".into()
     }
 
@@ -77,7 +77,7 @@ impl Resource for Tensor {}
 pub struct DatLoader;
 
 impl ResourceLoader for DatLoader {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DatLoader".into()
     }
 
@@ -103,7 +103,7 @@ impl Resource for HashMap<String, QuantFormat> {}
 pub struct GraphQuantLoader;
 
 impl ResourceLoader for GraphQuantLoader {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "GraphQuantLoader".into()
     }
 
@@ -137,7 +137,7 @@ impl TypedModelLoader {
 }
 
 impl ResourceLoader for TypedModelLoader {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "TypedModelLoader".into()
     }
 

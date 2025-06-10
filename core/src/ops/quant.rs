@@ -90,7 +90,7 @@ impl DequantizeLinearF32 {
 }
 
 impl Op for DequantizeLinearF32 {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DequantizeLinearF32".into()
     }
 

@@ -286,7 +286,7 @@ impl CommonRec {
 }
 
 impl Expansion for CommonRec {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         self.body.name().into()
     }
 

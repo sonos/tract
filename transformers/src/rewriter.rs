@@ -1,6 +1,4 @@
-use std::borrow::Cow;
-
-use tract_nnef::prelude::{Rewriter, TractResult, TypedModel};
+use tract_nnef::internal::*;
 use tract_nnef::tract_core::transform::ModelTransform;
 
 use crate::ops;
@@ -9,7 +7,7 @@ use crate::ops;
 pub struct RmsNormTransform;
 
 impl ModelTransform for RmsNormTransform {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "rms-norm-transform".into()
     }
 
@@ -22,7 +20,7 @@ impl ModelTransform for RmsNormTransform {
 pub struct ApplyRopeTransform;
 
 impl ModelTransform for ApplyRopeTransform {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "apply-rope-transform".into()
     }
 
@@ -38,7 +36,7 @@ impl ModelTransform for ApplyRopeTransform {
 pub struct SiluTransform;
 
 impl ModelTransform for SiluTransform {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "silu-transform".into()
     }
 
@@ -51,7 +49,7 @@ impl ModelTransform for SiluTransform {
 pub struct ScaledMaskedSoftmaxTransform;
 
 impl ModelTransform for ScaledMaskedSoftmaxTransform {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "scaled-masked-softmax-transform".into()
     }
 
@@ -66,7 +64,7 @@ impl ModelTransform for ScaledMaskedSoftmaxTransform {
 pub struct GeluTransform;
 
 impl ModelTransform for GeluTransform {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "gelu-fast-approx-transform".into()
     }
 
@@ -81,7 +79,7 @@ impl ModelTransform for GeluTransform {
 pub struct KeyValueCacheTransform;
 
 impl ModelTransform for KeyValueCacheTransform {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "dynamic-kv-cache-transform".into()
     }
 
@@ -100,7 +98,7 @@ impl ModelTransform for KeyValueCacheTransform {
 pub struct TransformersTransform;
 
 impl ModelTransform for TransformersTransform {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "transformers-transform".into()
     }
 

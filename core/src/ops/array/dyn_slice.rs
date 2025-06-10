@@ -13,7 +13,7 @@ impl DynSlice {
 }
 
 impl Op for DynSlice {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DynSlice".into()
     }
 

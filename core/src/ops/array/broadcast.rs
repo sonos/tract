@@ -6,7 +6,7 @@ pub struct MultiBroadcastTo {
 }
 
 impl Op for MultiBroadcastTo {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MultiBroadcastTo".into()
     }
 

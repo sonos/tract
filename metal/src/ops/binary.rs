@@ -25,7 +25,7 @@ impl MetalBinOp {
 }
 
 impl Op for MetalBinOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("Metal{}", self.0.name()).into()
     }
 

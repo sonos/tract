@@ -9,7 +9,7 @@ use crate::transform::ModelTransform;
 pub struct BlockQuantTransform;
 
 impl ModelTransform for BlockQuantTransform {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "BlockQuantTransform".into()
     }
 

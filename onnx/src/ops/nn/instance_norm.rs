@@ -16,7 +16,7 @@ pub struct InstanceNorm {
 }
 
 impl Expansion for InstanceNorm {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "InstanceNorm".into()
     }
 

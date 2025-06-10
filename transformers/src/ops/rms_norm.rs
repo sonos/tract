@@ -49,7 +49,7 @@ pub struct RmsNorm {
 }
 
 impl Op for RmsNorm {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "RmsNorm".to_string().into()
     }
     fn info(&self) -> TractResult<Vec<String>> {

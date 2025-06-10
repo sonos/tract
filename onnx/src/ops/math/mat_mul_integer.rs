@@ -18,7 +18,7 @@ struct MatMulInteger {
 }
 
 impl Expansion for MatMulInteger {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MatMulInteger".into()
     }
 
@@ -87,7 +87,7 @@ pub fn q_linear_mat_mul(
 struct QLinearMatMul;
 
 impl Expansion for QLinearMatMul {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "QLinearMatMul".into()
     }
 

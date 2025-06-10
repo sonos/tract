@@ -12,7 +12,7 @@ pub struct MetalRmsNorm {
 }
 
 impl Op for MetalRmsNorm {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MetalRmsNorm".into()
     }
     fn info(&self) -> TractResult<Vec<String>> {

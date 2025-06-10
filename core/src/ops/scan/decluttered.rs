@@ -661,7 +661,7 @@ impl Scan {
 }
 
 impl Op for Scan {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Scan".into()
     }
 

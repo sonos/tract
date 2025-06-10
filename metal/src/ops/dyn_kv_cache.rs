@@ -130,7 +130,7 @@ impl MetalDynKVCache {
 }
 
 impl Op for MetalDynKVCache {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MetalDynKVCache".into()
     }
 

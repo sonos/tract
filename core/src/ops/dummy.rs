@@ -4,7 +4,7 @@ use crate::internal::*;
 pub struct Dummy;
 
 impl Op for Dummy {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Dummy".into()
     }
 
