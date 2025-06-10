@@ -29,7 +29,7 @@ impl Scaler {
         Self { scale, mult, shift, policy }
     }
 
-    pub fn as_fused_spec(&self) -> FusedSpec {
+    pub fn as_fused_spec(&self) -> FusedSpec<'_> {
         if let Some(multiplier) = self.mult {
             FusedSpec::QScale(self.shift, self.policy, multiplier)
         } else if self.shift > 0 {

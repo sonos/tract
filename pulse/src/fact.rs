@@ -104,7 +104,7 @@ impl fmt::Debug for PulsedFact {
 }
 
 impl Fact for PulsedFact {
-    fn to_typed_fact(&self) -> TractResult<Cow<TypedFact>> {
+    fn to_typed_fact(&self) -> TractResult<Cow<'_, TypedFact>> {
         Ok(Cow::Owned(self.into()))
     }
 

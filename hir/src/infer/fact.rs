@@ -121,7 +121,7 @@ impl fmt::Debug for InferenceFact {
 use crate::infer::factoid::Factoid;
 
 impl Fact for InferenceFact {
-    fn to_typed_fact(&self) -> TractResult<Cow<TypedFact>> {
+    fn to_typed_fact(&self) -> TractResult<Cow<'_, TypedFact>> {
         Ok(Cow::Owned(TypedFact::try_from(self)?))
     }
 

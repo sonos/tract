@@ -14,7 +14,7 @@ pub use self::conv::Conv;
 pub use self::im2col::Im2Col;
 pub(crate) use self::q_sum_b::QSumB;
 
-fn block_quant_aware_weight_shape(weights: &TypedFact) -> TractResult<Cow<ShapeFact>> {
+fn block_quant_aware_weight_shape(weights: &TypedFact) -> TractResult<Cow<'_, ShapeFact>> {
     if weights.datum_type.is_number() {
         Ok(Cow::Borrowed(&weights.shape))
     } else if let Some(bqf) =

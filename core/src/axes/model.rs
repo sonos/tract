@@ -35,7 +35,7 @@ impl<T> OutletMap<T> {
         None
     }
 
-    pub fn keys(&self) -> OutletMapKeysIter<T> {
+    pub fn keys(&self) -> OutletMapKeysIter<'_, T> {
         OutletMapKeysIter(self, (0, 0).into())
     }
 }

@@ -376,11 +376,11 @@ impl ResolvedInvocation<'_> {
         }
     }
 
-    pub fn named_arg(&self, name: &str) -> TractResult<Cow<RValue>> {
+    pub fn named_arg(&self, name: &str) -> TractResult<Cow<'_, RValue>> {
         self.get_named_arg(name).ok_or_else(|| format_err!("expected argument {}", name))
     }
 
-    pub fn get_named_arg(&self, name: &str) -> Option<Cow<RValue>> {
+    pub fn get_named_arg(&self, name: &str) -> Option<Cow<'_, RValue>> {
         // first look explicit name in invocation arguments
         if let Some(arg) = self
             .invocation

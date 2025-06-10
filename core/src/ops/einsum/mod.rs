@@ -20,7 +20,7 @@ use num_traits::One;
 use tract_linalg::block_quant::{BlockQuantFact, PackedBlockQuantFact};
 use tract_linalg::mmm::PackedOpaqueFact;
 
-pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<[TDim]>> {
+pub fn block_quant_aware_input_shape(fact: &TypedFact) -> TractResult<Cow<'_, [TDim]>> {
     if !fact.datum_type.is_opaque() {
         return Ok(Cow::Borrowed(&*fact.shape));
     }

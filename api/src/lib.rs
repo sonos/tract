@@ -1,4 +1,4 @@
-use anyhow::{Result, ensure};
+use anyhow::{ensure, Result};
 use boow::Bow;
 use std::fmt::{Debug, Display};
 use std::path::Path;
@@ -258,7 +258,7 @@ pub trait ValueInterface: Sized + Clone {
         Ok((shape, data))
     }
 
-    fn view<T: Datum>(&self) -> Result<ndarray::ArrayViewD<T>> {
+    fn view<T: Datum>(&self) -> Result<ndarray::ArrayViewD<'_, T>> {
         let (shape, data) = self.as_slice()?;
         Ok(unsafe { ndarray::ArrayViewD::from_shape_ptr(shape, data.as_ptr()) })
     }

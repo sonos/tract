@@ -35,7 +35,7 @@ impl PoolSpec {
         self.dilations.as_ref().map(|d| d[geo_axis]).unwrap_or(1)
     }
 
-    pub fn dilations(&self) -> Cow<[usize]> {
+    pub fn dilations(&self) -> Cow<'_, [usize]> {
         self.dilations
             .as_deref()
             .map_or_else(|| vec![1; self.kernel_shape.len()].into(), |d| d.into())
@@ -45,7 +45,7 @@ impl PoolSpec {
         self.strides.as_ref().map(|s| s[geo_axis]).unwrap_or(1)
     }
 
-    pub fn strides(&self) -> Cow<[usize]> {
+    pub fn strides(&self) -> Cow<'_, [usize]> {
         self.strides
             .as_deref()
             .map_or_else(|| vec![1; self.kernel_shape.len()].into(), |d| d.into())

@@ -45,7 +45,7 @@ enum Location {
 }
 
 impl Location {
-    fn path(&self) -> Cow<std::path::Path> {
+    fn path(&self) -> Cow<'_, std::path::Path> {
         match self {
             Location::Fs(p) => p.into(),
             Location::Http(u) => std::path::Path::new(u.path()).into(),
@@ -53,7 +53,11 @@ impl Location {
     }
 
     fn is_dir(&self) -> bool {
-        if let &Location::Fs(p) = &self { p.is_dir() } else { false }
+        if let &Location::Fs(p) = &self {
+            p.is_dir()
+        } else {
+            false
+        }
     }
 
     fn read(&self) -> TractResult<Box<dyn Read>> {

@@ -34,7 +34,7 @@ impl TfliteProtoModel {
         Ok(TfliteProtoModel(buf))
     }
 
-    pub fn root(&self) -> tflite::Model {
+    pub fn root(&self) -> tflite::Model<'_> {
         unsafe { tflite::root_as_model_unchecked(&self.0) }
     }
 }
