@@ -149,7 +149,7 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> MatMatMulKer for DynKernel<
         &self.packings
     }
 
-    fn stores(&self) -> Cow<[DatumType]> {
+    fn stores(&self) -> Cow<'_, [DatumType]> {
         Cow::Borrowed(&self.stores)
     }
 

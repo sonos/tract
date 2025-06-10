@@ -902,19 +902,19 @@ impl Tensor {
     }
 
     /// Transform the data as a `ndarray::Array`.
-    pub fn to_array_view<D: Datum>(&self) -> TractResult<ArrayViewD<D>> {
+    pub fn to_array_view<D: Datum>(&self) -> TractResult<ArrayViewD<'_, D>> {
         self.check_for_access::<D>()?;
         unsafe { Ok(self.to_array_view_unchecked()) }
     }
 
     /// Transform the data as a mutable `ndarray::Array`.
-    pub fn to_array_view_mut<D: Datum>(&mut self) -> TractResult<ArrayViewMutD<D>> {
+    pub fn to_array_view_mut<D: Datum>(&mut self) -> TractResult<ArrayViewMutD<'_, D>> {
         self.check_for_access::<D>()?;
         unsafe { Ok(self.to_array_view_mut_unchecked()) }
     }
 
     /// Transform the data as a `ndarray::Array`.
-    pub unsafe fn to_array_view_unchecked<D: Datum>(&self) -> ArrayViewD<D> {
+    pub unsafe fn to_array_view_unchecked<D: Datum>(&self) -> ArrayViewD<'_, D> {
         if self.len() != 0 {
             unsafe { ArrayViewD::from_shape_ptr(&*self.shape, self.data.as_ptr() as *const D) }
         } else {
@@ -923,7 +923,7 @@ impl Tensor {
     }
 
     /// Transform the data as a mutable `ndarray::Array`.
-    pub unsafe fn to_array_view_mut_unchecked<D: Datum>(&mut self) -> ArrayViewMutD<D> {
+    pub unsafe fn to_array_view_mut_unchecked<D: Datum>(&mut self) -> ArrayViewMutD<'_, D> {
         if self.len() != 0 {
             unsafe { ArrayViewMutD::from_shape_ptr(&*self.shape, self.data.as_mut_ptr() as *mut D) }
         } else {
@@ -1132,13 +1132,13 @@ impl Tensor {
     }
 
     /// Optionnaly convert data to a tensor for a new DatumType.
-    pub fn cast_to<D: Datum>(&self) -> TractResult<Cow<Tensor>> {
+    pub fn cast_to<D: Datum>(&self) -> TractResult<Cow<'_, Tensor>> {
         self.cast_to_dt(D::datum_type())
     }
 
     /// Optionnaly convert data to a tensor for a new DatumType.
     #[allow(clippy::redundant_closure_call)]
-    pub fn cast_to_dt(&self, dst_dt: DatumType) -> TractResult<Cow<Tensor>> {
+    pub fn cast_to_dt(&self, dst_dt: DatumType) -> TractResult<Cow<'_, Tensor>> {
         unsafe {
             if self.dt == dst_dt {
                 return Ok(Cow::Borrowed(self));
@@ -1492,37 +1492,37 @@ impl Tensor {
     }
 
     #[inline]
-    pub fn view(&self) -> view::TensorView {
+    pub fn view(&self) -> view::TensorView<'_> {
         unsafe { view::TensorView::view(self) }
     }
 
     #[inline]
-    pub fn view_at_prefix(&self, prefix: &[usize]) -> TractResult<view::TensorView> {
+    pub fn view_at_prefix(&self, prefix: &[usize]) -> TractResult<view::TensorView<'_>> {
         view::TensorView::at_prefix(self, prefix)
     }
 
     #[inline]
-    pub fn view_offsetting(&self, coords: &[usize]) -> TractResult<view::TensorView> {
+    pub fn view_offsetting(&self, coords: &[usize]) -> TractResult<view::TensorView<'_>> {
         view::TensorView::offsetting(self, coords)
     }
 
     #[inline]
-    pub unsafe fn view_offsetting_unchecked(&self, coords: &[usize]) -> view::TensorView {
+    pub unsafe fn view_offsetting_unchecked(&self, coords: &[usize]) -> view::TensorView<'_> {
         unsafe { view::TensorView::offsetting_unchecked(self, coords) }
     }
 
     #[inline]
-    pub fn view_mut(&mut self) -> view::TensorView {
+    pub fn view_mut(&mut self) -> view::TensorView<'_> {
         unsafe { view::TensorView::view(self) }
     }
 
     #[inline]
-    pub fn view_at_prefix_mut(&mut self, prefix: &[usize]) -> TractResult<view::TensorView> {
+    pub fn view_at_prefix_mut(&mut self, prefix: &[usize]) -> TractResult<view::TensorView<'_>> {
         view::TensorView::at_prefix(self, prefix)
     }
 
     #[inline]
-    pub fn view_offsetting_mut(&mut self, coords: &[usize]) -> TractResult<view::TensorView> {
+    pub fn view_offsetting_mut(&mut self, coords: &[usize]) -> TractResult<view::TensorView<'_>> {
         view::TensorView::offsetting(self, coords)
     }
 

@@ -319,9 +319,7 @@ fn get_or_make_tensors(
         }
         if TypedFact::shape_and_dt_of(&value[0]).compatible_with(&fact) {
             info!("Using fixed input for input called {} ({} turn(s))", name, value.len());
-            target.push(
-                value.iter().map(|t| t.clone().into_tensor().into()).collect(),
-            );
+            target.push(value.iter().map(|t| t.clone().into_tensor().into()).collect());
         } else if fact.datum_type == f16::datum_type()
             && value[0].datum_type() == f32::datum_type()
             && params.allow_float_casts
@@ -397,10 +395,7 @@ fn get_or_make_tensors(
     Ok(())
 }
 
-pub fn get_or_make_inputs(
-    tract: &dyn Model,
-    params: &RunParams,
-) -> TractResult<RunTensors> {
+pub fn get_or_make_inputs(tract: &dyn Model, params: &RunParams) -> TractResult<RunTensors> {
     // Resolve source inputs
     let mut tmp_inputs = tvec![];
     for (ix, input) in tract.input_outlets().iter().enumerate() {
@@ -418,21 +413,28 @@ pub fn get_or_make_inputs(
     let mut dummy_session_state = SessionState::default();
     let state_initializers = (0..tract.nodes_len())
         .filter_map(|id| {
-            tract.node_op(id).state(&mut dummy_session_state, id).ok().flatten().and_then(|state| {
-               state.init_tensor_fact()
-            })
-            .map(|fact| {
-                let mut tmp = tvec![];
-                get_or_make_tensors(tract, params, fact, &tract.node_name(id), usize::MAX, &mut tmp)?;
-                Ok(tmp.remove(0).remove(0))
-            })
+            tract
+                .node_op(id)
+                .state(&mut dummy_session_state, id)
+                .ok()
+                .flatten()
+                .and_then(|state| state.init_tensor_fact())
+                .map(|fact| {
+                    let mut tmp = tvec![];
+                    get_or_make_tensors(
+                        tract,
+                        params,
+                        fact,
+                        tract.node_name(id),
+                        usize::MAX,
+                        &mut tmp,
+                    )?;
+                    Ok(tmp.remove(0).remove(0))
+                })
         })
         .collect::<TractResult<Vec<_>>>()?;
 
-    Ok(RunTensors {
-        sources,
-        state_initializers,
-    })
+    Ok(RunTensors { sources, state_initializers })
 }
 
 fn make_inputs(values: &[impl std::borrow::Borrow<TypedFact>]) -> TractResult<TVec<TValue>> {

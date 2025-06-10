@@ -8,7 +8,7 @@ pub struct DocDumper<'a> {
 }
 
 impl DocDumper<'_> {
-    pub fn new(w: &mut dyn std::io::Write) -> DocDumper {
+    pub fn new(w: &mut dyn std::io::Write) -> DocDumper<'_> {
         DocDumper { w }
     }
 

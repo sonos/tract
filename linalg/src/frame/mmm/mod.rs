@@ -93,7 +93,7 @@ pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
 
     fn can_fuse(&self, spec: &FusedSpec) -> bool;
 
-    fn stores(&self) -> Cow<[DatumType]>;
+    fn stores(&self) -> Cow<'_, [DatumType]>;
 
     unsafe fn run(&self, m: usize, n: usize, non_linear: &[FusedSpec]) -> TractResult<()> {
         unsafe {
@@ -176,7 +176,7 @@ impl<K: MatMatMulKer> MatMatMul for K {
         }
     }
 
-    fn stores(&self) -> Cow<[DatumType]> {
+    fn stores(&self) -> Cow<'_, [DatumType]> {
         self.stores()
     }
 

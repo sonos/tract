@@ -15,7 +15,8 @@ mod tensors;
     clippy::missing_safety_doc,
     clippy::derivable_impls,
     clippy::needless_lifetimes,
-    clippy::too_long_first_doc_paragraph
+    clippy::too_long_first_doc_paragraph,
+    mismatched_lifetime_syntaxes
 )]
 mod tflite_generated;
 pub use tflite_generated::tflite;
@@ -28,8 +29,8 @@ pub mod prelude {
 
 pub mod internal {
     pub use crate::model::TfliteProtoModel;
-    pub use tract_core::internal::*;
     pub use tract_core;
+    pub use tract_core::internal::*;
 }
 
 pub fn tflite() -> Tflite {

@@ -89,7 +89,7 @@ impl Optimizer {
         self.session().optimize(model)
     }
 
-    pub fn session(&self) -> OptimizerSession {
+    pub fn session(&self) -> OptimizerSession<'_> {
         OptimizerSession { optimizer: self, counter: 0, seen: Default::default() }
     }
 }

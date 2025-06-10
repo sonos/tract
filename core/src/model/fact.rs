@@ -47,7 +47,7 @@ impl ShapeFact {
     }
 
     #[inline]
-    pub fn eval(&self, values: &SymbolValues) -> TractResult<Cow<ShapeFact>> {
+    pub fn eval(&self, values: &SymbolValues) -> TractResult<Cow<'_, ShapeFact>> {
         if self.is_concrete() {
             Ok(Cow::Borrowed(self))
         } else {
@@ -56,7 +56,7 @@ impl ShapeFact {
     }
 
     #[inline]
-    pub fn eval_to_usize(&self, values: &SymbolValues) -> TractResult<Cow<TVec<usize>>> {
+    pub fn eval_to_usize(&self, values: &SymbolValues) -> TractResult<Cow<'_, TVec<usize>>> {
         if let Some(c) = &self.concrete {
             Ok(Cow::Borrowed(c))
         } else {
@@ -69,7 +69,7 @@ impl ShapeFact {
     }
 
     #[inline]
-    pub fn eval_to_isize(&self, values: &SymbolValues) -> TractResult<Cow<TVec<isize>>> {
+    pub fn eval_to_isize(&self, values: &SymbolValues) -> TractResult<Cow<'_, TVec<isize>>> {
         if let Some(c) = &self.concrete {
             #[allow(unknown_lints, clippy::missing_transmute_annotations)]
             // TVec<usize> -> TVec<isize>
@@ -329,7 +329,7 @@ impl TypedFact {
 }
 
 impl Fact for TypedFact {
-    fn to_typed_fact(&self) -> TractResult<Cow<TypedFact>> {
+    fn to_typed_fact(&self) -> TractResult<Cow<'_, TypedFact>> {
         if cfg!(debug_assertions) {
             self.consistent()?
         }

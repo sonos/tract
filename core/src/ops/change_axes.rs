@@ -84,7 +84,7 @@ impl PartialEq for AxisOp {
 }
 
 impl AxisOp {
-    pub fn canonical(&self) -> Cow<AxisOp> {
+    pub fn canonical(&self) -> Cow<'_, AxisOp> {
         match self {
             Move(from, to) if *from == to + 1 => Cow::Owned(Move(*to, *from)),
             Reshape(at, from, to) if from.len() == 1 && to.len() == 2 && from[0] == to[0] => {
@@ -776,9 +776,7 @@ impl TypedOp for AxisOp {
             } else {
                 return Ok(None);
             };
-            trace!(
-                "  Change:{change:?} self:{self:?} -> change:{new_change:?} op:{new_op:?}"
-            );
+            trace!("  Change:{change:?} self:{self:?} -> change:{new_change:?} op:{new_op:?}");
             let substitute_op: Box<dyn TypedOp> =
                 if let Some(o) = new_op { Box::new(o) as _ } else { Box::new(Identity) };
             let mut wire_changes = tvec!();

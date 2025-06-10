@@ -27,7 +27,7 @@ impl<S: ResolveTo<C>, C: Clone> GeometryBound<S, C> {
         }
     }
 
-    pub fn to_concrete(&self, param: &S::Param) -> TractResult<Cow<C>> {
+    pub fn to_concrete(&self, param: &S::Param) -> TractResult<Cow<'_, C>> {
         match self {
             Self::Symbolic(sym) => Ok(Cow::Owned(sym.resolve(param)?)),
             Self::Concrete(conc) => Ok(Cow::Borrowed(conc)),
