@@ -90,7 +90,7 @@ pub struct LazyIm2Col {
 }
 
 impl Op for LazyIm2Col {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "LazyIm2col".into()
     }
 

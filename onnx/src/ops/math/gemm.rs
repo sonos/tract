@@ -24,7 +24,7 @@ pub struct Gemm {
 }
 
 impl Expansion for Gemm {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Gemm".into()
     }
 

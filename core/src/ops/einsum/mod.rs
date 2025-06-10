@@ -148,7 +148,7 @@ impl Debug for EinSum {
 }
 
 impl Op for EinSum {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "EinSum".into()
     }
 

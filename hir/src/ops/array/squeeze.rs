@@ -33,7 +33,7 @@ impl Squeeze {
 }
 
 impl Expansion for Squeeze {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Squeeze".into()
     }
 

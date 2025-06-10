@@ -22,7 +22,7 @@ struct Unsqueeze13;
 
 
 impl Expansion for Unsqueeze13 {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Unsqueeze13".into()
     }
 

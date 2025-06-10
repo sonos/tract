@@ -10,7 +10,7 @@ pub struct MaxPool {
 }
 
 impl Op for MaxPool {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MaxPool".into()
     }
 
@@ -91,7 +91,7 @@ pub struct OptMaxPool {
 }
 
 impl Op for OptMaxPool {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "OptMaxPool".into()
     }
 

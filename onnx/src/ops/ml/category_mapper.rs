@@ -17,7 +17,7 @@ struct CategoryMapper {
 
 
 impl Expansion for CategoryMapper {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "CategoryMapper".into()
     }
 

@@ -34,7 +34,7 @@ pub struct Slice1 {
 
 
 impl Expansion for Slice1 {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Slice1".into()
     }
 

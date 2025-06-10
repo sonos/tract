@@ -11,7 +11,7 @@ pub struct Crop {
 
 
 impl Expansion for Crop {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Crop".into()
     }
 

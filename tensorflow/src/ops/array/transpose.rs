@@ -28,7 +28,7 @@ impl Transpose {
 }
 
 impl Expansion for Transpose {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Transpose".into()
     }
 

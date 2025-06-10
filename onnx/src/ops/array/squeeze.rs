@@ -19,7 +19,7 @@ pub fn squeeze(
 struct Squeeze13;
 
 impl Expansion for Squeeze13 {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Squeeze13".into()
     }
 

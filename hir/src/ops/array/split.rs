@@ -25,7 +25,7 @@ impl Split {
 }
 
 impl Expansion for Split {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Split".into()
     }
 

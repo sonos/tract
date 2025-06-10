@@ -29,7 +29,7 @@ impl OptScan {
 }
 
 impl Op for OptScan {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Scan".into()
     }
 
@@ -291,7 +291,7 @@ impl TypedOp for OptScan {
         Ok(outputs)
     }
 
-    fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(Cow<str>, TDim)> {
+    fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(StaticName, TDim)> {
         vec![(
             "loop".into(),
             super::iteration_count(&self.input_mapping, inputs).unwrap_or_else(|| 1.to_dim()),

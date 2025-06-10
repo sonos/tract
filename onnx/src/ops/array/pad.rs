@@ -60,7 +60,7 @@ pub struct Pad11 {
 
 
 impl Expansion for Pad11 {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Pad".into()
     }
 

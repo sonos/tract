@@ -112,7 +112,7 @@ pub struct PulseMask {
 }
 
 impl Op for PulseMask {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "PulseMask".into()
     }
 

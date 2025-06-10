@@ -7,7 +7,7 @@ pub struct ScatterElements {
 }
 
 impl Op for ScatterElements {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "ScatterElements".into()
     }
 

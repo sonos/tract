@@ -57,7 +57,7 @@ pub struct MetalTransform {
 }
 
 impl ModelTransform for MetalTransform {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "metal-transform".into()
     }
 

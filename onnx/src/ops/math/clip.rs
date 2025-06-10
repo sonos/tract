@@ -41,7 +41,7 @@ pub struct Clip11 {
 
 
 impl Expansion for Clip11 {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Clip".into()
     }
 

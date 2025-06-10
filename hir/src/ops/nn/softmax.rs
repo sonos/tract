@@ -6,7 +6,7 @@ pub struct Softmax {
 }
 
 impl Expansion for Softmax {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Softmax".into()
     }
     fn info(&self) -> TractResult<Vec<String>> {

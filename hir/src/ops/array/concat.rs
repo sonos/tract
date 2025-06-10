@@ -25,7 +25,7 @@ impl Concat {
 }
 
 impl Expansion for Concat {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "InferenceConcat".into()
     }
 

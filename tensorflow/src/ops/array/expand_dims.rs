@@ -13,7 +13,7 @@ pub struct ExpandDims;
 
 
 impl Expansion for ExpandDims {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "ExpandDims".into()
     }
 

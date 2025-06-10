@@ -150,7 +150,7 @@ pub trait EvalOp {
 
 /// A base operation
 pub trait Op: fmt::Debug + dyn_clone::DynClone + Send + Sync + 'static + Downcast + EvalOp {
-    fn name(&self) -> Cow<str>;
+    fn name(&self) -> StaticName;
 
     /// The kind of accuracy check that should be performed on operation when
     /// testing them.
@@ -303,7 +303,7 @@ pub trait TypedOp:
 
     /// Nested model multipliers, with label (for profiling).
     #[allow(unused_variables)]
-    fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(Cow<str>, TDim)> {
+    fn nested_model_multipliers(&self, inputs: &[&TypedFact]) -> Vec<(StaticName, TDim)> {
         vec![]
     }
 }

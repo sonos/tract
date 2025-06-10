@@ -47,7 +47,7 @@ impl Fft {
 }
 
 impl Op for Fft {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Fft".into()
     }
 
@@ -171,7 +171,7 @@ impl Stft {
 }
 
 impl Op for Stft {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "STFT".into()
     }
 

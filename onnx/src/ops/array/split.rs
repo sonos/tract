@@ -24,7 +24,7 @@ struct Split13 {
 }
 
 impl Expansion for Split13 {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Split13".into()
     }
 

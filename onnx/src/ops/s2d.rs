@@ -55,7 +55,7 @@ impl SpaceToDepth {
 
 
 impl Expansion for SpaceToDepth {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "SpaceToDepth".into()
     }
 

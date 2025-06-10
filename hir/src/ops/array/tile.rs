@@ -4,7 +4,7 @@ use crate::internal::*;
 pub struct Tile;
 
 impl Expansion for Tile {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Tile".into()
     }
 

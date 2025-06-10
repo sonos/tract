@@ -188,7 +188,7 @@ impl PrefixMatMul {
 }
 
 impl Op for PrefixMatMul {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "PrefixMatMul".into()
     }
 

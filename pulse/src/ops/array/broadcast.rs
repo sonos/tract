@@ -36,7 +36,7 @@ struct PulsedMultibroadcastTo {
 }
 
 impl Op for PulsedMultibroadcastTo {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "PulsedMultibroadcastTo".into()
     }
 

@@ -13,7 +13,7 @@ pub struct HirSumPool {
 }
 
 impl Expansion for HirSumPool {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "SumPool".into()
     }
 
@@ -63,7 +63,7 @@ pub struct HirMaxPool {
 }
 
 impl Expansion for HirMaxPool {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MaxPool".into()
     }
 

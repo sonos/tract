@@ -88,7 +88,7 @@ pub struct Random {
 }
 
 impl Op for Random {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Random".into()
     }
 

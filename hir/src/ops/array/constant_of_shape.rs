@@ -9,7 +9,7 @@ pub struct ConstantOfShape {
 
 
 impl Expansion for ConstantOfShape {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "ConstantOfShape".into()
     }
 

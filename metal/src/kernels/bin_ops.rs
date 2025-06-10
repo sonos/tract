@@ -51,7 +51,7 @@ impl BinOps {
         Self::Or,
     ];
 
-    pub fn name(&self) -> Cow<str> {
+    pub fn name(&self) -> StaticName {
         format!("{}", self).into()
     }
 

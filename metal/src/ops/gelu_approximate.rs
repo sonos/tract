@@ -9,7 +9,7 @@ pub struct MetalGeluApproximate {
 }
 
 impl Op for MetalGeluApproximate {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MetalGeluApproximate".into()
     }
 

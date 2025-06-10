@@ -24,7 +24,7 @@ pub struct CumSum {
 }
 
 impl Expansion for CumSum {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "CumSum".into()
     }
 

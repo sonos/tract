@@ -27,7 +27,7 @@ impl AddDims {
 }
 
 impl Expansion for AddDims {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "AddDims".into()
     }
 

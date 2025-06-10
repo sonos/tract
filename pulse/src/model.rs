@@ -215,7 +215,7 @@ impl
 pub(crate) struct PulseWrappingOp(pub Box<dyn TypedOp>);
 
 impl Op for PulseWrappingOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("PulseWrapping({}", self.0.name()).into()
     }
 
@@ -291,7 +291,7 @@ impl PulsedOp for PulseWrappingOp {
 pub(crate) struct NonPulsingWrappingOp(pub Box<dyn TypedOp>);
 
 impl Op for NonPulsingWrappingOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("NonePulsingWrapping({}", self.0.name()).into()
     }
 

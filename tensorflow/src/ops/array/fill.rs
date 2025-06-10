@@ -29,7 +29,7 @@ impl Fill {
 }
 
 impl Op for Fill {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Fill".into()
     }
 

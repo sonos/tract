@@ -31,7 +31,7 @@ impl MetalReduce {
 }
 
 impl Op for MetalReduce {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("MetalReduce<{:?}>", self.reducer).into()
     }
     fn info(&self) -> TractResult<Vec<String>> {

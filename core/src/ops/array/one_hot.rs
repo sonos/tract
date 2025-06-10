@@ -11,7 +11,7 @@ pub struct OneHot {
 }
 
 impl Op for OneHot {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Onehot".into()
     }
 

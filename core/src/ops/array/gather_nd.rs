@@ -76,7 +76,7 @@ impl GatherNd {
 }
 
 impl Op for GatherNd {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "GatherNd".into()
     }
 

@@ -130,7 +130,7 @@ impl Im2Col {
 }
 
 impl Op for Im2Col {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Im2col".into()
     }
 

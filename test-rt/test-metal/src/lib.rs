@@ -90,7 +90,7 @@ struct MetalTestRuntime {
 }
 
 impl Runtime for MetalTestRuntime {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         self.name.into()
     }
 

@@ -31,7 +31,7 @@ pub struct Cast {
 }
 
 impl Op for Cast {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Cast".into()
     }
 

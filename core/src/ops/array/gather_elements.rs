@@ -7,7 +7,7 @@ pub struct GatherElements {
 }
 
 impl Op for GatherElements {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "GatherElements".into()
     }
 

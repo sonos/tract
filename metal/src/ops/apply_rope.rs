@@ -8,7 +8,7 @@ use tract_gpu::tensor::DeviceTensorExt;
 pub struct MetalApplyRope;
 
 impl Op for MetalApplyRope {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MetalApplyRope".into()
     }
 

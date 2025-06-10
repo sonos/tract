@@ -42,7 +42,7 @@ pub struct QuantizeLinear {
 
 
 impl Expansion for QuantizeLinear {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "QuantizeLinear".into()
     }
 
@@ -107,7 +107,7 @@ pub struct DequantizeLinear {
 
 
 impl Expansion for DequantizeLinear {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DequantizeLinear".into()
     }
 
@@ -169,7 +169,7 @@ pub struct DynamicQuantizeLinear {}
 
 
 impl Expansion for DynamicQuantizeLinear {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DynamicQuantizeLinear".into()
     }
 
@@ -252,7 +252,7 @@ fn scale_and_zero_point(v: ArrayViewD<f32>) -> (f32, u8) {
 pub struct DynamicQuantizeLinearU8;
 
 impl Op for DynamicQuantizeLinearU8 {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DynamicQuantizeLinearU8".into()
     }
 

@@ -8,7 +8,7 @@ pub struct BlockQuantIntoShape {
 }
 
 impl Op for BlockQuantIntoShape {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "BlockQuantIntoShape".into()
     }
     op_as_typed_op!();
@@ -63,7 +63,7 @@ pub struct SplitGroupBlockQuant {
 }
 
 impl Op for SplitGroupBlockQuant {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "SplitGroupBlockQuant".into()
     }
 

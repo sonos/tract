@@ -31,7 +31,7 @@ impl MetalConcat {
 }
 
 impl Op for MetalConcat {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MetalConcat".into()
     }
 

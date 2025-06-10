@@ -99,7 +99,7 @@ pub struct ExpUnitNormState {
 trivial_op_state_freeeze!(ExpUnitNormState);
 
 impl Op for ExpUnitNorm {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "ExpUnitNorm".into()
     }
 

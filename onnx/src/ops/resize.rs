@@ -169,7 +169,7 @@ struct Resize {
 }
 
 impl Op for Resize {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Resize".into()
     }
 

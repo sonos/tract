@@ -47,7 +47,7 @@ struct Random {
 }
 
 impl Expansion for Random {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Random".into()
     }
 
@@ -99,7 +99,7 @@ struct RandomLike {
 }
 
 impl Expansion for RandomLike {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "RandomLike".into()
     }
 

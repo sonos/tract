@@ -19,7 +19,7 @@ struct OneHot {
 
 
 impl Expansion for OneHot {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "OneHot".into()
     }
 

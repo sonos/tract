@@ -16,7 +16,7 @@ pub struct OptMatMulPack {
 }
 
 impl Op for OptMatMulPack {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "OptMatMulPack".into()
     }
 
@@ -153,7 +153,7 @@ pub struct OptSimpleMatMulPack {
 }
 
 impl Op for OptSimpleMatMulPack {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "OptSimpleMatMulPack".into()
     }
     op_as_typed_op!();

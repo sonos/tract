@@ -7,7 +7,7 @@ use crate::internal::*;
 pub struct ElementWiseOp(pub Box<dyn ElementWiseMiniOp>);
 
 impl Expansion for ElementWiseOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         self.0.name().into()
     }
 

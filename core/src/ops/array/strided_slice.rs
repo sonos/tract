@@ -259,7 +259,7 @@ impl StridedSlice {
 }
 
 impl Op for StridedSlice {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "StridedSlice".into()
     }
 

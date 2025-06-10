@@ -7,7 +7,7 @@ pub struct FiniteReshape {
 }
 
 impl Op for FiniteReshape {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Reshape".into()
     }
 

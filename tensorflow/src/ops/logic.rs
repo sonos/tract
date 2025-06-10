@@ -23,7 +23,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
 pub struct Switch;
 
 impl Op for Switch {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Switch".into()
     }
 
@@ -118,7 +118,7 @@ pub struct Merge {
 }
 
 impl Op for Merge {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Merge".into()
     }
 

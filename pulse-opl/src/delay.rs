@@ -120,7 +120,7 @@ impl Delay {
 }
 
 impl Op for Delay {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Delay".into()
     }
 

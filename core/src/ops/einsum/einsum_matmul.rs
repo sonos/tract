@@ -104,7 +104,7 @@ impl Deref for EinSumMatMul {
 }
 
 impl Op for EinSumMatMul {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "EinSumMatMul".into()
     }
 

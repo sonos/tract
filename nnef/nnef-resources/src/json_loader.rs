@@ -18,7 +18,7 @@ use tract_nnef::internal::*;
 pub struct JsonLoader;
 
 impl ResourceLoader for JsonLoader {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "JsonLoader".into()
     }
 

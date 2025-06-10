@@ -77,7 +77,7 @@ struct Dft {
 
 
 impl Expansion for Dft {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DFT".into()
     }
 
@@ -167,7 +167,7 @@ struct Stft {
 
 
 impl Expansion for Stft {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "STFT".into()
     }
 
@@ -291,7 +291,7 @@ pub struct MelWeightMatrix {
 
 
 impl Expansion for MelWeightMatrix {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MelWeightMatrix".into()
     }
 
@@ -426,7 +426,7 @@ pub struct StftWindow {
 
 
 impl Expansion for StftWindow {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("StftWindow<{:?}>", self.window).into()
     }
 

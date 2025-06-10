@@ -18,7 +18,7 @@ struct Topk {
 }
 
 impl Expansion for Topk {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Topk".into()
     }
 

@@ -74,7 +74,7 @@ impl ElementWiseOp {
 }
 
 impl Op for ElementWiseOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         self.0.name().into()
     }
 

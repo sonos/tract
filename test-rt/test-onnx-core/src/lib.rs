@@ -20,7 +20,7 @@ mod unoptimized {
     pub struct UnoptimizedRuntime;
 
     impl Runtime for UnoptimizedRuntime {
-        fn name(&self) -> Cow<str> {
+        fn name(&self) -> StaticName {
             Cow::Borrowed("unoptimized")
         }
         fn prepare(&self, model: TypedModel) -> TractResult<Box<dyn Runnable>> {

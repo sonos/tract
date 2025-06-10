@@ -17,7 +17,7 @@ mod tflite_predump {
     struct TflitePredump(Tflite);
 
     impl Runtime for TflitePredump {
-        fn name(&self) -> Cow<str> {
+        fn name(&self) -> StaticName {
             "tflite-predump".into()
         }
 
@@ -46,7 +46,7 @@ mod tflite_cycle {
     struct TfliteCyclingRuntime(Tflite);
 
     impl Runtime for TfliteCyclingRuntime {
-        fn name(&self) -> Cow<str> {
+        fn name(&self) -> StaticName {
             "tflite-cycle".into()
         }
 

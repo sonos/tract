@@ -347,7 +347,7 @@ pub struct Reduce {
 }
 
 impl Op for Reduce {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("Reduce<{:?}>", self.reducer).into()
     }
     fn info(&self) -> TractResult<Vec<String>> {

@@ -26,7 +26,7 @@ pub struct BlockLSTM {
 }
 
 impl Expansion for BlockLSTM {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "BlockLSTM".into()
     }
 

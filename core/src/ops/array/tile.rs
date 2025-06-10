@@ -9,7 +9,7 @@ pub struct Tile {
 }
 
 impl Op for Tile {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Tile".into()
     }
 
@@ -107,7 +107,7 @@ impl DynTile {
 }
 
 impl Op for DynTile {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "DynTile".into()
     }
 

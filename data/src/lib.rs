@@ -50,6 +50,7 @@ pub mod internal {
     pub use num_integer;
     pub use num_traits as tract_num_traits;
     pub use smallvec as tract_smallvec;
+    pub type StaticName = std::borrow::Cow<'static, str>;
 }
 
 pub use dim::TooEarly;

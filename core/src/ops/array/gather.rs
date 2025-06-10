@@ -12,7 +12,7 @@ pub struct Gather {
 }
 
 impl Op for Gather {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Gather".into()
     }
 

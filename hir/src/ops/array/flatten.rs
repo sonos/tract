@@ -17,7 +17,7 @@ impl Flatten {
 }
 
 impl Expansion for Flatten {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Flatten".into()
     }
 

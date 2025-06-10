@@ -15,7 +15,7 @@ impl Debug for TfliteRuntime {
 }
 
 impl Runtime for TfliteRuntime {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "tflite".into()
     }
 

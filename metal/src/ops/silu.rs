@@ -8,7 +8,7 @@ use tract_gpu::tensor::DeviceTensorExt;
 pub struct MetalSilu;
 
 impl Op for MetalSilu {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "MetalSilu".into()
     }
 

@@ -22,7 +22,7 @@ pub struct DeviceSync {
 }
 
 impl Op for DeviceSync {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("DeviceSync{}", self.kind).into()
     }
 

@@ -5,7 +5,7 @@ use tract_core::ops::math::*;
 macro_rules! activation {
     ($op: ident, $wire:expr) => {
         impl Expansion for $op {
-            fn name(&self) -> Cow<str> {
+            fn name(&self) -> StaticName {
                 stringify!($op).into()
             }
 

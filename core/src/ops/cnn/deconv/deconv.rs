@@ -124,7 +124,7 @@ impl Deconv {
 }
 
 impl Op for Deconv {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Deconv".into()
     }
 

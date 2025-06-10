@@ -43,7 +43,7 @@ impl Slice {
 }
 
 impl Op for Slice {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Slice".into()
     }
 

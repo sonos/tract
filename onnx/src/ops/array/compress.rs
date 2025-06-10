@@ -48,7 +48,7 @@ impl Compress {
 }
 
 impl Op for Compress {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Compress".into()
     }
 

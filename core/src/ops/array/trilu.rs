@@ -6,7 +6,7 @@ pub struct Trilu {
 }
 
 impl Op for Trilu {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Trilu".into()
     }
 

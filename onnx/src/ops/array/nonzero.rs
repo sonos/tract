@@ -37,7 +37,7 @@ impl NonZero {
 }
 
 impl Op for NonZero {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "NonZero".into()
     }
 

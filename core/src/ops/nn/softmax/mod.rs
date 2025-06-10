@@ -29,7 +29,7 @@ pub struct Softmax {
 }
 
 impl Op for Softmax {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "Softmax".into()
     }
 

@@ -72,7 +72,7 @@ impl ElementWiseOps {
         Self::Neg,
     ];
 
-    pub fn name(&self) -> Cow<str> {
+    pub fn name(&self) -> StaticName {
         format!("{}", self).into()
     }
 
