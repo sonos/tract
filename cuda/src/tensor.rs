@@ -7,7 +7,7 @@ use tract_gpu::device::DeviceBuffer;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::check_strides_validity;
 
-use crate::context::{cuda_context, CUDA_STREAM};
+use crate::context::CUDA_STREAM;
 
 #[derive(Debug, Clone)]
 pub struct CudaBuffer {
@@ -20,9 +20,7 @@ impl DeviceBuffer for CudaBuffer {
     }
 
     fn ptr(&self) -> *const std::ffi::c_void {
-        let stream = cuda_context().default_stream();
-        let test = self.inner.device_ptr(&stream);
-        test.0 as _
+        CUDA_STREAM.with(|stream| self.inner.device_ptr(&stream).0 as _)
     }
 }
 impl Deref for CudaBuffer {
@@ -43,9 +41,12 @@ pub struct CudaTensor {
 
 impl CudaTensor {
     pub fn from_bytes(data: &[u8], dt: DatumType, shape: &[usize], strides: &[isize]) -> Self {
-        let device_data = cuda_context().default_stream().memcpy_stod(data).unwrap();
-        let buffer = CudaBuffer { inner: device_data };
-        CudaTensor { buffer, datum_type: dt, shape: shape.into(), strides: strides.into() }
+        CUDA_STREAM.with(|stream| {
+            let device_data = stream.memcpy_stod(data).unwrap();
+            let buffer = CudaBuffer { inner: device_data };
+            CudaTensor { buffer, datum_type: dt, shape: shape.into(), strides: strides.into() }
+        }
+        )  
     }
 }
 
