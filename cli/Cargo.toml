@@ -46,6 +46,8 @@ tract-core.workspace = true
 tract-hir.workspace = true
 tract-nnef.workspace = true
 tract-libcli.workspace = true
+tract-gpu.workspace = true
+tract-cuda.workspace = true
 tract-extra = { workspace = true, optional = true }
 tract-pulse = { workspace = true, optional = true }
 tract-pulse-opl = { workspace = true, optional = true }
@@ -57,12 +59,6 @@ zerofrom.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 tract-metal.workspace = true
-tract-gpu.workspace = true
-
-# Compile cuda and gpu if not on metal devices and "cuda" feature is enabled
-[target.'cfg(not(any(target_os = "macos", target_os = "ios")))'.dependencies]
-tract-cuda = { workspace = true, optional = true }
-tract-gpu = { workspace = true, optional = true }
 
 [features]
 default = ["onnx", "tf", "pulse", "pulse-opl", "tflite", "transformers", "extra"]
@@ -76,4 +72,3 @@ tflite = [ "tract-tflite" ]
 transformers = [ "tract-transformers" ]
 conform = [ "tract-tensorflow/conform"  ]
 multithread-mm = [ "tract-linalg/multithread-mm" ]
-cuda = ["tract-gpu", "tract-cuda"]

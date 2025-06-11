@@ -32,6 +32,3 @@ tract-gpu.workspace = true
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
 paste.workspace = true
-
-[features]
-cuda = []

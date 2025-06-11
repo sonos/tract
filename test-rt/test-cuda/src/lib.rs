@@ -1,4 +1,4 @@
-#![cfg(all(test, feature = "cuda"))]
+#![cfg(test)]
 
 use std::borrow::Cow;
 use std::sync::Arc;
