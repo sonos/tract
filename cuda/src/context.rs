@@ -96,15 +96,13 @@ impl TractCudaContext {
                 )
             })?;
 
-        // SAFETY: Module is `Arc` and lives as long as the context
-        let static_func: CudaFunction = unsafe { std::mem::transmute(func) };
-        let static_func = Arc::new(static_func);
+        let func = Arc::new(func);
 
         // Store in cache
         let mut cache = self.cached_pipelines.write().map_err(|e| anyhow!("{:?}", e))?;
-        cache.insert(key, static_func.clone());
+        cache.insert(key, func.clone());
 
-        Ok(static_func)
+        Ok(func)
     }
 }
 
