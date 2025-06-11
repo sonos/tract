@@ -33,7 +33,7 @@ fi
 
 if nvcc -V >/dev/null 2>&1
 then
-    cargo test --features cuda -p test-cuda
+    cargo test -p test-cuda
 fi
 
 if [ -n "$CI" ]

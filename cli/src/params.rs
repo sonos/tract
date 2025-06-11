@@ -786,16 +786,9 @@ impl Parameters {
 
         {
             if matches.is_present("cuda") {
-                #[cfg(feature = "cuda")]
-                {
-                    stage!("cuda", typed_model -> typed_model, |m:TypedModel| {
-                        tract_cuda::CudaTransform.transform_into(m)
-                    });
-                }
-                #[cfg(not(feature = "cuda"))]
-                {
-                    bail!("`--cuda` present but tract not compiled with cuda feature")
-                }
+                stage!("cuda", typed_model -> typed_model, |m:TypedModel| {
+                    tract_cuda::CudaTransform.transform_into(m)
+                });
             }
         }
 

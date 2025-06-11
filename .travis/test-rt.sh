@@ -41,17 +41,13 @@ for c in test-rt/test*; do
                 echo "$WHITE ### $c ### IGNORED $NC"
                 continue
             fi
-            CUDA_FEATURE="--features cuda"
-            ;;
-        *)
-            CUDA_FEATURE=
             ;;
     esac
 
     echo
     echo "$WHITE ### $c ### $NC"
     echo
-    (cd "$c" && cargo test $CUDA_FEATURE -q $CARGO_EXTRA)
+    (cd "$c" && cargo test -q $CARGO_EXTRA)
 
     if [ -n "$CI" ]; then
         df -h
