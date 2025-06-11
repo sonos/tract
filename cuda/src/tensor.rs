@@ -20,7 +20,7 @@ impl DeviceBuffer for CudaBuffer {
     }
 
     fn ptr(&self) -> *const std::ffi::c_void {
-        CUDA_STREAM.with(|stream| self.inner.device_ptr(&stream).0 as _)
+        CUDA_STREAM.with(|stream| self.inner.device_ptr(stream).0 as _)
     }
 }
 impl Deref for CudaBuffer {
@@ -45,8 +45,7 @@ impl CudaTensor {
             let device_data = stream.memcpy_stod(data).unwrap();
             let buffer = CudaBuffer { inner: device_data };
             CudaTensor { buffer, datum_type: dt, shape: shape.into(), strides: strides.into() }
-        }
-        )  
+        })
     }
 }
 
@@ -99,9 +98,8 @@ impl OwnedDeviceTensor for CudaTensor {
     fn to_host(&self) -> TractResult<Arc<Tensor>> {
         CUDA_STREAM.with(|stream| {
             let res = stream.memcpy_dtov(&self.buffer.inner.try_clone()?)?;
-            let t: Tensor = unsafe {
-                Tensor::from_raw_dt(self.datum_type, &self.shape, &res).unwrap()
-            };
+            let t: Tensor =
+                unsafe { Tensor::from_raw_dt(self.datum_type, &self.shape, &res).unwrap() };
             Ok(Arc::new(t))
         })
     }
