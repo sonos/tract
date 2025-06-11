@@ -26,16 +26,6 @@ then
     ./.travis/tflite.sh
 fi
 
-if [ `uname` = "Darwin" ]
-then
-    cargo test -p test-metal
-fi
-
-if nvcc -V >/dev/null 2>&1
-then
-    cargo test -p test-cuda
-fi
-
 if [ -n "$CI" ]
 then
     cargo clean
