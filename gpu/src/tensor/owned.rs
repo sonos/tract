@@ -26,7 +26,7 @@ pub trait OwnedDeviceTensor: Downcast + DynClone + Send + Sync + Debug {
 
     fn as_arc_tensor(&self) -> Option<&Arc<Tensor>>;
     fn device_buffer(&self) -> &dyn DeviceBuffer;
-    fn to_host(&self) -> Arc<Tensor>;
+    fn to_host(&self) -> TractResult<Arc<Tensor>>;
     fn view(&self) -> TensorView;
 }
 

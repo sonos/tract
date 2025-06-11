@@ -1,8 +1,8 @@
-use cust::launch;
+use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::context::CudaStream;
+use crate::context::cuda_context;
 use crate::kernels::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -22,7 +22,7 @@ impl Silu {
     pub fn eval(&self, stream: &CudaStream, input: &DeviceTensor) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(stream, input, &output)?;
-        stream.wait_until_completed()?;
+        stream.synchronize()?;
 
         Ok(output)
     }
@@ -37,21 +37,20 @@ impl Silu {
         ensure!(output.datum_type() == input.datum_type());
 
         let func =
-            stream.load_pipeline(LibraryName::UnaryOps, self.kernel_name(input.datum_type())?)?;
+            cuda_context().load_pipeline(LibraryName::UnaryOps, self.kernel_name(input.datum_type())?)?;
 
         let len = input.len();
-        let num_blocks = len.div_ceil(256);
-        let stream = &stream.stream;
 
-        unsafe {
-            launch!(
-                func<<<num_blocks as u32, 256, 0, stream>>>(
-                    get_cuda_ptr(input),
-                    get_cuda_ptr(output),
-                    input.len(),
-                )
-            )?;
-        }
+        let i_view = get_cuda_view(input);
+        let o_view = get_cuda_view(output);
+
+        let cfg = LaunchConfig::for_num_elems(len as _);
+        let mut launch_args = stream.launch_builder(&func);
+        launch_args.arg(&i_view);
+        launch_args.arg(&o_view);
+        launch_args.arg(&len);
+
+        unsafe { launch_args.launch(cfg) }?;
 
         Ok(())
     }
@@ -78,7 +77,7 @@ mod tests {
         f32: AsPrimitive<F>,
     {
         cuda_context();
-        CUDA_STREAM.with_borrow(|stream| {
+        CUDA_STREAM.with(|stream| {
             let len = shape.iter().product::<usize>();
 
             let a = Tensor::from_shape(

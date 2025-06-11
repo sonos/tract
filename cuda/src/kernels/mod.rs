@@ -1,5 +1,5 @@
 mod silu;
-use cust::memory::DevicePointer;
+use cudarc::driver::CudaView;
 pub use silu::Silu;
 use tract_gpu::tensor::DeviceTensor;
 
@@ -20,8 +20,9 @@ impl LibraryName {
     }
 }
 
-pub fn get_cuda_ptr(t: &DeviceTensor) -> DevicePointer<u8> {
-    let ptr = t.device_buffer().downcast_ref::<CudaBuffer>().unwrap().as_device_ptr();
-    let offset = t.buffer_offset::<isize>() * t.datum_type().size_of() as isize;
-    unsafe { ptr.offset(offset) }
+pub fn get_cuda_view(t: &DeviceTensor) -> CudaView<'_, u8> {
+    let buffer = t.device_buffer().downcast_ref::<CudaBuffer>().unwrap();
+    let offset = t.buffer_offset::<usize>() * t.datum_type().size_of();
+    let size = t.len() * t.datum_type().size_of();
+    buffer.inner.slice(offset..(offset + size))
 }

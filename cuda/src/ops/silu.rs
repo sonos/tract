@@ -24,7 +24,7 @@ impl EvalOp for CudaSilu {
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        CUDA_STREAM.with_borrow(|stream| {
+        CUDA_STREAM.with(|stream| {
             let opaque = args_1!(inputs);
             let input = opaque.to_device_tensor()?;
             let output = make_tensor_for_node(session, node_id, input.datum_type(), input.shape())?;

@@ -184,7 +184,7 @@ impl DeviceTensor {
         get_context()?.synchronize()?;
 
         Ok(match self {
-            Self::Owned(o) => o.to_host(),
+            Self::Owned(o) => o.to_host()?,
             Self::ArenaView(v) => v.clone().into_tensor().into(),
         })
     }
