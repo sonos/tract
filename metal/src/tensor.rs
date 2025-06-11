@@ -186,11 +186,12 @@ impl OwnedDeviceTensor for MetalTensor {
         self.inner.as_arc_tensor()
     }
 
-    fn to_host(&self) -> Arc<Tensor> {
-        self.inner
+    fn to_host(&self) -> TractResult<Arc<Tensor>> {
+        Ok(self.inner
             .as_arc_tensor()
             .cloned()
             .unwrap_or_else(|| self.inner.clone().into_tensor().into_arc_tensor())
+        )
     }
 
     #[inline]

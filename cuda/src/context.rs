@@ -1,27 +1,26 @@
-use cust::prelude::*;
-
+use cudarc::nvrtc::Ptx;
 use tract_gpu::device::DeviceContext;
 use tract_gpu::tensor::OwnedDeviceTensor;
-
-use std::cell::RefCell;
 
 use std::ops::Deref;
 use std::sync::{OnceLock, RwLock};
 
 use tract_core::internal::*;
 
+use cudarc::driver::{CudaContext, CudaStream, CudaFunction, CudaModule};
+
 use crate::kernels::LibraryName;
 use crate::tensor::CudaTensor;
 
 thread_local! {
-    pub static CUDA_STREAM: RefCell<CudaStream> = RefCell::new(CudaStream::new());
+    pub static CUDA_STREAM: Arc<CudaStream> = cuda_context().default_stream();
 }
 
-pub fn cuda_context() -> CudaContext {
-    static INSTANCE: OnceLock<CudaContext> = OnceLock::new();
+pub fn cuda_context() -> TractCudaContext {
+    static INSTANCE: OnceLock<TractCudaContext> = OnceLock::new();
     INSTANCE
         .get_or_init(|| {
-            let ctxt = CudaContext::new().expect("Could not create CUDA context");
+            let ctxt = TractCudaContext::new().expect("Could not create CUDA context");
             tract_gpu::device::set_context(Box::new(ctxt.clone()))
                 .expect("Could not set CUDA context");
             ctxt
@@ -30,25 +29,25 @@ pub fn cuda_context() -> CudaContext {
 }
 
 #[derive(Debug, Clone)]
-pub struct CudaContext {
-    inner: Context,
-    cached_modules: Arc<RwLock<HashMap<LibraryName, Arc<Module>>>>,
+pub struct TractCudaContext {
+    inner: Arc<CudaContext>,
+    cached_modules: Arc<RwLock<HashMap<LibraryName, Arc<CudaModule>>>>,
     #[allow(clippy::type_complexity)]
-    cached_pipelines: Arc<RwLock<HashMap<(LibraryName, String), Arc<Function<'static>>>>>,
+    cached_pipelines: Arc<RwLock<HashMap<(LibraryName, String), Arc<CudaFunction>>>>,
 }
 
-impl Deref for CudaContext {
-    type Target = Context;
+impl Deref for TractCudaContext {
+    type Target = Arc<CudaContext>;
 
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
-impl CudaContext {
+impl TractCudaContext {
     pub fn new() -> TractResult<Self> {
-        let context =
-            cust::quick_init().with_context(|| "Could not find system default CUDA device")?;
+        let context = 
+                CudaContext::new(0).with_context(|| "Could not find system default CUDA device")?;
 
         Ok(Self {
             inner: context,
@@ -57,7 +56,7 @@ impl CudaContext {
         })
     }
 
-    pub fn load_library(&self, name: &LibraryName) -> TractResult<Arc<Module>> {
+    pub fn load_library(&self, name: &LibraryName) -> TractResult<Arc<CudaModule>> {
         {
             let cache = self.cached_modules.read().map_err(|e| anyhow!("{:?}", e))?;
             if let Some(module) = cache.get(name) {
@@ -65,7 +64,7 @@ impl CudaContext {
             }
         }
 
-        let module = Arc::new(Module::from_ptx(name.content(), &[])?);
+        let module = self.inner.load_module(Ptx::from_src(name.content()))?;
 
         let mut cache = self.cached_modules.write().map_err(|e| anyhow!("{:?}", e))?;
         cache.insert(*name, module.clone());
@@ -77,7 +76,7 @@ impl CudaContext {
         &self,
         library_name: LibraryName,
         func_name: String,
-    ) -> TractResult<Arc<Function<'static>>> {
+    ) -> TractResult<Arc<CudaFunction>> {
         // Check pipeline cache
         let key = (library_name, func_name.to_string());
         {
@@ -90,7 +89,7 @@ impl CudaContext {
         // Load module + function
         let module = self.load_library(&library_name)?;
         let func =
-            module.get_function(&func_name).map_err(|e| anyhow!("{e}")).with_context(|| {
+            module.load_function(&func_name).map_err(|e| anyhow!("{e}")).with_context(|| {
                 format!(
                     "Failed to load function `{func_name}` from library `{}`",
                     library_name.content()
@@ -98,7 +97,7 @@ impl CudaContext {
             })?;
 
         // SAFETY: Module is `Arc` and lives as long as the context
-        let static_func: Function<'static> = unsafe { std::mem::transmute(func) };
+        let static_func: CudaFunction = unsafe { std::mem::transmute(func) };
         let static_func = Arc::new(static_func);
 
         // Store in cache
@@ -109,9 +108,9 @@ impl CudaContext {
     }
 }
 
-impl DeviceContext for CudaContext {
+impl DeviceContext for TractCudaContext {
     fn synchronize(&self) -> TractResult<()> {
-        CUDA_STREAM.with_borrow(|stream| stream.wait_until_completed())
+        CUDA_STREAM.with(|stream| stream.synchronize().map_err(|e| e.into()))
     }
 
     fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {
@@ -126,34 +125,5 @@ impl DeviceContext for CudaContext {
             tensor.shape(),
             tensor.strides(),
         )))
-    }
-}
-
-#[derive(Debug)]
-pub struct CudaStream {
-    pub stream: Stream,
-}
-
-impl Default for CudaStream {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl CudaStream {
-    pub fn new() -> Self {
-        Self { stream: Stream::new(StreamFlags::NON_BLOCKING, None).unwrap() }
-    }
-
-    pub fn wait_until_completed(&self) -> TractResult<()> {
-        self.stream.synchronize().map_err(|e| e.into())
-    }
-
-    pub fn load_pipeline(
-        &self,
-        library_name: LibraryName,
-        func_name: String,
-    ) -> TractResult<Arc<Function<'static>>> {
-        cuda_context().load_pipeline(library_name, func_name)
     }
 }
