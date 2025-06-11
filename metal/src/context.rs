@@ -167,7 +167,7 @@ impl DeviceContext for MetalContext {
     fn synchronize(&self) -> TractResult<()> {
         METAL_STREAM.with_borrow(|stream| stream.wait_until_completed())
     }
-    
+
     fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {
         let view = tensor.view();
         ensure!(
@@ -192,7 +192,10 @@ impl DeviceContext for MetalContext {
                 None,
             ),
         };
-        Ok(Box::new(MetalTensor { inner: MValue::Natural(tensor.into_arc_tensor()), device_buffer }))
+        Ok(Box::new(MetalTensor {
+            inner: MValue::Natural(tensor.into_arc_tensor()),
+            device_buffer,
+        }))
     }
 }
 

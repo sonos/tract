@@ -7,7 +7,7 @@ use std::sync::{OnceLock, RwLock};
 
 use tract_core::internal::*;
 
-use cudarc::driver::{CudaContext, CudaStream, CudaFunction, CudaModule};
+use cudarc::driver::{CudaContext, CudaFunction, CudaModule, CudaStream};
 
 use crate::kernels::LibraryName;
 use crate::tensor::CudaTensor;
@@ -46,8 +46,8 @@ impl Deref for TractCudaContext {
 
 impl TractCudaContext {
     pub fn new() -> TractResult<Self> {
-        let context = 
-                CudaContext::new(0).with_context(|| "Could not find system default CUDA device")?;
+        let context =
+            CudaContext::new(0).with_context(|| "Could not find system default CUDA device")?;
 
         Ok(Self {
             inner: context,

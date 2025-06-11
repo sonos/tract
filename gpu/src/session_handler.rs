@@ -46,7 +46,9 @@ pub fn make_tensor_for_node(
     dt: DatumType,
     shape: &[usize],
 ) -> TractResult<DeviceTensor> {
-    session.scratch_extensions.get::<DeviceMemoryPool>()
+    session
+        .scratch_extensions
+        .get::<DeviceMemoryPool>()
         .map(|mem| mem.tensor_for_node(node_id, dt, shape))
         .unwrap_or_else(|| unsafe { DeviceTensor::uninitialized_dt(dt, shape) })
 }
