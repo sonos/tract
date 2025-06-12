@@ -64,6 +64,7 @@ apple-amx-ios = []
 default = [ ]
 multithread-mm = [ "rayon" ]
 complex = [ "tract-data/complex" ]
+hwbench = [ "rayon" ]
 
 [[bench]]
 bench = false

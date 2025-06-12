@@ -41,7 +41,7 @@ rustls.workspace = true
 scan_fmt.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tract-linalg.workspace = true
+tract-linalg = { workspace = true, features = ["hwbench"] }
 tract-core.workspace = true
 tract-hir.workspace = true
 tract-nnef.workspace = true

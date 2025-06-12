@@ -26,6 +26,7 @@ mod bench;
 mod compare;
 mod cost;
 mod dump;
+mod hwbench;
 mod llm;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 mod memory_arena;
@@ -173,7 +174,8 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"machine-friendly" "Machine friendly output"))
 
         .subcommand(Command::new("list-ops").about("List ops in TF/ONNX frameworks"))
-        .subcommand(Command::new("kernels").about("Print kernels for the current plaform"));
+        .subcommand(Command::new("kernels").about("Print kernels for the current plaform"))
+        .subcommand(Command::new("hwbench").about("Print current hardware key metrics"));
 
     let compare = clap::Command::new("compare")
         .long_about("Compares the output of tract and tensorflow on randomly generated input.")
@@ -620,6 +622,10 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                 println!("{names}");
                 println!("\n");
             }
+            return Ok(());
+        }
+        Some(("hwbench", _)) => {
+            hwbench::handle();
             return Ok(());
         }
         Some(("kernels", _)) => {
