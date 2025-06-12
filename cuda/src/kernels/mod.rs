@@ -1,6 +1,6 @@
-mod silu;
+mod unary;
 use cudarc::driver::CudaView;
-pub use silu::Silu;
+pub use unary::UnaryOp;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::tensor::CudaBuffer;

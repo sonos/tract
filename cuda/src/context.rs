@@ -49,11 +49,21 @@ impl TractCudaContext {
         let context =
             CudaContext::new(0).with_context(|| "Could not find system default CUDA device")?;
 
-        Ok(Self {
+        let ctxt = Self {
             inner: context,
             cached_modules: Arc::new(RwLock::new(HashMap::new())),
             cached_pipelines: Arc::new(RwLock::new(HashMap::new())),
-        })
+        };
+
+        ctxt.preload_pipelines()?;
+        Ok(ctxt)
+    }
+
+    pub fn preload_pipelines(&self) -> TractResult<()> {
+        for ew_func in crate::kernels::UnaryOp::all_functions() {
+            let _ = self.load_pipeline(LibraryName::UnaryOps, ew_func);
+        }
+        Ok(())
     }
 
     pub fn load_library(&self, name: &LibraryName) -> TractResult<Arc<CudaModule>> {
