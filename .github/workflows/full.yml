@@ -134,7 +134,7 @@ jobs:
     - name: Check all targets
       run: |
         ROOT=$(pwd) ./.travis/ci-system-setup.sh
-        cargo check --all-targets --workspace --exclude test-metal --exclude tract-metal
+        cargo check --all-targets --workspace --exclude test-metal --exclude tract-metal --exclude tract-cuda --exclude test-cuda
 
   cli-tests:
     runs-on: ubuntu-latest

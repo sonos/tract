@@ -37,7 +37,7 @@ for c in test-rt/test*; do
             fi
             ;;
         test-rt/test-cuda)
-            if ! command -v nvcc >/dev/null; then
+            if ! command -v nvcc >/dev/null;  then
                 echo "$WHITE ### $c ### IGNORED $NC"
                 continue
             fi
