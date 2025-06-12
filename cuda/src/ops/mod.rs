@@ -1,3 +1,3 @@
-mod silu;
+pub mod unary;
 
-pub use silu::CudaSilu;
+pub use unary::CudaUnaryOp;

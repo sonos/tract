@@ -1,6 +1,7 @@
 use tract_core::internal::*;
 use tract_core::model::translator::Translate;
 use tract_core::ops::einsum::prefix_matmul::rewrite_einsum_to_prefix_matmul;
+use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::tract_data::itertools::Itertools;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
@@ -145,7 +146,49 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
         input_facts.iter().all(|fact| DeviceTensor::is_supported_dt(fact.datum_type));
 
     Ok(in_dts_compatible
-        && node.op_as::<Silu>().is_some_and(|_| kernels::Silu::is_supported_dt(input_dts[0])))
+        && node.op_as::<Silu>().is_some_and(|_| kernels::UnaryOp::is_supported_dt(input_dts[0])))
+}
+
+macro_rules! map_unary_ops {
+    ([$(($tract_bin_op:path, $metal_bin_op:ident)),* $(,)?]) => {
+        |op: &tract_core::ops::element_wise::ElementWiseOp| {
+            $(if let Some(_op) = op.0.downcast_ref::<$tract_bin_op>() {
+                return Some($crate::ops::unary::CudaUnaryOp(kernels::UnaryOp::$metal_bin_op));
+            })*
+            return None;
+        }
+    };
+}
+
+fn map_element_wise_ops_to_cuda(op: &ElementWiseOp) -> Option<ops::CudaUnaryOp> {
+    map_unary_ops!([
+        (tract_core::ops::math::Abs, Abs),
+        (tract_core::ops::math::Exp, Exp),
+        (tract_core::ops::math::Ln, Ln),
+        (tract_core::ops::nn::Sigmoid, Sigmoid),
+        (tract_core::ops::math::Square, Sqr),
+        (tract_core::ops::math::Sqrt, Sqrt),
+        (tract_core::ops::math::Rsqrt, Rsqrt),
+        (tract_core::ops::math::Recip, Recip),
+        (tract_core::ops::math::Ceil, Ceil),
+        (tract_core::ops::math::Floor, Floor),
+        (tract_core::ops::math::Round, Round),
+        (tract_core::ops::math::RoundHalfToEven, RoundHalfToEven),
+        (tract_core::ops::math::Cos, Cos),
+        (tract_core::ops::math::Acos, Acos),
+        (tract_core::ops::math::Acosh, Acosh),
+        (tract_core::ops::math::Cosh, Cosh),
+        (tract_core::ops::math::Sin, Sin),
+        (tract_core::ops::math::Asin, Asin),
+        (tract_core::ops::math::Asinh, Asinh),
+        (tract_core::ops::math::Sinh, Sinh),
+        (tract_core::ops::math::Tan, Tan),
+        (tract_core::ops::math::Atan, Atan),
+        (tract_core::ops::math::Atanh, Atanh),
+        (tract_core::ops::math::Tanh, Tanh),
+        (tract_core::ops::math::Erf, Erf),
+        (tract_core::ops::math::Neg, Neg),
+    ])(op)
 }
 
 impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for CudaTransform {
@@ -162,8 +205,11 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
             let device_inputs =
                 self.sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
 
-            let op: Box<dyn TypedOp> = if let Some(_op) = node.op_as::<Silu>() {
-                Box::new(ops::CudaSilu)
+            let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<ElementWiseOp>() {
+                Box::new(map_element_wise_ops_to_cuda(op).unwrap())
+            }
+            else if let Some(_op) = node.op_as::<Silu>() {
+                Box::new(ops::CudaUnaryOp(kernels::UnaryOp::Silu))
             } else {
                 bail!("Failed to translate a supported CUDA Op")
             };
