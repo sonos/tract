@@ -7,7 +7,6 @@ use tract_gpu::sync::{DeviceSync, DeviceSyncKind};
 use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
 
 use crate::rewrite_rules;
-use std::borrow::Cow;
 use std::fmt::Debug;
 use std::str::FromStr;
 use tract_core::dyn_clone::clone_box;

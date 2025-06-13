@@ -42,8 +42,7 @@ pub fn get_cuda_lib() -> Option<Lib> {
     let lib_names = std::vec!["cuda", "nvcuda"];
     let choices: std::vec::Vec<_> = lib_names
         .iter()
-        .map(|l| get_lib_name_candidates(l))
-        .flatten()
+        .flat_map(|l| get_lib_name_candidates(l))
         .collect();
     unsafe {
         for choice in choices.iter() {
@@ -51,6 +50,6 @@ pub fn get_cuda_lib() -> Option<Lib> {
                 return Some(lib);
             }
         }
-        return None
+        None
     }
 }

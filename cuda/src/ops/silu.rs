@@ -10,7 +10,7 @@ use crate::kernels::Silu;
 pub struct CudaSilu;
 
 impl Op for CudaSilu {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "CudaSilu".into()
     }
 

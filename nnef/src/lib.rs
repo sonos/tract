@@ -1,5 +1,4 @@
 #![allow(clippy::len_zero)]
-#![allow(clippy::cloned_ref_to_slice_refs)]
 #[macro_use]
 extern crate log;
 
