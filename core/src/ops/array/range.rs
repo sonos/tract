@@ -143,7 +143,7 @@ impl TypedOp for Range {
                 Ok(tvec!(start.datum_type().fact([len])))
             }
         } else {
-            Ok(tvec!(start.datum_type.fact(&[self.len.clone()])))
+            Ok(tvec!(start.datum_type.fact(std::slice::from_ref(&self.len))))
         }
     }
 
