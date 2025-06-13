@@ -8,7 +8,7 @@ use crate::context::cuda_context;
 use crate::kernels::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-pub enum UnaryOp {
+pub enum UnaryOps {
     Neg,
     Abs,
     Sqr,
@@ -38,14 +38,14 @@ pub enum UnaryOp {
     Silu
 }
 
-impl fmt::Display for UnaryOp {
+impl fmt::Display for UnaryOps {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
-impl UnaryOp {
-    pub const ALL: [UnaryOp; 27] = [
+impl UnaryOps {
+    pub const ALL: [UnaryOps; 27] = [
         Self::Neg,
         Self::Abs,
         Self::Sqr,
@@ -131,7 +131,6 @@ impl UnaryOp {
         Ok(format!("unary_{}_{}", name, DeviceTensor::tname(dt)?))
     }
 
-    #[allow(unused)]
     pub fn eval(&self, stream: &CudaStream, input: &DeviceTensor) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(stream, input, &output)?;
@@ -189,7 +188,7 @@ mod tests {
         usize: AsPrimitive<F>,
         f32: AsPrimitive<F>,
     {   
-        pub op: UnaryOp,
+        pub op: UnaryOps,
         pub input: ArrayD<F>,
     }
 
@@ -203,7 +202,6 @@ mod tests {
         type Strategy = BoxedStrategy<Self>;
 
         fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-            // Strategy for shapes: Vec of 1..=4 dimensions, each dim 1..=5
             let shape_strategy = prop::collection::vec(1usize..=5, 0..=4);
 
             shape_strategy
@@ -213,8 +211,7 @@ mod tests {
                         .prop_map(move |vec| ArrayD::from_shape_vec(shape.to_vec(), vec).unwrap())
                         .boxed();
 
-                    // Strategy for op
-                    let op_strategy = prop::sample::select(UnaryOp::ALL.to_vec());
+                    let op_strategy = prop::sample::select(UnaryOps::ALL.to_vec());
 
                     (input, op_strategy)
                 })
@@ -233,37 +230,37 @@ mod tests {
         f32: AsPrimitive<F>,
     {
         pub fn reference(&self) -> TractResult<Tensor> {
-            let cpu_output = if self.op == UnaryOp::Silu {
+            let cpu_output = if self.op == UnaryOps::Silu {
                 Silu.eval(tvec![self.input.clone().into_tvalue()])?.remove(0).into_tensor()
             }
             else {
                 let cpu_op: Box<dyn ElementWiseMiniOp> = match self.op {
-                    UnaryOp::Neg => Box::new(tract_core::ops::math::Neg {}),
-                    UnaryOp::Abs => Box::new(tract_core::ops::math::Abs {}),
-                    UnaryOp::Sqr => Box::new(tract_core::ops::math::Square {}),
-                    UnaryOp::Sqrt => Box::new(tract_core::ops::math::Sqrt {}),
-                    UnaryOp::Rsqrt => Box::new(tract_core::ops::math::Rsqrt {}),
-                    UnaryOp::Recip => Box::new(tract_core::ops::math::Recip {}),
-                    UnaryOp::Ceil => Box::new(tract_core::ops::math::Ceil {}),
-                    UnaryOp::Floor => Box::new(tract_core::ops::math::Floor {}),
-                    UnaryOp::Round => Box::new(tract_core::ops::math::Round {}),
-                    UnaryOp::RoundHalfToEven => Box::new(tract_core::ops::math::RoundHalfToEven {}),
-                    UnaryOp::Exp => Box::new(tract_core::ops::math::Exp {}),
-                    UnaryOp::Sigmoid => Box::new(tract_core::ops::nn::Sigmoid {}),
-                    UnaryOp::Sin => Box::new(tract_core::ops::math::Sin {}),
-                    UnaryOp::Sinh => Box::new(tract_core::ops::math::Sinh {}),
-                    UnaryOp::Asin => Box::new(tract_core::ops::math::Asin {}),
-                    UnaryOp::Asinh => Box::new(tract_core::ops::math::Asinh {}),
-                    UnaryOp::Cos => Box::new(tract_core::ops::math::Cos {}),
-                    UnaryOp::Cosh => Box::new(tract_core::ops::math::Cosh {}),
-                    UnaryOp::Acos => Box::new(tract_core::ops::math::Acos {}),
-                    UnaryOp::Acosh => Box::new(tract_core::ops::math::Acosh {}),
-                    UnaryOp::Tan => Box::new(tract_core::ops::math::Tan {}),
-                    UnaryOp::Tanh => Box::new(tract_core::ops::math::Tanh {}),
-                    UnaryOp::Atan => Box::new(tract_core::ops::math::Atan {}),
-                    UnaryOp::Atanh => Box::new(tract_core::ops::math::Atanh {}),
-                    UnaryOp::Erf => Box::new(tract_core::ops::math::Erf {}),
-                    UnaryOp::Ln => Box::new(tract_core::ops::math::Ln {}),
+                    UnaryOps::Neg => Box::new(tract_core::ops::math::Neg {}),
+                    UnaryOps::Abs => Box::new(tract_core::ops::math::Abs {}),
+                    UnaryOps::Sqr => Box::new(tract_core::ops::math::Square {}),
+                    UnaryOps::Sqrt => Box::new(tract_core::ops::math::Sqrt {}),
+                    UnaryOps::Rsqrt => Box::new(tract_core::ops::math::Rsqrt {}),
+                    UnaryOps::Recip => Box::new(tract_core::ops::math::Recip {}),
+                    UnaryOps::Ceil => Box::new(tract_core::ops::math::Ceil {}),
+                    UnaryOps::Floor => Box::new(tract_core::ops::math::Floor {}),
+                    UnaryOps::Round => Box::new(tract_core::ops::math::Round {}),
+                    UnaryOps::RoundHalfToEven => Box::new(tract_core::ops::math::RoundHalfToEven {}),
+                    UnaryOps::Exp => Box::new(tract_core::ops::math::Exp {}),
+                    UnaryOps::Sigmoid => Box::new(tract_core::ops::nn::Sigmoid {}),
+                    UnaryOps::Sin => Box::new(tract_core::ops::math::Sin {}),
+                    UnaryOps::Sinh => Box::new(tract_core::ops::math::Sinh {}),
+                    UnaryOps::Asin => Box::new(tract_core::ops::math::Asin {}),
+                    UnaryOps::Asinh => Box::new(tract_core::ops::math::Asinh {}),
+                    UnaryOps::Cos => Box::new(tract_core::ops::math::Cos {}),
+                    UnaryOps::Cosh => Box::new(tract_core::ops::math::Cosh {}),
+                    UnaryOps::Acos => Box::new(tract_core::ops::math::Acos {}),
+                    UnaryOps::Acosh => Box::new(tract_core::ops::math::Acosh {}),
+                    UnaryOps::Tan => Box::new(tract_core::ops::math::Tan {}),
+                    UnaryOps::Tanh => Box::new(tract_core::ops::math::Tanh {}),
+                    UnaryOps::Atan => Box::new(tract_core::ops::math::Atan {}),
+                    UnaryOps::Atanh => Box::new(tract_core::ops::math::Atanh {}),
+                    UnaryOps::Erf => Box::new(tract_core::ops::math::Erf {}),
+                    UnaryOps::Ln => Box::new(tract_core::ops::math::Ln {}),
                     _ => bail!("Could not convert to CPU op")
                 };
                 ElementWiseOp(cpu_op, None).eval(tvec![self.input.clone().into_tvalue()])?.remove(0).into_tensor()

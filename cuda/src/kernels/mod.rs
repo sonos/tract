@@ -1,21 +1,30 @@
+#![allow(unused)]
+
 mod unary;
+mod binary;
+mod utils;
+
 use cudarc::driver::CudaView;
-pub use unary::UnaryOp;
+pub use unary::UnaryOps;
+pub use binary::BinOps;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::tensor::CudaBuffer;
 
 const UNARY_OPS: &str = include_str!("ptx/unary.ptx");
+const BINARY_OPS: &str = include_str!("ptx/binary.ptx");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LibraryName {
     UnaryOps,
+    BinaryOps,
 }
 
 impl LibraryName {
     pub fn content(&self) -> &str {
         match self {
             Self::UnaryOps => UNARY_OPS,
+            Self::BinaryOps => BINARY_OPS,
         }
     }
 }

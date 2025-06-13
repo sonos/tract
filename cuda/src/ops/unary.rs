@@ -4,14 +4,14 @@ use tract_gpu::session_handler::make_tensor_for_node;
 use tract_gpu::tensor::DeviceTensorExt;
 
 use crate::context::CUDA_STREAM;
-use crate::kernels::UnaryOp;
+use crate::kernels::UnaryOps;
 
 #[derive(Clone, Debug, new, Hash)]
-pub struct CudaUnaryOp(pub UnaryOp);
+pub struct CudaUnaryOp(pub UnaryOps);
 
 impl Op for CudaUnaryOp {
     fn name(&self) -> Cow<str> {
-        "CudaUnaryOp".into()
+        format!("Cuda{}", self.0.name()).into()
     }
 
     op_as_typed_op!();
