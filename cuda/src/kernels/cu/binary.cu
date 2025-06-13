@@ -76,7 +76,7 @@ static __device__ __forceinline__ bool op_or(const bool a, const bool b) { retur
     DEFINE_BINARY_KERNEL(name, u8, uint8_t, uint8_t, OP) \
     DEFINE_BINARY_KERNEL(name, u16, uint16_t, uint16_t, OP) \
     DEFINE_BINARY_KERNEL(name, u32, uint32_t, uint32_t, OP) \
-    DEFINE_BINARY_KERNEL(name, u64, uint64_t, uint32_t, OP) \
+    DEFINE_BINARY_KERNEL(name, u64, uint64_t, uint64_t, OP) \
     DEFINE_BINARY_KERNEL(name, i8, int8_t, int8_t, OP) \
     DEFINE_BINARY_KERNEL(name, i16, int16_t, int16_t, OP) \
     DEFINE_BINARY_KERNEL(name, i32, int32_t, int32_t, OP) \
