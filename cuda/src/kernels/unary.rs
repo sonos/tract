@@ -114,6 +114,8 @@ impl UnaryOps {
                 | Self::Tanh
                 | Self::Erf
                 | Self::Neg
+                | Self::Abs
+                | Self::RoundHalfToEven
         )
     }
 
