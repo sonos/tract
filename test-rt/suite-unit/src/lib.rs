@@ -25,6 +25,7 @@ pub mod scaled_masked_softmax;
 pub mod silu;
 pub mod slice;
 pub mod binary;
+pub mod elmwise;
 
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite: TestSuite = Default::default();
@@ -44,6 +45,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("q_binary", q_binary::suite()?);
     suite.add("q_elmwise", q_elmwise::suite()?);
     suite.add("binary", binary::suite()?);
+    suite.add("elmwise", elmwise::suite()?);
     Ok(suite)
 }
 
