@@ -177,9 +177,11 @@ impl BinOps {
 
     fn can_use_row_kernel(&self, lhs: &DeviceTensor, rhs: &DeviceTensor) -> bool {
         let compatible_op = matches!(self, Self::Mul | Self::Add | Self::Div | Self::Sub);
+        let compatible_type = matches!(lhs.datum_type(), DatumType::F16 | DatumType::F32);
         let rank = lhs.rank();
 
         compatible_op
+            && compatible_type
             && (rank > 0)
             && ((rhs.len() == rhs.shape()[rank - 1])
                 || ((lhs.len() == lhs.shape()[rank - 1]) && matches!(self, Self::Mul | Self::Add)))
