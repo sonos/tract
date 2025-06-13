@@ -1,7 +1,11 @@
+use tract_core::dyn_clone::clone_box;
 use tract_core::internal::*;
 use tract_core::model::translator::Translate;
+use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::einsum::prefix_matmul::rewrite_einsum_to_prefix_matmul;
 use tract_core::ops::element_wise::ElementWiseOp;
+use tract_core::ops::konst::Const;
+use tract_core::ops::logic::Comp;
 use tract_core::tract_data::itertools::Itertools;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
@@ -146,14 +150,34 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
         input_facts.iter().all(|fact| DeviceTensor::is_supported_dt(fact.datum_type));
 
     Ok(in_dts_compatible
-        && node.op_as::<Silu>().is_some_and(|_| kernels::UnaryOp::is_supported_dt(input_dts[0])))
+        && (node
+                .op_as::<Const>()
+                .is_some_and(|op| DeviceTensor::is_supported_dt(op.val().datum_type()))
+            || node.op_as::<Silu>().is_some_and(|_| kernels::UnaryOps::is_supported_dt(input_dts[0]))
+            || node.op_as::<ElementWiseOp>().is_some_and(|op| kernels::UnaryOps::is_supported_dt(input_dts[0]) && map_element_wise_ops_to_cuda(op).is_some())
+            || node.op_as::<TypedBinOp>().is_some_and(|op| kernels::BinOps::is_supported_dt(input_dts[0]) && map_binary_op_to_cuda(op).is_some())
+            || node.op_as::<Comp>().is_some_and(|_| kernels::BinOps::is_supported_dt(input_dts[0]))
+    )
+    )
+}
+
+fn convert_const(op: &Const) -> TractResult<Const> {
+    let typed_fact: TypedFact = Arc::clone(op.val()).into();
+    let metal_fact = if let Some(of) = op.opaque_fact() {
+        DeviceFact::from_host(typed_fact.with_opaque_fact(clone_box(of)))?
+    } else {
+        DeviceFact::from_host(typed_fact)?
+    };
+
+    let metal_const = op.val().clone().into_device()?.into_opaque_tensor().into_arc_tensor();
+    Const::new_with_opaque_fact(metal_const, Box::new(metal_fact))
 }
 
 macro_rules! map_unary_ops {
-    ([$(($tract_bin_op:path, $metal_bin_op:ident)),* $(,)?]) => {
+    ([$(($tract_unary_op:path, $metal_unary_op:ident)),* $(,)?]) => {
         |op: &tract_core::ops::element_wise::ElementWiseOp| {
-            $(if let Some(_op) = op.0.downcast_ref::<$tract_bin_op>() {
-                return Some($crate::ops::unary::CudaUnaryOp(kernels::UnaryOp::$metal_bin_op));
+            $(if let Some(_op) = op.0.downcast_ref::<$tract_unary_op>() {
+                return Some($crate::ops::unary::CudaUnaryOp(kernels::UnaryOps::$metal_unary_op));
             })*
             return None;
         }
@@ -191,6 +215,41 @@ fn map_element_wise_ops_to_cuda(op: &ElementWiseOp) -> Option<ops::CudaUnaryOp> 
     ])(op)
 }
 
+macro_rules! map_bin_ops {
+    ([$(($tract_bin_op:path, $metal_bin_op:ident)),* $(,)?]) => {
+        |op: &TypedBinOp | {
+            $(if let Some(_op) = op.0.downcast_ref::<$tract_bin_op>() {
+                return Some($crate::ops::binary::CudaBinOp(kernels::BinOps::$metal_bin_op));
+            })*
+            return None;
+        }
+    };
+}
+
+#[allow(clippy::borrowed_box)]
+fn map_binary_op_to_cuda(op: &TypedBinOp) -> Option<ops::CudaBinOp> {
+    map_bin_ops!([
+        (tract_core::ops::math::Mul, Mul),
+        (tract_core::ops::math::Add, Add),
+        (tract_core::ops::math::Div, Div),
+        (tract_core::ops::math::Sub, Sub),
+        (tract_core::ops::math::Pow, Pow),
+        (tract_core::ops::logic::And, And),
+        (tract_core::ops::logic::Or, Or),
+    ])(op)
+}
+
+fn convert_logic_op_to_cuda(op: &Comp) -> ops::CudaBinOp {
+    match op {
+        Comp::Eq => ops::CudaBinOp(kernels::BinOps::Equals),
+        Comp::NE => ops::CudaBinOp(kernels::BinOps::NotEquals),
+        Comp::LT => ops::CudaBinOp(kernels::BinOps::Less),
+        Comp::LTE => ops::CudaBinOp(kernels::BinOps::LessEqual),
+        Comp::GT => ops::CudaBinOp(kernels::BinOps::Greater),
+        Comp::GTE => ops::CudaBinOp(kernels::BinOps::GreaterEqual),
+    }
+}
+
 impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for CudaTransform {
     fn translate_node(
         &self,
@@ -205,11 +264,20 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
             let device_inputs =
                 self.sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
 
-            let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<ElementWiseOp>() {
+            let op: Box<dyn TypedOp> =  if let Some(op) = node.op_as::<Const>() {
+                    Box::new(convert_const(op)?)
+                }
+            else if let Some(op) = node.op_as::<ElementWiseOp>() {
                 Box::new(map_element_wise_ops_to_cuda(op).unwrap())
             }
+            else if let Some(op) = node.op_as::<TypedBinOp>() {
+                Box::new(map_binary_op_to_cuda(op).unwrap())
+            }
+            else if let Some(op) = node.op_as::<Comp>() {
+                Box::new(convert_logic_op_to_cuda(op))
+            }
             else if let Some(_op) = node.op_as::<Silu>() {
-                Box::new(ops::CudaUnaryOp(kernels::UnaryOp::Silu))
+                Box::new(ops::CudaUnaryOp(kernels::UnaryOps::Silu))
             } else {
                 bail!("Failed to translate a supported CUDA Op")
             };
