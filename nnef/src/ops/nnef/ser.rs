@@ -115,7 +115,7 @@ pub fn slice(
         &[wire],
         &[
             ("axes", ints(&[op.axis])),
-            ("begin", tdims(&[op.start.clone()])),
+            ("begin", tdims(std::slice::from_ref(&op.start))),
             ("end", tdims(&[end])),
         ],
     )))
