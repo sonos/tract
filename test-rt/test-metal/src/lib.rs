@@ -1,6 +1,5 @@
 #![cfg(all(test, any(target_os = "macos", target_os = "ios")))]
 
-use std::borrow::Cow;
 use std::sync::Arc;
 use tract_core::internal::*;
 
