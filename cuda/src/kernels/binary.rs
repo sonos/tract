@@ -278,8 +278,11 @@ impl BinOps {
 
 #[cfg(test)]
 mod tests {
+    use std::num;
+    use std::ops::Div;
+
     use super::*;
-    use num_traits::{AsPrimitive, Float};
+    use num_traits::{pow, AsPrimitive, Float, FromPrimitive, Num, ToPrimitive};
     use proptest::prelude::*;
     use proptest::collection::vec;
     use tract_core::ndarray::ArrayD;
@@ -287,23 +290,29 @@ mod tests {
 
     use crate::context::CUDA_STREAM;
 
-    #[derive(Debug)]
-    pub struct UnaryOpProblem<F: Datum + Float>
-    where
-        F: Datum + Float,
-        usize: AsPrimitive<F>,
-        f32: AsPrimitive<F>,
-    {   
-        pub op: BinOps,
-        pub lhs: ArrayD<F>,
-        pub rhs: ArrayD<F>
+    pub trait SupportedElement:
+    Datum + Num + Copy + FromPrimitive + ToPrimitive + 'static + Div<Output = Self> + PartialOrd + AsPrimitive<usize> + AsPrimitive<f32> + AsPrimitive<f64>
+    {
     }
 
-    impl<F> Arbitrary for UnaryOpProblem<F>
+    impl<T> SupportedElement for T where
+        T: Datum + Num + Copy + FromPrimitive + ToPrimitive + 'static + Div<Output = Self> + PartialOrd + AsPrimitive<usize> + AsPrimitive<f32> + AsPrimitive<f64>
+    {
+    }
+
+    #[derive(Debug)]
+    pub struct UnaryOpProblem<T>
     where
-        F: Datum + Float,
-        usize: AsPrimitive<F>,
-        f32: AsPrimitive<F>,
+        T: SupportedElement
+    {   
+        pub op: BinOps,
+        pub lhs: ArrayD<T>,
+        pub rhs: ArrayD<T>
+    }
+
+    impl<T> Arbitrary for UnaryOpProblem<T>
+    where
+        T: SupportedElement,
     {
         type Parameters = ();
         type Strategy = BoxedStrategy<Self>;
@@ -326,10 +335,10 @@ mod tests {
 
                     let lhs_len = lhs_shape.iter().product::<usize>();
                     let rhs_len = rhs_shape.iter().product::<usize>();
-                    let lhs = vec((-10i8..=10i8).prop_map(|i| F::from(i).unwrap() / F::from(2).unwrap()), lhs_len..=lhs_len)
+                    let lhs = vec((2u8..=10u8).prop_map(|i| T::from_u8(i).unwrap() / T::from_u8(2).unwrap()), lhs_len..=lhs_len)
                         .prop_map(move |vec| ArrayD::from_shape_vec(lhs_shape.to_vec(), vec).unwrap())
                         .boxed();
-                    let rhs = vec((-10i8..=10i8).prop_map(|i| F::from(i).unwrap() / F::from(2).unwrap()), rhs_len..=rhs_len)
+                    let rhs = vec((2u8..=10u8).prop_map(|i| T::from_u8(i).unwrap() / T::from_u8(2).unwrap()), rhs_len..=rhs_len)
                         .prop_map(move |vec| ArrayD::from_shape_vec(rhs_shape.to_vec(), vec).unwrap())
                         .boxed();
 
@@ -338,6 +347,12 @@ mod tests {
                     ops.pop();
                     ops.pop();
 
+                    if std::any::TypeId::of::<T>() == std::any::TypeId::of::<u8>()
+                    || std::any::TypeId::of::<T>() == std::any::TypeId::of::<u16>()
+                    || std::any::TypeId::of::<T>() == std::any::TypeId::of::<u32>()
+                    || std::any::TypeId::of::<T>() == std::any::TypeId::of::<u64>() {
+                        ops.retain(|op| !matches!(op, BinOps::Sub));
+                    }
                     let op_strategy = prop::sample::select(ops);
 
                     (lhs, rhs, op_strategy)
@@ -368,28 +383,29 @@ mod tests {
         Ok(out)
     }
 
-    impl<F> UnaryOpProblem<F>
+    impl<T> UnaryOpProblem<T>
     where
-        F: Datum + Float + std::ops::AddAssign,
-        usize: AsPrimitive<F>,
-        f32: AsPrimitive<F>,
+        T: SupportedElement
     {   
         pub fn reference(&self) -> TractResult<Tensor> {
             let lhs = self.lhs.clone().into_tensor();
             let rhs = self.rhs.clone().into_tensor();
 
             let res= match self.op {
-                BinOps::Add => eval_reference(&lhs, &rhs, |c: &mut F, a: &F, b: &F| *c = *a + *b)?,
-                BinOps::Sub => eval_reference(&lhs, &rhs, |c: &mut F, a: &F, b: &F| *c = *a - *b)?,
-                BinOps::Mul => eval_reference(&lhs, &rhs, |c: &mut F, a: &F, b: &F| *c = *a * *b)?,
-                BinOps::Div => eval_reference(&lhs, &rhs, |c: &mut F, a: &F, b: &F| *c = *a / *b)?,
-                BinOps::Pow => eval_reference(&lhs, &rhs, |c: &mut F, a: &F, b: &F| *c = a.powf(*b))?,
-                BinOps::Less => eval_reference(&lhs, &rhs, |c: &mut bool, a: &F, b: &F| *c = *a < *b)?,
-                BinOps::LessEqual => eval_reference(&lhs, &rhs, |c: &mut bool, a: &F, b: &F| *c = *a <= *b)?,
-                BinOps::Greater => eval_reference(&lhs, &rhs, |c: &mut bool, a: &F, b: &F| *c = *a > *b)?,
-                BinOps::GreaterEqual => eval_reference(&lhs, &rhs, |c: &mut bool, a: &F, b: &F| *c = *a >= *b)?,
-                BinOps::Equals => eval_reference(&lhs, &rhs, |c: &mut bool, a: &F, b: &F| *c = *a == *b)?,
-                BinOps::NotEquals => eval_reference(&lhs, &rhs, |c: &mut bool, a: &F, b: &F| *c = *a != *b)?,
+                BinOps::Add => eval_reference(&lhs, &rhs, |c: &mut T, a: &T, b: &T| *c = *a + *b)?,
+                BinOps::Sub => eval_reference(&lhs, &rhs, |c: &mut T, a: &T, b: &T| *c = *a - *b)?,
+                BinOps::Mul => eval_reference(&lhs, &rhs, |c: &mut T, a: &T, b: &T| *c = *a * *b)?,
+                BinOps::Div => eval_reference(&lhs, &rhs, |c: &mut T, a: &T, b: &T| *c = *a / *b)?,
+                BinOps::Pow => eval_reference(&lhs, &rhs, |c: &mut T, a: &T, b: &T| {
+                    if let Some(a_f32) = a.to_f32() { *c = T::from_f32(a_f32.powf(b.to_f32().unwrap())).unwrap() }
+                    else { *c = pow(*a, b.to_u32().unwrap() as usize) }
+                })?,
+                BinOps::Less => eval_reference(&lhs, &rhs, |c: &mut bool, a: &T, b: &T| *c = *a < *b)?,
+                BinOps::LessEqual => eval_reference(&lhs, &rhs, |c: &mut bool, a: &T, b: &T| *c = *a <= *b)?,
+                BinOps::Greater => eval_reference(&lhs, &rhs, |c: &mut bool, a: &T, b: &T| *c = *a > *b)?,
+                BinOps::GreaterEqual => eval_reference(&lhs, &rhs, |c: &mut bool, a: &T, b: &T| *c = *a >= *b)?,
+                BinOps::Equals => eval_reference(&lhs, &rhs, |c: &mut bool, a: &T, b: &T| *c = *a == *b)?,
+                BinOps::NotEquals => eval_reference(&lhs, &rhs, |c: &mut bool, a: &T, b: &T| *c = *a != *b)?,
                 _ => bail!("Could not convert to CPU op")
             };
             Ok(res)
@@ -425,6 +441,32 @@ mod tests {
                 let reference = pb.reference()?;
 
                 out.close_enough(&reference, Approximation::VeryApproximate)
+                   .with_context(|| format!("Cpu: {:?}, Cuda: {:?}", reference.dump(true), out.dump(true)))
+            }
+
+            run(pb).map_err(|e| TestCaseError::Fail(format!("{:?}", e).into()))?;
+        }
+
+        #[test]
+        fn binary_prop_i16(pb in any::<UnaryOpProblem<i16>>()) {
+            fn run(pb: UnaryOpProblem<i16>) -> TractResult<()> {
+                let out = pb.run()?;
+                let reference = pb.reference()?;
+
+                out.close_enough(&reference, Approximation::Exact)
+                   .with_context(|| format!("Cpu: {:?}, Cuda: {:?}", reference.dump(true), out.dump(true)))
+            }
+
+            run(pb).map_err(|e| TestCaseError::Fail(format!("{:?}", e).into()))?;
+        }
+
+        #[test]
+        fn binary_prop_u64(pb in any::<UnaryOpProblem<u64>>()) {
+            fn run(pb: UnaryOpProblem<u64>) -> TractResult<()> {
+                let out = pb.run()?;
+                let reference = pb.reference()?;
+
+                out.close_enough(&reference, Approximation::Exact)
                    .with_context(|| format!("Cpu: {:?}, Cuda: {:?}", reference.dump(true), out.dump(true)))
             }
 
