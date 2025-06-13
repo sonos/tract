@@ -86,7 +86,7 @@ struct CudaTestRuntime {
 }
 
 impl Runtime for CudaTestRuntime {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         self.name.into()
     }
 

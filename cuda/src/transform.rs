@@ -16,7 +16,7 @@ use crate::{kernels, ops};
 pub struct CudaTransform;
 
 impl ModelTransform for CudaTransform {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         "cuda-transform".into()
     }
 
