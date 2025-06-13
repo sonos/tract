@@ -1,3 +1,5 @@
-mod silu;
+pub mod binary;
+pub mod unary;
 
-pub use silu::CudaSilu;
+pub use binary::CudaBinOp;
+pub use unary::CudaUnaryOp;

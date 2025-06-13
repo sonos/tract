@@ -30,11 +30,7 @@ pub fn build_qtensor(values: Tensor, dt: DatumType, zp: Tensor, scale: f32) -> T
 }
 
 pub fn pick_signed_datum(signed: bool) -> DatumType {
-    if signed {
-        DatumType::I8
-    } else {
-        DatumType::U8
-    }
+    if signed { DatumType::I8 } else { DatumType::U8 }
 }
 
 pub fn qu8_dt(zp: i32, scale: f32) -> DatumType {
@@ -89,13 +85,15 @@ pub trait QOpProblem {
             Approximation::Approximate => 2.,
             _ => 3.,
         };
-        assert!(tract_core::ndarray::Zip::from(fp_results.to_array_view_mut()?)
-            .and(reference.to_array_view()?)
-            .all(|x: &mut f32, xref: &f32| {
-                let closest_x = (*x).clamp(min_repr_val, max_repr_val);
-                // core maximal accepted distance by default
-                (xref - closest_x).abs() <= scale * acceptable_scale_error_ratio
-            }));
+        assert!(
+            tract_core::ndarray::Zip::from(fp_results.to_array_view_mut()?)
+                .and(reference.to_array_view()?)
+                .all(|x: &mut f32, xref: &f32| {
+                    let closest_x = (*x).clamp(min_repr_val, max_repr_val);
+                    // core maximal accepted distance by default
+                    (xref - closest_x).abs() <= scale * acceptable_scale_error_ratio
+                })
+        );
         Ok(())
     }
 }

@@ -1,15 +1,11 @@
-use super::BroadcastKind;
-use super::utils::build_metal_grid_and_groups_for_el_wise_op;
-use crate::encoder::EncoderExt;
-use crate::kernels::utils::compute_broadcast_strides;
-use crate::{LibraryName, MetalStream};
-use anyhow::{bail, ensure};
-use metal::{Device, MTLSize, NSUInteger};
-use std::ffi::c_void;
+use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use std::fmt;
-use tract_core::internal::tract_smallvec::SmallVec;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
+
+use crate::context::cuda_context;
+use crate::kernels::utils::compute_broadcast_strides;
+use crate::kernels::{LibraryName, get_cuda_view};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum BinOps {
@@ -51,12 +47,8 @@ impl BinOps {
         Self::Or,
     ];
 
-    pub fn name(&self) -> StaticName {
+    pub fn name(&self) -> Cow<str> {
         format!("{}", self).into()
-    }
-
-    pub fn validation(&self) -> Validation {
-        Validation::Accurate
     }
 
     pub fn output_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
@@ -73,8 +65,7 @@ impl BinOps {
         Self::ALL
             .into_iter()
             .flat_map(|op| DeviceTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt)))
-            .flat_map(|(op, dt)| [true, false].into_iter().map(move |r| (op, dt, r)))
-            .flat_map(|(op, dt, r)| op.kernel_name(dt, r).into_iter())
+            .flat_map(|(op, dt)| op.kernel_name(dt).into_iter())
             .collect()
     }
 
@@ -117,7 +108,7 @@ impl BinOps {
         let rank = lhs.rank();
 
         if rank <= 4 {
-            let mut pad = |shape: &[usize]| {
+            let pad = |shape: &[usize]| {
                 let mut result = [1; 4];
                 result[4 - shape.len()..].copy_from_slice(shape);
                 result.into()
@@ -175,22 +166,8 @@ impl BinOps {
         }
     }
 
-    fn can_use_row_kernel(&self, lhs: &DeviceTensor, rhs: &DeviceTensor) -> bool {
-        let compatible_op = matches!(self, Self::Mul | Self::Add | Self::Div | Self::Sub);
-        let compatible_type = matches!(lhs.datum_type(), DatumType::F16 | DatumType::F32);
-        let rank = lhs.rank();
-
-        compatible_op
-            && compatible_type
-            && (rank > 0)
-            && ((rhs.len() == rhs.shape()[rank - 1])
-                || ((lhs.len() == lhs.shape()[rank - 1]) && matches!(self, Self::Mul | Self::Add)))
-            && (lhs.shape()[rank - 1] % 4 == 0)
-            && (rhs.shape()[rank - 1] % 4 == 0)
-    }
-
-    pub fn kernel_name(&self, dt: DatumType, use_row_kernel: bool) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal binary ops", dt);
+    pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
+        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for Cuda binary ops", dt);
 
         let tname = DeviceTensor::tname(dt)?;
 
@@ -210,16 +187,12 @@ impl BinOps {
             Self::Or => "or",
         };
 
-        if use_row_kernel {
-            Ok(format!("bin_ops::{kname}_1row_{tname}"))
-        } else {
-            Ok(format!("bin_ops::{kname}_{tname}"))
-        }
+        Ok(format!("binary_{kname}_{tname}"))
     }
 
     pub fn eval(
         &self,
-        stream: &MetalStream,
+        stream: &CudaStream,
         lhs: &DeviceTensor,
         rhs: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
@@ -229,92 +202,92 @@ impl BinOps {
 
         self.dispatch_eval(stream, lhs, rhs, &output)?;
 
-        stream.wait_until_completed()?;
+        stream.synchronize()?;
         Ok(output)
     }
 
     pub fn dispatch_eval(
         &self,
-        stream: &MetalStream,
+        stream: &CudaStream,
         lhs: &DeviceTensor,
         rhs: &DeviceTensor,
         output: &DeviceTensor,
     ) -> TractResult<()> {
-        stream.retain_tensor(lhs);
-        stream.retain_tensor(rhs);
-        stream.retain_tensor(output);
-
         ensure!(lhs.rank() == rhs.rank());
-        let rank = lhs.rank();
-        let out_shape = output.shape();
 
-        let use_row_kernel = self.can_use_row_kernel(lhs, rhs);
+        let kernel_name = self.kernel_name(lhs.datum_type())?;
 
-        let kernel_name = self.kernel_name(lhs.datum_type(), use_row_kernel)?;
+        let (lhs_shape, rhs_shape, out_shape) =
+            Self::reshape_to_rank_4_with_broadcast(lhs, rhs, output)?;
 
-        if use_row_kernel {
-            let pipeline = stream.load_pipeline(LibraryName::BinOps, &kernel_name)?;
+        let lhs_strides =
+            compute_broadcast_strides::<usize>(&lhs_shape, &natural_strides(&lhs_shape))?;
+        let rhs_strides =
+            compute_broadcast_strides::<usize>(&rhs_shape, &natural_strides(&rhs_shape))?;
+        let out_strides =
+            compute_broadcast_strides::<usize>(&out_shape, &natural_strides(&out_shape))?;
 
-            let (a, b) = if (rhs.len() == rhs.shape()[rank - 1]) { (lhs, rhs) } else { (rhs, lhs) };
-            let command_buffer = stream.command_buffer();
-            command_buffer.encode(|encoder| {
-                encoder.set_compute_pipeline_state(&pipeline);
-                encoder.set_metal_tensor(0, a, metal::MTLResourceUsage::Read);
-                encoder.set_metal_tensor(1, b, metal::MTLResourceUsage::Read);
-                encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
-                encoder.set_bytes(
-                    3,
-                    std::mem::size_of::<usize>() as u64,
-                    &b.len() as *const usize as *const c_void,
-                );
+        let func = cuda_context().load_pipeline(LibraryName::BinaryOps, kernel_name)?;
 
-                let grid_size =
-                    MTLSize { width: (output.len() / 4) as NSUInteger, height: 1, depth: 1 };
-                let group_size = MTLSize { width: 1, height: 1, depth: 1 };
-                encoder.dispatch_thread_groups(grid_size, group_size);
-            });
-        } else {
-            let (lhs_shape, rhs_shape, out_shape) =
-                Self::reshape_to_rank_4_with_broadcast(lhs, rhs, output)?;
+        let lhs_view = get_cuda_view(lhs);
+        let rhs_view = get_cuda_view(rhs);
+        let o_view = get_cuda_view(output);
 
-            let lhs_strides =
-                compute_broadcast_strides::<usize>(&lhs_shape, &natural_strides(&lhs_shape))?;
-            let rhs_strides =
-                compute_broadcast_strides::<usize>(&rhs_shape, &natural_strides(&rhs_shape))?;
-            let out_strides =
-                compute_broadcast_strides::<usize>(&out_shape, &natural_strides(&out_shape))?;
+        let max_threads = 1024;
+        let half_inner_ax = (out_shape[3] / 2).max(1);
+        let block_dim_x = half_inner_ax.min(max_threads);
+        let block_dim_y = out_shape[2].min(max_threads / block_dim_x);
+        let block_dim_z =
+            (out_shape[1] * out_shape[0]).min(max_threads / (block_dim_x * block_dim_y)).min(64);
 
-            let pipeline = stream.load_pipeline(LibraryName::BinOps, &kernel_name)?;
-            let command_buffer = stream.command_buffer();
-            command_buffer.encode(|encoder| {
-                encoder.set_compute_pipeline_state(&pipeline);
-                encoder.set_metal_tensor(0, lhs, metal::MTLResourceUsage::Read);
-                encoder.set_slice(1, &lhs_shape);
-                encoder.set_slice(2, &lhs_strides);
-                encoder.set_metal_tensor(3, rhs, metal::MTLResourceUsage::Read);
-                encoder.set_slice(4, &rhs_shape);
-                encoder.set_slice(5, &rhs_strides);
-                encoder.set_metal_tensor(6, output, metal::MTLResourceUsage::Write);
-                encoder.set_slice(7, &out_shape);
-                encoder.set_slice(8, &out_strides);
+        let cfg = LaunchConfig {
+            grid_dim: (
+                half_inner_ax.div_ceil(block_dim_x) as _,
+                out_shape[2].div_ceil(block_dim_y) as _,
+                (out_shape[0] * out_shape[1]).div_ceil(block_dim_z) as _,
+            ),
+            block_dim: (block_dim_x as _, block_dim_y as _, block_dim_z as _),
+            shared_mem_bytes: 0,
+        };
 
-                let (grid_size, group_size) = build_metal_grid_and_groups_for_el_wise_op(
-                    &out_shape,
-                    pipeline.max_total_threads_per_threadgroup() as _,
-                );
-                encoder.dispatch_thread_groups(grid_size, group_size);
-            });
-        }
+        let mut launch_args = stream.launch_builder(&func);
+        launch_args.arg(&lhs_view);
+        launch_args.arg(&rhs_view);
+        launch_args.arg(&o_view);
+        launch_args.arg(&rhs_shape[0]);
+        launch_args.arg(&rhs_shape[1]);
+        launch_args.arg(&rhs_shape[2]);
+        launch_args.arg(&rhs_shape[3]);
+        launch_args.arg(&out_shape[0]);
+        launch_args.arg(&out_shape[1]);
+        launch_args.arg(&out_shape[2]);
+        launch_args.arg(&out_shape[3]);
+        launch_args.arg(&lhs_strides[0]);
+        launch_args.arg(&lhs_strides[1]);
+        launch_args.arg(&lhs_strides[2]);
+        launch_args.arg(&lhs_strides[3]);
+        launch_args.arg(&rhs_strides[0]);
+        launch_args.arg(&rhs_strides[1]);
+        launch_args.arg(&rhs_strides[2]);
+        launch_args.arg(&rhs_strides[3]);
+        launch_args.arg(&out_strides[0]);
+        launch_args.arg(&out_strides[1]);
+        launch_args.arg(&out_strides[2]);
+        launch_args.arg(&out_strides[3]);
+
+        unsafe { launch_args.launch(cfg) }?;
+
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::with_borrowed_metal_stream;
+    use tract_gpu::tensor::IntoDevice;
 
     use super::*;
-    use tract_gpu::tensor::IntoDevice;
+
+    use crate::context::CUDA_STREAM;
 
     /* Except for And and Or, Binops are proptest for almost all types  */
 
@@ -341,7 +314,7 @@ mod tests {
         b_shape: &[usize],
         cab: impl Fn(&mut bool, &bool, &bool),
     ) -> TractResult<()> {
-        with_borrowed_metal_stream(|stream| {
+        CUDA_STREAM.with(|stream| {
             let a_len = a_shape.iter().product::<usize>();
             let b_len = b_shape.iter().product::<usize>();
 
