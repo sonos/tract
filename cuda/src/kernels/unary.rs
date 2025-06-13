@@ -182,7 +182,7 @@ mod tests {
     use crate::context::CUDA_STREAM;
 
     #[derive(Debug)]
-    pub struct UnaryOpProblem<F: Datum + Float>
+    pub struct UnaryOpProblem<F>
     where
         F: Datum + Float,
         usize: AsPrimitive<F>,
