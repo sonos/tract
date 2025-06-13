@@ -319,9 +319,9 @@ mod tests {
     /* Except for And and Or, Binops are proptest for almost all types  */
 
     fn reference<FI: Datum, FO: Datum>(
-    a: &Tensor,
-    b: &Tensor,
-    cab: impl Fn(&mut FO, &FI, &FI),
+        a: &Tensor,
+        b: &Tensor,
+        cab: impl Fn(&mut FO, &FI, &FI),
     ) -> TractResult<Tensor> {
         let out_shape = tract_core::broadcast::multi_broadcast(&[a.shape(), b.shape()])?;
         let mut out = unsafe { Tensor::uninitialized_dt(FO::datum_type(), &out_shape)? };
@@ -345,13 +345,12 @@ mod tests {
             let a_len = a_shape.iter().product::<usize>();
             let b_len = b_shape.iter().product::<usize>();
 
-            let a = Tensor::from_shape(a_shape, &(0..a_len).map(|f| f % 2 == 0).collect::<Vec<_>>())?
-                .into_device()?;
-            let b = Tensor::from_shape(
-                b_shape,
-                &(0..b_len).map(|f| f % 4 == 0).collect::<Vec<_>>(),
-            )?
-            .into_device()?;
+            let a =
+                Tensor::from_shape(a_shape, &(0..a_len).map(|f| f % 2 == 0).collect::<Vec<_>>())?
+                    .into_device()?;
+            let b =
+                Tensor::from_shape(b_shape, &(0..b_len).map(|f| f % 4 == 0).collect::<Vec<_>>())?
+                    .into_device()?;
             let output = op.eval(stream, &a, &b)?;
             let ref_output = reference::<bool, bool>(
                 &a.to_host()?.into_tensor(),
@@ -366,8 +365,8 @@ mod tests {
 
     #[test]
     fn test_logic() -> TractResult<()> {
-        run_test_case_logic(BinOps::And, &[2,4], &[2,4], |c, a, b| *c = *a && *b)?;
-        run_test_case_logic(BinOps::Or, &[2,4], &[2,4], |c, a, b| *c = *a || *b)?;
+        run_test_case_logic(BinOps::And, &[2, 4], &[2, 4], |c, a, b| *c = *a && *b)?;
+        run_test_case_logic(BinOps::Or, &[2, 4], &[2, 4], |c, a, b| *c = *a || *b)?;
         Ok(())
     }
 }

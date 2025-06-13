@@ -1,11 +1,11 @@
 use std::ops::Div;
 
 use infra::{Test, TestResult, TestSuite};
-use tract_core::internal::*;
-use tract_core::num_traits::{AsPrimitive, FromPrimitive, Num, ToPrimitive};
-use proptest::prelude::*;
 use proptest::collection::vec;
+use proptest::prelude::*;
+use tract_core::internal::*;
 use tract_core::ndarray::ArrayD;
+use tract_core::num_traits::{AsPrimitive, FromPrimitive, Num, ToPrimitive};
 use tract_core::ops::element_wise::ElementWiseOp;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
@@ -35,7 +35,7 @@ pub enum ElWiseOps {
     Atan,
     Atanh,
     // Erf, Erf is unstable in rust
-    Ln
+    Ln,
 }
 
 pub const ALL_OPS: [ElWiseOps; 25] = [
@@ -64,31 +64,51 @@ pub const ALL_OPS: [ElWiseOps; 25] = [
     ElWiseOps::Atan,
     ElWiseOps::Atanh,
     //ElWiseOps::Erf,
-    ElWiseOps::Ln
+    ElWiseOps::Ln,
 ];
 
 pub trait SupportedElement:
-Datum + Num + Copy + FromPrimitive + ToPrimitive + 'static + Div<Output = Self> + PartialOrd + AsPrimitive<usize> + AsPrimitive<f32> + AsPrimitive<f64>
+    Datum
+    + Num
+    + Copy
+    + FromPrimitive
+    + ToPrimitive
+    + 'static
+    + Div<Output = Self>
+    + PartialOrd
+    + AsPrimitive<usize>
+    + AsPrimitive<f32>
+    + AsPrimitive<f64>
 {
 }
 
 impl<T> SupportedElement for T where
-    T: Datum + Num + Copy + FromPrimitive + ToPrimitive + 'static + Div<Output = Self> + PartialOrd + AsPrimitive<usize> + AsPrimitive<f32> + AsPrimitive<f64>
+    T: Datum
+        + Num
+        + Copy
+        + FromPrimitive
+        + ToPrimitive
+        + 'static
+        + Div<Output = Self>
+        + PartialOrd
+        + AsPrimitive<usize>
+        + AsPrimitive<f32>
+        + AsPrimitive<f64>
 {
 }
 
 #[derive(Debug, Clone)]
 pub struct ElWiseOpProblem<T>
 where
-    T: SupportedElement
-{   
+    T: SupportedElement,
+{
     pub op: ElWiseOps,
     pub input: ArrayD<T>,
 }
 
 impl<T> Arbitrary for ElWiseOpProblem<T>
 where
-    T: SupportedElement
+    T: SupportedElement,
 {
     type Parameters = ();
     type Strategy = BoxedStrategy<Self>;
@@ -99,30 +119,33 @@ where
         shape_strategy
             .prop_flat_map(|shape| {
                 let len = shape.iter().product::<usize>();
-                let input = vec((2u8..=10u8).prop_map(|i| T::from_u8(i).unwrap() / T::from_u8(2).unwrap()), len..=len)
-                    .prop_map(move |vec| ArrayD::from_shape_vec(shape.to_vec(), vec).unwrap())
-                    .boxed();
+                let input = vec(
+                    (2u8..=10u8).prop_map(|i| T::from_u8(i).unwrap() / T::from_u8(2).unwrap()),
+                    len..=len,
+                )
+                .prop_map(move |vec| ArrayD::from_shape_vec(shape.to_vec(), vec).unwrap())
+                .boxed();
 
                 let mut ops = ALL_OPS.to_vec();
 
                 if std::any::TypeId::of::<T>() == std::any::TypeId::of::<u8>()
-                || std::any::TypeId::of::<T>() == std::any::TypeId::of::<u16>()
-                || std::any::TypeId::of::<T>() == std::any::TypeId::of::<u32>()
-                || std::any::TypeId::of::<T>() == std::any::TypeId::of::<u64>()
-                || std::any::TypeId::of::<T>() == std::any::TypeId::of::<i8>()
-                || std::any::TypeId::of::<T>() == std::any::TypeId::of::<i16>()
-                || std::any::TypeId::of::<T>() == std::any::TypeId::of::<i32>()
-                || std::any::TypeId::of::<T>() == std::any::TypeId::of::<i64>() {
-                    ops.retain(|op| matches!(op, ElWiseOps::Ceil | ElWiseOps::Floor | ElWiseOps::Round));
+                    || std::any::TypeId::of::<T>() == std::any::TypeId::of::<u16>()
+                    || std::any::TypeId::of::<T>() == std::any::TypeId::of::<u32>()
+                    || std::any::TypeId::of::<T>() == std::any::TypeId::of::<u64>()
+                    || std::any::TypeId::of::<T>() == std::any::TypeId::of::<i8>()
+                    || std::any::TypeId::of::<T>() == std::any::TypeId::of::<i16>()
+                    || std::any::TypeId::of::<T>() == std::any::TypeId::of::<i32>()
+                    || std::any::TypeId::of::<T>() == std::any::TypeId::of::<i64>()
+                {
+                    ops.retain(|op| {
+                        matches!(op, ElWiseOps::Ceil | ElWiseOps::Floor | ElWiseOps::Round)
+                    });
                 }
 
                 let op_strategy = prop::sample::select(ops);
                 (input, op_strategy)
             })
-            .prop_map(|(input, op)| ElWiseOpProblem {
-                input,
-                op,
-            })
+            .prop_map(|(input, op)| ElWiseOpProblem { input, op })
             .boxed()
     }
 }
@@ -160,23 +183,20 @@ pub fn to_tract_op(op: &ElWiseOps) -> Box<dyn TypedOp> {
 }
 
 fn eval_reference<FI: Datum, FO: Datum>(
-a: &Tensor,
-func: impl Fn(&mut FO, &FI),
+    a: &Tensor,
+    func: impl Fn(&mut FO, &FI),
 ) -> TractResult<Tensor> {
     let mut out = unsafe { Tensor::uninitialized_dt(FO::datum_type(), a.shape())? };
     let a_view = a.to_array_view::<FI>()?;
     let mut c = out.to_array_view_mut::<FO>()?;
-    tract_core::ndarray::Zip::from(&mut c)
-        .and_broadcast(a_view)
-        .for_each(func);
+    tract_core::ndarray::Zip::from(&mut c).and_broadcast(a_view).for_each(func);
     Ok(out)
 }
 
-
 impl<T> ElWiseOpProblem<T>
 where
-    T: SupportedElement
-{   
+    T: SupportedElement,
+{
     fn f32_elmwise<F>(a: &T, op: F) -> T
     where
         T: SupportedElement,
@@ -190,18 +210,26 @@ where
         let inp = self.input.clone().into_tensor();
 
         let res = match self.op {
-            ElWiseOps::Neg    => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, |x| -x))?,
-            ElWiseOps::Abs    => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, f32::abs))?,
-            ElWiseOps::Sqr    => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, |x| x * x))?,
-            ElWiseOps::Sqrt   => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, f32::sqrt))?,
-            ElWiseOps::Rsqrt  => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, |x| 1.0 / x.sqrt()))?,
-            ElWiseOps::Recip  => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, |x| 1.0 / x))?,
-            ElWiseOps::Ceil   => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, f32::ceil))?,
-            ElWiseOps::Floor  => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, f32::floor))?,
-            ElWiseOps::Round  => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, f32::round))?,
-            ElWiseOps::RoundHalfToEven => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, f32::round_ties_even))?,
+            ElWiseOps::Neg => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, |x| -x))?,
+            ElWiseOps::Abs => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, f32::abs))?,
+            ElWiseOps::Sqr => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, |x| x * x))?,
+            ElWiseOps::Sqrt => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, f32::sqrt))?,
+            ElWiseOps::Rsqrt => {
+                eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, |x| 1.0 / x.sqrt()))?
+            }
+            ElWiseOps::Recip => {
+                eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, |x| 1.0 / x))?
+            }
+            ElWiseOps::Ceil => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, f32::ceil))?,
+            ElWiseOps::Floor => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, f32::floor))?,
+            ElWiseOps::Round => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, f32::round))?,
+            ElWiseOps::RoundHalfToEven => {
+                eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, f32::round_ties_even))?
+            }
             ElWiseOps::Exp => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, f32::exp))?,
-            ElWiseOps::Sigmoid => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, |x| 1. / (1. + (-x).exp())))?,
+            ElWiseOps::Sigmoid => {
+                eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, |x| 1. / (1. + (-x).exp())))?
+            }
             ElWiseOps::Sin => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, f32::sin))?,
             ElWiseOps::Sinh => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, f32::sinh))?,
             ElWiseOps::Asin => eval_reference(&inp, |c, a| *c = Self::f32_elmwise(a, f32::asin))?,
@@ -225,11 +253,7 @@ where
         let input = model
             .add_source("input", TypedFact::shape_and_dt_of(&self.input.clone().into_tensor()))?;
 
-        let output = model.wire_node(
-            "bin_op",
-            to_tract_op(&self.op),
-            &[input],
-        )?;
+        let output = model.wire_node("bin_op", to_tract_op(&self.op), &[input])?;
         model.set_output_outlets(&output)?;
 
         model = model.into_decluttered()?;
@@ -239,7 +263,7 @@ where
 
 impl<T> Test for ElWiseOpProblem<T>
 where
-    T: SupportedElement
+    T: SupportedElement,
 {
     fn run_with_approx(
         &self,
@@ -253,9 +277,7 @@ where
 
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
 
-        let mut output = runtime
-                    .prepare(model)?
-                    .run(tvec![self.input.clone().into_tvalue()])?;
+        let mut output = runtime.prepare(model)?.run(tvec![self.input.clone().into_tvalue()])?;
         let output = output.remove(0).into_tensor();
         output.close_enough(&reference, approx)
     }

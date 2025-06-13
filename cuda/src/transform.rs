@@ -151,14 +151,22 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
 
     Ok(in_dts_compatible
         && (node
-                .op_as::<Const>()
-                .is_some_and(|op| DeviceTensor::is_supported_dt(op.val().datum_type()))
-            || node.op_as::<Silu>().is_some_and(|_| kernels::UnaryOps::is_supported_dt(input_dts[0]))
-            || node.op_as::<ElementWiseOp>().is_some_and(|op| kernels::UnaryOps::is_supported_dt(input_dts[0]) && map_element_wise_ops_to_cuda(op).is_some())
-            || node.op_as::<TypedBinOp>().is_some_and(|op| kernels::BinOps::is_supported_dt(input_dts[0]) && map_binary_op_to_cuda(op).is_some())
-            || node.op_as::<Comp>().is_some_and(|_| kernels::BinOps::is_supported_dt(input_dts[0]))
-    )
-    )
+            .op_as::<Const>()
+            .is_some_and(|op| DeviceTensor::is_supported_dt(op.val().datum_type()))
+            || node
+                .op_as::<Silu>()
+                .is_some_and(|_| kernels::UnaryOps::is_supported_dt(input_dts[0]))
+            || node.op_as::<ElementWiseOp>().is_some_and(|op| {
+                kernels::UnaryOps::is_supported_dt(input_dts[0])
+                    && map_element_wise_ops_to_cuda(op).is_some()
+            })
+            || node.op_as::<TypedBinOp>().is_some_and(|op| {
+                kernels::BinOps::is_supported_dt(input_dts[0])
+                    && map_binary_op_to_cuda(op).is_some()
+            })
+            || node
+                .op_as::<Comp>()
+                .is_some_and(|_| kernels::BinOps::is_supported_dt(input_dts[0]))))
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {
@@ -264,19 +272,15 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
             let device_inputs =
                 self.sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
 
-            let op: Box<dyn TypedOp> =  if let Some(op) = node.op_as::<Const>() {
-                    Box::new(convert_const(op)?)
-                }
-            else if let Some(op) = node.op_as::<ElementWiseOp>() {
+            let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<Const>() {
+                Box::new(convert_const(op)?)
+            } else if let Some(op) = node.op_as::<ElementWiseOp>() {
                 Box::new(map_element_wise_ops_to_cuda(op).unwrap())
-            }
-            else if let Some(op) = node.op_as::<TypedBinOp>() {
+            } else if let Some(op) = node.op_as::<TypedBinOp>() {
                 Box::new(map_binary_op_to_cuda(op).unwrap())
-            }
-            else if let Some(op) = node.op_as::<Comp>() {
+            } else if let Some(op) = node.op_as::<Comp>() {
                 Box::new(convert_logic_op_to_cuda(op))
-            }
-            else if let Some(_op) = node.op_as::<Silu>() {
+            } else if let Some(_op) = node.op_as::<Silu>() {
                 Box::new(ops::CudaUnaryOp(kernels::UnaryOps::Silu))
             } else {
                 bail!("Failed to translate a supported CUDA Op")

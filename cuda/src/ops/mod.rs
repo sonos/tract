@@ -1,5 +1,5 @@
-pub mod unary;
 pub mod binary;
+pub mod unary;
 
-pub use unary::CudaUnaryOp;
 pub use binary::CudaBinOp;
+pub use unary::CudaUnaryOp;
