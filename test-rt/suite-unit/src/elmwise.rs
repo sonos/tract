@@ -163,7 +163,7 @@ fn eval_reference<FI: Datum, FO: Datum>(
 a: &Tensor,
 func: impl Fn(&mut FO, &FI),
 ) -> TractResult<Tensor> {
-    let mut out = unsafe { Tensor::uninitialized_dt(FO::datum_type(), &a.shape())? };
+    let mut out = unsafe { Tensor::uninitialized_dt(FO::datum_type(), a.shape())? };
     let a_view = a.to_array_view::<FI>()?;
     let mut c = out.to_array_view_mut::<FO>()?;
     tract_core::ndarray::Zip::from(&mut c)

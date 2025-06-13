@@ -10,7 +10,7 @@ use crate::kernels::UnaryOps;
 pub struct CudaUnaryOp(pub UnaryOps);
 
 impl Op for CudaUnaryOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("Cuda{}", self.0.name()).into()
     }
 

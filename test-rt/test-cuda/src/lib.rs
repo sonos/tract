@@ -1,6 +1,5 @@
 #![cfg(test)]
 
-use std::borrow::Cow;
 use std::sync::Arc;
 use tract_core::internal::*;
 

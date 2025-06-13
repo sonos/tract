@@ -25,7 +25,7 @@ impl CudaBinOp {
 }
 
 impl Op for CudaBinOp {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> StaticName {
         format!("Cuda{}", self.0.name()).into()
     }
 
