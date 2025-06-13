@@ -81,8 +81,7 @@ where
 
         if F::datum_type() == DatumType::F16 {
             output.close_enough(&reference, Approximation::VeryApproximate)
-        }
-        else {
+        } else {
             output.close_enough(&reference, approx)
         }
     }

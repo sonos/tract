@@ -1,13 +1,13 @@
 #![allow(unused)]
 
-mod unary;
 mod binary;
+mod unary;
 mod utils;
 
-use cudarc::driver::CudaView;
-pub use unary::UnaryOps;
 pub use binary::BinOps;
+use cudarc::driver::CudaView;
 use tract_gpu::tensor::DeviceTensor;
+pub use unary::UnaryOps;
 
 use crate::tensor::CudaBuffer;
 

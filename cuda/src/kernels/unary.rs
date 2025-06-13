@@ -35,7 +35,7 @@ pub enum UnaryOps {
     Atanh,
     Erf,
     Ln,
-    Silu
+    Silu,
 }
 
 impl fmt::Display for UnaryOps {
@@ -72,7 +72,7 @@ impl UnaryOps {
         Self::Atanh,
         Self::Erf,
         Self::Ln,
-        Self::Silu
+        Self::Silu,
     ];
 
     pub fn is_supported_dt(dt: DatumType) -> bool {
@@ -127,7 +127,7 @@ impl UnaryOps {
         ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for Cuda Unary Op", dt);
         let name = if matches!(self, Self::RoundHalfToEven) {
             "rint".to_string()
-        } else { 
+        } else {
             self.name().to_lowercase()
         };
         Ok(format!("unary_{}_{}", name, DeviceTensor::tname(dt)?))

@@ -10,10 +10,12 @@ use tract_ndarray::*;
 
 pub mod apply_rope;
 pub mod bin_einsum;
+pub mod binary;
 pub mod conv_f32;
 pub mod conv_q;
 pub mod deconv;
 pub mod downsample;
+pub mod elmwise;
 pub mod gelu_approximate;
 pub mod matmul_q40;
 pub mod q_binary;
@@ -24,8 +26,6 @@ pub mod rms_norm;
 pub mod scaled_masked_softmax;
 pub mod silu;
 pub mod slice;
-pub mod binary;
-pub mod elmwise;
 
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite: TestSuite = Default::default();

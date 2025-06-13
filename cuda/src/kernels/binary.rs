@@ -1,11 +1,11 @@
-use std::fmt;
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
+use std::fmt;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::cuda_context;
 use crate::kernels::utils::compute_broadcast_strides;
-use crate::kernels::{get_cuda_view, LibraryName};
+use crate::kernels::{LibraryName, get_cuda_view};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum BinOps {
@@ -237,10 +237,15 @@ impl BinOps {
         let half_inner_ax = (out_shape[3] / 2).max(1);
         let block_dim_x = half_inner_ax.min(max_threads);
         let block_dim_y = out_shape[2].min(max_threads / block_dim_x);
-        let block_dim_z = (out_shape[1] * out_shape[0]).min(max_threads / (block_dim_x * block_dim_y)).min(64);
+        let block_dim_z =
+            (out_shape[1] * out_shape[0]).min(max_threads / (block_dim_x * block_dim_y)).min(64);
 
         let cfg = LaunchConfig {
-            grid_dim: (half_inner_ax.div_ceil(block_dim_x) as _, out_shape[2].div_ceil(block_dim_y) as _, (out_shape[0] * out_shape[1]).div_ceil(block_dim_z) as _),
+            grid_dim: (
+                half_inner_ax.div_ceil(block_dim_x) as _,
+                out_shape[2].div_ceil(block_dim_y) as _,
+                (out_shape[0] * out_shape[1]).div_ceil(block_dim_z) as _,
+            ),
             block_dim: (block_dim_x as _, block_dim_y as _, block_dim_z as _),
             shared_mem_bytes: 0,
         };
@@ -287,9 +292,9 @@ mod tests {
     /* Except for And and Or, Binops are proptest for almost all types  */
 
     fn reference<FI: Datum, FO: Datum>(
-    a: &Tensor,
-    b: &Tensor,
-    cab: impl Fn(&mut FO, &FI, &FI),
+        a: &Tensor,
+        b: &Tensor,
+        cab: impl Fn(&mut FO, &FI, &FI),
     ) -> TractResult<Tensor> {
         let out_shape = tract_core::broadcast::multi_broadcast(&[a.shape(), b.shape()])?;
         let mut out = unsafe { Tensor::uninitialized_dt(FO::datum_type(), &out_shape)? };
@@ -313,13 +318,12 @@ mod tests {
             let a_len = a_shape.iter().product::<usize>();
             let b_len = b_shape.iter().product::<usize>();
 
-            let a = Tensor::from_shape(a_shape, &(0..a_len).map(|f| f % 2 == 0).collect::<Vec<_>>())?
-                .into_device()?;
-            let b = Tensor::from_shape(
-                b_shape,
-                &(0..b_len).map(|f| f % 4 == 0).collect::<Vec<_>>(),
-            )?
-            .into_device()?;
+            let a =
+                Tensor::from_shape(a_shape, &(0..a_len).map(|f| f % 2 == 0).collect::<Vec<_>>())?
+                    .into_device()?;
+            let b =
+                Tensor::from_shape(b_shape, &(0..b_len).map(|f| f % 4 == 0).collect::<Vec<_>>())?
+                    .into_device()?;
             let output = op.eval(stream, &a, &b)?;
             let ref_output = reference::<bool, bool>(
                 &a.to_host()?.into_tensor(),
@@ -334,8 +338,8 @@ mod tests {
 
     #[test]
     fn test_logic() -> TractResult<()> {
-        run_test_case_logic(BinOps::And, &[2,4], &[2,4], |c, a, b| *c = *a && *b)?;
-        run_test_case_logic(BinOps::Or, &[2,4], &[2,4], |c, a, b| *c = *a || *b)?;
+        run_test_case_logic(BinOps::And, &[2, 4], &[2, 4], |c, a, b| *c = *a && *b)?;
+        run_test_case_logic(BinOps::Or, &[2, 4], &[2, 4], |c, a, b| *c = *a || *b)?;
         Ok(())
     }
 }
