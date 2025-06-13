@@ -1,38 +1,39 @@
+#include <stdint.h>
 #include <cuda_fp16.h>
 #include <math.h>
 
-static __device__ __forceinline__ float op_add(const float a, const float b) { return a + b; }
-static __device__ __forceinline__ float op_add(const __half a, const __half b) { return a + b; }
+template <typename T>
+__device__ __forceinline__ T op_add(const T a, const T b) { return a + b; }
 
-static __device__ __forceinline__ float op_sub(const float a, const float b) { return a - b; }
-static __device__ __forceinline__ float op_sub(const __half a, const __half b) { return a - b; }
+template <typename T>
+__device__ __forceinline__ T op_sub(const T a, const T b) { return a - b; }
 
-static __device__ __forceinline__ float op_mul(const float a, const float b) { return a * b; }
-static __device__ __forceinline__ float op_mul(const __half a, const __half b) { return a * b; }
+template <typename T>
+__device__ __forceinline__ T op_mul(const T a, const T b) { return a * b; }
 
-static __device__ __forceinline__ float op_div(const float a, const float b) { return a / b; }
-static __device__ __forceinline__ float op_div(const __half a, const __half b) { return a / b; }
+template <typename T>
+__device__ __forceinline__ T op_div(const T a, const T b) { return a / b; }
 
-static __device__ __forceinline__ float op_pow(const float a, const float b) { return powf(a, b); }
-static __device__ __forceinline__ float op_pow(const __half a, const __half b) { return powf((float)a, (float)b); }
+template <typename T>
+__device__ __forceinline__ T op_pow(const T a, const T b) { return powf((float)a, (float)b); }
 
-static __device__ __forceinline__ bool op_less(const float a, const float b) { return a < b; }
-static __device__ __forceinline__ bool op_less(const __half a, const __half b) { return a < b; }
+template <typename T>
+__device__ __forceinline__ bool op_less(const T a, const T b) { return a < b; }
 
-static __device__ __forceinline__ bool op_less_equal(const float a, const float b) { return a <= b; }
-static __device__ __forceinline__ bool op_less_equal(const __half a, const __half b) { return a <= b; }
+template <typename T>
+__device__ __forceinline__ bool op_less_equal(const T a, const T b) { return a <= b; }
 
-static __device__ __forceinline__ bool op_greater(const float a, const float b) { return a > b; }
-static __device__ __forceinline__ bool op_greater(const __half a, const __half b) { return a > b; }
+template <typename T>
+__device__ __forceinline__ bool op_greater(const T a, const T b) { return a > b; }
 
-static __device__ __forceinline__ bool op_greater_equal(const float a, const float b) { return a >= b; }
-static __device__ __forceinline__ bool op_greater_equal(const __half a, const __half b) { return a >= b; }
+template <typename T>
+__device__ __forceinline__ bool op_greater_equal(const T a, const T b) { return a >= b; }
 
-static __device__ __forceinline__ bool op_equals(const float a, const float b) { return a == b; }
-static __device__ __forceinline__ bool op_equals(const __half a, const __half b) { return a == b; }
+template <typename T>
+__device__ __forceinline__ bool op_equals(const T a, const T b) { return a == b; }
 
-static __device__ __forceinline__ bool op_not_equals(const float a, const float b) { return a != b; }
-static __device__ __forceinline__ bool op_not_equals(const __half a, const __half b) { return a != b; }
+template <typename T>
+__device__ __forceinline__ bool op_not_equals(const T a, const T b) { return a != b; }
 
 static __device__ __forceinline__ bool op_and(const bool a, const bool b) { return a && b; }
 static __device__ __forceinline__ bool op_or(const bool a, const bool b) { return a || b; }
@@ -72,10 +73,26 @@ static __device__ __forceinline__ bool op_or(const bool a, const bool b) { retur
 #define DEFINE_ARITHMETIC_OP(name, OP) \
     DEFINE_BINARY_KERNEL(name, f32, float, float, OP) \
     DEFINE_BINARY_KERNEL(name, f16, __half, __half, OP) \
+    DEFINE_BINARY_KERNEL(name, u8, uint8_t, uint8_t, OP) \
+    DEFINE_BINARY_KERNEL(name, u16, uint16_t, uint16_t, OP) \
+    DEFINE_BINARY_KERNEL(name, u32, uint32_t, uint32_t, OP) \
+    DEFINE_BINARY_KERNEL(name, u64, uint64_t, uint32_t, OP) \
+    DEFINE_BINARY_KERNEL(name, i8, int8_t, int8_t, OP) \
+    DEFINE_BINARY_KERNEL(name, i16, int16_t, int16_t, OP) \
+    DEFINE_BINARY_KERNEL(name, i32, int32_t, int32_t, OP) \
+    DEFINE_BINARY_KERNEL(name, i64, int64_t, int64_t, OP) \
 
 #define DEFINE_COMP_OP(name, OP) \
     DEFINE_BINARY_KERNEL(name, f32, float, bool, OP) \
     DEFINE_BINARY_KERNEL(name, f16, __half, bool, OP) \
+    DEFINE_BINARY_KERNEL(name, u8, uint8_t, bool, OP) \
+    DEFINE_BINARY_KERNEL(name, u16, uint16_t, bool, OP) \
+    DEFINE_BINARY_KERNEL(name, u32, uint32_t, bool, OP) \
+    DEFINE_BINARY_KERNEL(name, u64, uint64_t, bool, OP) \
+    DEFINE_BINARY_KERNEL(name, i8, int8_t, bool, OP) \
+    DEFINE_BINARY_KERNEL(name, i16, int16_t, bool, OP) \
+    DEFINE_BINARY_KERNEL(name, i32, int32_t, bool, OP) \
+    DEFINE_BINARY_KERNEL(name, i64, int64_t, bool, OP) \
 
 #define DEFINE_LOGIC_OP(name, OP) \
     DEFINE_BINARY_KERNEL(name, bool, bool, bool, OP) \

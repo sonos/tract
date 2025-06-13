@@ -88,6 +88,14 @@ impl BinOps {
             dt,
             DatumType::F32
                 | DatumType::F16
+                | DatumType::U8
+                | DatumType::U16
+                | DatumType::U32
+                | DatumType::U64
+                | DatumType::I8
+                | DatumType::I16
+                | DatumType::I32
+                | DatumType::I64
                 | DatumType::Bool
         )
     }
@@ -447,7 +455,7 @@ mod tests {
                 &b.to_host()?.into_tensor(),
                 cab,
             )?;
-            dbg!(&ref_output);
+
             assert_eq!(output.to_host()?.into_tensor(), ref_output);
             Ok(())
         })
