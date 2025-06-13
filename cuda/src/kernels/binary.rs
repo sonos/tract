@@ -301,7 +301,7 @@ mod tests {
     }
 
     #[derive(Debug)]
-    pub struct UnaryOpProblem<T>
+    pub struct BinaryOpProblem<T>
     where
         T: SupportedElement
     {   
@@ -310,7 +310,7 @@ mod tests {
         pub rhs: ArrayD<T>
     }
 
-    impl<T> Arbitrary for UnaryOpProblem<T>
+    impl<T> Arbitrary for BinaryOpProblem<T>
     where
         T: SupportedElement,
     {
@@ -347,6 +347,7 @@ mod tests {
                     ops.pop();
                     ops.pop();
 
+                    // Avoid Sub overfow for uints
                     if std::any::TypeId::of::<T>() == std::any::TypeId::of::<u8>()
                     || std::any::TypeId::of::<T>() == std::any::TypeId::of::<u16>()
                     || std::any::TypeId::of::<T>() == std::any::TypeId::of::<u32>()
@@ -357,7 +358,7 @@ mod tests {
 
                     (lhs, rhs, op_strategy)
                 })
-                .prop_map(|(lhs, rhs, op)| UnaryOpProblem {
+                .prop_map(|(lhs, rhs, op)| BinaryOpProblem {
                     lhs,
                     rhs,
                     op,
@@ -383,7 +384,7 @@ mod tests {
         Ok(out)
     }
 
-    impl<T> UnaryOpProblem<T>
+    impl<T> BinaryOpProblem<T>
     where
         T: SupportedElement
     {   
@@ -423,8 +424,8 @@ mod tests {
 
     proptest::proptest! {
         #[test]
-        fn binary_prop_f32(pb in any::<UnaryOpProblem<f32>>()) {
-            fn run(pb: UnaryOpProblem<f32>) -> TractResult<()> {
+        fn binary_prop_f32(pb in any::<BinaryOpProblem<f32>>()) {
+            fn run(pb: BinaryOpProblem<f32>) -> TractResult<()> {
                 let out = pb.run()?;
                 let reference = pb.reference()?;
 
@@ -435,8 +436,8 @@ mod tests {
         }
 
         #[test]
-        fn binary_prop_f16(pb in any::<UnaryOpProblem<f16>>()) {
-            fn run(pb: UnaryOpProblem<f16>) -> TractResult<()> {
+        fn binary_prop_f16(pb in any::<BinaryOpProblem<f16>>()) {
+            fn run(pb: BinaryOpProblem<f16>) -> TractResult<()> {
                 let out = pb.run()?;
                 let reference = pb.reference()?;
 
@@ -448,8 +449,8 @@ mod tests {
         }
 
         #[test]
-        fn binary_prop_i16(pb in any::<UnaryOpProblem<i16>>()) {
-            fn run(pb: UnaryOpProblem<i16>) -> TractResult<()> {
+        fn binary_prop_i16(pb in any::<BinaryOpProblem<i16>>()) {
+            fn run(pb: BinaryOpProblem<i16>) -> TractResult<()> {
                 let out = pb.run()?;
                 let reference = pb.reference()?;
 
@@ -461,8 +462,8 @@ mod tests {
         }
 
         #[test]
-        fn binary_prop_u64(pb in any::<UnaryOpProblem<u64>>()) {
-            fn run(pb: UnaryOpProblem<u64>) -> TractResult<()> {
+        fn binary_prop_u64(pb in any::<BinaryOpProblem<u64>>()) {
+            fn run(pb: BinaryOpProblem<u64>) -> TractResult<()> {
                 let out = pb.run()?;
                 let reference = pb.reference()?;
 
