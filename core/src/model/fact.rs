@@ -302,7 +302,9 @@ impl TypedFact {
         if let (Some(u), Some(k)) = (self.uniform.as_deref(), self.konst.as_deref()) {
             if let Some(k) = k.as_uniform() {
                 if &k != u {
-                    bail!("Uniform value and uniform constant mismatch: {:?}, {:?}", u, k);
+                    bail!(
+                        "Uniform value and uniform constant mismatch: value:{u:?}, uniform:{k:?}",
+                    );
                 }
             } else {
                 bail!("Fact said to be uniform ({:?}) and equal to {:?} which is not.", u, k);
