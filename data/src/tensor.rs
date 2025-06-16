@@ -6,11 +6,11 @@ use crate::internal::*;
 use crate::opaque::Opaque;
 use crate::TVec;
 use half::f16;
-use itertools::Itertools;
+use itertools::{izip, Itertools};
 use ndarray::prelude::*;
 #[cfg(feature = "complex")]
 use num_complex::Complex;
-use num_traits::Zero;
+use num_traits::{Float, Zero};
 use std::borrow::Cow;
 use std::fmt;
 use std::hash::Hash;
@@ -1381,14 +1381,27 @@ impl Tensor {
 
     /// Strict equality test on tensors.
     fn eq_dt(&self, other: &Tensor) -> TractResult<bool> {
-        unsafe fn eq_t<D: Datum>(me: &Tensor, other: &Tensor) -> bool {
-            unsafe { me.as_slice_unchecked::<D>() == other.as_slice_unchecked::<D>() }
+        unsafe fn eq_t<D: Datum>(me: &Tensor, other: &Tensor) -> TractResult<bool> {
+            unsafe {
+                if D::datum_type().is_float() {
+                    return dispatch_floatlike!(float_eq_t(D::datum_type())(me, other));
+                }
+                Ok(izip!(me.as_slice_unchecked::<D>(), other.as_slice_unchecked::<D>())
+                    .all(|(a, b)| a == b))
+            }
+        }
+
+        unsafe fn float_eq_t<D: Datum + Float>(me: &Tensor, other: &Tensor) -> TractResult<bool> {
+            unsafe {
+                Ok(izip!(me.as_slice_unchecked::<D>(), other.as_slice_unchecked::<D>())
+                    .all(|(a, b)| (a.is_nan() && b.is_nan()) || a == b))
+            }
         }
 
         unsafe {
             Ok(self.datum_type() == other.datum_type()
                 && self.shape() == other.shape()
-                && dispatch_datum!(eq_t(self.dt)(self, other)))
+                && dispatch_datum!(eq_t(self.dt)(self, other))?)
         }
     }
 
