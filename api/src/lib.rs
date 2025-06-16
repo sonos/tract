@@ -270,7 +270,7 @@ pub trait InferenceFactInterface: Debug + Display + Default + Clone {
 }
 
 pub trait AsFact<M, F> {
-    fn as_fact(&self, model: &mut M) -> Result<Bow<F>>;
+    fn as_fact(&self, model: &mut M) -> Result<Bow<'_, F>>;
 }
 
 #[repr(C)]

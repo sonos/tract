@@ -1,4 +1,4 @@
-use downcast_rs::{Downcast, impl_downcast};
+use downcast_rs::{impl_downcast, Downcast};
 use dyn_clone::DynClone;
 use std::fmt::Debug;
 use tract_core::dyn_clone;
@@ -27,7 +27,7 @@ pub trait OwnedDeviceTensor: Downcast + DynClone + Send + Sync + Debug {
     fn as_arc_tensor(&self) -> Option<&Arc<Tensor>>;
     fn device_buffer(&self) -> &dyn DeviceBuffer;
     fn to_host(&self) -> TractResult<Arc<Tensor>>;
-    fn view(&self) -> TensorView;
+    fn view(&self) -> TensorView<'_>;
 }
 
 impl_downcast!(OwnedDeviceTensor);
