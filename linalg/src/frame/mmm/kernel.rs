@@ -18,7 +18,7 @@ pub trait MatMatMulKer: Clone + Debug + Send + Sync + 'static {
 
     #[allow(clippy::type_complexity)]
     fn packings(&self) -> &[(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)];
-    fn stores(&self) -> Cow<[DatumType]>;
+    fn stores(&self) -> Cow<'_, [DatumType]>;
 
     #[allow(unused_variables)]
     fn can_fuse(&self, spec: &FusedSpec) -> bool {

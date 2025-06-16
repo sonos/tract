@@ -104,7 +104,7 @@ impl OwnedDeviceTensor for CudaTensor {
         })
     }
 
-    fn view(&self) -> TensorView {
+    fn view(&self) -> TensorView<'_> {
         todo!()
     }
 }

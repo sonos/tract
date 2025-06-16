@@ -13,7 +13,7 @@ use std::fmt::Display;
 use tract_core::internal::*;
 use tract_data::itertools::Itertools;
 
-use crate::device::{DeviceBuffer, get_context};
+use crate::device::{get_context, DeviceBuffer};
 
 /// This struct represents a GPU tensor that can be either a owned tensor
 /// or an arena view.
@@ -146,7 +146,7 @@ impl DeviceTensor {
 
     /// Get underlying inner tensor view.
     #[inline]
-    pub fn view(&self) -> TensorView {
+    pub fn view(&self) -> TensorView<'_> {
         match self {
             Self::Owned(t) => t.view(),
             Self::ArenaView(t) => t.view(),
