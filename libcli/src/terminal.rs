@@ -103,13 +103,13 @@ pub fn radical_prefix(
     let radical3 = radical.powi(3);
     let radical2 = radical.powi(2);
     if v > radical3 {
-        format!("{:.3} G{}{}", v / radical3, radical_prefix, unit)
+        format!("{:7.3} G{}{}", v / radical3, radical_prefix, unit)
     } else if v > 1e6 {
-        format!("{:.3} M{}{}", v / radical2, radical_prefix, unit)
+        format!("{:7.3} M{}{}", v / radical2, radical_prefix, unit)
     } else if v > 1e3 {
-        format!("{:.3} k{}{}", v / radical, radical_prefix, unit)
+        format!("{:7.3} k{}{}", v / radical, radical_prefix, unit)
     } else {
-        format!("{v:.3}  {}", unit)
+        format!("{v:7.3}  {}", unit)
     }
 }
 
