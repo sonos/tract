@@ -1,4 +1,4 @@
-use rayon::prelude::*;
+use tract_data::itertools::Itertools;
 use tract_data::prelude::Blob;
 
 use super::runner;
@@ -7,36 +7,48 @@ use super::runner;
 static mut HAS_AVX512: bool = false;
 
 #[cfg(target_arch = "x86_64")]
-#[inline]
-fn load_a_slice(slice: &mut [u8]) {
+#[inline(never)]
+fn load_a_slice(slice: &[u8], loops: usize) {
     unsafe {
-        let mut ptr = slice.as_ptr();
-        let end = ptr.add(slice.len());
         if HAS_AVX512 {
-            while ptr < end {
-                std::arch::asm!("
+            for _ in 0..loops {
+                let mut ptr = slice.as_ptr();
+                let end = ptr.add(slice.len());
+                while ptr < end {
+                    std::arch::asm!("
                 vmovaps zmm0, [rsi]
                 vmovaps zmm1, [rsi + 64]
+                vmovaps zmm2, [rsi + 128]
+                vmovaps zmm3, [rsi + 192]
+                vmovaps zmm4, [rsi + 256]
+                vmovaps zmm5, [rsi + 320]
+                vmovaps zmm6, [rsi + 384]
+                vmovaps zmm7, [rsi + 448]
                     ", inout("rsi") ptr,
-                out("zmm0") _,
-                out("zmm1") _,
-                );
-                ptr = ptr.add(128);
+                    out("zmm0") _,
+                    out("zmm1") _,
+                    );
+                    ptr = ptr.add(512);
+                }
             }
         } else {
-            while ptr < end {
-                std::arch::asm!("
+            let mut ptr = slice.as_ptr();
+            let end = ptr.add(slice.len());
+            for _ in 0..loops {
+                while ptr < end {
+                    std::arch::asm!("
                 vmovaps ymm0, [rsi]
                 vmovaps ymm1, [rsi + 32]
                 vmovaps ymm2, [rsi + 64]
                 vmovaps ymm3, [rsi + 96]
                     ", inout("rsi") ptr,
-                out("ymm0") _,
-                out("ymm1") _,
-                out("ymm2") _,
-                out("ymm3") _,
-                );
-                ptr = ptr.add(128);
+                    out("ymm0") _,
+                    out("ymm1") _,
+                    out("ymm2") _,
+                    out("ymm3") _,
+                    );
+                    ptr = ptr.add(128);
+                }
             }
         }
     }
@@ -44,24 +56,26 @@ fn load_a_slice(slice: &mut [u8]) {
 
 #[cfg(target_arch = "aarch64")]
 #[inline]
-fn load_a_slice(slice: &mut [u8]) {
+fn load_a_slice(slice: &[u8], loops: usize) {
     unsafe {
-        let mut ptr = slice.as_ptr();
-        let end = ptr.add(slice.len());
-        while ptr < end {
-            std::arch::asm!("
-                ld1 {{v0.16b-v3.16b}}, [x0], #64
-                ld1 {{v4.16b-v7.16b}}, [x0], #64
-                    ", inout("x0") ptr,
-            out("v0") _,
-            out("v1") _,
-            out("v2") _,
-            out("v3") _,
-            out("v4") _,
-            out("v5") _,
-            out("v6") _,
-            out("v7") _,
-            );
+        for _ in 0..loops {
+            let mut ptr = slice.as_ptr();
+            let end = ptr.add(slice.len());
+            while ptr < end {
+                std::arch::asm!("
+                    ld1 {{v0.16b-v3.16b}}, [x0], #64
+                    ld1 {{v4.16b-v7.16b}}, [x0], #64
+                        ", inout("x0") ptr,
+                out("v0") _,
+                out("v1") _,
+                out("v2") _,
+                out("v3") _,
+                out("v4") _,
+                out("v5") _,
+                out("v6") _,
+                out("v7") _,
+                );
+            }
         }
     }
 }
@@ -95,14 +109,18 @@ fn bandwidth_seq(slice_len: usize, threads: usize) -> f64 {
     unsafe {
         HAS_AVX512 = std::is_x86_feature_detected!("avx512f");
     }
-    let b = (0..threads)
-        .into_par_iter()
-        .map(|_| {
-            let mut buffer = unsafe { Blob::new_for_size_and_align(slice_len, 256) };
-            runner::run_bench(move || load_a_slice(&mut buffer))
-        })
-        .sum::<f64>();
-    (slice_len * threads) as f64 / b
+    std::thread::scope(|s| {
+        let gards = (0..threads)
+            .map(|_| {
+                s.spawn(|| {
+                    let buffer = unsafe { Blob::new_for_size_and_align(slice_len, 1024) };
+                    runner::run_bench(|loops| load_a_slice(&buffer, loops))
+                })
+            })
+            .collect_vec();
+        let time = gards.into_iter().map(|t| t.join().unwrap()).sum::<f64>() / threads as f64;
+        (slice_len * threads * 1) as f64 / time
+    })
 }
 
 pub fn what_is_big() -> usize {
@@ -110,9 +128,10 @@ pub fn what_is_big() -> usize {
 }
 
 pub fn l1_bandwidth_seq(threads: usize) -> f64 {
-    [1024, 2048, 4096, 8192, 16384]
+    // [1024, 2048, 4096, 8192, 16384, 32768, 65536]
+    [1024]
         .into_iter()
-        .map(|p| bandwidth_seq(p, threads))
+        .map(|slice_len| bandwidth_seq(slice_len, threads))
         .max_by_key(|x| *x as i64)
         .unwrap()
 }
