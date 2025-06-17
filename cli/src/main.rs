@@ -624,10 +624,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             }
             return Ok(());
         }
-        Some(("hwbench", _)) => {
-            hwbench::handle();
-            return Ok(());
-        }
+        Some(("hwbench", _)) => return hwbench::handle(),
         Some(("kernels", _)) => {
             println!();
             fn colored_name(m: &dyn MatMatMul) -> String {
