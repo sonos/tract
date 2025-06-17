@@ -40,10 +40,8 @@ fn get_lib_name_candidates(lib_name: &str) -> Vec<String> {
 
 pub fn get_cuda_lib() -> Option<Lib> {
     let lib_names = std::vec!["cuda", "nvcuda"];
-    let choices: std::vec::Vec<_> = lib_names
-        .iter()
-        .flat_map(|l| get_lib_name_candidates(l))
-        .collect();
+    let choices: std::vec::Vec<_> =
+        lib_names.iter().flat_map(|l| get_lib_name_candidates(l)).collect();
     unsafe {
         for choice in choices.iter() {
             if let Ok(lib) = Lib::new(choice) {

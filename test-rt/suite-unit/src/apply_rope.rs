@@ -4,8 +4,8 @@ use infra::TestSuite;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use tract_core::internal::*;
-use tract_core::ndarray::concatenate;
 use tract_core::ndarray::ArrayD;
+use tract_core::ndarray::concatenate;
 use tract_core::num_traits::Float;
 use tract_transformers::ops::apply_rope::ApplyRope;
 
