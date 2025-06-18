@@ -170,7 +170,7 @@ pub unsafe fn mul_f16(a: f16, b: f16) -> f16 {
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
-enum Kind {
+pub enum Kind {
     Generic,
     AppleM,
     Neoverse,
@@ -182,7 +182,7 @@ enum Kind {
 }
 
 impl Kind {
-    fn choose() -> Kind {
+    pub fn choose() -> Kind {
         #[cfg(test)]
         crate::setup_test_logger();
         let kind = if let Ok(kind) = std::env::var("TRACT_CPU_AARCH64_KIND") {

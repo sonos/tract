@@ -123,6 +123,7 @@ anstyle-query = "1.0.0"
 anyhow = "1.0.43"
 anymap3 = "1.0"
 approx = "0.5"
+atty = "0.2.14"
 bit-set= "0.5.2"
 blis-src = { version = "0.2", features = ["static", "pthreads"] }
 block = "0.1.6"

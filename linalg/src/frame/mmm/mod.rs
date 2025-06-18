@@ -117,13 +117,13 @@ dyn_clone::clone_trait_object!(MatMatMul);
 
 impl PartialEq for Box<dyn MatMatMul> {
     fn eq(&self, other: &Box<dyn MatMatMul>) -> bool {
-        self.as_ref().type_id() == other.as_ref().type_id()
+        self.name() == other.name()
     }
 }
 
 impl std::hash::Hash for Box<dyn MatMatMul> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.as_ref().type_id().hash(state)
+        self.name().hash(state)
     }
 }
 
