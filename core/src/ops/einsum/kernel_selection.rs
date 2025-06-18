@@ -66,7 +66,9 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
             let best_for_mmm = kit.iter().max_by_key(|(m, _, _)| m.nr()).unwrap();
             (best_for_mmv, best_for_mmm)
         })
-        .max_by_key(|(mmv, mmm)| (mmv.2.is_none(), mmm.0.mr(), mmm.0.nr()))
+        .max_by_key(|(mmv, mmm)| {
+            (mmv.0.nr() == 1 && mmm.0.nr() > 1, mmv.2.is_none(), mmm.0.mr(), mmm.0.nr())
+        })
         .unwrap();
     if mmm == mmv {
         Ok((ModePicker::Single, vec![(mmv.0.clone(), *mmv.1, mmv.2.clone())]))
