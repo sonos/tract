@@ -82,7 +82,6 @@ pub fn run_bench<T, F: FnMut(usize) -> T + Copy>(f: F) -> f64 {
     } else {
         once.as_secs_f64()
     };
-
     // raw evaluation is over a second. stop right there
     if evaled > 1.0 {
         return evaled;
@@ -110,7 +109,8 @@ pub fn run_bench<T, F: FnMut(usize) -> T + Copy>(f: F) -> f64 {
     for m in &mut measures {
         let start = Instant::now();
         black_box(black_box(f))(inner_loops);
-        *m = start.elapsed().as_secs_f64() / inner_loops as f64
+        let time = start.elapsed().as_secs_f64();
+        *m = time / inner_loops as f64
     }
     measures
         .sort_by(|a, b| if a < b { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater });

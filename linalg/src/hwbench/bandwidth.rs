@@ -81,25 +81,23 @@ fn load_a_slice(slice: &[u8], loops: usize) {
 }
 
 #[cfg(target_arch = "arm")]
-#[inline]
-fn load_a_slice(slice: &mut [u8]) {
+#[inline(never)]
+fn load_a_slice(slice: &[u8], loops: usize) {
     unsafe {
-        let mut ptr = slice.as_ptr();
-        let end = ptr.add(slice.len());
-        while ptr < end {
-            std::arch::asm!("
+        for _ in 0..loops {
+            let mut ptr = slice.as_ptr();
+            let end = ptr.add(slice.len());
+            while ptr < end {
+                std::arch::asm!("
                 vldmia r1!, {{q0-q3}}
                 vldmia r1!, {{q4-q7}}
                     ", inout("r1") ptr,
-            out("q0") _,
-            out("q1") _,
-            out("q2") _,
-            out("q3") _,
-            out("q4") _,
-            out("q5") _,
-            out("q6") _,
-            out("q7") _,
-            );
+                out("d0") _, out("d1") _, out("d2") _, out("d3") _,
+                out("d4") _, out("d5") _, out("d6") _, out("d7") _,
+                out("d8") _, out("d9") _, out("d10") _, out("d11") _,
+                out("d12") _, out("d13") _, out("d14") _, out("d15") _,
+                );
+            }
         }
     }
 }
