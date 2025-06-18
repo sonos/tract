@@ -35,7 +35,7 @@ pub(crate) fn handle() -> TractResult<()> {
         {
             print!("# Relevant CPU flags/features: ");
             for flag in flags.trim().split_whitespace() {
-                if ["fpu", "sse", "avx", "f16", "fma", "fp", "asimd"]
+                if ["fpu", "sse", "avx", "f16", "fma", "fp", "asimd", "neon", "vfp"]
                     .iter()
                     .any(|needle| flag.starts_with(needle))
                 {
@@ -82,10 +82,11 @@ pub(crate) fn handle() -> TractResult<()> {
     }
     println!("");
 
-    mmm(f32::datum_type(), 512, 512, 512)?;
-    mmm(f32::datum_type(), 512, 512, 1)?;
-    mmm(f16::datum_type(), 512, 512, 512)?;
-    mmm(f16::datum_type(), 512, 512, 1)?;
+    let big = if cfg!(target_arch = "arm") { 128 } else { 512 };
+    mmm(f32::datum_type(), big, big, big)?;
+    mmm(f32::datum_type(), big, big, 1)?;
+    mmm(f16::datum_type(), big, big, big)?;
+    mmm(f16::datum_type(), big, big, 1)?;
 
     Ok(())
 }

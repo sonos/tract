@@ -122,7 +122,7 @@ fn bandwidth_seq(slice_len: usize, threads: usize) -> f64 {
 }
 
 pub fn what_is_big() -> usize {
-    1024 * 1024 * if cfg!(target_arch = "armv7") { 64 } else { 256 }
+    1024 * 1024 * if cfg!(target_arch = "arm") { 64 } else { 256 }
 }
 
 pub fn l1_bandwidth_seq(threads: usize) -> f64 {
