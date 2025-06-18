@@ -83,6 +83,11 @@ pub fn run_bench<T, F: FnMut(usize) -> T + Copy>(f: F) -> f64 {
         once.as_secs_f64()
     };
 
+    // raw evaluation is over a second. stop right there
+    if evaled > 1.0 {
+        return evaled;
+    }
+
     // we want each individual sample to run for no less than
     let minimum_sampling_time_s = 0.01;
     let minimum_samples = 25;

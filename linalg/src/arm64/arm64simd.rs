@@ -106,6 +106,7 @@ pub fn plug(ops: &mut Ops) {
         arm64simd_mmm_f32_32x3_gen.mmm(),
         arm64simd_mmm_f32_64x1_gen.mmm(),
         arm64simd_mmm_f32_64x1_a53.mmm(),
+        arm64simd_mmm_f32_64x1_a55.mmm(),
         arm64simd_mmm_i32_8x8.mmm(),
         arm64simd_mmm_i32_64x1.mmm(),
     ]);
