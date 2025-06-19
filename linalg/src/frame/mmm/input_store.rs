@@ -21,6 +21,16 @@ pub trait MMMInputFormat: Downcast + Debug + DynHash + DynClone + Send + Sync + 
     fn r(&self) -> usize;
     fn k_alignment(&self) -> usize;
     fn same_as(&self, other: &dyn MMMInputFormat) -> bool;
+    fn merge_with<'o, 'a: 'o, 'b: 'o>(
+        &'a self,
+        other: &'b dyn MMMInputFormat,
+    ) -> Option<&'o dyn MMMInputFormat> {
+        if self.same_as(other) {
+            Some(other)
+        } else {
+            None
+        }
+    }
     fn mem_size(&self, k: TDim, mn: TDim) -> TDim;
     fn extract_at_mn_f16(
         &self,

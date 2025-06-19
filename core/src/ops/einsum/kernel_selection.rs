@@ -1,6 +1,6 @@
 #![allow(clippy::type_complexity)]
-use std::collections::BTreeMap;
 
+use dyn_clone::clone_box;
 use tract_itertools::Itertools;
 use tract_linalg::block_quant::BlockQuantFact;
 use tract_linalg::mmm::{ImplementationQuality, MMMInputFormat, MatMatMul, PanelExtractor};
@@ -12,7 +12,11 @@ use crate::ops::matmul::ModePicker;
 use super::einsum_matmul::EinSumMatMul;
 
 pub type Impl = (Box<dyn MatMatMul>, usize, Option<PanelExtractor>);
-pub type Strat = (ModePicker, Vec<Impl>);
+pub type Strat = (ModePicker, Box<dyn MMMInputFormat>, Vec<Impl>);
+
+fn single_strat(it: Impl) -> Strat {
+    (ModePicker::Single, it.0.packings()[it.1].0.clone(), vec![it])
+}
 
 pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> TractResult<Strat> {
     let input_facts = model.node_input_facts(node.id)?;
@@ -27,7 +31,11 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
                 Some(n as usize),
             ) {
                 if mmm.quality() == ImplementationQuality::ManuallyOptimized {
-                    return Ok((ModePicker::Single, vec![(mmm, 0, None)]));
+                    return Ok((
+                        ModePicker::Single,
+                        mmm.packings()[0].0.clone(),
+                        vec![(mmm, 0, None)],
+                    ));
                 }
             }
         };
@@ -41,45 +49,50 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
     let wanted_quality = impls.iter().map(|(mmm, _, _)| score(&**mmm)).max().unwrap();
     impls.retain(|(mmm, _, _)| score(&**mmm) == wanted_quality);
     if impls.len() == 1 {
-        return Ok((ModePicker::Single, impls));
+        return Ok(single_strat(impls.remove(0)));
     }
     if op.n.is_one() {
         let it =
             impls.into_iter().max_by_key(|(m, _, pe)| (m.nr() == 1, pe.is_none(), m.mr())).unwrap();
-        return Ok((ModePicker::Single, vec![it]));
+        return Ok(single_strat(it));
     }
     if op.n.as_i64().is_some_and(|n| n > 1) {
         let it =
             impls.into_iter().max_by_key(|(m, _, pe)| (pe.is_none(), m.nr() * m.mr())).unwrap();
-        return Ok((ModePicker::Single, vec![it]));
+        return Ok(single_strat(it));
     }
     let mut grouped_by_left_packing = Vec::<(&dyn MMMInputFormat, Vec<_>)>::new();
-    for (m, p, pe) in &impls {
-        let key: &dyn MMMInputFormat =
+    'mmm: for (m, p, pe) in &impls {
+        let left_packing: &dyn MMMInputFormat =
             pe.as_ref().map(|pe| &*pe.from).unwrap_or(&*m.packings()[*p].0);
-        if let Some(entry) = grouped_by_left_packing.iter_mut().find(|(p, _)| p.same_as(key)) {
-            entry.1.push((m, p, pe));
-        } else {
-            grouped_by_left_packing.push((key, vec![(m, p, pe)]));
+        for kit in &mut grouped_by_left_packing {
+            if let Some(merged) = kit.0.merge_with(left_packing) {
+                kit.0 = merged;
+                kit.1.push((m, p, pe));
+                continue 'mmm;
+            }
         }
+        grouped_by_left_packing.push((left_packing, vec![(m, p, pe)]));
     }
-    let (mmv, mmm) = grouped_by_left_packing
+    let (p, mmv, mmm) = grouped_by_left_packing
         .iter()
-        .map(|(_, kit)| {
+        .map(|(p, kit)| {
             let best_for_mmv =
                 kit.iter().max_by_key(|(m, _, pe)| (m.nr() == 1, pe.is_none())).unwrap();
             let best_for_mmm = kit.iter().max_by_key(|(m, _, _)| m.nr()).unwrap();
-            (best_for_mmv, best_for_mmm)
+            (p, best_for_mmv, best_for_mmm)
         })
-        .max_by_key(|(mmv, mmm)| {
+        .max_by_key(|(_, mmv, mmm)| {
             (mmv.0.nr() == 1 && mmm.0.nr() > 1, mmv.2.is_none(), mmm.0.mr(), mmm.0.nr())
         })
         .unwrap();
+
     if mmm == mmv {
-        Ok((ModePicker::Single, vec![(mmv.0.clone(), *mmv.1, mmv.2.clone())]))
+        Ok((ModePicker::Single, clone_box(*p), vec![(mmv.0.clone(), *mmv.1, mmv.2.clone())]))
     } else {
         Ok((
             ModePicker::VecVsMat,
+            clone_box(*p),
             vec![(mmv.0.clone(), *mmv.1, mmv.2.clone()), (mmm.0.clone(), *mmm.1, mmm.2.clone())],
         ))
     }

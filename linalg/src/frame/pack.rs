@@ -48,6 +48,27 @@ impl MMMInputFormat for PackedFormat {
         other.downcast_ref::<Self>().is_some_and(|other| self == other)
     }
 
+    fn merge_with<'o, 'a: 'o, 'b: 'o>(
+        &'a self,
+        other: &'b dyn MMMInputFormat,
+    ) -> Option<&'o dyn MMMInputFormat> {
+        if let Some(other) = other.downcast_ref::<PackedFormat>() {
+            if self.r == other.r && self.dt == other.dt {
+                if self.alignment_bytes % other.alignment_bytes == 0
+                    && self.end_padding_record >= other.end_padding_record
+                {
+                    return Some(self);
+                }
+                if other.alignment_bytes % self.alignment_bytes == 0
+                    && other.end_padding_record >= self.end_padding_record
+                {
+                    return Some(other);
+                }
+            }
+        }
+        None
+    }
+
     fn mem_size(&self, k: TDim, mn: TDim) -> TDim {
         self.len(k, mn) * self.dt.size_of()
     }
