@@ -53,14 +53,19 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
             impls.into_iter().max_by_key(|(m, _, pe)| (pe.is_none(), m.nr() * m.mr())).unwrap();
         return Ok((ModePicker::Single, vec![it]));
     }
-    let mut grouped_by_left_packing = BTreeMap::<String, Vec<_>>::new();
+    let mut grouped_by_left_packing = Vec::<(&dyn MMMInputFormat, Vec<_>)>::new();
     for (m, p, pe) in &impls {
-        let key = pe.as_ref().map(|pe| &pe.from).unwrap_or(&m.packings()[*p].0).to_string();
-        grouped_by_left_packing.entry(key).or_default().push((m, p, pe));
+        let key: &dyn MMMInputFormat =
+            pe.as_ref().map(|pe| &*pe.from).unwrap_or(&*m.packings()[*p].0);
+        if let Some(entry) = grouped_by_left_packing.iter_mut().find(|(p, _)| p.same_as(key)) {
+            entry.1.push((m, p, pe));
+        } else {
+            grouped_by_left_packing.push((key, vec![(m, p, pe)]));
+        }
     }
     let (mmv, mmm) = grouped_by_left_packing
-        .values()
-        .map(|kit| {
+        .iter()
+        .map(|(_, kit)| {
             let best_for_mmv =
                 kit.iter().max_by_key(|(m, _, pe)| (m.nr() == 1, pe.is_none())).unwrap();
             let best_for_mmm = kit.iter().max_by_key(|(m, _, _)| m.nr()).unwrap();
