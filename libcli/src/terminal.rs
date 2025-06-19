@@ -109,7 +109,7 @@ pub fn radical_prefix(
     } else if v > 1e3 {
         format!("{:7.3} k{}{}", v / radical, radical_prefix, unit)
     } else {
-        format!("{v:7.3}  {}", unit)
+        format!("{v:7.3}  {unit}")
     }
 }
 
