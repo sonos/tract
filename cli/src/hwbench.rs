@@ -10,7 +10,7 @@ pub(crate) fn handle() -> TractResult<()> {
     println!("# Cores");
     println!("cpus: {}", num_cpus::get());
     println!("physical cpus: {}", num_cpus::get_physical());
-    println!("");
+    println!();
 
     if let Ok(cpuinfo) = std::fs::read_to_string("/proc/cpuinfo") {
         println!("# Excerpt from /proc/cpuinfo");
@@ -34,7 +34,7 @@ pub(crate) fn handle() -> TractResult<()> {
             .map(|pair| pair.1)
         {
             print!("# Relevant CPU flags/features: ");
-            for flag in flags.trim().split_whitespace() {
+            for flag in flags.split_whitespace() {
                 if ["fpu", "sse", "avx", "f16", "fma", "fp", "asimd", "neon", "vfp"]
                     .iter()
                     .any(|needle| flag.starts_with(needle))
@@ -80,7 +80,7 @@ pub(crate) fn handle() -> TractResult<()> {
             si_prefix(measured / t as f64, "B/s/thread")
         );
     }
-    println!("");
+    println!();
 
     let big = if cfg!(target_arch = "arm") { 128 } else { 512 };
     mmm(f32::datum_type(), big, big, big)?;
@@ -155,7 +155,7 @@ fn mmm(dt: DatumType, m: usize, k: usize, n: usize) -> TractResult<()> {
                 );
             });
     }
-    println!("");
+    println!();
 
     Ok(())
 }

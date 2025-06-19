@@ -117,7 +117,7 @@ fn bandwidth_seq(slice_len: usize, threads: usize) -> f64 {
             })
             .collect_vec();
         let time = gards.into_iter().map(|t| t.join().unwrap()).sum::<f64>() / threads as f64;
-        (slice_len * threads * 1) as f64 / time
+        (slice_len * threads) as f64 / time
     })
 }
 
