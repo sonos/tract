@@ -502,7 +502,7 @@ fn optimized_mat_mul(
     node: &TypedNode,
     op: &EinSumMatMul,
 ) -> TractResult<Option<TypedModelPatch>> {
-    let (mode_picker, impls) = kernel_selection::strategize(model, node, op)?;
+    let (mode_picker, left_pack, impls) = kernel_selection::strategize(model, node, op)?;
     let input_facts = model.node_input_facts(node.id)?;
     let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
     let prefix = &node.name;
@@ -511,11 +511,8 @@ fn optimized_mat_mul(
     let taps = patch.taps(model, &node.inputs)?;
     let name = &node.name;
 
-    // Strategy is either one impl, or two impl with the same packing for A
-    let (mmm, pack, pe) = &impls[0];
-    let a_static_pack = if let Some(pe) = pe { &pe.from } else { &mmm.packings()[*pack].0 };
     let pack_a: Box<dyn TypedOp> = if input_facts[0].konst.is_some() {
-        if let Some(pf) = a_static_pack.downcast_ref::<PackedFormat>() {
+        if let Some(pf) = left_pack.downcast_ref::<PackedFormat>() {
             Box::new(OptMatMulPack {
                 packers: vec![pf.clone()],
                 mode_picker: ModePicker::Single,
@@ -523,7 +520,7 @@ fn optimized_mat_mul(
                 mn_axis: op.a_m(),
             })
         } else if let Some(packed_format) =
-            a_static_pack.downcast_ref::<PackedBlockQuantFormat>().cloned()
+            left_pack.downcast_ref::<PackedBlockQuantFormat>().cloned()
         {
             Box::new(OptSimpleMatMulPack {
                 packed_format,
@@ -531,7 +528,7 @@ fn optimized_mat_mul(
                 m: input_shapes[0][op.a_m()].to_usize().unwrap(),
             })
         } else {
-            bail!("Unexpected static input format {a_static_pack:?}");
+            bail!("Unexpected static input format {left_pack:?}");
         }
     } else {
         Box::new(OptMatMulPack {
