@@ -48,6 +48,7 @@ impl MMMInputFormat for PackedFormat {
         other.downcast_ref::<Self>().is_some_and(|other| self == other)
     }
 
+    #[allow(clippy::collapsible_if)]
     fn merge_with<'o, 'a: 'o, 'b: 'o>(
         &'a self,
         other: &'b dyn MMMInputFormat,
