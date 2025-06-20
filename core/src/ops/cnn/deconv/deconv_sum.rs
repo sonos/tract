@@ -160,7 +160,7 @@ fn eval(
 
 macro_rules! impl_eval {
         ($(#[$meta: meta])* $suffix: ident) => {
-            paste::paste! {
+            paste2::paste! {
                 $(#[$meta])*
                     unsafe fn [<eval_t_ $suffix>]<T: Datum + Float + Copy + AddAssign<T>>(
                         op: &DeconvSum,

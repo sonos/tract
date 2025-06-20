@@ -17,7 +17,7 @@ suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
 tract-gpu.workspace = true
 tract-onnx-opl.workspace = true
-paste.workspace = true
+paste2.workspace = true
 
 [dev-dependencies]
 home.workspace = true
@@ -31,4 +31,4 @@ tract-cuda.workspace = true
 tract-gpu.workspace = true
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
-paste.workspace = true
+paste2.workspace = true

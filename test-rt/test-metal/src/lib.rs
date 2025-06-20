@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 use tract_core::internal::*;
 
-use paste::paste;
+use paste2::paste;
 use tract_core::runtime::Runtime;
 use tract_core::tract_data::itertools::Itertools;
 use tract_metal::MetalGemmImplKind;
