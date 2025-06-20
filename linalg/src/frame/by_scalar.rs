@@ -64,7 +64,7 @@ pub mod test {
     #[macro_export]
     macro_rules! by_scalar_frame_tests {
         ($cond:expr, $t: ty, $ker:ty, $func:expr) => {
-            paste::paste! {
+            paste2::paste! {
                 proptest::proptest! {
                     #[test]
                     fn [<prop_ $ker:snake>](xs in proptest::collection::vec(-25f32..25.0, 0..100), scalar in -25f32..25f32) {
