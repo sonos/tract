@@ -209,7 +209,7 @@ pub mod test {
     #[macro_export]
     macro_rules! unicast_frame_tests {
         ($cond:expr, $t: ty, $ker:ty, $func:expr) => {
-            paste::paste! {
+            paste2::paste! {
                 proptest::proptest! {
                     #[test]
                     fn [<prop_ $ker:snake>](
