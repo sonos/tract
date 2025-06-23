@@ -29,7 +29,7 @@ pub fn softmax(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
     let exp: Option<String> = invocation.get_named_arg_as(builder, "exp")?;
     let exp = match exp.as_deref() {
         Some("fast_compact") => SoftmaxExp::FastCompact,
-        _ => SoftmaxExp::Libc
+        _ => SoftmaxExp::Libc,
     };
 
     builder.wire(Softmax { axes, quant_output_dt, exp, ..Default::default() }, &[x])
