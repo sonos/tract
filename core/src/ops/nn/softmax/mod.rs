@@ -14,6 +14,13 @@ use crate::internal::*;
 use ndarray::prelude::*;
 
 #[derive(Debug, Copy, Clone, Hash, Default, PartialEq)]
+pub enum SoftmaxKind {
+    #[default]
+    Softmax,
+    LogSoftmax,
+}
+
+#[derive(Debug, Copy, Clone, Hash, Default, PartialEq)]
 pub enum SoftmaxExp {
     #[default]
     Libc,
@@ -25,12 +32,16 @@ pub enum SoftmaxExp {
 pub struct Softmax {
     pub axes: TVec<usize>,
     pub quant_output_dt: Option<DatumType>,
+    pub kind: SoftmaxKind,
     pub exp: SoftmaxExp,
 }
 
 impl Op for Softmax {
     fn name(&self) -> StaticName {
-        "Softmax".into()
+        match self.kind {
+            SoftmaxKind::Softmax => "Softmax".into(),
+            SoftmaxKind::LogSoftmax => "LogSoftmax".into(),
+        }
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -146,14 +157,14 @@ impl Softmax {
                 view.as_slice_mut().filter(|_| T::datum_type() == f32::datum_type())
             {
                 let slice: &mut [f32] = unsafe { std::mem::transmute(slice) };
-                self.softmax_inner_slice_f32(slice)?;
+                self.softmax_inner_slice_f32(slice, self.kind)?;
             } else if let Some(slice) =
                 view.as_slice_mut().filter(|_| T::datum_type() == f16::datum_type())
             {
                 let slice: &mut [f16] = unsafe { std::mem::transmute(slice) };
-                self.softmax_inner_slice_f16(slice)?;
+                self.softmax_inner_slice_f16(slice, self.kind)?;
             } else {
-                softmax_inner(view);
+                softmax_inner(view, self.kind);
             }
         }
 
@@ -161,6 +172,9 @@ impl Softmax {
     }
 
     fn eval_quant(&self, input: TValue) -> TractResult<TVec<TValue>> {
+        if self.kind == SoftmaxKind::LogSoftmax {
+            bail!("Quantized LogSoftmax is not supported")
+        }
         let mut iterating_shape: TVec<usize> = input.shape().into();
         let output_dt =
             self.quant_output_dt.context("Quandized softmax eval with no output type")?;
@@ -193,7 +207,7 @@ impl Softmax {
         Ok(tvec!(output_tensor.into_tvalue()))
     }
 
-    fn softmax_inner_slice_f16(&self, slice: &mut [f16]) -> TractResult<()> {
+    fn softmax_inner_slice_f16(&self, slice: &mut [f16], kind: SoftmaxKind) -> TractResult<()> {
         let max = (tract_linalg::ops().max_f16)().run(slice)?;
         let sum = match self.exp {
             SoftmaxExp::Libc => {
@@ -209,12 +223,22 @@ impl Softmax {
                 (tract_linalg::ops().softmax2_fastcompact_f16)().run_with_params(slice, max)?
             }
         };
-        let rsum = sum.recip();
-        (tract_linalg::ops().mul_by_scalar_f16)().run_with_params(slice, rsum)?;
+        match kind {
+            SoftmaxKind::Softmax => {
+                let rsum = sum.recip();
+                (tract_linalg::ops().mul_by_scalar_f16)().run_with_params(slice, rsum)?;
+            }
+            SoftmaxKind::LogSoftmax => {
+                let log_sum = sum.ln();
+                for x in slice.iter_mut() {
+                    *x = (*x - max) - log_sum;
+                }
+            }
+        }
         Ok(())
     }
 
-    fn softmax_inner_slice_f32(&self, slice: &mut [f32]) -> TractResult<()> {
+    fn softmax_inner_slice_f32(&self, slice: &mut [f32], kind: SoftmaxKind) -> TractResult<()> {
         let max = (tract_linalg::ops().max_f32)().run(slice)?;
         let sum = match self.exp {
             SoftmaxExp::Libc => {
@@ -230,18 +254,36 @@ impl Softmax {
                 (tract_linalg::ops().softmax2_fastcompact_f32)().run_with_params(slice, max)?
             }
         };
-        let rsum = sum.recip();
-        (tract_linalg::ops().mul_by_scalar_f32)().run_with_params(slice, rsum)?;
+        match kind {
+            SoftmaxKind::Softmax => {
+                let rsum = sum.recip();
+                (tract_linalg::ops().mul_by_scalar_f32)().run_with_params(slice, rsum)?;
+            }
+            SoftmaxKind::LogSoftmax => {
+                let log_sum = sum.ln();
+                for x in slice.iter_mut() {
+                    *x = (*x - max) - log_sum;
+                }
+            }
+        }
         Ok(())
     }
 }
 
-fn softmax_inner<T: Float + Datum + std::iter::Sum, D: Dimension>(mut view: ArrayViewMut<T, D>) {
+fn softmax_inner<T: Float + Datum + std::iter::Sum, D: Dimension>(mut view: ArrayViewMut<T, D>, kind: SoftmaxKind) {
     let max =
         *view.iter().max_by(|i, j| i.partial_cmp(j).unwrap_or(std::cmp::Ordering::Less)).unwrap();
-    view.mapv_inplace(|x| (x - max).exp());
-    let exp_sum = view.iter().copied().sum();
-    view.mapv_inplace(|x| x / exp_sum);
+    view.mapv_inplace(|x| x - max);
+    let exp_sum = view.iter().map(|&x| x.exp()).sum();
+    match kind {
+        SoftmaxKind::Softmax => {
+            view.mapv_inplace(|x| x.exp() / exp_sum);
+        }
+        SoftmaxKind::LogSoftmax => {
+            let log_sum = exp_sum.ln();
+            view.mapv_inplace(|x| x - log_sum);
+        }
+    }
 }
 
 fn softmax_quant_inner<D: Dimension>(
@@ -251,6 +293,7 @@ fn softmax_quant_inner<D: Dimension>(
     out_is_signed: bool,
     out_qp: QParams,
 ) {
+
     let (_, in_scale) = in_qp.zp_scale();
     let (scale_in_multiplier, scale_in_shift) = convert_scale_to_mult_shift(in_scale).unwrap();
     let (_, out_scale) = out_qp.zp_scale();

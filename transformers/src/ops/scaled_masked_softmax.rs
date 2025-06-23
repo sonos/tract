@@ -1,7 +1,7 @@
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::ops::binary::{BinMiniOp, TypedBinOp};
 use tract_nnef::tract_core::ops::math::{Add, Mul};
-use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp};
+use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
 
 use crate::rule_ensure;
 
@@ -73,7 +73,7 @@ impl EvalOp for ScaledMaskedSoftmax {
         let scale = self.scale.cast_to_dt(dt)?.into_owned();
         let scaled_input = Mul.eval(input, scale.into_tvalue(), dt)?;
         let masked_input = Add.eval(scaled_input.into(), mask, dt)?;
-        let softmax = Softmax::new(tvec![2], None, SoftmaxExp::Libc)
+        let softmax = Softmax::new(tvec![2], None, SoftmaxKind::Softmax, SoftmaxExp::Libc)
             .eval(tvec![masked_input.into()])?[0]
             .clone();
         Ok(tvec![softmax])
