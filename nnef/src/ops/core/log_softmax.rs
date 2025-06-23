@@ -1,21 +1,21 @@
-use tract_core::ops::nn::{Softmax, SoftmaxExp};
+use tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
 
 use crate::internal::*;
 
 pub fn register(registry: &mut Registry) {
     registry.register_primitive(
-        "tract_core_softmax",
+        "tract_core_log_softmax",
         &[
             TypeName::Scalar.tensor().named("x"),
             TypeName::Integer.tensor().named("axes"),
             TypeName::String.named("exp"),
         ],
         &[("output", TypeName::Scalar.tensor())],
-        softmax,
+        log_softmax,
     );
 }
 
-pub fn softmax(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+pub fn log_softmax(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let x = invocation.named_arg_as(builder, "x")?;
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
 
@@ -32,5 +32,5 @@ pub fn softmax(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
         _ => SoftmaxExp::Libc
     };
 
-    builder.wire(Softmax { axes, quant_output_dt, exp, ..Default::default() }, &[x])
+    builder.wire(Softmax { axes, quant_output_dt, exp, kind: SoftmaxKind::LogSoftmax  }, &[x])
 }
