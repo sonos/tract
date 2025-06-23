@@ -821,5 +821,8 @@ pub fn softmax(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
         invocation.dt_from_quant_file.first().cloned().flatten()
     };
 
-    builder.wire(Softmax { axes, quant_output_dt, exp: SoftmaxExp::default(), kind: SoftmaxKind::Softmax }, &[x])
+    builder.wire(
+        Softmax { axes, quant_output_dt, exp: SoftmaxExp::default(), kind: SoftmaxKind::Softmax },
+        &[x],
+    )
 }

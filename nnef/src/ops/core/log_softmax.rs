@@ -15,7 +15,10 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-pub fn log_softmax(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+pub fn log_softmax(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<Value> {
     let x = invocation.named_arg_as(builder, "x")?;
     let axes: TVec<usize> = invocation.named_arg_as(builder, "axes")?;
 
@@ -29,8 +32,8 @@ pub fn log_softmax(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) 
     let exp: Option<String> = invocation.get_named_arg_as(builder, "exp")?;
     let exp = match exp.as_deref() {
         Some("fast_compact") => SoftmaxExp::FastCompact,
-        _ => SoftmaxExp::Libc
+        _ => SoftmaxExp::Libc,
     };
 
-    builder.wire(Softmax { axes, quant_output_dt, exp, kind: SoftmaxKind::LogSoftmax  }, &[x])
+    builder.wire(Softmax { axes, quant_output_dt, exp, kind: SoftmaxKind::LogSoftmax }, &[x])
 }
