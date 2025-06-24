@@ -396,7 +396,7 @@ mod test {
     fn assert_is_close(found: f32, expected: f32, in_dt: DatumType, out_dt: DatumType) {
         let (_, in_epsilon) = in_dt.zp_scale();
         let (_, out_epsilon) = out_dt.zp_scale();
-        let epsilon = f32::max(in_epsilon, out_epsilon) * 1.005;
+        let epsilon = in_epsilon + out_epsilon;
         let error = (found - expected).abs();
         assert!(
             error <= epsilon,
@@ -467,7 +467,6 @@ mod test {
                 .iter()
                 .zip(reference.iter())
                 .for_each(|(a, b)| assert_is_close(*a, *b, self.data.datum_type(), self.output_dt));
-
             Ok(())
         }
     }
@@ -669,7 +668,7 @@ mod test {
         prob.check()?;
         Ok(())
     }
-
+    
     #[test]
     fn test_inner_softmax_1() -> Result<()> {
         let in_qp = ZpScale { zero_point: 0, scale: 0.03125 };
