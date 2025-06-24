@@ -1,4 +1,4 @@
-use tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
+use tract_core::ops::nn::{Softmax, SoftmaxKind};
 
 use crate::internal::*;
 
@@ -8,7 +8,6 @@ pub fn register(registry: &mut Registry) {
         &[
             TypeName::Scalar.tensor().named("x"),
             TypeName::Integer.tensor().named("axes"),
-            TypeName::String.named("exp"),
         ],
         &[("output", TypeName::Scalar.tensor())],
         log_softmax,
@@ -29,11 +28,5 @@ pub fn log_softmax(
         invocation.dt_from_quant_file.first().cloned().flatten()
     };
 
-    let exp: Option<String> = invocation.get_named_arg_as(builder, "exp")?;
-    let exp = match exp.as_deref() {
-        Some("fast_compact") => SoftmaxExp::FastCompact,
-        _ => SoftmaxExp::Libc,
-    };
-
-    builder.wire(Softmax { axes, quant_output_dt, exp, kind: SoftmaxKind::LogSoftmax }, &[x])
+    builder.wire(Softmax { axes, quant_output_dt, kind: SoftmaxKind::LogSoftmax }, &[x])
 }

@@ -13,7 +13,7 @@ use tract_core::ops::einsum::block_quant_aware_input_shape;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
 use tract_core::ops::math::min;
-use tract_core::ops::nn::{DataFormat, Softmax, SoftmaxExp, SoftmaxKind};
+use tract_core::ops::nn::{DataFormat, Softmax, SoftmaxKind};
 use tract_itertools::Itertools;
 
 use tract_core::ops;
@@ -822,7 +822,7 @@ pub fn softmax(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
     };
 
     builder.wire(
-        Softmax { axes, quant_output_dt, exp: SoftmaxExp::default(), kind: SoftmaxKind::Softmax },
+        Softmax { axes, quant_output_dt, kind: SoftmaxKind::default() },
         &[x],
     )
 }
