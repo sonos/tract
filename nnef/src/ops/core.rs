@@ -12,7 +12,6 @@ mod fft;
 mod force_eval;
 mod gather;
 mod load;
-mod log_softmax;
 mod matmul;
 mod one_hot;
 mod qconv;
@@ -64,7 +63,6 @@ pub fn register(registry: &mut Registry) {
     scatter::register(registry);
     shape_of::register(registry);
     softmax::register(registry);
-    log_softmax::register(registry);
     source::register(registry);
     store::register(registry);
     submodel::register(registry);
