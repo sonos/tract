@@ -76,10 +76,7 @@ impl ModelTransform for SoftmaxFastCompact {
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         for node in &mut model.nodes {
             if let Some(softmax) = node.op_as_mut::<Softmax>() {
-                match &mut softmax.kind {
-                    SoftmaxKind::Softmax(kind) => *kind = SoftmaxExp::FastCompact,
-                    _ => (),
-                }
+                if let SoftmaxKind::Softmax(kind) = &mut softmax.kind { *kind = SoftmaxExp::FastCompact }
             }
         }
         Ok(())
