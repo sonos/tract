@@ -1,4 +1,4 @@
-use tract_core::ops::nn::{Softmax, SoftmaxExp};
+use tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
 
 use crate::internal::*;
 
@@ -32,5 +32,5 @@ pub fn softmax(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
         _ => SoftmaxExp::Libc,
     };
 
-    builder.wire(Softmax { axes, quant_output_dt, exp, ..Default::default() }, &[x])
+    builder.wire(Softmax { axes, quant_output_dt, kind: SoftmaxKind::Softmax(exp) }, &[x])
 }

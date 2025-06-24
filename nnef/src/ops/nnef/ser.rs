@@ -14,7 +14,7 @@ use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
 use tract_core::ops::identity::PinConst;
 use tract_core::ops::konst::Const;
 use tract_core::ops::nn::DataFormat;
-use tract_core::ops::nn::SoftmaxExp;
+use tract_core::ops::nn::SoftmaxKind;
 use tract_core::tract_data::itertools::Itertools;
 use tract_linalg::block_quant::BlockQuantFact;
 
@@ -490,7 +490,7 @@ pub fn softmax(
     node: &TypedNode,
     op: &ops::nn::Softmax,
 ) -> TractResult<Option<Arc<RValue>>> {
-    if op.exp != SoftmaxExp::default() {
+    if op.kind != SoftmaxKind::default() {
         return Ok(None);
     }
     let litteral_axes: Vec<_> = op.axes.iter().map(|&it| (it as i64).into()).collect();
