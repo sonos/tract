@@ -51,7 +51,7 @@ impl Op for Softmax {
     fn info(&self) -> TractResult<Vec<String>> {
         let mut infos = vec![format!("Axis: {:?}", self.axes)];
         if let SoftmaxKind::Softmax(exp) = self.kind {
-            infos.push(format!("Exp impl: {:?}", exp))
+            infos.push(format!("Exp impl: {exp:?}"))
         };
         Ok(infos)
     }
@@ -237,11 +237,11 @@ impl Softmax {
             SoftmaxKind::LogSoftmax => {
                 let mut exp_sum = f16::zero();
                 slice.iter_mut().for_each(|x| {
-                    *x = *x - max;
+                    *x -= max;
                     exp_sum += x.exp();
                 });
                 let log_sum = exp_sum.ln();
-                slice.iter_mut().for_each(|x| *x = *x - log_sum);
+                slice.iter_mut().for_each(|x| *x -= log_sum);
             }
         }
         Ok(())
@@ -269,11 +269,11 @@ impl Softmax {
             SoftmaxKind::LogSoftmax => {
                 let mut exp_sum = f32::zero();
                 slice.iter_mut().for_each(|x| {
-                    *x = *x - max;
+                    *x -= max;
                     exp_sum += x.exp();
                 });
                 let log_sum = exp_sum.ln();
-                slice.iter_mut().for_each(|x| *x = *x - log_sum);
+                slice.iter_mut().for_each(|x| *x -= log_sum);
             }
         }
         Ok(())
