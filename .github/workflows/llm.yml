@@ -19,7 +19,7 @@ jobs:
         os: [ macos, ubuntu ]
     steps:
       - uses: actions/checkout@v4
-      - run: cargo build -p tract --release --no-default-features
+      - run: cargo build -p tract --release --no-default-features --features transformers
       - uses: actions/upload-artifact@v4
         with:
           name: tract-cli-${{matrix.os}}
