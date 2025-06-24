@@ -53,7 +53,7 @@ pub struct CausalLlmState {
 
 impl CausalLlmState {
     pub fn process_text(&mut self, prompt: &str) -> TractResult<u32> {
-        let seq = self.model.tokenizer.encode(prompt, false).map_err(|e| anyhow!(e))?;
+        let seq = self.model.tokenizer.encode(prompt, true).map_err(|e| anyhow!(e))?;
         self.process_tokens(&seq.get_ids())
     }
 
