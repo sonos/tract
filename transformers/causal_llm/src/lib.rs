@@ -1,7 +1,5 @@
 use std::path::Path;
-use std::str::FromStr;
 
-use crate::tract_core::transform::ModelTransform;
 use float_ord::FloatOrd;
 use tokenizers::Tokenizer;
 use tract_nnef::internal::{anyhow, TractErrorContext};
@@ -31,6 +29,8 @@ impl CausalLlmModel {
         nn.transform(&*transform)?;
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
+            use crate::tract_core::transform::ModelTransform;
+            use std::str::FromStr;
             tract_metal::MetalTransform::from_str("")?.transform(&mut nn)?;
         }
         nn.optimize()?;
@@ -74,5 +74,33 @@ impl CausalLlmState {
 
     pub fn to_words(&self, tokens: &[u32]) -> TractResult<String> {
         self.model.tokenizer.decode(&tokens, true).map_err(|e| anyhow!(e))
+    }
+
+    pub fn freeze(self) -> FrozenCausalLlmState {
+        FrozenCausalLlmState { model: self.model, nn_state: self.nn_state.freeze(), seq: self.seq }
+    }
+}
+
+pub struct FrozenCausalLlmState {
+    pub model: Arc<CausalLlmModel>,
+    pub nn_state: TypedFrozenSimpleState<TypedModel, Arc<TypedRunnableModel<TypedModel>>>,
+    pub seq: Vec<u32>,
+}
+
+impl FrozenCausalLlmState {
+    pub fn unfreeze(self) -> CausalLlmState {
+        CausalLlmState { model: self.model, nn_state: self.nn_state.unfreeze(), seq: self.seq }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::FrozenCausalLlmState;
+
+    fn is_send<T: Send>() {}
+
+    #[test]
+    fn frozen_state_is_send() {
+        is_send::<FrozenCausalLlmState>();
     }
 }
