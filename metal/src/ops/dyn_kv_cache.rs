@@ -1,5 +1,6 @@
 use crate::kernels::array::Concat;
 use crate::ops::MetalConcat;
+use crate::tensor::MetalTensor;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::OpStateFreeze;
@@ -10,10 +11,10 @@ use tract_transformers::ops::dyn_kv_cache::{DynKeyValueCache, DynKeyValueCacheSt
 pub struct MetalDynKVCacheState {
     node_id: usize,
     name: String,
+    axis: usize,
     past_sequence_fact: TypedFact,
     kv_cache: Option<TValue>,
 }
-
 impl OpState for MetalDynKVCacheState {
     fn load_from(&mut self, state: &mut SessionState, states: &mut Vec<TValue>) -> TractResult<()> {
         let kv_cache = states.remove(0);
@@ -76,10 +77,22 @@ impl OpState for MetalDynKVCacheState {
     }
 }
 
+impl MetalDynKVCacheState {
+    pub fn truncate(&mut self, len: usize) -> TractResult<()> {
+        if let Some(v) = &mut self.kv_cache {
+            let mut t: Tensor = v.to_device_tensor()?.to_host()?.into_tensor();
+            t = t.slice(self.axis, 0, len)?;
+            *v = t.into_device()?.into_opaque_tensor().into_tvalue();
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FrozenMetalDynKVCacheState {
     node_id: usize,
     name: String,
+    axis: usize,
     past_sequence_fact: TypedFact,
     kv_cache: Option<DeviceTensor>,
 }
@@ -89,6 +102,7 @@ impl OpStateFreeze for MetalDynKVCacheState {
         Box::new(FrozenMetalDynKVCacheState {
             node_id: self.node_id,
             name: self.name.clone(),
+            axis: self.axis,
             past_sequence_fact: self.past_sequence_fact.clone(),
             kv_cache: self.kv_cache.clone().map(|t| t.to_device_tensor().cloned().unwrap()),
         })
@@ -100,6 +114,7 @@ impl FrozenOpState for FrozenMetalDynKVCacheState {
         Box::new(MetalDynKVCacheState {
             node_id: self.node_id,
             name: self.name.clone(),
+            axis: self.axis,
             past_sequence_fact: self.past_sequence_fact.clone(),
             kv_cache: self.kv_cache.clone().map(|t| t.into_opaque_tensor().into_tvalue()),
         })
@@ -155,6 +170,7 @@ impl EvalOp for MetalDynKVCache {
         Ok(Some(Box::new(MetalDynKVCacheState::new(
             node_id,
             self.name.clone(),
+            self.axis(),
             self.past_sequence_fact.clone(),
             None,
         ))))
@@ -181,8 +197,8 @@ impl TypedOp for MetalDynKVCache {
 
 #[cfg(test)]
 mod tests {
-    use crate::MetalTransform;
     use crate::utils::with_borrowed_metal_stream;
+    use crate::MetalTransform;
 
     use super::*;
     use tract_core::ops::array::TypedConcat;
@@ -208,7 +224,11 @@ mod tests {
                         .iter()
                         .enumerate()
                         .map(|(i, &dim)| {
-                            if i == axis { TDim::Sym(model.sym(sym)) } else { TDim::Val(dim as _) }
+                            if i == axis {
+                                TDim::Sym(model.sym(sym))
+                            } else {
+                                TDim::Val(dim as _)
+                            }
                         })
                         .collect::<TVec<TDim>>()
                 };
