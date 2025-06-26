@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow.workspace = true
 float-ord = "0.3.2"
 tokenizers.workspace = true
 tract-nnef.workspace = true
