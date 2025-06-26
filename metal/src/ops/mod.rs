@@ -23,7 +23,7 @@ pub use broadcast::MetalMultiBroadcastTo;
 pub use cast::MetalCast;
 pub use change_axes::MetalAxisOp;
 pub use concat::MetalConcat;
-pub use dyn_kv_cache::MetalDynKVCache;
+pub use dyn_kv_cache::{MetalDynKVCache, MetalDynKVCacheState};
 pub use element_wise::MetalElementWiseOp;
 pub use fused_axis_op::MetalFusedAxisOp;
 pub use gelu_approximate::MetalGeluApproximate;
