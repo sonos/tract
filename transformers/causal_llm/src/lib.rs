@@ -5,6 +5,7 @@ use tokenizers::Tokenizer;
 use tract_nnef::internal::{anyhow, TractErrorContext};
 use tract_nnef::prelude::tract_itertools::Itertools;
 use tract_nnef::prelude::*;
+use tract_nnef::tract_core::ops::source::SourceState;
 use tract_transformers::ops::dyn_kv_cache::DynKeyValueCacheState;
 use tract_transformers::WithTractTransformers;
 
@@ -94,10 +95,18 @@ impl CausalLlmState {
     }
 
     pub fn truncate(&mut self, len: usize) -> TractResult<()> {
+        use tract_metal::ops::MetalDynKVCacheState;
         self.seq.truncate(len);
         for s in &mut self.nn_state.states {
-            if let Some(s) = s.as_mut().and_then(|s| s.downcast_mut::<DynKeyValueCacheState>()) {
+            let Some(s) = s else { continue };
+            if let Some(s) = s.downcast_mut::<DynKeyValueCacheState>() {
                 s.truncate(len)?;
+            } else if let Some(s) = s.downcast_mut::<SourceState>() {
+                ()
+            } else if let Some(s) = s.downcast_mut::<MetalDynKVCacheState>() {
+                s.truncate(len)?;
+            } else {
+                anyhow::bail!("Can not truncate context with state {s:?}");
             }
         }
         Ok(())
