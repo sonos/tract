@@ -5,6 +5,7 @@ use tokenizers::Tokenizer;
 use tract_nnef::internal::{anyhow, TractErrorContext};
 use tract_nnef::prelude::tract_itertools::Itertools;
 use tract_nnef::prelude::*;
+use tract_transformers::ops::dyn_kv_cache::DynKeyValueCacheState;
 use tract_transformers::WithTractTransformers;
 
 #[derive(Clone, Debug)]
@@ -53,8 +54,7 @@ pub struct CausalLlmState {
 
 impl CausalLlmState {
     pub fn process_text(&mut self, prompt: &str) -> TractResult<u32> {
-        let seq = self.model.tokenizer.encode(prompt, true).map_err(|e| anyhow!(e))?;
-        self.process_tokens(&seq.get_ids())
+        self.process_tokens(&self.encode(prompt, true)?)
     }
 
     pub fn process_tokens(&mut self, tokens: &[u32]) -> TractResult<u32> {
@@ -72,12 +72,35 @@ impl CausalLlmState {
         Ok(next_tok)
     }
 
-    pub fn to_words(&self, tokens: &[u32]) -> TractResult<String> {
-        self.model.tokenizer.decode(&tokens, true).map_err(|e| anyhow!(e))
+    pub fn tokenizer(&self) -> &Tokenizer {
+        &self.model.tokenizer
+    }
+
+    pub fn decode(&self, tokens: &[u32], skip_special_tokens: bool) -> TractResult<String> {
+        self.tokenizer().decode(&tokens, skip_special_tokens).map_err(|e| anyhow!(e))
+    }
+
+    pub fn encode(&self, text: &str, skip_special_tokens: bool) -> TractResult<Vec<u32>> {
+        Ok(self
+            .tokenizer()
+            .encode(text, skip_special_tokens)
+            .map_err(|e| anyhow!(e))?
+            .get_ids()
+            .to_vec())
     }
 
     pub fn freeze(self) -> FrozenCausalLlmState {
         FrozenCausalLlmState { model: self.model, nn_state: self.nn_state.freeze(), seq: self.seq }
+    }
+
+    pub fn truncate(&mut self, len: usize) -> TractResult<()> {
+        self.seq.truncate(len);
+        for s in &mut self.nn_state.states {
+            if let Some(s) = s.as_mut().and_then(|s| s.downcast_mut::<DynKeyValueCacheState>()) {
+                s.truncate(len)?;
+            }
+        }
+        Ok(())
     }
 }
 
