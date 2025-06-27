@@ -46,7 +46,7 @@ impl CausalLlmModel {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CausalLlmState {
     pub model: Arc<CausalLlmModel>,
     pub nn_state: TypedSimpleState<TypedModel, Arc<TypedRunnableModel<TypedModel>>>,
@@ -101,7 +101,7 @@ impl CausalLlmState {
             let Some(s) = s else { continue };
             if let Some(s) = s.downcast_mut::<DynKeyValueCacheState>() {
                 s.truncate(len)?;
-            } else if let Some(s) = s.downcast_mut::<SourceState>() {
+            } else if s.is::<SourceState>() {
                 ()
             } else if let Some(s) = s.downcast_mut::<MetalDynKVCacheState>() {
                 s.truncate(len)?;
@@ -113,6 +113,7 @@ impl CausalLlmState {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct FrozenCausalLlmState {
     pub model: Arc<CausalLlmModel>,
     pub nn_state: TypedFrozenSimpleState<TypedModel, Arc<TypedRunnableModel<TypedModel>>>,
