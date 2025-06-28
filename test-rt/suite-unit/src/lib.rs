@@ -9,10 +9,12 @@ use tract_ndarray::*;
 
 pub mod apply_rope;
 pub mod bin_einsum;
+pub mod binary;
 pub mod conv_f32;
 pub mod conv_q;
 pub mod deconv;
 pub mod downsample;
+pub mod elmwise;
 pub mod gelu_approximate;
 pub mod matmul_q40;
 pub mod q_binary;
@@ -41,6 +43,8 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("slice", slice::suite()?);
     suite.add("q_binary", q_binary::suite()?);
     suite.add("q_elmwise", q_elmwise::suite()?);
+    suite.add("binary", binary::suite()?);
+    suite.add("elmwise", elmwise::suite()?);
     Ok(suite)
 }
 
