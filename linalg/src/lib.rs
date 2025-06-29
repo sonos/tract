@@ -3,6 +3,7 @@
 #![allow(clippy::len_zero)]
 #![allow(clippy::excessive_precision)]
 #![allow(clippy::approx_constant)]
+#![allow(clippy::manual_is_multiple_of)]
 #![allow(unexpected_cfgs)]
 #![allow(unused_macros)]
 #[macro_use]
