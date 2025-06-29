@@ -1,3 +1,4 @@
+#![allow(clippy::manual_is_multiple_of)]
 use infra::TestSuite;
 use proptest::collection::vec;
 use proptest::prelude::*;
