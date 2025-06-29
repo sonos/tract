@@ -1,4 +1,5 @@
 use crate::internal::*;
+use crate::ops::matmul::pack::DynPackedOpaqueFact;
 use std::fmt::{Debug, Display};
 use std::ops::Range;
 use tract_linalg::mmm::{MMMInputFormat, MMMInputValue};
@@ -114,7 +115,12 @@ impl EvalOp for LazyIm2Col {
 
 impl TypedOp for LazyIm2Col {
     fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(Opaque::fact([1, 1])))
+        let opaque_fact = DynPackedOpaqueFact {
+            k: self.params.k_byte_offsets.len().to_dim(),
+            mn: self.params.n_byte_offsets.len().to_dim(),
+            packers: vec![self.params.packer.clone()],
+        };
+        Ok(tvec!(Opaque::fact([1, 1]).with_opaque_fact(opaque_fact)))
     }
 
     as_op!();
