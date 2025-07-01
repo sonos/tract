@@ -13,6 +13,5 @@ for cu_file in "$CU_DIR"/*.cu; do
     ptx_file="$PTX_DIR/$base_name.ptx"
 
     echo "Compiling $cu_file -> $ptx_file"
-    nvcc -arch=sm_75 -ptx "$cu_file" -o "$ptx_file"
-    sed -i 's/\.target sm_75/\.target compute_75/' "$ptx_file"
+    nvcc -arch=compute_87 -ptx "$cu_file" -o "$ptx_file"
 done
