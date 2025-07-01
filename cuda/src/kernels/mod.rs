@@ -3,6 +3,7 @@
 mod binary;
 mod unary;
 mod utils;
+mod launch_args;
 
 pub use binary::BinOps;
 use cudarc::driver::CudaView;

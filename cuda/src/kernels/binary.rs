@@ -4,6 +4,7 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::cuda_context;
+use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::kernels::{LibraryName, get_cuda_view};
 
@@ -229,10 +230,6 @@ impl BinOps {
 
         let func = cuda_context().load_pipeline(LibraryName::BinaryOps, kernel_name)?;
 
-        let lhs_view = get_cuda_view(lhs);
-        let rhs_view = get_cuda_view(rhs);
-        let o_view = get_cuda_view(output);
-
         let max_threads = 1024;
         let half_inner_ax = (out_shape[3] / 2).max(1);
         let block_dim_x = half_inner_ax.min(max_threads);
@@ -249,31 +246,20 @@ impl BinOps {
             block_dim: (block_dim_x as _, block_dim_y as _, block_dim_z as _),
             shared_mem_bytes: 0,
         };
+    
+        let lhs_view = get_cuda_view(lhs);
+        let rhs_view = get_cuda_view(rhs);
+        let o_view = get_cuda_view(output);
 
         let mut launch_args = stream.launch_builder(&func);
         launch_args.arg(&lhs_view);
         launch_args.arg(&rhs_view);
         launch_args.arg(&o_view);
-        launch_args.arg(&rhs_shape[0]);
-        launch_args.arg(&rhs_shape[1]);
-        launch_args.arg(&rhs_shape[2]);
-        launch_args.arg(&rhs_shape[3]);
-        launch_args.arg(&out_shape[0]);
-        launch_args.arg(&out_shape[1]);
-        launch_args.arg(&out_shape[2]);
-        launch_args.arg(&out_shape[3]);
-        launch_args.arg(&lhs_strides[0]);
-        launch_args.arg(&lhs_strides[1]);
-        launch_args.arg(&lhs_strides[2]);
-        launch_args.arg(&lhs_strides[3]);
-        launch_args.arg(&rhs_strides[0]);
-        launch_args.arg(&rhs_strides[1]);
-        launch_args.arg(&rhs_strides[2]);
-        launch_args.arg(&rhs_strides[3]);
-        launch_args.arg(&out_strides[0]);
-        launch_args.arg(&out_strides[1]);
-        launch_args.arg(&out_strides[2]);
-        launch_args.arg(&out_strides[3]);
+        launch_args.set_slice(&rhs_shape);
+        launch_args.set_slice(&out_shape);
+        launch_args.set_slice(&lhs_strides);
+        launch_args.set_slice(&rhs_strides);
+        launch_args.set_slice(&out_strides);
 
         unsafe { launch_args.launch(cfg) }?;
 
