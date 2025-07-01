@@ -289,6 +289,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add_arbitrary::<ElWiseOpProblem<f32>>("proptest_f32", ());
     suite.add_arbitrary::<ElWiseOpProblem<f16>>("proptest_f16", ());
     suite.add_arbitrary::<ElWiseOpProblem<u8>>("proptest_u8", ());
+    suite.add_arbitrary::<ElWiseOpProblem<i8>>("proptest_i8", ());
     suite.add_arbitrary::<ElWiseOpProblem<u32>>("proptest_u32", ());
     suite.add_arbitrary::<ElWiseOpProblem<i16>>("proptest_i16", ());
     suite.add_arbitrary::<ElWiseOpProblem<i64>>("proptest_i64", ());
