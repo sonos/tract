@@ -257,6 +257,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add_arbitrary::<BinaryOpProblem<f32>>("proptest_f32", ());
     suite.add_arbitrary::<BinaryOpProblem<f16>>("proptest_f16", ());
     suite.add_arbitrary::<BinaryOpProblem<u8>>("proptest_u8", ());
+    suite.add_arbitrary::<BinaryOpProblem<i8>>("proptest_i8", ());
     suite.add_arbitrary::<BinaryOpProblem<u32>>("proptest_u32", ());
     suite.add_arbitrary::<BinaryOpProblem<i16>>("proptest_i16", ());
     suite.add_arbitrary::<BinaryOpProblem<i64>>("proptest_i64", ());
