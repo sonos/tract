@@ -95,19 +95,20 @@ impl CausalLlmState {
     }
 
     pub fn truncate(&mut self, len: usize) -> TractResult<()> {
-        use tract_metal::ops::MetalDynKVCacheState;
         self.seq.truncate(len);
         for s in &mut self.nn_state.states {
             let Some(s) = s else { continue };
             if let Some(s) = s.downcast_mut::<DynKeyValueCacheState>() {
                 s.truncate(len)?;
+                continue;
             } else if s.is::<SourceState>() {
-                ()
-            } else if let Some(s) = s.downcast_mut::<MetalDynKVCacheState>() {
-                s.truncate(len)?;
-            } else {
-                anyhow::bail!("Can not truncate context with state {s:?}");
+                continue;
             }
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            if let Some(s) = s.downcast_mut::<tract_metal::ops::MetalDynKVCacheState>() {
+                s.truncate(len)?;
+            }
+            anyhow::bail!("Can not truncate context with state {s:?}");
         }
         Ok(())
     }
