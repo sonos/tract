@@ -154,7 +154,7 @@ impl TypedOp for EinSumMatMul {
             match (self.m.as_i64(), self.n.as_i64()) {
                 (Some(m), Some(n)) => m < n,
                 (None, Some(n)) => n >= 8,
-                _ => (self.n.clone() - &self.m).prove_positive_or_zero(),
+                _ => (self.n.clone() - &self.m).prove_strict_positive(),
             }
         };
         if must_transpose {
