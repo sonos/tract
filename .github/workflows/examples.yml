@@ -45,6 +45,7 @@ jobs:
     - name: example tests
       env:
         AWS_EC2_METADATA_DISABLED: true
+      timeout-minutes: 20
       run: |
         cd examples/${{matrix.ex}}
         ./ci.sh
