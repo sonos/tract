@@ -92,8 +92,11 @@ mod tests {
             let a = Tensor::from_shape(&[m, k], &(0..m * k).map(|f| f as f32).collect::<Vec<_>>())?
                 .into_device()?;
 
-            let cpu_softmax =
-                TractSoftmax { axes: tvec![axis], quant_output_dt: None, kind: SoftmaxKind::Softmax(SoftmaxExp::Libc) };
+            let cpu_softmax = TractSoftmax {
+                axes: tvec![axis],
+                quant_output_dt: None,
+                kind: SoftmaxKind::Softmax(SoftmaxExp::Libc),
+            };
 
             let cpu_output =
                 cpu_softmax.eval(tvec![a.to_host()?.into_tvalue()])?[0].clone().into_tensor();
@@ -117,8 +120,11 @@ mod tests {
             )?
             .into_device()?;
 
-            let cpu_softmax =
-                TractSoftmax { axes: tvec![axis], quant_output_dt: None, kind: SoftmaxKind::Softmax(SoftmaxExp::Libc) };
+            let cpu_softmax = TractSoftmax {
+                axes: tvec![axis],
+                quant_output_dt: None,
+                kind: SoftmaxKind::Softmax(SoftmaxExp::Libc),
+            };
 
             let cpu_output =
                 cpu_softmax.eval(tvec![a.to_host()?.into_tvalue()])?[0].clone().into_tensor();
@@ -142,8 +148,11 @@ mod tests {
             )?
             .into_device()?;
 
-            let cpu_softmax =
-                TractSoftmax { axes: tvec![axis], quant_output_dt: None, kind: SoftmaxKind::Softmax(SoftmaxExp::Libc) };
+            let cpu_softmax = TractSoftmax {
+                axes: tvec![axis],
+                quant_output_dt: None,
+                kind: SoftmaxKind::Softmax(SoftmaxExp::Libc),
+            };
 
             let cpu_output =
                 cpu_softmax.eval(tvec![a.to_host()?.into_tvalue()])?[0].clone().into_tensor();

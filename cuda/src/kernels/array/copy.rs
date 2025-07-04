@@ -5,7 +5,7 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::cuda_context;
-use crate::kernels::{get_cuda_view, get_sliced_cuda_view, LibraryName};
+use crate::kernels::{LibraryName, get_cuda_view, get_sliced_cuda_view};
 
 #[derive(Debug, Clone, new, PartialEq, Eq, Hash)]
 pub struct Memcpy;
@@ -100,10 +100,17 @@ mod tests {
             let data = (0..len).map(|f| f as f32).collect::<Vec<_>>();
             let input = Tensor::from_shape(shape, &data)?;
 
-            let output = Memcpy{}.eval(stream, &input.clone().into_device()?, offset, &[len - (offset / size_of::<f32>())])?;
+            let output = Memcpy {}.eval(
+                stream,
+                &input.clone().into_device()?,
+                offset,
+                &[len - (offset / size_of::<f32>())],
+            )?;
 
-            assert_eq!(output.to_host()?.into_tensor(), 
-                        input.into_shape(&[len])?.slice(0, offset / size_of::<f32>(), len)? );
+            assert_eq!(
+                output.to_host()?.into_tensor(),
+                input.into_shape(&[len])?.slice(0, offset / size_of::<f32>(), len)?
+            );
             Ok(())
         })
     }

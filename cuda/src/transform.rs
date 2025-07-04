@@ -174,17 +174,13 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
                 .op_as::<Const>()
                 .is_some_and(|op| DeviceTensor::is_supported_dt(op.val().datum_type()))
             || node.op_as::<Cast>().is_some_and(|op| {
-                ops::CudaCast::is_supported_dt(input_dts[0])
-                    && ops::CudaCast::new(op.to).is_some()
+                ops::CudaCast::is_supported_dt(input_dts[0]) && ops::CudaCast::new(op.to).is_some()
             })
             || node.op_is::<MultiBroadcastTo>()
             || node.op_is::<AxisOp>()
             || node.op_is::<Slice>()
             || node.op_is::<TypedConcat>()
-            || node.op_is::<DynKeyValueCache>()    
-        )
-    )
-            
+            || node.op_is::<DynKeyValueCache>()))
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {

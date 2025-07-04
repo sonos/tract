@@ -181,8 +181,8 @@ impl TypedOp for CudaDynKVCache {
 
 #[cfg(test)]
 mod tests {
-    use crate::context::CUDA_STREAM;
     use crate::CudaTransform;
+    use crate::context::CUDA_STREAM;
 
     use super::*;
     use tract_core::ops::array::TypedConcat;

@@ -5,7 +5,7 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::cuda_context;
-use crate::kernels::{get_cuda_view, launch_args, LibraryName};
+use crate::kernels::{LibraryName, get_cuda_view, launch_args};
 
 #[derive(Debug, Clone, new, PartialEq, Eq, Hash)]
 pub struct Cast;
@@ -101,16 +101,20 @@ mod tests {
 
     use tract_core::internal::Tensor;
 
-    fn run_test_case<T0: Datum + Copy + FromPrimitive, T1: Datum>(shape: &[usize]) -> TractResult<()> {
+    fn run_test_case<T0: Datum + Copy + FromPrimitive, T1: Datum>(
+        shape: &[usize],
+    ) -> TractResult<()> {
         CUDA_STREAM.with(|stream| {
             let len = shape.iter().product::<usize>();
             let data = (0..len).map(|f| T0::from_f32(f as f32 / 2.).unwrap()).collect::<Vec<_>>();
             let input = Tensor::from_shape(shape, &data)?;
 
-            let output = Cast{}.eval(stream, &input.clone().into_device()?, T1::datum_type())?;
+            let output = Cast {}.eval(stream, &input.clone().into_device()?, T1::datum_type())?;
 
-            assert_eq!(output.to_host()?.into_tensor(), 
-                       input.cast_to_dt(T1::datum_type())?.into_owned());
+            assert_eq!(
+                output.to_host()?.into_tensor(),
+                input.cast_to_dt(T1::datum_type())?.into_owned()
+            );
             Ok(())
         })
     }

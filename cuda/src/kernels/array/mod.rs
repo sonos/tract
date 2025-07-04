@@ -1,6 +1,6 @@
 mod broadcast;
-mod concat;
 mod cast;
+mod concat;
 mod copy;
 mod permute_axes;
 mod rotate_half;

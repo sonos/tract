@@ -1,6 +1,6 @@
 use crate::context::cuda_context;
 use crate::kernels::launch_args::LaunchArgsExt;
-use crate::kernels::{get_cuda_view, get_sliced_cuda_view, utils, BroadcastKind, LibraryName};
+use crate::kernels::{BroadcastKind, LibraryName, get_cuda_view, get_sliced_cuda_view, utils};
 use anyhow::ensure;
 use cudarc::driver::{CudaStream, PushKernelArg};
 use std::fmt;
@@ -42,11 +42,7 @@ impl Concat {
         Ok(format!("copy_{broadcast_name}_{tname}"))
     }
 
-    pub fn eval(
-        &self,
-        stream: &CudaStream,
-        inputs: &[&DeviceTensor],
-    ) -> TractResult<DeviceTensor> {
+    pub fn eval(&self, stream: &CudaStream, inputs: &[&DeviceTensor]) -> TractResult<DeviceTensor> {
         ensure!(!inputs.is_empty());
         let mut output_shape = inputs[0].shape().to_vec();
         output_shape[self.axis] = inputs.iter().map(|it| it.shape()[self.axis]).sum();
@@ -92,7 +88,6 @@ impl Concat {
         let kernel_name = self.kernel_name(output.datum_type(), broadcast_kind)?;
         let func = cuda_context().load_pipeline(LibraryName::ArrayOps, kernel_name)?;
 
-
         for (input, offset) in inputs.iter().zip(offsets.into_iter()) {
             if input.len() == 0 {
                 continue;
@@ -102,7 +97,8 @@ impl Concat {
             let i_shape = input.shape();
 
             let i_view = get_cuda_view(input);
-            let o_view = get_sliced_cuda_view(output, offset, input.len() * input.datum_type().size_of())?;
+            let o_view =
+                get_sliced_cuda_view(output, offset, input.len() * input.datum_type().size_of())?;
 
             let mut launch_args = stream.launch_builder(&func);
             launch_args.arg(&i_view);

@@ -49,7 +49,13 @@ impl CudaTensor {
         CUDA_STREAM.with(|stream| {
             let device_data = stream.memcpy_stod(data).unwrap();
             let buffer = CudaBuffer { inner: device_data };
-            CudaTensor { buffer, datum_type: tensor.datum_type(), shape: tensor.shape().into(), strides: tensor.strides().into(), block_quant_fact: bqf }
+            CudaTensor {
+                buffer,
+                datum_type: tensor.datum_type(),
+                shape: tensor.shape().into(),
+                strides: tensor.strides().into(),
+                block_quant_fact: bqf,
+            }
         })
     }
 }
@@ -106,10 +112,8 @@ impl OwnedDeviceTensor for CudaTensor {
 
             let t: Tensor = if let Some(bqf) = &self.block_quant_fact {
                 ensure!(bqf.format.same_as(&Q4_0));
-                let bqv = BlockQuantValue {
-                    fact: bqf.clone(),
-                    value: Arc::new(Blob::from_bytes(&res)?)
-                };
+                let bqv =
+                    BlockQuantValue { fact: bqf.clone(), value: Arc::new(Blob::from_bytes(&res)?) };
                 Opaque(Arc::new(bqv)).into()
             } else {
                 unsafe { Tensor::from_raw_dt(self.datum_type, &self.shape, &res)? }

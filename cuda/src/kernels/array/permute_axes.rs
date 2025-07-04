@@ -1,8 +1,8 @@
 use crate::context::cuda_context;
 use crate::kernels::launch_args::LaunchArgsExt;
-use crate::kernels::{get_cuda_view, utils, BroadcastKind, LibraryName};
-use std::fmt;
+use crate::kernels::{BroadcastKind, LibraryName, get_cuda_view, utils};
 use cudarc::driver::{CudaStream, LaunchArgs, LaunchConfig, PushKernelArg};
+use std::fmt;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 

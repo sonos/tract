@@ -90,20 +90,20 @@ impl BinOps {
 
     pub fn is_supported_dt(&self, dt: DatumType) -> bool {
         (matches!(self, Self::And | Self::Or) && dt == DatumType::Bool)
-        || (!matches!(self, Self::And | Self::Or) && matches!(
-            dt,
-            DatumType::F32
-                | DatumType::F16
-                | DatumType::U8
-                | DatumType::U16
-                | DatumType::U32
-                | DatumType::U64
-                | DatumType::I8
-                | DatumType::I16
-                | DatumType::I32
-                | DatumType::I64
-        )
-    )
+            || (!matches!(self, Self::And | Self::Or)
+                && matches!(
+                    dt,
+                    DatumType::F32
+                        | DatumType::F16
+                        | DatumType::U8
+                        | DatumType::U16
+                        | DatumType::U32
+                        | DatumType::U64
+                        | DatumType::I8
+                        | DatumType::I16
+                        | DatumType::I32
+                        | DatumType::I64
+                ))
     }
 
     fn reshape_to_rank_4_with_broadcast(

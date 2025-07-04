@@ -1,10 +1,10 @@
 #![allow(unused)]
 
-mod binary;
 pub mod array;
+mod binary;
+mod launch_args;
 mod unary;
 mod utils;
-mod launch_args;
 
 use anyhow::{bail, ensure};
 pub use binary::BinOps;
@@ -96,7 +96,11 @@ pub fn get_cuda_view(t: &DeviceTensor) -> CudaView<'_, u8> {
 }
 
 // NOTE: offset and len are in bytes
-pub fn get_sliced_cuda_view(t: &DeviceTensor, offset: usize, len: usize) -> TractResult<CudaView<'_, u8>> {
+pub fn get_sliced_cuda_view(
+    t: &DeviceTensor,
+    offset: usize,
+    len: usize,
+) -> TractResult<CudaView<'_, u8>> {
     ensure!(offset + len <= t.len() * t.datum_type().size_of());
     let buffer = t.device_buffer().downcast_ref::<CudaBuffer>().unwrap();
     let offset = t.buffer_offset::<usize>() + offset;
