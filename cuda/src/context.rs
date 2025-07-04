@@ -128,9 +128,6 @@ impl DeviceContext for TractCudaContext {
 
     fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {
         let data = tensor.as_bytes();
-        static ZERO: [u8; 1] = [0];
-        // Handle empty data
-        let data = if data.is_empty() { &ZERO } else { data };
 
         Ok(Box::new(CudaTensor::from_bytes(
             data,

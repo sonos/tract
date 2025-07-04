@@ -60,7 +60,7 @@ impl EvalOp for CudaBinOp {
         CUDA_STREAM.with(|stream| {
             self.0
                 .dispatch_eval(stream, a, b, &output)
-                .with_context(|| "Error while dispatching eval for Metal Bin Op")
+                .with_context(|| "Error while dispatching eval for Cuda Bin Op")
         })?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
