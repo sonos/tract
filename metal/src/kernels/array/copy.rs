@@ -47,7 +47,7 @@ impl Memcpy {
         output: &DeviceTensor,
     ) -> TractResult<()> {
         ensure!(input_offset % input.datum_type().size_of() == 0);
-        ensure!(output.len() <= input.len() - input_offset);
+        ensure!(output.len() <= input.len() - (input_offset / input.datum_type().size_of()));
 
         stream.retain_tensor(input);
         stream.retain_tensor(output);

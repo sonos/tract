@@ -1,7 +1,9 @@
 use tract_core::dyn_clone::clone_box;
 use tract_core::internal::*;
 use tract_core::model::translator::Translate;
+use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
 use tract_core::ops::binary::TypedBinOp;
+use tract_core::ops::cast::Cast;
 use tract_core::ops::einsum::prefix_matmul::rewrite_einsum_to_prefix_matmul;
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
@@ -12,6 +14,8 @@ use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::sync::{DeviceSync, DeviceSyncKind};
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
+use tract_transformers::ops::apply_rope::RotateHalf;
+use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
 use tract_transformers::ops::silu::Silu;
 
 use crate::context::cuda_context;
@@ -166,26 +170,41 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
             })
             || node
                 .op_as::<Comp>()
-                .is_some_and(|_| kernels::BinOps::is_supported_dt(input_dts[0]))))
+                .is_some_and(|_| kernels::BinOps::is_supported_dt(input_dts[0]))
+            || node
+                .op_as::<Const>()
+                .is_some_and(|op| DeviceTensor::is_supported_dt(op.val().datum_type()))
+            || node.op_as::<Cast>().is_some_and(|op| {
+                ops::CudaCast::is_supported_dt(input_dts[0])
+                    && ops::CudaCast::new(op.to).is_some()
+            })
+            || node.op_is::<MultiBroadcastTo>()
+            || node.op_is::<AxisOp>()
+            || node.op_is::<Slice>()
+            || node.op_is::<TypedConcat>()
+            || node.op_is::<DynKeyValueCache>()    
+        )
+    )
+            
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {
     let typed_fact: TypedFact = Arc::clone(op.val()).into();
-    let metal_fact = if let Some(of) = op.opaque_fact() {
+    let cuda_fact = if let Some(of) = op.opaque_fact() {
         DeviceFact::from_host(typed_fact.with_opaque_fact(clone_box(of)))?
     } else {
         DeviceFact::from_host(typed_fact)?
     };
 
-    let metal_const = op.val().clone().into_device()?.into_opaque_tensor().into_arc_tensor();
-    Const::new_with_opaque_fact(metal_const, Box::new(metal_fact))
+    let cuda_const = op.val().clone().into_device()?.into_opaque_tensor().into_arc_tensor();
+    Const::new_with_opaque_fact(cuda_const, Box::new(cuda_fact))
 }
 
 macro_rules! map_unary_ops {
-    ([$(($tract_unary_op:path, $metal_unary_op:ident)),* $(,)?]) => {
+    ([$(($tract_unary_op:path, $cuda_unary_op:ident)),* $(,)?]) => {
         |op: &tract_core::ops::element_wise::ElementWiseOp| {
             $(if let Some(_op) = op.0.downcast_ref::<$tract_unary_op>() {
-                return Some($crate::ops::unary::CudaUnaryOp(kernels::UnaryOps::$metal_unary_op));
+                return Some($crate::ops::CudaUnaryOp(kernels::UnaryOps::$cuda_unary_op));
             })*
             return None;
         }
@@ -224,10 +243,10 @@ fn map_element_wise_ops_to_cuda(op: &ElementWiseOp) -> Option<ops::CudaUnaryOp> 
 }
 
 macro_rules! map_bin_ops {
-    ([$(($tract_bin_op:path, $metal_bin_op:ident)),* $(,)?]) => {
+    ([$(($tract_bin_op:path, $cuda_bin_op:ident)),* $(,)?]) => {
         |op: &TypedBinOp | {
             $(if let Some(_op) = op.0.downcast_ref::<$tract_bin_op>() {
-                return Some($crate::ops::binary::CudaBinOp(kernels::BinOps::$metal_bin_op));
+                return Some($crate::ops::CudaBinOp(kernels::BinOps::$cuda_bin_op));
             })*
             return None;
         }
@@ -282,6 +301,21 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 Box::new(convert_logic_op_to_cuda(op))
             } else if let Some(_op) = node.op_as::<Silu>() {
                 Box::new(ops::CudaUnaryOp(kernels::UnaryOps::Silu))
+            } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
+                Box::new(ops::CudaMultiBroadcastTo::new(op.shape.clone()))
+            } else if let Some(op) = node.op_as::<Cast>() {
+                Box::new(ops::CudaCast::new(op.to).unwrap())
+            } else if let Some(op) = node.op_as::<AxisOp>() {
+                let in_fact = source.node_input_facts(node.id)?[0];
+                Box::new(ops::CudaAxisOp::from_tract_core_with_fact(op.clone(), in_fact))
+            } else if let Some(op) = node.op_as::<Slice>() {
+                Box::new(ops::CudaSlice::from_tract_core(op.clone()))
+            } else if let Some(op) = node.op_as::<TypedConcat>() {
+                Box::new(ops::CudaConcat::from_tract_core(op))
+            } else if let Some(_op) = node.op_as::<RotateHalf>() {
+                Box::new(ops::CudaRotateHalf)
+            } else if let Some(op) = node.op_as::<DynKeyValueCache>() {
+                Box::new(ops::CudaDynKVCache::from_tract_transformers(op))
             } else {
                 bail!("Failed to translate a supported CUDA Op")
             };

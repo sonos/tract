@@ -97,9 +97,9 @@ impl OwnedDeviceTensor for CudaTensor {
 
     fn to_host(&self) -> TractResult<Arc<Tensor>> {
         CUDA_STREAM.with(|stream| {
-            let res = stream.memcpy_dtov(&self.buffer.inner.try_clone()?)?;
+            let res = stream.memcpy_dtov(&self.buffer.inner)?;
             let t: Tensor =
-                unsafe { Tensor::from_raw_dt(self.datum_type, &self.shape, &res).unwrap() };
+                unsafe { Tensor::from_raw_dt(self.datum_type, &self.shape, &res)? };
             Ok(Arc::new(t))
         })
     }
