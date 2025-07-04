@@ -1,6 +1,4 @@
 #![cfg(test)]
-use std::borrow::Cow;
-
 use log::*;
 use tract_tflite::internal::*;
 use tract_tflite::Tflite;
