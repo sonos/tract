@@ -102,7 +102,7 @@ impl Concat {
             let i_shape = input.shape();
 
             let i_view = get_cuda_view(input);
-            let o_view = get_sliced_cuda_view(output, offset, input.len() * input.datum_type().size_of());
+            let o_view = get_sliced_cuda_view(output, offset, input.len() * input.datum_type().size_of())?;
 
             let mut launch_args = stream.launch_builder(&func);
             launch_args.arg(&i_view);
