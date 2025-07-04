@@ -1,4 +1,5 @@
 use infra::Test;
+use suite_unit::bin_einsum::{BinEinsumProblem, BinEinsumProblemParams};
 
 pub fn suite() -> &'static infra::TestSuite {
     lazy_static::lazy_static! {
@@ -15,6 +16,14 @@ fn mk_suite() -> infra::TestSuite {
     let mut unit = suite_unit::suite().unwrap().clone();
     unit.ignore_case(&ignore_unit);
 
+    unit.get_sub_mut("bin_einsum").add_arbitrary::<BinEinsumProblem>(
+        "proptest",
+        BinEinsumProblemParams {
+            force_unique_non_trivial_m_n: true,
+            max_dims: 6,
+            ..BinEinsumProblemParams::default()
+        },
+    );
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
 }
 
