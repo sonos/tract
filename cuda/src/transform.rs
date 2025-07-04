@@ -165,12 +165,11 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
                     && map_element_wise_ops_to_cuda(op).is_some()
             })
             || node.op_as::<TypedBinOp>().is_some_and(|op| {
-                kernels::BinOps::is_supported_dt(input_dts[0])
-                    && map_binary_op_to_cuda(op).is_some()
+                map_binary_op_to_cuda(op).is_some_and(|op| op.0.is_supported_dt(input_dts[0]))
             })
             || node
                 .op_as::<Comp>()
-                .is_some_and(|_| kernels::BinOps::is_supported_dt(input_dts[0]))
+                .is_some_and(|op| convert_logic_op_to_cuda(op).0.is_supported_dt(input_dts[0]))
             || node
                 .op_as::<Const>()
                 .is_some_and(|op| DeviceTensor::is_supported_dt(op.val().datum_type()))
