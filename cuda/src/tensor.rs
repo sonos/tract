@@ -3,9 +3,10 @@ use std::ops::Deref;
 use cudarc::driver::{CudaSlice, DevicePtr};
 use tract_core::internal::*;
 use tract_core::prelude::{DatumType, TVec};
+use tract_core::tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue, Q4_0};
 use tract_gpu::device::DeviceBuffer;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
-use tract_gpu::utils::check_strides_validity;
+use tract_gpu::utils::{as_q40_tensor, check_strides_validity};
 
 use crate::context::CUDA_STREAM;
 
@@ -37,14 +38,18 @@ pub struct CudaTensor {
     datum_type: DatumType,
     shape: TVec<usize>,
     strides: TVec<isize>,
+    block_quant_fact: Option<BlockQuantFact>,
 }
 
 impl CudaTensor {
-    pub fn from_bytes(data: &[u8], dt: DatumType, shape: &[usize], strides: &[isize]) -> Self {
+    pub fn from_tensor(tensor: &Tensor) -> Self {
+        let (data, bqf) = as_q40_tensor(tensor)
+            .map(|bqv| (bqv.value.as_bytes(), Some(bqv.fact.clone())))
+            .unwrap_or((tensor.as_bytes(), None));
         CUDA_STREAM.with(|stream| {
             let device_data = stream.memcpy_stod(data).unwrap();
             let buffer = CudaBuffer { inner: device_data };
-            CudaTensor { buffer, datum_type: dt, shape: shape.into(), strides: strides.into() }
+            CudaTensor { buffer, datum_type: tensor.datum_type(), shape: tensor.shape().into(), strides: tensor.strides().into(), block_quant_fact: bqf }
         })
     }
 }
@@ -98,8 +103,18 @@ impl OwnedDeviceTensor for CudaTensor {
     fn to_host(&self) -> TractResult<Arc<Tensor>> {
         CUDA_STREAM.with(|stream| {
             let res = stream.memcpy_dtov(&self.buffer.inner)?;
-            let t: Tensor =
-                unsafe { Tensor::from_raw_dt(self.datum_type, &self.shape, &res)? };
+
+            let t: Tensor = if let Some(bqf) = &self.block_quant_fact {
+                ensure!(bqf.format.same_as(&Q4_0));
+                let bqv = BlockQuantValue {
+                    fact: bqf.clone(),
+                    value: Arc::new(Blob::from_bytes(&res)?)
+                };
+                Opaque(Arc::new(bqv)).into()
+            } else {
+                unsafe { Tensor::from_raw_dt(self.datum_type, &self.shape, &res)? }
+            };
+
             Ok(Arc::new(t))
         })
     }
