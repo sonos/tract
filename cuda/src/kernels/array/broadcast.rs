@@ -86,7 +86,7 @@ impl MultiBroadcast {
 
         let func = cuda_context().load_pipeline(LibraryName::ArrayOps, kernel_name)?;
 
-        let i_view = get_sliced_cuda_view(input, input_offset, input.len() * input.datum_type().size_of() - input_offset);
+        let i_view = get_sliced_cuda_view(input, input_offset, input.len() * input.datum_type().size_of() - input_offset)?;
         let o_view = get_cuda_view(output);
         let mut launch_args = stream.launch_builder(&func);
 

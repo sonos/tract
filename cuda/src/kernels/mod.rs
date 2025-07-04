@@ -6,7 +6,7 @@ mod unary;
 mod utils;
 mod launch_args;
 
-use anyhow::bail;
+use anyhow::{bail, ensure};
 pub use binary::BinOps;
 use cudarc::driver::CudaView;
 use tract_core::prelude::TractResult;
@@ -92,12 +92,13 @@ impl BroadcastKind {
 
 pub fn get_cuda_view(t: &DeviceTensor) -> CudaView<'_, u8> {
     let size = t.len() * t.datum_type().size_of();
-    get_sliced_cuda_view(t, 0, size)
+    get_sliced_cuda_view(t, 0, size).unwrap()
 }
 
 // NOTE: offset and len are in bytes
-pub fn get_sliced_cuda_view(t: &DeviceTensor, offset: usize, len: usize) -> CudaView<'_, u8> {
+pub fn get_sliced_cuda_view(t: &DeviceTensor, offset: usize, len: usize) -> TractResult<CudaView<'_, u8>> {
+    ensure!(offset + len <= t.len() * t.datum_type().size_of());
     let buffer = t.device_buffer().downcast_ref::<CudaBuffer>().unwrap();
     let offset = t.buffer_offset::<usize>() + offset;
-    buffer.slice(offset..(offset + len))
+    Ok(buffer.slice(offset..(offset + len)))
 }
