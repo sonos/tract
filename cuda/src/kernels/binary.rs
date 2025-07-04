@@ -88,8 +88,9 @@ impl BinOps {
         )
     }
 
-    pub fn is_supported_dt(dt: DatumType) -> bool {
-        matches!(
+    pub fn is_supported_dt(&self, dt: DatumType) -> bool {
+        (matches!(self, Self::And | Self::Or) && dt == DatumType::Bool)
+        || (!matches!(self, Self::And | Self::Or) && matches!(
             dt,
             DatumType::F32
                 | DatumType::F16
@@ -101,8 +102,8 @@ impl BinOps {
                 | DatumType::I16
                 | DatumType::I32
                 | DatumType::I64
-                | DatumType::Bool
         )
+    )
     }
 
     fn reshape_to_rank_4_with_broadcast(
@@ -172,7 +173,7 @@ impl BinOps {
     }
 
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for Cuda binary ops", dt);
+        ensure!(self.is_supported_dt(dt), "Unsupport dt {:?} for Cuda binary ops: {self}", dt);
 
         let tname = DeviceTensor::tname(dt)?;
 
