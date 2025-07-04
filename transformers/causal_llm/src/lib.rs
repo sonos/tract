@@ -164,6 +164,7 @@ impl CausalLlmState {
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             if let Some(s) = s.downcast_mut::<tract_metal::ops::MetalDynKVCacheState>() {
                 s.truncate(len)?;
+                continue;
             }
             anyhow::bail!("Can not truncate context with state {s:?}");
         }
