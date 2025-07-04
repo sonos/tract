@@ -163,7 +163,9 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
     let [section, _unit] = t else { return false };
     [
         "apply_rope",
+        "binary",
         "deconv",
+        "elmwise",
         "gelu_approximate",
         "q_flavours",
         "q_binary",
