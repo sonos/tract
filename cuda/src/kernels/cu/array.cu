@@ -15,16 +15,20 @@ extern "C" __global__ void rotate_half_nd2_##name(const T *input, T *output, \
 } \
 
 #define INSTANTIATE_CAST_OP(name, T_in, T_out) \
-extern "C" __global__ void cast_##name(const T_in* input, T_out* output) { \
+extern "C" __global__ void cast_##name(const T_in* input, T_out* output, int len) { \
     int idx = blockIdx.x * blockDim.x + threadIdx.x; \
-    output[idx] = (T_out) input[idx]; \
+    if (idx < len) { \
+        output[idx] = (T_out) input[idx]; \
+    } \
 } \
 
 
 #define INSTANTIATE_COPY(name, T) \
-extern "C" __global__ void copy_unicast_##name(const T* input, T* output) { \
+extern "C" __global__ void copy_unicast_##name(const T* input, T* output, int len) { \
     int idx = blockIdx.x * blockDim.x + threadIdx.x; \
-    output[idx] = input[idx]; \
+    if (idx < len) { \
+        output[idx] = input[idx]; \
+    } \
 } \
 \
 extern "C" __global__ void copy_nd1_##name(const T* input, T* output, int in_strides_0, int out_shape_0, int out_strides_0) { \
