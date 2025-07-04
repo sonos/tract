@@ -109,7 +109,7 @@ impl PermuteAxes {
         let o_view = get_cuda_view(output);
 
         let out_shape = output.shape();
-        let func = cuda_context().load_pipeline(LibraryName::ArrayOps, kernel_name)?;
+        let func = cuda_context().load_pipeline(LibraryName::Array, kernel_name)?;
         let mut launch_args = stream.launch_builder(&func);
         launch_args.arg(&i_view);
         launch_args.arg(&o_view);

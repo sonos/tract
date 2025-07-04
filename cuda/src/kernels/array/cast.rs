@@ -76,7 +76,7 @@ impl Cast {
         let i_view = get_cuda_view(input);
         let o_view = get_cuda_view(output);
         let len = output.len();
-        let func = cuda_context().load_pipeline(LibraryName::ArrayOps, kernel_name)?;
+        let func = cuda_context().load_pipeline(LibraryName::Array, kernel_name)?;
 
         let mut launch_args = stream.launch_builder(&func);
         launch_args.arg(&i_view);

@@ -84,7 +84,7 @@ impl MultiBroadcast {
 
         let out_shape = output.shape();
 
-        let func = cuda_context().load_pipeline(LibraryName::ArrayOps, kernel_name)?;
+        let func = cuda_context().load_pipeline(LibraryName::Array, kernel_name)?;
 
         let i_view = get_sliced_cuda_view(
             input,
