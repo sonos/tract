@@ -1,6 +1,6 @@
 use crate::context::cuda_context;
 use crate::kernels::launch_args::LaunchArgsExt;
-use crate::kernels::{get_cuda_view, utils, LibraryName};
+use crate::kernels::{LibraryName, get_cuda_view, utils};
 use anyhow::ensure;
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use std::fmt;
@@ -72,7 +72,7 @@ impl RotateHalf {
         let cfg = LaunchConfig {
             grid_dim: ((shape_nd2[1] / 2) as _, shape_nd2[0] as _, 1),
             block_dim: (1, 1, 1),
-            shared_mem_bytes: 0
+            shared_mem_bytes: 0,
         };
         unsafe { launch_args.launch(cfg) };
 
@@ -110,13 +110,13 @@ mod tests {
             cpu_output
                 .close_enough(&cuda_output.to_host()?.into_tensor(), Approximation::Exact)
                 .with_context(|| {
-                format!(
-                    "Input: {:?} Cpu: {:?}, Cuda: {:?}",
-                    a.dump(true),
-                    cpu_output.dump(true),
-                    cuda_output.to_host().and_then(|it| it.dump(true))
-                )
-            })?;
+                    format!(
+                        "Input: {:?} Cpu: {:?}, Cuda: {:?}",
+                        a.dump(true),
+                        cpu_output.dump(true),
+                        cuda_output.to_host().and_then(|it| it.dump(true))
+                    )
+                })?;
             Ok(())
         })
     }

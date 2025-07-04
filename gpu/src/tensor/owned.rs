@@ -1,4 +1,4 @@
-use downcast_rs::{impl_downcast, Downcast};
+use downcast_rs::{Downcast, impl_downcast};
 use dyn_clone::DynClone;
 use std::fmt::Debug;
 use tract_core::dyn_clone;

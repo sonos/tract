@@ -132,8 +132,7 @@ mod tests {
             let cuda_slice = CudaSlice::from_tract_core(slice);
             let a_cuda = a.clone().into_device()?.into_opaque_tensor().into_tvalue();
             let mut session_state = SessionState::default();
-            let cuda_output =
-                cuda_slice.eval_with_session(0, &mut session_state, tvec![a_cuda])?;
+            let cuda_output = cuda_slice.eval_with_session(0, &mut session_state, tvec![a_cuda])?;
             stream.synchronize()?;
 
             cpu_output[0].close_enough(

@@ -1,6 +1,6 @@
 use crate::context::cuda_context;
 use crate::kernels::launch_args::LaunchArgsExt;
-use crate::kernels::{get_cuda_view, get_sliced_cuda_view, utils, BroadcastKind, LibraryName};
+use crate::kernels::{BroadcastKind, LibraryName, get_cuda_view, get_sliced_cuda_view, utils};
 
 use crate::kernels::utils::compute_broadcast_strides;
 use anyhow::ensure;
@@ -86,7 +86,11 @@ impl MultiBroadcast {
 
         let func = cuda_context().load_pipeline(LibraryName::ArrayOps, kernel_name)?;
 
-        let i_view = get_sliced_cuda_view(input, input_offset, input.len() * input.datum_type().size_of() - input_offset)?;
+        let i_view = get_sliced_cuda_view(
+            input,
+            input_offset,
+            input.len() * input.datum_type().size_of() - input_offset,
+        )?;
         let o_view = get_cuda_view(output);
         let mut launch_args = stream.launch_builder(&func);
 
@@ -111,16 +115,13 @@ mod tests {
 
     use crate::context::CUDA_STREAM;
 
-    fn run_test_case(
-        in_shape: &[usize],
-        out_shape: &[usize],
-    ) -> TractResult<()> {
+    fn run_test_case(in_shape: &[usize], out_shape: &[usize]) -> TractResult<()> {
         CUDA_STREAM.with(|stream| {
             let a_len = in_shape.iter().product::<usize>();
 
             let a =
                 Tensor::from_shape(in_shape, &(0..a_len).map(|f| f as f32).collect::<Vec<_>>())?;
-            let output = MultiBroadcast{}.eval(stream, &a.clone().into_device()?, 0, out_shape)?;
+            let output = MultiBroadcast {}.eval(stream, &a.clone().into_device()?, 0, out_shape)?;
             let ref_output = a.broadcast_to_shape(out_shape)?;
 
             assert_eq!(output.to_host()?.into_tensor(), ref_output);

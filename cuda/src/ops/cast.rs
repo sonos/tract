@@ -49,9 +49,8 @@ impl EvalOp for CudaCast {
                 self.to,
                 input.shape(),
             )?;
-            CUDA_STREAM.with(|stream| {
-                kernels::array::Cast.dispatch_eval(stream, input, &output)
-            })?;
+            CUDA_STREAM
+                .with(|stream| kernels::array::Cast.dispatch_eval(stream, input, &output))?;
             Ok(tvec![output.into_opaque_tensor().into_tvalue()])
         }
     }
