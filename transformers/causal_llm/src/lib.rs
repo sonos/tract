@@ -1,13 +1,14 @@
+use core::str;
 use std::path::Path;
 
 use float_ord::FloatOrd;
 use tokenizers::Tokenizer;
-use tract_nnef::internal::{anyhow, TractErrorContext};
+use tract_nnef::internal::{TractErrorContext, anyhow};
 use tract_nnef::prelude::tract_itertools::Itertools;
 use tract_nnef::prelude::*;
 use tract_nnef::tract_core::ops::source::SourceState;
-use tract_transformers::ops::dyn_kv_cache::DynKeyValueCacheState;
 use tract_transformers::WithTractTransformers;
+use tract_transformers::ops::dyn_kv_cache::DynKeyValueCacheState;
 
 #[derive(Clone, Debug)]
 pub struct CausalLlmModel {
@@ -42,7 +43,48 @@ impl CausalLlmModel {
 
     pub fn spawn(self: &Arc<Self>) -> TractResult<CausalLlmState> {
         let nn_state = SimpleState::new(self.nn.clone())?;
-        Ok(CausalLlmState { model: self.clone(), nn_state, seq: vec![] })
+        Ok(CausalLlmState {
+            model: self.clone(),
+            nn_state,
+            seq: vec![],
+            config: CausalLlmStateConfig::default(),
+        })
+    }
+
+    pub fn spawn_with_config(
+        self: &Arc<Self>,
+        config: CausalLlmStateConfig,
+    ) -> TractResult<CausalLlmState> {
+        let nn_state = SimpleState::new(self.nn.clone())?;
+        Ok(CausalLlmState { model: self.clone(), nn_state, seq: vec![], config })
+    }
+}
+
+/// Config of the state containing specific behavior requested
+/// prompt chunking, sampling strategy, ...
+#[derive(Debug, Clone, PartialEq)]
+pub struct CausalLlmStateConfig {
+    /// split long prompt into chunks of fixed number of tokens,
+    /// reducing RAM usage
+    prompt_chunk_size: Option<usize>,
+}
+impl Default for CausalLlmStateConfig {
+    fn default() -> Self {
+        Self { prompt_chunk_size: Some(512) }
+    }
+}
+
+impl CausalLlmStateConfig {
+    pub fn validate(&self) -> TractResult<()> {
+        if let Some(chunk_size) = self.prompt_chunk_size {
+            anyhow::ensure!(
+                chunk_size > 0,
+                format!(
+                    "prompt_chunk_size cannot be set to '{chunk_size}', set None to deactivate it."
+                )
+            )
+        }
+        Ok(())
     }
 }
 
@@ -51,6 +93,7 @@ pub struct CausalLlmState {
     pub model: Arc<CausalLlmModel>,
     pub nn_state: TypedSimpleState<TypedModel, Arc<TypedRunnableModel<TypedModel>>>,
     pub seq: Vec<u32>,
+    pub config: CausalLlmStateConfig,
 }
 
 impl CausalLlmState {
@@ -62,7 +105,16 @@ impl CausalLlmState {
         self.seq.extend(tokens);
         let mut input = tensor1(&tokens.iter().map(|t| *t as i64).collect_vec());
         input.insert_axis(0)?;
-        let output = self.nn_state.run(tvec![input.into_tvalue()])?;
+        let output = if let Some(s) = self.config.prompt_chunk_size {
+            let mut pos = 0;
+            while pos + s < tokens.len() {
+                self.nn_state.run(tvec![input.slice(1, pos, pos + s)?.into_tvalue()])?;
+                pos += s;
+            }
+            self.nn_state.run(tvec![input.slice(1, pos, tokens.len())?.into_tvalue()])?
+        } else {
+            self.nn_state.run(tvec![input.into_tvalue()])?
+        };
         let next_tok = output[0]
             .as_slice::<f32>()?
             .iter()
@@ -91,7 +143,12 @@ impl CausalLlmState {
     }
 
     pub fn freeze(self) -> FrozenCausalLlmState {
-        FrozenCausalLlmState { model: self.model, nn_state: self.nn_state.freeze(), seq: self.seq }
+        FrozenCausalLlmState {
+            model: self.model,
+            nn_state: self.nn_state.freeze(),
+            seq: self.seq,
+            config: self.config,
+        }
     }
 
     pub fn truncate(&mut self, len: usize) -> TractResult<()> {
@@ -119,11 +176,17 @@ pub struct FrozenCausalLlmState {
     pub model: Arc<CausalLlmModel>,
     pub nn_state: TypedFrozenSimpleState<TypedModel, Arc<TypedRunnableModel<TypedModel>>>,
     pub seq: Vec<u32>,
+    pub config: CausalLlmStateConfig,
 }
 
 impl FrozenCausalLlmState {
     pub fn unfreeze(self) -> CausalLlmState {
-        CausalLlmState { model: self.model, nn_state: self.nn_state.unfreeze(), seq: self.seq }
+        CausalLlmState {
+            model: self.model,
+            nn_state: self.nn_state.unfreeze(),
+            seq: self.seq,
+            config: self.config,
+        }
     }
 }
 
