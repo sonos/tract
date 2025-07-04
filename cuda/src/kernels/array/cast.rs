@@ -75,13 +75,14 @@ impl Cast {
 
         let i_view = get_cuda_view(input);
         let o_view = get_cuda_view(output);
-
+        let len = output.len();
         let func = cuda_context().load_pipeline(LibraryName::ArrayOps, kernel_name)?;
+
         let mut launch_args = stream.launch_builder(&func);
         launch_args.arg(&i_view);
         launch_args.arg(&o_view);
-
-        let cfg = LaunchConfig::for_num_elems(output.len() as _);
+        launch_args.arg(&len);
+        let cfg = LaunchConfig::for_num_elems(len as _);
 
         unsafe { launch_args.launch(cfg) };
         Ok(())

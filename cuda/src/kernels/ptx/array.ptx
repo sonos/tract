@@ -14,27 +14,35 @@
 
 .visible .entry copy_unicast_bool(
 	.param .u64 copy_unicast_bool_param_0,
-	.param .u64 copy_unicast_bool_param_1
+	.param .u64 copy_unicast_bool_param_1,
+	.param .u32 copy_unicast_bool_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [copy_unicast_bool_param_0];
 	ld.param.u64 	%rd2, [copy_unicast_bool_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%rs1, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [copy_unicast_bool_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB0_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u8 	[%rd7], %rs1;
+
+$L__BB0_2:
 	ret;
 
 }
@@ -456,336 +464,431 @@ $L__BB6_3:
 	// .globl	cast_bool_bool
 .visible .entry cast_bool_bool(
 	.param .u64 cast_bool_bool_param_0,
-	.param .u64 cast_bool_bool_param_1
+	.param .u64 cast_bool_bool_param_1,
+	.param .u32 cast_bool_bool_param_2
 )
 {
-	.reg .pred 	%p<2>;
+	.reg .pred 	%p<3>;
 	.reg .b16 	%rs<3>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_bool_bool_param_0];
 	ld.param.u64 	%rd2, [cast_bool_bool_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%rs1, [%rd6];
-	setp.ne.s16 	%p1, %rs1, 0;
-	selp.u16 	%rs2, 1, 0, %p1;
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_bool_bool_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB7_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%rs1, [%rd5];
+	setp.ne.s16 	%p2, %rs1, 0;
+	selp.u16 	%rs2, 1, 0, %p2;
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u8 	[%rd7], %rs2;
+
+$L__BB7_2:
 	ret;
 
 }
 	// .globl	cast_bool_f32
 .visible .entry cast_bool_f32(
 	.param .u64 cast_bool_f32_param_0,
-	.param .u64 cast_bool_f32_param_1
+	.param .u64 cast_bool_f32_param_1,
+	.param .u32 cast_bool_f32_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_bool_f32_param_0];
 	ld.param.u64 	%rd2, [cast_bool_f32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s8 	%rs1, [%rd6];
+	ld.param.u32 	%r2, [cast_bool_f32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB8_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s8 	%rs1, [%rd5];
 	cvt.rn.f32.s16 	%f1, %rs1;
-	mul.wide.s32 	%rd7, %r4, 4;
-	add.s64 	%rd8, %rd3, %rd7;
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 4;
+	add.s64 	%rd8, %rd6, %rd7;
 	st.global.f32 	[%rd8], %f1;
+
+$L__BB8_2:
 	ret;
 
 }
 	// .globl	cast_bool_f16
 .visible .entry cast_bool_f16(
 	.param .u64 cast_bool_f16_param_0,
-	.param .u64 cast_bool_f16_param_1
+	.param .u64 cast_bool_f16_param_1,
+	.param .u32 cast_bool_f16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<6>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_bool_f16_param_0];
 	ld.param.u64 	%rd2, [cast_bool_f16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r2, %ctaid.x;
-	mov.u32 	%r3, %ntid.x;
-	mov.u32 	%r4, %tid.x;
-	mad.lo.s32 	%r5, %r2, %r3, %r4;
-	cvt.s64.s32 	%rd5, %r5;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s8 	%r1, [%rd6];
+	ld.param.u32 	%r2, [cast_bool_f16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB9_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s8 	%r6, [%rd5];
 	// begin inline asm
-	cvt.rn.f16.s32 %rs1, %r1;
+	cvt.rn.f16.s32 %rs1, %r6;
 	// end inline asm
-	mul.wide.s32 	%rd7, %r5, 2;
-	add.s64 	%rd8, %rd3, %rd7;
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
 	st.global.u16 	[%rd8], %rs1;
+
+$L__BB9_2:
 	ret;
 
 }
 	// .globl	cast_bool_u8
 .visible .entry cast_bool_u8(
 	.param .u64 cast_bool_u8_param_0,
-	.param .u64 cast_bool_u8_param_1
+	.param .u64 cast_bool_u8_param_1,
+	.param .u32 cast_bool_u8_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_bool_u8_param_0];
 	ld.param.u64 	%rd2, [cast_bool_u8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%rs1, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_bool_u8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB10_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u8 	[%rd7], %rs1;
+
+$L__BB10_2:
 	ret;
 
 }
 	// .globl	cast_bool_u16
 .visible .entry cast_bool_u16(
 	.param .u64 cast_bool_u16_param_0,
-	.param .u64 cast_bool_u16_param_1
+	.param .u64 cast_bool_u16_param_1,
+	.param .u32 cast_bool_u16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_bool_u16_param_0];
 	ld.param.u64 	%rd2, [cast_bool_u16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s8 	%rs1, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 2;
-	add.s64 	%rd8, %rd3, %rd7;
+	ld.param.u32 	%r2, [cast_bool_u16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB11_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s8 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
 	st.global.u16 	[%rd8], %rs1;
+
+$L__BB11_2:
 	ret;
 
 }
 	// .globl	cast_bool_u32
 .visible .entry cast_bool_u32(
 	.param .u64 cast_bool_u32_param_0,
-	.param .u64 cast_bool_u32_param_1
+	.param .u64 cast_bool_u32_param_1,
+	.param .u32 cast_bool_u32_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_bool_u32_param_0];
 	ld.param.u64 	%rd2, [cast_bool_u32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s8 	%r5, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 4;
-	add.s64 	%rd8, %rd3, %rd7;
-	st.global.u32 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_bool_u32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB12_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s8 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 4;
+	add.s64 	%rd8, %rd6, %rd7;
+	st.global.u32 	[%rd8], %r6;
+
+$L__BB12_2:
 	ret;
 
 }
 	// .globl	cast_bool_u64
 .visible .entry cast_bool_u64(
 	.param .u64 cast_bool_u64_param_0,
-	.param .u64 cast_bool_u64_param_1
+	.param .u64 cast_bool_u64_param_1,
+	.param .u32 cast_bool_u64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_bool_u64_param_0];
 	ld.param.u64 	%rd2, [cast_bool_u64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s8 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 8;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u64 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_bool_u64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB13_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s8 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 8;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u64 	[%rd9], %rd6;
+
+$L__BB13_2:
 	ret;
 
 }
 	// .globl	cast_bool_i8
 .visible .entry cast_bool_i8(
 	.param .u64 cast_bool_i8_param_0,
-	.param .u64 cast_bool_i8_param_1
+	.param .u64 cast_bool_i8_param_1,
+	.param .u32 cast_bool_i8_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_bool_i8_param_0];
 	ld.param.u64 	%rd2, [cast_bool_i8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%rs1, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_bool_i8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB14_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u8 	[%rd7], %rs1;
+
+$L__BB14_2:
 	ret;
 
 }
 	// .globl	cast_bool_i16
 .visible .entry cast_bool_i16(
 	.param .u64 cast_bool_i16_param_0,
-	.param .u64 cast_bool_i16_param_1
+	.param .u64 cast_bool_i16_param_1,
+	.param .u32 cast_bool_i16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_bool_i16_param_0];
 	ld.param.u64 	%rd2, [cast_bool_i16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s8 	%rs1, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 2;
-	add.s64 	%rd8, %rd3, %rd7;
+	ld.param.u32 	%r2, [cast_bool_i16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB15_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s8 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
 	st.global.u16 	[%rd8], %rs1;
+
+$L__BB15_2:
 	ret;
 
 }
 	// .globl	cast_bool_i32
 .visible .entry cast_bool_i32(
 	.param .u64 cast_bool_i32_param_0,
-	.param .u64 cast_bool_i32_param_1
+	.param .u64 cast_bool_i32_param_1,
+	.param .u32 cast_bool_i32_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_bool_i32_param_0];
 	ld.param.u64 	%rd2, [cast_bool_i32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s8 	%r5, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 4;
-	add.s64 	%rd8, %rd3, %rd7;
-	st.global.u32 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_bool_i32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB16_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s8 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 4;
+	add.s64 	%rd8, %rd6, %rd7;
+	st.global.u32 	[%rd8], %r6;
+
+$L__BB16_2:
 	ret;
 
 }
 	// .globl	cast_bool_i64
 .visible .entry cast_bool_i64(
 	.param .u64 cast_bool_i64_param_0,
-	.param .u64 cast_bool_i64_param_1
+	.param .u64 cast_bool_i64_param_1,
+	.param .u32 cast_bool_i64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_bool_i64_param_0];
 	ld.param.u64 	%rd2, [cast_bool_i64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s8 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 8;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u64 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_bool_i64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB17_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s8 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 8;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u64 	[%rd9], %rd6;
+
+$L__BB17_2:
 	ret;
 
 }
 	// .globl	copy_unicast_f32
 .visible .entry copy_unicast_f32(
 	.param .u64 copy_unicast_f32_param_0,
-	.param .u64 copy_unicast_f32_param_1
+	.param .u64 copy_unicast_f32_param_1,
+	.param .u32 copy_unicast_f32_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [copy_unicast_f32_param_0];
 	ld.param.u64 	%rd2, [copy_unicast_f32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.f32 	%f1, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [copy_unicast_f32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB18_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.f32 	%f1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.f32 	[%rd7], %f1;
+
+$L__BB18_2:
 	ret;
 
 }
@@ -1207,322 +1310,409 @@ $L__BB24_3:
 	// .globl	cast_f32_bool
 .visible .entry cast_f32_bool(
 	.param .u64 cast_f32_bool_param_0,
-	.param .u64 cast_f32_bool_param_1
+	.param .u64 cast_f32_bool_param_1,
+	.param .u32 cast_f32_bool_param_2
 )
 {
-	.reg .pred 	%p<2>;
+	.reg .pred 	%p<3>;
 	.reg .b16 	%rs<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_f32_bool_param_0];
 	ld.param.u64 	%rd2, [cast_f32_bool_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 4;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.f32 	%f1, [%rd7];
-	setp.neu.f32 	%p1, %f1, 0f00000000;
-	selp.u16 	%rs1, 1, 0, %p1;
-	add.s64 	%rd8, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_f32_bool_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB25_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 4;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.f32 	%f1, [%rd6];
+	setp.neu.f32 	%p2, %f1, 0f00000000;
+	selp.u16 	%rs1, 1, 0, %p2;
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
 	st.global.u8 	[%rd8], %rs1;
+
+$L__BB25_2:
 	ret;
 
 }
 	// .globl	cast_f32_f32
 .visible .entry cast_f32_f32(
 	.param .u64 cast_f32_f32_param_0,
-	.param .u64 cast_f32_f32_param_1
+	.param .u64 cast_f32_f32_param_1,
+	.param .u32 cast_f32_f32_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_f32_f32_param_0];
 	ld.param.u64 	%rd2, [cast_f32_f32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.f32 	%f1, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_f32_f32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB26_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.f32 	%f1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.f32 	[%rd7], %f1;
+
+$L__BB26_2:
 	ret;
 
 }
 	// .globl	cast_f32_f16
 .visible .entry cast_f32_f16(
 	.param .u64 cast_f32_f16_param_0,
-	.param .u64 cast_f32_f16_param_1
+	.param .u64 cast_f32_f16_param_1,
+	.param .u32 cast_f32_f16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_f32_f16_param_0];
 	ld.param.u64 	%rd2, [cast_f32_f16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.f32 	%f1, [%rd6];
+	ld.param.u32 	%r2, [cast_f32_f16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB27_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.f32 	%f1, [%rd5];
 	// begin inline asm
 	{  cvt.rn.f16.f32 %rs1, %f1;}
 
 	// end inline asm
-	mul.wide.s32 	%rd7, %r4, 2;
-	add.s64 	%rd8, %rd3, %rd7;
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
 	st.global.u16 	[%rd8], %rs1;
+
+$L__BB27_2:
 	ret;
 
 }
 	// .globl	cast_f32_u8
 .visible .entry cast_f32_u8(
 	.param .u64 cast_f32_u8_param_0,
-	.param .u64 cast_f32_u8_param_1
+	.param .u64 cast_f32_u8_param_1,
+	.param .u32 cast_f32_u8_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<6>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_f32_u8_param_0];
 	ld.param.u64 	%rd2, [cast_f32_u8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 4;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.f32 	%f1, [%rd7];
-	cvt.rzi.u32.f32 	%r5, %f1;
-	add.s64 	%rd8, %rd3, %rd5;
-	st.global.u8 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_f32_u8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB28_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 4;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.f32 	%f1, [%rd6];
+	cvt.rzi.u32.f32 	%r6, %f1;
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
+	st.global.u8 	[%rd8], %r6;
+
+$L__BB28_2:
 	ret;
 
 }
 	// .globl	cast_f32_u16
 .visible .entry cast_f32_u16(
 	.param .u64 cast_f32_u16_param_0,
-	.param .u64 cast_f32_u16_param_1
+	.param .u64 cast_f32_u16_param_1,
+	.param .u32 cast_f32_u16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<6>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_f32_u16_param_0];
 	ld.param.u64 	%rd2, [cast_f32_u16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.f32 	%f1, [%rd6];
-	cvt.rzi.u32.f32 	%r5, %f1;
-	mul.wide.s32 	%rd7, %r4, 2;
-	add.s64 	%rd8, %rd3, %rd7;
-	st.global.u16 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_f32_u16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB29_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.f32 	%f1, [%rd5];
+	cvt.rzi.u32.f32 	%r6, %f1;
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
+	st.global.u16 	[%rd8], %r6;
+
+$L__BB29_2:
 	ret;
 
 }
 	// .globl	cast_f32_u32
 .visible .entry cast_f32_u32(
 	.param .u64 cast_f32_u32_param_0,
-	.param .u64 cast_f32_u32_param_1
+	.param .u64 cast_f32_u32_param_1,
+	.param .u32 cast_f32_u32_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<6>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_f32_u32_param_0];
 	ld.param.u64 	%rd2, [cast_f32_u32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.f32 	%f1, [%rd6];
-	cvt.rzi.u32.f32 	%r5, %f1;
-	add.s64 	%rd7, %rd3, %rd5;
-	st.global.u32 	[%rd7], %r5;
+	ld.param.u32 	%r2, [cast_f32_u32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB30_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.f32 	%f1, [%rd5];
+	cvt.rzi.u32.f32 	%r6, %f1;
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
+	st.global.u32 	[%rd7], %r6;
+
+$L__BB30_2:
 	ret;
 
 }
 	// .globl	cast_f32_u64
 .visible .entry cast_f32_u64(
 	.param .u64 cast_f32_u64_param_0,
-	.param .u64 cast_f32_u64_param_1
+	.param .u64 cast_f32_u64_param_1,
+	.param .u32 cast_f32_u64_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_f32_u64_param_0];
 	ld.param.u64 	%rd2, [cast_f32_u64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.f32 	%f1, [%rd6];
-	cvt.rzi.u64.f32 	%rd7, %f1;
-	mul.wide.s32 	%rd8, %r4, 8;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u64 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_f32_u64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB31_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.f32 	%f1, [%rd5];
+	cvt.rzi.u64.f32 	%rd6, %f1;
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 8;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u64 	[%rd9], %rd6;
+
+$L__BB31_2:
 	ret;
 
 }
 	// .globl	cast_f32_i8
 .visible .entry cast_f32_i8(
 	.param .u64 cast_f32_i8_param_0,
-	.param .u64 cast_f32_i8_param_1
+	.param .u64 cast_f32_i8_param_1,
+	.param .u32 cast_f32_i8_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<6>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_f32_i8_param_0];
 	ld.param.u64 	%rd2, [cast_f32_i8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 4;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.f32 	%f1, [%rd7];
-	cvt.rzi.s32.f32 	%r5, %f1;
-	add.s64 	%rd8, %rd3, %rd5;
-	st.global.u8 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_f32_i8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB32_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 4;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.f32 	%f1, [%rd6];
+	cvt.rzi.s32.f32 	%r6, %f1;
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
+	st.global.u8 	[%rd8], %r6;
+
+$L__BB32_2:
 	ret;
 
 }
 	// .globl	cast_f32_i16
 .visible .entry cast_f32_i16(
 	.param .u64 cast_f32_i16_param_0,
-	.param .u64 cast_f32_i16_param_1
+	.param .u64 cast_f32_i16_param_1,
+	.param .u32 cast_f32_i16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<6>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_f32_i16_param_0];
 	ld.param.u64 	%rd2, [cast_f32_i16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.f32 	%f1, [%rd6];
-	cvt.rzi.s32.f32 	%r5, %f1;
-	mul.wide.s32 	%rd7, %r4, 2;
-	add.s64 	%rd8, %rd3, %rd7;
-	st.global.u16 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_f32_i16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB33_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.f32 	%f1, [%rd5];
+	cvt.rzi.s32.f32 	%r6, %f1;
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
+	st.global.u16 	[%rd8], %r6;
+
+$L__BB33_2:
 	ret;
 
 }
 	// .globl	cast_f32_i32
 .visible .entry cast_f32_i32(
 	.param .u64 cast_f32_i32_param_0,
-	.param .u64 cast_f32_i32_param_1
+	.param .u64 cast_f32_i32_param_1,
+	.param .u32 cast_f32_i32_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<6>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_f32_i32_param_0];
 	ld.param.u64 	%rd2, [cast_f32_i32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.f32 	%f1, [%rd6];
-	cvt.rzi.s32.f32 	%r5, %f1;
-	add.s64 	%rd7, %rd3, %rd5;
-	st.global.u32 	[%rd7], %r5;
+	ld.param.u32 	%r2, [cast_f32_i32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB34_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.f32 	%f1, [%rd5];
+	cvt.rzi.s32.f32 	%r6, %f1;
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
+	st.global.u32 	[%rd7], %r6;
+
+$L__BB34_2:
 	ret;
 
 }
 	// .globl	cast_f32_i64
 .visible .entry cast_f32_i64(
 	.param .u64 cast_f32_i64_param_0,
-	.param .u64 cast_f32_i64_param_1
+	.param .u64 cast_f32_i64_param_1,
+	.param .u32 cast_f32_i64_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_f32_i64_param_0];
 	ld.param.u64 	%rd2, [cast_f32_i64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.f32 	%f1, [%rd6];
-	cvt.rzi.s64.f32 	%rd7, %f1;
-	mul.wide.s32 	%rd8, %r4, 8;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u64 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_f32_i64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB35_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.f32 	%f1, [%rd5];
+	cvt.rzi.s64.f32 	%rd6, %f1;
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 8;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u64 	[%rd9], %rd6;
+
+$L__BB35_2:
 	ret;
 
 }
@@ -1580,27 +1770,35 @@ $L__BB24_3:
 	// .globl	copy_unicast_f16
 .visible .entry copy_unicast_f16(
 	.param .u64 copy_unicast_f16_param_0,
-	.param .u64 copy_unicast_f16_param_1
+	.param .u64 copy_unicast_f16_param_1,
+	.param .u32 copy_unicast_f16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [copy_unicast_f16_param_0];
 	ld.param.u64 	%rd2, [copy_unicast_f16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%rs1, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [copy_unicast_f16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB37_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u16 	[%rd7], %rs1;
+
+$L__BB37_2:
 	ret;
 
 }
@@ -2022,338 +2220,425 @@ $L__BB43_3:
 	// .globl	cast_f16_bool
 .visible .entry cast_f16_bool(
 	.param .u64 cast_f16_bool_param_0,
-	.param .u64 cast_f16_bool_param_1
+	.param .u64 cast_f16_bool_param_1,
+	.param .u32 cast_f16_bool_param_2
 )
 {
-	.reg .pred 	%p<2>;
+	.reg .pred 	%p<3>;
 	.reg .b16 	%rs<4>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_f16_bool_param_0];
 	ld.param.u64 	%rd2, [cast_f16_bool_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 2;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u16 	%rs1, [%rd7];
+	ld.param.u32 	%r2, [cast_f16_bool_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB44_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 2;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u16 	%rs1, [%rd6];
 	and.b16  	%rs2, %rs1, 32767;
-	setp.ne.s16 	%p1, %rs2, 0;
-	selp.u16 	%rs3, 1, 0, %p1;
-	add.s64 	%rd8, %rd3, %rd5;
+	setp.ne.s16 	%p2, %rs2, 0;
+	selp.u16 	%rs3, 1, 0, %p2;
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
 	st.global.u8 	[%rd8], %rs3;
+
+$L__BB44_2:
 	ret;
 
 }
 	// .globl	cast_f16_f32
 .visible .entry cast_f16_f32(
 	.param .u64 cast_f16_f32_param_0,
-	.param .u64 cast_f16_f32_param_1
+	.param .u64 cast_f16_f32_param_1,
+	.param .u32 cast_f16_f32_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_f16_f32_param_0];
 	ld.param.u64 	%rd2, [cast_f16_f32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%rs1, [%rd6];
+	ld.param.u32 	%r2, [cast_f16_f32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB45_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rs1, [%rd5];
 	// begin inline asm
 	{  cvt.f32.f16 %f1, %rs1;}
 
 	// end inline asm
-	mul.wide.s32 	%rd7, %r4, 4;
-	add.s64 	%rd8, %rd3, %rd7;
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 4;
+	add.s64 	%rd8, %rd6, %rd7;
 	st.global.f32 	[%rd8], %f1;
+
+$L__BB45_2:
 	ret;
 
 }
 	// .globl	cast_f16_f16
 .visible .entry cast_f16_f16(
 	.param .u64 cast_f16_f16_param_0,
-	.param .u64 cast_f16_f16_param_1
+	.param .u64 cast_f16_f16_param_1,
+	.param .u32 cast_f16_f16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_f16_f16_param_0];
 	ld.param.u64 	%rd2, [cast_f16_f16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%rs1, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_f16_f16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB46_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u16 	[%rd7], %rs1;
+
+$L__BB46_2:
 	ret;
 
 }
 	// .globl	cast_f16_u8
 .visible .entry cast_f16_u8(
 	.param .u64 cast_f16_u8_param_0,
-	.param .u64 cast_f16_u8_param_1
+	.param .u64 cast_f16_u8_param_1,
+	.param .u32 cast_f16_u8_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<6>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_f16_u8_param_0];
 	ld.param.u64 	%rd2, [cast_f16_u8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r2, %ctaid.x;
-	mov.u32 	%r3, %ntid.x;
-	mov.u32 	%r4, %tid.x;
-	mad.lo.s32 	%r5, %r2, %r3, %r4;
-	cvt.s64.s32 	%rd5, %r5;
-	mul.wide.s32 	%rd6, %r5, 2;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u16 	%rs1, [%rd7];
+	ld.param.u32 	%r2, [cast_f16_u8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB47_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 2;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u16 	%rs1, [%rd6];
 	// begin inline asm
-	cvt.rzi.u8.f16 %r1, %rs1;
+	cvt.rzi.u8.f16 %r6, %rs1;
 	// end inline asm
-	add.s64 	%rd8, %rd3, %rd5;
-	st.global.u8 	[%rd8], %r1;
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
+	st.global.u8 	[%rd8], %r6;
+
+$L__BB47_2:
 	ret;
 
 }
 	// .globl	cast_f16_u16
 .visible .entry cast_f16_u16(
 	.param .u64 cast_f16_u16_param_0,
-	.param .u64 cast_f16_u16_param_1
+	.param .u64 cast_f16_u16_param_1,
+	.param .u32 cast_f16_u16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<3>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_f16_u16_param_0];
 	ld.param.u64 	%rd2, [cast_f16_u16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%rs2, [%rd6];
+	ld.param.u32 	%r2, [cast_f16_u16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB48_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rs2, [%rd5];
 	// begin inline asm
 	cvt.rzi.u16.f16 %rs1, %rs2;
 	// end inline asm
-	add.s64 	%rd7, %rd3, %rd5;
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u16 	[%rd7], %rs1;
+
+$L__BB48_2:
 	ret;
 
 }
 	// .globl	cast_f16_u32
 .visible .entry cast_f16_u32(
 	.param .u64 cast_f16_u32_param_0,
-	.param .u64 cast_f16_u32_param_1
+	.param .u64 cast_f16_u32_param_1,
+	.param .u32 cast_f16_u32_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<6>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_f16_u32_param_0];
 	ld.param.u64 	%rd2, [cast_f16_u32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r2, %ctaid.x;
-	mov.u32 	%r3, %ntid.x;
-	mov.u32 	%r4, %tid.x;
-	mad.lo.s32 	%r5, %r2, %r3, %r4;
-	mul.wide.s32 	%rd5, %r5, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%rs1, [%rd6];
+	ld.param.u32 	%r2, [cast_f16_u32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB49_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rs1, [%rd5];
 	// begin inline asm
-	cvt.rzi.u32.f16 %r1, %rs1;
+	cvt.rzi.u32.f16 %r6, %rs1;
 	// end inline asm
-	mul.wide.s32 	%rd7, %r5, 4;
-	add.s64 	%rd8, %rd3, %rd7;
-	st.global.u32 	[%rd8], %r1;
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 4;
+	add.s64 	%rd8, %rd6, %rd7;
+	st.global.u32 	[%rd8], %r6;
+
+$L__BB49_2:
 	ret;
 
 }
 	// .globl	cast_f16_u64
 .visible .entry cast_f16_u64(
 	.param .u64 cast_f16_u64_param_0,
-	.param .u64 cast_f16_u64_param_1
+	.param .u64 cast_f16_u64_param_1,
+	.param .u32 cast_f16_u64_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
-	ld.param.u64 	%rd2, [cast_f16_u64_param_0];
-	ld.param.u64 	%rd3, [cast_f16_u64_param_1];
-	cvta.to.global.u64 	%rd4, %rd3;
-	cvta.to.global.u64 	%rd5, %rd2;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd6, %r4, 2;
-	add.s64 	%rd7, %rd5, %rd6;
-	ld.global.u16 	%rs1, [%rd7];
+	ld.param.u64 	%rd1, [cast_f16_u64_param_0];
+	ld.param.u64 	%rd2, [cast_f16_u64_param_1];
+	ld.param.u32 	%r2, [cast_f16_u64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB50_2;
+
+	cvta.to.global.u64 	%rd4, %rd1;
+	mul.wide.s32 	%rd5, %r1, 2;
+	add.s64 	%rd6, %rd4, %rd5;
+	ld.global.u16 	%rs1, [%rd6];
 	// begin inline asm
-	cvt.rzi.u64.f16 %rd1, %rs1;
+	cvt.rzi.u64.f16 %rd3, %rs1;
 	// end inline asm
-	mul.wide.s32 	%rd8, %r4, 8;
-	add.s64 	%rd9, %rd4, %rd8;
-	st.global.u64 	[%rd9], %rd1;
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 8;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u64 	[%rd9], %rd3;
+
+$L__BB50_2:
 	ret;
 
 }
 	// .globl	cast_f16_i8
 .visible .entry cast_f16_i8(
 	.param .u64 cast_f16_i8_param_0,
-	.param .u64 cast_f16_i8_param_1
+	.param .u64 cast_f16_i8_param_1,
+	.param .u32 cast_f16_i8_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<6>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_f16_i8_param_0];
 	ld.param.u64 	%rd2, [cast_f16_i8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r2, %ctaid.x;
-	mov.u32 	%r3, %ntid.x;
-	mov.u32 	%r4, %tid.x;
-	mad.lo.s32 	%r5, %r2, %r3, %r4;
-	cvt.s64.s32 	%rd5, %r5;
-	mul.wide.s32 	%rd6, %r5, 2;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u16 	%rs1, [%rd7];
+	ld.param.u32 	%r2, [cast_f16_i8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB51_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 2;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u16 	%rs1, [%rd6];
 	// begin inline asm
-	cvt.rzi.s8.f16 %r1, %rs1;
+	cvt.rzi.s8.f16 %r6, %rs1;
 	// end inline asm
-	add.s64 	%rd8, %rd3, %rd5;
-	st.global.u8 	[%rd8], %r1;
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
+	st.global.u8 	[%rd8], %r6;
+
+$L__BB51_2:
 	ret;
 
 }
 	// .globl	cast_f16_i16
 .visible .entry cast_f16_i16(
 	.param .u64 cast_f16_i16_param_0,
-	.param .u64 cast_f16_i16_param_1
+	.param .u64 cast_f16_i16_param_1,
+	.param .u32 cast_f16_i16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<3>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_f16_i16_param_0];
 	ld.param.u64 	%rd2, [cast_f16_i16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%rs2, [%rd6];
+	ld.param.u32 	%r2, [cast_f16_i16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB52_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rs2, [%rd5];
 	// begin inline asm
 	cvt.rzi.s16.f16 %rs1, %rs2;
 	// end inline asm
-	add.s64 	%rd7, %rd3, %rd5;
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u16 	[%rd7], %rs1;
+
+$L__BB52_2:
 	ret;
 
 }
 	// .globl	cast_f16_i32
 .visible .entry cast_f16_i32(
 	.param .u64 cast_f16_i32_param_0,
-	.param .u64 cast_f16_i32_param_1
+	.param .u64 cast_f16_i32_param_1,
+	.param .u32 cast_f16_i32_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<6>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_f16_i32_param_0];
 	ld.param.u64 	%rd2, [cast_f16_i32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r2, %ctaid.x;
-	mov.u32 	%r3, %ntid.x;
-	mov.u32 	%r4, %tid.x;
-	mad.lo.s32 	%r5, %r2, %r3, %r4;
-	mul.wide.s32 	%rd5, %r5, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%rs1, [%rd6];
+	ld.param.u32 	%r2, [cast_f16_i32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB53_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rs1, [%rd5];
 	// begin inline asm
-	cvt.rzi.s32.f16 %r1, %rs1;
+	cvt.rzi.s32.f16 %r6, %rs1;
 	// end inline asm
-	mul.wide.s32 	%rd7, %r5, 4;
-	add.s64 	%rd8, %rd3, %rd7;
-	st.global.u32 	[%rd8], %r1;
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 4;
+	add.s64 	%rd8, %rd6, %rd7;
+	st.global.u32 	[%rd8], %r6;
+
+$L__BB53_2:
 	ret;
 
 }
 	// .globl	cast_f16_i64
 .visible .entry cast_f16_i64(
 	.param .u64 cast_f16_i64_param_0,
-	.param .u64 cast_f16_i64_param_1
+	.param .u64 cast_f16_i64_param_1,
+	.param .u32 cast_f16_i64_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
-	ld.param.u64 	%rd2, [cast_f16_i64_param_0];
-	ld.param.u64 	%rd3, [cast_f16_i64_param_1];
-	cvta.to.global.u64 	%rd4, %rd3;
-	cvta.to.global.u64 	%rd5, %rd2;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd6, %r4, 2;
-	add.s64 	%rd7, %rd5, %rd6;
-	ld.global.u16 	%rs1, [%rd7];
+	ld.param.u64 	%rd1, [cast_f16_i64_param_0];
+	ld.param.u64 	%rd2, [cast_f16_i64_param_1];
+	ld.param.u32 	%r2, [cast_f16_i64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB54_2;
+
+	cvta.to.global.u64 	%rd4, %rd1;
+	mul.wide.s32 	%rd5, %r1, 2;
+	add.s64 	%rd6, %rd4, %rd5;
+	ld.global.u16 	%rs1, [%rd6];
 	// begin inline asm
-	cvt.rzi.s64.f16 %rd1, %rs1;
+	cvt.rzi.s64.f16 %rd3, %rs1;
 	// end inline asm
-	mul.wide.s32 	%rd8, %r4, 8;
-	add.s64 	%rd9, %rd4, %rd8;
-	st.global.u64 	[%rd9], %rd1;
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 8;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u64 	[%rd9], %rd3;
+
+$L__BB54_2:
 	ret;
 
 }
@@ -2414,27 +2699,35 @@ $L__BB43_3:
 	// .globl	copy_unicast_i8
 .visible .entry copy_unicast_i8(
 	.param .u64 copy_unicast_i8_param_0,
-	.param .u64 copy_unicast_i8_param_1
+	.param .u64 copy_unicast_i8_param_1,
+	.param .u32 copy_unicast_i8_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [copy_unicast_i8_param_0];
 	ld.param.u64 	%rd2, [copy_unicast_i8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%rs1, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [copy_unicast_i8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB56_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u8 	[%rd7], %rs1;
+
+$L__BB56_2:
 	ret;
 
 }
@@ -2856,309 +3149,396 @@ $L__BB62_3:
 	// .globl	cast_i8_bool
 .visible .entry cast_i8_bool(
 	.param .u64 cast_i8_bool_param_0,
-	.param .u64 cast_i8_bool_param_1
+	.param .u64 cast_i8_bool_param_1,
+	.param .u32 cast_i8_bool_param_2
 )
 {
-	.reg .pred 	%p<2>;
+	.reg .pred 	%p<3>;
 	.reg .b16 	%rs<3>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_i8_bool_param_0];
 	ld.param.u64 	%rd2, [cast_i8_bool_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%rs1, [%rd6];
-	setp.ne.s16 	%p1, %rs1, 0;
-	selp.u16 	%rs2, 1, 0, %p1;
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_i8_bool_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB63_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%rs1, [%rd5];
+	setp.ne.s16 	%p2, %rs1, 0;
+	selp.u16 	%rs2, 1, 0, %p2;
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u8 	[%rd7], %rs2;
+
+$L__BB63_2:
 	ret;
 
 }
 	// .globl	cast_i8_f32
 .visible .entry cast_i8_f32(
 	.param .u64 cast_i8_f32_param_0,
-	.param .u64 cast_i8_f32_param_1
+	.param .u64 cast_i8_f32_param_1,
+	.param .u32 cast_i8_f32_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i8_f32_param_0];
 	ld.param.u64 	%rd2, [cast_i8_f32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s8 	%rs1, [%rd6];
+	ld.param.u32 	%r2, [cast_i8_f32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB64_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s8 	%rs1, [%rd5];
 	cvt.rn.f32.s16 	%f1, %rs1;
-	mul.wide.s32 	%rd7, %r4, 4;
-	add.s64 	%rd8, %rd3, %rd7;
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 4;
+	add.s64 	%rd8, %rd6, %rd7;
 	st.global.f32 	[%rd8], %f1;
+
+$L__BB64_2:
 	ret;
 
 }
 	// .globl	cast_i8_f16
 .visible .entry cast_i8_f16(
 	.param .u64 cast_i8_f16_param_0,
-	.param .u64 cast_i8_f16_param_1
+	.param .u64 cast_i8_f16_param_1,
+	.param .u32 cast_i8_f16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<6>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i8_f16_param_0];
 	ld.param.u64 	%rd2, [cast_i8_f16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r2, %ctaid.x;
-	mov.u32 	%r3, %ntid.x;
-	mov.u32 	%r4, %tid.x;
-	mad.lo.s32 	%r5, %r2, %r3, %r4;
-	cvt.s64.s32 	%rd5, %r5;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s8 	%r1, [%rd6];
+	ld.param.u32 	%r2, [cast_i8_f16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB65_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s8 	%r6, [%rd5];
 	// begin inline asm
-	cvt.rn.f16.s32 %rs1, %r1;
+	cvt.rn.f16.s32 %rs1, %r6;
 	// end inline asm
-	mul.wide.s32 	%rd7, %r5, 2;
-	add.s64 	%rd8, %rd3, %rd7;
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
 	st.global.u16 	[%rd8], %rs1;
+
+$L__BB65_2:
 	ret;
 
 }
 	// .globl	cast_i8_u8
 .visible .entry cast_i8_u8(
 	.param .u64 cast_i8_u8_param_0,
-	.param .u64 cast_i8_u8_param_1
+	.param .u64 cast_i8_u8_param_1,
+	.param .u32 cast_i8_u8_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_i8_u8_param_0];
 	ld.param.u64 	%rd2, [cast_i8_u8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%rs1, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_i8_u8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB66_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u8 	[%rd7], %rs1;
+
+$L__BB66_2:
 	ret;
 
 }
 	// .globl	cast_i8_u16
 .visible .entry cast_i8_u16(
 	.param .u64 cast_i8_u16_param_0,
-	.param .u64 cast_i8_u16_param_1
+	.param .u64 cast_i8_u16_param_1,
+	.param .u32 cast_i8_u16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i8_u16_param_0];
 	ld.param.u64 	%rd2, [cast_i8_u16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s8 	%rs1, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 2;
-	add.s64 	%rd8, %rd3, %rd7;
+	ld.param.u32 	%r2, [cast_i8_u16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB67_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s8 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
 	st.global.u16 	[%rd8], %rs1;
+
+$L__BB67_2:
 	ret;
 
 }
 	// .globl	cast_i8_u32
 .visible .entry cast_i8_u32(
 	.param .u64 cast_i8_u32_param_0,
-	.param .u64 cast_i8_u32_param_1
+	.param .u64 cast_i8_u32_param_1,
+	.param .u32 cast_i8_u32_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i8_u32_param_0];
 	ld.param.u64 	%rd2, [cast_i8_u32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s8 	%r5, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 4;
-	add.s64 	%rd8, %rd3, %rd7;
-	st.global.u32 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_i8_u32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB68_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s8 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 4;
+	add.s64 	%rd8, %rd6, %rd7;
+	st.global.u32 	[%rd8], %r6;
+
+$L__BB68_2:
 	ret;
 
 }
 	// .globl	cast_i8_u64
 .visible .entry cast_i8_u64(
 	.param .u64 cast_i8_u64_param_0,
-	.param .u64 cast_i8_u64_param_1
+	.param .u64 cast_i8_u64_param_1,
+	.param .u32 cast_i8_u64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_i8_u64_param_0];
 	ld.param.u64 	%rd2, [cast_i8_u64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s8 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 8;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u64 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_i8_u64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB69_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s8 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 8;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u64 	[%rd9], %rd6;
+
+$L__BB69_2:
 	ret;
 
 }
 	// .globl	cast_i8_i8
 .visible .entry cast_i8_i8(
 	.param .u64 cast_i8_i8_param_0,
-	.param .u64 cast_i8_i8_param_1
+	.param .u64 cast_i8_i8_param_1,
+	.param .u32 cast_i8_i8_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_i8_i8_param_0];
 	ld.param.u64 	%rd2, [cast_i8_i8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%rs1, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_i8_i8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB70_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u8 	[%rd7], %rs1;
+
+$L__BB70_2:
 	ret;
 
 }
 	// .globl	cast_i8_i16
 .visible .entry cast_i8_i16(
 	.param .u64 cast_i8_i16_param_0,
-	.param .u64 cast_i8_i16_param_1
+	.param .u64 cast_i8_i16_param_1,
+	.param .u32 cast_i8_i16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i8_i16_param_0];
 	ld.param.u64 	%rd2, [cast_i8_i16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s8 	%rs1, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 2;
-	add.s64 	%rd8, %rd3, %rd7;
+	ld.param.u32 	%r2, [cast_i8_i16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB71_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s8 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
 	st.global.u16 	[%rd8], %rs1;
+
+$L__BB71_2:
 	ret;
 
 }
 	// .globl	cast_i8_i32
 .visible .entry cast_i8_i32(
 	.param .u64 cast_i8_i32_param_0,
-	.param .u64 cast_i8_i32_param_1
+	.param .u64 cast_i8_i32_param_1,
+	.param .u32 cast_i8_i32_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i8_i32_param_0];
 	ld.param.u64 	%rd2, [cast_i8_i32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s8 	%r5, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 4;
-	add.s64 	%rd8, %rd3, %rd7;
-	st.global.u32 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_i8_i32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB72_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s8 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 4;
+	add.s64 	%rd8, %rd6, %rd7;
+	st.global.u32 	[%rd8], %r6;
+
+$L__BB72_2:
 	ret;
 
 }
 	// .globl	cast_i8_i64
 .visible .entry cast_i8_i64(
 	.param .u64 cast_i8_i64_param_0,
-	.param .u64 cast_i8_i64_param_1
+	.param .u64 cast_i8_i64_param_1,
+	.param .u32 cast_i8_i64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_i8_i64_param_0];
 	ld.param.u64 	%rd2, [cast_i8_i64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s8 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 8;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u64 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_i8_i64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB73_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s8 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 8;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u64 	[%rd9], %rd6;
+
+$L__BB73_2:
 	ret;
 
 }
@@ -3216,27 +3596,35 @@ $L__BB62_3:
 	// .globl	copy_unicast_i16
 .visible .entry copy_unicast_i16(
 	.param .u64 copy_unicast_i16_param_0,
-	.param .u64 copy_unicast_i16_param_1
+	.param .u64 copy_unicast_i16_param_1,
+	.param .u32 copy_unicast_i16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [copy_unicast_i16_param_0];
 	ld.param.u64 	%rd2, [copy_unicast_i16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%rs1, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [copy_unicast_i16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB75_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u16 	[%rd7], %rs1;
+
+$L__BB75_2:
 	ret;
 
 }
@@ -3658,309 +4046,396 @@ $L__BB81_3:
 	// .globl	cast_i16_bool
 .visible .entry cast_i16_bool(
 	.param .u64 cast_i16_bool_param_0,
-	.param .u64 cast_i16_bool_param_1
+	.param .u64 cast_i16_bool_param_1,
+	.param .u32 cast_i16_bool_param_2
 )
 {
-	.reg .pred 	%p<2>;
+	.reg .pred 	%p<3>;
 	.reg .b16 	%rs<3>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i16_bool_param_0];
 	ld.param.u64 	%rd2, [cast_i16_bool_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 2;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u16 	%rs1, [%rd7];
-	setp.ne.s16 	%p1, %rs1, 0;
-	selp.u16 	%rs2, 1, 0, %p1;
-	add.s64 	%rd8, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_i16_bool_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB82_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 2;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u16 	%rs1, [%rd6];
+	setp.ne.s16 	%p2, %rs1, 0;
+	selp.u16 	%rs2, 1, 0, %p2;
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
 	st.global.u8 	[%rd8], %rs2;
+
+$L__BB82_2:
 	ret;
 
 }
 	// .globl	cast_i16_f32
 .visible .entry cast_i16_f32(
 	.param .u64 cast_i16_f32_param_0,
-	.param .u64 cast_i16_f32_param_1
+	.param .u64 cast_i16_f32_param_1,
+	.param .u32 cast_i16_f32_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i16_f32_param_0];
 	ld.param.u64 	%rd2, [cast_i16_f32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%rs1, [%rd6];
+	ld.param.u32 	%r2, [cast_i16_f32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB83_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rs1, [%rd5];
 	cvt.rn.f32.s16 	%f1, %rs1;
-	mul.wide.s32 	%rd7, %r4, 4;
-	add.s64 	%rd8, %rd3, %rd7;
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 4;
+	add.s64 	%rd8, %rd6, %rd7;
 	st.global.f32 	[%rd8], %f1;
+
+$L__BB83_2:
 	ret;
 
 }
 	// .globl	cast_i16_f16
 .visible .entry cast_i16_f16(
 	.param .u64 cast_i16_f16_param_0,
-	.param .u64 cast_i16_f16_param_1
+	.param .u64 cast_i16_f16_param_1,
+	.param .u32 cast_i16_f16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<3>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_i16_f16_param_0];
 	ld.param.u64 	%rd2, [cast_i16_f16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%rs2, [%rd6];
+	ld.param.u32 	%r2, [cast_i16_f16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB84_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rs2, [%rd5];
 	// begin inline asm
 	cvt.rn.f16.s16 %rs1, %rs2;
 	// end inline asm
-	add.s64 	%rd7, %rd3, %rd5;
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u16 	[%rd7], %rs1;
+
+$L__BB84_2:
 	ret;
 
 }
 	// .globl	cast_i16_u8
 .visible .entry cast_i16_u8(
 	.param .u64 cast_i16_u8_param_0,
-	.param .u64 cast_i16_u8_param_1
+	.param .u64 cast_i16_u8_param_1,
+	.param .u32 cast_i16_u8_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i16_u8_param_0];
 	ld.param.u64 	%rd2, [cast_i16_u8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 2;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u16 	%rs1, [%rd7];
-	add.s64 	%rd8, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_i16_u8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB85_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 2;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u16 	%rs1, [%rd6];
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
 	st.global.u8 	[%rd8], %rs1;
+
+$L__BB85_2:
 	ret;
 
 }
 	// .globl	cast_i16_u16
 .visible .entry cast_i16_u16(
 	.param .u64 cast_i16_u16_param_0,
-	.param .u64 cast_i16_u16_param_1
+	.param .u64 cast_i16_u16_param_1,
+	.param .u32 cast_i16_u16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_i16_u16_param_0];
 	ld.param.u64 	%rd2, [cast_i16_u16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%rs1, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_i16_u16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB86_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u16 	[%rd7], %rs1;
+
+$L__BB86_2:
 	ret;
 
 }
 	// .globl	cast_i16_u32
 .visible .entry cast_i16_u32(
 	.param .u64 cast_i16_u32_param_0,
-	.param .u64 cast_i16_u32_param_1
+	.param .u64 cast_i16_u32_param_1,
+	.param .u32 cast_i16_u32_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i16_u32_param_0];
 	ld.param.u64 	%rd2, [cast_i16_u32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s16 	%r5, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 4;
-	add.s64 	%rd8, %rd3, %rd7;
-	st.global.u32 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_i16_u32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB87_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s16 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 4;
+	add.s64 	%rd8, %rd6, %rd7;
+	st.global.u32 	[%rd8], %r6;
+
+$L__BB87_2:
 	ret;
 
 }
 	// .globl	cast_i16_u64
 .visible .entry cast_i16_u64(
 	.param .u64 cast_i16_u64_param_0,
-	.param .u64 cast_i16_u64_param_1
+	.param .u64 cast_i16_u64_param_1,
+	.param .u32 cast_i16_u64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_i16_u64_param_0];
 	ld.param.u64 	%rd2, [cast_i16_u64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s16 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 8;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u64 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_i16_u64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB88_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s16 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 8;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u64 	[%rd9], %rd6;
+
+$L__BB88_2:
 	ret;
 
 }
 	// .globl	cast_i16_i8
 .visible .entry cast_i16_i8(
 	.param .u64 cast_i16_i8_param_0,
-	.param .u64 cast_i16_i8_param_1
+	.param .u64 cast_i16_i8_param_1,
+	.param .u32 cast_i16_i8_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i16_i8_param_0];
 	ld.param.u64 	%rd2, [cast_i16_i8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 2;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u16 	%rs1, [%rd7];
-	add.s64 	%rd8, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_i16_i8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB89_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 2;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u16 	%rs1, [%rd6];
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
 	st.global.u8 	[%rd8], %rs1;
+
+$L__BB89_2:
 	ret;
 
 }
 	// .globl	cast_i16_i16
 .visible .entry cast_i16_i16(
 	.param .u64 cast_i16_i16_param_0,
-	.param .u64 cast_i16_i16_param_1
+	.param .u64 cast_i16_i16_param_1,
+	.param .u32 cast_i16_i16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_i16_i16_param_0];
 	ld.param.u64 	%rd2, [cast_i16_i16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%rs1, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_i16_i16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB90_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u16 	[%rd7], %rs1;
+
+$L__BB90_2:
 	ret;
 
 }
 	// .globl	cast_i16_i32
 .visible .entry cast_i16_i32(
 	.param .u64 cast_i16_i32_param_0,
-	.param .u64 cast_i16_i32_param_1
+	.param .u64 cast_i16_i32_param_1,
+	.param .u32 cast_i16_i32_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i16_i32_param_0];
 	ld.param.u64 	%rd2, [cast_i16_i32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s16 	%r5, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 4;
-	add.s64 	%rd8, %rd3, %rd7;
-	st.global.u32 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_i16_i32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB91_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s16 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 4;
+	add.s64 	%rd8, %rd6, %rd7;
+	st.global.u32 	[%rd8], %r6;
+
+$L__BB91_2:
 	ret;
 
 }
 	// .globl	cast_i16_i64
 .visible .entry cast_i16_i64(
 	.param .u64 cast_i16_i64_param_0,
-	.param .u64 cast_i16_i64_param_1
+	.param .u64 cast_i16_i64_param_1,
+	.param .u32 cast_i16_i64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_i16_i64_param_0];
 	ld.param.u64 	%rd2, [cast_i16_i64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s16 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 8;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u64 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_i16_i64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB92_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s16 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 8;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u64 	[%rd9], %rd6;
+
+$L__BB92_2:
 	ret;
 
 }
@@ -4018,26 +4493,34 @@ $L__BB81_3:
 	// .globl	copy_unicast_i32
 .visible .entry copy_unicast_i32(
 	.param .u64 copy_unicast_i32_param_0,
-	.param .u64 copy_unicast_i32_param_1
+	.param .u64 copy_unicast_i32_param_1,
+	.param .u32 copy_unicast_i32_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [copy_unicast_i32_param_0];
 	ld.param.u64 	%rd2, [copy_unicast_i32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u32 	%r5, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
-	st.global.u32 	[%rd7], %r5;
+	ld.param.u32 	%r2, [copy_unicast_i32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB94_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u32 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
+	st.global.u32 	[%rd7], %r6;
+
+$L__BB94_2:
 	ret;
 
 }
@@ -4453,304 +4936,391 @@ $L__BB100_3:
 	// .globl	cast_i32_bool
 .visible .entry cast_i32_bool(
 	.param .u64 cast_i32_bool_param_0,
-	.param .u64 cast_i32_bool_param_1
+	.param .u64 cast_i32_bool_param_1,
+	.param .u32 cast_i32_bool_param_2
 )
 {
-	.reg .pred 	%p<2>;
+	.reg .pred 	%p<3>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<6>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i32_bool_param_0];
 	ld.param.u64 	%rd2, [cast_i32_bool_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 4;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u32 	%r5, [%rd7];
-	setp.ne.s32 	%p1, %r5, 0;
-	selp.u16 	%rs1, 1, 0, %p1;
-	add.s64 	%rd8, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_i32_bool_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB101_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 4;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u32 	%r6, [%rd6];
+	setp.ne.s32 	%p2, %r6, 0;
+	selp.u16 	%rs1, 1, 0, %p2;
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
 	st.global.u8 	[%rd8], %rs1;
+
+$L__BB101_2:
 	ret;
 
 }
 	// .globl	cast_i32_f32
 .visible .entry cast_i32_f32(
 	.param .u64 cast_i32_f32_param_0,
-	.param .u64 cast_i32_f32_param_1
+	.param .u64 cast_i32_f32_param_1,
+	.param .u32 cast_i32_f32_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<6>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_i32_f32_param_0];
 	ld.param.u64 	%rd2, [cast_i32_f32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u32 	%r5, [%rd6];
-	cvt.rn.f32.s32 	%f1, %r5;
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_i32_f32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB102_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u32 	%r6, [%rd5];
+	cvt.rn.f32.s32 	%f1, %r6;
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.f32 	[%rd7], %f1;
+
+$L__BB102_2:
 	ret;
 
 }
 	// .globl	cast_i32_f16
 .visible .entry cast_i32_f16(
 	.param .u64 cast_i32_f16_param_0,
-	.param .u64 cast_i32_f16_param_1
+	.param .u64 cast_i32_f16_param_1,
+	.param .u32 cast_i32_f16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<6>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i32_f16_param_0];
 	ld.param.u64 	%rd2, [cast_i32_f16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r2, %ctaid.x;
-	mov.u32 	%r3, %ntid.x;
-	mov.u32 	%r4, %tid.x;
-	mad.lo.s32 	%r5, %r2, %r3, %r4;
-	mul.wide.s32 	%rd5, %r5, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u32 	%r1, [%rd6];
+	ld.param.u32 	%r2, [cast_i32_f16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB103_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u32 	%r6, [%rd5];
 	// begin inline asm
-	cvt.rn.f16.s32 %rs1, %r1;
+	cvt.rn.f16.s32 %rs1, %r6;
 	// end inline asm
-	mul.wide.s32 	%rd7, %r5, 2;
-	add.s64 	%rd8, %rd3, %rd7;
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
 	st.global.u16 	[%rd8], %rs1;
+
+$L__BB103_2:
 	ret;
 
 }
 	// .globl	cast_i32_u8
 .visible .entry cast_i32_u8(
 	.param .u64 cast_i32_u8_param_0,
-	.param .u64 cast_i32_u8_param_1
+	.param .u64 cast_i32_u8_param_1,
+	.param .u32 cast_i32_u8_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i32_u8_param_0];
 	ld.param.u64 	%rd2, [cast_i32_u8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 4;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u32 	%r5, [%rd7];
-	add.s64 	%rd8, %rd3, %rd5;
-	st.global.u8 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_i32_u8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB104_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 4;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u32 	%r6, [%rd6];
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
+	st.global.u8 	[%rd8], %r6;
+
+$L__BB104_2:
 	ret;
 
 }
 	// .globl	cast_i32_u16
 .visible .entry cast_i32_u16(
 	.param .u64 cast_i32_u16_param_0,
-	.param .u64 cast_i32_u16_param_1
+	.param .u64 cast_i32_u16_param_1,
+	.param .u32 cast_i32_u16_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i32_u16_param_0];
 	ld.param.u64 	%rd2, [cast_i32_u16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u32 	%r5, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 2;
-	add.s64 	%rd8, %rd3, %rd7;
-	st.global.u16 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_i32_u16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB105_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u32 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
+	st.global.u16 	[%rd8], %r6;
+
+$L__BB105_2:
 	ret;
 
 }
 	// .globl	cast_i32_u32
 .visible .entry cast_i32_u32(
 	.param .u64 cast_i32_u32_param_0,
-	.param .u64 cast_i32_u32_param_1
+	.param .u64 cast_i32_u32_param_1,
+	.param .u32 cast_i32_u32_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_i32_u32_param_0];
 	ld.param.u64 	%rd2, [cast_i32_u32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u32 	%r5, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
-	st.global.u32 	[%rd7], %r5;
+	ld.param.u32 	%r2, [cast_i32_u32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB106_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u32 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
+	st.global.u32 	[%rd7], %r6;
+
+$L__BB106_2:
 	ret;
 
 }
 	// .globl	cast_i32_u64
 .visible .entry cast_i32_u64(
 	.param .u64 cast_i32_u64_param_0,
-	.param .u64 cast_i32_u64_param_1
+	.param .u64 cast_i32_u64_param_1,
+	.param .u32 cast_i32_u64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_i32_u64_param_0];
 	ld.param.u64 	%rd2, [cast_i32_u64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s32 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 8;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u64 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_i32_u64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB107_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s32 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 8;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u64 	[%rd9], %rd6;
+
+$L__BB107_2:
 	ret;
 
 }
 	// .globl	cast_i32_i8
 .visible .entry cast_i32_i8(
 	.param .u64 cast_i32_i8_param_0,
-	.param .u64 cast_i32_i8_param_1
+	.param .u64 cast_i32_i8_param_1,
+	.param .u32 cast_i32_i8_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i32_i8_param_0];
 	ld.param.u64 	%rd2, [cast_i32_i8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 4;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u32 	%r5, [%rd7];
-	add.s64 	%rd8, %rd3, %rd5;
-	st.global.u8 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_i32_i8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB108_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 4;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u32 	%r6, [%rd6];
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
+	st.global.u8 	[%rd8], %r6;
+
+$L__BB108_2:
 	ret;
 
 }
 	// .globl	cast_i32_i16
 .visible .entry cast_i32_i16(
 	.param .u64 cast_i32_i16_param_0,
-	.param .u64 cast_i32_i16_param_1
+	.param .u64 cast_i32_i16_param_1,
+	.param .u32 cast_i32_i16_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i32_i16_param_0];
 	ld.param.u64 	%rd2, [cast_i32_i16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u32 	%r5, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 2;
-	add.s64 	%rd8, %rd3, %rd7;
-	st.global.u16 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_i32_i16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB109_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u32 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
+	st.global.u16 	[%rd8], %r6;
+
+$L__BB109_2:
 	ret;
 
 }
 	// .globl	cast_i32_i32
 .visible .entry cast_i32_i32(
 	.param .u64 cast_i32_i32_param_0,
-	.param .u64 cast_i32_i32_param_1
+	.param .u64 cast_i32_i32_param_1,
+	.param .u32 cast_i32_i32_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_i32_i32_param_0];
 	ld.param.u64 	%rd2, [cast_i32_i32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u32 	%r5, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
-	st.global.u32 	[%rd7], %r5;
+	ld.param.u32 	%r2, [cast_i32_i32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB110_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u32 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
+	st.global.u32 	[%rd7], %r6;
+
+$L__BB110_2:
 	ret;
 
 }
 	// .globl	cast_i32_i64
 .visible .entry cast_i32_i64(
 	.param .u64 cast_i32_i64_param_0,
-	.param .u64 cast_i32_i64_param_1
+	.param .u64 cast_i32_i64_param_1,
+	.param .u32 cast_i32_i64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_i32_i64_param_0];
 	ld.param.u64 	%rd2, [cast_i32_i64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.s32 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 8;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u64 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_i32_i64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB111_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.s32 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 8;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u64 	[%rd9], %rd6;
+
+$L__BB111_2:
 	ret;
 
 }
@@ -4807,26 +5377,34 @@ $L__BB100_3:
 	// .globl	copy_unicast_i64
 .visible .entry copy_unicast_i64(
 	.param .u64 copy_unicast_i64_param_0,
-	.param .u64 copy_unicast_i64_param_1
+	.param .u64 copy_unicast_i64_param_1,
+	.param .u32 copy_unicast_i64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [copy_unicast_i64_param_0];
 	ld.param.u64 	%rd2, [copy_unicast_i64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u64 	%rd7, [%rd6];
-	add.s64 	%rd8, %rd3, %rd5;
-	st.global.u64 	[%rd8], %rd7;
+	ld.param.u32 	%r2, [copy_unicast_i64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB113_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u64 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
+	st.global.u64 	[%rd8], %rd6;
+
+$L__BB113_2:
 	ret;
 
 }
@@ -5242,305 +5820,392 @@ $L__BB119_3:
 	// .globl	cast_i64_bool
 .visible .entry cast_i64_bool(
 	.param .u64 cast_i64_bool_param_0,
-	.param .u64 cast_i64_bool_param_1
+	.param .u64 cast_i64_bool_param_1,
+	.param .u32 cast_i64_bool_param_2
 )
 {
-	.reg .pred 	%p<2>;
+	.reg .pred 	%p<3>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_i64_bool_param_0];
 	ld.param.u64 	%rd2, [cast_i64_bool_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 8;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u64 	%rd8, [%rd7];
-	setp.ne.s64 	%p1, %rd8, 0;
-	selp.u16 	%rs1, 1, 0, %p1;
-	add.s64 	%rd9, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_i64_bool_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB120_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 8;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u64 	%rd7, [%rd6];
+	setp.ne.s64 	%p2, %rd7, 0;
+	selp.u16 	%rs1, 1, 0, %p2;
+	cvta.to.global.u64 	%rd8, %rd2;
+	add.s64 	%rd9, %rd8, %rd4;
 	st.global.u8 	[%rd9], %rs1;
+
+$L__BB120_2:
 	ret;
 
 }
 	// .globl	cast_i64_f32
 .visible .entry cast_i64_f32(
 	.param .u64 cast_i64_f32_param_0,
-	.param .u64 cast_i64_f32_param_1
+	.param .u64 cast_i64_f32_param_1,
+	.param .u32 cast_i64_f32_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_i64_f32_param_0];
 	ld.param.u64 	%rd2, [cast_i64_f32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u64 	%rd7, [%rd6];
-	cvt.rn.f32.s64 	%f1, %rd7;
-	mul.wide.s32 	%rd8, %r4, 4;
-	add.s64 	%rd9, %rd3, %rd8;
+	ld.param.u32 	%r2, [cast_i64_f32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB121_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u64 	%rd6, [%rd5];
+	cvt.rn.f32.s64 	%f1, %rd6;
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 4;
+	add.s64 	%rd9, %rd7, %rd8;
 	st.global.f32 	[%rd9], %f1;
+
+$L__BB121_2:
 	ret;
 
 }
 	// .globl	cast_i64_f16
 .visible .entry cast_i64_f16(
 	.param .u64 cast_i64_f16_param_0,
-	.param .u64 cast_i64_f16_param_1
+	.param .u64 cast_i64_f16_param_1,
+	.param .u32 cast_i64_f16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
-	ld.param.u64 	%rd2, [cast_i64_f16_param_0];
-	ld.param.u64 	%rd3, [cast_i64_f16_param_1];
-	cvta.to.global.u64 	%rd4, %rd3;
-	cvta.to.global.u64 	%rd5, %rd2;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd6, %r4, 8;
-	add.s64 	%rd7, %rd5, %rd6;
-	ld.global.u64 	%rd1, [%rd7];
+	ld.param.u64 	%rd1, [cast_i64_f16_param_0];
+	ld.param.u64 	%rd2, [cast_i64_f16_param_1];
+	ld.param.u32 	%r2, [cast_i64_f16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB122_2;
+
+	cvta.to.global.u64 	%rd4, %rd1;
+	mul.wide.s32 	%rd5, %r1, 8;
+	add.s64 	%rd6, %rd4, %rd5;
+	ld.global.u64 	%rd3, [%rd6];
 	// begin inline asm
-	cvt.rn.f16.s64 %rs1, %rd1;
+	cvt.rn.f16.s64 %rs1, %rd3;
 	// end inline asm
-	mul.wide.s32 	%rd8, %r4, 2;
-	add.s64 	%rd9, %rd4, %rd8;
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 2;
+	add.s64 	%rd9, %rd7, %rd8;
 	st.global.u16 	[%rd9], %rs1;
+
+$L__BB122_2:
 	ret;
 
 }
 	// .globl	cast_i64_u8
 .visible .entry cast_i64_u8(
 	.param .u64 cast_i64_u8_param_0,
-	.param .u64 cast_i64_u8_param_1
+	.param .u64 cast_i64_u8_param_1,
+	.param .u32 cast_i64_u8_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_i64_u8_param_0];
 	ld.param.u64 	%rd2, [cast_i64_u8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 8;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u64 	%rd8, [%rd7];
-	add.s64 	%rd9, %rd3, %rd5;
-	st.global.u8 	[%rd9], %rd8;
+	ld.param.u32 	%r2, [cast_i64_u8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB123_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 8;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u64 	%rd7, [%rd6];
+	cvta.to.global.u64 	%rd8, %rd2;
+	add.s64 	%rd9, %rd8, %rd4;
+	st.global.u8 	[%rd9], %rd7;
+
+$L__BB123_2:
 	ret;
 
 }
 	// .globl	cast_i64_u16
 .visible .entry cast_i64_u16(
 	.param .u64 cast_i64_u16_param_0,
-	.param .u64 cast_i64_u16_param_1
+	.param .u64 cast_i64_u16_param_1,
+	.param .u32 cast_i64_u16_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_i64_u16_param_0];
 	ld.param.u64 	%rd2, [cast_i64_u16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u64 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 2;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u16 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_i64_u16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB124_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u64 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 2;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u16 	[%rd9], %rd6;
+
+$L__BB124_2:
 	ret;
 
 }
 	// .globl	cast_i64_u32
 .visible .entry cast_i64_u32(
 	.param .u64 cast_i64_u32_param_0,
-	.param .u64 cast_i64_u32_param_1
+	.param .u64 cast_i64_u32_param_1,
+	.param .u32 cast_i64_u32_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_i64_u32_param_0];
 	ld.param.u64 	%rd2, [cast_i64_u32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u64 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 4;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u32 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_i64_u32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB125_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u64 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 4;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u32 	[%rd9], %rd6;
+
+$L__BB125_2:
 	ret;
 
 }
 	// .globl	cast_i64_u64
 .visible .entry cast_i64_u64(
 	.param .u64 cast_i64_u64_param_0,
-	.param .u64 cast_i64_u64_param_1
+	.param .u64 cast_i64_u64_param_1,
+	.param .u32 cast_i64_u64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i64_u64_param_0];
 	ld.param.u64 	%rd2, [cast_i64_u64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u64 	%rd7, [%rd6];
-	add.s64 	%rd8, %rd3, %rd5;
-	st.global.u64 	[%rd8], %rd7;
+	ld.param.u32 	%r2, [cast_i64_u64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB126_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u64 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
+	st.global.u64 	[%rd8], %rd6;
+
+$L__BB126_2:
 	ret;
 
 }
 	// .globl	cast_i64_i8
 .visible .entry cast_i64_i8(
 	.param .u64 cast_i64_i8_param_0,
-	.param .u64 cast_i64_i8_param_1
+	.param .u64 cast_i64_i8_param_1,
+	.param .u32 cast_i64_i8_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_i64_i8_param_0];
 	ld.param.u64 	%rd2, [cast_i64_i8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 8;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u64 	%rd8, [%rd7];
-	add.s64 	%rd9, %rd3, %rd5;
-	st.global.u8 	[%rd9], %rd8;
+	ld.param.u32 	%r2, [cast_i64_i8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB127_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 8;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u64 	%rd7, [%rd6];
+	cvta.to.global.u64 	%rd8, %rd2;
+	add.s64 	%rd9, %rd8, %rd4;
+	st.global.u8 	[%rd9], %rd7;
+
+$L__BB127_2:
 	ret;
 
 }
 	// .globl	cast_i64_i16
 .visible .entry cast_i64_i16(
 	.param .u64 cast_i64_i16_param_0,
-	.param .u64 cast_i64_i16_param_1
+	.param .u64 cast_i64_i16_param_1,
+	.param .u32 cast_i64_i16_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_i64_i16_param_0];
 	ld.param.u64 	%rd2, [cast_i64_i16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u64 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 2;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u16 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_i64_i16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB128_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u64 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 2;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u16 	[%rd9], %rd6;
+
+$L__BB128_2:
 	ret;
 
 }
 	// .globl	cast_i64_i32
 .visible .entry cast_i64_i32(
 	.param .u64 cast_i64_i32_param_0,
-	.param .u64 cast_i64_i32_param_1
+	.param .u64 cast_i64_i32_param_1,
+	.param .u32 cast_i64_i32_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_i64_i32_param_0];
 	ld.param.u64 	%rd2, [cast_i64_i32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u64 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 4;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u32 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_i64_i32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB129_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u64 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 4;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u32 	[%rd9], %rd6;
+
+$L__BB129_2:
 	ret;
 
 }
 	// .globl	cast_i64_i64
 .visible .entry cast_i64_i64(
 	.param .u64 cast_i64_i64_param_0,
-	.param .u64 cast_i64_i64_param_1
+	.param .u64 cast_i64_i64_param_1,
+	.param .u32 cast_i64_i64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_i64_i64_param_0];
 	ld.param.u64 	%rd2, [cast_i64_i64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u64 	%rd7, [%rd6];
-	add.s64 	%rd8, %rd3, %rd5;
-	st.global.u64 	[%rd8], %rd7;
+	ld.param.u32 	%r2, [cast_i64_i64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB130_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u64 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
+	st.global.u64 	[%rd8], %rd6;
+
+$L__BB130_2:
 	ret;
 
 }
@@ -5597,27 +6262,35 @@ $L__BB119_3:
 	// .globl	copy_unicast_u8
 .visible .entry copy_unicast_u8(
 	.param .u64 copy_unicast_u8_param_0,
-	.param .u64 copy_unicast_u8_param_1
+	.param .u64 copy_unicast_u8_param_1,
+	.param .u32 copy_unicast_u8_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [copy_unicast_u8_param_0];
 	ld.param.u64 	%rd2, [copy_unicast_u8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%rs1, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [copy_unicast_u8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB132_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u8 	[%rd7], %rs1;
+
+$L__BB132_2:
 	ret;
 
 }
@@ -6039,336 +6712,431 @@ $L__BB138_3:
 	// .globl	cast_u8_bool
 .visible .entry cast_u8_bool(
 	.param .u64 cast_u8_bool_param_0,
-	.param .u64 cast_u8_bool_param_1
+	.param .u64 cast_u8_bool_param_1,
+	.param .u32 cast_u8_bool_param_2
 )
 {
-	.reg .pred 	%p<2>;
+	.reg .pred 	%p<3>;
 	.reg .b16 	%rs<3>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_u8_bool_param_0];
 	ld.param.u64 	%rd2, [cast_u8_bool_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%rs1, [%rd6];
-	setp.ne.s16 	%p1, %rs1, 0;
-	selp.u16 	%rs2, 1, 0, %p1;
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_u8_bool_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB139_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%rs1, [%rd5];
+	setp.ne.s16 	%p2, %rs1, 0;
+	selp.u16 	%rs2, 1, 0, %p2;
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u8 	[%rd7], %rs2;
+
+$L__BB139_2:
 	ret;
 
 }
 	// .globl	cast_u8_f32
 .visible .entry cast_u8_f32(
 	.param .u64 cast_u8_f32_param_0,
-	.param .u64 cast_u8_f32_param_1
+	.param .u64 cast_u8_f32_param_1,
+	.param .u32 cast_u8_f32_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u8_f32_param_0];
 	ld.param.u64 	%rd2, [cast_u8_f32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%rs1, [%rd6];
+	ld.param.u32 	%r2, [cast_u8_f32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB140_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%rs1, [%rd5];
 	cvt.rn.f32.u16 	%f1, %rs1;
-	mul.wide.s32 	%rd7, %r4, 4;
-	add.s64 	%rd8, %rd3, %rd7;
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 4;
+	add.s64 	%rd8, %rd6, %rd7;
 	st.global.f32 	[%rd8], %f1;
+
+$L__BB140_2:
 	ret;
 
 }
 	// .globl	cast_u8_f16
 .visible .entry cast_u8_f16(
 	.param .u64 cast_u8_f16_param_0,
-	.param .u64 cast_u8_f16_param_1
+	.param .u64 cast_u8_f16_param_1,
+	.param .u32 cast_u8_f16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<6>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u8_f16_param_0];
 	ld.param.u64 	%rd2, [cast_u8_f16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r2, %ctaid.x;
-	mov.u32 	%r3, %ntid.x;
-	mov.u32 	%r4, %tid.x;
-	mad.lo.s32 	%r5, %r2, %r3, %r4;
-	cvt.s64.s32 	%rd5, %r5;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%r1, [%rd6];
+	ld.param.u32 	%r2, [cast_u8_f16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB141_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%r6, [%rd5];
 	// begin inline asm
-	cvt.rn.f16.s32 %rs1, %r1;
+	cvt.rn.f16.s32 %rs1, %r6;
 	// end inline asm
-	mul.wide.s32 	%rd7, %r5, 2;
-	add.s64 	%rd8, %rd3, %rd7;
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
 	st.global.u16 	[%rd8], %rs1;
+
+$L__BB141_2:
 	ret;
 
 }
 	// .globl	cast_u8_u8
 .visible .entry cast_u8_u8(
 	.param .u64 cast_u8_u8_param_0,
-	.param .u64 cast_u8_u8_param_1
+	.param .u64 cast_u8_u8_param_1,
+	.param .u32 cast_u8_u8_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_u8_u8_param_0];
 	ld.param.u64 	%rd2, [cast_u8_u8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%rs1, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_u8_u8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB142_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u8 	[%rd7], %rs1;
+
+$L__BB142_2:
 	ret;
 
 }
 	// .globl	cast_u8_u16
 .visible .entry cast_u8_u16(
 	.param .u64 cast_u8_u16_param_0,
-	.param .u64 cast_u8_u16_param_1
+	.param .u64 cast_u8_u16_param_1,
+	.param .u32 cast_u8_u16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u8_u16_param_0];
 	ld.param.u64 	%rd2, [cast_u8_u16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%rs1, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 2;
-	add.s64 	%rd8, %rd3, %rd7;
+	ld.param.u32 	%r2, [cast_u8_u16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB143_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
 	st.global.u16 	[%rd8], %rs1;
+
+$L__BB143_2:
 	ret;
 
 }
 	// .globl	cast_u8_u32
 .visible .entry cast_u8_u32(
 	.param .u64 cast_u8_u32_param_0,
-	.param .u64 cast_u8_u32_param_1
+	.param .u64 cast_u8_u32_param_1,
+	.param .u32 cast_u8_u32_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u8_u32_param_0];
 	ld.param.u64 	%rd2, [cast_u8_u32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%r5, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 4;
-	add.s64 	%rd8, %rd3, %rd7;
-	st.global.u32 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_u8_u32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB144_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 4;
+	add.s64 	%rd8, %rd6, %rd7;
+	st.global.u32 	[%rd8], %r6;
+
+$L__BB144_2:
 	ret;
 
 }
 	// .globl	cast_u8_u64
 .visible .entry cast_u8_u64(
 	.param .u64 cast_u8_u64_param_0,
-	.param .u64 cast_u8_u64_param_1
+	.param .u64 cast_u8_u64_param_1,
+	.param .u32 cast_u8_u64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_u8_u64_param_0];
 	ld.param.u64 	%rd2, [cast_u8_u64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 8;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u64 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_u8_u64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB145_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 8;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u64 	[%rd9], %rd6;
+
+$L__BB145_2:
 	ret;
 
 }
 	// .globl	cast_u8_i8
 .visible .entry cast_u8_i8(
 	.param .u64 cast_u8_i8_param_0,
-	.param .u64 cast_u8_i8_param_1
+	.param .u64 cast_u8_i8_param_1,
+	.param .u32 cast_u8_i8_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_u8_i8_param_0];
 	ld.param.u64 	%rd2, [cast_u8_i8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%rs1, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_u8_i8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB146_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u8 	[%rd7], %rs1;
+
+$L__BB146_2:
 	ret;
 
 }
 	// .globl	cast_u8_i16
 .visible .entry cast_u8_i16(
 	.param .u64 cast_u8_i16_param_0,
-	.param .u64 cast_u8_i16_param_1
+	.param .u64 cast_u8_i16_param_1,
+	.param .u32 cast_u8_i16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u8_i16_param_0];
 	ld.param.u64 	%rd2, [cast_u8_i16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%rs1, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 2;
-	add.s64 	%rd8, %rd3, %rd7;
+	ld.param.u32 	%r2, [cast_u8_i16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB147_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
 	st.global.u16 	[%rd8], %rs1;
+
+$L__BB147_2:
 	ret;
 
 }
 	// .globl	cast_u8_i32
 .visible .entry cast_u8_i32(
 	.param .u64 cast_u8_i32_param_0,
-	.param .u64 cast_u8_i32_param_1
+	.param .u64 cast_u8_i32_param_1,
+	.param .u32 cast_u8_i32_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u8_i32_param_0];
 	ld.param.u64 	%rd2, [cast_u8_i32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%r5, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 4;
-	add.s64 	%rd8, %rd3, %rd7;
-	st.global.u32 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_u8_i32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB148_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 4;
+	add.s64 	%rd8, %rd6, %rd7;
+	st.global.u32 	[%rd8], %r6;
+
+$L__BB148_2:
 	ret;
 
 }
 	// .globl	cast_u8_i64
 .visible .entry cast_u8_i64(
 	.param .u64 cast_u8_i64_param_0,
-	.param .u64 cast_u8_i64_param_1
+	.param .u64 cast_u8_i64_param_1,
+	.param .u32 cast_u8_i64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_u8_i64_param_0];
 	ld.param.u64 	%rd2, [cast_u8_i64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u8 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 8;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u64 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_u8_i64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB149_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u8 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 8;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u64 	[%rd9], %rd6;
+
+$L__BB149_2:
 	ret;
 
 }
 	// .globl	copy_unicast_u16
 .visible .entry copy_unicast_u16(
 	.param .u64 copy_unicast_u16_param_0,
-	.param .u64 copy_unicast_u16_param_1
+	.param .u64 copy_unicast_u16_param_1,
+	.param .u32 copy_unicast_u16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [copy_unicast_u16_param_0];
 	ld.param.u64 	%rd2, [copy_unicast_u16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%rs1, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [copy_unicast_u16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB150_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u16 	[%rd7], %rs1;
+
+$L__BB150_2:
 	ret;
 
 }
@@ -6790,335 +7558,430 @@ $L__BB156_3:
 	// .globl	cast_u16_bool
 .visible .entry cast_u16_bool(
 	.param .u64 cast_u16_bool_param_0,
-	.param .u64 cast_u16_bool_param_1
+	.param .u64 cast_u16_bool_param_1,
+	.param .u32 cast_u16_bool_param_2
 )
 {
-	.reg .pred 	%p<2>;
+	.reg .pred 	%p<3>;
 	.reg .b16 	%rs<3>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u16_bool_param_0];
 	ld.param.u64 	%rd2, [cast_u16_bool_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 2;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u16 	%rs1, [%rd7];
-	setp.ne.s16 	%p1, %rs1, 0;
-	selp.u16 	%rs2, 1, 0, %p1;
-	add.s64 	%rd8, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_u16_bool_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB157_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 2;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u16 	%rs1, [%rd6];
+	setp.ne.s16 	%p2, %rs1, 0;
+	selp.u16 	%rs2, 1, 0, %p2;
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
 	st.global.u8 	[%rd8], %rs2;
+
+$L__BB157_2:
 	ret;
 
 }
 	// .globl	cast_u16_f32
 .visible .entry cast_u16_f32(
 	.param .u64 cast_u16_f32_param_0,
-	.param .u64 cast_u16_f32_param_1
+	.param .u64 cast_u16_f32_param_1,
+	.param .u32 cast_u16_f32_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u16_f32_param_0];
 	ld.param.u64 	%rd2, [cast_u16_f32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%rs1, [%rd6];
+	ld.param.u32 	%r2, [cast_u16_f32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB158_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rs1, [%rd5];
 	cvt.rn.f32.u16 	%f1, %rs1;
-	mul.wide.s32 	%rd7, %r4, 4;
-	add.s64 	%rd8, %rd3, %rd7;
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 4;
+	add.s64 	%rd8, %rd6, %rd7;
 	st.global.f32 	[%rd8], %f1;
+
+$L__BB158_2:
 	ret;
 
 }
 	// .globl	cast_u16_f16
 .visible .entry cast_u16_f16(
 	.param .u64 cast_u16_f16_param_0,
-	.param .u64 cast_u16_f16_param_1
+	.param .u64 cast_u16_f16_param_1,
+	.param .u32 cast_u16_f16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<3>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_u16_f16_param_0];
 	ld.param.u64 	%rd2, [cast_u16_f16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%rs2, [%rd6];
+	ld.param.u32 	%r2, [cast_u16_f16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB159_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rs2, [%rd5];
 	// begin inline asm
 	cvt.rn.f16.u16 %rs1, %rs2;
 	// end inline asm
-	add.s64 	%rd7, %rd3, %rd5;
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u16 	[%rd7], %rs1;
+
+$L__BB159_2:
 	ret;
 
 }
 	// .globl	cast_u16_u8
 .visible .entry cast_u16_u8(
 	.param .u64 cast_u16_u8_param_0,
-	.param .u64 cast_u16_u8_param_1
+	.param .u64 cast_u16_u8_param_1,
+	.param .u32 cast_u16_u8_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u16_u8_param_0];
 	ld.param.u64 	%rd2, [cast_u16_u8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 2;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u16 	%rs1, [%rd7];
-	add.s64 	%rd8, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_u16_u8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB160_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 2;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u16 	%rs1, [%rd6];
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
 	st.global.u8 	[%rd8], %rs1;
+
+$L__BB160_2:
 	ret;
 
 }
 	// .globl	cast_u16_u16
 .visible .entry cast_u16_u16(
 	.param .u64 cast_u16_u16_param_0,
-	.param .u64 cast_u16_u16_param_1
+	.param .u64 cast_u16_u16_param_1,
+	.param .u32 cast_u16_u16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_u16_u16_param_0];
 	ld.param.u64 	%rd2, [cast_u16_u16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%rs1, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_u16_u16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB161_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u16 	[%rd7], %rs1;
+
+$L__BB161_2:
 	ret;
 
 }
 	// .globl	cast_u16_u32
 .visible .entry cast_u16_u32(
 	.param .u64 cast_u16_u32_param_0,
-	.param .u64 cast_u16_u32_param_1
+	.param .u64 cast_u16_u32_param_1,
+	.param .u32 cast_u16_u32_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u16_u32_param_0];
 	ld.param.u64 	%rd2, [cast_u16_u32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%r5, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 4;
-	add.s64 	%rd8, %rd3, %rd7;
-	st.global.u32 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_u16_u32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB162_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 4;
+	add.s64 	%rd8, %rd6, %rd7;
+	st.global.u32 	[%rd8], %r6;
+
+$L__BB162_2:
 	ret;
 
 }
 	// .globl	cast_u16_u64
 .visible .entry cast_u16_u64(
 	.param .u64 cast_u16_u64_param_0,
-	.param .u64 cast_u16_u64_param_1
+	.param .u64 cast_u16_u64_param_1,
+	.param .u32 cast_u16_u64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_u16_u64_param_0];
 	ld.param.u64 	%rd2, [cast_u16_u64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 8;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u64 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_u16_u64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB163_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 8;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u64 	[%rd9], %rd6;
+
+$L__BB163_2:
 	ret;
 
 }
 	// .globl	cast_u16_i8
 .visible .entry cast_u16_i8(
 	.param .u64 cast_u16_i8_param_0,
-	.param .u64 cast_u16_i8_param_1
+	.param .u64 cast_u16_i8_param_1,
+	.param .u32 cast_u16_i8_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u16_i8_param_0];
 	ld.param.u64 	%rd2, [cast_u16_i8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 2;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u16 	%rs1, [%rd7];
-	add.s64 	%rd8, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_u16_i8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB164_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 2;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u16 	%rs1, [%rd6];
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
 	st.global.u8 	[%rd8], %rs1;
+
+$L__BB164_2:
 	ret;
 
 }
 	// .globl	cast_u16_i16
 .visible .entry cast_u16_i16(
 	.param .u64 cast_u16_i16_param_0,
-	.param .u64 cast_u16_i16_param_1
+	.param .u64 cast_u16_i16_param_1,
+	.param .u32 cast_u16_i16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_u16_i16_param_0];
 	ld.param.u64 	%rd2, [cast_u16_i16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%rs1, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_u16_i16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB165_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rs1, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.u16 	[%rd7], %rs1;
+
+$L__BB165_2:
 	ret;
 
 }
 	// .globl	cast_u16_i32
 .visible .entry cast_u16_i32(
 	.param .u64 cast_u16_i32_param_0,
-	.param .u64 cast_u16_i32_param_1
+	.param .u64 cast_u16_i32_param_1,
+	.param .u32 cast_u16_i32_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u16_i32_param_0];
 	ld.param.u64 	%rd2, [cast_u16_i32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%r5, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 4;
-	add.s64 	%rd8, %rd3, %rd7;
-	st.global.u32 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_u16_i32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB166_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 4;
+	add.s64 	%rd8, %rd6, %rd7;
+	st.global.u32 	[%rd8], %r6;
+
+$L__BB166_2:
 	ret;
 
 }
 	// .globl	cast_u16_i64
 .visible .entry cast_u16_i64(
 	.param .u64 cast_u16_i64_param_0,
-	.param .u64 cast_u16_i64_param_1
+	.param .u64 cast_u16_i64_param_1,
+	.param .u32 cast_u16_i64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_u16_i64_param_0];
 	ld.param.u64 	%rd2, [cast_u16_i64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 2;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u16 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 8;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u64 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_u16_i64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB167_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 2;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u16 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 8;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u64 	[%rd9], %rd6;
+
+$L__BB167_2:
 	ret;
 
 }
 	// .globl	copy_unicast_u32
 .visible .entry copy_unicast_u32(
 	.param .u64 copy_unicast_u32_param_0,
-	.param .u64 copy_unicast_u32_param_1
+	.param .u64 copy_unicast_u32_param_1,
+	.param .u32 copy_unicast_u32_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [copy_unicast_u32_param_0];
 	ld.param.u64 	%rd2, [copy_unicast_u32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u32 	%r5, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
-	st.global.u32 	[%rd7], %r5;
+	ld.param.u32 	%r2, [copy_unicast_u32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB168_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u32 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
+	st.global.u32 	[%rd7], %r6;
+
+$L__BB168_2:
 	ret;
 
 }
@@ -7534,330 +8397,425 @@ $L__BB174_3:
 	// .globl	cast_u32_bool
 .visible .entry cast_u32_bool(
 	.param .u64 cast_u32_bool_param_0,
-	.param .u64 cast_u32_bool_param_1
+	.param .u64 cast_u32_bool_param_1,
+	.param .u32 cast_u32_bool_param_2
 )
 {
-	.reg .pred 	%p<2>;
+	.reg .pred 	%p<3>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<6>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u32_bool_param_0];
 	ld.param.u64 	%rd2, [cast_u32_bool_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 4;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u32 	%r5, [%rd7];
-	setp.ne.s32 	%p1, %r5, 0;
-	selp.u16 	%rs1, 1, 0, %p1;
-	add.s64 	%rd8, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_u32_bool_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB175_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 4;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u32 	%r6, [%rd6];
+	setp.ne.s32 	%p2, %r6, 0;
+	selp.u16 	%rs1, 1, 0, %p2;
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
 	st.global.u8 	[%rd8], %rs1;
+
+$L__BB175_2:
 	ret;
 
 }
 	// .globl	cast_u32_f32
 .visible .entry cast_u32_f32(
 	.param .u64 cast_u32_f32_param_0,
-	.param .u64 cast_u32_f32_param_1
+	.param .u64 cast_u32_f32_param_1,
+	.param .u32 cast_u32_f32_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<6>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_u32_f32_param_0];
 	ld.param.u64 	%rd2, [cast_u32_f32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u32 	%r5, [%rd6];
-	cvt.rn.f32.u32 	%f1, %r5;
-	add.s64 	%rd7, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_u32_f32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB176_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u32 	%r6, [%rd5];
+	cvt.rn.f32.u32 	%f1, %r6;
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
 	st.global.f32 	[%rd7], %f1;
+
+$L__BB176_2:
 	ret;
 
 }
 	// .globl	cast_u32_f16
 .visible .entry cast_u32_f16(
 	.param .u64 cast_u32_f16_param_0,
-	.param .u64 cast_u32_f16_param_1
+	.param .u64 cast_u32_f16_param_1,
+	.param .u32 cast_u32_f16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<6>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u32_f16_param_0];
 	ld.param.u64 	%rd2, [cast_u32_f16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r2, %ctaid.x;
-	mov.u32 	%r3, %ntid.x;
-	mov.u32 	%r4, %tid.x;
-	mad.lo.s32 	%r5, %r2, %r3, %r4;
-	mul.wide.s32 	%rd5, %r5, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u32 	%r1, [%rd6];
+	ld.param.u32 	%r2, [cast_u32_f16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB177_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u32 	%r6, [%rd5];
 	// begin inline asm
-	cvt.rn.f16.u32 %rs1, %r1;
+	cvt.rn.f16.u32 %rs1, %r6;
 	// end inline asm
-	mul.wide.s32 	%rd7, %r5, 2;
-	add.s64 	%rd8, %rd3, %rd7;
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
 	st.global.u16 	[%rd8], %rs1;
+
+$L__BB177_2:
 	ret;
 
 }
 	// .globl	cast_u32_u8
 .visible .entry cast_u32_u8(
 	.param .u64 cast_u32_u8_param_0,
-	.param .u64 cast_u32_u8_param_1
+	.param .u64 cast_u32_u8_param_1,
+	.param .u32 cast_u32_u8_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u32_u8_param_0];
 	ld.param.u64 	%rd2, [cast_u32_u8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 4;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u32 	%r5, [%rd7];
-	add.s64 	%rd8, %rd3, %rd5;
-	st.global.u8 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_u32_u8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB178_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 4;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u32 	%r6, [%rd6];
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
+	st.global.u8 	[%rd8], %r6;
+
+$L__BB178_2:
 	ret;
 
 }
 	// .globl	cast_u32_u16
 .visible .entry cast_u32_u16(
 	.param .u64 cast_u32_u16_param_0,
-	.param .u64 cast_u32_u16_param_1
+	.param .u64 cast_u32_u16_param_1,
+	.param .u32 cast_u32_u16_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u32_u16_param_0];
 	ld.param.u64 	%rd2, [cast_u32_u16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u32 	%r5, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 2;
-	add.s64 	%rd8, %rd3, %rd7;
-	st.global.u16 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_u32_u16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB179_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u32 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
+	st.global.u16 	[%rd8], %r6;
+
+$L__BB179_2:
 	ret;
 
 }
 	// .globl	cast_u32_u32
 .visible .entry cast_u32_u32(
 	.param .u64 cast_u32_u32_param_0,
-	.param .u64 cast_u32_u32_param_1
+	.param .u64 cast_u32_u32_param_1,
+	.param .u32 cast_u32_u32_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_u32_u32_param_0];
 	ld.param.u64 	%rd2, [cast_u32_u32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u32 	%r5, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
-	st.global.u32 	[%rd7], %r5;
+	ld.param.u32 	%r2, [cast_u32_u32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB180_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u32 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
+	st.global.u32 	[%rd7], %r6;
+
+$L__BB180_2:
 	ret;
 
 }
 	// .globl	cast_u32_u64
 .visible .entry cast_u32_u64(
 	.param .u64 cast_u32_u64_param_0,
-	.param .u64 cast_u32_u64_param_1
+	.param .u64 cast_u32_u64_param_1,
+	.param .u32 cast_u32_u64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_u32_u64_param_0];
 	ld.param.u64 	%rd2, [cast_u32_u64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u32 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 8;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u64 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_u32_u64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB181_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u32 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 8;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u64 	[%rd9], %rd6;
+
+$L__BB181_2:
 	ret;
 
 }
 	// .globl	cast_u32_i8
 .visible .entry cast_u32_i8(
 	.param .u64 cast_u32_i8_param_0,
-	.param .u64 cast_u32_i8_param_1
+	.param .u64 cast_u32_i8_param_1,
+	.param .u32 cast_u32_i8_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u32_i8_param_0];
 	ld.param.u64 	%rd2, [cast_u32_i8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 4;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u32 	%r5, [%rd7];
-	add.s64 	%rd8, %rd3, %rd5;
-	st.global.u8 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_u32_i8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB182_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 4;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u32 	%r6, [%rd6];
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
+	st.global.u8 	[%rd8], %r6;
+
+$L__BB182_2:
 	ret;
 
 }
 	// .globl	cast_u32_i16
 .visible .entry cast_u32_i16(
 	.param .u64 cast_u32_i16_param_0,
-	.param .u64 cast_u32_i16_param_1
+	.param .u64 cast_u32_i16_param_1,
+	.param .u32 cast_u32_i16_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u32_i16_param_0];
 	ld.param.u64 	%rd2, [cast_u32_i16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u32 	%r5, [%rd6];
-	mul.wide.s32 	%rd7, %r4, 2;
-	add.s64 	%rd8, %rd3, %rd7;
-	st.global.u16 	[%rd8], %r5;
+	ld.param.u32 	%r2, [cast_u32_i16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB183_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u32 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	mul.wide.s32 	%rd7, %r1, 2;
+	add.s64 	%rd8, %rd6, %rd7;
+	st.global.u16 	[%rd8], %r6;
+
+$L__BB183_2:
 	ret;
 
 }
 	// .globl	cast_u32_i32
 .visible .entry cast_u32_i32(
 	.param .u64 cast_u32_i32_param_0,
-	.param .u64 cast_u32_i32_param_1
+	.param .u64 cast_u32_i32_param_1,
+	.param .u32 cast_u32_i32_param_2
 )
 {
-	.reg .b32 	%r<6>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<7>;
 	.reg .b64 	%rd<8>;
 
 
 	ld.param.u64 	%rd1, [cast_u32_i32_param_0];
 	ld.param.u64 	%rd2, [cast_u32_i32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u32 	%r5, [%rd6];
-	add.s64 	%rd7, %rd3, %rd5;
-	st.global.u32 	[%rd7], %r5;
+	ld.param.u32 	%r2, [cast_u32_i32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB184_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u32 	%r6, [%rd5];
+	cvta.to.global.u64 	%rd6, %rd2;
+	add.s64 	%rd7, %rd6, %rd4;
+	st.global.u32 	[%rd7], %r6;
+
+$L__BB184_2:
 	ret;
 
 }
 	// .globl	cast_u32_i64
 .visible .entry cast_u32_i64(
 	.param .u64 cast_u32_i64_param_0,
-	.param .u64 cast_u32_i64_param_1
+	.param .u64 cast_u32_i64_param_1,
+	.param .u32 cast_u32_i64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_u32_i64_param_0];
 	ld.param.u64 	%rd2, [cast_u32_i64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 4;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u32 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 8;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u64 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_u32_i64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB185_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 4;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u32 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 8;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u64 	[%rd9], %rd6;
+
+$L__BB185_2:
 	ret;
 
 }
 	// .globl	copy_unicast_u64
 .visible .entry copy_unicast_u64(
 	.param .u64 copy_unicast_u64_param_0,
-	.param .u64 copy_unicast_u64_param_1
+	.param .u64 copy_unicast_u64_param_1,
+	.param .u32 copy_unicast_u64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [copy_unicast_u64_param_0];
 	ld.param.u64 	%rd2, [copy_unicast_u64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u64 	%rd7, [%rd6];
-	add.s64 	%rd8, %rd3, %rd5;
-	st.global.u64 	[%rd8], %rd7;
+	ld.param.u32 	%r2, [copy_unicast_u64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB186_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u64 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
+	st.global.u64 	[%rd8], %rd6;
+
+$L__BB186_2:
 	ret;
 
 }
@@ -8273,305 +9231,392 @@ $L__BB192_3:
 	// .globl	cast_u64_bool
 .visible .entry cast_u64_bool(
 	.param .u64 cast_u64_bool_param_0,
-	.param .u64 cast_u64_bool_param_1
+	.param .u64 cast_u64_bool_param_1,
+	.param .u32 cast_u64_bool_param_2
 )
 {
-	.reg .pred 	%p<2>;
+	.reg .pred 	%p<3>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_u64_bool_param_0];
 	ld.param.u64 	%rd2, [cast_u64_bool_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 8;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u64 	%rd8, [%rd7];
-	setp.ne.s64 	%p1, %rd8, 0;
-	selp.u16 	%rs1, 1, 0, %p1;
-	add.s64 	%rd9, %rd3, %rd5;
+	ld.param.u32 	%r2, [cast_u64_bool_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB193_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 8;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u64 	%rd7, [%rd6];
+	setp.ne.s64 	%p2, %rd7, 0;
+	selp.u16 	%rs1, 1, 0, %p2;
+	cvta.to.global.u64 	%rd8, %rd2;
+	add.s64 	%rd9, %rd8, %rd4;
 	st.global.u8 	[%rd9], %rs1;
+
+$L__BB193_2:
 	ret;
 
 }
 	// .globl	cast_u64_f32
 .visible .entry cast_u64_f32(
 	.param .u64 cast_u64_f32_param_0,
-	.param .u64 cast_u64_f32_param_1
+	.param .u64 cast_u64_f32_param_1,
+	.param .u32 cast_u64_f32_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .f32 	%f<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_u64_f32_param_0];
 	ld.param.u64 	%rd2, [cast_u64_f32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u64 	%rd7, [%rd6];
-	cvt.rn.f32.u64 	%f1, %rd7;
-	mul.wide.s32 	%rd8, %r4, 4;
-	add.s64 	%rd9, %rd3, %rd8;
+	ld.param.u32 	%r2, [cast_u64_f32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB194_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u64 	%rd6, [%rd5];
+	cvt.rn.f32.u64 	%f1, %rd6;
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 4;
+	add.s64 	%rd9, %rd7, %rd8;
 	st.global.f32 	[%rd9], %f1;
+
+$L__BB194_2:
 	ret;
 
 }
 	// .globl	cast_u64_f16
 .visible .entry cast_u64_f16(
 	.param .u64 cast_u64_f16_param_0,
-	.param .u64 cast_u64_f16_param_1
+	.param .u64 cast_u64_f16_param_1,
+	.param .u32 cast_u64_f16_param_2
 )
 {
+	.reg .pred 	%p<2>;
 	.reg .b16 	%rs<2>;
-	.reg .b32 	%r<5>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
-	ld.param.u64 	%rd2, [cast_u64_f16_param_0];
-	ld.param.u64 	%rd3, [cast_u64_f16_param_1];
-	cvta.to.global.u64 	%rd4, %rd3;
-	cvta.to.global.u64 	%rd5, %rd2;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd6, %r4, 8;
-	add.s64 	%rd7, %rd5, %rd6;
-	ld.global.u64 	%rd1, [%rd7];
+	ld.param.u64 	%rd1, [cast_u64_f16_param_0];
+	ld.param.u64 	%rd2, [cast_u64_f16_param_1];
+	ld.param.u32 	%r2, [cast_u64_f16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB195_2;
+
+	cvta.to.global.u64 	%rd4, %rd1;
+	mul.wide.s32 	%rd5, %r1, 8;
+	add.s64 	%rd6, %rd4, %rd5;
+	ld.global.u64 	%rd3, [%rd6];
 	// begin inline asm
-	cvt.rn.f16.u64 %rs1, %rd1;
+	cvt.rn.f16.u64 %rs1, %rd3;
 	// end inline asm
-	mul.wide.s32 	%rd8, %r4, 2;
-	add.s64 	%rd9, %rd4, %rd8;
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 2;
+	add.s64 	%rd9, %rd7, %rd8;
 	st.global.u16 	[%rd9], %rs1;
+
+$L__BB195_2:
 	ret;
 
 }
 	// .globl	cast_u64_u8
 .visible .entry cast_u64_u8(
 	.param .u64 cast_u64_u8_param_0,
-	.param .u64 cast_u64_u8_param_1
+	.param .u64 cast_u64_u8_param_1,
+	.param .u32 cast_u64_u8_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_u64_u8_param_0];
 	ld.param.u64 	%rd2, [cast_u64_u8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 8;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u64 	%rd8, [%rd7];
-	add.s64 	%rd9, %rd3, %rd5;
-	st.global.u8 	[%rd9], %rd8;
+	ld.param.u32 	%r2, [cast_u64_u8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB196_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 8;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u64 	%rd7, [%rd6];
+	cvta.to.global.u64 	%rd8, %rd2;
+	add.s64 	%rd9, %rd8, %rd4;
+	st.global.u8 	[%rd9], %rd7;
+
+$L__BB196_2:
 	ret;
 
 }
 	// .globl	cast_u64_u16
 .visible .entry cast_u64_u16(
 	.param .u64 cast_u64_u16_param_0,
-	.param .u64 cast_u64_u16_param_1
+	.param .u64 cast_u64_u16_param_1,
+	.param .u32 cast_u64_u16_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_u64_u16_param_0];
 	ld.param.u64 	%rd2, [cast_u64_u16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u64 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 2;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u16 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_u64_u16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB197_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u64 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 2;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u16 	[%rd9], %rd6;
+
+$L__BB197_2:
 	ret;
 
 }
 	// .globl	cast_u64_u32
 .visible .entry cast_u64_u32(
 	.param .u64 cast_u64_u32_param_0,
-	.param .u64 cast_u64_u32_param_1
+	.param .u64 cast_u64_u32_param_1,
+	.param .u32 cast_u64_u32_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_u64_u32_param_0];
 	ld.param.u64 	%rd2, [cast_u64_u32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u64 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 4;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u32 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_u64_u32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB198_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u64 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 4;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u32 	[%rd9], %rd6;
+
+$L__BB198_2:
 	ret;
 
 }
 	// .globl	cast_u64_u64
 .visible .entry cast_u64_u64(
 	.param .u64 cast_u64_u64_param_0,
-	.param .u64 cast_u64_u64_param_1
+	.param .u64 cast_u64_u64_param_1,
+	.param .u32 cast_u64_u64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u64_u64_param_0];
 	ld.param.u64 	%rd2, [cast_u64_u64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u64 	%rd7, [%rd6];
-	add.s64 	%rd8, %rd3, %rd5;
-	st.global.u64 	[%rd8], %rd7;
+	ld.param.u32 	%r2, [cast_u64_u64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB199_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u64 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
+	st.global.u64 	[%rd8], %rd6;
+
+$L__BB199_2:
 	ret;
 
 }
 	// .globl	cast_u64_i8
 .visible .entry cast_u64_i8(
 	.param .u64 cast_u64_i8_param_0,
-	.param .u64 cast_u64_i8_param_1
+	.param .u64 cast_u64_i8_param_1,
+	.param .u32 cast_u64_i8_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_u64_i8_param_0];
 	ld.param.u64 	%rd2, [cast_u64_i8_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	cvt.s64.s32 	%rd5, %r4;
-	mul.wide.s32 	%rd6, %r4, 8;
-	add.s64 	%rd7, %rd4, %rd6;
-	ld.global.u64 	%rd8, [%rd7];
-	add.s64 	%rd9, %rd3, %rd5;
-	st.global.u8 	[%rd9], %rd8;
+	ld.param.u32 	%r2, [cast_u64_i8_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB200_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	cvt.s64.s32 	%rd4, %r1;
+	mul.wide.s32 	%rd5, %r1, 8;
+	add.s64 	%rd6, %rd3, %rd5;
+	ld.global.u64 	%rd7, [%rd6];
+	cvta.to.global.u64 	%rd8, %rd2;
+	add.s64 	%rd9, %rd8, %rd4;
+	st.global.u8 	[%rd9], %rd7;
+
+$L__BB200_2:
 	ret;
 
 }
 	// .globl	cast_u64_i16
 .visible .entry cast_u64_i16(
 	.param .u64 cast_u64_i16_param_0,
-	.param .u64 cast_u64_i16_param_1
+	.param .u64 cast_u64_i16_param_1,
+	.param .u32 cast_u64_i16_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_u64_i16_param_0];
 	ld.param.u64 	%rd2, [cast_u64_i16_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u64 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 2;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u16 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_u64_i16_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB201_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u64 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 2;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u16 	[%rd9], %rd6;
+
+$L__BB201_2:
 	ret;
 
 }
 	// .globl	cast_u64_i32
 .visible .entry cast_u64_i32(
 	.param .u64 cast_u64_i32_param_0,
-	.param .u64 cast_u64_i32_param_1
+	.param .u64 cast_u64_i32_param_1,
+	.param .u32 cast_u64_i32_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<10>;
 
 
 	ld.param.u64 	%rd1, [cast_u64_i32_param_0];
 	ld.param.u64 	%rd2, [cast_u64_i32_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u64 	%rd7, [%rd6];
-	mul.wide.s32 	%rd8, %r4, 4;
-	add.s64 	%rd9, %rd3, %rd8;
-	st.global.u32 	[%rd9], %rd7;
+	ld.param.u32 	%r2, [cast_u64_i32_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB202_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u64 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	mul.wide.s32 	%rd8, %r1, 4;
+	add.s64 	%rd9, %rd7, %rd8;
+	st.global.u32 	[%rd9], %rd6;
+
+$L__BB202_2:
 	ret;
 
 }
 	// .globl	cast_u64_i64
 .visible .entry cast_u64_i64(
 	.param .u64 cast_u64_i64_param_0,
-	.param .u64 cast_u64_i64_param_1
+	.param .u64 cast_u64_i64_param_1,
+	.param .u32 cast_u64_i64_param_2
 )
 {
-	.reg .b32 	%r<5>;
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<6>;
 	.reg .b64 	%rd<9>;
 
 
 	ld.param.u64 	%rd1, [cast_u64_i64_param_0];
 	ld.param.u64 	%rd2, [cast_u64_i64_param_1];
-	cvta.to.global.u64 	%rd3, %rd2;
-	cvta.to.global.u64 	%rd4, %rd1;
-	mov.u32 	%r1, %ctaid.x;
-	mov.u32 	%r2, %ntid.x;
-	mov.u32 	%r3, %tid.x;
-	mad.lo.s32 	%r4, %r1, %r2, %r3;
-	mul.wide.s32 	%rd5, %r4, 8;
-	add.s64 	%rd6, %rd4, %rd5;
-	ld.global.u64 	%rd7, [%rd6];
-	add.s64 	%rd8, %rd3, %rd5;
-	st.global.u64 	[%rd8], %rd7;
+	ld.param.u32 	%r2, [cast_u64_i64_param_2];
+	mov.u32 	%r3, %ctaid.x;
+	mov.u32 	%r4, %ntid.x;
+	mov.u32 	%r5, %tid.x;
+	mad.lo.s32 	%r1, %r3, %r4, %r5;
+	setp.ge.s32 	%p1, %r1, %r2;
+	@%p1 bra 	$L__BB203_2;
+
+	cvta.to.global.u64 	%rd3, %rd1;
+	mul.wide.s32 	%rd4, %r1, 8;
+	add.s64 	%rd5, %rd3, %rd4;
+	ld.global.u64 	%rd6, [%rd5];
+	cvta.to.global.u64 	%rd7, %rd2;
+	add.s64 	%rd8, %rd7, %rd4;
+	st.global.u64 	[%rd8], %rd6;
+
+$L__BB203_2:
 	ret;
 
 }
