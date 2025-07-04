@@ -66,7 +66,7 @@ echo "  ###########################################"
 echo "      Alloc max to model size ratio: ${ratio}%."
 echo "  ###########################################"
 
-limit=200
+limit=125
 
 if [ $ratio -gt $limit ]
 then
