@@ -151,7 +151,7 @@ impl UnaryOps {
         ensure!(output.datum_type() == input.datum_type());
 
         let func = cuda_context()
-            .load_pipeline(LibraryName::UnaryOps, self.kernel_name(input.datum_type())?)?;
+            .load_pipeline(LibraryName::Unary, self.kernel_name(input.datum_type())?)?;
 
         let len = input.len();
 

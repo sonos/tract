@@ -21,17 +21,17 @@ const ARRAY_OPS: &str = include_str!("ptx/array.ptx");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LibraryName {
-    UnaryOps,
-    BinaryOps,
-    ArrayOps,
+    Unary,
+    Binary,
+    Array,
 }
 
 impl LibraryName {
     pub fn content(&self) -> &str {
         match self {
-            Self::UnaryOps => UNARY_OPS,
-            Self::BinaryOps => BINARY_OPS,
-            Self::ArrayOps => ARRAY_OPS,
+            Self::Unary => UNARY_OPS,
+            Self::Binary => BINARY_OPS,
+            Self::Array => ARRAY_OPS,
         }
     }
 }

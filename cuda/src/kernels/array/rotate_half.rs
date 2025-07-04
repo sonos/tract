@@ -58,7 +58,7 @@ impl RotateHalf {
 
         let kernel_name = self.kernel_name(input.datum_type())?;
 
-        let func = cuda_context().load_pipeline(LibraryName::ArrayOps, kernel_name)?;
+        let func = cuda_context().load_pipeline(LibraryName::Array, kernel_name)?;
 
         let i_view = get_cuda_view(input);
         let o_view = get_cuda_view(output);

@@ -229,7 +229,7 @@ impl BinOps {
         let out_strides =
             compute_broadcast_strides::<usize>(&out_shape, &natural_strides(&out_shape))?;
 
-        let func = cuda_context().load_pipeline(LibraryName::BinaryOps, kernel_name)?;
+        let func = cuda_context().load_pipeline(LibraryName::Binary, kernel_name)?;
 
         let max_threads = 1024;
         let half_inner_ax = (out_shape[3] / 2).max(1);

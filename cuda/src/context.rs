@@ -62,11 +62,11 @@ impl TractCudaContext {
     pub fn preload_pipelines(&self) -> TractResult<()> {
         // TODO: Investigate CUDA lazy loading
         for ew_func in crate::kernels::UnaryOps::all_functions() {
-            let _ = self.load_pipeline(LibraryName::UnaryOps, ew_func);
+            let _ = self.load_pipeline(LibraryName::Unary, ew_func);
         }
 
         for bin_func in crate::kernels::BinOps::all_functions() {
-            let _ = self.load_pipeline(LibraryName::BinaryOps, bin_func);
+            let _ = self.load_pipeline(LibraryName::Binary, bin_func);
         }
         Ok(())
     }
