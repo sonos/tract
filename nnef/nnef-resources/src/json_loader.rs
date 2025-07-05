@@ -3,15 +3,16 @@ use nom::branch::alt;
 use nom::character::complete::{char, digit1};
 use nom::combinator::{all_consuming, opt};
 use nom::combinator::{map, map_res};
-use nom::error::{ErrorKind, ParseError};
+use nom::error::ErrorKind;
 use nom::multi::separated_list1;
 use nom::sequence::delimited;
-use nom::sequence::tuple;
-use nom::AsChar;
-use nom::IResult;
-use nom::InputTakeAtPosition;
+use nom::{AsChar, Parser};
+use nom::{IResult, Input};
+use nom_language::error::VerboseError;
 use std::path::Path;
 use tract_nnef::internal::*;
+
+type R<'i, O> = IResult<&'i str, O, VerboseError<&'i str>>;
 
 /// Loader for JSON resources inside a NNEF archive
 #[derive(Debug, Clone, PartialEq)]
@@ -98,7 +99,8 @@ impl JsonPath {
     }
 
     pub fn parse(s: &str) -> Result<Self> {
-        let (_, components) = all_consuming(parse_components)(s)
+        let (_, components) = all_consuming(parse_components)
+            .parse(s)
             .map_err(|e| anyhow!("Error while parsing JSON path: {:?}", e))?;
 
         ensure!(
@@ -128,11 +130,7 @@ impl JsonPath {
     }
 }
 
-pub fn json_key<T, E: ParseError<T>>(input: T) -> IResult<T, T, E>
-where
-    T: InputTakeAtPosition,
-    <T as InputTakeAtPosition>::Item: AsChar,
-{
+pub fn json_key(input: &str) -> R<&str> {
     input.split_at_position1_complete(
         |item| {
             let c = item.as_char();
@@ -142,12 +140,12 @@ where
     )
 }
 
-fn parse_components(i: &str) -> IResult<&str, Vec<JsonComponent>> {
+fn parse_components(i: &str) -> R<Vec<JsonComponent>> {
     map(
         separated_list1(
             char('.'),
             map(
-                tuple((
+                (
                     alt((
                         map(char('$'), |_| JsonComponent::Root),
                         map(json_key, |f: &str| JsonComponent::Field(f.to_string())),
@@ -155,12 +153,13 @@ fn parse_components(i: &str) -> IResult<&str, Vec<JsonComponent>> {
                     opt(map_res(delimited(char('['), digit1, char(']')), |s: &str| {
                         s.parse().map(JsonComponent::Index)
                     })),
-                )),
+                ),
                 |(c, idx)| vec![Some(c), idx].into_iter().flatten().collect::<Vec<_>>(),
             ),
         ),
         |components| components.into_iter().flatten().collect::<Vec<_>>(),
-    )(i)
+    )
+    .parse(i)
 }
 
 #[cfg(test)]
