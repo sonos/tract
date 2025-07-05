@@ -209,7 +209,7 @@ tflitec = { git = "https://github.com/kali/tflitec-rs.git", rev="9ceb838" }
 time = "0.3.23"
 time-macros = "0.2.10"
 tinystr = "0.8.0"
-tokenizers = "0.19"
+tokenizers = "0.21"
 unicode-normalization = "0.1.19"
 walkdir = "2.3.2"
 writeable = "0.6.0"
