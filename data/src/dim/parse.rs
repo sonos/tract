@@ -3,55 +3,71 @@ use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::{alpha1, alphanumeric1, digit1, one_of};
 use nom::combinator::{all_consuming, map, map_res, recognize};
+use nom::error::{Error, FromExternalError, ParseError};
 use nom::multi::{many0, separated_list0};
 use nom::sequence::{delimited, pair, preceded, separated_pair};
-use nom::IResult;
+use nom::{IResult, Parser};
 
 pub fn parse_tdim(symbol_table: &SymbolScope, input: &str) -> TractResult<TDim> {
-    match all_consuming(|i| expr(symbol_table, i))(input) {
+    match all_consuming(|i| expr::<Error<_>>(symbol_table, i)).parse(input) {
         Ok(pair) => Ok(pair.1),
         Err(e) => bail!("Failed to parse {:?}, {:?}", input, e),
     }
 }
 
 pub fn parse_assertion(symbol_table: &SymbolScope, input: &str) -> TractResult<Assertion> {
-    match all_consuming(|i| assertion(symbol_table, i))(input) {
+    match all_consuming(|i| assertion::<Error<_>>(symbol_table, i)).parse(input) {
         Ok(pair) => Ok(pair.1),
         Err(e) => bail!("Failed to parse {:?}, {:?}", input, e),
     }
 }
 
-fn assertion<'i>(s: &SymbolScope, i: &'i str) -> IResult<&'i str, Assertion> {
-    delimited(spaces, alt((
-        map(separated_pair(|i| expr(s, i), stag("=="), |i| expr(s, i)), |(a, b)| {
-            Assertion::Eq(a, b)
-        }),
-        map(separated_pair(|i| expr(s, i), stag("<="), |i| expr(s, i)), |(a, b)| {
-            Assertion::LTE(a, b)
-        }),
-        map(separated_pair(|i| expr(s, i), stag(">="), |i| expr(s, i)), |(a, b)| {
-            Assertion::GTE(a, b)
-        }),
-        map(separated_pair(|i| expr(s, i), stag("<"), |i| expr(s, i)), |(a, b)| {
-            Assertion::LT(a, b)
-        }),
-        map(separated_pair(|i| expr(s, i), stag(">"), |i| expr(s, i)), |(a, b)| {
-            Assertion::GT(a, b)
-        }),
-    )), spaces)(i)
+fn assertion<'i, E: ParseError<&'i str>>(
+    s: &SymbolScope,
+    i: &'i str,
+) -> IResult<&'i str, Assertion, E> {
+    delimited(
+        spaces,
+        alt((
+            map(separated_pair(|i| expr(s, i), stag("=="), |i| expr(s, i)), |(a, b)| {
+                Assertion::Eq(a, b)
+            }),
+            map(separated_pair(|i| expr(s, i), stag("<="), |i| expr(s, i)), |(a, b)| {
+                Assertion::LTE(a, b)
+            }),
+            map(separated_pair(|i| expr(s, i), stag(">="), |i| expr(s, i)), |(a, b)| {
+                Assertion::GTE(a, b)
+            }),
+            map(separated_pair(|i| expr(s, i), stag("<"), |i| expr(s, i)), |(a, b)| {
+                Assertion::LT(a, b)
+            }),
+            map(separated_pair(|i| expr(s, i), stag(">"), |i| expr(s, i)), |(a, b)| {
+                Assertion::GT(a, b)
+            }),
+        )),
+        spaces,
+    )
+    .parse(i)
 }
 
-fn expr<'i>(symbol_table: &SymbolScope, i: &'i str) -> IResult<&'i str, TDim> {
+fn expr<'i, E: ParseError<&'i str>>(
+    symbol_table: &SymbolScope,
+    i: &'i str,
+) -> IResult<&'i str, TDim, E> {
     broadcast(symbol_table, i)
 }
 
 macro_rules! bin {
     ($name: ident, $next: ident, $op: expr, $builder: expr) => {
-        fn $name<'i>(symbol_table: &SymbolScope, input: &'i str) -> IResult<&'i str, TDim> {
+        fn $name<'i, E: ParseError<&'i str>>(
+            symbol_table: &SymbolScope,
+            input: &'i str,
+        ) -> IResult<&'i str, TDim, E> {
             let s = symbol_table;
             alt((map(separated_pair(|i| $next(s, i), stag($op), |i| $next(s, i)), $builder), |i| {
                 $next(s, i)
-            }))(input)
+            }))
+            .parse(input)
         }
     };
 }
@@ -59,22 +75,33 @@ bin!(add, sub, "+", |(a, b)| a + b);
 bin!(sub, mul, "-", |(a, b)| a - b);
 bin!(mul, div, "*", |(a, b)| a * b);
 
-fn broadcast<'i>(symbol_table: &SymbolScope, input: &'i str) -> IResult<&'i str, TDim> {
+fn broadcast<'i, E: ParseError<&'i str>>(
+    symbol_table: &SymbolScope,
+    input: &'i str,
+) -> IResult<&'i str, TDim, E> {
     let s = symbol_table;
     alt((
-        map_res(separated_pair(|i| add(s, i), stag("#"), |i| add(s, i)), |(a, b)| a.broadcast(b)),
+        map(separated_pair(|i| add(s, i), stag("#"), |i| add(s, i)), |(a, b)| {
+            a.broadcast(b).unwrap() // FIXME
+        }),
         |i| add(s, i),
-    ))(input)
+    ))
+    .parse(input)
 }
 
-fn div<'i>(symbol_table: &SymbolScope, input: &'i str) -> IResult<&'i str, TDim> {
+fn div<'i, E: ParseError<&'i str>>(
+    symbol_table: &SymbolScope,
+    input: &'i str,
+) -> IResult<&'i str, TDim, E> {
     let s = symbol_table;
-    alt((map(separated_pair(|i| atom(s, i), stag("/"), numeric), |(a, b)| a / b), |i| atom(s, i)))(
-        input,
-    )
+    alt((map(separated_pair(|i| atom(s, i), stag("/"), numeric), |(a, b)| a / b), |i| atom(s, i)))
+        .parse(input)
 }
 
-fn atom<'i>(symbol_table: &SymbolScope, i: &'i str) -> IResult<&'i str, TDim> {
+fn atom<'i, E: ParseError<&'i str>>(
+    symbol_table: &SymbolScope,
+    i: &'i str,
+) -> IResult<&'i str, TDim, E> {
     alt((
         map(numeric, TDim::Val),
         map(|i| func(symbol_table, "min", i), TDim::Min),
@@ -82,42 +109,50 @@ fn atom<'i>(symbol_table: &SymbolScope, i: &'i str) -> IResult<&'i str, TDim> {
         map(|i| identifier(symbol_table, i), TDim::Sym),
         map(pair(recognize(stag("-")), |i| atom(symbol_table, i)), |(_, dim)| dim * -1),
         delimited(stag("("), |i| expr(symbol_table, i), stag(")")),
-    ))(i)
+    ))
+    .parse(i)
 }
 
-fn func<'i>(
+fn func<'i, E: ParseError<&'i str>>(
     symbol_table: &SymbolScope,
     name: &'static str,
     i: &'i str,
-) -> IResult<&'i str, Vec<TDim>> {
+) -> IResult<&'i str, Vec<TDim>, E> {
     preceded(
         stag(name),
         delimited(stag("("), separated_list0(stag(","), |i| expr(symbol_table, i)), stag(")")),
-    )(i)
+    )
+    .parse(i)
 }
 
-fn identifier<'i>(symbol_table: &SymbolScope, i: &'i str) -> IResult<&'i str, Symbol> {
+fn identifier<'i, E: ParseError<&'i str>>(
+    symbol_table: &SymbolScope,
+    i: &'i str,
+) -> IResult<&'i str, Symbol, E> {
     map(recognize(pair(alt((alpha1, tag("_"))), many0(alt((alphanumeric1, tag("_")))))), |s| {
         symbol_table.sym(s)
-    })(i)
+    })
+    .parse(i)
 }
 
-fn numeric(i: &str) -> IResult<&str, i64> {
-    map_res(digit1, std::str::FromStr::from_str)(i)
+fn numeric<'i, E: ParseError<&'i str>>(i: &'i str) -> IResult<&'i str, i64, E> {
+    map(digit1, |d| std::str::FromStr::from_str(d).unwrap()).parse(i)
 }
 
-fn spaces(i: &str) -> IResult<&str, ()> {
-    map(many0(one_of(" \t\n\r")), |_| ())(i)
+fn spaces<'s, E: ParseError<&'s str>>(i: &'s str) -> IResult<&'s str, (), E> {
+    map(many0(one_of(" \t\n\r")), |_| ()).parse(i)
 }
 
-fn spaced<'s, O, F>(it: F) -> impl FnMut(&'s str) -> IResult<&'s str, O>
+fn spaced<'s, O, E: ParseError<&'s str>, P>(it: P) -> impl Parser<&'s str, Output = O, Error = E>
 where
-    F: FnMut(&'s str) -> IResult<&'s str, O>,
+    P: Parser<&'s str, Output = O, Error = E>,
 {
     delimited(spaces, it, spaces)
 }
 
-pub(super) fn stag<'s>(t: &'static str) -> impl FnMut(&'s str) -> IResult<&'s str, &'s str> {
+pub(super) fn stag<'s, E: ParseError<&'s str>>(
+    t: &'static str,
+) -> impl Parser<&'s str, Output = &'s str, Error = E> {
     spaced(tag(t))
 }
 
