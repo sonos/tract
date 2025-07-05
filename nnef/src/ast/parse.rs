@@ -1,11 +1,14 @@
+use nom_language::error::VerboseError;
 use tract_core::internal::*;
 
 use nom::branch::alt;
 use nom::combinator::map;
-use nom::IResult;
 use nom::{bytes::complete::*, character::complete::*, combinator::*, multi::*, sequence::*};
+use nom::{IResult, Parser};
 
 use crate::ast::*;
+
+type R<'i, O> = IResult<&'i str, O, VerboseError<&'i str>>;
 
 pub(super) fn translate_error<E: std::fmt::Debug>(e: E) -> TractError {
     format_err!("Fail to parse NNEF document: {:?}", e)
@@ -13,140 +16,147 @@ pub(super) fn translate_error<E: std::fmt::Debug>(e: E) -> TractError {
 
 #[inline(never)]
 pub fn parse_document(doc: &str) -> TractResult<Document> {
-    all_consuming(document)(doc).map(|pair| pair.1).map_err(translate_error)
+    all_consuming(document).parse(doc).map(|pair| pair.1).map_err(translate_error)
 }
 
 #[inline(never)]
 pub fn parse_fragments(doc: &str) -> TractResult<Vec<FragmentDef>> {
-    all_consuming(fragments)(doc).map(|pair| pair.1).map_err(translate_error)
+    all_consuming(fragments).parse(doc).map(|pair| pair.1).map_err(translate_error)
 }
 
 #[inline(never)]
 pub fn parse_fragment_decl(doc: &str) -> TractResult<FragmentDecl> {
-    all_consuming(fragment_decl)(doc).map(|pair| pair.1).map_err(translate_error)
+    all_consuming(fragment_decl).parse(doc).map(|pair| pair.1).map_err(translate_error)
 }
 
 #[inline(never)]
 pub fn parse_parameters(doc: &str) -> TractResult<Vec<Parameter>> {
-    all_consuming(parameter_list)(doc).map(|pair| pair.1).map_err(translate_error)
+    all_consuming(parameter_list).parse(doc).map(|pair| pair.1).map_err(translate_error)
 }
 
 // <document> ::= <version> <extension>* <fragmentdefinition>* <graph-definition>
-fn document(i: &str) -> IResult<&str, Document> {
+fn document(i: &str) -> R<Document> {
     map(
-        tuple((version, many0(extension), fragments, graph_def)),
+        (version, many0(extension), fragments, graph_def),
         |(version, extension, fragments, graph_def)| Document {
             version,
             extension,
             fragments,
             graph_def,
         },
-    )(i)
+    )
+    .parse(i)
 }
 
-fn fragments(i: &str) -> IResult<&str, Vec<FragmentDef>> {
-    many0(fragment_def)(i)
+fn fragments(i: &str) -> R<Vec<FragmentDef>> {
+    many0(fragment_def).parse(i)
 }
 
 // <version> ::= "version" <numeric-literal> ";"
 
-fn version(i: &str) -> IResult<&str, NumericLiteral> {
-    delimited(stag("version"), numeric_literal, stag(";"))(i)
+fn version(i: &str) -> R<NumericLiteral> {
+    delimited(stag("version"), numeric_literal, stag(";")).parse(i)
 }
 
 // NNEF spec: <extension> ::= "extension" <identifier>+ ";"
 // tract accepts: <extension> ::= "extension" <identifier> <anything-but-;>";"
-fn extension(i: &str) -> IResult<&str, (Identifier, String)> {
+fn extension(i: &str) -> R<(Identifier, String)> {
     delimited(
         stag("extension"),
         pair(spaced(identifier), map(take_until(";"), |s: &str| s.to_string())),
         stag(";"),
-    )(i)
+    )
+    .parse(i)
 }
 
 // FRAGMENT
 
 // <fragment-definition> ::= <fragment-declaration> (<body> | ";")
-fn fragment_def(i: &str) -> IResult<&str, FragmentDef> {
+fn fragment_def(i: &str) -> R<FragmentDef> {
     spaced(map(
         pair(fragment_decl, alt((map(body, Some), map(stag(";"), |_| None)))),
         |(decl, body)| FragmentDef { decl, body },
-    ))(i)
+    ))
+    .parse(i)
 }
 
 // <fragment-declaration> ::= "fragment" <identifier> [<generic-declaration>] "(" <parameter-list> ")" "->" "(" <result-list> ")"
-fn fragment_decl(i: &str) -> IResult<&str, FragmentDecl> {
-    let (i, _) = stag("fragment")(i)?;
+fn fragment_decl(i: &str) -> R<FragmentDecl> {
+    let (i, _) = stag("fragment").parse(i)?;
     let (i, id) = identifier(i)?;
-    let (i, generic_decl) = opt(generic_decl)(i)?;
-    let (i, _) = stag("(")(i)?;
+    let (i, generic_decl) = opt(generic_decl).parse(i)?;
+    let (i, _) = stag("(").parse(i)?;
     let (i, parameters) = parameter_list(i)?;
-    let (i, _) = stag(")")(i)?;
-    let (i, _) = stag("->")(i)?;
-    let (i, _) = stag("(")(i)?;
+    let (i, _) = stag(")").parse(i)?;
+    let (i, _) = stag("->").parse(i)?;
+    let (i, _) = stag("(").parse(i)?;
     let (i, results) = result_list(i)?;
-    let (i, _) = stag(")")(i)?;
+    let (i, _) = stag(")").parse(i)?;
     Ok((i, FragmentDecl { id, parameters, results, generic_decl }))
 }
 
 // <generic-declaration> ::= "<" "?" ["=" <type-name>] ">"
-fn generic_decl(i: &str) -> IResult<&str, Option<TypeName>> {
-    let (i, _) = stag("<")(i)?;
-    let (i, _) = stag("?")(i)?;
-    let (i, name) = opt(preceded(stag("="), type_name))(i)?;
-    let (i, _) = stag(">")(i)?;
+fn generic_decl(i: &str) -> R<Option<TypeName>> {
+    let (i, _) = stag("<").parse(i)?;
+    let (i, _) = stag("?").parse(i)?;
+    let (i, name) = opt(preceded(stag("="), type_name)).parse(i)?;
+    let (i, _) = stag(">").parse(i)?;
     Ok((i, name))
 }
 
 // <parameter-list> ::= <parameter> ("," <parameter>)*
-fn parameter_list(i: &str) -> IResult<&str, Vec<Parameter>> {
-    separated_list0(stag(","), parameter)(i)
+fn parameter_list(i: &str) -> R<Vec<Parameter>> {
+    separated_list0(stag(","), parameter).parse(i)
 }
 
 // <result-list> ::= <result> ("," <result>)*
-fn result_list(i: &str) -> IResult<&str, Vec<Result_>> {
-    separated_list0(stag(","), result)(i)
+fn result_list(i: &str) -> R<Vec<Result_>> {
+    separated_list0(stag(","), result).parse(i)
 }
 
 // <parameter> ::= <identifier> ":" <type-spec> ["=" <literal-expr>]
-fn parameter(i: &str) -> IResult<&str, Parameter> {
+fn parameter(i: &str) -> R<Parameter> {
     map(
         pair(
             separated_pair(identifier, stag(":"), type_spec),
             opt(preceded(stag("="), literal_expr)),
         ),
         |((id, spec), lit)| Parameter { id, spec, lit, doc: None },
-    )(i)
+    )
+    .parse(i)
 }
 
 // <result> ::= <identifier> ":" <type-spec>
-fn result(i: &str) -> IResult<&str, Result_> {
-    map(separated_pair(identifier, stag(":"), type_spec), |(id, spec)| Result_ { id, spec })(i)
+fn result(i: &str) -> R<Result_> {
+    map(separated_pair(identifier, stag(":"), type_spec), |(id, spec)| Result_ { id, spec })
+        .parse(i)
 }
 
-fn literal_expr(i: &str) -> IResult<&str, Literal> {
+fn literal_expr(i: &str) -> R<Literal> {
     spaced(alt((
         literal,
         map(delimited(stag("["), separated_list0(stag(","), literal), stag("]")), Literal::Array),
         map(delimited(stag("("), separated_list0(stag(","), literal), stag(")")), Literal::Tuple),
-    )))(i)
+    )))
+    .parse(i)
 }
 
 // <type-spec> ::= <type-name> | <tensor-type-spec> | <array-type-spec> | <tuple-type-spec>
-fn type_spec(i: &str) -> IResult<&str, TypeSpec> {
-    fn non_array_type(i: &str) -> IResult<&str, TypeSpec> {
-        alt((tuple_type_spec, map(type_name, TypeSpec::Single), tensor_type_spec))(i)
+fn type_spec(i: &str) -> R<TypeSpec> {
+    fn non_array_type(i: &str) -> R<TypeSpec> {
+        alt((tuple_type_spec, map(type_name, TypeSpec::Single), tensor_type_spec)).parse(i)
     }
     alt((
         (map(terminated(non_array_type, pair(stag("["), stag("]"))), |t| {
             TypeSpec::Array(Box::new(t))
         })),
         non_array_type,
-    ))(i)
+    ))
+    .parse(i)
 }
 
 // <type-name> ::= "integer" | "scalar" | "logical" | "string" | "?"
-fn type_name(i: &str) -> IResult<&str, TypeName> {
+fn type_name(i: &str) -> R<TypeName> {
     spaced(alt((
         map(tag("integer"), |_| TypeName::Integer),
         map(tag("scalar"), |_| TypeName::Scalar),
@@ -155,17 +165,19 @@ fn type_name(i: &str) -> IResult<&str, TypeName> {
         #[cfg(feature = "complex")]
         map(tag("complex"), |_| TypeName::Complex),
         map(tag("?"), |_| TypeName::Any),
-    )))(i)
+    )))
+    .parse(i)
 }
 
 // <tensor-type-spec> ::= "tensor" "<" [<type-name>] ">"
-fn tensor_type_spec(i: &str) -> IResult<&str, TypeSpec> {
-    map(delimited(pair(stag("tensor"), stag("<")), type_name, stag(">")), TypeSpec::Tensor)(i)
+fn tensor_type_spec(i: &str) -> R<TypeSpec> {
+    map(delimited(pair(stag("tensor"), stag("<")), type_name, stag(">")), TypeSpec::Tensor).parse(i)
 }
 
 // <tuple-type-spec> ::= "(" <type-spec> ("," <type-spec>)+ ")"
-fn tuple_type_spec(i: &str) -> IResult<&str, TypeSpec> {
-    map(delimited(stag("("), separated_list0(stag(","), type_spec), stag(")")), TypeSpec::Tuple)(i)
+fn tuple_type_spec(i: &str) -> R<TypeSpec> {
+    map(delimited(stag("("), separated_list0(stag(","), type_spec), stag(")")), TypeSpec::Tuple)
+        .parse(i)
 }
 
 // GRAPH
@@ -173,40 +185,41 @@ fn tuple_type_spec(i: &str) -> IResult<&str, TypeSpec> {
 // <graph-definition> ::= <graph-declaration> <body>
 // <graph-declaration> ::= "graph" <identifier> "(" <identifier-list> ")" "->" "(" <identifier-list> ")"
 // <identifier-list> ::= <identifier> ("," <identifier>)*
-fn graph_def(i: &str) -> IResult<&str, GraphDef> {
-    let (i, _) = stag("graph")(i)?;
+fn graph_def(i: &str) -> R<GraphDef> {
+    let (i, _) = stag("graph").parse(i)?;
     let (i, id) = identifier(i)?;
-    let (i, _) = stag("(")(i)?;
-    let (i, parameters) = separated_list0(stag(","), identifier)(i)?;
-    let (i, _) = stag(")")(i)?;
-    let (i, _) = stag("->")(i)?;
-    let (i, _) = stag("(")(i)?;
-    let (i, results) = separated_list0(stag(","), identifier)(i)?;
-    let (i, _) = stag(")")(i)?;
-    let (i, body) = spaced(body)(i)?;
+    let (i, _) = stag("(").parse(i)?;
+    let (i, parameters) = separated_list0(stag(","), identifier).parse(i)?;
+    let (i, _) = stag(")").parse(i)?;
+    let (i, _) = stag("->").parse(i)?;
+    let (i, _) = stag("(").parse(i)?;
+    let (i, results) = separated_list0(stag(","), identifier).parse(i)?;
+    let (i, _) = stag(")").parse(i)?;
+    let (i, body) = spaced(body).parse(i)?;
     Ok((i, GraphDef { id, parameters, results, body }))
 }
 
 // BODY
 
 // <body> ::= "{" <assignment>+ "}"
-fn body(i: &str) -> IResult<&str, Vec<Assignment>> {
-    delimited(stag("{"), many0(assignment), stag("}"))(i)
+fn body(i: &str) -> R<Vec<Assignment>> {
+    delimited(stag("{"), many0(assignment), stag("}")).parse(i)
 }
 
 // <assignment> ::= <lvalue-expr> "=" <rvalue-expr> ";"
-fn assignment(i: &str) -> IResult<&str, Assignment> {
+fn assignment(i: &str) -> R<Assignment> {
     spaced(terminated(
         map(separated_pair(lvalue, stag("="), rvalue), |(left, right)| Assignment { left, right }),
         stag(";"),
-    ))(i)
+    ))
+    .parse(i)
 }
 
 // <lvalue-expr> ::= <identifier> | <array-lvalue-expr> | <tuple-lvalue-expr>
 // <array-lvalue-expr> ::= "[" [<lvalue-expr> ("," <lvalue-expr>)* ] "]"
 // <tuple-lvalue-expr> ::= "(" <lvalue-expr> ("," <lvalue-expr>)+ ")" | <lvalue-expr> ("," <lvalue-expr>)+
-fn lvalue(i: &str) -> IResult<&str, LValue> {
-    fn inner_lvalue(i: &str) -> IResult<&str, LValue> {
+fn lvalue(i: &str) -> R<LValue> {
+    fn inner_lvalue(i: &str) -> R<LValue> {
         alt((
             map(
                 delimited(stag("["), separated_list0(stag(","), inner_lvalue), stag("]")),
@@ -217,7 +230,8 @@ fn lvalue(i: &str) -> IResult<&str, LValue> {
                 LValue::Tuple,
             ),
             map(spaced(identifier), LValue::Identifier),
-        ))(i)
+        ))
+        .parse(i)
     }
 
     map(separated_list0(stag(","), inner_lvalue), |mut iv| {
@@ -226,37 +240,39 @@ fn lvalue(i: &str) -> IResult<&str, LValue> {
         } else {
             LValue::Tuple(iv)
         }
-    })(i)
+    })
+    .parse(i)
 }
 
 // <invocation> ::= <identifier> ["<" <type-name> ">"] "(" <argument-list> ")"
-fn invocation(i: &str) -> IResult<&str, Invocation> {
-    let (i, id) = spaced(identifier)(i)?;
-    let (i, generic_type_name) = opt(delimited(stag("<"), type_name, stag(">")))(i)?;
-    let (i, _) = stag("(")(i)?;
-    let (i, arguments) = argument_list(i)?;
-    let (i, _) = stag(")")(i)?;
+fn invocation(i: &str) -> R<Invocation> {
+    let (i, id) = spaced(identifier).parse(i)?;
+    let (i, generic_type_name) = opt(delimited(stag("<"), type_name, stag(">"))).parse(i)?;
+    let (i, _) = stag("(").parse(i)?;
+    let (i, arguments) = argument_list.parse(i)?;
+    let (i, _) = stag(")").parse(i)?;
     Ok((i, Invocation { id, generic_type_name, arguments }))
 }
 
 // <argument-list> ::= <argument> ("," <argument>)*
-fn argument_list(i: &str) -> IResult<&str, Vec<Argument>> {
-    separated_list0(stag(","), argument)(i)
+fn argument_list(i: &str) -> R<Vec<Argument>> {
+    separated_list0(stag(","), argument).parse(i)
 }
 
 // <argument> ::= <rvalue-expr> | <identifier> "=" <rvalue-expr>
-fn argument(i: &str) -> IResult<&str, Argument> {
+fn argument(i: &str) -> R<Argument> {
     spaced(map(pair(opt(terminated(identifier, stag("="))), rvalue), |(id, rvalue)| Argument {
         id,
         rvalue,
-    }))(i)
+    }))
+    .parse(i)
 }
 
 //<rvalue-expr> ::= <identifier> | <literal> | <binary-expr> | <unary-expr> | <paren-expr>
 //                  | <array-rvalue-expr> | <tuple-rvalue-expr> | <subscript-expr> | <if-else-expr>
 //                  | <comprehension-expr> | <builtin-expr> | <invocation>
-fn rvalue(i: &str) -> IResult<&str, RValue> {
-    fn atom(i: &str) -> IResult<&str, RValue> {
+fn rvalue(i: &str) -> R<RValue> {
+    fn atom(i: &str) -> R<RValue> {
         spaced(alt((
             map(invocation, RValue::Invocation),
             map(literal, RValue::Literal),
@@ -275,11 +291,12 @@ fn rvalue(i: &str) -> IResult<&str, RValue> {
             map(delimited(tag("["), separated_list0(stag(","), rvalue), tag("]")), |rvs| {
                 RValue::Array(rvs)
             }),
-        )))(i)
+        )))
+        .parse(i)
     }
     macro_rules! bin {
         ($name:ident, $operand: ident, $operator: expr) => {
-            fn $name(i: &str) -> IResult<&str, RValue> {
+            fn $name(i: &str) -> R<RValue> {
                 let (i, init) = $operand(i)?;
                 fold_many0(
                     pair($operator, $operand),
@@ -287,13 +304,14 @@ fn rvalue(i: &str) -> IResult<&str, RValue> {
                     |left, (op, right)| {
                         RValue::Binary(Box::new(left), op.to_string(), Box::new(right))
                     },
-                )(i)
+                )
+                .parse(i)
             }
         };
     }
 
     // <subscript-expr> ::= <rvalue-expr> "[" (<rvalue-expr> | [<rvalue-expr>] ":" [<rvalue-expr>]) "]"
-    fn sub(i: &str) -> IResult<&str, RValue> {
+    fn sub(i: &str) -> R<RValue> {
         alt((
             map(
                 pair(
@@ -312,7 +330,8 @@ fn rvalue(i: &str) -> IResult<&str, RValue> {
                 |(rv, range)| RValue::Subscript(Box::new(rv), Box::new(range)),
             ),
             atom,
-        ))(i)
+        ))
+        .parse(i)
     }
 
     bin!(exp, sub, tag("^"));
@@ -323,13 +342,13 @@ fn rvalue(i: &str) -> IResult<&str, RValue> {
     bin!(in_for, boolean, tag("in"));
 
     // <if-else-expr> ::= <rvalue-expr> "if" <rvalue-expr> "else" <rvalue-expr>
-    fn ite(i: &str) -> IResult<&str, RValue> {
+    fn ite(i: &str) -> R<RValue> {
         let (i, leftmost) = in_for(i)?;
         let (i, _) = space_and_comments(i)?;
         if i.starts_with("if") {
-            let (i, _) = stag("if")(i)?;
+            let (i, _) = stag("if").parse(i)?;
             let (i, cond) = in_for(i)?;
-            let (i, _) = stag("else")(i)?;
+            let (i, _) = stag("else").parse(i)?;
             let (i, otherwise) = in_for(i)?;
             Ok((i, RValue::IfThenElse(Box::new(IfThenElse { cond, then: leftmost, otherwise }))))
         } else {
@@ -341,102 +360,106 @@ fn rvalue(i: &str) -> IResult<&str, RValue> {
 }
 
 // <comprehension-expr> ::= "[" "for" <loop-iter-list> ["if" <rvalue-expr>] "yield" <rvalue-expr> "]"
-fn comprehension_expr(i: &str) -> IResult<&str, Comprehension> {
+fn comprehension_expr(i: &str) -> R<Comprehension> {
     delimited(
         pair(stag("["), stag("for")),
         map(separated_pair(loop_iters, stag("yield"), rvalue), |(loop_iters, yields)| {
             Comprehension { loop_iters, filter: None, yields }
         }),
         stag("]"),
-    )(i)
+    )
+    .parse(i)
 }
 
 // <loop-iter> ::= <identifier> "in" <rvalue-expr>
 // <loop-iter-list> ::= <loop-iter> ("," <loop-iter>)*
-fn loop_iters(i: &str) -> IResult<&str, Vec<(Identifier, RValue)>> {
-    separated_list0(stag(","), separated_pair(identifier, stag("in"), rvalue))(i)
+fn loop_iters(i: &str) -> R<Vec<(Identifier, RValue)>> {
+    separated_list0(stag(","), separated_pair(identifier, stag("in"), rvalue)).parse(i)
 }
 
 // TERMINALS
 
 // identifier: identifiers must consist of the following ASCII characters: _, [a-z], [A-Z], [0-9].
 // The identifier must not start with a digit.
-pub(super) fn identifier(i: &str) -> IResult<&str, Identifier> {
-    alt((escaped_identifier, direct_identifier))(i)
+pub(super) fn identifier(i: &str) -> R<Identifier> {
+    alt((escaped_identifier, direct_identifier)).parse(i)
 }
 
-pub(super) fn direct_identifier(i: &str) -> IResult<&str, Identifier> {
+pub(super) fn direct_identifier(i: &str) -> R<Identifier> {
     map(
         recognize(pair(alt((alpha1, tag("_"))), many0(alt((alphanumeric1, tag("_")))))),
         Identifier::from,
-    )(i)
+    )
+    .parse(i)
 }
 
-pub(super) fn escaped_identifier(i: &str) -> IResult<&str, Identifier> {
-    map(preceded(tag("i"), string_literal), Identifier)(i)
+pub(super) fn escaped_identifier(i: &str) -> R<Identifier> {
+    map(preceded(tag("i"), string_literal), Identifier).parse(i)
 }
 
 // <literal> ::= <numeric-literal> | <string-literal> | <logical-literal>
-fn literal(i: &str) -> IResult<&str, Literal> {
+fn literal(i: &str) -> R<Literal> {
     spaced(alt((
         map(numeric_literal, Literal::Numeric),
         map(string_literal, Literal::String),
         map(logical_literal, Literal::Logical),
-    )))(i)
+    )))
+    .parse(i)
 }
 
-pub(super) fn numeric_literal(i: &str) -> IResult<&str, String> {
-    fn exp_part(i: &str) -> IResult<&str, &str> {
-        recognize(tuple((one_of("eE"), opt(tag("-")), digit1)))(i)
+pub(super) fn numeric_literal(i: &str) -> R<String> {
+    fn exp_part(i: &str) -> R<&str> {
+        recognize((one_of("eE"), opt(tag("-")), digit1)).parse(i)
     }
-    fn frac_part(i: &str) -> IResult<&str, &str> {
-        recognize(tuple((tag("."), digit0)))(i)
+    fn frac_part(i: &str) -> R<&str> {
+        recognize((tag("."), digit0)).parse(i)
     }
     spaced(map(
-        recognize(tuple((opt(tag("-")), alt((digit1, tag("inf"))), opt(frac_part), opt(exp_part)))),
+        recognize((opt(tag("-")), alt((digit1, tag("inf"))), opt(frac_part), opt(exp_part))),
         |s: &str| s.to_owned(),
-    ))(i)
+    ))
+    .parse(i)
 }
 
-fn string_literal(i: &str) -> IResult<&str, String> {
-    fn inner(i: &str) -> IResult<&str, String> {
+fn string_literal(i: &str) -> R<String> {
+    fn inner(i: &str) -> R<String> {
         map(
             many0(alt((
                 preceded(tag("\\"), nom::character::complete::anychar),
                 nom::character::complete::none_of("\\\"'"),
             ))),
             |v: Vec<char>| v.into_iter().collect(),
-        )(i)
+        )
+        .parse(i)
     }
-    map(alt((delimited(tag("'"), inner, tag("'")), delimited(tag("\""), inner, tag("\"")))), |s| s)(
-        i,
-    )
+    map(alt((delimited(tag("'"), inner, tag("'")), delimited(tag("\""), inner, tag("\"")))), |s| s)
+        .parse(i)
 }
 
-pub(super) fn logical_literal(i: &str) -> IResult<&str, bool> {
-    spaced(alt((map(tag("true"), |_| true), map(tag("false"), |_| false))))(i)
+pub(super) fn logical_literal(i: &str) -> R<bool> {
+    spaced(alt((map(tag("true"), |_| true), map(tag("false"), |_| false)))).parse(i)
 }
 
 // SPACES
 
-fn space_and_comments(i: &str) -> IResult<&str, ()> {
+fn space_and_comments(i: &str) -> R<()> {
     map(
-        many0(alt((
-            recognize(one_of(" \t\n\r")),
-            recognize(tuple((tag("#"), many0(none_of("\r\n"))))),
-        ))),
+        many0(alt((recognize(one_of(" \t\n\r")), recognize((tag("#"), many0(none_of("\r\n"))))))),
         |_| (),
-    )(i)
+    )
+    .parse(i)
 }
 
-fn spaced<'s, O, F>(it: F) -> impl FnMut(&'s str) -> IResult<&'s str, O>
+fn spaced<'s, O, F>(it: F) -> impl Parser<&'s str, Output = O, Error = VerboseError<&'s str>>
 where
-    F: FnMut(&'s str) -> IResult<&'s str, O>,
+    F: Parser<&'s str, Output = O, Error = VerboseError<&'s str>>,
 {
     delimited(space_and_comments, it, space_and_comments)
 }
 
-pub(super) fn stag<'s>(t: &'static str) -> impl FnMut(&'s str) -> IResult<&'s str, &'s str> {
+pub(super) fn stag<'s>(
+    t: &'static str,
+) -> impl Parser<&'s str, Output = &'s str, Error = VerboseError<&'s str>> {
     spaced(tag(t))
 }
 
@@ -452,7 +475,7 @@ mod test {
         P: Fn(&'s str) -> IResult<&'s str, O, E>,
         E: nom::error::ParseError<&'s str> + std::fmt::Debug,
     {
-        let res = all_consuming(parser)(i).unwrap();
+        let res = all_consuming(parser).parse(i).unwrap();
         res.1
     }
 
@@ -667,19 +690,19 @@ mod test {
 
     #[test]
     fn test_spaced() {
-        assert!(spaced(identifier)("foo").is_ok());
-        assert!(spaced(identifier)(" foo ").is_ok());
-        assert!(many1(spaced(identifier))(" foo bar ").is_ok());
+        assert!(spaced(identifier).parse("foo").is_ok());
+        assert!(spaced(identifier).parse(" foo ").is_ok());
+        assert!(many1(spaced(identifier)).parse(" foo bar ").is_ok());
         assert_eq!(
-            many1(spaced(identifier))(" foo bar\n").unwrap().1,
+            many1(spaced(identifier)).parse(" foo bar\n").unwrap().1,
             &[Identifier("foo".to_string()), Identifier("bar".to_string())]
         );
         assert_eq!(
-            many1(spaced(identifier))(" foo # bar\n").unwrap().1,
+            many1(spaced(identifier)).parse(" foo # bar\n").unwrap().1,
             &[Identifier("foo".to_string())]
         );
         assert_eq!(
-            many1(spaced(identifier))(" foo # bar\nbaz").unwrap().1,
+            many1(spaced(identifier)).parse(" foo # bar\nbaz").unwrap().1,
             &[Identifier("foo".to_string()), Identifier("baz".to_string())]
         );
     }
