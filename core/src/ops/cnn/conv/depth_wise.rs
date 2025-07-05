@@ -90,7 +90,7 @@ impl TypedOp for DepthWise {
 
 macro_rules! impl_eval {
     ($(#[$meta: meta])* $suffix: ident ) => {
-        paste2::paste! {
+        pastey::paste! {
             $(#[$meta])*
             unsafe fn [<eval_t_ $suffix>]<T: Datum + Copy + num_traits::Zero + ndarray::LinalgScalar>(
                 dw: &DepthWise,

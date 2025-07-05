@@ -12,7 +12,7 @@ extern crate lazy_static;
 extern crate log;
 extern crate num_traits;
 #[macro_use]
-extern crate paste2;
+extern crate pastey;
 #[cfg(test)]
 extern crate proptest;
 
