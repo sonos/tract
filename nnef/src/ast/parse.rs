@@ -1,37 +1,48 @@
-use nom_language::error::VerboseError;
+use nom_language::error::{convert_error, VerboseError};
 use tract_core::internal::*;
 
 use nom::branch::alt;
 use nom::combinator::map;
 use nom::{bytes::complete::*, character::complete::*, combinator::*, multi::*, sequence::*};
-use nom::{IResult, Parser};
+use nom::{Finish, IResult, Parser};
 
 use crate::ast::*;
 
 type R<'i, O> = IResult<&'i str, O, VerboseError<&'i str>>;
 
-pub(super) fn translate_error<E: std::fmt::Debug>(e: E) -> TractError {
-    format_err!("Fail to parse NNEF document: {:?}", e)
+pub(super) fn translate_error(e: nom::Err<VerboseError<&str>>) -> TractError {
+    format_err!("{}", e)
 }
 
 #[inline(never)]
+pub fn unwrap_parse<'s, P, O>(input: &'s str, parser: P) -> TractResult<O>
+where
+    P: Parser<&'s str, Output = O, Error = VerboseError<&'s str>>,
+{
+    all_consuming(parser)
+        .parse(input)
+        .finish()
+        .map(|(_, p)| p)
+        .map_err(|e| anyhow!(convert_error(input, e)))
+}
+
 pub fn parse_document(doc: &str) -> TractResult<Document> {
-    all_consuming(document).parse(doc).map(|pair| pair.1).map_err(translate_error)
+    unwrap_parse(doc, document)
 }
 
 #[inline(never)]
 pub fn parse_fragments(doc: &str) -> TractResult<Vec<FragmentDef>> {
-    all_consuming(fragments).parse(doc).map(|pair| pair.1).map_err(translate_error)
+    unwrap_parse(doc, fragments)
 }
 
 #[inline(never)]
 pub fn parse_fragment_decl(doc: &str) -> TractResult<FragmentDecl> {
-    all_consuming(fragment_decl).parse(doc).map(|pair| pair.1).map_err(translate_error)
+    unwrap_parse(doc, fragment_decl)
 }
 
 #[inline(never)]
 pub fn parse_parameters(doc: &str) -> TractResult<Vec<Parameter>> {
-    all_consuming(parameter_list).parse(doc).map(|pair| pair.1).map_err(translate_error)
+    unwrap_parse(doc, parameter_list)
 }
 
 // <document> ::= <version> <extension>* <fragmentdefinition>* <graph-definition>
@@ -55,7 +66,7 @@ fn fragments(i: &str) -> R<'_, Vec<FragmentDef>> {
 // <version> ::= "version" <numeric-literal> ";"
 
 fn version(i: &str) -> R<'_, NumericLiteral> {
-    delimited(stag("version"), numeric_literal, stag(";")).parse(i)
+    preceded(stag("version"), cut(terminated(numeric_literal, stag(";")))).parse(i)
 }
 
 // NNEF spec: <extension> ::= "extension" <identifier>+ ";"
