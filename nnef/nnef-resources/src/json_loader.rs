@@ -1,3 +1,4 @@
+#![allow(mismatched_lifetime_syntaxes)]
 use anyhow::Result;
 use nom::branch::alt;
 use nom::character::complete::{char, digit1};
@@ -140,7 +141,7 @@ pub fn json_key(input: &str) -> R<&str> {
     )
 }
 
-fn parse_components(i: &str) -> R<Vec<JsonComponent>> {
+fn parse_components(i: &str) -> R<'_, Vec<JsonComponent>> {
     map(
         separated_list1(
             char('.'),
