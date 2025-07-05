@@ -1,3 +1,4 @@
+#![allow(mismatched_lifetime_syntaxes)]
 use nom_language::error::VerboseError;
 use tract_core::internal::*;
 

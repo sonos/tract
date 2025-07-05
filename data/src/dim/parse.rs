@@ -1,3 +1,4 @@
+#![allow(mismatched_lifetime_syntaxes)]
 use super::*;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
