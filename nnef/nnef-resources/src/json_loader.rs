@@ -1,4 +1,3 @@
-#![allow(mismatched_lifetime_syntaxes)]
 use anyhow::Result;
 use nom::branch::alt;
 use nom::character::complete::{char, digit1};
@@ -131,7 +130,7 @@ impl JsonPath {
     }
 }
 
-pub fn json_key(input: &str) -> R<&str> {
+pub fn json_key(input: &str) -> R<'_, &str> {
     input.split_at_position1_complete(
         |item| {
             let c = item.as_char();

@@ -1,4 +1,3 @@
-#![allow(mismatched_lifetime_syntaxes)]
 use std::str::FromStr;
 
 use nom::branch::permutation;
@@ -27,7 +26,7 @@ pub fn parse_quantization(doc: &str) -> TractResult<Vec<(Identifier, QuantFormat
 }
 
 // <quantization> ::= "<identifier>": <qparam>
-fn quantization(i: &str) -> R<(Identifier, QuantFormat)> {
+fn quantization(i: &str) -> R<'_, (Identifier, QuantFormat)> {
     let (i, _) = stag("").parse(i)?;
     let (i, id) =
         alt((delimited(tag("\""), direct_identifier, tag("\"")), escaped_identifier)).parse(i)?;
@@ -37,12 +36,12 @@ fn quantization(i: &str) -> R<(Identifier, QuantFormat)> {
     Ok((i, (id, qp)))
 }
 
-fn integer_numeric<T: FromStr>(i: &str) -> R<T> {
+fn integer_numeric<T: FromStr>(i: &str) -> R<'_, T> {
     map_res(recognize(pair(opt(tag("-")), digit1)), |s: &str| s.parse::<T>()).parse(i)
 }
 
 // <qparam> ::= "<identifier>": <qparam>
-fn qparam(i: &str) -> R<QuantFormat> {
+fn qparam(i: &str) -> R<'_, QuantFormat> {
     let (i, id) =
         nom::branch::alt((stag("linear_quantize"), stag("zero_point_linear_quantize"))).parse(i)?;
     let (i, _) = stag("(").parse(i)?;

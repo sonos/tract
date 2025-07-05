@@ -1,4 +1,3 @@
-#![allow(mismatched_lifetime_syntaxes)]
 use nom_language::error::VerboseError;
 use tract_core::internal::*;
 
@@ -36,7 +35,7 @@ pub fn parse_parameters(doc: &str) -> TractResult<Vec<Parameter>> {
 }
 
 // <document> ::= <version> <extension>* <fragmentdefinition>* <graph-definition>
-fn document(i: &str) -> R<Document> {
+fn document(i: &str) -> R<'_, Document> {
     map(
         (version, many0(extension), fragments, graph_def),
         |(version, extension, fragments, graph_def)| Document {
@@ -49,19 +48,19 @@ fn document(i: &str) -> R<Document> {
     .parse(i)
 }
 
-fn fragments(i: &str) -> R<Vec<FragmentDef>> {
+fn fragments(i: &str) -> R<'_, Vec<FragmentDef>> {
     many0(fragment_def).parse(i)
 }
 
 // <version> ::= "version" <numeric-literal> ";"
 
-fn version(i: &str) -> R<NumericLiteral> {
+fn version(i: &str) -> R<'_, NumericLiteral> {
     delimited(stag("version"), numeric_literal, stag(";")).parse(i)
 }
 
 // NNEF spec: <extension> ::= "extension" <identifier>+ ";"
 // tract accepts: <extension> ::= "extension" <identifier> <anything-but-;>";"
-fn extension(i: &str) -> R<(Identifier, String)> {
+fn extension(i: &str) -> R<'_, (Identifier, String)> {
     delimited(
         stag("extension"),
         pair(spaced(identifier), map(take_until(";"), |s: &str| s.to_string())),
@@ -73,7 +72,7 @@ fn extension(i: &str) -> R<(Identifier, String)> {
 // FRAGMENT
 
 // <fragment-definition> ::= <fragment-declaration> (<body> | ";")
-fn fragment_def(i: &str) -> R<FragmentDef> {
+fn fragment_def(i: &str) -> R<'_, FragmentDef> {
     spaced(map(
         pair(fragment_decl, alt((map(body, Some), map(stag(";"), |_| None)))),
         |(decl, body)| FragmentDef { decl, body },
@@ -82,7 +81,7 @@ fn fragment_def(i: &str) -> R<FragmentDef> {
 }
 
 // <fragment-declaration> ::= "fragment" <identifier> [<generic-declaration>] "(" <parameter-list> ")" "->" "(" <result-list> ")"
-fn fragment_decl(i: &str) -> R<FragmentDecl> {
+fn fragment_decl(i: &str) -> R<'_, FragmentDecl> {
     let (i, _) = stag("fragment").parse(i)?;
     let (i, id) = identifier(i)?;
     let (i, generic_decl) = opt(generic_decl).parse(i)?;
@@ -97,7 +96,7 @@ fn fragment_decl(i: &str) -> R<FragmentDecl> {
 }
 
 // <generic-declaration> ::= "<" "?" ["=" <type-name>] ">"
-fn generic_decl(i: &str) -> R<Option<TypeName>> {
+fn generic_decl(i: &str) -> R<'_, Option<TypeName>> {
     let (i, _) = stag("<").parse(i)?;
     let (i, _) = stag("?").parse(i)?;
     let (i, name) = opt(preceded(stag("="), type_name)).parse(i)?;
@@ -106,17 +105,17 @@ fn generic_decl(i: &str) -> R<Option<TypeName>> {
 }
 
 // <parameter-list> ::= <parameter> ("," <parameter>)*
-fn parameter_list(i: &str) -> R<Vec<Parameter>> {
+fn parameter_list(i: &str) -> R<'_, Vec<Parameter>> {
     separated_list0(stag(","), parameter).parse(i)
 }
 
 // <result-list> ::= <result> ("," <result>)*
-fn result_list(i: &str) -> R<Vec<Result_>> {
+fn result_list(i: &str) -> R<'_, Vec<Result_>> {
     separated_list0(stag(","), result).parse(i)
 }
 
 // <parameter> ::= <identifier> ":" <type-spec> ["=" <literal-expr>]
-fn parameter(i: &str) -> R<Parameter> {
+fn parameter(i: &str) -> R<'_, Parameter> {
     map(
         pair(
             separated_pair(identifier, stag(":"), type_spec),
@@ -128,12 +127,12 @@ fn parameter(i: &str) -> R<Parameter> {
 }
 
 // <result> ::= <identifier> ":" <type-spec>
-fn result(i: &str) -> R<Result_> {
+fn result(i: &str) -> R<'_, Result_> {
     map(separated_pair(identifier, stag(":"), type_spec), |(id, spec)| Result_ { id, spec })
         .parse(i)
 }
 
-fn literal_expr(i: &str) -> R<Literal> {
+fn literal_expr(i: &str) -> R<'_, Literal> {
     spaced(alt((
         literal,
         map(delimited(stag("["), separated_list0(stag(","), literal), stag("]")), Literal::Array),
@@ -143,8 +142,8 @@ fn literal_expr(i: &str) -> R<Literal> {
 }
 
 // <type-spec> ::= <type-name> | <tensor-type-spec> | <array-type-spec> | <tuple-type-spec>
-fn type_spec(i: &str) -> R<TypeSpec> {
-    fn non_array_type(i: &str) -> R<TypeSpec> {
+fn type_spec(i: &str) -> R<'_, TypeSpec> {
+    fn non_array_type(i: &str) -> R<'_, TypeSpec> {
         alt((tuple_type_spec, map(type_name, TypeSpec::Single), tensor_type_spec)).parse(i)
     }
     alt((
@@ -157,7 +156,7 @@ fn type_spec(i: &str) -> R<TypeSpec> {
 }
 
 // <type-name> ::= "integer" | "scalar" | "logical" | "string" | "?"
-fn type_name(i: &str) -> R<TypeName> {
+fn type_name(i: &str) -> R<'_, TypeName> {
     spaced(alt((
         map(tag("integer"), |_| TypeName::Integer),
         map(tag("scalar"), |_| TypeName::Scalar),
@@ -171,12 +170,12 @@ fn type_name(i: &str) -> R<TypeName> {
 }
 
 // <tensor-type-spec> ::= "tensor" "<" [<type-name>] ">"
-fn tensor_type_spec(i: &str) -> R<TypeSpec> {
+fn tensor_type_spec(i: &str) -> R<'_, TypeSpec> {
     map(delimited(pair(stag("tensor"), stag("<")), type_name, stag(">")), TypeSpec::Tensor).parse(i)
 }
 
 // <tuple-type-spec> ::= "(" <type-spec> ("," <type-spec>)+ ")"
-fn tuple_type_spec(i: &str) -> R<TypeSpec> {
+fn tuple_type_spec(i: &str) -> R<'_, TypeSpec> {
     map(delimited(stag("("), separated_list0(stag(","), type_spec), stag(")")), TypeSpec::Tuple)
         .parse(i)
 }
@@ -186,7 +185,7 @@ fn tuple_type_spec(i: &str) -> R<TypeSpec> {
 // <graph-definition> ::= <graph-declaration> <body>
 // <graph-declaration> ::= "graph" <identifier> "(" <identifier-list> ")" "->" "(" <identifier-list> ")"
 // <identifier-list> ::= <identifier> ("," <identifier>)*
-fn graph_def(i: &str) -> R<GraphDef> {
+fn graph_def(i: &str) -> R<'_, GraphDef> {
     let (i, _) = stag("graph").parse(i)?;
     let (i, id) = identifier(i)?;
     let (i, _) = stag("(").parse(i)?;
@@ -203,12 +202,12 @@ fn graph_def(i: &str) -> R<GraphDef> {
 // BODY
 
 // <body> ::= "{" <assignment>+ "}"
-fn body(i: &str) -> R<Vec<Assignment>> {
+fn body(i: &str) -> R<'_, Vec<Assignment>> {
     delimited(stag("{"), many0(assignment), stag("}")).parse(i)
 }
 
 // <assignment> ::= <lvalue-expr> "=" <rvalue-expr> ";"
-fn assignment(i: &str) -> R<Assignment> {
+fn assignment(i: &str) -> R<'_, Assignment> {
     spaced(terminated(
         map(separated_pair(lvalue, stag("="), rvalue), |(left, right)| Assignment { left, right }),
         stag(";"),
@@ -219,8 +218,8 @@ fn assignment(i: &str) -> R<Assignment> {
 // <lvalue-expr> ::= <identifier> | <array-lvalue-expr> | <tuple-lvalue-expr>
 // <array-lvalue-expr> ::= "[" [<lvalue-expr> ("," <lvalue-expr>)* ] "]"
 // <tuple-lvalue-expr> ::= "(" <lvalue-expr> ("," <lvalue-expr>)+ ")" | <lvalue-expr> ("," <lvalue-expr>)+
-fn lvalue(i: &str) -> R<LValue> {
-    fn inner_lvalue(i: &str) -> R<LValue> {
+fn lvalue(i: &str) -> R<'_, LValue> {
+    fn inner_lvalue(i: &str) -> R<'_, LValue> {
         alt((
             map(
                 delimited(stag("["), separated_list0(stag(","), inner_lvalue), stag("]")),
@@ -246,7 +245,7 @@ fn lvalue(i: &str) -> R<LValue> {
 }
 
 // <invocation> ::= <identifier> ["<" <type-name> ">"] "(" <argument-list> ")"
-fn invocation(i: &str) -> R<Invocation> {
+fn invocation(i: &str) -> R<'_, Invocation> {
     let (i, id) = spaced(identifier).parse(i)?;
     let (i, generic_type_name) = opt(delimited(stag("<"), type_name, stag(">"))).parse(i)?;
     let (i, _) = stag("(").parse(i)?;
@@ -256,12 +255,12 @@ fn invocation(i: &str) -> R<Invocation> {
 }
 
 // <argument-list> ::= <argument> ("," <argument>)*
-fn argument_list(i: &str) -> R<Vec<Argument>> {
+fn argument_list(i: &str) -> R<'_, Vec<Argument>> {
     separated_list0(stag(","), argument).parse(i)
 }
 
 // <argument> ::= <rvalue-expr> | <identifier> "=" <rvalue-expr>
-fn argument(i: &str) -> R<Argument> {
+fn argument(i: &str) -> R<'_, Argument> {
     spaced(map(pair(opt(terminated(identifier, stag("="))), rvalue), |(id, rvalue)| Argument {
         id,
         rvalue,
@@ -272,8 +271,8 @@ fn argument(i: &str) -> R<Argument> {
 //<rvalue-expr> ::= <identifier> | <literal> | <binary-expr> | <unary-expr> | <paren-expr>
 //                  | <array-rvalue-expr> | <tuple-rvalue-expr> | <subscript-expr> | <if-else-expr>
 //                  | <comprehension-expr> | <builtin-expr> | <invocation>
-fn rvalue(i: &str) -> R<RValue> {
-    fn atom(i: &str) -> R<RValue> {
+fn rvalue(i: &str) -> R<'_, RValue> {
+    fn atom(i: &str) -> R<'_, RValue> {
         spaced(alt((
             map(invocation, RValue::Invocation),
             map(literal, RValue::Literal),
@@ -297,7 +296,7 @@ fn rvalue(i: &str) -> R<RValue> {
     }
     macro_rules! bin {
         ($name:ident, $operand: ident, $operator: expr) => {
-            fn $name(i: &str) -> R<RValue> {
+            fn $name(i: &str) -> R<'_, RValue> {
                 let (i, init) = $operand(i)?;
                 fold_many0(
                     pair($operator, $operand),
@@ -312,7 +311,7 @@ fn rvalue(i: &str) -> R<RValue> {
     }
 
     // <subscript-expr> ::= <rvalue-expr> "[" (<rvalue-expr> | [<rvalue-expr>] ":" [<rvalue-expr>]) "]"
-    fn sub(i: &str) -> R<RValue> {
+    fn sub(i: &str) -> R<'_, RValue> {
         alt((
             map(
                 pair(
@@ -343,7 +342,7 @@ fn rvalue(i: &str) -> R<RValue> {
     bin!(in_for, boolean, tag("in"));
 
     // <if-else-expr> ::= <rvalue-expr> "if" <rvalue-expr> "else" <rvalue-expr>
-    fn ite(i: &str) -> R<RValue> {
+    fn ite(i: &str) -> R<'_, RValue> {
         let (i, leftmost) = in_for(i)?;
         let (i, _) = space_and_comments(i)?;
         if i.starts_with("if") {
@@ -361,7 +360,7 @@ fn rvalue(i: &str) -> R<RValue> {
 }
 
 // <comprehension-expr> ::= "[" "for" <loop-iter-list> ["if" <rvalue-expr>] "yield" <rvalue-expr> "]"
-fn comprehension_expr(i: &str) -> R<Comprehension> {
+fn comprehension_expr(i: &str) -> R<'_, Comprehension> {
     delimited(
         pair(stag("["), stag("for")),
         map(separated_pair(loop_iters, stag("yield"), rvalue), |(loop_iters, yields)| {
@@ -374,7 +373,7 @@ fn comprehension_expr(i: &str) -> R<Comprehension> {
 
 // <loop-iter> ::= <identifier> "in" <rvalue-expr>
 // <loop-iter-list> ::= <loop-iter> ("," <loop-iter>)*
-fn loop_iters(i: &str) -> R<Vec<(Identifier, RValue)>> {
+fn loop_iters(i: &str) -> R<'_, Vec<(Identifier, RValue)>> {
     separated_list0(stag(","), separated_pair(identifier, stag("in"), rvalue)).parse(i)
 }
 
@@ -382,11 +381,11 @@ fn loop_iters(i: &str) -> R<Vec<(Identifier, RValue)>> {
 
 // identifier: identifiers must consist of the following ASCII characters: _, [a-z], [A-Z], [0-9].
 // The identifier must not start with a digit.
-pub(super) fn identifier(i: &str) -> R<Identifier> {
+pub(super) fn identifier(i: &str) -> R<'_, Identifier> {
     alt((escaped_identifier, direct_identifier)).parse(i)
 }
 
-pub(super) fn direct_identifier(i: &str) -> R<Identifier> {
+pub(super) fn direct_identifier(i: &str) -> R<'_, Identifier> {
     map(
         recognize(pair(alt((alpha1, tag("_"))), many0(alt((alphanumeric1, tag("_")))))),
         Identifier::from,
@@ -394,12 +393,12 @@ pub(super) fn direct_identifier(i: &str) -> R<Identifier> {
     .parse(i)
 }
 
-pub(super) fn escaped_identifier(i: &str) -> R<Identifier> {
+pub(super) fn escaped_identifier(i: &str) -> R<'_, Identifier> {
     map(preceded(tag("i"), string_literal), Identifier).parse(i)
 }
 
 // <literal> ::= <numeric-literal> | <string-literal> | <logical-literal>
-fn literal(i: &str) -> R<Literal> {
+fn literal(i: &str) -> R<'_, Literal> {
     spaced(alt((
         map(numeric_literal, Literal::Numeric),
         map(string_literal, Literal::String),
@@ -408,11 +407,11 @@ fn literal(i: &str) -> R<Literal> {
     .parse(i)
 }
 
-pub(super) fn numeric_literal(i: &str) -> R<String> {
-    fn exp_part(i: &str) -> R<&str> {
+pub(super) fn numeric_literal(i: &str) -> R<'_, String> {
+    fn exp_part(i: &str) -> R<'_, &str> {
         recognize((one_of("eE"), opt(tag("-")), digit1)).parse(i)
     }
-    fn frac_part(i: &str) -> R<&str> {
+    fn frac_part(i: &str) -> R<'_, &str> {
         recognize((tag("."), digit0)).parse(i)
     }
     spaced(map(
@@ -422,8 +421,8 @@ pub(super) fn numeric_literal(i: &str) -> R<String> {
     .parse(i)
 }
 
-fn string_literal(i: &str) -> R<String> {
-    fn inner(i: &str) -> R<String> {
+fn string_literal(i: &str) -> R<'_, String> {
+    fn inner(i: &str) -> R<'_, String> {
         map(
             many0(alt((
                 preceded(tag("\\"), nom::character::complete::anychar),
@@ -437,13 +436,13 @@ fn string_literal(i: &str) -> R<String> {
         .parse(i)
 }
 
-pub(super) fn logical_literal(i: &str) -> R<bool> {
+pub(super) fn logical_literal(i: &str) -> R<'_, bool> {
     spaced(alt((map(tag("true"), |_| true), map(tag("false"), |_| false)))).parse(i)
 }
 
 // SPACES
 
-fn space_and_comments(i: &str) -> R<()> {
+fn space_and_comments(i: &str) -> R<'_, ()> {
     map(
         many0(alt((recognize(one_of(" \t\n\r")), recognize((tag("#"), many0(none_of("\r\n"))))))),
         |_| (),
