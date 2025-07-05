@@ -6,7 +6,7 @@ use tract_gpu::tensor::DeviceTensor;
 use crate::context::cuda_context;
 use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::utils::compute_broadcast_strides;
-use crate::kernels::{LibraryName, get_cuda_view};
+use crate::kernels::{get_cuda_view, LibraryName};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum BinOps {
@@ -27,7 +27,7 @@ pub enum BinOps {
 
 impl fmt::Display for BinOps {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -48,18 +48,22 @@ impl BinOps {
         Self::Or,
     ];
 
-    pub fn name(&self) -> Cow<str> {
-        format!("{}", self).into()
+    pub fn name(&self) -> Cow<'_, str> {
+        format!("{self}").into()
     }
 
     pub fn output_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
         ensure!(a == b);
-        if self.is_logic() { Ok(DatumType::Bool) } else { Ok(a) }
+        if self.is_logic() {
+            Ok(DatumType::Bool)
+        } else {
+            Ok(a)
+        }
     }
 
     pub fn output_shape<D: DimLike>(&self, a: &[D], b: &[D]) -> TractResult<TVec<D>> {
         tract_core::broadcast::multi_broadcast(&[a, b])
-            .with_context(|| format!("Error while broadcasting {:?} {:?}", a, b))
+            .with_context(|| format!("Error while broadcasting {a:?} {b:?}"))
     }
 
     pub fn all_functions() -> Vec<String> {
@@ -246,7 +250,7 @@ impl BinOps {
             block_dim: (block_dim_x as _, block_dim_y as _, block_dim_z as _),
             shared_mem_bytes: 0,
         };
-    
+
         let lhs_view = get_cuda_view(lhs);
         let rhs_view = get_cuda_view(rhs);
         let o_view = get_cuda_view(output);

@@ -18,6 +18,7 @@ maintenance = { status = "actively-developed" }
 byteorder.workspace = true
 log.workspace = true
 nom.workspace = true
+nom-language.workspace = true
 tar.workspace = true
 flate2 = { workspace = true, optional = true }
 walkdir.workspace = true
