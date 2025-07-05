@@ -172,7 +172,8 @@ memmap2 = "0.9"
 metal = { version = "0.30.0" }
 ndarray = "0.16"
 ndarray-npy = { version = "0.9.1", features = [ "compressed_npz" ] }
-nom = "7.0.0"
+nom = "8.0.0"
+nom-language = "0.1"
 nu-ansi-term = "0.46"
 num-complex = "0.4.0"
 num-integer = "0.1.44"
