@@ -1,4 +1,3 @@
-#![allow(mismatched_lifetime_syntaxes)]
 use super::*;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
@@ -111,11 +110,11 @@ fn identifier<'i>(symbol_table: &SymbolScope, i: &'i str) -> R<'i, Symbol> {
     .parse(i)
 }
 
-fn numeric(i: &str) -> R<i64> {
+fn numeric(i: &str) -> R<'_, i64> {
     map_res(digit1, std::str::FromStr::from_str).parse(i)
 }
 
-fn spaces(i: &str) -> R<()> {
+fn spaces(i: &str) -> R<'_, ()> {
     map(many0(one_of(" \t\n\r")), |_| ()).parse(i)
 }
 
