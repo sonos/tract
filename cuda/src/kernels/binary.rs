@@ -27,7 +27,7 @@ pub enum BinOps {
 
 impl fmt::Display for BinOps {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -49,7 +49,7 @@ impl BinOps {
     ];
 
     pub fn name(&self) -> Cow<'_, str> {
-        format!("{}", self).into()
+        format!("{self}").into()
     }
 
     pub fn output_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
@@ -63,7 +63,7 @@ impl BinOps {
 
     pub fn output_shape<D: DimLike>(&self, a: &[D], b: &[D]) -> TractResult<TVec<D>> {
         tract_core::broadcast::multi_broadcast(&[a, b])
-            .with_context(|| format!("Error while broadcasting {:?} {:?}", a, b))
+            .with_context(|| format!("Error while broadcasting {a:?} {b:?}"))
     }
 
     pub fn all_functions() -> Vec<String> {

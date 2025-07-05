@@ -40,7 +40,7 @@ pub enum UnaryOps {
 
 impl fmt::Display for UnaryOps {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -80,7 +80,7 @@ impl UnaryOps {
     }
 
     pub fn name<'s>(&'s self) -> Cow<'s, str> {
-        format!("{}", self).into()
+        format!("{self}").into()
     }
     pub fn all_functions() -> Vec<String> {
         Self::ALL
