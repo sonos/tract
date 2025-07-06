@@ -2,7 +2,9 @@ use std::path::Path;
 
 use crate::ast::{Document, QuantFormat};
 use crate::internal::*;
+use safetensors::SafeTensors;
 use tract_core::downcast_rs::{impl_downcast, DowncastSync};
+use tract_core::tract_data::itertools::Itertools;
 
 pub const GRAPH_NNEF_FILENAME: &str = "graph.nnef";
 pub const GRAPH_QUANT_FILENAME: &str = "graph.quant";
@@ -158,13 +160,11 @@ impl ResourceLoader for TypedModelLoader {
             };
 
             let label = if path_str.ends_with(NNEF_TGZ) {
-                path
-                    .to_str()
+                path.to_str()
                     .ok_or_else(|| anyhow!("invalid model resource path"))?
                     .trim_end_matches(NNEF_TGZ)
             } else {
-                path
-                    .to_str()
+                path.to_str()
                     .ok_or_else(|| anyhow!("invalid model resource path"))?
                     .trim_end_matches(NNEF_TAR)
             };
@@ -179,3 +179,40 @@ impl ResourceLoader for TypedModelLoader {
 pub struct TypedModelResource(pub TypedModel);
 
 impl Resource for TypedModelResource {}
+
+pub struct SafeTensorsLoader;
+
+impl ResourceLoader for SafeTensorsLoader {
+    fn name(&self) -> StaticName {
+        "SafeTensorsLoader".into()
+    }
+
+    fn try_load(
+        &self,
+        path: &Path,
+        reader: &mut dyn std::io::Read,
+        _framework: &Nnef,
+    ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
+        if path.extension().is_some_and(|e| e == "safetensors") {
+            let mut buffer = vec![];
+            reader.read_to_end(&mut buffer)?;
+            let tensors: Vec<(String, Arc<Tensor>)> = SafeTensors::deserialize(&buffer)?
+                .tensors()
+                .into_iter()
+                .map(|(name, t)| {
+                    let dt = match t.dtype() {
+                        safetensors::Dtype::F32 => DatumType::F32,
+                        safetensors::Dtype::F16 => DatumType::F16,
+                        _ => panic!(),
+                    };
+                    let tensor = unsafe { Tensor::from_raw_dt(dt, t.shape(), t.data()).unwrap() };
+                    (name, tensor.into_arc_tensor())
+                })
+                .collect_vec();
+            return Ok(Some((path.to_string_lossy().to_string(), Arc::new(tensors))));
+        }
+        Ok(None)
+    }
+}
+
+impl Resource for Vec<(String, Arc<Tensor>)> {}
