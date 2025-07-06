@@ -229,6 +229,8 @@ impl Registry {
                 && bin.1.operating_datum_type(a_dt, b_dt).map(|it| it == a_dt).unwrap_or(false)
             {
                 a_dt
+            } else if a_dt == String::datum_type() || b_dt == String::datum_type() {
+                String::datum_type()
             } else if a_dt == TDim::datum_type() || b_dt == TDim::datum_type() {
                 bin.1.operating_datum_type(a_dt, b_dt)?
             // assume scalar are inline and we should not trust their DT
