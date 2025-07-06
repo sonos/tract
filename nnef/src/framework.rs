@@ -4,6 +4,7 @@ use tract_core::transform::ModelTransform;
 
 use crate::ast::quant::write_quant_format;
 use crate::ast::{Document, Identifier, ProtoModel, QuantFormat};
+use crate::resource::SafeTensorsLoader;
 use crate::{internal::*, nnef};
 use std::io::Read;
 #[cfg(target_family = "unix")]
@@ -32,6 +33,7 @@ impl Default for Nnef {
                 DatLoader.into_boxed(),
                 GraphQuantLoader.into_boxed(),
                 TypedModelLoader::new(false).into_boxed(),
+                SafeTensorsLoader.into_boxed(),
             ],
             allow_extended_identifier_syntax: false,
         }
@@ -393,7 +395,7 @@ fn proto_model_from_resources(
             .map_err(|_| anyhow!("Error while extracting NNEF Document from shared reference. Only one reference to the document is expected"))?;
 
     // Collect all resources that can be downcastable to Arc<Tensor>.
-    let tensors: HashMap<_, _> = new_resources
+    let mut tensors: HashMap<_, _> = new_resources
         .iter()
         .filter_map(|(key, resource)| {
             Arc::clone(resource)
@@ -402,10 +404,15 @@ fn proto_model_from_resources(
                 .map(|r| (Identifier::from(&**key), r))
         })
         .collect();
-    // Iterate over tensors keys to remove them from the global resources hash map.
-    tensors.keys().for_each(|k| {
-        new_resources.remove(&*k.0);
-    });
+
+    for (_, r) in &new_resources {
+        if let Some(safe_tensors) = r.downcast_ref::<Vec<(String, Arc<Tensor>)>>() {
+            for (name, t) in safe_tensors.iter() {
+                tensors.insert(Identifier::from(&**name), Arc::clone(t));
+            }
+        }
+    }
+    new_resources.retain(|_, r| !r.is::<Tensor>() && !r.is::<Vec<(String, Arc<Tensor>)>>());
 
     // Quantization format resources extraction if present.
     let quantization = if let Some(q_r) =

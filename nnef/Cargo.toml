@@ -19,6 +19,7 @@ byteorder.workspace = true
 log.workspace = true
 nom.workspace = true
 nom-language.workspace = true
+safetensors.workspace = true
 tar.workspace = true
 flate2 = { workspace = true, optional = true }
 walkdir.workspace = true
