@@ -405,7 +405,7 @@ fn proto_model_from_resources(
         })
         .collect();
 
-    for (_, r) in &new_resources {
+    for r in new_resources.values() {
         if let Some(safe_tensors) = r.downcast_ref::<Vec<(String, Arc<Tensor>)>>() {
             for (name, t) in safe_tensors.iter() {
                 tensors.insert(Identifier::from(&**name), Arc::clone(t));
