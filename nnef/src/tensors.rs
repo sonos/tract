@@ -283,7 +283,7 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
     let q_k = shape.iter().skip(1).product::<usize>();
     ensure!(q_k % format.block_len() == 0);
     let expected_len = (q_m * q_k) / format.block_len() * format.block_bytes();
-    ensure!(expected_len == header.data_size_bytes as _);
+    ensure!(expected_len == header.data_size_bytes as usize);
     let mut blob = unsafe { Blob::new_for_size_and_align(expected_len, 128) };
     r.read_exact(&mut blob)?;
     if header.item_type == 0x2040 {
