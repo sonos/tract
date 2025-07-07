@@ -19,7 +19,7 @@ use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
 use tract_transformers::ops::silu::Silu;
 
 use crate::context::cuda_context;
-use crate::{kernels, ops};
+use crate::{kernels, ops, rewrite_rules};
 
 #[derive(Debug, Default)]
 pub struct CudaTransform;
@@ -58,6 +58,12 @@ impl CudaTransform {
             return Ok(());
         }
 
+        Rewriter::default()
+            .with_rule_for("fuse_move_axis", rewrite_rules::fuse_move_axis)
+            .rewrite(&(), model)?;
+        Rewriter::default()
+            .with_rule_for("fuse_axis_op", rewrite_rules::fuse_axis_op)
+            .rewrite(&(), model)?;
         rewire_syncs(model)?;
         Ok(())
     }
