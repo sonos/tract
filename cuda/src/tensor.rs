@@ -112,6 +112,7 @@ impl OwnedDeviceTensor for CudaTensor {
 
             let t: Tensor = if let Some(bqf) = &self.block_quant_fact {
                 ensure!(bqf.format.same_as(&Q4_0));
+                ensure!(self.shape.iter().product::<usize>() == 1, "Only support Scalar Opaque");
                 let bqv =
                     BlockQuantValue { fact: bqf.clone(), value: Arc::new(Blob::from_bytes(&res)?) };
                 Opaque(Arc::new(bqv)).into()
@@ -119,7 +120,7 @@ impl OwnedDeviceTensor for CudaTensor {
                 unsafe { Tensor::from_raw_dt(self.datum_type, &self.shape, &res)? }
             };
 
-            Ok(Arc::new(t))
+            Ok(Arc::new(t.into_shape(&self.shape)?))
         })
     }
 
