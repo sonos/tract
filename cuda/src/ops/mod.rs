@@ -5,6 +5,7 @@ mod change_axes;
 mod concat;
 mod dyn_kv_cache;
 mod rotate_half;
+mod fused_axis_op;
 mod slice;
 mod unary;
 
@@ -14,6 +15,7 @@ pub use cast::CudaCast;
 pub use change_axes::CudaAxisOp;
 pub use concat::CudaConcat;
 pub use dyn_kv_cache::CudaDynKVCache;
+pub use fused_axis_op::CudaFusedAxisOp;
 pub use rotate_half::CudaRotateHalf;
 pub use slice::CudaSlice;
 pub use unary::CudaUnaryOp;
