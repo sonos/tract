@@ -53,7 +53,7 @@ impl DeviceTensor {
             DatumType::I64 => "i64",
             DatumType::Bool => "bool",
             DatumType::Opaque => "opaque",
-            _ => bail!("Unsupport dt {:?} for GPU Tensor", dt),
+            _ => bail!("Unsupported dt {:?} for GPU Tensor", dt),
         })
     }
 

@@ -14,7 +14,7 @@ impl Softmax {
     }
 
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal softmax  op", dt);
+        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal softmaxop", dt);
         let tname = DeviceTensor::tname(dt)?;
         Ok(format!("nn_ops::softmax_nd3_{tname}"))
     }

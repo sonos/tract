@@ -173,7 +173,7 @@ impl BinOps {
     }
 
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
-        ensure!(self.is_supported_dt(dt), "Unsupport dt {:?} for Cuda binary ops: {self}", dt);
+        ensure!(self.is_supported_dt(dt), "Unsupported dt {:?} for Cuda binary ops: {self}", dt);
 
         let tname = DeviceTensor::tname(dt)?;
 

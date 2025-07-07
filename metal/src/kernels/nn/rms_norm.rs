@@ -14,7 +14,7 @@ impl RmsNorm {
     }
 
     pub fn kernel_name(&self, dt: DatumType, is_l4: bool) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal rms  op", dt);
+        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal rmsop", dt);
         let tname = DeviceTensor::tname(dt)?;
         if !is_l4 {
             Ok(format!("nn_ops::rms_norm_nd3_{tname}"))

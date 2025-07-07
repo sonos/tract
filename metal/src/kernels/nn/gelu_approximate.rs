@@ -23,7 +23,7 @@ impl GeluApproximate {
     }
 
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal gelu  op", dt);
+        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal geluop", dt);
         let tname = DeviceTensor::tname(dt)?;
         if self.fast_impl {
             Ok(format!("nn_ops::gelu_approx_fast_{tname}"))
