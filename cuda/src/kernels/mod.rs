@@ -2,6 +2,7 @@
 
 pub mod array;
 mod binary;
+mod nn;
 mod launch_args;
 mod unary;
 mod utils;
@@ -18,12 +19,14 @@ use crate::tensor::CudaBuffer;
 const UNARY_OPS: &str = include_str!("ptx/unary.ptx");
 const BINARY_OPS: &str = include_str!("ptx/binary.ptx");
 const ARRAY_OPS: &str = include_str!("ptx/array.ptx");
+const NN_OPS: &str = include_str!("ptx/nn.ptx");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LibraryName {
     Unary,
     Binary,
     Array,
+    NN,
 }
 
 impl LibraryName {
@@ -32,6 +35,7 @@ impl LibraryName {
             Self::Unary => UNARY_OPS,
             Self::Binary => BINARY_OPS,
             Self::Array => ARRAY_OPS,
+            Self::NN => NN_OPS,
         }
     }
 }
