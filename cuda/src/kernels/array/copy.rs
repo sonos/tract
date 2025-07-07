@@ -54,7 +54,11 @@ impl Memcpy {
 
         let func = cuda_context().load_pipeline(LibraryName::Array, kernel_name)?;
 
-        let i_view = get_cuda_view(input);
+        let i_view = get_sliced_cuda_view(
+            input,
+            input_offset,
+            input.len() * input.datum_type().size_of() - input_offset,
+        )?;
         let o_view = get_cuda_view(output);
         let len = output.len();
 
@@ -118,7 +122,7 @@ mod tests {
     #[test]
     fn test_cpy() -> TractResult<()> {
         run_test_case(&[3, 4], 0)?;
-        //run_test_case(&[2, 5], 2 * size_of::<f32>())?;
+        run_test_case(&[2, 5], 2 * size_of::<f32>())?;
         Ok(())
     }
 }
