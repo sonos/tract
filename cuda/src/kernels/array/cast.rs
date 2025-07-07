@@ -37,10 +37,10 @@ impl Cast {
     pub fn kernel_name(&self, from_dt: DatumType, to_dt: DatumType) -> TractResult<String> {
         ensure!(
             Self::is_supported_dt(from_dt),
-            "Unsupported from_dt {:?} for cuda cast  op",
+            "Unsupported from_dt {:?} for cuda castop",
             from_dt
         );
-        ensure!(Self::is_supported_dt(to_dt), "Unsupported to_dt {:?} for cuda cast  op", to_dt);
+        ensure!(Self::is_supported_dt(to_dt), "Unsupported to_dt {:?} for cuda castop", to_dt);
         let from_tname = DeviceTensor::tname(from_dt)?;
         let to_tname = DeviceTensor::tname(to_dt)?;
         Ok(format!("cast_{from_tname}_{to_tname}"))

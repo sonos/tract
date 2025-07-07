@@ -23,7 +23,7 @@ impl Reducer {
     }
 
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal reduce  op", dt);
+        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal reduceop", dt);
         let tname = DeviceTensor::tname(dt)?;
         let op = match self {
             Self::MeanOfSquares => "mean_of_squares",

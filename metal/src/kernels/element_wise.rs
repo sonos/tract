@@ -135,10 +135,10 @@ impl ElementWiseOps {
 
     pub fn kernel_name(&self, dt: DatumType, in_place: bool) -> TractResult<String> {
         if self.float_only() && !matches!(dt, DatumType::F32 | DatumType::F16) {
-            bail!("Unsupport dt for metal element wise ops: {:?}", self);
+            bail!("Unsupported dt for metal element wise ops: {:?}", self);
         }
 
-        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal element wise ops", dt);
+        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal element wise ops", dt);
 
         let tname = DeviceTensor::tname(dt)?;
 

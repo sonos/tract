@@ -35,7 +35,7 @@ impl Concat {
     }
 
     pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal concat  op", dt);
+        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal concatop", dt);
         let tname = DeviceTensor::tname(dt)?;
         let broadcast_name = broadcast_kind.name();
         Ok(format!("array_ops::copy_{broadcast_name}_{tname}"))

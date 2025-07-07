@@ -34,7 +34,7 @@ impl PermuteAxes {
     }
 
     pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for cuda permute axes  op", dt);
+        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for cuda permute axesop", dt);
         let tname = DeviceTensor::tname(dt)?;
         let broadcast_name = broadcast_kind.name();
         Ok(format!("copy_{broadcast_name}_{tname}"))
