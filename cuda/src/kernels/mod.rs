@@ -16,6 +16,8 @@ pub use unary::UnaryOps;
 
 use crate::tensor::CudaBuffer;
 
+const MAX_THREADS: usize = 1024;
+
 const UNARY_OPS: &str = include_str!("ptx/unary.ptx");
 const BINARY_OPS: &str = include_str!("ptx/binary.ptx");
 const ARRAY_OPS: &str = include_str!("ptx/array.ptx");

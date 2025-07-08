@@ -6,7 +6,7 @@ use tract_gpu::tensor::DeviceTensor;
 use crate::context::cuda_context;
 use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::utils::compute_broadcast_strides;
-use crate::kernels::{get_cuda_view, LibraryName};
+use crate::kernels::{get_cuda_view, LibraryName, MAX_THREADS};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum BinOps {
@@ -235,12 +235,11 @@ impl BinOps {
 
         let func = cuda_context().load_pipeline(LibraryName::Binary, kernel_name)?;
 
-        let max_threads = 1024;
         let half_inner_ax = (out_shape[3] / 2).max(1);
-        let block_dim_x = half_inner_ax.min(max_threads);
-        let block_dim_y = out_shape[2].min(max_threads / block_dim_x);
+        let block_dim_x = half_inner_ax.min(MAX_THREADS);
+        let block_dim_y = out_shape[2].min(MAX_THREADS / block_dim_x);
         let block_dim_z =
-            (out_shape[1] * out_shape[0]).min(max_threads / (block_dim_x * block_dim_y)).min(64);
+            (out_shape[1] * out_shape[0]).min(MAX_THREADS / (block_dim_x * block_dim_y)).min(64);
 
         let cfg = LaunchConfig {
             grid_dim: (

@@ -2,6 +2,8 @@ use cudarc::driver::LaunchConfig;
 use num_traits::{AsPrimitive, Zero};
 use tract_core::internal::*;
 
+use crate::kernels::MAX_THREADS;
+
 pub fn compute_broadcast_strides<T: Zero + Copy + 'static>(
     shape: &[usize],
     strides: &[isize],
@@ -27,8 +29,6 @@ pub fn reshape_to_rank_2(shape: &[usize], axis: usize) -> TVec<usize> {
 }
 
 pub fn cuda_launch_cfg_for_cpy(shape: &[usize]) -> LaunchConfig {
-    const MAX_THREAD: usize = 1024;
-
     let grid_dim = match shape.len() {
         0 => panic!("Unexpected empty shape while build grid size"),
         1 => (1, 1, 1),
@@ -42,7 +42,7 @@ pub fn cuda_launch_cfg_for_cpy(shape: &[usize]) -> LaunchConfig {
     };
     LaunchConfig {
         grid_dim,
-        block_dim: (shape[shape.len() - 1].min(MAX_THREAD) as _, 1, 1),
+        block_dim: (shape[shape.len() - 1].min(MAX_THREADS) as _, 1, 1),
         shared_mem_bytes: 0,
     }
 }
