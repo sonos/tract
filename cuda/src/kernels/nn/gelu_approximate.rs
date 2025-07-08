@@ -24,7 +24,7 @@ impl GeluApproximate {
     }
 
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal geluop", dt);
+        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for cuda geluop", dt);
         let tname = DeviceTensor::tname(dt)?;
         if self.fast_impl {
             Ok(format!("gelu_approx_fast_{tname}"))
@@ -111,17 +111,17 @@ mod tests {
                 .eval(tvec![a.to_host()?.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
-            let metal_output = gelu_approx.eval(stream, &a)?;
+            let cuda_output = gelu_approx.eval(stream, &a)?;
 
             cpu_output
-                .close_enough(&metal_output.to_host()?.into_tensor(), approximate)
+                .close_enough(&cuda_output.to_host()?.into_tensor(), approximate)
                 .with_context(|| {
                     format!(
                         "Input: {:?}, scale: {:?} Cpu: {:?}, Cuda: {:?}",
                         a.to_host().and_then(|it| it.dump(true)),
                         scale,
                         cpu_output.dump(true),
-                        metal_output.to_host().and_then(|it| it.dump(true))
+                        cuda_output.to_host().and_then(|it| it.dump(true))
                     )
                 })?;
             Ok(())
@@ -263,8 +263,8 @@ mod tests {
         pub fn run(&self) -> TractResult<Tensor> {
             CUDA_STREAM.with(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
-                let metal_output = GeluApproximate::accurate().eval(stream, &a)?;
-                Ok(metal_output.to_host()?.into_tensor())
+                let cuda_output = GeluApproximate::accurate().eval(stream, &a)?;
+                Ok(cuda_output.to_host()?.into_tensor())
             })
         }
     }
