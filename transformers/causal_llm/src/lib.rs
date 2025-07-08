@@ -2,12 +2,12 @@ use std::path::Path;
 
 use float_ord::FloatOrd;
 use tokenizers::Tokenizer;
-use tract_nnef::internal::{anyhow, TractErrorContext};
+use tract_nnef::internal::{TractErrorContext, anyhow};
 use tract_nnef::prelude::tract_itertools::Itertools;
 use tract_nnef::prelude::*;
 use tract_nnef::tract_core::ops::source::SourceState;
-use tract_transformers::ops::dyn_kv_cache::DynKeyValueCacheState;
 use tract_transformers::WithTractTransformers;
+use tract_transformers::ops::dyn_kv_cache::DynKeyValueCacheState;
 
 #[derive(Clone, Debug)]
 pub struct CausalLlmModel {
@@ -74,6 +74,12 @@ impl Default for CausalLlmStateConfig {
 }
 
 impl CausalLlmStateConfig {
+    pub fn new(prompt_chunk_size: Option<usize>) -> TractResult<Self> {
+        let conf = Self { prompt_chunk_size };
+        conf.validate()?;
+        Ok(conf)
+    }
+
     pub fn validate(&self) -> TractResult<()> {
         if let Some(chunk_size) = self.prompt_chunk_size {
             anyhow::ensure!(
