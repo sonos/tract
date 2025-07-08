@@ -150,11 +150,13 @@ impl TypedOp for EinSumMatMul {
         } else if let Some(of) = b.opaque_fact() {
             ensure!(of.is::<BlockQuantFact>());
             true
+        } else if self.m == self.n {
+            false
         } else {
             match (self.m.as_i64(), self.n.as_i64()) {
                 (Some(m), Some(n)) => m < n,
                 (None, Some(n)) => n >= 8,
-                _ => (self.n.clone() - &self.m).prove_strict_positive(),
+                _ => (self.n.clone() - &self.m).prove_positive_or_zero(),
             }
         };
         if must_transpose {
