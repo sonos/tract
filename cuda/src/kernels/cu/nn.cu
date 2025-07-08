@@ -4,6 +4,8 @@
 #define GELU_COEF_A    0.044715f
 #define SQRT_2_OVER_PI 0.79788456080286535587989211986876f
 
+#define WARP_SIZE 32
+
 extern "C" __global__ void gelu_approx_f32(
                 const float *input,
                 float *output,
@@ -180,74 +182,65 @@ extern "C" __global__ void apply_rope_nd4_##name(const T *input, const T *cos, c
             + input[idx] * sin[rot_cos_sin_idx]; \
 } \
 \
-//template<typename T>  
-//[[kernel]] void apply_rope_nd3(             
-//      device const void *input_b [[buffer(0)]],
-//      device const void *cos_b [[buffer(1)]],
-//      device const void *sin_b [[buffer(2)]],                 
-//      device void *output_b [[buffer(3)]],                        
-//      constant const size_t * shape [[buffer(4)]],
-//      constant const size_t * strides [[buffer(5)]],
-//      constant const size_t * cos_sin_strides [[buffer(6)]],
-//      constant const size_t * out_strides [[buffer(7)]],
-//      uint3 tpig[[thread_position_in_grid]]
-//) {
-//  device const T *input = (device const T *)input_b;
-//  device const T *cos = (device const T *)cos_b;
-//  device const T *sin = (device const T *)sin_b;
-//
-//  device T* output = (device T *) output_b;
-//
-//  uint3 rotated_tpig = tpig;
-//  rotated_tpig.x += shape[2] / 2;
-//
-//  auto idx = indices_to_idx_3(tpig, strides);
-//  auto rot_idx = indices_to_idx_3(rotated_tpig, strides);
-//  auto out_idx = indices_to_idx_3(tpig, out_strides);
-//  auto out_rot_idx = indices_to_idx_3(rotated_tpig, out_strides);
-//
-//  auto cos_sin_idx = indices_to_idx_3(tpig, cos_sin_strides);
-//  auto rot_cos_sin_idx = indices_to_idx_3(rotated_tpig, cos_sin_strides);
-//
-//  output[out_idx] = input[idx] * cos[cos_sin_idx] - input[rot_idx] * sin[cos_sin_idx];
-//  output[out_rot_idx] = input[rot_idx] * cos[rot_cos_sin_idx]
-//          + input[idx] * sin[rot_cos_sin_idx];
-//}
-//
-//template<typename T>  
-//[[kernel]] void apply_rope_nd4(             
-//      device const void *input_b [[buffer(0)]],
-//      device const void *cos_b [[buffer(1)]],
-//      device const void *sin_b [[buffer(2)]],                 
-//      device void *output_b [[buffer(3)]],                        
-//      constant const size_t * shape [[buffer(4)]],
-//      constant const size_t * strides [[buffer(5)]],
-//      constant const size_t * cos_sin_strides [[buffer(6)]],
-//      constant const size_t * out_strides [[buffer(7)]],
-//      uint3 tpig[[thread_position_in_grid]]
-//) {
-//  device const T *input = (device const T *)input_b;
-//  device const T *cos = (device const T *)cos_b;
-//  device const T *sin = (device const T *)sin_b;
-//
-//  device T* output = (device T *) output_b;
-//
-//  uint3 rotated_tpig = tpig;
-//  rotated_tpig.x += shape[3] / 2;
-//
-//  auto idx = indices_to_idx_4(tpig, shape, strides);
-//  auto rot_idx = indices_to_idx_4(rotated_tpig, shape, strides);
-//  auto out_idx = indices_to_idx_4(tpig, shape, out_strides);
-//  auto out_rot_idx = indices_to_idx_4(rotated_tpig, shape, out_strides);
-//
-//  auto cos_sin_idx = indices_to_idx_4(tpig, shape, cos_sin_strides);
-//  auto rot_cos_sin_idx = indices_to_idx_4(rotated_tpig, shape, cos_sin_strides);
-//
-//  output[out_idx] = input[idx] * cos[cos_sin_idx] - input[rot_idx] * sin[cos_sin_idx];
-//  output[out_rot_idx] = input[rot_idx] * cos[rot_cos_sin_idx]
-//          + input[idx] * sin[rot_cos_sin_idx];
-//}
-//
+
+template<int width = WARP_SIZE>
+static __device__ __forceinline__ float warp_reduce_sum(float x) {
+#pragma unroll
+    for (int offset = width/2; offset > 0; offset >>= 1) {
+        x += __shfl_xor_sync(0xffffffff, x, offset, width);
+    }
+    return x;
+}
+
+template<int width = WARP_SIZE>
+static __device__ __forceinline__ __half warp_reduce_sum(__half x) {
+#pragma unroll
+    for (int offset = width/2; offset > 0; offset >>= 1) {
+        x += __shfl_xor_sync(0xffffffff, x, offset, width);
+    }
+    return x;
+}
+
+#define INSTANTIATE_RMS_NORM(name, T, bname, block_size) \
+extern "C" __global__ void rms_norm_##bname##name( \
+        const T * x, T * dst, const int shape_3, const int stride_2, const int stride_1, \
+        const int stride_0, const T eps) { \
+    x   += blockIdx.z * stride_0 + blockIdx.y * stride_1 + blockIdx.x * stride_2; \
+    dst += ((blockIdx.z * gridDim.y + blockIdx.y) * gridDim.x + blockIdx.x) * shape_3; \
+ \
+    float tmp = 0.0f; \
+ \
+    for (int col = threadIdx.x; col < shape_3; col += block_size) { \
+        const float xi = x[col]; \
+        tmp += xi * xi; \
+    } \
+ \
+    tmp = warp_reduce_sum(tmp); \
+    if constexpr (block_size > WARP_SIZE) { \
+        __shared__ float s_sum[32]; \
+        const int warp_id = threadIdx.x / WARP_SIZE; \
+        const int lane_id = threadIdx.x % WARP_SIZE; \
+        if (lane_id == 0) { \
+            s_sum[warp_id] = tmp; \
+        } \
+        __syncthreads(); \
+        tmp = s_sum[lane_id]; \
+        tmp = warp_reduce_sum(tmp); \
+    } \
+\
+    float eps_f = (float) eps; \
+    const float mean = tmp / shape_3; \
+    const float scale = rsqrtf(mean + eps_f); \
+\
+    for (int col = threadIdx.x; col < shape_3; col += block_size) { \
+        dst[col] = (T) scale * x[col]; \
+    } \
+} \
 
 INSTANTIATE_APPLY_ROPE(f32, float)
 INSTANTIATE_APPLY_ROPE(f16, __half)
+
+INSTANTIATE_RMS_NORM(f32, float, small_, 32)
+INSTANTIATE_RMS_NORM(f32, float, , 1024)
+INSTANTIATE_RMS_NORM(f16, __half, small_, 32)
+INSTANTIATE_RMS_NORM(f16, __half, , 1024)
