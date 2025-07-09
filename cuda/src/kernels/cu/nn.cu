@@ -203,15 +203,14 @@ static __device__ __forceinline__ __half warp_reduce_sum(__half x) {
 
 #define INSTANTIATE_RMS_NORM(name, T, bname, block_size) \
 extern "C" __global__ void rms_norm_##bname##name( \
-        const T * x, T * dst, const int shape_3, const int stride_2, const int stride_1, \
-        const int stride_0, const T eps) { \
-    x   += blockIdx.z * stride_0 + blockIdx.y * stride_1 + blockIdx.x * stride_2; \
-    dst += ((blockIdx.z * gridDim.y + blockIdx.y) * gridDim.x + blockIdx.x) * shape_3; \
+        const T * x, T * dst, const int shape_0, const int shape_1, const int shape_2, \
+        const int strides_0, const int strides_1,const int strides_2, const T eps) { \
+    int base_idx = (blockIdx.x % shape_2) * strides_2 + (blockIdx.x / shape_2) * strides_0; \
  \
     float tmp = 0.0f; \
  \
-    for (int col = threadIdx.x; col < shape_3; col += block_size) { \
-        const float xi = x[col]; \
+    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) { \
+        const float xi = x[base_idx + i * strides_1]; \
         tmp += xi * xi; \
     } \
  \
@@ -229,11 +228,12 @@ extern "C" __global__ void rms_norm_##bname##name( \
     } \
 \
     float eps_f = (float) eps; \
-    const float mean = tmp / shape_3; \
+    const float mean = tmp / shape_1; \
     const float scale = rsqrtf(mean + eps_f); \
 \
-    for (int col = threadIdx.x; col < shape_3; col += block_size) { \
-        dst[col] = (T) scale * x[col]; \
+    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) { \
+        int idx =  base_idx + i * strides_1; \
+        dst[idx] = (T) scale * x[idx]; \
     } \
 } \
 

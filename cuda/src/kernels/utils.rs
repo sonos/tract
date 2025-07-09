@@ -28,6 +28,13 @@ pub fn reshape_to_rank_2(shape: &[usize], axis: usize) -> TVec<usize> {
     tvec![dim_axis_0, dim_axis_2]
 }
 
+pub fn reshape_to_rank_3(shape: &[usize], axis: usize) -> TVec<usize> {
+    let dim_axis_0 = shape[0..axis].iter().product::<usize>();
+    let dim_axis_1 = shape[axis];
+    let dim_axis_2 = shape[axis + 1..].iter().product::<usize>();
+    tvec![dim_axis_0, dim_axis_1, dim_axis_2]
+}
+
 pub fn cuda_launch_cfg_for_cpy(shape: &[usize]) -> LaunchConfig {
     let grid_dim = match shape.len() {
         0 => panic!("Unexpected empty shape while build grid size"),
