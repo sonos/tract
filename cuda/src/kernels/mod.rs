@@ -2,7 +2,7 @@
 
 pub mod array;
 mod binary;
-mod nn;
+pub mod nn;
 mod launch_args;
 mod unary;
 mod utils;

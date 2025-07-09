@@ -7,6 +7,7 @@ mod dyn_kv_cache;
 mod rotate_half;
 mod fused_axis_op;
 mod slice;
+mod rms_norm;
 mod unary;
 
 pub use binary::CudaBinOp;
@@ -19,3 +20,4 @@ pub use fused_axis_op::CudaFusedAxisOp;
 pub use rotate_half::CudaRotateHalf;
 pub use slice::CudaSlice;
 pub use unary::CudaUnaryOp;
+pub use rms_norm::CudaRmsNorm;
