@@ -104,7 +104,7 @@ pub fn fuse_axis_op(
         crate::ops::CudaBinOp,
         crate::ops::CudaMultiBroadcastTo,
         crate::ops::CudaUnaryOp,
-        //crate::ops::CudaRmsNorm,
+        crate::ops::CudaRmsNorm,
         //crate::ops::CudaGeluApproximate,
         //crate::ops::CudaSoftmax,
         crate::ops::CudaRotateHalf,
