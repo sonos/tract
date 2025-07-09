@@ -9,6 +9,8 @@ mod fused_axis_op;
 mod slice;
 mod rms_norm;
 mod unary;
+mod scaled_masked_softmax;
+mod softmax;
 
 pub use binary::CudaBinOp;
 pub use broadcast::CudaMultiBroadcastTo;
@@ -21,3 +23,5 @@ pub use rotate_half::CudaRotateHalf;
 pub use slice::CudaSlice;
 pub use unary::CudaUnaryOp;
 pub use rms_norm::CudaRmsNorm;
+pub use scaled_masked_softmax::CudaScaledMaskedSoftmax;
+pub use softmax::CudaSoftmax;
