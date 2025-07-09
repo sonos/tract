@@ -4,7 +4,8 @@
 #define GELU_COEF_A    0.044715f
 #define SQRT_2_OVER_PI 0.79788456080286535587989211986876f
 
-#define WARP_SIZE 32
+#define MAX_THREADS 1024
+#define WARP_SIZE   32
 
 extern "C" __global__ void gelu_approx_f32(
                 const float *input,
@@ -201,6 +202,183 @@ static __device__ __forceinline__ __half warp_reduce_sum(__half x) {
     return x;
 }
 
+template<int width = WARP_SIZE>
+static __device__ __forceinline__ float warp_reduce_max(float x) {
+#pragma unroll
+    for (int offset = width/2; offset > 0; offset >>= 1) {
+        x = fmaxf(x, __shfl_xor_sync(0xffffffff, x, offset, width));
+    }
+    return x;
+}
+
+template<int width = WARP_SIZE>
+static __device__ __forceinline__ __half warp_reduce_max(__half x) {
+#pragma unroll
+   for (int offset = width/2; offset > 0; offset >>= 1) {
+       x = __hmax(x, __shfl_xor_sync(0xffffffff, x, offset, width));
+   }
+   return x;
+}
+
+#define INSTANTIATE_SOFTMAX(name, T, bname, block_size) \
+extern "C" __global__ void softmax_##bname##name( \
+        const T * x, T * dst, \
+        const int shape_0, const int shape_1, const int shape_2, \
+        const int stride_0, const int stride_1, const int stride_2) { \
+    int offset = (blockIdx.x % shape_2) * stride_2 + (blockIdx.x / shape_2) * stride_0; \
+    x += offset; \
+    dst += offset; \
+\
+    const int warp_id = threadIdx.x / WARP_SIZE; \
+    const int lane_id = threadIdx.x % WARP_SIZE; \
+\
+    float max_val = -INFINITY; \
+_Pragma("unroll") \
+    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) { \
+\
+        max_val = max(max_val, x[i * stride_1]); \
+    } \
+\
+    max_val = warp_reduce_max(max_val); \
+    if (block_size > WARP_SIZE) { \
+        __shared__ float s_max[32]; \
+        if (warp_id == 0) { \
+            s_max[lane_id] = -INFINITY; \
+        } \
+        __syncthreads(); \
+\
+        if (lane_id == 0) { \
+            s_max[warp_id] = max_val; \
+        } \
+        __syncthreads(); \
+\
+        max_val = s_max[lane_id]; \
+        max_val = warp_reduce_max(max_val); \
+    } \
+\
+    float tmp = 0.0f; \
+    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) { \
+        float el = x[i * stride_1]; \
+        const float val = expf(el - max_val); \
+        tmp += val; \
+        dst[i * stride_1] = val; \
+    } \
+\
+    tmp = warp_reduce_sum(tmp); \
+    if (block_size > WARP_SIZE) { \
+         __shared__ float s_sum[32]; \
+        if (warp_id == 0) { \
+            s_sum[lane_id] = 0.0f; \
+        } \
+        __syncthreads(); \
+\
+        if (lane_id == 0) { \
+            s_sum[warp_id] = tmp; \
+        } \
+        __syncthreads(); \
+\
+        tmp = s_sum[lane_id]; \
+        tmp = warp_reduce_sum(tmp); \
+    } \
+\
+    const float inv_sum = 1.0f / tmp; \
+\
+    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) { \
+        dst[i * stride_1] *= inv_sum; \
+    } \
+} \
+
+#define INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, bname, block_size_template) \
+extern "C" __global__ void scaled_masked_softmax_##bname##name( \
+        const T * x, const T * mask, const T scale, T * dst, \
+        const int shape_0, const int shape_1, const int shape_2, \
+        const int stride_0, const int stride_1, const int stride_2, \
+        const int mask_stride_0, const int mask_stride_1, const int mask_stride_2, \
+        const int out_stride_0, const int out_stride_1, const int out_stride_2) { \
+    x += blockIdx.y * stride_1 + blockIdx.z * stride_0; \
+    mask += mask ? blockIdx.y * mask_stride_1 + blockIdx.z * mask_stride_0 : 0; \
+    dst += blockIdx.y * out_stride_1 + blockIdx.z * out_stride_0; \
+\
+    const int block_size = block_size_template == 0 ? blockDim.x : block_size_template; \
+\
+    const int warp_id = threadIdx.x / WARP_SIZE; \
+    const int lane_id = threadIdx.x % WARP_SIZE; \
+\
+    extern __shared__ float data_soft_max_f32[]; \
+    float * buf_iw = data_soft_max_f32; \
+    float * vals = buf_iw + WARP_SIZE; \
+\
+    float max_val = -INFINITY; \
+_Pragma("unroll") \
+    for (int col0 = 0; col0 < shape_2; col0 += block_size) { \
+        const int col = col0 + threadIdx.x; \
+        if (col >= shape_2) { \
+            break; \
+        } \
+\
+        const float val = x[col * stride_2]*scale + mask[col * mask_stride_2]; \
+        vals[col] = val; \
+        max_val = max(max_val, val); \
+    } \
+\
+    max_val = warp_reduce_max(max_val); \
+    if (block_size > WARP_SIZE) { \
+        if (warp_id == 0) { \
+            buf_iw[lane_id] = -INFINITY; \
+        } \
+        __syncthreads(); \
+\
+        if (lane_id == 0) { \
+            buf_iw[warp_id] = max_val; \
+        } \
+        __syncthreads(); \
+\
+        max_val = buf_iw[lane_id]; \
+        max_val = warp_reduce_max(max_val); \
+    } \
+\
+    float tmp = 0.0f; \
+_Pragma("unroll") \
+    for (int col0 = 0; col0 < shape_2; col0 += block_size) { \
+        const int col = col0 + threadIdx.x; \
+        if (col >= shape_2) { \
+            break; \
+        } \
+\
+        const float val = expf(vals[col] - max_val); \
+        tmp += val; \
+        vals[col] = val; \
+    } \
+\
+    tmp = warp_reduce_sum(tmp); \
+    if (block_size > WARP_SIZE) { \
+        __syncthreads(); \
+        if (warp_id == 0) { \
+            buf_iw[lane_id] = 0.0f; \
+        } \
+        __syncthreads(); \
+\
+        if (lane_id == 0) { \
+            buf_iw[warp_id] = tmp; \
+        } \
+        __syncthreads(); \
+\
+        tmp = buf_iw[lane_id]; \
+        tmp = warp_reduce_sum(tmp); \
+    } \
+\
+    const float inv_sum = 1.0f / tmp; \
+\
+_Pragma("unroll") \
+    for (int col0 = 0; col0 < shape_2; col0 += block_size) { \
+        const int col = col0 + threadIdx.x; \
+        if (col >= shape_2) { \
+            return; \
+        } \
+        dst[col * out_stride_2] = vals[col] * inv_sum; \
+    } \
+} \
+
 #define INSTANTIATE_RMS_NORM(name, T, bname, block_size) \
 extern "C" __global__ void rms_norm_##bname##name( \
         const T * x, T * dst, const int shape_0, const int shape_1, const int shape_2, \
@@ -244,3 +422,25 @@ INSTANTIATE_RMS_NORM(f32, float, small_, 32)
 INSTANTIATE_RMS_NORM(f32, float, , 1024)
 INSTANTIATE_RMS_NORM(f16, __half, small_, 32)
 INSTANTIATE_RMS_NORM(f16, __half, , 1024)
+
+INSTANTIATE_SOFTMAX(f32, float, small_, 32)
+INSTANTIATE_SOFTMAX(f32, float, , 1024)
+INSTANTIATE_SOFTMAX(f16, __half, small_, 32)
+INSTANTIATE_SOFTMAX(f16, __half, , 1024)
+
+#define INSTANTIATE_SCALED_MASKED_SOFTMAX_FOR_T(name, T) \
+    INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 32_, 32) \
+    INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 64_, 64) \
+    INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 128_, 126) \
+    INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 256_, 256) \
+    INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 512_, 512) \
+    INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 1024_, 1024) \
+    INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 2048_, 1024) \
+    INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 4096_, 1024) \
+    INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 8192_, 1024) \
+    INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 16384_, 1024) \
+    INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 32768_, 1024) \
+    INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 0_, 0) \
+
+INSTANTIATE_SCALED_MASKED_SOFTMAX_FOR_T(f32, float)
+INSTANTIATE_SCALED_MASKED_SOFTMAX_FOR_T(f16, __half)
