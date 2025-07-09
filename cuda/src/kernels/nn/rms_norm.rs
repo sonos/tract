@@ -1,4 +1,5 @@
 use crate::context::cuda_context;
+use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::{get_cuda_view, utils, LibraryName, MAX_THREADS};
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
@@ -47,21 +48,11 @@ impl RmsNorm {
     ) -> TractResult<()> {
         ensure!(output.shape() == input.shape());
         ensure!(output.datum_type() == input.datum_type());
-        ensure!(axis == input.rank() - 1);
 
-        let shape = input.shape();
-        let rank = input.rank();
-        let shape_nd4 = match input.rank() {
-            0 => panic!("Unexpected shape for RMS norm"),
-            1 => &[1, 1, 1, shape[0]],
-            2 => &[1, 1, shape[0], shape[1]],
-            3 => &[1, shape[0], shape[1], shape[2]],
-            4.. => &[shape[..rank - 3].iter().product::<usize>(), shape[rank - 3], shape[rank - 2], shape[rank - 1]]
-        };
+        let shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
+        let strides_nd3 = Tensor::natural_strides(&shape_nd3);
 
-        let strides = Tensor::natural_strides(shape_nd4);
-
-        let kernel_name = self.kernel_name(input.datum_type(), shape_nd4[3])?;
+        let kernel_name = self.kernel_name(input.datum_type(), shape_nd3[1])?;
 
         let i_view = get_cuda_view(input);
         let o_view = get_cuda_view(output);
@@ -70,18 +61,16 @@ impl RmsNorm {
         let mut launch_args = stream.launch_builder(&func);
         launch_args.arg(&i_view);
         launch_args.arg(&o_view);
-        launch_args.arg(&shape_nd4[3]);
-        launch_args.arg(&strides[2]);
-        launch_args.arg(&strides[1]);
-        launch_args.arg(&strides[0]);
+        launch_args.set_slice(&shape_nd3);
+        launch_args.set_slice(&strides_nd3);
         if input.datum_type() == DatumType::F32 {
             launch_args.arg(eps.to_scalar::<f32>()?)
         } else { launch_args.arg(eps.to_scalar::<f16>()?) };
         
 
         let cfg = LaunchConfig {
-            grid_dim: (shape_nd4[2] as _, shape_nd4[1] as _, shape_nd4[0] as _),
-            block_dim: if shape_nd4[3] < MAX_THREADS { (WARP_SIZE ,1, 1) } else { (MAX_THREADS as _, 1, 1)},
+            grid_dim: ((shape_nd3[2] * shape_nd3[0]) as _, 1, 1),
+            block_dim: if shape_nd3[1] < MAX_THREADS { (WARP_SIZE ,1, 1) } else { (MAX_THREADS as _, 1, 1)},
             shared_mem_bytes: 0
         };
 
@@ -149,8 +138,10 @@ mod tests {
 
     #[test]
     fn test_rms() -> TractResult<()> {
-        test_case::<f32>(&[1, 4], 1, -0.5, 1.0 / 1.0)?;
-        test_case::<f16>(&[3, 7], 1, -0.0, 1.0 / 100.0)?;
+        test_case::<f32>(&[2, 2], 1, -0.0, 1.0 / 100.0)?;
+        test_case::<f16>(&[2, 7], 0, -0.0, 1.0 / 100.0)?;
+        test_case::<f32>(&[2, 124], 1, -0.0, 1.0 / 100.0)?;
+        test_case::<f16>(&[1026, 7], 0, -0.0, 1.0 / 100.0)?;
         Ok(())
     }
 
