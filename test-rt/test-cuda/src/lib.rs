@@ -174,4 +174,4 @@ macro_rules! cuda_test_suite {
 //cuda_test_suite!(cuda_phase_3_post_translate, 3, false, , false, false);
 cuda_test_suite!(optimized_cuda, usize::MAX, true, false, false);
 cuda_test_suite!(optimized_cuda_with_arena, usize::MAX, true, false, true);
-//cuda_test_suite!(optimized_cuda_transpose, usize::MAX, true, , true, false);
+cuda_test_suite!(optimized_cuda_transpose, usize::MAX, true, true, false);
