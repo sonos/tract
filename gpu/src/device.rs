@@ -1,4 +1,3 @@
-use core::fmt;
 use std::ffi::c_void;
 use std::sync::Mutex;
 
@@ -18,19 +17,12 @@ pub trait DeviceContext: Downcast + dyn_clone::DynClone + Send + Sync {
 impl_downcast!(DeviceContext);
 dyn_clone::clone_trait_object!(DeviceContext);
 
-pub trait DeviceBuffer: Downcast + dyn_clone::DynClone + Send + Sync {
-    fn info(&self) -> String;
+pub trait DeviceBuffer: Downcast + dyn_clone::DynClone + Send + Sync + std::fmt::Debug {
     fn ptr(&self) -> *const c_void;
 }
 
 impl_downcast!(DeviceBuffer);
 dyn_clone::clone_trait_object!(DeviceBuffer);
-
-impl fmt::Debug for dyn DeviceBuffer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "DeviceBuffer: {:?}", self.info())
-    }
-}
 
 pub static DEVICE_CONTEXT: Mutex<Option<Box<dyn DeviceContext>>> = Mutex::new(None);
 
