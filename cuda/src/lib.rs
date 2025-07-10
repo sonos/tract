@@ -1,9 +1,9 @@
 mod context;
 mod kernels;
 mod ops;
+mod rewrite_rules;
 mod tensor;
 mod transform;
-mod rewrite_rules;
 pub mod utils;
 
 pub use transform::CudaTransform;

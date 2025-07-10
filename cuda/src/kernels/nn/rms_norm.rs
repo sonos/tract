@@ -1,6 +1,6 @@
 use crate::context::cuda_context;
 use crate::kernels::launch_args::LaunchArgsExt;
-use crate::kernels::{get_cuda_view, utils, LibraryName, MAX_THREADS};
+use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view, utils};
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
@@ -65,13 +65,18 @@ impl RmsNorm {
         launch_args.set_slice(&strides_nd3);
         if input.datum_type() == DatumType::F32 {
             launch_args.arg(eps.to_scalar::<f32>()?)
-        } else { launch_args.arg(eps.to_scalar::<f16>()?) };
-        
+        } else {
+            launch_args.arg(eps.to_scalar::<f16>()?)
+        };
 
         let cfg = LaunchConfig {
             grid_dim: ((shape_nd3[2] * shape_nd3[0]) as _, 1, 1),
-            block_dim: if shape_nd3[1] < MAX_THREADS { (WARP_SIZE ,1, 1) } else { (MAX_THREADS as _, 1, 1)},
-            shared_mem_bytes: 0
+            block_dim: if shape_nd3[1] < MAX_THREADS {
+                (WARP_SIZE, 1, 1)
+            } else {
+                (MAX_THREADS as _, 1, 1)
+            },
+            shared_mem_bytes: 0,
         };
 
         unsafe { launch_args.launch(cfg) };

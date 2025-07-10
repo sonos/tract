@@ -37,9 +37,7 @@ impl EvalOp for CudaApplyRope {
             input.shape(),
         )?;
 
-        CUDA_STREAM.with(|stream| {
-            ApplyRope.dispatch_eval(stream, input, cos, sin, &output)
-        })?;
+        CUDA_STREAM.with(|stream| ApplyRope.dispatch_eval(stream, input, cos, sin, &output))?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }

@@ -37,11 +37,8 @@ impl EvalOp for CudaGeluApproximate {
                 input_cuda.datum_type(),
                 input_cuda.shape(),
             )?;
-            GeluApproximate { fast_impl: self.fast_impl }.dispatch_eval(
-                stream,
-                input_cuda,
-                &output,
-            )?;
+            GeluApproximate { fast_impl: self.fast_impl }
+                .dispatch_eval(stream, input_cuda, &output)?;
             Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
         })
     }

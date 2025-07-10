@@ -3,7 +3,7 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::cuda_context;
-use crate::kernels::{get_cuda_view, LibraryName};
+use crate::kernels::{LibraryName, get_cuda_view};
 
 #[derive(Debug, Clone, Default, Copy, PartialEq, Eq, Hash)]
 pub struct GeluApproximate {
@@ -62,7 +62,9 @@ impl GeluApproximate {
         launch_args.arg(&len);
 
         let cfg = LaunchConfig::for_num_elems(input.len() as _);
-        unsafe { launch_args.launch(cfg); }
+        unsafe {
+            launch_args.launch(cfg);
+        }
         Ok(())
     }
 }
