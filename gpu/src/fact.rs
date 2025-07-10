@@ -71,8 +71,8 @@ impl OpaqueFact for DeviceFact {
 impl fmt::Debug for DeviceFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self.origin {
-            DeviceTensorOrigin::FromHost => write!(fmt, "FromHost({:?})", self.fact),
-            DeviceTensorOrigin::FromDevice => write!(fmt, "FromDevice({:?})", self.fact),
+            DeviceTensorOrigin::FromHost => write!(fmt, "FromHost({:?})", self.without_value()),
+            DeviceTensorOrigin::FromDevice => write!(fmt, "FromDevice({:?})", self.fact.without_value()),
         }
     }
 }
