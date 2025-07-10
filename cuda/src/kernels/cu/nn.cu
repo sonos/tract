@@ -7,6 +7,275 @@
 #define MAX_THREADS 1024
 #define WARP_SIZE   32
 
+
+template<int width = WARP_SIZE>
+static __device__ __forceinline__ float warp_reduce_sum(float x) {
+#pragma unroll
+    for (int offset = width/2; offset > 0; offset >>= 1) {
+        x += __shfl_xor_sync(0xffffffff, x, offset, width);
+    }
+    return x;
+}
+
+template<int width = WARP_SIZE>
+static __device__ __forceinline__ __half warp_reduce_sum(__half x) {
+#pragma unroll
+    for (int offset = width/2; offset > 0; offset >>= 1) {
+        x += __shfl_xor_sync(0xffffffff, x, offset, width);
+    }
+    return x;
+}
+
+template<int width = WARP_SIZE>
+static __device__ __forceinline__ float warp_reduce_max(float x) {
+#pragma unroll
+    for (int offset = width/2; offset > 0; offset >>= 1) {
+        x = fmaxf(x, __shfl_xor_sync(0xffffffff, x, offset, width));
+    }
+    return x;
+}
+
+template<int width = WARP_SIZE>
+static __device__ __forceinline__ __half warp_reduce_max(__half x) {
+#pragma unroll
+   for (int offset = width/2; offset > 0; offset >>= 1) {
+       x = __hmax(x, __shfl_xor_sync(0xffffffff, x, offset, width));
+   }
+   return x;
+}
+
+template<int width = WARP_SIZE>
+static __device__ __forceinline__ float warp_reduce_min(float x) {
+#pragma unroll
+    for (int offset = width/2; offset > 0; offset >>= 1) {
+        x = fminf(x, __shfl_xor_sync(0xffffffff, x, offset, width));
+    }
+    return x;
+}
+
+template<int width = WARP_SIZE>
+static __device__ __forceinline__ __half warp_reduce_min(__half x) {
+#pragma unroll
+   for (int offset = width/2; offset > 0; offset >>= 1) {
+       x = __hmin(x, __shfl_xor_sync(0xffffffff, x, offset, width));
+   }
+   return x;
+}
+
+template<int width = WARP_SIZE>
+static __device__ __forceinline__ float warp_reduce_prod(float x) {
+#pragma unroll
+    for (int offset = width/2; offset > 0; offset >>= 1) {
+        x *= __shfl_xor_sync(0xffffffff, x, offset, width);
+    }
+    return x;
+}
+
+template<int width = WARP_SIZE>
+static __device__ __forceinline__ __half warp_reduce_prod(__half x) {
+#pragma unroll
+   for (int offset = width/2; offset > 0; offset >>= 1) {
+       x = __hmul(x, __shfl_xor_sync(0xffffffff, x, offset, width));
+   }
+   return x;
+}
+
+#define INSTANTIATE_REDUCE(name, T, bname, block_size) \
+extern "C" __global__ void reduce_max_##bname##name( \
+                const T *input, T *output, \
+                const int shape_0, const int shape_1, const int shape_2, \
+                const int in_stride_0, const int in_stride_1, const int in_stride_2, \
+                const int out_stride_0, const int out_stride_1, const int out_stride_2) { \
+    input += blockIdx.z * in_stride_0 + blockIdx.x * in_stride_2; \
+    output += blockIdx.z * out_stride_0 + blockIdx.x * out_stride_2; \
+\
+    const int warp_id = threadIdx.x / WARP_SIZE; \
+    const int lane_id = threadIdx.x % WARP_SIZE; \
+\
+    float max_val = -INFINITY; \
+_Pragma("unroll") \
+    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) { \
+        max_val = max(max_val, input[i * in_stride_1]); \
+    } \
+\
+    max_val = warp_reduce_max(max_val); \
+    if (block_size > WARP_SIZE) { \
+        __shared__ float s_max[32]; \
+        if (warp_id == 0) { \
+            s_max[lane_id] = -INFINITY; \
+        } \
+        __syncthreads(); \
+\
+        if (lane_id == 0) { \
+            s_max[warp_id] = max_val; \
+        } \
+        __syncthreads(); \
+\
+        max_val = s_max[lane_id]; \
+        max_val = warp_reduce_max(max_val); \
+    } \
+\
+    if (threadIdx.x == 0) { \
+        *output = max_val; \
+    } \
+} \
+\
+extern "C" __global__ void reduce_min_##bname##name( \
+                const T *input, T *output, \
+                const int shape_0, const int shape_1, const int shape_2, \
+                const int in_stride_0, const int in_stride_1, const int in_stride_2, \
+                const int out_stride_0, const int out_stride_1, const int out_stride_2) { \
+    input += blockIdx.z * in_stride_0 + blockIdx.x * in_stride_2; \
+    output += blockIdx.z * out_stride_0 + blockIdx.x * out_stride_2; \
+\
+    const int warp_id = threadIdx.x / WARP_SIZE; \
+    const int lane_id = threadIdx.x % WARP_SIZE; \
+\
+    float min_val = INFINITY; \
+_Pragma("unroll") \
+    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) { \
+        min_val = min(min_val, input[i * in_stride_1]); \
+    } \
+\
+    min_val = warp_reduce_min(min_val); \
+    if (block_size > WARP_SIZE) { \
+        __shared__ float s_min[32]; \
+        if (warp_id == 0) { \
+            s_min[lane_id] = -INFINITY; \
+        } \
+        __syncthreads(); \
+\
+        if (lane_id == 0) { \
+            s_min[warp_id] = min_val; \
+        } \
+        __syncthreads(); \
+\
+        min_val = s_min[lane_id]; \
+        min_val = warp_reduce_min(min_val); \
+    } \
+\
+    if (threadIdx.x == 0) { \
+        *output = min_val; \
+    } \
+} \
+\
+extern "C" __global__ void reduce_sum_##bname##name( \
+                const T *input, T *output, \
+                const int shape_0, const int shape_1, const int shape_2, \
+                const int in_stride_0, const int in_stride_1, const int in_stride_2, \
+                const int out_stride_0, const int out_stride_1, const int out_stride_2) { \
+    input += blockIdx.z * in_stride_0 + blockIdx.x * in_stride_2; \
+    output += blockIdx.z * out_stride_0 + blockIdx.x * out_stride_2; \
+\
+    const int warp_id = threadIdx.x / WARP_SIZE; \
+    const int lane_id = threadIdx.x % WARP_SIZE; \
+\
+    T sum_val = 0.0f; \
+_Pragma("unroll") \
+    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) { \
+        sum_val += input[i * in_stride_1]; \
+    } \
+\
+    sum_val = warp_reduce_sum(sum_val); \
+    if (block_size > WARP_SIZE) { \
+        __shared__ T s_sum[32]; \
+        if (warp_id == 0) { \
+            s_sum[lane_id] = (T) 0.0f; \
+        } \
+        __syncthreads(); \
+\
+        if (lane_id == 0) { \
+            s_sum[warp_id] = sum_val; \
+        } \
+        __syncthreads(); \
+\
+        sum_val = s_sum[lane_id]; \
+        sum_val = warp_reduce_sum(sum_val); \
+    } \
+\
+    if (threadIdx.x == 0) { \
+        *output = sum_val; \
+    } \
+} \
+\
+extern "C" __global__ void reduce_prod_##bname##name( \
+                const T *input, T *output, \
+                const int shape_0, const int shape_1, const int shape_2, \
+                const int in_stride_0, const int in_stride_1, const int in_stride_2, \
+                const int out_stride_0, const int out_stride_1, const int out_stride_2) { \
+    input += blockIdx.z * in_stride_0 + blockIdx.x * in_stride_2; \
+    output += blockIdx.z * out_stride_0 + blockIdx.x * out_stride_2; \
+\
+    const int warp_id = threadIdx.x / WARP_SIZE; \
+    const int lane_id = threadIdx.x % WARP_SIZE; \
+\
+    T prod_val = (T) 1.0f; \
+_Pragma("unroll") \
+    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) { \
+        prod_val *= input[i * in_stride_1]; \
+    } \
+\
+    prod_val = warp_reduce_prod(prod_val); \
+    if (block_size > WARP_SIZE) { \
+        __shared__ T s_prod[32]; \
+        if (warp_id == 0) { \
+            s_prod[lane_id] = (T) 0.0f; \
+        } \
+        __syncthreads(); \
+\
+        if (lane_id == 0) { \
+            s_prod[warp_id] = prod_val; \
+        } \
+        __syncthreads(); \
+\
+        prod_val = s_prod[lane_id]; \
+        prod_val = warp_reduce_prod(prod_val); \
+    } \
+\
+    if (threadIdx.x == 0) { \
+        *output = prod_val; \
+    } \
+} \
+\
+extern "C" __global__ void reduce_mean_of_squares_##bname##name( \
+                const T *input, T *output, \
+                const int shape_0, const int shape_1, const int shape_2, \
+                const int in_stride_0, const int in_stride_1, const int in_stride_2, \
+                const int out_stride_0, const int out_stride_1, const int out_stride_2) { \
+    input += blockIdx.z * in_stride_0 + blockIdx.x * in_stride_2; \
+    output += blockIdx.z * out_stride_0 + blockIdx.x * out_stride_2; \
+\
+    const int warp_id = threadIdx.x / WARP_SIZE; \
+    const int lane_id = threadIdx.x % WARP_SIZE; \
+\
+    T square_sum_val = (T) 0.0f; \
+_Pragma("unroll") \
+    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) { \
+        square_sum_val += input[i * in_stride_1] * input[i * in_stride_1]; \
+    } \
+\
+    square_sum_val = warp_reduce_sum(square_sum_val); \
+    if (block_size > WARP_SIZE) { \
+        __shared__ T s_prod[32]; \
+        if (warp_id == 0) { \
+            s_prod[lane_id] = (T) 0.0f; \
+        } \
+        __syncthreads(); \
+\
+        if (lane_id == 0) { \
+            s_prod[warp_id] = square_sum_val; \
+        } \
+        __syncthreads(); \
+\
+        square_sum_val = s_prod[lane_id]; \
+        square_sum_val = warp_reduce_sum(square_sum_val); \
+    } \
+\
+    if (threadIdx.x == 0) { \
+        *output = square_sum_val / (T) shape_1; \
+    } \
+} \
+
 extern "C" __global__ void gelu_approx_f32(
                 const float *input,
                 float *output,
@@ -84,16 +353,6 @@ static __device__ __forceinline__ int indices_to_idx_4(int x, int y, int z,
   idx += z * b_strides;
   return idx;
 }
-//static __device__ __forceinline__ int indices_to_idx_4(uint3 indices,
-//                                 constant const size_t shape[4], 
-//                                 constant const size_t strides[4]) {
-//  auto idx = indices.x * strides[3] + indices.y * strides[2];
-//  idx += (indices.z % shape[1]) * strides[1];
-//  indices.z /= shape[1];
-//  idx += indices.z * strides[0];
-//  return idx;
-//}
-
 
 #define INSTANTIATE_APPLY_ROPE(name, T) \
 extern "C" __global__ void apply_rope_nd2_##name(const T *input, const T *cos, const T *sin, T *output, \
@@ -184,42 +443,6 @@ extern "C" __global__ void apply_rope_nd4_##name(const T *input, const T *cos, c
 } \
 \
 
-template<int width = WARP_SIZE>
-static __device__ __forceinline__ float warp_reduce_sum(float x) {
-#pragma unroll
-    for (int offset = width/2; offset > 0; offset >>= 1) {
-        x += __shfl_xor_sync(0xffffffff, x, offset, width);
-    }
-    return x;
-}
-
-template<int width = WARP_SIZE>
-static __device__ __forceinline__ __half warp_reduce_sum(__half x) {
-#pragma unroll
-    for (int offset = width/2; offset > 0; offset >>= 1) {
-        x += __shfl_xor_sync(0xffffffff, x, offset, width);
-    }
-    return x;
-}
-
-template<int width = WARP_SIZE>
-static __device__ __forceinline__ float warp_reduce_max(float x) {
-#pragma unroll
-    for (int offset = width/2; offset > 0; offset >>= 1) {
-        x = fmaxf(x, __shfl_xor_sync(0xffffffff, x, offset, width));
-    }
-    return x;
-}
-
-template<int width = WARP_SIZE>
-static __device__ __forceinline__ __half warp_reduce_max(__half x) {
-#pragma unroll
-   for (int offset = width/2; offset > 0; offset >>= 1) {
-       x = __hmax(x, __shfl_xor_sync(0xffffffff, x, offset, width));
-   }
-   return x;
-}
-
 #define INSTANTIATE_SOFTMAX(name, T, bname, block_size) \
 extern "C" __global__ void softmax_##bname##name( \
         const T * x, T * dst, \
@@ -235,7 +458,6 @@ extern "C" __global__ void softmax_##bname##name( \
     float max_val = -INFINITY; \
 _Pragma("unroll") \
     for (int i = threadIdx.x; i < shape_1; i += blockDim.x) { \
-\
         max_val = max(max_val, x[i * stride_1]); \
     } \
 \
@@ -444,3 +666,8 @@ INSTANTIATE_SOFTMAX(f16, __half, , 1024)
 
 INSTANTIATE_SCALED_MASKED_SOFTMAX_FOR_T(f32, float)
 INSTANTIATE_SCALED_MASKED_SOFTMAX_FOR_T(f16, __half)
+
+INSTANTIATE_REDUCE(f32, float, small_, 32)
+INSTANTIATE_REDUCE(f32, float, , 1024)
+INSTANTIATE_REDUCE(f16, __half, small_, 32)
+INSTANTIATE_REDUCE(f16, __half, , 1024)
