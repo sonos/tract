@@ -13,7 +13,7 @@ pub struct ApplyRope;
 
 impl fmt::Display for ApplyRope {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -79,7 +79,7 @@ impl ApplyRope {
         let i_view = get_cuda_view(input);
         let cos_view = get_cuda_view(&padded_cos);
         let sin_view = get_cuda_view(&padded_sin);
-        let o_view = get_cuda_view(&output);
+        let o_view = get_cuda_view(output);
 
         let func = cuda_context().load_pipeline(LibraryName::NN, kernel_name)?;
         let mut launch_args = stream.launch_builder(&func);
@@ -100,9 +100,9 @@ impl ApplyRope {
             1 => (shape[0] as _, 1, 1),
             2 => (shape[1] as _, shape[0] as _, 1),
             3.. => (
-                shape[shape.len() - 1] as usize,
-                shape[shape.len() - 2] as usize,
-                (shape[..shape.len() - 2].iter().product::<usize>()) as usize,
+                shape[shape.len() - 1],
+                shape[shape.len() - 2],
+                (shape[..shape.len() - 2].iter().product::<usize>()),
             ),
         };
         grid.0 /= 2;
