@@ -1,7 +1,7 @@
 use crate::context::cuda_context;
 use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::utils::compute_broadcast_strides;
-use crate::kernels::{get_cuda_view, launch_args, LibraryName, MAX_THREADS};
+use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view, launch_args};
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
@@ -62,18 +62,17 @@ impl ScaledMaskedSoftmax {
             nth *= 2;
         }
 
-        let block_size = if shape[1].is_power_of_two() && shape[1] > 32 {
-            shape[1]
-        } else { 0 };
-        
-        let func = cuda_context().load_pipeline(LibraryName::NN, self.kernel_name(input.datum_type(), block_size)?)?;
+        let block_size = if shape[1].is_power_of_two() && shape[1] > 32 { shape[1] } else { 0 };
+
+        let func = cuda_context()
+            .load_pipeline(LibraryName::NN, self.kernel_name(input.datum_type(), block_size)?)?;
 
         let mut launch_args = stream.launch_builder(&func);
         launch_args.arg(&i_view);
         launch_args.arg(&mask_view);
         if input.datum_type() == DatumType::F32 {
             launch_args.arg(scale.to_scalar::<f32>()?)
-        } else { 
+        } else {
             launch_args.arg(scale.to_scalar::<f16>()?)
         };
         launch_args.arg(&o_view);
@@ -85,7 +84,7 @@ impl ScaledMaskedSoftmax {
         let cfg = LaunchConfig {
             grid_dim: (1, shape[1] as _, shape[0] as _),
             block_dim: (nth as _, 1, 1),
-            shared_mem_bytes: shape[1].next_power_of_two().max(32) as _
+            shared_mem_bytes: shape[1].next_power_of_two().max(32) as _,
         };
 
         unsafe { launch_args.launch(cfg) };

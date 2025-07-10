@@ -1,6 +1,6 @@
 use crate::context::cuda_context;
 use crate::kernels::launch_args::LaunchArgsExt;
-use crate::kernels::{get_cuda_view, launch_args, utils, LibraryName, MAX_THREADS};
+use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view, launch_args, utils};
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
@@ -70,8 +70,11 @@ impl Reducer {
 
         let i_view = get_cuda_view(input);
         let o_view = get_cuda_view(output);
-        
-        let func = cuda_context().load_pipeline(LibraryName::NN, self.kernel_name(input.datum_type(), input_shape_nd3[1])?)?;
+
+        let func = cuda_context().load_pipeline(
+            LibraryName::NN,
+            self.kernel_name(input.datum_type(), input_shape_nd3[1])?,
+        )?;
         let mut launch_args = stream.launch_builder(&func);
         launch_args.arg(&i_view);
         launch_args.arg(&o_view);
@@ -81,10 +84,16 @@ impl Reducer {
 
         let cfg = LaunchConfig {
             grid_dim: (input_shape_nd3[2] as _, 1 as _, input_shape_nd3[0] as _),
-            block_dim: if input_shape_nd3[1] < MAX_THREADS { (32 ,1, 1) } else { (MAX_THREADS as _, 1, 1)},
-            shared_mem_bytes: 0
+            block_dim: if input_shape_nd3[1] < MAX_THREADS {
+                (32, 1, 1)
+            } else {
+                (MAX_THREADS as _, 1, 1)
+            },
+            shared_mem_bytes: 0,
         };
-        unsafe { launch_args.launch(cfg); }
+        unsafe {
+            launch_args.launch(cfg);
+        }
         Ok(())
     }
 }
@@ -122,7 +131,7 @@ mod tests {
                 shape,
                 &(0..len)
                     .map(|f| -> F {
-                        let v: f32 = f.as_() ;
+                        let v: f32 = f.as_();
                         (v * scale).as_()
                     })
                     .collect::<Vec<_>>(),

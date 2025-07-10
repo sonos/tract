@@ -1,7 +1,7 @@
 use crate::context::cuda_context;
 use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::utils::compute_broadcast_strides;
-use crate::kernels::{get_cuda_view, utils, BroadcastKind, LibraryName};
+use crate::kernels::{BroadcastKind, LibraryName, get_cuda_view, utils};
 use anyhow::ensure;
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use std::fmt;
@@ -98,11 +98,12 @@ impl ApplyRope {
         let mut grid = match shape.len() {
             0 => panic!("Unexpected empty shape while build grid size"),
             1 => (shape[0] as _, 1, 1),
-            2 => (shape[1] as _, shape[0] as _, 1 ),
-            3.. => (shape[shape.len() - 1] as usize,
-                    shape[shape.len() - 2] as usize,
-                    (shape[..shape.len() - 2].iter().product::<usize>()) as usize,
-                )
+            2 => (shape[1] as _, shape[0] as _, 1),
+            3.. => (
+                shape[shape.len() - 1] as usize,
+                shape[shape.len() - 2] as usize,
+                (shape[..shape.len() - 2].iter().product::<usize>()) as usize,
+            ),
         };
         grid.0 /= 2;
 
@@ -110,7 +111,7 @@ impl ApplyRope {
             grid_dim: (
                 grid.0.div_ceil(block_dim) as _,
                 grid.1.div_ceil(block_dim) as _,
-                grid.2 as _
+                grid.2 as _,
             ),
             block_dim: (block_dim as _, block_dim as _, 1),
             shared_mem_bytes: 0,
