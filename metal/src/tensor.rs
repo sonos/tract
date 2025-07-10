@@ -127,7 +127,7 @@ pub struct MetalTensor {
 
 impl std::fmt::Debug for MetalTensor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.inner)
+        write!(f, "MetalTensor: {:?}", self.inner)
     }
 }
 
