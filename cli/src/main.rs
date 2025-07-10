@@ -319,7 +319,7 @@ fn main() -> TractResult<()> {
                 !gpu_trace_path.exists(),
                 format!("Given Metal GPU trace file {:?} already exists.", gpu_trace_path)
             );
-            log::info!("Capturing Metal GPU trace at : {:?}", gpu_trace_path);
+            log::info!("Capturing Metal GPU trace at : {gpu_trace_path:?}");
             unsafe {
                 std::env::set_var("METAL_CAPTURE_ENABLED", "1");
                 std::env::set_var("METAL_DEVICE_WRAPPER_TYPE", "1");

@@ -52,7 +52,7 @@ impl MemArenaMetrics {
         let mut sum_size: i64 = 0;
         let mut sum_used: i64 = 0;
         for s in (STEP_TOKENS..MAX_PROMPT_TOKENS + 1).step_by(STEP_TOKENS as usize) {
-            log::info!("Prompt processing: P: 0, S: {}", s);
+            log::info!("Prompt processing: P: 0, S: {s}");
             let symbol_values =
                 SymbolValues::default().with(&sequence_length, s).with(&past_sequence_length, 0);
             let usage = MemArenaUsage::eval_from_schema(schema, &symbol_values)?;
@@ -63,7 +63,7 @@ impl MemArenaMetrics {
         }
         let mut tg = BTreeMap::new();
         for p in (0..MAX_GEN_TOKENS + 1).step_by(STEP_TOKENS as usize) {
-            log::info!("Token generation: P: {}, S: 1", p);
+            log::info!("Token generation: P: {p}, S: 1");
             let symbol_values =
                 SymbolValues::default().with(&sequence_length, 1).with(&past_sequence_length, p);
             let usage = MemArenaUsage::eval_from_schema(schema, &symbol_values)?;
