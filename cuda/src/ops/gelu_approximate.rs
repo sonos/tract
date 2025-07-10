@@ -30,16 +30,16 @@ impl EvalOp for CudaGeluApproximate {
     ) -> TractResult<TVec<TValue>> {
         CUDA_STREAM.with(|stream| {
             let input = args_1!(inputs);
-            let input_metal = input.to_device_tensor()?;
+            let input_cuda = input.to_device_tensor()?;
             let output = tract_gpu::session_handler::make_tensor_for_node(
                 session,
                 node_id,
-                input_metal.datum_type(),
-                input_metal.shape(),
+                input_cuda.datum_type(),
+                input_cuda.shape(),
             )?;
             GeluApproximate { fast_impl: self.fast_impl }.dispatch_eval(
                 stream,
-                input_metal,
+                input_cuda,
                 &output,
             )?;
             Ok(tvec!(output.into_opaque_tensor().into_tvalue()))

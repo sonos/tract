@@ -127,9 +127,9 @@ mod tests {
                 .eval(tvec![a.to_host()?.into_tvalue(), mask.to_host()?.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
-            let metal_output = ScaledMaskedSoftmax.eval(stream, &a, &scale, &mask)?;
+            let cuda_output = ScaledMaskedSoftmax.eval(stream, &a, &scale, &mask)?;
             cpu_output
-                .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)?;
+                .close_enough(&cuda_output.to_host()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
         })
     }
@@ -142,7 +142,7 @@ mod tests {
                 let reference = pb.reference()?;
 
                 out.close_enough(&reference, Approximation::Approximate)
-                   .with_context(|| format!("Cpu: {:?}, Metal: {:?}", reference.dump(true), out.dump(true)))
+                   .with_context(|| format!("Cpu: {:?}, Cuda: {:?}", reference.dump(true), out.dump(true)))
             }
             run(pb).map_err(|e| TestCaseError::Fail(format!("{:?}", e).into()))?;
         }
@@ -154,7 +154,7 @@ mod tests {
                 let reference = pb.reference()?;
 
                 out.close_enough(&reference, Approximation::Approximate)
-                   .with_context(|| format!("Cpu: {:?}, Metal: {:?}", reference.dump(true), out.dump(true)))
+                   .with_context(|| format!("Cpu: {:?}, Cuda: {:?}", reference.dump(true), out.dump(true)))
             }
 
             run(pb).map_err(|e| TestCaseError::Fail(format!("{:?}", e).into()))?;
@@ -224,8 +224,8 @@ mod tests {
                 let mask =
                     Tensor::from_shape(self.mask_shape.as_slice(), &self.mask)?.into_device()?;
                 let scale: Arc<_> = tensor0::<F>(0.125f32.as_()).into();
-                let metal_output = ScaledMaskedSoftmax.eval(stream, &a, &scale, &mask)?;
-                Ok(metal_output.to_host()?.into_tensor())
+                let cuda_output = ScaledMaskedSoftmax.eval(stream, &a, &scale, &mask)?;
+                Ok(cuda_output.to_host()?.into_tensor())
             })
         }
     }

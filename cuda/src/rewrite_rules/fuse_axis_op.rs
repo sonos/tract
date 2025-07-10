@@ -48,7 +48,7 @@ pub fn collect_chain_of_axis_ops<'a>(
 }
 
 #[macro_export]
-macro_rules! dispatch_metal_op {
+macro_rules! dispatch_cuda_op {
     ($node: expr, $body:expr, $($op:path),+,) => {
         $(
             if let Some(op) = $node.op_as::<$op>() {
@@ -90,7 +90,7 @@ pub fn fuse_axis_op(
     }
 
     // Handle all compatible ops.
-    dispatch_metal_op!(
+    dispatch_cuda_op!(
         node,
         |op| {
             let out = patch.wire_node(
