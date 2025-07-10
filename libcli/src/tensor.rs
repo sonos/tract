@@ -324,6 +324,7 @@ fn get_or_make_tensors(
             && value[0].datum_type() == f32::datum_type()
             && params.allow_float_casts
         {
+            info!("Casting input to F16 for input called {} ({} turn(s))", name, value.len());
             target.push(
                 value.iter().map(|t| t.cast_to::<f16>().unwrap().into_owned().into()).collect(),
             );
