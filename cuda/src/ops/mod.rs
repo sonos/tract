@@ -12,6 +12,7 @@ mod unary;
 mod scaled_masked_softmax;
 mod softmax;
 mod gelu_approximate;
+mod apply_rope;
 
 pub use binary::CudaBinOp;
 pub use broadcast::CudaMultiBroadcastTo;
@@ -27,3 +28,4 @@ pub use rms_norm::CudaRmsNorm;
 pub use scaled_masked_softmax::CudaScaledMaskedSoftmax;
 pub use softmax::CudaSoftmax;
 pub use gelu_approximate::CudaGeluApproximate;
+pub use apply_rope::CudaApplyRope;
