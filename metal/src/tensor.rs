@@ -119,10 +119,16 @@ impl From<Arc<Tensor>> for MValue {
 
 /// This struct represents a owned tensor that can be accessed from the
 /// GPU and the CPU.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct MetalTensor {
     pub inner: MValue,
     pub device_buffer: MetalBuffer,
+}
+
+impl std::fmt::Debug for MetalTensor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.inner)
+    }
 }
 
 impl Hash for MetalTensor {

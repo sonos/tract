@@ -15,10 +15,6 @@ pub struct CudaBuffer {
 }
 
 impl DeviceBuffer for CudaBuffer {
-    fn info(&self) -> String {
-        format!("Buffer: {:?}", self.inner)
-    }
-
     fn ptr(&self) -> *const std::ffi::c_void {
         CUDA_STREAM.with(|stream| self.inner.device_ptr(stream).0 as _)
     }

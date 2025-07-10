@@ -350,10 +350,6 @@ impl DerefMut for MetalBuffer {
     }
 }
 impl DeviceBuffer for MetalBuffer {
-    fn info(&self) -> String {
-        format!("{:?}", self.inner)
-    }
-
     fn ptr(&self) -> *const c_void {
         self.inner.gpu_address() as *const c_void
     }
