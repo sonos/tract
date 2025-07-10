@@ -8,14 +8,18 @@ use tract_core::ops::einsum::prefix_matmul::rewrite_einsum_to_prefix_matmul;
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
+use tract_core::ops::nn::{Reduce, Softmax};
 use tract_core::tract_data::itertools::Itertools;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::sync::{DeviceSync, DeviceSyncKind};
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
-use tract_transformers::ops::apply_rope::RotateHalf;
+use tract_transformers::ops::apply_rope::{ApplyRope, RotateHalf};
 use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
+use tract_transformers::ops::gelu_approximate::GeluApproximate;
+use tract_transformers::ops::rms_norm::RmsNorm;
+use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
 use tract_transformers::ops::silu::Silu;
 
 use crate::context::cuda_context;
@@ -186,7 +190,31 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
             || node.op_is::<AxisOp>()
             || node.op_is::<Slice>()
             || node.op_is::<TypedConcat>()
-            || node.op_is::<DynKeyValueCache>()))
+            || node.op_is::<DynKeyValueCache>())
+            || node.op_as::<Reduce>().is_some_and(|op| {
+                kernels::nn::Reducer::is_supported_dt(input_dts[0])
+                    && ops::CudaReduce::from_tract_core(op).is_ok()
+            })
+            || node.op_as::<Softmax>().is_some_and(|op| {
+                kernels::nn::Softmax::is_supported_dt(input_dts[0])
+                    && ops::CudaSoftmax::from_tract_core(op).is_ok()
+            })
+            || node
+                .op_as::<ScaledMaskedSoftmax>()
+                .is_some_and(|_| kernels::nn::ScaledMaskedSoftmax::is_supported_dt(input_dts[0]))
+            || node
+                .op_as::<RmsNorm>()
+                .is_some_and(|_| kernels::nn::RmsNorm::is_supported_dt(input_dts[0]))
+            || node
+                .op_as::<RotateHalf>()
+                .is_some_and(|_| kernels::array::RotateHalf::is_supported_dt(input_dts[0]))
+            || node
+                .op_as::<ApplyRope>()
+                .is_some_and(|_| kernels::nn::ApplyRope::is_supported_dt(input_dts[0]))
+            || node
+                .op_as::<GeluApproximate>()
+                .is_some_and(|_| kernels::nn::GeluApproximate::is_supported_dt(input_dts[0]))
+        )
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {
@@ -313,10 +341,22 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 Box::new(ops::CudaSlice::from_tract_core(op.clone()))
             } else if let Some(op) = node.op_as::<TypedConcat>() {
                 Box::new(ops::CudaConcat::from_tract_core(op))
-            } else if let Some(_op) = node.op_as::<RotateHalf>() {
-                Box::new(ops::CudaRotateHalf)
             } else if let Some(op) = node.op_as::<DynKeyValueCache>() {
                 Box::new(ops::CudaDynKVCache::from_tract_transformers(op))
+            } else if let Some(op) = node.op_as::<Reduce>() {
+                Box::new(ops::CudaReduce::from_tract_core(op)?)
+            } else if let Some(op) = node.op_as::<Softmax>() {
+                Box::new(ops::CudaSoftmax::from_tract_core(op)?)
+            } else if let Some(op) = node.op_as::<ScaledMaskedSoftmax>() {
+                Box::new(ops::CudaScaledMaskedSoftmax { scale: op.scale.clone() })
+            } else if let Some(_op) = node.op_as::<RotateHalf>() {
+                Box::new(ops::CudaRotateHalf)
+            } else if let Some(_op) = node.op_as::<ApplyRope>() {
+                Box::new(ops::CudaApplyRope)
+            } else if let Some(op) = node.op_as::<RmsNorm>() {
+                Box::new(ops::CudaRmsNorm::new(op.axis, op.eps.clone()))
+            } else if let Some(op) = node.op_as::<GeluApproximate>() {
+                Box::new(ops::CudaGeluApproximate { fast_impl: op.fast_impl })
             } else {
                 bail!("Failed to translate a supported CUDA Op")
             };

@@ -12,8 +12,8 @@ fn is_supported_axis_op(op: &CudaAxisOp) -> bool {
 fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
     next_node(model, axis_node).is_some_and(|node| {
         node.op_is::<crate::ops::CudaConcat>()
-            //|| node.op_is::<crate::ops::CudaApplyRope>()
-            //|| node.op_is::<crate::ops::CudaScaledMaskedSoftmax>()
+            || node.op_is::<crate::ops::CudaApplyRope>()
+            || node.op_is::<crate::ops::CudaScaledMaskedSoftmax>()
             || node.op_is::<crate::ops::CudaSlice>()
             || node.op_is::<crate::ops::CudaMultiBroadcastTo>()
             || node.op_is::<crate::ops::CudaDynKVCache>()
@@ -105,15 +105,15 @@ pub fn fuse_axis_op(
         crate::ops::CudaMultiBroadcastTo,
         crate::ops::CudaUnaryOp,
         crate::ops::CudaRmsNorm,
-        //crate::ops::CudaGeluApproximate,
-        //crate::ops::CudaSoftmax,
+        crate::ops::CudaGeluApproximate,
+        crate::ops::CudaSoftmax,
         crate::ops::CudaRotateHalf,
-        //crate::ops::CudaApplyRope,
-        //crate::ops::CudaReduce,
+        crate::ops::CudaApplyRope,
+        crate::ops::CudaReduce,
         crate::ops::CudaSlice,
         crate::ops::CudaConcat,
         crate::ops::CudaCast,
-        //crate::ops::CudaScaledMaskedSoftmax,
+        crate::ops::CudaScaledMaskedSoftmax,
     );
 
     // Handle AxisOp::Move operator.
