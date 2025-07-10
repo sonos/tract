@@ -130,16 +130,16 @@ mod tests {
             .into_device()?;
 
             let cpu_output = tract_reducer.reduce(&[axis], &a.to_host()?.into_tensor())?;
-            let metal_output = reducer.eval(stream, &a, axis)?;
+            let cuda_output = reducer.eval(stream, &a, axis)?;
             cpu_output
-                .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)
+                .close_enough(&cuda_output.to_host()?.into_tensor(), Approximation::Approximate)
                 .with_context(|| {
                     format!(
                         "A: {:?}, scale: {:?} Cpu: {:?}, Cuda: {:?}",
                         a.to_host().and_then(|it| it.dump(true)),
                         scale,
                         cpu_output.dump(true),
-                        metal_output.to_host().and_then(|it| it.dump(true))
+                        cuda_output.to_host().and_then(|it| it.dump(true))
                     )
                 })?;
             Ok(())
@@ -283,7 +283,7 @@ mod tests {
                 let reference = pb.reference()?;
 
                 out.close_enough(&reference, Approximation::Approximate)
-                   .with_context(|| format!("Cpu: {:?}, Metal: {:?}", reference.dump(true), out.dump(true)))
+                   .with_context(|| format!("Cpu: {:?}, Cuda: {:?}", reference.dump(true), out.dump(true)))
             }
             run(pb).map_err(|e| TestCaseError::Fail(format!("{:?}", e).into()))?;
         }
@@ -295,7 +295,7 @@ mod tests {
                 let reference = pb.reference()?;
 
                 out.close_enough(&reference, Approximation::Approximate)
-                   .with_context(|| format!("Cpu: {:?}, Metal: {:?}", reference.dump(true), out.dump(true)))
+                   .with_context(|| format!("Cpu: {:?}, Cuda: {:?}", reference.dump(true), out.dump(true)))
             }
 
             run(pb).map_err(|e| TestCaseError::Fail(format!("{:?}", e).into()))?;
@@ -361,8 +361,8 @@ mod tests {
         pub fn run(&self) -> TractResult<Tensor> {
             CUDA_STREAM.with(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
-                let metal_output = self.op.eval(stream, &a, self.axis)?;
-                Ok(metal_output.to_host()?.into_tensor())
+                let cuda_output = self.op.eval(stream, &a, self.axis)?;
+                Ok(cuda_output.to_host()?.into_tensor())
             })
         }
     }

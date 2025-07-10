@@ -18,15 +18,15 @@ impl CudaReduce {
     }
 
     pub fn from_tract_core(core_reduce: &core_ops_nn::Reduce) -> TractResult<Self> {
-        let metal_reducer = match core_reduce.reducer {
+        let cuda_reducer = match core_reduce.reducer {
             core_ops_nn::Reducer::Sum => Reducer::Sum,
             core_ops_nn::Reducer::MeanOfSquares => Reducer::MeanOfSquares,
             core_ops_nn::Reducer::Prod => Reducer::Prod,
             core_ops_nn::Reducer::Min => Reducer::Min,
             core_ops_nn::Reducer::Max => Reducer::Max,
-            _ => bail!("Unsupported reducer {:?} on metal", core_reduce.reducer),
+            _ => bail!("Unsupported reducer {:?} on cuda", core_reduce.reducer),
         };
-        Self::new(core_reduce.axes.clone(), metal_reducer)
+        Self::new(core_reduce.axes.clone(), cuda_reducer)
     }
 }
 
