@@ -203,7 +203,7 @@ impl PatchSpec {
         }
 
         let op_strides_times_input_storage_strides =
-            izip!(&self.strides, &input_storage_strides).map(|(a, b)| (*a as isize * b)).collect();
+            izip!(&self.strides, &input_storage_strides).map(|(a, b)| *a as isize * b).collect();
 
         Patch {
             spec: self,
