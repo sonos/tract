@@ -28,7 +28,7 @@ impl Deref for CudaBuffer {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CudaTensor {
     buffer: CudaBuffer,
     datum_type: DatumType,
@@ -53,6 +53,16 @@ impl CudaTensor {
                 block_quant_fact: bqf,
             }
         })
+    }
+
+    pub fn block_quant_fact(&self) -> Option<BlockQuantFact> {
+        self.block_quant_fact.clone()
+    }
+}
+
+impl std::fmt::Debug for CudaTensor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CudaTensor").field("datum_type", &self.datum_type).field("shape", &self.shape).field("block_quant_fact", &self.block_quant_fact).finish()
     }
 }
 

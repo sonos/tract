@@ -6,6 +6,7 @@ mod launch_args;
 pub mod nn;
 mod unary;
 mod utils;
+mod mm_mv;
 
 use anyhow::{bail, ensure};
 pub use binary::BinOps;
@@ -22,6 +23,7 @@ const UNARY_OPS: &str = include_str!("ptx/unary.ptx");
 const BINARY_OPS: &str = include_str!("ptx/binary.ptx");
 const ARRAY_OPS: &str = include_str!("ptx/array.ptx");
 const NN_OPS: &str = include_str!("ptx/nn.ptx");
+const GGML_MM_MV: &str = include_str!("ptx/mm_mv.ptx");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LibraryName {
@@ -29,6 +31,7 @@ pub enum LibraryName {
     Binary,
     Array,
     NN,
+    Ggml
 }
 
 impl LibraryName {
@@ -38,6 +41,7 @@ impl LibraryName {
             Self::Binary => BINARY_OPS,
             Self::Array => ARRAY_OPS,
             Self::NN => NN_OPS,
+            Self::Ggml => GGML_MM_MV,
         }
     }
 }
