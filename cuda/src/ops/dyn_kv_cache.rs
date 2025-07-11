@@ -85,7 +85,7 @@ pub struct FrozenCudaDynKVCacheState {
 }
 
 impl OpStateFreeze for CudaDynKVCacheState {
-    fn freeze(&self) -> Box<(dyn FrozenOpState + 'static)> {
+    fn freeze(&self) -> Box<dyn FrozenOpState + 'static> {
         Box::new(FrozenCudaDynKVCacheState {
             node_id: self.node_id,
             name: self.name.clone(),
@@ -181,8 +181,8 @@ impl TypedOp for CudaDynKVCache {
 
 #[cfg(test)]
 mod tests {
-    use crate::CudaTransform;
     use crate::context::CUDA_STREAM;
+    use crate::CudaTransform;
 
     use super::*;
     use tract_core::ops::array::TypedConcat;
@@ -208,7 +208,11 @@ mod tests {
                         .iter()
                         .enumerate()
                         .map(|(i, &dim)| {
-                            if i == axis { TDim::Sym(model.sym(sym)) } else { TDim::Val(dim as _) }
+                            if i == axis {
+                                TDim::Sym(model.sym(sym))
+                            } else {
+                                TDim::Val(dim as _)
+                            }
                         })
                         .collect::<TVec<TDim>>()
                 };
