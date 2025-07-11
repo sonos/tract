@@ -112,7 +112,7 @@ jobs:
     - name: Run cargo-clippy (tflite)
       if: runner.os == 'Linux'
       run: cargo clippy -p test-tflite
-    - name: Run cargo-clippy
+    - name: Run cargo-clippy (metal)
       if: runner.os == 'macos'
       run: cargo clippy -p test-metal -p tract-metal
 
