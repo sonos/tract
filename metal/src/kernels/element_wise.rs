@@ -38,7 +38,7 @@ pub enum ElementWiseOps {
 
 impl fmt::Display for ElementWiseOps {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -73,7 +73,7 @@ impl ElementWiseOps {
     ];
 
     pub fn name(&self) -> StaticName {
-        format!("{}", self).into()
+        format!("{self}").into()
     }
 
     pub fn all_functions() -> Vec<String> {

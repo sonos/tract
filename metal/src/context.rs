@@ -92,14 +92,14 @@ impl MetalContext {
                 .new_library_with_data(lib_data)
                 .map_err(|e| anyhow!("{}", e))
                 .with_context(|| {
-                    format!("Error while loading Metal library from data: {:?}", name)
+                    format!("Error while loading Metal library from data: {name:?}")
                 })?,
             LibraryContent::Source(lib_source) => self
                 .device
                 .new_library_with_source(lib_source, &CompileOptions::new())
                 .map_err(|e| anyhow!("{}", e))
                 .with_context(|| {
-                    format!("Error while loading Metal library from source: {:?}", name)
+                    format!("Error while loading Metal library from source: {name:?}")
                 })?,
         };
         cache_libraries.insert(name, library.clone());
@@ -118,8 +118,7 @@ impl MetalContext {
             .map_err(|e| anyhow!("{}", e))
             .with_context(|| {
                 format!(
-                    "Error while loading function {func_name} from library: {:?} with constants",
-                    library_name
+                    "Error while loading function {func_name} from library: {library_name:?} with constants"
                 )
             })?;
         Ok(func)
@@ -149,7 +148,7 @@ impl MetalContext {
         let pipeline = self.device
             .new_compute_pipeline_state_with_function(&func)
             .map_err(|e| anyhow!("{}", e))
-            .with_context(|| format!("Error while creating compute pipeline for function {func_name} from source: {:?}", library_name))?;
+            .with_context(|| format!("Error while creating compute pipeline for function {func_name} from source: {library_name:?}"))?;
         cache_pipelines.insert((library_name, func_name.to_string(), constants), pipeline.clone());
         Ok(pipeline)
     }
@@ -276,9 +275,9 @@ impl MetalStream {
         }
         let command_buffer_id = self.command_buffer_id.load(Ordering::Relaxed);
         command_buffer.commit();
-        log::trace!("Command buffer {:?} commit", command_buffer_id);
+        log::trace!("Command buffer {command_buffer_id:?} commit");
         command_buffer.wait_until_completed();
-        log::trace!("Command buffer {:?} has completed (Blocking call)", command_buffer_id);
+        log::trace!("Command buffer {command_buffer_id:?} has completed (Blocking call)");
 
         // Clear local retained values used by the command buffer
         self.retained_tensors.borrow_mut().clear();

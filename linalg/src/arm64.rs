@@ -186,7 +186,7 @@ impl Kind {
         #[cfg(test)]
         crate::setup_test_logger();
         let kind = if let Ok(kind) = std::env::var("TRACT_CPU_AARCH64_KIND") {
-            log::info!("CPU kind forced with TRACT_CPU_AARCH64_KIND: {}", kind);
+            log::info!("CPU kind forced with TRACT_CPU_AARCH64_KIND: {kind}");
             let kind = kind.to_lowercase();
             if kind.contains("a53") {
                 Kind::CortexA53
@@ -209,11 +209,11 @@ impl Kind {
             Kind::AppleM
         } else {
             let part = if let Ok(part) = std::env::var("TRACT_CPU_AARCH64_OVERRIDE_CPU_PART") {
-                log::info!("CPU part forced with TRACT_CPU_AARCH64_OVERRIDE_CPU_PART: {}", part);
+                log::info!("CPU part forced with TRACT_CPU_AARCH64_OVERRIDE_CPU_PART: {part}");
                 part
             } else if cfg!(target_os = "linux") {
                 let part = max_cpuid().unwrap_or_else(|_| "0x00".to_string());
-                log::info!("CPU part auto detected: {}", part);
+                log::info!("CPU part auto detected: {part}");
                 part
             } else {
                 log::info!("Unknown CPU part");
@@ -230,7 +230,7 @@ impl Kind {
                 _ => Kind::Generic,
             }
         };
-        log::info!("CPU optimisation: {:?}", kind);
+        log::info!("CPU optimisation: {kind:?}");
         kind
     }
 }
