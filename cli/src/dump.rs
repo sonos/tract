@@ -503,7 +503,7 @@ pub fn mm_report(
     if einsums.len() > 0 {
         println!("{}", Red.bold().paint("# 💩💩💩 Unoptimized Einsums 💩💩💩"));
         for ((axes, ifacts, ofacts), count) in
-            einsums.iter().sorted_by_key(|(_conf, count)| (-count.as_i64().unwrap_or_default()))
+            einsums.iter().sorted_by_key(|(_conf, count)| -count.as_i64().unwrap_or_default())
         {
             println!(
                 "{}",
