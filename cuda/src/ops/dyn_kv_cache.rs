@@ -85,7 +85,7 @@ pub struct FrozenCudaDynKVCacheState {
 }
 
 impl OpStateFreeze for CudaDynKVCacheState {
-    fn freeze(&self) -> Box<(dyn FrozenOpState + 'static)> {
+    fn freeze(&self) -> Box<dyn FrozenOpState + 'static> {
         Box::new(FrozenCudaDynKVCacheState {
             node_id: self.node_id,
             name: self.name.clone(),

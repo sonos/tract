@@ -215,7 +215,7 @@ impl Display for MetalTensor {
             }
             MValue::Reshaped { t, shape, strides: _ } => {
                 let content = t.dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
-                write!(f, "GPU reshaped: {:?} - {{ {content} }}", shape)
+                write!(f, "GPU reshaped: {shape:?} - {{ {content} }}")
             }
         }
     }

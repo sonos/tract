@@ -13,7 +13,7 @@ pub struct Concat {
 
 impl fmt::Display for Concat {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 

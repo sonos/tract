@@ -85,7 +85,7 @@ pub struct FrozenMetalDynKVCacheState {
 }
 
 impl OpStateFreeze for MetalDynKVCacheState {
-    fn freeze(&self) -> Box<(dyn FrozenOpState + 'static)> {
+    fn freeze(&self) -> Box<dyn FrozenOpState + 'static> {
         Box::new(FrozenMetalDynKVCacheState {
             node_id: self.node_id,
             name: self.name.clone(),
