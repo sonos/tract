@@ -21,9 +21,10 @@ static __device__ __forceinline__ __half warp_reduce_sum(__half x) {
     return x;
 }
 
-static __device__ __forceinline__ float mat_vec_acc(const float* x, const float2* y2, const int tid, const int64_t ncols2, const int block_size) {
+static __device__ __forceinline__ float mat_vec_acc(const float* x, const float* y, const int tid, const int64_t ncols2, const int block_size) {
     float sumf = 0.0f;
     const float2 * x2 = (const float2 *) x;
+    const float2 * y2 = (const float2 *) y;
 
     for (int64_t col2 = tid; col2 < ncols2; col2 += block_size) {
         const float2 tmpx = x2[col2];
@@ -34,16 +35,17 @@ static __device__ __forceinline__ float mat_vec_acc(const float* x, const float2
     return sumf;
 }
 
-static __device__ __forceinline__ float mat_vec_acc(const half* x, const float2* y2, const int tid, const int64_t ncols2, const int block_size) {
+static __device__ __forceinline__ float mat_vec_acc(const half* x, const half* y, const int tid, const int64_t ncols2, const int block_size) {
     float sumf = 0.0f;
     const half2 * x2 = (const half2 *) x;
+    const half2 * y2 = (const half2 *) y;
 
     //if (std::is_same<acc_type, float>::value) {
         for (int64_t col2 = tid; col2 < ncols2; col2 += block_size) {
-            const float2 tmpx = __half22float2(x2[col2]);
-            const float2 tmpy = y2[col2];
-            sumf += tmpx.x * tmpy.x;
-            sumf += tmpx.y * tmpy.y;
+            const half2 tmpx = x2[col2];
+            const half2 tmpy = y2[col2];
+            sumf += __half2float(tmpx.x * tmpy.x);
+            sumf += __half2float(tmpx.y * tmpy.y);
         }
     //} else {
     //    half2 acch2 = make_half2(0.0f, 0.0f);
@@ -61,7 +63,7 @@ static __device__ __forceinline__ float mat_vec_acc(const half* x, const float2*
 
 #define INSTANTIATE_MAT_VEC(type_name, T, acc_type_name, acc_type, block_size_name, block_size) \
 extern "C" __global__ void ggml_matvec_##type_name##acc_type_name##block_size_name( \
-        const T * __restrict__ x, const float * __restrict__ y, float * __restrict__ dst, \
+        const T * __restrict__ x, const T * __restrict__ y, T * __restrict__ dst, \
         const int64_t ncols2, const int64_t nchannels_y, const int64_t stride_row, \
         const int64_t channel_ratio, const int64_t stride_channel_x, const int64_t stride_channel_y, const int64_t stride_channel_dst) { \
     const int64_t row         = blockIdx.x; \
@@ -74,8 +76,6 @@ extern "C" __global__ void ggml_matvec_##type_name##acc_type_name##block_size_na
     y   += channel_y  *stride_channel_y; \
     dst += channel_dst*stride_channel_dst; \
  \
-    const float2 * y2 = (const float2 *) y; \
- \
     extern __shared__ char data_mmv[]; \
     float * buf_iw = (float *) data_mmv; \
  \
@@ -86,7 +86,7 @@ extern "C" __global__ void ggml_matvec_##type_name##acc_type_name##block_size_na
         __syncthreads(); \
     } \
  \
-    float sumf = mat_vec_acc(x, y2, tid, ncols2, block_size); \
+    float sumf = mat_vec_acc(x, y, tid, ncols2, block_size); \
  \
     sumf = warp_reduce_sum(sumf); \
  \

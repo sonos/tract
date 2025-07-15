@@ -10,7 +10,7 @@ mod mm_mv;
 
 use anyhow::{bail, ensure};
 pub use binary::BinOps;
-use cudarc::driver::CudaView;
+use cudarc::driver::{CudaView, CudaViewMut};
 use tract_core::prelude::TractResult;
 use tract_gpu::tensor::DeviceTensor;
 pub use unary::UnaryOps;
@@ -115,4 +115,21 @@ pub fn get_sliced_cuda_view(
     let buffer = t.device_buffer().downcast_ref::<CudaBuffer>().unwrap();
     let offset = t.buffer_offset::<usize>() + offset;
     Ok(buffer.slice(offset..(offset + len)))
+}
+
+pub fn get_cuda_view_mut(t: &DeviceTensor) -> CudaViewMut<'_, u8> {
+    let size = t.len() * t.datum_type().size_of();
+    get_sliced_cuda_view_mut(t, 0, size).unwrap()
+}
+
+// NOTE: offset and len are in bytes
+pub fn get_sliced_cuda_view_mut(
+    t: &DeviceTensor,
+    offset: usize,
+    len: usize,
+) -> TractResult<CudaViewMut<'_, u8>> {
+    ensure!(offset + len <= t.len() * t.datum_type().size_of());
+    let mut buffer = t.device_buffer().downcast_ref::<CudaBuffer>().unwrap();
+    let offset = t.buffer_offset::<usize>() + offset;
+    Ok(buffer.as_view_mut().slice_mut(offset..(offset + len)))
 }
