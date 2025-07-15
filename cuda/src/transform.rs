@@ -4,7 +4,7 @@ use tract_core::model::translator::Translate;
 use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::cast::Cast;
-use tract_core::ops::einsum::prefix_matmul::rewrite_einsum_to_prefix_matmul;
+use tract_core::ops::einsum::prefix_matmul::{rewrite_einsum_to_prefix_matmul, PrefixMatMul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
@@ -15,6 +15,7 @@ use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::sync::{DeviceSync, DeviceSyncKind};
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
+use tract_gpu::utils::as_q40_fact;
 use tract_transformers::ops::apply_rope::{ApplyRope, RotateHalf};
 use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
 use tract_transformers::ops::gelu_approximate::GeluApproximate;
@@ -23,6 +24,7 @@ use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
 use tract_transformers::ops::silu::Silu;
 
 use crate::context::cuda_context;
+use crate::kernels::Matmul;
 use crate::{kernels, ops, rewrite_rules};
 
 #[derive(Debug, Default)]
@@ -52,6 +54,11 @@ impl CudaTransform {
             return Ok(());
         }
 
+        Rewriter::default()
+            .with_rule_for("untranspose_matmul_output", rewrite_rules::untranspose_matmul_output)
+            .with_rule_for("add_broadcast_pre_matmul", rewrite_rules::add_broadcast_pre_matmul)
+            .rewrite(&(), model)?;
+
         if stop_at_phase == 1 {
             return Ok(());
         }
@@ -68,6 +75,7 @@ impl CudaTransform {
         Rewriter::default()
             .with_rule_for("fuse_axis_op", rewrite_rules::fuse_axis_op)
             .rewrite(&(), model)?;
+
         rewire_syncs(model)?;
         Ok(())
     }
@@ -190,30 +198,35 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
             || node.op_is::<AxisOp>()
             || node.op_is::<Slice>()
             || node.op_is::<TypedConcat>()
-            || node.op_is::<DynKeyValueCache>())
-        || node.op_as::<Reduce>().is_some_and(|op| {
-            kernels::nn::Reducer::is_supported_dt(input_dts[0])
-                && ops::CudaReduce::from_tract_core(op).is_ok()
-        })
-        || node.op_as::<Softmax>().is_some_and(|op| {
-            kernels::nn::Softmax::is_supported_dt(input_dts[0])
-                && ops::CudaSoftmax::from_tract_core(op).is_ok()
-        })
-        || node
-            .op_as::<ScaledMaskedSoftmax>()
-            .is_some_and(|_| kernels::nn::ScaledMaskedSoftmax::is_supported_dt(input_dts[0]))
-        || node
-            .op_as::<RmsNorm>()
-            .is_some_and(|_| kernels::nn::RmsNorm::is_supported_dt(input_dts[0]))
-        || node
-            .op_as::<RotateHalf>()
-            .is_some_and(|_| kernels::array::RotateHalf::is_supported_dt(input_dts[0]))
-        || node
-            .op_as::<ApplyRope>()
-            .is_some_and(|_| kernels::nn::ApplyRope::is_supported_dt(input_dts[0]))
-        || node
-            .op_as::<GeluApproximate>()
-            .is_some_and(|_| kernels::nn::GeluApproximate::is_supported_dt(input_dts[0])))
+            || node.op_is::<DynKeyValueCache>()
+            || node.op_as::<Reduce>().is_some_and(|op| {
+                kernels::nn::Reducer::is_supported_dt(input_dts[0])
+                    && ops::CudaReduce::from_tract_core(op).is_ok()
+            })
+            || node.op_as::<Softmax>().is_some_and(|op| {
+                kernels::nn::Softmax::is_supported_dt(input_dts[0])
+                    && ops::CudaSoftmax::from_tract_core(op).is_ok()
+            })
+            || node
+                .op_as::<ScaledMaskedSoftmax>()
+                .is_some_and(|_| kernels::nn::ScaledMaskedSoftmax::is_supported_dt(input_dts[0]))
+            || node
+                .op_as::<RmsNorm>()
+                .is_some_and(|_| kernels::nn::RmsNorm::is_supported_dt(input_dts[0]))
+            || node
+                .op_as::<RotateHalf>()
+                .is_some_and(|_| kernels::array::RotateHalf::is_supported_dt(input_dts[0]))
+            || node
+                .op_as::<ApplyRope>()
+                .is_some_and(|_| kernels::nn::ApplyRope::is_supported_dt(input_dts[0]))
+            || node
+                .op_as::<GeluApproximate>()
+                .is_some_and(|_| kernels::nn::GeluApproximate::is_supported_dt(input_dts[0])))
+            || node.op_as::<PrefixMatMul>().is_some_and(|op| {
+                !op.transpose_c && op.quantize_output.is_none() && 
+                (Matmul::is_supported_dts(&input_facts) || Matmul::is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()]))
+            })
+        )
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {
@@ -305,6 +318,87 @@ fn convert_logic_op_to_cuda(op: &Comp) -> ops::CudaBinOp {
     }
 }
 
+fn convert_matmul_to_metal(
+    model: &TypedModel,
+    node: &TypedNode,
+    target: &mut TypedModel,
+    inputs: &mut [OutletId],
+    op: &PrefixMatMul,
+) -> TractResult<TVec<OutletId>> {
+    let mut input_facts = model.node_input_facts(node.id)?;
+
+    let mut swap_inputs = false;
+    if !Matmul::is_supported_dts(&[input_facts[0].clone(), input_facts[1].clone()])
+        && Matmul::is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()])
+    {
+        input_facts.swap(0, 1);
+        inputs.swap(0, 1);
+        swap_inputs = true;
+    }
+
+    let a_pos = swap_inputs as usize;
+    let b_pos = 1 - swap_inputs as usize;
+    if op.transpose_a {
+        ensure!(as_q40_fact(input_facts[a_pos]).is_none(), "Cannot transpose Q40 tensor");
+
+        let rank = input_facts[a_pos].rank();
+        let perm_a_op = ops::CudaAxisOp::from_tract_core(AxisOp::Move(
+            rank - 2,
+            rank - 1,
+        ));
+        let perm_a_name = node.name.clone() + ".perm_a";
+        inputs[a_pos] = target.wire_node(perm_a_name, perm_a_op, &[inputs[a_pos]])?[0];
+    }
+
+    if !op.transpose_b {
+        ensure!(as_q40_fact(input_facts[b_pos]).is_none(), "Cannot transpose Q40 tensor");
+
+        let rank = input_facts[b_pos].rank();
+        let perm_b_op = ops::CudaAxisOp::from_tract_core(AxisOp::Move(
+            rank - 2,
+            rank - 1,
+        ));
+        let perm_b_name = node.name.clone() + ".perm_b";
+        inputs[b_pos] = target.wire_node(perm_b_name, perm_b_op, &[inputs[b_pos]])?[0];
+    }
+    let mut matmul_output = target.wire_node(node.name.clone(), ops::CudaGemm, inputs)?;
+
+    if swap_inputs {
+        let out_fact = target.outlet_fact(matmul_output[0])?;
+        let rank = &out_fact
+            .opaque_fact
+            .clone()
+            .map(|fact| fact.clarify_dt_shape().unwrap().1.len())
+            .unwrap();
+
+        let perm_out_op = ops::CudaAxisOp::from_tract_core(AxisOp::Move(
+            rank - 2,
+            rank - 1,
+        ));
+        matmul_output = target.wire_node(
+            node.name.clone() + ".perm_out",
+            perm_out_op,
+            &matmul_output,
+        )?;
+    }
+
+    let out_fact = target.outlet_fact(matmul_output[0])?;
+    let out_dt = out_fact.to_device_fact().map(|f| f.datum_type).unwrap_or(out_fact.datum_type);
+
+    let expected_dt = model.node_output_facts(node.id)?[0].datum_type;
+
+    if out_dt != expected_dt {
+        ensure!(
+            ops::CudaCast::is_supported_dt(out_dt),
+            "Matmul output type cannot be casted to expected type"
+        );
+        let cast_op = ops::CudaCast::new(model.node_output_facts(node.id)?[0].datum_type).unwrap();
+        matmul_output =
+            target.wire_node(node.name.clone() + ".out_cast", cast_op, &matmul_output)?
+    }
+    Ok(matmul_output)
+}
+
 impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for CudaTransform {
     fn translate_node(
         &self,
@@ -316,50 +410,60 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
         let translatable = can_translate_to_cuda_op(source, node)?;
 
         if translatable {
-            let device_inputs =
+            let mut device_inputs =
                 self.sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
 
-            let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<Const>() {
-                Box::new(convert_const(op)?)
-            } else if let Some(op) = node.op_as::<ElementWiseOp>() {
-                Box::new(map_element_wise_ops_to_cuda(op).unwrap())
-            } else if let Some(op) = node.op_as::<TypedBinOp>() {
-                Box::new(map_binary_op_to_cuda(op).unwrap())
-            } else if let Some(op) = node.op_as::<Comp>() {
-                Box::new(convert_logic_op_to_cuda(op))
-            } else if let Some(_op) = node.op_as::<Silu>() {
-                Box::new(ops::CudaUnaryOp(kernels::UnaryOps::Silu))
-            } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
-                Box::new(ops::CudaMultiBroadcastTo::new(op.shape.clone()))
-            } else if let Some(op) = node.op_as::<Cast>() {
-                Box::new(ops::CudaCast::new(op.to).unwrap())
-            } else if let Some(op) = node.op_as::<AxisOp>() {
-                let in_fact = source.node_input_facts(node.id)?[0];
-                Box::new(ops::CudaAxisOp::from_tract_core_with_fact(op.clone(), in_fact))
-            } else if let Some(op) = node.op_as::<Slice>() {
-                Box::new(ops::CudaSlice::from_tract_core(op.clone()))
-            } else if let Some(op) = node.op_as::<TypedConcat>() {
-                Box::new(ops::CudaConcat::from_tract_core(op))
-            } else if let Some(op) = node.op_as::<DynKeyValueCache>() {
-                Box::new(ops::CudaDynKVCache::from_tract_transformers(op))
-            } else if let Some(op) = node.op_as::<Reduce>() {
-                Box::new(ops::CudaReduce::from_tract_core(op)?)
-            } else if let Some(op) = node.op_as::<Softmax>() {
-                Box::new(ops::CudaSoftmax::from_tract_core(op)?)
-            } else if let Some(op) = node.op_as::<ScaledMaskedSoftmax>() {
-                Box::new(ops::CudaScaledMaskedSoftmax { scale: op.scale.clone() })
-            } else if let Some(_op) = node.op_as::<RotateHalf>() {
-                Box::new(ops::CudaRotateHalf)
-            } else if let Some(_op) = node.op_as::<ApplyRope>() {
-                Box::new(ops::CudaApplyRope)
-            } else if let Some(op) = node.op_as::<RmsNorm>() {
-                Box::new(ops::CudaRmsNorm::new(op.axis, op.eps.clone()))
-            } else if let Some(op) = node.op_as::<GeluApproximate>() {
-                Box::new(ops::CudaGeluApproximate { fast_impl: op.fast_impl })
+            let outlet_ids: TVec<OutletId> = if let Some(op) = node.op_as::<PrefixMatMul>() {
+                convert_matmul_to_metal(
+                    source,
+                    node,
+                    target,
+                    &mut device_inputs,
+                    op,
+                )?
             } else {
-                bail!("Failed to translate a supported CUDA Op")
+                let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<Const>() {
+                    Box::new(convert_const(op)?)
+                } else if let Some(op) = node.op_as::<ElementWiseOp>() {
+                    Box::new(map_element_wise_ops_to_cuda(op).unwrap())
+                } else if let Some(op) = node.op_as::<TypedBinOp>() {
+                    Box::new(map_binary_op_to_cuda(op).unwrap())
+                } else if let Some(op) = node.op_as::<Comp>() {
+                    Box::new(convert_logic_op_to_cuda(op))
+                } else if let Some(_op) = node.op_as::<Silu>() {
+                    Box::new(ops::CudaUnaryOp(kernels::UnaryOps::Silu))
+                } else if let Some(op) = node.op_as::<MultiBroadcastTo>() {
+                    Box::new(ops::CudaMultiBroadcastTo::new(op.shape.clone()))
+                } else if let Some(op) = node.op_as::<Cast>() {
+                    Box::new(ops::CudaCast::new(op.to).unwrap())
+                } else if let Some(op) = node.op_as::<AxisOp>() {
+                    let in_fact = source.node_input_facts(node.id)?[0];
+                    Box::new(ops::CudaAxisOp::from_tract_core_with_fact(op.clone(), in_fact))
+                } else if let Some(op) = node.op_as::<Slice>() {
+                    Box::new(ops::CudaSlice::from_tract_core(op.clone()))
+                } else if let Some(op) = node.op_as::<TypedConcat>() {
+                    Box::new(ops::CudaConcat::from_tract_core(op))
+                } else if let Some(op) = node.op_as::<DynKeyValueCache>() {
+                    Box::new(ops::CudaDynKVCache::from_tract_transformers(op))
+                } else if let Some(op) = node.op_as::<Reduce>() {
+                    Box::new(ops::CudaReduce::from_tract_core(op)?)
+                } else if let Some(op) = node.op_as::<Softmax>() {
+                    Box::new(ops::CudaSoftmax::from_tract_core(op)?)
+                } else if let Some(op) = node.op_as::<ScaledMaskedSoftmax>() {
+                    Box::new(ops::CudaScaledMaskedSoftmax { scale: op.scale.clone() })
+                } else if let Some(_op) = node.op_as::<RotateHalf>() {
+                    Box::new(ops::CudaRotateHalf)
+                } else if let Some(_op) = node.op_as::<ApplyRope>() {
+                    Box::new(ops::CudaApplyRope)
+                } else if let Some(op) = node.op_as::<RmsNorm>() {
+                    Box::new(ops::CudaRmsNorm::new(op.axis, op.eps.clone()))
+                } else if let Some(op) = node.op_as::<GeluApproximate>() {
+                    Box::new(ops::CudaGeluApproximate { fast_impl: op.fast_impl })
+                } else {
+                    bail!("Failed to translate a supported CUDA Op")
+                };
+                target.wire_node(node.name.clone(), op, &device_inputs)?
             };
-            let outlet_ids = target.wire_node(node.name.clone(), op, &device_inputs)?;
             self.sync_model_outputs_if_required(source, node, target, outlet_ids)
         } else {
             let cpu_inputs =

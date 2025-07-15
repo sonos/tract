@@ -14,6 +14,7 @@ mod scaled_masked_softmax;
 mod slice;
 mod softmax;
 mod unary;
+mod gemm;
 
 pub use apply_rope::CudaApplyRope;
 pub use binary::CudaBinOp;
@@ -31,3 +32,4 @@ pub use scaled_masked_softmax::CudaScaledMaskedSoftmax;
 pub use slice::CudaSlice;
 pub use softmax::CudaSoftmax;
 pub use unary::CudaUnaryOp;
+pub use gemm::CudaGemm;

@@ -1,4 +1,8 @@
 use cudarc::driver::sys::Lib;
+use tract_core::tract_linalg::block_quant::{BlockQuantFact, Q4_0};
+use tract_gpu::tensor::DeviceTensor;
+
+use crate::tensor::CudaTensor;
 
 // Code copied from Cudarc for checking Cuda presence
 fn get_lib_name_candidates(lib_name: &str) -> Vec<String> {
@@ -48,6 +52,17 @@ pub fn get_cuda_lib() -> Option<Lib> {
                 return Some(lib);
             }
         }
+        None
+    }
+}
+
+
+pub fn get_q40_fact(t: &DeviceTensor) -> Option<BlockQuantFact> {
+    if let DeviceTensor::Owned(t) = t {
+        t.downcast_ref::<CudaTensor>()
+        .expect("Non Cuda Tensor in Cuda context")
+        .block_quant_fact().filter(|bqf| bqf.format.same_as(&Q4_0))
+    } else {
         None
     }
 }

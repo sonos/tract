@@ -14,7 +14,7 @@ use cudarc::driver::{CudaView, CudaViewMut};
 use tract_core::prelude::TractResult;
 use tract_gpu::tensor::DeviceTensor;
 pub use unary::UnaryOps;
-
+pub use mm_mv::Matmul;
 use crate::tensor::CudaBuffer;
 
 const MAX_THREADS: usize = 1024;
