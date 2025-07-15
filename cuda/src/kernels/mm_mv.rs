@@ -3,7 +3,7 @@ use cudarc::driver::{CudaStream, DevicePtr, LaunchConfig, PushKernelArg};
 use derive_new::new;
 use num_traits::{Float, One};
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
-use tract_gpu::utils::as_q40_tensor;
+use tract_gpu::utils::{as_q40_fact, as_q40_tensor};
 use std::{default, fmt};
 use tract_core::internal::*;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
@@ -12,6 +12,7 @@ use tract_gpu::tensor::DeviceTensor::Owned;
 use crate::context::cuda_context;
 use crate::kernels::{get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut, LibraryName};
 use crate::tensor::CudaTensor;
+use crate::utils::get_q40_fact;
 
 use DatumType::{F16, F32};
 
@@ -84,7 +85,7 @@ impl fmt::Display for Matmul {
 }
 
 impl Matmul {
-    pub fn is_supported_dts(facts: &[&TypedFact]) -> bool {
+    pub fn is_supported_dts(facts: &[TypedFact]) -> bool {
         assert!(facts.len() == 2, "Ggml: Expected 2 inputs for Matmul");
 
         let regular_types_support = matches!(
@@ -207,16 +208,7 @@ impl Matmul {
         b: &DeviceTensor,
         output: &DeviceTensor,
     ) -> TractResult<()> {
-        let q40_b = if let Owned(t) = b {
-            t.downcast_ref::<CudaTensor>().expect("Non Cuda Tensor in Cuda context").block_quant_fact()
-        } else { None };
-
-        // Temp: No current support for Q40 
-        ensure!(q40_b.is_none());
-
-        ensure!((a.datum_type() == b.datum_type()) || q40_b.is_some());
-
-        let b_shape = q40_b
+        let b_shape = get_q40_fact(b)
             .map(|bqf| b.shape().iter().cloned().chain(bqf.shape().iter().copied()).collect())
             .unwrap_or(b.shape().to_vec());
 
@@ -227,7 +219,7 @@ impl Matmul {
         }
 
         let params = MatMulParams::from_inputs(a, b, output)?;  
-        if (params.k % 2 == 0) && (params.a_strides[1] % 2 == 0) && params.m == 1 {
+        if (params.k % 2 == 0) && params.m == 1 {
             Self::dispatch_ggml_matvec(stream, a, b, output, params)?;
         } else {
             if a.datum_type() == DatumType::F32 {

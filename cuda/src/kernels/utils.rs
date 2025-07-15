@@ -1,8 +1,11 @@
 use cudarc::driver::LaunchConfig;
 use num_traits::{AsPrimitive, Zero};
 use tract_core::internal::*;
+use tract_core::tract_linalg::block_quant::{BlockQuantFact, Q4_0};
+use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::MAX_THREADS;
+use crate::tensor::CudaTensor;
 
 pub fn compute_broadcast_strides<T: Zero + Copy + 'static>(
     shape: &[usize],

@@ -114,6 +114,7 @@ pub fn fuse_axis_op(
         crate::ops::CudaConcat,
         crate::ops::CudaCast,
         crate::ops::CudaScaledMaskedSoftmax,
+        crate::ops::CudaGemm,
     );
 
     // Handle AxisOp::Move operator.
