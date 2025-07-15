@@ -10,7 +10,7 @@ use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::tensor::DeviceTensor::Owned;
 
 use crate::context::cuda_context;
-use crate::kernels::{get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, LibraryName};
+use crate::kernels::{get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut, LibraryName};
 use crate::tensor::CudaTensor;
 
 use DatumType::{F16, F32};
@@ -84,9 +84,11 @@ impl fmt::Display for Matmul {
 }
 
 impl Matmul {
-    pub fn is_supported_dt(a_dt: DatumType, b_dt: DatumType) -> bool {
+    pub fn is_supported_dts(facts: &[&TypedFact]) -> bool {
+        assert!(facts.len() == 2, "Ggml: Expected 2 inputs for Matmul");
+
         let regular_types_support = matches!(
-            (a_dt, b_dt),
+            (facts[0].datum_type, facts[1].datum_type),
             (F32, F32) | (F16, F16)
         );
 
@@ -118,26 +120,100 @@ impl Matmul {
         block_size_best
     }
 
-    pub fn kernel_name(&self, a_dt: DatumType, b_dt: DatumType, block_size: usize) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(a_dt, b_dt), "Unsupported dts ({:?}, {:?}) for Cuda MatMul", a_dt, b_dt);
-        let tname = DeviceTensor::tname(a_dt)?;
-        // Note: Currently always accumulate in F32
-        let acc_type = DeviceTensor::tname(F32)?;
-        Ok(format!("ggml_matvec_{tname}_acc_{acc_type}_bs_{block_size}"))
+    fn dispatch_ggml_matvec(
+        stream: Arc<CudaStream>,
+        a: &DeviceTensor,
+        b: &DeviceTensor,
+        output: &DeviceTensor,
+        params: MatMulParams
+    ) -> TractResult<()> {
+        let a_view = get_cuda_view(a);
+        let b_view = get_cuda_view(b);
+
+        let mut out_view = get_cuda_view(output);
+
+        let k_div_2 = params.k / 2;
+        let block_size = Self::find_block_size(params.k);
+
+        let batch_ratio = params.a_batch / params.b_batch;
+
+        let kernel_name = format!("ggml_matvec_{}_acc_f32_bs_{block_size}", DeviceTensor::tname(a.datum_type())?);
+        let mut func = cuda_context().load_pipeline(LibraryName::Ggml, kernel_name)?;
+        let mut launch_args = stream.launch_builder(&func);
+
+        launch_args.arg(&b_view);
+        launch_args.arg(&a_view);
+        launch_args.arg(&out_view);
+        launch_args.arg(&k_div_2);
+        launch_args.arg(&params.a_batch);
+        launch_args.arg(&params.b_strides[1]);  
+        launch_args.arg(&batch_ratio);
+        launch_args.arg(&params.b_strides[0]);
+        launch_args.arg(&params.a_strides[0]);
+        launch_args.arg(&params.c_strides[0]);
+
+        let cfg = LaunchConfig { 
+            grid_dim: (params.n as _, params.a_batch as _, 1),
+            block_dim: (block_size as _, 1, 1),
+            shared_mem_bytes: (WARP_SIZE * size_of::<f32>()) as u32 };
+        unsafe { launch_args.launch(cfg) };
+        Ok(())
     }
 
-    pub fn dispatch_eval<F: Datum + Float>(
+    fn dispatch_cublas_gemm<F: Datum + Float>(
+        stream: Arc<CudaStream>,
+        a: &DeviceTensor,
+        b: &DeviceTensor,
+        output: &DeviceTensor,
+        params: MatMulParams
+    ) -> TractResult<()>
+    where CudaBlas: Gemm<F> {
+        ensure!(params.a_batch == params.b_batch);
+
+        let cublas_gemm_cfg = cublas::GemmConfig {
+            transa: cublas::sys::cublasOperation_t::CUBLAS_OP_T,
+            transb: cublas::sys::cublasOperation_t::CUBLAS_OP_N,
+            m: params.n as i32,
+            n: params.m as i32,
+            k: params.k as i32,
+            alpha: F::from(1.0f32).unwrap(),
+            lda: params.k as i32,
+            ldb: params.k as i32,
+            beta:F::from(0.0f32).unwrap(),
+            ldc: params.n as i32,
+        };
+
+        let cublas = CudaBlas::new(stream)?;
+
+        let a_batch_stride = params.a_strides[0] as usize;
+        let b_batch_stride = params.b_strides[0] as usize;
+        let c_batch_stride = params.c_strides[0] as usize;
+        for i in 0..params.a_batch {
+            let a_view = get_sliced_cuda_view(a, i * a_batch_stride * size_of::<F>(), a_batch_stride * size_of::<F>())?;
+            let b_view = get_sliced_cuda_view(b, i * b_batch_stride * size_of::<F>(), b_batch_stride * size_of::<F>())?;
+            let mut out_view = get_sliced_cuda_view_mut(output, i * c_batch_stride * size_of::<F>(), c_batch_stride * size_of::<F>())?;
+
+            unsafe { cublas.gemm(cublas_gemm_cfg, &b_view.transmute::<F>(b_batch_stride).unwrap(),
+                &a_view.transmute::<F>(a_batch_stride).unwrap(),
+                &mut out_view.transmute_mut::<F>(c_batch_stride).unwrap())? };
+        }        
+        Ok(())
+    }
+
+    pub fn dispatch_eval(
         &self,
         stream: Arc<CudaStream>,
         a: &DeviceTensor,
         b: &DeviceTensor,
         output: &DeviceTensor,
-    ) -> TractResult<()>
-    where CudaBlas: Gemm<F>
-     {
+    ) -> TractResult<()> {
         let q40_b = if let Owned(t) = b {
             t.downcast_ref::<CudaTensor>().expect("Non Cuda Tensor in Cuda context").block_quant_fact()
         } else { None };
+
+        // Temp: No current support for Q40 
+        ensure!(q40_b.is_none());
+
         ensure!((a.datum_type() == b.datum_type()) || q40_b.is_some());
 
         let b_shape = q40_b
@@ -150,57 +226,18 @@ impl Matmul {
             return Ok(());
         }
 
-        let a_view = get_cuda_view(a);
-        let b_view = get_cuda_view(b);
-
         let params = MatMulParams::from_inputs(a, b, output)?;  
         if (params.k % 2 == 0) && (params.a_strides[1] % 2 == 0) && params.m == 1 {
-            let mut out_view = get_cuda_view(output);
-
-            let k_div_2 = params.k / 2;
-            let block_size = Self::find_block_size(params.k);
-
-            let batch_ratio = params.a_batch / params.b_batch;
-
-            let kernel_name = self.kernel_name(a.datum_type(), b.datum_type(), block_size)?;
-            let mut func = cuda_context().load_pipeline(LibraryName::Ggml, kernel_name)?;
-            let mut launch_args = stream.launch_builder(&func);
-
-            launch_args.arg(&b_view);
-            launch_args.arg(&a_view);
-            launch_args.arg(&out_view);
-            launch_args.arg(&k_div_2);
-            launch_args.arg(&params.a_batch);
-            launch_args.arg(&params.b_strides[1]);  
-            launch_args.arg(&batch_ratio);
-            launch_args.arg(&params.b_strides[0]);
-            launch_args.arg(&params.a_strides[0]);
-            launch_args.arg(&params.c_strides[0]);
-
-            let cfg = LaunchConfig { 
-                grid_dim: (params.n as _, params.a_batch as _, 1),
-                block_dim: (block_size as _, 1, 1),
-                shared_mem_bytes: (WARP_SIZE * size_of::<f32>()) as u32 };
-            unsafe { launch_args.launch(cfg) };
+            Self::dispatch_ggml_matvec(stream, a, b, output, params)?;
         } else {
-            let mut out_view = get_cuda_view_mut(output);
-
-            let cublas_gemm_cfg = cublas::GemmConfig {
-                transa: cublas::sys::cublasOperation_t::CUBLAS_OP_T,
-                transb: cublas::sys::cublasOperation_t::CUBLAS_OP_N,
-                m: params.n as i32,
-                n: params.m as i32,
-                k: params.k as i32,
-                alpha: F::from(1.0f32).unwrap(),
-                lda: params.k as i32,
-                ldb: params.k as i32,
-                beta:F::from(0.0f32).unwrap(),
-                ldc: params.n as i32,
-            };
-            let cublas = CudaBlas::new(stream)?;
-            unsafe { cublas.gemm(cublas_gemm_cfg, &b_view.transmute::<F>(b.len()).unwrap(), &a_view.transmute::<F>(a.len()).unwrap(), &mut out_view.transmute_mut::<F>(output.len()).unwrap()) };
-        }
-        
+            if a.datum_type() == DatumType::F32 {
+                Self::dispatch_cublas_gemm::<f32>(stream.clone(), a, b, &output, params)?;
+            }
+            else {
+                ensure!(a.datum_type() == F16);
+                Self::dispatch_cublas_gemm::<f16>(stream.clone(), a, b, &output, params)?;
+            }
+        }  
         Ok(())
     }
 
@@ -211,13 +248,7 @@ impl Matmul {
         rhs: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(lhs.datum_type(), &Self::output_shape(lhs.shape(), rhs.shape()))? };
-        if lhs.datum_type() == DatumType::F32 {
-            self.dispatch_eval::<f32>(stream.clone(), lhs, rhs, &output)?;
-        }
-        else {
-            ensure!(lhs.datum_type() == F16);
-            self.dispatch_eval::<f16>(stream.clone(), lhs, rhs, &output)?;
-        }
+        self.dispatch_eval(stream.clone(), lhs, rhs, &output)?;
         stream.synchronize()?;
         Ok(output)
     }
@@ -313,7 +344,7 @@ mod tests {
         run_mmm_test_case((1, 1, 60, 2), F32, F32)?;
         run_mmm_test_case((2, 1, 128, 7), F32, F32)?;
 
-        ////// f16_f16
+        // f16_f16
         run_mmm_test_case((1, 1, 2, 1), F16, F16)?;
         run_mmm_test_case((1, 1, 61, 2), F16, F16)?;
         run_mmm_test_case((2, 1, 128, 9), F16, F16)?;
@@ -325,12 +356,12 @@ mod tests {
         // f32_f32
         run_mmm_test_case((1, 2, 4, 2), F32, F32)?;
         run_mmm_test_case((1, 2, 2, 3), F32, F32)?;
-        //run_mmm_test_case((2, 3, 128, 7), F32, F32)?;
+        run_mmm_test_case((2, 3, 127, 7), F32, F32)?;
 
-        //////// f16_f16
+        // f16_f16
         run_mmm_test_case((1, 2, 7, 2), F16, F16)?;
         run_mmm_test_case((1, 2, 61, 2), F16, F16)?;
-        //run_mmm_test_case((2, 1, 128, 9), F16, F16)?;
+        run_mmm_test_case((2, 1, 127, 9), F16, F16)?;
         Ok(())
     }
 }
