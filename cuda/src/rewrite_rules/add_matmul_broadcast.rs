@@ -14,8 +14,8 @@ pub fn add_broadcast_pre_matmul(
     // GGML supports broadcast
     rule_ensure!(in_facts[0].rank() > 2);
     let b_rank = in_facts[1].rank();
-    rule_ensure!(!(in_facts[1].shape[b_rank - 1].as_i64().is_some_and(|k| k % 2 == 0) &&
-                 in_facts[1].shape[b_rank - 2].as_i64().is_some_and(|m| m == 1)));
+    rule_ensure!(!(in_facts[1].shape[b_rank - 2 + !op.transpose_a as usize].as_i64().is_some_and(|k| k % 2 == 0) &&
+                 in_facts[1].shape[b_rank - 2 + op.transpose_b as usize].as_i64().is_some_and(|m| m == 1)));
 
     // Detect broadcast
     let a_shape = &in_facts[0].shape;
