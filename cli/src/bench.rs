@@ -1,16 +1,17 @@
 use crate::Parameters;
 use readings_probe::Probe;
-use tract_libcli::model::Model;
 use std::time::{Duration, Instant};
 use tract_hir::internal::*;
+use tract_libcli::model::Model;
 use tract_libcli::profile::BenchLimits;
-use tract_libcli::tensor::get_or_make_inputs;
 use tract_libcli::tensor::RunTensors;
+use tract_libcli::tensor::get_or_make_inputs;
 use tract_libcli::terminal;
 
-fn profile_single_turn<'m>(state: &mut TypedSimpleState<&'m TypedModel, Arc<TypedRunnableModel<&'m TypedModel>>>,
-                           inputs: &RunTensors) -> TractResult<Duration> {
-    
+fn profile_single_turn<'m>(
+    state: &mut TypedSimpleState<&'m TypedModel, Arc<TypedRunnableModel<&'m TypedModel>>>,
+    inputs: &RunTensors,
+) -> TractResult<Duration> {
     if state.model().properties().contains_key("pulse.delay") {
         let start = Instant::now();
         state.run(inputs.sources[0].clone())?;
@@ -40,11 +41,7 @@ pub fn criterion(
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
     let inputs = get_or_make_inputs(model, &run_params)?;
 
-    group.bench_function("run", move |b| {
-        b.iter(|| {
-            profile_single_turn(&mut state, &inputs)
-        })
-    });
+    group.bench_function("run", move |b| b.iter(|| profile_single_turn(&mut state, &inputs)));
     Ok(())
 }
 
@@ -57,7 +54,7 @@ pub(crate) fn make_state<'m>(
     let mut plan_options = crate::plan_options::plan_options_from_subcommand(sub_matches)?;
     let model =
         params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
-    if matches.is_present("metal") || matches.is_present("cuda"){
+    if matches.is_present("metal") || matches.is_present("cuda") {
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
             use tract_cuda::utils::get_cuda_lib;
@@ -68,8 +65,7 @@ pub(crate) fn make_state<'m>(
         plan_options.skip_order_opt_ram = true;
         let mut plan = SimplePlan::new_with_options(model, &plan_options)?;
         let mut symbol_values = SymbolValues::default();
-        let sequence_length =
-            model.symbols.get("S").context("Could not find symbol S in model")?;
+        let sequence_length = model.symbols.get("S").context("Could not find symbol S in model")?;
         let past_sequence_length =
             model.symbols.get("P").context("Could not find symbol P in model")?;
 

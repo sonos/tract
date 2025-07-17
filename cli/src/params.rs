@@ -25,8 +25,8 @@ use tract_tflite::internal::TfliteProtoModel;
 
 use tract_nnef::ast::dump::Dumper;
 
-use tract_cuda::utils::get_cuda_lib;
 use crate::TractResult;
+use tract_cuda::utils::get_cuda_lib;
 use tract_libcli::display_params;
 use tract_libcli::display_params::DisplayParams;
 use tract_libcli::model::Model;
@@ -54,11 +54,7 @@ impl Location {
     }
 
     fn is_dir(&self) -> bool {
-        if let &Location::Fs(p) = &self {
-            p.is_dir()
-        } else {
-            false
-        }
+        if let &Location::Fs(p) = &self { p.is_dir() } else { false }
     }
 
     fn read(&self) -> TractResult<Box<dyn Read>> {
@@ -791,7 +787,9 @@ impl Parameters {
                     stage!("cuda", typed_model -> typed_model, |m:TypedModel| {
                         tract_cuda::CudaTransform.transform_into(m)
                     });
-                } else { bail!("`--cuda` present but could not find any cuda lib") }
+                } else {
+                    bail!("`--cuda` present but could not find any cuda lib")
+                }
             }
         }
 
