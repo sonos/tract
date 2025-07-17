@@ -10,20 +10,20 @@
 .target sm_87
 .address_size 64
 
-	// .globl	ggml_matvec_f32_acc_f32_bs_32
+	// .globl	ggml_matvec_f32_bs_32
 .extern .shared .align 16 .b8 data_mmv[];
 
-.visible .entry ggml_matvec_f32_acc_f32_bs_32(
-	.param .u64 ggml_matvec_f32_acc_f32_bs_32_param_0,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_32_param_1,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_32_param_2,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_32_param_3,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_32_param_4,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_32_param_5,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_32_param_6,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_32_param_7,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_32_param_8,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_32_param_9
+.visible .entry ggml_matvec_f32_bs_32(
+	.param .u64 ggml_matvec_f32_bs_32_param_0,
+	.param .u64 ggml_matvec_f32_bs_32_param_1,
+	.param .u64 ggml_matvec_f32_bs_32_param_2,
+	.param .u64 ggml_matvec_f32_bs_32_param_3,
+	.param .u64 ggml_matvec_f32_bs_32_param_4,
+	.param .u64 ggml_matvec_f32_bs_32_param_5,
+	.param .u64 ggml_matvec_f32_bs_32_param_6,
+	.param .u64 ggml_matvec_f32_bs_32_param_7,
+	.param .u64 ggml_matvec_f32_bs_32_param_8,
+	.param .u64 ggml_matvec_f32_bs_32_param_9
 )
 {
 	.reg .pred 	%p<13>;
@@ -32,15 +32,15 @@
 	.reg .b64 	%rd<78>;
 
 
-	ld.param.u64 	%rd38, [ggml_matvec_f32_acc_f32_bs_32_param_0];
-	ld.param.u64 	%rd39, [ggml_matvec_f32_acc_f32_bs_32_param_1];
-	ld.param.u64 	%rd31, [ggml_matvec_f32_acc_f32_bs_32_param_2];
-	ld.param.u64 	%rd32, [ggml_matvec_f32_acc_f32_bs_32_param_3];
-	ld.param.u64 	%rd33, [ggml_matvec_f32_acc_f32_bs_32_param_5];
-	ld.param.u64 	%rd34, [ggml_matvec_f32_acc_f32_bs_32_param_6];
-	ld.param.u64 	%rd35, [ggml_matvec_f32_acc_f32_bs_32_param_7];
-	ld.param.u64 	%rd36, [ggml_matvec_f32_acc_f32_bs_32_param_8];
-	ld.param.u64 	%rd37, [ggml_matvec_f32_acc_f32_bs_32_param_9];
+	ld.param.u64 	%rd38, [ggml_matvec_f32_bs_32_param_0];
+	ld.param.u64 	%rd39, [ggml_matvec_f32_bs_32_param_1];
+	ld.param.u64 	%rd31, [ggml_matvec_f32_bs_32_param_2];
+	ld.param.u64 	%rd32, [ggml_matvec_f32_bs_32_param_3];
+	ld.param.u64 	%rd33, [ggml_matvec_f32_bs_32_param_5];
+	ld.param.u64 	%rd34, [ggml_matvec_f32_bs_32_param_6];
+	ld.param.u64 	%rd35, [ggml_matvec_f32_bs_32_param_7];
+	ld.param.u64 	%rd36, [ggml_matvec_f32_bs_32_param_8];
+	ld.param.u64 	%rd37, [ggml_matvec_f32_bs_32_param_9];
 	cvta.to.global.u64 	%rd1, %rd39;
 	cvta.to.global.u64 	%rd2, %rd38;
 	mov.u32 	%r1, %ctaid.x;
@@ -189,18 +189,18 @@ $L__BB0_12:
 	ret;
 
 }
-	// .globl	ggml_matvec_f32_acc_f32_bs_64
-.visible .entry ggml_matvec_f32_acc_f32_bs_64(
-	.param .u64 ggml_matvec_f32_acc_f32_bs_64_param_0,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_64_param_1,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_64_param_2,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_64_param_3,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_64_param_4,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_64_param_5,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_64_param_6,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_64_param_7,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_64_param_8,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_64_param_9
+	// .globl	ggml_matvec_f32_bs_64
+.visible .entry ggml_matvec_f32_bs_64(
+	.param .u64 ggml_matvec_f32_bs_64_param_0,
+	.param .u64 ggml_matvec_f32_bs_64_param_1,
+	.param .u64 ggml_matvec_f32_bs_64_param_2,
+	.param .u64 ggml_matvec_f32_bs_64_param_3,
+	.param .u64 ggml_matvec_f32_bs_64_param_4,
+	.param .u64 ggml_matvec_f32_bs_64_param_5,
+	.param .u64 ggml_matvec_f32_bs_64_param_6,
+	.param .u64 ggml_matvec_f32_bs_64_param_7,
+	.param .u64 ggml_matvec_f32_bs_64_param_8,
+	.param .u64 ggml_matvec_f32_bs_64_param_9
 )
 {
 	.reg .pred 	%p<20>;
@@ -209,15 +209,15 @@ $L__BB0_12:
 	.reg .b64 	%rd<79>;
 
 
-	ld.param.u64 	%rd39, [ggml_matvec_f32_acc_f32_bs_64_param_0];
-	ld.param.u64 	%rd40, [ggml_matvec_f32_acc_f32_bs_64_param_1];
-	ld.param.u64 	%rd32, [ggml_matvec_f32_acc_f32_bs_64_param_2];
-	ld.param.u64 	%rd33, [ggml_matvec_f32_acc_f32_bs_64_param_3];
-	ld.param.u64 	%rd34, [ggml_matvec_f32_acc_f32_bs_64_param_5];
-	ld.param.u64 	%rd35, [ggml_matvec_f32_acc_f32_bs_64_param_6];
-	ld.param.u64 	%rd36, [ggml_matvec_f32_acc_f32_bs_64_param_7];
-	ld.param.u64 	%rd37, [ggml_matvec_f32_acc_f32_bs_64_param_8];
-	ld.param.u64 	%rd38, [ggml_matvec_f32_acc_f32_bs_64_param_9];
+	ld.param.u64 	%rd39, [ggml_matvec_f32_bs_64_param_0];
+	ld.param.u64 	%rd40, [ggml_matvec_f32_bs_64_param_1];
+	ld.param.u64 	%rd32, [ggml_matvec_f32_bs_64_param_2];
+	ld.param.u64 	%rd33, [ggml_matvec_f32_bs_64_param_3];
+	ld.param.u64 	%rd34, [ggml_matvec_f32_bs_64_param_5];
+	ld.param.u64 	%rd35, [ggml_matvec_f32_bs_64_param_6];
+	ld.param.u64 	%rd36, [ggml_matvec_f32_bs_64_param_7];
+	ld.param.u64 	%rd37, [ggml_matvec_f32_bs_64_param_8];
+	ld.param.u64 	%rd38, [ggml_matvec_f32_bs_64_param_9];
 	cvta.to.global.u64 	%rd1, %rd40;
 	cvta.to.global.u64 	%rd2, %rd39;
 	mov.u32 	%r3, %ctaid.x;
@@ -406,18 +406,18 @@ $L__BB1_15:
 	ret;
 
 }
-	// .globl	ggml_matvec_f32_acc_f32_bs_96
-.visible .entry ggml_matvec_f32_acc_f32_bs_96(
-	.param .u64 ggml_matvec_f32_acc_f32_bs_96_param_0,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_96_param_1,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_96_param_2,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_96_param_3,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_96_param_4,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_96_param_5,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_96_param_6,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_96_param_7,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_96_param_8,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_96_param_9
+	// .globl	ggml_matvec_f32_bs_96
+.visible .entry ggml_matvec_f32_bs_96(
+	.param .u64 ggml_matvec_f32_bs_96_param_0,
+	.param .u64 ggml_matvec_f32_bs_96_param_1,
+	.param .u64 ggml_matvec_f32_bs_96_param_2,
+	.param .u64 ggml_matvec_f32_bs_96_param_3,
+	.param .u64 ggml_matvec_f32_bs_96_param_4,
+	.param .u64 ggml_matvec_f32_bs_96_param_5,
+	.param .u64 ggml_matvec_f32_bs_96_param_6,
+	.param .u64 ggml_matvec_f32_bs_96_param_7,
+	.param .u64 ggml_matvec_f32_bs_96_param_8,
+	.param .u64 ggml_matvec_f32_bs_96_param_9
 )
 {
 	.reg .pred 	%p<20>;
@@ -426,15 +426,15 @@ $L__BB1_15:
 	.reg .b64 	%rd<80>;
 
 
-	ld.param.u64 	%rd39, [ggml_matvec_f32_acc_f32_bs_96_param_0];
-	ld.param.u64 	%rd40, [ggml_matvec_f32_acc_f32_bs_96_param_1];
-	ld.param.u64 	%rd32, [ggml_matvec_f32_acc_f32_bs_96_param_2];
-	ld.param.u64 	%rd33, [ggml_matvec_f32_acc_f32_bs_96_param_3];
-	ld.param.u64 	%rd34, [ggml_matvec_f32_acc_f32_bs_96_param_5];
-	ld.param.u64 	%rd35, [ggml_matvec_f32_acc_f32_bs_96_param_6];
-	ld.param.u64 	%rd36, [ggml_matvec_f32_acc_f32_bs_96_param_7];
-	ld.param.u64 	%rd37, [ggml_matvec_f32_acc_f32_bs_96_param_8];
-	ld.param.u64 	%rd38, [ggml_matvec_f32_acc_f32_bs_96_param_9];
+	ld.param.u64 	%rd39, [ggml_matvec_f32_bs_96_param_0];
+	ld.param.u64 	%rd40, [ggml_matvec_f32_bs_96_param_1];
+	ld.param.u64 	%rd32, [ggml_matvec_f32_bs_96_param_2];
+	ld.param.u64 	%rd33, [ggml_matvec_f32_bs_96_param_3];
+	ld.param.u64 	%rd34, [ggml_matvec_f32_bs_96_param_5];
+	ld.param.u64 	%rd35, [ggml_matvec_f32_bs_96_param_6];
+	ld.param.u64 	%rd36, [ggml_matvec_f32_bs_96_param_7];
+	ld.param.u64 	%rd37, [ggml_matvec_f32_bs_96_param_8];
+	ld.param.u64 	%rd38, [ggml_matvec_f32_bs_96_param_9];
 	cvta.to.global.u64 	%rd1, %rd40;
 	cvta.to.global.u64 	%rd2, %rd39;
 	mov.u32 	%r3, %ctaid.x;
@@ -624,18 +624,18 @@ $L__BB2_15:
 	ret;
 
 }
-	// .globl	ggml_matvec_f32_acc_f32_bs_128
-.visible .entry ggml_matvec_f32_acc_f32_bs_128(
-	.param .u64 ggml_matvec_f32_acc_f32_bs_128_param_0,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_128_param_1,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_128_param_2,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_128_param_3,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_128_param_4,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_128_param_5,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_128_param_6,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_128_param_7,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_128_param_8,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_128_param_9
+	// .globl	ggml_matvec_f32_bs_128
+.visible .entry ggml_matvec_f32_bs_128(
+	.param .u64 ggml_matvec_f32_bs_128_param_0,
+	.param .u64 ggml_matvec_f32_bs_128_param_1,
+	.param .u64 ggml_matvec_f32_bs_128_param_2,
+	.param .u64 ggml_matvec_f32_bs_128_param_3,
+	.param .u64 ggml_matvec_f32_bs_128_param_4,
+	.param .u64 ggml_matvec_f32_bs_128_param_5,
+	.param .u64 ggml_matvec_f32_bs_128_param_6,
+	.param .u64 ggml_matvec_f32_bs_128_param_7,
+	.param .u64 ggml_matvec_f32_bs_128_param_8,
+	.param .u64 ggml_matvec_f32_bs_128_param_9
 )
 {
 	.reg .pred 	%p<20>;
@@ -644,15 +644,15 @@ $L__BB2_15:
 	.reg .b64 	%rd<79>;
 
 
-	ld.param.u64 	%rd39, [ggml_matvec_f32_acc_f32_bs_128_param_0];
-	ld.param.u64 	%rd40, [ggml_matvec_f32_acc_f32_bs_128_param_1];
-	ld.param.u64 	%rd32, [ggml_matvec_f32_acc_f32_bs_128_param_2];
-	ld.param.u64 	%rd33, [ggml_matvec_f32_acc_f32_bs_128_param_3];
-	ld.param.u64 	%rd34, [ggml_matvec_f32_acc_f32_bs_128_param_5];
-	ld.param.u64 	%rd35, [ggml_matvec_f32_acc_f32_bs_128_param_6];
-	ld.param.u64 	%rd36, [ggml_matvec_f32_acc_f32_bs_128_param_7];
-	ld.param.u64 	%rd37, [ggml_matvec_f32_acc_f32_bs_128_param_8];
-	ld.param.u64 	%rd38, [ggml_matvec_f32_acc_f32_bs_128_param_9];
+	ld.param.u64 	%rd39, [ggml_matvec_f32_bs_128_param_0];
+	ld.param.u64 	%rd40, [ggml_matvec_f32_bs_128_param_1];
+	ld.param.u64 	%rd32, [ggml_matvec_f32_bs_128_param_2];
+	ld.param.u64 	%rd33, [ggml_matvec_f32_bs_128_param_3];
+	ld.param.u64 	%rd34, [ggml_matvec_f32_bs_128_param_5];
+	ld.param.u64 	%rd35, [ggml_matvec_f32_bs_128_param_6];
+	ld.param.u64 	%rd36, [ggml_matvec_f32_bs_128_param_7];
+	ld.param.u64 	%rd37, [ggml_matvec_f32_bs_128_param_8];
+	ld.param.u64 	%rd38, [ggml_matvec_f32_bs_128_param_9];
 	cvta.to.global.u64 	%rd1, %rd40;
 	cvta.to.global.u64 	%rd2, %rd39;
 	mov.u32 	%r3, %ctaid.x;
@@ -841,18 +841,18 @@ $L__BB3_15:
 	ret;
 
 }
-	// .globl	ggml_matvec_f32_acc_f32_bs_160
-.visible .entry ggml_matvec_f32_acc_f32_bs_160(
-	.param .u64 ggml_matvec_f32_acc_f32_bs_160_param_0,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_160_param_1,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_160_param_2,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_160_param_3,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_160_param_4,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_160_param_5,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_160_param_6,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_160_param_7,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_160_param_8,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_160_param_9
+	// .globl	ggml_matvec_f32_bs_160
+.visible .entry ggml_matvec_f32_bs_160(
+	.param .u64 ggml_matvec_f32_bs_160_param_0,
+	.param .u64 ggml_matvec_f32_bs_160_param_1,
+	.param .u64 ggml_matvec_f32_bs_160_param_2,
+	.param .u64 ggml_matvec_f32_bs_160_param_3,
+	.param .u64 ggml_matvec_f32_bs_160_param_4,
+	.param .u64 ggml_matvec_f32_bs_160_param_5,
+	.param .u64 ggml_matvec_f32_bs_160_param_6,
+	.param .u64 ggml_matvec_f32_bs_160_param_7,
+	.param .u64 ggml_matvec_f32_bs_160_param_8,
+	.param .u64 ggml_matvec_f32_bs_160_param_9
 )
 {
 	.reg .pred 	%p<20>;
@@ -861,15 +861,15 @@ $L__BB3_15:
 	.reg .b64 	%rd<80>;
 
 
-	ld.param.u64 	%rd39, [ggml_matvec_f32_acc_f32_bs_160_param_0];
-	ld.param.u64 	%rd40, [ggml_matvec_f32_acc_f32_bs_160_param_1];
-	ld.param.u64 	%rd32, [ggml_matvec_f32_acc_f32_bs_160_param_2];
-	ld.param.u64 	%rd33, [ggml_matvec_f32_acc_f32_bs_160_param_3];
-	ld.param.u64 	%rd34, [ggml_matvec_f32_acc_f32_bs_160_param_5];
-	ld.param.u64 	%rd35, [ggml_matvec_f32_acc_f32_bs_160_param_6];
-	ld.param.u64 	%rd36, [ggml_matvec_f32_acc_f32_bs_160_param_7];
-	ld.param.u64 	%rd37, [ggml_matvec_f32_acc_f32_bs_160_param_8];
-	ld.param.u64 	%rd38, [ggml_matvec_f32_acc_f32_bs_160_param_9];
+	ld.param.u64 	%rd39, [ggml_matvec_f32_bs_160_param_0];
+	ld.param.u64 	%rd40, [ggml_matvec_f32_bs_160_param_1];
+	ld.param.u64 	%rd32, [ggml_matvec_f32_bs_160_param_2];
+	ld.param.u64 	%rd33, [ggml_matvec_f32_bs_160_param_3];
+	ld.param.u64 	%rd34, [ggml_matvec_f32_bs_160_param_5];
+	ld.param.u64 	%rd35, [ggml_matvec_f32_bs_160_param_6];
+	ld.param.u64 	%rd36, [ggml_matvec_f32_bs_160_param_7];
+	ld.param.u64 	%rd37, [ggml_matvec_f32_bs_160_param_8];
+	ld.param.u64 	%rd38, [ggml_matvec_f32_bs_160_param_9];
 	cvta.to.global.u64 	%rd1, %rd40;
 	cvta.to.global.u64 	%rd2, %rd39;
 	mov.u32 	%r3, %ctaid.x;
@@ -1059,18 +1059,18 @@ $L__BB4_15:
 	ret;
 
 }
-	// .globl	ggml_matvec_f32_acc_f32_bs_196
-.visible .entry ggml_matvec_f32_acc_f32_bs_196(
-	.param .u64 ggml_matvec_f32_acc_f32_bs_196_param_0,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_196_param_1,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_196_param_2,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_196_param_3,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_196_param_4,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_196_param_5,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_196_param_6,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_196_param_7,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_196_param_8,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_196_param_9
+	// .globl	ggml_matvec_f32_bs_196
+.visible .entry ggml_matvec_f32_bs_196(
+	.param .u64 ggml_matvec_f32_bs_196_param_0,
+	.param .u64 ggml_matvec_f32_bs_196_param_1,
+	.param .u64 ggml_matvec_f32_bs_196_param_2,
+	.param .u64 ggml_matvec_f32_bs_196_param_3,
+	.param .u64 ggml_matvec_f32_bs_196_param_4,
+	.param .u64 ggml_matvec_f32_bs_196_param_5,
+	.param .u64 ggml_matvec_f32_bs_196_param_6,
+	.param .u64 ggml_matvec_f32_bs_196_param_7,
+	.param .u64 ggml_matvec_f32_bs_196_param_8,
+	.param .u64 ggml_matvec_f32_bs_196_param_9
 )
 {
 	.reg .pred 	%p<20>;
@@ -1079,15 +1079,15 @@ $L__BB4_15:
 	.reg .b64 	%rd<81>;
 
 
-	ld.param.u64 	%rd39, [ggml_matvec_f32_acc_f32_bs_196_param_0];
-	ld.param.u64 	%rd40, [ggml_matvec_f32_acc_f32_bs_196_param_1];
-	ld.param.u64 	%rd32, [ggml_matvec_f32_acc_f32_bs_196_param_2];
-	ld.param.u64 	%rd33, [ggml_matvec_f32_acc_f32_bs_196_param_3];
-	ld.param.u64 	%rd34, [ggml_matvec_f32_acc_f32_bs_196_param_5];
-	ld.param.u64 	%rd35, [ggml_matvec_f32_acc_f32_bs_196_param_6];
-	ld.param.u64 	%rd36, [ggml_matvec_f32_acc_f32_bs_196_param_7];
-	ld.param.u64 	%rd37, [ggml_matvec_f32_acc_f32_bs_196_param_8];
-	ld.param.u64 	%rd38, [ggml_matvec_f32_acc_f32_bs_196_param_9];
+	ld.param.u64 	%rd39, [ggml_matvec_f32_bs_196_param_0];
+	ld.param.u64 	%rd40, [ggml_matvec_f32_bs_196_param_1];
+	ld.param.u64 	%rd32, [ggml_matvec_f32_bs_196_param_2];
+	ld.param.u64 	%rd33, [ggml_matvec_f32_bs_196_param_3];
+	ld.param.u64 	%rd34, [ggml_matvec_f32_bs_196_param_5];
+	ld.param.u64 	%rd35, [ggml_matvec_f32_bs_196_param_6];
+	ld.param.u64 	%rd36, [ggml_matvec_f32_bs_196_param_7];
+	ld.param.u64 	%rd37, [ggml_matvec_f32_bs_196_param_8];
+	ld.param.u64 	%rd38, [ggml_matvec_f32_bs_196_param_9];
 	cvta.to.global.u64 	%rd1, %rd40;
 	cvta.to.global.u64 	%rd2, %rd39;
 	mov.u32 	%r3, %ctaid.x;
@@ -1278,18 +1278,18 @@ $L__BB5_15:
 	ret;
 
 }
-	// .globl	ggml_matvec_f32_acc_f32_bs_224
-.visible .entry ggml_matvec_f32_acc_f32_bs_224(
-	.param .u64 ggml_matvec_f32_acc_f32_bs_224_param_0,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_224_param_1,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_224_param_2,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_224_param_3,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_224_param_4,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_224_param_5,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_224_param_6,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_224_param_7,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_224_param_8,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_224_param_9
+	// .globl	ggml_matvec_f32_bs_224
+.visible .entry ggml_matvec_f32_bs_224(
+	.param .u64 ggml_matvec_f32_bs_224_param_0,
+	.param .u64 ggml_matvec_f32_bs_224_param_1,
+	.param .u64 ggml_matvec_f32_bs_224_param_2,
+	.param .u64 ggml_matvec_f32_bs_224_param_3,
+	.param .u64 ggml_matvec_f32_bs_224_param_4,
+	.param .u64 ggml_matvec_f32_bs_224_param_5,
+	.param .u64 ggml_matvec_f32_bs_224_param_6,
+	.param .u64 ggml_matvec_f32_bs_224_param_7,
+	.param .u64 ggml_matvec_f32_bs_224_param_8,
+	.param .u64 ggml_matvec_f32_bs_224_param_9
 )
 {
 	.reg .pred 	%p<20>;
@@ -1298,15 +1298,15 @@ $L__BB5_15:
 	.reg .b64 	%rd<80>;
 
 
-	ld.param.u64 	%rd39, [ggml_matvec_f32_acc_f32_bs_224_param_0];
-	ld.param.u64 	%rd40, [ggml_matvec_f32_acc_f32_bs_224_param_1];
-	ld.param.u64 	%rd32, [ggml_matvec_f32_acc_f32_bs_224_param_2];
-	ld.param.u64 	%rd33, [ggml_matvec_f32_acc_f32_bs_224_param_3];
-	ld.param.u64 	%rd34, [ggml_matvec_f32_acc_f32_bs_224_param_5];
-	ld.param.u64 	%rd35, [ggml_matvec_f32_acc_f32_bs_224_param_6];
-	ld.param.u64 	%rd36, [ggml_matvec_f32_acc_f32_bs_224_param_7];
-	ld.param.u64 	%rd37, [ggml_matvec_f32_acc_f32_bs_224_param_8];
-	ld.param.u64 	%rd38, [ggml_matvec_f32_acc_f32_bs_224_param_9];
+	ld.param.u64 	%rd39, [ggml_matvec_f32_bs_224_param_0];
+	ld.param.u64 	%rd40, [ggml_matvec_f32_bs_224_param_1];
+	ld.param.u64 	%rd32, [ggml_matvec_f32_bs_224_param_2];
+	ld.param.u64 	%rd33, [ggml_matvec_f32_bs_224_param_3];
+	ld.param.u64 	%rd34, [ggml_matvec_f32_bs_224_param_5];
+	ld.param.u64 	%rd35, [ggml_matvec_f32_bs_224_param_6];
+	ld.param.u64 	%rd36, [ggml_matvec_f32_bs_224_param_7];
+	ld.param.u64 	%rd37, [ggml_matvec_f32_bs_224_param_8];
+	ld.param.u64 	%rd38, [ggml_matvec_f32_bs_224_param_9];
 	cvta.to.global.u64 	%rd1, %rd40;
 	cvta.to.global.u64 	%rd2, %rd39;
 	mov.u32 	%r3, %ctaid.x;
@@ -1496,18 +1496,18 @@ $L__BB6_15:
 	ret;
 
 }
-	// .globl	ggml_matvec_f32_acc_f32_bs_256
-.visible .entry ggml_matvec_f32_acc_f32_bs_256(
-	.param .u64 ggml_matvec_f32_acc_f32_bs_256_param_0,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_256_param_1,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_256_param_2,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_256_param_3,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_256_param_4,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_256_param_5,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_256_param_6,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_256_param_7,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_256_param_8,
-	.param .u64 ggml_matvec_f32_acc_f32_bs_256_param_9
+	// .globl	ggml_matvec_f32_bs_256
+.visible .entry ggml_matvec_f32_bs_256(
+	.param .u64 ggml_matvec_f32_bs_256_param_0,
+	.param .u64 ggml_matvec_f32_bs_256_param_1,
+	.param .u64 ggml_matvec_f32_bs_256_param_2,
+	.param .u64 ggml_matvec_f32_bs_256_param_3,
+	.param .u64 ggml_matvec_f32_bs_256_param_4,
+	.param .u64 ggml_matvec_f32_bs_256_param_5,
+	.param .u64 ggml_matvec_f32_bs_256_param_6,
+	.param .u64 ggml_matvec_f32_bs_256_param_7,
+	.param .u64 ggml_matvec_f32_bs_256_param_8,
+	.param .u64 ggml_matvec_f32_bs_256_param_9
 )
 {
 	.reg .pred 	%p<20>;
@@ -1516,15 +1516,15 @@ $L__BB6_15:
 	.reg .b64 	%rd<79>;
 
 
-	ld.param.u64 	%rd39, [ggml_matvec_f32_acc_f32_bs_256_param_0];
-	ld.param.u64 	%rd40, [ggml_matvec_f32_acc_f32_bs_256_param_1];
-	ld.param.u64 	%rd32, [ggml_matvec_f32_acc_f32_bs_256_param_2];
-	ld.param.u64 	%rd33, [ggml_matvec_f32_acc_f32_bs_256_param_3];
-	ld.param.u64 	%rd34, [ggml_matvec_f32_acc_f32_bs_256_param_5];
-	ld.param.u64 	%rd35, [ggml_matvec_f32_acc_f32_bs_256_param_6];
-	ld.param.u64 	%rd36, [ggml_matvec_f32_acc_f32_bs_256_param_7];
-	ld.param.u64 	%rd37, [ggml_matvec_f32_acc_f32_bs_256_param_8];
-	ld.param.u64 	%rd38, [ggml_matvec_f32_acc_f32_bs_256_param_9];
+	ld.param.u64 	%rd39, [ggml_matvec_f32_bs_256_param_0];
+	ld.param.u64 	%rd40, [ggml_matvec_f32_bs_256_param_1];
+	ld.param.u64 	%rd32, [ggml_matvec_f32_bs_256_param_2];
+	ld.param.u64 	%rd33, [ggml_matvec_f32_bs_256_param_3];
+	ld.param.u64 	%rd34, [ggml_matvec_f32_bs_256_param_5];
+	ld.param.u64 	%rd35, [ggml_matvec_f32_bs_256_param_6];
+	ld.param.u64 	%rd36, [ggml_matvec_f32_bs_256_param_7];
+	ld.param.u64 	%rd37, [ggml_matvec_f32_bs_256_param_8];
+	ld.param.u64 	%rd38, [ggml_matvec_f32_bs_256_param_9];
 	cvta.to.global.u64 	%rd1, %rd40;
 	cvta.to.global.u64 	%rd2, %rd39;
 	mov.u32 	%r3, %ctaid.x;
@@ -1713,18 +1713,18 @@ $L__BB7_15:
 	ret;
 
 }
-	// .globl	ggml_matvec_f16_acc_f32_bs_32
-.visible .entry ggml_matvec_f16_acc_f32_bs_32(
-	.param .u64 ggml_matvec_f16_acc_f32_bs_32_param_0,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_32_param_1,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_32_param_2,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_32_param_3,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_32_param_4,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_32_param_5,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_32_param_6,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_32_param_7,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_32_param_8,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_32_param_9
+	// .globl	ggml_matvec_f16_bs_32
+.visible .entry ggml_matvec_f16_bs_32(
+	.param .u64 ggml_matvec_f16_bs_32_param_0,
+	.param .u64 ggml_matvec_f16_bs_32_param_1,
+	.param .u64 ggml_matvec_f16_bs_32_param_2,
+	.param .u64 ggml_matvec_f16_bs_32_param_3,
+	.param .u64 ggml_matvec_f16_bs_32_param_4,
+	.param .u64 ggml_matvec_f16_bs_32_param_5,
+	.param .u64 ggml_matvec_f16_bs_32_param_6,
+	.param .u64 ggml_matvec_f16_bs_32_param_7,
+	.param .u64 ggml_matvec_f16_bs_32_param_8,
+	.param .u64 ggml_matvec_f16_bs_32_param_9
 )
 {
 	.reg .pred 	%p<13>;
@@ -1734,15 +1734,15 @@ $L__BB7_15:
 	.reg .b64 	%rd<78>;
 
 
-	ld.param.u64 	%rd38, [ggml_matvec_f16_acc_f32_bs_32_param_0];
-	ld.param.u64 	%rd39, [ggml_matvec_f16_acc_f32_bs_32_param_1];
-	ld.param.u64 	%rd31, [ggml_matvec_f16_acc_f32_bs_32_param_2];
-	ld.param.u64 	%rd32, [ggml_matvec_f16_acc_f32_bs_32_param_3];
-	ld.param.u64 	%rd33, [ggml_matvec_f16_acc_f32_bs_32_param_5];
-	ld.param.u64 	%rd34, [ggml_matvec_f16_acc_f32_bs_32_param_6];
-	ld.param.u64 	%rd35, [ggml_matvec_f16_acc_f32_bs_32_param_7];
-	ld.param.u64 	%rd36, [ggml_matvec_f16_acc_f32_bs_32_param_8];
-	ld.param.u64 	%rd37, [ggml_matvec_f16_acc_f32_bs_32_param_9];
+	ld.param.u64 	%rd38, [ggml_matvec_f16_bs_32_param_0];
+	ld.param.u64 	%rd39, [ggml_matvec_f16_bs_32_param_1];
+	ld.param.u64 	%rd31, [ggml_matvec_f16_bs_32_param_2];
+	ld.param.u64 	%rd32, [ggml_matvec_f16_bs_32_param_3];
+	ld.param.u64 	%rd33, [ggml_matvec_f16_bs_32_param_5];
+	ld.param.u64 	%rd34, [ggml_matvec_f16_bs_32_param_6];
+	ld.param.u64 	%rd35, [ggml_matvec_f16_bs_32_param_7];
+	ld.param.u64 	%rd36, [ggml_matvec_f16_bs_32_param_8];
+	ld.param.u64 	%rd37, [ggml_matvec_f16_bs_32_param_9];
 	cvta.to.global.u64 	%rd1, %rd39;
 	cvta.to.global.u64 	%rd2, %rd38;
 	mov.u32 	%r1, %ctaid.x;
@@ -1975,18 +1975,18 @@ $L__BB8_12:
 	ret;
 
 }
-	// .globl	ggml_matvec_f16_acc_f32_bs_64
-.visible .entry ggml_matvec_f16_acc_f32_bs_64(
-	.param .u64 ggml_matvec_f16_acc_f32_bs_64_param_0,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_64_param_1,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_64_param_2,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_64_param_3,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_64_param_4,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_64_param_5,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_64_param_6,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_64_param_7,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_64_param_8,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_64_param_9
+	// .globl	ggml_matvec_f16_bs_64
+.visible .entry ggml_matvec_f16_bs_64(
+	.param .u64 ggml_matvec_f16_bs_64_param_0,
+	.param .u64 ggml_matvec_f16_bs_64_param_1,
+	.param .u64 ggml_matvec_f16_bs_64_param_2,
+	.param .u64 ggml_matvec_f16_bs_64_param_3,
+	.param .u64 ggml_matvec_f16_bs_64_param_4,
+	.param .u64 ggml_matvec_f16_bs_64_param_5,
+	.param .u64 ggml_matvec_f16_bs_64_param_6,
+	.param .u64 ggml_matvec_f16_bs_64_param_7,
+	.param .u64 ggml_matvec_f16_bs_64_param_8,
+	.param .u64 ggml_matvec_f16_bs_64_param_9
 )
 {
 	.reg .pred 	%p<20>;
@@ -1996,15 +1996,15 @@ $L__BB8_12:
 	.reg .b64 	%rd<79>;
 
 
-	ld.param.u64 	%rd39, [ggml_matvec_f16_acc_f32_bs_64_param_0];
-	ld.param.u64 	%rd40, [ggml_matvec_f16_acc_f32_bs_64_param_1];
-	ld.param.u64 	%rd32, [ggml_matvec_f16_acc_f32_bs_64_param_2];
-	ld.param.u64 	%rd33, [ggml_matvec_f16_acc_f32_bs_64_param_3];
-	ld.param.u64 	%rd34, [ggml_matvec_f16_acc_f32_bs_64_param_5];
-	ld.param.u64 	%rd35, [ggml_matvec_f16_acc_f32_bs_64_param_6];
-	ld.param.u64 	%rd36, [ggml_matvec_f16_acc_f32_bs_64_param_7];
-	ld.param.u64 	%rd37, [ggml_matvec_f16_acc_f32_bs_64_param_8];
-	ld.param.u64 	%rd38, [ggml_matvec_f16_acc_f32_bs_64_param_9];
+	ld.param.u64 	%rd39, [ggml_matvec_f16_bs_64_param_0];
+	ld.param.u64 	%rd40, [ggml_matvec_f16_bs_64_param_1];
+	ld.param.u64 	%rd32, [ggml_matvec_f16_bs_64_param_2];
+	ld.param.u64 	%rd33, [ggml_matvec_f16_bs_64_param_3];
+	ld.param.u64 	%rd34, [ggml_matvec_f16_bs_64_param_5];
+	ld.param.u64 	%rd35, [ggml_matvec_f16_bs_64_param_6];
+	ld.param.u64 	%rd36, [ggml_matvec_f16_bs_64_param_7];
+	ld.param.u64 	%rd37, [ggml_matvec_f16_bs_64_param_8];
+	ld.param.u64 	%rd38, [ggml_matvec_f16_bs_64_param_9];
 	cvta.to.global.u64 	%rd1, %rd40;
 	cvta.to.global.u64 	%rd2, %rd39;
 	mov.u32 	%r3, %ctaid.x;
@@ -2277,18 +2277,18 @@ $L__BB9_15:
 	ret;
 
 }
-	// .globl	ggml_matvec_f16_acc_f32_bs_96
-.visible .entry ggml_matvec_f16_acc_f32_bs_96(
-	.param .u64 ggml_matvec_f16_acc_f32_bs_96_param_0,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_96_param_1,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_96_param_2,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_96_param_3,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_96_param_4,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_96_param_5,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_96_param_6,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_96_param_7,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_96_param_8,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_96_param_9
+	// .globl	ggml_matvec_f16_bs_96
+.visible .entry ggml_matvec_f16_bs_96(
+	.param .u64 ggml_matvec_f16_bs_96_param_0,
+	.param .u64 ggml_matvec_f16_bs_96_param_1,
+	.param .u64 ggml_matvec_f16_bs_96_param_2,
+	.param .u64 ggml_matvec_f16_bs_96_param_3,
+	.param .u64 ggml_matvec_f16_bs_96_param_4,
+	.param .u64 ggml_matvec_f16_bs_96_param_5,
+	.param .u64 ggml_matvec_f16_bs_96_param_6,
+	.param .u64 ggml_matvec_f16_bs_96_param_7,
+	.param .u64 ggml_matvec_f16_bs_96_param_8,
+	.param .u64 ggml_matvec_f16_bs_96_param_9
 )
 {
 	.reg .pred 	%p<20>;
@@ -2298,15 +2298,15 @@ $L__BB9_15:
 	.reg .b64 	%rd<80>;
 
 
-	ld.param.u64 	%rd39, [ggml_matvec_f16_acc_f32_bs_96_param_0];
-	ld.param.u64 	%rd40, [ggml_matvec_f16_acc_f32_bs_96_param_1];
-	ld.param.u64 	%rd32, [ggml_matvec_f16_acc_f32_bs_96_param_2];
-	ld.param.u64 	%rd33, [ggml_matvec_f16_acc_f32_bs_96_param_3];
-	ld.param.u64 	%rd34, [ggml_matvec_f16_acc_f32_bs_96_param_5];
-	ld.param.u64 	%rd35, [ggml_matvec_f16_acc_f32_bs_96_param_6];
-	ld.param.u64 	%rd36, [ggml_matvec_f16_acc_f32_bs_96_param_7];
-	ld.param.u64 	%rd37, [ggml_matvec_f16_acc_f32_bs_96_param_8];
-	ld.param.u64 	%rd38, [ggml_matvec_f16_acc_f32_bs_96_param_9];
+	ld.param.u64 	%rd39, [ggml_matvec_f16_bs_96_param_0];
+	ld.param.u64 	%rd40, [ggml_matvec_f16_bs_96_param_1];
+	ld.param.u64 	%rd32, [ggml_matvec_f16_bs_96_param_2];
+	ld.param.u64 	%rd33, [ggml_matvec_f16_bs_96_param_3];
+	ld.param.u64 	%rd34, [ggml_matvec_f16_bs_96_param_5];
+	ld.param.u64 	%rd35, [ggml_matvec_f16_bs_96_param_6];
+	ld.param.u64 	%rd36, [ggml_matvec_f16_bs_96_param_7];
+	ld.param.u64 	%rd37, [ggml_matvec_f16_bs_96_param_8];
+	ld.param.u64 	%rd38, [ggml_matvec_f16_bs_96_param_9];
 	cvta.to.global.u64 	%rd1, %rd40;
 	cvta.to.global.u64 	%rd2, %rd39;
 	mov.u32 	%r3, %ctaid.x;
@@ -2580,18 +2580,18 @@ $L__BB10_15:
 	ret;
 
 }
-	// .globl	ggml_matvec_f16_acc_f32_bs_128
-.visible .entry ggml_matvec_f16_acc_f32_bs_128(
-	.param .u64 ggml_matvec_f16_acc_f32_bs_128_param_0,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_128_param_1,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_128_param_2,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_128_param_3,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_128_param_4,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_128_param_5,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_128_param_6,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_128_param_7,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_128_param_8,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_128_param_9
+	// .globl	ggml_matvec_f16_bs_128
+.visible .entry ggml_matvec_f16_bs_128(
+	.param .u64 ggml_matvec_f16_bs_128_param_0,
+	.param .u64 ggml_matvec_f16_bs_128_param_1,
+	.param .u64 ggml_matvec_f16_bs_128_param_2,
+	.param .u64 ggml_matvec_f16_bs_128_param_3,
+	.param .u64 ggml_matvec_f16_bs_128_param_4,
+	.param .u64 ggml_matvec_f16_bs_128_param_5,
+	.param .u64 ggml_matvec_f16_bs_128_param_6,
+	.param .u64 ggml_matvec_f16_bs_128_param_7,
+	.param .u64 ggml_matvec_f16_bs_128_param_8,
+	.param .u64 ggml_matvec_f16_bs_128_param_9
 )
 {
 	.reg .pred 	%p<20>;
@@ -2601,15 +2601,15 @@ $L__BB10_15:
 	.reg .b64 	%rd<79>;
 
 
-	ld.param.u64 	%rd39, [ggml_matvec_f16_acc_f32_bs_128_param_0];
-	ld.param.u64 	%rd40, [ggml_matvec_f16_acc_f32_bs_128_param_1];
-	ld.param.u64 	%rd32, [ggml_matvec_f16_acc_f32_bs_128_param_2];
-	ld.param.u64 	%rd33, [ggml_matvec_f16_acc_f32_bs_128_param_3];
-	ld.param.u64 	%rd34, [ggml_matvec_f16_acc_f32_bs_128_param_5];
-	ld.param.u64 	%rd35, [ggml_matvec_f16_acc_f32_bs_128_param_6];
-	ld.param.u64 	%rd36, [ggml_matvec_f16_acc_f32_bs_128_param_7];
-	ld.param.u64 	%rd37, [ggml_matvec_f16_acc_f32_bs_128_param_8];
-	ld.param.u64 	%rd38, [ggml_matvec_f16_acc_f32_bs_128_param_9];
+	ld.param.u64 	%rd39, [ggml_matvec_f16_bs_128_param_0];
+	ld.param.u64 	%rd40, [ggml_matvec_f16_bs_128_param_1];
+	ld.param.u64 	%rd32, [ggml_matvec_f16_bs_128_param_2];
+	ld.param.u64 	%rd33, [ggml_matvec_f16_bs_128_param_3];
+	ld.param.u64 	%rd34, [ggml_matvec_f16_bs_128_param_5];
+	ld.param.u64 	%rd35, [ggml_matvec_f16_bs_128_param_6];
+	ld.param.u64 	%rd36, [ggml_matvec_f16_bs_128_param_7];
+	ld.param.u64 	%rd37, [ggml_matvec_f16_bs_128_param_8];
+	ld.param.u64 	%rd38, [ggml_matvec_f16_bs_128_param_9];
 	cvta.to.global.u64 	%rd1, %rd40;
 	cvta.to.global.u64 	%rd2, %rd39;
 	mov.u32 	%r3, %ctaid.x;
@@ -2882,18 +2882,18 @@ $L__BB11_15:
 	ret;
 
 }
-	// .globl	ggml_matvec_f16_acc_f32_bs_160
-.visible .entry ggml_matvec_f16_acc_f32_bs_160(
-	.param .u64 ggml_matvec_f16_acc_f32_bs_160_param_0,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_160_param_1,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_160_param_2,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_160_param_3,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_160_param_4,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_160_param_5,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_160_param_6,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_160_param_7,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_160_param_8,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_160_param_9
+	// .globl	ggml_matvec_f16_bs_160
+.visible .entry ggml_matvec_f16_bs_160(
+	.param .u64 ggml_matvec_f16_bs_160_param_0,
+	.param .u64 ggml_matvec_f16_bs_160_param_1,
+	.param .u64 ggml_matvec_f16_bs_160_param_2,
+	.param .u64 ggml_matvec_f16_bs_160_param_3,
+	.param .u64 ggml_matvec_f16_bs_160_param_4,
+	.param .u64 ggml_matvec_f16_bs_160_param_5,
+	.param .u64 ggml_matvec_f16_bs_160_param_6,
+	.param .u64 ggml_matvec_f16_bs_160_param_7,
+	.param .u64 ggml_matvec_f16_bs_160_param_8,
+	.param .u64 ggml_matvec_f16_bs_160_param_9
 )
 {
 	.reg .pred 	%p<20>;
@@ -2903,15 +2903,15 @@ $L__BB11_15:
 	.reg .b64 	%rd<80>;
 
 
-	ld.param.u64 	%rd39, [ggml_matvec_f16_acc_f32_bs_160_param_0];
-	ld.param.u64 	%rd40, [ggml_matvec_f16_acc_f32_bs_160_param_1];
-	ld.param.u64 	%rd32, [ggml_matvec_f16_acc_f32_bs_160_param_2];
-	ld.param.u64 	%rd33, [ggml_matvec_f16_acc_f32_bs_160_param_3];
-	ld.param.u64 	%rd34, [ggml_matvec_f16_acc_f32_bs_160_param_5];
-	ld.param.u64 	%rd35, [ggml_matvec_f16_acc_f32_bs_160_param_6];
-	ld.param.u64 	%rd36, [ggml_matvec_f16_acc_f32_bs_160_param_7];
-	ld.param.u64 	%rd37, [ggml_matvec_f16_acc_f32_bs_160_param_8];
-	ld.param.u64 	%rd38, [ggml_matvec_f16_acc_f32_bs_160_param_9];
+	ld.param.u64 	%rd39, [ggml_matvec_f16_bs_160_param_0];
+	ld.param.u64 	%rd40, [ggml_matvec_f16_bs_160_param_1];
+	ld.param.u64 	%rd32, [ggml_matvec_f16_bs_160_param_2];
+	ld.param.u64 	%rd33, [ggml_matvec_f16_bs_160_param_3];
+	ld.param.u64 	%rd34, [ggml_matvec_f16_bs_160_param_5];
+	ld.param.u64 	%rd35, [ggml_matvec_f16_bs_160_param_6];
+	ld.param.u64 	%rd36, [ggml_matvec_f16_bs_160_param_7];
+	ld.param.u64 	%rd37, [ggml_matvec_f16_bs_160_param_8];
+	ld.param.u64 	%rd38, [ggml_matvec_f16_bs_160_param_9];
 	cvta.to.global.u64 	%rd1, %rd40;
 	cvta.to.global.u64 	%rd2, %rd39;
 	mov.u32 	%r3, %ctaid.x;
@@ -3185,18 +3185,18 @@ $L__BB12_15:
 	ret;
 
 }
-	// .globl	ggml_matvec_f16_acc_f32_bs_196
-.visible .entry ggml_matvec_f16_acc_f32_bs_196(
-	.param .u64 ggml_matvec_f16_acc_f32_bs_196_param_0,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_196_param_1,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_196_param_2,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_196_param_3,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_196_param_4,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_196_param_5,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_196_param_6,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_196_param_7,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_196_param_8,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_196_param_9
+	// .globl	ggml_matvec_f16_bs_196
+.visible .entry ggml_matvec_f16_bs_196(
+	.param .u64 ggml_matvec_f16_bs_196_param_0,
+	.param .u64 ggml_matvec_f16_bs_196_param_1,
+	.param .u64 ggml_matvec_f16_bs_196_param_2,
+	.param .u64 ggml_matvec_f16_bs_196_param_3,
+	.param .u64 ggml_matvec_f16_bs_196_param_4,
+	.param .u64 ggml_matvec_f16_bs_196_param_5,
+	.param .u64 ggml_matvec_f16_bs_196_param_6,
+	.param .u64 ggml_matvec_f16_bs_196_param_7,
+	.param .u64 ggml_matvec_f16_bs_196_param_8,
+	.param .u64 ggml_matvec_f16_bs_196_param_9
 )
 {
 	.reg .pred 	%p<20>;
@@ -3206,15 +3206,15 @@ $L__BB12_15:
 	.reg .b64 	%rd<81>;
 
 
-	ld.param.u64 	%rd39, [ggml_matvec_f16_acc_f32_bs_196_param_0];
-	ld.param.u64 	%rd40, [ggml_matvec_f16_acc_f32_bs_196_param_1];
-	ld.param.u64 	%rd32, [ggml_matvec_f16_acc_f32_bs_196_param_2];
-	ld.param.u64 	%rd33, [ggml_matvec_f16_acc_f32_bs_196_param_3];
-	ld.param.u64 	%rd34, [ggml_matvec_f16_acc_f32_bs_196_param_5];
-	ld.param.u64 	%rd35, [ggml_matvec_f16_acc_f32_bs_196_param_6];
-	ld.param.u64 	%rd36, [ggml_matvec_f16_acc_f32_bs_196_param_7];
-	ld.param.u64 	%rd37, [ggml_matvec_f16_acc_f32_bs_196_param_8];
-	ld.param.u64 	%rd38, [ggml_matvec_f16_acc_f32_bs_196_param_9];
+	ld.param.u64 	%rd39, [ggml_matvec_f16_bs_196_param_0];
+	ld.param.u64 	%rd40, [ggml_matvec_f16_bs_196_param_1];
+	ld.param.u64 	%rd32, [ggml_matvec_f16_bs_196_param_2];
+	ld.param.u64 	%rd33, [ggml_matvec_f16_bs_196_param_3];
+	ld.param.u64 	%rd34, [ggml_matvec_f16_bs_196_param_5];
+	ld.param.u64 	%rd35, [ggml_matvec_f16_bs_196_param_6];
+	ld.param.u64 	%rd36, [ggml_matvec_f16_bs_196_param_7];
+	ld.param.u64 	%rd37, [ggml_matvec_f16_bs_196_param_8];
+	ld.param.u64 	%rd38, [ggml_matvec_f16_bs_196_param_9];
 	cvta.to.global.u64 	%rd1, %rd40;
 	cvta.to.global.u64 	%rd2, %rd39;
 	mov.u32 	%r3, %ctaid.x;
@@ -3489,18 +3489,18 @@ $L__BB13_15:
 	ret;
 
 }
-	// .globl	ggml_matvec_f16_acc_f32_bs_224
-.visible .entry ggml_matvec_f16_acc_f32_bs_224(
-	.param .u64 ggml_matvec_f16_acc_f32_bs_224_param_0,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_224_param_1,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_224_param_2,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_224_param_3,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_224_param_4,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_224_param_5,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_224_param_6,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_224_param_7,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_224_param_8,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_224_param_9
+	// .globl	ggml_matvec_f16_bs_224
+.visible .entry ggml_matvec_f16_bs_224(
+	.param .u64 ggml_matvec_f16_bs_224_param_0,
+	.param .u64 ggml_matvec_f16_bs_224_param_1,
+	.param .u64 ggml_matvec_f16_bs_224_param_2,
+	.param .u64 ggml_matvec_f16_bs_224_param_3,
+	.param .u64 ggml_matvec_f16_bs_224_param_4,
+	.param .u64 ggml_matvec_f16_bs_224_param_5,
+	.param .u64 ggml_matvec_f16_bs_224_param_6,
+	.param .u64 ggml_matvec_f16_bs_224_param_7,
+	.param .u64 ggml_matvec_f16_bs_224_param_8,
+	.param .u64 ggml_matvec_f16_bs_224_param_9
 )
 {
 	.reg .pred 	%p<20>;
@@ -3510,15 +3510,15 @@ $L__BB13_15:
 	.reg .b64 	%rd<80>;
 
 
-	ld.param.u64 	%rd39, [ggml_matvec_f16_acc_f32_bs_224_param_0];
-	ld.param.u64 	%rd40, [ggml_matvec_f16_acc_f32_bs_224_param_1];
-	ld.param.u64 	%rd32, [ggml_matvec_f16_acc_f32_bs_224_param_2];
-	ld.param.u64 	%rd33, [ggml_matvec_f16_acc_f32_bs_224_param_3];
-	ld.param.u64 	%rd34, [ggml_matvec_f16_acc_f32_bs_224_param_5];
-	ld.param.u64 	%rd35, [ggml_matvec_f16_acc_f32_bs_224_param_6];
-	ld.param.u64 	%rd36, [ggml_matvec_f16_acc_f32_bs_224_param_7];
-	ld.param.u64 	%rd37, [ggml_matvec_f16_acc_f32_bs_224_param_8];
-	ld.param.u64 	%rd38, [ggml_matvec_f16_acc_f32_bs_224_param_9];
+	ld.param.u64 	%rd39, [ggml_matvec_f16_bs_224_param_0];
+	ld.param.u64 	%rd40, [ggml_matvec_f16_bs_224_param_1];
+	ld.param.u64 	%rd32, [ggml_matvec_f16_bs_224_param_2];
+	ld.param.u64 	%rd33, [ggml_matvec_f16_bs_224_param_3];
+	ld.param.u64 	%rd34, [ggml_matvec_f16_bs_224_param_5];
+	ld.param.u64 	%rd35, [ggml_matvec_f16_bs_224_param_6];
+	ld.param.u64 	%rd36, [ggml_matvec_f16_bs_224_param_7];
+	ld.param.u64 	%rd37, [ggml_matvec_f16_bs_224_param_8];
+	ld.param.u64 	%rd38, [ggml_matvec_f16_bs_224_param_9];
 	cvta.to.global.u64 	%rd1, %rd40;
 	cvta.to.global.u64 	%rd2, %rd39;
 	mov.u32 	%r3, %ctaid.x;
@@ -3792,18 +3792,18 @@ $L__BB14_15:
 	ret;
 
 }
-	// .globl	ggml_matvec_f16_acc_f32_bs_256
-.visible .entry ggml_matvec_f16_acc_f32_bs_256(
-	.param .u64 ggml_matvec_f16_acc_f32_bs_256_param_0,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_256_param_1,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_256_param_2,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_256_param_3,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_256_param_4,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_256_param_5,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_256_param_6,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_256_param_7,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_256_param_8,
-	.param .u64 ggml_matvec_f16_acc_f32_bs_256_param_9
+	// .globl	ggml_matvec_f16_bs_256
+.visible .entry ggml_matvec_f16_bs_256(
+	.param .u64 ggml_matvec_f16_bs_256_param_0,
+	.param .u64 ggml_matvec_f16_bs_256_param_1,
+	.param .u64 ggml_matvec_f16_bs_256_param_2,
+	.param .u64 ggml_matvec_f16_bs_256_param_3,
+	.param .u64 ggml_matvec_f16_bs_256_param_4,
+	.param .u64 ggml_matvec_f16_bs_256_param_5,
+	.param .u64 ggml_matvec_f16_bs_256_param_6,
+	.param .u64 ggml_matvec_f16_bs_256_param_7,
+	.param .u64 ggml_matvec_f16_bs_256_param_8,
+	.param .u64 ggml_matvec_f16_bs_256_param_9
 )
 {
 	.reg .pred 	%p<20>;
@@ -3813,15 +3813,15 @@ $L__BB14_15:
 	.reg .b64 	%rd<79>;
 
 
-	ld.param.u64 	%rd39, [ggml_matvec_f16_acc_f32_bs_256_param_0];
-	ld.param.u64 	%rd40, [ggml_matvec_f16_acc_f32_bs_256_param_1];
-	ld.param.u64 	%rd32, [ggml_matvec_f16_acc_f32_bs_256_param_2];
-	ld.param.u64 	%rd33, [ggml_matvec_f16_acc_f32_bs_256_param_3];
-	ld.param.u64 	%rd34, [ggml_matvec_f16_acc_f32_bs_256_param_5];
-	ld.param.u64 	%rd35, [ggml_matvec_f16_acc_f32_bs_256_param_6];
-	ld.param.u64 	%rd36, [ggml_matvec_f16_acc_f32_bs_256_param_7];
-	ld.param.u64 	%rd37, [ggml_matvec_f16_acc_f32_bs_256_param_8];
-	ld.param.u64 	%rd38, [ggml_matvec_f16_acc_f32_bs_256_param_9];
+	ld.param.u64 	%rd39, [ggml_matvec_f16_bs_256_param_0];
+	ld.param.u64 	%rd40, [ggml_matvec_f16_bs_256_param_1];
+	ld.param.u64 	%rd32, [ggml_matvec_f16_bs_256_param_2];
+	ld.param.u64 	%rd33, [ggml_matvec_f16_bs_256_param_3];
+	ld.param.u64 	%rd34, [ggml_matvec_f16_bs_256_param_5];
+	ld.param.u64 	%rd35, [ggml_matvec_f16_bs_256_param_6];
+	ld.param.u64 	%rd36, [ggml_matvec_f16_bs_256_param_7];
+	ld.param.u64 	%rd37, [ggml_matvec_f16_bs_256_param_8];
+	ld.param.u64 	%rd38, [ggml_matvec_f16_bs_256_param_9];
 	cvta.to.global.u64 	%rd1, %rd40;
 	cvta.to.global.u64 	%rd2, %rd39;
 	mov.u32 	%r3, %ctaid.x;
