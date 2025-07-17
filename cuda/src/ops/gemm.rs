@@ -54,10 +54,10 @@ impl EvalOp for CudaGemm {
         let (a_opaque, b_opaque) = args_2!(inputs);
         let a = a_opaque
             .to_device_tensor()
-            .with_context(|| format!("A tensor is not a metal tensor: {:?}", a_opaque))?;
+            .with_context(|| format!("A tensor is not a metal tensor: {a_opaque:?}"))?;
         let b = b_opaque
             .to_device_tensor()
-            .with_context(|| format!("B tensor is not a metal tensor {:?}", b_opaque))?;
+            .with_context(|| format!("B tensor is not a metal tensor {b_opaque:?}"))?;
 
         ensure!((a.datum_type() == b.datum_type()) || get_q40_fact(b).is_some());
 

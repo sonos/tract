@@ -103,10 +103,10 @@ impl Matmul {
 
     fn find_block_size(k: usize) -> usize {
         let mut block_size_best = WARP_SIZE;
-        let mut best_niter = (k + 2 * WARP_SIZE - 1) / (2 * WARP_SIZE);
+        let mut best_niter = k.div_ceil(2 * WARP_SIZE);
 
-        for block_size in (2 * WARP_SIZE..=256).step_by(WARP_SIZE as usize) {
-            let niter = (k + 2 * block_size - 1) / (2 * block_size);
+        for block_size in (2 * WARP_SIZE..=256).step_by(WARP_SIZE) {
+            let niter = k.div_ceil(2 * block_size);
             if niter < best_niter {
                 best_niter = niter;
                 block_size_best = block_size;
@@ -237,13 +237,11 @@ impl Matmul {
         let params = MatMulParams::from_inputs(a, b, output)?;
         if (params.k % 2 == 0) && params.m == 1 {
             Self::dispatch_ggml_matvec(stream, a, b, output, params)?;
+        } else if a.datum_type() == DatumType::F32 {
+            Self::dispatch_cublas_gemm::<f32>(stream.clone(), a, b, output, params)?;
         } else {
-            if a.datum_type() == DatumType::F32 {
-                Self::dispatch_cublas_gemm::<f32>(stream.clone(), a, b, &output, params)?;
-            } else {
-                ensure!(a.datum_type() == F16);
-                Self::dispatch_cublas_gemm::<f16>(stream.clone(), a, b, &output, params)?;
-            }
+            ensure!(a.datum_type() == F16);
+            Self::dispatch_cublas_gemm::<f16>(stream.clone(), a, b, output, params)?;
         }
         Ok(())
     }
