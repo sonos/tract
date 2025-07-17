@@ -58,11 +58,11 @@ impl ScaledMaskedSoftmax {
         let o_view = get_cuda_view(output);
 
         let mut nth = 32;
-        while nth < shape[1] && nth < MAX_THREADS {
+        while nth < shape[2] && nth < MAX_THREADS {
             nth *= 2;
         }
 
-        let block_size = if shape[1].is_power_of_two() && shape[1] > 32 { shape[1] } else { 0 };
+        let block_size = if shape[2].is_power_of_two() && shape[2] > 32 { shape[2].min(1024) } else { 0 };
 
         let func = cuda_context()
             .load_pipeline(LibraryName::NN, self.kernel_name(input.datum_type(), block_size)?)?;
@@ -70,6 +70,7 @@ impl ScaledMaskedSoftmax {
         let mut launch_args = stream.launch_builder(&func);
         launch_args.arg(&i_view);
         launch_args.arg(&mask_view);
+
         if input.datum_type() == DatumType::F32 {
             launch_args.arg(scale.to_scalar::<f32>()?)
         } else {
@@ -84,7 +85,7 @@ impl ScaledMaskedSoftmax {
         let cfg = LaunchConfig {
             grid_dim: (1, shape[1] as _, shape[0] as _),
             block_dim: (nth as _, 1, 1),
-            shared_mem_bytes: shape[1].next_power_of_two().max(32) as _,
+            shared_mem_bytes: ((shape[2].next_power_of_two()  + 32) * size_of::<f32>()) as u32,
         };
 
         unsafe { launch_args.launch(cfg) };
@@ -111,13 +112,13 @@ mod tests {
     #[test]
     fn test_scaled_masked_softmax_f32() -> TractResult<()> {
         CUDA_STREAM.with(|stream| {
-            let m = 4;
-            let n = 4;
+            let m = 6;
+            let n = 33;
             let scale: Arc<_> = tensor0(0.125f32).into();
             let mask = Tensor::from_shape(&[1, m, n], &vec![-1000f32; m * n])?.into_device()?;
 
             let a =
-                Tensor::from_shape(&[1, m, n], &(0..m * n).map(|f| f as f32).collect::<Vec<_>>())?
+                Tensor::from_shape(&[4, m, n], &(0..4 *m * n).map(|f| f as f32).collect::<Vec<_>>())?
                     .into_device()?;
 
             let cpu = scaled_masked_softmax::ScaledMaskedSoftmax { scale: scale.clone() };
