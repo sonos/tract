@@ -122,8 +122,7 @@ pub fn profile(
     Ok(())
 }
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-pub fn profile_metal(
+pub fn profile_gpu(
     model: &TypedModel,
     bench_limits: &BenchLimits,
     dg: &mut Annotations,
@@ -153,7 +152,7 @@ pub fn profile_metal(
             state.init_states(&mut inputs.state_initializers.clone())?;
         }
         let start = Instant::now();
-        rec_profiler_metal(&mut state, dg, &inputs.sources[0], &prefix)?;
+        rec_profiler_gpu(&mut state, dg, &inputs.sources[0], &prefix)?;
         dur += start.elapsed();
         if !state.model().properties().contains_key("pulse.delay") {  
             state.reset_op_states()?;
@@ -182,8 +181,7 @@ pub fn profile_metal(
     Ok(())
 }
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-pub fn rec_profiler_metal(
+pub fn rec_profiler_gpu(
     state: &mut TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
     dg: &mut Annotations,
     inputs: &TVec<TValue>,

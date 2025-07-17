@@ -28,7 +28,6 @@ mod cost;
 mod dump;
 mod hwbench;
 mod llm;
-#[cfg(any(target_os = "macos", target_os = "ios"))]
 mod memory_arena;
 mod params;
 mod plan_options;
