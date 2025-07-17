@@ -62,7 +62,11 @@ impl CudaTensor {
 
 impl std::fmt::Debug for CudaTensor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CudaTensor").field("datum_type", &self.datum_type).field("shape", &self.shape).field("block_quant_fact", &self.block_quant_fact).finish()
+        f.debug_struct("CudaTensor")
+            .field("datum_type", &self.datum_type)
+            .field("shape", &self.shape)
+            .field("block_quant_fact", &self.block_quant_fact)
+            .finish()
     }
 }
 

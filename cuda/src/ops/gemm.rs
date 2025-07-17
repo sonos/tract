@@ -27,10 +27,7 @@ impl CudaGemm {
         if a.datum_type.is_number() && b.datum_type.is_number() {
             ensure!(a.rank() == b.rank());
             ensure!(a.rank() >= 2);
-            ensure!(
-                a.shape[a.rank() - 1]
-                    == b.shape[b.rank() - 1]
-            );
+            ensure!(a.shape[a.rank() - 1] == b.shape[b.rank() - 1]);
             let out_shape = Matmul::output_shape(&a.shape, &b.shape);
             Ok(tvec![a.datum_type().unwrap().fact(out_shape)])
         } else if let Some(opf) = as_q40_fact(inputs[1]) {
