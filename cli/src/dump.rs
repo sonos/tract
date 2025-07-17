@@ -1,7 +1,7 @@
+use crate::Parameters;
 use crate::params::SomeGraphDef;
 use crate::plan_options::plan_options_from_subcommand;
 use crate::tensor::run_params_from_subcommand;
-use crate::Parameters;
 use fs_err as fs;
 use nu_ansi_term::Color::*;
 #[allow(unused_imports)]
@@ -133,17 +133,17 @@ pub fn handle(
 
         if matches.is_present("metal") || matches.is_present("cuda") {
             #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-            {   
+            {
                 if !get_cuda_lib().is_some() {
                     bail!("GPU profiling called on non-GPU device");
-                }   
+                }
             }
             tract_libcli::profile::profile_gpu(
-                    model,
-                    bench_limits,
-                    &mut annotations,
-                    &plan_options,
-                    &inputs,
+                model,
+                bench_limits,
+                &mut annotations,
+                &plan_options,
+                &inputs,
             )?;
         } else {
             tract_libcli::profile::profile(
@@ -176,10 +176,10 @@ pub fn handle(
 
     if sub_matches.is_present("memory-arena") {
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-        {   
+        {
             if get_cuda_lib().is_none() {
                 bail!("Memory arena is only enabled for MacOS / iOS devices or CUDA devices");
-            }  
+            }
         }
         crate::memory_arena::dump_metrics(
             params
