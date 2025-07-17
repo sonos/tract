@@ -57,29 +57,29 @@ pub(crate) fn make_state<'m>(
     let mut plan_options = crate::plan_options::plan_options_from_subcommand(sub_matches)?;
     let model =
         params.tract_model.downcast_ref::<TypedModel>().context("Can only bench TypedModel")?;
-    if matches.is_present("metal") {
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-        {
-            plan_options.skip_order_opt_ram = true;
-            let mut plan = SimplePlan::new_with_options(model, &plan_options)?;
-            let mut symbol_values = SymbolValues::default();
-            let sequence_length =
-                model.symbols.get("S").context("Could not find symbol S in model")?;
-            let past_sequence_length =
-                model.symbols.get("P").context("Could not find symbol P in model")?;
-
-            symbol_values.set(&sequence_length, 1024);
-            symbol_values.set(&past_sequence_length, 0);
-            let session_handler =
-                tract_gpu::session_handler::DeviceSessionHandler::from_plan(&plan, &symbol_values)?;
-
-            plan = plan.with_session_handler(session_handler);
-            Ok(SimpleState::new(Arc::new(plan))?)
-        }
+    if matches.is_present("metal") || matches.is_present("cuda"){
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
-            bail!("Metal bench called on non-Metal model");
+            use tract_cuda::utils::get_cuda_lib;
+            if get_cuda_lib().is_none() {
+                bail!("GPU bench called on non-GPU model");
+            }
         }
+        plan_options.skip_order_opt_ram = true;
+        let mut plan = SimplePlan::new_with_options(model, &plan_options)?;
+        let mut symbol_values = SymbolValues::default();
+        let sequence_length =
+            model.symbols.get("S").context("Could not find symbol S in model")?;
+        let past_sequence_length =
+            model.symbols.get("P").context("Could not find symbol P in model")?;
+
+        symbol_values.set(&sequence_length, 1024);
+        symbol_values.set(&past_sequence_length, 0);
+        let session_handler =
+            tract_gpu::session_handler::DeviceSessionHandler::from_plan(&plan, &symbol_values)?;
+
+        plan = plan.with_session_handler(session_handler);
+        Ok(SimpleState::new(Arc::new(plan))?)
     } else {
         let plan = SimplePlan::new_with_options(model, &plan_options)?;
         Ok(SimpleState::new(Arc::new(plan))?)
