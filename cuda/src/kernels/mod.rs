@@ -3,19 +3,19 @@
 pub mod array;
 mod binary;
 mod launch_args;
+mod mm_mv;
 pub mod nn;
 mod unary;
 mod utils;
-mod mm_mv;
 
+use crate::tensor::CudaBuffer;
 use anyhow::{bail, ensure};
 pub use binary::BinOps;
 use cudarc::driver::{CudaView, CudaViewMut};
+pub use mm_mv::Matmul;
 use tract_core::prelude::TractResult;
 use tract_gpu::tensor::DeviceTensor;
 pub use unary::UnaryOps;
-pub use mm_mv::Matmul;
-use crate::tensor::CudaBuffer;
 
 const MAX_THREADS: usize = 1024;
 
@@ -31,7 +31,7 @@ pub enum LibraryName {
     Binary,
     Array,
     NN,
-    Ggml
+    Ggml,
 }
 
 impl LibraryName {

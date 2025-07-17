@@ -4,7 +4,7 @@ use tract_core::model::translator::Translate;
 use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::cast::Cast;
-use tract_core::ops::einsum::prefix_matmul::{rewrite_einsum_to_prefix_matmul, PrefixMatMul};
+use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
@@ -222,11 +222,12 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
             || node
                 .op_as::<GeluApproximate>()
                 .is_some_and(|_| kernels::nn::GeluApproximate::is_supported_dt(input_dts[0])))
-            || node.op_as::<PrefixMatMul>().is_some_and(|op| {
-                !op.transpose_c && op.quantize_output.is_none() && 
-                (Matmul::is_supported_dts(&input_facts) || Matmul::is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()]))
-            })
-        )
+        || node.op_as::<PrefixMatMul>().is_some_and(|op| {
+            !op.transpose_c
+                && op.quantize_output.is_none()
+                && (Matmul::is_supported_dts(&input_facts)
+                    || Matmul::is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()]))
+        }))
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {
@@ -342,10 +343,7 @@ fn convert_matmul_to_metal(
         ensure!(as_q40_fact(input_facts[a_pos]).is_none(), "Cannot transpose Q40 tensor");
 
         let rank = input_facts[a_pos].rank();
-        let perm_a_op = ops::CudaAxisOp::from_tract_core(AxisOp::Move(
-            rank - 2,
-            rank - 1,
-        ));
+        let perm_a_op = ops::CudaAxisOp::from_tract_core(AxisOp::Move(rank - 2, rank - 1));
         let perm_a_name = node.name.clone() + ".perm_a";
         inputs[a_pos] = target.wire_node(perm_a_name, perm_a_op, &[inputs[a_pos]])?[0];
     }
@@ -354,10 +352,7 @@ fn convert_matmul_to_metal(
         ensure!(as_q40_fact(input_facts[b_pos]).is_none(), "Cannot transpose Q40 tensor");
 
         let rank = input_facts[b_pos].rank();
-        let perm_b_op = ops::CudaAxisOp::from_tract_core(AxisOp::Move(
-            rank - 2,
-            rank - 1,
-        ));
+        let perm_b_op = ops::CudaAxisOp::from_tract_core(AxisOp::Move(rank - 2, rank - 1));
         let perm_b_name = node.name.clone() + ".perm_b";
         inputs[b_pos] = target.wire_node(perm_b_name, perm_b_op, &[inputs[b_pos]])?[0];
     }
@@ -371,15 +366,9 @@ fn convert_matmul_to_metal(
             .map(|fact| fact.clarify_dt_shape().unwrap().1.len())
             .unwrap();
 
-        let perm_out_op = ops::CudaAxisOp::from_tract_core(AxisOp::Move(
-            rank - 2,
-            rank - 1,
-        ));
-        matmul_output = target.wire_node(
-            node.name.clone() + ".perm_out",
-            perm_out_op,
-            &matmul_output,
-        )?;
+        let perm_out_op = ops::CudaAxisOp::from_tract_core(AxisOp::Move(rank - 2, rank - 1));
+        matmul_output =
+            target.wire_node(node.name.clone() + ".perm_out", perm_out_op, &matmul_output)?;
     }
 
     let out_fact = target.outlet_fact(matmul_output[0])?;
@@ -414,13 +403,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 self.sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
 
             let outlet_ids: TVec<OutletId> = if let Some(op) = node.op_as::<PrefixMatMul>() {
-                convert_matmul_to_metal(
-                    source,
-                    node,
-                    target,
-                    &mut device_inputs,
-                    op,
-                )?
+                convert_matmul_to_metal(source, node, target, &mut device_inputs, op)?
             } else {
                 let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<Const>() {
                     Box::new(convert_const(op)?)
