@@ -20,6 +20,21 @@ pub fn next_node<'a>(model: &'a TypedModel, node: &TypedNode) -> Option<&'a Type
     Some(&model.nodes()[succ.node])
 }
 
+pub fn next_nodes<'a>(model: &'a TypedModel, node: &TypedNode) -> Option<TVec<&'a TypedNode>> {
+    if node.outputs.is_empty() {
+        return None;
+    };
+
+    Some(
+        node.outputs
+            .iter()
+            .flat_map(|o| {
+                o.successors.iter().map(|succ| &model.nodes()[succ.node]).collect::<Vec<_>>()
+            })
+            .collect(),
+    )
+}
+
 pub fn previous_node<'a>(model: &'a TypedModel, node: &TypedNode) -> Option<&'a TypedNode> {
     if node.inputs.len() != 1 {
         return None;
