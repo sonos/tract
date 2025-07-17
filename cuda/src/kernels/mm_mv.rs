@@ -138,7 +138,7 @@ impl Matmul {
 
         let batch_ratio = params.a_batch / params.b_batch;
 
-        let kernel_name = format!("ggml_matvec_{}_acc_f32_bs_{block_size}", DeviceTensor::tname(a.datum_type())?);
+        let kernel_name = format!("ggml_matvec_{}_bs_{block_size}", DeviceTensor::tname(a.datum_type())?);
         let mut func = cuda_context().load_pipeline(LibraryName::Ggml, kernel_name)?;
         let mut launch_args = stream.launch_builder(&func);
 
