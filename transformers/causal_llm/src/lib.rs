@@ -14,6 +14,28 @@ pub struct CausalLlmModel {
     pub tokenizer: Tokenizer,
     pub nn: Arc<TypedRunnableModel<TypedModel>>,
 }
+fn plan_with_session_handler(model: TypedModel) -> TractResult<TypedSimplePlan<TypedModel>> {
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        let plan_options = PlanOptions { skip_order_opt_ram: true, ..Default::default() };
+        let plan = model.into_runnable_with_options(&plan_options)?;
+        let model = plan.model();
+        let mut symbol_values = SymbolValues::default();
+        let sequence_length = model.symbols.get("S").context("Could not find symbol S in model")?;
+        let past_sequence_length =
+            model.symbols.get("P").context("Could not find symbol P in model")?;
+
+        symbol_values.set(&sequence_length, 1024);
+        symbol_values.set(&past_sequence_length, 0);
+        let session_handler =
+            tract_gpu::session_handler::DeviceSessionHandler::from_plan(&plan, &symbol_values)?;
+        Ok(plan.with_session_handler(session_handler))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    {
+        model.into_runnable()
+    }
+}
 
 impl CausalLlmModel {
     pub fn from_paths(
@@ -36,7 +58,8 @@ impl CausalLlmModel {
             tract_metal::MetalTransform::from_str("")?.transform(&mut nn)?;
         }
         nn.optimize()?;
-        let nn = nn.into_runnable()?;
+        let nn = plan_with_session_handler(nn)?;
+        dbg!(nn.model());
         Ok(Arc::new(CausalLlmModel { tokenizer, nn: Arc::new(nn) }))
     }
 
@@ -116,10 +139,15 @@ impl CausalLlmState {
                 self.nn_state.run(tvec![input.slice(1, pos, pos + s)?.into_tvalue()])?;
                 pos += s;
             }
-            self.nn_state.run(tvec![input.slice(1, pos, tokens.len())?.into_tvalue()])?
+            if pos > 0 {
+                input = input.slice(1, pos, tokens.len())?;
+            }
+            self.nn_state.run(tvec![input.into_tvalue()])?
         } else {
+            println!("debug no chunk");
             self.nn_state.run(tvec![input.into_tvalue()])?
         };
+        println!("processed turn");
         let next_tok = output[0]
             .as_slice::<f32>()?
             .iter()

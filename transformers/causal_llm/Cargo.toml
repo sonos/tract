@@ -8,6 +8,7 @@ anyhow.workspace = true
 float-ord = "0.3.2"
 tokenizers.workspace = true
 tract-nnef.workspace = true
+tract-gpu.workspace = true
 tract-transformers.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
