@@ -59,7 +59,6 @@ impl CausalLlmModel {
         }
         nn.optimize()?;
         let nn = plan_with_session_handler(nn)?;
-        dbg!(nn.model());
         Ok(Arc::new(CausalLlmModel { tokenizer, nn: Arc::new(nn) }))
     }
 
@@ -144,10 +143,8 @@ impl CausalLlmState {
             }
             self.nn_state.run(tvec![input.into_tvalue()])?
         } else {
-            println!("debug no chunk");
             self.nn_state.run(tvec![input.into_tvalue()])?
         };
-        println!("processed turn");
         let next_tok = output[0]
             .as_slice::<f32>()?
             .iter()
