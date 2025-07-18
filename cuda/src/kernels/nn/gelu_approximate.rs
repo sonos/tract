@@ -2,7 +2,7 @@ use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::context::cuda_context;
+use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::{LibraryName, get_cuda_view};
 
 #[derive(Debug, Clone, Default, Copy, PartialEq, Eq, Hash)]
@@ -33,7 +33,7 @@ impl GeluApproximate {
         }
     }
 
-    pub fn eval(&self, stream: &CudaStream, input: &DeviceTensor) -> TractResult<DeviceTensor> {
+    pub fn eval(&self, stream: &TractCudaStream, input: &DeviceTensor) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(stream, input, &output)?;
         stream.synchronize()?;
@@ -42,7 +42,7 @@ impl GeluApproximate {
 
     pub fn dispatch_eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         input: &DeviceTensor,
         output: &DeviceTensor,
     ) -> TractResult<()> {

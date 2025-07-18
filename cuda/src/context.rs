@@ -1,3 +1,4 @@
+use cudarc::cublas::CudaBlas;
 use cudarc::nvrtc::Ptx;
 use tract_gpu::device::DeviceContext;
 use tract_gpu::tensor::OwnedDeviceTensor;
@@ -13,7 +14,7 @@ use crate::kernels::LibraryName;
 use crate::tensor::CudaTensor;
 
 thread_local! {
-    pub static CUDA_STREAM: Arc<CudaStream> = cuda_context().default_stream();
+    pub static CUDA_STREAM: TractCudaStream = TractCudaStream::new().expect("Could not create Cuda Stream");
 }
 
 pub fn cuda_context() -> TractCudaContext {
@@ -128,5 +129,30 @@ impl DeviceContext for TractCudaContext {
 
     fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {
         Ok(Box::new(CudaTensor::from_tensor(tensor.view().tensor)))
+    }
+}
+
+pub struct TractCudaStream {
+    inner: Arc<CudaStream>,
+    cublas: CudaBlas
+}
+
+impl TractCudaStream {
+    fn new() -> TractResult<TractCudaStream> {
+        let stream = cuda_context().default_stream();
+        let cublas = CudaBlas::new(stream.clone())?;
+        Ok(TractCudaStream { inner: stream, cublas })
+    }
+
+    pub fn cublas(&self) -> &CudaBlas {
+        &self.cublas
+    }
+}
+
+impl Deref for TractCudaStream {
+    type Target = Arc<CudaStream>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }

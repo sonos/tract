@@ -1,4 +1,4 @@
-use crate::context::cuda_context;
+use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::{BroadcastKind, LibraryName, get_cuda_view, utils};
 use cudarc::driver::{CudaStream, LaunchArgs, LaunchConfig, PushKernelArg};
@@ -52,7 +52,7 @@ impl PermuteAxes {
 
     pub fn eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         input: &DeviceTensor,
         axes: &[usize],
     ) -> TractResult<DeviceTensor> {
@@ -69,7 +69,7 @@ impl PermuteAxes {
 
     pub fn dispatch_eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         input: &DeviceTensor,
         axes: &[usize],
         output: &DeviceTensor,

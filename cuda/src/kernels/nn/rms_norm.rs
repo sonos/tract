@@ -1,4 +1,4 @@
-use crate::context::cuda_context;
+use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view, utils};
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
@@ -27,7 +27,7 @@ impl RmsNorm {
 
     pub fn eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         input: &DeviceTensor,
         axis: usize,
         eps: &Tensor,
@@ -40,7 +40,7 @@ impl RmsNorm {
 
     pub fn dispatch_eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         input: &DeviceTensor,
         axis: usize,
         eps: &Tensor,

@@ -4,7 +4,7 @@ use std::fmt;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::context::cuda_context;
+use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::{LibraryName, get_cuda_view, launch_args};
 
 #[derive(Debug, Clone, new, PartialEq, Eq, Hash)]
@@ -48,7 +48,7 @@ impl Cast {
 
     pub fn eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         input: &DeviceTensor,
         to_dt: DatumType,
     ) -> TractResult<DeviceTensor> {
@@ -60,7 +60,7 @@ impl Cast {
 
     pub fn dispatch_eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         input: &DeviceTensor,
         output: &DeviceTensor,
     ) -> TractResult<()> {
