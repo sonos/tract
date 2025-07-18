@@ -4,7 +4,7 @@ use std::fmt;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::context::{cuda_context, TractCudaStream};
+use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::{LibraryName, get_cuda_view, get_sliced_cuda_view};
 
 #[derive(Debug, Clone, new, PartialEq, Eq, Hash)]

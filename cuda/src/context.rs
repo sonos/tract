@@ -134,7 +134,7 @@ impl DeviceContext for TractCudaContext {
 
 pub struct TractCudaStream {
     inner: Arc<CudaStream>,
-    cublas: CudaBlas
+    cublas: CudaBlas,
 }
 
 impl TractCudaStream {
