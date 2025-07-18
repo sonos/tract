@@ -102,7 +102,7 @@ extern "C" __global__ void ggml_matvec_##type_name##block_size_name( \
     INSTANTIATE_MAT_VEC(name, T, bs_96, 96) \
     INSTANTIATE_MAT_VEC(name, T, bs_128, 128) \
     INSTANTIATE_MAT_VEC(name, T, bs_160, 160) \
-    INSTANTIATE_MAT_VEC(name, T, bs_196, 196) \
+    INSTANTIATE_MAT_VEC(name, T, bs_192, 192) \
     INSTANTIATE_MAT_VEC(name, T, bs_224, 224) \
     INSTANTIATE_MAT_VEC(name, T, bs_256, 256) \
 
