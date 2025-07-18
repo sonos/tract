@@ -107,4 +107,4 @@ extern "C" __global__ void ggml_matvec_##type_name##block_size_name( \
     INSTANTIATE_MAT_VEC(name, T, bs_256, 256) \
 
 INSTANTIATE_MAT_VEC_FOR_T(f32_, float)
-INSTANTIATE_MAT_VEC_FOR_T(f16_, __half)   
+INSTANTIATE_MAT_VEC_FOR_T(f16_, __half)
