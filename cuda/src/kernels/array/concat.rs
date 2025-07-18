@@ -1,4 +1,4 @@
-use crate::context::{cuda_context, TractCudaStream};
+use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::{BroadcastKind, LibraryName, get_cuda_view, get_sliced_cuda_view, utils};
 use anyhow::ensure;
@@ -42,7 +42,11 @@ impl Concat {
         Ok(format!("copy_{broadcast_name}_{tname}"))
     }
 
-    pub fn eval(&self, stream: &TractCudaStream, inputs: &[&DeviceTensor]) -> TractResult<DeviceTensor> {
+    pub fn eval(
+        &self,
+        stream: &TractCudaStream,
+        inputs: &[&DeviceTensor],
+    ) -> TractResult<DeviceTensor> {
         ensure!(!inputs.is_empty());
         let mut output_shape = inputs[0].shape().to_vec();
         output_shape[self.axis] = inputs.iter().map(|it| it.shape()[self.axis]).sum();

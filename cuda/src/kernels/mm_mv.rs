@@ -9,7 +9,7 @@ use tract_gpu::tensor::DeviceTensor::Owned;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::{as_q40_fact, as_q40_tensor};
 
-use crate::context::{cuda_context, TractCudaStream};
+use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::{
     LibraryName, get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut,
 };
@@ -318,11 +318,8 @@ mod tests {
                 )?
             };
 
-            let cuda_output = Matmul.eval(
-                stream,
-                &a.clone().into_device()?,
-                &b.clone().into_device()?,
-            )?;
+            let cuda_output =
+                Matmul.eval(stream, &a.clone().into_device()?, &b.clone().into_device()?)?;
 
             let matmul = PrefixMatMul {
                 transpose_a: false,
