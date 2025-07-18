@@ -3,18 +3,19 @@
 pub mod array;
 mod binary;
 mod launch_args;
+mod mm_mv;
 pub mod nn;
 mod unary;
 mod utils;
 
+use crate::tensor::CudaBuffer;
 use anyhow::{bail, ensure};
 pub use binary::BinOps;
-use cudarc::driver::CudaView;
+use cudarc::driver::{CudaView, CudaViewMut};
+pub use mm_mv::Matmul;
 use tract_core::prelude::TractResult;
 use tract_gpu::tensor::DeviceTensor;
 pub use unary::UnaryOps;
-
-use crate::tensor::CudaBuffer;
 
 const MAX_THREADS: usize = 1024;
 
@@ -22,6 +23,7 @@ const UNARY_OPS: &str = include_str!("ptx/unary.ptx");
 const BINARY_OPS: &str = include_str!("ptx/binary.ptx");
 const ARRAY_OPS: &str = include_str!("ptx/array.ptx");
 const NN_OPS: &str = include_str!("ptx/nn.ptx");
+const GGML_MM_MV: &str = include_str!("ptx/mm_mv.ptx");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LibraryName {
@@ -29,6 +31,7 @@ pub enum LibraryName {
     Binary,
     Array,
     NN,
+    Ggml,
 }
 
 impl LibraryName {
@@ -38,6 +41,7 @@ impl LibraryName {
             Self::Binary => BINARY_OPS,
             Self::Array => ARRAY_OPS,
             Self::NN => NN_OPS,
+            Self::Ggml => GGML_MM_MV,
         }
     }
 }
@@ -111,4 +115,21 @@ pub fn get_sliced_cuda_view(
     let buffer = t.device_buffer().downcast_ref::<CudaBuffer>().unwrap();
     let offset = t.buffer_offset::<usize>() + offset;
     Ok(buffer.slice(offset..(offset + len)))
+}
+
+pub fn get_cuda_view_mut(t: &DeviceTensor) -> CudaViewMut<'_, u8> {
+    let size = t.len() * t.datum_type().size_of();
+    get_sliced_cuda_view_mut(t, 0, size).unwrap()
+}
+
+// NOTE: offset and len are in bytes
+pub fn get_sliced_cuda_view_mut(
+    t: &DeviceTensor,
+    offset: usize,
+    len: usize,
+) -> TractResult<CudaViewMut<'_, u8>> {
+    ensure!(offset + len <= t.len() * t.datum_type().size_of());
+    let mut buffer = t.device_buffer().downcast_ref::<CudaBuffer>().unwrap();
+    let offset = t.buffer_offset::<usize>() + offset;
+    Ok(buffer.as_view_mut().slice_mut(offset..(offset + len)))
 }

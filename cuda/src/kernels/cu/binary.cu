@@ -112,4 +112,3 @@ DEFINE_COMP_OP(binary_not_equals, op_not_equals)
 
 DEFINE_LOGIC_OP(binary_and, op_and)
 DEFINE_LOGIC_OP(binary_or, op_or)
-

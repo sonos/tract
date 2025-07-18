@@ -7,7 +7,6 @@
 #define MAX_THREADS 1024
 #define WARP_SIZE   32
 
-
 template<int width = WARP_SIZE>
 static __device__ __forceinline__ float warp_reduce_sum(float x) {
 #pragma unroll
