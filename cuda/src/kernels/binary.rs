@@ -3,7 +3,7 @@ use std::fmt;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::context::cuda_context;
+use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view};
@@ -194,7 +194,7 @@ impl BinOps {
 
     pub fn eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         lhs: &DeviceTensor,
         rhs: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
@@ -210,7 +210,7 @@ impl BinOps {
 
     pub fn dispatch_eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         lhs: &DeviceTensor,
         rhs: &DeviceTensor,
         output: &DeviceTensor,

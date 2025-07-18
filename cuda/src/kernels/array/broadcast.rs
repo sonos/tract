@@ -1,4 +1,4 @@
-use crate::context::cuda_context;
+use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::{BroadcastKind, LibraryName, get_cuda_view, get_sliced_cuda_view, utils};
 
@@ -44,7 +44,7 @@ impl MultiBroadcast {
 
     pub fn eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         input: &DeviceTensor,
         input_offset: usize,
         output_shape: &[usize],
@@ -57,7 +57,7 @@ impl MultiBroadcast {
 
     pub fn dispatch_eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         input: &DeviceTensor,
         input_offset: usize,
         output: &DeviceTensor,

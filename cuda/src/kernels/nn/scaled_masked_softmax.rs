@@ -1,4 +1,4 @@
-use crate::context::cuda_context;
+use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view, launch_args};
@@ -26,7 +26,7 @@ impl ScaledMaskedSoftmax {
 
     pub fn eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         input: &DeviceTensor,
         scale: &Tensor,
         mask: &DeviceTensor,
@@ -39,7 +39,7 @@ impl ScaledMaskedSoftmax {
 
     pub fn dispatch_eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         input: &DeviceTensor,
         scale: &Tensor,
         mask: &DeviceTensor,

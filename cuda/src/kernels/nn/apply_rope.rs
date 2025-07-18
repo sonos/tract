@@ -1,4 +1,4 @@
-use crate::context::cuda_context;
+use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::kernels::{BroadcastKind, LibraryName, get_cuda_view, utils};
@@ -31,7 +31,7 @@ impl ApplyRope {
 
     pub fn eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         input: &DeviceTensor,
         cos: &DeviceTensor,
         sin: &DeviceTensor,
@@ -44,7 +44,7 @@ impl ApplyRope {
 
     pub fn dispatch_eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         input: &DeviceTensor,
         cos: &DeviceTensor,
         sin: &DeviceTensor,

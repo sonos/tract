@@ -69,7 +69,7 @@ impl EvalOp for CudaGemm {
         let c_shape = Matmul::output_shape(a.shape(), &b_shape);
         let c = tract_gpu::session_handler::make_tensor_for_node(session, node_id, c_dt, &c_shape)?;
 
-        CUDA_STREAM.with(|stream| Matmul.dispatch_eval(stream.clone(), a, b, &c))?;
+        CUDA_STREAM.with(|stream| Matmul.dispatch_eval(stream, a, b, &c))?;
 
         Ok(tvec![c.into_opaque_tensor().into_tvalue()])
     }

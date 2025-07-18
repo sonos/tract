@@ -9,7 +9,7 @@ use tract_gpu::tensor::DeviceTensor::Owned;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::{as_q40_fact, as_q40_tensor};
 
-use crate::context::cuda_context;
+use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::{
     LibraryName, get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut,
 };
@@ -117,7 +117,7 @@ impl Matmul {
     }
 
     fn dispatch_ggml_matvec(
-        stream: Arc<CudaStream>,
+        stream: &TractCudaStream,
         a: &DeviceTensor,
         b: &DeviceTensor,
         output: &DeviceTensor,
@@ -159,7 +159,7 @@ impl Matmul {
     }
 
     fn dispatch_cublas_gemm<F: Datum + Float>(
-        stream: Arc<CudaStream>,
+        stream: &TractCudaStream,
         a: &DeviceTensor,
         b: &DeviceTensor,
         output: &DeviceTensor,
@@ -180,8 +180,6 @@ impl Matmul {
             beta: F::from(0.0f32).unwrap(),
             ldc: params.n as i32,
         };
-
-        let cublas = CudaBlas::new(stream)?;
 
         let a_batch_stride = params.a_strides[0] as usize;
         let b_batch_stride = params.b_strides[0] as usize;
@@ -206,7 +204,7 @@ impl Matmul {
                 get_sliced_cuda_view_mut(output, i * c_offset, c_batch_stride * size_of::<F>())?;
 
             unsafe {
-                cublas.gemm(
+                stream.cublas().gemm(
                     cublas_gemm_cfg,
                     &b_view.transmute::<F>(b_batch_stride).unwrap(),
                     &a_view.transmute::<F>(a_batch_stride).unwrap(),
@@ -219,7 +217,7 @@ impl Matmul {
 
     pub fn dispatch_eval(
         &self,
-        stream: Arc<CudaStream>,
+        stream: &TractCudaStream,
         a: &DeviceTensor,
         b: &DeviceTensor,
         output: &DeviceTensor,
@@ -238,17 +236,17 @@ impl Matmul {
         if (params.k % 2 == 0) && params.m == 1 {
             Self::dispatch_ggml_matvec(stream, a, b, output, params)?;
         } else if a.datum_type() == DatumType::F32 {
-            Self::dispatch_cublas_gemm::<f32>(stream.clone(), a, b, output, params)?;
+            Self::dispatch_cublas_gemm::<f32>(stream, a, b, output, params)?;
         } else {
             ensure!(a.datum_type() == F16);
-            Self::dispatch_cublas_gemm::<f16>(stream.clone(), a, b, output, params)?;
+            Self::dispatch_cublas_gemm::<f16>(stream, a, b, output, params)?;
         }
         Ok(())
     }
 
     pub fn eval(
         &self,
-        stream: Arc<CudaStream>,
+        stream: &TractCudaStream,
         lhs: &DeviceTensor,
         rhs: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
@@ -258,7 +256,7 @@ impl Matmul {
                 &Self::output_shape(lhs.shape(), rhs.shape()),
             )?
         };
-        self.dispatch_eval(stream.clone(), lhs, rhs, &output)?;
+        self.dispatch_eval(stream, lhs, rhs, &output)?;
         stream.synchronize()?;
         Ok(output)
     }
@@ -321,7 +319,7 @@ mod tests {
             };
 
             let cuda_output = Matmul.eval(
-                stream.clone(),
+                stream,
                 &a.clone().into_device()?,
                 &b.clone().into_device()?,
             )?;

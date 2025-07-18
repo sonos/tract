@@ -4,7 +4,7 @@ use std::fmt;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::context::cuda_context;
+use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::{LibraryName, get_cuda_view, get_sliced_cuda_view};
 
 #[derive(Debug, Clone, new, PartialEq, Eq, Hash)]
@@ -42,7 +42,7 @@ impl Memcpy {
 
     pub fn dispatch_eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         input: &DeviceTensor,
         input_offset: usize,
         output: &DeviceTensor,
@@ -74,7 +74,7 @@ impl Memcpy {
 
     pub fn eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         input: &DeviceTensor,
         input_offset: usize,
         output_shape: &[usize],

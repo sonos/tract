@@ -1,10 +1,10 @@
 use std::fmt;
 
-use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
+use cudarc::driver::{LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::context::cuda_context;
+use crate::context::{cuda_context, TractCudaStream};
 use crate::kernels::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
@@ -133,7 +133,7 @@ impl UnaryOps {
         Ok(format!("unary_{}_{}", name, DeviceTensor::tname(dt)?))
     }
 
-    pub fn eval(&self, stream: &CudaStream, input: &DeviceTensor) -> TractResult<DeviceTensor> {
+    pub fn eval(&self, stream: &TractCudaStream, input: &DeviceTensor) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(stream, input, &output)?;
         stream.synchronize()?;
@@ -143,7 +143,7 @@ impl UnaryOps {
 
     pub fn dispatch_eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         input: &DeviceTensor,
         output: &DeviceTensor,
     ) -> TractResult<()> {
