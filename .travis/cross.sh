@@ -201,6 +201,7 @@ case "$PLATFORM" in
         WASMTIME=$HOME/.wasmtime/bin/wasmtime
         if [ ! -e $WASMTIME ]
         then
+          curl --silent https://api.github.com/repos/bytecodealliance/wasmtime/releases/latest
           curl https://wasmtime.dev/install.sh -sSf > /tmp/install.sh
           bash -x /tmp/install.sh
         fi
