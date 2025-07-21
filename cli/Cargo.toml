@@ -46,6 +46,7 @@ tract-linalg = { workspace = true, features = ["hwbench"] }
 tract-core.workspace = true
 tract-hir.workspace = true
 tract-nnef.workspace = true
+tract-nnef-resources.workspace = true
 tract-libcli.workspace = true
 tract-gpu.workspace = true
 tract-cuda.workspace = true

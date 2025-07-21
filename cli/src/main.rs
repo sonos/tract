@@ -157,6 +157,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"tflite-cycle" "Perform TFLITE dump and reload before optimizing"))
 
         .arg(arg!(--"nnef-tract-core" "Allow usage of tract-core extension in NNEF dump and load"))
+        .arg(arg!(--"nnef-tract-resource" "Allow usage of tract-resource extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-onnx" "Allow usage of tract-onnx extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-pulse" "Allow usage of tract-pulse extension in NNEF dump and load"))
         .arg(arg!(--"nnef-tract-extra" "Allow usage of tract-extra extension in NNEF dump and load"))
@@ -842,6 +843,10 @@ fn nnef(matches: &clap::ArgMatches) -> tract_nnef::internal::Nnef {
     }
     if matches.is_present("nnef-tract-core") {
         fw = fw.with_tract_core();
+    }
+    if matches.is_present("nnef-tract-resource") {
+        use tract_nnef_resources::internal::JsonLoader;
+        fw = fw.with_tract_resource().with_resource_loader(JsonLoader);
     }
     if matches.is_present("nnef-extended-identifier") {
         fw.allow_extended_identifier_syntax(true);
