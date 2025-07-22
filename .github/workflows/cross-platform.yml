@@ -64,6 +64,10 @@ jobs:
           target
         key: ${{ runner.os }}-${{matrix.platform}}-${{steps.date.outputs.date}}
 
+    - name: Setup wasmtime
+      if: ${{ matrix.platform }} == "wasm32-wasi"
+      uses: bytecodealliance/actions/wasmtime/setup@v1
+
     - name: Cross script
       env:
         PLATFORM: ${{matrix.platform}}
