@@ -181,36 +181,56 @@ impl Matmul {
             ldc: params.n as i32,
         };
 
-        let a_batch_stride = params.a_strides[0] as usize;
-        let b_batch_stride = params.b_strides[0] as usize;
-        let c_batch_stride = params.c_strides[0] as usize;
-
-        let dt_size = size_of::<F>();
-        let (iter_batch, a_offset, b_offset) = if params.b_batch == params.a_batch {
-            (params.b_batch, a_batch_stride * dt_size, b_batch_stride * dt_size)
-        } else if params.a_batch == 1 {
-            (params.b_batch, 0, b_batch_stride * dt_size)
-        } else if params.b_batch == 1 {
-            (params.b_batch, a_batch_stride * dt_size, 0)
-        } else {
-            bail!("Unsupported batches config: A: {} and B: {}", params.a_batch, params.b_batch);
-        };
-        let c_offset = params.c_strides[0] as usize * dt_size;
-
-        for i in 0..iter_batch {
-            let a_view = get_sliced_cuda_view(a, i * a_offset, a_batch_stride * size_of::<F>())?;
-            let b_view = get_sliced_cuda_view(b, i * b_offset, b_batch_stride * size_of::<F>())?;
+        if params.a_batch == params.b_batch {
+            let a_view = get_cuda_view(a);
+            let b_view = get_cuda_view(b);
             let mut out_view =
-                get_sliced_cuda_view_mut(output, i * c_offset, c_batch_stride * size_of::<F>())?;
+                get_cuda_view_mut(output);
 
-            unsafe {
-                stream.cublas().gemm(
-                    cublas_gemm_cfg,
-                    &b_view.transmute::<F>(b_batch_stride).unwrap(),
-                    &a_view.transmute::<F>(a_batch_stride).unwrap(),
-                    &mut out_view.transmute_mut::<F>(c_batch_stride).unwrap(),
-                )?
+            let gemm_batched_strided_cfg = cublas::StridedBatchedConfig {
+                gemm: cublas_gemm_cfg,
+                batch_size: params.a_batch as i32,
+                stride_a: params.n as _,
+                stride_b: params.m as _,
+                stride_c: (params.m * params.n) as _,
             };
+            unsafe { stream.cublas().gemm_strided_batched(gemm_batched_strided_cfg,
+                &b_view.transmute::<F>(b.len()).unwrap(),
+                &a_view.transmute::<F>(a.len()).unwrap(),
+             &mut out_view.transmute_mut::<F>(output.len()).unwrap()) } ;
+
+        } else {
+            let a_batch_stride = params.a_strides[0] as usize;
+            let b_batch_stride = params.b_strides[0] as usize;
+            let c_batch_stride = params.c_strides[0] as usize;
+
+            let dt_size = size_of::<F>();
+            let (iter_batch, a_offset, b_offset) = if params.b_batch == params.a_batch {
+                (params.b_batch, a_batch_stride * dt_size, b_batch_stride * dt_size)
+            } else if params.a_batch == 1 {
+                (params.b_batch, 0, b_batch_stride * dt_size)
+            } else if params.b_batch == 1 {
+                (params.a_batch, a_batch_stride * dt_size, 0)
+            } else {
+                bail!("Unsupported batches config: A: {} and B: {}", params.a_batch, params.b_batch);
+            };
+            let c_offset = params.c_strides[0] as usize * dt_size;
+
+            for i in 0..iter_batch {
+                let a_view = get_sliced_cuda_view(a, i * a_offset, a_batch_stride * size_of::<F>())?;
+                let b_view = get_sliced_cuda_view(b, i * b_offset, b_batch_stride * size_of::<F>())?;
+                let mut out_view =
+                    get_sliced_cuda_view_mut(output, i * c_offset, c_batch_stride * size_of::<F>())?;
+
+                unsafe {
+                    stream.cublas().gemm(
+                        cublas_gemm_cfg,
+                        &b_view.transmute::<F>(b_batch_stride).unwrap(),
+                        &a_view.transmute::<F>(a_batch_stride).unwrap(),
+                        &mut out_view.transmute_mut::<F>(c_batch_stride).unwrap(),
+                    )?
+                };
+            }
         }
         Ok(())
     }
@@ -233,7 +253,7 @@ impl Matmul {
         }
 
         let params = MatMulParams::from_inputs(a, b, output)?;
-        if (params.k % 2 == 0) && params.m == 1 {
+        if (params.k % 2 == 0) && params.m == 1 && params.a_batch >= params.b_batch {
             Self::dispatch_ggml_matvec(stream, a, b, output, params)?;
         } else if a.datum_type() == DatumType::F32 {
             Self::dispatch_cublas_gemm::<f32>(stream, a, b, output, params)?;
@@ -279,25 +299,26 @@ mod tests {
     use tract_gpu::tensor::IntoDevice;
 
     pub(crate) fn run_mmm_test_case(
-        (batch, m, k, n): (usize, usize, usize, usize),
+        (batch_a, batch_b, m, k, n): (usize, usize, usize, usize, usize),
         a_dt: DatumType,
         b_dt: DatumType,
     ) -> TractResult<()> {
+        ensure!((batch_a % batch_b == 0) || (batch_b % batch_a == 0));
         CUDA_STREAM.with(|stream| {
-            let a_shape = [batch, m, k];
-            let b_shape = [batch, n, k];
+            let a_shape = [batch_a, m, k];
+            let b_shape = [batch_b, n, k];
             let mut a = if a_dt == DatumType::F16 {
                 Tensor::from_shape(
                     &a_shape,
-                    &(0..batch * m * k)
-                        .map(|f| f16::from_f32(f as f32 / (batch * m * k) as f32))
+                    &(0..batch_a * m * k)
+                        .map(|f| f16::from_f32(f as f32 / (batch_a * m * k) as f32))
                         .collect::<Vec<_>>(),
                 )?
             } else {
                 Tensor::from_shape(
                     &a_shape,
-                    &(0..batch * m * k)
-                        .map(|f| f as f32 / (batch * m * k) as f32)
+                    &(0..batch_a * m * k)
+                        .map(|f| (f + 1) as f32 / (batch_a * m * k) as f32)
                         .collect::<Vec<_>>(),
                 )?
             };
@@ -305,15 +326,15 @@ mod tests {
             let mut b = if b_dt == DatumType::F16 {
                 Tensor::from_shape(
                     &b_shape,
-                    &(0..batch * k * n)
-                        .map(|f| f16::from_f32(f as f32 / (batch * m * k) as f32))
+                    &(0..batch_b * k * n)
+                        .map(|f| f16::from_f32(f as f32 / (batch_b * m * k) as f32))
                         .collect::<Vec<_>>(),
                 )?
             } else {
                 Tensor::from_shape(
                     &b_shape,
-                    &(0..batch * k * n)
-                        .map(|f| f as f32 / (batch * m * k) as f32)
+                    &(0..batch_b * k * n)
+                        .map(|f| (f + 1) as f32 / (batch_b * m * k) as f32)
                         .collect::<Vec<_>>(),
                 )?
             };
@@ -321,6 +342,7 @@ mod tests {
             let cuda_output =
                 Matmul.eval(stream, &a.clone().into_device()?, &b.clone().into_device()?)?;
 
+            //let mut b = b.broadcast_to_shape(&[batch_a, n, k])?;
             let matmul = PrefixMatMul {
                 transpose_a: false,
                 transpose_b: true,
@@ -345,28 +367,32 @@ mod tests {
     #[test]
     fn test_mat_vec() -> TractResult<()> {
         // f32_f32
-        run_mmm_test_case((1, 1, 2, 1), F32, F32)?;
-        run_mmm_test_case((1, 1, 60, 2), F32, F32)?;
-        run_mmm_test_case((2, 1, 128, 7), F32, F32)?;
+        run_mmm_test_case((1, 1, 1, 2, 1), F32, F32)?;
+        run_mmm_test_case((2, 1, 1, 60, 2), F32, F32)?;
+        run_mmm_test_case((2, 2, 1, 128, 7), F32, F32)?;
+        run_mmm_test_case((4, 1, 1, 2, 1), F32, F32)?;
 
         // f16_f16
-        run_mmm_test_case((1, 1, 2, 1), F16, F16)?;
-        run_mmm_test_case((1, 1, 61, 2), F16, F16)?;
-        run_mmm_test_case((2, 1, 128, 9), F16, F16)?;
+        run_mmm_test_case((1, 1, 1, 2, 1), F16, F16)?;
+        run_mmm_test_case((2, 1, 1, 61, 2), F16, F16)?;
+        run_mmm_test_case((2, 2, 1, 128, 9), F16, F16)?;
+        run_mmm_test_case((8, 2, 1, 128, 9), F16, F16)?;
         Ok(())
     }
 
     #[test]
     fn test_mat_mul() -> TractResult<()> {
         // f32_f32
-        run_mmm_test_case((1, 2, 4, 2), F32, F32)?;
-        run_mmm_test_case((1, 2, 2, 3), F32, F32)?;
-        run_mmm_test_case((2, 3, 127, 7), F32, F32)?;
+        run_mmm_test_case((1, 1, 2, 4, 2), F32, F32)?;
+        run_mmm_test_case((1, 1, 2, 2, 3), F32, F32)?;
+        run_mmm_test_case((2, 2, 1, 1, 2), F32, F32)?;
+        run_mmm_test_case((1, 2, 1, 1, 2), F32, F32)?;
 
         // f16_f16
-        run_mmm_test_case((1, 2, 7, 2), F16, F16)?;
-        run_mmm_test_case((1, 2, 61, 2), F16, F16)?;
-        run_mmm_test_case((2, 1, 127, 9), F16, F16)?;
+        run_mmm_test_case((1, 1, 2, 7, 2), F16, F16)?;
+        run_mmm_test_case((1, 1, 2, 61, 2), F16, F16)?;
+        run_mmm_test_case((2, 1, 1, 127, 9), F16, F16)?;
+        run_mmm_test_case((1, 2, 1, 127, 9), F16, F16)?;
         Ok(())
     }
 }
