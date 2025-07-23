@@ -30,7 +30,7 @@ impl Deref for CudaBuffer {
 
 #[derive(Clone)]
 pub struct CudaTensor {
-    buffer: CudaBuffer,
+    buffer: Arc<CudaBuffer>,
     datum_type: DatumType,
     shape: TVec<usize>,
     strides: TVec<isize>,
@@ -44,7 +44,7 @@ impl CudaTensor {
             .unwrap_or((tensor.as_bytes(), None));
         CUDA_STREAM.with(|stream| {
             let device_data = stream.memcpy_stod(data).unwrap();
-            let buffer = CudaBuffer { inner: device_data };
+            let buffer = Arc::new(CudaBuffer { inner: device_data });
             CudaTensor {
                 buffer,
                 datum_type: tensor.datum_type(),
@@ -113,7 +113,7 @@ impl OwnedDeviceTensor for CudaTensor {
     }
 
     fn device_buffer(&self) -> &dyn tract_gpu::device::DeviceBuffer {
-        &self.buffer
+        self.buffer.as_ref()
     }
 
     fn to_host(&self) -> TractResult<Arc<Tensor>> {
