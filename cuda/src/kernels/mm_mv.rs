@@ -181,6 +181,10 @@ impl Matmul {
             ldc: params.n as i32,
         };
 
+        let a_batch_stride = params.a_strides[0] as usize;
+        let b_batch_stride = params.b_strides[0] as usize;
+        let c_batch_stride = params.c_strides[0] as usize;
+
         if params.a_batch == params.b_batch {
             let a_view = get_cuda_view(a);
             let b_view = get_cuda_view(b);
@@ -190,9 +194,9 @@ impl Matmul {
             let gemm_batched_strided_cfg = cublas::StridedBatchedConfig {
                 gemm: cublas_gemm_cfg,
                 batch_size: params.a_batch as i32,
-                stride_a: params.n as _,
-                stride_b: params.m as _,
-                stride_c: (params.m * params.n) as _,
+                stride_a: b_batch_stride as _,
+                stride_b: a_batch_stride as _,
+                stride_c: c_batch_stride as _,
             };
             unsafe { stream.cublas().gemm_strided_batched(gemm_batched_strided_cfg,
                 &b_view.transmute::<F>(b.len()).unwrap(),
@@ -200,10 +204,6 @@ impl Matmul {
              &mut out_view.transmute_mut::<F>(output.len()).unwrap()) } ;
 
         } else {
-            let a_batch_stride = params.a_strides[0] as usize;
-            let b_batch_stride = params.b_strides[0] as usize;
-            let c_batch_stride = params.c_strides[0] as usize;
-
             let dt_size = size_of::<F>();
             let (iter_batch, a_offset, b_offset) = if params.b_batch == params.a_batch {
                 (params.b_batch, a_batch_stride * dt_size, b_batch_stride * dt_size)
