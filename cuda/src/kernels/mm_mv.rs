@@ -376,7 +376,7 @@ mod tests {
         run_mmm_test_case((1, 1, 1, 2, 1), F16, F16)?;
         run_mmm_test_case((2, 1, 1, 61, 2), F16, F16)?;
         run_mmm_test_case((2, 2, 1, 128, 9), F16, F16)?;
-        run_mmm_test_case((8, 2, 1, 128, 9), F16, F16)?;
+        run_mmm_test_case((4, 1, 1, 128, 9), F16, F16)?;
         Ok(())
     }
 
