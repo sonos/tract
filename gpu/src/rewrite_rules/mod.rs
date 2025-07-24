@@ -12,14 +12,6 @@ macro_rules! rule_ensure {
     };
 }
 
-pub fn next_node<'a>(model: &'a TypedModel, node: &TypedNode) -> Option<&'a TypedNode> {
-    if node.outputs.iter().map(|of| of.successors.len()).sum::<usize>() != 1 {
-        return None;
-    }
-    let succ = node.outputs[0].successors[0];
-    Some(&model.nodes()[succ.node])
-}
-
 pub fn next_nodes<'a>(model: &'a TypedModel, node: &TypedNode) -> Option<TVec<&'a TypedNode>> {
     if node.outputs.is_empty() {
         return None;
