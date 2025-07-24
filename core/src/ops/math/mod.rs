@@ -564,7 +564,7 @@ validation: Validation::Rounding
 
 fn declutter_recip(model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
     use super::element_wise::*;
-    if let Some(prec) = model.single_prec(node.id)? {
+    if let Some(prec) = model.linear_prec(node.id)? {
         if let Some(ew) = prec.op_as::<ElementWiseOp>() {
             let repl = if ew.0.is::<Sqrt>() {
                 Some(rsqrt())
