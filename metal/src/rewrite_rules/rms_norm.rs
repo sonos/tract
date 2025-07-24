@@ -1,6 +1,5 @@
 use tract_core::internal::*;
 use tract_core::ops::cast::Cast;
-use tract_gpu::rewrite_rules::previous_node;
 use tract_transformers::ops::rms_norm::RmsNorm;
 
 use crate::MetalTransform;
@@ -14,7 +13,8 @@ pub fn remove_rms_norm_cast(
     op: &RmsNorm,
 ) -> TractResult<Option<TypedModelPatch>> {
     // Identify Cast from F16 To F32
-    let Some(cast_in_node) = previous_node(model, node)
+    let Some(cast_in_node) = model
+        .single_prec(node.id)?
         .and_then(|n| n.op_as::<Cast>().and_then(|cast| (cast.to == DatumType::F32).then_some(n)))
         .filter(|n| {
             model.node_input_facts(n.id).map(|i| i[0].datum_type == DatumType::F16).unwrap_or(false)
@@ -24,7 +24,8 @@ pub fn remove_rms_norm_cast(
     };
 
     // Identify Cast from F32 To F16
-    let Some(cast_out_node) = model.single_succ(node.id)?
+    let Some(cast_out_node) = model
+        .single_succ(node.id)?
         .and_then(|n| n.op_as::<Cast>().and_then(|cast| (cast.to == DatumType::F16).then_some(n)))
         .filter(|n| {
             model.node_input_facts(n.id).map(|i| i[0].datum_type == DatumType::F32).unwrap_or(false)

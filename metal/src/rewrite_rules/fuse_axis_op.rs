@@ -1,6 +1,5 @@
 use crate::kernels::matmul::{GgmlGemm, MfaGemm, MlxGemm};
 use crate::ops::{MetalAxisOp, MetalFusedAxisOp};
-use crate::rewrite_rules::previous_nodes;
 use tract_core::internal::*;
 use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::fact::DeviceTypedFactExt;
@@ -70,7 +69,7 @@ pub fn fuse_axis_op(
 
     let Some(node) = model.single_succ(axis_node.id)? else { return Ok(None) };
     let node_name = &node.name;
-    let in_nodes = previous_nodes(model, node);
+    let Some(in_nodes) = model.all_prec(node.id)? else { return Ok(None) };
 
     let mut grouped_axis_ops = tvec![];
     let mut tap_inputs = tvec![];
