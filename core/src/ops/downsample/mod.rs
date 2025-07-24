@@ -124,7 +124,7 @@ fn pull_downsample_up(
 ) -> TractResult<Option<TypedModelPatch>> {
     model.check_consistency()?;
     let down_op = down_node.op_as::<Downsample>().unwrap();
-    if let Some(prec) = model.single_prec(down_node.id)? {
+    if let Some(prec) = model.linear_prec(down_node.id)? {
         let (input_facts, output_facts) = model.node_facts(prec.id)?;
         let axes_mapping = prec.op.axes_mapping(&input_facts, &output_facts)?;
         debug!("Consider pull {down_op:?} over {prec:?} (invariants: {axes_mapping:?})");
