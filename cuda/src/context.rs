@@ -1,7 +1,7 @@
 use cudarc::cublas::CudaBlas;
 use cudarc::nvrtc::Ptx;
 use tract_gpu::device::DeviceContext;
-use tract_gpu::tensor::OwnedDeviceTensor;
+use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 
 use std::ops::Deref;
 use std::sync::{OnceLock, RwLock};
@@ -128,9 +128,10 @@ impl DeviceContext for TractCudaContext {
     }
 
     fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {
+        ensure!(DeviceTensor::is_supported_dt(tensor.datum_type()));
         Ok(Box::new(CudaTensor::from_tensor(tensor.view().tensor)))
     }
-    
+
     fn mem_pool_create(&self, size: usize) -> TractResult<Box<dyn OwnedDeviceTensor>> {
         Ok(Box::new(CudaTensor::uninitialized(size)))
     }

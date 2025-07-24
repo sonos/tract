@@ -188,8 +188,7 @@ impl Matmul {
         if params.a_batch == params.b_batch {
             let a_view = get_cuda_view(a);
             let b_view = get_cuda_view(b);
-            let mut out_view =
-                get_cuda_view_mut(output);
+            let mut out_view = get_cuda_view_mut(output);
 
             let gemm_batched_strided_cfg = cublas::StridedBatchedConfig {
                 gemm: cublas_gemm_cfg,
@@ -198,11 +197,14 @@ impl Matmul {
                 stride_b: a_batch_stride as _,
                 stride_c: c_batch_stride as _,
             };
-            unsafe { stream.cublas().gemm_strided_batched(gemm_batched_strided_cfg,
-                &b_view.transmute::<F>(b.len()).unwrap(),
-                &a_view.transmute::<F>(a.len()).unwrap(),
-             &mut out_view.transmute_mut::<F>(output.len()).unwrap()) } ;
-
+            unsafe {
+                stream.cublas().gemm_strided_batched(
+                    gemm_batched_strided_cfg,
+                    &b_view.transmute::<F>(b.len()).unwrap(),
+                    &a_view.transmute::<F>(a.len()).unwrap(),
+                    &mut out_view.transmute_mut::<F>(output.len()).unwrap(),
+                )
+            };
         } else {
             let dt_size = size_of::<F>();
             let (iter_batch, a_offset, b_offset) = if params.b_batch == params.a_batch {
@@ -212,15 +214,24 @@ impl Matmul {
             } else if params.b_batch == 1 {
                 (params.a_batch, a_batch_stride * dt_size, 0)
             } else {
-                bail!("Unsupported batches config: A: {} and B: {}", params.a_batch, params.b_batch);
+                bail!(
+                    "Unsupported batches config: A: {} and B: {}",
+                    params.a_batch,
+                    params.b_batch
+                );
             };
             let c_offset = params.c_strides[0] as usize * dt_size;
 
             for i in 0..iter_batch {
-                let a_view = get_sliced_cuda_view(a, i * a_offset, a_batch_stride * size_of::<F>())?;
-                let b_view = get_sliced_cuda_view(b, i * b_offset, b_batch_stride * size_of::<F>())?;
-                let mut out_view =
-                    get_sliced_cuda_view_mut(output, i * c_offset, c_batch_stride * size_of::<F>())?;
+                let a_view =
+                    get_sliced_cuda_view(a, i * a_offset, a_batch_stride * size_of::<F>())?;
+                let b_view =
+                    get_sliced_cuda_view(b, i * b_offset, b_batch_stride * size_of::<F>())?;
+                let mut out_view = get_sliced_cuda_view_mut(
+                    output,
+                    i * c_offset,
+                    c_batch_stride * size_of::<F>(),
+                )?;
 
                 unsafe {
                     stream.cublas().gemm(

@@ -134,7 +134,7 @@ pub fn handle(
         if matches.is_present("metal") || matches.is_present("cuda") {
             #[cfg(not(any(target_os = "macos", target_os = "ios")))]
             {
-                if !get_cuda_lib().is_some() {
+                if get_cuda_lib().is_none() {
                     bail!("GPU profiling called on non-GPU device");
                 }
             }
