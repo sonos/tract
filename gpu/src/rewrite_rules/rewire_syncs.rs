@@ -1,4 +1,3 @@
-use crate::rewrite_rules::{next_nodes, previous_node};
 use crate::rule_ensure;
 use crate::sync::{DeviceSync, DeviceSyncKind};
 use crate::tensor::DeviceTensorExt;
@@ -25,7 +24,7 @@ pub fn rewire_back_and_forth_sync(
     rule_ensure!(op.kind == DeviceSyncKind::ToDevice);
 
     // Identify precessor ToHost
-    let Some(sync_to_host_prec) = previous_node(model, node) else {
+    let Some(sync_to_host_prec) = model.single_prec(node.id)? else {
         return Ok(None);
     };
     let Some(sync_to_host_prec_op) = sync_to_host_prec.op_as::<DeviceSync>() else {
@@ -55,7 +54,7 @@ pub fn rewire_sync_after_const(
     let host_const = device_const.to_host()?;
 
     // Identify successors ToHost
-    let Some(next_nodes) = next_nodes(model, node) else {
+    let Some(next_nodes) = model.all_succ(node.id)? else {
         return Ok(None);
     };
 

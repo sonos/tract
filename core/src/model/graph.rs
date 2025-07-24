@@ -119,7 +119,11 @@ where
         } else if inlet.slot < succ.inputs.len() {
             succ.inputs[inlet.slot] = outlet;
         } else {
-            bail!("Edges must be added in order and consecutive. Trying to connect input {:?} of node {:?} ", inlet.slot, succ)
+            bail!(
+                "Edges must be added in order and consecutive. Trying to connect input {:?} of node {:?} ",
+                inlet.slot,
+                succ
+            )
         }
         Ok(())
     }
@@ -531,6 +535,14 @@ where
         Ok(Some(prec))
     }
 
+    pub fn all_prec(&self, id: usize) -> TractResult<Option<TVec<&Node<F, O>>>> {
+        let node = &self.nodes()[id];
+        if node.inputs.is_empty() {
+            return Ok(None);
+        };
+        Ok(Some(node.inputs.iter().map(|n| &self.nodes()[n.node]).collect()))
+    }
+
     pub fn single_prec_at(&self, id: usize, count: usize) -> TractResult<Option<&Node<F, O>>> {
         let mut node = self.node(id);
         for _ in 0..count {
@@ -569,6 +581,22 @@ where
             return Ok(None);
         }
         Ok(Some(succ))
+    }
+
+    pub fn all_succ(&self, id: usize) -> TractResult<Option<TVec<&Node<F, O>>>> {
+        let node = &self.nodes()[id];
+        if node.outputs.is_empty() {
+            return Ok(None);
+        };
+
+        Ok(Some(
+            node.outputs
+                .iter()
+                .flat_map(|o| {
+                    o.successors.iter().map(|succ| &self.nodes()[succ.node]).collect::<Vec<_>>()
+                })
+                .collect(),
+        ))
     }
 
     pub fn outlet_successors(&self, outlet: OutletId) -> &[InletId] {
@@ -648,15 +676,15 @@ where
                 for o in 0..self.nodes[i].outputs.len() {
                     if self.outlet_successors((i, o).into()).len() > 0 {
                         writeln!(
-                                    fmt,
-                                    "                                               |   * output #{}: {} {}",
-                                    o,
-                                    self.outlet_label((i, o).into()).unwrap_or(""),
-                                    self.outlet_successors((i, o).into())
-                                    .iter()
-                                    .map(|s| format!("{s:?}"))
-                                    .join(", "),
-                                    )?;
+                            fmt,
+                            "                                               |   * output #{}: {} {}",
+                            o,
+                            self.outlet_label((i, o).into()).unwrap_or(""),
+                            self.outlet_successors((i, o).into())
+                                .iter()
+                                .map(|s| format!("{s:?}"))
+                                .join(", "),
+                        )?;
                     }
                 }
             }

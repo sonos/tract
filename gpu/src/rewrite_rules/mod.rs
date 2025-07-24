@@ -1,6 +1,3 @@
-use tract_core::model::{TypedModel, TypedNode};
-use tract_core::prelude::TVec;
-
 pub mod rewire_syncs;
 
 #[macro_export]
@@ -10,30 +7,4 @@ macro_rules! rule_ensure {
             return Ok(None);
         }
     };
-}
-
-pub fn next_nodes<'a>(model: &'a TypedModel, node: &TypedNode) -> Option<TVec<&'a TypedNode>> {
-    if node.outputs.is_empty() {
-        return None;
-    };
-
-    Some(
-        node.outputs
-            .iter()
-            .flat_map(|o| {
-                o.successors.iter().map(|succ| &model.nodes()[succ.node]).collect::<Vec<_>>()
-            })
-            .collect(),
-    )
-}
-
-pub fn previous_node<'a>(model: &'a TypedModel, node: &TypedNode) -> Option<&'a TypedNode> {
-    if node.inputs.len() != 1 {
-        return None;
-    }
-    Some(&model.nodes()[node.inputs[0].node])
-}
-
-pub fn previous_nodes<'a>(model: &'a TypedModel, node: &TypedNode) -> TVec<&'a TypedNode> {
-    node.inputs.iter().map(|n| &model.nodes()[n.node]).collect()
 }
