@@ -130,6 +130,10 @@ impl DeviceContext for TractCudaContext {
     fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {
         Ok(Box::new(CudaTensor::from_tensor(tensor.view().tensor)))
     }
+    
+    fn mem_pool_create(&self, size: usize) -> TractResult<Box<dyn OwnedDeviceTensor>> {
+        Ok(Box::new(CudaTensor::uninitialized(size)))
+    }
 }
 
 pub struct TractCudaStream {

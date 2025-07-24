@@ -55,6 +55,22 @@ impl CudaTensor {
         })
     }
 
+    pub fn uninitialized(size: usize) -> Self {
+        CUDA_STREAM.with(|stream| {
+            unsafe {
+                let device_data = stream.alloc(size).expect("Failed to allocate CudaSlice of {size} bytes"); 
+                let buffer = Arc::new(CudaBuffer { inner: device_data });
+                CudaTensor {
+                    buffer,
+                    datum_type: DatumType::U8,
+                    shape: tvec!(size),
+                    strides: tvec!(1),
+                    block_quant_fact: None,
+                }
+            }
+        })
+    }
+
     pub fn block_quant_fact(&self) -> Option<BlockQuantFact> {
         self.block_quant_fact.clone()
     }
