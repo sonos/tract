@@ -18,7 +18,11 @@ pub struct DeviceMemoryPool {
 
 impl DeviceMemoryPool {
     pub fn from_schema(resolved_schema: DeviceResolvedMemSchema) -> TractResult<Self> {
-        Ok(Self { storage: Arc::new(get_context()?.mem_pool_create(resolved_schema.memory_size)?), resolved_schema, node_seen: RefCell::new(HashSet::new()) })
+        Ok(Self {
+            storage: Arc::new(get_context()?.mem_pool_create(resolved_schema.memory_size)?),
+            resolved_schema,
+            node_seen: RefCell::new(HashSet::new()),
+        })
     }
 
     pub fn tensor_for_node(

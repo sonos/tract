@@ -59,10 +59,14 @@ pub fn rewire_sync_after_const(
         return Ok(None);
     };
 
-    let sync_to_hosts = next_nodes.into_iter()
-                    .filter(|n| n.op_as::<DeviceSync>().is_some_and(|sync| sync.kind == DeviceSyncKind::ToHost)).collect_vec();
+    let sync_to_hosts = next_nodes
+        .into_iter()
+        .filter(|n| n.op_as::<DeviceSync>().is_some_and(|sync| sync.kind == DeviceSyncKind::ToHost))
+        .collect_vec();
 
-    if sync_to_hosts.is_empty() { return Ok(None) };
+    if sync_to_hosts.is_empty() {
+        return Ok(None);
+    };
 
     let mut opaque_fact: Option<Box<dyn OpaqueFact>> = None;
     if let Some(of) = host_const
