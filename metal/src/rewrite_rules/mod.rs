@@ -8,4 +8,4 @@ pub use fuse_axis_op::{fuse_axis_op, fuse_move_axis};
 pub use rms_norm::remove_rms_norm_cast;
 pub use untranspose_matmul_output::untranspose_matmul_output;
 
-pub use tract_gpu::rewrite_rules::{next_node, previous_node, previous_nodes};
+pub use tract_gpu::rewrite_rules::previous_nodes;

@@ -1,6 +1,6 @@
 use crate::kernels::matmul::{GgmlGemm, MfaGemm, MlxGemm};
 use crate::ops::{MetalAxisOp, MetalFusedAxisOp};
-use crate::rewrite_rules::{next_node, previous_node, previous_nodes};
+use crate::rewrite_rules::previous_nodes;
 use tract_core::internal::*;
 use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::fact::DeviceTypedFactExt;
@@ -11,7 +11,7 @@ fn is_supported_axis_op(op: &MetalAxisOp) -> bool {
 }
 
 fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
-    next_node(model, axis_node).is_some_and(|node| {
+    model.single_succ(axis_node.id).unwrap().is_some_and(|node| {
         node.op_is::<crate::ops::MetalConcat>()
             || node.op_is::<crate::ops::MetalApplyRope>()
             || node.op_is::<crate::ops::MetalScaledMaskedSoftmax>()
@@ -34,7 +34,7 @@ pub fn collect_chain_of_axis_ops<'a>(
         acc_axis_ops.push(axis_op.clone());
         head_of_chain = cursor;
 
-        if let Some(prev) = previous_node(model, cursor) {
+        if let Some(prev) = model.single_prec(cursor.id)? {
             cursor = prev;
         } else {
             break;
@@ -68,7 +68,7 @@ pub fn fuse_axis_op(
 ) -> TractResult<Option<TypedModelPatch>> {
     rule_ensure!(is_supported_axis_op(axis_op) || matches!(axis_op.0, AxisOp::Move(..)));
 
-    let Some(node) = next_node(model, axis_node) else { return Ok(None) };
+    let Some(node) = model.single_succ(axis_node.id)? else { return Ok(None) };
     let node_name = &node.name;
     let in_nodes = previous_nodes(model, node);
 
@@ -182,7 +182,7 @@ pub fn fuse_move_axis(
     }
 
     // Fuse consecutive MoveAxis if possible
-    let Some(cursor) = next_node(model, axis_node) else { return Ok(None) };
+    let Some(cursor) = model.single_succ(axis_node.id)? else { return Ok(None) };
     if let (AxisOp::Move(from_1, to_1), AxisOp::Move(from_2, to_2)) = (
         axis_op.0.clone(),
         cursor.op_as::<MetalAxisOp>().map(|ax_op| ax_op.0.clone()).unwrap_or(AxisOp::Add(0)),
@@ -207,7 +207,7 @@ pub fn fuse_move_axis(
     }
 
     // Add(x) -> Move(x, y)
-    let Some(cursor) = previous_node(model, axis_node) else { return Ok(None) };
+    let Some(cursor) = model.single_prec(axis_node.id)? else { return Ok(None) };
     if let (AxisOp::Move(from_1, to_1), AxisOp::Add(ax)) = (
         axis_op.0.clone(),
         cursor.op_as::<MetalAxisOp>().map(|ax_op| ax_op.0.clone()).unwrap_or(AxisOp::Rm(0)),
