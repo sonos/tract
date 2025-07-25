@@ -2,6 +2,7 @@ use crate::Parameters;
 use readings_probe::Probe;
 use std::time::{Duration, Instant};
 use tract_hir::internal::*;
+use tract_libcli::capture_gpu_trace;
 use tract_libcli::model::Model;
 use tract_libcli::profile::BenchLimits;
 use tract_libcli::tensor::RunTensors;
@@ -84,6 +85,7 @@ pub(crate) fn make_state<'m>(
 
 pub(crate) fn bench<'m>(
     state: &mut TypedSimpleState<&'m TypedModel, Arc<TypedRunnableModel<&'m TypedModel>>>,
+    sub_matches: &clap::ArgMatches,
     inputs: RunTensors,
     limits: &BenchLimits,
     probe: Option<&Probe>,
@@ -92,18 +94,21 @@ pub(crate) fn bench<'m>(
     let progress = probe.and_then(|m| m.get_i64("progress"));
     info!("Starting bench itself");
     let mut dur = Duration::default();
-    while iters < limits.max_loops && dur < limits.max_time {
-        if let Some(mon) = probe {
-            let _ = mon.log_event(&format!("loop_{iters}"));
-        }
-        if let Some(p) = &progress {
-            p.store(iters as _, std::sync::atomic::Ordering::Relaxed);
-        }
+    capture_gpu_trace(sub_matches, || -> TractResult<()> {
+        while iters < limits.max_loops && dur < limits.max_time {
+            if let Some(mon) = probe {
+                let _ = mon.log_event(&format!("loop_{iters}"));
+            }
+            if let Some(p) = &progress {
+                p.store(iters as _, std::sync::atomic::Ordering::Relaxed);
+            }
 
-        dur += profile_single_turn(state, &inputs)?;
+            dur += profile_single_turn(state, &inputs)?;
 
-        iters += 1;
-    }
+            iters += 1;
+        }
+        Ok(())
+    })?;
     Ok((iters, Duration::from_secs_f64(dur.as_secs_f64() / iters as f64)))
 }
 
@@ -120,7 +125,7 @@ pub fn handle(
     let inputs = get_or_make_inputs(state.model(), &run_params)?;
 
     limits.warmup(state.model(), &inputs)?;
-    let (iters, dur) = bench(&mut state, inputs, limits, probe)?;
+    let (iters, dur) = bench(&mut state, sub_matches, inputs, limits, probe)?;
 
     if params.machine_friendly {
         println!("real: {}", dur.as_secs_f64());
