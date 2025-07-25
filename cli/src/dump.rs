@@ -143,7 +143,7 @@ pub fn handle(
             tract_libcli::profile::profile_gpu(
                 model,
                 bench_limits,
-                matches,
+                sub_matches,
                 &mut annotations,
                 &plan_options,
                 &inputs,
