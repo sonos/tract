@@ -2,6 +2,7 @@ use tract_core::internal::*;
 use tract_core::num_traits::Zero;
 use tract_core::ops::scan::State;
 use tract_core::ops::submodel::TypedModelOpState;
+use tract_cuda::utils::get_cuda_lib;
 use crate::tensor::RunTensors;
 
 use crate::annotations::*;
@@ -122,9 +123,49 @@ pub fn profile(
     Ok(())
 }
 
+fn capture_profile_trace<F>(matches: &clap::ArgMatches, func: F) -> TractResult<()>
+where F: FnOnce() -> TractResult<()>
+{
+    if matches.is_present("metal-gpu-trace") {
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        {
+            let gpu_trace_path =
+                std::path::Path::new(matches.value_of("metal-gpu-trace").unwrap()).to_path_buf();
+            ensure!(gpu_trace_path.is_absolute(), "Metal GPU trace file has to be absolute");
+            ensure!(
+                !gpu_trace_path.exists(),
+                format!("Given Metal GPU trace file {:?} already exists.", gpu_trace_path)
+            );
+            log::info!("Capturing Metal GPU trace at : {gpu_trace_path:?}");
+            unsafe {
+                std::env::set_var("METAL_CAPTURE_ENABLED", "1");
+                std::env::set_var("METAL_DEVICE_WRAPPER_TYPE", "1");
+            }
+
+            tract_metal::METAL_STREAM.with_borrow(move |stream| {
+                stream.capture_trace(gpu_trace_path, move |_stream| func)
+            })
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+        {
+            bail!("`--metal-gpu-trace` present but it is only available on MacOS and iOS")
+        }
+    } else if matches.is_present("cuda-gpu-trace") {
+        if get_cuda_lib().is_none() {
+            bail!("`--cuda-gpu-trace` present but no CUDA insatllation has been found")
+        }
+
+        let _prof = cudarc::driver::safe::Profiler::new()?;
+        func()
+    } else {
+        func()
+    }
+}
+
 pub fn profile_gpu(
     model: &TypedModel,
     bench_limits: &BenchLimits,
+    matches: &clap::ArgMatches,
     dg: &mut Annotations,
     plan_options: &PlanOptions,
     inputs: &RunTensors,
@@ -147,18 +188,22 @@ pub fn profile_gpu(
 
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
     let mut dur = Duration::default();
-    while iters < bench_limits.max_loops && dur < bench_limits.max_time {
-        if !state.model().properties().contains_key("pulse.delay") {
-            state.init_states(&mut inputs.state_initializers.clone())?;
+    
+    capture_profile_trace(matches, || -> TractResult<()> {
+        while iters < bench_limits.max_loops && dur < bench_limits.max_time {
+            if !state.model().properties().contains_key("pulse.delay") {
+                state.init_states(&mut inputs.state_initializers.clone())?;
+            }
+            let start = Instant::now();
+            rec_profiler_gpu(&mut state, dg, &inputs.sources[0], &prefix)?;
+            dur += start.elapsed();
+            if !state.model().properties().contains_key("pulse.delay") {  
+                state.reset_op_states()?;
+            }
+            iters += 1;
         }
-        let start = Instant::now();
-        rec_profiler_gpu(&mut state, dg, &inputs.sources[0], &prefix)?;
-        dur += start.elapsed();
-        if !state.model().properties().contains_key("pulse.delay") {  
-            state.reset_op_states()?;
-        }
-        iters += 1;
-    }
+        Ok(())
+    })?;
 
     info!("Running {} iterations max. for each node.", bench_limits.max_loops);
     info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());

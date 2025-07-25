@@ -146,6 +146,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"metal").long_help("Convert supported operators to Metal GPU equivalent. Only available on MacOS and iOS"))
         .arg(Arg::new("force-metal-backend").long("force-metal-backend").takes_value(true).long_help("Force specific implementations for MM kernels. Possible values: mlx, ggml, mfa. Backend is dynamically selected if option is not present"))
         .arg(Arg::new("metal-gpu-trace").long("metal-gpu-trace").takes_value(true).help("Capture Metal GPU trace at given path. Only available on MacOS and iOS"))
+        .arg(Arg::new("cuda-gpu-trace").long("cuda-gpu-trace").help("Capture CUDA GPU trace at given path. Must be used with nsys profile -c cudaProfilerApi before cargo command"))
         .arg(arg!(--"cuda").long_help("Convert supported operators to CUDA equivalent"))
         .arg(Arg::new("transform").short('t').long("transform").multiple_occurrences(true).takes_value(true).help("Apply a built-in transformation to the model"))
         .arg(Arg::new("set").long("set").multiple_occurrences(true).takes_value(true)
@@ -308,33 +309,7 @@ fn main() -> TractResult<()> {
     env_logger::Builder::from_env(env).format_timestamp_nanos().init();
     info_usage("init", probe.as_ref());
 
-    let res = if matches.is_present("metal-gpu-trace") {
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-        {
-            let gpu_trace_path =
-                std::path::Path::new(matches.value_of("metal-gpu-trace").unwrap()).to_path_buf();
-            ensure!(gpu_trace_path.is_absolute(), "Metal GPU trace file has to be absolute");
-            ensure!(
-                !gpu_trace_path.exists(),
-                format!("Given Metal GPU trace file {:?} already exists.", gpu_trace_path)
-            );
-            log::info!("Capturing Metal GPU trace at : {gpu_trace_path:?}");
-            unsafe {
-                std::env::set_var("METAL_CAPTURE_ENABLED", "1");
-                std::env::set_var("METAL_DEVICE_WRAPPER_TYPE", "1");
-            }
-            let probe_ref = probe.as_ref();
-            tract_metal::METAL_STREAM.with_borrow(move |stream| {
-                stream.capture_trace(gpu_trace_path, move |_stream| handle(matches, probe_ref))
-            })
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-        {
-            bail!("`--metal-gpu-trace` present but it is only available on MacOS and iOS")
-        }
-    } else {
-        handle(matches, probe.as_ref())
-    };
+    let res = handle(matches, probe.as_ref());
 
     if let Err(e) = res {
         error!("{e:?}");
