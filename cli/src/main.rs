@@ -309,6 +309,13 @@ fn main() -> TractResult<()> {
     env_logger::Builder::from_env(env).format_timestamp_nanos().init();
     info_usage("init", probe.as_ref());
 
+    if matches.is_present("metal-gpu-trace") {
+        unsafe {
+            std::env::set_var("METAL_CAPTURE_ENABLED", "1");
+            std::env::set_var("METAL_DEVICE_WRAPPER_TYPE", "1");
+        }
+    }
+
     let res = handle(matches, probe.as_ref());
 
     if let Err(e) = res {

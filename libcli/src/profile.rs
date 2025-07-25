@@ -136,14 +136,10 @@ where F: FnOnce() -> TractResult<()>
                 !gpu_trace_path.exists(),
                 format!("Given Metal GPU trace file {:?} already exists.", gpu_trace_path)
             );
-            log::info!("Capturing Metal GPU trace at : {gpu_trace_path:?}");
-            unsafe {
-                std::env::set_var("METAL_CAPTURE_ENABLED", "1");
-                std::env::set_var("METAL_DEVICE_WRAPPER_TYPE", "1");
-            }
 
+            log::info!("Capturing Metal GPU trace at : {gpu_trace_path:?}");
             tract_metal::METAL_STREAM.with_borrow(move |stream| {
-                stream.capture_trace(gpu_trace_path, move |_stream| func)
+                stream.capture_trace(gpu_trace_path, move |_stream| func())
             })
         }
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
