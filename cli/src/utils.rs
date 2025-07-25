@@ -68,11 +68,7 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
         }
     }
 
-    if let Some(e) = error {
-        Err(e)
-    } else {
-        Ok(())
-    }
+    if let Some(e) = error { Err(e) } else { Ok(()) }
 }
 
 /// Compares the outputs of a node in tract and tensorflow.

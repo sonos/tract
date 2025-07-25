@@ -1,9 +1,9 @@
+use crate::tensor::RunTensors;
 use tract_core::internal::*;
 use tract_core::num_traits::Zero;
 use tract_core::ops::scan::State;
 use tract_core::ops::submodel::TypedModelOpState;
 use tract_cuda::utils::get_cuda_lib;
-use crate::tensor::RunTensors;
 
 use crate::annotations::*;
 use crate::model::Model;
@@ -94,7 +94,7 @@ pub fn profile(
             folded,
         )?;
         dur += start.elapsed();
-        if !state.model().properties().contains_key("pulse.delay") {   
+        if !state.model().properties().contains_key("pulse.delay") {
             state.reset_op_states()?;
         }
         iters += 1;
@@ -124,7 +124,8 @@ pub fn profile(
 }
 
 fn capture_profile_trace<F>(matches: &clap::ArgMatches, func: F) -> TractResult<()>
-where F: FnOnce() -> TractResult<()>
+where
+    F: FnOnce() -> TractResult<()>,
 {
     if matches.is_present("metal-gpu-trace") {
         #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -184,7 +185,7 @@ pub fn profile_gpu(
 
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
     let mut dur = Duration::default();
-    
+
     capture_profile_trace(sub_matches, || -> TractResult<()> {
         while iters < bench_limits.max_loops && dur < bench_limits.max_time {
             if !state.model().properties().contains_key("pulse.delay") {
@@ -193,7 +194,7 @@ pub fn profile_gpu(
             let start = Instant::now();
             rec_profiler_gpu(&mut state, dg, &inputs.sources[0], &prefix)?;
             dur += start.elapsed();
-            if !state.model().properties().contains_key("pulse.delay") {  
+            if !state.model().properties().contains_key("pulse.delay") {
                 state.reset_op_states()?;
             }
             iters += 1;
