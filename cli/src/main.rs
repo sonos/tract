@@ -38,9 +38,9 @@ mod tensor;
 mod utils;
 
 use params::*;
+use tract_linalg::WeightType;
 use tract_linalg::block_quant::Q4_0;
 use tract_linalg::mmm::MatMatMul;
-use tract_linalg::WeightType;
 
 readings_probe::instrumented_allocator!();
 
@@ -306,13 +306,6 @@ fn main() -> TractResult<()> {
 
     env_logger::Builder::from_env(env).format_timestamp_nanos().init();
     info_usage("init", probe.as_ref());
-
-    if matches.is_present("metal-gpu-trace") {
-        unsafe {
-            std::env::set_var("METAL_CAPTURE_ENABLED", "1");
-            std::env::set_var("METAL_DEVICE_WRAPPER_TYPE", "1");
-        }
-    }
 
     let res = handle(matches, probe.as_ref());
 
@@ -680,6 +673,15 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                 }
             }
             return Ok(());
+        }
+        Some(("dump", m)) => {
+            if m.is_present("metal-gpu-trace") {
+                // Set env variable before loading metal lib
+                unsafe {
+                    std::env::set_var("METAL_CAPTURE_ENABLED", "1");
+                    std::env::set_var("METAL_DEVICE_WRAPPER_TYPE", "1");
+                }
+            }
         }
         _ => (),
     }
