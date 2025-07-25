@@ -10,6 +10,7 @@ use tract_core::ops::einsum::EinSum;
 use tract_core::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
 use tract_core::ops::matmul::pack::DynPackedOpaqueFact;
 use tract_core::ops::scan::OptScan;
+#[allow(unused_imports)]
 use tract_cuda::utils::get_cuda_lib;
 use tract_hir::internal::*;
 use tract_itertools::Itertools;
@@ -138,6 +139,7 @@ pub fn handle(
                     bail!("GPU profiling called on non-GPU device");
                 }
             }
+
             tract_libcli::profile::profile_gpu(
                 model,
                 bench_limits,
