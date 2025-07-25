@@ -14,11 +14,13 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 box_drawing.workspace = true
+clap.workspace = true
 colorous.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 ndarray-npy.workspace = true
 nu-ansi-term.workspace = true
+cudarc.workspace = true
 py_literal.workspace = true
 rand.workspace = true
 serde.workspace = true
