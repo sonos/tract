@@ -161,7 +161,7 @@ where F: FnOnce() -> TractResult<()>
 pub fn profile_gpu(
     model: &TypedModel,
     bench_limits: &BenchLimits,
-    matches: &clap::ArgMatches,
+    sub_matches: &clap::ArgMatches,
     dg: &mut Annotations,
     plan_options: &PlanOptions,
     inputs: &RunTensors,
@@ -185,7 +185,7 @@ pub fn profile_gpu(
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
     let mut dur = Duration::default();
     
-    capture_profile_trace(matches, || -> TractResult<()> {
+    capture_profile_trace(sub_matches, || -> TractResult<()> {
         while iters < bench_limits.max_loops && dur < bench_limits.max_time {
             if !state.model().properties().contains_key("pulse.delay") {
                 state.init_states(&mut inputs.state_initializers.clone())?;
