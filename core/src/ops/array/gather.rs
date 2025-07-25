@@ -56,6 +56,8 @@ impl Gather {
 
         if can_block_copy {
             let mut out_offset = 0;
+            let input_slice = data_view.as_slice().unwrap();
+            let output_slice = &mut output_view.as_slice_mut().unwrap();
             for idx_coords in indices.indexed_iter() {
                 let index = *idx_coords.1;
                 let axis_len = data_shape[data_axis] as i64;
@@ -64,11 +66,8 @@ impl Gather {
 
                 let input_offset = resolved_index * block_len;
 
-                let input_slice =
-                    &data_view.as_slice().unwrap()[input_offset..input_offset + block_len];
-                let output_slice =
-                    &mut output_view.as_slice_mut().unwrap()[out_offset..out_offset + block_len];
-                output_slice.copy_from_slice(input_slice);
+                output_slice[out_offset..out_offset + block_len]
+                    .copy_from_slice(&input_slice[input_offset..input_offset + block_len]);
                 out_offset += block_len;
             }
         } else {
