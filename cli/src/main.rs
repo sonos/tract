@@ -526,6 +526,17 @@ fn run_options(command: clap::Command) -> clap::Command {
             .long("allow-float-casts")
             .help("Allow casting between f16, f32 and f64 around model"),
             )
+        .arg(
+            Arg::new("metal-gpu-trace")
+                .long("metal-gpu-trace")
+                .takes_value(true)
+                .help("Capture Metal GPU trace and save it at given path. Only available on MacOS and iOS")
+        )
+        .arg(
+            Arg::new("cuda-gpu-trace")
+                .long("cuda-gpu-trace")
+                .help("Capture CUDA GPU trace. Must be used with nsys profile -c cudaProfilerApi before cargo command")
+        )
 }
 
 fn output_options(command: clap::Command) -> clap::Command {
@@ -571,17 +582,6 @@ fn output_options(command: clap::Command) -> clap::Command {
                 .takes_value(false)
                 .long("invariants")
                 .help("Display operators invariants"),
-        )
-        .arg(
-            Arg::new("metal-gpu-trace")
-                .long("metal-gpu-trace")
-                .takes_value(true)
-                .help("Capture Metal GPU trace and save it at given path. Only available on MacOS and iOS")
-        )
-        .arg(
-            Arg::new("cuda-gpu-trace")
-                .long("cuda-gpu-trace")
-                .help("Capture CUDA GPU trace. Must be used with nsys profile -c cudaProfilerApi before cargo command")
         )
 }
 
