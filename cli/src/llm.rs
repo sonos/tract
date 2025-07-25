@@ -1,5 +1,5 @@
-use crate::bench::{bench, make_state};
 use crate::Parameters;
+use crate::bench::{bench, make_state};
 use readings_probe::Probe;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};

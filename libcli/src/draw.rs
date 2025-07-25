@@ -1,7 +1,7 @@
 use crate::display_params::DisplayParams;
 use crate::model::Model;
-use nu_ansi_term::{Color, Style};
 use box_drawing::heavy::*;
+use nu_ansi_term::{Color, Style};
 use std::fmt;
 use std::fmt::Write;
 use tract_core::internal::*;
@@ -17,11 +17,7 @@ pub struct Wire {
 impl fmt::Debug for Wire {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         let s = format!("{:?} {:?}", self.outlet, self.successors);
-        if let Some(c) = self.color {
-            write!(fmt, "{}", c.paint(s))
-        } else {
-            write!(fmt, "{s}")
-        }
+        if let Some(c) = self.color { write!(fmt, "{}", c.paint(s)) } else { write!(fmt, "{s}") }
     }
 }
 

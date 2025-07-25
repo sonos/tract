@@ -85,7 +85,7 @@ fn parse_dt(dt: &str) -> TractResult<DatumType> {
         "tdim" => DatumType::TDim,
         _ => bail!(
             "Type of the input should be f16, f32, f64, i8, i16, i16, i32, u8, u16, u32, u64, TDim."
-            ),
+        ),
     })
 }
 
@@ -391,7 +391,10 @@ fn get_or_make_tensors(
         fact.shape = fact.shape.iter().map(|dim| dim.eval(&params.symbols)).collect();
         target.push(vec![tensor_for_fact(&fact, None, tv)?.into()]);
     } else {
-        bail!("Unmatched tensor {}. Fix the input or use \"--allow-random-input\" if this was intended", name);
+        bail!(
+            "Unmatched tensor {}. Fix the input or use \"--allow-random-input\" if this was intended",
+            name
+        );
     }
     Ok(())
 }
