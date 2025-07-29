@@ -1,5 +1,5 @@
-use crate::bench::{bench, make_state};
 use crate::Parameters;
+use crate::bench::{bench, make_state};
 use readings_probe::Probe;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
@@ -86,7 +86,7 @@ pub fn bench_pp(
     run_params.symbols.set(&s, pp as i64);
     let inputs = get_or_make_inputs(model, &run_params)?;
 
-    let (_, dur) = bench(&mut state, inputs, limits, probe)?;
+    let (_, dur) = bench(&mut state, sub_matches, inputs, limits, probe)?;
     let tokens = pp as f64 / dur.as_secs_f64();
     println!("PP{pp}: {tokens:.1} tokens/sec");
     Ok(())

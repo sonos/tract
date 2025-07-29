@@ -473,7 +473,7 @@ impl Reduce {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let Some(prec) = model.single_prec(node.id)? else {
+        let Some(prec) = model.linear_prec(node.id)? else {
             return Ok(None);
         };
         let Some(prec_reduce) = prec.op_as::<Self>() else {
@@ -510,7 +510,7 @@ impl Reduce {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if self.reducer == Reducer::Sum {
-            let Some(prec) = model.single_prec(node.id)? else {
+            let Some(prec) = model.linear_prec(node.id)? else {
                 return Ok(None);
             };
             let Some(prec_bin) = prec.op_as::<TypedBinOp>() else {
@@ -543,7 +543,7 @@ impl Reduce {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if self.reducer == Reducer::Sum {
-            let Some(prec) = model.single_prec(node.id)? else {
+            let Some(prec) = model.linear_prec(node.id)? else {
                 return Ok(None);
             };
             let Some(prec_ew) = prec.op_as::<ElementWiseOp>() else {

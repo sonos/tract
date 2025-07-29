@@ -190,7 +190,7 @@ impl BinOps {
     }
 
     pub fn kernel_name(&self, dt: DatumType, use_row_kernel: bool) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal binary ops", dt);
+        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal binary ops", dt);
 
         let tname = DeviceTensor::tname(dt)?;
 

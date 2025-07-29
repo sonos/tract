@@ -1,10 +1,10 @@
 use std::fmt;
 
-use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
+use cudarc::driver::{LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::context::cuda_context;
+use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
@@ -133,7 +133,11 @@ impl UnaryOps {
         Ok(format!("unary_{}_{}", name, DeviceTensor::tname(dt)?))
     }
 
-    pub fn eval(&self, stream: &CudaStream, input: &DeviceTensor) -> TractResult<DeviceTensor> {
+    pub fn eval(
+        &self,
+        stream: &TractCudaStream,
+        input: &DeviceTensor,
+    ) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
         self.dispatch_eval(stream, input, &output)?;
         stream.synchronize()?;
@@ -143,7 +147,7 @@ impl UnaryOps {
 
     pub fn dispatch_eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         input: &DeviceTensor,
         output: &DeviceTensor,
     ) -> TractResult<()> {
@@ -151,7 +155,7 @@ impl UnaryOps {
         ensure!(output.datum_type() == input.datum_type());
 
         let func = cuda_context()
-            .load_pipeline(LibraryName::UnaryOps, self.kernel_name(input.datum_type())?)?;
+            .load_pipeline(LibraryName::Unary, self.kernel_name(input.datum_type())?)?;
 
         let len = input.len();
 

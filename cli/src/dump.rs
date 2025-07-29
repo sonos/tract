@@ -1,7 +1,7 @@
+use crate::Parameters;
 use crate::params::SomeGraphDef;
 use crate::plan_options::plan_options_from_subcommand;
 use crate::tensor::run_params_from_subcommand;
-use crate::Parameters;
 use fs_err as fs;
 use nu_ansi_term::Color::*;
 #[allow(unused_imports)]
@@ -10,6 +10,8 @@ use tract_core::ops::einsum::EinSum;
 use tract_core::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
 use tract_core::ops::matmul::pack::DynPackedOpaqueFact;
 use tract_core::ops::scan::OptScan;
+#[allow(unused_imports)]
+use tract_cuda::utils::get_cuda_lib;
 use tract_hir::internal::*;
 use tract_itertools::Itertools;
 use tract_libcli::annotations::*;
@@ -130,21 +132,22 @@ pub fn handle(
             .context("Can only profile typed models")?;
         let inputs = get_or_make_inputs(model, &run_params)?;
 
-        if matches.is_present("metal") {
-            #[cfg(any(target_os = "macos", target_os = "ios"))]
-            {
-                tract_libcli::profile::profile_metal(
-                    model,
-                    bench_limits,
-                    &mut annotations,
-                    &plan_options,
-                    &inputs,
-                )?;
-            }
+        if matches.is_present("metal") || matches.is_present("cuda") {
             #[cfg(not(any(target_os = "macos", target_os = "ios")))]
             {
-                bail!("Metal profiling called on non-Metal device");
+                if get_cuda_lib().is_none() {
+                    bail!("GPU profiling called on non-GPU device");
+                }
             }
+
+            tract_libcli::profile::profile_gpu(
+                model,
+                bench_limits,
+                sub_matches,
+                &mut annotations,
+                &plan_options,
+                &inputs,
+            )?;
         } else {
             tract_libcli::profile::profile(
                 model,
@@ -175,25 +178,24 @@ pub fn handle(
     }
 
     if sub_matches.is_present("memory-arena") {
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-        {
-            crate::memory_arena::dump_metrics(
-                params
-                    .tract_model
-                    .downcast_ref::<TypedModel>()
-                    .context("Check memory arena requires a typed model")?,
-                &plan_options_from_subcommand(sub_matches)?,
-                std::path::Path::new(
-                    sub_matches
-                        .value_of("memory-arena")
-                        .ok_or(anyhow!("Path to JSON file required"))?,
-                ),
-            )?;
-        }
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
-            bail!("Memory arena is only enabled for MacOS / iOS devices");
+            if get_cuda_lib().is_none() {
+                bail!("Memory arena is only enabled for MacOS / iOS devices or CUDA devices");
+            }
         }
+        crate::memory_arena::dump_metrics(
+            params
+                .tract_model
+                .downcast_ref::<TypedModel>()
+                .context("Check memory arena requires a typed model")?,
+            &plan_options_from_subcommand(sub_matches)?,
+            std::path::Path::new(
+                sub_matches
+                    .value_of("memory-arena")
+                    .ok_or(anyhow!("Path to JSON file required"))?,
+            ),
+        )?;
     }
 
     if sub_matches.is_present("tmp_mem_usage") {
@@ -503,7 +505,7 @@ pub fn mm_report(
     if einsums.len() > 0 {
         println!("{}", Red.bold().paint("# 💩💩💩 Unoptimized Einsums 💩💩💩"));
         for ((axes, ifacts, ofacts), count) in
-            einsums.iter().sorted_by_key(|(_conf, count)| (-count.as_i64().unwrap_or_default()))
+            einsums.iter().sorted_by_key(|(_conf, count)| -count.as_i64().unwrap_or_default())
         {
             println!(
                 "{}",

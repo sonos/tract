@@ -5,8 +5,8 @@ use std::convert::TryFrom;
 use std::time::Duration;
 use tract_core::internal::*;
 use tract_core::ops::scan::Scan;
-use tract_itertools::izip;
 use tract_itertools::Itertools;
+use tract_itertools::izip;
 
 use crate::model::Model;
 

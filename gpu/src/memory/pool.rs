@@ -18,19 +18,11 @@ pub struct DeviceMemoryPool {
 
 impl DeviceMemoryPool {
     pub fn from_schema(resolved_schema: DeviceResolvedMemSchema) -> TractResult<Self> {
-        let tensor = unsafe {
-            Tensor::uninitialized_dt(DatumType::U8, &[resolved_schema.memory_size]).with_context(
-                || {
-                    format!(
-                        "Error while allocating a tensor of {:?} bytes",
-                        resolved_schema.memory_size
-                    )
-                },
-            )?
-        };
-        let storage = Arc::new(get_context()?.tensor_to_device(tensor.into())?);
-
-        Ok(Self { storage, resolved_schema, node_seen: RefCell::new(HashSet::new()) })
+        Ok(Self {
+            storage: Arc::new(get_context()?.mem_pool_create(resolved_schema.memory_size)?),
+            resolved_schema,
+            node_seen: RefCell::new(HashSet::new()),
+        })
     }
 
     pub fn tensor_for_node(

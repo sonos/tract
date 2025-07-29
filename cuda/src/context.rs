@@ -1,6 +1,7 @@
+use cudarc::cublas::CudaBlas;
 use cudarc::nvrtc::Ptx;
 use tract_gpu::device::DeviceContext;
-use tract_gpu::tensor::OwnedDeviceTensor;
+use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 
 use std::ops::Deref;
 use std::sync::{OnceLock, RwLock};
@@ -13,7 +14,7 @@ use crate::kernels::LibraryName;
 use crate::tensor::CudaTensor;
 
 thread_local! {
-    pub static CUDA_STREAM: Arc<CudaStream> = cuda_context().default_stream();
+    pub static CUDA_STREAM: TractCudaStream = TractCudaStream::new().expect("Could not create Cuda Stream");
 }
 
 pub fn cuda_context() -> TractCudaContext {
@@ -62,11 +63,11 @@ impl TractCudaContext {
     pub fn preload_pipelines(&self) -> TractResult<()> {
         // TODO: Investigate CUDA lazy loading
         for ew_func in crate::kernels::UnaryOps::all_functions() {
-            let _ = self.load_pipeline(LibraryName::UnaryOps, ew_func);
+            let _ = self.load_pipeline(LibraryName::Unary, ew_func);
         }
 
         for bin_func in crate::kernels::BinOps::all_functions() {
-            let _ = self.load_pipeline(LibraryName::BinaryOps, bin_func);
+            let _ = self.load_pipeline(LibraryName::Binary, bin_func);
         }
         Ok(())
     }
@@ -127,16 +128,36 @@ impl DeviceContext for TractCudaContext {
     }
 
     fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {
-        let data = tensor.as_bytes();
-        static ZERO: [u8; 1] = [0];
-        // Handle empty data
-        let data = if data.is_empty() { &ZERO } else { data };
+        ensure!(DeviceTensor::is_supported_dt(tensor.datum_type()));
+        Ok(Box::new(CudaTensor::from_tensor(tensor.view().tensor)))
+    }
 
-        Ok(Box::new(CudaTensor::from_bytes(
-            data,
-            tensor.datum_type(),
-            tensor.shape(),
-            tensor.strides(),
-        )))
+    fn mem_pool_create(&self, size: usize) -> TractResult<Box<dyn OwnedDeviceTensor>> {
+        Ok(Box::new(CudaTensor::uninitialized(size)))
+    }
+}
+
+pub struct TractCudaStream {
+    inner: Arc<CudaStream>,
+    cublas: CudaBlas,
+}
+
+impl TractCudaStream {
+    fn new() -> TractResult<TractCudaStream> {
+        let stream = cuda_context().default_stream();
+        let cublas = CudaBlas::new(stream.clone())?;
+        Ok(TractCudaStream { inner: stream, cublas })
+    }
+
+    pub fn cublas(&self) -> &CudaBlas {
+        &self.cublas
+    }
+}
+
+impl Deref for TractCudaStream {
+    type Target = Arc<CudaStream>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }

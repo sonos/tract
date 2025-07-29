@@ -136,7 +136,9 @@ fn render_node_prefixed(
 
     if let Some(ds) = &mut drawing_state {
         for l in ds.draw_node_vprefix(model, node_id, options)? {
-            println!("{cost_column_pad}{profile_column_pad}{flops_column_pad}{tmp_mem_usage_column_pad}{prefix}{l} ");
+            println!(
+                "{cost_column_pad}{profile_column_pad}{flops_column_pad}{tmp_mem_usage_column_pad}{prefix}{l} "
+            );
         }
     }
 
@@ -444,7 +446,7 @@ pub fn render_summaries(
                     a,
                     group.into_iter().fold(
                         (Duration::default(), Duration::default(), 0),
-                        |(accu, accel_accu, n), d| (accu + d.1 .0, accel_accu + d.1 .1, n + 1),
+                        |(accu, accel_accu, n), d| (accu + d.1.0, accel_accu + d.1.1, n + 1),
                     ),
                 )
             })
@@ -535,11 +537,7 @@ pub fn dur_avg_ratio(measure: Duration, global: Duration) -> String {
 }
 
 fn render_tdim(d: &TDim) -> AnsiString<'static> {
-    if let Ok(i) = d.to_i64() {
-        render_big_integer(i)
-    } else {
-        d.to_string().into()
-    }
+    if let Ok(i) = d.to_i64() { render_big_integer(i) } else { d.to_string().into() }
 }
 
 fn render_big_integer(i: i64) -> nu_ansi_term::AnsiString<'static> {

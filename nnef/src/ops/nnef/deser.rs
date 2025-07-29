@@ -474,7 +474,7 @@ fn pool_spec_for_pools(
     if dilation.len() > 0
         && (dilation.len() != kernel_shape.rank() || dilation[0] != 1 || dilation[1] != 1)
     {
-        bail!("dilation should be like [1, 1, ... ]. Got dilation {:?}.", dilation);
+        bail!("dilation should be like [1, 1, ... ] because first two first dimensions are N and C, so they should be of dilation 1. Got dilation {dilation:?}.");
     }
     let spatial_dilation = if dilation.iter().all(|it| *it == 1) || dilation.len() == 0 {
         None
@@ -484,7 +484,7 @@ fn pool_spec_for_pools(
     let stride: TVec<usize> = invocation.named_arg_as(builder, "stride")?;
     if stride.len() > 0 && (stride.len() != kernel_shape.rank() || stride[0] != 1 || stride[1] != 1)
     {
-        bail!("stride should be like [1, 1, ... ]. Got stride {:?}.", stride);
+        bail!("stride should be like [1, 1, ... ] because first two first dimensions are N and C, so they should be of stride 1. Got stride {stride:?}.");
     }
     let spatial_stride = if stride.len() == 0 || stride.iter().all(|it| *it == 1) {
         None
@@ -493,7 +493,7 @@ fn pool_spec_for_pools(
     };
     let padding: TVec<TVec<usize>> = invocation.named_arg_as(builder, "padding")?;
     if padding.len() > 0 && (padding.len() != padding.len()) {
-        bail!("padding should have the same rank as the input. Got padding {:?}.", padding);
+        bail!("padding should have the same rank as the input. Got padding {padding:?} but kernel_shape is {kernel_shape:?}.");
     }
     let padding = if padding.len() == 0 {
         PaddingSpec::SameUpper
@@ -821,8 +821,5 @@ pub fn softmax(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
         invocation.dt_from_quant_file.first().cloned().flatten()
     };
 
-    builder.wire(
-        Softmax { axes, quant_output_dt, kind: SoftmaxKind::default() },
-        &[x],
-    )
+    builder.wire(Softmax { axes, quant_output_dt, kind: SoftmaxKind::default() }, &[x])
 }

@@ -1,4 +1,3 @@
-use core::fmt;
 use std::ffi::c_void;
 use std::sync::Mutex;
 
@@ -12,25 +11,19 @@ use crate::tensor::OwnedDeviceTensor;
 
 pub trait DeviceContext: Downcast + dyn_clone::DynClone + Send + Sync {
     fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>>;
+    fn mem_pool_create(&self, size: usize) -> TractResult<Box<dyn OwnedDeviceTensor>>;
     fn synchronize(&self) -> TractResult<()>;
 }
 
 impl_downcast!(DeviceContext);
 dyn_clone::clone_trait_object!(DeviceContext);
 
-pub trait DeviceBuffer: Downcast + dyn_clone::DynClone + Send + Sync {
-    fn info(&self) -> String;
+pub trait DeviceBuffer: Downcast + dyn_clone::DynClone + Send + Sync + std::fmt::Debug {
     fn ptr(&self) -> *const c_void;
 }
 
 impl_downcast!(DeviceBuffer);
 dyn_clone::clone_trait_object!(DeviceBuffer);
-
-impl fmt::Debug for dyn DeviceBuffer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "DeviceBuffer: {:?}", self.info())
-    }
-}
 
 pub static DEVICE_CONTEXT: Mutex<Option<Box<dyn DeviceContext>>> = Mutex::new(None);
 

@@ -91,7 +91,7 @@ impl BasicMatMul {
         let tname = match dt {
             DatumType::F32 => "f32",
             DatumType::F16 => "f16",
-            _ => bail!("Unsupport dt {:?} for metal basic matmul", dt),
+            _ => bail!("Unsupported dt {:?} for metal basic matmul", dt),
         };
         Ok(tname)
     }

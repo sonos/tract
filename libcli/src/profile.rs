@@ -1,14 +1,13 @@
+use crate::model::Model;
+use crate::tensor::RunTensors;
+use crate::tensor::make_inputs_for_model;
+use crate::{annotations::*, capture_gpu_trace};
+use std::any::TypeId;
+use std::time::{Duration, Instant};
 use tract_core::internal::*;
 use tract_core::num_traits::Zero;
 use tract_core::ops::scan::State;
 use tract_core::ops::submodel::TypedModelOpState;
-use crate::tensor::RunTensors;
-
-use crate::annotations::*;
-use crate::model::Model;
-use crate::tensor::make_inputs_for_model;
-use std::any::TypeId;
-use std::time::{Duration, Instant};
 
 pub struct BenchLimits {
     pub warmup_loops: usize,
@@ -93,7 +92,7 @@ pub fn profile(
             folded,
         )?;
         dur += start.elapsed();
-        if !state.model().properties().contains_key("pulse.delay") {   
+        if !state.model().properties().contains_key("pulse.delay") {
             state.reset_op_states()?;
         }
         iters += 1;
@@ -122,10 +121,10 @@ pub fn profile(
     Ok(())
 }
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-pub fn profile_metal(
+pub fn profile_gpu(
     model: &TypedModel,
     bench_limits: &BenchLimits,
+    sub_matches: &clap::ArgMatches,
     dg: &mut Annotations,
     plan_options: &PlanOptions,
     inputs: &RunTensors,
@@ -148,18 +147,22 @@ pub fn profile_metal(
 
     let mut state = TypedSimpleState::new(Arc::new(plan))?;
     let mut dur = Duration::default();
-    while iters < bench_limits.max_loops && dur < bench_limits.max_time {
-        if !state.model().properties().contains_key("pulse.delay") {
-            state.init_states(&mut inputs.state_initializers.clone())?;
+
+    capture_gpu_trace(sub_matches, || -> TractResult<()> {
+        while iters < bench_limits.max_loops && dur < bench_limits.max_time {
+            if !state.model().properties().contains_key("pulse.delay") {
+                state.init_states(&mut inputs.state_initializers.clone())?;
+            }
+            let start = Instant::now();
+            rec_profiler_gpu(&mut state, dg, &inputs.sources[0], &prefix)?;
+            dur += start.elapsed();
+            if !state.model().properties().contains_key("pulse.delay") {
+                state.reset_op_states()?;
+            }
+            iters += 1;
         }
-        let start = Instant::now();
-        rec_profiler_metal(&mut state, dg, &inputs.sources[0], &prefix)?;
-        dur += start.elapsed();
-        if !state.model().properties().contains_key("pulse.delay") {  
-            state.reset_op_states()?;
-        }
-        iters += 1;
-    }
+        Ok(())
+    })?;
 
     info!("Running {} iterations max. for each node.", bench_limits.max_loops);
     info!("Running for {} ms max. for each node.", bench_limits.max_time.as_millis());
@@ -182,8 +185,7 @@ pub fn profile_metal(
     Ok(())
 }
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-pub fn rec_profiler_metal(
+pub fn rec_profiler_gpu(
     state: &mut TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
     dg: &mut Annotations,
     inputs: &TVec<TValue>,

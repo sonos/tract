@@ -13,7 +13,7 @@ impl Silu {
     }
 
     pub fn kernel_name(&self, dt: DatumType, use_silu_4: bool) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for metal silu  op", dt);
+        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal siluop", dt);
         let tname = DeviceTensor::tname(dt)?;
         if use_silu_4 {
             Ok(format!("nn_ops::silu_4_{tname}"))

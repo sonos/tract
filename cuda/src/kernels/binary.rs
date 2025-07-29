@@ -3,10 +3,10 @@ use std::fmt;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::context::cuda_context;
+use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::utils::compute_broadcast_strides;
-use crate::kernels::{get_cuda_view, LibraryName};
+use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum BinOps {
@@ -54,11 +54,7 @@ impl BinOps {
 
     pub fn output_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
         ensure!(a == b);
-        if self.is_logic() {
-            Ok(DatumType::Bool)
-        } else {
-            Ok(a)
-        }
+        if self.is_logic() { Ok(DatumType::Bool) } else { Ok(a) }
     }
 
     pub fn output_shape<D: DimLike>(&self, a: &[D], b: &[D]) -> TractResult<TVec<D>> {
@@ -88,21 +84,22 @@ impl BinOps {
         )
     }
 
-    pub fn is_supported_dt(dt: DatumType) -> bool {
-        matches!(
-            dt,
-            DatumType::F32
-                | DatumType::F16
-                | DatumType::U8
-                | DatumType::U16
-                | DatumType::U32
-                | DatumType::U64
-                | DatumType::I8
-                | DatumType::I16
-                | DatumType::I32
-                | DatumType::I64
-                | DatumType::Bool
-        )
+    pub fn is_supported_dt(&self, dt: DatumType) -> bool {
+        (matches!(self, Self::And | Self::Or) && dt == DatumType::Bool)
+            || (!matches!(self, Self::And | Self::Or)
+                && matches!(
+                    dt,
+                    DatumType::F32
+                        | DatumType::F16
+                        | DatumType::U8
+                        | DatumType::U16
+                        | DatumType::U32
+                        | DatumType::U64
+                        | DatumType::I8
+                        | DatumType::I16
+                        | DatumType::I32
+                        | DatumType::I64
+                ))
     }
 
     fn reshape_to_rank_4_with_broadcast(
@@ -172,7 +169,7 @@ impl BinOps {
     }
 
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupport dt {:?} for Cuda binary ops", dt);
+        ensure!(self.is_supported_dt(dt), "Unsupported dt {:?} for Cuda binary ops: {self}", dt);
 
         let tname = DeviceTensor::tname(dt)?;
 
@@ -197,7 +194,7 @@ impl BinOps {
 
     pub fn eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         lhs: &DeviceTensor,
         rhs: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
@@ -213,7 +210,7 @@ impl BinOps {
 
     pub fn dispatch_eval(
         &self,
-        stream: &CudaStream,
+        stream: &TractCudaStream,
         lhs: &DeviceTensor,
         rhs: &DeviceTensor,
         output: &DeviceTensor,
@@ -232,14 +229,13 @@ impl BinOps {
         let out_strides =
             compute_broadcast_strides::<usize>(&out_shape, &natural_strides(&out_shape))?;
 
-        let func = cuda_context().load_pipeline(LibraryName::BinaryOps, kernel_name)?;
+        let func = cuda_context().load_pipeline(LibraryName::Binary, kernel_name)?;
 
-        let max_threads = 1024;
         let half_inner_ax = (out_shape[3] / 2).max(1);
-        let block_dim_x = half_inner_ax.min(max_threads);
-        let block_dim_y = out_shape[2].min(max_threads / block_dim_x);
+        let block_dim_x = half_inner_ax.min(MAX_THREADS);
+        let block_dim_y = out_shape[2].min(MAX_THREADS / block_dim_x);
         let block_dim_z =
-            (out_shape[1] * out_shape[0]).min(max_threads / (block_dim_x * block_dim_y)).min(64);
+            (out_shape[1] * out_shape[0]).min(MAX_THREADS / (block_dim_x * block_dim_y)).min(64);
 
         let cfg = LaunchConfig {
             grid_dim: (
