@@ -1,7 +1,11 @@
 use cudarc::cublas::{self, CudaBlas, Gemm};
+use cudarc::driver::result::stream::null;
+use cudarc::driver::sys::CUfunction_attribute;
 use cudarc::driver::{CudaStream, DevicePtr, LaunchConfig, PushKernelArg};
+use cudarc::runtime::result::device::get_device_prop;
 use derive_new::new;
 use num_traits::{Float, One};
+use core::panic;
 use std::{default, fmt};
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
@@ -11,14 +15,23 @@ use tract_gpu::utils::{as_q40_fact, as_q40_tensor};
 
 use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::{
-    LibraryName, get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut,
+    get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut, launch_args, LibraryName
 };
 use crate::tensor::CudaTensor;
 use crate::utils::get_q40_fact;
 
 use DatumType::{F16, F32};
 
+static N_WARPS: usize = 8;
+
 static WARP_SIZE: usize = 32;
+static MMQ_X_MAX: usize = 128;
+
+static QK8_0: usize = 32;
+static QI8_0: usize = QK8_0 / (4 * QR8_0);
+static QR8_0: usize =  1;
+
+static MMQ_MMA_TILE_X_K_Q8_0:usize = (2*WARP_SIZE + 2*WARP_SIZE/QI8_0 + 4);
 
 #[derive(Debug)]
 struct MatMulParams {
@@ -43,25 +56,35 @@ fn squeeze_batch_axes(s: &[usize]) -> TractResult<TVec<usize>> {
     Ok(tvec![s[..rank - 2].iter().product(), s[rank - 2], s[rank - 1],])
 }
 
+fn mmq_get_nbytes_shared_q40(mmq_x: usize, mmq_y: usize)-> usize {
+    let nb_ids = mmq_x * size_of::<i32>();
+    let mmq_tile_x_l = MMQ_MMA_TILE_X_K_Q8_0;
+    let nbs_x = mmq_y * mmq_tile_x_l * size_of::<i32>();
+    let nbs_y = mmq_x * 144;
+
+    let pad  = N_WARPS * WARP_SIZE * size_of::<i32>();
+    return nb_ids + nbs_x + nbs_y.next_multiple_of(pad)
+}
+
 impl MatMulParams {
     fn from_inputs(
-        a: &DeviceTensor,
-        b: &DeviceTensor,
-        c: &DeviceTensor,
+        a_shape: &[usize],
+        b_shape: &[usize],
+        c_shape: &[usize],
     ) -> TractResult<MatMulParams> {
-        let rank = c.rank();
-        let squeezed_a_shape = squeeze_batch_axes(a.shape())?;
-        let squeezed_b_shape = squeeze_batch_axes(b.shape())?;
-        let squeezed_c_shape = squeeze_batch_axes(c.shape())?;
+        let rank = c_shape.len();
+        let squeezed_a_shape = squeeze_batch_axes(a_shape)?;
+        let squeezed_b_shape = squeeze_batch_axes(b_shape)?;
+        let squeezed_c_shape = squeeze_batch_axes(c_shape)?;
 
         let a_batch = squeezed_a_shape[0];
         let b_batch = squeezed_b_shape[0];
 
         ensure!(squeezed_c_shape[0] == a_batch || squeezed_c_shape[0] == b_batch);
 
-        let m = c.shape()[rank - 2];
-        let n = c.shape()[rank - 1];
-        let k = a.shape()[a.rank() - 1];
+        let m = c_shape[rank - 2];
+        let n = c_shape[rank - 1];
+        let k = a_shape[a_shape.len() - 1];
 
         ensure!(a_batch % b_batch == 0 || b_batch == 1 || a_batch == 1);
         let a_strides = natural_strides(&[a_batch, m, k]);
@@ -88,7 +111,8 @@ impl Matmul {
         let regular_types_support =
             matches!((facts[0].datum_type, facts[1].datum_type), (F32, F32) | (F16, F16));
 
-        regular_types_support
+
+        regular_types_support || (as_q40_fact(&facts[1]).is_some() && facts[0].datum_type == F32)
     }
 
     pub fn output_shape<D: DimLike + One>(a: &[D], b: &[D]) -> TVec<D> {
@@ -246,6 +270,11 @@ impl Matmul {
         Ok(())
     }
 
+    fn kernel_name_q40(params: &MatMulParams, mmq_x: usize, mmq_y: usize) -> TractResult<String> {
+        let need_check = params.n % mmq_y != 0;
+        Ok(format!("mul_mat_q_GGML_TYPE_Q4_0_{mmq_x}_8_{need_check}"))
+    }
+
     pub fn dispatch_eval(
         &self,
         stream: &TractCudaStream,
@@ -263,8 +292,10 @@ impl Matmul {
             return Ok(());
         }
 
-        let params = MatMulParams::from_inputs(a, b, output)?;
-        if (params.k % 2 == 0) && params.m == 1 && params.a_batch >= params.b_batch {
+        let params = MatMulParams::from_inputs(a.shape(), &b_shape, output.shape())?;
+        if get_q40_fact(b).is_some() {
+            Self::dispatch_ggml_matmul_q40(stream, a, b, output, params)?;
+        } else if (params.k % 2 == 0) && params.m == 1 && params.a_batch >= params.b_batch {
             Self::dispatch_ggml_matvec(stream, a, b, output, params)?;
         } else if a.datum_type() == DatumType::F32 {
             Self::dispatch_cublas_gemm::<f32>(stream, a, b, output, params)?;
@@ -281,20 +312,161 @@ impl Matmul {
         lhs: &DeviceTensor,
         rhs: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
+        let rhs_shape = get_q40_fact(rhs)
+            .map(|bqf| rhs.shape().iter().cloned().chain(bqf.shape().iter().copied()).collect())
+            .unwrap_or(rhs.shape().to_vec());
         let output = unsafe {
             DeviceTensor::uninitialized_dt(
                 lhs.datum_type(),
-                &Self::output_shape(lhs.shape(), rhs.shape()),
+                &Self::output_shape(lhs.shape(), &rhs_shape),
             )?
         };
         self.dispatch_eval(stream, lhs, rhs, &output)?;
         stream.synchronize()?;
         Ok(output)
     }
+    fn dispatch_ggml_matmul_q40(
+    stream: &TractCudaStream,
+    a: &DeviceTensor,
+    b: &DeviceTensor,
+    output: &DeviceTensor,
+    params: MatMulParams,
+    ) -> TractResult<()> {
+        let a_view = get_cuda_view(a);
+        let b_view = get_cuda_view(b);
+
+        let mut out_view = get_cuda_view(output);
+
+        let null_ptr = stream.null::<u8>()?;
+
+        let n_blocks = (params.k / Q4_0.block_len());
+        let padded_k = params.k.next_multiple_of(512);
+
+        let nbytes_a_q8_1 = a.len() * padded_k * (QK8_0 + 4) / (params.k * QK8_0) + MMQ_X_MAX * 144;
+
+        let sample_stride_a = params.a_strides[0] * params.a_batch as isize;
+        let quant_a = unsafe {
+            DeviceTensor::uninitialized_dt(
+                DatumType::U8,
+                &[nbytes_a_q8_1],
+            )?
+        };
+
+        let quant_a_view = get_cuda_view(&quant_a);
+
+        let func = cuda_context().load_pipeline(LibraryName::GgmlQ, "quantize_mmq_q8_1".to_string())?;
+        let mut launch_args = stream.launch_builder(&func);
+        launch_args.arg(&a_view);
+        launch_args.arg(&null_ptr);
+        launch_args.arg(&quant_a_view);
+        launch_args.arg(&params.k);
+        launch_args.arg(&params.a_strides[1]);
+        launch_args.arg(&params.a_strides[0]);
+        launch_args.arg(&sample_stride_a);
+        launch_args.arg(&padded_k);
+        launch_args.arg(&params.m);
+        launch_args.arg(&params.a_batch);
+        launch_args.arg(&1);
+
+        let cfg = LaunchConfig {
+            grid_dim: (params.m as _, params.k.div_ceil(4 * 128) as _, params.a_batch as _),
+            block_dim: (128, 1, 1),
+            shared_mem_bytes: 0,
+        };
+        unsafe { launch_args.launch(cfg) };
+
+        let a_stride_0 = padded_k * params.m * 36 / 128;
+        let sample_stride_a = a_stride_0 * params.a_batch;
+
+        let mut mmq_x_best  = 0;
+        let mut ntiles_x_best = usize::max_value();
+
+        let mut mmq_x = 0;
+        while mmq_x <= MMQ_X_MAX && ntiles_x_best > 1 {
+            mmq_x += 8;
+            let granularity = if mmq_x >= 48 { 16 } else { 8 };
+            if (mmq_x % granularity != 0 || mmq_get_nbytes_shared_q40(mmq_x, MMQ_X_MAX) > get_device_prop(0)?.sharedMemPerBlockOptin) {
+                continue;
+            }
+            
+            let ntiles_x = (params.m + mmq_x - 1) / mmq_x;
+            if (ntiles_x < ntiles_x_best) {
+                mmq_x_best = mmq_x;
+                ntiles_x_best = ntiles_x;
+            }
+        }
+
+        let nbytes_shared = mmq_get_nbytes_shared_q40(mmq_x_best, MMQ_X_MAX);
+        let kernel_name = Self::kernel_name_q40(&params, mmq_x_best, MMQ_X_MAX)?;
+
+        let tmp_fixup = unsafe {
+            DeviceTensor::uninitialized_dt(
+                DatumType::F32,
+                &[get_device_prop(0)?.multiProcessorCount as usize * mmq_x_best * MMQ_X_MAX],
+            )?
+        };
+
+        let tmp_fixup_view = get_cuda_view(&tmp_fixup);
+
+        let batch_ratio = params.a_batch / params.b_batch;
+        let b_stride_0 = n_blocks * params.n;
+        let b_sample_stride = b_stride_0 * params.b_batch;
+        let a_sample_stride = params.a_strides[0] * params.a_batch as isize;
+        let c_sample_stride = params.c_strides[0] * params.a_batch as isize;
+
+        let func = cuda_context().load_pipeline(LibraryName::GgmlQ, kernel_name)?;
+        func.set_attribute(CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, nbytes_shared as i32)?;
+        let mut launch_args = stream.launch_builder(&func);
+        launch_args.arg(&b_view);
+        launch_args.arg(&quant_a_view);
+        launch_args.arg(&null_ptr);
+        launch_args.arg(&null_ptr);
+        launch_args.arg(&out_view);
+        launch_args.arg(&tmp_fixup_view);
+        launch_args.arg(&params.k);
+        launch_args.arg(&params.n);
+        launch_args.arg(&params.m);
+        launch_args.arg(&n_blocks);
+        launch_args.arg(&params.m);
+        launch_args.arg(&params.n);
+        launch_args.arg(&batch_ratio);
+        launch_args.arg(&params.a_batch);
+        launch_args.arg(&b_stride_0);
+        launch_args.arg(&a_stride_0);
+        launch_args.arg(&params.c_strides[0]);
+        launch_args.arg(&1);
+        launch_args.arg(&1);
+        launch_args.arg(&b_sample_stride);
+        launch_args.arg(&sample_stride_a);
+        launch_args.arg(&c_sample_stride);
+
+        //println!("ncols_x: {}, nrows_x: {}, ncols_dst: {}, stride_row_x: {}, ncols_y: {}, nrows_dst: {}", params.k, params.n, params.m, n_blocks, params.m, params.n);
+        //println!("channel_ratio: {}, nchannels_y: {}, stride_channel_x: {}, stride_channel_y: {}, stride_channel_dst: {}", batch_ratio, params.a_batch, b_stride_0, a_stride_0, params.c_strides[0]);
+        //println!("sample_ratio: {}, nsamples_y: {}, stride_sample_x: {}, stride_sample_y: {}, stride_sample_dst: {}", 1, 1, b_sample_stride, sample_stride_a, c_sample_stride);
+        
+        let nty = params.n.div_ceil(MMQ_X_MAX);
+        let ntx = params.m.div_ceil(mmq_x_best);
+        let fixup_needed = ((ntx * nty * params.a_batch) % get_device_prop(0)?.multiProcessorCount as usize) != 0;
+
+        if fixup_needed {
+            todo!()
+        }
+
+        let cfg = LaunchConfig {
+            grid_dim: (get_device_prop(0)?.multiProcessorCount as _, 1, 1),
+            block_dim: (WARP_SIZE as _, N_WARPS as _, 1),
+            shared_mem_bytes: nbytes_shared as _,
+        };
+
+        unsafe { launch_args.launch(cfg); }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::any::TypeId;
+
     use crate::context::CUDA_STREAM;
 
     use super::*;
@@ -302,12 +474,32 @@ mod tests {
     use num_traits::Float;
     use proptest::collection::vec;
     use proptest::prelude::*;
+    use tract_core::ops::array::MultiBroadcastTo;
+    use tract_core::ops::cast::Cast;
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
     use tract_core::tract_data::itertools::Itertools;
     use tract_core::tract_linalg::block_quant::{
         BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0,
     };
     use tract_gpu::tensor::IntoDevice;
+
+    #[test]
+    fn test_q4() -> TractResult<()> {
+        run_ggml_mat_mul_test::<f32>(1, 1, 384, 2048, 2048, true)?;
+        //run_ggml_mat_mul_test::<f32>(32, 1, 1, 32, 32, true)?;
+        //run_ggml_mat_mul_test::<f32>(1, 1, 320, 2048, 1, true)?;
+        //run_ggml_mat_mul_test::<f32>(4, 1, 1, 2048, 320, true)?;
+        //run_ggml_mat_mul_test::<f32>(1, 1, 1, 32, 32, true)?;
+        //run_ggml_mat_mul_test::<f32>(1, 1, 1, 64, 4, true)?;
+        //run_ggml_mat_mul_test::<f32>(3, 1, 1, 4096, 512, true)?;
+        //run_ggml_mat_mul_test::<f32>(1, 1, 1, 32, 32, true)?;
+        //run_ggml_mat_mul_test::<f32>(1, 1, 1, 64, 4, true)?;
+        //run_ggml_mat_mul_test::<f32>(3, 1, 1, 2048, 128, true)?;
+        //run_ggml_mat_mul_test::<f32>(1, 3, 1, 32, 32, true)?;
+        //run_ggml_mat_mul_test::<f32>(4, 2, 1, 64, 4, true)?;
+        //run_ggml_mat_mul_test::<f32>(3, 2, 1, 512, 256, true)?;
+        Ok(())
+    }
 
     pub(crate) fn run_mmm_test_case(
         (batch_a, batch_b, m, k, n): (usize, usize, usize, usize, usize),
@@ -405,5 +597,105 @@ mod tests {
         run_mmm_test_case((2, 1, 1, 127, 9), F16, F16)?;
         run_mmm_test_case((1, 2, 1, 127, 9), F16, F16)?;
         Ok(())
+    }
+
+    fn reference(a: Tensor, b: Tensor) -> TractResult<Tensor> {
+        let batch = b.shape()[0];
+        let batch_ratio = a.shape()[0] / batch;
+        let matmul = PrefixMatMul {
+            transpose_a: false,
+            transpose_b: true,
+            transpose_c: false,
+            quantize_output: None,
+        };
+
+        let mut model = TypedModel::default();
+
+        let lhs = model.add_source("lhs", TypedFact::shape_and_dt_of(&a))?;
+        let mut rhs = model.add_source("rhs", TypedFact::shape_and_dt_of(&b))?;
+
+        if b.datum_type() == DatumType::F16 {
+            rhs = model.wire_node("cast", Cast { to: DatumType::F32 }, &[rhs])?[0];
+        }
+        if batch_ratio > 1 {
+            let add_axis_out = model.wire_node("add_axis", AxisOp::Add(1), &[rhs])?[0];
+            let mut broadcast_shape = b.shape().to_vec();
+
+            broadcast_shape.insert(1, batch_ratio);
+            let broadcast_out = model.wire_node(
+                "broadcast",
+                MultiBroadcastTo { shape: ShapeFact::from_dims(broadcast_shape) },
+                &[add_axis_out],
+            )?[0];
+            rhs = model.wire_node(
+                "reshape",
+                AxisOp::Reshape(
+                    0,
+                    tvec![batch.into(), batch_ratio.into()],
+                    tvec![(batch * batch_ratio).into()],
+                ),
+                &[broadcast_out],
+            )?[0]
+        }
+        let output = model.wire_node("matmul", matmul, &[lhs, rhs])?;
+
+        model.set_output_outlets(&output)?;
+        model = model.into_decluttered()?;
+        let mut output =
+            DefaultRuntime.prepare(model)?.run(tvec!(a.into_tvalue(), b.into_tvalue()))?;
+        Ok(output.remove(0).into_tensor())
+    }
+
+    fn run_ggml_mat_mul_test<F: Datum + Float>(
+        batch: usize,
+        broadcast_ratio: usize,
+        m: usize,
+        k: usize,
+        n: usize,
+        q40: bool,
+    ) -> TractResult<()>
+    where
+        f32: From<F>,
+    {
+        CUDA_STREAM.with(|stream| {
+            let a_shape = [batch * broadcast_ratio, m, k];
+            let b_shape = [batch, n, k];
+
+            let a_data = (0..batch * broadcast_ratio * k * m)
+                .map(|f| f as f32 / (batch * broadcast_ratio * m * k) as f32)
+                .collect::<Vec<_>>();
+
+            let a = Tensor::from_shape(&a_shape, &a_data)?;
+
+            let b_data = (0..batch * n * k)
+                .map(|f| F::from(f).unwrap() / F::from(batch * n * k).unwrap())
+                .collect::<Vec<_>>();
+
+            let (ref_b, metal_b) = if q40 {
+                ensure!(TypeId::of::<F>() == TypeId::of::<f32>());
+                let b_data: Vec<f32> = b_data.into_iter().map(|x| x.into()).collect();
+                let b_tensor =
+                    Q4_0.simulate_precision_loss(Tensor::from_shape(&b_shape, &b_data)?, 2)?;
+
+                ensure!(k % 32 == 0);
+                let b_q4_0_tensor = tensor0(Opaque(Arc::new(BlockQuantValue {
+                    fact: BlockQuantFact::new(Box::new(Q4_0), tvec![batch, n, k]),
+                    value: Arc::new(Q4_0.quant_f32(&b_data)?),
+                })));
+                (b_tensor, b_q4_0_tensor)
+            } else {
+                let b_tensor = Tensor::from_shape(&b_shape, &b_data)?;
+                (b_tensor.clone(), b_tensor)
+            };
+
+            let cuda_output = Matmul.eval(
+                stream,
+                &a.clone().into_device()?,
+                &metal_b.clone().into_device()?,
+            )?;
+            let output = reference(a, ref_b)?;
+            cuda_output.to_host()?.close_enough(&output, Approximation::VeryApproximate)?;
+            Ok(())
+        })
     }
 }

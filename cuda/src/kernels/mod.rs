@@ -8,13 +8,15 @@ pub mod nn;
 mod unary;
 mod utils;
 
-use crate::tensor::CudaBuffer;
+use crate::tensor::{CudaBuffer, CudaTensor};
 use anyhow::{bail, ensure};
 pub use binary::BinOps;
 use cudarc::driver::{CudaView, CudaViewMut};
 pub use mm_mv::Matmul;
 use tract_core::prelude::TractResult;
-use tract_gpu::tensor::DeviceTensor;
+use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
+use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
+use tract_gpu::utils::as_q40_tensor;
 pub use unary::UnaryOps;
 
 const MAX_THREADS: usize = 1024;
@@ -24,6 +26,7 @@ const BINARY_OPS: &str = include_str!("ptx/binary.ptx");
 const ARRAY_OPS: &str = include_str!("ptx/array.ptx");
 const NN_OPS: &str = include_str!("ptx/nn.ptx");
 const GGML_MM_MV: &str = include_str!("ptx/mm_mv.ptx");
+const GGML_MM_MV_Q: &str = include_str!("ptx/mm_mv_q.ptx");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LibraryName {
@@ -32,6 +35,7 @@ pub enum LibraryName {
     Array,
     NN,
     Ggml,
+    GgmlQ,
 }
 
 impl LibraryName {
@@ -42,6 +46,7 @@ impl LibraryName {
             Self::Array => ARRAY_OPS,
             Self::NN => NN_OPS,
             Self::Ggml => GGML_MM_MV,
+            Self::GgmlQ => GGML_MM_MV_Q,
         }
     }
 }
@@ -100,8 +105,22 @@ impl BroadcastKind {
     ];
 }
 
+fn tensor_size(t: &DeviceTensor) -> usize {
+    if let DeviceTensor::Owned(ot) = t {
+        let cuda_tensor = ot
+            .downcast_ref::<CudaTensor>()
+            .expect("Non Cuda-Tensor in a Cuda Context");
+
+        if let Some(bqf) = cuda_tensor.block_quant_fact() {
+            return bqf.shape().iter().product::<usize>() * Q4_0.block_bytes() / Q4_0.block_len();
+        }
+    }
+
+    t.len() * t.datum_type().size_of()
+}
+
 pub fn get_cuda_view(t: &DeviceTensor) -> CudaView<'_, u8> {
-    let size = t.len() * t.datum_type().size_of();
+    let size = tensor_size(t);
     get_sliced_cuda_view(t, 0, size).unwrap()
 }
 
@@ -111,7 +130,7 @@ pub fn get_sliced_cuda_view(
     offset: usize,
     len: usize,
 ) -> TractResult<CudaView<'_, u8>> {
-    ensure!(offset + len <= t.len() * t.datum_type().size_of());
+    ensure!(offset + len <= tensor_size(t));
     let buffer = t.device_buffer().downcast_ref::<CudaBuffer>().unwrap();
     let offset = t.buffer_offset::<usize>() + offset;
     Ok(buffer.slice(offset..(offset + len)))
