@@ -26,7 +26,7 @@ bin_to_super_type!(add, Add,
                    validation: Validation::Rounding,
                    q: [i8, u8, i32, i32] => add_quant;
                    q_op_on_f32: |a: f32, b: f32| -> f32 {a+b},
-                   [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim] => |c, a, b| *c = a.clone() + b);
+                   [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64, TDim, String] => |c, a, b| *c = a.clone() + b);
 
 fn add_quant<T>(c: &mut T, a: &T, b: &T, zp: i32, _: f32)
 where
