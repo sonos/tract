@@ -91,7 +91,7 @@ $TRACT_RUN $MODELS/ARM-ML-KWS-CNN-M.pb \
     run -q \
     --allow-random-input
 
-$CACHE_FILE $MODELS/GRU128KeywordSpotter-v2-10epochs.onnx
+$CACHE_FILE GRU128KeywordSpotter-v2-10epochs.onnx
 $TRACT_RUN $MODELS/GRU128KeywordSpotter-v2-10epochs.onnx \
     -O run -q \
     --allow-random-input \
