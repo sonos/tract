@@ -66,7 +66,7 @@ $TRACT_RUN $MODELS/mobilenet_v1_1.0_224_frozen.pb \
     --allow-random-input \
     --assert-output-fact 1,1001,f32
 
-$CACHE_FILE $MODELS/mobilenet_v2_1.4_224_frozen.pb
+$CACHE_FILE mobilenet_v2_1.4_224_frozen.pb
 $TRACT_RUN $MODELS/mobilenet_v2_1.4_224_frozen.pb \
     -O -i 1,224,224,3,f32 \
     run -q \
