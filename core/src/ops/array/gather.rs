@@ -37,7 +37,7 @@ impl Gather {
         Ok(output_shape)
     }
 
-    fn eval_t<T: Datum + Copy>(&self, data: TValue, indices: &TValue) -> TractResult<Tensor> {
+    fn eval_t<T: Datum>(&self, data: TValue, indices: &TValue) -> TractResult<Tensor> {
         let data_view = unsafe { data.to_array_view_unchecked::<T>() };
         let indices = indices.to_array_view::<i64>()?;
         let output_shape = &*self.compute_output_shape(data.shape(), indices.shape())?;
@@ -67,7 +67,7 @@ impl Gather {
                 let input_offset = resolved_index * block_len;
 
                 output_slice[out_offset..out_offset + block_len]
-                    .copy_from_slice(&input_slice[input_offset..input_offset + block_len]);
+                    .clone_from_slice(&input_slice[input_offset..input_offset + block_len]);
                 out_offset += block_len;
             }
         } else {
@@ -83,8 +83,9 @@ impl Gather {
                 let k = if k < 0 { k + data_view.shape()[self.axis] as i64 } else { k } as usize;
                 icoords[0..axis].copy_from_slice(&ocoords[..self.axis]);
                 icoords[self.axis] = k;
-                icoords[self.axis + 1..].copy_from_slice(&ocoords[self.axis + indices.ndim()..]);
-                output_view[ocoords] = *data_view.get(&*icoords).context("Invalid gather")?;
+                icoords[self.axis + 1..].clone_from_slice(&ocoords[self.axis + indices.ndim()..]);
+                output_view[ocoords] =
+                    data_view.get(&*icoords).cloned().context("Invalid gather")?;
             }
             unsafe { output.set_datum_type(data.datum_type()) };
         }
@@ -180,17 +181,14 @@ impl TypedOp for Gather {
         ensure!(inputs[1].datum_type == i64::datum_type());
         if inputs[0].datum_type.is_opaque() {
             let data_shape = block_quant_aware_input_shape(inputs[0])?;
-            Ok(tvec!(
-                self.output_type
-                    .unwrap()
-                    .fact(&*self.compute_output_shape(&data_shape, &inputs[1].shape)?)
-            ))
+            Ok(tvec!(self
+                .output_type
+                .unwrap()
+                .fact(&*self.compute_output_shape(&data_shape, &inputs[1].shape)?)))
         } else {
-            Ok(tvec!(
-                inputs[0]
-                    .datum_type
-                    .fact(&*self.compute_output_shape(&inputs[0].shape, &inputs[1].shape)?)
-            ))
+            Ok(tvec!(inputs[0]
+                .datum_type
+                .fact(&*self.compute_output_shape(&inputs[0].shape, &inputs[1].shape)?)))
         }
     }
 
@@ -260,7 +258,7 @@ impl EvalOp for Gather {
                 bail!("Can't use Gather on {:?} input", data);
             }
         } else {
-            dispatch_copy!(Self::eval_t(data.datum_type())(self, data, &indices))?
+            dispatch_datum!(Self::eval_t(data.datum_type())(self, data, &indices))?
         };
         Ok(tvec!(result.into_tvalue()))
     }
