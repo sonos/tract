@@ -234,6 +234,10 @@ impl SymbolScopeData {
         }
         false
     }
+
+    pub(crate) fn prove_strict_positive(&self, b: &TDim) -> bool {
+        self.prove_positive_or_zero(&(b.clone() - 1))
+    }
 }
 
 impl fmt::Debug for SymbolScope {

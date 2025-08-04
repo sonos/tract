@@ -505,7 +505,15 @@ impl TDim {
                     .sorted_by(tdim_lexi_order)
                     .dedup()
                     .collect_vec();
-                if terms.len() == 0 {
+                // a#min(a,b) if a>0 && b>0 => a
+                if let [a, Min(m)] | [Min(m), a] = terms.as_slice()
+                    && let [m1, m2] = m.as_slice()
+                    && scope.prove_strict_positive(m1)
+                    && scope.prove_strict_positive(m2)
+                    && (a == m1 || a == m2)
+                {
+                    a.clone()
+                } else if terms.len() == 0 {
                     Val(1)
                 } else if terms.len() == 1 {
                     terms.remove(0)
@@ -1334,6 +1342,24 @@ mod tests {
         let term = (A.to_dim() + 1) / 4;
         let e = term.clone() * 2 - &term - 1;
         assert_eq!(e, term - 1);
+    }
+
+    #[test]
+    fn broadcast_over_min() {
+        // assuming a>0, b>0 then a#min(a,b) can be replaced by a
+        // proof:
+        //    if b == 1 => min(a,b)=1 => a#1=a => ok
+        //    if a <= b => min(a,b)=a => ok
+        //    if 1 < B < A => expression was invalid, we're generalizing over the non-domain and ignoring the constraint
+        for a in 1..5 {
+            for b in 1..5 {
+                if b > 1 && a > b {
+                    assert!(a.broadcast(a.min(b)).is_err());
+                } else {
+                    assert_eq!(a.broadcast(a.min(b)).unwrap(), a);
+                }
+            }
+        }
     }
 
     #[test]
