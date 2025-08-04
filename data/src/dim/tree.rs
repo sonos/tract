@@ -506,19 +506,15 @@ impl TDim {
                     .dedup()
                     .collect_vec();
                 // a#min(a,b) if a>0 && b>0 => a
-                if let [a, Min(m)] | [Min(m), a] = terms.as_slice()
-                    && let [m1, m2] = m.as_slice()
-                    && scope.prove_strict_positive(m1)
-                    && scope.prove_strict_positive(m2)
-                    && (a == m1 || a == m2)
-                {
-                    a.clone()
-                } else if terms.len() == 0 {
-                    Val(1)
-                } else if terms.len() == 1 {
-                    terms.remove(0)
-                } else {
-                    Broadcast(terms)
+                match &*terms {
+                    [] => Val(1),
+                    [_] => terms.remove(0),
+                    [a, Min(m)] | [Min(m), a]
+                        if m.contains(&a) && m.iter().all(|t| scope.prove_strict_positive(t)) =>
+                    {
+                        a.clone()
+                    }
+                    _ => Broadcast(terms),
                 }
             }
 
