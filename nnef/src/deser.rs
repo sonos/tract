@@ -146,6 +146,7 @@ impl<'mb> ModelBuilder<'mb> {
         // todo: can i relax the outlet id constraint ?
         for assignment in body {
             let identifiers = assignment.left.to_identifiers()?;
+            trace!("Wiring identifiers {identifiers:?}");
             let datum_types = identifiers
                 .iter()
                 .map(|s| {

@@ -70,7 +70,7 @@ impl Nnef {
     pub fn get_transform(&self, spec: &str) -> TractResult<Option<Box<dyn ModelTransform>>> {
         for reg in &self.registries {
             if let Some(transform) = (reg.transforms)(spec)? {
-                return Ok(Some(transform))
+                return Ok(Some(transform));
             }
         }
         Ok(None)
@@ -86,6 +86,7 @@ impl Nnef {
         proto_model: &ProtoModel,
         template: TypedModel,
     ) -> Result<TypedModel, (TypedModel, TractError)> {
+        debug!("Build TypedModel from NNEF proto model (translate)");
         ModelBuilder::new(self, proto_model, template).into_typed_model()
     }
 
