@@ -459,13 +459,12 @@ template <int mmq_y, int nwarps, bool need_check> static __device__ __forceinlin
     const int kqsx = threadIdx.x % QI4_0;
 
 _Pragma("unroll")
-    for (int i0 = 0; i0 < MMQ_Y; i0 += N_WARPS) {
+    for (int i0 = 0; i0 < mmq_y; i0 += N_WARPS) {
         int i = i0 + threadIdx.y;
 
         if (need_check) {
             i = min(i, i_max);
         }
-
         const block_q4_0 * bxi = (const block_q4_0 *) x + kbx0 + i*stride + kbx;
         const int qs0 = get_int_b2(bxi->qs, kqsx);
 
@@ -729,8 +728,7 @@ static __device__ __forceinline__ void mul_mat_q(
         const char * __restrict__ x, const int * __restrict__ y, const int32_t * __restrict__ ids_dst,
         const int32_t * __restrict__ expert_bounds, float * __restrict__ dst, float * __restrict__ tmp_fixup,
         const int ncols_x, const int nrows_x, const int ncols_dst, const int stride_row_x, const int ncols_y, const int stride_col_dst,
-        const int channel_ratio, const int nchannels_y, const int stride_channel_x, const int stride_channel_y, const int stride_channel_dst,
-        const int sample_ratio, const int nsamples_y, const int stride_sample_x, const int stride_sample_y, const int stride_sample_dst) {
+        const int channel_ratio, const int nchannels_y, const int stride_channel_x, const int stride_channel_y, const int stride_channel_dst) {
     constexpr int qk    = ggml_cuda_type_traits<type>::qk;
 
     const int ntx = (ncols_dst + mmq_x - 1) / mmq_x; // Number of tiles x
@@ -756,8 +754,8 @@ _Pragma("unroll")
     constexpr int     blocks_per_iter = MMQ_ITER_K / qk;
 
     // kbc == k block continuous, current index in continuous ijk space.
-    int64_t kbc      = (int64_t) blockIdx.x     *nsamples_y*nchannels_y*ntx*nty*blocks_per_ne00 / gridDim.x;
-    int64_t kbc_stop = (int64_t)(blockIdx.x + 1)*nsamples_y*nchannels_y*ntx*nty*blocks_per_ne00 / gridDim.x;
+    int64_t kbc      = (int64_t) blockIdx.x     *nchannels_y*ntx*nty*blocks_per_ne00 / gridDim.x;
+    int64_t kbc_stop = (int64_t)(blockIdx.x + 1)*nchannels_y*ntx*nty*blocks_per_ne00 / gridDim.x;
 
     kbc      -= (kbc      % blocks_per_ne00) % blocks_per_iter;
     kbc_stop -= (kbc_stop % blocks_per_ne00) % blocks_per_iter;
@@ -765,12 +763,11 @@ _Pragma("unroll")
     // kb0 == k index when doing the matrix multiplication for an output tile.
     int kb0_start = kbc % blocks_per_ne00;
     int kb0_stop  = min(blocks_per_ne00, kb0_start + kbc_stop - kbc);
+
     while (kbc < kbc_stop && kb0_stop == blocks_per_ne00) {
         int tmp = kbc;
-        const int it = tmp / (nsamples_y*nchannels_y*ntx*blocks_per_ne00);
-        tmp -= it * (nsamples_y*nchannels_y*ntx*blocks_per_ne00);
-        const int wt = tmp / (nchannels_y*ntx*blocks_per_ne00);
-        tmp -= wt * (nchannels_y*ntx*blocks_per_ne00);
+        const int it = tmp / (nchannels_y*ntx*blocks_per_ne00);
+        tmp -= it * (nchannels_y*ntx*blocks_per_ne00);
         const int zt = tmp / (ntx*blocks_per_ne00);
         tmp -= zt * (ntx*blocks_per_ne00);
         const int jt = tmp / blocks_per_ne00;
@@ -779,8 +776,8 @@ _Pragma("unroll")
         int col_low    = 0;
         int col_high   = ncols_dst;
         int col_diff   = ncols_dst;
-        int offset_y   = wt*stride_sample_y   + zt*stride_channel_y;
-        int offset_dst = wt*stride_sample_dst + zt*stride_channel_dst + jt*mmq_x*stride_col_dst;
+        int offset_y   = zt*stride_channel_y;
+        int offset_dst = zt*stride_channel_dst + jt*mmq_x*stride_col_dst;
 
         if (ids_dst) {
             col_low  = expert_bounds[zt + 0];
@@ -821,7 +818,7 @@ _Pragma("unroll")
         const int tile_x_max_i = nrows_x  - it*MMQ_Y - 1;
         const int tile_y_max_j = col_diff - jt*mmq_x - 1;
 
-        const int offset_x = (wt/sample_ratio)*stride_sample_x + (zt/channel_ratio)*stride_channel_x + it*MMQ_Y*stride_row_x;
+        const int offset_x = (zt/channel_ratio)*stride_channel_x + it*MMQ_Y*stride_row_x;
 
         constexpr bool fixup = false; // All but (potentially) the last iterations write their data to dst rather than the fixup buffer.
         mul_mat_q_process_tile<type, mmq_x, nwarps, need_check, fixup>
@@ -840,10 +837,8 @@ _Pragma("unroll")
     }
 
     int tmp = kbc;
-    const int it = tmp / (nsamples_y*nchannels_y*ntx*blocks_per_ne00);
-    tmp -= it * (nsamples_y*nchannels_y*ntx*blocks_per_ne00);
-    const int wt = tmp / (nchannels_y*ntx*blocks_per_ne00);
-    tmp -= wt * (nchannels_y*ntx*blocks_per_ne00);
+    const int it = tmp / (nchannels_y*ntx*blocks_per_ne00);
+    tmp -= it * (nchannels_y*ntx*blocks_per_ne00);
     const int zt = tmp / (ntx*blocks_per_ne00);
     tmp -= zt * (ntx*blocks_per_ne00);
     const int jt = tmp / blocks_per_ne00;
@@ -852,8 +847,8 @@ _Pragma("unroll")
     int col_low    = 0;
     int col_high   = ncols_dst;
     int col_diff   = ncols_dst;
-    int offset_y   = wt*stride_sample_y   + zt*stride_channel_y;
-    int offset_dst = wt*stride_sample_dst + zt*stride_channel_dst + jt*mmq_x*stride_col_dst;
+    int offset_y   = zt*stride_channel_y;
+    int offset_dst = zt*stride_channel_dst + jt*mmq_x*stride_col_dst;
 
     if (ids_dst) {
         col_low  = expert_bounds[zt + 0];
@@ -888,14 +883,12 @@ _Pragma("unroll")
     const int tile_x_max_i = nrows_x  - it*MMQ_Y - 1;
     const int tile_y_max_j = col_diff - jt*mmq_x - 1;
 
-    const int offset_x = (wt/sample_ratio)*stride_sample_x + (zt/channel_ratio)*stride_channel_x + it*MMQ_Y*stride_row_x;
+    const int offset_x = (zt/channel_ratio)*stride_channel_x + it*MMQ_Y*stride_row_x;
 
     constexpr bool fixup = true; // Last index writes its data to fixup buffer to avoid data races with other blocks.
     mul_mat_q_process_tile<type, mmq_x, nwarps, need_check, fixup>
         (x, offset_x, y + offset_y, ids_dst_shared, dst + offset_dst, tmp_fixup, stride_row_x, ncols_y, stride_col_dst,
          tile_x_max_i, tile_y_max_j, kb0_start, kb0_stop);
-    
-        dst[1] = 111;
 }
 
 
@@ -903,7 +896,7 @@ template <ggml_type type, int mmq_x, int nwarps, bool need_check>
 static __device__ __forceinline__ void mul_mat_q_stream_k_fixup(
         const int32_t * ids_dst, const int32_t * expert_bounds, float * __restrict__ dst, const float * __restrict__ tmp_last_tile,
         const int ncols_x, const int nrows_x, const int ncols_dst, const int stride_col_dst,
-        const int nchannels_y, const int stride_channel_dst, const int nsamples_y, const int stride_sample_dst) {
+        const int nchannels_y, const int stride_channel_dst) {
     constexpr int     qk              = ggml_cuda_type_traits<type>::qk;
     constexpr int     blocks_per_iter = MMQ_ITER_K / qk;
     const     int64_t blocks_per_ne00 = ncols_x / qk;
@@ -916,8 +909,8 @@ static __device__ __forceinline__ void mul_mat_q_stream_k_fixup(
     const int bidx0 = blockIdx.x;
 
     // kbc == k block continuous, current index in continuous ijk space.
-    int64_t kbc0      = (int64_t) bidx0     *nsamples_y*nchannels_y*ntx*nty*blocks_per_ne00 / gridDim.x;
-    int64_t kbc0_stop = (int64_t)(bidx0 + 1)*nsamples_y*nchannels_y*ntx*nty*blocks_per_ne00 / gridDim.x;
+    int64_t kbc0      = (int64_t) bidx0     *nchannels_y*ntx*nty*blocks_per_ne00 / gridDim.x;
+    int64_t kbc0_stop = (int64_t)(bidx0 + 1)*nchannels_y*ntx*nty*blocks_per_ne00 / gridDim.x;
 
     kbc0      -= (kbc0      % blocks_per_ne00) % blocks_per_iter;
     kbc0_stop -= (kbc0_stop % blocks_per_ne00) % blocks_per_iter;
@@ -936,7 +929,7 @@ static __device__ __forceinline__ void mul_mat_q_stream_k_fixup(
     int64_t bidx = bidx0 - 1;
     int64_t kbc_stop = kbc0;
     while(true) {
-        int64_t kbc = bidx*nsamples_y*nchannels_y*ntx*nty*blocks_per_ne00 / gridDim.x;
+        int64_t kbc = bidx*nchannels_y*ntx*nty*blocks_per_ne00 / gridDim.x;
         kbc -= (kbc % blocks_per_ne00) % blocks_per_iter;
 
         if (kbc == kbc_stop) { // Did not have any data.
@@ -972,16 +965,14 @@ _Pragma("unroll")
     }
 
     int tmp = kbc0;
-    const int it = tmp / (nsamples_y*nchannels_y*ntx*blocks_per_ne00);
-    tmp -= it * (nsamples_y*nchannels_y*ntx*blocks_per_ne00);
-    const int wt = tmp / (nchannels_y*ntx*blocks_per_ne00);
-    tmp -= wt * (nchannels_y*ntx*blocks_per_ne00);
+    const int it = tmp / (nchannels_y*ntx*blocks_per_ne00);
+    tmp -= it * (nchannels_y*ntx*blocks_per_ne00);
     const int zt = tmp / (ntx*blocks_per_ne00);
     tmp -= zt * (ntx*blocks_per_ne00);
     const int jt = tmp / blocks_per_ne00;
 
     if (!ids_dst) {
-        const int offset_dst = wt*stride_sample_dst + zt*stride_channel_dst + jt*mmq_x*stride_col_dst + it*MMQ_Y;
+        const int offset_dst = zt*stride_channel_dst + jt*mmq_x*stride_col_dst + it*MMQ_Y;
         dst += offset_dst;
 
         const int i_max = nrows_x   - it*MMQ_Y - 1;
@@ -1054,23 +1045,20 @@ extern "C" { \
     const int32_t * __restrict__ expert_bounds, float * __restrict__ dst, float * __restrict__ tmp_fixup, \
     const int ncols_x, const int nrows_x, const int ncols_dst, const int stride_row_x, \
     const int ncols_y, const int stride_col_dst, const int channel_ratio, const int nchannels_y, \
-    const int stride_channel_x, const int stride_channel_y, const int stride_channel_dst, \
-    const int sample_ratio, const int nsamples_y, const int stride_sample_x, \
-    const int stride_sample_y, const int stride_sample_dst) {                       \
+    const int stride_channel_x, const int stride_channel_y, const int stride_channel_dst) {                       \
         mul_mat_q<type, mmq_x, nwarps, need_check> \
             (x, y, ids_dst, expert_bounds, dst, tmp_fixup, \
             ncols_x, nrows_x, ncols_dst, stride_row_x, ncols_y, stride_col_dst, \
-            channel_ratio, nchannels_y, stride_channel_x, stride_channel_y, stride_channel_dst, \
-            sample_ratio, nsamples_y, stride_sample_x, stride_sample_y, stride_sample_dst); \
+            channel_ratio, nchannels_y, stride_channel_x, stride_channel_y, stride_channel_dst); \
     } \
 \
     __global__ void mul_mat_q_stream_k_fixup_##type##_##mmq_x##_##nwarps##_##need_check( \
     const int32_t * ids_dst, const int32_t * expert_bounds, float * __restrict__ dst, const float * __restrict__ tmp_last_tile, \
     const int ncols_x, const int nrows_x, const int ncols_dst, const int stride_col_dst, \
-    const int nchannels_y, const int stride_channel_dst, const int nsamples_y, const int stride_sample_dst) { \
+    const int nchannels_y, const int stride_channel_dst) { \
         mul_mat_q_stream_k_fixup<type, mmq_x, nwarps, need_check> \
             (ids_dst, expert_bounds, dst, tmp_last_tile, ncols_x, nrows_x, ncols_dst, stride_col_dst, \
-            nchannels_y, stride_channel_dst, nsamples_y, stride_sample_dst); \
+            nchannels_y, stride_channel_dst); \
     } \
 } 
 
@@ -1081,15 +1069,10 @@ extern "C" { \
     INSTANTIATE_MMQ_KERNEL(type, 32,  n_warps, needs_check) \
     INSTANTIATE_MMQ_KERNEL(type, 40,  n_warps, needs_check) \
     INSTANTIATE_MMQ_KERNEL(type, 48,  n_warps, needs_check) \
-    INSTANTIATE_MMQ_KERNEL(type, 58,  n_warps, needs_check) \
     INSTANTIATE_MMQ_KERNEL(type, 64,  n_warps, needs_check) \
-    INSTANTIATE_MMQ_KERNEL(type, 72,  n_warps, needs_check) \
     INSTANTIATE_MMQ_KERNEL(type, 80,  n_warps, needs_check) \
-    INSTANTIATE_MMQ_KERNEL(type, 88,  n_warps, needs_check) \
     INSTANTIATE_MMQ_KERNEL(type, 96,  n_warps, needs_check) \
-    INSTANTIATE_MMQ_KERNEL(type, 104, n_warps, needs_check) \
     INSTANTIATE_MMQ_KERNEL(type, 112, n_warps, needs_check) \
-    INSTANTIATE_MMQ_KERNEL(type, 120, n_warps, needs_check) \
     INSTANTIATE_MMQ_KERNEL(type, 128, n_warps, needs_check) \
 
 

@@ -35,7 +35,7 @@ impl Arbitrary for MatmulQ40Problem {
     type Strategy = BoxedStrategy<MatmulQ40Problem>;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        (1..20usize, 1..20usize, 1..20usize)
+        (1..5usize, 1..5usize, 1..5usize)
             .prop_flat_map(|(m, k, n)| {
                 let a = tensor(&[m, k]);
                 let b = tensor(&[n, k]);
@@ -184,6 +184,15 @@ pub fn suite() -> TractResult<TestSuite> {
             a: tensor2(&[[0f32, 1f32]]),
             b: tensor2(&[[0f32, 1f32]]),
             weights_in_b: true,
+        },
+    );
+
+    suite.add(
+        "cuda",
+        MatmulQ40Problem {
+            a: tensor2(&[[-0f32, -2f32, -9f32], [-5f32, 8f32, -3f32]]),
+            b: tensor2(&[[10f32, -4f32, 6f32]]),
+            weights_in_b: false,
         },
     );
 

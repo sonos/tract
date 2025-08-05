@@ -3,9 +3,9 @@ use cudarc::driver::result::stream::null;
 use cudarc::driver::sys::CUfunction_attribute;
 use cudarc::driver::{CudaStream, DevicePtr, LaunchConfig, PushKernelArg};
 use cudarc::runtime::result::device::get_device_prop;
+use cudarc::runtime::sys::cudaGetLastError;
 use derive_new::new;
 use num_traits::{Float, One};
-use core::panic;
 use std::{default, fmt};
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
@@ -275,6 +275,11 @@ impl Matmul {
         Ok(format!("mul_mat_q_GGML_TYPE_Q4_0_{mmq_x}_8_{need_check}"))
     }
 
+    fn fixup_kernel_name_q40(params: &MatMulParams, mmq_x: usize, mmq_y: usize) -> TractResult<String> {
+        let need_check = params.n % mmq_y != 0;
+        Ok(format!("mul_mat_q_stream_k_fixup_GGML_TYPE_Q4_0_{mmq_x}_8_{need_check}"))
+    }
+
     pub fn dispatch_eval(
         &self,
         stream: &TractCudaStream,
@@ -366,7 +371,6 @@ impl Matmul {
         launch_args.arg(&padded_k);
         launch_args.arg(&params.m);
         launch_args.arg(&params.a_batch);
-        launch_args.arg(&1);
 
         let cfg = LaunchConfig {
             grid_dim: (params.m as _, params.k.div_ceil(4 * 128) as _, params.a_batch as _),
@@ -376,7 +380,6 @@ impl Matmul {
         unsafe { launch_args.launch(cfg) };
 
         let a_stride_0 = padded_k * params.m * 36 / 128;
-        let sample_stride_a = a_stride_0 * params.a_batch;
 
         let mut mmq_x_best  = 0;
         let mut ntiles_x_best = usize::max_value();
@@ -399,30 +402,33 @@ impl Matmul {
         let nbytes_shared = mmq_get_nbytes_shared_q40(mmq_x_best, MMQ_X_MAX);
         let kernel_name = Self::kernel_name_q40(&params, mmq_x_best, MMQ_X_MAX)?;
 
-        let tmp_fixup = unsafe {
-            DeviceTensor::uninitialized_dt(
-                DatumType::F32,
-                &[get_device_prop(0)?.multiProcessorCount as usize * mmq_x_best * MMQ_X_MAX],
-            )?
-        };
-
-        let tmp_fixup_view = get_cuda_view(&tmp_fixup);
-
         let batch_ratio = params.a_batch / params.b_batch;
         let b_stride_0 = n_blocks * params.n;
-        let b_sample_stride = b_stride_0 * params.b_batch;
-        let a_sample_stride = params.a_strides[0] * params.a_batch as isize;
-        let c_sample_stride = params.c_strides[0] * params.a_batch as isize;
 
+        let nty = params.n.div_ceil(MMQ_X_MAX);
+        let ntx = params.m.div_ceil(mmq_x_best);
+
+        let fixup_needed = ((ntx * nty * params.a_batch) % get_device_prop(0)?.multiProcessorCount as usize) != 0;
+        let fixup_shape = if fixup_needed { get_device_prop(0)?.multiProcessorCount as usize * mmq_x_best * MMQ_X_MAX } else { 0 };
+
+        let fixup_tensor = unsafe {
+                DeviceTensor::uninitialized_dt(
+                    DatumType::F32,
+                    &[fixup_shape],
+                )?
+            };
+        
+        let fixup_view = get_cuda_view(&fixup_tensor);
         let func = cuda_context().load_pipeline(LibraryName::GgmlQ, kernel_name)?;
         func.set_attribute(CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, nbytes_shared as i32)?;
+
         let mut launch_args = stream.launch_builder(&func);
         launch_args.arg(&b_view);
         launch_args.arg(&quant_a_view);
         launch_args.arg(&null_ptr);
         launch_args.arg(&null_ptr);
         launch_args.arg(&out_view);
-        launch_args.arg(&tmp_fixup_view);
+        launch_args.arg(&fixup_view);
         launch_args.arg(&params.k);
         launch_args.arg(&params.n);
         launch_args.arg(&params.m);
@@ -434,24 +440,7 @@ impl Matmul {
         launch_args.arg(&b_stride_0);
         launch_args.arg(&a_stride_0);
         launch_args.arg(&params.c_strides[0]);
-        launch_args.arg(&1);
-        launch_args.arg(&1);
-        launch_args.arg(&b_sample_stride);
-        launch_args.arg(&sample_stride_a);
-        launch_args.arg(&c_sample_stride);
-
-        //println!("ncols_x: {}, nrows_x: {}, ncols_dst: {}, stride_row_x: {}, ncols_y: {}, nrows_dst: {}", params.k, params.n, params.m, n_blocks, params.m, params.n);
-        //println!("channel_ratio: {}, nchannels_y: {}, stride_channel_x: {}, stride_channel_y: {}, stride_channel_dst: {}", batch_ratio, params.a_batch, b_stride_0, a_stride_0, params.c_strides[0]);
-        //println!("sample_ratio: {}, nsamples_y: {}, stride_sample_x: {}, stride_sample_y: {}, stride_sample_dst: {}", 1, 1, b_sample_stride, sample_stride_a, c_sample_stride);
         
-        let nty = params.n.div_ceil(MMQ_X_MAX);
-        let ntx = params.m.div_ceil(mmq_x_best);
-        let fixup_needed = ((ntx * nty * params.a_batch) % get_device_prop(0)?.multiProcessorCount as usize) != 0;
-
-        if fixup_needed {
-            todo!()
-        }
-
         let cfg = LaunchConfig {
             grid_dim: (get_device_prop(0)?.multiProcessorCount as _, 1, 1),
             block_dim: (WARP_SIZE as _, N_WARPS as _, 1),
@@ -459,6 +448,30 @@ impl Matmul {
         };
 
         unsafe { launch_args.launch(cfg); }
+
+        if fixup_needed {
+            let kernel_name = Self::fixup_kernel_name_q40(&params, mmq_x_best, MMQ_X_MAX)?;
+            let func = cuda_context().load_pipeline(LibraryName::GgmlQ, kernel_name)?;
+            let mut launch_args = stream.launch_builder(&func);
+                launch_args.arg(&null_ptr);
+                launch_args.arg(&null_ptr);
+                launch_args.arg(&out_view);
+                launch_args.arg(&fixup_view);
+                launch_args.arg(&params.k);
+                launch_args.arg(&params.n);
+                launch_args.arg(&params.m);
+                launch_args.arg(&params.n);
+                launch_args.arg(&params.a_batch);
+                launch_args.arg(&params.c_strides[0]);
+
+            let cfg = LaunchConfig {
+                grid_dim: (get_device_prop(0)?.multiProcessorCount as _, 1, 1),
+                block_dim: (WARP_SIZE as _, N_WARPS as _, 1),
+                shared_mem_bytes: 0,
+            };
+
+            unsafe { launch_args.launch(cfg); }
+        }
         Ok(())
     }
 }
@@ -482,24 +495,6 @@ mod tests {
         BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0,
     };
     use tract_gpu::tensor::IntoDevice;
-
-    #[test]
-    fn test_q4() -> TractResult<()> {
-        run_ggml_mat_mul_test::<f32>(1, 1, 384, 2048, 2048, true)?;
-        //run_ggml_mat_mul_test::<f32>(32, 1, 1, 32, 32, true)?;
-        //run_ggml_mat_mul_test::<f32>(1, 1, 320, 2048, 1, true)?;
-        //run_ggml_mat_mul_test::<f32>(4, 1, 1, 2048, 320, true)?;
-        //run_ggml_mat_mul_test::<f32>(1, 1, 1, 32, 32, true)?;
-        //run_ggml_mat_mul_test::<f32>(1, 1, 1, 64, 4, true)?;
-        //run_ggml_mat_mul_test::<f32>(3, 1, 1, 4096, 512, true)?;
-        //run_ggml_mat_mul_test::<f32>(1, 1, 1, 32, 32, true)?;
-        //run_ggml_mat_mul_test::<f32>(1, 1, 1, 64, 4, true)?;
-        //run_ggml_mat_mul_test::<f32>(3, 1, 1, 2048, 128, true)?;
-        //run_ggml_mat_mul_test::<f32>(1, 3, 1, 32, 32, true)?;
-        //run_ggml_mat_mul_test::<f32>(4, 2, 1, 64, 4, true)?;
-        //run_ggml_mat_mul_test::<f32>(3, 2, 1, 512, 256, true)?;
-        Ok(())
-    }
 
     pub(crate) fn run_mmm_test_case(
         (batch_a, batch_b, m, k, n): (usize, usize, usize, usize, usize),
@@ -697,5 +692,21 @@ mod tests {
             cuda_output.to_host()?.close_enough(&output, Approximation::VeryApproximate)?;
             Ok(())
         })
+    }
+
+    #[test]
+    fn test_q4() -> TractResult<()> {
+        run_ggml_mat_mul_test::<f32>(32, 1, 1, 256, 32, true)?;
+        run_ggml_mat_mul_test::<f32>(1, 1, 320, 2048, 1, true)?;
+        run_ggml_mat_mul_test::<f32>(4, 1, 1, 2048, 320, true)?;
+        run_ggml_mat_mul_test::<f32>(1, 1, 1, 512, 4, true)?;
+        run_ggml_mat_mul_test::<f32>(3, 1, 1, 4096, 512, true)?;
+        run_ggml_mat_mul_test::<f32>(1, 1, 1, 1024, 32, true)?;
+        run_ggml_mat_mul_test::<f32>(1, 1, 1, 1280, 4, true)?;
+        run_ggml_mat_mul_test::<f32>(3, 1, 1, 2048, 128, true)?;
+        run_ggml_mat_mul_test::<f32>(1, 3, 1, 256, 32, true)?;
+        run_ggml_mat_mul_test::<f32>(4, 2, 1, 512, 4, true)?;
+        run_ggml_mat_mul_test::<f32>(3, 2, 1, 512, 256, true)?;
+        Ok(())
     }
 }
