@@ -477,7 +477,10 @@ where
                 state.resolved_symbols.set(&sym, v.to_i64().unwrap());
             }
             if state.scenario.is_none() {
-                state.scenario = sym.scope().unwrap().guess_scenario(&state.resolved_symbols)?;
+                let scope = sym
+                    .scope()
+                    .with_context(|| format!("Symbol {sym:?} points to an invalid (dead ?) SymbolScope. Make sure to create symbols using the model-managed SymbolScope."))?;
+                state.scenario = scope.guess_scenario(&state.resolved_symbols)?;
             }
         }
         Ok(())
