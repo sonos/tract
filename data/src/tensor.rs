@@ -841,11 +841,13 @@ impl Tensor {
         if self.shape() != other.shape() {
             bail!("Shape mismatch {:?} != {:?}", self.shape(), other.shape())
         }
+
         let (atol, rtol, outliers) = approx.atol_rtol_outliers(&self.datum_type());
         let ma = self.cast_to::<f32>()?;
         let ma = ma.to_array_view::<f32>()?;
         let mb = other.cast_to::<f32>()?;
         let mb = mb.to_array_view::<f32>()?;
+        //dbg!(&ma, &mb);
         let mut first_outlier = None;
         let mut outliers_count = 0;
         ndarray::indices_of(&ma).into_iter().for_each(|indices| {
