@@ -510,7 +510,7 @@ impl TDim {
                     [] => Val(1),
                     [_] => terms.remove(0),
                     [a, Min(m)] | [Min(m), a]
-                        if m.contains(&a) && m.iter().all(|t| scope.prove_strict_positive(t)) =>
+                        if m.contains(a) && m.iter().all(|t| scope.prove_strict_positive(t)) =>
                     {
                         a.clone()
                     }
