@@ -50,7 +50,7 @@ jobs:
       - name: Build wheels
         uses: nick-fields/retry@v2
         with:
-          max_attempts: 2
+          max_attempts: 1
           timeout_seconds: 54000 # 15 hours :/
           command: python -m cibuildwheel --output-dir wheelhouse api/py
 
