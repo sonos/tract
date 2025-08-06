@@ -7,3 +7,5 @@ mod transform;
 pub mod utils;
 
 pub use transform::CudaTransform;
+
+const Q40_ROW_PADDING: usize = 512;

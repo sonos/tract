@@ -123,7 +123,7 @@ impl OwnedDeviceTensor for CudaTensor {
     }
 
     fn as_arc_tensor(&self) -> Option<&Arc<Tensor>> {
-        println!("As arc tensor called on Cuda Tensor");
+        log::warn!("As arc tensor called on Cuda Tensor!");
         None
     }
 
