@@ -19,6 +19,7 @@ use crate::kernels::{
 };
 use crate::tensor::CudaTensor;
 use crate::utils::get_q40_fact;
+use crate::Q40_ROW_PADDING;
 
 use DatumType::{F16, F32};
 
@@ -330,6 +331,7 @@ impl Matmul {
         stream.synchronize()?;
         Ok(output)
     }
+
     fn dispatch_ggml_matmul_q40(
     stream: &TractCudaStream,
     a: &DeviceTensor,
@@ -344,8 +346,8 @@ impl Matmul {
 
         let null_ptr = stream.null::<u8>()?;
 
-        let n_blocks = (params.k / Q4_0.block_len());
-        let padded_k = params.k.next_multiple_of(512);
+        let padded_k = params.k.next_multiple_of(Q40_ROW_PADDING);
+        let n_blocks = (padded_k / Q4_0.block_len()); // Q40 weights have also been padded during transform
 
         let nbytes_a_q8_1 = a.len() * padded_k * (QK8_0 + 4) / (params.k * QK8_0) + MMQ_X_MAX * 144;
 
@@ -379,6 +381,7 @@ impl Matmul {
         };
         unsafe { launch_args.launch(cfg) };
 
+        //dbg!(quant_a.to_host()?.to_array_view::<u8>()?);
         let a_stride_0 = padded_k * params.m * 36 / 128;
 
         let mut mmq_x_best  = 0;

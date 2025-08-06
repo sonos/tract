@@ -25,6 +25,7 @@ num-traits.workspace = true
 tract-core.workspace = true
 tract-transformers.workspace = true
 tract-gpu.workspace = true
+log.workspace = true
 cudarc.workspace = true
 
 
