@@ -14,4 +14,6 @@ rustup target install wasm32-wasip1
 cargo build --target wasm32-wasip1
 wasmtime --dir . ../../target/wasm32-wasip1/debug/example-onnx-mobilenet-v2.wasm
 
+cargo run --bin dyn-shape
+
 rm  mobilenetv2-7.onnx
