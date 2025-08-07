@@ -12,12 +12,9 @@ pub fn register(registry: &mut Registry) {
     );
 }
 
-fn de_shape_of(
-    builder: &mut ModelBuilder,
-    invocation: &ResolvedInvocation,
-) -> TractResult<Value> {
+fn de_shape_of(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let shape = tensor1(&builder.model.outlet_fact(input)?.shape.to_tvec());
-    let wire = builder.model.add_const("shape", shape)?;
+    let wire = builder.add_const(shape)?;
     Ok(Value::Wire(wire))
 }
