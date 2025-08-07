@@ -1,6 +1,7 @@
 use std::ops::Deref;
 
 use cudarc::driver::{CudaSlice, DevicePtr};
+use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 use tract_core::prelude::{DatumType, TVec};
 use tract_core::tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue, Q4_0};
@@ -55,15 +56,15 @@ impl CudaTensor {
         })
     }
 
-    pub fn uninitialized(size: usize) -> Self {
+    pub fn uninitialized_dt(shape: &[usize], dt: DatumType) -> Self {
         CUDA_STREAM.with(|stream| unsafe {
-            let device_data = stream.alloc(size).unwrap();
+            let device_data = stream.alloc(shape.iter().product::<usize>() * dt.size_of()).unwrap();
             let buffer = Arc::new(CudaBuffer { inner: device_data });
             CudaTensor {
                 buffer,
-                datum_type: DatumType::U8,
-                shape: tvec!(size),
-                strides: tvec!(1),
+                datum_type: dt,
+                shape: shape.to_smallvec(),
+                strides: natural_strides(shape),
                 block_quant_fact: None,
             }
         })

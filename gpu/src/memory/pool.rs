@@ -2,7 +2,6 @@ use crate::device::get_context;
 use crate::memory::DeviceResolvedMemSchema;
 use crate::tensor::DeviceArenaView;
 use crate::tensor::DeviceTensor;
-use crate::tensor::IntoDevice;
 use crate::tensor::OwnedDeviceTensor;
 
 use std::cell::RefCell;
@@ -19,7 +18,7 @@ pub struct DeviceMemoryPool {
 impl DeviceMemoryPool {
     pub fn from_schema(resolved_schema: DeviceResolvedMemSchema) -> TractResult<Self> {
         Ok(Self {
-            storage: Arc::new(get_context()?.mem_pool_create(resolved_schema.memory_size)?),
+            storage: Arc::new(get_context()?.uninitialized_device_tensor(&[resolved_schema.memory_size], DatumType::U8)?),
             resolved_schema,
             node_seen: RefCell::new(HashSet::new()),
         })
@@ -48,7 +47,7 @@ impl DeviceMemoryPool {
                 }
                 .into())
             })
-            .unwrap_or_else(|| unsafe { Tensor::uninitialized_dt(dt, shape)?.into_device() })
+            .unwrap_or_else(|| DeviceTensor::uninitialized_dt(dt, shape))
     }
 
     pub fn reset(&self) {

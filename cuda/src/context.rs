@@ -132,8 +132,8 @@ impl DeviceContext for TractCudaContext {
         Ok(Box::new(CudaTensor::from_tensor(tensor.view().tensor)))
     }
 
-    fn mem_pool_create(&self, size: usize) -> TractResult<Box<dyn OwnedDeviceTensor>> {
-        Ok(Box::new(CudaTensor::uninitialized(size)))
+    fn uninitialized_device_tensor(&self, shape: &[usize], dt: DatumType) -> TractResult<Box<dyn OwnedDeviceTensor>> {
+        Ok(Box::new(CudaTensor::uninitialized_dt(shape, dt)))
     }
 }
 
