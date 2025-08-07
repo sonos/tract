@@ -754,7 +754,7 @@ where
                 bail!("Invalid node id: position is {}, node is {}", ix, n);
             }
             if seen.contains(&n.name) {
-                bail!("duplicate name {}", n.name);
+                bail!("duplicate name for node {n}");
             }
             seen.insert(&n.name);
         }
