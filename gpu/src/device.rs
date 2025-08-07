@@ -11,7 +11,11 @@ use crate::tensor::OwnedDeviceTensor;
 
 pub trait DeviceContext: Downcast + dyn_clone::DynClone + Send + Sync {
     fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>>;
-    fn uninitialized_device_tensor(&self, shape: &[usize], dt: DatumType) -> TractResult<Box<dyn OwnedDeviceTensor>>;
+    fn uninitialized_device_tensor(
+        &self,
+        shape: &[usize],
+        dt: DatumType,
+    ) -> TractResult<Box<dyn OwnedDeviceTensor>>;
     fn synchronize(&self) -> TractResult<()>;
 }
 

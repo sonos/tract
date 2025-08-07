@@ -198,10 +198,15 @@ impl DeviceContext for MetalContext {
         }))
     }
 
-    fn uninitialized_device_tensor(&self, shape: &[usize], dt: DatumType) -> TractResult<Box<dyn OwnedDeviceTensor>> {
+    fn uninitialized_device_tensor(
+        &self,
+        shape: &[usize],
+        dt: DatumType,
+    ) -> TractResult<Box<dyn OwnedDeviceTensor>> {
         let tensor = unsafe {
-            Tensor::uninitialized_dt(dt, shape)
-                .with_context(|| format!("Error while allocating a {dt:?} tensor of shape {shape:?}"))?
+            Tensor::uninitialized_dt(dt, shape).with_context(|| {
+                format!("Error while allocating a {dt:?} tensor of shape {shape:?}")
+            })?
         };
         self.tensor_to_device(tensor.into())
     }
