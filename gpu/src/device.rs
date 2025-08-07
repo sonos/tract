@@ -4,14 +4,14 @@ use std::sync::Mutex;
 use anyhow::{anyhow, bail};
 use downcast_rs::{Downcast, impl_downcast};
 use tract_core::dyn_clone;
-use tract_core::prelude::TractResult;
+use tract_core::prelude::{DatumType, TractResult};
 use tract_core::value::TValue;
 
 use crate::tensor::OwnedDeviceTensor;
 
 pub trait DeviceContext: Downcast + dyn_clone::DynClone + Send + Sync {
     fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>>;
-    fn mem_pool_create(&self, size: usize) -> TractResult<Box<dyn OwnedDeviceTensor>>;
+    fn uninitialized_device_tensor(&self, shape: &[usize], dt: DatumType) -> TractResult<Box<dyn OwnedDeviceTensor>>;
     fn synchronize(&self) -> TractResult<()>;
 }
 
