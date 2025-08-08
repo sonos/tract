@@ -223,25 +223,9 @@ namespace ggml_cuda_mma {
     static __device__ __forceinline__ void mma(
             tile<16, 8, int> & D, const tile<16, 8, int> & A, const tile<8, 8, int> & B) {
 #ifdef NEW_MMA_AVAILABLE
-#if __CUDA_ARCH__ >= GGML_CUDA_CC_AMPERE
         asm("mma.sync.aligned.m16n8k32.row.col.s32.s8.s8.s32 {%0, %1, %2, %3}, {%4, %5, %6, %7}, {%8, %9}, {%0, %1, %2, %3};"
             : "+r"(D.x[0]), "+r"(D.x[1]), "+r"(D.x[2]), "+r"(D.x[3])
             : "r"(A.x[0]), "r"(A.x[1]), "r"(A.x[2]), "r"(A.x[3]), "r"(B.x[0]), "r"(B.x[1]));
-#else
-        // On Turing m16n8k32 mma is not available, use 4x m8n8k16 mma instead:
-        asm("mma.sync.aligned.m8n8k16.row.col.s32.s8.s8.s32 {%0, %1}, {%2}, {%3}, {%0, %1};"
-            : "+r"(D.x[0]), "+r"(D.x[1])
-            : "r"(A.x[0]), "r"(B.x[0]));
-        asm("mma.sync.aligned.m8n8k16.row.col.s32.s8.s8.s32 {%0, %1}, {%2}, {%3}, {%0, %1};"
-            : "+r"(D.x[2]), "+r"(D.x[3])
-            : "r"(A.x[1]), "r"(B.x[0]));
-        asm("mma.sync.aligned.m8n8k16.row.col.s32.s8.s8.s32 {%0, %1}, {%2}, {%3}, {%0, %1};"
-            : "+r"(D.x[0]), "+r"(D.x[1])
-            : "r"(A.x[2]), "r"(B.x[1]));
-        asm("mma.sync.aligned.m8n8k16.row.col.s32.s8.s8.s32 {%0, %1}, {%2}, {%3}, {%0, %1};"
-            : "+r"(D.x[2]), "+r"(D.x[3])
-            : "r"(A.x[3]), "r"(B.x[1]));
-#endif // __CUDA_ARCH__ >= GGML_CUDA_CC_AMPERE
 #else
         GGML_UNUSED(D);
         GGML_UNUSED(A);
