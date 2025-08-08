@@ -1,8 +1,8 @@
 use tract_nnef::internal::*;
 use tract_nnef::prelude::tract_itertools::Itertools;
-use tract_nnef::tract_core::ops::OpStateFreeze;
 use tract_nnef::tract_core::ops::array::TypedConcat;
 use tract_nnef::tract_core::ops::source::TypedSource;
+use tract_nnef::tract_core::ops::OpStateFreeze;
 
 use crate::rule_ensure;
 
@@ -11,6 +11,7 @@ use super::next_node;
 #[derive(Debug, Clone)]
 pub struct DynKeyValueCacheState {
     name: String,
+    axis: usize,
     past_sequence_fact: TypedFact,
     kv_cache: Option<TValue>,
 }
@@ -49,6 +50,15 @@ impl DynKeyValueCacheState {
         }
         Ok(())
     }
+
+    pub fn truncate(&mut self, len: usize) -> TractResult<()> {
+        if let Some(t) = self.kv_cache.as_mut() {
+            *t = t.slice(self.axis, 0, len)?.into_tvalue();
+        } else {
+            bail!("Can not truncate a zero-len kv-cache value");
+        }
+        Ok(())
+    }
 }
 
 impl OpState for DynKeyValueCacheState {
@@ -82,16 +92,13 @@ impl OpState for DynKeyValueCacheState {
     fn eval(
         &mut self,
         _state: &mut SessionState,
-        op: &dyn Op,
+        _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
-        let op =
-            op.downcast_ref::<DynKeyValueCache>().ok_or_else(|| format_err!("Wrong Op type"))?;
         // build output
-
         let output = if let Some(curr) = self.kv_cache.take() {
-            TypedConcat { axis: op.axis }.eval(tvec![curr, input])?.remove(0)
+            TypedConcat { axis: self.axis }.eval(tvec![curr, input])?.remove(0)
         } else {
             input
         };
@@ -129,6 +136,7 @@ impl EvalOp for DynKeyValueCache {
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(DynKeyValueCacheState {
             name: self.name.clone(),
+            axis: self.axis,
             past_sequence_fact: self.past_sequence_fact.clone(),
             kv_cache: None,
         })))
@@ -167,6 +175,7 @@ impl TypedOp for DynKeyValueCache {
 #[derive(Debug, Clone)]
 pub struct FrozenDynKeyValueCacheState {
     name: String,
+    axis: usize,
     past_sequence_fact: TypedFact,
     kv_cache: Option<Tensor>,
 }
@@ -175,6 +184,7 @@ impl OpStateFreeze for DynKeyValueCacheState {
     fn freeze(&self) -> Box<dyn FrozenOpState> {
         Box::new(FrozenDynKeyValueCacheState {
             name: self.name.clone(),
+            axis: self.axis,
             past_sequence_fact: self.past_sequence_fact.clone(),
             kv_cache: self.kv_cache.clone().map(|t| t.into_tensor()),
         })
@@ -184,6 +194,7 @@ impl OpStateFreeze for DynKeyValueCacheState {
 impl FrozenOpState for FrozenDynKeyValueCacheState {
     fn unfreeze(&self) -> Box<dyn OpState> {
         Box::new(DynKeyValueCacheState {
+            axis: self.axis,
             name: self.name.clone(),
             past_sequence_fact: self.past_sequence_fact.clone(),
             kv_cache: self.kv_cache.clone().map(|t| t.into_tvalue()),

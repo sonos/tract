@@ -20,6 +20,7 @@ members = [
     "metal",
     "extra",
     "transformers",
+    "transformers/causal_llm",
     "cuda",
 
     "api",
