@@ -1,5 +1,7 @@
 use cudarc::cublas::CudaBlas;
 use cudarc::nvrtc::Ptx;
+use cudarc::runtime::result::device::get_device_prop;
+use cudarc::runtime::sys::cudaDeviceProp;
 use tract_gpu::device::DeviceContext;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 
@@ -32,6 +34,7 @@ pub fn cuda_context() -> TractCudaContext {
 #[derive(Debug, Clone)]
 pub struct TractCudaContext {
     inner: Arc<CudaContext>,
+    device_properties: cudaDeviceProp,
     cached_modules: Arc<RwLock<HashMap<LibraryName, Arc<CudaModule>>>>,
     #[allow(clippy::type_complexity)]
     cached_pipelines: Arc<RwLock<HashMap<(LibraryName, String), Arc<CudaFunction>>>>,
@@ -50,14 +53,20 @@ impl TractCudaContext {
         let context =
             CudaContext::new(0).with_context(|| "Could not find system default CUDA device")?;
 
+        let prop = get_device_prop(0)?;
         let ctxt = Self {
             inner: context,
+            device_properties: prop,
             cached_modules: Arc::new(RwLock::new(HashMap::new())),
             cached_pipelines: Arc::new(RwLock::new(HashMap::new())),
         };
 
         ctxt.preload_pipelines()?;
         Ok(ctxt)
+    }
+
+    pub fn properties(&self) -> &cudaDeviceProp {
+        &self.device_properties
     }
 
     pub fn preload_pipelines(&self) -> TractResult<()> {

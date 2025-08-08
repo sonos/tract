@@ -6,6 +6,7 @@ use cudarc::runtime::result::device::get_device_prop;
 use cudarc::runtime::sys::cudaGetLastError;
 use derive_new::new;
 use num_traits::{Float, One};
+use tract_gpu::device::get_context;
 use std::{default, fmt};
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
@@ -339,6 +340,8 @@ impl Matmul {
     output: &DeviceTensor,
     params: MatMulParams,
     ) -> TractResult<()> {
+        let context = cuda_context();
+        let properties = context.properties();
         let a_view = get_cuda_view(a);
         let b_view = get_cuda_view(b);
 
@@ -361,7 +364,7 @@ impl Matmul {
 
         let quant_a_view = get_cuda_view(&quant_a);
 
-        let func = cuda_context().load_pipeline(LibraryName::GgmlQ, "quantize_mmq_q8_1".to_string())?;
+        let func = context.load_pipeline(LibraryName::GgmlQ, "quantize_mmq_q8_1".to_string())?;
         let mut launch_args = stream.launch_builder(&func);
         launch_args.arg(&a_view);
         launch_args.arg(&null_ptr);
@@ -390,7 +393,7 @@ impl Matmul {
         while mmq_x <= MMQ_X_MAX && ntiles_x_best > 1 {
             mmq_x += 8;
             let granularity = if mmq_x >= 48 { 16 } else { 8 };
-            if (mmq_x % granularity != 0 || mmq_get_nbytes_shared_q40(mmq_x, MMQ_X_MAX) > 101376) {
+            if (mmq_x % granularity != 0 || mmq_get_nbytes_shared_q40(mmq_x, MMQ_X_MAX) > properties.sharedMemPerBlockOptin) {
                 continue;
             }
             let ntiles_x = (params.m + mmq_x - 1) / mmq_x;
@@ -409,8 +412,8 @@ impl Matmul {
         let nty = params.n.div_ceil(MMQ_X_MAX);
         let ntx = params.m.div_ceil(mmq_x_best);
 
-        let fixup_needed = ((ntx * nty * params.a_batch) % 24) != 0;
-        let fixup_shape = if fixup_needed { 24 * mmq_x_best * MMQ_X_MAX } else { 0 };
+        let fixup_needed = ((ntx * nty * params.a_batch) % properties.multiProcessorCount as usize) != 0;
+        let fixup_shape = if fixup_needed { properties.multiProcessorCount as usize * mmq_x_best * MMQ_X_MAX } else { 0 };
 
         let fixup_tensor = unsafe {
                 DeviceTensor::uninitialized_dt(
@@ -420,7 +423,7 @@ impl Matmul {
             };
         
         let fixup_view = get_cuda_view(&fixup_tensor);
-        let func = cuda_context().load_pipeline(LibraryName::GgmlQ, kernel_name)?;
+        let func = context.load_pipeline(LibraryName::GgmlQ, kernel_name)?;
         func.set_attribute(CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, nbytes_shared as i32)?;
 
         let mut launch_args = stream.launch_builder(&func);
@@ -443,7 +446,7 @@ impl Matmul {
         launch_args.arg(&params.c_strides[0]);
         
         let cfg = LaunchConfig {
-            grid_dim: (24 as _, 1, 1),
+            grid_dim: (properties.multiProcessorCount as usize as _, 1, 1),
             block_dim: (WARP_SIZE as _, N_WARPS as _, 1),
             shared_mem_bytes: nbytes_shared as _,
         };
@@ -452,7 +455,7 @@ impl Matmul {
 
         if fixup_needed {
             let kernel_name = Self::fixup_kernel_name_q40(&params, mmq_x_best, MMQ_X_MAX)?;
-            let func = cuda_context().load_pipeline(LibraryName::GgmlQ, kernel_name)?;
+            let func = context.load_pipeline(LibraryName::GgmlQ, kernel_name)?;
             let mut launch_args = stream.launch_builder(&func);
                 launch_args.arg(&null_ptr);
                 launch_args.arg(&null_ptr);
@@ -466,7 +469,7 @@ impl Matmul {
                 launch_args.arg(&params.c_strides[0]);
 
             let cfg = LaunchConfig {
-                grid_dim: (24 as _, 1, 1),
+                grid_dim: (properties.multiProcessorCount as usize as _, 1, 1),
                 block_dim: (WARP_SIZE as _, N_WARPS as _, 1),
                 shared_mem_bytes: 0,
             };
