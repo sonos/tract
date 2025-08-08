@@ -1,8 +1,7 @@
 use crate::internal::*;
 use tract_core::ops::array::TypedConcat;
-use tract_pulse_opl::concat::{overwrite_part_of_pulse, PulsedSameAxisConcat};
+use tract_pulse_opl::concat::PulsedSameAxisConcat;
 use tract_pulse_opl::ops::Delay;
-use tract_pulse_opl::tract_core::trivial_op_state_freeeze;
 
 register_all!(TypedConcat: pulsify);
 
