@@ -6,8 +6,6 @@ use tract_nnef::tract_core::trivial_op_state_freeeze;
 #[derive(Debug, Clone, Hash)]
 pub struct PulsedSameAxisConcat {
     pub axis: usize,
-    pub pre_slice: Tensor,
-    pub post_slice: Tensor,
     pub input_delay: usize,
     pub input_len: TDim,
 }
@@ -58,18 +56,18 @@ impl OpState for PulsedSameAxisConcatState {
         let op = op
             .downcast_ref::<PulsedSameAxisConcat>()
             .ok_or_else(|| format_err!("Wrong Op type"))?;
-        let input = args_1!(inputs);
+        let (pre, input, post) = args_3!(inputs);
         let mut data = input.into_tensor();
         let pulse = data.shape()[op.axis];
         let current_pos = self.current_pos;
         self.current_pos += pulse;
 
-        let pre_length = op.pre_slice.shape()[op.axis];
+        let pre_length = pre.shape()[op.axis];
         let pre_offset = op.input_delay - pre_length;
-        overwrite_part_of_pulse(op.axis, &mut data, current_pos, &op.pre_slice, pre_offset)?;
+        overwrite_part_of_pulse(op.axis, &mut data, current_pos, &pre, pre_offset)?;
         if let Ok(l) = op.input_len.eval(&session.resolved_symbols).to_usize() {
             let post_offset = op.input_delay + l;
-            overwrite_part_of_pulse(op.axis, &mut data, current_pos, &op.post_slice, post_offset)?;
+            overwrite_part_of_pulse(op.axis, &mut data, current_pos, &post, post_offset)?;
         }
 
         Ok(tvec!(data.into_tvalue()))
