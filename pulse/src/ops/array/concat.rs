@@ -67,7 +67,7 @@ fn pulsify_along_concat_axis(
         target.wire_node(
             format!("{name}.pre"),
             NonPulsingWrappingOp(Box::new(TypedConcat::new(axis))),
-            &*pulsed_inputs.iter().take(stream_input_ix).cloned().collect_vec(),
+            &pulsed_inputs.iter().take(stream_input_ix).cloned().collect_vec(),
         )?[0]
     } else {
         empty
@@ -76,7 +76,7 @@ fn pulsify_along_concat_axis(
         target.wire_node(
             format!("{name}.post"),
             NonPulsingWrappingOp(Box::new(TypedConcat::new(axis))),
-            &*pulsed_inputs.iter().skip(stream_input_ix + 1).cloned().collect_vec(),
+            &pulsed_inputs.iter().skip(stream_input_ix + 1).cloned().collect_vec(),
         )?[0]
     } else {
         empty
