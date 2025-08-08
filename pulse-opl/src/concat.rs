@@ -5,11 +5,11 @@ use tract_nnef::tract_core::trivial_op_state_freeeze;
 /// Concat with pulse along concat axis
 #[derive(Debug, Clone, Hash)]
 pub struct PulsedSameAxisConcat {
-    axis: usize,
-    pre_slice: Tensor,
-    post_slice: Tensor,
-    input_delay: usize,
-    input_len: TDim,
+    pub axis: usize,
+    pub pre_slice: Tensor,
+    pub post_slice: Tensor,
+    pub input_delay: usize,
+    pub input_len: TDim,
 }
 
 impl Op for PulsedSameAxisConcat {
