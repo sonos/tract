@@ -113,7 +113,7 @@ impl Matmul {
             matches!((facts[0].datum_type, facts[1].datum_type), (F32, F32) | (F16, F16));
 
 
-        regular_types_support || (as_q40_fact(&facts[1]).is_some() && facts[0].datum_type == F32)
+        regular_types_support || as_q40_fact(&facts[1]).is_some()
     }
 
     pub fn output_shape<D: DimLike + One>(a: &[D], b: &[D]) -> TVec<D> {
@@ -381,7 +381,6 @@ impl Matmul {
         };
         unsafe { launch_args.launch(cfg) };
 
-        //dbg!(quant_a.to_host()?.to_array_view::<u8>()?);
         let a_stride_0 = padded_k * params.m * 36 / 128;
 
         let mut mmq_x_best  = 0;
@@ -391,10 +390,9 @@ impl Matmul {
         while mmq_x <= MMQ_X_MAX && ntiles_x_best > 1 {
             mmq_x += 8;
             let granularity = if mmq_x >= 48 { 16 } else { 8 };
-            if (mmq_x % granularity != 0 || mmq_get_nbytes_shared_q40(mmq_x, MMQ_X_MAX) > get_device_prop(0)?.sharedMemPerBlockOptin) {
+            if (mmq_x % granularity != 0 || mmq_get_nbytes_shared_q40(mmq_x, MMQ_X_MAX) > 101376) {
                 continue;
             }
-            
             let ntiles_x = (params.m + mmq_x - 1) / mmq_x;
             if (ntiles_x < ntiles_x_best) {
                 mmq_x_best = mmq_x;
@@ -411,8 +409,8 @@ impl Matmul {
         let nty = params.n.div_ceil(MMQ_X_MAX);
         let ntx = params.m.div_ceil(mmq_x_best);
 
-        let fixup_needed = ((ntx * nty * params.a_batch) % get_device_prop(0)?.multiProcessorCount as usize) != 0;
-        let fixup_shape = if fixup_needed { get_device_prop(0)?.multiProcessorCount as usize * mmq_x_best * MMQ_X_MAX } else { 0 };
+        let fixup_needed = ((ntx * nty * params.a_batch) % 24) != 0;
+        let fixup_shape = if fixup_needed { 24 * mmq_x_best * MMQ_X_MAX } else { 0 };
 
         let fixup_tensor = unsafe {
                 DeviceTensor::uninitialized_dt(
@@ -445,7 +443,7 @@ impl Matmul {
         launch_args.arg(&params.c_strides[0]);
         
         let cfg = LaunchConfig {
-            grid_dim: (get_device_prop(0)?.multiProcessorCount as _, 1, 1),
+            grid_dim: (24 as _, 1, 1),
             block_dim: (WARP_SIZE as _, N_WARPS as _, 1),
             shared_mem_bytes: nbytes_shared as _,
         };
@@ -468,7 +466,7 @@ impl Matmul {
                 launch_args.arg(&params.c_strides[0]);
 
             let cfg = LaunchConfig {
-                grid_dim: (get_device_prop(0)?.multiProcessorCount as _, 1, 1),
+                grid_dim: (24 as _, 1, 1),
                 block_dim: (WARP_SIZE as _, N_WARPS as _, 1),
                 shared_mem_bytes: 0,
             };
@@ -699,7 +697,7 @@ mod tests {
 
     #[test]
     fn test_q4() -> TractResult<()> {
-        run_ggml_mat_mul_test::<f32>(32, 1, 1, 256, 32, true)?;
+        run_ggml_mat_mul_test::<f32>(32, 1, 1, 512, 32, true)?;
         run_ggml_mat_mul_test::<f32>(1, 1, 320, 2048, 1, true)?;
         run_ggml_mat_mul_test::<f32>(4, 1, 15, 2048, 320, true)?;
         run_ggml_mat_mul_test::<f32>(1, 1, 12, 512, 4, true)?;

@@ -285,7 +285,7 @@ fn convert_const(op: &Const, source: &TypedModel, node: &TypedNode) -> TractResu
             "Only support Q40 block quantization"
         );
         
-        // If followed by a PrefixMatMul, apply padding in-place
+        // If followed by a PrefixMatMul, apply padding
         if source
             .all_succ(node.id)?
             .unwrap()
@@ -296,7 +296,7 @@ fn convert_const(op: &Const, source: &TypedModel, node: &TypedNode) -> TractResu
             let bqv = as_q40_tensor(&tensor).unwrap();
             let new_bqv = pad_q40(bqv)?;
             let new_bqf = new_bqv.fact.clone();
-            let new_cpu_const = tensor0::<Opaque>(Opaque(Arc::new(new_bqv)));
+            let new_cpu_const = tensor0(Opaque(Arc::new(new_bqv))).broadcast_into_rank(op.val().rank())?;
             (DeviceFact::from_host(typed_fact.with_opaque_fact(new_bqf))?, new_cpu_const.into_device()?.into_opaque_tensor().into_arc_tensor())
         } else {
             (DeviceFact::from_host(typed_fact.with_opaque_fact(clone_box(of)))?, cuda_const.into_device()?.into_opaque_tensor().into_arc_tensor())
