@@ -3,8 +3,8 @@ use tract_core::tract_data::itertools::Itertools;
 use tract_core::transform::ModelTransform;
 
 use crate::ast::quant::write_quant_format;
-use crate::ast::{Document, Identifier, ProtoModel, QuantFormat};
-use crate::resource::SafeTensorsLoader;
+use crate::ast::{Identifier, ProtoModel, QuantFormat};
+use crate::resource::{GraphNnef, SafeTensorsLoader};
 use crate::{internal::*, nnef};
 use std::io::Read;
 #[cfg(target_family = "unix")]
@@ -388,7 +388,7 @@ fn proto_model_from_resources(
         .with_context(|| {
             anyhow!("Resource {} was not found in the model", crate::resource::GRAPH_NNEF_FILENAME)
         })?
-        .downcast_arc::<Document>()
+        .downcast_arc::<GraphNnef>()
         .map_err(|_| anyhow!("Error while downcasting NNEF document resource"))?;
 
     let doc = Arc::try_unwrap(doc)
@@ -428,6 +428,9 @@ fn proto_model_from_resources(
     } else {
         None
     };
+
+    let doc = crate::liquid::process_file(&doc.0, &new_resources)?;
+    let doc = crate::ast::parse::parse_document(&doc)?;
 
     let proto = ProtoModel { doc, tensors, quantization, resources: new_resources };
     proto.validate()?;

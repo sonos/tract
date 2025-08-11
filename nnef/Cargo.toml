@@ -16,10 +16,13 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 byteorder.workspace = true
+liquid.workspace = true
+liquid-core.workspace = true
 log.workspace = true
 nom.workspace = true
 nom-language.workspace = true
 safetensors.workspace = true
+serde_json.workspace = true
 tar.workspace = true
 flate2 = { workspace = true, optional = true }
 walkdir.workspace = true

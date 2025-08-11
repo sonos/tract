@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::ast::{Document, QuantFormat};
+use crate::ast::QuantFormat;
 use crate::internal::*;
 use safetensors::SafeTensors;
 use tract_core::downcast_rs::{impl_downcast, DowncastSync};
@@ -21,6 +21,10 @@ pub trait Resource: DowncastSync + std::fmt::Debug + Send + Sync {
     /// Get value for a given key.
     fn get(&self, _key: &str) -> TractResult<Value> {
         bail!("No key access supported by this resource");
+    }
+
+    fn to_liquid_value(&self) -> Option<liquid::model::Value> {
+        None
     }
 }
 
@@ -46,7 +50,9 @@ pub trait ResourceLoader: Send + Sync {
     }
 }
 
-impl Resource for Document {}
+#[derive(Debug)]
+pub struct GraphNnef(pub String);
+impl Resource for GraphNnef {}
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
 pub struct GraphNnefLoader;
@@ -65,8 +71,7 @@ impl ResourceLoader for GraphNnefLoader {
         if path.ends_with(GRAPH_NNEF_FILENAME) {
             let mut text = String::new();
             reader.read_to_string(&mut text)?;
-            let document = crate::ast::parse::parse_document(&text)?;
-            Ok(Some((path.to_str().unwrap().to_string(), Arc::new(document))))
+            Ok(Some((path.to_str().unwrap().to_string(), Arc::new(GraphNnef(text)))))
         } else {
             Ok(None)
         }

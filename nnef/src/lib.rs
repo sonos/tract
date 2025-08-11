@@ -5,6 +5,7 @@ extern crate log;
 pub mod ast;
 pub mod deser;
 pub mod framework;
+mod liquid;
 pub mod ops;
 pub mod registry;
 pub mod resource;
