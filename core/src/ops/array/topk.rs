@@ -95,7 +95,7 @@ impl TypedOp for Topk {
         let mut fact_values = inputs[0].without_value();
         let mut fact_indices = inputs[0].without_value();
         let k: TDim = if let Some(k) = &inputs[1].konst {
-            k.cast_to_scalar::<i64>()?.into()
+            k.cast_to::<TDim>()?.to_scalar::<TDim>()?.clone()
         } else {
             self.fallback_k.clone()
         };
