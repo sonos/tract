@@ -21,6 +21,7 @@ maintenance = { status = "actively-developed" }
 serde_json.workspace = true
 serde.workspace = true
 anyhow.workspace = true
+liquid-core.workspace = true
 nom.workspace = true
 nom-language.workspace = true
 tract-nnef.workspace = true
