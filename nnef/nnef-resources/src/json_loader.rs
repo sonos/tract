@@ -53,7 +53,7 @@ impl Resource for JsonResource {
             .search(&self.0)
             .with_context(|| anyhow!("Error while acessing JSON using given path: {:?}", key))?;
 
-        convert_value(value)
+        json_to_tract(value)
             .with_context(|| anyhow!("Error while converting JSON value to NNEF value"))
     }
 
@@ -76,14 +76,14 @@ fn json_to_liquid(json: &serde_json::Value) -> liquid_core::model::Value {
         J::Null => L::Nil,
         J::Bool(b) => L::Scalar((*b).into()),
         J::String(s) => L::Scalar(s.clone().into()),
-        J::Array(values) => L::Array(values.iter().map(|v| json_to_liquid(v)).collect()),
+        J::Array(values) => L::Array(values.iter().map(json_to_liquid).collect()),
         J::Object(map) => {
             L::Object(map.iter().map(|(k, v)| (k.into(), json_to_liquid(v))).collect())
         }
     }
 }
 
-pub fn convert_value(value: &serde_json::Value) -> TractResult<Value> {
+pub fn json_to_tract(value: &serde_json::Value) -> TractResult<Value> {
     match value {
         serde_json::Value::Bool(b) => Ok(Value::Bool(*b)),
         serde_json::Value::Number(v) => {
@@ -100,7 +100,7 @@ pub fn convert_value(value: &serde_json::Value) -> TractResult<Value> {
         serde_json::Value::Null => bail!("JSON null value cannot be converted to NNEF value"),
         serde_json::Value::Object(_) => bail!("JSON object cannot be converted to NNEF value"),
         serde_json::Value::Array(values) => {
-            let t_values = values.iter().map(convert_value).collect::<Result<Vec<Value>>>()?;
+            let t_values = values.iter().map(json_to_tract).collect::<Result<Vec<Value>>>()?;
             Ok(Value::Array(t_values))
         }
     }
