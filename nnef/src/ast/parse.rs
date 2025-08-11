@@ -93,15 +93,18 @@ fn fragment_def(i: &str) -> R<'_, FragmentDef> {
 
 // <fragment-declaration> ::= "fragment" <identifier> [<generic-declaration>] "(" <parameter-list> ")" "->" "(" <result-list> ")"
 fn fragment_decl(i: &str) -> R<'_, FragmentDecl> {
-    let (i, _) = stag("fragment").parse(i)?;
+    preceded(stag("fragment"), cut(commited_fragment_decl)).parse(i)
+}
+
+fn commited_fragment_decl(i: &str) -> R<'_, FragmentDecl> {
     let (i, id) = identifier(i)?;
     let (i, generic_decl) = opt(generic_decl).parse(i)?;
     let (i, _) = stag("(").parse(i)?;
-    let (i, parameters) = parameter_list(i)?;
+    let (i, parameters) = cut(parameter_list).parse(i)?;
     let (i, _) = stag(")").parse(i)?;
     let (i, _) = stag("->").parse(i)?;
     let (i, _) = stag("(").parse(i)?;
-    let (i, results) = result_list(i)?;
+    let (i, results) = cut(result_list).parse(i)?;
     let (i, _) = stag(")").parse(i)?;
     Ok((i, FragmentDecl { id, parameters, results, generic_decl }))
 }
@@ -129,7 +132,7 @@ fn result_list(i: &str) -> R<'_, Vec<Result_>> {
 fn parameter(i: &str) -> R<'_, Parameter> {
     map(
         pair(
-            separated_pair(identifier, stag(":"), type_spec),
+            separated_pair(identifier, stag(":"), cut(type_spec)),
             opt(preceded(stag("="), literal_expr)),
         ),
         |((id, spec), lit)| Parameter { id, spec, lit, doc: None },
@@ -139,7 +142,7 @@ fn parameter(i: &str) -> R<'_, Parameter> {
 
 // <result> ::= <identifier> ":" <type-spec>
 fn result(i: &str) -> R<'_, Result_> {
-    map(separated_pair(identifier, stag(":"), type_spec), |(id, spec)| Result_ { id, spec })
+    map(separated_pair(identifier, stag(":"), cut(type_spec)), |(id, spec)| Result_ { id, spec })
         .parse(i)
 }
 
