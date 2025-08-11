@@ -10,7 +10,7 @@ fi
 rustup update
 
 cargo update
-cargo check --all-targets --workspace --exclude test-tflite --exclude test-metal --exclude tract-metal --exclude test-cuda --exclude tract-cuda
+cargo check --all-targets --workspace --exclude test-tflite --exclude test-metal --exclude tract-metal
 
 ./.travis/onnx-tests.sh
 ./.travis/regular-tests.sh
