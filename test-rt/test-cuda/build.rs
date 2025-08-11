@@ -6,6 +6,6 @@ fn main() {
         "tests",
         "suite::suite()",
         "runtime()",
-        "Approximation::UltraApproximate",
+        "Approximation::VeryApproximate",
     );
 }
