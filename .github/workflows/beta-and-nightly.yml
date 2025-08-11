@@ -116,6 +116,7 @@ jobs:
       if: runner.os == 'macos'
       run: cargo clippy -p test-metal -p tract-metal
 
+      #TODO: Add clippy for CUDA (when to run though??)
   cargo-deny:
     strategy:
       fail-fast: false
