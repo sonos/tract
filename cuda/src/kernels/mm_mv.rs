@@ -347,6 +347,8 @@ impl Matmul {
 
         let mut out_view = get_cuda_view(output);
 
+        ensure!(get_q40_fact(b).is_some_and(|bqf| bqf.shape().last().unwrap() % Q40_ROW_PADDING == 0));
+
         let null_ptr = stream.null::<u8>()?;
 
         let padded_k = params.k.next_multiple_of(Q40_ROW_PADDING);
@@ -706,9 +708,9 @@ mod tests {
         run_ggml_mat_mul_test::<f32>(1, 1, 12, 512, 4, true)?;
         run_ggml_mat_mul_test::<f32>(3, 1, 8, 4096, 512, true)?;
         run_ggml_mat_mul_test::<f32>(1, 1, 1, 1024, 32, true)?;
-        run_ggml_mat_mul_test::<f32>(1, 1, 61, 1280, 4, true)?;
+        run_ggml_mat_mul_test::<f32>(1, 1, 61, 1024, 4, true)?;
         run_ggml_mat_mul_test::<f32>(3, 1, 13, 2048, 128, true)?;
-        run_ggml_mat_mul_test::<f32>(1, 3, 1, 256, 32, true)?;
+        run_ggml_mat_mul_test::<f32>(1, 3, 1, 512, 32, true)?;
         run_ggml_mat_mul_test::<f32>(4, 2, 7, 512, 4, true)?;
         run_ggml_mat_mul_test::<f32>(3, 2, 6, 512, 256, true)?;
         Ok(())
