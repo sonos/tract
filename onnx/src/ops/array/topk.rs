@@ -32,7 +32,6 @@ impl Expansion for Topk {
         check_input_arity(outputs, 2)?;
 
         solver.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        solver.equals(&inputs[1].datum_type, i64::datum_type())?;
         solver.equals(&outputs[1].datum_type, i64::datum_type())?;
 
         solver.equals(&inputs[0].rank, &outputs[0].rank)?;
@@ -48,9 +47,13 @@ impl Expansion for Topk {
                     s.equals(&inputs[0].shape[ix], &outputs[0].shape[ix])?;
                     s.equals(&inputs[0].shape[ix], &outputs[1].shape[ix])?;
                 } else {
-                    s.given(&inputs[1].value[0], move |s, k| {
-                        s.equals(&outputs[0].shape[ix], k.to_dim())?;
-                        s.equals(&outputs[1].shape[ix], k.to_dim())?;
+                    s.given(&inputs[1].value, move |s, k| {
+                        if let Ok(k) =
+                            k.cast_to::<TDim>().and_then(|t| t.to_scalar::<TDim>().cloned())
+                        {
+                            s.equals(&outputs[0].shape[ix], k.clone())?;
+                            s.equals(&outputs[1].shape[ix], k)?;
+                        }
                         Ok(())
                     })?;
                 }
