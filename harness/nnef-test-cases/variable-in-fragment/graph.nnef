@@ -1,6 +1,6 @@
 version 1.0;
 
-fragment weights(input: tensor) -> (weights: tensor) {
+fragment weights(input: tensor<scalar>) -> (weights: tensor<scalar>) {
   weights = external(label =  weights, shape = [1,2,3]);
 }
 
