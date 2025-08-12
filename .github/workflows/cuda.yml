@@ -15,8 +15,7 @@ env:
 
 jobs:
   unit:
-    # TODO: replace with real machine name EVERYWHERE
-    runs-on: "CUDA device"
+    runs-on: [ self-hosted, CUDA ]
 
     steps:
     - uses: actions/checkout@v4
@@ -33,7 +32,7 @@ jobs:
 
   build-cli: 
     name: Build tract on Cuda
-    runs-on: "CUDA device"
+    runs-on: [ self-hosted, CUDA ]
     steps:
       - uses: actions/checkout@v4
       - run: cargo build -p tract --release --no-default-features --features transformers
@@ -45,7 +44,7 @@ jobs:
   example:
     name: cuda / ${{ matrix.model }} / ${{ matrix.q }}
     needs: [ build-cli ]
-    runs-on: "CUDA device"
+    runs-on: [ self-hosted, CUDA ]
     strategy:
       matrix:
         model: [ OpenELM-270M, OpenELM-1_1B, TinyLlama_v1.1, llama-3.2-3B ]
