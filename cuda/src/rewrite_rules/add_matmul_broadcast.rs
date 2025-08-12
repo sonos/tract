@@ -12,7 +12,7 @@ pub fn add_broadcast_pre_matmul(
 ) -> TractResult<Option<TypedModelPatch>> {
     let in_facts = model.node_input_facts(node.id)?;
     // GGML supports broadcast
-    rule_ensure!(in_facts[0].rank() > 2);
+    rule_ensure!(in_facts[1].rank() > 2);
     let b_rank = in_facts[1].rank();
     rule_ensure!(
         !(in_facts[1].shape[b_rank - 2 + !op.transpose_a as usize]
