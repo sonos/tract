@@ -415,6 +415,12 @@ fn convert_matmul_to_metal(
         inputs[a_pos] = target.wire_node(perm_a_name, perm_a_op, &[inputs[a_pos]])?[0];
     }
 
+    if input_facts[0].datum_type == DatumType::F16 && as_q40_fact(input_facts[1]).is_some() {
+        let in_cast_op = ops::CudaCast::new(DatumType::F32).unwrap();
+        inputs[0] =
+            target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[inputs[0]])?[0];
+    }
+
     if !op.transpose_b {
         ensure!(as_q40_fact(input_facts[b_pos]).is_none(), "Cannot transpose Q40 tensor");
 
