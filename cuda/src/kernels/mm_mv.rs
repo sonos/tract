@@ -113,7 +113,6 @@ impl Matmul {
         let regular_types_support =
             matches!((facts[0].datum_type, facts[1].datum_type), (F32, F32) | (F16, F16));
 
-
         regular_types_support || as_q40_fact(&facts[1]).is_some()
     }
 
@@ -272,14 +271,10 @@ impl Matmul {
         Ok(())
     }
 
-    fn kernel_name_q40(params: &MatMulParams, mmq_x: usize, mmq_y: usize) -> TractResult<String> {
+    fn kernel_name_q40(params: &MatMulParams, mmq_x: usize, mmq_y: usize, fixup: bool) -> TractResult<String> {
         let need_check = params.n % mmq_y != 0;
-        Ok(format!("mul_mat_q_GGML_TYPE_Q4_0_{mmq_x}_8_{need_check}"))
-    }
-
-    fn fixup_kernel_name_q40(params: &MatMulParams, mmq_x: usize, mmq_y: usize) -> TractResult<String> {
-        let need_check = params.n % mmq_y != 0;
-        Ok(format!("mul_mat_q_stream_k_fixup_GGML_TYPE_Q4_0_{mmq_x}_8_{need_check}"))
+        let fixup_str = if fixup { "stream_k_fixup_" } else { "" };
+        Ok(format!("mul_mat_q40_{fixup_str}{mmq_x}_8_{need_check}"))
     }
 
     pub fn dispatch_eval(
@@ -406,7 +401,7 @@ impl Matmul {
         }
 
         let nbytes_shared = mmq_get_nbytes_shared_q40(mmq_x_best, MMQ_X_MAX);
-        let kernel_name = Self::kernel_name_q40(&params, mmq_x_best, MMQ_X_MAX)?;
+        let kernel_name = Self::kernel_name_q40(&params, mmq_x_best, MMQ_X_MAX, false)?;
 
         let batch_ratio = params.a_batch / params.b_batch;
         let b_stride_0 = n_blocks * params.n;
@@ -416,14 +411,14 @@ impl Matmul {
 
         let fixup_needed = ((ntx * nty * params.a_batch) % properties.multiProcessorCount as usize) != 0;
         let fixup_shape = if fixup_needed { properties.multiProcessorCount as usize * mmq_x_best * MMQ_X_MAX } else { 0 };
-
+        
         let fixup_tensor = unsafe {
                 DeviceTensor::uninitialized_dt(
                     DatumType::F32,
                     &[fixup_shape],
                 )?
             };
-        
+
         let fixup_view = get_cuda_view(&fixup_tensor);
         let func = context.load_pipeline(LibraryName::GgmlQ, kernel_name)?;
         func.set_attribute(CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, nbytes_shared as i32)?;
@@ -456,7 +451,7 @@ impl Matmul {
         unsafe { launch_args.launch(cfg); }
 
         if fixup_needed {
-            let kernel_name = Self::fixup_kernel_name_q40(&params, mmq_x_best, MMQ_X_MAX)?;
+            let kernel_name = Self::kernel_name_q40(&params, mmq_x_best, MMQ_X_MAX, true)?;
             let func = context.load_pipeline(LibraryName::GgmlQ, kernel_name)?;
             let mut launch_args = stream.launch_builder(&func);
                 launch_args.arg(&null_ptr);
@@ -647,16 +642,13 @@ mod tests {
         Ok(output.remove(0).into_tensor())
     }
 
-    fn run_ggml_mat_mul_test<F: Datum + Float>(
+    fn run_q40_mat_mul_test(
         batch: usize,
         broadcast_ratio: usize,
         m: usize,
         k: usize,
         n: usize,
-        q40: bool,
     ) -> TractResult<()>
-    where
-        f32: From<F>,
     {
         CUDA_STREAM.with(|stream| {
             let a_shape = [batch * broadcast_ratio, m, k];
@@ -669,32 +661,25 @@ mod tests {
             let a = Tensor::from_shape(&a_shape, &a_data)?;
 
             let b_data = (0..batch * n * k)
-                .map(|f| F::from(f).unwrap() / F::from(batch * n * k).unwrap())
+                .map(|f| f as f32 / (batch * n * k) as f32)
                 .collect::<Vec<_>>();
 
-            let (ref_b, metal_b) = if q40 {
-                ensure!(TypeId::of::<F>() == TypeId::of::<f32>());
-                let b_data: Vec<f32> = b_data.into_iter().map(|x| x.into()).collect();
-                let b_tensor =
-                    Q4_0.simulate_precision_loss(Tensor::from_shape(&b_shape, &b_data)?, 2)?;
+            let b_data: Vec<f32> = b_data.into_iter().map(|x| x.into()).collect();
+            let b_tensor =
+                Q4_0.simulate_precision_loss(Tensor::from_shape(&b_shape, &b_data)?, 2)?;
 
-                ensure!(k % 32 == 0);
-                let b_q4_0_tensor = tensor0(Opaque(Arc::new(BlockQuantValue {
-                    fact: BlockQuantFact::new(Box::new(Q4_0), tvec![batch, n, k]),
-                    value: Arc::new(Q4_0.quant_f32(&b_data)?),
-                })));
-                (b_tensor, b_q4_0_tensor)
-            } else {
-                let b_tensor = Tensor::from_shape(&b_shape, &b_data)?;
-                (b_tensor.clone(), b_tensor)
-            };
+            ensure!(k % 512 == 0);
+            let b_q4_0_tensor = tensor0(Opaque(Arc::new(BlockQuantValue {
+                fact: BlockQuantFact::new(Box::new(Q4_0), tvec![batch, n, k]),
+                value: Arc::new(Q4_0.quant_f32(&b_data)?),
+            })));
 
             let cuda_output = Matmul.eval(
                 stream,
                 &a.clone().into_device()?,
-                &metal_b.clone().into_device()?,
+                &b_q4_0_tensor.clone().into_device()?,
             )?;
-            let output = reference(a, ref_b)?;
+            let output = reference(a, b_tensor)?;
             cuda_output.to_host()?.close_enough(&output, Approximation::VeryApproximate)?;
             Ok(())
         })
@@ -702,17 +687,17 @@ mod tests {
 
     #[test]
     fn test_q4() -> TractResult<()> {
-        run_ggml_mat_mul_test::<f32>(32, 1, 1, 512, 32, true)?;
-        run_ggml_mat_mul_test::<f32>(1, 1, 320, 2048, 1, true)?;
-        run_ggml_mat_mul_test::<f32>(4, 1, 15, 2048, 320, true)?;
-        run_ggml_mat_mul_test::<f32>(1, 1, 12, 512, 4, true)?;
-        run_ggml_mat_mul_test::<f32>(3, 1, 8, 4096, 512, true)?;
-        run_ggml_mat_mul_test::<f32>(1, 1, 1, 1024, 32, true)?;
-        run_ggml_mat_mul_test::<f32>(1, 1, 61, 1024, 4, true)?;
-        run_ggml_mat_mul_test::<f32>(3, 1, 13, 2048, 128, true)?;
-        run_ggml_mat_mul_test::<f32>(1, 3, 1, 512, 32, true)?;
-        run_ggml_mat_mul_test::<f32>(4, 2, 7, 512, 4, true)?;
-        run_ggml_mat_mul_test::<f32>(3, 2, 6, 512, 256, true)?;
+        run_q40_mat_mul_test(32, 1, 1, 512, 32)?;
+        run_q40_mat_mul_test(1, 1, 320, 2048, 1)?;
+        run_q40_mat_mul_test(4, 1, 15, 2048, 320)?;
+        run_q40_mat_mul_test(1, 1, 12, 512, 4)?;
+        run_q40_mat_mul_test(3, 1, 8, 4096, 512)?;
+        run_q40_mat_mul_test(1, 1, 1, 1024, 32)?;
+        run_q40_mat_mul_test(1, 1, 61, 1024, 4)?;
+        run_q40_mat_mul_test(3, 1, 13, 2048, 128)?;
+        run_q40_mat_mul_test(1, 3, 1, 512, 32)?;
+        run_q40_mat_mul_test(4, 2, 7, 512, 4)?;
+        run_q40_mat_mul_test(3, 2, 6, 512, 256)?;
         Ok(())
     }
 }
