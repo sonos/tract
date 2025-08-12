@@ -762,7 +762,7 @@ extern "C" { \
             channel_ratio, nchannels_y, stride_channel_x, stride_channel_y, stride_channel_dst); \
     } \
 \
-    __global__ void mul_mat_q40_stream_k_fixup_##_##mmq_x##_##nwarps##_##need_check( \
+    __global__ void mul_mat_q40_stream_k_fixup##_##mmq_x##_##nwarps##_##need_check( \
     const int32_t * ids_dst, const int32_t * expert_bounds, float * __restrict__ dst, const float * __restrict__ tmp_last_tile, \
     const int ncols_x, const int nrows_x, const int ncols_dst, const int stride_col_dst, \
     const int nchannels_y, const int stride_channel_dst) { \
