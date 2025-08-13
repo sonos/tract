@@ -683,7 +683,7 @@ INSTANTIATE_MMQ_KERNEL_FOR_T(N_WARPS, true)
 INSTANTIATE_MMQ_KERNEL_FOR_T(N_WARPS, false)
 
 extern "C" __global__ void quantize_mmq_q8_1(
-        const float * __restrict__ x, const int32_t * __restrict__ ids, void * __restrict__ vy,
+        const float * __restrict__ x, void * __restrict__ vy,
         const int64_t ne00, const int64_t s01, const int64_t s02, const int64_t s03,
         const int64_t ne0, const int ne1, const int ne2) {
 
@@ -701,7 +701,7 @@ extern "C" __global__ void quantize_mmq_q8_1(
     const int64_t i3 = blockIdx.z / ne2;
 
     const int64_t i00 = i0;
-    const int64_t i01 = ids ? ids[i1] : i1;
+    const int64_t i01 = i1;
     const int64_t i02 = i2;
     const int64_t i03 = i3;
 

@@ -358,7 +358,6 @@ impl Matmul {
         stream: &TractCudaStream,
         a_view: &CudaView<'_, u8>,
         quant_a_view: &CudaView<'_, u8>,
-        row_addrs: &CudaView<'_, u8>,
         params: &MatMulParams,
         sample_stride_a: isize,
         padded_k: usize,
@@ -367,7 +366,6 @@ impl Matmul {
             cuda_context().load_pipeline(LibraryName::GgmlQ, "quantize_mmq_q8_1".to_string())?;
         let mut launch_args = stream.launch_builder(&func);
         launch_args.arg(a_view);
-        launch_args.arg(row_addrs);
         launch_args.arg(quant_a_view);
         launch_args.arg(&params.k);
         launch_args.arg(&params.a_strides[1]);
@@ -509,7 +507,6 @@ impl Matmul {
             stream,
             &a_view,
             &quant_a_view,
-            &null_ptr.as_view(),
             &params,
             sample_stride_a,
             padded_k,
