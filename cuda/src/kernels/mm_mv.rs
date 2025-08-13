@@ -1,7 +1,7 @@
 use cudarc::cublas::{self, CudaBlas, Gemm};
 use cudarc::driver::result::stream::null;
 use cudarc::driver::sys::CUfunction_attribute;
-use cudarc::driver::{CudaStream, DevicePtr, LaunchConfig, PushKernelArg};
+use cudarc::driver::{CudaStream, CudaView, DevicePtr, LaunchConfig, PushKernelArg};
 use cudarc::runtime::result::device::get_device_prop;
 use cudarc::runtime::sys::cudaGetLastError;
 use derive_new::new;
@@ -14,7 +14,6 @@ use tract_gpu::tensor::DeviceTensor::Owned;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::{as_q40_fact, as_q40_tensor};
 
-use crate::Q40_ROW_PADDING;
 use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::{
     LibraryName, get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut,
@@ -22,6 +21,7 @@ use crate::kernels::{
 };
 use crate::tensor::CudaTensor;
 use crate::utils::get_q40_fact;
+use crate::{Q40_ROW_PADDING, context};
 
 use DatumType::{F16, F32};
 
@@ -334,41 +334,41 @@ impl Matmul {
         Ok(output)
     }
 
-    fn dispatch_ggml_matmul_q40(
+    fn find_best_mmq_x(smbpo: usize, m: usize) -> usize {
+        let mut mmq_x_best = 0;
+        let mut ntiles_x_best = usize::MAX;
+
+        let mut mmq_x = 0;
+        while mmq_x <= MMQ_X_MAX && ntiles_x_best > 1 {
+            mmq_x += 8;
+            let granularity = if mmq_x >= 48 { 16 } else { 8 };
+            if (mmq_x % granularity != 0 || mmq_get_nbytes_shared_q40(mmq_x, MMQ_X_MAX) > smbpo) {
+                continue;
+            }
+            let ntiles_x = m.div_ceil(mmq_x);
+            if (ntiles_x < ntiles_x_best) {
+                mmq_x_best = mmq_x;
+                ntiles_x_best = ntiles_x;
+            }
+        }
+        mmq_x_best
+    }
+
+    fn launch_quantize_q8_1(
         stream: &TractCudaStream,
-        a: &DeviceTensor,
-        b: &DeviceTensor,
-        output: &DeviceTensor,
-        params: MatMulParams,
+        a_view: &CudaView<'_, u8>,
+        quant_a_view: &CudaView<'_, u8>,
+        row_addrs: &CudaView<'_, u8>,
+        params: &MatMulParams,
+        sample_stride_a: isize,
+        padded_k: usize,
     ) -> TractResult<()> {
-        let context = cuda_context();
-        let properties = context.properties();
-        let a_view = get_cuda_view(a);
-        let b_view = get_cuda_view(b);
-
-        let mut out_view = get_cuda_view(output);
-
-        ensure!(
-            get_q40_fact(b).is_some_and(|bqf| bqf.shape().last().unwrap() % Q40_ROW_PADDING == 0)
-        );
-
-        let null_ptr = stream.null::<u8>()?;
-
-        let padded_k = params.k.next_multiple_of(Q40_ROW_PADDING);
-        let n_blocks = (padded_k / Q4_0.block_len()); // Q40 weights have also been padded during transform
-
-        let nbytes_a_q8_1 = a.len() * padded_k * (QK8_0 + 4) / (params.k * QK8_0) + MMQ_X_MAX * 144;
-
-        let sample_stride_a = params.a_strides[0] * params.a_batch as isize;
-        let quant_a = unsafe { DeviceTensor::uninitialized_dt(DatumType::U8, &[nbytes_a_q8_1])? };
-
-        let quant_a_view = get_cuda_view(&quant_a);
-
-        let func = context.load_pipeline(LibraryName::GgmlQ, "quantize_mmq_q8_1".to_string())?;
+        let func =
+            cuda_context().load_pipeline(LibraryName::GgmlQ, "quantize_mmq_q8_1".to_string())?;
         let mut launch_args = stream.launch_builder(&func);
-        launch_args.arg(&a_view);
-        launch_args.arg(&null_ptr);
-        launch_args.arg(&quant_a_view);
+        launch_args.arg(a_view);
+        launch_args.arg(row_addrs);
+        launch_args.arg(quant_a_view);
         launch_args.arg(&params.k);
         launch_args.arg(&params.a_strides[1]);
         launch_args.arg(&params.a_strides[0]);
@@ -383,62 +383,37 @@ impl Matmul {
             shared_mem_bytes: 0,
         };
         unsafe { launch_args.launch(cfg) };
+        Ok(())
+    }
 
-        let a_stride_0 = padded_k * params.m * 36 / 128;
-
-        let mut mmq_x_best = 0;
-        let mut ntiles_x_best = usize::MAX;
-
-        let mut mmq_x = 0;
-        while mmq_x <= MMQ_X_MAX && ntiles_x_best > 1 {
-            mmq_x += 8;
-            let granularity = if mmq_x >= 48 { 16 } else { 8 };
-            if (mmq_x % granularity != 0
-                || mmq_get_nbytes_shared_q40(mmq_x, MMQ_X_MAX) > properties.sharedMemPerBlockOptin)
-            {
-                continue;
-            }
-            let ntiles_x = params.m.div_ceil(mmq_x);
-            if (ntiles_x < ntiles_x_best) {
-                mmq_x_best = mmq_x;
-                ntiles_x_best = ntiles_x;
-            }
-        }
-
-        let nbytes_shared = mmq_get_nbytes_shared_q40(mmq_x_best, MMQ_X_MAX);
+    fn launch_matmul_q40(
+        stream: &TractCudaStream,
+        weights: &CudaView<'_, u8>,
+        quant_activ: &CudaView<'_, u8>,
+        output: &CudaView<'_, u8>,
+        fixup_tens: &CudaView<'_, u8>,
+        params: &MatMulParams,
+        a_stride_0: usize,
+        b_stride_0: usize,
+        batch_ratio: usize,
+        mmq_x_best: usize,
+        nbytes_shared: usize,
+    ) -> TractResult<()> {
+        let n_blocks = b_stride_0 / params.n;
         let kernel_name = Self::kernel_name_q40(&params, mmq_x_best, MMQ_X_MAX, false)?;
 
-        let batch_ratio = params.a_batch / params.b_batch;
-        let b_stride_0 = n_blocks * params.n;
-
-        let nty = params.n.div_ceil(MMQ_X_MAX);
-        let ntx = params.m.div_ceil(mmq_x_best);
-
-        let fixup_needed =
-            ((ntx * nty * params.a_batch) % properties.multiProcessorCount as usize) != 0;
-        let fixup_shape = if fixup_needed {
-            properties.multiProcessorCount as usize * mmq_x_best * MMQ_X_MAX
-        } else {
-            0
-        };
-
-        let fixup_tensor =
-            unsafe { DeviceTensor::uninitialized_dt(DatumType::F32, &[fixup_shape])? };
-
-        let fixup_view = get_cuda_view(&fixup_tensor);
+        let context = cuda_context();
+        let props = context.properties();
         let func = context.load_pipeline(LibraryName::GgmlQ, kernel_name)?;
         func.set_attribute(
             CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
             nbytes_shared as i32,
         )?;
-
         let mut launch_args = stream.launch_builder(&func);
-        launch_args.arg(&b_view);
-        launch_args.arg(&quant_a_view);
-        launch_args.arg(&null_ptr);
-        launch_args.arg(&null_ptr);
-        launch_args.arg(&out_view);
-        launch_args.arg(&fixup_view);
+        launch_args.arg(weights);
+        launch_args.arg(quant_activ);
+        launch_args.arg(output);
+        launch_args.arg(fixup_tens);
         launch_args.arg(&params.k);
         launch_args.arg(&params.n);
         launch_args.arg(&params.m);
@@ -452,7 +427,7 @@ impl Matmul {
         launch_args.arg(&params.c_strides[0]);
 
         let cfg = LaunchConfig {
-            grid_dim: (properties.multiProcessorCount as usize as _, 1, 1),
+            grid_dim: (props.multiProcessorCount as usize as _, 1, 1),
             block_dim: (WARP_SIZE as _, N_WARPS as _, 1),
             shared_mem_bytes: nbytes_shared as _,
         };
@@ -460,32 +435,134 @@ impl Matmul {
         unsafe {
             launch_args.launch(cfg);
         }
+        Ok(())
+    }
 
-        if fixup_needed {
-            let kernel_name = Self::kernel_name_q40(&params, mmq_x_best, MMQ_X_MAX, true)?;
-            let func = context.load_pipeline(LibraryName::GgmlQ, kernel_name)?;
-            let mut launch_args = stream.launch_builder(&func);
-            launch_args.arg(&null_ptr);
-            launch_args.arg(&null_ptr);
-            launch_args.arg(&out_view);
-            launch_args.arg(&fixup_view);
-            launch_args.arg(&params.k);
-            launch_args.arg(&params.n);
-            launch_args.arg(&params.m);
-            launch_args.arg(&params.n);
-            launch_args.arg(&params.a_batch);
-            launch_args.arg(&params.c_strides[0]);
+    fn launch_fixup_q40(
+        stream: &TractCudaStream,
+        output: &CudaView<'_, u8>,
+        fixup_tens: &CudaView<'_, u8>,
+        params: &MatMulParams,
+        mmq_x_best: usize,
+    ) -> TractResult<()> {
+        let kernel_name = Self::kernel_name_q40(&params, mmq_x_best, MMQ_X_MAX, true)?;
 
-            let cfg = LaunchConfig {
-                grid_dim: (properties.multiProcessorCount as usize as _, 1, 1),
-                block_dim: (WARP_SIZE as _, N_WARPS as _, 1),
-                shared_mem_bytes: 0,
-            };
+        let context = cuda_context();
+        let props = context.properties();
+        let func = context.load_pipeline(LibraryName::GgmlQ, kernel_name)?;
+        let mut launch_args = stream.launch_builder(&func);
+        launch_args.arg(output);
+        launch_args.arg(fixup_tens);
+        launch_args.arg(&params.k);
+        launch_args.arg(&params.n);
+        launch_args.arg(&params.m);
+        launch_args.arg(&params.n);
+        launch_args.arg(&params.a_batch);
+        launch_args.arg(&params.c_strides[0]);
 
-            unsafe {
-                launch_args.launch(cfg);
-            }
+        let cfg = LaunchConfig {
+            grid_dim: (props.multiProcessorCount as usize as _, 1, 1),
+            block_dim: (WARP_SIZE as _, N_WARPS as _, 1),
+            shared_mem_bytes: 0,
+        };
+
+        unsafe {
+            launch_args.launch(cfg);
         }
+        Ok(())
+    }
+
+    fn dispatch_ggml_matmul_q40(
+        stream: &TractCudaStream,
+        a: &DeviceTensor,
+        b: &DeviceTensor,
+        output: &DeviceTensor,
+        params: MatMulParams,
+    ) -> TractResult<()> {
+        let context = cuda_context();
+        let props = context.properties();
+
+        // Views into GPU buffers
+        let a_view = get_cuda_view(a);
+        let b_view = get_cuda_view(b);
+        let mut out_view = get_cuda_view(output);
+        let null_ptr = stream.null::<u8>()?;
+
+        // Check padding requirement
+        ensure!(
+            get_q40_fact(b).is_some_and(|bqf| bqf.shape().last().unwrap() % Q40_ROW_PADDING == 0)
+        );
+
+        // --- Precompute dimensions & sizes ---
+        let padded_k = params.k.next_multiple_of(Q40_ROW_PADDING);
+        let n_blocks = padded_k / Q4_0.block_len(); // padded Q40 weights
+        let sample_stride_a = params.a_strides[0] * params.a_batch as isize;
+
+        let nbytes_a_q8_1 = a.len() * padded_k * (QK8_0 + 4) / (params.k * QK8_0) + MMQ_X_MAX * 144;
+
+        // Allocate quantized A buffer
+        let quant_a = unsafe { DeviceTensor::uninitialized_dt(DatumType::U8, &[nbytes_a_q8_1])? };
+        let quant_a_view = get_cuda_view(&quant_a);
+
+        // --- Quantization kernel launch ---
+        Self::launch_quantize_q8_1(
+            stream,
+            &a_view,
+            &quant_a_view,
+            &null_ptr.as_view(),
+            &params,
+            sample_stride_a,
+            padded_k,
+        )?;
+
+        // Strides for matmul kernel
+        let a_stride_0 = padded_k * params.m * 36 / 128;
+        let b_stride_0 = n_blocks * params.n;
+        let batch_ratio = params.a_batch / params.b_batch;
+
+        // Find best mmq_x value
+        let mmq_x_best = Self::find_best_mmq_x(props.sharedMemPerBlockOptin, params.m);
+
+        // Shared memory requirement
+        let nbytes_shared = mmq_get_nbytes_shared_q40(mmq_x_best, MMQ_X_MAX);
+
+        // Kernel launch grid
+        let ntx = params.m.div_ceil(mmq_x_best);
+        let nty = params.n.div_ceil(MMQ_X_MAX);
+
+        let fixup_tensor = {
+            let needs_fixup =
+                (ntx * nty * params.a_batch) % props.multiProcessorCount as usize != 0;
+
+            needs_fixup
+                .then(|| {
+                    let fixup_shape = props.multiProcessorCount as usize * mmq_x_best * MMQ_X_MAX;
+                    unsafe { DeviceTensor::uninitialized_dt(DatumType::F32, &[fixup_shape]) }
+                })
+                .transpose()? // because uninitialized_dt returns Result
+        };
+
+        let fixup_view =
+            fixup_tensor.as_ref().map(|t| get_cuda_view(t)).unwrap_or(null_ptr.as_view());
+
+        Self::launch_matmul_q40(
+            stream,
+            &b_view,
+            &quant_a_view,
+            &out_view,
+            &fixup_view,
+            &params,
+            a_stride_0,
+            b_stride_0,
+            batch_ratio,
+            mmq_x_best,
+            nbytes_shared,
+        )?;
+
+        if let Some(ref fixup) = fixup_tensor {
+            Self::launch_fixup_q40(stream, &out_view, &fixup_view, &params, mmq_x_best)?;
+        }
+
         Ok(())
     }
 }

@@ -235,45 +235,36 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
 fn pad_q40(q40_bqv: &BlockQuantValue) -> TractResult<BlockQuantValue> {
     let shape = q40_bqv.fact.shape();
     ensure!(shape.len() >= 2);
+
     let k = *shape.last().unwrap();
     ensure!(k % 32 == 0);
 
     let to_pad = k.next_multiple_of(Q40_ROW_PADDING) - k;
     if to_pad == 0 {
-        return Ok(q40_bqv.clone());
+        return Ok(q40_bqv.clone()); // No padding needed
     }
 
-    let pad_vec = vec![0f32; to_pad];
-    let pad_quant = Q4_0.quant_f32(&pad_vec)?;
-
-    // Compute the original number of rows (outer shape product)
-    let outer_len: usize = shape[..shape.len() - 1].iter().product();
+    let outer_rows: usize = shape[..shape.len() - 1].iter().product();
     let row_bytes = k * Q4_0.block_bytes() / Q4_0.block_len();
+
+    let pad_quant = Q4_0.quant_f32(&vec![0f32; to_pad])?;
     let pad_bytes = pad_quant.len();
-    let total_bytes = outer_len * (row_bytes + pad_bytes);
 
-    let old_data = q40_bqv.value.as_bytes();
+    let mut new_data = Vec::with_capacity(outer_rows * (row_bytes + pad_bytes));
+    let old_bytes = q40_bqv.value.as_bytes();
 
-    // Make a new buffer large enough to hold the padded data
-    let mut new_data = Vec::with_capacity(total_bytes);
-
-    for row in 0..outer_len {
+    for row in 0..outer_rows {
         let start = row * row_bytes;
-        let end = start + row_bytes;
-        new_data.extend_from_slice(&old_data[start..end]);
+        new_data.extend_from_slice(&old_bytes[start..start + row_bytes]);
         new_data.extend_from_slice(&pad_quant);
     }
 
-    // Replace blob's contents
-    let new_blob = Blob::from_bytes(&new_data)?;
-
-    // Update shape in-place
     let mut new_shape = shape.to_smallvec();
     *new_shape.last_mut().unwrap() += to_pad;
 
     Ok(BlockQuantValue {
         fact: BlockQuantFact::new(q40_bqv.fact.format.clone(), new_shape),
-        value: Arc::new(new_blob),
+        value: Arc::new(Blob::from_bytes(&new_data)?),
     })
 }
 
@@ -281,33 +272,34 @@ fn convert_const(op: &Const, source: &TypedModel, node: &TypedNode) -> TractResu
     let typed_fact: TypedFact = Arc::clone(op.val()).into();
     let cuda_const = op.val().clone();
 
-    // If there is no opaque_fact, fallback to default host conversion
-    let (cuda_fact, cuda_tensor) = if let Some(of) = op.opaque_fact() {
-        ensure!(as_q40_fact(&typed_fact).is_some(), "Only support Q40 block quantization");
+    let to_device_opaque = |fact: TypedFact, tensor: Arc<Tensor>| -> TractResult<_> {
+        Ok((
+            DeviceFact::from_host(fact)?,
+            tensor.into_device()?.into_opaque_tensor().into_arc_tensor(),
+        ))
+    };
 
-        // If followed by a PrefixMatMul, apply padding
-        if source.all_succ(node.id)?.unwrap().iter().any(|succ| succ.op_is::<PrefixMatMul>()) {
-            let tensor = cuda_const.into_tensor();
-            let bqv = as_q40_tensor(&tensor).unwrap();
-            let new_bqv = pad_q40(bqv)?;
-            let new_bqf = new_bqv.fact.clone();
-            let new_cpu_const =
-                tensor0(Opaque(Arc::new(new_bqv))).broadcast_into_rank(op.val().rank())?;
-            (
-                DeviceFact::from_host(typed_fact.with_opaque_fact(new_bqf))?,
-                new_cpu_const.into_device()?.into_opaque_tensor().into_arc_tensor(),
-            )
-        } else {
-            (
-                DeviceFact::from_host(typed_fact.with_opaque_fact(clone_box(of)))?,
-                cuda_const.into_device()?.into_opaque_tensor().into_arc_tensor(),
-            )
+    let (cuda_fact, cuda_tensor) = match op.opaque_fact() {
+        Some(of) => {
+            ensure!(as_q40_fact(&typed_fact).is_some(), "Only support Q40 block quantization");
+
+            let has_prefix_matmul =
+                source.all_succ(node.id)?.unwrap().iter().any(|succ| succ.op_is::<PrefixMatMul>());
+
+            if has_prefix_matmul {
+                let tensor = cuda_const.into_tensor();
+                let bqv = as_q40_tensor(&tensor).unwrap();
+                let padded_bqv = pad_q40(bqv)?;
+                let padded_fact = typed_fact.with_opaque_fact(padded_bqv.fact.clone());
+                let padded_tensor = tensor0(Opaque(Arc::new(padded_bqv)))
+                    .broadcast_into_rank(op.val().rank())?
+                    .into_arc_tensor();
+                to_device_opaque(padded_fact, padded_tensor)?
+            } else {
+                to_device_opaque(typed_fact.with_opaque_fact(clone_box(of)), cuda_const)?
+            }
         }
-    } else {
-        (
-            DeviceFact::from_host(typed_fact)?,
-            cuda_const.into_device()?.into_opaque_tensor().into_arc_tensor(),
-        )
+        None => to_device_opaque(typed_fact, cuda_const)?,
     };
 
     Const::new_with_opaque_fact(cuda_tensor, Box::new(cuda_fact))
