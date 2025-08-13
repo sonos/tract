@@ -146,11 +146,22 @@ net_bench trunet pulse1_f16 $CACHEDIR/trunet_dummy.nnef.tgz --nnef-tract-core --
 
 if [ $(uname) = "Darwin" ]
 then
-    for backend in cpu metal
+    LLM_BACKENDS="cpu metal"
+fi
+
+if which nvidia-smi 
+then 
+    LLM_BACKENDS="cpu cuda"
+fi
+
+if [ -n "$LLM_BACKEDS" ]
+then
+    for backend in $LLM_BACKENDS
     do
         case $backend in
             cpu) extra="";;
             metal) extra="--metal";;
+            cuda) extra="--cuda";;
         esac
         llm_bench llama-3_2-3B-q40ef32-516 $backend $CACHEDIR/Llama-3.2-3B-q40ef32.516.nnef.tgz $extra
         llm_bench llama-3_2-1B-q40ef32-516 $backend $CACHEDIR/Llama-3.2-1B-q40ef32.516.nnef.tgz $extra
