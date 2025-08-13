@@ -71,7 +71,7 @@ impl ResourceLoader for GraphNnefLoader {
         if path.ends_with(GRAPH_NNEF_FILENAME) {
             let mut text = String::new();
             reader.read_to_string(&mut text)?;
-            Ok(Some((path.to_str().unwrap().to_string(), Arc::new(GraphNnef(text)))))
+            Ok(Some((path.to_string_lossy().to_string(), Arc::new(GraphNnef(text)))))
         } else {
             Ok(None)
         }
