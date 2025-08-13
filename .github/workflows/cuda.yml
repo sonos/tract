@@ -12,7 +12,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
   RUST_VERSION: 1.85.0
   RUSTUP_TOOLCHAIN: "1.85.0"
-
+  ROOT: ${{ github.workspace }}
 
 jobs:
   unit:
@@ -22,7 +22,8 @@ jobs:
     - uses: actions/checkout@v4
 
     - run: |
-         ./travis/ci-system-setup.sh
+         . .travis/ci-system-setup.sh
+         cargo --version      
          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
         
     - run: cargo check --workspace --exclude test-blas --exclude tract-metal --exclude test-metal
@@ -42,7 +43,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
-           ./travis/ci-system-setup.sh
+           . .travis/ci-system-setup.sh
            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
         
       - run: cargo build -p tract --release --no-default-features --features transformers
