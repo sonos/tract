@@ -26,6 +26,11 @@ else
 fi
 )
 
+if [ -z "$PLATFORM" -a -n "$1" ]
+then
+    PLATFORM=$1
+fi
+
 case "$PLATFORM" in
     "raspbian")
         [ -e $HOME/cached/raspitools ] || git clone --depth 1 https://github.com/raspberrypi/tools $HOME/cached/raspitools
@@ -75,17 +80,17 @@ case "$PLATFORM" in
         cargo dinghy --platform auto-ios-aarch64 build -p tract-linalg -p tract-ffi
         ;;
 
-    "aarch64-apple-darwin")
-        RUSTC_TRIPLE=aarch64-apple-darwin
-        rustup target add aarch64-apple-darwin
-        cargo build --target aarch64-apple-darwin -p tract --release
+    "aarch64-apple-darwin" | "x86_64-unknown-linux-gnu")
+        RUSTC_TRIPLE=$PLATFORM
+        rustup target add $RUSTC_TRIPLE
+        cargo build --target $RUSTC_TRIPLE -p tract --release
         ;;
 
-    "aarch64-unknown-linux-gnu-stretch" | "armv7-unknown-linux-gnueabihf-stretch" )
+    "aarch64-unknown-linux-gnu-stretch" | "armv7-unknown-linux-gnueabihf-stretch" | "x86_64-unknown-linux-gnu-stretch")
         INNER_PLATFORM=${PLATFORM%-stretch}
         (cd .travis/docker-debian-stretch; docker build --tag debian-stretch .)
         docker run -v `pwd`:/tract -w /tract \
-            -e CI=$CI \
+            -e CI=true \
             -e SKIP_QEMU_TEST=skip \
             -e PLATFORM=$INNER_PLATFORM debian-stretch \
             ./.travis/cross.sh
