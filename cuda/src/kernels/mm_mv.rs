@@ -384,6 +384,7 @@ impl Matmul {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn launch_matmul_q40(
         stream: &TractCudaStream,
         weights: &CudaView<'_, u8>,
@@ -398,7 +399,7 @@ impl Matmul {
         nbytes_shared: usize,
     ) -> TractResult<()> {
         let n_blocks = b_stride_0 / params.n;
-        let kernel_name = Self::kernel_name_q40(&params, mmq_x_best, MMQ_X_MAX, false)?;
+        let kernel_name = Self::kernel_name_q40(params, mmq_x_best, MMQ_X_MAX, false)?;
 
         let context = cuda_context();
         let props = context.properties();
@@ -443,7 +444,7 @@ impl Matmul {
         params: &MatMulParams,
         mmq_x_best: usize,
     ) -> TractResult<()> {
-        let kernel_name = Self::kernel_name_q40(&params, mmq_x_best, MMQ_X_MAX, true)?;
+        let kernel_name = Self::kernel_name_q40(params, mmq_x_best, MMQ_X_MAX, true)?;
 
         let context = cuda_context();
         let props = context.properties();
