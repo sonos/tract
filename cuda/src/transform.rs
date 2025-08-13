@@ -238,7 +238,7 @@ fn pad_q40(q40_bqv: &BlockQuantValue) -> TractResult<BlockQuantValue> {
     let k = *shape.last().unwrap();
     ensure!(k % 32 == 0);
 
-    let to_pad = Q40_ROW_PADDING - (k % Q40_ROW_PADDING);
+    let to_pad = k.next_multiple_of(Q40_ROW_PADDING) - k;
     if to_pad == 0 {
         return Ok(q40_bqv.clone());
     }
