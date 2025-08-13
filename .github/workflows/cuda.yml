@@ -13,12 +13,18 @@ env:
   RUST_VERSION: 1.85.0
   RUSTUP_TOOLCHAIN: "1.85.0"
 
+
 jobs:
   unit:
     runs-on: [ self-hosted, cuda-lovelace ]
 
     steps:
     - uses: actions/checkout@v4
+
+    - run: |
+         ./travis/ci-system-setup.sh
+         echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+        
     - run: cargo check --workspace --exclude test-blas --exclude tract-metal --exclude test-metal
     - run: cargo test -q -p tract-linalg
     - run: cargo test -q -p tract-core
