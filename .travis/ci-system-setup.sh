@@ -3,10 +3,6 @@ set -e
 
 [ -d $ROOT/.travis ] || exit 1 "\$ROOT not set correctly '$ROOT'"
 
-if [ `whoami` != "root" ]
-then
-    SUDO=sudo
-fi
 
 if [ -n "$CI" -a ! -e /tmp/ci-setup-done ]
 then
@@ -18,9 +14,16 @@ then
         PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"
         export PYTHON_BIN_PATH=python3
     else
-        $SUDO apt-get update
-        $SUDO apt-get install -y llvm python3 python3-numpy jshon wget curl build-essential sudo jshon
-        aws --version || $SUDO apt-get install -y awscli
+        if [ "$RUNNER_ENVIRONMENT" != "self-hosted" ]
+        then
+            if [ `whoami` != "root" ]
+            then
+                SUDO=sudo
+            fi
+            $SUDO apt-get update
+            $SUDO apt-get install -y llvm python3 python3-numpy jshon wget curl build-essential sudo jshon clang
+            aws --version || $SUDO apt-get install -y awscli
+        fi
     fi
 
     if [ -z "$RUST_VERSION" ]
