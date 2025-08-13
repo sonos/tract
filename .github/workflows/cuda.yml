@@ -41,6 +41,10 @@ jobs:
     runs-on: [ self-hosted, cuda-lovelace ]
     steps:
       - uses: actions/checkout@v4
+      - run: |
+           ./travis/ci-system-setup.sh
+           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+        
       - run: cargo build -p tract --release --no-default-features --features transformers
       - uses: actions/upload-artifact@v4
         with:
