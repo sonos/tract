@@ -107,16 +107,22 @@ pub struct CausalLlmStateConfig {
     /// split long prompt into chunks of fixed number of tokens,
     /// reducing RAM usage
     prompt_chunk_size: Option<usize>,
+    repeat_penalty: f32,
+    repeat_last_n: usize,
 }
 impl Default for CausalLlmStateConfig {
     fn default() -> Self {
-        Self { prompt_chunk_size: Some(512) }
+        Self { prompt_chunk_size: Some(512), repeat_penalty: 1.0, repeat_last_n: 64 }
     }
 }
 
 impl CausalLlmStateConfig {
-    pub fn new(prompt_chunk_size: Option<usize>) -> TractResult<Self> {
-        let conf = Self { prompt_chunk_size };
+    pub fn new(
+        prompt_chunk_size: Option<usize>,
+        repeat_penalty: f32,
+        repeat_last_n: usize,
+    ) -> TractResult<Self> {
+        let conf = Self { prompt_chunk_size, repeat_penalty, repeat_last_n };
         conf.validate()?;
         Ok(conf)
     }
@@ -164,8 +170,18 @@ impl CausalLlmState {
         } else {
             self.nn_state.run(tvec![input.into_tvalue()])?
         };
-        let next_tok = output[0]
-            .as_slice::<f32>()?
+
+        let start_at = self.seq.len().saturating_sub(self.config.repeat_last_n);
+
+        let mut last_token_logits = output[0].as_slice::<f32>()?.iter().map(|t| *t).collect_vec();
+
+        apply_repeat_penalty(
+            last_token_logits.as_mut_slice(),
+            self.config.repeat_penalty,
+            &self.seq[start_at..],
+        );
+
+        let next_tok = last_token_logits
             .iter()
             .enumerate()
             .max_by_key(|(_ix, v)| FloatOrd(**v))
@@ -236,6 +252,19 @@ impl FrozenCausalLlmState {
             nn_state: self.nn_state.unfreeze(),
             seq: self.seq,
             config: self.config,
+        }
+    }
+}
+
+/// Cheap way to avoid repeating model (mostly usefull for tiny models)
+pub fn apply_repeat_penalty(logits: &mut [f32], penalty: f32, context: &[u32]) {
+    if penalty == 1.0 {
+        return;
+    }
+    let context: std::collections::HashSet<_> = context.iter().collect();
+    for (token_id, logit) in logits.iter_mut().enumerate() {
+        if context.contains(&(token_id as u32)) {
+            if *logit >= 0. { *logit /= penalty } else { *logit *= penalty }
         }
     }
 }
