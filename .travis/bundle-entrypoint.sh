@@ -154,7 +154,7 @@ then
     LLM_BACKENDS="cpu cuda"
 fi
 
-if [ -n "$LLM_BACKEDS" ]
+if [ -n "$LLM_BACKENDS" ]
 then
     for backend in $LLM_BACKENDS
     do
