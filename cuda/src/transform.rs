@@ -27,7 +27,7 @@ use tract_transformers::ops::silu::Silu;
 
 use crate::context::cuda_context;
 use crate::kernels::Matmul;
-use crate::{kernels, ops, rewrite_rules, Q40_ROW_PADDING};
+use crate::{Q40_ROW_PADDING, kernels, ops, rewrite_rules};
 
 #[derive(Debug, Default)]
 pub struct CudaTransform;
@@ -271,39 +271,43 @@ fn pad_q40(q40_bqv: &BlockQuantValue) -> TractResult<BlockQuantValue> {
     let mut new_shape = shape.to_smallvec();
     *new_shape.last_mut().unwrap() += to_pad;
 
-    Ok(BlockQuantValue { fact: BlockQuantFact::new(q40_bqv.fact.format.clone(), new_shape), value: Arc::new(new_blob) })
+    Ok(BlockQuantValue {
+        fact: BlockQuantFact::new(q40_bqv.fact.format.clone(), new_shape),
+        value: Arc::new(new_blob),
+    })
 }
 
 fn convert_const(op: &Const, source: &TypedModel, node: &TypedNode) -> TractResult<Const> {
     let typed_fact: TypedFact = Arc::clone(op.val()).into();
     let cuda_const = op.val().clone();
-    
+
     // If there is no opaque_fact, fallback to default host conversion
     let (cuda_fact, cuda_tensor) = if let Some(of) = op.opaque_fact() {
-        ensure!(
-            as_q40_fact(&typed_fact).is_some(),
-            "Only support Q40 block quantization"
-        );
-        
+        ensure!(as_q40_fact(&typed_fact).is_some(), "Only support Q40 block quantization");
+
         // If followed by a PrefixMatMul, apply padding
-        if source
-            .all_succ(node.id)?
-            .unwrap()
-            .iter()
-            .any(|succ| succ.op_is::<PrefixMatMul>())
-        {   
+        if source.all_succ(node.id)?.unwrap().iter().any(|succ| succ.op_is::<PrefixMatMul>()) {
             let tensor = cuda_const.into_tensor();
             let bqv = as_q40_tensor(&tensor).unwrap();
             let new_bqv = pad_q40(bqv)?;
             let new_bqf = new_bqv.fact.clone();
-            let new_cpu_const = tensor0(Opaque(Arc::new(new_bqv))).broadcast_into_rank(op.val().rank())?;
-            (DeviceFact::from_host(typed_fact.with_opaque_fact(new_bqf))?, new_cpu_const.into_device()?.into_opaque_tensor().into_arc_tensor())
+            let new_cpu_const =
+                tensor0(Opaque(Arc::new(new_bqv))).broadcast_into_rank(op.val().rank())?;
+            (
+                DeviceFact::from_host(typed_fact.with_opaque_fact(new_bqf))?,
+                new_cpu_const.into_device()?.into_opaque_tensor().into_arc_tensor(),
+            )
         } else {
-            (DeviceFact::from_host(typed_fact.with_opaque_fact(clone_box(of)))?, cuda_const.into_device()?.into_opaque_tensor().into_arc_tensor())
+            (
+                DeviceFact::from_host(typed_fact.with_opaque_fact(clone_box(of)))?,
+                cuda_const.into_device()?.into_opaque_tensor().into_arc_tensor(),
+            )
         }
-
     } else {
-        (DeviceFact::from_host(typed_fact)?, cuda_const.into_device()?.into_opaque_tensor().into_arc_tensor())
+        (
+            DeviceFact::from_host(typed_fact)?,
+            cuda_const.into_device()?.into_opaque_tensor().into_arc_tensor(),
+        )
     };
 
     Const::new_with_opaque_fact(cuda_tensor, Box::new(cuda_fact))
@@ -417,8 +421,7 @@ fn convert_matmul_to_metal(
 
     if input_facts[0].datum_type == DatumType::F16 && as_q40_fact(input_facts[1]).is_some() {
         let in_cast_op = ops::CudaCast::new(DatumType::F32).unwrap();
-        inputs[0] =
-            target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[inputs[0]])?[0];
+        inputs[0] = target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[inputs[0]])?[0];
     }
 
     if !op.transpose_b {

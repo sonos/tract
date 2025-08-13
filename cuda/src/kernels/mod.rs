@@ -107,9 +107,8 @@ impl BroadcastKind {
 
 fn tensor_size(t: &DeviceTensor) -> usize {
     if let DeviceTensor::Owned(ot) = t {
-        let cuda_tensor = ot
-            .downcast_ref::<CudaTensor>()
-            .expect("Non Cuda-Tensor in a Cuda Context");
+        let cuda_tensor =
+            ot.downcast_ref::<CudaTensor>().expect("Non Cuda-Tensor in a Cuda Context");
 
         if let Some(bqf) = cuda_tensor.block_quant_fact() {
             return bqf.shape().iter().product::<usize>() * Q4_0.block_bytes() / Q4_0.block_len();

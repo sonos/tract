@@ -841,7 +841,6 @@ impl Tensor {
         if self.shape() != other.shape() {
             bail!("Shape mismatch {:?} != {:?}", self.shape(), other.shape())
         }
-
         let (atol, rtol, outliers) = approx.atol_rtol_outliers(&self.datum_type());
         let ma = self.cast_to::<f32>()?;
         let ma = ma.to_array_view::<f32>()?;
