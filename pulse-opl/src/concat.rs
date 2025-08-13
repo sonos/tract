@@ -20,7 +20,7 @@ impl Op for PulsedSameAxisConcat {
 
 impl EvalOp for PulsedSameAxisConcat {
     fn is_stateless(&self) -> bool {
-        true
+        false
     }
 
     fn state(
