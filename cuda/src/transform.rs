@@ -1,4 +1,3 @@
-use tract_core::dyn_clone::clone_box;
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 use tract_core::model::translator::Translate;
@@ -240,6 +239,7 @@ fn pad_q40(q40_bqv: &BlockQuantValue) -> TractResult<BlockQuantValue> {
     ensure!(k % 32 == 0);
 
     let to_pad = k.next_multiple_of(Q40_ROW_PADDING) - k;
+    dbg!(to_pad);
     if to_pad == 0 {
         return Ok(q40_bqv.clone()); // No padding needed
     }
@@ -268,7 +268,7 @@ fn pad_q40(q40_bqv: &BlockQuantValue) -> TractResult<BlockQuantValue> {
     })
 }
 
-fn convert_const(op: &Const, source: &TypedModel, node: &TypedNode) -> TractResult<Const> {
+fn convert_const(op: &Const) -> TractResult<Const> {
     let typed_fact: TypedFact = Arc::clone(op.val()).into();
     let cuda_const = op.val().clone();
 
@@ -280,24 +280,19 @@ fn convert_const(op: &Const, source: &TypedModel, node: &TypedNode) -> TractResu
     };
 
     let (cuda_fact, cuda_tensor) = match op.opaque_fact() {
-        Some(of) => {
+        Some(_) => {
             ensure!(as_q40_fact(&typed_fact).is_some(), "Only support Q40 block quantization");
+         
+            let tensor = cuda_const.into_tensor();
+            let bqv = as_q40_tensor(&tensor).unwrap();
 
-            let has_prefix_matmul =
-                source.all_succ(node.id)?.unwrap().iter().any(|succ| succ.op_is::<PrefixMatMul>());
+            let padded_bqv = pad_q40(bqv)?;
+            let padded_fact = typed_fact.with_opaque_fact(padded_bqv.fact.clone());
+            let padded_tensor = tensor0(Opaque(Arc::new(padded_bqv)))
+                .broadcast_into_rank(op.val().rank())?
+                .into_arc_tensor();
 
-            if has_prefix_matmul {
-                let tensor = cuda_const.into_tensor();
-                let bqv = as_q40_tensor(&tensor).unwrap();
-                let padded_bqv = pad_q40(bqv)?;
-                let padded_fact = typed_fact.with_opaque_fact(padded_bqv.fact.clone());
-                let padded_tensor = tensor0(Opaque(Arc::new(padded_bqv)))
-                    .broadcast_into_rank(op.val().rank())?
-                    .into_arc_tensor();
-                to_device_opaque(padded_fact, padded_tensor)?
-            } else {
-                to_device_opaque(typed_fact.with_opaque_fact(clone_box(of)), cuda_const)?
-            }
+            to_device_opaque(padded_fact, padded_tensor)?
         }
         None => to_device_opaque(typed_fact, cuda_const)?,
     };
@@ -474,7 +469,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 convert_matmul_to_metal(source, node, target, &mut device_inputs, op)?
             } else {
                 let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<Const>() {
-                    Box::new(convert_const(op, source, node)?)
+                    Box::new(convert_const(op)?)
                 } else if let Some(op) = node.op_as::<ElementWiseOp>() {
                     Box::new(map_element_wise_ops_to_cuda(op).unwrap())
                 } else if let Some(op) = node.op_as::<TypedBinOp>() {
