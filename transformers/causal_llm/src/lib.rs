@@ -38,18 +38,16 @@ fn plan_with_session_handler(model: TypedModel) -> TractResult<TypedSimplePlan<T
 }
 
 impl CausalLlmModel {
-    pub fn from_paths(
-        tokenizer: impl AsRef<Path>,
-        nn: impl AsRef<Path>,
+    fn from_tokenizer_and_typed_model(
+        tokenizer: tokenizers::Tokenizer,
+        nn: TypedModel,
     ) -> TractResult<Arc<CausalLlmModel>> {
-        let tokenizer = tokenizers::Tokenizer::from_file(tokenizer).map_err(|e| anyhow!(e))?;
-
         let nnef = tract_nnef::nnef().with_tract_transformers();
-        let mut nn = nnef.model_for_path(nn.as_ref())?.into_decluttered()?;
 
         let transform = nnef
             .get_transform("transformers-detect-all")?
             .context("transformers-detect-all not found")?;
+        let mut nn = nn.into_decluttered()?;
         nn.transform(&*transform)?;
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
@@ -60,6 +58,27 @@ impl CausalLlmModel {
         nn.optimize()?;
         let nn = plan_with_session_handler(nn)?;
         Ok(Arc::new(CausalLlmModel { tokenizer, nn: Arc::new(nn) }))
+    }
+
+    fn from_paths(
+        tokenizer: impl AsRef<Path>,
+        nn: impl AsRef<Path>,
+    ) -> TractResult<Arc<CausalLlmModel>> {
+        let nnef = tract_nnef::nnef().with_tract_transformers();
+        let tokenizer = tokenizers::Tokenizer::from_file(tokenizer).map_err(|e| anyhow!(e))?;
+        let nn = nnef.model_for_path(nn.as_ref())?;
+        CausalLlmModel::from_tokenizer_and_typed_model(tokenizer, nn)
+    }
+
+    pub fn from_bytes(
+        tokenizer_bytes: impl AsRef<[u8]>,
+        llm_model_bytes: impl AsRef<[u8]>,
+    ) -> TractResult<Arc<CausalLlmModel>> {
+        let nnef = tract_nnef::nnef().with_tract_transformers();
+        let tokenizer = Tokenizer::from_bytes(tokenizer_bytes).map_err(|e| anyhow!(e))?;
+        let mut llm_read = std::io::Cursor::new(llm_model_bytes);
+        let nn = nnef.model_for_read(&mut llm_read)?;
+        CausalLlmModel::from_tokenizer_and_typed_model(tokenizer, nn)
     }
 
     pub fn spawn(self: &Arc<Self>) -> TractResult<CausalLlmState> {
@@ -88,16 +107,22 @@ pub struct CausalLlmStateConfig {
     /// split long prompt into chunks of fixed number of tokens,
     /// reducing RAM usage
     prompt_chunk_size: Option<usize>,
+    repeat_penalty: f32,
+    repeat_last_n: usize,
 }
 impl Default for CausalLlmStateConfig {
     fn default() -> Self {
-        Self { prompt_chunk_size: Some(512) }
+        Self { prompt_chunk_size: Some(512), repeat_penalty: 1.0, repeat_last_n: 64 }
     }
 }
 
 impl CausalLlmStateConfig {
-    pub fn new(prompt_chunk_size: Option<usize>) -> TractResult<Self> {
-        let conf = Self { prompt_chunk_size };
+    pub fn new(
+        prompt_chunk_size: Option<usize>,
+        repeat_penalty: f32,
+        repeat_last_n: usize,
+    ) -> TractResult<Self> {
+        let conf = Self { prompt_chunk_size, repeat_penalty, repeat_last_n };
         conf.validate()?;
         Ok(conf)
     }
@@ -145,8 +170,18 @@ impl CausalLlmState {
         } else {
             self.nn_state.run(tvec![input.into_tvalue()])?
         };
-        let next_tok = output[0]
-            .as_slice::<f32>()?
+
+        let start_at = self.seq.len().saturating_sub(self.config.repeat_last_n);
+
+        let mut last_token_logits = output[0].as_slice::<f32>()?.iter().map(|t| *t).collect_vec();
+
+        apply_repeat_penalty(
+            last_token_logits.as_mut_slice(),
+            self.config.repeat_penalty,
+            &self.seq[start_at..],
+        );
+
+        let next_tok = last_token_logits
             .iter()
             .enumerate()
             .max_by_key(|(_ix, v)| FloatOrd(**v))
@@ -217,6 +252,19 @@ impl FrozenCausalLlmState {
             nn_state: self.nn_state.unfreeze(),
             seq: self.seq,
             config: self.config,
+        }
+    }
+}
+
+/// Cheap way to avoid repeating model (mostly usefull for tiny models)
+pub fn apply_repeat_penalty(logits: &mut [f32], penalty: f32, context: &[u32]) {
+    if penalty == 1.0 {
+        return;
+    }
+    let context: std::collections::HashSet<_> = context.iter().collect();
+    for (token_id, logit) in logits.iter_mut().enumerate() {
+        if context.contains(&(token_id as u32)) {
+            if *logit >= 0. { *logit /= penalty } else { *logit *= penalty }
         }
     }
 }
