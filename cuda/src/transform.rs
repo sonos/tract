@@ -282,7 +282,7 @@ fn convert_const(op: &Const) -> TractResult<Const> {
     let (cuda_fact, cuda_tensor) = match op.opaque_fact() {
         Some(_) => {
             ensure!(as_q40_fact(&typed_fact).is_some(), "Only support Q40 block quantization");
-         
+
             let tensor = cuda_const.into_tensor();
             let bqv = as_q40_tensor(&tensor).unwrap();
 

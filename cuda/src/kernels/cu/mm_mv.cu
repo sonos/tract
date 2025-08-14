@@ -1,25 +1,6 @@
 #include <cuda_fp16.h>
 #include <math.h>
-
-#define WARP_SIZE   32
-
-template<int width = WARP_SIZE>
-static __device__ __forceinline__ float warp_reduce_sum(float x) {
-#pragma unroll
-    for (int offset = width/2; offset > 0; offset >>= 1) {
-        x += __shfl_xor_sync(0xffffffff, x, offset, width);
-    }
-    return x;
-}
-
-template<int width = WARP_SIZE>
-static __device__ __forceinline__ __half warp_reduce_sum(__half x) {
-#pragma unroll
-    for (int offset = width/2; offset > 0; offset >>= 1) {
-        x += __shfl_xor_sync(0xffffffff, x, offset, width);
-    }
-    return x;
-}
+#include "utils.cuh"
 
 static __device__ __forceinline__ float mat_vec_acc(const float* x, const float* y, const int tid, const int64_t ncols2, const int block_size) {
     float sumf = 0.0f;

@@ -1,83 +1,11 @@
 #include <cuda_fp16.h>
 #include <math.h>
+#include "utils.cuh"
 
 #define GELU_COEF_A    0.044715f
 #define SQRT_2_OVER_PI 0.79788456080286535587989211986876f
 
 #define MAX_THREADS 1024
-#define WARP_SIZE   32
-
-template<int width = WARP_SIZE>
-static __device__ __forceinline__ float warp_reduce_sum(float x) {
-#pragma unroll
-    for (int offset = width/2; offset > 0; offset >>= 1) {
-        x += __shfl_xor_sync(0xffffffff, x, offset, width);
-    }
-    return x;
-}
-
-template<int width = WARP_SIZE>
-static __device__ __forceinline__ __half warp_reduce_sum(__half x) {
-#pragma unroll
-    for (int offset = width/2; offset > 0; offset >>= 1) {
-        x += __shfl_xor_sync(0xffffffff, x, offset, width);
-    }
-    return x;
-}
-
-template<int width = WARP_SIZE>
-static __device__ __forceinline__ float warp_reduce_max(float x) {
-#pragma unroll
-    for (int offset = width/2; offset > 0; offset >>= 1) {
-        x = fmaxf(x, __shfl_xor_sync(0xffffffff, x, offset, width));
-    }
-    return x;
-}
-
-template<int width = WARP_SIZE>
-static __device__ __forceinline__ __half warp_reduce_max(__half x) {
-#pragma unroll
-   for (int offset = width/2; offset > 0; offset >>= 1) {
-       x = __hmax(x, __shfl_xor_sync(0xffffffff, x, offset, width));
-   }
-   return x;
-}
-
-template<int width = WARP_SIZE>
-static __device__ __forceinline__ float warp_reduce_min(float x) {
-#pragma unroll
-    for (int offset = width/2; offset > 0; offset >>= 1) {
-        x = fminf(x, __shfl_xor_sync(0xffffffff, x, offset, width));
-    }
-    return x;
-}
-
-template<int width = WARP_SIZE>
-static __device__ __forceinline__ __half warp_reduce_min(__half x) {
-#pragma unroll
-   for (int offset = width/2; offset > 0; offset >>= 1) {
-       x = __hmin(x, __shfl_xor_sync(0xffffffff, x, offset, width));
-   }
-   return x;
-}
-
-template<int width = WARP_SIZE>
-static __device__ __forceinline__ float warp_reduce_prod(float x) {
-#pragma unroll
-    for (int offset = width/2; offset > 0; offset >>= 1) {
-        x *= __shfl_xor_sync(0xffffffff, x, offset, width);
-    }
-    return x;
-}
-
-template<int width = WARP_SIZE>
-static __device__ __forceinline__ __half warp_reduce_prod(__half x) {
-#pragma unroll
-   for (int offset = width/2; offset > 0; offset >>= 1) {
-       x = __hmul(x, __shfl_xor_sync(0xffffffff, x, offset, width));
-   }
-   return x;
-}
 
 #define INSTANTIATE_REDUCE(name, T, bname, block_size) \
 extern "C" __global__ void reduce_max_##bname##name( \
