@@ -23,7 +23,7 @@ impl Expansion for ScatterElements {
         check_output_arity(outputs, 1)?;
 
         s.given_2(&inputs[0].datum_type, &inputs[2].datum_type, move |s, input, updates| {
-            let super_type: DatumType = DatumType::super_type_for(&[input, updates])
+            let super_type: DatumType = DatumType::super_type_for([input, updates])
                 .with_context(|| format!("No supertype found for {input:?} and {updates:?}"))?;
             s.equals(&outputs[0].datum_type, super_type)
         })?;
@@ -41,7 +41,7 @@ impl Expansion for ScatterElements {
     ) -> TractResult<TVec<OutletId>> {
         let input_rank = model.outlet_fact(inputs[0])?.rank();
         let axis = if self.axis < 0 { self.axis + input_rank as i64 } else { self.axis } as usize;
-        let super_type = if let Some(super_type) = DatumType::super_type_for(&[
+        let super_type = if let Some(super_type) = DatumType::super_type_for([
             model.outlet_fact(inputs[0])?.datum_type,
             model.outlet_fact(inputs[2])?.datum_type,
         ]) {
