@@ -58,7 +58,7 @@ net_bench() {
     shift 2
 
     $TRACT "$@" --machine-friendly -O bench --allow-random-input $BENCH_OPTS > tract.out
-    v=`cat tract.out | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+    v=`cat tract.out | grep -a real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
     echo net.$net.evaltime.$pb $v >> metrics
 
     $TRACT "$@" --readings --readings-heartbeat 1000 --machine-friendly -O bench --allow-random-input $BENCH_OPTS > tract.out
@@ -66,12 +66,12 @@ net_bench() {
     for stage in model_ready before_optimize
     do
         pattern=$(echo $stage | sed 's/[_-]/./g')
-        v=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 1 -d ' ')
+        v=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 1 -d ' ')
         echo net.$net.time_to_$stage.$pb $v >> metrics
-        v=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 4 -d ' ')
+        v=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 4 -d ' ')
         echo net.$net.rsz_at_$stage.$pb $v >> metrics
-        f=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 11 -d ' ')
-        a=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 10 -d ' ')
+        f=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 11 -d ' ')
+        a=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 10 -d ' ')
         echo net.$net.active_at_$stage.$pb $(($a-$f)) >> metrics
     done
 }
@@ -83,20 +83,20 @@ llm_bench() {
 
     $TRACT "$@" --nnef-tract-core --nnef-tract-transformers -t transformers-detect-all --machine-friendly -O llm-bench $BENCH_OPTS > tract.out
     cat tract.out
-    echo llm.$net.pp512.$pb $(cat tract.out | grep PP512 | cut -f 2 -d ' ') >> metrics
-    echo llm.$net.tg128.$pb $(cat tract.out | grep TG128 | cut -f 2 -d ' ') >> metrics
+    echo llm.$net.pp512.$pb $(cat tract.out | grep -a PP512 | cut -f 2 -d ' ') >> metrics
+    echo llm.$net.tg128.$pb $(cat tract.out | grep -a TG128 | cut -f 2 -d ' ') >> metrics
 
     $TRACT "$@" --readings --readings-heartbeat 1000 --nnef-tract-core --nnef-tract-transformers -t transformers-detect-all --machine-friendly -O llm-bench $BENCH_OPTS > /dev/null
 
   for stage in model_ready before_optimize
   do
       pattern=$(echo $stage | sed 's/[_-]/./g')
-      v=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 1 -d ' ')
+      v=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 1 -d ' ')
       echo llm.$net.time_to_$stage.$pb $v >> metrics
-      v=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 4 -d ' ')
+      v=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 4 -d ' ')
       echo llm.$net.rsz_at_$stage.$pb $v >> metrics
-      f=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 11 -d ' ')
-      a=$(grep $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 10 -d ' ')
+      f=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 11 -d ' ')
+      a=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 10 -d ' ')
       echo llm.$net.active_at_$stage.$pb $(($a-$f)) >> metrics
   done
 }
