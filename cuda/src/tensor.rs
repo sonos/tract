@@ -39,20 +39,22 @@ pub struct CudaTensor {
 }
 
 impl CudaTensor {
-    pub fn from_tensor(tensor: &Tensor) -> Self {
+    pub fn from_tensor(tensor: &Tensor) -> TractResult<Self> {
         let (data, bqf) = as_q40_tensor(tensor)
             .map(|bqv| (bqv.value.as_bytes(), Some(bqv.fact.clone())))
             .unwrap_or((tensor.as_bytes(), None));
         CUDA_STREAM.with(|stream| {
-            let device_data = stream.memcpy_stod(data).unwrap();
+            let device_data = stream
+                .memcpy_stod(data)
+                .with_context(|| format!("Data address: {:?}", data.as_ptr()))?;
             let buffer = Arc::new(CudaBuffer { inner: device_data });
-            CudaTensor {
+            Ok(CudaTensor {
                 buffer,
                 datum_type: tensor.datum_type(),
                 shape: tensor.shape().into(),
                 strides: tensor.strides().into(),
                 block_quant_fact: bqf,
-            }
+            })
         })
     }
 

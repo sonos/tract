@@ -138,7 +138,7 @@ impl DeviceContext for TractCudaContext {
 
     fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {
         ensure!(DeviceTensor::is_supported_dt(tensor.datum_type()));
-        Ok(Box::new(CudaTensor::from_tensor(tensor.view().tensor)))
+        Ok(Box::new(CudaTensor::from_tensor(tensor.view().tensor)?))
     }
 
     fn uninitialized_device_tensor(
