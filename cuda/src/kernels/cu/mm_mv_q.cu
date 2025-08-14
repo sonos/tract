@@ -1,5 +1,6 @@
 #include <cuda_fp16.h>
 #include <cstdint>
+#include "utils.cuh"
 
 // Check CC Version
 #define CUDA_CC_TURING 750 
@@ -14,7 +15,6 @@
 #define QI4_0 (QK4_0 / (4 * QR4_0))
 #define QR4_0 2
 
-#define WARP_SIZE 32
 #define N_WARPS 8
 
 #define MMQ_Y 128
@@ -37,6 +37,12 @@ typedef struct {
     half d;           // delta
     uint8_t qs[QK4_0 / 2]; // nibbles / quants
 } block_q4_0;
+
+typedef struct {
+    half2 ds;
+    int8_t qs[QK8_1]; // quants
+} block_q8_1;
+static_assert(sizeof(block_q8_1) == 2*sizeof(half) + QK8_1, "wrong q8_1 block size/padding");
 
 struct block_q8_1_mmq {
     // The y float data is converted to a data layout that can simply be copied to shared memory as a contiguous block.
@@ -194,6 +200,10 @@ static __device__ __forceinline__ int get_int_b2(const void * x, const int & i32
     x32     |= x16[2*i32 + 1] << 16;
 
     return x32;
+}
+
+static __device__ __forceinline__ int get_int_b4(const void * x, const int & i32) {
+    return ((const int *) x)[i32]; // assume at least 4 byte alignment
 }
 
 using namespace cuda_mma;
@@ -753,3 +763,206 @@ extern "C" __global__ void quantize_mmq_q8_1(
     const float d = 1.0f / d_inv;
     y[ib].ds4[iqs/32] = make_half2(d, sum);
 }
+
+extern "C" __global__ void quantize_q8_1(
+        const float * __restrict__ x, void * __restrict__ vy,
+        const int64_t ne00, const int64_t s01, const int64_t s02, const int64_t s03,
+        const int64_t ne0, const int ne1, const int ne2) {
+    const int64_t i0 = (int64_t)blockDim.x*blockIdx.x + threadIdx.x;
+
+    if (i0 >= ne0) {
+        return;
+    }
+
+    const int64_t i1 = blockIdx.y;
+    const int64_t i2 = blockIdx.z % ne2;
+    const int64_t i3 = blockIdx.z / ne2;
+
+    const int64_t & i00 = i0;
+    const int64_t & i01 = i1;
+    const int64_t & i02 = i2;
+    const int64_t & i03 = i3;
+
+    const int64_t i_cont = ((i3*ne2 + i2) * ne1 + i1) * ne0 + i0;
+
+    block_q8_1 * y = (block_q8_1 *) vy;
+
+    const int64_t ib  = i_cont / QK8_1; // block index
+    const int64_t iqs = i_cont % QK8_1; // quant index
+
+    const float xi = i0 < ne00 ? x[i03*s03 + i02*s02 + i01*s01 + i00] : 0.0f;
+    float amax = fabsf(xi);
+    float sum = xi;
+
+    amax = warp_reduce_max(amax);
+    sum  = warp_reduce_sum(sum);
+
+    const float  d = amax / 127;
+    const int8_t q = amax == 0.0f ? 0 : roundf(xi / d);
+
+    y[ib].qs[iqs] = q;
+
+    if (iqs > 0) {
+        return;
+    }
+
+    reinterpret_cast<half&>(y[ib].ds.x) = d;
+    reinterpret_cast<half&>(y[ib].ds.y) = sum;
+}
+
+static constexpr __host__ __device__ int calc_nwarps(int ncols_dst) {
+    switch (ncols_dst) {
+        case 1:
+        case 2:
+        case 3:
+        case 4:
+            return 4;
+        case 5:
+        case 6:
+        case 7:
+        case 8:
+            return 2;
+        default:
+            return 1;
+    }
+}
+
+template <int vdr> static __device__ __forceinline__ float vec_dot_q4_0_q8_1_impl(
+    const int * v, const int * u, const float & d4, const half2 & ds8) {
+
+    int sumi = 0;
+
+#pragma unroll
+    for (int i = 0; i < vdr; ++i) {
+        const int vi0 = (v[i] >> 0) & 0x0F0F0F0F;
+        const int vi1 = (v[i] >> 4) & 0x0F0F0F0F;
+
+        // SIMD dot product of quantized values
+        sumi = __dp4a(vi0, u[2*i+0], sumi);
+        sumi = __dp4a(vi1, u[2*i+1], sumi);
+    }
+
+    const float2 ds8f = __half22float2(ds8);
+
+    // second part effectively subtracts 8 from each quant value
+    return d4 * (sumi * ds8f.x - (8*vdr/QI4_0) * ds8f.y);
+}
+
+static __device__ __forceinline__ float vec_dot_q4_0_q8_1(
+    const void * __restrict__ vbq, const block_q8_1 * __restrict__ bq8_1, const int & kbx, const int & iqs) {
+
+    const block_q4_0 * bq4_0 = (const block_q4_0 *) vbq + kbx;
+
+    int v[VDR_Q4_0_Q8_1_MMVQ];
+    int u[2*VDR_Q4_0_Q8_1_MMVQ];
+
+#pragma unroll
+    for (int i = 0; i < VDR_Q4_0_Q8_1_MMVQ; ++i) {
+        v[i]     = get_int_b2(bq4_0->qs, iqs + i);
+        u[2*i+0] = get_int_b4(bq8_1->qs, iqs + i);
+        u[2*i+1] = get_int_b4(bq8_1->qs, iqs + i + QI4_0);
+    }
+
+    return vec_dot_q4_0_q8_1_impl<VDR_Q4_0_Q8_1_MMVQ>(v, u, bq4_0->d, bq8_1->ds);
+}
+
+template <int ncols_dst>
+static __device__ void mul_mat_vec_q(
+        const void * __restrict__ vx, const void * __restrict__ vy, float * __restrict__ dst,
+        const int ncols_x, const int nchannels_y, const int stride_row_x, const int stride_col_y, const int stride_col_dst,
+        const int channel_ratio, const int stride_channel_x, const int stride_channel_y, const int stride_channel_dst) {
+
+    constexpr int qk  = QK4_0;
+    constexpr int qi  = QI4_0;
+    constexpr int vdr = VDR_Q4_0_Q8_1_MMVQ;
+    constexpr int nwarps = calc_nwarps(ncols_dst);
+    constexpr int rows_per_cuda_block = ncols_dst == 1 ? 1 : 2;
+
+    const     int tid = WARP_SIZE*threadIdx.y + threadIdx.x;
+    const     int row0 = rows_per_cuda_block*blockIdx.x;
+    const     int blocks_per_row_x = ncols_x / qk;
+    constexpr int blocks_per_iter = vdr * nwarps*WARP_SIZE / qi;
+
+    // The MUL_MAT_ID code path with ids != nullptr is only implemented for ncols_dst == 1.
+    const int channel_dst = blockIdx.y;
+    const int channel_x   = channel_dst / channel_ratio;
+    const int channel_y   = channel_dst;
+
+    // partial sum for each thread
+    float tmp[ncols_dst][rows_per_cuda_block] = {{0.0f}};
+
+    const block_q8_1 * y = ((const block_q8_1 *) vy) + channel_y*stride_channel_y;
+    const int kbx_offset = channel_x*stride_channel_x + row0*stride_row_x;
+
+    for (int kbx = tid / (qi/vdr); kbx < blocks_per_row_x; kbx += blocks_per_iter) {
+        const int kby = kbx * (qk/QK8_1); // y block index that aligns with kbx
+
+        // x block quant index when casting the quants to int
+        const int kqs = vdr * (tid % (qi/vdr));
+
+#pragma unroll
+        for (int j = 0; j < ncols_dst; ++j) {
+#pragma unroll
+            for (int i = 0; i < rows_per_cuda_block; ++i) {
+                tmp[j][i] += vec_dot_q4_0_q8_1(
+                    vx, &y[j*stride_col_y + kby], kbx_offset + i*stride_row_x + kbx, kqs);
+            }
+        }
+    }
+
+    __shared__ float tmp_shared[nwarps-1 > 0 ? nwarps-1 : 1][ncols_dst][rows_per_cuda_block][WARP_SIZE];
+    if (threadIdx.y > 0) {
+#pragma unroll
+        for (int j = 0; j < ncols_dst; ++j) {
+#pragma unroll
+            for (int i = 0; i < rows_per_cuda_block; ++i) {
+                tmp_shared[threadIdx.y-1][j][i][threadIdx.x] = tmp[j][i];
+            }
+        }
+    }
+    __syncthreads();
+    if (threadIdx.y > 0) {
+        return;
+    }
+
+    dst += channel_dst*stride_channel_dst + row0;
+
+    // sum up partial sums and write back result
+#pragma unroll
+    for (int j = 0; j < ncols_dst; ++j) {
+#pragma unroll
+        for (int i = 0; i < rows_per_cuda_block; ++i) {
+#pragma unroll
+            for (int l = 0; l < nwarps-1; ++l) {
+                tmp[j][i] += tmp_shared[l][j][i][threadIdx.x];
+            }
+            tmp[j][i] = warp_reduce_sum<WARP_SIZE>(tmp[j][i]);
+        }
+
+        if (threadIdx.x < rows_per_cuda_block && (rows_per_cuda_block == 1 || row0 + int(threadIdx.x) < stride_col_dst)) {
+            dst[j*stride_col_dst + threadIdx.x] = tmp[j][threadIdx.x];
+        }
+    }
+}
+
+#define INSTANTIATE_MMQV_KERNEL(ncols_dst) \
+extern "C" { \
+    __launch_bounds__(calc_nwarps(ncols_dst)*WARP_SIZE, 1) \
+    __global__ void mul_vec_q40_m_##ncols_dst( \
+    const void * __restrict__ vx, const void * __restrict__ vy, float * __restrict__ dst, \
+    const int ncols_x, const int nchannels_y, const int stride_row_x, const int stride_col_y, const int stride_col_dst, \
+    const int channel_ratio, const int stride_channel_x, const int stride_channel_y, const int stride_channel_dst) {  \
+        mul_mat_vec_q<ncols_dst> \
+            (vx, vy, dst, ncols_x, nchannels_y, stride_row_x, stride_col_y, stride_col_dst, \
+            channel_ratio, stride_channel_x, stride_channel_y, stride_channel_dst); \
+    } \
+}
+
+INSTANTIATE_MMQV_KERNEL(1)
+INSTANTIATE_MMQV_KERNEL(2)
+INSTANTIATE_MMQV_KERNEL(3)
+INSTANTIATE_MMQV_KERNEL(4)
+INSTANTIATE_MMQV_KERNEL(5)
+INSTANTIATE_MMQV_KERNEL(6)
+INSTANTIATE_MMQV_KERNEL(7)
+INSTANTIATE_MMQV_KERNEL(8)
