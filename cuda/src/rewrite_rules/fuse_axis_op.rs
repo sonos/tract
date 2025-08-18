@@ -1,3 +1,4 @@
+use crate::kernels::matmul::GgmlGemm;
 use crate::ops::{CudaAxisOp, CudaFusedAxisOp};
 use tract_core::internal::*;
 use tract_core::tract_data::itertools::Itertools;
@@ -113,7 +114,7 @@ pub fn fuse_axis_op(
         crate::ops::CudaConcat,
         crate::ops::CudaCast,
         crate::ops::CudaScaledMaskedSoftmax,
-        crate::ops::CudaGemm,
+        crate::ops::CudaGemm<GgmlGemm>,
     );
 
     // Handle AxisOp::Move operator.

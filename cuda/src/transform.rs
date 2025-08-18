@@ -25,7 +25,7 @@ use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
 use tract_transformers::ops::silu::Silu;
 
 use crate::context::cuda_context;
-use crate::kernels::Matmul;
+use crate::kernels::matmul::{GemmKernel, GgmlGemm};
 use crate::{Q40_ROW_PADDING, kernels, ops, rewrite_rules};
 
 #[derive(Debug, Default)]
@@ -226,8 +226,8 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
         || node.op_as::<PrefixMatMul>().is_some_and(|op| {
             !op.transpose_c
                 && op.quantize_output.is_none()
-                && (Matmul::is_supported_dts(&input_facts)
-                    || Matmul::is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()]))
+                && (GgmlGemm.is_supported_dts(&input_facts)
+                    || GgmlGemm.is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()]))
         }))
 }
 
@@ -377,7 +377,7 @@ fn convert_logic_op_to_cuda(op: &Comp) -> ops::CudaBinOp {
     }
 }
 
-fn convert_matmul_to_metal(
+fn convert_matmul_to_cuda(
     model: &TypedModel,
     node: &TypedNode,
     target: &mut TypedModel,
@@ -387,8 +387,8 @@ fn convert_matmul_to_metal(
     let mut input_facts = model.node_input_facts(node.id)?;
 
     let mut swap_inputs = false;
-    if !Matmul::is_supported_dts(&[input_facts[0].clone(), input_facts[1].clone()])
-        && Matmul::is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()])
+    if !GgmlGemm.is_supported_dts(&[input_facts[0].clone(), input_facts[1].clone()])
+        && GgmlGemm.is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()])
     {
         input_facts.swap(0, 1);
         inputs.swap(0, 1);
@@ -419,7 +419,9 @@ fn convert_matmul_to_metal(
         let perm_b_name = node.name.clone() + ".perm_b";
         inputs[b_pos] = target.wire_node(perm_b_name, perm_b_op, &[inputs[b_pos]])?[0];
     }
-    let mut matmul_output = target.wire_node(node.name.clone(), ops::CudaGemm, inputs)?;
+
+    let op = ops::CudaGemm::<GgmlGemm>::new(false, true);
+    let mut matmul_output = target.wire_node(node.name.clone(), op, inputs)?;
 
     if swap_inputs {
         let out_fact = target.outlet_fact(matmul_output[0])?;
@@ -466,7 +468,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 self.sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
 
             let outlet_ids: TVec<OutletId> = if let Some(op) = node.op_as::<PrefixMatMul>() {
-                convert_matmul_to_metal(source, node, target, &mut device_inputs, op)?
+                convert_matmul_to_cuda(source, node, target, &mut device_inputs, op)?
             } else {
                 let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<Const>() {
                     Box::new(convert_const(op)?)
