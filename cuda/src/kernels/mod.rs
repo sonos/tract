@@ -3,7 +3,7 @@
 pub mod array;
 mod binary;
 mod launch_args;
-mod mm_mv;
+pub mod matmul;
 pub mod nn;
 mod unary;
 mod utils;
@@ -12,7 +12,6 @@ use crate::tensor::{CudaBuffer, CudaTensor};
 use anyhow::{bail, ensure};
 pub use binary::BinOps;
 use cudarc::driver::{CudaView, CudaViewMut};
-pub use mm_mv::Matmul;
 use tract_core::prelude::TractResult;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
