@@ -231,7 +231,7 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
         }))
 }
 
-fn pad_q40(q40_bqv: &BlockQuantValue) -> TractResult<BlockQuantValue> {
+pub fn pad_q40(q40_bqv: &BlockQuantValue) -> TractResult<BlockQuantValue> {
     let shape = q40_bqv.fact.shape();
     ensure!(shape.len() >= 2);
 
@@ -239,7 +239,6 @@ fn pad_q40(q40_bqv: &BlockQuantValue) -> TractResult<BlockQuantValue> {
     ensure!(k % 32 == 0);
 
     let to_pad = k.next_multiple_of(Q40_ROW_PADDING) - k;
-    dbg!(to_pad);
     if to_pad == 0 {
         return Ok(q40_bqv.clone()); // No padding needed
     }
