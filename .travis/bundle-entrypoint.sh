@@ -81,24 +81,30 @@ llm_bench() {
     pb=$2
     shift 2
 
-    $TRACT "$@" --nnef-tract-core --nnef-tract-transformers -t transformers-detect-all --machine-friendly -O llm-bench $BENCH_OPTS > tract.out
-    cat tract.out
-    echo llm.$net.pp512.$pb $(cat tract.out | grep -a PP512 | cut -f 2 -d ' ') >> metrics
-    echo llm.$net.tg128.$pb $(cat tract.out | grep -a TG128 | cut -f 2 -d ' ') >> metrics
+    if  $TRACT "$@" --nnef-tract-core --nnef-tract-transformers -t transformers-detect-all --machine-friendly -O llm-bench $BENCH_OPTS > tract.out
+    then
+        cat tract.out
+        echo llm.$net.pp512.$pb $(cat tract.out | grep -a PP512 | cut -f 2 -d ' ') >> metrics
+        echo llm.$net.tg128.$pb $(cat tract.out | grep -a TG128 | cut -f 2 -d ' ') >> metrics
+    fi 
 
-    $TRACT "$@" --readings --readings-heartbeat 1000 --nnef-tract-core --nnef-tract-transformers -t transformers-detect-all --machine-friendly -O llm-bench $BENCH_OPTS > /dev/null
-
-  for stage in model_ready before_optimize
-  do
-      pattern=$(echo $stage | sed 's/[_-]/./g')
-      v=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 1 -d ' ')
-      echo llm.$net.time_to_$stage.$pb $v >> metrics
-      v=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 4 -d ' ')
-      echo llm.$net.rsz_at_$stage.$pb $v >> metrics
-      f=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 11 -d ' ')
-      a=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 10 -d ' ')
-      echo llm.$net.active_at_$stage.$pb $(($a-$f)) >> metrics
-  done
+    if $TRACT "$@" --readings --readings-heartbeat 1000 --nnef-tract-core --nnef-tract-transformers -t transformers-detect-all --machine-friendly -O llm-bench $BENCH_OPTS > /dev/null
+    then
+        for stage in model_ready before_optimize
+        do
+            pattern=$(echo $stage | sed 's/[_-]/./g')
+            v=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 1 -d ' ')
+            echo llm.$net.time_to_$stage.$pb $v >> metrics
+            v=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 4 -d ' ')
+            echo llm.$net.rsz_at_$stage.$pb $v >> metrics
+            f=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 11 -d ' ')
+            a=$(grep -a $pattern readings.out | sed 's/  */ /g;s/^  *//' | cut -f 10 -d ' ')
+            if [ -n "$a" -a -n "$f" ]
+            then
+                 echo llm.$net.active_at_$stage.$pb $(($a-$f)) >> metrics
+            fi
+        done
+    fi
 }
 
 net_bench arm_ml_kws_cnn_m pass $CACHEDIR/ARM-ML-KWS-CNN-M.pb -i 49,10,f32 --partial --input-node Mfcc
