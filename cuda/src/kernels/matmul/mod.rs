@@ -157,7 +157,7 @@ impl GemmDispatchParams {
                 })
                 .collect()),
             (a_batch, b_batch) => {
-                if M::supports_broadcast(a_batch, b_batch, m, k, n, q40_b) {
+                if M::supports_broadcast(a_batch, b_batch, m, k, n, q40_b) || (a_batch == b_batch) {
                     Ok(vec![GemmDispatchParams {
                         dts,
                         a_batch,
@@ -176,28 +176,7 @@ impl GemmDispatchParams {
                         c_strides
                     }])
                 } else {
-                    ensure!(a_batch == b_batch);
-                    // bmk, bkn -> bmn
-                    // bkm, bkn -> bmn
-                    // bmk, bnk -> bmn
-                    // bkm, bnk -> bmn
-                    Ok(vec![GemmDispatchParams {
-                        dts,
-                        a_batch,
-                        b_batch,
-                        m,
-                        n,
-                        k,
-                        transpose_a,
-                        a_offset: 0,
-                        transpose_b,
-                        b_offset: 0,
-                        q40_b,
-                        c_offset: 0,
-                        a_strides,
-                        b_strides,
-                        c_strides
-                    }])
+                    bail!("a_batch != b_batch and backend does not support broadcast");
                 }
             }
         }
