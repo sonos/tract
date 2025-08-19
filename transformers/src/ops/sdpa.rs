@@ -55,21 +55,21 @@ impl EvalOp for Sdpa {
         let v = inputs.remove(0);
         let mask = inputs.remove(0);
 
-        ensure!(q.rank() == 3, "Query tensor must be 3D");
-        ensure!(k.rank() == 3, "Key tensor must be 3D");
-        ensure!(v.rank() == 3, "Value tensor must be 3D");
-
-        let d_k = k.shape()[2] as f32;
+        let rank = q.rank();
+        let d_k = k.shape()[rank - 1] as f32;
 
         let scale = if let Some(scale) = self.scale.as_ref() {
-            let mut scale = scale.cast_to_dt(DatumType::F32)?.into_owned();
-            scale.as_slice_mut::<f32>()?.iter_mut().for_each(|it| *it /= d_k.sqrt());
-            scale
+            scale.cast_to_dt(DatumType::F32)?.into_owned()
         } else {
             tensor0(1.0 / d_k.sqrt())
         };
 
-        let axes = "amk,ank->amn".parse().unwrap();
+        let axes = match rank {
+            3 => "amk,ank->amn".parse().unwrap(),
+            4 => "bhmk,bhnk->bhmn".parse().unwrap(),
+            _ => unreachable!(),
+        };
+
         let q_dot_kt = EinSum { axes, operating_dt: DatumType::F32, q_params: None }
             .eval(tvec![q, k])?
             .remove(0);
@@ -81,7 +81,11 @@ impl EvalOp for Sdpa {
                 .eval(tvec![scaled_masked_input.into()])?[0]
                 .clone();
 
-        let axes = "amk,akn->amn".parse().unwrap();
+        let axes = match rank {
+            3 => "amk,akn->amn".parse().unwrap(),
+            4 => "bhmn,bhnv->bhmv".parse().unwrap(),
+            _ => unreachable!(),
+        };
         let output = EinSum { axes, operating_dt: DatumType::F32, q_params: None }
             .eval(tvec![attention_weights, v])?;
         Ok(output)
@@ -90,10 +94,34 @@ impl EvalOp for Sdpa {
 
 impl TypedOp for Sdpa {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        let q_shape = &inputs[0].shape;
-        let v_shape = &inputs[2].shape;
+        let rank = inputs[0].rank();
+        ensure!(rank == 3 || rank == 4, "Input tensors must be 3D or 4D");
+        ensure!(
+            inputs.iter().map(|it| it.rank()).all(|r| r == rank),
+            "All inputs should have the same rank {}",
+            rank
+        );
 
-        let output_shape = tvec!(q_shape[0].clone(), q_shape[1].clone(), v_shape[2].clone());
+        let q_shape = &inputs[0].shape.dims();
+        let v_shape = &inputs[2].shape.dims();
+        let output_shape = match rank {
+            3 => {
+                if let (&[b, seq_len, _], &[_, _, out_dim]) = (q_shape, v_shape) {
+                    tvec!(b.clone(), seq_len.clone(), out_dim.clone())
+                } else {
+                    unreachable!()
+                }
+            }
+            4 => {
+                if let (&[b, n_heads, seq_len, _], &[_, _, _, out_dim]) = (q_shape, v_shape) {
+                    tvec!(b.clone(), n_heads.clone(), seq_len.clone(), out_dim.clone())
+                } else {
+                    unreachable!()
+                }
+            }
+            _ => unreachable!(),
+        };
+
         let out_fact = inputs[0].datum_type().unwrap().fact(output_shape);
         Ok(tvec!(out_fact))
     }
