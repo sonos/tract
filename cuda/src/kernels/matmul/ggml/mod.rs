@@ -6,11 +6,11 @@ use cudarc::runtime::result::device::get_device_prop;
 use cudarc::runtime::sys::cudaGetLastError;
 use derive_new::new;
 use num_traits::{Float, One};
-use tract_gpu::tensor::DeviceTensor;
 use std::{default, fmt};
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 use tract_gpu::device::get_context;
+use tract_gpu::tensor::DeviceTensor;
 use tract_gpu::utils::{as_q40_fact, as_q40_tensor};
 
 use crate::context::{TractCudaStream, cuda_context};
@@ -40,7 +40,6 @@ static QR8_0: usize = 1;
 static QK8_1: usize = 32;
 
 static MMQ_MMA_TILE_X_K_Q8_0: usize = (2 * WARP_SIZE + 2 * WARP_SIZE / QI8_0 + 4);
-
 
 // Squeeze batch axes and return a shape with a rank of 3.
 fn squeeze_batch_axes(s: &[usize]) -> TractResult<TVec<usize>> {
@@ -77,7 +76,14 @@ impl GemmKernel for GgmlGemm {
         "ggml"
     }
 
-    fn supports_broadcast(a_batch: usize, b_batch: usize, m: usize, k: usize, _n: usize, is_q40: bool) -> bool {
+    fn supports_broadcast(
+        a_batch: usize,
+        b_batch: usize,
+        m: usize,
+        k: usize,
+        _n: usize,
+        is_q40: bool,
+    ) -> bool {
         (a_batch % b_batch == 0) && (is_q40 || ((k % 2 == 0) && m <= 8))
     }
 
@@ -140,331 +146,330 @@ impl GemmKernel for GgmlGemm {
     }
 }
 
-    fn find_block_size(k: usize) -> usize {
-        let mut block_size_best = WARP_SIZE;
-        let mut best_niter = k.div_ceil(2 * WARP_SIZE);
+fn find_block_size(k: usize) -> usize {
+    let mut block_size_best = WARP_SIZE;
+    let mut best_niter = k.div_ceil(2 * WARP_SIZE);
 
-        for block_size in (2 * WARP_SIZE..=256).step_by(WARP_SIZE) {
-            let niter = k.div_ceil(2 * block_size);
-            if niter < best_niter {
-                best_niter = niter;
-                block_size_best = block_size;
-            }
+    for block_size in (2 * WARP_SIZE..=256).step_by(WARP_SIZE) {
+        let niter = k.div_ceil(2 * block_size);
+        if niter < best_niter {
+            best_niter = niter;
+            block_size_best = block_size;
         }
-
-        block_size_best
     }
 
-    fn dispatch_ggml_matvec(
-        stream: &TractCudaStream,
-        a: &CudaView<'_, u8>,
-        b: &CudaView<'_, u8>,
-        output: &CudaView<'_, u8>,
-        params: GemmDispatchParams,
-    ) -> TractResult<()> {
-        let k_div_2 = params.k / 2;
-        let ncols_y_div_2 = params.a_strides[1] / 2;
-        let block_size = find_block_size(params.k);
+    block_size_best
+}
 
-        let batch_ratio = params.a_batch / params.b_batch;
+fn dispatch_ggml_matvec(
+    stream: &TractCudaStream,
+    a: &CudaView<'_, u8>,
+    b: &CudaView<'_, u8>,
+    output: &CudaView<'_, u8>,
+    params: GemmDispatchParams,
+) -> TractResult<()> {
+    let k_div_2 = params.k / 2;
+    let ncols_y_div_2 = params.a_strides[1] / 2;
+    let block_size = find_block_size(params.k);
 
-        let kernel_name =
-            format!("ggml_matvec_{}_ncols_{}_bs_{block_size}", DeviceTensor::tname(params.dts[0])?, params.m);
-        let mut func = cuda_context().load_pipeline(LibraryName::Ggml, kernel_name)?;
-        let mut launch_args = stream.launch_builder(&func);
-        launch_args.arg(b);
-        launch_args.arg(a);
-        launch_args.arg(output);
-        launch_args.arg(&k_div_2);
-        launch_args.arg(&params.a_batch);
-        launch_args.arg(&params.b_strides[1]);
-        launch_args.arg(&ncols_y_div_2);
-        launch_args.arg(&params.c_strides[1]);
-        launch_args.arg(&batch_ratio);
-        launch_args.arg(&params.b_strides[0]);
-        launch_args.arg(&params.a_strides[0]);
-        launch_args.arg(&params.c_strides[0]);
+    let batch_ratio = params.a_batch / params.b_batch;
 
-        let cfg = LaunchConfig {
-            grid_dim: (params.n as _, params.a_batch as _, 1),
-            block_dim: (block_size as _, 1, 1),
-            shared_mem_bytes: (WARP_SIZE * size_of::<f32>()) as u32,
-        };
+    let kernel_name = format!(
+        "ggml_matvec_{}_ncols_{}_bs_{block_size}",
+        DeviceTensor::tname(params.dts[0])?,
+        params.m
+    );
+    let mut func = cuda_context().load_pipeline(LibraryName::Ggml, kernel_name)?;
+    let mut launch_args = stream.launch_builder(&func);
+    launch_args.arg(b);
+    launch_args.arg(a);
+    launch_args.arg(output);
+    launch_args.arg(&k_div_2);
+    launch_args.arg(&params.a_batch);
+    launch_args.arg(&params.b_strides[1]);
+    launch_args.arg(&ncols_y_div_2);
+    launch_args.arg(&params.c_strides[1]);
+    launch_args.arg(&batch_ratio);
+    launch_args.arg(&params.b_strides[0]);
+    launch_args.arg(&params.a_strides[0]);
+    launch_args.arg(&params.c_strides[0]);
 
-        unsafe { launch_args.launch(cfg) };
-        Ok(())
-    }
+    let cfg = LaunchConfig {
+        grid_dim: (params.n as _, params.a_batch as _, 1),
+        block_dim: (block_size as _, 1, 1),
+        shared_mem_bytes: (WARP_SIZE * size_of::<f32>()) as u32,
+    };
 
-    fn dispatch_cublas_gemm<F: Datum + Float>(
-        stream: &TractCudaStream,
-        a: &CudaView<'_, u8>,
-        b: &CudaView<'_, u8>,
-        output: &mut CudaViewMut<'_, u8>,
-        params: GemmDispatchParams,
-    ) -> TractResult<()>
-    where
-        CudaBlas: Gemm<F>,
-    {
-        let cublas_gemm_cfg = cublas::GemmConfig {
-            transa: cublas::sys::cublasOperation_t::CUBLAS_OP_T,
-            transb: cublas::sys::cublasOperation_t::CUBLAS_OP_N,
-            m: params.n as i32,
-            n: params.m as i32,
-            k: params.k as i32,
-            alpha: F::from(1.0f32).unwrap(),
-            lda: params.k as i32,
-            ldb: params.k as i32,
-            beta: F::from(0.0f32).unwrap(),
-            ldc: params.n as i32,
-        };
+    unsafe { launch_args.launch(cfg) };
+    Ok(())
+}
 
-        let a_batch_stride = params.a_strides[0] as usize;
-        let b_batch_stride = params.b_strides[0] as usize;
-        let c_batch_stride = params.c_strides[0] as usize;
+fn dispatch_cublas_gemm<F: Datum + Float>(
+    stream: &TractCudaStream,
+    a: &CudaView<'_, u8>,
+    b: &CudaView<'_, u8>,
+    output: &mut CudaViewMut<'_, u8>,
+    params: GemmDispatchParams,
+) -> TractResult<()>
+where
+    CudaBlas: Gemm<F>,
+{
+    let cublas_gemm_cfg = cublas::GemmConfig {
+        transa: cublas::sys::cublasOperation_t::CUBLAS_OP_T,
+        transb: cublas::sys::cublasOperation_t::CUBLAS_OP_N,
+        m: params.n as i32,
+        n: params.m as i32,
+        k: params.k as i32,
+        alpha: F::from(1.0f32).unwrap(),
+        lda: params.k as i32,
+        ldb: params.k as i32,
+        beta: F::from(0.0f32).unwrap(),
+        ldc: params.n as i32,
+    };
 
-        let gemm_batched_strided_cfg = cublas::StridedBatchedConfig {
-            gemm: cublas_gemm_cfg,
-            batch_size: params.a_batch as i32,
-            stride_a: b_batch_stride as _,
-            stride_b: a_batch_stride as _,
-            stride_c: c_batch_stride as _,
-        };
+    let a_batch_stride = params.a_strides[0] as usize;
+    let b_batch_stride = params.b_strides[0] as usize;
+    let c_batch_stride = params.c_strides[0] as usize;
 
-        ensure!((a.len() % size_of::<F>() == 0) && (b.len() % size_of::<F>() == 0));
-        unsafe {
-            stream.cublas().gemm_strided_batched(
-                gemm_batched_strided_cfg,
-                &b.transmute::<F>(b.len() / size_of::<F>()).unwrap(),
-                &a.transmute::<F>(a.len() / size_of::<F>()).unwrap(),
-                &mut output.transmute_mut::<F>(output.len() / size_of::<F>()).unwrap(),
-            )
-        };
-        Ok(())
-    }
+    let gemm_batched_strided_cfg = cublas::StridedBatchedConfig {
+        gemm: cublas_gemm_cfg,
+        batch_size: params.a_batch as i32,
+        stride_a: b_batch_stride as _,
+        stride_b: a_batch_stride as _,
+        stride_c: c_batch_stride as _,
+    };
 
-    fn kernel_name_q40(
-        params: &GemmDispatchParams,
-        mmq_x: usize,
-        mmq_y: usize,
-        fixup: bool,
-    ) -> TractResult<String> {
-        let need_check = params.n % mmq_y != 0;
-        let fixup_str = if fixup { "stream_k_fixup_" } else { "" };
-        Ok(format!("mul_mat_q40_{fixup_str}{mmq_x}_8_{need_check}"))
-    }
+    ensure!((a.len() % size_of::<F>() == 0) && (b.len() % size_of::<F>() == 0));
+    unsafe {
+        stream.cublas().gemm_strided_batched(
+            gemm_batched_strided_cfg,
+            &b.transmute::<F>(b.len() / size_of::<F>()).unwrap(),
+            &a.transmute::<F>(a.len() / size_of::<F>()).unwrap(),
+            &mut output.transmute_mut::<F>(output.len() / size_of::<F>()).unwrap(),
+        )
+    };
+    Ok(())
+}
 
-    fn find_best_mmq_x(smbpo: usize, m: usize) -> usize {
-        let mut mmq_x_best = 0;
-        let mut ntiles_x_best = usize::MAX;
+fn kernel_name_q40(
+    params: &GemmDispatchParams,
+    mmq_x: usize,
+    mmq_y: usize,
+    fixup: bool,
+) -> TractResult<String> {
+    let need_check = params.n % mmq_y != 0;
+    let fixup_str = if fixup { "stream_k_fixup_" } else { "" };
+    Ok(format!("mul_mat_q40_{fixup_str}{mmq_x}_8_{need_check}"))
+}
 
-        let mut mmq_x = 0;
-        while mmq_x <= MMQ_X_MAX && ntiles_x_best > 1 {
-            mmq_x += 8;
-            let granularity = if mmq_x >= 48 { 16 } else { 8 };
-            if (mmq_x % granularity != 0 || mmq_get_nbytes_shared_q40(mmq_x, MMQ_X_MAX) > smbpo) {
-                continue;
-            }
-            let ntiles_x = m.div_ceil(mmq_x);
-            if (ntiles_x < ntiles_x_best) {
-                mmq_x_best = mmq_x;
-                ntiles_x_best = ntiles_x;
-            }
+fn find_best_mmq_x(smbpo: usize, m: usize) -> usize {
+    let mut mmq_x_best = 0;
+    let mut ntiles_x_best = usize::MAX;
+
+    let mut mmq_x = 0;
+    while mmq_x <= MMQ_X_MAX && ntiles_x_best > 1 {
+        mmq_x += 8;
+        let granularity = if mmq_x >= 48 { 16 } else { 8 };
+        if (mmq_x % granularity != 0 || mmq_get_nbytes_shared_q40(mmq_x, MMQ_X_MAX) > smbpo) {
+            continue;
         }
-        mmq_x_best
-    }
-
-    fn launch_quantize_q8_1(
-        stream: &TractCudaStream,
-        a_view: &CudaView<'_, u8>,
-        quant_a_view: &CudaView<'_, u8>,
-        params: &GemmDispatchParams,
-        sample_stride_a: isize,
-        padded_k: usize,
-    ) -> TractResult<()> {
-        let func =
-            cuda_context().load_pipeline(LibraryName::GgmlQ, "quantize_mmq_q8_1".to_string())?;
-        let mut launch_args = stream.launch_builder(&func);
-        launch_args.arg(a_view);
-        launch_args.arg(quant_a_view);
-        launch_args.arg(&params.k);
-        launch_args.arg(&params.a_strides[1]);
-        launch_args.arg(&params.a_strides[0]);
-        launch_args.arg(&sample_stride_a);
-        launch_args.arg(&padded_k);
-        launch_args.arg(&params.m);
-        launch_args.arg(&params.a_batch);
-
-        let cfg = LaunchConfig {
-            grid_dim: (params.m as _, padded_k.div_ceil(4 * QUANTIZE_BLOCK_SIZE_MMQ) as _, params.a_batch as _),
-            block_dim: (128, 1, 1),
-            shared_mem_bytes: 0,
-        };
-        unsafe { launch_args.launch(cfg) };
-        Ok(())
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn launch_matmul_q40(
-        stream: &TractCudaStream,
-        weights: &CudaView<'_, u8>,
-        quant_activ: &CudaView<'_, u8>,
-        output: &CudaView<'_, u8>,
-        fixup_tens: &CudaView<'_, u8>,
-        params: &GemmDispatchParams,
-        a_stride_0: usize,
-        b_stride_0: usize,
-        batch_ratio: usize,
-        mmq_x_best: usize,
-        nbytes_shared: usize,
-    ) -> TractResult<()> {
-        let n_blocks = b_stride_0 / params.n;
-        let kernel_name = kernel_name_q40(params, mmq_x_best, MMQ_X_MAX, false)?;
-
-        let context = cuda_context();
-        let props = context.properties();
-        let func = context.load_pipeline(LibraryName::GgmlQ, kernel_name)?;
-        func.set_attribute(
-            CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-            nbytes_shared as i32,
-        )?;
-        let mut launch_args = stream.launch_builder(&func);
-        launch_args.arg(weights);
-        launch_args.arg(quant_activ);
-        launch_args.arg(output);
-        launch_args.arg(fixup_tens);
-        launch_args.arg(&params.k);
-        launch_args.arg(&params.n);
-        launch_args.arg(&params.m);
-        launch_args.arg(&n_blocks);
-        launch_args.arg(&params.m);
-        launch_args.arg(&params.n);
-        launch_args.arg(&batch_ratio);
-        launch_args.arg(&params.a_batch);
-        launch_args.arg(&b_stride_0);
-        launch_args.arg(&a_stride_0);
-        launch_args.arg(&params.c_strides[0]);
-
-        let cfg = LaunchConfig {
-            grid_dim: (props.multiProcessorCount as usize as _, 1, 1),
-            block_dim: (WARP_SIZE as _, N_WARPS as _, 1),
-            shared_mem_bytes: nbytes_shared as _,
-        };
-
-        unsafe {
-            launch_args.launch(cfg);
+        let ntiles_x = m.div_ceil(mmq_x);
+        if (ntiles_x < ntiles_x_best) {
+            mmq_x_best = mmq_x;
+            ntiles_x_best = ntiles_x;
         }
-        Ok(())
+    }
+    mmq_x_best
+}
+
+fn launch_quantize_q8_1(
+    stream: &TractCudaStream,
+    a_view: &CudaView<'_, u8>,
+    quant_a_view: &CudaView<'_, u8>,
+    params: &GemmDispatchParams,
+    sample_stride_a: isize,
+    padded_k: usize,
+) -> TractResult<()> {
+    let func = cuda_context().load_pipeline(LibraryName::GgmlQ, "quantize_mmq_q8_1".to_string())?;
+    let mut launch_args = stream.launch_builder(&func);
+    launch_args.arg(a_view);
+    launch_args.arg(quant_a_view);
+    launch_args.arg(&params.k);
+    launch_args.arg(&params.a_strides[1]);
+    launch_args.arg(&params.a_strides[0]);
+    launch_args.arg(&sample_stride_a);
+    launch_args.arg(&padded_k);
+    launch_args.arg(&params.m);
+    launch_args.arg(&params.a_batch);
+
+    let cfg = LaunchConfig {
+        grid_dim: (
+            params.m as _,
+            padded_k.div_ceil(4 * QUANTIZE_BLOCK_SIZE_MMQ) as _,
+            params.a_batch as _,
+        ),
+        block_dim: (128, 1, 1),
+        shared_mem_bytes: 0,
+    };
+    unsafe { launch_args.launch(cfg) };
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn launch_matmul_q40(
+    stream: &TractCudaStream,
+    weights: &CudaView<'_, u8>,
+    quant_activ: &CudaView<'_, u8>,
+    output: &CudaView<'_, u8>,
+    fixup_tens: &CudaView<'_, u8>,
+    params: &GemmDispatchParams,
+    a_stride_0: usize,
+    b_stride_0: usize,
+    batch_ratio: usize,
+    mmq_x_best: usize,
+    nbytes_shared: usize,
+) -> TractResult<()> {
+    let n_blocks = b_stride_0 / params.n;
+    let kernel_name = kernel_name_q40(params, mmq_x_best, MMQ_X_MAX, false)?;
+
+    let context = cuda_context();
+    let props = context.properties();
+    let func = context.load_pipeline(LibraryName::GgmlQ, kernel_name)?;
+    func.set_attribute(
+        CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+        nbytes_shared as i32,
+    )?;
+    let mut launch_args = stream.launch_builder(&func);
+    launch_args.arg(weights);
+    launch_args.arg(quant_activ);
+    launch_args.arg(output);
+    launch_args.arg(fixup_tens);
+    launch_args.arg(&params.k);
+    launch_args.arg(&params.n);
+    launch_args.arg(&params.m);
+    launch_args.arg(&n_blocks);
+    launch_args.arg(&params.m);
+    launch_args.arg(&params.n);
+    launch_args.arg(&batch_ratio);
+    launch_args.arg(&params.a_batch);
+    launch_args.arg(&b_stride_0);
+    launch_args.arg(&a_stride_0);
+    launch_args.arg(&params.c_strides[0]);
+
+    let cfg = LaunchConfig {
+        grid_dim: (props.multiProcessorCount as usize as _, 1, 1),
+        block_dim: (WARP_SIZE as _, N_WARPS as _, 1),
+        shared_mem_bytes: nbytes_shared as _,
+    };
+
+    unsafe {
+        launch_args.launch(cfg);
+    }
+    Ok(())
+}
+
+fn launch_fixup_q40(
+    stream: &TractCudaStream,
+    output: &CudaView<'_, u8>,
+    fixup_tens: &CudaView<'_, u8>,
+    params: &GemmDispatchParams,
+    mmq_x_best: usize,
+) -> TractResult<()> {
+    let kernel_name = kernel_name_q40(params, mmq_x_best, MMQ_X_MAX, true)?;
+
+    let context = cuda_context();
+    let props = context.properties();
+    let func = context.load_pipeline(LibraryName::GgmlQ, kernel_name)?;
+    let mut launch_args = stream.launch_builder(&func);
+    launch_args.arg(output);
+    launch_args.arg(fixup_tens);
+    launch_args.arg(&params.k);
+    launch_args.arg(&params.n);
+    launch_args.arg(&params.m);
+    launch_args.arg(&params.n);
+    launch_args.arg(&params.a_batch);
+    launch_args.arg(&params.c_strides[0]);
+
+    let cfg = LaunchConfig {
+        grid_dim: (props.multiProcessorCount as usize as _, 1, 1),
+        block_dim: (WARP_SIZE as _, N_WARPS as _, 1),
+        shared_mem_bytes: 0,
+    };
+
+    unsafe {
+        launch_args.launch(cfg);
+    }
+    Ok(())
+}
+
+fn dispatch_ggml_matmul_q40(
+    stream: &TractCudaStream,
+    a: &CudaView<'_, u8>,
+    b: &CudaView<'_, u8>,
+    output: &CudaView<'_, u8>,
+    params: GemmDispatchParams,
+) -> TractResult<()> {
+    let context = cuda_context();
+    let props = context.properties();
+
+    let null_ptr = stream.null::<u8>()?;
+
+    let padded_k = params.k.next_multiple_of(Q40_ROW_PADDING);
+    let n_blocks = padded_k / Q4_0.block_len(); // padded Q40 weights
+    let sample_stride_a = params.a_strides[0] * params.a_batch as isize;
+
+    let nbytes_a_q8_1 = (a.len() / params.dts[0].size_of()) * padded_k * (QK8_0 + 4)
+        / (params.k * QK8_0)
+        + MMQ_X_MAX * 144;
+
+    let quant_a = unsafe { DeviceTensor::uninitialized_dt(DatumType::U8, &[nbytes_a_q8_1])? };
+    let quant_a_view = get_cuda_view(&quant_a);
+
+    launch_quantize_q8_1(stream, a, &quant_a_view, &params, sample_stride_a, padded_k)?;
+
+    let a_stride_0 = padded_k * params.m * 36 / 128;
+    let b_stride_0 = n_blocks * params.n;
+    let batch_ratio = params.a_batch / params.b_batch;
+
+    let mmq_x_best = find_best_mmq_x(props.sharedMemPerBlockOptin, params.m);
+    let nbytes_shared = mmq_get_nbytes_shared_q40(mmq_x_best, MMQ_X_MAX);
+
+    let ntx = params.m.div_ceil(mmq_x_best);
+    let nty = params.n.div_ceil(MMQ_X_MAX);
+
+    let fixup_tensor = {
+        let needs_fixup = (ntx * nty * params.a_batch) % props.multiProcessorCount as usize != 0;
+
+        needs_fixup
+            .then(|| {
+                let fixup_shape = props.multiProcessorCount as usize * mmq_x_best * MMQ_X_MAX;
+                unsafe { DeviceTensor::uninitialized_dt(DatumType::F32, &[fixup_shape]) }
+            })
+            .transpose()?
+    };
+
+    let fixup_view = fixup_tensor.as_ref().map(|t| get_cuda_view(t)).unwrap_or(null_ptr.as_view());
+
+    launch_matmul_q40(
+        stream,
+        b,
+        &quant_a_view,
+        output,
+        &fixup_view,
+        &params,
+        a_stride_0,
+        b_stride_0,
+        batch_ratio,
+        mmq_x_best,
+        nbytes_shared,
+    )?;
+
+    if let Some(ref fixup) = fixup_tensor {
+        launch_fixup_q40(stream, output, &fixup_view, &params, mmq_x_best)?;
     }
 
-    fn launch_fixup_q40(
-        stream: &TractCudaStream,
-        output: &CudaView<'_, u8>,
-        fixup_tens: &CudaView<'_, u8>,
-        params: &GemmDispatchParams,
-        mmq_x_best: usize,
-    ) -> TractResult<()> {
-        let kernel_name = kernel_name_q40(params, mmq_x_best, MMQ_X_MAX, true)?;
-
-        let context = cuda_context();
-        let props = context.properties();
-        let func = context.load_pipeline(LibraryName::GgmlQ, kernel_name)?;
-        let mut launch_args = stream.launch_builder(&func);
-        launch_args.arg(output);
-        launch_args.arg(fixup_tens);
-        launch_args.arg(&params.k);
-        launch_args.arg(&params.n);
-        launch_args.arg(&params.m);
-        launch_args.arg(&params.n);
-        launch_args.arg(&params.a_batch);
-        launch_args.arg(&params.c_strides[0]);
-
-        let cfg = LaunchConfig {
-            grid_dim: (props.multiProcessorCount as usize as _, 1, 1),
-            block_dim: (WARP_SIZE as _, N_WARPS as _, 1),
-            shared_mem_bytes: 0,
-        };
-
-        unsafe {
-            launch_args.launch(cfg);
-        }
-        Ok(())
-    }
-
-    fn dispatch_ggml_matmul_q40(
-        stream: &TractCudaStream,
-        a: &CudaView<'_, u8>,
-        b: &CudaView<'_, u8>,
-        output: &CudaView<'_, u8>,
-        params: GemmDispatchParams,
-    ) -> TractResult<()> {
-        let context = cuda_context();
-        let props = context.properties();
-
-        let null_ptr = stream.null::<u8>()?;
-
-        let padded_k = params.k.next_multiple_of(Q40_ROW_PADDING);
-        let n_blocks = padded_k / Q4_0.block_len(); // padded Q40 weights
-        let sample_stride_a = params.a_strides[0] * params.a_batch as isize;
-
-        let nbytes_a_q8_1 = (a.len() / params.dts[0].size_of()) * padded_k * (QK8_0 + 4) / (params.k * QK8_0) + MMQ_X_MAX * 144;
-
-        let quant_a = unsafe { DeviceTensor::uninitialized_dt(DatumType::U8, &[nbytes_a_q8_1])? };
-        let quant_a_view = get_cuda_view(&quant_a);
-
-        launch_quantize_q8_1(
-            stream,
-            a,
-            &quant_a_view,
-            &params,
-            sample_stride_a,
-            padded_k,
-        )?;
-
-        let a_stride_0 = padded_k * params.m * 36 / 128;
-        let b_stride_0 = n_blocks * params.n;
-        let batch_ratio = params.a_batch / params.b_batch;
-
-        let mmq_x_best = find_best_mmq_x(props.sharedMemPerBlockOptin, params.m);
-        let nbytes_shared = mmq_get_nbytes_shared_q40(mmq_x_best, MMQ_X_MAX);
-
-        let ntx = params.m.div_ceil(mmq_x_best);
-        let nty = params.n.div_ceil(MMQ_X_MAX);
-
-        let fixup_tensor = {
-            let needs_fixup =
-                (ntx * nty * params.a_batch) % props.multiProcessorCount as usize != 0;
-
-            needs_fixup
-                .then(|| {
-                    let fixup_shape = props.multiProcessorCount as usize * mmq_x_best * MMQ_X_MAX;
-                    unsafe { DeviceTensor::uninitialized_dt(DatumType::F32, &[fixup_shape]) }
-                })
-                .transpose()?
-        };
-
-        let fixup_view =
-            fixup_tensor.as_ref().map(|t| get_cuda_view(t)).unwrap_or(null_ptr.as_view());
-
-        launch_matmul_q40(
-            stream,
-            b,
-            &quant_a_view,
-            output,
-            &fixup_view,
-            &params,
-            a_stride_0,
-            b_stride_0,
-            batch_ratio,
-            mmq_x_best,
-            nbytes_shared,
-        )?;
-
-        if let Some(ref fixup) = fixup_tensor {
-            launch_fixup_q40(stream, output, &fixup_view, &params, mmq_x_best)?;
-        }
-
-        Ok(())
-    }
+    Ok(())
+}
 
 fn dispatch_ggml_matvec_q40(
     stream: &TractCudaStream,
@@ -499,55 +504,55 @@ fn dispatch_ggml_matvec_q40(
     launch_args.arg(&params.m);
     launch_args.arg(&params.a_batch);
 
-        let cfg = LaunchConfig {
-            grid_dim: (padded_k.div_ceil(QUANTIZE_BLOCK_SIZE) as _, params.m as _, params.a_batch as _),
-            block_dim: (QUANTIZE_BLOCK_SIZE as _, 1, 1),
-            shared_mem_bytes: 0,
-        };
-        unsafe { launch_args.launch(cfg) };
+    let cfg = LaunchConfig {
+        grid_dim: (padded_k.div_ceil(QUANTIZE_BLOCK_SIZE) as _, params.m as _, params.a_batch as _),
+        block_dim: (QUANTIZE_BLOCK_SIZE as _, 1, 1),
+        shared_mem_bytes: 0,
+    };
+    unsafe { launch_args.launch(cfg) };
 
-        let stride_col_y = padded_k / QK8_1;
-        let stride_col_dst = params.n;
-        let stride_channel_x = n_blocks * params.n;
-        let stride_channel_y = stride_col_y * params.m;
-        let stride_channel_dst = params.m * params.n;
+    let stride_col_y = padded_k / QK8_1;
+    let stride_col_dst = params.n;
+    let stride_channel_x = n_blocks * params.n;
+    let stride_channel_y = stride_col_y * params.m;
+    let stride_channel_dst = params.m * params.n;
 
-        let batch_ratio = params.a_batch / params.b_batch;
+    let batch_ratio = params.a_batch / params.b_batch;
 
-        let func = context.load_pipeline(LibraryName::GgmlQ, format!("mul_vec_q40_m_{}", params.m))?;
-        let mut launch_args = stream.launch_builder(&func);
-        launch_args.arg(b);
-        launch_args.arg(&quant_a_view);
-        launch_args.arg(output);
-        launch_args.arg(&params.k);
-        launch_args.arg(&params.a_batch);
-        launch_args.arg(&n_blocks);
-        launch_args.arg(&stride_col_y);
-        launch_args.arg(&stride_col_dst);
-        launch_args.arg(&batch_ratio);
-        launch_args.arg(&stride_channel_x);
-        launch_args.arg(&stride_channel_y);
-        launch_args.arg(&stride_channel_dst);
+    let func = context.load_pipeline(LibraryName::GgmlQ, format!("mul_vec_q40_m_{}", params.m))?;
+    let mut launch_args = stream.launch_builder(&func);
+    launch_args.arg(b);
+    launch_args.arg(&quant_a_view);
+    launch_args.arg(output);
+    launch_args.arg(&params.k);
+    launch_args.arg(&params.a_batch);
+    launch_args.arg(&n_blocks);
+    launch_args.arg(&stride_col_y);
+    launch_args.arg(&stride_col_dst);
+    launch_args.arg(&batch_ratio);
+    launch_args.arg(&stride_channel_x);
+    launch_args.arg(&stride_channel_y);
+    launch_args.arg(&stride_channel_dst);
 
-        let rows_per_block = if params.m == 1 { 1 } else { 2 };
-        let n_warps = if params.m <= 4 { 4 } else { 2 };
-        let cfg = LaunchConfig {
-            grid_dim: (params.n.div_ceil(rows_per_block) as _, params.a_batch as _, 1 as _),
-            block_dim: (WARP_SIZE as _, n_warps, 1),
-            shared_mem_bytes: 0,
-        };
+    let rows_per_block = if params.m == 1 { 1 } else { 2 };
+    let n_warps = if params.m <= 4 { 4 } else { 2 };
+    let cfg = LaunchConfig {
+        grid_dim: (params.n.div_ceil(rows_per_block) as _, params.a_batch as _, 1 as _),
+        block_dim: (WARP_SIZE as _, n_warps, 1),
+        shared_mem_bytes: 0,
+    };
 
-        unsafe { launch_args.launch(cfg) };
-        Ok(())
-    }
+    unsafe { launch_args.launch(cfg) };
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
     use std::any::TypeId;
 
     use crate::context::CUDA_STREAM;
-    use crate::kernels::matmul::tests::run_mmm_test_case;
     use crate::kernels::matmul::GemmImpl;
+    use crate::kernels::matmul::tests::run_mmm_test_case;
 
     use super::*;
     use num_traits::AsPrimitive;
@@ -684,7 +689,6 @@ mod tests {
         })
     }
 
-    
     #[test]
     fn test_q4() -> TractResult<()> {
         // MV

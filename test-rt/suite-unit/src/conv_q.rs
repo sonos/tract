@@ -276,7 +276,7 @@ impl Test for QConvProblem {
         });
         let data = self.data.clone().into_tensor().cast_to_dt(idt)?.into_owned().into_tvalue();
         let output = model.run(tvec!(data))?.remove(0);
-        eprintln!("reference: {reference:?}\noutput   : {output:?}");
+        //eprintln!("reference: {reference:?}\noutput   : {output:?}");
         output.close_enough(&reference, approx)
     }
 }

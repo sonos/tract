@@ -11,7 +11,9 @@ use tract_gpu::tensor::DeviceTensor;
 use tract_gpu::utils::{as_q40_fact, as_q40_tensor};
 
 use crate::context::TractCudaStream;
-use crate::kernels::{get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut};
+use crate::kernels::{
+    get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut,
+};
 use crate::utils::get_q40_fact;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
@@ -41,7 +43,7 @@ pub struct GemmDispatchParams {
     pub c_offset: usize,
     pub a_strides: TVec<isize>,
     pub b_strides: TVec<isize>,
-    pub c_strides: TVec<isize>
+    pub c_strides: TVec<isize>,
 }
 
 impl GemmDispatchParams {
@@ -108,7 +110,7 @@ impl GemmDispatchParams {
                 c_offset: 0,
                 a_strides,
                 b_strides,
-                c_strides
+                c_strides,
             }]),
             // bkm, 1kn -> bmn
             // bkm, 1nk -> bmn
@@ -129,7 +131,7 @@ impl GemmDispatchParams {
                     c_offset: a_batch_idx * m * n * dts[2].size_of(),
                     a_strides: a_strides.clone(),
                     b_strides: b_strides.clone(),
-                    c_strides: c_strides.clone()
+                    c_strides: c_strides.clone(),
                 })
                 .collect()),
             // 1mk, bkn -> bmn
@@ -153,7 +155,7 @@ impl GemmDispatchParams {
                     c_offset: b_batch_idx * m * n * dts[2].size_of(),
                     a_strides: a_strides.clone(),
                     b_strides: b_strides.clone(),
-                    c_strides: c_strides.clone()
+                    c_strides: c_strides.clone(),
                 })
                 .collect()),
             (a_batch, b_batch) => {
@@ -173,7 +175,7 @@ impl GemmDispatchParams {
                         c_offset: 0,
                         a_strides,
                         b_strides,
-                        c_strides
+                        c_strides,
                     }])
                 } else {
                     bail!("a_batch != b_batch and backend does not support broadcast");
@@ -186,7 +188,14 @@ impl GemmDispatchParams {
 pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync {
     fn name() -> &'static str;
 
-    fn supports_broadcast(_a_batch: usize, _b_batch: usize, _m: usize, _k: usize, _n: usize, is_q40: bool) -> bool {
+    fn supports_broadcast(
+        _a_batch: usize,
+        _b_batch: usize,
+        _m: usize,
+        _k: usize,
+        _n: usize,
+        is_q40: bool,
+    ) -> bool {
         false
     }
 
@@ -258,7 +267,8 @@ impl<M: GemmKernel> GemmImpl<M> {
         b: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
         let q40_b = get_q40_fact(b);
-        let b_shape = q40_b.clone()
+        let b_shape = q40_b
+            .clone()
             .map(|bqf| b.shape().iter().cloned().chain(bqf.shape().iter().copied()).collect())
             .unwrap_or(b.shape().to_vec());
 
@@ -279,7 +289,8 @@ impl<M: GemmKernel> GemmImpl<M> {
         c: &DeviceTensor,
     ) -> TractResult<()> {
         let q40_b = get_q40_fact(b);
-        let b_shape = q40_b.clone()
+        let b_shape = q40_b
+            .clone()
             .map(|bqf| b.shape().iter().cloned().chain(bqf.shape().iter().copied()).collect())
             .unwrap_or(b.shape().to_vec());
 
@@ -300,14 +311,22 @@ impl<M: GemmKernel> GemmImpl<M> {
         )?;
 
         for d in dispatches {
-            let a_view = get_sliced_cuda_view(a, d.a_offset, d.a_strides[0] as usize * d.a_batch * d.dts[0].size_of())?;
+            let a_view = get_sliced_cuda_view(
+                a,
+                d.a_offset,
+                d.a_strides[0] as usize * d.a_batch * d.dts[0].size_of(),
+            )?;
             let b_len = if d.q40_b {
                 d.b_strides[0] as usize * d.b_batch / Q4_0.block_len() * Q4_0.block_bytes()
             } else {
                 d.b_strides[0] as usize * d.b_batch * d.dts[1].size_of()
             };
             let b_view = get_sliced_cuda_view(b, d.b_offset, b_len)?;
-            let mut c_view = get_sliced_cuda_view_mut(c, d.c_offset, d.c_strides[0] as usize * d.a_batch.max(d.b_batch) * d.dts[2].size_of())?;
+            let mut c_view = get_sliced_cuda_view_mut(
+                c,
+                d.c_offset,
+                d.c_strides[0] as usize * d.a_batch.max(d.b_batch) * d.dts[2].size_of(),
+            )?;
             self.matmul
                 .dispatch_eval(
                     stream,
