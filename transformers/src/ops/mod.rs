@@ -3,6 +3,7 @@ pub mod dyn_kv_cache;
 pub mod gelu_approximate;
 pub mod rms_norm;
 pub mod scaled_masked_softmax;
+pub mod sdpa;
 pub mod silu;
 
 use tract_core::internal::*;
