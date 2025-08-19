@@ -78,7 +78,7 @@ impl GemmKernel for GgmlGemm {
     }
 
     fn supports_broadcast(a_batch: usize, b_batch: usize, m: usize, k: usize, _n: usize, is_q40: bool) -> bool {
-        (a_batch % b_batch == 0) && (is_q40 || ((k % 2 == 0) && m == 1))
+        (a_batch % b_batch == 0) && (is_q40 || ((k % 2 == 0) && m <= 8))
     }
 
     fn is_supported_dts(&self, facts: &[TypedFact]) -> bool {
@@ -128,7 +128,7 @@ impl GemmKernel for GgmlGemm {
             } else {
                 dispatch_ggml_matmul_q40(stream, a_view, b_view, c_view, params)?;
             }
-        } else if (params.k % 2 == 0) && params.m == 1 {
+        } else if (params.k % 2 == 0) && params.m <= 8 {
             dispatch_ggml_matvec(stream, a_view, b_view, c_view, params)?;
         } else if dts[0] == DatumType::F32 {
             dispatch_cublas_gemm::<f32>(stream, a_view, b_view, c_view_mut, params)?;
@@ -163,12 +163,13 @@ impl GemmKernel for GgmlGemm {
         params: GemmDispatchParams,
     ) -> TractResult<()> {
         let k_div_2 = params.k / 2;
+        let ncols_y_div_2 = params.a_strides[1] / 2;
         let block_size = find_block_size(params.k);
 
         let batch_ratio = params.a_batch / params.b_batch;
 
         let kernel_name =
-            format!("ggml_matvec_{}_bs_{block_size}", DeviceTensor::tname(params.dts[0])?);
+            format!("ggml_matvec_{}_ncols_{}_bs_{block_size}", DeviceTensor::tname(params.dts[0])?, params.m);
         let mut func = cuda_context().load_pipeline(LibraryName::Ggml, kernel_name)?;
         let mut launch_args = stream.launch_builder(&func);
         launch_args.arg(b);
@@ -177,6 +178,8 @@ impl GemmKernel for GgmlGemm {
         launch_args.arg(&k_div_2);
         launch_args.arg(&params.a_batch);
         launch_args.arg(&params.b_strides[1]);
+        launch_args.arg(&ncols_y_div_2);
+        launch_args.arg(&params.c_strides[1]);
         launch_args.arg(&batch_ratio);
         launch_args.arg(&params.b_strides[0]);
         launch_args.arg(&params.a_strides[0]);
@@ -187,6 +190,7 @@ impl GemmKernel for GgmlGemm {
             block_dim: (block_size as _, 1, 1),
             shared_mem_bytes: (WARP_SIZE * size_of::<f32>()) as u32,
         };
+
         unsafe { launch_args.launch(cfg) };
         Ok(())
     }
@@ -532,6 +536,7 @@ fn dispatch_ggml_matvec_q40(
             block_dim: (WARP_SIZE as _, n_warps, 1),
             shared_mem_bytes: 0,
         };
+
         unsafe { launch_args.launch(cfg) };
         Ok(())
     }
@@ -566,7 +571,7 @@ mod tests {
         run_mmm_test_case::<GgmlGemm>((2, 2, 1, 128, 7), false, true, F32, F32)?;
         run_mmm_test_case::<GgmlGemm>((4, 1, 1, 2, 1), false, true, F32, F32)?;
 
-        // f16_f16
+        //// f16_f16
         run_mmm_test_case::<GgmlGemm>((1, 1, 1, 2, 1), false, true, F16, F16)?;
         run_mmm_test_case::<GgmlGemm>((2, 1, 1, 61, 2), false, true, F16, F16)?;
         run_mmm_test_case::<GgmlGemm>((2, 2, 1, 128, 9), false, true, F16, F16)?;
@@ -577,17 +582,17 @@ mod tests {
     #[test]
     fn test_mat_mul() -> TractResult<()> {
         // f32_f32
-        run_mmm_test_case::<GgmlGemm>((1, 1, 2, 4, 2), false, true, F32, F32)?;
-        run_mmm_test_case::<GgmlGemm>((1, 1, 2, 2, 3), false, true, F32, F32)?;
-        run_mmm_test_case::<GgmlGemm>((2, 2, 1, 1, 2), false, true, F32, F32)?;
-        run_mmm_test_case::<GgmlGemm>((2, 1, 8, 32, 2), false, true, F32, F32)?;
-        run_mmm_test_case::<GgmlGemm>((1, 2, 1, 1, 2), false, true, F32, F32)?;
+        run_mmm_test_case::<GgmlGemm>((1, 1, 9, 4, 2), false, true, F32, F32)?;
+        run_mmm_test_case::<GgmlGemm>((1, 1, 11, 2, 3), false, true, F32, F32)?;
+        run_mmm_test_case::<GgmlGemm>((2, 2, 15, 1, 2), false, true, F32, F32)?;
+        run_mmm_test_case::<GgmlGemm>((2, 1, 10, 32, 2), false, true, F32, F32)?;
+        run_mmm_test_case::<GgmlGemm>((1, 2, 12, 1, 2), false, true, F32, F32)?;
 
         // f16_f16
-        run_mmm_test_case::<GgmlGemm>((1, 1, 2, 7, 2), false, true, F16, F16)?;
-        run_mmm_test_case::<GgmlGemm>((1, 1, 2, 61, 2), false, true, F16, F16)?;
-        run_mmm_test_case::<GgmlGemm>((2, 1, 1, 127, 9), false, true, F16, F16)?;
-        run_mmm_test_case::<GgmlGemm>((1, 2, 1, 127, 9), false, true, F16, F16)?;
+        run_mmm_test_case::<GgmlGemm>((1, 1, 12, 7, 2), false, true, F16, F16)?;
+        run_mmm_test_case::<GgmlGemm>((1, 1, 9, 61, 2), false, true, F16, F16)?;
+        run_mmm_test_case::<GgmlGemm>((2, 1, 10, 127, 9), false, true, F16, F16)?;
+        run_mmm_test_case::<GgmlGemm>((1, 2, 16, 127, 9), false, true, F16, F16)?;
         Ok(())
     }
 
