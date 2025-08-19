@@ -48,14 +48,11 @@ impl GemmDispatchParams {
     #[allow(clippy::too_many_arguments)]
     pub fn compute_dispatches_params<M: GemmKernel>(
         dts: [DatumType; 3],
-        a_offset: usize,
         a_shape: &[usize],
         transpose_a: bool,
-        b_offset: usize,
         b_shape: &[usize],
         transpose_b: bool,
         q40_b: bool,
-        c_offset: usize,
         c_shape: &[usize],
     ) -> TractResult<Vec<GemmDispatchParams>> {
         let rank = c_shape.len();
@@ -104,11 +101,11 @@ impl GemmDispatchParams {
                 n,
                 k,
                 transpose_a,
-                a_offset,
+                a_offset: 0,
                 transpose_b,
-                b_offset,
+                b_offset: 0,
                 q40_b,
-                c_offset,
+                c_offset: 0,
                 a_strides,
                 b_strides,
                 c_strides
@@ -125,11 +122,11 @@ impl GemmDispatchParams {
                     n,
                     k,
                     transpose_a,
-                    a_offset: a_offset + a_batch_idx * m * k * dts[0].size_of(),
+                    a_offset: a_batch_idx * m * k * dts[0].size_of(),
                     transpose_b,
-                    b_offset,
+                    b_offset: 0,
                     q40_b,
-                    c_offset: c_offset + a_batch_idx * m * n * dts[2].size_of(),
+                    c_offset: a_batch_idx * m * n * dts[2].size_of(),
                     a_strides: a_strides.clone(),
                     b_strides: b_strides.clone(),
                     c_strides: c_strides.clone()
@@ -149,11 +146,11 @@ impl GemmDispatchParams {
                     n,
                     k,
                     transpose_a,
-                    a_offset,
+                    a_offset: 0,
                     transpose_b,
-                    b_offset: b_offset + b_batch_idx * b_batch_stride,
+                    b_offset: b_batch_idx * b_batch_stride,
                     q40_b,
-                    c_offset: c_offset + b_batch_idx * m * n * dts[2].size_of(),
+                    c_offset: b_batch_idx * m * n * dts[2].size_of(),
                     a_strides: a_strides.clone(),
                     b_strides: b_strides.clone(),
                     c_strides: c_strides.clone()
@@ -169,11 +166,11 @@ impl GemmDispatchParams {
                         n,
                         k,
                         transpose_a,
-                        a_offset,
+                        a_offset: 0,
                         transpose_b,
-                        b_offset,
+                        b_offset: 0,
                         q40_b,
-                        c_offset,
+                        c_offset: 0,
                         a_strides,
                         b_strides,
                         c_strides
@@ -192,11 +189,11 @@ impl GemmDispatchParams {
                         n,
                         k,
                         transpose_a,
-                        a_offset,
+                        a_offset: 0,
                         transpose_b,
-                        b_offset,
+                        b_offset: 0,
                         q40_b,
-                        c_offset,
+                        c_offset: 0,
                         a_strides,
                         b_strides,
                         c_strides
@@ -315,14 +312,11 @@ impl<M: GemmKernel> GemmImpl<M> {
 
         let dispatches = GemmDispatchParams::compute_dispatches_params::<M>(
             [a.datum_type(), b.datum_type(), c.datum_type()],
-            a.buffer_offset(),
             a.shape(),
             self.transpose_a,
-            b.buffer_offset(),
             &b_shape,
             self.transpose_b,
             q40_b.is_some(),
-            c.buffer_offset(),
             c.shape(),
         )?;
 
@@ -463,14 +457,11 @@ mod tests {
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params::<GgmlGemm>(
                 [dt; 3],
-                0,
                 &[1, m, k],
                 false,
-                0,
                 &[1, k, n],
                 false,
                 false,
-                0,
                 &[1, m, n],
             )?,
             vec![GemmDispatchParams {
@@ -495,14 +486,11 @@ mod tests {
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params::<GgmlGemm>(
                 [dt; 3],
-                0,
                 &[10, m, k],
                 false,
-                0,
                 &[10, k, n],
                 false,
                 false,
-                0,
                 &[10, m, n],
             )?,
             vec![GemmDispatchParams {
@@ -527,14 +515,11 @@ mod tests {
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params::<GgmlGemm>(
                 [dt; 3],
-                0,
                 &[1, m, k],
                 false,
-                0,
                 &[2, k, n],
                 false,
                 false,
-                10,
                 &[2, m, n],
             )?,
             vec![
@@ -550,7 +535,7 @@ mod tests {
                     transpose_b: false,
                     b_offset: 0,
                     q40_b: false,
-                    c_offset: 10,
+                    c_offset: 0,
                     a_strides: natural_strides(&[1, m, k]),
                     b_strides: natural_strides(&[2, k, n]),
                     c_strides: natural_strides(&[2, m, n])
@@ -567,7 +552,7 @@ mod tests {
                     transpose_b: false,
                     b_offset: 1 * n * k * dt.size_of(),
                     q40_b: false,
-                    c_offset: 10 + m * n * dt.size_of(),
+                    c_offset: m * n * dt.size_of(),
                     a_strides: natural_strides(&[1, m, k]),
                     b_strides: natural_strides(&[2, k, n]),
                     c_strides: natural_strides(&[2, m, n])
@@ -578,14 +563,11 @@ mod tests {
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params::<GgmlGemm>(
                 [dt; 3],
-                0,
                 &[2, k, m],
                 true,
-                0,
                 &[2, k, n],
                 false,
                 false,
-                100,
                 &[2, m, n],
             )?,
             vec![GemmDispatchParams {
@@ -600,7 +582,7 @@ mod tests {
                 transpose_b: false,
                 b_offset: 0,
                 q40_b: false,
-                c_offset: 100,
+                c_offset: 0,
                 a_strides: natural_strides(&[2, k, m]),
                 b_strides: natural_strides(&[2, k, n]),
                 c_strides: natural_strides(&[2, m, n])
@@ -610,14 +592,11 @@ mod tests {
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params::<GgmlGemm>(
                 [dt; 3],
-                0,
                 &[2, k, m],
                 true,
-                0,
                 &[1, k, n],
                 false,
                 false,
-                100,
                 &[2, m, n],
             )?,
             vec![
@@ -633,7 +612,7 @@ mod tests {
                     transpose_b: false,
                     b_offset: 0,
                     q40_b: false,
-                    c_offset: 100,
+                    c_offset: 0,
                     a_strides: natural_strides(&[2, k, m]),
                     b_strides: natural_strides(&[1, k, n]),
                     c_strides: natural_strides(&[2, m, n])
@@ -650,7 +629,7 @@ mod tests {
                     transpose_b: false,
                     b_offset: 0,
                     q40_b: false,
-                    c_offset: 100 + 1 * m * n * dt.size_of(),
+                    c_offset: 1 * m * n * dt.size_of(),
                     a_strides: natural_strides(&[2, k, m]),
                     b_strides: natural_strides(&[1, k, n]),
                     c_strides: natural_strides(&[2, m, n])
@@ -661,14 +640,11 @@ mod tests {
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params::<GgmlGemm>(
                 [dt; 3],
-                0,
                 &[10, m, k],
                 false,
-                10,
                 &[1, k, n],
                 false,
                 false,
-                0,
                 &[10, m, n],
             )?,
             vec![GemmDispatchParams {
@@ -681,7 +657,7 @@ mod tests {
                 transpose_a: false,
                 a_offset: 0,
                 transpose_b: false,
-                b_offset: 10,
+                b_offset: 0,
                 q40_b: false,
                 c_offset: 0,
                 a_strides: natural_strides(&[10, m, k]),
