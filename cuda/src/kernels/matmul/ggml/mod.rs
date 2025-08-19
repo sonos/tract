@@ -502,15 +502,9 @@ fn dispatch_ggml_matvec_q40(
         };
         unsafe { launch_args.launch(cfg) };
 
-        let ne00 = params.k;
-        let ne01 = params.n;
-        let ncols_dst = params.m;
-        let s01 = n_blocks;
         let stride_col_y = padded_k / QK8_1;
         let stride_col_dst = params.n;
-        let ne02 = params.b_batch;
-        let nchannels_y = params.a_batch;
-        let s02 = n_blocks * params.n;
+        let stride_channel_x = n_blocks * params.n;
         let stride_channel_y = stride_col_y * params.m;
         let stride_channel_dst = params.m * params.n;
 
@@ -522,12 +516,12 @@ fn dispatch_ggml_matvec_q40(
         launch_args.arg(&quant_a_view);
         launch_args.arg(output);
         launch_args.arg(&params.k);
-        launch_args.arg(&nchannels_y);
+        launch_args.arg(&params.a_batch);
         launch_args.arg(&n_blocks);
         launch_args.arg(&stride_col_y);
         launch_args.arg(&stride_col_dst);
         launch_args.arg(&batch_ratio);
-        launch_args.arg(&s02);
+        launch_args.arg(&stride_channel_x);
         launch_args.arg(&stride_channel_y);
         launch_args.arg(&stride_channel_dst);
 
