@@ -424,7 +424,7 @@ mod tests {
             }
 
             let output = args_1!(matmul.eval(tvec![a.into_tvalue(), b.into_tvalue()])?);
-            cuda_output.to_host()?.close_enough(&output, Approximation::SuperApproximate)?;
+            cuda_output.to_host()?.close_enough(&output, Approximation::VeryApproximate)?;
             Ok(())
         })
     }
