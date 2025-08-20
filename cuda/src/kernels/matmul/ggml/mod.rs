@@ -175,9 +175,10 @@ fn dispatch_ggml_matvec(
     let batch_ratio = params.a_batch / params.b_batch;
 
     let kernel_name = format!(
-        "ggml_matvec_{}_ncols_{}_bs_{block_size}",
+        "ggml_matvec_{}_ncols_{}_bs_{}",
         DeviceTensor::tname(params.dts[0])?,
-        params.m
+        params.m,
+        block_size
     );
     let mut func = cuda_context().load_pipeline(LibraryName::Ggml, kernel_name)?;
     let mut launch_args = stream.launch_builder(&func);
