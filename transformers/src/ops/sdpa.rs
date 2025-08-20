@@ -38,7 +38,7 @@ fn de_scaled_masked_softmax(
     let inner_dt =
         DatumType::from_str(&invocation.named_arg_as::<String>(builder, "inner_dtype")?)?;
     let is_causal = invocation.named_arg_as(builder, "causal")?;
-    builder.wire(Sdpa { scale: scale.map(|it| tensor0(it)), dt, inner_dt, is_causal }, &inputs)
+    builder.wire(Sdpa { scale: scale.map(tensor0), dt, inner_dt, is_causal }, &inputs)
 }
 
 #[derive(Debug, Clone, Hash)]
@@ -74,8 +74,8 @@ impl EvalOp for Sdpa {
             None
         };
         let rank = q.rank();
-        let k_shape = k.shape().iter().cloned().collect::<Vec<_>>();
-        let q_shape = q.shape().iter().cloned().collect::<Vec<_>>();
+        let k_shape = k.shape().to_vec();
+        let q_shape = q.shape().to_vec();
 
         // Computing scaling factor for attention
         let scale = if let Some(scale) = self.scale.as_ref() {
