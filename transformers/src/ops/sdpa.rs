@@ -68,17 +68,20 @@ impl EvalOp for Sdpa {
         let q = inputs.remove(0);
         let k = inputs.remove(0);
         let v = inputs.remove(0);
-        let mut mask = if !inputs.is_empty() { Some(inputs.remove(0)) } else { None };
-
+        let mut mask = if !inputs.is_empty() {
+            Some(inputs.remove(0).cast_to_dt(self.inner_dt)?.into_owned().into_tvalue())
+        } else {
+            None
+        };
         let rank = q.rank();
         let k_shape = k.shape().iter().cloned().collect::<Vec<_>>();
         let q_shape = q.shape().iter().cloned().collect::<Vec<_>>();
 
         // Computing scaling factor for attention
-        let d_k = k_shape[rank - 1] as f32;
         let scale = if let Some(scale) = self.scale.as_ref() {
             scale.cast_to_dt(self.inner_dt)?.into_owned()
         } else {
+            let d_k = k_shape[rank - 1] as f32;
             tensor0(1.0 / d_k.sqrt()).cast_to_dt(self.inner_dt)?.into_owned()
         };
 
@@ -100,15 +103,12 @@ impl EvalOp for Sdpa {
 
             // -inf for higher part
             let mut neg_infs =
-                unsafe { Tensor::uninitialized_dt(self.inner_dt, &[q_seq_len, k_seq_len])? };
+                unsafe { Tensor::uninitialized_dt(DatumType::F32, &[q_seq_len, k_seq_len])? };
             neg_infs.fill_t(f32::NEG_INFINITY)?;
+            let neg_infs = neg_infs.cast_to_dt(self.inner_dt)?.into_owned();
 
             let causal_mask_tensor = Iff
-                .eval(tvec![
-                    cond_mask.clone().into_tvalue(),
-                    zeros.into_tvalue(),
-                    neg_infs.into_tvalue(),
-                ])?
+                .eval(tvec![cond_mask.into_tvalue(), zeros.into_tvalue(), neg_infs.into_tvalue(),])?
                 .remove(0);
 
             mask = Some(causal_mask_tensor);
