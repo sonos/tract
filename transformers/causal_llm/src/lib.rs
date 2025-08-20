@@ -2,12 +2,12 @@ use std::path::Path;
 
 use float_ord::FloatOrd;
 use tokenizers::Tokenizer;
-use tract_nnef::internal::{TractErrorContext, anyhow};
+use tract_nnef::internal::{anyhow, TractErrorContext};
 use tract_nnef::prelude::tract_itertools::Itertools;
 use tract_nnef::prelude::*;
 use tract_nnef::tract_core::ops::source::SourceState;
-use tract_transformers::WithTractTransformers;
 use tract_transformers::ops::dyn_kv_cache::DynKeyValueCacheState;
+use tract_transformers::WithTractTransformers;
 
 #[derive(Clone, Debug)]
 pub struct CausalLlmModel {
@@ -60,8 +60,7 @@ impl CausalLlmModel {
         Ok(Arc::new(CausalLlmModel { tokenizer, nn: Arc::new(nn) }))
     }
 
-#[allow(unused)]
-    fn from_paths(
+    pub fn from_paths(
         tokenizer: impl AsRef<Path>,
         nn: impl AsRef<Path>,
     ) -> TractResult<Arc<CausalLlmModel>> {
@@ -174,7 +173,8 @@ impl CausalLlmState {
 
         let start_at = self.seq.len().saturating_sub(self.config.repeat_last_n);
 
-        let mut last_token_logits = output[0].as_slice::<f32>()?.iter().map(|t| *t).collect_vec();
+        let mut last_token_logits =
+            output[0].cast_to::<f32>()?.as_slice::<f32>()?.iter().map(|t| *t).collect_vec();
 
         apply_repeat_penalty(
             last_token_logits.as_mut_slice(),
@@ -269,7 +269,11 @@ pub fn apply_repeat_penalty(logits: &mut [f32], penalty: f32, context: &[u32]) {
     let context: std::collections::HashSet<_> = context.iter().collect();
     for (token_id, logit) in logits.iter_mut().enumerate() {
         if context.contains(&(token_id as u32)) {
-            if *logit >= 0. { *logit /= penalty } else { *logit *= penalty }
+            if *logit >= 0. {
+                *logit /= penalty
+            } else {
+                *logit *= penalty
+            }
         }
     }
 }
