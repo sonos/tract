@@ -159,11 +159,6 @@ pub fn suite() -> TractResult<TestSuite> {
         MatmulQ40ProblemParams { weights_in_b: true },
     );
 
-    suite.add_arbitrary::<MatmulQ40Problem>(
-        "proptest_weights_in_b",
-        MatmulQ40ProblemParams { weights_in_b: true },
-    );
-
     suite.add(
         "minimal_inputs",
         MatmulQ40Problem { a: tensor2(&[[0f32]]), b: tensor2(&[[0f32]]), weights_in_b: false },
