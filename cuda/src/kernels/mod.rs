@@ -8,6 +8,8 @@ pub mod nn;
 mod unary;
 mod utils;
 
+use std::mem::transmute;
+
 use crate::tensor::{CudaBuffer, CudaTensor};
 use anyhow::{bail, ensure};
 pub use binary::BinOps;
@@ -147,7 +149,9 @@ pub fn get_sliced_cuda_view_mut(
     len: usize,
 ) -> TractResult<CudaViewMut<'_, u8>> {
     ensure!(offset + len <= t.len() * t.datum_type().size_of());
-    let mut buffer = t.device_buffer().downcast_ref::<CudaBuffer>().unwrap();
+    let buffer: &CudaBuffer = t.device_buffer().downcast_ref::<CudaBuffer>().unwrap();
     let offset = t.buffer_offset::<usize>() + offset;
-    Ok(buffer.as_view_mut().slice_mut(offset..(offset + len)))
+    let ptr: *const CudaBuffer = buffer;
+    let mut_buffer: &mut CudaBuffer = unsafe { (ptr as *mut CudaBuffer).as_mut().unwrap() };
+    Ok(mut_buffer.as_view_mut().slice_mut(offset..(offset + len)))
 }
