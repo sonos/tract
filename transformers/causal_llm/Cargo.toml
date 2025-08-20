@@ -10,6 +10,12 @@ tract-nnef.workspace = true
 tract-gpu.workspace = true
 tract-cuda.workspace = true
 tract-transformers.workspace = true
+axum = "0.8.4"
+tokio = { version = "1.47.1", features = ["rt-multi-thread"] }
+clap = { version = "4", features = ["derive"] }
+axum-macros = "0.5.0"
+serde.workspace = true
+serde_json.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 tract-metal.workspace = true
