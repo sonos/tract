@@ -127,7 +127,7 @@ impl Arbitrary for BinEinsumProblem {
                 let b: String = b.into_iter().collect();
                 let c: String = c.into_iter().collect();
                 let expr: AxesMapping = format!("{a},{b}->{c}").parse().unwrap();
-                eprintln!("{expr}");
+                //eprintln!("{expr}");
                 expr
             })
             .prop_flat_map(|expr| {
