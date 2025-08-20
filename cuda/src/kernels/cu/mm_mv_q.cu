@@ -883,7 +883,6 @@ static __device__ void mul_mat_vec_q(
     const     int blocks_per_row_x = ncols_x / qk;
     constexpr int blocks_per_iter = vdr * nwarps*WARP_SIZE / qi;
 
-    // The MUL_MAT_ID code path with ids != nullptr is only implemented for ncols_dst == 1.
     const int channel_dst = blockIdx.y;
     const int channel_x   = channel_dst / channel_ratio;
     const int channel_y   = channel_dst;
@@ -892,7 +891,7 @@ static __device__ void mul_mat_vec_q(
     float tmp[ncols_dst][rows_per_cuda_block] = {{0.0f}};
 
     const block_q8_1 * y = ((const block_q8_1 *) vy) + channel_y*stride_channel_y;
-    const int kbx_offset = channel_x*stride_channel_x + row0*stride_row_x;
+    const int kbx_offset = channel_x*stride_channel_x;
 
     for (int kbx = tid / (qi/vdr); kbx < blocks_per_row_x; kbx += blocks_per_iter) {
         const int kby = kbx * (qk/QK8_1); // y block index that aligns with kbx
@@ -903,8 +902,12 @@ static __device__ void mul_mat_vec_q(
 #pragma unroll
         for (int j = 0; j < ncols_dst; ++j) {
 #pragma unroll
-            for (int i = 0; i < rows_per_cuda_block; ++i) {
-                tmp[j][i] += vec_dot_q4_0_q8_1(
+            for (int i0 = 0; i0 < rows_per_cuda_block; ++i0) {
+                int i = i0 + row0;
+                if (i >= stride_col_dst) { // Avoid OOB read from Q4_0
+                    break;
+                }
+                tmp[j][i0] += vec_dot_q4_0_q8_1(
                     vx, &y[j*stride_col_y + kby], kbx_offset + i*stride_row_x + kbx, kqs);
             }
         }

@@ -692,7 +692,7 @@ mod tests {
     #[test]
     fn test_q4() -> TractResult<()> {
         // MV
-        run_q40_mat_mul_test(1, 1, 1, 512, 32)?;
+        run_q40_mat_mul_test(1, 1, 2, 512, 3)?;
         run_q40_mat_mul_test(3, 1, 8, 4096, 512)?;
         run_q40_mat_mul_test(1, 1, 1, 1024, 32)?;
         run_q40_mat_mul_test(1, 3, 1, 512, 32)?;
