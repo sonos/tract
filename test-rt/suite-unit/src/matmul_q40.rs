@@ -35,7 +35,7 @@ impl Arbitrary for MatmulQ40Problem {
     type Strategy = BoxedStrategy<MatmulQ40Problem>;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        (1..5usize, 1..128usize, 1..5usize)
+        (1..10usize, 1..128usize, 1..10usize)
             .prop_flat_map(|(m, k, n)| {
                 let a = tensor(&[m, k]);
                 let b = tensor(&[n, k]);
