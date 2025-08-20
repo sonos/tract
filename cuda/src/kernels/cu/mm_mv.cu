@@ -3,7 +3,7 @@
 #include "utils.cuh"
 
 template <typename T, int ncols_dst, int block_size>
-static __device__ __forceinline__ void mul_mat_vec(
+static __device__ void mul_mat_vec(
         const T * __restrict__ x, const T * __restrict__ y, T * __restrict__ dst,
         const int ncols2, const int nchannels_y, const int stride_row, const int stride_col_y2, const int stride_col_dst,
         const int channel_ratio, const int stride_channel_x, const int stride_channel_y, const int stride_channel_dst) {

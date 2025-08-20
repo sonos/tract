@@ -1,5 +1,6 @@
 use std::fmt;
 use std::fmt::Debug;
+use tract_core::internal::num_integer::Integer;
 use tract_core::internal::*;
 
 use crate::fact::DeviceTypedFactExt;
@@ -118,14 +119,16 @@ pub struct Partition {
 
 impl Partition {
     pub fn eval_size_to_i64(&self, symbols: &SymbolValues) -> TractResult<i64> {
-        Ok(self
+        let mut max_size = self
             .nodes
             .iter()
             .map(|it| it.mem_size.eval_to_i64(symbols))
             .collect::<TractResult<Vec<_>>>()?
             .into_iter()
             .max()
-            .unwrap_or(0))
+            .unwrap_or(0);
+        max_size = Integer::next_multiple_of(&max_size, &(vector_size() as i64));
+        Ok(max_size)
     }
 
     pub fn size(&self) -> TDim {
