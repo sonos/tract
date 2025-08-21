@@ -1,6 +1,5 @@
 use crate::kernels::array::Concat;
 use crate::ops::MetalConcat;
-use crate::tensor::MetalTensor;
 use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::OpStateFreeze;
