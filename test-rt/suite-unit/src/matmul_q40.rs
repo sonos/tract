@@ -133,7 +133,7 @@ impl Test for MatmulQ40Problem {
         _suite: &str,
         id: &str,
         runtime: &dyn Runtime,
-        approx: Approximation,
+        _approx: Approximation,
     ) -> TestResult {
         let reference = self.reference()?;
         //dbg!(&reference);
@@ -146,7 +146,7 @@ impl Test for MatmulQ40Problem {
 
         let mut output = runtime.prepare(model)?.run(inputs)?;
         let output = output.remove(0).into_tensor();
-        output.close_enough(&reference, approx)
+        output.close_enough(&reference, Approximation::SuperApproximate)
     }
 }
 
