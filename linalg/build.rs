@@ -269,7 +269,7 @@ fn preprocess_file(
     }
     .to_owned();
     let long = if msvc { "dd" } else { ".long" };
-    let g = if os == "macos" || os == "ios" { "_" } else { "" };
+    let g = if os == "macos" || os == "ios" || os == "watchos" || os == "tvos" { "_" } else { "" };
     // note: use .align with bytes instead of p2align since they both use direct bytes.
     let align = if msvc { "align" } else { ".align" };
     let mut globals = liquid::object!({
