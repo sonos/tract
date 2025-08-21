@@ -18,14 +18,11 @@ pub fn register(registry: &mut Registry) {
             TypeName::Scalar.tensor().named("mask"),
         ],
         &[("output", TypeName::Scalar.tensor())],
-        de_scaled_masked_softmax,
+        deser_spda,
     );
 }
 
-fn de_scaled_masked_softmax(
-    builder: &mut ModelBuilder,
-    invocation: &ResolvedInvocation,
-) -> TractResult<Value> {
+fn deser_spda(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let q = invocation.named_arg_as(builder, "q")?;
     let k = invocation.named_arg_as(builder, "k")?;
     let v = invocation.named_arg_as(builder, "v")?;
@@ -123,6 +120,7 @@ impl EvalOp for Sdpa {
         let q_dot_kt = EinSum { axes, operating_dt: self.inner_dt, q_params: None }
             .eval(tvec![q, k])?
             .remove(0);
+
         let scaled_input = Mul.eval(q_dot_kt, scale.into_tvalue(), self.inner_dt)?;
 
         // Apply mask (causal or provided by user)
@@ -143,7 +141,7 @@ impl EvalOp for Sdpa {
             4 => "bhmn,bhnv->bhmv".parse().unwrap(),
             _ => unreachable!(),
         };
-        let output = EinSum { axes, operating_dt: self.dt, q_params: None }
+        let output = EinSum { axes, operating_dt: self.inner_dt, q_params: None }
             .eval(tvec![attention_weights, v])?;
         Ok(output)
     }
