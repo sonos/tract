@@ -52,6 +52,34 @@ pub struct Sdpa {
     pub is_causal: bool,
 }
 
+impl Sdpa {
+    fn repeat_heads(
+        &self,
+        tensor: TValue,
+        num_heads: usize,
+        kv_heads: usize,
+    ) -> TractResult<TValue> {
+        let repeat_factor = num_heads / kv_heads;
+
+        // Unsqueeze -> MultiBroadcastTo -> Reshape
+        let mut tensor = tensor.into_tensor();
+        let mut final_shape = tensor.shape().to_vec();
+        final_shape[1] = num_heads; // The target number of heads
+
+        // [b, kv_heads, seq_len, kv_emb_dims] -> [b, kv_heads, 1, seq_len, kv_emb_dims]
+        tensor.insert_axis(2)?;
+
+        // [b, kv_heads, 1, seq_len, kv_emb_dims] -> [b, kv_heads, num_heads // kv_heads, seq_len, kv_emb_dims]
+        let mut broadcast_shape = tensor.shape().to_vec();
+        broadcast_shape[2] = repeat_factor;
+        let broadcasted = tensor.broadcast_to_shape(&broadcast_shape)?;
+
+        // [b, kv_heads, num_heads // kv_heads, seq_len, kv_emb_dims] -> [b, num_heads, seq_len, kv_emb_dims]
+        let reshaped = broadcasted.into_shape(&final_shape)?;
+        Ok(reshaped.into())
+    }
+}
+
 impl Op for Sdpa {
     fn name(&self) -> StaticName {
         "SDPA".into()
@@ -69,8 +97,8 @@ impl EvalOp for Sdpa {
 
     fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let q = inputs.remove(0);
-        let k = inputs.remove(0);
-        let v = inputs.remove(0);
+        let mut k = inputs.remove(0);
+        let mut v = inputs.remove(0);
         let mut mask = if !inputs.is_empty() {
             Some(inputs.remove(0).cast_to_dt(self.inner_dt)?.into_owned().into_tvalue())
         } else {
@@ -79,6 +107,16 @@ impl EvalOp for Sdpa {
         let rank = q.rank();
         let k_shape = k.shape().to_vec();
         let q_shape = q.shape().to_vec();
+
+        if rank == 4 {
+            let q_heads = q_shape[1];
+            let k_heads = k_shape[1];
+
+            if q_heads > k_heads {
+                k = self.repeat_heads(k, q_heads, k_heads).context("while broadcasting K")?;
+                v = self.repeat_heads(v, q_heads, k_heads).context("while broadcasting Q")?;
+            }
+        }
 
         // Computing scaling factor for attention
         let scale = if let Some(scale) = self.scale.as_ref() {
@@ -198,7 +236,6 @@ pub fn match_broadcast_kv_cache_pattern(
     model: &TypedModel,
     start_outlet: OutletId,
 ) -> TractResult<Option<OutletId>> {
-    dbg!("start");
     // Find Reshape node
     let reshape_node = model.node(start_outlet.node);
     rule_ensure!(
