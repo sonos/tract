@@ -301,13 +301,10 @@ impl Parameters {
             }
             #[cfg(feature = "onnx")]
             "onnx" => {
-                let mut onnx = tract_onnx::onnx();
-                if matches.is_present("onnx-ignore-output-shapes") {
-                    onnx = onnx.with_ignore_output_shapes(true);
-                }
-                if matches.is_present("onnx-ignore-output-types") {
-                    onnx = onnx.with_ignore_output_types(true);
-                }
+                let onnx = tract_onnx::onnx()
+                    .with_ignore_output_shapes(matches.is_present("onnx-ignore-output-shapes"))
+                    .with_ignore_output_types(matches.is_present("onnx-ignore-output-types"))
+                    .with_ignore_value_info(matches.is_present("onnx-ignore-value-info"));
                 info_usage("loaded framework (onnx)", probe);
                 let graph = onnx.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
