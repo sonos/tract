@@ -10,6 +10,7 @@ use tract_ndarray::Array2;
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
 
+use crate::ops::dyn_kv_cache::DynKeyValueCache;
 use crate::rule_ensure;
 
 use super::previous_node;
@@ -267,22 +268,32 @@ pub fn match_broadcast_kv_cache_pattern(
             )
     );
 
-    // TODO: concat or dyn kv cache
-    // Find concat node
-    let Some(concat_node) = previous_node(model, unsqueeze_node) else { return Ok(None) };
-    rule_ensure!(
-        concat_node.op_is::<TypedConcat>()
-            && concat_node.inputs.len() == 2
-            && concat_node.outputs.len() == 1
-            && model.outputs.contains(&concat_node.id.into())
-    );
+    dbg!("unsquezze");
+    fn is_concat(model: &TypedModel, n: &Node<TypedFact, Box<dyn TypedOp>>) -> bool {
+        n.op_is::<TypedConcat>()
+            && n.inputs.len() == 2
+            && n.outputs.len() == 1
+            && model.outputs.contains(&n.id.into())
+    }
 
-    // Check if one of the inputs to the Concat is a source
-    let input0_node = model.node(concat_node.inputs[0].node);
-    let input1_node = model.node(concat_node.inputs[1].node);
+    fn is_dynkv(n: &Node<TypedFact, Box<dyn TypedOp>>) -> bool {
+        n.op_is::<DynKeyValueCache>() && n.inputs.len() == 1 && n.outputs.len() == 1
+    }
 
+    // Find concat or dyn kvcache node
+    let Some(node) = previous_node(model, unsqueeze_node) else { return Ok(None) };
+    rule_ensure!(is_concat(model, node) || is_dynkv(node));
+
+    let kv_outlet = unsqueeze_node.inputs[0];
+    if is_dynkv(node) {
+        return Ok(Some(kv_outlet));
+    }
+
+    // node is concat, we need to check one input is a source
+    let input0_node = model.node(node.inputs[0].node);
+    let input1_node = model.node(node.inputs[1].node);
     if input0_node.op_is::<TypedSource>() || input1_node.op_is::<TypedSource>() {
-        return Ok(Some(unsqueeze_node.inputs[0]));
+        return Ok(Some(kv_outlet));
     }
 
     Ok(None)
