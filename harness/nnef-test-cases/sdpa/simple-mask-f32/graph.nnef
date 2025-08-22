@@ -34,5 +34,5 @@ graph network(input_0, input_1, input_2) -> (output_0)
     input_2 = tract_core_external(shape = [1, 2, 4], datum_type = 'f32');
     v0 = variable<scalar>(label = 'v0', shape = [2, 1]);
     v0_aligned_rank_expanded = unsqueeze(v0, axes = [0]);
-    output_0 = tract_transformers_sdpa(input_0, input_1, input_2, v0_aligned_rank_expanded, d_type = 'f32', inner_dtype = 'f32', causal = false);
+    output_0 = tract_transformers_sdpa(input_0, input_1, input_2, v0_aligned_rank_expanded, datum_type = 'f32', acc_datum_type = 'f32', is_causal = false);
 }

@@ -31,6 +31,6 @@ graph network(input_0) -> (output_0)
 {
     input_0 = tract_core_external(shape = [1, 2, 3, 4], datum_type = 'f32');
     x = tract_core_cast(input_0, to = 'f16');
-    res = tract_transformers_sdpa(x, x, x, d_type = 'f16', inner_dtype = 'f32', causal = false);
+    res = tract_transformers_sdpa(x, x, x, datum_type = 'f16', acc_datum_type = 'f32', is_causal = false);
     output_0 = tract_core_cast(res, to = 'f32');
 }

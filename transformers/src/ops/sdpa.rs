@@ -22,6 +22,10 @@ pub fn register(registry: &mut Registry) {
             TypeName::Scalar.tensor().named("k"),
             TypeName::Scalar.tensor().named("v"),
             TypeName::Scalar.tensor().named("mask"),
+            TypeName::Scalar.named("scale"),
+            TypeName::String.named("datum_type"),
+            TypeName::String.named("acc_datum_type"),
+            TypeName::Logical.named("is_causal"),
         ],
         &[("output", TypeName::Scalar.tensor())],
         deser_spda,
@@ -37,18 +41,19 @@ fn deser_spda(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
         inputs.push(mask);
     };
     let scale: Option<f32> = invocation.get_named_arg_as(builder, "scale")?;
-    let dt = DatumType::from_str(&invocation.named_arg_as::<String>(builder, "d_type")?)?;
-    let inner_dt =
-        DatumType::from_str(&invocation.named_arg_as::<String>(builder, "inner_dtype")?)?;
-    let is_causal = invocation.named_arg_as(builder, "causal")?;
-    builder.wire(Sdpa { scale: scale.map(tensor0), dt, inner_dt, is_causal }, &inputs)
+    let datum_type =
+        DatumType::from_str(&invocation.named_arg_as::<String>(builder, "datum_type")?)?;
+    let acc_datum_type =
+        DatumType::from_str(&invocation.named_arg_as::<String>(builder, "acc_datum_type")?)?;
+    let is_causal = invocation.named_arg_as(builder, "is_causal")?;
+    builder.wire(Sdpa { scale: scale.map(tensor0), datum_type, acc_datum_type, is_causal }, &inputs)
 }
 
 #[derive(Debug, Clone, Hash)]
 pub struct Sdpa {
     pub scale: Option<Tensor>,
-    pub dt: DatumType,
-    pub inner_dt: DatumType,
+    pub datum_type: DatumType,
+    pub acc_datum_type: DatumType,
     pub is_causal: bool,
 }
 
@@ -100,7 +105,7 @@ impl EvalOp for Sdpa {
         let mut k = inputs.remove(0);
         let mut v = inputs.remove(0);
         let mut mask = if !inputs.is_empty() {
-            Some(inputs.remove(0).cast_to_dt(self.inner_dt)?.into_owned().into_tvalue())
+            Some(inputs.remove(0).cast_to_dt(self.acc_datum_type)?.into_owned().into_tvalue())
         } else {
             None
         };
@@ -120,12 +125,13 @@ impl EvalOp for Sdpa {
 
         // Computing scaling factor for attention
         let scale = if let Some(scale) = self.scale.as_ref() {
-            scale.cast_to_dt(self.inner_dt)?.into_owned()
+            scale.cast_to_dt(self.acc_datum_type)?.into_owned()
         } else {
             let d_k = k_shape[rank - 1] as f32;
-            tensor0(1.0 / d_k.sqrt()).cast_to_dt(self.inner_dt)?.into_owned()
+            tensor0(1.0 / d_k.sqrt()).cast_to_dt(self.acc_datum_type)?.into_owned()
         };
 
+        // TODO: change to ndarray
         // Construct causal mask if needed
         if self.is_causal {
             let (q_seq_len, k_seq_len) = (q_shape[rank - 2], k_shape[rank - 2]);
@@ -140,13 +146,13 @@ impl EvalOp for Sdpa {
             let cond_mask = lower_triangle_ones.cast_to::<bool>()?.into_owned();
 
             // Zeros for lower part
-            let zeros = Tensor::zero_dt(self.inner_dt, &[q_seq_len, k_seq_len])?;
+            let zeros = Tensor::zero_dt(self.acc_datum_type, &[q_seq_len, k_seq_len])?;
 
             // -inf for higher part
             let mut neg_infs =
                 unsafe { Tensor::uninitialized_dt(DatumType::F32, &[q_seq_len, k_seq_len])? };
             neg_infs.fill_t(f32::NEG_INFINITY)?;
-            let neg_infs = neg_infs.cast_to_dt(self.inner_dt)?.into_owned();
+            let neg_infs = neg_infs.cast_to_dt(self.acc_datum_type)?.into_owned();
 
             let causal_mask_tensor = Iff
                 .eval(tvec![cond_mask.into_tvalue(), zeros.into_tvalue(), neg_infs.into_tvalue(),])?
@@ -161,15 +167,15 @@ impl EvalOp for Sdpa {
             4 => "bhmk,bhnk->bhmn".parse().unwrap(),
             _ => unreachable!(),
         };
-        let q_dot_kt = EinSum { axes, operating_dt: self.inner_dt, q_params: None }
+        let q_dot_kt = EinSum { axes, operating_dt: self.acc_datum_type, q_params: None }
             .eval(tvec![q, k])?
             .remove(0);
 
-        let scaled_input = Mul.eval(q_dot_kt, scale.into_tvalue(), self.inner_dt)?;
+        let scaled_input = Mul.eval(q_dot_kt, scale.into_tvalue(), self.acc_datum_type)?;
 
         // Apply mask (causal or provided by user)
         let scaled_masked_input = if let Some(m) = mask {
-            Add.eval(scaled_input.into_tvalue(), m, self.inner_dt)?
+            Add.eval(scaled_input.into_tvalue(), m, self.acc_datum_type)?
         } else {
             scaled_input
         };
@@ -185,7 +191,7 @@ impl EvalOp for Sdpa {
             4 => "bhmn,bhnv->bhmv".parse().unwrap(),
             _ => unreachable!(),
         };
-        let output = EinSum { axes, operating_dt: self.inner_dt, q_params: None }
+        let output = EinSum { axes, operating_dt: self.acc_datum_type, q_params: None }
             .eval(tvec![attention_weights, v])?;
         Ok(output)
     }
