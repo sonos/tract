@@ -1,12 +1,12 @@
 use std::str::FromStr;
 
-use tract_core::ops::array::{MultiBroadcastTo, Trilu, TypedConcat};
+use tract_core::ops::array::{MultiBroadcastTo, TypedConcat};
 use tract_core::ops::binary::BinMiniOp;
 use tract_core::ops::change_axes;
 use tract_core::ops::einsum::EinSum;
-use tract_core::ops::logic::Iff;
 use tract_core::ops::math::{Add, Mul};
 use tract_core::ops::source::TypedSource;
+use tract_ndarray::Array2;
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
 
@@ -131,34 +131,20 @@ impl EvalOp for Sdpa {
             tensor0(1.0 / d_k.sqrt()).cast_to_dt(self.acc_datum_type)?.into_owned()
         };
 
-        // TODO: change to ndarray
         // Construct causal mask if needed
         if self.is_causal {
-            let (q_seq_len, k_seq_len) = (q_shape[rank - 2], k_shape[rank - 2]);
-            let mut ones =
-                unsafe { Tensor::uninitialized_dt(DatumType::F32, &[q_seq_len, k_seq_len])? };
-            ones.fill_t(1.0_f32)?;
+            let q_seq_len = q.shape()[rank - 2];
+            let k_seq_len = k.shape()[rank - 2];
 
-            // Build lower triangular matrix
-            let k = tensor0(0_i64);
-            let lower_triangle_ones =
-                Trilu { upper: false }.eval(tvec![ones.into(), k.into()])?.remove(0);
-            let cond_mask = lower_triangle_ones.cast_to::<bool>()?.into_owned();
-
-            // Zeros for lower part
-            let zeros = Tensor::zero_dt(self.acc_datum_type, &[q_seq_len, k_seq_len])?;
-
-            // -inf for higher part
-            let mut neg_infs =
-                unsafe { Tensor::uninitialized_dt(DatumType::F32, &[q_seq_len, k_seq_len])? };
-            neg_infs.fill_t(f32::NEG_INFINITY)?;
-            let neg_infs = neg_infs.cast_to_dt(self.acc_datum_type)?.into_owned();
-
-            let causal_mask_tensor = Iff
-                .eval(tvec![cond_mask.into_tvalue(), zeros.into_tvalue(), neg_infs.into_tvalue(),])?
-                .remove(0);
-
-            mask = Some(causal_mask_tensor);
+            let m_array = Array2::from_shape_fn([q_seq_len, k_seq_len], |(r, c)| {
+                if c > r {
+                    f32::NEG_INFINITY
+                } else {
+                    0.0f32
+                }
+            });
+            let causal_mask = m_array.into_tensor().cast_to_dt(self.acc_datum_type)?.into_owned();
+            mask = Some(causal_mask.into_tvalue());
         }
 
         // Computing attention matrix
@@ -281,6 +267,7 @@ pub fn match_broadcast_kv_cache_pattern(
             )
     );
 
+    // TODO: concat or dyn kv cache
     // Find concat node
     let Some(concat_node) = previous_node(model, unsqueeze_node) else { return Ok(None) };
     rule_ensure!(
