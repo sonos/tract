@@ -205,7 +205,22 @@ impl TypedOp for Sdpa {
         );
 
         let q_shape = &inputs[0].shape.dims();
+        let k_shape = &inputs[1].shape.dims();
         let v_shape = &inputs[2].shape.dims();
+
+        if rank == 4 {
+            let q_heads = q_shape[1].to_i64()?;
+            let k_heads = k_shape[1].to_i64()?;
+            let v_heads = v_shape[1].to_i64()?;
+            ensure!(k_heads == v_heads, "K and V must have the same number of heads.");
+            ensure!(
+                q_heads % k_heads == 0,
+                "Q heads ({}) must be a multiple of K/V heads ({})",
+                q_heads,
+                k_heads
+            );
+        }
+
         let output_shape = match rank {
             3 => {
                 if let (&[b, seq_len, _], &[_, _, out_dim]) = (q_shape, v_shape) {
@@ -302,8 +317,11 @@ pub fn fuse_kv_cache_broadcast_rule(
 
     let tapped_inputs = patch.taps(model, &new_sdpa_inputs)?;
 
-    let new_sdpa_node =
-        patch.wire_node(format!("{}.gqa_fused", node_name), op.clone(), &tapped_inputs)?;
+    let new_sdpa_node = patch.wire_node(
+        format!("{}.sdpa_fused_kv_broadcast", node_name),
+        op.clone(),
+        &tapped_inputs,
+    )?;
 
     patch.shunt_outside(model, node.id.into(), new_sdpa_node[0])?;
 
