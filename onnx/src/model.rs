@@ -184,15 +184,17 @@ impl ParsingContext<'_> {
             model.set_outlet_fact(outlet, fact)?;
         }
         model.set_output_outlets(&outputs)?;
-        for info in &graph.value_info {
-            if let Some(TypeProto { value: Some(Value::TensorType(t)), .. }) = &info.r#type {
-                if let Some(outlet) = outlets_by_name.get(&info.name) {
-                    let mut pbfact = translate_inference_fact(&ctx, t, false)?;
-                    // be conservative, these are likely to be TDim
-                    if pbfact.datum_type() == Some(i64::datum_type()) {
-                        pbfact = pbfact.without_datum_type();
+        if !self.framework.ignore_value_info {
+            for info in &graph.value_info {
+                if let Some(TypeProto { value: Some(Value::TensorType(t)), .. }) = &info.r#type {
+                    if let Some(outlet) = outlets_by_name.get(&info.name) {
+                        let mut pbfact = translate_inference_fact(&ctx, t, false)?;
+                        // be conservative, these are likely to be TDim
+                        if pbfact.datum_type() == Some(i64::datum_type()) {
+                            pbfact = pbfact.without_datum_type();
+                        }
+                        model.set_outlet_fact(*outlet, pbfact)?;
                     }
-                    model.set_outlet_fact(*outlet, pbfact)?;
                 }
             }
         }
@@ -219,6 +221,7 @@ pub struct Onnx {
     pub use_output_shapes: bool,
     pub ignore_output_types: bool,
     pub provider: Arc<dyn ModelDataResolver + Send + Sync>,
+    pub ignore_value_info: bool,
 }
 
 impl Default for Onnx {
@@ -228,6 +231,7 @@ impl Default for Onnx {
             use_output_shapes: Default::default(),
             ignore_output_types: Default::default(),
             provider: Arc::new(data_resolver::MmapDataResolver),
+            ignore_value_info: false,
         }
     }
 }
@@ -273,6 +277,10 @@ impl Onnx {
 
     pub fn with_ignore_output_types(self, ignore: bool) -> Onnx {
         Self { ignore_output_types: ignore, ..self }
+    }
+
+    pub fn with_ignore_value_info(self, ignore: bool) -> Onnx {
+        Self { ignore_value_info: ignore, ..self }
     }
 
     pub fn determinize(model: &mut InferenceModel) -> TractResult<()> {

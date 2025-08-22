@@ -38,9 +38,9 @@ mod tensor;
 mod utils;
 
 use params::*;
-use tract_linalg::WeightType;
 use tract_linalg::block_quant::Q4_0;
 use tract_linalg::mmm::MatMatMul;
+use tract_linalg::WeightType;
 
 readings_probe::instrumented_allocator!();
 
@@ -119,6 +119,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"onnx-test-data-set" [data_set] "Use onnx-test data-set as input (expect test_data_set_N dir with input_X.pb, etc. inside)"))
         .arg(arg!(--"onnx-ignore-output-shapes" "Ignore output shapes from model (workaround for pytorch export bug with mask axes)"))
         .arg(arg!(--"onnx-ignore-output-types" "Ignore output shapes from types (workaround for tdim conflicting with integer types)"))
+        .arg(arg!(--"onnx-ignore-value-info" "Ignore value info from ONNX file while loading network"))
 
         .arg(arg!(--"input-node" [node] ... "Override input nodes names (auto-detects otherwise)."))
         .arg(Arg::new("output-node").long("output-node").multiple_occurrences(true).takes_value(true).long_help(
