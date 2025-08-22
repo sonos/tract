@@ -1,0 +1,11 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+graph net(a) -> (o)
+{
+    a = external<scalar>(shape = [3, 2]);
+    reshaped = reshape(a, shape = [2, 3]);
+    b = reshaped * 2.0;
+    o = reshape(b, shape = [3, 2]);
+}
