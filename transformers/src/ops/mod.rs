@@ -15,6 +15,7 @@ pub use dyn_kv_cache::replace_kv_cache;
 pub use gelu_approximate::gelu_approx_rule;
 pub use rms_norm::rms_norm_rule;
 pub use scaled_masked_softmax::scaled_masked_softmax_rule;
+pub use sdpa::fuse_kv_cache_broadcast_rule;
 pub use silu::silu_rule;
 
 use tract_core::ops::binary::TypedBinOp;
@@ -72,7 +73,11 @@ fn single_prev_node_as<'a, O: TypedOp>(
         })
         .collect::<TVec<_>>();
 
-    if prev_nodes.len() != 1 { None } else { Some(prev_nodes[0]) }
+    if prev_nodes.len() != 1 {
+        None
+    } else {
+        Some(prev_nodes[0])
+    }
 }
 
 fn find_succ_mul_with_const<'a>(
