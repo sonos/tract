@@ -268,7 +268,6 @@ pub fn match_broadcast_kv_cache_pattern(
             )
     );
 
-    dbg!("unsquezze");
     fn is_concat(model: &TypedModel, n: &Node<TypedFact, Box<dyn TypedOp>>) -> bool {
         n.op_is::<TypedConcat>()
             && n.inputs.len() == 2
