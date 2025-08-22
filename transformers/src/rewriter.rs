@@ -93,6 +93,21 @@ impl ModelTransform for KeyValueCacheTransform {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct SdpaFuseKvCacheBroadcastTransform;
+
+impl ModelTransform for SdpaFuseKvCacheBroadcastTransform {
+    fn name(&self) -> StaticName {
+        "sdpa-fuse-kv-cache-broadcast-transform".into()
+    }
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        Rewriter::default()
+            .with_rule_for("detect-sdpa-kv-cache-broadcast", ops::fuse_kv_cache_broadcast_rule)
+            .rewrite(&(), model)
+    }
+}
+
 // TODO: This is why Transform shoudl be renamed to Remodel
 #[derive(Debug, Default)]
 pub struct TransformersTransform;
@@ -103,6 +118,7 @@ impl ModelTransform for TransformersTransform {
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        SdpaFuseKvCacheBroadcastTransform.transform(model)?;
         KeyValueCacheTransform.transform(model)?;
 
         Rewriter::default()

@@ -1,12 +1,18 @@
 use std::str::FromStr;
 
-use tract_core::ops::array::Trilu;
+use tract_core::ops::array::{MultiBroadcastTo, Trilu, TypedConcat};
 use tract_core::ops::binary::BinMiniOp;
+use tract_core::ops::change_axes;
 use tract_core::ops::einsum::EinSum;
 use tract_core::ops::logic::Iff;
 use tract_core::ops::math::{Add, Mul};
+use tract_core::ops::source::TypedSource;
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
+
+use crate::rule_ensure;
+
+use super::previous_node;
 
 pub fn register(registry: &mut Registry) {
     registry.register_primitive(
@@ -185,4 +191,84 @@ impl TypedOp for Sdpa {
     }
 
     as_op!();
+}
+
+// KV cache broadcast is: input -> concat -> AddAxis -> Broadcast -> Reshape
+pub fn match_broadcast_kv_cache_pattern(
+    model: &TypedModel,
+    start_outlet: OutletId,
+) -> TractResult<Option<OutletId>> {
+    dbg!("start");
+    // Find Reshape node
+    let reshape_node = model.node(start_outlet.node);
+    rule_ensure!(
+        reshape_node.op_is::<change_axes::AxisOp>()
+            && matches!(
+                reshape_node.op_as::<change_axes::AxisOp>().unwrap(),
+                change_axes::AxisOp::Reshape(1, _, _)
+            )
+    );
+
+    // Find broadcast node
+    let Some(broadcast_node) = previous_node(model, reshape_node) else { return Ok(None) };
+    rule_ensure!(broadcast_node.op_is::<MultiBroadcastTo>());
+
+    // Find add axis node
+    let Some(unsqueeze_node) = previous_node(model, broadcast_node) else { return Ok(None) };
+    rule_ensure!(
+        unsqueeze_node.op_is::<change_axes::AxisOp>()
+            && matches!(
+                unsqueeze_node.op_as::<change_axes::AxisOp>().unwrap(),
+                change_axes::AxisOp::Add(2)
+            )
+    );
+
+    // Find concat node
+    let Some(concat_node) = previous_node(model, unsqueeze_node) else { return Ok(None) };
+    rule_ensure!(
+        concat_node.op_is::<TypedConcat>()
+            && concat_node.inputs.len() == 2
+            && concat_node.outputs.len() == 1
+            && model.outputs.contains(&concat_node.id.into())
+    );
+
+    // Check if one of the inputs to the Concat is a source
+    let input0_node = model.node(concat_node.inputs[0].node);
+    let input1_node = model.node(concat_node.inputs[1].node);
+
+    if input0_node.op_is::<TypedSource>() || input1_node.op_is::<TypedSource>() {
+        return Ok(Some(unsqueeze_node.inputs[0]));
+    }
+
+    Ok(None)
+}
+
+pub fn fuse_kv_cache_broadcast_rule(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    node_name: &str,
+    op: &Sdpa,
+) -> TractResult<Option<TypedModelPatch>> {
+    let matched_src_k_outlet = match_broadcast_kv_cache_pattern(model, node.inputs[1])?;
+    let matched_src_v_outlet = match_broadcast_kv_cache_pattern(model, node.inputs[2])?;
+
+    let (new_k_outlet, new_v_outlet) = match (matched_src_k_outlet, matched_src_v_outlet) {
+        (Some(k_outlet), Some(v_outlet)) => (k_outlet, v_outlet),
+        _ => return Ok(None),
+    };
+
+    let mut patch = TypedModelPatch::default();
+    let mut new_sdpa_inputs = node.inputs.clone();
+    new_sdpa_inputs[1] = new_k_outlet;
+    new_sdpa_inputs[2] = new_v_outlet;
+
+    let tapped_inputs = patch.taps(model, &new_sdpa_inputs)?;
+
+    let new_sdpa_node =
+        patch.wire_node(format!("{}.gqa_fused", node_name), op.clone(), &tapped_inputs)?;
+
+    patch.shunt_outside(model, node.id.into(), new_sdpa_node[0])?;
+
+    Ok(Some(patch))
 }
