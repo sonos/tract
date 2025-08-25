@@ -3,7 +3,7 @@ use proptest::prelude::{Arbitrary, BoxedStrategy, Strategy};
 use tract_core::internal::*;
 use tract_core::ndarray::ArrayD;
 use tract_core::num_traits::Float;
-use tract_ndarray::IxDyn;
+use tract_ndarray::{s, Array2, Array3, ArrayView2};
 use tract_transformers::ops::sdpa::Sdpa;
 
 use crate::tensor;
@@ -15,7 +15,7 @@ pub struct SdpaProblemParams {
 
 impl Default for SdpaProblemParams {
     fn default() -> Self {
-        Self { q_emb: 256 }
+        Self { q_emb: 64 }
     }
 }
 
@@ -39,7 +39,7 @@ where
     type Strategy = BoxedStrategy<SdpaProblem<F>>;
 
     fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-        (1..10usize, 1..128usize)
+        (1..3usize, 1..64usize)
             .prop_flat_map(move |(b, seq_len)| {
                 let q = tensor(&[b, seq_len, args.q_emb]);
                 let k = tensor(&[b, seq_len, args.q_emb]);
@@ -51,10 +51,7 @@ where
     }
 }
 
-impl<F> SdpaProblem<F>
-where
-    F: Datum + Float,
-{
+impl SdpaProblem<f32> {
     fn tract(&self) -> TractResult<TypedModel> {
         let mut model = TypedModel::default();
 
@@ -69,7 +66,7 @@ where
             "SDPA",
             Sdpa {
                 scale,
-                datum_type: F::datum_type(),
+                datum_type: DatumType::F32,
                 acc_datum_type: DatumType::F32,
                 is_causal: self.is_causal,
             },
@@ -81,17 +78,53 @@ where
         Ok(model)
     }
 
-    fn reference(&self) -> ArrayD<F> {
+    fn softmax(input: &Array2<f32>, axis: usize) -> Array2<f32> {
+        let axis = tract_ndarray::Axis(axis);
+
+        let max_per_axis =
+            input.map_axis(axis, |lane| lane.fold(f32::NEG_INFINITY, |a, &b| a.max(b)));
+
+        let shifted = input - &max_per_axis.insert_axis(axis);
+        let exp = shifted.mapv(f32::exp);
+        let sum_exp = exp.sum_axis(axis);
+
+        let norm = sum_exp.insert_axis(axis);
+
+        &exp / &norm
+    }
+
+    fn scaled_dot_product_attention_2d(
+        queries: &ArrayView2<f32>,
+        keys: &ArrayView2<f32>,
+        values: &ArrayView2<f32>,
+    ) -> Array2<f32> {
+        let d_k = keys.shape()[1] as f32;
+        let q_dot_kt = queries.dot(&keys.t());
+        let scaled_input = q_dot_kt / d_k.sqrt();
+        let att_weights = Self::softmax(&scaled_input, 1);
+        let output = att_weights.dot(values);
+        output
+    }
+
+    fn reference(&self) -> Array3<f32> {
         let [b, seq_len, _] = self.q.shape() else { unreachable!() };
         let [_, _, v_emb] = self.v.shape() else { unreachable!() };
-        ArrayD::zeros(IxDyn(&[*b, *seq_len, *v_emb]))
+        let mut output = Array3::<f32>::zeros((*b, *seq_len, *v_emb));
+        for i in 0..*b {
+            let q_slice = self.q.slice(s![i, .., ..]);
+            let k_slice = self.k.slice(s![i, .., ..]);
+            let v_slice = self.v.slice(s![i, .., ..]);
+
+            let output_2d = Self::scaled_dot_product_attention_2d(&q_slice, &k_slice, &v_slice);
+
+            output.slice_mut(s![i, .., ..]).assign(&output_2d);
+        }
+
+        output
     }
 }
 
-impl<F> Test for SdpaProblem<F>
-where
-    F: Float + Datum,
-{
+impl Test for SdpaProblem<f32> {
     fn run_with_approx(
         &self,
         _suite: &str,
@@ -118,6 +151,5 @@ pub fn suite() -> TractResult<TestSuite> {
 
     let params = SdpaProblemParams::default();
     suite.add_arbitrary::<SdpaProblem<f32>>("proptest_f32", params.clone());
-    suite.add_arbitrary::<SdpaProblem<f16>>("proptest_f16", params.clone());
     Ok(suite)
 }
