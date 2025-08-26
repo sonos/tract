@@ -295,5 +295,16 @@ pub fn suite() -> TractResult<TestSuite> {
 
     let params = SdpaProblemParams::default();
     suite.add_arbitrary::<SdpaProblem<f32>>("proptest_f32", params.clone());
+    suite.add(
+        "trivial_f32_0",
+        SdpaProblem {
+            q: tensor3(&[[[0f32]]]).into_array()?,
+            k: tensor3(&[[[0f32]]]).into_array()?,
+            v: tensor3(&[[[0f32]]]).into_array()?,
+            mask: None,
+            scale: None,
+            is_causal: true,
+        },
+    );
     Ok(suite)
 }

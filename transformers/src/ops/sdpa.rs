@@ -8,6 +8,7 @@ use tract_core::ops::math::{Add, Mul};
 use tract_core::ops::source::TypedSource;
 use tract_ndarray::Array2;
 use tract_nnef::internal::*;
+use tract_nnef::ser::datum_type;
 use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
 
 use crate::ops::dyn_kv_cache::DynKeyValueCache;
@@ -16,6 +17,7 @@ use crate::rule_ensure;
 use super::previous_node;
 
 pub fn register(registry: &mut Registry) {
+    registry.register_dumper(ser_sdpa);
     registry.register_primitive(
         "tract_transformers_sdpa",
         &[
@@ -31,6 +33,29 @@ pub fn register(registry: &mut Registry) {
         &[("output", TypeName::Scalar.tensor())],
         deser_spda,
     );
+}
+
+fn ser_sdpa(ast: &mut IntoAst, node: &TypedNode, op: &Sdpa) -> TractResult<Option<Arc<RValue>>> {
+    // Inputs settings
+    let q = ast.mapping[&node.inputs[0]].clone();
+    let k = ast.mapping[&node.inputs[1]].clone();
+    let v = ast.mapping[&node.inputs[2]].clone();
+    let mut inputs = vec![q, k, v];
+    if let Some(mask) = node.inputs.get(3).as_ref().map(|it| ast.mapping[it].clone()) {
+        inputs.push(mask);
+    }
+
+    // Attributes settings
+    let mut attrs = vec![
+        ("is_causal", logical(op.is_causal)),
+        ("datum_type", datum_type(op.datum_type)),
+        ("acc_datum_type", datum_type(op.acc_datum_type)),
+    ];
+    if let Some(scale) = op.scale.as_ref() {
+        attrs.push(("scale", numeric(scale.cast_to_scalar::<f32>()?)));
+    }
+
+    Ok(Some(invocation("tract_transformers_sdpa", &inputs, &attrs)))
 }
 
 fn deser_spda(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
