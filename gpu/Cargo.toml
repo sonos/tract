@@ -1,6 +1,6 @@
 [package]
 name = "tract-gpu"
-version = "0.22.0"
+version = "0.22.1-pre"
 license = "MIT OR Apache-2.0"
 authors = [
 	"Hubert de La Jonquiere <hubert.delajonquiere@sonos.com>",
