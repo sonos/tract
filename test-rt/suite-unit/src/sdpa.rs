@@ -123,7 +123,7 @@ impl SdpaProblem<f32> {
         let q = self.q.clone().into_tensor();
         let k = self.k.clone().into_tensor();
         let v = self.v.clone().into_tensor();
-        let scale = self.scale.map(|it| tensor0(it));
+        let scale = self.scale.map(tensor0);
         let q_in = model.add_source("Q", TypedFact::shape_and_dt_of(&q))?;
         let k_in = model.add_source("K", TypedFact::shape_and_dt_of(&k))?;
         let v_in = model.add_source("V", TypedFact::shape_and_dt_of(&v))?;
@@ -190,8 +190,7 @@ impl SdpaProblem<f32> {
         }
 
         let att_weights = Self::softmax(&scaled_input, 1);
-        let output = att_weights.dot(values);
-        output
+        att_weights.dot(values)
     }
 
     fn reference_3d(&self) -> Array3<f32> {
