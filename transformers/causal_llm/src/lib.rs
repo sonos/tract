@@ -9,16 +9,20 @@ use tract_nnef::tract_core::ops::source::SourceState;
 use tract_transformers::ops::dyn_kv_cache::DynKeyValueCacheState;
 use tract_transformers::WithTractTransformers;
 
+#[derive(Clone, Debug, Default)]
+pub struct CausalLlmModelConfig {
+    pub force_cpu: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct CausalLlmModel {
     pub tokenizer: Tokenizer,
     pub nn: Arc<TypedRunnableModel<TypedModel>>,
+    pub conf: CausalLlmModelConfig,
 }
 
 fn plan_with_session_handler(model: TypedModel) -> TractResult<TypedSimplePlan<TypedModel>> {
-    if cfg!(any(target_os = "macos", target_os = "ios"))
-        || tract_cuda::utils::get_cuda_lib().is_some()
-    {
+    if model.properties.contains_key("GPU") {
         let plan_options = PlanOptions { skip_order_opt_ram: true, ..Default::default() };
         let plan = model.into_runnable_with_options(&plan_options)?;
         let model = plan.model();
@@ -41,6 +45,7 @@ impl CausalLlmModel {
     fn from_tokenizer_and_typed_model(
         tokenizer: tokenizers::Tokenizer,
         nn: TypedModel,
+        conf: CausalLlmModelConfig,
     ) -> TractResult<Arc<CausalLlmModel>> {
         let nnef = tract_nnef::nnef().with_tract_transformers();
 
@@ -49,43 +54,63 @@ impl CausalLlmModel {
             .context("transformers-detect-all not found")?;
         let mut nn = nn.into_decluttered()?;
         nn.transform(&*transform)?;
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-        {
-            use crate::tract_core::transform::ModelTransform;
-            use std::str::FromStr;
-            tract_metal::MetalTransform::from_str("")?.transform(&mut nn)?;
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-        {
-            use tract_core::transform::ModelTransform;
-            if tract_cuda::utils::get_cuda_lib().is_some() {
-                tract_cuda::CudaTransform::default().transform(&mut nn)?;
+        if !conf.force_cpu {
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            {
+                use crate::tract_core::transform::ModelTransform;
+                use std::str::FromStr;
+                nn.properties.insert("GPU", rctensor0(true));
+                tract_metal::MetalTransform::from_str("")?.transform(&mut nn)?;
+            }
+            #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+            {
+                use tract_core::transform::ModelTransform;
+                if tract_cuda::utils::get_cuda_lib().is_some() {
+                    nn.properties.insert("GPU".into(), rctensor0(true));
+                    tract_cuda::CudaTransform::default().transform(&mut nn)?;
+                }
             }
         }
         nn.optimize()?;
         let nn = plan_with_session_handler(nn)?;
-        Ok(Arc::new(CausalLlmModel { tokenizer, nn: Arc::new(nn) }))
+        Ok(Arc::new(CausalLlmModel { tokenizer, nn: Arc::new(nn), conf }))
+    }
+
+    pub fn from_paths_and_conf(
+        tokenizer: impl AsRef<Path>,
+        nn: impl AsRef<Path>,
+        conf: CausalLlmModelConfig,
+    ) -> TractResult<Arc<CausalLlmModel>> {
+        let nnef = tract_nnef::nnef().with_tract_transformers();
+        let tokenizer = tokenizers::Tokenizer::from_file(tokenizer).map_err(|e| anyhow!(e))?;
+        let nn = nnef.model_for_path(nn.as_ref())?;
+        CausalLlmModel::from_tokenizer_and_typed_model(tokenizer, nn, conf)
     }
 
     pub fn from_paths(
         tokenizer: impl AsRef<Path>,
         nn: impl AsRef<Path>,
     ) -> TractResult<Arc<CausalLlmModel>> {
+        Self::from_paths_and_conf(tokenizer, nn, Default::default())
+    }
+
+    pub fn from_bytes_and_conf(
+        tokenizer_bytes: impl AsRef<[u8]>,
+        llm_model_bytes: impl AsRef<[u8]>,
+        conf: CausalLlmModelConfig,
+    ) -> TractResult<Arc<CausalLlmModel>> {
         let nnef = tract_nnef::nnef().with_tract_transformers();
-        let tokenizer = tokenizers::Tokenizer::from_file(tokenizer).map_err(|e| anyhow!(e))?;
-        let nn = nnef.model_for_path(nn.as_ref())?;
-        CausalLlmModel::from_tokenizer_and_typed_model(tokenizer, nn)
+        let tokenizer = Tokenizer::from_bytes(tokenizer_bytes).map_err(|e| anyhow!(e))?;
+        let mut llm_read = std::io::Cursor::new(llm_model_bytes);
+        let nn = nnef.model_for_read(&mut llm_read)?;
+        CausalLlmModel::from_tokenizer_and_typed_model(tokenizer, nn, conf)
     }
 
     pub fn from_bytes(
         tokenizer_bytes: impl AsRef<[u8]>,
         llm_model_bytes: impl AsRef<[u8]>,
     ) -> TractResult<Arc<CausalLlmModel>> {
-        let nnef = tract_nnef::nnef().with_tract_transformers();
-        let tokenizer = Tokenizer::from_bytes(tokenizer_bytes).map_err(|e| anyhow!(e))?;
-        let mut llm_read = std::io::Cursor::new(llm_model_bytes);
-        let nn = nnef.model_for_read(&mut llm_read)?;
-        CausalLlmModel::from_tokenizer_and_typed_model(tokenizer, nn)
+        Self::from_bytes_and_conf(tokenizer_bytes, llm_model_bytes, Default::default())
     }
 
     pub fn spawn(self: &Arc<Self>) -> TractResult<CausalLlmState> {

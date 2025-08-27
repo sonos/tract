@@ -27,6 +27,10 @@ struct Args {
     /// Turn debugging information on
     #[arg(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
+
+    /// Force execution on CPU (no cuda or metal)
+    #[arg(long)]
+    force_cpu: bool,
 }
 
 struct Context {
@@ -53,7 +57,8 @@ async fn main() -> TractResult<()> {
 
     env_logger::Builder::from_env(env).format_timestamp_nanos().init();
 
-    let llm = CausalLlmModel::from_paths(args.tokenizers, args.model)?;
+    let conf = causal_llm::CausalLlmModelConfig { force_cpu: args.force_cpu };
+    let llm = CausalLlmModel::from_paths_and_conf(args.tokenizers, args.model, conf)?;
     info!("model loaded");
 
     let context = Context { llm };
