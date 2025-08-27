@@ -113,8 +113,6 @@ impl EvalOp for Sdpa {
         if q.rank() == 4 {
             let k_shape = k.shape().to_vec();
             let q_shape = q.shape().to_vec();
-            dbg!(&k_shape);
-            dbg!(&q_shape);
             let [_, q_heads, _, q_dims] = q_shape.as_slice() else { unreachable!() };
             let [b, k_heads, seq_len, k_dims] = k_shape.as_slice() else { unreachable!() };
             if q_heads > k_heads {
@@ -164,29 +162,22 @@ impl EvalOp for Sdpa {
             5 => "bhgmk,bhgnk->bhgmn".parse().unwrap(),
             _ => unreachable!(),
         };
-        dbg!(&q.shape());
-        dbg!(&k.shape());
         let q_dot_kt = EinSum { axes, operating_dt: self.acc_datum_type, q_params: None }
             .eval(tvec![q, k])?
             .remove(0);
-        dbg!(&q_dot_kt);
         let scaled_input = Mul.eval(q_dot_kt, scale.into_tvalue(), self.acc_datum_type)?;
-        dbg!(&scaled_input.shape());
 
         // Apply mask (causal or provided by user)
         let scaled_masked_input = if let Some(m) = mask {
-            dbg!(&m.shape());
             Add.eval(scaled_input.into_tvalue(), m, self.acc_datum_type)?
         } else {
             scaled_input
         };
-        dbg!(&scaled_masked_input.shape());
 
         let attention_weights =
             Softmax::new(tvec![rank - 1], None, SoftmaxKind::Softmax(SoftmaxExp::Libc))
                 .eval(tvec![scaled_masked_input.into()])?[0]
                 .clone();
-        dbg!(&attention_weights.shape());
 
         // Final projection using V
         let axes = match rank {
@@ -195,11 +186,8 @@ impl EvalOp for Sdpa {
             5 => "bhgmn,bhgnv->bhgmv".parse().unwrap(),
             _ => unreachable!(),
         };
-        dbg!(&attention_weights.shape());
         let mut output = EinSum { axes, operating_dt: self.acc_datum_type, q_params: None }
             .eval(tvec![attention_weights, v])?;
-        dbg!(&output[0].shape());
-        dbg!(&final_reshape);
         if let Some(shape) = final_reshape {
             return Ok(tvec!(output.remove(0).into_tensor().into_shape(&shape)?.into()));
         }
