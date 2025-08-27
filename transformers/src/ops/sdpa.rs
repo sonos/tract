@@ -83,34 +83,6 @@ pub struct Sdpa {
     pub is_causal: bool,
 }
 
-impl Sdpa {
-    fn repeat_heads(
-        &self,
-        tensor: TValue,
-        num_heads: usize,
-        kv_heads: usize,
-    ) -> TractResult<TValue> {
-        let repeat_factor = num_heads / kv_heads;
-
-        // Unsqueeze -> MultiBroadcastTo -> Reshape
-        let mut tensor = tensor.into_tensor();
-        let mut final_shape = tensor.shape().to_vec();
-        final_shape[1] = num_heads; // The target number of heads
-
-        // [b, kv_heads, seq_len, kv_emb_dims] -> [b, kv_heads, 1, seq_len, kv_emb_dims]
-        tensor.insert_axis(2)?;
-
-        // [b, kv_heads, 1, seq_len, kv_emb_dims] -> [b, kv_heads, num_heads // kv_heads, seq_len, kv_emb_dims]
-        let mut broadcast_shape = tensor.shape().to_vec();
-        broadcast_shape[2] = repeat_factor;
-        let broadcasted = tensor.broadcast_to_shape(&broadcast_shape)?;
-
-        // [b, kv_heads, num_heads // kv_heads, seq_len, kv_emb_dims] -> [b, num_heads, seq_len, kv_emb_dims]
-        let reshaped = broadcasted.into_shape(&final_shape)?;
-        Ok(reshaped.into())
-    }
-}
-
 impl Op for Sdpa {
     fn name(&self) -> StaticName {
         "SDPA".into()
@@ -127,7 +99,7 @@ impl EvalOp for Sdpa {
     }
 
     fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let q = inputs.remove(0);
+        let mut q = inputs.remove(0);
         let mut k = inputs.remove(0);
         let mut v = inputs.remove(0);
         let mut mask = if !inputs.is_empty() {
@@ -135,19 +107,35 @@ impl EvalOp for Sdpa {
         } else {
             None
         };
-        let rank = q.rank();
-        let k_shape = k.shape().to_vec();
-        let q_shape = q.shape().to_vec();
 
-        if rank == 4 {
-            let q_heads = q_shape[1];
-            let k_heads = k_shape[1];
-
+        // In case of GQA we reshape for einsum broadcast
+        let mut final_reshape = None;
+        if q.rank() == 4 {
+            let k_shape = k.shape().to_vec();
+            let q_shape = q.shape().to_vec();
+            dbg!(&k_shape);
+            dbg!(&q_shape);
+            let [_, q_heads, _, q_dims] = q_shape.as_slice() else { unreachable!() };
+            let [b, k_heads, seq_len, k_dims] = k_shape.as_slice() else { unreachable!() };
             if q_heads > k_heads {
-                k = self.repeat_heads(k, q_heads, k_heads).context("while broadcasting K")?;
-                v = self.repeat_heads(v, q_heads, k_heads).context("while broadcasting Q")?;
+                let g = q_heads / k_heads;
+                q = q.into_tensor().into_shape(&[*b, *k_heads, g, *seq_len, *q_dims])?.into();
+                k = k.into_tensor().into_shape(&[*b, *k_heads, 1, *seq_len, *k_dims])?.into();
+                v = v.into_tensor().into_shape(&[*b, *k_heads, 1, *seq_len, *k_dims])?.into();
+                mask = mask
+                    .map(|it| -> TractResult<_> {
+                        Ok(it
+                            .into_tensor()
+                            .into_shape(&[*b, *k_heads, g, *seq_len, *seq_len])?
+                            .into())
+                    })
+                    .transpose()?;
+                final_reshape = Some(vec![*b, *q_heads, *seq_len, *k_dims]);
             }
         }
+
+        let rank = q.rank();
+        let k_shape = k.shape().to_vec();
 
         // Computing scaling factor for attention
         let scale = if let Some(scale) = self.scale.as_ref() {
@@ -173,34 +161,48 @@ impl EvalOp for Sdpa {
         let axes = match rank {
             3 => "amk,ank->amn".parse().unwrap(),
             4 => "bhmk,bhnk->bhmn".parse().unwrap(),
+            5 => "bhgmk,bhgnk->bhgmn".parse().unwrap(),
             _ => unreachable!(),
         };
+        dbg!(&q.shape());
+        dbg!(&k.shape());
         let q_dot_kt = EinSum { axes, operating_dt: self.acc_datum_type, q_params: None }
             .eval(tvec![q, k])?
             .remove(0);
-
+        dbg!(&q_dot_kt);
         let scaled_input = Mul.eval(q_dot_kt, scale.into_tvalue(), self.acc_datum_type)?;
+        dbg!(&scaled_input.shape());
 
         // Apply mask (causal or provided by user)
         let scaled_masked_input = if let Some(m) = mask {
+            dbg!(&m.shape());
             Add.eval(scaled_input.into_tvalue(), m, self.acc_datum_type)?
         } else {
             scaled_input
         };
+        dbg!(&scaled_masked_input.shape());
 
         let attention_weights =
             Softmax::new(tvec![rank - 1], None, SoftmaxKind::Softmax(SoftmaxExp::Libc))
                 .eval(tvec![scaled_masked_input.into()])?[0]
                 .clone();
+        dbg!(&attention_weights.shape());
 
         // Final projection using V
         let axes = match rank {
             3 => "amk,akn->amn".parse().unwrap(),
             4 => "bhmn,bhnv->bhmv".parse().unwrap(),
+            5 => "bhgmn,bhgnv->bhgmv".parse().unwrap(),
             _ => unreachable!(),
         };
-        let output = EinSum { axes, operating_dt: self.acc_datum_type, q_params: None }
+        dbg!(&attention_weights.shape());
+        let mut output = EinSum { axes, operating_dt: self.acc_datum_type, q_params: None }
             .eval(tvec![attention_weights, v])?;
+        dbg!(&output[0].shape());
+        dbg!(&final_reshape);
+        if let Some(shape) = final_reshape {
+            return Ok(tvec!(output.remove(0).into_tensor().into_shape(&shape)?.into()));
+        }
         Ok(output)
     }
 }
