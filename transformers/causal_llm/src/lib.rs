@@ -187,6 +187,10 @@ impl CausalLlmState {
         let start = Instant::now();
         let mut input = tensor1(&tokens.iter().map(|t| *t as i64).collect_vec());
         input.insert_axis(0)?;
+        // let input_node = self.nn_state.model().input_outlets()?[0].node;
+        // let input_name = &self.nn_state.model().nodes[input_node].name;
+        // ndarray_npy::NpzWriter::new_compressed(std::fs::File::create("io.npz").unwrap())
+        //     .add_array(input_name, &input.to_array_view::<i64>()?)?;
         let mut result = self.nn_state.run(tvec![input.into_tvalue()])?;
         trace!("Processed {} tokens in {:?}", tokens.len(), start.elapsed());
         Ok(result.remove(0).into_tensor())
