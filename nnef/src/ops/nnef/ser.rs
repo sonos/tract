@@ -240,7 +240,7 @@ pub fn make_conv_named_args<'a>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn conv_or_deconv(
+pub fn conv_like(
     ast: &mut IntoAst,
     node: &TypedNode,
     pool_spec: &PoolSpec,
@@ -286,7 +286,7 @@ pub fn conv(
     node: &TypedNode,
     op: &ops::cnn::conv::Conv,
 ) -> TractResult<Option<Arc<RValue>>> {
-    conv_or_deconv(ast, node, &op.pool_spec, op.group, false, None)
+    conv_like(ast, node, &op.pool_spec, op.group, false, None)
 }
 
 pub fn deconv(
@@ -294,7 +294,7 @@ pub fn deconv(
     node: &TypedNode,
     op: &ops::cnn::deconv::Deconv,
 ) -> TractResult<Option<Arc<RValue>>> {
-    conv_or_deconv(ast, node, &op.pool_spec, op.group, true, Some(&op.adjustments))
+    conv_like(ast, node, &op.pool_spec, op.group, true, Some(&op.adjustments))
 }
 
 fn cnn_pool_fragment(
