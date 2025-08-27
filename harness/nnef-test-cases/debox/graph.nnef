@@ -1,0 +1,26 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+# stdnnef:
+# fragment nearest_upsample( input: tensor<scalar>, factor: integer[] ) -> ( output: tensor<scalar> )
+# {
+#     dims = 2 + length_of(factor);
+#     output = debox(input, size = [1,1] + factor, stride = [1,1] + factor, padding = [(0,0)] * dims);
+# }
+
+fragment custom_nearest_upsample_2d(input: tensor<scalar>) -> (output: tensor<scalar>) {
+    output = debox(
+        input,
+        size = [1, 1, 2, 2],
+        stride = [1, 1, 2, 2],
+        padding = [(0,0), (0,0), (0,0), (0,0)]
+    );
+}
+
+graph network(input_0) -> (output_0)
+{
+    input_0 = tract_core_external(shape = [1, 1, 2, 2], datum_type = 'f32');
+    # output_0 = nearest_upsample(input_0, factor = [2.0, 2.0]);
+    output_0 = custom_nearest_upsample_2d(input_0);
+}
