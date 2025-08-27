@@ -5,7 +5,7 @@ use tract_core::internal::*;
 use tract_core::ops::OpStateFreeze;
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt};
 
-#[derive(Clone, Debug, new)]
+#[derive(Clone, Debug, new, Hash)]
 pub struct CudaFusedAxisOp<O: TypedOp> {
     /// List of axis ops to apply for each op inputs
     /// Length of the list is equal to number of inputs

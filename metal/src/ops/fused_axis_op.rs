@@ -2,6 +2,7 @@ use crate::ops::MetalAxisOp;
 use derive_new::new;
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
+use tract_core::ops::OpStateFreeze;
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt};
 
 #[derive(Clone, Debug, new, Hash)]
@@ -10,6 +11,121 @@ pub struct MetalFusedAxisOp<O: TypedOp> {
     /// Length of the list is equal to number of inputs
     pub grouped_axis_ops: TVec<TVec<MetalAxisOp>>,
     pub op: O,
+}
+
+#[derive(Debug, Clone, new)]
+pub struct MetalFusedAxisOpState<O: TypedOp> {
+    pub op_state: Box<dyn OpState>,
+    _phantom: PhantomData<O>,
+}
+
+fn compute_reshaped_inputs(
+    inputs: TVec<TValue>,
+    grouped_axis_ops: &TVec<TVec<MetalAxisOp>>,
+    session: &SessionState,
+) -> TractResult<TVec<TValue>> {
+    // Apply Axis Ops per input
+
+    inputs
+        .into_iter()
+        .zip(grouped_axis_ops.iter())
+        .map(|(input, axis_ops)| {
+            if axis_ops.is_empty() {
+                return Ok(input);
+            };
+            let m_input = input.to_device_tensor()?;
+            let reshaped_input = axis_ops.iter().try_fold(
+                m_input.clone(),
+                |t, axis_op| -> TractResult<DeviceTensor> {
+                    let new_shape = match &axis_op.0 {
+                        AxisOp::Reshape(skip, from, to) => {
+                            let from =
+                                from.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
+                            let to = to.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
+                            let mut shape: TVec<usize> = t.shape().into();
+                            AxisOp::Reshape(*skip, from, to)
+                                .change_shape_array(&mut shape, false)?;
+                            shape
+                        }
+                        AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Move(..) => {
+                            let mut shape: TVec<usize> = t.shape().into();
+                            axis_op.0.change_shape_array(&mut shape, false)?;
+                            shape
+                        }
+                    };
+                    if let AxisOp::Move(from, to) = axis_op.0 {
+                        let mut out_strides: TVec<isize> = t.strides().to_smallvec();
+                        let removed_stride = out_strides.remove(from);
+                        out_strides.insert(to, removed_stride);
+                        let tmp_t = t.reshaped(new_shape)?;
+                        tmp_t.restrided(out_strides)
+                    } else {
+                        t.reshaped(new_shape)
+                    }
+                },
+            )?;
+
+            Ok(reshaped_input.into_opaque_tensor().into())
+        })
+        .collect::<TractResult<TVec<_>>>()
+}
+
+impl<O: TypedOp + Clone> OpState for MetalFusedAxisOpState<O> {
+    fn init_tensor_fact(&self) -> Option<TypedFact> {
+        self.op_state.init_tensor_fact()
+    }
+
+    fn load_from(
+        &mut self,
+        session: &mut SessionState,
+        states: &mut Vec<TValue>,
+    ) -> TractResult<()> {
+        self.op_state.load_from(session, states)
+    }
+
+    fn save_to(&self, states: &mut Vec<TValue>) -> TractResult<()> {
+        self.op_state.save_to(states)
+    }
+
+    fn resolve_symbols(&mut self, session: &mut SessionState) -> TractResult<()> {
+        self.op_state.resolve_symbols(session)
+    }
+
+    fn eval(
+        &mut self,
+        session: &mut SessionState,
+        op: &dyn Op,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let fused_axis_op = op.downcast_ref::<MetalFusedAxisOp<O>>().unwrap();
+        let inputs = compute_reshaped_inputs(inputs, &fused_axis_op.grouped_axis_ops, session)?;
+        // Runner inner op
+        self.op_state.eval(session, &fused_axis_op.op, inputs)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FrozenMetalFusedAxisOpState<O: TypedOp> {
+    pub op_state: Box<dyn FrozenOpState>,
+    _phantom: PhantomData<O>,
+}
+
+impl<O: TypedOp + Clone> OpStateFreeze for MetalFusedAxisOpState<O> {
+    fn freeze(&self) -> Box<dyn FrozenOpState + 'static> {
+        Box::new(FrozenMetalFusedAxisOpState {
+            op_state: self.op_state.freeze(),
+            _phantom: PhantomData::<O>,
+        })
+    }
+}
+
+impl<O: TypedOp + Clone> FrozenOpState for FrozenMetalFusedAxisOpState<O> {
+    fn unfreeze(&self) -> Box<dyn OpState> {
+        Box::new(MetalFusedAxisOpState {
+            op_state: self.op_state.unfreeze(),
+            _phantom: PhantomData::<O>,
+        })
+    }
 }
 
 impl<O: TypedOp + Clone> Op for MetalFusedAxisOp<O> {
@@ -41,63 +157,32 @@ impl<O: TypedOp + Clone> Op for MetalFusedAxisOp<O> {
     op_as_typed_op!();
 }
 
-impl<O: TypedOp> EvalOp for MetalFusedAxisOp<O> {
+impl<O: TypedOp + Clone> EvalOp for MetalFusedAxisOp<O> {
     fn is_stateless(&self) -> bool {
-        true
+        self.op.is_stateless()
     }
 
+    fn state(
+        &self,
+        session: &mut SessionState,
+        node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        if let Some(state) = self.op.state(session, node_id)? {
+            Ok(Some(Box::new(MetalFusedAxisOpState {
+                op_state: state,
+                _phantom: PhantomData::<O>,
+            })))
+        } else {
+            Ok(None)
+        }
+    }
     fn eval_with_session(
         &self,
         node_id: usize,
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        // Apply Axis Ops per input
-        let inputs = inputs
-            .into_iter()
-            .zip(self.grouped_axis_ops.iter())
-            .map(|(input, axis_ops)| {
-                if axis_ops.is_empty() {
-                    return Ok(input);
-                };
-                let m_input = input.to_device_tensor()?;
-                let reshaped_input = axis_ops.iter().try_fold(
-                    m_input.clone(),
-                    |t, axis_op| -> TractResult<DeviceTensor> {
-                        let new_shape = match &axis_op.0 {
-                            AxisOp::Reshape(skip, from, to) => {
-                                let from = from
-                                    .iter()
-                                    .map(|d| d.eval(&session.resolved_symbols))
-                                    .collect();
-                                let to =
-                                    to.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
-                                let mut shape: TVec<usize> = t.shape().into();
-                                AxisOp::Reshape(*skip, from, to)
-                                    .change_shape_array(&mut shape, false)?;
-                                shape
-                            }
-                            AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Move(..) => {
-                                let mut shape: TVec<usize> = t.shape().into();
-                                axis_op.0.change_shape_array(&mut shape, false)?;
-                                shape
-                            }
-                        };
-                        if let AxisOp::Move(from, to) = axis_op.0 {
-                            let mut out_strides: TVec<isize> = t.strides().to_smallvec();
-                            let removed_stride = out_strides.remove(from);
-                            out_strides.insert(to, removed_stride);
-                            let tmp_t = t.reshaped(new_shape)?;
-                            tmp_t.restrided(out_strides)
-                        } else {
-                            t.reshaped(new_shape)
-                        }
-                    },
-                )?;
-
-                Ok(reshaped_input.into_opaque_tensor().into())
-            })
-            .collect::<TractResult<TVec<_>>>()?;
+        let inputs = compute_reshaped_inputs(inputs, &self.grouped_axis_ops, session)?;
         // Runner inner op
         self.op.eval_with_session(node_id, session, inputs)
     }
