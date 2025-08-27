@@ -15,10 +15,7 @@ use tract_gpu::utils::{as_q40_fact, as_q40_tensor};
 
 use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
-use crate::kernels::{
-    LibraryName, get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut,
-    launch_args,
-};
+use crate::kernels::{LibraryName, get_cuda_view, launch_args};
 use crate::tensor::CudaTensor;
 use crate::utils::get_q40_fact;
 use crate::{Q40_ROW_PADDING, context};
