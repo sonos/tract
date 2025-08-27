@@ -16,9 +16,14 @@ clap = { version = "4", features = ["derive"] }
 axum-macros = "0.5.0"
 serde.workspace = true
 serde_json.workspace = true
+log.workspace = true
+env_logger.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 tract-metal.workspace = true
+
+[target.'cfg(not(any(target_os = "macos", target_os = "ios")))'.dependencies]
+tract-cuda.workspace = true
 
 # tokenizer special handle for wasm
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
