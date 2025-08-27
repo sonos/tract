@@ -10,6 +10,7 @@ use tract_transformers::ops::dyn_kv_cache::{DynKeyValueCache, DynKeyValueCacheSt
 pub struct CudaDynKVCacheState {
     node_id: usize,
     name: String,
+    axis: usize,
     past_sequence_fact: TypedFact,
     kv_cache: Option<TValue>,
 }
@@ -76,10 +77,22 @@ impl OpState for CudaDynKVCacheState {
     }
 }
 
+impl CudaDynKVCacheState {
+    pub fn truncate(&mut self, len: usize) -> TractResult<()> {
+        if let Some(v) = &mut self.kv_cache {
+            let mut t: Tensor = v.to_device_tensor()?.to_host()?.into_tensor();
+            t = t.slice(self.axis, 0, len)?;
+            *v = t.into_device()?.into_opaque_tensor().into_tvalue();
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FrozenCudaDynKVCacheState {
     node_id: usize,
     name: String,
+    axis: usize,
     past_sequence_fact: TypedFact,
     kv_cache: Option<DeviceTensor>,
 }
@@ -89,6 +102,7 @@ impl OpStateFreeze for CudaDynKVCacheState {
         Box::new(FrozenCudaDynKVCacheState {
             node_id: self.node_id,
             name: self.name.clone(),
+            axis: self.axis,
             past_sequence_fact: self.past_sequence_fact.clone(),
             kv_cache: self.kv_cache.clone().map(|t| t.to_device_tensor().cloned().unwrap()),
         })
@@ -100,6 +114,7 @@ impl FrozenOpState for FrozenCudaDynKVCacheState {
         Box::new(CudaDynKVCacheState {
             node_id: self.node_id,
             name: self.name.clone(),
+            axis: self.axis,
             past_sequence_fact: self.past_sequence_fact.clone(),
             kv_cache: self.kv_cache.clone().map(|t| t.into_opaque_tensor().into_tvalue()),
         })
@@ -155,6 +170,7 @@ impl EvalOp for CudaDynKVCache {
         Ok(Some(Box::new(CudaDynKVCacheState::new(
             node_id,
             self.name.clone(),
+            self.axis(),
             self.past_sequence_fact.clone(),
             None,
         ))))

@@ -163,11 +163,7 @@ impl EvalOp for Sdpa {
             let k_seq_len = k.shape()[rank - 2];
 
             let m_array = Array2::from_shape_fn([q_seq_len, k_seq_len], |(r, c)| {
-                if c > r {
-                    f32::NEG_INFINITY
-                } else {
-                    0.0f32
-                }
+                if c > r { f32::NEG_INFINITY } else { 0.0f32 }
             });
             let causal_mask = m_array.into_tensor().cast_to_dt(self.acc_datum_type)?.into_owned();
             mask = Some(causal_mask.into_tvalue());
