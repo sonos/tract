@@ -7,4 +7,4 @@ set -ex
 
 # Check result is as expected
 # bug appear only if model optimized and input-fact-from-bundle
-$TRACT_RUN --nnef-tract-core ./model.nnef.tgz -O --input-facts-from-bundle ./io.npz run --input-from-bundle io.npz --assert-output-bundle io.npz --approx approximate
+$TRACT_RUN --nnef-tract-core . -O --input-facts-from-bundle ./io.npz run --input-from-bundle io.npz --assert-output-bundle io.npz --approx approximate
