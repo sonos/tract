@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::time::Instant;
 
+use anyhow::ensure;
 use float_ord::FloatOrd;
 use log::trace;
 use tokenizers::Tokenizer;
@@ -201,18 +202,10 @@ impl CausalLlmState {
     }
 
     pub fn process_tokens(&mut self, tokens: &[u32]) -> TractResult<u32> {
+        ensure!(tokens.len() > 0);
         self.seq.extend(tokens);
         let chunk_size = self.config.prompt_chunk_size.unwrap_or(usize::MAX);
-        let mut done = 0;
-        let mut output;
-        loop {
-            let todo = (tokens.len() - done).min(chunk_size);
-            output = self.call_llm(&tokens[done..done + todo])?;
-            done += todo;
-            if done == tokens.len() {
-                break;
-            }
-        }
+        let output = tokens.chunks(chunk_size).map(|c| self.call_llm(c)).last().unwrap()?;
 
         let start_at = self.seq.len().saturating_sub(self.config.repeat_last_n);
 

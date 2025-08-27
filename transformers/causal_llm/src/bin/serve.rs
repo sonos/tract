@@ -31,9 +31,18 @@ struct Args {
     /// Force execution on CPU (no cuda or metal)
     #[arg(long)]
     force_cpu: bool,
+
+    /// Disable prefill chunking
+    #[arg(long)]
+    no_prefill_chunk: bool,
+
+    /// Prefill chunking
+    #[arg(long, default_value = "512")]
+    prefill_chunk: usize,
 }
 
 struct Context {
+    args: Args,
     llm: Arc<CausalLlmModel>,
 }
 
@@ -58,10 +67,10 @@ async fn main() -> TractResult<()> {
     env_logger::Builder::from_env(env).format_timestamp_nanos().init();
 
     let conf = causal_llm::CausalLlmModelConfig { force_cpu: args.force_cpu };
-    let llm = CausalLlmModel::from_paths_and_conf(args.tokenizers, args.model, conf)?;
+    let llm = CausalLlmModel::from_paths_and_conf(&args.tokenizers, &args.model, conf)?;
     info!("model loaded");
 
-    let context = Context { llm };
+    let context = Context { llm, args };
 
     let app = Router::new()
         .route("/", get(root))
@@ -113,7 +122,8 @@ async fn completions(
     let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed).to_string();
     let s = tokio::task::spawn_blocking(move || -> Result<OpenAICompletionReply> {
         let mut state = global.llm.spawn_with_config(CausalLlmStateConfig {
-            prompt_chunk_size: None,
+            prompt_chunk_size: Some(global.args.prefill_chunk)
+                .filter(|_| !global.args.no_prefill_chunk),
             ..Default::default()
         })?;
         debug!("prompt [{id}] << {}", query.prompt);
