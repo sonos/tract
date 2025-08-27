@@ -56,20 +56,20 @@ fn ser_sdpa(ast: &mut IntoAst, node: &TypedNode, op: &Sdpa) -> TractResult<Optio
     Ok(Some(invocation("tract_transformers_sdpa", &inputs, &attrs)))
 }
 
-fn deser_spda(model: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
-    let q = invocation.named_arg_as(model, "q")?;
-    let k = invocation.named_arg_as(model, "k")?;
-    let v = invocation.named_arg_as(model, "v")?;
+fn deser_spda(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+    let q = invocation.named_arg_as(builder, "q")?;
+    let k = invocation.named_arg_as(builder, "k")?;
+    let v = invocation.named_arg_as(builder, "v")?;
     let mut inputs = vec![q, k, v];
-    if let Some(mask) = invocation.get_named_arg_as(model, "mask")? {
+    if let Some(mask) = invocation.get_named_arg_as(builder, "mask")? {
         inputs.push(mask);
     };
-    let scale: Option<f32> = invocation.get_named_arg_as(model, "scale")?;
-    let datum_type = DatumType::from_str(&invocation.named_arg_as::<String>(model, "datum_type")?)?;
+    let scale: Option<f32> = invocation.get_named_arg_as(builder, "scale")?;
+    let datum_type = DatumType::from_str(&invocation.named_arg_as::<String>(builder, "datum_type")?)?;
     let acc_datum_type =
-        DatumType::from_str(&invocation.named_arg_as::<String>(model, "acc_datum_type")?)?;
-    let is_causal = invocation.named_arg_as(model, "is_causal")?;
-    model.wire(
+        DatumType::from_str(&invocation.named_arg_as::<String>(builder, "acc_datum_type")?)?;
+    let is_causal = invocation.named_arg_as(builder, "is_causal")?;
+    builder.wire(
         Sdpa {
             scale: scale.map(tensor0),
             datum_type,
@@ -93,6 +93,11 @@ pub struct Sdpa {
 }
 
 impl Sdpa {
+    pub fn model(&self) -> &TypedModel {
+        // Subgraph always created at declutter stage
+        self.subgraph.as_ref().unwrap()
+    }
+
     fn build_sdpa_graph(&self, mut input_facts: TVec<&TypedFact>) -> TractResult<TypedModel> {
         let mut graph = TypedModel::default();
         let mut q_fact = input_facts.remove(0).clone();
