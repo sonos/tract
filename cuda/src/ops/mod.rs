@@ -22,7 +22,7 @@ pub use broadcast::CudaMultiBroadcastTo;
 pub use cast::CudaCast;
 pub use change_axes::CudaAxisOp;
 pub use concat::CudaConcat;
-pub use dyn_kv_cache::CudaDynKVCache;
+pub use dyn_kv_cache::{CudaDynKVCache, CudaDynKVCacheState};
 pub use fused_axis_op::CudaFusedAxisOp;
 pub use gelu_approximate::CudaGeluApproximate;
 pub use gemm::CudaGemm;

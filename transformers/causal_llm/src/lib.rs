@@ -60,6 +60,7 @@ impl CausalLlmModel {
         Ok(Arc::new(CausalLlmModel { tokenizer, nn: Arc::new(nn) }))
     }
 
+#[allow(unused)]
     fn from_paths(
         tokenizer: impl AsRef<Path>,
         nn: impl AsRef<Path>,
@@ -224,6 +225,10 @@ impl CausalLlmState {
                 s.truncate(len)?;
                 continue;
             } else if s.is::<SourceState>() {
+                continue;
+            }
+            if let Some(s) = s.downcast_mut::<tract_cuda::ops::CudaDynKVCacheState>() {
+                s.truncate(len)?;
                 continue;
             }
             #[cfg(any(target_os = "macos", target_os = "ios"))]
