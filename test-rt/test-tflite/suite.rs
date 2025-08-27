@@ -173,6 +173,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
         "matmul_q40",
         "rms_norm",
         "scaled_masked_softmax",
+        "sdpa",
         "silu",
     ]
     .contains(&&**section)
