@@ -14,8 +14,10 @@ pub struct CausalLlmModel {
     pub tokenizer: Tokenizer,
     pub nn: Arc<TypedRunnableModel<TypedModel>>,
 }
+
 fn plan_with_session_handler(model: TypedModel) -> TractResult<TypedSimplePlan<TypedModel>> {
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    if cfg!(any(target_os = "macos", target_os = "ios"))
+        || tract_cuda::utils::get_cuda_lib().is_some()
     {
         let plan_options = PlanOptions { skip_order_opt_ram: true, ..Default::default() };
         let plan = model.into_runnable_with_options(&plan_options)?;
@@ -30,9 +32,7 @@ fn plan_with_session_handler(model: TypedModel) -> TractResult<TypedSimplePlan<T
         let session_handler =
             tract_gpu::session_handler::DeviceSessionHandler::from_plan(&plan, &symbol_values)?;
         Ok(plan.with_session_handler(session_handler))
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-    {
+    } else {
         model.into_runnable()
     }
 }
@@ -54,6 +54,13 @@ impl CausalLlmModel {
             use crate::tract_core::transform::ModelTransform;
             use std::str::FromStr;
             tract_metal::MetalTransform::from_str("")?.transform(&mut nn)?;
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+        {
+            use tract_core::transform::ModelTransform;
+            if tract_cuda::utils::get_cuda_lib().is_some() {
+                tract_cuda::CudaTransform::default().transform(&mut nn)?;
+            }
         }
         nn.optimize()?;
         let nn = plan_with_session_handler(nn)?;
@@ -112,7 +119,7 @@ pub struct CausalLlmStateConfig {
 }
 impl Default for CausalLlmStateConfig {
     fn default() -> Self {
-        Self { prompt_chunk_size: Some(512), repeat_penalty: 1.0, repeat_last_n: 64 }
+        Self { prompt_chunk_size: Some(256), repeat_penalty: 1.0, repeat_last_n: 64 }
     }
 }
 
