@@ -2,7 +2,7 @@
 #include <cuda_fp16.h>
 #include <math.h>
 
-template <typename T, int ncols_dst, int block_size>
+template <typename T, typename type_acc, int ncols_dst, int block_size>
 static __device__ void
 mul_mat_vec(const T *__restrict__ x, const T *__restrict__ y,
             T *__restrict__ dst, const int ncols2, const int nchannels_y,
@@ -32,41 +32,56 @@ mul_mat_vec(const T *__restrict__ x, const T *__restrict__ y,
 
   float sumf[ncols_dst] = {0.0f};
 
-  if constexpr (std::is_same<T, float>::value) {
-    const float2 *x2 = (const float2 *)x;
-    const float2 *y2 = (const float2 *)y;
-    for (int col2 = tid; col2 < ncols2; col2 += block_size) {
-      const float2 tmpx = x2[col2];
+if constexpr (std::is_same_v<T, float>) {
+        const float2 * x2 = (const float2 *) x;
+        const float2 * y2 = (const float2 *) y;
+
+        for (int col2 = tid; col2 < ncols2; col2 += block_size) {
+            const float2 tmpx = x2[col2];
 
 #pragma unroll
-      for (int j = 0; j < ncols_dst; ++j) {
-        const float2 tmpy = y2[j * stride_col_y2 + col2];
-        sumf[j] += tmpx.x * tmpy.x;
-        sumf[j] += tmpx.y * tmpy.y;
-      }
-    }
-  } else if constexpr (std::is_same<T, half>::value) {
-    const half2 *x2 = (const half2 *)x;
-    const half2 *y2 = (const half2 *)y;
-    half2 sumh2[ncols_dst] = {{0.0f, 0.0f}};
+            for (int j = 0; j < ncols_dst; ++j) {
+                const float2 tmpy = y2[j*stride_col_y2 + col2];
+                sumf[j] += tmpx.x*tmpy.x;
+                sumf[j] += tmpx.y*tmpy.y;
+            }
+        }
+    } else if constexpr (std::is_same_v<T, half>) {
+        const half2 * x2 = (const half2 *) x;
+        const half2 * y2 = (const half2 *) y;
 
-    for (int col2 = tid; col2 < ncols2; col2 += block_size) {
-      const half2 tmpx = x2[col2];
-
-#pragma unroll
-      for (int j = 0; j < ncols_dst; ++j) {
-        const half2 tmpy = y2[j * stride_col_y2 + col2];
-        sumh2[j] += tmpx * make_half2(tmpy.x, tmpy.y);
-      }
-    }
+        if (std::is_same_v<type_acc, float>) {
+            for (int col2 = tid; col2 < ncols2; col2 += block_size) {
+                const float2 tmpx = __half22float2(x2[col2]);
 
 #pragma unroll
-    for (int j = 0; j < ncols_dst; ++j) {
-      sumf[j] = __low2float(sumh2[j]) + __high2float(sumh2[j]);
+                for (int j = 0; j < ncols_dst; ++j) {
+                    const float2 tmpy = __half22float2(y2[j*stride_col_y2 + col2]);
+                    sumf[j] += tmpx.x * tmpy.x;
+                    sumf[j] += tmpx.y * tmpy.y;
+                }
+            }
+        } else {
+            half2 sumh2[ncols_dst] = {{0.0f, 0.0f}};
+
+            for (int col2 = tid; col2 < ncols2; col2 += block_size) {
+                const half2 tmpx = x2[col2];
+
+#pragma unroll
+                for (int j = 0; j < ncols_dst; ++j) {
+                    const half2 tmpy = y2[j*stride_col_y2 + col2];
+                    sumh2[j] += tmpx * tmpy;
+                }
+            }
+
+#pragma unroll
+            for (int j = 0; j < ncols_dst; ++j) {
+                sumf[j] = __low2float(sumh2[j]) + __high2float(sumh2[j]);
+            }
+        }
+    } else {
+        static_assert(std::is_same_v<T, void>, "unsupported type");
     }
-  } else {
-    static_assert(std::is_same<T, void>::value, "unsupported type");
-  }
 
 #pragma unroll
   for (int j = 0; j < ncols_dst; ++j) {
@@ -101,7 +116,7 @@ mul_mat_vec(const T *__restrict__ x, const T *__restrict__ y,
           const int stride_col_dst, const int channel_ratio,                   \
           const int stride_channel_x, const int stride_channel_y,              \
           const int stride_channel_dst) {                                      \
-    mul_mat_vec<T, ncols_dst, block_size>(                                     \
+    mul_mat_vec<T, float, ncols_dst, block_size>(                                     \
         x, y, dst, ncols2, nchannels_y, stride_row, stride_col_y2,             \
         stride_col_dst, channel_ratio, stride_channel_x, stride_channel_y,     \
         stride_channel_dst);                                                   \
