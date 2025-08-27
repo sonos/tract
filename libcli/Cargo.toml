@@ -31,6 +31,7 @@ tract-onnx = { workspace = true, optional = true }
 tract-tflite.workspace = true
 tract-cuda.workspace = true
 tract-gpu.workspace = true
+tract-transformers.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 tract-metal = { workspace = true }
