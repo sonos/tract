@@ -1,14 +1,16 @@
 use crate::ast::*;
 use crate::deser::Value;
 use crate::ops::tract_core;
+use crate::tract_ndarray::Array;
+
 use ops::cnn::deconv::Deconv;
 use ops::cnn::{Conv, KernelFormat};
 use tract_core::internal::*;
 use tract_core::ops::array::{PadMode, TypedConcat};
 use tract_core::ops::cast::cast;
-use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PoolSpec;
+use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::einsum::block_quant_aware_input_shape;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
@@ -332,11 +334,15 @@ groups: integer = 1 )
 */
 
 pub fn conv(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
-    conv_or_deconv(builder, invocation, false)
+    conv_like(builder, invocation, ConvLikeVariant::Conv)
 }
 
 pub fn deconv(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
-    conv_or_deconv(builder, invocation, true)
+    conv_like(builder, invocation, ConvLikeVariant::Deconv)
+}
+
+pub fn debox(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+    conv_like(builder, invocation, ConvLikeVariant::Debox)
 }
 
 pub fn read_conv_parameters(
@@ -345,20 +351,32 @@ pub fn read_conv_parameters(
     kernel_shape: &[usize],
     input_fact: &TypedFact,
 ) -> TractResult<(usize, PoolSpec)> {
-    let mut group = invocation.named_arg_as(builder, "groups")?;
+    let mut group = invocation.named_arg_as(builder, "groups").unwrap_or(0);
     if group == 0 {
         group = kernel_shape[0]
     }
     if input_fact.shape[1] != kernel_shape[1].to_dim() * group {
-        bail!("Convolution input and kernel channels (second axis in both) must match. Got {:?} and {:?}.", input_fact, kernel_shape);
+        bail!(
+            "Convolution input and kernel channels (second axis in both) must match. Got {:?} and {:?}.",
+            input_fact,
+            kernel_shape
+        );
     }
     let dilation: TVec<usize> = invocation.named_arg_as(builder, "dilation")?;
     if dilation.len() != 0 && dilation.len() != input_fact.rank() - 2 {
-        bail!("Convolution dilation only apply to spatial dimensions, so it should be of rank {}. Got {:?}", input_fact.rank() -2, dilation)
+        bail!(
+            "Convolution dilation only apply to spatial dimensions, so it should be of rank {}. Got {:?}",
+            input_fact.rank() - 2,
+            dilation
+        )
     }
     let stride: TVec<usize> = invocation.named_arg_as(builder, "stride")?;
     if stride.len() != 0 && stride.len() != input_fact.rank() - 2 {
-        bail!("Convolution stride only apply to spatial dimensions, so it should be of rank {}. Got {:?}", input_fact.rank() -2, stride)
+        bail!(
+            "Convolution stride only apply to spatial dimensions, so it should be of rank {}. Got {:?}",
+            input_fact.rank() - 2,
+            stride
+        )
     }
     let padding: TVec<TVec<usize>> = invocation.named_arg_as(builder, "padding")?;
     let padding = if padding.len() == 0 {
@@ -388,14 +406,36 @@ pub fn read_conv_parameters(
     Ok((group, pool_spec))
 }
 
-pub fn conv_or_deconv(
+#[derive(PartialEq)]
+pub enum ConvLikeVariant {
+    Conv,
+    Deconv,
+    Debox,
+}
+
+pub fn conv_like(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-    deconv: bool,
+    variant: ConvLikeVariant,
 ) -> TractResult<Value> {
     let input: OutletId = invocation.named_arg_as(builder, "input")?;
-    let kernel: OutletId = invocation.named_arg_as(builder, "filter")?;
-    let mut bias: OutletId = invocation.named_arg_as(builder, "bias")?;
+    let kernel: OutletId = if variant == ConvLikeVariant::Debox {
+        let size: TVec<usize> = invocation.named_arg_as(builder, "size")?;
+        let filter_ndarray = Array::<f32, _>::ones(size.to_vec());
+        let input_dt = builder.model.outlet_fact(input)?.datum_type;
+        let filter = filter_ndarray.into_arc_tensor().cast_to_dt(input_dt)?.into_owned();
+        builder.model.add_const(format!("{}.filter", invocation.invocation.id.0), filter)?
+    } else {
+        invocation.named_arg_as(builder, "filter")?
+    };
+    let mut bias: OutletId = if variant == ConvLikeVariant::Debox {
+        builder.model.add_const(
+            format!("{}.bias", invocation.invocation.id.0),
+            tensor0(0.0f32).into_arc_tensor(),
+        )?
+    } else {
+        invocation.named_arg_as(builder, "bias")?
+    };
     let input_fact = builder.model.outlet_fact(input)?.clone();
     let kernel_fact = builder.model.outlet_fact(kernel)?.clone();
 
@@ -436,29 +476,30 @@ pub fn conv_or_deconv(
         Some(DatumType::I32)
     };
 
-    let op: Box<dyn TypedOp> = if deconv {
-        let output_shape = invocation.named_arg_as::<TVec<usize>>(builder, "output_shape")?;
-        let output_shape = Some(output_shape).filter(|os| os.len() == pool_spec.rank());
-        let adjustments = if let Some(output_shape) = output_shape {
-            let input_shape = &input_fact
-                .shape
-                .as_concrete()
-                .context("symbolic dimension not supported in deconv")?[2..];
-            adjustments(&pool_spec, input_shape, &output_shape)?
+    let op: Box<dyn TypedOp> =
+        if ConvLikeVariant::Deconv == variant || ConvLikeVariant::Debox == variant {
+            let output_shape = invocation.named_arg_as::<TVec<usize>>(builder, "output_shape")?;
+            let output_shape = Some(output_shape).filter(|os| os.len() == pool_spec.rank());
+            let adjustments = if let Some(output_shape) = output_shape {
+                let input_shape = &input_fact
+                    .shape
+                    .as_concrete()
+                    .context("symbolic dimension not supported in deconv")?[2..];
+                adjustments(&pool_spec, input_shape, &output_shape)?
+            } else {
+                tvec!(0; pool_spec.rank())
+            };
+            Box::new(Deconv::new(pool_spec, KernelFormat::OIHW, adjustments, group))
         } else {
-            tvec!(0; pool_spec.rank())
-        };
-        Box::new(Deconv::new(pool_spec, KernelFormat::OIHW, adjustments, group))
-    } else {
-        if let Some(odt) = &output_dt {
-            for dt in &[&input_fact.datum_type, &kernel_fact.datum_type, odt] {
-                let qp = dt.qparams().unwrap_or_default();
-                inputs.push(builder.add_const(tensor0(qp.zp_scale().0))?);
-                inputs.push(builder.add_const(tensor0(qp.zp_scale().1))?);
+            if let Some(odt) = &output_dt {
+                for dt in &[&input_fact.datum_type, &kernel_fact.datum_type, odt] {
+                    let qp = dt.qparams().unwrap_or_default();
+                    inputs.push(builder.add_const(tensor0(qp.zp_scale().0))?);
+                    inputs.push(builder.add_const(tensor0(qp.zp_scale().1))?);
+                }
             }
-        }
-        Box::new(Conv::new(pool_spec, KernelFormat::OIHW, group, output_dt))
-    };
+            Box::new(Conv::new(pool_spec, KernelFormat::OIHW, group, output_dt))
+        };
     builder.wire(op, &inputs)
 }
 
@@ -474,7 +515,9 @@ fn pool_spec_for_pools(
     if dilation.len() > 0
         && (dilation.len() != kernel_shape.rank() || dilation[0] != 1 || dilation[1] != 1)
     {
-        bail!("dilation should be like [1, 1, ... ] because first two first dimensions are N and C, so they should be of dilation 1. Got dilation {dilation:?}.");
+        bail!(
+            "dilation should be like [1, 1, ... ] because first two first dimensions are N and C, so they should be of dilation 1. Got dilation {dilation:?}."
+        );
     }
     let spatial_dilation = if dilation.iter().all(|it| *it == 1) || dilation.len() == 0 {
         None
@@ -484,7 +527,9 @@ fn pool_spec_for_pools(
     let stride: TVec<usize> = invocation.named_arg_as(builder, "stride")?;
     if stride.len() > 0 && (stride.len() != kernel_shape.rank() || stride[0] != 1 || stride[1] != 1)
     {
-        bail!("stride should be like [1, 1, ... ] because first two first dimensions are N and C, so they should be of stride 1. Got stride {stride:?}.");
+        bail!(
+            "stride should be like [1, 1, ... ] because first two first dimensions are N and C, so they should be of stride 1. Got stride {stride:?}."
+        );
     }
     let spatial_stride = if stride.len() == 0 || stride.iter().all(|it| *it == 1) {
         None
@@ -493,7 +538,9 @@ fn pool_spec_for_pools(
     };
     let padding: TVec<TVec<usize>> = invocation.named_arg_as(builder, "padding")?;
     if padding.len() > 0 && (padding.len() != padding.len()) {
-        bail!("padding should have the same rank as the input. Got padding {padding:?} but kernel_shape is {kernel_shape:?}.");
+        bail!(
+            "padding should have the same rank as the input. Got padding {padding:?} but kernel_shape is {kernel_shape:?}."
+        );
     }
     let padding = if padding.len() == 0 {
         PaddingSpec::SameUpper
@@ -537,7 +584,7 @@ pub fn max_pool_with_index(
             "Max pool input expected as NCHW, and \"size\" paramater must be [ 1, 1, x, y ]. Got {:?}, and {:?}",
             input_fact,
             size
-            );
+        );
     }
     let channels = DataFormat::NCHW
         .shape(&input_fact.shape)?
@@ -564,10 +611,10 @@ pub fn sum_pool(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
     let input_fact = builder.model.outlet_fact(input)?;
     if input_fact.rank() != size.len() {
         bail!(
-            "Max pool input expected as NCHW, and \"size\" paramater must be [ 1, 1, x, y ]. Got {:?}, and {:?}",
+            "Sum pool input expected as NCHW, and \"size\" paramater must be [ 1, 1, x, y ]. Got {:?}, and {:?}",
             input_fact,
             size
-            );
+        );
     }
     let channels = DataFormat::NCHW
         .shape(&input_fact.shape)?

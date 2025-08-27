@@ -129,6 +129,7 @@ pub fn tract_nnef() -> Registry {
     primitive(&mut registry, "max_pool_with_index", deser::max_pool_with_index);
     registry.register_dumper(ser::max_pool);
     primitive(&mut registry, "box", deser::sum_pool);
+    primitive(&mut registry, "debox", deser::debox);
     registry.register_dumper(ser::sum_pool);
 
     registry.register_dumper(ser::basic_matmul);
