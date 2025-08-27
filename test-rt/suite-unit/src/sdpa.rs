@@ -141,6 +141,7 @@ impl SdpaProblem<f32> {
                 acc_datum_type: DatumType::F32,
                 is_causal: self.is_causal,
                 subgraph: None,
+                optimized: false,
             },
             &inputs,
         )?;
