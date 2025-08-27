@@ -7,7 +7,7 @@ use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_macros::debug_handler;
-use causal_llm::CausalLlmModel;
+use causal_llm::{CausalLlmModel, CausalLlmStateConfig};
 use clap::{arg, command, Parser};
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
@@ -41,19 +41,19 @@ struct Context {
 async fn main() -> TractResult<()> {
     let args = Args::parse();
 
-    if ::std::env::var("TRACT_LOG").is_err() {
+    if ::std::env::var("TRACT_SERVE_LOG").is_err() {
         let level = match args.verbose {
-            0 => "serve=warn",
-            1 => "serve=info,tract=warn",
-            2 => "serve=debug,tract=info",
-            _ => "serve=trace,tract=debug",
+            0 => "serve=warn,causal_llm=warn",
+            1 => "serve=info,causal_llm=info",
+            2 => "serve=debug,causal_llm=debug",
+            _ => "serve=trace,causal_llm=trace",
         };
         unsafe {
-            std::env::set_var("TRACT_LOG", level);
+            std::env::set_var("TRACT_SERVE_LOG", level);
         }
     }
 
-    let env = env_logger::Env::default().filter_or("TRACT_LOG", "warn");
+    let env = env_logger::Env::default().filter_or("TRACT_SERVE_LOG", "warn");
 
     env_logger::Builder::from_env(env).format_timestamp_nanos().init();
 
@@ -112,7 +112,10 @@ async fn completions(
     static COUNTER: AtomicUsize = AtomicUsize::new(1);
     let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed).to_string();
     let s = tokio::task::spawn_blocking(move || -> Result<OpenAICompletionReply> {
-        let mut state = global.llm.spawn()?;
+        let mut state = global.llm.spawn_with_config(CausalLlmStateConfig {
+            prompt_chunk_size: None,
+            ..Default::default()
+        })?;
         debug!("prompt [{id}] << {}", query.prompt);
         let mut token = state.process_text(&query.prompt)?;
         let prompt_len = state.seq.len();

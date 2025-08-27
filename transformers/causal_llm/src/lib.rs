@@ -1,6 +1,8 @@
 use std::path::Path;
+use std::time::Instant;
 
 use float_ord::FloatOrd;
+use log::trace;
 use tokenizers::Tokenizer;
 use tract_nnef::internal::{anyhow, TractErrorContext};
 use tract_nnef::prelude::tract_itertools::Itertools;
@@ -138,13 +140,13 @@ impl CausalLlmModel {
 pub struct CausalLlmStateConfig {
     /// split long prompt into chunks of fixed number of tokens,
     /// reducing RAM usage
-    prompt_chunk_size: Option<usize>,
-    repeat_penalty: f32,
-    repeat_last_n: usize,
+    pub prompt_chunk_size: Option<usize>,
+    pub repeat_penalty: f32,
+    pub repeat_last_n: usize,
 }
 impl Default for CausalLlmStateConfig {
     fn default() -> Self {
-        Self { prompt_chunk_size: Some(256), repeat_penalty: 1.0, repeat_last_n: 64 }
+        Self { prompt_chunk_size: Some(512), repeat_penalty: 1.0, repeat_last_n: 64 }
     }
 }
 
@@ -181,32 +183,37 @@ pub struct CausalLlmState {
 }
 
 impl CausalLlmState {
+    fn call_llm(&mut self, tokens: &[u32]) -> TractResult<Tensor> {
+        let start = Instant::now();
+        let mut input = tensor1(&tokens.iter().map(|t| *t as i64).collect_vec());
+        input.insert_axis(0)?;
+        let mut result = self.nn_state.run(tvec![input.into_tvalue()])?;
+        trace!("Processed {} tokens in {:?}", tokens.len(), start.elapsed());
+        Ok(result.remove(0).into_tensor())
+    }
+
     pub fn process_text(&mut self, prompt: &str) -> TractResult<u32> {
         self.process_tokens(&self.encode(prompt, true)?)
     }
 
     pub fn process_tokens(&mut self, tokens: &[u32]) -> TractResult<u32> {
         self.seq.extend(tokens);
-        let mut input = tensor1(&tokens.iter().map(|t| *t as i64).collect_vec());
-        input.insert_axis(0)?;
-        let output = if let Some(s) = self.config.prompt_chunk_size {
-            let mut pos = 0;
-            while pos + s < tokens.len() {
-                self.nn_state.run(tvec![input.slice(1, pos, pos + s)?.into_tvalue()])?;
-                pos += s;
+        let chunk_size = self.config.prompt_chunk_size.unwrap_or(usize::MAX);
+        let mut done = 0;
+        let mut output;
+        loop {
+            let todo = (tokens.len() - done).min(chunk_size);
+            output = self.call_llm(&tokens[done..done + todo])?;
+            done += todo;
+            if done == tokens.len() {
+                break;
             }
-            if pos > 0 {
-                input = input.slice(1, pos, tokens.len())?;
-            }
-            self.nn_state.run(tvec![input.into_tvalue()])?
-        } else {
-            self.nn_state.run(tvec![input.into_tvalue()])?
-        };
+        }
 
         let start_at = self.seq.len().saturating_sub(self.config.repeat_last_n);
 
         let mut last_token_logits =
-            output[0].cast_to::<f32>()?.as_slice::<f32>()?.iter().map(|t| *t).collect_vec();
+            output.cast_to::<f32>()?.as_slice::<f32>()?.iter().map(|t| *t).collect_vec();
 
         apply_repeat_penalty(
             last_token_logits.as_mut_slice(),
