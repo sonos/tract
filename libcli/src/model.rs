@@ -69,11 +69,6 @@ pub trait Model:
         {
             return vec![("submodel".into(), submodel.model())];
         }
-        if let Some(sdpa) =
-            self.node_op(id).downcast_ref::<tract_transformers::ops::sdpa::Sdpa>()
-        {
-            return vec![("sdpa".into(), sdpa.model())];
-        }
         if let Some(lir) = self.node_op(id).downcast_ref::<tract_core::ops::scan::OptScan>() {
             return vec![("loop".into(), lir.plan.model())];
         }
