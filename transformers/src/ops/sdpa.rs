@@ -328,7 +328,7 @@ impl TypedOp for Sdpa {
         let body_outputs = patch.model.output_outlets()?;
         patch.shunt_outside(model, node.id.into(), body_outputs[0])?;
 
-        return Ok(Some(patch));
+        Ok(Some(patch))
     }
 
     as_op!();
