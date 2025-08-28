@@ -133,13 +133,20 @@ impl Sdpa {
                 k_fact = TypedFact::dt_shape(dt, new_kshape.clone());
 
                 if let Some(m) = m.as_mut() {
-                    let mshape = m_fact.unwrap().shape.to_tvec();
-                    let new_mshape = tvec![b.clone(), kh.clone(), g.into(), sq.clone(), sk.clone()];
-                    *m = graph.wire_node(
-                        "reshape_m",
-                        change_axes::AxisOp::Reshape(0, mshape, new_mshape.clone()),
-                        &[*m],
-                    )?[0];
+                    if m_fact.as_ref().unwrap().shape[1] == *qh {
+                        // Handle the case where mask is already broadcasted to Q outter shape.
+                        let mshape = m_fact.unwrap().shape.to_tvec();
+                        let new_mshape =
+                            tvec![b.clone(), kh.clone(), g.into(), sq.clone(), sk.clone()];
+                        *m = graph.wire_node(
+                            "reshape_m",
+                            change_axes::AxisOp::Reshape(0, mshape, new_mshape.clone()),
+                            &[*m],
+                        )?[0];
+                    } else {
+                        // Handle the case where the mask is not broadcasted.
+                        *m = graph.wire_node("reshape_m", change_axes::AxisOp::Add(2), &[*m])?[0];
+                    }
                 }
 
                 final_reshape = Some((
