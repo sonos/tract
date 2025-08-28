@@ -103,16 +103,16 @@ impl Sdpa {
         if rank == 4 {
             let qshape = q_fact.shape.to_tvec();
             let kshape = k_fact.shape.to_tvec();
-            let [_, qh, _, qd] = qshape.as_slice() else { unreachable!() };
-            let [b, kh, s, kd] = kshape.as_slice() else { unreachable!() };
+            let [_, qh, sq, qd] = qshape.as_slice() else { unreachable!() };
+            let [b, kh, sk, kd] = kshape.as_slice() else { unreachable!() };
 
             let num_q_heads = qh.to_usize()?;
             let num_k_heads = kh.to_usize()?;
             if num_q_heads > num_k_heads {
                 let g = num_q_heads / num_k_heads;
 
-                let new_qshape = tvec![b.clone(), kh.clone(), g.into(), s.clone(), qd.clone()];
-                let new_kshape = tvec![b.clone(), kh.clone(), 1.into(), s.clone(), kd.clone()];
+                let new_qshape = tvec![b.clone(), kh.clone(), g.into(), sq.clone(), qd.clone()];
+                let new_kshape = tvec![b.clone(), kh.clone(), 1.into(), sk.clone(), kd.clone()];
                 q = graph.wire_node(
                     "reshape_q",
                     change_axes::AxisOp::Reshape(0, qshape.clone(), new_qshape.clone()),
@@ -131,18 +131,20 @@ impl Sdpa {
                 let dt = q_fact.datum_type;
                 q_fact = TypedFact::dt_shape(dt, new_qshape);
                 k_fact = TypedFact::dt_shape(dt, new_kshape.clone());
+
                 if let Some(m) = m.as_mut() {
                     let mshape = m_fact.unwrap().shape.to_tvec();
-                    let new_mshape = tvec![b.clone(), kh.clone(), g.into(), s.clone(), s.clone()];
+                    let new_mshape = tvec![b.clone(), kh.clone(), g.into(), sq.clone(), sk.clone()];
                     *m = graph.wire_node(
                         "reshape_m",
                         change_axes::AxisOp::Reshape(0, mshape, new_mshape.clone()),
                         &[*m],
                     )?[0];
                 }
+
                 final_reshape = Some((
-                    tvec![b.clone(), kh.clone(), g.into(), s.clone(), kd.clone()],
-                    tvec![b.clone(), qh.clone(), s.clone(), kd.clone()],
+                    tvec![b.clone(), kh.clone(), g.into(), sq.clone(), kd.clone()],
+                    tvec![b.clone(), qh.clone(), sq.clone(), kd.clone()],
                 ));
                 rank += 1;
             }
