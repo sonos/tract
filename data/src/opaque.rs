@@ -30,7 +30,7 @@ pub trait OpaqueFact: DynHash + Send + Sync + Debug + dyn_clone::DynClone + Down
         self.same_as(other)
     }
 
-    fn clarify_dt_shape(&self) -> Option<(DatumType, &[usize])> {
+    fn clarify_dt_shape(&self) -> Option<(DatumType, TVec<TDim>)> {
         None
     }
 

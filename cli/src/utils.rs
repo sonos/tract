@@ -68,7 +68,11 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
         }
     }
 
-    if let Some(e) = error { Err(e) } else { Ok(()) }
+    if let Some(e) = error {
+        Err(e)
+    } else {
+        Ok(())
+    }
 }
 
 /// Compares the outputs of a node in tract and tensorflow.
@@ -89,18 +93,17 @@ pub fn check_inferred(got: &[InferenceFact], expected: &[InferenceFact]) -> Trac
     Ok(())
 }
 
+pub fn clarify_tvalue(t: &TValue) -> TractResult<TValue> {
+    if t.datum_type().is_opaque() && t.volume() == 1 {
+        if let Some(clarified) = t.to_scalar::<Opaque>()?.clarify_to_tensor()? {
+            return Ok(clarified.into_tvalue());
+        }
+    }
+    Ok((*t).clone())
+}
+
 pub fn clarify_tvalues(values: &TVec<TValue>) -> TractResult<TVec<TValue>> {
-    values
-        .iter()
-        .map(|t| {
-            if t.datum_type().is_opaque() && t.volume() == 1 {
-                if let Some(clarified) = t.to_scalar::<Opaque>()?.clarify_to_tensor()? {
-                    return Ok(clarified.into_tvalue());
-                }
-            }
-            Ok(t.clone())
-        })
-        .collect()
+    values.iter().map(|t| clarify_tvalue(t)).collect()
 }
 
 pub fn clarify_typed_fact<'a>(fact: impl Into<Cow<'a, TypedFact>>) -> Cow<'a, TypedFact> {

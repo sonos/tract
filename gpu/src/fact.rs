@@ -53,8 +53,8 @@ impl DeviceFact {
 }
 
 impl OpaqueFact for DeviceFact {
-    fn clarify_dt_shape(&self) -> Option<(DatumType, &[usize])> {
-        self.fact.shape.as_concrete().map(|s| (self.fact.datum_type, s))
+    fn clarify_dt_shape(&self) -> Option<(DatumType, TVec<TDim>)> {
+        Some((self.fact.datum_type, self.fact.shape.to_tvec()))
     }
 
     fn mem_size(&self) -> TDim {
