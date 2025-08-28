@@ -3,7 +3,7 @@ use std::str::FromStr;
 use tract_core::ops::array::{MultiBroadcastTo, TypedConcat};
 use tract_core::ops::einsum::EinSum;
 use tract_core::ops::source::TypedSource;
-use tract_core::ops::{change_axes, math, OpStateFreeze};
+use tract_core::ops::{change_axes, math};
 use tract_ndarray::Array2;
 use tract_nnef::internal::*;
 use tract_nnef::ser::datum_type;
@@ -65,19 +65,13 @@ fn deser_spda(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
         inputs.push(mask);
     };
     let scale: Option<f32> = invocation.get_named_arg_as(builder, "scale")?;
-    let datum_type = DatumType::from_str(&invocation.named_arg_as::<String>(builder, "datum_type")?)?;
+    let datum_type =
+        DatumType::from_str(&invocation.named_arg_as::<String>(builder, "datum_type")?)?;
     let acc_datum_type =
         DatumType::from_str(&invocation.named_arg_as::<String>(builder, "acc_datum_type")?)?;
     let is_causal = invocation.named_arg_as(builder, "is_causal")?;
     builder.wire(
-        Sdpa {
-            scale: scale.map(tensor0),
-            datum_type,
-            acc_datum_type,
-            is_causal,
-            subgraph: None,
-            optimized: false,
-        },
+        Sdpa { scale: scale.map(tensor0), datum_type, acc_datum_type, is_causal, subgraph: None },
         &inputs,
     )
 }
@@ -89,7 +83,6 @@ pub struct Sdpa {
     pub acc_datum_type: DatumType,
     pub is_causal: bool,
     pub subgraph: Option<TypedModel>,
-    pub optimized: bool,
 }
 
 impl Sdpa {
@@ -246,20 +239,15 @@ impl Op for Sdpa {
 
 impl EvalOp for Sdpa {
     fn is_stateless(&self) -> bool {
-        self.subgraph.is_none()
+        true
     }
 
-    fn state(
-        &self,
-        _session: &mut SessionState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        if let Some(model) = &self.subgraph {
-            let plan = TypedSimplePlan::new(model.clone())?;
-            Ok(Some(Box::new(SdpaState { plan })))
-        } else {
-            Ok(None)
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        if let Some(body) = &self.subgraph {
+            let plan = TypedSimplePlan::new(body)?;
+            return plan.run(inputs);
         }
+        unreachable!("No sure it is true ..");
     }
 }
 
@@ -326,9 +314,8 @@ impl TypedOp for Sdpa {
 
         let input_facts = model.node_input_facts(node.id)?;
         let subgraph = self.build_sdpa_graph(input_facts)?;
-        let decluttered_subgraph = subgraph.into_decluttered()?;
-        let new_op =
-            Sdpa { subgraph: Some(decluttered_subgraph), optimized: false, ..self.clone() };
+        let decluttered = subgraph.into_decluttered()?;
+        let new_op = Sdpa { subgraph: Some(decluttered), ..self.clone() };
         TypedModelPatch::replace_single_op(&model, node, &node.inputs, new_op).map(Some)
     }
 
@@ -337,45 +324,24 @@ impl TypedOp for Sdpa {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if self.optimized {
-            return Ok(None);
-        }
-        if let Some(graph) = &self.subgraph {
-            let optimized_body = graph.clone().into_optimized()?;
-            let new_op = Sdpa { subgraph: Some(optimized_body), optimized: true, ..self.clone() };
-            return TypedModelPatch::replace_single_op(model, node, &node.inputs, new_op).map(Some);
+        if let Some(body) = &self.subgraph {
+            let mut patch = TypedModelPatch::new(format!("Explode SDPA node {}", node.name));
+            patch.model = body.clone();
+
+            let body_inputs = patch.model.input_outlets()?;
+            for (i, body_input_outlet) in body_inputs.iter().enumerate() {
+                patch.taps.insert(*body_input_outlet, node.inputs[i]);
+            }
+
+            let body_outputs = patch.model.output_outlets()?;
+            patch.shunt_outside(model, node.id.into(), body_outputs[0])?;
+
+            return Ok(Some(patch));
         }
         Ok(None)
     }
 
     as_op!();
-}
-
-#[derive(Debug, Clone)]
-struct SdpaState {
-    plan: TypedSimplePlan<TypedModel>,
-}
-
-impl OpState for SdpaState {
-    fn eval(
-        &mut self,
-        _session: &mut SessionState,
-        _op: &dyn Op,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        self.plan.run(inputs)
-    }
-}
-
-#[derive(Debug, Clone)]
-struct FrozenSdpaState {
-    plan: TypedSimplePlan<TypedModel>,
-}
-
-impl OpStateFreeze for SdpaState {
-    fn freeze(&self) -> Box<dyn FrozenOpState> {
-        unimplemented!()
-    }
 }
 
 // KV cache broadcast is: input -> concat -> AddAxis -> Broadcast -> Reshape
@@ -451,7 +417,6 @@ pub fn fuse_kv_cache_broadcast_rule(
         (Some(k_outlet), Some(v_outlet)) => (k_outlet, v_outlet),
         _ => return Ok(None),
     };
-
     let mut patch = TypedModelPatch::default();
     let mut new_sdpa_inputs = node.inputs.clone();
     new_sdpa_inputs[1] = new_k_outlet;
