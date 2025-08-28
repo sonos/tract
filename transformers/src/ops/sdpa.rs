@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
 use tract_core::ops::array::{MultiBroadcastTo, TypedConcat};
+use tract_core::ops::cast::Cast;
 use tract_core::ops::einsum::EinSum;
 use tract_core::ops::source::TypedSource;
 use tract_core::ops::{change_axes, math};
@@ -70,10 +71,7 @@ fn deser_spda(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let acc_datum_type =
         DatumType::from_str(&invocation.named_arg_as::<String>(builder, "acc_datum_type")?)?;
     let is_causal = invocation.named_arg_as(builder, "is_causal")?;
-    builder.wire(
-        Sdpa { scale: scale.map(tensor0), datum_type, acc_datum_type, is_causal, subgraph: None },
-        &inputs,
-    )
+    builder.wire(Sdpa { scale: scale.map(tensor0), datum_type, acc_datum_type, is_causal }, &inputs)
 }
 
 #[derive(Debug, Clone)]
@@ -82,22 +80,15 @@ pub struct Sdpa {
     pub datum_type: DatumType,
     pub acc_datum_type: DatumType,
     pub is_causal: bool,
-    pub subgraph: Option<TypedModel>,
 }
 
 impl Sdpa {
-    pub fn model(&self) -> &TypedModel {
-        // Subgraph always created at declutter stage
-        self.subgraph.as_ref().unwrap()
-    }
-
     fn build_sdpa_graph(&self, mut input_facts: TVec<&TypedFact>) -> TractResult<TypedModel> {
         let mut graph = TypedModel::default();
         let mut q_fact = input_facts.remove(0).clone();
         let mut k_fact = input_facts.remove(0).clone();
         let v_fact = input_facts.remove(0).clone();
         let m_fact = input_facts.pop().cloned();
-
         let mut q = graph.add_source("q", q_fact.clone())?;
         let mut k = graph.add_source("k", k_fact.clone())?;
         let mut v = graph.add_source("v", v_fact.clone())?;
@@ -108,7 +99,6 @@ impl Sdpa {
         };
 
         let mut rank = q_fact.rank();
-        let dt = q_fact.datum_type;
         let mut final_reshape = None;
         if rank == 4 {
             let qshape = q_fact.shape.to_tvec();
@@ -123,7 +113,6 @@ impl Sdpa {
 
                 let new_qshape = tvec![b.clone(), kh.clone(), g.into(), s.clone(), qd.clone()];
                 let new_kshape = tvec![b.clone(), kh.clone(), 1.into(), s.clone(), kd.clone()];
-
                 q = graph.wire_node(
                     "reshape_q",
                     change_axes::AxisOp::Reshape(0, qshape.clone(), new_qshape.clone()),
@@ -139,6 +128,7 @@ impl Sdpa {
                     change_axes::AxisOp::Reshape(0, kshape.clone(), new_kshape.clone()),
                     &[v],
                 )?[0];
+                let dt = q_fact.datum_type;
                 q_fact = TypedFact::dt_shape(dt, new_qshape);
                 k_fact = TypedFact::dt_shape(dt, new_kshape.clone());
                 if let Some(m) = m.as_mut() {
@@ -161,8 +151,10 @@ impl Sdpa {
         let d_k = k_fact.shape[rank - 1].to_i64()? as f32;
         let scale_value =
             self.scale.as_ref().map(|t| *t.to_scalar::<f32>().unwrap()).unwrap_or(1.0 / d_k.sqrt());
-        let scale_const =
-            graph.add_const("scale", tensor0(scale_value).cast_to_dt(dt)?.into_owned())?;
+        let scale_const = graph.add_const(
+            "scale",
+            tensor0(scale_value).cast_to_dt(self.acc_datum_type)?.into_owned(),
+        )?;
         if self.is_causal {
             let q_seq_len = q_fact.shape[rank - 2].to_usize()?;
             let k_seq_len = k_fact.shape[rank - 2].to_usize()?;
@@ -173,8 +165,10 @@ impl Sdpa {
                     0.0f32
                 }
             });
-            let causal_mask = graph
-                .add_const("causal_mask", m_array.into_tensor().cast_to_dt(dt)?.into_owned())?;
+            let causal_mask = graph.add_const(
+                "causal_mask",
+                m_array.into_tensor().cast_to_dt(self.acc_datum_type)?.into_owned(),
+            )?;
             m = Some(causal_mask);
         };
 
@@ -222,6 +216,14 @@ impl Sdpa {
                 &[output],
             )?[0];
         }
+        let current_output_fact = graph.outlet_fact(output)?;
+        if current_output_fact.datum_type != v_fact.datum_type().unwrap() {
+            output = graph.wire_node(
+                "cast_output",
+                Cast::new(v_fact.datum_type().unwrap()),
+                &[output],
+            )?[0];
+        }
         graph.set_output_outlets(&[output])?;
         Ok(graph)
     }
@@ -243,11 +245,13 @@ impl EvalOp for Sdpa {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        if let Some(body) = &self.subgraph {
-            let plan = TypedSimplePlan::new(body)?;
-            return plan.run(inputs);
-        }
-        unreachable!("No sure it is true ..");
+        let input_facts: TVec<TypedFact> =
+            inputs.iter().map(|tv| TypedFact::from(tv.clone().into_arc_tensor())).collect();
+        let input_fact_refs: TVec<&TypedFact> = input_facts.iter().collect();
+        let body = self.build_sdpa_graph(input_fact_refs)?;
+
+        let plan = TypedSimplePlan::new(&body)?;
+        plan.run(inputs)
     }
 }
 
@@ -303,42 +307,26 @@ impl TypedOp for Sdpa {
         Ok(tvec!(out_fact))
     }
 
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        if self.subgraph.is_some() {
-            return Ok(None);
-        }
-
-        let input_facts = model.node_input_facts(node.id)?;
-        let subgraph = self.build_sdpa_graph(input_facts)?;
-        let decluttered = subgraph.into_decluttered()?;
-        let new_op = Sdpa { subgraph: Some(decluttered), ..self.clone() };
-        TypedModelPatch::replace_single_op(&model, node, &node.inputs, new_op).map(Some)
-    }
-
     fn codegen(
         &self,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if let Some(body) = &self.subgraph {
-            let mut patch = TypedModelPatch::new(format!("Explode SDPA node {}", node.name));
-            patch.model = body.clone();
+        let input_facts = model.node_input_facts(node.id)?;
+        let subgraph = self.build_sdpa_graph(input_facts)?;
 
-            let body_inputs = patch.model.input_outlets()?;
-            for (i, body_input_outlet) in body_inputs.iter().enumerate() {
-                patch.taps.insert(*body_input_outlet, node.inputs[i]);
-            }
+        let mut patch = TypedModelPatch::new(format!("Explode SDPA node {}", node.name));
+        patch.model = subgraph.into_decluttered()?;
 
-            let body_outputs = patch.model.output_outlets()?;
-            patch.shunt_outside(model, node.id.into(), body_outputs[0])?;
-
-            return Ok(Some(patch));
+        let body_inputs = patch.model.input_outlets()?;
+        for (i, body_input_outlet) in body_inputs.iter().enumerate() {
+            patch.taps.insert(*body_input_outlet, node.inputs[i]);
         }
-        Ok(None)
+
+        let body_outputs = patch.model.output_outlets()?;
+        patch.shunt_outside(model, node.id.into(), body_outputs[0])?;
+
+        return Ok(Some(patch));
     }
 
     as_op!();
