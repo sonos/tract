@@ -88,7 +88,7 @@ impl Sdpa {
         let mut q_fact = input_facts.remove(0).clone();
         let mut k_fact = input_facts.remove(0).clone();
         let v_fact = input_facts.remove(0).clone();
-        let m_fact = input_facts.pop().cloned();
+        let mut m_fact = input_facts.pop().cloned();
         let mut q = graph.add_source("q", q_fact.clone())?;
         let mut k = graph.add_source("k", k_fact.clone())?;
         let mut v = graph.add_source("v", v_fact.clone())?;
@@ -135,7 +135,7 @@ impl Sdpa {
                 if let Some(m) = m.as_mut() {
                     if m_fact.as_ref().unwrap().shape[1] == *qh {
                         // Handle the case where mask is already broadcasted to Q outter shape.
-                        let mshape = m_fact.unwrap().shape.to_tvec();
+                        let mshape = m_fact.as_ref().cloned().unwrap().shape.to_tvec();
                         let new_mshape =
                             tvec![b.clone(), kh.clone(), g.into(), sq.clone(), sk.clone()];
                         *m = graph.wire_node(
@@ -179,6 +179,7 @@ impl Sdpa {
                 m_array.into_tensor().cast_to_dt(self.acc_datum_type)?.into_owned(),
             )?;
             m = Some(causal_mask);
+            m_fact = Some(TypedFact::dt_shape(DatumType::F32, [q_seq_len, k_seq_len]));
         };
 
         let axes = match rank {
@@ -196,8 +197,13 @@ impl Sdpa {
             math::mul(),
             &[q_dot_kt, scale_const],
         )?[0];
-        let scaled_masked_scores = if let Some(m) = m {
-            wire_with_rank_broadcast("apply_mask", &mut graph, math::add(), &[scaled_scores, m])?[0]
+        let scaled_masked_scores = if let Some(m) = m.as_mut() {
+            // Cast mask to acc_datum_type if required
+            if m_fact.unwrap().datum_type != self.acc_datum_type {
+                *m = graph.wire_node("cast_mask", Cast::new(self.acc_datum_type), &[*m])?[0];
+            }
+            wire_with_rank_broadcast("apply_mask", &mut graph, math::add(), &[scaled_scores, *m])?
+                [0]
         } else {
             scaled_scores
         };
@@ -258,7 +264,6 @@ impl EvalOp for Sdpa {
             inputs.iter().map(|tv| TypedFact::from(tv.clone().into_arc_tensor())).collect();
         let input_fact_refs: TVec<&TypedFact> = input_facts.iter().collect();
         let body = self.build_sdpa_graph(input_fact_refs)?;
-
         let plan = TypedSimplePlan::new(&body)?;
         plan.run(inputs)
     }
