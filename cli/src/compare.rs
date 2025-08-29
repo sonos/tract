@@ -337,8 +337,8 @@ where
                     let needed_type = clarified_fact.datum_type;
                     let needed_shape = clarified_fact.shape.eval_to_usize(&session_state.resolved_symbols)?;
 
-                    if &**needed_shape != &*reference.shape() {
-                        let Ok(reshaped) = reference.clone().into_shape(&*needed_shape) else {
+                    if **needed_shape != *reference.shape() {
+                        let Ok(reshaped) = reference.clone().into_shape(&needed_shape) else {
                             comparison_error = Some(format!("Incompatible shape on output {slot} reference is {reference:?}, model expects {:?}.", needed_shape));
                             tags.style = Some(Red.into());
                             continue;
