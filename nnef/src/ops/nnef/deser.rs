@@ -341,6 +341,8 @@ pub fn deconv(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     conv_like(builder, invocation, ConvLikeVariant::Deconv)
 }
 
+/// Debox equivalent to deconv with a fixed all-one kernel, no bias, and an extra two unsqueeze at input and
+/// output. This implementation is not optimal, since it add useless matmul and reshape memory.
 pub fn debox(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     conv_like(builder, invocation, ConvLikeVariant::Debox)
 }
@@ -418,9 +420,17 @@ pub fn conv_like(
     invocation: &ResolvedInvocation,
     variant: ConvLikeVariant,
 ) -> TractResult<Value> {
-    let input: OutletId = invocation.named_arg_as(builder, "input")?;
+    let mut input: OutletId = invocation.named_arg_as(builder, "input")?;
+    if variant == ConvLikeVariant::Debox {
+        let i0 = builder.wire_as_outlets(ops::change_axes::AxisOp::Add(0), &[input])?[0];
+        let i1 = builder.wire_as_outlets(ops::change_axes::AxisOp::Add(0), &[i0])?[0];
+        input = i1;
+    }
+
     let kernel: OutletId = if variant == ConvLikeVariant::Debox {
-        let size: TVec<usize> = invocation.named_arg_as(builder, "size")?;
+        let mut size: TVec<usize> = invocation.named_arg_as(builder, "size")?;
+        size.insert(0, 1);
+        size.insert(0, 1);
         let filter_ndarray = Array::<f32, _>::ones(size.to_vec());
         let input_dt = builder.model.outlet_fact(input)?.datum_type;
         let filter = filter_ndarray.into_arc_tensor().cast_to_dt(input_dt)?.into_owned();
@@ -500,6 +510,12 @@ pub fn conv_like(
             }
             Box::new(Conv::new(pool_spec, KernelFormat::OIHW, group, output_dt))
         };
+    if variant == ConvLikeVariant::Debox {
+        let outlets = builder.wire_as_outlets(op, &inputs)?;
+        let outlets_unsqueeze =
+            builder.wire_as_outlets(ops::change_axes::AxisOp::Rm(0), outlets.as_slice())?;
+        return builder.wire(ops::change_axes::AxisOp::Rm(0), outlets_unsqueeze.as_slice());
+    }
     builder.wire(op, &inputs)
 }
 
