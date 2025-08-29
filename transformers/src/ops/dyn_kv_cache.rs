@@ -80,8 +80,8 @@ impl OpState for DynKeyValueCacheState {
         }
     }
 
-    fn init_tensor_fact(&self) -> Option<TypedFact> {
-        Some(self.past_sequence_fact.clone())
+    fn init_tensor_fact(&self) -> Option<(String, TypedFact)> {
+        Some((self.name.clone(), self.past_sequence_fact.clone()))
     }
 
     fn resolve_symbols(&mut self, state: &mut SessionState) -> TractResult<()> {
