@@ -54,7 +54,11 @@ impl Location {
     }
 
     fn is_dir(&self) -> bool {
-        if let &Location::Fs(p) = &self { p.is_dir() } else { false }
+        if let &Location::Fs(p) = &self {
+            p.is_dir()
+        } else {
+            false
+        }
     }
 
     fn read(&self) -> TractResult<Box<dyn Read>> {
@@ -1021,7 +1025,7 @@ impl Parameters {
             .collect();
 
         let assertions = match matches.subcommand() {
-            Some(("dump" | "run", sm)) => Assertions::from_clap(sm, &symbols)?,
+            Some(("dump" | "run" | "compare", sm)) => Assertions::from_clap(sm, &symbols)?,
             _ => Assertions::default(),
         };
 
@@ -1178,7 +1182,7 @@ impl Assertions {
             match sub.value_of("approx").unwrap() {
                 "exact" => Approximation::Exact,
                 "close" => Approximation::Close,
-                "approximate" => Approximation::Approximate,
+                "approx" | "approximate" => Approximation::Approximate,
                 "very" => Approximation::VeryApproximate,
                 "super" => Approximation::SuperApproximate,
                 "ultra" => Approximation::UltraApproximate,

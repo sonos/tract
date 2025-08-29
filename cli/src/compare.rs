@@ -361,7 +361,7 @@ where
                     let computed = crate::utils::clarify_tvalue(&returning[slot])?;
 
                     if let Err(e) =
-                        computed.close_enough(&reference, Approximation::VeryApproximate)
+                        computed.close_enough(&reference, params.assertions.approximation)
                     {
                         comparison_error = Some("Mismatch value".to_string());
                         let mut msg = vec![Red
