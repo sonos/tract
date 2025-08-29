@@ -6,7 +6,7 @@ use proptest::{
 use tract_core::internal::*;
 use tract_core::ndarray::ArrayD;
 use tract_core::num_traits::Float;
-use tract_ndarray::{s, Array2, Array3, Array4, ArrayView2, Ix3, Ix4};
+use tract_ndarray::{s, Array2, Array3, Array4, ArrayView2, Ix3, Ix4, IxDyn};
 use tract_transformers::ops::sdpa::Sdpa;
 
 use crate::tensor;
@@ -304,6 +304,50 @@ pub fn suite() -> TractResult<TestSuite> {
             mask: None,
             scale: None,
             is_causal: true,
+        },
+    );
+    suite.add(
+        "gqa_f32_0",
+        SdpaProblem {
+            q: ArrayD::<f32>::zeros(IxDyn(&[2, 8, 5, 16])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[2, 4, 5, 16])),
+            v: ArrayD::<f32>::zeros(IxDyn(&[2, 4, 5, 16])),
+            mask: None,
+            scale: None,
+            is_causal: true,
+        },
+    );
+    suite.add(
+        "gqa_f32_1",
+        SdpaProblem {
+            q: ArrayD::<f32>::zeros(IxDyn(&[2, 8, 5, 16])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 5, 16])),
+            v: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 5, 16])),
+            mask: None,
+            scale: None,
+            is_causal: true,
+        },
+    );
+    suite.add(
+        "gqa_f32_2",
+        SdpaProblem {
+            q: ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 16])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),
+            v: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),
+            mask: None,
+            scale: None,
+            is_causal: true,
+        },
+    );
+    suite.add(
+        "gqa_f32_mask",
+        SdpaProblem {
+            q: ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 16])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),
+            v: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),
+            mask: Some(ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 3]))),
+            scale: None,
+            is_causal: false,
         },
     );
     Ok(suite)

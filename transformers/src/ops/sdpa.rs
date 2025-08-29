@@ -1,11 +1,10 @@
 use std::str::FromStr;
 
 use tract_core::ops::array::{MultiBroadcastTo, TypedConcat};
-use tract_core::ops::binary::BinMiniOp;
-use tract_core::ops::change_axes;
+use tract_core::ops::cast::Cast;
 use tract_core::ops::einsum::EinSum;
-use tract_core::ops::math::{Add, Mul};
 use tract_core::ops::source::TypedSource;
+use tract_core::ops::{change_axes, math};
 use tract_ndarray::Array2;
 use tract_nnef::internal::*;
 use tract_nnef::ser::datum_type;
@@ -75,7 +74,7 @@ fn deser_spda(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     builder.wire(Sdpa { scale: scale.map(tensor0), datum_type, acc_datum_type, is_causal }, &inputs)
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone)]
 pub struct Sdpa {
     pub scale: Option<Tensor>,
     pub datum_type: DatumType,
@@ -84,30 +83,164 @@ pub struct Sdpa {
 }
 
 impl Sdpa {
-    fn repeat_heads(
-        &self,
-        tensor: TValue,
-        num_heads: usize,
-        kv_heads: usize,
-    ) -> TractResult<TValue> {
-        let repeat_factor = num_heads / kv_heads;
+    fn build_sdpa_graph(&self, mut input_facts: TVec<&TypedFact>) -> TractResult<TypedModel> {
+        let mut graph = TypedModel::default();
+        let mut q_fact = input_facts.remove(0).clone();
+        let mut k_fact = input_facts.remove(0).clone();
+        let v_fact = input_facts.remove(0).clone();
+        let mut m_fact = input_facts.pop().cloned();
+        let mut q = graph.add_source("q", q_fact.clone())?;
+        let mut k = graph.add_source("k", k_fact.clone())?;
+        let mut v = graph.add_source("v", v_fact.clone())?;
+        let mut m = if let Some(m) = m_fact.as_ref() {
+            Some(graph.add_source("mask", m.clone())?)
+        } else {
+            None
+        };
 
-        // Unsqueeze -> MultiBroadcastTo -> Reshape
-        let mut tensor = tensor.into_tensor();
-        let mut final_shape = tensor.shape().to_vec();
-        final_shape[1] = num_heads; // The target number of heads
+        let mut rank = q_fact.rank();
+        let mut final_reshape = None;
+        if rank == 4 {
+            let qshape = q_fact.shape.to_tvec();
+            let kshape = k_fact.shape.to_tvec();
+            let [_, qh, sq, qd] = qshape.as_slice() else { unreachable!() };
+            let [b, kh, sk, kd] = kshape.as_slice() else { unreachable!() };
 
-        // [b, kv_heads, seq_len, kv_emb_dims] -> [b, kv_heads, 1, seq_len, kv_emb_dims]
-        tensor.insert_axis(2)?;
+            let num_q_heads = qh.to_usize()?;
+            let num_k_heads = kh.to_usize()?;
+            if num_q_heads > num_k_heads {
+                let g = num_q_heads / num_k_heads;
 
-        // [b, kv_heads, 1, seq_len, kv_emb_dims] -> [b, kv_heads, num_heads // kv_heads, seq_len, kv_emb_dims]
-        let mut broadcast_shape = tensor.shape().to_vec();
-        broadcast_shape[2] = repeat_factor;
-        let broadcasted = tensor.broadcast_to_shape(&broadcast_shape)?;
+                let new_qshape = tvec![b.clone(), kh.clone(), g.into(), sq.clone(), qd.clone()];
+                let new_kshape = tvec![b.clone(), kh.clone(), 1.into(), sk.clone(), kd.clone()];
+                q = graph.wire_node(
+                    "reshape_q",
+                    change_axes::AxisOp::Reshape(0, qshape.clone(), new_qshape.clone()),
+                    &[q],
+                )?[0];
+                k = graph.wire_node(
+                    "reshape_k",
+                    change_axes::AxisOp::Reshape(0, kshape.clone(), new_kshape.clone()),
+                    &[k],
+                )?[0];
+                v = graph.wire_node(
+                    "reshape_v",
+                    change_axes::AxisOp::Reshape(0, kshape.clone(), new_kshape.clone()),
+                    &[v],
+                )?[0];
+                let dt = q_fact.datum_type;
+                q_fact = TypedFact::dt_shape(dt, new_qshape);
+                k_fact = TypedFact::dt_shape(dt, new_kshape.clone());
 
-        // [b, kv_heads, num_heads // kv_heads, seq_len, kv_emb_dims] -> [b, num_heads, seq_len, kv_emb_dims]
-        let reshaped = broadcasted.into_shape(&final_shape)?;
-        Ok(reshaped.into())
+                if let Some(m) = m.as_mut() {
+                    if m_fact.as_ref().unwrap().shape[1] == *qh {
+                        // Handle the case where mask is already broadcasted to Q outter shape.
+                        let mshape = m_fact.as_ref().cloned().unwrap().shape.to_tvec();
+                        let new_mshape =
+                            tvec![b.clone(), kh.clone(), g.into(), sq.clone(), sk.clone()];
+                        *m = graph.wire_node(
+                            "reshape_m",
+                            change_axes::AxisOp::Reshape(0, mshape, new_mshape.clone()),
+                            &[*m],
+                        )?[0];
+                    } else {
+                        // Handle the case where the mask is not broadcasted.
+                        *m = graph.wire_node("reshape_m", change_axes::AxisOp::Add(2), &[*m])?[0];
+                    }
+                }
+
+                final_reshape = Some((
+                    tvec![b.clone(), kh.clone(), g.into(), sq.clone(), kd.clone()],
+                    tvec![b.clone(), qh.clone(), sq.clone(), kd.clone()],
+                ));
+                rank += 1;
+            }
+        }
+
+        let d_k = k_fact.shape[rank - 1].to_i64()? as f32;
+        let scale_value =
+            self.scale.as_ref().map(|t| *t.to_scalar::<f32>().unwrap()).unwrap_or(1.0 / d_k.sqrt());
+        let scale_const = graph.add_const(
+            "scale",
+            tensor0(scale_value).cast_to_dt(self.acc_datum_type)?.into_owned(),
+        )?;
+        if self.is_causal {
+            let q_seq_len = q_fact.shape[rank - 2].to_usize()?;
+            let k_seq_len = k_fact.shape[rank - 2].to_usize()?;
+            let m_array = Array2::from_shape_fn([q_seq_len, k_seq_len], |(r, c)| {
+                if c > r {
+                    f32::NEG_INFINITY
+                } else {
+                    0.0f32
+                }
+            });
+            let causal_mask = graph.add_const(
+                "causal_mask",
+                m_array.into_tensor().cast_to_dt(self.acc_datum_type)?.into_owned(),
+            )?;
+            m = Some(causal_mask);
+            m_fact = Some(TypedFact::dt_shape(DatumType::F32, [q_seq_len, k_seq_len]));
+        };
+
+        let axes = match rank {
+            3 => "amk,ank->amn".parse().unwrap(),
+            4 => "bhmk,bhnk->bhmn".parse().unwrap(),
+            5 => "bhgmk,bhgnk->bhgmn".parse().unwrap(),
+            _ => unreachable!(),
+        };
+
+        let q_dot_kt =
+            graph.wire_node("scores", EinSum::new(axes, self.acc_datum_type), &[q, k])?[0];
+        let scaled_scores = wire_with_rank_broadcast(
+            "scale_scores",
+            &mut graph,
+            math::mul(),
+            &[q_dot_kt, scale_const],
+        )?[0];
+        let scaled_masked_scores = if let Some(m) = m.as_mut() {
+            // Cast mask to acc_datum_type if required
+            if m_fact.unwrap().datum_type != self.acc_datum_type {
+                *m = graph.wire_node("cast_mask", Cast::new(self.acc_datum_type), &[*m])?[0];
+            }
+            wire_with_rank_broadcast("apply_mask", &mut graph, math::add(), &[scaled_scores, *m])?
+                [0]
+        } else {
+            scaled_scores
+        };
+
+        let attention_weights = graph.wire_node(
+            "att_softmax",
+            Softmax::new(tvec![rank - 1], None, SoftmaxKind::Softmax(SoftmaxExp::Libc)),
+            &[scaled_masked_scores],
+        )?[0];
+        let axes = match rank {
+            3 => "amk,akn->amn".parse().unwrap(),
+            4 => "bhmn,bhnv->bhmv".parse().unwrap(),
+            5 => "bhgmn,bhgnv->bhgmv".parse().unwrap(),
+            _ => unreachable!(),
+        };
+        let mut output = graph.wire_node(
+            "att_out",
+            EinSum::new(axes, self.acc_datum_type),
+            &[attention_weights, v],
+        )?[0];
+        if let Some((from, to)) = final_reshape {
+            output = graph.wire_node(
+                "final_reshape",
+                change_axes::AxisOp::Reshape(0, from, to),
+                &[output],
+            )?[0];
+        }
+        let current_output_fact = graph.outlet_fact(output)?;
+        if current_output_fact.datum_type != v_fact.datum_type().unwrap() {
+            output = graph.wire_node(
+                "cast_output",
+                Cast::new(v_fact.datum_type().unwrap()),
+                &[output],
+            )?[0];
+        }
+        graph.set_output_outlets(&[output])?;
+        Ok(graph)
     }
 }
 
@@ -126,82 +259,13 @@ impl EvalOp for Sdpa {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let q = inputs.remove(0);
-        let mut k = inputs.remove(0);
-        let mut v = inputs.remove(0);
-        let mut mask = if !inputs.is_empty() {
-            Some(inputs.remove(0).cast_to_dt(self.acc_datum_type)?.into_owned().into_tvalue())
-        } else {
-            None
-        };
-        let rank = q.rank();
-        let k_shape = k.shape().to_vec();
-        let q_shape = q.shape().to_vec();
-
-        if rank == 4 {
-            let q_heads = q_shape[1];
-            let k_heads = k_shape[1];
-
-            if q_heads > k_heads {
-                k = self.repeat_heads(k, q_heads, k_heads).context("while broadcasting K")?;
-                v = self.repeat_heads(v, q_heads, k_heads).context("while broadcasting Q")?;
-            }
-        }
-
-        // Computing scaling factor for attention
-        let scale = if let Some(scale) = self.scale.as_ref() {
-            scale.cast_to_dt(self.acc_datum_type)?.into_owned()
-        } else {
-            let d_k = k_shape[rank - 1] as f32;
-            tensor0(1.0 / d_k.sqrt()).cast_to_dt(self.acc_datum_type)?.into_owned()
-        };
-
-        // Construct causal mask if needed
-        if self.is_causal {
-            let q_seq_len = q.shape()[rank - 2];
-            let k_seq_len = k.shape()[rank - 2];
-
-            let m_array = Array2::from_shape_fn([q_seq_len, k_seq_len], |(r, c)| {
-                if c > r { f32::NEG_INFINITY } else { 0.0f32 }
-            });
-            let causal_mask = m_array.into_tensor().cast_to_dt(self.acc_datum_type)?.into_owned();
-            mask = Some(causal_mask.into_tvalue());
-        }
-
-        // Computing attention matrix
-        let axes = match rank {
-            3 => "amk,ank->amn".parse().unwrap(),
-            4 => "bhmk,bhnk->bhmn".parse().unwrap(),
-            _ => unreachable!(),
-        };
-        let q_dot_kt = EinSum { axes, operating_dt: self.acc_datum_type, q_params: None }
-            .eval(tvec![q, k])?
-            .remove(0);
-
-        let scaled_input = Mul.eval(q_dot_kt, scale.into_tvalue(), self.acc_datum_type)?;
-
-        // Apply mask (causal or provided by user)
-        let scaled_masked_input = if let Some(m) = mask {
-            Add.eval(scaled_input.into_tvalue(), m, self.acc_datum_type)?
-        } else {
-            scaled_input
-        };
-
-        let attention_weights =
-            Softmax::new(tvec![rank - 1], None, SoftmaxKind::Softmax(SoftmaxExp::Libc))
-                .eval(tvec![scaled_masked_input.into()])?[0]
-                .clone();
-
-        // Final projection using V
-        let axes = match rank {
-            3 => "amk,akn->amn".parse().unwrap(),
-            4 => "bhmn,bhnv->bhmv".parse().unwrap(),
-            _ => unreachable!(),
-        };
-        let output = EinSum { axes, operating_dt: self.acc_datum_type, q_params: None }
-            .eval(tvec![attention_weights, v])?;
-        Ok(output)
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let input_facts: TVec<TypedFact> =
+            inputs.iter().map(|tv| TypedFact::from(tv.clone().into_arc_tensor())).collect();
+        let input_fact_refs: TVec<&TypedFact> = input_facts.iter().collect();
+        let body = self.build_sdpa_graph(input_fact_refs)?;
+        let plan = TypedSimplePlan::new(&body)?;
+        plan.run(inputs)
     }
 }
 
@@ -255,6 +319,28 @@ impl TypedOp for Sdpa {
 
         let out_fact = inputs[0].datum_type().unwrap().fact(output_shape);
         Ok(tvec!(out_fact))
+    }
+
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let input_facts = model.node_input_facts(node.id)?;
+        let subgraph = self.build_sdpa_graph(input_facts)?;
+
+        let mut patch = TypedModelPatch::new(format!("Explode SDPA node {}", node.name));
+        patch.model = subgraph.into_decluttered()?;
+
+        let body_inputs = patch.model.input_outlets()?;
+        for (i, body_input_outlet) in body_inputs.iter().enumerate() {
+            patch.taps.insert(*body_input_outlet, node.inputs[i]);
+        }
+
+        let body_outputs = patch.model.output_outlets()?;
+        patch.shunt_outside(model, node.id.into(), body_outputs[0])?;
+
+        Ok(Some(patch))
     }
 
     as_op!();
@@ -333,7 +419,6 @@ pub fn fuse_kv_cache_broadcast_rule(
         (Some(k_outlet), Some(v_outlet)) => (k_outlet, v_outlet),
         _ => return Ok(None),
     };
-
     let mut patch = TypedModelPatch::default();
     let mut new_sdpa_inputs = node.inputs.clone();
     new_sdpa_inputs[1] = new_k_outlet;
