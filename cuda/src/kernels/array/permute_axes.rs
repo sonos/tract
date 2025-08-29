@@ -144,8 +144,7 @@ mod tests {
 
             let output = PermuteAxes.eval(stream, &a, axes)?;
             let ref_output = a.to_host()?.into_tensor().permute_axes(axes)?;
-            assert_eq!(ref_output, output.to_host()?.into_tensor());
-            Ok(())
+            output.to_host()?.into_tensor().close_enough(&ref_output, false)
         })
     }
 
@@ -154,6 +153,16 @@ mod tests {
         run_test_case::<f32>(&[3, 4], &[1, 0])?;
         run_test_case::<f32>(&[1, 2, 3, 4, 5], &[4, 1, 2, 3, 0])?;
         run_test_case::<f32>(&[1, 1, 2, 2, 3, 2], &[0, 3, 1, 2, 4, 5])?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_permute_large_inner_axes() -> TractResult<()> {
+        run_test_case::<f32>(&[1032, 4], &[1, 0])?;
+        run_test_case::<f32>(&[2, 1032, 4], &[0, 2, 1])?;
+        run_test_case::<f32>(&[3, 2, 1032, 6], &[0, 1, 3, 2])?;
+        run_test_case::<f32>(&[5, 3, 2, 1032, 6], &[0, 1, 2, 4, 3])?;
+        run_test_case::<f32>(&[2, 5, 3, 2, 1032, 6], &[0, 1, 2, 3, 5, 4])?;
         Ok(())
     }
 }

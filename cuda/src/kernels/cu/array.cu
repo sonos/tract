@@ -1,5 +1,6 @@
 #include <cuda_fp16.h>
 #include <stdint.h>
+#include "utils.cuh"
 
 #define INSTANTIATE_ROTATE_HALF(name, T)                                       \
   extern "C" __global__ void rotate_half_nd2_##name(                           \
@@ -37,7 +38,7 @@
   extern "C" __global__ void copy_nd1_##name(                                  \
       const T *input, T *output, int in_strides_0, int out_shape_0,            \
       int out_strides_0) {                                                     \
-    for (int i = threadIdx.x; i < out_shape_0; i += blockDim.x * gridDim.x) {  \
+    for (int i = threadIdx.x; i < out_shape_0; i += MAX_THREADS) {  \
       output[i * out_strides_0] = input[i * in_strides_0];                     \
     }                                                                          \
   }                                                                            \
@@ -48,7 +49,7 @@
       int out_strides_1) {                                                     \
     int in_offset = blockIdx.x * in_strides_0;                                 \
     int out_offset = blockIdx.x * out_strides_0;                               \
-    for (int i = threadIdx.x; i < out_shape_1; i += blockDim.x * gridDim.x) {  \
+    for (int i = threadIdx.x; i < out_shape_1; i += MAX_THREADS) {  \
       output[out_offset + i * out_strides_1] =                                 \
           input[in_offset + i * in_strides_1];                                 \
     }                                                                          \
@@ -60,7 +61,7 @@
       int out_strides_0, int out_strides_1, int out_strides_2) {               \
     int in_offset = blockIdx.x * in_strides_1 + blockIdx.y * in_strides_0;     \
     int out_offset = blockIdx.x * out_strides_1 + blockIdx.y * out_strides_0;  \
-    for (int i = threadIdx.x; i < out_shape_2; i += blockDim.x * gridDim.x) {  \
+    for (int i = threadIdx.x; i < out_shape_2; i += MAX_THREADS) {  \
       output[out_offset + i * out_strides_2] =                                 \
           input[in_offset + i * in_strides_2];                                 \
     }                                                                          \
@@ -75,7 +76,7 @@
                     blockIdx.z * in_strides_0;                                 \
     int out_offset = blockIdx.x * out_strides_2 + blockIdx.y * out_strides_1 + \
                      blockIdx.z * out_strides_0;                               \
-    for (int i = threadIdx.x; i < out_shape_3; i += blockDim.x * gridDim.x) {  \
+    for (int i = threadIdx.x; i < out_shape_3; i += MAX_THREADS) {  \
       output[out_offset + i * out_strides_3] =                                 \
           input[in_offset + i * in_strides_3];                                 \
     }                                                                          \
@@ -96,7 +97,7 @@
     in_offset += (block_idx_z % out_shape_0) * in_strides_0;                   \
     out_offset += (block_idx_z % out_shape_0) * out_strides_0;                 \
                                                                                \
-    for (int i = threadIdx.x; i < out_shape_4; i += blockDim.x * gridDim.x) {  \
+    for (int i = threadIdx.x; i < out_shape_4; i += MAX_THREADS) {  \
       output[out_offset + i * out_strides_4] =                                 \
           input[in_offset + i * in_strides_4];                                 \
     }                                                                          \
@@ -121,7 +122,7 @@
     in_offset += (block_idx_z % out_shape_0) * in_strides_0;                   \
     out_offset += (block_idx_z % out_shape_0) * out_strides_0;                 \
                                                                                \
-    for (int i = threadIdx.x; i < out_shape_5; i += blockDim.x * gridDim.x) {  \
+    for (int i = threadIdx.x; i < out_shape_5; i += MAX_THREADS) {  \
       output[out_offset + i * out_strides_5] =                                 \
           input[in_offset + i * in_strides_5];                                 \
     }                                                                          \
