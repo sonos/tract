@@ -5,8 +5,6 @@
 #define GELU_COEF_A 0.044715f
 #define SQRT_2_OVER_PI 0.79788456080286535587989211986876f
 
-#define MAX_THREADS 1024
-
 #define INSTANTIATE_REDUCE(name, T, bname, block_size)                         \
   extern "C" __global__ void reduce_max_##bname##name(                         \
       const T *input, T *output, const int shape_0, const int shape_1,         \
