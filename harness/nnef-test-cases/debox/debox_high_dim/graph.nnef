@@ -1,0 +1,9 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+graph network(input_0) -> (output_0)
+{
+    input_0 = tract_core_external(shape = [2, 3, 4, 5], datum_type = 'f32');
+    output_0 = debox(input_0, size = [1, 1, 2, 2], stride = [2, 2], padding = [(0, 0), (0, 0), (0, 0), (0, 0)]);
+}
