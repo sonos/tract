@@ -37,8 +37,8 @@ impl OpState for MetalDynKVCacheState {
         }
     }
 
-    fn init_tensor_fact(&self) -> Option<TypedFact> {
-        Some(self.past_sequence_fact.clone())
+    fn init_tensor_fact(&self) -> Option<(String, TypedFact)> {
+        Some((self.name.clone(), self.past_sequence_fact.clone()))
     }
 
     fn resolve_symbols(&mut self, state: &mut SessionState) -> TractResult<()> {
@@ -196,8 +196,8 @@ impl TypedOp for MetalDynKVCache {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::with_borrowed_metal_stream;
     use crate::MetalTransform;
+    use crate::utils::with_borrowed_metal_stream;
 
     use super::*;
     use tract_core::ops::array::TypedConcat;
@@ -223,11 +223,7 @@ mod tests {
                         .iter()
                         .enumerate()
                         .map(|(i, &dim)| {
-                            if i == axis {
-                                TDim::Sym(model.sym(sym))
-                            } else {
-                                TDim::Val(dim as _)
-                            }
+                            if i == axis { TDim::Sym(model.sym(sym)) } else { TDim::Val(dim as _) }
                         })
                         .collect::<TVec<TDim>>()
                 };

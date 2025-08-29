@@ -68,8 +68,7 @@ pub fn eval_device_mem_req_for_nodes(
         });
 
         !cpu_sync_in_next_nodes
-            && node.op.name() != "MetalDynKVCache"
-            && node.op.name() != "CudaDynKVCache"
+            && node.op.is_stateless()
             && facts
                 .iter()
                 .any(|it| it.to_device_fact().map(|it| it.is_from_device()).unwrap_or(false))

@@ -26,7 +26,7 @@ pub fn figure_out_b_s_p(model: &TypedModel) -> TractResult<(Option<Symbol>, Symb
         let mut dummy_session_state = SessionState::default();
         let mut symbols = HashSet::new();
         for node in &model.nodes {
-            if let Some(fact) = node
+            if let Some((_, fact)) = node
                 .op
                 .state(&mut dummy_session_state, 0)?
                 .and_then(|state| state.init_tensor_fact())
