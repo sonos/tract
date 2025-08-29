@@ -401,7 +401,7 @@ impl StateInterface for State {
             .states
             .iter()
             .filter_map(Option::as_ref)
-            .filter_map(|s| s.init_tensor_fact().map(Fact))
+            .filter_map(|s| s.init_tensor_fact().and_then(|(_, fact)| Some(Fact(fact))))
             .collect::<Vec<Fact>>())
     }
 

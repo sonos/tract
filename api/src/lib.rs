@@ -1,4 +1,4 @@
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use boow::Bow;
 use std::fmt::{Debug, Display};
 use std::path::Path;

@@ -71,7 +71,7 @@ fn compute_reshaped_inputs(
 }
 
 impl<O: TypedOp + Clone> OpState for CudaFusedAxisOpState<O> {
-    fn init_tensor_fact(&self) -> Option<TypedFact> {
+    fn init_tensor_fact(&self) -> Option<(String, TypedFact)> {
         self.op_state.init_tensor_fact()
     }
 
