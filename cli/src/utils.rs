@@ -103,7 +103,7 @@ pub fn clarify_tvalue(t: &TValue) -> TractResult<TValue> {
 }
 
 pub fn clarify_tvalues(values: &TVec<TValue>) -> TractResult<TVec<TValue>> {
-    values.iter().map(|t| clarify_tvalue(t)).collect()
+    values.iter().map(clarify_tvalue).collect()
 }
 
 pub fn clarify_typed_fact<'a>(fact: impl Into<Cow<'a, TypedFact>>) -> Cow<'a, TypedFact> {
