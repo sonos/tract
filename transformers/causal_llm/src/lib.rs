@@ -62,7 +62,7 @@ impl CausalLlmModel {
             {
                 use crate::tract_core::transform::ModelTransform;
                 use std::str::FromStr;
-                nn.properties.insert("GPU", rctensor0(true));
+                nn.properties.insert("GPU".into(), rctensor0(true));
                 tract_metal::MetalTransform::from_str("")?.transform(&mut nn)?;
             }
             #[cfg(not(any(target_os = "macos", target_os = "ios")))]
