@@ -23,12 +23,8 @@ pub struct DeviceFact {
 impl DeviceFact {
     pub fn new(origin: DeviceTensorOrigin, fact: TypedFact) -> TractResult<Self> {
         ensure!(fact.as_device_fact().is_none());
-        let mut fact_wo_cst = fact.clone();
-        if fact.opaque_fact.is_some() {
-            fact_wo_cst.konst = None;
-            fact_wo_cst.uniform = None;
-        }
-        Ok(Self { origin, fact: fact_wo_cst })
+        let new_fact = fact.without_value();
+        Ok(Self { origin, fact: new_fact })
     }
 
     pub fn from_host(fact: TypedFact) -> TractResult<Self> {
