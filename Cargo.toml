@@ -192,7 +192,7 @@ py_literal = "0.4.0"
 rand = { version = "0.8.4", features = ["small_rng"] }
 rand_distr = "0.4"
 rayon = "1.10"
-readings-probe = "0.1.7"
+readings-probe = "0.1.8"
 regex = "1.5.4"
 reqwest = { version = "0.12", features = [ "blocking", "rustls-tls" ], default-features = false }
 rustfft = { version = "6.1", features = [ "neon" ] }
