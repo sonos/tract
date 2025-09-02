@@ -51,7 +51,6 @@ pub fn rewire_sync_after_const(
     let Some(device_const) = op.val().as_device_tensor() else {
         return Ok(None);
     };
-    let host_const = device_const.to_host()?;
 
     // Identify successors ToHost
     let Some(next_nodes) = model.all_succ(node.id)? else {
@@ -67,6 +66,7 @@ pub fn rewire_sync_after_const(
         return Ok(None);
     };
 
+    let host_const = device_const.to_host()?;
     let mut opaque_fact: Option<Box<dyn OpaqueFact>> = None;
     if let Some(of) = host_const
         .to_scalar::<Opaque>()
