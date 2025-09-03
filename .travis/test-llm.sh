@@ -128,7 +128,56 @@ do
     esac
 
     case $device in 
-        cuda) DEVICE="--cuda";;
+        cuda) case "$id.$t" in
+                TinyLlama--TinyLlama_v1.1-q40f16.p99s1) approx="--approx-custom 0.25,0.25,0.006";;
+
+                TinyLlama--TinyLlama_v1.1-q40f32.p0s100) approx="--approx-custom 0.5,0.5,0.015";;
+                TinyLlama--TinyLlama_v1.1-q40f32.p50s50) approx="--approx-custom 0.2,0.1,0.001";;
+                TinyLlama--TinyLlama_v1.1-q40f32.p99s1) approx="--approx-custom 0.35,0.25,0.007";;
+
+                TinyLlama--TinyLlama_v1.1-q40ef16.p99s1) approx="--approx-custom 0.35,0.25,0.005";;
+
+                TinyLlama--TinyLlama_v1.1-q40ef32.p0s100) approx="--approx ultra";;
+                TinyLlama--TinyLlama_v1.1-q40ef32.p50s50) approx="--approx-custom 0.2,0.1,0.003";;
+                TinyLlama--TinyLlama_v1.1-q40ef32.p99s1) approx="--approx-custom 0.35,0.25,0.012";;
+
+                meta-llama--Llama-3.2-3B-q40f32.p0s100 |\
+                meta-llama--Llama-3.2-3B-q40f32.p50s50) approx="--approx ultra";;
+                meta-llama--Llama-3.2-3B-q40f32.p99s1) approx="--approx super";;
+
+                meta-llama--Llama-3.2-3B-q40ef32.p0s100) approx="--approx-custom 0.25,0.15,0.001";;
+                meta-llama--Llama-3.2-3B-q40ef32.p50s50 |\
+                meta-llama--Llama-3.2-3B-q40ef32.p99s1) approx="--approx ultra";;
+
+                apple--OpenELM-1_1B-q40f16.p99s1) approx="--approx-custom 0.25,0.1,0.001";;
+
+                apple--OpenELM-1_1B-q40f32.p0s100) approx="--approx super";;
+                apple--OpenELM-1_1B-q40f32.p50s50) approx="--approx-custom 0.25,0.1,0.001";;
+                apple--OpenELM-1_1B-q40f32.p99s1) approx="--approx-custom 0.25,0.25,0.0025";;
+
+                apple--OpenELM-1_1B-q40ef16.p99s1) approx="--approx-custom 0.25,0.2,0.002";;
+
+                apple--OpenELM-1_1B-q40ef32.p0s100) approx="--approx super";;
+                apple--OpenELM-1_1B-q40ef32.p50s50) approx="--approx-custom 0.2,0.1,0.001";;
+                apple--OpenELM-1_1B-q40ef32.p99s1) approx="--approx-custom 0.25,0.2,0.002";;
+
+                apple--OpenELM-270M-q40f16.p99s1 ) approx="--approx-custom 0.25,0.15,0.002";;
+
+                apple--OpenELM-270M-q40f32.p0s100 |\
+                apple--OpenELM-270M-q40f32.p50s50) approx="--approx super";;
+                apple--OpenELM-270M-q40f32.p99s1) approx="--approx-custom 0.25,0.15,0.001";;
+
+                ##Fix this
+                ##apple--OpenELM-270M-q40ef16.p0s100 ) approx="--approx-custom 0.5,0.5,0.015";;
+                ##apple--OpenELM-270M-q40ef16.p50s50 ) approx="--approx ultra";;
+                ##apple--OpenELM-270M-q40ef16.p99s1) approx="--approx ultra";;
+##
+                ##apple--OpenELM-270M-q40ef32.p0s100 ) approx="--approx-custom 0.25,0.15,0.001";;
+                ##apple--OpenELM-270M-q40ef32.p50s50 ) approx="--approx-custom 0.2,0.1,0.001";;
+                ##apple--OpenELM-270M-q40ef32.p99s1) approx="--approx-custom 0.2,0.1,0.001";;
+
+              esac
+              DEVICE="--cuda";;
         metal) DEVICE="--metal";;
     esac
 
