@@ -74,5 +74,5 @@ jobs:
     - name: Download and run
       run: |
         chmod +x tract-cli-cuda/tract
-        export TRACT_RUN="$GITHUB_WORKSPACE/tract-cli-cuda/tract --cuda"
-        .travis/test-llm.sh ${{matrix.model}} ${{matrix.q}}
+        export TRACT_RUN="$GITHUB_WORKSPACE/tract-cli-cuda/tract"
+        .travis/test-llm.sh ${{matrix.model}} ${{matrix.q}} cuda
