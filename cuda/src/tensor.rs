@@ -138,10 +138,10 @@ impl OwnedDeviceTensor for CudaTensor {
             let t: Tensor = if let Some(bqf) = &self.block_quant_fact {
                 ensure!(bqf.format.same_as(&Q4_0));
                 ensure!(self.shape.iter().product::<usize>() == 1, "Only support Scalar Opaque");
-                let mut blob = unsafe { Blob::new_for_size_and_align(self.buffer.len(), vector_size()) };
+                let mut blob =
+                    unsafe { Blob::new_for_size_and_align(self.buffer.len(), vector_size()) };
                 stream.memcpy_dtoh(&self.buffer.inner, blob.as_bytes_mut())?;
-                let bqv =
-                    BlockQuantValue { fact: bqf.clone(), value: Arc::new(blob) };
+                let bqv = BlockQuantValue { fact: bqf.clone(), value: Arc::new(blob) };
                 Opaque(Arc::new(bqv)).into()
             } else {
                 let mut tensor = unsafe { Tensor::uninitialized_dt(self.datum_type, &self.shape)? };
