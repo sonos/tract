@@ -3,6 +3,11 @@ set -e
 
 [ -d $ROOT/.travis ] || exit 1 "\$ROOT not set correctly '$ROOT'"
 
+if [ -z "$RUST_VERSION" ]
+then
+    export RUST_VERSION=1.85.0
+fi
+export RUSTUP_TOOLCHAIN=$RUST_VERSION
 
 if [ -n "$CI" -a ! -e /tmp/ci-setup-done ]
 then
@@ -26,18 +31,10 @@ then
         fi
     fi
 
-    if [ -z "$RUST_VERSION" ]
-    then
-        export RUST_VERSION=1.85.0
-    fi
-
     which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
     PATH=$PATH:$HOME/.cargo/bin
     rustup update
-    : "${RUST_VERSION:=stable}"
     rustup toolchain add $RUST_VERSION
-    rustup default $RUST_VERSION
-    export RUSTUP_TOOLCHAIN=$RUST_VERSION
 
     touch /tmp/ci-setup-done
 fi
