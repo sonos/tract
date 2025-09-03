@@ -13,8 +13,8 @@ use log::{debug, info};
 use tract_nnef::prelude::TractResult;
 
 #[allow(dead_code)]
-mod proto;
-use proto::*;
+mod common;
+use common::*;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]

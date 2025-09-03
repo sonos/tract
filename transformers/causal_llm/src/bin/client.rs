@@ -4,26 +4,28 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use clap::Parser;
 use reqwest::Client;
 use tokenizers::Tokenizer;
+use tokio::sync::broadcast::Receiver;
 
-mod proto;
-use proto::*;
+#[allow(dead_code)]
+mod common;
+use common::*;
 
 #[derive(Parser, Debug)]
 struct Args {
-    /// path to some tokenizes.json.file to generate text of the right nuber of token
-    #[arg(short, long, required = true)]
+    /// tokenizer to use for token counts
+    #[arg(long, short, required(true))]
     tokenizers: String,
 
     /// /completions endpoint to bench
-    #[structopt(long, default_value = "http://localhost:3000/v1/completions")]
+    #[arg(long, default_value = "http://localhost:3000/v1/completions")]
     endpoint: String,
 
     /// model id
-    #[structopt(long, default_value = "meta-llama/Llama-3.1-8B")]
+    #[arg(long, default_value = "meta-llama/Llama-3.1-8B")]
     model: String,
 
     #[command(subcommand)]
@@ -33,7 +35,7 @@ struct Args {
     api: Option<Api>,
 }
 
-#[derive(Parser, Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 enum Api {
     Completions,
     Generate,
@@ -54,84 +56,175 @@ impl FromStr for Api {
 #[derive(Parser, Debug)]
 enum Commands {
     GenerateBench(GenerateBenchArgs),
-    Stress { concurrency: usize, avg_pp: usize, avg_tg: usize },
+    Stress(StressArgs),
+    Scalability(ScalabilityArgs),
 }
 
 #[derive(Parser, Debug)]
 struct GenerateBenchArgs {
-    #[arg(value_delimiter = ',')]
+    #[structopt(value_delimiter = ',')]
     pp: Vec<usize>,
-    #[arg(value_delimiter = ',')]
+    #[structopt(value_delimiter = ',')]
     tg: Vec<usize>,
-    #[arg(long)]
+    #[structopt(long)]
     time: Option<f32>,
+}
+
+impl GenerateBenchArgs {
+    async fn handle(&self, clients: &Clients) -> Result<()> {
+        for tg in &self.tg {
+            print!("\t{tg}");
+        }
+        println!("");
+        for &pp in &self.pp {
+            print!("{pp}");
+            for &tg in &self.tg {
+                let dur = self.run_one(clients, pp, tg).await?;
+                print!("\t{:.3}", dur.as_secs_f32());
+                let _ = std::io::stdout().flush();
+            }
+            println!("");
+        }
+        Ok(())
+    }
+
+    async fn run_one(&self, clients: &Clients, pp: usize, tg: usize) -> Result<Duration> {
+        // this is wall clock to stop the benching loop
+        let start = Instant::now();
+        // this will measure duration for successul runs  only
+        let mut duration: Duration = Default::default();
+        for ran in 1.. {
+            duration += clients.bench_one_generate(pp, tg).await?;
+            if !self.time.is_some_and(|limit| start.elapsed().as_secs_f32() < limit) {
+                return Ok(duration / ran);
+            }
+        }
+        unreachable!()
+    }
+}
+
+#[derive(Parser, Debug)]
+struct StressArgs {
+    concurrency: usize,
+    avg_pp: usize,
+    avg_tg: usize,
+    /// do not report aggregated performance
+    #[arg(long)]
+    quiet: bool,
+}
+
+impl StressArgs {
+    async fn handle(&self, clients: &Clients) -> Result<()> {
+        self.stress(clients, None).await
+    }
+
+    async fn stress(&self, clients: &Clients, keepalive: Option<Receiver<()>>) -> Result<()> {
+        use Ordering::Relaxed;
+        let total_pp = Arc::new(AtomicUsize::default());
+        let total_tg = Arc::new(AtomicUsize::default());
+        let report = Duration::from_secs(10);
+        tokio_scoped::scope(|scope| {
+            if !self.quiet {
+                scope.spawn(async {
+                    let mut interval = tokio::time::interval(report);
+                    loop {
+                        interval.tick().await;
+                        eprintln!(
+                            "PP:{:.0}/s TG:{:.0}/s",
+                            total_pp.swap(0, Relaxed) as f32 / report.as_secs_f32(),
+                            total_tg.swap(0, Relaxed) as f32 / report.as_secs_f32(),
+                        );
+                        if let Some(keepalive) = &keepalive {
+                            if keepalive.is_closed() {
+                                break;
+                            }
+                        }
+                    }
+                });
+            }
+            for _ in 0..self.concurrency {
+                scope.spawn(async {
+                    loop {
+                        let pp =
+                            ((self.avg_pp as f32) * (0.8 + 0.4 * rand::random::<f32>())) as usize;
+                        let tg = (((self.avg_tg as f32) * (0.8 + 0.4 * rand::random::<f32>()))
+                            as usize)
+                            .max(1);
+                        if let Ok(it) = clients.run_one_generate(pp, tg).await {
+                            total_pp.fetch_add(it.usage.prompt_tokens, Relaxed);
+                            total_tg.fetch_add(it.usage.completion_tokens, Relaxed);
+                        }
+                        if let Some(keepalive) = &keepalive {
+                            if keepalive.is_closed() {
+                                break;
+                            }
+                        }
+                    }
+                });
+            }
+        });
+        Ok(())
+    }
+}
+
+fn clear_terminal_line() {
+    eprint!("\x1b[2K\r");
+}
+
+#[derive(Parser, Debug)]
+struct ScalabilityArgs {
+    avg_pp: usize,
+    avg_tg: usize,
+    #[arg(value_delimiter = ',')]
+    concurrency: Vec<usize>,
+}
+
+impl ScalabilityArgs {
+    async fn handle(&self, clients: &Clients) -> Result<()> {
+        eprint!("Server and model warmup...");
+        let bench =
+            GenerateBenchArgs { pp: vec![self.avg_pp], tg: vec![self.avg_tg], time: Some(10.0) };
+        let _dur = bench.run_one(clients, self.avg_pp, self.avg_tg).await?;
+        clear_terminal_line();
+        for &concurrency in &self.concurrency {
+            tokio_scoped::scope(|scope| {
+                eprint!("Starting stress loading with {concurrency} and warming up...");
+                let (tx, rx) = tokio::sync::broadcast::channel::<()>(1);
+                let stress = StressArgs {
+                    quiet: true,
+                    concurrency,
+                    avg_pp: self.avg_pp,
+                    avg_tg: self.avg_tg,
+                };
+                scope.spawn(async move {
+                    let _ = stress.stress(&clients, Some(rx)).await;
+                });
+                scope.spawn(async move {
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    clear_terminal_line();
+                    eprint!("Running actual bench");
+                    let bench = GenerateBenchArgs {
+                        pp: vec![self.avg_pp],
+                        tg: vec![self.avg_tg],
+                        time: Some(10.0),
+                    };
+                    let dur = bench.run_one(clients, self.avg_pp, self.avg_tg).await.unwrap();
+                    clear_terminal_line();
+                    println!("{concurrency} {:.3}", dur.as_secs_f32());
+                    std::mem::drop(tx);
+                });
+            })
+        }
+        Ok(())
+    }
 }
 
 impl Commands {
     async fn run(&self, clients: &Clients) -> Result<()> {
         match self {
-            Self::GenerateBench(args) => {
-                for tg in &args.tg {
-                    print!("\t{tg}");
-                }
-                println!("");
-                for &pp in &args.pp {
-                    print!("{pp}");
-                    for &tg in &args.tg {
-                        // this is wall clock to stop the benching loop
-                        let start = Instant::now();
-                        // this will measure duration for successul runs  only
-                        let mut duration: Duration = Default::default();
-                        for ran in 1.. {
-                            duration += clients.bench_one_generate(pp, tg).await?;
-                            if !args.time.is_some_and(|limit| start.elapsed().as_secs_f32() < limit)
-                            {
-                                let d = duration.as_secs_f32() / ran as f32;
-                                print!("\t{d:.3}");
-                                let _ = std::io::stdout().flush();
-                                break;
-                            }
-                        }
-                    }
-                    println!("");
-                }
-            }
-            Self::Stress { concurrency, avg_pp, avg_tg } => {
-                use Ordering::Relaxed;
-                tokio_scoped::scope(|scope| {
-                    let total_pp = Arc::new(AtomicUsize::default());
-                    let total_tg = Arc::new(AtomicUsize::default());
-                    let (tpp, ttg) = (total_pp.clone(), total_tg.clone());
-                    let report = Duration::from_secs(10);
-                    scope.spawn(async move {
-                        let mut interval = tokio::time::interval(report);
-                        loop {
-                            interval.tick().await;
-                            eprintln!(
-                                "PP:{:.0}/s TG:{:.0}/s",
-                                tpp.swap(0, Relaxed) as f32 / report.as_secs_f32(),
-                                ttg.swap(0, Relaxed) as f32 / report.as_secs_f32(),
-                            );
-                        }
-                    });
-                    for _ in 0..*concurrency {
-                        let (tpp, ttg) = (total_pp.clone(), total_tg.clone());
-                        scope.spawn(async move {
-                            loop {
-                                let pp = ((*avg_pp as f32) * (0.8 + 0.4 * rand::random::<f32>()))
-                                    as usize;
-                                let tg = (((*avg_tg as f32) * (0.8 + 0.4 * rand::random::<f32>()))
-                                    as usize)
-                                    .max(1);
-                                if let Ok(it) = clients.run_one_generate(pp, tg).await {
-                                    tpp.fetch_add(it.usage.prompt_tokens, Relaxed);
-                                    ttg.fetch_add(it.usage.completion_tokens, Relaxed);
-                                }
-                            }
-                        });
-                    }
-                });
-            }
+            Self::GenerateBench(args) => args.handle(clients).await?,
+            Self::Stress(args) => args.handle(clients).await?,
+            Self::Scalability(args) => args.handle(clients).await?,
         }
         Ok(())
     }
@@ -148,9 +241,8 @@ struct Clients {
 }
 
 impl Clients {
-    fn from_args(args: &Args) -> Result<Self> {
-        let tokenizer = Tokenizer::from_file(&args.tokenizers)
-            .map_err(|e| anyhow!("Failed to initialize tokenzizers: {e:}"))?;
+    fn from_args(args: &Args) -> Self {
+        let tokenizer = Tokenizer::from_file(&args.tokenizers).unwrap();
         const BASE_TEXT: &str = include_str!("../lib.rs");
         let tokens: Vec<u32> = tokenizer.encode_fast(&*BASE_TEXT, true).unwrap().get_ids().into();
         let api = args.api.unwrap_or(if args.endpoint.ends_with("generate") {
@@ -158,14 +250,14 @@ impl Clients {
         } else {
             Api::Completions
         });
-        Ok(Clients {
+        Clients {
             endpoint: args.endpoint.to_string(),
             api,
             model: args.model.clone(),
             client: Client::new(),
             tokens,
             tokenizer,
-        })
+        }
     }
     fn get_one_prompt(&self, len: usize) -> String {
         assert!(len < self.tokens.len());
@@ -195,7 +287,6 @@ impl Clients {
             .await?;
         if response.status().is_success() {
             let it = response.text().await?;
-            dbg!(&it);
             Ok(serde_json::from_str(&it)?)
         } else {
             let error = response.text().await.unwrap();
@@ -239,9 +330,9 @@ impl Clients {
 }
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 8)]
-async fn main() -> Result<()> {
+async fn main() -> anyhow::Result<()> {
     let cli = Args::parse();
-    let clients = Clients::from_args(&cli)?;
+    let clients = Clients::from_args(&cli);
 
     let start = Instant::now();
     cli.command.run(&clients).await?;
