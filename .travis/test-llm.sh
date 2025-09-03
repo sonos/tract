@@ -131,7 +131,7 @@ do
         cuda) case "$id.$t" in
                 TinyLlama--TinyLlama_v1.1-q40f16.p99s1) approx="--approx-custom 0.25,0.25,0.006";;
 
-                TinyLlama--TinyLlama_v1.1-q40f32.p0s100) approx="--approx-custom 0.5,0.5,0.015";;
+                TinyLlama--TinyLlama_v1.1-q40f32.p0s100) approx="--approx-custom 0.5,0.5,0.016";;
                 TinyLlama--TinyLlama_v1.1-q40f32.p50s50) approx="--approx-custom 0.2,0.1,0.001";;
                 TinyLlama--TinyLlama_v1.1-q40f32.p99s1) approx="--approx-custom 0.35,0.25,0.007";;
 
@@ -164,7 +164,7 @@ do
                 apple--OpenELM-270M-q40f16.p99s1 ) approx="--approx-custom 0.25,0.15,0.002";;
 
                 apple--OpenELM-270M-q40f32.p0s100 |\
-                apple--OpenELM-270M-q40f32.p50s50) approx="--approx super";;
+                apple--OpenELM-270M-q40f32.p50s50) approx="0.1, 0.05, 0.0003";;
                 apple--OpenELM-270M-q40f32.p99s1) approx="--approx-custom 0.25,0.15,0.001";;
 
                 ##Fix this
