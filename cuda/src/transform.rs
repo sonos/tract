@@ -232,6 +232,9 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
 }
 
 pub fn pad_q40(q40_bqv: &BlockQuantValue) -> TractResult<BlockQuantValue> {
+    // The padding is for use in GGML Matmul kernels that requires k % 512 == 0
+    // We keep the old shape in the new BlockQuantValue for compatibility with non-MM ops
+    // Padded shape will be recovered in GGML Matmul Op 
     let shape = q40_bqv.fact.shape();
     ensure!(shape.len() >= 2);
 
@@ -258,11 +261,8 @@ pub fn pad_q40(q40_bqv: &BlockQuantValue) -> TractResult<BlockQuantValue> {
         new_data.extend_from_slice(&pad_quant);
     }
 
-    let mut new_shape = shape.to_smallvec();
-    *new_shape.last_mut().unwrap() += to_pad;
-
     Ok(BlockQuantValue {
-        fact: BlockQuantFact::new(q40_bqv.fact.format.clone(), new_shape),
+        fact: BlockQuantFact::new(q40_bqv.fact.format.clone(), shape.to_smallvec()),
         value: Arc::new(Blob::from_bytes(&new_data)?),
     })
 }
