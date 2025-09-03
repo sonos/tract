@@ -15,6 +15,7 @@ fi
 echo TRACT_RUN=$TRACT_RUN
 model=$1
 q=$2
+device=$3
 generation=516
 
 case $model in
@@ -126,9 +127,13 @@ do
         ;;
     esac
 
+    case $device in 
+        cuda) DEVICE="--cuda";;
+        metal) DEVICE="--metal";;
+    esac
 
     $TRACT_RUN -v --nnef-tract-core --nnef-tract-transformers $MODELS/$nnef $TRACT_EXTRA_ARGS \
-        -t transformers-detect-all -O run \
+        -t transformers-detect-all -O $DEVICE run \
         --input-from-npz $MODELS/$npz \
         --assert-output-bundle $MODELS/$npz \
         $approx --allow-float-casts
