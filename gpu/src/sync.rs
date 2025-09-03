@@ -79,7 +79,6 @@ impl TypedOp for DeviceSync {
                 }
                 Ok(tvec!(typed_fact))
             }
-            ,
             DeviceSyncKind::ToDevice => {
                 ensure!(
                     input.datum_type != DatumType::Opaque,

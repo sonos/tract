@@ -168,11 +168,7 @@ impl Sdpa {
             let q_seq_len = q_fact.shape[rank - 2].to_usize()?;
             let k_seq_len = k_fact.shape[rank - 2].to_usize()?;
             let m_array = Array2::from_shape_fn([q_seq_len, k_seq_len], |(r, c)| {
-                if c > r {
-                    f32::NEG_INFINITY
-                } else {
-                    0.0f32
-                }
+                if c > r { f32::NEG_INFINITY } else { 0.0f32 }
             });
             let causal_mask = graph.add_const(
                 "causal_mask",
