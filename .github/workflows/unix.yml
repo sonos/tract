@@ -43,7 +43,7 @@ jobs:
       id-token: write
       contents: read
     env:
-      RUST_VERSION: ${{matrix.rust}}
+      RUSTUP_TOOLCHAIN: ${{matrix.rust}}
       RUST_BACKTRACE: full
 
     steps:
