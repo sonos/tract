@@ -5,22 +5,23 @@ set -ex
 ROOT=$(dirname $(dirname $(realpath $0)))
 . $ROOT/.travis/ci-system-setup.sh
 
-if [ `arch` = x86_64 -o `arch` = i386 -o `arch` = arm64 ]
-then
-     cd /tmp/cargo-dinghy
-     if [ `uname` = "Darwin" ]
-     then
-         NAME=macos
-     else
-         NAME=linux
-     fi
-     VERSION=0.8.0
-     wget -q https://github.com/snipsco/dinghy/releases/download/$VERSION/cargo-dinghy-$NAME-$VERSION.tgz -O cargo-dinghy.tgz
-     tar vzxf cargo-dinghy.tgz --strip-components 1
-     mv cargo-dinghy $HOME/.cargo/bin
-else
-    cargo install cargo-dinghy
-fi
+which cargo-dinghy || ( mkdir -p /tmp/cargo-dinghy
+    if [ `arch` = x86_64 -o `arch` = i386 -o `arch` = arm64 ]
+    then
+         cd /tmp/cargo-dinghy
+         if [ `uname` = "Darwin" ]
+         then
+             NAME=macos
+         else
+             NAME=linux
+         fi
+         VERSION=0.8.0
+         wget -q https://github.com/snipsco/dinghy/releases/download/$VERSION/cargo-dinghy-$NAME-$VERSION.tgz -O cargo-dinghy.tgz
+         tar vzxf cargo-dinghy.tgz --strip-components 1
+         mv cargo-dinghy $HOME/.cargo/bin
+    else
+        cargo install cargo-dinghy
+    fi
 )
 
 if [ -z "$PLATFORM" -a -n "$1" ]
