@@ -10,8 +10,11 @@ use axum_macros::debug_handler;
 use causal_llm::{CausalLlmModel, CausalLlmStateConfig};
 use clap::{arg, command, Parser};
 use log::{debug, info};
-use serde::{Deserialize, Serialize};
 use tract_nnef::prelude::TractResult;
+
+#[allow(dead_code)]
+mod proto;
+use proto::*;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -84,33 +87,6 @@ async fn main() -> TractResult<()> {
 
 async fn root() -> &'static str {
     "tract mini llm completions server\n"
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-struct OpenAICompletionQuery {
-    prompt: String,
-    model: String,
-    max_tokens: usize,
-    stop: Vec<String>,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-struct OpenAICompletionReply {
-    id: String,
-    choices: Vec<OpenAICompletionReplyChoice>,
-    usage: OpenAICompletionReplyUsage,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-struct OpenAICompletionReplyChoice {
-    text: String,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-struct OpenAICompletionReplyUsage {
-    prompt_tokens: usize,
-    total_tokens: usize,
-    completion_tokens: usize,
 }
 
 #[debug_handler]
