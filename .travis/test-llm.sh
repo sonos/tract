@@ -163,8 +163,8 @@ do
 
                 apple--OpenELM-270M-q40f16.p99s1 ) approx="--approx-custom 0.25,0.15,0.002";;
 
-                apple--OpenELM-270M-q40f32.p0s100 |\
-                apple--OpenELM-270M-q40f32.p50s50) approx="--approx-custom 0.1,0.05,0.0003";;
+                apple--OpenELM-270M-q40f32.p0s100) approx="--approx-custom 0.1,0.05,0.0003";;
+                apple--OpenELM-270M-q40f32.p50s50) approx="--approx ultra";;
                 apple--OpenELM-270M-q40f32.p99s1) approx="--approx-custom 0.25,0.15,0.001";;
 
                 apple--OpenELM-270M-q40ef16.p99s1) approx="--approx-custom 0.25,0.2,0.005";;
