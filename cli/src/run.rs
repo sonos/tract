@@ -11,7 +11,7 @@ use tract_core::ops::cnn::conv::Im2Col;
 use tract_core::ops::matmul::pack::OptMatMulPack;
 use tract_core::tract_data::itertools::izip;
 use tract_hir::internal::*;
-use tract_libcli::tensor::{RunParams, get_or_make_inputs};
+use tract_libcli::tensor::{get_or_make_inputs, RunParams};
 use tract_nnef::tensors::write_tensor;
 #[cfg(feature = "pulse")]
 use tract_pulse::internal::*;
