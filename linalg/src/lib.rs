@@ -1,3 +1,4 @@
+#![feature(x86_amx_intrinsics)]
 #![allow(clippy::missing_safety_doc)]
 #![allow(clippy::redundant_closure_call)]
 #![allow(clippy::len_zero)]

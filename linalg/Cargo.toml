@@ -61,6 +61,7 @@ proptest = { version = "1.0.0", default-features = false, features = ["std", "bi
 # preferred.
 no_fp16 = []
 apple-amx-ios = []
+intel-amx = []
 default = [ ]
 multithread-mm = [ "rayon" ]
 complex = [ "tract-data/complex" ]
