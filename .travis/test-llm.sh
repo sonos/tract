@@ -19,6 +19,13 @@ device=$3
 generation=516
 
 case $model in
+    all)
+        $0 OpenELM-270M $q
+        $0 OpenELM-1_1B $q
+        $0 llama-3.2-3B $q
+        $0 llama-3.2-1B $q
+        exit 0
+    ;;
     OpenELM-270M) id=apple--OpenELM-270M-$q;;
     OpenELM-1_1B) id=apple--OpenELM-1_1B-$q;;
     TinyLlama_v1.1) id=TinyLlama--TinyLlama_v1.1-$q;;
@@ -29,6 +36,15 @@ case $model in
         exit 2
         ;;
 esac
+
+if [ "$q" = "all" ]
+then
+    for q in q40f16 q40ef16 f16f16 q40f32 q40ef32 f32f32
+    do
+        $0 $1 $q
+    done
+    exit 0
+fi
 
 if [ -n "$GITHUB_ACTIONS" ]
 then
