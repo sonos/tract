@@ -8,7 +8,7 @@ use num_traits::One;
 use std::fmt;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
-use tract_gpu::utils::{as_q40_fact, as_q40_tensor};
+use tract_gpu::utils::as_q40_fact;
 
 use crate::context::TractCudaStream;
 use crate::kernels::{
@@ -367,7 +367,7 @@ mod tests {
     use super::*;
     use crate::context::CUDA_STREAM;
     use crate::kernels::matmul::GemmImpl;
-    use crate::transform::pad_q40;
+    use crate::utils::pad_q40;
     use num_traits::AsPrimitive;
     use num_traits::Float;
     use proptest::collection::vec;

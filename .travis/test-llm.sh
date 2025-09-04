@@ -167,14 +167,11 @@ do
                 apple--OpenELM-270M-q40f32.p50s50) approx="--approx-custom 0.1,0.05,0.0003";;
                 apple--OpenELM-270M-q40f32.p99s1) approx="--approx-custom 0.25,0.15,0.001";;
 
-                ##Fix this
-                ##apple--OpenELM-270M-q40ef16.p0s100 ) approx="--approx-custom 0.5,0.5,0.015";;
-                ##apple--OpenELM-270M-q40ef16.p50s50 ) approx="--approx ultra";;
-                ##apple--OpenELM-270M-q40ef16.p99s1) approx="--approx ultra";;
-##
-                ##apple--OpenELM-270M-q40ef32.p0s100 ) approx="--approx-custom 0.25,0.15,0.001";;
-                ##apple--OpenELM-270M-q40ef32.p50s50 ) approx="--approx-custom 0.2,0.1,0.001";;
-                ##apple--OpenELM-270M-q40ef32.p99s1) approx="--approx-custom 0.2,0.1,0.001";;
+                apple--OpenELM-270M-q40ef16.p99s1) approx="--approx-custom 0.25,0.2,0.005";;
+
+                apple--OpenELM-270M-q40ef32.p0s100 ) approx="--approx-custom 0.1,0.05,0.00015";;
+                apple--OpenELM-270M-q40ef32.p50s50 ) approx="--approx super";;
+                apple--OpenELM-270M-q40ef32.p99s1) approx="--approx ultra";;
 
               esac
               DEVICE="--cuda";;
