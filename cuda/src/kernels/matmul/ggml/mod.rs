@@ -11,7 +11,7 @@ use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 use tract_gpu::device::get_context;
 use tract_gpu::tensor::DeviceTensor;
-use tract_gpu::utils::{as_q40_fact, as_q40_tensor};
+use tract_gpu::utils::as_q40_fact;
 
 use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};

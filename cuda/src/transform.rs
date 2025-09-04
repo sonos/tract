@@ -1,4 +1,4 @@
-use tract_core::internal::tract_smallvec::ToSmallVec;
+use tract_core::dyn_clone::clone_box;
 use tract_core::internal::*;
 use tract_core::model::translator::Translate;
 use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
@@ -10,13 +10,12 @@ use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
 use tract_core::ops::nn::{Reduce, Softmax};
 use tract_core::tract_data::itertools::Itertools;
-use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::sync::{DeviceSync, DeviceSyncKind};
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
-use tract_gpu::utils::{as_q40_fact, as_q40_tensor};
+use tract_gpu::utils::as_q40_fact;
 use tract_transformers::ops::apply_rope::{ApplyRope, RotateHalf};
 use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
 use tract_transformers::ops::gelu_approximate::GeluApproximate;
@@ -26,7 +25,7 @@ use tract_transformers::ops::silu::Silu;
 
 use crate::context::cuda_context;
 use crate::kernels::matmul::{GemmKernel, GgmlGemm};
-use crate::{Q40_ROW_PADDING, kernels, ops, rewrite_rules};
+use crate::{kernels, ops, rewrite_rules};
 
 #[derive(Debug, Default)]
 pub struct CudaTransform;
@@ -78,6 +77,10 @@ impl CudaTransform {
             .rewrite(&(), model)?;
 
         rewire_syncs(model)?;
+
+        Rewriter::default()
+            .with_rule_for("pad_q40_weights", rewrite_rules::pad_q40_weights)
+            .rewrite(&(), model)?;
         Ok(())
     }
 
@@ -231,72 +234,16 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
         }))
 }
 
-pub fn pad_q40(q40_bqv: &BlockQuantValue) -> TractResult<BlockQuantValue> {
-    // The padding is for use in GGML Matmul kernels that requires k % 512 == 0
-    // We keep the old shape in the new BlockQuantValue for compatibility with non-MM ops
-    // Padded shape will be recovered in GGML Matmul Op 
-    let shape = q40_bqv.fact.shape();
-    ensure!(shape.len() >= 2);
-
-    let k = *shape.last().unwrap();
-    ensure!(k % 32 == 0);
-
-    let to_pad = k.next_multiple_of(Q40_ROW_PADDING) - k;
-    if to_pad == 0 {
-        return Ok(q40_bqv.clone()); // No padding needed
-    }
-
-    let outer_rows: usize = shape[..shape.len() - 1].iter().product();
-    let row_bytes = k * Q4_0.block_bytes() / Q4_0.block_len();
-
-    let pad_quant = Q4_0.quant_f32(&vec![0f32; to_pad])?;
-    let pad_bytes = pad_quant.len();
-
-    let mut new_data = Vec::with_capacity(outer_rows * (row_bytes + pad_bytes));
-    let old_bytes = q40_bqv.value.as_bytes();
-
-    for row in 0..outer_rows {
-        let start = row * row_bytes;
-        new_data.extend_from_slice(&old_bytes[start..start + row_bytes]);
-        new_data.extend_from_slice(&pad_quant);
-    }
-
-    Ok(BlockQuantValue {
-        fact: BlockQuantFact::new(q40_bqv.fact.format.clone(), shape.to_smallvec()),
-        value: Arc::new(Blob::from_bytes(&new_data)?),
-    })
-}
-
 fn convert_const(op: &Const) -> TractResult<Const> {
     let typed_fact: TypedFact = Arc::clone(op.val()).into();
-    let cuda_const = op.val().clone();
-
-    let to_device_opaque = |fact: TypedFact, tensor: Arc<Tensor>| -> TractResult<_> {
-        Ok((
-            DeviceFact::from_host(fact)?,
-            tensor.into_device()?.into_opaque_tensor().into_arc_tensor(),
-        ))
+    let cuda_fact = if let Some(of) = op.opaque_fact() {
+        DeviceFact::from_host(typed_fact.with_opaque_fact(clone_box(of)))?
+    } else {
+        DeviceFact::from_host(typed_fact)?
     };
 
-    let (cuda_fact, cuda_tensor) = match op.opaque_fact() {
-        Some(_) => {
-            ensure!(as_q40_fact(&typed_fact).is_some(), "Only support Q40 block quantization");
-
-            let tensor = cuda_const.into_tensor();
-            let bqv = as_q40_tensor(&tensor).unwrap();
-
-            let padded_bqv = pad_q40(bqv)?;
-            let padded_fact = typed_fact.with_opaque_fact(padded_bqv.fact.clone());
-            let padded_tensor = tensor0(Opaque(Arc::new(padded_bqv)))
-                .broadcast_into_rank(op.val().rank())?
-                .into_arc_tensor();
-
-            to_device_opaque(padded_fact, padded_tensor)?
-        }
-        None => to_device_opaque(typed_fact, cuda_const)?,
-    };
-
-    Const::new_with_opaque_fact(cuda_tensor, Box::new(cuda_fact))
+    let cuda_const = op.val().clone().into_device()?.into_opaque_tensor().into_arc_tensor();
+    Const::new_with_opaque_fact(cuda_const, Box::new(cuda_fact))
 }
 
 macro_rules! map_unary_ops {

@@ -1,7 +1,10 @@
 use cudarc::driver::sys::Lib;
-use tract_core::tract_linalg::block_quant::{BlockQuantFact, Q4_0};
+use tract_core::internal::tract_smallvec::ToSmallVec;
+use tract_core::internal::*;
+use tract_core::tract_linalg::block_quant::*;
 use tract_gpu::tensor::DeviceTensor;
 
+use crate::Q40_ROW_PADDING;
 use crate::tensor::CudaTensor;
 
 // Code copied from Cudarc for checking Cuda presence
@@ -65,4 +68,39 @@ pub fn get_q40_fact(t: &DeviceTensor) -> Option<BlockQuantFact> {
     } else {
         None
     }
+}
+
+pub fn pad_q40(q40_bqv: &BlockQuantValue) -> TractResult<BlockQuantValue> {
+    let shape = q40_bqv.fact.shape();
+    ensure!(shape.len() >= 2);
+
+    let k = *shape.last().unwrap();
+    ensure!(k % 32 == 0);
+
+    let to_pad = k.next_multiple_of(Q40_ROW_PADDING) - k;
+    if to_pad == 0 {
+        return Ok(q40_bqv.clone()); // No padding needed
+    }
+
+    let outer_rows: usize = shape[..shape.len() - 1].iter().product();
+    let row_bytes = k * Q4_0.block_bytes() / Q4_0.block_len();
+
+    let pad_quant = Q4_0.quant_f32(&vec![0f32; to_pad])?;
+    let pad_bytes = pad_quant.len();
+
+    let mut new_data = Vec::with_capacity(outer_rows * (row_bytes + pad_bytes));
+    let old_bytes = q40_bqv.value.as_bytes();
+
+    for row in 0..outer_rows {
+        let start = row * row_bytes;
+        new_data.extend_from_slice(&old_bytes[start..start + row_bytes]);
+        new_data.extend_from_slice(&pad_quant);
+    }
+    let mut new_shape = shape.to_smallvec();
+    *new_shape.last_mut().unwrap() += to_pad;
+
+    Ok(BlockQuantValue {
+        fact: BlockQuantFact::new(q40_bqv.fact.format.clone(), new_shape),
+        value: Arc::new(Blob::from_bytes(&new_data)?),
+    })
 }
