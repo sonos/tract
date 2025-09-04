@@ -1,8 +1,10 @@
-use crate::Parameters;
 use crate::bench::{bench, make_state};
+use crate::Parameters;
+use float_ord::FloatOrd;
 use readings_probe::Probe;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
+use tract_core::tract_data::itertools::Itertools;
 use tract_hir::internal::*;
 use tract_libcli::profile::BenchLimits;
 use tract_libcli::tensor::get_or_make_inputs;
@@ -136,4 +138,25 @@ pub fn bench_tg(
     let tokens = tg as f64 / tot_dur.as_secs_f64();
     println!("TG{tg}: {tokens:.1} tokens/sec");
     Ok(())
+}
+
+pub fn top_logits_levenshtein(test: &Tensor, reference: &Tensor, n: usize) -> TractResult<usize> {
+    let (test, reference) = [test, reference]
+        .into_iter()
+        .map(|t| {
+            t.cast_to::<f32>()
+                .unwrap()
+                .as_slice::<f32>()
+                .unwrap()
+                .into_iter()
+                .copied()
+                .enumerate()
+                .sorted_by_key(|(_, f)| FloatOrd(-*f))
+                .map(|p| p.0)
+                .collect_vec()
+        })
+        .collect_tuple()
+        .unwrap();
+
+    Ok(levenshtein_diff::distance(&test[..n], &reference[..n]).0)
 }
