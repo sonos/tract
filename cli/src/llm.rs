@@ -148,7 +148,7 @@ pub fn top_logits_levenshtein(test: &Tensor, reference: &Tensor, n: usize) -> Tr
                 .unwrap()
                 .as_slice::<f32>()
                 .unwrap()
-                .into_iter()
+                .iter()
                 .copied()
                 .enumerate()
                 .sorted_by_key(|(_, f)| FloatOrd(-*f))
