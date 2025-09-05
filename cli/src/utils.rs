@@ -54,10 +54,20 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
         {
             exp = exp.cast_to_dt(got.datum_type())?.into_owned().into_tvalue();
         }
-        if let Err(e) = exp
-            .close_enough(&got, params.assertions.approximation)
-            .context(format!("Checking output {ix}"))
-        {
+        let result: TractResult<()> = if let Some(limit) = params.assertions.assert_llm_lev20 {
+            let lev = crate::llm::top_logits_levenshtein(&exp, &got, 20)?;
+            info!("Levenshtein distance on first 20 logits: lev20={lev}");
+            if lev <= limit {
+                Ok(())
+            } else {
+                TractResult::Err(anyhow!(
+                    "Levenshtein criteria on first 20 not met found lev20={lev}, expected {limit}"
+                ))
+            }
+        } else {
+            exp.close_enough(&got, params.assertions.approximation)
+        };
+        if let Err(e) = result.context(format!("Checking output {ix}")) {
             if error.is_some() {
                 error!("{e:?}");
             } else {

@@ -461,6 +461,12 @@ fn assertions_options(command: clap::Command) -> clap::Command {
             .help("Allow missing output in checks")
             )
         .arg(
+            Arg::new("assert-llm-lev20")
+            .takes_value(true)
+            .long("assert-llm-lev20")
+            .help("Use a LLM-aware application distance on logit output")
+            )
+        .arg(
             Arg::new("assert-op-count")
             .takes_value(true)
             .forbid_empty_values(true)
