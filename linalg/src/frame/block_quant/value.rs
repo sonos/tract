@@ -2,8 +2,8 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use super::{BlockQuant, PackedBlockQuantFormat};
-use tract_data::internal::*;
 use tract_data::TVec;
+use tract_data::internal::*;
 
 #[allow(clippy::derived_hash_with_manual_eq)]
 #[derive(Clone, Hash)]

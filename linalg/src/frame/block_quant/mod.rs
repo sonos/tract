@@ -1,5 +1,5 @@
-use downcast_rs::{impl_downcast, Downcast};
-use dyn_clone::{clone_box, DynClone};
+use downcast_rs::{Downcast, impl_downcast};
+use dyn_clone::{DynClone, clone_box};
 use dyn_hash::DynHash;
 use num_traits::Zero;
 use tract_data::internal::*;

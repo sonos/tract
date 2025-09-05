@@ -11,11 +11,7 @@ pub const Q4_0: BaseQ4_0 = BaseQ4_0::<32>;
 
 impl<const QK: usize> Debug for BaseQ4_0<QK> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if QK == 32 {
-            write!(f, "Q4_0")
-        } else {
-            write!(f, "BaseQ4_0<{QK}>")
-        }
+        if QK == 32 { write!(f, "Q4_0") } else { write!(f, "BaseQ4_0<{QK}>") }
     }
 }
 
