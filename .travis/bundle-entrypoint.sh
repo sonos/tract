@@ -56,6 +56,7 @@ net_bench() {
     net=$1
     pb=$2
     shift 2
+    net=$(echo $net | tr '-' '_')
 
     $TRACT "$@" --machine-friendly -O bench --allow-random-input $BENCH_OPTS > tract.out
     v=`cat tract.out | grep -a real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
