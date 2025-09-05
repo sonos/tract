@@ -81,6 +81,7 @@ llm_bench() {
     net=$1
     pb=$2
     shift 2
+    net=$(echo $net | tr '-' '_')
 
     if  $TRACT "$@" --nnef-tract-core --nnef-tract-transformers -t transformers-detect-all --machine-friendly -O llm-bench $BENCH_OPTS > tract.out
     then
