@@ -208,8 +208,8 @@ impl<const QK: usize> BlockQuant for BaseQ4_0<QK> {
     //
     //  becomes (with r=4)
     //
-    //  s0_0 S1_0 S2_0 s3_0  n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
-    //  s0_32 S1_32 S2_32 s3_32  n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
+    //  s0_0  s1_0  s2_0  s3_0  n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
+    //  s0_32 s1_32 s2_32 s3_32 n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
     //  ...
     fn pack(
         &self,
