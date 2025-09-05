@@ -375,14 +375,14 @@ mod tests {
     }
 
     #[test]
-    fn loop_q4f16_beg() {
+    fn loop_q4f16_neg() {
         test_loop_f16(Q4_0, &[-1.0, -2.0, -3.0, -4.0]);
     }
 
     #[test]
     fn loop_q4_big_pos() {
         test_loop_f32(Q4_0, &[1234.0]);
-        test_loop_f16(Q4_0, &[-1.0, -2.0, -3.0, -4.0]);
+        test_loop_f16(Q4_0, &[1234.0]);
     }
 
     #[test]
