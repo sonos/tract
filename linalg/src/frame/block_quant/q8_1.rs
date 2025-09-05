@@ -41,8 +41,8 @@ impl<const QK: usize> BaseQ8_1<QK> {
         writer.write_f16(f16::from_f32(scale));
         writer.write_f16(sum.as_());
 
-        for idx in 0..block.len() {
-            let i: i8 = (f32::from(block[idx]) * r_scale).round().as_();
+        for val_f in block {
+            let i: i8 = (f32::from(*val_f) * r_scale).round().as_();
             writer.write_i8(i);
         }
     }
@@ -57,8 +57,8 @@ impl<const QK: usize> BaseQ8_1<QK> {
         let mut quants = NibbleReader::for_slice(quant);
         let d: T = quants.read_f16().as_();
         let _sum: T = quants.read_f16().as_();
-        for idx in 0..block.len() {
-            block[idx] = (quants.read_i8()).as_() * d;
+        for val_f in block {
+            *val_f = (quants.read_i8()).as_() * d;
         }
     }
 
@@ -109,8 +109,8 @@ impl<const QK: usize> BaseQ8_1<QK> {
             });
 
             for _ in 0..self.block_len() {
-                for o in 0..pbqf.r {
-                    weights[o] = w_reader.read_i8();
+                for w in &mut weights {
+                    *w = w_reader.read_i8();
                 }
                 for (w, s) in weights.iter().zip(scales.iter()) {
                     *scratch.next().unwrap() = *s * (*w).as_();
@@ -248,8 +248,8 @@ impl<const QK: usize> BlockQuant for BaseQ8_1<QK> {
                     sums.iter().for_each(|s| writer.write_f16(*s));
                 }
                 for pos in 0..self.block_len() {
-                    for row in 0..r {
-                        let q = temp_quants[row][pos];
+                    for row in &temp_quants {
+                        let q = row[pos];
                         writer.write_i8(q);
                     }
                 }
