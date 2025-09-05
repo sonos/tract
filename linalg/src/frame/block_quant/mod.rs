@@ -1,5 +1,5 @@
-use downcast_rs::{impl_downcast, Downcast};
-use dyn_clone::{clone_box, DynClone};
+use downcast_rs::{Downcast, impl_downcast};
+use dyn_clone::{DynClone, clone_box};
 use dyn_hash::DynHash;
 use num_traits::Zero;
 use tract_data::internal::*;
@@ -13,10 +13,12 @@ use std::sync::Arc;
 
 mod helpers;
 mod q4_0;
+mod q8_1;
 mod value;
 
 pub use helpers::{NibbleReader, NibbleWriter};
 pub use q4_0::Q4_0;
+pub use q8_1::Q8_1;
 pub use value::{BlockQuantFact, BlockQuantValue, PackedBlockQuantFact};
 
 use crate::mmm::{EagerPackedInput, MMMInputFormat};

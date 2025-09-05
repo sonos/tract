@@ -1,7 +1,8 @@
 use std::io::{Read, Write};
 
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use tract_core::internal::*;
+use tract_core::tract_linalg::block_quant::Q8_1;
 use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
 
 const TRACT_ITEM_TYPE_VENDOR: u16 = ((b'T' as u16) << 8u16) | b'R' as u16;
@@ -271,10 +272,10 @@ pub fn tract_to_gguf_q4_0_packing(data: &mut Blob) -> TractResult<()> {
 }
 
 fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Tensor> {
-    let format = if matches!(header.item_type, 0x2040 | 0x3040) {
-        Q4_0
-    } else {
-        bail!("Unexpected block quant format")
+    let format: Box<dyn BlockQuant> = match header.item_type {
+        0x2040 | 0x3040 => Box::new(Q4_0),
+        0x3080 => Box::new(Q8_1),
+        _ => bail!("Unexpected block quant format"),
     };
     ensure!(header.rank >= 2);
     let shape: TVec<_> =
@@ -289,7 +290,7 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
     if header.item_type == 0x2040 {
         tract_to_gguf_q4_0_packing(&mut blob)?;
     }
-    let fact = BlockQuantFact::new(Box::new(format), shape);
+    let fact = BlockQuantFact::new(format, shape);
     let bqv = BlockQuantValue { value: Arc::new(blob), fact };
     let tensor = tensor0(Opaque(Arc::new(bqv)));
     Ok(tensor)
@@ -297,7 +298,7 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
 
 #[allow(clippy::field_reassign_with_default)]
 fn write_block_quant_value(w: &mut impl Write, value: &BlockQuantValue) -> TractResult<()> {
-    ensure!(value.fact.format.same_as(&Q4_0));
+    ensure!(value.fact.format.same_as(&Q4_0) || value.fact.format.same_as(&Q8_1));
 
     let mut header = Header::default();
     header.rank = value.fact.shape().len() as u32;
@@ -308,7 +309,7 @@ fn write_block_quant_value(w: &mut impl Write, value: &BlockQuantValue) -> Tract
     header.data_size_bytes = value.value.len() as _;
     header.item_type_vendor = TRACT_ITEM_TYPE_VENDOR;
     // 0x3040 3 is for GGML formats, 0 for Q formats then 4 and 0
-    header.item_type = 0x3040;
+    header.item_type = if value.fact.format.same_as(&Q4_0) { 0x3040 } else { 0x3081 };
     header.write(w)?;
     w.write_all(&value.value)?;
     Ok(())
