@@ -40,13 +40,13 @@ impl<const QK: usize> BaseQ8_1<QK> {
             sum += *v;
         }
 
-        let scale = f32::from(max) / -128f32;
+        let scale = f32::from(max) / 127f32;
         let r_scale = if scale.is_zero() { 0f32 } else { scale.recip() };
         writer.write_f16(f16::from_f32(scale));
         writer.write_f16(sum.as_());
         
         for idx in 0..block.len() {
-            let i: i8 = (f32::from(block[idx]) * r_scale).as_();
+            let i: i8 = (f32::from(block[idx]) * r_scale).round().as_();
             writer.write_i8(i);
         }
     }
