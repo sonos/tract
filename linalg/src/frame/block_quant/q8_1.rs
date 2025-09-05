@@ -58,11 +58,11 @@ impl<const QK: usize> BaseQ8_1<QK> {
     {
         assert!(quant.len() == self.block_bytes());
         assert!(block.len() == self.block_len());
-        let mut nibbles = NibbleReader::for_slice(quant);
-        let d: T = nibbles.read_f16().as_();
-        let _sum: T = nibbles.read_f16().as_();
+        let mut quants = NibbleReader::for_slice(quant);
+        let d: T = quants.read_f16().as_();
+        let _sum: T = quants.read_f16().as_();
         for idx in 0..block.len() {
-            block[idx] = (nibbles.read_i8()).as_() * d;
+            block[idx] = (quants.read_i8()).as_() * d;
         }
     }
 
@@ -93,20 +93,20 @@ impl<const QK: usize> BaseQ8_1<QK> {
         let mut scratch = scratch.iter_mut();
         let mut weights = vec![0i8; pbqf.r];
         let panel_block_bytes = target.r * self.block_bytes();
-        let (scale_offset, weights_offset) = if pbqf.scales_at_end {
+        let (params_offset, weights_offset) = if pbqf.scales_at_end {
             (panel_block_bytes - target.r * 2 *f16::datum_type().size_of(), 0)
         } else {
             (0, target.r * 2 * f16::datum_type().size_of())
         };
         for block in 0..blocks_for_k {
             let block = &input[block * panel_block_bytes..][..panel_block_bytes];
-            let mut s_reader = NibbleReader::for_slice(&block[scale_offset..]);
+            let mut s_reader = NibbleReader::for_slice(&block[params_offset..]);
             let mut w_reader = NibbleReader::for_slice(&block[weights_offset..]);
+            // Layout: [scales, sums, weights]
             for s in &mut scales {
                 *s = s_reader.read_f16().as_();
             }
-            // Read Sums
-            (0..target.r).for_each(|_| { s_reader.read_f16(); });
+            (0..target.r).for_each(|_| { s_reader.read_f16(); }); // Unused sums
 
             for _ in 0..self.block_len() {
                 for o in 0..pbqf.r {
@@ -235,12 +235,12 @@ impl<const QK: usize> BlockQuant for BaseQ8_1<QK> {
                     NibbleReader::for_slice(&input[offset..])
                 })
                 .collect_vec();
-            let mut temp_nibbles = vec![vec![0i8; self.block_len()]; r];
+            let mut temp_quants = vec![vec![0i8; self.block_len()]; r];
             for _ in 0..blocks_for_k {
                 for (row, reader) in readers.iter_mut().enumerate() {
                     scales[row] = reader.read_f16();
                     sums[row] = reader.read_f16();
-                    temp_nibbles[row] =
+                    temp_quants[row] =
                         (0..self.block_len()).map(|_| reader.read_i8()).collect_vec();
                 }
                 if !scales_at_end {
@@ -249,8 +249,8 @@ impl<const QK: usize> BlockQuant for BaseQ8_1<QK> {
                 }
                 for pos in 0..self.block_len() {
                     for row in 0..r {
-                        let nib = temp_nibbles[row][pos];
-                        writer.write_i8(nib);
+                        let q = temp_quants[row][pos];
+                        writer.write_i8(q);
                     }
                 }
                 if scales_at_end {
