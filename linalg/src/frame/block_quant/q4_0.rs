@@ -1,4 +1,3 @@
-use crate::block_quant::helpers::zipped_order;
 use crate::mmm::PackedOpaqueFact;
 
 use super::*;
@@ -161,6 +160,21 @@ impl<const QK: usize> BaseQ4_0<QK> {
             }
         }
         Ok(())
+    }
+}
+
+fn zipped_order(r: usize, zip: usize) -> Vec<usize> {
+    if zip == 0 {
+        (0..r).collect_vec()
+    } else {
+        (0..r)
+            .map(|i| {
+                let vec_pair_ix = i / (2 * zip);
+                let lane = (i % (2 * zip)) / 2;
+                let side = i % 2;
+                vec_pair_ix * 2 * zip + side * zip + lane
+            })
+            .collect_vec()
     }
 }
 
