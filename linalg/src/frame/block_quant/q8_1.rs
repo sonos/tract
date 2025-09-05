@@ -12,11 +12,7 @@ pub const Q8_1: BaseQ8_1 = BaseQ8_1::<32>;
 
 impl<const QK: usize> Debug for BaseQ8_1<QK> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if QK == 32 {
-            write!(f, "Q8_1")
-        } else {
-            write!(f, "BaseQ8_1<{QK}>")
-        }
+        if QK == 32 { write!(f, "Q8_1") } else { write!(f, "BaseQ8_1<{QK}>") }
     }
 }
 
@@ -44,7 +40,7 @@ impl<const QK: usize> BaseQ8_1<QK> {
         let r_scale = if scale.is_zero() { 0f32 } else { scale.recip() };
         writer.write_f16(f16::from_f32(scale));
         writer.write_f16(sum.as_());
-        
+
         for idx in 0..block.len() {
             let i: i8 = (f32::from(block[idx]) * r_scale).round().as_();
             writer.write_i8(i);
@@ -94,7 +90,7 @@ impl<const QK: usize> BaseQ8_1<QK> {
         let mut weights = vec![0i8; pbqf.r];
         let panel_block_bytes = target.r * self.block_bytes();
         let (params_offset, weights_offset) = if pbqf.scales_at_end {
-            (panel_block_bytes - target.r * 2 *f16::datum_type().size_of(), 0)
+            (panel_block_bytes - target.r * 2 * f16::datum_type().size_of(), 0)
         } else {
             (0, target.r * 2 * f16::datum_type().size_of())
         };
@@ -106,7 +102,11 @@ impl<const QK: usize> BaseQ8_1<QK> {
             for s in &mut scales {
                 *s = s_reader.read_f16().as_();
             }
-            (0..target.r).for_each(|_| { s_reader.read_f16(); }); // Unused sums
+
+            // Unused sums
+            (0..target.r).for_each(|_| {
+                s_reader.read_f16();
+            });
 
             for _ in 0..self.block_len() {
                 for o in 0..pbqf.r {
