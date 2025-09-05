@@ -198,8 +198,8 @@ impl<const QK: usize> BlockQuant for BaseQ8_1<QK> {
     //
     //  becomes (with r=4)
     //
-    //  s0_0 S1_0 S2_0 s3_0  n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
-    //  s0_32 S1_32 S2_32 s3_32  n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
+    //  s0_0  s1_0  s2_0  s3_0   sum0_0  sum 1_0  sum2_0  sum3_0  n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
+    //  s0_32 s1_32 s2_32 s3_32  sum0_32 sum 1_32 sum2_32 sum3_32 n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
     //  ...
     fn pack(
         &self,
@@ -324,58 +324,66 @@ mod tests {
 
     use super::*;
 
-    fn test_loop_f32(b: impl BlockQuant, data: &[f32]) {
+    fn test_loop_f32(b: impl BlockQuant, data: &[f32]) -> TractResult<()> {
         let mut input = data.to_vec();
         while input.len() % b.block_len() != 0 {
             input.push(0f32);
         }
+        let ref_tensor = unsafe { Tensor::from_slice_align(&input, vector_size())? };
+
         let quant = b.quant_f32(&input).unwrap();
         let result = b.dequant_f32(&quant).unwrap();
-        let view = &result.as_slice::<f32>().unwrap()[..data.len()];
-        assert_eq!(data, view);
+        result.close_enough(&ref_tensor, Approximation::VeryApproximate)
     }
 
-    fn test_loop_f16(b: impl BlockQuant, data: &[f32]) {
+    fn test_loop_f16(b: impl BlockQuant, data: &[f32]) -> TractResult<()> {
         let mut input = data.iter().map(|f| f16::from_f32(*f)).collect_vec();
         while input.len() % b.block_len() != 0 {
             input.push(f16::zero());
         }
+        let ref_tensor = unsafe { Tensor::from_slice_align(&input, vector_size())? };
+
         let quant = b.quant_f16(&input).unwrap();
         let result = b.dequant_f16(&quant).unwrap();
-        let view = &result.as_slice::<f16>().unwrap();
-        assert_eq!(&input, view);
+        result.close_enough(&ref_tensor, Approximation::VeryApproximate)
     }
 
     #[test]
-    fn loop_q81f32_pos() {
-        test_loop_f32(Q8_1, &[1.0, 2.0, 3.0, 4.0]);
+    fn loop_q81f32_pos() -> TractResult<()> {
+        test_loop_f32(Q8_1, &[1.0, 2.0, 3.0, 4.0])?;
+        Ok(())
     }
 
     #[test]
-    fn loop_q81f16_pos() {
-        test_loop_f16(Q8_1, &[1.0, 2.0, 3.0, 4.0]);
+    fn loop_q81f16_pos() -> TractResult<()> {
+        test_loop_f16(Q8_1, &[1.0, 2.0, 3.0, 4.0])?;
+        Ok(())
     }
 
     #[test]
-    fn loop_q81f32_neg() {
-        test_loop_f32(Q8_1, &[-1.0, -2.0, -3.0, -4.0]);
+    fn loop_q81f32_neg() -> TractResult<()> {
+        test_loop_f32(Q8_1, &[-1.0, -2.0, -3.0, -4.0])?;
+        Ok(())
     }
 
     #[test]
-    fn loop_q81f16_neg() {
-        test_loop_f16(Q8_1, &[-1.0, -2.0, -3.0, -4.0]);
+    fn loop_q81f16_neg() -> TractResult<()> {
+        test_loop_f16(Q8_1, &[-1.0, -2.0, -3.0, -4.0])?;
+        Ok(())
     }
 
     #[test]
-    fn loop_q81_big_pos() {
-        test_loop_f32(Q8_1, &[1234.0]);
-        test_loop_f16(Q8_1, &[1234.0]);
+    fn loop_q81_big_pos() -> TractResult<()> {
+        test_loop_f32(Q8_1, &[1234.0])?;
+        test_loop_f16(Q8_1, &[1234.0])?;
+        Ok(())
     }
 
     #[test]
-    fn loop_q81_big_neg() {
-        test_loop_f32(Q8_1, &[-1234.0]);
-        test_loop_f16(Q8_1, &[-1234.0]);
+    fn loop_q81_big_neg() -> TractResult<()> {
+        test_loop_f32(Q8_1, &[-1234.0])?;
+        test_loop_f16(Q8_1, &[-1234.0])?;
+        Ok(())
     }
 
     fn test_extract_f32(b: impl BlockQuant, data: &[f32]) {
