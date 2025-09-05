@@ -1,5 +1,4 @@
 use byteorder::{ReadBytesExt, WriteBytesExt, LE};
-use tract_data::itertools::Itertools;
 use std::io::{Cursor, Read, Write};
 use tract_data::internal::*;
 
@@ -70,20 +69,5 @@ impl<W: Write> NibbleWriter<W> {
 
     pub fn write_i8(&mut self, q: i8) {
         self.writer.write_i8(q).unwrap()
-    }
-}
-
-pub fn zipped_order(r: usize, zip: usize) -> Vec<usize> {
-    if zip == 0 {
-        (0..r).collect_vec()
-    } else {
-        (0..r)
-            .map(|i| {
-                let vec_pair_ix = i / (2 * zip);
-                let lane = (i % (2 * zip)) / 2;
-                let side = i % 2;
-                vec_pair_ix * 2 * zip + side * zip + lane
-            })
-            .collect_vec()
     }
 }
