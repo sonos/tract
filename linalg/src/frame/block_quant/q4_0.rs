@@ -22,8 +22,8 @@ impl<const QK: usize> Debug for BaseQ4_0<QK> {
 impl<const QK: usize> BaseQ4_0<QK> {
     fn quant_block<T>(&self, block: &[T], quant: &mut [u8])
     where
-        f32: AsPrimitive<T>,
-        T: Debug + Float + AsPrimitive<f16> + AsPrimitive<i8> + 'static,
+        f32: AsPrimitive<i8> + From<T>,
+        T: Debug + Float,
     {
         assert!(quant.len() == self.block_bytes());
         assert!(block.len() == self.block_len());
@@ -36,14 +36,14 @@ impl<const QK: usize> BaseQ4_0<QK> {
                 max = *v;
             }
         }
-        let scale: T = max / (-8f32).as_();
-        let r_scale = if scale.is_zero() { T::zero() } else { scale.recip() };
-        writer.write_f16(scale.as_());
+        let scale = f32::from(max) / -8f32;
+        let r_scale = if scale.is_zero() { 0f32 } else { scale.recip() };
+        writer.write_f16(f16::from_f32(scale));
 
         for idx in 0..block.len() {
             // Quant block in GGML nibble order
             let ggml_idx = (block.len() / 2) * (idx % 2) + (idx / 2);
-            let i: i8 = (block[ggml_idx] * r_scale + (8.5f32).as_()).as_();
+            let i: i8 = (f32::from(block[ggml_idx]) * r_scale + 8.5f32).as_();
             writer.write_i4(i.min(15));
         }
     }

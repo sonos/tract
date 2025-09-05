@@ -24,7 +24,7 @@ impl<const QK: usize> BaseQ8_1<QK> {
     fn quant_block<T>(&self, block: &[T], quant: &mut [u8])
     where
         f32: AsPrimitive<i8> + From<T>,
-        T: Debug + Float + AsPrimitive<f16> + AsPrimitive<i8> + AddAssign + 'static,
+        T: Debug + Float + AsPrimitive<f16> + AddAssign + 'static,
     {
         assert!(quant.len() == self.block_bytes());
         assert!(block.len() == self.block_len());
