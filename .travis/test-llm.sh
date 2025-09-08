@@ -105,117 +105,21 @@ do
     key=$id.$t.$(arch).$device
     expectations="$ROOT/.travis/llm-expectations-516"
 
-    if [ -z "$RESET" ]
-    then
-        expectation=$(grep $key $expectations || /bin/true)
-        if [ -z "$expectation" ]
-        then
-            expectation=0
-        else
-            expectation=$(echo $expectation | cut -f 2 -d ' ')
-        fi
-    else
-        expectation=999999999
-    fi
-
-    case $q in
-        q40f16) approx="--approx ultra";;
-        q40ef16) approx="--approx ultra";;
-        f16f16) approx="--approx ultra";;
-        q40f32) approx="--approx very";;
-        q40ef32) approx="--approx very";;
-        f32f32) approx="--approx very";;
-    esac
-
-    case "$id.$t" in
-        # very terrible conditioning on this one
-        apple--OpenELM-270M-f16f16.p50s50) approx="--approx-custom 0.2,0.25,0.013";;
-
-        TinyLlama--TinyLlama_v1.1-f32f32.p50s50) approx="--approx-custom 0.2,0.1,0.001";;
-        TinyLlama--TinyLlama_v1.1-f16f16.p0s100) approx="--approx-custom 0.2,0.1,0.002";;
-        TinyLlama--TinyLlama_v1.1-f16f16.p50s50) approx="--approx-custom 0.2,0.1,0.007";;
-        TinyLlama--TinyLlama_v1.1-f16f16.p99s1) approx="--approx-custom 0.2,0.1,0.004";;
-        TinyLlama--TinyLlama_v1.1-q40f16.p0s100) approx="--approx-custom 0.2,0.1,0.004";;
-        TinyLlama--TinyLlama_v1.1-q40f16.p99s1) approx="--approx-custom 0.2,0.1,0.002";;
-        TinyLlama--TinyLlama_v1.1-q40f16.p50s50) approx="--approx-custom 0.2,0.2,0.006";;
-        TinyLlama--TinyLlama_v1.1-q40ef16.p0s100) approx="--approx-custom 0.2,0.1,0.002";;
-        TinyLlama--TinyLlama_v1.1-q40ef16.p50s50) approx="--approx-custom 0.2,0.1,0.002";;
-
-        meta-llama--Llama-3.2-3B-f16f16.p0s100 |\
-        meta-llama--Llama-3.2-3B-q40f16.p0s100 |\
-        meta-llama--Llama-3.2-3B-q40ef16.p0s100) 
-            if [ `arch` = "arm64" ]
-            then
-                approx="--approx-custom 0.25,0.25,0.01"
-            else
-                approx="--approx-custom 0.2,0.1,0.004"
-            fi
-        ;;
-        meta-llama--Llama-3.2-3B-f16f16.p50s50 |\
-        meta-llama--Llama-3.2-3B-q40f16.p50s50 |\
-        meta-llama--Llama-3.2-3B-q40ef16.p50s50) 
-            if [ `arch` = "arm64" ]
-            then
-                approx="--approx-custom 0.25,0.25,0.016"
-            else
-                approx="--approx-custom 0.2,0.1,0.004"
-            fi
-        ;;
-    esac
-
     case $device in 
-        cuda) case "$id.$t" in
-                TinyLlama--TinyLlama_v1.1-q40f16.p99s1) approx="--approx-custom 0.25,0.25,0.006";;
-
-                TinyLlama--TinyLlama_v1.1-q40f32.p0s100) approx="--approx-custom 0.5,0.5,0.016";;
-                TinyLlama--TinyLlama_v1.1-q40f32.p50s50) approx="--approx-custom 0.2,0.1,0.001";;
-                TinyLlama--TinyLlama_v1.1-q40f32.p99s1) approx="--approx-custom 0.35,0.25,0.007";;
-
-                TinyLlama--TinyLlama_v1.1-q40ef16.p99s1) approx="--approx-custom 0.35,0.25,0.005";;
-
-                TinyLlama--TinyLlama_v1.1-q40ef32.p0s100) approx="--approx ultra";;
-                TinyLlama--TinyLlama_v1.1-q40ef32.p50s50) approx="--approx-custom 0.2,0.1,0.003";;
-                TinyLlama--TinyLlama_v1.1-q40ef32.p99s1) approx="--approx-custom 0.35,0.25,0.012";;
-
-                meta-llama--Llama-3.2-3B-q40f32.p0s100 |\
-                meta-llama--Llama-3.2-3B-q40f32.p50s50) approx="--approx ultra";;
-                meta-llama--Llama-3.2-3B-q40f32.p99s1) approx="--approx super";;
-
-                meta-llama--Llama-3.2-3B-q40ef32.p0s100) approx="--approx-custom 0.25,0.15,0.001";;
-                meta-llama--Llama-3.2-3B-q40ef32.p50s50 |\
-                meta-llama--Llama-3.2-3B-q40ef32.p99s1) approx="--approx ultra";;
-
-                apple--OpenELM-1_1B-q40f16.p99s1) approx="--approx-custom 0.25,0.1,0.001";;
-
-                apple--OpenELM-1_1B-q40f32.p0s100) approx="--approx super";;
-                apple--OpenELM-1_1B-q40f32.p50s50) approx="--approx-custom 0.25,0.1,0.001";;
-                apple--OpenELM-1_1B-q40f32.p99s1) approx="--approx-custom 0.25,0.25,0.0025";;
-
-                apple--OpenELM-1_1B-q40ef16.p99s1) approx="--approx-custom 0.25,0.2,0.002";;
-
-                apple--OpenELM-1_1B-q40ef32.p0s100) approx="--approx super";;
-                apple--OpenELM-1_1B-q40ef32.p50s50) approx="--approx-custom 0.2,0.1,0.001";;
-                apple--OpenELM-1_1B-q40ef32.p99s1) approx="--approx-custom 0.25,0.2,0.002";;
-
-                apple--OpenELM-270M-q40f16.p99s1 ) approx="--approx-custom 0.25,0.15,0.002";;
-
-                apple--OpenELM-270M-q40f32.p0s100) approx="--approx-custom 0.1,0.05,0.0003";;
-                apple--OpenELM-270M-q40f32.p50s50) approx="--approx ultra";;
-                apple--OpenELM-270M-q40f32.p99s1) approx="--approx-custom 0.25,0.15,0.001";;
-
-                apple--OpenELM-270M-q40ef16.p99s1) approx="--approx-custom 0.25,0.2,0.005";;
-
-                apple--OpenELM-270M-q40ef32.p0s100 ) approx="--approx-custom 0.1,0.05,0.00015";;
-                apple--OpenELM-270M-q40ef32.p50s50 ) approx="--approx super";;
-                apple--OpenELM-270M-q40ef32.p99s1) approx="--approx ultra";;
-
-              esac
-              DEVICE="--cuda";;
+        cuda) DEVICE="--cuda";;
         metal) DEVICE="--metal";;
     esac
 
-    if [ -n "$RESET" ]
+    if [ -z "$RESET" ]
     then
+        expectation=$(grep $key $expectations | cut -f 2 -d ' ')
+        $TRACT_RUN -v --nnef-tract-core --nnef-tract-transformers $MODELS/$nnef $TRACT_EXTRA_ARGS \
+            -t transformers-detect-all -O $DEVICE run \
+            --input-from-npz $MODELS/$npz \
+            --assert-output-bundle $MODELS/$npz \
+            --assert-llm-lev20 $expectation \
+            $approx --allow-float-casts
+    else
         $TRACT_RUN -v --nnef-tract-core --nnef-tract-transformers $MODELS/$nnef $TRACT_EXTRA_ARGS \
             -t transformers-detect-all -O $DEVICE run \
             --input-from-npz $MODELS/$npz \
@@ -225,14 +129,6 @@ do
         found=$(cat output.txt | grep lev20 | cut -d '=' -f 2)
         ( ( grep -v $key $expectations || /bin/true) ; echo $key $found) | sort > $expectations.tmp
         mv $expectations.tmp $expectations
-    else
-        expectation=$(grep $key $expectations | cut -f 2 -d ' ')
-        $TRACT_RUN -v --nnef-tract-core --nnef-tract-transformers $MODELS/$nnef $TRACT_EXTRA_ARGS \
-            -t transformers-detect-all -O $DEVICE run \
-            --input-from-npz $MODELS/$npz \
-            --assert-output-bundle $MODELS/$npz \
-            --assert-llm-lev20 $expectation \
-            $approx --allow-float-casts
     fi
 
 done
