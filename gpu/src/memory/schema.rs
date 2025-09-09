@@ -113,6 +113,19 @@ pub fn eval_device_mem_req_for_nodes(
     Ok(scoped_nodes)
 }
 
+fn collect_opaque_facts(model: &TypedModel) -> TractResult<Vec<TVec<Option<Box<dyn OpaqueFact>>>>> {
+    let mut res: Vec<TVec<Option<Box<dyn OpaqueFact>>>> = vec![];
+    for node in model.nodes() {
+        let mut tmp: TVec<Option<Box<dyn OpaqueFact>>> = tvec![];
+        for fact in model.node_output_facts(node.id)? {
+            let dev_fact = fact.to_device_fact()?;
+            tmp.push(dev_fact.opaque_fact.clone());
+        }
+        res.push(tmp);
+    }
+    Ok(res)
+}
+
 /// A partition is a list of node that have disjoint memory requirement from a lifetime
 /// perspective.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -152,6 +165,7 @@ impl Partition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceResolvedMemSchema {
     pub offsets_by_node: Vec<TVec<usize>>,
+    pub opaque_facts: Vec<TVec<Option<Box<dyn OpaqueFact>>>>,
     pub memory_size: usize,
 }
 
@@ -164,6 +178,7 @@ pub struct DeviceMemSchema {
     pub by_partition: Vec<Partition>,
     // vec![vec![Option<NodeMemReq>; num_partitions]; num_steps].
     pub by_steps: Vec<Vec<Option<NodeMemReq>>>,
+    pub opaque_facts: Vec<TVec<Option<Box<dyn OpaqueFact>>>>
 }
 
 impl DeviceMemSchema {
@@ -265,6 +280,7 @@ impl DeviceMemSchema {
     pub fn resolve(&self, symbols: &SymbolValues) -> TractResult<DeviceResolvedMemSchema> {
         Ok(DeviceResolvedMemSchema {
             offsets_by_node: self.compute_offset_by_node(symbols)?,
+            opaque_facts: self.opaque_facts.clone(),
             memory_size: self.eval_memory_size(symbols)?.try_into()?,
         })
     }
@@ -279,6 +295,7 @@ impl DeviceMemSchema {
     ) -> TractResult<DeviceMemSchema> {
         let mut nodes_mem_req = eval_device_mem_req_for_nodes(model, order)?;
 
+        let opaque_facts = collect_opaque_facts(model)?;
         let hinted_mem_size = nodes_mem_req
             .iter()
             .map(|node_mem| Ok((node_mem.node, node_mem.mem_size.eval_to_i64(hint)?)))
@@ -323,6 +340,7 @@ impl DeviceMemSchema {
             model_num_nodes: model.nodes().len(),
             by_partition: partitions,
             by_steps,
+            opaque_facts
         })
     }
 }
