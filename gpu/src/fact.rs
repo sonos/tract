@@ -56,6 +56,16 @@ impl OpaqueFact for DeviceFact {
     fn mem_size(&self) -> TDim {
         self.fact.mem_size()
     }
+
+    fn buffer_sizes(&self) -> TVec<TDim> {
+        let inner_fact = &self.fact;
+        let mut sizes = tvec!(inner_fact.shape.volume() * inner_fact.datum_type.size_of());
+        if let Some(of) = inner_fact.opaque_fact() {
+            sizes.push(of.mem_size());
+        }
+        sizes
+    } 
+
     fn same_as(&self, other: &dyn OpaqueFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| o == self)
     }

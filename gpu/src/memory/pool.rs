@@ -39,6 +39,7 @@ impl DeviceMemoryPool {
             node_id
         );
         self.resolved_schema.offsets_by_node[node_id]
+            .first()
             .map(|offset| {
                 Ok(DeviceArenaView {
                     arena: Arc::clone(&self.storage),
@@ -46,7 +47,7 @@ impl DeviceMemoryPool {
                     len: shape.iter().product(),
                     shape: shape.into(),
                     strides: Tensor::natural_strides(shape),
-                    offset_bytes: offset,
+                    offset_bytes: *offset,
                 }
                 .into())
             })
