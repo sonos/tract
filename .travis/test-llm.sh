@@ -119,7 +119,10 @@ do
     expectations="$ROOT/.travis/llm-expectations-516"
 
     case $device in 
-        cuda) DEVICE="--cuda";;
+        cuda)
+            nvidia-smi
+            DEVICE="--cuda"
+        ;;
         metal) DEVICE="--metal";;
     esac
 
