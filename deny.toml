@@ -33,7 +33,7 @@ deny = [
 # Skip some multiple-versions checks, until they can be fixed.
 skip = [
     { name = "itertools", version="<=0.12.1" },
-    { name = "windows-sys", version="<0.60" },
+    { name = "windows-sys", version="<0.62" },
     { name = "windows_x86_64_msvc", version="<0.53" },
     { name = "windows_x86_64_gnu", version="<0.53" },
     { name = "windows-targets", version="<0.53" },
