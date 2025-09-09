@@ -161,7 +161,6 @@ do
             --assert-output-bundle $MODELS/$npz \
             --assert-llm-lev20 $expectation \
             $approx --allow-float-casts
-        sleep 10
     fi
 
 done
