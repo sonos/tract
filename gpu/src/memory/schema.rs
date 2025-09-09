@@ -99,11 +99,15 @@ pub fn eval_device_mem_req_for_nodes(
             continue;
         }
 
-        scoped_nodes.push(NodeMemReq {
-            node: *n,
-            lifetime: Lifetime { start: lifetime_start, end: lifetime_end },
-            mem_size: out_device_tmp_facts.iter().map(|it| it.mem_size()).sum::<TDim>(),
-        })
+        for fact in out_device_tmp_facts {
+            for buff_size in fact.buffer_sizes() {
+                scoped_nodes.push(NodeMemReq {
+                node: *n,
+                lifetime: Lifetime { start: lifetime_start, end: lifetime_end },
+                mem_size: buff_size,
+                })
+            }
+        }
     }
 
     Ok(scoped_nodes)
@@ -147,7 +151,7 @@ impl Partition {
 /// GPU operators. This schema is concrete.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceResolvedMemSchema {
-    pub offsets_by_node: Vec<Option<usize>>,
+    pub offsets_by_node: Vec<TVec<usize>>,
     pub memory_size: usize,
 }
 
@@ -188,13 +192,13 @@ impl DeviceMemSchema {
     pub fn compute_offset_by_node(
         &self,
         symbols: &SymbolValues,
-    ) -> TractResult<Vec<Option<usize>>> {
+    ) -> TractResult<Vec<TVec<usize>>> {
         let mut cursor = 0;
-        let mut offset_by_node = vec![None; self.model_num_nodes];
+        let mut offset_by_node = vec![tvec![]; self.model_num_nodes];
 
         for partition in self.by_partition.iter() {
             for node_mem in partition.nodes.iter() {
-                offset_by_node[node_mem.node] = Some(cursor);
+                offset_by_node[node_mem.node].push(cursor);
             }
             cursor += partition.eval_size_to_i64(symbols)? as usize;
         }
