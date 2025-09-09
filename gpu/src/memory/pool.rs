@@ -4,15 +4,12 @@ use crate::tensor::DeviceArenaView;
 use crate::tensor::DeviceTensor;
 use crate::tensor::OwnedDeviceTensor;
 
-use std::cell::RefCell;
-use std::collections::HashSet;
 use tract_core::internal::*;
 
 #[derive(Debug)]
 pub struct DeviceMemoryPool {
     storage: Arc<Box<dyn OwnedDeviceTensor>>,
     resolved_schema: DeviceResolvedMemSchema,
-    node_seen: RefCell<HashSet<usize>>,
 }
 
 impl DeviceMemoryPool {
@@ -23,7 +20,6 @@ impl DeviceMemoryPool {
                     .uninitialized_device_tensor(&[resolved_schema.memory_size], DatumType::U8)?,
             ),
             resolved_schema,
-            node_seen: RefCell::new(HashSet::new()),
         })
     }
 
@@ -33,11 +29,9 @@ impl DeviceMemoryPool {
         dt: DatumType,
         shape: &[usize],
     ) -> TractResult<DeviceTensor> {
-        ensure!(
-            !self.node_seen.borrow().contains(&node_id),
-            "Tensor for node {:?} was already requested. Maybe the memory pool was not reset properly.",
-            node_id
-        );
+        ensure!(self.resolved_schema.offsets_by_node[node_id].len() == 1, "'tensor_for_node' is for mono-output nodes only");
+        ensure!(dt != DatumType::Opaque, "Use opaque_tensor for node instead");
+
         self.resolved_schema.offsets_by_node[node_id]
             .first()
             .map(|offset| {
@@ -48,13 +42,34 @@ impl DeviceMemoryPool {
                     shape: shape.into(),
                     strides: Tensor::natural_strides(shape),
                     offset_bytes: *offset,
+                    opaque_fact: None
                 }
                 .into())
             })
             .unwrap_or_else(|| DeviceTensor::uninitialized_dt(dt, shape))
     }
 
-    pub fn reset(&self) {
-        self.node_seen.borrow_mut().clear();
+    pub fn scalar_opaque_tensor_for_node(
+        &self,
+        node_id: usize,
+    ) -> TractResult<DeviceTensor> {
+        ensure!(self.resolved_schema.offsets_by_node[node_id].len() == 2, "Expected 1 output with two buffers for opaque tensor");
+        ensure!(self.resolved_schema.opaque_facts[node_id][0].is_some(), "Opaque fact not found for Opaque Tensor");
+
+        self.resolved_schema.offsets_by_node[node_id]
+            .get(1)
+            .map(|offset| {
+                Ok(DeviceArenaView {
+                    arena: Arc::clone(&self.storage),
+                    dt: DatumType::Opaque,
+                    len: 1,
+                    shape: tvec!(),
+                    strides: tvec!(),
+                    offset_bytes: *offset,
+                    opaque_fact: self.resolved_schema.opaque_facts[node_id][0].clone()
+                }
+                .into())
+            })
+            .unwrap_or_else(|| DeviceTensor::uninitialized_opaque(self.resolved_schema.opaque_facts[node_id][0].as_ref().unwrap()))
     }
 }

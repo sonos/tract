@@ -148,6 +148,13 @@ impl DeviceContext for TractCudaContext {
     ) -> TractResult<Box<dyn OwnedDeviceTensor>> {
         Ok(Box::new(CudaTensor::uninitialized_dt(shape, dt)))
     }
+
+    fn uninitialized_device_opaque_tensor(
+        &self,
+        opaque_fact: &Box<dyn OpaqueFact>
+    ) -> TractResult<Box<dyn OwnedDeviceTensor>> {
+        Ok(Box::new(CudaTensor::uninitialized_opaque(opaque_fact)?))
+    }
 }
 
 pub struct TractCudaStream {

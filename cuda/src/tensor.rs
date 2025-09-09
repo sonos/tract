@@ -72,6 +72,30 @@ impl CudaTensor {
         })
     }
 
+    pub fn uninitialized_opaque(opaque_fact: &Box<dyn OpaqueFact>) -> TractResult<Self> {
+        if let Some(bqf) = opaque_fact.downcast_ref::<BlockQuantFact>() {
+            let shape = bqf.shape();
+            let format = bqf.format.clone();
+            let len = shape.iter().product::<usize>();
+            ensure!(len % format.block_len() == 0);
+            CUDA_STREAM.with(|stream| unsafe {
+                let device_data = stream.alloc(len * format.block_bytes() / format.block_len())?;
+                let buffer = Arc::new(CudaBuffer { inner: device_data });
+                let bqf = BlockQuantFact::new(format, shape.to_smallvec());
+                Ok(CudaTensor {
+                        buffer,
+                        datum_type: DatumType::Opaque,
+                        shape: tvec!(),
+                        strides: natural_strides(shape),
+                        block_quant_fact: Some(bqf),
+                    }
+                )
+            })
+        } else {
+            bail!("Only BlockQuant Tensor allocation supported for now");
+        }
+    }
+
     pub fn block_quant_fact(&self) -> Option<BlockQuantFact> {
         self.block_quant_fact.clone()
     }

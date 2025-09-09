@@ -16,6 +16,7 @@ pub struct DeviceArenaView {
     pub(crate) shape: TVec<usize>,
     pub(crate) strides: TVec<isize>,
     pub(crate) offset_bytes: usize,
+    pub(crate) opaque_fact: Option<Box<dyn OpaqueFact>>,
 }
 
 impl DeviceArenaView {
@@ -78,6 +79,7 @@ impl DeviceArenaView {
 
     /// Reshaped tensor with given shape.
     pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> TractResult<Self> {
+        ensure!(self.opaque_fact.is_none(), "Can't reshape opaque tensor");
         let shape = shape.into();
         if self.len() != shape.iter().product::<usize>() {
             bail!("Invalid reshape {:?} to {:?}", self.shape(), shape);
@@ -90,6 +92,7 @@ impl DeviceArenaView {
                 strides: Tensor::natural_strides(&shape),
                 shape,
                 offset_bytes: self.offset_bytes,
+                opaque_fact: None
             })
         } else {
             Ok(self.clone())
@@ -97,6 +100,7 @@ impl DeviceArenaView {
     }
 
     pub fn restrided(&self, strides: impl Into<TVec<isize>>) -> TractResult<Self> {
+        ensure!(self.opaque_fact.is_none(), "Can't restride opaque tensor");
         let strides = strides.into();
         check_strides_validity(self.shape().into(), strides.clone())?;
 
@@ -108,6 +112,7 @@ impl DeviceArenaView {
                 strides,
                 shape: self.shape.clone(),
                 offset_bytes: self.offset_bytes,
+                opaque_fact: None
             })
         } else {
             Ok(self.clone())
