@@ -22,24 +22,35 @@ then
 fi
 generation=516
 
-case $model in
-    all)
-        $0 OpenELM-270M $q $device
-        $0 OpenELM-1_1B $q $device
-        $0 llama-3.2-3B $q $device
-        $0 llama-3.2-1B $q $device
-        exit 0
-    ;;
-    OpenELM-270M) id=apple--OpenELM-270M-$q;;
-    OpenELM-1_1B) id=apple--OpenELM-1_1B-$q;;
-    TinyLlama_v1.1) id=TinyLlama--TinyLlama_v1.1-$q;;
-    llama-3.2-3B) id=meta-llama--Llama-3.2-3B-$q;;
-    llama-3.2-1B) id=meta-llama--Llama-3.2-1B-$q;;
-    *)
-        echo "Unknown model"
-        exit 2
-        ;;
-esac
+if [ "$model" = "all" ]
+then
+    for m in OpenELM-270M OpenELM-1_1B llama-3.2-3B llama-3.2-1B
+    do
+        $0 $m $2 $device
+    done
+    exit 0
+fi
+
+model=$(echo $model | tr 'A-Z' 'a-z' | tr -d "_.-")
+
+for m in \
+    apple--OpenELM-270M \
+    apple--OpenELM-1_1B \
+    TinyLlama--TinyLlama_v1.1 \
+    meta-llama--Llama-3.2-3B \
+    meta-llama--Llama-3.2-1B
+do
+    norm=$(echo $m | tr "A-Z" "a-z" | tr -d "_.-")
+    if [[ "$norm" == *"$model"* ]];
+    then
+        model_id=$m
+    fi
+done
+
+if [ -z "$model_id" ]
+then
+    echo "No model matched"
+fi
 
 if [ "$q" = "all" ]
 then
@@ -49,6 +60,8 @@ then
     done
     exit 0
 fi
+
+id=$model_id-$q
 
 if [ -n "$GITHUB_ACTIONS" ]
 then
@@ -110,16 +123,8 @@ do
         metal) DEVICE="--metal";;
     esac
 
-    if [ -z "$RESET" ]
+    if [ -n "$RESET" ]
     then
-        expectation=$(grep $key $expectations | cut -f 2 -d ' ')
-        $TRACT_RUN -v --nnef-tract-core --nnef-tract-transformers $MODELS/$nnef $TRACT_EXTRA_ARGS \
-            -t transformers-detect-all -O $DEVICE run \
-            --input-from-npz $MODELS/$npz \
-            --assert-output-bundle $MODELS/$npz \
-            --assert-llm-lev20 $expectation \
-            $approx --allow-float-casts
-    else
         $TRACT_RUN -v --nnef-tract-core --nnef-tract-transformers $MODELS/$nnef $TRACT_EXTRA_ARGS \
             -t transformers-detect-all -O $DEVICE run \
             --input-from-npz $MODELS/$npz \
@@ -129,6 +134,30 @@ do
         found=$(cat output.txt | grep lev20 | cut -d '=' -f 2)
         ( ( grep -v $key $expectations || /bin/true) ; echo $key $found) | sort > $expectations.tmp
         mv $expectations.tmp $expectations
+    elif [ -n "$RELAX" ]
+    then
+        prior=$(grep $key $expectations | cut -f 2 -d ' ')
+        $TRACT_RUN -v --nnef-tract-core --nnef-tract-transformers $MODELS/$nnef $TRACT_EXTRA_ARGS \
+            -t transformers-detect-all -O $DEVICE run \
+            --input-from-npz $MODELS/$npz \
+            --assert-output-bundle $MODELS/$npz \
+            --assert-llm-lev20 999999999 \
+            $approx --allow-float-casts 2>&1 | tee output.txt
+        found=$(cat output.txt | grep lev20 | cut -d '=' -f 2)
+        if [ "$found" -lt "$prior" ]
+        then
+            found=$prior
+        fi
+        ( ( grep -v $key $expectations || /bin/true) ; echo $key $found) | sort > $expectations.tmp
+        mv $expectations.tmp $expectations
+    else # test !
+        expectation=$(grep $key $expectations | cut -f 2 -d ' ')
+        $TRACT_RUN -v --nnef-tract-core --nnef-tract-transformers $MODELS/$nnef $TRACT_EXTRA_ARGS \
+            -t transformers-detect-all -O $DEVICE run \
+            --input-from-npz $MODELS/$npz \
+            --assert-output-bundle $MODELS/$npz \
+            --assert-llm-lev20 $expectation \
+            $approx --allow-float-casts
     fi
 
 done
