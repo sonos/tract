@@ -317,7 +317,7 @@ TinyLlama--TinyLlama_v1.1-q40ef16.p0s100.x86_64.cuda 7
 TinyLlama--TinyLlama_v1.1-q40ef16.p50s50.arm64.cpu 5
 TinyLlama--TinyLlama_v1.1-q40ef16.p50s50.arm64.metal 0
 TinyLlama--TinyLlama_v1.1-q40ef16.p50s50.x86_64.cpu 0
-TinyLlama--TinyLlama_v1.1-q40ef16.p50s50.x86_64.cuda 5
+TinyLlama--TinyLlama_v1.1-q40ef16.p50s50.x86_64.cuda 9
 TinyLlama--TinyLlama_v1.1-q40ef16.p99s1.arm64.cpu 9
 TinyLlama--TinyLlama_v1.1-q40ef16.p99s1.arm64.metal 2
 TinyLlama--TinyLlama_v1.1-q40ef16.p99s1.x86_64.cpu 6
@@ -337,7 +337,7 @@ TinyLlama--TinyLlama_v1.1-q40ef32.p99s1.x86_64.cuda 13
 TinyLlama--TinyLlama_v1.1-q40f16.p0s100.arm64.cpu 7
 TinyLlama--TinyLlama_v1.1-q40f16.p0s100.arm64.metal 0
 TinyLlama--TinyLlama_v1.1-q40f16.p0s100.x86_64.cpu 0
-TinyLlama--TinyLlama_v1.1-q40f16.p0s100.x86_64.cuda 2
+TinyLlama--TinyLlama_v1.1-q40f16.p0s100.x86_64.cuda 5
 TinyLlama--TinyLlama_v1.1-q40f16.p50s50.arm64.cpu 10
 TinyLlama--TinyLlama_v1.1-q40f16.p50s50.arm64.metal 2
 TinyLlama--TinyLlama_v1.1-q40f16.p50s50.x86_64.cpu 0
