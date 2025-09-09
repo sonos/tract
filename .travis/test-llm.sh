@@ -120,7 +120,6 @@ do
 
     case $device in 
         cuda)
-            nvidia-smi
             DEVICE="--cuda"
         ;;
         metal) DEVICE="--metal";;
