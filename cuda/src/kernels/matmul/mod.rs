@@ -16,15 +16,9 @@ use crate::kernels::{
 };
 use crate::utils::get_q40_fact;
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, Default, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum CudaGemmImplKind {
     Ggml,
-}
-
-impl Default for CudaGemmImplKind {
-    fn default() -> Self {
-        Self::Ggml
-    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
