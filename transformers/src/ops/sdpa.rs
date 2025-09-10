@@ -11,6 +11,7 @@ use tract_nnef::ser::datum_type;
 use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
 
 use crate::ops::dyn_kv_cache::DynKeyValueCache;
+use crate::ops::flash_sdpa::FlashAttnGqaOp;
 use crate::rule_ensure;
 
 use super::previous_node;
@@ -168,7 +169,11 @@ impl Sdpa {
             let q_seq_len = q_fact.shape[rank - 2].to_usize()?;
             let k_seq_len = k_fact.shape[rank - 2].to_usize()?;
             let m_array = Array2::from_shape_fn([q_seq_len, k_seq_len], |(r, c)| {
-                if c > r { f32::NEG_INFINITY } else { 0.0f32 }
+                if c > r {
+                    f32::NEG_INFINITY
+                } else {
+                    0.0f32
+                }
             });
             let causal_mask = graph.add_const(
                 "causal_mask",
@@ -322,21 +327,30 @@ impl TypedOp for Sdpa {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let input_facts = model.node_input_facts(node.id)?;
-        let subgraph = self.build_sdpa_graph(input_facts)?;
+        if model.outlet_fact(node.inputs[0])?.rank() == 4
+            && node.inputs.len() == 3
+            && self.is_causal
+            && self.scale.is_none()
+        {
+            let op = FlashAttnGqaOp { causal: true, block_k: 4, scale: None };
+            TypedModelPatch::replace_single_op(model, node, &node.inputs[0..3], op).map(Some)
+        } else {
+            let input_facts = model.node_input_facts(node.id)?;
+            let subgraph = self.build_sdpa_graph(input_facts)?;
 
-        let mut patch = TypedModelPatch::new(format!("Explode SDPA node {}", node.name));
-        patch.model = subgraph.into_decluttered()?;
+            let mut patch = TypedModelPatch::new(format!("Explode SDPA node {}", node.name));
+            patch.model = subgraph.into_decluttered()?;
 
-        let body_inputs = patch.model.input_outlets()?;
-        for (i, body_input_outlet) in body_inputs.iter().enumerate() {
-            patch.taps.insert(*body_input_outlet, node.inputs[i]);
+            let body_inputs = patch.model.input_outlets()?;
+            for (i, body_input_outlet) in body_inputs.iter().enumerate() {
+                patch.taps.insert(*body_input_outlet, node.inputs[i]);
+            }
+
+            let body_outputs = patch.model.output_outlets()?;
+            patch.shunt_outside(model, node.id.into(), body_outputs[0])?;
+
+            Ok(Some(patch))
         }
-
-        let body_outputs = patch.model.output_outlets()?;
-        patch.shunt_outside(model, node.id.into(), body_outputs[0])?;
-
-        Ok(Some(patch))
     }
 
     as_op!();
