@@ -6,11 +6,12 @@ use crate::tract_ndarray::Array;
 use ops::cnn::deconv::Deconv;
 use ops::cnn::{Conv, KernelFormat};
 use tract_core::internal::*;
+use tract_core::num_traits::Zero;
 use tract_core::ops::array::{PadMode, TypedConcat};
 use tract_core::ops::cast::cast;
+use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PoolSpec;
-use tract_core::ops::cnn::deconv::adjustments;
 use tract_core::ops::einsum::block_quant_aware_input_shape;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
@@ -123,6 +124,7 @@ pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
 // fragment reshape<?>( input: tensor<?>, shape: integer[], axis_start: integer = 0, axis_count: integer = -1 )
 //      -> ( output: tensor<?> );
 pub fn reshape(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+    dbg!(&builder.naming_scopes);
     let input = invocation.named_arg_as(builder, "input")?;
     let input_shape = builder.model.outlet_fact(input)?.shape.to_tvec();
     let start: usize = invocation.named_arg_as(builder, "axis_start")?;
@@ -141,7 +143,9 @@ pub fn reshape(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
         let product_input: TDim = input_shape[start..][..count].iter().product();
         replacement[pos] = product_input.maybe_div(&product)?.0;
     }
-
+    dbg!(&input_shape);
+    dbg!(&replacement);
+    dbg!(start, count);
     let op = AxisOp::Reshape(start, input_shape[start..][..count].into(), replacement);
     builder.wire(op, &[input])
 }
@@ -163,6 +167,26 @@ pub fn transpose(
 pub fn concat(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let axis: usize = invocation.named_arg_as(builder, "axis")?;
     let mut values: TVec<OutletId> = invocation.named_arg_as(builder, "values")?;
+    // values of volume 0 and looking like left broadcasts  (1,1,1,0) are likely to be artefacts of
+    // empty array promotion we filter them out as there shape (and dt) are probably a wrong guess
+    let confirmed: TVec<OutletId> = values
+        .iter()
+        .filter(|o| {
+            builder
+                .model
+                .outlet_fact(**o)
+                .map(|fact| {
+                    fact.shape.last().is_some_and(|last| last.is_zero())
+                        && fact.shape.iter().rev().skip(1).all(|d| d.is_one())
+                })
+                .unwrap_or(false)
+        })
+        .copied()
+        .collect();
+    if confirmed.len() > 0 {
+        values = confirmed
+    }
+
     let dt = if let Some(dt) = invocation.dt_from_quant_file.first().and_then(|it| *it) {
         dt
     } else {

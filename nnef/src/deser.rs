@@ -1,3 +1,4 @@
+use std::any::{type_name, Any};
 use std::ops::ControlFlow;
 
 use tract_core::num_traits::Zero;
@@ -346,7 +347,9 @@ impl ResolvedInvocation<'_> {
             let v = rv
                 .resolve(builder, &[])
                 .with_context(|| format!("Resolving argument `{name}' ({rv:?})"))?;
-            v.to::<T>(builder).with_context(|| format!("Converting argument `{name}' from {v:?}"))
+            v.to::<T>(builder).with_context(|| {
+                format!("Converting argument `{name}' from {v:?} to {:?}", type_name::<T>())
+            })
         })
     }
 
@@ -601,7 +604,7 @@ impl From<TVec<OutletId>> for Value {
     }
 }
 
-pub trait CoerceFrom<F> {
+pub trait CoerceFrom<F>: Any {
     fn coerce(builder: &mut ModelBuilder, from: &F) -> TractResult<Self>
     where
         Self: Sized;
@@ -674,6 +677,9 @@ impl CoerceFrom<Value> for OutletId {
             Value::Array(inputs) => {
                 if let Ok(c) = from.to::<Arc<Tensor>>(builder) {
                     return builder.add_const(c);
+                }
+                if inputs.len() == 0 {
+                    return builder.add_const(tensor1::<TDim>(&[]));
                 }
                 let mut outlets = tvec!();
                 for i in inputs {
