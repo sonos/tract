@@ -38,6 +38,7 @@ impl TypedOp for TypedConcat {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(inputs.len() > 0);
         let mut fact = inputs[0].without_value();
         for input in inputs {
             if input.rank() != fact.rank()
