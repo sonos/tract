@@ -1,16 +1,60 @@
-use derive_new::new;
 use tract_core::internal::*;
-use tract_core::tract_linalg::block_quant::{BlockQuantFact, Q8_1};
+use tract_core::tract_linalg::block_quant::{BlockQuant, Q8_1};
 use tract_gpu::session_handler::{make_scalar_opaque_tensor_for_node};
 use tract_gpu::tensor::{DeviceTensorExt};
 
 use crate::context::{CUDA_STREAM};
 use crate::kernels::matmul::GgmlQuantQ81;
-#[derive(Clone, Debug, new, Hash)]
-pub struct CudaGgmlQuantQ81Op {
-    mmq: bool
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct GgmlQuantQ81Fact {
+    in_shape: TVec<TDim>,
+    out_shape: TVec<TDim>
 }
 
+impl GgmlQuantQ81Fact {
+    pub fn in_shape(&self) -> TVec<TDim> {
+        self.in_shape.clone()
+    }
+
+    pub fn out_shape(&self) -> TVec<TDim> {
+        self.out_shape.clone()
+    }
+}
+
+impl OpaqueFact for GgmlQuantQ81Fact {
+    fn same_as(&self, other: &dyn OpaqueFact) -> bool {
+        let Some(other) = other.downcast_ref::<Self>() else { return false };
+        (other.in_shape == self.in_shape) && (other.out_shape == other.out_shape)
+    }
+
+    fn mem_size(&self) -> TDim {
+        self.out_shape.iter().product::<TDim>() * Q8_1.block_bytes() / Q8_1.block_len()
+    }
+}
+
+#[derive(Clone, Debug, Hash)]
+pub struct CudaGgmlQuantQ81Op {
+    mmq: bool,
+    out_fact: GgmlQuantQ81Fact
+}
+
+impl CudaGgmlQuantQ81Op {
+    pub fn new(mmq: bool, in_fact: &TypedFact) -> TractResult<Self> {
+        let inp_shape: TVec<TDim> = in_fact.shape.dims().into();
+        let out_shape = GgmlQuantQ81::output_shape(inp_shape.clone(), mmq)?;
+
+        let out_fact = GgmlQuantQ81Fact {
+            in_shape: inp_shape,
+            out_shape: out_shape.into()
+        };
+
+        Ok(Self {
+            mmq,
+            out_fact
+        })
+    }
+}
 impl Op for CudaGgmlQuantQ81Op {
     fn name(&self) -> StaticName {
         "CudaGgmlQuantQ81Op".into()
@@ -29,7 +73,7 @@ impl EvalOp for CudaGgmlQuantQ81Op {
         CUDA_STREAM.with(|stream| {
             let opaque = args_1!(inputs);
             let input = opaque.to_device_tensor()?;
-            let output = make_scalar_opaque_tensor_for_node(session, node_id, DatumType::Opaque, &[])?;
+            let output = make_scalar_opaque_tensor_for_node(session, node_id, &self.out_fact)?;
             GgmlQuantQ81.dispatch_eval(stream, input, &output, self.mmq)?;
 
             Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
@@ -43,11 +87,9 @@ impl EvalOp for CudaGgmlQuantQ81Op {
 
 impl TypedOp for CudaGgmlQuantQ81Op {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
-            let inp_shape = facts[0].shape.as_concrete().expect("Expecting concrete input shape");
-            let out_shape = GgmlQuantQ81::output_shape(inp_shape, self.mmq)?;
-            let bqf = BlockQuantFact::new(Box::new(Q8_1), out_shape);
-            let fact = TypedFact::dt_scalar(DatumType::Opaque).with_opaque_fact(bqf);
+        ensure!(inputs.len() == 1);
+        tract_gpu::utils::facts_to_device_facts(inputs, |_| {
+            let fact = TypedFact::dt_scalar(DatumType::Opaque).with_opaque_fact(self.out_fact.clone());
             Ok(tvec!(fact))
         })
         .with_context(|| format!("Error while computing facts for {:?}", self.name()))
