@@ -11,13 +11,13 @@ use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 use tract_gpu::device::get_context;
 use tract_gpu::tensor::DeviceTensor;
-use tract_gpu::utils::as_q40_fact;
+use tract_gpu::utils::as_quant_fact;
 
 use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
 use crate::kernels::{LibraryName, get_cuda_view, launch_args};
 use crate::tensor::CudaTensor;
-use crate::utils::get_q40_fact;
+use crate::utils::get_quant_fact;
 use crate::{Q40_ROW_PADDING, context};
 
 use DatumType::{F16, F32};
@@ -93,7 +93,8 @@ impl GemmKernel for GgmlGemm {
         );
 
         regular_types_support
-            || (as_q40_fact(&facts[1]).is_some() && matches!(facts[0].datum_type, F16 | F32))
+            || (as_quant_fact(&facts[1], &Q4_0).is_some()
+                && matches!(facts[0].datum_type, F16 | F32))
     }
 
     fn output_dt(&self, a_dt: DatumType, _b_dt: DatumType) -> TractResult<DatumType> {

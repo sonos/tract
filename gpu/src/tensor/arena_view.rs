@@ -92,7 +92,7 @@ impl DeviceArenaView {
                 strides: Tensor::natural_strides(&shape),
                 shape,
                 offset_bytes: self.offset_bytes,
-                opaque_fact: None
+                opaque_fact: None,
             })
         } else {
             Ok(self.clone())
@@ -112,7 +112,7 @@ impl DeviceArenaView {
                 strides,
                 shape: self.shape.clone(),
                 offset_bytes: self.offset_bytes,
-                opaque_fact: None
+                opaque_fact: None,
             })
         } else {
             Ok(self.clone())

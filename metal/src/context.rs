@@ -212,16 +212,19 @@ impl DeviceContext for MetalContext {
         };
         self.tensor_to_device(tensor.into())
     }
-    
+
     fn uninitialized_device_opaque_tensor(
         &self,
-        opaque_fact: &Box<dyn OpaqueFact>
+        opaque_fact: &dyn OpaqueFact,
     ) -> TractResult<Box<dyn OwnedDeviceTensor>> {
         if let Some(bqf) = opaque_fact.downcast_ref::<BlockQuantFact>() {
             let blocks = bqf.shape().iter().product::<usize>() / bqf.format.block_len();
-            let blob = unsafe { Blob::for_layout(
-                Layout::from_size_align(blocks * bqf.format.block_bytes(), vector_size()).unwrap(),
-            )};
+            let blob = unsafe {
+                Blob::for_layout(
+                    Layout::from_size_align(blocks * bqf.format.block_bytes(), vector_size())
+                        .unwrap(),
+                )
+            };
             let value = BlockQuantValue { fact: bqf.clone(), value: Arc::new(blob) };
             let tensor = tensor0(Opaque(Arc::new(value)));
             self.tensor_to_device(tensor.into())

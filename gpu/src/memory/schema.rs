@@ -102,9 +102,9 @@ pub fn eval_device_mem_req_for_nodes(
         for fact in out_device_tmp_facts {
             for buff_size in fact.buffer_sizes() {
                 scoped_nodes.push(NodeMemReq {
-                node: *n,
-                lifetime: Lifetime { start: lifetime_start, end: lifetime_end },
-                mem_size: buff_size,
+                    node: *n,
+                    lifetime: Lifetime { start: lifetime_start, end: lifetime_end },
+                    mem_size: buff_size,
                 })
             }
         }
@@ -113,7 +113,7 @@ pub fn eval_device_mem_req_for_nodes(
     Ok(scoped_nodes)
 }
 
-fn collect_opaque_facts(model: &TypedModel) -> TractResult<Vec<TVec<Option<Box<dyn OpaqueFact>>>>> {
+fn collect_opaque_facts(model: &TypedModel) -> TractResult<Vec<NodeOpaqueFacts>> {
     let mut res: Vec<TVec<Option<Box<dyn OpaqueFact>>>> = vec![];
     for node in model.nodes() {
         let mut tmp: TVec<Option<Box<dyn OpaqueFact>>> = tvec![];
@@ -160,12 +160,13 @@ impl Partition {
     }
 }
 
+type NodeOpaqueFacts = TVec<Option<Box<dyn OpaqueFact>>>;
 /// This struct represents a resolved memory schema for a model that contains
 /// GPU operators. This schema is concrete.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceResolvedMemSchema {
     pub offsets_by_node: Vec<TVec<usize>>,
-    pub opaque_facts: Vec<TVec<Option<Box<dyn OpaqueFact>>>>,
+    pub opaque_facts: Vec<NodeOpaqueFacts>,
     pub memory_size: usize,
 }
 
@@ -178,7 +179,7 @@ pub struct DeviceMemSchema {
     pub by_partition: Vec<Partition>,
     // vec![vec![Option<NodeMemReq>; num_partitions]; num_steps].
     pub by_steps: Vec<Vec<Option<NodeMemReq>>>,
-    pub opaque_facts: Vec<TVec<Option<Box<dyn OpaqueFact>>>>
+    pub opaque_facts: Vec<NodeOpaqueFacts>,
 }
 
 impl DeviceMemSchema {
@@ -204,10 +205,7 @@ impl DeviceMemSchema {
 
     /// Compute offsets for each node for given symbols. Node ids
     /// are indexes in the returned vector.
-    pub fn compute_offset_by_node(
-        &self,
-        symbols: &SymbolValues,
-    ) -> TractResult<Vec<TVec<usize>>> {
+    pub fn compute_offset_by_node(&self, symbols: &SymbolValues) -> TractResult<Vec<TVec<usize>>> {
         let mut cursor = 0;
         let mut offset_by_node = vec![tvec![]; self.model_num_nodes];
 
@@ -340,7 +338,7 @@ impl DeviceMemSchema {
             model_num_nodes: model.nodes().len(),
             by_partition: partitions,
             by_steps,
-            opaque_facts
+            opaque_facts,
         })
     }
 }
