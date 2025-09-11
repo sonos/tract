@@ -29,7 +29,10 @@ impl DeviceMemoryPool {
         dt: DatumType,
         shape: &[usize],
     ) -> TractResult<DeviceTensor> {
-        ensure!(self.resolved_schema.offsets_by_node[node_id].len() == 1, "'tensor_for_node' is for mono-output nodes only");
+        ensure!(
+            self.resolved_schema.offsets_by_node[node_id].len() == 1,
+            "'tensor_for_node' is for mono-output nodes only"
+        );
         ensure!(dt != DatumType::Opaque, "Use opaque_tensor for node instead");
 
         self.resolved_schema.offsets_by_node[node_id]
@@ -42,19 +45,22 @@ impl DeviceMemoryPool {
                     shape: shape.into(),
                     strides: Tensor::natural_strides(shape),
                     offset_bytes: *offset,
-                    opaque_fact: None
+                    opaque_fact: None,
                 }
                 .into())
             })
             .unwrap_or_else(|| DeviceTensor::uninitialized_dt(dt, shape))
     }
 
-    pub fn scalar_opaque_tensor_for_node(
-        &self,
-        node_id: usize,
-    ) -> TractResult<DeviceTensor> {
-        ensure!(self.resolved_schema.offsets_by_node[node_id].len() == 2, "Expected 1 output with two buffers for opaque tensor");
-        ensure!(self.resolved_schema.opaque_facts[node_id][0].is_some(), "Opaque fact not found for Opaque Tensor");
+    pub fn scalar_opaque_tensor_for_node(&self, node_id: usize) -> TractResult<DeviceTensor> {
+        ensure!(
+            self.resolved_schema.offsets_by_node[node_id].len() == 2,
+            "Expected 1 output with two buffers for opaque tensor"
+        );
+        ensure!(
+            self.resolved_schema.opaque_facts[node_id][0].is_some(),
+            "Opaque fact not found for Opaque Tensor"
+        );
 
         self.resolved_schema.offsets_by_node[node_id]
             .get(1)
@@ -66,10 +72,14 @@ impl DeviceMemoryPool {
                     shape: tvec!(),
                     strides: tvec!(),
                     offset_bytes: *offset,
-                    opaque_fact: self.resolved_schema.opaque_facts[node_id][0].clone()
+                    opaque_fact: self.resolved_schema.opaque_facts[node_id][0].clone(),
                 }
                 .into())
             })
-            .unwrap_or_else(|| DeviceTensor::uninitialized_opaque(self.resolved_schema.opaque_facts[node_id][0].as_ref().unwrap()))
+            .unwrap_or_else(|| {
+                DeviceTensor::uninitialized_opaque(
+                    self.resolved_schema.opaque_facts[node_id][0].clone().unwrap().as_ref(),
+                )
+            })
     }
 }

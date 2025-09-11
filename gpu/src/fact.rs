@@ -64,7 +64,7 @@ impl OpaqueFact for DeviceFact {
             sizes.push(of.mem_size());
         }
         sizes
-    } 
+    }
 
     fn same_as(&self, other: &dyn OpaqueFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| o == self)

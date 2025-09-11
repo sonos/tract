@@ -394,7 +394,7 @@ impl LazyIm2colSpec {
             .collect();
         let n_offsets = (0..h as isize)
             .flat_map(|h| {
-                (0..w as isize).map(move |w| (h * input_strides[1] + w * input_strides[2]))
+                (0..w as isize).map(move |w| h * input_strides[1] + w * input_strides[2])
             })
             .collect();
         unsafe {

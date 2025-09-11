@@ -59,7 +59,10 @@ pub fn get_device_fact<'a, T: 'a>(
     }
 }
 
-pub fn as_quant_fact<'a>(fact: &'a TypedFact, format: &dyn BlockQuant) -> Option<&'a BlockQuantFact> {
+pub fn as_quant_fact<'a>(
+    fact: &'a TypedFact,
+    format: &dyn BlockQuant,
+) -> Option<&'a BlockQuantFact> {
     fact.opaque_fact
         .as_ref()
         .and_then(|of| of.downcast_ref::<BlockQuantFact>())
