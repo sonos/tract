@@ -487,7 +487,7 @@ fn convert_matmul_to_metal(
     };
 
     let out_fact = target.outlet_fact(matmul_output[0])?;
-    let out_dt = out_fact.to_device_fact().map(|f| f.datum_type).unwrap_or(out_fact.datum_type);
+    let out_dt = out_fact.as_device_fact().map(|f| f.datum_type).unwrap_or(out_fact.datum_type);
 
     let expected_dt = model.node_output_facts(node.id)?[0].datum_type;
 
