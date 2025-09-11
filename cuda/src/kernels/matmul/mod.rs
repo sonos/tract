@@ -324,8 +324,7 @@ impl<M: GemmKernel> GemmImpl<M> {
 
         for d in dispatches {
             let (a_len, b_len) = if d.q40_b {
-                let len = q81_a.clone().unwrap().out_shape().iter().product::<TDim>().as_i64().unwrap() as usize;
-                (len / Q8_1.block_len() * Q8_1.block_bytes(),
+                (q81_a.clone().unwrap().mem_size().as_i64().expect("Symbols should known at this point") as usize,
                  d.b_strides[0] as usize * d.b_batch / Q4_0.block_len() * Q4_0.block_bytes())
             } else {
                 (d.a_strides[0] as usize * d.a_batch * d.dts[0].size_of(),

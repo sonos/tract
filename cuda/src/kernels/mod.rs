@@ -117,15 +117,10 @@ fn tensor_size(t: &DeviceTensor) -> usize {
             av.opaque_fact()
         }
     };
-    
-    //TODO: Use mem_size
-    if let Some(bqf) = opaque_fact.map(|of| of.downcast_ref::<BlockQuantFact>()).flatten()
+
+    if let Some(of) = opaque_fact
     {
-        bqf.shape().iter().product::<usize>() * bqf.format.block_bytes() / bqf.format.block_len()
-    }
-    else if let Some(ggml_q81_fact) = opaque_fact.map(|of| of.downcast_ref::<GgmlQuantQ81Fact>()).flatten()
-    {
-        (ggml_q81_fact.out_shape().iter().product::<TDim>().as_i64().unwrap() as usize) * Q8_1.block_bytes() / Q8_1.block_len()
+        of.mem_size().as_i64().expect("Symbols should be resolved at this point") as usize
     }
     else 
     {
