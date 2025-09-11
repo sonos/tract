@@ -4,7 +4,7 @@ use cudarc::driver::{CudaSlice, DevicePtr};
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 use tract_core::prelude::{DatumType, TVec};
-use tract_core::tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue, Q4_0};
+use tract_core::tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue};
 use tract_gpu::device::DeviceBuffer;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::{as_q40_tensor, check_strides_validity};
@@ -162,7 +162,6 @@ impl OwnedDeviceTensor for CudaTensor {
     fn to_host(&self) -> TractResult<Arc<Tensor>> {
         CUDA_STREAM.with(|stream| {
             let t: Tensor = if let Some(bqf) = &self.block_quant_fact {
-                ensure!(bqf.format.same_as(&Q4_0));
                 ensure!(self.shape.iter().product::<usize>() == 1, "Only support Scalar Opaque");
                 let mut blob =
                     unsafe { Blob::new_for_size_and_align(self.buffer.len(), vector_size()) };

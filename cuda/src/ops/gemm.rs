@@ -1,11 +1,12 @@
 use crate::context::CUDA_STREAM;
 use crate::kernels::matmul::{GemmImpl, GemmKernel};
-use crate::utils::get_q40_fact;
+use crate::utils::get_quant_fact;
 
 use anyhow::{bail, ensure};
 use tract_core::internal::*;
+use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::tensor::DeviceTensorExt;
-use tract_gpu::utils::as_q40_fact;
+use tract_gpu::utils::as_quant_fact;
 
 #[derive(Debug, Default, Clone)]
 pub struct CudaGemm<K: GemmKernel> {
@@ -38,7 +39,7 @@ impl<K: GemmKernel> CudaGemm<K> {
             ensure!(a.shape[a.rank() - 1] == b.shape[b.rank() - 1]);
             let out_shape = self.kernel.output_shape(&a.shape, &b.shape);
             Ok(tvec![a.datum_type().unwrap().fact(out_shape)])
-        } else if let Some(opf) = as_q40_fact(inputs[1]) {
+        } else if let Some(opf) = as_quant_fact(inputs[1], &Q4_0) {
             let b_shape: ShapeFact =
                 b.shape.iter().cloned().chain(opf.shape().iter().map(|d| d.to_dim())).collect();
             let out_shape = self.kernel.output_shape(&a.shape, &b_shape);
@@ -67,9 +68,9 @@ impl<K: GemmKernel> EvalOp for CudaGemm<K> {
             .to_device_tensor()
             .with_context(|| format!("B tensor is not a cuda tensor {b_opaque:?}"))?;
 
-        ensure!((a.datum_type() == b.datum_type()) || get_q40_fact(b).is_some());
+        ensure!((a.datum_type() == b.datum_type()) || get_quant_fact(b, &Q4_0).is_some());
 
-        let b_shape = get_q40_fact(b)
+        let b_shape = get_quant_fact(b, &Q4_0)
             .map(|bqf| b.shape().iter().cloned().chain(bqf.shape().iter().copied()).collect())
             .unwrap_or(b.shape().to_vec());
 

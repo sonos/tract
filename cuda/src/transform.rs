@@ -10,12 +10,13 @@ use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
 use tract_core::ops::nn::{Reduce, Softmax};
 use tract_core::tract_data::itertools::Itertools;
+use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::sync::{DeviceSync, DeviceSyncKind};
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
-use tract_gpu::utils::as_q40_fact;
+use tract_gpu::utils::as_quant_fact;
 use tract_transformers::ops::apply_rope::{ApplyRope, RotateHalf};
 use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
 use tract_transformers::ops::gelu_approximate::GeluApproximate;
@@ -344,7 +345,7 @@ fn convert_matmul_to_cuda(
     let a_pos = swap_inputs as usize;
     let b_pos = 1 - swap_inputs as usize;
     if op.transpose_a {
-        ensure!(as_q40_fact(input_facts[a_pos]).is_none(), "Cannot transpose Q40 tensor");
+        ensure!(as_quant_fact(input_facts[a_pos], &Q4_0).is_none(), "Cannot transpose Q40 tensor");
 
         let rank = input_facts[a_pos].rank();
         let perm_a_op = ops::CudaAxisOp::from_tract_core(AxisOp::Move(rank - 2, rank - 1));
@@ -352,13 +353,13 @@ fn convert_matmul_to_cuda(
         inputs[a_pos] = target.wire_node(perm_a_name, perm_a_op, &[inputs[a_pos]])?[0];
     }
 
-    if input_facts[0].datum_type == DatumType::F16 && as_q40_fact(input_facts[1]).is_some() {
+    if input_facts[0].datum_type == DatumType::F16 && as_quant_fact(input_facts[1], &Q4_0).is_some() {
         let in_cast_op = ops::CudaCast::new(DatumType::F32).unwrap();
         inputs[0] = target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[inputs[0]])?[0];
     }
 
     if !op.transpose_b {
-        ensure!(as_q40_fact(input_facts[b_pos]).is_none(), "Cannot transpose Q40 tensor");
+        ensure!(as_quant_fact(input_facts[b_pos], &Q4_0).is_none(), "Cannot transpose Q40 tensor");
 
         let rank = input_facts[b_pos].rank();
         let perm_b_op = ops::CudaAxisOp::from_tract_core(AxisOp::Move(rank - 2, rank - 1));

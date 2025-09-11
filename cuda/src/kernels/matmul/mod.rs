@@ -8,13 +8,13 @@ use num_traits::One;
 use std::fmt;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
-use tract_gpu::utils::as_q40_fact;
+use tract_gpu::utils::as_quant_fact;
 
 use crate::context::TractCudaStream;
 use crate::kernels::{
     get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut,
 };
-use crate::utils::get_q40_fact;
+use crate::utils::get_quant_fact;
 
 #[derive(Debug, Default, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum CudaGemmImplKind {
@@ -261,7 +261,7 @@ impl<M: GemmKernel> GemmImpl<M> {
         a: &DeviceTensor,
         b: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
-        let q40_b = get_q40_fact(b);
+        let q40_b = get_quant_fact(b, &Q4_0);
         let b_shape = q40_b
             .clone()
             .map(|bqf| b.shape().iter().cloned().chain(bqf.shape().iter().copied()).collect())
@@ -283,7 +283,7 @@ impl<M: GemmKernel> GemmImpl<M> {
         b: &DeviceTensor,
         c: &DeviceTensor,
     ) -> TractResult<()> {
-        let q40_b = get_q40_fact(b);
+        let q40_b = get_quant_fact(b, &Q4_0);
         let b_shape = q40_b
             .clone()
             .map(|bqf| b.shape().iter().cloned().chain(bqf.shape().iter().copied()).collect())
