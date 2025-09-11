@@ -4,7 +4,7 @@ use cudarc::driver::{CudaSlice, DevicePtr};
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 use tract_core::prelude::{DatumType, TVec};
-use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q8_1};
+use tract_core::tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue};
 use tract_gpu::device::DeviceBuffer;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::{as_q40_tensor, check_strides_validity};
@@ -91,11 +91,10 @@ impl CudaTensor {
                 })
             })
         } else if let Some(ggml_q81_fact) = opaque_fact.downcast_ref::<GgmlQuantQ81Fact>() {
-            let shape = ggml_q81_fact.out_shape();
-            let len = shape.iter().product::<TDim>().as_i64().unwrap() as usize;
+            let mem_size = ggml_q81_fact.mem_size().as_i64().unwrap() as usize;
 
             CUDA_STREAM.with(|stream| unsafe {
-                let device_data = stream.alloc(len * Q8_1.block_bytes() / Q8_1.block_len())?;
+                let device_data = stream.alloc(mem_size)?;
                 let buffer = Arc::new(CudaBuffer { inner: device_data });
                 Ok(CudaTensor {
                     buffer,
