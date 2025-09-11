@@ -63,7 +63,8 @@ pub fn get_quant_fact(t: &DeviceTensor, format: &dyn BlockQuant) -> Option<Block
     if let DeviceTensor::Owned(t) = t {
         t.downcast_ref::<CudaTensor>()
             .expect("Non Cuda Tensor in Cuda context")
-            .block_quant_fact()
+            .opaque_fact()
+            .map(|of| of.downcast_ref::<BlockQuantFact>().unwrap().clone())
             .filter(|bqf| bqf.format.same_as(format))
     } else {
         None

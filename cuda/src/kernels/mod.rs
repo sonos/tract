@@ -13,7 +13,7 @@ use anyhow::{bail, ensure};
 pub use binary::BinOps;
 use cudarc::driver::{CudaView, CudaViewMut};
 use tract_core::prelude::TractResult;
-use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
+use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q4_0};
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::as_q40_tensor;
 pub use unary::UnaryOps;
@@ -109,7 +109,9 @@ fn tensor_size(t: &DeviceTensor) -> usize {
         let cuda_tensor =
             ot.downcast_ref::<CudaTensor>().expect("Non Cuda-Tensor in a Cuda Context");
 
-        if let Some(bqf) = cuda_tensor.block_quant_fact() {
+        if let Some(bqf) =
+            cuda_tensor.opaque_fact().map(|of| of.downcast::<BlockQuantFact>().ok()).flatten()
+        {
             return bqf.shape().iter().product::<usize>() * Q4_0.block_bytes() / Q4_0.block_len();
         }
     }

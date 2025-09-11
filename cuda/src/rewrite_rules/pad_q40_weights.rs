@@ -53,11 +53,10 @@ pub fn pad_q40_weights(
         return Ok(None);
     };
 
-    rule_ensure!(
-        cuda_tensor
-            .block_quant_fact()
+    rule_ensure!(cuda_tensor.opaque_fact().is_some_and(|of| {
+        of.downcast_ref::<BlockQuantFact>()
             .is_some_and(|bqf| bqf.format.same_as(&Q4_0) && bqf.k() % Q40_ROW_PADDING != 0)
-    );
+    }));
 
     let host_tensor = dev_tensor.to_host()?.into_tensor();
     let q40_view = as_q40_tensor(&host_tensor).expect("expected Q4_0 tensor view");

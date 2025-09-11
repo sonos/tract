@@ -35,13 +35,13 @@ pub struct CudaTensor {
     datum_type: DatumType,
     shape: TVec<usize>,
     strides: TVec<isize>,
-    block_quant_fact: Option<BlockQuantFact>,
+    opaque_fact: Option<Box<dyn OpaqueFact>>,
 }
 
 impl CudaTensor {
     pub fn from_tensor(tensor: &Tensor) -> TractResult<Self> {
         let (data, bqf) = as_q40_tensor(tensor)
-            .map(|bqv| (bqv.value.as_bytes(), Some(bqv.fact.clone())))
+            .map(|bqv| (bqv.value.as_bytes(), Some(bqv.fact.clone().into())))
             .unwrap_or((tensor.as_bytes(), None));
         CUDA_STREAM.with(|stream| {
             let device_data = stream
@@ -53,7 +53,7 @@ impl CudaTensor {
                 datum_type: tensor.datum_type(),
                 shape: tensor.shape().into(),
                 strides: tensor.strides().into(),
-                block_quant_fact: bqf,
+                opaque_fact: bqf,
             })
         })
     }
@@ -67,7 +67,7 @@ impl CudaTensor {
                 datum_type: dt,
                 shape: shape.to_smallvec(),
                 strides: natural_strides(shape),
-                block_quant_fact: None,
+                opaque_fact: None,
             })
         })
     }
@@ -87,7 +87,7 @@ impl CudaTensor {
                     datum_type: DatumType::Opaque,
                     shape: tvec!(),
                     strides: natural_strides(shape),
-                    block_quant_fact: Some(bqf),
+                    opaque_fact: Some(Box::new(bqf)),
                 })
             })
         } else {
@@ -95,8 +95,8 @@ impl CudaTensor {
         }
     }
 
-    pub fn block_quant_fact(&self) -> Option<BlockQuantFact> {
-        self.block_quant_fact.clone()
+    pub fn opaque_fact(&self) -> Option<Box<dyn OpaqueFact>> {
+        self.opaque_fact.clone()
     }
 }
 
@@ -105,7 +105,7 @@ impl std::fmt::Debug for CudaTensor {
         f.debug_struct("CudaTensor")
             .field("datum_type", &self.datum_type)
             .field("shape", &self.shape)
-            .field("block_quant_fact", &self.block_quant_fact)
+            .field("block_quant_fact", &self.opaque_fact)
             .finish()
     }
 }
@@ -158,12 +158,15 @@ impl OwnedDeviceTensor for CudaTensor {
 
     fn to_host(&self) -> TractResult<Arc<Tensor>> {
         CUDA_STREAM.with(|stream| {
-            let t: Tensor = if let Some(bqf) = &self.block_quant_fact {
+            let t: Tensor = if let Some(bqf) = &self.opaque_fact {
                 ensure!(self.shape.iter().product::<usize>() == 1, "Only support Scalar Opaque");
                 let mut blob =
                     unsafe { Blob::new_for_size_and_align(self.buffer.len(), vector_size()) };
                 stream.memcpy_dtoh(&self.buffer.inner, blob.as_bytes_mut())?;
-                let bqv = BlockQuantValue { fact: bqf.clone(), value: Arc::new(blob) };
+                let bqv = BlockQuantValue {
+                    fact: *bqf.clone().downcast::<BlockQuantFact>().unwrap(),
+                    value: Arc::new(blob),
+                };
                 Opaque(Arc::new(bqv)).into()
             } else {
                 let mut tensor = unsafe { Tensor::uninitialized_dt(self.datum_type, &self.shape)? };
