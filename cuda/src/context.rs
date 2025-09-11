@@ -146,7 +146,7 @@ impl DeviceContext for TractCudaContext {
         shape: &[usize],
         dt: DatumType,
     ) -> TractResult<Box<dyn OwnedDeviceTensor>> {
-        Ok(Box::new(CudaTensor::uninitialized_dt(shape, dt)))
+        Ok(Box::new(CudaTensor::uninitialized_dt(shape, dt)?))
     }
 
     fn uninitialized_device_opaque_tensor(

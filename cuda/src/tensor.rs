@@ -58,17 +58,19 @@ impl CudaTensor {
         })
     }
 
-    pub fn uninitialized_dt(shape: &[usize], dt: DatumType) -> Self {
+    pub fn uninitialized_dt(shape: &[usize], dt: DatumType) -> TractResult<Self> {
         CUDA_STREAM.with(|stream| unsafe {
             let device_data = stream.alloc(shape.iter().product::<usize>() * dt.size_of()).unwrap();
             let buffer = Arc::new(CudaBuffer { inner: device_data });
-            CudaTensor {
-                buffer,
-                datum_type: dt,
-                shape: shape.to_smallvec(),
-                strides: natural_strides(shape),
-                block_quant_fact: None,
-            }
+            Ok(
+                CudaTensor {
+                    buffer,
+                    datum_type: dt,
+                    shape: shape.to_smallvec(),
+                    strides: natural_strides(shape),
+                    block_quant_fact: None,
+                }
+        )
         })
     }
 
