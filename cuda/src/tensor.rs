@@ -4,12 +4,13 @@ use cudarc::driver::{CudaSlice, DevicePtr};
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 use tract_core::prelude::{DatumType, TVec};
-use tract_core::tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue};
+use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q8_1};
 use tract_gpu::device::DeviceBuffer;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::{as_q40_tensor, check_strides_validity};
 
 use crate::context::CUDA_STREAM;
+use crate::ops::GgmlQuantQ81Fact;
 
 #[derive(Debug, Clone)]
 pub struct CudaBuffer {
@@ -89,8 +90,23 @@ impl CudaTensor {
                     opaque_fact: Some(Box::new(bqf.clone())),
                 })
             })
+        } else if let Some(ggml_q81_fact) = opaque_fact.downcast_ref::<GgmlQuantQ81Fact>() {
+            let shape = ggml_q81_fact.out_shape();
+            let len = shape.iter().product::<TDim>().as_i64().unwrap() as usize;
+
+            CUDA_STREAM.with(|stream| unsafe {
+                let device_data = stream.alloc(len * Q8_1.block_bytes() / Q8_1.block_len())?;
+                let buffer = Arc::new(CudaBuffer { inner: device_data });
+                Ok(CudaTensor {
+                    buffer,
+                    datum_type: DatumType::Opaque,
+                    shape: tvec!(),
+                    strides: tvec!(),
+                    opaque_fact: Some(Box::new(ggml_q81_fact.clone())),
+                })
+            })
         } else {
-            bail!("Only BlockQuant Tensor allocation supported for now");
+            bail!("Unsupported opaque type")
         }
     }
 

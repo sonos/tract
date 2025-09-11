@@ -368,6 +368,17 @@ fn convert_matmul_to_cuda(
         inputs[b_pos] = target.wire_node(perm_b_name, perm_b_op, &[inputs[b_pos]])?[0];
     }
 
+    let b_shape = &input_facts[0].shape;
+    dbg!(&input_facts[0]);
+    let rank = b_shape.rank();
+    let m = b_shape[rank - 2].clone();
+
+    if as_quant_fact(input_facts[1], &Q4_0).is_some() {
+        let concrete_m = m .as_i64().unwrap();
+        let quant_op = ops::CudaGgmlQuantQ81Op::new(concrete_m > 8, input_facts[0])?;
+        inputs[0] = target.wire_node(node.name.clone() + ".quant_b", quant_op, &[inputs[0]])?[0];
+    }
+
     let op = ops::CudaGemm::<GgmlGemm>::new(false, true);
     let mut matmul_output = target.wire_node(node.name.clone(), op, inputs)?;
 
