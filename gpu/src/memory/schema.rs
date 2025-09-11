@@ -118,8 +118,9 @@ fn collect_opaque_facts(model: &TypedModel) -> TractResult<Vec<NodeOpaqueFacts>>
     for node in model.nodes() {
         let mut tmp: TVec<Option<Box<dyn OpaqueFact>>> = tvec![];
         for fact in model.node_output_facts(node.id)? {
-            let dev_fact = fact.to_device_fact()?;
-            tmp.push(dev_fact.opaque_fact.clone());
+            if let Some(dev_fact) = fact.to_device_fact().ok() {
+                tmp.push(dev_fact.opaque_fact.clone());
+            }
         }
         res.push(tmp);
     }

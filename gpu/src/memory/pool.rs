@@ -30,7 +30,7 @@ impl DeviceMemoryPool {
         shape: &[usize],
     ) -> TractResult<DeviceTensor> {
         ensure!(
-            self.resolved_schema.offsets_by_node[node_id].len() == 1,
+            self.resolved_schema.offsets_by_node[node_id].len() <= 1,
             "'tensor_for_node' is for mono-output nodes only"
         );
         ensure!(dt != DatumType::Opaque, "Use opaque_tensor for node instead");
