@@ -8,12 +8,14 @@ pub mod nn;
 mod unary;
 mod utils;
 
+use crate::ops::GgmlQuantQ81Fact;
 use crate::tensor::{CudaBuffer, CudaTensor};
 use anyhow::{bail, ensure};
 pub use binary::BinOps;
 use cudarc::driver::{CudaView, CudaViewMut};
-use tract_core::prelude::TractResult;
-use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q4_0};
+use tract_core::internal::OpaqueFact;
+use tract_core::prelude::{TDim, TractResult};
+use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q4_0, Q8_1};
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::as_q40_tensor;
 pub use unary::UnaryOps;
@@ -105,18 +107,30 @@ impl BroadcastKind {
 }
 
 fn tensor_size(t: &DeviceTensor) -> usize {
-    if let DeviceTensor::Owned(ot) = t {
-        let cuda_tensor =
-            ot.downcast_ref::<CudaTensor>().expect("Non Cuda-Tensor in a Cuda Context");
-
-        if let Some(bqf) =
-            cuda_tensor.opaque_fact().and_then(|of| of.downcast_ref::<BlockQuantFact>())
-        {
-            return bqf.shape().iter().product::<usize>() * Q4_0.block_bytes() / Q4_0.block_len();
+    let opaque_fact: Option<&dyn OpaqueFact> = match t {
+        DeviceTensor::Owned(ot) => {
+            let cuda_tensor =
+                ot.downcast_ref::<CudaTensor>().expect("Non Cuda-Tensor in a Cuda Context");
+            cuda_tensor.opaque_fact()
+        },
+        DeviceTensor::ArenaView(av) => {
+            av.opaque_fact()
         }
+    };
+    
+    //TODO: Use mem_size
+    if let Some(bqf) = opaque_fact.map(|of| of.downcast_ref::<BlockQuantFact>()).flatten()
+    {
+        bqf.shape().iter().product::<usize>() * bqf.format.block_bytes() / bqf.format.block_len()
     }
-
-    t.len() * t.datum_type().size_of()
+    else if let Some(ggml_q81_fact) = opaque_fact.map(|of| of.downcast_ref::<GgmlQuantQ81Fact>()).flatten()
+    {
+        (ggml_q81_fact.out_shape().iter().product::<TDim>().as_i64().unwrap() as usize) * Q8_1.block_bytes() / Q8_1.block_len()
+    }
+    else 
+    {
+        t.len() * t.datum_type().size_of()
+    }
 }
 
 pub fn get_cuda_view(t: &DeviceTensor) -> CudaView<'_, u8> {

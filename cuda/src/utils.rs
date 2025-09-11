@@ -4,6 +4,7 @@ use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::*;
 use tract_gpu::tensor::DeviceTensor;
 
+use crate::ops::GgmlQuantQ81Fact;
 use crate::Q40_ROW_PADDING;
 use crate::tensor::CudaTensor;
 
@@ -66,6 +67,21 @@ pub fn get_quant_fact(t: &DeviceTensor, format: &dyn BlockQuant) -> Option<Block
             .opaque_fact()
             .map(|of| of.downcast_ref::<BlockQuantFact>().unwrap().clone())
             .filter(|bqf| bqf.format.same_as(format))
+    } else {
+        None
+    }
+}
+
+pub fn get_ggml_q81_fact(t: &DeviceTensor) -> Option<GgmlQuantQ81Fact> {
+    if let DeviceTensor::Owned(t) = t {
+        t.downcast_ref::<CudaTensor>()
+            .expect("Non Cuda Tensor in Cuda context")
+            .opaque_fact()
+            .map(|of| of.downcast_ref::<GgmlQuantQ81Fact>().unwrap().clone())
+    } else if let DeviceTensor::ArenaView(t) = t {
+        t.opaque_fact().map(|of|
+            of.downcast_ref::<GgmlQuantQ81Fact>().unwrap().clone()
+        )
     } else {
         None
     }

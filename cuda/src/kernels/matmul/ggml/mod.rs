@@ -1,3 +1,5 @@
+pub(crate) mod quant_act_q81;
+
 use cudarc::cublas::{self, CudaBlas, Gemm};
 use cudarc::driver::result::stream::null;
 use cudarc::driver::sys::CUfunction_attribute;
@@ -8,7 +10,7 @@ use derive_new::new;
 use num_traits::{Float, One};
 use std::{default, fmt};
 use tract_core::internal::*;
-use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
+use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0, Q8_1};
 use tract_gpu::device::get_context;
 use tract_gpu::tensor::DeviceTensor;
 use tract_gpu::utils::as_quant_fact;
@@ -19,22 +21,18 @@ use crate::kernels::{LibraryName, get_cuda_view, launch_args};
 use crate::tensor::CudaTensor;
 use crate::utils::get_quant_fact;
 use crate::{Q40_ROW_PADDING, context};
+use quant_act_q81::{QK8_1, QUANTIZE_BLOCK_SIZE, QUANTIZE_BLOCK_SIZE_MMQ};
 
 use DatumType::{F16, F32};
 
 static N_WARPS: usize = 8;
 static WARP_SIZE: usize = 32;
 
-static QUANTIZE_BLOCK_SIZE: usize = 256;
-static QUANTIZE_BLOCK_SIZE_MMQ: usize = 128;
-
 static MMQ_X_MAX: usize = 128;
 
 static QK8_0: usize = 32;
 static QI8_0: usize = QK8_0 / (4 * QR8_0);
 static QR8_0: usize = 1;
-
-static QK8_1: usize = 32;
 
 static MMQ_MMA_TILE_X_K_Q8_0: usize = (2 * WARP_SIZE + 2 * WARP_SIZE / QI8_0 + 4);
 
@@ -124,7 +122,6 @@ impl GemmKernel for GgmlGemm {
         } = params;
 
         ensure!(!transpose_a && transpose_b);
-
         let c_view = &c_view_mut.as_view();
         if q40_b {
             if params.m <= 8 {
@@ -280,39 +277,6 @@ fn find_best_mmq_x(smbpo: usize, m: usize) -> usize {
     mmq_x_best
 }
 
-fn launch_quantize_q8_1(
-    stream: &TractCudaStream,
-    a_view: &CudaView<'_, u8>,
-    quant_a_view: &CudaView<'_, u8>,
-    params: &GemmDispatchParams,
-    sample_stride_a: isize,
-    padded_k: usize,
-) -> TractResult<()> {
-    let func = cuda_context().load_pipeline(LibraryName::GgmlQ, "quantize_mmq_q8_1".to_string())?;
-    let mut launch_args = stream.launch_builder(&func);
-    launch_args.arg(a_view);
-    launch_args.arg(quant_a_view);
-    launch_args.arg(&params.k);
-    launch_args.arg(&params.a_strides[1]);
-    launch_args.arg(&params.a_strides[0]);
-    launch_args.arg(&sample_stride_a);
-    launch_args.arg(&padded_k);
-    launch_args.arg(&params.m);
-    launch_args.arg(&params.a_batch);
-
-    let cfg = LaunchConfig {
-        grid_dim: (
-            params.m as _,
-            padded_k.div_ceil(4 * QUANTIZE_BLOCK_SIZE_MMQ) as _,
-            params.a_batch as _,
-        ),
-        block_dim: (128, 1, 1),
-        shared_mem_bytes: 0,
-    };
-    unsafe { launch_args.launch(cfg) };
-    Ok(())
-}
-
 #[allow(clippy::too_many_arguments)]
 fn launch_matmul_q40(
     stream: &TractCudaStream,
@@ -414,18 +378,8 @@ fn dispatch_ggml_matmul_q40(
 
     let padded_k = params.k.next_multiple_of(Q40_ROW_PADDING);
     let n_blocks = padded_k / Q4_0.block_len(); // padded Q40 weights
-    let sample_stride_a = params.a_strides[0] * params.a_batch as isize;
 
-    let nbytes_a_q8_1 = (a.len() / params.dts[0].size_of()) * padded_k * (QK8_0 + 4)
-        / (params.k * QK8_0)
-        + MMQ_X_MAX * 144;
-
-    let quant_a = unsafe { DeviceTensor::uninitialized_dt(DatumType::U8, &[nbytes_a_q8_1])? };
-    let quant_a_view = get_cuda_view(&quant_a);
-
-    launch_quantize_q8_1(stream, a, &quant_a_view, &params, sample_stride_a, padded_k)?;
-
-    let a_stride_0 = padded_k * params.m * 36 / 128;
+    let a_stride_0 = padded_k * params.m * Q8_1.block_bytes() / (Q8_1.block_len() * size_of::<i32>());
     let b_stride_0 = n_blocks * params.n;
     let batch_ratio = params.a_batch / params.b_batch;
 
@@ -451,7 +405,7 @@ fn dispatch_ggml_matmul_q40(
     launch_matmul_q40(
         stream,
         b,
-        &quant_a_view,
+        a,
         output,
         &fixup_view,
         &params,
@@ -478,37 +432,11 @@ fn dispatch_ggml_matvec_q40(
 ) -> TractResult<()> {
     let context = cuda_context();
     let props = context.properties();
-
     let null_ptr = stream.null::<u8>()?;
 
     let padded_k = params.k.next_multiple_of(Q40_ROW_PADDING);
-    let n_blocks = padded_k / Q4_0.block_len(); // padded Q40 weights
-    let sample_stride_a = params.a_strides[0] * params.a_batch as isize;
 
-    let nbytes_a_q8_1 = a.len() * padded_k * (QK8_1 + 4) / (params.k * QK8_1);
-
-    let quant_a = unsafe { DeviceTensor::uninitialized_dt(DatumType::I8, &[nbytes_a_q8_1])? };
-    let quant_a_view = get_cuda_view(&quant_a);
-
-    let func = context.load_pipeline(LibraryName::GgmlQ, "quantize_q8_1".to_string())?;
-    let mut launch_args = stream.launch_builder(&func);
-    launch_args.arg(a);
-    launch_args.arg(&quant_a_view);
-    launch_args.arg(&params.k);
-    launch_args.arg(&params.a_strides[1]);
-    launch_args.arg(&params.a_strides[0]);
-    launch_args.arg(&sample_stride_a);
-    launch_args.arg(&padded_k);
-    launch_args.arg(&params.m);
-    launch_args.arg(&params.a_batch);
-
-    let cfg = LaunchConfig {
-        grid_dim: (padded_k.div_ceil(QUANTIZE_BLOCK_SIZE) as _, params.m as _, params.a_batch as _),
-        block_dim: (QUANTIZE_BLOCK_SIZE as _, 1, 1),
-        shared_mem_bytes: 0,
-    };
-    unsafe { launch_args.launch(cfg) };
-
+    let n_blocks = padded_k / Q4_0.block_len();
     let stride_col_y = padded_k / QK8_1;
     let stride_col_dst = params.n;
     let stride_channel_x = n_blocks * params.n;
@@ -520,7 +448,7 @@ fn dispatch_ggml_matvec_q40(
     let func = context.load_pipeline(LibraryName::GgmlQ, format!("mul_vec_q40_m_{}", params.m))?;
     let mut launch_args = stream.launch_builder(&func);
     launch_args.arg(b);
-    launch_args.arg(&quant_a_view);
+    launch_args.arg(a);
     launch_args.arg(output);
     launch_args.arg(&params.k);
     launch_args.arg(&params.a_batch);
@@ -539,7 +467,11 @@ fn dispatch_ggml_matvec_q40(
         block_dim: (WARP_SIZE as _, n_warps, 1),
         shared_mem_bytes: 0,
     };
-
+    //dbg!(a, b, output);
+    //dbg!(cfg);
+    //dbg!(params.k, params.a_batch, n_blocks, stride_col_y, stride_col_dst,
+    //     batch_ratio, stride_channel_x, stride_channel_y, stride_channel_dst);
+    //panic!();
     unsafe { launch_args.launch(cfg) };
     Ok(())
 }
