@@ -1,6 +1,7 @@
 use crate::context::metal_context;
 use crate::kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm};
 use crate::{kernels, ops};
+use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::fact::DeviceTypedFactExt;
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::sync::{DeviceSync, DeviceSyncKind};
@@ -24,7 +25,7 @@ use tract_core::transform::ModelTransform;
 use tract_gpu::fact::DeviceFact;
 use tract_gpu::tensor::DeviceTensor;
 use tract_gpu::tensor::{DeviceTensorExt, IntoDevice};
-use tract_gpu::utils::as_q40_fact;
+use tract_gpu::utils::as_quant_fact;
 use tract_itertools::Itertools;
 use tract_transformers::ops::apply_rope::{ApplyRope, RotateHalf};
 use tract_transformers::ops::gelu_approximate::GeluApproximate;
@@ -366,7 +367,7 @@ fn check_matmul_in_dts(in_facts: &[TypedFact]) -> bool {
 
 fn is_input_broadcast(facts: TVec<&TypedFact>) -> bool {
     // Assume weights are in second postion
-    let b_batch_dims: Vec<TDim> = if as_q40_fact(facts[1]).is_some() {
+    let b_batch_dims: Vec<TDim> = if as_quant_fact(facts[1], &Q4_0).is_some() {
         facts[1].shape.dims().to_vec()
     } else {
         let rank = facts[1].rank();
@@ -391,8 +392,8 @@ pub fn resolve_gemm_impl(
 ) -> TractResult<MetalGemmImplKind> {
     if let Some(gemm) = gemm_impl {
         Ok(gemm)
-    } else if as_q40_fact(input_facts[0]).is_some()
-        || as_q40_fact(input_facts[1]).is_some()
+    } else if as_quant_fact(input_facts[0], &Q4_0).is_some()
+        || as_quant_fact(input_facts[1], &Q4_0).is_some()
         || is_input_broadcast(input_facts)
     {
         Ok(MetalGemmImplKind::Ggml)
@@ -433,7 +434,7 @@ fn convert_matmul_to_metal(
             let a_pos = swap_inputs as usize;
             let b_pos = 1 - swap_inputs as usize;
             if op.transpose_a {
-                ensure!(as_q40_fact(input_facts[a_pos]).is_none(), "Cannot transpose Q40 tensor");
+                ensure!(as_quant_fact(input_facts[a_pos], &Q4_0).is_none(), "Cannot transpose Q40 tensor");
 
                 let rank = input_facts[a_pos].rank();
                 let perm_a_op = ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
@@ -451,7 +452,7 @@ fn convert_matmul_to_metal(
             }
 
             if !op.transpose_b {
-                ensure!(as_q40_fact(input_facts[b_pos]).is_none(), "Cannot transpose Q40 tensor");
+                ensure!(as_quant_fact(input_facts[b_pos], &Q4_0).is_none(), "Cannot transpose Q40 tensor");
 
                 let rank = input_facts[b_pos].rank();
                 let perm_b_op = ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(

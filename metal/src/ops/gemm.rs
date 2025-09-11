@@ -3,8 +3,9 @@ use crate::utils::with_borrowed_metal_stream;
 
 use anyhow::{bail, ensure};
 use tract_core::internal::*;
+use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::tensor::DeviceTensorExt;
-use tract_gpu::utils::{as_q40_fact, as_q40_tensor};
+use tract_gpu::utils::{as_quant_fact, as_q40_tensor};
 
 #[derive(Debug, Default, Clone)]
 pub struct MetalGemm<K: GemmKernel> {
@@ -54,13 +55,13 @@ impl<K: GemmKernel> MetalGemm<K> {
             );
             let out_shape = self.kernel.output_shape(&a.shape, &b.shape);
             Ok(self.kernel.output_facts(&out_shape, a.datum_type, b.datum_type)?)
-        } else if let Some(opf) = as_q40_fact(inputs[0]) {
+        } else if let Some(opf) = as_quant_fact(inputs[0], &Q4_0) {
             let a_shape: ShapeFact =
                 a.shape.iter().cloned().chain(opf.shape().iter().map(|d| d.to_dim())).collect();
 
             let out_shape = self.kernel.output_shape(&a_shape, &b.shape);
             Ok(self.kernel.output_facts(&out_shape, a.datum_type, b.datum_type)?)
-        } else if let Some(opf) = as_q40_fact(inputs[1]) {
+        } else if let Some(opf) = as_quant_fact(inputs[1], &Q4_0) {
             let b_shape: ShapeFact =
                 b.shape.iter().cloned().chain(opf.shape().iter().map(|d| d.to_dim())).collect();
             let out_shape = self.kernel.output_shape(&a.shape, &b_shape);
