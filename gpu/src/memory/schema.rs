@@ -71,7 +71,7 @@ pub fn eval_device_mem_req_for_nodes(
             && node.op.is_stateless()
             && facts
                 .iter()
-                .any(|it| it.to_device_fact().map(|it| it.is_from_device()).unwrap_or(false))
+                .any(|it| it.as_device_fact().map(|it| it.is_from_device()).unwrap_or(false))
     });
     let mut scoped_nodes = tvec![];
 
@@ -91,7 +91,7 @@ pub fn eval_device_mem_req_for_nodes(
         let out_device_tmp_facts = model
             .node_output_facts(*n)?
             .into_iter()
-            .flat_map(|it| it.to_device_fact().ok())
+            .flat_map(|it| it.as_device_fact())
             .filter(|it| it.is_from_device())
             .collect::<TVec<_>>();
 
@@ -118,7 +118,7 @@ fn collect_opaque_facts(model: &TypedModel) -> TractResult<Vec<NodeOpaqueFacts>>
     for node in model.nodes() {
         let mut tmp: TVec<Option<Box<dyn OpaqueFact>>> = tvec![];
         for fact in model.node_output_facts(node.id)? {
-            if let Some(dev_fact) = fact.to_device_fact().ok() {
+            if let Some(dev_fact) = fact.as_device_fact() {
                 tmp.push(dev_fact.opaque_fact.clone());
             }
         }
