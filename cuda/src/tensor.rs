@@ -95,8 +95,8 @@ impl CudaTensor {
         }
     }
 
-    pub fn opaque_fact(&self) -> Option<Box<dyn OpaqueFact>> {
-        self.opaque_fact.clone()
+    pub fn opaque_fact(&self) -> Option<&dyn OpaqueFact> {
+        self.opaque_fact.as_deref()
     }
 }
 

@@ -53,6 +53,10 @@ impl DeviceArenaView {
         self.offset_bytes.as_()
     }
 
+    pub fn opaque_fact(&self) -> Option<&dyn OpaqueFact>{
+        self.opaque_fact.as_deref()
+    }
+
     /// Get the number of values in the tensor.
     #[inline]
     #[allow(clippy::len_without_is_empty)]
