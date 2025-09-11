@@ -59,12 +59,12 @@ pub fn get_cuda_lib() -> Option<Lib> {
     }
 }
 
-pub fn get_q40_fact(t: &DeviceTensor) -> Option<BlockQuantFact> {
+pub fn get_quant_fact(t: &DeviceTensor, format: &dyn BlockQuant) -> Option<BlockQuantFact> {
     if let DeviceTensor::Owned(t) = t {
         t.downcast_ref::<CudaTensor>()
             .expect("Non Cuda Tensor in Cuda context")
             .block_quant_fact()
-            .filter(|bqf| bqf.format.same_as(&Q4_0))
+            .filter(|bqf| bqf.format.same_as(format))
     } else {
         None
     }
