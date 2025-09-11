@@ -110,7 +110,7 @@ fn tensor_size(t: &DeviceTensor) -> usize {
             ot.downcast_ref::<CudaTensor>().expect("Non Cuda-Tensor in a Cuda Context");
 
         if let Some(bqf) =
-            cuda_tensor.opaque_fact().map(|of| of.downcast::<BlockQuantFact>().ok()).flatten()
+            cuda_tensor.opaque_fact().and_then(|of| of.downcast::<BlockQuantFact>().ok())
         {
             return bqf.shape().iter().product::<usize>() * Q4_0.block_bytes() / Q4_0.block_len();
         }
