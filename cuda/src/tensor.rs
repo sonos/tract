@@ -81,13 +81,12 @@ impl CudaTensor {
             CUDA_STREAM.with(|stream| unsafe {
                 let device_data = stream.alloc(len * format.block_bytes() / format.block_len())?;
                 let buffer = Arc::new(CudaBuffer { inner: device_data });
-                let bqf = BlockQuantFact::new(format, shape.to_smallvec());
                 Ok(CudaTensor {
                     buffer,
                     datum_type: DatumType::Opaque,
                     shape: tvec!(),
-                    strides: natural_strides(shape),
-                    opaque_fact: Some(Box::new(bqf)),
+                    strides: tvec!(),
+                    opaque_fact: Some(Box::new(bqf.clone())),
                 })
             })
         } else {
