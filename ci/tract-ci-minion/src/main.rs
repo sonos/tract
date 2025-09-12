@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Result};
+use clap::Parser;
 use flate2::read::GzEncoder;
 use fs2::FileExt;
 use s3::creds::Credentials;
@@ -328,7 +329,18 @@ fn bucket(config: &Config) -> Result<Bucket> {
     Ok(bucket)
 }
 
-fn main_loop() -> Result<()> {
+#[derive(Debug, Clone, Parser)]
+struct Args {
+    /// Run in background
+    #[arg(short, long)]
+    daemonize: bool,
+
+    /// Run once, stop when all tasks are done
+    #[arg(short, long)]
+    once: bool,
+}
+
+fn main_loop(args: &Args) -> Result<()> {
     let config = config()?;
     let lock = config.workdir.join("lock");
     log::info!("Locking {:?}", lock);
@@ -342,9 +354,13 @@ fn main_loop() -> Result<()> {
             match run(&config) {
                 Ok(done_something) => {
                     if !done_something {
-                        let dur = Duration::from_secs(config.idle_sleep_secs as _);
-                        log::info!("No task left, sleeping for {:?}", dur);
-                        std::thread::sleep(dur);
+                        if args.once {
+                            log::info!("No more work, stopping");
+                        } else {
+                            let dur = Duration::from_secs(config.idle_sleep_secs as _);
+                            log::info!("No task left, sleeping for {:?}", dur);
+                            std::thread::sleep(dur);
+                        }
                     }
                 }
                 Err(e) => {
@@ -370,24 +386,22 @@ extern "C" fn signal_handler(sig: libc::size_t) -> libc::size_t {
 }
 
 fn do_main() -> anyhow::Result<()> {
-    let args: Vec<String> = std::env::args().collect();
-    if args.get(1).map(|s| &**s) == Some("-d") {
-        let _config = config().unwrap();
+    let args = Args::parse();
+    if args.daemonize {
+        let _config = config()?;
 
         log::info!("Deamonizing");
-        let stdout = File::create("tract-ci-minion.out").unwrap();
-        let stderr = File::create("tract-ci-minion.err").unwrap();
+        let stdout = File::create("tract-ci-minion.out")?;
+        let stderr = File::create("tract-ci-minion.err")?;
 
         let daemonize = daemonize::Daemonize::new()
-            .working_directory(std::env::current_dir().unwrap())
+            .working_directory(std::env::current_dir()?)
             .pid_file("tract-ci-minion.pid")
             .stdout(stdout)
             .stderr(stderr);
-        daemonize.start().unwrap();
-        main_loop()
-    } else {
-        main_loop()
+        daemonize.start()?;
     }
+    main_loop(&args)
 }
 
 fn main() {
