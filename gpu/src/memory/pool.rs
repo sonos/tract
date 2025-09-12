@@ -39,7 +39,7 @@ impl DeviceMemoryPool {
 
         ensure!(dt != DatumType::Opaque, "Use opaque_tensor for node instead");
         ensure!(
-            offsets.len() == 0 || (offsets.len() == 1 && offsets[0].len() == 1),
+            offsets.is_empty() || (offsets.len() == 1 && offsets[0].len() == 1),
             "'tensor_for_node' is for mono-output nodes only"
         );
 
@@ -70,7 +70,7 @@ impl DeviceMemoryPool {
             .collect();
 
         ensure!(
-            offsets.len() == 0 || (offsets.len() == 1 && offsets[0].len() == 2),
+            offsets.is_empty() || (offsets.len() == 1 && offsets[0].len() == 2),
             "'scalar_opaque_tensor_for_node' is for mono-output nodes only"
         );
 
