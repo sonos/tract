@@ -1,4 +1,4 @@
-name: Run the tract ci minion on self hosted runners
+name: Bench with tract-ci-minion
 
 on:
   schedule:
