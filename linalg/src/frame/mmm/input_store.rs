@@ -105,12 +105,12 @@ impl Display for PackedOpaqueFact {
 }
 
 impl OpaqueFact for PackedOpaqueFact {
-    fn mem_size(&self) -> TDim {
-        self.format.mem_size(self.k.to_dim(), self.mn.clone())
-    }
-
     fn same_as(&self, other: &dyn OpaqueFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| o == self)
+    }
+    
+    fn buffer_sizes(&self) -> TVec<TDim> {
+        tvec!(self.format.mem_size(self.k.to_dim(), self.mn.clone()))
     }
 }
 

@@ -34,11 +34,7 @@ pub trait OpaqueFact: DynHash + Send + Sync + Debug + dyn_clone::DynClone + Down
         None
     }
 
-    fn mem_size(&self) -> TDim;
-
-    fn buffer_sizes(&self) -> TVec<TDim> {
-        tvec!(self.mem_size())
-    }
+    fn buffer_sizes(&self) -> TVec<TDim>;
 }
 
 impl_downcast!(OpaqueFact);
@@ -60,21 +56,21 @@ impl PartialEq for Box<dyn OpaqueFact> {
 impl Eq for Box<dyn OpaqueFact> {}
 
 impl OpaqueFact for TVec<Box<dyn OpaqueFact>> {
-    fn mem_size(&self) -> TDim {
-        self.iter().map(|it| it.mem_size()).sum()
-    }
-
     fn same_as(&self, other: &dyn OpaqueFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| self == o)
+    }
+    
+    fn buffer_sizes(&self) -> TVec<TDim> {
+        self.iter().flat_map(|it| it.buffer_sizes()).collect()
     }
 }
 impl OpaqueFact for TVec<Option<Box<dyn OpaqueFact>>> {
-    fn mem_size(&self) -> TDim {
-        self.iter().flatten().map(|it| it.mem_size()).sum()
-    }
-
     fn same_as(&self, other: &dyn OpaqueFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| self == o)
+    }
+    
+    fn buffer_sizes(&self) -> TVec<TDim> {
+        self.iter().flatten().flat_map(|it| it.buffer_sizes()).collect()
     }
 }
 
