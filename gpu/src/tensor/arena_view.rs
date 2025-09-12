@@ -53,7 +53,7 @@ impl DeviceArenaView {
         self.offset_bytes.as_()
     }
 
-    pub fn opaque_fact(&self) -> Option<&dyn OpaqueFact>{
+    pub fn opaque_fact(&self) -> Option<&dyn OpaqueFact> {
         self.opaque_fact.as_deref()
     }
 
