@@ -9,7 +9,7 @@ use crate::sync::{DeviceSync, DeviceSyncKind};
 /// Requirement for node outputs from a memory perspective.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NodeMemReq {
-    pub node: usize,
+    pub outlet_id: OutletId,
     pub lifetime: Lifetime,
     pub mem_size: TDim,
 }
@@ -99,10 +99,11 @@ pub fn eval_device_mem_req_for_nodes(
             continue;
         }
 
-        for fact in out_device_tmp_facts {
+        for (slot, fact) in out_device_tmp_facts.iter().enumerate() {
+            let outlet_id = OutletId { node: *n, slot };
             for buff_size in fact.buffer_sizes() {
                 scoped_nodes.push(NodeMemReq {
-                    node: *n,
+                    outlet_id,
                     lifetime: Lifetime { start: lifetime_start, end: lifetime_end },
                     mem_size: buff_size,
                 })
@@ -166,7 +167,7 @@ type NodeOpaqueFacts = TVec<Option<Box<dyn OpaqueFact>>>;
 /// GPU operators. This schema is concrete.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceResolvedMemSchema {
-    pub offsets_by_node: Vec<TVec<usize>>,
+    pub offsets_by_node: HashMap<OutletId, Vec<usize>>,
     pub opaque_facts: Vec<NodeOpaqueFacts>,
     pub memory_size: usize,
 }
@@ -206,18 +207,25 @@ impl DeviceMemSchema {
 
     /// Compute offsets for each node for given symbols. Node ids
     /// are indexes in the returned vector.
-    pub fn compute_offset_by_node(&self, symbols: &SymbolValues) -> TractResult<Vec<TVec<usize>>> {
+    pub fn compute_offset_by_node(
+        &self,
+        symbols: &SymbolValues,
+    ) -> TractResult<HashMap<OutletId, Vec<usize>>> {
         let mut cursor = 0;
-        let mut offset_by_node = vec![tvec![]; self.model_num_nodes];
+        let mut offset_by_outlet: HashMap<OutletId, Vec<usize>> = HashMap::new();
 
         for partition in self.by_partition.iter() {
             for node_mem in partition.nodes.iter() {
-                offset_by_node[node_mem.node].push(cursor);
+                if let Some(val) = offset_by_outlet.get_mut(&node_mem.outlet_id) {
+                    val.push(cursor);
+                } else {
+                    offset_by_outlet.insert(node_mem.outlet_id, vec![cursor]);
+                }
             }
             cursor += partition.eval_size_to_i64(symbols)? as usize;
         }
 
-        Ok(offset_by_node)
+        Ok(offset_by_outlet)
     }
 
     /// Evaluate peak memory size for given symbols. The return value is lower or equal to the memory
@@ -262,7 +270,7 @@ impl fmt::Display for DeviceMemSchema {
                     .iter()
                     .map(|n| -> String {
                         n.as_ref()
-                            .map(|it| format!("{:^7}", it.node))
+                            .map(|it| format!("{:^7}/{:^7}", it.outlet_id.node, it.outlet_id.slot))
                             .unwrap_or(format!("{:^7}", "*"))
                     })
                     .collect::<Vec<String>>()
@@ -297,12 +305,12 @@ impl DeviceMemSchema {
         let opaque_facts = collect_opaque_facts(model)?;
         let hinted_mem_size = nodes_mem_req
             .iter()
-            .map(|node_mem| Ok((node_mem.node, node_mem.mem_size.eval_to_i64(hint)?)))
-            .collect::<TractResult<HashMap<usize, i64>>>()?;
+            .map(|node_mem| Ok((node_mem.outlet_id, node_mem.mem_size.eval_to_i64(hint)?)))
+            .collect::<TractResult<HashMap<OutletId, i64>>>()?;
 
         nodes_mem_req.sort_by(|lhs, rhs| {
-            let lhs_hint_mem_size = hinted_mem_size.get(&lhs.node);
-            let rhs_hint_mem_size = hinted_mem_size.get(&rhs.node);
+            let lhs_hint_mem_size = hinted_mem_size.get(&lhs.outlet_id);
+            let rhs_hint_mem_size = hinted_mem_size.get(&rhs.outlet_id);
             lhs_hint_mem_size.cmp(&rhs_hint_mem_size).reverse()
         });
 
@@ -315,7 +323,7 @@ impl DeviceMemSchema {
                 .collect::<Vec<_>>();
 
             available.sort_by_cached_key(|n| {
-                -n.nodes.iter().flat_map(|it| hinted_mem_size.get(&it.node)).sum::<i64>()
+                -n.nodes.iter().flat_map(|it| hinted_mem_size.get(&it.outlet_id)).sum::<i64>()
             });
 
             match available.first_mut() {
@@ -380,10 +388,14 @@ mod tests {
 
     #[test]
     fn test_node_mem_req_basic() {
-        let req =
-            NodeMemReq { node: 1, lifetime: Lifetime { start: 0, end: 5 }, mem_size: 1000.into() };
+        let outlet_id = OutletId { node: 1, slot: 0 };
+        let req = NodeMemReq {
+            outlet_id,
+            lifetime: Lifetime { start: 0, end: 5 },
+            mem_size: 1000.into(),
+        };
 
-        assert_eq!(req.node, 1);
+        assert_eq!(req.outlet_id.node, 1);
         assert_eq!(req.lifetime.start, 0);
         assert_eq!(req.lifetime.end, 5);
         assert_eq!(req.mem_size.to_i64().unwrap(), 1000);
@@ -391,8 +403,12 @@ mod tests {
 
     #[test]
     fn test_partition_has_no_conflict() {
-        let node1 =
-            NodeMemReq { node: 1, lifetime: Lifetime { start: 0, end: 5 }, mem_size: 1000.into() };
+        let outlet_id = OutletId { node: 1, slot: 0 };
+        let node1 = NodeMemReq {
+            outlet_id,
+            lifetime: Lifetime { start: 0, end: 5 },
+            mem_size: 1000.into(),
+        };
 
         let partition = Partition { nodes: vec![node1] };
 
@@ -402,11 +418,19 @@ mod tests {
 
     #[test]
     fn test_partition_find_node() {
-        let node1 =
-            NodeMemReq { node: 1, lifetime: Lifetime { start: 0, end: 5 }, mem_size: 1000.into() };
+        let outlet_id = OutletId { node: 1, slot: 0 };
+        let node1 = NodeMemReq {
+            outlet_id,
+            lifetime: Lifetime { start: 0, end: 5 },
+            mem_size: 1000.into(),
+        };
 
-        let node2 =
-            NodeMemReq { node: 2, lifetime: Lifetime { start: 5, end: 10 }, mem_size: 2000.into() };
+        let outlet_id = OutletId { node: 2, slot: 0 };
+        let node2 = NodeMemReq {
+            outlet_id,
+            lifetime: Lifetime { start: 5, end: 10 },
+            mem_size: 2000.into(),
+        };
 
         let partition = Partition { nodes: vec![node1.clone(), node2.clone()] };
 

@@ -29,13 +29,21 @@ impl DeviceMemoryPool {
         dt: DatumType,
         shape: &[usize],
     ) -> TractResult<DeviceTensor> {
+        let offsets: Vec<Vec<usize>> = self
+            .resolved_schema
+            .offsets_by_node
+            .iter()
+            .filter(|(k, _)| k.node == node_id)
+            .map(|(_, v)| v.clone())
+            .collect();
+
+        ensure!(dt != DatumType::Opaque, "Use opaque_tensor for node instead");
         ensure!(
-            self.resolved_schema.offsets_by_node[node_id].len() <= 1,
+            offsets.len() == 0 || (offsets.len() == 1 && offsets[0].len() == 1),
             "'tensor_for_node' is for mono-output nodes only"
         );
-        ensure!(dt != DatumType::Opaque, "Use opaque_tensor for node instead");
 
-        self.resolved_schema.offsets_by_node[node_id]
+        offsets
             .first()
             .map(|offset| {
                 Ok(DeviceArenaView {
@@ -44,7 +52,7 @@ impl DeviceMemoryPool {
                     len: shape.iter().product(),
                     shape: shape.into(),
                     strides: Tensor::natural_strides(shape),
-                    offset_bytes: *offset,
+                    offset_bytes: offset[0],
                     opaque_fact: None,
                 }
                 .into())
@@ -53,17 +61,21 @@ impl DeviceMemoryPool {
     }
 
     pub fn scalar_opaque_tensor_for_node(&self, node_id: usize) -> TractResult<DeviceTensor> {
+        let offsets: Vec<Vec<usize>> = self
+            .resolved_schema
+            .offsets_by_node
+            .iter()
+            .filter(|(k, _)| k.node == node_id)
+            .map(|(_, v)| v.clone())
+            .collect();
+
         ensure!(
-            self.resolved_schema.offsets_by_node[node_id].len() == 2,
-            "Expected 1 output with two buffers for opaque tensor"
-        );
-        ensure!(
-            self.resolved_schema.opaque_facts[node_id][0].is_some(),
-            "Opaque fact not found for Opaque Tensor"
+            offsets.len() == 0 || (offsets.len() == 1 && offsets[0].len() == 2),
+            "'scalar_opaque_tensor_for_node' is for mono-output nodes only"
         );
 
-        self.resolved_schema.offsets_by_node[node_id]
-            .get(1)
+        offsets
+            .first()
             .map(|offset| {
                 Ok(DeviceArenaView {
                     arena: Arc::clone(&self.storage),
@@ -71,7 +83,7 @@ impl DeviceMemoryPool {
                     len: 1,
                     shape: tvec!(),
                     strides: tvec!(),
-                    offset_bytes: *offset,
+                    offset_bytes: offset[1],
                     opaque_fact: self.resolved_schema.opaque_facts[node_id][0].clone(),
                 }
                 .into())
