@@ -72,16 +72,16 @@ impl Display for LazyIm2colParams {
 }
 
 impl OpaqueFact for LazyIm2colParams {
-    fn mem_size(&self) -> TDim {
-        MMMInputFormat::mem_size(
+    fn same_as(&self, _other: &dyn OpaqueFact) -> bool {
+        _other.downcast_ref::<Self>().is_some_and(|o| o == self)
+    }
+    
+    fn buffer_sizes(&self) -> TVec<TDim> {
+        tvec!(MMMInputFormat::mem_size(
             self,
             self.k_byte_offsets.len().to_dim(),
             self.n_byte_offsets.len().to_dim(),
-        )
-    }
-
-    fn same_as(&self, _other: &dyn OpaqueFact) -> bool {
-        _other.downcast_ref::<Self>().is_some_and(|o| o == self)
+        ))
     }
 }
 

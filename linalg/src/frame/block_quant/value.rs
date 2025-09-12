@@ -36,13 +36,13 @@ impl std::fmt::Debug for BlockQuantFact {
 }
 
 impl OpaqueFact for BlockQuantFact {
-    fn mem_size(&self) -> TDim {
-        (self.shape.iter().product::<usize>() / self.format.block_len() * self.format.block_bytes())
-            .to_dim()
-    }
-
     fn same_as(&self, other: &dyn OpaqueFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| o == self)
+    }
+    
+    fn buffer_sizes(&self) -> TVec<TDim> {
+        tvec!((self.shape.iter().product::<usize>() / self.format.block_len() * self.format.block_bytes())
+            .to_dim())
     }
 }
 
@@ -105,12 +105,13 @@ impl std::fmt::Debug for PackedBlockQuantFact {
 }
 
 impl OpaqueFact for PackedBlockQuantFact {
-    fn mem_size(&self) -> TDim {
-        (self.shape.iter().product::<usize>() / self.format.bq.block_len()
-            * self.format.bq.block_bytes())
-        .to_dim()
-    }
     fn same_as(&self, other: &dyn OpaqueFact) -> bool {
         other.downcast_ref::<Self>().is_some_and(|o| o == self)
+    }
+    
+    fn buffer_sizes(&self) -> TVec<TDim> {
+        tvec!((self.shape.iter().product::<usize>() / self.format.bq.block_len()
+            * self.format.bq.block_bytes())
+        .to_dim())
     }
 }
