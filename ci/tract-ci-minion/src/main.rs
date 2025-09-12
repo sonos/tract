@@ -356,6 +356,7 @@ fn main_loop(args: &Args) -> Result<()> {
                     if !done_something {
                         if args.once {
                             log::info!("No more work, stopping");
+                            return Ok(());
                         } else {
                             let dur = Duration::from_secs(config.idle_sleep_secs as _);
                             log::info!("No task left, sleeping for {:?}", dur);
