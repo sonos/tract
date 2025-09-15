@@ -368,14 +368,9 @@ fn convert_matmul_to_cuda(
         inputs[b_pos] = target.wire_node(perm_b_name, perm_b_op, &[inputs[b_pos]])?[0];
     }
 
-    let b_shape = &input_facts[0].shape;
-    dbg!(&input_facts[0]);
-    let rank = b_shape.rank();
-    let m = b_shape[rank - 2].clone();
-
     if as_quant_fact(input_facts[1], &Q4_0).is_some() {
-        let concrete_m = m .as_i64().unwrap();
-        let quant_op = ops::CudaGgmlQuantQ81Op::new(concrete_m > 8, input_facts[0])?;
+        let device_fact = target.outlet_fact(inputs[0])?.to_device_fact()?;
+        let quant_op = ops::CudaGgmlQuantQ81Op::new(&device_fact.shape.dims())?;
         inputs[0] = target.wire_node(node.name.clone() + ".quant_b", quant_op, &[inputs[0]])?[0];
     }
 
@@ -399,7 +394,6 @@ fn convert_matmul_to_cuda(
     let out_dt = out_fact.as_device_fact().map(|f| f.datum_type).unwrap_or(out_fact.datum_type);
 
     let expected_dt = model.node_output_facts(node.id)?[0].datum_type;
-
     if out_dt != expected_dt {
         ensure!(
             ops::CudaCast::is_supported_dt(out_dt),

@@ -122,6 +122,7 @@ impl GemmKernel for GgmlGemm {
         } = params;
 
         ensure!(!transpose_a && transpose_b);
+
         let c_view = &c_view_mut.as_view();
         if q40_b {
             if params.m <= 8 {
@@ -467,11 +468,7 @@ fn dispatch_ggml_matvec_q40(
         block_dim: (WARP_SIZE as _, n_warps, 1),
         shared_mem_bytes: 0,
     };
-    //dbg!(a, b, output);
-    //dbg!(cfg);
-    //dbg!(params.k, params.a_batch, n_blocks, stride_col_y, stride_col_dst,
-    //     batch_ratio, stride_channel_x, stride_channel_y, stride_channel_dst);
-    //panic!();
+
     unsafe { launch_args.launch(cfg) };
     Ok(())
 }

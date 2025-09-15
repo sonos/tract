@@ -50,7 +50,6 @@ impl<K: GemmKernel> CudaGemm<K> {
             let b_shape: ShapeFact =
                 b.shape.iter().cloned().chain(a_bqf.shape().iter().map(|d| d.to_dim())).collect();
             let out_shape = self.kernel.output_shape(&a_shape, &b_shape);
-
             Ok(tvec![DatumType::F32.fact(out_shape)])
         } else {
             bail!("Unsupported datum type configuration for GEMM")
@@ -86,7 +85,8 @@ impl<K: GemmKernel> EvalOp for CudaGemm<K> {
             .unwrap_or(b.shape().to_vec());
 
         let c_shape = self.kernel.output_shape(&a_shape, &b_shape);
-        let c = tract_gpu::session_handler::make_tensor_for_node(session, node_id, DatumType::F32, &c_shape)?;
+        let c_dt = if get_ggml_q81_fact(a).is_some() { DatumType::F32 } else { a.datum_type() };
+        let c = tract_gpu::session_handler::make_tensor_for_node(session, node_id, c_dt, &c_shape)?;
 
         CUDA_STREAM.with(|stream| self.kernel.dispatch_eval(stream, a, b, &c))?;
 

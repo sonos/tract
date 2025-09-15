@@ -57,6 +57,10 @@ impl DeviceArenaView {
         self.opaque_fact.as_deref()
     }
 
+    pub fn opaque_fact_mut(&mut self) -> Option<&mut dyn OpaqueFact> {
+        self.opaque_fact.as_deref_mut()
+    }
+
     /// Get the number of values in the tensor.
     #[inline]
     #[allow(clippy::len_without_is_empty)]

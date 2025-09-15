@@ -120,7 +120,7 @@ fn tensor_size(t: &DeviceTensor) -> usize {
 
     if let Some(of) = opaque_fact
     {
-        of.mem_size().as_i64().expect("Symbols should be resolved at this point") as usize
+        of.buffer_sizes().iter().sum::<TDim>().as_i64().expect("Symbols should be resolved at this point") as usize
     }
     else 
     {

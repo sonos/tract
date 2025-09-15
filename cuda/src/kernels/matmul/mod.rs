@@ -311,7 +311,7 @@ impl<M: GemmKernel> GemmImpl<M> {
         if c.shape().iter().product::<usize>() == 0 {
             return Ok(());
         }
-        dbg!(&a_shape, &b_shape, self.output_shape(&a_shape, &b_shape));
+
         let dispatches = GemmDispatchParams::compute_dispatches_params::<M>(
             [a.datum_type(), b.datum_type(), c.datum_type()],
             &a_shape,
@@ -324,7 +324,7 @@ impl<M: GemmKernel> GemmImpl<M> {
 
         for d in dispatches {
             let (a_len, b_len) = if d.q40_b {
-                (q81_a.clone().unwrap().mem_size().as_i64().expect("Symbols should known at this point") as usize,
+                (q81_a.clone().unwrap().buffer_sizes().iter().sum::<TDim>().as_i64().expect("Symbols should known at this point") as usize,
                  d.b_strides[0] as usize * d.b_batch / Q4_0.block_len() * Q4_0.block_bytes())
             } else {
                 (d.a_strides[0] as usize * d.a_batch * d.dts[0].size_of(),

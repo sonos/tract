@@ -1,4 +1,5 @@
 use std::fmt;
+use std::time::Instant;
 use cudarc::driver::{LaunchConfig, PushKernelArg};
 use derive_new::new;
 use tract_core::internal::tract_smallvec::ToSmallVec;
@@ -30,15 +31,13 @@ impl GgmlQuantQ81 {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
-    pub fn output_shape(shape: TVec<TDim>, mmq: bool) -> TractResult<TVec<TDim>> {
-        let mut o_shape = shape;
+    pub fn output_shape(shape: &TVec<TDim>) -> TractResult<TVec<TDim>> {
+        let mut o_shape = shape.clone();
         let rank = o_shape.len();
         let k = o_shape[rank - 1].as_i64().context("Expected concrete k")? as usize;
         let padded_k = k.next_multiple_of(Q40_ROW_PADDING);
         o_shape[rank - 1] = TDim::Val(padded_k as i64);
-        if mmq {
-            o_shape[rank - 2] += (MMQ_X_MAX * 4 * Q8_1.block_bytes()).div_ceil(padded_k);
-        }
+        o_shape[rank - 2] += (MMQ_X_MAX * 4 * Q8_1.block_bytes()).div_ceil(padded_k);
         Ok(o_shape)
     }
 
@@ -47,7 +46,6 @@ impl GgmlQuantQ81 {
         stream: &TractCudaStream,
         input: &DeviceTensor,
         output: &DeviceTensor,
-        mmq: bool,
     ) -> TractResult<()> {
         let context = cuda_context();
         let i_view = get_cuda_view(input);
@@ -63,8 +61,8 @@ impl GgmlQuantQ81 {
         let sample_stride_a = a_strides[0] * a_batch as isize;
 
         let padded_k = k.next_multiple_of(Q40_ROW_PADDING);
-
-        if mmq {
+        let start = Instant::now();
+        if m > 8 {
             let func = cuda_context().load_pipeline(LibraryName::GgmlQ, "quantize_mmq_q8_1".to_string())?;
             let mut launch_args = stream.launch_builder(&func);
             launch_args.arg(&i_view);
@@ -107,7 +105,7 @@ impl GgmlQuantQ81 {
             };
             unsafe { launch_args.launch(cfg) };
         }
-
+        dbg!(start.elapsed());
         Ok(())
     }
 
@@ -119,7 +117,7 @@ impl GgmlQuantQ81 {
         mmq: bool,
     ) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), output_shape)? };
-        self.dispatch_eval(stream, input, &output, mmq)?;
+        self.dispatch_eval(stream, input, &output)?;
         stream.synchronize()?;
         Ok(output)
     }
