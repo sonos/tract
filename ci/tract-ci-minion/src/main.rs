@@ -176,10 +176,10 @@ fn run_task(task_name: &str, timeout: Duration) -> Result<()> {
     let vars: HashMap<String, String> = vars(task_name)?;
     let mut cmd = std::process::Command::new("sh");
     cmd.current_dir(task_dir.join(task_name))
-        .envs(&vars)
         .arg("-c")
         .arg("./entrypoint.sh 2> stderr.log > stdout.log");
     log::info!("Running {:?}", cmd);
+    cmd.envs(&vars); // do not log env as it may contain sensitive vars
     let mut child = cmd.spawn()?;
     let result = child.wait_timeout(timeout)?;
     let Some(status) = result else {
