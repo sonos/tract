@@ -62,3 +62,14 @@ jobs:
         chmod +x tract-cli-${{matrix.os}}/tract
         export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{matrix.os}}/tract
         .travis/test-llm.sh ${{matrix.model}} ${{matrix.q}}
+
+    - name: Run minion if found
+      run: |
+        if [ -d $HOME/tract-minion ]
+        then
+          echo "Running minion"
+          cd $HOME/tract-minion
+          ./tract-ci-minion --once
+        else
+          echo "Not running minion"
+        fi

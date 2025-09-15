@@ -2,7 +2,7 @@ name: Bench with tract-ci-minion
 
 on:
   schedule:
-    - cron:  '*/5 * * * *'
+    - cron:  '1 * * * *' # every hour at minute 1
   workflow_dispatch:
 
 jobs:
