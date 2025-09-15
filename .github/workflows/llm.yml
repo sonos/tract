@@ -63,6 +63,14 @@ jobs:
         export TRACT_RUN=$GITHUB_WORKSPACE/tract-cli-${{matrix.os}}/tract
         .travis/test-llm.sh ${{matrix.model}} ${{matrix.q}}
 
+  trigger-minion:
+    name: trigger bench minion
+    runs-on: ${{ matrix.os }}-latest
+    needs: [ cli ] 
+    strategy:
+      matrix:
+        os: [ macos, ubuntu ]
+    steps:
     - name: Run minion if found
       run: |
         if [ -d $HOME/tract-minion ]
