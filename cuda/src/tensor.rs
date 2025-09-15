@@ -91,7 +91,7 @@ impl CudaTensor {
                 })
             })
         } else if let Some(ggml_q81_fact) = opaque_fact.downcast_ref::<GgmlQuantQ81Fact>() {
-            let mem_size = ggml_q81_fact.buffer_sizes().iter().sum::<TDim>().as_i64().unwrap() as usize;
+            let mem_size = ggml_q81_fact.mem_size().as_i64().unwrap() as usize;
 
             CUDA_STREAM.with(|stream| unsafe {
                 let device_data = stream.alloc(mem_size)?;
