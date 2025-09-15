@@ -78,6 +78,14 @@ impl TractCudaContext {
         for bin_func in crate::kernels::BinOps::all_functions() {
             let _ = self.load_pipeline(LibraryName::Binary, bin_func);
         }
+
+        for arr_func in crate::kernels::array::all_functions() {
+            let _ = self.load_pipeline(LibraryName::Array, arr_func);
+        }
+
+        for nn_func in crate::kernels::nn::all_functions() {
+            let _ = self.load_pipeline(LibraryName::NN, nn_func);
+        }
         Ok(())
     }
 
