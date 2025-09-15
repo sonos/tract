@@ -9,7 +9,7 @@ jobs:
   minion:
     strategy:
       matrix:
-        platform:
+        os:
           - macOS
           - cuda-lovelace
 
