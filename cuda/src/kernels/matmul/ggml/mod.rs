@@ -68,6 +68,39 @@ impl fmt::Display for GgmlGemm {
     }
 }
 
+impl GgmlGemm {
+    pub fn float_functions() -> Vec<String> {
+        [DatumType::F32, DatumType::F16]
+                .into_iter()
+                .flat_map(|dt| (1..=8usize).into_iter().map(move |ncols| (dt, ncols)))
+                .flat_map(|(dt, ncols)| (32..=256usize).step_by(32).into_iter().map(move |block_size| (dt, ncols, block_size)))
+                .flat_map(|(dt, ncols, block_size)| kernel_name_mat_vec(dt, ncols, block_size))
+                .collect()
+    }
+
+    pub fn q_functions() -> Vec<String> {
+        let mat_vec_q40: Vec<String> = (1..=8usize)
+            .into_iter()
+            .map(|ncols| format!("mul_vec_q40_m_{ncols}"))
+            .collect();
+
+        let mat_mul_q40: Vec<String> = [8usize, 16, 24, 32, 40, 48, 64, 80, 96, 112, 128]
+            .into_iter()
+            .flat_map(|mmq_x| [true, false].into_iter().map(move |check| (mmq_x, check)))
+            .flat_map(|(mmq_x, check)| ["stream_k_fixup_", ""].into_iter().map(move |fixup| (mmq_x, fixup, check)))
+            .map(|(mmq_x, fixup, check)| format!("mul_mat_q40_{fixup}{mmq_x}_8_{check}"))
+            .collect();
+
+        let mut all_kernels = vec![];
+        all_kernels.extend(mat_vec_q40);
+        all_kernels.extend(mat_mul_q40);
+        all_kernels.extend(vec!("quantize_mmq_q8_1".to_string()));
+        all_kernels.extend(vec!("quantize_q8_1".to_string()));
+
+        all_kernels
+    }
+}
+
 impl GemmKernel for GgmlGemm {
     fn name() -> &'static str {
         "ggml"
@@ -158,6 +191,17 @@ fn find_block_size(k: usize) -> usize {
     block_size_best
 }
 
+fn kernel_name_mat_vec(dt: DatumType, n_cols: usize, block_size: usize) -> TractResult<String> {
+    Ok(
+        format!(
+            "ggml_matvec_{}_ncols_{}_bs_{}",
+            DeviceTensor::tname(dt)?,
+            n_cols,
+            block_size
+        )
+    )
+}
+
 fn dispatch_ggml_matvec(
     stream: &TractCudaStream,
     a: &CudaView<'_, u8>,
@@ -171,12 +215,7 @@ fn dispatch_ggml_matvec(
 
     let batch_ratio = params.a_batch / params.b_batch;
 
-    let kernel_name = format!(
-        "ggml_matvec_{}_ncols_{}_bs_{}",
-        DeviceTensor::tname(params.dts[0])?,
-        params.m,
-        block_size
-    );
+    let kernel_name = kernel_name_mat_vec(params.dts[0], params.m, block_size)?;
     let mut func = cuda_context().load_pipeline(LibraryName::Ggml, kernel_name)?;
     let mut launch_args = stream.launch_builder(&func);
     launch_args.arg(b);

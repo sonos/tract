@@ -86,6 +86,14 @@ impl TractCudaContext {
         for nn_func in crate::kernels::nn::all_functions() {
             let _ = self.load_pipeline(LibraryName::NN, nn_func);
         }
+
+        for mm_func in crate::kernels::matmul::GgmlGemm::float_functions() {
+            let _ = self.load_pipeline(LibraryName::Ggml, mm_func);
+        }
+
+        for mmq_func in crate::kernels::matmul::GgmlGemm::q_functions() {
+            let _ = self.load_pipeline(LibraryName::GgmlQ, mmq_func);
+        }
         Ok(())
     }
 
