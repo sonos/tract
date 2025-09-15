@@ -35,6 +35,10 @@ pub trait OpaqueFact: DynHash + Send + Sync + Debug + dyn_clone::DynClone + Down
     }
 
     fn buffer_sizes(&self) -> TVec<TDim>;
+
+    fn mem_size(&self) -> TDim {
+        self.buffer_sizes().iter().sum::<TDim>()
+    }
 }
 
 impl_downcast!(OpaqueFact);
