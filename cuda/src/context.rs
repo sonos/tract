@@ -70,7 +70,6 @@ impl TractCudaContext {
     }
 
     pub fn preload_pipelines(&self) -> TractResult<()> {
-        // TODO: Investigate CUDA lazy loading
         for ew_func in crate::kernels::UnaryOps::all_functions() {
             let _ = self.load_pipeline(LibraryName::Unary, ew_func);
         }
@@ -87,13 +86,6 @@ impl TractCudaContext {
             let _ = self.load_pipeline(LibraryName::NN, nn_func);
         }
 
-        for mm_func in crate::kernels::matmul::GgmlGemm::float_functions() {
-            let _ = self.load_pipeline(LibraryName::Ggml, mm_func);
-        }
-
-        for mmq_func in crate::kernels::matmul::GgmlGemm::q_functions() {
-            let _ = self.load_pipeline(LibraryName::GgmlQ, mmq_func);
-        }
         Ok(())
     }
 
