@@ -51,7 +51,11 @@ impl DeviceMemoryPool {
             .unwrap_or_else(|| DeviceTensor::uninitialized_dt(dt, shape))
     }
 
-    pub fn scalar_opaque_tensor_for_node(&self, node_id: usize) -> TractResult<DeviceTensor> {
+    pub fn scalar_opaque_tensor_for_node(
+        &self,
+        node_id: usize,
+        opaque_fact: Box<dyn OpaqueFact>,
+    ) -> TractResult<DeviceTensor> {
         self.resolved_schema.offsets_by_node[node_id]
             .as_ref()
             .map(|offsets| {
@@ -66,14 +70,10 @@ impl DeviceMemoryPool {
                     shape: tvec!(),
                     strides: tvec!(),
                     offset_bytes: offsets[0][1],
-                    opaque_fact: self.resolved_schema.opaque_facts[node_id][0].clone(),
+                    opaque_fact: Some(opaque_fact.clone()),
                 }
                 .into())
             })
-            .unwrap_or_else(|| {
-                DeviceTensor::uninitialized_opaque(
-                    self.resolved_schema.opaque_facts[node_id][0].clone().unwrap().as_ref(),
-                )
-            })
+            .unwrap_or_else(|| DeviceTensor::uninitialized_opaque(opaque_fact))
     }
 }
