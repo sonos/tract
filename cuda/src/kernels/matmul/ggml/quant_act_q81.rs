@@ -61,7 +61,7 @@ impl GgmlQuantQ81 {
         let sample_stride_a = a_strides[0] * a_batch as isize;
 
         let padded_k = k.next_multiple_of(Q40_ROW_PADDING);
-        let start = Instant::now();
+
         if m > 8 {
             let func = cuda_context().load_pipeline(LibraryName::GgmlQ, "quantize_mmq_q8_1".to_string())?;
             let mut launch_args = stream.launch_builder(&func);
@@ -105,7 +105,6 @@ impl GgmlQuantQ81 {
             };
             unsafe { launch_args.launch(cfg) };
         }
-        dbg!(start.elapsed());
         Ok(())
     }
 
