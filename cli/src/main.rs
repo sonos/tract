@@ -273,6 +273,7 @@ fn main() -> TractResult<()> {
         clap::Command::new("llm-bench").long_about("llamas.cpp-style bench (tg128 and pp512)");
     let llm_bench = assertions_options(llm_bench);
     let llm_bench = run_options(llm_bench);
+    let llm_bench = bench_options(llm_bench);
     app = app.subcommand(llm_bench);
 
     let stream_check = clap::Command::new("stream-check")
