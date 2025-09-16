@@ -116,6 +116,7 @@ pub fn fuse_axis_op(
         crate::ops::CudaScaledMaskedSoftmax,
         crate::ops::CudaGemm<GgmlGemm>,
         crate::ops::CudaDynKVCache,
+        crate::ops::CudaGgmlQuantQ81Op,
     );
 
     // Handle AxisOp::Move operator.
