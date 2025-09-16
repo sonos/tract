@@ -2,6 +2,7 @@ use crate::bench::{bench, make_state};
 use crate::Parameters;
 use float_ord::FloatOrd;
 use readings_probe::Probe;
+use tract_core::num_traits::Zero;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 use tract_core::tract_data::itertools::Itertools;
@@ -78,14 +79,12 @@ pub fn bench_pp(
         run_params.symbols.set(&b, 1);
     }
 
-    run_params.symbols.set(&p, 0);
     // Warmup
-    run_params.symbols.set(&s, 6);
-
+    run_params.symbols.set(&p, 0);
+    run_params.symbols.set(&s, pp as i64);
     let inputs = get_or_make_inputs(model, &run_params)?;
     limits.warmup(model, &inputs)?;
 
-    run_params.symbols.set(&s, pp as i64);
     let inputs = get_or_make_inputs(model, &run_params)?;
 
     let (_, dur) = bench(&mut state, sub_matches, inputs, limits, probe)?;
@@ -116,11 +115,26 @@ pub fn bench_tg(
 
     run_params.symbols.set(&s, 1);
     // Warmup
-    run_params.symbols.set(&p, 1);
+    if !limits.warmup_loops.is_zero() || !limits.warmup_time.is_zero() {
+        let mut iters = 0;
+        let max_loops = if limits.warmup_loops == 0 { usize::MAX } else { limits.warmup_loops };
+        let max_time = if limits.warmup_time.is_zero() { Duration::MAX } else { limits.warmup_time };
+        let start_warmup = Instant::now();
+        debug!("TG warming before profiling...");
+        while iters < max_loops && start_warmup.elapsed() < max_time {
+            for t in 0..tg {
+                run_params.symbols.set(&p, t as i64);
+                let mut inputs = get_or_make_inputs(model, &run_params)?;
 
-    let inputs = get_or_make_inputs(model, &run_params)?;
-    limits.warmup(model, &inputs)?;
+                state.run(inputs.sources.remove(0))?;
+            }
+            state.reset_op_states()?;
+            iters += 1;
+        }
+        debug!("Done warming up.");
+    }
 
+    // Bench
     let mut tot_dur = Duration::default();
     for t in 0..tg {
         if let Some(p) = probe {
