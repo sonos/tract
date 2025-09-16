@@ -120,7 +120,7 @@ pub fn bench_tg(
         let max_loops = if limits.warmup_loops == 0 { usize::MAX } else { limits.warmup_loops };
         let max_time = if limits.warmup_time.is_zero() { Duration::MAX } else { limits.warmup_time };
         let start_warmup = Instant::now();
-        debug!("TG warming before profiling...");
+        info!("TG warming before profiling...");
         while iters < max_loops && start_warmup.elapsed() < max_time {
             for t in 0..tg {
                 run_params.symbols.set(&p, t as i64);
@@ -131,7 +131,7 @@ pub fn bench_tg(
             state.reset_op_states()?;
             iters += 1;
         }
-        debug!("Done warming up.");
+        info!("Done warming up.");
     }
 
     // Bench
