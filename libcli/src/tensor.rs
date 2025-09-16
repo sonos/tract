@@ -425,14 +425,7 @@ pub fn get_or_make_inputs(tract: &dyn Model, params: &RunParams) -> TractResult<
                 .and_then(|state| state.init_tensor_fact())
                 .map(|(name, fact)| {
                     let mut tmp = tvec![];
-                    get_or_make_tensors(
-                        tract,
-                        params,
-                        fact,
-                        &name,
-                        usize::MAX,
-                        &mut tmp,
-                    )?;
+                    get_or_make_tensors(tract, params, fact, &name, usize::MAX, &mut tmp)?;
                     Ok(tmp.remove(0).remove(0))
                 })
         })
