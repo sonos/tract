@@ -1,10 +1,10 @@
-use crate::bench::{bench, make_state};
 use crate::Parameters;
+use crate::bench::{bench, make_state};
 use float_ord::FloatOrd;
 use readings_probe::Probe;
-use tract_core::num_traits::Zero;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
+use tract_core::num_traits::Zero;
 use tract_core::tract_data::itertools::Itertools;
 use tract_hir::internal::*;
 use tract_libcli::profile::BenchLimits;
@@ -117,8 +117,9 @@ pub fn bench_tg(
     // Warmup
     if !limits.warmup_loops.is_zero() || !limits.warmup_time.is_zero() {
         let mut iters = 0;
-        let max_loops = if limits.warmup_loops == 0 { usize::MAX } else { limits.warmup_loops };
-        let max_time = if limits.warmup_time.is_zero() { Duration::MAX } else { limits.warmup_time };
+        let max_loops = if limits.warmup_loops.is_zero() { usize::MAX } else { limits.warmup_loops };
+        let max_time =
+            if limits.warmup_time.is_zero() { Duration::MAX } else { limits.warmup_time };
         let start_warmup = Instant::now();
         info!("TG warming before profiling...");
         while iters < max_loops && start_warmup.elapsed() < max_time {
