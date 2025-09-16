@@ -168,7 +168,6 @@ type NodeOpaqueFacts = TVec<Option<Box<dyn OpaqueFact>>>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceResolvedMemSchema {
     pub offsets_by_node: Vec<Option<TVec<TVec<usize>>>>,
-    pub opaque_facts: Vec<NodeOpaqueFacts>,
     pub memory_size: usize,
 }
 
@@ -296,7 +295,6 @@ impl DeviceMemSchema {
     pub fn resolve(&self, symbols: &SymbolValues) -> TractResult<DeviceResolvedMemSchema> {
         Ok(DeviceResolvedMemSchema {
             offsets_by_node: self.compute_offset_by_node(symbols)?,
-            opaque_facts: self.opaque_facts.clone(),
             memory_size: self.eval_memory_size(symbols)?.try_into()?,
         })
     }

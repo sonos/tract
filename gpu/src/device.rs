@@ -19,7 +19,7 @@ pub trait DeviceContext: Downcast + dyn_clone::DynClone + Send + Sync {
     ) -> TractResult<Box<dyn OwnedDeviceTensor>>;
     fn uninitialized_device_opaque_tensor(
         &self,
-        opaque_fact: &dyn OpaqueFact,
+        opaque_fact: Box<dyn OpaqueFact>,
     ) -> TractResult<Box<dyn OwnedDeviceTensor>>;
     fn synchronize(&self) -> TractResult<()>;
 }

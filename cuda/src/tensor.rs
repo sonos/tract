@@ -73,7 +73,7 @@ impl CudaTensor {
         })
     }
 
-    pub fn uninitialized_opaque(opaque_fact: &dyn OpaqueFact) -> TractResult<Self> {
+    pub fn uninitialized_opaque(opaque_fact: Box<dyn OpaqueFact>) -> TractResult<Self> {
         if let Some(bqf) = opaque_fact.downcast_ref::<BlockQuantFact>() {
             let shape = bqf.shape();
             let format = bqf.format.clone();
@@ -111,10 +111,6 @@ impl CudaTensor {
 
     pub fn opaque_fact(&self) -> Option<&dyn OpaqueFact> {
         self.opaque_fact.as_deref()
-    }
-
-    pub fn opaque_fact_mut(&mut self) -> Option<&mut dyn OpaqueFact> {
-        self.opaque_fact.as_deref_mut()
     }
 }
 

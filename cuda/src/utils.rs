@@ -4,8 +4,8 @@ use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::*;
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::ops::GgmlQuantQ81Fact;
 use crate::Q40_ROW_PADDING;
+use crate::ops::GgmlQuantQ81Fact;
 use crate::tensor::CudaTensor;
 
 // Code copied from Cudarc for checking Cuda presence
@@ -79,9 +79,7 @@ pub fn get_ggml_q81_fact(t: &DeviceTensor) -> Option<GgmlQuantQ81Fact> {
             .opaque_fact()
             .map(|of| of.downcast_ref::<GgmlQuantQ81Fact>().unwrap().clone())
     } else if let DeviceTensor::ArenaView(t) = t {
-        t.opaque_fact().map(|of|
-            of.downcast_ref::<GgmlQuantQ81Fact>().unwrap().clone()
-        )
+        t.opaque_fact().map(|of| of.downcast_ref::<GgmlQuantQ81Fact>().unwrap().clone())
     } else {
         None
     }

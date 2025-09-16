@@ -380,7 +380,8 @@ fn dispatch_ggml_matmul_q40(
     let padded_k = params.k.next_multiple_of(Q40_ROW_PADDING);
     let n_blocks = padded_k / Q4_0.block_len(); // padded Q40 weights
 
-    let a_stride_0 = padded_k * params.m * Q8_1.block_bytes() / (Q8_1.block_len() * size_of::<i32>());
+    let a_stride_0 =
+        padded_k * params.m * Q8_1.block_bytes() / (Q8_1.block_len() * size_of::<i32>());
     let b_stride_0 = n_blocks * params.n;
     let batch_ratio = params.a_batch / params.b_batch;
 
