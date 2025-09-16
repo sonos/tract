@@ -39,7 +39,7 @@ impl BenchLimits {
         let max_time = if self.warmup_time.is_zero() { Duration::MAX } else { self.warmup_time };
 
         let start_warmup = Instant::now();
-        debug!("Warming up before profiling...");
+        info!("Warming up before profiling...");
         while iters < max_loops && start_warmup.elapsed() < max_time {
             if state.model().properties().contains_key("pulse.delay") {
                 state.run(inputs.sources[0].clone())?;
@@ -50,7 +50,7 @@ impl BenchLimits {
             }
             iters += 1;
         }
-        debug!("Done warming up.");
+        info!("Done warming up.");
 
         Ok(())
     }
