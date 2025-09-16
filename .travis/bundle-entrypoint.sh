@@ -166,8 +166,12 @@ then
     do
         case $backend in
             cpu) extra="";;
-            metal) extra="--metal";;
-            cuda) extra="--cuda";;
+            metal) extra="--metal"
+                   BENCH_OPTS="--warmup-loops 1"
+                   ;;
+            cuda) extra="--cuda"
+                  BENCH_OPTS="--warmup-loops 1"
+                  ;;
         esac
         llm_bench llama-3_2-3B-q40ef32-516 $backend $CACHEDIR/Llama-3.2-3B-q40ef32.516.nnef.tgz $extra
         llm_bench llama-3_2-1B-q40ef32-516 $backend $CACHEDIR/Llama-3.2-1B-q40ef32.516.nnef.tgz $extra
