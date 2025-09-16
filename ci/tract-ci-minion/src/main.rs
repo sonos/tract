@@ -365,6 +365,9 @@ fn main_loop(args: &Args) -> Result<()> {
                     }
                 }
                 Err(e) => {
+                    if args.once {
+                        return Err(e);
+                    }
                     log::error!("{e:?}");
                 }
             }
