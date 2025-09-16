@@ -1,16 +1,14 @@
-use std::fmt;
-use std::time::Instant;
 use cudarc::driver::{LaunchConfig, PushKernelArg};
 use derive_new::new;
-use tract_core::internal::tract_smallvec::ToSmallVec;
+use std::fmt;
 use tract_core::internal::*;
-use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0, Q8_1};
+use tract_core::tract_linalg::block_quant::{BlockQuant, Q8_1};
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::context::{cuda_context, TractCudaStream};
-use crate::kernels::matmul::ggml::{squeeze_batch_axes, MMQ_X_MAX};
-use crate::kernels::{get_cuda_view, get_sliced_cuda_view, LibraryName};
 use crate::Q40_ROW_PADDING;
+use crate::context::{TractCudaStream, cuda_context};
+use crate::kernels::matmul::ggml::{MMQ_X_MAX, squeeze_batch_axes};
+use crate::kernels::{LibraryName, get_cuda_view};
 
 pub(crate) const QK8_1: usize = 32;
 
@@ -63,7 +61,8 @@ impl GgmlQuantQ81 {
         let padded_k = k.next_multiple_of(Q40_ROW_PADDING);
 
         if m > 8 {
-            let func = cuda_context().load_pipeline(LibraryName::GgmlQ, "quantize_mmq_q8_1".to_string())?;
+            let func = cuda_context()
+                .load_pipeline(LibraryName::GgmlQ, "quantize_mmq_q8_1".to_string())?;
             let mut launch_args = stream.launch_builder(&func);
             launch_args.arg(&i_view);
             launch_args.arg(&o_view);

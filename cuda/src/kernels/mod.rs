@@ -112,18 +112,17 @@ fn tensor_size(t: &DeviceTensor) -> usize {
             let cuda_tensor =
                 ot.downcast_ref::<CudaTensor>().expect("Non Cuda-Tensor in a Cuda Context");
             cuda_tensor.opaque_fact()
-        },
-        DeviceTensor::ArenaView(av) => {
-            av.opaque_fact()
         }
+        DeviceTensor::ArenaView(av) => av.opaque_fact(),
     };
 
-    if let Some(of) = opaque_fact
-    {
-        of.buffer_sizes().iter().sum::<TDim>().as_i64().expect("Symbols should be resolved at this point") as usize
-    }
-    else 
-    {
+    if let Some(of) = opaque_fact {
+        of.buffer_sizes()
+            .iter()
+            .sum::<TDim>()
+            .as_i64()
+            .expect("Symbols should be resolved at this point") as usize
+    } else {
         t.len() * t.datum_type().size_of()
     }
 }

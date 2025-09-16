@@ -41,12 +41,12 @@ impl<K: GemmKernel> CudaGemm<K> {
             let out_shape = self.kernel.output_shape(&a.shape, &b.shape);
             Ok(tvec![a.datum_type().unwrap().fact(out_shape)])
         } else if let Some(a_bqf) = as_quant_fact(inputs[1], &Q4_0) {
-            let Some(b_ggml_qf) = inputs[0].opaque_fact.as_ref().and_then(|of| of.downcast_ref::<GgmlQuantQ81Fact>())
-            else { 
+            let Some(b_ggml_qf) =
+                inputs[0].opaque_fact.as_ref().and_then(|of| of.downcast_ref::<GgmlQuantQ81Fact>())
+            else {
                 bail!("Expected GGML Q81 activations for Q40 MM")
             };
-            let a_shape: ShapeFact = 
-                a.shape.iter().cloned().chain(b_ggml_qf.in_shape()).collect();
+            let a_shape: ShapeFact = a.shape.iter().cloned().chain(b_ggml_qf.in_shape()).collect();
             let b_shape: ShapeFact =
                 b.shape.iter().cloned().chain(a_bqf.shape().iter().map(|d| d.to_dim())).collect();
             let out_shape = self.kernel.output_shape(&a_shape, &b_shape);
@@ -78,7 +78,13 @@ impl<K: GemmKernel> EvalOp for CudaGemm<K> {
         ensure!((a.datum_type() == b.datum_type()));
 
         let a_shape = get_ggml_q81_fact(a)
-            .map(|bqf| a.shape().iter().cloned().chain(bqf.in_shape().iter().map(|d| d.as_i64().unwrap() as usize)).collect())
+            .map(|bqf| {
+                a.shape()
+                    .iter()
+                    .cloned()
+                    .chain(bqf.in_shape().iter().map(|d| d.as_i64().unwrap() as usize))
+                    .collect()
+            })
             .unwrap_or(a.shape().to_vec());
         let b_shape = get_quant_fact(b, &Q4_0)
             .map(|bqf| b.shape().iter().cloned().chain(bqf.shape().iter().copied()).collect())

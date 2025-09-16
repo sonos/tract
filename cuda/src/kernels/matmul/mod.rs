@@ -268,7 +268,13 @@ impl<M: GemmKernel> GemmImpl<M> {
 
         let a_shape = q81_a
             .clone()
-            .map(|bqf| a.shape().iter().cloned().chain(bqf.in_shape().iter().map(|d| d.as_i64().unwrap() as usize)).collect())
+            .map(|bqf| {
+                a.shape()
+                    .iter()
+                    .cloned()
+                    .chain(bqf.in_shape().iter().map(|d| d.as_i64().unwrap() as usize))
+                    .collect()
+            })
             .unwrap_or(a.shape().to_vec());
 
         let b_shape = q40_b
@@ -295,10 +301,16 @@ impl<M: GemmKernel> GemmImpl<M> {
         let q81_a = get_ggml_q81_fact(a);
         let q40_b = get_quant_fact(b, &Q4_0);
         ensure!(q40_b.is_none() || (q40_b.is_some() && q81_a.is_some()));
-        
+
         let a_shape = q81_a
             .clone()
-            .map(|bqf| a.shape().iter().cloned().chain(bqf.in_shape().iter().map(|d| d.as_i64().unwrap() as usize)).collect())
+            .map(|bqf| {
+                a.shape()
+                    .iter()
+                    .cloned()
+                    .chain(bqf.in_shape().iter().map(|d| d.as_i64().unwrap() as usize))
+                    .collect()
+            })
             .unwrap_or(a.shape().to_vec());
 
         let b_shape = q40_b
@@ -324,14 +336,23 @@ impl<M: GemmKernel> GemmImpl<M> {
 
         for d in dispatches {
             let (a_len, b_len) = if d.q40_b {
-                (q81_a.clone().unwrap().mem_size().as_i64().expect("Symbols should known at this point") as usize,
-                 d.b_strides[0] as usize * d.b_batch / Q4_0.block_len() * Q4_0.block_bytes())
+                (
+                    q81_a
+                        .clone()
+                        .unwrap()
+                        .mem_size()
+                        .as_i64()
+                        .expect("Symbols should known at this point") as usize,
+                    d.b_strides[0] as usize * d.b_batch / Q4_0.block_len() * Q4_0.block_bytes(),
+                )
             } else {
-                (d.a_strides[0] as usize * d.a_batch * d.dts[0].size_of(),
-                 d.b_strides[0] as usize * d.b_batch * d.dts[1].size_of())
+                (
+                    d.a_strides[0] as usize * d.a_batch * d.dts[0].size_of(),
+                    d.b_strides[0] as usize * d.b_batch * d.dts[1].size_of(),
+                )
             };
 
-            let a_view = get_sliced_cuda_view(a, d.a_offset, a_len,)?;
+            let a_view = get_sliced_cuda_view(a, d.a_offset, a_len)?;
             let b_view = get_sliced_cuda_view(b, d.b_offset, b_len)?;
             let mut c_view = get_sliced_cuda_view_mut(
                 c,
