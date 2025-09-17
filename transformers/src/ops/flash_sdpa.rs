@@ -36,9 +36,9 @@ impl TypedOp for FlashAttnGqaOp {
         let v = inputs[2];
 
         // dtype checks
-        ensure!(q.datum_type == f32::datum_type(), "Q must be f32");
-        ensure!(k.datum_type == f32::datum_type(), "K must be f32");
-        ensure!(v.datum_type == f32::datum_type(), "V must be f32");
+        ensure!(q.datum_type.is_float(), "Q must be floating point");
+        ensure!(k.datum_type.is_float(), "K must be floating point");
+        ensure!(v.datum_type.is_float(), "V must be floating point");
 
         // rank checks
         ensure!(q.rank() == 4, "Q must be rank-4 (B, Hq, Tq, D)");
@@ -64,7 +64,7 @@ impl TypedOp for FlashAttnGqaOp {
         }
 
         // Output has same shape and dtype as Q.
-        Ok(tvec!(TypedFact::dt_shape(f32::datum_type(), q.shape.clone())))
+        Ok(tvec!(q.without_value()))
     }
 
     as_op!();
@@ -76,11 +76,16 @@ impl EvalOp for FlashAttnGqaOp {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let (q_t, k_t, v_t) = args_3!(inputs);
+        let (q, k, v) = args_3!(inputs);
 
-        let q = q_t.to_array_view::<f32>()?.into_dimensionality::<Ix4>()?;
-        let k = k_t.to_array_view::<f32>()?.into_dimensionality::<Ix4>()?;
-        let v = v_t.to_array_view::<f32>()?.into_dimensionality::<Ix4>()?;
+        let input_dt = q.datum_type();
+
+        let q = q.cast_to::<f32>()?;
+        let k = k.cast_to::<f32>()?;
+        let v = v.cast_to::<f32>()?;
+        let q = q.to_array_view::<f32>()?.into_dimensionality::<Ix4>()?;
+        let k = k.to_array_view::<f32>()?.into_dimensionality::<Ix4>()?;
+        let v = v.to_array_view::<f32>()?.into_dimensionality::<Ix4>()?;
 
         let (batch_size, num_q_heads, query_len, head_dim) =
             (q.shape()[0], q.shape()[1], q.shape()[2], q.shape()[3]);
@@ -100,7 +105,7 @@ impl EvalOp for FlashAttnGqaOp {
         // Run flash attention
         let out = self.flash_attention_gqa(q4.view(), k4.view(), v4.view());
 
-        Ok(tvec!(out.into_tvalue()))
+        Ok(tvec!(out.into_tensor().cast_to_dt(input_dt)?.into_owned().into_tvalue()))
     }
 }
 
