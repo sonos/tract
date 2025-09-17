@@ -17,6 +17,7 @@ fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
             || node.op_is::<crate::ops::CudaSlice>()
             || node.op_is::<crate::ops::CudaMultiBroadcastTo>()
             || node.op_is::<crate::ops::CudaDynKVCache>()
+            || node.op_is::<crate::ops::CudaGgmlQuantQ81Op>()
     })
 }
 
