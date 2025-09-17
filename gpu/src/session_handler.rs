@@ -58,9 +58,10 @@ pub fn make_scalar_opaque_tensor_for_node(
     node_id: usize,
     opaque_fact: Box<dyn OpaqueFact>,
 ) -> TractResult<DeviceTensor> {
-    session
+    match session
         .scratch_extensions
-        .get::<DeviceMemoryPool>()
-        .map(|mem| mem.scalar_opaque_tensor_for_node(node_id, opaque_fact.clone()))
-        .unwrap_or_else(|| DeviceTensor::uninitialized_opaque(opaque_fact))
+        .get::<DeviceMemoryPool>() {
+            Some(mem) => mem.scalar_opaque_tensor_for_node(node_id, opaque_fact),
+            None => DeviceTensor::uninitialized_opaque(opaque_fact)
+        }
 }
