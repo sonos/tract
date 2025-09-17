@@ -25,7 +25,7 @@ impl GgmlQuantQ81Fact {
 impl OpaqueFact for GgmlQuantQ81Fact {
     fn same_as(&self, other: &dyn OpaqueFact) -> bool {
         let Some(other) = other.downcast_ref::<Self>() else { return false };
-        (other.in_shape == self.in_shape) && (other.out_shape == other.out_shape)
+        (other.in_shape == self.in_shape) && (other.out_shape == self.out_shape)
     }
 
     fn buffer_sizes(&self) -> TVec<TDim> {
