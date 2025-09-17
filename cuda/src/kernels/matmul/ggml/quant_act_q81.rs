@@ -71,7 +71,7 @@ impl GgmlQuantQ81 {
             launch_args.arg(&i_view);
             launch_args.arg(&o_view);
             launch_args.arg(&k);
-            launch_args.set_slice(&in_strides);
+            launch_args.set_slice(in_strides);
             launch_args.set_slice(&out_shape[1..]);
 
             let cfg = LaunchConfig {
@@ -91,7 +91,7 @@ impl GgmlQuantQ81 {
             launch_args.arg(&i_view);
             launch_args.arg(&o_view);
             launch_args.arg(&k);
-            launch_args.set_slice(&input.strides());
+            launch_args.set_slice(input.strides());
             launch_args.set_slice(&out_shape[1..]);
 
             let cfg = LaunchConfig {
