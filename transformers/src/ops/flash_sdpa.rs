@@ -171,9 +171,7 @@ impl FlashAttnGqaOp {
                         let alpha = if m.is_finite() { (m - new_m).exp() } else { 0.0 };
 
                         if alpha != 1.0 {
-                            for d_idx in 0..head_dim {
-                                acc[d_idx] *= alpha;
-                            }
+                            acc.iter_mut().for_each(|a| *a *= alpha);
                             l *= alpha;
                         }
 
