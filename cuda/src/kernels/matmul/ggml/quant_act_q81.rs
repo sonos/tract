@@ -61,13 +61,15 @@ impl GgmlQuantQ81 {
         let mut out_shape = input.shape().to_owned();
         out_shape[rank - 1] = padded_k;
         if m > 8 {
+            let in_strides = input.strides();
+            let fast_path_str = if in_strides[rank - 1] == 1 { "fast_" } else { "" };
             let func = cuda_context()
-                .load_pipeline(LibraryName::GgmlQ, format!("quantize_mmq_q8_1_nd{}", input.rank()))?;
+                .load_pipeline(LibraryName::GgmlQ, format!("quantize_mmq_q8_1_{fast_path_str}nd{}", input.rank()))?;
             let mut launch_args = stream.launch_builder(&func);
             launch_args.arg(&i_view);
             launch_args.arg(&o_view);
             launch_args.arg(&k);
-            launch_args.set_slice(&input.strides());
+            launch_args.set_slice(&in_strides);
             launch_args.set_slice(&out_shape[1..]);
 
             let cfg = LaunchConfig {
