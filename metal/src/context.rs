@@ -215,7 +215,7 @@ impl DeviceContext for MetalContext {
 
     fn uninitialized_device_opaque_tensor(
         &self,
-        opaque_fact: &dyn OpaqueFact,
+        opaque_fact: Box<dyn OpaqueFact>,
     ) -> TractResult<Box<dyn OwnedDeviceTensor>> {
         if let Some(bqf) = opaque_fact.downcast_ref::<BlockQuantFact>() {
             let blocks = bqf.shape().iter().product::<usize>() / bqf.format.block_len();
