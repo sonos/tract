@@ -90,6 +90,75 @@ compute_mmq_q81_block(float4 xi, int64_t ib, int64_t iqs, block_q8_1_mmq *y) {
   y[ib].ds4[iqs / 32] = make_half2(d, sum);
 }
 
+extern "C" __global__ void quantize_mmq_q8_1_fast_nd2(
+    const float *__restrict__ x, void *__restrict__ vy, const int64_t k,
+    const int64_t in_strides_0, const int64_t in_strides_1,
+    const int64_t padded_k) {
+
+  const int64_t i0 = ((int64_t)blockDim.x * blockIdx.y + threadIdx.x) * 4;
+
+  if (i0 >= padded_k) {
+    return;
+  }
+
+  const int64_t i1 = blockIdx.x;
+
+  const int64_t i00 = i0;
+  const int64_t i01 = i1;
+
+  const float4 *x4 = (const float4 *)x;
+
+  const int64_t ib0 =
+      blockIdx.z * ((int64_t)gridDim.x * gridDim.y * blockDim.x /
+                    QK8_1); // first block of channel
+  const int64_t ib = ib0 + (i0 / (4 * QK8_1)) * gridDim.x +
+                     blockIdx.x;        // block index in channel
+  const int64_t iqs = i0 % (4 * QK8_1); // quant index in block
+
+  // Load 4 floats per thread and calculate max. abs. value between them:
+  const float4 xi = i0 < k ? x4[(i01 * in_strides_0 + i00) / 4]
+                           : make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+
+  compute_mmq_q81_block(xi, ib, iqs, (block_q8_1_mmq *)vy);
+}
+
+extern "C" __global__ void quantize_mmq_q8_1_fast_nd3(
+    const float *__restrict__ x, void *__restrict__ vy, const int64_t k,
+    const int64_t in_strides_0, const int64_t in_strides_1,
+    const int64_t in_strides_2,
+    const int out_shape_1, const int64_t padded_k) {
+
+  const int64_t i0 = ((int64_t)blockDim.x * blockIdx.y + threadIdx.x) * 4;
+
+  if (i0 >= padded_k) {
+    return;
+  }
+
+  const int64_t i1 = blockIdx.x;
+  const int64_t i2 = blockIdx.z;
+
+  const int64_t i00 = i0;
+  const int64_t i01 = i1;
+  const int64_t i02 = i2;
+
+  const float4 *x4 = (const float4 *)x;
+
+  const int64_t ib0 =
+      blockIdx.z * ((int64_t)gridDim.x * gridDim.y * blockDim.x /
+                    QK8_1); // first block of channel
+  const int64_t ib = ib0 + (i0 / (4 * QK8_1)) * out_shape_1 +
+                     blockIdx.x;        // block index in channel
+  const int64_t iqs = i0 % (4 * QK8_1); // quant index in block
+
+  // Load 4 floats per thread and calculate max. abs. value between them:
+  const float4 xi = i0 < k ? x4[(i02 * in_strides_0 +
+                                 i01 * in_strides_1 + i00) /
+                                4]
+                           : make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+
+  compute_mmq_q81_block(xi, ib, iqs, (block_q8_1_mmq *)vy);
+}
+
 extern "C" __global__ void quantize_mmq_q8_1_fast_nd4(
     const float *__restrict__ x, void *__restrict__ vy, const int64_t k,
     const int64_t in_strides_0, const int64_t in_strides_1,
@@ -123,6 +192,47 @@ extern "C" __global__ void quantize_mmq_q8_1_fast_nd4(
   // Load 4 floats per thread and calculate max. abs. value between them:
   const float4 xi = i0 < k ? x4[(i03 * in_strides_0 + i02 * in_strides_1 +
                                  i01 * in_strides_2 + i00) /
+                                4]
+                           : make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+
+  compute_mmq_q81_block(xi, ib, iqs, (block_q8_1_mmq *)vy);
+}
+
+extern "C" __global__ void quantize_mmq_q8_1_fast_nd5(
+    const float *__restrict__ x, void *__restrict__ vy, const int64_t k,
+    const int64_t in_strides_0, const int64_t in_strides_1,
+    const int64_t in_strides_2, const int64_t in_strides_3, const int64_t in_strides_4,
+    const int out_shape_1, const int out_shape_2, const int out_shape_3, const int64_t padded_k) {
+
+  const int64_t i0 = ((int64_t)blockDim.x * blockIdx.y + threadIdx.x) * 4;
+
+  if (i0 >= padded_k) {
+    return;
+  }
+
+  const int64_t i1 = blockIdx.x;
+  const int64_t i2 = blockIdx.z % out_shape_2;
+  const int64_t i3 = (blockIdx.z / out_shape_2) % out_shape_1;
+  const int64_t i4 = blockIdx.z / (out_shape_2 * out_shape_1);
+
+  const int64_t i00 = i0;
+  const int64_t i01 = i1;
+  const int64_t i02 = i2;
+  const int64_t i03 = i3;
+  const int64_t i04 = i4;
+
+  const float4 *x4 = (const float4 *)x;
+
+  const int64_t ib0 =
+      blockIdx.z * ((int64_t)gridDim.x * gridDim.y * blockDim.x /
+                    QK8_1); // first block of channel
+  const int64_t ib = ib0 + (i0 / (4 * QK8_1)) * out_shape_3 +
+                     blockIdx.x;        // block index in channel
+  const int64_t iqs = i0 % (4 * QK8_1); // quant index in block
+
+  // Load 4 floats per thread and calculate max. abs. value between them:
+  const float4 xi = i0 < k ? x4[(i04 * in_strides_4 + i03 * in_strides_1 +
+                                 i02 * in_strides_2 + i01 * in_strides_3 + i00) /
                                 4]
                            : make_float4(0.0f, 0.0f, 0.0f, 0.0f);
 
