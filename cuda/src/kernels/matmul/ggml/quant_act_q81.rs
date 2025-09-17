@@ -5,6 +5,7 @@ use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q8_1};
 use tract_gpu::tensor::DeviceTensor;
 
+use crate::kernels::launch_args::LaunchArgsExt;
 use crate::Q40_ROW_PADDING;
 use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::matmul::ggml::{MMQ_X_MAX, squeeze_batch_axes};
@@ -49,6 +50,7 @@ impl GgmlQuantQ81 {
         let i_view = get_cuda_view(input);
         let o_view = get_cuda_view(output);
 
+        let rank = input.rank();
         let squeezed_shape = squeeze_batch_axes(input.shape())?;
 
         let a_batch = squeezed_shape[0];
@@ -85,17 +87,15 @@ impl GgmlQuantQ81 {
             };
             unsafe { launch_args.launch(cfg) };
         } else {
-            let func = context.load_pipeline(LibraryName::GgmlQ, "quantize_q8_1".to_string())?;
+            let mut out_shape = input.shape().to_owned();
+            out_shape[rank - 1] = padded_k;
+            let func = context.load_pipeline(LibraryName::GgmlQ, format!("quantize_q8_1_nd{}", input.rank()))?;
             let mut launch_args = stream.launch_builder(&func);
             launch_args.arg(&i_view);
             launch_args.arg(&o_view);
             launch_args.arg(&k);
-            launch_args.arg(&a_strides[1]);
-            launch_args.arg(&a_strides[0]);
-            launch_args.arg(&sample_stride_a);
-            launch_args.arg(&padded_k);
-            launch_args.arg(&m);
-            launch_args.arg(&a_batch);
+            launch_args.set_slice(&input.strides());
+            launch_args.set_slice(&out_shape[1..]);
 
             let cfg = LaunchConfig {
                 grid_dim: (padded_k.div_ceil(QUANTIZE_BLOCK_SIZE) as _, m as _, a_batch as _),

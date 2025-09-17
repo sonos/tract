@@ -28,6 +28,7 @@ const ARRAY_OPS: &str = include_str!("ptx/array.ptx");
 const NN_OPS: &str = include_str!("ptx/nn.ptx");
 const GGML_MM_MV: &str = include_str!("ptx/mm_mv.ptx");
 const GGML_MM_MV_Q: &str = include_str!("ptx/mm_mv_q.ptx");
+const GGML_QUANTIZE: &str = include_str!("ptx/quantize.ptx");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LibraryName {
@@ -37,6 +38,7 @@ pub enum LibraryName {
     NN,
     Ggml,
     GgmlQ,
+    Quant
 }
 
 impl LibraryName {
@@ -48,6 +50,7 @@ impl LibraryName {
             Self::NN => NN_OPS,
             Self::Ggml => GGML_MM_MV,
             Self::GgmlQ => GGML_MM_MV_Q,
+            Self::Quant => GGML_QUANTIZE,
         }
     }
 }

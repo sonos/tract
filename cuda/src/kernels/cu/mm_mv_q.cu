@@ -1,6 +1,6 @@
-#include "utils.cuh"
 #include <cstdint>
 #include <cuda_fp16.h>
+#include "quantize.cu"
 
 // Check CC Version
 #define CUDA_CC_TURING 750
@@ -11,186 +11,15 @@
 #define VDR_Q4_0_Q8_1_MMVQ 2
 #define VDR_Q4_0_Q8_1_MMQ 4
 
-#define QK4_0 32
-#define QI4_0 (QK4_0 / (4 * QR4_0))
-#define QR4_0 2
-
 #define N_WARPS 8
 
 #define MMQ_Y 128
-
-#define QK8_0 32
-#define QI8_0 (QK8_0 / (4 * QR8_0))
-#define QR8_0 1
-
-#define QK8_1 32
-#define QI8_1 (QK8_1 / (4 * QR8_1))
-#define QR8_1 1
 
 #define MMQ_ITER_K 256
 #define MMQ_TILE_Y_K (WARP_SIZE + WARP_SIZE / QI8_1)
 
 #define PAD(x, n) (((x) + (n) - 1) & ~((n) - 1))
 #define MMQ_MMA_TILE_X_K_Q8_0 (2 * WARP_SIZE + 2 * WARP_SIZE / QI8_0 + 4)
-
-typedef struct {
-  half d;                // delta
-  uint8_t qs[QK4_0 / 2]; // nibbles / quants
-} block_q4_0;
-
-typedef struct {
-  half2 ds;
-  int8_t qs[QK8_1]; // quants
-} block_q8_1;
-static_assert(sizeof(block_q8_1) == 2 * sizeof(half) + QK8_1,
-              "wrong q8_1 block size/padding");
-
-struct block_q8_1_mmq {
-  // The y float data is converted to a data layout that can simply be copied to
-  // shared memory as a contiguous block. The y float data is first grouped as
-  // blocks of 128 values. These blocks are then treated as individual data
-  // values and transposed.
-  //
-  // To avoid shared memory bank conflicts each block is padded with 16 bytes.
-  // This padding is also used to store block scales/partial sums.
-  // The scales multiplied with the quantized data are equal to the unquantized
-  // values. The partial sums are obtained by summing up a subgroup of the
-  // contained values (prior to quantization)
-  //     and are only needed for performance reasons.
-  half2 ds4[4]; // 1 16 bit scale + 1 16 bit partial sum per 32 values, stored
-                // as d0,s0,d1,s1,d2,s2,d3,s3
-  int8_t qs[4 * QK8_1]; // 128 values quantized to 8 bit each
-};
-static_assert(sizeof(block_q8_1_mmq) == 4 * QK8_1 + 4 * sizeof(half2),
-              "Unexpected block_q8_1_mmq size");
-
-extern "C" __global__ void
-quantize_mmq_q8_1(const float *__restrict__ x, void *__restrict__ vy,
-                  const int64_t ne00, const int64_t s01, const int64_t s02,
-                  const int64_t s03, const int64_t ne0, const int ne1,
-                  const int ne2) {
-
-  constexpr int vals_per_scale = 32;
-  constexpr int vals_per_sum = 32;
-
-  const int64_t i0 = ((int64_t)blockDim.x * blockIdx.y + threadIdx.x) * 4;
-
-  if (i0 >= ne0) {
-    return;
-  }
-
-  const int64_t i1 = blockIdx.x;
-  const int64_t i2 = blockIdx.z % ne2;
-  const int64_t i3 = blockIdx.z / ne2;
-
-  const int64_t i00 = i0;
-  const int64_t i01 = i1;
-  const int64_t i02 = i2;
-  const int64_t i03 = i3;
-
-  const float4 *x4 = (const float4 *)x;
-
-  block_q8_1_mmq *y = (block_q8_1_mmq *)vy;
-
-  const int64_t ib0 =
-      blockIdx.z * ((int64_t)gridDim.x * gridDim.y * blockDim.x /
-                    QK8_1); // first block of channel
-  const int64_t ib =
-      ib0 + (i0 / (4 * QK8_1)) * ne1 + blockIdx.x; // block index in channel
-  const int64_t iqs = i0 % (4 * QK8_1);            // quant index in block
-
-  // Load 4 floats per thread and calculate max. abs. value between them:
-  const float4 xi = i0 < ne00
-                        ? x4[(i03 * s03 + i02 * s02 + i01 * s01 + i00) / 4]
-                        : make_float4(0.0f, 0.0f, 0.0f, 0.0f);
-  float amax = fabsf(xi.x);
-  amax = fmaxf(amax, fabsf(xi.y));
-  amax = fmaxf(amax, fabsf(xi.z));
-  amax = fmaxf(amax, fabsf(xi.w));
-
-  // Exchange max. abs. value between vals_per_scale/4 threads.
-#pragma unroll
-  for (int offset = vals_per_scale / 8; offset > 0; offset >>= 1) {
-    amax = fmaxf(amax, __shfl_xor_sync(0xFFFFFFFF, amax, offset, WARP_SIZE));
-  }
-
-  float sum;
-  sum = xi.x + xi.y + xi.z + xi.w;
-
-  // Calculate sums across vals_per_sum/4 threads.
-#pragma unroll
-  for (int offset = vals_per_sum / 8; offset > 0; offset >>= 1) {
-    sum += __shfl_xor_sync(0xFFFFFFFF, sum, offset, WARP_SIZE);
-  }
-
-  const float d_inv = 127.0f / amax;
-  char4 q;
-  q.x = roundf(xi.x * d_inv);
-  q.y = roundf(xi.y * d_inv);
-  q.z = roundf(xi.z * d_inv);
-  q.w = roundf(xi.w * d_inv);
-
-  // Write back 4 int8 values as a single 32 bit value for better memroy
-  // bandwidth:
-  char4 *yqs4 = (char4 *)y[ib].qs;
-  yqs4[iqs / 4] = q;
-
-  if (iqs % 32 != 0) {
-    return;
-  }
-
-  const float d = 1.0f / d_inv;
-  y[ib].ds4[iqs / 32] = make_half2(d, sum);
-}
-
-extern "C" __global__ void quantize_q8_1(const float *__restrict__ x,
-                                         void *__restrict__ vy,
-                                         const int64_t ne00, const int64_t s01,
-                                         const int64_t s02, const int64_t s03,
-                                         const int64_t ne0, const int ne1,
-                                         const int ne2) {
-  const int64_t i0 = (int64_t)blockDim.x * blockIdx.x + threadIdx.x;
-
-  if (i0 >= ne0) {
-    return;
-  }
-
-  const int64_t i1 = blockIdx.y;
-  const int64_t i2 = blockIdx.z % ne2;
-  const int64_t i3 = blockIdx.z / ne2;
-
-  const int64_t &i00 = i0;
-  const int64_t &i01 = i1;
-  const int64_t &i02 = i2;
-  const int64_t &i03 = i3;
-
-  const int64_t i_cont = ((i3 * ne2 + i2) * ne1 + i1) * ne0 + i0;
-
-  block_q8_1 *y = (block_q8_1 *)vy;
-
-  const int64_t ib = i_cont / QK8_1;  // block index
-  const int64_t iqs = i_cont % QK8_1; // quant index
-
-  const float xi =
-      i0 < ne00 ? x[i03 * s03 + i02 * s02 + i01 * s01 + i00] : 0.0f;
-  float amax = fabsf(xi);
-  float sum = xi;
-
-  amax = warp_reduce_max(amax);
-  sum = warp_reduce_sum(sum);
-
-  const float d = amax / 127;
-  const int8_t q = amax == 0.0f ? 0 : roundf(xi / d);
-
-  y[ib].qs[iqs] = q;
-
-  if (iqs > 0) {
-    return;
-  }
-
-  reinterpret_cast<half &>(y[ib].ds.x) = d;
-  reinterpret_cast<half &>(y[ib].ds.y) = sum;
-}
 
 namespace cuda_mma {
 
