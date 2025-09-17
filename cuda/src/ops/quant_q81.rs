@@ -67,14 +67,15 @@ impl EvalOp for CudaGgmlQuantQ81 {
             let opaque = args_1!(inputs);
             let input = opaque.to_device_tensor()?;
 
-            let resolved_out_fact = 
-            GgmlQuantQ81Fact {
-                in_shape: self.out_fact
+            let resolved_out_fact = GgmlQuantQ81Fact {
+                in_shape: self
+                    .out_fact
                     .in_shape()
                     .iter()
                     .map(|d| d.eval(&session.resolved_symbols))
                     .collect(),
-                out_shape: self.out_fact
+                out_shape: self
+                    .out_fact
                     .out_shape()
                     .iter()
                     .map(|d| d.eval(&session.resolved_symbols))

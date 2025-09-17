@@ -5,9 +5,9 @@ use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q8_1};
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::kernels::launch_args::LaunchArgsExt;
 use crate::Q40_ROW_PADDING;
 use crate::context::{TractCudaStream, cuda_context};
+use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::matmul::ggml::{MMQ_X_MAX, squeeze_batch_axes};
 use crate::kernels::{LibraryName, get_cuda_view};
 
@@ -63,8 +63,10 @@ impl GgmlQuantQ81 {
         if m > 8 {
             let in_strides = input.strides();
             let fast_path_str = if in_strides[rank - 1] == 1 { "fast_" } else { "" };
-            let func = cuda_context()
-                .load_pipeline(LibraryName::GgmlQ, format!("quantize_mmq_q8_1_{fast_path_str}nd{}", input.rank()))?;
+            let func = cuda_context().load_pipeline(
+                LibraryName::GgmlQ,
+                format!("quantize_mmq_q8_1_{fast_path_str}nd{}", input.rank()),
+            )?;
             let mut launch_args = stream.launch_builder(&func);
             launch_args.arg(&i_view);
             launch_args.arg(&o_view);
@@ -83,7 +85,8 @@ impl GgmlQuantQ81 {
             };
             unsafe { launch_args.launch(cfg) };
         } else {
-            let func = context.load_pipeline(LibraryName::GgmlQ, format!("quantize_q8_1_nd{}", input.rank()))?;
+            let func = context
+                .load_pipeline(LibraryName::GgmlQ, format!("quantize_q8_1_nd{}", input.rank()))?;
             let mut launch_args = stream.launch_builder(&func);
             launch_args.arg(&i_view);
             launch_args.arg(&o_view);

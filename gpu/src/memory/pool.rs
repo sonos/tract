@@ -56,8 +56,8 @@ impl DeviceMemoryPool {
         node_id: usize,
         opaque_fact: Box<dyn OpaqueFact>,
     ) -> TractResult<DeviceTensor> {
-        match  self.resolved_schema.offsets_by_node[node_id]
-            .as_ref() {
+        match self.resolved_schema.offsets_by_node[node_id]
+                .as_ref() {
                 Some(offsets) => {
                     ensure!(
                         offsets.len() == 1 && offsets[0].len() == 2,
@@ -74,6 +74,6 @@ impl DeviceMemoryPool {
                                     }.into())
                                             },
                 None => DeviceTensor::uninitialized_opaque(opaque_fact)
-            }
+        }
     }
 }
