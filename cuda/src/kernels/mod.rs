@@ -38,7 +38,7 @@ pub enum LibraryName {
     NN,
     Ggml,
     GgmlQ,
-    Quant
+    Quant,
 }
 
 impl LibraryName {
