@@ -34,11 +34,11 @@ impl OpaqueFact for GgmlQuantQ81Fact {
 }
 
 #[derive(Clone, Debug, Hash)]
-pub struct CudaGgmlQuantQ81Op {
+pub struct CudaGgmlQuantQ81 {
     out_fact: GgmlQuantQ81Fact,
 }
 
-impl CudaGgmlQuantQ81Op {
+impl CudaGgmlQuantQ81 {
     pub fn new(in_shape: &[TDim]) -> TractResult<Self> {
         let in_shape = in_shape.into();
         let out_shape = GgmlQuantQ81::output_shape(&in_shape)?;
@@ -48,7 +48,7 @@ impl CudaGgmlQuantQ81Op {
         Ok(Self { out_fact })
     }
 }
-impl Op for CudaGgmlQuantQ81Op {
+impl Op for CudaGgmlQuantQ81 {
     fn name(&self) -> StaticName {
         "CudaGgmlQuantQ81Op".into()
     }
@@ -56,7 +56,7 @@ impl Op for CudaGgmlQuantQ81Op {
     op_as_typed_op!();
 }
 
-impl EvalOp for CudaGgmlQuantQ81Op {
+impl EvalOp for CudaGgmlQuantQ81 {
     fn eval_with_session(
         &self,
         node_id: usize,
@@ -94,7 +94,7 @@ impl EvalOp for CudaGgmlQuantQ81Op {
     }
 }
 
-impl TypedOp for CudaGgmlQuantQ81Op {
+impl TypedOp for CudaGgmlQuantQ81 {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs.len() == 1);
         tract_gpu::utils::facts_to_device_facts(inputs, |_| {
