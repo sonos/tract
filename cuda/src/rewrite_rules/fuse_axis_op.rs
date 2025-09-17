@@ -17,7 +17,7 @@ fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
             || node.op_is::<crate::ops::CudaSlice>()
             || node.op_is::<crate::ops::CudaMultiBroadcastTo>()
             || node.op_is::<crate::ops::CudaDynKVCache>()
-            || node.op_is::<crate::ops::CudaGgmlQuantQ81Op>()
+            || node.op_is::<crate::ops::CudaGgmlQuantQ81>()
     })
 }
 
@@ -117,7 +117,7 @@ pub fn fuse_axis_op(
         crate::ops::CudaScaledMaskedSoftmax,
         crate::ops::CudaGemm<GgmlGemm>,
         crate::ops::CudaDynKVCache,
-        crate::ops::CudaGgmlQuantQ81Op,
+        crate::ops::CudaGgmlQuantQ81,
     );
 
     // Handle AxisOp::Move operator.
