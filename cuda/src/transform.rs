@@ -370,7 +370,7 @@ fn convert_matmul_to_cuda(
 
     if as_quant_fact(input_facts[1], &Q4_0).is_some() {
         let device_fact = target.outlet_fact(inputs[0])?.to_device_fact()?;
-        let quant_op = ops::CudaGgmlQuantQ81::new(&device_fact.shape.dims())?;
+        let quant_op = ops::CudaGgmlQuantQ81::new(device_fact.shape.dims())?;
         inputs[0] = target.wire_node(node.name.clone() + ".quant_b", quant_op, &[inputs[0]])?[0];
     }
 
