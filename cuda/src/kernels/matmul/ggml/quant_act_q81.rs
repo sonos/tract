@@ -57,24 +57,18 @@ impl GgmlQuantQ81 {
         let m = squeezed_shape[1];
         let k = squeezed_shape[2];
 
-        let a_strides = natural_strides(&[a_batch, m, k]);
-        let sample_stride_a = a_strides[0] * a_batch as isize;
-
         let padded_k = k.next_multiple_of(Q40_ROW_PADDING);
-
+        let mut out_shape = input.shape().to_owned();
+        out_shape[rank - 1] = padded_k;
         if m > 8 {
             let func = cuda_context()
-                .load_pipeline(LibraryName::GgmlQ, "quantize_mmq_q8_1".to_string())?;
+                .load_pipeline(LibraryName::GgmlQ, format!("quantize_mmq_q8_1_nd{}", input.rank()))?;
             let mut launch_args = stream.launch_builder(&func);
             launch_args.arg(&i_view);
             launch_args.arg(&o_view);
             launch_args.arg(&k);
-            launch_args.arg(&a_strides[1]);
-            launch_args.arg(&a_strides[0]);
-            launch_args.arg(&sample_stride_a);
-            launch_args.arg(&padded_k);
-            launch_args.arg(&m);
-            launch_args.arg(&a_batch);
+            launch_args.set_slice(&input.strides());
+            launch_args.set_slice(&out_shape[1..]);
 
             let cfg = LaunchConfig {
                 grid_dim: (
@@ -87,8 +81,6 @@ impl GgmlQuantQ81 {
             };
             unsafe { launch_args.launch(cfg) };
         } else {
-            let mut out_shape = input.shape().to_owned();
-            out_shape[rank - 1] = padded_k;
             let func = context.load_pipeline(LibraryName::GgmlQ, format!("quantize_q8_1_nd{}", input.rank()))?;
             let mut launch_args = stream.launch_builder(&func);
             launch_args.arg(&i_view);
