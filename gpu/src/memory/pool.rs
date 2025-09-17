@@ -56,24 +56,24 @@ impl DeviceMemoryPool {
         node_id: usize,
         opaque_fact: Box<dyn OpaqueFact>,
     ) -> TractResult<DeviceTensor> {
-        self.resolved_schema.offsets_by_node[node_id]
-            .as_ref()
-            .map(|offsets| {
-                ensure!(
-                    offsets.len() == 1 && offsets[0].len() == 2,
-                    "'scalar_opaque_tensor_for_node' is for mono-output nodes only"
-                );
-                Ok(DeviceArenaView {
-                    arena: Arc::clone(&self.storage),
-                    dt: DatumType::Opaque,
-                    len: 1,
-                    shape: tvec!(),
-                    strides: tvec!(),
-                    offset_bytes: offsets[0][1],
-                    opaque_fact: Some(opaque_fact.clone()),
-                }
-                .into())
-            })
-            .unwrap_or_else(|| DeviceTensor::uninitialized_opaque(opaque_fact))
+        match  self.resolved_schema.offsets_by_node[node_id]
+            .as_ref() {
+                Some(offsets) => {
+                    ensure!(
+                        offsets.len() == 1 && offsets[0].len() == 2,
+                        "'scalar_opaque_tensor_for_node' is for mono-output nodes only"
+                    );
+                    Ok(DeviceArenaView {
+                                        arena: Arc::clone(&self.storage),
+                                        dt: DatumType::Opaque,
+                                        len: 1,
+                                        shape: tvec!(),
+                                        strides: tvec!(),
+                                        offset_bytes: offsets[0][1],
+                                        opaque_fact: Some(opaque_fact.clone()),
+                                    }.into())
+                                            },
+                None => DeviceTensor::uninitialized_opaque(opaque_fact)
+            }
     }
 }
