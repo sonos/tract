@@ -4,9 +4,9 @@ use proptest::{
     prop_oneof,
 };
 use tract_core::internal::*;
-use tract_core::ndarray::ArrayD;
+use tract_core::ndarray::{ArrayD, ArrayView4};
 use tract_core::num_traits::Float;
-use tract_ndarray::{s, Array2, Array3, Array4, ArrayView2, Ix3, Ix4, IxDyn};
+use tract_ndarray::{s, Array2, Array4, ArrayView2, Ix3, Ix4, IxDyn};
 use tract_transformers::ops::sdpa::Sdpa;
 
 use crate::tensor;
@@ -193,40 +193,13 @@ impl SdpaProblem<f32> {
         att_weights.dot(values)
     }
 
-    fn reference_3d(&self) -> Array3<f32> {
-        let q = self.q.view().into_dimensionality::<Ix3>().unwrap();
-        let k = self.k.view().into_dimensionality::<Ix3>().unwrap();
-        let v = self.v.view().into_dimensionality::<Ix3>().unwrap();
-        let mask = self.mask.as_ref().map(|m| m.view().into_dimensionality::<Ix3>().unwrap());
-
-        let [b, seq_len, _] = q.shape() else { unreachable!() };
-        let [_, _, v_emb] = v.shape() else { unreachable!() };
-        let mut output = Array3::<f32>::zeros((*b, *seq_len, *v_emb));
-
-        for i in 0..*b {
-            let q_slice = &q.slice(s![i, .., ..]);
-            let k_slice = &k.slice(s![i, .., ..]);
-            let v_slice = &v.slice(s![i, .., ..]);
-            let mask_slice = mask.as_ref().map(|m| m.slice(s![i, .., ..]));
-            let output_2d = Self::scaled_dot_product_attention_2d(
-                q_slice,
-                k_slice,
-                v_slice,
-                mask_slice,
-                self.scale,
-                self.is_causal,
-            );
-            output.slice_mut(s![i, .., ..]).assign(&output_2d);
-        }
-        output
-    }
-
-    fn reference_4d(&self) -> Array4<f32> {
-        let q = self.q.view().into_dimensionality::<Ix4>().unwrap();
-        let k = self.k.view().into_dimensionality::<Ix4>().unwrap();
-        let v = self.v.view().into_dimensionality::<Ix4>().unwrap();
-        let mask = self.mask.as_ref().map(|m| m.view().into_dimensionality::<Ix4>().unwrap());
-
+    fn reference_4d(
+        &self,
+        q: ArrayView4<f32>,
+        k: ArrayView4<f32>,
+        v: ArrayView4<f32>,
+        mask: Option<ArrayView4<f32>>,
+    ) -> Array4<f32> {
         let [b, q_heads, seq_len, _] = q.shape() else { unreachable!() };
         let [_, kv_heads, _, v_emb] = v.shape() else { unreachable!() };
         let mut output = Array4::<f32>::zeros((*b, *q_heads, *seq_len, *v_emb));
@@ -255,10 +228,28 @@ impl SdpaProblem<f32> {
         output
     }
 
-    fn reference(&self) -> ArrayD<f32> {
+    fn reference(&self) -> TractResult<ArrayD<f32>> {
+        use tract_ndarray::Axis;
         match self.q.ndim() {
-            3 => self.reference_3d().into_dyn(),
-            4 => self.reference_4d().into_dyn(),
+            3 => {
+                let q = self.q.view().into_dimensionality::<Ix3>()?.insert_axis(Axis(1));
+                let k = self.k.view().into_dimensionality::<Ix3>()?.insert_axis(Axis(1));
+                let v = self.v.view().into_dimensionality::<Ix3>()?.insert_axis(Axis(1));
+                let mask = self
+                    .mask
+                    .as_ref()
+                    .map(|m| m.view().into_dimensionality::<Ix3>().unwrap().insert_axis(Axis(1)));
+                let out_4d = self.reference_4d(q, k, v, mask);
+                Ok(out_4d.remove_axis(Axis(1)).into_dyn())
+            }
+            4 => {
+                let q = self.q.view().into_dimensionality::<Ix4>().unwrap();
+                let k = self.k.view().into_dimensionality::<Ix4>().unwrap();
+                let v = self.v.view().into_dimensionality::<Ix4>().unwrap();
+                let mask =
+                    self.mask.as_ref().map(|m| m.view().into_dimensionality::<Ix4>().unwrap());
+                Ok(self.reference_4d(q, k, v, mask).into_dyn())
+            }
             _ => unreachable!(),
         }
     }
@@ -272,7 +263,7 @@ impl Test for SdpaProblem<f32> {
         runtime: &dyn tract_core::runtime::Runtime,
         approx: tract_core::internal::Approximation,
     ) -> infra::TestResult {
-        let reference = self.reference().into_tensor();
+        let reference = self.reference()?.into_tensor();
         let mut model = self.tract()?;
 
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
