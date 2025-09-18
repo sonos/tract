@@ -48,12 +48,12 @@ fn generate_3d_single_head() -> BoxedStrategy<SdpaProblem<f32>> {
 }
 
 fn generate_4d_group_query_att(
-    max_groups: usize,
+    max_heads_repeat_factor: usize,
     max_kv_heads: usize,
 ) -> BoxedStrategy<SdpaProblem<f32>> {
-    (1..3usize, 1..max_groups + 1, 1..max_kv_heads + 1, 1..16usize, 1..4usize)
-        .prop_flat_map(|(b, group, n_kv_heads, seq_len, embed)| {
-            let n_q_heads = group * n_kv_heads;
+    (1..3usize, 1..max_heads_repeat_factor + 1, 1..max_kv_heads + 1, 1..16usize, 1..4usize)
+        .prop_flat_map(|(b, repeat_factor, n_kv_heads, seq_len, embed)| {
+            let n_q_heads = repeat_factor * n_kv_heads;
             let q = tensor(&[b, n_q_heads, seq_len, embed]);
             let k = tensor(&[b, n_kv_heads, seq_len, embed]);
             let v = tensor(&[b, n_kv_heads, seq_len, embed]);
@@ -173,23 +173,26 @@ impl SdpaProblem<f32> {
         let repeat_factor = q_heads / kv_heads;
 
         for batch_idx in 0..*b {
-            for q_head_idx in 0..*q_heads {
-                let kv_head_idx = q_head_idx / repeat_factor;
+            for kv_head_idx in 0..*kv_heads {
+                for q_head_idx_in_group in 0..repeat_factor {
+                    let q_head_idx = q_head_idx_in_group + repeat_factor * kv_head_idx;
 
-                let q_slice = q.slice(s![batch_idx, q_head_idx, .., ..]);
-                let k_slice = k.slice(s![batch_idx, kv_head_idx, .., ..]);
-                let v_slice = v.slice(s![batch_idx, kv_head_idx, .., ..]);
-                let mask_slice = mask.as_ref().map(|m| m.slice(s![batch_idx, q_head_idx, .., ..]));
+                    let q_slice = q.slice(s![batch_idx, q_head_idx, .., ..]);
+                    let k_slice = k.slice(s![batch_idx, kv_head_idx, .., ..]);
+                    let v_slice = v.slice(s![batch_idx, kv_head_idx, .., ..]);
+                    let mask_slice =
+                        mask.as_ref().map(|m| m.slice(s![batch_idx, q_head_idx, .., ..]));
 
-                let output_2d = Self::scaled_dot_product_attention_2d(
-                    &q_slice,
-                    &k_slice,
-                    &v_slice,
-                    mask_slice,
-                    self.scale,
-                    self.is_causal,
-                );
-                output.slice_mut(s![batch_idx, q_head_idx, .., ..]).assign(&output_2d);
+                    let output_2d = Self::scaled_dot_product_attention_2d(
+                        &q_slice,
+                        &k_slice,
+                        &v_slice,
+                        mask_slice,
+                        self.scale,
+                        self.is_causal,
+                    );
+                    output.slice_mut(s![batch_idx, q_head_idx, .., ..]).assign(&output_2d);
+                }
             }
         }
         output
