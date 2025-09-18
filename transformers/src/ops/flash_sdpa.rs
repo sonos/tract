@@ -41,17 +41,34 @@ impl TypedOp for FlashAttnGqaOp {
         ensure!(v.datum_type.is_float(), "V must be floating point");
 
         // rank checks
-        ensure!(q.rank() == 4, "Q must be rank-4 (B, Hq, Tq, D)");
-        ensure!(k.rank() == 4, "K must be rank-4 (B, Hkv, Tk, D)");
-        ensure!(v.rank() == 4, "V must be rank-4 (B, Hkv, Tk, D)");
+        ensure!(
+            q.rank() == k.rank() && q.rank() == v.rank(),
+            "Q, K and V must have the same rank, found {}, {}, {} resp.",
+            q.rank(),
+            k.rank(),
+            v.rank()
+        );
+        ensure!(
+            q.rank() == 3 || q.rank() == 4,
+            "Inputs must be of rank 3 or 4, found {}",
+            q.rank()
+        );
 
-        // Basic shape relations if statically known (best-effort).
-        let (bq, hq, _tq, dq) =
-            (q.shape[0].clone(), q.shape[1].clone(), q.shape[2].clone(), q.shape[3].clone());
-        let (bk, hkv, tk, dk) =
-            (k.shape[0].clone(), k.shape[1].clone(), k.shape[2].clone(), k.shape[3].clone());
-        let (bv, hkv2, tk2, dv) =
-            (v.shape[0].clone(), v.shape[1].clone(), v.shape[2].clone(), v.shape[3].clone());
+        let one = 1.to_dim();
+
+        let ((bq, hq, _tq, dq), (bk, hkv, tk, dk), (bv, hkv2, tk2, dv)) = if q.rank() == 4 {
+            (
+                (&q.shape[0], &q.shape[1], &q.shape[2], &q.shape[3]),
+                (&k.shape[0], &k.shape[1], &k.shape[2], &k.shape[3]),
+                (&v.shape[0], &v.shape[1], &v.shape[2], &v.shape[3]),
+            )
+        } else {
+            (
+                (&q.shape[0], &one, &q.shape[1], &q.shape[2]),
+                (&k.shape[0], &one, &k.shape[1], &k.shape[2]),
+                (&v.shape[0], &one, &v.shape[1], &v.shape[2]),
+            )
+        };
 
         ensure!(bq == bk && bq == bv, "Batch dims must match for Q/K/V");
         ensure!(hkv == hkv2, "K/V head counts must match");
@@ -80,12 +97,24 @@ impl EvalOp for FlashAttnGqaOp {
 
         let input_dt = q.datum_type();
 
-        let q = q.cast_to::<f32>()?;
-        let k = k.cast_to::<f32>()?;
-        let v = v.cast_to::<f32>()?;
-        let q = q.to_array_view::<f32>()?.into_dimensionality::<Ix4>()?;
-        let k = k.to_array_view::<f32>()?.into_dimensionality::<Ix4>()?;
-        let v = v.to_array_view::<f32>()?.into_dimensionality::<Ix4>()?;
+        let (q, k, v) = (q.cast_to::<f32>()?, k.cast_to::<f32>()?, v.cast_to::<f32>()?);
+        let mut q = q.to_array_view::<f32>()?;
+        let mut k = k.to_array_view::<f32>()?;
+        let mut v = v.to_array_view::<f32>()?;
+
+        let is_3d_case = q.ndim() == 3;
+
+        if is_3d_case {
+            q.insert_axis_inplace(tract_ndarray::Axis(1));
+            k.insert_axis_inplace(tract_ndarray::Axis(1));
+            v.insert_axis_inplace(tract_ndarray::Axis(1));
+        }
+
+        let (q, k, v) = (
+            q.into_dimensionality::<Ix4>()?,
+            k.into_dimensionality::<Ix4>()?,
+            v.into_dimensionality::<Ix4>()?,
+        );
 
         let (batch_size, num_q_heads, query_len, head_dim) =
             (q.shape()[0], q.shape()[1], q.shape()[2], q.shape()[3]);
@@ -103,7 +132,10 @@ impl EvalOp for FlashAttnGqaOp {
         let v4 = v.to_shape((batch_size, num_kv_heads, kv_len, head_dim))?;
 
         // Run flash attention
-        let out = self.flash_attention_gqa(q4.view(), k4.view(), v4.view());
+        let mut out = self.flash_attention_gqa(q4.view(), k4.view(), v4.view()).into_dyn();
+        if is_3d_case {
+            out.index_axis_inplace(tract_ndarray::Axis(1), 0);
+        }
 
         Ok(tvec!(out.into_tensor().cast_to_dt(input_dt)?.into_owned().into_tvalue()))
     }

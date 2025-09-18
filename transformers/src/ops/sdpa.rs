@@ -327,11 +327,7 @@ impl TypedOp for Sdpa {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if model.outlet_fact(node.inputs[0])?.rank() == 4
-            && node.inputs.len() == 3
-            && self.is_causal
-            && self.scale.is_none()
-        {
+        if node.inputs.len() == 3 && self.is_causal && self.scale.is_none() {
             let op = FlashAttnGqaOp { causal: true, block_k: 4, scale: None };
             TypedModelPatch::replace_single_op(model, node, &node.inputs[0..3], op).map(Some)
         } else {
