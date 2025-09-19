@@ -8,12 +8,14 @@ pub mod nn;
 mod unary;
 mod utils;
 
+use crate::ops::GgmlQuantQ81Fact;
 use crate::tensor::{CudaBuffer, CudaTensor};
 use anyhow::{bail, ensure};
 pub use binary::BinOps;
 use cudarc::driver::{CudaView, CudaViewMut};
-use tract_core::prelude::TractResult;
-use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q4_0};
+use tract_core::internal::OpaqueFact;
+use tract_core::prelude::{TDim, TractResult};
+use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q4_0, Q8_1};
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::as_q40_tensor;
 pub use unary::UnaryOps;
@@ -26,6 +28,7 @@ const ARRAY_OPS: &str = include_str!("ptx/array.ptx");
 const NN_OPS: &str = include_str!("ptx/nn.ptx");
 const GGML_MM_MV: &str = include_str!("ptx/mm_mv.ptx");
 const GGML_MM_MV_Q: &str = include_str!("ptx/mm_mv_q.ptx");
+const GGML_QUANTIZE: &str = include_str!("ptx/quantize.ptx");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LibraryName {
@@ -35,6 +38,7 @@ pub enum LibraryName {
     NN,
     Ggml,
     GgmlQ,
+    Quant,
 }
 
 impl LibraryName {
@@ -46,6 +50,7 @@ impl LibraryName {
             Self::NN => NN_OPS,
             Self::Ggml => GGML_MM_MV,
             Self::GgmlQ => GGML_MM_MV_Q,
+            Self::Quant => GGML_QUANTIZE,
         }
     }
 }
@@ -105,18 +110,24 @@ impl BroadcastKind {
 }
 
 fn tensor_size(t: &DeviceTensor) -> usize {
-    if let DeviceTensor::Owned(ot) = t {
-        let cuda_tensor =
-            ot.downcast_ref::<CudaTensor>().expect("Non Cuda-Tensor in a Cuda Context");
-
-        if let Some(bqf) =
-            cuda_tensor.opaque_fact().and_then(|of| of.downcast_ref::<BlockQuantFact>())
-        {
-            return bqf.shape().iter().product::<usize>() * Q4_0.block_bytes() / Q4_0.block_len();
+    let opaque_fact: Option<&dyn OpaqueFact> = match t {
+        DeviceTensor::Owned(ot) => {
+            let cuda_tensor =
+                ot.downcast_ref::<CudaTensor>().expect("Non Cuda-Tensor in a Cuda Context");
+            cuda_tensor.opaque_fact()
         }
-    }
+        DeviceTensor::ArenaView(av) => av.opaque_fact(),
+    };
 
-    t.len() * t.datum_type().size_of()
+    if let Some(of) = opaque_fact {
+        of.buffer_sizes()
+            .iter()
+            .sum::<TDim>()
+            .as_i64()
+            .expect("Symbols should be resolved at this point") as usize
+    } else {
+        t.len() * t.datum_type().size_of()
+    }
 }
 
 pub fn get_cuda_view(t: &DeviceTensor) -> CudaView<'_, u8> {

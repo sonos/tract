@@ -2,7 +2,8 @@ mod ggml;
 
 use cudarc::driver::{CudaView, CudaViewMut};
 pub use ggml::GgmlGemm;
-use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
+pub use ggml::quant_act_q81::GgmlQuantQ81;
+use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0, Q8_1};
 
 use num_traits::One;
 use std::fmt;
@@ -14,7 +15,7 @@ use crate::context::TractCudaStream;
 use crate::kernels::{
     get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut,
 };
-use crate::utils::get_quant_fact;
+use crate::utils::{get_ggml_q81_fact, get_quant_fact};
 
 #[derive(Debug, Default, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum CudaGemmImplKind {
@@ -200,11 +201,7 @@ pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync 
             && facts[0].datum_type == facts[1].datum_type
     }
 
-    fn output_dt(&self, a_dt: DatumType, b_dt: DatumType) -> TractResult<DatumType> {
-        ensure!([DatumType::F16, DatumType::F32].contains(&a_dt));
-        ensure!(a_dt == b_dt);
-        Ok(a_dt)
-    }
+    fn output_dt(&self, a_dt: DatumType, b_dt: DatumType) -> TractResult<DatumType>;
 
     fn dispatch_eval(
         &self,
@@ -261,14 +258,28 @@ impl<M: GemmKernel> GemmImpl<M> {
         a: &DeviceTensor,
         b: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
+        let q81_a = get_ggml_q81_fact(a);
         let q40_b = get_quant_fact(b, &Q4_0);
+        ensure!(q40_b.is_none() || (q40_b.is_some() && q81_a.is_some()));
+
+        let a_shape = q81_a
+            .clone()
+            .map(|bqf| {
+                a.shape()
+                    .iter()
+                    .cloned()
+                    .chain(bqf.in_shape().iter().map(|d| d.as_i64().unwrap() as usize))
+                    .collect()
+            })
+            .unwrap_or(a.shape().to_vec());
+
         let b_shape = q40_b
             .clone()
             .map(|bqf| b.shape().iter().cloned().chain(bqf.shape().iter().copied()).collect())
             .unwrap_or(b.shape().to_vec());
 
         let c_dt = self.matmul.output_dt(a.datum_type(), b.datum_type())?;
-        let c_shape = self.output_shape(a.shape(), &b_shape);
+        let c_shape = self.output_shape(&a_shape, &b_shape);
         let c = unsafe { DeviceTensor::uninitialized_dt(c_dt, &c_shape)? };
 
         self.dispatch_eval(stream, a, b, &c)?;
@@ -283,13 +294,27 @@ impl<M: GemmKernel> GemmImpl<M> {
         b: &DeviceTensor,
         c: &DeviceTensor,
     ) -> TractResult<()> {
+        let q81_a = get_ggml_q81_fact(a);
         let q40_b = get_quant_fact(b, &Q4_0);
+        ensure!(q40_b.is_none() || (q40_b.is_some() && q81_a.is_some()));
+
+        let a_shape = q81_a
+            .clone()
+            .map(|bqf| {
+                a.shape()
+                    .iter()
+                    .cloned()
+                    .chain(bqf.in_shape().iter().map(|d| d.as_i64().unwrap() as usize))
+                    .collect()
+            })
+            .unwrap_or(a.shape().to_vec());
+
         let b_shape = q40_b
             .clone()
             .map(|bqf| b.shape().iter().cloned().chain(bqf.shape().iter().copied()).collect())
             .unwrap_or(b.shape().to_vec());
 
-        ensure!(c.shape() == self.output_shape(a.shape(), &b_shape).as_slice());
+        ensure!(c.shape() == self.output_shape(&a_shape, &b_shape).as_slice());
 
         if c.shape().iter().product::<usize>() == 0 {
             return Ok(());
@@ -297,7 +322,7 @@ impl<M: GemmKernel> GemmImpl<M> {
 
         let dispatches = GemmDispatchParams::compute_dispatches_params::<M>(
             [a.datum_type(), b.datum_type(), c.datum_type()],
-            a.shape(),
+            &a_shape,
             self.transpose_a,
             &b_shape,
             self.transpose_b,
@@ -306,16 +331,24 @@ impl<M: GemmKernel> GemmImpl<M> {
         )?;
 
         for d in dispatches {
-            let a_view = get_sliced_cuda_view(
-                a,
-                d.a_offset,
-                d.a_strides[0] as usize * d.a_batch * d.dts[0].size_of(),
-            )?;
-            let b_len = if d.q40_b {
-                d.b_strides[0] as usize * d.b_batch / Q4_0.block_len() * Q4_0.block_bytes()
+            let (a_len, b_len) = if d.q40_b {
+                (
+                    q81_a
+                        .clone()
+                        .unwrap()
+                        .mem_size()
+                        .as_i64()
+                        .expect("Symbols should known at this point") as usize,
+                    d.b_strides[0] as usize * d.b_batch / Q4_0.block_len() * Q4_0.block_bytes(),
+                )
             } else {
-                d.b_strides[0] as usize * d.b_batch * d.dts[1].size_of()
+                (
+                    d.a_strides[0] as usize * d.a_batch * d.dts[0].size_of(),
+                    d.b_strides[0] as usize * d.b_batch * d.dts[1].size_of(),
+                )
             };
+
+            let a_view = get_sliced_cuda_view(a, d.a_offset, a_len)?;
             let b_view = get_sliced_cuda_view(b, d.b_offset, b_len)?;
             let mut c_view = get_sliced_cuda_view_mut(
                 c,
@@ -362,6 +395,7 @@ mod tests {
     use super::*;
     use crate::context::CUDA_STREAM;
     use crate::kernels::matmul::GemmImpl;
+    use crate::ops::GgmlQuantQ81Fact;
     use crate::utils::pad_q40;
     use num_traits::AsPrimitive;
     use num_traits::Float;
@@ -447,6 +481,7 @@ mod tests {
     fn test_gemm_dispatches_params() -> TractResult<()> {
         let dt = DatumType::F32;
         let (m, k, n) = (2, 3, 4);
+        let m_n_k = (m.to_dim(), n.to_dim(), k.to_dim());
         assert_eq!(
             GemmDispatchParams::compute_dispatches_params::<GgmlGemm>(
                 [dt; 3],
@@ -820,7 +855,23 @@ mod tests {
                 let lhs = if self.transpose_lhs {
                     Tensor::from_shape(&[self.b, self.k, self.m], &self.lhs)?.into_device()?
                 } else {
-                    Tensor::from_shape(&[self.b, self.m, self.k], &self.lhs)?.into_device()?
+                    let mut lhs =
+                        Tensor::from_shape(&[self.b, self.m, self.k], &self.lhs)?.into_device()?;
+                    if self.q4_0 {
+                        let a_shape_tdim = tvec![
+                            TDim::Val(self.b as i64),
+                            TDim::Val(self.m as i64),
+                            TDim::Val(self.k as i64)
+                        ];
+                        let quant_a_shape = GgmlQuantQ81::output_shape(&a_shape_tdim)?;
+                        let out_fact = GgmlQuantQ81Fact {
+                            in_shape: a_shape_tdim.into(),
+                            out_shape: quant_a_shape,
+                        };
+
+                        lhs = GgmlQuantQ81.eval(stream, &lhs, out_fact)?;
+                    }
+                    lhs
                 };
                 let rhs = if self.transpose_rhs {
                     if !self.q4_0 {

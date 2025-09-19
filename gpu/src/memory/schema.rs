@@ -167,8 +167,7 @@ type NodeOpaqueFacts = TVec<Option<Box<dyn OpaqueFact>>>;
 /// GPU operators. This schema is concrete.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceResolvedMemSchema {
-    pub offsets_by_node: HashMap<OutletId, Vec<usize>>,
-    pub opaque_facts: Vec<NodeOpaqueFacts>,
+    pub offsets_by_node: Vec<Option<TVec<TVec<usize>>>>,
     pub memory_size: usize,
 }
 
@@ -210,16 +209,25 @@ impl DeviceMemSchema {
     pub fn compute_offset_by_node(
         &self,
         symbols: &SymbolValues,
-    ) -> TractResult<HashMap<OutletId, Vec<usize>>> {
+    ) -> TractResult<Vec<Option<TVec<TVec<usize>>>>> {
         let mut cursor = 0;
-        let mut offset_by_outlet: HashMap<OutletId, Vec<usize>> = HashMap::new();
+        let mut offset_by_outlet: Vec<Option<TVec<TVec<usize>>>> = vec![None; self.model_num_nodes];
 
-        for partition in self.by_partition.iter() {
-            for node_mem in partition.nodes.iter() {
-                if let Some(val) = offset_by_outlet.get_mut(&node_mem.outlet_id) {
-                    val.push(cursor);
+        for partition in &self.by_partition {
+            for node_mem in &partition.nodes {
+                let node = node_mem.outlet_id.node;
+                let slot = node_mem.outlet_id.slot;
+
+                let slots: &mut TVec<TVec<usize>> =
+                    offset_by_outlet[node].get_or_insert_with(|| tvec![tvec!()]);
+
+                if slot < 1 {
+                    slots[slot].push(cursor);
                 } else {
-                    offset_by_outlet.insert(node_mem.outlet_id, vec![cursor]);
+                    if slots.len() <= slot {
+                        slots.resize_with(slot + 1, TVec::<usize>::new);
+                    }
+                    slots[slot].push(cursor);
                 }
             }
             cursor += partition.eval_size_to_i64(symbols)? as usize;
@@ -287,7 +295,6 @@ impl DeviceMemSchema {
     pub fn resolve(&self, symbols: &SymbolValues) -> TractResult<DeviceResolvedMemSchema> {
         Ok(DeviceResolvedMemSchema {
             offsets_by_node: self.compute_offset_by_node(symbols)?,
-            opaque_facts: self.opaque_facts.clone(),
             memory_size: self.eval_memory_size(symbols)?.try_into()?,
         })
     }

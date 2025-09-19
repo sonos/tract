@@ -4,12 +4,13 @@ use cudarc::driver::{CudaSlice, DevicePtr};
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 use tract_core::prelude::{DatumType, TVec};
-use tract_core::tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue};
+use tract_core::tract_linalg::block_quant::{BlockQuantFact, BlockQuantValue, Q8_1};
 use tract_gpu::device::DeviceBuffer;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 use tract_gpu::utils::{as_q40_tensor, check_strides_validity};
 
 use crate::context::CUDA_STREAM;
+use crate::ops::GgmlQuantQ81Fact;
 
 #[derive(Debug, Clone)]
 pub struct CudaBuffer {
@@ -72,7 +73,7 @@ impl CudaTensor {
         })
     }
 
-    pub fn uninitialized_opaque(opaque_fact: &dyn OpaqueFact) -> TractResult<Self> {
+    pub fn uninitialized_opaque(opaque_fact: Box<dyn OpaqueFact>) -> TractResult<Self> {
         if let Some(bqf) = opaque_fact.downcast_ref::<BlockQuantFact>() {
             let shape = bqf.shape();
             let format = bqf.format.clone();
@@ -89,8 +90,22 @@ impl CudaTensor {
                     opaque_fact: Some(Box::new(bqf.clone())),
                 })
             })
+        } else if let Some(ggml_q81_fact) = opaque_fact.downcast_ref::<GgmlQuantQ81Fact>() {
+            let mem_size = ggml_q81_fact.mem_size().as_i64().unwrap() as usize;
+
+            CUDA_STREAM.with(|stream| unsafe {
+                let device_data = stream.alloc(mem_size)?;
+                let buffer = Arc::new(CudaBuffer { inner: device_data });
+                Ok(CudaTensor {
+                    buffer,
+                    datum_type: DatumType::Opaque,
+                    shape: tvec!(),
+                    strides: tvec!(),
+                    opaque_fact: Some(Box::new(ggml_q81_fact.clone())),
+                })
+            })
         } else {
-            bail!("Only BlockQuant Tensor allocation supported for now");
+            bail!("Unsupported opaque type")
         }
     }
 
@@ -157,15 +172,21 @@ impl OwnedDeviceTensor for CudaTensor {
 
     fn to_host(&self) -> TractResult<Arc<Tensor>> {
         CUDA_STREAM.with(|stream| {
-            let t: Tensor = if let Some(bqf) = &self.opaque_fact {
+            let t: Tensor = if let Some(of) = &self.opaque_fact {
                 ensure!(self.shape.iter().product::<usize>() == 1, "Only support Scalar Opaque");
                 let mut blob =
                     unsafe { Blob::new_for_size_and_align(self.buffer.len(), vector_size()) };
                 stream.memcpy_dtoh(&self.buffer.inner, blob.as_bytes_mut())?;
-                let bqv = BlockQuantValue {
-                    fact: *bqf.clone().downcast::<BlockQuantFact>().unwrap(),
-                    value: Arc::new(blob),
+                let bqf = if let Some(bqf) = of.downcast_ref::<BlockQuantFact>() {
+                    (*bqf).clone()
+                } else if let Some(ggml_q81) = of.downcast_ref::<GgmlQuantQ81Fact>() {
+                    let out_shape =
+                        ggml_q81.out_shape().iter().map(|d| d.as_i64().unwrap() as usize).collect();
+                    BlockQuantFact::new(Box::new(Q8_1), out_shape)
+                } else {
+                    bail!("Unknown Opaque Fact")
                 };
+                let bqv = BlockQuantValue { fact: bqf, value: Arc::new(blob) };
                 Opaque(Arc::new(bqv)).into()
             } else {
                 let mut tensor = unsafe { Tensor::uninitialized_dt(self.datum_type, &self.shape)? };
