@@ -10,6 +10,7 @@ use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::matmul::ggml::{MMQ_X_MAX, squeeze_batch_axes};
 use crate::kernels::{LibraryName, get_cuda_view};
+use crate::ops::GgmlQuantQ81Fact;
 
 pub(crate) const QK8_1: usize = 32;
 
@@ -108,10 +109,9 @@ impl GgmlQuantQ81 {
         &self,
         stream: &TractCudaStream,
         input: &DeviceTensor,
-        output_shape: &[usize],
-        mmq: bool,
+        output_fact: GgmlQuantQ81Fact,
     ) -> TractResult<DeviceTensor> {
-        let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), output_shape)? };
+        let output = unsafe { DeviceTensor::uninitialized_opaque(Box::new(output_fact))? };
         self.dispatch_eval(stream, input, &output)?;
         stream.synchronize()?;
         Ok(output)

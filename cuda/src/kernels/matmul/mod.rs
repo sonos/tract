@@ -201,11 +201,7 @@ pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync 
             && facts[0].datum_type == facts[1].datum_type
     }
 
-    fn output_dt(&self, a_dt: DatumType, b_dt: DatumType) -> TractResult<DatumType> {
-        ensure!([DatumType::F16, DatumType::F32].contains(&a_dt));
-        ensure!(a_dt == b_dt);
-        Ok(a_dt)
-    }
+    fn output_dt(&self, a_dt: DatumType, b_dt: DatumType) -> TractResult<DatumType>;
 
     fn dispatch_eval(
         &self,
