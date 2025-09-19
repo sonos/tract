@@ -855,12 +855,19 @@ mod tests {
                 let lhs = if self.transpose_lhs {
                     Tensor::from_shape(&[self.b, self.k, self.m], &self.lhs)?.into_device()?
                 } else {
-                    let mut lhs = Tensor::from_shape(&[self.b, self.m, self.k], &self.lhs)?.into_device()?;
+                    let mut lhs =
+                        Tensor::from_shape(&[self.b, self.m, self.k], &self.lhs)?.into_device()?;
                     if self.q4_0 {
-                        let a_shape_tdim = tvec![TDim::Val(self.b as i64), TDim::Val(self.m as i64), TDim::Val(self.k as i64)];
+                        let a_shape_tdim = tvec![
+                            TDim::Val(self.b as i64),
+                            TDim::Val(self.m as i64),
+                            TDim::Val(self.k as i64)
+                        ];
                         let quant_a_shape = GgmlQuantQ81::output_shape(&a_shape_tdim)?;
-                        let out_fact =
-                            GgmlQuantQ81Fact { in_shape: a_shape_tdim.into(), out_shape: quant_a_shape };
+                        let out_fact = GgmlQuantQ81Fact {
+                            in_shape: a_shape_tdim.into(),
+                            out_shape: quant_a_shape,
+                        };
 
                         lhs = GgmlQuantQ81.eval(stream, &lhs, out_fact)?;
                     }
