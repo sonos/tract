@@ -95,8 +95,9 @@ impl GemmKernel for GgmlGemm {
                 && matches!(facts[0].datum_type, F16 | F32))
     }
 
-    fn output_dt(&self, a_dt: DatumType, _b_dt: DatumType) -> TractResult<DatumType> {
-        Ok(a_dt)
+    fn output_dt(&self, a_dt: DatumType, b_dt: DatumType) -> TractResult<DatumType> {
+        ensure!(b_dt == a_dt);
+        if a_dt == DatumType::Opaque { Ok(DatumType::F32) } else { Ok(a_dt) }
     }
 
     fn dispatch_eval(
@@ -439,7 +440,7 @@ fn dispatch_ggml_matvec_q40(
     let padded_k = params.k.next_multiple_of(Q40_ROW_PADDING);
 
     let n_blocks = padded_k / Q4_0.block_len();
-    let stride_col_y = padded_k / QK8_1;
+    let stride_col_y = padded_k / Q8_1.block_len();
     let stride_col_dst = params.n;
     let stride_channel_x = n_blocks * params.n;
     let stride_channel_y = stride_col_y * params.m;
@@ -480,7 +481,10 @@ mod tests {
 
     use crate::context::CUDA_STREAM;
     use crate::kernels::matmul::GemmImpl;
+    use crate::kernels::matmul::GgmlQuantQ81;
     use crate::kernels::matmul::tests::run_mmm_test_case;
+    use crate::ops::CudaGgmlQuantQ81;
+    use crate::ops::GgmlQuantQ81Fact;
 
     use super::*;
     use num_traits::AsPrimitive;
@@ -590,28 +594,33 @@ mod tests {
             let a_data = (0..batch * broadcast_ratio * k * m)
                 .map(|f| f as f32 / (batch * broadcast_ratio * m * k) as f32)
                 .collect::<Vec<_>>();
-
-            let a = Tensor::from_shape(&a_shape, &a_data)?;
+            let a_tensor = Tensor::from_shape(&a_shape, &a_data)?;
 
             let b_data =
                 (0..batch * n * k).map(|f| f as f32 / (batch * n * k) as f32).collect::<Vec<_>>();
-
-            let b_data: Vec<f32> = b_data.into_iter().map(|x| x.into()).collect();
-            let b_tensor =
-                Q4_0.simulate_precision_loss(Tensor::from_shape(&b_shape, &b_data)?, 2)?;
-
-            ensure!(k % 512 == 0);
-            let b_q4_0_tensor = tensor0(Opaque(Arc::new(BlockQuantValue {
+            let b_tensor = tensor0(Opaque(Arc::new(BlockQuantValue {
                 fact: BlockQuantFact::new(Box::new(Q4_0), tvec![batch, n, k]),
                 value: Arc::new(Q4_0.quant_f32(&b_data)?),
             })));
 
+            let a_shape_tdim =
+                a_shape.iter().map(|d| TDim::Val((*d as usize).try_into().unwrap())).collect_vec();
+            let quant_a_shape = GgmlQuantQ81::output_shape(&a_shape_tdim.clone().into())?;
+            let out_fact =
+                GgmlQuantQ81Fact { in_shape: a_shape_tdim.into(), out_shape: quant_a_shape };
+
+            let cuda_quant_a =
+                GgmlQuantQ81.eval(stream, &a_tensor.clone().into_device()?, out_fact)?;
+
             let cuda_output = GemmImpl::<GgmlGemm>::new(false, true).eval(
                 stream,
-                &a.clone().into_device()?,
-                &b_q4_0_tensor.clone().into_device()?,
+                &cuda_quant_a,
+                &b_tensor.clone().into_device()?,
             )?;
-            let output = reference(a, b_tensor)?;
+
+            let sim_a = Q8_1.simulate_precision_loss(a_tensor, 2)?;
+            let sim_b = Q4_0.simulate_precision_loss(Tensor::from_shape(&b_shape, &b_data)?, 2)?;
+            let output = reference(sim_a, sim_b)?;
             cuda_output.to_host()?.close_enough(&output, Approximation::VeryApproximate)?;
             Ok(())
         })
