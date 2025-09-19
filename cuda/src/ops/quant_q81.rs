@@ -8,8 +8,8 @@ use crate::kernels::matmul::GgmlQuantQ81;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GgmlQuantQ81Fact {
-    in_shape: TVec<TDim>,
-    out_shape: TVec<TDim>,
+    pub in_shape: TVec<TDim>,
+    pub out_shape: TVec<TDim>,
 }
 
 impl GgmlQuantQ81Fact {
