@@ -217,7 +217,7 @@ impl DeviceMemSchema {
         for partition in &self.by_partition {
             for node_mem in &partition.nodes {
                 let node = node_mem.outlet_id.node;
-                let slot = node_mem.outlet_id.slot as usize;
+                let slot = node_mem.outlet_id.slot;
 
                 let slots: &mut TVec<TVec<usize>> =
                     offset_by_outlet[node].get_or_insert_with(|| tvec![tvec!()]);
