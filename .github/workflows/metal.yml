@@ -18,10 +18,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-
-    - name: Add cargo to path
-      run:  echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
     - run: cargo check --workspace --exclude test-blas
     - run: cargo test -q -p tract-linalg
     - run: cargo test -q -p tract-core
