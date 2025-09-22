@@ -97,7 +97,12 @@ impl GemmKernel for GgmlGemm {
 
     fn output_dt(&self, a_dt: DatumType, b_dt: DatumType) -> TractResult<DatumType> {
         ensure!(b_dt == a_dt);
-        if a_dt == DatumType::Opaque { Ok(DatumType::F32) } else { Ok(a_dt) }
+        if a_dt == DatumType::Opaque {
+            // Q40 MM -> F32 output
+            Ok(DatumType::F32)
+        } else {
+            Ok(a_dt)
+        }
     }
 
     fn dispatch_eval(
