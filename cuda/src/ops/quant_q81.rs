@@ -28,6 +28,13 @@ impl GgmlQuantQ81Fact {
     pub fn concrete_out_shape(&self) -> TractResult<&[usize]> {
         self.out_fact.as_concrete().context("Expected concrete shape")
     }
+
+    pub fn eval(&self, values: &SymbolValues) -> TractResult<Self> {
+        Ok(Self {
+            in_fact: self.in_fact.eval(values)?.into_owned(),
+            out_fact: self.out_fact.eval(values)?.into_owned(),
+        })
+    }
 }
 
 impl OpaqueFact for GgmlQuantQ81Fact {
@@ -72,22 +79,10 @@ impl EvalOp for CudaGgmlQuantQ81 {
             let opaque = args_1!(inputs);
             let input = opaque.to_device_tensor()?;
 
-            let resolved_out_fact = GgmlQuantQ81Fact {
-                in_fact: self
-                    .io_facts
-                    .in_shape()
-                    .iter()
-                    .map(|d| d.eval(&session.resolved_symbols))
-                    .collect(),
-                out_fact: self
-                    .io_facts
-                    .out_shape()
-                    .iter()
-                    .map(|d| d.eval(&session.resolved_symbols))
-                    .collect(),
-            };
+            let resolved_io_facts = self.io_facts.eval(&session.resolved_symbols)?;
+
             let output =
-                make_scalar_opaque_tensor_for_node(session, node_id, Box::new(resolved_out_fact))?;
+                make_scalar_opaque_tensor_for_node(session, node_id, Box::new(resolved_io_facts))?;
 
             GgmlQuantQ81.dispatch_eval(stream, input, &output)?;
 
