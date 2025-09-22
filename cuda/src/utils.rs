@@ -65,7 +65,8 @@ pub fn get_quant_fact(t: &DeviceTensor, format: &dyn BlockQuant) -> Option<Block
         t.downcast_ref::<CudaTensor>()
             .expect("Non Cuda Tensor in Cuda context")
             .opaque_fact()
-            .map(|of| of.downcast_ref::<BlockQuantFact>().unwrap().clone())
+            .and_then(|of| of.downcast_ref::<BlockQuantFact>())
+            .cloned()
             .filter(|bqf| bqf.format.same_as(format))
     } else {
         None
@@ -77,9 +78,10 @@ pub fn get_ggml_q81_fact(t: &DeviceTensor) -> Option<GgmlQuantQ81Fact> {
         t.downcast_ref::<CudaTensor>()
             .expect("Non Cuda Tensor in Cuda context")
             .opaque_fact()
-            .map(|of| of.downcast_ref::<GgmlQuantQ81Fact>().unwrap().clone())
+            .and_then(|of| of.downcast_ref::<GgmlQuantQ81Fact>())
+            .cloned()
     } else if let DeviceTensor::ArenaView(t) = t {
-        t.opaque_fact().map(|of| of.downcast_ref::<GgmlQuantQ81Fact>().unwrap().clone())
+        t.opaque_fact().and_then(|of| of.downcast_ref::<GgmlQuantQ81Fact>()).cloned()
     } else {
         None
     }
