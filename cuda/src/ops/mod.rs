@@ -26,7 +26,7 @@ pub use concat::CudaConcat;
 pub use dyn_kv_cache::{CudaDynKVCache, CudaDynKVCacheState};
 pub use fused_axis_op::CudaFusedAxisOp;
 pub use gelu_approximate::CudaGeluApproximate;
-pub use gemm::CudaGemm;
+pub use gemm::CudaGgmlGemm;
 pub use quant_q81::{CudaGgmlQuantQ81, GgmlQuantQ81Fact};
 pub use reduce::CudaReduce;
 pub use rms_norm::CudaRmsNorm;
