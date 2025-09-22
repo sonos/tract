@@ -287,13 +287,13 @@ fn launch_matmul_q40(
     output: &CudaView<'_, u8>,
     fixup_tens: &CudaView<'_, u8>,
     params: &GemmDispatchParams,
-    a_stride_0: usize,
-    b_stride_0: usize,
+    a_batch_stride: usize,
+    b_batch_stride: usize,
     batch_ratio: usize,
     mmq_x_best: usize,
     nbytes_shared: usize,
 ) -> TractResult<()> {
-    let n_blocks = b_stride_0 / params.n;
+    let n_blocks = b_batch_stride / params.n;
     let kernel_name = kernel_name_q40(params, mmq_x_best, MMQ_X_MAX, false)?;
 
     let context = cuda_context();
@@ -316,8 +316,8 @@ fn launch_matmul_q40(
     launch_args.arg(&params.n);
     launch_args.arg(&batch_ratio);
     launch_args.arg(&params.a_batch);
-    launch_args.arg(&b_stride_0);
-    launch_args.arg(&a_stride_0);
+    launch_args.arg(&b_batch_stride);
+    launch_args.arg(&a_batch_stride);
     launch_args.arg(&params.c_strides[0]);
 
     let cfg = LaunchConfig {
@@ -381,9 +381,9 @@ fn dispatch_ggml_matmul_q40(
     let padded_k = params.k.next_multiple_of(Q40_ROW_PADDING);
     let n_blocks = padded_k / Q4_0.block_len(); // padded Q40 weights
 
-    let a_stride_0 =
-        padded_k * params.m * Q8_1.block_bytes() / (Q8_1.block_len() * size_of::<i32>());
-    let b_stride_0 = n_blocks * params.n;
+    let n_mmq_blocks = padded_k / (Q8_1.block_len() * 4);
+    let a_batch_stride = n_mmq_blocks * params.m * Q8_1.block_bytes() ;
+    let b_batch_stride = n_blocks * params.n;
     let batch_ratio = params.a_batch / params.b_batch;
 
     let mmq_x_best = find_best_mmq_x(props.sharedMemPerBlockOptin, params.m);
@@ -412,8 +412,8 @@ fn dispatch_ggml_matmul_q40(
         output,
         &fixup_view,
         &params,
-        a_stride_0,
-        b_stride_0,
+        a_batch_stride,
+        b_batch_stride,
         batch_ratio,
         mmq_x_best,
         nbytes_shared,
