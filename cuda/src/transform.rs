@@ -25,7 +25,7 @@ use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
 use tract_transformers::ops::silu::Silu;
 
 use crate::context::cuda_context;
-use crate::kernels::matmul::{GemmKernel, GgmlGemm};
+use crate::kernels::matmul::GgmlGemm;
 use crate::{kernels, ops, rewrite_rules};
 
 #[derive(Debug, Default)]
@@ -374,8 +374,8 @@ fn convert_matmul_to_cuda(
         inputs[0] = target.wire_node(node.name.clone() + ".quant_a", quant_op, &[inputs[0]])?[0];
     }
 
-    let op = ops::CudaGemm::<GgmlGemm>::new(false, true);
-    let mut matmul_output = target.wire_node(node.name.clone(), op, inputs)?;
+    let mut matmul_output =
+        target.wire_node(node.name.clone(), *Box::new(ops::CudaGgmlGemm), inputs)?;
 
     if swap_inputs {
         let out_fact = target.outlet_fact(matmul_output[0])?;
