@@ -8,44 +8,49 @@ use crate::kernels::matmul::GgmlQuantQ81;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GgmlQuantQ81Fact {
-    pub in_shape: TVec<TDim>,
-    pub out_shape: TVec<TDim>,
+    pub in_fact: ShapeFact,
+    pub out_fact: ShapeFact,
 }
 
 impl GgmlQuantQ81Fact {
-    pub fn in_shape(&self) -> TVec<TDim> {
-        self.in_shape.clone()
+    pub fn in_shape(&self) -> &[TDim] {
+        self.in_fact.dims()
     }
 
-    pub fn out_shape(&self) -> TVec<TDim> {
-        self.out_shape.clone()
+    pub fn out_shape(&self) -> &[TDim] {
+        self.out_fact.dims()
+    }
+
+    pub fn concrete_in_shape(&self) -> TractResult<&[usize]> {
+        self.in_fact.as_concrete().context("Expected concrete shape")
+    }
+
+    pub fn concrete_out_shape(&self) -> TractResult<&[usize]> {
+        self.out_fact.as_concrete().context("Expected concrete shape")
     }
 }
 
 impl OpaqueFact for GgmlQuantQ81Fact {
     fn same_as(&self, other: &dyn OpaqueFact) -> bool {
         let Some(other) = other.downcast_ref::<Self>() else { return false };
-        (other.in_shape == self.in_shape) && (other.out_shape == self.out_shape)
+        (other.in_fact == self.in_fact) && (other.out_fact == self.out_fact)
     }
 
     fn buffer_sizes(&self) -> TVec<TDim> {
-        tvec!(self.out_shape.iter().product::<TDim>() * Q8_1.block_bytes() / Q8_1.block_len())
+        tvec!(self.out_fact.iter().product::<TDim>() * Q8_1.block_bytes() / Q8_1.block_len())
     }
 }
 
 #[derive(Clone, Debug, Hash)]
 pub struct CudaGgmlQuantQ81 {
-    out_fact: GgmlQuantQ81Fact,
+    io_facts: GgmlQuantQ81Fact,
 }
 
 impl CudaGgmlQuantQ81 {
-    pub fn new(in_shape: &[TDim]) -> TractResult<Self> {
-        let in_shape = in_shape.into();
-        let out_shape = GgmlQuantQ81::output_shape(&in_shape)?;
-
-        let out_fact = GgmlQuantQ81Fact { in_shape, out_shape };
-
-        Ok(Self { out_fact })
+    pub fn new(in_fact: ShapeFact) -> TractResult<Self> {
+        let out_fact = GgmlQuantQ81::output_shape_fact(&in_fact)?;
+        let io_facts = GgmlQuantQ81Fact { in_fact, out_fact };
+        Ok(Self { io_facts })
     }
 }
 impl Op for CudaGgmlQuantQ81 {
@@ -68,14 +73,14 @@ impl EvalOp for CudaGgmlQuantQ81 {
             let input = opaque.to_device_tensor()?;
 
             let resolved_out_fact = GgmlQuantQ81Fact {
-                in_shape: self
-                    .out_fact
+                in_fact: self
+                    .io_facts
                     .in_shape()
                     .iter()
                     .map(|d| d.eval(&session.resolved_symbols))
                     .collect(),
-                out_shape: self
-                    .out_fact
+                out_fact: self
+                    .io_facts
                     .out_shape()
                     .iter()
                     .map(|d| d.eval(&session.resolved_symbols))
@@ -100,11 +105,22 @@ impl TypedOp for CudaGgmlQuantQ81 {
         ensure!(inputs.len() == 1);
         tract_gpu::utils::facts_to_device_facts(inputs, |_| {
             let fact =
-                TypedFact::dt_scalar(DatumType::Opaque).with_opaque_fact(self.out_fact.clone());
+                TypedFact::dt_scalar(DatumType::Opaque).with_opaque_fact(self.io_facts.clone());
             Ok(tvec!(fact))
         })
         .with_context(|| format!("Error while computing facts for {:?}", self.name()))
     }
 
+    fn concretize_dims(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        values: &SymbolValues,
+    ) -> TractResult<TVec<OutletId>> {
+        let op = Self::new(self.io_facts.in_fact.eval(values)?.into_owned())?;
+        target.wire_node(&node.name, op, &[mapping[&node.inputs[0]]])
+    }
     as_op!();
 }

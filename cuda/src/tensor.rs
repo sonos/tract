@@ -180,9 +180,8 @@ impl OwnedDeviceTensor for CudaTensor {
                 let bqf = if let Some(bqf) = of.downcast_ref::<BlockQuantFact>() {
                     (*bqf).clone()
                 } else if let Some(ggml_q81) = of.downcast_ref::<GgmlQuantQ81Fact>() {
-                    let out_shape =
-                        ggml_q81.out_shape().iter().map(|d| d.as_i64().unwrap() as usize).collect();
-                    BlockQuantFact::new(Box::new(Q8_1), out_shape)
+                    let out_shape = ggml_q81.concrete_out_shape()?;
+                    BlockQuantFact::new(Box::new(Q8_1), out_shape.into())
                 } else {
                     bail!("Unknown Opaque Fact")
                 };

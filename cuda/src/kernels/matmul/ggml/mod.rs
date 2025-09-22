@@ -382,7 +382,7 @@ fn dispatch_ggml_matmul_q40(
     let n_blocks = padded_k / Q4_0.block_len(); // padded Q40 weights
 
     let n_mmq_blocks = padded_k / (Q8_1.block_len() * 4);
-    let a_batch_stride = n_mmq_blocks * params.m * Q8_1.block_bytes() ;
+    let a_batch_stride = n_mmq_blocks * params.m * Q8_1.block_bytes();
     let b_batch_stride = n_blocks * params.n;
     let batch_ratio = params.a_batch / params.b_batch;
 
@@ -603,14 +603,18 @@ mod tests {
                 value: Arc::new(Q4_0.quant_f32(&b_data)?),
             })));
 
-            let a_shape_tdim =
-                a_shape.iter().map(|d| TDim::Val((*d as usize).try_into().unwrap())).collect_vec();
-            let quant_a_shape = GgmlQuantQ81::output_shape(&a_shape_tdim.clone().into())?;
-            let out_fact =
-                GgmlQuantQ81Fact { in_shape: a_shape_tdim.into(), out_shape: quant_a_shape };
+            let a_shape_tdim: ShapeFact = a_shape
+                .iter()
+                .map(|d| TDim::Val((*d as usize).try_into().unwrap()))
+                .collect_vec()
+                .into();
+            let io_facts = GgmlQuantQ81Fact {
+                in_fact: a_shape_tdim.clone(),
+                out_fact: GgmlQuantQ81::output_shape_fact(&a_shape_tdim)?,
+            };
 
             let cuda_quant_a =
-                GgmlQuantQ81.eval(stream, &a_tensor.clone().into_device()?, out_fact)?;
+                GgmlQuantQ81.eval(stream, &a_tensor.clone().into_device()?, io_facts)?;
 
             let cuda_output = GemmImpl::<GgmlGemm>::new(false, true).eval(
                 stream,

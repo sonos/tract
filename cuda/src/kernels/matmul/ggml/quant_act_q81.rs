@@ -31,14 +31,15 @@ impl GgmlQuantQ81 {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
-    pub fn output_shape(shape: &TVec<TDim>) -> TractResult<TVec<TDim>> {
-        let mut o_shape = shape.clone();
+    pub fn output_shape_fact(shape: &ShapeFact) -> TractResult<ShapeFact> {
+        let mut o_shape = shape.dims().to_owned();
         let rank = o_shape.len();
         let k = o_shape[rank - 1].as_i64().context("Expected concrete k")? as usize;
         let padded_k = k.next_multiple_of(Q40_ROW_PADDING);
         o_shape[rank - 1] = TDim::Val(padded_k as i64);
         o_shape[rank - 2] += (MMQ_X_MAX * 4 * Q8_1.block_bytes()).div_ceil(padded_k);
-        Ok(o_shape)
+
+        Ok(ShapeFact::from_dims(o_shape))
     }
 
     pub fn dispatch_eval(
