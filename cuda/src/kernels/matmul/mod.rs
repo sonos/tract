@@ -181,6 +181,30 @@ impl GemmDispatchParams {
     }
 }
 
+pub fn get_concrete_shapes(
+    a: &DeviceTensor,
+    b: &DeviceTensor,
+) -> TractResult<(Vec<usize>, Vec<usize>)> {
+    let q81_a = get_ggml_q81_fact(a);
+    let q40_b = get_quant_fact(b, &Q4_0);
+    ensure!(q40_b.is_none() || (q40_b.is_some() && q81_a.is_some()));
+
+    let a_shape = match q81_a {
+        Some(bqf) => {
+            let concrete = bqf.concrete_in_shape()?;
+            a.shape().iter().copied().chain(concrete.iter().copied()).collect()
+        }
+        None => a.shape().to_vec(),
+    };
+
+    let b_shape = match q40_b {
+        Some(bqf) => b.shape().iter().copied().chain(bqf.shape().iter().copied()).collect(),
+        None => b.shape().to_vec(),
+    };
+
+    Ok((a_shape, b_shape))
+}
+
 pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync {
     fn name() -> &'static str;
 
@@ -258,25 +282,7 @@ impl<M: GemmKernel> GemmImpl<M> {
         a: &DeviceTensor,
         b: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
-        let q81_a = get_ggml_q81_fact(a);
-        let q40_b = get_quant_fact(b, &Q4_0);
-        ensure!(q40_b.is_none() || (q40_b.is_some() && q81_a.is_some()));
-
-        let a_shape = q81_a
-            .clone()
-            .map(|bqf| {
-                a.shape()
-                    .iter()
-                    .cloned()
-                    .chain(bqf.in_shape().iter().map(|d| d.as_i64().unwrap() as usize))
-                    .collect()
-            })
-            .unwrap_or(a.shape().to_vec());
-
-        let b_shape = q40_b
-            .clone()
-            .map(|bqf| b.shape().iter().cloned().chain(bqf.shape().iter().copied()).collect())
-            .unwrap_or(b.shape().to_vec());
+        let (a_shape, b_shape) = get_concrete_shapes(a, b)?;
 
         let c_dt = self.matmul.output_dt(a.datum_type(), b.datum_type())?;
         let c_shape = self.output_shape(&a_shape, &b_shape);
@@ -294,25 +300,7 @@ impl<M: GemmKernel> GemmImpl<M> {
         b: &DeviceTensor,
         c: &DeviceTensor,
     ) -> TractResult<()> {
-        let q81_a = get_ggml_q81_fact(a);
-        let q40_b = get_quant_fact(b, &Q4_0);
-        ensure!(q40_b.is_none() || (q40_b.is_some() && q81_a.is_some()));
-
-        let a_shape = q81_a
-            .clone()
-            .map(|bqf| {
-                a.shape()
-                    .iter()
-                    .cloned()
-                    .chain(bqf.in_shape().iter().map(|d| d.as_i64().unwrap() as usize))
-                    .collect()
-            })
-            .unwrap_or(a.shape().to_vec());
-
-        let b_shape = q40_b
-            .clone()
-            .map(|bqf| b.shape().iter().cloned().chain(bqf.shape().iter().copied()).collect())
-            .unwrap_or(b.shape().to_vec());
+        let (a_shape, b_shape) = get_concrete_shapes(a, b)?;
 
         ensure!(c.shape() == self.output_shape(&a_shape, &b_shape).as_slice());
 
@@ -326,15 +314,14 @@ impl<M: GemmKernel> GemmImpl<M> {
             self.transpose_a,
             &b_shape,
             self.transpose_b,
-            q40_b.is_some(),
+            get_quant_fact(b, &Q4_0).is_some(),
             c.shape(),
         )?;
 
         for d in dispatches {
             let (a_len, b_len) = if d.q40_b {
                 (
-                    q81_a
-                        .clone()
+                    get_ggml_q81_fact(a)
                         .unwrap()
                         .mem_size()
                         .as_i64()
@@ -858,18 +845,19 @@ mod tests {
                     let mut lhs =
                         Tensor::from_shape(&[self.b, self.m, self.k], &self.lhs)?.into_device()?;
                     if self.q4_0 {
-                        let a_shape_tdim = tvec![
+                        let a_shape_tdim: ShapeFact = tvec![
                             TDim::Val(self.b as i64),
                             TDim::Val(self.m as i64),
                             TDim::Val(self.k as i64)
-                        ];
-                        let quant_a_shape = GgmlQuantQ81::output_shape(&a_shape_tdim)?;
-                        let out_fact = GgmlQuantQ81Fact {
-                            in_shape: a_shape_tdim.into(),
-                            out_shape: quant_a_shape,
+                        ]
+                        .into();
+
+                        let io_facts = GgmlQuantQ81Fact {
+                            in_fact: a_shape_tdim.clone(),
+                            out_fact: GgmlQuantQ81::output_shape_fact(&a_shape_tdim)?,
                         };
 
-                        lhs = GgmlQuantQ81.eval(stream, &lhs, out_fact)?;
+                        lhs = GgmlQuantQ81.eval(stream, &lhs, io_facts)?;
                     }
                     lhs
                 };
