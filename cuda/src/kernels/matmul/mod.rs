@@ -149,6 +149,8 @@ fn dispatch_ggml_matvec(
     output: &DeviceTensor,
     params: GemmParams,
 ) -> TractResult<()> {
+    ensure!(params.a_batch % params.b_batch == 0);
+
     let a_view = get_cuda_view(a);
     let b_view = get_cuda_view(b);
     let output_view = get_cuda_view(output);
@@ -211,7 +213,7 @@ impl CublasDispatchParams {
                     b_batch: 1,
                     m: params.m,
                     a_offset: 0,
-                    b_offset: b_batch_idx * params.b_strides[0] as usize,
+                    b_offset: b_batch_idx * params.dts[1].size_of() * params.b_strides[0] as usize,
                     c_offset: b_batch_idx * params.m * params.n * params.dts[2].size_of(),
                 })
                 .collect()),
@@ -413,6 +415,8 @@ fn dispatch_ggml_matmul_q40(
     output: &CudaView<'_, u8>,
     params: GemmParams,
 ) -> TractResult<()> {
+    ensure!(params.a_batch % params.b_batch == 0);
+
     let context = cuda_context();
     let props = context.properties();
 
@@ -473,6 +477,8 @@ fn dispatch_ggml_matvec_q40(
     output: &CudaView<'_, u8>,
     params: GemmParams,
 ) -> TractResult<()> {
+    ensure!(params.a_batch % params.b_batch == 0);
+
     let context = cuda_context();
     let props = context.properties();
     let null_ptr = stream.null::<u8>()?;
@@ -516,17 +522,6 @@ fn dispatch_ggml_matvec_q40(
 }
 
 impl GgmlGemm {
-    fn supports_broadcast(
-        a_batch: usize,
-        b_batch: usize,
-        m: usize,
-        k: usize,
-        _n: usize,
-        is_q40: bool,
-    ) -> bool {
-        (a_batch % b_batch == 0) && (is_q40 || ((k % 2 == 0) && m <= 8))
-    }
-
     pub fn is_supported_dts(&self, facts: &[TypedFact]) -> bool {
         assert!(facts.len() == 2, "Ggml: Expected 2 inputs for Matmul");
 
