@@ -235,10 +235,10 @@ impl CausalLlmState {
         self.tokenizer().decode(&tokens, skip_special_tokens).map_err(|e| anyhow!(e))
     }
 
-    pub fn encode(&self, text: &str, skip_special_tokens: bool) -> TractResult<Vec<u32>> {
+    pub fn encode(&self, text: &str, add_special_tokens: bool) -> TractResult<Vec<u32>> {
         Ok(self
             .tokenizer()
-            .encode(text, skip_special_tokens)
+            .encode(text, add_special_tokens)
             .map_err(|e| anyhow!(e))?
             .get_ids()
             .to_vec())
