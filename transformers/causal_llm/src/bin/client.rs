@@ -58,6 +58,7 @@ enum Commands {
     GenerateBench(GenerateBenchArgs),
     Stress(StressArgs),
     Scalability(ScalabilityArgs),
+    Complete(CompleteArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -219,12 +220,29 @@ impl ScalabilityArgs {
     }
 }
 
+#[derive(Parser, Debug)]
+struct CompleteArgs {
+    prompt: String,
+    #[arg(short('n'), default_value = "50")]
+    max_tokens: usize,
+}
+
+impl CompleteArgs {
+    async fn handle(&self, clients: &Clients) -> Result<()> {
+        let reply = clients.complete(&self.prompt, self.max_tokens).await?;
+        println!("{}", reply.choices[0].text);
+        eprintln!("{:?}", reply.usage);
+        Ok(())
+    }
+}
+
 impl Commands {
     async fn run(&self, clients: &Clients) -> Result<()> {
         match self {
             Self::GenerateBench(args) => args.handle(clients).await?,
             Self::Stress(args) => args.handle(clients).await?,
             Self::Scalability(args) => args.handle(clients).await?,
+            Self::Complete(args) => args.handle(clients).await?,
         }
         Ok(())
     }
@@ -266,54 +284,58 @@ impl Clients {
     }
 
     async fn run_one_generate(&self, pp: usize, tg: usize) -> Result<OpenAICompletionReply> {
+        Ok(self.complete(&self.get_one_prompt(pp), tg).await?)
+    }
+
+    async fn complete(
+        &self,
+        prompt: impl Into<String>,
+        max_tokens: usize,
+    ) -> Result<OpenAICompletionReply> {
         match self.api {
-            Api::Completions => self.run_one_generate_openai(pp, tg).await,
-            Api::Generate => self.run_one_generate_ollama(pp, tg).await,
-        }
-    }
-
-    async fn run_one_generate_ollama(&self, pp: usize, tg: usize) -> Result<OpenAICompletionReply> {
-        let query = OllamaCompletionQuery {
-            prompt: self.get_one_prompt(pp),
-            model: self.model.clone(),
-            options: OllamaCompletionOptions { num_predict: tg },
-        };
-        let response = self
-            .client
-            .post(&self.endpoint)
-            .body(serde_json::to_string(&query)?)
-            .header("content-type", "application/json")
-            .send()
-            .await?;
-        if response.status().is_success() {
-            let it = response.text().await?;
-            Ok(serde_json::from_str(&it)?)
-        } else {
-            let error = response.text().await.unwrap();
-            anyhow::bail!(error)
-        }
-    }
-
-    async fn run_one_generate_openai(&self, pp: usize, tg: usize) -> Result<OpenAICompletionReply> {
-        let query = OpenAICompletionQuery {
-            prompt: self.get_one_prompt(pp),
-            model: self.model.clone(),
-            max_tokens: tg,
-            stop: vec![],
-        };
-        let response = self
-            .client
-            .post(&self.endpoint)
-            .body(serde_json::to_string(&query)?)
-            .header("content-type", "application/json")
-            .send()
-            .await?;
-        if response.status().is_success() {
-            let it = response.text().await?;
-            Ok(serde_json::from_str(&it)?)
-        } else {
-            let error = response.text().await.unwrap();
-            anyhow::bail!(error)
+            Api::Completions => {
+                let query = OpenAICompletionQuery {
+                    prompt: prompt.into(),
+                    model: self.model.clone(),
+                    max_tokens,
+                    stop: vec![],
+                };
+                let response = self
+                    .client
+                    .post(&self.endpoint)
+                    .body(serde_json::to_string(&query)?)
+                    .header("content-type", "application/json")
+                    .send()
+                    .await?;
+                if response.status().is_success() {
+                    let it = response.text().await?;
+                    Ok(serde_json::from_str(&it)?)
+                } else {
+                    let error = response.text().await.unwrap();
+                    anyhow::bail!(error)
+                }
+            }
+            Api::Generate => {
+                let query = OllamaCompletionQuery {
+                    prompt: prompt.into(),
+                    model: self.model.clone(),
+                    options: OllamaCompletionOptions { num_predict: max_tokens },
+                };
+                let response = self
+                    .client
+                    .post(&self.endpoint)
+                    .body(serde_json::to_string(&query)?)
+                    .header("content-type", "application/json")
+                    .send()
+                    .await?;
+                if response.status().is_success() {
+                    let it = response.text().await?;
+                    Ok(serde_json::from_str(&it)?)
+                } else {
+                    let error = response.text().await.unwrap();
+                    anyhow::bail!(error)
+                }
+            }
         }
     }
 
