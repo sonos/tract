@@ -61,23 +61,23 @@ impl EvalOp for CudaGgmlGemm {
         session: &SessionState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let (a_opaque, b_opaque) = args_2!(inputs);
-        let a = a_opaque
+        let (act_opaque, weights_opaque) = args_2!(inputs);
+        let activs = act_opaque
             .to_device_tensor()
-            .with_context(|| format!("A tensor is not a cuda tensor: {a_opaque:?}"))?;
-        let b = b_opaque
+            .with_context(|| format!("A tensor is not a cuda tensor: {act_opaque:?}"))?;
+        let weights = weights_opaque
             .to_device_tensor()
-            .with_context(|| format!("B tensor is not a cuda tensor {b_opaque:?}"))?;
+            .with_context(|| format!("B tensor is not a cuda tensor {weights_opaque:?}"))?;
 
-        let (a_shape, b_shape) = crate::kernels::matmul::get_concrete_shapes(a, b)?;
+        let (activ_shape, weights_shape) = crate::kernels::matmul::get_concrete_shapes(activs, weights)?;
 
-        let c_shape = GgmlGemm.output_shape(&a_shape, &b_shape);
-        let c_dt = if get_ggml_q81_fact(a).is_some() { DatumType::F32 } else { a.datum_type() };
-        let c = tract_gpu::session_handler::make_tensor_for_node(session, node_id, c_dt, &c_shape)?;
+        let out_shape = GgmlGemm.output_shape(&activ_shape, &weights_shape);
+        let out_dt = if get_ggml_q81_fact(activs).is_some() { DatumType::F32 } else { activs.datum_type() };
+        let out = tract_gpu::session_handler::make_tensor_for_node(session, node_id, out_dt, &out_shape)?;
 
-        CUDA_STREAM.with(|stream| GgmlGemm.dispatch_eval(stream, a, b, &c))?;
+        CUDA_STREAM.with(|stream| GgmlGemm.dispatch_eval(stream, activs, weights, &out))?;
 
-        Ok(tvec![c.into_opaque_tensor().into_tvalue()])
+        Ok(tvec![out.into_opaque_tensor().into_tvalue()])
     }
 }
 
