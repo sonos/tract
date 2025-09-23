@@ -280,7 +280,7 @@ impl Clients {
     fn get_one_prompt(&self, len: usize) -> String {
         assert!(len < self.tokens.len());
         let start: usize = rand::random::<u32>() as usize % (self.tokens.len() - len);
-        self.tokenizer.decode(&self.tokens[start..][..len], true).unwrap()
+        self.tokenizer.decode(&self.tokens[start..][..len.saturating_sub(1)], true).unwrap()
     }
 
     async fn run_one_generate(&self, pp: usize, tg: usize) -> Result<OpenAICompletionReply> {
