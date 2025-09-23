@@ -333,6 +333,8 @@ fn convert_matmul_to_cuda(
 ) -> TractResult<TVec<OutletId>> {
     let mut input_facts = model.node_input_facts(node.id)?;
 
+    // GGML kernel expects weights in second position and activations in first position
+    // This avoid output transposition due to GGML column-major data expectations
     let mut swap_inputs = false;
     if !GgmlGemm.is_supported_dts(&[input_facts[0].clone(), input_facts[1].clone()])
         && GgmlGemm.is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()])
@@ -342,36 +344,39 @@ fn convert_matmul_to_cuda(
         swap_inputs = true;
     }
 
-    let a_pos = swap_inputs as usize;
-    let b_pos = 1 - swap_inputs as usize;
+    let act_fact = input_facts[0];
+    let weight_fact = input_facts[1];
+    let outlets = inputs.split_at_mut(1);
+    let act_outlet = &mut outlets.0[0];
+    let weights_outlet = &mut outlets.1[0];
     if op.transpose_a {
-        ensure!(as_quant_fact(input_facts[a_pos], &Q4_0).is_none(), "Cannot transpose Q40 tensor");
-
-        let rank = input_facts[a_pos].rank();
-        let perm_a_op = ops::CudaAxisOp::from_tract_core(AxisOp::Move(rank - 2, rank - 1));
-        let perm_a_name = node.name.clone() + ".perm_a";
-        inputs[a_pos] = target.wire_node(perm_a_name, perm_a_op, &[inputs[a_pos]])?[0];
+        let rank = act_fact.rank();
+        let perm_act_op = ops::CudaAxisOp::from_tract_core(AxisOp::Move(rank - 2, rank - 1));
+        let perm_act_name = node.name.clone() + ".perm_activs";
+        *act_outlet = target.wire_node(perm_act_name, perm_act_op, &[*act_outlet])?[0];
     }
 
-    if input_facts[0].datum_type == DatumType::F16 && as_quant_fact(input_facts[1], &Q4_0).is_some()
-    {
+    if act_fact.datum_type == DatumType::F16 && as_quant_fact(weight_fact, &Q4_0).is_some() {
         let in_cast_op = ops::CudaCast::new(DatumType::F32).unwrap();
-        inputs[0] = target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[inputs[0]])?[0];
+        *act_outlet =
+            target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[*act_outlet])?[0];
     }
 
     if !op.transpose_b {
-        ensure!(as_quant_fact(input_facts[b_pos], &Q4_0).is_none(), "Cannot transpose Q40 tensor");
+        ensure!(as_quant_fact(weight_fact, &Q4_0).is_none(), "Cannot transpose Q40 tensor");
 
-        let rank = input_facts[b_pos].rank();
-        let perm_b_op = ops::CudaAxisOp::from_tract_core(AxisOp::Move(rank - 2, rank - 1));
-        let perm_b_name = node.name.clone() + ".perm_b";
-        inputs[b_pos] = target.wire_node(perm_b_name, perm_b_op, &[inputs[b_pos]])?[0];
+        let rank = weight_fact.rank();
+        let perm_weights_op = ops::CudaAxisOp::from_tract_core(AxisOp::Move(rank - 2, rank - 1));
+        let perm_weights_name = node.name.clone() + ".perm_weights";
+        *weights_outlet =
+            target.wire_node(perm_weights_name, perm_weights_op, &[*weights_outlet])?[0];
     }
 
-    if as_quant_fact(input_facts[1], &Q4_0).is_some() {
-        let device_fact = target.outlet_fact(inputs[0])?.to_device_fact()?;
+    if as_quant_fact(weight_fact, &Q4_0).is_some() {
+        let device_fact = target.outlet_fact(*act_outlet)?.to_device_fact()?;
         let quant_op = ops::CudaGgmlQuantQ81::new(device_fact.shape.clone())?;
-        inputs[0] = target.wire_node(node.name.clone() + ".quant_a", quant_op, &[inputs[0]])?[0];
+        *act_outlet =
+            target.wire_node(node.name.clone() + ".quant_activs", quant_op, &[*act_outlet])?[0];
     }
 
     let mut matmul_output =
