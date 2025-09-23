@@ -146,7 +146,8 @@ impl GemmKernel for GgmlGemm {
         );
 
         regular_types_support
-            || (as_quant_fact(&facts[1], &Q4_0).is_some() && matches!(facts[0].datum_type, F16 | F32))
+            || (as_quant_fact(&facts[1], &Q4_0).is_some()
+                && matches!(facts[0].datum_type, F16 | F32))
     }
 
     fn output_dt(&self, _a_dt: DatumType, _b_dt: DatumType) -> TractResult<DatumType> {
