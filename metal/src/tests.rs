@@ -216,7 +216,8 @@ mod tests {
                     assert!(this.lifetime.start < this.lifetime.end);
 
                     // No other node in the partition should be alive at this step
-                    for other in partition.nodes.iter().filter(|it| it.outlet_id != this.outlet_id) {
+                    for other in partition.nodes.iter().filter(|it| it.outlet_id != this.outlet_id)
+                    {
                         assert!(
                             !other.lifetime.is_alive_at_step(step)
                                 && other.lifetime.is_disjoint(&this.lifetime),

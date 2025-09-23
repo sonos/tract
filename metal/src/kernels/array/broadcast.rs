@@ -34,8 +34,25 @@ impl MultiBroadcast {
         )
     }
 
+    pub fn is_supported_broadcast(broadcast_kind: BroadcastKind) -> bool {
+        matches!(
+            broadcast_kind,
+            BroadcastKind::Nd1
+                | BroadcastKind::Nd2
+                | BroadcastKind::Nd3
+                | BroadcastKind::Nd4
+                | BroadcastKind::Nd5
+                | BroadcastKind::Nd6
+        )
+    }
+
     pub fn kernel_name(&self, dt: DatumType, broadcast_kind: BroadcastKind) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal broadcastop", dt);
+        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metam broadcast op", dt);
+        ensure!(
+            Self::is_supported_broadcast(broadcast_kind),
+            "Unsupported broadcast kind {:?} for metal broadcast op",
+            broadcast_kind
+        );
         let tname = DeviceTensor::tname(dt)?;
         let broadcast_name = broadcast_kind.name();
         Ok(format!("array_ops::copy_{broadcast_name}_{tname}"))

@@ -434,7 +434,10 @@ fn convert_matmul_to_metal(
             let a_pos = swap_inputs as usize;
             let b_pos = 1 - swap_inputs as usize;
             if op.transpose_a {
-                ensure!(as_quant_fact(input_facts[a_pos], &Q4_0).is_none(), "Cannot transpose Q40 tensor");
+                ensure!(
+                    as_quant_fact(input_facts[a_pos], &Q4_0).is_none(),
+                    "Cannot transpose Q40 tensor"
+                );
 
                 let rank = input_facts[a_pos].rank();
                 let perm_a_op = ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(
@@ -452,7 +455,10 @@ fn convert_matmul_to_metal(
             }
 
             if !op.transpose_b {
-                ensure!(as_quant_fact(input_facts[b_pos], &Q4_0).is_none(), "Cannot transpose Q40 tensor");
+                ensure!(
+                    as_quant_fact(input_facts[b_pos], &Q4_0).is_none(),
+                    "Cannot transpose Q40 tensor"
+                );
 
                 let rank = input_facts[b_pos].rank();
                 let perm_b_op = ops::change_axes::MetalAxisOp::from_tract_core(AxisOp::Move(

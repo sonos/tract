@@ -5,7 +5,7 @@ use anyhow::{bail, ensure};
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::tensor::DeviceTensorExt;
-use tract_gpu::utils::{as_quant_fact, as_q40_tensor};
+use tract_gpu::utils::{as_q40_tensor, as_quant_fact};
 
 #[derive(Debug, Default, Clone)]
 pub struct MetalGemm<K: GemmKernel> {
