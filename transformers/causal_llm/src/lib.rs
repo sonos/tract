@@ -70,7 +70,7 @@ impl CausalLlmModel {
                 use tract_core::transform::ModelTransform;
                 if tract_cuda::utils::get_cuda_lib().is_some() {
                     nn.properties.insert("GPU".into(), rctensor0(true));
-                    tract_cuda::CudaTransform::default().transform(&mut nn)?;
+                    tract_cuda::CudaTransform.transform(&mut nn)?;
                 }
             }
         }
@@ -193,7 +193,8 @@ pub struct CausalLlmState {
 
 impl CausalLlmState {
     pub fn append_text(&mut self, prompt: &str) -> TractResult<()> {
-        Ok(self.seq.extend(self.encode(prompt, true)?))
+        let _: () = self.seq.extend(self.encode(prompt, true)?);
+        Ok(())
     }
 
     pub fn generate_next_token(&mut self) -> TractResult<()> {
@@ -220,7 +221,7 @@ impl CausalLlmState {
         let start_at = self.seq.len().saturating_sub(self.config.repeat_last_n);
 
         let mut last_token_logits =
-            output.cast_to::<f32>()?.as_slice::<f32>()?.iter().map(|t| *t).collect_vec();
+            output.cast_to::<f32>()?.as_slice::<f32>()?.iter().copied().collect_vec();
 
         apply_repeat_penalty(
             last_token_logits.as_mut_slice(),
@@ -245,7 +246,7 @@ impl CausalLlmState {
     }
 
     pub fn decode(&self, tokens: &[u32], skip_special_tokens: bool) -> TractResult<String> {
-        self.tokenizer().decode(&tokens, skip_special_tokens).map_err(|e| anyhow!(e))
+        self.tokenizer().decode(tokens, skip_special_tokens).map_err(|e| anyhow!(e))
     }
 
     pub fn encode(&self, text: &str, add_special_tokens: bool) -> TractResult<Vec<u32>> {
