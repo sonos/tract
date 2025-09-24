@@ -76,7 +76,7 @@ impl GenerateBenchArgs {
         for tg in &self.tg {
             print!("\t{tg}");
         }
-        println!("");
+        println!();
         for &pp in &self.pp {
             print!("{pp}");
             for &tg in &self.tg {
@@ -84,7 +84,7 @@ impl GenerateBenchArgs {
                 print!("\t{:.3}", dur.as_secs_f32());
                 let _ = std::io::stdout().flush();
             }
-            println!("");
+            println!();
         }
         Ok(())
     }
@@ -135,11 +135,10 @@ impl StressArgs {
                             total_pp.swap(0, Relaxed) as f32 / report.as_secs_f32(),
                             total_tg.swap(0, Relaxed) as f32 / report.as_secs_f32(),
                         );
-                        if let Some(keepalive) = &keepalive {
-                            if keepalive.is_closed() {
+                        if let Some(keepalive) = &keepalive
+                            && keepalive.is_closed() {
                                 break;
                             }
-                        }
                     }
                 });
             }
@@ -155,11 +154,10 @@ impl StressArgs {
                             total_pp.fetch_add(it.usage.prompt_tokens, Relaxed);
                             total_tg.fetch_add(it.usage.completion_tokens, Relaxed);
                         }
-                        if let Some(keepalive) = &keepalive {
-                            if keepalive.is_closed() {
+                        if let Some(keepalive) = &keepalive
+                            && keepalive.is_closed() {
                                 break;
                             }
-                        }
                     }
                 });
             }
@@ -198,7 +196,7 @@ impl ScalabilityArgs {
                     avg_tg: self.avg_tg,
                 };
                 scope.spawn(async move {
-                    let _ = stress.stress(&clients, Some(rx)).await;
+                    let _ = stress.stress(clients, Some(rx)).await;
                 });
                 scope.spawn(async move {
                     tokio::time::sleep(Duration::from_secs(5)).await;
@@ -262,7 +260,7 @@ impl Clients {
     fn from_args(args: &Args) -> Self {
         let tokenizer = Tokenizer::from_file(&args.tokenizers).unwrap();
         const BASE_TEXT: &str = include_str!("../lib.rs");
-        let tokens: Vec<u32> = tokenizer.encode_fast(&*BASE_TEXT, true).unwrap().get_ids().into();
+        let tokens: Vec<u32> = tokenizer.encode_fast(BASE_TEXT, true).unwrap().get_ids().into();
         let api = args.api.unwrap_or(if args.endpoint.ends_with("generate") {
             Api::Generate
         } else {
@@ -284,7 +282,7 @@ impl Clients {
     }
 
     async fn run_one_generate(&self, pp: usize, tg: usize) -> Result<OpenAICompletionReply> {
-        Ok(self.complete(&self.get_one_prompt(pp), tg).await?)
+        self.complete(&self.get_one_prompt(pp), tg).await
     }
 
     async fn complete(
