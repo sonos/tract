@@ -135,10 +135,11 @@ impl StressArgs {
                             total_pp.swap(0, Relaxed) as f32 / report.as_secs_f32(),
                             total_tg.swap(0, Relaxed) as f32 / report.as_secs_f32(),
                         );
-                        if let Some(keepalive) = &keepalive
-                            && keepalive.is_closed() {
+                        if let Some(keepalive) = &keepalive {
+                            if keepalive.is_closed() {
                                 break;
                             }
+                        }
                     }
                 });
             }
@@ -154,10 +155,11 @@ impl StressArgs {
                             total_pp.fetch_add(it.usage.prompt_tokens, Relaxed);
                             total_tg.fetch_add(it.usage.completion_tokens, Relaxed);
                         }
-                        if let Some(keepalive) = &keepalive
-                            && keepalive.is_closed() {
+                        if let Some(keepalive) = &keepalive {
+                            if keepalive.is_closed() {
                                 break;
                             }
+                        }
                     }
                 });
             }
