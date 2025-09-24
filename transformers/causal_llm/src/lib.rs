@@ -5,12 +5,12 @@ use anyhow::ensure;
 use float_ord::FloatOrd;
 use log::trace;
 use tokenizers::Tokenizer;
-use tract_nnef::internal::{anyhow, TractErrorContext};
+use tract_nnef::internal::{TractErrorContext, anyhow};
 use tract_nnef::prelude::tract_itertools::Itertools;
 use tract_nnef::prelude::*;
 use tract_nnef::tract_core::ops::source::SourceState;
-use tract_transformers::ops::dyn_kv_cache::DynKeyValueCacheState;
 use tract_transformers::WithTractTransformers;
+use tract_transformers::ops::dyn_kv_cache::DynKeyValueCacheState;
 
 #[derive(Clone, Debug, Default)]
 pub struct CausalLlmModelConfig {
@@ -122,6 +122,7 @@ impl CausalLlmModel {
             model: self.clone(),
             nn_state,
             seq: vec![],
+            processed_tokens: 0,
             config: CausalLlmStateConfig::default(),
         })
     }
@@ -131,7 +132,13 @@ impl CausalLlmModel {
         config: CausalLlmStateConfig,
     ) -> TractResult<CausalLlmState> {
         let nn_state = SimpleState::new(self.nn.clone())?;
-        Ok(CausalLlmState { model: self.clone(), nn_state, seq: vec![], config })
+        Ok(CausalLlmState {
+            model: self.clone(),
+            nn_state,
+            seq: vec![],
+            processed_tokens: 0,
+            config,
+        })
     }
 }
 
@@ -180,32 +187,35 @@ pub struct CausalLlmState {
     pub model: Arc<CausalLlmModel>,
     pub nn_state: TypedSimpleState<TypedModel, Arc<TypedRunnableModel<TypedModel>>>,
     pub seq: Vec<u32>,
+    pub processed_tokens: usize,
     pub config: CausalLlmStateConfig,
 }
 
 impl CausalLlmState {
-    fn call_llm(&mut self, tokens: &[u32]) -> TractResult<Tensor> {
-        let start = Instant::now();
-        let mut input = tensor1(&tokens.iter().map(|t| *t as i64).collect_vec());
-        input.insert_axis(0)?;
-        // let input_node = self.nn_state.model().input_outlets()?[0].node;
-        // let input_name = &self.nn_state.model().nodes[input_node].name;
-        // ndarray_npy::NpzWriter::new_compressed(std::fs::File::create("io.npz").unwrap())
-        //     .add_array(input_name, &input.to_array_view::<i64>()?)?;
-        let mut result = self.nn_state.run(tvec![input.into_tvalue()])?;
-        trace!("Processed {} tokens in {:?}", tokens.len(), start.elapsed());
-        Ok(result.remove(0).into_tensor())
+    pub fn append_text(&mut self, prompt: &str) -> TractResult<()> {
+        Ok(self.seq.extend(self.encode(prompt, true)?))
     }
 
-    pub fn process_text(&mut self, prompt: &str) -> TractResult<u32> {
-        self.process_tokens(&self.encode(prompt, true)?)
-    }
-
-    pub fn process_tokens(&mut self, tokens: &[u32]) -> TractResult<u32> {
+    pub fn generate_next_token(&mut self) -> TractResult<()> {
+        let tokens = &self.seq[self.processed_tokens..];
         ensure!(tokens.len() > 0);
-        self.seq.extend(tokens);
         let chunk_size = self.config.prompt_chunk_size.unwrap_or(usize::MAX);
-        let output = tokens.chunks(chunk_size).map(|c| self.call_llm(c)).last().unwrap()?;
+        let output = tokens
+            .chunks(chunk_size)
+            .map(|chunk| -> TractResult<Tensor> {
+                let start = Instant::now();
+                let mut input = tensor1(&chunk.iter().map(|t| *t as i64).collect_vec());
+                input.insert_axis(0)?;
+                // let input_node = self.nn_state.model().input_outlets()?[0].node;
+                // let input_name = &self.nn_state.model().nodes[input_node].name;
+                // ndarray_npy::NpzWriter::new_compressed(std::fs::File::create("io.npz").unwrap())
+                //     .add_array(input_name, &input.to_array_view::<i64>()?)?;
+                let mut result = self.nn_state.run(tvec![input.into_tvalue()])?;
+                trace!("Processed {} tokens in {:?}", chunk.len(), start.elapsed());
+                Ok(result.remove(0).into_tensor())
+            })
+            .last()
+            .unwrap()?;
 
         let start_at = self.seq.len().saturating_sub(self.config.repeat_last_n);
 
@@ -224,7 +234,10 @@ impl CausalLlmState {
             .max_by_key(|(_ix, v)| FloatOrd(**v))
             .context("no tokens in output ?")?
             .0 as u32;
-        Ok(next_tok)
+
+        self.processed_tokens += tokens.len();
+        self.seq.push(next_tok);
+        Ok(())
     }
 
     pub fn tokenizer(&self) -> &Tokenizer {
@@ -292,6 +305,7 @@ impl FrozenCausalLlmState {
             model: self.model,
             nn_state: self.nn_state.unfreeze(),
             seq: self.seq,
+            processed_tokens: 0,
             config: self.config,
         }
     }
@@ -305,11 +319,7 @@ pub fn apply_repeat_penalty(logits: &mut [f32], penalty: f32, context: &[u32]) {
     let context: std::collections::HashSet<_> = context.iter().collect();
     for (token_id, logit) in logits.iter_mut().enumerate() {
         if context.contains(&(token_id as u32)) {
-            if *logit >= 0. {
-                *logit /= penalty
-            } else {
-                *logit *= penalty
-            }
+            if *logit >= 0. { *logit /= penalty } else { *logit *= penalty }
         }
     }
 }
