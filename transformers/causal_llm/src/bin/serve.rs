@@ -1,5 +1,5 @@
-use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -8,13 +8,39 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_macros::debug_handler;
 use causal_llm::{CausalLlmModel, CausalLlmStateConfig};
-use clap::{arg, command, Parser};
+use clap::{Parser, arg, command};
 use log::{debug, info};
 use tract_nnef::prelude::TractResult;
 
 #[allow(dead_code)]
 mod common;
 use common::*;
+
+macro_rules! http_ensure {
+    ($expr: expr, $msg: expr) => {
+        if !$expr {
+            return Err(anyhow::anyhow!($msg).into());
+        }
+    };
+}
+type Result<A> = std::result::Result<A, AppError>;
+struct AppError(anyhow::Error);
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> axum::response::Response {
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("Something went wrong: {}", self.0))
+            .into_response()
+    }
+}
+
+impl<E> From<E> for AppError
+where
+    E: Into<anyhow::Error>,
+{
+    fn from(err: E) -> Self {
+        Self(err.into())
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -94,6 +120,8 @@ async fn completions(
     State(global): State<Arc<Context>>,
     Json(query): Json<OpenAICompletionQuery>,
 ) -> Result<Json<OpenAICompletionReply>> {
+    http_ensure!(query.max_tokens > 0, "max_tokens must be at least 1");
+
     static COUNTER: AtomicUsize = AtomicUsize::new(1);
     let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed).to_string();
     let s = tokio::task::spawn_blocking(move || -> Result<OpenAICompletionReply> {
@@ -103,10 +131,11 @@ async fn completions(
             ..Default::default()
         })?;
         debug!("prompt [{id}] << {}", query.prompt);
-        let mut token = state.process_text(&query.prompt)?;
+        state.append_text(&query.prompt)?;
         let prompt_len = state.seq.len();
+
         while state.seq.len() - prompt_len < query.max_tokens {
-            token = state.process_tokens(&[token])?;
+            state.generate_next_token()?;
         }
         let generated = state.decode(&state.seq[prompt_len..], true)?;
         debug!("gen   [{id}] >> {}", generated);
@@ -122,23 +151,4 @@ async fn completions(
     })
     .await??;
     Ok(Json(s))
-}
-
-type Result<A> = std::result::Result<A, AppError>;
-struct AppError(anyhow::Error);
-
-impl IntoResponse for AppError {
-    fn into_response(self) -> axum::response::Response {
-        (StatusCode::INTERNAL_SERVER_ERROR, format!("Something went wrong: {}", self.0))
-            .into_response()
-    }
-}
-
-impl<E> From<E> for AppError
-where
-    E: Into<anyhow::Error>,
-{
-    fn from(err: E) -> Self {
-        Self(err.into())
-    }
 }

@@ -1,10 +1,10 @@
 use std::io::Write;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::Parser;
 use reqwest::Client;
 use tokenizers::Tokenizer;
