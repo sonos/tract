@@ -22,6 +22,7 @@ env_logger.workspace = true
 ndarray-npy.workspace = true
 tokio-scoped = "0.2.0"
 rand.workspace = true
+aws-sdk-bedrockruntime = "=1.95.0"
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 tract-metal.workspace = true

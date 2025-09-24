@@ -1,10 +1,9 @@
 use std::io::Write;
-use std::str::FromStr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use clap::Parser;
 use reqwest::Client;
 use tokenizers::Tokenizer;
@@ -32,23 +31,64 @@ struct Args {
     command: Commands,
 
     #[structopt(long)]
-    api: Option<Api>,
+    api: Option<String>,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 enum Api {
-    Completions,
-    Generate,
+    Completions(Client, String),
+    Generate(Client, String),
 }
 
-impl FromStr for Api {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        match s {
-            "completions" => Ok(Api::Completions),
-            "generate" => Ok(Api::Generate),
-            _ => bail!("Unknown api name {s}"),
+impl Api {
+    async fn generate(
+        &self,
+        model: &str,
+        prompt: impl Into<String>,
+        max_tokens: usize,
+    ) -> Result<OpenAICompletionReply> {
+        match &self {
+            Api::Completions(client, endpoint) => {
+                let query = OpenAICompletionQuery {
+                    prompt: prompt.into(),
+                    model: model.to_string(),
+                    max_tokens,
+                    stop: vec![],
+                };
+                let response = client
+                    .post(endpoint)
+                    .body(serde_json::to_string(&query)?)
+                    .header("content-type", "application/json")
+                    .send()
+                    .await?;
+                if response.status().is_success() {
+                    let it = response.text().await?;
+                    Ok(serde_json::from_str(&it)?)
+                } else {
+                    let error = response.text().await.unwrap();
+                    anyhow::bail!(error)
+                }
+            }
+            Api::Generate(client, endpoint) => {
+                let query = OllamaCompletionQuery {
+                    prompt: prompt.into(),
+                    model: model.to_string(),
+                    options: OllamaCompletionOptions { num_predict: max_tokens },
+                };
+                let response = client
+                    .post(endpoint)
+                    .body(serde_json::to_string(&query)?)
+                    .header("content-type", "application/json")
+                    .send()
+                    .await?;
+                if response.status().is_success() {
+                    let it = response.text().await?;
+                    Ok(serde_json::from_str(&it)?)
+                } else {
+                    let error = response.text().await.unwrap();
+                    anyhow::bail!(error)
+                }
+            }
         }
     }
 }
@@ -250,9 +290,7 @@ impl Commands {
 
 #[derive(Clone, Debug)]
 struct Clients {
-    endpoint: String,
     model: String,
-    client: Client,
     tokens: Vec<u32>,
     tokenizer: Tokenizer,
     api: Api,
@@ -263,19 +301,12 @@ impl Clients {
         let tokenizer = Tokenizer::from_file(&args.tokenizers).unwrap();
         const BASE_TEXT: &str = include_str!("../lib.rs");
         let tokens: Vec<u32> = tokenizer.encode_fast(BASE_TEXT, true).unwrap().get_ids().into();
-        let api = args.api.unwrap_or(if args.endpoint.ends_with("generate") {
-            Api::Generate
+        let api = if args.endpoint.ends_with("generate") {
+            Api::Generate(Client::new(), args.endpoint.to_string())
         } else {
-            Api::Completions
-        });
-        Clients {
-            endpoint: args.endpoint.to_string(),
-            api,
-            model: args.model.clone(),
-            client: Client::new(),
-            tokens,
-            tokenizer,
-        }
+            Api::Completions(Client::new(), args.endpoint.to_string())
+        };
+        Clients { api, model: args.model.clone(), tokens, tokenizer }
     }
     fn get_one_prompt(&self, len: usize) -> String {
         assert!(len < self.tokens.len());
@@ -284,7 +315,7 @@ impl Clients {
     }
 
     async fn run_one_generate(&self, pp: usize, tg: usize) -> Result<OpenAICompletionReply> {
-        self.complete(&self.get_one_prompt(pp), tg).await
+        self.api.generate(&self.get_one_prompt(pp), &self.model, tg).await
     }
 
     async fn complete(
@@ -292,51 +323,7 @@ impl Clients {
         prompt: impl Into<String>,
         max_tokens: usize,
     ) -> Result<OpenAICompletionReply> {
-        match self.api {
-            Api::Completions => {
-                let query = OpenAICompletionQuery {
-                    prompt: prompt.into(),
-                    model: self.model.clone(),
-                    max_tokens,
-                    stop: vec![],
-                };
-                let response = self
-                    .client
-                    .post(&self.endpoint)
-                    .body(serde_json::to_string(&query)?)
-                    .header("content-type", "application/json")
-                    .send()
-                    .await?;
-                if response.status().is_success() {
-                    let it = response.text().await?;
-                    Ok(serde_json::from_str(&it)?)
-                } else {
-                    let error = response.text().await.unwrap();
-                    anyhow::bail!(error)
-                }
-            }
-            Api::Generate => {
-                let query = OllamaCompletionQuery {
-                    prompt: prompt.into(),
-                    model: self.model.clone(),
-                    options: OllamaCompletionOptions { num_predict: max_tokens },
-                };
-                let response = self
-                    .client
-                    .post(&self.endpoint)
-                    .body(serde_json::to_string(&query)?)
-                    .header("content-type", "application/json")
-                    .send()
-                    .await?;
-                if response.status().is_success() {
-                    let it = response.text().await?;
-                    Ok(serde_json::from_str(&it)?)
-                } else {
-                    let error = response.text().await.unwrap();
-                    anyhow::bail!(error)
-                }
-            }
-        }
+        self.api.generate(&self.model, prompt.into(), max_tokens).await
     }
 
     async fn bench_one_generate(&self, pp: usize, tg: usize) -> Result<Duration> {
