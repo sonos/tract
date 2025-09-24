@@ -5,7 +5,7 @@ set -e
 
 if [ -z "$RUSTUP_TOOLCHAIN" ]
 then
-    export RUSTUP_TOOLCHAIN=1.85.0
+    export RUSTUP_TOOLCHAIN="stable"
 fi
 export RUSTUP_TOOLCHAIN
 
