@@ -77,6 +77,21 @@ pub fn get_concrete_shapes(
     Ok((a_shape, b_shape))
 }
 
+fn find_block_size(k: usize) -> usize {
+    let mut block_size_best = WARP_SIZE;
+    let mut best_niter = k.div_ceil(2 * WARP_SIZE);
+
+    for block_size in (2 * WARP_SIZE..=256).step_by(WARP_SIZE) {
+        let niter = k.div_ceil(2 * block_size);
+        if niter < best_niter {
+            best_niter = niter;
+            block_size_best = block_size;
+        }
+    }
+
+    block_size_best
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct GemmParams {
     pub dts: [DatumType; 3],
@@ -123,71 +138,7 @@ impl GemmParams {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct GgmlGemm;
 
-fn find_block_size(k: usize) -> usize {
-    let mut block_size_best = WARP_SIZE;
-    let mut best_niter = k.div_ceil(2 * WARP_SIZE);
-
-    for block_size in (2 * WARP_SIZE..=256).step_by(WARP_SIZE) {
-        let niter = k.div_ceil(2 * block_size);
-        if niter < best_niter {
-            best_niter = niter;
-            block_size_best = block_size;
-        }
-    }
-
-    block_size_best
-}
-
-fn kernel_name_mat_vec(dt: DatumType, n_cols: usize, block_size: usize) -> TractResult<String> {
-    Ok(format!("ggml_matvec_{}_ncols_{}_bs_{}", DeviceTensor::tname(dt)?, n_cols, block_size))
-}
-
-fn dispatch_ggml_matvec(
-    stream: &TractCudaStream,
-    weights: &DeviceTensor,
-    activs: &DeviceTensor,
-    output: &DeviceTensor,
-    params: GemmParams,
-) -> TractResult<()> {
-    ensure!(params.act_batch % params.w_batch == 0);
-
-    let act_view = get_cuda_view(activs);
-    let w_view = get_cuda_view(weights);
-    let output_view = get_cuda_view(output);
-
-    let k_div_2 = params.k / 2;
-    let ncols_act_div_2 = params.act_strides[1] / 2;
-    ensure!(k_div_2 == ncols_act_div_2 as usize);
-    let block_size = find_block_size(params.k);
-
-    let batch_ratio = params.act_batch / params.w_batch;
-
-    let kernel_name = kernel_name_mat_vec(params.dts[0], params.m, block_size)?;
-    let mut func = cuda_context().load_pipeline(LibraryName::Ggml, kernel_name)?;
-    let mut launch_args = stream.launch_builder(&func);
-    launch_args.arg(&w_view);
-    launch_args.arg(&act_view);
-    launch_args.arg(&output_view);
-    launch_args.arg(&k_div_2);
-    launch_args.arg(&params.act_batch);
-    launch_args.arg(&params.w_strides[1]);
-    launch_args.arg(&ncols_act_div_2);
-    launch_args.arg(&params.out_strides[1]);
-    launch_args.arg(&batch_ratio);
-    launch_args.arg(&params.w_strides[0]);
-    launch_args.arg(&params.act_strides[0]);
-    launch_args.arg(&params.out_strides[0]);
-
-    let cfg = LaunchConfig {
-        grid_dim: (params.n as _, params.act_batch as _, 1),
-        block_dim: (block_size as _, 1, 1),
-        shared_mem_bytes: (WARP_SIZE * size_of::<f32>()) as u32,
-    };
-
-    unsafe { launch_args.launch(cfg) };
-    Ok(())
-}
-
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct CublasDispatchParams {
     pub w_batch: usize,
     pub act_batch: usize,
@@ -236,6 +187,56 @@ impl CublasDispatchParams {
     }
 }
 
+fn kernel_name_mat_vec(dt: DatumType, n_cols: usize, block_size: usize) -> TractResult<String> {
+    Ok(format!("ggml_matvec_{}_ncols_{}_bs_{}", DeviceTensor::tname(dt)?, n_cols, block_size))
+}
+
+fn dispatch_ggml_matvec(
+    stream: &TractCudaStream,
+    weights: &DeviceTensor,
+    activs: &DeviceTensor,
+    output: &DeviceTensor,
+    params: GemmParams,
+) -> TractResult<()> {
+    ensure!(params.act_batch % params.w_batch == 0);
+
+    let w_view = get_cuda_view(weights);
+    let act_view = get_cuda_view(activs);
+    let output_view = get_cuda_view(output);
+
+    let k_div_2 = params.k / 2;
+    let ncols_act_div_2 = params.act_strides[1] / 2;
+    ensure!(k_div_2 == ncols_act_div_2 as usize);
+    let block_size = find_block_size(params.k);
+
+    let batch_ratio = params.act_batch / params.w_batch;
+
+    let kernel_name = kernel_name_mat_vec(params.dts[0], params.m, block_size)?;
+    let mut func = cuda_context().load_pipeline(LibraryName::Ggml, kernel_name)?;
+    let mut launch_args = stream.launch_builder(&func);
+    launch_args.arg(&w_view);
+    launch_args.arg(&act_view);
+    launch_args.arg(&output_view);
+    launch_args.arg(&k_div_2);
+    launch_args.arg(&params.act_batch);
+    launch_args.arg(&params.w_strides[1]);
+    launch_args.arg(&ncols_act_div_2);
+    launch_args.arg(&params.out_strides[1]);
+    launch_args.arg(&batch_ratio);
+    launch_args.arg(&params.w_strides[0]);
+    launch_args.arg(&params.act_strides[0]);
+    launch_args.arg(&params.out_strides[0]);
+
+    let cfg = LaunchConfig {
+        grid_dim: (params.n as _, params.act_batch as _, 1),
+        block_dim: (block_size as _, 1, 1),
+        shared_mem_bytes: (WARP_SIZE * size_of::<f32>()) as u32,
+    };
+
+    unsafe { launch_args.launch(cfg) };
+    Ok(())
+}
+
 fn dispatch_cublas_gemm<F: Datum + Float>(
     stream: &TractCudaStream,
     weights: &DeviceTensor,
@@ -257,6 +258,7 @@ where
             d.c_offset,
             params.out_strides[0] as usize * d.act_batch.max(d.w_batch) * params.dts[2].size_of(),
         )?;
+
         let cublas_gemm_cfg = cublas::GemmConfig {
             transa: cublas::sys::cublasOperation_t::CUBLAS_OP_T,
             transb: cublas::sys::cublasOperation_t::CUBLAS_OP_N,
@@ -272,7 +274,7 @@ where
 
         let gemm_batched_strided_cfg = cublas::StridedBatchedConfig {
             gemm: cublas_gemm_cfg,
-            batch_size: params.act_batch as i32,
+            batch_size: d.act_batch as i32,
             stride_a: params.w_strides[0] as _,
             stride_b: params.act_strides[0] as _,
             stride_c: params.out_strides[0] as _,
@@ -592,6 +594,10 @@ impl GgmlGemm {
         weights: &DeviceTensor,
         out: &DeviceTensor,
     ) -> TractResult<()> {
+        // Note: All the following MM/MV kernels transpose the output.
+        // We name 'm' and 'n' according to the output
+        // This means Weights: [n, k] x Activ: [m, k] => C: [m, n]
+
         let (act_shape, w_shape) = get_concrete_shapes(activs, weights)?;
 
         ensure!(out.shape() == self.output_shape(&act_shape, &w_shape).as_slice());
@@ -606,6 +612,7 @@ impl GgmlGemm {
             &act_shape,
             out.shape(),
         )?;
+
         if get_quant_fact(weights, &Q4_0).is_some() {
             let act_view = get_cuda_view(activs);
             let w_view = get_cuda_view(weights);
@@ -688,8 +695,11 @@ mod tests {
                 )?
             };
 
-            let cuda_output =
-                GgmlGemm.eval(stream, &activs.clone().into_device()?, &weights.clone().into_device()?)?;
+            let cuda_output = GgmlGemm.eval(
+                stream,
+                &activs.clone().into_device()?,
+                &weights.clone().into_device()?,
+            )?;
 
             let matmul = PrefixMatMul {
                 transpose_a,
@@ -710,6 +720,39 @@ mod tests {
             cuda_output.to_host()?.close_enough(&output, Approximation::VeryApproximate)?;
             Ok(())
         })
+    }
+
+    #[test]
+    fn test_mat_vec() -> TractResult<()> {
+        // f32_f32
+        run_mmm_test_case((2, 1, 1, 2, 1), false, true, F32, F32)?;
+        run_mmm_test_case((2, 1, 3, 60, 2), false, true, F32, F32)?;
+        run_mmm_test_case((2, 2, 2, 128, 7), false, true, F32, F32)?;
+        run_mmm_test_case((4, 1, 7, 2, 1), false, true, F32, F32)?;
+
+        //// f16_f16
+        run_mmm_test_case((1, 1, 5, 2, 1), false, true, F16, F16)?;
+        run_mmm_test_case((2, 1, 8, 62, 2), false, true, F16, F16)?;
+        run_mmm_test_case((2, 2, 2, 128, 9), false, true, F16, F16)?;
+        run_mmm_test_case((4, 1, 1, 128, 9), false, true, F16, F16)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_mat_mul() -> TractResult<()> {
+        // f32_f32
+        run_mmm_test_case((1, 1, 9, 4, 2), false, true, F32, F32)?;
+        run_mmm_test_case((1, 1, 11, 2, 3), false, true, F32, F32)?;
+        run_mmm_test_case((2, 2, 15, 1, 2), false, true, F32, F32)?;
+        run_mmm_test_case((2, 1, 10, 32, 2), false, true, F32, F32)?;
+        run_mmm_test_case((1, 2, 12, 1, 2), false, true, F32, F32)?;
+
+        // f16_f16
+        run_mmm_test_case((1, 1, 12, 7, 2), false, true, F16, F16)?;
+        run_mmm_test_case((1, 1, 9, 61, 2), false, true, F16, F16)?;
+        run_mmm_test_case((2, 1, 10, 127, 9), false, true, F16, F16)?;
+        run_mmm_test_case((1, 2, 16, 127, 9), false, true, F16, F16)?;
+        Ok(())
     }
 
     #[test]
