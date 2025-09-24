@@ -9,7 +9,7 @@ on:
 env:
   CARGO_INCREMENTAL: false
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
-  RUSTUP_TOOLCHAIN: stable
+  RUSTUP_TOOLCHAIN: 1.85.0
 
 jobs:
   linux:
