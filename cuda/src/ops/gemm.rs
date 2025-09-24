@@ -69,11 +69,14 @@ impl EvalOp for CudaGgmlGemm {
             .to_device_tensor()
             .with_context(|| format!("B tensor is not a cuda tensor {weights_opaque:?}"))?;
 
-        let (activ_shape, weights_shape) = crate::kernels::matmul::get_concrete_shapes(activs, weights)?;
+        let (activ_shape, weights_shape) =
+            crate::kernels::matmul::get_concrete_shapes(activs, weights)?;
 
         let out_shape = GgmlGemm.output_shape(&activ_shape, &weights_shape);
-        let out_dt = if get_ggml_q81_fact(activs).is_some() { DatumType::F32 } else { activs.datum_type() };
-        let out = tract_gpu::session_handler::make_tensor_for_node(session, node_id, out_dt, &out_shape)?;
+        let out_dt =
+            if get_ggml_q81_fact(activs).is_some() { DatumType::F32 } else { activs.datum_type() };
+        let out =
+            tract_gpu::session_handler::make_tensor_for_node(session, node_id, out_dt, &out_shape)?;
 
         CUDA_STREAM.with(|stream| GgmlGemm.dispatch_eval(stream, activs, weights, &out))?;
 
