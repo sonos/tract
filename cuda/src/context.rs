@@ -13,11 +13,13 @@ use tract_core::internal::*;
 
 use cudarc::driver::{CudaContext, CudaFunction, CudaModule, CudaStream};
 
-use crate::kernels::{cubin_dir, LibraryName, COMMON_H};
+use crate::kernels::{COMMON_H, LibraryName, cubin_dir};
 use crate::tensor::CudaTensor;
 
 use cudarc::nvrtc::result::{compile_program, destroy_program, get_program_log};
-use cudarc::nvrtc::sys::{nvrtcCreateProgram, nvrtcGetCUBIN, nvrtcGetCUBINSize, nvrtcProgram, nvrtcResult};
+use cudarc::nvrtc::sys::{
+    nvrtcCreateProgram, nvrtcGetCUBIN, nvrtcGetCUBINSize, nvrtcProgram, nvrtcResult,
+};
 use std::ffi::{CStr, CString, c_char};
 use std::path::{Path, PathBuf};
 
@@ -99,20 +101,23 @@ impl TractCudaContext {
 
             let c_src =
                 CString::new(lib.content()).context("Failed to make CString from CUDA source")?;
-            let prog = 
-                unsafe {
-                    let mut prog = MaybeUninit::uninit();
-                    nvrtcCreateProgram(
-                        prog.as_mut_ptr(),
-                        c_src.as_ptr(),
-                        std::ptr::null(),
-                        1,
-                        &CString::new(COMMON_H).context("Failed to make CString from CUDA header")?.as_ptr(),
-                        &CString::new("common.cuh").context("Failed to make CString from CUDA header name")?.as_ptr(),
-                    )
-                    .result()?;
-                    prog.assume_init()
-                };
+            let prog = unsafe {
+                let mut prog = MaybeUninit::uninit();
+                nvrtcCreateProgram(
+                    prog.as_mut_ptr(),
+                    c_src.as_ptr(),
+                    std::ptr::null(),
+                    1,
+                    &CString::new(COMMON_H)
+                        .context("Failed to make CString from CUDA header")?
+                        .as_ptr(),
+                    &CString::new("common.cuh")
+                        .context("Failed to make CString from CUDA header name")?
+                        .as_ptr(),
+                )
+                .result()?;
+                prog.assume_init()
+            };
 
             if let Err(_e) = unsafe { compile_program::<String>(prog, &nvrtc_opts) } {
                 let log = self.read_nvrtc_log(prog).unwrap_or_else(|_| "<no log>".into());
@@ -157,11 +162,7 @@ impl TractCudaContext {
             self.device_properties.major, self.device_properties.minor
         );
 
-        Ok(vec![
-            "--std=c++17".into(),
-            arch,
-            format!("-I{}", cuda_inc.display()),
-        ])
+        Ok(vec!["--std=c++17".into(), arch, format!("-I{}", cuda_inc.display())])
     }
 
     /// Read the NVRTC program log as String.
