@@ -381,7 +381,7 @@ impl Clients {
     }
 
     async fn run_one_generate(&self, pp: usize, tg: usize) -> Result<GenericCompletion> {
-        self.api.generate(&self.get_one_prompt(pp), &self.model, tg).await
+        self.api.generate(&self.model, &self.get_one_prompt(pp), tg).await
     }
 
     async fn complete(
