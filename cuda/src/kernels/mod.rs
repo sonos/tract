@@ -31,14 +31,10 @@ static CUBIN_FOLDER: OnceLock<PathBuf> = OnceLock::new();
 pub fn cubin_dir() -> &'static Path {
     CUBIN_FOLDER
         .get_or_init(|| {
-            #[cfg(unix)]
-            let home = env::var("HOME").unwrap_or_else(|_| ".".into());
-            #[cfg(windows)]
-            let home = env::var("USERPROFILE")
-                .or_else(|_| env::var("LOCALAPPDATA"))
-                .unwrap_or_else(|_| ".".into());
-
-            PathBuf::from(home).join(".cache").join("tract").join("cuda").join("cubins")
+            dirs::cache_dir().unwrap_or_else(|| ".cache".into())
+            .join("tract")
+            .join("cuda")
+            .join("cubins")
         })
         .as_path()
 }
