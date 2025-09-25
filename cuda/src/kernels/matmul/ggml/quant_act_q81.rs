@@ -66,7 +66,7 @@ impl GgmlQuantQ81 {
             let in_strides = input.strides();
             let fast_path_str = if in_strides[rank - 1] == 1 { "fast_" } else { "" };
             let func = cuda_context().load_pipeline(
-                LibraryName::GgmlQ,
+                LibraryName::Quant,
                 format!("quantize_mmq_q8_1_{fast_path_str}nd{}", input.rank()),
             )?;
             let mut launch_args = stream.launch_builder(&func);
@@ -88,7 +88,7 @@ impl GgmlQuantQ81 {
             unsafe { launch_args.launch(cfg) };
         } else {
             let func = context
-                .load_pipeline(LibraryName::GgmlQ, format!("quantize_q8_1_nd{}", input.rank()))?;
+                .load_pipeline(LibraryName::Quant, format!("quantize_q8_1_nd{}", input.rank()))?;
             let mut launch_args = stream.launch_builder(&func);
             launch_args.arg(&i_view);
             launch_args.arg(&o_view);
