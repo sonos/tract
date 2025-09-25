@@ -6,7 +6,6 @@ use tract_gpu::device::DeviceContext;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 
 use std::ops::Deref;
-use std::env;
 use std::sync::{OnceLock, RwLock};
 
 use tract_core::internal::*;
@@ -16,10 +15,10 @@ use cudarc::driver::{CudaContext, CudaFunction, CudaModule, CudaStream};
 use crate::kernels::{LibraryName, cubin_folder};
 use crate::tensor::CudaTensor;
 
-use std::ffi::{CStr, CString};
-use std::path::Path;
 use cudarc::nvrtc::result::{compile_program, create_program, destroy_program, get_program_log};
-use cudarc::nvrtc::sys::{nvrtcGetCUBIN, nvrtcGetCUBINSize, nvrtcResult};
+use cudarc::nvrtc::sys::{nvrtcGetCUBIN, nvrtcGetCUBINSize, nvrtcProgram, nvrtcResult};
+use std::ffi::{CStr, CString};
+use std::path::{Path, PathBuf};
 
 thread_local! {
     pub static CUDA_STREAM: TractCudaStream = TractCudaStream::new().expect("Could not create Cuda Stream");
@@ -56,7 +55,6 @@ impl Deref for TractCudaContext {
 
 impl TractCudaContext {
     pub fn new() -> TractResult<Self> {
-        
         let context =
             CudaContext::new(0).with_context(|| "Could not find system default CUDA device")?;
 
@@ -77,48 +75,101 @@ impl TractCudaContext {
     }
 
     pub fn compile_cubins(&self) -> TractResult<()> {
-        if !Path::new(&cubin_folder()).exists() {
-            log::info!("Creating cache folder for cuda cubins");
-            std::fs::create_dir_all(Path::new(&cubin_folder()))?;
+        let cache_dir = PathBuf::from(cubin_folder());
+        if !cache_dir.exists() {
+            log::info!("Creating cache folder for CUDA cubins at {:?}", cache_dir);
+            std::fs::create_dir_all(&cache_dir)
+                .with_context(|| format!("Failed to create {:?}", cache_dir))?;
         }
+
+        let nvrtc_opts = self.build_nvrtc_opts()?;
 
         for lib in LibraryName::ALL {
-            if !Path::new(&lib.cubin_path()).exists() {
-                log::info!("No cubin found for {:?}. Try compiling", lib);
-                let prog = create_program(&CString::new(lib.content())?, None).unwrap();
-                unsafe {
-                    let cuda_path = env!("CUDA_HOME");
-                    let mut cuda_inc_opt = "-I".to_string();
-                    cuda_inc_opt.push_str(&cuda_path);
-                    cuda_inc_opt.push_str("/include");
-                    
-                    let tract_cuda_path = env!("CARGO_MANIFEST_DIR");
-                    let mut cu_path_opt = "-I".to_string();
-                    cu_path_opt.push_str(&tract_cuda_path);
-                    cu_path_opt.push_str("/src/kernels/cu/");
-
-                    let target_opt = format!("--gpu-architecture=sm_{}{}", self.device_properties.major, self.device_properties.minor);
-                    if compile_program::<String>(prog, &[target_opt, cuda_inc_opt, cu_path_opt]).is_err() {
-                        let log = get_program_log(prog).unwrap();
-                        let str = CStr::from_bytes_until_nul(std::mem::transmute(&*log)).unwrap();
-                        return Err(anyhow!(str.to_string_lossy()))
-                    }
-                    let mut len = 0usize;
-                    let res = nvrtcGetCUBINSize(prog, &mut len);
-                    ensure!(res == nvrtcResult::NVRTC_SUCCESS);
-
-                    let mut cubin = vec!(0u8; len);
-                    let res = nvrtcGetCUBIN(prog, std::mem::transmute(cubin.as_mut_ptr()));
-                    ensure!(res == nvrtcResult::NVRTC_SUCCESS);
-
-                    std::fs::write(lib.cubin_path(), &cubin).unwrap();
-                    destroy_program(prog)?;
-                }
+            let out_path = PathBuf::from(lib.cubin_path());
+            if out_path.exists() {
+                continue;
             }
+
+            log::info!("No cubin found for {:?}. Compiling…", lib);
+
+            let src =
+                CString::new(lib.content()).context("Failed to make CString from CUDA source")?;
+            let prog = create_program(&src, None).context("nvrtcCreateProgram failed")?;
+
+            if let Err(_e) = unsafe { compile_program::<String>(prog, &nvrtc_opts) } {
+                let log = self.read_nvrtc_log(prog).unwrap_or_else(|_| "<no log>".into());
+                let _ = unsafe { destroy_program(prog) };
+                return Err(anyhow!("NVRTC compilation failed for {:?}:\n{}", lib, log));
+            }
+
+            let cubin = unsafe { self.get_cubin_bytes(prog) }
+                .with_context(|| format!("Failed to extract CUBIN for {:?}", lib))?;
+
+            unsafe { destroy_program(prog) }.context("nvrtcDestroyProgram failed")?;
+
+            std::fs::write(&out_path, &cubin)
+                .with_context(|| format!("Failed to write {:?}", out_path))?;
         }
-        
+
         Ok(())
     }
+
+    /// Build NVRTC options: include paths + GPU arch.
+    fn build_nvrtc_opts(&self) -> TractResult<Vec<String>> {
+        let cuda_home = std::env::var("CUDA_HOME")
+            .or_else(|_| std::env::var("CUDA_PATH"))
+            .context("Please set CUDA_HOME (or CUDA_PATH) to your CUDA installation")?;
+
+        let cuda_inc = Path::new(&cuda_home).join("include");
+        if !cuda_inc.exists() {
+            return Err(anyhow!("CUDA include dir not found at {:?}", cuda_inc));
+        }
+
+        let crate_root =
+            std::env::var("CARGO_MANIFEST_DIR").context("CARGO_MANIFEST_DIR not set")?;
+        let cu_local_inc = Path::new(&crate_root).join("src/kernels/cu");
+
+        let arch = format!(
+            "--gpu-architecture=sm_{}{}",
+            self.device_properties.major, self.device_properties.minor
+        );
+
+        Ok(vec![
+            "--std=c++17".into(),
+            arch,
+            format!("-I{}", cuda_inc.display()),
+            format!("-I{}", cu_local_inc.display()),
+        ])
+    }
+
+    /// Safely read the NVRTC program log as String.
+    fn read_nvrtc_log(&self, prog: nvrtcProgram) -> TractResult<String> {
+        let buf: Vec<i8> = unsafe { get_program_log(prog).context("nvrtcGetProgramLog failed") }?;
+
+        let bytes = unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, buf.len()) };
+
+        match CStr::from_bytes_until_nul(bytes) {
+            Ok(cstr) => Ok(cstr.to_string_lossy().into_owned()),
+            Err(_) => Ok(String::from_utf8_lossy(bytes).into_owned()),
+        }
+    }
+
+    /// Extract CUBIN bytes from an NVRTC program.
+    unsafe fn get_cubin_bytes(&self, prog: nvrtcProgram) -> TractResult<Vec<u8>> {
+        let mut len: usize = 0;
+        let res = unsafe { nvrtcGetCUBINSize(prog, &mut len as *mut usize) };
+        if res != nvrtcResult::NVRTC_SUCCESS {
+            return Err(anyhow!("nvrtcGetCUBINSize failed ({:?})", res));
+        }
+
+        let mut cubin = vec![0u8; len];
+        let res = unsafe { nvrtcGetCUBIN(prog, cubin.as_mut_ptr() as *mut i8) };
+        if res != nvrtcResult::NVRTC_SUCCESS {
+            return Err(anyhow!("nvrtcGetCUBIN failed ({:?})", res));
+        }
+        Ok(cubin)
+    }
+
     pub fn preload_pipelines(&self) -> TractResult<()> {
         for ew_func in crate::kernels::UnaryOps::all_functions() {
             let _ = self.load_pipeline(LibraryName::Unary, ew_func);
