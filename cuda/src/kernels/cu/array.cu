@@ -1,6 +1,4 @@
-#include <cuda_fp16.h>
-#include <cuda/std/cstdint>
-#include "utils.cuh"
+#include "common.cuh"
 
 #define INSTANTIATE_ROTATE_HALF(name, T)                                       \
   extern "C" __global__ void rotate_half_nd2_##name(                           \

@@ -1,7 +1,6 @@
-#include "utils.cuh"
-#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math_constants.h>
+#include "common.cuh"
 
 #define GELU_COEF_A 0.044715f
 #define SQRT_2_OVER_PI 0.79788456080286535587989211986876f

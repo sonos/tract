@@ -46,6 +46,7 @@ const NN_OPS: &str = include_str!("cu/nn.cu");
 const GGML_MM_MV: &str = include_str!("cu/mm_mv.cu");
 const GGML_MM_MV_Q: &str = include_str!("cu/mm_mv_q.cu");
 const GGML_QUANTIZE: &str = include_str!("cu/quantize.cu");
+pub const COMMON_H: &str = include_str!("cu/common.cuh");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LibraryName {

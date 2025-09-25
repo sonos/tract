@@ -1,6 +1,5 @@
-#include <cuda_fp16.h>
 #include <cuda_runtime.h>
-#include <cuda/std/cstdint>
+#include "common.cuh"
 
 template <typename T>
 __device__ __forceinline__ T op_add(const T a, const T b) {
