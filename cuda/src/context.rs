@@ -17,7 +17,7 @@ use crate::tensor::CudaTensor;
 
 use cudarc::nvrtc::result::{compile_program, create_program, destroy_program, get_program_log};
 use cudarc::nvrtc::sys::{nvrtcGetCUBIN, nvrtcGetCUBINSize, nvrtcProgram, nvrtcResult};
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{CStr, CString, c_char};
 use std::path::{Path, PathBuf};
 
 thread_local! {
@@ -116,11 +116,20 @@ impl TractCudaContext {
 
     /// Build NVRTC options: include paths + GPU arch.
     fn build_nvrtc_opts(&self) -> TractResult<Vec<String>> {
-        let cuda_home = std::env::var("CUDA_HOME")
-            .or_else(|_| std::env::var("CUDA_PATH"))
-            .context("Please set CUDA_HOME (or CUDA_PATH) to your CUDA installation")?;
+        let cuda_home = std::env::var_os("CUDA_HOME")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("CUDA_PATH").map(PathBuf::from)) // Windows
+            .or_else(|| {
+                let p = Path::new("/usr/local/cuda");
+                if p.exists() { Some(p.to_path_buf()) } else { None }
+            })
+            .or_else(|| {
+                // Last resort: infer from nvcc location
+                 std::process::Command::new("which").arg("nvcc").output().ok()
+                    .and_then(|nvcc| Path::new(&String::from_utf8(nvcc.stdout).unwrap()).parent().and_then(|bin| bin.parent()).map(|p| p.to_path_buf()))
+            });
 
-        let cuda_inc = Path::new(&cuda_home).join("include");
+        let cuda_inc = cuda_home.unwrap().join("include");
         if !cuda_inc.exists() {
             return Err(anyhow!("CUDA include dir not found at {:?}", cuda_inc));
         }
@@ -144,7 +153,8 @@ impl TractCudaContext {
 
     /// Read the NVRTC program log as String.
     fn read_nvrtc_log(&self, prog: nvrtcProgram) -> TractResult<String> {
-        let buf: Vec<c_char> = unsafe { get_program_log(prog).context("nvrtcGetProgramLog failed") }?;
+        let buf: Vec<c_char> =
+            unsafe { get_program_log(prog).context("nvrtcGetProgramLog failed") }?;
 
         let bytes = unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, buf.len()) };
 
