@@ -1,5 +1,5 @@
 #include "utils.cuh"
-#include <cstdint>
+#include <cuda/std/cstdint>
 #include <cuda_fp16.h>
 
 #define QK8_1 32

@@ -1,6 +1,7 @@
 #include "utils.cuh"
 #include <cuda_fp16.h>
-#include <math.h>
+#include <cuda_runtime.h>
+#include <math_constants.h>
 
 #define GELU_COEF_A 0.044715f
 #define SQRT_2_OVER_PI 0.79788456080286535587989211986876f
@@ -17,7 +18,7 @@
     const int warp_id = threadIdx.x / WARP_SIZE;                               \
     const int lane_id = threadIdx.x % WARP_SIZE;                               \
                                                                                \
-    float max_val = -INFINITY;                                                 \
+    float max_val = -CUDART_INF_F;                                                 \
     _Pragma("unroll") for (int i = threadIdx.x; i < shape_1;                   \
                            i += blockDim.x) {                                  \
       max_val = max(max_val, input[i * in_stride_1]);                          \
@@ -27,7 +28,7 @@
     if (block_size > WARP_SIZE) {                                              \
       __shared__ float s_max[32];                                              \
       if (warp_id == 0) {                                                      \
-        s_max[lane_id] = -INFINITY;                                            \
+        s_max[lane_id] = -CUDART_INF_F;                                            \
       }                                                                        \
       __syncthreads();                                                         \
                                                                                \
@@ -56,7 +57,7 @@
     const int warp_id = threadIdx.x / WARP_SIZE;                               \
     const int lane_id = threadIdx.x % WARP_SIZE;                               \
                                                                                \
-    float min_val = INFINITY;                                                  \
+    float min_val = CUDART_INF_F;                                                  \
     _Pragma("unroll") for (int i = threadIdx.x; i < shape_1;                   \
                            i += blockDim.x) {                                  \
       min_val = min(min_val, input[i * in_stride_1]);                          \
@@ -66,7 +67,7 @@
     if (block_size > WARP_SIZE) {                                              \
       __shared__ float s_min[32];                                              \
       if (warp_id == 0) {                                                      \
-        s_min[lane_id] = -INFINITY;                                            \
+        s_min[lane_id] = -CUDART_INF_F;                                            \
       }                                                                        \
       __syncthreads();                                                         \
                                                                                \
@@ -405,7 +406,7 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
     const int warp_id = threadIdx.x / WARP_SIZE;                               \
     const int lane_id = threadIdx.x % WARP_SIZE;                               \
                                                                                \
-    float max_val = -INFINITY;                                                 \
+    float max_val = -CUDART_INF_F;                                                 \
     _Pragma("unroll") for (int i = threadIdx.x; i < shape_1;                   \
                            i += blockDim.x) {                                  \
       max_val = max(max_val, x[i * stride_1]);                                 \
@@ -415,7 +416,7 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
     if (block_size > WARP_SIZE) {                                              \
       __shared__ float s_max[32];                                              \
       if (warp_id == 0) {                                                      \
-        s_max[lane_id] = -INFINITY;                                            \
+        s_max[lane_id] = -CUDART_INF_F;                                            \
       }                                                                        \
       __syncthreads();                                                         \
                                                                                \
@@ -483,7 +484,7 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
     float *buf_iw = data_soft_max_f32;                                         \
     float *vals = buf_iw + WARP_SIZE;                                          \
                                                                                \
-    float max_val = -INFINITY;                                                 \
+    float max_val = -CUDART_INF_F;                                                 \
     _Pragma("unroll") for (int col0 = 0; col0 < shape_2; col0 += block_size) { \
       const int col = col0 + threadIdx.x;                                      \
       if (col >= shape_2) {                                                    \
@@ -498,7 +499,7 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
     max_val = warp_reduce_max(max_val);                                        \
     if (block_size > WARP_SIZE) {                                              \
       if (warp_id == 0) {                                                      \
-        buf_iw[lane_id] = -INFINITY;                                           \
+        buf_iw[lane_id] = -CUDART_INF_F;                                           \
       }                                                                        \
       __syncthreads();                                                         \
                                                                                \

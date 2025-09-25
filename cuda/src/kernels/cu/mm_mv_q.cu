@@ -1,4 +1,4 @@
-#include <cstdint>
+#include <cuda/std/cstdint>
 #include <cuda_fp16.h>
 #include "quantize.cu"
 
