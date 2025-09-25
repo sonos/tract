@@ -16,10 +16,8 @@ use cudarc::driver::{CudaContext, CudaFunction, CudaModule, CudaStream};
 use crate::kernels::{COMMON_H, LibraryName, cubin_dir};
 use crate::tensor::CudaTensor;
 
-use cudarc::nvrtc::result::{compile_program, destroy_program, get_program_log};
-use cudarc::nvrtc::sys::{
-    nvrtcCreateProgram, nvrtcGetCUBIN, nvrtcGetCUBINSize, nvrtcProgram, nvrtcResult,
-};
+use cudarc::nvrtc::result::{compile_program, create_program, destroy_program, get_program_log};
+use cudarc::nvrtc::sys::{nvrtcGetCUBIN, nvrtcGetCUBINSize, nvrtcProgram, nvrtcResult};
 use std::ffi::{CStr, CString, c_char};
 use std::path::{Path, PathBuf};
 
@@ -145,7 +143,7 @@ impl TractCudaContext {
             .or_else(|| {
                 // Last resort: infer from nvcc location
                  std::process::Command::new("which").arg("nvcc").output().ok()
-                    .and_then(|nvcc| Path::new(&String::from_utf8(nvcc.stdout).unwrap_or("".into())).parent().and_then(|bin| bin.parent()).map(|p| p.to_path_buf()))
+                    .and_then(|nvcc| Path::new(&String::from_utf8(nvcc.stdout).unwrap()).parent().and_then(|bin| bin.parent()).map(|p| p.to_path_buf()))
             });
 
         let cuda_inc = cuda_home.unwrap().join("include");
