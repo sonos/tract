@@ -58,8 +58,8 @@ pub(crate) fn make_state<'m>(
     if matches.is_present("metal") || matches.is_present("cuda") {
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
-            use tract_cuda::utils::get_cuda_lib;
-            if get_cuda_lib().is_none() {
+            use tract_cuda::utils::is_culib_present;
+            if !is_culib_present() {
                 bail!("GPU bench called on non-GPU model");
             }
         }
