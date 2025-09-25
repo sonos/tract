@@ -141,6 +141,7 @@ criterion = "0.6"
 cudarc = { version = "0.16.4", features = ["dynamic-loading", "cuda-12060", "f16"] }
 derive-new = "0.5.9"
 dinghy-test = "0.6"
+dirs = "6.0.0"
 downcast-rs = "1.2.0"
 dyn-clone = "1.0.4"
 dyn-hash = "0.2"
