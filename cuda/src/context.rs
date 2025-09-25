@@ -115,7 +115,6 @@ impl TractCudaContext {
                 };
 
             if let Err(_e) = unsafe { compile_program::<String>(prog, &nvrtc_opts) } {
-                // TODO: investigate formatting
                 let log = self.read_nvrtc_log(prog).unwrap_or_else(|_| "<no log>".into());
                 let _ = unsafe { destroy_program(prog) };
                 return Err(anyhow!("NVRTC compilation failed for {:?}:\n{}", lib, log));
