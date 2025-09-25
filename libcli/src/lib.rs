@@ -14,7 +14,7 @@ pub mod time;
 
 use tract_core::internal::*;
 #[allow(unused_imports)]
-use tract_cuda::utils::get_cuda_lib;
+use tract_cuda::utils::is_culib_present;
 
 pub fn capture_gpu_trace<F>(matches: &clap::ArgMatches, func: F) -> TractResult<()>
 where
@@ -41,7 +41,7 @@ where
             bail!("`--metal-gpu-trace` present but it is only available on MacOS and iOS")
         }
     } else if matches.is_present("cuda-gpu-trace") {
-        if get_cuda_lib().is_none() {
+        if !is_culib_present() {
             bail!("`--cuda-gpu-trace` present but no CUDA insatllation has been found")
         }
 

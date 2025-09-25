@@ -47,18 +47,18 @@ fn get_lib_name_candidates(lib_name: &str) -> Vec<String> {
     .into()
 }
 
-pub fn get_cuda_lib() -> Option<Lib> {
-    let lib_names = std::vec!["cuda", "nvcuda"];
-    let choices: std::vec::Vec<_> =
-        lib_names.iter().flat_map(|l| get_lib_name_candidates(l)).collect();
+pub fn is_culib_present() -> bool {
+    let lib_names = vec![vec!["cuda", "nvcuda"]];
+
     unsafe {
-        for choice in choices.iter() {
-            if let Ok(lib) = Lib::new(choice) {
-                return Some(lib);
-            }
+        for names in lib_names {
+            let candidates: Vec<_> = names.iter().flat_map(|n| get_lib_name_candidates(n)).collect();
+            if candidates.iter().all(|name| Lib::new(name).is_err()) {
+                return false
+            } 
         }
-        None
     }
+    return true
 }
 
 pub fn get_quant_fact(t: &DeviceTensor, format: &dyn BlockQuant) -> Option<BlockQuantFact> {

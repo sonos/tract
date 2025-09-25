@@ -26,7 +26,7 @@ use tract_tflite::internal::TfliteProtoModel;
 use tract_nnef::ast::dump::Dumper;
 
 use crate::TractResult;
-use tract_cuda::utils::get_cuda_lib;
+use tract_cuda::utils::is_culib_present;
 use tract_libcli::display_params;
 use tract_libcli::display_params::DisplayParams;
 use tract_libcli::model::Model;
@@ -784,7 +784,7 @@ impl Parameters {
 
         {
             if matches.is_present("cuda") {
-                if get_cuda_lib().is_some() {
+                if is_culib_present() {
                     stage!("cuda", typed_model -> typed_model, |m:TypedModel| {
                         tract_cuda::CudaTransform.transform_into(m)
                     });
