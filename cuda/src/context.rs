@@ -6,6 +6,7 @@ use tract_gpu::device::DeviceContext;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 
 use std::ops::Deref;
+use std::env;
 use std::sync::{OnceLock, RwLock};
 
 use tract_core::internal::*;
@@ -86,17 +87,18 @@ impl TractCudaContext {
 
         for lib in LibraryName::ALL {
             let out_path = lib.cubin_path();
-            if out_path.exists() {
+            if out_path.exists() && env::var("TRACT_CUDA_RECOMPILE_KERNELS").is_err() {
                 continue;
             }
 
-            log::info!("No cubin found for {:?}. Compiling…", lib);
+            log::info!("Compiling {:?} to {}…", lib, out_path.display());
 
             let src =
                 CString::new(lib.content()).context("Failed to make CString from CUDA source")?;
             let prog = create_program(&src, None).context("nvrtcCreateProgram failed")?;
 
             if let Err(_e) = unsafe { compile_program::<String>(prog, &nvrtc_opts) } {
+                // TODO: investigate formatting
                 let log = self.read_nvrtc_log(prog).unwrap_or_else(|_| "<no log>".into());
                 let _ = unsafe { destroy_program(prog) };
                 return Err(anyhow!("NVRTC compilation failed for {:?}:\n{}", lib, log));
