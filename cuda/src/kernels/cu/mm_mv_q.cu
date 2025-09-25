@@ -1,6 +1,4 @@
-#include <cuda/std/cstdint>
-#include <cuda_fp16.h>
-#include "quantize.cu"
+#include "common.cuh"
 
 // Check CC Version
 #define CUDA_CC_TURING 750

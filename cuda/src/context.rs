@@ -5,19 +5,19 @@ use cudarc::runtime::sys::cudaDeviceProp;
 use tract_gpu::device::DeviceContext;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 
+use std::mem::MaybeUninit;
 use std::ops::Deref;
-use std::env;
 use std::sync::{OnceLock, RwLock};
 
 use tract_core::internal::*;
 
 use cudarc::driver::{CudaContext, CudaFunction, CudaModule, CudaStream};
 
-use crate::kernels::{LibraryName, cubin_dir};
+use crate::kernels::{cubin_dir, LibraryName, COMMON_H};
 use crate::tensor::CudaTensor;
 
-use cudarc::nvrtc::result::{compile_program, create_program, destroy_program, get_program_log};
-use cudarc::nvrtc::sys::{nvrtcGetCUBIN, nvrtcGetCUBINSize, nvrtcProgram, nvrtcResult};
+use cudarc::nvrtc::result::{compile_program, destroy_program, get_program_log};
+use cudarc::nvrtc::sys::{nvrtcCreateProgram, nvrtcGetCUBIN, nvrtcGetCUBINSize, nvrtcProgram, nvrtcResult};
 use std::ffi::{CStr, CString, c_char};
 use std::path::{Path, PathBuf};
 
@@ -87,15 +87,32 @@ impl TractCudaContext {
 
         for lib in LibraryName::ALL {
             let out_path = lib.cubin_path();
-            if out_path.exists() && env::var("TRACT_CUDA_RECOMPILE_KERNELS").is_err() {
+            let force_recompile = matches!(
+                std::env::var("TRACT_CUDA_RECOMPILE_KERNELS").as_deref(),
+                Ok("1") | Ok("true") | Ok("yes") | Ok("on")
+            );
+            if out_path.exists() && !force_recompile {
                 continue;
             }
 
             log::info!("Compiling {:?} to {}…", lib, out_path.display());
 
-            let src =
+            let c_src =
                 CString::new(lib.content()).context("Failed to make CString from CUDA source")?;
-            let prog = create_program(&src, None).context("nvrtcCreateProgram failed")?;
+            let prog = 
+                unsafe {
+                    let mut prog = MaybeUninit::uninit();
+                    nvrtcCreateProgram(
+                        prog.as_mut_ptr(),
+                        c_src.as_ptr(),
+                        std::ptr::null(),
+                        1,
+                        &CString::new(COMMON_H).context("Failed to make CString from CUDA header")?.as_ptr(),
+                        &CString::new("common.cuh").context("Failed to make CString from CUDA header name")?.as_ptr(),
+                    )
+                    .result()?;
+                    prog.assume_init()
+                };
 
             if let Err(_e) = unsafe { compile_program::<String>(prog, &nvrtc_opts) } {
                 // TODO: investigate formatting
@@ -136,12 +153,6 @@ impl TractCudaContext {
             return Err(anyhow!("CUDA include dir not found at {:?}", cuda_inc));
         }
 
-        let subcrate = std::env::var("CARGO_MANIFEST_DIR").context("CARGO_MANIFEST_DIR not set")?;
-        let cu_local_inc = Path::new(&subcrate)
-            .parent()
-            .map(|tract| tract.join("cuda").join("src").join("kernels").join("cu"))
-            .unwrap_or(PathBuf::new());
-
         let arch = format!(
             "--gpu-architecture=sm_{}{}",
             self.device_properties.major, self.device_properties.minor
@@ -151,7 +162,6 @@ impl TractCudaContext {
             "--std=c++17".into(),
             arch,
             format!("-I{}", cuda_inc.display()),
-            format!("-I{}", cu_local_inc.display()),
         ])
     }
 
