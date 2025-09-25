@@ -58,7 +58,7 @@ pub fn is_culib_present() -> bool {
             } 
         }
     }
-    return true
+    true
 }
 
 pub fn get_quant_fact(t: &DeviceTensor, format: &dyn BlockQuant) -> Option<BlockQuantFact> {
