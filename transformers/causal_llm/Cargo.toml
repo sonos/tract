@@ -23,6 +23,10 @@ ndarray-npy.workspace = true
 tokio-scoped = "0.2.0"
 rand.workspace = true
 aws-sdk-bedrockruntime = "=1.95.0"
+aws-config = "1.8.1"
+aws-sdk-sso = "=1.74.0"
+aws-sdk-ssooidc = "=1.75.0"
+aws-sdk-sts = "=1.76.0"
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 tract-metal.workspace = true
