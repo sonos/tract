@@ -39,6 +39,12 @@ then
     touch /tmp/ci-setup-done
 fi
 
+if [ -e /usr/local/cuda ]
+then
+    PATH=$PATH:/usr/local/cuda/bin
+    nvcc --version
+fi
+
 S3=https://s3.amazonaws.com/tract-ci-builds/tests
 
 if  [ "$GITHUB_WORKFLOW" = "Metal tests" -o "$GITHUB_WORKFLOW" = "CUDA tests" ] 
