@@ -17,7 +17,7 @@ use crate::tensor::CudaTensor;
 
 use cudarc::nvrtc::result::{compile_program, create_program, destroy_program, get_program_log};
 use cudarc::nvrtc::sys::{nvrtcGetCUBIN, nvrtcGetCUBINSize, nvrtcProgram, nvrtcResult};
-use std::ffi::{CStr, CString};
+use std::ffi::{c_char, CStr, CString};
 use std::path::{Path, PathBuf};
 
 thread_local! {
@@ -142,9 +142,9 @@ impl TractCudaContext {
         ])
     }
 
-    /// Safely read the NVRTC program log as String.
+    /// Read the NVRTC program log as String.
     fn read_nvrtc_log(&self, prog: nvrtcProgram) -> TractResult<String> {
-        let buf: Vec<i8> = unsafe { get_program_log(prog).context("nvrtcGetProgramLog failed") }?;
+        let buf: Vec<c_char> = unsafe { get_program_log(prog).context("nvrtcGetProgramLog failed") }?;
 
         let bytes = unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, buf.len()) };
 
@@ -163,7 +163,7 @@ impl TractCudaContext {
         }
 
         let mut cubin = vec![0u8; len];
-        let res = unsafe { nvrtcGetCUBIN(prog, cubin.as_mut_ptr() as *mut i8) };
+        let res = unsafe { nvrtcGetCUBIN(prog, cubin.as_mut_ptr() as *mut c_char) };
         if res != nvrtcResult::NVRTC_SUCCESS {
             return Err(anyhow!("nvrtcGetCUBIN failed ({:?})", res));
         }
