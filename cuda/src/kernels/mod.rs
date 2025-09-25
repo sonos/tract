@@ -50,15 +50,8 @@ pub enum LibraryName {
 }
 
 impl LibraryName {
-    pub const ALL: [LibraryName; 7] = [
-        Self::Unary,
-        Self::Binary,
-        Self::Array,
-        Self::NN,
-        Self::Ggml,
-        Self::GgmlQ,
-        Self::Quant,
-    ];
+    pub const ALL: [LibraryName; 7] =
+        [Self::Unary, Self::Binary, Self::Array, Self::NN, Self::Ggml, Self::GgmlQ, Self::Quant];
 
     pub fn content(&self) -> &str {
         match self {
@@ -74,7 +67,7 @@ impl LibraryName {
 
     pub fn cubin_path(&self) -> String {
         let mut path = cubin_folder();
-        let basename =  match self {
+        let basename = match self {
             Self::Unary => "unary",
             Self::Binary => "binary",
             Self::Array => "array",

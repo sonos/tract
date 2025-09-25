@@ -79,7 +79,7 @@ impl UnaryOps {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
-    pub fn name<'s>(&'s self) -> Cow<'s, str> {
+    pub fn name(&self) -> Cow<'_, str> {
         format!("{self}").into()
     }
     pub fn all_functions() -> Vec<String> {
