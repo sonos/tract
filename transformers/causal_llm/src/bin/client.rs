@@ -148,6 +148,7 @@ enum Commands {
     Stress(StressArgs),
     Scalability(ScalabilityArgs),
     Complete(CompleteArgs),
+    Prompts(PromptsArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -325,6 +326,25 @@ impl CompleteArgs {
     }
 }
 
+#[derive(Parser, Debug)]
+struct PromptsArgs {
+    #[arg(short, long, default_value = "50")]
+    len: usize,
+
+    #[arg(short, long, default_value = "50")]
+    count: usize,
+}
+
+impl PromptsArgs {
+    async fn handle(&self, clients: &Clients) -> Result<()> {
+        for _ in 0..self.count {
+            let prompt = clients.get_one_prompt(self.len);
+            println!("{}", prompt.replace("\n", " "));
+        }
+        Ok(())
+    }
+}
+
 impl Commands {
     async fn run(&self, clients: &Clients) -> Result<()> {
         match self {
@@ -332,6 +352,7 @@ impl Commands {
             Self::Stress(args) => args.handle(clients).await?,
             Self::Scalability(args) => args.handle(clients).await?,
             Self::Complete(args) => args.handle(clients).await?,
+            Self::Prompts(args) => args.handle(clients).await?,
         }
         Ok(())
     }
