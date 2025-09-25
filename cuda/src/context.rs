@@ -6,13 +6,14 @@ use tract_gpu::device::DeviceContext;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 
 use std::ops::Deref;
+use std::env;
 use std::sync::{OnceLock, RwLock};
 
 use tract_core::internal::*;
 
 use cudarc::driver::{CudaContext, CudaFunction, CudaModule, CudaStream};
 
-use crate::kernels::{LibraryName, CUBIN_FOLDER};
+use crate::kernels::{LibraryName, cubin_folder};
 use crate::tensor::CudaTensor;
 
 use std::ffi::{CStr, CString};
@@ -76,18 +77,28 @@ impl TractCudaContext {
     }
 
     pub fn compile_cubins(&self) -> TractResult<()> {
-        if !Path::new(CUBIN_FOLDER).exists() {
-            log::debug!("Creating cache folder for cuda cubins");
-            std::fs::create_dir_all(Path::new(CUBIN_FOLDER))?;
+        if !Path::new(&cubin_folder()).exists() {
+            log::info!("Creating cache folder for cuda cubins");
+            std::fs::create_dir_all(Path::new(&cubin_folder()))?;
         }
 
         for lib in LibraryName::ALL {
             if !Path::new(&lib.cubin_path()).exists() {
-                log::debug!("No cubin found for {:?}. Try compiling", lib);
+                log::info!("No cubin found for {:?}. Try compiling", lib);
                 let prog = create_program(&CString::new(lib.content())?, None).unwrap();
                 unsafe {
+                    let cuda_path = env!("CUDA_HOME");
+                    let mut cuda_inc_opt = "-I".to_string();
+                    cuda_inc_opt.push_str(&cuda_path);
+                    cuda_inc_opt.push_str("/include");
+                    
+                    let tract_cuda_path = env!("CARGO_MANIFEST_DIR");
+                    let mut cu_path_opt = "-I".to_string();
+                    cu_path_opt.push_str(&tract_cuda_path);
+                    cu_path_opt.push_str("/src/kernels/cu/");
+
                     let target_opt = format!("--gpu-architecture=sm_{}{}", self.device_properties.major, self.device_properties.minor);
-                    if compile_program::<String>(prog, &[target_opt, "-I/usr/local/cuda/include".to_string(), "-I/home/louis-chouraki/Documents/tract/cuda/src/kernels/cu/".to_string()]).is_err() {
+                    if compile_program::<String>(prog, &[target_opt, cuda_inc_opt, cu_path_opt]).is_err() {
                         let log = get_program_log(prog).unwrap();
                         let str = CStr::from_bytes_until_nul(std::mem::transmute(&*log)).unwrap();
                         return Err(anyhow!(str.to_string_lossy()))
