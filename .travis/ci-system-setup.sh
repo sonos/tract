@@ -8,11 +8,6 @@ then
     export RUSTUP_TOOLCHAIN=1.85.0
 fi
 
-if [ -e /usr/local/cuda -a -z "$CUDA_HOME"]
-then
-    CUDA_HOME=/usr/local/cuda/
-fi
-
 export RUSTUP_TOOLCHAIN
 PATH=$PATH:$HOME/.cargo/bin
 
