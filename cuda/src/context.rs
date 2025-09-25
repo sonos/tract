@@ -12,7 +12,7 @@ use tract_core::internal::*;
 
 use cudarc::driver::{CudaContext, CudaFunction, CudaModule, CudaStream};
 
-use crate::kernels::{LibraryName, cubin_folder};
+use crate::kernels::{LibraryName, cubin_dir};
 use crate::tensor::CudaTensor;
 
 use cudarc::nvrtc::result::{compile_program, create_program, destroy_program, get_program_log};
@@ -75,17 +75,17 @@ impl TractCudaContext {
     }
 
     pub fn compile_cubins(&self) -> TractResult<()> {
-        let cache_dir = PathBuf::from(cubin_folder());
-        if !cache_dir.exists() {
-            log::info!("Creating cache folder for CUDA cubins at {:?}", cache_dir);
-            std::fs::create_dir_all(&cache_dir)
-                .with_context(|| format!("Failed to create {:?}", cache_dir))?;
+        let cubin_dir = cubin_dir();
+        if !cubin_dir.exists() {
+            log::info!("Creating cache folder for CUDA cubins at {}", cubin_dir.display());
+            std::fs::create_dir_all(cubin_dir)
+                .with_context(|| format!("Failed to create {}", cubin_dir.display()))?;
         }
 
         let nvrtc_opts = self.build_nvrtc_opts()?;
 
         for lib in LibraryName::ALL {
-            let out_path = PathBuf::from(lib.cubin_path());
+            let out_path = lib.cubin_path();
             if out_path.exists() {
                 continue;
             }
@@ -126,7 +126,7 @@ impl TractCudaContext {
             .or_else(|| {
                 // Last resort: infer from nvcc location
                  std::process::Command::new("which").arg("nvcc").output().ok()
-                    .and_then(|nvcc| Path::new(&String::from_utf8(nvcc.stdout).unwrap()).parent().and_then(|bin| bin.parent()).map(|p| p.to_path_buf()))
+                    .and_then(|nvcc| Path::new(&String::from_utf8(nvcc.stdout).unwrap_or("".into())).parent().and_then(|bin| bin.parent()).map(|p| p.to_path_buf()))
             });
 
         let cuda_inc = cuda_home.unwrap().join("include");
@@ -134,9 +134,11 @@ impl TractCudaContext {
             return Err(anyhow!("CUDA include dir not found at {:?}", cuda_inc));
         }
 
-        let crate_root =
-            std::env::var("CARGO_MANIFEST_DIR").context("CARGO_MANIFEST_DIR not set")?;
-        let cu_local_inc = Path::new(&crate_root).join("src/kernels/cu");
+        let subcrate = std::env::var("CARGO_MANIFEST_DIR").context("CARGO_MANIFEST_DIR not set")?;
+        let cu_local_inc = Path::new(&subcrate)
+            .parent()
+            .map(|tract| tract.join("cuda").join("src").join("kernels").join("cu"))
+            .unwrap_or(PathBuf::new());
 
         let arch = format!(
             "--gpu-architecture=sm_{}{}",
@@ -236,7 +238,7 @@ impl TractCudaContext {
             module.load_function(&func_name).map_err(|e| anyhow!("{e}")).with_context(|| {
                 format!(
                     "Failed to load function `{func_name}` from library `{}`",
-                    library_name.cubin_path()
+                    library_name.cubin_path().display()
                 )
             })?;
 
