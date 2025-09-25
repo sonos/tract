@@ -8,6 +8,8 @@ pub mod nn;
 mod unary;
 mod utils;
 
+use std::path::Path;
+
 use crate::ops::GgmlQuantQ81Fact;
 use crate::tensor::{CudaBuffer, CudaTensor};
 use anyhow::{bail, ensure};
@@ -22,7 +24,11 @@ pub use unary::UnaryOps;
 
 const MAX_THREADS: usize = 1024;
 
-pub const CUBIN_FOLDER: &str = "/home/louis-chouraki/.cache/tract/cuda/kernels/";
+pub fn cubin_folder() -> String {
+    let mut path = env!("HOME").to_string();
+    path.push_str("/.cache/tract/cuda/cubins/");
+    path
+}
 
 const UNARY_OPS: &str = include_str!("cu/unary.cu");
 const BINARY_OPS: &str = include_str!("cu/binary.cu");
@@ -67,7 +73,7 @@ impl LibraryName {
     }
 
     pub fn cubin_path(&self) -> String {
-        let mut path = CUBIN_FOLDER.to_string();
+        let mut path = cubin_folder();
         let basename =  match self {
             Self::Unary => "unary",
             Self::Binary => "binary",
