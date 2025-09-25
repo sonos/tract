@@ -1,5 +1,5 @@
 #include <cuda_fp16.h>
-#include <stdint.h>
+#include <cuda/std/cstdint>
 #include "utils.cuh"
 
 #define INSTANTIATE_ROTATE_HALF(name, T)                                       \

@@ -1,6 +1,7 @@
 #include "utils.cuh"
 #include <cuda_fp16.h>
-#include <math.h>
+#include <cuda_runtime.h>
+#include <cuda/std/type_traits>
 
 template <typename T, int ncols_dst, int block_size>
 static __device__ void
@@ -32,7 +33,7 @@ mul_mat_vec(const T *__restrict__ x, const T *__restrict__ y,
 
   float sumf[ncols_dst] = {0.0f};
 
-  if constexpr (std::is_same<T, float>::value) {
+  if constexpr (cuda::std::is_same_v<T, float>) {
     const float2 *x2 = (const float2 *)x;
     const float2 *y2 = (const float2 *)y;
     for (int col2 = tid; col2 < ncols2; col2 += block_size) {
@@ -45,7 +46,7 @@ mul_mat_vec(const T *__restrict__ x, const T *__restrict__ y,
         sumf[j] += tmpx.y * tmpy.y;
       }
     }
-  } else if constexpr (std::is_same<T, half>::value) {
+  } else if constexpr (cuda::std::is_same_v<T, half>) {
     const half2 *x2 = (const half2 *)x;
     const half2 *y2 = (const half2 *)y;
     half2 sumh2[ncols_dst] = {{0.0f, 0.0f}};
@@ -65,7 +66,7 @@ mul_mat_vec(const T *__restrict__ x, const T *__restrict__ y,
       sumf[j] = __low2float(sumh2[j]) + __high2float(sumh2[j]);
     }
   } else {
-    static_assert(std::is_same<T, void>::value, "unsupported type");
+    static_assert(cuda::std::is_same_v<T, void>, "unsupported type");
   }
 
 #pragma unroll
