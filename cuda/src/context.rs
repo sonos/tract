@@ -12,8 +12,13 @@ use tract_core::internal::*;
 
 use cudarc::driver::{CudaContext, CudaFunction, CudaModule, CudaStream};
 
-use crate::kernels::LibraryName;
+use crate::kernels::{LibraryName, CUBIN_FOLDER};
 use crate::tensor::CudaTensor;
+
+use std::ffi::{CStr, CString};
+use std::path::Path;
+use cudarc::nvrtc::result::{compile_program, create_program, destroy_program, get_program_log};
+use cudarc::nvrtc::sys::{nvrtcGetCUBIN, nvrtcGetCUBINSize, nvrtcResult};
 
 thread_local! {
     pub static CUDA_STREAM: TractCudaStream = TractCudaStream::new().expect("Could not create Cuda Stream");
@@ -50,6 +55,7 @@ impl Deref for TractCudaContext {
 
 impl TractCudaContext {
     pub fn new() -> TractResult<Self> {
+        
         let context =
             CudaContext::new(0).with_context(|| "Could not find system default CUDA device")?;
 
@@ -60,7 +66,7 @@ impl TractCudaContext {
             cached_modules: Arc::new(RwLock::new(HashMap::new())),
             cached_pipelines: Arc::new(RwLock::new(HashMap::new())),
         };
-
+        ctxt.compile_cubins()?;
         ctxt.preload_pipelines()?;
         Ok(ctxt)
     }
@@ -69,6 +75,39 @@ impl TractCudaContext {
         &self.device_properties
     }
 
+    pub fn compile_cubins(&self) -> TractResult<()> {
+        if !Path::new(CUBIN_FOLDER).exists() {
+            log::debug!("Creating cache folder for cuda cubins");
+            std::fs::create_dir_all(Path::new(CUBIN_FOLDER))?;
+        }
+
+        for lib in LibraryName::ALL {
+            if !Path::new(&lib.cubin_path()).exists() {
+                log::debug!("No cubin found for {:?}. Try compiling", lib);
+                let prog = create_program(&CString::new(lib.content())?, None).unwrap();
+                unsafe {
+                    let target_opt = format!("--gpu-architecture=sm_{}{}", self.device_properties.major, self.device_properties.minor);
+                    if compile_program::<String>(prog, &[target_opt, "-I/usr/local/cuda/include".to_string(), "-I/home/louis-chouraki/Documents/tract/cuda/src/kernels/cu/".to_string()]).is_err() {
+                        let log = get_program_log(prog).unwrap();
+                        let str = CStr::from_bytes_until_nul(std::mem::transmute(&*log)).unwrap();
+                        return Err(anyhow!(str.to_string_lossy()))
+                    }
+                    let mut len = 0usize;
+                    let res = nvrtcGetCUBINSize(prog, &mut len);
+                    ensure!(res == nvrtcResult::NVRTC_SUCCESS);
+
+                    let mut cubin = vec!(0u8; len);
+                    let res = nvrtcGetCUBIN(prog, std::mem::transmute(cubin.as_mut_ptr()));
+                    ensure!(res == nvrtcResult::NVRTC_SUCCESS);
+
+                    std::fs::write(lib.cubin_path(), &cubin).unwrap();
+                    destroy_program(prog)?;
+                }
+            }
+        }
+        
+        Ok(())
+    }
     pub fn preload_pipelines(&self) -> TractResult<()> {
         for ew_func in crate::kernels::UnaryOps::all_functions() {
             let _ = self.load_pipeline(LibraryName::Unary, ew_func);
@@ -97,7 +136,7 @@ impl TractCudaContext {
             }
         }
 
-        let module = self.inner.load_module(Ptx::from_src(name.content()))?;
+        let module = self.inner.load_module(Ptx::from_file(name.cubin_path()))?;
 
         let mut cache = self.cached_modules.write().map_err(|e| anyhow!("{:?}", e))?;
         cache.insert(*name, module.clone());
@@ -125,7 +164,7 @@ impl TractCudaContext {
             module.load_function(&func_name).map_err(|e| anyhow!("{e}")).with_context(|| {
                 format!(
                     "Failed to load function `{func_name}` from library `{}`",
-                    library_name.content()
+                    library_name.cubin_path()
                 )
             })?;
 

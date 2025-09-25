@@ -1,4 +1,5 @@
 use cudarc::driver::sys::Lib;
+
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::*;
