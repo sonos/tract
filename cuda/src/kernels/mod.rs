@@ -8,7 +8,9 @@ pub mod nn;
 mod unary;
 mod utils;
 
-use std::path::Path;
+use std::env;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use crate::ops::GgmlQuantQ81Fact;
 use crate::tensor::{CudaBuffer, CudaTensor};
@@ -24,10 +26,21 @@ pub use unary::UnaryOps;
 
 const MAX_THREADS: usize = 1024;
 
-pub fn cubin_folder() -> String {
-    let mut path = env!("HOME").to_string();
-    path.push_str("/.cache/tract/cuda/cubins/");
-    path
+static CUBIN_FOLDER: OnceLock<PathBuf> = OnceLock::new();
+
+pub fn cubin_dir() -> &'static Path {
+    CUBIN_FOLDER
+        .get_or_init(|| {
+            #[cfg(unix)]
+            let home = env::var("HOME").unwrap_or_else(|_| ".".into());
+            #[cfg(windows)]
+            let home = env::var("USERPROFILE")
+                .or_else(|_| env::var("LOCALAPPDATA"))
+                .unwrap_or_else(|_| ".".into());
+
+            PathBuf::from(home).join(".cache").join("tract").join("cuda").join("cubins")
+        })
+        .as_path()
 }
 
 const UNARY_OPS: &str = include_str!("cu/unary.cu");
@@ -65,8 +78,7 @@ impl LibraryName {
         }
     }
 
-    pub fn cubin_path(&self) -> String {
-        let mut path = cubin_folder();
+    pub fn cubin_path(&self) -> PathBuf {
         let basename = match self {
             Self::Unary => "unary",
             Self::Binary => "binary",
@@ -76,10 +88,7 @@ impl LibraryName {
             Self::GgmlQ => "mm_mv_q",
             Self::Quant => "quantize",
         };
-
-        path.push_str(basename);
-        path.push_str(".cubin");
-        path
+        cubin_dir().join(format!("{}.cubin", basename))
     }
 }
 
