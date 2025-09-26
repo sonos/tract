@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 use cudarc::driver::{CudaSlice, DevicePtr};
 use tract_core::internal::tract_smallvec::ToSmallVec;
@@ -27,6 +27,12 @@ impl Deref for CudaBuffer {
 
     fn deref(&self) -> &Self::Target {
         &self.inner
+    }
+}
+
+impl DerefMut for CudaBuffer {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
     }
 }
 

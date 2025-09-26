@@ -1,5 +1,5 @@
 #include <cuda_fp16.h>
-#include <math.h>
+#include <cuda_runtime.h>
 
 static __device__ __forceinline__ float op_neg(float x) { return -x; }
 static __device__ __forceinline__ __half op_neg(__half x) { return -x; }

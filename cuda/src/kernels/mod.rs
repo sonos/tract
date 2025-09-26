@@ -8,6 +8,10 @@ pub mod nn;
 mod unary;
 mod utils;
 
+use std::env;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
 use crate::ops::GgmlQuantQ81Fact;
 use crate::tensor::{CudaBuffer, CudaTensor};
 use anyhow::{bail, ensure};
@@ -22,13 +26,28 @@ pub use unary::UnaryOps;
 
 const MAX_THREADS: usize = 1024;
 
-const UNARY_OPS: &str = include_str!("ptx/unary.ptx");
-const BINARY_OPS: &str = include_str!("ptx/binary.ptx");
-const ARRAY_OPS: &str = include_str!("ptx/array.ptx");
-const NN_OPS: &str = include_str!("ptx/nn.ptx");
-const GGML_MM_MV: &str = include_str!("ptx/mm_mv.ptx");
-const GGML_MM_MV_Q: &str = include_str!("ptx/mm_mv_q.ptx");
-const GGML_QUANTIZE: &str = include_str!("ptx/quantize.ptx");
+static CUBIN_FOLDER: OnceLock<PathBuf> = OnceLock::new();
+
+pub fn cubin_dir() -> &'static Path {
+    CUBIN_FOLDER
+        .get_or_init(|| {
+            dirs::cache_dir()
+                .unwrap_or_else(|| ".cache".into())
+                .join("tract")
+                .join("cuda")
+                .join("cubins")
+        })
+        .as_path()
+}
+
+const UNARY_OPS: &str = include_str!("cu/unary.cu");
+const BINARY_OPS: &str = include_str!("cu/binary.cu");
+const ARRAY_OPS: &str = include_str!("cu/array.cu");
+const NN_OPS: &str = include_str!("cu/nn.cu");
+const GGML_MM_MV: &str = include_str!("cu/mm_mv.cu");
+const GGML_MM_MV_Q: &str = include_str!("cu/mm_mv_q.cu");
+const GGML_QUANTIZE: &str = include_str!("cu/quantize.cu");
+pub const COMMON_H: &str = include_str!("cu/common.cuh");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LibraryName {
@@ -42,6 +61,9 @@ pub enum LibraryName {
 }
 
 impl LibraryName {
+    pub const ALL: [LibraryName; 7] =
+        [Self::Unary, Self::Binary, Self::Array, Self::NN, Self::Ggml, Self::GgmlQ, Self::Quant];
+
     pub fn content(&self) -> &str {
         match self {
             Self::Unary => UNARY_OPS,
@@ -52,6 +74,19 @@ impl LibraryName {
             Self::GgmlQ => GGML_MM_MV_Q,
             Self::Quant => GGML_QUANTIZE,
         }
+    }
+
+    pub fn cubin_path(&self) -> PathBuf {
+        let basename = match self {
+            Self::Unary => "unary",
+            Self::Binary => "binary",
+            Self::Array => "array",
+            Self::NN => "nn",
+            Self::Ggml => "mm_mv",
+            Self::GgmlQ => "mm_mv_q",
+            Self::Quant => "quantize",
+        };
+        cubin_dir().join(format!("{}.cubin", basename))
     }
 }
 
@@ -159,7 +194,9 @@ pub fn get_sliced_cuda_view_mut(
     len: usize,
 ) -> TractResult<CudaViewMut<'_, u8>> {
     ensure!(offset + len <= t.len() * t.datum_type().size_of());
-    let mut buffer = t.device_buffer().downcast_ref::<CudaBuffer>().unwrap();
+    let buffer: &CudaBuffer = t.device_buffer().downcast_ref::<CudaBuffer>().unwrap();
     let offset = t.buffer_offset::<usize>() + offset;
-    Ok(buffer.as_view_mut().slice_mut(offset..(offset + len)))
+    let ptr: *const CudaBuffer = buffer;
+    let mut_buffer: &mut CudaBuffer = unsafe { (ptr as *mut CudaBuffer).as_mut().unwrap() };
+    Ok(mut_buffer.as_view_mut().slice_mut(offset..(offset + len)))
 }

@@ -7,6 +7,7 @@ if [ -z "$RUSTUP_TOOLCHAIN" ]
 then
     export RUSTUP_TOOLCHAIN=1.85.0
 fi
+
 export RUSTUP_TOOLCHAIN
 
 if [ -n "$CI" -a ! -e /tmp/ci-setup-done ]

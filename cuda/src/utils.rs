@@ -1,4 +1,5 @@
-use cudarc::driver::sys::Lib;
+use std::sync::OnceLock;
+
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::*;
@@ -7,6 +8,12 @@ use tract_gpu::tensor::DeviceTensor;
 use crate::Q40_ROW_PADDING;
 use crate::ops::GgmlQuantQ81Fact;
 use crate::tensor::CudaTensor;
+
+static CULIBS_PRESENT: OnceLock<bool> = OnceLock::new();
+
+pub fn is_culib_present() -> bool {
+    *CULIBS_PRESENT.get_or_init(check_culibs)
+}
 
 // Code copied from Cudarc for checking Cuda presence
 fn get_lib_name_candidates(lib_name: &str) -> Vec<String> {
@@ -46,18 +53,31 @@ fn get_lib_name_candidates(lib_name: &str) -> Vec<String> {
     .into()
 }
 
-pub fn get_cuda_lib() -> Option<Lib> {
-    let lib_names = std::vec!["cuda", "nvcuda"];
-    let choices: std::vec::Vec<_> =
-        lib_names.iter().flat_map(|l| get_lib_name_candidates(l)).collect();
-    unsafe {
-        for choice in choices.iter() {
-            if let Ok(lib) = Lib::new(choice) {
-                return Some(lib);
-            }
-        }
-        None
-    }
+fn group_present_with<F>(bases: &[&str], mut load: F) -> bool
+where
+    F: FnMut(&str) -> bool,
+{
+    bases.iter().flat_map(|b| get_lib_name_candidates(b)).any(|cand| load(&cand))
+}
+
+fn check_culibs() -> bool {
+    let driver_ok = group_present_with(&["cuda", "nvcuda"], |name| unsafe {
+        cudarc::driver::sys::Lib::new(name).is_ok()
+    });
+
+    let runtime_ok = group_present_with(&["cudart"], |name| unsafe {
+        cudarc::runtime::sys::Lib::new(name).is_ok()
+    });
+
+    let nvrtc_ok = group_present_with(&["nvrtc"], |name| unsafe {
+        cudarc::nvrtc::sys::Lib::new(name).is_ok()
+    });
+
+    let cublas_ok = group_present_with(&["cublas"], |name| unsafe {
+        cudarc::cublas::sys::Lib::new(name).is_ok()
+    });
+
+    driver_ok && runtime_ok && nvrtc_ok && cublas_ok
 }
 
 pub fn get_quant_fact(t: &DeviceTensor, format: &dyn BlockQuant) -> Option<BlockQuantFact> {
