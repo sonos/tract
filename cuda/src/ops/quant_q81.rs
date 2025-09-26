@@ -4,7 +4,7 @@ use tract_gpu::session_handler::make_scalar_opaque_tensor_for_node;
 use tract_gpu::tensor::DeviceTensorExt;
 
 use crate::context::CUDA_STREAM;
-use crate::kernels::matmul::GgmlQuantQ81;
+use crate::kernels::matmul::quant_act_q81::GgmlQuantQ81;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GgmlQuantQ81Fact {

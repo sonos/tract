@@ -8,7 +8,7 @@ use tract_gpu::tensor::DeviceTensor;
 use crate::Q40_ROW_PADDING;
 use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::LaunchArgsExt;
-use crate::kernels::matmul::ggml::{MMQ_X_MAX, squeeze_batch_axes};
+use crate::kernels::matmul::{MMQ_X_MAX, squeeze_batch_axes};
 use crate::kernels::{LibraryName, get_cuda_view};
 use crate::ops::GgmlQuantQ81Fact;
 

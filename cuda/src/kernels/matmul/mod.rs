@@ -1,184 +1,56 @@
-mod ggml;
+pub(crate) mod quant_act_q81;
 
-use cudarc::driver::{CudaView, CudaViewMut};
-pub use ggml::GgmlGemm;
-pub use ggml::quant_act_q81::GgmlQuantQ81;
+use cudarc::cublas::{self, CudaBlas, Gemm};
+use cudarc::driver::sys::CUfunction_attribute;
+use cudarc::driver::{CudaView, CudaViewMut, LaunchConfig, PushKernelArg};
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0, Q8_1};
 
-use num_traits::One;
+use num_traits::{Float, One};
 use std::fmt;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 use tract_gpu::utils::as_quant_fact;
 
-use crate::context::TractCudaStream;
+use crate::Q40_ROW_PADDING;
+use crate::context::{TractCudaStream, cuda_context};
+use crate::kernels::matmul::quant_act_q81::{QUANTIZE_BLOCK_SIZE, QUANTIZE_BLOCK_SIZE_MMQ};
 use crate::kernels::{
-    get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut,
+    LibraryName, get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut,
 };
 use crate::utils::{get_ggml_q81_fact, get_quant_fact};
 
-#[derive(Debug, Default, PartialEq, Eq, Hash, Clone, Copy)]
-pub enum CudaGemmImplKind {
-    #[default]
-    Ggml,
-}
+use DatumType::{F16, F32};
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct GemmDispatchParams {
-    pub dts: [DatumType; 3],
-    pub a_batch: usize,
-    pub b_batch: usize,
-    pub m: usize,
-    pub k: usize,
-    pub n: usize,
-    pub transpose_a: bool,
-    pub a_offset: usize,
-    pub transpose_b: bool,
-    pub b_offset: usize,
-    pub q40_b: bool,
-    pub c_offset: usize,
-    pub a_strides: TVec<isize>,
-    pub b_strides: TVec<isize>,
-    pub c_strides: TVec<isize>,
-}
+static N_WARPS: usize = 8;
+static WARP_SIZE: usize = 32;
 
-impl GemmDispatchParams {
-    #[allow(clippy::too_many_arguments)]
-    pub fn compute_dispatches_params<M: GemmKernel>(
-        dts: [DatumType; 3],
-        a_shape: &[usize],
-        transpose_a: bool,
-        b_shape: &[usize],
-        transpose_b: bool,
-        q40_b: bool,
-        c_shape: &[usize],
-    ) -> TractResult<Vec<GemmDispatchParams>> {
-        let rank = c_shape.len();
-        let squeezed_a_shape = squeeze_batch_axes(a_shape)?;
-        let squeezed_b_shape = squeeze_batch_axes(b_shape)?;
-        let squeezed_c_shape = squeeze_batch_axes(c_shape)?;
+static MMQ_X_MAX: usize = 128;
 
-        let a_batch = squeezed_a_shape[0];
-        let b_batch = squeezed_b_shape[0];
+static QK8_0: usize = 32;
+static QI8_0: usize = QK8_0 / (4 * QR8_0);
+static QR8_0: usize = 1;
 
-        ensure!(squeezed_c_shape[0] == a_batch || squeezed_c_shape[0] == b_batch);
+static MMQ_MMA_TILE_X_K_Q8_0: usize = (2 * WARP_SIZE + 2 * WARP_SIZE / QI8_0 + 4);
 
-        let m = c_shape[rank - 2];
-        let n = c_shape[rank - 1];
-        let k = a_shape[a_shape.len() - 2 + !transpose_a as usize];
-
-        ensure!((a_batch % b_batch == 0) || (a_batch == 1));
-        let a_strides = if transpose_a {
-            natural_strides(&[a_batch, k, m])
-        } else {
-            natural_strides(&[a_batch, m, k])
-        };
-
-        let b_strides = if transpose_b {
-            natural_strides(&[b_batch, n, k])
-        } else {
-            natural_strides(&[b_batch, k, n])
-        };
-
-        let b_batch_stride = if !q40_b {
-            n * k * dts[1].size_of()
-        } else {
-            ensure!(k % Q4_0.block_len() == 0);
-            n * (k / Q4_0.block_len()) * Q4_0.block_bytes()
-        };
-
-        let c_strides = natural_strides(&[a_batch.max(b_batch), m, n]);
-        match (a_batch, b_batch) {
-            // bmk, 1kn -> bmn
-            // bmk, 1nk -> bmn
-            (a_batch, 1) if a_batch != 1 && !transpose_a => Ok(vec![GemmDispatchParams {
-                dts,
-                a_batch: 1,
-                b_batch: 1,
-                m: m * a_batch,
-                n,
-                k,
-                transpose_a,
-                a_offset: 0,
-                transpose_b,
-                b_offset: 0,
-                q40_b,
-                c_offset: 0,
-                a_strides,
-                b_strides,
-                c_strides,
-            }]),
-            // bkm, 1kn -> bmn
-            // bkm, 1nk -> bmn
-            // As many dispatches as batch dimension.
-            (a_batch, 1) if a_batch != 1 => Ok((0..a_batch)
-                .map(|a_batch_idx| GemmDispatchParams {
-                    dts,
-                    a_batch: 1,
-                    b_batch: 1,
-                    m,
-                    n,
-                    k,
-                    transpose_a,
-                    a_offset: a_batch_idx * m * k * dts[0].size_of(),
-                    transpose_b,
-                    b_offset: 0,
-                    q40_b,
-                    c_offset: a_batch_idx * m * n * dts[2].size_of(),
-                    a_strides: a_strides.clone(),
-                    b_strides: b_strides.clone(),
-                    c_strides: c_strides.clone(),
-                })
-                .collect()),
-            // 1mk, bkn -> bmn
-            // 1km, bkn -> bmn
-            // 1mk, bnk -> bmn
-            // 1km, bnk -> bmn
-            // As many dispatch as batch dimension.
-            (1, b_batch) if b_batch != 1 => Ok((0..b_batch)
-                .map(|b_batch_idx| GemmDispatchParams {
-                    dts,
-                    a_batch: 1,
-                    b_batch: 1,
-                    m,
-                    n,
-                    k,
-                    transpose_a,
-                    a_offset: 0,
-                    transpose_b,
-                    b_offset: b_batch_idx * b_batch_stride,
-                    q40_b,
-                    c_offset: b_batch_idx * m * n * dts[2].size_of(),
-                    a_strides: a_strides.clone(),
-                    b_strides: b_strides.clone(),
-                    c_strides: c_strides.clone(),
-                })
-                .collect()),
-            (a_batch, b_batch) => {
-                if M::supports_broadcast(a_batch, b_batch, m, k, n, q40_b) || (a_batch == b_batch) {
-                    Ok(vec![GemmDispatchParams {
-                        dts,
-                        a_batch,
-                        b_batch,
-                        m,
-                        n,
-                        k,
-                        transpose_a,
-                        a_offset: 0,
-                        transpose_b,
-                        b_offset: 0,
-                        q40_b,
-                        c_offset: 0,
-                        a_strides,
-                        b_strides,
-                        c_strides,
-                    }])
-                } else {
-                    bail!("a_batch != b_batch and backend does not support broadcast");
-                }
-            }
-        }
+// Squeeze batch axes and return a shape with a rank of 3.
+fn squeeze_batch_axes(s: &[usize]) -> TractResult<TVec<usize>> {
+    ensure!(s.len() >= 2);
+    let rank = s.len();
+    if s.len() == 2 {
+        return Ok(tvec![1, s[rank - 2], s[rank - 1]]);
     }
+    let rank = s.len();
+    Ok(tvec![s[..rank - 2].iter().product(), s[rank - 2], s[rank - 1],])
+}
+
+fn mmq_get_nbytes_shared_q40(mmq_weights: usize, mmq_act: usize) -> usize {
+    let nb_ids = mmq_weights * size_of::<i32>();
+    let mmq_tile_w_l = MMQ_MMA_TILE_X_K_Q8_0;
+    let nbs_w = mmq_act * mmq_tile_w_l * size_of::<i32>();
+    let nbs_act = mmq_weights * 144;
+
+    let pad = N_WARPS * WARP_SIZE * size_of::<i32>();
+    nb_ids + nbs_w + nbs_act.next_multiple_of(pad)
 }
 
 pub fn get_concrete_shapes(
@@ -205,63 +77,485 @@ pub fn get_concrete_shapes(
     Ok((a_shape, b_shape))
 }
 
-pub trait GemmKernel: fmt::Display + fmt::Debug + Clone + Default + Send + Sync {
-    fn name() -> &'static str;
+fn find_block_size(k: usize) -> usize {
+    let mut block_size_best = WARP_SIZE;
+    let mut best_niter = k.div_ceil(2 * WARP_SIZE);
 
-    fn supports_broadcast(
-        _a_batch: usize,
-        _b_batch: usize,
-        _m: usize,
-        _k: usize,
-        _n: usize,
-        is_q40: bool,
-    ) -> bool {
-        false
+    for block_size in (2 * WARP_SIZE..=256).step_by(WARP_SIZE) {
+        let niter = k.div_ceil(2 * block_size);
+        if niter < best_niter {
+            best_niter = niter;
+            block_size_best = block_size;
+        }
     }
 
-    fn is_supported_dts(&self, facts: &[TypedFact]) -> bool {
-        assert!(facts.len() == 2, "Expected 2 inputs for matmul");
-        matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16)
-            && facts[0].datum_type == facts[1].datum_type
+    block_size_best
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub struct GemmParams {
+    pub dts: [DatumType; 3],
+    pub w_batch: usize,
+    pub act_batch: usize,
+    pub m: usize,
+    pub k: usize,
+    pub n: usize,
+    pub w_strides: TVec<isize>,
+    pub act_strides: TVec<isize>,
+    pub out_strides: TVec<isize>,
+}
+
+impl GemmParams {
+    pub fn compute_gemm_params(
+        dts: [DatumType; 3],
+        w_shape: &[usize],
+        act_shape: &[usize],
+        out_shape: &[usize],
+    ) -> TractResult<GemmParams> {
+        let rank = out_shape.len();
+        let squeezed_w_shape = squeeze_batch_axes(w_shape)?;
+        let squeezed_act_shape = squeeze_batch_axes(act_shape)?;
+        let squeezed_out_shape = squeeze_batch_axes(out_shape)?;
+
+        let w_batch = squeezed_w_shape[0];
+        let act_batch = squeezed_act_shape[0];
+
+        ensure!(squeezed_out_shape[0] == act_batch || squeezed_out_shape[0] == w_batch);
+
+        let m = out_shape[rank - 2];
+        let n = out_shape[rank - 1];
+        let k = act_shape[act_shape.len() - 1];
+
+        ensure!((act_batch % w_batch == 0) || (act_batch == 1));
+        let w_strides = natural_strides(&[w_batch, n, k]);
+        let act_strides = natural_strides(&[act_batch, m, k]);
+        let out_strides = natural_strides(&[act_batch.max(w_batch), m, n]);
+
+        Ok(GemmParams { dts, act_batch, w_batch, m, n, k, act_strides, w_strides, out_strides })
     }
-
-    fn output_dt(&self, a_dt: DatumType, b_dt: DatumType) -> TractResult<DatumType>;
-
-    fn dispatch_eval(
-        &self,
-        stream: &TractCudaStream,
-        params: GemmDispatchParams,
-        a_buffer: &CudaView<'_, u8>,
-        b_buffer: &CudaView<'_, u8>,
-        c_buffer: &mut CudaViewMut<'_, u8>,
-    ) -> TractResult<()>;
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
-pub struct GemmImpl<M: GemmKernel> {
-    pub transpose_a: bool,
-    pub transpose_b: bool,
-    pub matmul: M,
+pub struct GgmlGemm;
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub struct CublasDispatchParams {
+    pub w_batch: usize,
+    pub act_batch: usize,
+    pub m: usize,
+    pub act_offset: usize,
+    pub w_offset: usize,
+    pub c_offset: usize,
 }
 
-impl<M: GemmKernel> fmt::Display for GemmImpl<M> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.matmul)
+impl CublasDispatchParams {
+    pub fn compute_dispatch_params(params: &GemmParams) -> TractResult<Vec<CublasDispatchParams>> {
+        match (params.act_batch, params.w_batch) {
+            (act_batch, 1) if act_batch != 1 => Ok(vec![CublasDispatchParams {
+                w_batch: 1,
+                act_batch: 1,
+                m: params.m * params.act_batch,
+                act_offset: 0,
+                w_offset: 0,
+                c_offset: 0,
+            }]),
+            (1, w_batch) if w_batch != 1 => Ok((0..w_batch)
+                .map(|w_batch_idx| CublasDispatchParams {
+                    w_batch: 1,
+                    act_batch: 1,
+                    m: params.m,
+                    act_offset: 0,
+                    w_offset: w_batch_idx * params.dts[1].size_of() * params.w_strides[0] as usize,
+                    c_offset: w_batch_idx * params.m * params.n * params.dts[2].size_of(),
+                })
+                .collect()),
+            (act_batch, w_batch) => {
+                ensure!(
+                    act_batch == w_batch,
+                    "Only support equal batches or either batch == 1 for Cublas MM"
+                );
+                Ok(vec![CublasDispatchParams {
+                    w_batch: params.w_batch,
+                    act_batch: params.act_batch,
+                    m: params.m,
+                    act_offset: 0,
+                    w_offset: 0,
+                    c_offset: 0,
+                }])
+            }
+        }
     }
 }
 
-impl<M: GemmKernel> GemmImpl<M> {
-    pub fn new(transpose_a: bool, transpose_b: bool) -> Self {
-        Self { transpose_a, transpose_b, matmul: M::default() }
+fn kernel_name_mat_vec(dt: DatumType, n_cols: usize, block_size: usize) -> TractResult<String> {
+    Ok(format!("ggml_matvec_{}_ncols_{}_bs_{}", DeviceTensor::tname(dt)?, n_cols, block_size))
+}
+
+fn dispatch_ggml_matvec(
+    stream: &TractCudaStream,
+    weights: &DeviceTensor,
+    activs: &DeviceTensor,
+    output: &DeviceTensor,
+    params: GemmParams,
+) -> TractResult<()> {
+    ensure!(params.act_batch % params.w_batch == 0);
+
+    let w_view = get_cuda_view(weights);
+    let act_view = get_cuda_view(activs);
+    let output_view = get_cuda_view(output);
+
+    let k_div_2 = params.k / 2;
+    let ncols_act_div_2 = params.act_strides[1] / 2;
+    ensure!(k_div_2 == ncols_act_div_2 as usize);
+    let block_size = find_block_size(params.k);
+
+    let batch_ratio = params.act_batch / params.w_batch;
+
+    let kernel_name = kernel_name_mat_vec(params.dts[0], params.m, block_size)?;
+    let mut func = cuda_context().load_pipeline(LibraryName::Ggml, kernel_name)?;
+    let mut launch_args = stream.launch_builder(&func);
+    launch_args.arg(&w_view);
+    launch_args.arg(&act_view);
+    launch_args.arg(&output_view);
+    launch_args.arg(&k_div_2);
+    launch_args.arg(&params.act_batch);
+    launch_args.arg(&params.w_strides[1]);
+    launch_args.arg(&ncols_act_div_2);
+    launch_args.arg(&params.out_strides[1]);
+    launch_args.arg(&batch_ratio);
+    launch_args.arg(&params.w_strides[0]);
+    launch_args.arg(&params.act_strides[0]);
+    launch_args.arg(&params.out_strides[0]);
+
+    let cfg = LaunchConfig {
+        grid_dim: (params.n as _, params.act_batch as _, 1),
+        block_dim: (block_size as _, 1, 1),
+        shared_mem_bytes: (WARP_SIZE * size_of::<f32>()) as u32,
+    };
+
+    unsafe { launch_args.launch(cfg) };
+    Ok(())
+}
+
+fn dispatch_cublas_gemm<F: Datum + Float>(
+    stream: &TractCudaStream,
+    weights: &DeviceTensor,
+    activs: &DeviceTensor,
+    c: &DeviceTensor,
+    params: GemmParams,
+) -> TractResult<()>
+where
+    CudaBlas: Gemm<F>,
+{
+    let dispatch_params = CublasDispatchParams::compute_dispatch_params(&params)?;
+    for d in dispatch_params {
+        let act_len = params.act_strides[0] as usize * d.act_batch * params.dts[0].size_of();
+        let w_len = params.w_strides[0] as usize * d.w_batch * params.dts[1].size_of();
+        let act_view = get_sliced_cuda_view(activs, d.act_offset, act_len)?;
+        let w_view = get_sliced_cuda_view(weights, d.w_offset, w_len)?;
+        let mut c_view = get_sliced_cuda_view_mut(
+            c,
+            d.c_offset,
+            params.out_strides[0] as usize * d.act_batch.max(d.w_batch) * params.dts[2].size_of(),
+        )?;
+
+        let cublas_gemm_cfg = cublas::GemmConfig {
+            transa: cublas::sys::cublasOperation_t::CUBLAS_OP_T,
+            transb: cublas::sys::cublasOperation_t::CUBLAS_OP_N,
+            m: params.n as i32,
+            n: d.m as i32,
+            k: params.k as i32,
+            alpha: F::from(1.0f32).unwrap(),
+            lda: params.k as i32,
+            ldb: params.k as i32,
+            beta: F::from(0.0f32).unwrap(),
+            ldc: params.n as i32,
+        };
+
+        let gemm_batched_strided_cfg = cublas::StridedBatchedConfig {
+            gemm: cublas_gemm_cfg,
+            batch_size: d.act_batch as i32,
+            stride_a: params.w_strides[0] as _,
+            stride_b: params.act_strides[0] as _,
+            stride_c: params.out_strides[0] as _,
+        };
+
+        unsafe {
+            stream.cublas().gemm_strided_batched(
+                gemm_batched_strided_cfg,
+                &w_view.transmute::<F>(w_view.len() / size_of::<F>()).unwrap(),
+                &act_view.transmute::<F>(act_view.len() / size_of::<F>()).unwrap(),
+                &mut c_view.transmute_mut::<F>(c_view.len() / size_of::<F>()).unwrap(),
+            )
+        };
+    }
+
+    Ok(())
+}
+
+fn kernel_name_q40(
+    params: &GemmParams,
+    mmq_w: usize,
+    mmq_act: usize,
+    fixup: bool,
+) -> TractResult<String> {
+    let need_check = params.n % mmq_act != 0;
+    let fixup_str = if fixup { "stream_k_fixup_" } else { "" };
+    Ok(format!("mul_mat_q40_{fixup_str}{mmq_w}_8_{need_check}"))
+}
+
+fn find_best_mmq_w(smbpo: usize, m: usize) -> usize {
+    let mut mmq_w_best = 0;
+    let mut ntiles_w_best = usize::MAX;
+
+    let mut mmq_w = 0;
+    while mmq_w <= MMQ_X_MAX && ntiles_w_best > 1 {
+        mmq_w += 8;
+        let granularity = if mmq_w >= 48 { 16 } else { 8 };
+        if (mmq_w % granularity != 0 || mmq_get_nbytes_shared_q40(mmq_w, MMQ_X_MAX) > smbpo) {
+            continue;
+        }
+        let ntiles_w = m.div_ceil(mmq_w);
+        if (ntiles_w < ntiles_w_best) {
+            mmq_w_best = mmq_w;
+            ntiles_w_best = ntiles_w;
+        }
+    }
+    mmq_w_best
+}
+
+#[allow(clippy::too_many_arguments)]
+fn launch_matmul_q40(
+    stream: &TractCudaStream,
+    weights: &CudaView<'_, u8>,
+    quant_activ: &CudaView<'_, u8>,
+    output: &CudaView<'_, u8>,
+    fixup_tens: &CudaView<'_, u8>,
+    params: &GemmParams,
+    act_batch_stride: usize,
+    w_batch_stride: usize,
+    batch_ratio: usize,
+    mmq_w_best: usize,
+    nbytes_shared: usize,
+) -> TractResult<()> {
+    let n_blocks = w_batch_stride / params.n;
+    let kernel_name = kernel_name_q40(params, mmq_w_best, MMQ_X_MAX, false)?;
+
+    let context = cuda_context();
+    let props = context.properties();
+    let func = context.load_pipeline(LibraryName::GgmlQ, kernel_name)?;
+    func.set_attribute(
+        CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+        nbytes_shared as i32,
+    )?;
+    let mut launch_args = stream.launch_builder(&func);
+    launch_args.arg(weights);
+    launch_args.arg(quant_activ);
+    launch_args.arg(output);
+    launch_args.arg(fixup_tens);
+    launch_args.arg(&params.k);
+    launch_args.arg(&params.n);
+    launch_args.arg(&params.m);
+    launch_args.arg(&n_blocks);
+    launch_args.arg(&params.m);
+    launch_args.arg(&params.n);
+    launch_args.arg(&batch_ratio);
+    launch_args.arg(&params.act_batch);
+    launch_args.arg(&w_batch_stride);
+    launch_args.arg(&act_batch_stride);
+    launch_args.arg(&params.out_strides[0]);
+
+    let cfg = LaunchConfig {
+        grid_dim: (props.multiProcessorCount as usize as _, 1, 1),
+        block_dim: (WARP_SIZE as _, N_WARPS as _, 1),
+        shared_mem_bytes: nbytes_shared as _,
+    };
+
+    unsafe {
+        launch_args.launch(cfg);
+    }
+    Ok(())
+}
+
+fn launch_fixup_q40(
+    stream: &TractCudaStream,
+    output: &CudaView<'_, u8>,
+    fixup_tens: &CudaView<'_, u8>,
+    params: &GemmParams,
+    mmq_w_best: usize,
+) -> TractResult<()> {
+    let kernel_name = kernel_name_q40(params, mmq_w_best, MMQ_X_MAX, true)?;
+
+    let context = cuda_context();
+    let props = context.properties();
+    let func = context.load_pipeline(LibraryName::GgmlQ, kernel_name)?;
+    let mut launch_args = stream.launch_builder(&func);
+    launch_args.arg(output);
+    launch_args.arg(fixup_tens);
+    launch_args.arg(&params.k);
+    launch_args.arg(&params.n);
+    launch_args.arg(&params.m);
+    launch_args.arg(&params.n);
+    launch_args.arg(&params.act_batch);
+    launch_args.arg(&params.out_strides[0]);
+
+    let cfg = LaunchConfig {
+        grid_dim: (props.multiProcessorCount as usize as _, 1, 1),
+        block_dim: (WARP_SIZE as _, N_WARPS as _, 1),
+        shared_mem_bytes: 0,
+    };
+
+    unsafe {
+        launch_args.launch(cfg);
+    }
+    Ok(())
+}
+
+fn dispatch_ggml_matmul_q40(
+    stream: &TractCudaStream,
+    weights: &CudaView<'_, u8>,
+    activs: &CudaView<'_, u8>,
+    output: &CudaView<'_, u8>,
+    params: GemmParams,
+) -> TractResult<()> {
+    ensure!(params.act_batch % params.w_batch == 0);
+
+    let context = cuda_context();
+    let props = context.properties();
+
+    let null_ptr = stream.null::<u8>()?;
+
+    let padded_k = params.k.next_multiple_of(Q40_ROW_PADDING);
+    let n_blocks = padded_k / Q4_0.block_len(); // padded Q40 weights
+
+    let n_mmq_blocks = padded_k / (Q8_1.block_len() * 4);
+    let act_batch_stride = n_mmq_blocks * params.m * Q8_1.block_bytes();
+    let w_batch_stride = n_blocks * params.n;
+    let batch_ratio = params.act_batch / params.w_batch;
+
+    let mmq_w_best = find_best_mmq_w(props.sharedMemPerBlockOptin, params.m);
+    let nbytes_shared = mmq_get_nbytes_shared_q40(mmq_w_best, MMQ_X_MAX);
+
+    let ntx = params.m.div_ceil(mmq_w_best);
+    let nty = params.n.div_ceil(MMQ_X_MAX);
+
+    let fixup_tensor = {
+        let needs_fixup = (ntx * nty * params.act_batch) % props.multiProcessorCount as usize != 0;
+
+        needs_fixup
+            .then(|| {
+                let fixup_shape = props.multiProcessorCount as usize * mmq_w_best * MMQ_X_MAX;
+                unsafe { DeviceTensor::uninitialized_dt(DatumType::F32, &[fixup_shape]) }
+            })
+            .transpose()?
+    };
+
+    let fixup_view = fixup_tensor.as_ref().map(|t| get_cuda_view(t)).unwrap_or(null_ptr.as_view());
+
+    launch_matmul_q40(
+        stream,
+        weights,
+        activs,
+        output,
+        &fixup_view,
+        &params,
+        act_batch_stride,
+        w_batch_stride,
+        batch_ratio,
+        mmq_w_best,
+        nbytes_shared,
+    )?;
+
+    if let Some(ref fixup) = fixup_tensor {
+        launch_fixup_q40(stream, output, &fixup_view, &params, mmq_w_best)?;
+    }
+
+    Ok(())
+}
+
+fn dispatch_ggml_matvec_q40(
+    stream: &TractCudaStream,
+    weights: &CudaView<'_, u8>,
+    activs: &CudaView<'_, u8>,
+    output: &CudaView<'_, u8>,
+    params: GemmParams,
+) -> TractResult<()> {
+    ensure!(params.act_batch % params.w_batch == 0);
+
+    let context = cuda_context();
+    let props = context.properties();
+    let null_ptr = stream.null::<u8>()?;
+
+    let padded_k = params.k.next_multiple_of(Q40_ROW_PADDING);
+
+    let n_blocks = padded_k / Q4_0.block_len();
+    let stride_col_act = padded_k / Q8_1.block_len();
+    let stride_col_out = params.n;
+    let stride_channel_w = n_blocks * params.n;
+    let stride_channel_act = stride_col_act * params.m;
+    let stride_channel_out = params.m * params.n;
+
+    let batch_ratio = params.act_batch / params.w_batch;
+
+    let func = context.load_pipeline(LibraryName::GgmlQ, format!("mul_vec_q40_m_{}", params.m))?;
+    let mut launch_args = stream.launch_builder(&func);
+    launch_args.arg(weights);
+    launch_args.arg(activs);
+    launch_args.arg(output);
+    launch_args.arg(&params.k);
+    launch_args.arg(&params.act_batch);
+    launch_args.arg(&n_blocks);
+    launch_args.arg(&stride_col_act);
+    launch_args.arg(&stride_col_out);
+    launch_args.arg(&batch_ratio);
+    launch_args.arg(&stride_channel_w);
+    launch_args.arg(&stride_channel_act);
+    launch_args.arg(&stride_channel_out);
+
+    let rows_per_block = if params.m == 1 { 1 } else { 2 };
+    let n_warps = if params.m <= 4 { 4 } else { 2 };
+    let cfg = LaunchConfig {
+        grid_dim: (params.n.div_ceil(rows_per_block) as _, params.act_batch as _, 1 as _),
+        block_dim: (WARP_SIZE as _, n_warps, 1),
+        shared_mem_bytes: 0,
+    };
+
+    unsafe { launch_args.launch(cfg) };
+    Ok(())
+}
+
+impl GgmlGemm {
+    pub fn is_supported_dts(&self, facts: &[TypedFact]) -> bool {
+        assert!(facts.len() == 2, "Ggml: Expected 2 inputs for Matmul");
+
+        let regular_types_support = matches!(
+            (facts[0].datum_type, facts[1].datum_type),
+            (F32, F32) | (F16, F16) | (F16, F32)
+        );
+
+        regular_types_support
+            || (as_quant_fact(&facts[1], &Q4_0).is_some()
+                && matches!(facts[0].datum_type, F16 | F32))
+    }
+
+    fn output_dt(&self, activ_dt: DatumType, weight_dt: DatumType) -> TractResult<DatumType> {
+        ensure!(weight_dt == activ_dt);
+        if activ_dt == DatumType::Opaque {
+            // Q40 MM -> F32 output
+            Ok(DatumType::F32)
+        } else {
+            Ok(activ_dt)
+        }
     }
 
     pub fn output_shape<D: DimLike + One>(&self, a: &[D], b: &[D]) -> TVec<D> {
+        // A: [b, n, k] B: [b, m, k]
         let rank = a.len();
         let mut output: TVec<D> = (0..rank - 2)
             .map(|ix| if a[ix].is_one() { b[ix].clone() } else { a[ix].clone() })
             .collect();
-        output.push(a[rank - 2 + self.transpose_a as usize].clone());
-        output.push(b[rank - 2 + !self.transpose_b as usize].clone());
+        output.push(a[rank - 2].clone());
+        output.push(b[rank - 2].clone());
         output
     }
 
@@ -271,7 +565,7 @@ impl<M: GemmKernel> GemmImpl<M> {
         a_dt: DatumType,
         b_dt: DatumType,
     ) -> TractResult<TVec<TypedFact>> {
-        let out_dt = self.matmul.output_dt(a_dt, b_dt)?;
+        let out_dt = self.output_dt(a_dt, b_dt)?;
         ensure!([DatumType::F16, DatumType::F32].contains(&out_dt));
         Ok(tvec!(out_dt.fact(shape)))
     }
@@ -279,16 +573,16 @@ impl<M: GemmKernel> GemmImpl<M> {
     pub fn eval(
         &self,
         stream: &TractCudaStream,
-        a: &DeviceTensor,
-        b: &DeviceTensor,
+        activs: &DeviceTensor,
+        weights: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
-        let (a_shape, b_shape) = get_concrete_shapes(a, b)?;
+        let (act_shape, w_shape) = get_concrete_shapes(activs, weights)?;
 
-        let c_dt = self.matmul.output_dt(a.datum_type(), b.datum_type())?;
-        let c_shape = self.output_shape(&a_shape, &b_shape);
+        let c_dt = self.output_dt(activs.datum_type(), weights.datum_type())?;
+        let c_shape = self.output_shape(&act_shape, &w_shape);
         let c = unsafe { DeviceTensor::uninitialized_dt(c_dt, &c_shape)? };
 
-        self.dispatch_eval(stream, a, b, &c)?;
+        self.dispatch_eval(stream, activs, weights, &c)?;
         stream.synchronize()?;
         Ok(c)
     }
@@ -296,92 +590,56 @@ impl<M: GemmKernel> GemmImpl<M> {
     pub fn dispatch_eval(
         &self,
         stream: &TractCudaStream,
-        a: &DeviceTensor,
-        b: &DeviceTensor,
-        c: &DeviceTensor,
+        activs: &DeviceTensor,
+        weights: &DeviceTensor,
+        out: &DeviceTensor,
     ) -> TractResult<()> {
-        let (a_shape, b_shape) = get_concrete_shapes(a, b)?;
+        // Note: All the following MM/MV kernels transpose the output.
+        // We name 'm' and 'n' according to the output
+        // This means Weights: [n, k] x Activ: [m, k] => C: [m, n]
 
-        ensure!(c.shape() == self.output_shape(&a_shape, &b_shape).as_slice());
+        let (act_shape, w_shape) = get_concrete_shapes(activs, weights)?;
 
-        if c.shape().iter().product::<usize>() == 0 {
+        ensure!(out.shape() == self.output_shape(&act_shape, &w_shape).as_slice());
+
+        if out.shape().iter().product::<usize>() == 0 {
             return Ok(());
         }
 
-        let dispatches = GemmDispatchParams::compute_dispatches_params::<M>(
-            [a.datum_type(), b.datum_type(), c.datum_type()],
-            &a_shape,
-            self.transpose_a,
-            &b_shape,
-            self.transpose_b,
-            get_quant_fact(b, &Q4_0).is_some(),
-            c.shape(),
+        let params = GemmParams::compute_gemm_params(
+            [activs.datum_type(), weights.datum_type(), out.datum_type()],
+            &w_shape,
+            &act_shape,
+            out.shape(),
         )?;
 
-        for d in dispatches {
-            let (a_len, b_len) = if d.q40_b {
-                (
-                    get_ggml_q81_fact(a)
-                        .unwrap()
-                        .mem_size()
-                        .as_i64()
-                        .expect("Symbols should known at this point") as usize,
-                    d.b_strides[0] as usize * d.b_batch / Q4_0.block_len() * Q4_0.block_bytes(),
-                )
+        if get_quant_fact(weights, &Q4_0).is_some() {
+            let act_view = get_cuda_view(activs);
+            let w_view = get_cuda_view(weights);
+            let out_view = get_cuda_view(out);
+            if params.m <= 8 {
+                dispatch_ggml_matvec_q40(stream, &w_view, &act_view, &out_view, params)?;
             } else {
-                (
-                    d.a_strides[0] as usize * d.a_batch * d.dts[0].size_of(),
-                    d.b_strides[0] as usize * d.b_batch * d.dts[1].size_of(),
-                )
-            };
-
-            let a_view = get_sliced_cuda_view(a, d.a_offset, a_len)?;
-            let b_view = get_sliced_cuda_view(b, d.b_offset, b_len)?;
-            let mut c_view = get_sliced_cuda_view_mut(
-                c,
-                d.c_offset,
-                d.c_strides[0] as usize * d.a_batch.max(d.b_batch) * d.dts[2].size_of(),
-            )?;
-            self.matmul
-                .dispatch_eval(
-                    stream,
-                    d.clone(),
-                    &a_view,
-                    &b_view,
-                    &mut c_view,
-                )
-                .with_context(|| {
-                    format!(
-                    "Error while performing MatMul with {:?} (a: {:?}), (b: {:?}) = (c: {:?}) for dispatch: {:?}",
-                    self.matmul,
-                    a.shape(),
-                    b.shape(),
-                    c.shape(),
-                    d,
-                )
-            })?;
+                dispatch_ggml_matmul_q40(stream, &w_view, &act_view, &out_view, params)?;
+            }
+        } else if (params.k % 2 == 0) && params.m <= 8 {
+            dispatch_ggml_matvec(stream, weights, activs, out, params)?;
+        } else if activs.datum_type() == DatumType::F32 {
+            dispatch_cublas_gemm::<f32>(stream, weights, activs, out, params)?;
+        } else {
+            ensure!(activs.datum_type() == F16);
+            dispatch_cublas_gemm::<f16>(stream, weights, activs, out, params)?;
         }
 
         Ok(())
     }
 }
 
-// Squeeze batch axes and return a shape with a rank of 3.
-fn squeeze_batch_axes(s: &[usize]) -> TractResult<TVec<usize>> {
-    ensure!(s.len() >= 2);
-    let rank = s.len();
-    if s.len() == 2 {
-        return Ok(tvec![1, s[rank - 2], s[rank - 1]]);
-    }
-    let rank = s.len();
-    Ok(tvec![s[..rank - 2].iter().product(), s[rank - 2], s[rank - 1],])
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::context::CUDA_STREAM;
-    use crate::kernels::matmul::GemmImpl;
+    use crate::kernels::matmul::quant_act_q81::GgmlQuantQ81;
     use crate::ops::GgmlQuantQ81Fact;
     use crate::utils::pad_q40;
     use num_traits::AsPrimitive;
@@ -395,52 +653,52 @@ mod tests {
     };
     use tract_gpu::tensor::IntoDevice;
 
-    pub(crate) fn run_mmm_test_case<K: GemmKernel>(
-        (a_batch, b_batch, m, k, n): (usize, usize, usize, usize, usize),
+    pub(crate) fn run_mmm_test_case(
+        (act_batch, w_batch, m, k, n): (usize, usize, usize, usize, usize),
         transpose_a: bool,
         transpose_b: bool,
-        a_dt: DatumType,
-        b_dt: DatumType,
+        act_dt: DatumType,
+        w_dt: DatumType,
     ) -> TractResult<()> {
         CUDA_STREAM.with(|stream| {
-            let a_shape = if !transpose_a { [a_batch, m, k] } else { [a_batch, k, m] };
-            let b_shape = if !transpose_b { [b_batch, k, n] } else { [b_batch, n, k] };
-            let mut a = if a_dt == DatumType::F16 {
+            let act_shape = if !transpose_a { [act_batch, m, k] } else { [act_batch, k, m] };
+            let w_shape = if !transpose_b { [w_batch, k, n] } else { [w_batch, n, k] };
+            let mut activs = if act_dt == DatumType::F16 {
                 Tensor::from_shape(
-                    &a_shape,
-                    &(0..a_batch * m * k)
-                        .map(|f| f16::from_f32(f as f32 / (a_batch * m * k) as f32))
+                    &act_shape,
+                    &(0..act_batch * m * k)
+                        .map(|f| f16::from_f32(f as f32 / (act_batch * m * k) as f32))
                         .collect::<Vec<_>>(),
                 )?
             } else {
                 Tensor::from_shape(
-                    &a_shape,
-                    &(0..a_batch * m * k)
-                        .map(|f| f as f32 / (a_batch * m * k) as f32)
+                    &act_shape,
+                    &(0..act_batch * m * k)
+                        .map(|f| f as f32 / (act_batch * m * k) as f32)
                         .collect::<Vec<_>>(),
                 )?
             };
 
-            let mut b = if b_dt == DatumType::F16 {
+            let mut weights = if w_dt == DatumType::F16 {
                 Tensor::from_shape(
-                    &b_shape,
-                    &(0..b_batch * k * n)
-                        .map(|f| f16::from_f32(f as f32 / (b_batch * n * k) as f32))
+                    &w_shape,
+                    &(0..w_batch * k * n)
+                        .map(|f| f16::from_f32(f as f32 / (w_batch * n * k) as f32))
                         .collect::<Vec<_>>(),
                 )?
             } else {
                 Tensor::from_shape(
-                    &b_shape,
-                    &(0..b_batch * k * n)
-                        .map(|f| f as f32 / (b_batch * m * k) as f32)
+                    &w_shape,
+                    &(0..w_batch * k * n)
+                        .map(|f| f as f32 / (w_batch * m * k) as f32)
                         .collect::<Vec<_>>(),
                 )?
             };
 
-            let cuda_output = GemmImpl::<K>::new(transpose_a, transpose_b).eval(
+            let cuda_output = GgmlGemm.eval(
                 stream,
-                &a.clone().into_device()?,
-                &b.clone().into_device()?,
+                &activs.clone().into_device()?,
+                &weights.clone().into_device()?,
             )?;
 
             let matmul = PrefixMatMul {
@@ -451,236 +709,49 @@ mod tests {
             };
 
             // Compare to full precision
-            if a_dt == DatumType::F16 && !(b_dt == DatumType::F16) {
-                a = a.clone().cast_to_dt(DatumType::F32).unwrap().into_owned();
+            if act_dt == DatumType::F16 && !(w_dt == DatumType::F16) {
+                activs = activs.clone().cast_to_dt(DatumType::F32).unwrap().into_owned();
             }
-            if b_dt == DatumType::F16 && !(a_dt == DatumType::F16) {
-                b = b.clone().cast_to_dt(DatumType::F32).unwrap().into_owned();
+            if w_dt == DatumType::F16 && !(act_dt == DatumType::F16) {
+                weights = weights.clone().cast_to_dt(DatumType::F32).unwrap().into_owned();
             }
 
-            let output = args_1!(matmul.eval(tvec![a.into_tvalue(), b.into_tvalue()])?);
+            let output = args_1!(matmul.eval(tvec![activs.into_tvalue(), weights.into_tvalue()])?);
             cuda_output.to_host()?.close_enough(&output, Approximation::VeryApproximate)?;
             Ok(())
         })
     }
 
     #[test]
-    fn test_gemm_dispatches_params() -> TractResult<()> {
-        let dt = DatumType::F32;
-        let (m, k, n) = (2, 3, 4);
-        let m_n_k = (m.to_dim(), n.to_dim(), k.to_dim());
-        assert_eq!(
-            GemmDispatchParams::compute_dispatches_params::<GgmlGemm>(
-                [dt; 3],
-                &[1, m, k],
-                false,
-                &[1, k, n],
-                false,
-                false,
-                &[1, m, n],
-            )?,
-            vec![GemmDispatchParams {
-                dts: [dt; 3],
-                a_batch: 1,
-                b_batch: 1,
-                m,
-                n,
-                k,
-                transpose_a: false,
-                a_offset: 0,
-                transpose_b: false,
-                b_offset: 0,
-                q40_b: false,
-                c_offset: 0,
-                a_strides: natural_strides(&[1, m, k]),
-                b_strides: natural_strides(&[1, k, n]),
-                c_strides: natural_strides(&[1, m, n])
-            }]
-        );
+    fn test_mat_vec() -> TractResult<()> {
+        // f32_f32
+        run_mmm_test_case((2, 1, 1, 2, 1), false, true, F32, F32)?;
+        run_mmm_test_case((2, 1, 3, 60, 2), false, true, F32, F32)?;
+        run_mmm_test_case((2, 2, 2, 128, 7), false, true, F32, F32)?;
+        run_mmm_test_case((4, 1, 7, 2, 1), false, true, F32, F32)?;
 
-        assert_eq!(
-            GemmDispatchParams::compute_dispatches_params::<GgmlGemm>(
-                [dt; 3],
-                &[10, m, k],
-                false,
-                &[10, k, n],
-                false,
-                false,
-                &[10, m, n],
-            )?,
-            vec![GemmDispatchParams {
-                dts: [dt; 3],
-                a_batch: 10,
-                b_batch: 10,
-                m,
-                n,
-                k,
-                transpose_a: false,
-                a_offset: 0,
-                transpose_b: false,
-                b_offset: 0,
-                q40_b: false,
-                c_offset: 0,
-                a_strides: natural_strides(&[10, m, k]),
-                b_strides: natural_strides(&[10, k, n]),
-                c_strides: natural_strides(&[10, m, n])
-            }]
-        );
+        //// f16_f16
+        run_mmm_test_case((1, 1, 5, 2, 1), false, true, F16, F16)?;
+        run_mmm_test_case((2, 1, 8, 62, 2), false, true, F16, F16)?;
+        run_mmm_test_case((2, 2, 2, 128, 9), false, true, F16, F16)?;
+        run_mmm_test_case((4, 1, 1, 128, 9), false, true, F16, F16)?;
+        Ok(())
+    }
 
-        assert_eq!(
-            GemmDispatchParams::compute_dispatches_params::<GgmlGemm>(
-                [dt; 3],
-                &[1, m, k],
-                false,
-                &[2, k, n],
-                false,
-                false,
-                &[2, m, n],
-            )?,
-            vec![
-                GemmDispatchParams {
-                    dts: [dt; 3],
-                    a_batch: 1,
-                    b_batch: 1,
-                    m,
-                    n,
-                    k,
-                    transpose_a: false,
-                    a_offset: 0,
-                    transpose_b: false,
-                    b_offset: 0,
-                    q40_b: false,
-                    c_offset: 0,
-                    a_strides: natural_strides(&[1, m, k]),
-                    b_strides: natural_strides(&[2, k, n]),
-                    c_strides: natural_strides(&[2, m, n])
-                },
-                GemmDispatchParams {
-                    dts: [dt; 3],
-                    a_batch: 1,
-                    b_batch: 1,
-                    m,
-                    n,
-                    k,
-                    transpose_a: false,
-                    a_offset: 0,
-                    transpose_b: false,
-                    b_offset: 1 * n * k * dt.size_of(),
-                    q40_b: false,
-                    c_offset: m * n * dt.size_of(),
-                    a_strides: natural_strides(&[1, m, k]),
-                    b_strides: natural_strides(&[2, k, n]),
-                    c_strides: natural_strides(&[2, m, n])
-                }
-            ]
-        );
+    #[test]
+    fn test_mat_mul() -> TractResult<()> {
+        // f32_f32
+        run_mmm_test_case((1, 1, 9, 4, 2), false, true, F32, F32)?;
+        run_mmm_test_case((1, 1, 11, 2, 3), false, true, F32, F32)?;
+        run_mmm_test_case((2, 2, 15, 1, 2), false, true, F32, F32)?;
+        run_mmm_test_case((2, 1, 10, 32, 2), false, true, F32, F32)?;
+        run_mmm_test_case((1, 2, 12, 1, 2), false, true, F32, F32)?;
 
-        assert_eq!(
-            GemmDispatchParams::compute_dispatches_params::<GgmlGemm>(
-                [dt; 3],
-                &[2, k, m],
-                true,
-                &[2, k, n],
-                false,
-                false,
-                &[2, m, n],
-            )?,
-            vec![GemmDispatchParams {
-                dts: [dt; 3],
-                a_batch: 2,
-                b_batch: 2,
-                m,
-                n,
-                k,
-                transpose_a: true,
-                a_offset: 0,
-                transpose_b: false,
-                b_offset: 0,
-                q40_b: false,
-                c_offset: 0,
-                a_strides: natural_strides(&[2, k, m]),
-                b_strides: natural_strides(&[2, k, n]),
-                c_strides: natural_strides(&[2, m, n])
-            }]
-        );
-
-        assert_eq!(
-            GemmDispatchParams::compute_dispatches_params::<GgmlGemm>(
-                [dt; 3],
-                &[2, k, m],
-                true,
-                &[1, k, n],
-                false,
-                false,
-                &[2, m, n],
-            )?,
-            vec![
-                GemmDispatchParams {
-                    dts: [dt; 3],
-                    a_batch: 1,
-                    b_batch: 1,
-                    m,
-                    n,
-                    k,
-                    transpose_a: true,
-                    a_offset: 0,
-                    transpose_b: false,
-                    b_offset: 0,
-                    q40_b: false,
-                    c_offset: 0,
-                    a_strides: natural_strides(&[2, k, m]),
-                    b_strides: natural_strides(&[1, k, n]),
-                    c_strides: natural_strides(&[2, m, n])
-                },
-                GemmDispatchParams {
-                    dts: [dt; 3],
-                    a_batch: 1,
-                    b_batch: 1,
-                    m,
-                    n,
-                    k,
-                    transpose_a: true,
-                    a_offset: 1 * m * k * dt.size_of(),
-                    transpose_b: false,
-                    b_offset: 0,
-                    q40_b: false,
-                    c_offset: 1 * m * n * dt.size_of(),
-                    a_strides: natural_strides(&[2, k, m]),
-                    b_strides: natural_strides(&[1, k, n]),
-                    c_strides: natural_strides(&[2, m, n])
-                }
-            ]
-        );
-
-        assert_eq!(
-            GemmDispatchParams::compute_dispatches_params::<GgmlGemm>(
-                [dt; 3],
-                &[10, m, k],
-                false,
-                &[1, k, n],
-                false,
-                false,
-                &[10, m, n],
-            )?,
-            vec![GemmDispatchParams {
-                dts: [dt; 3],
-                a_batch: 1,
-                b_batch: 1,
-                m: 10 * m,
-                n,
-                k,
-                transpose_a: false,
-                a_offset: 0,
-                transpose_b: false,
-                b_offset: 0,
-                q40_b: false,
-                c_offset: 0,
-                a_strides: natural_strides(&[10, m, k]),
-                b_strides: natural_strides(&[1, k, n]),
-                c_strides: natural_strides(&[10, m, n])
-            }]
-        );
-
+        // f16_f16
+        run_mmm_test_case((1, 1, 12, 7, 2), false, true, F16, F16)?;
+        run_mmm_test_case((1, 1, 9, 61, 2), false, true, F16, F16)?;
+        run_mmm_test_case((2, 1, 10, 127, 9), false, true, F16, F16)?;
+        run_mmm_test_case((1, 2, 16, 127, 9), false, true, F16, F16)?;
         Ok(())
     }
 
@@ -696,7 +767,7 @@ mod tests {
 
     proptest::proptest! {
         #[test]
-        fn mmm_ggml_prop_f32(pb in <MmmProblem<GgmlGemm, f32>>::arbitrary_with(
+        fn mmm_ggml_prop_f32(pb in <MmmProblem<f32>>::arbitrary_with(
             MmmProblemParams {
                 force_k_as_inner_axis: true,
                 q4_0_weights: false,
@@ -707,7 +778,7 @@ mod tests {
         }
 
         #[test]
-        fn mmm_ggml_prop_f16(pb in <MmmProblem<GgmlGemm, f16>>::arbitrary_with(
+        fn mmm_ggml_prop_f16(pb in <MmmProblem<f16>>::arbitrary_with(
             MmmProblemParams {
                 force_k_as_inner_axis: true,
                 q4_0_weights: false,
@@ -718,7 +789,7 @@ mod tests {
         }
 
         #[test]
-        fn mmm_ggml_prop_q4(pb in <MmmProblem<GgmlGemm, f32>>::arbitrary_with(
+        fn mmm_ggml_prop_q4(pb in <MmmProblem<f32>>::arbitrary_with(
             MmmProblemParams {
                 force_k_as_inner_axis: true,
                 q4_0_weights: true,
@@ -736,7 +807,7 @@ mod tests {
     }
 
     #[derive(Debug)]
-    pub struct MmmProblem<K: GemmKernel, F: Datum + Float>
+    pub struct MmmProblem<F: Datum + Float>
     where
         F: Datum + Float,
         f32: AsPrimitive<F>,
@@ -750,12 +821,10 @@ mod tests {
         pub rhs: Vec<F>,
         pub transpose_rhs: bool,
         pub q4_0: bool,
-        pub _phantom: std::marker::PhantomData<K>,
     }
 
-    impl<K, F> Arbitrary for MmmProblem<K, F>
+    impl<F> Arbitrary for MmmProblem<F>
     where
-        K: GemmKernel,
         F: Datum + Float,
         f32: AsPrimitive<F>,
     {
@@ -797,16 +866,14 @@ mod tests {
                         rhs,
                         transpose_rhs,
                         q4_0: params.q4_0_weights,
-                        _phantom: std::marker::PhantomData,
                     }
                 })
                 .boxed()
         }
     }
 
-    impl<K, F> MmmProblem<K, F>
+    impl<F> MmmProblem<F>
     where
-        K: GemmKernel,
         F: Datum + Float + std::ops::AddAssign,
         f32: AsPrimitive<F>,
     {
@@ -845,7 +912,7 @@ mod tests {
                     let mut lhs =
                         Tensor::from_shape(&[self.b, self.m, self.k], &self.lhs)?.into_device()?;
                     if self.q4_0 {
-                        let a_shape_tdim: ShapeFact = tvec![
+                        let act_shape_tdim: ShapeFact = tvec![
                             TDim::Val(self.b as i64),
                             TDim::Val(self.m as i64),
                             TDim::Val(self.k as i64)
@@ -853,8 +920,8 @@ mod tests {
                         .into();
 
                         let io_facts = GgmlQuantQ81Fact {
-                            in_fact: a_shape_tdim.clone(),
-                            out_fact: GgmlQuantQ81::output_shape_fact(&a_shape_tdim)?,
+                            in_fact: act_shape_tdim.clone(),
+                            out_fact: GgmlQuantQ81::output_shape_fact(&act_shape_tdim)?,
                         };
 
                         lhs = GgmlQuantQ81.eval(stream, &lhs, io_facts)?;
@@ -865,7 +932,7 @@ mod tests {
                     if !self.q4_0 {
                         Tensor::from_shape(&[self.b, self.n, self.k], &self.rhs)?
                     } else {
-                        let b_quant = Q4_0.quant_f32(
+                        let w_quant = Q4_0.quant_f32(
                             &self
                                 .rhs
                                 .clone()
@@ -878,7 +945,7 @@ mod tests {
                                 Box::new(Q4_0),
                                 tvec![self.b, self.n, self.k],
                             ),
-                            value: Arc::new(b_quant),
+                            value: Arc::new(w_quant),
                         };
                         let padded_q40 = pad_q40(&bqv)?;
                         tensor0(Opaque(Arc::new(padded_q40)))
@@ -888,9 +955,7 @@ mod tests {
                 }
                 .into_device()?;
 
-                let matmul = GemmImpl::<K>::new(self.transpose_lhs, self.transpose_rhs);
-
-                let c = matmul.eval(stream, &lhs, &rhs)?;
+                let c = GgmlGemm.eval(stream, &lhs, &rhs)?;
                 Ok(c.to_host()?.into_tensor())
             })
         }

@@ -7,16 +7,14 @@ use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice, OwnedDeviceTe
 use tract_gpu::utils::as_q40_tensor;
 
 use crate::Q40_ROW_PADDING;
-use crate::kernels::matmul::GgmlGemm;
-use crate::ops::{CudaAxisOp, CudaFusedAxisOp, CudaGemm};
+use crate::ops::{CudaAxisOp, CudaFusedAxisOp, CudaGgmlGemm};
 use crate::tensor::CudaTensor;
 use crate::utils::pad_q40;
 
 fn is_mm_weights(model: &TypedModel, node: &TypedNode) -> TractResult<bool> {
     let mut cursor = node;
     while let Some(succ) = model.single_succ(cursor.id)? {
-        if succ.op_is::<CudaGemm<GgmlGemm>>() || succ.op_is::<CudaFusedAxisOp<CudaGemm<GgmlGemm>>>()
-        {
+        if succ.op_is::<CudaGgmlGemm>() || succ.op_is::<CudaFusedAxisOp<CudaGgmlGemm>>() {
             return Ok(true);
         }
 
