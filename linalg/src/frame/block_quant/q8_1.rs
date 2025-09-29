@@ -98,15 +98,12 @@ impl<const QK: usize> BaseQ8_1<QK> {
             let block = &input[block * panel_block_bytes..][..panel_block_bytes];
             let mut s_reader = NibbleReader::for_slice(&block[params_offset..]);
             let mut w_reader = NibbleReader::for_slice(&block[weights_offset..]);
-            // Layout: [scales, sums, weights]
+            // Layout: [scale_0, sum_0, scale_1, sum_1, .., weights]
             for s in &mut scales {
                 *s = s_reader.read_f16().as_();
-            }
-
-            // Unused sums
-            (0..target.r).for_each(|_| {
+                // Unused sums
                 s_reader.read_f16();
-            });
+            }
 
             for _ in 0..self.block_len() {
                 for w in &mut weights {
@@ -152,7 +149,7 @@ impl<const QK: usize> BaseQ8_1<QK> {
         unsafe {
             for block in 0..blocks_for_k {
                 let block = value.as_ptr().add(block * panel_block_bytes);
-                let scale = *((block.add(scale_offset) as *const f16).add(mn % pbqf.r));
+                let scale = *((block.add(scale_offset) as *const f16).add(2 * (mn % pbqf.r)));
                 let scale: T = scale.as_();
                 for i in 0..self.block_len() {
                     let byte = *block.add(weights_offset + i * pbqf.r + mn % pbqf.r);
@@ -198,8 +195,8 @@ impl<const QK: usize> BlockQuant for BaseQ8_1<QK> {
     //
     //  becomes (with r=4)
     //
-    //  s0_0  s1_0  s2_0  s3_0   sum0_0  sum 1_0  sum2_0  sum3_0  n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
-    //  s0_32 s1_32 s2_32 s3_32  sum0_32 sum 1_32 sum2_32 sum3_32 n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
+    //  s0_0   sum0_0  s1_0  sum 1_0  s2_0  sum2_0  s3_0  sum3_0   n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
+    //  s0_32  sum0_32 s1_32 sum 1_32 s2_32 sum2_32 s3_32 sum3_32  n0_0 n1_0 n2_0 n3_0  n0_1 n1_1 n2_1 n3_1 ... n0_33 n1_33 n2_33 n3_33
     //  ...
     fn pack(
         &self,
@@ -244,8 +241,10 @@ impl<const QK: usize> BlockQuant for BaseQ8_1<QK> {
                         (0..self.block_len()).map(|_| reader.read_i8()).collect_vec();
                 }
                 if !scales_at_end {
-                    scales.iter().for_each(|s| writer.write_f16(*s));
-                    sums.iter().for_each(|s| writer.write_f16(*s));
+                    scales.iter().zip(&sums).for_each(|(scale, sum)| {
+                        writer.write_f16(*scale);
+                        writer.write_f16(*sum);
+                    });
                 }
                 for pos in 0..self.block_len() {
                     for row in &temp_quants {
@@ -254,8 +253,10 @@ impl<const QK: usize> BlockQuant for BaseQ8_1<QK> {
                     }
                 }
                 if scales_at_end {
-                    scales.iter().for_each(|s| writer.write_f16(*s));
-                    sums.iter().for_each(|s| writer.write_f16(*s));
+                    scales.iter().zip(&sums).for_each(|(scale, sum)| {
+                        writer.write_f16(*scale);
+                        writer.write_f16(*sum);
+                    });
                 }
             }
         }
