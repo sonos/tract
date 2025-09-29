@@ -1,5 +1,6 @@
 #include <cuda/std/cstdint>
 #include <cuda_fp16.h>
+#include <cuda/std/type_traits>
 
 #define MAX_THREADS 1024
 #define WARP_SIZE 32
