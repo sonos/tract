@@ -136,7 +136,7 @@ impl Runtime for CudaTestRuntime {
         if self.optimize {
             model = model.into_optimized()?;
         }
-        dbg!(&model);
+
         let runnable = CudaTestTransformRunnable {
             runnable: Arc::new(model.into_runnable()?),
             transpose_inputs: self.transpose_inputs,
