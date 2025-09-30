@@ -34,6 +34,7 @@ pub fn cubin_dir() -> &'static Path {
             dirs::cache_dir()
                 .unwrap_or_else(|| ".cache".into())
                 .join("tract")
+                .join(env!("CARGO_PKG_VERSION"))
                 .join("cuda")
                 .join("cubins")
         })
