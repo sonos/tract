@@ -18,6 +18,13 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+
+    - run: |
+         . .travis/ci-system-setup.sh
+         echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      env:
+       RUNNER_ENVIRONMENT: ${{ runner.environment }}
+
     - run: cargo check --workspace --exclude test-blas
     - run: cargo test -q -p tract-linalg
     - run: cargo test -q -p tract-core
