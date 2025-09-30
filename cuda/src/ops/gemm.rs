@@ -94,7 +94,7 @@ impl TypedOp for CudaGgmlGemm {
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         tract_gpu::utils::get_device_facts(inputs, |input_facts| {
-            let fma = self.resolve_output_facts(inputs)?[0].shape.iter().product::<TDim>()
+            let fma = self.resolve_output_facts(input_facts)?[0].shape.iter().product::<TDim>()
                 * input_facts[0].shape.last().unwrap();
             if input_facts[0].datum_type == f16::datum_type() {
                 Ok(tvec!((Cost::FMA(f16::datum_type()), fma)))
