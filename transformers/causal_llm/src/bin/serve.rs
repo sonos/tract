@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
+use std::sync::Arc;
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -8,8 +8,8 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_macros::debug_handler;
 use causal_llm::{CausalLlmModel, CausalLlmStateConfig};
-use clap::{Parser, arg, command};
-use log::{debug, info};
+use clap::{arg, command, Parser};
+use log::{debug, info, trace};
 use tract_nnef::prelude::TractResult;
 
 #[allow(dead_code)]
@@ -106,7 +106,9 @@ async fn main() -> TractResult<()> {
         .route("/v1/completions", post(completions))
         .with_state(Arc::new(context));
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let socket = "0.0.0.0:3000";
+    let listener = tokio::net::TcpListener::bind(socket).await.unwrap();
+    info!("Starting server on {socket}");
     axum::serve(listener, app).await?;
     Ok(())
 }
@@ -130,7 +132,7 @@ async fn completions(
                 .filter(|_| !global.args.no_prefill_chunk),
             ..Default::default()
         })?;
-        debug!("prompt [{id}] << {}", query.prompt);
+        trace!("prompt [{id}] << {}", query.prompt);
         state.append_text(&query.prompt)?;
         let prompt_len = state.seq.len();
 
@@ -138,7 +140,7 @@ async fn completions(
             state.generate_next_token()?;
         }
         let generated = state.decode(&state.seq[prompt_len..], true)?;
-        debug!("gen   [{id}] >> {}", generated);
+        trace!("gen   [{id}] >> {}", generated);
         Ok(OpenAICompletionReply {
             id,
             choices: vec![OpenAICompletionReplyChoice { text: generated }],

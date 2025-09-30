@@ -3,14 +3,14 @@ use std::time::Instant;
 
 use anyhow::ensure;
 use float_ord::FloatOrd;
-use log::trace;
+use log::{debug, info, trace};
 use tokenizers::Tokenizer;
-use tract_nnef::internal::{TractErrorContext, anyhow};
+use tract_nnef::internal::{anyhow, TractErrorContext};
 use tract_nnef::prelude::tract_itertools::Itertools;
 use tract_nnef::prelude::*;
 use tract_nnef::tract_core::ops::source::SourceState;
-use tract_transformers::WithTractTransformers;
 use tract_transformers::ops::dyn_kv_cache::DynKeyValueCacheState;
+use tract_transformers::WithTractTransformers;
 
 #[derive(Clone, Debug, Default)]
 pub struct CausalLlmModelConfig {
@@ -212,7 +212,7 @@ impl CausalLlmState {
                 // ndarray_npy::NpzWriter::new_compressed(std::fs::File::create("io.npz").unwrap())
                 //     .add_array(input_name, &input.to_array_view::<i64>()?)?;
                 let mut result = self.nn_state.run(tvec![input.into_tvalue()])?;
-                trace!("Processed {} tokens in {:?}", chunk.len(), start.elapsed());
+                debug!("Processed {} tokens in {:?}", chunk.len(), start.elapsed());
                 Ok(result.remove(0).into_tensor())
             })
             .last()
@@ -320,7 +320,11 @@ pub fn apply_repeat_penalty(logits: &mut [f32], penalty: f32, context: &[u32]) {
     let context: std::collections::HashSet<_> = context.iter().collect();
     for (token_id, logit) in logits.iter_mut().enumerate() {
         if context.contains(&(token_id as u32)) {
-            if *logit >= 0. { *logit /= penalty } else { *logit *= penalty }
+            if *logit >= 0. {
+                *logit /= penalty
+            } else {
+                *logit *= penalty
+            }
         }
     }
 }
