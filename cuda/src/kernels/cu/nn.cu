@@ -490,7 +490,10 @@ static __device__ void soft_max(
 
     extern __shared__ float data_soft_max_f32[];
     float * buf_iw = data_soft_max_f32; // shared memory buffer for inter-warp communication
-    // shared memory buffer to cache values between iterations:
+
+    // Tract Note: shared mem is too small, GGML here use dst as scratch buffer.
+    // With our current integration, this would need change because we would still want vals to be f32
+    // but dst could be f16
     float * vals = buf_iw + WARP_SIZE;
 
     float max_val = -INFINITY;

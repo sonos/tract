@@ -62,6 +62,7 @@ impl ScaledMaskedSoftmax {
 
         let smbpo = cuda_context().properties().sharedMemPerBlockOptin;
         let nbytes_shared = (shape[2].div_ceil(WARP_SIZE) * WARP_SIZE + WARP_SIZE) * size_of::<f32>();
+        // Note: smbpo is at least 96 KB since CC 7.0
         ensure!(nbytes_shared < smbpo, "Time to implement GGML fallback");
 
         let mut nth = 32;
