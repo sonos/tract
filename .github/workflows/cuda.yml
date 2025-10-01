@@ -23,6 +23,7 @@ jobs:
     - run: |
          . .travis/ci-system-setup.sh
          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+         echo "/usr/local/cuda/bin" >> "$GITHUB_PATH"
       env:
          RUNNER_ENVIRONMENT: ${{ runner.environment }}
         
@@ -45,6 +46,7 @@ jobs:
       - run: |
            . .travis/ci-system-setup.sh
            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+           echo "/usr/local/cuda/bin" >> "$GITHUB_PATH"
         env:
            RUNNER_ENVIRONMENT: ${{ runner.environment }}
         
