@@ -23,6 +23,8 @@ jobs:
     - run: |
          . .travis/ci-system-setup.sh
          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      env:
+         RUNNER_ENVIRONMENT: ${{ runner.environment }}
         
     - run: cargo check --workspace --exclude test-blas --exclude tract-metal --exclude test-metal
     - run: cargo test -q -p tract-linalg
@@ -43,6 +45,8 @@ jobs:
       - run: |
            . .travis/ci-system-setup.sh
            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+        env:
+           RUNNER_ENVIRONMENT: ${{ runner.environment }}
         
       - run: cargo build -p tract --release --no-default-features --features transformers
       - uses: actions/upload-artifact@v4
