@@ -196,8 +196,9 @@ mod tests {
         type Strategy = BoxedStrategy<Self>;
 
         fn arbitrary_with(_: ()) -> Self::Strategy {
-            vec(1usize..10, 3..=3)
-                .prop_map(|shape| {
+            (1..5usize, 1usize..5, 5u32..15, 0..2usize)
+                .prop_map(|(x, y, exp, noise)| {
+                    let shape = vec![x, y, 2usize.pow(exp) + noise];
                     let mut mask_shape = shape.clone();
                     mask_shape[0] = 1;
 
