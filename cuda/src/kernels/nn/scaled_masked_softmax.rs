@@ -2,9 +2,12 @@ use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view, launch_args};
+use cudarc::driver::sys::CUfunction_attribute;
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
+
+static WARP_SIZE: usize = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ScaledMaskedSoftmax;
@@ -57,6 +60,10 @@ impl ScaledMaskedSoftmax {
         let mask_view = get_cuda_view(mask);
         let o_view = get_cuda_view(output);
 
+        let smbpo = cuda_context().properties().sharedMemPerBlockOptin;
+        let nbytes_shared = (shape[2].div_ceil(WARP_SIZE) * WARP_SIZE + WARP_SIZE) * size_of::<f32>();
+        ensure!(nbytes_shared < smbpo, "Time to implement GGML fallback");
+
         let mut nth = 32;
         while nth < shape[2] && nth < MAX_THREADS {
             nth *= 2;
@@ -68,6 +75,10 @@ impl ScaledMaskedSoftmax {
         let func = cuda_context()
             .load_pipeline(LibraryName::NN, self.kernel_name(input.datum_type(), block_size)?)?;
 
+        func.set_attribute(
+            CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+            smbpo as i32,
+        );
         let mut launch_args = stream.launch_builder(&func);
         launch_args.arg(&i_view);
         launch_args.arg(&mask_view);
@@ -86,7 +97,7 @@ impl ScaledMaskedSoftmax {
         let cfg = LaunchConfig {
             grid_dim: (1, shape[1] as _, shape[0] as _),
             block_dim: (nth as _, 1, 1),
-            shared_mem_bytes: ((shape[2].next_power_of_two() + 32) * size_of::<f32>()) as u32,
+            shared_mem_bytes: nbytes_shared as u32,
         };
 
         unsafe { launch_args.launch(cfg) };

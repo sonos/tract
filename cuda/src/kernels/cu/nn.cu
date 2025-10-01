@@ -460,96 +460,133 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
     }                                                                          \
   }
 
-#define INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, bname, block_size_template) \
-  extern "C" __global__ void scaled_masked_softmax_##bname##name(              \
+template <int block_size_template, typename T>
+static __device__ void soft_max(
+        const T *x, const T *mask, const T scale, T *dst, const int shape_0,
+      const int shape_1, const int shape_2, const int stride_0,
+      const int stride_1, const int stride_2, const int mask_stride_0,
+      const int mask_stride_1, const int mask_stride_2,
+      const int out_stride_0, const int out_stride_1,
+      const int out_stride_2) {
+    const int tid  = threadIdx.x;
+
+    const int64_t i02 = blockIdx.y;
+    const int64_t i01 = blockIdx.x;
+
+    //TODO: noncontigous inputs/outputs
+    const int rowx = blockIdx.x + blockIdx.y * gridDim.x + blockIdx.z * gridDim.x * gridDim.y;
+
+    const int64_t i11 = i01;
+    const int64_t i12 = i02 % mask_stride_0;
+
+    x    += int64_t(rowx)*shape_2;
+    mask += (i11*mask_stride_1 + i12*mask_stride_0) / sizeof(T);
+    dst  += int64_t(rowx)*shape_2;
+
+    const int block_size = block_size_template == 0 ? blockDim.x : block_size_template;
+
+    const int warp_id = threadIdx.x / WARP_SIZE;
+    const int lane_id = threadIdx.x % WARP_SIZE;
+
+    extern __shared__ float data_soft_max_f32[];
+    float * buf_iw = data_soft_max_f32; // shared memory buffer for inter-warp communication
+    // shared memory buffer to cache values between iterations:
+    float * vals = buf_iw + WARP_SIZE;
+
+    float max_val = -INFINITY;
+
+#pragma unroll
+    for (int col0 = 0; col0 < shape_2; col0 += block_size) {
+        const int col = col0 + tid;
+
+        if (block_size_template == 0 && col >= shape_2) {
+            break;
+        }
+
+        const float val = x[col]*scale + mask[col * mask_stride_2];
+
+        vals[col] = val;
+        max_val = max(max_val, val);
+    }
+
+    // find the max value in the block
+    max_val = warp_reduce_max(max_val);
+    if (block_size > WARP_SIZE) {
+        if (warp_id == 0) {
+            buf_iw[lane_id] = -INFINITY;
+        }
+        __syncthreads();
+
+        if (lane_id == 0) {
+            buf_iw[warp_id] = max_val;
+        }
+        __syncthreads();
+
+        max_val = buf_iw[lane_id];
+        max_val = warp_reduce_max(max_val);
+    }
+
+    float tmp = 0.0f; // partial sum
+
+#pragma unroll
+    for (int col0 = 0; col0 < shape_2; col0 += block_size) {
+        const int col = col0 + tid;
+
+        if (block_size_template == 0 && col >= shape_2) {
+            break;
+        }
+
+        const float val = expf(vals[col] - max_val);
+        tmp += val;
+        vals[col] = val;
+    }
+
+    // find the sum of exps in the block
+    tmp = warp_reduce_sum(tmp);
+    if (block_size > WARP_SIZE) {
+        __syncthreads();
+        if (warp_id == 0) {
+            buf_iw[lane_id] = 0.0f;
+        }
+        __syncthreads();
+
+        if (lane_id == 0) {
+            buf_iw[warp_id] = tmp;
+        }
+        __syncthreads();
+
+        tmp = buf_iw[lane_id];
+        tmp = warp_reduce_sum(tmp);
+    }
+
+    const float inv_sum = 1.0f / tmp;
+
+#pragma unroll
+    for (int col0 = 0; col0 < shape_2; col0 += block_size) {
+        const int col = col0 + tid;
+
+        if (block_size_template == 0 && col >= shape_2) {
+            return;
+        }
+
+        dst[col] = vals[col] * inv_sum;
+    }
+}
+  
+#define INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, block_size) \
+  extern "C" __global__ void scaled_masked_softmax_##block_size##_##name(      \
       const T *x, const T *mask, const T scale, T *dst, const int shape_0,     \
       const int shape_1, const int shape_2, const int stride_0,                \
       const int stride_1, const int stride_2, const int mask_stride_0,         \
       const int mask_stride_1, const int mask_stride_2,                        \
       const int out_stride_0, const int out_stride_1,                          \
       const int out_stride_2) {                                                \
-    x += blockIdx.y * stride_1 + blockIdx.z * stride_0;                        \
-    mask +=                                                                    \
-        mask ? blockIdx.y * mask_stride_1 + blockIdx.z * mask_stride_0 : 0;    \
-    dst += blockIdx.y * out_stride_1 + blockIdx.z * out_stride_0;              \
-                                                                               \
-    const int block_size =                                                     \
-        block_size_template == 0 ? blockDim.x : block_size_template;           \
-                                                                               \
-    const int warp_id = threadIdx.x / WARP_SIZE;                               \
-    const int lane_id = threadIdx.x % WARP_SIZE;                               \
-                                                                               \
-    extern __shared__ float data_soft_max_f32[];                               \
-    float *buf_iw = data_soft_max_f32;                                         \
-    float *vals = buf_iw + WARP_SIZE;                                          \
-                                                                               \
-    float max_val = -INFINITY;                                                 \
-    _Pragma("unroll") for (int col0 = 0; col0 < shape_2; col0 += block_size) { \
-      const int col = col0 + threadIdx.x;                                      \
-      if (col >= shape_2) {                                                    \
-        break;                                                                 \
-      }                                                                        \
-                                                                               \
-      const float val = x[col * stride_2] * scale + mask[col * mask_stride_2]; \
-      vals[col] = val;                                                         \
-      max_val = max(max_val, val);                                             \
+        soft_max<block_size, T>(                                               \
+          x, mask, scale, dst, shape_0, shape_1, shape_2, stride_0,            \
+          stride_1, stride_2, mask_stride_0, mask_stride_1, mask_stride_2,     \
+          out_stride_0, out_stride_1, out_stride_2                             \
+        );                                                                     \
     }                                                                          \
-                                                                               \
-    max_val = warp_reduce_max(max_val);                                        \
-    if (block_size > WARP_SIZE) {                                              \
-      if (warp_id == 0) {                                                      \
-        buf_iw[lane_id] = -INFINITY;                                           \
-      }                                                                        \
-      __syncthreads();                                                         \
-                                                                               \
-      if (lane_id == 0) {                                                      \
-        buf_iw[warp_id] = max_val;                                             \
-      }                                                                        \
-      __syncthreads();                                                         \
-                                                                               \
-      max_val = buf_iw[lane_id];                                               \
-      max_val = warp_reduce_max(max_val);                                      \
-    }                                                                          \
-                                                                               \
-    float tmp = 0.0f;                                                          \
-    _Pragma("unroll") for (int col0 = 0; col0 < shape_2; col0 += block_size) { \
-      const int col = col0 + threadIdx.x;                                      \
-      if (col >= shape_2) {                                                    \
-        break;                                                                 \
-      }                                                                        \
-                                                                               \
-      const float val = expf(vals[col] - max_val);                             \
-      tmp += val;                                                              \
-      vals[col] = val;                                                         \
-    }                                                                          \
-                                                                               \
-    tmp = warp_reduce_sum(tmp);                                                \
-    if (block_size > WARP_SIZE) {                                              \
-      __syncthreads();                                                         \
-      if (warp_id == 0) {                                                      \
-        buf_iw[lane_id] = 0.0f;                                                \
-      }                                                                        \
-      __syncthreads();                                                         \
-                                                                               \
-      if (lane_id == 0) {                                                      \
-        buf_iw[warp_id] = tmp;                                                 \
-      }                                                                        \
-      __syncthreads();                                                         \
-                                                                               \
-      tmp = buf_iw[lane_id];                                                   \
-      tmp = warp_reduce_sum(tmp);                                              \
-    }                                                                          \
-                                                                               \
-    const float inv_sum = 1.0f / tmp;                                          \
-                                                                               \
-    _Pragma("unroll") for (int col0 = 0; col0 < shape_2; col0 += block_size) { \
-      const int col = col0 + threadIdx.x;                                      \
-      if (col >= shape_2) {                                                    \
-        return;                                                                \
-      }                                                                        \
-      dst[col * out_stride_2] = vals[col] * inv_sum;                           \
-    }                                                                          \
-  }
 
 #define INSTANTIATE_RMS_NORM(name, T, bname, block_size)                       \
   extern "C" __global__ void rms_norm_##bname##name(                           \
@@ -603,18 +640,13 @@ INSTANTIATE_SOFTMAX(f16, __half, small_, 32)
 INSTANTIATE_SOFTMAX(f16, __half, , 1024)
 
 #define INSTANTIATE_SCALED_MASKED_SOFTMAX_FOR_T(name, T)                       \
-  INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 32_, 32)                          \
-  INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 64_, 64)                          \
-  INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 128_, 126)                        \
-  INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 256_, 256)                        \
-  INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 512_, 512)                        \
-  INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 1024_, 1024)                      \
-  INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 2048_, 1024)                      \
-  INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 4096_, 1024)                      \
-  INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 8192_, 1024)                      \
-  INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 16384_, 1024)                     \
-  INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 32768_, 1024)                     \
-  INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 0_, 0)
+  INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 32)                          \
+  INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 64)                          \
+  INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 128)                        \
+  INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 256)                        \
+  INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 512)                        \
+  INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 1024)                      \
+  INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 0)
 
 INSTANTIATE_SCALED_MASKED_SOFTMAX_FOR_T(f32, float)
 INSTANTIATE_SCALED_MASKED_SOFTMAX_FOR_T(f16, __half)
