@@ -32,13 +32,13 @@ then
     fi
 
     which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
-    PATH=$PATH:$HOME/.cargo/bin
     rustup update
     rustup toolchain add $RUSTUP_TOOLCHAIN
 
     touch /tmp/ci-setup-done
 fi
 
+PATH=$PATH:$HOME/.cargo/bin
 S3=https://s3.amazonaws.com/tract-ci-builds/tests
 
 if  [ "$GITHUB_WORKFLOW" = "Metal tests" -o "$GITHUB_WORKFLOW" = "CUDA tests" ] 
