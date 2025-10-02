@@ -2,6 +2,7 @@
 
 pub mod array;
 mod binary;
+mod flash_attn;
 mod launch_args;
 pub mod matmul;
 pub mod nn;
@@ -25,6 +26,7 @@ use tract_gpu::utils::as_q40_tensor;
 pub use unary::UnaryOps;
 
 const MAX_THREADS: usize = 1024;
+const WARP_SIZE: usize = 32;
 
 static CUBIN_FOLDER: OnceLock<PathBuf> = OnceLock::new();
 
@@ -76,8 +78,16 @@ fn fnv1a64(text: &str) -> u64 {
 }
 
 impl LibraryName {
-    pub const ALL: [LibraryName; 8] =
-        [Self::Unary, Self::Binary, Self::Array, Self::NN, Self::Ggml, Self::GgmlQ, Self::Quant, Self::FlashAttn];
+    pub const ALL: [LibraryName; 8] = [
+        Self::FlashAttn,
+        Self::Unary,
+        Self::Binary,
+        Self::Array,
+        Self::NN,
+        Self::Ggml,
+        Self::GgmlQ,
+        Self::Quant,
+    ];
 
     pub fn content(&self) -> &str {
         match self {

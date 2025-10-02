@@ -7,6 +7,8 @@
 #endif
 
 #define FLT_MAX 3.40282347e+38F
+#define FATTN_KQ_STRIDE       256
+#define SOFTMAX_FTZ_THRESHOLD -20.0f   
 
 #define GGML_UNUSED(x) (void)(x)
 
@@ -162,7 +164,7 @@ static __device__ __forceinline__ float vec_dot_fattn_vec_KQ_q4_0(
         v = (v >> shift) & 0x0F0F0F0F;
         const int u = Q_q8[k_KQ_0/nthreads];
 
-        const int sumi = ggml_cuda_dp4a(v, u, 0);
+        const int sumi = __dp4a(v, u, 0);
 
         const float2 Q_ds = ((const float2 *) Q_ds_v)[k_KQ_0/nthreads];
         sum += __half2float(K_q4_0[ib].d) * (sumi*Q_ds.x - (8/QI8_1)*Q_ds.y);
@@ -193,18 +195,6 @@ constexpr __device__ vec_dot_KQ_t get_vec_dot_KQ() {
         static_assert(type_K == -1, "bad type");
         return nullptr;
     }
-}
-
-static __device__ __forceinline__ float get_alibi_slope(
-    const float max_bias, const uint32_t h, const uint32_t n_head_log2, const float m0, const float m1
-) {
-    if (max_bias <= 0.0f) {
-        return 1.0f;
-    }
-    const float base = h < n_head_log2 ? m0 : m1;
-    const int   exph = h < n_head_log2 ? h + 1 : 2*(h - n_head_log2) + 1;
-
-    return powf(base, exph);
 }
 
 template <typename Tds, int ni>
@@ -252,22 +242,16 @@ static __device__ __forceinline__ void quantize_q8_1_to_shared(
 }
 
 
-template<int D, int ncols, ggml_type type_K, ggml_type type_V, bool use_logit_softcap> // D == head size
+template<int D, int ncols, ggml_type type_K, ggml_type type_V> // D == head size
 static __device__ void flash_attn_ext_vec(
         const char * __restrict__ Q,
         const char * __restrict__ K,
         const char * __restrict__ V,
         const char * __restrict__ mask,
-        const char * __restrict__ sinks,
         const int  * __restrict__ KV_max,
         float      * __restrict__ dst,
         float2     * __restrict__ dst_meta,
         const float scale,
-        const float max_bias,
-        const float m0,
-        const float m1,
-        const uint32_t n_head_log2,
-        const float logit_softcap,
         const int32_t ne00, const int32_t ne01, const int32_t ne02, const int32_t ne03,
                             const int32_t nb01, const int32_t nb02, const int32_t nb03,
         const int32_t ne10, const int32_t ne11, const int32_t ne12, const int32_t ne13,
@@ -307,8 +291,6 @@ static __device__ void flash_attn_ext_vec(
     V += nb23*sequence + nb22*(head / gqa_ratio);
 
     const half * maskh  = (const half  *) (mask + nb33*(sequence % ne33) + nb31*ic0);
-
-    const float slope = get_alibi_slope(max_bias, head, n_head_log2, m0, m1);
 
     static_assert(D % (2*WARP_SIZE) == 0, "D not divisible by 2*WARP_SIZE == 64.");
     constexpr int nwarps = nthreads / WARP_SIZE;
@@ -440,12 +422,8 @@ static __device__ void flash_attn_ext_vec(
                 float sum = vec_dot_KQ(K + i_KQ*nb11, Q_reg[j], Q_i32[j], Q_ds[j]);
                 sum = warp_reduce_sum<nthreads_KQ>(sum);
 
-                if (use_logit_softcap) {
-                    sum = logit_softcap*tanhf(sum);
-                }
-
                 if (mask) {
-                    sum += slope*__half2float(maskh[j*ne11 + i_KQ]);
+                    sum += __half2float(maskh[j*ne11 + i_KQ]);
                 }
 
                 KQ_max_new[j] = fmaxf(KQ_max_new[j], sum);
@@ -499,31 +477,6 @@ static __device__ void flash_attn_ext_vec(
                         VKQ[j][i_VKQ_0/nthreads_V + i_VKQ_1] += tmp[i_VKQ_1]*KQ_k[j];
                     }
                 }
-            }
-        }
-    }
-
-    if (sinks && blockIdx.y == 0) {
-        const float sink = ((const float *) sinks)[head];
-
-#pragma unroll
-        for (int j0 = 0; j0 < ncols; j0 += nwarps) {
-            const int j = j0 + threadIdx.y;
-
-            if (j0 + nwarps > ncols && j >= ncols) {
-                break;
-            }
-
-            const float kqmax_new_j = fmaxf(sink, KQ_max[j]);
-            const float KQ_max_scale = expf(KQ_max[j] - kqmax_new_j);
-            KQ_max[j] = kqmax_new_j;
-
-            KQ_sum[j] = KQ_sum[j]*KQ_max_scale + (threadIdx.x == 0 ? expf(sink - KQ_max[j]) : 0.0f);
-
-            const half2 KQ_max_scale_h2 = make_half2(KQ_max_scale, KQ_max_scale);
-#pragma unroll
-            for (int i_VKQ_0 = 0; i_VKQ_0 < D/2; i_VKQ_0 += nthreads_V) {
-                VKQ[j][i_VKQ_0/nthreads_V] *= KQ_max_scale_h2;
             }
         }
     }
@@ -614,34 +567,169 @@ static __device__ void flash_attn_ext_vec(
     }
 }
 
-#define INSTANTIATE_FLASH_ATTN_VEC(D, ncols, K_type, K_type_name, V_type, V_type_name, use_logit_softcap) \
-    extern "C" {                                                 \
-        __launch_bounds__(128, 1) \
-        __global__ void flash_attn_vec_##D##_##ncols##_##K_type_name##_##V_type_name##_##use_logit_softcap( \
+template<int D, int ncols1, int ncols2> // D == head size
+static __device__ void flash_attn_stream_k_fixup(
+        float * __restrict__ dst, const float2 * __restrict__ dst_fixup, const int ne01, const int ne02, const int ne03, const int ne11) {
+    constexpr int ncols = ncols1*ncols2;
+
+    const int bidx0 = blockIdx.x;
+    const int j     = blockIdx.y;
+    const int c     = blockIdx.z;
+    const int jc    = j*ncols2 + c;
+    const int tid   = threadIdx.x;
+
+    const float * dst_fixup_data = ((const float *) dst_fixup) + gridDim.x*(2*2*ncols);
+
+    const int iter_k = ne11 / FATTN_KQ_STRIDE;
+    const int iter_j = (ne01 + (ncols1 - 1)) / ncols1;
+
+    const int kbc0      = (bidx0 + 0)*(iter_k*iter_j*(ne02/ncols2)*ne03) / gridDim.x;
+    const int kbc0_stop = (bidx0 + 1)*(iter_k*iter_j*(ne02/ncols2)*ne03) / gridDim.x;
+
+    const bool did_not_have_any_data   = kbc0 == kbc0_stop;
+    const bool wrote_beginning_of_tile = kbc0 % iter_k == 0;
+    const bool did_not_write_last      = kbc0/iter_k == kbc0_stop/iter_k && kbc0_stop % iter_k != 0;
+    if (did_not_have_any_data || wrote_beginning_of_tile || did_not_write_last) {
+        return;
+    }
+
+    const int sequence = kbc0 / (iter_k*iter_j*(ne02/ncols2));
+    const int head = (kbc0 - iter_k*iter_j*(ne02/ncols2)*sequence) / (iter_k*iter_j);
+    const int jt = (kbc0 - iter_k*iter_j*(ne02/ncols2)*sequence - iter_k*iter_j*head) / iter_k; // j index of current tile.
+
+    if (jt*ncols1 + j >= ne01) {
+        return;
+    }
+
+    dst += sequence*ne02*ne01*D + jt*ne02*(ncols1*D) + head*(ncols2*D) + (j*ne02 + c)*D + tid;
+
+    // Load the partial result that needs a fixup:
+    float dst_val = 0.0f;
+    float max_val = 0.0f;
+    float rowsum  = 0.0f;
+    {
+        dst_val = *dst;
+
+        const float2 tmp = dst_fixup[bidx0*ncols + jc];
+        max_val = tmp.x;
+        rowsum  = tmp.y;
+    }
+
+    // Iterate over previous blocks and compute the combined results.
+    // All CUDA blocks that get here must have a previous block that needs a fixup.
+    int bidx = bidx0 - 1;
+    int kbc_stop = kbc0;
+    while(true) {
+        const int kbc = bidx*(iter_k*iter_j*(ne02/ncols2)*ne03) / gridDim.x;
+        if (kbc == kbc_stop) { // Did not have any data.
+            bidx--;
+            kbc_stop = kbc;
+            continue;
+        }
+
+        const float dst_add = dst_fixup_data[bidx*ncols*D + jc*D + tid];
+
+        const float2 tmp = dst_fixup[(gridDim.x + bidx)*ncols + jc];
+
+        // Scale the current and new value accumulators depending on the max. values.
+        const float max_val_new = fmaxf(max_val, tmp.x);
+
+        const float diff_val = max_val - max_val_new;
+        const float diff_add = tmp.x   - max_val_new;
+
+        const float scale_val = diff_val >= SOFTMAX_FTZ_THRESHOLD ? expf(diff_val) : 0.0f;
+        const float scale_add = diff_add >= SOFTMAX_FTZ_THRESHOLD ? expf(diff_add) : 0.0f;
+
+        dst_val = scale_val*dst_val + scale_add*dst_add;
+        rowsum  = scale_val*rowsum  + scale_add*tmp.y;
+
+        max_val = max_val_new;
+
+        // If this block started in a previous tile we are done and don't need to combine additional partial results.
+        if (kbc % iter_k == 0 || kbc/iter_k < kbc0/iter_k) {
+            break;
+        }
+        bidx--;
+        kbc_stop = kbc;
+    }
+
+    // Write back final result:
+    *dst = dst_val / rowsum;
+}
+
+template<int D> // D == head size
+static __device__ void flash_attn_combine_results(
+        const float  * __restrict__ VKQ_parts,
+        const float2 * __restrict__ VKQ_meta,
+        float * __restrict__ dst,
+        const int parallel_blocks) {
+    // Dimension 0: threadIdx.x
+    // Dimension 1: blockIdx.x
+    // Dimension 2: blockIdx.y
+    // Dimension 3: blockIdx.z
+    // Memory layout is permuted with [0, 2, 1, 3]
+
+    const int ne01 = gridDim.x;
+    const int ne02 = gridDim.y;
+
+    const int col      = blockIdx.x;
+    const int head     = blockIdx.y;
+    const int sequence = blockIdx.z;
+
+    const int j_dst_unrolled = (sequence*ne01 + col)*ne02 + head;
+
+    VKQ_parts += j_dst_unrolled * parallel_blocks*D;
+    VKQ_meta  += j_dst_unrolled * parallel_blocks;
+    dst       += j_dst_unrolled *                 D;
+
+    const int tid = threadIdx.x;
+    __builtin_assume(tid < D);
+
+    extern __shared__ float2 meta[];
+    for (int i = tid; i < 2*parallel_blocks; i += D) {
+        ((float *) meta)[i] = ((const float *)VKQ_meta) [i];
+    }
+
+    __syncthreads();
+
+    float kqmax = meta[0].x;
+    for (int l = 1; l < parallel_blocks; ++l) {
+        kqmax = max(kqmax, meta[l].x);
+    }
+
+    float VKQ_numerator   = 0.0f;
+    float VKQ_denominator = 0.0f;
+    for (int l = 0; l < parallel_blocks; ++l) {
+        const float KQ_max_scale = expf(meta[l].x - kqmax);
+
+        VKQ_numerator   += KQ_max_scale * VKQ_parts[l*D + tid];
+        VKQ_denominator += KQ_max_scale * meta[l].y;
+    }
+
+    dst[tid] = VKQ_numerator / VKQ_denominator;
+}
+
+#define INSTANTIATE_FLASH_ATTN_VEC_FOR_TYPES(D, ncols1, K_type, K_type_name, V_type, V_type_name) \
+    extern "C" {                                                                                  \
+        __launch_bounds__(128, 1)                                                                 \
+        __global__ void flash_attn_vec_##D##_##ncols1##_##K_type_name##_##V_type_name(            \
             const char * __restrict__ Q, \
             const char * __restrict__ K, \
             const char * __restrict__ V, \
             const char * __restrict__ mask, \
-            const char * __restrict__ sinks, \
             const int  * __restrict__ KV_max, \
             float      * __restrict__ dst, \
             float2     * __restrict__ dst_meta, \
             const float scale, \
-            const float max_bias, \
-            const float m0, \
-            const float m1, \
-            const uint32_t n_head_log2, \
-            const float logit_softcap, \
-            const int32_t ne00, const int32_t ne01, const int32_t ne02, const int32_t ne03,  \
-                                const int32_t nb01, const int32_t nb02, const int32_t nb03,  \
-            const int32_t ne10, const int32_t ne11, const int32_t ne12, const int32_t ne13,  \
-                                const int32_t nb11, const int32_t nb12, const int64_t nb13,  \
-                                const int32_t nb21, const int32_t nb22, const int64_t nb23,  \
-                                const int32_t ne31, const int32_t ne32, const int32_t ne33,  \
-                                const int32_t nb31, const int32_t nb32, const int64_t nb33){ \
-            flash_attn_ext_vec<D, ncols, K_type, V_type, use_logit_softcap>(                 \
-                            Q, K, V, mask, sinks, KV_max, dst, dst_meta,                     \
-                            scale, max_bias, m0, m1, n_head_log2, logit_softcap,             \
+            const int32_t ne03, const int32_t ne02, const int32_t ne01, const int32_t ne00,  \
+                                const int32_t nb03, const int32_t nb02, const int32_t nb01,  \
+            const int32_t ne13, const int32_t ne12, const int32_t ne11, const int32_t ne10,  \
+                                const int32_t nb13, const int32_t nb12, const int64_t nb11,  \
+                                const int32_t nb23, const int32_t nb22, const int64_t nb21,  \
+                                const int32_t ne33, const int32_t ne32, const int32_t ne31,  \
+                                const int32_t nb33, const int32_t nb32, const int64_t nb31){ \
+            flash_attn_ext_vec<D, ncols1, K_type, V_type>(                                   \
+                            Q, K, V, mask, KV_max, dst, dst_meta, scale,                     \
                             ne00, ne01, ne02, ne03,                                          \
                             nb01, nb02, nb03,                                                \
                             ne10, ne11, ne12, ne13,                                          \
@@ -649,23 +737,63 @@ static __device__ void flash_attn_ext_vec(
                             nb21, nb22, nb23,                                                \
                             ne31, ne32, ne33,                                                \
                             nb31, nb32, nb33);                                               \
-        } \
+        }                                                                                    \
     }
 
-#define INSTANTIATE_FLASH_ATTN_VEC_KV_TYPES(D, ncols, use_logit_softcap) \
-    INSTANTIATE_FLASH_ATTN_VEC(D, ncols, GGML_TYPE_F16, f16, GGML_TYPE_F16, f16, use_logit_softcap) \
-    //INSTANTIATE_FLASH_ATTN_VEC(D, ncols, GGML_TYPE_Q4_0, q40, GGML_TYPE_F16, f16, use_logit_softcap) \
-    //INSTANTIATE_FLASH_ATTN_VEC(D, ncols, GGML_TYPE_F16, f16, GGML_TYPE_Q4_0, q40, use_logit_softcap) \
-    //INSTANTIATE_FLASH_ATTN_VEC(D, ncols, GGML_TYPE_Q4_0, q40, GGML_TYPE_Q4_0, q40, use_logit_softcap) \
+#define INSTANTIATE_FLASH_ATTN_FIXUP_FOR_NCOLS2(D, ncols1, ncols2)                      \
+extern "C" {                                                                            \
+        __launch_bounds__(D, 1)                                                         \
+        __global__ void flash_attn_stream_k_fixup_##D##_##ncols1##_##ncols2(            \
+            float * __restrict__ dst, const float2 * __restrict__ dst_fixup,            \
+            const int ne03, const int ne02, const int ne01, const int ne11){            \
+            flash_attn_stream_k_fixup<D, ncols1, ncols2>(                               \
+                dst, dst_fixup, ne01, ne02, ne03, ne11);                                \
+            }                                                                           \
+    }
+ 
+#define INSTANTIATE_FLASH_ATTN_COMBINE_FOR_D(D)                                          \
+extern "C" {                                                                             \
+        __launch_bounds__(D, 1)                                                          \
+        __global__ void flash_attn_combine_results_##D(                                  \
+            const float  * __restrict__ VKQ_parts, const float2 * __restrict__ VKQ_meta, \
+            float * __restrict__ dst, const int parallel_blocks){                        \
+            flash_attn_combine_results<D>(                                               \
+                VKQ_parts, VKQ_meta, dst, parallel_blocks);                              \
+            }                                                                            \
+    }
+
+#define INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(D, ncols1) \
+    INSTANTIATE_FLASH_ATTN_VEC_FOR_TYPES(D, ncols1, GGML_TYPE_F16, f16, GGML_TYPE_F16, f16) \
+    INSTANTIATE_FLASH_ATTN_VEC_FOR_TYPES(D, ncols1, GGML_TYPE_Q4_0, q40, GGML_TYPE_F16, f16) \
+    INSTANTIATE_FLASH_ATTN_VEC_FOR_TYPES(D, ncols1, GGML_TYPE_F16, f16, GGML_TYPE_Q4_0, q40) \
+    INSTANTIATE_FLASH_ATTN_VEC_FOR_TYPES(D, ncols1, GGML_TYPE_Q4_0, q40, GGML_TYPE_Q4_0, q40) \
 
 
-#define INSTANTITATE_FLASH_ATTN_VEC(use_logit_softcap) \
-    INSTANTIATE_FLASH_ATTN_VEC_KV_TYPES(64, 1, use_logit_softcap) \
-    //INSTANTIATE_FLASH_ATTN_VEC_KV_TYPES(64, 2, use_logit_softcap) \
-    //INSTANTIATE_FLASH_ATTN_VEC_KV_TYPES(128, 1, use_logit_softcap) \
-    //INSTANTIATE_FLASH_ATTN_VEC_KV_TYPES(128, 2, use_logit_softcap) \
-    //INSTANTIATE_FLASH_ATTN_VEC_KV_TYPES(256, 1, use_logit_softcap) \
-    //INSTANTIATE_FLASH_ATTN_VEC_KV_TYPES(256, 2, use_logit_softcap) \
+#define INSTANTIATE_FLASH_ATTN_VEC() \
+    INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(64, 1) \
+    INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(64, 2) \
+    INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(128, 1) \
+    INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(128, 2) \
+    INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(256, 1) \
+    INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(256, 2) \
 
-INSTANTITATE_FLASH_ATTN_VEC(true)
-//INSTANTITATE_FLASH_ATTN_VEC(false)
+#define INSTANTIATE_FLASH_ATTN_FIXUP_FOR_NCOLS1(D, ncols1) \
+    INSTANTIATE_FLASH_ATTN_FIXUP_FOR_NCOLS2(D, ncols1, 1)  \
+
+#define INSTANTIATE_FLASH_ATTN_FIXUP_FOR_D(D)     \
+    INSTANTIATE_FLASH_ATTN_FIXUP_FOR_NCOLS1(D, 1) \
+    INSTANTIATE_FLASH_ATTN_FIXUP_FOR_NCOLS1(D, 2) \
+
+#define INSTANTIATE_FLASH_ATTN_FIXUP()      \
+    INSTANTIATE_FLASH_ATTN_FIXUP_FOR_D(64)  \
+    INSTANTIATE_FLASH_ATTN_FIXUP_FOR_D(128)  \
+    INSTANTIATE_FLASH_ATTN_FIXUP_FOR_D(256)  \
+
+#define INSTANTIATE_FLASH_ATTN_COMBINE() \
+    INSTANTIATE_FLASH_ATTN_COMBINE_FOR_D(64) \
+    INSTANTIATE_FLASH_ATTN_COMBINE_FOR_D(128) \
+    INSTANTIATE_FLASH_ATTN_COMBINE_FOR_D(256) \
+
+INSTANTIATE_FLASH_ATTN_VEC()
+INSTANTIATE_FLASH_ATTN_FIXUP()
+INSTANTIATE_FLASH_ATTN_COMBINE()
