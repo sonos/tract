@@ -8,6 +8,7 @@ then
     export RUSTUP_TOOLCHAIN=1.85.0
 fi
 export RUSTUP_TOOLCHAIN
+PATH=$PATH:$HOME/.cargo/bin
 
 if [ -n "$CI" -a ! -e /tmp/ci-setup-done ]
 then
@@ -38,7 +39,6 @@ then
     touch /tmp/ci-setup-done
 fi
 
-PATH=$PATH:$HOME/.cargo/bin
 S3=https://s3.amazonaws.com/tract-ci-builds/tests
 
 if  [ "$GITHUB_WORKFLOW" = "Metal tests" -o "$GITHUB_WORKFLOW" = "CUDA tests" ] 
