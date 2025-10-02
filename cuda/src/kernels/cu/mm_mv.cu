@@ -1,6 +1,5 @@
 
 #include <cuda_runtime.h>
-#include <cuda/std/type_traits>
 #include "common.cuh"
 
 template <typename T, int ncols_dst, int block_size>

@@ -1,11 +1,9 @@
 use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::LaunchArgsExt;
-use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view, utils};
+use crate::kernels::{LibraryName, MAX_THREADS, WARP_SIZE, get_cuda_view, utils};
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
-
-static WARP_SIZE: u32 = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RmsNorm;
@@ -68,7 +66,7 @@ impl RmsNorm {
         let cfg = LaunchConfig {
             grid_dim: ((shape_nd3[2] * shape_nd3[0]) as _, 1, 1),
             block_dim: if shape_nd3[1] < MAX_THREADS {
-                (WARP_SIZE, 1, 1)
+                (WARP_SIZE as _, 1, 1)
             } else {
                 (MAX_THREADS as _, 1, 1)
             },
