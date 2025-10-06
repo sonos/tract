@@ -25,6 +25,7 @@ safetensors.workspace = true
 serde_json.workspace = true
 tar.workspace = true
 flate2 = { workspace = true, optional = true }
+simd-adler32.workspace = true
 walkdir.workspace = true
 tract-core.workspace = true
 
