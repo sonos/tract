@@ -255,10 +255,10 @@ static __device__ void flash_attn_ext_vec(
         const int32_t ne00, const int32_t ne01, const int32_t ne02, const int32_t ne03,
                             const int32_t nb01, const int32_t nb02, const int32_t nb03,
         const int32_t ne10, const int32_t ne11, const int32_t ne12, const int32_t ne13,
-                            const int32_t nb11, const int32_t nb12, const int64_t nb13,
-                            const int32_t nb21, const int32_t nb22, const int64_t nb23,
+                            const int32_t nb11, const int32_t nb12, const int32_t nb13,
+                            const int32_t nb21, const int32_t nb22, const int32_t nb23,
                             const int32_t ne31, const int32_t ne32, const int32_t ne33,
-                            const int32_t nb31, const int32_t nb32, const int64_t nb33) {
+                            const int32_t nb31, const int32_t nb32, const int32_t nb33) {
     //In this kernel Q, K, V are matrices while i, j, k are matrix indices.
     constexpr int cpy_nb = 16;
     constexpr int cpy_ne = cpy_nb / 4;
@@ -569,7 +569,7 @@ static __device__ void flash_attn_ext_vec(
 
 template<int D, int ncols1, int ncols2> // D == head size
 static __device__ void flash_attn_stream_k_fixup(
-        float * __restrict__ dst, const float2 * __restrict__ dst_fixup, const int ne01, const int ne02, const int ne03, const int ne11) {
+        float * __restrict__ dst, const float2 * __restrict__ dst_fixup, const int32_t ne01, const int32_t ne02, const int32_t ne03, const int32_t ne11) {
     constexpr int ncols = ncols1*ncols2;
 
     const int bidx0 = blockIdx.x;
@@ -724,10 +724,10 @@ static __device__ void flash_attn_combine_results(
             const int32_t ne03, const int32_t ne02, const int32_t ne01, const int32_t ne00,  \
                                 const int32_t nb03, const int32_t nb02, const int32_t nb01,  \
             const int32_t ne13, const int32_t ne12, const int32_t ne11, const int32_t ne10,  \
-                                const int32_t nb13, const int32_t nb12, const int64_t nb11,  \
-                                const int32_t nb23, const int32_t nb22, const int64_t nb21,  \
+                                const int32_t nb13, const int32_t nb12, const int32_t nb11,  \
+                                const int32_t nb23, const int32_t nb22, const int32_t nb21,  \
                                 const int32_t ne33, const int32_t ne32, const int32_t ne31,  \
-                                const int32_t nb33, const int32_t nb32, const int64_t nb31){ \
+                                const int32_t nb33, const int32_t nb32, const int32_t nb31){ \
             flash_attn_ext_vec<D, ncols1, K_type, V_type>(                                   \
                             Q, K, V, mask, KV_max, dst, dst_meta, scale,                     \
                             ne00, ne01, ne02, ne03,                                          \
@@ -745,7 +745,7 @@ extern "C" {                                                                    
         __launch_bounds__(D, 1)                                                         \
         __global__ void flash_attn_stream_k_fixup_##D##_##ncols1##_##ncols2(            \
             float * __restrict__ dst, const float2 * __restrict__ dst_fixup,            \
-            const int ne03, const int ne02, const int ne01, const int ne11){            \
+            const int32_t ne03, const int32_t ne02, const int32_t ne01, const int32_t ne11){            \
             flash_attn_stream_k_fixup<D, ncols1, ncols2>(                               \
                 dst, dst_fixup, ne01, ne02, ne03, ne11);                                \
             }                                                                           \
