@@ -20,11 +20,18 @@ if [ -z "$device" ]
 then
     device=cpu
 fi
-generation=516
+generation=current
 
 if [ "$model" = "all" ]
 then
-    for m in OpenELM-270M OpenELM-1_1B llama-3.2-3B llama-3.2-1B
+    for m in \
+        openelm-270M \
+	llama-3.2-1B-instruct \
+	llama-3.2-3B-instruct \
+	llama-3.1-8B-instruct \
+	qwen2.5-7B-instruct \
+	qwen3-1.7B \
+	qwen3-8B
     do
         $0 $m $2 $device
     done
@@ -35,10 +42,12 @@ model=$(echo $model | tr 'A-Z' 'a-z' | tr -d "_.-")
 
 for m in \
     apple--OpenELM-270M \
-    apple--OpenELM-1_1B \
-    TinyLlama--TinyLlama_v1.1 \
-    meta-llama--Llama-3.2-3B \
-    meta-llama--Llama-3.2-1B
+    meta-llama--Llama-3.2-1B-Instruct \
+    meta-llama--Llama-3.2-3B-Instruct \
+    meta-llama--Llama-3.1-8B-Instruct \
+    Qwen--Qwen2.5-7B-Instruct \
+    Qwen--Qwen3-1.7B \
+    Qwen--Qwen3-8B
 do
     norm=$(echo $m | tr "A-Z" "a-z" | tr -d "_.-")
     if [[ "$norm" == *"$model"* ]];
@@ -54,7 +63,7 @@ fi
 
 if [ "$q" = "all" ]
 then
-    for q in q40f16 q40ef16 f16f16 q40f32 q40ef32 f32f32
+    for q in q40ef16 f16f16 f32f32
     do
         $0 $1 $q $device
     done
@@ -65,11 +74,20 @@ id=$model_id-$q
 
 if [ -n "$GITHUB_ACTIONS" ]
 then
-    if [ "$id" =  meta-llama--Llama-3.2-3B-f32f32 ]
-    then
-        echo "::warning title=Untestable model::$id is too big for GHA..."
-        exit 0
-    fi
+    for m in \
+        meta-llama--Llama-3.1-8B-Instruct-f32f32 \
+        meta-llama--Llama-3.1-8B-Instruct-f16f16 \
+        Qwen--Qwen2.5-7B-Instruct-f32f32 \
+        Qwen--Qwen2.5-7B-Instruct-f16f16 \
+        Qwen--Qwen3-8B-f32f32 \
+        Qwen--Qwen3-8B-f16f16
+    do
+        if [[ "$m" = "$id" ]]
+	then
+            echo "::warning title=Untestable model::$id is too big for GHA..."
+            exit 0
+	fi
+    done
 fi
 
 if which gstat > /dev/null
@@ -85,7 +103,7 @@ nnef=llm/$generation/$id/$id.nnef.tgz
 
 $CACHE_FILE $nnef
 
-$TRACT_RUN -v --nnef-tract-core $MODELS/$nnef -O --readings  --assert-maximal-mm-quality-cost 0 $TRACT_EXTRA_ARGS dump -q
+$TRACT_RUN -v --nnef-tract-transformers $MODELS/$nnef -O --readings  --assert-maximal-mm-quality-cost 0 $TRACT_EXTRA_ARGS dump -q
 if [ -e $MODELS/$nnef ]
 then
     size=$($STAT -c %s $MODELS/$nnef)
