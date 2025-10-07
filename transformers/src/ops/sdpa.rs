@@ -293,10 +293,10 @@ impl Sdpa {
             )?[0];
         }
         let current_output_fact = graph.outlet_fact(output)?;
-        if current_output_fact.datum_type != v_fact.datum_type().unwrap() {
+        if current_output_fact.datum_type != q_fact.datum_type().unwrap() {
             output = graph.wire_node(
                 "cast_output",
-                Cast::new(v_fact.datum_type().unwrap()),
+                Cast::new(q_fact.datum_type().unwrap()),
                 &[output],
             )?[0];
         }
