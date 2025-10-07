@@ -103,7 +103,7 @@ apple--OpenELM-270M-q40ef16.p50s50.arm64.metal 0
 apple--OpenELM-270M-q40ef16.p50s50.x86_64.cpu 4
 apple--OpenELM-270M-q40ef16.p50s50.x86_64.cuda 9
 apple--OpenELM-270M-q40ef16.p99s1.arm64.cpu 4
-apple--OpenELM-270M-q40ef16.p99s1.arm64.metal 0
+apple--OpenELM-270M-q40ef16.p99s1.arm64.metal 3
 apple--OpenELM-270M-q40ef16.p99s1.x86_64.cpu 0
 apple--OpenELM-270M-q40ef16.p99s1.x86_64.cuda 7
 apple--OpenELM-270M-q40ef32.p0s100.arm64.cpu 0
@@ -147,11 +147,11 @@ meta-llama--Llama-3.2-1B-Instruct-f16f16.p0s100.arm64.metal 6
 meta-llama--Llama-3.2-1B-Instruct-f16f16.p0s100.x86_64.cpu 2
 meta-llama--Llama-3.2-1B-Instruct-f16f16.p0s100.x86_64.cuda 2
 meta-llama--Llama-3.2-1B-Instruct-f16f16.p50s50.arm64.cpu 8
-meta-llama--Llama-3.2-1B-Instruct-f16f16.p50s50.arm64.metal 4
+meta-llama--Llama-3.2-1B-Instruct-f16f16.p50s50.arm64.metal 6
 meta-llama--Llama-3.2-1B-Instruct-f16f16.p50s50.x86_64.cpu 2
 meta-llama--Llama-3.2-1B-Instruct-f16f16.p50s50.x86_64.cuda 2
 meta-llama--Llama-3.2-1B-Instruct-f16f16.p99s1.arm64.cpu 9
-meta-llama--Llama-3.2-1B-Instruct-f16f16.p99s1.arm64.metal 0
+meta-llama--Llama-3.2-1B-Instruct-f16f16.p99s1.arm64.metal 4
 meta-llama--Llama-3.2-1B-Instruct-f16f16.p99s1.x86_64.cpu 2
 meta-llama--Llama-3.2-1B-Instruct-f16f16.p99s1.x86_64.cuda 0
 meta-llama--Llama-3.2-1B-Instruct-f32f32.p0s100.arm64.cpu 0
@@ -223,7 +223,7 @@ meta-llama--Llama-3.2-3B-Instruct-f16f16.p50s50.arm64.metal 5
 meta-llama--Llama-3.2-3B-Instruct-f16f16.p50s50.x86_64.cpu 2
 meta-llama--Llama-3.2-3B-Instruct-f16f16.p50s50.x86_64.cuda 0
 meta-llama--Llama-3.2-3B-Instruct-f16f16.p99s1.arm64.cpu 11
-meta-llama--Llama-3.2-3B-Instruct-f16f16.p99s1.arm64.metal 2
+meta-llama--Llama-3.2-3B-Instruct-f16f16.p99s1.arm64.metal 6
 meta-llama--Llama-3.2-3B-Instruct-f16f16.p99s1.x86_64.cpu 4
 meta-llama--Llama-3.2-3B-Instruct-f16f16.p99s1.x86_64.cuda 2
 meta-llama--Llama-3.2-3B-Instruct-f32f32.p0s100.arm64.cpu 0
