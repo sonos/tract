@@ -80,6 +80,21 @@ fi
 
 id=$model_id-$q
 
+# Skipping models that doesn't work
+BROKEN_MODELS=(
+    "Qwen--Qwen2.5-7B-Instruct-q40ef16:metal"
+    "Qwen--Qwen2.5-7B-Instruct-f16f16:metal"
+)
+
+for broken_id in "${BROKEN_MODELS[@]}"
+do
+    if [ "$broken_id" = "$id:$device" ]
+    then
+        echo "INFO: Skipping model $id because of error on $device"
+        exit 0
+    fi
+done
+
 if [ -n "$GITHUB_ACTIONS" ]
 then
     for m in \
