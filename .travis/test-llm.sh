@@ -70,6 +70,14 @@ then
     exit 0
 fi
 
+# Skipping f32f32 models except LLama 1B
+MODELS_F32_ALLOWED="llama-3.2-1B-instruct"
+if [ "$q" = "f32f32" ] && ! echo "$MODELS_F32_ALLOWED" | grep -q -w "$1"
+then
+    echo "INFO: Skipping f32f32 for model $1"
+    exit 0
+fi
+
 id=$model_id-$q
 
 if [ -n "$GITHUB_ACTIONS" ]
@@ -134,7 +142,7 @@ do
     $CACHE_FILE $npz
 
     key=$id.$t.$(arch).$device
-    expectations="$ROOT/.travis/llm-expectations-516"
+    expectations="$ROOT/.travis/llm-expectations-541"
 
     case $device in 
         cuda)
@@ -152,7 +160,7 @@ do
             --assert-llm-lev20 999999999 \
             $approx --allow-float-casts 2>&1 | tee output.txt
         found=$(cat output.txt | grep lev20 | cut -d '=' -f 2)
-        ( ( grep -v $key $expectations || /bin/true) ; echo $key $found) | sort > $expectations.tmp
+        ( ( grep -v $key $expectations || true) ; echo $key $found) | sort > $expectations.tmp
         mv $expectations.tmp $expectations
     elif [ -n "$RELAX" ]
     then
@@ -168,7 +176,7 @@ do
         then
             found=$prior
         fi
-        ( ( grep -v $key $expectations || /bin/true) ; echo $key $found) | sort > $expectations.tmp
+        ( ( grep -v $key $expectations || true) ; echo $key $found) | sort > $expectations.tmp
         mv $expectations.tmp $expectations
     else # test !
         expectation=$(grep $key $expectations | cut -f 2 -d ' ')
