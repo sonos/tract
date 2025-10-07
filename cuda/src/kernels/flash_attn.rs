@@ -15,12 +15,12 @@ static N_THREADS: u32 = 128;
 static N_WARPS: u32 = 4;
 
 #[derive(Debug, Clone)]
-pub struct GgmlFlashAttnOp {
+pub struct GgmlFlashAttn {
     scale: f32,
     is_causal: bool,
 }
 
-impl fmt::Display for GgmlFlashAttnOp {
+impl fmt::Display for GgmlFlashAttn {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{self:?}")
     }
@@ -31,7 +31,7 @@ enum FlashAttnImpl {
     MmaF16,
 }
 
-impl GgmlFlashAttnOp {
+impl GgmlFlashAttn {
     pub fn is_supported_dts(k_dt: DatumType, v_dt: DatumType) -> bool {
         (k_dt == v_dt) && matches!(k_dt, DatumType::F16 | DatumType::Opaque)
     }
@@ -54,11 +54,11 @@ impl GgmlFlashAttnOp {
             v_dt
         );
         Ok(format!(
-            "flash_attn_vec_{}_{}_{:?}_{:?}",
+            "flash_attn_vec_{}_{}_{}_{}",
             d,
             ncols1,
-            DeviceTensor::tname(k_dt),
-            DeviceTensor::tname(v_dt)
+            DeviceTensor::tname(k_dt)?,
+            DeviceTensor::tname(v_dt)?
         ))
     }
 
@@ -118,7 +118,7 @@ impl GgmlFlashAttnOp {
 
         let ctxt = cuda_context();
         let prop = ctxt.properties();
-        let newer_than_lovelace = prop.major > 8 || (prop.major == 8 && prop.minor > 9);
+        let newer_than_lovelace = prop.major > 8 || (prop.major == 8 && prop.minor >= 9);
 
         match k_shape[3] {
             64 | 80 | 96 | 112 | 128 | 256 => ensure!(k_shape[3] == v_shape[3]),
@@ -126,7 +126,7 @@ impl GgmlFlashAttnOp {
             _ => bail!("No kernel available for k_shape[3] = {}", k_shape[3]),
         }
 
-        ensure!(m_shape.is_none_or(|shape| shape[1] != 1));
+        ensure!(m_shape.is_none_or(|shape| shape[..2] == [1, 1]));
 
         let can_use_vector_kernel = q_shape[3] <= 256 && q_shape[3] % 64 == 0;
         let mut best = FlashAttnImpl::MmaF16;
@@ -179,7 +179,7 @@ impl GgmlFlashAttnOp {
 
         ensure!(mask.is_none_or(|m| {
             let n = m.shape()[m.rank() - 2];
-            n >= n.div_ceil(16) * 16
+            m.shape()[2] >= q.shape()[2].next_multiple_of(16)
         }));
         ensure!(k.shape()[k.rank() - 2] % 256 == 0, "Incorrect KV cache padding");
 
@@ -215,8 +215,8 @@ impl GgmlFlashAttnOp {
 
             let blocks_num = (if use_stream_k { max_blocks } else { ntiles_total } as u32, 1, 1);
             let dst_tmp_meta = DeviceTensor::uninitialized_dt(
-                DatumType::U8,
-                &[blocks_num.0 as usize * ncols * (2 * 2 + d) * size_of::<f32>()],
+                DatumType::F32,
+                &[2 * blocks_num.0 as usize * ncols * (2 * 2 + d) * size_of::<f32>()],
             )?;
 
             (blocks_num, None, Some(dst_tmp_meta))
@@ -254,15 +254,16 @@ impl GgmlFlashAttnOp {
                 parallel_blocks as u32,
                 (q_shape[q_rank - 3] * if q_rank == 4 { q_shape[q_rank - 4] } else { 1 }) as u32,
             );
+
             let (dst_tmp, dst_tmp_meta) = if parallel_blocks > 1 {
-                (
+                (   
                     Some(DeviceTensor::uninitialized_dt(
-                        DatumType::U8,
+                        DatumType::F32,
                         &[parallel_blocks * out.shape().iter().product::<usize>()],
                     )?),
                     Some(DeviceTensor::uninitialized_dt(
-                        DatumType::U8,
-                        &[parallel_blocks * out.shape()[..3].iter().product::<usize>()],
+                        DatumType::F32,
+                        &[2 * parallel_blocks * out.shape()[..3].iter().product::<usize>()],
                     )?),
                 )
             } else {
@@ -282,13 +283,11 @@ impl GgmlFlashAttnOp {
         let q_strides =
             q.strides().iter().map(|s| *s as i32 * size_of::<f32>() as i32).collect_vec();
         let k_strides =
-            k.strides().iter().map(|s| *s as i32 * size_of::<f32>() as i32).collect_vec();
+            k.strides().iter().map(|s| *s as i32 * size_of::<f16>() as i32).collect_vec();
         let v_strides =
-            v.strides().iter().map(|s| *s as i32 * size_of::<f32>() as i32).collect_vec();
-        let v_strides =
-            v.strides().iter().map(|s| *s as i32 * size_of::<f32>() as i32).collect_vec();
+            v.strides().iter().map(|s| *s as i32 * size_of::<f16>() as i32).collect_vec();
         let mask_strides = mask
-            .map(|m| m.strides().iter().map(|s| *s as i32 * size_of::<f32>() as i32).collect_vec())
+            .map(|m| m.strides().iter().map(|s| *s as i32 * size_of::<f16>() as i32).collect_vec())
             .unwrap_or_else(|| vec![0, 0, 0, 0]);
 
         let null_ptr = stream.null::<u8>()?;
@@ -306,9 +305,11 @@ impl GgmlFlashAttnOp {
         let mut launch_args = stream.launch_builder(&func);
         launch_args.arg(&q_view);
         launch_args.arg(&k_view);
+        launch_args.arg(&v_view);
         launch_args.arg(&mask_view);
         launch_args.arg(&null_ptr); // KV_max
         launch_args.arg(if !stream_k && parallel_blocks > 1 { &dst_tmp_view } else { &out_view });
+        launch_args.arg(&dst_tmp_meta_view);
         launch_args.arg(&self.scale);
         launch_args.set_slice(&q_shape);
         launch_args.set_slice(&q_strides[..3]);
@@ -320,11 +321,14 @@ impl GgmlFlashAttnOp {
 
         let cfg =
             LaunchConfig { grid_dim: blocks_num, block_dim, shared_mem_bytes: nbytes_shared as _ };
-
+        
+        //println!("stream_k {stream_k} parallel_block: {parallel_blocks} q_shape: {q_shape:?}\n q_strides {:?}\n k_shape: {k_shape:?}\n k_strides: {:?}\n v_strides: {:?}\n mask_shape: {:?}\n mask_strides: {:?}",
+        //    &q_strides[..3], &k_strides[..3], &v_strides[..3], &mask_shape[..3], &mask_strides[..3]);
+        //dbg!(&cfg);
         unsafe {
             launch_args.launch(cfg);
         }
-
+        //dbg!(dst_tmp.as_ref().unwrap().to_host()?.to_array_view::<f32>()?, dst_tmp_meta.as_ref().unwrap().to_host()?.to_array_view::<f32>()?);
         if stream_k {
             if ntiles_total as u32 % blocks_num.0 != 0 {
                 let func = cuda_context().load_pipeline(
@@ -358,12 +362,13 @@ impl GgmlFlashAttnOp {
             launch_args.arg(&dst_tmp_meta_view);
             launch_args.arg(&out_view);
             launch_args.arg(&parallel_blocks);
-
             let cfg = LaunchConfig {
-                grid_dim: (d as _, 1, 1),
-                block_dim: (q_shape[2] as _, q_shape[1] as _, q_shape[0] as _),
+                grid_dim: (q_shape[2] as _, q_shape[1] as _, q_shape[0] as _),
+                block_dim: (d as _, 1, 1),
                 shared_mem_bytes: (parallel_blocks * 2 * size_of::<f32>()) as u32,
             };
+            //dbg!(dst_tmp_view.len(), dst_tmp_meta_view.len(), out_view.len());
+            //dbg!(&cfg);
             unsafe {
                 launch_args.launch(cfg);
             }
@@ -388,6 +393,7 @@ impl GgmlFlashAttnOp {
         let ncols1 = q_shape[rank - 2];
         let ncols2 = 1;
         let d = q_shape[rank - 1];
+        //dbg!(&ncols1);
         let kernel_name = self.vec_kernel_name(d, ncols1, k.datum_type(), v.datum_type())?;
         let func = cuda_context().load_pipeline(LibraryName::FlashAttn, kernel_name)?;
 
@@ -411,6 +417,7 @@ impl GgmlFlashAttnOp {
                 &self.output_shape(q.shape(), k.shape(), v.shape())?,
             )?
         };
+        //dbg!(q, k, v, mask, &output);
         self.dispatch_eval(stream, q, k, v, mask, &output)?;
         stream.synchronize()?;
 
@@ -426,21 +433,23 @@ impl GgmlFlashAttnOp {
         mask: Option<&DeviceTensor>,
         out: &DeviceTensor,
     ) -> TractResult<()> {
+        ensure!(q.datum_type() == DatumType::F32 && q.datum_type() == out.datum_type());
+        ensure!(*out.shape() == *self.output_shape(q.shape(), k.shape(), v.shape())?);
         if q.rank() == 3 {
             let q_shape = q.shape();
             let k_shape = k.shape();
             let v_shape = v.shape();
             let out_shape = out.shape();
-            q.reshaped(tvec!(1, q_shape[0], q_shape[1], q_shape[2]))?;
-            k.reshaped(tvec!(1, k_shape[0], k_shape[1], k_shape[2]))?;
-            v.reshaped(tvec!(1, v_shape[0], v_shape[1], v_shape[2]))?;
-            out.reshaped(tvec!(1, out_shape[0], out_shape[1], out_shape[2]))?;
+            q.reshaped(tvec!(q_shape[0], 1, q_shape[1], q_shape[2]))?;
+            k.reshaped(tvec!(k_shape[0], 1, k_shape[1], k_shape[2]))?;
+            v.reshaped(tvec!(v_shape[0], 1, v_shape[1], v_shape[2]))?;
+            out.reshaped(tvec!(out_shape[0], 1, out_shape[1], out_shape[2]))?;
+            if let Some(m) = mask {
+                let shape = m.shape();
+                m.reshaped(tvec!(1, shape[0], shape[1], shape[2]))?;
+            }
         }
 
-        if let Some(m) = mask {
-            let shape = m.shape();
-            m.reshaped(tvec!(1, shape[0], shape[1], shape[2]))?;
-        }
         let kernel = Self::find_fattn_kernel(
             q.shape(),
             k.shape(),
@@ -453,5 +462,105 @@ impl GgmlFlashAttnOp {
             FlashAttnImpl::Vec => self.launch_flash_attn_vec(stream, q, k, v, mask, out),
             FlashAttnImpl::MmaF16 => todo!(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use num_traits::Float;
+    use tract_gpu::tensor::IntoDevice;
+    use tract_transformers::ops::sdpa::Sdpa;
+
+    use crate::context::CUDA_STREAM;
+
+    use super::*;
+
+    fn pad_f16_tensor(a: &Tensor, axis: usize, block_size: usize, value: f16) -> TractResult<Tensor> {
+        let mut shape = a.shape().to_owned();
+        let old_value = shape[axis];
+        shape[axis] = shape[axis].next_multiple_of(block_size);
+        let mut padded_a = Tensor::zero::<f16>(&shape)?;
+        padded_a.fill_t(value);
+        padded_a
+            .to_array_view_mut::<f16>()?
+            .slice_axis_move(tract_ndarray::Axis(axis), (0..old_value).into())
+            .assign(&a.to_array_view::<f16>()?);
+        Ok(padded_a)
+    }
+    fn run_test_case(
+        batch: usize,
+        q_heads: usize,
+        kv_heads: usize,
+        past_seq_len: usize,
+        seq_len: usize,
+        out_dim: usize,
+        scale: f32
+    ) -> TractResult<()> {
+        CUDA_STREAM.with(|stream| {
+            let q_shape = [batch, q_heads, seq_len, out_dim];
+            let kv_shape = [batch, kv_heads, past_seq_len + seq_len, out_dim];
+            let m_shape = [1, 1, seq_len, past_seq_len + seq_len];
+
+            let q_len = q_shape.iter().product::<usize>();
+            let kv_len = kv_shape.iter().product::<usize>();
+            let m_len = m_shape.iter().product::<usize>();
+
+            let q = Tensor::from_shape(
+                    &q_shape,
+                    &(0..q_len)
+                        .map(|f| f as f32 / q_len as f32)
+                        .collect::<Vec<_>>())?;
+
+            let k = Tensor::from_shape(
+                    &kv_shape,
+                    &(0..kv_len)
+                        .map(|f| f16::from_f32(f as f32 / kv_len as f32))
+                        .collect::<Vec<_>>())?;
+            
+            let v = Tensor::from_shape(
+                    &kv_shape,
+                    &(0..kv_len)
+                        .map(|f| f16::from_f32(f as f32 / kv_len as f32))
+                        .collect::<Vec<_>>())?;
+            
+            let m = Tensor::from_shape(
+                    &m_shape,
+                    &(0..m_len)
+                        .map(|f| f16::from_f32(1f32))
+                        .collect::<Vec<_>>())?;
+            
+            let op = GgmlFlashAttn {
+                scale,
+                is_causal: false
+            };
+
+            let cuda_output = op.eval(
+                stream,
+                &q.clone().into_device()?,
+                &pad_f16_tensor(&k, 2, 256, f16::from_f32(0f32))?.into_device()?,
+                &pad_f16_tensor(&v, 2, 256, f16::from_f32(0f32))?.into_device()?,
+                Some(&&pad_f16_tensor(&pad_f16_tensor(&m, 3, 256, -f16::infinity())?, 2, 64, -f16::infinity())?.into_device()?),
+            )?;
+
+            let ref_output = Sdpa { 
+                scale: Some(scale.into()),
+                datum_type: DatumType::F32,
+                acc_datum_type: DatumType::F32,
+                is_causal: false }.eval(tvec!(q.into(), k.into(), v.into(), m.into()))?;
+            //dbg!(cuda_output.to_host()?);
+            cuda_output.to_host()?.close_enough(&ref_output[0], Approximation::Approximate)?;
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn test_fattn() -> TractResult<()> {
+        run_test_case(1, 1, 1, 0, 1, 64, 1.0f32)?;
+        run_test_case(1, 32, 8, 0, 1, 64, 1.0f32)?;
+        run_test_case(1, 8, 8, 0, 1, 64, 1.0f32)?;
+        run_test_case(2, 8, 8, 0, 1, 64, 1.0f32)?;
+        run_test_case(1, 1, 1, 3, 1, 64, 1.0f32)?;
+        run_test_case(2, 24, 8, 3, 1, 64, 1.0f32)?;
+        Ok(())
     }
 }
