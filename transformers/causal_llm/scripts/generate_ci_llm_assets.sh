@@ -2,17 +2,14 @@
 
 set -ex
 
-LOCAL_DIR=$(dirname $(dirname $(realpath $0)))
-echo $LOCAL_DIR
-
 tmp=$(echo ${TMPDIR:-${TEMP:-${TMP:-/tmp}}})
 venv=$tmp/venv-for-tract-assets
 
 if [ ! -d $venv ]
 then
-    virtualenv -p python3.11 $venv
+    virtualenv -p python3.13 $venv
     source $venv/bin/activate
-    (cd $LOCAL_DIR/llm-python/ ; pip install -e ".[cli]")
+    pip install 'torch-to-nnef[llm-tract]>=0.20.0' 'transformers>=4.51,<4.52'
 else
     source $venv/bin/activate
 fi
@@ -36,14 +33,13 @@ do
          rm -rf $model
          case $q in
              f32f32) EXPORT_ARGS= ;;
-             f16f16) EXPORT_ARGS=-f16 ;;
+             f16f16) EXPORT_ARGS="-dt f16" ;;
              q40f32) EXPORT_ARGS="-c min_max_q4_0" ;;
              q40ef32) EXPORT_ARGS="-c min_max_q4_0_with_embeddings" ;;
-             q40f16) EXPORT_ARGS="-c min_max_q4_0 -f16" ;;
-             q40ef16) EXPORT_ARGS="-c min_max_q4_0_with_embeddings -f16" ;;
+             q40ef16) EXPORT_ARGS="-c min_max_q4_0_with_embeddings -dt f16" ;;
          esac
 
-         python $LOCAL_DIR/llm-python/llm/cli/export_llm_from_torch_to_nnef.py \
+         t2n_export_llm_to_tract \
              --sample-generation-total-size 100 \
              --no-verify \
              -s $hf_id -e $model $EXPORT_ARGS
