@@ -20,7 +20,7 @@ if [ -z "$device" ]
 then
     device=cpu
 fi
-generation=current
+generation=541
 
 if [ "$model" = "all" ]
 then
