@@ -162,8 +162,10 @@ impl PrefixMatMul {
         b: &Tensor,
     ) -> TractResult<()> {
         use crate::ndarray::Dimension;
-        let a = a.to_array_view::<Acc>()?;
-        let b = b.to_array_view::<Acc>()?;
+        let casted_a = a.cast_to::<Acc>()?;
+        let a = casted_a.to_array_view::<Acc>()?;
+        let casted_b = b.cast_to::<Acc>()?;
+        let b = casted_b.to_array_view::<Acc>()?;
         let mut c = acc.to_array_view_mut::<Acc>()?;
         for prefix in tract_ndarray::indices(&c.shape()[..c.ndim() - 2]) {
             let mut a = a.view();
