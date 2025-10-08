@@ -32,9 +32,9 @@ fn rule(
 ) -> TractResult<Option<TypedModelPatch>> {
     // F: 2 inputs
     // Q: 9 inputs
-    if !((op.q_params.is_none() && node.inputs.len() == 2)
-        || (op.q_params.is_some() && node.inputs.len() == 9))
-    {
+    let is_fp_mm = op.q_params.is_none() && node.inputs.len() == 2;
+    let is_q_mm = op.q_params.is_some() && node.inputs.len() == 9;
+    if !(is_fp_mm || is_q_mm) {
         return Ok(None);
     }
     if op.q_params.is_some()
@@ -132,10 +132,11 @@ fn rule(
         let input_facts = model.node_input_facts(node.id)?;
         let a_dt = input_facts[0].datum_type;
         let b_dt = input_facts[1].datum_type;
+        let operating_dt = quantize_output.unwrap_or(op.operating_dt);
         let allowed_dt = matmul_semantic_output_dt(&a_dt, &b_dt);
 
         ensure!(
-            op.operating_dt == allowed_dt,
+            operating_dt == allowed_dt,
             format!(
                 "Strict matmul semantic require operating_dt to be {allowed_dt:?} \
                 for (a: {a_dt:?}, b:{b_dt:?}) but got {:?}.",
@@ -163,9 +164,9 @@ fn rule(
 
 fn matmul_semantic_output_dt(a_dt: &DatumType, b_dt: &DatumType) -> DatumType {
     if a_dt.is_number() {
-        a_dt.clone()
+        *a_dt
     } else if b_dt.is_number() {
-        b_dt.clone()
+        *b_dt
     } else {
         f32::datum_type()
     }
