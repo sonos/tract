@@ -9,7 +9,7 @@ then
 fi
 
 export RUSTUP_TOOLCHAIN
-PATH=$PATH:$HOME/.cargo/bin
+export PATH=$PATH:$HOME/.cargo/bin
 
 if [ -n "$CI" -a ! -e /tmp/ci-setup-done ]
 then
