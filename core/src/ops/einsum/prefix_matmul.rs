@@ -118,9 +118,10 @@ fn rule(
     } else {
         None
     };
+    let operating_dt = op.operating_dt;
     wire = patch.wire_node(
         node_name,
-        PrefixMatMul { transpose_a, transpose_b, transpose_c, quantize_output },
+        PrefixMatMul { transpose_a, transpose_b, transpose_c, quantize_output, operating_dt },
         &wire,
     )?;
 
@@ -131,12 +132,13 @@ fn rule(
     Ok(Some(patch))
 }
 
-#[derive(Clone, Debug, Copy, Default)]
+#[derive(Clone, Debug, Copy)]
 pub struct PrefixMatMul {
     pub transpose_a: bool,
     pub transpose_b: bool,
     pub transpose_c: bool,
     pub quantize_output: Option<DatumType>,
+    pub operating_dt: DatumType,
 }
 
 impl PrefixMatMul {
@@ -208,13 +210,7 @@ impl EvalOp for PrefixMatMul {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let c_dt = if inputs[0].datum_type().is_number() {
-            inputs[0].datum_type()
-        } else if inputs[1].datum_type().is_number() {
-            inputs[1].datum_type()
-        } else {
-            f32::datum_type()
-        };
+        let c_dt = self.operating_dt;
         let inputs = dequant_inputs(c_dt, inputs)?;
 
         let output_shape = self.output_shape(inputs[0].shape(), inputs[1].shape());
@@ -252,13 +248,9 @@ impl TypedOp for PrefixMatMul {
         let [a, b] = inputs else {
             bail!("Expects 2 inputs");
         };
-        let a_shape = block_quant_aware_input_shape(inputs[0])?;
-        let b_shape = block_quant_aware_input_shape(inputs[1])?;
-        let dt = self.quantize_output.unwrap_or(if a.datum_type.is_number() {
-            a.datum_type
-        } else {
-            b.datum_type
-        });
+        let a_shape = block_quant_aware_input_shape(a)?;
+        let b_shape = block_quant_aware_input_shape(b)?;
+        let dt = self.quantize_output.unwrap_or(self.operating_dt);
         Ok(tvec!(dt.fact(self.output_shape(&a_shape, &b_shape))))
     }
 
