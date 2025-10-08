@@ -389,7 +389,7 @@ mod tests {
             transpose_b: true,
             transpose_c: false,
             quantize_output: None,
-            operating_dt: DatumType::F32,
+            operating_dt: Some(DatumType::F32),
         };
 
         let mut model = TypedModel::default();

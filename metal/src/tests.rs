@@ -71,7 +71,7 @@ mod tests {
                 transpose_b: true,
                 transpose_c: false,
                 quantize_output: None,
-                operating_dt: DatumType::F32,
+                operating_dt: Some(DatumType::F32),
             },
             &[q_reshaped, k_reshaped],
         )?[0];
@@ -130,7 +130,7 @@ mod tests {
                 transpose_b: false,
                 transpose_c: false,
                 quantize_output: None,
-                operating_dt: DatumType::F32,
+                operating_dt: Some(DatumType::F32),
             },
             &[attention, v_reshaped],
         )?[0];

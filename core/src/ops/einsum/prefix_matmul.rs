@@ -9,13 +9,22 @@ use crate::internal::*;
 use crate::ops::einsum::block_quant_aware_input_shape;
 use crate::ops::konst::Const;
 
-pub fn rewrite_einsum_to_prefix_matmul(model: &mut TypedModel) -> TractResult<()> {
+#[derive(Debug, Default)]
+pub struct EinSumToPrefixMatmulCtx {
+    pub ensure_strict_matmul_semantic: bool,
+}
+
+pub fn rewrite_einsum_to_prefix_matmul(
+    model: &mut TypedModel,
+    ensure_strict_matmul_semantic: bool,
+) -> TractResult<()> {
     super::einsum_matmul::detect_all(model)?;
-    Rewriter::default().with_rule_for("einsum-to-prefix-matmul", rule).rewrite(&(), model)
+    let ctx = EinSumToPrefixMatmulCtx { ensure_strict_matmul_semantic };
+    Rewriter::default().with_rule_for("einsum-to-prefix-matmul", rule).rewrite(&ctx, model)
 }
 
 fn rule(
-    _ctx: &(),
+    ctx: &EinSumToPrefixMatmulCtx,
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,
@@ -118,7 +127,27 @@ fn rule(
     } else {
         None
     };
-    let operating_dt = op.operating_dt;
+
+    let operating_dt = if ctx.ensure_strict_matmul_semantic {
+        let input_facts = model.node_input_facts(node.id)?;
+        let a_dt = input_facts[0].datum_type;
+        let b_dt = input_facts[1].datum_type;
+        let allowed_dt = matmul_semantic_output_dt(&a_dt, &b_dt);
+
+        ensure!(
+            op.operating_dt == allowed_dt,
+            format!(
+                "Strict matmul semantic require operating_dt to be {allowed_dt:?} \
+                for (a: {a_dt:?}, b:{b_dt:?}) but got {:?}.",
+                op.operating_dt
+            )
+        );
+
+        None
+    } else {
+        Some(op.operating_dt)
+    };
+
     wire = patch.wire_node(
         node_name,
         PrefixMatMul { transpose_a, transpose_b, transpose_c, quantize_output, operating_dt },
@@ -132,13 +161,23 @@ fn rule(
     Ok(Some(patch))
 }
 
+fn matmul_semantic_output_dt(a_dt: &DatumType, b_dt: &DatumType) -> DatumType {
+    if a_dt.is_number() {
+        a_dt.clone()
+    } else if b_dt.is_number() {
+        b_dt.clone()
+    } else {
+        f32::datum_type()
+    }
+}
+
 #[derive(Clone, Debug, Copy)]
 pub struct PrefixMatMul {
     pub transpose_a: bool,
     pub transpose_b: bool,
     pub transpose_c: bool,
     pub quantize_output: Option<DatumType>,
-    pub operating_dt: DatumType,
+    pub operating_dt: Option<DatumType>,
 }
 
 impl PrefixMatMul {
@@ -212,7 +251,12 @@ impl EvalOp for PrefixMatMul {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let c_dt = self.operating_dt;
+        let c_dt = self.operating_dt.unwrap_or_else(|| {
+            let a_dt = inputs[0].datum_type();
+            let b_dt = inputs[1].datum_type();
+            matmul_semantic_output_dt(&a_dt, &b_dt)
+        });
+
         let inputs = dequant_inputs(c_dt, inputs)?;
 
         let output_shape = self.output_shape(inputs[0].shape(), inputs[1].shape());
@@ -252,7 +296,9 @@ impl TypedOp for PrefixMatMul {
         };
         let a_shape = block_quant_aware_input_shape(a)?;
         let b_shape = block_quant_aware_input_shape(b)?;
-        let dt = self.quantize_output.unwrap_or(self.operating_dt);
+        let dt = self.quantize_output
+            .or(self.operating_dt)
+            .unwrap_or(matmul_semantic_output_dt(&a.datum_type, &b.datum_type));
         Ok(tvec!(dt.fact(self.output_shape(&a_shape, &b_shape))))
     }
 
@@ -371,7 +417,7 @@ mod test {
             let inputs = tvec!(a, b);
             let reference =
                 TypedRunnableModel::new(&model).unwrap().run(inputs.clone()).unwrap().remove(0);
-            rewrite_einsum_to_prefix_matmul(&mut model)?;
+            rewrite_einsum_to_prefix_matmul(&mut model, true)?;
             assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
             let test = TypedRunnableModel::new(&model).unwrap().run(inputs).unwrap().remove(0);
             reference.close_enough(&test, true).unwrap();
@@ -503,7 +549,7 @@ mod test {
         ];
         let wire = model.wire_node("einsum", op.clone(), &inputs)?;
         model.set_output_outlets(&wire)?;
-        rewrite_einsum_to_prefix_matmul(&mut model)?;
+        rewrite_einsum_to_prefix_matmul(&mut model, true)?;
         assert!(model.nodes.iter().all(|n| !n.op_is::<EinSum>()));
         Ok(())
     }

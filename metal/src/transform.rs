@@ -89,7 +89,7 @@ impl MetalTransform {
         // Init Metal Context if not done previously
         metal_context();
 
-        rewrite_einsum_to_prefix_matmul(model)?;
+        rewrite_einsum_to_prefix_matmul(model, false)?;
         if stop_at_phase == 0 {
             return Ok(());
         }
