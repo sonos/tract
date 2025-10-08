@@ -15,7 +15,7 @@ impl ModelTransform for AsBlas {
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
-        rewrite_einsum_to_prefix_matmul(model)?;
+        rewrite_einsum_to_prefix_matmul(model, true)?;
         Rewriter::default()
             .with_rule_for("matmul-to-sgemm", matmul_to_sgemm)
             .rewrite(&(), model)?;
