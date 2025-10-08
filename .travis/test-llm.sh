@@ -74,7 +74,7 @@ fi
 MODELS_F32_ALLOWED="llama-3.2-1B-instruct"
 if [ "$q" = "f32f32" ] && ! echo "$MODELS_F32_ALLOWED" | grep -q -w "$1"
 then
-    echo "INFO: Skipping f32f32 for model $1"
+    echo "INFO: Skipping f32f32 for model $1."
     exit 0
 fi
 
@@ -84,13 +84,33 @@ id=$model_id-$q
 BROKEN_MODELS=(
     "Qwen--Qwen2.5-7B-Instruct-q40ef16:metal"
     "Qwen--Qwen2.5-7B-Instruct-f16f16:metal"
+    "Qwen--Qwen2.5-7B-Instruct-q40ef16:cuda"
 )
 
 for broken_id in "${BROKEN_MODELS[@]}"
 do
     if [ "$broken_id" = "$id:$device" ]
     then
-        echo "INFO: Skipping model $id because of error on $device"
+        echo "INFO: Skipping model $id because of error on $device."
+        exit 0
+    fi
+done
+
+# Skipping too big models for CI workers
+TOO_BIG_MODELS=(
+    "meta-llama--Llama-3.1-8B-Instruct-f32f32:cuda"
+    "meta-llama--Llama-3.1-8B-Instruct-f16f16:cuda"
+    "Qwen--Qwen2.5-7B-Instruct-f32f32:cuda"
+    "Qwen--Qwen2.5-7B-Instruct-f16f16:cuda"
+    "Qwen--Qwen3-8B-f32f32:cuda"
+    "Qwen--Qwen3-8B-f16f16:cuda"
+)
+
+for big_id in "${TOO_BIG_MODELS[@]}"
+do
+    if [ "$big_id" = "$id:$device" ]
+    then
+        echo "INFO: Skipping model $id because it is too big for $device CI worker."
         exit 0
     fi
 done
