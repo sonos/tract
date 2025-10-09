@@ -243,6 +243,28 @@ impl Sdpa {
         graph.set_output_outlets(&[output])?;
         Ok(graph)
     }
+    
+    pub fn patch_sdpa(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let input_facts = model.node_input_facts(node.id)?;
+        let subgraph = self.build_sdpa_graph(input_facts)?;
+
+        let mut patch = TypedModelPatch::new(format!("Explode SDPA node {}", node.name));
+        patch.model = subgraph.into_decluttered()?;
+
+        let body_inputs = patch.model.input_outlets()?;
+        for (i, body_input_outlet) in body_inputs.iter().enumerate() {
+            patch.taps.insert(*body_input_outlet, node.inputs[i]);
+        }
+
+        let body_outputs = patch.model.output_outlets()?;
+        patch.shunt_outside(model, node.id.into(), body_outputs[0])?;
+
+        Ok(Some(patch))
+    }
 }
 
 impl Op for Sdpa {
@@ -332,24 +354,9 @@ impl TypedOp for Sdpa {
             let op = FlashAttnGqaOp { causal: true, block_k: 4, scale };
             TypedModelPatch::replace_single_op(model, node, &node.inputs[0..3], op).map(Some)
         } else {
-            let input_facts = model.node_input_facts(node.id)?;
-            let subgraph = self.build_sdpa_graph(input_facts)?;
-
-            let mut patch = TypedModelPatch::new(format!("Explode SDPA node {}", node.name));
-            patch.model = subgraph.into_decluttered()?;
-
-            let body_inputs = patch.model.input_outlets()?;
-            for (i, body_input_outlet) in body_inputs.iter().enumerate() {
-                patch.taps.insert(*body_input_outlet, node.inputs[i]);
-            }
-
-            let body_outputs = patch.model.output_outlets()?;
-            patch.shunt_outside(model, node.id.into(), body_outputs[0])?;
-
-            Ok(Some(patch))
+            self.patch_sdpa(model, node)
         }
     }
-
     as_op!();
 }
 

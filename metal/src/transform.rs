@@ -3,6 +3,7 @@ use crate::kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, M
 use crate::{kernels, ops};
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::fact::DeviceTypedFactExt;
+use tract_gpu::rewrite_rules::rewire_sdpa::rewire_sdpa;
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::sync::{DeviceSync, DeviceSyncKind};
 use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
@@ -89,6 +90,7 @@ impl MetalTransform {
         // Init Metal Context if not done previously
         metal_context();
 
+        rewire_sdpa(model)?;
         rewrite_einsum_to_prefix_matmul(model, false)?;
         if stop_at_phase == 0 {
             return Ok(());

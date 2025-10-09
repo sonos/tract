@@ -1,3 +1,4 @@
+pub mod rewire_sdpa;
 pub mod rewire_syncs;
 
 #[macro_export]
