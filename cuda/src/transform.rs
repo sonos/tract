@@ -13,6 +13,7 @@ use tract_core::tract_data::itertools::Itertools;
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
+use tract_gpu::rewrite_rules::rewire_sdpa::rewire_sdpa;
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::sync::{DeviceSync, DeviceSyncKind};
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
@@ -50,6 +51,7 @@ impl CudaTransform {
         // Init CUDA Context if not done previously
         cuda_context();
 
+        rewire_sdpa(model)?;
         rewrite_einsum_to_prefix_matmul(model, false)?;
         if stop_at_phase == 0 {
             return Ok(());
