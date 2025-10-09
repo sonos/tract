@@ -570,96 +570,6 @@ static __device__ void flash_attn_ext_vec(
     }
 }
 
-template<int D, int ncols1, int ncols2> // D == head size
-static __device__ void flash_attn_stream_k_fixup(
-        float * __restrict__ dst, const float2 * __restrict__ dst_fixup, const int32_t ne01, const int32_t ne02, const int32_t ne03, const int32_t ne11) {
-    constexpr int ncols = ncols1*ncols2;
-
-    const int bidx0 = blockIdx.x;
-    const int j     = blockIdx.y;
-    const int c     = blockIdx.z;
-    const int jc    = j*ncols2 + c;
-    const int tid   = threadIdx.x;
-
-    const float * dst_fixup_data = ((const float *) dst_fixup) + gridDim.x*(2*2*ncols);
-
-    const int iter_k = ne11 / FATTN_KQ_STRIDE;
-    const int iter_j = (ne01 + (ncols1 - 1)) / ncols1;
-
-    const int kbc0      = (bidx0 + 0)*(iter_k*iter_j*(ne02/ncols2)*ne03) / gridDim.x;
-    const int kbc0_stop = (bidx0 + 1)*(iter_k*iter_j*(ne02/ncols2)*ne03) / gridDim.x;
-
-    const bool did_not_have_any_data   = kbc0 == kbc0_stop;
-    const bool wrote_beginning_of_tile = kbc0 % iter_k == 0;
-    const bool did_not_write_last      = kbc0/iter_k == kbc0_stop/iter_k && kbc0_stop % iter_k != 0;
-    if (did_not_have_any_data || wrote_beginning_of_tile || did_not_write_last) {
-        return;
-    }
-
-    const int sequence = kbc0 / (iter_k*iter_j*(ne02/ncols2));
-    const int head = (kbc0 - iter_k*iter_j*(ne02/ncols2)*sequence) / (iter_k*iter_j);
-    const int jt = (kbc0 - iter_k*iter_j*(ne02/ncols2)*sequence - iter_k*iter_j*head) / iter_k; // j index of current tile.
-
-    if (jt*ncols1 + j >= ne01) {
-        return;
-    }
-
-    dst += sequence*ne02*ne01*D + jt*ne02*(ncols1*D) + head*(ncols2*D) + (j*ne02 + c)*D + tid;
-
-    // Load the partial result that needs a fixup:
-    float dst_val = 0.0f;
-    float max_val = 0.0f;
-    float rowsum  = 0.0f;
-    {
-        dst_val = *dst;
-
-        const float2 tmp = dst_fixup[bidx0*ncols + jc];
-        max_val = tmp.x;
-        rowsum  = tmp.y;
-    }
-
-    // Iterate over previous blocks and compute the combined results.
-    // All CUDA blocks that get here must have a previous block that needs a fixup.
-    int bidx = bidx0 - 1;
-    int kbc_stop = kbc0;
-    while(true) {
-        const int kbc = bidx*(iter_k*iter_j*(ne02/ncols2)*ne03) / gridDim.x;
-        if (kbc == kbc_stop) { // Did not have any data.
-            bidx--;
-            kbc_stop = kbc;
-            continue;
-        }
-
-        const float dst_add = dst_fixup_data[bidx*ncols*D + jc*D + tid];
-
-        const float2 tmp = dst_fixup[(gridDim.x + bidx)*ncols + jc];
-
-        // Scale the current and new value accumulators depending on the max. values.
-        const float max_val_new = fmaxf(max_val, tmp.x);
-
-        const float diff_val = max_val - max_val_new;
-        const float diff_add = tmp.x   - max_val_new;
-
-        const float scale_val = diff_val >= SOFTMAX_FTZ_THRESHOLD ? expf(diff_val) : 0.0f;
-        const float scale_add = diff_add >= SOFTMAX_FTZ_THRESHOLD ? expf(diff_add) : 0.0f;
-
-        dst_val = scale_val*dst_val + scale_add*dst_add;
-        rowsum  = scale_val*rowsum  + scale_add*tmp.y;
-
-        max_val = max_val_new;
-
-        // If this block started in a previous tile we are done and don't need to combine additional partial results.
-        if (kbc % iter_k == 0 || kbc/iter_k < kbc0/iter_k) {
-            break;
-        }
-        bidx--;
-        kbc_stop = kbc;
-    }
-
-    // Write back final result:
-    *dst = dst_val / rowsum;
-}
-
 template<int D> // D == head size
 static __device__ void flash_attn_combine_results(
         const float  * __restrict__ VKQ_parts,
@@ -743,17 +653,6 @@ static __device__ void flash_attn_combine_results(
         }                                                                                    \
     }
 
-#define INSTANTIATE_FLASH_ATTN_FIXUP_FOR_NCOLS2(D, ncols1, ncols2)                      \
-extern "C" {                                                                            \
-        __launch_bounds__(D, 1)                                                         \
-        __global__ void flash_attn_stream_k_fixup_##D##_##ncols1##_##ncols2(            \
-            float * __restrict__ dst, const float2 * __restrict__ dst_fixup,            \
-            const int32_t ne03, const int32_t ne02, const int32_t ne01, const int32_t ne11){            \
-            flash_attn_stream_k_fixup<D, ncols1, ncols2>(                               \
-                dst, dst_fixup, ne01, ne02, ne03, ne11);                                \
-            }                                                                           \
-    }
- 
 #define INSTANTIATE_FLASH_ATTN_COMBINE_FOR_D(D)                                          \
 extern "C" {                                                                             \
         __launch_bounds__(D, 1)                                                          \
@@ -780,29 +679,24 @@ extern "C" {                                                                    
     INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(256, 1) \
     INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(256, 2) \
 
-#define INSTANTIATE_FLASH_ATTN_FIXUP_FOR_NCOLS1(D, ncols1) \
-    INSTANTIATE_FLASH_ATTN_FIXUP_FOR_NCOLS2(D, ncols1, 1)  \
-
-#define INSTANTIATE_FLASH_ATTN_FIXUP_FOR_D(D)     \
-    INSTANTIATE_FLASH_ATTN_FIXUP_FOR_NCOLS1(D, 1) \
-    INSTANTIATE_FLASH_ATTN_FIXUP_FOR_NCOLS1(D, 2) \
-
-#define INSTANTIATE_FLASH_ATTN_FIXUP()      \
-    INSTANTIATE_FLASH_ATTN_FIXUP_FOR_D(64)  \
-    INSTANTIATE_FLASH_ATTN_FIXUP_FOR_D(128)  \
-    INSTANTIATE_FLASH_ATTN_FIXUP_FOR_D(256)  \
-
 #define INSTANTIATE_FLASH_ATTN_COMBINE() \
     INSTANTIATE_FLASH_ATTN_COMBINE_FOR_D(64) \
     INSTANTIATE_FLASH_ATTN_COMBINE_FOR_D(128) \
     INSTANTIATE_FLASH_ATTN_COMBINE_FOR_D(256) \
 
 INSTANTIATE_FLASH_ATTN_VEC()
-INSTANTIATE_FLASH_ATTN_FIXUP()
 INSTANTIATE_FLASH_ATTN_COMBINE()
 
 /*--------------------------------------------------------------------------------------------------------------------------*/
 using namespace cuda_mma;
+
+static __device__ __forceinline__ tile<8, 8, half2> get_transposed(const tile<16, 4, half2> & t) {
+    tile<8, 8, half2> ret;
+    ret.x[0] = cuda_movmatrix(t.x[0]);
+    ret.x[1] = cuda_movmatrix(t.x[1]);
+
+    return ret;
+}
 
 typedef tile<16,  8, half2> tile_A;
 typedef tile< 8,  8, half2> tile_B;
@@ -819,37 +713,24 @@ typedef tile<16,  8, half2> tile_C_VKQ_16;
 // nwarps_max:     maximum number of warps per CUDA block, up to 8 warps in total can run per SM (given enough shared memory).
 // Q_in_reg:       whether the Q values should be kept permanently in registers.
 // nstages_target: targeted number of pipeline stages for cp_async (if available), 0 means synchronous data loading.
-// nbatch_K2:      number of K half2 values in direction of DKQ to load in parallel.
-// nbatch_V2:      number of V half2 values in direction of DV to load in parallel.
-// nbatch_combine: number of VKQ half2 values in direction of DV to combine in parallel.
+// nbatch_K2:      number of K half2 values in direction of D to load in parallel.
+// nbatch_V2:      number of V half2 values in direction of D to load in parallel.
+// nbatch_combine: number of VKQ half2 values in direction of D to combine in parallel.
 
-template <int DKQ, int DV>
+template <int D>
 struct fattn_mma_f16_config;
 
 template <>
-struct fattn_mma_f16_config< 64,  64> {
+struct fattn_mma_f16_config<64> {
     static constexpr int  nbatch_fa      = 64;
     static constexpr int  nwarps_max     = 4;
     static constexpr bool Q_in_reg       = true;
     static constexpr int  nstages_target = 2;
-
-    static __device__ int get_nbatch_K2_host(const int /*cc*/, const int /*ncols*/) {
-        return 32;
-    }
-
     static constexpr __device__ int get_nbatch_K2_device(int /*ncols*/) {
         return 32;
     }
 
-    static __device__ int get_nbatch_V2_host(const int /*cc*/, const int /*ncols*/) {
-        return 32;
-    }
-
     static constexpr __device__ int get_nbatch_V2_device(int /*ncols*/) {
-        return 32;
-    }
-
-    static __device__ int get_nbatch_combine_host(const int /*cc*/, const int /*ncols*/) {
         return 32;
     }
 
@@ -859,29 +740,18 @@ struct fattn_mma_f16_config< 64,  64> {
 };
 
 template <>
-struct fattn_mma_f16_config< 80,  80> {
+struct fattn_mma_f16_config<80> {
     static constexpr int  nbatch_fa      = 64;
     static constexpr int  nwarps_max     = 4;
     static constexpr bool Q_in_reg       = true;
     static constexpr int  nstages_target = 2;
 
-    static __device__ int get_nbatch_K2_host(const int /*cc*/, const int /*ncols*/) {
-        return 40;
-    }
 
     static constexpr __device__ int get_nbatch_K2_device(int /*ncols*/) {
         return 40;
     }
 
-    static __device__ int get_nbatch_V2_host(const int /*cc*/, const int /*ncols*/) {
-        return 40;
-    }
-
     static constexpr __device__ int get_nbatch_V2_device(int /*ncols*/) {
-        return 40;
-    }
-
-    static __device__ int get_nbatch_combine_host(const int /*cc*/, const int /*ncols*/) {
         return 40;
     }
 
@@ -891,29 +761,17 @@ struct fattn_mma_f16_config< 80,  80> {
 };
 
 template <>
-struct fattn_mma_f16_config< 96,  96> {
+struct fattn_mma_f16_config<96> {
     static constexpr int  nbatch_fa      = 64;
     static constexpr int  nwarps_max     = 4;
     static constexpr bool Q_in_reg       = true;
     static constexpr int  nstages_target = 2;
-
-    static __device__ int get_nbatch_K2_host(const int /*cc*/, const int /*ncols*/) {
-        return 48;
-    }
 
     static __device__ constexpr __device__ int get_nbatch_K2_device(int /*ncols*/) {
         return 48;
     }
 
-    static __device__ int get_nbatch_V2_host(const int /*cc*/, const int /*ncols*/) {
-        return 48;
-    }
-
     static constexpr __device__ int get_nbatch_V2_device(int /*ncols*/) {
-        return 48;
-    }
-
-    static __device__ int get_nbatch_combine_host(const int /*cc*/, const int /*ncols*/) {
         return 48;
     }
 
@@ -923,29 +781,17 @@ struct fattn_mma_f16_config< 96,  96> {
 };
 
 template <>
-struct fattn_mma_f16_config<112, 112> {
+struct fattn_mma_f16_config<112> {
     static constexpr int  nbatch_fa      = 64;
     static constexpr int  nwarps_max     = 4;
     static constexpr bool Q_in_reg       = true;
     static constexpr int  nstages_target = 2;
 
-    static __device__ int get_nbatch_K2_host(const int /*cc*/, const int /*ncols*/) {
-        return 56;
-    }
-
     static constexpr __device__ int get_nbatch_K2_device(int /*ncols*/) {
         return 56;
     }
 
-    static __device__ int get_nbatch_V2_host(const int /*cc*/, const int /*ncols*/) {
-        return 56;
-    }
-
     static constexpr __device__ int get_nbatch_V2_device(int /*ncols*/) {
-        return 56;
-    }
-
-    static __device__ int get_nbatch_combine_host(const int /*cc*/, const int /*ncols*/) {
         return 56;
     }
 
@@ -955,29 +801,17 @@ struct fattn_mma_f16_config<112, 112> {
 };
 
 template <>
-struct fattn_mma_f16_config<128, 128> {
+struct fattn_mma_f16_config<128> {
     static constexpr int  nbatch_fa      = 64;
     static constexpr int  nwarps_max     = 4;
     static constexpr bool Q_in_reg       = true;
     static constexpr int  nstages_target = 2;
 
-    static __device__ int get_nbatch_K2_host(const int /*cc*/, const int /*ncols*/) {
-        return 64;
-    }
-
     static constexpr __device__ int get_nbatch_K2_device(int /*ncols*/) {
         return 64;
     }
 
-    static __device__ int get_nbatch_V2_host(const int /*cc*/, const int /*ncols*/) {
-        return 64;
-    }
-
     static constexpr __device__ int get_nbatch_V2_device(int /*ncols*/) {
-        return 64;
-    }
-
-    static __device__ int get_nbatch_combine_host(const int /*cc*/, const int /*ncols*/) {
         return 64;
     }
 
@@ -987,35 +821,18 @@ struct fattn_mma_f16_config<128, 128> {
 };
 
 template <>
-struct fattn_mma_f16_config<256, 256> {
+struct fattn_mma_f16_config<256> {
     static constexpr int  nbatch_fa      = 32;
     static constexpr int  nwarps_max     = 4;
     static constexpr bool Q_in_reg       = true;
     static constexpr int  nstages_target = 2;
 
-    static __device__ int get_nbatch_K2_host(const int /*cc*/, const int /*ncols*/) {
-        return 128;
-    }
-
     static constexpr __device__ int get_nbatch_K2_device(int /*ncols*/) {
-        return 128;
-    }
-
-    static __device__ int get_nbatch_V2_host(const int /*cc*/, const int /*ncols*/) {
         return 128;
     }
 
     static constexpr __device__ int get_nbatch_V2_device(int /*ncols*/) {
         return 128;
-    }
-
-    static __device__ int get_nbatch_combine_host(const int /*cc*/, const int ncols) {
-#if __CUDA_ARCH__ == cuda_CC_TURING
-        return ncols <= 16 ? 128 : 64;
-#else
-        CUDA_UNUSED(ncols);
-        return 64;
-#endif // __CUDA_ARCH__ == CUDA_CC_TURING
     }
 
     static constexpr __device__ int get_nbatch_combine_device(int ncols) {
@@ -1025,46 +842,6 @@ struct fattn_mma_f16_config<256, 256> {
         CUDA_UNUSED(ncols);
         return 128;
 #endif // __CUDA_ARCH__ == CUDA_CC_TURING
-    }
-};
-
-template <>
-struct fattn_mma_f16_config<576, 512> {
-    static constexpr int  nbatch_fa      = 32;
-    static constexpr int  nwarps_max     = 8;
-    static constexpr bool Q_in_reg       = false;
-    static constexpr int  nstages_target = 1;
-
-    static __device__ int get_nbatch_K2_host(const int cc, const int ncols) {
-        return ncols <= 16 ? 96 : 160;
-    }
-
-    static constexpr __device__ int get_nbatch_K2_device(int ncols) {
-#if __CUDA_ARCH__ == CUDA_CC_TURING
-        return ncols <= 16 ? 96 : 160;
-#else
-        return ncols <= 16 ? 288 : 160;
-#endif // __CUDA_ARCH__ == CUDA_CC_TURING
-    }
-
-    static __device__ int get_nbatch_V2_host(const int cc, const int ncols) {
-        return ncols <= 16 ? 64 : 128;
-    }
-
-    static constexpr __device__ int get_nbatch_V2_device(int ncols) {
-#if __CUDA_ARCH__ == CUDA_CC_TURING
-        return ncols <= 16 ? 64 : 128;
-#else
-        return ncols <= 16 ? 256 : 128;
-#endif // __CUDA_ARCH__ == CUDA_CC_TURING
-    }
-
-    static __device__ int get_nbatch_combine_host(const int /*cc*/, const int /*ncols*/) {
-        return 128;
-    }
-
-    static constexpr __device__ int get_nbatch_combine_device(int /*ncols*/) {
-        return 128;
     }
 };
 
@@ -1237,8 +1014,8 @@ static __device__ __forceinline__ void flash_attn_ext_f16_load_mask(
     }
 }
 
-template<int DKQ, int DV, int ncols1, int ncols2, int nwarps, int ntiles,
-    bool mla, bool needs_fixup, bool is_fixup, bool last_iter>
+template<int D, int ncols1, int ncols2, int nwarps, int ntiles,
+    bool needs_fixup, bool is_fixup, bool last_iter>
 static __device__ __forceinline__ void flash_attn_ext_f16_iter(
         const float2 * const __restrict__ Q_f2,
         const half2  * const __restrict__ K_h2,
@@ -1261,7 +1038,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_iter(
         float        * const __restrict__ KQ_max,
         float        * const __restrict__ KQ_rowsum,
         const int kb0) {
-    typedef fattn_mma_f16_config<DKQ, DV> c;
+    typedef fattn_mma_f16_config<D> c;
 
 #ifdef CP_ASYNC_AVAILABLE
     constexpr int nstages = c::nstages_target;
@@ -1276,11 +1053,10 @@ static __device__ __forceinline__ void flash_attn_ext_f16_iter(
     constexpr int nbatch_K2       = c::get_nbatch_K2_device(ncols);
     constexpr int nbatch_V2       = c::get_nbatch_V2_device(ncols);
 
-    constexpr int stride_tile_Q = DKQ/2     + 4;
+    constexpr int stride_tile_Q = D/2     + 4;
     constexpr int stride_tile_K = nbatch_K2 + 4;
 
-    static_assert(!mla || nbatch_K2 >= nbatch_V2, "bad nbatch_K2, nbatch_V2 for MLA");
-    constexpr int stride_tile_V = mla ? stride_tile_K : nbatch_V2 + 4;
+    constexpr int stride_tile_V = nbatch_V2 + 4;
 
     const int k_VKQ_0 = kb0 * c::nbatch_fa;
     tile_C_KQ KQ_C[c::nbatch_fa/(np*tile_C_KQ::I) * ntiles];
@@ -1291,8 +1067,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_iter(
     tile_C_KQ_16  * KQ_C_16  = (tile_C_KQ_16  *) KQ_C;
 
     if constexpr (nstages > 1) {
-        static_assert(!mla, "multi-stage loading not implemented for MLA");
-        static_assert(nbatch_K2 == DKQ/2, "batching not implemented for multi stage loading");
+        static_assert(nbatch_K2 == D/2, "batching not implemented for multi stage loading");
         constexpr bool use_cp_async = true;
         cp_async_wait_all();
         __syncthreads();
@@ -1306,8 +1081,8 @@ static __device__ __forceinline__ void flash_attn_ext_f16_iter(
     }
 
 #pragma unroll
-    for (int k0_start = 0; k0_start < DKQ/2; k0_start += nbatch_K2) {
-        const int k0_stop = k0_start + nbatch_K2 < DKQ/2 ? k0_start + nbatch_K2 : DKQ/2;
+    for (int k0_start = 0; k0_start < D/2; k0_start += nbatch_K2) {
+        const int k0_stop = k0_start + nbatch_K2 < D/2 ? k0_start + nbatch_K2 : D/2;
         const int k0_diff = k0_stop - k0_start;
 
         if (nstages <= 1) {
@@ -1496,7 +1271,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_iter(
         if (ntiles == 1) {
             const half2 KQ_max_scale_h2 = make_half2(KQ_max_scale[0], KQ_max_scale[1]);
 #pragma unroll
-            for (int i = 0; i < DV/tile_C_VKQ::I; ++i) {
+            for (int i = 0; i < D/tile_C_VKQ::I; ++i) {
 #pragma unroll
                 for (int l = 0; l < tile_C_VKQ::ne; ++l) {
                     VKQ_C[i].x[l] *= KQ_max_scale_h2;
@@ -1507,7 +1282,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_iter(
             for (int col = 0; col < cols_per_thread; ++col) {
                 const half2 KQ_max_scale_h2 = make_half2(KQ_max_scale[col], KQ_max_scale[col]);
 #pragma unroll
-                for (int i = 0; i < DV/tile_C_VKQ_16::J; ++i) {
+                for (int i = 0; i < D/tile_C_VKQ_16::J; ++i) {
 #pragma unroll
                     for (int l0 = 0; l0 < tile_C_VKQ_16::ne; l0 += 2) {
                         VKQ_C_16[i*ntiles/2 + col/2].x[l0 + col % 2] *= KQ_max_scale_h2;
@@ -1550,13 +1325,9 @@ static __device__ __forceinline__ void flash_attn_ext_f16_iter(
         }
     }
 
-
-    // For MLA K and V have the same data.
-    // Therefore, iterate over V in reverse and re-use the data if possible.
-    static_assert(!mla || nstages <= 1, "combination of MLA and multi-stage loading not implemented");
-    constexpr int reusable_cutoff = mla ? (DKQ - 1) - (DKQ - 1) % (2*nbatch_K2) - (DKQ - DV) : DV;
+    constexpr int reusable_cutoff = D;
 #pragma unroll
-    for (int i0_stop = DV; i0_stop > 0; i0_stop -= 2*nbatch_V2) {
+    for (int i0_stop = D; i0_stop > 0; i0_stop -= 2*nbatch_V2) {
         const int i0_start = i0_stop - 2*nbatch_V2 > 0 ? i0_stop - 2*nbatch_V2 : 0;
         const int i0_diff  = i0_stop - i0_start;
 
@@ -1599,7 +1370,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_iter(
     }
 }
 
-template<int DKQ, int DV, int ncols1, int ncols2, int nwarps, int ntiles, bool mla, bool needs_fixup, bool is_fixup>
+template<int D, int ncols1, int ncols2, int nwarps, int ntiles, bool needs_fixup, bool is_fixup>
 static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
         const float2 * const __restrict__ Q_f2,
         const half2  * const __restrict__ K_h2,
@@ -1620,7 +1391,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
         const int kb0_stop) {
     //In this kernel Q, K, V are matrices while i, j, k are matrix indices.
 
-    typedef fattn_mma_f16_config<DKQ, DV> c;
+    typedef fattn_mma_f16_config<D> c;
 
 #ifdef CP_ASYNC_AVAILABLE
     constexpr int nstages = c::nstages_target;
@@ -1637,11 +1408,10 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
 
     static_assert(nwarps * (cols_per_warp/ncols2) % ncols1 == 0, "bad nwarps");
 
-    constexpr int stride_tile_Q = DKQ/2     + 4;
+    constexpr int stride_tile_Q = D/2     + 4;
     constexpr int stride_tile_K = nbatch_K2 + 4;
 
-    static_assert(!mla || nbatch_K2 >= nbatch_V2, "bad nbatch_K2, nbatch_V2 for MLA");
-    constexpr int stride_tile_V = mla ? stride_tile_K : nbatch_V2 + 4;
+    constexpr int stride_tile_V = nbatch_V2 + 4;
     constexpr int stride_tile_KV_max = stride_tile_K > stride_tile_V ? stride_tile_K : stride_tile_V;
 
     extern __shared__ half2 tile_Q[];
@@ -1649,8 +1419,8 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
     half2 * tile_V    = nstages > 1 ? tile_K + c::nbatch_fa * stride_tile_K : tile_K;
     half2 * tile_mask = nstages > 1 ? tile_V + c::nbatch_fa * stride_tile_V : tile_V + c::nbatch_fa * stride_tile_KV_max;
 
-    tile_B       Q_B[(c::Q_in_reg ? DKQ/(2*tile_B::J) : 1) * ntiles];
-    tile_C_VKQ VKQ_C[DV/tile_C_VKQ::I  * ntiles];
+    tile_B       Q_B[(c::Q_in_reg ? D/(2*tile_B::J) : 1) * ntiles];
+    tile_C_VKQ VKQ_C[D/tile_C_VKQ::I  * ntiles];
 
     tile_B_16     * Q_B_16   = (tile_B_16     *) Q_B;
     tile_C_VKQ_16 * VKQ_C_16 = (tile_C_VKQ_16 *) VKQ_C;
@@ -1668,8 +1438,8 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
     const half2 scale_h2 = make_half2(scale, scale);
 #pragma unroll
     for (int stride_k : {WARP_SIZE, WARP_SIZE/2, WARP_SIZE/4}) {
-        const int k0_start  = stride_k == WARP_SIZE ? 0 : DKQ/2 - (DKQ/2) % (2*stride_k);
-        const int k0_stop   =                             DKQ/2 - (DKQ/2) % (1*stride_k);
+        const int k0_start  = stride_k == WARP_SIZE ? 0 : D/2 - (D/2) % (2*stride_k);
+        const int k0_stop   =                             D/2 - (D/2) % (1*stride_k);
         const int stride_jc = WARP_SIZE / stride_k;
 
         if (k0_start == k0_stop) {
@@ -1712,7 +1482,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
         const int j0 = (threadIdx.y / np) * cols_per_warp;
 
 #pragma unroll
-        for (int k0 = 0; k0 < DKQ/2; k0 += tile_B::J) {
+        for (int k0 = 0; k0 < D/2; k0 += tile_B::J) {
             if (ntiles == 1) {
                 load_ldmatrix(Q_B[k0/tile_B::J], tile_Q + j0*stride_tile_Q + k0, stride_tile_Q);
             } else {
@@ -1729,7 +1499,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
 
     // Preload mask and K data for first iteration when using cp_async with multiple stages:
     if constexpr (nstages > 1) {
-        static_assert(nbatch_K2 == DKQ/2, "batching not implemented for multi-stage pipeline");
+        static_assert(nbatch_K2 == D/2, "batching not implemented for multi-stage pipeline");
         constexpr bool use_cp_async = true;
         if (ncols2 > 1 || mask_h2) {
             flash_attn_ext_f16_load_mask<ncols1, nwarps, c::nbatch_fa, use_cp_async>
@@ -1743,13 +1513,13 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
     int kb0 = kb0_start;
     for (; kb0 < kb0_stop-1; ++kb0) {
         constexpr bool last_iter = false;
-        flash_attn_ext_f16_iter<DKQ, DV, ncols1, ncols2, nwarps, ntiles, mla, needs_fixup, is_fixup, last_iter>
+        flash_attn_ext_f16_iter<D, ncols1, ncols2, nwarps, ntiles, needs_fixup, is_fixup, last_iter>
             (Q_f2, K_h2, V_h2, mask_h2, dstk, dstk_fixup, scale,
              ne01, ne02, stride_K, stride_V, stride_mask, tile_Q, tile_K, tile_V, tile_mask, Q_B, VKQ_C, KQ_max, KQ_rowsum, kb0);
     }
     { // kb0_start is always < kb0_stop so the last iter can be executed unconditionally.
         constexpr bool last_iter = true;
-        flash_attn_ext_f16_iter<DKQ, DV, ncols1, ncols2, nwarps, ntiles, mla, needs_fixup, is_fixup, last_iter>
+        flash_attn_ext_f16_iter<D, ncols1, ncols2, nwarps, ntiles, needs_fixup, is_fixup, last_iter>
             (Q_f2, K_h2, V_h2, mask_h2, dstk, dstk_fixup, scale,
              ne01, ne02, stride_K, stride_V, stride_mask, tile_Q, tile_K, tile_V, tile_mask, Q_B, VKQ_C, KQ_max, KQ_rowsum, kb0);
     }
@@ -1780,7 +1550,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
 
     constexpr int nbatch_combine = c::get_nbatch_combine_device(ncols);
     constexpr int tile_stride    = nbatch_combine + 4;
-    static_assert((DV/2) % nbatch_combine == 0, "bad nbatch_combine");
+    static_assert((D/2) % nbatch_combine == 0, "bad nbatch_combine");
 
     if constexpr (ntiles == 1) {
         const int jc_cwmo = (threadIdx.x % (2*tile_C_VKQ::J)) / tile_C_VKQ::J; // jc combine write meta offset
@@ -1907,7 +1677,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
     }
 
 #pragma unroll
-    for (int k00 = 0; k00 < DV/2; k00 += nbatch_combine) {
+    for (int k00 = 0; k00 < D/2; k00 += nbatch_combine) {
         if (ntiles == 1) {
             const int jc_cwd = threadIdx.y*tile_B::I + tile_B::get_i(-1); // jc combine write data
 #pragma unroll
@@ -1943,7 +1713,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
         if (np == 1 || threadIdx.y % np == 0) {
             // The first 2*2*gridDim.x*ncols floats in dstk_fixup are for storing max. values and row sums.
             // The values after that are for the partial results of the individual blocks.
-            float2 * dstk_fixup_data = dstk_fixup + gridDim.x*(2*ncols) + blockIdx.x*(ncols*(DV/2));
+            float2 * dstk_fixup_data = dstk_fixup + gridDim.x*(2*ncols) + blockIdx.x*(ncols*(D/2));
 
 #pragma unroll
             for (int stride_k : {WARP_SIZE, WARP_SIZE/2, WARP_SIZE/4}) {
@@ -1993,9 +1763,9 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
                         }
 
                         if (is_fixup) {
-                            dstk_fixup_data[jc_dst*(DV/2) + k00 + k] = dstk_val;
+                            dstk_fixup_data[jc_dst*(D/2) + k00 + k] = dstk_val;
                         } else {
-                            dstk[((jt*ncols1 + j_dst)*ne02 + c_dst)*(DV/2) + k00 + k] = dstk_val;
+                            dstk[((jt*ncols1 + j_dst)*ne02 + c_dst)*(D/2) + k00 + k] = dstk_val;
                         }
                     }
                 }
@@ -2008,7 +1778,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
 }
 
 
-template<int DKQ, int DV, int ncols1, int ncols2, int nwarps, int ntiles, bool mla>
+template<int D, int ncols1, int ncols2, int nwarps, int ntiles>
 __launch_bounds__(nwarps*WARP_SIZE, 1)
 static __global__ void flash_attn_ext_f16(
         const char * __restrict__ Q,
@@ -2026,15 +1796,7 @@ static __global__ void flash_attn_ext_f16(
                             const int32_t nb21, const int32_t nb22, const int32_t nb23,
                             const int32_t ne31, const int32_t ne32, const int32_t ne33,
                             const int32_t nb31, const int32_t nb32, const int32_t nb33) {
-#if __CUDA_ARCH__ == CUDA_CC_TURING
-    static_assert(ncols1*ncols2 > 32);
-#endif // __CUDA_ARCH__ == cuda_CC_TURING
-
-    static_assert(!mla || DKQ >= DV, "MLA needs DKQ >= DV");
-
-    typedef fattn_mma_f16_config<DKQ, DV> c;
-
-    static_assert(FATTN_KQ_STRIDE % fattn_mma_f16_config<DKQ, DV>::nbatch_fa == 0, "bad nbatch_fa");
+    typedef fattn_mma_f16_config<D> c;
 
     const int gqa_ratio = ne02 / ne12; // With grouped query attention there are > 1 Q matrices per K, V matrix.
 
@@ -2043,7 +1805,7 @@ static __global__ void flash_attn_ext_f16(
     const int stride_K    = nb11 / sizeof(half2);
     const int stride_mask = nb31 / sizeof(half2);
 
-    const int stride_V = mla ? stride_K : nb21 / sizeof(half2);
+    const int stride_V = nb21 / sizeof(half2);
 
     const int iter_k = ne11 / FATTN_KQ_STRIDE;
     const int iter_j = (ne01 + (ncols1 - 1)) / ncols1;
@@ -2073,9 +1835,9 @@ static __global__ void flash_attn_ext_f16(
         const half2  * K_h2    = (const half2  *) (K + nb13*sequence + nb12*(head0 / gqa_ratio));
         const half2  * mask_h2 = ncols2 == 1 && !mask ? nullptr :
             (const half2  *) (mask + nb33*(sequence % ne33) + nb31*jt*ncols1);
-        float2       * dstk    = ((float2 *) dst) + (sequence*ne01*ne02 + head0) * (DV/2);
+        float2       * dstk    = ((float2 *) dst) + (sequence*ne01*ne02 + head0) * (D/2);
 
-        const half2 * V_h2 = mla ? K_h2 + (DKQ/2 - DV/2) : (const half2 *) (V + nb23*sequence + nb22*(head0 / gqa_ratio));
+        const half2 * V_h2 = (const half2 *) (V + nb23*sequence + nb22*(head0 / gqa_ratio));
 
         const int kb0_start_kernel = kb0_start * kb_niter;
         int       kb0_stop_kernel  = kb0_stop  * kb_niter;
@@ -2087,12 +1849,12 @@ static __global__ void flash_attn_ext_f16(
         constexpr bool is_fixup = false; // All but (potentially) the last iterations write their data to dst rather than the fixup buffer.
         if (kb0_start == 0) {
             constexpr bool needs_fixup = false; // CUDA block is working on an entire tile.
-            flash_attn_ext_f16_process_tile<DKQ, DV, ncols1, ncols2, nwarps, ntiles, mla, needs_fixup, is_fixup>
+            flash_attn_ext_f16_process_tile<D, ncols1, ncols2, nwarps, ntiles, needs_fixup, is_fixup>
                 (Q_f2, K_h2, V_h2, mask_h2, dstk, dst_meta, scale,
                  ne01, ne02, stride_Q1, stride_Q2, stride_K, stride_V, stride_mask, jt, kb0_start_kernel, kb0_stop_kernel);
         } else {
             constexpr bool needs_fixup = true; // CUDA block is working on the beginning of a tile.
-            flash_attn_ext_f16_process_tile<DKQ, DV, ncols1, ncols2, nwarps, ntiles, mla, needs_fixup, is_fixup>
+            flash_attn_ext_f16_process_tile<D, ncols1, ncols2, nwarps, ntiles, needs_fixup, is_fixup>
                 (Q_f2, K_h2, V_h2, mask_h2, dstk, dst_meta, scale,
                  ne01, ne02, stride_Q1, stride_Q2, stride_K, stride_V, stride_mask, jt, kb0_start_kernel, kb0_stop_kernel);
         }
@@ -2118,9 +1880,9 @@ static __global__ void flash_attn_ext_f16(
     const half2  * K_h2    = (const half2  *) (K + nb13*sequence + nb12*(head0 / gqa_ratio));
     const half2  * mask_h2 = ncols2 == 1 && !mask ? nullptr :
         (const half2  *) (mask + nb33*(sequence % ne33) + nb31*jt*ncols1);
-    float2       * dstk    = ((float2 *) dst) + (sequence*ne01*ne02 + head0) * (DV/2);
+    float2       * dstk    = ((float2 *) dst) + (sequence*ne01*ne02 + head0) * (D/2);
 
-    const half2 * V_h2 = mla ? K_h2 + (DKQ/2 - DV/2) : (const half2 *) (V + nb23*sequence + nb22*(head0 / gqa_ratio));
+    const half2 * V_h2 = (const half2 *) (V + nb23*sequence + nb22*(head0 / gqa_ratio));
 
     const int kb0_start_kernel = kb0_start * kb_niter;
     int       kb0_stop_kernel  = kb0_stop  * kb_niter;
@@ -2131,13 +1893,103 @@ static __global__ void flash_attn_ext_f16(
 
     constexpr bool is_fixup = true; // Last index writes its data to fixup buffer to avoid data races with other blocks.
     constexpr bool needs_fixup = false;
-    flash_attn_ext_f16_process_tile<DKQ, DV, ncols1, ncols2, nwarps, ntiles, mla, needs_fixup, is_fixup>
+    flash_attn_ext_f16_process_tile<D, ncols1, ncols2, nwarps, ntiles, needs_fixup, is_fixup>
         (Q_f2, K_h2, V_h2, mask_h2, dstk, dst_meta, scale,
          ne01, ne02, stride_Q1, stride_Q2, stride_K, stride_V, stride_mask, jt, kb0_start_kernel, kb0_stop_kernel);
 }
 
-#define INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NTILES(DKQ, DV, ncols1, ncols2, nwarps, ntiles, mla) \
-    extern "C" __global__ void flash_attn_ext_f16_##DKQ##_##DV_##ncols1##_##ncols2##_##nwarps##_##ntiles##_##mla(  \
+template<int D, int ncols1, int ncols2> // D == head size
+static __device__ void flash_attn_stream_k_fixup(
+        float * __restrict__ dst, const float2 * __restrict__ dst_fixup, const int32_t ne01, const int32_t ne02, const int32_t ne03, const int32_t ne11) {
+    constexpr int ncols = ncols1*ncols2;
+
+    const int bidx0 = blockIdx.x;
+    const int j     = blockIdx.y;
+    const int c     = blockIdx.z;
+    const int jc    = j*ncols2 + c;
+    const int tid   = threadIdx.x;
+
+    const float * dst_fixup_data = ((const float *) dst_fixup) + gridDim.x*(2*2*ncols);
+
+    const int iter_k = ne11 / FATTN_KQ_STRIDE;
+    const int iter_j = (ne01 + (ncols1 - 1)) / ncols1;
+
+    const int kbc0      = (bidx0 + 0)*(iter_k*iter_j*(ne02/ncols2)*ne03) / gridDim.x;
+    const int kbc0_stop = (bidx0 + 1)*(iter_k*iter_j*(ne02/ncols2)*ne03) / gridDim.x;
+
+    const bool did_not_have_any_data   = kbc0 == kbc0_stop;
+    const bool wrote_beginning_of_tile = kbc0 % iter_k == 0;
+    const bool did_not_write_last      = kbc0/iter_k == kbc0_stop/iter_k && kbc0_stop % iter_k != 0;
+    if (did_not_have_any_data || wrote_beginning_of_tile || did_not_write_last) {
+        return;
+    }
+
+    const int sequence = kbc0 / (iter_k*iter_j*(ne02/ncols2));
+    const int head = (kbc0 - iter_k*iter_j*(ne02/ncols2)*sequence) / (iter_k*iter_j);
+    const int jt = (kbc0 - iter_k*iter_j*(ne02/ncols2)*sequence - iter_k*iter_j*head) / iter_k; // j index of current tile.
+
+    if (jt*ncols1 + j >= ne01) {
+        return;
+    }
+
+    dst += sequence*ne02*ne01*D + jt*ne02*(ncols1*D) + head*(ncols2*D) + (j*ne02 + c)*D + tid;
+
+    // Load the partial result that needs a fixup:
+    float dst_val = 0.0f;
+    float max_val = 0.0f;
+    float rowsum  = 0.0f;
+    {
+        dst_val = *dst;
+
+        const float2 tmp = dst_fixup[bidx0*ncols + jc];
+        max_val = tmp.x;
+        rowsum  = tmp.y;
+    }
+
+    // Iterate over previous blocks and compute the combined results.
+    // All CUDA blocks that get here must have a previous block that needs a fixup.
+    int bidx = bidx0 - 1;
+    int kbc_stop = kbc0;
+    while(true) {
+        const int kbc = bidx*(iter_k*iter_j*(ne02/ncols2)*ne03) / gridDim.x;
+        if (kbc == kbc_stop) { // Did not have any data.
+            bidx--;
+            kbc_stop = kbc;
+            continue;
+        }
+
+        const float dst_add = dst_fixup_data[bidx*ncols*D + jc*D + tid];
+
+        const float2 tmp = dst_fixup[(gridDim.x + bidx)*ncols + jc];
+
+        // Scale the current and new value accumulators depending on the max. values.
+        const float max_val_new = fmaxf(max_val, tmp.x);
+
+        const float diff_val = max_val - max_val_new;
+        const float diff_add = tmp.x   - max_val_new;
+
+        const float scale_val = diff_val >= SOFTMAX_FTZ_THRESHOLD ? expf(diff_val) : 0.0f;
+        const float scale_add = diff_add >= SOFTMAX_FTZ_THRESHOLD ? expf(diff_add) : 0.0f;
+
+        dst_val = scale_val*dst_val + scale_add*dst_add;
+        rowsum  = scale_val*rowsum  + scale_add*tmp.y;
+
+        max_val = max_val_new;
+
+        // If this block started in a previous tile we are done and don't need to combine additional partial results.
+        if (kbc % iter_k == 0 || kbc/iter_k < kbc0/iter_k) {
+            break;
+        }
+        bidx--;
+        kbc_stop = kbc;
+    }
+
+    // Write back final result:
+    *dst = dst_val / rowsum;
+}
+
+#define INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, ncols, ncols2) \
+    extern "C" __global__ void flash_attn_ext_f16_##D##_##ncols##_##ncols2(  \
             const char * __restrict__ Q,                                                                           \
         const char * __restrict__ K,                                                                               \
         const char * __restrict__ V,                                                                               \
@@ -2146,14 +1998,22 @@ static __global__ void flash_attn_ext_f16(
         float      * __restrict__ dst,                                                                             \
         float2     * __restrict__ dst_meta,                                                                        \
         const float scale,                                                                                         \
-        const int32_t ne00, const int32_t ne01, const int32_t ne02, const int32_t ne03,                            \
-                            const int32_t nb01, const int32_t nb02, const int32_t nb03,                            \
-        const int32_t ne10, const int32_t ne11, const int32_t ne12, const int32_t ne13,                            \
-                            const int32_t nb11, const int32_t nb12, const int32_t nb13,                            \
-                            const int32_t nb21, const int32_t nb22, const int32_t nb23,                            \
-                            const int32_t ne31, const int32_t ne32, const int32_t ne33,                            \
-                            const int32_t nb31, const int32_t nb32, const int32_t nb33)    { \
-            flash_attn_ext_f16<DKQ, DV, ncols1, ncols2, nwarps, ntiles, mla>(                                   \
+        const int32_t ne03, const int32_t ne02, const int32_t ne01, const int32_t ne00,                            \
+                            const int32_t nb03, const int32_t nb02, const int32_t nb01,                            \
+        const int32_t ne13, const int32_t ne12, const int32_t ne11, const int32_t ne10,                            \
+                            const int32_t nb13, const int32_t nb12, const int32_t nb11,                            \
+                            const int32_t nb23, const int32_t nb22, const int32_t nb21,                            \
+                            const int32_t ne33, const int32_t ne32, const int32_t ne31,                            \
+                            const int32_t nb33, const int32_t nb32, const int32_t nb31)    { \
+            typedef fattn_mma_f16_config<D> c; \
+ \
+            constexpr int ncols1         = ncols / ncols2; \
+            constexpr int ntiles        = ncols <= 8 ? 1 : 2; \
+            constexpr int cols_per_warp = ntiles * tile_B::I; \
+            constexpr int nwarps_max_x  = ncols / cols_per_warp; \
+            constexpr int nwarps_max_y  = c::nbatch_fa / tile_A::I; \
+            constexpr int nwarps        = nwarps_max_x*nwarps_max_y <= c::nwarps_max ? nwarps_max_x*nwarps_max_y : c::nwarps_max; \
+            flash_attn_ext_f16<D, ncols1, ncols2, nwarps, ntiles>(                                   \
                             Q, K, V, mask, KV_max, dst, dst_meta, scale,                     \
                             ne00, ne01, ne02, ne03,                                          \
                             nb01, nb02, nb03,                                                \
@@ -2164,5 +2024,45 @@ static __global__ void flash_attn_ext_f16(
                             nb31, nb32, nb33);                                               \
         }                                                                                    \
 
+#define INSTANTIATE_FLASH_ATTN_FIXUP_FOR_NCOLS(D, ncols, ncols2)                      \
+extern "C" {                                                                            \
+        __launch_bounds__(D, 1)                                                         \
+        __global__ void flash_attn_stream_k_fixup_##D##_##ncols##_##ncols2(            \
+            float * __restrict__ dst, const float2 * __restrict__ dst_fixup,            \
+            const int32_t ne03, const int32_t ne02, const int32_t ne01, const int32_t ne11){            \
+            constexpr int ncols1         = ncols / ncols2; \
+            flash_attn_stream_k_fixup<D, ncols1, ncols2>(                               \
+                dst, dst_fixup, ne01, ne02, ne03, ne11);                                \
+            }                                                                           \
+    }
 
-INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NTILES(64, 64, 8, 1, 4, 1, false)
+#define INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, ncols, ncols2) \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, ncols, ncols2)  \
+    INSTANTIATE_FLASH_ATTN_FIXUP_FOR_NCOLS(D, ncols, ncols2)
+
+#define INSTANTIATE_FLASH_ATTN_FOR_NCOLS(D, ncols) \
+    INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, ncols , 1)  \
+    INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, ncols , 2)  \
+    INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, ncols , 4)  \
+    INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, ncols , 8)  \
+    INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, ncols , 16)  \
+
+#define INSTANTIATE_FLASH_ATTN_FOR_D(D)                 \
+    INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, 8 , 1)  \
+    INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, 8 , 2)  \
+    INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, 8 , 4)  \
+    INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, 8 , 8)  \
+    INSTANTIATE_FLASH_ATTN_FOR_NCOLS(D, 16)     \
+    INSTANTIATE_FLASH_ATTN_FOR_NCOLS(D, 32)     \
+    INSTANTIATE_FLASH_ATTN_FOR_NCOLS(D, 64)     \
+
+#define INSTANTIATE_FLASH_ATTN()      \
+    INSTANTIATE_FLASH_ATTN_FOR_D(64)  \
+    INSTANTIATE_FLASH_ATTN_FOR_D(80)  \
+    INSTANTIATE_FLASH_ATTN_FOR_D(96)  \
+    INSTANTIATE_FLASH_ATTN_FOR_D(112) \
+    INSTANTIATE_FLASH_ATTN_FOR_D(128) \
+    INSTANTIATE_FLASH_ATTN_FOR_D(256) \
+
+// TODO: Clarify names. (i.e associate fixup with mma and combine with vec)
+INSTANTIATE_FLASH_ATTN()
