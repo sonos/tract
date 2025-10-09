@@ -2,7 +2,7 @@
 
 pub mod array;
 mod binary;
-mod flash_attn;
+pub mod flash_attn;
 mod launch_args;
 pub mod matmul;
 pub mod nn;
