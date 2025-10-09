@@ -1,4 +1,5 @@
 use cudarc::driver::result::occupancy::max_active_block_per_multiprocessor;
+use cudarc::driver::sys::CUfunction_attribute;
 use cudarc::driver::{CudaFunction, LaunchConfig, PushKernelArg};
 use cudarc::runtime::sys::cudaOccupancyMaxActiveBlocksPerMultiprocessor;
 use num_traits::One;
@@ -11,9 +12,10 @@ use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::{LibraryName, WARP_SIZE, get_cuda_view, launch_args};
 
-static N_THREADS: u32 = 128;
-static N_WARPS: u32 = 4;
+static CUDA_CC_TURING: i32 = 750;
+static CUDA_CC_AMPERE: i32 = 800;
 
+static FATTN_KQ_STRIDE: usize = 256;
 #[derive(Debug, Clone)]
 pub struct GgmlFlashAttn {
     scale: f32,
@@ -26,6 +28,7 @@ impl fmt::Display for GgmlFlashAttn {
     }
 }
 
+#[derive(Debug, Clone)]
 enum FlashAttnImpl {
     Vec,
     MmaF16,
@@ -120,37 +123,24 @@ impl GgmlFlashAttn {
         let prop = ctxt.properties();
         let newer_than_lovelace = prop.major > 8 || (prop.major == 8 && prop.minor >= 9);
 
-        match k_shape[3] {
-            64 | 80 | 96 | 112 | 128 | 256 => ensure!(k_shape[3] == v_shape[3]),
-            576 => ensure!((v_shape[3] == 512) && (head_ratio % 16 == 0)),
-            _ => bail!("No kernel available for k_shape[3] = {}", k_shape[3]),
-        }
+        ensure!(matches!(k_shape[3], 64 | 80 | 96 | 112 | 128 | 256) 
+            && k_shape[3] == v_shape[3],
+            "No kernel available for k_shape[3] = {} && v_shape[3] = {}", k_shape[3], v_shape[3]);
 
         ensure!(m_shape.is_none_or(|shape| shape[..2] == [1, 1]));
 
-        let can_use_vector_kernel = q_shape[3] <= 256 && q_shape[3] % 64 == 0;
+        let can_use_vector_kernel = q_shape[3] % 64 == 0;
         let mut best = FlashAttnImpl::MmaF16;
 
         if can_use_vector_kernel {
-            if (k_dt == DatumType::F16 && v_dt == DatumType::F16) {
-                if (newer_than_lovelace
-                    && q_shape[2] == 1
-                    && q_shape[0] == 1
-                    && !(head_ratio > 4 && k_shape[2] >= 8192))
-                {
-                    best = FlashAttnImpl::Vec;
-                }
-            } else {
-                if (newer_than_lovelace) {
-                    if (q_shape[2] <= 2) {
-                        best = FlashAttnImpl::Vec;
-                    }
-                } else {
-                    if (q_shape[2] == 1) {
-                        best = FlashAttnImpl::Vec;
-                    }
-                }
+            if (newer_than_lovelace
+                && q_shape[2] == 1
+                && q_shape[0] == 1
+                && !(head_ratio > 4 && k_shape[2] >= 8192))
+            {
+                best = FlashAttnImpl::Vec;
             }
+
             if ((head_ratio % 2 != 0 || m_shape.is_none()) && q_shape[2] == 1) {
                 best = FlashAttnImpl::Vec; // GQA-specific optimizations in the mma kernel do not apply.
             }
@@ -168,20 +158,20 @@ impl GgmlFlashAttn {
         out: &DeviceTensor,
         func: Arc<CudaFunction>,
         d: usize,
-        kq_row_granularity: usize,
         ncols1: usize,
         ncols2: usize,
+        nwarps: usize,
+        kq_row_granularity: usize,
         nbytes_shared: usize,
         stream_k: bool,
     ) -> TractResult<()> {
         let ncols = ncols1 * ncols2;
-        let is_mla = d == 512;
 
         ensure!(mask.is_none_or(|m| {
             let n = m.shape()[m.rank() - 2];
             m.shape()[2] >= q.shape()[2].next_multiple_of(16)
         }));
-        ensure!(k.shape()[k.rank() - 2] % 256 == 0, "Incorrect KV cache padding");
+        ensure!(k.shape()[k.rank() - 2] % FATTN_KQ_STRIDE == 0, "Incorrect KV cache padding");
 
         let q_rank = q.rank();
         let q_shape = q.shape();
@@ -194,10 +184,10 @@ impl GgmlFlashAttn {
         let ctxt = cuda_context();
         let prop = ctxt.properties();
         let nsm = prop.multiProcessorCount as usize;
-        let block_dim: (u32, u32, u32) = (WARP_SIZE as _, N_WARPS as _, 1);
+        let block_dim: (u32, u32, u32) = (WARP_SIZE as _, nwarps as _, 1);
 
         let max_blocks_per_sm = func.occupancy_max_active_blocks_per_multiprocessor(
-            WARP_SIZE as u32 * N_WARPS,
+            WARP_SIZE as u32 * nwarps as u32,
             nbytes_shared,
             None,
         )? as usize;
@@ -328,12 +318,12 @@ impl GgmlFlashAttn {
         unsafe {
             launch_args.launch(cfg);
         }
-        //dbg!(dst_tmp.as_ref().unwrap().to_host()?.to_array_view::<f32>()?, dst_tmp_meta.as_ref().unwrap().to_host()?.to_array_view::<f32>()?);
+        //dbg!(out.to_host()?.to_array_view::<f32>()?);
         if stream_k {
             if ntiles_total as u32 % blocks_num.0 != 0 {
                 let func = cuda_context().load_pipeline(
                     LibraryName::FlashAttn,
-                    format!("flash_attn_stream_k_fixup_{}_{}_{}", d, ncols1, ncols2),
+                    format!("flash_attn_stream_k_fixup_{}_{}_{}", d, ncols, ncols2),
                 )?;
 
                 let mut launch_args = stream.launch_builder(&func);
@@ -398,7 +388,86 @@ impl GgmlFlashAttn {
         let func = cuda_context().load_pipeline(LibraryName::FlashAttn, kernel_name)?;
 
         self.launch_generic_flash_attn(
-            stream, q, k, v, mask, out, func, d, d, ncols1, ncols2, 0, false,
+            stream, q, k, v, mask, out, func, d, ncols1, ncols2, 128 / WARP_SIZE, d, 0, false,
+        )
+    }
+
+    pub fn launch_flash_attn_mma_f16(
+        &self,
+        stream: &TractCudaStream,
+        q: &DeviceTensor,
+        k: &DeviceTensor,
+        v: &DeviceTensor,
+        mask: Option<&DeviceTensor>,
+        out: &DeviceTensor,
+    ) -> TractResult<()> {
+        let ctxt = cuda_context();
+        let properties = ctxt.properties();
+        let cc = properties.major * 100 + properties.minor * 10;
+
+        let q_shape = q.shape();
+        let k_shape = k.shape();
+        
+        let out_dim = q_shape[3];
+        let head_ratio = q_shape[1] / k_shape[1];
+        
+        let ncols2 = if mask.is_some() {
+            if head_ratio % 8 == 0 {
+                8
+            } else if head_ratio % 4 == 0 {
+                4
+            } else if head_ratio % 2 == 0 {
+                2
+            } else {
+                1
+            }
+        } else {
+            1
+        };
+
+        let ncols1 = if ncols2 <= 8 && q_shape[2] <= 8 / ncols2 {
+            8 / ncols2
+        } else if q_shape[2] <= 16 / ncols2 {
+            16 / ncols2
+        } else if cc == CUDA_CC_TURING || q_shape[2] <= 32 / ncols2 {
+            32 / ncols2
+        } else {
+            64 / ncols2
+        };
+
+        let nbatch_fa = if out_dim != 256 { 64 } else { 32 };
+        let ncols = ncols1 * ncols2;
+        let ntiles = if ncols <= 8 { 1 } else { 2 };
+        let cols_per_warp = ntiles * 8;
+        let nwarps_max_x = ncols / cols_per_warp;
+        let nwarps_max_y = nbatch_fa / 16;
+        let nwarps = (nwarps_max_x * nwarps_max_y).min(4);
+
+        let nbatch_k2 = out_dim / 2;
+        let nbatch_v2 = out_dim / 2;
+        let nbatch_combine = if cc == CUDA_CC_TURING && ncols1 <= 128 { 128 } else { 64 };
+
+        ensure!(out_dim % 8 == 0, "bad DKQ");
+        ensure!(ncols % cols_per_warp == 0, "bad ncols");
+
+        let nbytes_shared_kv_1stage = nbatch_fa * (nbatch_k2 + 4).max(nbatch_v2 + 4) * size_of::<f32>();
+        let nbytes_shared_kv_2stage = nbatch_fa * (nbatch_k2 + 4 + nbatch_v2 + 4) * size_of::<f32>();
+        let nbytes_shared_q = ncols * (out_dim/2 + 4) * size_of::<f32>();
+        let nbytes_shared_mask = ncols1 * (nbatch_fa/2 + 4) * size_of::<f32>();
+        let nbytes_shared_combine = nwarps*cols_per_warp * (nbatch_combine + 4) * size_of::<f32>();
+
+        let nbytes_shared_kv = if cc >= CUDA_CC_AMPERE { nbytes_shared_kv_2stage } else { nbytes_shared_kv_1stage };
+        let nbytes_shared_total = nbytes_shared_combine.max(nbytes_shared_q.max(nbytes_shared_kv + nbytes_shared_mask));
+
+        let kernel_name = format!("flash_attn_ext_f16_{}_{}_{}", out_dim, ncols, ncols2);
+        let func = ctxt.load_pipeline(LibraryName::FlashAttn, kernel_name)?;
+
+        func.set_attribute(
+        CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+        nbytes_shared_total as i32,
+        )?;
+        self.launch_generic_flash_attn(
+            stream, q, k, v, mask, out, func, out_dim, ncols1, ncols2, nwarps, FATTN_KQ_STRIDE, nbytes_shared_total, true
         )
     }
 
@@ -450,7 +519,7 @@ impl GgmlFlashAttn {
             }
         }
 
-        let kernel = Self::find_fattn_kernel(
+        let kernel_impl = Self::find_fattn_kernel(
             q.shape(),
             k.shape(),
             v.shape(),
@@ -458,9 +527,10 @@ impl GgmlFlashAttn {
             k.datum_type(),
             v.datum_type(),
         )?;
-        match kernel {
+
+        match kernel_impl {
             FlashAttnImpl::Vec => self.launch_flash_attn_vec(stream, q, k, v, mask, out),
-            FlashAttnImpl::MmaF16 => todo!(),
+            FlashAttnImpl::MmaF16 => self.launch_flash_attn_mma_f16(stream, q, k, v, mask, out),
         }
     }
 }
@@ -537,9 +607,9 @@ mod tests {
             let cuda_output = op.eval(
                 stream,
                 &q.clone().into_device()?,
-                &pad_f16_tensor(&k, 2, 256, f16::from_f32(0f32))?.into_device()?,
-                &pad_f16_tensor(&v, 2, 256, f16::from_f32(0f32))?.into_device()?,
-                Some(&&pad_f16_tensor(&pad_f16_tensor(&m, 3, 256, -f16::infinity())?, 2, 64, -f16::infinity())?.into_device()?),
+                &pad_f16_tensor(&k, 2, FATTN_KQ_STRIDE, f16::from_f32(0f32))?.into_device()?,
+                &pad_f16_tensor(&v, 2, FATTN_KQ_STRIDE, f16::from_f32(0f32))?.into_device()?,
+                Some(&&pad_f16_tensor(&pad_f16_tensor(&m, 3, FATTN_KQ_STRIDE, -f16::infinity())?, 2, 16, -f16::infinity())?.into_device()?),
             )?;
 
             let ref_output = Sdpa { 
@@ -547,20 +617,31 @@ mod tests {
                 datum_type: DatumType::F32,
                 acc_datum_type: DatumType::F32,
                 is_causal: false }.eval(tvec!(q.into(), k.into(), v.into(), m.into()))?;
-            //dbg!(cuda_output.to_host()?);
+
             cuda_output.to_host()?.close_enough(&ref_output[0], Approximation::Approximate)?;
             Ok(())
         })
     }
 
     #[test]
-    fn test_fattn() -> TractResult<()> {
+    fn test_fattn_vec() -> TractResult<()> {
         run_test_case(1, 1, 1, 0, 1, 64, 1.0f32)?;
         run_test_case(1, 32, 8, 0, 1, 64, 1.0f32)?;
-        run_test_case(1, 8, 8, 0, 1, 64, 1.0f32)?;
+        run_test_case(1, 8, 8, 0, 1, 128, 1.0f32)?;
         run_test_case(2, 8, 8, 0, 1, 64, 1.0f32)?;
-        run_test_case(1, 1, 1, 3, 1, 64, 1.0f32)?;
+        run_test_case(1, 1, 1, 3, 1, 256, 1.0f32)?;
         run_test_case(2, 24, 8, 3, 1, 64, 1.0f32)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_fattn_mma_f16() -> TractResult<()> {
+        run_test_case(1, 1, 1, 0, 2, 64, 1.0f32)?;
+        run_test_case(1, 8, 8, 1, 1, 80, 1.0f32)?;
+        run_test_case(2, 4, 2, 1, 1, 128, 1.0f32)?;
+        run_test_case(2, 8, 8, 0, 1, 96, 1.0f32)?;
+        run_test_case(1, 1, 1, 3, 2, 256, 1.0f32)?;
+        run_test_case(2, 2, 1, 3, 1, 112, 1.0f32)?;
         Ok(())
     }
 }

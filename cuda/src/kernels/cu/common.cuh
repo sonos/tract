@@ -445,15 +445,6 @@ static __device__ __forceinline__ half2 cuda_movmatrix(const half2 x) {
     return ret;
 }
 
-using namespace cuda_mma;
-
-static __device__ __forceinline__ tile<8, 8, half2> get_transposed(const tile<16, 4, half2> & t) {
-    tile<8, 8, half2> ret;
-    ret.x[0] = cuda_movmatrix(t.x[0]);
-    ret.x[1] = cuda_movmatrix(t.x[1]);
-
-    return ret;
-}
 
 // The compiler is always able to unroll loops if they contain continue expressions.
 // In such cases loop unrolling can still be achieved via recursion:
