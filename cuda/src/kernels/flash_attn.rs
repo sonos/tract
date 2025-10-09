@@ -17,10 +17,7 @@ static CUDA_CC_AMPERE: i32 = 800;
 
 static FATTN_KQ_STRIDE: usize = 256;
 #[derive(Debug, Clone)]
-pub struct GgmlFlashAttn {
-    scale: f32,
-    is_causal: bool,
-}
+pub struct GgmlFlashAttn;
 
 impl fmt::Display for GgmlFlashAttn {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -65,13 +62,13 @@ impl GgmlFlashAttn {
         ))
     }
 
-    pub fn output_shape<D: DimLike + One + Copy>(
-        &self,
+    pub fn output_shape<D: DimLike + One>(
+        &self, 
         q: &[D],
         k: &[D],
         v: &[D],
     ) -> TractResult<TVec<D>> {
-        ensure!(q.len() == 3 || q.len() == 4, "Q rank must be 3 or 4 (got {})", q.len());
+        ensure!(q.len() == 4, "Q rank must be 4 (got {})", q.len());
         ensure!(
             k.len() == q.len() && v.len() == q.len(),
             "K and V must have the same rank as Q (Q={}, K={}, V={})",
@@ -81,12 +78,6 @@ impl GgmlFlashAttn {
         );
 
         match (q, k, v) {
-            // Rank-3: [B, S, D]
-            ([b, seq_len, _], [_, _, _], [_, _, out_dim]) => {
-                Ok(tvec![*b, 1.into(), *seq_len, *out_dim])
-            }
-
-            // Rank-4: [B, H, S, D]
             ([b, q_heads, seq_len, _], [_, k_heads, _, _], [_, v_heads, _, out_dim]) => {
                 let qh = (*q_heads).to_i64()?;
                 let kh = (*k_heads).to_i64()?;
@@ -101,10 +92,10 @@ impl GgmlFlashAttn {
                 ensure!(kh > 0, "K/V heads must be > 0 (got {})", kh);
                 ensure!(qh % kh == 0, "Q heads ({}) must be a multiple of K/V heads ({})", qh, kh);
 
-                Ok(tvec![*b, *q_heads, *seq_len, *out_dim])
+                Ok(tvec![b.clone(), q_heads.clone(), seq_len.clone(), out_dim.clone()])
             }
 
-            _ => bail!("Inconsistent shapes: expected [B,S,D] or [B,H,S,D] for Q/K/V."),
+            _ => bail!("Inconsistent shapes: expected [B,H,S,D] for Q/K/V."),
         }
     }
 
@@ -155,6 +146,7 @@ impl GgmlFlashAttn {
         k: &DeviceTensor,
         v: &DeviceTensor,
         mask: Option<&DeviceTensor>,
+        scale: f32,
         out: &DeviceTensor,
         func: Arc<CudaFunction>,
         d: usize,
@@ -300,7 +292,7 @@ impl GgmlFlashAttn {
         launch_args.arg(&null_ptr); // KV_max
         launch_args.arg(if !stream_k && parallel_blocks > 1 { &dst_tmp_view } else { &out_view });
         launch_args.arg(&dst_tmp_meta_view);
-        launch_args.arg(&self.scale);
+        launch_args.arg(&scale);
         launch_args.set_slice(&q_shape);
         launch_args.set_slice(&q_strides[..3]);
         launch_args.set_slice(&k_shape);
@@ -374,6 +366,7 @@ impl GgmlFlashAttn {
         k: &DeviceTensor,
         v: &DeviceTensor,
         mask: Option<&DeviceTensor>,
+        scale: f32,
         out: &DeviceTensor,
     ) -> TractResult<()> {
         let q_shape = q.shape();
@@ -388,7 +381,7 @@ impl GgmlFlashAttn {
         let func = cuda_context().load_pipeline(LibraryName::FlashAttn, kernel_name)?;
 
         self.launch_generic_flash_attn(
-            stream, q, k, v, mask, out, func, d, ncols1, ncols2, 128 / WARP_SIZE, d, 0, false,
+            stream, q, k, v, mask, scale, out, func, d, ncols1, ncols2, 128 / WARP_SIZE, d, 0, false,
         )
     }
 
@@ -399,6 +392,7 @@ impl GgmlFlashAttn {
         k: &DeviceTensor,
         v: &DeviceTensor,
         mask: Option<&DeviceTensor>,
+        scale: f32,
         out: &DeviceTensor,
     ) -> TractResult<()> {
         let ctxt = cuda_context();
@@ -467,7 +461,7 @@ impl GgmlFlashAttn {
         nbytes_shared_total as i32,
         )?;
         self.launch_generic_flash_attn(
-            stream, q, k, v, mask, out, func, out_dim, ncols1, ncols2, nwarps, FATTN_KQ_STRIDE, nbytes_shared_total, true
+            stream, q, k, v, mask, scale, out, func, out_dim, ncols1, ncols2, nwarps, FATTN_KQ_STRIDE, nbytes_shared_total, true
         )
     }
 
@@ -478,16 +472,16 @@ impl GgmlFlashAttn {
         k: &DeviceTensor,
         v: &DeviceTensor,
         mask: Option<&DeviceTensor>,
+        scale: f32,
     ) -> TractResult<DeviceTensor> {
-        ensure!(!self.is_causal || mask.is_none());
         let output = unsafe {
             DeviceTensor::uninitialized_dt(
                 q.datum_type(),
                 &self.output_shape(q.shape(), k.shape(), v.shape())?,
             )?
         };
-        //dbg!(q, k, v, mask, &output);
-        self.dispatch_eval(stream, q, k, v, mask, &output)?;
+
+        self.dispatch_eval(stream, q, k, v, mask, scale, &output)?;
         stream.synchronize()?;
 
         Ok(output)
@@ -500,10 +494,11 @@ impl GgmlFlashAttn {
         k: &DeviceTensor,
         v: &DeviceTensor,
         mask: Option<&DeviceTensor>,
+        scale: f32,
         out: &DeviceTensor,
     ) -> TractResult<()> {
         ensure!(q.datum_type() == DatumType::F32 && q.datum_type() == out.datum_type());
-        ensure!(*out.shape() == *self.output_shape(q.shape(), k.shape(), v.shape())?);
+        ensure!(out.shape() == self.output_shape(q.shape(), k.shape(), v.shape())?.as_slice());
         if q.rank() == 3 {
             let q_shape = q.shape();
             let k_shape = k.shape();
@@ -529,8 +524,8 @@ impl GgmlFlashAttn {
         )?;
 
         match kernel_impl {
-            FlashAttnImpl::Vec => self.launch_flash_attn_vec(stream, q, k, v, mask, out),
-            FlashAttnImpl::MmaF16 => self.launch_flash_attn_mma_f16(stream, q, k, v, mask, out),
+            FlashAttnImpl::Vec => self.launch_flash_attn_vec(stream, q, k, v, mask, scale, out),
+            FlashAttnImpl::MmaF16 => self.launch_flash_attn_mma_f16(stream, q, k, v, mask, scale, out),
         }
     }
 }
@@ -598,18 +593,14 @@ mod tests {
                     &(0..m_len)
                         .map(|f| f16::from_f32(1f32))
                         .collect::<Vec<_>>())?;
-            
-            let op = GgmlFlashAttn {
-                scale,
-                is_causal: false
-            };
 
-            let cuda_output = op.eval(
+            let cuda_output = GgmlFlashAttn.eval(
                 stream,
                 &q.clone().into_device()?,
                 &pad_f16_tensor(&k, 2, FATTN_KQ_STRIDE, f16::from_f32(0f32))?.into_device()?,
                 &pad_f16_tensor(&v, 2, FATTN_KQ_STRIDE, f16::from_f32(0f32))?.into_device()?,
                 Some(&&pad_f16_tensor(&pad_f16_tensor(&m, 3, FATTN_KQ_STRIDE, -f16::infinity())?, 2, 16, -f16::infinity())?.into_device()?),
+                scale,
             )?;
 
             let ref_output = Sdpa { 
