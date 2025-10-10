@@ -92,7 +92,11 @@ impl Sdpa {
         seq_len: usize,
     ) -> TractResult<Option<OutletId>> {
         let m_array = Array2::from_shape_fn([seq_len, past_seq_len + seq_len], |(r, c)| {
-            if c > past_seq_len + r { f32::NEG_INFINITY } else { 0.0f32 }
+            if c > past_seq_len + r {
+                f32::NEG_INFINITY
+            } else {
+                0.0f32
+            }
         });
         let causal_mask = graph.add_const(
             "causal_mask",
@@ -402,10 +406,26 @@ impl TypedOp for Sdpa {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if node.inputs.len() == 3 && self.is_causal && self.acc_datum_type == DatumType::F32 {
+        let input_facts = model.node_input_facts(node.id)?;
+        // optimized sdpa assume mask first dimensions (batch and optional head) are 1
+        if input_facts.len() == 3
+            || input_facts[3].shape.iter().rev().skip(2).all(|d| d.is_one())
+                && self.acc_datum_type.is::<f32>()
+        {
             let scale = self.scale.as_ref().map(|t| t.cast_to_scalar()).transpose()?;
-            let op = FlashAttnGqaOp { causal: true, block_k: 4, scale };
-            TypedModelPatch::replace_single_op(model, node, &node.inputs[0..3], op).map(Some)
+            let mut patch = TypedModelPatch::default();
+            let mut inputs = patch.taps(model, &node.inputs)?;
+            let name = &node.name;
+            if let Some(mask) = inputs.get_mut(3) {
+                *mask = patch.wire_node("{name}.rm_batch", AxisOp::Rm(0), &[*mask])?[0];
+                if input_facts[0].rank() == 4 {
+                    *mask = patch.wire_node("{name}.rm_head", AxisOp::Rm(0), &[*mask])?[0];
+                }
+            }
+            let op = FlashAttnGqaOp { causal: self.is_causal, block_k: 4, scale };
+            let wire = patch.wire_node(name, op, &inputs)?[0];
+            patch.shunt_outside(model, node.id.into(), wire)?;
+            Ok(Some(patch))
         } else {
             self.patch_sdpa(model, node)
         }

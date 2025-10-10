@@ -1,5 +1,5 @@
 use tract_nnef::internal::*;
-use tract_nnef::tract_ndarray::{Array4, ArrayView1, ArrayView4, Ix4, s};
+use tract_nnef::tract_ndarray::{s, Array4, ArrayView1, ArrayView2, ArrayView4, Ix4};
 
 /// Tract operator wrapper.
 #[derive(Clone, Debug, PartialEq)]
@@ -30,15 +30,19 @@ impl Op for FlashAttnGqaOp {
 
 impl TypedOp for FlashAttnGqaOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        ensure!(inputs.len() == 3, "FlashAttnGqa expects 3 inputs (Q,K,V)");
-        let q = inputs[0];
-        let k = inputs[1];
-        let v = inputs[2];
+        let (q, k, v, opt_m) = match inputs.len() {
+            3 => (inputs[0], inputs[1], inputs[2], None),
+            4 => (inputs[0], inputs[1], inputs[2], Some(inputs[3])),
+            _ => bail!("FlashAttnGqa expects 3 or 4 inputs (Q,K,V, optional mask), got {inputs:?}"),
+        };
 
         // dtype checks
         ensure!(q.datum_type.is_float(), "Q must be floating point");
         ensure!(k.datum_type.is_float(), "K must be floating point");
         ensure!(v.datum_type.is_float(), "V must be floating point");
+        if let Some(m) = opt_m {
+            ensure!(m.datum_type.is_float(), "M must be floating point");
+        }
 
         // rank checks
         ensure!(
@@ -53,6 +57,10 @@ impl TypedOp for FlashAttnGqaOp {
             "Inputs must be of rank 3 or 4, found {}",
             q.rank()
         );
+
+        if let Some(m) = opt_m {
+            ensure!(m.rank() == 2, "Mask must be of rank 2, found mask {:?}", m,);
+        }
 
         let one = 1.to_dim();
 
@@ -93,7 +101,10 @@ impl EvalOp for FlashAttnGqaOp {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let (q, k, v) = args_3!(inputs);
+        ensure!(inputs.len() == 3 || inputs.len() == 4);
+        let [q, k, v] = &inputs[0..3] else {
+            bail!("Expects 3 or 4 inptus (Q, K, V, optional mask)")
+        };
 
         let input_dt = q.datum_type();
 
@@ -131,8 +142,13 @@ impl EvalOp for FlashAttnGqaOp {
         let k4 = k.to_shape((batch_size, num_kv_heads, kv_len, head_dim))?;
         let v4 = v.to_shape((batch_size, num_kv_heads, kv_len, head_dim))?;
 
+        let m = if let Some(m) = inputs.get(3) {
+            Some(m.to_array_view::<f32>()?.into_shape_with_order((query_len, kv_len))?.into())
+        } else {
+            None
+        };
         // Run flash attention
-        let mut out = self.flash_attention_gqa(q4.view(), k4.view(), v4.view()).into_dyn();
+        let mut out = self.flash_attention_gqa(q4.view(), k4.view(), v4.view(), m).into_dyn();
         if is_3d_case {
             out.index_axis_inplace(tract_ndarray::Axis(1), 0);
         }
@@ -157,6 +173,7 @@ impl FlashAttnGqaOp {
         q: ArrayView4<f32>,
         k: ArrayView4<f32>,
         v: ArrayView4<f32>,
+        mask: Option<ArrayView2<f32>>,
     ) -> Array4<f32> {
         // Explicit dimensions
         let (batch_size, num_q_heads, query_len, head_dim) = q.dim();
@@ -178,11 +195,6 @@ impl FlashAttnGqaOp {
                     for t_q in 0..query_len {
                         let q_vec = qh.slice(s![t_q, ..]);
 
-                        let causal_cutoff = if self.causal {
-                            kv_len.saturating_sub(query_len) + t_q
-                        } else {
-                            usize::MAX
-                        };
                         // Streaming softmax state
                         let mut m = f32::NEG_INFINITY; // running max
                         let mut l = 0.0f32; // running sum of exp(scores - m)
@@ -196,12 +208,14 @@ impl FlashAttnGqaOp {
                             let mut block_max = f32::NEG_INFINITY;
                             let mut scores: Vec<f32> = Vec::with_capacity(kend - kb);
                             for i_k in kb..kend {
-                                if self.causal && i_k > causal_cutoff {
-                                    scores.push(f32::NEG_INFINITY);
-                                    continue;
-                                }
-
-                                let s = dot1d(q_vec.view(), k_bh.row(i_k).view()) * scale;
+                                let mask = if let Some(mask) = mask {
+                                    mask[(t_q, i_k)]
+                                } else if self.causal && i_k > t_q {
+                                    f32::NEG_INFINITY
+                                } else {
+                                    0.0f32
+                                };
+                                let s = (dot1d(q_vec.view(), k_bh.row(i_k).view()) * scale) + mask;
                                 if s > block_max {
                                     block_max = s;
                                 }
