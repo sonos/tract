@@ -143,7 +143,7 @@ impl EvalOp for FlashAttnGqaOp {
         let v4 = v.to_shape((batch_size, num_kv_heads, kv_len, head_dim))?;
 
         let m = if let Some(m) = inputs.get(3) {
-            Some(m.to_array_view::<f32>()?.into_shape_with_order((query_len, kv_len))?.into())
+            Some(m.to_array_view::<f32>()?.into_shape_with_order((query_len, kv_len))?)
         } else {
             None
         };
