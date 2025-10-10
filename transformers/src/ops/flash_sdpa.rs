@@ -143,12 +143,19 @@ impl EvalOp for FlashAttnGqaOp {
         let v4 = v.to_shape((batch_size, num_kv_heads, kv_len, head_dim))?;
 
         let m = if let Some(m) = inputs.get(3) {
-            Some(m.to_array_view::<f32>()?.into_shape_with_order((query_len, kv_len))?)
+            Some(
+                m.cast_to::<f32>()?
+                    .into_owned()
+                    .into_array::<f32>()?
+                    .into_shape_with_order((query_len, kv_len))?,
+            )
         } else {
             None
         };
-        // Run flash attention
-        let mut out = self.flash_attention_gqa(q4.view(), k4.view(), v4.view(), m).into_dyn();
+
+        let mut out = self
+            .flash_attention_gqa(q4.view(), k4.view(), v4.view(), m.as_ref().map(|m| m.view()))
+            .into_dyn();
         if is_3d_case {
             out.index_axis_inplace(tract_ndarray::Axis(1), 0);
         }

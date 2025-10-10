@@ -363,6 +363,17 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
     suite.add(
+        "gqa_f32_mask_simple",
+        SdpaProblem {
+            q: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 1])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 1])),
+            v: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 1])),
+            mask: Some(ArrayD::<f32>::zeros(IxDyn(&[1, 1, 1]))),
+            scale: None,
+            is_causal: false,
+        },
+    );
+    suite.add(
         "gqa_f32_mask",
         SdpaProblem {
             q: ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 16])),
