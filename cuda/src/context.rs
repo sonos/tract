@@ -16,8 +16,8 @@ use cudarc::driver::{CudaContext, CudaFunction, CudaModule, CudaStream};
 use crate::kernels::{COMMON_H, LibraryName, cubin_dir};
 use crate::tensor::CudaTensor;
 
-use cudarc::nvrtc::result::{compile_program, create_program, destroy_program, get_program_log};
-use cudarc::nvrtc::sys::{nvrtcGetCUBIN, nvrtcGetCUBINSize, nvrtcProgram, nvrtcResult};
+use cudarc::nvrtc::result::{compile_program, destroy_program, get_program_log};
+use cudarc::nvrtc::sys::{nvrtcCreateProgram, nvrtcGetCUBIN, nvrtcGetCUBINSize, nvrtcProgram, nvrtcResult};
 use std::ffi::{CStr, CString, c_char};
 use std::path::{Path, PathBuf};
 
