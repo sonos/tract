@@ -37,7 +37,7 @@ fn generate_3d_single_head() -> BoxedStrategy<SdpaProblem<f32>> {
     use tract_ndarray::Axis;
     generate_4d_group_query_att(1, 1)
         .prop_map(|mut gqa| {
-            dbg!(&gqa);
+            //dbg!(&gqa);
             gqa.q.index_axis_inplace(Axis(1), 0);
             gqa.k.index_axis_inplace(Axis(1), 0);
             gqa.v.index_axis_inplace(Axis(1), 0);
@@ -267,6 +267,17 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
     suite.add(
+        "causal_f32_0",
+        SdpaProblem {
+            q: tensor3(&[[[0f32]]]).into_array()?,
+            k: tensor3(&[[[0f32]]]).into_array()?,
+            v: tensor3(&[[[0f32]]]).into_array()?,
+            mask: None,
+            scale: None,
+            is_causal: true,
+        },
+    );
+    suite.add(
         "gqa_f32_0",
         SdpaProblem {
             q: ArrayD::<f32>::zeros(IxDyn(&[2, 8, 5, 16])),
@@ -300,12 +311,34 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
     suite.add(
+        "gqa_f32_mask_simple",
+        SdpaProblem {
+            q: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 1])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 1])),
+            v: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 1])),
+            mask: Some(ArrayD::<f32>::zeros(IxDyn(&[1, 1, 1]))),
+            scale: None,
+            is_causal: false,
+        },
+    );
+    suite.add(
         "gqa_f32_mask",
         SdpaProblem {
             q: ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 16])),
             k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),
             v: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),
             mask: Some(ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 3]))),
+            scale: None,
+            is_causal: false,
+        },
+    );
+    suite.add(
+        "gqa_f32_nocausal_nomask",
+        SdpaProblem {
+            q: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 2, 1])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 2, 1])),
+            v: arr4(&[[[[0f32], [1f32]]]]).into_dyn(),
+            mask: None,
             scale: None,
             is_causal: false,
         },
