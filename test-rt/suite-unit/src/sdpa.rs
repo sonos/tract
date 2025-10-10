@@ -1,12 +1,12 @@
 use infra::{Test, TestSuite};
 use proptest::{
-    prelude::{Arbitrary, BoxedStrategy, Just, Strategy, any},
+    prelude::{any, Arbitrary, BoxedStrategy, Just, Strategy},
     prop_oneof,
 };
 use tract_core::internal::*;
-use tract_core::ndarray::{ArrayD, ArrayView4};
+use tract_core::ndarray::{arr3, ArrayD, ArrayView4};
 use tract_core::num_traits::Float;
-use tract_ndarray::{Array2, Array4, ArrayView2, Axis, Ix2, Ix3, Ix4, IxDyn, s};
+use tract_ndarray::{s, Array2, Array4, ArrayView2, Axis, Ix2, Ix3, Ix4, IxDyn};
 use tract_transformers::ops::sdpa::Sdpa;
 
 use crate::tensor;
@@ -319,6 +319,17 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
     suite.add(
+        "causal_f32_0",
+        SdpaProblem {
+            q: arr3(&[[[0f32]]]).into_dyn(),
+            k: arr3(&[[[0f32]]]).into_dyn(),
+            v: arr3(&[[[0f32]]]).into_dyn(),
+            mask: None,
+            scale: None,
+            is_causal: true,
+        },
+    );
+    suite.add(
         "gqa_f32_0",
         SdpaProblem {
             q: ArrayD::<f32>::zeros(IxDyn(&[2, 8, 5, 16])),
@@ -374,6 +385,17 @@ pub fn suite() -> TractResult<TestSuite> {
             mask: None,
             scale: None,
             is_causal: true,
+        },
+    );
+    suite.add(
+        "gqa_f32_nocausal_nomask",
+        SdpaProblem {
+            q: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 2, 1])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 2, 1])),
+            v: arr4(&[[[[0f32], [1f32]]]]).into_dyn(),
+            mask: None,
+            scale: None,
+            is_causal: false,
         },
     );
     Ok(suite)
