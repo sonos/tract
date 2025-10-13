@@ -2,8 +2,6 @@ use crate::block_quant::*;
 use crate::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::pack::PackedFormat;
 use crate::Ops;
-use tract_data::internal::*;
-use DatumType::*;
 
 use super::*;
 
@@ -19,13 +17,17 @@ pub fn pq40_r32() -> PackedBlockQuantFormat {
 }
 MMMExternKernel! {fma_mmm_f32_32x1<f32>(32,1)@(256,4) where(FMA)
     packing[1] = q40f32 => |k| k.with_packing_a(pq40_r32());
-    packing[2] = q40f16 => |k| k.with_packing(pq40_r32(), PackedFormat::new(F16, 1, 2));
-    packing[3] = f16f16 => |k| k.with_packing(PackedFormat::new(F16, 32, 32), PackedFormat::new(F16, 1, 2));
+    packing[2] = q40f16 => |k| k.with_packing(pq40_r32(), f16::packing(1));
+    packing[3] = f16f16 => |k| k.with_packing(f16::packing(32), f16::packing(1));
+    packing[4] = f16f32 => |k| k.with_packing(f16::packing(32), f32::packing(1));
+    packing[5] = f32f16 => |k| k.with_packing(f32::packing(32), f16::packing(1));
     quality(ManuallyOptimized)
     store(f16)
 }
 MMMExternKernel!(fma_mmm_f32_32x3<f32>(32,3)@(256,4) where(FMA)
  packing[1] = f32f16 => |k| k.with_packing(f32::packing(32).align(256), f16::packing(3));
+ packing[2] = f16f32 => |k| k.with_packing(f16::packing(32).align(256), f32::packing(3));
+ packing[3] = f16f16 => |k| k.with_packing(f16::packing(32).align(256), f16::packing(3));
  quality(ManuallyOptimized)
  store(f16)
 );

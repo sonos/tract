@@ -46,6 +46,12 @@ Windows ABI:
     cmp     r8, 3
     jz      {{L}}f16f16
 
+    cmp     r8, 4
+    jz      {{L}}f16f32
+
+    cmp     r8, 5
+    jz      {{L}}f32f16
+
 {{align}} 16
 {{L}}main_loop_packed_packed:
     vbroadcastss    ymm15,  dword ptr [rcx]
@@ -247,6 +253,56 @@ Windows ABI:
     jnz             {{L}}f16f16
 
     jmp             {{L}}non_linear_loop
+
+{{L}}f32f16:
+{{align}} 16
+    vpbroadcastw    ymm15, word ptr [rcx]
+
+    vmovaps     ymm4, [rax]
+    vmovaps     ymm5, [rax + 32]
+    vmovaps     ymm6, [rax + 64]
+    vmovaps     ymm7, [rax + 96]
+
+    vcvtph2ps       ymm15, xmm15
+
+    vfmadd231ps     ymm0, ymm15, ymm4
+    vfmadd231ps     ymm1, ymm15, ymm5
+    vfmadd231ps     ymm2, ymm15, ymm6
+    vfmadd231ps     ymm3, ymm15, ymm7
+
+    add             rcx, 2
+	add             rax, 128
+    sub             rbx, 1
+    jnz             {{L}}f32f16
+
+    jmp             {{L}}non_linear_loop
+
+{{L}}f16f32:
+{{align}} 16
+    vbroadcastss    ymm15,  dword ptr [rcx]
+
+    vmovaps     xmm4, [rax]
+    vmovaps     xmm5, [rax + 16]
+    vmovaps     xmm6, [rax + 32]
+    vmovaps     xmm7, [rax + 48]
+
+    vcvtph2ps       ymm4, xmm4
+    vcvtph2ps       ymm5, xmm5
+    vcvtph2ps       ymm6, xmm6
+    vcvtph2ps       ymm7, xmm7
+
+    vfmadd231ps     ymm0, ymm15, ymm4
+    vfmadd231ps     ymm1, ymm15, ymm5
+    vfmadd231ps     ymm2, ymm15, ymm6
+    vfmadd231ps     ymm3, ymm15, ymm7
+
+    add             rcx, 4
+	add             rax, 64
+    sub             rbx, 1
+    jnz             {{L}}f16f32
+
+    jmp             {{L}}non_linear_loop
+
 
 {% include "fma_mmm_f32_scalars.tmpliq" from:0, to:3, type:"f32" %}
 {% include "fma_mmm_f32_per_rows.tmpliq" mr:32, from:0, to:3, type:"f32" %}
