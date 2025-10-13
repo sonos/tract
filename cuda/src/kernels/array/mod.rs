@@ -4,11 +4,13 @@ mod concat;
 mod copy;
 mod permute_axes;
 mod rotate_half;
+mod pad;
 
 pub use broadcast::MultiBroadcast;
 pub use cast::Cast;
 pub use concat::Concat;
 pub use copy::Memcpy;
+pub use pad::Pad;
 pub use permute_axes::PermuteAxes;
 pub use rotate_half::RotateHalf;
 
@@ -38,5 +40,12 @@ pub fn all_functions() -> Vec<String> {
             .flat_map(|(dt1, dt2)| Cast.kernel_name(dt1, dt2).into_iter()),
     );
 
+    functions.extend(
+    tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
+        .into_iter()
+        .flat_map(|dt| {
+            Pad::kernel_name(dt)
+        }),
+    );
     functions.into_iter().collect()
 }

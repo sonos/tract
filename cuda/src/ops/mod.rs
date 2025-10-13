@@ -16,6 +16,7 @@ mod scaled_masked_softmax;
 mod slice;
 mod softmax;
 mod unary;
+mod pad;
 
 pub use apply_rope::CudaApplyRope;
 pub use binary::CudaBinOp;
