@@ -1,5 +1,70 @@
 #include "common.cuh"
 
+template <typename T>
+__global__ void pad_constant(
+    const T* __restrict__ in_ptr,
+    T* __restrict__ out_ptr,
+    int in_shape0,  int in_shape1,  int in_shape2,  int in_shape3,  int in_shape4,
+    int out_shape0, int out_shape1, int out_shape2, int out_shape3, int out_shape4,
+    int in_stride0, int in_stride1, int in_stride2, int in_stride3, int in_stride4,
+    int pad_before0, int pad_before1, int pad_before2, int pad_before3, int pad_before4,
+    T fill,
+    int total_out_elems
+) {
+    int o = blockIdx.x * blockDim.x + threadIdx.x;
+    if (o >= total_out_elems) return;
+
+    int idx = o;
+
+    int c4 = idx % out_shape4; idx /= out_shape4;
+    int c3 = idx % out_shape3; idx /= out_shape3;
+    int c2 = idx % out_shape2; idx /= out_shape2;
+    int c1 = idx % out_shape1; idx /= out_shape1;
+    int c0 = idx % out_shape0;
+
+    int i4 = c4 - pad_before4;
+    int i3 = c3 - pad_before3;
+    int i2 = c2 - pad_before2;
+    int i1 = c1 - pad_before1;
+    int i0 = c0 - pad_before0;
+
+    bool in_bounds =
+        (i4 >= 0 && i4 < in_shape4) &&
+        (i3 >= 0 && i3 < in_shape3) &&
+        (i2 >= 0 && i2 < in_shape2) &&
+        (i1 >= 0 && i1 < in_shape1) &&
+        (i0 >= 0 && i0 < in_shape0);
+
+    int in_off = 0;
+    if (in_bounds) {
+        in_off += i4 * in_stride4;
+        in_off += i3 * in_stride3;
+        in_off += i2 * in_stride2;
+        in_off += i1 * in_stride1;
+        in_off += i0 * in_stride0;
+        out_ptr[o] = in_ptr[in_off];
+    } else {
+        out_ptr[o] = fill;
+    }
+}
+
+#define INSTANTIATE_PAD_CONSTANT(name, T)                                              \
+   extern "C" __global__ void pad_constant_##name(                                     \
+        const T* __restrict__ in_ptr, \
+        T* __restrict__ out_ptr, \
+        int in_shape0, int in_shape1, int in_shape2, int in_shape3, int in_shape4, \
+        int out_shape0, int out_shape1, int out_shape2, int out_shape3, int out_shape4, \
+        int in_stride0, int in_stride1, int in_stride2, int in_stride3, int in_stride4, \
+        int pad_before0, int pad_before1, int pad_before2, int pad_before3, int pad_before4, \
+        T fill,                                                                              \
+        int total_out_elems) {                                    \
+      pad_constant<T>(in_ptr, out_ptr, in_shape0, in_shape1, in_shape2, in_shape3, in_shape4, \
+        out_shape0, out_shape1, out_shape2, out_shape3, out_shape4, \
+        in_stride0, in_stride1, in_stride2, in_stride3, in_stride4, \
+        pad_before0, pad_before1, pad_before2, pad_before3, pad_before4, \
+        fill, total_out_elems);                        \
+    }
+
 #define INSTANTIATE_ROTATE_HALF(name, T)                                       \
   extern "C" __global__ void rotate_half_nd2_##name(                           \
       const T *input, T *output, int shape_0, int shape_1, int strides_0,      \
@@ -126,8 +191,9 @@
     }                                                                          \
   }
 
-#define INSTANTIATE_CAST_AND_COPY(tname, type)                                 \
+#define INSTANTIATE_CAST_PAD_AND_COPY(tname, type)                             \
   INSTANTIATE_COPY(tname, type)                                                \
+  INSTANTIATE_PAD_CONSTANT(tname, type)                                        \
   INSTANTIATE_CAST_OP(tname##_bool, type, bool)                                \
   INSTANTIATE_CAST_OP(tname##_f32, type, float)                                \
   INSTANTIATE_CAST_OP(tname##_f16, type, __half)                               \
@@ -141,17 +207,17 @@
   INSTANTIATE_CAST_OP(tname##_i64, type, int64_t)
 
 #define INSTANTIATE_ALL(tname, type)                                           \
-  INSTANTIATE_CAST_AND_COPY(tname, type)                                       \
+  INSTANTIATE_CAST_PAD_AND_COPY(tname, type)                                   \
   INSTANTIATE_ROTATE_HALF(tname, type)
 
-INSTANTIATE_CAST_AND_COPY(bool, bool)
+INSTANTIATE_CAST_PAD_AND_COPY(bool, bool)
 INSTANTIATE_ALL(f32, float)
 INSTANTIATE_ALL(f16, __half)
 INSTANTIATE_ALL(i8, int8_t)
 INSTANTIATE_ALL(i16, int16_t)
 INSTANTIATE_ALL(i32, int32_t)
 INSTANTIATE_ALL(i64, int64_t)
-INSTANTIATE_CAST_AND_COPY(u8, uint8_t)
-INSTANTIATE_CAST_AND_COPY(u16, uint16_t)
-INSTANTIATE_CAST_AND_COPY(u32, uint32_t)
-INSTANTIATE_CAST_AND_COPY(u64, uint64_t)
+INSTANTIATE_CAST_PAD_AND_COPY(u8, uint8_t)
+INSTANTIATE_CAST_PAD_AND_COPY(u16, uint16_t)
+INSTANTIATE_CAST_PAD_AND_COPY(u32, uint32_t)
+INSTANTIATE_CAST_PAD_AND_COPY(u64, uint64_t)
