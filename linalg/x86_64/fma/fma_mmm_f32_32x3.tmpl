@@ -40,6 +40,12 @@ Windows ABI:
     cmp     r8, 1
     jz      {{L}}main_loop_packed_packed_f32_f16
 
+    cmp     r8, 2
+    jz      {{L}}main_loop_packed_packed_f16_f32
+
+    cmp     r8, 3
+    jz      {{L}}main_loop_packed_packed_f16_f16
+
 {{L}}main_loop_packed_packed:
     {% include "4x3/packed_packed_loop1/avx.tmpli" %}
 
@@ -89,6 +95,97 @@ Windows ABI:
 
     dec             rbx
     jnz             {{L}}main_loop_packed_packed_f32_f16
+
+    jmp             {{L}}non_linear_loop
+    
+{{L}}main_loop_packed_packed_f16_f32:
+	// Load col of A
+	vmovaps			xmm12,	[rax]
+
+	// Fill 3 cols of B
+    vbroadcastss    ymm13, dword ptr [rcx + 0]
+    vbroadcastss    ymm14, dword ptr [rcx + 4]
+    vbroadcastss    ymm15, dword ptr [rcx + 8]
+
+    vcvtph2ps       ymm12, xmm12
+
+	vfmadd231ps		ymm0,	ymm12, ymm13
+	vfmadd231ps		ymm4,	ymm12, ymm14
+	vfmadd231ps		ymm8,	ymm12, ymm15
+
+	vmovaps			xmm12,	[rax+16]
+    vcvtph2ps       ymm12, xmm12
+
+	vfmadd231ps		ymm1,	ymm12, ymm13
+	vfmadd231ps		ymm5,	ymm12, ymm14
+	vfmadd231ps		ymm9,	ymm12, ymm15
+
+	vmovaps			xmm12,	[rax+32]
+    vcvtph2ps       ymm12, xmm12
+
+	vfmadd231ps		ymm2,	ymm12, ymm13
+	vfmadd231ps		ymm6,	ymm12, ymm14
+	vfmadd231ps		ymm10,	 ymm12, ymm15
+
+	vmovaps			xmm12,	[rax+48]
+    vcvtph2ps       ymm12, xmm12
+
+	vfmadd231ps		ymm3,	ymm12, ymm13
+	vfmadd231ps		ymm7,	ymm12, ymm14
+	vfmadd231ps		ymm11,	ymm12, ymm15
+
+    add             rcx,    12
+    add             rax,    64
+
+    dec             rbx
+    jnz             {{L}}main_loop_packed_packed_f16_f32
+
+    jmp             {{L}}non_linear_loop
+
+{{L}}main_loop_packed_packed_f16_f16:
+	// Load col of A
+	vmovaps			xmm12,	[rax]
+
+	// Fill 3 cols of B
+    vpbroadcastw    xmm13,  word ptr [rcx + 0]
+    vpbroadcastw    xmm14,  word ptr [rcx + 2]
+    vpbroadcastw    xmm15,  word ptr [rcx + 4]
+
+    vcvtph2ps       ymm12, xmm12
+    vcvtph2ps       ymm13, xmm13
+    vcvtph2ps       ymm14, xmm14
+    vcvtph2ps       ymm15, xmm15
+
+	vfmadd231ps		ymm0,	ymm12, ymm13
+	vfmadd231ps		ymm4,	ymm12, ymm14
+	vfmadd231ps		ymm8,	ymm12, ymm15
+
+	vmovaps			xmm12,	[rax+16]
+    vcvtph2ps       ymm12, xmm12
+
+	vfmadd231ps		ymm1,	ymm12, ymm13
+	vfmadd231ps		ymm5,	ymm12, ymm14
+	vfmadd231ps		ymm9,	ymm12, ymm15
+
+	vmovaps			xmm12,	[rax+32]
+    vcvtph2ps       ymm12, xmm12
+
+	vfmadd231ps		ymm2,	ymm12, ymm13
+	vfmadd231ps		ymm6,	ymm12, ymm14
+	vfmadd231ps		ymm10,	 ymm12, ymm15
+
+	vmovaps			xmm12,	[rax+48]
+    vcvtph2ps       ymm12, xmm12
+
+	vfmadd231ps		ymm3,	ymm12, ymm13
+	vfmadd231ps		ymm7,	ymm12, ymm14
+	vfmadd231ps		ymm11,	ymm12, ymm15
+
+    add             rcx,    6
+    add             rax,    64
+
+    dec             rbx
+    jnz             {{L}}main_loop_packed_packed_f16_f16
 
     jmp             {{L}}non_linear_loop
 
