@@ -1,5 +1,5 @@
 use crate::internal::*;
-use crate::ops::cast::cast;
+use crate::ops::cast::{cast, Cast};
 use crate::ops::change_axes::wire_with_rank_broadcast;
 use crate::ops::nn::LeakyRelu;
 use ndarray::*;
@@ -501,9 +501,10 @@ impl TypedOp for OptMatMul {
             }
         }
         if let Some(cast_to) = succ.op_as::<ops::cast::Cast>().map(|cast| cast.to) {
-            if (cast_to.unquantized() == i8::datum_type()
+            if ((cast_to.unquantized() == i8::datum_type()
                 || cast_to.unquantized() == u8::datum_type())
-                && self.c_fact.datum_type == i32::datum_type()
+                && self.c_fact.datum_type == i32::datum_type())
+                || self.mmm.iter().all(|m| m.stores().contains(&cast_to))
             {
                 if let Some(ProtoFusedSpec::Store(stores)) = self.micro_ops.last() {
                     if stores.iter().any(|s| matches!(s, OutputStoreSpec::Strides { .. })) {
@@ -539,28 +540,35 @@ impl TypedOp for OptMatMul {
             patch.dont_apply_twice = Some(format!("Fuse {succ} into {node}"));
             return Ok(Some(patch));
         }
-        if succ.op_is::<AxisOp>() {
+        if succ.op_is::<AxisOp>() || succ.op_is::<IntoShape>() {
             if let &[next] = &*succ.outputs[0].successors {
-                let bin = model.node(next.node);
-                if let Some(op) = bin.op_as::<ops::binary::TypedBinOp>() {
+                let next_node = model.node(next.node);
+                if let Some(cast) = next_node.op_as::<Cast>() {
+                    let mut patch = TypedModelPatch::default();
+                    let mut wire = patch.tap_model(model, node.id.into())?;
+                    wire = patch.wire_node(&next_node.name, cast.clone(), &[wire])?[0];
+                    wire = patch.wire_node(&succ.name, succ.op.clone(), &[wire])?[0];
+                    patch.shunt_outside(model, next_node.id.into(), wire)?;
+                    return Ok(Some(patch));
+                } else if let Some(op) = next_node.op_as::<ops::binary::TypedBinOp>() {
                     if op.0.as_linalg_binop().is_none() {
                         return Ok(None);
                     };
                     let flipped = succ.inputs[0].node == node.id;
-                    let other_outlet = bin.inputs[flipped as usize];
+                    let other_outlet = next_node.inputs[flipped as usize];
                     if let Some(uni) = &model.outlet_fact(other_outlet)?.uniform {
                         let mut patch = TypedModelPatch::default();
                         let cst =
                             patch.add_const(&model.node(other_outlet.node).name, uni.clone())?;
                         let output = patch.tap_model(model, node.id.into())?;
                         let wire = wire_with_rank_broadcast(
-                            &bin.name,
+                            &next_node.name,
                             &mut patch,
                             op.clone(),
                             &if flipped { [output, cst] } else { [cst, output] },
                         )?;
                         let wire = patch.wire_node(&succ.name, succ.op.clone(), &wire)?[0];
-                        patch.shunt_outside(model, bin.id.into(), wire)?;
+                        patch.shunt_outside(model, next_node.id.into(), wire)?;
                         return Ok(Some(patch));
                     }
                 }
