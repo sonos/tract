@@ -1,6 +1,7 @@
 pub mod ops;
 mod rewriter;
 use rewriter::*;
+mod tensor;
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::transform::ModelTransform;
 
