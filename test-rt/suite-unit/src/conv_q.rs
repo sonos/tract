@@ -537,6 +537,23 @@ pub fn suite() -> TractResult<TestSuite> {
     );
 
     let mut qp = qp_noop_i8();
+    qp[4] = tensor0(-1i32);
+    suite.add(
+        "c_zp_0",
+        QConvProblem {
+            shape_in: CHW.from_n_c_hw(1, 1, [2]).unwrap(),
+            kernel_format: OIHW,
+            co: 1,
+            group: 1,
+            data: tensor2(&[[0i8, 0]]),
+            kernel: tensor3(&[[[0i8, 0]]]),
+            bias: None,
+            qp,
+            raw_output_dt: DatumType::I8,
+        },
+    );
+
+    let mut qp = qp_noop_i8();
     qp[0] = tensor0(1i32);
     suite.add(
         "a0",
