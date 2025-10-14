@@ -555,12 +555,11 @@ pub fn wire_rank_broadcast(
         inputs.iter().map(|o| target.outlet_fact(*o).cloned()).collect::<TractResult<TVec<_>>>()?;
     let max_rank = facts.iter().map(|f| f.rank()).max().unwrap();
     let mut wires = tvec!();
-    let prefix = prefix.as_ref();
     for i in 0..inputs.len() {
         let mut wire = inputs[i];
-        for j in facts[i].rank()..max_rank {
-            wire =
-                target.wire_node(format!("{prefix}.fix-rank-{i}-{j}"), AxisOp::Add(0), &[wire])?[0];
+        for _ in facts[i].rank()..max_rank {
+            let name = target.unique_name(prefix.as_ref().to_string() + ".fix-rank");
+            wire = target.wire_node(name, AxisOp::Add(0), &[wire])?[0];
         }
         wires.push(wire);
     }
