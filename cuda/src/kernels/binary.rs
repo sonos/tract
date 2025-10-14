@@ -195,7 +195,7 @@ impl BinOps {
         let rhs4: TVec<usize> = groups.iter().map(|g| prod(rhs, g)).collect();
         let out4: TVec<usize> = groups.iter().map(|g| prod(out, g)).collect();
 
-        Ok((lhs4.into(), rhs4.into(), out4.into()))
+        Ok((lhs4, rhs4, out4))
     }
 
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
