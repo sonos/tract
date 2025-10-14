@@ -41,9 +41,7 @@ pub fn all_functions() -> Vec<String> {
     );
 
     functions.extend(
-        tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
-            .into_iter()
-            .flat_map(|dt| Pad::kernel_name(dt)),
+        tract_gpu::tensor::DeviceTensor::SUPPORTED_DT.into_iter().flat_map(Pad::kernel_name),
     );
     functions.into_iter().collect()
 }
