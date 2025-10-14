@@ -1,7 +1,7 @@
 #include "common.cuh"
 
 template <typename T>
-__global__ void pad_constant(
+static __device__ void pad_constant(
     const T* __restrict__ in_ptr,
     T* __restrict__ out_ptr,
     int in_shape0,  int in_shape1,  int in_shape2,  int in_shape3,  int in_shape4,
