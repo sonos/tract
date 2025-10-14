@@ -149,38 +149,27 @@ impl BinOps {
                 || (rhs_k[i] == 1 && lhs_k[i] == out_k[i] && out_k[i] != 1)
         };
 
-        #[derive(Debug)]
-        enum Seg {
-            Bcast(usize),
-            Non(Vec<usize>),
-        }
-
-        let mut segments: Vec<Seg> = Vec::new();
-        let mut cur_non: Vec<usize> = Vec::new();
-        for i in 0..r {
-            if is_broadcast(i) {
-                if !cur_non.is_empty() {
-                    segments.push(Seg::Non(std::mem::take(&mut cur_non)));
-                }
-                segments.push(Seg::Bcast(i));
+        let mut segments: Vec<Vec<usize>> = Vec::new();
+        let mut cur = vec![0usize];
+        let mut cur_is_b = is_broadcast(0);
+        for i in 1..r {
+            let b = is_broadcast(i);
+            if b == cur_is_b {
+                cur.push(i);
             } else {
-                cur_non.push(i);
+                segments.push(std::mem::take(&mut cur));
+                cur = vec![i];
+                cur_is_b = b;
             }
         }
-        if !cur_non.is_empty() {
-            segments.push(Seg::Non(cur_non));
-        }
-
+        segments.push(cur);
         ensure!(segments.len() <= 4, "Cannot reshape to rank 4 while isolating broadcasts");
 
         // 6) Right-align into exactly 4 groups, padding empties on the left.
         let pad = 4usize.saturating_sub(segments.len());
         let mut groups: [Vec<usize>; 4] = [vec![], vec![], vec![], vec![]];
         for (j, seg) in segments.into_iter().enumerate() {
-            groups[pad + j] = match seg {
-                Seg::Bcast(i) => vec![i],
-                Seg::Non(ixs) => ixs,
-            };
+            groups[pad + j] = seg;
         }
 
         let prod = |shape: &[usize], idxs: &Vec<usize>| {
@@ -417,6 +406,19 @@ mod tests {
         assert_eq!(l4, tvec![8, 4, 10, 12]);
         assert_eq!(r4, tvec![1, 1, 1, 1]);
         assert_eq!(o4, tvec![8, 4, 10, 12]);
+    }
+
+    #[test]
+    fn supports_adjacent_broadcasts_coalesced() {
+        let lhs = [2, 3, 4, 4, 4];
+        let rhs = [1, 3, 1, 1, 1];
+        let out = [2, 3, 4, 4, 4];
+
+        let (l4, r4, o4) = BinOps::reshape_to_rank_4_with_broadcast(&lhs, &rhs, &out).unwrap();
+
+        assert_eq!(l4, tvec![1, 2, 3, 4 * 4 * 4]);
+        assert_eq!(r4, tvec![1, 1, 3, 1]);
+        assert_eq!(o4, tvec![1, 2, 3, 64]);
     }
 
     #[test]
