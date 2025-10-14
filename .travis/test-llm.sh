@@ -84,7 +84,6 @@ id=$model_id-$q
 BROKEN_MODELS=(
     "Qwen--Qwen2.5-7B-Instruct-q40ef16:metal"
     "Qwen--Qwen2.5-7B-Instruct-f16f16:metal"
-    "Qwen--Qwen2.5-7B-Instruct-q40ef16:cuda"
 )
 
 for broken_id in "${BROKEN_MODELS[@]}"
