@@ -482,3 +482,42 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_prefix_matmul_transform_f32_f16() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let (b, m, k, n) = (1, 16, 128, 32);
+
+        let a_fact = TypedFact::dt_shape(DatumType::F32, &[b, m, k]);
+        let b_fact = TypedFact::dt_shape(DatumType::F16, &[b, k, n]);
+
+        let source_a = model.add_source("a", a_fact)?;
+        let source_b = model.add_source("b", b_fact)?;
+
+        let op = PrefixMatMul {
+            transpose_a: false,
+            transpose_b: false,
+            transpose_c: false,
+            quantize_output: None,
+            operating_dt: Some(DatumType::F32),
+        };
+
+        let matmul_out = model.wire_node("matmul", op, &[source_a, source_b])?;
+        model.set_output_outlets(&matmul_out)?;
+
+        let tensor_a = Tensor::zero::<f32>(&[b, m, k])?;
+        let tensor_b = Tensor::zero::<f16>(&[b, k, n])?;
+        let inputs = tvec!(tensor_a.into(), tensor_b.into());
+
+        let transform = CudaTransform::default();
+        transform.transform(&mut model)?;
+
+        let cuda_runnable = model.into_runnable()?;
+        let _ = cuda_runnable.run(inputs)?;
+        Ok(())
+    }
+}
