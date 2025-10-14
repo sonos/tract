@@ -433,7 +433,6 @@ impl TypedOp for OptMatMul {
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         use crate::ops;
-        eprintln!("{model}");
         if node.outputs.len() != 1
             || node.outputs[0].successors.len() != 1
             || model.output_outlets()?.contains(&node.id.into())
