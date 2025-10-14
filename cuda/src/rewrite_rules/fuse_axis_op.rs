@@ -17,6 +17,7 @@ fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
             || node.op_is::<crate::ops::CudaMultiBroadcastTo>()
             || node.op_is::<crate::ops::CudaDynKVCache>()
             || node.op_is::<crate::ops::CudaGgmlQuantQ81>()
+            || node.op_is::<crate::ops::CudaPad>()
     })
 }
 
@@ -117,6 +118,7 @@ pub fn fuse_axis_op(
         crate::ops::CudaGgmlGemm,
         crate::ops::CudaDynKVCache,
         crate::ops::CudaGgmlQuantQ81,
+        crate::ops::CudaPad,
     );
 
     // Handle AxisOp::Move operator.
