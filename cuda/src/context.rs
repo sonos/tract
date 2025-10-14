@@ -89,11 +89,7 @@ impl TractCudaContext {
 
         for lib in LibraryName::ALL {
             let out_path = lib.cubin_path();
-            let force_recompile = matches!(
-                std::env::var("TRACT_CUDA_RECOMPILE_KERNELS").as_deref(),
-                Ok("1") | Ok("true") | Ok("yes") | Ok("on")
-            );
-            if out_path.exists() && !force_recompile {
+            if out_path.exists() {
                 continue;
             }
 
