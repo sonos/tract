@@ -121,6 +121,9 @@ Qwen--Qwen2.5-7B-Instruct-q40ef16.p50s50.arm64.cpu 17
 Qwen--Qwen2.5-7B-Instruct-q40ef16.p50s50.x86_64.cpu 17
 Qwen--Qwen2.5-7B-Instruct-q40ef16.p99s1.arm64.cpu 14
 Qwen--Qwen2.5-7B-Instruct-q40ef16.p99s1.x86_64.cpu 14
+Qwen--Qwen2.5-7B-Instruct-q40ef16.p0s100.x86_64.cuda 20
+Qwen--Qwen2.5-7B-Instruct-q40ef16.p50s50.x86_64.cuda 20
+Qwen--Qwen2.5-7B-Instruct-q40ef16.p99s1.x86_64.cuda 20
 Qwen--Qwen3-1.7B-f16f16.p0s100.arm64.cpu 11
 Qwen--Qwen3-1.7B-f16f16.p0s100.arm64.metal 6
 Qwen--Qwen3-1.7B-f16f16.p0s100.x86_64.cpu 9

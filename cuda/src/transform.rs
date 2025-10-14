@@ -334,7 +334,6 @@ fn convert_matmul_to_cuda(
     op: &PrefixMatMul,
 ) -> TractResult<TVec<OutletId>> {
     let mut input_facts = model.node_input_facts(node.id)?;
-
     // GGML kernel expects weights in second position and activations in first position
     // This avoid output transposition due to GGML column-major data expectations
     let mut swap_inputs = false;
@@ -351,7 +350,11 @@ fn convert_matmul_to_cuda(
     let outlets = inputs.split_at_mut(1);
     let act_outlet = &mut outlets.0[0];
     let weights_outlet = &mut outlets.1[0];
-    if op.transpose_a {
+
+    let transpose_act = if swap_inputs { !op.transpose_b } else { op.transpose_a };
+    let transpose_weight = if swap_inputs { !op.transpose_a } else { op.transpose_b };
+
+    if transpose_act {
         let rank = act_fact.rank();
         let perm_act_op = ops::CudaAxisOp::from_tract_core(AxisOp::Move(rank - 2, rank - 1));
         let perm_act_name = node.name.clone() + ".perm_activs";
@@ -364,7 +367,7 @@ fn convert_matmul_to_cuda(
             target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[*act_outlet])?[0];
     }
 
-    if !op.transpose_b {
+    if !transpose_weight {
         ensure!(as_quant_fact(weight_fact, &Q4_0).is_none(), "Cannot transpose Q40 tensor");
 
         let rank = weight_fact.rank();
@@ -380,7 +383,6 @@ fn convert_matmul_to_cuda(
         *act_outlet =
             target.wire_node(node.name.clone() + ".quant_activs", quant_op, &[*act_outlet])?[0];
     }
-
     let mut matmul_output =
         target.wire_node(node.name.clone(), *Box::new(ops::CudaGgmlGemm), inputs)?;
 
