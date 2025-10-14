@@ -72,27 +72,26 @@ impl Pad {
         let i_view = get_cuda_view(input);
         let o_view = get_cuda_view(output);
         let fill_value = val.to_scalar::<T>()?;
-        let mut i_shape = input.shape().to_vec();
-        let mut o_shape = output.shape().to_vec();
-        let mut i_strides = input.strides().to_vec();
-        let mut pads_before = pads_before;
 
-        for _ in 0..(PAD_MAX_RANK - rank) {
-            i_shape.push(1);
-            o_shape.push(1);
-            i_strides.push(0);
-            pads_before.push(0);
-        }
+        let mut in_shape = [1usize; PAD_MAX_RANK];
+        let mut out_shape = [1usize; PAD_MAX_RANK];
+        let mut in_strides = [0isize; PAD_MAX_RANK];
+        let mut pad_before = [0usize; PAD_MAX_RANK];
+
+        in_shape[..rank].copy_from_slice(input.shape());
+        out_shape[..rank].copy_from_slice(output.shape());
+        in_strides[..rank].copy_from_slice(input.strides());
+        pad_before[..rank].copy_from_slice(&pads_before);
 
         let len = output.len();
         let func = cuda_context().load_pipeline(LibraryName::Array, kernel_name)?;
         let mut launch_args = stream.launch_builder(&func);
         launch_args.arg(&i_view);
         launch_args.arg(&o_view);
-        launch_args.set_slice(&i_shape);
-        launch_args.set_slice(&o_shape);
-        launch_args.set_slice(&i_strides);
-        launch_args.set_slice(&pads_before);
+        launch_args.set_slice(&in_shape);
+        launch_args.set_slice(&out_shape);
+        launch_args.set_slice(&in_strides);
+        launch_args.set_slice(&pad_before);
         launch_args.arg(fill_value);
         launch_args.arg(&len);
 
