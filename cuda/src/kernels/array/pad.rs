@@ -1,14 +1,14 @@
 use cudarc::driver::{CudaStream, DeviceRepr, LaunchConfig, PushKernelArg};
 use derive_new::new;
-use tract_core::ops::array::PadMode;
-use tract_core::tract_data::itertools::Itertools;
 use std::fmt;
 use tract_core::internal::*;
+use tract_core::ops::array::PadMode;
+use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::LaunchArgsExt;
-use crate::kernels::{get_cuda_view, get_sliced_cuda_view, launch_args, LibraryName};
+use crate::kernels::{LibraryName, get_cuda_view, get_sliced_cuda_view, launch_args};
 
 static PAD_MAX_RANK: usize = 5;
 
@@ -55,12 +55,12 @@ impl Pad {
         Ok(format!("pad_constant_{tname}"))
     }
 
-    fn dispatch_eval_constant_t<T: Datum + DeviceRepr>
-    (   stream: &TractCudaStream,
+    fn dispatch_eval_constant_t<T: Datum + DeviceRepr>(
+        stream: &TractCudaStream,
         input: &DeviceTensor,
         output: &DeviceTensor,
         pads_before: TVec<usize>,
-        val: &Tensor
+        val: &Tensor,
     ) -> TractResult<()> {
         ensure!(val.datum_type() == input.datum_type());
         let rank = input.rank();
@@ -86,7 +86,7 @@ impl Pad {
 
         let len = output.len();
         let func = cuda_context().load_pipeline(LibraryName::Array, kernel_name)?;
-        let mut launch_args = stream.launch_builder(&func); 
+        let mut launch_args = stream.launch_builder(&func);
         launch_args.arg(&i_view);
         launch_args.arg(&o_view);
         launch_args.set_slice(&i_shape);
@@ -111,12 +111,16 @@ impl Pad {
         mode: PadMode,
     ) -> TractResult<()> {
         if let PadMode::Constant(val) = mode {
-            dispatch_numbers!(Self::dispatch_eval_constant_t(input.datum_type())(stream, input, output, pads_before, &val))
-        }
-        else {
+            dispatch_numbers!(Self::dispatch_eval_constant_t(input.datum_type())(
+                stream,
+                input,
+                output,
+                pads_before,
+                &val
+            ))
+        } else {
             bail!("Unsupported PadMode")
         }
-        
     }
 
     pub fn eval(
@@ -126,7 +130,12 @@ impl Pad {
         pads: Vec<(usize, usize)>,
         mode: PadMode,
     ) -> TractResult<DeviceTensor> {
-        let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), &Self::output_shape(input.shape(), &pads)?)? };
+        let output = unsafe {
+            DeviceTensor::uninitialized_dt(
+                input.datum_type(),
+                &Self::output_shape(input.shape(), &pads)?,
+            )?
+        };
         let before_pads = pads.iter().map(|(bef, _)| *bef).collect_vec().into();
         self.dispatch_eval(stream, input, &output, before_pads, mode)?;
         stream.synchronize()?;
@@ -145,9 +154,13 @@ mod tests {
     use tract_core::ops::array::{Pad, PadMode};
     use tract_gpu::tensor::IntoDevice;
 
-    fn run_test<T>(in_shape: &[usize], padding: Vec<(usize, usize)>, val: Arc<Tensor>) -> TractResult<()>
-    where 
-        T: Datum + Copy + From<u8>
+    fn run_test<T>(
+        in_shape: &[usize],
+        padding: Vec<(usize, usize)>,
+        val: Arc<Tensor>,
+    ) -> TractResult<()>
+    where
+        T: Datum + Copy + From<u8>,
     {
         CUDA_STREAM.with(|stream| {
             let num_elements = in_shape.iter().product();
@@ -157,21 +170,17 @@ mod tests {
                 &(0..num_elements).map(|f| T::from(f as u8)).collect::<Vec<_>>(),
             )?;
 
-
-            let cpu_output = Pad { pads: padding.clone(), mode: PadMode::Constant(val.clone()) }.eval_with_session(
-                0,
-                &SessionState::default(),
-                tvec![a.clone().into_tvalue()],
-            )?;
+            let cpu_output = Pad { pads: padding.clone(), mode: PadMode::Constant(val.clone()) }
+                .eval_with_session(0, &SessionState::default(), tvec![a.clone().into_tvalue()])?;
 
             let a_cuda = a.clone().into_device()?;
             let mut session_state = SessionState::default();
             let cuda_output = Pad.eval(stream, &a_cuda, padding, PadMode::Constant(val))?;
 
-            cuda_output.to_host()?.into_tensor().close_enough(
-                &cpu_output[0],
-                Approximation::Exact,
-            )?;
+            cuda_output
+                .to_host()?
+                .into_tensor()
+                .close_enough(&cpu_output[0], Approximation::Exact)?;
             Ok(())
         })
     }
@@ -184,7 +193,11 @@ mod tests {
         run_test::<i32>(&[1, 2, 3], vec![(0, 2), (1, 1), (2, 0)], tensor0(1i32).into())?;
         run_test::<u8>(&[3, 2], vec![(0, 0), (0, 4)], tensor0(1u8).into())?;
         run_test::<i16>(&[2, 4], vec![(4, 0), (0, 0)], tensor0(1i16).into())?;
-        run_test::<f32>(&[2, 4, 1, 4, 2], vec![(4, 2), (0, 1), (3, 1), (2, 0), (1, 3)], tensor0(INFINITY).into())?;
+        run_test::<f32>(
+            &[2, 4, 1, 4, 2],
+            vec![(4, 2), (0, 1), (3, 1), (2, 0), (1, 3)],
+            tensor0(INFINITY).into(),
+        )?;
         Ok(())
     }
 }

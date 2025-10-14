@@ -2,9 +2,9 @@ mod broadcast;
 mod cast;
 mod concat;
 mod copy;
+mod pad;
 mod permute_axes;
 mod rotate_half;
-mod pad;
 
 pub use broadcast::MultiBroadcast;
 pub use cast::Cast;
@@ -41,11 +41,9 @@ pub fn all_functions() -> Vec<String> {
     );
 
     functions.extend(
-    tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
-        .into_iter()
-        .flat_map(|dt| {
-            Pad::kernel_name(dt)
-        }),
+        tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
+            .into_iter()
+            .flat_map(|dt| Pad::kernel_name(dt)),
     );
     functions.into_iter().collect()
 }
