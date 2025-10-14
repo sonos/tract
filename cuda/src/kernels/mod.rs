@@ -61,6 +61,18 @@ pub enum LibraryName {
     Quant,
 }
 
+fn fnv1a64(text: &str) -> u64 {
+    const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x00000100000001B3;
+
+    let mut hash = FNV_OFFSET_BASIS;
+    for b in text.as_bytes() {
+        hash ^= *b as u64;
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
+
 impl LibraryName {
     pub const ALL: [LibraryName; 7] =
         [Self::Unary, Self::Binary, Self::Array, Self::NN, Self::Ggml, Self::GgmlQ, Self::Quant];
@@ -87,7 +99,8 @@ impl LibraryName {
             Self::GgmlQ => "mm_mv_q",
             Self::Quant => "quantize",
         };
-        cubin_dir().join(format!("{}.cubin", basename))
+        let hash = fnv1a64(self.content());
+        cubin_dir().join(format!("{}_{}.cubin", basename, hash))
     }
 }
 
