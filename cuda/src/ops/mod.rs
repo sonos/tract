@@ -36,3 +36,4 @@ pub use scaled_masked_softmax::CudaScaledMaskedSoftmax;
 pub use slice::CudaSlice;
 pub use softmax::CudaSoftmax;
 pub use unary::CudaUnaryOp;
+pub use pad::CudaPad;
