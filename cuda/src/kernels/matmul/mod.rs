@@ -706,7 +706,7 @@ mod tests {
                 transpose_b,
                 transpose_c: false,
                 quantize_output: None,
-                operating_dt: Some(act_dt)
+                operating_dt: Some(act_dt),
             };
 
             // Compare to full precision
@@ -883,8 +883,8 @@ mod tests {
                 transpose_a: self.transpose_lhs,
                 transpose_b: self.transpose_rhs,
                 transpose_c: false,
-                quantize_output: None, 
-                operating_dt: Some(F::datum_type())
+                quantize_output: None,
+                operating_dt: Some(F::datum_type()),
             };
 
             let lhs_tensor = if self.transpose_lhs {

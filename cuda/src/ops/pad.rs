@@ -9,17 +9,23 @@ use tract_gpu::tensor::DeviceTensorExt;
 #[derive(new, Debug, Clone, Hash)]
 pub struct CudaPad {
     pads: Vec<(TDim, TDim)>,
-    mode: core_array::PadMode
+    mode: core_array::PadMode,
 }
 
 impl CudaPad {
     #[allow(unused)]
     pub fn from_tract_core(core_pad: &core_array::Pad) -> TractResult<Self> {
-        ensure!(matches!(core_pad.mode, core_array::PadMode::Constant(_)), "Only Constant padding supported for now");
+        ensure!(
+            matches!(core_pad.mode, core_array::PadMode::Constant(_)),
+            "Only Constant padding supported for now"
+        );
 
-        let pads = core_pad.pads.iter().map(|(bef, aft)| (TDim::Val(*bef as i64), TDim::Val(*aft as i64))).collect_vec(); 
-        Ok(CudaPad { pads,
-                     mode: core_pad.mode.clone() })
+        let pads = core_pad
+            .pads
+            .iter()
+            .map(|(bef, aft)| (TDim::Val(*bef as i64), TDim::Val(*aft as i64)))
+            .collect_vec();
+        Ok(CudaPad { pads, mode: core_pad.mode.clone() })
     }
 }
 
@@ -68,7 +74,8 @@ impl EvalOp for CudaPad {
         )?;
 
         CUDA_STREAM.with(|stream| {
-            Pad.dispatch_eval(stream, input, &output, paddings_before, self.mode.clone())})?;
+            Pad.dispatch_eval(stream, input, &output, paddings_before, self.mode.clone())
+        })?;
         Ok(tvec!(output.into_opaque_tensor().into_tvalue()))
     }
 }
