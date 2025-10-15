@@ -92,7 +92,7 @@ impl Sdpa {
         seq_len: usize,
     ) -> TractResult<Option<OutletId>> {
         let m_array = Array2::from_shape_fn([seq_len, past_seq_len + seq_len], |(r, c)| {
-            if c > r {
+            if c > past_seq_len + r {
                 f32::NEG_INFINITY
             } else {
                 0.0f32

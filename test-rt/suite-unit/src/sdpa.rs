@@ -144,8 +144,11 @@ impl SdpaProblem<f32> {
         let mut scaled_input = q_dot_kt * scale_factor;
 
         if is_causal {
+            let q_len = queries.nrows();
+            let k_len = keys.nrows();
+            let p = k_len.saturating_sub(q_len);
             scaled_input.indexed_iter_mut().for_each(|((r, c), value)| {
-                if c > r {
+                if c > p + r {
                     *value = f32::NEG_INFINITY;
                 }
             });
