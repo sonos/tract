@@ -173,16 +173,18 @@ then
                   BENCH_OPTS="--warmup-loops 1"
                   ;;
         esac
-        # Keep old models before transitioning to 541
-        llm_bench llama-3_2-3B-q40ef32-516 $backend $CACHEDIR/Llama-3.2-3B-q40ef32.516.nnef.tgz $extra
         llm_bench llama-3_2-1B-q40ef32-516 $backend $CACHEDIR/Llama-3.2-1B-q40ef32.516.nnef.tgz $extra
         llm_bench openelm-270M-q40ef16-516 $backend $CACHEDIR/OpenELM-270M-q40ef16.516.nnef.tgz $extra
-        # New reference models for 541
-        llm_bench llama-3_1-8B-instruct-q40ef16-541 $backend $CACHEDIR/Llama-3.1-8B-Instruct-q40ef16.541.nnef.tgz $extra
-        llm_bench llama-3_2-3B-instruct-q40ef16-541 $backend $CACHEDIR/Llama-3.2-3B-Instruct-q40ef16.541.nnef.tgz $extra
         llm_bench llama-3_2-1B-instruct-q40ef16-541 $backend $CACHEDIR/Llama-3.2-1B-Instruct-q40ef16.541.nnef.tgz $extra
         llm_bench openelm-270M-q40ef16-541 $backend $CACHEDIR/OpenELM-270M-q40ef16.541.nnef.tgz $extra
-        llm_bench qwen3-1_7B-q40ef16-541 $backend $CACHEDIR/Qwen3-1.7B-q40ef16.541.nnef.tgz $extra
+
+        if [ "$backend" != "cpu" ]
+        then
+            llm_bench llama-3_2-3B-q40ef32-516 $backend $CACHEDIR/Llama-3.2-3B-q40ef32.516.nnef.tgz $extra
+            llm_bench llama-3_1-8B-instruct-q40ef16-541 $backend $CACHEDIR/Llama-3.1-8B-Instruct-q40ef16.541.nnef.tgz $extra
+            llm_bench llama-3_2-3B-instruct-q40ef16-541 $backend $CACHEDIR/Llama-3.2-3B-Instruct-q40ef16.541.nnef.tgz $extra
+            llm_bench qwen3-1_7B-q40ef16-541 $backend $CACHEDIR/Qwen3-1.7B-q40ef16.541.nnef.tgz $extra
+        fi
     done
 fi
 
