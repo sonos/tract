@@ -21,12 +21,12 @@ fragment scan_body_0(
     i"fastlstm1.four_parts.split-1-over-1.768..1024.slice": tensor<scalar>,
     i"fastlstm1.h_new.W.split-1-over-1.0..128.slice": tensor<scalar>,
     i"fastlstm1.h_new.split-1-over-1.0..128.slice": tensor<scalar>,
-    i"fastlstm1.peephole0.mul.fix-rank-0-1": tensor<scalar>,
-    i"fastlstm1.peephole1.mul.fix-rank-0-1": tensor<scalar>,
-    i"fastlstm1.peephole2.mul.fix-rank-0-1": tensor<scalar>
+    i"fastlstm1.peephole0.mul.fix-rank": tensor<scalar>,
+    i"fastlstm1.peephole1.mul.fix-rank": tensor<scalar>,
+    i"fastlstm1.peephole2.mul.fix-rank": tensor<scalar>
 ) -> (i"fastlstm1.c_new": tensor<scalar>, i"fastlstm1.r_new": tensor<scalar>, i"fastlstm1.h_new.W.prop_axis.a.input_0": tensor<scalar>)
 {
-  i"fastlstm1.peephole0.mul" = mul(i"fastlstm1.peephole0.mul.fix-rank-0-1", i"fastlstm1.c");
+  i"fastlstm1.peephole0.mul" = mul(i"fastlstm1.peephole0.mul.fix-rank", i"fastlstm1.c");
   i"fastlstm1.four_parts.W.split-over-1.0..256.concat-einsum-k.256..384" = tract_core_einsum([i"fastlstm1.r", i"fastlstm1.four_parts.W.split-over-1.0..256.concat-einsum-slice-k.1.256..384"], expr = "k,kn->bn", acc = "f32", output = "");
   i"fastlstm1.four_parts.W.split-over-1.0..256.concat-einsum-k.add-1" = add(i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.0..256.concat-einsum-k.0..256", i"fastlstm1.four_parts.W.split-over-1.0..256.concat-einsum-k.256..384");
   i"fastlstm1.four_parts.split-over-1.0..256" = add(i"fastlstm1.four_parts.W.split-over-1.0..256.concat-einsum-k.add-1", i"fastlstm1.four_parts.split-1-over-1.0..256.slice");
@@ -38,7 +38,7 @@ fragment scan_body_0(
   i"fastlstm1.four_parts.split-over-1.512..768" = add(i"fastlstm1.four_parts.W.split-over-1.512..768.concat-einsum-k.add-1", i"fastlstm1.four_parts.split-1-over-1.512..768.slice");
   i"fastlstm1.four_parts.j.nolin" = tanh(i"fastlstm1.four_parts.split-over-1.512..768");
   i"fastlstm1.c_update" = mul(i"fastlstm1.peephole0.output.nolin", i"fastlstm1.four_parts.j.nolin");
-  i"fastlstm1.peephole1.mul" = mul(i"fastlstm1.peephole1.mul.fix-rank-0-1", i"fastlstm1.c");
+  i"fastlstm1.peephole1.mul" = mul(i"fastlstm1.peephole1.mul.fix-rank", i"fastlstm1.c");
   i"fastlstm1.four_parts.W.split-over-1.256..512.concat-einsum-k.0..256.prop_axis.a.output" = squeeze(i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.256..512.concat-einsum-k.0..256", axes = [0]);
   i"fastlstm1.four_parts.W.split-over-1.256..512.concat-einsum-k.256..384" = tract_core_einsum([i"fastlstm1.r", i"fastlstm1.four_parts.W.split-over-1.256..512.concat-einsum-slice-k.1.256..384"], expr = "k,kn->bn", acc = "f32", output = "");
   i"fastlstm1.four_parts.W.split-over-1.256..512.concat-einsum-k.add-1" = add(i"fastlstm1.four_parts.W.split-over-1.256..512.concat-einsum-k.0..256.prop_axis.a.output", i"fastlstm1.four_parts.W.split-over-1.256..512.concat-einsum-k.256..384");
@@ -48,7 +48,7 @@ fragment scan_body_0(
   i"fastlstm1.c_prop" = mul(i"fastlstm1.peephole1.output.nolin", i"fastlstm1.c");
   i"fastlstm1.c_new" = add(i"fastlstm1.c_update", i"fastlstm1.c_prop");
   i"fastlstm1.tanh_c" = tanh(i"fastlstm1.c_new");
-  i"fastlstm1.peephole2.mul" = mul(i"fastlstm1.peephole2.mul.fix-rank-0-1", i"fastlstm1.c_new");
+  i"fastlstm1.peephole2.mul" = mul(i"fastlstm1.peephole2.mul.fix-rank", i"fastlstm1.c_new");
   i"fastlstm1.four_parts.W.split-over-1.768..1024.concat-einsum-k.0..256.prop_axis.a.output" = squeeze(i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.768..1024.concat-einsum-k.0..256", axes = [0]);
   i"fastlstm1.four_parts.W.split-over-1.768..1024.concat-einsum-k.256..384" = tract_core_einsum([i"fastlstm1.r", i"fastlstm1.four_parts.W.split-over-1.768..1024.concat-einsum-slice-k.1.256..384"], expr = "k,kn->bn", acc = "f32", output = "");
   i"fastlstm1.four_parts.W.split-over-1.768..1024.concat-einsum-k.add-1" = add(i"fastlstm1.four_parts.W.split-over-1.768..1024.concat-einsum-k.0..256.prop_axis.a.output", i"fastlstm1.four_parts.W.split-over-1.768..1024.concat-einsum-k.256..384");
@@ -79,12 +79,12 @@ fragment scan_body_1(
     i"fastlstm2.four_parts.split-1-over-1.768..1024.slice": tensor<scalar>,
     i"fastlstm2.h_new.W.split-1-over-1.0..128.slice": tensor<scalar>,
     i"fastlstm2.h_new.split-1-over-1.0..128.slice": tensor<scalar>,
-    i"fastlstm2.peephole0.mul.fix-rank-0-1": tensor<scalar>,
-    i"fastlstm2.peephole1.mul.fix-rank-0-1": tensor<scalar>,
-    i"fastlstm2.peephole2.mul.fix-rank-0-1": tensor<scalar>
+    i"fastlstm2.peephole0.mul.fix-rank": tensor<scalar>,
+    i"fastlstm2.peephole1.mul.fix-rank": tensor<scalar>,
+    i"fastlstm2.peephole2.mul.fix-rank": tensor<scalar>
 ) -> (i"fastlstm2.c_new": tensor<scalar>, i"fastlstm2.r_new": tensor<scalar>, i"fastlstm2.h_new.W.prop_axis.a.input_0": tensor<scalar>)
 {
-  i"fastlstm2.peephole0.mul" = mul(i"fastlstm2.peephole0.mul.fix-rank-0-1", i"fastlstm2.c");
+  i"fastlstm2.peephole0.mul" = mul(i"fastlstm2.peephole0.mul.fix-rank", i"fastlstm2.c");
   i"fastlstm2.four_parts.W.split-over-1.0..256.concat-einsum-k.256..384" = tract_core_einsum([i"fastlstm2.r", i"fastlstm2.four_parts.W.split-over-1.0..256.concat-einsum-slice-k.1.256..384"], expr = "k,kn->bn", acc = "f32", output = "");
   i"fastlstm2.four_parts.W.split-over-1.0..256.concat-einsum-k.add-1" = add(i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.0..256.concat-einsum-k.0..256", i"fastlstm2.four_parts.W.split-over-1.0..256.concat-einsum-k.256..384");
   i"fastlstm2.four_parts.split-over-1.0..256" = add(i"fastlstm2.four_parts.W.split-over-1.0..256.concat-einsum-k.add-1", i"fastlstm2.four_parts.split-1-over-1.0..256.slice");
@@ -96,7 +96,7 @@ fragment scan_body_1(
   i"fastlstm2.four_parts.split-over-1.512..768" = add(i"fastlstm2.four_parts.W.split-over-1.512..768.concat-einsum-k.add-1", i"fastlstm2.four_parts.split-1-over-1.512..768.slice");
   i"fastlstm2.four_parts.j.nolin" = tanh(i"fastlstm2.four_parts.split-over-1.512..768");
   i"fastlstm2.c_update" = mul(i"fastlstm2.peephole0.output.nolin", i"fastlstm2.four_parts.j.nolin");
-  i"fastlstm2.peephole1.mul" = mul(i"fastlstm2.peephole1.mul.fix-rank-0-1", i"fastlstm2.c");
+  i"fastlstm2.peephole1.mul" = mul(i"fastlstm2.peephole1.mul.fix-rank", i"fastlstm2.c");
   i"fastlstm2.four_parts.W.split-over-1.256..512.concat-einsum-k.0..256.prop_axis.a.output" = squeeze(i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.256..512.concat-einsum-k.0..256", axes = [0]);
   i"fastlstm2.four_parts.W.split-over-1.256..512.concat-einsum-k.256..384" = tract_core_einsum([i"fastlstm2.r", i"fastlstm2.four_parts.W.split-over-1.256..512.concat-einsum-slice-k.1.256..384"], expr = "k,kn->bn", acc = "f32", output = "");
   i"fastlstm2.four_parts.W.split-over-1.256..512.concat-einsum-k.add-1" = add(i"fastlstm2.four_parts.W.split-over-1.256..512.concat-einsum-k.0..256.prop_axis.a.output", i"fastlstm2.four_parts.W.split-over-1.256..512.concat-einsum-k.256..384");
@@ -106,7 +106,7 @@ fragment scan_body_1(
   i"fastlstm2.c_prop" = mul(i"fastlstm2.peephole1.output.nolin", i"fastlstm2.c");
   i"fastlstm2.c_new" = add(i"fastlstm2.c_update", i"fastlstm2.c_prop");
   i"fastlstm2.tanh_c" = tanh(i"fastlstm2.c_new");
-  i"fastlstm2.peephole2.mul" = mul(i"fastlstm2.peephole2.mul.fix-rank-0-1", i"fastlstm2.c_new");
+  i"fastlstm2.peephole2.mul" = mul(i"fastlstm2.peephole2.mul.fix-rank", i"fastlstm2.c_new");
   i"fastlstm2.four_parts.W.split-over-1.768..1024.concat-einsum-k.0..256.prop_axis.a.output" = squeeze(i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.768..1024.concat-einsum-k.0..256", axes = [0]);
   i"fastlstm2.four_parts.W.split-over-1.768..1024.concat-einsum-k.256..384" = tract_core_einsum([i"fastlstm2.r", i"fastlstm2.four_parts.W.split-over-1.768..1024.concat-einsum-slice-k.1.256..384"], expr = "k,kn->bn", acc = "f32", output = "");
   i"fastlstm2.four_parts.W.split-over-1.768..1024.concat-einsum-k.add-1" = add(i"fastlstm2.four_parts.W.split-over-1.768..1024.concat-einsum-k.0..256.prop_axis.a.output", i"fastlstm2.four_parts.W.split-over-1.768..1024.concat-einsum-k.256..384");
@@ -144,8 +144,8 @@ graph network(input) -> (output) {
   i"tdnn1.relu.output.low" = max(i"tdnn1.affine.output", i"tdnn1.relu.output.low.cst.1");
   i"tdnn1.renorm.reduced.sum.sqr" = square(i"tdnn1.relu.output.low");
   i"tdnn1.renorm.reduced.sum.sum" = sum_reduce(i"tdnn1.renorm.reduced.sum.sqr", axes = [0]);
-  i"tdnn1.renorm.reduced.sum.norm.fix-rank-1-1" = [[256.0]];
-  i"tdnn1.renorm.reduced.sum.norm" = div(i"tdnn1.renorm.reduced.sum.sum", i"tdnn1.renorm.reduced.sum.norm.fix-rank-1-1");
+  i"tdnn1.renorm.reduced.sum.norm.fix-rank.1" = [[256.0]];
+  i"tdnn1.renorm.reduced.sum.norm" = div(i"tdnn1.renorm.reduced.sum.sum", i"tdnn1.renorm.reduced.sum.norm.fix-rank.1");
   i"tdnn1.renorm.output-recip" = rsqrt(i"tdnn1.renorm.reduced.sum.norm");
   i"tdnn1.renorm.output" = mul(i"tdnn1.relu.output.low", i"tdnn1.renorm.output-recip");
   i"tdnn2.affine.output.delay" = tract_pulse_delay(i"tdnn1.renorm.output", axis = 1, delay = 0, overlap = 2);
@@ -158,8 +158,8 @@ graph network(input) -> (output) {
   i"tdnn2.relu.output.low" = max(i"tdnn2.affine.output.rm_n", i"tdnn1.relu.output.low.cst.1");
   i"tdnn2.renorm.reduced.sum.sqr" = square(i"tdnn2.relu.output.low");
   i"tdnn2.renorm.reduced.sum.sum" = sum_reduce(i"tdnn2.renorm.reduced.sum.sqr", axes = [0]);
-  i"tdnn2.renorm.reduced.sum.norm.fix-rank-1-1" = [[256.0]];
-  i"tdnn2.renorm.reduced.sum.norm" = div(i"tdnn2.renorm.reduced.sum.sum", i"tdnn2.renorm.reduced.sum.norm.fix-rank-1-1");
+  i"tdnn2.renorm.reduced.sum.norm.fix-rank.1" = [[256.0]];
+  i"tdnn2.renorm.reduced.sum.norm" = div(i"tdnn2.renorm.reduced.sum.sum", i"tdnn2.renorm.reduced.sum.norm.fix-rank.1");
   i"tdnn2.renorm.output-recip" = rsqrt(i"tdnn2.renorm.reduced.sum.norm");
   i"tdnn2.renorm.output" = mul(i"tdnn2.relu.output.low", i"tdnn2.renorm.output-recip");
   i"tdnn3.affine.output.add_n" = unsqueeze(i"tdnn2.renorm.output", axes = [0]);
@@ -171,8 +171,8 @@ graph network(input) -> (output) {
   i"tdnn3.relu.output.low" = max(i"tdnn3.affine.output.rm_n", i"tdnn1.relu.output.low.cst.1");
   i"tdnn3.renorm.reduced.sum.sqr" = square(i"tdnn3.relu.output.low");
   i"tdnn3.renorm.reduced.sum.sum" = sum_reduce(i"tdnn3.renorm.reduced.sum.sqr", axes = [0]);
-  i"tdnn3.renorm.reduced.sum.norm.fix-rank-1-1" = [[256.0]];
-  i"tdnn3.renorm.reduced.sum.norm" = div(i"tdnn3.renorm.reduced.sum.sum", i"tdnn3.renorm.reduced.sum.norm.fix-rank-1-1");
+  i"tdnn3.renorm.reduced.sum.norm.fix-rank.1" = [[256.0]];
+  i"tdnn3.renorm.reduced.sum.norm" = div(i"tdnn3.renorm.reduced.sum.sum", i"tdnn3.renorm.reduced.sum.norm.fix-rank.1");
   i"tdnn3.renorm.output-recip" = rsqrt(i"tdnn3.renorm.reduced.sum.norm");
   i"tdnn3.renorm.output" = mul(i"tdnn3.relu.output.low", i"tdnn3.renorm.output-recip");
   i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.0..256.concat-einsum-k.0..256.prop_axis.a.input_1" = variable<scalar>(label = "fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.0..256.concat-einsum-k.0..256.prop_axis.a.input_1", shape = [256, 256]);
@@ -201,16 +201,16 @@ graph network(input) -> (output) {
   i"fastlstm1.four_parts.split-1-over-1.768..1024.slice" = variable<scalar>(label = "fastlstm1.four_parts.split-1-over-1.768..1024.slice", shape = [1, 256]);
   i"fastlstm1.h_new.W.split-1-over-1.0..128.slice" = variable<scalar>(label = "fastlstm1.h_new.W.split-1-over-1.0..128.slice", shape = [256, 128]);
   i"fastlstm1.h_new.split-1-over-1.0..128.slice" = variable<scalar>(label = "fastlstm1.h_new.split-1-over-1.0..128.slice", shape = [128]);
-  i"fastlstm1.peephole0.mul.fix-rank-0-1" = variable<scalar>(label = "fastlstm1.peephole0.mul.fix-rank-0-1", shape = [1, 256]);
-  i"fastlstm1.peephole1.mul.fix-rank-0-1" = variable<scalar>(label = "fastlstm1.peephole1.mul.fix-rank-0-1", shape = [1, 256]);
-  i"fastlstm1.peephole2.mul.fix-rank-0-1" = variable<scalar>(label = "fastlstm1.peephole2.mul.fix-rank-0-1", shape = [1, 256]);
-  i"fastlstm1.c_final" = tract_core_scan(body = "scan_body_0", scan = [("fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.0..256.concat-einsum-k.0..256", i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.0..256.concat-einsum-k.0..256", 0, 1), ("fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.512..768.concat-einsum-k.0..256", i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.512..768.concat-einsum-k.0..256.fix_c.0", 0, 1), ("fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.256..512.concat-einsum-k.0..256", i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.256..512.concat-einsum-k.0..256.fix_c.0", 0, 1), ("fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.768..1024.concat-einsum-k.0..256", i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.768..1024.concat-einsum-k.0..256.fix_c.0", 0, 1)], full = [("fastlstm1.four_parts.W.split-over-1.0..256.concat-einsum-slice-k.1.256..384", i"fastlstm1.four_parts.W.split-over-1.0..256.concat-einsum-slice-k.1.256..384"), ("fastlstm1.four_parts.W.split-over-1.256..512.concat-einsum-slice-k.1.256..384", i"fastlstm1.four_parts.W.split-over-1.256..512.concat-einsum-slice-k.1.256..384"), ("fastlstm1.four_parts.W.split-over-1.512..768.concat-einsum-slice-k.1.256..384", i"fastlstm1.four_parts.W.split-over-1.512..768.concat-einsum-slice-k.1.256..384"), ("fastlstm1.four_parts.W.split-over-1.768..1024.concat-einsum-slice-k.1.256..384", i"fastlstm1.four_parts.W.split-over-1.768..1024.concat-einsum-slice-k.1.256..384"), ("fastlstm1.four_parts.split-1-over-1.0..256.slice", i"fastlstm1.four_parts.split-1-over-1.0..256.slice"), ("fastlstm1.four_parts.split-1-over-1.256..512.slice", i"fastlstm1.four_parts.split-1-over-1.256..512.slice"), ("fastlstm1.four_parts.split-1-over-1.512..768.slice", i"fastlstm1.four_parts.split-1-over-1.512..768.slice"), ("fastlstm1.four_parts.split-1-over-1.768..1024.slice", i"fastlstm1.four_parts.split-1-over-1.768..1024.slice"), ("fastlstm1.h_new.W.split-1-over-1.0..128.slice", i"fastlstm1.h_new.W.split-1-over-1.0..128.slice"), ("fastlstm1.h_new.split-1-over-1.0..128.slice", i"fastlstm1.h_new.split-1-over-1.0..128.slice"), ("fastlstm1.peephole0.mul.fix-rank-0-1", i"fastlstm1.peephole0.mul.fix-rank-0-1"), ("fastlstm1.peephole1.mul.fix-rank-0-1", i"fastlstm1.peephole1.mul.fix-rank-0-1"), ("fastlstm1.peephole2.mul.fix-rank-0-1", i"fastlstm1.peephole2.mul.fix-rank-0-1")], state = [("fastlstm1.c", i"tap.tap.fastlstm1.c_init.0-35/0-104/0", "fastlstm1.c_new"), ("fastlstm1.r", i"tap.tap.tap.fastlstm1.r_init.0-36/0-110/0-164/0", "fastlstm1.r_new")], output = [("fastlstm1.h_new.W.prop_axis.a.input_0", "full", 0, 1)], skip = 2, reset_every_turn = false);
+  i"fastlstm1.peephole0.mul.fix-rank" = variable<scalar>(label = "fastlstm1.peephole0.mul.fix-rank", shape = [1, 256]);
+  i"fastlstm1.peephole1.mul.fix-rank" = variable<scalar>(label = "fastlstm1.peephole1.mul.fix-rank", shape = [1, 256]);
+  i"fastlstm1.peephole2.mul.fix-rank" = variable<scalar>(label = "fastlstm1.peephole2.mul.fix-rank", shape = [1, 256]);
+  i"fastlstm1.c_final" = tract_core_scan(body = "scan_body_0", scan = [("fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.0..256.concat-einsum-k.0..256", i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.0..256.concat-einsum-k.0..256", 0, 1), ("fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.512..768.concat-einsum-k.0..256", i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.512..768.concat-einsum-k.0..256.fix_c.0", 0, 1), ("fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.256..512.concat-einsum-k.0..256", i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.256..512.concat-einsum-k.0..256.fix_c.0", 0, 1), ("fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.768..1024.concat-einsum-k.0..256", i"fastlstm1.c_final.extracted.fastlstm1.four_parts.W.split-over-1.768..1024.concat-einsum-k.0..256.fix_c.0", 0, 1)], full = [("fastlstm1.four_parts.W.split-over-1.0..256.concat-einsum-slice-k.1.256..384", i"fastlstm1.four_parts.W.split-over-1.0..256.concat-einsum-slice-k.1.256..384"), ("fastlstm1.four_parts.W.split-over-1.256..512.concat-einsum-slice-k.1.256..384", i"fastlstm1.four_parts.W.split-over-1.256..512.concat-einsum-slice-k.1.256..384"), ("fastlstm1.four_parts.W.split-over-1.512..768.concat-einsum-slice-k.1.256..384", i"fastlstm1.four_parts.W.split-over-1.512..768.concat-einsum-slice-k.1.256..384"), ("fastlstm1.four_parts.W.split-over-1.768..1024.concat-einsum-slice-k.1.256..384", i"fastlstm1.four_parts.W.split-over-1.768..1024.concat-einsum-slice-k.1.256..384"), ("fastlstm1.four_parts.split-1-over-1.0..256.slice", i"fastlstm1.four_parts.split-1-over-1.0..256.slice"), ("fastlstm1.four_parts.split-1-over-1.256..512.slice", i"fastlstm1.four_parts.split-1-over-1.256..512.slice"), ("fastlstm1.four_parts.split-1-over-1.512..768.slice", i"fastlstm1.four_parts.split-1-over-1.512..768.slice"), ("fastlstm1.four_parts.split-1-over-1.768..1024.slice", i"fastlstm1.four_parts.split-1-over-1.768..1024.slice"), ("fastlstm1.h_new.W.split-1-over-1.0..128.slice", i"fastlstm1.h_new.W.split-1-over-1.0..128.slice"), ("fastlstm1.h_new.split-1-over-1.0..128.slice", i"fastlstm1.h_new.split-1-over-1.0..128.slice"), ("fastlstm1.peephole0.mul.fix-rank", i"fastlstm1.peephole0.mul.fix-rank"), ("fastlstm1.peephole1.mul.fix-rank", i"fastlstm1.peephole1.mul.fix-rank"), ("fastlstm1.peephole2.mul.fix-rank", i"fastlstm1.peephole2.mul.fix-rank")], state = [("fastlstm1.c", i"tap.tap.fastlstm1.c_init.0-35/0-104/0", "fastlstm1.c_new"), ("fastlstm1.r", i"tap.tap.tap.fastlstm1.r_init.0-36/0-110/0-164/0", "fastlstm1.r_new")], output = [("fastlstm1.h_new.W.prop_axis.a.input_0", "full", 0, 1)], skip = 2, reset_every_turn = false);
   i"fastlstm1.h_new.W.fix_a" = transpose(i"fastlstm1.c_final", axes = [1, 0, 2]);
   i"fastlstm1.h_new.W.fix_b" = variable<scalar>(label = "fastlstm1.h_new.W.fix_b", shape = [1, 256, 256]);
   i"fastlstm1.h_new.W" = matmul(i"fastlstm1.h_new.W.fix_a", i"fastlstm1.h_new.W.fix_b", transposeA = false, transposeB = false);
   i"fastlstm1.h_new.W.fix_c.0" = squeeze(i"fastlstm1.h_new.W", axes = [0]);
-  i"fastlstm1.c_final.fastlstm1.h_new.fix-rank-1-1" = variable<scalar>(label = "fastlstm1.c_final.fastlstm1.h_new.fix-rank-1-1", shape = [1, 256]);
-  i"fastlstm1.h_new" = add(i"fastlstm1.h_new.W.fix_c.0", i"fastlstm1.c_final.fastlstm1.h_new.fix-rank-1-1");
+  i"fastlstm1.c_final.fastlstm1.h_new.fix-rank" = variable<scalar>(label = "fastlstm1.c_final.fastlstm1.h_new.fix-rank", shape = [1, 256]);
+  i"fastlstm1.h_new" = add(i"fastlstm1.h_new.W.fix_c.0", i"fastlstm1.c_final.fastlstm1.h_new.fix-rank");
   i"tdnn4.affine.output.delay" = tract_pulse_delay(i"fastlstm1.h_new", axis = 0, delay = 0, overlap = 2);
   i"tdnn4.affine.output.add_n" = unsqueeze(i"tdnn4.affine.output.delay", axes = [0]);
   i"tdnn4.affine.kernel.0" = variable<scalar>(label = "tdnn4.affine.kernel.0", shape = [256, 256, 3]);
@@ -223,8 +223,8 @@ graph network(input) -> (output) {
   i"tdnn4.relu.output.low" = max(i"tdnn4.affine.output.rm_n", i"tdnn1.relu.output.low.cst.2.1");
   i"tdnn4.renorm.reduced.sum.sqr" = square(i"tdnn4.relu.output.low");
   i"tdnn4.renorm.reduced.sum.sum" = sum_reduce(i"tdnn4.renorm.reduced.sum.sqr", axes = [1]);
-  i"tdnn4.renorm.reduced.sum.norm.fix-rank-1-1" = [[256.0]];
-  i"tdnn4.renorm.reduced.sum.norm" = div(i"tdnn4.renorm.reduced.sum.sum", i"tdnn4.renorm.reduced.sum.norm.fix-rank-1-1");
+  i"tdnn4.renorm.reduced.sum.norm.fix-rank.1" = [[256.0]];
+  i"tdnn4.renorm.reduced.sum.norm" = div(i"tdnn4.renorm.reduced.sum.sum", i"tdnn4.renorm.reduced.sum.norm.fix-rank.1");
   i"tdnn4.renorm.output-recip" = rsqrt(i"tdnn4.renorm.reduced.sum.norm");
   i"tdnn4.renorm.output" = mul(i"tdnn4.relu.output.low", i"tdnn4.renorm.output-recip");
   i"tdnn5.affine.output.delay" = tract_pulse_delay(i"tdnn4.renorm.output", axis = 0, delay = 0, overlap = 2);
@@ -238,8 +238,8 @@ graph network(input) -> (output) {
   i"tdnn5.relu.output.low" = max(i"tdnn5.affine.output.rm_n", i"tdnn1.relu.output.low.cst.2.1");
   i"tdnn5.renorm.reduced.sum.sqr" = square(i"tdnn5.relu.output.low");
   i"tdnn5.renorm.reduced.sum.sum" = sum_reduce(i"tdnn5.renorm.reduced.sum.sqr", axes = [1]);
-  i"tdnn5.renorm.reduced.sum.norm.fix-rank-1-1" = [[256.0]];
-  i"tdnn5.renorm.reduced.sum.norm" = div(i"tdnn5.renorm.reduced.sum.sum", i"tdnn5.renorm.reduced.sum.norm.fix-rank-1-1");
+  i"tdnn5.renorm.reduced.sum.norm.fix-rank.1" = [[256.0]];
+  i"tdnn5.renorm.reduced.sum.norm" = div(i"tdnn5.renorm.reduced.sum.sum", i"tdnn5.renorm.reduced.sum.norm.fix-rank.1");
   i"tdnn5.renorm.output-recip" = rsqrt(i"tdnn5.renorm.reduced.sum.norm");
   i"tdnn5.renorm.output" = mul(i"tdnn5.relu.output.low", i"tdnn5.renorm.output-recip");
   i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.0..256.concat-einsum-k.0..256.prop_axis.a.input_1" = variable<scalar>(label = "fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.0..256.concat-einsum-k.0..256.prop_axis.a.input_1", shape = [256, 256]);
@@ -268,16 +268,16 @@ graph network(input) -> (output) {
   i"fastlstm2.four_parts.split-1-over-1.768..1024.slice" = variable<scalar>(label = "fastlstm2.four_parts.split-1-over-1.768..1024.slice", shape = [1, 256]);
   i"fastlstm2.h_new.W.split-1-over-1.0..128.slice" = variable<scalar>(label = "fastlstm2.h_new.W.split-1-over-1.0..128.slice", shape = [256, 128]);
   i"fastlstm2.h_new.split-1-over-1.0..128.slice" = variable<scalar>(label = "fastlstm2.h_new.split-1-over-1.0..128.slice", shape = [128]);
-  i"fastlstm2.peephole0.mul.fix-rank-0-1" = variable<scalar>(label = "fastlstm2.peephole0.mul.fix-rank-0-1", shape = [1, 256]);
-  i"fastlstm2.peephole1.mul.fix-rank-0-1" = variable<scalar>(label = "fastlstm2.peephole1.mul.fix-rank-0-1", shape = [1, 256]);
-  i"fastlstm2.peephole2.mul.fix-rank-0-1" = variable<scalar>(label = "fastlstm2.peephole2.mul.fix-rank-0-1", shape = [1, 256]);
-  i"fastlstm2.c_final" = tract_core_scan(body = "scan_body_1", scan = [("fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.0..256.concat-einsum-k.0..256", i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.0..256.concat-einsum-k.0..256", 0, 1), ("fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.512..768.concat-einsum-k.0..256", i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.512..768.concat-einsum-k.0..256.fix_c.0", 0, 1), ("fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.256..512.concat-einsum-k.0..256", i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.256..512.concat-einsum-k.0..256.fix_c.0", 0, 1), ("fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.768..1024.concat-einsum-k.0..256", i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.768..1024.concat-einsum-k.0..256.fix_c.0", 0, 1)], full = [("fastlstm2.four_parts.W.split-over-1.0..256.concat-einsum-slice-k.1.256..384", i"fastlstm2.four_parts.W.split-over-1.0..256.concat-einsum-slice-k.1.256..384"), ("fastlstm2.four_parts.W.split-over-1.256..512.concat-einsum-slice-k.1.256..384", i"fastlstm2.four_parts.W.split-over-1.256..512.concat-einsum-slice-k.1.256..384"), ("fastlstm2.four_parts.W.split-over-1.512..768.concat-einsum-slice-k.1.256..384", i"fastlstm2.four_parts.W.split-over-1.512..768.concat-einsum-slice-k.1.256..384"), ("fastlstm2.four_parts.W.split-over-1.768..1024.concat-einsum-slice-k.1.256..384", i"fastlstm2.four_parts.W.split-over-1.768..1024.concat-einsum-slice-k.1.256..384"), ("fastlstm2.four_parts.split-1-over-1.0..256.slice", i"fastlstm2.four_parts.split-1-over-1.0..256.slice"), ("fastlstm2.four_parts.split-1-over-1.256..512.slice", i"fastlstm2.four_parts.split-1-over-1.256..512.slice"), ("fastlstm2.four_parts.split-1-over-1.512..768.slice", i"fastlstm2.four_parts.split-1-over-1.512..768.slice"), ("fastlstm2.four_parts.split-1-over-1.768..1024.slice", i"fastlstm2.four_parts.split-1-over-1.768..1024.slice"), ("fastlstm2.h_new.W.split-1-over-1.0..128.slice", i"fastlstm2.h_new.W.split-1-over-1.0..128.slice"), ("fastlstm2.h_new.split-1-over-1.0..128.slice", i"fastlstm2.h_new.split-1-over-1.0..128.slice"), ("fastlstm2.peephole0.mul.fix-rank-0-1", i"fastlstm2.peephole0.mul.fix-rank-0-1"), ("fastlstm2.peephole1.mul.fix-rank-0-1", i"fastlstm2.peephole1.mul.fix-rank-0-1"), ("fastlstm2.peephole2.mul.fix-rank-0-1", i"fastlstm2.peephole2.mul.fix-rank-0-1")], state = [("fastlstm2.c", i"tap.tap.fastlstm1.c_init.0-35/0.1-106/0", "fastlstm2.c_new"), ("fastlstm2.r", i"tap.tap.tap.fastlstm1.r_init.0-36/0.1-112/0-166/0", "fastlstm2.r_new")], output = [("fastlstm2.h_new.W.prop_axis.a.input_0", "full", 0, 1)], skip = 6, reset_every_turn = false);
+  i"fastlstm2.peephole0.mul.fix-rank" = variable<scalar>(label = "fastlstm2.peephole0.mul.fix-rank", shape = [1, 256]);
+  i"fastlstm2.peephole1.mul.fix-rank" = variable<scalar>(label = "fastlstm2.peephole1.mul.fix-rank", shape = [1, 256]);
+  i"fastlstm2.peephole2.mul.fix-rank" = variable<scalar>(label = "fastlstm2.peephole2.mul.fix-rank", shape = [1, 256]);
+  i"fastlstm2.c_final" = tract_core_scan(body = "scan_body_1", scan = [("fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.0..256.concat-einsum-k.0..256", i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.0..256.concat-einsum-k.0..256", 0, 1), ("fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.512..768.concat-einsum-k.0..256", i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.512..768.concat-einsum-k.0..256.fix_c.0", 0, 1), ("fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.256..512.concat-einsum-k.0..256", i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.256..512.concat-einsum-k.0..256.fix_c.0", 0, 1), ("fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.768..1024.concat-einsum-k.0..256", i"fastlstm2.c_final.extracted.fastlstm2.four_parts.W.split-over-1.768..1024.concat-einsum-k.0..256.fix_c.0", 0, 1)], full = [("fastlstm2.four_parts.W.split-over-1.0..256.concat-einsum-slice-k.1.256..384", i"fastlstm2.four_parts.W.split-over-1.0..256.concat-einsum-slice-k.1.256..384"), ("fastlstm2.four_parts.W.split-over-1.256..512.concat-einsum-slice-k.1.256..384", i"fastlstm2.four_parts.W.split-over-1.256..512.concat-einsum-slice-k.1.256..384"), ("fastlstm2.four_parts.W.split-over-1.512..768.concat-einsum-slice-k.1.256..384", i"fastlstm2.four_parts.W.split-over-1.512..768.concat-einsum-slice-k.1.256..384"), ("fastlstm2.four_parts.W.split-over-1.768..1024.concat-einsum-slice-k.1.256..384", i"fastlstm2.four_parts.W.split-over-1.768..1024.concat-einsum-slice-k.1.256..384"), ("fastlstm2.four_parts.split-1-over-1.0..256.slice", i"fastlstm2.four_parts.split-1-over-1.0..256.slice"), ("fastlstm2.four_parts.split-1-over-1.256..512.slice", i"fastlstm2.four_parts.split-1-over-1.256..512.slice"), ("fastlstm2.four_parts.split-1-over-1.512..768.slice", i"fastlstm2.four_parts.split-1-over-1.512..768.slice"), ("fastlstm2.four_parts.split-1-over-1.768..1024.slice", i"fastlstm2.four_parts.split-1-over-1.768..1024.slice"), ("fastlstm2.h_new.W.split-1-over-1.0..128.slice", i"fastlstm2.h_new.W.split-1-over-1.0..128.slice"), ("fastlstm2.h_new.split-1-over-1.0..128.slice", i"fastlstm2.h_new.split-1-over-1.0..128.slice"), ("fastlstm2.peephole0.mul.fix-rank", i"fastlstm2.peephole0.mul.fix-rank"), ("fastlstm2.peephole1.mul.fix-rank", i"fastlstm2.peephole1.mul.fix-rank"), ("fastlstm2.peephole2.mul.fix-rank", i"fastlstm2.peephole2.mul.fix-rank")], state = [("fastlstm2.c", i"tap.tap.fastlstm1.c_init.0-35/0.1-106/0", "fastlstm2.c_new"), ("fastlstm2.r", i"tap.tap.tap.fastlstm1.r_init.0-36/0.1-112/0-166/0", "fastlstm2.r_new")], output = [("fastlstm2.h_new.W.prop_axis.a.input_0", "full", 0, 1)], skip = 6, reset_every_turn = false);
   i"fastlstm2.h_new.W.fix_a" = transpose(i"fastlstm2.c_final", axes = [1, 0, 2]);
   i"fastlstm2.h_new.W.fix_b" = variable<scalar>(label = "fastlstm2.h_new.W.fix_b", shape = [1, 256, 256]);
   i"fastlstm2.h_new.W" = matmul(i"fastlstm2.h_new.W.fix_b", i"fastlstm2.h_new.W.fix_a", transposeA = true, transposeB = true);
   i"fastlstm2.h_new.W.fix_c.0" = squeeze(i"fastlstm2.h_new.W", axes = [0]);
-  i"fastlstm2.c_final.fastlstm2.h_new.fix-rank-1-1" = variable<scalar>(label = "fastlstm2.c_final.fastlstm2.h_new.fix-rank-1-1", shape = [256, 1]);
-  i"fastlstm2.h_new" = add(i"fastlstm2.h_new.W.fix_c.0", i"fastlstm2.c_final.fastlstm2.h_new.fix-rank-1-1");
+  i"fastlstm2.c_final.fastlstm2.h_new.fix-rank" = variable<scalar>(label = "fastlstm2.c_final.fastlstm2.h_new.fix-rank", shape = [256, 1]);
+  i"fastlstm2.h_new" = add(i"fastlstm2.h_new.W.fix_c.0", i"fastlstm2.c_final.fastlstm2.h_new.fix-rank");
   i"output.affine.kernel.0" = variable<scalar>(label = "output.affine.kernel.0", shape = [1690, 256]);
   i"output.affine.output.W" = matmul(i"fastlstm2.h_new", i"output.affine.kernel.0", transposeA = true, transposeB = true);
   i"output.affine.bias.0" = variable<scalar>(label = "output.affine.bias.0", shape = [1, 1690]);
