@@ -3,15 +3,15 @@ use tract_nnef::tract_ndarray::{s, Array4, ArrayView1, ArrayView2, ArrayView4, I
 
 /// Tract operator wrapper.
 #[derive(Clone, Debug, PartialEq)]
-pub struct FlashAttnGqaOp {
+pub struct StreamedSdpaOp {
     pub causal: bool,
     pub block_k: usize,
     pub scale: Option<f32>,
 }
 
-impl Op for FlashAttnGqaOp {
+impl Op for StreamedSdpaOp {
     fn name(&self) -> StaticName {
-        "FlashAttnGqa".into()
+        "StreamedSDPA".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -28,12 +28,12 @@ impl Op for FlashAttnGqaOp {
     op_as_typed_op!();
 }
 
-impl TypedOp for FlashAttnGqaOp {
+impl TypedOp for StreamedSdpaOp {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let (q, k, v, opt_m) = match inputs.len() {
             3 => (inputs[0], inputs[1], inputs[2], None),
             4 => (inputs[0], inputs[1], inputs[2], Some(inputs[3])),
-            _ => bail!("FlashAttnGqa expects 3 or 4 inputs (Q,K,V, optional mask), got {inputs:?}"),
+            _ => bail!("StreamSDPA expects 3 or 4 inputs (Q,K,V, optional mask), got {inputs:?}"),
         };
 
         // dtype checks
@@ -95,7 +95,7 @@ impl TypedOp for FlashAttnGqaOp {
     as_op!();
 }
 
-impl EvalOp for FlashAttnGqaOp {
+impl EvalOp for StreamedSdpaOp {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -164,7 +164,7 @@ impl EvalOp for FlashAttnGqaOp {
     }
 }
 
-impl FlashAttnGqaOp {
+impl StreamedSdpaOp {
     /// Flash Attention forward with Grouped-Query Attention (GQA).
     ///
     /// Shapes:
