@@ -1,18 +1,29 @@
 use crate::context::CUDA_STREAM;
 use crate::kernels::array::Pad;
-use derive_new::new;
 use tract_core::internal::*;
 use tract_core::ops::array as core_array;
 use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::tensor::DeviceTensorExt;
 
-#[derive(new, Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct CudaPad {
     pads: Vec<(TDim, TDim)>,
     mode: core_array::PadMode,
 }
 
 impl CudaPad {
+    pub fn new(pads: Vec<(TDim, TDim)>, mode: core_array::PadMode) -> TractResult<Self>{
+        ensure!(
+            matches!(mode, core_array::PadMode::Constant(_)),
+            "Only Constant padding supported for now"
+        );
+
+        Ok(CudaPad {
+            pads,
+            mode
+        })
+    }
+
     #[allow(unused)]
     pub fn from_tract_core(core_pad: &core_array::Pad) -> TractResult<Self> {
         ensure!(
