@@ -33,7 +33,7 @@ enum FlashAttnImpl {
 
 impl GgmlFlashAttn {
     pub fn is_supported_dts(k_dt: DatumType, v_dt: DatumType) -> bool {
-        (k_dt == v_dt) && matches!(k_dt, DatumType::F16 | DatumType::Opaque)
+        (k_dt == v_dt) && matches!(k_dt, DatumType::F16)
     }
 
     pub fn name(&self) -> Cow<'_, str> {

@@ -119,6 +119,7 @@ pub fn fuse_axis_op(
         crate::ops::CudaDynKVCache,
         crate::ops::CudaGgmlQuantQ81,
         crate::ops::CudaPad,
+        crate::ops::CudaFlashAttention,
     );
 
     // Handle AxisOp::Move operator.
