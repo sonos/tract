@@ -1,11 +1,11 @@
 pub mod apply_rope;
 pub mod dyn_kv_cache;
-pub mod flash_sdpa;
 pub mod gelu_approximate;
 pub mod rms_norm;
 pub mod scaled_masked_softmax;
 pub mod sdpa;
 pub mod silu;
+pub mod streamed_sdpa;
 
 use tract_core::internal::*;
 use tract_core::ops::konst::Const;
