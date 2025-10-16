@@ -104,6 +104,91 @@ impl Sdpa {
         )?;
         Ok(Some(causal_mask))
     }
+
+    fn wire_softmax(
+        &self,
+        graph: &mut TypedModel,
+        scores: OutletId,
+        mut mask: Option<OutletId>,
+        mask_fact: Option<&TypedFact>,
+        scale: f32,
+    ) -> TractResult<OutletId> {
+        // Decide if scores tensor needs to be reshaped to rank 3
+        let scores_fact = graph.outlet_fact(scores)?.clone();
+        let rank = scores_fact.rank();
+        let reshape_scores_for_softmax = if rank > 3 && mask.is_some() {
+            let scores_shape = scores_fact.shape.to_tvec();
+            let (outter, [qs, ks]) = scores_shape.split_at(rank - 2) else { unreachable!() };
+            let new_scores_shape = tvec![outter.iter().product(), qs.clone(), ks.clone()];
+            Some((scores_shape, new_scores_shape))
+        } else {
+            None
+        };
+
+        // Decide if mask_shape_should_be reshaped to rank 3
+        let reshape_mask_for_softmax = if let Some(m) = mask {
+            let mshape = graph.outlet_fact(m)?.shape.to_tvec();
+            let (outter, [qs, ks]) = mshape.split_at(rank - 2) else { unreachable!() };
+            let new_mshape = tvec![outter.iter().product(), qs.clone(), ks.clone()];
+            Some((mshape, new_mshape))
+        } else {
+            None
+        };
+
+        let scale = tensor0(scale).cast_to_dt(self.acc_datum_type)?.into_owned();
+        let mut attention_weights = if let Some(m) = mask.as_mut() {
+            // Cast mask to acc_datum_type if required
+            if mask_fact.unwrap().datum_type != self.acc_datum_type {
+                *m = graph.wire_node("cast_mask", Cast::new(self.acc_datum_type), &[*m])?[0];
+            }
+
+            // Reshape inputs to scaled_masked_softmax
+            let mut reshaped_scores = scores;
+            if let Some((from, to)) = &reshape_scores_for_softmax {
+                reshaped_scores = graph.wire_node(
+                    "reshape_scores",
+                    change_axes::AxisOp::Reshape(0, from.clone(), to.clone()),
+                    &[scores],
+                )?[0];
+            };
+            let mut reshaped_mask = *m;
+            if let Some((from, to)) = &reshape_mask_for_softmax {
+                reshaped_mask = graph.wire_node(
+                    "reshape_mask",
+                    change_axes::AxisOp::Reshape(0, from.clone(), to.clone()),
+                    &[*m],
+                )?[0];
+            }
+            graph.wire_node(
+                "att_scaled_masked_softmax",
+                ScaledMaskedSoftmax { scale: scale.into() },
+                &[reshaped_scores, reshaped_mask],
+            )?[0]
+        } else {
+            let scale_const = graph.add_const("scale", scale)?;
+            let scaled_scores = wire_with_rank_broadcast(
+                "scale_scores",
+                graph,
+                math::mul(),
+                &[scores, scale_const],
+            )?[0];
+            graph.wire_node(
+                "att_softmax",
+                Softmax::new(tvec![rank - 1], None, SoftmaxKind::Softmax(SoftmaxExp::Libc)),
+                &[scaled_scores],
+            )?[0]
+        };
+
+        if let Some((from, to)) = &reshape_scores_for_softmax {
+            attention_weights = graph.wire_node(
+                "reshape_post_scaled_masked_softmax",
+                change_axes::AxisOp::Reshape(0, to.clone(), from.clone()),
+                &[attention_weights],
+            )?[0];
+        };
+
+        Ok(attention_weights)
+    }
     fn build_sdpa_graph(&self, mut input_facts: TVec<&TypedFact>) -> TractResult<TypedModel> {
         let mut graph = TypedModel::default();
         let mut q_fact = input_facts.remove(0).clone();
@@ -178,31 +263,9 @@ impl Sdpa {
             }
         }
 
-        let reshape_scores_for_softmax = if rank > 3 && m.is_some() {
-            let qshape = graph.outlet_fact(q)?.shape.to_tvec();
-            let kshape = graph.outlet_fact(k)?.shape.to_tvec();
-            let (outter, [qs, _]) = qshape.split_at(rank - 2) else { unreachable!() };
-            let (_, [ks, _]) = kshape.as_slice().split_at(rank - 2) else { unreachable!() };
-            let qt_shape: TVec<_> = [outter, &[qs.clone(), ks.clone()]].concat().into();
-            let new_qt_shape = tvec![outter.iter().product(), qs.clone(), ks.clone()];
-            Some((qt_shape, new_qt_shape))
-        } else {
-            None
-        };
-
-        let reshape_mask_for_softmax = if let Some(m) = m {
-            let mshape = graph.outlet_fact(m)?.shape.to_tvec();
-            let (outter, [qs, ks]) = mshape.split_at(rank - 2) else { unreachable!() };
-            let new_mshape = tvec![outter.iter().product(), qs.clone(), ks.clone()];
-            Some((mshape, new_mshape))
-        } else {
-            None
-        };
-
         let d_k = k_fact.shape[rank - 1].to_i64()? as f32;
-        let scale_value =
+        let scale =
             self.scale.as_ref().map(|t| *t.to_scalar::<f32>().unwrap()).unwrap_or(1.0 / d_k.sqrt());
-        let scale = tensor0(scale_value).cast_to_dt(self.acc_datum_type)?.into_owned();
         if self.is_causal {
             let q_seq_len = q_fact.shape[rank - 2].to_usize()?;
             let k_seq_len = k_fact.shape[rank - 2].to_usize()?;
@@ -219,57 +282,7 @@ impl Sdpa {
         let scores_einsum = EinSum::new(axes, self.acc_datum_type);
         let scores = graph.wire_node("scores", scores_einsum, &[q, k])?[0];
 
-        let mut attention_weights = if let Some(m) = m.as_mut() {
-            // Cast mask to acc_datum_type if required
-            if m_fact.unwrap().datum_type != self.acc_datum_type {
-                *m = graph.wire_node("cast_mask", Cast::new(self.acc_datum_type), &[*m])?[0];
-            }
-
-            // Reshape inputs to scaled_masked_softmax
-            let mut reshaped_scores = scores;
-            if let Some((from, to)) = &reshape_scores_for_softmax {
-                reshaped_scores = graph.wire_node(
-                    "reshape_scores",
-                    change_axes::AxisOp::Reshape(0, from.clone(), to.clone()),
-                    &[scores],
-                )?[0];
-            };
-            let mut reshaped_mask = *m;
-            if let Some((from, to)) = &reshape_mask_for_softmax {
-                reshaped_mask = graph.wire_node(
-                    "reshape_mask",
-                    change_axes::AxisOp::Reshape(0, from.clone(), to.clone()),
-                    &[*m],
-                )?[0];
-            }
-            graph.wire_node(
-                "att_scaled_masked_softmax",
-                ScaledMaskedSoftmax { scale: scale.into() },
-                &[reshaped_scores, reshaped_mask],
-            )?[0]
-        } else {
-            let scale_const = graph.add_const("scale", scale)?;
-            let scaled_scores = wire_with_rank_broadcast(
-                "scale_scores",
-                &mut graph,
-                math::mul(),
-                &[scores, scale_const],
-            )?[0];
-            graph.wire_node(
-                "att_softmax",
-                Softmax::new(tvec![rank - 1], None, SoftmaxKind::Softmax(SoftmaxExp::Libc)),
-                &[scaled_scores],
-            )?[0]
-        };
-
-        if let Some((from, to)) = &reshape_scores_for_softmax {
-            attention_weights = graph.wire_node(
-                "reshape_post_scaled_masked_softmax",
-                change_axes::AxisOp::Reshape(0, to.clone(), from.clone()),
-                &[attention_weights],
-            )?[0];
-        }
-
+        let attention_weights = self.wire_softmax(&mut graph, scores, m, m_fact.as_ref(), scale)?;
         let axes = match rank {
             3 => "amk,akn->amn".parse().unwrap(),
             4 => "bhmn,bhnv->bhmv".parse().unwrap(),
