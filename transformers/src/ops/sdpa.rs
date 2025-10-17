@@ -422,7 +422,7 @@ impl TypedOp for Sdpa {
                     *mask = patch.wire_node("{name}.rm_head", AxisOp::Rm(0), &[*mask])?[0];
                 }
             }
-            let op = FlashSdpaOp { causal: self.is_causal, block_kv: 4, block_q: 4, scale };
+            let op = FlashSdpaOp { causal: self.is_causal, scale };
             let wire = patch.wire_node(name, op, &inputs)?[0];
             patch.shunt_outside(model, node.id.into(), wire)?;
             Ok(Some(patch))
