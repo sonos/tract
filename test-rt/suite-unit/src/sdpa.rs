@@ -4,7 +4,7 @@ use proptest::{
     prop_oneof,
 };
 use tract_core::internal::*;
-use tract_core::ndarray::{ArrayD, ArrayView4};
+use tract_core::ndarray::{arr3, ArrayD, ArrayView4};
 use tract_core::num_traits::Float;
 use tract_ndarray::{s, Array2, Array4, ArrayView2, Ix3, Ix4, IxDyn};
 use tract_transformers::ops::sdpa::Sdpa;
@@ -311,6 +311,17 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
     suite.add(
+        "mask_0",
+        SdpaProblem {
+            q: ArrayD::<f32>::zeros(IxDyn(&[1, 2, 1])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[1, 2, 1])),
+            v: arr3(&[[[2f32], [0.]]]).into_dyn(),
+            mask: Some(arr3(&[[[0.0f32, 0.0], [0.0, -1.0]]]).into_dyn()),
+            scale: None,
+            is_causal: false,
+        },
+    );
+    suite.add(
         "gqa_f32_mask_simple",
         SdpaProblem {
             q: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 1])),
@@ -322,7 +333,7 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
     suite.add(
-        "gqa_f32_mask",
+        "gqa_f32_mask_0",
         SdpaProblem {
             q: ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 16])),
             k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),

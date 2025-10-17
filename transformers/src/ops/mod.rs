@@ -1,5 +1,6 @@
 pub mod apply_rope;
 pub mod dyn_kv_cache;
+pub mod flash_sdpa;
 pub mod gelu_approximate;
 pub mod rms_norm;
 pub mod scaled_masked_softmax;
