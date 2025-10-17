@@ -202,6 +202,15 @@ impl FlashSdpaOp {
                                 (kbix * block_kv_len)..((kbix + 1) * block_kv_len).min(kv_len);
                             let q_range =
                                 (qbix * block_q_len)..((qbix + 1) * block_q_len).min(q_len);
+                            if let Some(mask) = &mask {
+                                if mask
+                                    .slice(s!(q_range.clone(), kv_range.clone()))
+                                    .iter()
+                                    .all(|x| *x < -65503.0)
+                                {
+                                    continue;
+                                }
+                            }
                             let m = &mut m[q_range.clone()];
                             let l = &mut l[q_range.clone()];
                             let qblock: ArrayView2<f32> = q.slice(s!(b, qh, q_range.clone(), ..));
