@@ -6,8 +6,6 @@ use tract_nnef::tract_ndarray::{s, Array2, Array4, ArrayView2, ArrayView4, Array
 #[derive(Clone, Debug, PartialEq)]
 pub struct FlashSdpaOp {
     pub causal: bool,
-    pub block_q: usize,
-    pub block_kv: usize,
     pub scale: Option<f32>,
 }
 
@@ -17,10 +15,7 @@ impl Op for FlashSdpaOp {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!(
-            "causal={}, block_k={}, scale={:?}",
-            self.causal, self.block_kv, self.scale
-        )])
+        Ok(vec![format!("causal={}, scale={:?}", self.causal, self.scale)])
     }
 
     fn same_as(&self, other: &dyn Op) -> bool {
@@ -188,9 +183,10 @@ impl FlashSdpaOp {
         let (batch_size, num_q_heads, q_len, head_dim) = q.dim();
         let (_, num_kv_heads, kv_len, _) = k.dim();
         let scale = self.scale.unwrap_or((head_dim as f32).recip().sqrt());
-        let block_kv_len = self.block_kv.max(1);
-        let block_q_len = self.block_q.max(1);
         let group_size = num_q_heads / num_kv_heads;
+
+        let block_kv_len = 32;
+        let block_q_len = 32;
 
         let mut out = Array4::<f32>::zeros((batch_size, num_q_heads, q_len, head_dim));
 
@@ -254,8 +250,9 @@ impl FlashSdpaOp {
                                 })
                                 .collect_vec();
                             for i in 0..q_range.len() {
-                                let mul_o = ((m[i] - m_new[i]).exp()) * l[i] / l_new[i];
-                                let mul_sv = ((tile_m[i] - m_new[i]).exp()) / l_new[i];
+                                let r_l_new = l_new[i].recip();
+                                let mul_o = ((m[i] - m_new[i]).exp()) * l[i] * r_l_new;
+                                let mul_sv = ((tile_m[i] - m_new[i]).exp()) * r_l_new;
                                 for j in 0..head_dim {
                                     let sv = s.row(i).dot(&vblock.column(j));
                                     oblock[(i, j)] = oblock[(i, j)] * mul_o + sv * mul_sv;
