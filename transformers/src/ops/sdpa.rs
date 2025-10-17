@@ -11,6 +11,7 @@ use tract_nnef::ser::datum_type;
 use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
 
 use crate::ops::dyn_kv_cache::DynKeyValueCache;
+use crate::ops::flash_sdpa::FlashSdpaOp;
 use crate::ops::streamed_sdpa::StreamedSdpaOp;
 use crate::rule_ensure;
 
@@ -422,7 +423,7 @@ impl TypedOp for Sdpa {
                     *mask = patch.wire_node("{name}.rm_head", AxisOp::Rm(0), &[*mask])?[0];
                 }
             }
-            let op = StreamedSdpaOp { causal: self.is_causal, block_k: 4, scale };
+            let op = FlashSdpaOp { causal: self.is_causal, block_k: 4, scale };
             let wire = patch.wire_node(name, op, &inputs)?[0];
             patch.shunt_outside(model, node.id.into(), wire)?;
             Ok(Some(patch))
