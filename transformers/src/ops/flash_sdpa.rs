@@ -1,14 +1,13 @@
 use tract_nnef::internal::*;
 use tract_nnef::prelude::tract_itertools::Itertools;
-use tract_nnef::tract_ndarray::{
-    s, Array4, ArrayView1, ArrayView2, ArrayView4, ArrayViewMut2, Ix4,
-};
+use tract_nnef::tract_ndarray::{s, Array2, Array4, ArrayView2, ArrayView4, ArrayViewMut2, Ix4};
 
 /// Tract operator wrapper.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FlashSdpaOp {
     pub causal: bool,
-    pub block_k: usize,
+    pub block_q: usize,
+    pub block_kv: usize,
     pub scale: Option<f32>,
 }
 
@@ -20,7 +19,7 @@ impl Op for FlashSdpaOp {
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!(
             "causal={}, block_k={}, scale={:?}",
-            self.causal, self.block_k, self.scale
+            self.causal, self.block_kv, self.scale
         )])
     }
 
@@ -186,34 +185,29 @@ impl FlashSdpaOp {
         mask: Option<ArrayView2<f32>>,
     ) -> Array4<f32> {
         // Explicit dimensions
-        let (batch_size, num_q_heads, query_len, head_dim) = q.dim();
+        let (batch_size, num_q_heads, q_len, head_dim) = q.dim();
         let (_, num_kv_heads, kv_len, _) = k.dim();
         let scale = self.scale.unwrap_or((head_dim as f32).recip().sqrt());
-        // let block_kv_len = self.block_k.max(1);
-        // let block_q_len = self.block_k.max(1);
-        let block_kv_len = 1;
-        let block_q_len = 1;
+        let block_kv_len = self.block_kv.max(1);
+        let block_q_len = self.block_q.max(1);
         let group_size = num_q_heads / num_kv_heads;
 
-        dbg!(&self);
-        dbg!(query_len, kv_len, group_size);
-        dbg!(q, k, v);
-
-        let mut out = Array4::<f32>::zeros((batch_size, num_q_heads, query_len, head_dim));
+        let mut out = Array4::<f32>::zeros((batch_size, num_q_heads, q_len, head_dim));
 
         for b in 0..batch_size {
-            let mut l = vec![0f32; query_len];
-            let mut m = vec![f32::NEG_INFINITY; query_len];
-            for kbix in 0..kv_len.div_ceil(block_kv_len) {
-                for qbix in 0..query_len.div_ceil(block_q_len) {
-                    let m = &mut m[block_q_len * qbix..block_q_len * (qbix + 1)];
-                    let l = &mut l[block_q_len * qbix..block_q_len * (qbix + 1)];
-                    dbg!(&m, &l);
-                    for qh in 0..num_q_heads {
-                        for g in 0..group_size {
-                            let kvh = qh * group_size + g;
-                            let kv_range = (kbix * block_kv_len)..(kbix + 1) * block_kv_len;
-                            let q_range = (qbix * block_q_len)..(qbix + 1) * block_q_len;
+            for kvh in 0..num_kv_heads {
+                for g in 0..group_size {
+                    let qh = kvh * group_size + g;
+                    let mut l = vec![0f32; q_len];
+                    let mut m = vec![f32::NEG_INFINITY; q_len];
+                    for kbix in 0..kv_len.div_ceil(block_kv_len) {
+                        for qbix in 0..q_len.div_ceil(block_q_len) {
+                            let kv_range =
+                                (kbix * block_kv_len)..((kbix + 1) * block_kv_len).min(kv_len);
+                            let q_range =
+                                (qbix * block_q_len)..((qbix + 1) * block_q_len).min(q_len);
+                            let m = &mut m[q_range.clone()];
+                            let l = &mut l[q_range.clone()];
                             let qblock: ArrayView2<f32> = q.slice(s!(b, qh, q_range.clone(), ..));
                             let kblock: ArrayView2<f32> = k.slice(s!(b, kvh, kv_range.clone(), ..));
                             let vblock: ArrayView2<f32> = v.slice(s!(b, kvh, kv_range.clone(), ..));
@@ -221,37 +215,53 @@ impl FlashSdpaOp {
                                 out.slice_mut(s!(b, qh, q_range.clone(), ..));
                             // Sij <- QiKTj
                             let mut s = qblock.dot(&kblock.t()) * scale;
-                            let tile_m = s
-                                .fold_axis(tract_ndarray::Axis(1), f32::NEG_INFINITY, |a, b| {
-                                    a.max(*b)
+                            if let Some(mask) = &mask {
+                                s += &mask.slice(s!(q_range.clone(), kv_range.clone()));
+                            } else if self.causal {
+                                let mask = Array2::from_elem(
+                                    (q_range.len(), kv_range.len()),
+                                    f32::NEG_INFINITY,
+                                );
+                                let mask =
+                                    mask.triu(q_range.start as isize - kv_range.start as isize + 1);
+                                s += &mask;
+                            };
+                            let tile_m: Vec<f32> = s
+                                .rows()
+                                .into_iter()
+                                .map(|row| {
+                                    row.iter().copied().map(float_ord::FloatOrd).max().unwrap().0
                                 })
-                                .insert_axis(tract_ndarray::Axis(1));
-                            s -= &tile_m;
+                                .collect_vec();
+                            for i in 0..q_range.len() {
+                                if tile_m[i].is_finite() {
+                                    s.row_mut(i).iter_mut().for_each(|x| *x -= tile_m[i]);
+                                }
+                            }
                             // Sij <- exp(Sij * scale - max_of_row)
                             s.mapv_inplace(f32::exp);
-                            dbg!(&s);
                             let tile_l = s
-                                .fold_axis(tract_ndarray::Axis(1), 0f32, |a, b| a + b)
+                                .sum_axis(tract_ndarray::Axis(1))
                                 .insert_axis(tract_ndarray::Axis(1));
                             // m_new = max(maxes, row_maxs)
                             let m_new =
-                                (0..block_q_len).map(|i| m[i].max(tile_m[(i, 0)])).collect_vec();
+                                (0..q_range.len()).map(|i| m[i].max(tile_m[i])).collect_vec();
                             // l_new = exp(m[i] - m_new[i]) * l[i] - exp(tile_m[i] - m_new[i]) * tile_l[i]
-                            let l_new = (0..block_q_len)
+                            let l_new = (0..q_range.len())
                                 .map(|i| {
                                     (m[i] - m_new[i]).exp() * l[i]
-                                        + (tile_m[(i, 0)] - m_new[i]).exp() * tile_l[(i, 0)]
+                                        + (tile_m[i] - m_new[i]).exp() * tile_l[(i, 0)]
                                 })
                                 .collect_vec();
-                            for i in 0..block_q_len {
+                            for i in 0..q_range.len() {
                                 let mul_o = ((m[i] - m_new[i]).exp()) * l[i] / l_new[i];
-                                let mul_sv = ((tile_m[(i, 0)] - m_new[i]).exp()) / l_new[i];
+                                let mul_sv = ((tile_m[i] - m_new[i]).exp()) / l_new[i];
                                 for j in 0..head_dim {
                                     let sv = s.row(i).dot(&vblock.column(j));
                                     oblock[(i, j)] = oblock[(i, j)] * mul_o + sv * mul_sv;
                                 }
                             }
-                            for i in 0..block_q_len {
+                            for i in 0..q_range.len() {
                                 l[i] = l_new[i];
                                 m[i] = m_new[i];
                             }
@@ -260,7 +270,6 @@ impl FlashSdpaOp {
                 }
             }
         }
-
         out
     }
 }
