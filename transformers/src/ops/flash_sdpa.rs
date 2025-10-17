@@ -229,9 +229,9 @@ impl FlashSdpaOp {
                                     row.iter().copied().map(float_ord::FloatOrd).max().unwrap().0
                                 })
                                 .collect_vec();
-                            for i in 0..q_range.len() {
-                                if tile_m[i].is_finite() {
-                                    s.row_mut(i).iter_mut().for_each(|x| *x -= tile_m[i]);
+                            for (row_ix, max) in tile_m.iter().enumerate() {
+                                if max.is_finite() {
+                                    s.row_mut(row_ix).iter_mut().for_each(|x| *x -= max);
                                 }
                             }
                             // Sij <- exp(Sij * scale - max_of_row)
@@ -258,10 +258,8 @@ impl FlashSdpaOp {
                                     oblock[(i, j)] = oblock[(i, j)] * mul_o + sv * mul_sv;
                                 }
                             }
-                            for i in 0..q_range.len() {
-                                l[i] = l_new[i];
-                                m[i] = m_new[i];
-                            }
+                            l.copy_from_slice(&l_new);
+                            m.copy_from_slice(&m_new);
                         }
                     }
                 }
