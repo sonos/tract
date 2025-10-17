@@ -4,7 +4,7 @@ use proptest::{
     prop_oneof,
 };
 use tract_core::internal::*;
-use tract_core::ndarray::{ArrayD, ArrayView4};
+use tract_core::ndarray::{arr3, ArrayD, ArrayView4};
 use tract_core::num_traits::Float;
 use tract_ndarray::{s, Array2, Array4, ArrayView2, Ix3, Ix4, IxDyn};
 use tract_transformers::ops::sdpa::Sdpa;
@@ -37,7 +37,7 @@ fn generate_3d_single_head() -> BoxedStrategy<SdpaProblem<f32>> {
     use tract_ndarray::Axis;
     generate_4d_group_query_att(1, 1)
         .prop_map(|mut gqa| {
-            dbg!(&gqa);
+            //dbg!(&gqa);
             gqa.q.index_axis_inplace(Axis(1), 0);
             gqa.k.index_axis_inplace(Axis(1), 0);
             gqa.v.index_axis_inplace(Axis(1), 0);
@@ -267,7 +267,62 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
     suite.add(
+        "causal_f32_0",
+        SdpaProblem {
+            q: tensor3(&[[[0f32]]]).into_array()?,
+            k: tensor3(&[[[0f32]]]).into_array()?,
+            v: tensor3(&[[[0f32]]]).into_array()?,
+            mask: None,
+            scale: None,
+            is_causal: true,
+        },
+    );
+    suite.add(
+        "causal_f32_1",
+        SdpaProblem {
+            q: tensor3(&[[[0f32], [0.]]]).into_array()?,
+            k: tensor3(&[[[0f32], [0.]]]).into_array()?,
+            v: tensor3(&[[[0f32], [0.]]]).into_array()?,
+            mask: None,
+            scale: None,
+            is_causal: true,
+        },
+    );
+    suite.add(
+        "causal_f32_2",
+        SdpaProblem {
+            q: tensor3(&[[[0f32], [0f32]]]).into_array()?,
+            k: tensor3(&[[[0f32], [0f32]]]).into_array()?,
+            v: tensor3(&[[[0f32], [0f32]]]).into_array()?,
+            mask: None,
+            scale: None,
+            is_causal: true,
+        },
+    );
+    suite.add(
         "gqa_f32_0",
+        SdpaProblem {
+            q: ArrayD::<f32>::zeros(IxDyn(&[1, 2, 1, 1])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[1, 2, 1, 1])),
+            v: arr4(&[[[[0f32]], [[1f32]]]]).into_dyn(),
+            mask: None,
+            scale: None,
+            is_causal: false,
+        },
+    );
+    suite.add(
+        "gqa_f32_1",
+        SdpaProblem {
+            q: ArrayD::<f32>::zeros(IxDyn(&[1, 2, 1, 1])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 1, 1])),
+            v: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 1, 1])),
+            mask: None,
+            scale: None,
+            is_causal: false,
+        },
+    );
+    suite.add(
+        "gqa_f32_big_0",
         SdpaProblem {
             q: ArrayD::<f32>::zeros(IxDyn(&[2, 8, 5, 16])),
             k: ArrayD::<f32>::zeros(IxDyn(&[2, 4, 5, 16])),
@@ -278,7 +333,7 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
     suite.add(
-        "gqa_f32_1",
+        "gqa_f32_big_1",
         SdpaProblem {
             q: ArrayD::<f32>::zeros(IxDyn(&[2, 8, 5, 16])),
             k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 5, 16])),
@@ -289,7 +344,7 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
     suite.add(
-        "gqa_f32_2",
+        "gqa_f32_big_2",
         SdpaProblem {
             q: ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 16])),
             k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),
@@ -300,12 +355,45 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
     suite.add(
-        "gqa_f32_mask",
+        "mask_0",
+        SdpaProblem {
+            q: ArrayD::<f32>::zeros(IxDyn(&[1, 2, 1])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[1, 2, 1])),
+            v: arr3(&[[[2f32], [0.]]]).into_dyn(),
+            mask: Some(arr3(&[[[0.0f32, 0.0], [0.0, -1.0]]]).into_dyn()),
+            scale: None,
+            is_causal: false,
+        },
+    );
+    suite.add(
+        "gqa_f32_mask_simple",
+        SdpaProblem {
+            q: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 1])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 1])),
+            v: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 1])),
+            mask: Some(ArrayD::<f32>::zeros(IxDyn(&[1, 1, 1]))),
+            scale: None,
+            is_causal: false,
+        },
+    );
+    suite.add(
+        "gqa_f32_mask_0",
         SdpaProblem {
             q: ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 16])),
             k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),
             v: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),
             mask: Some(ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 3]))),
+            scale: None,
+            is_causal: false,
+        },
+    );
+    suite.add(
+        "gqa_f32_nocausal_nomask",
+        SdpaProblem {
+            q: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 2, 1])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 2, 1])),
+            v: arr4(&[[[[0f32], [1f32]]]]).into_dyn(),
+            mask: None,
             scale: None,
             is_causal: false,
         },

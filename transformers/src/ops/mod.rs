@@ -6,6 +6,7 @@ pub mod rms_norm;
 pub mod scaled_masked_softmax;
 pub mod sdpa;
 pub mod silu;
+pub mod streamed_sdpa;
 
 use tract_core::internal::*;
 use tract_core::ops::konst::Const;
