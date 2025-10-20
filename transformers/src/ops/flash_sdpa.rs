@@ -177,7 +177,12 @@ impl FlashAttnGqaOp {
 
                     for t_q in 0..query_len {
                         let q_vec = qh.slice(s![t_q, ..]);
-
+                        
+                        let causal_cutoff = if self.causal {
+                            kv_len.saturating_sub(query_len) + t_q
+                        } else {
+                            usize::MAX
+                        };
                         // Streaming softmax state
                         let mut m = f32::NEG_INFINITY; // running max
                         let mut l = 0.0f32; // running sum of exp(scores - m)
@@ -191,15 +196,16 @@ impl FlashAttnGqaOp {
                             let mut block_max = f32::NEG_INFINITY;
                             let mut scores: Vec<f32> = Vec::with_capacity(kend - kb);
                             for i_k in kb..kend {
-                                if self.causal && query_len == kv_len && i_k > t_q {
+                                if self.causal && i_k > causal_cutoff {
                                     scores.push(f32::NEG_INFINITY);
-                                } else {
-                                    let s = dot1d(q_vec.view(), k_bh.row(i_k).view()) * scale;
-                                    if s > block_max {
-                                        block_max = s;
-                                    }
-                                    scores.push(s);
+                                    continue;
                                 }
+
+                                let s = dot1d(q_vec.view(), k_bh.row(i_k).view()) * scale;
+                                if s > block_max {
+                                    block_max = s;
+                                }
+                                scores.push(s);
                             }
 
                             if !block_max.is_finite() {
