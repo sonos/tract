@@ -7,7 +7,7 @@ use tract_gpu::tensor::DeviceTensorExt;
 #[derive(Clone, Debug, new)]
 pub struct CudaFlashAttention {
     scale: f32,
-    is_causal: bool,
+    _is_causal: bool,
 }
 
 impl Op for CudaFlashAttention {
@@ -30,20 +30,13 @@ impl EvalOp for CudaFlashAttention {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         CUDA_STREAM.with(|stream| {
-            ensure!(inputs.len() >= 3, "flash-attn expects [q, k, v, (mask)]");
+            ensure!(inputs.len() == 4, "flash-attn expects [q, k, v, mask]");
 
             let q = inputs[0].to_device_tensor()?;
             let k = inputs[1].to_device_tensor()?;
             let v = inputs[2].to_device_tensor()?;
+            let mask = Some(inputs[3].to_device_tensor()?);
 
-            let mask = match inputs.get(3) {
-                Some(m) => {
-                    ensure!(!self.is_causal, "mask provided but attention is causal");
-                    Some(m.to_device_tensor()?)
-                }
-                None => None,
-            };
-            
             let output = tract_gpu::session_handler::make_tensor_for_node(
                 session,
                 node_id,
