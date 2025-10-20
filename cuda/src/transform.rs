@@ -450,7 +450,6 @@ fn convert_sdpa_to_cuda_flash_attn(
     let q_fact= input_facts[0];
     let k_fact= input_facts[1];
     let v_fact= input_facts[2];
-    let m_fact= input_facts[3];
 
     let splitted_i= inputs.split_at_mut(2);
     let qk= splitted_i.0.split_at_mut(1);
@@ -459,9 +458,7 @@ fn convert_sdpa_to_cuda_flash_attn(
     let q = &mut qk.0[0];
     let k = &mut qk.1[0];
     let v = &mut vm.0[0];
-    let m = &mut vm.1[0];
 
-    dbg!(v_fact.datum_type(), k_fact.datum_type(), m_fact.datum_type());
 
     ensure!(k_fact.datum_type() == v_fact.datum_type());
     let cast_op = ops::CudaCast::new(DatumType::F16).unwrap();
@@ -470,9 +467,6 @@ fn convert_sdpa_to_cuda_flash_attn(
         *k = target.wire_node(node.name.clone() + ".cast_k", cast_op.clone(), &[*k])?[0];
         *v = target.wire_node(node.name.clone() + ".cast_v", cast_op.clone(), &[*v])?[0];
         
-    }
-    if m_fact.datum_type().unwrap() != DatumType::F16 {
-        *m = target.wire_node(node.name.clone() + ".cast_m", cast_op, &[*m])?[0];
     }
 
     if q_fact.datum_type().unwrap() != DatumType::F32 {
@@ -488,32 +482,39 @@ fn convert_sdpa_to_cuda_flash_attn(
         *v = target.wire_node(node.name.clone() + ".reshape_v", ax_op, &[*v])?[0];
     }
 
-    if m_fact.rank() != 4 {
-        let ax_op = ops::CudaAxisOp::from_tract_core(AxisOp::Add(0));
-        for _ in 0..(4 - m_fact.rank()) {
-            *m = target.wire_node(node.name.clone() + ".reshape_m", ax_op.clone(), &[*m])?[0];
-        }
-    }
-
     let out_dim = k_fact.shape[k_fact.rank() - 1].to_i64()?;
     ensure!(matches!(out_dim, 64 | 80 | 96 | 112 | 128 | 256), "Unsupported d for Cuda FlashAttn");
 
     // Pad S+P to next multiple of 256 for Flash Attention Op
     ensure!(k_fact.shape == v_fact.shape);
 
-    let s = m_fact.shape.dims()[q_fact.rank() - 2].clone();
     let s_plus_p = k_fact.shape.dims()[q_fact.rank() - 2].clone();
     let s_plus_p_to_pad = ((s_plus_p.clone() + 255) / 256) * 256 - s_plus_p;
     let mut padding_kv = vec![(TDim::Val(0), TDim::Val(0)); 4];
     padding_kv[2].1 = s_plus_p_to_pad.clone();
-    let mut padding_m = vec![(TDim::Val(0), TDim::Val(0)); 4];
-    padding_m[2].1 = ((s.clone() + 15) / 16) * 16 - s;
-    padding_m[3].1 = s_plus_p_to_pad;
 
     *k = target.wire_node(node.name.clone() + ".pad_k", ops::CudaPad::new(padding_kv.clone(), PadMode::Constant(tensor0(f16::from_f32(0f32)).into()))?, &[*k])?[0];
     *v = target.wire_node(node.name.clone() + ".pad_v", ops::CudaPad::new(padding_kv, PadMode::Constant(tensor0(f16::from_f32(0f32)).into()))?, &[*v])?[0];
-    *m = target.wire_node(node.name.clone() + ".pad_m", ops::CudaPad::new(padding_m, PadMode::Constant(tensor0(-f16::infinity()).into()))?, &[*m])?[0];
-
+    
+    // Handle mask if present 
+    let has_mask = input_facts.len() == 4;
+    if has_mask {
+        let m_fact= input_facts[3];
+        let m = &mut vm.1[0];
+        if m_fact.datum_type().unwrap() != DatumType::F16 {
+            *m = target.wire_node(node.name.clone() + ".cast_m", cast_op, &[*m])?[0];
+        }
+        if m_fact.rank() != 4 {
+            let ax_op = ops::CudaAxisOp::from_tract_core(AxisOp::Reshape(0, tvec![], tvec![TDim::Val(1); 4 - m_fact.rank()]));
+            *m = target.wire_node(node.name.clone() + ".reshape_m", ax_op.clone(), &[*m])?[0];
+        }
+        // Seq dimension for mask also need padding 
+        let s = m_fact.shape.dims()[m_fact.rank() - 2].clone();
+        let mut padding_m = vec![(TDim::Val(0), TDim::Val(0)); 4];
+        padding_m[2].1 = ((s.clone() + 15) / 16) * 16 - s;
+        padding_m[3].1 = s_plus_p_to_pad;
+        *m = target.wire_node(node.name.clone() + ".pad_m", ops::CudaPad::new(padding_m, PadMode::Constant(tensor0(-f16::infinity()).into()))?, &[*m])?[0];
+    }
     let scale = op.scale.as_ref().map(|s| *s.to_scalar::<f32>().unwrap()).unwrap_or(1.0 / (out_dim as f32).sqrt());
     let sdpa_op = ops::CudaFlashAttention::new(scale, op.is_causal);
     
