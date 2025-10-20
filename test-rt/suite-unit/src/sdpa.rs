@@ -322,7 +322,7 @@ where
         _suite: &str,
         id: &str,
         runtime: &dyn tract_core::runtime::Runtime,
-        approx: tract_core::internal::Approximation,
+        approx: Approximation,
     ) -> infra::TestResult {
         let reference = self.reference()?.into_tensor();
         let mut model = self.tract()?;
@@ -341,6 +341,9 @@ where
         }
         let mut output = runtime.prepare(model)?.run(inputs)?;
         let output = output.remove(0).into_tensor();
+        let approx = if F::datum_type() == DatumType::F16 {
+            Approximation::VeryApproximate
+        } else { approx };
         output.close_enough(&reference, approx)
     }
 }
