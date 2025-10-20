@@ -379,9 +379,9 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add(
         "gqa_f32_big_0",
         SdpaProblem {
-            q: ArrayD::<f32>::zeros(IxDyn(&[2, 8, 5, 16])),
-            k: ArrayD::<f32>::zeros(IxDyn(&[2, 4, 5, 16])),
-            v: ArrayD::<f32>::zeros(IxDyn(&[2, 4, 5, 16])),
+            q: ArrayD::<f32>::zeros(IxDyn(&[2, 8, 5, 64])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[2, 4, 5, 64])),
+            v: ArrayD::<f32>::zeros(IxDyn(&[2, 4, 5, 64])),
             mask: None,
             scale: None,
             is_causal: true,
@@ -390,9 +390,9 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add(
         "gqa_f32_big_1",
         SdpaProblem {
-            q: ArrayD::<f32>::zeros(IxDyn(&[2, 8, 5, 16])),
-            k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 5, 16])),
-            v: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 5, 16])),
+            q: ArrayD::<f32>::zeros(IxDyn(&[2, 8, 5, 64])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 5, 64])),
+            v: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 5, 64])),
             mask: None,
             scale: None,
             is_causal: true,
@@ -401,9 +401,9 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add(
         "gqa_f32_big_2",
         SdpaProblem {
-            q: ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 16])),
-            k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),
-            v: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),
+            q: ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 64])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 64])),
+            v: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 64])),
             mask: None,
             scale: None,
             is_causal: true,
@@ -434,10 +434,10 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add(
         "gqa_f32_mask_0",
         SdpaProblem {
-            q: ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 16])),
-            k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),
-            v: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),
-            mask: Some(Array2::<f32>::zeros((3, 3))),
+            q: ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 64])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 64])),
+            v: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 64])),
+            mask: Some(Array2::<f32>::zeros([3, 3])),
             scale: None,
             is_causal: false,
         },
