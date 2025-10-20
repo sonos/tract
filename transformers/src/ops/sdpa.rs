@@ -199,6 +199,7 @@ impl Sdpa {
         let mut k = graph.add_source("k", k_fact.clone())?;
         let mut v = graph.add_source("v", v_fact.clone())?;
         let mut m = if let Some(m) = m_fact.as_ref() {
+            ensure!(m.rank() == 2);
             Some(graph.add_source("mask", m.clone())?)
         } else {
             None
@@ -357,8 +358,8 @@ impl TypedOp for Sdpa {
         let rank = inputs[0].rank();
         ensure!(rank == 3 || rank == 4, "Input tensors must be 3D or 4D");
         ensure!(
-            inputs.iter().map(|it| it.rank()).all(|r| r == rank),
-            "All inputs should have the same rank {}",
+            inputs[..3].iter().map(|it| it.rank()).all(|r| r == rank),
+            "All inputs (except mask) should have the same rank {}",
             rank
         );
 
