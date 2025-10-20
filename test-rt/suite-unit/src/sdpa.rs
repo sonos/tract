@@ -64,7 +64,7 @@ impl SdpaAlgo for f16 {
         let v_dim = v.ncols();
 
         let s_h = f16::from_f32(scale.unwrap_or(1.0 / (d as f32).sqrt()));
-        println!("Scale: {}", s_h);
+        //println!("Scale: {}", s_h);
         // logits in f16 with f16 accumulation
         let mut logits = Array2::<f16>::from_elem((q_len, k_len), f16::from_f32(0.0));
         for i in 0..q_len {
@@ -77,7 +77,7 @@ impl SdpaAlgo for f16 {
             }
         }
 
-        println!("Scaled_scores: {:?}", &logits);
+        //println!("Scaled_scores: {:?}", &logits);
         if is_causal {
             let p = k_len.saturating_sub(q_len);
             for i in 0..q_len {
@@ -90,7 +90,7 @@ impl SdpaAlgo for f16 {
             assert_eq!(m.dim(), logits.dim());
             for i in 0..q_len { for j in 0..k_len { logits[(i,j)] = logits[(i,j)] + m[(i,j)]; } }
         }
-        println!("Masked_scores: {:?}", &logits);
+        //println!("Masked_scores: {:?}", &logits);
         // softmax in f16
         let mut att = Array2::<f16>::from_elem((q_len, k_len), f16::from_f32(0.0));
         for i in 0..q_len {
@@ -107,7 +107,7 @@ impl SdpaAlgo for f16 {
             if s.to_f32() == 0.0 { continue; }
             for j in 0..k_len { att[(i,j)] = att[(i,j)] / s; }
         }
-        println!("Post Softmax: {:?}", &att);
+        //println!("Post Softmax: {:?}", &att);
         // att @ V in f16
         let mut out = Array2::<f16>::from_elem((q_len, v_dim), f16::from_f32(0.0));
         for i in 0..q_len {
@@ -119,7 +119,7 @@ impl SdpaAlgo for f16 {
                 out[(i,vv)] = acc;
             }
         }
-        println!("Output: {:?}", &out);
+        //println!("Output: {:?}", &out);
         out
     }
 }
@@ -400,7 +400,7 @@ pub fn suite() -> TractResult<TestSuite> {
             q: ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 16])),
             k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),
             v: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),
-            mask: Some(ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 3]))),
+            mask: Some(ArrayD::<f32>::zeros(IxDyn(&[3, 3]))),
             scale: None,
             is_causal: false,
         },
