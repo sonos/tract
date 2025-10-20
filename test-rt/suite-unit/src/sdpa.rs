@@ -3,10 +3,10 @@ use proptest::{
     prelude::{any, Arbitrary, BoxedStrategy, Just, Strategy},
     prop_oneof,
 };
-use tract_core::{internal::*, ndarray::Ix2};
+use tract_core::internal::*;
 use tract_core::ndarray::{ArrayD, ArrayView4};
 use tract_core::num_traits::Float;
-use tract_ndarray::{s, Array2, Array4, ArrayView2, Axis, Ix3, Ix4, IxDyn};
+use tract_ndarray::{s, Array2, Array4, ArrayView2, Axis, Ix2, Ix3, Ix4, IxDyn};
 use tract_transformers::ops::sdpa::Sdpa;
 
 use crate::tensor;
