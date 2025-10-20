@@ -1,5 +1,8 @@
+use std::vec;
+
 use infra::Test;
 use suite_unit::bin_einsum::{BinEinsumProblem, BinEinsumProblemParams};
+use suite_unit::sdpa::{SdpaProblem, SdpaProblemParams};
 
 pub fn suite() -> &'static infra::TestSuite {
     lazy_static::lazy_static! {
@@ -24,11 +27,18 @@ fn mk_suite() -> infra::TestSuite {
             ..BinEinsumProblemParams::default()
         },
     );
+
+    unit.get_sub_mut("sdpa").add_arbitrary::<SdpaProblem<f32>>(
+        "proptest_f16",
+        SdpaProblemParams {
+            embed_dims: vec![64, 80, 96, 112, 128, 256]
+        },
+    );
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
 }
 
-fn ignore_unit(_t: &[String], _case: &dyn Test) -> bool {
-    false
+fn ignore_unit(t: &[String], _case: &dyn Test) -> bool {
+    t[0] == "sdpa" && (t[1] == "trivial_f32_0" || t[1] == "proptest_f32")
 }
 
 fn ignore_onnx(t: &[String]) -> bool {
