@@ -195,7 +195,6 @@ impl Sdpa {
         let mut k = graph.add_source("k", k_fact.clone())?;
         let mut v = graph.add_source("v", v_fact.clone())?;
         let mut m = if let Some(m) = m_fact.as_ref() {
-            ensure!(m.rank() == 2);
             Some(graph.add_source("mask", m.clone())?)
         } else {
             None
