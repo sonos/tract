@@ -90,7 +90,7 @@ impl SdpaAlgo for f16 {
             for j in 0..k_len {
                 let mut acc = f16::from_f32(0.0);
                 for t in 0..d {
-                    acc = acc + q[(i, t)] * k[(j, t)];
+                    acc += q[(i, t)] * k[(j, t)];
                 }
                 logits[(i, j)] = acc * s_h;
             }
@@ -109,7 +109,7 @@ impl SdpaAlgo for f16 {
             assert_eq!(m.dim(), logits.dim());
             for i in 0..q_len {
                 for j in 0..k_len {
-                    logits[(i, j)] = logits[(i, j)] + m[(i, j)];
+                    logits[(i, j)] += m[(i, j)];
                 }
             }
         }
@@ -132,13 +132,13 @@ impl SdpaAlgo for f16 {
             for j in 0..k_len {
                 let e = (logits[(i, j)] - m).exp();
                 att[(i, j)] = e;
-                s = s + e;
+                s += e;
             }
             if s.to_f32() == 0.0 {
                 continue;
             }
             for j in 0..k_len {
-                att[(i, j)] = att[(i, j)] / s;
+                att[(i, j)] /= s;
             }
         }
         //println!("Post Softmax: {:?}", &att);
@@ -148,7 +148,7 @@ impl SdpaAlgo for f16 {
             for vv in 0..v_dim {
                 let mut acc = f16::from_f32(0.0);
                 for kk in 0..k_len {
-                    acc = acc + att[(i, kk)] * v[(kk, vv)];
+                    acc += att[(i, kk)] * v[(kk, vv)];
                 }
                 out[(i, vv)] = acc;
             }
@@ -268,7 +268,7 @@ where
         let k = self.k.clone().into_tensor();
         let v = self.v.clone().into_tensor();
 
-        let scale = self.scale.map(|s| tensor0(s));
+        let scale = self.scale.map(tensor0);
 
         let q_in = model.add_source("Q", TypedFact::shape_and_dt_of(&q))?;
         let k_in = model.add_source("K", TypedFact::shape_and_dt_of(&k))?;
@@ -288,7 +288,7 @@ where
             &inputs,
         )?;
         model.set_output_outlets(&output)?;
-        Ok(model.into_decluttered()?)
+        model.into_decluttered()
     }
 
     fn reference_4d(
