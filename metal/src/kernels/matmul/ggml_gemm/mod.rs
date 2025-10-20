@@ -142,7 +142,7 @@ impl GemmKernel for GgmlGemm {
 
         let regular_types_support = matches!(
             (facts[0].datum_type, facts[1].datum_type),
-            (F32, F32) | (F16, F16) | (F16, F32)
+            (F32, F32) | (F16, F16) | (F32, F16)
         );
 
         regular_types_support
