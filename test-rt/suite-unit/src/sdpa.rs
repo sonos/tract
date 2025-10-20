@@ -3,7 +3,7 @@ use proptest::{
     prelude::{any, Arbitrary, BoxedStrategy, Just, Strategy},
     prop_oneof,
 };
-use tract_core::internal::*;
+use tract_core::{internal::*, ndarray::Ix2};
 use tract_core::ndarray::{ArrayD, ArrayView4};
 use tract_core::num_traits::Float;
 use tract_ndarray::{s, Array2, Array4, ArrayView2, Ix3, Ix4, IxDyn};
@@ -41,7 +41,6 @@ fn generate_3d_single_head() -> BoxedStrategy<SdpaProblem<f32>> {
             gqa.q.index_axis_inplace(Axis(1), 0);
             gqa.k.index_axis_inplace(Axis(1), 0);
             gqa.v.index_axis_inplace(Axis(1), 0);
-            gqa.mask.iter_mut().for_each(|mask| mask.index_axis_inplace(Axis(1), 0));
             gqa
         })
         .boxed()
@@ -60,13 +59,13 @@ fn generate_4d_group_query_att(
 
             let scale_strategy = prop_oneof![Just(None), (0.1f32..2.0).prop_map(Some)];
             let causal_strategy = any::<bool>();
-            (Just((b, n_q_heads, seq_len)), q, k, v, scale_strategy, causal_strategy)
+            (Just(seq_len), q, k, v, scale_strategy, causal_strategy)
         })
-        .prop_flat_map(|((b, n_q_heads, seq_len), q, k, v, scale, is_causal)| {
+        .prop_flat_map(|(seq_len, q, k, v, scale, is_causal)| {
             let mask_strategy = if is_causal {
                 Just(None).boxed()
             } else {
-                prop_oneof![Just(None), tensor(&[b, n_q_heads, seq_len, seq_len]).prop_map(Some)]
+                prop_oneof![Just(None), tensor(&[seq_len, seq_len]).prop_map(Some)]
                     .boxed()
             };
 
@@ -165,7 +164,7 @@ impl SdpaProblem<f32> {
         q: ArrayView4<f32>,
         k: ArrayView4<f32>,
         v: ArrayView4<f32>,
-        mask: Option<ArrayView4<f32>>,
+        mask: Option<ArrayView2<f32>>,
     ) -> Array4<f32> {
         let [b, q_heads, seq_len, _] = q.shape() else { unreachable!() };
         let [_, kv_heads, _, v_emb] = v.shape() else { unreachable!() };
@@ -180,14 +179,12 @@ impl SdpaProblem<f32> {
                     let q_slice = q.slice(s![batch_idx, q_head_idx, .., ..]);
                     let k_slice = k.slice(s![batch_idx, kv_head_idx, .., ..]);
                     let v_slice = v.slice(s![batch_idx, kv_head_idx, .., ..]);
-                    let mask_slice =
-                        mask.as_ref().map(|m| m.slice(s![batch_idx, q_head_idx, .., ..]));
 
                     let output_2d = Self::scaled_dot_product_attention_2d(
                         &q_slice,
                         &k_slice,
                         &v_slice,
-                        mask_slice,
+                        mask,
                         self.scale,
                         self.is_causal,
                     );
@@ -208,7 +205,7 @@ impl SdpaProblem<f32> {
                 let mask = self
                     .mask
                     .as_ref()
-                    .map(|m| m.view().into_dimensionality::<Ix3>().unwrap().insert_axis(Axis(1)));
+                    .map(|m| m.view().into_dimensionality::<Ix2>().unwrap());
                 let out_4d = self.reference_4d(q, k, v, mask);
                 Ok(out_4d.remove_axis(Axis(1)).into_dyn())
             }
@@ -217,7 +214,7 @@ impl SdpaProblem<f32> {
                 let k = self.k.view().into_dimensionality::<Ix4>().unwrap();
                 let v = self.v.view().into_dimensionality::<Ix4>().unwrap();
                 let mask =
-                    self.mask.as_ref().map(|m| m.view().into_dimensionality::<Ix4>().unwrap());
+                    self.mask.as_ref().map(|m| m.view().into_dimensionality::<Ix2>().unwrap());
                 Ok(self.reference_4d(q, k, v, mask).into_dyn())
             }
             _ => unreachable!(),
