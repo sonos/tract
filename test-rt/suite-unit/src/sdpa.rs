@@ -1,31 +1,35 @@
 use infra::{Test, TestSuite};
 use proptest::{
-    prelude::{any, Arbitrary, BoxedStrategy, Just, Strategy},
+    prelude::{Arbitrary, BoxedStrategy, Just, Strategy, any},
     prop_oneof,
 };
 use tract_core::internal::*;
 use tract_core::ndarray::{ArrayD, ArrayView4};
 use tract_core::num_traits::Float;
-use tract_ndarray::{s, Array2, Array4, ArrayView2, Axis, Ix2, Ix3, Ix4, IxDyn};
+use tract_ndarray::{Array2, Array4, ArrayView2, Axis, Ix2, Ix3, Ix4, IxDyn, s};
 use tract_transformers::ops::sdpa::Sdpa;
 
 use crate::tensor;
 
 pub trait SdpaAlgo: Datum + Copy + 'static {
     fn sdp_2d(
-        q: &ArrayView2<Self>,          
-        k: &ArrayView2<Self>,          
-        v: &ArrayView2<Self>,          
+        q: &ArrayView2<Self>,
+        k: &ArrayView2<Self>,
+        v: &ArrayView2<Self>,
         mask: Option<ArrayView2<Self>>,
-        scale: Option<f32>,            
+        scale: Option<f32>,
         is_causal: bool,
     ) -> Array2<Self>;
 }
 
 impl SdpaAlgo for f32 {
     fn sdp_2d(
-        q: &ArrayView2<f32>, k: &ArrayView2<f32>, v: &ArrayView2<f32>,
-        mask: Option<ArrayView2<f32>>, scale: Option<f32>, is_causal: bool,
+        q: &ArrayView2<f32>,
+        k: &ArrayView2<f32>,
+        v: &ArrayView2<f32>,
+        mask: Option<ArrayView2<f32>>,
+        scale: Option<f32>,
+        is_causal: bool,
     ) -> Array2<f32> {
         let d = q.ncols() as f32;
         let s = scale.unwrap_or(1.0 / d.sqrt());
@@ -36,18 +40,29 @@ impl SdpaAlgo for f32 {
         if is_causal {
             let (q_len, k_len) = (q.nrows(), k.nrows());
             let p = k_len.saturating_sub(q_len);
-            logits.indexed_iter_mut().for_each(|((r,c), z)| {
-                if c > p + r { *z = f32::NEG_INFINITY; }
+            logits.indexed_iter_mut().for_each(|((r, c), z)| {
+                if c > p + r {
+                    *z = f32::NEG_INFINITY;
+                }
             });
         }
-        if let Some(m) = mask { logits += &m; }
+        if let Some(m) = mask {
+            logits += &m;
+        }
 
         for mut row in logits.axis_iter_mut(Axis(0)) {
             let m = row.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-            if !m.is_finite() { row.fill(0.0); continue; }
-            for x in row.iter_mut() { *x = (*x - m).exp(); }
+            if !m.is_finite() {
+                row.fill(0.0);
+                continue;
+            }
+            for x in row.iter_mut() {
+                *x = (*x - m).exp();
+            }
             let s = row.iter().sum::<f32>().max(1e-20);
-            for x in row.iter_mut() { *x /= s; }
+            for x in row.iter_mut() {
+                *x /= s;
+            }
         }
         logits.dot(v)
     }
@@ -55,10 +70,14 @@ impl SdpaAlgo for f32 {
 
 impl SdpaAlgo for f16 {
     fn sdp_2d(
-        q: &ArrayView2<f16>, k: &ArrayView2<f16>, v: &ArrayView2<f16>,
-        mask: Option<ArrayView2<f16>>, scale: Option<f32>, is_causal: bool,
+        q: &ArrayView2<f16>,
+        k: &ArrayView2<f16>,
+        v: &ArrayView2<f16>,
+        mask: Option<ArrayView2<f16>>,
+        scale: Option<f32>,
+        is_causal: bool,
     ) -> Array2<f16> {
-        let (q_len, d)   = (q.nrows(), q.ncols());
+        let (q_len, d) = (q.nrows(), q.ncols());
         let (k_len, d_k) = (k.nrows(), k.ncols());
         assert_eq!(d, d_k);
         let v_dim = v.ncols();
@@ -71,9 +90,9 @@ impl SdpaAlgo for f16 {
             for j in 0..k_len {
                 let mut acc = f16::from_f32(0.0);
                 for t in 0..d {
-                    acc = acc + q[(i,t)] * k[(j,t)];
+                    acc = acc + q[(i, t)] * k[(j, t)];
                 }
-                logits[(i,j)] = acc * s_h;
+                logits[(i, j)] = acc * s_h;
             }
         }
 
@@ -82,30 +101,45 @@ impl SdpaAlgo for f16 {
             let p = k_len.saturating_sub(q_len);
             for i in 0..q_len {
                 for j in (p + i + 1)..k_len {
-                    logits[(i,j)] = f16::NEG_INFINITY;
+                    logits[(i, j)] = f16::NEG_INFINITY;
                 }
             }
         }
         if let Some(m) = mask {
             assert_eq!(m.dim(), logits.dim());
-            for i in 0..q_len { for j in 0..k_len { logits[(i,j)] = logits[(i,j)] + m[(i,j)]; } }
+            for i in 0..q_len {
+                for j in 0..k_len {
+                    logits[(i, j)] = logits[(i, j)] + m[(i, j)];
+                }
+            }
         }
         //println!("Masked_scores: {:?}", &logits);
         // softmax in f16
         let mut att = Array2::<f16>::from_elem((q_len, k_len), f16::from_f32(0.0));
         for i in 0..q_len {
             let mut m = f16::NEG_INFINITY;
-            for j in 0..k_len { let v = logits[(i,j)]; if v > m { m = v; } }
-            if !m.to_f32().is_finite() { continue; }
+            for j in 0..k_len {
+                let v = logits[(i, j)];
+                if v > m {
+                    m = v;
+                }
+            }
+            if !m.to_f32().is_finite() {
+                continue;
+            }
 
             let mut s = f16::from_f32(0.0);
             for j in 0..k_len {
-                let e = (logits[(i,j)] - m).exp();
-                att[(i,j)] = e;
+                let e = (logits[(i, j)] - m).exp();
+                att[(i, j)] = e;
                 s = s + e;
             }
-            if s.to_f32() == 0.0 { continue; }
-            for j in 0..k_len { att[(i,j)] = att[(i,j)] / s; }
+            if s.to_f32() == 0.0 {
+                continue;
+            }
+            for j in 0..k_len {
+                att[(i, j)] = att[(i, j)] / s;
+            }
         }
         //println!("Post Softmax: {:?}", &att);
         // att @ V in f16
@@ -114,9 +148,9 @@ impl SdpaAlgo for f16 {
             for vv in 0..v_dim {
                 let mut acc = f16::from_f32(0.0);
                 for kk in 0..k_len {
-                    acc = acc + att[(i,kk)] * v[(kk,vv)];
+                    acc = acc + att[(i, kk)] * v[(kk, vv)];
                 }
-                out[(i,vv)] = acc;
+                out[(i, vv)] = acc;
             }
         }
         //println!("Output: {:?}", &out);
@@ -126,14 +160,12 @@ impl SdpaAlgo for f16 {
 
 #[derive(Debug, Clone)]
 pub struct SdpaProblemParams {
-    pub embed_dims: Vec<usize>
+    pub embed_dims: Vec<usize>,
 }
 
 impl Default for SdpaProblemParams {
     fn default() -> SdpaProblemParams {
-        SdpaProblemParams {
-            embed_dims: vec![1, 2, 3]
-        }
+        SdpaProblemParams { embed_dims: vec![1, 2, 3] }
     }
 }
 
@@ -158,11 +190,17 @@ where
     type Strategy = BoxedStrategy<SdpaProblem<F>>;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        prop_oneof![generate_3d_single_head::<F>(params.clone()), generate_4d_group_query_att::<F>(params, 4, 4)].boxed()
+        prop_oneof![
+            generate_3d_single_head::<F>(params.clone()),
+            generate_4d_group_query_att::<F>(params, 4, 4)
+        ]
+        .boxed()
     }
 }
 
-fn generate_3d_single_head<F: Datum + Float>(params: SdpaProblemParams) -> BoxedStrategy<SdpaProblem<F>> {
+fn generate_3d_single_head<F: Datum + Float>(
+    params: SdpaProblemParams,
+) -> BoxedStrategy<SdpaProblem<F>> {
     use tract_ndarray::Axis;
     generate_4d_group_query_att::<F>(params, 1, 1)
         .prop_map(|mut gqa| {
@@ -179,7 +217,14 @@ fn generate_4d_group_query_att<F: Datum + Float>(
     max_heads_repeat_factor: usize,
     max_kv_heads: usize,
 ) -> BoxedStrategy<SdpaProblem<F>> {
-    (1..3usize, 1..max_heads_repeat_factor + 1, 1..max_kv_heads + 1, 0..3usize, 2..5usize, 0..params.embed_dims.len())
+    (
+        1..3usize,
+        1..max_heads_repeat_factor + 1,
+        1..max_kv_heads + 1,
+        0..3usize,
+        2..5usize,
+        0..params.embed_dims.len(),
+    )
         .prop_flat_map(move |(b, repeat_factor, n_kv_heads, past_seq_len, seq_len, embed_idx)| {
             let embed = params.embed_dims[embed_idx];
             let n_q_heads = repeat_factor * n_kv_heads;
@@ -213,8 +258,8 @@ fn generate_4d_group_query_att<F: Datum + Float>(
 }
 
 impl<F> SdpaProblem<F>
-    where
-        F: Datum + Float + SdpaAlgo + Copy + 'static,
+where
+    F: Datum + Float + SdpaAlgo + Copy + 'static,
 {
     fn tract(&self) -> TractResult<TypedModel> {
         let mut model = TypedModel::default();
@@ -239,12 +284,7 @@ impl<F> SdpaProblem<F>
         let dt = q.datum_type();
         let output = model.wire_node(
             "SDPA",
-            Sdpa {
-                scale,
-                datum_type: dt,
-                acc_datum_type: dt,
-                is_causal: self.is_causal,
-            },
+            Sdpa { scale, datum_type: dt, acc_datum_type: dt, is_causal: self.is_causal },
             &inputs,
         )?;
         model.set_output_outlets(&output)?;
@@ -273,13 +313,13 @@ impl<F> SdpaProblem<F>
                     let v_slice = v.slice(s![batch_idx, kv_head_idx, .., ..]);
 
                     let out2 = F::sdp_2d(
-                            &q_slice,
-                            &k_slice,
-                            &v_slice,
-                            mask,
-                            self.scale,       // still f32
-                            self.is_causal,
-                        );
+                        &q_slice,
+                        &k_slice,
+                        &v_slice,
+                        mask,
+                        self.scale, // still f32
+                        self.is_causal,
+                    );
                     output.slice_mut(s![batch_idx, q_head_idx, .., ..]).assign(&out2);
                 }
             }
@@ -293,10 +333,8 @@ impl<F> SdpaProblem<F>
                 let q = self.q.view().into_dimensionality::<Ix3>()?.insert_axis(Axis(1));
                 let k = self.k.view().into_dimensionality::<Ix3>()?.insert_axis(Axis(1));
                 let v = self.v.view().into_dimensionality::<Ix3>()?.insert_axis(Axis(1));
-                let mask = self
-                    .mask
-                    .as_ref()
-                    .map(|m| m.view().into_dimensionality::<Ix2>().unwrap());
+                let mask =
+                    self.mask.as_ref().map(|m| m.view().into_dimensionality::<Ix2>().unwrap());
                 let out_4d = self.reference_4d(q, k, v, mask);
                 Ok(out_4d.remove_axis(Axis(1)).into_dyn())
             }
@@ -315,7 +353,7 @@ impl<F> SdpaProblem<F>
 
 impl<F> Test for SdpaProblem<F>
 where
-        F: Datum + Float + SdpaAlgo + Copy + 'static,
+    F: Datum + Float + SdpaAlgo + Copy + 'static,
 {
     fn run_with_approx(
         &self,
@@ -327,9 +365,7 @@ where
         let reference = self.reference()?.into_tensor();
         let mut model = self.tract()?;
 
-        model
-            .properties
-            .insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
+        model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
 
         let mut inputs = tvec![
             self.q.clone().into_tvalue(),
@@ -341,9 +377,8 @@ where
         }
         let mut output = runtime.prepare(model)?.run(inputs)?;
         let output = output.remove(0).into_tensor();
-        let approx = if F::datum_type() == DatumType::F16 {
-            Approximation::VeryApproximate
-        } else { approx };
+        let approx =
+            if F::datum_type() == DatumType::F16 { Approximation::VeryApproximate } else { approx };
         output.close_enough(&reference, approx)
     }
 }
@@ -411,10 +446,21 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add(
         "gqa_f16_0",
         SdpaProblem {
-            q: tensor3(&[[[-2.0], [0.0]]]).cast_to_dt(DatumType::F16)?.into_owned().into_array::<f16>()?,
-            k: tensor3(&[[[-4.0], [-1.0]]]).cast_to_dt(DatumType::F16)?.into_owned().into_array()?,
+            q: tensor3(&[[[-2.0], [0.0]]])
+                .cast_to_dt(DatumType::F16)?
+                .into_owned()
+                .into_array::<f16>()?,
+            k: tensor3(&[[[-4.0], [-1.0]]])
+                .cast_to_dt(DatumType::F16)?
+                .into_owned()
+                .into_array()?,
             v: tensor3(&[[[-9.0], [7.0]]]).cast_to_dt(DatumType::F16)?.into_owned().into_array()?,
-            mask: Some(tensor2(&[[5.0, 10.0], [0.0, 0.0]]).cast_to_dt(DatumType::F16)?.into_owned().into_array()?),
+            mask: Some(
+                tensor2(&[[5.0, 10.0], [0.0, 0.0]])
+                    .cast_to_dt(DatumType::F16)?
+                    .into_owned()
+                    .into_array()?,
+            ),
             scale: Some(0.7857515),
             is_causal: false,
         },
