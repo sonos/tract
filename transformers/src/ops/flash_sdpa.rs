@@ -1,5 +1,5 @@
 use tract_nnef::internal::*;
-use tract_nnef::tract_ndarray::{s, Array4, ArrayView1, ArrayView4, Ix4};
+use tract_nnef::tract_ndarray::{Array4, ArrayView1, ArrayView4, Ix4, s};
 
 /// Tract operator wrapper.
 #[derive(Clone, Debug, PartialEq)]
@@ -177,7 +177,7 @@ impl FlashAttnGqaOp {
 
                     for t_q in 0..query_len {
                         let q_vec = qh.slice(s![t_q, ..]);
-                        
+
                         let causal_cutoff = if self.causal {
                             kv_len.saturating_sub(query_len) + t_q
                         } else {
