@@ -325,8 +325,8 @@ impl GgmlFlashAttn {
                 launch_args.arg(&k_shape[2]);
 
                 let cfg = LaunchConfig {
-                    grid_dim: (d as _, 1, 1),
-                    block_dim: (blocks_num.0, ncols1 as _, ncols2 as _),
+                    grid_dim: (blocks_num.0, ncols1 as _, ncols2 as _),
+                    block_dim: (d as _, 1, 1),
                     shared_mem_bytes: 0,
                 };
                 unsafe {
@@ -349,8 +349,6 @@ impl GgmlFlashAttn {
                 block_dim: (d as _, 1, 1),
                 shared_mem_bytes: (parallel_blocks * 2 * size_of::<f32>()) as u32,
             };
-            //dbg!(dst_tmp_view.len(), dst_tmp_meta_view.len(), out_view.len());
-            //dbg!(&cfg);
             unsafe {
                 launch_args.launch(cfg);
             }
@@ -559,7 +557,7 @@ mod tests {
         past_seq_len: usize,
         seq_len: usize,
         out_dim: usize,
-        scale: f32
+        scale: f32,
     ) -> TractResult<()> {
         CUDA_STREAM.with(|stream| {
             let q_shape = [batch, q_heads, seq_len, out_dim];
