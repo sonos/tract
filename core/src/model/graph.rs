@@ -4,6 +4,7 @@ use crate::ops::Op;
 use crate::plan::PlanOptions;
 use crate::prelude::*;
 
+use std::borrow::Borrow;
 use std::fmt;
 use tract_data::internal::*;
 use tract_itertools::Itertools;
@@ -46,6 +47,24 @@ where
     pub properties: HashMap<String, Arc<Tensor>>,
     /// symbol scope, including table
     pub symbols: SymbolScope,
+}
+
+// Implement Borrow<Self> for Graph to allow SimplePlan<F, O, Graph<F, O>> to be
+// stored in containers that require the Borrow trait bound (e.g., OnceCell, Mutex, RefCell).
+//
+// This is required because SimplePlan has a generic parameter M: Borrow<Graph<F, O>>,
+// and when M = Graph<F, O> (as in TypedRunnableModel<TypedModel>), Graph must implement
+// Borrow<Graph<F, O>> for itself.
+//
+// This implementation is trivial and safe - it just returns a reference to self.
+impl<F, O> Borrow<Graph<F, O>> for Graph<F, O>
+where
+    F: Fact + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+{
+    fn borrow(&self) -> &Graph<F, O> {
+        self
+    }
 }
 
 impl<F, O> Default for Graph<F, O>
