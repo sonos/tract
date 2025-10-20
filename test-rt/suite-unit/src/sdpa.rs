@@ -30,8 +30,8 @@ impl SdpaAlgo for f32 {
         let d = q.ncols() as f32;
         let s = scale.unwrap_or(1.0 / d.sqrt());
 
-        let mut logits = q.dot(&k.t());   // [Q,K]
-        logits *= s;                      // f32 supports scalar mul
+        let mut logits = q.dot(&k.t());
+        logits *= s;
 
         if is_causal {
             let (q_len, k_len) = (q.nrows(), k.nrows());
@@ -158,7 +158,7 @@ where
     type Strategy = BoxedStrategy<SdpaProblem<F>>;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        prop_oneof![generate_3d_single_head::<F>(params.clone()), generate_4d_group_query_att::<F>(params, 1, 1)].boxed()
+        prop_oneof![generate_3d_single_head::<F>(params.clone()), generate_4d_group_query_att::<F>(params, 4, 4)].boxed()
     }
 }
 
@@ -179,7 +179,7 @@ fn generate_4d_group_query_att<F: Datum + Float>(
     max_heads_repeat_factor: usize,
     max_kv_heads: usize,
 ) -> BoxedStrategy<SdpaProblem<F>> {
-    (1..2usize, 1..max_heads_repeat_factor + 1, 1..max_kv_heads + 1, 0..3usize, 2..5usize, 0..params.embed_dims.len())
+    (1..3usize, 1..max_heads_repeat_factor + 1, 1..max_kv_heads + 1, 0..3usize, 2..5usize, 0..params.embed_dims.len())
         .prop_flat_map(move |(b, repeat_factor, n_kv_heads, past_seq_len, seq_len, embed_idx)| {
             let embed = params.embed_dims[embed_idx];
             let n_q_heads = repeat_factor * n_kv_heads;
