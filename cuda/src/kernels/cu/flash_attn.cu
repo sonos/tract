@@ -555,7 +555,7 @@ static __device__ void flash_attn_ext_vec(
                 if (gridDim.y == 1) {
                     dst_val /= KQ_sum[j_VKQ];
                 }
-                dst[(((sequence*ne01 + ic0 + j_VKQ)*ne02 + head)*gridDim.y + blockIdx.y)*D + i0 + tid] = dst_val;
+                dst[(((sequence*ne02 + ic0 + j_VKQ)*ne01 + head)*gridDim.y + blockIdx.y)*D + i0 + tid] = dst_val;
             }
         }
 
@@ -566,7 +566,7 @@ static __device__ void flash_attn_ext_vec(
     }
 
     if (gridDim.y != 1 && tid < ncols && (ncols == 1 || ic0 + tid < ne01)) {
-        dst_meta[((sequence*ne01 + ic0 + tid)*ne02 + head)*gridDim.y + blockIdx.y] = make_float2(KQ_max[tid], KQ_sum[tid]);
+        dst_meta[((sequence*ne02 + ic0 + tid)*ne01 + head)*gridDim.y + blockIdx.y] = make_float2(KQ_max[tid], KQ_sum[tid]);
     }
 }
 
@@ -589,7 +589,7 @@ static __device__ void flash_attn_combine_results(
     const int head     = blockIdx.y;
     const int sequence = blockIdx.z;
 
-    const int j_dst_unrolled = (sequence*ne01 + col)*ne02 + head;
+    const int j_dst_unrolled = (sequence*ne02 + col)*ne01 + head;
 
     VKQ_parts += j_dst_unrolled * parallel_blocks*D;
     VKQ_meta  += j_dst_unrolled * parallel_blocks;
@@ -1765,7 +1765,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
                         if (is_fixup) {
                             dstk_fixup_data[jc_dst*(D/2) + k00 + k] = dstk_val;
                         } else {
-                            dstk[((jt*ncols1 + j_dst)*ne02 + c_dst)*(D/2) + k00 + k] = dstk_val;
+                            dstk[((c_dst * ne01) + (jt*ncols1 + j_dst))*(D/2) + k00 + k] = dstk_val;
                         }
                     }
                 }
@@ -1835,7 +1835,7 @@ static __global__ void flash_attn_ext_f16(
         const half2  * K_h2    = (const half2  *) (K + nb13*sequence + nb12*(head0 / gqa_ratio));
         const half2  * mask_h2 = ncols2 == 1 && !mask ? nullptr :
             (const half2  *) (mask + nb33*(sequence % ne33) + nb31*jt*ncols1);
-        float2       * dstk    = ((float2 *) dst) + (sequence*ne01*ne02 + head0) * (D/2);
+        float2       * dstk    = ((float2 *) dst) + ((sequence*ne02 + head0) * ne01) * (D/2);
 
         const half2 * V_h2 = (const half2 *) (V + nb23*sequence + nb22*(head0 / gqa_ratio));
 
@@ -1880,7 +1880,7 @@ static __global__ void flash_attn_ext_f16(
     const half2  * K_h2    = (const half2  *) (K + nb13*sequence + nb12*(head0 / gqa_ratio));
     const half2  * mask_h2 = ncols2 == 1 && !mask ? nullptr :
         (const half2  *) (mask + nb33*(sequence % ne33) + nb31*jt*ncols1);
-    float2       * dstk    = ((float2 *) dst) + (sequence*ne01*ne02 + head0) * (D/2);
+    float2       * dstk    = ((float2 *) dst) + ((sequence*ne02 + head0) * ne01) * (D/2);
 
     const half2 * V_h2 = (const half2 *) (V + nb23*sequence + nb22*(head0 / gqa_ratio));
 
@@ -1932,8 +1932,10 @@ static __device__ void flash_attn_stream_k_fixup(
         return;
     }
 
-    dst += sequence*ne02*ne01*D + jt*ne02*(ncols1*D) + head*(ncols2*D) + (j*ne02 + c)*D + tid;
-
+    dst += sequence*ne02*ne01*D
+        + (head*ncols2 + c)*ne01*D
+        + (jt*ncols1 + j)*D
+        + tid;
     // Load the partial result that needs a fixup:
     float dst_val = 0.0f;
     float max_val = 0.0f;
