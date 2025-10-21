@@ -445,12 +445,9 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add(
         "gqa_f16_0",
         SdpaProblem {
-            q: ArrayD::<f16>::zeros(IxDyn(&[1, 2, 1])),
-            k: ArrayD::<f16>::zeros(IxDyn(&[1, 3, 1])),
-            v: tensor3(&[[[0.0], [0.0], [-1.0]]])
-                .cast_to_dt(DatumType::F16)?
-                .into_owned()
-                .into_array()?,
+            q: ArrayD::<f16>::zeros(IxDyn(&[1, 2, 64])),
+            k: ArrayD::<f16>::zeros(IxDyn(&[1, 3, 64])),
+            v: ArrayD::<f16>::zeros(IxDyn(&[1, 3, 64])),
             mask: None,
             scale: None,
             is_causal: true,

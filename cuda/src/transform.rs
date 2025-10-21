@@ -489,7 +489,7 @@ fn convert_sdpa_to_cuda_flash_attn(
     }
 
     let out_dim = k_fact.shape[k_fact.rank() - 1].to_i64()?;
-    ensure!(matches!(out_dim, 64 | 80 | 96 | 112 | 128 | 256), "Unsupported d for Cuda FlashAttn");
+    ensure!(matches!(out_dim, 64 | 80 | 96 | 112 | 128 | 256), "Unsupported d for Cuda FlashAttn: {out_dim}");
 
     // Pad S+P to next multiple of 256 for Flash Attention Op
     ensure!(k_fact.shape == v_fact.shape);
