@@ -133,9 +133,21 @@ impl Sdpa {
     ) -> TractResult<OutletId> {
         let scores_fact = graph.outlet_fact(scores)?.clone();
         let rank = scores_fact.rank();
-        let scale = tensor0(scale).cast_to_dt(self.acc_datum_type)?.into_owned();
+        let scale = tensor0(scale);
 
+        // Perform Softmax in F32
+        let casted_scores = graph.wire_node(
+                "cast_score",
+                Cast::new(DatumType::F32),
+                &[scores],
+            )?[0];
+        
         let att_weights = if let Some(m) = mask {
+            let casted_mask = graph.wire_node(
+                "cast_mask",
+                Cast::new(DatumType::F32),
+                &[m],
+            )?[0];
             let scores_shape = scores_fact.shape.to_tvec();
             let (outer, [qs, ks]) = scores_shape.split_at(rank - 2) else { unreachable!() };
             let flat_dim = outer.iter().product::<TDim>();
@@ -143,7 +155,7 @@ impl Sdpa {
             let reshaped_scores = graph.wire_node(
                 "reshape_scores_for_softmax",
                 change_axes::AxisOp::Reshape(0, scores_shape.clone(), scores_shape_3d.clone()),
-                &[scores],
+                &[casted_scores],
             )?[0];
 
             let mask_shape = graph.outlet_fact(m)?.shape.to_tvec();
@@ -153,7 +165,7 @@ impl Sdpa {
             let reshaped_mask = graph.wire_node(
                 "reshape_mask_for_softmax",
                 change_axes::AxisOp::Reshape(0, mask_shape.clone(), mask_shape_3d),
-                &[m],
+                &[casted_mask],
             )?[0];
 
             let weights_3d = graph.wire_node(
@@ -173,7 +185,7 @@ impl Sdpa {
                 "scale_scores",
                 graph,
                 math::mul(),
-                &[scores, scale_const],
+                &[casted_scores, scale_const],
             )?[0];
             graph.wire_node(
                 "att_softmax",
@@ -181,8 +193,12 @@ impl Sdpa {
                 &[scaled_scores],
             )?[0]
         };
-
-        Ok(att_weights)
+        let casted_att_weights = graph.wire_node(
+                "cast_out",
+                Cast::new(scores_fact.datum_type),
+                &[att_weights],
+            )?[0];
+        Ok(casted_att_weights)
     }
 
     fn build_sdpa_graph(&self, mut input_facts: TVec<&TypedFact>) -> TractResult<TypedModel> {
@@ -315,7 +331,7 @@ impl Sdpa {
 
         let body_outputs = patch.model.output_outlets()?;
         patch.shunt_outside(model, node.id.into(), body_outputs[0])?;
-
+        //println!("{}",&patch.model);
         Ok(Some(patch))
     }
 }

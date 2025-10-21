@@ -11,153 +11,6 @@ use tract_transformers::ops::sdpa::Sdpa;
 
 use crate::tensor;
 
-pub trait SdpaAlgo: Datum + Copy + 'static {
-    fn sdp_2d(
-        q: &ArrayView2<Self>,
-        k: &ArrayView2<Self>,
-        v: &ArrayView2<Self>,
-        mask: Option<ArrayView2<Self>>,
-        scale: Option<f32>,
-        is_causal: bool,
-    ) -> Array2<Self>;
-}
-
-impl SdpaAlgo for f32 {
-    fn sdp_2d(
-        q: &ArrayView2<f32>,
-        k: &ArrayView2<f32>,
-        v: &ArrayView2<f32>,
-        mask: Option<ArrayView2<f32>>,
-        scale: Option<f32>,
-        is_causal: bool,
-    ) -> Array2<f32> {
-        let d = q.ncols() as f32;
-        let s = scale.unwrap_or(1.0 / d.sqrt());
-
-        let mut logits = q.dot(&k.t());
-        logits *= s;
-
-        if is_causal {
-            let (q_len, k_len) = (q.nrows(), k.nrows());
-            let p = k_len.saturating_sub(q_len);
-            logits.indexed_iter_mut().for_each(|((r, c), z)| {
-                if c > p + r {
-                    *z = f32::NEG_INFINITY;
-                }
-            });
-        }
-        if let Some(m) = mask {
-            logits += &m;
-        }
-
-        for mut row in logits.axis_iter_mut(Axis(0)) {
-            let m = row.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-            if !m.is_finite() {
-                row.fill(0.0);
-                continue;
-            }
-            for x in row.iter_mut() {
-                *x = (*x - m).exp();
-            }
-            let s = row.iter().sum::<f32>().max(1e-20);
-            for x in row.iter_mut() {
-                *x /= s;
-            }
-        }
-        logits.dot(v)
-    }
-}
-
-impl SdpaAlgo for f16 {
-    fn sdp_2d(
-        q: &ArrayView2<f16>,
-        k: &ArrayView2<f16>,
-        v: &ArrayView2<f16>,
-        mask: Option<ArrayView2<f16>>,
-        scale: Option<f32>,
-        is_causal: bool,
-    ) -> Array2<f16> {
-        let (q_len, d) = (q.nrows(), q.ncols());
-        let (k_len, d_k) = (k.nrows(), k.ncols());
-        assert_eq!(d, d_k);
-        let v_dim = v.ncols();
-
-        let s_h = f16::from_f32(scale.unwrap_or(1.0 / (d as f32).sqrt()));
-        //println!("Scale: {}", s_h);
-        // logits in f16 with f16 accumulation
-        let mut logits = Array2::<f16>::from_elem((q_len, k_len), f16::from_f32(0.0));
-        for i in 0..q_len {
-            for j in 0..k_len {
-                let mut acc = f16::from_f32(0.0);
-                for t in 0..d {
-                    acc += q[(i, t)] * k[(j, t)];
-                }
-                logits[(i, j)] = acc * s_h;
-            }
-        }
-
-        //println!("Scaled_scores: {:?}", &logits);
-        if is_causal {
-            let p = k_len.saturating_sub(q_len);
-            for i in 0..q_len {
-                for j in (p + i + 1)..k_len {
-                    logits[(i, j)] = f16::NEG_INFINITY;
-                }
-            }
-        }
-        if let Some(m) = mask {
-            assert_eq!(m.dim(), logits.dim());
-            for i in 0..q_len {
-                for j in 0..k_len {
-                    logits[(i, j)] += m[(i, j)];
-                }
-            }
-        }
-        //println!("Masked_scores: {:?}", &logits);
-        // softmax in f16
-        let mut att = Array2::<f16>::from_elem((q_len, k_len), f16::from_f32(0.0));
-        for i in 0..q_len {
-            let mut m = f16::NEG_INFINITY;
-            for j in 0..k_len {
-                let v = logits[(i, j)];
-                if v > m {
-                    m = v;
-                }
-            }
-            if !m.to_f32().is_finite() {
-                continue;
-            }
-
-            let mut s = f16::from_f32(0.0);
-            for j in 0..k_len {
-                let e = (logits[(i, j)] - m).exp();
-                att[(i, j)] = e;
-                s += e;
-            }
-            if s.to_f32() == 0.0 {
-                continue;
-            }
-            for j in 0..k_len {
-                att[(i, j)] /= s;
-            }
-        }
-        //println!("Post Softmax: {:?}", &att);
-        // att @ V in f16
-        let mut out = Array2::<f16>::from_elem((q_len, v_dim), f16::from_f32(0.0));
-        for i in 0..q_len {
-            for vv in 0..v_dim {
-                let mut acc = f16::from_f32(0.0);
-                for kk in 0..k_len {
-                    acc += att[(i, kk)] * v[(kk, vv)];
-                }
-                out[(i, vv)] = acc;
-            }
-        }
-        //println!("Output: {:?}", &out);
-        out
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct SdpaProblemParams {
     pub embed_dims: Vec<usize>,
@@ -259,7 +112,7 @@ fn generate_4d_group_query_att<F: Datum + Float>(
 
 impl<F> SdpaProblem<F>
 where
-    F: Datum + Float + SdpaAlgo + Copy + 'static,
+    F: Datum + Float + Copy + 'static,
 {
     fn tract(&self) -> TractResult<TypedModel> {
         let mut model = TypedModel::default();
@@ -291,6 +144,56 @@ where
         model.into_decluttered()
     }
 
+        fn softmax(input: &Array2<f32>, axis: usize) -> Array2<f32> {
+        let axis = tract_ndarray::Axis(axis);
+
+        let max_per_axis =
+            input.map_axis(axis, |lane| lane.fold(f32::NEG_INFINITY, |a, &b| a.max(b)));
+
+        let shifted = input - &max_per_axis.insert_axis(axis);
+        let exp = shifted.mapv(f32::exp);
+        let sum_exp = exp.sum_axis(axis);
+
+        let norm = sum_exp.insert_axis(axis);
+
+        &exp / &norm
+    }
+
+    fn scaled_dot_product_attention_2d(
+        queries: &ArrayView2<F>,
+        keys: &ArrayView2<F>,
+        values: &ArrayView2<F>,
+        mask: Option<ArrayView2<F>>,
+        scale: Option<f32>,
+        is_causal: bool,
+    ) -> Array2<F> {
+        let d_k = keys.shape()[1] as f32;
+        let scale_factor = scale.unwrap_or(1.0 / d_k.sqrt());
+        let q_dot_kt = queries.dot(&keys.t());
+        let q_dot_kt_f32 = q_dot_kt.mapv(|x| x.to_f32().unwrap());
+        let mut scaled_input = q_dot_kt_f32 * scale_factor;
+        //println!("Scores: {}", q_dot_kt);
+        //println!("Scaled Scores: {}", scaled_input);
+        if is_causal {
+            let (q_len, k_len) = (queries.nrows(), keys.nrows());
+            let p = k_len.saturating_sub(q_len);
+            scaled_input.indexed_iter_mut().for_each(|((r, c), z)| {
+                if c > p + r {
+                    *z = f32::NEG_INFINITY;
+                }
+            });
+        }
+        
+        if let Some(m) = mask {
+            let mask_f32= m.mapv(|x| x.to_f32().unwrap());
+            scaled_input += &mask_f32;
+        }
+        //println!("Masked Scores: {}", scaled_input);
+        let att_weights = Self::softmax(&scaled_input, 1).mapv(|x| F::from(x).unwrap());
+        //println!("Attn weights: {}", att_weights);
+        att_weights.dot(values)
+    }
+
     fn reference_4d(
         &self,
         q: ArrayView4<F>,
@@ -312,7 +215,7 @@ where
                     let k_slice = k.slice(s![batch_idx, kv_head_idx, .., ..]);
                     let v_slice = v.slice(s![batch_idx, kv_head_idx, .., ..]);
 
-                    let out2 = F::sdp_2d(
+                    let out2 = Self::scaled_dot_product_attention_2d(
                         &q_slice,
                         &k_slice,
                         &v_slice,
@@ -353,7 +256,7 @@ where
 
 impl<F> Test for SdpaProblem<F>
 where
-    F: Datum + Float + SdpaAlgo + Copy + 'static,
+    F: Datum + Float + Copy + 'static,
 {
     fn run_with_approx(
         &self,
@@ -377,8 +280,6 @@ where
         }
         let mut output = runtime.prepare(model)?.run(inputs)?;
         let output = output.remove(0).into_tensor();
-        let approx =
-            if F::datum_type() == DatumType::F16 { Approximation::VeryApproximate } else { approx };
         output.close_enough(&reference, approx)
     }
 }
@@ -446,22 +347,49 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add(
         "gqa_f16_0",
         SdpaProblem {
-            q: tensor3(&[[[-2.0], [0.0]]])
+            q: ArrayD::<f16>::zeros(IxDyn(&[1, 2, 1])),
+            k: ArrayD::<f16>::zeros(IxDyn(&[1, 3, 1])),
+            v: tensor3(&[[[0.0], [0.0], [-1.0]]]).cast_to_dt(DatumType::F16)?.into_owned().into_array()?,
+            mask: None,
+            scale: None,
+            is_causal: true,
+        },
+    );
+    suite.add(
+        "gqa_f16_1",
+        SdpaProblem {
+            q: tensor4(&[[[[0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0]],
+                    
+                    [[0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0]],
+                    
+                    [[0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0],
+                    [7.0, 0.0, 4.0],
+                    [0.0, 7.0, 4.0]]]])
                 .cast_to_dt(DatumType::F16)?
                 .into_owned()
                 .into_array::<f16>()?,
-            k: tensor3(&[[[-4.0], [-1.0]]])
+            k: tensor4(&[[[[8.0, 6.0, -10.0],
+       [-5.0, -5.0, -6.0],
+       [-1.0, 9.0, 7.0],
+       [4.0, -2.0, -7.0],
+       [-9.0, -3.0, -8.0]]]])
                 .cast_to_dt(DatumType::F16)?
                 .into_owned()
                 .into_array()?,
-            v: tensor3(&[[[-9.0], [7.0]]]).cast_to_dt(DatumType::F16)?.into_owned().into_array()?,
-            mask: Some(
-                tensor2(&[[5.0, 10.0], [0.0, 0.0]])
-                    .cast_to_dt(DatumType::F16)?
-                    .into_owned()
-                    .into_array()?,
-            ),
-            scale: Some(0.7857515),
+            v: tensor4(&[[[[-3.0, -6.0, 10.0],
+       [7.0, -1.0, -5.0],
+       [-7.0, -1.0, -5.0],
+       [9.0, 5.0, -8.0],
+       [-7.0, -3.0, -4.0]]]]).cast_to_dt(DatumType::F16)?.into_owned().into_array()?,
+            mask: None,
+            scale: Some(0.10225234),
             is_causal: false,
         },
     );
