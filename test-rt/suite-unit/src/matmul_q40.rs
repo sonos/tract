@@ -8,9 +8,11 @@ use tract_core::ndarray::Ix2;
 use tract_core::ops::array::{Pad, PadMode};
 use tract_core::ops::konst::Const;
 use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantValue, Q4_0};
-use tract_ndarray::{ArrayD, Axis};
+use tract_ndarray::Axis;
 
 use tract_core::ops::einsum::EinSum;
+
+use crate::tensor;
 
 #[derive(Debug, Clone, Default)]
 pub struct MatmulQ40ProblemParams {
@@ -37,22 +39,18 @@ impl Arbitrary for MatmulQ40Problem {
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
         (1..10usize, 1..128usize, 1..10usize)
             .prop_flat_map(|(m, k, n)| {
-                let a = tensor(&[m, k]);
-                let b = tensor(&[n, k]);
+                let a = tensor::<f32>(&[m, k], 0.1f32);
+                let b = tensor::<f32>(&[n, k], 0.1f32);
 
                 (a, b)
             })
-            .prop_map(move |(a, b)| MatmulQ40Problem { a, b, weights_in_b: params.weights_in_b })
+            .prop_map(move |(a, b)| MatmulQ40Problem {
+                a: a.into_tensor(),
+                b: b.into_tensor(),
+                weights_in_b: params.weights_in_b,
+            })
             .boxed()
     }
-}
-
-pub fn tensor(shape: &[usize]) -> BoxedStrategy<Tensor> {
-    let len = shape.iter().product::<usize>();
-    let shape: Vec<usize> = shape.into();
-    proptest::collection::vec((-100i8..=100i8).prop_map(|i| i as f32 / 100f32), len..=len)
-        .prop_map(move |vec| ArrayD::from_shape_vec(shape.clone(), vec).unwrap().into_tensor())
-        .boxed()
 }
 
 impl MatmulQ40Problem {
