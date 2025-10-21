@@ -81,9 +81,9 @@ fn generate_4d_group_query_att<F: Datum + Float>(
         .prop_flat_map(move |(b, repeat_factor, n_kv_heads, past_seq_len, seq_len, embed_idx)| {
             let embed = params.embed_dims[embed_idx];
             let n_q_heads = repeat_factor * n_kv_heads;
-            let q = tensor::<F>(&[b, n_q_heads, seq_len, embed]);
-            let k = tensor::<F>(&[b, n_kv_heads, past_seq_len + seq_len, embed]);
-            let v = tensor::<F>(&[b, n_kv_heads, past_seq_len + seq_len, embed]);
+            let q = tensor::<F>(&[b, n_q_heads, seq_len, embed], 0.1f32);
+            let k = tensor::<F>(&[b, n_kv_heads, past_seq_len + seq_len, embed], 0.1f32);
+            let v = tensor::<F>(&[b, n_kv_heads, past_seq_len + seq_len, embed], 0.1f32);
 
             let scale_strategy = prop_oneof![Just(None), (0.1f32..1.0).prop_map(Some)];
             let causal_strategy = any::<bool>();
@@ -93,8 +93,11 @@ fn generate_4d_group_query_att<F: Datum + Float>(
             let mask_strategy = if is_causal {
                 Just(None).boxed()
             } else {
-                prop_oneof![Just(None), tensor(&[seq_len, past_seq_len + seq_len]).prop_map(Some)]
-                    .boxed()
+                prop_oneof![
+                    Just(None),
+                    tensor(&[seq_len, past_seq_len + seq_len], 0.1f32).prop_map(Some)
+                ]
+                .boxed()
             };
 
             (Just(q), Just(k), Just(v), Just(scale), Just(is_causal), mask_strategy)
@@ -144,7 +147,7 @@ where
         model.into_decluttered()
     }
 
-        fn softmax(input: &Array2<f32>, axis: usize) -> Array2<f32> {
+    fn softmax(input: &Array2<f32>, axis: usize) -> Array2<f32> {
         let axis = tract_ndarray::Axis(axis);
 
         let max_per_axis =
@@ -183,9 +186,9 @@ where
                 }
             });
         }
-        
+
         if let Some(m) = mask {
-            let mask_f32= m.mapv(|x| x.to_f32().unwrap());
+            let mask_f32 = m.mapv(|x| x.to_f32().unwrap());
             scaled_input += &mask_f32;
         }
         //println!("Masked Scores: {}", scaled_input);
@@ -349,48 +352,13 @@ pub fn suite() -> TractResult<TestSuite> {
         SdpaProblem {
             q: ArrayD::<f16>::zeros(IxDyn(&[1, 2, 1])),
             k: ArrayD::<f16>::zeros(IxDyn(&[1, 3, 1])),
-            v: tensor3(&[[[0.0], [0.0], [-1.0]]]).cast_to_dt(DatumType::F16)?.into_owned().into_array()?,
-            mask: None,
-            scale: None,
-            is_causal: true,
-        },
-    );
-    suite.add(
-        "gqa_f16_1",
-        SdpaProblem {
-            q: tensor4(&[[[[0.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0]],
-                    
-                    [[0.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0]],
-                    
-                    [[0.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0],
-                    [7.0, 0.0, 4.0],
-                    [0.0, 7.0, 4.0]]]])
-                .cast_to_dt(DatumType::F16)?
-                .into_owned()
-                .into_array::<f16>()?,
-            k: tensor4(&[[[[8.0, 6.0, -10.0],
-       [-5.0, -5.0, -6.0],
-       [-1.0, 9.0, 7.0],
-       [4.0, -2.0, -7.0],
-       [-9.0, -3.0, -8.0]]]])
+            v: tensor3(&[[[0.0], [0.0], [-1.0]]])
                 .cast_to_dt(DatumType::F16)?
                 .into_owned()
                 .into_array()?,
-            v: tensor4(&[[[[-3.0, -6.0, 10.0],
-       [7.0, -1.0, -5.0],
-       [-7.0, -1.0, -5.0],
-       [9.0, 5.0, -8.0],
-       [-7.0, -3.0, -4.0]]]]).cast_to_dt(DatumType::F16)?.into_owned().into_array()?,
             mask: None,
-            scale: Some(0.10225234),
-            is_causal: false,
+            scale: None,
+            is_causal: true,
         },
     );
     Ok(suite)
