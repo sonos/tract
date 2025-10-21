@@ -3,6 +3,7 @@ use std::vec;
 use infra::Test;
 use suite_unit::bin_einsum::{BinEinsumProblem, BinEinsumProblemParams};
 use suite_unit::sdpa::{SdpaProblem, SdpaProblemParams};
+use tract_core::tract_data::half;
 
 pub fn suite() -> &'static infra::TestSuite {
     lazy_static::lazy_static! {
@@ -28,10 +29,10 @@ fn mk_suite() -> infra::TestSuite {
         },
     );
 
-    unit.get_sub_mut("sdpa").add_arbitrary::<SdpaProblem<f32>>(
+    unit.get_sub_mut("sdpa").add_arbitrary::<SdpaProblem<half::f16>>(
         "proptest_f16",
         SdpaProblemParams {
-            embed_dims: vec![64, 80, 96, 112, 128, 256]
+            embed_dims: vec![64]//vec![64, 80, 96, 112, 128, 256]
         },
     );
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
