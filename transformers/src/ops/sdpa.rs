@@ -108,8 +108,8 @@ impl Sdpa {
         scores_fact: &TypedFact,
     ) -> TractResult<OutletId> {
         let mask_fact = graph.outlet_fact(mask)?.clone();
-        if mask_fact.datum_type != self.acc_datum_type {
-            mask = graph.wire_node("cast_mask", Cast::new(self.acc_datum_type), &[mask])?[0];
+        if mask_fact.datum_type != DatumType::F32 {
+            mask = graph.wire_node("cast_mask", Cast::new(DatumType::F32), &[mask])?[0];
         }
 
         let mut mask_shape = graph.outlet_fact(mask)?.shape.to_tvec();
@@ -143,11 +143,6 @@ impl Sdpa {
             )?[0];
         
         let att_weights = if let Some(m) = mask {
-            let casted_mask = graph.wire_node(
-                "cast_mask",
-                Cast::new(DatumType::F32),
-                &[m],
-            )?[0];
             let scores_shape = scores_fact.shape.to_tvec();
             let (outer, [qs, ks]) = scores_shape.split_at(rank - 2) else { unreachable!() };
             let flat_dim = outer.iter().product::<TDim>();
@@ -165,7 +160,7 @@ impl Sdpa {
             let reshaped_mask = graph.wire_node(
                 "reshape_mask_for_softmax",
                 change_axes::AxisOp::Reshape(0, mask_shape.clone(), mask_shape_3d),
-                &[casted_mask],
+                &[m],
             )?[0];
 
             let weights_3d = graph.wire_node(
