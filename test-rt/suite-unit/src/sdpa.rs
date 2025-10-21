@@ -85,7 +85,7 @@ fn generate_4d_group_query_att<F: Datum + Float>(
         1..3usize,
         1..max_heads_repeat_factor + 1,
         1..max_kv_heads + 1,
-        0..3usize,
+        0..5usize,
         2..5usize,
         0..params.embed_dims.len(),
     )
