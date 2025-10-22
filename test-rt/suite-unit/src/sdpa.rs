@@ -172,11 +172,14 @@ where
     ) -> Array2<F> {
         let d_k = keys.shape()[1] as f32;
         let scale_factor = scale.unwrap_or(1.0 / d_k.sqrt());
-        let q_dot_kt = queries.dot(&keys.t());
-        let q_dot_kt_f32 = q_dot_kt.mapv(|x| x.to_f32().unwrap());
-        let mut scaled_input = q_dot_kt_f32 * scale_factor;
-        //println!("Scores: {}", q_dot_kt);
-        //println!("Scaled Scores: {}", scaled_input);
+        let queries = queries.mapv(|q| q * F::from(scale_factor).unwrap());
+
+        let queries_f32 = queries.mapv(|q| q.to_f32().unwrap());
+        let keys_f32 = keys.mapv(|k| k.to_f32().unwrap());
+        let values_f32 = values.mapv(|v| v.to_f32().unwrap());
+
+        let mut scaled_input = queries_f32.dot(&keys_f32.t());
+
         if is_causal {
             let (q_len, k_len) = (queries.nrows(), keys.nrows());
             let p = k_len.saturating_sub(q_len);
@@ -191,10 +194,9 @@ where
             let mask_f32 = m.mapv(|x| x.to_f32().unwrap());
             scaled_input += &mask_f32;
         }
-        //println!("Masked Scores: {}", scaled_input);
-        let att_weights = Self::softmax(&scaled_input, 1).mapv(|x| F::from(x).unwrap());
-        //println!("Attn weights: {}", att_weights);
-        att_weights.dot(values)
+
+        let att_weights = Self::softmax(&scaled_input, 1);
+        att_weights.dot(&values_f32).mapv(|r| F::from(r).unwrap())
     }
 
     fn reference_4d(
