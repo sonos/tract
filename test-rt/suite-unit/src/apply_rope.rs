@@ -37,9 +37,9 @@ where
             .prop_flat_map(|(mut cos_sin_shape, extra_shape)| {
                 cos_sin_shape[1] *= 2; // Ensure inner axis dim is multiple of 2
                 (
-                    tensor::<F>(&[extra_shape.clone(), cos_sin_shape.clone()].concat(), 1.0f32),
-                    tensor::<F>(&[extra_shape.clone(), cos_sin_shape.clone()].concat(), 1.0f32),
-                    tensor::<F>(&[extra_shape, cos_sin_shape.clone()].concat(), 1.0f32),
+                    tensor::<F>(&[extra_shape.clone(), cos_sin_shape.clone()].concat()),
+                    tensor::<F>(&[extra_shape.clone(), cos_sin_shape.clone()].concat()),
+                    tensor::<F>(&[extra_shape, cos_sin_shape.clone()].concat()),
                 )
                     .prop_map(|(input, cos, sin)| Self { input, cos, sin })
             })

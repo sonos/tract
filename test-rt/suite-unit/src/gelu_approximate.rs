@@ -35,7 +35,7 @@ where
                 vec(other_dim, rank..=rank)
             })
             .prop_flat_map(|shape| {
-                (tensor::<F>(&shape, 1.0f32), any::<bool>())
+                (tensor::<F>(&shape), any::<bool>())
                     .prop_map(move |(input, fast_impl)| Self { input, fast_impl })
             })
             .boxed()

@@ -65,6 +65,17 @@ fn generate_3d_single_head<F: Datum + Float>(
         .boxed()
 }
 
+fn sdpa_tensor<F: Datum + Float>(shape: &[usize]) -> BoxedStrategy<ArrayD<F>> {
+    let len = shape.iter().product::<usize>();
+    let shape: Vec<usize> = shape.into();
+    proptest::collection::vec(
+        (-100i8..=100i8).prop_map(|i| F::from(i as f32 / 100f32).unwrap()),
+        len..=len,
+    )
+    .prop_map(move |vec| ArrayD::from_shape_vec(shape.clone(), vec).unwrap())
+    .boxed()
+}
+
 fn generate_4d_group_query_att<F: Datum + Float>(
     params: SdpaProblemParams,
     max_heads_repeat_factor: usize,
@@ -81,9 +92,9 @@ fn generate_4d_group_query_att<F: Datum + Float>(
         .prop_flat_map(move |(b, repeat_factor, n_kv_heads, past_seq_len, seq_len, embed_idx)| {
             let embed = params.embed_dims[embed_idx];
             let n_q_heads = repeat_factor * n_kv_heads;
-            let q = tensor::<F>(&[b, n_q_heads, seq_len, embed], 0.1f32);
-            let k = tensor::<F>(&[b, n_kv_heads, past_seq_len + seq_len, embed], 0.1f32);
-            let v = tensor::<F>(&[b, n_kv_heads, past_seq_len + seq_len, embed], 0.1f32);
+            let q = sdpa_tensor::<F>(&[b, n_q_heads, seq_len, embed]);
+            let k = sdpa_tensor::<F>(&[b, n_kv_heads, past_seq_len + seq_len, embed]);
+            let v = sdpa_tensor::<F>(&[b, n_kv_heads, past_seq_len + seq_len, embed]);
 
             let scale_strategy = prop_oneof![Just(None), (0.1f32..1.0).prop_map(Some)];
             let causal_strategy = any::<bool>();
@@ -93,11 +104,8 @@ fn generate_4d_group_query_att<F: Datum + Float>(
             let mask_strategy = if is_causal {
                 Just(None).boxed()
             } else {
-                prop_oneof![
-                    Just(None),
-                    tensor(&[seq_len, past_seq_len + seq_len], 0.1f32).prop_map(Some)
-                ]
-                .boxed()
+                prop_oneof![Just(None), tensor(&[seq_len, past_seq_len + seq_len]).prop_map(Some)]
+                    .boxed()
             };
 
             (Just(q), Just(k), Just(v), Just(scale), Just(is_causal), mask_strategy)
@@ -140,7 +148,12 @@ where
         let dt = q.datum_type();
         let output = model.wire_node(
             "SDPA",
-            Sdpa { scale, datum_type: dt, acc_datum_type: DatumType::F32, is_causal: self.is_causal },
+            Sdpa {
+                scale,
+                datum_type: dt,
+                acc_datum_type: DatumType::F32,
+                is_causal: self.is_causal,
+            },
             &inputs,
         )?;
         model.set_output_outlets(&output)?;
@@ -361,6 +374,42 @@ pub fn suite() -> TractResult<TestSuite> {
             mask: None,
             scale: None,
             is_causal: true,
+        },
+    );
+    suite.add(
+        "gqa_f16_1",
+        SdpaProblem {
+            q: tensor4(&[[
+                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [7.0, 0.0, 4.0], [0.0, 7.0, 4.0]],
+            ]])
+            .cast_to_dt(DatumType::F16)?
+            .into_owned()
+            .into_array::<f16>()?,
+            k: tensor4(&[[[
+                [8.0, 6.0, -10.0],
+                [-5.0, -5.0, -6.0],
+                [-1.0, 9.0, 7.0],
+                [4.0, -2.0, -7.0],
+                [-9.0, -3.0, -8.0],
+            ]]])
+            .cast_to_dt(DatumType::F16)?
+            .into_owned()
+            .into_array()?,
+            v: tensor4(&[[[
+                [-3.0, -6.0, 10.0],
+                [7.0, -1.0, -5.0],
+                [-7.0, -1.0, -5.0],
+                [9.0, 5.0, -8.0],
+                [-7.0, -3.0, -4.0],
+            ]]])
+            .cast_to_dt(DatumType::F16)?
+            .into_owned()
+            .into_array()?,
+            mask: None,
+            scale: Some(0.10225234),
+            is_causal: false,
         },
     );
     Ok(suite)
