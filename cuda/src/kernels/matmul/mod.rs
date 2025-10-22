@@ -530,7 +530,7 @@ impl GgmlGemm {
 
         let regular_types_support = matches!(
             (facts[0].datum_type, facts[1].datum_type),
-            (F32, F32) | (F16, F16) | (F16, F32)
+            (F32, F32) | (F16, F16)
         );
 
         regular_types_support
@@ -623,14 +623,18 @@ impl GgmlGemm {
                 dispatch_ggml_matmul_q40(stream, &w_view, &act_view, &out_view, params)?;
             }
         } else if (params.k % 2 == 0) && params.m <= 8 {
+            dbg!("matvec");
             dispatch_ggml_matvec(stream, weights, activs, out, params)?;
         } else if activs.datum_type() == DatumType::F32 {
             dispatch_cublas_gemm::<f32>(stream, weights, activs, out, params)?;
         } else {
             ensure!(activs.datum_type() == F16);
+            dbg!("cublas_f16");
             dispatch_cublas_gemm::<f16>(stream, weights, activs, out, params)?;
         }
-
+        dbg!(activs.to_host()?.to_array_view::<f16>());
+        dbg!(weights.to_host()?.to_array_view::<f32>());
+        dbg!(out.to_host()?.to_array_view::<f16>());
         Ok(())
     }
 }
