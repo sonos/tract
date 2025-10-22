@@ -140,7 +140,7 @@ where
         let dt = q.datum_type();
         let output = model.wire_node(
             "SDPA",
-            Sdpa { scale, datum_type: dt, acc_datum_type: dt, is_causal: self.is_causal },
+            Sdpa { scale, datum_type: dt, acc_datum_type: DatumType::F32, is_causal: self.is_causal },
             &inputs,
         )?;
         model.set_output_outlets(&output)?;
