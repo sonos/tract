@@ -12,16 +12,13 @@ pub struct CudaPad {
 }
 
 impl CudaPad {
-    pub fn new(pads: Vec<(TDim, TDim)>, mode: core_array::PadMode) -> TractResult<Self>{
+    pub fn new(pads: Vec<(TDim, TDim)>, mode: core_array::PadMode) -> TractResult<Self> {
         ensure!(
             matches!(mode, core_array::PadMode::Constant(_)),
             "Only Constant padding supported for now"
         );
 
-        Ok(CudaPad {
-            pads,
-            mode
-        })
+        Ok(CudaPad { pads, mode })
     }
 
     #[allow(unused)]
