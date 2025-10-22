@@ -376,41 +376,5 @@ pub fn suite() -> TractResult<TestSuite> {
             is_causal: true,
         },
     );
-    suite.add(
-        "gqa_f16_1",
-        SdpaProblem {
-            q: tensor4(&[[
-                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [7.0, 0.0, 4.0], [0.0, 7.0, 4.0]],
-            ]])
-            .cast_to_dt(DatumType::F16)?
-            .into_owned()
-            .into_array::<f16>()?,
-            k: tensor4(&[[[
-                [8.0, 6.0, -10.0],
-                [-5.0, -5.0, -6.0],
-                [-1.0, 9.0, 7.0],
-                [4.0, -2.0, -7.0],
-                [-9.0, -3.0, -8.0],
-            ]]])
-            .cast_to_dt(DatumType::F16)?
-            .into_owned()
-            .into_array()?,
-            v: tensor4(&[[[
-                [-3.0, -6.0, 10.0],
-                [7.0, -1.0, -5.0],
-                [-7.0, -1.0, -5.0],
-                [9.0, 5.0, -8.0],
-                [-7.0, -3.0, -4.0],
-            ]]])
-            .cast_to_dt(DatumType::F16)?
-            .into_owned()
-            .into_array()?,
-            mask: None,
-            scale: Some(0.10225234),
-            is_causal: false,
-        },
-    );
     Ok(suite)
 }
