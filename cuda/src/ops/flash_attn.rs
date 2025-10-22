@@ -35,7 +35,7 @@ impl EvalOp for CudaFlashAttention {
             let q = inputs[0].to_device_tensor()?;
             let k = inputs[1].to_device_tensor()?;
             let v = inputs[2].to_device_tensor()?;
-            let mask = Some(inputs[3].to_device_tensor()?);
+            let mask = inputs[3].to_device_tensor()?;
 
             let output = tract_gpu::session_handler::make_tensor_for_node(
                 session,
@@ -52,7 +52,7 @@ impl EvalOp for CudaFlashAttention {
 impl TypedOp for CudaFlashAttention {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
-            ensure!(facts.len() >= 3);
+            ensure!(facts.len() == 4);
             let dt = facts[0].datum_type;
 
             ensure!(facts.iter().all(|f| f.rank() == 4));

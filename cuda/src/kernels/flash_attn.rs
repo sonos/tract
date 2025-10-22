@@ -103,7 +103,7 @@ impl GgmlFlashAttn {
         q_shape: &[usize],
         k_shape: &[usize],
         v_shape: &[usize],
-        m_shape: Option<&[usize]>,
+        m_shape: &[usize],
         k_dt: DatumType,
         v_dt: DatumType,
     ) -> TractResult<FlashAttnImpl> {
@@ -121,7 +121,7 @@ impl GgmlFlashAttn {
             v_shape[3]
         );
 
-        ensure!(m_shape.is_none_or(|shape| shape[..2] == [1, 1]));
+        ensure!(m_shape[..2] == [1, 1]);
 
         let can_use_vector_kernel = q_shape[3] % 64 == 0;
         let mut best = FlashAttnImpl::MmaF16;
@@ -135,7 +135,7 @@ impl GgmlFlashAttn {
                 best = FlashAttnImpl::Vec;
             }
 
-            if ((head_ratio % 2 != 0 || m_shape.is_none()) && q_shape[2] == 1) {
+            if (head_ratio % 2 != 0 && q_shape[2] == 1) {
                 best = FlashAttnImpl::Vec; // GQA-specific optimizations in the mma kernel do not apply.
             }
         }
@@ -149,7 +149,7 @@ impl GgmlFlashAttn {
         q: &DeviceTensor,
         k: &DeviceTensor,
         v: &DeviceTensor,
-        mask: Option<&DeviceTensor>,
+        mask: &DeviceTensor,
         scale: f32,
         out: &DeviceTensor,
         func: Arc<CudaFunction>,
@@ -163,10 +163,7 @@ impl GgmlFlashAttn {
     ) -> TractResult<()> {
         let ncols = ncols1 * ncols2;
 
-        ensure!(mask.is_none_or(|m| {
-            let n = m.shape()[m.rank() - 2];
-            m.shape()[2] >= q.shape()[2].next_multiple_of(16)
-        }));
+        ensure!(mask.shape()[2] >= q.shape()[2].next_multiple_of(16));
         ensure!(k.shape()[k.rank() - 2] % FATTN_KQ_STRIDE == 0, "Incorrect KV cache padding");
 
         let q_rank = q.rank();
@@ -262,9 +259,7 @@ impl GgmlFlashAttn {
 
         let q_shape = q.shape().iter().map(|s| *s as i32).collect_vec();
         let k_shape = k.shape().iter().map(|s| *s as i32).collect_vec();
-        let mask_shape = mask
-            .map(|m| m.shape().iter().map(|s| *s as i32).collect_vec())
-            .unwrap_or_else(|| vec![0, 0, 0, 0]);
+        let mask_shape = mask.shape().iter().map(|s| *s as i32).collect_vec();
 
         let q_strides =
             q.strides().iter().map(|s| *s as i32 * size_of::<f32>() as i32).collect_vec();
@@ -272,16 +267,15 @@ impl GgmlFlashAttn {
             k.strides().iter().map(|s| *s as i32 * size_of::<f16>() as i32).collect_vec();
         let v_strides =
             v.strides().iter().map(|s| *s as i32 * size_of::<f16>() as i32).collect_vec();
-        let mask_strides = mask
-            .map(|m| m.strides().iter().map(|s| *s as i32 * size_of::<f16>() as i32).collect_vec())
-            .unwrap_or_else(|| vec![0, 0, 0, 0]);
+        let mask_strides =
+            mask.strides().iter().map(|s| *s as i32 * size_of::<f16>() as i32).collect_vec();
 
         let null_ptr = stream.null::<u8>()?;
 
         let q_view = get_cuda_view(q);
         let k_view = get_cuda_view(k);
         let v_view = get_cuda_view(v);
-        let mask_view = mask.map(|t| get_cuda_view(t)).unwrap_or_else(|| null_ptr.as_view());
+        let mask_view = get_cuda_view(mask);
         let out_view = get_cuda_view(out);
         let dst_tmp_view =
             dst_tmp.as_ref().map(|t| get_cuda_view(t)).unwrap_or_else(|| null_ptr.as_view());
@@ -368,7 +362,7 @@ impl GgmlFlashAttn {
         q: &DeviceTensor,
         k: &DeviceTensor,
         v: &DeviceTensor,
-        mask: Option<&DeviceTensor>,
+        mask: &DeviceTensor,
         scale: f32,
         out: &DeviceTensor,
     ) -> TractResult<()> {
@@ -409,7 +403,7 @@ impl GgmlFlashAttn {
         q: &DeviceTensor,
         k: &DeviceTensor,
         v: &DeviceTensor,
-        mask: Option<&DeviceTensor>,
+        mask: &DeviceTensor,
         scale: f32,
         out: &DeviceTensor,
     ) -> TractResult<()> {
@@ -423,16 +417,12 @@ impl GgmlFlashAttn {
         let out_dim = q_shape[3];
         let head_ratio = q_shape[1] / k_shape[1];
 
-        let ncols2 = if mask.is_some() {
-            if head_ratio % 8 == 0 {
-                8
-            } else if head_ratio % 4 == 0 {
-                4
-            } else if head_ratio % 2 == 0 {
-                2
-            } else {
-                1
-            }
+        let ncols2 = if head_ratio % 8 == 0 {
+            8
+        } else if head_ratio % 4 == 0 {
+            4
+        } else if head_ratio % 2 == 0 {
+            2
         } else {
             1
         };
@@ -508,7 +498,7 @@ impl GgmlFlashAttn {
         q: &DeviceTensor,
         k: &DeviceTensor,
         v: &DeviceTensor,
-        mask: Option<&DeviceTensor>,
+        mask: &DeviceTensor,
         scale: f32,
     ) -> TractResult<DeviceTensor> {
         let output = unsafe {
@@ -531,32 +521,18 @@ impl GgmlFlashAttn {
         q: &DeviceTensor,
         k: &DeviceTensor,
         v: &DeviceTensor,
-        mask: Option<&DeviceTensor>,
+        mask: &DeviceTensor,
         scale: f32,
         out: &DeviceTensor,
     ) -> TractResult<()> {
         ensure!(q.datum_type() == DatumType::F32 && q.datum_type() == out.datum_type());
         ensure!(out.shape() == self.output_shape(q.shape(), k.shape(), v.shape())?.as_slice());
-        if q.rank() == 3 {
-            let q_shape = q.shape();
-            let k_shape = k.shape();
-            let v_shape = v.shape();
-            let out_shape = out.shape();
-            q.reshaped(tvec!(q_shape[0], 1, q_shape[1], q_shape[2]))?;
-            k.reshaped(tvec!(k_shape[0], 1, k_shape[1], k_shape[2]))?;
-            v.reshaped(tvec!(v_shape[0], 1, v_shape[1], v_shape[2]))?;
-            out.reshaped(tvec!(out_shape[0], 1, out_shape[1], out_shape[2]))?;
-            if let Some(m) = mask {
-                let shape = m.shape();
-                m.reshaped(tvec!(1, shape[0], shape[1], shape[2]))?;
-            }
-        }
 
         let kernel_impl = Self::find_fattn_kernel(
             q.shape(),
             k.shape(),
             v.shape(),
-            mask.map(|m| m.shape()),
+            mask.shape(),
             k.datum_type(),
             v.datum_type(),
         )?;
@@ -640,15 +616,13 @@ mod tests {
                 &q.clone().into_device()?,
                 &pad_f16_tensor(&k, 2, FATTN_KQ_STRIDE, f16::from_f32(0f32))?.into_device()?,
                 &pad_f16_tensor(&v, 2, FATTN_KQ_STRIDE, f16::from_f32(0f32))?.into_device()?,
-                Some(
-                    &&pad_f16_tensor(
-                        &pad_f16_tensor(&m, 3, FATTN_KQ_STRIDE, -f16::infinity())?,
-                        2,
-                        16,
-                        -f16::infinity(),
-                    )?
-                    .into_device()?,
-                ),
+                &&pad_f16_tensor(
+                    &pad_f16_tensor(&m, 3, FATTN_KQ_STRIDE, -f16::infinity())?,
+                    2,
+                    16,
+                    -f16::infinity(),
+                )?
+                .into_device()?,
                 scale,
             )?;
 
