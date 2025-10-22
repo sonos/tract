@@ -396,6 +396,7 @@ pub fn resolve_gemm_impl(
         Ok(gemm)
     } else if as_quant_fact(input_facts[0], &Q4_0).is_some()
         || as_quant_fact(input_facts[1], &Q4_0).is_some()
+        || input_facts[0].datum_type != input_facts[1].datum_type
         || is_input_broadcast(input_facts)
     {
         Ok(MetalGemmImplKind::Ggml)
