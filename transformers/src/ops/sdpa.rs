@@ -136,12 +136,8 @@ impl Sdpa {
         let scale = tensor0(scale);
 
         // Perform Softmax in F32
-        let casted_scores = graph.wire_node(
-                "cast_score",
-                Cast::new(DatumType::F32),
-                &[scores],
-            )?[0];
-        
+        let casted_scores = graph.wire_node("cast_score", Cast::new(DatumType::F32), &[scores])?[0];
+
         let att_weights = if let Some(m) = mask {
             let scores_shape = scores_fact.shape.to_tvec();
             let (outer, [qs, ks]) = scores_shape.split_at(rank - 2) else { unreachable!() };
@@ -188,11 +184,8 @@ impl Sdpa {
                 &[scaled_scores],
             )?[0]
         };
-        let casted_att_weights = graph.wire_node(
-                "cast_out",
-                Cast::new(scores_fact.datum_type),
-                &[att_weights],
-            )?[0];
+        let casted_att_weights =
+            graph.wire_node("cast_out", Cast::new(scores_fact.datum_type), &[att_weights])?[0];
         Ok(casted_att_weights)
     }
 

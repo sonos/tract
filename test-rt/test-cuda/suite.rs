@@ -31,9 +31,7 @@ fn mk_suite() -> infra::TestSuite {
 
     unit.get_sub_mut("sdpa").add_arbitrary::<SdpaProblem<half::f16>>(
         "proptest_f16",
-        SdpaProblemParams {
-            embed_dims: vec![64, 80, 96, 112, 128, 256]
-        },
+        SdpaProblemParams { embed_dims: vec![64, 80, 96, 112, 128, 256] },
     );
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
 }
@@ -50,7 +48,7 @@ fn ignore_onnx(t: &[String]) -> bool {
     test_tril_zero
     test_triu_zero
     "#
-        .trim()
-        .lines()
-        .any(|s| t.last().unwrap() == s.trim())
+    .trim()
+    .lines()
+    .any(|s| t.last().unwrap() == s.trim())
 }
