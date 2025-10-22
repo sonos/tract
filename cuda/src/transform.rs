@@ -552,7 +552,7 @@ fn convert_sdpa_to_cuda_flash_attn(
         .unwrap_or(1.0 / (out_dim as f32).sqrt());
     let sdpa_op = ops::CudaFlashAttention::new(scale, false);
 
-    let mut out = target.wire_node(node.name.clone(), sdpa_op, &inputs)?;
+    let mut out = target.wire_node(node.name.clone(), sdpa_op, inputs)?;
 
     if q_rank != 4 {
         out = target.wire_node(
