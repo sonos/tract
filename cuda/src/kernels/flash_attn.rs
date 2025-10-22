@@ -142,6 +142,7 @@ impl GgmlFlashAttn {
         Ok(best)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn launch_generic_flash_attn(
         &self,
         stream: &TractCudaStream,
@@ -219,7 +220,7 @@ impl GgmlFlashAttn {
             let mut efficiency_percent_best = 0;
             for parallel_blocks_test in (parallel_blocks..=ntiles_kq).step_by(parallel_blocks) {
                 let nblocks_total = ntiles_total * parallel_blocks_test;
-                let nwaves = (nblocks_total + blocks_per_wave - 1) / blocks_per_wave;
+                let nwaves = nblocks_total.div_ceil(blocks_per_wave);
                 let efficiency_percent = 100 * nblocks_total / (nwaves * blocks_per_wave);
 
                 // Stop trying configurations with more waves if we already have good efficiency to avoid excessive overhead.
@@ -360,6 +361,7 @@ impl GgmlFlashAttn {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn launch_flash_attn_vec(
         &self,
         stream: &TractCudaStream,
@@ -400,6 +402,7 @@ impl GgmlFlashAttn {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn launch_flash_attn_mma_f16(
         &self,
         stream: &TractCudaStream,
@@ -521,6 +524,7 @@ impl GgmlFlashAttn {
         Ok(output)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn dispatch_eval(
         &self,
         stream: &TractCudaStream,
