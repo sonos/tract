@@ -28,7 +28,7 @@ pub enum SdpaMaskMode {
 }
 
 pub fn create_sdpa_mask_graph(model: &TypedModel, node: &TypedNode, node_name: &str, op: &Sdpa, dt: DatumType, mode: SdpaMaskMode) -> TractResult<Option<TypedModelPatch>>{
-        // Find mask dimensions
+    // Find mask dimensions
     let in_facts = model.node_input_facts(node.id)?;
     let q_shape = &in_facts[0].shape;
     let k_shape = &in_facts[1].shape;
