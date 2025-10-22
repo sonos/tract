@@ -34,7 +34,7 @@ where
         let dim = 1usize..20;
         vec(dim.clone(), 3..=3)
             .prop_flat_map(|shape| {
-                (tensor::<F>(&shape, 1.0f32), tensor::<f32>(&shape, 1.0f32), -10..=10i32).prop_map(
+                (tensor::<F>(&shape), tensor::<f32>(&shape), -10..=10i32).prop_map(
                     |(input, mask, scale)| {
                         let mask = mask.mapv(|x| {
                             if x >= 0. {

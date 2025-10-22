@@ -31,7 +31,7 @@ where
                 let other_dim = 1usize..10;
                 vec(other_dim, rank..=rank)
             })
-            .prop_flat_map(|shape| tensor::<F>(&shape, 1.0f32).prop_map(|input| Self { input }))
+            .prop_flat_map(|shape| tensor::<F>(&shape).prop_map(|input| Self { input }))
             .boxed()
     }
 }

@@ -53,11 +53,10 @@ pub fn suite() -> TractResult<TestSuite> {
 
 pub fn tensor<'a, F: Datum + Float>(
     shape: impl IntoIterator<Item = &'a usize>,
-    scale: f32,
 ) -> BoxedStrategy<ArrayD<F>> {
     let shape = shape.into_iter().copied().collect::<Vec<_>>();
     let len = shape.iter().product::<usize>();
-    vec((-10i8..=10i8).prop_map(move |i| F::from(i).unwrap() * F::from(scale).unwrap()), len..=len)
+    vec((-10i8..=10i8).prop_map(|i| F::from(i).unwrap()), len..=len)
         .prop_map(move |vec| ArrayD::from_shape_vec(shape.to_vec(), vec).unwrap())
         .boxed()
 }

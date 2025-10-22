@@ -9,8 +9,6 @@ use tract_ndarray::{ArrayD, Axis, Dimension};
 use tract_core::ops::einsum::EinSum;
 use tract_num_traits::{One, Zero};
 
-use crate::tensor;
-
 #[derive(Debug, Clone)]
 pub struct BinEinsumProblemParams {
     pub force_unique_non_trivial_m_n: bool,
@@ -164,31 +162,24 @@ impl Arbitrary for BinEinsumProblem {
                             .unwrap_or(1)
                     })
                     .collect();
-                let unicast_add_constant =
-                    proptest::option::of(tensor::<f32>(&shape_output, 1.0f32));
-                (
-                    Just(expr),
-                    tensor::<f32>(&shape_a, 1.0f32),
-                    tensor::<f32>(&shape_b, 1.0f32),
-                    0..3usize,
-                    unicast_add_constant,
-                )
+                let unicast_add_constant = proptest::option::of(tensor(&shape_output));
+                (Just(expr), tensor(&shape_a), tensor(&shape_b), 0..3usize, unicast_add_constant)
             })
             .prop_map(|(expr, a, b, a_b_constant, unicast_add_constant)| {
                 let a_constant = (a_b_constant & 0x1) != 0;
                 let b_constant = (a_b_constant & 0x2) != 0;
-                let unicast_add_constant = unicast_add_constant.map(|u| u.into());
-                BinEinsumProblem {
-                    expr,
-                    a: a.into(),
-                    b: b.into(),
-                    a_constant,
-                    b_constant,
-                    unicast_add_constant,
-                }
+                BinEinsumProblem { expr, a, b, a_constant, b_constant, unicast_add_constant }
             })
             .boxed()
     }
+}
+
+pub fn tensor(shape: &[usize]) -> BoxedStrategy<Tensor> {
+    let len = shape.iter().product::<usize>();
+    let shape: Vec<usize> = shape.into();
+    proptest::collection::vec((-10i8..=10i8).prop_map(|i| i as f32), len..=len)
+        .prop_map(move |vec| ArrayD::from_shape_vec(shape.clone(), vec).unwrap().into_tensor())
+        .boxed()
 }
 
 impl BinEinsumProblem {
