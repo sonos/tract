@@ -56,7 +56,8 @@ impl TypedOp for CudaFlashAttention {
             let dt = facts[0].datum_type;
 
             ensure!(facts.iter().all(|f| f.rank() == 4));
-            let shape = GgmlFlashAttn.output_shape(&facts[0].shape, &facts[1].shape, &facts[2].shape)?;
+            let shape =
+                GgmlFlashAttn.output_shape(&facts[0].shape, &facts[1].shape, &facts[2].shape)?;
             let fact = dt.fact(shape);
             Ok(tvec!(fact))
         })

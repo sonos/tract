@@ -63,7 +63,7 @@ impl GgmlFlashAttn {
     }
 
     pub fn output_shape<D: DimLike + One>(
-        &self, 
+        &self,
         q: &[D],
         k: &[D],
         v: &[D],
@@ -114,9 +114,12 @@ impl GgmlFlashAttn {
         let prop = ctxt.properties();
         let newer_than_lovelace = prop.major > 8 || (prop.major == 8 && prop.minor >= 9);
 
-        ensure!(matches!(k_shape[3], 64 | 80 | 96 | 112 | 128 | 256) 
-            && k_shape[3] == v_shape[3],
-            "No kernel available for k_shape[3] = {} && v_shape[3] = {}", k_shape[3], v_shape[3]);
+        ensure!(
+            matches!(k_shape[3], 64 | 80 | 96 | 112 | 128 | 256) && k_shape[3] == v_shape[3],
+            "No kernel available for k_shape[3] = {} && v_shape[3] = {}",
+            k_shape[3],
+            v_shape[3]
+        );
 
         ensure!(m_shape.is_none_or(|shape| shape[..2] == [1, 1]));
 
@@ -238,7 +241,7 @@ impl GgmlFlashAttn {
             );
 
             let (dst_tmp, dst_tmp_meta) = if parallel_blocks > 1 {
-                (   
+                (
                     Some(DeviceTensor::uninitialized_dt(
                         DatumType::F32,
                         &[parallel_blocks * out.shape().iter().product::<usize>()],
@@ -303,7 +306,7 @@ impl GgmlFlashAttn {
 
         let cfg =
             LaunchConfig { grid_dim: blocks_num, block_dim, shared_mem_bytes: nbytes_shared as _ };
-        
+
         //println!("stream_k {stream_k} parallel_block: {parallel_blocks} q_shape: {q_shape:?}\n q_strides {:?}\n k_shape: {k_shape:?}\n k_strides: {:?}\n v_strides: {:?}\n mask_shape: {:?}\n mask_strides: {:?}",
         //    &q_strides[..3], &k_strides[..3], &v_strides[..3], &mask_shape[..3], &mask_strides[..3]);
         //dbg!(&cfg);
@@ -379,7 +382,21 @@ impl GgmlFlashAttn {
         let func = cuda_context().load_pipeline(LibraryName::FlashAttn, kernel_name)?;
 
         self.launch_generic_flash_attn(
-            stream, q, k, v, mask, scale, out, func, d, ncols1, ncols2, 128 / WARP_SIZE, d, 0, false,
+            stream,
+            q,
+            k,
+            v,
+            mask,
+            scale,
+            out,
+            func,
+            d,
+            ncols1,
+            ncols2,
+            128 / WARP_SIZE,
+            d,
+            0,
+            false,
         )
     }
 
@@ -399,10 +416,10 @@ impl GgmlFlashAttn {
 
         let q_shape = q.shape();
         let k_shape = k.shape();
-        
+
         let out_dim = q_shape[3];
         let head_ratio = q_shape[1] / k_shape[1];
-        
+
         let ncols2 = if mask.is_some() {
             if head_ratio % 8 == 0 {
                 8
@@ -442,24 +459,43 @@ impl GgmlFlashAttn {
         ensure!(out_dim % 8 == 0, "bad DKQ");
         ensure!(ncols % cols_per_warp == 0, "bad ncols");
 
-        let nbytes_shared_kv_1stage = nbatch_fa * (nbatch_k2 + 4).max(nbatch_v2 + 4) * size_of::<f32>();
-        let nbytes_shared_kv_2stage = nbatch_fa * (nbatch_k2 + 4 + nbatch_v2 + 4) * size_of::<f32>();
-        let nbytes_shared_q = ncols * (out_dim/2 + 4) * size_of::<f32>();
-        let nbytes_shared_mask = ncols1 * (nbatch_fa/2 + 4) * size_of::<f32>();
-        let nbytes_shared_combine = nwarps*cols_per_warp * (nbatch_combine + 4) * size_of::<f32>();
+        let nbytes_shared_kv_1stage =
+            nbatch_fa * (nbatch_k2 + 4).max(nbatch_v2 + 4) * size_of::<f32>();
+        let nbytes_shared_kv_2stage =
+            nbatch_fa * (nbatch_k2 + 4 + nbatch_v2 + 4) * size_of::<f32>();
+        let nbytes_shared_q = ncols * (out_dim / 2 + 4) * size_of::<f32>();
+        let nbytes_shared_mask = ncols1 * (nbatch_fa / 2 + 4) * size_of::<f32>();
+        let nbytes_shared_combine =
+            nwarps * cols_per_warp * (nbatch_combine + 4) * size_of::<f32>();
 
-        let nbytes_shared_kv = if cc >= CUDA_CC_AMPERE { nbytes_shared_kv_2stage } else { nbytes_shared_kv_1stage };
-        let nbytes_shared_total = nbytes_shared_combine.max(nbytes_shared_q.max(nbytes_shared_kv + nbytes_shared_mask));
+        let nbytes_shared_kv =
+            if cc >= CUDA_CC_AMPERE { nbytes_shared_kv_2stage } else { nbytes_shared_kv_1stage };
+        let nbytes_shared_total =
+            nbytes_shared_combine.max(nbytes_shared_q.max(nbytes_shared_kv + nbytes_shared_mask));
 
         let kernel_name = format!("flash_attn_ext_f16_{}_{}_{}", out_dim, ncols, ncols2);
         let func = ctxt.load_pipeline(LibraryName::FlashAttn, kernel_name)?;
 
         func.set_attribute(
-        CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-        nbytes_shared_total as i32,
+            CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+            nbytes_shared_total as i32,
         )?;
         self.launch_generic_flash_attn(
-            stream, q, k, v, mask, scale, out, func, out_dim, ncols1, ncols2, nwarps, FATTN_KQ_STRIDE, nbytes_shared_total, true
+            stream,
+            q,
+            k,
+            v,
+            mask,
+            scale,
+            out,
+            func,
+            out_dim,
+            ncols1,
+            ncols2,
+            nwarps,
+            FATTN_KQ_STRIDE,
+            nbytes_shared_total,
+            true,
         )
     }
 
@@ -523,7 +559,9 @@ impl GgmlFlashAttn {
 
         match kernel_impl {
             FlashAttnImpl::Vec => self.launch_flash_attn_vec(stream, q, k, v, mask, scale, out),
-            FlashAttnImpl::MmaF16 => self.launch_flash_attn_mma_f16(stream, q, k, v, mask, scale, out),
+            FlashAttnImpl::MmaF16 => {
+                self.launch_flash_attn_mma_f16(stream, q, k, v, mask, scale, out)
+            }
         }
     }
 }
@@ -538,7 +576,12 @@ mod tests {
 
     use super::*;
 
-    fn pad_f16_tensor(a: &Tensor, axis: usize, block_size: usize, value: f16) -> TractResult<Tensor> {
+    fn pad_f16_tensor(
+        a: &Tensor,
+        axis: usize,
+        block_size: usize,
+        value: f16,
+    ) -> TractResult<Tensor> {
         let mut shape = a.shape().to_owned();
         let old_value = shape[axis];
         shape[axis] = shape[axis].next_multiple_of(block_size);
@@ -569,43 +612,49 @@ mod tests {
             let m_len = m_shape.iter().product::<usize>();
 
             let q = Tensor::from_shape(
-                    &q_shape,
-                    &(0..q_len)
-                        .map(|f| f as f32 / q_len as f32)
-                        .collect::<Vec<_>>())?;
+                &q_shape,
+                &(0..q_len).map(|f| f as f32 / q_len as f32).collect::<Vec<_>>(),
+            )?;
 
             let k = Tensor::from_shape(
-                    &kv_shape,
-                    &(0..kv_len)
-                        .map(|f| f16::from_f32(f as f32 / kv_len as f32))
-                        .collect::<Vec<_>>())?;
-            
+                &kv_shape,
+                &(0..kv_len).map(|f| f16::from_f32(f as f32 / kv_len as f32)).collect::<Vec<_>>(),
+            )?;
+
             let v = Tensor::from_shape(
-                    &kv_shape,
-                    &(0..kv_len)
-                        .map(|f| f16::from_f32(f as f32 / kv_len as f32))
-                        .collect::<Vec<_>>())?;
-            
+                &kv_shape,
+                &(0..kv_len).map(|f| f16::from_f32(f as f32 / kv_len as f32)).collect::<Vec<_>>(),
+            )?;
+
             let m = Tensor::from_shape(
-                    &m_shape,
-                    &(0..m_len)
-                        .map(|f| f16::from_f32(1f32))
-                        .collect::<Vec<_>>())?;
+                &m_shape,
+                &(0..m_len).map(|f| f16::from_f32(1f32)).collect::<Vec<_>>(),
+            )?;
 
             let cuda_output = GgmlFlashAttn.eval(
                 stream,
                 &q.clone().into_device()?,
                 &pad_f16_tensor(&k, 2, FATTN_KQ_STRIDE, f16::from_f32(0f32))?.into_device()?,
                 &pad_f16_tensor(&v, 2, FATTN_KQ_STRIDE, f16::from_f32(0f32))?.into_device()?,
-                Some(&&pad_f16_tensor(&pad_f16_tensor(&m, 3, FATTN_KQ_STRIDE, -f16::infinity())?, 2, 16, -f16::infinity())?.into_device()?),
+                Some(
+                    &&pad_f16_tensor(
+                        &pad_f16_tensor(&m, 3, FATTN_KQ_STRIDE, -f16::infinity())?,
+                        2,
+                        16,
+                        -f16::infinity(),
+                    )?
+                    .into_device()?,
+                ),
                 scale,
             )?;
 
-            let ref_output = Sdpa { 
+            let ref_output = Sdpa {
                 scale: Some(scale.into()),
                 datum_type: DatumType::F32,
                 acc_datum_type: DatumType::F32,
-                is_causal: false }.eval(tvec!(q.into(), k.into(), v.into(), m.into()))?;
+                is_causal: false,
+            }
+            .eval(tvec!(q.into(), k.into(), v.into(), m.into()))?;
 
             cuda_output.to_host()?.close_enough(&ref_output[0], Approximation::Approximate)?;
             Ok(())
