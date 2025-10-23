@@ -63,11 +63,7 @@ impl RmsNorm {
         launch_args.arg(&o_view);
         launch_args.set_slice(&shape_nd3);
         launch_args.set_slice(&strides_nd3);
-        if input.datum_type() == DatumType::F32 {
-            launch_args.arg(eps.to_scalar::<f32>()?)
-        } else {
-            launch_args.arg(eps.to_scalar::<f16>()?)
-        };
+        launch_args.arg(eps.to_scalar::<f32>()?);
 
         let cfg = LaunchConfig {
             grid_dim: ((shape_nd3[2] * shape_nd3[0]) as _, 1, 1),
