@@ -135,13 +135,6 @@ impl Sdpa {
         let rank = scores_fact.rank();
         let scale = tensor0(scale);
 
-        // Perform Softmax in F32
-        let casted_scores = graph.wire_node(
-                "cast_score",
-                Cast::new(DatumType::F32),
-                &[scores],
-            )?[0];
-        
         let att_weights = if let Some(m) = mask {
             let scores_shape = scores_fact.shape.to_tvec();
             let (outer, [qs, ks]) = scores_shape.split_at(rank - 2) else { unreachable!() };
@@ -150,7 +143,7 @@ impl Sdpa {
             let reshaped_scores = graph.wire_node(
                 "reshape_scores_for_softmax",
                 change_axes::AxisOp::Reshape(0, scores_shape.clone(), scores_shape_3d.clone()),
-                &[casted_scores],
+                &[scores],
             )?[0];
 
             let mask_shape = graph.outlet_fact(m)?.shape.to_tvec();
@@ -180,7 +173,7 @@ impl Sdpa {
                 "scale_scores",
                 graph,
                 math::mul(),
-                &[casted_scores, scale_const],
+                &[scores, scale_const],
             )?[0];
             graph.wire_node(
                 "att_softmax",
@@ -188,12 +181,8 @@ impl Sdpa {
                 &[scaled_scores],
             )?[0]
         };
-        let casted_att_weights = graph.wire_node(
-                "cast_out",
-                Cast::new(scores_fact.datum_type),
-                &[att_weights],
-            )?[0];
-        Ok(casted_att_weights)
+
+        Ok(att_weights)
     }
 
     fn build_sdpa_graph(&self, mut input_facts: TVec<&TypedFact>) -> TractResult<TypedModel> {
