@@ -15,6 +15,7 @@ use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_sdpa::rewire_sdpa;
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
+use tract_gpu::rewrite_rules::rms_norm::remove_rms_norm_cast;
 use tract_gpu::sync::{DeviceSync, DeviceSyncKind};
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
 use tract_gpu::utils::as_quant_fact;
@@ -60,6 +61,10 @@ impl CudaTransform {
         Rewriter::default()
             .with_rule_for("untranspose_matmul_output", rewrite_rules::untranspose_matmul_output)
             .with_rule_for("add_broadcast_pre_matmul", rewrite_rules::add_broadcast_pre_matmul)
+            .rewrite(&(), model)?;
+
+        Rewriter::default()
+            .with_rule_for("remove_rms_norm_cast", remove_rms_norm_cast)
             .rewrite(&(), model)?;
 
         if stop_at_phase == 1 {
