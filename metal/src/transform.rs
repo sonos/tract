@@ -5,6 +5,7 @@ use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::fact::DeviceTypedFactExt;
 use tract_gpu::rewrite_rules::rewire_sdpa::rewire_sdpa;
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
+use tract_gpu::rewrite_rules::rms_norm::remove_rms_norm_cast;
 use tract_gpu::sync::{DeviceSync, DeviceSyncKind};
 use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
 
@@ -99,8 +100,12 @@ impl MetalTransform {
         Rewriter::<MetalTransform>::default()
             .with_rule_for("untranspose-matmul-output", rewrite_rules::untranspose_matmul_output)
             .with_rule_for("add-broadcast-pre-matmul", rewrite_rules::add_broadcast_pre_matmul)
-            .with_rule_for("remove_rms_norm_cast", rewrite_rules::remove_rms_norm_cast)
+            
             .rewrite(self, model)?;
+
+        Rewriter::default()
+            .with_rule_for("remove_rms_norm_cast", remove_rms_norm_cast)
+            .rewrite(&(), model)?;
 
         if stop_at_phase == 1 {
             return Ok(());
