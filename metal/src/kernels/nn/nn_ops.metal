@@ -174,7 +174,7 @@ template<typename F>
         shmem_f32[tiisg] = 0.0f;
     }
     device const F* input = (device const F*) input_b;
-    eps = ((constant float *)eps_b)[0];
+    float eps = ((constant float *)eps_b)[0];
     device F * output = (device F*) output_b;
 
     size_t dim = shape[1];
