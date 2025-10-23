@@ -33,13 +33,11 @@ pub fn remove_rms_norm_cast(
         return Ok(None);
     };
 
-    let eps = op.eps.cast_to_dt(DatumType::F16)?.into_owned().into();
-
     let mut patch = TypedModelPatch::default();
     let rsm_input = patch.taps(model, &cast_in_node.inputs)?;
     let out = patch.wire_node(
         format!("{node_name}.without-cast"),
-        RmsNorm { axis: op.axis, eps },
+        op.clone(),
         &rsm_input,
     )?;
     patch.shunt_outside(model, cast_out_node.id.into(), out[0])?;
