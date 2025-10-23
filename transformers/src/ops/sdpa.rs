@@ -108,8 +108,8 @@ impl Sdpa {
         scores_fact: &TypedFact,
     ) -> TractResult<OutletId> {
         let mask_fact = graph.outlet_fact(mask)?.clone();
-        if mask_fact.datum_type != DatumType::F32 {
-            mask = graph.wire_node("cast_mask", Cast::new(DatumType::F32), &[mask])?[0];
+        if mask_fact.datum_type != self.acc_datum_type {
+            mask = graph.wire_node("cast_mask", Cast::new(self.acc_datum_type), &[mask])?[0];
         }
 
         let mut mask_shape = graph.outlet_fact(mask)?.shape.to_tvec();
@@ -133,7 +133,7 @@ impl Sdpa {
     ) -> TractResult<OutletId> {
         let scores_fact = graph.outlet_fact(scores)?.clone();
         let rank = scores_fact.rank();
-        let scale = tensor0(scale);
+        let scale = tensor0(scale).cast_to_dt(self.acc_datum_type)?.into_owned();
 
         let att_weights = if let Some(m) = mask {
             let scores_shape = scores_fact.shape.to_tvec();

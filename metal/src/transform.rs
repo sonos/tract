@@ -100,7 +100,6 @@ impl MetalTransform {
         Rewriter::<MetalTransform>::default()
             .with_rule_for("untranspose-matmul-output", rewrite_rules::untranspose_matmul_output)
             .with_rule_for("add-broadcast-pre-matmul", rewrite_rules::add_broadcast_pre_matmul)
-            
             .rewrite(self, model)?;
 
         Rewriter::default()
@@ -420,7 +419,27 @@ fn convert_matmul_to_metal(
 ) -> TractResult<TVec<OutletId>> {
     let mut input_facts = model.node_input_facts(node.id)?;
 
-    let mut matmul_output = match resolve_gemm_impl(gemm_impl, input_facts.clone())? {
+    let resolved_gemm_impl = resolve_gemm_impl(gemm_impl, input_facts.clone())?;
+    if matches!(resolved_gemm_impl, MetalGemmImplKind::Mlx | MetalGemmImplKind::Mfa)
+        && (input_facts[0].datum_type != input_facts[1].datum_type)
+    {
+        ensure!(
+            input_facts[0].datum_type == DatumType::F16
+                || input_facts[1].datum_type == DatumType::F16
+        );
+        let inp_to_cast = if input_facts[0].datum_type == DatumType::F16 {
+            &mut inputs[0]
+        } else {
+            &mut inputs[1]
+        };
+        *inp_to_cast = target.wire_node(
+            node.name.clone() + ".cast_input",
+            ops::MetalCast::new(DatumType::F32).unwrap(),
+            &[*inp_to_cast],
+        )?[0];
+    }
+
+    let mut matmul_output = match resolved_gemm_impl {
         MetalGemmImplKind::Mlx => {
             let op = ops::MetalGemm::<MlxGemm>::new(op.transpose_a, op.transpose_b);
             target.wire_node(node.name.clone(), op, inputs)?
