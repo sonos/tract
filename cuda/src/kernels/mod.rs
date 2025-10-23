@@ -2,6 +2,7 @@
 
 pub mod array;
 mod binary;
+pub mod flash_attn;
 mod launch_args;
 pub mod matmul;
 pub mod nn;
@@ -25,6 +26,7 @@ use tract_gpu::utils::as_q40_tensor;
 pub use unary::UnaryOps;
 
 const MAX_THREADS: usize = 1024;
+const WARP_SIZE: usize = 32;
 
 static CUBIN_FOLDER: OnceLock<PathBuf> = OnceLock::new();
 
@@ -48,6 +50,7 @@ const NN_OPS: &str = include_str!("cu/nn.cu");
 const GGML_MM_MV: &str = include_str!("cu/mm_mv.cu");
 const GGML_MM_MV_Q: &str = include_str!("cu/mm_mv_q.cu");
 const GGML_QUANTIZE: &str = include_str!("cu/quantize.cu");
+const GGML_FLASH_ATTN: &str = include_str!("cu/flash_attn.cu");
 pub const COMMON_H: &str = include_str!("cu/common.cuh");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -59,6 +62,7 @@ pub enum LibraryName {
     Ggml,
     GgmlQ,
     Quant,
+    FlashAttn,
 }
 
 fn fnv1a64(text: &str) -> u64 {
@@ -74,8 +78,16 @@ fn fnv1a64(text: &str) -> u64 {
 }
 
 impl LibraryName {
-    pub const ALL: [LibraryName; 7] =
-        [Self::Unary, Self::Binary, Self::Array, Self::NN, Self::Ggml, Self::GgmlQ, Self::Quant];
+    pub const ALL: [LibraryName; 8] = [
+        Self::FlashAttn,
+        Self::Unary,
+        Self::Binary,
+        Self::Array,
+        Self::NN,
+        Self::Ggml,
+        Self::GgmlQ,
+        Self::Quant,
+    ];
 
     pub fn content(&self) -> &str {
         match self {
@@ -86,6 +98,7 @@ impl LibraryName {
             Self::Ggml => GGML_MM_MV,
             Self::GgmlQ => GGML_MM_MV_Q,
             Self::Quant => GGML_QUANTIZE,
+            Self::FlashAttn => GGML_FLASH_ATTN,
         }
     }
 
@@ -98,6 +111,7 @@ impl LibraryName {
             Self::Ggml => "mm_mv",
             Self::GgmlQ => "mm_mv_q",
             Self::Quant => "quantize",
+            Self::FlashAttn => "flash_attn",
         };
         let hash = fnv1a64(self.content());
         cubin_dir().join(format!("{}_{}.cubin", basename, hash))

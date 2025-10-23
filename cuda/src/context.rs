@@ -145,7 +145,7 @@ impl TractCudaContext {
             .or_else(|| {
                 // Last resort: infer from nvcc location
                  std::process::Command::new("which").arg("nvcc").output().ok()
-                    .and_then(|nvcc| Path::new(&String::from_utf8(nvcc.stdout).unwrap_or("".into())).parent().and_then(|bin| bin.parent()).map(|p| p.to_path_buf()))
+                    .and_then(|nvcc| Path::new(&String::from_utf8(nvcc.stdout).unwrap()).parent().and_then(|bin| bin.parent()).map(|p| p.to_path_buf()))
             });
 
         let cuda_inc = cuda_home.unwrap().join("include");

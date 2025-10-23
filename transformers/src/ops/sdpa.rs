@@ -92,11 +92,7 @@ impl Sdpa {
         seq_len: usize,
     ) -> TractResult<Option<OutletId>> {
         let m_array = Array2::from_shape_fn([seq_len, past_seq_len + seq_len], |(r, c)| {
-            if c > r {
-                f32::NEG_INFINITY
-            } else {
-                0.0f32
-            }
+            if c > past_seq_len + r { f32::NEG_INFINITY } else { 0.0f32 }
         });
         let causal_mask = graph.add_const(
             "causal_mask",
@@ -112,8 +108,8 @@ impl Sdpa {
         scores_fact: &TypedFact,
     ) -> TractResult<OutletId> {
         let mask_fact = graph.outlet_fact(mask)?.clone();
-        if mask_fact.datum_type != self.acc_datum_type {
-            mask = graph.wire_node("cast_mask", Cast::new(self.acc_datum_type), &[mask])?[0];
+        if mask_fact.datum_type != DatumType::F32 {
+            mask = graph.wire_node("cast_mask", Cast::new(DatumType::F32), &[mask])?[0];
         }
 
         let mut mask_shape = graph.outlet_fact(mask)?.shape.to_tvec();
@@ -137,7 +133,10 @@ impl Sdpa {
     ) -> TractResult<OutletId> {
         let scores_fact = graph.outlet_fact(scores)?.clone();
         let rank = scores_fact.rank();
-        let scale = tensor0(scale).cast_to_dt(self.acc_datum_type)?.into_owned();
+        let scale = tensor0(scale);
+
+        // Perform Softmax in F32
+        let casted_scores = graph.wire_node("cast_score", Cast::new(DatumType::F32), &[scores])?[0];
 
         let att_weights = if let Some(m) = mask {
             let scores_shape = scores_fact.shape.to_tvec();
@@ -147,7 +146,7 @@ impl Sdpa {
             let reshaped_scores = graph.wire_node(
                 "reshape_scores_for_softmax",
                 change_axes::AxisOp::Reshape(0, scores_shape.clone(), scores_shape_3d.clone()),
-                &[scores],
+                &[casted_scores],
             )?[0];
 
             let mask_shape = graph.outlet_fact(m)?.shape.to_tvec();
@@ -177,7 +176,7 @@ impl Sdpa {
                 "scale_scores",
                 graph,
                 math::mul(),
-                &[scores, scale_const],
+                &[casted_scores, scale_const],
             )?[0];
             graph.wire_node(
                 "att_softmax",
@@ -185,8 +184,9 @@ impl Sdpa {
                 &[scaled_scores],
             )?[0]
         };
-
-        Ok(att_weights)
+        let casted_att_weights =
+            graph.wire_node("cast_out", Cast::new(scores_fact.datum_type), &[att_weights])?[0];
+        Ok(casted_att_weights)
     }
 
     fn build_sdpa_graph(&self, mut input_facts: TVec<&TypedFact>) -> TractResult<TypedModel> {
@@ -290,10 +290,10 @@ impl Sdpa {
             )?[0];
         }
         let current_output_fact = graph.outlet_fact(output)?;
-        if current_output_fact.datum_type != v_fact.datum_type().unwrap() {
+        if current_output_fact.datum_type != q_fact.datum_type().unwrap() {
             output = graph.wire_node(
                 "cast_output",
-                Cast::new(v_fact.datum_type().unwrap()),
+                Cast::new(q_fact.datum_type().unwrap()),
                 &[output],
             )?[0];
         }
@@ -319,7 +319,7 @@ impl Sdpa {
 
         let body_outputs = patch.model.output_outlets()?;
         patch.shunt_outside(model, node.id.into(), body_outputs[0])?;
-
+        //println!("{}",&patch.model);
         Ok(Some(patch))
     }
 }
@@ -357,8 +357,8 @@ impl TypedOp for Sdpa {
         let rank = inputs[0].rank();
         ensure!(rank == 3 || rank == 4, "Input tensors must be 3D or 4D");
         ensure!(
-            inputs.iter().map(|it| it.rank()).all(|r| r == rank),
-            "All inputs should have the same rank {}",
+            inputs[..3].iter().map(|it| it.rank()).all(|r| r == rank),
+            "All inputs (except mask) should have the same rank {}",
             rank
         );
 
@@ -406,7 +406,7 @@ impl TypedOp for Sdpa {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if node.inputs.len() == 3 && self.is_causal {
+        if node.inputs.len() == 3 && self.is_causal && self.acc_datum_type == DatumType::F32 {
             let scale = self.scale.as_ref().map(|t| t.cast_to_scalar()).transpose()?;
             let op = FlashAttnGqaOp { causal: true, block_k: 4, scale };
             TypedModelPatch::replace_single_op(model, node, &node.inputs[0..3], op).map(Some)

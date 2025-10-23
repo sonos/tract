@@ -1,7 +1,8 @@
+use num_traits::Float;
 use tract_core::dyn_clone::clone_box;
 use tract_core::internal::*;
 use tract_core::model::translator::Translate;
-use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
+use tract_core::ops::array::{MultiBroadcastTo, PadMode, Slice, TypedConcat};
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::cast::Cast;
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
@@ -13,7 +14,7 @@ use tract_core::tract_data::itertools::Itertools;
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
-use tract_gpu::rewrite_rules::rewire_sdpa::rewire_sdpa;
+use tract_gpu::rewrite_rules::rewire_sdpa::{causal_mask_as_extern, neutral_mask_for_full_attn};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::sync::{DeviceSync, DeviceSyncKind};
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
@@ -23,6 +24,7 @@ use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
 use tract_transformers::ops::gelu_approximate::GeluApproximate;
 use tract_transformers::ops::rms_norm::RmsNorm;
 use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
+use tract_transformers::ops::sdpa::Sdpa;
 use tract_transformers::ops::silu::Silu;
 
 use crate::context::cuda_context;
@@ -51,7 +53,6 @@ impl CudaTransform {
         // Init CUDA Context if not done previously
         cuda_context();
 
-        rewire_sdpa(model)?;
         rewrite_einsum_to_prefix_matmul(model, false)?;
         if stop_at_phase == 0 {
             return Ok(());
@@ -60,6 +61,8 @@ impl CudaTransform {
         Rewriter::default()
             .with_rule_for("untranspose_matmul_output", rewrite_rules::untranspose_matmul_output)
             .with_rule_for("add_broadcast_pre_matmul", rewrite_rules::add_broadcast_pre_matmul)
+            .with_rule_for("causal_mask_as_extern", causal_mask_as_extern)
+            .with_rule_for("full_attn_mask_as_neutral", neutral_mask_for_full_attn)
             .rewrite(&(), model)?;
 
         if stop_at_phase == 1 {
@@ -228,13 +231,15 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
                 .is_some_and(|_| kernels::nn::ApplyRope::is_supported_dt(input_dts[0]))
             || node
                 .op_as::<GeluApproximate>()
-                .is_some_and(|_| kernels::nn::GeluApproximate::is_supported_dt(input_dts[0])))
-        || node.op_as::<PrefixMatMul>().is_some_and(|op| {
-            !op.transpose_c
-                && op.quantize_output.is_none()
-                && (GgmlGemm.is_supported_dts(&input_facts)
-                    || GgmlGemm.is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()]))
-        }))
+                .is_some_and(|_| kernels::nn::GeluApproximate::is_supported_dt(input_dts[0]))
+            || node.op_as::<Sdpa>().is_some()
+            || node.op_as::<PrefixMatMul>().is_some_and(|op| {
+                !op.transpose_c
+                    && op.quantize_output.is_none()
+                    && (GgmlGemm.is_supported_dts(&input_facts)
+                        || GgmlGemm
+                            .is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()]))
+            })))
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {
@@ -415,6 +420,138 @@ fn convert_matmul_to_cuda(
     Ok(matmul_output)
 }
 
+fn convert_sdpa_to_cuda_flash_attn(
+    model: &TypedModel,
+    node: &TypedNode,
+    target: &mut TypedModel,
+    inputs: &mut [OutletId],
+    op: &Sdpa,
+) -> TractResult<TVec<OutletId>> {
+    let input_facts = model.node_input_facts(node.id)?;
+    ensure!(!op.is_causal && input_facts.len() == 4);
+
+    let q_fact = input_facts[0];
+    let k_fact = input_facts[1];
+    let v_fact = input_facts[2];
+    let m_fact = input_facts[3];
+
+    let splitted_i = inputs.split_at_mut(2);
+    let qk = splitted_i.0.split_at_mut(1);
+    let vm = splitted_i.1.split_at_mut(1);
+
+    let q = &mut qk.0[0];
+    let k = &mut qk.1[0];
+    let v = &mut vm.0[0];
+    let m = &mut vm.1[0];
+
+    ensure!(k_fact.datum_type() == v_fact.datum_type());
+    let cast_op = ops::CudaCast::new(DatumType::F16).unwrap();
+    if k_fact.datum_type().unwrap() != DatumType::F16 {
+        // Cast every inputs (except Q) to F16
+        *k = target.wire_node(node.name.clone() + ".cast_k", cast_op.clone(), &[*k])?[0];
+        *v = target.wire_node(node.name.clone() + ".cast_v", cast_op.clone(), &[*v])?[0];
+    }
+
+    let q_dt = q_fact.datum_type().unwrap();
+    if q_dt != DatumType::F32 {
+        *q = target.wire_node(
+            node.name.clone() + ".cast_q",
+            ops::CudaCast::new(DatumType::F32).unwrap(),
+            &[*q],
+        )?[0];
+    }
+
+    let q_rank = q_fact.rank();
+    ensure!(input_facts[..3].iter().all(|i_f| i_f.rank() == q_rank));
+    if q_rank != 4 {
+        ensure!(q_fact.rank() == 3);
+        let ax_op = ops::CudaAxisOp::from_tract_core(AxisOp::Add(1));
+        *q = target.wire_node(node.name.clone() + ".reshape_q", ax_op.clone(), &[*q])?[0];
+        *k = target.wire_node(node.name.clone() + ".reshape_k", ax_op.clone(), &[*k])?[0];
+        *v = target.wire_node(node.name.clone() + ".reshape_v", ax_op, &[*v])?[0];
+    }
+
+    let out_dim = k_fact.shape[k_fact.rank() - 1].to_i64()?;
+    ensure!(
+        matches!(out_dim, 64 | 80 | 96 | 112 | 128 | 256),
+        "Unsupported d for Cuda FlashAttn: {out_dim}"
+    );
+
+    // Pad S+P to next multiple of 256 for Flash Attention Op
+    ensure!(k_fact.shape == v_fact.shape);
+
+    let s_plus_p = k_fact.shape.dims()[q_fact.rank() - 2].clone();
+    let s_plus_p_to_pad = ((s_plus_p.clone() + 255) / 256) * 256 - s_plus_p;
+    let mut padding_kv = vec![(TDim::Val(0), TDim::Val(0)); 4];
+    padding_kv[2].1 = s_plus_p_to_pad.clone();
+
+    *k = target.wire_node(
+        node.name.clone() + ".pad_k",
+        ops::CudaPad::new(
+            padding_kv.clone(),
+            PadMode::Constant(tensor0(f16::from_f32(0f32)).into()),
+        )?,
+        &[*k],
+    )?[0];
+    *v = target.wire_node(
+        node.name.clone() + ".pad_v",
+        ops::CudaPad::new(padding_kv, PadMode::Constant(tensor0(f16::from_f32(0f32)).into()))?,
+        &[*v],
+    )?[0];
+
+    // Handle mask,
+    if m_fact.datum_type().unwrap() != DatumType::F16 {
+        *m = target.wire_node(node.name.clone() + ".cast_m", cast_op, &[*m])?[0];
+    }
+
+    if m_fact.rank() != 4 {
+        let ax_op = ops::CudaAxisOp::from_tract_core(AxisOp::Reshape(
+            0,
+            tvec![],
+            tvec![TDim::Val(1); 4 - m_fact.rank()],
+        ));
+        *m = target.wire_node(node.name.clone() + ".reshape_m", ax_op.clone(), &[*m])?[0];
+    }
+
+    // Seq dimension for mask also need padding
+    let s = q_fact.shape.dims()[q_fact.rank() - 2].clone();
+    let mut padding_m = vec![(TDim::Val(0), TDim::Val(0)); 4];
+
+    padding_m[2].1 = ((s.clone() + 15) / 16) * 16 - s;
+    padding_m[3].1 = s_plus_p_to_pad;
+    *m = target.wire_node(
+        node.name.clone() + ".pad_m",
+        ops::CudaPad::new(padding_m, PadMode::Constant(tensor0(-f16::infinity()).into()))?,
+        &[*m],
+    )?[0];
+
+    let scale = op
+        .scale
+        .as_ref()
+        .map(|s| *s.to_scalar::<f32>().unwrap())
+        .unwrap_or(1.0 / (out_dim as f32).sqrt());
+    let sdpa_op = ops::CudaFlashAttention::new(scale, false);
+
+    let mut out = target.wire_node(node.name.clone(), sdpa_op, inputs)?;
+
+    if q_rank != 4 {
+        out = target.wire_node(
+            node.name.clone() + ".reshape_out",
+            ops::CudaAxisOp::from_tract_core(AxisOp::Rm(1)),
+            &out,
+        )?;
+    }
+
+    if q_dt != DatumType::F32 {
+        out = target.wire_node(
+            node.name.clone() + ".cast_out",
+            ops::CudaCast::new(q_dt).unwrap(),
+            &out,
+        )?;
+    }
+    Ok(out)
+}
+
 impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for CudaTransform {
     fn translate_node(
         &self,
@@ -431,6 +568,8 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
 
             let outlet_ids: TVec<OutletId> = if let Some(op) = node.op_as::<PrefixMatMul>() {
                 convert_matmul_to_cuda(source, node, target, &mut device_inputs, op)?
+            } else if let Some(op) = node.op_as::<Sdpa>() {
+                convert_sdpa_to_cuda_flash_attn(source, node, target, &mut device_inputs, op)?
             } else {
                 let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<Const>() {
                     Box::new(convert_const(op)?)

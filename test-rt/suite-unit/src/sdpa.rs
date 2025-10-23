@@ -1,15 +1,26 @@
 use infra::{Test, TestSuite};
 use proptest::{
-    prelude::{any, Arbitrary, BoxedStrategy, Just, Strategy},
+    prelude::{Arbitrary, BoxedStrategy, Just, Strategy, any},
     prop_oneof,
 };
 use tract_core::internal::*;
 use tract_core::ndarray::{ArrayD, ArrayView4};
 use tract_core::num_traits::Float;
-use tract_ndarray::{s, Array2, Array4, ArrayView2, Ix3, Ix4, IxDyn};
+use tract_ndarray::{Array2, Array4, ArrayView2, Axis, Ix2, Ix3, Ix4, IxDyn, s};
 use tract_transformers::ops::sdpa::Sdpa;
 
 use crate::tensor;
+
+#[derive(Debug, Clone)]
+pub struct SdpaProblemParams {
+    pub embed_dims: Vec<usize>,
+}
+
+impl Default for SdpaProblemParams {
+    fn default() -> SdpaProblemParams {
+        SdpaProblemParams { embed_dims: vec![1, 2, 3] }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct SdpaProblem<F>
@@ -20,54 +31,73 @@ where
     k: ArrayD<F>,
     v: ArrayD<F>,
     mask: Option<ArrayD<F>>,
-    scale: Option<F>,
+    scale: Option<f32>,
     is_causal: bool,
 }
 
-impl Arbitrary for SdpaProblem<f32> {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<SdpaProblem<f32>>;
+impl<F> Arbitrary for SdpaProblem<F>
+where
+    F: Datum + Float,
+{
+    type Parameters = SdpaProblemParams;
+    type Strategy = BoxedStrategy<SdpaProblem<F>>;
 
-    fn arbitrary_with(_: ()) -> Self::Strategy {
-        prop_oneof![generate_3d_single_head(), generate_4d_group_query_att(4, 4)].boxed()
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        prop_oneof![
+            generate_3d_single_head::<F>(params.clone()),
+            generate_4d_group_query_att::<F>(params, 4, 4)
+        ]
+        .boxed()
     }
 }
 
-fn generate_3d_single_head() -> BoxedStrategy<SdpaProblem<f32>> {
+fn generate_3d_single_head<F: Datum + Float>(
+    params: SdpaProblemParams,
+) -> BoxedStrategy<SdpaProblem<F>> {
     use tract_ndarray::Axis;
-    generate_4d_group_query_att(1, 1)
+    generate_4d_group_query_att::<F>(params, 1, 1)
         .prop_map(|mut gqa| {
-            dbg!(&gqa);
             gqa.q.index_axis_inplace(Axis(1), 0);
             gqa.k.index_axis_inplace(Axis(1), 0);
             gqa.v.index_axis_inplace(Axis(1), 0);
-            gqa.mask.iter_mut().for_each(|mask| mask.index_axis_inplace(Axis(1), 0));
             gqa
         })
         .boxed()
 }
 
-fn generate_4d_group_query_att(
+fn generate_4d_group_query_att<F: Datum + Float>(
+    params: SdpaProblemParams,
     max_heads_repeat_factor: usize,
     max_kv_heads: usize,
-) -> BoxedStrategy<SdpaProblem<f32>> {
-    (1..3usize, 1..max_heads_repeat_factor + 1, 1..max_kv_heads + 1, 1..16usize, 1..4usize)
-        .prop_flat_map(|(b, repeat_factor, n_kv_heads, seq_len, embed)| {
+) -> BoxedStrategy<SdpaProblem<F>> {
+    (
+        1..3usize,
+        1..max_heads_repeat_factor + 1,
+        1..max_kv_heads + 1,
+        0..5usize,
+        2..5usize,
+        0..params.embed_dims.len(),
+    )
+        .prop_flat_map(move |(b, repeat_factor, n_kv_heads, past_seq_len, seq_len, embed_idx)| {
+            let embed = params.embed_dims[embed_idx];
             let n_q_heads = repeat_factor * n_kv_heads;
-            let q = tensor(&[b, n_q_heads, seq_len, embed]);
-            let k = tensor(&[b, n_kv_heads, seq_len, embed]);
-            let v = tensor(&[b, n_kv_heads, seq_len, embed]);
+            let q = tensor::<F>(&[b, n_q_heads, seq_len, embed], 0.1f32);
+            let k = tensor::<F>(&[b, n_kv_heads, past_seq_len + seq_len, embed], 0.1f32);
+            let v = tensor::<F>(&[b, n_kv_heads, past_seq_len + seq_len, embed], 0.1f32);
 
-            let scale_strategy = prop_oneof![Just(None), (0.1f32..2.0).prop_map(Some)];
+            let scale_strategy = prop_oneof![Just(None), (0.1f32..1.0).prop_map(Some)];
             let causal_strategy = any::<bool>();
-            (Just((b, n_q_heads, seq_len)), q, k, v, scale_strategy, causal_strategy)
+            (Just(past_seq_len), Just(seq_len), q, k, v, scale_strategy, causal_strategy)
         })
-        .prop_flat_map(|((b, n_q_heads, seq_len), q, k, v, scale, is_causal)| {
+        .prop_flat_map(|(past_seq_len, seq_len, q, k, v, scale, is_causal)| {
             let mask_strategy = if is_causal {
                 Just(None).boxed()
             } else {
-                prop_oneof![Just(None), tensor(&[b, n_q_heads, seq_len, seq_len]).prop_map(Some)]
-                    .boxed()
+                prop_oneof![
+                    Just(None),
+                    tensor(&[seq_len, past_seq_len + seq_len], 0.1f32).prop_map(Some)
+                ]
+                .boxed()
             };
 
             (Just(q), Just(k), Just(v), Just(scale), Just(is_causal), mask_strategy)
@@ -83,37 +113,38 @@ fn generate_4d_group_query_att(
         .boxed()
 }
 
-impl SdpaProblem<f32> {
+impl<F> SdpaProblem<F>
+where
+    F: Datum + Float + Copy + 'static,
+{
     fn tract(&self) -> TractResult<TypedModel> {
         let mut model = TypedModel::default();
 
         let q = self.q.clone().into_tensor();
         let k = self.k.clone().into_tensor();
         let v = self.v.clone().into_tensor();
+
         let scale = self.scale.map(tensor0);
+
         let q_in = model.add_source("Q", TypedFact::shape_and_dt_of(&q))?;
         let k_in = model.add_source("K", TypedFact::shape_and_dt_of(&k))?;
         let v_in = model.add_source("V", TypedFact::shape_and_dt_of(&v))?;
         let mut inputs = vec![q_in, k_in, v_in];
+
         if let Some(mask) = &self.mask {
             let mask_in = model
                 .add_source("mask", TypedFact::shape_and_dt_of(&mask.clone().into_tensor()))?;
             inputs.push(mask_in);
         }
+
+        let dt = q.datum_type();
         let output = model.wire_node(
             "SDPA",
-            Sdpa {
-                scale,
-                datum_type: DatumType::F32,
-                acc_datum_type: DatumType::F32,
-                is_causal: self.is_causal,
-            },
+            Sdpa { scale, datum_type: dt, acc_datum_type: dt, is_causal: self.is_causal },
             &inputs,
         )?;
         model.set_output_outlets(&output)?;
-
-        model = model.into_decluttered()?;
-        Ok(model)
+        model.into_decluttered()
     }
 
     fn softmax(input: &Array2<f32>, axis: usize) -> Array2<f32> {
@@ -132,44 +163,52 @@ impl SdpaProblem<f32> {
     }
 
     fn scaled_dot_product_attention_2d(
-        queries: &ArrayView2<f32>,
-        keys: &ArrayView2<f32>,
-        values: &ArrayView2<f32>,
-        mask: Option<ArrayView2<f32>>,
+        queries: &ArrayView2<F>,
+        keys: &ArrayView2<F>,
+        values: &ArrayView2<F>,
+        mask: Option<ArrayView2<F>>,
         scale: Option<f32>,
         is_causal: bool,
-    ) -> Array2<f32> {
+    ) -> Array2<F> {
         let d_k = keys.shape()[1] as f32;
         let scale_factor = scale.unwrap_or(1.0 / d_k.sqrt());
-        let q_dot_kt = queries.dot(&keys.t());
-        let mut scaled_input = q_dot_kt * scale_factor;
+        let queries = queries.mapv(|q| q * F::from(scale_factor).unwrap());
+
+        let queries_f32 = queries.mapv(|q| q.to_f32().unwrap());
+        let keys_f32 = keys.mapv(|k| k.to_f32().unwrap());
+        let values_f32 = values.mapv(|v| v.to_f32().unwrap());
+
+        let mut scaled_input = queries_f32.dot(&keys_f32.t());
 
         if is_causal {
-            scaled_input.indexed_iter_mut().for_each(|((r, c), value)| {
-                if c > r {
-                    *value = f32::NEG_INFINITY;
+            let (q_len, k_len) = (queries.nrows(), keys.nrows());
+            let p = k_len.saturating_sub(q_len);
+            scaled_input.indexed_iter_mut().for_each(|((r, c), z)| {
+                if c > p + r {
+                    *z = f32::NEG_INFINITY;
                 }
             });
         }
 
         if let Some(m) = mask {
-            scaled_input += &m;
+            let mask_f32 = m.mapv(|x| x.to_f32().unwrap());
+            scaled_input += &mask_f32;
         }
 
         let att_weights = Self::softmax(&scaled_input, 1);
-        att_weights.dot(values)
+        att_weights.dot(&values_f32).mapv(|r| F::from(r).unwrap())
     }
 
     fn reference_4d(
         &self,
-        q: ArrayView4<f32>,
-        k: ArrayView4<f32>,
-        v: ArrayView4<f32>,
-        mask: Option<ArrayView4<f32>>,
-    ) -> Array4<f32> {
+        q: ArrayView4<F>,
+        k: ArrayView4<F>,
+        v: ArrayView4<F>,
+        mask: Option<ArrayView2<F>>,
+    ) -> Array4<F> {
         let [b, q_heads, seq_len, _] = q.shape() else { unreachable!() };
         let [_, kv_heads, _, v_emb] = v.shape() else { unreachable!() };
-        let mut output = Array4::<f32>::zeros((*b, *q_heads, *seq_len, *v_emb));
+        let mut output = Array4::<F>::zeros((*b, *q_heads, *seq_len, *v_emb));
         let repeat_factor = q_heads / kv_heads;
 
         for batch_idx in 0..*b {
@@ -180,35 +219,30 @@ impl SdpaProblem<f32> {
                     let q_slice = q.slice(s![batch_idx, q_head_idx, .., ..]);
                     let k_slice = k.slice(s![batch_idx, kv_head_idx, .., ..]);
                     let v_slice = v.slice(s![batch_idx, kv_head_idx, .., ..]);
-                    let mask_slice =
-                        mask.as_ref().map(|m| m.slice(s![batch_idx, q_head_idx, .., ..]));
 
-                    let output_2d = Self::scaled_dot_product_attention_2d(
+                    let out2 = Self::scaled_dot_product_attention_2d(
                         &q_slice,
                         &k_slice,
                         &v_slice,
-                        mask_slice,
-                        self.scale,
+                        mask,
+                        self.scale, // still f32
                         self.is_causal,
                     );
-                    output.slice_mut(s![batch_idx, q_head_idx, .., ..]).assign(&output_2d);
+                    output.slice_mut(s![batch_idx, q_head_idx, .., ..]).assign(&out2);
                 }
             }
         }
         output
     }
 
-    fn reference(&self) -> TractResult<ArrayD<f32>> {
-        use tract_ndarray::Axis;
+    fn reference(&self) -> TractResult<ArrayD<F>> {
         match self.q.ndim() {
             3 => {
                 let q = self.q.view().into_dimensionality::<Ix3>()?.insert_axis(Axis(1));
                 let k = self.k.view().into_dimensionality::<Ix3>()?.insert_axis(Axis(1));
                 let v = self.v.view().into_dimensionality::<Ix3>()?.insert_axis(Axis(1));
-                let mask = self
-                    .mask
-                    .as_ref()
-                    .map(|m| m.view().into_dimensionality::<Ix3>().unwrap().insert_axis(Axis(1)));
+                let mask =
+                    self.mask.as_ref().map(|m| m.view().into_dimensionality::<Ix2>().unwrap());
                 let out_4d = self.reference_4d(q, k, v, mask);
                 Ok(out_4d.remove_axis(Axis(1)).into_dyn())
             }
@@ -217,7 +251,7 @@ impl SdpaProblem<f32> {
                 let k = self.k.view().into_dimensionality::<Ix4>().unwrap();
                 let v = self.v.view().into_dimensionality::<Ix4>().unwrap();
                 let mask =
-                    self.mask.as_ref().map(|m| m.view().into_dimensionality::<Ix4>().unwrap());
+                    self.mask.as_ref().map(|m| m.view().into_dimensionality::<Ix2>().unwrap());
                 Ok(self.reference_4d(q, k, v, mask).into_dyn())
             }
             _ => unreachable!(),
@@ -225,18 +259,22 @@ impl SdpaProblem<f32> {
     }
 }
 
-impl Test for SdpaProblem<f32> {
+impl<F> Test for SdpaProblem<F>
+where
+    F: Datum + Float + Copy + 'static,
+{
     fn run_with_approx(
         &self,
         _suite: &str,
         id: &str,
         runtime: &dyn tract_core::runtime::Runtime,
-        approx: tract_core::internal::Approximation,
+        approx: Approximation,
     ) -> infra::TestResult {
         let reference = self.reference()?.into_tensor();
         let mut model = self.tract()?;
 
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
+
         let mut inputs = tvec![
             self.q.clone().into_tvalue(),
             self.k.clone().into_tvalue(),
@@ -254,13 +292,14 @@ impl Test for SdpaProblem<f32> {
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
 
-    suite.add_arbitrary::<SdpaProblem<f32>>("proptest_f32", ());
+    suite.add_arbitrary::<SdpaProblem<f32>>("proptest_f32", SdpaProblemParams::default());
+    suite.add_arbitrary::<SdpaProblem<f16>>("proptest_f16", SdpaProblemParams::default());
     suite.add(
         "trivial_f32_0",
         SdpaProblem {
-            q: tensor3(&[[[0f32]]]).into_array()?,
-            k: tensor3(&[[[0f32]]]).into_array()?,
-            v: tensor3(&[[[0f32]]]).into_array()?,
+            q: tensor3(&[[[0f32]]]).into_array::<f32>()?,
+            k: tensor3(&[[[0f32]]]).into_array::<f32>()?,
+            v: tensor3(&[[[0f32]]]).into_array::<f32>()?,
             mask: None,
             scale: None,
             is_causal: true,
@@ -269,9 +308,9 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add(
         "gqa_f32_0",
         SdpaProblem {
-            q: ArrayD::<f32>::zeros(IxDyn(&[2, 8, 5, 16])),
-            k: ArrayD::<f32>::zeros(IxDyn(&[2, 4, 5, 16])),
-            v: ArrayD::<f32>::zeros(IxDyn(&[2, 4, 5, 16])),
+            q: ArrayD::<f32>::zeros(IxDyn(&[2, 8, 5, 64])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[2, 4, 5, 64])),
+            v: ArrayD::<f32>::zeros(IxDyn(&[2, 4, 5, 64])),
             mask: None,
             scale: None,
             is_causal: true,
@@ -280,9 +319,9 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add(
         "gqa_f32_1",
         SdpaProblem {
-            q: ArrayD::<f32>::zeros(IxDyn(&[2, 8, 5, 16])),
-            k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 5, 16])),
-            v: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 5, 16])),
+            q: ArrayD::<f32>::zeros(IxDyn(&[2, 8, 5, 64])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 5, 64])),
+            v: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 5, 64])),
             mask: None,
             scale: None,
             is_causal: true,
@@ -291,9 +330,9 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add(
         "gqa_f32_2",
         SdpaProblem {
-            q: ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 16])),
-            k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),
-            v: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),
+            q: ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 64])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 64])),
+            v: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 64])),
             mask: None,
             scale: None,
             is_causal: true,
@@ -302,13 +341,39 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add(
         "gqa_f32_mask",
         SdpaProblem {
-            q: ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 16])),
-            k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),
-            v: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 16])),
-            mask: Some(ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 3]))),
+            q: ArrayD::<f32>::zeros(IxDyn(&[2, 2, 3, 64])),
+            k: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 64])),
+            v: ArrayD::<f32>::zeros(IxDyn(&[2, 1, 3, 64])),
+            mask: Some(ArrayD::<f32>::zeros(IxDyn(&[3, 3]))),
             scale: None,
             is_causal: false,
         },
     );
+    suite.add(
+        "gqa_f16_0",
+        SdpaProblem {
+            q: ArrayD::<f16>::zeros(IxDyn(&[1, 2, 64])),
+            k: ArrayD::<f16>::zeros(IxDyn(&[1, 3, 64])),
+            v: ArrayD::<f16>::zeros(IxDyn(&[1, 3, 64])),
+            mask: None,
+            scale: None,
+            is_causal: true,
+        },
+    );
+    //suite.add(
+    //    "gqa_f16_1",
+    //    SdpaProblem {
+    //        q: ArrayD::<f16>::zeros(IxDyn(&[1, 3, 2, 64])),
+    //        k: ArrayD::<f16>::zeros(IxDyn(&[1, 1, 4, 64])),
+    //        v: tensor4(&[[[[0.5996094, -0.89990234, 0.7998047, 1.0, 1.0, 0.2998047, 0.2998047, 0.39990234, -0.5, 0.69970703, 0.69970703, 0.89990234, -0.19995117, 0.5, -1.0, -1.0, -0.2998047, -0.69970703, -0.5, 0.2998047, -0.39990234, -0.5996094, 0.19995117, 1.0, 0.89990234, -0.19995117, -1.0, -1.0, 0.5, 0.7998047, -1.0, 1.0, -1.0, 0.7998047, 0.69970703, 0.7998047, 0.19995117, -0.7998047, -0.89990234, 0.5996094, 0.5996094, -0.69970703, 0.69970703, 0.2998047, -0.7998047, 0.7998047, 0.5996094, -1.0, -0.89990234, 0.89990234, -0.39990234, 0.89990234, 0.2998047, 0.5996094, 0.89990234, -0.7998047, -0.19995117, -0.2998047, 0.099975586, 0.5, -0.19995117, -0.5, 0.5, -0.099975586],
+    //   [0.5996094, -0.89990234, 0.7998047, 1.0, 1.0, 0.2998047, 0.2998047, 0.39990234, -0.5, 0.69970703, 0.69970703, 0.89990234, -0.19995117, 0.5, -1.0, -1.0, -0.2998047, -0.69970703, -0.5, 0.2998047, -0.39990234, -0.5996094, 0.19995117, 1.0, 0.89990234, -0.19995117, -1.0, -1.0, 0.5, 0.7998047, -1.0, 1.0, -1.0, 0.7998047, 0.69970703, 0.7998047, 0.19995117, -0.7998047, -0.89990234, 0.5996094, 0.5996094, -0.69970703, 0.69970703, 0.2998047, -0.7998047, 0.7998047, 0.5996094, -1.0, -0.89990234, 0.89990234, -0.39990234, 0.89990234, 0.2998047, 0.5996094, 0.89990234, -0.7998047, -0.19995117, -0.2998047, 0.099975586, 0.5, -0.19995117, -0.5, 0.5, -0.099975586],
+    //   [0.5996094, -0.89990234, 0.7998047, 1.0, 1.0, 0.2998047, 0.2998047, 0.39990234, -0.5, 0.69970703, 0.69970703, 0.89990234, -0.19995117, 0.5, -1.0, -1.0, -0.2998047, -0.69970703, -0.5, 0.2998047, -0.39990234, -0.5996094, 0.19995117, 1.0, 0.89990234, -0.19995117, -1.0, -1.0, 0.5, 0.7998047, -1.0, 1.0, -1.0, 0.7998047, 0.69970703, 0.7998047, 0.19995117, -0.7998047, -0.89990234, 0.5996094, 0.5996094, -0.69970703, 0.69970703, 0.2998047, -0.7998047, 0.7998047, 0.5996094, -1.0, -0.89990234, 0.89990234, -0.39990234, 0.89990234, 0.2998047, 0.5996094, 0.89990234, -0.7998047, -0.19995117, -0.2998047, 0.099975586, 0.5, -0.19995117, -0.5, 0.5, -0.099975586],
+    //   [0.89990234, -0.099975586, -0.2998047, 0.19995117, 0.89990234, 0.19995117, 1.0, 0.69970703, -0.2998047, 0.5, 0.7998047, -0.099975586, -0.5996094, -0.099975586, 0.2998047, 0.2998047, -0.39990234, -0.39990234, -0.5, 0.0, 0.69970703, 0.5, 0.5, -0.2998047, 0.0, 0.099975586, -0.7998047, 0.39990234, 0.19995117, 1.0, 0.19995117, 0.0, -0.099975586, 0.5, 0.5, -0.099975586, -0.69970703, -1.0, 0.5996094, -0.5996094, 0.2998047, 0.5, -0.69970703, 0.69970703, 0.0, -0.5996094, -0.69970703, -0.89990234, -0.2998047, -0.2998047, 0.89990234, -0.2998047, -0.39990234, -0.89990234, 0.099975586, 0.099975586, 0.099975586, -0.89990234, -0.19995117, -0.89990234, 0.099975586, -0.5996094, -0.2998047, 0.5]]]]
+    //).cast_to_dt(DatumType::F16)?.into_owned().into_array()?,
+    //        mask: None,
+    //        scale: Some(0.8233556),
+    //        is_causal: true,
+    //    },
+    //);
     Ok(suite)
 }
