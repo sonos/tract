@@ -2,11 +2,10 @@ use tract_core::internal::*;
 use tract_core::ops::cast::Cast;
 use tract_transformers::ops::rms_norm::RmsNorm;
 
-use crate::MetalTransform;
 
 /// Search pattern => A = CAST(RMS_NORM(CAST(A, F32)), F16)
 pub fn remove_rms_norm_cast(
-    _ctx: &MetalTransform,
+    _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,
