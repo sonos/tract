@@ -100,7 +100,6 @@ impl MetalTransform {
         Rewriter::<MetalTransform>::default()
             .with_rule_for("untranspose-matmul-output", rewrite_rules::untranspose_matmul_output)
             .with_rule_for("add-broadcast-pre-matmul", rewrite_rules::add_broadcast_pre_matmul)
-            
             .rewrite(self, model)?;
 
         Rewriter::default()
