@@ -164,7 +164,7 @@ mod tests {
             )?
             .into_device()?;
 
-            let eps = Arc::new(tensor0(0.0001f32.as_()));
+            let eps = Arc::new(tensor0(0.0001f32));
             let cpu_rms = rms_norm::RmsNorm { axis, eps: Arc::clone(&eps) };
 
             let cpu_output =

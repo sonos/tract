@@ -65,14 +65,13 @@ impl EvalOp for RmsNorm {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
-        let dt = input.datum_type();
-        let eps = self.eps.cast_to_dt(dt)?.into_owned();
-        let a1 = Reducer::MeanOfSquares.reduce(&[self.axis], &input)?;
-        let mut a2 = Add.eval(a1.into_tvalue(), eps.into_tvalue(), dt)?;
-        Rsqrt {}.eval_in_place(&mut a2, None)?;
-        let a3 = Mul.eval(a2.into_tvalue(), input.clone(), dt)?;
 
-        Ok(tvec![a3.into()])
+        let input_f32 = input.cast_to::<f32>()?.into_owned();
+        let a1 = Reducer::MeanOfSquares.reduce(&[self.axis], &input_f32)?;
+        let mut a2 = Add.eval(a1.into_tvalue(), self.eps.clone().into_tvalue(), DatumType::F32)?;
+        Rsqrt {}.eval_in_place(&mut a2, None)?;
+        let a3 = Mul.eval(a2.into_tvalue(), input_f32.into_tvalue(), DatumType::F32)?;
+        Ok(tvec![a3.cast_to_dt(input.datum_type())?.into_owned().into()])
     }
 }
 
