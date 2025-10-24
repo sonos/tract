@@ -227,8 +227,13 @@ impl FlashSdpaOp {
                                     (q_range.len(), kv_range.len()),
                                     f32::NEG_INFINITY,
                                 );
-                                let mask =
-                                    mask.triu(q_range.start as isize - kv_range.start as isize + 1);
+                                let mask = mask.triu(
+                                    q_range.start as isize
+                                        - kv_range.start as isize
+                                        - q_len as isize
+                                        + kv_len as isize
+                                        + 1,
+                                );
                                 s += &mask;
                             };
                             let tile_m: Vec<f32> = s
