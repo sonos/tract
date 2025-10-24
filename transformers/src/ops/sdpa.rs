@@ -64,7 +64,10 @@ fn deser_spda(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let k = invocation.named_arg_as(builder, "k")?;
     let v = invocation.named_arg_as(builder, "v")?;
     let mut inputs = vec![q, k, v];
-    if let Some(mask) = invocation.get_named_arg_as(builder, "mask")? {
+    if let Some(mut mask) = invocation.get_named_arg_as(builder, "mask")? {
+        for _ in 0..(builder.model.outlet_fact(mask)?.rank() - 2) {
+            mask = builder.wire_as_outlets(AxisOp::Rm(0), &[mask])?[0];
+        }
         inputs.push(mask);
     };
     let scale: Option<f32> = invocation.get_named_arg_as(builder, "scale")?;
