@@ -555,7 +555,7 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
   extern "C" __global__ void rms_norm_##bname##name(                           \
       const T *x, T *dst, const int shape_0, const int shape_1,                \
       const int shape_2, const int strides_0, const int strides_1,             \
-      const int strides_2, const T eps) {                                      \
+      const int strides_2, const float eps) {                                      \
     int base_idx = (blockIdx.x % shape_2) * strides_2 +                        \
                    (blockIdx.x / shape_2) * strides_0;                         \
                                                                                \
@@ -579,13 +579,12 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
       tmp = warp_reduce_sum(tmp);                                              \
     }                                                                          \
                                                                                \
-    float eps_f = (float)eps;                                                  \
     const float mean = tmp / shape_1;                                          \
-    const float scale = rsqrtf(mean + eps_f);                                  \
+    const float scale = rsqrtf(mean + eps);                                    \
                                                                                \
     for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {                  \
       int idx = base_idx + i * strides_1;                                      \
-      dst[idx] = (T)scale * x[idx];                                            \
+      dst[idx] = scale * (float)x[idx];                                               \
     }                                                                          \
   }
 

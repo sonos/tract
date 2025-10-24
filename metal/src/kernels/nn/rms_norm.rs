@@ -164,7 +164,7 @@ mod tests {
             )?
             .into_device()?;
 
-            let eps = Arc::new(tensor0(0.0001f32.as_()));
+            let eps = Arc::new(tensor0(0.0001f32));
             let cpu_rms = rms_norm::RmsNorm { axis, eps: Arc::clone(&eps) };
 
             let cpu_output =
@@ -256,7 +256,7 @@ mod tests {
                     let input = (0..shape.iter().product::<usize>())
                         .map(|f| f.as_() / 1000.as_())
                         .collect::<Vec<_>>();
-                    Self { shape, axis, input, eps: Arc::new(tensor0(0.0001f32.as_())) }
+                    Self { shape, axis, input, eps: Arc::new(tensor0(0.0001f32)) }
                 })
                 .boxed()
         }
