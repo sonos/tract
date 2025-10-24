@@ -4,7 +4,7 @@ use proptest::{
     prop_oneof,
 };
 use tract_core::internal::*;
-use tract_core::ndarray::{arr3, ArrayD, ArrayView4};
+use tract_core::ndarray::{arr2, arr3, ArrayD, ArrayView4};
 use tract_core::num_traits::Float;
 use tract_ndarray::{s, Array2, Array4, ArrayView2, Axis, Ix2, Ix3, Ix4, IxDyn};
 use tract_transformers::ops::sdpa::Sdpa;
@@ -332,9 +332,9 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add(
         "causal_f32_1",
         SdpaProblem {
-            q: tensor3(&[[[0f32], [0.]]]).into_array()?,
-            k: tensor3(&[[[0f32], [0.]]]).into_array()?,
-            v: tensor3(&[[[0f32], [0.]]]).into_array()?,
+            q: arr3(&[[[0f32], [0.]]]).into_dyn(),
+            k: arr3(&[[[0f32], [0.]]]).into_dyn(),
+            v: arr3(&[[[0f32], [0.]]]).into_dyn(),
             mask: None,
             scale: None,
             is_causal: true,
@@ -343,9 +343,9 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add(
         "causal_f32_2",
         SdpaProblem {
-            q: tensor3(&[[[0f32], [0f32]]]).into_array()?,
-            k: tensor3(&[[[0f32], [0f32]]]).into_array()?,
-            v: tensor3(&[[[0f32], [0f32]]]).into_array()?,
+            q: arr3(&[[[0f32], [0f32]]]).into_dyn(),
+            k: arr3(&[[[0f32], [0f32]]]).into_dyn(),
+            v: arr3(&[[[0f32], [0f32]]]).into_dyn(),
             mask: None,
             scale: None,
             is_causal: true,
@@ -412,7 +412,7 @@ pub fn suite() -> TractResult<TestSuite> {
             q: ArrayD::<f32>::zeros(IxDyn(&[1, 2, 1])),
             k: ArrayD::<f32>::zeros(IxDyn(&[1, 2, 1])),
             v: arr3(&[[[2f32], [0.]]]).into_dyn(),
-            mask: Some(arr3(&[[[0.0f32, 0.0], [0.0, -1.0]]]).into_dyn()),
+            mask: Some(arr2(&[[0.0f32, 0.0], [0.0, -1.0]]).into_dyn()),
             scale: None,
             is_causal: false,
         },
@@ -423,7 +423,7 @@ pub fn suite() -> TractResult<TestSuite> {
             q: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 1])),
             k: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 1])),
             v: ArrayD::<f32>::zeros(IxDyn(&[1, 1, 1])),
-            mask: Some(ArrayD::<f32>::zeros(IxDyn(&[1, 1, 1]))),
+            mask: Some(ArrayD::<f32>::zeros(IxDyn(&[1, 1]))),
             scale: None,
             is_causal: false,
         },
