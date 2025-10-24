@@ -358,9 +358,12 @@ impl TypedOp for Sdpa {
         ensure!(rank == 3 || rank == 4, "Input tensors must be 3D or 4D");
         ensure!(
             inputs[..3].iter().map(|it| it.rank()).all(|r| r == rank),
-            "All inputs (except mask) should have the same rank {}",
+            "Q, K and V should have the same rank {}",
             rank
         );
+        if let Some(mask) = inputs.get(3) {
+            ensure!(mask.rank() == 2, "Mask must be of rank 2.");
+        }
 
         let q_shape = &inputs[0].shape.dims();
         let k_shape = &inputs[1].shape.dims();
@@ -413,19 +416,8 @@ impl TypedOp for Sdpa {
                 && self.acc_datum_type.is::<f32>()
         {
             let scale = self.scale.as_ref().map(|t| t.cast_to_scalar()).transpose()?;
-            let mut patch = TypedModelPatch::default();
-            let mut inputs = patch.taps(model, &node.inputs)?;
-            let name = &node.name;
-            if let Some(mask) = inputs.get_mut(3) {
-                *mask = patch.wire_node("{name}.rm_batch", AxisOp::Rm(0), &[*mask])?[0];
-                if input_facts[0].rank() == 4 {
-                    *mask = patch.wire_node("{name}.rm_head", AxisOp::Rm(0), &[*mask])?[0];
-                }
-            }
             let op = FlashSdpaOp { causal: self.is_causal, scale };
-            let wire = patch.wire_node(name, op, &inputs)?[0];
-            patch.shunt_outside(model, node.id.into(), wire)?;
-            Ok(Some(patch))
+            TypedModelPatch::replace_single_op(model, node, &node.inputs, op).map(Some)
         } else {
             self.patch_sdpa(model, node)
         }
