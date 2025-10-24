@@ -154,7 +154,7 @@ fs-err = "2"
 fs2 = "0.4.3"
 getrandom = "0.2"
 half = { version=">=2.4,<3.0", features = [ "std", "num-traits" ] }
-home = "0.5.9"
+home = "=0.5.11"
 icu_collections = "1.5.1"
 icu_normalizer = "1.5.0"
 icu_normalizer_data = "1.5.1"
