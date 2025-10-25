@@ -53,6 +53,7 @@ impl WireBody for RNN {
         let b: Option<OutletId> = body.node_by_name("b").ok().map(|n| n.id.into());
 
         let h_size = body.outlet_fact(R)?.shape[1].clone();
+        let dt = body.outlet_fact(R)?.datum_type;
 
         let bias = if let Some(b) = b {
             wire!(Wbi = array::Slice::new(1, 0.to_dim() * &h_size, 1.to_dim() * &h_size), b);
@@ -63,7 +64,7 @@ impl WireBody for RNN {
             None
         };
 
-        let matmul_t = EinSum::new("mk,nk->mn".parse()?, f32::datum_type());
+        let matmul_t = EinSum::new("mk,nk->mn".parse()?, dt);
 
         // Ht = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Wbi + Rbi)
         wire!(Xt_WiT = matmul_t.clone(), Xt, W);
