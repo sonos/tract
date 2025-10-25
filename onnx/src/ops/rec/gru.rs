@@ -68,7 +68,8 @@ impl WireBody for GRU {
         wire!(Wr = array::Slice::new(0, 1.to_dim() * &h_size, 2.to_dim() * &h_size), W);
         wire!(Wh = array::Slice::new(0, 2.to_dim() * &h_size, 3.to_dim() * &h_size), W);
 
-        let matmul_t = EinSum::new("mk,nk->mn".parse()?, f32::datum_type());
+        let dt = body.outlet_fact(Xt)?.datum_type;
+        let matmul_t = EinSum::new("mk,nk->mn".parse()?, dt);
 
         // zt = f(Xt*(Wz^T) + Ht-1*(Rz^T) + Wbz + Rbz)
         wire!(Xt_WzT = matmul_t.clone(), Xt, Wz);
@@ -135,27 +136,12 @@ impl WireBody for GRU {
         wire!(ht = self.g.clone(), ht0);
 
         // Ht = (1 - zt) (.) ht + zt (.) Ht-1
-        let one: OutletId = body.add_const("one", tensor2(&[[1f32]]))?;
+        let one: OutletId =
+            body.add_const("one", tensor2(&[[1f32]]).cast_to_dt(dt)?.into_owned())?;
         wire!(one_sub_zt = math::sub(), one, zt);
         wire!(one_sub_zt_ht = math::mul(), one_sub_zt, ht);
         wire!(zt_Ht_1 = math::mul(), zt, Ht_1);
         wire!(Ht = math::add(), one_sub_zt_ht, zt_Ht_1);
-
-        /*
-        // Ht = ht + (- (zt (.) ht) + zt (.) Ht-1)
-        wire!(zt_ht = math::mul(), zt, ht);
-        wire!(zt_Ht_1 = math::mul(), zt, Ht_1);
-        wire!(zt_Ht_1_sub_zt_ht = math::sub(), zt_Ht_1, zt_ht);
-        wire!(Ht = math::add(), ht, zt_Ht_1_sub_zt_ht);
-        */
-
-        // Ht = ht - (zt (.) ht) + zt (.) Ht-1)
-        /*
-        wire!(zt_ht = math::mul(), zt, ht);
-        wire!(zt_Ht_1 = math::mul(), zt, Ht_1);
-        wire!(ht_zt_ht = math::sub(), ht, zt_ht);
-        wire!(Ht = math::add(), ht_zt_ht, zt_Ht_1);
-        */
 
         wire!(y_h = AxisOp::Add(1), Ht);
         body.set_output_outlets(&[y_h])?;
