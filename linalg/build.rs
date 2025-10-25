@@ -71,7 +71,7 @@ impl ConfigForHalf {
         } else {
             "arm64/arm64fp16/dummy_fmla_no_pragma.S"
         };
-        self.cc().static_flag(true).file(filename).try_compile("dummy").is_ok()
+        self.cc().file(filename).try_compile("dummy").is_ok()
     }
 
     pub fn probe() -> Option<ConfigForHalf> {
@@ -128,7 +128,6 @@ fn main() {
                         .files(files)
                         .flag("-mfma")
                         .flag("-mf16c")
-                        .static_flag(true)
                         .compile("x86_64_fma");
 
                     // clang at least (dunno about gcc) outputs .asm files in the
@@ -140,29 +139,19 @@ fn main() {
                     let _ = fs::remove_file("fma_tanh_f32.asm");
                 }
             } else {
-                cc::Build::new().files(files).flag("-mfma").static_flag(true).compile("x86_64_fma");
+                cc::Build::new().files(files).flag("-mfma").compile("x86_64_fma");
             }
         }
         "arm" | "armv7" => {
             let files = preprocess_files("arm32/armvfpv2", &[], &suffix, false);
-            cc::Build::new()
-                .files(files)
-                .flag("-marm")
-                .flag("-mfpu=vfp")
-                .static_flag(true)
-                .compile("armvfpv2");
+            cc::Build::new().files(files).flag("-marm").flag("-mfpu=vfp").compile("armvfpv2");
             let files = preprocess_files(
                 "arm32/armv7neon",
                 &[("core", vec!["cortexa7", "cortexa9", "generic"])],
                 &suffix,
                 false,
             );
-            cc::Build::new()
-                .files(files)
-                .flag("-marm")
-                .flag("-mfpu=neon")
-                .static_flag(true)
-                .compile("armv7neon");
+            cc::Build::new().files(files).flag("-marm").flag("-mfpu=neon").compile("armv7neon");
         }
         "aarch64" => {
             let files = preprocess_files(
@@ -171,10 +160,10 @@ fn main() {
                 &suffix,
                 false,
             );
-            cc::Build::new().files(files).static_flag(true).compile("arm64simd");
+            cc::Build::new().files(files).compile("arm64simd");
             if include_amx() {
                 let files = preprocess_files("arm64/apple_amx", &[], &suffix, false);
-                cc::Build::new().files(files).static_flag(true).compile("appleamx");
+                cc::Build::new().files(files).compile("appleamx");
             }
             if std::env::var("CARGO_FEATURE_NO_FP16").is_err() {
                 let config =
@@ -185,7 +174,7 @@ fn main() {
                     &suffix,
                     config.needs_pragma,
                 );
-                config.cc().files(files).static_flag(true).compile("arm64fp16")
+                config.cc().files(files).compile("arm64fp16")
             }
         }
         _ => {}
