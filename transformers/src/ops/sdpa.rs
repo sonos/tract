@@ -11,7 +11,7 @@ use tract_nnef::ser::datum_type;
 use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
 
 use crate::ops::dyn_kv_cache::DynKeyValueCache;
-use crate::ops::flash_sdpa::FlashAttnGqaOp;
+use crate::ops::flash_sdpa::FlashSdpaOp;
 use crate::rule_ensure;
 
 use super::previous_node;
@@ -64,7 +64,10 @@ fn deser_spda(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let k = invocation.named_arg_as(builder, "k")?;
     let v = invocation.named_arg_as(builder, "v")?;
     let mut inputs = vec![q, k, v];
-    if let Some(mask) = invocation.get_named_arg_as(builder, "mask")? {
+    if let Some(mut mask) = invocation.get_named_arg_as(builder, "mask")? {
+        for _ in 0..(builder.model.outlet_fact(mask)?.rank() - 2) {
+            mask = builder.wire_as_outlets(AxisOp::Rm(0), &[mask])?[0];
+        }
         inputs.push(mask);
     };
     let scale: Option<f32> = invocation.get_named_arg_as(builder, "scale")?;
@@ -92,7 +95,11 @@ impl Sdpa {
         seq_len: usize,
     ) -> TractResult<Option<OutletId>> {
         let m_array = Array2::from_shape_fn([seq_len, past_seq_len + seq_len], |(r, c)| {
-            if c > past_seq_len + r { f32::NEG_INFINITY } else { 0.0f32 }
+            if c > past_seq_len + r {
+                f32::NEG_INFINITY
+            } else {
+                0.0f32
+            }
         });
         let causal_mask = graph.add_const(
             "causal_mask",
@@ -354,9 +361,12 @@ impl TypedOp for Sdpa {
         ensure!(rank == 3 || rank == 4, "Input tensors must be 3D or 4D");
         ensure!(
             inputs[..3].iter().map(|it| it.rank()).all(|r| r == rank),
-            "All inputs (except mask) should have the same rank {}",
+            "Q, K and V should have the same rank {}",
             rank
         );
+        if let Some(mask) = inputs.get(3) {
+            ensure!(mask.rank() == 2, "Mask must be of rank 2.");
+        }
 
         let q_shape = &inputs[0].shape.dims();
         let k_shape = &inputs[1].shape.dims();
@@ -402,10 +412,15 @@ impl TypedOp for Sdpa {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if node.inputs.len() == 3 && self.is_causal && self.acc_datum_type == DatumType::F32 {
+        let input_facts = model.node_input_facts(node.id)?;
+        // optimized sdpa assume mask first dimensions (batch and optional head) are 1
+        if input_facts.len() == 3
+            || input_facts[3].shape.iter().rev().skip(2).all(|d| d.is_one())
+                && self.acc_datum_type.is::<f32>()
+        {
             let scale = self.scale.as_ref().map(|t| t.cast_to_scalar()).transpose()?;
-            let op = FlashAttnGqaOp { causal: true, block_k: 4, scale };
-            TypedModelPatch::replace_single_op(model, node, &node.inputs[0..3], op).map(Some)
+            let op = FlashSdpaOp { causal: self.is_causal, scale };
+            TypedModelPatch::replace_single_op(model, node, &node.inputs, op).map(Some)
         } else {
             self.patch_sdpa(model, node)
         }
