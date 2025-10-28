@@ -122,7 +122,7 @@ impl Expansion for Pad18 {
         } else {
             s.equals(&inputs[1].shape[0], 2 * inputs[0].rank.bex().to_dim())?;
             s.given(&inputs[0].rank, move |s, rank| {
-                let axes = (0..).take(rank as usize).collect_vec();
+                let axes = (0..rank as usize).collect_vec();
                 do_output_shape(s, inputs, outputs, axes)
             })
         }
@@ -156,7 +156,7 @@ impl Expansion for Pad18 {
                 .map(|x| (if *x < 0 { *x + rank as i64 } else { *x }) as usize)
                 .collect_vec())
         } else {
-            (0..).take(rank as usize).collect_vec()
+            (0..rank).collect_vec()
         };
         let pads = model
             .outlet_fact(inputs[1])?
