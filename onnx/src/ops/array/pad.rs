@@ -145,16 +145,16 @@ impl Expansion for Pad18 {
         };
         let rank = model.outlet_fact(inputs[0])?.rank();
         let axes = if let Some(axes) = self.axes_input {
-            dbg!(model
+            model
                 .outlet_fact(inputs[axes])?
                 .konst
-                .clone()
+                .as_ref()
                 .context("Axes must be a constant")?
                 .cast_to::<i64>()?
                 .as_slice::<i64>()?
                 .iter()
                 .map(|x| (if *x < 0 { *x + rank as i64 } else { *x }) as usize)
-                .collect_vec())
+                .collect_vec()
         } else {
             (0..rank).collect_vec()
         };
@@ -165,7 +165,6 @@ impl Expansion for Pad18 {
             .context("Expect padding to be constant")?
             .cast_to::<i64>()?;
         let pads = pads.as_slice::<i64>()?;
-        dbg!(pads);
 
         let mut fixed_pads = vec![(0, 0); rank];
         for (ix, &axis) in axes.iter().enumerate() {
