@@ -102,10 +102,11 @@ test_celu_expanded
 test_clip.*
 test_concat.*
 test_constant
+test_constant_pad input:x
+test_constant_pad_axes input:x
 test_constantlike_ones_with_input not-nnef
 test_constantlike_threes_with_shape_and_dtype not-nnef
 test_constantlike_zeros_without_input_dtype not-nnef
-test_constant_pad input:x
 test_convinteger_with_padding                                                       input:x 
 test_convtranspose_1d input:X
 test_convtranspose_3d input:X
