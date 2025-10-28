@@ -126,6 +126,24 @@ fn versions() -> Vec<(&'static str, usize)> {
     if cfg!(feature = "onnx_1_13_0") {
         versions.push(("1.13.0", 18));
     }
+    if cfg!(feature = "onnx_1_14_1") {
+        versions.push(("1.14.1", 19));
+    }
+    if cfg!(feature = "onnx_1_15_0") {
+        versions.push(("1.15.0", 20));
+    }
+    if cfg!(feature = "onnx_1_16_2") {
+        versions.push(("1.16.2", 21));
+    }
+    if cfg!(feature = "onnx_1_17_0") {
+        versions.push(("1.17.0", 22));
+    }
+    if cfg!(feature = "onnx_1_18_0") {
+        versions.push(("1.18.0", 23));
+    }
+    if cfg!(feature = "onnx_1_19_1") {
+        versions.push(("1.19.1", 24));
+    }
     versions
 }
 
