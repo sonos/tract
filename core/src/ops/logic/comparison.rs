@@ -2,7 +2,7 @@ use crate::broadcast::multi_broadcast;
 use crate::internal::*;
 use crate::ndarray::Zip;
 
-#[derive(Clone, Copy, Debug, Hash)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq)]
 pub enum Comp {
     Eq,
     NE,
@@ -126,6 +126,9 @@ impl EvalOp for Comp {
                 };
             }
             Ok(tvec!(c.into_tvalue()))
+        } else if inputs[0].datum_type().is::<String>() {
+            let t = self.eval::<String>(&inputs[0], &inputs[1])?;
+            Ok(tvec!(t.into_tvalue()))
         } else {
             let t = dispatch_numbers!(Self::eval(inputs[0].datum_type())(
                 self, &inputs[0], &inputs[1]
