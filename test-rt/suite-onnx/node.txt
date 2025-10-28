@@ -64,29 +64,8 @@ test_basic_conv_without_padding input:x
 test_basic_conv_with_padding input:x
 test_batchnorm_epsilon input:x
 test_batchnorm_example input:x
-test_bitshift_left_uint16
-test_bitshift_left_uint32
-test_bitshift_left_uint64
-test_bitshift_left_uint8
-test_bitshift_right_uint16
-test_bitshift_right_uint32
-test_bitshift_right_uint64
-test_bitshift_right_uint8
-test_bitwise_and_i16_3d
-test_bitwise_and_i32_2d
-test_bitwise_and_ui64_bcast_3v1d
-test_bitwise_and_ui8_bcast_4v3d
-test_bitwise_not_2d
-test_bitwise_not_3d
-test_bitwise_not_4d
-test_bitwise_or_i16_4d
-test_bitwise_or_i32_2d
-test_bitwise_or_ui64_bcast_3v1d
-test_bitwise_or_ui8_bcast_4v3d
-test_bitwise_xor_i16_3d
-test_bitwise_xor_i32_2d
-test_bitwise_xor_ui64_bcast_3v1d
-test_bitwise_xor_ui8_bcast_4v3d
+test_bitshift.*
+test_bitwise.*
 test_blackmanwindow_expanded input:
 test_blackmanwindow input:
 test_blackmanwindow_symmetric_expanded input:
@@ -120,40 +99,8 @@ test_ceil
 test_ceil_example
 test_celu
 test_celu_expanded
-test_clip
-test_clip_default_inbounds
-test_clip_default_inbounds_expanded
-test_clip_default_int8_inbounds
-test_clip_default_int8_inbounds_expanded
-test_clip_default_int8_max
-test_clip_default_int8_max_expanded
-test_clip_default_int8_min
-test_clip_default_int8_min_expanded
-test_clip_default_max
-test_clip_default_max_expanded
-test_clip_default_min
-test_clip_default_min_expanded
-test_clip_example
-test_clip_example_expanded
-test_clip_expanded
-test_clip_inbounds
-test_clip_inbounds_expanded
-test_clip_outbounds
-test_clip_outbounds_expanded
-test_clip_splitbounds
-test_clip_splitbounds_expanded
-test_concat_1d_axis_0
-test_concat_1d_axis_negative_1
-test_concat_2d_axis_0
-test_concat_2d_axis_1
-test_concat_2d_axis_negative_1
-test_concat_2d_axis_negative_2
-test_concat_3d_axis_0
-test_concat_3d_axis_1
-test_concat_3d_axis_2
-test_concat_3d_axis_negative_1
-test_concat_3d_axis_negative_2
-test_concat_3d_axis_negative_3
+test_clip.*
+test_concat.*
 test_constant
 test_constantlike_ones_with_input not-nnef
 test_constantlike_threes_with_shape_and_dtype not-nnef
@@ -189,10 +136,7 @@ test_dequantizelinear                                                           
 # test_dft
 # test_dft_axis
 # test_dft_inverse
-test_div
-test_div_bcast
-test_div_example
-test_div_uint8
+test_div.*
 test_dropout_default
 test_dropout_default_old
 test_dropout_random not-nnef
@@ -330,10 +274,7 @@ test_mod_uint16 not-nnef
 test_mod_uint32 not-nnef
 test_mod_uint64 not-nnef
 test_mod_uint8 not-nnef
-test_mul
-test_mul_bcast
-test_mul_example
-test_mul_uint8 since:17
+test_mul.*
 test_mvn_expanded
 test_neg
 test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded

@@ -61,6 +61,7 @@ test_dynamicquantizelinear_max_adjusted
 test_dynamicquantizelinear_min_adjusted
 test_gemm_broadcast
 test_gemm_nobroadcast
+test_if
 test_maxpool_2d_ceil
 test_maxpool_2d_same_lower
 test_maxpool_with_argmax_2d_precomputed_pads
