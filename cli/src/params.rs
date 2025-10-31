@@ -228,7 +228,7 @@ impl Parameters {
                     #[allow(unused_imports)]
                     use tract_nnef::ast::{LValue, RValue};
                     if let Some(over) = tensors_values
-                        .by_name(&name.0)
+                        .input_by_name(&name.0)
                         .or_else(|| tensors_values.by_input_ix(ix))
                         .and_then(|tv| tv.fact.as_ref())
                     {
@@ -421,6 +421,8 @@ impl Parameters {
                     values: tensor.value.concretize().map(|t| vec![t.into_tensor().into()]),
                     fact: Some(tensor.without_value()),
                     random_range: None,
+                    only_input: is_input,
+                    only_output: is_output,
                 })
             }
         }
@@ -440,8 +442,6 @@ impl Parameters {
                 .map(|(_, _, tensor)| tensor.into_tvalue())
                 .collect();
             result.push(TensorValues {
-                input_index: None,
-                output_index: None,
                 name: Some(name),
                 fact: if get_facts {
                     Some(vals[0].datum_type().fact(vals[0].shape()).into())
@@ -449,7 +449,7 @@ impl Parameters {
                     None
                 },
                 values: if get_values { Some(vals) } else { None },
-                random_range: None,
+                ..TensorValues::default()
             })
         }
         result
@@ -515,11 +515,11 @@ impl Parameters {
                 let input_index = if name.is_some() { None } else { Some(ix) };
                 result.add(TensorValues {
                     input_index,
-                    output_index: None,
                     name,
                     values: fact.value.concretize().map(|t| vec![t.into_tensor().into()]),
                     fact: Some(fact.without_value()),
-                    random_range: None,
+                    only_input: true,
+                    ..TensorValues::default()
                 });
             }
         }
@@ -554,19 +554,20 @@ impl Parameters {
                         fact
                     );
                     result.add(TensorValues {
-                        input_index: None,
                         output_index: Some(ix),
                         name,
                         values: fact.value.concretize().map(|t| vec![t.into_tensor().into()]),
                         fact: Some(fact.without_value()),
-                        random_range: None,
+                        only_output: true,
+                        ..TensorValues::default()
                     });
                 }
             }
 
             if let Some(bundles) = sub.values_of("assert-output-bundle") {
                 for bundle in bundles {
-                    for tv in Self::parse_npz(bundle, true, false)? {
+                    for mut tv in Self::parse_npz(bundle, true, false)? {
+                        tv.only_output = true;
                         result.add(tv);
                     }
                 }
@@ -1037,7 +1038,7 @@ impl Parameters {
         if let Some(infer) = raw_model.downcast_mut::<InferenceModel>() {
             for (ix, node_id) in infer.inputs.iter().enumerate() {
                 let tv = tensors_values
-                    .by_name(&infer.node(node_id.node).name)
+                    .input_by_name(&infer.node(node_id.node).name)
                     .or_else(|| tensors_values.by_input_ix(ix));
                 if let Some(tv) = tv {
                     if let Some(fact) = &tv.fact {

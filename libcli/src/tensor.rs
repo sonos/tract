@@ -56,6 +56,13 @@ impl TensorsValues {
             self.0.push(other.clone());
         };
     }
+
+    pub fn input_by_name(&self, name: &str) -> Option<&TensorValues> {
+        self.0
+            .iter()
+            .filter(|tv| tv.output_index.is_none() && !tv.only_output)
+            .find(|t| t.name.as_deref() == Some(name))
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Default)]
@@ -66,6 +73,8 @@ pub struct TensorValues {
     pub fact: Option<InferenceFact>,
     pub values: Option<Vec<TValue>>,
     pub random_range: Option<Range<f32>>,
+    pub only_input: bool,
+    pub only_output: bool,
 }
 
 fn parse_dt(dt: &str) -> TractResult<DatumType> {
