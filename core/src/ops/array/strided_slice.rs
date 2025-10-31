@@ -77,8 +77,10 @@ impl StridedSlice {
 
         // deal with negative indexing
         fn fix_negative(bound: &mut TDim, dim: &TDim) {
-            let neg = if let Ok(b) = bound.to_isize() {
-                b < 0
+            let neg = if bound.prove_positive_or_zero() {
+                false
+            } else if bound.prove_negative_or_zero() {
+                true
             } else {
                 #[allow(clippy::mutable_key_type)]
                 let symbols = bound.symbols();
@@ -273,12 +275,20 @@ impl EvalOp for StridedSlice {
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut model = TypedModel::default();
+        let scope = inputs.iter().find_map(|i| {
+            i.as_slice::<TDim>()
+                .ok()
+                .and_then(|slice| slice.iter().find_map(|dim| dim.find_scope()))
+        });
+        model.symbols = scope.unwrap_or_default();
         let mut source = tvec!();
         for (ix, input) in inputs.iter().enumerate() {
-            source.push(model.add_source(
-                format!("adhoc_input.{ix}"),
-                input.clone().into_arc_tensor().into(),
-            )?);
+            source.push(
+                model.add_source(
+                    format!("adhoc_input.{ix}"),
+                    input.clone().into_arc_tensor().into(),
+                )?,
+            );
         }
         let output = self.wire("adhoc", &mut model, &source)?;
         model.set_output_outlets(&output)?;
