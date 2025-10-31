@@ -169,18 +169,20 @@ impl EvalOp for EinSum {
     }
 
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let mut adhoc_model = TypedModel::default();
-        let mut wires = tvec!();
-        for (ix, input) in inputs.iter().enumerate() {
-            let fact = TypedFact::shape_and_dt_of(input);
-            let wire = adhoc_model.add_source(&format!("input.{ix}"), fact)?;
-            wires.push(wire);
-        }
-        let output = adhoc_model.wire_node("einsum", self.clone(), &wires)?;
-        adhoc_model.set_output_outlets(&output)?;
-        let opti = adhoc_model.into_optimized()?;
-        if opti.nodes.iter().all(|node| !node.op_is::<Self>()) {
-            return opti.into_runnable()?.run(inputs);
+        if inputs.iter().all(|i| i.datum_type().is_number()) {
+            let mut adhoc_model = TypedModel::default();
+            let mut wires = tvec!();
+            for (ix, input) in inputs.iter().enumerate() {
+                let fact = TypedFact::shape_and_dt_of(input);
+                let wire = adhoc_model.add_source(&format!("input.{ix}"), fact)?;
+                wires.push(wire);
+            }
+            let output = adhoc_model.wire_node("einsum", self.clone(), &wires)?;
+            adhoc_model.set_output_outlets(&output)?;
+            let opti = adhoc_model.into_optimized()?;
+            if opti.nodes.iter().all(|node| !node.op_is::<Self>()) {
+                return opti.into_runnable()?.run(inputs);
+            }
         }
 
         let output = if let Some(qp) = self.q_params {
