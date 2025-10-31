@@ -174,7 +174,7 @@ impl EvalOp for EinSum {
             let mut wires = tvec!();
             for (ix, input) in inputs.iter().enumerate() {
                 let fact = TypedFact::shape_and_dt_of(input);
-                let wire = adhoc_model.add_source(&format!("input.{ix}"), fact)?;
+                let wire = adhoc_model.add_source(format!("input.{ix}"), fact)?;
                 wires.push(wire);
             }
             let output = adhoc_model.wire_node("einsum", self.clone(), &wires)?;
