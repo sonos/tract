@@ -164,18 +164,55 @@ impl GgmlFlashAttn {
         let ncols = ncols1 * ncols2;
 
         ensure!(mask.shape()[2] >= q.shape()[2].next_multiple_of(16));
-        ensure!(k.shape()[k.rank() - 2] % FATTN_KQ_STRIDE == 0, "Incorrect KV cache padding");
+        ensure!(k.shape()[2] % FATTN_KQ_STRIDE == 0, "Incorrect KV cache padding");
 
-        let q_rank = q.rank();
         let q_shape = q.shape();
-        let ntiles_x = q_shape[q_rank - 2].div_ceil(ncols1);
+        let ntiles_x = q_shape[2].div_ceil(ncols1);
         let ntiles_total = ntiles_x
-            * (q_shape[q_rank - 3] / ncols2)
-            * if q_rank == 4 { q_shape[q_rank - 4] } else { 1 };
+            * (q_shape[1] / ncols2)
+            * q_shape[0];
 
         // TODO: implement mask optim
         let ctxt = cuda_context();
         let prop = ctxt.properties();
+
+        let mask_view = get_cuda_view(mask);
+
+        let kv_max = if q_shape[2] >= 1024 || q_shape[0] > 1 {
+            dbg!("KV_MAX OPTIM");
+            let mask_strides_2_div2 = mask.strides()[2] / 2;
+            let mask_strides_0_div2 = mask.strides()[0] / 2;
+
+            let blocks_num_kv_max = (ntiles_x as _, q_shape[0] as _, 1);
+            let blocks_dim_kv_max = ((FATTN_KQ_STRIDE / 2) as _, 1, 1);
+            let ne_kv_max = ntiles_x * q_shape[0];
+            let iter_k = k.shape()[2] / FATTN_KQ_STRIDE;
+
+            let kv_max = DeviceTensor::uninitialized_dt(
+                        DatumType::I64,
+                        &[ne_kv_max],
+            )?;
+            let kv_max_view = get_cuda_view(&kv_max);
+            let func = cuda_context().load_pipeline(
+                    LibraryName::FlashAttn,
+                    format!("flash_attn_mask_to_KV_max_{}", ncols1),
+            )?;
+            let mut launch_args = stream.launch_builder(&func);
+            launch_args.arg(&mask_view);
+            launch_args.arg(&kv_max_view);
+            launch_args.arg(&iter_k);
+            launch_args.arg(&mask_strides_2_div2);
+            launch_args.arg(&mask_strides_0_div2);
+
+            let cfg = LaunchConfig { grid_dim: blocks_num_kv_max, block_dim: blocks_dim_kv_max, shared_mem_bytes: 0};
+            unsafe {
+                launch_args.launch(cfg);
+            }
+            Some(kv_max)
+        } else {
+            None
+        };
+
         let nsm = prop.multiProcessorCount as usize;
         let block_dim: (u32, u32, u32) = (WARP_SIZE as _, nwarps as _, 1);
 
@@ -235,7 +272,7 @@ impl GgmlFlashAttn {
             let blocks_num = (
                 ntiles_x as u32,
                 parallel_blocks as u32,
-                (q_shape[q_rank - 3] * if q_rank == 4 { q_shape[q_rank - 4] } else { 1 }) as u32,
+                (q_shape[1] * q_shape[0]) as u32,
             );
 
             let (dst_tmp, dst_tmp_meta) = if parallel_blocks > 1 {
@@ -275,8 +312,8 @@ impl GgmlFlashAttn {
         let q_view = get_cuda_view(q);
         let k_view = get_cuda_view(k);
         let v_view = get_cuda_view(v);
-        let mask_view = get_cuda_view(mask);
         let out_view = get_cuda_view(out);
+        let kv_max = kv_max.as_ref().map(|t| get_cuda_view(t)).unwrap_or_else(|| null_ptr.as_view());
         let dst_tmp_view =
             dst_tmp.as_ref().map(|t| get_cuda_view(t)).unwrap_or_else(|| null_ptr.as_view());
         let dst_tmp_meta_view =
@@ -287,7 +324,7 @@ impl GgmlFlashAttn {
         launch_args.arg(&k_view);
         launch_args.arg(&v_view);
         launch_args.arg(&mask_view);
-        launch_args.arg(&null_ptr); // KV_max
+        launch_args.arg(&kv_max); 
         launch_args.arg(if !stream_k && parallel_blocks > 1 { &dst_tmp_view } else { &out_view });
         launch_args.arg(&dst_tmp_meta_view);
         launch_args.arg(&scale);

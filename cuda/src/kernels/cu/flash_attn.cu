@@ -244,6 +244,57 @@ static __device__ __forceinline__ void quantize_q8_1_to_shared(
     }
 }
 
+template <int ncols1>
+static __device__ void flash_attn_mask_to_KV_max(
+        const half2 * __restrict__ mask, int * __restrict__ KV_max, const int ne30, const int s31, const int s33) {
+    const int ne31     = gridDim.x;
+    const int tid      = threadIdx.x;
+    const int sequence = blockIdx.y;
+    const int jt       = blockIdx.x;
+
+    mask += sequence*s33 + jt*ncols1*s31;
+
+    __shared__ int buf_iw[WARP_SIZE];
+    if (tid < WARP_SIZE) {
+        buf_iw[tid] = 1;
+    }
+    __syncthreads();
+
+    int KV_max_sj = (ne30 - 1) * FATTN_KQ_STRIDE;
+    for (; KV_max_sj >= 0; KV_max_sj -= FATTN_KQ_STRIDE) {
+        int all_inf = 1;
+
+#pragma unroll
+        for (int j = 0; j < ncols1; ++j) {
+            const float2 tmp = __half22float2(mask[j*s31 + KV_max_sj/2 + tid]);
+            all_inf = all_inf && int(isinf(tmp.x)) && int(isinf(tmp.y));
+        }
+
+        all_inf = warp_reduce_all(all_inf);
+        if (tid % WARP_SIZE == 0) {
+            buf_iw[tid / WARP_SIZE] = all_inf;
+        }
+        __syncthreads();
+        all_inf = buf_iw[tid % WARP_SIZE];
+        __syncthreads();
+        all_inf = warp_reduce_all(all_inf);
+
+        if (!all_inf) {
+            break;
+        }
+    }
+
+    // If the break in the loop was not triggered, KV_max_sj is now -FATTN_KQ_STRIDE.
+    // If the break was triggered it's the lower edge of the tile with the first non-masked values.
+    // In either case, walk back the decrementation by FATTN_KQ_STRIDE.
+    KV_max_sj += FATTN_KQ_STRIDE;
+
+    if (threadIdx.x != 0) {
+        return;
+    }
+
+    KV_max[sequence*ne31 + jt] = KV_max_sj;
+}
 
 template<int D, int ncols, cuda_type type_K, cuda_type type_V> // D == head size
 static __device__ void flash_attn_ext_vec(
@@ -2038,6 +2089,16 @@ extern "C" {                                                                    
             }                                                                           \
     }
 
+#define INSTANTIATE_FLASH_ATTN_MASK_TO_KV_MAX_FOR_NCOLS1(ncols1)              \
+extern "C" {                                                                  \
+    __launch_bounds__(FATTN_KQ_STRIDE/2, 1)                                   \
+    __global__ void flash_attn_mask_to_KV_max_##ncols1(                       \
+        const half2 * __restrict__ mask, int * __restrict__ KV_max,           \
+        const int ne30, const int s31, const int s33) {                       \
+            flash_attn_mask_to_KV_max<ncols1>(mask, KV_max, ne30, s31, s33);  \
+        }                                                                     \
+}
+
 #define INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, ncols, ncols2) \
     INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, ncols, ncols2)  \
     INSTANTIATE_FLASH_ATTN_FIXUP_FOR_NCOLS(D, ncols, ncols2)
@@ -2066,5 +2127,16 @@ extern "C" {                                                                    
     INSTANTIATE_FLASH_ATTN_FOR_D(128) \
     INSTANTIATE_FLASH_ATTN_FOR_D(256) \
 
+#define INSTANTIATE_FLASH_ATTN_MASK_TO_KV_MAX()          \
+    INSTANTIATE_FLASH_ATTN_MASK_TO_KV_MAX_FOR_NCOLS1(1)  \
+    INSTANTIATE_FLASH_ATTN_MASK_TO_KV_MAX_FOR_NCOLS1(2)  \
+    INSTANTIATE_FLASH_ATTN_MASK_TO_KV_MAX_FOR_NCOLS1(4)  \
+    INSTANTIATE_FLASH_ATTN_MASK_TO_KV_MAX_FOR_NCOLS1(8)  \
+    INSTANTIATE_FLASH_ATTN_MASK_TO_KV_MAX_FOR_NCOLS1(16) \
+    INSTANTIATE_FLASH_ATTN_MASK_TO_KV_MAX_FOR_NCOLS1(32) \
+    INSTANTIATE_FLASH_ATTN_MASK_TO_KV_MAX_FOR_NCOLS1(64) \
+
 // TODO: Clarify names. (i.e associate fixup with mma and combine with vec)
 INSTANTIATE_FLASH_ATTN()
+
+INSTANTIATE_FLASH_ATTN_MASK_TO_KV_MAX()

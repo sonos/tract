@@ -123,6 +123,11 @@ static __device__ __forceinline__ __half warp_reduce_prod(__half x) {
   return x;
 }
 
+template<int width = WARP_SIZE>
+static __device__ __forceinline__ int warp_reduce_all(int x) {
+  return __all_sync(0xffffffff, x);
+}
+
 namespace cuda_mma {
 
 template <int I_, int J_, typename T> struct tile {
