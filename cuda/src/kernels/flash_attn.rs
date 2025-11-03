@@ -1,7 +1,5 @@
-use cudarc::driver::result::occupancy::max_active_block_per_multiprocessor;
 use cudarc::driver::sys::CUfunction_attribute;
 use cudarc::driver::{CudaFunction, LaunchConfig, PushKernelArg};
-use cudarc::runtime::sys::cudaOccupancyMaxActiveBlocksPerMultiprocessor;
 use num_traits::One;
 use std::fmt;
 use tract_core::internal::*;
@@ -12,10 +10,10 @@ use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::LaunchArgsExt;
 use crate::kernels::{LibraryName, WARP_SIZE, get_cuda_view, launch_args};
 
-static CUDA_CC_TURING: i32 = 750;
-static CUDA_CC_AMPERE: i32 = 800;
+const CUDA_CC_TURING: i32 = 750;
+const CUDA_CC_AMPERE: i32 = 800;
+const FATTN_KQ_STRIDE: usize = 256;
 
-static FATTN_KQ_STRIDE: usize = 256;
 #[derive(Debug, Clone)]
 pub struct GgmlFlashAttn;
 
@@ -25,10 +23,59 @@ impl fmt::Display for GgmlFlashAttn {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 enum FlashAttnImpl {
     Vec,
     MmaF16,
+}
+
+/* ------------------------- small helpers ------------------------- */
+
+#[inline]
+fn cc() -> i32 {
+    let ctxt = cuda_context();
+    let p = ctxt.properties();
+    p.major * 100 + p.minor * 10
+}
+
+#[inline]
+fn newer_than_lovelace() -> bool {
+    let ctxt = cuda_context();
+    let p = ctxt.properties();
+    p.major > 8 || (p.major == 8 && p.minor >= 9)
+}
+
+#[inline]
+fn bytes_of<T>() -> usize {
+    std::mem::size_of::<T>()
+}
+
+#[inline]
+fn to_i32(shape: &[usize]) -> TVec<i32> {
+    shape.iter().map(|&s| s as i32).collect()
+}
+
+#[inline]
+fn strides_to_bytes_i32<T>(strides_elems: &[isize]) -> TVec<i32> {
+    let el = bytes_of::<T>() as i32;
+    strides_elems.iter().map(|&s| (s as i32) * el).collect()
+}
+
+#[derive(Debug, Clone)]
+struct Plan {
+    imp: FlashAttnImpl,
+    // tiling
+    d: usize,
+    ncols1: usize,
+    ncols2: usize,
+    nwarps: usize,
+    // shared
+    shm_bytes: usize,
+    // scheduling
+    stream_k: bool,
+    kq_row_granularity: usize,
+    // derived
+    kernel: Arc<CudaFunction>,
 }
 
 impl GgmlFlashAttn {
@@ -78,72 +125,183 @@ impl GgmlFlashAttn {
         );
 
         match (q, k, v) {
-            ([b, q_heads, seq_len, _], [_, k_heads, _, _], [_, v_heads, _, out_dim]) => {
-                let qh = (*q_heads).to_i64()?;
-                let kh = (*k_heads).to_i64()?;
-                let vh = (*v_heads).to_i64()?;
-
+            ([b, qh, s, _], [_, kh, _, _], [_, vh, _, d]) => {
+                let (qh_i, kh_i, vh_i) = (qh.to_i64()?, kh.to_i64()?, vh.to_i64()?);
+                ensure!(kh_i == vh_i, "K and V heads mismatch (K={}, V={})", kh_i, vh_i);
+                ensure!(kh_i > 0, "K/V heads must be > 0 (got {kh_i})");
                 ensure!(
-                    kh == vh,
-                    "K and V must have the same number of heads (K={}, V={})",
-                    kh,
-                    vh
+                    qh_i % kh_i == 0,
+                    "Q heads ({qh_i}) must be a multiple of K/V heads ({kh_i})"
                 );
-                ensure!(kh > 0, "K/V heads must be > 0 (got {})", kh);
-                ensure!(qh % kh == 0, "Q heads ({}) must be a multiple of K/V heads ({})", qh, kh);
-
-                Ok(tvec![b.clone(), q_heads.clone(), seq_len.clone(), out_dim.clone()])
+                Ok(tvec![b.clone(), qh.clone(), s.clone(), d.clone()])
             }
-
             _ => bail!("Inconsistent shapes: expected [B,H,S,D] for Q/K/V."),
         }
     }
 
-    fn find_fattn_kernel(
-        q_shape: &[usize],
-        k_shape: &[usize],
-        v_shape: &[usize],
-        m_shape: &[usize],
-        k_dt: DatumType,
-        v_dt: DatumType,
-    ) -> TractResult<FlashAttnImpl> {
-        ensure!(q_shape[1] % k_shape[1] == 0);
-        let head_ratio = q_shape[1] / k_shape[1];
+    /* ------------------------- kernel planning ------------------------- */
+    fn pick_ncols2(head_ratio: usize) -> usize {
+        if head_ratio % 8 == 0 {
+            8
+        } else if head_ratio % 4 == 0 {
+            4
+        } else if head_ratio % 2 == 0 {
+            2
+        } else {
+            1
+        }
+    }
+    fn pick_ncols1(ncols2: usize, seq_q: usize, cc: i32) -> usize {
+        if ncols2 <= 8 && seq_q <= 8 / ncols2 {
+            8 / ncols2
+        } else if seq_q <= 16 / ncols2 {
+            16 / ncols2
+        } else if cc == CUDA_CC_TURING || seq_q <= 32 / ncols2 {
+            32 / ncols2
+        } else {
+            64 / ncols2
+        }
+    }
 
-        let ctxt = cuda_context();
-        let prop = ctxt.properties();
-        let newer_than_lovelace = prop.major > 8 || (prop.major == 8 && prop.minor >= 9);
+    fn plan_vec(&self, q: &DeviceTensor, k: &DeviceTensor, v: &DeviceTensor) -> TractResult<Plan> {
+        let qs = q.shape();
+        let rank = qs.len();
+        ensure!(matches!(qs[rank - 2], 1 | 2));
+        let ncols1 = qs[rank - 2];
+        let ncols2 = 1;
+        let d = qs[rank - 1];
+
+        let kernel_name = self.vec_kernel_name(d, ncols1, k.datum_type(), v.datum_type())?;
+        let kernel = cuda_context().load_pipeline(LibraryName::FlashAttn, kernel_name)?;
+
+        Ok(Plan {
+            imp: FlashAttnImpl::Vec,
+            d,
+            ncols1,
+            ncols2,
+            nwarps: 128 / WARP_SIZE,
+            shm_bytes: 0,
+            stream_k: false,
+            kq_row_granularity: d,
+            kernel,
+        })
+    }
+
+    fn plan_mma_f16(&self, q: &DeviceTensor, k: &DeviceTensor) -> TractResult<Plan> {
+        let cc = cc();
+        let qs = q.shape();
+        let ks = k.shape();
+
+        let d = qs[3];
+        ensure!(d % 8 == 0, "flash-attn f16: head dimension (D) must be multiple of 8");
+
+        let head_ratio = qs[1] / ks[1];
+        let ncols2 = Self::pick_ncols2(head_ratio);
+        let ncols1 = Self::pick_ncols1(ncols2, qs[2], cc);
+        let ncols = ncols1 * ncols2;
+
+        let ntiles = if ncols <= 8 { 1 } else { 2 };
+        let cols_per_warp = ntiles * 8;
+        ensure!(ncols % cols_per_warp == 0, "bad ncols vs cols_per_warp");
+
+        let nbatch_fa = if d != 256 { 64 } else { 32 };
+        let nwarps_max_x = ncols / cols_per_warp;
+        let nwarps_max_y = nbatch_fa / 16;
+        let nwarps = (nwarps_max_x * nwarps_max_y).min(4);
+
+        // shared bytes
+        let nbatch_k2 = d / 2;
+        let nbatch_v2 = d / 2;
+        let nbatch_combine = if cc == CUDA_CC_TURING && ncols1 <= 128 { 128 } else { 64 };
+        let shm_kv_1stage = nbatch_fa * (nbatch_k2 + 4).max(nbatch_v2 + 4) * bytes_of::<f32>();
+        let shm_kv_2stage = nbatch_fa * (nbatch_k2 + 4 + nbatch_v2 + 4) * bytes_of::<f32>();
+        let shm_q = ncols * (d / 2 + 4) * bytes_of::<f32>();
+        let shm_mask = ncols1 * (nbatch_fa / 2 + 4) * bytes_of::<f32>();
+        let shm_combine = nwarps * cols_per_warp * (nbatch_combine + 4) * bytes_of::<f32>();
+        let shm_kv = if cc >= CUDA_CC_AMPERE { shm_kv_2stage } else { shm_kv_1stage };
+        let shm_bytes = shm_combine.max(shm_q.max(shm_kv + shm_mask));
+
+        let kernel_name = format!("flash_attn_ext_f16_{}_{}_{}", d, ncols, ncols2);
+        let kernel = cuda_context().load_pipeline(LibraryName::FlashAttn, kernel_name)?;
+        kernel.set_attribute(
+            CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+            shm_bytes as i32,
+        )?;
+
+        Ok(Plan {
+            imp: FlashAttnImpl::MmaF16,
+            d,
+            ncols1,
+            ncols2,
+            nwarps,
+            shm_bytes,
+            stream_k: true,
+            kq_row_granularity: FATTN_KQ_STRIDE,
+            kernel,
+        })
+    }
+
+    fn choose_impl(
+        q: &DeviceTensor,
+        k: &DeviceTensor,
+        v: &DeviceTensor,
+        m: &DeviceTensor,
+    ) -> TractResult<FlashAttnImpl> {
+        let qh = q.shape()[1];
+        let kh = k.shape()[1];
+        ensure!(qh % kh == 0);
+        let head_ratio = qh / kh;
+
+        let newer = newer_than_lovelace();
 
         ensure!(
-            matches!(k_shape[3], 64 | 80 | 96 | 112 | 128 | 256) && k_shape[3] == v_shape[3],
-            "No kernel available for k_shape[3] = {} && v_shape[3] = {}",
-            k_shape[3],
-            v_shape[3]
+            matches!(k.shape()[3], 64 | 80 | 96 | 112 | 128 | 256) && k.shape()[3] == v.shape()[3],
+            "No kernel for K/V D={} (must match and be one of 64|80|96|112|128|256)",
+            k.shape()[3]
         );
+        ensure!(m.shape()[..2] == [1, 1]);
 
-        ensure!(m_shape[..2] == [1, 1]);
-
-        let can_use_vector_kernel = q_shape[3] % 64 == 0;
+        let can_vec = q.shape()[3] % 64 == 0;
         let mut best = FlashAttnImpl::MmaF16;
 
-        if can_use_vector_kernel {
-            if (newer_than_lovelace
-                && q_shape[2] == 1
-                && q_shape[0] == 1
-                && !(head_ratio > 4 && k_shape[2] >= 8192))
+        if can_vec {
+            if newer
+                && q.shape()[2] == 1
+                && q.shape()[0] == 1
+                && !(head_ratio > 4 && k.shape()[2] >= 8192)
             {
                 best = FlashAttnImpl::Vec;
             }
-
-            if (head_ratio % 2 != 0 && q_shape[2] == 1) {
-                best = FlashAttnImpl::Vec; // GQA-specific optimizations in the mma kernel do not apply.
+            if (head_ratio % 2 != 0) && q.shape()[2] == 1 {
+                best = FlashAttnImpl::Vec; // GQA-specific case
             }
         }
         Ok(best)
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn launch_generic_flash_attn(
+    /* ------------------------- public entry points ------------------------- */
+
+    pub fn eval(
+        &self,
+        stream: &TractCudaStream,
+        q: &DeviceTensor,
+        k: &DeviceTensor,
+        v: &DeviceTensor,
+        mask: &DeviceTensor,
+        scale: f32,
+    ) -> TractResult<DeviceTensor> {
+        let output = unsafe {
+            DeviceTensor::uninitialized_dt(
+                q.datum_type(),
+                &self.output_shape(q.shape(), k.shape(), v.shape())?,
+            )?
+        };
+        self.dispatch_eval(stream, q, k, v, mask, scale, &output)?;
+        stream.synchronize()?;
+        Ok(output)
+    }
+
+    pub fn dispatch_eval(
         &self,
         stream: &TractCudaStream,
         q: &DeviceTensor,
@@ -152,127 +310,134 @@ impl GgmlFlashAttn {
         mask: &DeviceTensor,
         scale: f32,
         out: &DeviceTensor,
-        func: Arc<CudaFunction>,
-        d: usize,
-        ncols1: usize,
-        ncols2: usize,
-        nwarps: usize,
-        kq_row_granularity: usize,
-        nbytes_shared: usize,
-        stream_k: bool,
     ) -> TractResult<()> {
-        let ncols = ncols1 * ncols2;
+        ensure!(q.datum_type() == DatumType::F32 && q.datum_type() == out.datum_type());
+        ensure!(out.shape() == self.output_shape(q.shape(), k.shape(), v.shape())?.as_slice());
 
+        match Self::choose_impl(q, k, v, mask)? {
+            FlashAttnImpl::Vec => {
+                let plan = self.plan_vec(q, k, v)?;
+                self.launch_with_plan(stream, q, k, v, mask, scale, out, plan)
+            }
+            FlashAttnImpl::MmaF16 => {
+                let plan = self.plan_mma_f16(q, k)?;
+                self.launch_with_plan(stream, q, k, v, mask, scale, out, plan)
+            }
+        }
+    }
+
+    /* ------------------------- single launcher ------------------------- */
+
+    fn launch_with_plan(
+        &self,
+        stream: &TractCudaStream,
+        q: &DeviceTensor,
+        k: &DeviceTensor,
+        v: &DeviceTensor,
+        mask: &DeviceTensor,
+        scale: f32,
+        out: &DeviceTensor,
+        plan: Plan,
+    ) -> TractResult<()> {
+        // quick invariants shared by both variants
         ensure!(mask.shape()[2] >= q.shape()[2].next_multiple_of(16));
         ensure!(k.shape()[2] % FATTN_KQ_STRIDE == 0, "Incorrect KV cache padding");
 
-        let q_shape = q.shape();
-        let ntiles_x = q_shape[2].div_ceil(ncols1);
-        let ntiles_total = ntiles_x
-            * (q_shape[1] / ncols2)
-            * q_shape[0];
+        let qv = get_cuda_view(q);
+        let kv = get_cuda_view(k);
+        let vv = get_cuda_view(v);
+        let mv = get_cuda_view(mask);
+        let ov = get_cuda_view(out);
 
-        // TODO: implement mask optim
-        let ctxt = cuda_context();
-        let prop = ctxt.properties();
+        // Grid/block sizing & occupancy (kept from your original launcher)
+        let ncols = plan.ncols1 * plan.ncols2;
+        let ntiles_x = q.shape()[2].div_ceil(plan.ncols1);
+        let ntiles_total = ntiles_x * (q.shape()[1] / plan.ncols2) * q.shape()[0];
 
-        let mask_view = get_cuda_view(mask);
+        // mask-to-KV-max (same logic; left as-is)
+        let kv_max = if q.shape()[2] >= 1024 || q.shape()[0] > 1 {
+            let mask_s2_div2 = mask.strides()[2] / 2;
+            let mask_s0_div2 = mask.strides()[0] / 2;
 
-        let kv_max = if q_shape[2] >= 1024 || q_shape[0] > 1 {
-            let mask_strides_2_div2 = mask.strides()[2] / 2;
-            let mask_strides_0_div2 = mask.strides()[0] / 2;
-
-            let blocks_num_kv_max = (ntiles_x as _, q_shape[0] as _, 1);
-            let blocks_dim_kv_max = ((FATTN_KQ_STRIDE / 2) as _, 1, 1);
-            let ne_kv_max = ntiles_x * q_shape[0];
+            let blocks_num = (ntiles_x as _, q.shape()[0] as _, 1);
+            let blocks_dim = ((FATTN_KQ_STRIDE / 2) as _, 1, 1);
+            let ne_kv_max = ntiles_x * q.shape()[0];
             let iter_k = k.shape()[2] / FATTN_KQ_STRIDE;
 
-            let kv_max = DeviceTensor::uninitialized_dt(
-                        DatumType::I64,
-                        &[ne_kv_max],
-            )?;
-            let kv_max_view = get_cuda_view(&kv_max);
+            let kv_max = DeviceTensor::uninitialized_dt(DatumType::I64, &[ne_kv_max])?;
+            let kv_max_v = get_cuda_view(&kv_max);
             let func = cuda_context().load_pipeline(
-                    LibraryName::FlashAttn,
-                    format!("flash_attn_mask_to_KV_max_{}", ncols1),
+                LibraryName::FlashAttn,
+                format!("flash_attn_mask_to_KV_max_{}", plan.ncols1),
             )?;
-            let mut launch_args = stream.launch_builder(&func);
-            launch_args.arg(&mask_view);
-            launch_args.arg(&kv_max_view);
-            launch_args.arg(&iter_k);
-            launch_args.arg(&mask_strides_2_div2);
-            launch_args.arg(&mask_strides_0_div2);
-
-            let cfg = LaunchConfig { grid_dim: blocks_num_kv_max, block_dim: blocks_dim_kv_max, shared_mem_bytes: 0};
+            let mut la = stream.launch_builder(&func);
+            la.arg(&mv);
+            la.arg(&kv_max_v);
+            la.arg(&iter_k);
+            la.arg(&mask_s2_div2);
+            la.arg(&mask_s0_div2);
+            let cfg =
+                LaunchConfig { grid_dim: blocks_num, block_dim: blocks_dim, shared_mem_bytes: 0 };
             unsafe {
-                launch_args.launch(cfg);
+                la.launch(cfg);
             }
             Some(kv_max)
         } else {
             None
         };
 
-        let nsm = prop.multiProcessorCount as usize;
-        let block_dim: (u32, u32, u32) = (WARP_SIZE as _, nwarps as _, 1);
+        // occupancy & parallel layout
+        let ctxt = cuda_context();
+        let props = ctxt.properties();
+        let nsm = props.multiProcessorCount as usize;
+        let block_dim = (WARP_SIZE as u32, plan.nwarps as u32, 1);
 
-        let max_blocks_per_sm = func.occupancy_max_active_blocks_per_multiprocessor(
-            WARP_SIZE as u32 * nwarps as u32,
-            nbytes_shared,
+        let max_blocks_per_sm = plan.kernel.occupancy_max_active_blocks_per_multiprocessor(
+            WARP_SIZE as u32 * plan.nwarps as u32,
+            plan.shm_bytes,
             None,
         )? as usize;
+
         let mut parallel_blocks = max_blocks_per_sm;
 
-        let (blocks_num, dst_tmp, dst_tmp_meta) = if stream_k {
-            // For short contexts it can be faster to have the SMs work on whole tiles because this lets us skip the fixup.
+        let (blocks_num, dst_tmp, dst_tmp_meta) = if plan.stream_k {
             let max_blocks = max_blocks_per_sm * nsm;
-
             let tiles_nwaves = ntiles_total.div_ceil(max_blocks);
-            let tiles_efficiency_percent = 100 * ntiles_total / (max_blocks * tiles_nwaves);
-
-            let newer_than_lovelace = prop.major > 8 || (prop.major == 8 && prop.minor > 9);
-            let use_stream_k = newer_than_lovelace || tiles_efficiency_percent < 75;
+            let tiles_eff_pct = 100 * ntiles_total / (max_blocks * tiles_nwaves);
+            let newer = newer_than_lovelace();
+            let use_stream_k = newer || tiles_eff_pct < 75;
 
             let blocks_num = (if use_stream_k { max_blocks } else { ntiles_total } as u32, 1, 1);
             let dst_tmp_meta = DeviceTensor::uninitialized_dt(
                 DatumType::F32,
-                &[2 * blocks_num.0 as usize * ncols * (2 * 2 + d) * size_of::<f32>()],
+                &[2 * blocks_num.0 as usize * ncols * (2 * 2 + plan.d) * bytes_of::<f32>()],
             )?;
-
             (blocks_num, None, Some(dst_tmp_meta))
         } else {
-            ensure!(k.shape()[k.rank() - 2] % kq_row_granularity == 0);
-            let ntiles_kq = k.shape()[k.rank() - 2] / kq_row_granularity; // Max. number of parallel blocks limited by tensor size.
-
-            // parallel_blocks must not be larger than what the tensor size allows:
+            ensure!(k.shape()[k.rank() - 2] % plan.kq_row_granularity == 0);
+            let ntiles_kq = k.shape()[k.rank() - 2] / plan.kq_row_granularity;
             parallel_blocks = parallel_blocks.min(ntiles_kq);
 
-            // If ntiles_total % blocks_per_wave != 0 then some efficiency is lost due to tail effects.
-            // Test whether parallel_blocks can be set to a higher value for better efficiency.
+            // try to improve tail efficiency
             let blocks_per_wave = nsm * max_blocks_per_sm;
             let mut nwaves_best = 0;
-            let mut efficiency_percent_best = 0;
-            for parallel_blocks_test in (parallel_blocks..=ntiles_kq).step_by(parallel_blocks) {
-                let nblocks_total = ntiles_total * parallel_blocks_test;
+            let mut eff_best = 0;
+            for pb in (parallel_blocks..=ntiles_kq).step_by(parallel_blocks) {
+                let nblocks_total = ntiles_total * pb;
                 let nwaves = nblocks_total.div_ceil(blocks_per_wave);
-                let efficiency_percent = 100 * nblocks_total / (nwaves * blocks_per_wave);
-
-                // Stop trying configurations with more waves if we already have good efficiency to avoid excessive overhead.
-                if (efficiency_percent_best >= 95 && nwaves > nwaves_best) {
+                let eff = 100 * nblocks_total / (nwaves * blocks_per_wave);
+                if eff_best >= 95 && nwaves > nwaves_best {
                     break;
                 }
-
-                if (efficiency_percent > efficiency_percent_best) {
+                if eff > eff_best {
                     nwaves_best = nwaves;
-                    efficiency_percent_best = efficiency_percent;
-                    parallel_blocks = parallel_blocks_test;
+                    eff_best = eff;
+                    parallel_blocks = pb;
                 }
             }
 
-            let blocks_num = (
-                ntiles_x as u32,
-                parallel_blocks as u32,
-                (q_shape[1] * q_shape[0]) as u32,
-            );
+            let blocks_num =
+                (ntiles_x as u32, parallel_blocks as u32, (q.shape()[1] * q.shape()[0]) as u32);
 
             let (dst_tmp, dst_tmp_meta) = if parallel_blocks > 1 {
                 (
@@ -293,292 +458,90 @@ impl GgmlFlashAttn {
 
         ensure!(block_dim.0 % WARP_SIZE as u32 == 0);
 
-        let q_shape = q.shape().iter().map(|s| *s as i32).collect_vec();
-        let k_shape = k.shape().iter().map(|s| *s as i32).collect_vec();
-        let mask_shape = mask.shape().iter().map(|s| *s as i32).collect_vec();
-
-        let q_strides =
-            q.strides().iter().map(|s| *s as i32 * size_of::<f32>() as i32).collect_vec();
-        let k_strides =
-            k.strides().iter().map(|s| *s as i32 * size_of::<f16>() as i32).collect_vec();
-        let v_strides =
-            v.strides().iter().map(|s| *s as i32 * size_of::<f16>() as i32).collect_vec();
-        let mask_strides =
-            mask.strides().iter().map(|s| *s as i32 * size_of::<f16>() as i32).collect_vec();
+        // Shapes/strides for kernel
+        let q_shape_i32 = to_i32(q.shape());
+        let k_shape_i32 = to_i32(k.shape());
+        let mask_shape_i32 = to_i32(mask.shape());
+        let q_strides_b = strides_to_bytes_i32::<f32>(q.strides());
+        let k_strides_b = strides_to_bytes_i32::<f16>(k.strides());
+        let v_strides_b = strides_to_bytes_i32::<f16>(v.strides());
+        let mask_strides_b = strides_to_bytes_i32::<f16>(mask.strides());
 
         let null_ptr = stream.null::<u8>()?;
+        let kv_max_v = kv_max.as_ref().map(get_cuda_view).unwrap_or_else(|| null_ptr.as_view());
+        let dst_tmp_v = dst_tmp.as_ref().map(get_cuda_view).unwrap_or_else(|| null_ptr.as_view());
+        let dst_tmp_meta_v =
+            dst_tmp_meta.as_ref().map(get_cuda_view).unwrap_or_else(|| null_ptr.as_view());
 
-        let q_view = get_cuda_view(q);
-        let k_view = get_cuda_view(k);
-        let v_view = get_cuda_view(v);
-        let out_view = get_cuda_view(out);
-        let kv_max = kv_max.as_ref().map(|t| get_cuda_view(t)).unwrap_or_else(|| null_ptr.as_view());
-        let dst_tmp_view =
-            dst_tmp.as_ref().map(|t| get_cuda_view(t)).unwrap_or_else(|| null_ptr.as_view());
-        let dst_tmp_meta_view =
-            dst_tmp_meta.as_ref().map(|t| get_cuda_view(t)).unwrap_or_else(|| null_ptr.as_view());
+        // main kernel
+        let mut la = stream.launch_builder(&plan.kernel);
+        la.arg(&qv);
+        la.arg(&kv);
+        la.arg(&vv);
+        la.arg(&mv);
+        la.arg(&kv_max_v);
+        la.arg(if !plan.stream_k && parallel_blocks > 1 { &dst_tmp_v } else { &ov });
+        la.arg(&dst_tmp_meta_v);
+        la.arg(&scale);
+        la.set_slice(&q_shape_i32);
+        la.set_slice(&q_strides_b[..3]);
+        la.set_slice(&k_shape_i32);
+        la.set_slice(&k_strides_b[..3]);
+        la.set_slice(&v_strides_b[..3]);
+        la.set_slice(&mask_shape_i32[..3]);
+        la.set_slice(&mask_strides_b[..3]);
 
-        let mut launch_args = stream.launch_builder(&func);
-        launch_args.arg(&q_view);
-        launch_args.arg(&k_view);
-        launch_args.arg(&v_view);
-        launch_args.arg(&mask_view);
-        launch_args.arg(&kv_max); 
-        launch_args.arg(if !stream_k && parallel_blocks > 1 { &dst_tmp_view } else { &out_view });
-        launch_args.arg(&dst_tmp_meta_view);
-        launch_args.arg(&scale);
-        launch_args.set_slice(&q_shape);
-        launch_args.set_slice(&q_strides[..3]);
-        launch_args.set_slice(&k_shape);
-        launch_args.set_slice(&k_strides[..3]);
-        launch_args.set_slice(&v_strides[..3]);
-        launch_args.set_slice(&mask_shape[..3]);
-        launch_args.set_slice(&mask_strides[..3]);
-
-        let cfg =
-            LaunchConfig { grid_dim: blocks_num, block_dim, shared_mem_bytes: nbytes_shared as _ };
-
-        //println!("stream_k {stream_k} parallel_block: {parallel_blocks} q_shape: {q_shape:?}\n q_strides {:?}\n k_shape: {k_shape:?}\n k_strides: {:?}\n v_strides: {:?}\n mask_shape: {:?}\n mask_strides: {:?}",
-        //    &q_strides[..3], &k_strides[..3], &v_strides[..3], &mask_shape[..3], &mask_strides[..3]);
-        //dbg!(&cfg);
+        let cfg = LaunchConfig {
+            grid_dim: blocks_num,
+            block_dim,
+            shared_mem_bytes: plan.shm_bytes as u32,
+        };
         unsafe {
-            launch_args.launch(cfg);
+            la.launch(cfg);
         }
-        //dbg!(out.to_host()?.to_array_view::<f32>()?);
-        if stream_k {
-            if ntiles_total as u32 % blocks_num.0 != 0 {
-                let func = cuda_context().load_pipeline(
+
+        // fixups
+        if plan.stream_k {
+            if ntiles_total as u32 % cfg.grid_dim.0 != 0 {
+                let f = cuda_context().load_pipeline(
                     LibraryName::FlashAttn,
-                    format!("flash_attn_stream_k_fixup_{}_{}_{}", d, ncols, ncols2),
+                    format!("flash_attn_stream_k_fixup_{}_{}_{}", plan.d, ncols, plan.ncols2),
                 )?;
-
-                let mut launch_args = stream.launch_builder(&func);
-                launch_args.arg(&out_view);
-                launch_args.arg(&dst_tmp_meta_view);
-                launch_args.set_slice(&q_shape[..3]);
-                launch_args.arg(&k_shape[2]);
-
+                let mut la = stream.launch_builder(&f);
+                la.arg(&ov);
+                la.arg(&dst_tmp_meta_v);
+                la.set_slice(&q_shape_i32[..3]);
+                la.arg(&k_shape_i32[2]);
                 let cfg = LaunchConfig {
-                    grid_dim: (blocks_num.0, ncols1 as _, ncols2 as _),
-                    block_dim: (d as _, 1, 1),
+                    grid_dim: (cfg.grid_dim.0, plan.ncols1 as _, plan.ncols2 as _),
+                    block_dim: (plan.d as _, 1, 1),
                     shared_mem_bytes: 0,
                 };
                 unsafe {
-                    launch_args.launch(cfg);
+                    la.launch(cfg);
                 }
             }
         } else if parallel_blocks > 1 {
-            let func = cuda_context().load_pipeline(
+            let f = cuda_context().load_pipeline(
                 LibraryName::FlashAttn,
-                format!("flash_attn_combine_results_{}", d),
+                format!("flash_attn_combine_results_{}", plan.d),
             )?;
-
-            let mut launch_args = stream.launch_builder(&func);
-            launch_args.arg(&dst_tmp_view);
-            launch_args.arg(&dst_tmp_meta_view);
-            launch_args.arg(&out_view);
-            launch_args.arg(&parallel_blocks);
+            let mut la = stream.launch_builder(&f);
+            la.arg(&dst_tmp_v);
+            la.arg(&dst_tmp_meta_v);
+            la.arg(&ov);
+            la.arg(&parallel_blocks);
             let cfg = LaunchConfig {
-                grid_dim: (q_shape[2] as _, q_shape[1] as _, q_shape[0] as _),
-                block_dim: (d as _, 1, 1),
-                shared_mem_bytes: (parallel_blocks * 2 * size_of::<f32>()) as u32,
+                grid_dim: (q_shape_i32[2] as _, q_shape_i32[1] as _, q_shape_i32[0] as _),
+                block_dim: (plan.d as _, 1, 1),
+                shared_mem_bytes: (parallel_blocks * 2 * bytes_of::<f32>()) as u32,
             };
             unsafe {
-                launch_args.launch(cfg);
+                la.launch(cfg);
             }
         }
 
         Ok(())
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn launch_flash_attn_vec(
-        &self,
-        stream: &TractCudaStream,
-        q: &DeviceTensor,
-        k: &DeviceTensor,
-        v: &DeviceTensor,
-        mask: &DeviceTensor,
-        scale: f32,
-        out: &DeviceTensor,
-    ) -> TractResult<()> {
-        let q_shape = q.shape();
-        let rank = q_shape.len();
-        ensure!(matches!(q_shape[rank - 2], 1 | 2));
-
-        let ncols1 = q_shape[rank - 2];
-        let ncols2 = 1;
-        let d = q_shape[rank - 1];
-        //dbg!(&ncols1);
-        let kernel_name = self.vec_kernel_name(d, ncols1, k.datum_type(), v.datum_type())?;
-        let func = cuda_context().load_pipeline(LibraryName::FlashAttn, kernel_name)?;
-
-        self.launch_generic_flash_attn(
-            stream,
-            q,
-            k,
-            v,
-            mask,
-            scale,
-            out,
-            func,
-            d,
-            ncols1,
-            ncols2,
-            128 / WARP_SIZE,
-            d,
-            0,
-            false,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn launch_flash_attn_mma_f16(
-        &self,
-        stream: &TractCudaStream,
-        q: &DeviceTensor,
-        k: &DeviceTensor,
-        v: &DeviceTensor,
-        mask: &DeviceTensor,
-        scale: f32,
-        out: &DeviceTensor,
-    ) -> TractResult<()> {
-        let ctxt = cuda_context();
-        let properties = ctxt.properties();
-        let cc = properties.major * 100 + properties.minor * 10;
-
-        let q_shape = q.shape();
-        let k_shape = k.shape();
-
-        let out_dim = q_shape[3];
-        let head_ratio = q_shape[1] / k_shape[1];
-
-        let ncols2 = if head_ratio % 8 == 0 {
-            8
-        } else if head_ratio % 4 == 0 {
-            4
-        } else if head_ratio % 2 == 0 {
-            2
-        } else {
-            1
-        };
-
-        let ncols1 = if ncols2 <= 8 && q_shape[2] <= 8 / ncols2 {
-            8 / ncols2
-        } else if q_shape[2] <= 16 / ncols2 {
-            16 / ncols2
-        } else if cc == CUDA_CC_TURING || q_shape[2] <= 32 / ncols2 {
-            32 / ncols2
-        } else {
-            64 / ncols2
-        };
-
-        let nbatch_fa = if out_dim != 256 { 64 } else { 32 };
-        let ncols = ncols1 * ncols2;
-        let ntiles = if ncols <= 8 { 1 } else { 2 };
-        let cols_per_warp = ntiles * 8;
-        let nwarps_max_x = ncols / cols_per_warp;
-        let nwarps_max_y = nbatch_fa / 16;
-        let nwarps = (nwarps_max_x * nwarps_max_y).min(4);
-
-        let nbatch_k2 = out_dim / 2;
-        let nbatch_v2 = out_dim / 2;
-        let nbatch_combine = if cc == CUDA_CC_TURING && ncols1 <= 128 { 128 } else { 64 };
-
-        ensure!(out_dim % 8 == 0, "bad DKQ");
-        ensure!(ncols % cols_per_warp == 0, "bad ncols");
-
-        let nbytes_shared_kv_1stage =
-            nbatch_fa * (nbatch_k2 + 4).max(nbatch_v2 + 4) * size_of::<f32>();
-        let nbytes_shared_kv_2stage =
-            nbatch_fa * (nbatch_k2 + 4 + nbatch_v2 + 4) * size_of::<f32>();
-        let nbytes_shared_q = ncols * (out_dim / 2 + 4) * size_of::<f32>();
-        let nbytes_shared_mask = ncols1 * (nbatch_fa / 2 + 4) * size_of::<f32>();
-        let nbytes_shared_combine =
-            nwarps * cols_per_warp * (nbatch_combine + 4) * size_of::<f32>();
-
-        let nbytes_shared_kv =
-            if cc >= CUDA_CC_AMPERE { nbytes_shared_kv_2stage } else { nbytes_shared_kv_1stage };
-        let nbytes_shared_total =
-            nbytes_shared_combine.max(nbytes_shared_q.max(nbytes_shared_kv + nbytes_shared_mask));
-
-        let kernel_name = format!("flash_attn_ext_f16_{}_{}_{}", out_dim, ncols, ncols2);
-        let func = ctxt.load_pipeline(LibraryName::FlashAttn, kernel_name)?;
-
-        func.set_attribute(
-            CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-            nbytes_shared_total as i32,
-        )?;
-        self.launch_generic_flash_attn(
-            stream,
-            q,
-            k,
-            v,
-            mask,
-            scale,
-            out,
-            func,
-            out_dim,
-            ncols1,
-            ncols2,
-            nwarps,
-            FATTN_KQ_STRIDE,
-            nbytes_shared_total,
-            true,
-        )
-    }
-
-    pub fn eval(
-        &self,
-        stream: &TractCudaStream,
-        q: &DeviceTensor,
-        k: &DeviceTensor,
-        v: &DeviceTensor,
-        mask: &DeviceTensor,
-        scale: f32,
-    ) -> TractResult<DeviceTensor> {
-        let output = unsafe {
-            DeviceTensor::uninitialized_dt(
-                q.datum_type(),
-                &self.output_shape(q.shape(), k.shape(), v.shape())?,
-            )?
-        };
-
-        self.dispatch_eval(stream, q, k, v, mask, scale, &output)?;
-        stream.synchronize()?;
-
-        Ok(output)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn dispatch_eval(
-        &self,
-        stream: &TractCudaStream,
-        q: &DeviceTensor,
-        k: &DeviceTensor,
-        v: &DeviceTensor,
-        mask: &DeviceTensor,
-        scale: f32,
-        out: &DeviceTensor,
-    ) -> TractResult<()> {
-        ensure!(q.datum_type() == DatumType::F32 && q.datum_type() == out.datum_type());
-        ensure!(out.shape() == self.output_shape(q.shape(), k.shape(), v.shape())?.as_slice());
-
-        let kernel_impl = Self::find_fattn_kernel(
-            q.shape(),
-            k.shape(),
-            v.shape(),
-            mask.shape(),
-            k.datum_type(),
-            v.datum_type(),
-        )?;
-
-        match kernel_impl {
-            FlashAttnImpl::Vec => self.launch_flash_attn_vec(stream, q, k, v, mask, scale, out),
-            FlashAttnImpl::MmaF16 => {
-                self.launch_flash_attn_mma_f16(stream, q, k, v, mask, scale, out)
-            }
-        }
     }
 }
 

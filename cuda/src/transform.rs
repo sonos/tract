@@ -242,9 +242,11 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
                 !op.transpose_c
                     && op.quantize_output.is_none()
                     && (can_convert_to_cuda_gemm(&input_facts)
-                        || can_convert_to_cuda_gemm(&[input_facts[1].clone(), input_facts[0].clone()]))
-            }))
-    )
+                        || can_convert_to_cuda_gemm(&[
+                            input_facts[1].clone(),
+                            input_facts[0].clone(),
+                        ]))
+            })))
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {
@@ -447,128 +449,157 @@ fn convert_sdpa_to_cuda_flash_attn(
     inputs: &mut [OutletId],
     op: &Sdpa,
 ) -> TractResult<TVec<OutletId>> {
-    let input_facts = model.node_input_facts(node.id)?;
-    ensure!(!op.is_causal && input_facts.len() == 4);
+    // ---- Facts & quick guards -------------------------------------------------
+    let facts = model.node_input_facts(node.id)?;
+    ensure!(!op.is_causal && facts.len() == 4, "FlashAttn requires non-causal SDPA with 4 inputs");
 
-    let q_fact = input_facts[0];
-    let k_fact = input_facts[1];
-    let v_fact = input_facts[2];
-    let m_fact = input_facts[3];
+    let [qf, kf, vf, mf] = [facts[0], facts[1], facts[2], facts[3]];
+    ensure!(kf.datum_type() == vf.datum_type(), "K/V dtypes must match");
 
-    let splitted_i = inputs.split_at_mut(2);
-    let qk = splitted_i.0.split_at_mut(1);
-    let vm = splitted_i.1.split_at_mut(1);
+    // split inputs as (q, k, v, m)
+    let [q, k, v, m, ..] = &mut inputs[..] else {
+        bail!("need at least 4 inputs");
+    };
 
-    let q = &mut qk.0[0];
-    let k = &mut qk.1[0];
-    let v = &mut vm.0[0];
-    let m = &mut vm.1[0];
-
-    ensure!(k_fact.datum_type() == v_fact.datum_type());
-    let cast_op = ops::CudaCast::new(DatumType::F16).unwrap();
-    if k_fact.datum_type().unwrap() != DatumType::F16 {
-        // Cast every inputs (except Q) to F16
-        *k = target.wire_node(node.name.clone() + ".cast_k", cast_op.clone(), &[*k])?[0];
-        *v = target.wire_node(node.name.clone() + ".cast_v", cast_op.clone(), &[*v])?[0];
+    // ---- Small helpers --------------------------------------------------------
+    fn name(base: &str, suffix: &str) -> String {
+        format!("{base}{suffix}")
     }
 
-    let q_dt = q_fact.datum_type().unwrap();
-    if q_dt != DatumType::F32 {
-        *q = target.wire_node(
-            node.name.clone() + ".cast_q",
-            ops::CudaCast::new(DatumType::F32).unwrap(),
-            &[*q],
+    fn mut_cast(
+        target: &mut TypedModel,
+        node_name: &str,
+        dst: &mut OutletId,
+        have: DatumType,
+        want: DatumType,
+        suffix: &str,
+    ) -> TractResult<()> {
+        if have != want {
+            *dst = target.wire_node(
+                name(node_name, suffix),
+                ops::CudaCast::new(want).unwrap(),
+                &[*dst],
+            )?[0];
+        }
+        Ok(())
+    }
+
+    fn add_head_axis_if_rank3(
+        target: &mut TypedModel,
+        node_name: &str,
+        dst: &mut OutletId,
+        fact: &TypedFact,
+        suffix: &str,
+    ) -> TractResult<bool> {
+        if fact.rank() == 3 {
+            let ax = ops::CudaAxisOp::from_tract_core(AxisOp::Add(1));
+            *dst = target.wire_node(name(node_name, suffix), ax, &[*dst])?[0];
+            Ok(true)
+        } else {
+            ensure!(fact.rank() == 4, "Q/K/V must be rank 3 or 4");
+            Ok(false)
+        }
+    }
+
+    fn pad_last_two_dims(
+        target: &mut TypedModel,
+        node_name: &str,
+        dst: &mut OutletId,
+        pad_s: TDim,
+        pad_sp: TDim,
+        fill: Tensor,
+        suffix: &str,
+    ) -> TractResult<()> {
+        let mut pads = vec![(TDim::Val(0), TDim::Val(0)); 4];
+        pads[2].1 = pad_s;
+        pads[3].1 = pad_sp;
+        *dst = target.wire_node(
+            name(node_name, suffix),
+            ops::CudaPad::new(pads, PadMode::Constant(fill.into()))?,
+            &[*dst],
+        )?[0];
+        Ok(())
+    }
+
+    // ----- casts
+    let q_dt = qf.datum_type().unwrap();
+    let kv_dt = kf.datum_type().unwrap();
+    mut_cast(target, &node.name, k, kv_dt, DatumType::F16, ".cast_k")?;
+    mut_cast(target, &node.name, v, kv_dt, DatumType::F16, ".cast_v")?;
+    mut_cast(target, &node.name, q, q_dt, DatumType::F32, ".cast_q")?;
+
+    // ----- rank normalize (sequential to avoid overlapping borrows)
+    let mut added_head_axis = false;
+    added_head_axis |= add_head_axis_if_rank3(target, &node.name, q, &qf, ".reshape_q")?;
+    added_head_axis |= add_head_axis_if_rank3(target, &node.name, k, &kf, ".reshape_k")?;
+    added_head_axis |= add_head_axis_if_rank3(target, &node.name, v, &vf, ".reshape_v")?;
+
+    // ----- checks
+    let out_dim = kf.shape[kf.rank() - 1].to_i64()?;
+    ensure!(
+        matches!(out_dim, 64 | 80 | 96 | 112 | 128 | 256),
+        "Unsupported head dim (D): {out_dim}"
+    );
+    ensure!(kf.shape == vf.shape, "K and V shapes must be identical");
+
+    // ----- pad K/V seq to multiple of 256
+    let s_plus_p = kf.shape.dims()[qf.rank() - 2].clone();
+    let s_plus_p_to_256 = ((s_plus_p.clone() + 255) / 256) * 256 - s_plus_p;
+    if s_plus_p_to_256.to_i64()? != 0 {
+        let zero_f16: Arc<Tensor> = tensor0(f16::from_f32(0.0)).into();
+        // Only pad dim=2 (S+P) for K/V
+        let mut pads_kv = vec![(TDim::Val(0), TDim::Val(0)); 4];
+        pads_kv[2].1 = s_plus_p_to_256.clone();
+        *k = target.wire_node(
+            name(&node.name, ".pad_k"),
+            ops::CudaPad::new(pads_kv.clone(), PadMode::Constant(zero_f16.clone()))?,
+            &[*k],
+        )?[0];
+        *v = target.wire_node(
+            name(&node.name, ".pad_v"),
+            ops::CudaPad::new(pads_kv, PadMode::Constant(zero_f16))?,
+            &[*v],
         )?[0];
     }
 
-    let q_rank = q_fact.rank();
-    ensure!(input_facts[..3].iter().all(|i_f| i_f.rank() == q_rank));
-    if q_rank != 4 {
-        ensure!(q_fact.rank() == 3);
-        let ax_op = ops::CudaAxisOp::from_tract_core(AxisOp::Add(1));
-        *q = target.wire_node(node.name.clone() + ".reshape_q", ax_op.clone(), &[*q])?[0];
-        *k = target.wire_node(node.name.clone() + ".reshape_k", ax_op.clone(), &[*k])?[0];
-        *v = target.wire_node(node.name.clone() + ".reshape_v", ax_op, &[*v])?[0];
+    // ----- mask: cast→reshape→pad
+    mut_cast(target, &node.name, m, mf.datum_type().unwrap(), DatumType::F16, ".cast_m")?;
+    if mf.rank() != 4 {
+        let add = 4 - mf.rank();
+        let ax =
+            ops::CudaAxisOp::from_tract_core(AxisOp::Reshape(0, tvec![], tvec![TDim::Val(1); add]));
+        *m = target.wire_node(name(&node.name, ".reshape_m"), ax, &[*m])?[0];
     }
+    let s = qf.shape.dims()[qf.rank() - 2].clone();
+    let pad_s_to_16 = ((s.clone() + 15) / 16) * 16 - s;
+    let neg_inf_f16 = tensor0(-f16::infinity()).into();
+    pad_last_two_dims(target, &node.name, m, pad_s_to_16, s_plus_p_to_256, neg_inf_f16, ".pad_m")?;
 
-    let out_dim = k_fact.shape[k_fact.rank() - 1].to_i64()?;
-    ensure!(
-        matches!(out_dim, 64 | 80 | 96 | 112 | 128 | 256),
-        "Unsupported d for Cuda FlashAttn: {out_dim}"
-    );
-
-    // Pad S+P to next multiple of 256 for Flash Attention Op
-    ensure!(k_fact.shape == v_fact.shape);
-
-    let s_plus_p = k_fact.shape.dims()[q_fact.rank() - 2].clone();
-    let s_plus_p_to_pad = ((s_plus_p.clone() + 255) / 256) * 256 - s_plus_p;
-    let mut padding_kv = vec![(TDim::Val(0), TDim::Val(0)); 4];
-    padding_kv[2].1 = s_plus_p_to_pad.clone();
-
-    *k = target.wire_node(
-        node.name.clone() + ".pad_k",
-        ops::CudaPad::new(
-            padding_kv.clone(),
-            PadMode::Constant(tensor0(f16::from_f32(0f32)).into()),
-        )?,
-        &[*k],
-    )?[0];
-    *v = target.wire_node(
-        node.name.clone() + ".pad_v",
-        ops::CudaPad::new(padding_kv, PadMode::Constant(tensor0(f16::from_f32(0f32)).into()))?,
-        &[*v],
-    )?[0];
-
-    // Handle mask,
-    if m_fact.datum_type().unwrap() != DatumType::F16 {
-        *m = target.wire_node(node.name.clone() + ".cast_m", cast_op, &[*m])?[0];
-    }
-
-    if m_fact.rank() != 4 {
-        let ax_op = ops::CudaAxisOp::from_tract_core(AxisOp::Reshape(
-            0,
-            tvec![],
-            tvec![TDim::Val(1); 4 - m_fact.rank()],
-        ));
-        *m = target.wire_node(node.name.clone() + ".reshape_m", ax_op.clone(), &[*m])?[0];
-    }
-
-    // Seq dimension for mask also need padding
-    let s = q_fact.shape.dims()[q_fact.rank() - 2].clone();
-    let mut padding_m = vec![(TDim::Val(0), TDim::Val(0)); 4];
-
-    padding_m[2].1 = ((s.clone() + 15) / 16) * 16 - s;
-    padding_m[3].1 = s_plus_p_to_pad;
-    *m = target.wire_node(
-        node.name.clone() + ".pad_m",
-        ops::CudaPad::new(padding_m, PadMode::Constant(tensor0(-f16::infinity()).into()))?,
-        &[*m],
-    )?[0];
-
+    // ----- scale & op
     let scale = op
         .scale
         .as_ref()
         .map(|s| *s.to_scalar::<f32>().unwrap())
         .unwrap_or(1.0 / (out_dim as f32).sqrt());
-    let sdpa_op = ops::CudaFlashAttention::new(scale, false);
+    let sdpa = ops::CudaFlashAttention::new(scale, false);
 
-    let mut out = target.wire_node(node.name.clone(), sdpa_op, inputs)?;
+    let mut out = target.wire_node(node.name.clone(), sdpa, inputs)?;
 
-    if q_rank != 4 {
+    if added_head_axis {
         out = target.wire_node(
-            node.name.clone() + ".reshape_out",
+            name(&node.name, ".reshape_out"),
             ops::CudaAxisOp::from_tract_core(AxisOp::Rm(1)),
             &out,
         )?;
     }
-
     if q_dt != DatumType::F32 {
         out = target.wire_node(
-            node.name.clone() + ".cast_out",
+            name(&node.name, ".cast_out"),
             ops::CudaCast::new(q_dt).unwrap(),
             &out,
         )?;
     }
+
     Ok(out)
 }
 
