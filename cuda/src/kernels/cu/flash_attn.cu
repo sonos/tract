@@ -244,58 +244,6 @@ static __device__ __forceinline__ void quantize_q8_1_to_shared(
     }
 }
 
-template <int ncols1>
-static __device__ void flash_attn_mask_to_KV_max(
-        const half2 * __restrict__ mask, int * __restrict__ KV_max, const int ne30, const int s31, const int s33) {
-    const int ne31     = gridDim.x;
-    const int tid      = threadIdx.x;
-    const int sequence = blockIdx.y;
-    const int jt       = blockIdx.x;
-
-    mask += sequence*s33 + jt*ncols1*s31;
-
-    __shared__ int buf_iw[WARP_SIZE];
-    if (tid < WARP_SIZE) {
-        buf_iw[tid] = 1;
-    }
-    __syncthreads();
-
-    int KV_max_sj = (ne30 - 1) * FATTN_KQ_STRIDE;
-    for (; KV_max_sj >= 0; KV_max_sj -= FATTN_KQ_STRIDE) {
-        int all_inf = 1;
-
-#pragma unroll
-        for (int j = 0; j < ncols1; ++j) {
-            const float2 tmp = __half22float2(mask[j*s31 + KV_max_sj/2 + tid]);
-            all_inf = all_inf && int(isinf(tmp.x)) && int(isinf(tmp.y));
-        }
-
-        all_inf = warp_reduce_all(all_inf);
-        if (tid % WARP_SIZE == 0) {
-            buf_iw[tid / WARP_SIZE] = all_inf;
-        }
-        __syncthreads();
-        all_inf = buf_iw[tid % WARP_SIZE];
-        __syncthreads();
-        all_inf = warp_reduce_all(all_inf);
-
-        if (!all_inf) {
-            break;
-        }
-    }
-
-    // If the break in the loop was not triggered, KV_max_sj is now -FATTN_KQ_STRIDE.
-    // If the break was triggered it's the lower edge of the tile with the first non-masked values.
-    // In either case, walk back the decrementation by FATTN_KQ_STRIDE.
-    KV_max_sj += FATTN_KQ_STRIDE;
-
-    if (threadIdx.x != 0) {
-        return;
-    }
-
-    KV_max[sequence*ne31 + jt] = KV_max_sj;
-}
-
 template<int D, int ncols, cuda_type type_K, cuda_type type_V> // D == head size
 static __device__ void flash_attn_ext_vec(
         const char * __restrict__ Q,
@@ -673,10 +621,10 @@ static __device__ void flash_attn_combine_results(
     dst[tid] = VKQ_numerator / VKQ_denominator;
 }
 
-#define INSTANTIATE_FLASH_ATTN_VEC_FOR_TYPES(D, ncols1, K_type, K_type_name, V_type, V_type_name) \
+#define INSTANTIATE_FLASH_ATTN_VEC_FOR_TYPES(D, K_type, K_type_name, V_type, V_type_name) \
     extern "C" {                                                                                  \
         __launch_bounds__(128, 1)                                                                 \
-        __global__ void flash_attn_vec_##D##_##ncols1##_##K_type_name##_##V_type_name(            \
+        __global__ void flash_attn_vec_##D##_1##_##K_type_name##_##V_type_name(            \
             const char * __restrict__ Q, \
             const char * __restrict__ K, \
             const char * __restrict__ V, \
@@ -692,7 +640,7 @@ static __device__ void flash_attn_combine_results(
                                 const int32_t nb23, const int32_t nb22, const int32_t nb21,  \
                                 const int32_t ne33, const int32_t ne32, const int32_t ne31,  \
                                 const int32_t nb33, const int32_t nb32, const int32_t nb31){ \
-            flash_attn_ext_vec<D, ncols1, K_type, V_type>(                                   \
+            flash_attn_ext_vec<D, 1, K_type, V_type>(                                   \
                             Q, K, V, mask, KV_max, dst, dst_meta, scale,                     \
                             ne00, ne01, ne02, ne03,                                          \
                             nb01, nb02, nb03,                                                \
@@ -702,41 +650,57 @@ static __device__ void flash_attn_combine_results(
                             ne31, ne32, ne33,                                                \
                             nb31, nb32, nb33);                                               \
         }                                                                                    \
+                                                                                             \
+        __launch_bounds__(128, 1)                                                            \
+        __global__ void flash_attn_vec_##D##_2##_##K_type_name##_##V_type_name(            \
+            const char * __restrict__ Q, \
+            const char * __restrict__ K, \
+            const char * __restrict__ V, \
+            const char * __restrict__ mask, \
+            const int  * __restrict__ KV_max, \
+            float      * __restrict__ dst, \
+            float2     * __restrict__ dst_meta, \
+            const float scale, \
+            const int32_t ne03, const int32_t ne02, const int32_t ne01, const int32_t ne00,  \
+                                const int32_t nb03, const int32_t nb02, const int32_t nb01,  \
+            const int32_t ne13, const int32_t ne12, const int32_t ne11, const int32_t ne10,  \
+                                const int32_t nb13, const int32_t nb12, const int32_t nb11,  \
+                                const int32_t nb23, const int32_t nb22, const int32_t nb21,  \
+                                const int32_t ne33, const int32_t ne32, const int32_t ne31,  \
+                                const int32_t nb33, const int32_t nb32, const int32_t nb31){ \
+            flash_attn_ext_vec<D, 2, K_type, V_type>(                                        \
+                            Q, K, V, mask, KV_max, dst, dst_meta, scale,                     \
+                            ne00, ne01, ne02, ne03,                                          \
+                            nb01, nb02, nb03,                                                \
+                            ne10, ne11, ne12, ne13,                                          \
+                            nb11, nb12, nb13,                                                \
+                            nb21, nb22, nb23,                                                \
+                            ne31, ne32, ne33,                                                \
+                            nb31, nb32, nb33);                                               \
+        }                                                                                    \
+                                                                                             \
+        __launch_bounds__(D, 1)                                                              \
+        __global__ void flash_attn_combine_results_##D(                                      \
+            const float  * __restrict__ VKQ_parts, const float2 * __restrict__ VKQ_meta,     \
+            float * __restrict__ dst, const int parallel_blocks){                            \
+            flash_attn_combine_results<D>(                                                   \
+                VKQ_parts, VKQ_meta, dst, parallel_blocks);                                  \
+            }                                                                                \
     }
 
-#define INSTANTIATE_FLASH_ATTN_COMBINE_FOR_D(D)                                          \
-extern "C" {                                                                             \
-        __launch_bounds__(D, 1)                                                          \
-        __global__ void flash_attn_combine_results_##D(                                  \
-            const float  * __restrict__ VKQ_parts, const float2 * __restrict__ VKQ_meta, \
-            float * __restrict__ dst, const int parallel_blocks){                        \
-            flash_attn_combine_results<D>(                                               \
-                VKQ_parts, VKQ_meta, dst, parallel_blocks);                              \
-            }                                                                            \
-    }
-
-#define INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(D, ncols1) \
-    INSTANTIATE_FLASH_ATTN_VEC_FOR_TYPES(D, ncols1, CUDA_TYPE_F16, f16, CUDA_TYPE_F16, f16) \
-    //INSTANTIATE_FLASH_ATTN_VEC_FOR_TYPES(D, ncols1, CUDA_TYPE_Q4_0, q40, CUDA_TYPE_F16, f16) \
-    //INSTANTIATE_FLASH_ATTN_VEC_FOR_TYPES(D, ncols1, CUDA_TYPE_F16, f16, CUDA_TYPE_Q4_0, q40) \
-    //INSTANTIATE_FLASH_ATTN_VEC_FOR_TYPES(D, ncols1, CUDA_TYPE_Q4_0, q40, CUDA_TYPE_Q4_0, q40) \
+#define INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(D) \
+    INSTANTIATE_FLASH_ATTN_VEC_FOR_TYPES(D, CUDA_TYPE_F16, f16, CUDA_TYPE_F16, f16) \
+    //INSTANTIATE_FLASH_ATTN_VEC_FOR_TYPES(D, CUDA_TYPE_Q4_0, q40, CUDA_TYPE_F16, f16) \
+    //INSTANTIATE_FLASH_ATTN_VEC_FOR_TYPES(D, CUDA_TYPE_F16, f16, CUDA_TYPE_Q4_0, q40) \
+    //INSTANTIATE_FLASH_ATTN_VEC_FOR_TYPES(D, CUDA_TYPE_Q4_0, q40, CUDA_TYPE_Q4_0, q40) \
 
 
 #define INSTANTIATE_FLASH_ATTN_VEC() \
-    INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(64, 1) \
-    INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(64, 2) \
-    INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(128, 1) \
-    INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(128, 2) \
-    INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(256, 1) \
-    INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(256, 2) \
-
-#define INSTANTIATE_FLASH_ATTN_COMBINE() \
-    INSTANTIATE_FLASH_ATTN_COMBINE_FOR_D(64) \
-    INSTANTIATE_FLASH_ATTN_COMBINE_FOR_D(128) \
-    INSTANTIATE_FLASH_ATTN_COMBINE_FOR_D(256) \
+    INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(64) \
+    INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(128) \
+    INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(256) \
 
 INSTANTIATE_FLASH_ATTN_VEC()
-INSTANTIATE_FLASH_ATTN_COMBINE()
 
 /*--------------------------------------------------------------------------------------------------------------------------*/
 using namespace cuda_mma;
@@ -2042,8 +2006,9 @@ static __device__ void flash_attn_stream_k_fixup(
 }
 
 #define INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, ncols, ncols2) \
-    extern "C" __global__ void flash_attn_ext_f16_##D##_##ncols##_##ncols2(  \
-            const char * __restrict__ Q,                                                                           \
+    extern "C" {                                                                                                   \
+        __global__ void flash_attn_ext_f16_##D##_##ncols##_##ncols2(                                               \
+        const char * __restrict__ Q,                                                                               \
         const char * __restrict__ K,                                                                               \
         const char * __restrict__ V,                                                                               \
         const char * __restrict__ mask,                                                                            \
@@ -2076,17 +2041,20 @@ static __device__ void flash_attn_stream_k_fixup(
                             ne31, ne32, ne33,                                                \
                             nb31, nb32, nb33);                                               \
         }                                                                                    \
+                                                                                             \
+        __launch_bounds__(D, 1)                                                              \
+        __global__ void flash_attn_stream_k_fixup_##D##_##ncols##_##ncols2(                  \
+            float * __restrict__ dst, const float2 * __restrict__ dst_fixup,                 \
+            const int32_t ne03, const int32_t ne02, const int32_t ne01, const int32_t ne11){ \
+            constexpr int ncols1         = ncols / ncols2;                                   \
+            flash_attn_stream_k_fixup<D, ncols1, ncols2>(                                    \
+                dst, dst_fixup, ne01, ne02, ne03, ne11);                                     \
+            }                                                                                \
+    }
 
 #define INSTANTIATE_FLASH_ATTN_FIXUP_FOR_NCOLS(D, ncols, ncols2)                      \
 extern "C" {                                                                            \
-        __launch_bounds__(D, 1)                                                         \
-        __global__ void flash_attn_stream_k_fixup_##D##_##ncols##_##ncols2(            \
-            float * __restrict__ dst, const float2 * __restrict__ dst_fixup,            \
-            const int32_t ne03, const int32_t ne02, const int32_t ne01, const int32_t ne11){            \
-            constexpr int ncols1         = ncols / ncols2; \
-            flash_attn_stream_k_fixup<D, ncols1, ncols2>(                               \
-                dst, dst_fixup, ne01, ne02, ne03, ne11);                                \
-            }                                                                           \
+                                                                             \
     }
 
 #define INSTANTIATE_FLASH_ATTN_MASK_TO_KV_MAX_FOR_NCOLS1(ncols1)              \
@@ -2099,33 +2067,84 @@ extern "C" {                                                                  \
         }                                                                     \
 }
 
-#define INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, ncols, ncols2) \
-    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, ncols, ncols2)  \
-    INSTANTIATE_FLASH_ATTN_FIXUP_FOR_NCOLS(D, ncols, ncols2)
+#define INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS(D, ncols) \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, ncols , 1)  \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, ncols , 2)  \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, ncols , 4)  \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, ncols , 8)  \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, ncols , 16)  \
 
-#define INSTANTIATE_FLASH_ATTN_FOR_NCOLS(D, ncols) \
-    INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, ncols , 1)  \
-    INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, ncols , 2)  \
-    INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, ncols , 4)  \
-    INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, ncols , 8)  \
-    INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, ncols , 16)  \
+#define INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(D)  \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, 8 , 1)  \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, 8 , 2)  \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, 8 , 4)  \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, 8 , 8)  \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS(D, 16)     \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS(D, 32)     \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS(D, 64)     \
 
-#define INSTANTIATE_FLASH_ATTN_FOR_D(D)                 \
-    INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, 8 , 1)  \
-    INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, 8 , 2)  \
-    INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, 8 , 4)  \
-    INSTANTIATE_FLASH_ATTN_FOR_NCOLS2(D, 8 , 8)  \
-    INSTANTIATE_FLASH_ATTN_FOR_NCOLS(D, 16)     \
-    INSTANTIATE_FLASH_ATTN_FOR_NCOLS(D, 32)     \
-    INSTANTIATE_FLASH_ATTN_FOR_NCOLS(D, 64)     \
+#define INSTANTIATE_FLASH_ATTN_MMA_F16()      \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(64)  \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(80)  \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(96)  \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(112) \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(128) \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(256) \
 
-#define INSTANTIATE_FLASH_ATTN()      \
-    INSTANTIATE_FLASH_ATTN_FOR_D(64)  \
-    INSTANTIATE_FLASH_ATTN_FOR_D(80)  \
-    INSTANTIATE_FLASH_ATTN_FOR_D(96)  \
-    INSTANTIATE_FLASH_ATTN_FOR_D(112) \
-    INSTANTIATE_FLASH_ATTN_FOR_D(128) \
-    INSTANTIATE_FLASH_ATTN_FOR_D(256) \
+INSTANTIATE_FLASH_ATTN_MMA_F16()
+
+/*----------------------------------------------------------------------------------------------------------------------*/
+template <int ncols1>
+static __device__ void flash_attn_mask_to_KV_max(
+        const half2 * __restrict__ mask, int * __restrict__ KV_max, const int ne30, const int s31, const int s33) {
+    const int ne31     = gridDim.x;
+    const int tid      = threadIdx.x;
+    const int sequence = blockIdx.y;
+    const int jt       = blockIdx.x;
+
+    mask += sequence*s33 + jt*ncols1*s31;
+
+    __shared__ int buf_iw[WARP_SIZE];
+    if (tid < WARP_SIZE) {
+        buf_iw[tid] = 1;
+    }
+    __syncthreads();
+
+    int KV_max_sj = (ne30 - 1) * FATTN_KQ_STRIDE;
+    for (; KV_max_sj >= 0; KV_max_sj -= FATTN_KQ_STRIDE) {
+        int all_inf = 1;
+
+#pragma unroll
+        for (int j = 0; j < ncols1; ++j) {
+            const float2 tmp = __half22float2(mask[j*s31 + KV_max_sj/2 + tid]);
+            all_inf = all_inf && int(isinf(tmp.x)) && int(isinf(tmp.y));
+        }
+
+        all_inf = warp_reduce_all(all_inf);
+        if (tid % WARP_SIZE == 0) {
+            buf_iw[tid / WARP_SIZE] = all_inf;
+        }
+        __syncthreads();
+        all_inf = buf_iw[tid % WARP_SIZE];
+        __syncthreads();
+        all_inf = warp_reduce_all(all_inf);
+
+        if (!all_inf) {
+            break;
+        }
+    }
+
+    // If the break in the loop was not triggered, KV_max_sj is now -FATTN_KQ_STRIDE.
+    // If the break was triggered it's the lower edge of the tile with the first non-masked values.
+    // In either case, walk back the decrementation by FATTN_KQ_STRIDE.
+    KV_max_sj += FATTN_KQ_STRIDE;
+
+    if (threadIdx.x != 0) {
+        return;
+    }
+
+    KV_max[sequence*ne31 + jt] = KV_max_sj;
+}
 
 #define INSTANTIATE_FLASH_ATTN_MASK_TO_KV_MAX()          \
     INSTANTIATE_FLASH_ATTN_MASK_TO_KV_MAX_FOR_NCOLS1(1)  \
@@ -2135,8 +2154,5 @@ extern "C" {                                                                  \
     INSTANTIATE_FLASH_ATTN_MASK_TO_KV_MAX_FOR_NCOLS1(16) \
     INSTANTIATE_FLASH_ATTN_MASK_TO_KV_MAX_FOR_NCOLS1(32) \
     INSTANTIATE_FLASH_ATTN_MASK_TO_KV_MAX_FOR_NCOLS1(64) \
-
-// TODO: Clarify names. (i.e associate fixup with mma and combine with vec)
-INSTANTIATE_FLASH_ATTN()
 
 INSTANTIATE_FLASH_ATTN_MASK_TO_KV_MAX()
