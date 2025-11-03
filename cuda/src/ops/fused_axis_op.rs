@@ -154,6 +154,11 @@ impl<O: TypedOp + Clone> Op for CudaFusedAxisOp<O> {
         Ok(info)
     }
 
+    fn same_as(&self, other: &dyn Op) -> bool {
+        let Some(other) = other.downcast_ref::<CudaFusedAxisOp<O>>() else { return false };
+        self.op.same_as(&other.op) && self.grouped_axis_ops == other.grouped_axis_ops
+    }
+
     op_as_typed_op!();
 }
 

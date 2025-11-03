@@ -46,6 +46,11 @@ impl Op for CudaPad {
         Ok(vec![format!("padding: {:?} with mode: {:?}", self.pads, self.mode)])
     }
 
+    fn same_as(&self, other: &dyn Op) -> bool {
+        let Some(other) = other.downcast_ref::<CudaPad>() else { return false };
+        self.pads == other.pads && self.mode == other.mode
+    }
+
     op_as_typed_op!();
 }
 
