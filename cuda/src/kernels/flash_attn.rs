@@ -279,7 +279,6 @@ impl GgmlFlashAttn {
         Ok(best)
     }
 
-    /* ------------------------- public entry points ------------------------- */
 
     pub fn eval(
         &self,
@@ -301,6 +300,7 @@ impl GgmlFlashAttn {
         Ok(output)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn dispatch_eval(
         &self,
         stream: &TractCudaStream,
@@ -326,8 +326,7 @@ impl GgmlFlashAttn {
         }
     }
 
-    /* ------------------------- single launcher ------------------------- */
-
+    #[allow(clippy::too_many_arguments)]
     fn launch_with_plan(
         &self,
         stream: &TractCudaStream,

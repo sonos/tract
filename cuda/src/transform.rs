@@ -530,9 +530,9 @@ fn convert_sdpa_to_cuda_flash_attn(
 
     // ----- rank normalize (sequential to avoid overlapping borrows)
     let mut added_head_axis = false;
-    added_head_axis |= add_head_axis_if_rank3(target, &node.name, q, &qf, ".reshape_q")?;
-    added_head_axis |= add_head_axis_if_rank3(target, &node.name, k, &kf, ".reshape_k")?;
-    added_head_axis |= add_head_axis_if_rank3(target, &node.name, v, &vf, ".reshape_v")?;
+    added_head_axis |= add_head_axis_if_rank3(target, &node.name, q, qf, ".reshape_q")?;
+    added_head_axis |= add_head_axis_if_rank3(target, &node.name, k, kf, ".reshape_k")?;
+    added_head_axis |= add_head_axis_if_rank3(target, &node.name, v, vf, ".reshape_v")?;
 
     // ----- checks
     let out_dim = kf.shape[kf.rank() - 1].to_i64()?;
@@ -572,7 +572,7 @@ fn convert_sdpa_to_cuda_flash_attn(
     }
     let s = qf.shape.dims()[qf.rank() - 2].clone();
     let pad_s_to_16 = ((s.clone() + 15) / 16) * 16 - s;
-    let neg_inf_f16 = tensor0(-f16::infinity()).into();
+    let neg_inf_f16 = tensor0(-f16::infinity());
     pad_last_two_dims(target, &node.name, m, pad_s_to_16, s_plus_p_to_256, neg_inf_f16, ".pad_m")?;
 
     // ----- scale & op
