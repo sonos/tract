@@ -534,7 +534,6 @@ fn convert_sdpa_to_cuda_flash_attn(
     added_head_axis |= add_head_axis_if_rank3(target, &node.name, k, kf, ".reshape_k")?;
     added_head_axis |= add_head_axis_if_rank3(target, &node.name, v, vf, ".reshape_v")?;
 
-    // ----- checks
     let out_dim = kf.shape[kf.rank() - 1].to_i64()?;
     ensure!(
         matches!(out_dim, 64 | 80 | 96 | 112 | 128 | 256),
@@ -545,22 +544,21 @@ fn convert_sdpa_to_cuda_flash_attn(
     // ----- pad K/V seq to multiple of 256
     let s_plus_p = kf.shape.dims()[qf.rank() - 2].clone();
     let s_plus_p_to_256 = ((s_plus_p.clone() + 255) / 256) * 256 - s_plus_p;
-    if s_plus_p_to_256.to_i64()? != 0 {
-        let zero_f16: Arc<Tensor> = tensor0(f16::from_f32(0.0)).into();
-        // Only pad dim=2 (S+P) for K/V
-        let mut pads_kv = vec![(TDim::Val(0), TDim::Val(0)); 4];
-        pads_kv[2].1 = s_plus_p_to_256.clone();
-        *k = target.wire_node(
-            name(&node.name, ".pad_k"),
-            ops::CudaPad::new(pads_kv.clone(), PadMode::Constant(zero_f16.clone()))?,
-            &[*k],
-        )?[0];
-        *v = target.wire_node(
-            name(&node.name, ".pad_v"),
-            ops::CudaPad::new(pads_kv, PadMode::Constant(zero_f16))?,
-            &[*v],
-        )?[0];
-    }
+
+    let zero_f16: Arc<Tensor> = tensor0(f16::from_f32(0.0)).into();
+    // Only pad dim=2 (S+P) for K/V
+    let mut pads_kv = vec![(TDim::Val(0), TDim::Val(0)); 4];
+    pads_kv[2].1 = s_plus_p_to_256.clone();
+    *k = target.wire_node(
+        name(&node.name, ".pad_k"),
+        ops::CudaPad::new(pads_kv.clone(), PadMode::Constant(zero_f16.clone()))?,
+        &[*k],
+    )?[0];
+    *v = target.wire_node(
+        name(&node.name, ".pad_v"),
+        ops::CudaPad::new(pads_kv, PadMode::Constant(zero_f16))?,
+        &[*v],
+    )?[0];
 
     // ----- mask: cast→reshape→pad
     mut_cast(target, &node.name, m, mf.datum_type().unwrap(), DatumType::F16, ".cast_m")?;
