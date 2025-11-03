@@ -1,3 +1,4 @@
+use DatumType::{F16, F32};
 use tract_core::dyn_clone::clone_box;
 use tract_core::internal::*;
 use tract_core::model::translator::Translate;
@@ -27,7 +28,6 @@ use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
 use tract_transformers::ops::silu::Silu;
 
 use crate::context::cuda_context;
-use crate::kernels::matmul::GgmlGemm;
 use crate::{kernels, ops, rewrite_rules};
 
 #[derive(Debug, Default)]
@@ -237,8 +237,8 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
         || node.op_as::<PrefixMatMul>().is_some_and(|op| {
             !op.transpose_c
                 && op.quantize_output.is_none()
-                && (GgmlGemm.is_supported_dts(&input_facts)
-                    || GgmlGemm.is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()]))
+                && (can_convert_to_cuda_gemm(&input_facts)
+                    || can_convert_to_cuda_gemm(&[input_facts[1].clone(), input_facts[0].clone()]))
         }))
 }
 
@@ -331,6 +331,16 @@ fn convert_logic_op_to_cuda(op: &Comp) -> ops::CudaBinOp {
     }
 }
 
+fn can_convert_to_cuda_gemm(facts: &[TypedFact]) -> bool {
+    assert!(facts.len() == 2, "Ggml: Expected 2 inputs for Matmul");
+
+    let regular_types_support =
+        matches!((facts[0].datum_type, facts[1].datum_type), (F32, F32) | (F16, F16) | (F16, F32));
+
+    regular_types_support
+        || (as_quant_fact(&facts[1], &Q4_0).is_some() && matches!(facts[0].datum_type, F16 | F32))
+}
+
 fn convert_matmul_to_cuda(
     model: &TypedModel,
     node: &TypedNode,
@@ -341,9 +351,10 @@ fn convert_matmul_to_cuda(
     let mut input_facts = model.node_input_facts(node.id)?;
     // GGML kernel expects weights in second position and activations in first position
     // This avoid output transposition due to GGML column-major data expectations
+
     let mut swap_inputs = false;
-    if !GgmlGemm.is_supported_dts(&[input_facts[0].clone(), input_facts[1].clone()])
-        && GgmlGemm.is_supported_dts(&[input_facts[1].clone(), input_facts[0].clone()])
+    if !can_convert_to_cuda_gemm(&[input_facts[0].clone(), input_facts[1].clone()])
+        && can_convert_to_cuda_gemm(&[input_facts[1].clone(), input_facts[0].clone()])
     {
         input_facts.swap(0, 1);
         inputs.swap(0, 1);
@@ -370,6 +381,10 @@ fn convert_matmul_to_cuda(
         let in_cast_op = ops::CudaCast::new(DatumType::F32).unwrap();
         *act_outlet =
             target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[*act_outlet])?[0];
+    } else if act_fact.datum_type == DatumType::F16 && weight_fact.datum_type == DatumType::F32 {
+        let in_cast_op = ops::CudaCast::new(DatumType::F16).unwrap();
+        *weights_outlet =
+            target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[*weights_outlet])?[0];
     }
 
     if !transpose_weight {
