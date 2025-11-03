@@ -28,7 +28,7 @@ where
     F: Datum + Float,
 {
     q: ArrayD<F>,
-    k: ArrayD<F>,
+    pub k: ArrayD<F>,
     v: ArrayD<F>,
     mask: Option<Array2<F>>,
     scale: Option<f32>,
