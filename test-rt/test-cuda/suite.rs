@@ -3,6 +3,8 @@ use std::vec;
 use infra::Test;
 use suite_unit::bin_einsum::{BinEinsumProblem, BinEinsumProblemParams};
 use suite_unit::sdpa::{SdpaProblem, SdpaProblemParams};
+use tract_core::num_traits::Float;
+use tract_core::prelude::Datum;
 use tract_core::tract_data::half;
 
 pub fn suite() -> &'static infra::TestSuite {
@@ -36,8 +38,19 @@ fn mk_suite() -> infra::TestSuite {
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
 }
 
-fn ignore_unit(t: &[String], _case: &dyn Test) -> bool {
-    t[0] == "sdpa" && (t[1] == "trivial_f32_0" || t[1] == "proptest_f32")
+fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
+    if let Some(sdpab) = case.downcast_ref::<SdpaProblem<f32>>() {
+        return !compatible_sdpa::<f32>(sdpab);
+    }
+
+    if let Some(sdpab) = case.downcast_ref::<SdpaProblem<half::f16>>() {
+        return !compatible_sdpa::<half::f16>(sdpab);
+    }
+    t[0] == "sdpa" && t[1] == "proptest_f32"
+}
+
+fn compatible_sdpa<F: Datum + Float>(sdpap: &SdpaProblem<F>) -> bool {
+    matches!(sdpap.k.shape().last().unwrap(), 64 | 80 | 96 | 112 | 128 | 256)
 }
 
 fn ignore_onnx(t: &[String]) -> bool {

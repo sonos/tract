@@ -179,7 +179,6 @@ impl GgmlFlashAttn {
         let mask_view = get_cuda_view(mask);
 
         let kv_max = if q_shape[2] >= 1024 || q_shape[0] > 1 {
-            dbg!("KV_MAX OPTIM");
             let mask_strides_2_div2 = mask.strides()[2] / 2;
             let mask_strides_0_div2 = mask.strides()[0] / 2;
 
