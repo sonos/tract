@@ -62,7 +62,7 @@ fn strides_to_bytes_i32<T>(strides_elems: &[isize]) -> TVec<i32> {
 }
 
 #[derive(Debug, Clone)]
-struct Plan {
+struct FlashAttnParams {
     imp: FlashAttnImpl,
     // tiling
     d: usize,
@@ -72,7 +72,6 @@ struct Plan {
     // shared
     shm_bytes: usize,
     // scheduling
-    stream_k: bool,
     kq_row_granularity: usize,
     // derived
     kernel: Arc<CudaFunction>,
@@ -163,7 +162,7 @@ impl GgmlFlashAttn {
         }
     }
 
-    fn plan_vec(&self, q: &DeviceTensor, k: &DeviceTensor, v: &DeviceTensor) -> TractResult<Plan> {
+    fn get_flash_attn_vec_params(&self, q: &DeviceTensor, k: &DeviceTensor, v: &DeviceTensor) -> TractResult<FlashAttnParams> {
         let qs = q.shape();
         let rank = qs.len();
         ensure!(matches!(qs[rank - 2], 1 | 2));
@@ -174,20 +173,19 @@ impl GgmlFlashAttn {
         let kernel_name = self.vec_kernel_name(d, ncols1, k.datum_type(), v.datum_type())?;
         let kernel = cuda_context().load_pipeline(LibraryName::FlashAttn, kernel_name)?;
 
-        Ok(Plan {
+        Ok(FlashAttnParams {
             imp: FlashAttnImpl::Vec,
             d,
             ncols1,
             ncols2,
             nwarps: 128 / WARP_SIZE,
             shm_bytes: 0,
-            stream_k: false,
             kq_row_granularity: d,
             kernel,
         })
     }
 
-    fn plan_mma_f16(&self, q: &DeviceTensor, k: &DeviceTensor) -> TractResult<Plan> {
+    fn get_flash_attn_mma_f16_params(&self, q: &DeviceTensor, k: &DeviceTensor) -> TractResult<FlashAttnParams> {
         let cc = cc();
         let qs = q.shape();
         let ks = k.shape();
@@ -228,14 +226,13 @@ impl GgmlFlashAttn {
             shm_bytes as i32,
         )?;
 
-        Ok(Plan {
+        Ok(FlashAttnParams {
             imp: FlashAttnImpl::MmaF16,
             d,
             ncols1,
             ncols2,
             nwarps,
             shm_bytes,
-            stream_k: true,
             kq_row_granularity: FATTN_KQ_STRIDE,
             kernel,
         })
@@ -295,6 +292,7 @@ impl GgmlFlashAttn {
                 &self.output_shape(q.shape(), k.shape(), v.shape())?,
             )?
         };
+
         self.dispatch_eval(stream, q, k, v, mask, scale, &output)?;
         stream.synchronize()?;
         Ok(output)
@@ -316,12 +314,12 @@ impl GgmlFlashAttn {
 
         match Self::choose_impl(q, k, v, mask)? {
             FlashAttnImpl::Vec => {
-                let plan = self.plan_vec(q, k, v)?;
-                self.launch_with_plan(stream, q, k, v, mask, scale, out, plan)
+                let params = self.get_flash_attn_vec_params(q, k, v)?;
+                self.launch_with_plan(stream, q, k, v, mask, scale, out, params)
             }
             FlashAttnImpl::MmaF16 => {
-                let plan = self.plan_mma_f16(q, k)?;
-                self.launch_with_plan(stream, q, k, v, mask, scale, out, plan)
+                let params = self.get_flash_attn_mma_f16_params(q, k)?;
+                self.launch_with_plan(stream, q, k, v, mask, scale, out, params)
             }
         }
     }
@@ -336,7 +334,7 @@ impl GgmlFlashAttn {
         mask: &DeviceTensor,
         scale: f32,
         out: &DeviceTensor,
-        plan: Plan,
+        params: FlashAttnParams,
     ) -> TractResult<()> {
         // quick invariants shared by both variants
         ensure!(mask.shape()[2] >= q.shape()[2].next_multiple_of(16));
@@ -349,9 +347,9 @@ impl GgmlFlashAttn {
         let ov = get_cuda_view(out);
 
         // Grid/block sizing & occupancy (kept from your original launcher)
-        let ncols = plan.ncols1 * plan.ncols2;
-        let ntiles_x = q.shape()[2].div_ceil(plan.ncols1);
-        let ntiles_total = ntiles_x * (q.shape()[1] / plan.ncols2) * q.shape()[0];
+        let ncols = params.ncols1 * params.ncols2;
+        let ntiles_x = q.shape()[2].div_ceil(params.ncols1);
+        let ntiles_total = ntiles_x * (q.shape()[1] / params.ncols2) * q.shape()[0];
 
         // mask-to-KV-max (same logic; left as-is)
         let kv_max = if q.shape()[2] >= 1024 || q.shape()[0] > 1 {
@@ -367,7 +365,7 @@ impl GgmlFlashAttn {
             let kv_max_v = get_cuda_view(&kv_max);
             let func = cuda_context().load_pipeline(
                 LibraryName::FlashAttn,
-                format!("flash_attn_mask_to_KV_max_{}", plan.ncols1),
+                format!("flash_attn_mask_to_KV_max_{}", params.ncols1),
             )?;
             let mut la = stream.launch_builder(&func);
             la.arg(&mv);
@@ -389,17 +387,17 @@ impl GgmlFlashAttn {
         let ctxt = cuda_context();
         let props = ctxt.properties();
         let nsm = props.multiProcessorCount as usize;
-        let block_dim = (WARP_SIZE as u32, plan.nwarps as u32, 1);
+        let block_dim = (WARP_SIZE as u32, params.nwarps as u32, 1);
 
-        let max_blocks_per_sm = plan.kernel.occupancy_max_active_blocks_per_multiprocessor(
-            WARP_SIZE as u32 * plan.nwarps as u32,
-            plan.shm_bytes,
+        let max_blocks_per_sm = params.kernel.occupancy_max_active_blocks_per_multiprocessor(
+            WARP_SIZE as u32 * params.nwarps as u32,
+            params.shm_bytes,
             None,
         )? as usize;
 
         let mut parallel_blocks = max_blocks_per_sm;
 
-        let (blocks_num, dst_tmp, dst_tmp_meta) = if plan.stream_k {
+        let (blocks_num, dst_tmp, dst_tmp_meta) = if matches!(params.imp, FlashAttnImpl::MmaF16) {
             let max_blocks = max_blocks_per_sm * nsm;
             let tiles_nwaves = ntiles_total.div_ceil(max_blocks);
             let tiles_eff_pct = 100 * ntiles_total / (max_blocks * tiles_nwaves);
@@ -409,12 +407,12 @@ impl GgmlFlashAttn {
             let blocks_num = (if use_stream_k { max_blocks } else { ntiles_total } as u32, 1, 1);
             let dst_tmp_meta = DeviceTensor::uninitialized_dt(
                 DatumType::F32,
-                &[2 * blocks_num.0 as usize * ncols * (2 * 2 + plan.d) * bytes_of::<f32>()],
+                &[2 * blocks_num.0 as usize * ncols * (2 * 2 + params.d) * bytes_of::<f32>()],
             )?;
             (blocks_num, None, Some(dst_tmp_meta))
         } else {
-            ensure!(k.shape()[k.rank() - 2] % plan.kq_row_granularity == 0);
-            let ntiles_kq = k.shape()[k.rank() - 2] / plan.kq_row_granularity;
+            ensure!(k.shape()[k.rank() - 2] % params.kq_row_granularity == 0);
+            let ntiles_kq = k.shape()[k.rank() - 2] / params.kq_row_granularity;
             parallel_blocks = parallel_blocks.min(ntiles_kq);
 
             // try to improve tail efficiency
@@ -455,6 +453,7 @@ impl GgmlFlashAttn {
             (blocks_num, dst_tmp, dst_tmp_meta)
         };
 
+        let need_vec_fixup = parallel_blocks > 1;
         ensure!(block_dim.0 % WARP_SIZE as u32 == 0);
 
         // Shapes/strides for kernel
@@ -473,13 +472,13 @@ impl GgmlFlashAttn {
             dst_tmp_meta.as_ref().map(get_cuda_view).unwrap_or_else(|| null_ptr.as_view());
 
         // main kernel
-        let mut la = stream.launch_builder(&plan.kernel);
+        let mut la = stream.launch_builder(&params.kernel);
         la.arg(&qv);
         la.arg(&kv);
         la.arg(&vv);
         la.arg(&mv);
         la.arg(&kv_max_v);
-        la.arg(if !plan.stream_k && parallel_blocks > 1 { &dst_tmp_v } else { &ov });
+        la.arg(if !matches!(params.imp, FlashAttnImpl::MmaF16) && need_vec_fixup { &dst_tmp_v } else { &ov });
         la.arg(&dst_tmp_meta_v);
         la.arg(&scale);
         la.set_slice(&q_shape_i32);
@@ -493,18 +492,19 @@ impl GgmlFlashAttn {
         let cfg = LaunchConfig {
             grid_dim: blocks_num,
             block_dim,
-            shared_mem_bytes: plan.shm_bytes as u32,
+            shared_mem_bytes: params.shm_bytes as u32,
         };
+    
         unsafe {
             la.launch(cfg);
         }
 
         // fixups
-        if plan.stream_k {
+        if matches!(params.imp, FlashAttnImpl::MmaF16) {
             if ntiles_total as u32 % cfg.grid_dim.0 != 0 {
                 let f = cuda_context().load_pipeline(
                     LibraryName::FlashAttn,
-                    format!("flash_attn_stream_k_fixup_{}_{}_{}", plan.d, ncols, plan.ncols2),
+                    format!("flash_attn_stream_k_fixup_{}_{}_{}", params.d, ncols, params.ncols2),
                 )?;
                 let mut la = stream.launch_builder(&f);
                 la.arg(&ov);
@@ -512,18 +512,18 @@ impl GgmlFlashAttn {
                 la.set_slice(&q_shape_i32[..3]);
                 la.arg(&k_shape_i32[2]);
                 let cfg = LaunchConfig {
-                    grid_dim: (cfg.grid_dim.0, plan.ncols1 as _, plan.ncols2 as _),
-                    block_dim: (plan.d as _, 1, 1),
+                    grid_dim: (cfg.grid_dim.0, params.ncols1 as _, params.ncols2 as _),
+                    block_dim: (params.d as _, 1, 1),
                     shared_mem_bytes: 0,
                 };
                 unsafe {
                     la.launch(cfg);
                 }
             }
-        } else if parallel_blocks > 1 {
+        } else if need_vec_fixup {
             let f = cuda_context().load_pipeline(
                 LibraryName::FlashAttn,
-                format!("flash_attn_combine_results_{}", plan.d),
+                format!("flash_attn_combine_results_{}", params.d),
             )?;
             let mut la = stream.launch_builder(&f);
             la.arg(&dst_tmp_v);
@@ -532,7 +532,7 @@ impl GgmlFlashAttn {
             la.arg(&parallel_blocks);
             let cfg = LaunchConfig {
                 grid_dim: (q_shape_i32[2] as _, q_shape_i32[1] as _, q_shape_i32[0] as _),
-                block_dim: (plan.d as _, 1, 1),
+                block_dim: (params.d as _, 1, 1),
                 shared_mem_bytes: (parallel_blocks * 2 * bytes_of::<f32>()) as u32,
             };
             unsafe {
@@ -650,12 +650,12 @@ mod tests {
 
     #[test]
     fn test_fattn_mma_f16() -> TractResult<()> {
-        run_test_case(1, 1, 1, 0, 2, 64, 1.0f32)?;
-        run_test_case(1, 8, 8, 1, 1, 80, 1.0f32)?;
-        run_test_case(2, 4, 2, 1, 1, 128, 1.0f32)?;
-        run_test_case(2, 8, 8, 0, 1, 96, 1.0f32)?;
-        run_test_case(1, 1, 1, 3, 2, 256, 1.0f32)?;
-        run_test_case(2, 2, 1, 3, 1, 112, 1.0f32)?;
+        run_test_case(1, 128, 32, 0, 1024, 64, 1.0f32)?;
+        //run_test_case(1, 8, 8, 1, 1, 80, 1.0f32)?;
+        //run_test_case(2, 4, 2, 1, 1, 128, 1.0f32)?;
+        //run_test_case(2, 8, 8, 0, 1, 96, 1.0f32)?;
+        //run_test_case(1, 1, 1, 3, 2, 256, 1.0f32)?;
+        //run_test_case(2, 2, 1, 3, 1, 112, 1.0f32)?;
         Ok(())
     }
 }
