@@ -700,7 +700,7 @@ static __device__ void flash_attn_combine_results(
     INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(128) \
     INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(256) \
 
-INSTANTIATE_FLASH_ATTN_VEC()
+//INSTANTIATE_FLASH_ATTN_VEC()
 
 /*--------------------------------------------------------------------------------------------------------------------------*/
 using namespace cuda_mma;
@@ -1074,6 +1074,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_iter(
     constexpr int stride_tile_V = nbatch_V2 + 4;
 
     const int k_VKQ_0 = kb0 * c::nbatch_fa;
+
     tile_C_KQ KQ_C[c::nbatch_fa/(np*tile_C_KQ::I) * ntiles];
 
     // Use wide variants of tiles if ntiles >= 2.
@@ -1792,7 +1793,6 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
     }
 }
 
-
 template<int D, int ncols1, int ncols2, int nwarps, int ntiles>
 __launch_bounds__(nwarps*WARP_SIZE, 1)
 static __global__ void flash_attn_ext_f16(
@@ -1838,7 +1838,7 @@ static __global__ void flash_attn_ext_f16(
     // kb0 == k start index when in the output tile.
     int kb0_start = kbc % iter_k;
     int kb0_stop  = min(iter_k, kb0_start + kbc_stop - kbc);
-
+    //printf("Block Idx: (%d, %d, %d). ThreadIdx: (%d, %d, %d). iter_k: %d. iter_j: %d. kb_niter: %d. kbc: %d. kbc_stop: %d. kb0_start: %d. kb0_stop: %d\n", blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z, iter_k, iter_j, kb_niter, kbc, kbc_stop, kb0_start, kb0_stop);
     while (kbc < kbc_stop && kb0_stop == iter_k) {
         const int sequence = kbc / (iter_k*iter_j*(ne02/ncols2));
         const int zt = (kbc - iter_k*iter_j*(ne02/ncols2)*sequence) / (iter_k*iter_j); // head in units of ncols2
@@ -1860,7 +1860,9 @@ static __global__ void flash_attn_ext_f16(
         if (KV_max) {
             kb0_stop_kernel = min(kb0_stop_kernel, KV_max[sequence*iter_j + jt] / c::nbatch_fa);
         }
-
+        if (blockIdx.x == 71 && threadIdx.x == 0 && threadIdx.y == 0) {
+            printf("BlockIdx: %d. ThreadIdx: %d %d %d. kbc: %d. kbc_stop: %d. kb0_start: %d. kb0_stop: %d. sequence: %d, zt: %d. jt: %d\n", blockIdx.x, threadIdx.x, threadIdx.y, threadIdx.z, kbc, kbc_stop, kb0_start, kb0_stop, sequence, zt, jt);
+        } 
         constexpr bool is_fixup = false; // All but (potentially) the last iterations write their data to dst rather than the fixup buffer.
         if (kb0_start == 0) {
             constexpr bool needs_fixup = false; // CUDA block is working on an entire tile.
@@ -2075,21 +2077,22 @@ extern "C" {                                                                  \
     INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, ncols , 16)  \
 
 #define INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(D)  \
-    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, 8 , 1)  \
-    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, 8 , 2)  \
-    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, 8 , 4)  \
-    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, 8 , 8)  \
-    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS(D, 16)     \
-    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS(D, 32)     \
+    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS(D, 64)     \
+    //INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, 8 , 1)  \
+    //INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, 8 , 2)  \
+    //INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, 8 , 4)  \
+    //INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS2(D, 8 , 8)  \
+    //INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS(D, 16)      \
+    //INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS(D, 32)      \
     INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_NCOLS(D, 64)     \
 
 #define INSTANTIATE_FLASH_ATTN_MMA_F16()      \
     INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(64)  \
-    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(80)  \
-    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(96)  \
-    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(112) \
-    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(128) \
-    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(256) \
+    //INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(80)  \
+    //INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(96)  \
+    //INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(112) \
+    //INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(128) \
+    //INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(256) \
 
 INSTANTIATE_FLASH_ATTN_MMA_F16()
 
