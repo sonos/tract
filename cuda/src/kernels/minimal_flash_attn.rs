@@ -35,6 +35,7 @@ impl MinimalFlashAttn {
 
     pub fn kernel_name(
         &self,
+        d: usize,
         q_dt: DatumType,
         k_dt: DatumType,
         v_dt: DatumType,
@@ -47,7 +48,7 @@ impl MinimalFlashAttn {
             v_dt
         );
         Ok(format!(
-            "attention_v5"
+            "attention_v5_{d}"
         ))
     }
 
@@ -132,7 +133,7 @@ impl MinimalFlashAttn {
         let tb_size = n_warps * WARP_SIZE;
         let smem_size = block_q.max(block_kv * 3) * d * size_of::<f16>();
 
-        let func = ctxt.load_pipeline(LibraryName::MinimalFlashAttn, self.kernel_name(q.datum_type(), k.datum_type(), v.datum_type(), mask.datum_type())?)?;
+        let func = ctxt.load_pipeline(LibraryName::MinimalFlashAttn, self.kernel_name(d, q.datum_type(), k.datum_type(), v.datum_type(), mask.datum_type())?)?;
         func.set_attribute(CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, smem_size as _)?;
         
         let q_view = get_cuda_view(q);
@@ -229,7 +230,14 @@ mod tests {
 
     #[test]
     fn test_fattn_mma_f16() -> TractResult<()> {
-        run_test_case(1, 1, 1, 4096, 4096, 128, 1.0f32)?;
+        run_test_case(1, 1, 1, 0, 64, 64, 1.0f32)?;
+        run_test_case(1, 1, 1, 0, 256, 64, 1.0f32)?;
+        run_test_case(1, 1, 1, 0, 256, 128, 1.0f32)?;
+        run_test_case(1, 4, 4, 256, 256, 64, 1.0f32)?;
+        run_test_case(1, 8, 8, 512, 512, 128, 1.0f32)?;
+        run_test_case(1, 1, 1, 4096, 4096, 64, 1.0f32)?;
+        run_test_case(1, 4, 4, 256, 2048, 64, 1.0f32)?;
+        run_test_case(1, 32, 32, 512, 1024, 128, 1.0f32)?;
         //run_test_case(1, 8, 8, 4096, 4096, 128, 1.0f32)?;
         //run_test_case(1, 8, 8, 1, 1, 80, 1.0f32)?;
         //run_test_case(2, 4, 2, 1, 1, 128, 1.0f32)?;
