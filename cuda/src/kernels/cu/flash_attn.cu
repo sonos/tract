@@ -9,9 +9,8 @@
 #define CP_ASYNC_AVAILABLE
 #endif // __CUDA_ARCH__ >= CUDA_CC_AMPERE
 
-#define FLT_MAX 3.40282347e+38F
 #define FATTN_KQ_STRIDE       256
-#define SOFTMAX_FTZ_THRESHOLD -20.0f   
+#define SOFTMAX_FTZ_THRESHOLD -20.0f
 
 #define CUDA_UNUSED(x) (void)(x)
 
