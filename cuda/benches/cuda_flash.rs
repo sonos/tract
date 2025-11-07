@@ -75,8 +75,8 @@ pub fn cuda_minimal_flash(
 
         crit.bench_function(&format!("tract_cuda_minimal_flash"), |be| {
             be.iter(|| {
-                let _ = MinimalFlashAttn
-                    .eval(stream, &cuda_q, &cuda_k, &cuda_v, &cuda_mask, 1.0)
+                let _ = MinimalFlashAttn { is_causal: false }
+                    .eval(stream, &cuda_q, &cuda_k, &cuda_v, Some(&cuda_mask), 1.0)
                     .unwrap();
             });
         });
@@ -105,7 +105,7 @@ fn flash_attn(
     ));
     c.throughput(Throughput::Elements((4 * b * qh * s * (s + p) * out_dim) as _));
 
-    cuda_ggml_flash(&mut c, b, qh, kh, p, s, out_dim);
+    //cuda_ggml_flash(&mut c, b, qh, kh, p, s, out_dim);
     cuda_minimal_flash(&mut c, b, qh, kh, p, s, out_dim);
     c.finish();
 }
@@ -114,16 +114,24 @@ fn flash_attn(
 fn tinyllama(c: &mut Criterion) {
     let shapes = vec![
         //(1, 1, 1, 0, 1, 64),
-        (1, 1, 1, 4096, 4096, 128),
-        (1, 8, 8, 4096, 4096, 128),
-        (1, 1, 1, 0, 64, 64),
-        (1, 1, 1, 0, 256, 64),
+        //(1, 1, 1, 4096, 4096, 128),
+        //(1, 8, 8, 4096, 4096, 128),
+        //(1, 1, 1, 0, 64, 64),
+        //(1, 1, 1, 0, 256, 64),
+        //(1, 1, 1, 0, 256, 128),
+        //(1, 4, 4, 256, 256, 64),
+        //(1, 8, 8, 512, 512, 128),
+        //(1, 1, 1, 4096, 4096, 64),
+        //(1, 4, 4, 256, 2048, 64),
+        //(1, 32, 32, 512, 1024, 128),
+        //(1, 1, 1, 0, 64, 128), 
+        //(1, 8, 8, 0, 64, 128), 
+        (1, 1, 1, 0, 128, 128),
+        (1, 1, 1, 64, 64, 128),
+        (1, 1, 1, 32, 128, 128),
+        (1, 1, 1, 128, 128, 128),
+        (1, 1, 1, 64, 64, 128),
         (1, 1, 1, 0, 256, 128),
-        (1, 4, 4, 256, 256, 64),
-        (1, 8, 8, 512, 512, 128),
-        (1, 1, 1, 4096, 4096, 64),
-        (1, 4, 4, 256, 2048, 64),
-        (1, 32, 32, 512, 1024, 128),
     ];
     for (b, qh, kh, p, s, out_dim) in shapes {
         flash_attn(c, b, qh, kh, p, s, out_dim);
