@@ -365,12 +365,12 @@ void attention_v5_kernel(
     }
 }
 
-extern "C" __global__ void attention_v5(const half *Q,  // [bs, len_q, DIM]
-  const half *K,  // [bs, len_kv, DIM]
-  const half *V,  // [bs, len_kv, DIM]
-  half *O,        // [bs, len_q, DIM]
-  int bs,
-  int len_q,
-  int len_kv) {
-    attention_v5_kernel<64, 64, 128, 4>(Q, K, V, O, bs,len_q,len_kv);
-}
+#define INSTANTIATE_MINIMAL_FLASH(D) \
+  extern "C" __global__ void attention_v5_##D(const half *Q, const half *K, \
+    const half *V, half *O, \
+    int bs, int len_q, int len_kv) { \
+      attention_v5_kernel<64, 64, D, 4>(Q, K, V, O, bs,len_q,len_kv); \
+  }
+
+INSTANTIATE_MINIMAL_FLASH(64)
+INSTANTIATE_MINIMAL_FLASH(128)
