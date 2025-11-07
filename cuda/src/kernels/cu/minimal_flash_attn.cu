@@ -1,4 +1,5 @@
 #include "common.cuh"
+#include <math_constants.h>
 
 __device__ __host__ constexpr
 int cdiv(int a, int b) { return (a + b - 1) / b; }
@@ -91,17 +92,19 @@ void mma_m16n8k16(uint32_t A[4], uint32_t B[2], float D[4]) {
                 "f"(D[0]), "f"(D[1]), "f"(D[2]), "f"(D[3]));
 }
 
-template<int BLOCK_Q, int BLOCK_KV, int DIM, int NUM_WARPS>
+template<int BLOCK_Q, int BLOCK_KV, int DIM, int NUM_WARPS, bool is_causal, bool use_mask>
 __launch_bounds__(NUM_WARPS * WARP_SIZE)
 __global__
 void attention_v5_kernel(
-  const half *Q,  // [bs, len_q, DIM]
-  const half *K,  // [bs, len_kv, DIM]
-  const half *V,  // [bs, len_kv, DIM]
-  half *O,        // [bs, len_q, DIM]
+  const half* __restrict__ Q,  // [bs, len_q, DIM]
+  const half* __restrict__ K,  // [bs, len_kv, DIM]
+  const half* __restrict__ V,  // [bs, len_kv, DIM]
+  const half* __restrict__ M,  // [bs, len_kv, DIM]
+  half* __restrict__ O,        // [bs, len_q, DIM]
   int bs,
   int len_q,
-  int len_kv) {
+  int len_kv,
+  float scale) {
 
   constexpr int TB_SIZE = NUM_WARPS * WARP_SIZE;
 
@@ -114,12 +117,20 @@ void attention_v5_kernel(
   const int num_q_blocks = cdiv(len_q, BLOCK_Q);
   const int bs_id = bid / num_q_blocks;
   const int q_block_id = bid % num_q_blocks;
+  const int q_block_base = q_block_id * BLOCK_Q;
+  
+  const int past = len_kv - len_q; 
 
   Q += (bs_id * num_q_blocks + q_block_id) * BLOCK_Q * DIM;
   K += bs_id * len_kv * DIM;
   V += bs_id * len_kv * DIM;
   O += (bs_id * num_q_blocks + q_block_id) * BLOCK_Q * DIM;
-
+  
+  const half* __restrict__ MaskBase;
+  if (use_mask) {
+    MaskBase = M ? (M + q_block_base * len_kv) : nullptr;
+  }
+  
   // we overlap Q_smem with (K_smem + V_smem), since we only need to load Q_smem once
   extern __shared__ half smem[];
   const uint32_t Q_smem = __cvta_generic_to_shared(smem);
@@ -166,8 +177,6 @@ void attention_v5_kernel(
     const int col_off = lane_id / 16 * 8;
     V_smem_thread = swizzle<DIM * sizeof(half)>(V_smem + (row_off * DIM + col_off) * sizeof(half));
   }
-
-  const float softmax_scale = rsqrtf(static_cast<float>(DIM));
 
   float rowmax[WARP_Q / MMA_M][2];
   float rowsumexp[WARP_Q / MMA_M][2] = {};
@@ -247,12 +256,66 @@ void attention_v5_kernel(
 
     // prefetch K
     load_K(kv_id + 1);
+    
+    const int lane_row0 = (lane_id / 4);     // 0..7
+    const int lane_row1 = lane_row0 + 8;     // 8..15
+    const int j_pair0   = 2 * (lane_id % 4); // {0,2,4,6}
 
     for (int mma_id_q = 0; mma_id_q < WARP_Q / MMA_M; mma_id_q++) {
       // apply softmax scale
-      for (int mma_id_kv = 0; mma_id_kv < BLOCK_KV / MMA_N; mma_id_kv++)
-        for (int reg_id = 0; reg_id < 4; reg_id++)
-          S_rmem[mma_id_q][mma_id_kv][reg_id] *= softmax_scale;
+      for (int mma_id_kv = 0; mma_id_kv < BLOCK_KV / MMA_N; mma_id_kv++) {
+        // 1) scale logits
+        float* regs = S_rmem[mma_id_q][mma_id_kv];
+        regs[0] *= scale;
+        regs[1] *= scale;
+        regs[2] *= scale;
+        regs[3] *= scale;
+
+        // 3) causal OR explicit mask
+        if (is_causal) {
+          const int base_i_block  = warp_id * (BLOCK_Q / NUM_WARPS) + mma_id_q * MMA_M;   // 16 rows in this MMA
+          const int col_base_tile = kv_id * BLOCK_KV + mma_id_kv * MMA_N;                 // 8 cols in this MMA
+          const int i0 = base_i_block + lane_row0;      // row for regs[0], regs[1]
+          const int i1 = base_i_block + lane_row1;      // row for regs[2], regs[3]
+          const int j0 = col_base_tile + j_pair0 + 0;   // col for regs[0], regs[2]
+          const int j1 = col_base_tile + j_pair0 + 1;   // col for regs[1], regs[3]
+
+          const int i0_global = q_block_base + i0;
+          const int i1_global = q_block_base + i1;
+          const int j_limit0 = past + i0_global; // last allowed key for row i0
+          const int j_limit1 = past + i1_global;
+
+          //// Optional tail handling if not padded:
+          //// If you always pad to multiples, you can drop these checks.
+          //if (i0 >= len_q) { regs[0] = -CUDART_INF_F; regs[1] = -CUDART_INF_F; }
+          //if (i1 >= len_q) { regs[2] = -CUDART_INF_F; regs[3] = -CUDART_INF_F; }
+          //if (j0 >= len_kv) { regs[0] = -CUDART_INF_F; regs[2] = -CUDART_INF_F; }
+          //if (j1 >= len_kv) { regs[1] = -CUDART_INF_F; regs[3] = -CUDART_INF_F; }
+          // zero out (−INF) future positions
+          if (j0 > j_limit0) regs[0] = -CUDART_INF_F;
+          if (j1 > j_limit0) regs[1] = -CUDART_INF_F;
+          if (j0 > j_limit1) regs[2] = -CUDART_INF_F;
+          if (j1 > j_limit1) regs[3] = -CUDART_INF_F;
+        } else if (use_mask) {
+          const int base_i_block  = warp_id * (BLOCK_Q / NUM_WARPS) + mma_id_q * MMA_M;   // 16 rows in this MMA
+          const int col_base_tile = kv_id * BLOCK_KV + mma_id_kv * MMA_N;                 // 8 cols in this MMA
+          const int i0 = base_i_block + lane_row0;      // row for regs[0], regs[1]
+          const int i1 = base_i_block + lane_row1;      // row for regs[2], regs[3]
+          const int j0 = col_base_tile + j_pair0 + 0;   // col for regs[0], regs[2]
+          const int j1 = col_base_tile + j_pair0 + 1;   // col for regs[1], regs[3]
+
+          // Mask layout: [bs, len_q, len_kv], MaskBase already offset to this (bs, q-block)
+          // Values should be 0.0f (keep) or −INF (block) for branchless addition
+          //if (i0 < len_q && j0 < len_kv) 
+          regs[0] += (float) MaskBase[(size_t)i0 * len_kv + j0];
+          //if (i0 < len_q && j1 < len_kv) 
+          regs[1] += (float) MaskBase[(size_t)i0 * len_kv + j1];
+          //if (i1 < len_q && j0 < len_kv) 
+          regs[2] += (float) MaskBase[(size_t)i1 * len_kv + j0];
+          //if (i1 < len_q && j1 < len_kv) 
+          regs[3] += (float) MaskBase[(size_t)i1 * len_kv + j1];
+        }
+      }
 
       // rowmax
       float this_rowmax[2];
@@ -365,12 +428,35 @@ void attention_v5_kernel(
     }
 }
 
-#define INSTANTIATE_MINIMAL_FLASH(D) \
-  extern "C" __global__ void attention_v5_##D(const half *Q, const half *K, \
-    const half *V, half *O, \
-    int bs, int len_q, int len_kv) { \
-      attention_v5_kernel<64, 64, D, 4>(Q, K, V, O, bs,len_q,len_kv); \
+#define INSTANTIATE_MINIMAL_FLASH_FOR_MASK_STRATEGY(BLOCK_Q, BLOCK_KV, D, is_causal, use_mask) \
+  extern "C" __global__ void attention_v5_##BLOCK_Q##_##BLOCK_KV##_##D##_##is_causal##_##use_mask( \
+    const half* __restrict__ Q, const half* __restrict__ K, \
+    const half* __restrict__ V, half* __restrict__ M, half* __restrict__ O, \
+    int bs, int len_q, int len_kv, float scale) { \
+      attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask>(Q, K, V, M, O, bs, len_q, len_kv, scale); \
   }
 
-INSTANTIATE_MINIMAL_FLASH(64)
-INSTANTIATE_MINIMAL_FLASH(128)
+#define INSTANTIATE_MINIMAL_FLASH_FOR_D(block_q, block_kv, D) \
+  INSTANTIATE_MINIMAL_FLASH_FOR_MASK_STRATEGY(block_q, block_kv, D, false, false) \
+  INSTANTIATE_MINIMAL_FLASH_FOR_MASK_STRATEGY(block_q, block_kv, D, false, true) \
+  INSTANTIATE_MINIMAL_FLASH_FOR_MASK_STRATEGY(block_q, block_kv, D, true, false) \
+
+#define INSTANTIATE_MINIMAL_FLASH_FOR_BLOCK_KV(block_q, block_kv) \
+  INSTANTIATE_MINIMAL_FLASH_FOR_D(block_q, block_kv, 64) \
+  INSTANTIATE_MINIMAL_FLASH_FOR_D(block_q, block_kv, 128) \
+
+#define INSTANTIATE_MINIMAL_FLASH_FOR_BLOCK_Q(block_q) \
+  INSTANTIATE_MINIMAL_FLASH_FOR_BLOCK_KV(block_q, 32) \
+  //INSTANTIATE_MINIMAL_FLASH_FOR_BLOCK_KV(block_q, 48) \
+  //INSTANTIATE_MINIMAL_FLASH_FOR_BLOCK_KV(block_q, 64) \
+  //INSTANTIATE_MINIMAL_FLASH_FOR_BLOCK_KV(block_q, 80) \
+  //INSTANTIATE_MINIMAL_FLASH_FOR_BLOCK_KV(block_q, 96) \
+  //INSTANTIATE_MINIMAL_FLASH_FOR_BLOCK_KV(block_q, 112) \
+  //INSTANTIATE_MINIMAL_FLASH_FOR_BLOCK_KV(block_q, 128) \
+  //INSTANTIATE_MINIMAL_FLASH_FOR_BLOCK_KV(block_q, 16) \
+
+#define INSTANTIATE_MINIMAL_FLASH() \
+  INSTANTIATE_MINIMAL_FLASH_FOR_BLOCK_Q(64) \
+  //INSTANTIATE_MINIMAL_FLASH_FOR_BLOCK_Q(128)
+
+INSTANTIATE_MINIMAL_FLASH()
