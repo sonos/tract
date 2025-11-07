@@ -9,6 +9,7 @@ mod flash_attn;
 mod fused_axis_op;
 mod gelu_approximate;
 mod gemm;
+mod leaky_relu;
 mod pad;
 mod quant_q81;
 mod reduce;

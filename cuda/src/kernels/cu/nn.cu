@@ -249,6 +249,27 @@ extern "C" __global__ void gelu_approx_fast_f16(const __half *input,
   }
 }
 
+extern "C" __global__ void leaky_relu_f32(const float *input,
+                                                float *output, int len,
+                                                float alpha) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < len) {
+    float x = input[i];
+    output[i] = x * (x < 0 ? alpha : 1.0);
+  }
+}
+
+extern "C" __global__ void leaky_relu_f16(const __half *input,
+                                                __half *output, int len,
+                                                float alpha) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  __half alpha_f16 = (__half) alpha;
+  if (i < len) {
+    __half x = input[i];
+    output[i] = x * (x < (__half) 0.0 ? alpha_f16 : (__half) 1.0);
+  }
+}
+
 static __device__ __forceinline__ int
 indices_to_idx_2(int x, int y, int x_strides, int y_strides) {
   return x * x_strides + y * y_strides;

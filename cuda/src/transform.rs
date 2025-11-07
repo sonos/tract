@@ -1,4 +1,3 @@
-use DatumType::{F16, F32};
 use num_traits::Float;
 use tract_core::dyn_clone::clone_box;
 use tract_core::internal::*;
@@ -6,11 +5,11 @@ use tract_core::model::translator::Translate;
 use tract_core::ops::array::{MultiBroadcastTo, PadMode, Slice, TypedConcat};
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::cast::Cast;
-use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
+use tract_core::ops::einsum::prefix_matmul::{rewrite_einsum_to_prefix_matmul, PrefixMatMul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Comp;
-use tract_core::ops::nn::{Reduce, Softmax};
+use tract_core::ops::nn::{LeakyRelu, Reduce, Softmax};
 use tract_core::tract_data::itertools::Itertools;
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
@@ -28,6 +27,7 @@ use tract_transformers::ops::rms_norm::RmsNorm;
 use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
 use tract_transformers::ops::sdpa::Sdpa;
 use tract_transformers::ops::silu::Silu;
+use DatumType::{F16, F32};
 
 use crate::context::cuda_context;
 use crate::{kernels, ops, rewrite_rules};
@@ -193,6 +193,7 @@ fn can_translate_to_cuda_op(source: &TypedModel, node: &TypedNode) -> TractResul
             || node
                 .op_as::<Silu>()
                 .is_some_and(|_| kernels::UnaryOps::is_supported_dt(input_dts[0]))
+            || node.op_as::<ElementWiseOp>().is_some_and(|op| op.0.is::<LeakyRelu>())
             || node.op_as::<ElementWiseOp>().is_some_and(|op| {
                 kernels::UnaryOps::is_supported_dt(input_dts[0])
                     && map_element_wise_ops_to_cuda(op).is_some()
@@ -623,7 +624,11 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 let op: Box<dyn TypedOp> = if let Some(op) = node.op_as::<Const>() {
                     Box::new(convert_const(op)?)
                 } else if let Some(op) = node.op_as::<ElementWiseOp>() {
-                    Box::new(map_element_wise_ops_to_cuda(op).unwrap())
+                    if let Some(leaky) = op.0.downcast_ref::<LeakyRelu>() {
+                        Box::new(kernels::nn::LeakyRelu { alpha: leaky.alpha })
+                    } else {
+                        Box::new(map_element_wise_ops_to_cuda(op).unwrap())
+                    }
                 } else if let Some(op) = node.op_as::<TypedBinOp>() {
                     Box::new(map_binary_op_to_cuda(op).unwrap())
                 } else if let Some(op) = node.op_as::<Comp>() {
