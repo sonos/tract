@@ -102,29 +102,39 @@ void attention_v5_kernel(
   const half* __restrict__ M,  // [bs, len_kv, DIM]
   half* __restrict__ O,        // [bs, len_q, DIM]
   int bs,
+  int qh,
+  int head_ratio,
   int len_q,
   int len_kv,
   float scale) {
 
   constexpr int TB_SIZE = NUM_WARPS * WARP_SIZE;
+  
+  const int bid = blockIdx.z;
+  const int hid = blockIdx.y;
+  const int q_block_id = blockIdx.x;
 
-  const int bid = blockIdx.x;
   const int tid = threadIdx.x;
   const int warp_id = tid / WARP_SIZE;
   const int lane_id = tid % WARP_SIZE;
 
   // each threadblock handles 1 BLOCK_Q
   const int num_q_blocks = cdiv(len_q, BLOCK_Q);
-  const int bs_id = bid / num_q_blocks;
-  const int q_block_id = bid % num_q_blocks;
   const int q_block_base = q_block_id * BLOCK_Q;
   
   const int past = len_kv - len_q; 
 
-  Q += (bs_id * num_q_blocks + q_block_id) * BLOCK_Q * DIM;
-  K += bs_id * len_kv * DIM;
-  V += bs_id * len_kv * DIM;
-  O += (bs_id * num_q_blocks + q_block_id) * BLOCK_Q * DIM;
+  const int q_heads   = qh;
+  const int kv_heads  = q_heads / head_ratio;
+  const int kv_head_id = hid / head_ratio;
+
+  const size_t q_stride_heads  = (size_t)len_q * DIM;
+  const size_t kv_stride_heads = (size_t)len_kv * DIM;
+
+  Q += (( (size_t)bid * q_heads + hid) * (size_t)len_q + q_block_base) * DIM;
+  K += (((size_t)bid * kv_heads + kv_head_id) * (size_t)len_kv) * DIM;
+  V += (((size_t)bid * kv_heads + kv_head_id) * (size_t)len_kv) * DIM;
+  O += (( (size_t)bid * q_heads + hid) * (size_t)len_q + q_block_base) * DIM;
   
   const half* __restrict__ MaskBase;
   if (use_mask) {
@@ -271,20 +281,20 @@ void attention_v5_kernel(
         regs[2] *= scale;
         regs[3] *= scale;
 
+        const int base_i_block  = warp_id * (BLOCK_Q / NUM_WARPS) + mma_id_q * MMA_M;   // 16 rows in this MMA
+        const int col_base_tile = kv_id * BLOCK_KV + mma_id_kv * MMA_N;                 // 8 cols in this MMA
+        const int i0 = base_i_block + lane_row0;      // row for regs[0], regs[1]
+        const int i1 = base_i_block + lane_row1;      // row for regs[2], regs[3]
+        const int j0 = col_base_tile + j_pair0 + 0;   // col for regs[0], regs[2]
+        const int j1 = col_base_tile + j_pair0 + 1;   // col for regs[1], regs[3]
+
+        const int i0_global = q_block_base + i0;
+        const int i1_global = q_block_base + i1;
+        const int j_limit0 = past + i0_global; // last allowed key for row i0
+        const int j_limit1 = past + i1_global;
+
         // 3) causal OR explicit mask
-        if (is_causal) {
-          const int base_i_block  = warp_id * (BLOCK_Q / NUM_WARPS) + mma_id_q * MMA_M;   // 16 rows in this MMA
-          const int col_base_tile = kv_id * BLOCK_KV + mma_id_kv * MMA_N;                 // 8 cols in this MMA
-          const int i0 = base_i_block + lane_row0;      // row for regs[0], regs[1]
-          const int i1 = base_i_block + lane_row1;      // row for regs[2], regs[3]
-          const int j0 = col_base_tile + j_pair0 + 0;   // col for regs[0], regs[2]
-          const int j1 = col_base_tile + j_pair0 + 1;   // col for regs[1], regs[3]
-
-          const int i0_global = q_block_base + i0;
-          const int i1_global = q_block_base + i1;
-          const int j_limit0 = past + i0_global; // last allowed key for row i0
-          const int j_limit1 = past + i1_global;
-
+        if constexpr (is_causal) {
           //// Optional tail handling if not padded:
           //// If you always pad to multiples, you can drop these checks.
           //if (i0 >= len_q) { regs[0] = -CUDART_INF_F; regs[1] = -CUDART_INF_F; }
@@ -296,15 +306,8 @@ void attention_v5_kernel(
           if (j1 > j_limit0) regs[1] = -CUDART_INF_F;
           if (j0 > j_limit1) regs[2] = -CUDART_INF_F;
           if (j1 > j_limit1) regs[3] = -CUDART_INF_F;
-        } else if (use_mask) {
-          const int base_i_block  = warp_id * (BLOCK_Q / NUM_WARPS) + mma_id_q * MMA_M;   // 16 rows in this MMA
-          const int col_base_tile = kv_id * BLOCK_KV + mma_id_kv * MMA_N;                 // 8 cols in this MMA
-          const int i0 = base_i_block + lane_row0;      // row for regs[0], regs[1]
-          const int i1 = base_i_block + lane_row1;      // row for regs[2], regs[3]
-          const int j0 = col_base_tile + j_pair0 + 0;   // col for regs[0], regs[2]
-          const int j1 = col_base_tile + j_pair0 + 1;   // col for regs[1], regs[3]
-
-          // Mask layout: [bs, len_q, len_kv], MaskBase already offset to this (bs, q-block)
+        } else if constexpr (use_mask) {
+          // Mask layout: [1, 1, len_q, len_kv],
           // Values should be 0.0f (keep) or −INF (block) for branchless addition
           //if (i0 < len_q && j0 < len_kv) 
           regs[0] += (float) MaskBase[(size_t)i0 * len_kv + j0];
@@ -432,8 +435,8 @@ void attention_v5_kernel(
   extern "C" __global__ void attention_v5_##BLOCK_Q##_##BLOCK_KV##_##D##_##is_causal##_##use_mask( \
     const half* __restrict__ Q, const half* __restrict__ K, \
     const half* __restrict__ V, half* __restrict__ M, half* __restrict__ O, \
-    int bs, int len_q, int len_kv, float scale) { \
-      attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask>(Q, K, V, M, O, bs, len_q, len_kv, scale); \
+    int bs, int qh, int head_ratio, int len_q, int len_kv, float scale) { \
+      attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask>(Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
   }
 
 #define INSTANTIATE_MINIMAL_FLASH_FOR_D(block_q, block_kv, D) \

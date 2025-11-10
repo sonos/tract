@@ -119,18 +119,22 @@ impl MinimalFlashAttn {
         let ctxt = cuda_context();
         let q_shape = q.shape();
 
-        let b = q_shape[0] * q_shape[1];
-        //let nh = q_shape[1];
+        let b = q_shape[0];
+        let n_qh = q_shape[1];
         let len_q = q_shape[2];
         let d = q_shape[3];
-        ensure!(q_shape[1] == k.shape()[1]);
+
+        ensure!(n_qh % k.shape()[1] == 0);
+        ensure!(k.shape()[0] == b);
         ensure!(len_q % 64 == 0 && k.shape()[2] % 32 == 0);
+
+        let head_ratio = n_qh / k.shape()[1];
         let block_q = 64; // len_q.next_multiple_of(64).min(64);
         let block_kv= 32; // k.shape()[2].next_multiple_of(16).min(32);
 
         let n_warps = 4;
 
-        let num_blocks = b * len_q.div_ceil(block_q);
+        let num_q_blocks = len_q.div_ceil(block_q);
         let tb_size = n_warps * WARP_SIZE;
         let smem_size = block_q.max(block_kv * 3) * d * size_of::<f16>();
         //dbg!(block_q, block_kv);
@@ -158,12 +162,14 @@ impl MinimalFlashAttn {
         launch_args.arg(&m_view);
         launch_args.arg(&o_view);
         launch_args.arg(&b);
+        launch_args.arg(&n_qh);
+        launch_args.arg(&head_ratio);
         launch_args.arg(&len_q);
         launch_args.arg(&k.shape()[2]);
         launch_args.arg(&scale);
         launch_args.arg(&self.is_causal);
 
-        let cfg = LaunchConfig { grid_dim: (num_blocks as _, 1, 1), block_dim: (tb_size as _, 1, 1), shared_mem_bytes: smem_size as _};
+        let cfg = LaunchConfig { grid_dim: (num_q_blocks as _, n_qh as _, b as _), block_dim: (tb_size as _, 1, 1), shared_mem_bytes: smem_size as _};
         unsafe {
             launch_args.launch(cfg);
         }
@@ -256,6 +262,7 @@ mod tests {
     fn test_fattn_mma_f16() -> TractResult<()> {
         //run_test_case(1, 1, 1, 0, 64, 64, 1.0f32)?;
         run_test_case(1, 1, 1, 64, 64, 128, 1.0f32, false, false)?;
+        run_test_case(2, 32, 4, 64, 64, 128, 1.0f32, false, false)?;
         run_test_case(1, 1, 1, 64, 64, 128, 1.0f32, false, true)?;
         run_test_case(1, 1, 1, 64, 64, 128, 1.0f32, true, false)?;
         //run_test_case(1, 1, 1, 256, 256, 128, 1.0f32)?;
