@@ -256,6 +256,8 @@ impl GgmlFlashAttn {
             "No kernel for K/V D={} (must match and be one of 64|80|96|112|128|256)",
             k.shape()[3]
         );
+
+        // Batched mask support could be done by modifying KV_max kernel
         ensure!(m.shape()[..2] == [1, 1]);
 
         let can_vec = q.shape()[3] % 64 == 0;

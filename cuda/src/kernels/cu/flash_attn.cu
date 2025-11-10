@@ -2102,7 +2102,8 @@ static __device__ void flash_attn_mask_to_KV_max(
     const int sequence = blockIdx.y;
     const int jt       = blockIdx.x;
 
-    mask += sequence*s33 + jt*ncols1*s31;
+    // For batched mask support: mask += sequence*s33 + jt*ncols1*s31;
+    mask += jt*ncols1*s31;
 
     __shared__ int buf_iw[WARP_SIZE];
     if (tid < WARP_SIZE) {
