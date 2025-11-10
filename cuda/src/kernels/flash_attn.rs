@@ -414,14 +414,15 @@ impl GgmlFlashAttn {
             (blocks_num, None, Some(dst_tmp_meta))
         } else {
             ensure!(k.shape()[k.rank() - 2] % params.kq_row_granularity == 0);
-            let ntiles_kq = k.shape()[k.rank() - 2] / params.kq_row_granularity;
+
+            let ntiles_kq = k.shape()[k.rank() - 2].div_ceil(params.kq_row_granularity);
             parallel_blocks = parallel_blocks.min(ntiles_kq);
 
             // try to improve tail efficiency
             let blocks_per_wave = nsm * max_blocks_per_sm;
             let mut nwaves_best = 0;
             let mut eff_best = 0;
-            for pb in (parallel_blocks..=ntiles_kq).step_by(parallel_blocks) {
+            for pb in (parallel_blocks..=ntiles_kq) {
                 let nblocks_total = ntiles_total * pb;
                 let nwaves = nblocks_total.div_ceil(blocks_per_wave);
                 let eff = 100 * nblocks_total / (nwaves * blocks_per_wave);
@@ -437,7 +438,7 @@ impl GgmlFlashAttn {
 
             ensure!(parallel_blocks > 1, "Unsupported config: Output won't be untransposed if we don't enter vec fixup kernel");
             let blocks_num =
-                (ntiles_x as u32, parallel_blocks as u32, (q.shape()[1] * q.shape()[0]) as u32);
+                (ntiles_x as u32, parallel_blocks as u32, (q.shape()[1] / params.ncols2 * q.shape()[0]) as u32);
 
             (blocks_num, Some(DeviceTensor::uninitialized_dt(
                         DatumType::F32,
