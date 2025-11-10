@@ -433,27 +433,20 @@ impl GgmlFlashAttn {
                 }
             }
 
+            ensure!(parallel_blocks > 1, "Unsupported config: Output won't be untransposed if we don't enter vec fixup kernel");
             let blocks_num =
                 (ntiles_x as u32, parallel_blocks as u32, (q.shape()[1] * q.shape()[0]) as u32);
 
-            let (dst_tmp, dst_tmp_meta) = if parallel_blocks > 1 {
-                (
-                    Some(DeviceTensor::uninitialized_dt(
+            (blocks_num, Some(DeviceTensor::uninitialized_dt(
                         DatumType::F32,
                         &[parallel_blocks * out.shape().iter().product::<usize>()],
                     )?),
                     Some(DeviceTensor::uninitialized_dt(
                         DatumType::F32,
                         &[2 * parallel_blocks * out.shape()[..3].iter().product::<usize>()],
-                    )?),
-                )
-            } else {
-                (None, None)
-            };
-            (blocks_num, dst_tmp, dst_tmp_meta)
+                    )?))
         };
 
-        let need_vec_fixup = parallel_blocks > 1;
         ensure!(block_dim.0 % WARP_SIZE as u32 == 0);
 
         // Shapes/strides for kernel
@@ -478,7 +471,7 @@ impl GgmlFlashAttn {
         la.arg(&vv);
         la.arg(&mv);
         la.arg(&kv_max_v);
-        la.arg(if !matches!(params.imp, FlashAttnImpl::MmaF16) && need_vec_fixup { &dst_tmp_v } else { &ov });
+        la.arg(if matches!(params.imp, FlashAttnImpl::Vec) { &dst_tmp_v } else { &ov });
         la.arg(&dst_tmp_meta_v);
         la.arg(&scale);
         la.set_slice(&q_shape_i32);
@@ -520,7 +513,7 @@ impl GgmlFlashAttn {
                     la.launch(cfg);
                 }
             }
-        } else if need_vec_fixup {
+        } else {
             let f = cuda_context().load_pipeline(
                 LibraryName::FlashAttn,
                 format!("flash_attn_combine_results_{}", params.d),

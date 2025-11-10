@@ -565,7 +565,7 @@ static __device__ void flash_attn_ext_vec(
     }
 
     if (gridDim.y != 1 && tid < ncols && (ncols == 1 || ic0 + tid < ne01)) {
-        dst_meta[((sequence*ne02 + ic0 + tid)*ne01 + head)*gridDim.y + blockIdx.y] = make_float2(KQ_max[tid], KQ_sum[tid]);
+        dst_meta[((sequence*ne01 + ic0 + tid)*ne02 + head)*gridDim.y + blockIdx.y] = make_float2(KQ_max[tid], KQ_sum[tid]);
     }
 }
 
@@ -588,7 +588,7 @@ static __device__ void flash_attn_combine_results(
     const int head     = blockIdx.y;
     const int sequence = blockIdx.z;
 
-    const int j_dst_unrolled = (sequence*ne02 + col)*ne01 + head;
+    const int j_dst_unrolled = (sequence*ne01 + col)*ne02 + head;
 
     VKQ_parts += j_dst_unrolled * parallel_blocks*D;
     VKQ_meta  += j_dst_unrolled * parallel_blocks;
