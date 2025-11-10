@@ -93,16 +93,7 @@ fn flash_attn(
     out_dim: usize,
 ) {
     let mut c = c.benchmark_group(format!(
-        "Q: {}x{}x{}x{}\nKV: {}x{}x{}x{}\n",
-        b,
-        qh,
-        s,
-        out_dim,
-        b,
-        kh,
-        s + p,
-        out_dim
-    ));
+        "Batch: {b}. Q_head: {qh} KV_head: {kh} P: {p} S {s} d: {out_dim}"));
     c.throughput(Throughput::Elements((4 * b * qh * s * (s + p) * out_dim) as _));
 
     cuda_ggml_flash(&mut c, b, qh, kh, p, s, out_dim);
@@ -111,7 +102,7 @@ fn flash_attn(
 }
 
 #[allow(unused)]
-fn tinyllama(c: &mut Criterion) {
+fn small(c: &mut Criterion) {
     let shapes = vec![
         //(1, 1, 1, 0, 1, 64),
         //(1, 1, 1, 4096, 4096, 128),
@@ -126,12 +117,12 @@ fn tinyllama(c: &mut Criterion) {
         //(1, 32, 32, 512, 1024, 128),
         //(1, 1, 1, 0, 64, 128), 
         //(1, 8, 8, 0, 64, 128), 
-        //(1, 1, 1, 0, 128, 128),
-        //(1, 1, 1, 64, 64, 128),
-        //(1, 1, 1, 32, 128, 128),
-        //(1, 1, 1, 128, 128, 128),
-        //(1, 1, 1, 64, 64, 128),
-        //(1, 1, 1, 0, 256, 128),
+        (1, 1, 1, 0, 128, 128),
+        (1, 1, 1, 64, 64, 128),
+        (1, 1, 1, 32, 128, 128),
+        (1, 1, 1, 128, 128, 128),
+        (1, 1, 1, 64, 64, 128),
+        (1, 1, 1, 0, 256, 128),
         (1, 32, 4, 0, 512, 128),
         (2, 32, 4, 0, 512, 128),
         (1, 32, 4, 256, 256, 64),
@@ -141,5 +132,30 @@ fn tinyllama(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, tinyllama); //big, wavenet, asr_15_m, inception, whisper_base);
+#[allow(unused)]
+fn benched_models_pp(c: &mut Criterion) {
+    let shapes = vec![
+        // Llama3.2-1B
+        (1, 32, 8, 0, 512, 64),
+        (1, 32, 8, 0, 2048, 64),
+        // Llama3.1-8B / Qwen3-7B
+        (1, 32, 8, 0, 512, 128),
+        (1, 32, 8, 0, 2048, 128),
+        // OpenELM-270M
+        (1, 20, 20, 0, 512, 64),
+        (1, 20, 20, 0, 2048, 64),
+        // Qwen2.5-7B
+        (1, 28, 4, 0, 512, 128),
+        (1, 28, 4, 0, 2048, 128),
+        // Qwen3-1.7B
+        (1, 16, 8, 0, 512, 128),
+        (1, 16, 8, 0, 2048, 128),
+
+    ];
+    for (b, qh, kh, p, s, out_dim) in shapes {
+        flash_attn(c, b, qh, kh, p, s, out_dim);
+    }
+}
+
+criterion_group!(benches, benched_models_pp); //big, wavenet, asr_15_m, inception, whisper_base);
 criterion_main!(benches);
