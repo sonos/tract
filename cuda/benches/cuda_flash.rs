@@ -105,7 +105,7 @@ fn flash_attn(
     ));
     c.throughput(Throughput::Elements((4 * b * qh * s * (s + p) * out_dim) as _));
 
-    //cuda_ggml_flash(&mut c, b, qh, kh, p, s, out_dim);
+    cuda_ggml_flash(&mut c, b, qh, kh, p, s, out_dim);
     cuda_minimal_flash(&mut c, b, qh, kh, p, s, out_dim);
     c.finish();
 }
@@ -126,12 +126,15 @@ fn tinyllama(c: &mut Criterion) {
         //(1, 32, 32, 512, 1024, 128),
         //(1, 1, 1, 0, 64, 128), 
         //(1, 8, 8, 0, 64, 128), 
-        (1, 1, 1, 0, 128, 128),
-        (1, 1, 1, 64, 64, 128),
-        (1, 1, 1, 32, 128, 128),
-        (1, 1, 1, 128, 128, 128),
-        (1, 1, 1, 64, 64, 128),
-        (1, 1, 1, 0, 256, 128),
+        //(1, 1, 1, 0, 128, 128),
+        //(1, 1, 1, 64, 64, 128),
+        //(1, 1, 1, 32, 128, 128),
+        //(1, 1, 1, 128, 128, 128),
+        //(1, 1, 1, 64, 64, 128),
+        //(1, 1, 1, 0, 256, 128),
+        (1, 32, 4, 0, 512, 128),
+        (2, 32, 4, 0, 512, 128),
+        (1, 32, 4, 256, 256, 64),
     ];
     for (b, qh, kh, p, s, out_dim) in shapes {
         flash_attn(c, b, qh, kh, p, s, out_dim);
