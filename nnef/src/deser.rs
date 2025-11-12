@@ -680,9 +680,13 @@ impl CoerceFrom<Value> for OutletId {
                     let outlet = OutletId::coerce(builder, i)?;
                     outlets.push(builder.wire_as_outlets(AxisOp::Add(0), &[outlet])?[0]);
                 }
-                builder
-                    .wire_as_outlets(tract_core::ops::array::TypedConcat::new(0), &outlets)
-                    .map(|o| o[0])
+                if inputs.len() > 0 {
+                    builder
+                        .wire_as_outlets(tract_core::ops::array::TypedConcat::new(0), &outlets)
+                        .map(|o| o[0])
+                } else {
+                    builder.add_const(tensor1::<f32>(&[]))
+                }
             }
             Value::String(s) => builder.add_const(rctensor0(s.clone())),
             Value::Bool(b) => builder.add_const(rctensor0(*b)),

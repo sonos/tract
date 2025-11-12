@@ -366,7 +366,7 @@ impl<'a> IntoAst<'a> {
         if tensor.datum_type() == TDim::datum_type() {
             return Ok(Self::dump_rec_tensor(&tensor.to_array_view::<TDim>()?, tdim).into());
         }
-        if !force_variable && tensor.len() <= 8 {
+        if !force_variable && tensor.len() <= 8 && tensor.len() > 0 {
             if tensor.datum_type() == String::datum_type() {
                 return Ok(Self::dump_rec_tensor(&tensor.to_array_view::<String>()?, |f| {
                     string(f)
