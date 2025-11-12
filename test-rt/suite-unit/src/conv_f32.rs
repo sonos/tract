@@ -11,6 +11,7 @@ pub struct ConvProblemParams {
     pub no_arbitrary_grouping: bool,
     pub geo_rank: Option<Range<usize>>,
     pub no_batch: bool,
+    pub no_dilations: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -266,7 +267,8 @@ impl Arbitrary for ConvProblem {
                     };
                     let hw_rank = shape_in.hw_rank();
                     let strides = vec(1usize..=3, hw_rank..=hw_rank);
-                    let dilations = vec(1usize..=3, hw_rank..=hw_rank);
+                    let max_dil = if params.no_dilations { 1 } else { 3 };
+                    let dilations = vec(1usize..=max_dil, hw_rank..=hw_rank);
                     let kernel = tensor(&ker_shape);
                     let bias = proptest::option::of(tensor(&[co0 * group]));
                     (Just((kf, pad, shape_in, group)), data_in, kernel, bias, strides, dilations)
@@ -1391,6 +1393,36 @@ pub fn suite() -> TractResult<TestSuite> {
             pad: PaddingSpec::SameUpper,
             strides: tvec!(1, 1),
             dilations: tvec!(1, 3),
+        },
+    );
+
+    suite.add(
+        "dil_4",
+        ConvProblem {
+            shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, [2]).unwrap(),
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: arr3(&[[[0.0, 0.0]]]).into_dyn(),
+            kernel: arr3(&[[[0.0, 0.0]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1),
+            dilations: tvec!(2),
+        },
+    );
+
+    suite.add(
+        "dil_5",
+        ConvProblem {
+            shape_in: DataFormat::CHW.from_n_c_hw(1, 1, [2]).unwrap(),
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: arr2(&[[0.0, 0.0]]).into_dyn(),
+            kernel: arr3(&[[[0.0, 0.0]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1),
+            dilations: tvec!(2),
         },
     );
 
