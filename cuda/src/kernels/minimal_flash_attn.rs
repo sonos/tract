@@ -258,26 +258,15 @@ mod tests {
 
     #[test]
     fn test_fattn_mma_f16() -> TractResult<()> {
-        //run_test_case(1, 1, 1, 0, 64, 64, 1.0f32)?;
+        run_test_case(1, 1, 1, 64, 1, 128, 1.0f32, false, false)?;
+        run_test_case(1, 2, 1, 64, 1, 128, 1.0f32, false, true)?;
+        run_test_case(1, 2, 2, 0, 1, 64, 1.0f32, false, false)?;
+        run_test_case(2, 4, 2, 123, 1, 64, 1.0f32, false, false)?;
+        run_test_case(1, 2, 2, 0, 1, 64, 1.0f32, true, false)?;
         run_test_case(1, 1, 1, 64, 64, 128, 1.0f32, false, false)?;
         run_test_case(2, 32, 4, 64, 64, 128, 1.0f32, false, false)?;
         run_test_case(1, 1, 1, 64, 64, 128, 1.0f32, false, true)?;
         run_test_case(1, 1, 1, 64, 64, 128, 1.0f32, true, false)?;
-        //run_test_case(1, 1, 1, 256, 256, 128, 1.0f32)?;
-        //run_test_case(1, 8, 8, 256, 256, 128, 1.0f32)?;
-        //run_test_case(1, 1, 1, 0, 256, 64, 1.0f32)?;
-        //run_test_case(1, 1, 1, 0, 256, 128, 1.0f32)?;
-        //run_test_case(1, 4, 4, 256, 256, 64, 1.0f32)?;
-        //run_test_case(1, 8, 8, 512, 512, 128, 1.0f32)?;
-        //run_test_case(1, 1, 1, 4096, 4096, 64, 1.0f32)?;
-        //run_test_case(1, 4, 4, 256, 2048, 64, 1.0f32)?;
-        //run_test_case(1, 32, 32, 512, 1024, 128, 1.0f32)?;
-        //run_test_case(1, 8, 8, 4096, 4096, 128, 1.0f32)?;
-        //run_test_case(1, 8, 8, 1, 1, 80, 1.0f32)?;
-        //run_test_case(2, 4, 2, 1, 1, 128, 1.0f32)?;
-        //run_test_case(2, 8, 8, 0, 1, 96, 1.0f32)?;
-        //run_test_case(1, 1, 1, 3, 2, 256, 1.0f32)?;
-        //run_test_case(2, 2, 1, 3, 1, 112, 1.0f32)?;
         Ok(())
     }
 }
