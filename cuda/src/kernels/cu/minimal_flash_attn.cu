@@ -128,9 +128,6 @@ void attention_v5_kernel(
   const int kv_heads  = q_heads / head_ratio;
   const int kv_head_id = hid / head_ratio;
 
-  const size_t q_stride_heads  = (size_t)len_q * DIM;
-  const size_t kv_stride_heads = (size_t)len_kv * DIM;
-
   Q += (( (size_t)bid * q_heads + hid) * (size_t)len_q + q_block_base) * DIM;
   K += (((size_t)bid * kv_heads + kv_head_id) * (size_t)len_kv) * DIM;
   V += (((size_t)bid * kv_heads + kv_head_id) * (size_t)len_kv) * DIM;
