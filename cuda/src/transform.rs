@@ -14,7 +14,6 @@ use tract_core::tract_data::itertools::Itertools;
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
-use tract_gpu::rewrite_rules::rewire_sdpa::{causal_mask_as_extern, neutral_mask_for_full_attn};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::rewrite_rules::rms_norm::remove_rms_norm_cast;
 use tract_gpu::sync::{DeviceSync, DeviceSyncKind};

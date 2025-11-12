@@ -1,7 +1,7 @@
 use cudarc::driver::sys::CUfunction_attribute;
 use cudarc::driver::{CudaFunction, LaunchArgs, LaunchConfig, PushKernelArg};
 use num_traits::One;
-use std::f32::INFINITY;
+//use std::f32::INFINITY;
 use std::fmt;
 use tract_core::internal::*;
 use tract_core::tract_data::itertools::Itertools;
