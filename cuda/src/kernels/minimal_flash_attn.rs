@@ -126,7 +126,6 @@ impl MinimalFlashAttn {
 
         ensure!(n_qh % k.shape()[1] == 0);
         ensure!(k.shape()[0] == b);
-        ensure!(len_q % 64 == 0 && k.shape()[2] % 32 == 0);
 
         let head_ratio = n_qh / k.shape()[1];
         let block_q = 64; // len_q.next_multiple_of(64).min(64);
@@ -167,7 +166,6 @@ impl MinimalFlashAttn {
         launch_args.arg(&len_q);
         launch_args.arg(&k.shape()[2]);
         launch_args.arg(&scale);
-        launch_args.arg(&self.is_causal);
 
         let cfg = LaunchConfig { grid_dim: (num_q_blocks as _, n_qh as _, b as _), block_dim: (tb_size as _, 1, 1), shared_mem_bytes: smem_size as _};
         unsafe {
