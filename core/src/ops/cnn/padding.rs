@@ -206,8 +206,8 @@ impl PaddingSpec {
         aft: usize,
     ) -> ComputedPaddedDim<usize> {
         let kernel_field = (kernel - 1) * dilation + 1;
-        let dividend = (input + bef + aft).saturating_sub(kernel_field);
-        let output = dividend / stride + 1;
+        let dividend = (input + bef + aft + 1).saturating_sub(kernel_field);
+        let output = dividend.divceil(stride);
         ComputedPaddedDim::new(input, output, bef, aft)
     }
 
