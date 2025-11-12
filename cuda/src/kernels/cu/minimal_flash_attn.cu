@@ -17,20 +17,35 @@ uint32_t swizzle(uint32_t index) {
   return index ^ (bits_to_xor << 4);
 }
 
-template <int HEIGHT, int WIDTH, int TB_SIZE>
-__device__ inline
-void global_to_shared_swizzle_guarded(uint32_t dst,
-                                      const half *src, int src_stride,
-                                      int tid,
-                                      int valid_rows)
-{
-  constexpr int BYTES_PER_COPY = 16;
-  constexpr int elems_per_copy = BYTES_PER_COPY / sizeof(half);    // 8 f16
-  constexpr int total_elems    = HEIGHT * WIDTH;
-  constexpr int num_iters      = total_elems / (TB_SIZE * elems_per_copy);
+static __device__ inline void cp_async_cg_16B_pred(uint32_t dst, const void* src, bool pred) {
+#if __CUDA_ARCH__ >= 800
+  asm volatile(
+    "{\n\t"
+    ".reg .pred p;\n\t"
+    ".reg .b32 z;\n\t"
+    "mov.b32 z, 0;\n\t"
+    "setp.ne.b32 p, %2, 0;\n\t"                           // p = (pred != 0)
+    "@p   cp.async.cg.shared.global [%0], [%1], 16;\n\t"  // valid: async copy 16B
+    "@!p  st.shared.v4.b32 [%0], {z, z, z, z};\n\t"       // invalid: zero-fill 16B
+    "}\n"
+    :: "r"(dst), "l"(src), "r"((int)pred));
+#else
+  // Fallback path if you ever build for pre-SM80
+  if (pred) {
+    asm volatile("cp.async.cg.shared.global [%0], [%1], 16;" :: "r"(dst), "l"(src));
+  } else {
+    int z = 0;
+    asm volatile("st.shared.v4.b32 [%0], {%1,%1,%1,%1};" :: "r"(dst), "r"(z));
+  }
+#endif
+}
 
-  // zero value to use for st.shared zero-fill
-  int z = 0;
+template <int HEIGHT, int WIDTH, int TB_SIZE>
+static __device__ inline
+void global_to_shared_swizzle_pred(uint32_t dst, const half *src, int src_stride,
+                                   int tid, int valid_rows) {
+  constexpr int elems_per_copy = 16 / sizeof(half);  // 8 f16
+  constexpr int num_iters = HEIGHT * WIDTH / (TB_SIZE * elems_per_copy);
 
   #pragma unroll
   for (int iter = 0; iter < num_iters; iter++) {
@@ -38,19 +53,13 @@ void global_to_shared_swizzle_guarded(uint32_t dst,
     const int row = idx / WIDTH;
     const int col = idx % WIDTH;
 
-    const bool in_row = (row < valid_rows);       // WIDTH (DIM) is always complete
     const uint32_t dst_addr = swizzle<WIDTH * sizeof(half)>(
         dst + (row * WIDTH + col) * sizeof(half));
+    const half* src_addr = src + (row * src_stride + col);
 
-    if (in_row) {
-      const half* src_addr = src + (row * src_stride + col);
-      asm volatile("cp.async.cg.shared.global [%0], [%1], 16;"
-                    :: "r"(dst_addr), "l"(src_addr));
-    } else {
-      // write 16B of zeros into shared for this 8 halfs slot
-      asm volatile("st.shared.v4.b32 [%0], {%1,%1,%1,%1};"
-                    :: "r"(dst_addr), "r"(z));
-    }
+    // No branching: predicate says if this 16B lane is valid
+    const bool in_row = (row < valid_rows);
+    cp_async_cg_16B_pred(dst_addr, src_addr, in_row);
   }
 }
 
@@ -93,9 +102,40 @@ void mma_m16n8k16(uint32_t A[4], uint32_t B[2], float D[4]) {
                 "f"(D[0]), "f"(D[1]), "f"(D[2]), "f"(D[3]));
 }
 
+static __device__ inline float fsel_neg_inf(bool keep, float x) {
+  // select: keep ? x : -INF  (compiles to SELP on PTX)
+  // Using inline PTX to force predicate select:
+  float out;
+  asm volatile(
+    "{\n\t"
+    ".reg .pred p;\n\t"
+    "setp.ne.b32 p, %2, 0;\n\t"          // p = keep
+    "selp.f32 %0, %1, %3, p;\n\t"        // out = p ? x : -INF
+    "}\n"
+    : "=f"(out)
+    : "f"(x), "r"((int)keep), "f"(-CUDART_INF_F));
+  return out;
+}
+
+static __device__ inline void st_global_half2_pred(half2* addr, half2 val, bool pred) {
+#if __CUDA_ARCH__ >= 700
+  // Reinterpret half2 payload as 32-bit without aliasing UB
+  uint32_t v;
+  memcpy(&v, &val, sizeof(v));
+  asm volatile(
+    "{\n\t"
+    ".reg .pred p;\n\t"
+    "setp.ne.b32 p, %2, 0;\n\t"         // p = (pred != 0)
+    "@p st.global.b32 [%0], %1;\n\t"    // predicated 32-bit store
+    "}\n"
+    :: "l"(addr), "r"(v), "r"((int)pred));
+#else
+  if (pred) { *addr = val; }
+#endif
+}
 // --- kernel ----------------------------------------------------------------
 
-template<int BLOCK_Q, int BLOCK_KV, int DIM, int NUM_WARPS, bool is_causal, bool use_mask>
+template<int BLOCK_Q, int BLOCK_KV, int DIM, int NUM_WARPS, bool is_causal, bool use_mask, bool full_q_tile>
 __launch_bounds__(NUM_WARPS * WARP_SIZE)
 __global__
 void attention_v5_kernel(
@@ -188,7 +228,8 @@ void attention_v5_kernel(
   }
 
   // Load Q (tail-safe on rows)
-  global_to_shared_swizzle_guarded<BLOCK_Q, DIM, TB_SIZE>(Q_smem, Q, DIM, tid, q_valid);
+  global_to_shared_swizzle_pred<BLOCK_Q, DIM, TB_SIZE>(Q_smem, Q, DIM, tid, full_q_tile ? BLOCK_Q : q_valid);
+
   asm volatile("cp.async.commit_group;");
   asm volatile("cp.async.wait_all;");
   __syncthreads();
@@ -210,14 +251,14 @@ void attention_v5_kernel(
   auto load_K = [&](int kv_id, int kv_valid_rows) {
     if (kv_id < num_kv_iter) {
       const uint32_t dst = K_smem + (kv_id % 2) * (BLOCK_KV * DIM * sizeof(half));
-      global_to_shared_swizzle_guarded<BLOCK_KV, DIM, TB_SIZE>(dst, K, DIM, tid, kv_valid_rows);
+      global_to_shared_swizzle_pred<BLOCK_KV, DIM, TB_SIZE>(dst, K, DIM, tid, kv_valid_rows);
       K += BLOCK_KV * DIM;
     }
     asm volatile("cp.async.commit_group;");
   };
   auto load_V = [&](int kv_valid_rows) {
     const uint32_t dst = V_smem;
-    global_to_shared_swizzle_guarded<BLOCK_KV, DIM, TB_SIZE>(dst, V, DIM, tid, kv_valid_rows);
+    global_to_shared_swizzle_pred<BLOCK_KV, DIM, TB_SIZE>(dst, V, DIM, tid, kv_valid_rows);
     V += BLOCK_KV * DIM;
     asm volatile("cp.async.commit_group;");
   };
@@ -284,31 +325,40 @@ void attention_v5_kernel(
 
         const int i0_global = q_block_base + i0;
         const int i1_global = q_block_base + i1;
-        const int j_limit0 = past + i0_global;
-        const int j_limit1 = past + i1_global;
 
-        // Tail-safe row checks (Q)
-        if (i0_global >= len_q) { regs[0] = -CUDART_INF_F; regs[1] = -CUDART_INF_F; }
-        if (i1_global >= len_q) { regs[2] = -CUDART_INF_F; regs[3] = -CUDART_INF_F; }
+        const bool i0_valid = full_q_tile ? true  : (i0_global < len_q);
+        const bool i1_valid = full_q_tile ? true  : (i1_global < len_q);
+        const bool j0_valid = (j0 < len_kv);
+        const bool j1_valid = (j1 < len_kv);
 
-        // Tail-safe col checks (KV)
-        if (j0 >= len_kv) { regs[0] = -CUDART_INF_F; regs[2] = -CUDART_INF_F; }
-        if (j1 >= len_kv) { regs[1] = -CUDART_INF_F; regs[3] = -CUDART_INF_F; }
+        // Causal predicates (true => keep)
+        bool c00 = j0_valid & i0_valid;
+        bool c01 = j1_valid & i0_valid;
+        bool c10 = j0_valid & i1_valid;
+        bool c11 = j1_valid & i1_valid;
 
-        // causal / explicit mask
         if constexpr (is_causal) {
-          if (j0 > j_limit0) regs[0] = -CUDART_INF_F;
-          if (j1 > j_limit0) regs[1] = -CUDART_INF_F;
-          if (j0 > j_limit1) regs[2] = -CUDART_INF_F;
-          if (j1 > j_limit1) regs[3] = -CUDART_INF_F;
+          // additionally disallow future positions
+          c00 &= (j0 <= past + i0_global);
+          c01 &= (j1 <= past + i0_global);
+          c10 &= (j0 <= past + i1_global);
+          c11 &= (j1 <= past + i1_global);
         } else if constexpr (use_mask) {
           if (MaskBase) {
-            if (i0_global < len_q && j0 < len_kv) regs[0] += (float) MaskBase[(size_t)i0 * len_kv + j0];
-            if (i0_global < len_q && j1 < len_kv) regs[1] += (float) MaskBase[(size_t)i0 * len_kv + j1];
-            if (i1_global < len_q && j0 < len_kv) regs[2] += (float) MaskBase[(size_t)i1 * len_kv + j0];
-            if (i1_global < len_q && j1 < len_kv) regs[3] += (float) MaskBase[(size_t)i1 * len_kv + j1];
+            // Add external mask via addition; its own values should be 0 or -INF
+            // This step is already branch-free (just bounds-safe if you keep it).
+            if (i0_valid && j0_valid) regs[0] += (float)MaskBase[(size_t)i0 * len_kv + j0];
+            if (i0_valid && j1_valid) regs[1] += (float)MaskBase[(size_t)i0 * len_kv + j1];
+            if (i1_valid && j0_valid) regs[2] += (float)MaskBase[(size_t)i1 * len_kv + j0];
+            if (i1_valid && j1_valid) regs[3] += (float)MaskBase[(size_t)i1 * len_kv + j1];
           }
         }
+
+        // Finally, **select** -INF for invalid cells (no branches)
+        regs[0] = fsel_neg_inf(c00, regs[0]);
+        regs[1] = fsel_neg_inf(c01, regs[1]);
+        regs[2] = fsel_neg_inf(c10, regs[2]);
+        regs[3] = fsel_neg_inf(c11, regs[3]);
       }
 
       // rowmax across KV tiles (2 lanes per output row group)
@@ -412,17 +462,16 @@ void attention_v5_kernel(
       regs[2] /= rowsumexp[qi][1];
       regs[3] /= rowsumexp[qi][1];
 
-      const int g_row0 = q_block_base + row0;
-      const int g_row1 = g_row0 + 8;
+      half2 v0 = __float22half2_rn({regs[0], regs[1]});
+      half2 v1 = __float22half2_rn({regs[2], regs[3]});
+      half2* p0 = reinterpret_cast<half2 *>(O + (row0 + 0) * DIM + col);
+      half2* p1 = reinterpret_cast<half2 *>(O + (row0 + 8) * DIM + col);
 
-      if (g_row0 < len_q) {
-        reinterpret_cast<half2 *>(O + (row0 + 0) * DIM + col)[0] =
-            __float22half2_rn({regs[0], regs[1]});
-      }
-      if (g_row1 < len_q) {
-        reinterpret_cast<half2 *>(O + (row0 + 8) * DIM + col)[0] =
-            __float22half2_rn({regs[2], regs[3]});
-      }
+      const bool o0_valid = (q_block_base + row0)     < len_q;
+      const bool o1_valid = (q_block_base + row0 + 8) < len_q;
+
+      st_global_half2_pred(p0, v0, o0_valid);
+      st_global_half2_pred(p1, v1, o1_valid);
     }
 }
 
@@ -431,7 +480,11 @@ void attention_v5_kernel(
     const half* __restrict__ Q, const half* __restrict__ K, \
     const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
     int bs, int qh, int head_ratio, int len_q, int len_kv, float scale) { \
-      attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask>(Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
+      if ((blockIdx.x == gridDim.x - 1) && (len_q % BLOCK_Q != 0)) { \
+        attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, false>(Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
+      } else { \
+        attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, true>(Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
+      } \
   }
 
 #define INSTANTIATE_MINIMAL_FLASH_FOR_D(block_q, block_kv, D) \
