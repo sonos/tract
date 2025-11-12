@@ -1197,14 +1197,14 @@ impl TypedOp for Conv {
         let input_fact = model.outlet_fact(node.inputs[0])?;
         unsafe {
             if self.q_params.is_some() {
-                let mut patch = TypedModelPatch::default();
+                let mut patch = TypedModelPatch::new("quantized-codegen");
                 let inputs = patch.taps(model, &node.inputs)?;
                 let wire = self
                     .wire_as_quant_im2col(&mut patch, &node.name, &inputs)
                     .context("in wire_as_quant_im2col")?;
                 patch.shunt_outside(model, node.id.into(), wire[0])?;
                 patch.obliterate(node.id)?;
-                Ok(Some(patch.with_context("quantized-codegen")))
+                Ok(Some(patch))
             } else if input_fact
                 .shape
                 .as_concrete()
@@ -1217,7 +1217,7 @@ impl TypedOp for Conv {
                 })
                 .unwrap_or(false)
             {
-                let mut patch = TypedModelPatch::new("wire_as_lazy_im2col");
+                let mut patch = TypedModelPatch::new("lazy-im2col");
                 let inputs = patch.taps(model, &node.inputs)?;
                 let wire = self
                     .wire_as_lazy_im2col(&mut patch, &node.name, &inputs)
@@ -1230,7 +1230,7 @@ impl TypedOp for Conv {
                 && self.group == self.input_channels()
                 && input_fact.shape.as_concrete().is_some()
             {
-                let mut patch = TypedModelPatch::default();
+                let mut patch = TypedModelPatch::new("depth_wise");
                 let inputs = patch.taps(model, &node.inputs)?;
                 let wire = self
                     .wire_as_depth_wise(&mut patch, &node.name, &inputs)
@@ -1239,7 +1239,7 @@ impl TypedOp for Conv {
                 patch.obliterate(node.id)?;
                 Ok(Some(patch))
             } else {
-                let mut patch = TypedModelPatch::default();
+                let mut patch = TypedModelPatch::new("im2col");
                 let inputs = patch.taps(model, &node.inputs)?;
                 let wire = self
                     .wire_as_im2col_pair(&mut patch, &node.name, &inputs)

@@ -87,16 +87,24 @@ impl AxisOp {
     pub fn canonical(&self) -> Cow<'_, AxisOp> {
         match self {
             Move(from, to) if *from == to + 1 => Cow::Owned(Move(*to, *from)),
-            Reshape(at, from, to) if from.len() == 1 && to.len() == 2 && from[0] == to[0] => {
+            Reshape(at, from, to)
+                if from.len() == 1 && to.len() == 2 && from[0] == to[0] && to[1].is_one() =>
+            {
                 Cow::Owned(Add(*at + 1))
             }
-            Reshape(at, from, to) if from.len() == 1 && to.len() == 2 && from[0] == to[1] => {
+            Reshape(at, from, to)
+                if from.len() == 1 && to.len() == 2 && from[0] == to[1] && to[0].is_one() =>
+            {
                 Cow::Owned(Add(*at))
             }
-            Reshape(at, from, to) if from.len() == 2 && to.len() == 1 && from[0] == to[0] => {
+            Reshape(at, from, to)
+                if from.len() == 2 && to.len() == 1 && from[0] == to[0] && from[1].is_one() =>
+            {
                 Cow::Owned(Rm(*at + 1))
             }
-            Reshape(at, from, to) if from.len() == 2 && to.len() == 1 && from[1] == to[0] => {
+            Reshape(at, from, to)
+                if from.len() == 2 && to.len() == 1 && from[1] == to[0] && from[0].is_one() =>
+            {
                 Cow::Owned(Rm(*at))
             }
             other => Cow::Borrowed(other),
