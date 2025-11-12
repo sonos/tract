@@ -5,6 +5,7 @@ mod cast;
 mod change_axes;
 mod concat;
 mod dyn_kv_cache;
+mod minimal_flash_attn;
 mod flash_attn;
 mod fused_axis_op;
 mod gelu_approximate;
@@ -40,3 +41,5 @@ pub use scaled_masked_softmax::CudaScaledMaskedSoftmax;
 pub use slice::CudaSlice;
 pub use softmax::CudaSoftmax;
 pub use unary::CudaUnaryOp;
+pub use minimal_flash_attn::CudaMinimalFlashAttention;
+
