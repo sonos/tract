@@ -1364,6 +1364,21 @@ pub fn suite() -> TractResult<TestSuite> {
     );
 
     suite.add(
+        "dil_2",
+        ConvProblem {
+            shape_in: DataFormat::HWC.from_n_c_hw(1, 1, [2]).unwrap(),
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: arr2(&[[0.0], [0.0]]).into_dyn(),
+            kernel: arr3(&[[[0.0, 0.0]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1),
+            dilations: tvec!(2),
+        },
+    );
+
+    suite.add(
         "bug_metal_0",
         ConvProblem {
             shape_in: DataFormat::NHWC.from_n_c_hw(2, 1, [4]).unwrap(),
