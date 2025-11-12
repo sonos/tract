@@ -107,6 +107,7 @@ impl ConvProblem {
             .fmt
             .from_n_c_hw(self.shape_in.n().cloned().unwrap_or(1), co_per_g * self.group, shape_out)
             .unwrap();
+        // dbg!(&shape_out);
         let mut out = ArrayD::zeros(&*shape_out.shape);
         for n in 0..n {
             for g in 0..self.group {
@@ -1375,6 +1376,21 @@ pub fn suite() -> TractResult<TestSuite> {
             pad: PaddingSpec::Valid,
             strides: tvec!(1),
             dilations: tvec!(2),
+        },
+    );
+
+    suite.add(
+        "dil_3",
+        ConvProblem {
+            shape_in: DataFormat::CHW.from_n_c_hw(1, 2, [1, 4]).unwrap(),
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: arr3(&[[[0.0, 0.0, 0.0, 0.0]], [[0.0, 0.0, 0.0, -1.0]]]).into_dyn(),
+            kernel: arr4(&[[[[0.0, 0.0, 0.0, 0.0]], [[0.0, 0.0, 1.0, 0.0]]]]).into_dyn(),
+            bias: None,
+            pad: PaddingSpec::SameUpper,
+            strides: tvec!(1, 1),
+            dilations: tvec!(1, 3),
         },
     );
 
