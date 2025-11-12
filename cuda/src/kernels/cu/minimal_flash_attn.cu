@@ -17,6 +17,10 @@ uint32_t swizzle(uint32_t index) {
   return index ^ (bits_to_xor << 4);
 }
 
+static __device__ inline void cp_async_cg_16B(uint32_t dst, const void* src) {
+  asm volatile("cp.async.cg.shared.global [%0], [%1], 16;" :: "r"(dst), "l"(src));
+}
+
 static __device__ inline void cp_async_cg_16B_pred(uint32_t dst, const void* src, bool pred) {
 #if __CUDA_ARCH__ >= 800
   asm volatile(
@@ -40,54 +44,54 @@ static __device__ inline void cp_async_cg_16B_pred(uint32_t dst, const void* src
 #endif
 }
 
+// ============================================================================
+// Global->shared loaders
+// ============================================================================
 template <int HEIGHT, int WIDTH, int TB_SIZE>
 static __device__ inline
-void global_to_shared_swizzle_pred(uint32_t dst, const half *src, int src_stride,
-                                   int tid, int valid_rows) {
-  constexpr int elems_per_copy = 16 / sizeof(half);  // 8 f16
-  constexpr int num_iters = HEIGHT * WIDTH / (TB_SIZE * elems_per_copy);
-
-  #pragma unroll
-  for (int iter = 0; iter < num_iters; iter++) {
-    const int idx = (iter * TB_SIZE + tid) * elems_per_copy;
+void global_to_shared_swizzle(uint32_t dst, const half *src, int src_stride, int tid) {
+  constexpr int elems_per_copy = 16 / sizeof(half);              // 8 f16
+  constexpr int iters = HEIGHT * WIDTH / (TB_SIZE * elems_per_copy);
+#pragma unroll
+  for (int it = 0; it < iters; ++it) {
+    const int idx = (it * TB_SIZE + tid) * elems_per_copy;
     const int row = idx / WIDTH;
     const int col = idx % WIDTH;
+    const uint32_t dst_addr = swizzle<WIDTH * sizeof(half)>(dst + (row * WIDTH + col) * sizeof(half));
+    const half*    src_addr = src + (row * src_stride + col);
+    cp_async_cg_16B(dst_addr, src_addr);
+  }
+}
 
-    const uint32_t dst_addr = swizzle<WIDTH * sizeof(half)>(
-        dst + (row * WIDTH + col) * sizeof(half));
-    const half* src_addr = src + (row * src_stride + col);
-
-    // No branching: predicate says if this 16B lane is valid
+template <int HEIGHT, int WIDTH, int TB_SIZE>
+static __device__ inline
+void global_to_shared_swizzle_pred(uint32_t dst, const half *src, int src_stride, int tid, int valid_rows) {
+  constexpr int elems_per_copy = 16 / sizeof(half);              // 8 f16
+  constexpr int iters = HEIGHT * WIDTH / (TB_SIZE * elems_per_copy);
+#pragma unroll
+  for (int it = 0; it < iters; ++it) {
+    const int idx = (it * TB_SIZE + tid) * elems_per_copy;
+    const int row = idx / WIDTH;
+    const int col = idx % WIDTH;
+    const uint32_t dst_addr = swizzle<WIDTH * sizeof(half)>(dst + (row * WIDTH + col) * sizeof(half));
+    const half*    src_addr = src + (row * src_stride + col);
     const bool in_row = (row < valid_rows);
     cp_async_cg_16B_pred(dst_addr, src_addr, in_row);
   }
 }
 
-// --- tensor core loads / mma -----------------------------------
-
-__device__ inline
-void ldmatrix_x2(uint32_t regs[2], uint32_t addr) {
-  asm volatile("ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%0, %1}, [%2];"
-              : "=r"(regs[0]), "=r"(regs[1])
-              : "r"(addr));
-}
+// ============================================================================
+// Tensor Core helpers
+// ============================================================================
 __device__ inline
 void ldmatrix_x4(uint32_t regs[4], uint32_t addr) {
   asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0, %1, %2, %3}, [%4];"
-              : "=r"(regs[0]), "=r"(regs[1]), "=r"(regs[2]), "=r"(regs[3])
-              : "r"(addr));
-}
-__device__ inline
-void ldmatrix_x2_trans(uint32_t regs[2], uint32_t addr) {
-  asm volatile("ldmatrix.sync.aligned.m8n8.x2.trans.shared.b16 {%0, %1}, [%2];"
-              : "=r"(regs[0]), "=r"(regs[1])
-              : "r"(addr));
+              : "=r"(regs[0]), "=r"(regs[1]), "=r"(regs[2]), "=r"(regs[3]) : "r"(addr));
 }
 __device__ inline
 void ldmatrix_x4_trans(uint32_t regs[4], uint32_t addr) {
   asm volatile("ldmatrix.sync.aligned.m8n8.x4.trans.shared.b16 {%0, %1, %2, %3}, [%4];"
-              : "=r"(regs[0]), "=r"(regs[1]), "=r"(regs[2]), "=r"(regs[3])
-              : "r"(addr));
+              : "=r"(regs[0]), "=r"(regs[1]), "=r"(regs[2]), "=r"(regs[3]) : "r"(addr));
 }
 __device__ inline
 void mma_m16n8k16(uint32_t A[4], uint32_t B[2], float D[4]) {
@@ -102,56 +106,53 @@ void mma_m16n8k16(uint32_t A[4], uint32_t B[2], float D[4]) {
                 "f"(D[0]), "f"(D[1]), "f"(D[2]), "f"(D[3]));
 }
 
+// ============================================================================
+// Branch-free selects and predicated global store
+// ============================================================================
 static __device__ inline float fsel_neg_inf(bool keep, float x) {
-  // select: keep ? x : -INF  (compiles to SELP on PTX)
-  // Using inline PTX to force predicate select:
   float out;
   asm volatile(
     "{\n\t"
     ".reg .pred p;\n\t"
-    "setp.ne.b32 p, %2, 0;\n\t"          // p = keep
-    "selp.f32 %0, %1, %3, p;\n\t"        // out = p ? x : -INF
+    "setp.ne.b32 p, %2, 0;\n\t"
+    "selp.f32 %0, %1, %3, p;\n\t"
     "}\n"
-    : "=f"(out)
-    : "f"(x), "r"((int)keep), "f"(-CUDART_INF_F));
+    : "=f"(out) : "f"(x), "r"((int)keep), "f"(-CUDART_INF_F));
   return out;
 }
 
 static __device__ inline void st_global_half2_pred(half2* addr, half2 val, bool pred) {
 #if __CUDA_ARCH__ >= 700
-  // Reinterpret half2 payload as 32-bit without aliasing UB
   uint32_t v;
-  memcpy(&v, &val, sizeof(v));
+  memcpy(&v, &val, sizeof(v)); // pack half2 to 32b
   asm volatile(
     "{\n\t"
     ".reg .pred p;\n\t"
-    "setp.ne.b32 p, %2, 0;\n\t"         // p = (pred != 0)
-    "@p st.global.b32 [%0], %1;\n\t"    // predicated 32-bit store
+    "setp.ne.b32 p, %2, 0;\n\t"
+    "@p st.global.b32 [%0], %1;\n\t"
     "}\n"
     :: "l"(addr), "r"(v), "r"((int)pred));
 #else
   if (pred) { *addr = val; }
 #endif
 }
-// --- kernel ----------------------------------------------------------------
 
+// ============================================================================
+// Kernel
+// ============================================================================
 template<int BLOCK_Q, int BLOCK_KV, int DIM, int NUM_WARPS, bool is_causal, bool use_mask, bool full_q_tile>
 __launch_bounds__(NUM_WARPS * WARP_SIZE)
-__global__
-void attention_v5_kernel(
+__global__ void attention_v5_kernel(
   const half* __restrict__ Q,  // [bs, len_q, DIM]
   const half* __restrict__ K,  // [bs, len_kv, DIM]
   const half* __restrict__ V,  // [bs, len_kv, DIM]
-  const half* __restrict__ M,  // [bs, len_q, len_kv] if use_mask
+  const half* __restrict__ M,  // [bs, len_q, len_kv] if use_mask (0 or -INF)
   half* __restrict__ O,        // [bs, len_q, DIM]
-  int bs,
-  int qh,
-  int head_ratio,
-  int len_q,
-  int len_kv,
-  float scale)
+  int bs, int qh, int head_ratio, int len_q, int len_kv, float scale)
 {
   constexpr int TB_SIZE = NUM_WARPS * WARP_SIZE;
+  constexpr int WARP_Q  = BLOCK_Q / NUM_WARPS;
+  constexpr int MMA_M   = 16, MMA_N = 8, MMA_K = 16;
 
   const int bid = blockIdx.z;
   const int hid = blockIdx.y;
@@ -161,47 +162,31 @@ void attention_v5_kernel(
   const int warp_id = tid / WARP_SIZE;
   const int lane_id = tid % WARP_SIZE;
 
-  const int num_q_blocks = cdiv(len_q, BLOCK_Q);
   const int q_block_base = q_block_id * BLOCK_Q;
-  const int q_valid = max(0, min(BLOCK_Q, len_q - q_block_base)); // tail-safe
-
-  const int past = len_kv - len_q;
+  const int q_valid = max(0, min(BLOCK_Q, len_q - q_block_base));
+  const int past = len_kv - len_q; // causal base
 
   const int q_heads   = qh;
   const int kv_heads  = q_heads / head_ratio;
   const int kv_head_id = hid / head_ratio;
 
-  Q += (( (size_t)bid * q_heads + hid) * (size_t)len_q + q_block_base) * DIM;
-  K += (((size_t)bid * kv_heads + kv_head_id) * (size_t)len_kv) * DIM;
-  V += (((size_t)bid * kv_heads + kv_head_id) * (size_t)len_kv) * DIM;
-  O += (( (size_t)bid * q_heads + hid) * (size_t)len_q + q_block_base) * DIM;
+  // Base pointers
+  const half* Qptr = Q + (((size_t)bid * q_heads + hid) * (size_t)len_q + q_block_base) * DIM;
+  const half* Kptr = K + (((size_t)bid * kv_heads + kv_head_id) * (size_t)len_kv) * DIM;
+  const half* Vptr = V + (((size_t)bid * kv_heads + kv_head_id) * (size_t)len_kv) * DIM;
+  half*       Optr = O + (((size_t)bid * q_heads + hid) * (size_t)len_q + q_block_base) * DIM;
 
-  const half* __restrict__ MaskBase = nullptr;
-  if constexpr (use_mask) {
-    MaskBase = M ? (M + (size_t)q_block_base * len_kv) : nullptr;
-  }
+  const half* __restrict__ MaskBase =
+    (use_mask ? (M ? (M + (size_t)q_block_base * len_kv) : nullptr) : nullptr);
 
   // Shared memory layout:
-  // [Q_smem (BLOCK_Q x DIM)] overlapped with [K_smem 2x (BLOCK_KV x DIM)] + [V_smem (BLOCK_KV x DIM)]
+  // Q_smem (BLOCK_Q x DIM) overlaps K_smem (2 * BLOCK_KV x DIM), plus V_smem (BLOCK_KV x DIM)
   extern __shared__ half smem[];
   const uint32_t Q_smem = __cvta_generic_to_shared(smem);
   const uint32_t K_smem = Q_smem;  // double buffer for K
   const uint32_t V_smem = K_smem + 2 * BLOCK_KV * DIM * sizeof(half);
 
-  constexpr int WARP_Q = BLOCK_Q / NUM_WARPS;
-
-  constexpr int MMA_M = 16;
-  constexpr int MMA_N = 8;
-  constexpr int MMA_K = 16;
-
-  uint32_t Q_rmem[WARP_Q / MMA_M][DIM / MMA_K][4];
-  uint32_t K_rmem[BLOCK_KV / MMA_N][DIM / MMA_K][2];
-
-  uint32_t P_rmem[WARP_Q / MMA_M][BLOCK_KV / MMA_K][4];
-  uint32_t V_rmem[BLOCK_KV / MMA_K][DIM / MMA_N][2];
-
-  float O_rmem[WARP_Q / MMA_M][DIM / MMA_N][4] = {};
-
+  // Per-thread swizzled bases
   uint32_t Q_smem_thread, K_smem_thread, V_smem_thread;
   {
     const int row_off = warp_id * WARP_Q + (lane_id % 16);
@@ -219,105 +204,265 @@ void attention_v5_kernel(
     V_smem_thread = swizzle<DIM * sizeof(half)>(V_smem + (row_off * DIM + col_off) * sizeof(half));
   }
 
+  // Registers
+  uint32_t Q_rmem[WARP_Q / MMA_M][DIM / MMA_K][4];
+  uint32_t K_rmem[BLOCK_KV / MMA_N][DIM / MMA_K][2];
+  uint32_t V_rmem[BLOCK_KV / MMA_K][DIM / MMA_N][2];
+  uint32_t P_rmem[WARP_Q / MMA_M][BLOCK_KV / MMA_K][4];
+  // Softmax accumulators
+  float O_rmem[WARP_Q / MMA_M][DIM / MMA_N][4] = {};
   float rowmax[WARP_Q / MMA_M][2];
   float rowsumexp[WARP_Q / MMA_M][2] = {};
-  #pragma unroll
+#pragma unroll
   for (int qi = 0; qi < WARP_Q / MMA_M; ++qi) {
     rowmax[qi][0] = -FLT_MAX;
     rowmax[qi][1] = -FLT_MAX;
   }
 
-  // Load Q (tail-safe on rows)
-  global_to_shared_swizzle_pred<BLOCK_Q, DIM, TB_SIZE>(Q_smem, Q, DIM, tid, full_q_tile ? BLOCK_Q : q_valid);
-
+  // ------------------ Load Q (tail-safe for last block only) -----------------
+  if constexpr (full_q_tile) {
+    global_to_shared_swizzle<BLOCK_Q, DIM, TB_SIZE>(Q_smem, Qptr, DIM, tid);
+  } else {
+    global_to_shared_swizzle_pred<BLOCK_Q, DIM, TB_SIZE>(Q_smem, Qptr, DIM, tid, q_valid);
+  }
   asm volatile("cp.async.commit_group;");
   asm volatile("cp.async.wait_all;");
   __syncthreads();
 
-  // Q: shared -> registers
-  #pragma unroll
+  // Q: shared -> regs
+#pragma unroll
   for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
-    #pragma unroll
+#pragma unroll
     for (int dk = 0; dk < DIM / MMA_K; ++dk) {
-      uint32_t addr = Q_smem_thread;
-      addr += qi * MMA_M * DIM * sizeof(half);      // row
-      addr ^= dk * MMA_K * sizeof(half);            // col
+      uint32_t addr = Q_smem_thread + qi * MMA_M * DIM * sizeof(half);
+      addr ^= dk * MMA_K * sizeof(half);
       ldmatrix_x4(Q_rmem[qi][dk], addr);
     }
   __syncthreads();
 
-  const int num_kv_iter = cdiv(len_kv, BLOCK_KV);
+  // ------------------ KV split: full tiles then optional tail ----------------
+  const int kv_full_iters = len_kv / BLOCK_KV;      // exact full tiles
+  const int kv_rem        = len_kv % BLOCK_KV;      // tail rows
 
-  auto load_K = [&](int kv_id, int kv_valid_rows) {
-    if (kv_id < num_kv_iter) {
-      const uint32_t dst = K_smem + (kv_id % 2) * (BLOCK_KV * DIM * sizeof(half));
-      global_to_shared_swizzle_pred<BLOCK_KV, DIM, TB_SIZE>(dst, K, DIM, tid, kv_valid_rows);
-      K += BLOCK_KV * DIM;
-    }
+  // ---- Prefetch K0 for FULL loop (unguarded) ----
+  const half* Kcur = Kptr;
+  const half* Vcur = Vptr;
+
+  if (kv_full_iters > 0) {
+    global_to_shared_swizzle<BLOCK_KV, DIM, TB_SIZE>(K_smem + 0, Kcur, DIM, tid);
+    Kcur += (size_t)BLOCK_KV * DIM;
     asm volatile("cp.async.commit_group;");
-  };
-  auto load_V = [&](int kv_valid_rows) {
-    const uint32_t dst = V_smem;
-    global_to_shared_swizzle_pred<BLOCK_KV, DIM, TB_SIZE>(dst, V, DIM, tid, kv_valid_rows);
-    V += BLOCK_KV * DIM;
-    asm volatile("cp.async.commit_group;");
-  };
+  }
 
-  // Prefetch first K tile (tail-safe)
-  int kv0_valid = min(BLOCK_KV, len_kv);
-  load_K(0, kv0_valid);
+  // ----------------------------- FULL KV LOOP -------------------------------
+  for (int kv_id = 0; kv_id < kv_full_iters; ++kv_id) {
+    const int kv_tile_base = kv_id * BLOCK_KV; // columns start for this tile
 
-  for (int kv_id = 0; kv_id < num_kv_iter; ++kv_id) {
-    const int kv_tile_base = kv_id * BLOCK_KV;
-    const int kv_valid = max(0, min(BLOCK_KV, len_kv - kv_tile_base));
-
-    float S_rmem[WARP_Q / MMA_M][BLOCK_KV / MMA_N][4] = {};
-
-    // Prefetch V (single buffer). Ensure previous V use finished.
+    // Prefetch V (unguarded)
     __syncthreads();
-    load_V(kv_valid);
+    global_to_shared_swizzle<BLOCK_KV, DIM, TB_SIZE>(V_smem, Vcur, DIM, tid);
+    Vcur += (size_t)BLOCK_KV * DIM;
+    asm volatile("cp.async.commit_group;");
 
-    // K shared -> registers
+    // Wait K, load K into regs
     asm volatile("cp.async.wait_group 1;");
     __syncthreads();
-    #pragma unroll
+#pragma unroll
     for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt)
-      #pragma unroll
+#pragma unroll
       for (int dk = 0; dk < DIM / MMA_K; dk += 2) {
         uint32_t addr = K_smem_thread + (kv_id % 2) * (BLOCK_KV * DIM * sizeof(half));
-        addr += kvt * MMA_N * DIM * sizeof(half);     // row
-        addr ^= dk  * MMA_K * sizeof(half);           // col
+        addr += kvt * MMA_N * DIM * sizeof(half);
+        addr ^=  dk * MMA_K * sizeof(half);
         ldmatrix_x4(K_rmem[kvt][dk], addr);
       }
 
     // S = Q @ K^T
-    #pragma unroll
+    float S_rmem[WARP_Q / MMA_M][BLOCK_KV / MMA_N][4] = {};
+#pragma unroll
     for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
-      #pragma unroll
+#pragma unroll
       for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt)
-        #pragma unroll
+#pragma unroll
         for (int dk = 0; dk < DIM / MMA_K; ++dk)
           mma_m16n8k16(Q_rmem[qi][dk], K_rmem[kvt][dk], S_rmem[qi][kvt]);
 
-    // Prefetch next K (tail-safe)
-    load_K(kv_id + 1, max(0, min(BLOCK_KV, len_kv - (kv_id + 1) * BLOCK_KV)));
+    // Prefetch next FULL K (unguarded)
+    if (kv_id + 1 < kv_full_iters) {
+      const uint32_t Kdst = K_smem + ((kv_id + 1) % 2) * (BLOCK_KV * DIM * sizeof(half));
+      global_to_shared_swizzle<BLOCK_KV, DIM, TB_SIZE>(Kdst, Kcur, DIM, tid);
+      Kcur += (size_t)BLOCK_KV * DIM;
+      asm volatile("cp.async.commit_group;");
+    }
 
-    // Prepare masking / scaling, track rowmax and rowsumexp
+    // Scale + causal/mask (NO tail bounds in full loop)
     const int lane_row0 = (lane_id / 4);     // 0..7
     const int lane_row1 = lane_row0 + 8;     // 8..15
     const int j_pair0   = 2 * (lane_id % 4); // {0,2,4,6}
 
-    #pragma unroll
+#pragma unroll
     for (int qi = 0; qi < WARP_Q / MMA_M; ++qi) {
-      // scale logits
-      #pragma unroll
+#pragma unroll
       for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
         float* regs = S_rmem[qi][kvt];
         regs[0] *= scale; regs[1] *= scale;
         regs[2] *= scale; regs[3] *= scale;
 
-        const int base_i_block  = warp_id * (BLOCK_Q / NUM_WARPS) + qi * MMA_M;   // 16 rows for this MMA
-        const int col_base_tile = kv_tile_base + kvt * MMA_N;                     // 8 cols for this MMA
+        const int base_i_block  = warp_id * (BLOCK_Q / NUM_WARPS) + qi * MMA_M;
+        const int col_base_tile = kv_tile_base + kvt * MMA_N;
+        const int i0 = base_i_block + lane_row0;
+        const int i1 = base_i_block + lane_row1;
+        const int j0 = col_base_tile + j_pair0 + 0;
+        const int j1 = col_base_tile + j_pair0 + 1;
+
+        const int i0_global = q_block_base + i0;
+        const int i1_global = q_block_base + i1;
+
+        if constexpr (is_causal) {
+          const int jlim0 = past + i0_global;
+          const int jlim1 = past + i1_global;
+          if (j0 > jlim0) regs[0] = -CUDART_INF_F;
+          if (j1 > jlim0) regs[1] = -CUDART_INF_F;
+          if (j0 > jlim1) regs[2] = -CUDART_INF_F;
+          if (j1 > jlim1) regs[3] = -CUDART_INF_F;
+        } else if constexpr (use_mask) {
+          if (MaskBase) {
+            regs[0] += (float)MaskBase[(size_t)i0 * len_kv + j0];
+            regs[1] += (float)MaskBase[(size_t)i0 * len_kv + j1];
+            regs[2] += (float)MaskBase[(size_t)i1 * len_kv + j0];
+            regs[3] += (float)MaskBase[(size_t)i1 * len_kv + j1];
+          }
+        }
+      }
+
+      // rowmax reduce
+      float this_rowmax[2];
+#pragma unroll
+      for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
+        float* r = S_rmem[qi][kvt];
+        if (kvt == 0) { this_rowmax[0] = fmaxf(r[0], r[1]); this_rowmax[1] = fmaxf(r[2], r[3]); }
+        else          { this_rowmax[0] = fmaxf(this_rowmax[0], fmaxf(r[0], r[1]));
+                        this_rowmax[1] = fmaxf(this_rowmax[1], fmaxf(r[2], r[3])); }
+      }
+      this_rowmax[0] = fmaxf(this_rowmax[0], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[0], 1));
+      this_rowmax[0] = fmaxf(this_rowmax[0], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[0], 2));
+      this_rowmax[1] = fmaxf(this_rowmax[1], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[1], 1));
+      this_rowmax[1] = fmaxf(this_rowmax[1], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[1], 2));
+
+      this_rowmax[0] = fmaxf(this_rowmax[0], rowmax[qi][0]);
+      this_rowmax[1] = fmaxf(this_rowmax[1], rowmax[qi][1]);
+
+      const float rescale0 = __expf(rowmax[qi][0] - this_rowmax[0]);
+      const float rescale1 = __expf(rowmax[qi][1] - this_rowmax[1]);
+#pragma unroll
+      for (int d = 0; d < DIM / MMA_N; ++d) {
+        O_rmem[qi][d][0] *= rescale0; O_rmem[qi][d][1] *= rescale0;
+        O_rmem[qi][d][2] *= rescale1; O_rmem[qi][d][3] *= rescale1;
+      }
+      rowmax[qi][0] = this_rowmax[0];
+      rowmax[qi][1] = this_rowmax[1];
+
+      float this_rowsumexp0 = 0.f, this_rowsumexp1 = 0.f;
+#pragma unroll
+      for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
+        float* r = S_rmem[qi][kvt];
+        r[0] = __expf(r[0] - rowmax[qi][0]);
+        r[1] = __expf(r[1] - rowmax[qi][0]);
+        r[2] = __expf(r[2] - rowmax[qi][1]);
+        r[3] = __expf(r[3] - rowmax[qi][1]);
+        this_rowsumexp0 += (r[0] + r[1]);
+        this_rowsumexp1 += (r[2] + r[3]);
+
+        half2* Ppack = reinterpret_cast<half2*>(P_rmem[qi][kvt / 2]);
+        Ppack[(kvt % 2) * 2    ] = __float22half2_rn({r[0], r[1]});
+        Ppack[(kvt % 2) * 2 + 1] = __float22half2_rn({r[2], r[3]});
+      }
+      this_rowsumexp0 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp0, 1);
+      this_rowsumexp0 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp0, 2);
+      this_rowsumexp1 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp1, 1);
+      this_rowsumexp1 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp1, 2);
+      rowsumexp[qi][0] = rowsumexp[qi][0] * rescale0 + this_rowsumexp0;
+      rowsumexp[qi][1] = rowsumexp[qi][1] * rescale1 + this_rowsumexp1;
+    }
+
+    // Wait V, load V and do O += P@V
+    asm volatile("cp.async.wait_group 1;");
+    __syncthreads();
+#pragma unroll
+    for (int kvt = 0; kvt < BLOCK_KV / MMA_K; ++kvt)
+#pragma unroll
+      for (int d = 0; d < DIM / MMA_N; d += 2) {
+        uint32_t addr = V_smem_thread + kvt * MMA_K * DIM * sizeof(half);
+        addr ^= d * MMA_N * sizeof(half);
+        ldmatrix_x4_trans(V_rmem[kvt][d], addr);
+      }
+
+#pragma unroll
+    for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
+#pragma unroll
+      for (int d = 0; d < DIM / MMA_N; ++d)
+#pragma unroll
+        for (int kvt = 0; kvt < BLOCK_KV / MMA_K; ++kvt) {
+          mma_m16n8k16(P_rmem[qi][kvt], V_rmem[kvt][d], O_rmem[qi][d]);
+        }
+
+    // NOTE: For full brevity, use your existing P_rmem packing + reuse it here like in your previous kernel.
+  } // end FULL loop
+
+  // ----------------------------- KV TAIL (optional) --------------------------
+  if (kv_rem) {
+    const int kv_tile_base = kv_full_iters * BLOCK_KV;
+
+    // Prefetch tail K (predicated)
+    const uint32_t Kdst = K_smem + (kv_full_iters % 2) * (BLOCK_KV * DIM * sizeof(half));
+    global_to_shared_swizzle_pred<BLOCK_KV, DIM, TB_SIZE>(Kdst, Kcur, DIM, tid, kv_rem);
+    Kcur += (size_t)BLOCK_KV * DIM;
+    asm volatile("cp.async.commit_group;");
+
+    __syncthreads();
+    // Prefetch tail V (predicated)
+    global_to_shared_swizzle_pred<BLOCK_KV, DIM, TB_SIZE>(V_smem, Vcur, DIM, tid, kv_rem);
+    Vcur += (size_t)BLOCK_KV * DIM;
+    asm volatile("cp.async.commit_group;");
+
+    // Wait K, load K regs
+    asm volatile("cp.async.wait_group 1;");
+    __syncthreads();
+#pragma unroll
+    for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt)
+#pragma unroll
+      for (int dk = 0; dk < DIM / MMA_K; dk += 2) {
+        uint32_t addr = K_smem_thread + (kv_full_iters % 2) * (BLOCK_KV * DIM * sizeof(half));
+        addr += kvt * MMA_N * DIM * sizeof(half);
+        addr ^=  dk * MMA_K * sizeof(half);
+        ldmatrix_x4(K_rmem[kvt][dk], addr);
+      }
+
+    // S = Q @ K^T
+    float S_rmem[WARP_Q / MMA_M][BLOCK_KV / MMA_N][4] = {};
+#pragma unroll
+    for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
+#pragma unroll
+      for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt)
+#pragma unroll
+        for (int dk = 0; dk < DIM / MMA_K; ++dk)
+          mma_m16n8k16(Q_rmem[qi][dk], K_rmem[kvt][dk], S_rmem[qi][kvt]);
+
+    // Tail-only validity + causal/mask via branch-free selects
+    const int lane_row0 = (lane_id / 4);
+    const int lane_row1 = lane_row0 + 8;
+    const int j_pair0   = 2 * (lane_id % 4);
+
+#pragma unroll
+    for (int qi = 0; qi < WARP_Q / MMA_M; ++qi) {
+#pragma unroll
+      for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
+        float* regs = S_rmem[qi][kvt];
+        regs[0] *= scale; regs[1] *= scale;
+        regs[2] *= scale; regs[3] *= scale;
+
+        const int base_i_block  = warp_id * (BLOCK_Q / NUM_WARPS) + qi * MMA_M;
+        const int col_base_tile = kv_tile_base + kvt * MMA_N;
         const int i0 = base_i_block + lane_row0;
         const int i1 = base_i_block + lane_row1;
         const int j0 = col_base_tile + j_pair0 + 0;
@@ -331,22 +476,20 @@ void attention_v5_kernel(
         const bool j0_valid = (j0 < len_kv);
         const bool j1_valid = (j1 < len_kv);
 
-        // Causal predicates (true => keep)
         bool c00 = j0_valid & i0_valid;
         bool c01 = j1_valid & i0_valid;
         bool c10 = j0_valid & i1_valid;
         bool c11 = j1_valid & i1_valid;
 
         if constexpr (is_causal) {
-          // additionally disallow future positions
-          c00 &= (j0 <= past + i0_global);
-          c01 &= (j1 <= past + i0_global);
-          c10 &= (j0 <= past + i1_global);
-          c11 &= (j1 <= past + i1_global);
+          const int jlim0 = past + i0_global;
+          const int jlim1 = past + i1_global;
+          c00 &= (j0 <= jlim0);
+          c01 &= (j1 <= jlim0);
+          c10 &= (j0 <= jlim1);
+          c11 &= (j1 <= jlim1);
         } else if constexpr (use_mask) {
           if (MaskBase) {
-            // Add external mask via addition; its own values should be 0 or -INF
-            // This step is already branch-free (just bounds-safe if you keep it).
             if (i0_valid && j0_valid) regs[0] += (float)MaskBase[(size_t)i0 * len_kv + j0];
             if (i0_valid && j1_valid) regs[1] += (float)MaskBase[(size_t)i0 * len_kv + j1];
             if (i1_valid && j0_valid) regs[2] += (float)MaskBase[(size_t)i1 * len_kv + j0];
@@ -354,25 +497,20 @@ void attention_v5_kernel(
           }
         }
 
-        // Finally, **select** -INF for invalid cells (no branches)
         regs[0] = fsel_neg_inf(c00, regs[0]);
         regs[1] = fsel_neg_inf(c01, regs[1]);
         regs[2] = fsel_neg_inf(c10, regs[2]);
         regs[3] = fsel_neg_inf(c11, regs[3]);
       }
 
-      // rowmax across KV tiles (2 lanes per output row group)
+      // rowmax/rowsumexp like before
       float this_rowmax[2];
-      #pragma unroll
+#pragma unroll
       for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
         float* r = S_rmem[qi][kvt];
-        if (kvt == 0) {
-          this_rowmax[0] = fmaxf(r[0], r[1]);
-          this_rowmax[1] = fmaxf(r[2], r[3]);
-        } else {
-          this_rowmax[0] = fmaxf(this_rowmax[0], fmaxf(r[0], r[1]));
-          this_rowmax[1] = fmaxf(this_rowmax[1], fmaxf(r[2], r[3]));
-        }
+        if (kvt == 0) { this_rowmax[0] = fmaxf(r[0], r[1]); this_rowmax[1] = fmaxf(r[2], r[3]); }
+        else          { this_rowmax[0] = fmaxf(this_rowmax[0], fmaxf(r[0], r[1]));
+                        this_rowmax[1] = fmaxf(this_rowmax[1], fmaxf(r[2], r[3])); }
       }
       this_rowmax[0] = fmaxf(this_rowmax[0], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[0], 1));
       this_rowmax[0] = fmaxf(this_rowmax[0], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[0], 2));
@@ -384,28 +522,22 @@ void attention_v5_kernel(
 
       const float rescale0 = __expf(rowmax[qi][0] - this_rowmax[0]);
       const float rescale1 = __expf(rowmax[qi][1] - this_rowmax[1]);
-
-      #pragma unroll
+#pragma unroll
       for (int d = 0; d < DIM / MMA_N; ++d) {
-        O_rmem[qi][d][0] *= rescale0;
-        O_rmem[qi][d][1] *= rescale0;
-        O_rmem[qi][d][2] *= rescale1;
-        O_rmem[qi][d][3] *= rescale1;
+        O_rmem[qi][d][0] *= rescale0; O_rmem[qi][d][1] *= rescale0;
+        O_rmem[qi][d][2] *= rescale1; O_rmem[qi][d][3] *= rescale1;
       }
-
       rowmax[qi][0] = this_rowmax[0];
       rowmax[qi][1] = this_rowmax[1];
 
       float this_rowsumexp0 = 0.f, this_rowsumexp1 = 0.f;
-
-      #pragma unroll
+#pragma unroll
       for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
         float* r = S_rmem[qi][kvt];
         r[0] = __expf(r[0] - rowmax[qi][0]);
         r[1] = __expf(r[1] - rowmax[qi][0]);
         r[2] = __expf(r[2] - rowmax[qi][1]);
         r[3] = __expf(r[3] - rowmax[qi][1]);
-
         this_rowsumexp0 += (r[0] + r[1]);
         this_rowsumexp1 += (r[2] + r[3]);
 
@@ -414,26 +546,23 @@ void attention_v5_kernel(
         Ppack[(kvt % 2) * 2]     = __float22half2_rn({r[0], r[1]});
         Ppack[(kvt % 2) * 2 + 1] = __float22half2_rn({r[2], r[3]});
       }
-
       this_rowsumexp0 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp0, 1);
       this_rowsumexp0 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp0, 2);
       this_rowsumexp1 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp1, 1);
       this_rowsumexp1 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp1, 2);
-
       rowsumexp[qi][0] = rowsumexp[qi][0] * rescale0 + this_rowsumexp0;
       rowsumexp[qi][1] = rowsumexp[qi][1] * rescale1 + this_rowsumexp1;
     }
 
-    // V shared -> registers
+    // Wait V and finish O += P@V (tail)
     asm volatile("cp.async.wait_group 1;");
     __syncthreads();
-    #pragma unroll
+#pragma unroll
     for (int kvt = 0; kvt < BLOCK_KV / MMA_K; ++kvt)
-      #pragma unroll
+#pragma unroll
       for (int d = 0; d < DIM / MMA_N; d += 2) {
-        uint32_t addr = V_smem_thread;
-        addr += kvt * MMA_K * DIM * sizeof(half);   // row
-        addr ^= d * MMA_N * sizeof(half);           // col
+        uint32_t addr = V_smem_thread + kvt * MMA_K * DIM * sizeof(half);
+        addr ^= d * MMA_N * sizeof(half);
         ldmatrix_x4_trans(V_rmem[kvt][d], addr);
       }
 
@@ -447,16 +576,15 @@ void attention_v5_kernel(
           mma_m16n8k16(P_rmem[qi][kvt], V_rmem[kvt][d], O_rmem[qi][d]);
   }
 
-  // write O back (tail-safe on rows)
-  #pragma unroll
+  // ----------------------------- Writeback (Q tail-safe) ---------------------
+#pragma unroll
   for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
-    #pragma unroll
+#pragma unroll
     for (int d = 0; d < DIM / MMA_N; ++d) {
       const int row0 = warp_id * WARP_Q + qi * MMA_M + (lane_id / 4);
       const int col  = d * MMA_N + (lane_id % 4) * 2;
 
       float *regs = O_rmem[qi][d];
-      // divide by denom
       regs[0] /= rowsumexp[qi][0];
       regs[1] /= rowsumexp[qi][0];
       regs[2] /= rowsumexp[qi][1];
@@ -464,28 +592,40 @@ void attention_v5_kernel(
 
       half2 v0 = __float22half2_rn({regs[0], regs[1]});
       half2 v1 = __float22half2_rn({regs[2], regs[3]});
-      half2* p0 = reinterpret_cast<half2 *>(O + (row0 + 0) * DIM + col);
-      half2* p1 = reinterpret_cast<half2 *>(O + (row0 + 8) * DIM + col);
 
-      const bool o0_valid = (q_block_base + row0)     < len_q;
-      const bool o1_valid = (q_block_base + row0 + 8) < len_q;
+      half2* p0 = reinterpret_cast<half2 *>(Optr + (row0 + 0) * DIM + col);
+      half2* p1 = reinterpret_cast<half2 *>(Optr + (row0 + 8) * DIM + col);
 
-      st_global_half2_pred(p0, v0, o0_valid);
-      st_global_half2_pred(p1, v1, o1_valid);
+      if constexpr (full_q_tile) {
+        // No predicates in full Q tiles
+        *p0 = v0;
+        *p1 = v1;
+      } else {
+        const bool valid0 = (q_block_base + row0)     < len_q;
+        const bool valid1 = (q_block_base + row0 + 8) < len_q;
+        st_global_half2_pred(p0, v0, valid0);
+        st_global_half2_pred(p1, v1, valid1);
+      }
     }
 }
 
+// ============================================================================
+// Host-visible wrappers / instantiations
+// ============================================================================
 #define INSTANTIATE_MINIMAL_FLASH_FOR_MASK_STRATEGY(BLOCK_Q, BLOCK_KV, D, is_causal, use_mask) \
-  extern "C" __global__ void attention_v5_##BLOCK_Q##_##BLOCK_KV##_##D##_##is_causal##_##use_mask( \
-    const half* __restrict__ Q, const half* __restrict__ K, \
-    const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
-    int bs, int qh, int head_ratio, int len_q, int len_kv, float scale) { \
-      if ((blockIdx.x == gridDim.x - 1) && (len_q % BLOCK_Q != 0)) { \
-        attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, false>(Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
-      } else { \
-        attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, true>(Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
-      } \
-  }
+extern "C" __global__ void attention_v5_##BLOCK_Q##_##BLOCK_KV##_##D##_##is_causal##_##use_mask ( \
+  const half* __restrict__ Q, const half* __restrict__ K, \
+  const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
+  int bs, int qh, int head_ratio, int len_q, int len_kv, float scale) { \
+  const bool last_q_block = (blockIdx.x == gridDim.x - 1) && (len_q % BLOCK_Q != 0); \
+  if (last_q_block) { \
+    attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, false>( \
+      Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
+  } else { \
+    attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, true>( \
+      Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
+  } \
+}
 
 #define INSTANTIATE_MINIMAL_FLASH_FOR_D(block_q, block_kv, D) \
   INSTANTIATE_MINIMAL_FLASH_FOR_MASK_STRATEGY(block_q, block_kv, D, false, false) \
