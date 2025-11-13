@@ -152,7 +152,7 @@ impl CudaFlashAttn {
             launch_args.arg(&scale);
 
             let cfg = LaunchConfig {
-                grid_dim: (num_full_q_blocks as _, n_qh as _, b as _),
+                grid_dim: (num_q_blocks as _, n_qh as _, b as _),
                 block_dim: (tb_size as _, 1, 1),
                 shared_mem_bytes: smem_size as _,
             };
