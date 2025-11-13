@@ -3,8 +3,8 @@ use criterion::*;
 
 use tract_core::internal::*;
 use tract_cuda::CUDA_STREAM;
-use tract_cuda::kernels::flash_attn::GgmlFlashAttn;
-use tract_cuda::kernels::minimal_flash_attn::MinimalFlashAttn;
+use tract_cuda::kernels::flash_attn::CudaFlashAttn;
+use tract_cuda::kernels::ggml_flash_attn::GgmlFlashAttn;
 use tract_gpu::tensor::IntoDevice;
 
 pub fn cuda_ggml_flash(
@@ -75,7 +75,7 @@ pub fn cuda_minimal_flash(
 
         crit.bench_function(&format!("tract_cuda_minimal_flash"), |be| {
             be.iter(|| {
-                let _ = MinimalFlashAttn
+                let _ = CudaFlashAttn
                     .eval(stream, &cuda_q, &cuda_k, &cuda_v, Some(&cuda_mask), 1.0, false)
                     .unwrap();
             });
