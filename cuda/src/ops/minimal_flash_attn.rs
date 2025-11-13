@@ -31,7 +31,7 @@ impl EvalOp for CudaMinimalFlashAttention {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         CUDA_STREAM.with(|stream| {
-            ensure!(inputs.len() >= 4, "flash-attn expects [q, k, v, (mask)]");
+            ensure!(inputs.len() >= 3, "flash-attn expects [q, k, v, (mask)]");
 
             let q = inputs[0].to_device_tensor()?;
             let k = inputs[1].to_device_tensor()?;
@@ -55,7 +55,7 @@ impl EvalOp for CudaMinimalFlashAttention {
 impl TypedOp for CudaMinimalFlashAttention {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
-            ensure!(facts.len() == 4);
+            ensure!(facts.len() >= 3);
             let dt = facts[0].datum_type;
 
             ensure!(facts.iter().all(|f| f.rank() == 4));

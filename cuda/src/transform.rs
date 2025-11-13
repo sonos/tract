@@ -1,8 +1,7 @@
-use num_traits::Float;
 use tract_core::dyn_clone::clone_box;
 use tract_core::internal::*;
 use tract_core::model::translator::Translate;
-use tract_core::ops::array::{MultiBroadcastTo, PadMode, Slice, TypedConcat};
+use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
 use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::cast::Cast;
 use tract_core::ops::einsum::prefix_matmul::{rewrite_einsum_to_prefix_matmul, PrefixMatMul};
@@ -611,12 +610,18 @@ fn convert_sdpa_to_cuda_flash_attn(
     // ---- Facts & quick guards -------------------------------------------------
     let facts = model.node_input_facts(node.id)?;
 
-    let [qf, kf, vf, mf] = [facts[0], facts[1], facts[2], facts[3]];
+    let [qf, kf, vf] = [facts[0], facts[1], facts[2]];
     ensure!(kf.datum_type() == vf.datum_type(), "K/V dtypes must match");
 
-    // split inputs as (q, k, v, m)
-    let [q, k, v, m, ..] = &mut inputs[..] else {
-        bail!("need at least 4 inputs");
+    let mask_fact = if facts.len() == 4 {
+        Some(facts[3])
+    } else { None };
+
+
+    let (q, k, v, m_opt) = match &mut inputs[..] {
+        [q, k, v, m, ..] => (q, k, v, Some(m)),
+        [q, k, v] => (q, k, v, None),
+        _ => bail!("unexpected number of inputs"),
     };
 
     // ---- Small helpers --------------------------------------------------------
@@ -659,26 +664,6 @@ fn convert_sdpa_to_cuda_flash_attn(
         }
     }
 
-    fn pad_last_two_dims(
-        target: &mut TypedModel,
-        node_name: &str,
-        dst: &mut OutletId,
-        pad_s: TDim,
-        pad_sp: TDim,
-        fill: Tensor,
-        suffix: &str,
-    ) -> TractResult<()> {
-        let mut pads = vec![(TDim::Val(0), TDim::Val(0)); 4];
-        pads[2].1 = pad_s;
-        pads[3].1 = pad_sp;
-        *dst = target.wire_node(
-            name(node_name, suffix),
-            ops::CudaPad::new(pads, PadMode::Constant(fill.into()))?,
-            &[*dst],
-        )?[0];
-        Ok(())
-    }
-
     // ----- casts
     let q_dt = qf.datum_type().unwrap();
     let kv_dt = kf.datum_type().unwrap();
@@ -699,36 +684,17 @@ fn convert_sdpa_to_cuda_flash_attn(
     );
     ensure!(kf.shape == vf.shape, "K and V shapes must be identical");
 
-    // ----- pad K/V seq to multiple of 64
-    let s_plus_p = kf.shape.dims()[qf.rank() - 2].clone();
-    let s_plus_p_to_64 = s_plus_p.clone().div_ceil(32) * 32 - s_plus_p;
-
-    let zero_f16: Arc<Tensor> = tensor0(f16::from_f32(0.0)).into();
-    // Only pad dim=2 (S+P) for K/V
-    let mut pads_kv = vec![(TDim::Val(0), TDim::Val(0)); 4];
-    pads_kv[2].1 = s_plus_p_to_64.clone();
-    *k = target.wire_node(
-        name(&node.name, ".pad_k"),
-        ops::CudaPad::new(pads_kv.clone(), PadMode::Constant(zero_f16.clone()))?,
-        &[*k],
-    )?[0];
-    *v = target.wire_node(
-        name(&node.name, ".pad_v"),
-        ops::CudaPad::new(pads_kv, PadMode::Constant(zero_f16))?,
-        &[*v],
-    )?[0];
-
     // ----- mask: cast→reshape→pad
-    mut_cast(target, &node.name, m, mf.datum_type().unwrap(), DatumType::F16, ".cast_m")?;
-    if mf.rank() != 4 {
-        let add = 4 - mf.rank();
-        let ax =
-            ops::CudaAxisOp::from_tract_core(AxisOp::Reshape(0, tvec![], tvec![TDim::Val(1); add]));
-        *m = target.wire_node(name(&node.name, ".reshape_m"), ax, &[*m])?[0];
+    if let Some(mf) = mask_fact {
+        let m = m_opt.unwrap();
+        mut_cast(target, &node.name, m, mf.datum_type().unwrap(), DatumType::F16, ".cast_m")?;
+        if mf.rank() != 4 {
+            let add = 4 - mf.rank();
+            let ax =
+                ops::CudaAxisOp::from_tract_core(AxisOp::Reshape(0, tvec![], tvec![TDim::Val(1); add]));
+            *m = target.wire_node(name(&node.name, ".reshape_m"), ax, &[*m])?[0];
+        }
     }
-    //let s = qf.shape.dims()[qf.rank() - 2].clone();
-    let neg_inf_f16 = tensor0(-f16::infinity());
-    pad_last_two_dims(target, &node.name, m, TDim::Val(0), s_plus_p_to_64, neg_inf_f16, ".pad_m")?;
 
     // ----- scale & op
     let scale = op
