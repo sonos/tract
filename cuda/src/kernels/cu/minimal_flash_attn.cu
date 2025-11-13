@@ -307,7 +307,11 @@ static __device__ void attention_v5_kernel(
   const int warp_id = tid / WARP_SIZE;
   const int lane_id = tid % WARP_SIZE;
 
-  const int q_block_base = q_block_id * BLOCK_Q;
+  int q_block_id_offset = 0;
+  if constexpr(!full_q_tile) {
+    q_block_id_offset = (len_q / BLOCK_Q);
+  }
+  const int q_block_base = (q_block_id + q_block_id_offset) * BLOCK_Q;
   const int q_valid = max(0, min(BLOCK_Q, len_q - q_block_base));
   const int past = len_kv - len_q; // causal base
 
