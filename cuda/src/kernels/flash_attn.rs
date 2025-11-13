@@ -127,10 +127,10 @@ impl CudaFlashAttn {
         let m_view = mask.map(get_cuda_view).unwrap_or_else(|| null_ptr.as_view());
         let o_view = get_cuda_view(out);
 
-        if num_full_q_blocks > 0 {
+        let kernel_launcher = |suffix: &str, num_q_blocks: usize| -> TractResult<()> {
             let func = ctxt.load_pipeline(
                 LibraryName::FlashAttn,
-                format!("attention_v5_full_{block_q}_{block_kv}_{d}_{is_causal}_{use_mask}"),
+                format!("attention_v5_{suffix}_{block_q}_{block_kv}_{d}_{is_causal}_{use_mask}"),
             )?;
 
             func.set_attribute(
@@ -159,40 +159,15 @@ impl CudaFlashAttn {
             unsafe {
                 launch_args.launch(cfg);
             }
+            Ok(())
+        };
+
+        if num_full_q_blocks > 0 {
+            kernel_launcher("full", num_full_q_blocks)?;
         }
 
         if len_q % block_q != 0 {
-            let func = ctxt.load_pipeline(
-                LibraryName::FlashAttn,
-                format!("attention_v5_tail_{block_q}_{block_kv}_{d}_{is_causal}_{use_mask}"),
-            )?;
-
-            func.set_attribute(
-                CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-                smem_size as _,
-            )?;
-
-            let mut launch_args = stream.launch_builder(&func);
-            launch_args.arg(&q_view);
-            launch_args.arg(&k_view);
-            launch_args.arg(&v_view);
-            launch_args.arg(&m_view);
-            launch_args.arg(&o_view);
-            launch_args.arg(&b);
-            launch_args.arg(&n_qh);
-            launch_args.arg(&head_ratio);
-            launch_args.arg(&len_q);
-            launch_args.arg(&k.shape()[2]);
-            launch_args.arg(&scale);
-
-            let cfg = LaunchConfig {
-                grid_dim: (1, n_qh as _, b as _),
-                block_dim: (tb_size as _, 1, 1),
-                shared_mem_bytes: smem_size as _,
-            };
-            unsafe {
-                launch_args.launch(cfg);
-            }
+            kernel_launcher("tail", 1)?;
         }
 
         Ok(())
