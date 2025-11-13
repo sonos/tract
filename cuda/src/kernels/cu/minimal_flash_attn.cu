@@ -1,12 +1,9 @@
 #include "common.cuh"
 #include <math_constants.h>
 
-__device__ __host__ constexpr
-int cdiv(int a, int b) { return (a + b - 1) / b; }
-
 // NOTE: stride in bytes
 template <int STRIDE>
-__device__
+static __device__ __forceinline__
 uint32_t swizzle(uint32_t index) {
   // no need swizzling
   if constexpr (STRIDE == 16)
@@ -48,33 +45,33 @@ static __device__ inline void cp_async_cg_16B_pred(uint32_t dst, const void* src
 // Global->shared loaders
 // ============================================================================
 template <int HEIGHT, int WIDTH, int TB_SIZE>
-static __device__ inline
-void global_to_shared_swizzle(uint32_t dst, const half *src, int src_stride, int tid) {
-  constexpr int elems_per_copy = 16 / sizeof(half);              // 8 f16
+static __device__ __forceinline__
+void global_to_shared_swizzle(uint32_t dst, const half* __restrict__ src, int src_stride, int tid) {
+  constexpr int elems_per_copy = 16 / sizeof(half);   // 8 f16
   constexpr int iters = HEIGHT * WIDTH / (TB_SIZE * elems_per_copy);
-#pragma unroll
+  #pragma unroll
   for (int it = 0; it < iters; ++it) {
     const int idx = (it * TB_SIZE + tid) * elems_per_copy;
     const int row = idx / WIDTH;
     const int col = idx % WIDTH;
     const uint32_t dst_addr = swizzle<WIDTH * sizeof(half)>(dst + (row * WIDTH + col) * sizeof(half));
-    const half*    src_addr = src + (row * src_stride + col);
+    const half* __restrict__ src_addr = src + (row * src_stride + col);
     cp_async_cg_16B(dst_addr, src_addr);
   }
 }
 
 template <int HEIGHT, int WIDTH, int TB_SIZE>
-static __device__ inline
-void global_to_shared_swizzle_pred(uint32_t dst, const half *src, int src_stride, int tid, int valid_rows) {
-  constexpr int elems_per_copy = 16 / sizeof(half);              // 8 f16
+static __device__ __forceinline__
+void global_to_shared_swizzle_pred(uint32_t dst, const half* __restrict__ src, int src_stride, int tid, int valid_rows) {
+  constexpr int elems_per_copy = 16 / sizeof(half);
   constexpr int iters = HEIGHT * WIDTH / (TB_SIZE * elems_per_copy);
-#pragma unroll
+  #pragma unroll
   for (int it = 0; it < iters; ++it) {
     const int idx = (it * TB_SIZE + tid) * elems_per_copy;
     const int row = idx / WIDTH;
     const int col = idx % WIDTH;
     const uint32_t dst_addr = swizzle<WIDTH * sizeof(half)>(dst + (row * WIDTH + col) * sizeof(half));
-    const half*    src_addr = src + (row * src_stride + col);
+    const half* __restrict__ src_addr = src + (row * src_stride + col);
     const bool in_row = (row < valid_rows);
     cp_async_cg_16B_pred(dst_addr, src_addr, in_row);
   }
@@ -83,17 +80,17 @@ void global_to_shared_swizzle_pred(uint32_t dst, const half *src, int src_stride
 // ============================================================================
 // Tensor Core helpers
 // ============================================================================
-__device__ inline
+static __device__ __forceinline__
 void ldmatrix_x4(uint32_t regs[4], uint32_t addr) {
   asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0, %1, %2, %3}, [%4];"
               : "=r"(regs[0]), "=r"(regs[1]), "=r"(regs[2]), "=r"(regs[3]) : "r"(addr));
 }
-__device__ inline
+static __device__ __forceinline__
 void ldmatrix_x4_trans(uint32_t regs[4], uint32_t addr) {
   asm volatile("ldmatrix.sync.aligned.m8n8.x4.trans.shared.b16 {%0, %1, %2, %3}, [%4];"
               : "=r"(regs[0]), "=r"(regs[1]), "=r"(regs[2]), "=r"(regs[3]) : "r"(addr));
 }
-__device__ inline
+static __device__ __forceinline__
 void mma_m16n8k16(uint32_t A[4], uint32_t B[2], float D[4]) {
   asm volatile("mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 "
               "{%0, %1, %2, %3}, "
@@ -109,7 +106,7 @@ void mma_m16n8k16(uint32_t A[4], uint32_t B[2], float D[4]) {
 // ============================================================================
 // Branch-free selects and predicated global store
 // ============================================================================
-static __device__ inline float fsel_neg_inf(bool keep, float x) {
+static __device__ __forceinline__ float fsel_neg_inf(bool keep, float x) {
   float out;
   asm volatile(
     "{\n\t"
@@ -121,7 +118,7 @@ static __device__ inline float fsel_neg_inf(bool keep, float x) {
   return out;
 }
 
-static __device__ inline void st_global_half2_pred(half2* addr, half2 val, bool pred) {
+static __device__ __forceinline__ void st_global_half2_pred(half2* addr, half2 val, bool pred) {
 #if __CUDA_ARCH__ >= 700
   uint32_t v;
   memcpy(&v, &val, sizeof(v)); // pack half2 to 32b
@@ -137,17 +134,18 @@ static __device__ inline void st_global_half2_pred(half2* addr, half2 val, bool 
 #endif
 }
 
+// ======= kv_iter_body (invariants hoisted, tight scopes) =====================
 template<
   int BLOCK_Q, int BLOCK_KV, int DIM, int NUM_WARPS,
   bool is_causal, bool use_mask, bool full_q_tile, bool Tail
 >
-static __device__ __forceinline__ void kv_iter_body(
+static __device__ __forceinline__
+void kv_iter_body(
     const int kv_tile_base,
     const int len_q, const int len_kv, const int past,
     const int q_block_base, const int warp_id, const int lane_id,
     float scale, const half* __restrict__ MaskBase,
     float S_rmem[ (BLOCK_Q/NUM_WARPS) / 16 ][ BLOCK_KV / 8 ][4],
-    // accumulators / packs passed by reference
     uint32_t (&P_rmem)[ (BLOCK_Q/NUM_WARPS) / 16 ][ BLOCK_KV / 16 ][4],
     float (&O_rmem)[ (BLOCK_Q/NUM_WARPS) / 16 ][ DIM / 8 ][4],
     float (&rowmax)[ (BLOCK_Q/NUM_WARPS) / 16 ][2],
@@ -156,48 +154,51 @@ static __device__ __forceinline__ void kv_iter_body(
   constexpr int WARP_Q = BLOCK_Q / NUM_WARPS;
   constexpr int MMA_M = 16, MMA_N = 8;
 
-  const int lane_row0 = (lane_id / 4);
+  // hoisted per-lane constants
+  const int lane_row0 = (lane_id >> 2);      // 0..7
   const int lane_row1 = lane_row0 + 8;
-  const int j_pair0   = 2 * (lane_id % 4);
+  const int j_pair0   = (lane_id & 3) << 1;
 
-  // Per 16x* slice (qi)
-#pragma unroll
+  // per-qi
+  #pragma unroll
   for (int qi = 0; qi < WARP_Q / MMA_M; ++qi) {
-#pragma unroll
+    // hoisted per-qi invariants
+    const int base_i_block = warp_id * (BLOCK_Q / NUM_WARPS) + qi * MMA_M;
+    const int i0           = base_i_block + lane_row0;
+    const int i1           = base_i_block + lane_row1;
+    const int i0g          = q_block_base + i0;
+    const int i1g          = q_block_base + i1;
+    int jlim0 = 0, jlim1 = 0;
+    if constexpr (is_causal) { jlim0 = past + i0g; jlim1 = past + i1g; }
+
+    // ---- scale, (mask/causal), rowmax (tight scope for S_rmem live range) ---
+    float this_rowmax0 = -CUDART_INF_F;
+    float this_rowmax1 = -CUDART_INF_F;
+
+    #pragma unroll
     for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
       float* r = S_rmem[qi][kvt];
+      // scale
       r[0] *= scale; r[1] *= scale; r[2] *= scale; r[3] *= scale;
 
-      // indices for this fragment
-      const int base_i_block  = warp_id * (BLOCK_Q / NUM_WARPS) + qi * MMA_M; // 16 rows
-      const int col_base_tile = kv_tile_base + kvt * MMA_N;                   // 8 cols
-
-      const int i0 = base_i_block + lane_row0;
-      const int i1 = base_i_block + lane_row1;
+      const int col_base_tile = kv_tile_base + kvt * MMA_N;
       const int j0 = col_base_tile + j_pair0 + 0;
       const int j1 = col_base_tile + j_pair0 + 1;
 
-      const int i0_global = q_block_base + i0;
-      const int i1_global = q_block_base + i1;
-
-      if constexpr(Tail) {
-        const bool i0_valid = full_q_tile ? true  : (i0_global < len_q);
-        const bool i1_valid = full_q_tile ? true  : (i1_global < len_q);
+      if constexpr (Tail) {
+        // tail validity
+        const bool i0_valid = full_q_tile ? true : (i0g < len_q);
+        const bool i1_valid = full_q_tile ? true : (i1g < len_q);
         const bool j0_valid = (j0 < len_kv);
         const bool j1_valid = (j1 < len_kv);
-
         bool c00 = j0_valid & i0_valid;
         bool c01 = j1_valid & i0_valid;
         bool c10 = j0_valid & i1_valid;
         bool c11 = j1_valid & i1_valid;
 
         if constexpr (is_causal) {
-          const int jlim0 = past + i0_global;
-          const int jlim1 = past + i1_global;
-          c00 &= (j0 <= jlim0);
-          c01 &= (j1 <= jlim0);
-          c10 &= (j0 <= jlim1);
-          c11 &= (j1 <= jlim1);
+          c00 &= (j0 <= jlim0); c01 &= (j1 <= jlim0);
+          c10 &= (j0 <= jlim1); c11 &= (j1 <= jlim1);
         } else if constexpr (use_mask) {
           if (MaskBase) {
             if (i0_valid && j0_valid) r[0] += (float)MaskBase[(size_t)i0 * len_kv + j0];
@@ -206,15 +207,13 @@ static __device__ __forceinline__ void kv_iter_body(
             if (i1_valid && j1_valid) r[3] += (float)MaskBase[(size_t)i1 * len_kv + j1];
           }
         }
-
         r[0] = fsel_neg_inf(c00, r[0]);
         r[1] = fsel_neg_inf(c01, r[1]);
         r[2] = fsel_neg_inf(c10, r[2]);
         r[3] = fsel_neg_inf(c11, r[3]);
       } else {
+        // full tiles: no row/col bounds
         if constexpr (is_causal) {
-          const int jlim0 = past + i0_global;
-          const int jlim1 = past + i1_global;
           if (j0 > jlim0) r[0] = -CUDART_INF_F;
           if (j1 > jlim0) r[1] = -CUDART_INF_F;
           if (j0 > jlim1) r[2] = -CUDART_INF_F;
@@ -228,54 +227,56 @@ static __device__ __forceinline__ void kv_iter_body(
           }
         }
       }
+
+      // rowmax accumulate
+      this_rowmax0 = fmaxf(this_rowmax0, fmaxf(r[0], r[1]));
+      this_rowmax1 = fmaxf(this_rowmax1, fmaxf(r[2], r[3]));
     }
 
-    // rowmax reduce
-    float this_rowmax[2];
-#pragma unroll
-    for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
-      float* r = S_rmem[qi][kvt];
-      if (kvt == 0) { this_rowmax[0] = fmaxf(r[0], r[1]); this_rowmax[1] = fmaxf(r[2], r[3]); }
-      else          { this_rowmax[0] = fmaxf(this_rowmax[0], fmaxf(r[0], r[1]));
-                      this_rowmax[1] = fmaxf(this_rowmax[1], fmaxf(r[2], r[3])); }
-    }
-    this_rowmax[0] = fmaxf(this_rowmax[0], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[0], 1));
-    this_rowmax[0] = fmaxf(this_rowmax[0], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[0], 2));
-    this_rowmax[1] = fmaxf(this_rowmax[1], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[1], 1));
-    this_rowmax[1] = fmaxf(this_rowmax[1], __shfl_xor_sync(0xFFFFFFFF, this_rowmax[1], 2));
+    // small warp reduce (xor tree 1,2)
+    this_rowmax0 = fmaxf(this_rowmax0, __shfl_xor_sync(0xFFFFFFFF, this_rowmax0, 1));
+    this_rowmax0 = fmaxf(this_rowmax0, __shfl_xor_sync(0xFFFFFFFF, this_rowmax0, 2));
+    this_rowmax1 = fmaxf(this_rowmax1, __shfl_xor_sync(0xFFFFFFFF, this_rowmax1, 1));
+    this_rowmax1 = fmaxf(this_rowmax1, __shfl_xor_sync(0xFFFFFFFF, this_rowmax1, 2));
 
-    this_rowmax[0] = fmaxf(this_rowmax[0], rowmax[qi][0]);
-    this_rowmax[1] = fmaxf(this_rowmax[1], rowmax[qi][1]);
+    this_rowmax0 = fmaxf(this_rowmax0, rowmax[qi][0]);
+    this_rowmax1 = fmaxf(this_rowmax1, rowmax[qi][1]);
+    // rescale accumulators with EXACT same factor you’ll use for denominators
+    const float rescale0 = __expf(rowmax[qi][0] - this_rowmax0);
+    const float rescale1 = __expf(rowmax[qi][1] - this_rowmax1);
 
-    const float rescale0 = __expf(rowmax[qi][0] - this_rowmax[0]);
-    const float rescale1 = __expf(rowmax[qi][1] - this_rowmax[1]);
-#pragma unroll
+    #pragma unroll
     for (int d = 0; d < DIM / MMA_N; ++d) {
       O_rmem[qi][d][0] *= rescale0; O_rmem[qi][d][1] *= rescale0;
       O_rmem[qi][d][2] *= rescale1; O_rmem[qi][d][3] *= rescale1;
     }
-    rowmax[qi][0] = this_rowmax[0];
-    rowmax[qi][1] = this_rowmax[1];
-
+    rowmax[qi][0] = this_rowmax0;
+    rowmax[qi][1] = this_rowmax1;
     float this_rowsumexp0 = 0.f, this_rowsumexp1 = 0.f;
-#pragma unroll
+
+    // exponentiate, pack directly into P_rmem (keep S_rmem live only here)
+    #pragma unroll
     for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt) {
       float* r = S_rmem[qi][kvt];
-      r[0] = __expf(r[0] - rowmax[qi][0]);
-      r[1] = __expf(r[1] - rowmax[qi][0]);
-      r[2] = __expf(r[2] - rowmax[qi][1]);
-      r[3] = __expf(r[3] - rowmax[qi][1]);
+      r[0] = __expf(r[0] - this_rowmax0);
+      r[1] = __expf(r[1] - this_rowmax0);
+      r[2] = __expf(r[2] - this_rowmax1);
+      r[3] = __expf(r[3] - this_rowmax1);
+
       this_rowsumexp0 += (r[0] + r[1]);
       this_rowsumexp1 += (r[2] + r[3]);
 
       half2* Ppack = reinterpret_cast<half2*>(P_rmem[qi][kvt / 2]);
-      Ppack[(kvt % 2) * 2    ] = __float22half2_rn({r[0], r[1]});
-      Ppack[(kvt % 2) * 2 + 1] = __float22half2_rn({r[2], r[3]});
+      Ppack[(kvt & 1) * 2    ] = __float22half2_rn({r[0], r[1]});
+      Ppack[(kvt & 1) * 2 + 1] = __float22half2_rn({r[2], r[3]});
     }
+
+    // reduce sums (xor 1,2)
     this_rowsumexp0 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp0, 1);
     this_rowsumexp0 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp0, 2);
     this_rowsumexp1 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp1, 1);
     this_rowsumexp1 += __shfl_xor_sync(0xFFFFFFFF, this_rowsumexp1, 2);
+
     rowsumexp[qi][0] = rowsumexp[qi][0] * rescale0 + this_rowsumexp0;
     rowsumexp[qi][1] = rowsumexp[qi][1] * rescale1 + this_rowsumexp1;
   }
@@ -286,8 +287,7 @@ static __device__ __forceinline__ void kv_iter_body(
 // Kernel
 // ============================================================================
 template<int BLOCK_Q, int BLOCK_KV, int DIM, int NUM_WARPS, bool is_causal, bool use_mask, bool full_q_tile>
-__launch_bounds__(NUM_WARPS * WARP_SIZE)
-__global__ void attention_v5_kernel(
+static __device__ void attention_v5_kernel(
   const half* __restrict__ Q,  // [bs, len_q, DIM]
   const half* __restrict__ K,  // [bs, len_kv, DIM]
   const half* __restrict__ V,  // [bs, len_kv, DIM]
@@ -421,33 +421,36 @@ __global__ void attention_v5_kernel(
         addr ^=  dk * MMA_K * sizeof(half);
         ldmatrix_x4(K_rmem[kvt][dk], addr);
       }
+    
+    {
+      // S = Q @ K^T
+      float S_rmem[WARP_Q / MMA_M][BLOCK_KV / MMA_N][4] = {};
+#pragma unroll
+      for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
+#pragma unroll
+        for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt)
+#pragma unroll
+          for (int dk = 0; dk < DIM / MMA_K; ++dk)
+            mma_m16n8k16(Q_rmem[qi][dk], K_rmem[kvt][dk], S_rmem[qi][kvt]);
 
-    // S = Q @ K^T
-    float S_rmem[WARP_Q / MMA_M][BLOCK_KV / MMA_N][4] = {};
-#pragma unroll
-    for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
-#pragma unroll
-      for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt)
-#pragma unroll
-        for (int dk = 0; dk < DIM / MMA_K; ++dk)
-          mma_m16n8k16(Q_rmem[qi][dk], K_rmem[kvt][dk], S_rmem[qi][kvt]);
+      // Prefetch next FULL K (unguarded)
+      if (kv_id + 1 < kv_full_iters) {
+        const uint32_t Kdst = K_smem + ((kv_id + 1) % 2) * (BLOCK_KV * DIM * sizeof(half));
+        global_to_shared_swizzle<BLOCK_KV, DIM, TB_SIZE>(Kdst, Kcur, DIM, tid);
+        Kcur += (size_t)BLOCK_KV * DIM;
+        asm volatile("cp.async.commit_group;");
+      }
 
-    // Prefetch next FULL K (unguarded)
-    if (kv_id + 1 < kv_full_iters) {
-      const uint32_t Kdst = K_smem + ((kv_id + 1) % 2) * (BLOCK_KV * DIM * sizeof(half));
-      global_to_shared_swizzle<BLOCK_KV, DIM, TB_SIZE>(Kdst, Kcur, DIM, tid);
-      Kcur += (size_t)BLOCK_KV * DIM;
-      asm volatile("cp.async.commit_group;");
+      kv_iter_body<BLOCK_Q, BLOCK_KV, DIM, NUM_WARPS, is_causal, use_mask, full_q_tile, false>(
+        kv_tile_base, len_q, len_kv, past, q_block_base, warp_id, lane_id, scale,
+        MaskBase, S_rmem, P_rmem, O_rmem, rowmax, rowsumexp
+      );
     }
-
-    kv_iter_body<BLOCK_Q, BLOCK_KV, DIM, NUM_WARPS, is_causal, use_mask, full_q_tile, false>(
-      kv_tile_base, len_q, len_kv, past, q_block_base, warp_id, lane_id, scale,
-      MaskBase, S_rmem, P_rmem, O_rmem, rowmax, rowsumexp
-    );
 
     // Wait V, load V and do O += P@V
     asm volatile("cp.async.wait_group 1;");
     __syncthreads();
+
 #pragma unroll
     for (int kvt = 0; kvt < BLOCK_KV / MMA_K; ++kvt)
 #pragma unroll
@@ -495,22 +498,23 @@ __global__ void attention_v5_kernel(
         addr ^=  dk * MMA_K * sizeof(half);
         ldmatrix_x4(K_rmem[kvt][dk], addr);
       }
+    
+    {
+      // S = Q @ K^T
+      float S_rmem[WARP_Q / MMA_M][BLOCK_KV / MMA_N][4] = {};
+  #pragma unroll
+      for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
+  #pragma unroll
+        for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt)
+  #pragma unroll
+          for (int dk = 0; dk < DIM / MMA_K; ++dk)
+            mma_m16n8k16(Q_rmem[qi][dk], K_rmem[kvt][dk], S_rmem[qi][kvt]);
 
-    // S = Q @ K^T
-    float S_rmem[WARP_Q / MMA_M][BLOCK_KV / MMA_N][4] = {};
-#pragma unroll
-    for (int qi = 0; qi < WARP_Q / MMA_M; ++qi)
-#pragma unroll
-      for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt)
-#pragma unroll
-        for (int dk = 0; dk < DIM / MMA_K; ++dk)
-          mma_m16n8k16(Q_rmem[qi][dk], K_rmem[kvt][dk], S_rmem[qi][kvt]);
-
-    kv_iter_body<BLOCK_Q, BLOCK_KV, DIM, NUM_WARPS, is_causal, use_mask, full_q_tile, true>(
-      kv_tile_base, len_q, len_kv, past, q_block_base, warp_id, lane_id, scale,
-      MaskBase, S_rmem, P_rmem, O_rmem, rowmax, rowsumexp
-    );
-
+      kv_iter_body<BLOCK_Q, BLOCK_KV, DIM, NUM_WARPS, is_causal, use_mask, full_q_tile, true>(
+        kv_tile_base, len_q, len_kv, past, q_block_base, warp_id, lane_id, scale,
+        MaskBase, S_rmem, P_rmem, O_rmem, rowmax, rowsumexp
+      );
+    }
     // Wait V and finish O += P@V (tail)
     asm volatile("cp.async.wait_group 1;");
     __syncthreads();
@@ -566,21 +570,24 @@ __global__ void attention_v5_kernel(
     }
 }
 
-// ============================================================================
-// Host-visible wrappers / instantiations
-// ============================================================================
 #define INSTANTIATE_MINIMAL_FLASH_FOR_MASK_STRATEGY(BLOCK_Q, BLOCK_KV, D, is_causal, use_mask) \
-extern "C" __global__ void attention_v5_##BLOCK_Q##_##BLOCK_KV##_##D##_##is_causal##_##use_mask ( \
-  const half* __restrict__ Q, const half* __restrict__ K, \
-  const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
-  int bs, int qh, int head_ratio, int len_q, int len_kv, float scale) { \
-  const bool last_q_block = (blockIdx.x == gridDim.x - 1) && (len_q % BLOCK_Q != 0); \
-  if (last_q_block) { \
-    attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, false>( \
-      Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
-  } else { \
-    attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, true>( \
-      Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
+extern "C" {  \
+    __launch_bounds__(4 * WARP_SIZE) \
+    __global__ void attention_v5_full_##BLOCK_Q##_##BLOCK_KV##_##D##_##is_causal##_##use_mask ( \
+    const half* __restrict__ Q, const half* __restrict__ K, \
+    const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
+    int bs, int qh, int head_ratio, int len_q, int len_kv, float scale) { \
+      attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, true>( \
+        Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
+  } \
+\
+    __launch_bounds__(4 * WARP_SIZE) \
+    __global__ void attention_v5_tail_##BLOCK_Q##_##BLOCK_KV##_##D##_##is_causal##_##use_mask ( \
+    const half* __restrict__ Q, const half* __restrict__ K, \
+    const half* __restrict__ V, const half* __restrict__ M, half* __restrict__ O, \
+    int bs, int qh, int head_ratio, int len_q, int len_kv, float scale) { \
+      attention_v5_kernel<BLOCK_Q, BLOCK_KV, D, 4, is_causal, use_mask, false>( \
+        Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, scale); \
   } \
 }
 

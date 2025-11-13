@@ -24,17 +24,6 @@ impl MinimalFlashAttn {
         format!("{self}").into()
     }
 
-    pub fn kernel_name(
-        &self,
-        block_q: usize,
-        block_kv: usize,
-        d: usize,
-        is_causal: bool,
-        use_mask: bool,
-    ) -> TractResult<String> {
-        Ok(format!("attention_v5_{block_q}_{block_kv}_{d}_{is_causal}_{use_mask}"))
-    }
-
     pub fn output_shape<D: DimLike + One>(
         &self,
         q: &[D],
@@ -124,19 +113,11 @@ impl MinimalFlashAttn {
 
         let n_warps = 4;
 
-        let num_q_blocks = len_q.div_ceil(block_q);
+        let num_full_q_blocks = len_q / block_q;
         let tb_size = n_warps * WARP_SIZE;
         let smem_size = block_q.max(block_kv * 3) * d * size_of::<f16>();
 
-        let func = ctxt.load_pipeline(
-            LibraryName::MinimalFlashAttn,
-            self.kernel_name(block_q, block_kv, d, is_causal, mask.is_some())?,
-        )?;
-
-        func.set_attribute(
-            CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-            smem_size as _,
-        )?;
+        let use_mask = mask.is_some();
 
         let null_ptr = stream.null::<u8>()?;
 
@@ -146,27 +127,74 @@ impl MinimalFlashAttn {
         let m_view = mask.map(get_cuda_view).unwrap_or_else(|| null_ptr.as_view());
         let o_view = get_cuda_view(out);
 
-        let mut launch_args = stream.launch_builder(&func);
-        launch_args.arg(&q_view);
-        launch_args.arg(&k_view);
-        launch_args.arg(&v_view);
-        launch_args.arg(&m_view);
-        launch_args.arg(&o_view);
-        launch_args.arg(&b);
-        launch_args.arg(&n_qh);
-        launch_args.arg(&head_ratio);
-        launch_args.arg(&len_q);
-        launch_args.arg(&k.shape()[2]);
-        launch_args.arg(&scale);
+        if num_full_q_blocks > 0 {
+            let func = ctxt.load_pipeline(
+                LibraryName::MinimalFlashAttn,
+                format!("attention_v5_full_{block_q}_{block_kv}_{d}_{is_causal}_{use_mask}"),
+            )?;
 
-        let cfg = LaunchConfig {
-            grid_dim: (num_q_blocks as _, n_qh as _, b as _),
-            block_dim: (tb_size as _, 1, 1),
-            shared_mem_bytes: smem_size as _,
-        };
-        unsafe {
-            launch_args.launch(cfg);
+            func.set_attribute(
+                CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+                smem_size as _,
+            )?;
+
+            let mut launch_args = stream.launch_builder(&func);
+            launch_args.arg(&q_view);
+            launch_args.arg(&k_view);
+            launch_args.arg(&v_view);
+            launch_args.arg(&m_view);
+            launch_args.arg(&o_view);
+            launch_args.arg(&b);
+            launch_args.arg(&n_qh);
+            launch_args.arg(&head_ratio);
+            launch_args.arg(&len_q);
+            launch_args.arg(&k.shape()[2]);
+            launch_args.arg(&scale);
+
+            let cfg = LaunchConfig {
+                grid_dim: (num_full_q_blocks as _, n_qh as _, b as _),
+                block_dim: (tb_size as _, 1, 1),
+                shared_mem_bytes: smem_size as _,
+            };
+            unsafe {
+                launch_args.launch(cfg);
+            }
         }
+
+        if len_q % block_q != 0 {
+            let func = ctxt.load_pipeline(
+                LibraryName::MinimalFlashAttn,
+                format!("attention_v5_tail_{block_q}_{block_kv}_{d}_{is_causal}_{use_mask}"),
+            )?;
+
+            func.set_attribute(
+                CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+                smem_size as _,
+            )?;
+
+            let mut launch_args = stream.launch_builder(&func);
+            launch_args.arg(&q_view);
+            launch_args.arg(&k_view);
+            launch_args.arg(&v_view);
+            launch_args.arg(&m_view);
+            launch_args.arg(&o_view);
+            launch_args.arg(&b);
+            launch_args.arg(&n_qh);
+            launch_args.arg(&head_ratio);
+            launch_args.arg(&len_q);
+            launch_args.arg(&k.shape()[2]);
+            launch_args.arg(&scale);
+
+            let cfg = LaunchConfig {
+                grid_dim: (1, n_qh as _, b as _),
+                block_dim: (tb_size as _, 1, 1),
+                shared_mem_bytes: smem_size as _,
+            };
+            unsafe {
+                launch_args.launch(cfg);
+            }
+        }
+
         Ok(())
     }
 }
