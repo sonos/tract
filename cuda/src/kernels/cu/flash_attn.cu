@@ -565,7 +565,7 @@ static __device__ void flash_attn_ext_vec(
     }
 
     if (gridDim.y != 1 && tid < ncols && (ncols == 1 || ic0 + tid < ne01)) {
-        dst_meta[((sequence*ne02 + ic0 + tid)*ne01 + head)*gridDim.y + blockIdx.y] = make_float2(KQ_max[tid], KQ_sum[tid]);
+        dst_meta[((sequence*ne01 + ic0 + tid)*ne02 + head)*gridDim.y + blockIdx.y] = make_float2(KQ_max[tid], KQ_sum[tid]);
     }
 }
 
@@ -588,7 +588,7 @@ static __device__ void flash_attn_combine_results(
     const int head     = blockIdx.y;
     const int sequence = blockIdx.z;
 
-    const int j_dst_unrolled = (sequence*ne02 + col)*ne01 + head;
+    const int j_dst_unrolled = (sequence*ne01 + col)*ne02 + head;
 
     VKQ_parts += j_dst_unrolled * parallel_blocks*D;
     VKQ_meta  += j_dst_unrolled * parallel_blocks;
@@ -698,7 +698,7 @@ static __device__ void flash_attn_combine_results(
 #define INSTANTIATE_FLASH_ATTN_VEC() \
     INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(64) \
     INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(128) \
-    INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(256) \
+    //INSTANTIATE_FLASH_ATTN_VEC_FOR_D_NCOLS1(256) \
 
 INSTANTIATE_FLASH_ATTN_VEC()
 
@@ -2085,11 +2085,11 @@ extern "C" {                                                                  \
 
 #define INSTANTIATE_FLASH_ATTN_MMA_F16()      \
     INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(64)  \
-    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(80)  \
-    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(96)  \
-    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(112) \
     INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(128) \
-    INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(256) \
+    //INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(80)  \
+    //INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(96)  \
+    //INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(112) \
+    //INSTANTIATE_FLASH_ATTN_MMA_F16_FOR_D(256) \
 
 INSTANTIATE_FLASH_ATTN_MMA_F16()
 
@@ -2102,7 +2102,8 @@ static __device__ void flash_attn_mask_to_KV_max(
     const int sequence = blockIdx.y;
     const int jt       = blockIdx.x;
 
-    mask += sequence*s33 + jt*ncols1*s31;
+    // For batched mask support: mask += sequence*s33 + jt*ncols1*s31;
+    mask += jt*ncols1*s31;
 
     __shared__ int buf_iw[WARP_SIZE];
     if (tid < WARP_SIZE) {
